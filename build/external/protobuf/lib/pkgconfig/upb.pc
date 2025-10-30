@@ -1,0 +1,10 @@
+prefix=/home/petras/code/code_rust/session/session_cpp/build/external/protobuf
+exec_prefix=/home/petras/code/code_rust/session/session_cpp/build/external/protobuf
+libdir=/home/petras/code/code_rust/session/session_cpp/build/external/protobuf/lib
+includedir=/home/petras/code/code_rust/session/session_cpp/build/external/protobuf/include
+
+Name: Protocol Buffers
+Description: Google's Data Interchange Format
+Version: 29.0.0
+Libs: -L${libdir} -lupb 
+Cflags: -I${includedir}

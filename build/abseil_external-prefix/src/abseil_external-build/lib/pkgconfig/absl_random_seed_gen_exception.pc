@@ -1,0 +1,12 @@
+prefix=/home/petras/code/code_rust/session/session_cpp/build/external/abseil
+exec_prefix=${prefix}
+libdir=/home/petras/code/code_rust/session/session_cpp/build/external/abseil/lib
+includedir=/home/petras/code/code_rust/session/session_cpp/build/external/abseil/include
+
+Name: absl_random_seed_gen_exception
+Description: Abseil random_seed_gen_exception library
+URL: https://abseil.io/
+Version: 20240722
+Requires: absl_config = 20240722
+Libs: -L${libdir}  -labsl_random_seed_gen_exception 
+Cflags: -I${includedir} -Wnon-virtual-dtor -DNOMINMAX

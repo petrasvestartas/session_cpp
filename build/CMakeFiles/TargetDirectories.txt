@@ -1,0 +1,10 @@
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/abseil_external.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/abseil_monolith.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/protobuf_external.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/proto-objects.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/PROTO_FILES_READY.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/MyProject.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/catch2_lib.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/tests.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/edit_cache.dir
+/home/petras/code/code_rust/session/session_cpp/build/CMakeFiles/rebuild_cache.dir

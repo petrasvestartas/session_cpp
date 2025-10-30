@@ -1,0 +1,12 @@
+prefix=/home/petras/code/code_rust/session/session_cpp/build/external/abseil
+exec_prefix=${prefix}
+libdir=/home/petras/code/code_rust/session/session_cpp/build/external/abseil/lib
+includedir=/home/petras/code/code_rust/session/session_cpp/build/external/abseil/include
+
+Name: absl_crc_cord_state
+Description: Abseil crc_cord_state library
+URL: https://abseil.io/
+Version: 20240722
+Requires: absl_crc32c = 20240722, absl_config = 20240722, absl_strings = 20240722, absl_no_destructor = 20240722
+Libs: -L${libdir}  -labsl_crc_cord_state 
+Cflags: -I${includedir} -Wnon-virtual-dtor -DNOMINMAX

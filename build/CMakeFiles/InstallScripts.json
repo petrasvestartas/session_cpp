@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/petras/code/code_rust/session/session_cpp/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
