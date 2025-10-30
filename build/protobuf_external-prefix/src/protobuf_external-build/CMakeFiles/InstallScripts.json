@@ -1,8 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/petras/code/code_rust/session/session_cpp/build/protobuf_external-prefix/src/protobuf_external-build/cmake_install.cmake",
-		"/home/petras/code/code_rust/session/session_cpp/build/protobuf_external-prefix/src/protobuf_external-build/third_party/utf8_range/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
