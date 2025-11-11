@@ -31,22 +31,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "Quick view (if available):"
     
-    # Skip auto-opening in CI environments; attempt locally only
-    if [ -n "$CI" ]; then
-        echo "CI environment detected; skipping auto-opening the docs."
-    else
-        # Try to open in browser (Linux)
-        if command -v xdg-open &> /dev/null; then
-            echo "🚀 Opening in default browser..."
-            xdg-open docs_output/html/index.html
-        elif command -v open &> /dev/null; then
-            # macOS
-            echo "🚀 Opening in default browser..."
-            open docs_output/html/index.html
-        else
-            echo "💡 Manually open docs_output/html/index.html in your browser"
-        fi
-    fi
+    # Auto-opening disabled - use build_docs_all.sh to open all docs
 else
     echo "❌ Documentation generation failed!"
     exit 1
