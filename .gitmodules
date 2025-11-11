@@ -1,0 +1,6 @@
+[submodule "session_proto"]
+	path = session_proto
+	url = https://github.com/petrasvestartas/session_proto.git
+[submodule "session_data"]
+	path = session_data
+	url = https://github.com/petrasvestartas/session_data.git
