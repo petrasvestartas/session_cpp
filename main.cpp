@@ -118,14 +118,19 @@ int main() {
     }
 
     // 9. ray_mesh - Load bunny mesh
-    // Try both paths (run from build/ or from session_cpp/)
+    // Try paths: session_data/ (from session_cpp/), ../session_data/ (from build/), ../../data/, ../data/
     Mesh bunny;
-    if (std::ifstream("../../data/bunny.obj").good()) {
+    if (std::ifstream("session_data/bunny.obj").good()) {
+        bunny = obj::read_obj("session_data/bunny.obj");
+    } else if (std::ifstream("../session_data/bunny.obj").good()) {
+        bunny = obj::read_obj("../session_data/bunny.obj");
+    } else if (std::ifstream("../../data/bunny.obj").good()) {
         bunny = obj::read_obj("../../data/bunny.obj");
     } else if (std::ifstream("../data/bunny.obj").good()) {
         bunny = obj::read_obj("../data/bunny.obj");
     } else {
-        std::cerr << "ERROR: Cannot find bunny.obj in ../../data/ or ../data/\n";
+        std::cerr << "ERROR: Cannot find bunny.obj in session_data/, ../session_data/, ../../data/, or ../data/\n";
+        std::cerr << "Current working directory: " << std::filesystem::current_path() << "\n";
         return 1;
     }
     
