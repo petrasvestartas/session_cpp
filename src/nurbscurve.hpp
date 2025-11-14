@@ -50,6 +50,15 @@ public:
 
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // Static Factory Methods (RhinoCommon-style API)
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    
+    /// Create NURBS curve from points (RhinoCommon-style unified API)
+    /// Equivalent to: NurbsCurve.Create(bool periodic, int degree, IEnumerable<Point3d> points)
+    static NurbsCurve create(bool periodic, int degree, const std::vector<Point>& points,
+                           int dimension = 3, double knot_delta = 1.0);
+    
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
     ///////////////////////////////////////////////////////////////////////////////////////////
     
@@ -125,6 +134,12 @@ public:
     
     /// Get number of spans
     int span_count() const;
+    
+    /// Get CV capacity (allocated space)
+    int cv_capacity() const { return m_cv_capacity; }
+    
+    /// Get knot capacity (from vector capacity)
+    int knot_capacity() const { return static_cast<int>(m_knot.capacity()); }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Control Vertex Access
@@ -162,6 +177,19 @@ public:
     /// Set knot value at index
     bool set_knot(int knot_index, double knot_value);
     
+    /// Get knot multiplicity at index
+    int knot_multiplicity(int knot_index) const;
+    
+    /// Get superfluous knot value at end
+    double superfluous_knot(int end) const;
+    
+    /// Get pointer to knot array
+    const double* knot_array() const { return m_knot.data(); }
+    
+    /// Get pointer to CV array (expert use)
+    double* cv_array() { return m_cv.data(); }
+    const double* cv_array() const { return m_cv.data(); }
+    
     /// Get all knot values
     std::vector<double> get_knots() const { return m_knot; }
     
@@ -196,6 +224,42 @@ public:
     
     /// Check if curve is planar within tolerance
     bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Check if curve is an arc (with optional arc output)
+    bool is_arc(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Check if curve lies in a specific plane
+    bool is_in_plane(const Plane& test_plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Test if curve has natural end (zero 2nd derivative)
+    bool is_natural(int end = 2) const;
+    
+    /// Check if curve can be represented as a polyline
+    int is_polyline(std::vector<Point>* points = nullptr, 
+                   std::vector<double>* params = nullptr) const;
+    
+    /// Convert curve to polyline with adaptive sampling (curvature-based)
+    /// Returns points and optionally parameters
+    /// angle_tolerance: maximum angle between segments (radians)
+    /// min_edge_length: minimum distance between points
+    /// max_edge_length: maximum distance between points
+    bool to_polyline_adaptive(std::vector<Point>& points,
+                             std::vector<double>* params = nullptr,
+                             double angle_tolerance = 0.1,
+                             double min_edge_length = 0.0,
+                             double max_edge_length = 0.0) const;
+    
+    /// Divide curve into uniform number of points (simple linear parameter division)
+    /// count: number of points (must be >= 2)
+    /// include_endpoints: if true, first and last points are at curve start/end
+    bool divide_by_count(int count, std::vector<Point>& points,
+                        std::vector<double>* params = nullptr,
+                        bool include_endpoints = true) const;
+    
+    /// Divide curve by approximate arc length
+    /// segment_length: target length between points
+    bool divide_by_length(double segment_length, std::vector<Point>& points,
+                         std::vector<double>* params = nullptr) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Evaluation
@@ -216,6 +280,12 @@ public:
     
     /// Get end point of curve
     Point point_at_end() const;
+    
+    /// Force curve to start at a specified point
+    bool set_start_point(const Point& start_point);
+    
+    /// Force curve to end at a specified point
+    bool set_end_point(const Point& end_point);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Modification Operations
@@ -223,6 +293,9 @@ public:
     
     /// Reverse curve direction (negates knots, reverses CVs)
     bool reverse();
+    
+    /// Swap two coordinate axes (e.g., swap X and Y)
+    bool swap_coordinates(int axis_i, int axis_j);
     
     /// Trim curve to interval [t0, t1]
     bool trim(double t0, double t1);
@@ -300,6 +373,155 @@ public:
     
     /// Clean up invalid knots (remove duplicates, fix spacing issues)
     bool clean_knots(double knot_tolerance = 0.0);
+    
+    /// Make knot vector a clamped uniform knot vector (does not change CVs)
+    bool make_clamped_uniform_knot_vector(double delta = 1.0);
+    
+    /// Make knot vector a periodic uniform knot vector (does not change CVs)
+    bool make_periodic_uniform_knot_vector(double delta = 1.0);
+    
+    /// Check if knot vector is clamped at ends
+    bool is_clamped(int end = 2) const;
+    
+    /// Get length of control polygon
+    double control_polygon_length() const;
+    
+    /// Get Greville abcissa for a control point
+    double greville_abcissa(int cv_index) const;
+    
+    /// Get all Greville abcissae
+    bool get_greville_abcissae(std::vector<double>& abcissae) const;
+    
+    /// Check if span is linear within tolerance
+    bool span_is_linear(int span_index, double min_length, double tolerance) const;
+    
+    /// Check if span is linear and get the line
+    bool span_is_linear(int span_index, double min_length, double tolerance,
+                       Point* line_start, Point* line_end) const;
+    
+    /// Check if span is singular (collapsed to a point)
+    bool span_is_singular(int span_index) const;
+    
+    /// Check if entire curve is singular
+    bool is_singular() const;
+    
+    /// Check if curve has bezier spans (all distinct knots have multiplicity = degree)
+    bool has_bezier_spans() const;
+    
+    /// Convert a span to Bezier curve (extract individual Bezier segment)
+    bool convert_span_to_bezier(int span_index, std::vector<Point>& bezier_cvs) const;
+    
+    /// Remove a specific span from the curve
+    bool remove_span(int span_index);
+    
+    /// Remove all singular spans from curve
+    int remove_singular_spans();
+    
+    /// Get cubic Bezier approximation of entire curve
+    double get_cubic_bezier_approximation(double max_deviation, std::vector<Point>& bezier_cvs) const;
+    
+    /// Repair bad knots (too close, high multiplicity)
+    bool repair_bad_knots(double knot_tolerance = 0.0, bool repair = true);
+    
+    /// Make curve have piecewise bezier spans
+    bool make_piecewise_bezier(bool set_end_weights_to_one = false);
+    
+    /// Increase degree of curve
+    bool increase_degree(int desired_degree);
+    
+    /// Get NURBS form (returns 1 for NURBS curve)
+    int get_nurbs_form(NurbsCurve& nurbs_form, double tolerance = 0.0) const;
+    
+    /// Check if has NURBS form (always returns 1 for NURBS curve)
+    int has_nurbs_form() const;
+    
+    /// Append another NURBS curve to this one
+    bool append(const NurbsCurve& other);
+    
+    /// Change dimension of curve
+    bool change_dimension(int desired_dimension);
+    
+    /// Change seam point of closed periodic curve
+    bool change_closed_curve_seam(double t);
+    
+    /// Get parameter tolerance at point
+    bool get_parameter_tolerance(double t, double* tminus, double* tplus) const;
+    
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Intersection Operations
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    
+    /// Find all intersections between curve and plane
+    /// Returns parameter values where curve intersects plane
+    std::vector<double> intersect_plane(const Plane& plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Find all intersection points between curve and plane
+    std::vector<Point> intersect_plane_points(const Plane& plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Find closest point on curve to test point (improved with Newton-Raphson)
+    std::pair<double, double> closest_point_to(const Point& test_point, 
+                                               double t0 = 0.0, double t1 = 0.0) const;
+    
+    /// Curve-plane intersection using Bézier clipping (advanced, faster for multiple intersections)
+    std::vector<double> intersect_plane_bezier_clipping(const Plane& plane, 
+                                                        double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Curve-plane intersection using algebraic/hodograph method (maximum precision)
+    /// Uses span-based subdivision + Newton-Raphson with derivative information
+    /// Achieves quadratic convergence (machine precision in 2-3 iterations)
+    std::vector<double> intersect_plane_algebraic(const Plane& plane,
+                                                  double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Curve-plane intersection using production CAD kernel method (INDUSTRY STANDARD)
+    /// This is the method used in Rhino, Parasolid, ACIS, and other professional CAD kernels
+    /// Algorithm: Recursive subdivision on Bézier spans + Newton-Raphson refinement
+    /// - Converts curve to Bézier spans
+    /// - Recursively subdivides until nearly linear
+    /// - Detects sign changes (signed distance to plane)
+    /// - Applies Newton-Raphson for quadratic convergence
+    /// - Robust bracketing with fallback bisection
+    /// - Filters duplicates and returns sorted results
+    /// Performance: O(log n) subdivision + O(1) Newton per root
+    std::vector<double> intersect_plane_production(const Plane& plane,
+                                                   double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Zero all control vertices (and set weights to 1 if rational)
+    bool zero_cvs();
+    
+    /// Check if this curve is duplicate of another
+    bool is_duplicate(const NurbsCurve& other,
+                     bool ignore_parameterization,
+                     double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    
+    /// Get span indices where control point is active
+    std::pair<int, int> control_point_spans(int cv_index) const;
+    
+    /// Get parameter interval where control point is active
+    std::pair<double, double> control_point_support(int cv_index) const;
+    
+    /// Find next discontinuity in curve
+    bool get_next_discontinuity(int continuity_type,
+                               double t0, double t1,
+                               double& t_out,
+                               int* hint = nullptr,
+                               double cos_angle_tolerance = 0.99984769515639123,
+                               double curvature_tolerance = 1e-8) const;
+    
+    /// Test continuity at parameter
+    bool is_continuous(int continuity_type,
+                      double t,
+                      int* hint = nullptr,
+                      double point_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double d1_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double d2_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double cos_angle_tolerance = 0.99984769515639123,
+                      double curvature_tolerance = 1e-8) const;
+    
+    /// Reparameterize rational curve by linear fractional transformation
+    bool reparameterize(double c);
+    
+    /// Change end weights of rational curve
+    bool change_end_weights(double w0, double w1);
 
 private:
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -316,6 +538,8 @@ private:
     void basis_functions_derivatives(int span, double t, int deriv_order,
                                     std::vector<std::vector<double>>& ders) const;
     
+    bool insert_knot(double knot_value, int knot_multiplicity);
+
     /// Deep copy from another NurbsCurve
     void deep_copy_from(const NurbsCurve& src);
 };

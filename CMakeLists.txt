@@ -21,7 +21,7 @@ message(STATUS "Using C++ standard library parallel execution (std::execution::p
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
     # High optimization for Release builds (removed -ffast-math to allow infinity/NaN)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -flto")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native")
 elseif(MSVC)
     add_compile_options(/W4)
     add_compile_options(/utf-8)  # Enable UTF-8 support for fmt library
