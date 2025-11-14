@@ -1,4 +1,4 @@
-#include "nurbscurve.hpp"
+#include "nurbscurve.h"
 #include <cstring>
 #include <sstream>
 #include <limits>
@@ -94,15 +94,27 @@ bool NurbsCurve::create_clamped_uniform(int dimension, int order,
     }
     
     // Create clamped uniform knot vector
+    // Implementation matches OpenNURBS ON_MakeClampedUniformKnotVector
     int knot_count = m_order + m_cv_count - 2;
-    for (int i = 0; i < m_order; i++) {
-        m_knot[i] = 0.0;
+    
+    // Fill interior knots with uniform spacing
+    // Start from index (order-2) up to (cv_count-1)
+    double k = 0.0;
+    for (int i = m_order - 2; i < m_cv_count; i++, k += knot_delta) {
+        m_knot[i] = k;
     }
-    for (int i = m_order; i < knot_count - m_order + 1; i++) {
-        m_knot[i] = (i - m_order + 1) * knot_delta;
+    
+    // Clamp both ends: sets first (order-2) and last (order-2) knots
+    // Left clamp: knot[0..order-3] = knot[order-2]
+    int i0 = m_order - 2;
+    for (int i = 0; i < i0; i++) {
+        m_knot[i] = m_knot[i0];
     }
-    for (int i = knot_count - m_order + 1; i < knot_count; i++) {
-        m_knot[i] = (knot_count - 2 * m_order + 2) * knot_delta;
+    
+    // Right clamp: knot[cv_count..knot_count-1] = knot[cv_count-1]
+    i0 = m_cv_count - 1;
+    for (int i = i0 + 1; i < knot_count; i++) {
+        m_knot[i] = m_knot[i0];
     }
     
     return true;
@@ -415,40 +427,48 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
 }
 
 // Find span using binary search
+// Implementation matches OpenNURBS ON_NurbsSpanIndex
 int NurbsCurve::find_span(double t) const {
-    int n = m_cv_count - 1;
-    int p = m_order - 1;
+    // OpenNURBS shifts knot pointer by (order-2) to work with compressed format
+    // Domain is knot[order-2] to knot[cv_count-1]
+    const double* knot = m_knot.data() + (m_order - 2);
+    int len = m_cv_count - m_order + 2;
     
-    if (t >= m_knot[n+1]) return n;
-    if (t <= m_knot[p]) return p;
+    // Binary search for span
+    int low = 0;
+    int high = len - 1;
     
-    int low = p;
-    int high = n + 1;
-    int mid = (low + high) / 2;
+    if (t <= knot[0]) return 0;
+    if (t >= knot[len-1]) return len - 2;
     
-    while (t < m_knot[mid] || t >= m_knot[mid+1]) {
-        if (t < m_knot[mid]) {
+    // Binary search
+    while (high > low + 1) {
+        int mid = (low + high) / 2;
+        if (t < knot[mid]) {
             high = mid;
         } else {
             low = mid;
         }
-        mid = (low + high) / 2;
     }
     
-    return mid;
+    return low;
 }
 
 // Compute basis functions (Cox-de Boor algorithm)
+// Implementation matches OpenNURBS algorithm
 void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis) const {
     basis.resize(m_order);
     std::vector<double> left(m_order);
     std::vector<double> right(m_order);
     
+    // Offset knot pointer like OpenNURBS does
+    const double* knot = m_knot.data() + (m_order - 2) + span;
+    
     basis[0] = 1.0;
     
     for (int j = 1; j < m_order; j++) {
-        left[j] = t - m_knot[span + 1 - j];
-        right[j] = m_knot[span + j] - t;
+        left[j] = t - knot[1 - j];
+        right[j] = knot[j] - t;
         double saved = 0.0;
         
         for (int r = 0; r < j; r++) {
@@ -461,17 +481,20 @@ void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis)
 }
 
 // Evaluate point on curve
+// Implementation matches OpenNURBS evaluation approach
 Point NurbsCurve::point_at(double t) const {
     if (!is_valid()) return Point(0, 0, 0);
     
+    // find_span returns index relative to shifted knot array
     int span = find_span(t);
     std::vector<double> basis;
     basis_functions(span, t, basis);
     
     double x = 0.0, y = 0.0, z = 0.0, w = 0.0;
     
+    // In OpenNURBS, span index directly corresponds to CV starting index
     for (int i = 0; i < m_order; i++) {
-        int cv_idx = span - m_order + 1 + i;
+        int cv_idx = span + i;
         const double* cv_ptr = cv(cv_idx);
         if (!cv_ptr) continue;
         
@@ -587,7 +610,10 @@ Vector NurbsCurve::tangent_at(double t) const {
         return Vector(0, 0, 0);
     }
     Vector tan = ders[1];
-    tan.normalize_self();
+    double mag = tan.magnitude();
+    if (mag > 1e-14) {
+        tan.normalize_self();
+    }
     return tan;
 }
 
@@ -1128,10 +1154,13 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
     std::vector<double> right(p + 1);
     std::vector<std::vector<double>> ndu(p + 1, std::vector<double>(p + 1, 0.0));
 
+    // Offset knot pointer like OpenNURBS and basis_functions do
+    const double* knot = m_knot.data() + (m_order - 2) + span;
+    
     ndu[0][0] = 1.0;
     for (int j = 1; j <= p; ++j) {
-        left[j] = t - m_knot[span + 1 - j];
-        right[j] = m_knot[span + j] - t;
+        left[j] = t - knot[1 - j];
+        right[j] = knot[j] - t;
         double saved = 0.0;
         for (int r = 0; r < j; ++r) {
             double temp = ndu[r][j - 1] / (right[r + 1] + left[j - r]);
@@ -1434,32 +1463,31 @@ bool NurbsCurve::make_piecewise_bezier(bool set_end_weights_to_one) {
 
 // Make clamped uniform knot vector
 bool NurbsCurve::make_clamped_uniform_knot_vector(double delta) {
-    if (!is_valid()) return false;
+    // Don't call is_valid() here as it checks knot vector which we're about to create
     if (delta <= 0.0) return false;
+    if (m_dim <= 0) return false;
     if (m_order < 2 || m_cv_count < m_order) return false;
     
     int knot_count = m_order + m_cv_count - 2;
     m_knot.resize(knot_count);
     
     // Create clamped uniform knot vector
-    // Format: [0, 0, ..., 0, delta, 2*delta, ..., max, max, ..., max]
-    // where 0 is repeated 'order' times and max is repeated 'order' times
-    
-    // Set first 'order' knots to 0
-    for (int i = 0; i < m_order; i++) {
-        m_knot[i] = 0.0;
+    // Fill interior knots with uniform spacing starting from index (order-2)
+    double k = 0.0;
+    for (int i = m_order - 2; i < m_cv_count; i++, k += delta) {
+        m_knot[i] = k;
     }
     
-    // Set interior knots
-    int num_interior = m_cv_count - m_order;
-    for (int i = 0; i < num_interior; i++) {
-        m_knot[m_order + i] = (i + 1) * delta;
+    // Clamp left end: set first (order-2) knots equal to m_knot[order-2]
+    int i0 = m_order - 2;
+    for (int i = 0; i < i0; i++) {
+        m_knot[i] = m_knot[i0];
     }
     
-    // Set last 'order' knots to max value
-    double max_val = (num_interior + 1) * delta;
-    for (int i = 0; i < m_order; i++) {
-        m_knot[m_order + num_interior + i] = max_val;
+    // Clamp right end: set knots from (cv_count) onward equal to m_knot[cv_count-1]
+    i0 = m_cv_count - 1;
+    for (int i = i0 + 1; i < knot_count; i++) {
+        m_knot[i] = m_knot[i0];
     }
     
     return true;
@@ -1467,8 +1495,9 @@ bool NurbsCurve::make_clamped_uniform_knot_vector(double delta) {
 
 // Make periodic uniform knot vector
 bool NurbsCurve::make_periodic_uniform_knot_vector(double delta) {
-    if (!is_valid()) return false;
+    // Don't call is_valid() here as it checks knot vector which we're about to create
     if (delta <= 0.0) return false;
+    if (m_dim <= 0) return false;
     if (m_order < 2 || m_cv_count < m_order) return false;
     
     int knot_count = m_order + m_cv_count - 2;

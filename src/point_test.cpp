@@ -9,6 +9,59 @@
 
 using namespace session_cpp;
 
+TEST_CASE("Point constructor and attributes", "[point]") {
+    Point p(1.0, 2.0, 3.0);
+    // Check coordinates
+    REQUIRE(p.x() == 1.0);
+    REQUIRE(p.y() == 2.0);
+    REQUIRE(p.z() == 3.0);
+    
+    // Check setters
+    p.set_x(4.0);
+    p.set_y(5.0);
+    p.set_z(6.0);
+    REQUIRE(p.x() == 4.0);
+    REQUIRE(p.y() == 5.0);
+    REQUIRE(p.z() == 6.0);
+    
+    // Check default attributes
+    REQUIRE(p.name == "my_point");
+    REQUIRE(p.width == 1.0);
+    REQUIRE(p.pointcolor == Color::white());  // Default color is white
+    REQUIRE(p.xform == Xform::identity());    // Default transform is identity
+}
+
+TEST_CASE("Point operator<< formatting", "[point][ostream]") {
+    Point p(1.23456, 2.34567, 3.45678);
+    
+    std::stringstream ss;
+    ss << p;
+    
+    std::string expected = fmt::format("Point({}, {}, {})",
+        TOL.format_number(1.23456),
+        TOL.format_number(2.34567),
+        TOL.format_number(3.45678)
+    );
+    
+    REQUIRE(ss.str() == expected);
+}
+
+TEST_CASE("Point to_string with metadata", "[point]") {
+    Point p(1.0, 2.0, 3.0);
+    p.name = "MyPoint";
+    p.pointcolor = Color(255, 0, 0);
+    p.width = 5.0;
+    
+    std::string s = p.to_string();
+    std::string expected = fmt::format("Point({}, {}, {}, {}, {}, {})",
+        1.0, 2.0, 3.0, "MyPoint",
+        p.pointcolor.to_string(), 5.0
+    );
+    
+    REQUIRE(s == expected);
+}
+
+
 TEST_CASE("Point JSON roundtrip", "[point]") {
     Point original(42.1, 84.2, 126.3);
     original.name = "test_point";

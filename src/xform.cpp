@@ -495,4 +495,18 @@ const double& Xform::operator()(int row, int col) const {
     return m[col * 4 + row];
 }
 
+bool Xform::operator==(const Xform& other) const {
+    constexpr double tolerance = 1e-10;
+    for (size_t i = 0; i < 16; ++i) {
+        if (std::abs(m[i] - other.m[i]) > tolerance) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Xform::operator!=(const Xform& other) const {
+    return !(*this == other);
+}
+
 } // namespace session_cpp

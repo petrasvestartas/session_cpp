@@ -1,4 +1,5 @@
 #include "intersection.h"
+#include "nurbscurve.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -844,6 +845,59 @@ std::vector<Point> Intersection::ray_mesh_bvh(
     }
     
     return result;
+}
+
+//==========================================================================================
+// NURBS Curve Intersection Methods
+//==========================================================================================
+
+std::vector<double> Intersection::curve_plane(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance
+) {
+    return curve.intersect_plane(plane, tolerance);
+}
+
+std::vector<Point> Intersection::curve_plane_points(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance
+) {
+    return curve.intersect_plane_points(plane, tolerance);
+}
+
+std::vector<double> Intersection::curve_plane_bezier_clipping(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance
+) {
+    return curve.intersect_plane_bezier_clipping(plane, tolerance);
+}
+
+std::vector<double> Intersection::curve_plane_algebraic(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance
+) {
+    return curve.intersect_plane_algebraic(plane, tolerance);
+}
+
+std::vector<double> Intersection::curve_plane_production(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance
+) {
+    return curve.intersect_plane_production(plane, tolerance);
+}
+
+std::pair<double, double> Intersection::curve_closest_point(
+    const NurbsCurve& curve,
+    const Point& test_point,
+    double t0,
+    double t1
+) {
+    return curve.closest_point_to(test_point, t0, t1);
 }
 
 } // namespace session_cpp

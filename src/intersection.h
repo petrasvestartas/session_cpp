@@ -13,6 +13,9 @@
 
 namespace session_cpp {
 
+// Forward declaration
+class NurbsCurve;
+
 class Intersection {
 public:
 
@@ -312,6 +315,93 @@ public:
     const Mesh& mesh,
     double epsilon,
     bool find_all = false
+  );
+
+  //==========================================================================================
+  // NURBS Curve Intersection Methods
+  //==========================================================================================
+
+  /**
+   * @brief Find all intersections between NURBS curve and plane
+   * @param curve NURBS curve to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of parameter values where curve intersects plane
+   */
+  static std::vector<double> curve_plane(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Find all intersection points between NURBS curve and plane
+   * @param curve NURBS curve to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of intersection points
+   */
+  static std::vector<Point> curve_plane_points(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Curve-plane intersection using Bézier clipping (advanced method)
+   * @param curve NURBS curve to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of parameter values where curve intersects plane
+   * @note Faster for multiple intersections, used in professional CAD software
+   */
+  static std::vector<double> curve_plane_bezier_clipping(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Curve-plane intersection using algebraic/hodograph method
+   * @param curve NURBS curve to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of parameter values where curve intersects plane
+   * @note Maximum precision method using Newton-Raphson with derivatives
+   */
+  static std::vector<double> curve_plane_algebraic(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Curve-plane intersection using production CAD kernel method
+   * @param curve NURBS curve to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of parameter values where curve intersects plane
+   * @note Industry standard method used in Rhino, Parasolid, ACIS
+   */
+  static std::vector<double> curve_plane_production(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Find closest point on NURBS curve to test point
+   * @param curve NURBS curve
+   * @param test_point Point to find closest point to
+   * @param t0 Start of search interval (0=use curve start)
+   * @param t1 End of search interval (0=use curve end)
+   * @return Pair of (parameter, distance)
+   */
+  static std::pair<double, double> curve_closest_point(
+    const NurbsCurve& curve,
+    const Point& test_point,
+    double t0 = 0.0,
+    double t1 = 0.0
   );
 
 private:

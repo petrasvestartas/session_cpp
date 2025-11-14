@@ -186,6 +186,12 @@ function(CREATE_CPP_PROTO)
         $ENV{INSTALL}/abseil/include
     )
     
+    # Suppress warnings from external libraries (Abseil, Protobuf)
+    target_include_directories(proto-objects SYSTEM PUBLIC
+        $ENV{INSTALL}/protobuf/include
+        $ENV{INSTALL}/abseil/include
+    )
+    
     
     add_dependencies(proto-objects abseil_external protobuf_external)
        
@@ -270,6 +276,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 if(ENABLE_PROTOBUF)
     target_include_directories(${PROJECT_NAME} PRIVATE 
         $ENV{GENERATED}                          # Protobuf generated headers
+    )
+    # Use SYSTEM to suppress warnings from external libraries
+    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
         $ENV{INSTALL}/protobuf/include           # Protobuf library headers
         $ENV{INSTALL}/abseil/include             # Abseil library headers
     )
@@ -308,6 +317,9 @@ target_link_libraries(tests PRIVATE catch2_lib)
 if(ENABLE_PROTOBUF)
     target_include_directories(tests PRIVATE 
         $ENV{GENERATED}                          # Protobuf generated headers
+    )
+    # Use SYSTEM to suppress warnings from external libraries
+    target_include_directories(tests SYSTEM PRIVATE
         $ENV{INSTALL}/protobuf/include           # Protobuf library headers
         $ENV{INSTALL}/abseil/include             # Abseil library headers
     )
@@ -342,6 +354,9 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
         if(ENABLE_PROTOBUF)
             target_include_directories(${EXAMPLE_NAME} PRIVATE 
                 $ENV{GENERATED}                          # Protobuf generated headers
+            )
+            # Use SYSTEM to suppress warnings from external libraries
+            target_include_directories(${EXAMPLE_NAME} SYSTEM PRIVATE
                 $ENV{INSTALL}/protobuf/include           # Protobuf library headers
                 $ENV{INSTALL}/abseil/include             # Abseil library headers
             )

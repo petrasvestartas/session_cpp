@@ -108,6 +108,11 @@ public:
     /// Matrix element (row, col) const accessor
     const double& operator()(int row, int col) const;
 
+    /// Equality operator (compare matrix values with tolerance)
+    bool operator==(const Xform& other) const;
+    /// Inequality operator
+    bool operator!=(const Xform& other) const;
+
 };
 
 } // namespace session_cpp

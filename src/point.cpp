@@ -5,7 +5,7 @@ namespace session_cpp {
 
 /// Convert point to string representation
 std::string Point::to_string() const {
-  return fmt::format("Point({}, {}, {}, {}, {}, {}, {})", _x, _y, _z, guid, name,
+  return fmt::format("Point({}, {}, {}, {}, {}, {})", _x, _y, _z, name,
                      pointcolor.to_string(), width);
 }
 
@@ -55,11 +55,6 @@ Point Point::jsonload(const nlohmann::json &data) {
   point.width = data["width"];
   return point;
 }
-
-/// Serialize to JSON file
-
-/// Deserialize from JSON file
-
 ///////////////////////////////////////////////////////////////////////////////////////////
 // No-copy Operators
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -229,7 +224,7 @@ Point Point::centroid_quad(const std::vector<Point>& vertices) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Point &point) {
-  return os << fmt::format("Point(x={}, y={}, z={})", 
+  return os << fmt::format("Point({}, {}, {})", 
                            TOL.format_number(point.x()), 
                            TOL.format_number(point.y()), 
                            TOL.format_number(point.z()));

@@ -7,11 +7,13 @@
 #include "src/mesh.h"
 #include "src/boundingbox.h"
 #include "src/obj.h"
+#include "src/nurbscurve.hpp"
 #include <iostream>
 #include <vector>
 #include <chrono>
 #include <fstream>
 #include <cstdlib>
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -598,6 +600,108 @@ int main() {
 
     // Tree transformation example moved to session_test.cpp
     // See TEST_CASE("Session tree transformation hierarchy.")
+
+    std::cout << "\n=== NURBS Curve Test (C++) ===\n";
+    
+    {
+        // Create NURBS curve from 3 points with degree 2
+        // Note: degree 3 would require at least 4 control points (order = degree + 1)
+        Point p0(0.0, 0.0, -453.0);
+        Point p1(1500.0, 0.0, -147.0);
+        Point p2(3000.0, 0.0, -147.0);
+        
+        std::vector<Point> points = {p0, p1, p2};
+        int degree = 2;  // Changed from 3 to 2 (requires minimum 3 points)
+        
+        // Create a clamped NURBS curve
+        NurbsCurve curve = NurbsCurve::create(false, degree, points);
+        
+        std::cout << "Created NURBS curve: degree=" << curve.degree() 
+                  << ", cv_count=" << curve.cv_count() << "\n";
+        std::cout << "Is valid: " << (curve.is_valid() ? "YES" : "NO") << "\n";
+        std::cout << "Dimension: " << curve.dimension() << "\n";
+        std::cout << "Order: " << curve.order() << "\n";
+        std::cout << "Knot count: " << curve.knot_count() << "\n";
+        std::cout << "Knot vector size: " << curve.m_knot.size() << "\n";
+        std::cout << "CV vector size: " << curve.m_cv.size() << "\n";
+        std::cout << "CV stride: " << curve.m_cv_stride << "\n";
+        
+        std::cout << "Knots: ";
+        for (size_t i = 0; i < curve.m_knot.size(); i++) {
+            std::cout << curve.m_knot[i] << " ";
+        }
+        std::cout << "\n";
+        
+        auto [t0, t1] = curve.domain();
+        std::cout << "Domain: [" << t0 << ", " << t1 << "]\n";
+        
+        std::cout << "Control points:\n";
+        for (int i = 0; i < curve.cv_count(); i++) {
+            Point cv = curve.get_cv(i);
+            std::cout << "  CV" << i << ": (" << cv.x() << ", " << cv.y() << ", " << cv.z() << ")\n";
+        }
+        
+        // Divide curve into 6 points
+        std::vector<Point> divided_points;
+        std::vector<double> params;
+        bool success = curve.divide_by_count(6, divided_points, &params, true);
+        std::cout << "Divide success: " << (success ? "YES" : "NO") << "\n";
+        
+        std::cout << "\nDivided into " << divided_points.size() << " points:\n";
+        for (size_t i = 0; i < divided_points.size(); i++) {
+            const Point& pt = divided_points[i];
+            double t = params[i];
+            std::cout << "  Point" << i << " (t=" << t << "): (" 
+                      << pt.x() << ", " << pt.y() << ", " << pt.z() << ")\n";
+        }
+    }
+    
+    std::cout << "\n=== NURBS Curve-Plane Intersection Test (C++) ===\n";
+    
+    {
+        // Create NURBS curve from 3 points with degree 2
+        Point p0(0.0, 0.0, -453.0);
+        Point p1(1500.0, 0.0, -147.0);
+        Point p2(3000.0, 0.0, -147.0);
+        
+        std::vector<Point> points = {p0, p1, p2};
+        int degree = 2;
+        
+        // Create a clamped NURBS curve
+        NurbsCurve curve = NurbsCurve::create(false, degree, points);
+        
+        std::cout << "Created NURBS curve: degree=" << curve.degree() 
+                  << ", cv_count=" << curve.cv_count() << "\n";
+        
+        // Create planes perpendicular to X-axis at regular intervals
+        std::vector<Plane> planes;
+        for (int i = 0; i < 7; i++) {
+            Point origin(i * 500.0, 0.0, 0.0);
+            Vector normal(1.0, 0.0, 0.0);  // X-axis normal
+            planes.push_back(Plane::from_point_normal(origin, normal));
+        }
+        
+        std::cout << "\nIntersecting curve with " << planes.size() << " planes:\n";
+        
+        // Intersect curve with each plane using Intersection API
+        std::vector<Point> sampled_points;
+        for (size_t i = 0; i < planes.size(); i++) {
+            const Plane& plane = planes[i];
+            std::vector<Point> intersection_points = Intersection::curve_plane_points(curve, plane);
+            
+            if (!intersection_points.empty()) {
+                sampled_points.push_back(intersection_points[0]);
+                std::cout << "  Plane at x=" << plane.origin().x() << ": ("
+                          << intersection_points[0].x() << ", "
+                          << intersection_points[0].y() << ", "
+                          << intersection_points[0].z() << ")\n";
+            } else {
+                std::cout << "  Plane at x=" << plane.origin().x() << ": No intersection\n";
+            }
+        }
+        
+        std::cout << "\nTotal sampled points: " << sampled_points.size() << "\n";
+    }
 
     return 0;
 }
