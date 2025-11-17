@@ -23,7 +23,7 @@ public:
   std::string guid = ::guid();       ///< Unique identifier for the point
   std::string name = "my_point";     ///< Point identifier/name
   double width = 1.0;                ///< Point diameter in pixels
-  Color pointcolor = Color::white(); ///< Color of the point
+  Color pointcolor = Color::white(); ///< Color of the point (default: white)
   Xform xform = Xform::identity();   ///< Transformation matrix
 
 private:

@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "polyline.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -10,10 +10,12 @@ TEST_CASE("Polyline JSON roundtrip", "[polyline]") {
     Polyline original(points);
     original.name = "test_polyline";
     
-    encoders::json_dump(original, "test_polyline.json");
-    Polyline loaded = encoders::json_load<Polyline>("test_polyline.json");
+    std::string filename = "test_polyline.json";
+    encoders::json_dump(original, filename);
+    Polyline loaded = encoders::json_load<Polyline>(filename);
 
-    encoders::json_dump(original, "test_polyline.json");
-    
     REQUIRE(loaded.len() == original.len());
-    REQUIRE(loaded.name == original.name);}
+    REQUIRE(loaded.name == original.name);
+    
+    std::filesystem::remove(filename);
+}

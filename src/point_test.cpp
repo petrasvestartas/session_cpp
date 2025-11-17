@@ -67,17 +67,17 @@ TEST_CASE("Point JSON roundtrip", "[point]") {
     original.name = "test_point";
     original.width = 3.0;
     
-    
-    encoders::json_dump(original, "test_point.json");
-    Point loaded = encoders::json_load<Point>("test_point.json");
-
-    encoders::json_dump(original, "test_point.json");
+    std::string filename = "test_point.json";
+    encoders::json_dump(original, filename);
+    Point loaded = encoders::json_load<Point>(filename);
     
     REQUIRE(std::abs(loaded.x()-original.x()) < 0.0001);
     REQUIRE(std::abs(loaded.y()-original.y()) < 0.0001);
     REQUIRE(std::abs(loaded.z()-original.z()) < 0.0001);
     REQUIRE(loaded.name == original.name);
     REQUIRE(loaded.width == original.width);
+    
+    std::filesystem::remove(filename);
 }
 
 #ifdef ENABLE_PROTOBUF

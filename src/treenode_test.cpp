@@ -1,6 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "treenode.h"
 #include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -14,4 +15,6 @@ TEST_CASE("TreeNode JSON roundtrip", "[treenode]") {
     auto loaded = TreeNode::jsonload(loaded_json);
     
     REQUIRE(loaded->name == original->name);
+    
+    std::filesystem::remove("test_treenode.json");
 }

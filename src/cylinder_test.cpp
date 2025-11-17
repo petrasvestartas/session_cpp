@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "cylinder.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -10,11 +10,12 @@ TEST_CASE("Cylinder JSON roundtrip", "[cylinder]") {
     Cylinder original(line, 1.0);
     original.name = "test_cylinder";
     
-    
-    encoders::json_dump(original, "test_cylinder.json");
-    Cylinder loaded = encoders::json_load<Cylinder>("test_cylinder.json");
-
-    encoders::json_dump(original, "test_cylinder.json");
+    std::string filename = "test_cylinder.json";
+    encoders::json_dump(original, filename);
+    Cylinder loaded = encoders::json_load<Cylinder>(filename);
     
     REQUIRE(loaded.radius == Catch::Approx(original.radius));
-    REQUIRE(loaded.name == original.name);}
+    REQUIRE(loaded.name == original.name);
+    
+    std::filesystem::remove(filename);
+}

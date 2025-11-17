@@ -1,8 +1,10 @@
 #include "catch_amalgamated.hpp"
 #include "tree.h"
 #include "encoders.h"
+#include <filesystem>
 #include "point.h"
 #include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -16,7 +18,5 @@ TEST_CASE("Tree JSON roundtrip", "[tree]") {
     encoders::json_dump(original, "test_tree.json");
     Tree loaded = encoders::json_load<Tree>("test_tree.json");
 
-    encoders::json_dump(original, "test_tree.json");
-    
     REQUIRE(loaded.name == original.name);
     REQUIRE(loaded.nodes().size() == original.nodes().size());}

@@ -455,11 +455,13 @@ int NurbsCurve::find_span(double t) const {
 }
 
 // Compute basis functions (Cox-de Boor algorithm)
-// Implementation matches OpenNURBS algorithm
+// Defensive implementation to prevent divide-by-zero at repeated knots
 void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis) const {
     basis.resize(m_order);
     std::vector<double> left(m_order);
     std::vector<double> right(m_order);
+    
+    const double eps = 1e-14;
     
     // Offset knot pointer like OpenNURBS does
     const double* knot = m_knot.data() + (m_order - 2) + span;
@@ -472,7 +474,13 @@ void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis)
         double saved = 0.0;
         
         for (int r = 0; r < j; r++) {
-            double temp = basis[r] / (right[r + 1] + left[j - r]);
+            double denom = right[r + 1] + left[j - r];
+            double temp;
+            if (std::abs(denom) <= eps) {
+                temp = 0.0;  // Safe fallback for zero denominator
+            } else {
+                temp = basis[r] / denom;
+            }
             basis[r] = saved + right[r + 1] * temp;
             saved = left[j - r] * temp;
         }

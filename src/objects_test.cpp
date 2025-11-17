@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "objects.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -12,9 +12,11 @@ TEST_CASE("Objects JSON roundtrip", "[objects]") {
     original.points->push_back(point1);
     original.points->push_back(point2);
     
-    encoders::json_dump(original, "test_objects.json");
-    Objects loaded = encoders::json_load<Objects>("test_objects.json");
+    std::string filename = "test_objects.json";
+    encoders::json_dump(original, filename);
+    Objects loaded = encoders::json_load<Objects>(filename);
 
-    encoders::json_dump(original, "test_objects.json");
+    REQUIRE(loaded.points->size() == original.points->size());
     
-    REQUIRE(loaded.points->size() == original.points->size());}
+    std::filesystem::remove(filename);
+}

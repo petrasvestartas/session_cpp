@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "quaternion.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -12,7 +12,5 @@ TEST_CASE("Quaternion JSON roundtrip", "[quaternion]") {
     encoders::json_dump(original, "test_quaternion.json");
     Quaternion loaded = encoders::json_load<Quaternion>("test_quaternion.json");
 
-    encoders::json_dump(original, "test_quaternion.json");
-    
     // Just verify roundtrip works
     REQUIRE(loaded.s == Catch::Approx(original.s).epsilon(0.0001));}

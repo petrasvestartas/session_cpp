@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "boundingbox.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -12,6 +12,6 @@ TEST_CASE("BoundingBox JSON roundtrip", "[boundingbox]") {
     encoders::json_dump(original, "test_boundingbox.json");
     BoundingBox loaded = encoders::json_load<BoundingBox>("test_boundingbox.json");
 
-    encoders::json_dump(original, "test_boundingbox.json");
-    
-    REQUIRE(loaded.name == original.name);}
+    REQUIRE(loaded.name == original.name);    
+    std::filesystem::remove("test_boundingbox.json");
+}

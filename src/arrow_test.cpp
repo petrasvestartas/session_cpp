@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "arrow.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -14,8 +14,6 @@ TEST_CASE("Arrow JSON roundtrip", "[arrow]") {
     encoders::json_dump(original, "test_arrow.json");
     Arrow loaded = encoders::json_load<Arrow>("test_arrow.json");
 
-    encoders::json_dump(original, "test_arrow.json");
-    
     REQUIRE(loaded.radius == original.radius);
     REQUIRE(loaded.name == original.name);
     REQUIRE(loaded.mesh.number_of_vertices() == 29);

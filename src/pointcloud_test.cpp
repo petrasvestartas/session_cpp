@@ -1,7 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "pointcloud.h"
 #include "encoders.h"
-#include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -13,7 +13,7 @@ TEST_CASE("PointCloud JSON roundtrip", "[pointcloud]") {
     encoders::json_dump(original, "test_pointcloud.json");
     PointCloud loaded = encoders::json_load<PointCloud>("test_pointcloud.json");
 
-    encoders::json_dump(original, "test_pointcloud.json");
-    
     REQUIRE(loaded.points.size() == original.points.size());
-    REQUIRE(loaded.name == original.name);}
+    REQUIRE(loaded.name == original.name);    
+    std::filesystem::remove("test_pointcloud.json");
+}

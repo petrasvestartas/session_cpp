@@ -171,6 +171,7 @@ int NurbsSurface::cv_size() const {
 
 int NurbsSurface::knot_count(int dir) const {
     if (dir < 0 || dir >= 2) return 0;
+    // OpenNURBS formula: knot_count = order + cv_count - 2
     return m_order[dir] + m_cv_count[dir] - 2;
 }
 
@@ -296,37 +297,31 @@ std::pair<double, double> NurbsSurface::domain(int dir) const {
 Point NurbsSurface::point_at(double u, double v) const {
     if (!is_valid()) return Point(0, 0, 0);
     
-    // Find spans
+    // Find spans - returns indices in range [0, cv_count-order]
     int span_u = find_span(0, u);
     int span_v = find_span(1, v);
     
     // Compute basis functions
-    std::vector<double> Nu(m_order[0]);
-    std::vector<double> Nv(m_order[1]);
+    std::vector<double> Nu, Nv;
     basis_functions(0, span_u, u, Nu);
     basis_functions(1, span_v, v, Nv);
     
-    // Evaluate surface point
-    std::vector<double> point(m_dim + (m_is_rat ? 1 : 0), 0.0);
+    // Evaluate surface point - OpenNURBS lines 1107-1117
+    // CV index starts at span (since span is in range [0, cv_count-order])
+    int cv_size_val = m_is_rat ? (m_dim + 1) : m_dim;
+    std::vector<double> point(cv_size_val, 0.0);
     
-    int uind = span_u - m_order[0] + 1;
-    for (int l = 0; l < m_order[1]; l++) {
-        std::vector<double> temp(m_dim + (m_is_rat ? 1 : 0), 0.0);
-        int vind = span_v - m_order[1] + 1 + l;
-        
-        for (int k = 0; k < m_order[0]; k++) {
-            const double* cv_ptr = cv(uind + k, vind);
+    for (int j0 = 0; j0 < m_order[0]; j0++) {
+        int cv_i = span_u + j0;
+        for (int j1 = 0; j1 < m_order[1]; j1++) {
+            int cv_j = span_v + j1;
+            double c = Nu[j0] * Nv[j1];
+            const double* cv_ptr = cv(cv_i, cv_j);
             if (cv_ptr) {
-                int cv_size_val = m_is_rat ? (m_dim + 1) : m_dim;
                 for (int d = 0; d < cv_size_val; d++) {
-                    temp[d] += Nu[k] * cv_ptr[d];
+                    point[d] += c * cv_ptr[d];
                 }
             }
-        }
-        
-        int cv_size_val = m_is_rat ? (m_dim + 1) : m_dim;
-        for (int d = 0; d < cv_size_val; d++) {
-            point[d] += Nv[l] * temp[d];
         }
     }
     
@@ -414,50 +409,88 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
 int NurbsSurface::find_span(int dir, double t) const {
     if (dir < 0 || dir >= 2) return -1;
     
-    int n = m_cv_count[dir] - 1;
-    int p = m_order[dir] - 1;
+    // Implements ON_NurbsSpanIndex from OpenNURBS
+    int order = m_order[dir];
+    int cv_count = m_cv_count[dir];
+    const std::vector<double>& knot = m_knot[dir];
     
-    if (t >= m_knot[dir][n]) return n;
-    if (t <= m_knot[dir][p]) return p;
+    // Shift knot pointer by (order-2) - OpenNURBS line 227
+    int knot_offset = order - 2;
+    int span_len = cv_count - order + 2;
     
-    int low = p;
-    int high = n + 1;
-    int mid = (low + high) / 2;
+    // Binary search in shifted range
+    if (t <= knot[knot_offset]) return 0;
+    if (t >= knot[knot_offset + span_len - 1]) return span_len - 2;
     
-    while (t < m_knot[dir][mid] || t >= m_knot[dir][mid + 1]) {
-        if (t < m_knot[dir][mid]) {
+    // Binary search
+    int low = 0;
+    int high = span_len - 1;
+    
+    while (high > low + 1) {
+        int mid = (low + high) / 2;
+        if (t < knot[knot_offset + mid]) {
             high = mid;
         } else {
             low = mid;
         }
-        mid = (low + high) / 2;
     }
     
-    return mid;
+    return low;
 }
 
 void NurbsSurface::basis_functions(int dir, int span, double t, 
                                    std::vector<double>& basis) const {
     if (dir < 0 || dir >= 2) return;
     
-    int p = m_order[dir] - 1;
-    basis.resize(m_order[dir]);
-    basis[0] = 1.0;
+    // Implements ON_EvaluateNurbsBasis from OpenNURBS
+    int order = m_order[dir];
+    int d = order - 1;  // degree
     
-    std::vector<double> left(p + 1);
-    std::vector<double> right(p + 1);
+    // OpenNURBS shifts knot by (order-2) + span, then by d inside basis
+    int knot_base = span + d;
+    const std::vector<double>& knot = m_knot[dir];
     
-    for (int j = 1; j <= p; j++) {
-        left[j] = t - m_knot[dir][span + 1 - j];
-        right[j] = m_knot[dir][span + j] - t;
-        double saved = 0.0;
+    // Check for degenerate span
+    if (knot[knot_base - 1] == knot[knot_base]) {
+        basis.resize(order);
+        std::fill(basis.begin(), basis.end(), 0.0);
+        return;
+    }
+    
+    std::vector<double> N(order * order, 0.0);
+    N[order * order - 1] = 1.0;
+    
+    std::vector<double> left(d);
+    std::vector<double> right(d);
+    
+    // Cox-de Boor recursion - OpenNURBS lines 702-718
+    int N_idx = order * order - 1;
+    int k_right = knot_base;
+    int k_left = knot_base - 1;
+    
+    for (int j = 0; j < d; j++) {
+        int N0_idx = N_idx;
+        N_idx -= (order + 1);
+        left[j] = t - knot[k_left];
+        right[j] = knot[k_right] - t;
+        k_left--;
+        k_right++;
         
-        for (int r = 0; r < j; r++) {
-            double temp = basis[r] / (right[r + 1] + left[j - r]);
-            basis[r] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
+        double x = 0.0;
+        for (int r = 0; r <= j; r++) {
+            double a0 = left[j - r];
+            double a1 = right[r];
+            double y = N[N0_idx + r] / (a0 + a1);
+            N[N_idx + r] = x + a1 * y;
+            x = a0 * y;
         }
-        basis[j] = saved;
+        N[N_idx + j + 1] = x;
+    }
+    
+    // Return just the final row of basis functions
+    basis.resize(order);
+    for (int i = 0; i < order; i++) {
+        basis[i] = N[i];
     }
 }
 

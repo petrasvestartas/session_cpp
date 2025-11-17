@@ -1,6 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "vertex.h"
 #include "encoders.h"
+#include <filesystem>
 
 using namespace session_cpp;
 
@@ -12,4 +13,6 @@ TEST_CASE("Vertex JSON roundtrip", "[vertex]") {
     
     REQUIRE(loaded.name == original.name);
     REQUIRE(loaded.attribute == original.attribute);
+    
+    std::filesystem::remove("test_vertex.json");
 }
