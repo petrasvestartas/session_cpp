@@ -497,8 +497,49 @@ void NurbsSurface::basis_functions(int dir, int span, double t,
 // Stub implementations for remaining methods
 std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) const {
     std::vector<Vector> result;
+
     Point pt = point_at(u, v);
-    result.push_back(Vector(pt.x(), pt.y(), pt.z()));
+    result.emplace_back(pt.x(), pt.y(), pt.z());
+
+    if (num_derivs <= 0) {
+        return result;
+    }
+
+    // Finite difference step (consistent with Python/Rust implementations)
+    double h = 1e-6;
+    auto [u0, u1] = domain(0);
+    auto [v0, v1] = domain(1);
+
+    // du derivative (forward if possible, else backward)
+    Vector du_vec;
+    if (u + h <= u1) {
+        Point pt_u = point_at(u + h, v);
+        du_vec = Vector((pt_u.x() - pt.x()) / h,
+                        (pt_u.y() - pt.y()) / h,
+                        (pt_u.z() - pt.z()) / h);
+    } else {
+        Point pt_um = point_at(u - h, v);
+        du_vec = Vector((pt.x() - pt_um.x()) / h,
+                        (pt.y() - pt_um.y()) / h,
+                        (pt.z() - pt_um.z()) / h);
+    }
+    result.push_back(du_vec);
+
+    // dv derivative (forward if possible, else backward)
+    Vector dv_vec;
+    if (v + h <= v1) {
+        Point pt_v = point_at(u, v + h);
+        dv_vec = Vector((pt_v.x() - pt.x()) / h,
+                        (pt_v.y() - pt.y()) / h,
+                        (pt_v.z() - pt.z()) / h);
+    } else {
+        Point pt_vm = point_at(u, v - h);
+        dv_vec = Vector((pt.x() - pt_vm.x()) / h,
+                        (pt.y() - pt_vm.y()) / h,
+                        (pt.z() - pt_vm.z()) / h);
+    }
+    result.push_back(dv_vec);
+
     return result;
 }
 

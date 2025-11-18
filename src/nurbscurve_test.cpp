@@ -20,7 +20,7 @@ struct NurbsCurveFixture {
         
         return curve;
     }
-    
+
     NurbsCurve create_rational_curve() {
         // Create a rational cubic curve
         NurbsCurve curve(3, true, 4, 5);
@@ -274,4 +274,52 @@ TEST_CASE_METHOD(NurbsCurveFixture, "NurbsCurve - Serialization", "[nurbscurve][
         REQUIRE(!str.empty());
         REQUIRE(str.find("NurbsCurve") != std::string::npos);
     }
+}
+
+TEST_CASE("NurbsCurve - Frames 3D (normal and Frenet)", "[nurbscurve][frames]") {
+    // Build a clearly 3D curve (wavy helix)
+    std::vector<Point> ctrl;
+    for (int k = 0; k < 8; ++k) {
+        double t = (static_cast<double>(k) / 7.0) * 2.0 * M_PI;
+        double r = 1.5 + 0.3 * std::cos(3.0 * t);
+        double x = r * std::cos(t);
+        double y = r * std::sin(t);
+        double z = 0.6 * t;
+        ctrl.emplace_back(x, y, z);
+    }
+
+    NurbsCurve crv = NurbsCurve::create(false, 3, ctrl);
+    auto [t0, t1] = crv.domain();
+    double t = 0.5 * (t0 + t1);
+
+    // Normal plane (plane normal = tangent)
+    Vector T = crv.tangent_at(t); // already unit length
+    REQUIRE(std::abs(T.magnitude() - 1.0) < 1e-6);
+    Vector fallback = (std::abs(T.z()) < 0.9) ? Vector(0, 0, 1) : Vector(0, 1, 0);
+    Vector e1 = T.cross(fallback);
+    REQUIRE(e1.normalize_self());
+    Vector e2 = T.cross(e1);
+    REQUIRE(e2.normalize_self());
+    REQUIRE(std::abs(e1.magnitude() - 1.0) < 1e-6);
+    REQUIRE(std::abs(e2.magnitude() - 1.0) < 1e-6);
+    REQUIRE(std::abs(e1.dot(T)) < 1e-6);
+    REQUIRE(std::abs(e2.dot(T)) < 1e-6);
+    REQUIRE(std::abs(e1.dot(e2)) < 1e-6);
+
+    // Frenet frame (T, N, B)
+    auto ders = crv.evaluate(t, 2);
+    REQUIRE(ders.size() >= 3);
+    Vector d1 = ders[1];
+    Vector d2 = ders[2];
+    Vector T_f = d1; REQUIRE(T_f.normalize_self());
+    double proj = d2.dot(T_f);
+    Vector N_raw = d2 - (T_f * proj);
+    REQUIRE(N_raw.magnitude() > 1e-8);
+    Vector N = N_raw; REQUIRE(N.normalize_self());
+    Vector B = T_f.cross(N); REQUIRE(B.normalize_self());
+    REQUIRE(std::abs(T_f.dot(N)) < 1e-6);
+    REQUIRE(std::abs(T_f.dot(B)) < 1e-6);
+    REQUIRE(std::abs(N.dot(B)) < 1e-6);
+    Vector rhs = T_f.cross(N);
+    REQUIRE(rhs.dot(B) > 0.999);
 }

@@ -661,3 +661,48 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Isocurve Extraction", "[nu
         REQUIRE(actual_z == Approx(exp_z).epsilon(0.001));
     }
 }
+
+TEST_CASE("NurbsSurface - Center Point Numeric (3dec)", "[nurbssurface][center]") {
+    NurbsSurface srf(3, false, 4, 4, 5, 5);
+    REQUIRE(srf.make_clamped_uniform_knot_vector(0, 1.0));
+    REQUIRE(srf.make_clamped_uniform_knot_vector(1, 1.0));
+
+    REQUIRE(srf.set_cv(0, 0, Point(0.0, 0.0, -2.5)));
+    REQUIRE(srf.set_cv(0, 1, Point(0.0, 1.0,  0.0)));
+    REQUIRE(srf.set_cv(0, 2, Point(0.0, 2.0,  0.0)));
+    REQUIRE(srf.set_cv(0, 3, Point(0.0, 3.0,  0.0)));
+    REQUIRE(srf.set_cv(0, 4, Point(0.0, 4.0, -2.5)));
+    REQUIRE(srf.set_cv(1, 0, Point(1.0, 0.0, 0.0)));
+    REQUIRE(srf.set_cv(1, 1, Point(1.0, 1.0, 0.0)));
+    REQUIRE(srf.set_cv(1, 2, Point(1.0, 2.0, 5.0)));
+    REQUIRE(srf.set_cv(1, 3, Point(1.0, 3.0, 0.0)));
+    REQUIRE(srf.set_cv(1, 4, Point(1.0, 4.0, 0.0)));
+    REQUIRE(srf.set_cv(2, 0, Point(2.0, 0.0, 0.0)));
+    REQUIRE(srf.set_cv(2, 1, Point(2.0, 1.0, 0.0)));
+    REQUIRE(srf.set_cv(2, 2, Point(2.0, 2.0, 0.0)));
+    REQUIRE(srf.set_cv(2, 3, Point(2.0, 3.0, 0.0)));
+    REQUIRE(srf.set_cv(2, 4, Point(2.0, 4.0, 0.0)));
+    REQUIRE(srf.set_cv(3, 0, Point(3.0, 0.0, 0.0)));
+    REQUIRE(srf.set_cv(3, 1, Point(3.0, 1.0, 0.0)));
+    REQUIRE(srf.set_cv(3, 2, Point(3.0, 2.0, 0.0)));
+    REQUIRE(srf.set_cv(3, 3, Point(3.0, 3.0, 0.0)));
+    REQUIRE(srf.set_cv(3, 4, Point(3.0, 4.0, 0.0)));
+    REQUIRE(srf.set_cv(4, 0, Point(4.0, 0.0, -2.5)));
+    REQUIRE(srf.set_cv(4, 1, Point(4.0, 1.0, 0.0)));
+    REQUIRE(srf.set_cv(4, 2, Point(4.0, 2.0, 0.0)));
+    REQUIRE(srf.set_cv(4, 3, Point(4.0, 3.0, 0.0)));
+    REQUIRE(srf.set_cv(4, 4, Point(4.0, 4.0, -2.5)));
+
+    auto [u_min, u_max] = srf.domain(0);
+    auto [v_min, v_max] = srf.domain(1);
+    double u_mid = 0.5 * (u_min + u_max);
+    double v_mid = 0.5 * (v_min + v_max);
+
+    Point pt = srf.point_at(u_mid, v_mid);
+    double ax = std::round(pt.x() * 1000.0) / 1000.0;
+    double ay = std::round(pt.y() * 1000.0) / 1000.0;
+    double az = std::round(pt.z() * 1000.0) / 1000.0;
+    REQUIRE(ax == Approx(2.000).epsilon(0.001));
+    REQUIRE(ay == Approx(2.000).epsilon(0.001));
+    REQUIRE(az == Approx(0.625).epsilon(0.001));
+}
