@@ -302,6 +302,9 @@ if(NOT ENABLE_PROTOBUF)
     list(FILTER TEST_SOURCES EXCLUDE REGEX ".*session_proto_test\\.cpp$")
 endif()
 
+# Exclude C++ mini-test for Point (uses its own runner instead of Catch2)
+list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/point_test\\.cpp$")
+
 # Create test executable
 add_executable(tests ${TEST_SOURCES} ${PROJECT_SOURCES})
 target_include_directories(tests PRIVATE 
@@ -325,6 +328,33 @@ if(ENABLE_PROTOBUF)
     )
     LINK_PROTOBUF_LIBRARIES(tests)
     add_dependencies(tests PROTO_FILES_READY)
+endif()
+
+# Mini-test executable for Point that writes JSON results (mini_test.cpp + point_test.cpp)
+add_executable(point_minitest
+    src/mini_test.cpp
+    src/point_test.cpp
+    ${PROJECT_SOURCES}
+)
+
+target_include_directories(point_minitest PRIVATE 
+    ${PROJECT_SOURCE_DIR}/src                    # Project source headers
+    ${PROJECT_SOURCE_DIR}/src/fmt/include        # fmt library headers
+    ${PROJECT_SOURCE_DIR}/src/json/include       # JSON library headers
+    ${PROJECT_SOURCE_DIR}/src/guid/include       # GUID library headers
+)
+
+if(ENABLE_PROTOBUF)
+    target_include_directories(point_minitest PRIVATE 
+        $ENV{GENERATED}                          # Protobuf generated headers
+    )
+    # Use SYSTEM to suppress warnings from external libraries
+    target_include_directories(point_minitest SYSTEM PRIVATE
+        $ENV{INSTALL}/protobuf/include           # Protobuf library headers
+        $ENV{INSTALL}/abseil/include             # Abseil library headers
+    )
+    LINK_PROTOBUF_LIBRARIES(point_minitest)
+    add_dependencies(point_minitest PROTO_FILES_READY)
 endif()
 
 #############################################################################################

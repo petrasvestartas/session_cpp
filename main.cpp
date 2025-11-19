@@ -7,7 +7,7 @@
 #include "src/mesh.h"
 #include "src/boundingbox.h"
 #include "src/obj.h"
-#include "src/nurbscurve.hpp"
+#include "src/nurbscurve.h"
 #include <iostream>
 #include <vector>
 #include <chrono>
