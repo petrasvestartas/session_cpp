@@ -305,6 +305,9 @@ endif()
 # Exclude C++ mini-test for Point (uses its own runner instead of Catch2)
 list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/point_test\\.cpp$")
 
+# Exclude C++ mini-test for Color (uses mini_test framework instead of Catch2)
+list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/color_test\\.cpp$")
+
 # Create test executable
 add_executable(tests ${TEST_SOURCES} ${PROJECT_SOURCES})
 target_include_directories(tests PRIVATE 
@@ -334,6 +337,7 @@ endif()
 add_executable(point_minitest
     src/mini_test.cpp
     src/point_test.cpp
+    src/color_test.cpp
     ${PROJECT_SOURCES}
 )
 
