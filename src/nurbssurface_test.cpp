@@ -131,14 +131,14 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Control Vertices", "[nurbs
     
     SECTION("Get/Set CV") {
         Point pt = srf.get_cv(2, 2);
-        REQUIRE(pt.x() == Catch::Approx(1.0));
-        REQUIRE(pt.y() == Catch::Approx(1.0));
+        REQUIRE(pt[0] == Catch::Approx(1.0));
+        REQUIRE(pt[1] == Catch::Approx(1.0));
         
         srf.set_cv(2, 2, Point(1.5, 1.5, 0.5));
         Point new_pt = srf.get_cv(2, 2);
-        REQUIRE(new_pt.x() == Catch::Approx(1.5));
-        REQUIRE(new_pt.y() == Catch::Approx(1.5));
-        REQUIRE(new_pt.z() == Catch::Approx(0.5));
+        REQUIRE(new_pt[0] == Catch::Approx(1.5));
+        REQUIRE(new_pt[1] == Catch::Approx(1.5));
+        REQUIRE(new_pt[2] == Catch::Approx(0.5));
     }
     
     SECTION("Get/Set CV 4D") {
@@ -152,8 +152,8 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Control Vertices", "[nurbs
     SECTION("Point at corner") {
         Point corner = srf.point_at_corner(0, 0);
         Point cv_corner = srf.get_cv(0, 0);
-        REQUIRE(corner.x() == Catch::Approx(cv_corner.x()));
-        REQUIRE(corner.y() == Catch::Approx(cv_corner.y()));
+        REQUIRE(corner[0] == Catch::Approx(cv_corner[0]));
+        REQUIRE(corner[1] == Catch::Approx(cv_corner[1]));
     }
 }
 
@@ -225,9 +225,9 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Evaluation", "[nurbssurfac
         auto [v0, v1] = srf.domain(1);
         
         Point pt = srf.point_at((u0 + u1) / 2.0, (v0 + v1) / 2.0);
-        REQUIRE(std::isfinite(pt.x()));
-        REQUIRE(std::isfinite(pt.y()));
-        REQUIRE(std::isfinite(pt.z()));
+        REQUIRE(std::isfinite(pt[0]));
+        REQUIRE(std::isfinite(pt[1]));
+        REQUIRE(std::isfinite(pt[2]));
     }
     
     SECTION("Normal at (u,v)") {
@@ -273,17 +273,17 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Grid Subdivision", "[nurbs
         
         // Test corner points first
         Point corner_00 = srf.point_at(u0, v0);
-        REQUIRE(std::isfinite(corner_00.x()));
-        REQUIRE(std::isfinite(corner_00.y()));
-        REQUIRE(std::isfinite(corner_00.z()));
+        REQUIRE(std::isfinite(corner_00[0]));
+        REQUIRE(std::isfinite(corner_00[1]));
+        REQUIRE(std::isfinite(corner_00[2]));
         
         // Test a middle point
         double u_mid = (u0 + u1) / 2.0;
         double v_mid = (v0 + v1) / 2.0;
         Point mid_pt = srf.point_at(u_mid, v_mid);
-        REQUIRE(std::isfinite(mid_pt.x()));
-        REQUIRE(std::isfinite(mid_pt.y()));
-        REQUIRE(std::isfinite(mid_pt.z()));
+        REQUIRE(std::isfinite(mid_pt[0]));
+        REQUIRE(std::isfinite(mid_pt[1]));
+        REQUIRE(std::isfinite(mid_pt[2]));
         
         // Note: Full grid subdivision has edge case issues with some parameter values
         // Core functionality (corners, middle) works correctly as verified above
@@ -315,8 +315,8 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Geometric Queries", "[nurb
         Point min_pt = bbox.min_point();
         Point max_pt = bbox.max_point();
         
-        REQUIRE(min_pt.x() <= max_pt.x());
-        REQUIRE(min_pt.y() <= max_pt.y());
+        REQUIRE(min_pt[0] <= max_pt[0]);
+        REQUIRE(min_pt[1] <= max_pt[1]);
     }
 }
 
@@ -333,7 +333,7 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Transformation", "[nurbssu
         Point last_after = srf.get_cv(srf.cv_count(0) - 1, 0);
         
         // After reversing U direction, first row should be reversed
-        REQUIRE(first_after.x() == Catch::Approx(last_before.x()));
+        REQUIRE(first_after[0] == Catch::Approx(last_before[0]));
     }
     
     SECTION("Transpose") {
@@ -351,8 +351,8 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Transformation", "[nurbssu
         REQUIRE(srf.swap_coordinates(0, 1)); // swap x and y
         Point pt_after = srf.get_cv(2, 2);
         
-        REQUIRE(pt_after.x() == Catch::Approx(pt_before.y()));
-        REQUIRE(pt_after.y() == Catch::Approx(pt_before.x()));
+        REQUIRE(pt_after[0] == Catch::Approx(pt_before[1]));
+        REQUIRE(pt_after[1] == Catch::Approx(pt_before[0]));
     }
     
     SECTION("Change dimension") {
@@ -637,9 +637,9 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Isocurve Extraction", "[nu
         auto [exp_x, exp_y, exp_z] = expected_iso_v[i];
         const Point& pt = iso_v_pts[i];
         
-        double actual_x = std::round(pt.x() * 1000.0) / 1000.0;
-        double actual_y = std::round(pt.y() * 1000.0) / 1000.0;
-        double actual_z = std::round(pt.z() * 1000.0) / 1000.0;
+        double actual_x = std::round(pt[0] * 1000.0) / 1000.0;
+        double actual_y = std::round(pt[1] * 1000.0) / 1000.0;
+        double actual_z = std::round(pt[2] * 1000.0) / 1000.0;
         
         REQUIRE(actual_x == Approx(exp_x).epsilon(0.001));
         REQUIRE(actual_y == Approx(exp_y).epsilon(0.001));
@@ -652,9 +652,9 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Isocurve Extraction", "[nu
         auto [exp_x, exp_y, exp_z] = expected_iso_u[i];
         const Point& pt = iso_u_pts[i];
         
-        double actual_x = std::round(pt.x() * 1000.0) / 1000.0;
-        double actual_y = std::round(pt.y() * 1000.0) / 1000.0;
-        double actual_z = std::round(pt.z() * 1000.0) / 1000.0;
+        double actual_x = std::round(pt[0] * 1000.0) / 1000.0;
+        double actual_y = std::round(pt[1] * 1000.0) / 1000.0;
+        double actual_z = std::round(pt[2] * 1000.0) / 1000.0;
         
         REQUIRE(actual_x == Approx(exp_x).epsilon(0.001));
         REQUIRE(actual_y == Approx(exp_y).epsilon(0.001));
@@ -699,9 +699,9 @@ TEST_CASE("NurbsSurface - Center Point Numeric (3dec)", "[nurbssurface][center]"
     double v_mid = 0.5 * (v_min + v_max);
 
     Point pt = srf.point_at(u_mid, v_mid);
-    double ax = std::round(pt.x() * 1000.0) / 1000.0;
-    double ay = std::round(pt.y() * 1000.0) / 1000.0;
-    double az = std::round(pt.z() * 1000.0) / 1000.0;
+    double ax = std::round(pt[0] * 1000.0) / 1000.0;
+    double ay = std::round(pt[1] * 1000.0) / 1000.0;
+    double az = std::round(pt[2] * 1000.0) / 1000.0;
     REQUIRE(ax == Approx(2.000).epsilon(0.001));
     REQUIRE(ay == Approx(2.000).epsilon(0.001));
     REQUIRE(az == Approx(0.625).epsilon(0.001));

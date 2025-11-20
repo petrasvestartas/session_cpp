@@ -32,15 +32,6 @@ private:
   double _z = 0.0;                   ///< Z coordinate (private)
 
 public:
-  /// Getters for coordinates
-  double x() const { return _x; }
-  double y() const { return _y; }
-  double z() const { return _z; }
-
-  /// Setters for coordinates
-  void set_x(double v) { _x = v; }
-  void set_y(double v) { _y = v; }
-  void set_z(double v) { _z = v; }
 
   /**
    * @brief Constructor.

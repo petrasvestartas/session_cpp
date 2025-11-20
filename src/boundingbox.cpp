@@ -57,12 +57,12 @@ BoundingBox BoundingBox::from_points(const std::vector<Point>& points, double in
     double max_z = std::numeric_limits<double>::lowest();
     
     for (const auto& pt : points) {
-        min_x = std::min(min_x, pt.x());
-        min_y = std::min(min_y, pt.y());
-        min_z = std::min(min_z, pt.z());
-        max_x = std::max(max_x, pt.x());
-        max_y = std::max(max_y, pt.y());
-        max_z = std::max(max_z, pt.z());
+        min_x = std::min(min_x, pt[0]);
+        min_y = std::min(min_y, pt[1]);
+        min_z = std::min(min_z, pt[2]);
+        max_x = std::max(max_x, pt[0]);
+        max_y = std::max(max_y, pt[1]);
+        max_z = std::max(max_z, pt[2]);
     }
     
     Point center((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, (min_z + max_z) * 0.5);
@@ -94,12 +94,12 @@ BoundingBox BoundingBox::from_points(const std::vector<Point>& points, const Pla
     
     for (const auto& pt : points) {
         Point local_pt = plane_to_xy.transformed_point(pt);
-        min_x = std::min(min_x, local_pt.x());
-        min_y = std::min(min_y, local_pt.y());
-        min_z = std::min(min_z, local_pt.z());
-        max_x = std::max(max_x, local_pt.x());
-        max_y = std::max(max_y, local_pt.y());
-        max_z = std::max(max_z, local_pt.z());
+        min_x = std::min(min_x, local_pt[0]);
+        min_y = std::min(min_y, local_pt[1]);
+        min_z = std::min(min_z, local_pt[2]);
+        max_x = std::max(max_x, local_pt[0]);
+        max_y = std::max(max_y, local_pt[1]);
+        max_z = std::max(max_z, local_pt[2]);
     }
     
     Point local_center((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, (min_z + max_z) * 0.5);
@@ -155,7 +155,7 @@ BoundingBox BoundingBox::from_arrow(const Arrow& arrow, double inflate_amount) {
     const Line& ln = arrow.line;
     Point p0 = ln.start();
     Point p1 = ln.end();
-    Point c((p0.x() + p1.x()) * 0.5, (p0.y() + p1.y()) * 0.5, (p0.z() + p1.z()) * 0.5);
+    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
     Vector axis = ln.to_vector();
     double L = ln.length();
     if (L <= 0.0) {
@@ -183,7 +183,7 @@ BoundingBox BoundingBox::from_arrow(const Arrow& arrow, const Plane& plane, doub
     const Line& ln = arrow.line;
     Point p0 = ln.start();
     Point p1 = ln.end();
-    Point c((p0.x() + p1.x()) * 0.5, (p0.y() + p1.y()) * 0.5, (p0.z() + p1.z()) * 0.5);
+    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
     Vector dir = ln.to_vector();
     double L = ln.length();
     if (L > 0.0) dir.normalize_self();
@@ -204,7 +204,7 @@ BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, double inflate_
     const Line& ln = cylinder.line;
     Point p0 = ln.start();
     Point p1 = ln.end();
-    Point c((p0.x() + p1.x()) * 0.5, (p0.y() + p1.y()) * 0.5, (p0.z() + p1.z()) * 0.5);
+    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
     Vector axis = ln.to_vector();
     double L = ln.length();
     if (L <= 0.0) {
@@ -232,7 +232,7 @@ BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, const Plane& pl
     const Line& ln = cylinder.line;
     Point p0 = ln.start();
     Point p1 = ln.end();
-    Point c((p0.x() + p1.x()) * 0.5, (p0.y() + p1.y()) * 0.5, (p0.z() + p1.z()) * 0.5);
+    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
     Vector dir = ln.to_vector();
     double L = ln.length();
     if (L > 0.0) dir.normalize_self();
@@ -261,25 +261,25 @@ BoundingBox BoundingBox::aabb() const {
 
 Point BoundingBox::point_at(double x, double y, double z) const {
     return Point(
-        center.x() + x * x_axis.x() + y * y_axis.x() + z * z_axis.x(),
-        center.y() + x * x_axis.y() + y * y_axis.y() + z * z_axis.y(),
-        center.z() + x * x_axis.z() + y * y_axis.z() + z * z_axis.z()
+        center[0] + x * x_axis.x() + y * y_axis.x() + z * z_axis.x(),
+        center[1] + x * x_axis.y() + y * y_axis.y() + z * z_axis.y(),
+        center[2] + x * x_axis.z() + y * y_axis.z() + z * z_axis.z()
     );
 }
 
 Point BoundingBox::min_point() const {
     return Point(
-        center.x() - half_size.x(),
-        center.y() - half_size.y(),
-        center.z() - half_size.z()
+        center[0] - half_size.x(),
+        center[1] - half_size.y(),
+        center[2] - half_size.z()
     );
 }
 
 Point BoundingBox::max_point() const {
     return Point(
-        center.x() + half_size.x(),
-        center.y() + half_size.y(),
-        center.z() + half_size.z()
+        center[0] + half_size.x(),
+        center[1] + half_size.y(),
+        center[2] + half_size.z()
     );
 }
 
@@ -375,7 +375,7 @@ bool BoundingBox::collides_with_rtcd(const BoundingBox& other) const {
     double R10 = A1.dot(B0), R11 = A1.dot(B1), R12 = A1.dot(B2);
     double R20 = A2.dot(B0), R21 = A2.dot(B1), R22 = A2.dot(B2);
 
-    Vector d(other.center.x() - center.x(), other.center.y() - center.y(), other.center.z() - center.z());
+    Vector d(other.center[0] - center[0], other.center[1] - center[1], other.center[2] - center[2]);
     double t0 = d.dot(A0);
     double t1 = d.dot(A1);
     double t2 = d.dot(A2);
@@ -410,8 +410,8 @@ bool BoundingBox::collides_with_rtcd(const BoundingBox& other) const {
 }
 
 bool BoundingBox::collides_with_naive(const BoundingBox& other) const {
-    Vector center_vec(center.x(), center.y(), center.z());
-    Vector other_center_vec(other.center.x(), other.center.y(), other.center.z());
+    Vector center_vec(center[0], center[1], center[2]);
+    Vector other_center_vec(other.center[0], other.center[1], other.center[2]);
     Vector relative_position = Vector::from_start_and_end(center_vec, other_center_vec);
     
     const Vector x1 = x_axis, y1 = y_axis, z1 = z_axis;

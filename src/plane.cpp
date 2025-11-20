@@ -34,7 +34,7 @@ Plane::Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name) {
     _a = _z_axis.x();
     _b = _z_axis.y();
     _c = _z_axis.z();
-    _d = -(_a * _origin.x() + _b * _origin.y() + _c * _origin.z());
+    _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
 Plane Plane::from_point_normal(Point& point, Vector& normal) {
@@ -50,7 +50,7 @@ Plane Plane::from_point_normal(Point& point, Vector& normal) {
     plane._a = plane._z_axis.x();
     plane._b = plane._z_axis.y();
     plane._c = plane._z_axis.z();
-    plane._d = -(plane._a * plane._origin.x() + plane._b * plane._origin.y() + plane._c * plane._origin.z());
+    plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
 
@@ -75,7 +75,7 @@ Plane Plane::from_points(std::vector<Point>& points) {
     plane._a = plane._z_axis.x();
     plane._b = plane._z_axis.y();
     plane._c = plane._z_axis.z();
-    plane._d = -(plane._a * plane._origin.x() + plane._b * plane._origin.y() + plane._c * plane._origin.z());
+    plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
 
@@ -96,7 +96,7 @@ Plane Plane::from_two_points(Point& point1, Point& point2) {
     plane._a = plane._z_axis.x();
     plane._b = plane._z_axis.y();
     plane._c = plane._z_axis.z();
-    plane._d = -(plane._a * plane._origin.x() + plane._b * plane._origin.y() + plane._c * plane._origin.z());
+    plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
 
@@ -200,13 +200,13 @@ const Vector &Plane::operator[](int index) const {
 
 Plane &Plane::operator+=(const Vector &other) {
     _origin += other;
-    _d = -(_a * _origin.x() + _b * _origin.y() + _c * _origin.z());
+    _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
     return *this;
 }
 
 Plane &Plane::operator-=(const Vector &other) {
     _origin -= other;
-    _d = -(_a * _origin.x() + _b * _origin.y() + _c * _origin.z());
+    _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
     return *this;
 }
 
@@ -261,7 +261,7 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     plane._a = plane._z_axis.x();
     plane._b = plane._z_axis.y();
     plane._c = plane._z_axis.z();
-    plane._d = -(plane._a * plane._origin.x() + plane._b * plane._origin.y() + plane._c * plane._origin.z());
+    plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
 
@@ -280,7 +280,7 @@ void Plane::reverse() {
     _a = _z_axis.x();
     _b = _z_axis.y();
     _c = _z_axis.z();
-    _d = -(_a * _origin.x() + _b * _origin.y() + _c * _origin.z());
+    _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
 void Plane::rotate(double angles_in_radians) {
@@ -296,7 +296,7 @@ void Plane::rotate(double angles_in_radians) {
     _a = _z_axis.x();
     _b = _z_axis.y();
     _c = _z_axis.z();
-    _d = -(_a * _origin.x() + _b * _origin.y() + _c * _origin.z());
+    _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
 bool Plane::is_right_hand() const {
@@ -322,14 +322,14 @@ bool Plane::is_same_direction(const Plane &plane0, const Plane &plane1, bool can
 }
 
 bool Plane::is_same_position(const Plane &plane0, const Plane &plane1) {
-    double dist0 = std::abs(plane0._a * plane1._origin.x() + 
-                           plane0._b * plane1._origin.y() + 
-                           plane0._c * plane1._origin.z() + 
+    double dist0 = std::abs(plane0._a * plane1._origin[0] + 
+                           plane0._b * plane1._origin[1] + 
+                           plane0._c * plane1._origin[2] + 
                            plane0._d);
     
-    double dist1 = std::abs(plane1._a * plane0._origin.x() + 
-                           plane1._b * plane0._origin.y() + 
-                           plane1._c * plane0._origin.z() + 
+    double dist1 = std::abs(plane1._a * plane0._origin[0] + 
+                           plane1._b * plane0._origin[1] + 
+                           plane1._c * plane0._origin[2] + 
                            plane1._d);
     
     double tolerance = static_cast<double>(session_cpp::Tolerance::ZERO_TOLERANCE);

@@ -93,14 +93,14 @@ TEST_CASE_METHOD(NurbsCurveFixture, "NurbsCurve - Control Vertices", "[nurbscurv
     
     SECTION("Get/Set CV") {
         Point pt = curve.get_cv(2);
-        REQUIRE(pt.x() == Catch::Approx(2.0));
-        REQUIRE(pt.y() == Catch::Approx(0.5));
+        REQUIRE(pt[0] == Catch::Approx(2.0));
+        REQUIRE(pt[1] == Catch::Approx(0.5));
         
         curve.set_cv(2, Point(2.5, 1.0, 0.5));
         Point new_pt = curve.get_cv(2);
-        REQUIRE(new_pt.x() == Catch::Approx(2.5));
-        REQUIRE(new_pt.y() == Catch::Approx(1.0));
-        REQUIRE(new_pt.z() == Catch::Approx(0.5));
+        REQUIRE(new_pt[0] == Catch::Approx(2.5));
+        REQUIRE(new_pt[1] == Catch::Approx(1.0));
+        REQUIRE(new_pt[2] == Catch::Approx(0.5));
     }
     
     SECTION("Get/Set CV 4D") {
@@ -172,11 +172,11 @@ TEST_CASE_METHOD(NurbsCurveFixture, "NurbsCurve - Evaluation", "[nurbscurve][eva
         double t_mid = (t0 + t1) / 2.0;
         
         Point pt = curve.point_at(t_mid);
-        REQUIRE(pt.x() >= 0.0);
-        REQUIRE(pt.x() <= 4.0);
-        REQUIRE(std::isfinite(pt.x()));
-        REQUIRE(std::isfinite(pt.y()));
-        REQUIRE(std::isfinite(pt.z()));
+        REQUIRE(pt[0] >= 0.0);
+        REQUIRE(pt[0] <= 4.0);
+        REQUIRE(std::isfinite(pt[0]));
+        REQUIRE(std::isfinite(pt[1]));
+        REQUIRE(std::isfinite(pt[2]));
     }
     
     // Note: tangent_at() uses derivatives which need full implementation
@@ -207,9 +207,9 @@ TEST_CASE_METHOD(NurbsCurveFixture, "NurbsCurve - Geometric Queries", "[nurbscur
         Point min_pt = bbox.min_point();
         Point max_pt = bbox.max_point();
         
-        REQUIRE(min_pt.x() <= max_pt.x());
-        REQUIRE(min_pt.y() <= max_pt.y());
-        REQUIRE(min_pt.z() <= max_pt.z());
+        REQUIRE(min_pt[0] <= max_pt[0]);
+        REQUIRE(min_pt[1] <= max_pt[1]);
+        REQUIRE(min_pt[2] <= max_pt[2]);
     }
     
     SECTION("Arc length") {

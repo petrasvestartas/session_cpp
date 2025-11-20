@@ -14,9 +14,9 @@ MINI_TEST(Point, constructor) {
 
     MINI_CHECK(p.name == "my_point");
     MINI_CHECK(!p.guid.empty());
-    MINI_CHECK(p.x() == 10.0);
-    MINI_CHECK(p.y() == 2.0);
-    MINI_CHECK(p.z() == 3.0);
+    MINI_CHECK(p[0] == 10.0);
+    MINI_CHECK(p[1] == 2.0);
+    MINI_CHECK(p[2] == 3.0);
     MINI_CHECK(p.width == 1.0);
     MINI_CHECK(p.pointcolor == Color::white());
 }

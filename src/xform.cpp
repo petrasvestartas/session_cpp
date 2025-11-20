@@ -122,9 +122,9 @@ Xform Xform::change_basis(Point& origin, Vector& x_axis, Vector& y_axis, Vector&
     xform.m[9] = z_axis.y();
     xform.m[10] = z_axis.z();
 
-    xform.m[12] = origin.x();
-    xform.m[13] = origin.y();
-    xform.m[14] = origin.z();
+    xform.m[12] = origin[0];
+    xform.m[13] = origin[1];
+    xform.m[14] = origin[2];
 
     return xform;
 }
@@ -211,8 +211,8 @@ Xform Xform::change_basis_alt(Point& origin_1, Vector& x_axis_1, Vector& y_axis_
     m_xform.m[6] = static_cast<double>(r[2][4]);
     m_xform.m[10] = static_cast<double>(r[2][5]);
 
-    Xform t0 = translation(-origin_1.x(), -origin_1.y(), -origin_1.z());
-    Xform t2 = translation(origin_0.x(), origin_0.y(), origin_0.z());
+    Xform t0 = translation(-origin_1[0], -origin_1[1], -origin_1[2]);
+    Xform t2 = translation(origin_0[0], origin_0[1], origin_0[2]);
     return t2 * (m_xform * t0);
 }
 
@@ -223,7 +223,7 @@ Xform Xform::plane_to_plane(Point& origin_0, Vector& x_axis_0, Vector& y_axis_0,
     x0.normalize_self(); y0.normalize_self(); z0.normalize_self();
     x1.normalize_self(); y1.normalize_self(); z1.normalize_self();
 
-    Xform t0 = translation(-origin_0.x(), -origin_0.y(), -origin_0.z());
+    Xform t0 = translation(-origin_0[0], -origin_0[1], -origin_0[2]);
 
     Xform f0;
     f0.m[0] = x0.x(); f0.m[1] = x0.y(); f0.m[2] = x0.z();
@@ -236,7 +236,7 @@ Xform Xform::plane_to_plane(Point& origin_0, Vector& x_axis_0, Vector& y_axis_0,
     f1.m[2] = z1.x(); f1.m[6] = z1.y(); f1.m[10] = z1.z();
 
     Xform r = f1 * f0;
-    Xform t1 = translation(origin_1.x(), origin_1.y(), origin_1.z());
+    Xform t1 = translation(origin_1[0], origin_1[1], origin_1[2]);
     return t1 * (r * t0);
 }
 
@@ -244,7 +244,7 @@ Xform Xform::plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
     Vector x = x_axis, y = y_axis, z = z_axis;
     x.normalize_self(); y.normalize_self(); z.normalize_self();
 
-    Xform t = translation(-origin.x(), -origin.y(), -origin.z());
+    Xform t = translation(-origin[0], -origin[1], -origin[2]);
     Xform f;
     f.m[0] = x.x(); f.m[1] = x.y(); f.m[2] = x.z();
     f.m[4] = y.x(); f.m[5] = y.y(); f.m[6] = y.z();
@@ -261,7 +261,7 @@ Xform Xform::xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
     f.m[1] = x.y(); f.m[5] = y.y(); f.m[9] = z.y();
     f.m[2] = x.z(); f.m[6] = y.z(); f.m[10] = z.z();
 
-    Xform t = translation(origin.x(), origin.y(), origin.z());
+    Xform t = translation(origin[0], origin[1], origin[2]);
     return t * f;
 }
 
@@ -274,16 +274,16 @@ Xform Xform::scale_xyz(double scale_x, double scale_y, double scale_z) {
 }
 
 Xform Xform::scale_uniform(Point& origin, double scale_value) {
-    Xform t0 = translation(-origin.x(), -origin.y(), -origin.z());
+    Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
     Xform t1 = scaling(scale_value, scale_value, scale_value);
-    Xform t2 = translation(origin.x(), origin.y(), origin.z());
+    Xform t2 = translation(origin[0], origin[1], origin[2]);
     return t2 * (t1 * t0);
 }
 
 Xform Xform::scale_non_uniform(Point& origin, double scale_x, double scale_y, double scale_z) {
-    Xform t0 = translation(-origin.x(), -origin.y(), -origin.z());
+    Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
     Xform t1 = scale_xyz(scale_x, scale_y, scale_z);
-    Xform t2 = translation(origin.x(), origin.y(), origin.z());
+    Xform t2 = translation(origin[0], origin[1], origin[2]);
     return t2 * (t1 * t0);
 }
 
@@ -333,7 +333,7 @@ Xform Xform::look_at_rh(const Point& eye, const Point& target, const Vector& up)
     xform.m[6] = -f.y();
     xform.m[10] = -f.z();
     
-    Vector eye_vec(eye.x(), eye.y(), eye.z());
+    Vector eye_vec(eye[0], eye[1], eye[2]);
     xform.m[12] = -s.dot(eye_vec);
     xform.m[13] = -u.dot(eye_vec);
     xform.m[14] = f.dot(eye_vec);
@@ -392,9 +392,9 @@ bool Xform::is_identity() const {
 }
 
 Point Xform::transformed_point(const Point& point) const {
-    double x = point.x();
-    double y = point.y();
-    double z = point.z();
+    double x = point[0];
+    double y = point[1];
+    double z = point[2];
     double w = m[3] * x + m[7] * y + m[11] * z + m[15];
     double w_inv = (std::abs(w) > 1e-10) ? 1.0 / w : 1.0;
 

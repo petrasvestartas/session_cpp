@@ -26,7 +26,7 @@ TEST_CASE("Read Bunny OBJ File", "[obj]") {
     // Check that vertices are valid (not all zeros)
     bool has_non_zero = false;
     for (const auto& v : vertices) {
-        if (v.x() != 0.0 || v.y() != 0.0 || v.z() != 0.0) {
+        if (v[0] != 0.0 || v[1] != 0.0 || v[2] != 0.0) {
             has_non_zero = true;
             break;
         }

@@ -178,7 +178,7 @@ TEST_CASE("BVH merge AABB", "[bvh]") {
     BoundingBox merged = bvh.merge_aabb(bbox1, bbox2);
 
     // Merged box should encompass both
-    REQUIRE(std::abs(merged.center.x() - 2.5) < 0.001);  // Midpoint between 0 and 5
+    REQUIRE(std::abs(merged.center[0] - 2.5) < 0.001);  // Midpoint between 0 and 5
     REQUIRE(std::abs(merged.half_size.x() - 3.5) < 0.001);  // Half of distance from -1 to 6
 }
 

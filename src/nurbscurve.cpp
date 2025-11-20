@@ -242,9 +242,9 @@ bool NurbsCurve::set_cv(int cv_index, const Point& point) {
     double* cv_ptr = cv(cv_index);
     if (!cv_ptr) return false;
     
-    cv_ptr[0] = point.x();
-    if (m_dim > 1) cv_ptr[1] = point.y();
-    if (m_dim > 2) cv_ptr[2] = point.z();
+    cv_ptr[0] = point[0];
+    if (m_dim > 1) cv_ptr[1] = point[1];
+    if (m_dim > 2) cv_ptr[2] = point[2];
     if (m_is_rat) cv_ptr[m_dim] = 1.0;
     
     return true;
@@ -373,14 +373,14 @@ bool NurbsCurve::is_linear(double tolerance) const {
     
     Point p0 = get_cv(0);
     Point p1 = get_cv(m_cv_count - 1);
-    Vector line_vec(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
+    Vector line_vec(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
     double line_length = line_vec.magnitude();
     
     if (line_length < tolerance) return true;
     
     for (int i = 1; i < m_cv_count - 1; i++) {
         Point p = get_cv(i);
-        Vector v(p.x() - p0.x(), p.y() - p0.y(), p.z() - p0.z());
+        Vector v(p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]);
         Vector cross = line_vec.cross(v);
         double dist = cross.magnitude() / line_length;
         if (dist > tolerance) return false;
@@ -398,8 +398,8 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
     Point p1 = get_cv(m_cv_count / 2);
     Point p2 = get_cv(m_cv_count - 1);
     
-    Vector v1(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
-    Vector v2(p2.x() - p0.x(), p2.y() - p0.y(), p2.z() - p0.z());
+    Vector v1(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    Vector v2(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
     Vector normal = v1.cross(v2);
     
     if (normal.magnitude() < tolerance) return true;
@@ -407,7 +407,7 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
     // Check all CVs against this plane
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
-        Vector v(p.x() - p0.x(), p.y() - p0.y(), p.z() - p0.z());
+        Vector v(p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]);
         double dist = std::abs(v.dot(normal)) / normal.magnitude();
         if (dist > tolerance) return false;
     }
@@ -644,9 +644,9 @@ bool NurbsCurve::transform(const Xform& xf) {
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
         // Apply xform matrix (column-major: m[col*4 + row])
-        double x = xf.m[0] * p.x() + xf.m[4] * p.y() + xf.m[8] * p.z() + xf.m[12];
-        double y = xf.m[1] * p.x() + xf.m[5] * p.y() + xf.m[9] * p.z() + xf.m[13];
-        double z = xf.m[2] * p.x() + xf.m[6] * p.y() + xf.m[10] * p.z() + xf.m[14];
+        double x = xf.m[0] * p[0] + xf.m[4] * p[1] + xf.m[8] * p[2] + xf.m[12];
+        double y = xf.m[1] * p[0] + xf.m[5] * p[1] + xf.m[9] * p[2] + xf.m[13];
+        double z = xf.m[2] * p[0] + xf.m[6] * p[1] + xf.m[10] * p[2] + xf.m[14];
         set_cv(i, Point(x, y, z));
     }
     return true;
@@ -727,9 +727,9 @@ bool NurbsCurve::make_non_rational() {
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
         double* new_cv_ptr = &new_cv[i * new_stride];
-        new_cv_ptr[0] = p.x();
-        if (m_dim > 1) new_cv_ptr[1] = p.y();
-        if (m_dim > 2) new_cv_ptr[2] = p.z();
+        new_cv_ptr[0] = p[0];
+        if (m_dim > 1) new_cv_ptr[1] = p[1];
+        if (m_dim > 2) new_cv_ptr[2] = p[2];
     }
     
     m_cv = new_cv;
@@ -930,7 +930,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
-        j["control_points"].push_back({p.x(), p.y(), p.z()});
+        j["control_points"].push_back({p[0], p[1], p[2]});
     }
     
     return j;
@@ -1339,7 +1339,7 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
     Point p0 = get_cv(span_index);
     Point p1 = get_cv(span_index + m_order - 1);
     
-    Vector line_vec(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
+    Vector line_vec(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
     double line_length = line_vec.magnitude();
     
     if (line_length < min_length) return false;
@@ -1347,7 +1347,7 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
     // Check interior control points
     for (int i = 1; i < m_order - 1; i++) {
         Point p = get_cv(span_index + i);
-        Vector v(p.x() - p0.x(), p.y() - p0.y(), p.z() - p0.z());
+        Vector v(p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]);
         
         // Compute distance from point to line
         Vector cross = line_vec.cross(v);
@@ -1801,7 +1801,7 @@ bool NurbsCurve::set_start_point(const Point& start_point) {
     Point scaled_point = start_point;
     if (m_is_rat && w != 1.0) {
         // Scale by weight for rational curves
-        set_cv_4d(0, start_point.x() * w, start_point.y() * w, start_point.z() * w, w);
+        set_cv_4d(0, start_point[0] * w, start_point[1] * w, start_point[2] * w, w);
     } else {
         set_cv(0, start_point);
         if (m_is_rat) {
@@ -1825,7 +1825,7 @@ bool NurbsCurve::set_end_point(const Point& end_point) {
     
     if (m_is_rat && w != 1.0) {
         // Scale by weight for rational curves
-        set_cv_4d(m_cv_count - 1, end_point.x() * w, end_point.y() * w, end_point.z() * w, w);
+        set_cv_4d(m_cv_count - 1, end_point[0] * w, end_point[1] * w, end_point[2] * w, w);
     } else {
         set_cv(m_cv_count - 1, end_point);
         if (m_is_rat) {
@@ -1986,22 +1986,30 @@ bool NurbsCurve::is_arc(Plane* plane, double tolerance) const {
     
     // Sample points and check if they're equidistant from a center
     auto [t0, t1] = domain();
-    int num_samples = 9;
-    double dt = (t1 - t0) / (num_samples - 1);
     
-    std::vector<Point> samples;
-    for (int i = 0; i < num_samples; i++) {
-        samples.push_back(point_at(t0 + i * dt));
+    // Adaptive sampling based on tolerance
+    // Smaller tolerance = more samples for better accuracy
+    int num_samples = std::max(50, static_cast<int>(100.0 / (tolerance + 1e-10)));
+    num_samples = std::min(num_samples, 1000); // Cap at 1000 samples
+    
+    double dt = (t1 - t0) / num_samples;
+    double total_length = 0.0;
+    
+    Point prev = point_at(t0);
+    for (int i = 1; i <= num_samples; i++) {
+        Point curr = point_at(t0 + i * dt);
+        total_length += prev.distance(curr);
+        prev = curr;
     }
     
     // Find approximate center using first 3 points
-    Point p0 = samples[0];
-    Point p1 = samples[num_samples / 2];
-    Point p2 = samples[num_samples - 1];
+    Point p0 = point_at(t0);
+    Point p1 = point_at(t0 + dt);
+    Point p2 = point_at(t0 + 2 * dt);
     
     // Check if collinear
-    Vector v1(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
-    Vector v2(p2.x() - p0.x(), p2.y() - p0.y(), p2.z() - p0.z());
+    Vector v1(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    Vector v2(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
     if (v1.cross(v2).magnitude() < tolerance) {
         return false; // Collinear
     }
@@ -2010,7 +2018,7 @@ bool NurbsCurve::is_arc(Plane* plane, double tolerance) const {
     double r0 = p0.distance(p1);
     bool is_arc_candidate = true;
     for (int i = 0; i < num_samples; i++) {
-        double ri = samples[i].distance(p1);
+        double ri = point_at(t0 + i * dt).distance(p1);
         if (std::abs(ri - r0) > tolerance * 10.0) {
             is_arc_candidate = false;
             break;
@@ -2389,9 +2397,9 @@ bool NurbsCurve::is_in_plane(const Plane& test_plane, double tolerance) const {
     // Check if all control points lie in the plane
     for (int i = 0; i < m_cv_count; i++) {
         Point pt = get_cv(i);
-        Vector v(pt.x() - test_plane.origin().x(),
-                pt.y() - test_plane.origin().y(),
-                pt.z() - test_plane.origin().z());
+        Vector v(pt[0] - test_plane.origin()[0],
+                pt[1] - test_plane.origin()[1],
+                pt[2] - test_plane.origin()[2]);
         
         double dist = std::abs(v.dot(test_plane.z_axis()));
         if (dist > tolerance) {
@@ -2467,9 +2475,9 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
 // Helper function: Evaluate signed distance from point to plane
 namespace {
     double signed_distance_to_plane(const Point& pt, const Plane& plane) {
-        Vector v(pt.x() - plane.origin().x(),
-                pt.y() - plane.origin().y(),
-                pt.z() - plane.origin().z());
+        Vector v(pt[0] - plane.origin()[0],
+                pt[1] - plane.origin()[1],
+                pt[2] - plane.origin()[2]);
         return v.dot(plane.z_axis());
     }
     
@@ -2691,9 +2699,9 @@ std::pair<double, double> NurbsCurve::closest_point_to(const Point& test_point,
         Point pt = point_at(t);
         Vector tangent = tangent_at(t);
         
-        Vector delta(test_point.x() - pt.x(),
-                    test_point.y() - pt.y(),
-                    test_point.z() - pt.z());
+        Vector delta(test_point[0] - pt[0],
+                    test_point[1] - pt[1],
+                    test_point[2] - pt[2]);
         
         // f(t) = (C(t) - P) · C'(t) should be zero at closest point
         double f = -delta.dot(tangent);
@@ -2755,9 +2763,9 @@ std::vector<double> NurbsCurve::intersect_plane_bezier_clipping(const Plane& pla
     
     // Helper: compute signed distance from point to plane
     auto signed_distance = [&](const Point& p) -> double {
-        Vector v(p.x() - plane.origin().x(),
-                p.y() - plane.origin().y(),
-                p.z() - plane.origin().z());
+        Vector v(p[0] - plane.origin()[0],
+                p[1] - plane.origin()[1],
+                p[2] - plane.origin()[2]);
         return v.dot(plane.z_axis());
     };
     
@@ -3009,15 +3017,15 @@ double NurbsCurve::get_cubic_bezier_approximation(double max_deviation, std::vec
     double scale = arc_length / 3.0;
     
     bezier_cvs[1] = Point(
-        bezier_cvs[0].x() + tan0.x() * scale,
-        bezier_cvs[0].y() + tan0.y() * scale,
-        bezier_cvs[0].z() + tan0.z() * scale
+        bezier_cvs[0][0] + tan0.x() * scale,
+        bezier_cvs[0][1] + tan0.y() * scale,
+        bezier_cvs[0][2] + tan0.z() * scale
     );
     
     bezier_cvs[2] = Point(
-        bezier_cvs[3].x() - tan1.x() * scale,
-        bezier_cvs[3].y() - tan1.y() * scale,
-        bezier_cvs[3].z() - tan1.z() * scale
+        bezier_cvs[3][0] - tan1.x() * scale,
+        bezier_cvs[3][1] - tan1.y() * scale,
+        bezier_cvs[3][2] - tan1.z() * scale
     );
     
     // Calculate maximum deviation at Greville points
@@ -3034,14 +3042,14 @@ double NurbsCurve::get_cubic_bezier_approximation(double max_deviation, std::vec
         double omu3 = omu2 * omu;
         
         Point pt_bezier(
-            omu3 * bezier_cvs[0].x() + 3.0 * omu2 * u * bezier_cvs[1].x() +
-            3.0 * omu * u2 * bezier_cvs[2].x() + u3 * bezier_cvs[3].x(),
+            omu3 * bezier_cvs[0][0] + 3.0 * omu2 * u * bezier_cvs[1][0] +
+            3.0 * omu * u2 * bezier_cvs[2][0] + u3 * bezier_cvs[3][0],
             
-            omu3 * bezier_cvs[0].y() + 3.0 * omu2 * u * bezier_cvs[1].y() +
-            3.0 * omu * u2 * bezier_cvs[2].y() + u3 * bezier_cvs[3].y(),
+            omu3 * bezier_cvs[0][1] + 3.0 * omu2 * u * bezier_cvs[1][1] +
+            3.0 * omu * u2 * bezier_cvs[2][1] + u3 * bezier_cvs[3][1],
             
-            omu3 * bezier_cvs[0].z() + 3.0 * omu2 * u * bezier_cvs[1].z() +
-            3.0 * omu * u2 * bezier_cvs[2].z() + u3 * bezier_cvs[3].z()
+            omu3 * bezier_cvs[0][2] + 3.0 * omu2 * u * bezier_cvs[1][2] +
+            3.0 * omu * u2 * bezier_cvs[2][2] + u3 * bezier_cvs[3][2]
         );
         
         double dev = pt_nurbs.distance(pt_bezier);

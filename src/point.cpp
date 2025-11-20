@@ -226,8 +226,8 @@ Point Point::centroid_quad(const std::vector<Point>& vertices) {
 
 std::ostream &operator<<(std::ostream &os, const Point &point) {
   return os << fmt::format("Point({}, {}, {})", 
-                           TOL.format_number(point.x()), 
-                           TOL.format_number(point.y()), 
-                           TOL.format_number(point.z()));
+                           TOL.format_number(point[0]), 
+                           TOL.format_number(point[1]), 
+                           TOL.format_number(point[2]));
 }
 } // namespace session_cpp

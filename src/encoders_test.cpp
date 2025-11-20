@@ -17,9 +17,9 @@ TEST_CASE("Encoders json_dump and json_load", "[encoders]") {
     
     Point loaded = json_load<Point>(filepath);
     
-    REQUIRE(loaded.x() == original.x());
-    REQUIRE(loaded.y() == original.y());
-    REQUIRE(loaded.z() == original.z());
+    REQUIRE(loaded[0] == original[0]);
+    REQUIRE(loaded[1] == original[1]);
+    REQUIRE(loaded[2] == original[2]);
     REQUIRE(loaded.name == original.name);
     
     std::filesystem::remove(filepath);
@@ -78,8 +78,8 @@ TEST_CASE("Encoders decode_collection", "[encoders]") {
     auto decoded_points = decode_collection<Point>(json_arr);
     
     REQUIRE(decoded_points.size() == 2);
-    REQUIRE(decoded_points[0].x() == 1.0);
-    REQUIRE(decoded_points[1].y() == 5.0);
+    REQUIRE(decoded_points[0][0] == 1.0);
+    REQUIRE(decoded_points[1][1] == 5.0);
 }
 
 TEST_CASE("Encoders decode_collection_ptr", "[encoders]") {
@@ -108,8 +108,8 @@ TEST_CASE("Encoders nested_collections", "[encoders]") {
     auto loaded = decode_collection<Line>(loaded_json);
     
     REQUIRE(loaded.size() == 2);
-    REQUIRE(loaded[0].end().x() == Catch::Approx(1.0));
-    REQUIRE(loaded[1].end().y() == Catch::Approx(1.0));
+    REQUIRE(loaded[0].end()[0] == Catch::Approx(1.0));
+    REQUIRE(loaded[1].end()[1] == Catch::Approx(1.0));
 }
 
 TEST_CASE("Encoders roundtrip with file I/O", "[encoders]") {
@@ -146,8 +146,8 @@ TEST_CASE("Encoders pretty vs compact", "[encoders]") {
     Point loaded_pretty = json_loads<Point>(pretty);
     Point loaded_compact = json_loads<Point>(compact);
     
-    REQUIRE(loaded_pretty.x() == 1.0);
-    REQUIRE(loaded_compact.x() == 1.0);
+    REQUIRE(loaded_pretty[0] == 1.0);
+    REQUIRE(loaded_compact[0] == 1.0);
 }
 
 TEST_CASE("Encoders decode primitives", "[encoders]") {
@@ -192,8 +192,8 @@ TEST_CASE("Encoders decode list", "[encoders]") {
     auto json_arr = encode_collection(points);
     auto decoded = decode_collection<Point>(json_arr);
     REQUIRE(decoded.size() == 2);
-    REQUIRE(decoded[0].x() == 1.0);
-    REQUIRE(decoded[1].x() == 4.0);
+    REQUIRE(decoded[0][0] == 1.0);
+    REQUIRE(decoded[1][0] == 4.0);
 }
 
 TEST_CASE("Encoders decode dict", "[encoders]") {
@@ -241,7 +241,7 @@ TEST_CASE("Encoders dict of lists", "[encoders]") {
     REQUIRE(loaded["letters"][0] == "a");
     auto loaded_points = decode_collection<Point>(loaded["points"]);
     REQUIRE(loaded_points.size() == 2);
-    REQUIRE(loaded_points[0].x() == 1.0);
+    REQUIRE(loaded_points[0][0] == 1.0);
 }
 
 TEST_CASE("Encoders list of dict", "[encoders]") {
@@ -259,7 +259,7 @@ TEST_CASE("Encoders list of dict", "[encoders]") {
     REQUIRE(loaded[0]["name"] == "point1");
     REQUIRE(loaded[1]["value"] == 20);
     Point loaded_point = Point::jsonload(loaded[2]["geometry"]);
-    REQUIRE(loaded_point.z() == Catch::Approx(3.0));
+    REQUIRE(loaded_point[2] == Catch::Approx(3.0));
 }
 
 TEST_CASE("Encoders dict of dicts", "[encoders]") {
@@ -279,6 +279,6 @@ TEST_CASE("Encoders dict of dicts", "[encoders]") {
     REQUIRE(loaded["config"]["scale"] == 1000);
     Point loaded_point = Point::jsonload(loaded["geometry"]["point"]);
     Vector loaded_vec = Vector::jsonload(loaded["geometry"]["vector"]);
-    REQUIRE(loaded_point.x() == Catch::Approx(1.0));
+    REQUIRE(loaded_point[0] == Catch::Approx(1.0));
     REQUIRE(loaded_vec.z() == Catch::Approx(1.0));
 }

@@ -10,7 +10,7 @@ Line::Line(double x0, double y0, double z0, double x1, double y1, double z1)
     : _x0(x0), _y0(y0), _z0(z0), _x1(x1), _y1(y1), _z1(z1) {}
 
 Line Line::from_points(const Point& p1, const Point& p2) {
-    return Line(p1.x(), p1.y(), p1.z(), p2.x(), p2.y(), p2.z());
+    return Line(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
 }
 
 Line Line::with_name(const std::string& name, double x0, double y0, double z0, double x1, double y1, double z1) {
@@ -34,12 +34,12 @@ void Line::transform() {
   xform.transform_point(start);
   xform.transform_point(end);
   
-  _x0 = start.x();
-  _y0 = start.y();
-  _z0 = start.z();
-  _x1 = end.x();
-  _y1 = end.y();
-  _z1 = end.z();
+  _x0 = start[0];
+  _y0 = start[1];
+  _z0 = start[2];
+  _x1 = end[0];
+  _y1 = end[1];
+  _z1 = end[2];
   xform = Xform::identity();
 }
 

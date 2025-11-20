@@ -12,9 +12,9 @@ TEST_CASE("Line-Line Intersection", "[intersection]") {
     bool result = Intersection::line_line(line0, line1, output, Tolerance::APPROXIMATION);
     
     REQUIRE(result);
-    REQUIRE(std::fabs(output.x() - 0.5) < 1e-5);
-    REQUIRE(std::fabs(output.y() - 0.0) < 1e-5);
-    REQUIRE(std::fabs(output.z() - 0.0) < 1e-5);
+    REQUIRE(std::fabs(output[0] - 0.5) < 1e-5);
+    REQUIRE(std::fabs(output[1] - 0.0) < 1e-5);
+    REQUIRE(std::fabs(output[2] - 0.0) < 1e-5);
 }
 
 TEST_CASE("Line-Line Parallel", "[intersection]") {
@@ -101,13 +101,13 @@ TEST_CASE("Plane-Plane Intersection Complex", "[intersection]") {
     Point start = intersection_line.start();
     Point end = intersection_line.end();
     
-    REQUIRE(std::fabs(start.x() - 252.4632) < 0.01);
-    REQUIRE(std::fabs(start.y() - 495.32248) < 0.01);
-    REQUIRE(std::fabs(start.z() - (-10.002656)) < 0.01);
+    REQUIRE(std::fabs(start[0] - 252.4632) < 0.01);
+    REQUIRE(std::fabs(start[1] - 495.32248) < 0.01);
+    REQUIRE(std::fabs(start[2] - (-10.002656)) < 0.01);
     
-    REQUIRE(std::fabs(end.x() - 253.01033) < 0.01);
-    REQUIRE(std::fabs(end.y() - 496.1218) < 0.01);
-    REQUIRE(std::fabs(end.z() - (-9.888727)) < 0.01);
+    REQUIRE(std::fabs(end[0] - 253.01033) < 0.01);
+    REQUIRE(std::fabs(end[1] - 496.1218) < 0.01);
+    REQUIRE(std::fabs(end[2] - (-9.888727)) < 0.01);
 }
 
 TEST_CASE("Line-Plane Intersection", "[intersection]") {
@@ -121,9 +121,9 @@ TEST_CASE("Line-Plane Intersection", "[intersection]") {
     bool result = Intersection::line_plane(line, plane, output, true);
     
     REQUIRE(result);
-    REQUIRE(std::fabs(output.x() - 0.0) < 1e-5);
-    REQUIRE(std::fabs(output.y() - 0.0) < 1e-5);
-    REQUIRE(std::fabs(output.z() - 1.0) < 1e-5);
+    REQUIRE(std::fabs(output[0] - 0.0) < 1e-5);
+    REQUIRE(std::fabs(output[1] - 0.0) < 1e-5);
+    REQUIRE(std::fabs(output[2] - 1.0) < 1e-5);
 }
 
 TEST_CASE("Line-Plane Parallel", "[intersection]") {
@@ -151,9 +151,9 @@ TEST_CASE("Line-Plane Real-World Intersection", "[intersection]") {
     bool result = Intersection::line_plane(l0, pl0, lp);
     
     REQUIRE(result);
-    REQUIRE(std::fabs(lp.x() - 500.0) < 0.1);
-    REQUIRE(std::fabs(lp.y() - 77.7531) < 0.01);
-    REQUIRE(std::fabs(lp.z() - 111.043) < 0.01);
+    REQUIRE(std::fabs(lp[0] - 500.0) < 0.1);
+    REQUIRE(std::fabs(lp[1] - 77.7531) < 0.01);
+    REQUIRE(std::fabs(lp[2] - 111.043) < 0.01);
 }
 
 TEST_CASE("Plane-Plane-Plane Intersection", "[intersection]") {
@@ -176,9 +176,9 @@ TEST_CASE("Plane-Plane-Plane Intersection", "[intersection]") {
     bool result = Intersection::plane_plane_plane(pl0, pl1, pl2, output);
     
     REQUIRE(result);
-    REQUIRE(std::fabs(output.x() - 300.5) < 0.1);
-    REQUIRE(std::fabs(output.y() - 565.5) < 0.1);
-    REQUIRE(std::fabs(output.z() - 0.0) < 0.1);
+    REQUIRE(std::fabs(output[0] - 300.5) < 0.1);
+    REQUIRE(std::fabs(output[1] - 565.5) < 0.1);
+    REQUIRE(std::fabs(output[2] - 0.0) < 0.1);
 }
 
 TEST_CASE("Plane-Plane-Plane Parallel", "[intersection]") {
@@ -484,14 +484,14 @@ TEST_CASE("Ray-Box Real-World Intersection", "[intersection]") {
     REQUIRE(intersection_points.size() == 2);
     
     // Entry point
-    REQUIRE(std::fabs(intersection_points[0].x() - 500.0) < 0.1);
-    REQUIRE(std::fabs(intersection_points[0].y() - 338.9) < 0.1);
-    REQUIRE(std::fabs(intersection_points[0].z() - 484.0) < 0.1);
+    REQUIRE(std::fabs(intersection_points[0][0] - 500.0) < 0.1);
+    REQUIRE(std::fabs(intersection_points[0][1] - 338.9) < 0.1);
+    REQUIRE(std::fabs(intersection_points[0][2] - 484.0) < 0.1);
     
     // Exit point
-    REQUIRE(std::fabs(intersection_points[1].x() - 500.0) < 0.1);
-    REQUIRE(std::fabs(intersection_points[1].y() - 557.365) < 0.1);
-    REQUIRE(std::fabs(intersection_points[1].z() - 796.0) < 0.1);
+    REQUIRE(std::fabs(intersection_points[1][0] - 500.0) < 0.1);
+    REQUIRE(std::fabs(intersection_points[1][1] - 557.365) < 0.1);
+    REQUIRE(std::fabs(intersection_points[1][2] - 796.0) < 0.1);
 }
 
 TEST_CASE("Ray-Sphere Real-World Intersection", "[intersection]") {
@@ -506,14 +506,14 @@ TEST_CASE("Ray-Sphere Real-World Intersection", "[intersection]") {
     REQUIRE(sphere_points.size() == 2);
     
     // First intersection point
-    REQUIRE(std::fabs(sphere_points[0].x() - 500.0) < 0.1);
-    REQUIRE(std::fabs(sphere_points[0].y() - 12.08) < 0.1);
-    REQUIRE(std::fabs(sphere_points[0].z() - 17.25) < 0.1);
+    REQUIRE(std::fabs(sphere_points[0][0] - 500.0) < 0.1);
+    REQUIRE(std::fabs(sphere_points[0][1] - 12.08) < 0.1);
+    REQUIRE(std::fabs(sphere_points[0][2] - 17.25) < 0.1);
     
     // Second intersection point
-    REQUIRE(std::fabs(sphere_points[1].x() - 500.0) < 0.1);
-    REQUIRE(std::fabs(sphere_points[1].y() - 308.77) < 0.1);
-    REQUIRE(std::fabs(sphere_points[1].z() - 440.97) < 0.1);
+    REQUIRE(std::fabs(sphere_points[1][0] - 500.0) < 0.1);
+    REQUIRE(std::fabs(sphere_points[1][1] - 308.77) < 0.1);
+    REQUIRE(std::fabs(sphere_points[1][2] - 440.97) < 0.1);
 }
 
 TEST_CASE("Ray-Triangle Real-World Intersection", "[intersection]") {
@@ -526,8 +526,8 @@ TEST_CASE("Ray-Triangle Real-World Intersection", "[intersection]") {
     bool result = Intersection::ray_triangle(l0, p1, p2, p3, Tolerance::APPROXIMATION, triangle_hit);
     
     REQUIRE(result);
-    REQUIRE(std::fabs(triangle_hit.x() - 500.0) < 0.1);
-    REQUIRE(std::fabs(triangle_hit.y() - 340.616) < 0.01);
-    REQUIRE(std::fabs(triangle_hit.z() - 486.451) < 0.01);
+    REQUIRE(std::fabs(triangle_hit[0] - 500.0) < 0.1);
+    REQUIRE(std::fabs(triangle_hit[1] - 340.616) < 0.01);
+    REQUIRE(std::fabs(triangle_hit[2] - 486.451) < 0.01);
 }
 

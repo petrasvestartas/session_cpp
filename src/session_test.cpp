@@ -132,14 +132,14 @@ TEST_CASE("Session tree transformation hierarchy.") {
     auto mesh = std::make_shared<Mesh>();
     double h = size * 0.5;
     std::vector<Point> verts = {
-      Point(center.x() - h, center.y() - h, center.z() - h),
-      Point(center.x() + h, center.y() - h, center.z() - h),
-      Point(center.x() + h, center.y() + h, center.z() - h),
-      Point(center.x() - h, center.y() + h, center.z() - h),
-      Point(center.x() - h, center.y() - h, center.z() + h),
-      Point(center.x() + h, center.y() - h, center.z() + h),
-      Point(center.x() + h, center.y() + h, center.z() + h),
-      Point(center.x() - h, center.y() + h, center.z() + h)
+      Point(center[0] - h, center[1] - h, center[2] - h),
+      Point(center[0] + h, center[1] - h, center[2] - h),
+      Point(center[0] + h, center[1] + h, center[2] - h),
+      Point(center[0] - h, center[1] + h, center[2] - h),
+      Point(center[0] - h, center[1] - h, center[2] + h),
+      Point(center[0] + h, center[1] - h, center[2] + h),
+      Point(center[0] + h, center[1] + h, center[2] + h),
+      Point(center[0] - h, center[1] + h, center[2] + h)
     };
     for (size_t i = 0; i < verts.size(); ++i) mesh->add_vertex(verts[i], i);
     std::vector<std::vector<size_t>> faces = {

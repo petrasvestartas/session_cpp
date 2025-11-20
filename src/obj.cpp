@@ -18,7 +18,7 @@ void write_obj(const Mesh& mesh, const std::string& filepath) {
     }
     
     for (const auto& p : vertices) {
-        out << "v " << p.x() << " " << p.y() << " " << p.z() << "\n";
+        out << "v " << p[0] << " " << p[1] << " " << p[2] << "\n";
     }
     for (const auto& face : faces) {
         if (face.size() < 3) continue;

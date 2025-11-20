@@ -34,16 +34,16 @@ struct VertexData {
     std::map<std::string, double> attributes;
 
     VertexData() = default;
-    VertexData(const Point& p) : x(p.x()), y(p.y()), z(p.z()) {}
+    VertexData(const Point& p) : x(p[0]), y(p[1]), z(p[2]) {}
 
     /// Get vertex position as Point
     Point position() const { return Point(x, y, z); }
     
     /// Set vertex position from Point
     void set_position(const Point& p) {
-        x = p.x();
-        y = p.y();
-        z = p.z();
+        x = p[0];
+        y = p[1];
+        z = p[2];
     }
 
     /// Get vertex color as RGB array

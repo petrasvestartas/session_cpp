@@ -226,9 +226,9 @@ bool NurbsSurface::set_cv(int i, int j, const Point& point) {
     double* cv_ptr = cv(i, j);
     if (!cv_ptr) return false;
     
-    cv_ptr[0] = point.x();
-    if (m_dim > 1) cv_ptr[1] = point.y();
-    if (m_dim > 2) cv_ptr[2] = point.z();
+    cv_ptr[0] = point[0];
+    if (m_dim > 1) cv_ptr[1] = point[1];
+    if (m_dim > 2) cv_ptr[2] = point[2];
     
     if (m_is_rat) {
         cv_ptr[m_dim] = 1.0;
@@ -499,7 +499,7 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
     std::vector<Vector> result;
 
     Point pt = point_at(u, v);
-    result.emplace_back(pt.x(), pt.y(), pt.z());
+    result.emplace_back(pt[0], pt[1], pt[2]);
 
     if (num_derivs <= 0) {
         return result;
@@ -514,14 +514,14 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
     Vector du_vec;
     if (u + h <= u1) {
         Point pt_u = point_at(u + h, v);
-        du_vec = Vector((pt_u.x() - pt.x()) / h,
-                        (pt_u.y() - pt.y()) / h,
-                        (pt_u.z() - pt.z()) / h);
+        du_vec = Vector((pt_u[0] - pt[0]) / h,
+                        (pt_u[1] - pt[1]) / h,
+                        (pt_u[2] - pt[2]) / h);
     } else {
         Point pt_um = point_at(u - h, v);
-        du_vec = Vector((pt.x() - pt_um.x()) / h,
-                        (pt.y() - pt_um.y()) / h,
-                        (pt.z() - pt_um.z()) / h);
+        du_vec = Vector((pt[0] - pt_um[0]) / h,
+                        (pt[1] - pt_um[1]) / h,
+                        (pt[2] - pt_um[2]) / h);
     }
     result.push_back(du_vec);
 
@@ -529,14 +529,14 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
     Vector dv_vec;
     if (v + h <= v1) {
         Point pt_v = point_at(u, v + h);
-        dv_vec = Vector((pt_v.x() - pt.x()) / h,
-                        (pt_v.y() - pt.y()) / h,
-                        (pt_v.z() - pt.z()) / h);
+        dv_vec = Vector((pt_v[0] - pt[0]) / h,
+                        (pt_v[1] - pt[1]) / h,
+                        (pt_v[2] - pt[2]) / h);
     } else {
         Point pt_vm = point_at(u, v - h);
-        dv_vec = Vector((pt.x() - pt_vm.x()) / h,
-                        (pt.y() - pt_vm.y()) / h,
-                        (pt.z() - pt_vm.z()) / h);
+        dv_vec = Vector((pt[0] - pt_vm[0]) / h,
+                        (pt[1] - pt_vm[1]) / h,
+                        (pt[2] - pt_vm[2]) / h);
     }
     result.push_back(dv_vec);
 
@@ -582,21 +582,21 @@ BoundingBox NurbsSurface::get_bounding_box() const {
     for (int i = 0; i < m_cv_count[0]; i++) {
         for (int j = 0; j < m_cv_count[1]; j++) {
             Point pt = get_cv(i, j);
-            min_pt = Point(std::min(min_pt.x(), pt.x()),
-                          std::min(min_pt.y(), pt.y()),
-                          std::min(min_pt.z(), pt.z()));
-            max_pt = Point(std::max(max_pt.x(), pt.x()),
-                          std::max(max_pt.y(), pt.y()),
-                          std::max(max_pt.z(), pt.z()));
+            min_pt = Point(std::min(min_pt[0], pt[0]),
+                          std::min(min_pt[1], pt[1]),
+                          std::min(min_pt[2], pt[2]));
+            max_pt = Point(std::max(max_pt[0], pt[0]),
+                          std::max(max_pt[1], pt[1]),
+                          std::max(max_pt[2], pt[2]));
         }
     }
     
-    Point center((min_pt.x() + max_pt.x()) / 2.0,
-                (min_pt.y() + max_pt.y()) / 2.0,
-                (min_pt.z() + max_pt.z()) / 2.0);
-    Vector half_size((max_pt.x() - min_pt.x()) / 2.0,
-                     (max_pt.y() - min_pt.y()) / 2.0,
-                     (max_pt.z() - min_pt.z()) / 2.0);
+    Point center((min_pt[0] + max_pt[0]) / 2.0,
+                (min_pt[1] + max_pt[1]) / 2.0,
+                (min_pt[2] + max_pt[2]) / 2.0);
+    Vector half_size((max_pt[0] - min_pt[0]) / 2.0,
+                     (max_pt[1] - min_pt[1]) / 2.0,
+                     (max_pt[2] - min_pt[2]) / 2.0);
     
     return BoundingBox(center, Vector::x_axis(), Vector::y_axis(), Vector::z_axis(), half_size);
 }
@@ -1453,8 +1453,8 @@ bool NurbsSurface::is_planar(Plane* plane, double tolerance) const {
     Point p1 = get_cv(m_cv_count[0] - 1, 0);
     Point p2 = get_cv(0, m_cv_count[1] - 1);
     
-    Vector v1(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
-    Vector v2(p2.x() - p0.x(), p2.y() - p0.y(), p2.z() - p0.z());
+    Vector v1(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    Vector v2(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
     Vector normal = v1.cross(v2);
     
     double len = normal.magnitude();
@@ -1466,7 +1466,7 @@ bool NurbsSurface::is_planar(Plane* plane, double tolerance) const {
     for (int i = 0; i < m_cv_count[0]; i++) {
         for (int j = 0; j < m_cv_count[1]; j++) {
             Point pt = get_cv(i, j);
-            Vector v(pt.x() - p0.x(), pt.y() - p0.y(), pt.z() - p0.z());
+            Vector v(pt[0] - p0[0], pt[1] - p0[1], pt[2] - p0[2]);
             double dist = std::abs(v.dot(normal));
             if (dist > tolerance) return false;
         }

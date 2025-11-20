@@ -218,18 +218,18 @@ static bool ray_aabb_intersect(const Point& origin,
     double invy = inv(direction.y());
     double invz = inv(direction.z());
 
-    double tx1 = (min_x - origin.x()) * invx;
-    double tx2 = (max_x - origin.x()) * invx;
+    double tx1 = (min_x - origin[0]) * invx;
+    double tx2 = (max_x - origin[0]) * invx;
     double tmin = std::min(tx1, tx2);
     double tmax = std::max(tx1, tx2);
 
-    double ty1 = (min_y - origin.y()) * invy;
-    double ty2 = (max_y - origin.y()) * invy;
+    double ty1 = (min_y - origin[1]) * invy;
+    double ty2 = (max_y - origin[1]) * invy;
     tmin = std::max(tmin, std::min(ty1, ty2));
     tmax = std::min(tmax, std::max(ty1, ty2));
 
-    double tz1 = (min_z - origin.z()) * invz;
-    double tz2 = (max_z - origin.z()) * invz;
+    double tz1 = (min_z - origin[2]) * invz;
+    double tz2 = (max_z - origin[2]) * invz;
     tmin = std::max(tmin, std::min(tz1, tz2));
     tmax = std::min(tmax, std::max(tz1, tz2));
 
@@ -297,12 +297,12 @@ double BVH::compute_world_size(const std::vector<BoundingBox>& bounding_boxes) {
     double max_extent = 0.0;
     for (const auto& bbox : bounding_boxes) {
         // Find maximum absolute coordinate in any dimension
-        double x_extent = std::max(std::abs(bbox.center.x() + bbox.half_size.x()), 
-                                   std::abs(bbox.center.x() - bbox.half_size.x()));
-        double y_extent = std::max(std::abs(bbox.center.y() + bbox.half_size.y()), 
-                                   std::abs(bbox.center.y() - bbox.half_size.y()));
-        double z_extent = std::max(std::abs(bbox.center.z() + bbox.half_size.z()), 
-                                   std::abs(bbox.center.z() - bbox.half_size.z()));
+        double x_extent = std::max(std::abs(bbox.center[0] + bbox.half_size.x()), 
+                                   std::abs(bbox.center[0] - bbox.half_size.x()));
+        double y_extent = std::max(std::abs(bbox.center[1] + bbox.half_size.y()), 
+                                   std::abs(bbox.center[1] - bbox.half_size.y()));
+        double z_extent = std::max(std::abs(bbox.center[2] + bbox.half_size.z()), 
+                                   std::abs(bbox.center[2] - bbox.half_size.z()));
         
         max_extent = std::max({max_extent, x_extent, y_extent, z_extent});
     }
@@ -336,7 +336,7 @@ void BVH::build_from_boxes(const BoundingBox* boxes, size_t count, double ws) {
     for (size_t i = 0; i < count; ++i) {
         const auto& bbox = boxes[i];
         uint32_t morton_code = calculate_morton_code(
-            bbox.center.x(), bbox.center.y(), bbox.center.z(), this->world_size
+            bbox.center[0], bbox.center[1], bbox.center[2], this->world_size
         );
         objects.emplace_back(ObjectInfo{static_cast<int>(i), morton_code});
     }
@@ -383,7 +383,7 @@ void BVH::build_from_boxes(const BoundingBox* boxes, size_t count, double ws) {
         BVHNode* leaf = alloc_node();
         leaf->object_id = objects[0].id;
         const BoundingBox& bb = boxes[objects[0].id];
-        leaf->aabb = BvhAABB{bb.center.x(), bb.center.y(), bb.center.z(), bb.half_size.x(), bb.half_size.y(), bb.half_size.z()};
+        leaf->aabb = BvhAABB{bb.center[0], bb.center[1], bb.center[2], bb.half_size.x(), bb.half_size.y(), bb.half_size.z()};
         leaf->left = leaf->right = nullptr;
         root = leaf;
         return;
@@ -454,7 +454,7 @@ void BVH::build_from_boxes(const BoundingBox* boxes, size_t count, double ws) {
         BVHNode* leaf = alloc_node();
         leaf->object_id = objects[i].id;
         const BoundingBox& bb = boxes[objects[i].id];
-        leaf->aabb = BvhAABB{bb.center.x(), bb.center.y(), bb.center.z(), bb.half_size.x(), bb.half_size.y(), bb.half_size.z()};
+        leaf->aabb = BvhAABB{bb.center[0], bb.center[1], bb.center[2], bb.half_size.x(), bb.half_size.y(), bb.half_size.z()};
         leaf->left = leaf->right = nullptr;
         leaves[i] = leaf;
     }
@@ -533,7 +533,7 @@ BVHNode* BVH::create_subtree(std::vector<ObjectInfo>& objects, int begin, int en
         BVHNode* node = alloc_node();
         node->object_id = objects[begin].id;
         const BoundingBox& bb = boxes[objects[begin].id];
-        node->aabb = BvhAABB{bb.center.x(), bb.center.y(), bb.center.z(),
+        node->aabb = BvhAABB{bb.center[0], bb.center[1], bb.center[2],
                              bb.half_size.x(), bb.half_size.y(), bb.half_size.z()};
         node->left = nullptr;
         node->right = nullptr;
@@ -579,9 +579,9 @@ BVHNode* BVH::create_subtree(std::vector<ObjectInfo>& objects, int begin, int en
 
 BoundingBox BVH::merge_aabb(const BoundingBox& aabb1, const BoundingBox& aabb2) {
     // Cache center and half_size components (avoid repeated method calls)
-    double c1x = aabb1.center.x(), c1y = aabb1.center.y(), c1z = aabb1.center.z();
+    double c1x = aabb1.center[0], c1y = aabb1.center[1], c1z = aabb1.center[2];
     double h1x = aabb1.half_size.x(), h1y = aabb1.half_size.y(), h1z = aabb1.half_size.z();
-    double c2x = aabb2.center.x(), c2y = aabb2.center.y(), c2z = aabb2.center.z();
+    double c2x = aabb2.center[0], c2y = aabb2.center[1], c2z = aabb2.center[2];
     double h2x = aabb2.half_size.x(), h2y = aabb2.half_size.y(), h2z = aabb2.half_size.z();
     
     // Calculate min and max corners
@@ -602,19 +602,19 @@ BoundingBox BVH::merge_aabb(const BoundingBox& aabb1, const BoundingBox& aabb2) 
 }
 
 bool BVH::aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2) {
-    double min1_x = aabb1.center.x() - aabb1.half_size.x();
-    double max1_x = aabb1.center.x() + aabb1.half_size.x();
-    double min1_y = aabb1.center.y() - aabb1.half_size.y();
-    double max1_y = aabb1.center.y() + aabb1.half_size.y();
-    double min1_z = aabb1.center.z() - aabb1.half_size.z();
-    double max1_z = aabb1.center.z() + aabb1.half_size.z();
+    double min1_x = aabb1.center[0] - aabb1.half_size.x();
+    double max1_x = aabb1.center[0] + aabb1.half_size.x();
+    double min1_y = aabb1.center[1] - aabb1.half_size.y();
+    double max1_y = aabb1.center[1] + aabb1.half_size.y();
+    double min1_z = aabb1.center[2] - aabb1.half_size.z();
+    double max1_z = aabb1.center[2] + aabb1.half_size.z();
 
-    double min2_x = aabb2.center.x() - aabb2.half_size.x();
-    double max2_x = aabb2.center.x() + aabb2.half_size.x();
-    double min2_y = aabb2.center.y() - aabb2.half_size.y();
-    double max2_y = aabb2.center.y() + aabb2.half_size.y();
-    double min2_z = aabb2.center.z() - aabb2.half_size.z();
-    double max2_z = aabb2.center.z() + aabb2.half_size.z();
+    double min2_x = aabb2.center[0] - aabb2.half_size.x();
+    double max2_x = aabb2.center[0] + aabb2.half_size.x();
+    double min2_y = aabb2.center[1] - aabb2.half_size.y();
+    double max2_y = aabb2.center[1] + aabb2.half_size.y();
+    double min2_z = aabb2.center[2] - aabb2.half_size.z();
+    double max2_z = aabb2.center[2] + aabb2.half_size.z();
 
     return (min1_x <= max2_x && max1_x >= min2_x &&
             min1_y <= max2_y && max1_y >= min2_y &&

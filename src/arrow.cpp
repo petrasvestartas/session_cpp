@@ -97,25 +97,25 @@ Mesh Arrow::create_arrow_mesh(const Line& line, double radius) {
     double body_length = length * 0.8;
 
     Point body_center(
-        start.x() + line_vec.x() * 0.4,
-        start.y() + line_vec.y() * 0.4,
-        start.z() + line_vec.z() * 0.4
+        start[0] + line_vec.x() * 0.4,
+        start[1] + line_vec.y() * 0.4,
+        start[2] + line_vec.z() * 0.4
     );
 
     Point cone_base_center(
-        start.x() + line_vec.x() * 0.9,
-        start.y() + line_vec.y() * 0.9,
-        start.z() + line_vec.z() * 0.9
+        start[0] + line_vec.x() * 0.9,
+        start[1] + line_vec.y() * 0.9,
+        start[2] + line_vec.z() * 0.9
     );
 
     Xform body_scale = Xform::scale_xyz(radius * 2.0, radius * 2.0, body_length);
     Point origin(0.0, 0.0, 0.0);
     Xform rotation = Xform::change_basis(origin, x_axis, y_axis, z_axis);
-    Xform body_translation = Xform::translation(body_center.x(), body_center.y(), body_center.z());
+    Xform body_translation = Xform::translation(body_center[0], body_center[1], body_center[2]);
     Xform body_xform = body_translation * rotation * body_scale;
 
     Xform cone_scale = Xform::scale_xyz(radius * 3.0, radius * 3.0, cone_length);
-    Xform cone_translation = Xform::translation(cone_base_center.x(), cone_base_center.y(), cone_base_center.z());
+    Xform cone_translation = Xform::translation(cone_base_center[0], cone_base_center[1], cone_base_center[2]);
     Xform cone_xform = cone_translation * rotation * cone_scale;
 
     auto body_geometry = unit_cylinder_geometry();

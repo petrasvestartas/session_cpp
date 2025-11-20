@@ -56,7 +56,7 @@ int main() {
     // 1. line_line
     Point p;
     if (Intersection::line_line(l0, l1, p, Tolerance::APPROXIMATION)) {
-        std::cout << "1. line_line: " << p.x() << ", " << p.y() << ", " << p.z() << "\n";
+        std::cout << "1. line_line: " << p[0] << ", " << p[1] << ", " << p[2] << "\n";
     }
 
     // 2. line_line_parameters
@@ -74,13 +74,13 @@ int main() {
     // 4. line_plane
     Point lp;
     if (Intersection::line_plane(l0, pl0, lp)) {
-        std::cout << "4. line_plane: " << lp.x() << ", " << lp.y() << ", " << lp.z() << "\n";
+        std::cout << "4. line_plane: " << lp[0] << ", " << lp[1] << ", " << lp[2] << "\n";
     }
 
     // 5. plane_plane_plane {300.5, 565.5, -0}
     Point ppp;
     if (Intersection::plane_plane_plane(pl0, pl1, pl2, ppp)) {
-        std::cout << "5. plane_plane_plane: " << ppp.x() << ", " << ppp.y() << ", " << ppp.z() << "\n";
+        std::cout << "5. plane_plane_plane: " << ppp[0] << ", " << ppp[1] << ", " << ppp[2] << "\n";
     }
 
     // 6. ray_box
@@ -638,7 +638,7 @@ int main() {
         std::cout << "Control points:\n";
         for (int i = 0; i < curve.cv_count(); i++) {
             Point cv = curve.get_cv(i);
-            std::cout << "  CV" << i << ": (" << cv.x() << ", " << cv.y() << ", " << cv.z() << ")\n";
+            std::cout << "  CV" << i << ": (" << cv[0] << ", " << cv[1] << ", " << cv[2] << ")\n";
         }
         
         // Divide curve into 6 points
@@ -652,7 +652,7 @@ int main() {
             const Point& pt = divided_points[i];
             double t = params[i];
             std::cout << "  Point" << i << " (t=" << t << "): (" 
-                      << pt.x() << ", " << pt.y() << ", " << pt.z() << ")\n";
+                      << pt[0] << ", " << pt[1] << ", " << pt[2] << ")\n";
         }
     }
     
@@ -691,12 +691,12 @@ int main() {
             
             if (!intersection_points.empty()) {
                 sampled_points.push_back(intersection_points[0]);
-                std::cout << "  Plane at x=" << plane.origin().x() << ": ("
-                          << intersection_points[0].x() << ", "
-                          << intersection_points[0].y() << ", "
-                          << intersection_points[0].z() << ")\n";
+                std::cout << "  Plane at x=" << plane.origin()[0] << ": ("
+                          << intersection_points[0][0] << ", "
+                          << intersection_points[0][1] << ", "
+                          << intersection_points[0][2] << ")\n";
             } else {
-                std::cout << "  Plane at x=" << plane.origin().x() << ": No intersection\n";
+                std::cout << "  Plane at x=" << plane.origin()[0] << ": No intersection\n";
             }
         }
         

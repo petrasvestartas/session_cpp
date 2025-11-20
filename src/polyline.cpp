@@ -228,9 +228,9 @@ double Polyline::length_squared() const {
 Point Polyline::point_at_parameter(const Point& start, const Point& end, double t) {
     const double s = 1.0 - t;
     return Point(
-        (start.x() == end.x()) ? start.x() : static_cast<double>(s * start.x() + t * end.x()),
-        (start.y() == end.y()) ? start.y() : static_cast<double>(s * start.y() + t * end.y()),
-        (start.z() == end.z()) ? start.z() : static_cast<double>(s * start.z() + t * end.z())
+        (start[0] == end[0]) ? start[0] : static_cast<double>(s * start[0] + t * end[0]),
+        (start[1] == end[1]) ? start[1] : static_cast<double>(s * start[1] + t * end[1]),
+        (start[2] == end[2]) ? start[2] : static_cast<double>(s * start[2] + t * end[2])
     );
 }
 
@@ -283,15 +283,15 @@ void Polyline::line_line_average(const Point& line0_start, const Point& line0_en
                                 const Point& line1_start, const Point& line1_end,
                                 Point& output_start, Point& output_end) {
     output_start = Point(
-        (line0_start.x() + line1_start.x()) * 0.5,
-        (line0_start.y() + line1_start.y()) * 0.5,
-        (line0_start.z() + line1_start.z()) * 0.5
+        (line0_start[0] + line1_start[0]) * 0.5,
+        (line0_start[1] + line1_start[1]) * 0.5,
+        (line0_start[2] + line1_start[2]) * 0.5
     );
     
     output_end = Point(
-        (line0_end.x() + line1_end.x()) * 0.5,
-        (line0_end.y() + line1_end.y()) * 0.5,
-        (line0_end.z() + line1_end.z()) * 0.5
+        (line0_end[0] + line1_end[0]) * 0.5,
+        (line0_end[1] + line1_end[1]) * 0.5,
+        (line0_end[2] + line1_end[2]) * 0.5
     );
 }
 
@@ -307,25 +307,25 @@ void Polyline::line_line_overlap_average(const Point& line0_start, const Point& 
 
     // Construct middle lines, in case the first one is flipped
     Point mid_line0_start(
-        (lineA_start.x() + lineB_start.x()) * 0.5,
-        (lineA_start.y() + lineB_start.y()) * 0.5,
-        (lineA_start.z() + lineB_start.z()) * 0.5
+        (lineA_start[0] + lineB_start[0]) * 0.5,
+        (lineA_start[1] + lineB_start[1]) * 0.5,
+        (lineA_start[2] + lineB_start[2]) * 0.5
     );
     Point mid_line0_end(
-        (lineA_end.x() + lineB_end.x()) * 0.5,
-        (lineA_end.y() + lineB_end.y()) * 0.5,
-        (lineA_end.z() + lineB_end.z()) * 0.5
+        (lineA_end[0] + lineB_end[0]) * 0.5,
+        (lineA_end[1] + lineB_end[1]) * 0.5,
+        (lineA_end[2] + lineB_end[2]) * 0.5
     );
     
     Point mid_line1_start(
-        (lineA_start.x() + lineB_end.x()) * 0.5,
-        (lineA_start.y() + lineB_end.y()) * 0.5,
-        (lineA_start.z() + lineB_end.z()) * 0.5
+        (lineA_start[0] + lineB_end[0]) * 0.5,
+        (lineA_start[1] + lineB_end[1]) * 0.5,
+        (lineA_start[2] + lineB_end[2]) * 0.5
     );
     Point mid_line1_end(
-        (lineA_end.x() + lineB_start.x()) * 0.5,
-        (lineA_end.y() + lineB_start.y()) * 0.5,
-        (lineA_end.z() + lineB_start.z()) * 0.5
+        (lineA_end[0] + lineB_start[0]) * 0.5,
+        (lineA_end[1] + lineB_start[1]) * 0.5,
+        (lineA_end[2] + lineB_start[2]) * 0.5
     );
 
     // The diagonal is always longer, so return the longer
@@ -406,9 +406,9 @@ Point Polyline::center() const {
     size_t n = is_closed() ? points.size() - 1 : points.size();
 
     for (size_t i = 0; i < n; i++) {
-        x += points[i].x();
-        y += points[i].y();
-        z += points[i].z();
+        x += points[i][0];
+        y += points[i][1];
+        z += points[i][2];
     }
     
     x /= n;
@@ -420,7 +420,7 @@ Point Polyline::center() const {
 
 Vector Polyline::center_vec() const {
     Point c = center();
-    return Vector(c.x(), c.y(), c.z());
+    return Vector(c[0], c[1], c[2]);
 }
 
 void Polyline::get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const {
@@ -463,15 +463,15 @@ void Polyline::get_middle_line(const Point& line0_start, const Point& line0_end,
                               const Point& line1_start, const Point& line1_end,
                               Point& output_start, Point& output_end) {
     output_start = Point(
-        (line0_start.x() + line1_start.x()) * 0.5,
-        (line0_start.y() + line1_start.y()) * 0.5,
-        (line0_start.z() + line1_start.z()) * 0.5
+        (line0_start[0] + line1_start[0]) * 0.5,
+        (line0_start[1] + line1_start[1]) * 0.5,
+        (line0_start[2] + line1_start[2]) * 0.5
     );
 
     output_end = Point(
-        (line0_end.x() + line1_end.x()) * 0.5,
-        (line0_end.y() + line1_end.y()) * 0.5,
-        (line0_end.z() + line1_end.z()) * 0.5
+        (line0_end[0] + line1_end[0]) * 0.5,
+        (line0_end[1] + line1_end[1]) * 0.5,
+        (line0_end[2] + line1_end[2]) * 0.5
     );
 }
 
@@ -573,8 +573,8 @@ bool Polyline::is_clockwise(const Plane& pln) const {
     // Calculate signed area (shoelace formula)
     double signed_area = 0.0;
     for (size_t i = 0; i < cp.points.size() - 1; i++) {
-        signed_area += (cp.points[i + 1].x() - cp.points[i].x()) * 
-                      (cp.points[i + 1].y() + cp.points[i].y());
+        signed_area += (cp.points[i + 1][0] - cp.points[i][0]) * 
+                      (cp.points[i + 1][1] + cp.points[i][1]);
     }
 
     return signed_area > 0;

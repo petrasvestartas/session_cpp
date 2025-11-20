@@ -180,8 +180,8 @@ int Intersection::solve_3x3(
 }
 
 double Intersection::plane_value_at(const Plane& plane, const Point& point) {
-    return plane.a() * point.x() + plane.b() * point.y() + 
-           plane.c() * point.z() + plane.d();
+    return plane.a() * point[0] + plane.b() * point[1] + 
+           plane.c() * point[2] + plane.d();
 }
 
 bool Intersection::line_line(
@@ -199,9 +199,9 @@ bool Intersection::line_line(
         Point p0 = line0.point_at(t0);
         Point p1 = line1.point_at(t1);
         output = Point(
-            (p0.x() + p1.x()) * 0.5,
-            (p0.y() + p1.y()) * 0.5,
-            (p0.z() + p1.z()) * 0.5
+            (p0[0] + p1[0]) * 0.5,
+            (p0[1] + p1[1]) * 0.5,
+            (p0[2] + p1[2]) * 0.5
         );
     }
     
@@ -223,22 +223,22 @@ bool Intersection::line_line_parameters(
     Point p1_start = line1.start();
     Point p1_end = line1.end();
     
-    if (p0_start.x() == p1_start.x() && p0_start.y() == p1_start.y() && p0_start.z() == p1_start.z()) {
+    if (p0_start[0] == p1_start[0] && p0_start[1] == p1_start[1] && p0_start[2] == p1_start[2]) {
         t0 = 0.0;
         t1 = 0.0;
         return true;
     }
-    if (p0_start.x() == p1_end.x() && p0_start.y() == p1_end.y() && p0_start.z() == p1_end.z()) {
+    if (p0_start[0] == p1_end[0] && p0_start[1] == p1_end[1] && p0_start[2] == p1_end[2]) {
         t0 = 0.0;
         t1 = 1.0;
         return true;
     }
-    if (p0_end.x() == p1_start.x() && p0_end.y() == p1_start.y() && p0_end.z() == p1_start.z()) {
+    if (p0_end[0] == p1_start[0] && p0_end[1] == p1_start[1] && p0_end[2] == p1_start[2]) {
         t0 = 1.0;
         t1 = 0.0;
         return true;
     }
-    if (p0_end.x() == p1_end.x() && p0_end.y() == p1_end.y() && p0_end.z() == p1_end.z()) {
+    if (p0_end[0] == p1_end[0] && p0_end[1] == p1_end[1] && p0_end[2] == p1_end[2]) {
         t0 = 1.0;
         t1 = 1.0;
         return true;
@@ -248,9 +248,9 @@ bool Intersection::line_line_parameters(
     Vector A = line0.to_vector();
     Vector B = line1.to_vector();
     Vector C(
-        p1_start.x() - p0_start.x(),
-        p1_start.y() - p0_start.y(),
-        p1_start.z() - p0_start.z()
+        p1_start[0] - p0_start[0],
+        p1_start[1] - p0_start[1],
+        p1_start[2] - p0_start[2]
     );
     
     double AA = A.dot(A);
@@ -320,9 +320,9 @@ bool Intersection::plane_plane(
     Vector d = plane1.z_axis().cross(plane0.z_axis());
     
     Point p = Point(
-        (plane0.origin().x() + plane1.origin().x()) * 0.5,
-        (plane0.origin().y() + plane1.origin().y()) * 0.5,
-        (plane0.origin().z() + plane1.origin().z()) * 0.5
+        (plane0.origin()[0] + plane1.origin()[0]) * 0.5,
+        (plane0.origin()[1] + plane1.origin()[1]) * 0.5,
+        (plane0.origin()[2] + plane1.origin()[2]) * 0.5
     );
     
     Plane plane2 = Plane::from_point_normal(p, d);
@@ -334,9 +334,9 @@ bool Intersection::plane_plane(
     }
     
     output = Line::from_points(output_p, Point(
-        output_p.x() + d.x(),
-        output_p.y() + d.y(),
-        output_p.z() + d.z()
+        output_p[0] + d.x(),
+        output_p[1] + d.y(),
+        output_p[2] + d.z()
     ));
     
     return true;
@@ -432,20 +432,20 @@ bool Intersection::ray_box(
         (direction.z() != 0.0) ? 1.0 / direction.z() : std::numeric_limits<double>::max()
     );
     
-    double tx1 = (box_min.x() - origin.x()) * inv_dir.x();
-    double tx2 = (box_max.x() - origin.x()) * inv_dir.x();
+    double tx1 = (box_min[0] - origin[0]) * inv_dir.x();
+    double tx2 = (box_max[0] - origin[0]) * inv_dir.x();
     
     tmin = std::min(tx1, tx2);
     tmax = std::max(tx1, tx2);
     
-    double ty1 = (box_min.y() - origin.y()) * inv_dir.y();
-    double ty2 = (box_max.y() - origin.y()) * inv_dir.y();
+    double ty1 = (box_min[1] - origin[1]) * inv_dir.y();
+    double ty2 = (box_max[1] - origin[1]) * inv_dir.y();
     
     tmin = std::max(tmin, std::min(ty1, ty2));
     tmax = std::min(tmax, std::max(ty1, ty2));
     
-    double tz1 = (box_min.z() - origin.z()) * inv_dir.z();
-    double tz2 = (box_max.z() - origin.z()) * inv_dir.z();
+    double tz1 = (box_min[2] - origin[2]) * inv_dir.z();
+    double tz2 = (box_max[2] - origin[2]) * inv_dir.z();
     
     tmin = std::max(tmin, std::min(tz1, tz2));
     tmax = std::min(tmax, std::max(tz1, tz2));
@@ -488,17 +488,17 @@ bool Intersection::ray_box(
         
         // Entry point
         Point entry(
-            origin.x() + direction.x() * tmin,
-            origin.y() + direction.y() * tmin,
-            origin.z() + direction.z() * tmin
+            origin[0] + direction.x() * tmin,
+            origin[1] + direction.y() * tmin,
+            origin[2] + direction.z() * tmin
         );
         intersection_points.push_back(entry);
         
         // Exit point
         Point exit(
-            origin.x() + direction.x() * tmax,
-            origin.y() + direction.y() * tmax,
-            origin.z() + direction.z() * tmax
+            origin[0] + direction.x() * tmax,
+            origin[1] + direction.y() * tmax,
+            origin[2] + direction.z() * tmax
         );
         intersection_points.push_back(exit);
     }
@@ -515,9 +515,9 @@ int Intersection::ray_sphere(
     double& t1) {
     
     Vector o(
-        origin.x() - center.x(),
-        origin.y() - center.y(),
-        origin.z() - center.z()
+        origin[0] - center[0],
+        origin[1] - center[1],
+        origin[2] - center[2]
     );
     
     double a = direction.dot(direction);
@@ -574,18 +574,18 @@ bool Intersection::ray_sphere(
     
     // First intersection point
     Point p0(
-        origin.x() + direction.x() * t0,
-        origin.y() + direction.y() * t0,
-        origin.z() + direction.z() * t0
+        origin[0] + direction.x() * t0,
+        origin[1] + direction.y() * t0,
+        origin[2] + direction.z() * t0
     );
     intersection_points.push_back(p0);
     
     // Second intersection point (if exists)
     if (hits == 2) {
         Point p1(
-            origin.x() + direction.x() * t1,
-            origin.y() + direction.y() * t1,
-            origin.z() + direction.z() * t1
+            origin[0] + direction.x() * t1,
+            origin[1] + direction.y() * t1,
+            origin[2] + direction.z() * t1
         );
         intersection_points.push_back(p1);
     }
@@ -605,8 +605,8 @@ bool Intersection::ray_triangle(
     double& v,
     bool& parallel) {
     
-    Vector edge1(v1.x() - v0.x(), v1.y() - v0.y(), v1.z() - v0.z());
-    Vector edge2(v2.x() - v0.x(), v2.y() - v0.y(), v2.z() - v0.z());
+    Vector edge1(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]);
+    Vector edge2(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]);
     Vector pvec = direction.cross(edge2);
     
     double det = edge1.dot(pvec);
@@ -619,7 +619,7 @@ bool Intersection::ray_triangle(
     parallel = false;
     double inv_det = 1.0 / det;
     
-    Vector tvec(origin.x() - v0.x(), origin.y() - v0.y(), origin.z() - v0.z());
+    Vector tvec(origin[0] - v0[0], origin[1] - v0[1], origin[2] - v0[2]);
     u = tvec.dot(pvec) * inv_det;
     
     if (u < 0.0 - epsilon || u > 1.0 + epsilon) {
@@ -657,9 +657,9 @@ bool Intersection::ray_triangle(
     
     // Calculate intersection point: origin + t * direction
     output = Point(
-        origin.x() + t * direction.x(),
-        origin.y() + t * direction.y(),
-        origin.z() + t * direction.z()
+        origin[0] + t * direction.x(),
+        origin[1] + t * direction.y(),
+        origin[2] + t * direction.z()
     );
     
     return true;
@@ -695,9 +695,9 @@ bool Intersection::ray_mesh(
                 
                 if (t >= 0.0) {
                     Point hit_point(
-                        origin.x() + t * direction.x(),
-                        origin.y() + t * direction.y(),
-                        origin.z() + t * direction.z()
+                        origin[0] + t * direction.x(),
+                        origin[1] + t * direction.y(),
+                        origin[2] + t * direction.z()
                     );
                     
                     hits.emplace_back(t, hit_point, u, v, static_cast<int>(i));
@@ -759,9 +759,9 @@ bool Intersection::ray_mesh_bvh(
                        t, u, v, parallel)) {
             if (t >= 0.0) {
                 Point hit_point(
-                    origin.x() + t * direction.x(),
-                    origin.y() + t * direction.y(),
-                    origin.z() + t * direction.z()
+                    origin[0] + t * direction.x(),
+                    origin[1] + t * direction.y(),
+                    origin[2] + t * direction.z()
                 );
                 if (find_all) {
                     hits.emplace_back(t, hit_point, u, v, static_cast<int>(face_idx));

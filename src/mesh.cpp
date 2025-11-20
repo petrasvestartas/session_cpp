@@ -205,8 +205,8 @@ std::optional<Vector> Mesh::face_normal(size_t face_key) const {
     const auto& p1 = *p1_opt;
     const auto& p2 = *p2_opt;
     
-    Vector u(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
-    Vector v(p2.x() - p0.x(), p2.y() - p0.y(), p2.z() - p0.z());
+    Vector u(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
     
     Vector normal = u.cross(v);
     double len = normal.magnitude();
@@ -280,8 +280,8 @@ std::optional<double> Mesh::face_area(size_t face_key) const {
         const auto& p1 = *p1_opt;
         const auto& p2 = *p2_opt;
         
-        Vector u(p1.x() - p0.x(), p1.y() - p0.y(), p1.z() - p0.z());
-        Vector v(p2.x() - p0.x(), p2.y() - p0.y(), p2.z() - p0.z());
+        Vector u(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+        Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
         
         area += u.cross(v).magnitude() * 0.5;
     }
@@ -311,8 +311,8 @@ std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_
     const auto& prev_pos = *prev_opt;
     const auto& next_pos = *next_opt;
     
-    Vector u(prev_pos.x() - center.x(), prev_pos.y() - center.y(), prev_pos.z() - center.z());
-    Vector v(next_pos.x() - center.x(), next_pos.y() - center.y(), next_pos.z() - center.z());
+    Vector u(prev_pos[0] - center[0], prev_pos[1] - center[1], prev_pos[2] - center[2]);
+    Vector v(next_pos[0] - center[0], next_pos[1] - center[1], next_pos[2] - center[2]);
     
     double u_len = u.magnitude();
     double v_len = v.magnitude();
@@ -361,9 +361,9 @@ Mesh Mesh::from_polygons(const std::vector<std::vector<Point>>& polygons, std::o
     auto get_vkey = [&](const Point& p) -> size_t {
         if (precision.has_value()) {
             double eps = *precision;
-            int64_t kx = static_cast<int64_t>(std::round(p.x() / eps));
-            int64_t ky = static_cast<int64_t>(std::round(p.y() / eps));
-            int64_t kz = static_cast<int64_t>(std::round(p.z() / eps));
+            int64_t kx = static_cast<int64_t>(std::round(p[0] / eps));
+            int64_t ky = static_cast<int64_t>(std::round(p[1] / eps));
+            int64_t kz = static_cast<int64_t>(std::round(p[2] / eps));
             auto key = std::make_tuple(kx, ky, kz);
             
             auto it = map_eps.find(key);
@@ -375,7 +375,7 @@ Mesh Mesh::from_polygons(const std::vector<std::vector<Point>>& polygons, std::o
             return vk;
         } else {
             union { double f; uint64_t i; } ux, uy, uz;
-            ux.f = p.x(); uy.f = p.y(); uz.f = p.z();
+            ux.f = p[0]; uy.f = p[1]; uz.f = p[2];
             auto key = std::make_tuple(ux.i, uy.i, uz.i);
             
             auto it = map_exact.find(key);
@@ -452,9 +452,9 @@ void Mesh::transform() {
   for (auto& [idx, vdata] : vertex) {
     Point pt(vdata.x, vdata.y, vdata.z);
     xform.transform_point(pt);
-    vdata.x = pt.x();
-    vdata.y = pt.y();
-    vdata.z = pt.z();
+    vdata.x = pt[0];
+    vdata.y = pt[1];
+    vdata.z = pt[2];
   }
   xform = Xform::identity();
   triangle_bvh_built = false;
@@ -685,12 +685,12 @@ void Mesh::build_triangle_bvh(bool force) const {
             const Point& p1 = vertices_cache[t.i1];
             const Point& p2 = vertices_cache[t.i2];
 
-            double min_x = std::min({p0.x(), p1.x(), p2.x()}) - 0.001;
-            double min_y = std::min({p0.y(), p1.y(), p2.y()}) - 0.001;
-            double min_z = std::min({p0.z(), p1.z(), p2.z()}) - 0.001;
-            double max_x = std::max({p0.x(), p1.x(), p2.x()}) + 0.001;
-            double max_y = std::max({p0.y(), p1.y(), p2.y()}) + 0.001;
-            double max_z = std::max({p0.z(), p1.z(), p2.z()}) + 0.001;
+            double min_x = std::min(std::min(p0[0], p1[0]), p2[0]) - 0.001;
+            double min_y = std::min(std::min(p0[1], p1[1]), p2[1]) - 0.001;
+            double min_z = std::min(std::min(p0[2], p1[2]), p2[2]) - 0.001;
+            double max_x = std::max(std::max(p0[0], p1[0]), p2[0]) + 0.001;
+            double max_y = std::max(std::max(p0[1], p1[1]), p2[1]) + 0.001;
+            double max_z = std::max(std::max(p0[2], p1[2]), p2[2]) + 0.001;
 
             double cx = (min_x + max_x) * 0.5;
             double cy = (min_y + max_y) * 0.5;
