@@ -244,7 +244,7 @@ function(LINK_PROTOBUF_LIBRARIES target_name)
 endfunction()
 
     # Register proto files from session_proto directory
-    file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../session_proto/*.proto")
+    file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/session_proto/*.proto")
     foreach(PROTO_FILE ${PROTO_FILES})
         append_proto_file(${PROTO_FILE})
     endforeach()
