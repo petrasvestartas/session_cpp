@@ -6,7 +6,7 @@
  using namespace session_cpp;
  using namespace session_cpp::mini_test;
 
- MINI_TEST(Color, json_roundtrip) {
+ MINI_TEST("Color", "json_roundtrip") {
    Color original(100, 150, 200, 255);
    original.name = "test_color";
 

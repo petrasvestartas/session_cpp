@@ -23,7 +23,7 @@ public:
   std::string guid = ::guid();       ///< Unique identifier for the point
   std::string name = "my_point";     ///< Point identifier/name
   double width = 1.0;                ///< Point diameter in pixels
-  Color pointcolor = Color::white(); ///< Color of the point (default: white)
+  Color pointcolor = Color::blue();  ///< Color of the point (default: blue)
   Xform xform = Xform::identity();   ///< Transformation matrix
 
 private:
@@ -42,12 +42,19 @@ public:
   Point(double x, double y, double z) : _x(x), _y(y), _z(z) {}
   Point() : _x(0.0), _y(0.0), _z(0.0) {}
 
+  /// Copy constructor (creates a new guid while copying data)
+  Point(const Point &other);
+
+  /// Copy assignment (creates a new guid while copying data)
+  Point &operator=(const Point &other);
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Operators - const because they oinly read values, dont modify them
   ///////////////////////////////////////////////////////////////////////////////////////////
 
   /// Convert point to string representation
-  std::string to_string() const;
+  std::string str() const;    ///< simple coordinate string (like Python str)
+  std::string repr() const;   ///< detailed representation (like Python repr)
 
   /// Equality operator
   bool operator==(const Point &other) const;
@@ -173,12 +180,3 @@ public:
 std::ostream &operator<<(std::ostream &os, const Point &point);
 
 } // namespace session_cpp
-
-// fmt formatter specialization for Point - enables direct fmt::print(point)
-template <> struct fmt::formatter<session_cpp::Point> {
-  constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
-
-  auto format(const session_cpp::Point &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
-  }
-};

@@ -3,10 +3,53 @@
 
 namespace session_cpp {
 
-/// Convert point to string representation
-std::string Point::to_string() const {
-  return fmt::format("Point({}, {}, {}, {}, {}, {})", _x, _y, _z, name,
-                     pointcolor.to_string(), width);
+/// Simple string form (like Python __str__): just coordinates
+std::string Point::str() const {
+  int prec = static_cast<int>(Tolerance::ROUNDING);
+  return fmt::format(
+      "{}, {}, {}",
+      TOL.format_number(_x, prec),
+      TOL.format_number(_y, prec),
+      TOL.format_number(_z, prec));
+}
+
+/// Detailed representation (like Python __repr__)
+std::string Point::repr() const {
+  int prec = static_cast<int>(Tolerance::ROUNDING);
+  return fmt::format(
+      "Point({}, {}, {}, {}, Color({}, {}, {}, {}), {})",
+      name,
+      TOL.format_number(_x, prec),
+      TOL.format_number(_y, prec),
+      TOL.format_number(_z, prec),
+      pointcolor.r, pointcolor.g, pointcolor.b, pointcolor.a,
+      TOL.format_number(width, prec));
+}
+
+/// Copy constructor (creates a new guid while copying data)
+Point::Point(const Point &other)
+    : guid(::guid()),
+      name(other.name),
+      width(other.width),
+      pointcolor(other.pointcolor),
+      xform(other.xform),
+      _x(other._x),
+      _y(other._y),
+      _z(other._z) {}
+
+/// Copy assignment (creates a new guid while copying data)
+Point &Point::operator=(const Point &other) {
+  if (this != &other) {
+    guid = ::guid();
+    name = other.name;
+    width = other.width;
+    pointcolor = other.pointcolor;
+    xform = other.xform;
+    _x = other._x;
+    _y = other._y;
+    _z = other._z;
+  }
+  return *this;
 }
 
 /// Equality operator
@@ -225,9 +268,7 @@ Point Point::centroid_quad(const std::vector<Point>& vertices) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Point &point) {
-  return os << fmt::format("Point({}, {}, {})", 
-                           TOL.format_number(point[0]), 
-                           TOL.format_number(point[1]), 
-                           TOL.format_number(point[2]));
+  // Delegate to to_str() for human-readable output
+  return os << point.str();
 }
 } // namespace session_cpp

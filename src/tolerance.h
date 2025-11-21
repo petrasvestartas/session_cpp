@@ -30,6 +30,7 @@ public:
     static constexpr double ANGULARDEFLECTION = 1e-1;
     static constexpr double ANGLE_TOLERANCE_DEGREES = 0.11;
     static constexpr double ZERO_TOLERANCE = 1e-12;
+    static constexpr double ROUNDING = 6;
 
 private:
     std::string _unit;

@@ -45,14 +45,20 @@ void record_check(bool passed, int line, const char *expr_text);
 void run_all(const std::string &language = "cpp");
 
 // Macros for defining tests and checks
-#define MINI_TEST(GROUP, NAME)                                                   \
-  static void mini_test_fn_##GROUP##_##NAME();                                  \
-  static bool mini_test_reg_##GROUP##_##NAME = []() {                           \
-    ::session_cpp::mini_test::register_test(#GROUP, #NAME, __FILE__, __LINE__,  \
-                                            mini_test_fn_##GROUP##_##NAME);     \
+// C++ version: use string literals for group and name, similar to Python
+// MINI_TEST("Point", "constructor") {
+//   ...
+// }
+// We generate a unique internal function name using __LINE__.
+#define MINI_TEST(GROUP_STR, NAME_STR)                                           \
+  static void mini_test_fn_line_##__LINE__();                                   \
+  static bool mini_test_reg_line_##__LINE__ = []() {                            \
+    ::session_cpp::mini_test::register_test(GROUP_STR, NAME_STR, __FILE__,      \
+                                            __LINE__,                           \
+                                            mini_test_fn_line_##__LINE__);      \
     return true;                                                                \
   }();                                                                          \
-  static void mini_test_fn_##GROUP##_##NAME()
+  static void mini_test_fn_line_##__LINE__()
 
 #define MINI_CHECK(EXPR)                                                         \
   do {                                                                          \

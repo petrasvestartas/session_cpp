@@ -148,7 +148,7 @@ Plane Plane::xz_plane() {
 
 std::string Plane::to_string() const {
     return fmt::format("Plane(origin={}, x_axis={}, y_axis={}, z_axis={}, guid={}, name={})",
-                       _origin.to_string(), _x_axis.to_string(), _y_axis.to_string(),
+                       _origin.str(), _x_axis.to_string(), _y_axis.to_string(),
                        _z_axis.to_string(), guid, name);
 }
 
