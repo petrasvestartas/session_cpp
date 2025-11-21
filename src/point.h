@@ -130,6 +130,8 @@ public:
    */
   static bool ccw(const Point& a, const Point& b, const Point& c);
 
+  static bool is_ccw(const Point& a, const Point& b, const Point& c);
+
   /**
    * @brief Calculate the mid point between this point and another point.
    * 
@@ -137,6 +139,8 @@ public:
    * @return The mid point between this point and the other point.
    */
   Point mid_point(const Point& p) const;
+
+  static Point mid_point(const Point& a, const Point& b);
 
   /**
    * @brief Calculate the distance between this point and another point.
@@ -146,6 +150,12 @@ public:
    * @return The distance between this point and the other point.
    */
   double distance(const Point& p, double float_min = 1e-12) const;
+
+  static double distance(const Point& a, const Point& b, double float_min = 1e-12);
+
+  double squared_distance(const Point& p, double float_min = 1e-12) const;
+
+  static double squared_distance(const Point& a, const Point& b, double float_min = 1e-12);
 
   /**
    * @brief Calculate the area of a polygon.

@@ -2,6 +2,11 @@
 #include "point.h"
 #include "color.h"
 #include "xform.h"
+#include "tolerance.h"
+#include "encoders.h"
+
+#include <cmath>
+#include <filesystem>
 
 using namespace session_cpp::mini_test;
 
@@ -25,7 +30,7 @@ namespace session_cpp {
         double y = p[1];
         double z = p[2];
 
-        // String representation
+        // Minimal and Full String Representation
         std::string pstr = p.str(); 
         std::string prepr = p.repr();
 
@@ -76,6 +81,123 @@ namespace session_cpp {
         MINI_CHECK(result_add[0] == 11.0 && result_add[1] == 21.0 && result_add[2] == 31.0);
         MINI_CHECK(diff_point[0] == 9.0 && diff_point[1] == 19.0 && diff_point[2] == 29.0);
     }
+
+    MINI_TEST("Point", "transformation") {
+        // uncomment #include "point.h"
+        // uncomment #include "xform.h"
+
+        Point p(1.0, 2.0, 3.0);
+        p.xform = Xform::translation(1.0, 2.0, 3.0);
+        Point p_transformed = p.transformed(); // Make a copy
+        p.transform(); // After the call, "xform" is reset
+
+        MINI_CHECK(p_transformed[0] == 2.0 && p_transformed[1] == 4.0 && p_transformed[2] == 6.0);
+        MINI_CHECK(p[0] == 2.0 && p[1] == 4.0 && p[2] == 6.0);
+        MINI_CHECK(p.xform == Xform::identity());
+    }
+
+    MINI_TEST("Point", "is_ccw") {
+        // Points must be oriented to xy plane.
+
+        Point p0(0.0, 0.0, 0.0);
+        Point p1(1.0, 0.0, 0.0);
+        Point p2(0.05, 1.0, 0.0);
+
+        // Points must be oriented to xy plane.
+        bool is_counter_clock_wise = Point::is_ccw(p0, p1, p2);
+        bool is_clock_wise = Point::is_ccw(p2, p1, p0);
+
+        MINI_CHECK(is_counter_clock_wise);
+        MINI_CHECK(!is_clock_wise);
+    }
+
+    MINI_TEST("Point", "mid_point") {
+        // uncomment #include "point.h"
+
+        Point p0(0.0, 2.0, 1.0);
+        Point p1(1.0, 5.0, 3.0);
+        Point mid = Point::mid_point(p0, p1);
+
+        MINI_CHECK(mid[0] == 0.5 && mid[1] == 3.5 && mid[2] == 2.0);
+    }
+
+    MINI_TEST("Point", "distance") {
+
+        Point p0(0.0, 2.0, 1.0);
+        Point p1(1.0, 5.0, 3.0);
+
+        double factor = std::pow(10.0, static_cast<int>(Tolerance::ROUNDING));
+        double d = std::round(Point::distance(p0, p1) * factor) / factor;
+
+        MINI_CHECK(d == 3.741657);
+    }
+
+    MINI_TEST("Point", "squared_distance") {
+
+        Point p0(0.0, 2.0, 1.0);
+        Point p1(1.0, 5.0, 3.0);
+
+        double factor = std::pow(10.0, static_cast<int>(Tolerance::ROUNDING));
+        double d = std::round(Point::squared_distance(p0, p1) * factor) / factor;
+
+        MINI_CHECK(d == 14.0);
+    }
+
+    MINI_TEST("Point", "area") {
+
+        Point p0(0.0, 0.0, 0.0);
+        Point p1(2.0, 0.0, 0.0);
+        Point p2(2.0, 2.0, 0.0);
+        Point p3(0.0, 2.0, 0.0);
+
+        std::vector<Point> pts{p0, p1, p2, p3};
+        double area = Point::area(pts);
+
+        MINI_CHECK(area == 4.0);
+    }
+
+    MINI_TEST("Point", "centroid_quad") {
+
+        Point p0(0.0, 0.0, 0.0);
+        Point p1(2.0, 0.0, 1.0);
+        Point p2(2.0, 2.0, 2.0);
+        Point p3(0.0, 2.0, 1.0);
+
+        std::vector<Point> pts{p0, p1, p2, p3};
+        Point centroid = Point::centroid_quad(pts);
+
+        double factor = std::pow(10.0, static_cast<int>(Tolerance::ROUNDING));
+        double x = std::round(centroid[0] * factor) / factor;
+        double y = std::round(centroid[1] * factor) / factor;
+        double z = std::round(centroid[2] * factor) / factor;
+
+        MINI_CHECK(x == 1.0 && y == 1.0 && z == 1.0);
+    }
+
+    MINI_TEST("Point", "json_roundtrip") {
+
+        Point p(1.5, 2.5, 3.5);
+        p.name = "test_point";
+        p.width = 2.0;
+        p.pointcolor = Color(255, 128, 64, 255);
+
+        std::string filename = "test_point_cpp.json";
+        encoders::json_dump(p, filename);
+        Point loaded = encoders::json_load<Point>(filename);
+
+        MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded[0] == p[0]);
+        MINI_CHECK(loaded[1] == p[1]);
+        MINI_CHECK(loaded[2] == p[2]);
+        MINI_CHECK(loaded.width == p.width);
+        MINI_CHECK(loaded.pointcolor.r == 255);
+        MINI_CHECK(loaded.pointcolor.g == 128);
+        MINI_CHECK(loaded.pointcolor.b == 64);
+        MINI_CHECK(loaded.pointcolor.a == 255);
+
+        std::filesystem::remove(filename);
+    }
+
 }
 
 int main() {

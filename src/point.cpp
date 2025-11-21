@@ -193,8 +193,16 @@ bool Point::ccw(const Point& a, const Point& b, const Point& c) {
     return (c._y - a._y) * (b._x - a._x) > (b._y - a._y) * (c._x - a._x);
 }
 
+bool Point::is_ccw(const Point& a, const Point& b, const Point& c) {
+    return ccw(a, b, c);
+}
+
 Point Point::mid_point(const Point& p) const {
     return Point((_x + p._x) / 2, (_y + p._y) / 2, (_z + p._z) / 2);
+}
+
+Point Point::mid_point(const Point& a, const Point& b) {
+    return a.mid_point(b);
 }
 
 double Point::distance(const Point& p, double float_min) const {
@@ -221,6 +229,39 @@ double Point::distance(const Point& p, double float_min) const {
     }
 
     return length;
+}
+
+double Point::squared_distance(const Point& p, double float_min) const {
+    double dx = std::abs((*this)[0] - p[0]);
+    double dy = std::abs((*this)[1] - p[1]);
+    double dz = std::abs((*this)[2] - p[2]);
+    double length2 = 0.0;
+
+    if (dy >= dx && dy >= dz) {
+        std::swap(dx, dy);
+    } else if (dz >= dx && dz >= dy) {
+        std::swap(dx, dz);
+    }
+
+    if (dx > float_min) {
+        dy /= dx;
+        dz /= dx;
+        length2 = dx * dx * (1.0 + dy * dy + dz * dz);
+    } else if (dx > 0.0 && std::isfinite(dx)) {
+        length2 = dx * dx;
+    } else {
+        length2 = 0.0;
+    }
+
+    return length2;
+}
+
+double Point::distance(const Point& a, const Point& b, double float_min) {
+    return a.distance(b, float_min);
+}
+
+double Point::squared_distance(const Point& a, const Point& b, double float_min) {
+    return a.squared_distance(b, float_min);
 }
 
 double Point::area(const std::vector<Point>& points) {

@@ -50,15 +50,18 @@ void run_all(const std::string &language = "cpp");
 //   ...
 // }
 // We generate a unique internal function name using __LINE__.
+#define MINI_TEST_CONCAT_INTERNAL(a, b) a##b
+#define MINI_TEST_CONCAT(a, b) MINI_TEST_CONCAT_INTERNAL(a, b)
 #define MINI_TEST(GROUP_STR, NAME_STR)                                           \
-  static void mini_test_fn_line_##__LINE__();                                   \
-  static bool mini_test_reg_line_##__LINE__ = []() {                            \
+  static void MINI_TEST_CONCAT(mini_test_fn_line_, __LINE__)();                  \
+  static bool MINI_TEST_CONCAT(mini_test_reg_line_, __LINE__) = []() {           \
     ::session_cpp::mini_test::register_test(GROUP_STR, NAME_STR, __FILE__,      \
                                             __LINE__,                           \
-                                            mini_test_fn_line_##__LINE__);      \
+                                            MINI_TEST_CONCAT(mini_test_fn_line_,\
+                                                             __LINE__));        \
     return true;                                                                \
   }();                                                                          \
-  static void mini_test_fn_line_##__LINE__()
+  static void MINI_TEST_CONCAT(mini_test_fn_line_, __LINE__)()
 
 #define MINI_CHECK(EXPR)                                                         \
   do {                                                                          \
