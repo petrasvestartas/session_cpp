@@ -6,7 +6,7 @@
 using namespace session_cpp::mini_test;
 
 
-MINI_TEST("Point", "constructor, setters, getters, string, copy, operators") {
+MINI_TEST("Point", "constructor") {
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
     // uncomment #include "color.h"
