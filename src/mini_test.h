@@ -40,7 +40,8 @@ public:
 void register_test(const std::string &group, const std::string &test_name,
                    const char *file, int line, TestFunc func);
 
-void record_check(bool passed, int line, const char *expr_text);
+void record_check(bool passed, int line, const char *expr_text,
+                  std::chrono::high_resolution_clock::time_point check_start);
 
 void run_all(const std::string &language = "cpp");
 
@@ -65,8 +66,9 @@ void run_all(const std::string &language = "cpp");
 
 #define MINI_CHECK(EXPR)                                                         \
   do {                                                                          \
+    auto _mt_start = std::chrono::high_resolution_clock::now();                 \
     bool _mt_passed = static_cast<bool>(EXPR);                                  \
-    ::session_cpp::mini_test::record_check(_mt_passed, __LINE__, #EXPR);        \
+    ::session_cpp::mini_test::record_check(_mt_passed, __LINE__, #EXPR, _mt_start); \
     if (!_mt_passed) {                                                          \
       throw ::session_cpp::mini_test::MiniTestAssertionError(#EXPR);            \
     }                                                                           \

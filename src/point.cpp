@@ -1,6 +1,12 @@
 #include "point.h"
 #include "tolerance.h"
 
+#ifdef ENABLE_PROTOBUF
+#include "point.pb.h"
+#include "color.pb.h"
+#include "xform.pb.h"
+#endif
+
 namespace session_cpp {
 
 /// Simple string form (like Python __str__): just coordinates
@@ -86,7 +92,8 @@ nlohmann::ordered_json Point::jsondump() const {
       {"type", "Point"}, {"guid", guid},
       {"name", name},    {"x", clean_float(_x)},
       {"y", clean_float(_y)}, {"z", clean_float(_z)},
-      {"width", width},  {"pointcolor", pointcolor.jsondump()}};
+      {"width", width},  {"pointcolor", pointcolor.jsondump()},
+      {"xform", xform.jsondump()}};
 }
 
 /// Create point from JSON data
@@ -96,8 +103,85 @@ Point Point::jsonload(const nlohmann::json &data) {
   point.name = data["name"];
   point.pointcolor = Color::jsonload(data["pointcolor"]);
   point.width = data["width"];
+  if (data.contains("xform")) {
+    point.xform = Xform::jsonload(data["xform"]);
+  }
   return point;
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Protobuf
+///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+std::string Point::to_protobuf() const {
+  session_proto::Point proto;
+  proto.set_guid(guid);
+  proto.set_name(name);
+  proto.set_x(_x);
+  proto.set_y(_y);
+  proto.set_z(_z);
+  proto.set_width(width);
+  
+  // Set color (no guid in proto schema)
+  auto* color_proto = proto.mutable_pointcolor();
+  color_proto->set_name(pointcolor.name);
+  color_proto->set_r(pointcolor.r);
+  color_proto->set_g(pointcolor.g);
+  color_proto->set_b(pointcolor.b);
+  color_proto->set_a(pointcolor.a);
+  
+  // Set xform (uses 'matrix' not 'm', no guid in proto schema)
+  auto* xform_proto = proto.mutable_xform();
+  xform_proto->set_name(xform.name);
+  for (int i = 0; i < 16; ++i) {
+    xform_proto->add_matrix(xform.m[i]);
+  }
+  
+  return proto.SerializeAsString();
+}
+
+Point Point::from_protobuf(const std::string& data) {
+  session_proto::Point proto;
+  proto.ParseFromString(data);
+  
+  Point point(proto.x(), proto.y(), proto.z());
+  point.guid = proto.guid();
+  point.name = proto.name();
+  point.width = proto.width();
+  
+  // Load color (no guid in proto schema)
+  const auto& color_proto = proto.pointcolor();
+  point.pointcolor.name = color_proto.name();
+  point.pointcolor.r = color_proto.r();
+  point.pointcolor.g = color_proto.g();
+  point.pointcolor.b = color_proto.b();
+  point.pointcolor.a = color_proto.a();
+  
+  // Load xform (uses 'matrix' not 'm', no guid in proto schema)
+  const auto& xform_proto = proto.xform();
+  point.xform.name = xform_proto.name();
+  for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
+    point.xform.m[i] = xform_proto.matrix(i);
+  }
+  
+  return point;
+}
+
+void Point::protobuf_dump(const std::string& filename) const {
+  std::string data = to_protobuf();
+  std::ofstream file(filename, std::ios::binary);
+  file.write(data.data(), data.size());
+}
+
+Point Point::protobuf_load(const std::string& filename) {
+  std::ifstream file(filename, std::ios::binary);
+  std::string data((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  return from_protobuf(data);
+}
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // No-copy Operators
 ///////////////////////////////////////////////////////////////////////////////////////////

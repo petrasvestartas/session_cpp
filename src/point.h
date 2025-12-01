@@ -82,9 +82,23 @@ public:
   /// Create point from JSON data
   static Point jsonload(const nlohmann::json &data);
 
-  /// Serialize to JSON file
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  // Protobuf
+  ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Deserialize from JSON file
+#ifdef ENABLE_PROTOBUF
+  /// Convert to protobuf message and serialize to binary
+  std::string to_protobuf() const;
+
+  /// Deserialize from protobuf binary
+  static Point from_protobuf(const std::string& data);
+
+  /// Write protobuf to file
+  void protobuf_dump(const std::string& filename) const;
+
+  /// Read protobuf from file  
+  static Point protobuf_load(const std::string& filename);
+#endif
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // No-copy Operators

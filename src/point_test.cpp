@@ -97,7 +97,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "is_ccw") {
-        // Points must be oriented to xy plane.
+        // uncomment #include "point.h"
 
         Point p0(0.0, 0.0, 0.0);
         Point p1(1.0, 0.0, 0.0);
@@ -122,6 +122,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "distance") {
+        // uncomment #include "point.h"
+        // uncomment #include "tolerance.h"
 
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
@@ -133,6 +135,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "squared_distance") {
+        // uncomment #include "point.h"
+        // uncomment #include "tolerance.h"
 
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
@@ -144,6 +148,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "area") {
+        // uncomment #include "point.h"
+        // uncomment #include <vector>
 
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 0.0);
@@ -157,6 +163,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "centroid_quad") {
+        // uncomment #include "point.h"
+        // uncomment #include "tolerance.h"
+        // uncomment #include <vector>
 
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 1.0);
@@ -175,13 +184,17 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "json_roundtrip") {
+        // uncomment #include "point.h"
+        // uncomment #include "color.h"
+        // uncomment #include "encoders.h"
+        // uncomment #include <filesystem>
 
         Point p(1.5, 2.5, 3.5);
         p.name = "test_point";
         p.width = 2.0;
         p.pointcolor = Color(255, 128, 64, 255);
 
-        std::string filename = "test_point_cpp.json";
+        std::string filename = "test_point.json";
         encoders::json_dump(p, filename);
         Point loaded = encoders::json_load<Point>(filename);
 
@@ -195,8 +208,33 @@ namespace session_cpp {
         MINI_CHECK(loaded.pointcolor.b == 64);
         MINI_CHECK(loaded.pointcolor.a == 255);
 
-        std::filesystem::remove(filename);
     }
+
+#ifdef ENABLE_PROTOBUF
+    MINI_TEST("Point", "protobuf_roundtrip") {
+        // uncomment #include "point.h"
+        // uncomment #include "color.h"
+
+        Point p(1.5, 2.5, 3.5);
+        p.name = "test_point";
+        p.width = 2.0;
+        p.pointcolor = Color(255, 128, 64, 255);
+
+        std::string filename = "test_point.bin";
+        p.protobuf_dump(filename);
+        Point loaded = Point::protobuf_load(filename);
+
+        MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded[0] == p[0]);
+        MINI_CHECK(loaded[1] == p[1]);
+        MINI_CHECK(loaded[2] == p[2]);
+        MINI_CHECK(loaded.width == p.width);
+        MINI_CHECK(loaded.pointcolor.r == 255);
+        MINI_CHECK(loaded.pointcolor.g == 128);
+        MINI_CHECK(loaded.pointcolor.b == 64);
+        MINI_CHECK(loaded.pointcolor.a == 255);
+    }
+#endif
 
 }
 

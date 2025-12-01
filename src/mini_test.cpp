@@ -28,17 +28,25 @@ static std::vector<CheckRecord> *&current_checks() {
   return ptr;
 }
 
+static double &current_assertion_time() {
+  static double t = 0.0;
+  return t;
+}
+
 void register_test(const std::string &group, const std::string &test_name,
                    const char *file, int line, TestFunc func) {
   registry().push_back(RegisteredTest{group, test_name, file, line, std::move(func)});
 }
 
-void record_check(bool passed, int line, const char *expr_text) {
+void record_check(bool passed, int line, const char *expr_text,
+                  std::chrono::high_resolution_clock::time_point check_start) {
   auto *checks = current_checks();
   if (!checks) {
     return;
   }
   checks->push_back(CheckRecord{line, std::string(expr_text), passed});
+  auto check_end = std::chrono::high_resolution_clock::now();
+  current_assertion_time() += std::chrono::duration<double, std::milli>(check_end - check_start).count();
 }
 
 static std::string extract_timed_code(const RegisteredTest &t,
@@ -114,6 +122,7 @@ void run_all(const std::string &language) {
     for (const RegisteredTest *t : group_tests) {
       std::vector<CheckRecord> checks;
       current_checks() = &checks;
+      current_assertion_time() = 0.0;
 
       bool passed = true;
       nlohmann::ordered_json failures = nlohmann::json::array();
@@ -135,7 +144,8 @@ void run_all(const std::string &language) {
       current_checks() = nullptr;
 
       double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
-      double rounded_ms = std::round(elapsed_ms * 1000.0) / 1000.0; // three decimals
+      double effective_ms = std::max(0.0, elapsed_ms - current_assertion_time());
+      double rounded_ms = std::round(effective_ms * 1000.0) / 1000.0; // three decimals
 
       if (test_file_path.empty()) {
         test_file_path = fs::path(t->file);

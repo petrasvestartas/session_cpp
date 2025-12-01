@@ -31,9 +31,10 @@ public:
 
   // Generate a random UUID v4
   static UUID generate() {
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<int> dis(0, 255);
+    // Use thread_local to initialize RNG only once per thread (massive speedup)
+    static thread_local std::random_device rd;
+    static thread_local std::mt19937_64 gen(rd());
+    static thread_local std::uniform_int_distribution<int> dis(0, 255);
 
     UUID uuid;
     for (int i = 0; i < 16; ++i) {
