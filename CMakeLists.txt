@@ -243,8 +243,8 @@ function(LINK_PROTOBUF_LIBRARIES target_name)
     add_dependencies(${target_name} abseil_monolith protobuf_external)
 endfunction()
 
-    # Register proto files from session_proto directory
-    file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/session_proto/*.proto")
+    # Register proto files from shared session_proto directory (root level)
+    file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../session_proto/*.proto")
     foreach(PROTO_FILE ${PROTO_FILES})
         append_proto_file(${PROTO_FILE})
     endforeach()
