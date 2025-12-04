@@ -38,8 +38,10 @@ public:
    * @param x The X coordinate of the point.
    * @param y The Y coordinate of the point.
    * @param z The Z coordinate of the point.
+   * @param point_name Optional name for the point (default: "my_point").
    */
-  Point(double x, double y, double z) : _x(x), _y(y), _z(z) {}
+  Point(double x, double y, double z, std::string point_name = "my_point")
+      : name(std::move(point_name)), _x(x), _y(y), _z(z) {}
   Point() : _x(0.0), _y(0.0), _z(0.0) {}
 
   /// Copy constructor (creates a new guid while copying data)
@@ -81,6 +83,12 @@ public:
 
   /// Create point from JSON data
   static Point jsonload(const nlohmann::json &data);
+
+  /// Write JSON to file
+  void json_dump(const std::string& filename) const;
+
+  /// Read JSON from file
+  static Point json_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf

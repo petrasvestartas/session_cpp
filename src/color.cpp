@@ -1,14 +1,59 @@
 #include "color.h"
 
+#ifdef ENABLE_PROTOBUF
+#include "color.pb.h"
+#endif
+
 namespace session_cpp {
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Copy and Duplicate
+///////////////////////////////////////////////////////////////////////////////////////////
+
+/// Copy constructor (creates a new guid while copying data)
+Color::Color(const Color &other)
+    : name(other.name),
+      guid(::guid()),
+      r(other.r),
+      g(other.g),
+      b(other.b),
+      a(other.a) {}
+
+/// Copy assignment (creates a new guid while copying data)
+Color &Color::operator=(const Color &other) {
+  if (this != &other) {
+    name = other.name;
+    guid = ::guid();
+    r = other.r;
+    g = other.g;
+    b = other.b;
+    a = other.a;
+  }
+  return *this;
+}
+
+/// Duplicate the color (returns a copy with new guid)
+Color Color::duplicate() const {
+  return Color(*this);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Operators
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-/// Convert point to string representation
+/// Simple string representation (like Python __str__): "r, g, b, a"
+std::string Color::str() const {
+  return fmt::format("{}, {}, {}, {}", r, g, b, a);
+}
+
+/// Detailed representation (like Python __repr__): "Color(name, r, g, b, a)"
+std::string Color::repr() const {
+  return fmt::format("Color({}, {}, {}, {}, {})", name, r, g, b, a);
+}
+
+/// Alias for repr() - for compatibility
 std::string Color::to_string() const {
-  return fmt::format("Color({}, {}, {}, {}, {})", r, g, b, a, name);
+  return repr();
 }
 
 /// Equality operator
@@ -19,6 +64,38 @@ bool Color::operator==(const Color &other) const {
 
 /// Inequality operator
 bool Color::operator!=(const Color &other) const { return !(*this == other); }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// No-copy Operators (index access)
+///////////////////////////////////////////////////////////////////////////////////////////
+
+unsigned int &Color::operator[](int index) {
+  if (index == 0) {
+    return r;
+  } else if (index == 1) {
+    return g;
+  } else if (index == 2) {
+    return b;
+  } else if (index == 3) {
+    return a;
+  } else {
+    throw std::out_of_range("Index out of range");
+  }
+}
+
+const unsigned int &Color::operator[](int index) const {
+  if (index == 0) {
+    return r;
+  } else if (index == 1) {
+    return g;
+  } else if (index == 2) {
+    return b;
+  } else if (index == 3) {
+    return a;
+  } else {
+    throw std::out_of_range("Index out of range");
+  }
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // JSON
@@ -43,6 +120,55 @@ Color Color::jsonload(const nlohmann::json &data) {
   return color;
 }
 
+void Color::json_dump(const std::string& filename) const {
+  std::ofstream file(filename);
+  file << jsondump().dump(4);
+}
+
+Color Color::json_load(const std::string& filename) {
+  std::ifstream file(filename);
+  nlohmann::json data = nlohmann::json::parse(file);
+  return jsonload(data);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Protobuf
+///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+std::string Color::to_protobuf() const {
+  session_proto::Color proto;
+  proto.set_guid(guid);
+  proto.set_name(name);
+  proto.set_r(r);
+  proto.set_g(g);
+  proto.set_b(b);
+  proto.set_a(a);
+  return proto.SerializeAsString();
+}
+
+Color Color::from_protobuf(const std::string& data) {
+  session_proto::Color proto;
+  proto.ParseFromString(data);
+  
+  Color color(proto.r(), proto.g(), proto.b(), proto.a(), proto.name());
+  color.guid = proto.guid();
+  return color;
+}
+
+void Color::protobuf_dump(const std::string& filename) const {
+  std::string data = to_protobuf();
+  std::ofstream file(filename, std::ios::binary);
+  file.write(data.data(), data.size());
+}
+
+Color Color::protobuf_load(const std::string& filename) {
+  std::ifstream file(filename, std::ios::binary);
+  std::string data((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  return from_protobuf(data);
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Details
@@ -101,15 +227,15 @@ Color Color::silver() { return Color(192, 192, 192, 255, "silver"); }
 // Details
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::array<double, 4> Color::to_float_array() const {
+std::array<double, 4> Color::to_unified_array() const {
   return {r / 255.0, g / 255.0, b / 255.0, a / 255.0};
 }
 
-Color Color::from_float(double r, double g, double b, double a) {
-  return Color(static_cast<unsigned int>(r * 255.0 + 0.5),
-               static_cast<unsigned int>(g * 255.0 + 0.5),
-               static_cast<unsigned int>(b * 255.0 + 0.5),
-               static_cast<unsigned int>(a * 255.0 + 0.5));
+Color Color::from_unified_array(std::array<double, 4> arr) {
+  return Color(static_cast<unsigned int>(arr[0] * 255.0 + 0.5),
+               static_cast<unsigned int>(arr[1] * 255.0 + 0.5),
+               static_cast<unsigned int>(arr[2] * 255.0 + 0.5),
+               static_cast<unsigned int>(arr[3] * 255.0 + 0.5));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

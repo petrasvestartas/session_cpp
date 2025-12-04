@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace session_cpp {
@@ -28,11 +29,26 @@ public:
         unsigned int a = 255, std::string name = "my_color")
       : name(name), r(r), g(g), b(b), a(a) {}
 
+  /// Copy constructor (creates a new guid while copying data)
+  Color(const Color &other);
+
+  /// Copy assignment (creates a new guid while copying data)
+  Color &operator=(const Color &other);
+
+  /// Duplicate the color (returns a copy with new guid)
+  Color duplicate() const;
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Operators
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Convert point to string representation
+  /// Simple string representation (like Python __str__): "r, g, b, a"
+  std::string str() const;
+
+  /// Detailed representation (like Python __repr__): "Color(name, r, g, b, a)"
+  std::string repr() const;
+
+  /// Alias for repr() - for compatibility
   std::string to_string() const;
 
   /// Equality operator
@@ -40,6 +56,16 @@ public:
 
   /// Inequality operator
   bool operator!=(const Color &other) const;
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  // No-copy Operators (index access)
+  ///////////////////////////////////////////////////////////////////////////////////////////
+
+  /// Get/set color component by index (0=r, 1=g, 2=b, 3=a)
+  unsigned int &operator[](int index);
+
+  /// Get color component by index (const version)
+  const unsigned int &operator[](int index) const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON
@@ -51,9 +77,29 @@ public:
   /// Create color from JSON data.
   static Color jsonload(const nlohmann::json &data);
 
-  /// Serialize to JSON file
+  /// Write JSON to file
+  void json_dump(const std::string& filename) const;
 
-  /// Deserialize from JSON file
+  /// Read JSON from file
+  static Color json_load(const std::string& filename);
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  // Protobuf
+  ///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+  /// Convert to protobuf message and serialize to binary
+  std::string to_protobuf() const;
+
+  /// Deserialize from protobuf binary
+  static Color from_protobuf(const std::string& data);
+
+  /// Write protobuf to file
+  void protobuf_dump(const std::string& filename) const;
+
+  /// Read protobuf from file
+  static Color protobuf_load(const std::string& filename);
+#endif
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details
@@ -126,10 +172,10 @@ public:
   static Color silver();
 
   /// Convert to normalized float array [0-1].
-  std::array<double, 4> to_float_array() const;
+  std::array<double, 4> to_unified_array() const;
 
   /// Create color from normalized float values [0-1].
-  static Color from_float(double r, double g, double b, double a);
+  static Color from_unified_array(std::array<double, 4> arr);
 };
 
 /**

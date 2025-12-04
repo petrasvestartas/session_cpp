@@ -1,41 +1,41 @@
 {
-  "type": "Point",
-  "guid": "5b4b5fe8-7522-4072-bc80-cf5fe6fc35fe",
-  "name": "test_point",
-  "x": 1.5,
-  "y": 2.5,
-  "z": 3.5,
-  "width": 2.0,
-  "pointcolor": {
-    "type": "Color",
-    "guid": "a0029db1-8bb7-4549-bf24-d9d8098e87b1",
-    "name": "my_color",
-    "r": 255,
-    "g": 128,
-    "b": 64,
-    "a": 255
-  },
-  "xform": {
-    "type": "Xform",
-    "guid": "8a7c31fe-5cb4-4f57-8db6-b2a17dc1dbde",
-    "name": "my_xform",
-    "m": [
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0
-    ]
-  }
+    "type": "Point",
+    "guid": "61c784d8-a280-4f53-8b35-00919782ef6c",
+    "name": "test_point",
+    "x": 1.5,
+    "y": 2.5,
+    "z": 3.5,
+    "width": 2.0,
+    "pointcolor": {
+        "type": "Color",
+        "guid": "4b0d75d0-07f5-4a52-bc24-820c7fafd110",
+        "name": "my_color",
+        "r": 255,
+        "g": 128,
+        "b": 64,
+        "a": 255
+    },
+    "xform": {
+        "type": "Xform",
+        "guid": "32dd9f62-c992-40f0-bb71-bf26cd7efe15",
+        "name": "my_xform",
+        "m": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+        ]
+    }
 }

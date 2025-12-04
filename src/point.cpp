@@ -109,6 +109,19 @@ Point Point::jsonload(const nlohmann::json &data) {
   return point;
 }
 
+/// Write JSON to file
+void Point::json_dump(const std::string& filename) const {
+  std::ofstream file(filename);
+  file << jsondump().dump(4);
+}
+
+/// Read JSON from file
+Point Point::json_load(const std::string& filename) {
+  std::ifstream file(filename);
+  nlohmann::json data = nlohmann::json::parse(file);
+  return jsonload(data);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////

@@ -3,7 +3,6 @@
 #include "color.h"
 #include "xform.h"
 #include "tolerance.h"
-#include "encoders.h"
 
 #include <cmath>
 #include <filesystem>
@@ -113,12 +112,17 @@ namespace session_cpp {
 
     MINI_TEST("Point", "mid_point") {
         // uncomment #include "point.h"
+        // uncomment #include "tolerance.h"
 
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         Point mid = Point::mid_point(p0, p1);
 
-        MINI_CHECK(mid[0] == 0.5 && mid[1] == 3.5 && mid[2] == 2.0);
+        double x = Tolerance::round_to(mid[0], Tolerance::ROUNDING);
+        double y = Tolerance::round_to(mid[1], Tolerance::ROUNDING);
+        double z = Tolerance::round_to(mid[2], Tolerance::ROUNDING);
+
+        MINI_CHECK(x == 0.5 && y == 3.5 && z == 2.0);
     }
 
     MINI_TEST("Point", "distance") {
@@ -128,8 +132,7 @@ namespace session_cpp {
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
 
-        double factor = std::pow(10.0, static_cast<int>(Tolerance::ROUNDING));
-        double d = std::round(Point::distance(p0, p1) * factor) / factor;
+        double d = Tolerance::round_to(Point::distance(p0, p1), Tolerance::ROUNDING);
 
         MINI_CHECK(d == 3.741657);
     }
@@ -141,8 +144,7 @@ namespace session_cpp {
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
 
-        double factor = std::pow(10.0, static_cast<int>(Tolerance::ROUNDING));
-        double d = std::round(Point::squared_distance(p0, p1) * factor) / factor;
+        double d = Tolerance::round_to(Point::squared_distance(p0, p1), Tolerance::ROUNDING);
 
         MINI_CHECK(d == 14.0);
     }
@@ -175,10 +177,9 @@ namespace session_cpp {
         std::vector<Point> pts{p0, p1, p2, p3};
         Point centroid = Point::centroid_quad(pts);
 
-        double factor = std::pow(10.0, static_cast<int>(Tolerance::ROUNDING));
-        double x = std::round(centroid[0] * factor) / factor;
-        double y = std::round(centroid[1] * factor) / factor;
-        double z = std::round(centroid[2] * factor) / factor;
+        double x = Tolerance::round_to(centroid[0], Tolerance::ROUNDING);
+        double y = Tolerance::round_to(centroid[1], Tolerance::ROUNDING);
+        double z = Tolerance::round_to(centroid[2], Tolerance::ROUNDING);
 
         MINI_CHECK(x == 1.0 && y == 1.0 && z == 1.0);
     }
@@ -186,8 +187,6 @@ namespace session_cpp {
     MINI_TEST("Point", "json_roundtrip") {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
-        // uncomment #include "encoders.h"
-        // uncomment #include <filesystem>
 
         Point p(1.5, 2.5, 3.5);
         p.name = "test_point";
@@ -195,8 +194,8 @@ namespace session_cpp {
         p.pointcolor = Color(255, 128, 64, 255);
 
         std::string filename = "test_point.json";
-        encoders::json_dump(p, filename);
-        Point loaded = encoders::json_load<Point>(filename);
+        p.json_dump(filename);
+        Point loaded = Point::json_load(filename);
 
         MINI_CHECK(loaded.name == p.name);
         MINI_CHECK(loaded[0] == p[0]);

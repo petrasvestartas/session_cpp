@@ -261,29 +261,36 @@ endif(ENABLE_PROTOBUF)
 file(GLOB PROJECT_SOURCES "src/*.cpp")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
 
-# Add executable for the main project
-add_executable(${PROJECT_NAME} main.cpp ${PROJECT_SOURCES})
+# Create OBJECT library - compiles sources ONCE and reuses object files
+add_library(session_core OBJECT ${PROJECT_SOURCES})
 
-# Include directories for headers
-target_include_directories(${PROJECT_NAME} PRIVATE 
+# Include directories for the object library
+target_include_directories(session_core PUBLIC
     ${PROJECT_SOURCE_DIR}/src                    # Project source headers
     ${PROJECT_SOURCE_DIR}/src/fmt/include        # fmt library headers
     ${PROJECT_SOURCE_DIR}/src/json/include       # JSON library headers
     ${PROJECT_SOURCE_DIR}/src/guid/include       # GUID library headers
 )
 
-# Conditionally add protobuf support
+# Conditionally add protobuf support to the object library
 if(ENABLE_PROTOBUF)
-    target_include_directories(${PROJECT_NAME} PRIVATE 
+    target_include_directories(session_core PUBLIC
         $ENV{GENERATED}                          # Protobuf generated headers
     )
-    # Use SYSTEM to suppress warnings from external libraries
-    target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+    target_include_directories(session_core SYSTEM PUBLIC
         $ENV{INSTALL}/protobuf/include           # Protobuf library headers
         $ENV{INSTALL}/abseil/include             # Abseil library headers
     )
+    add_dependencies(session_core PROTO_FILES_READY proto-objects)
+endif()
+
+# Add executable for the main project - links to pre-compiled objects
+add_executable(${PROJECT_NAME} main.cpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE session_core)
+
+# Conditionally add protobuf support
+if(ENABLE_PROTOBUF)
     LINK_PROTOBUF_LIBRARIES(${PROJECT_NAME})
-    add_dependencies(${PROJECT_NAME} PROTO_FILES_READY)
 endif()
 
 #############################################################################################
@@ -308,57 +315,28 @@ list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/point_test\\.cpp$")
 # Exclude C++ mini-test for Color (uses mini_test framework instead of Catch2)
 list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/color_test\\.cpp$")
 
-# Create test executable
-add_executable(tests ${TEST_SOURCES} ${PROJECT_SOURCES})
-target_include_directories(tests PRIVATE 
-    ${PROJECT_SOURCE_DIR}/src                    # Project source headers
-    ${PROJECT_SOURCE_DIR}/src/fmt/include        # fmt library headers
-    ${PROJECT_SOURCE_DIR}/src/json/include       # JSON library headers
-    ${PROJECT_SOURCE_DIR}/src/guid/include       # GUID library headers
+# Create test executable - links to pre-compiled objects
+add_executable(tests ${TEST_SOURCES})
+target_include_directories(tests PRIVATE
     ${PROJECT_SOURCE_DIR}/src/catch/include      # Catch2 library headers
 )
-target_link_libraries(tests PRIVATE catch2_lib)
+target_link_libraries(tests PRIVATE session_core catch2_lib)
 
 # Conditionally add protobuf support to tests
 if(ENABLE_PROTOBUF)
-    target_include_directories(tests PRIVATE 
-        $ENV{GENERATED}                          # Protobuf generated headers
-    )
-    # Use SYSTEM to suppress warnings from external libraries
-    target_include_directories(tests SYSTEM PRIVATE
-        $ENV{INSTALL}/protobuf/include           # Protobuf library headers
-        $ENV{INSTALL}/abseil/include             # Abseil library headers
-    )
     LINK_PROTOBUF_LIBRARIES(tests)
-    add_dependencies(tests PROTO_FILES_READY)
 endif()
 
-# Mini-test executable for Point that writes JSON results (mini_test.cpp + point_test.cpp)
+# Mini-test executable for Point - links to pre-compiled objects
 add_executable(point_minitest
     src/mini_test.cpp
     src/point_test.cpp
     src/color_test.cpp
-    ${PROJECT_SOURCES}
 )
-
-target_include_directories(point_minitest PRIVATE 
-    ${PROJECT_SOURCE_DIR}/src                    # Project source headers
-    ${PROJECT_SOURCE_DIR}/src/fmt/include        # fmt library headers
-    ${PROJECT_SOURCE_DIR}/src/json/include       # JSON library headers
-    ${PROJECT_SOURCE_DIR}/src/guid/include       # GUID library headers
-)
+target_link_libraries(point_minitest PRIVATE session_core)
 
 if(ENABLE_PROTOBUF)
-    target_include_directories(point_minitest PRIVATE 
-        $ENV{GENERATED}                          # Protobuf generated headers
-    )
-    # Use SYSTEM to suppress warnings from external libraries
-    target_include_directories(point_minitest SYSTEM PRIVATE
-        $ENV{INSTALL}/protobuf/include           # Protobuf library headers
-        $ENV{INSTALL}/abseil/include             # Abseil library headers
-    )
     LINK_PROTOBUF_LIBRARIES(point_minitest)
-    add_dependencies(point_minitest PROTO_FILES_READY)
 endif()
 
 #############################################################################################
@@ -373,29 +351,13 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
     foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
         # Get the filename without the directory and extension
         get_filename_component(EXAMPLE_NAME ${EXAMPLE_FILE} NAME_WE)
-        # Create an executable for each example
-        add_executable(${EXAMPLE_NAME} ${EXAMPLE_FILE} ${PROJECT_SOURCES})
-        # Include directories for headers
-        target_include_directories(${EXAMPLE_NAME} PRIVATE 
-            ${PROJECT_SOURCE_DIR}/src                    # Project source headers
-            ${PROJECT_SOURCE_DIR}/src/fmt/include        # fmt library headers (for fmt/core.h, fmt/format.h, etc.)
-            ${PROJECT_SOURCE_DIR}/src/json/include       # JSON library headers (for json.h)
-            ${PROJECT_SOURCE_DIR}/src/guid/include       # GUID library headers (for guid.h)
-            ${PROJECT_SOURCE_DIR}/src/catch/include      # Catch2 library headers (for catch.h)
-        )
+        # Create an executable for each example - links to pre-compiled objects
+        add_executable(${EXAMPLE_NAME} ${EXAMPLE_FILE})
+        target_link_libraries(${EXAMPLE_NAME} PRIVATE session_core)
         
         # Conditionally add protobuf support to examples
         if(ENABLE_PROTOBUF)
-            target_include_directories(${EXAMPLE_NAME} PRIVATE 
-                $ENV{GENERATED}                          # Protobuf generated headers
-            )
-            # Use SYSTEM to suppress warnings from external libraries
-            target_include_directories(${EXAMPLE_NAME} SYSTEM PRIVATE
-                $ENV{INSTALL}/protobuf/include           # Protobuf library headers
-                $ENV{INSTALL}/abseil/include             # Abseil library headers
-            )
             LINK_PROTOBUF_LIBRARIES(${EXAMPLE_NAME})
-            add_dependencies(${EXAMPLE_NAME} PROTO_FILES_READY)
         endif()
         # Set the output directory for the executables, preserving the folder structure
         get_filename_component(EXAMPLE_DIR_NAME ${EXAMPLE_DIR} NAME)
