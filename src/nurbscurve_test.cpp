@@ -1,5 +1,6 @@
 #include "catch_amalgamated.hpp"
 #include "nurbscurve.h"
+#include "tolerance.h"
 #include <cmath>
 
 using namespace session_cpp;
@@ -280,7 +281,7 @@ TEST_CASE("NurbsCurve - Frames 3D (normal and Frenet)", "[nurbscurve][frames]") 
     // Build a clearly 3D curve (wavy helix)
     std::vector<Point> ctrl;
     for (int k = 0; k < 8; ++k) {
-        double t = (static_cast<double>(k) / 7.0) * 2.0 * M_PI;
+        double t = (static_cast<double>(k) / 7.0) * 2.0 * Tolerance::PI;
         double r = 1.5 + 0.3 * std::cos(3.0 * t);
         double x = r * std::cos(t);
         double y = r * std::sin(t);

@@ -32,7 +32,7 @@ jobs:
       id: cache-deps
       with:
         path: build/external
-        key: cpp-deps-${{ runner.os }}-v1
+        key: cpp-deps-${{ runner.os }}-v2
 
     - name: Install Dependencies (Linux)
       if: runner.os == 'Linux'
@@ -55,9 +55,9 @@ jobs:
       if: steps.cache-deps.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        cmake --build build --target abseil_external -j4
-        cmake --build build --target abseil_monolith -j4 || true
-        cmake --build build --target protobuf_external -j4
+        cmake --build build --target abseil_external --config Release -j4
+        cmake --build build --target abseil_monolith --config Release -j4 || true
+        cmake --build build --target protobuf_external --config Release -j4
 
     - name: Build Project
       shell: bash
