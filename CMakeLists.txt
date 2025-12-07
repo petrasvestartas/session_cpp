@@ -243,23 +243,20 @@ function(LINK_PROTOBUF_LIBRARIES target_name)
     add_dependencies(${target_name} abseil_monolith protobuf_external)
 endfunction()
 
-    # Register proto files from shared session_proto directory (root level)
-    file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../session_proto/*.proto")
-    
-    if(PROTO_FILES)
-        foreach(PROTO_FILE ${PROTO_FILES})
-            append_proto_file(${PROTO_FILE})
-        endforeach()
-
-        # Generate proto files
-        CREATE_CPP_PROTO()
-    else()
-        message(WARNING "No .proto files found in ../session_proto/ - protobuf code generation skipped")
-        message(STATUS "Build will continue without protobuf support")
-        # Create empty proto-objects target to satisfy dependencies
-        add_library(proto-objects OBJECT ${CMAKE_CURRENT_SOURCE_DIR}/src/point.cpp)
-        set_target_properties(proto-objects PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    # Register proto files - check both submodule path and sibling path
+    # Submodule: ./session_proto (when building session_cpp standalone)
+    # Sibling:   ../session_proto (when building from parent session repo)
+    file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/session_proto/*.proto")
+    if(NOT PROTO_FILES)
+        file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../session_proto/*.proto")
     endif()
+    
+    foreach(PROTO_FILE ${PROTO_FILES})
+        append_proto_file(${PROTO_FILE})
+    endforeach()
+
+    # Generate proto files
+    CREATE_CPP_PROTO()
 endif(ENABLE_PROTOBUF)
 
 #############################################################################################
