@@ -245,12 +245,21 @@ endfunction()
 
     # Register proto files from shared session_proto directory (root level)
     file(GLOB PROTO_FILES "${CMAKE_CURRENT_SOURCE_DIR}/../session_proto/*.proto")
-    foreach(PROTO_FILE ${PROTO_FILES})
-        append_proto_file(${PROTO_FILE})
-    endforeach()
+    
+    if(PROTO_FILES)
+        foreach(PROTO_FILE ${PROTO_FILES})
+            append_proto_file(${PROTO_FILE})
+        endforeach()
 
-    # Generate proto files
-    CREATE_CPP_PROTO()
+        # Generate proto files
+        CREATE_CPP_PROTO()
+    else()
+        message(WARNING "No .proto files found in ../session_proto/ - protobuf code generation skipped")
+        message(STATUS "Build will continue without protobuf support")
+        # Create empty proto-objects target to satisfy dependencies
+        add_library(proto-objects OBJECT ${CMAKE_CURRENT_SOURCE_DIR}/src/point.cpp)
+        set_target_properties(proto-objects PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
 endif(ENABLE_PROTOBUF)
 
 #############################################################################################
