@@ -1,0 +1,75 @@
+name: Build C++
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.name }})
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    # Cache abseil and protobuf builds - saves ~12 minutes per build
+    - name: Cache Dependencies
+      uses: actions/cache@v4
+      id: cache-deps
+      with:
+        path: |
+          build/external
+        key: deps-${{ runner.os }}-abseil-protobuf-v2
+        restore-keys: |
+          deps-${{ runner.os }}-abseil-protobuf-
+
+    - name: Install Dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Install Dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake
+
+    - name: Configure
+      shell: bash
+      run: |
+        cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
+
+    # Only build external dependencies if not cached
+    - name: Build Dependencies (if not cached)
+      if: steps.cache-deps.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "Cache miss - building abseil and protobuf from source..."
+        cmake --build build --target abseil_external -j4
+        cmake --build build --target abseil_monolith -j4 || true
+        cmake --build build --target protobuf_external -j4
+
+    - name: Build Project
+      shell: bash
+      run: |
+        cmake --build build --config Release -j4
+
+    - name: Run Tests
+      shell: bash
+      run: |
+        cd build
+        ctest --output-on-failure -C Release
