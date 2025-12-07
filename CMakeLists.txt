@@ -207,12 +207,15 @@ endfunction()
 function(LINK_PROTOBUF_LIBRARIES target_name)
     # Use monolithic Abseil archive (created at build time, not configure time)
     if(APPLE)
+        # CoreFoundation required for Abseil's time zone code on macOS
+        find_library(COREFOUNDATION_LIBRARY CoreFoundation REQUIRED)
         target_link_libraries(${target_name} PRIVATE
             $<TARGET_OBJECTS:proto-objects>
             $ENV{INSTALL}/protobuf/lib/libprotobuf.a
             $ENV{INSTALL}/protobuf/lib/libutf8_range.a
             $ENV{INSTALL}/protobuf/lib/libutf8_validity.a
             -Wl,-force_load,$ENV{INSTALL}/abseil/lib/libabsl_all.a
+            ${COREFOUNDATION_LIBRARY}
             pthread
         )
     elseif(WIN32)
