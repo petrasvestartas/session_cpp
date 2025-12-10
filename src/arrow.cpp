@@ -83,7 +83,7 @@ Mesh Arrow::create_arrow_mesh(const Line& line, double radius) {
     Vector z_axis = line_vec;
     z_axis.normalize_self();
     Vector x_axis;
-    if (std::abs(z_axis.z()) < 0.9) {
+    if (std::abs(z_axis[2]) < 0.9) {
         x_axis = Vector(0.0, 0.0, 1.0).cross(z_axis);
         x_axis.normalize_self();
     } else {
@@ -97,15 +97,15 @@ Mesh Arrow::create_arrow_mesh(const Line& line, double radius) {
     double body_length = length * 0.8;
 
     Point body_center(
-        start[0] + line_vec.x() * 0.4,
-        start[1] + line_vec.y() * 0.4,
-        start[2] + line_vec.z() * 0.4
+        start[0] + line_vec[0] * 0.4,
+        start[1] + line_vec[1] * 0.4,
+        start[2] + line_vec[2] * 0.4
     );
 
     Point cone_base_center(
-        start[0] + line_vec.x() * 0.9,
-        start[1] + line_vec.y() * 0.9,
-        start[2] + line_vec.z() * 0.9
+        start[0] + line_vec[0] * 0.9,
+        start[1] + line_vec[1] * 0.9,
+        start[2] + line_vec[2] * 0.9
     );
 
     Xform body_scale = Xform::scale_xyz(radius * 2.0, radius * 2.0, body_length);

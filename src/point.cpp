@@ -238,16 +238,16 @@ Point &Point::operator/=(double factor) {
 }
 
 Point& Point::operator+=(const Vector& other) {
-  _x += other.x();
-  _y += other.y();
-  _z += other.z();
+  _x += other[0];
+  _y += other[1];
+  _z += other[2];
   return *this;
 }
 
 Point& Point::operator-=(const Vector& other) {
-  _x -= other.x();
-  _y -= other.y();
-  _z -= other.z();
+  _x -= other[0];
+  _y -= other[1];
+  _z -= other[2];
   return *this;
 }
 
@@ -268,18 +268,26 @@ Point Point::operator/(double factor) const {
 }
 
 Point Point::operator+(const Vector& other) const {
-  Point result(_x + other.x(), _y + other.y(), _z + other.z());
+  Point result(_x + other[0], _y + other[1], _z + other[2]);
   return result;
 }
 
 Point Point::operator-(const Vector& other) const {
-  Point result(_x - other.x(), _y - other.y(), _z - other.z());
+  Point result(_x - other[0], _y - other[1], _z - other[2]);
   return result;
 }
 
 Vector Point::operator-(const Point& other) const {
   Vector result(_x - other._x, _y - other._y, _z - other._z);
   return result;
+}
+
+Point Point::sum(const Point& p0, const Point& p1) {
+  return Point(p0._x + p1._x, p0._y + p1._y, p0._z + p1._z);
+}
+
+Point Point::sub(const Point& p0, const Point& p1) {
+  return Point(p0._x - p1._x, p0._y - p1._y, p0._z - p1._z);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -398,7 +406,7 @@ Point Point::centroid_quad(const std::vector<Point>& vertices) {
     }
     
     Vector result = centroid_sum / total_area;
-    return Point(result.x(), result.y(), result.z());
+    return Point(result[0], result[1], result[2]);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

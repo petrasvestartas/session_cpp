@@ -336,11 +336,16 @@ if(ENABLE_PROTOBUF)
     LINK_PROTOBUF_LIBRARIES(tests)
 endif()
 
-# Mini-test executable for Point - links to pre-compiled objects
-add_executable(point_minitest
-    src/mini_test.cpp
+# Mini-test executable - explicitly list mini_test framework tests
+# Files using mini_test.h (not Catch2) - add new test files here
+set(MINITEST_SOURCES
     src/point_test.cpp
     src/color_test.cpp
+    src/vector_test.cpp
+)
+add_executable(point_minitest
+    src/mini_test.cpp
+    ${MINITEST_SOURCES}
 )
 target_link_libraries(point_minitest PRIVATE session_core)
 

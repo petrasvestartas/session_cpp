@@ -235,9 +235,9 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Evaluation", "[nurbssurfac
         auto [v0, v1] = srf.domain(1);
         
         Vector normal = srf.normal_at((u0 + u1) / 2.0, (v0 + v1) / 2.0);
-        REQUIRE(std::isfinite(normal.x()));
-        REQUIRE(std::isfinite(normal.y()));
-        REQUIRE(std::isfinite(normal.z()));
+        REQUIRE(std::isfinite(normal[0]));
+        REQUIRE(std::isfinite(normal[1]));
+        REQUIRE(std::isfinite(normal[2]));
         
         double len = normal.magnitude();
         REQUIRE(len > 0.0);
@@ -250,7 +250,7 @@ TEST_CASE_METHOD(NurbsSurfaceFixture, "NurbsSurface - Evaluation", "[nurbssurfac
         
         auto derivs = srf.evaluate((u0 + u1) / 2.0, (v0 + v1) / 2.0, 1);
         REQUIRE(!derivs.empty());
-        REQUIRE(std::isfinite(derivs[0].x()));
+        REQUIRE(std::isfinite(derivs[0][0]));
     }
 }
 

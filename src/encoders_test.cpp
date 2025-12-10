@@ -35,9 +35,9 @@ TEST_CASE("Encoders json_dumps and json_loads", "[encoders]") {
     
     Vector loaded = json_loads<Vector>(json_str);
     
-    REQUIRE(loaded.x() == Catch::Approx(original.x()));
-    REQUIRE(loaded.y() == Catch::Approx(original.y()));
-    REQUIRE(loaded.z() == Catch::Approx(original.z()));
+    REQUIRE(loaded[0] == Catch::Approx(original[0]));
+    REQUIRE(loaded[1] == Catch::Approx(original[1]));
+    REQUIRE(loaded[2] == Catch::Approx(original[2]));
     REQUIRE(loaded.name == original.name);
 }
 
@@ -91,8 +91,8 @@ TEST_CASE("Encoders decode_collection_ptr", "[encoders]") {
     auto decoded_vectors = decode_collection_ptr<Vector>(json_arr);
     
     REQUIRE(decoded_vectors.size() == 2);
-    REQUIRE(decoded_vectors[0]->x() == Catch::Approx(1.0));
-    REQUIRE(decoded_vectors[1]->y() == Catch::Approx(1.0));
+    REQUIRE((*decoded_vectors[0])[0] == Catch::Approx(1.0));
+    REQUIRE((*decoded_vectors[1])[1] == Catch::Approx(1.0));
 }
 
 TEST_CASE("Encoders nested_collections", "[encoders]") {
@@ -126,9 +126,9 @@ TEST_CASE("Encoders roundtrip with file I/O", "[encoders]") {
     auto decoded_vectors = decode_collection<Vector>(loaded_json);
     
     REQUIRE(decoded_vectors.size() == 3);
-    REQUIRE(decoded_vectors[0].x() == Catch::Approx(1.0));
-    REQUIRE(decoded_vectors[1].y() == Catch::Approx(1.0));
-    REQUIRE(decoded_vectors[2].z() == Catch::Approx(1.0));
+    REQUIRE(decoded_vectors[0][0] == Catch::Approx(1.0));
+    REQUIRE(decoded_vectors[1][1] == Catch::Approx(1.0));
+    REQUIRE(decoded_vectors[2][2] == Catch::Approx(1.0));
     
     std::filesystem::remove(filepath);
 }
@@ -211,7 +211,7 @@ TEST_CASE("Encoders decode dict", "[encoders]") {
     Vector vec(1.0, 2.0, 3.0);
     std::string vec_json = json_dumps(vec);
     Vector loaded_vec = json_loads<Vector>(vec_json);
-    REQUIRE(loaded_vec.x() == Catch::Approx(1.0));
+    REQUIRE(loaded_vec[0] == Catch::Approx(1.0));
 }
 
 TEST_CASE("Encoders list in list in list", "[encoders]") {
@@ -280,5 +280,5 @@ TEST_CASE("Encoders dict of dicts", "[encoders]") {
     Point loaded_point = Point::jsonload(loaded["geometry"]["point"]);
     Vector loaded_vec = Vector::jsonload(loaded["geometry"]["vector"]);
     REQUIRE(loaded_point[0] == Catch::Approx(1.0));
-    REQUIRE(loaded_vec.z() == Catch::Approx(1.0));
+    REQUIRE(loaded_vec[2] == Catch::Approx(1.0));
 }

@@ -50,8 +50,14 @@ namespace session_cpp {
         // Copy operators
         Point result_mul = p * 2.0;
         Point result_div = p / 2.0;
-        Point result_add = p + Vector(1.0, 1.0, 1.0); // Only Vector
-        Point diff_point = p - Vector(1.0, 1.0, 1.0); // Only Vector
+        Point result_add = p + Vector(1.0, 1.0, 1.0);
+        Point diff_point = p - Vector(1.0, 1.0, 1.0);
+
+        // Static sum and sub methods
+        Point p1(1.0, 2.0, 3.0);
+        Point p2(4.0, 5.0, 6.0);
+        Point psum = Point::sum(p1, p2);
+        Point pdif = Point::sub(p2, p1);
 
         MINI_CHECK(
             p.name == "my_point" &&
@@ -62,23 +68,21 @@ namespace session_cpp {
             p.pointcolor == Color::blue() &&
             !p.guid.empty()
         );
-
         MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
-
         MINI_CHECK(pstr == "10.000000, 20.000000, 30.000000");
         MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 255, 255), 1.000000)");
         MINI_CHECK(pcopy == p && pcopy.guid != p.guid);
         MINI_CHECK(pother != p);
-
         MINI_CHECK(pmult[0] == 20.0 && pmult[1] == 40.0 && pmult[2] == 60.0);
         MINI_CHECK(pdiv[0] == 5.0 && pdiv[1] == 10.0 && pdiv[2] == 15.0);
         MINI_CHECK(padd[0] == 11.0 && padd[1] == 21.0 && padd[2] == 31.0);
         MINI_CHECK(psub[0] == 9.0 && psub[1] == 19.0 && psub[2] == 29.0);
-
         MINI_CHECK(result_mul[0] == 20.0 && result_mul[1] == 40.0 && result_mul[2] == 60.0);
         MINI_CHECK(result_div[0] == 5.0 && result_div[1] == 10.0 && result_div[2] == 15.0);
         MINI_CHECK(result_add[0] == 11.0 && result_add[1] == 21.0 && result_add[2] == 31.0);
         MINI_CHECK(diff_point[0] == 9.0 && diff_point[1] == 19.0 && diff_point[2] == 29.0);
+        MINI_CHECK(psum[0] == 5.0 && psum[1] == 7.0 && psum[2] == 9.0);
+        MINI_CHECK(pdif[0] == 3.0 && pdif[1] == 3.0 && pdif[2] == 3.0);
     }
 
     MINI_TEST("Point", "transformation") {

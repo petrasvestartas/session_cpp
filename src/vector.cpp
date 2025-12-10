@@ -1,7 +1,14 @@
 #include "vector.h"
+#include "point.h"
+#include "tolerance.h"
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <fstream>
+
+#ifdef ENABLE_PROTOBUF
+#include "vector.pb.h"
+#endif
 
 namespace session_cpp {
 
@@ -14,9 +21,40 @@ std::string Vector::to_string() const {
   return fmt::format("Vector({}, {}, {}, {}, {})", _x, _y, _z, guid, name);
 }
 
-/// Equality operator
+/// Simple string form (like Python __str__): just coordinates
+std::string Vector::str() const {
+  int prec = static_cast<int>(Tolerance::ROUNDING);
+  return fmt::format(
+      "{}, {}, {}",
+      TOL.format_number(_x, prec),
+      TOL.format_number(_y, prec),
+      TOL.format_number(_z, prec));
+}
+
+/// Detailed representation (like Python __repr__)
+std::string Vector::repr() {
+  int prec = static_cast<int>(Tolerance::ROUNDING);
+  return fmt::format(
+      "Vector({}, {}, {}, {}, {})",
+      name,
+      TOL.format_number(_x, prec),
+      TOL.format_number(_y, prec),
+      TOL.format_number(_z, prec),
+      TOL.format_number(magnitude(), prec));
+}
+
+/// Create a copy with a new GUID
+Vector Vector::duplicate() const {
+  Vector copy(*this);  // Uses copy constructor which creates new GUID
+  return copy;
+}
+
+/// Equality operator (compares name and coordinates with tolerance, excludes guid)
 bool Vector::operator==(const Vector &other) const {
-  return _x == other._x && _y == other._y && _z == other._z;
+  return name == other.name &&
+         std::round(_x * 1000000.0) == std::round(other._x * 1000000.0) &&
+         std::round(_y * 1000000.0) == std::round(other._y * 1000000.0) &&
+         std::round(_z * 1000000.0) == std::round(other._z * 1000000.0);
 }
 
 /// Inequality operator
@@ -27,7 +65,7 @@ bool Vector::operator!=(const Vector &other) const { return !(*this == other); }
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 double &Vector::operator[](int index) {
-  invalidate_length_cache();
+  invalidate_magnitude_cache();
   if (index == 0)
     return _x;
   if (index == 1)
@@ -44,30 +82,30 @@ const double &Vector::operator[](int index) const {
 }
 
 Vector &Vector::operator*=(double factor) {
-  set_x(_x * factor);
-  set_y(_y * factor);
-  set_z(_z * factor);
+  (*this)[0] = _x * factor;
+  (*this)[1] = _y * factor;
+  (*this)[2] = _z * factor;
   return *this;
 }
 
 Vector &Vector::operator/=(double factor) {
-  set_x(_x / factor);
-  set_y(_y / factor);
-  set_z(_z / factor);
+  (*this)[0] = _x / factor;
+  (*this)[1] = _y / factor;
+  (*this)[2] = _z / factor;
   return *this;
 }
 
 Vector &Vector::operator+=(const Vector &other) {
-  set_x(_x + other._x);
-  set_y(_y + other._y);
-  set_z(_z + other._z);
+  (*this)[0] = _x + other[0];
+  (*this)[1] = _y + other[1];
+  (*this)[2] = _z + other[2];
   return *this;
 }
 
 Vector &Vector::operator-=(const Vector &other) {
-  set_x(_x - other._x);
-  set_y(_y - other._y);
-  set_z(_z - other._z);
+  (*this)[0] = _x - other[0];
+  (*this)[1] = _y - other[1];
+  (*this)[2] = _z - other[2];
   return *this;
 }
 
@@ -110,19 +148,84 @@ Vector Vector::jsonload(const nlohmann::json &data) {
 }
 
 /// Serialize to JSON file
+void Vector::json_dump(const std::string& filename) const {
+  std::ofstream ofs(filename);
+  ofs << jsondump().dump(4);
+  ofs.close();
+}
 
 /// Deserialize from JSON file
+Vector Vector::json_load(const std::string& filename) {
+  std::ifstream ifs(filename);
+  nlohmann::json data = nlohmann::json::parse(ifs);
+  ifs.close();
+  return jsonload(data);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Protobuf Serialization
+///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+std::string Vector::to_protobuf() const {
+  session_proto::Vector proto;
+  proto.set_x(_x);
+  proto.set_y(_y);
+  proto.set_z(_z);
+  proto.set_name(name);
+  return proto.SerializeAsString();
+}
+
+Vector Vector::from_protobuf(const std::string& data) {
+  session_proto::Vector proto;
+  proto.ParseFromString(data);
+  Vector v(proto.x(), proto.y(), proto.z());
+  v.name = proto.name();
+  return v;
+}
+
+void Vector::protobuf_dump(const std::string& filename) const {
+  std::ofstream ofs(filename, std::ios::binary);
+  ofs << to_protobuf();
+  ofs.close();
+}
+
+Vector Vector::protobuf_load(const std::string& filename) {
+  std::ifstream ifs(filename, std::ios::binary);
+  std::string data((std::istreambuf_iterator<char>(ifs)),
+                    std::istreambuf_iterator<char>());
+  ifs.close();
+  return from_protobuf(data);
+}
+#else
+std::string Vector::to_protobuf() const {
+  throw std::runtime_error("Protobuf support not enabled");
+}
+
+Vector Vector::from_protobuf(const std::string& data) {
+  throw std::runtime_error("Protobuf support not enabled");
+}
+
+void Vector::protobuf_dump(const std::string& filename) const {
+  throw std::runtime_error("Protobuf support not enabled");
+}
+
+Vector Vector::protobuf_load(const std::string& filename) {
+  throw std::runtime_error("Protobuf support not enabled");
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Static methods
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+Vector Vector::zero() { return Vector(0.0, 0.0, 0.0); }
 Vector Vector::x_axis() { return Vector(1.0, 0.0, 0.0); }
 Vector Vector::y_axis() { return Vector(0.0, 1.0, 0.0); }
 Vector Vector::z_axis() { return Vector(0.0, 0.0, 1.0); }
 
-Vector Vector::from_start_and_end(const Vector &start, const Vector &end) {
-  return Vector(end._x - start._x, end._y - start._y, end._z - start._z);
+Vector Vector::from_points(const Point &p0, const Point &p1) {
+  return Vector(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -130,14 +233,14 @@ Vector Vector::from_start_and_end(const Vector &start, const Vector &end) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void Vector::reverse() {
-  set_x(-_x);
-  set_y(-_y);
-  set_z(-_z);
+  _x = -_x;
+  _y = -_y;
+  _z = -_z;
   // Length magnitude stays the same, no need to invalidate cache
 }
 
-double Vector::compute_length() const {
-  double len = 0.0;
+double Vector::compute_magnitude() const {
+  double mag = 0.0;
 
   double ax = std::abs(_x);
   double ay = std::abs(_y);
@@ -166,41 +269,46 @@ double Vector::compute_length() const {
   if (ax > std::numeric_limits<double>::min()) {
     ay /= ax;
     az /= ax;
-    len = ax * std::sqrt(1.0 + ay * ay + az * az);
+    mag = ax * std::sqrt(1.0 + ay * ay + az * az);
   } else if (ax > 0.0 && session_cpp::is_finite(ax)) {
-    len = ax;
+    mag = ax;
   } else {
-    len = 0.0;
+    mag = 0.0;
   }
 
-  return len;
+  return mag;
 }
 
-double Vector::cached_length() const {
-  if (!_has_length) {
-    _length = compute_length();
-    _has_length = true;
+double Vector::cached_magnitude() const {
+  if (!_has_magnitude) {
+    _magnitude = compute_magnitude();
+    _has_magnitude = true;
   }
-  return _length;
+  return _magnitude;
 }
 
-double Vector::magnitude() const { return cached_length(); }
+double Vector::magnitude() const { return cached_magnitude(); }
 
-double Vector::length_squared() const {
+double Vector::magnitude_squared() const {
   return _x * _x + _y * _y + _z * _z;
 }
 
 bool Vector::normalize_self() {
-  double d = compute_length();
+  double d = compute_magnitude();
   if (d > 0.0) {
-    set_x(_x / d);
-    set_y(_y / d);
-    set_z(_z / d);
+    (*this)[0] = _x / d;
+    (*this)[1] = _y / d;
+    (*this)[2] = _z / d;
     return true;
   }
   return false;
 }
 
+Vector Vector::normalize() const {
+  Vector result(_x, _y, _z);
+  result.normalize_self();
+  return result;
+}
 
 std::tuple<Vector, double, Vector, double>
 Vector::projection(Vector &projection_vector, double tolerance) {
@@ -228,7 +336,7 @@ Vector::projection(Vector &projection_vector, double tolerance) {
 }
 
 int Vector::is_parallel_to(const Vector &other) {
-  double ll = cached_length() * other.cached_length();
+  double ll = cached_magnitude() * other.cached_magnitude();
   int result;
   
   if (ll > 0.0) {
@@ -266,8 +374,8 @@ Vector Vector::cross(const Vector &other) const {
 double Vector::angle(const Vector &other, bool sign_by_cross_product, bool degrees,
                      double tolerance) {
   double dotp = this->dot(other);
-  double len0 = this->cached_length();
-  double len1 = other.cached_length();
+  double len0 = this->cached_magnitude();
+  double len1 = other.cached_magnitude();
   double denom = len0 * len1;
   if (denom < tolerance) {
     return 0.0;
@@ -324,6 +432,23 @@ Vector Vector::sum_of_vectors(std::vector<Vector> &vectors) {
     sz += v[2];
   }
   return Vector(sx, sy, sz);
+}
+
+Vector Vector::average(std::vector<Vector> &vectors) {
+  if (vectors.empty()) {
+    return Vector::zero();
+  }
+  Vector sum = sum_of_vectors(vectors);
+  double count = static_cast<double>(vectors.size());
+  return Vector(sum[0] / count, sum[1] / count, sum[2] / count);
+}
+
+bool Vector::is_perpendicular_to(const Vector &other) const {
+  return std::fabs(dot(other)) < static_cast<double>(Tolerance::ZERO_TOLERANCE);
+}
+
+bool Vector::is_zero() const {
+  return compute_magnitude() < static_cast<double>(Tolerance::ZERO_TOLERANCE);
 }
 
 std::array<double, 3> Vector::coordinate_direction_3angles(bool degrees) {
@@ -407,16 +532,16 @@ bool Vector::perpendicular_to(Vector &v) {
   arr[i] = b;
   arr[j] = a;
   arr[k] = 0.0;
-  set_x(arr[0]);
-  set_y(arr[1]);
-  set_z(arr[2]);
+  (*this)[0] = arr[0];
+  (*this)[1] = arr[1];
+  (*this)[2] = arr[2];
   return (a != 0.0) ? true : false;
 }
 
 void Vector::scale(double factor) {
-  set_x(_x * factor);
-  set_y(_y * factor);
-  set_z(_z * factor);
+  (*this)[0] = _x * factor;
+  (*this)[1] = _y * factor;
+  (*this)[2] = _z * factor;
 }
 
 void Vector::scale_up() { scale(static_cast<double>(session_cpp::SCALE)); }

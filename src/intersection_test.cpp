@@ -77,9 +77,9 @@ TEST_CASE("Plane-Plane Intersection", "[intersection]") {
     REQUIRE(result);
     
     Vector line_dir = output.to_vector();
-    REQUIRE(std::fabs(std::fabs(line_dir.x()) - 1.0) < 1e-4);
-    REQUIRE(std::fabs(line_dir.y()) < 1e-4);
-    REQUIRE(std::fabs(line_dir.z()) < 1e-4);
+    REQUIRE(std::fabs(std::fabs(line_dir[0]) - 1.0) < 1e-4);
+    REQUIRE(std::fabs(line_dir[1]) < 1e-4);
+    REQUIRE(std::fabs(line_dir[2]) < 1e-4);
 }
 
 TEST_CASE("Plane-Plane Intersection Complex", "[intersection]") {

@@ -244,9 +244,9 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       // Inflate existing bounding box
       auto inflated = *geom_ptr;
       inflated.half_size = Vector(
-        inflated.half_size.x() + inflate,
-        inflated.half_size.y() + inflate,
-        inflated.half_size.z() + inflate
+        inflated.half_size[0] + inflate,
+        inflated.half_size[1] + inflate,
+        inflated.half_size[2] + inflate
       );
       return inflated;
     }
@@ -260,9 +260,9 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       auto bbox = BoundingBox::from_points(points, inflate);
       // Inflate by cylinder radius
       bbox.half_size = Vector(
-        bbox.half_size.x() + geom_ptr->radius,
-        bbox.half_size.y() + geom_ptr->radius,
-        bbox.half_size.z() + geom_ptr->radius
+        bbox.half_size[0] + geom_ptr->radius,
+        bbox.half_size[1] + geom_ptr->radius,
+        bbox.half_size[2] + geom_ptr->radius
       );
       return bbox;
     }
@@ -272,9 +272,9 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       auto bbox = BoundingBox::from_points(points, inflate);
       // Inflate by arrow radius
       bbox.half_size = Vector(
-        bbox.half_size.x() + geom_ptr->radius,
-        bbox.half_size.y() + geom_ptr->radius,
-        bbox.half_size.z() + geom_ptr->radius
+        bbox.half_size[0] + geom_ptr->radius,
+        bbox.half_size[1] + geom_ptr->radius,
+        bbox.half_size[2] + geom_ptr->radius
       );
       return bbox;
     }

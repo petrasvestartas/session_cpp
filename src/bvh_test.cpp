@@ -179,7 +179,7 @@ TEST_CASE("BVH merge AABB", "[bvh]") {
 
     // Merged box should encompass both
     REQUIRE(std::abs(merged.center[0] - 2.5) < 0.001);  // Midpoint between 0 and 5
-    REQUIRE(std::abs(merged.half_size.x() - 3.5) < 0.001);  // Half of distance from -1 to 6
+    REQUIRE(std::abs(merged.half_size[0] - 3.5) < 0.001);  // Half of distance from -1 to 6
 }
 
 TEST_CASE("BVH performance many boxes", "[bvh]") {

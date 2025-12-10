@@ -296,7 +296,7 @@ TEST_CASE("NurbsCurve - Frames 3D (normal and Frenet)", "[nurbscurve][frames]") 
     // Normal plane (plane normal = tangent)
     Vector T = crv.tangent_at(t); // already unit length
     REQUIRE(std::abs(T.magnitude() - 1.0) < 1e-6);
-    Vector fallback = (std::abs(T.z()) < 0.9) ? Vector(0, 0, 1) : Vector(0, 1, 0);
+    Vector fallback = (std::abs(T[2]) < 0.9) ? Vector(0, 0, 1) : Vector(0, 1, 0);
     Vector e1 = T.cross(fallback);
     REQUIRE(e1.normalize_self());
     Vector e2 = T.cross(e1);

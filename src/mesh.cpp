@@ -212,7 +212,7 @@ std::optional<Vector> Mesh::face_normal(size_t face_key) const {
     double len = normal.magnitude();
     
     if (len > Tolerance::ZERO_TOLERANCE) {
-        return Vector(normal.x() / len, normal.y() / len, normal.z() / len);
+        return Vector(normal[0] / len, normal[1] / len, normal[2] / len);
     }
     return std::nullopt;
 }
@@ -248,14 +248,14 @@ std::optional<Vector> Mesh::vertex_normal_weighted(size_t vertex_key, NormalWeig
                 break;
         }
         
-        normal_acc.set_x(normal_acc.x() + fn.x() * weight);
-        normal_acc.set_y(normal_acc.y() + fn.y() * weight);
-        normal_acc.set_z(normal_acc.z() + fn.z() * weight);
+        normal_acc[0] = normal_acc[0] + fn[0] * weight;
+        normal_acc[1] = normal_acc[1] + fn[1] * weight;
+        normal_acc[2] = normal_acc[2] + fn[2] * weight;
     }
     
     double len = normal_acc.magnitude();
     if (len > Tolerance::ZERO_TOLERANCE) {
-        return Vector(normal_acc.x() / len, normal_acc.y() / len, normal_acc.z() / len);
+        return Vector(normal_acc[0] / len, normal_acc[1] / len, normal_acc[2] / len);
     }
     return std::nullopt;
 }

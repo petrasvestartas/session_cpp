@@ -220,7 +220,7 @@ double Polyline::length_squared() const {
     double length = 0.0;
     for (size_t i = 0; i < segment_count(); i++) {
         Vector segment = points[i + 1] - points[i];
-        length += segment.length_squared();
+        length += segment.magnitude_squared();
     }
     return length;
 }
@@ -237,13 +237,13 @@ Point Polyline::point_at_parameter(const Point& start, const Point& end, double 
 void Polyline::closest_point_to_line(const Point& point, const Point& line_start, 
                                     const Point& line_end, double& t) {
     Vector D = line_end - line_start;
-    double DoD = D.length_squared();
+    double DoD = D.magnitude_squared();
 
     if (DoD > 0.0) {
         Vector to_point_start = point - line_start;
         Vector to_point_end = point - line_end;
         
-        if (to_point_start.length_squared() <= to_point_end.length_squared()) {
+        if (to_point_start.magnitude_squared() <= to_point_end.magnitude_squared()) {
             t = to_point_start.dot(D) / DoD;
         } else {
             t = 1.0 + to_point_end.dot(D) / DoD;
@@ -332,7 +332,7 @@ void Polyline::line_line_overlap_average(const Point& line0_start, const Point& 
     Vector mid0_vec = mid_line0_end - mid_line0_start;
     Vector mid1_vec = mid_line1_end - mid_line1_start;
     
-    if (mid0_vec.length_squared() > mid1_vec.length_squared()) {
+    if (mid0_vec.magnitude_squared() > mid1_vec.magnitude_squared()) {
         output_start = mid_line0_start;
         output_end = mid_line0_end;
     } else {

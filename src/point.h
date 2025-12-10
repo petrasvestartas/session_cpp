@@ -68,10 +68,20 @@ public:
   // Transformation
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Apply the stored xform transformation to the point coordinates (in-place)
+  /**
+   * @brief Apply the stored xform transformation to the point coordinates.
+   * 
+   * Transforms the point in-place and resets xform to identity.
+   */
   void transform();
 
-  /// Return a transformed copy of the point
+  /**
+   * @brief Return a transformed copy of the point.
+   * 
+   * Returns a new point with the transformation applied.
+   * The original point and its xform remain unchanged.
+   * @return A new transformed point.
+   */
   Point transformed() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
@@ -95,16 +105,30 @@ public:
   ///////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef ENABLE_PROTOBUF
-  /// Convert to protobuf message and serialize to binary
+  /**
+   * @brief Convert to protobuf binary format.
+   * @return Serialized protobuf data.
+   */
   std::string to_protobuf() const;
 
-  /// Deserialize from protobuf binary
+  /**
+   * @brief Create Point from protobuf binary data.
+   * @param data Protobuf-encoded point data.
+   * @return The deserialized Point.
+   */
   static Point from_protobuf(const std::string& data);
 
-  /// Write protobuf to file
+  /**
+   * @brief Write protobuf to file.
+   * @param filename Path to the output file.
+   */
   void protobuf_dump(const std::string& filename) const;
 
-  /// Read protobuf from file  
+  /**
+   * @brief Read protobuf from file.
+   * @param filename Path to the protobuf file.
+   * @return The deserialized Point.
+   */
   static Point protobuf_load(const std::string& filename);
 #endif
 
@@ -137,6 +161,12 @@ public:
   Point operator-(const Vector& other) const;
 
   Vector operator-(const Point& other) const;
+
+  /// Returns a new point that is the sum of two points.
+  static Point sum(const Point& p0, const Point& p1);
+
+  /// Returns a new point that is the difference of two points.
+  static Point sub(const Point& p0, const Point& p1);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details

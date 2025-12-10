@@ -1,5 +1,6 @@
 #include "boundingbox.h"
 #include "line.h"
+#include "point.h"
 #include "polyline.h"
 #include "mesh.h"
 #include "pointcloud.h"
@@ -165,7 +166,7 @@ BoundingBox BoundingBox::from_arrow(const Arrow& arrow, double inflate_amount) {
     }
     Vector ux = axis;
     Vector uy;
-    if (std::abs(ux.z()) < 0.9) {
+    if (std::abs(ux[2]) < 0.9) {
         uy = Vector(0.0, 0.0, 1.0).cross(ux);
         uy.normalize_self();
     } else {
@@ -214,7 +215,7 @@ BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, double inflate_
     }
     Vector ux = axis;
     Vector uy;
-    if (std::abs(ux.z()) < 0.9) {
+    if (std::abs(ux[2]) < 0.9) {
         uy = Vector(0.0, 0.0, 1.0).cross(ux);
         uy.normalize_self();
     } else {
@@ -250,76 +251,76 @@ BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, const Plane& pl
 }
 
 BoundingBox BoundingBox::aabb() const {
-    double ex = half_size.x();
-    double ey = half_size.y();
-    double ez = half_size.z();
-    double hx = std::abs(x_axis.x()) * ex + std::abs(y_axis.x()) * ey + std::abs(z_axis.x()) * ez;
-    double hy = std::abs(x_axis.y()) * ex + std::abs(y_axis.y()) * ey + std::abs(z_axis.y()) * ez;
-    double hz = std::abs(x_axis.z()) * ex + std::abs(y_axis.z()) * ey + std::abs(z_axis.z()) * ez;
+    double ex = half_size[0];
+    double ey = half_size[1];
+    double ez = half_size[2];
+    double hx = std::abs(x_axis[0]) * ex + std::abs(y_axis[0]) * ey + std::abs(z_axis[0]) * ez;
+    double hy = std::abs(x_axis[1]) * ex + std::abs(y_axis[1]) * ey + std::abs(z_axis[1]) * ez;
+    double hz = std::abs(x_axis[2]) * ex + std::abs(y_axis[2]) * ey + std::abs(z_axis[2]) * ez;
     return BoundingBox(center, Vector(1,0,0), Vector(0,1,0), Vector(0,0,1), Vector(hx, hy, hz));
 }
 
 Point BoundingBox::point_at(double x, double y, double z) const {
     return Point(
-        center[0] + x * x_axis.x() + y * y_axis.x() + z * z_axis.x(),
-        center[1] + x * x_axis.y() + y * y_axis.y() + z * z_axis.y(),
-        center[2] + x * x_axis.z() + y * y_axis.z() + z * z_axis.z()
+        center[0] + x * x_axis[0] + y * y_axis[0] + z * z_axis[0],
+        center[1] + x * x_axis[1] + y * y_axis[1] + z * z_axis[1],
+        center[2] + x * x_axis[2] + y * y_axis[2] + z * z_axis[2]
     );
 }
 
 Point BoundingBox::min_point() const {
     return Point(
-        center[0] - half_size.x(),
-        center[1] - half_size.y(),
-        center[2] - half_size.z()
+        center[0] - half_size[0],
+        center[1] - half_size[1],
+        center[2] - half_size[2]
     );
 }
 
 Point BoundingBox::max_point() const {
     return Point(
-        center[0] + half_size.x(),
-        center[1] + half_size.y(),
-        center[2] + half_size.z()
+        center[0] + half_size[0],
+        center[1] + half_size[1],
+        center[2] + half_size[2]
     );
 }
 
 std::array<Point, 8> BoundingBox::corners() const {
     std::array<Point, 8> result;
     
-    result[0] = point_at(half_size.x(), half_size.y(), -half_size.z());
-    result[1] = point_at(-half_size.x(), half_size.y(), -half_size.z());
-    result[2] = point_at(-half_size.x(), -half_size.y(), -half_size.z());
-    result[3] = point_at(half_size.x(), -half_size.y(), -half_size.z());
+    result[0] = point_at(half_size[0], half_size[1], -half_size[2]);
+    result[1] = point_at(-half_size[0], half_size[1], -half_size[2]);
+    result[2] = point_at(-half_size[0], -half_size[1], -half_size[2]);
+    result[3] = point_at(half_size[0], -half_size[1], -half_size[2]);
     
-    result[4] = point_at(half_size.x(), half_size.y(), half_size.z());
-    result[5] = point_at(-half_size.x(), half_size.y(), half_size.z());
-    result[6] = point_at(-half_size.x(), -half_size.y(), half_size.z());
-    result[7] = point_at(half_size.x(), -half_size.y(), half_size.z());
+    result[4] = point_at(half_size[0], half_size[1], half_size[2]);
+    result[5] = point_at(-half_size[0], half_size[1], half_size[2]);
+    result[6] = point_at(-half_size[0], -half_size[1], half_size[2]);
+    result[7] = point_at(half_size[0], -half_size[1], half_size[2]);
     return result;
 }
 
 std::array<Point, 10> BoundingBox::two_rectangles() const {
     std::array<Point, 10> result;
     
-    result[0] = point_at(half_size.x(), half_size.y(), -half_size.z());
-    result[1] = point_at(-half_size.x(), half_size.y(), -half_size.z());
-    result[2] = point_at(-half_size.x(), -half_size.y(), -half_size.z());
-    result[3] = point_at(half_size.x(), -half_size.y(), -half_size.z());
-    result[4] = point_at(half_size.x(), half_size.y(), -half_size.z());
+    result[0] = point_at(half_size[0], half_size[1], -half_size[2]);
+    result[1] = point_at(-half_size[0], half_size[1], -half_size[2]);
+    result[2] = point_at(-half_size[0], -half_size[1], -half_size[2]);
+    result[3] = point_at(half_size[0], -half_size[1], -half_size[2]);
+    result[4] = point_at(half_size[0], half_size[1], -half_size[2]);
     
-    result[5] = point_at(half_size.x(), half_size.y(), half_size.z());
-    result[6] = point_at(-half_size.x(), half_size.y(), half_size.z());
-    result[7] = point_at(-half_size.x(), -half_size.y(), half_size.z());
-    result[8] = point_at(half_size.x(), -half_size.y(), half_size.z());
-    result[9] = point_at(half_size.x(), half_size.y(), half_size.z());
+    result[5] = point_at(half_size[0], half_size[1], half_size[2]);
+    result[6] = point_at(-half_size[0], half_size[1], half_size[2]);
+    result[7] = point_at(-half_size[0], -half_size[1], half_size[2]);
+    result[8] = point_at(half_size[0], -half_size[1], half_size[2]);
+    result[9] = point_at(half_size[0], half_size[1], half_size[2]);
     return result;
 }
 
 void BoundingBox::inflate(double amount) {
     half_size = Vector(
-        half_size.x() + amount,
-        half_size.y() + amount,
-        half_size.z() + amount
+        half_size[0] + amount,
+        half_size[1] + amount,
+        half_size[2] + amount
     );
 }
 
@@ -327,13 +328,13 @@ bool BoundingBox::separating_plane_exists(const Vector& relative_position, const
     // Fallback (unused by optimized path, but kept for API completeness)
     Vector rp = relative_position;
     double dot_rp = std::abs(rp.dot(axis));
-    Vector v1 = box1.x_axis * box1.half_size.x();
-    Vector v2 = box1.y_axis * box1.half_size.y();
-    Vector v3 = box1.z_axis * box1.half_size.z();
+    Vector v1 = box1.x_axis * box1.half_size[0];
+    Vector v2 = box1.y_axis * box1.half_size[1];
+    Vector v3 = box1.z_axis * box1.half_size[2];
     double proj1 = std::abs(v1.dot(axis)) + std::abs(v2.dot(axis)) + std::abs(v3.dot(axis));
-    Vector v4 = box2.x_axis * box2.half_size.x();
-    Vector v5 = box2.y_axis * box2.half_size.y();
-    Vector v6 = box2.z_axis * box2.half_size.z();
+    Vector v4 = box2.x_axis * box2.half_size[0];
+    Vector v5 = box2.y_axis * box2.half_size[1];
+    Vector v6 = box2.z_axis * box2.half_size[2];
     double proj2 = std::abs(v4.dot(axis)) + std::abs(v5.dot(axis)) + std::abs(v6.dot(axis));
     return dot_rp > (proj1 + proj2);
 }
@@ -364,12 +365,12 @@ bool BoundingBox::collides_with_rtcd(const BoundingBox& other) const {
     const Vector B0 = other.x_axis;
     const Vector B1 = other.y_axis;
     const Vector B2 = other.z_axis;
-    const double a0 = half_size.x();
-    const double a1 = half_size.y();
-    const double a2 = half_size.z();
-    const double b0 = other.half_size.x();
-    const double b1 = other.half_size.y();
-    const double b2 = other.half_size.z();
+    const double a0 = half_size[0];
+    const double a1 = half_size[1];
+    const double a2 = half_size[2];
+    const double b0 = other.half_size[0];
+    const double b1 = other.half_size[1];
+    const double b2 = other.half_size[2];
 
     double R00 = A0.dot(B0), R01 = A0.dot(B1), R02 = A0.dot(B2);
     double R10 = A1.dot(B0), R11 = A1.dot(B1), R12 = A1.dot(B2);
@@ -410,9 +411,9 @@ bool BoundingBox::collides_with_rtcd(const BoundingBox& other) const {
 }
 
 bool BoundingBox::collides_with_naive(const BoundingBox& other) const {
-    Vector center_vec(center[0], center[1], center[2]);
-    Vector other_center_vec(other.center[0], other.center[1], other.center[2]);
-    Vector relative_position = Vector::from_start_and_end(center_vec, other_center_vec);
+    Point center_pt(center[0], center[1], center[2]);
+    Point other_center_pt(other.center[0], other.center[1], other.center[2]);
+    Vector relative_position = Vector::from_points(center_pt, other_center_pt);
     
     const Vector x1 = x_axis, y1 = y_axis, z1 = z_axis;
     const Vector x2 = other.x_axis, y2 = other.y_axis, z2 = other.z_axis;

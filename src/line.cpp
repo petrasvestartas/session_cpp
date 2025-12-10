@@ -108,22 +108,22 @@ const double& Line::operator[](int index) const {
 }
 
 Line& Line::operator+=(const Vector& other) {
-    _x0 += other.x();
-    _y0 += other.y();
-    _z0 += other.z();
-    _x1 += other.x();
-    _y1 += other.y();
-    _z1 += other.z();
+    _x0 += other[0];
+    _y0 += other[1];
+    _z0 += other[2];
+    _x1 += other[0];
+    _y1 += other[1];
+    _z1 += other[2];
     return *this;
 }
 
 Line& Line::operator-=(const Vector& other) {
-    _x0 -= other.x();
-    _y0 -= other.y();
-    _z0 -= other.z();
-    _x1 -= other.x();
-    _y1 -= other.y();
-    _z1 -= other.z();
+    _x0 -= other[0];
+    _y0 -= other[1];
+    _z0 -= other[2];
+    _x1 -= other[0];
+    _y1 -= other[1];
+    _z1 -= other[2];
     return *this;
 }
 

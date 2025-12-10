@@ -81,23 +81,23 @@ Xform Xform::rotation(Vector& axis, double angle_radians) {
     double sin_angle = std::sin(angle_radians);
     double one_minus_cos = 1.0 - cos_angle;
 
-    double xx = axis.x() * axis.x();
-    double xy = axis.x() * axis.y();
-    double xz = axis.x() * axis.z();
-    double yy = axis.y() * axis.y();
-    double yz = axis.y() * axis.z();
-    double zz = axis.z() * axis.z();
+    double xx = axis[0] * axis[0];
+    double xy = axis[0] * axis[1];
+    double xz = axis[0] * axis[2];
+    double yy = axis[1] * axis[1];
+    double yz = axis[1] * axis[2];
+    double zz = axis[2] * axis[2];
 
     xform.m[0] = cos_angle + xx * one_minus_cos;
-    xform.m[1] = xy * one_minus_cos + axis.z() * sin_angle;
-    xform.m[2] = xz * one_minus_cos - axis.y() * sin_angle;
+    xform.m[1] = xy * one_minus_cos + axis[2] * sin_angle;
+    xform.m[2] = xz * one_minus_cos - axis[1] * sin_angle;
 
-    xform.m[4] = xy * one_minus_cos - axis.z() * sin_angle;
+    xform.m[4] = xy * one_minus_cos - axis[2] * sin_angle;
     xform.m[5] = cos_angle + yy * one_minus_cos;
-    xform.m[6] = yz * one_minus_cos + axis.x() * sin_angle;
+    xform.m[6] = yz * one_minus_cos + axis[0] * sin_angle;
 
-    xform.m[8] = xz * one_minus_cos + axis.y() * sin_angle;
-    xform.m[9] = yz * one_minus_cos - axis.x() * sin_angle;
+    xform.m[8] = xz * one_minus_cos + axis[1] * sin_angle;
+    xform.m[9] = yz * one_minus_cos - axis[0] * sin_angle;
     xform.m[10] = cos_angle + zz * one_minus_cos;
 
     return xform;
@@ -110,17 +110,17 @@ Xform Xform::change_basis(Point& origin, Vector& x_axis, Vector& y_axis, Vector&
     y_axis.normalize_self();
     z_axis.normalize_self();
 
-    xform.m[0] = x_axis.x();
-    xform.m[1] = x_axis.y();
-    xform.m[2] = x_axis.z();
+    xform.m[0] = x_axis[0];
+    xform.m[1] = x_axis[1];
+    xform.m[2] = x_axis[2];
 
-    xform.m[4] = y_axis.x();
-    xform.m[5] = y_axis.y();
-    xform.m[6] = y_axis.z();
+    xform.m[4] = y_axis[0];
+    xform.m[5] = y_axis[1];
+    xform.m[6] = y_axis[2];
 
-    xform.m[8] = z_axis.x();
-    xform.m[9] = z_axis.y();
-    xform.m[10] = z_axis.z();
+    xform.m[8] = z_axis[0];
+    xform.m[9] = z_axis[1];
+    xform.m[10] = z_axis[2];
 
     xform.m[12] = origin[0];
     xform.m[13] = origin[1];
@@ -226,14 +226,14 @@ Xform Xform::plane_to_plane(Point& origin_0, Vector& x_axis_0, Vector& y_axis_0,
     Xform t0 = translation(-origin_0[0], -origin_0[1], -origin_0[2]);
 
     Xform f0;
-    f0.m[0] = x0.x(); f0.m[1] = x0.y(); f0.m[2] = x0.z();
-    f0.m[4] = y0.x(); f0.m[5] = y0.y(); f0.m[6] = y0.z();
-    f0.m[8] = z0.x(); f0.m[9] = z0.y(); f0.m[10] = z0.z();
+    f0.m[0] = x0[0]; f0.m[1] = x0[1]; f0.m[2] = x0[2];
+    f0.m[4] = y0[0]; f0.m[5] = y0[1]; f0.m[6] = y0[2];
+    f0.m[8] = z0[0]; f0.m[9] = z0[1]; f0.m[10] = z0[2];
 
     Xform f1;
-    f1.m[0] = x1.x(); f1.m[4] = x1.y(); f1.m[8] = x1.z();
-    f1.m[1] = y1.x(); f1.m[5] = y1.y(); f1.m[9] = y1.z();
-    f1.m[2] = z1.x(); f1.m[6] = z1.y(); f1.m[10] = z1.z();
+    f1.m[0] = x1[0]; f1.m[4] = x1[1]; f1.m[8] = x1[2];
+    f1.m[1] = y1[0]; f1.m[5] = y1[1]; f1.m[9] = y1[2];
+    f1.m[2] = z1[0]; f1.m[6] = z1[1]; f1.m[10] = z1[2];
 
     Xform r = f1 * f0;
     Xform t1 = translation(origin_1[0], origin_1[1], origin_1[2]);
@@ -246,9 +246,9 @@ Xform Xform::plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
 
     Xform t = translation(-origin[0], -origin[1], -origin[2]);
     Xform f;
-    f.m[0] = x.x(); f.m[1] = x.y(); f.m[2] = x.z();
-    f.m[4] = y.x(); f.m[5] = y.y(); f.m[6] = y.z();
-    f.m[8] = z.x(); f.m[9] = z.y(); f.m[10] = z.z();
+    f.m[0] = x[0]; f.m[1] = x[1]; f.m[2] = x[2];
+    f.m[4] = y[0]; f.m[5] = y[1]; f.m[6] = y[2];
+    f.m[8] = z[0]; f.m[9] = z[1]; f.m[10] = z[2];
     return f * t;
 }
 
@@ -257,9 +257,9 @@ Xform Xform::xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
     x.normalize_self(); y.normalize_self(); z.normalize_self();
 
     Xform f;
-    f.m[0] = x.x(); f.m[4] = y.x(); f.m[8] = z.x();
-    f.m[1] = x.y(); f.m[5] = y.y(); f.m[9] = z.y();
-    f.m[2] = x.z(); f.m[6] = y.z(); f.m[10] = z.z();
+    f.m[0] = x[0]; f.m[4] = y[0]; f.m[8] = z[0];
+    f.m[1] = x[1]; f.m[5] = y[1]; f.m[9] = z[1];
+    f.m[2] = x[2]; f.m[6] = y[2]; f.m[10] = z[2];
 
     Xform t = translation(origin[0], origin[1], origin[2]);
     return t * f;
@@ -290,9 +290,9 @@ Xform Xform::scale_non_uniform(Point& origin, double scale_x, double scale_y, do
 Xform Xform::axis_rotation(double angle, Vector& axis) {
     double c = std::cos(angle);
     double s = std::sin(angle);
-    double ux = axis.x();
-    double uy = axis.y();
-    double uz = axis.z();
+    double ux = axis[0];
+    double uy = axis[1];
+    double uz = axis[2];
     double t = 1.0 - c;
 
     Xform xform;
@@ -321,17 +321,17 @@ Xform Xform::look_at_rh(const Point& eye, const Point& target, const Vector& up)
     Vector u = s.cross(f);
     
     Xform xform;
-    xform.m[0] = s.x();
-    xform.m[4] = s.y();
-    xform.m[8] = s.z();
+    xform.m[0] = s[0];
+    xform.m[4] = s[1];
+    xform.m[8] = s[2];
     
-    xform.m[1] = u.x();
-    xform.m[5] = u.y();
-    xform.m[9] = u.z();
+    xform.m[1] = u[0];
+    xform.m[5] = u[1];
+    xform.m[9] = u[2];
     
-    xform.m[2] = -f.x();
-    xform.m[6] = -f.y();
-    xform.m[10] = -f.z();
+    xform.m[2] = -f[0];
+    xform.m[6] = -f[1];
+    xform.m[10] = -f[2];
     
     Vector eye_vec(eye[0], eye[1], eye[2]);
     xform.m[12] = -s.dot(eye_vec);
@@ -406,9 +406,9 @@ Point Xform::transformed_point(const Point& point) const {
 }
 
 Vector Xform::transformed_vector(const Vector& vector) const {
-    double x = vector.x();
-    double y = vector.y();
-    double z = vector.z();
+    double x = vector[0];
+    double y = vector[1];
+    double z = vector[2];
 
     return Vector(
         m[0] * x + m[4] * y + m[8] * z,

@@ -36,7 +36,7 @@ Vector Quaternion::rotate_vector(const Vector& vec) const {
 }
 
 double Quaternion::magnitude() const {
-    return std::sqrt(s * s + v.x() * v.x() + v.y() * v.y() + v.z() * v.z());
+    return std::sqrt(s * s + v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }
 
 Quaternion Quaternion::normalize() const {
@@ -74,9 +74,9 @@ nlohmann::ordered_json Quaternion::jsondump() const {
         {"guid", guid},
         {"name", name},
         {"s", static_cast<double>(s)},
-        {"x", static_cast<double>(v.x())},
-        {"y", static_cast<double>(v.y())},
-        {"z", static_cast<double>(v.z())}
+        {"x", static_cast<double>(v[0])},
+        {"y", static_cast<double>(v[1])},
+        {"z", static_cast<double>(v[2])}
     };
 }
 

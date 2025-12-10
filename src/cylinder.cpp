@@ -58,7 +58,7 @@ Xform Cylinder::line_to_cylinder_transform(const Line& line, double radius) {
     z_axis.normalize_self();
     
     Vector x_axis;
-    if (std::abs(z_axis.z()) < 0.9) {
+    if (std::abs(z_axis[2]) < 0.9) {
         x_axis = Vector(0.0, 0.0, 1.0).cross(z_axis);
         x_axis.normalize_self();
     } else {
@@ -73,15 +73,15 @@ Xform Cylinder::line_to_cylinder_transform(const Line& line, double radius) {
     
     // Create rotation matrix from column vectors
     Xform rotation;
-    rotation.m[0] = x_axis.x();
-    rotation.m[1] = x_axis.y();
-    rotation.m[2] = x_axis.z();
-    rotation.m[4] = y_axis.x();
-    rotation.m[5] = y_axis.y();
-    rotation.m[6] = y_axis.z();
-    rotation.m[8] = z_axis.x();
-    rotation.m[9] = z_axis.y();
-    rotation.m[10] = z_axis.z();
+    rotation.m[0] = x_axis[0];
+    rotation.m[1] = x_axis[1];
+    rotation.m[2] = x_axis[2];
+    rotation.m[4] = y_axis[0];
+    rotation.m[5] = y_axis[1];
+    rotation.m[6] = y_axis[2];
+    rotation.m[8] = z_axis[0];
+    rotation.m[9] = z_axis[1];
+    rotation.m[10] = z_axis[2];
     
     Point center(
         (start[0] + end[0]) * 0.5,

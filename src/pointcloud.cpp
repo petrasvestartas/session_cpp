@@ -75,9 +75,9 @@ nlohmann::ordered_json PointCloud::jsondump() const {
     std::vector<double> normals_flat;
     normals_flat.reserve(normals.size() * 3);
     for (const auto& n : normals) {
-        normals_flat.push_back(n.x());
-        normals_flat.push_back(n.y());
-        normals_flat.push_back(n.z());
+        normals_flat.push_back(n[0]);
+        normals_flat.push_back(n[1]);
+        normals_flat.push_back(n[2]);
     }
 
     // Flatten colors to [r, g, b, r, g, b, ...] (no alpha)

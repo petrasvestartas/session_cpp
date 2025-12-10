@@ -2376,7 +2376,7 @@ bool NurbsCurve::is_natural(int end) const {
         auto derivs = evaluate(t, 2);
         if (derivs.size() < 3) return false;
         
-        Vector d2(derivs[2].x(), derivs[2].y(), derivs[2].z());
+        Vector d2(derivs[2][0], derivs[2][1], derivs[2][2]);
         double d2_len = d2.magnitude();
         
         // Get control polygon length for tolerance
@@ -2712,7 +2712,7 @@ std::pair<double, double> NurbsCurve::closest_point_to(const Point& test_point,
         auto derivs = evaluate(t, 2);
         if (derivs.size() < 3) break;
         
-        Vector d2(derivs[2].x(), derivs[2].y(), derivs[2].z());
+        Vector d2(derivs[2][0], derivs[2][1], derivs[2][2]);
         double tangent_mag = tangent.magnitude();
         double df = delta.dot(d2) - tangent_mag * tangent_mag;
         
@@ -3017,15 +3017,15 @@ double NurbsCurve::get_cubic_bezier_approximation(double max_deviation, std::vec
     double scale = arc_length / 3.0;
     
     bezier_cvs[1] = Point(
-        bezier_cvs[0][0] + tan0.x() * scale,
-        bezier_cvs[0][1] + tan0.y() * scale,
-        bezier_cvs[0][2] + tan0.z() * scale
+        bezier_cvs[0][0] + tan0[0] * scale,
+        bezier_cvs[0][1] + tan0[1] * scale,
+        bezier_cvs[0][2] + tan0[2] * scale
     );
     
     bezier_cvs[2] = Point(
-        bezier_cvs[3][0] - tan1.x() * scale,
-        bezier_cvs[3][1] - tan1.y() * scale,
-        bezier_cvs[3][2] - tan1.z() * scale
+        bezier_cvs[3][0] - tan1[0] * scale,
+        bezier_cvs[3][1] - tan1[1] * scale,
+        bezier_cvs[3][2] - tan1[2] * scale
     );
     
     // Calculate maximum deviation at Greville points

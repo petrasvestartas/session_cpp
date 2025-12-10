@@ -31,9 +31,9 @@ Plane::Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name) {
     _z_axis = _x_axis.cross(_y_axis);
     _z_axis.normalize_self();
     
-    _a = _z_axis.x();
-    _b = _z_axis.y();
-    _c = _z_axis.z();
+    _a = _z_axis[0];
+    _b = _z_axis[1];
+    _c = _z_axis[2];
     _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
@@ -47,9 +47,9 @@ Plane Plane::from_point_normal(Point& point, Vector& normal) {
     plane._y_axis = plane._z_axis.cross(plane._x_axis);
     plane._y_axis.normalize_self();
     
-    plane._a = plane._z_axis.x();
-    plane._b = plane._z_axis.y();
-    plane._c = plane._z_axis.z();
+    plane._a = plane._z_axis[0];
+    plane._b = plane._z_axis[1];
+    plane._c = plane._z_axis[2];
     plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
@@ -72,9 +72,9 @@ Plane Plane::from_points(std::vector<Point>& points) {
     plane._y_axis = plane._z_axis.cross(plane._x_axis);
     plane._y_axis.normalize_self();
     
-    plane._a = plane._z_axis.x();
-    plane._b = plane._z_axis.y();
-    plane._c = plane._z_axis.z();
+    plane._a = plane._z_axis[0];
+    plane._b = plane._z_axis[1];
+    plane._c = plane._z_axis[2];
     plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
@@ -93,9 +93,9 @@ Plane Plane::from_two_points(Point& point1, Point& point2) {
     plane._y_axis = plane._z_axis.cross(plane._x_axis);
     plane._y_axis.normalize_self();
     
-    plane._a = plane._z_axis.x();
-    plane._b = plane._z_axis.y();
-    plane._c = plane._z_axis.z();
+    plane._a = plane._z_axis[0];
+    plane._b = plane._z_axis[1];
+    plane._c = plane._z_axis[2];
     plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
@@ -258,9 +258,9 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     plane.guid = data["guid"];
     plane.name = data["name"];
     
-    plane._a = plane._z_axis.x();
-    plane._b = plane._z_axis.y();
-    plane._c = plane._z_axis.z();
+    plane._a = plane._z_axis[0];
+    plane._b = plane._z_axis[1];
+    plane._c = plane._z_axis[2];
     plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
     return plane;
 }
@@ -277,9 +277,9 @@ void Plane::reverse() {
     _y_axis = temp;
     _z_axis.reverse();
     
-    _a = _z_axis.x();
-    _b = _z_axis.y();
-    _c = _z_axis.z();
+    _a = _z_axis[0];
+    _b = _z_axis[1];
+    _c = _z_axis[2];
     _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
@@ -293,9 +293,9 @@ void Plane::rotate(double angles_in_radians) {
     _x_axis = new_x;
     _y_axis = new_y;
     
-    _a = _z_axis.x();
-    _b = _z_axis.y();
-    _c = _z_axis.z();
+    _a = _z_axis[0];
+    _b = _z_axis[1];
+    _c = _z_axis[2];
     _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 

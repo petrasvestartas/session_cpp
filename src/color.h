@@ -24,7 +24,14 @@ public:
   unsigned int b;                ///< Blue component (0-255)
   unsigned int a;                ///< Alpha component (0-255)
 
-  /// Constructor with RGBA values.
+  /**
+   * @brief Constructor with RGBA values.
+   * @param r Red component (0-255). Default: 255.
+   * @param g Green component (0-255). Default: 255.
+   * @param b Blue component (0-255). Default: 255.
+   * @param a Alpha component (0-255). Default: 255.
+   * @param name Name for the color. Default: "my_color".
+   */
   Color(unsigned int r = 255, unsigned int g = 255, unsigned int b = 255,
         unsigned int a = 255, std::string name = "my_color")
       : name(name), r(r), g(g), b(b), a(a) {}
@@ -35,7 +42,10 @@ public:
   /// Copy assignment (creates a new guid while copying data)
   Color &operator=(const Color &other);
 
-  /// Duplicate the color (returns a copy with new guid)
+  /**
+   * @brief Create a copy of this color with a new GUID.
+   * @return A new Color with identical RGBA values but a different GUID.
+   */
   Color duplicate() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
@@ -171,10 +181,17 @@ public:
   /// Create a silver color.
   static Color silver();
 
-  /// Convert to normalized float array [0-1].
+  /**
+   * @brief Convert to normalized float array [0-1].
+   * @return Array [r, g, b, a] with values normalized to [0.0, 1.0].
+   */
   std::array<double, 4> to_unified_array() const;
 
-  /// Create color from normalized float values [0-1].
+  /**
+   * @brief Create color from normalized float values [0-1].
+   * @param arr Array [r, g, b, a] with values in [0.0, 1.0] range.
+   * @return A new Color with values converted to 0-255 range.
+   */
   static Color from_unified_array(std::array<double, 4> arr);
 };
 
