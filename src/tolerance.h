@@ -99,19 +99,19 @@ public:
     /// Compare two values within tolerance
     bool compare(double a, double b, double rtol, double atol) const;
     /// Check if value is within zero tolerance
-    bool is_zero(double a, double tol = -1) const;
+    bool is_zero(double a) const;
     /// Check if value is positive within tolerance
-    bool is_positive(double a, double tol = -1) const;
+    bool is_positive(double a) const;
     /// Check if value is negative within tolerance
-    bool is_negative(double a, double tol = -1) const;
+    bool is_negative(double a) const;
     /// Check if value is within a range with absolute tolerance
-    bool is_between(double value, double minval, double maxval, double atol = -1) const;
+    bool is_between(double value, double minval, double maxval) const;
     /// Check closeness between two values using rtol/atol
-    bool is_close(double a, double b, double rtol = -1, double atol = -1) const;
+    bool is_close(double a, double b) const;
     /// Check if an angle is effectively zero (radians)
-    bool is_angle_zero(double a, double tol = -1) const;
+    bool is_angle_zero(double a) const;
     /// Check if two angles are close (radians)
-    bool is_angles_close(double a, double b, double tol = -1) const;
+    bool is_angles_close(double a, double b) const;
     
     // Formatting
     /// Create a geometric key string for 3D point with optional precision
@@ -131,7 +131,7 @@ public:
 };
 
 // Global tolerance instance
-extern Tolerance TOL;
+extern Tolerance TOLERANCE;
 
 // Utility function
 bool is_finite(double x);

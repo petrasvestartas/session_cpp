@@ -6,7 +6,7 @@
 namespace session_cpp {
 
 // Global tolerance instance
-Tolerance TOL;
+Tolerance TOLERANCE;
 
 Tolerance::Tolerance(const std::string& unit) 
     : _unit(unit), _absolute(0), _relative(0), _angular(0), _approximation(0), 
@@ -65,40 +65,33 @@ bool Tolerance::compare(double a, double b, double rtol, double atol) const {
     return std::abs(a - b) <= tolerance(b, rtol, atol);
 }
 
-bool Tolerance::is_zero(double a, double tol) const {
-    double tolerance_val = (tol >= 0) ? tol : absolute();
-    return std::abs(a) <= tolerance_val;
+bool Tolerance::is_zero(double a) const {
+    return std::abs(a) <= absolute();
 }
 
-bool Tolerance::is_positive(double a, double tol) const {
-    double tolerance_val = (tol >= 0) ? tol : absolute();
-    return a > tolerance_val;
+bool Tolerance::is_positive(double a) const {
+    return a > absolute();
 }
 
-bool Tolerance::is_negative(double a, double tol) const {
-    double tolerance_val = (tol >= 0) ? tol : absolute();
-    return a < -tolerance_val;
+bool Tolerance::is_negative(double a) const {
+    return a < -absolute();
 }
 
-bool Tolerance::is_between(double value, double minval, double maxval, double atol) const {
-    double tolerance_val = (atol >= 0) ? atol : absolute();
-    return minval - tolerance_val <= value && value <= maxval + tolerance_val;
+bool Tolerance::is_between(double value, double minval, double maxval) const {
+    double atol = absolute();
+    return minval - atol <= value && value <= maxval + atol;
 }
 
-bool Tolerance::is_close(double a, double b, double rtol, double atol) const {
-    double rtol_val = (rtol >= 0) ? rtol : relative();
-    double atol_val = (atol >= 0) ? atol : absolute();
-    return compare(a, b, rtol_val, atol_val);
+bool Tolerance::is_close(double a, double b) const {
+    return compare(a, b, relative(), absolute());
 }
 
-bool Tolerance::is_angle_zero(double a, double tol) const {
-    double tolerance_val = (tol >= 0) ? tol : angular();
-    return std::abs(a) <= tolerance_val;
+bool Tolerance::is_angle_zero(double a) const {
+    return std::abs(a) <= angular();
 }
 
-bool Tolerance::is_angles_close(double a, double b, double tol) const {
-    double tolerance_val = (tol >= 0) ? tol : angular();
-    return std::abs(a - b) <= tolerance_val;
+bool Tolerance::is_angles_close(double a, double b) const {
+    return std::abs(a - b) <= angular();
 }
 
 std::string Tolerance::geometric_key(double x, double y, double z, int precision) const {

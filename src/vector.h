@@ -409,6 +409,32 @@ public:
                                 double &angle_in_front_of_b,
                                 bool degrees = true);
 
+  /**
+   * @brief Calculate angle opposite to side c using the cosine law.
+   * @param triangle_edge_length_a Length of side a (adjacent to angle C).
+   * @param triangle_edge_length_b Length of side b (adjacent to angle C).
+   * @param triangle_edge_length_c Length of side c (opposite to angle C).
+   * @param degrees If true, return degrees; otherwise radians.
+   * @return Angle opposite to side c.
+   */
+  static double angle_from_cosine_law(double triangle_edge_length_a,
+                                      double triangle_edge_length_b,
+                                      double triangle_edge_length_c,
+                                      bool degrees = true);
+
+  /**
+   * @brief Calculate side length using the sine law (given two angles).
+   * @param angle_in_front_of_result_side Angle opposite to the side we want.
+   * @param angle_in_front_of_known_side Angle opposite to the known side.
+   * @param known_side_length Length of the known side.
+   * @param degrees If true, angles are in degrees; otherwise radians.
+   * @return Length of the side opposite to the first angle.
+   */
+  static double side_from_sine_law(double angle_in_front_of_result_side,
+                                   double angle_in_front_of_known_side,
+                                   double known_side_length,
+                                   bool degrees = true);
+
   /// Angle between XY components in degrees.
   static double angle_between_vector_xy_components(Vector &vector);
 

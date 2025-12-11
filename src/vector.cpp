@@ -26,9 +26,9 @@ std::string Vector::str() const {
   int prec = static_cast<int>(Tolerance::ROUNDING);
   return fmt::format(
       "{}, {}, {}",
-      TOL.format_number(_x, prec),
-      TOL.format_number(_y, prec),
-      TOL.format_number(_z, prec));
+      TOLERANCE.format_number(_x, prec),
+      TOLERANCE.format_number(_y, prec),
+      TOLERANCE.format_number(_z, prec));
 }
 
 /// Detailed representation (like Python __repr__)
@@ -37,10 +37,10 @@ std::string Vector::repr() {
   return fmt::format(
       "Vector({}, {}, {}, {}, {})",
       name,
-      TOL.format_number(_x, prec),
-      TOL.format_number(_y, prec),
-      TOL.format_number(_z, prec),
-      TOL.format_number(magnitude(), prec));
+      TOLERANCE.format_number(_x, prec),
+      TOLERANCE.format_number(_y, prec),
+      TOLERANCE.format_number(_z, prec),
+      TOLERANCE.format_number(magnitude(), prec));
 }
 
 /// Create a copy with a new GUID
@@ -396,9 +396,9 @@ Vector Vector::get_leveled_vector(double &vertical_height) {
   Vector copy(_x, _y, _z);
   if (copy.normalize_self()) {
     Vector reference(0, 0, 1);
-    double angle = copy.angle(reference, true); // returns degrees
-    // CRITICAL: statics bug - passes degrees directly to cos (expects radians)
-    double inclined_offset_by_vertical_distance = vertical_height / std::cos(angle);
+    double angle_deg = copy.angle(reference, false); // returns degrees (unsigned)
+    double angle_rad = angle_deg * static_cast<double>(Tolerance::TO_RADIANS);
+    double inclined_offset_by_vertical_distance = vertical_height / std::cos(angle_rad);
     copy *= inclined_offset_by_vertical_distance;
   }
   return copy;
@@ -418,6 +418,27 @@ double Vector::sine_law_angle(double &a, double &A, double &b, bool degrees) {
 double Vector::sine_law_length(double &a, double &A, double &B, bool degrees) {
   double to_rad = degrees ? static_cast<double>(Tolerance::TO_RADIANS) : 1.0;
   return (a * std::sin(B * to_rad)) / std::sin(A * to_rad);
+}
+
+double Vector::angle_from_cosine_law(double a, double b, double c, bool degrees) {
+  // cos(C) = (a² + b² - c²) / (2ab)
+  double cos_c = (a * a + b * b - c * c) / (2.0 * a * b);
+  double angle_rad = std::acos(cos_c);
+  if (degrees) {
+    return angle_rad * static_cast<double>(Tolerance::TO_DEGREES);
+  }
+  return angle_rad;
+}
+
+double Vector::side_from_sine_law(double angle_in_front_of_result_side,
+                                  double angle_in_front_of_known_side,
+                                  double known_side_length,
+                                  bool degrees) {
+  double to_rad = degrees ? static_cast<double>(Tolerance::TO_RADIANS) : 1.0;
+  double angle_a = angle_in_front_of_result_side * to_rad;
+  double angle_b = angle_in_front_of_known_side * to_rad;
+  // a = b·sin(A)/sin(B)
+  return (known_side_length * std::sin(angle_a)) / std::sin(angle_b);
 }
 
 double Vector::angle_between_vector_xy_components(Vector &vector) {

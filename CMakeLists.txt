@@ -342,6 +342,7 @@ set(MINITEST_SOURCES
     src/point_test.cpp
     src/color_test.cpp
     src/vector_test.cpp
+    src/tolerance_test.cpp
 )
 add_executable(point_minitest
     src/mini_test.cpp

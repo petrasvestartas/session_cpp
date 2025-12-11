@@ -14,9 +14,9 @@ std::string Point::str() const {
   int prec = static_cast<int>(Tolerance::ROUNDING);
   return fmt::format(
       "{}, {}, {}",
-      TOL.format_number(_x, prec),
-      TOL.format_number(_y, prec),
-      TOL.format_number(_z, prec));
+      TOLERANCE.format_number(_x, prec),
+      TOLERANCE.format_number(_y, prec),
+      TOLERANCE.format_number(_z, prec));
 }
 
 /// Detailed representation (like Python __repr__)
@@ -25,11 +25,11 @@ std::string Point::repr() const {
   return fmt::format(
       "Point({}, {}, {}, {}, Color({}, {}, {}, {}), {})",
       name,
-      TOL.format_number(_x, prec),
-      TOL.format_number(_y, prec),
-      TOL.format_number(_z, prec),
+      TOLERANCE.format_number(_x, prec),
+      TOLERANCE.format_number(_y, prec),
+      TOLERANCE.format_number(_z, prec),
       pointcolor.r, pointcolor.g, pointcolor.b, pointcolor.a,
-      TOL.format_number(width, prec));
+      TOLERANCE.format_number(width, prec));
 }
 
 /// Copy constructor (creates a new guid while copying data)
