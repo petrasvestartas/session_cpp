@@ -46,16 +46,15 @@ namespace session_cpp {
     
     MINI_TEST("Color", "conversion"){
       // uncomment #include "color.h"
-      // uncomment #include "tolerance.h"
 
       Color c(255, 128, 64, 255);
       std::array<double, 4> flts = c.to_unified_array();
       Color ints = Color::from_unified_array(flts);
 
-      MINI_CHECK(Tolerance::round_to(flts[0], Tolerance::ROUNDING) == 1.0);
-      MINI_CHECK(Tolerance::round_to(flts[1], Tolerance::ROUNDING) == 0.501961);
-      MINI_CHECK(Tolerance::round_to(flts[2], Tolerance::ROUNDING) == 0.25098);
-      MINI_CHECK(Tolerance::round_to(flts[3], Tolerance::ROUNDING) == 1.0);
+      MINI_CHECK(TOLERANCE.is_close(flts[0], 1.0));
+      MINI_CHECK(TOLERANCE.is_close(flts[1], 0.501961));
+      MINI_CHECK(TOLERANCE.is_close(flts[2], 0.25098));
+      MINI_CHECK(TOLERANCE.is_close(flts[3], 1.0));
       MINI_CHECK(ints == c);
     }
 

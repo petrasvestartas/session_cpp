@@ -116,76 +116,58 @@ namespace session_cpp {
 
     MINI_TEST("Point", "mid_point") {
         // uncomment #include "point.h"
-        // uncomment #include "tolerance.h"
 
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         Point mid = Point::mid_point(p0, p1);
 
-        double x = Tolerance::round_to(mid[0], Tolerance::ROUNDING);
-        double y = Tolerance::round_to(mid[1], Tolerance::ROUNDING);
-        double z = Tolerance::round_to(mid[2], Tolerance::ROUNDING);
-
-        MINI_CHECK(x == 0.5 && y == 3.5 && z == 2.0);
+        MINI_CHECK(mid[0] == 0.5 && mid[1] == 3.5 && mid[2] == 2.0);
     }
 
     MINI_TEST("Point", "distance") {
         // uncomment #include "point.h"
-        // uncomment #include "tolerance.h"
 
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
+        double d = Point::distance(p0, p1);
 
-        double d = Tolerance::round_to(Point::distance(p0, p1), Tolerance::ROUNDING);
-
-        MINI_CHECK(d == 3.741657);
+        MINI_CHECK(TOLERANCE.is_close(d, 3.741657));
     }
 
     MINI_TEST("Point", "squared_distance") {
         // uncomment #include "point.h"
-        // uncomment #include "tolerance.h"
 
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
+        double d = Point::squared_distance(p0, p1);
 
-        double d = Tolerance::round_to(Point::squared_distance(p0, p1), Tolerance::ROUNDING);
-
-        MINI_CHECK(d == 14.0);
+        MINI_CHECK(TOLERANCE.is_close(d, 14.0));
     }
 
     MINI_TEST("Point", "area") {
         // uncomment #include "point.h"
-        // uncomment #include <vector>
 
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 0.0);
         Point p2(2.0, 2.0, 0.0);
         Point p3(0.0, 2.0, 0.0);
-
-        std::vector<Point> pts{p0, p1, p2, p3};
-        double area = Point::area(pts);
+        double area = Point::area({p0, p1, p2, p3});
 
         MINI_CHECK(area == 4.0);
     }
 
     MINI_TEST("Point", "centroid_quad") {
         // uncomment #include "point.h"
-        // uncomment #include "tolerance.h"
-        // uncomment #include <vector>
 
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 1.0);
         Point p2(2.0, 2.0, 2.0);
         Point p3(0.0, 2.0, 1.0);
+        Point centroid = Point::centroid_quad({p0, p1, p2, p3});
 
-        std::vector<Point> pts{p0, p1, p2, p3};
-        Point centroid = Point::centroid_quad(pts);
-
-        double x = Tolerance::round_to(centroid[0], Tolerance::ROUNDING);
-        double y = Tolerance::round_to(centroid[1], Tolerance::ROUNDING);
-        double z = Tolerance::round_to(centroid[2], Tolerance::ROUNDING);
-
-        MINI_CHECK(x == 1.0 && y == 1.0 && z == 1.0);
+        MINI_CHECK(TOLERANCE.is_close(centroid[0], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(centroid[1], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(centroid[2], 1.0));
     }
 
     MINI_TEST("Point", "json_roundtrip") {

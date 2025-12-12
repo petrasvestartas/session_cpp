@@ -94,7 +94,7 @@ bool Tolerance::is_angles_close(double a, double b) const {
     return std::abs(a - b) <= angular();
 }
 
-std::string Tolerance::geometric_key(double x, double y, double z, int precision) const {
+std::string Tolerance::key(double x, double y, double z, int precision) const {
     int prec = (precision != -999) ? precision : this->precision();
     
     if (prec == 0) {
@@ -136,7 +136,7 @@ std::string Tolerance::geometric_key(double x, double y, double z, int precision
     return oss.str();
 }
 
-std::string Tolerance::geometric_key_xy(double x, double y, int precision) const {
+std::string Tolerance::key_xy(double x, double y, int precision) const {
     int prec = (precision != -999) ? precision : this->precision();
     
     if (prec == 0) {

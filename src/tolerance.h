@@ -115,9 +115,9 @@ public:
     
     // Formatting
     /// Create a geometric key string for 3D point with optional precision
-    std::string geometric_key(double x, double y, double z, int precision = -999) const;
+    std::string key(double x, double y, double z, int precision = -999) const;
     /// Create a geometric key string for 2D point with optional precision
-    std::string geometric_key_xy(double x, double y, int precision = -999) const;
+    std::string key_xy(double x, double y, int precision = -999) const;
     /// Format a number with optional precision override
     std::string format_number(double number, int precision = -999) const;
     /// Determine decimal precision from a tolerance value

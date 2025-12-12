@@ -116,8 +116,6 @@ MINI_TEST("Vector", "reverse") {
 
 MINI_TEST("Vector", "dot_product") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
-    // uncomment #include <cmath>
 
     // Orthogonality and parallelism via dot product
     // Perpendicular vectors are close to 0.0
@@ -147,8 +145,6 @@ MINI_TEST("Vector", "dot_product") {
 
 MINI_TEST("Vector", "cross_product") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
-    // uncomment #include <cmath>
 
     // Get normal
     Vector v1(1.0, 0.0, 0.0);
@@ -167,8 +163,6 @@ MINI_TEST("Vector", "cross_product") {
 
 MINI_TEST("Vector", "angle") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
-    // uncomment #include <cmath>
 
     // angle(): Angle between two vectors (degrees)
     Vector v1(1.0, 0.0, 0.0);  // x-axis
@@ -268,8 +262,6 @@ MINI_TEST("Vector", "is_perpendicular_to") {
 
 MINI_TEST("Vector", "get_leveled_vector") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
-    // uncomment #include <cmath>
 
     // Scale vector along its direction so its Z-component equals vertical_height.
     Vector v(1.0, 1.0, 1.0);
@@ -281,7 +273,6 @@ MINI_TEST("Vector", "get_leveled_vector") {
 
 MINI_TEST("Vector", "cos_sin_laws") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
 
     // Given a 3-4-5 right triangle
     double a = 3.0;  // side opposite to angle A
@@ -380,7 +371,6 @@ MINI_TEST("Vector", "is_zero") {
 
 MINI_TEST("Vector", "json_roundtrip") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
 
     Vector v(42.1, 84.2, 126.3);
     v.name = "test_vector";
@@ -398,7 +388,6 @@ MINI_TEST("Vector", "json_roundtrip") {
 
 MINI_TEST("Vector", "protobuf_roundtrip") {
     // uncomment #include "vector.h"
-    // uncomment #include "tolerance.h"
 
     Vector v(42.1, 84.2, 126.3);
     v.name = "test_vector";
