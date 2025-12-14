@@ -17,13 +17,16 @@ namespace session_cpp {
 
 /**
  * @class Polyline
- * @brief A polyline defined by a collection of points with an associated plane.
+ * @brief A polyline defined by a collection of coordinates with an associated plane.
+ *
+ * Internally stores coordinates as a flat array [x0, y0, z0, x1, y1, z1, ...] for
+ * efficient serialization. Provides Point-based API for compatibility.
  */
 class Polyline {
 public:
     std::string guid = ::guid();
     std::string name = "my_polyline";
-    std::vector<Point> points;
+    std::vector<double> _coords;  // Flat array [x0, y0, z0, x1, y1, z1, ...]
     Plane plane;
     double width = 1.0;
     Color linecolor = Color::white();
@@ -33,11 +36,44 @@ public:
     /// Default constructor
     Polyline();
 
-    /// Constructor with points
+    /// Copy constructor (creates a new guid while copying data)
+    Polyline(const Polyline& other);
+
+    /// Copy assignment (creates a new guid while copying data)
+    Polyline& operator=(const Polyline& other);
+
+    /// Constructor with points (converts to flat coords internally)
     explicit Polyline(const std::vector<Point>& pts);
 
+    /// Constructor with flat coords
+    static Polyline from_coords(const std::vector<double>& coords);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Core Methods (str, repr, duplicate, eq)
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Returns minimal string representation
+    std::string str() const;
+
+    /// Returns detailed string representation
+    std::string repr() const;
+
+    /// Equality operator (compares values, ignores GUIDs)
+    bool operator==(const Polyline& other) const;
+    bool operator!=(const Polyline& other) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Point Access
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     /// Returns the number of points in the polyline
+    size_t point_count() const;
+
+    /// Returns the number of points (alias for point_count)
     size_t len() const;
+
+    /// Returns all points as Point objects
+    std::vector<Point> get_points() const;
 
     /// Returns true if the polyline has no points
     bool is_empty() const;
@@ -48,9 +84,11 @@ public:
     /// Calculates the total length of the polyline
     double length() const;
 
-    /// Returns a pointer to the point at the given index (nullptr if out of bounds)
-    Point* get_point(size_t index);
-    const Point* get_point(size_t index) const;
+    /// Returns the point at the given index
+    Point get_point(size_t index) const;
+
+    /// Sets the point at the given index
+    void set_point(size_t index, const Point& point);
 
     /// Adds a point to the end of the polyline
     void add_point(const Point& point);
@@ -91,18 +129,38 @@ public:
     Polyline transformed() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // JSON
+    // JSON Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert to JSON-serializable object
+    /// Convert to JSON-serializable object (uses compact coords format)
     nlohmann::ordered_json jsondump() const;
 
-    /// Create polyline from JSON data
+    /// Create polyline from JSON data (supports both coords and legacy points format)
     static Polyline jsonload(const nlohmann::json& data);
 
     /// Serialize to JSON file
+    void json_dump(const std::string& filename) const;
 
     /// Deserialize from JSON file
+    static Polyline json_load(const std::string& filename);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Protobuf Serialization
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+    /// Convert to protobuf binary format
+    std::string to_protobuf() const;
+
+    /// Create Polyline from protobuf binary data
+    static Polyline from_protobuf(const std::string& data);
+
+    /// Write protobuf to file
+    void protobuf_dump(const std::string& filename) const;
+
+    /// Read protobuf from file
+    static Polyline protobuf_load(const std::string& filename);
+#endif
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Utilities
@@ -220,6 +278,6 @@ template <> struct fmt::formatter<session_cpp::Polyline> {
 
     auto format(const session_cpp::Polyline& polyline, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "Polyline(guid={}, name={}, points={})",
-                            polyline.guid, polyline.name, polyline.points.size());
+                            polyline.guid, polyline.name, polyline.point_count());
     }
 };

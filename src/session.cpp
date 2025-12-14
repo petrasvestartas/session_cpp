@@ -224,7 +224,7 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       return BoundingBox::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Polyline>>) {
-      return BoundingBox::from_points(geom_ptr->points, inflate);
+      return BoundingBox::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<PointCloud>>) {
       return BoundingBox::from_points(geom_ptr->points, inflate);
@@ -589,8 +589,8 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       double min_dist = std::numeric_limits<double>::infinity();
       
       for (size_t i = 0; i < geom_ptr->segment_count(); ++i) {
-        const Point& p0 = geom_ptr->points[i];
-        const Point& p1 = geom_ptr->points[i + 1];
+        Point p0 = geom_ptr->get_point(i);
+        Point p1 = geom_ptr->get_point(i + 1);
         Line seg = Line::from_points(p0, p1);
         Point hit;
         if (Intersection::line_line(ray, seg, hit, tolerance)) {

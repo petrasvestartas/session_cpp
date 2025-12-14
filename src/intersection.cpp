@@ -380,9 +380,9 @@ bool Intersection::line_plane(
     const double s = 1.0 - t;
     
     output = Point(
-        (line.x0() == line.x1()) ? line.x0() : s * line.x0() + t * line.x1(),
-        (line.y0() == line.y1()) ? line.y0() : s * line.y0() + t * line.y1(),
-        (line.z0() == line.z1()) ? line.z0() : s * line.z0() + t * line.z1()
+        (line[0] == line[3]) ? line[0] : s * line[0] + t * line[3],
+        (line[1] == line[4]) ? line[1] : s * line[1] + t * line[4],
+        (line[2] == line[5]) ? line[2] : s * line[2] + t * line[5]
     );
     
     if (is_finite && (t < 0.0 || t > 1.0))

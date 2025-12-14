@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace session_cpp {
 
@@ -26,7 +27,6 @@ public:
     double width = 1.0;                ///< Line width in pixels
     Color linecolor = Color::white();  ///< Color of the line
     Xform xform;   ///< Transformation matrix
-    // Mesh mesh;                      ///< Mesh for visualization (pipe) - TODO: implement later
 
 private:
     double _x0 = 0.0;                  ///< X coordinate of start point
@@ -38,100 +38,82 @@ private:
 
 public:
 
-    /// Getters for coordinates
-    double x0() const { return _x0; }
-    double y0() const { return _y0; }
-    double z0() const { return _z0; }
-    double x1() const { return _x1; }
-    double y1() const { return _y1; }
-    double z1() const { return _z1; }
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Constructors
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Setters for coordinates
-    void set_x0(double v) { _x0 = v; }
-    void set_y0(double v) { _y0 = v; }
-    void set_z0(double v) { _z0 = v; }
-    void set_x1(double v) { _x1 = v; }
-    void set_y1(double v) { _y1 = v; }
-    void set_z1(double v) { _z1 = v; }
-
-    /**
-     * @brief Default constructor.
-     */
+    /// Default constructor.
     Line();
 
-    /**
-     * @brief Constructor with coordinates.
-     * @param x0 first point x coordinate.
-     * @param y0 first point y coordinate.
-     * @param z0 first point z coordinate.
-     * @param x1 second point x coordinate.
-     * @param y1 second point y coordinate.
-     * @param z1 second point z coordinate.
-     */
+    /// Constructor with coordinates.
     Line(double x0, double y0, double z0, double x1, double y1, double z1);
 
-    /**
-     * @brief Constructor from two points.
-     * @param p1 The first point.
-     * @param p2 The second point.
-     */
+    /// Constructor from two points.
     static Line from_points(const Point& p1, const Point& p2);
 
-    /**
-     * @brief Constructor with name and coordinates.
-     * @param name The name for the line.
-     * @param x0 first point x coordinate.
-     * @param y0 first point y coordinate.
-     * @param z0 first point z coordinate.
-     * @param x1 second point x coordinate.
-     * @param y1 second point y coordinate.
-     * @param z1 second point z coordinate.
-     */
+    /// Fit a line to a set of points using least squares (PCA).
+    static Line fit_points(const std::vector<Point>& points, double length = 0.0);
+
+    /// Constructor with name and coordinates.
     static Line with_name(const std::string& name, double x0, double y0, double z0, double x1, double y1, double z1);
 
-    /// Convert line to string representation
-    std::string to_string() const;
+    /// Copy constructor (creates a new guid while copying data)
+    Line(const Line& other);
+
+    /// Copy assignment (creates a new guid while copying data)
+    Line& operator=(const Line& other);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Transformation
+    // Geometry Methods
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply the stored xform transformation to the line coordinates (in-place)
-    void transform();
+    /// Calculates the length of the line.
+    double length() const;
 
-    /// Return a transformed copy of the line
-    Line transformed() const;
+    /// Calculates the squared length of the line.
+    double squared_length() const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // JSON
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    /// Convert line to vector from start to end.
+    Vector to_vector() const;
 
-    /// Convert to JSON-serializable object
-    nlohmann::ordered_json jsondump() const;
+    /// Convert line to unit direction vector.
+    Vector to_direction() const;
 
-    /// Create line from JSON data
-    static Line jsonload(const nlohmann::json& data);
+    /// Calculates the point at a given parameter t.
+    Point point_at(double t) const;
 
-    /// Serialize to JSON file
+    /// Subdivide line into n points.
+    std::vector<Point> subdivide(int n) const;
 
-    /// Deserialize from JSON file
+    /// Subdivide line by approximate distance between points.
+    std::vector<Point> subdivide_by_distance(double distance) const;
+
+    /// Get start point.
+    Point start() const;
+
+    /// Get end point.
+    Point end() const;
+
+    /// Get center point (average of start and end).
+    Point center() const;
+
+    /// Find the closest point on the line to a given point.
+    Point closest_point(const Point& point) const;
+
+    /// Create a line from a point and a vector.
+    static Line from_point_and_vector(const Point& point, const Vector& vector);
+
+    /// Create a line from a point, direction, and length.
+    static Line from_point_direction_length(const Point& point, const Vector& direction, double length);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Operators
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @brief Subscript operator for non-const access.
-     * @param index The index (0=x0, 1=y0, 2=z0, 3=x1, 4=y1, 5=z1).
-     * @return A reference to the coordinate.
-     */
+    /// Subscript operator for non-const access (0=x0, 1=y0, 2=z0, 3=x1, 4=y1, 5=z1).
     double& operator[](int index);
 
-    /**
-     * @brief Subscript operator for const access.
-     * @param index The index (0=x0, 1=y0, 2=z0, 3=x1, 4=y1, 5=z1).
-     * @return A const reference to the coordinate.
-     */
+    /// Subscript operator for const access.
     const double& operator[](int index) const;
 
     Line& operator+=(const Vector& other);
@@ -143,59 +125,61 @@ public:
     Line operator-(const Vector& other) const;
     Line operator*(double factor) const;
     Line operator/(double factor) const;
-
-    Vector to_vector() const;
+    Line operator-() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Geometry Methods
+    // String Representation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @brief Calculates the length of the line.
-     * @return The length of the line.
-     */
-    double length() const;
+    /// Convert line to string representation.
+    std::string to_string() const;
+    std::string str() const;    ///< simple coordinate string (like Python str)
+    std::string repr() const;   ///< detailed representation (like Python repr)
 
-    /**
-     * @brief Calculates the squared length of the line.
-     * @return The squared length of the line.
-     */
-    double squared_length() const;
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Transformation
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @brief Calculates the point at a given parameter t.
-     * @param t The parameter value.
-     * @return The point at the given parameter value.
-     */
-    Point point_at(double t) const;
+    /// Apply the stored xform transformation to the line coordinates (in-place).
+    void transform();
 
-    /**
-     * @brief Get start point.
-     */
-    Point start() const;
+    /// Return a transformed copy of the line.
+    Line transformed() const;
 
-    /**
-     * @brief Get end point.
-     */
-    Point end() const;
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // JSON Serialization
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
-    // /// Updates the mesh representation using thickness.
-    // Line& update_mesh();
-    // 
-    // /// Gets the mesh representation of this line as a pipe.
-    // Mesh* get_mesh();
-    //
-    // /// Returns a transform that maps the canonical unit pipe onto this line segment.
-    // Xform to_pipe_transform() const;
+    /// Convert to JSON-serializable object.
+    nlohmann::ordered_json jsondump() const;
 
+    /// Create line from JSON data.
+    static Line jsonload(const nlohmann::json& data);
+
+    /// Serialize to JSON file.
+    void json_dump(const std::string& filename) const;
+
+    /// Deserialize from JSON file.
+    static Line json_load(const std::string& filename);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Protobuf Serialization
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Convert to protobuf string.
+    std::string to_protobuf() const;
+
+    /// Create line from protobuf data.
+    static Line from_protobuf(const std::string& data);
+
+    /// Serialize to protobuf file.
+    void protobuf_dump(const std::string& filename) const;
+
+    /// Deserialize from protobuf file.
+    static Line protobuf_load(const std::string& filename);
 };
 
-/**
- * @brief Output stream operator for Line.
- * @param os The output stream.
- * @param line The Line to insert into the stream.
- * @return A reference to the output stream.
- */
+/// Output stream operator for Line.
 std::ostream& operator<<(std::ostream& os, const Line& line);
 
 }  // namespace session_cpp

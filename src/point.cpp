@@ -9,29 +9,6 @@
 
 namespace session_cpp {
 
-/// Simple string form (like Python __str__): just coordinates
-std::string Point::str() const {
-  int prec = static_cast<int>(Tolerance::ROUNDING);
-  return fmt::format(
-      "{}, {}, {}",
-      TOLERANCE.format_number(_x, prec),
-      TOLERANCE.format_number(_y, prec),
-      TOLERANCE.format_number(_z, prec));
-}
-
-/// Detailed representation (like Python __repr__)
-std::string Point::repr() const {
-  int prec = static_cast<int>(Tolerance::ROUNDING);
-  return fmt::format(
-      "Point({}, {}, {}, {}, Color({}, {}, {}, {}), {})",
-      name,
-      TOLERANCE.format_number(_x, prec),
-      TOLERANCE.format_number(_y, prec),
-      TOLERANCE.format_number(_z, prec),
-      pointcolor.r, pointcolor.g, pointcolor.b, pointcolor.a,
-      TOLERANCE.format_number(width, prec));
-}
-
 /// Copy constructor (creates a new guid while copying data)
 Point::Point(const Point &other)
     : guid(::guid()),
@@ -57,14 +34,6 @@ Point &Point::operator=(const Point &other) {
   }
   return *this;
 }
-
-/// Equality operator
-bool Point::operator==(const Point &other) const {
-  return _x == other._x && _y == other._y && _z == other._z;
-}
-
-/// Inequality operator
-bool Point::operator!=(const Point &other) const { return !(*this == other); }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Transformation
@@ -194,6 +163,37 @@ Point Point::protobuf_load(const std::string& filename) {
   return from_protobuf(data);
 }
 #endif
+
+/// Simple string form (like Python __str__): just coordinates
+std::string Point::str() const {
+  int prec = static_cast<int>(Tolerance::ROUNDING);
+  return fmt::format(
+      "{}, {}, {}",
+      TOLERANCE.format_number(_x, prec),
+      TOLERANCE.format_number(_y, prec),
+      TOLERANCE.format_number(_z, prec));
+}
+
+/// Detailed representation (like Python __repr__)
+std::string Point::repr() const {
+  int prec = static_cast<int>(Tolerance::ROUNDING);
+  return fmt::format(
+      "Point({}, {}, {}, {}, Color({}, {}, {}, {}), {})",
+      name,
+      TOLERANCE.format_number(_x, prec),
+      TOLERANCE.format_number(_y, prec),
+      TOLERANCE.format_number(_z, prec),
+      pointcolor.r, pointcolor.g, pointcolor.b, pointcolor.a,
+      TOLERANCE.format_number(width, prec));
+}
+
+/// Equality operator
+bool Point::operator==(const Point &other) const {
+  return _x == other._x && _y == other._y && _z == other._z;
+}
+
+/// Inequality operator
+bool Point::operator!=(const Point &other) const { return !(*this == other); }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // No-copy Operators

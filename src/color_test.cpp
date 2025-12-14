@@ -52,8 +52,8 @@ namespace session_cpp {
       Color ints = Color::from_unified_array(flts);
 
       MINI_CHECK(TOLERANCE.is_close(flts[0], 1.0));
-      MINI_CHECK(TOLERANCE.is_close(flts[1], 0.501961));
-      MINI_CHECK(TOLERANCE.is_close(flts[2], 0.25098));
+      MINI_CHECK(TOLERANCE.is_close(flts[1], 0.50196078));
+      MINI_CHECK(TOLERANCE.is_close(flts[2], 0.25098039));
       MINI_CHECK(TOLERANCE.is_close(flts[3], 1.0));
       MINI_CHECK(ints == c);
     }

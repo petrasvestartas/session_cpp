@@ -127,11 +127,11 @@ BoundingBox BoundingBox::from_line(const Line& line, const Plane& plane, double 
 }
 
 BoundingBox BoundingBox::from_polyline(const Polyline& polyline, double inflate_amount) {
-    return from_points(polyline.points, inflate_amount);
+    return from_points(polyline.get_points(), inflate_amount);
 }
 
 BoundingBox BoundingBox::from_polyline(const Polyline& polyline, const Plane& plane, double inflate_amount) {
-    return from_points(polyline.points, plane, inflate_amount);
+    return from_points(polyline.get_points(), plane, inflate_amount);
 }
 
 BoundingBox BoundingBox::from_mesh(const Mesh& mesh, double inflate_amount) {

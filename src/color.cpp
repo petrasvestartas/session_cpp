@@ -38,34 +38,6 @@ Color Color::duplicate() const {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// Operators
-///////////////////////////////////////////////////////////////////////////////////////////
-
-/// Simple string representation (like Python __str__): "r, g, b, a"
-std::string Color::str() const {
-  return fmt::format("{}, {}, {}, {}", r, g, b, a);
-}
-
-/// Detailed representation (like Python __repr__): "Color(name, r, g, b, a)"
-std::string Color::repr() const {
-  return fmt::format("Color({}, {}, {}, {}, {})", name, r, g, b, a);
-}
-
-/// Alias for repr() - for compatibility
-std::string Color::to_string() const {
-  return repr();
-}
-
-/// Equality operator
-bool Color::operator==(const Color &other) const {
-  return r == other.r && g == other.g && b == other.b && a == other.a &&
-         name == other.name;
-}
-
-/// Inequality operator
-bool Color::operator!=(const Color &other) const { return !(*this == other); }
-
-///////////////////////////////////////////////////////////////////////////////////////////
 // No-copy Operators (index access)
 ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -169,6 +141,34 @@ Color Color::protobuf_load(const std::string& filename) {
   return from_protobuf(data);
 }
 #endif
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Operators
+///////////////////////////////////////////////////////////////////////////////////////////
+
+/// Simple string representation (like Python __str__): "r, g, b, a"
+std::string Color::str() const {
+  return fmt::format("{}, {}, {}, {}", r, g, b, a);
+}
+
+/// Detailed representation (like Python __repr__): "Color(name, r, g, b, a)"
+std::string Color::repr() const {
+  return fmt::format("Color({}, {}, {}, {}, {})", name, r, g, b, a);
+}
+
+/// Alias for repr() - for compatibility
+std::string Color::to_string() const {
+  return repr();
+}
+
+/// Equality operator
+bool Color::operator==(const Color &other) const {
+  return r == other.r && g == other.g && b == other.b && a == other.a &&
+         name == other.name;
+}
+
+/// Inequality operator
+bool Color::operator!=(const Color &other) const { return !(*this == other); }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Details
