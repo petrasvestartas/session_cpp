@@ -24,6 +24,7 @@ namespace session_cpp {
         public:
         std::string guid = ::guid();       ///< Unique identifier for the plane
         std::string name = "my_plane";     ///< Plane identifier/name
+        double width = 1.0;                ///< Width for plane visualization
         Xform xform;   ///< Transformation matrix
 
         private:
@@ -49,6 +50,8 @@ namespace session_cpp {
         double d() const { return _d; }
 
         Plane();
+        Plane(const Plane& other);
+        Plane& operator=(const Plane& other);
         Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name = "my_plane");
         static Plane from_point_normal(Point& point, Vector& normal);
         static Plane from_points(std::vector<Point>& points);
@@ -64,6 +67,12 @@ namespace session_cpp {
     /// Convert point to string representation
     std::string to_string() const;
 
+    /// Minimal string representation
+    std::string str() const;
+
+    /// Full string representation
+    std::string repr() const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -74,11 +83,11 @@ namespace session_cpp {
     /// Return a transformed copy of the plane
     Plane transformed() const;
 
-    /// Equality operator
-    bool operator==(const Point &other) const;
+    /// Equality operator (compares origin and axes, ignores guid)
+    bool operator==(const Plane &other) const;
 
     /// Inequality operator
-    bool operator!=(const Point &other) const;
+    bool operator!=(const Plane &other) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // No-copy Operators
@@ -105,12 +114,30 @@ namespace session_cpp {
   /// Convert to JSON-serializable object
   nlohmann::ordered_json jsondump() const;
 
-  /// Create vector from JSON data
+  /// Create plane from JSON data
   static Plane jsonload(const nlohmann::json &data);
 
   /// Serialize to JSON file
+  void json_dump(const std::string& filename) const;
 
   /// Deserialize from JSON file
+  static Plane json_load(const std::string& filename);
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  // Protobuf
+  ///////////////////////////////////////////////////////////////////////////////////////////
+
+  /// Convert to protobuf string.
+  std::string to_protobuf() const;
+
+  /// Create plane from protobuf data.
+  static Plane from_protobuf(const std::string& data);
+
+  /// Serialize to protobuf file.
+  void protobuf_dump(const std::string& filename) const;
+
+  /// Deserialize from protobuf file.
+  static Plane protobuf_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details

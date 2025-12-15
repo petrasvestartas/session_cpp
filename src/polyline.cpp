@@ -223,6 +223,36 @@ Polyline Polyline::operator-(const Vector& v) const {
     return result;
 }
 
+Polyline& Polyline::operator*=(double factor) {
+    for (size_t i = 0; i < _coords.size(); i++) {
+        _coords[i] *= factor;
+    }
+    return *this;
+}
+
+Polyline Polyline::operator*(double factor) const {
+    Polyline result = *this;
+    result *= factor;
+    return result;
+}
+
+Polyline& Polyline::operator/=(double factor) {
+    for (size_t i = 0; i < _coords.size(); i++) {
+        _coords[i] /= factor;
+    }
+    return *this;
+}
+
+Polyline Polyline::operator/(double factor) const {
+    Polyline result = *this;
+    result /= factor;
+    return result;
+}
+
+Polyline Polyline::operator-() const {
+    return reversed();
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -464,7 +494,7 @@ double Polyline::length_squared() const {
     return len;
 }
 
-Point Polyline::point_at_parameter(const Point& start, const Point& end, double t) {
+Point Polyline::point_at(const Point& start, const Point& end, double t) {
     const double s = 1.0 - t;
     return Point(
         (start[0] == end[0]) ? start[0] : static_cast<double>(s * start[0] + t * end[0]),
@@ -512,8 +542,8 @@ bool Polyline::line_line_overlap(const Point& line0_start, const Point& line0_en
     do_overlap = do_overlap && (std::abs(t[2] - t[1]) > Tolerance::ZERO_TOLERANCE);
 
     // Get overlap points
-    overlap_start = point_at_parameter(line0_start, line0_end, t[1]);
-    overlap_end = point_at_parameter(line0_start, line0_end, t[2]);
+    overlap_start = point_at(line0_start, line0_end, t[1]);
+    overlap_end = point_at(line0_start, line0_end, t[2]);
 
     return do_overlap;
 }
@@ -599,8 +629,8 @@ bool Polyline::line_from_projected_points(const Point& line_start, const Point& 
     std::sort(t_values.begin(), t_values.end());
 
     // Output first and last points
-    output_start = point_at_parameter(line_start, line_end, t_values.front());
-    output_end = point_at_parameter(line_start, line_end, t_values.back());
+    output_start = point_at(line_start, line_end, t_values.front());
+    output_end = point_at(line_start, line_end, t_values.back());
 
     // Check if not just a point
     return std::abs(t_values.front() - t_values.back()) > Tolerance::ZERO_TOLERANCE;
@@ -617,7 +647,7 @@ double Polyline::closest_distance_and_point(const Point& point, size_t& edge_id,
         Point pi1 = get_point(i + 1);
         closest_point_to_line(point, pi, pi1, t);
 
-        Point point_on_segment = point_at_parameter(pi, pi1, t);
+        Point point_on_segment = point_at(pi, pi1, t);
         double distance = point.distance(point_on_segment);
 
         if (distance < closest_distance) {
@@ -631,7 +661,7 @@ double Polyline::closest_distance_and_point(const Point& point, size_t& edge_id,
         }
     }
 
-    closest_point = point_at_parameter(get_point(edge_id), get_point(edge_id + 1), best_t);
+    closest_point = point_at(get_point(edge_id), get_point(edge_id + 1), best_t);
     return closest_distance;
 }
 
@@ -658,11 +688,6 @@ Point Polyline::center() const {
     z /= n;
 
     return Point(static_cast<double>(x), static_cast<double>(y), static_cast<double>(z));
-}
-
-Vector Polyline::center_vec() const {
-    Point c = center();
-    return Vector(c[0], c[1], c[2]);
 }
 
 void Polyline::get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const {
@@ -699,38 +724,6 @@ void Polyline::get_fast_plane(Point& origin, Plane& pln) const {
 
     // Create plane from point and normal
     pln = Plane::from_point_normal(origin, normal);
-}
-
-void Polyline::get_middle_line(const Point& line0_start, const Point& line0_end,
-                              const Point& line1_start, const Point& line1_end,
-                              Point& output_start, Point& output_end) {
-    output_start = Point(
-        (line0_start[0] + line1_start[0]) * 0.5,
-        (line0_start[1] + line1_start[1]) * 0.5,
-        (line0_start[2] + line1_start[2]) * 0.5
-    );
-
-    output_end = Point(
-        (line0_end[0] + line1_end[0]) * 0.5,
-        (line0_end[1] + line1_end[1]) * 0.5,
-        (line0_end[2] + line1_end[2]) * 0.5
-    );
-}
-
-void Polyline::extend_line(Point& line_start, Point& line_end, double distance0, double distance1) {
-    Vector v = line_end - line_start;
-    v.normalize_self();
-
-    line_start = line_start - v * static_cast<double>(distance0);
-    line_end = line_end + v * static_cast<double>(distance1);
-}
-
-void Polyline::scale_line(Point& line_start, Point& line_end, double distance) {
-    Vector v = line_end - line_start;
-    Point p0 = line_start + v * static_cast<double>(distance);
-    Point p1 = line_end - v * static_cast<double>(distance);
-    line_start = p0;
-    line_end = p1;
 }
 
 void Polyline::extend_segment(int segment_id, double dist0, double dist1,
@@ -798,15 +791,6 @@ void Polyline::extend_segment_equally(int segment_id, double dist, double propor
     }
 }
 
-void Polyline::move(const Vector& direction) {
-    for (size_t i = 0; i < point_count(); i++) {
-        size_t idx = i * 3;
-        _coords[idx] += direction[0];
-        _coords[idx + 1] += direction[1];
-        _coords[idx + 2] += direction[2];
-    }
-}
-
 bool Polyline::is_clockwise(const Plane& pln) const {
     (void)pln;  // Reserved for future use - may project to plane
     if (point_count() < 3) return false;
@@ -828,10 +812,6 @@ bool Polyline::is_clockwise(const Plane& pln) const {
     }
 
     return signed_area > 0;
-}
-
-void Polyline::flip() {
-    reverse();
 }
 
 void Polyline::get_convex_corners(std::vector<bool>& convex_or_concave) const {

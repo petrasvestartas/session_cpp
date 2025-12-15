@@ -121,6 +121,21 @@ public:
     /// Translates all points by negative vector (returns new polyline)
     Polyline operator-(const Vector& v) const;
 
+    /// Multiply all coordinates by scalar (in-place)
+    Polyline& operator*=(double factor);
+
+    /// Multiply polyline by scalar (returns new polyline)
+    Polyline operator*(double factor) const;
+
+    /// Divide all coordinates by scalar (in-place)
+    Polyline& operator/=(double factor);
+
+    /// Divide polyline by scalar (returns new polyline)
+    Polyline operator/(double factor) const;
+
+    /// Negate polyline (reverse point order)
+    Polyline operator-() const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -173,7 +188,7 @@ public:
     double length_squared() const;
 
     /// Get point at parameter t along a line segment (t=0 is start, t=1 is end)
-    static Point point_at_parameter(const Point& start, const Point& end, double t);
+    static Point point_at(const Point& start, const Point& end, double t);
 
     /// Find closest point on line segment to given point, returns parameter t
     static void closest_point_to_line(const Point& point, const Point& line_start, 
@@ -208,26 +223,11 @@ public:
     /// Calculate center point of polyline
     Point center() const;
 
-    /// Calculate center as vector
-    Vector center_vec() const;
-
     /// Get average plane from polyline points
     void get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const;
 
     /// Get fast plane calculation from polyline
     void get_fast_plane(Point& origin, Plane& pln) const;
-
-    /// Calculate middle line between two line segments
-    static void get_middle_line(const Point& line0_start, const Point& line0_end,
-                               const Point& line1_start, const Point& line1_end,
-                               Point& output_start, Point& output_end);
-
-    /// Extend line segment by specified distances at both ends
-    static void extend_line(Point& line_start, Point& line_end, 
-                           double distance0, double distance1);
-
-    /// Scale line segment inward by specified distance
-    static void scale_line(Point& line_start, Point& line_end, double distance);
 
     /// Extend polyline segment
     void extend_segment(int segment_id, double dist0, double dist1, 
@@ -240,14 +240,8 @@ public:
     /// Extend polyline segment equally
     void extend_segment_equally(int segment_id, double dist, double proportion = 0.0);
 
-    /// Move polyline by direction vector
-    void move(const Vector& direction);
-
     /// Check if polyline is clockwise oriented
     bool is_clockwise(const Plane& pln) const;
-
-    /// Flip polyline direction (reverse point order)
-    void flip();
 
     /// Get convex/concave corners of polyline
     void get_convex_corners(std::vector<bool>& convex_or_concave) const;

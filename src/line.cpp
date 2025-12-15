@@ -504,6 +504,21 @@ Line Line::from_point_direction_length(const Point& point, const Vector& directi
     );
 }
 
+void Line::get_middle_line(const Point& line0_start, const Point& line0_end,
+                          const Point& line1_start, const Point& line1_end,
+                          Point& output_start, Point& output_end) {
+    output_start = Point(
+        (line0_start[0] + line1_start[0]) * 0.5,
+        (line0_start[1] + line1_start[1]) * 0.5,
+        (line0_start[2] + line1_start[2]) * 0.5
+    );
+    output_end = Point(
+        (line0_end[0] + line1_end[0]) * 0.5,
+        (line0_end[1] + line1_end[1]) * 0.5,
+        (line0_end[2] + line1_end[2]) * 0.5
+    );
+}
+
 std::ostream& operator<<(std::ostream& os, const Line& line) {
     return os << line.to_string();
 }

@@ -106,6 +106,11 @@ public:
     /// Create a line from a point, direction, and length.
     static Line from_point_direction_length(const Point& point, const Vector& direction, double length);
 
+    /// Calculate middle line between two line segments.
+    static void get_middle_line(const Point& line0_start, const Point& line0_end,
+                               const Point& line1_start, const Point& line1_end,
+                               Point& output_start, Point& output_end);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Operators
     ///////////////////////////////////////////////////////////////////////////////////////////

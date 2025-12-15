@@ -2,6 +2,13 @@
 #include "tolerance.h"
 #include <algorithm>
 
+#ifdef ENABLE_PROTOBUF
+#include "plane.pb.h"
+#include "point.pb.h"
+#include "vector.pb.h"
+#include "xform.pb.h"
+#endif
+
 namespace session_cpp {
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -18,6 +25,39 @@ Plane::Plane() {
     _b = 0.0;
     _c = 1.0;
     _d = 0.0;
+}
+
+Plane::Plane(const Plane& other)
+    : guid(::guid()),
+      name(other.name),
+      width(other.width),
+      xform(other.xform),
+      _origin(other._origin),
+      _x_axis(other._x_axis),
+      _y_axis(other._y_axis),
+      _z_axis(other._z_axis),
+      _a(other._a),
+      _b(other._b),
+      _c(other._c),
+      _d(other._d) {
+}
+
+Plane& Plane::operator=(const Plane& other) {
+    if (this != &other) {
+        guid = ::guid();
+        name = other.name;
+        width = other.width;
+        xform = other.xform;
+        _origin = other._origin;
+        _x_axis = other._x_axis;
+        _y_axis = other._y_axis;
+        _z_axis = other._z_axis;
+        _a = other._a;
+        _b = other._b;
+        _c = other._c;
+        _d = other._d;
+    }
+    return *this;
 }
 
 Plane::Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name) {
@@ -152,6 +192,27 @@ std::string Plane::to_string() const {
                        _z_axis.to_string(), guid, name);
 }
 
+std::string Plane::str() const {
+    int prec = static_cast<int>(Tolerance::ROUNDING);
+    return fmt::format("{}, {}, {}",
+                       TOLERANCE.format_number(_origin[0], prec),
+                       TOLERANCE.format_number(_origin[1], prec),
+                       TOLERANCE.format_number(_origin[2], prec));
+}
+
+std::string Plane::repr() const {
+    int prec = static_cast<int>(Tolerance::ROUNDING);
+    return fmt::format("Plane({}, {}, {}, {}, {}, {}, {})",
+                       name,
+                       TOLERANCE.format_number(_origin[0], prec),
+                       TOLERANCE.format_number(_origin[1], prec),
+                       TOLERANCE.format_number(_origin[2], prec),
+                       TOLERANCE.format_number(_z_axis[0], prec),
+                       TOLERANCE.format_number(_z_axis[1], prec),
+                       TOLERANCE.format_number(_z_axis[2], prec));
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -170,11 +231,15 @@ Plane Plane::transformed() const {
   return result;
 }
 
-bool Plane::operator==(const Point &other) const {
-    return _origin == other;
+bool Plane::operator==(const Plane &other) const {
+    return name == other.name &&
+           _origin == other._origin &&
+           _x_axis == other._x_axis &&
+           _y_axis == other._y_axis &&
+           _z_axis == other._z_axis;
 }
 
-bool Plane::operator!=(const Point &other) const {
+bool Plane::operator!=(const Plane &other) const {
     return !(*this == other);
 }
 
@@ -231,33 +296,44 @@ Plane Plane::operator-(const Vector &other) const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 nlohmann::ordered_json Plane::jsondump() const {
-    auto clean_float = [](double val) -> double { 
-        return static_cast<double>(std::round(val * 100.0) / 100.0); 
+    auto clean_float = [](double val) -> double {
+        return static_cast<double>(std::round(val * 100.0) / 100.0);
     };
+    // Use single flat frame array of 12 numbers: [ox, oy, oz, xx, xy, xz, yx, yy, yz, zx, zy, zz]
+    // Plane equation coefficients (a, b, c, d) are computed on load
     return nlohmann::ordered_json{
         {"type", "Plane"},
         {"guid", guid},
         {"name", name},
-        {"origin", _origin.jsondump()},
-        {"x_axis", _x_axis.jsondump()},
-        {"y_axis", _y_axis.jsondump()},
-        {"z_axis", _z_axis.jsondump()},
-        {"a", clean_float(_a)},
-        {"b", clean_float(_b)},
-        {"c", clean_float(_c)},
-        {"d", clean_float(_d)}
+        {"frame", {
+            clean_float(_origin[0]), clean_float(_origin[1]), clean_float(_origin[2]),
+            clean_float(_x_axis[0]), clean_float(_x_axis[1]), clean_float(_x_axis[2]),
+            clean_float(_y_axis[0]), clean_float(_y_axis[1]), clean_float(_y_axis[2]),
+            clean_float(_z_axis[0]), clean_float(_z_axis[1]), clean_float(_z_axis[2])
+        }},
+        {"width", clean_float(width)},
+        {"xform", xform.jsondump()}
     };
 }
 
 Plane Plane::jsonload(const nlohmann::json &data) {
     Plane plane;
-    plane._origin = Point::jsonload(data["origin"]);
-    plane._x_axis = Vector::jsonload(data["x_axis"]);
-    plane._y_axis = Vector::jsonload(data["y_axis"]);
-    plane._z_axis = Vector::jsonload(data["z_axis"]);
+    // Parse flat frame array of 12 numbers: [ox, oy, oz, xx, xy, xz, yx, yy, yz, zx, zy, zz]
+    auto frame = data["frame"];
+
+    plane._origin = Point(frame[0].get<double>(), frame[1].get<double>(), frame[2].get<double>());
+    plane._x_axis = Vector(frame[3].get<double>(), frame[4].get<double>(), frame[5].get<double>());
+    plane._y_axis = Vector(frame[6].get<double>(), frame[7].get<double>(), frame[8].get<double>());
+    plane._z_axis = Vector(frame[9].get<double>(), frame[10].get<double>(), frame[11].get<double>());
     plane.guid = data["guid"];
     plane.name = data["name"];
-    
+    if (data.contains("width")) {
+        plane.width = data["width"].get<double>();
+    }
+    if (data.contains("xform")) {
+        plane.xform = Xform::jsonload(data["xform"]);
+    }
+
     plane._a = plane._z_axis[0];
     plane._b = plane._z_axis[1];
     plane._c = plane._z_axis[2];
@@ -265,7 +341,136 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     return plane;
 }
 
+void Plane::json_dump(const std::string& filename) const {
+    std::ofstream ofs(filename);
+    ofs << jsondump().dump(2);
+    ofs.close();
+}
 
+Plane Plane::json_load(const std::string& filename) {
+    std::ifstream ifs(filename);
+    nlohmann::json data;
+    ifs >> data;
+    ifs.close();
+    return jsonload(data);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Protobuf
+///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+std::string Plane::to_protobuf() const {
+    session_proto::Plane proto;
+    proto.set_guid(guid);
+    proto.set_name(name);
+
+    // Set origin point
+    auto* origin_proto = proto.mutable_origin();
+    origin_proto->set_x(_origin[0]);
+    origin_proto->set_y(_origin[1]);
+    origin_proto->set_z(_origin[2]);
+
+    // Set x_axis vector
+    auto* x_axis_proto = proto.mutable_x_axis();
+    x_axis_proto->set_x(_x_axis[0]);
+    x_axis_proto->set_y(_x_axis[1]);
+    x_axis_proto->set_z(_x_axis[2]);
+
+    // Set y_axis vector
+    auto* y_axis_proto = proto.mutable_y_axis();
+    y_axis_proto->set_x(_y_axis[0]);
+    y_axis_proto->set_y(_y_axis[1]);
+    y_axis_proto->set_z(_y_axis[2]);
+
+    // Set z_axis vector
+    auto* z_axis_proto = proto.mutable_z_axis();
+    z_axis_proto->set_x(_z_axis[0]);
+    z_axis_proto->set_y(_z_axis[1]);
+    z_axis_proto->set_z(_z_axis[2]);
+
+    // Serialize xform
+    auto* proto_xform = proto.mutable_xform();
+    proto_xform->set_name(xform.name);
+    for (int i = 0; i < 16; ++i) {
+        proto_xform->add_matrix(xform.m[i]);
+    }
+    return proto.SerializeAsString();
+}
+
+Plane Plane::from_protobuf(const std::string& data) {
+    session_proto::Plane proto;
+    proto.ParseFromString(data);
+
+    Plane plane;
+    plane.guid = proto.guid();
+    plane.name = proto.name();
+
+    // Parse origin point
+    if (proto.has_origin()) {
+        plane._origin = Point(proto.origin().x(), proto.origin().y(), proto.origin().z());
+    }
+
+    // Parse axes vectors
+    if (proto.has_x_axis()) {
+        plane._x_axis = Vector(proto.x_axis().x(), proto.x_axis().y(), proto.x_axis().z());
+    }
+    if (proto.has_y_axis()) {
+        plane._y_axis = Vector(proto.y_axis().x(), proto.y_axis().y(), proto.y_axis().z());
+    }
+    if (proto.has_z_axis()) {
+        plane._z_axis = Vector(proto.z_axis().x(), proto.z_axis().y(), proto.z_axis().z());
+    }
+
+    // Compute plane equation coefficients
+    plane._a = plane._z_axis[0];
+    plane._b = plane._z_axis[1];
+    plane._c = plane._z_axis[2];
+    plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
+
+    // Deserialize xform if present
+    if (proto.has_xform()) {
+        plane.xform.name = proto.xform().name();
+        for (int i = 0; i < proto.xform().matrix_size() && i < 16; ++i) {
+            plane.xform.m[i] = proto.xform().matrix(i);
+        }
+    }
+    return plane;
+}
+
+void Plane::protobuf_dump(const std::string& filename) const {
+    std::ofstream ofs(filename, std::ios::binary);
+    ofs << to_protobuf();
+    ofs.close();
+}
+
+Plane Plane::protobuf_load(const std::string& filename) {
+    std::ifstream ifs(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(ifs)),
+                      std::istreambuf_iterator<char>());
+    ifs.close();
+    return from_protobuf(data);
+}
+#else
+std::string Plane::to_protobuf() const {
+    throw std::runtime_error("Protobuf support not enabled");
+}
+
+Plane Plane::from_protobuf(const std::string& data) {
+    (void)data;
+    throw std::runtime_error("Protobuf support not enabled");
+}
+
+void Plane::protobuf_dump(const std::string& filename) const {
+    (void)filename;
+    throw std::runtime_error("Protobuf support not enabled");
+}
+
+Plane Plane::protobuf_load(const std::string& filename) {
+    (void)filename;
+    throw std::runtime_error("Protobuf support not enabled");
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Details
