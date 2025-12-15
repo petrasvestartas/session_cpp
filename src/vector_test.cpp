@@ -34,17 +34,17 @@ MINI_TEST("Vector", "constructor") {
     std::string vrepr = v.repr();
 
     // Copy (duplicate everything but guid)
-    Vector vcopy = v.duplicate();
+    Vector vcopy = v;
     Vector vother(1.0, 2.0, 3.0);
 
     // No-copy operators
-    Vector vmult = v.duplicate();
+    Vector vmult = v;
     vmult *= 2.0;
-    Vector vdiv = v.duplicate();
+    Vector vdiv = v;
     vdiv /= 2.0;
-    Vector vadd = v.duplicate();
+    Vector vadd = v;
     vadd += Vector(1.0, 1.0, 1.0);
-    Vector vsub = v.duplicate();
+    Vector vsub = v;
     vsub -= Vector(1.0, 1.0, 1.0);
 
     // Copy operators

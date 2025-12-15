@@ -88,9 +88,6 @@ public:
   /// Detailed representation (like Python __repr__)
   std::string repr();
 
-  /// Create a copy with a new GUID
-  Vector duplicate() const;
-
   /// Equality operator
   bool operator==(const Vector &other) const;
 

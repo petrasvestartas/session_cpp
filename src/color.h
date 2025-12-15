@@ -42,12 +42,6 @@ public:
   /// Copy assignment (creates a new guid while copying data)
   Color &operator=(const Color &other);
 
-  /**
-   * @brief Create a copy of this color with a new GUID.
-   * @return A new Color with identical RGBA values but a different GUID.
-   */
-  Color duplicate() const;
-
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Operators
   ///////////////////////////////////////////////////////////////////////////////////////////

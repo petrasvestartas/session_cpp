@@ -43,12 +43,6 @@ std::string Vector::repr() {
       TOLERANCE.format_number(magnitude(), prec));
 }
 
-/// Create a copy with a new GUID
-Vector Vector::duplicate() const {
-  Vector copy(*this);  // Uses copy constructor which creates new GUID
-  return copy;
-}
-
 /// Equality operator (compares name and coordinates with tolerance, excludes guid)
 bool Vector::operator==(const Vector &other) const {
   return name == other.name &&

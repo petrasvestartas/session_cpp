@@ -192,14 +192,8 @@ std::string PointCloud::repr() const {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// Duplicate and Equality
+// Equality
 ///////////////////////////////////////////////////////////////////////////////////////////
-
-PointCloud PointCloud::duplicate() const {
-    PointCloud result = *this;
-    result.guid = ::guid();
-    return result;
-}
 
 bool PointCloud::operator==(const PointCloud& other) const {
     return name == other.name &&
