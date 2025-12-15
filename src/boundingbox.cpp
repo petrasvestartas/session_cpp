@@ -145,11 +145,11 @@ BoundingBox BoundingBox::from_mesh(const Mesh& mesh, const Plane& plane, double 
 }
 
 BoundingBox BoundingBox::from_pointcloud(const PointCloud& pointcloud, double inflate_amount) {
-    return from_points(pointcloud.points, inflate_amount);
+    return from_points(pointcloud.get_points(), inflate_amount);
 }
 
 BoundingBox BoundingBox::from_pointcloud(const PointCloud& pointcloud, const Plane& plane, double inflate_amount) {
-    return from_points(pointcloud.points, plane, inflate_amount);
+    return from_points(pointcloud.get_points(), plane, inflate_amount);
 }
 
 BoundingBox BoundingBox::from_arrow(const Arrow& arrow, double inflate_amount) {

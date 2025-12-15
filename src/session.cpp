@@ -227,7 +227,7 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       return BoundingBox::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<PointCloud>>) {
-      return BoundingBox::from_points(geom_ptr->points, inflate);
+      return BoundingBox::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
       // Extract vertices from mesh
@@ -609,7 +609,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       double min_dist = std::numeric_limits<double>::infinity();
       Vector ray_dir = ray.end() - ray.start();
       
-      for (const Point& pt : geom_ptr->points) {
+      for (const Point& pt : geom_ptr->get_points()) {
         Vector to_point = pt - ray.start();
         double t = to_point.dot(ray_dir) / ray_dir.dot(ray_dir);
         if (t < 0) continue;  // Point is behind ray

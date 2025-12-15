@@ -12,42 +12,103 @@ namespace session_cpp {
 
 /**
  * @class PointCloud
- * @brief A point cloud with points, normals, colors, and transformation.
+ * @brief A point cloud with coordinates, normals, and colors stored as flat arrays.
+ *
+ * Internally stores data as flat arrays for efficient serialization:
+ * - _coords: [x0, y0, z0, x1, y1, z1, ...]
+ * - _colors: [r0, g0, b0, a0, r1, g1, b1, a1, ...]
+ * - _normals: [nx0, ny0, nz0, nx1, ny1, nz1, ...]
  */
 class PointCloud {
 public:
     std::string guid = ::guid();
     std::string name = "my_pointcloud";
-    std::vector<Point> points;
-    std::vector<Vector> normals;
-    std::vector<Color> colors;
+    double point_size = 1.0;
     Xform xform;
+
+private:
+    std::vector<double> _coords;
+    std::vector<int> _colors;
+    std::vector<double> _normals;
+
+public:
     /**
      * @brief Default constructor.
      */
     PointCloud();
-    
+
     /**
      * @brief Constructor with points, normals, and colors.
-     * @param points Collection of points.
-     * @param normals Collection of normals.
-     * @param colors Collection of colors.
      */
-    PointCloud(const std::vector<Point>& points, 
-               const std::vector<Vector>& normals, 
+    PointCloud(const std::vector<Point>& points,
+               const std::vector<Vector>& normals,
                const std::vector<Color>& colors);
 
+    /**
+     * @brief Copy constructor (creates new guid).
+     */
+    PointCloud(const PointCloud& other);
+
+    /**
+     * @brief Assignment operator (creates new guid).
+     */
+    PointCloud& operator=(const PointCloud& other);
+
+    /**
+     * @brief Create from flat arrays.
+     */
+    static PointCloud from_coords(const std::vector<double>& coords,
+                                  const std::vector<int>& colors = {},
+                                  const std::vector<double>& normals = {});
+
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Operators
+    // Point Access
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert point cloud to string representation
-    std::string to_string() const;
-    
-    /// Equality operator
+    size_t point_count() const { return _coords.size() / 3; }
+    size_t len() const { return point_count(); }
+    bool is_empty() const { return _coords.empty(); }
+
+    Point get_point(size_t index) const;
+    void set_point(size_t index, const Point& point);
+    void add_point(const Point& point);
+    std::vector<Point> get_points() const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Color Access
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    size_t color_count() const { return _colors.size() / 4; }
+
+    Color get_color(size_t index) const;
+    void set_color(size_t index, const Color& color);
+    void add_color(const Color& color);
+    std::vector<Color> get_colors() const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Normal Access
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    size_t normal_count() const { return _normals.size() / 3; }
+
+    Vector get_normal(size_t index) const;
+    void set_normal(size_t index, const Vector& normal);
+    void add_normal(const Vector& normal);
+    std::vector<Vector> get_normals() const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // String Representations
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    std::string str() const;
+    std::string repr() const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Duplicate and Equality
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    PointCloud duplicate() const;
     bool operator==(const PointCloud& other) const;
-    
-    /// Inequality operator
     bool operator!=(const PointCloud& other) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -58,48 +119,36 @@ public:
     PointCloud transformed() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // JSON
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /// Convert to JSON-serializable object
-    nlohmann::ordered_json jsondump() const;
-    
-    /// Create point cloud from JSON data
-    static PointCloud jsonload(const nlohmann::json& data);
-    
-    /// Serialize to JSON file
-    
-    /// Deserialize from JSON file
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // No-copy Operators
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Translate point cloud by vector (in-place)
     PointCloud& operator+=(const Vector& v);
-    
-    /// Translate point cloud by negative vector (in-place)
     PointCloud& operator-=(const Vector& v);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Copy Operators
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Translate point cloud by vector (returns new point cloud)
     PointCloud operator+(const Vector& v) const;
-    
-    /// Translate point cloud by negative vector (returns new point cloud)
     PointCloud operator-(const Vector& v) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Details
+    // JSON Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Get the number of points
-    size_t size() const { return points.size(); }
-    
-    /// Check if point cloud is empty
-    bool empty() const { return points.empty(); }
+    nlohmann::ordered_json jsondump() const;
+    static PointCloud jsonload(const nlohmann::json& data);
+    void json_dump(const std::string& filename) const;
+    static PointCloud json_load(const std::string& filename);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Protobuf Serialization
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    std::string to_protobuf() const;
+    static PointCloud from_protobuf(const std::string& data);
+    void protobuf_dump(const std::string& filename) const;
+    static PointCloud protobuf_load(const std::string& filename);
 };
 
 /// Stream output operator for point cloud
