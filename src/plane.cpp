@@ -365,29 +365,19 @@ std::string Plane::to_protobuf() const {
     proto.set_guid(guid);
     proto.set_name(name);
 
-    // Set origin point
-    auto* origin_proto = proto.mutable_origin();
-    origin_proto->set_x(_origin[0]);
-    origin_proto->set_y(_origin[1]);
-    origin_proto->set_z(_origin[2]);
-
-    // Set x_axis vector
-    auto* x_axis_proto = proto.mutable_x_axis();
-    x_axis_proto->set_x(_x_axis[0]);
-    x_axis_proto->set_y(_x_axis[1]);
-    x_axis_proto->set_z(_x_axis[2]);
-
-    // Set y_axis vector
-    auto* y_axis_proto = proto.mutable_y_axis();
-    y_axis_proto->set_x(_y_axis[0]);
-    y_axis_proto->set_y(_y_axis[1]);
-    y_axis_proto->set_z(_y_axis[2]);
-
-    // Set z_axis vector
-    auto* z_axis_proto = proto.mutable_z_axis();
-    z_axis_proto->set_x(_z_axis[0]);
-    z_axis_proto->set_y(_z_axis[1]);
-    z_axis_proto->set_z(_z_axis[2]);
+    // Frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
+    proto.add_frame(_origin[0]);
+    proto.add_frame(_origin[1]);
+    proto.add_frame(_origin[2]);
+    proto.add_frame(_x_axis[0]);
+    proto.add_frame(_x_axis[1]);
+    proto.add_frame(_x_axis[2]);
+    proto.add_frame(_y_axis[0]);
+    proto.add_frame(_y_axis[1]);
+    proto.add_frame(_y_axis[2]);
+    proto.add_frame(_z_axis[0]);
+    proto.add_frame(_z_axis[1]);
+    proto.add_frame(_z_axis[2]);
 
     // Serialize xform
     auto* proto_xform = proto.mutable_xform();
@@ -406,20 +396,12 @@ Plane Plane::from_protobuf(const std::string& data) {
     plane.guid = proto.guid();
     plane.name = proto.name();
 
-    // Parse origin point
-    if (proto.has_origin()) {
-        plane._origin = Point(proto.origin().x(), proto.origin().y(), proto.origin().z());
-    }
-
-    // Parse axes vectors
-    if (proto.has_x_axis()) {
-        plane._x_axis = Vector(proto.x_axis().x(), proto.x_axis().y(), proto.x_axis().z());
-    }
-    if (proto.has_y_axis()) {
-        plane._y_axis = Vector(proto.y_axis().x(), proto.y_axis().y(), proto.y_axis().z());
-    }
-    if (proto.has_z_axis()) {
-        plane._z_axis = Vector(proto.z_axis().x(), proto.z_axis().y(), proto.z_axis().z());
+    // Parse frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
+    if (proto.frame_size() >= 12) {
+        plane._origin = Point(proto.frame(0), proto.frame(1), proto.frame(2));
+        plane._x_axis = Vector(proto.frame(3), proto.frame(4), proto.frame(5));
+        plane._y_axis = Vector(proto.frame(6), proto.frame(7), proto.frame(8));
+        plane._z_axis = Vector(proto.frame(9), proto.frame(10), proto.frame(11));
     }
 
     // Compute plane equation coefficients
