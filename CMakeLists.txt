@@ -347,6 +347,7 @@ set(MINITEST_SOURCES
     src/polyline_test.cpp
     src/plane_test.cpp
     src/pointcloud_test.cpp
+    src/xform_test.cpp
 )
 add_executable(point_minitest
     src/mini_test.cpp
