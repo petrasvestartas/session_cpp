@@ -344,45 +344,49 @@ std::string Polyline::to_protobuf() const {
     session_proto::Polyline proto;
     proto.set_guid(this->guid);
     proto.set_name(this->name);
-    
-    // Add points
-    for (const auto& pt : get_points()) {
-        auto* point_proto = proto.add_points();
-        point_proto->set_guid(pt.guid);
-        point_proto->set_name(pt.name);
-        point_proto->set_x(pt[0]);
-        point_proto->set_y(pt[1]);
-        point_proto->set_z(pt[2]);
+    proto.set_width(this->width);
+
+    // Add coords as flat array [x0, y0, z0, x1, y1, z1, ...]
+    for (double c : _coords) {
+        proto.add_coords(c);
     }
-    
+
+    // Set linecolor
+    auto* color_proto = proto.mutable_linecolor();
+    color_proto->set_r(linecolor.r);
+    color_proto->set_g(linecolor.g);
+    color_proto->set_b(linecolor.b);
+    color_proto->set_a(linecolor.a);
+    color_proto->set_name(linecolor.name);
+
     // Set xform
     auto* xform_proto = proto.mutable_xform();
     xform_proto->set_name(xform.name);
     for (int i = 0; i < 16; ++i) {
         xform_proto->add_matrix(xform.m[i]);
     }
-    
+
     return proto.SerializeAsString();
 }
 
 Polyline Polyline::from_protobuf(const std::string& data) {
     session_proto::Polyline proto;
     proto.ParseFromString(data);
-    
-    std::vector<Point> pts;
-    pts.reserve(proto.points_size());
-    for (int i = 0; i < proto.points_size(); ++i) {
-        const auto& pt = proto.points(i);
-        Point p(pt.x(), pt.y(), pt.z());
-        p.guid = pt.guid();
-        p.name = pt.name();
-        pts.push_back(p);
-    }
-    
-    Polyline pl(pts);
+
+    // Read coords as flat array [x0, y0, z0, x1, y1, z1, ...]
+    std::vector<double> coords(proto.coords().begin(), proto.coords().end());
+
+    Polyline pl = Polyline::from_coords(coords);
     pl.guid = proto.guid();
     pl.name = proto.name();
-    
+    pl.width = proto.width();
+
+    // Load linecolor
+    if (proto.has_linecolor()) {
+        const auto& c = proto.linecolor();
+        pl.linecolor = Color(c.r(), c.g(), c.b(), c.a(), c.name());
+    }
+
     // Load xform
     if (proto.has_xform()) {
         const auto& xform_proto = proto.xform();
@@ -391,7 +395,7 @@ Polyline Polyline::from_protobuf(const std::string& data) {
             pl.xform.m[i] = xform_proto.matrix(i);
         }
     }
-    
+
     return pl;
 }
 
