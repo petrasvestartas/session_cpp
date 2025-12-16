@@ -116,18 +116,18 @@ MINI_TEST("Plane", "reverse") {
 
 MINI_TEST("Plane", "rotate") {
     // uncomment #include "plane.h"
-    // uncomment #include <cmath>
+    // uncomment #include "tolerance.h"
 
     // Rotate plane 90 degrees around its normal
     Plane pl = Plane::xy_plane();
-    pl.rotate(M_PI / 2.0);
+    pl.rotate(Tolerance::PI / 2.0);
 
     MINI_CHECK(TOLERANCE.is_close(pl.x_axis()[1], 1.0));
 }
 
 MINI_TEST("Plane", "is_right_hand") {
     // uncomment #include "plane.h"
-    // uncomment #include <cmath>
+    // uncomment #include "tolerance.h"
 
     // All standard planes should be right-handed
     Plane xy = Plane::xy_plane();
@@ -145,7 +145,7 @@ MINI_TEST("Plane", "is_right_hand") {
     bool reversed_rh = default_pl.is_right_hand();
 
     // After rotate, should still be right-handed
-    default_pl.rotate(M_PI / 4.0);
+    default_pl.rotate(Tolerance::PI / 4.0);
     bool rotated_rh = default_pl.is_right_hand();
 
     MINI_CHECK(xy_rh == true);
