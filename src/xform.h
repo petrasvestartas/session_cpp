@@ -96,7 +96,9 @@ public:
     /// Deserialize from JSON object
     static Xform jsonload(const nlohmann::json& data);
     /// Write JSON to file
+    void json_dump(const std::string& filename) const;
     /// Read JSON from file
+    static Xform json_load(const std::string& filename);
 
     /// Matrix multiplication
     Xform operator*(const Xform& other) const;

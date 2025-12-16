@@ -110,21 +110,24 @@ Xform Xform::change_basis(Point& origin, Vector& x_axis, Vector& y_axis, Vector&
     y_axis.normalize_self();
     z_axis.normalize_self();
 
+    // World-to-local transform: transpose of rotation matrix
+    // Row 0 = x_axis, Row 1 = y_axis, Row 2 = z_axis
     xform.m[0] = x_axis[0];
-    xform.m[1] = x_axis[1];
-    xform.m[2] = x_axis[2];
+    xform.m[4] = x_axis[1];
+    xform.m[8] = x_axis[2];
 
-    xform.m[4] = y_axis[0];
+    xform.m[1] = y_axis[0];
     xform.m[5] = y_axis[1];
-    xform.m[6] = y_axis[2];
+    xform.m[9] = y_axis[2];
 
-    xform.m[8] = z_axis[0];
-    xform.m[9] = z_axis[1];
+    xform.m[2] = z_axis[0];
+    xform.m[6] = z_axis[1];
     xform.m[10] = z_axis[2];
 
-    xform.m[12] = origin[0];
-    xform.m[13] = origin[1];
-    xform.m[14] = origin[2];
+    // Translation = -R^T * origin
+    xform.m[12] = -(x_axis[0] * origin[0] + x_axis[1] * origin[1] + x_axis[2] * origin[2]);
+    xform.m[13] = -(y_axis[0] * origin[0] + y_axis[1] * origin[1] + y_axis[2] * origin[2]);
+    xform.m[14] = -(z_axis[0] * origin[0] + z_axis[1] * origin[1] + z_axis[2] * origin[2]);
 
     return xform;
 }
@@ -454,6 +457,17 @@ Xform Xform::jsonload(const nlohmann::json& data) {
     xform.name = data["name"].get<std::string>();
     xform.m = data["m"].get<std::array<double, 16>>();
     return xform;
+}
+
+void Xform::json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+Xform Xform::json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    nlohmann::json data = nlohmann::json::parse(file);
+    return jsonload(data);
 }
 
 Xform Xform::operator*(const Xform& other) const {

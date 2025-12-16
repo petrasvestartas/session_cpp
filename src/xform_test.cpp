@@ -138,4 +138,147 @@ MINI_TEST("Xform", "transform_vector") {
     MINI_CHECK(TOLERANCE.is_close(sv[0], 2.0) && TOLERANCE.is_close(sv[1], 3.0) && TOLERANCE.is_close(sv[2], 4.0));
 }
 
+MINI_TEST("Xform", "rotation_x") {
+    // uncomment #include "xform.h"
+    // uncomment #include "point.h"
+    // uncomment #include "tolerance.h"
+
+    // Rotation around X axis by 90 degrees
+    Xform r = Xform::rotation_x(Tolerance::PI / 2.0);
+
+    // Apply to point (0,1,0) -> (0,0,1)
+    Point p(0.0, 1.0, 0.0);
+    Point rp = r.transformed_point(p);
+
+    MINI_CHECK(TOLERANCE.is_close(rp[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[2], 1.0));
+}
+
+MINI_TEST("Xform", "rotation_y") {
+    // uncomment #include "xform.h"
+    // uncomment #include "point.h"
+    // uncomment #include "tolerance.h"
+
+    // Rotation around Y axis by 90 degrees
+    Xform r = Xform::rotation_y(Tolerance::PI / 2.0);
+
+    // Apply to point (0,0,1) -> (1,0,0)
+    Point p(0.0, 0.0, 1.0);
+    Point rp = r.transformed_point(p);
+
+    MINI_CHECK(TOLERANCE.is_close(rp[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[2], 0.0));
+}
+
+MINI_TEST("Xform", "rotation") {
+    // uncomment #include "xform.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    // uncomment #include "tolerance.h"
+
+    // Rotation around arbitrary axis (1,1,1) by 120 degrees
+    // This cycles x->y->z->x
+    Vector axis(1.0, 1.0, 1.0);
+    Xform r = Xform::rotation(axis, 2.0 * Tolerance::PI / 3.0);
+
+    // Apply to point (1,0,0) -> (0,1,0)
+    Point p(1.0, 0.0, 0.0);
+    Point rp = r.transformed_point(p);
+
+    MINI_CHECK(TOLERANCE.is_close(rp[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[1], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[2], 0.0));
+}
+
+MINI_TEST("Xform", "change_basis") {
+    // uncomment #include "xform.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+
+    // Create a coordinate system at origin with rotated axes
+    Point origin(10.0, 20.0, 30.0);
+    Vector x_axis(1.0, 0.0, 0.0);
+    Vector y_axis(0.0, 1.0, 0.0);
+    Vector z_axis(0.0, 0.0, 1.0);
+
+    // Change basis transform
+    Xform xform = Xform::change_basis(origin, x_axis, y_axis, z_axis);
+
+    // Point at local origin should map to world origin
+    Point p(10.0, 20.0, 30.0);
+    Point tp = xform.transformed_point(p);
+
+    MINI_CHECK(TOLERANCE.is_close(tp[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(tp[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(tp[2], 0.0));
+}
+
+MINI_TEST("Xform", "plane_to_plane") {
+    // uncomment #include "xform.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+
+    // Source plane at origin, XY plane
+    Point origin_0(0.0, 0.0, 0.0);
+    Vector x_axis_0(1.0, 0.0, 0.0);
+    Vector y_axis_0(0.0, 1.0, 0.0);
+    Vector z_axis_0(0.0, 0.0, 1.0);
+
+    // Target plane translated and rotated
+    Point origin_1(10.0, 0.0, 0.0);
+    Vector x_axis_1(0.0, 1.0, 0.0);
+    Vector y_axis_1(-1.0, 0.0, 0.0);
+    Vector z_axis_1(0.0, 0.0, 1.0);
+
+    Xform xform = Xform::plane_to_plane(origin_0, x_axis_0, y_axis_0, z_axis_0, origin_1, x_axis_1, y_axis_1, z_axis_1);
+
+    // Origin of source should map to origin of target
+    Point p(0.0, 0.0, 0.0);
+    Point tp = xform.transformed_point(p);
+
+    MINI_CHECK(TOLERANCE.is_close(tp[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(tp[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(tp[2], 0.0));
+}
+
+MINI_TEST("Xform", "look_at_rh") {
+    // uncomment #include "xform.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+
+    // Camera at (0,0,10) looking at origin
+    Point eye(0.0, 0.0, 10.0);
+    Point target(0.0, 0.0, 0.0);
+    Vector up(0.0, 1.0, 0.0);
+
+    Xform xform = Xform::look_at_rh(eye, target, up);
+
+    // The target point should be on the negative Z axis in view space
+    Point tp = xform.transformed_point(target);
+
+    MINI_CHECK(TOLERANCE.is_close(tp[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(tp[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(tp[2], -10.0));
+}
+
+MINI_TEST("Xform", "json_roundtrip") {
+    // uncomment #include "xform.h"
+
+    // Create a non-identity xform
+    Xform xform = Xform::translation(1.0, 2.0, 3.0);
+    xform.name = "test_xform";
+
+    // json_dump(filename) / json_load(filename) - file-based serialization
+    std::string filename = "test_xform.json";
+    xform.json_dump(filename);
+    Xform loaded = Xform::json_load(filename);
+
+    MINI_CHECK(loaded.name == "test_xform");
+    MINI_CHECK(TOLERANCE.is_close(loaded.m[12], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.m[13], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.m[14], 3.0));
+}
+
 } // namespace session_cpp
