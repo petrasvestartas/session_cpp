@@ -299,21 +299,21 @@ nlohmann::ordered_json Plane::jsondump() const {
     auto clean_float = [](double val) -> double {
         return static_cast<double>(std::round(val * 100.0) / 100.0);
     };
+    // Alphabetical order to match Rust's serde_json
     // Use single flat frame array of 12 numbers: [ox, oy, oz, xx, xy, xz, yx, yy, yz, zx, zy, zz]
-    // Plane equation coefficients (a, b, c, d) are computed on load
-    return nlohmann::ordered_json{
-        {"type", "Plane"},
-        {"guid", guid},
-        {"name", name},
-        {"frame", {
-            clean_float(_origin[0]), clean_float(_origin[1]), clean_float(_origin[2]),
-            clean_float(_x_axis[0]), clean_float(_x_axis[1]), clean_float(_x_axis[2]),
-            clean_float(_y_axis[0]), clean_float(_y_axis[1]), clean_float(_y_axis[2]),
-            clean_float(_z_axis[0]), clean_float(_z_axis[1]), clean_float(_z_axis[2])
-        }},
-        {"width", clean_float(width)},
-        {"xform", xform.jsondump()}
+    nlohmann::ordered_json data;
+    data["frame"] = {
+        clean_float(_origin[0]), clean_float(_origin[1]), clean_float(_origin[2]),
+        clean_float(_x_axis[0]), clean_float(_x_axis[1]), clean_float(_x_axis[2]),
+        clean_float(_y_axis[0]), clean_float(_y_axis[1]), clean_float(_y_axis[2]),
+        clean_float(_z_axis[0]), clean_float(_z_axis[1]), clean_float(_z_axis[2])
     };
+    data["guid"] = guid;
+    data["name"] = name;
+    data["type"] = "Plane";
+    data["width"] = clean_float(width);
+    data["xform"] = xform.jsondump();
+    return data;
 }
 
 Plane Plane::jsonload(const nlohmann::json &data) {

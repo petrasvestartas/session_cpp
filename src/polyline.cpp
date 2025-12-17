@@ -280,13 +280,14 @@ Polyline Polyline::transformed() const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 nlohmann::ordered_json Polyline::jsondump() const {
+    // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json j;
-    j["type"] = "Polyline";
-    j["guid"] = guid;
-    j["name"] = name;
     j["coords"] = _coords;
-    j["width"] = width;
+    j["guid"] = guid;
     j["linecolor"] = linecolor.jsondump();
+    j["name"] = name;
+    j["type"] = "Polyline";
+    j["width"] = width;
     j["xform"] = xform.jsondump();
     return j;
 }

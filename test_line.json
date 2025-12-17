@@ -1,27 +1,21 @@
 {
-    "type": "Line",
-    "guid": "6df6c92d-2d41-4154-af8c-38ec7dcc26f2",
-    "name": "test_line",
-    "x0": 42.1,
-    "y0": 84.2,
-    "z0": 126.3,
-    "x1": 168.4,
-    "y1": 210.5,
-    "z1": 252.6,
-    "width": 1.0,
+    "guid": "68e11358-7832-41b8-b229-09cb3c223aee",
     "linecolor": {
-        "type": "Color",
-        "guid": "04f2587a-c5cd-4bd3-a376-dfd43f243c0f",
+        "a": 255,
+        "b": 255,
+        "g": 255,
+        "guid": "85311c5f-4e6a-40e1-9606-82352424f423",
         "name": "white",
         "r": 255,
-        "g": 255,
-        "b": 255,
-        "a": 255
+        "type": "Color"
     },
+    "name": "test_line",
+    "type": "Line",
+    "width": 1.0,
+    "x0": 42.1,
+    "x1": 168.4,
     "xform": {
-        "type": "Xform",
-        "guid": "9a1e824b-5865-4275-b9e2-9c9e7f619c1b",
-        "name": "my_xform",
+        "guid": "e36b537e-f027-42cb-9dc2-7414e09578ac",
         "m": [
             1.0,
             0.0,
@@ -39,6 +33,12 @@
             0.0,
             0.0,
             1.0
-        ]
-    }
+        ],
+        "name": "my_xform",
+        "type": "Xform"
+    },
+    "y0": 84.2,
+    "y1": 210.5,
+    "z0": 126.3,
+    "z1": 252.6
 }

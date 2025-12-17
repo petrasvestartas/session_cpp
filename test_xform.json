@@ -1,7 +1,5 @@
 {
-    "type": "Xform",
-    "guid": "830c16a2-19f3-4705-a364-ea95841a4a1b",
-    "name": "test_xform",
+    "guid": "797dc4df-aa53-4e64-a40e-87b9de98039d",
     "m": [
         1.0,
         0.0,
@@ -19,5 +17,7 @@
         2.0,
         3.0,
         1.0
-    ]
+    ],
+    "name": "test_xform",
+    "type": "Xform"
 }

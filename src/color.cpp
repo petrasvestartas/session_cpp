@@ -69,13 +69,16 @@ const unsigned int &Color::operator[](int index) const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 nlohmann::ordered_json Color::jsondump() const {
-  return nlohmann::ordered_json{{"type", "Color"},
-                                {"guid", guid},
-                                {"name", name},
-                                {"r", static_cast<int>(r)},
-                                {"g", static_cast<int>(g)},
-                                {"b", static_cast<int>(b)},
-                                {"a", static_cast<int>(a)}};
+  // Alphabetical order to match Rust's serde_json
+  nlohmann::ordered_json data;
+  data["a"] = static_cast<int>(a);
+  data["b"] = static_cast<int>(b);
+  data["g"] = static_cast<int>(g);
+  data["guid"] = guid;
+  data["name"] = name;
+  data["r"] = static_cast<int>(r);
+  data["type"] = "Color";
+  return data;
 }
 
 Color Color::jsonload(const nlohmann::json &data) {

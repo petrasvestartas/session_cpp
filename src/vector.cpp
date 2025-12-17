@@ -125,12 +125,17 @@ Vector operator*(double factor, const Vector &v) { return v * factor; }
 // JSON
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-/// Convert to JSON-serializable object
+/// Convert to JSON-serializable object (alphabetical order to match Rust)
 nlohmann::ordered_json Vector::jsondump() const {
   auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
-  return nlohmann::ordered_json{{"type", "Vector"}, {"guid", guid},
-                                {"name", name},     {"x", clean_float(_x)},
-                                {"y", clean_float(_y)}, {"z", clean_float(_z)}};
+  nlohmann::ordered_json data;
+  data["guid"] = guid;
+  data["name"] = name;
+  data["type"] = "Vector";
+  data["x"] = clean_float(_x);
+  data["y"] = clean_float(_y);
+  data["z"] = clean_float(_z);
+  return data;
 }
 
 /// Create vector from JSON data

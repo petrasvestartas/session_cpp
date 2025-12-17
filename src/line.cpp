@@ -161,19 +161,21 @@ Line Line::transformed() const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 nlohmann::ordered_json Line::jsondump() const {
-    return nlohmann::ordered_json{
-        {"type", "Line"},
-        {"guid", guid},
-        {"name", name},
-        {"x0", _x0},
-        {"y0", _y0},
-        {"z0", _z0},
-        {"x1", _x1},
-        {"y1", _y1},
-        {"z1", _z1},
-        {"width", width},
-        {"linecolor", linecolor.jsondump()},
-        {"xform", xform.jsondump()}};
+    // Alphabetical order to match Rust's serde_json
+    nlohmann::ordered_json data;
+    data["guid"] = guid;
+    data["linecolor"] = linecolor.jsondump();
+    data["name"] = name;
+    data["type"] = "Line";
+    data["width"] = width;
+    data["x0"] = _x0;
+    data["x1"] = _x1;
+    data["xform"] = xform.jsondump();
+    data["y0"] = _y0;
+    data["y1"] = _y1;
+    data["z0"] = _z0;
+    data["z1"] = _z1;
+    return data;
 }
 
 Line Line::jsonload(const nlohmann::json& data) {

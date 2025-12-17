@@ -437,12 +437,13 @@ void Xform::transform_vector(Vector& vector) const {
 }
 
 nlohmann::ordered_json Xform::jsondump() const {
-    return nlohmann::ordered_json{
-        {"type", "Xform"},
-        {"guid", guid},
-        {"name", name},
-        {"m", m}
-    };
+    // Alphabetical order to match Rust's serde_json
+    nlohmann::ordered_json data;
+    data["guid"] = guid;
+    data["m"] = m;
+    data["name"] = name;
+    data["type"] = "Xform";
+    return data;
 }
 
 Xform Xform::jsonload(const nlohmann::json& data) {

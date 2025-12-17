@@ -54,15 +54,20 @@ Point Point::transformed() const {
 // JSON
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-/// Convert to JSON-serializable object
+/// Convert to JSON-serializable object (alphabetical order to match Rust)
 nlohmann::ordered_json Point::jsondump() const {
   auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
-  return nlohmann::ordered_json{
-      {"type", "Point"}, {"guid", guid},
-      {"name", name},    {"x", clean_float(_x)},
-      {"y", clean_float(_y)}, {"z", clean_float(_z)},
-      {"width", width},  {"pointcolor", pointcolor.jsondump()},
-      {"xform", xform.jsondump()}};
+  nlohmann::ordered_json data;
+  data["guid"] = guid;
+  data["name"] = name;
+  data["pointcolor"] = pointcolor.jsondump();
+  data["type"] = "Point";
+  data["width"] = width;
+  data["x"] = clean_float(_x);
+  data["xform"] = xform.jsondump();
+  data["y"] = clean_float(_y);
+  data["z"] = clean_float(_z);
+  return data;
 }
 
 /// Create point from JSON data

@@ -1,7 +1,26 @@
 {
-  "type": "Mesh",
-  "guid": "c1a968ea-a85c-4186-8c49-f8a9e1cc5578",
-  "name": "my_mesh",
+  "default_edge_attributes": {},
+  "default_face_attributes": {},
+  "default_vertex_attributes": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+  },
+  "edgedata": null,
+  "face": {
+    "1": [
+      1,
+      3,
+      5
+    ]
+  },
+  "facecolors": [
+    255,
+    255,
+    255
+  ],
+  "facedata": null,
+  "guid": "e148e3b4-6ccc-4fcc-8daa-08d12f95304a",
   "halfedge": {
     "1": {
       "3": 1,
@@ -16,44 +35,55 @@
       "3": null
     }
   },
+  "linecolors": [
+    255,
+    255,
+    255,
+    255,
+    255,
+    255,
+    255,
+    255,
+    255
+  ],
+  "max_face": 2,
+  "max_vertex": 6,
+  "name": "test_mesh",
+  "pointcolors": [
+    255,
+    255,
+    255,
+    255,
+    255,
+    255,
+    255,
+    255,
+    255
+  ],
+  "type": "Mesh",
   "vertex": {
     "1": {
+      "attributes": {},
       "x": 0.0,
       "y": 0.0,
-      "z": 0.0,
-      "attributes": {}
+      "z": 0.0
     },
     "3": {
+      "attributes": {},
       "x": 1.0,
       "y": 0.0,
-      "z": 0.0,
-      "attributes": {}
+      "z": 0.0
     },
     "5": {
+      "attributes": {},
       "x": 0.0,
       "y": 1.0,
-      "z": 0.0,
-      "attributes": {}
+      "z": 0.0
     }
   },
-  "face": {
-    "1": [
-      1,
-      3,
-      5
-    ]
-  },
-  "facedata": null,
-  "edgedata": null,
-  "default_vertex_attributes": {
-    "x": 0.0,
-    "y": 0.0,
-    "z": 0.0
-  },
-  "default_face_attributes": {},
-  "default_edge_attributes": {},
-  "max_vertex": 6,
-  "max_face": 2,
-  "triangle_bvh_built": false,
-  "triangle_boxes_cache": []
+  "widths": [
+    1.0,
+    1.0,
+    1.0
+  ]
 }

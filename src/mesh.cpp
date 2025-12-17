@@ -6,6 +6,12 @@
 #include <limits>
 #include <thread>
 
+#ifdef ENABLE_PROTOBUF
+#include "mesh.pb.h"
+#include "color.pb.h"
+#include "xform.pb.h"
+#endif
+
 namespace session_cpp {
 
 Mesh::Mesh() {
@@ -474,9 +480,44 @@ Mesh Mesh::transformed() const {
 
 nlohmann::ordered_json Mesh::jsondump() const {
     nlohmann::ordered_json data;
-    data["type"] = "Mesh";
+    
+    // Alphabetical order to match Rust's serde_json output
+    data["default_edge_attributes"] = default_edge_attributes;
+    data["default_face_attributes"] = default_face_attributes;
+    data["default_vertex_attributes"] = default_vertex_attributes;
+    
+    // Edge attributes
+    nlohmann::ordered_json edgedata_json;
+    for (const auto& [edge, attrs] : edgedata) {
+        std::string edge_key = std::to_string(edge.first) + "," + std::to_string(edge.second);
+        edgedata_json[edge_key] = attrs;
+    }
+    data["edgedata"] = edgedata_json;
+    
+    // Face data
+    nlohmann::ordered_json face_data;
+    for (const auto& [key, vertices] : face) {
+        face_data[std::to_string(key)] = vertices;
+    }
+    data["face"] = face_data;
+
+    // Face colors
+    nlohmann::ordered_json facecolors_arr = nlohmann::ordered_json::array();
+    for (const auto& c : facecolors) {
+        facecolors_arr.push_back(c.r);
+        facecolors_arr.push_back(c.g);
+        facecolors_arr.push_back(c.b);
+    }
+    data["facecolors"] = facecolors_arr;
+    
+    // Face attributes
+    nlohmann::ordered_json facedata_json;
+    for (const auto& [key, attrs] : facedata) {
+        facedata_json[std::to_string(key)] = attrs;
+    }
+    data["facedata"] = facedata_json;
+    
     data["guid"] = guid;
-    data["name"] = name;
     
     // Halfedge connectivity
     nlohmann::ordered_json halfedge_data;
@@ -488,56 +529,45 @@ nlohmann::ordered_json Mesh::jsondump() const {
         halfedge_data[std::to_string(u)] = neighbor_data;
     }
     data["halfedge"] = halfedge_data;
+
+    // Line colors
+    nlohmann::ordered_json linecolors_arr = nlohmann::ordered_json::array();
+    for (const auto& c : linecolors) {
+        linecolors_arr.push_back(c.r);
+        linecolors_arr.push_back(c.g);
+        linecolors_arr.push_back(c.b);
+    }
+    data["linecolors"] = linecolors_arr;
+
+    data["max_face"] = max_face;
+    data["max_vertex"] = max_vertex;
+    data["name"] = name;
+
+    // Point colors
+    nlohmann::ordered_json pointcolors_arr = nlohmann::ordered_json::array();
+    for (const auto& c : pointcolors) {
+        pointcolors_arr.push_back(c.r);
+        pointcolors_arr.push_back(c.g);
+        pointcolors_arr.push_back(c.b);
+    }
+    data["pointcolors"] = pointcolors_arr;
+
+    data["type"] = "Mesh";
     
     // Vertex data
     nlohmann::ordered_json vertex_data;
     for (const auto& [key, vdata] : vertex) {
         nlohmann::ordered_json v;
+        v["attributes"] = vdata.attributes;
         v["x"] = vdata.x;
         v["y"] = vdata.y;
         v["z"] = vdata.z;
-        v["attributes"] = vdata.attributes;
         vertex_data[std::to_string(key)] = v;
     }
     data["vertex"] = vertex_data;
-    
-    // Face data
-    nlohmann::ordered_json face_data;
-    for (const auto& [key, vertices] : face) {
-        face_data[std::to_string(key)] = vertices;
-    }
-    data["face"] = face_data;
-    
-    // Face attributes
-    nlohmann::ordered_json facedata_json;
-    for (const auto& [key, attrs] : facedata) {
-        facedata_json[std::to_string(key)] = attrs;
-    }
-    data["facedata"] = facedata_json;
-    
-    // Edge attributes
-    nlohmann::ordered_json edgedata_json;
-    for (const auto& [edge, attrs] : edgedata) {
-        std::string edge_key = std::to_string(edge.first) + "," + std::to_string(edge.second);
-        edgedata_json[edge_key] = attrs;
-    }
-    data["edgedata"] = edgedata_json;
-    
-    data["default_vertex_attributes"] = default_vertex_attributes;
-    data["default_face_attributes"] = default_face_attributes;
-    data["default_edge_attributes"] = default_edge_attributes;
-    data["max_vertex"] = max_vertex;
-    data["max_face"] = max_face;
 
-    // Persist triangle BVH caches (optional)
-    data["triangle_bvh_built"] = triangle_bvh_built;
-    nlohmann::ordered_json tri_boxes = nlohmann::ordered_json::array();
-    for (const auto& box : triangle_boxes_cache) {
-        tri_boxes.push_back(box.jsondump());
-    }
-    data["triangle_boxes_cache"] = tri_boxes;
+    data["widths"] = widths;
 
-    // Deprecated: triangle_data_cache removed in favor of index-based caches
     return data;
 }
 
@@ -625,23 +655,35 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
         mesh.max_face = data["max_face"];
     }
 
-    // Load optional triangle BVH caches
-    if (data.contains("triangle_boxes_cache")) {
-        mesh.triangle_boxes_cache.clear();
-        for (const auto& box_json : data["triangle_boxes_cache"]) {
-            mesh.triangle_boxes_cache.push_back(BoundingBox::jsonload(box_json));
+    // Load colors from flat RGB arrays
+    if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
+        const auto& arr = data["pointcolors"];
+        mesh.pointcolors.clear();
+        for (size_t i = 0; i + 2 < arr.size(); i += 3) {
+            mesh.pointcolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(), arr[i+2].get<int>(), 255));
         }
     }
-    // triangle_data_cache deprecated: no longer loaded
-    // Note: triangle_bvh_built is stored in JSON but not used during load
-    // BVH is rebuilt from triangle_boxes_cache if present
-    if (!mesh.triangle_boxes_cache.empty()) {
-        mesh.triangle_bvh = std::make_shared<BVH>();
-        mesh.triangle_bvh->build(mesh.triangle_boxes_cache);
-        mesh.triangle_bvh_built = true;
-    } else {
-        mesh.triangle_bvh_built = false;
+
+    if (data.contains("facecolors") && data["facecolors"].is_array()) {
+        const auto& arr = data["facecolors"];
+        mesh.facecolors.clear();
+        for (size_t i = 0; i + 2 < arr.size(); i += 3) {
+            mesh.facecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(), arr[i+2].get<int>(), 255));
+        }
     }
+
+    if (data.contains("linecolors") && data["linecolors"].is_array()) {
+        const auto& arr = data["linecolors"];
+        mesh.linecolors.clear();
+        for (size_t i = 0; i + 2 < arr.size(); i += 3) {
+            mesh.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(), arr[i+2].get<int>(), 255));
+        }
+    }
+
+    if (data.contains("widths") && data["widths"].is_array()) {
+        mesh.widths = data["widths"].get<std::vector<double>>();
+    }
+
     return mesh;
 }
 
@@ -778,5 +820,243 @@ void Mesh::clear_triangle_bvh() const {
     triangle_face_subidx_cache.clear();
     vertices_cache.clear();
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Protobuf
+///////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef ENABLE_PROTOBUF
+
+std::string Mesh::to_protobuf() const {
+    session_proto::Mesh proto;
+    proto.set_guid(this->guid);
+    proto.set_name(this->name);
+
+    // Vertices
+    for (const auto& [vkey, vdata] : vertex) {
+        auto& vertex_proto = (*proto.mutable_vertices())[vkey];
+        vertex_proto.set_x(vdata.x);
+        vertex_proto.set_y(vdata.y);
+        vertex_proto.set_z(vdata.z);
+        for (const auto& [k, v] : vdata.attributes) {
+            (*vertex_proto.mutable_attributes())[k] = v;
+        }
+    }
+
+    // Faces
+    for (const auto& [fkey, fverts] : face) {
+        auto& face_proto = (*proto.mutable_faces())[fkey];
+        for (size_t v : fverts) {
+            face_proto.add_vertices(v);
+        }
+        auto it = facedata.find(fkey);
+        if (it != facedata.end()) {
+            for (const auto& [k, v] : it->second) {
+                (*face_proto.mutable_attributes())[k] = v;
+            }
+        }
+    }
+
+    // Halfedges
+    for (const auto& [u, neighbors] : halfedge) {
+        auto& hmap = (*proto.mutable_halfedges())[u];
+        for (const auto& [v, fkey_opt] : neighbors) {
+            (*hmap.mutable_neighbors())[v] = fkey_opt.value_or(UINT64_MAX);
+        }
+    }
+
+    // Edge data
+    for (const auto& [edge, attrs] : edgedata) {
+        auto* edge_proto = proto.add_edge_data();
+        edge_proto->set_vertex1(edge.first);
+        edge_proto->set_vertex2(edge.second);
+        for (const auto& [k, v] : attrs) {
+            (*edge_proto->mutable_attributes())[k] = v;
+        }
+    }
+
+    // Default attributes
+    for (const auto& [k, v] : default_vertex_attributes) {
+        (*proto.mutable_default_vertex_attributes())[k] = v;
+    }
+    for (const auto& [k, v] : default_face_attributes) {
+        (*proto.mutable_default_face_attributes())[k] = v;
+    }
+    for (const auto& [k, v] : default_edge_attributes) {
+        (*proto.mutable_default_edge_attributes())[k] = v;
+    }
+
+    // Colors
+    for (const auto& c : pointcolors) {
+        auto* color_proto = proto.add_pointcolors();
+        color_proto->set_guid(c.guid);
+        color_proto->set_name(c.name);
+        color_proto->set_r(c.r);
+        color_proto->set_g(c.g);
+        color_proto->set_b(c.b);
+        color_proto->set_a(c.a);
+    }
+
+    for (const auto& c : facecolors) {
+        auto* color_proto = proto.add_facecolors();
+        color_proto->set_guid(c.guid);
+        color_proto->set_name(c.name);
+        color_proto->set_r(c.r);
+        color_proto->set_g(c.g);
+        color_proto->set_b(c.b);
+        color_proto->set_a(c.a);
+    }
+
+    for (const auto& c : linecolors) {
+        auto* color_proto = proto.add_linecolors();
+        color_proto->set_guid(c.guid);
+        color_proto->set_name(c.name);
+        color_proto->set_r(c.r);
+        color_proto->set_g(c.g);
+        color_proto->set_b(c.b);
+        color_proto->set_a(c.a);
+    }
+
+    // Widths
+    for (double w : widths) {
+        proto.add_widths(w);
+    }
+
+    // Xform
+    auto* xform_proto = proto.mutable_xform();
+    xform_proto->set_guid(xform.guid);
+    xform_proto->set_name(xform.name);
+    for (int i = 0; i < 16; ++i) {
+        xform_proto->add_matrix(xform.m[i]);
+    }
+
+    return proto.SerializeAsString();
+}
+
+Mesh Mesh::from_protobuf(const std::string& data) {
+    session_proto::Mesh proto;
+    proto.ParseFromString(data);
+
+    Mesh mesh;
+    mesh.guid = proto.guid();
+    mesh.name = proto.name();
+
+    // Vertices
+    for (const auto& [vkey, vdata] : proto.vertices()) {
+        VertexData vd;
+        vd.x = vdata.x();
+        vd.y = vdata.y();
+        vd.z = vdata.z();
+        for (const auto& [k, v] : vdata.attributes()) {
+            vd.attributes[k] = v;
+        }
+        mesh.vertex[vkey] = vd;
+        mesh.halfedge[vkey] = {};
+    }
+
+    // Faces
+    for (const auto& [fkey, fdata] : proto.faces()) {
+        std::vector<size_t> verts;
+        for (uint64_t v : fdata.vertices()) {
+            verts.push_back(v);
+        }
+        mesh.face[fkey] = verts;
+        if (fdata.attributes_size() > 0) {
+            for (const auto& [k, v] : fdata.attributes()) {
+                mesh.facedata[fkey][k] = v;
+            }
+        }
+    }
+
+    // Halfedges
+    for (const auto& [u, hmap] : proto.halfedges()) {
+        std::map<size_t, std::optional<size_t>> neighbors;
+        for (const auto& [v, fkey] : hmap.neighbors()) {
+            if (fkey == UINT64_MAX) {
+                neighbors[v] = std::nullopt;
+            } else {
+                neighbors[v] = fkey;
+            }
+        }
+        mesh.halfedge[u] = neighbors;
+    }
+
+    // Edge data
+    for (const auto& edata : proto.edge_data()) {
+        auto key = std::make_pair(static_cast<size_t>(edata.vertex1()), static_cast<size_t>(edata.vertex2()));
+        for (const auto& [k, v] : edata.attributes()) {
+            mesh.edgedata[key][k] = v;
+        }
+    }
+
+    // Default attributes
+    for (const auto& [k, v] : proto.default_vertex_attributes()) {
+        mesh.default_vertex_attributes[k] = v;
+    }
+    for (const auto& [k, v] : proto.default_face_attributes()) {
+        mesh.default_face_attributes[k] = v;
+    }
+    for (const auto& [k, v] : proto.default_edge_attributes()) {
+        mesh.default_edge_attributes[k] = v;
+    }
+
+    // Colors
+    for (const auto& c : proto.pointcolors()) {
+        Color color(c.r(), c.g(), c.b(), c.a());
+        color.guid = c.guid();
+        color.name = c.name();
+        mesh.pointcolors.push_back(color);
+    }
+
+    for (const auto& c : proto.facecolors()) {
+        Color color(c.r(), c.g(), c.b(), c.a());
+        color.guid = c.guid();
+        color.name = c.name();
+        mesh.facecolors.push_back(color);
+    }
+
+    for (const auto& c : proto.linecolors()) {
+        Color color(c.r(), c.g(), c.b(), c.a());
+        color.guid = c.guid();
+        color.name = c.name();
+        mesh.linecolors.push_back(color);
+    }
+
+    // Widths
+    for (double w : proto.widths()) {
+        mesh.widths.push_back(w);
+    }
+
+    // Xform
+    const auto& xform_proto = proto.xform();
+    mesh.xform.guid = xform_proto.guid();
+    mesh.xform.name = xform_proto.name();
+    for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
+        mesh.xform.m[i] = xform_proto.matrix(i);
+    }
+
+    // Update max counters
+    if (!mesh.vertex.empty()) {
+        mesh.max_vertex = mesh.vertex.rbegin()->first + 1;
+    }
+    if (!mesh.face.empty()) {
+        mesh.max_face = mesh.face.rbegin()->first + 1;
+    }
+
+    return mesh;
+}
+
+void Mesh::protobuf_dump(const std::string& filename) const {
+    std::string data = to_protobuf();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+
+Mesh Mesh::protobuf_load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return from_protobuf(data);
+}
+#endif
 
 } // namespace session_cpp

@@ -283,16 +283,17 @@ PointCloud PointCloud::operator-(const Vector& v) const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 nlohmann::ordered_json PointCloud::jsondump() const {
-    return nlohmann::ordered_json{
-        {"type", "PointCloud"},
-        {"guid", guid},
-        {"name", name},
-        {"coords", _coords},
-        {"colors", _colors},
-        {"normals", _normals},
-        {"point_size", point_size},
-        {"xform", xform.jsondump()}
-    };
+    // Alphabetical order to match Rust's serde_json
+    nlohmann::ordered_json data;
+    data["colors"] = _colors;
+    data["coords"] = _coords;
+    data["guid"] = guid;
+    data["name"] = name;
+    data["normals"] = _normals;
+    data["point_size"] = point_size;
+    data["type"] = "PointCloud";
+    data["xform"] = xform.jsondump();
+    return data;
 }
 
 PointCloud PointCloud::jsonload(const nlohmann::json& data) {

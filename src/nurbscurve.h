@@ -354,6 +354,18 @@ public:
     /// Load from JSON
     static NurbsCurve jsonload(const nlohmann::json& data);
 
+    /// Write JSON to file
+    void json_dump(const std::string& filename) const;
+    
+    /// Read JSON from file
+    static NurbsCurve json_load(const std::string& filename);
+
+    /// Write protobuf to file (uses JSON fallback)
+    void protobuf_dump(const std::string& filename) const;
+    
+    /// Read protobuf from file (uses JSON fallback)
+    static NurbsCurve protobuf_load(const std::string& filename);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation
     ///////////////////////////////////////////////////////////////////////////////////////////

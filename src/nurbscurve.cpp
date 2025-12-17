@@ -969,6 +969,38 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     return curve;
 }
 
+void NurbsCurve::json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+NurbsCurve NurbsCurve::json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    nlohmann::json data;
+    file >> data;
+    return jsonload(data);
+}
+
+void NurbsCurve::protobuf_dump(const std::string& filename) const {
+    // Stub: uses JSON fallback (replace .bin with .json)
+    std::string json_filename = filename;
+    size_t pos = json_filename.rfind(".bin");
+    if (pos != std::string::npos) {
+        json_filename.replace(pos, 4, ".json");
+    }
+    json_dump(json_filename);
+}
+
+NurbsCurve NurbsCurve::protobuf_load(const std::string& filename) {
+    // Stub: uses JSON fallback (replace .bin with .json)
+    std::string json_filename = filename;
+    size_t pos = json_filename.rfind(".bin");
+    if (pos != std::string::npos) {
+        json_filename.replace(pos, 4, ".json");
+    }
+    return json_load(json_filename);
+}
+
 // Stream operator
 std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve) {
     os << curve.to_string();

@@ -1,0 +1,31 @@
+{
+    "guid": "9485ac53-daf6-438d-96c9-2b662bc020c3",
+    "name": "my_nurbscurve",
+    "dimension": 3,
+    "is_rational": false,
+    "order": 3,
+    "cv_count": 3,
+    "knots": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+    ],
+    "control_points": [
+        [
+            0.0,
+            0.0,
+            0.0
+        ],
+        [
+            1.0,
+            1.0,
+            0.0
+        ],
+        [
+            2.0,
+            0.0,
+            0.0
+        ]
+    ]
+}

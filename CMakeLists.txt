@@ -269,6 +269,7 @@ endif(ENABLE_PROTOBUF)
 # Collect source files except test files
 file(GLOB PROJECT_SOURCES "src/*.cpp")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
+list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_minitest\\.cpp$")
 
 # Create OBJECT library - compiles sources ONCE and reuses object files
 add_library(session_core OBJECT ${PROJECT_SOURCES})
@@ -348,6 +349,8 @@ set(MINITEST_SOURCES
     src/plane_test.cpp
     src/pointcloud_test.cpp
     src/xform_test.cpp
+    src/mesh_test.cpp
+    src/nurbscurve_test.cpp
 )
 add_executable(point_minitest
     src/mini_test.cpp
