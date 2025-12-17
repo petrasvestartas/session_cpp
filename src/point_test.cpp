@@ -30,7 +30,7 @@ namespace session_cpp {
         double z = p[2];
 
         // Minimal and Full String Representation
-        std::string pstr = p.str(); 
+        std::string pstr = p.str();
         std::string prepr = p.repr();
 
         // Copy (duplicate everything but guid)
@@ -98,6 +98,57 @@ namespace session_cpp {
         MINI_CHECK(p[0] == 2.0 && p[1] == 4.0 && p[2] == 6.0);
         MINI_CHECK(p.xform == Xform::identity());
     }
+
+    MINI_TEST("Point", "json_roundtrip") {
+        // uncomment #include "point.h"
+        // uncomment #include "color.h"
+
+        Point p(1.5, 2.5, 3.5);
+        p.name = "test_point";
+        p.width = 2.0;
+        p.pointcolor = Color(255, 128, 64, 255);
+
+        std::string filename = "test_point.json";
+        p.json_dump(filename);
+        Point loaded = Point::json_load(filename);
+
+        MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded[0] == p[0]);
+        MINI_CHECK(loaded[1] == p[1]);
+        MINI_CHECK(loaded[2] == p[2]);
+        MINI_CHECK(loaded.width == p.width);
+        MINI_CHECK(loaded.pointcolor.r == 255);
+        MINI_CHECK(loaded.pointcolor.g == 128);
+        MINI_CHECK(loaded.pointcolor.b == 64);
+        MINI_CHECK(loaded.pointcolor.a == 255);
+
+    }
+
+#ifdef ENABLE_PROTOBUF
+    MINI_TEST("Point", "protobuf_roundtrip") {
+        // uncomment #include "point.h"
+        // uncomment #include "color.h"
+
+        Point p(1.5, 2.5, 3.5);
+        p.name = "test_point";
+        p.width = 2.0;
+        p.pointcolor = Color(255, 128, 64, 255);
+
+        std::string filename = "test_point.bin";
+        p.protobuf_dump(filename);
+        Point loaded = Point::protobuf_load(filename);
+
+        MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded[0] == p[0]);
+        MINI_CHECK(loaded[1] == p[1]);
+        MINI_CHECK(loaded[2] == p[2]);
+        MINI_CHECK(loaded.width == p.width);
+        MINI_CHECK(loaded.pointcolor.r == 255);
+        MINI_CHECK(loaded.pointcolor.g == 128);
+        MINI_CHECK(loaded.pointcolor.b == 64);
+        MINI_CHECK(loaded.pointcolor.a == 255);
+    }
+#endif
 
     MINI_TEST("Point", "is_ccw") {
         // uncomment #include "point.h"
@@ -170,61 +221,10 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(centroid[2], 1.0));
     }
 
-    MINI_TEST("Point", "json_roundtrip") {
-        // uncomment #include "point.h"
-        // uncomment #include "color.h"
-
-        Point p(1.5, 2.5, 3.5);
-        p.name = "test_point";
-        p.width = 2.0;
-        p.pointcolor = Color(255, 128, 64, 255);
-
-        std::string filename = "test_point.json";
-        p.json_dump(filename);
-        Point loaded = Point::json_load(filename);
-
-        MINI_CHECK(loaded.name == p.name);
-        MINI_CHECK(loaded[0] == p[0]);
-        MINI_CHECK(loaded[1] == p[1]);
-        MINI_CHECK(loaded[2] == p[2]);
-        MINI_CHECK(loaded.width == p.width);
-        MINI_CHECK(loaded.pointcolor.r == 255);
-        MINI_CHECK(loaded.pointcolor.g == 128);
-        MINI_CHECK(loaded.pointcolor.b == 64);
-        MINI_CHECK(loaded.pointcolor.a == 255);
-
-    }
-
-#ifdef ENABLE_PROTOBUF
-    MINI_TEST("Point", "protobuf_roundtrip") {
-        // uncomment #include "point.h"
-        // uncomment #include "color.h"
-
-        Point p(1.5, 2.5, 3.5);
-        p.name = "test_point";
-        p.width = 2.0;
-        p.pointcolor = Color(255, 128, 64, 255);
-
-        std::string filename = "test_point.bin";
-        p.protobuf_dump(filename);
-        Point loaded = Point::protobuf_load(filename);
-
-        MINI_CHECK(loaded.name == p.name);
-        MINI_CHECK(loaded[0] == p[0]);
-        MINI_CHECK(loaded[1] == p[1]);
-        MINI_CHECK(loaded[2] == p[2]);
-        MINI_CHECK(loaded.width == p.width);
-        MINI_CHECK(loaded.pointcolor.r == 255);
-        MINI_CHECK(loaded.pointcolor.g == 128);
-        MINI_CHECK(loaded.pointcolor.b == 64);
-        MINI_CHECK(loaded.pointcolor.a == 255);
-    }
-#endif
-
 }
 
 int main() {
     session_cpp::mini_test::run_all("cpp");
     return 0;
-} 
+}
 

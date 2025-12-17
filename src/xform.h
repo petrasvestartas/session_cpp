@@ -17,6 +17,7 @@
 namespace session_cpp {
 
 class Point; // Forward declaration
+class Plane; // Forward declaration
 
 /**
  * @class Xform
@@ -32,6 +33,10 @@ public:
     Xform();
     /// Construct from matrix values (column-major)
     Xform(const std::array<double, 16>& matrix);
+    /// Copy constructor (creates a new guid while copying data)
+    Xform(const Xform& other);
+    /// Copy assignment (creates a new guid while copying data)
+    Xform& operator=(const Xform& other);
 
     /// Identity matrix
     static Xform identity();
@@ -54,14 +59,11 @@ public:
     static Xform rotation_z(double angle_radians);
     /// Rotation around arbitrary axis (radians)
     static Xform rotation(Vector& axis, double angle_radians);
-    /// Change of basis from origin and axes
-    static Xform change_basis(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
-    /// Alternative change of basis (explicit from/to bases)
-    static Xform change_basis_alt(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
-                                   Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0);
-    /// Transform mapping one plane (origin and axes) to another
-    static Xform plane_to_plane(Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0,
-                                Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1);
+    /// Change of basis between two coordinate systems
+    static Xform change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
+                               Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0);
+    /// Transform mapping one plane to another
+    static Xform plane_to_plane(const Plane& plane_from, const Plane& plane_to);
     /// Transform from a plane coordinate system to XY
     static Xform plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
     /// Transform from XY to a plane coordinate system
@@ -100,6 +102,17 @@ public:
     /// Read JSON from file
     static Xform json_load(const std::string& filename);
 
+#ifdef ENABLE_PROTOBUF
+    /// Serialize to protobuf binary format
+    std::string to_protobuf() const;
+    /// Deserialize from protobuf binary data
+    static Xform from_protobuf(const std::string& data);
+    /// Write protobuf to file
+    void protobuf_dump(const std::string& filename) const;
+    /// Read protobuf from file
+    static Xform protobuf_load(const std::string& filename);
+#endif
+
     /// Matrix multiplication
     Xform operator*(const Xform& other) const;
     /// In-place matrix multiplication
@@ -114,6 +127,11 @@ public:
     bool operator==(const Xform& other) const;
     /// Inequality operator
     bool operator!=(const Xform& other) const;
+
+    /// Minimal string representation (matrix values)
+    std::string str() const;
+    /// Full string representation (name, guid prefix)
+    std::string repr() const;
 
 };
 

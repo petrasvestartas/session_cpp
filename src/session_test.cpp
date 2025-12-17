@@ -171,10 +171,11 @@ TEST_CASE("Session tree transformation hierarchy.") {
   Point box1_top(0, 0, 1.0);
   Vector normal(0, 0, 1), x(1, 0, 0), y(0, 1, 0);
   Point xy_origin(0, 0, 0);
-  Vector xy_x(1, 0, 0), xy_y(0, 1, 0), xy_z(0, 0, 1);
-  
-  Xform xy_to_top = Xform::plane_to_plane(xy_origin, xy_x, xy_y, xy_z,
-                                           box1_top, x, y, normal);
+  Vector xy_x(1, 0, 0), xy_y(0, 1, 0);
+
+  Plane plane_from(xy_origin, xy_x, xy_y);
+  Plane plane_to(box1_top, x, y);
+  Xform xy_to_top = Xform::plane_to_plane(plane_from, plane_to);
   box1->xform = Xform::rotation_z(Tolerance::PI / 1.5) * xy_to_top;
   
   box2->xform = Xform::translation(2.0, 0, 0) * Xform::rotation_z(Tolerance::PI / 6.0);

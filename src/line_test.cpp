@@ -106,6 +106,62 @@ MINI_TEST("Line", "constructor") {
     MINI_CHECK(lc.linecolor[0] == 255 && lc.linecolor[1] == 0 && lc.width == 2.5);
 }
 
+MINI_TEST("Line", "transformation") {
+    // uncomment #include "line.h"
+    // uncomment #include "xform.h"
+
+    Line l(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    l.xform = Xform::translation(10.0, 0.0, 0.0);
+    Line l_transformed = l.transformed(); // Make a copy
+    l.transform(); // After the call, "xform" is reset
+
+    MINI_CHECK(l_transformed[0] == 10.0 && l_transformed[3] == 11.0);
+    MINI_CHECK(l[0] == 10.0 && l[3] == 11.0);
+    MINI_CHECK(l.xform == Xform::identity());
+}
+
+MINI_TEST("Line", "json_roundtrip") {
+    // uncomment #include "line.h"
+
+    Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
+    l.name = "test_line";
+
+    // json_dump(fname) / json_load(fname) - file-based serialization
+    std::string fname = "test_line.json";
+    l.json_dump(fname);
+    Line loaded = Line::json_load(fname);
+
+    MINI_CHECK(loaded.name == "test_line");
+    MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
+    MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));
+    MINI_CHECK(TOLERANCE.is_close(loaded[2], 126.3));
+    MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
+    MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
+    MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
+}
+
+#ifdef ENABLE_PROTOBUF
+MINI_TEST("Line", "protobuf_roundtrip") {
+    // uncomment #include "line.h"
+
+    Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
+    l.name = "test_line";
+
+    // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
+    std::string fname = "test_line.bin";
+    l.protobuf_dump(fname);
+    Line loaded = Line::protobuf_load(fname);
+
+    MINI_CHECK(loaded.name == "test_line");
+    MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
+    MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));
+    MINI_CHECK(TOLERANCE.is_close(loaded[2], 126.3));
+    MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
+    MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
+    MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
+}
+#endif
+
 MINI_TEST("Line", "length") {
     // uncomment #include "line.h"
 
@@ -214,61 +270,5 @@ MINI_TEST("Line", "subdivide") {
     MINI_CHECK(TOLERANCE.is_close(pts_dist[1][0], 2.5));
     MINI_CHECK(TOLERANCE.is_close(pts_dist[4][0], 10.0));
 }
-
-MINI_TEST("Line", "transformation") {
-    // uncomment #include "line.h"
-    // uncomment #include "xform.h"
-
-    Line l(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
-    l.xform = Xform::translation(10.0, 0.0, 0.0);
-    Line l_transformed = l.transformed(); // Make a copy
-    l.transform(); // After the call, "xform" is reset
-
-    MINI_CHECK(l_transformed[0] == 10.0 && l_transformed[3] == 11.0);
-    MINI_CHECK(l[0] == 10.0 && l[3] == 11.0);
-    MINI_CHECK(l.xform == Xform::identity());
-}
-
-MINI_TEST("Line", "json_roundtrip") {
-    // uncomment #include "line.h"
-
-    Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
-    l.name = "test_line";
-
-    // json_dump(fname) / json_load(fname) - file-based serialization
-    std::string fname = "test_line.json";
-    l.json_dump(fname);
-    Line loaded = Line::json_load(fname);
-
-    MINI_CHECK(loaded.name == "test_line");
-    MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
-    MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));
-    MINI_CHECK(TOLERANCE.is_close(loaded[2], 126.3));
-    MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
-    MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
-    MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
-}
-
-#ifdef ENABLE_PROTOBUF
-MINI_TEST("Line", "protobuf_roundtrip") {
-    // uncomment #include "line.h"
-
-    Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
-    l.name = "test_line";
-
-    // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
-    std::string fname = "test_line.bin";
-    l.protobuf_dump(fname);
-    Line loaded = Line::protobuf_load(fname);
-
-    MINI_CHECK(loaded.name == "test_line");
-    MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
-    MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));
-    MINI_CHECK(TOLERANCE.is_close(loaded[2], 126.3));
-    MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
-    MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
-    MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
-}
-#endif
 
 } // namespace session_cpp

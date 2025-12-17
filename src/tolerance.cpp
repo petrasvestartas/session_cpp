@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
+#include <fmt/core.h>
 
 namespace session_cpp {
 
@@ -102,38 +103,25 @@ std::string Tolerance::key(double x, double y, double z, int precision) const {
     }
     
     if (prec == -1) {
-        return std::to_string(static_cast<int>(x)) + "," + 
-               std::to_string(static_cast<int>(y)) + "," + 
-               std::to_string(static_cast<int>(z));
+        return fmt::format("{},{},{}", static_cast<int>(x), static_cast<int>(y), static_cast<int>(z));
     }
     
     if (prec < -1) {
         int p = -prec - 1;
         double factor = std::pow(10.0, p);
-        return std::to_string(static_cast<int>(std::round(x / factor) * factor)) + "," +
-               std::to_string(static_cast<int>(std::round(y / factor) * factor)) + "," +
-               std::to_string(static_cast<int>(std::round(z / factor) * factor));
+        return fmt::format("{},{},{}",
+               static_cast<int>(std::round(x / factor) * factor),
+               static_cast<int>(std::round(y / factor) * factor),
+               static_cast<int>(std::round(z / factor) * factor));
     }
     
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(prec);
+    // Handle -0.0 case: if value rounds to zero at this precision, use positive zero
+    double threshold = std::pow(10.0, -prec) * 0.5;
+    if (std::abs(x) < threshold) x = 0.0;
+    if (std::abs(y) < threshold) y = 0.0;
+    if (std::abs(z) < threshold) z = 0.0;
     
-    // Handle -0.000 case
-    std::ostringstream minzero;
-    minzero << std::fixed << std::setprecision(prec) << -0.0;
-    std::string minzero_str = minzero.str();
-    
-    std::ostringstream x_oss, y_oss, z_oss;
-    x_oss << std::fixed << std::setprecision(prec) << x;
-    y_oss << std::fixed << std::setprecision(prec) << y;
-    z_oss << std::fixed << std::setprecision(prec) << z;
-    
-    if (x_oss.str() == minzero_str) x = 0.0;
-    if (y_oss.str() == minzero_str) y = 0.0;
-    if (z_oss.str() == minzero_str) z = 0.0;
-    
-    oss << x << "," << y << "," << z;
-    return oss.str();
+    return fmt::format("{:.{}f},{:.{}f},{:.{}f}", x, prec, y, prec, z, prec);
 }
 
 std::string Tolerance::key_xy(double x, double y, int precision) const {
@@ -144,34 +132,23 @@ std::string Tolerance::key_xy(double x, double y, int precision) const {
     }
     
     if (prec == -1) {
-        return std::to_string(static_cast<int>(x)) + "," + 
-               std::to_string(static_cast<int>(y));
+        return fmt::format("{},{}", static_cast<int>(x), static_cast<int>(y));
     }
     
     if (prec < -1) {
         int p = -prec - 1;
         double factor = std::pow(10.0, p);
-        return std::to_string(static_cast<int>(std::round(x / factor) * factor)) + "," +
-               std::to_string(static_cast<int>(std::round(y / factor) * factor));
+        return fmt::format("{},{}",
+               static_cast<int>(std::round(x / factor) * factor),
+               static_cast<int>(std::round(y / factor) * factor));
     }
     
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(prec);
+    // Handle -0.0 case: if value rounds to zero at this precision, use positive zero
+    double threshold = std::pow(10.0, -prec) * 0.5;
+    if (std::abs(x) < threshold) x = 0.0;
+    if (std::abs(y) < threshold) y = 0.0;
     
-    // Handle -0.000 case
-    std::ostringstream minzero;
-    minzero << std::fixed << std::setprecision(prec) << -0.0;
-    std::string minzero_str = minzero.str();
-    
-    std::ostringstream x_oss, y_oss;
-    x_oss << std::fixed << std::setprecision(prec) << x;
-    y_oss << std::fixed << std::setprecision(prec) << y;
-    
-    if (x_oss.str() == minzero_str) x = 0.0;
-    if (y_oss.str() == minzero_str) y = 0.0;
-    
-    oss << x << "," << y;
-    return oss.str();
+    return fmt::format("{:.{}f},{:.{}f}", x, prec, y, prec);
 }
 
 std::string Tolerance::format_number(double number, int precision) const {
@@ -182,18 +159,16 @@ std::string Tolerance::format_number(double number, int precision) const {
     }
     
     if (prec == -1) {
-        return std::to_string(static_cast<int>(std::round(number)));
+        return fmt::format("{}", static_cast<int>(std::round(number)));
     }
     
     if (prec < -1) {
         int p = -prec - 1;
         double factor = std::pow(10.0, p);
-        return std::to_string(static_cast<int>(std::round(number / factor) * factor));
+        return fmt::format("{}", static_cast<int>(std::round(number / factor) * factor));
     }
     
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(prec) << number;
-    return oss.str();
+    return fmt::format("{:.{}f}", number, prec);
 }
 
 int Tolerance::precision_from_tolerance(double tol) const {

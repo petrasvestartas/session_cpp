@@ -113,8 +113,9 @@ std::string Point::to_protobuf() const {
   color_proto->set_b(pointcolor.b);
   color_proto->set_a(pointcolor.a);
   
-  // Set xform (uses 'matrix' not 'm', no guid in proto schema)
+  // Set xform
   auto* xform_proto = proto.mutable_xform();
+  xform_proto->set_guid(xform.guid);
   xform_proto->set_name(xform.name);
   for (int i = 0; i < 16; ++i) {
     xform_proto->add_matrix(xform.m[i]);
@@ -140,8 +141,9 @@ Point Point::from_protobuf(const std::string& data) {
   point.pointcolor.b = color_proto.b();
   point.pointcolor.a = color_proto.a();
   
-  // Load xform (uses 'matrix' not 'm', no guid in proto schema)
+  // Load xform
   const auto& xform_proto = proto.xform();
+  point.xform.guid = xform_proto.guid();
   point.xform.name = xform_proto.name();
   for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
     point.xform.m[i] = xform_proto.matrix(i);

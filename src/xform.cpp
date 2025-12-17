@@ -1,5 +1,10 @@
 #include "xform.h"
 #include "point.h"
+#include "plane.h"
+
+#ifdef ENABLE_PROTOBUF
+#include "xform.pb.h"
+#endif
 
 namespace session_cpp {
 
@@ -15,6 +20,22 @@ Xform::Xform() {
 }
 
 Xform::Xform(const std::array<double, 16>& matrix) : m(matrix) {}
+
+/// Copy constructor (creates a new guid while copying data)
+Xform::Xform(const Xform& other)
+    : guid(::guid()),
+      name(other.name),
+      m(other.m) {}
+
+/// Copy assignment (creates a new guid while copying data)
+Xform& Xform::operator=(const Xform& other) {
+    if (this != &other) {
+        guid = ::guid();
+        name = other.name;
+        m = other.m;
+    }
+    return *this;
+}
 
 Xform Xform::identity() {
     return Xform();
@@ -103,37 +124,8 @@ Xform Xform::rotation(Vector& axis, double angle_radians) {
     return xform;
 }
 
-Xform Xform::change_basis(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) {
-    Xform xform;
-
-    x_axis.normalize_self();
-    y_axis.normalize_self();
-    z_axis.normalize_self();
-
-    // World-to-local transform: transpose of rotation matrix
-    // Row 0 = x_axis, Row 1 = y_axis, Row 2 = z_axis
-    xform.m[0] = x_axis[0];
-    xform.m[4] = x_axis[1];
-    xform.m[8] = x_axis[2];
-
-    xform.m[1] = y_axis[0];
-    xform.m[5] = y_axis[1];
-    xform.m[9] = y_axis[2];
-
-    xform.m[2] = z_axis[0];
-    xform.m[6] = z_axis[1];
-    xform.m[10] = z_axis[2];
-
-    // Translation = -R^T * origin
-    xform.m[12] = -(x_axis[0] * origin[0] + x_axis[1] * origin[1] + x_axis[2] * origin[2]);
-    xform.m[13] = -(y_axis[0] * origin[0] + y_axis[1] * origin[1] + y_axis[2] * origin[2]);
-    xform.m[14] = -(z_axis[0] * origin[0] + z_axis[1] * origin[1] + z_axis[2] * origin[2]);
-
-    return xform;
-}
-
-Xform Xform::change_basis_alt(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
-                                Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0) {
+Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
+                           Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0) {
     double a = x_axis_1.dot(y_axis_1);
     double b = x_axis_1.dot(z_axis_1);
     double c = y_axis_1.dot(z_axis_1);
@@ -219,12 +211,14 @@ Xform Xform::change_basis_alt(Point& origin_1, Vector& x_axis_1, Vector& y_axis_
     return t2 * (m_xform * t0);
 }
 
-Xform Xform::plane_to_plane(Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0,
-                             Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1) {
-    Vector x0 = x_axis_0, y0 = y_axis_0, z0 = z_axis_0;
-    Vector x1 = x_axis_1, y1 = y_axis_1, z1 = z_axis_1;
+Xform Xform::plane_to_plane(const Plane& plane_from, const Plane& plane_to) {
+    Vector x0 = plane_from.x_axis(), y0 = plane_from.y_axis(), z0 = plane_from.z_axis();
+    Vector x1 = plane_to.x_axis(), y1 = plane_to.y_axis(), z1 = plane_to.z_axis();
     x0.normalize_self(); y0.normalize_self(); z0.normalize_self();
     x1.normalize_self(); y1.normalize_self(); z1.normalize_self();
+
+    const Point& origin_0 = plane_from.origin();
+    const Point& origin_1 = plane_to.origin();
 
     Xform t0 = translation(-origin_0[0], -origin_0[1], -origin_0[2]);
 
@@ -470,6 +464,44 @@ Xform Xform::json_load(const std::string& filename) {
     return jsonload(data);
 }
 
+#ifdef ENABLE_PROTOBUF
+std::string Xform::to_protobuf() const {
+    session_proto::Xform proto;
+    proto.set_guid(guid);
+    proto.set_name(name);
+    for (int i = 0; i < 16; ++i) {
+        proto.add_matrix(m[i]);
+    }
+    return proto.SerializeAsString();
+}
+
+Xform Xform::from_protobuf(const std::string& data) {
+    session_proto::Xform proto;
+    proto.ParseFromString(data);
+
+    Xform xform;
+    xform.guid = proto.guid();
+    xform.name = proto.name();
+    for (int i = 0; i < 16 && i < proto.matrix_size(); ++i) {
+        xform.m[i] = proto.matrix(i);
+    }
+    return xform;
+}
+
+void Xform::protobuf_dump(const std::string& filename) const {
+    std::string data = to_protobuf();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+
+Xform Xform::protobuf_load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+    return from_protobuf(data);
+}
+#endif
+
 Xform Xform::operator*(const Xform& other) const {
     Xform result;
     result.m = {0.0, 0.0, 0.0, 0.0,
@@ -521,6 +553,22 @@ bool Xform::operator==(const Xform& other) const {
 
 bool Xform::operator!=(const Xform& other) const {
     return !(*this == other);
+}
+
+std::string Xform::str() const {
+    std::ostringstream oss;
+    for (int i = 0; i < 4; i++) {
+        oss << "[" << fmt::format("{:.6f}", m[i]) << ", "
+            << fmt::format("{:.6f}", m[4 + i]) << ", "
+            << fmt::format("{:.6f}", m[8 + i]) << ", "
+            << fmt::format("{:.6f}", m[12 + i]) << "]";
+        if (i < 3) oss << "\n";
+    }
+    return oss.str();
+}
+
+std::string Xform::repr() const {
+    return fmt::format("Xform({}, {})", name, guid.substr(0, 8));
 }
 
 } // namespace session_cpp

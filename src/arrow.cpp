@@ -110,7 +110,7 @@ Mesh Arrow::create_arrow_mesh(const Line& line, double radius) {
 
     Xform body_scale = Xform::scale_xyz(radius * 2.0, radius * 2.0, body_length);
     Point origin(0.0, 0.0, 0.0);
-    Xform rotation = Xform::change_basis(origin, x_axis, y_axis, z_axis);
+    Xform rotation = Xform::xy_to_plane(origin, x_axis, y_axis, z_axis);
     Xform body_translation = Xform::translation(body_center[0], body_center[1], body_center[2]);
     Xform body_xform = body_translation * rotation * body_scale;
 

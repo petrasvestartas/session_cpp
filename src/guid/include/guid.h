@@ -9,12 +9,16 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <iomanip>
 #include <random>
-#include <sstream>
 #include <string>
 
 namespace UUIDv4 {
+
+// Lookup table for fast hex conversion (avoiding ostringstream)
+static constexpr char hex_chars[16] = {
+    '0', '1', '2', '3', '4', '5', '6', '7',
+    '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
+};
 
 class UUID {
 public:
@@ -29,17 +33,17 @@ public:
     return *this;
   }
 
-  // Generate a random UUID v4
+  // Generate a random UUID v4 - optimized to use 64-bit generation
   static UUID generate() {
-    // Use thread_local to initialize RNG only once per thread (massive speedup)
-    static thread_local std::random_device rd;
-    static thread_local std::mt19937_64 gen(rd());
-    static thread_local std::uniform_int_distribution<int> dis(0, 255);
+    // Use thread_local to initialize RNG only once per thread
+    static thread_local std::mt19937_64 gen(std::random_device{}());
 
     UUID uuid;
-    for (int i = 0; i < 16; ++i) {
-      uuid.data[i] = static_cast<uint8_t>(dis(gen));
-    }
+    // Generate 128 bits using two 64-bit random numbers (much faster than 16 x 8-bit)
+    uint64_t r1 = gen();
+    uint64_t r2 = gen();
+    std::memcpy(uuid.data.data(), &r1, 8);
+    std::memcpy(uuid.data.data() + 8, &r2, 8);
 
     // Set version (4) and variant bits according to RFC 4122
     uuid.data[6] = (uuid.data[6] & 0x0F) | 0x40; // Version 4
@@ -76,26 +80,36 @@ public:
     return uuid;
   }
 
-  // Convert to string representation
+  // Convert to string representation - optimized with lookup table (no ostringstream)
   std::string str() const {
-    std::ostringstream oss;
-    oss << std::hex << std::setfill('0');
+    // UUID string format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
+    std::string result(36, '\0');
+    int pos = 0;
 
     for (int i = 0; i < 16; ++i) {
       if (i == 4 || i == 6 || i == 8 || i == 10) {
-        oss << '-';
+        result[pos++] = '-';
       }
-      oss << std::setw(2) << static_cast<unsigned int>(data[i]);
+      result[pos++] = hex_chars[(data[i] >> 4) & 0x0F];
+      result[pos++] = hex_chars[data[i] & 0x0F];
     }
 
-    return oss.str();
+    return result;
   }
 
   void str(std::string &s) const { s = str(); }
 
   void str(char *res) const {
-    std::string s = str();
-    std::strcpy(res, s.c_str());
+    // Direct write to char buffer - even faster
+    int pos = 0;
+    for (int i = 0; i < 16; ++i) {
+      if (i == 4 || i == 6 || i == 8 || i == 10) {
+        res[pos++] = '-';
+      }
+      res[pos++] = hex_chars[(data[i] >> 4) & 0x0F];
+      res[pos++] = hex_chars[data[i] & 0x0F];
+    }
+    res[pos] = '\0';
   }
 
   // Get raw bytes
