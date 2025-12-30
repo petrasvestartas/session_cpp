@@ -26,36 +26,19 @@ jobs:
       with:
         submodules: recursive
 
-    # Cache FetchContent downloads
-    - name: Cache Dependencies
+    - name: Cache dependencies
       uses: actions/cache@v4
       with:
-        path: build/_deps
-        key: deps-${{ runner.os }}-v1
-
-    - name: Install Dependencies (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake build-essential
-
-    - name: Install Dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install cmake
+        path: |
+          build/deps
+          build/_deps
+        key: deps-${{ runner.os }}-${{ runner.arch }}-v1
 
     - name: Configure
-      shell: bash
-      run: |
-        cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      shell: bash
-      run: |
-        cmake --build build --config Release -j4
+      run: cmake --build build --config Release -j4
 
     - name: Run Tests
-      shell: bash
-      run: |
-        cd build
-        ctest --output-on-failure -C Release
+      run: ctest --test-dir build --output-on-failure -C Release
