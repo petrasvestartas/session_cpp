@@ -26,13 +26,12 @@ jobs:
       with:
         submodules: recursive
 
-    # Cache abseil and protobuf builds - saves ~12 minutes
-    - name: Cache C++ Dependencies
+    # Cache FetchContent downloads
+    - name: Cache Dependencies
       uses: actions/cache@v4
-      id: cache-deps
       with:
-        path: build/external
-        key: cpp-deps-${{ runner.os }}-v2
+        path: build/_deps
+        key: deps-${{ runner.os }}-v1
 
     - name: Install Dependencies (Linux)
       if: runner.os == 'Linux'
@@ -50,16 +49,7 @@ jobs:
       run: |
         cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
 
-    # Build deps only if not cached
-    - name: Build Dependencies (if not cached)
-      if: steps.cache-deps.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        cmake --build build --target abseil_external --config Release -j4
-        cmake --build build --target abseil_monolith --config Release -j4 || true
-        cmake --build build --target protobuf_external --config Release -j4
-
-    - name: Build Project
+    - name: Build
       shell: bash
       run: |
         cmake --build build --config Release -j4
