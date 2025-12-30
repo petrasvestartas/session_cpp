@@ -26,13 +26,11 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Cache dependencies
+    - name: Cache session_proto release
       uses: actions/cache@v4
       with:
-        path: |
-          build/deps
-          build/_deps
-        key: deps-${{ runner.os }}-${{ runner.arch }}-v1
+        path: build/deps
+        key: deps-${{ runner.os }}-${{ runner.arch }}-v2
 
     - name: Configure
       run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
@@ -41,4 +39,13 @@ jobs:
       run: cmake --build build --config Release -j4
 
     - name: Run Tests
-      run: ctest --test-dir build --output-on-failure -C Release
+      shell: bash
+      run: |
+        if [ -f "build/tests" ]; then
+          ./build/tests
+        elif [ -f "build/Release/tests.exe" ]; then
+          ./build/Release/tests.exe
+        else
+          echo "Tests executable not found!"
+          exit 1
+        fi
