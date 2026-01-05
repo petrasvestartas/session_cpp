@@ -31,7 +31,7 @@ if(ENABLE_PROTOBUF)
     set(PROTO_DIR "${DEPS_DIR}/session_proto")
     file(MAKE_DIRECTORY ${DEPS_DIR})
 
-    set(SESSION_PROTO_VERSION "v0.0.11")
+    set(SESSION_PROTO_VERSION "v0.0.13")
 
     # Platform-specific release
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -62,17 +62,16 @@ if(ENABLE_PROTOBUF)
 
     # Import pre-built libraries
     add_library(protobuf_lib STATIC IMPORTED)
-    add_library(absl_lib STATIC IMPORTED)
     add_library(utf8_lib STATIC IMPORTED)
 
     if(WIN32)
         set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libprotobuf.lib")
-        set_target_properties(absl_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/absl_all.lib")
         set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/utf8_validity.lib")
+        file(GLOB ABSL_LIBS "${PROTO_DIR}/lib/absl_*.lib")
     else()
         set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libprotobuf.a")
-        set_target_properties(absl_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libabsl_all.a")
         set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libutf8_validity.a")
+        file(GLOB ABSL_LIBS "${PROTO_DIR}/lib/libabsl_*.a")
     endif()
 
     # Compile generated proto sources
@@ -81,6 +80,7 @@ if(ENABLE_PROTOBUF)
     target_include_directories(proto_objects PUBLIC
         ${PROTO_DIR}/include/generated
         ${PROTO_DIR}/include
+        ${PROTO_DIR}/include/utf8_range
     )
 
     # Helper to link protobuf
@@ -88,10 +88,11 @@ if(ENABLE_PROTOBUF)
         target_include_directories(${target_name} PRIVATE
             ${PROTO_DIR}/include/generated
             ${PROTO_DIR}/include
+            ${PROTO_DIR}/include/utf8_range
         )
         target_link_libraries(${target_name} PRIVATE
             $<TARGET_OBJECTS:proto_objects>
-            protobuf_lib absl_lib utf8_lib
+            protobuf_lib ${ABSL_LIBS} utf8_lib
         )
         if(APPLE)
             find_library(COREFOUNDATION CoreFoundation REQUIRED)
@@ -121,6 +122,7 @@ if(ENABLE_PROTOBUF)
     target_include_directories(session_core PUBLIC
         ${PROTO_DIR}/include/generated
         ${PROTO_DIR}/include
+        ${PROTO_DIR}/include/utf8_range
     )
     add_dependencies(session_core proto_objects)
 endif()
