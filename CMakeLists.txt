@@ -90,10 +90,21 @@ if(ENABLE_PROTOBUF)
             ${PROTO_DIR}/include
             ${PROTO_DIR}/include/utf8_range
         )
-        target_link_libraries(${target_name} PRIVATE
-            $<TARGET_OBJECTS:proto_objects>
-            protobuf_lib ${ABSL_LIBS} utf8_lib
-        )
+        if(UNIX AND NOT APPLE)
+            # Linux: use linker group to resolve circular dependencies in static libs
+            target_link_libraries(${target_name} PRIVATE
+                $<TARGET_OBJECTS:proto_objects>
+                -Wl,--start-group
+                protobuf_lib ${ABSL_LIBS} utf8_lib
+                -Wl,--end-group
+                pthread
+            )
+        else()
+            target_link_libraries(${target_name} PRIVATE
+                $<TARGET_OBJECTS:proto_objects>
+                protobuf_lib ${ABSL_LIBS} utf8_lib
+            )
+        endif()
         if(APPLE)
             find_library(COREFOUNDATION CoreFoundation REQUIRED)
             target_link_libraries(${target_name} PRIVATE ${COREFOUNDATION})
