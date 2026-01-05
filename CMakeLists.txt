@@ -31,7 +31,7 @@ if(ENABLE_PROTOBUF)
     set(PROTO_DIR "${DEPS_DIR}/session_proto")
     file(MAKE_DIRECTORY ${DEPS_DIR})
 
-    set(SESSION_PROTO_VERSION "v0.0.10")
+    set(SESSION_PROTO_VERSION "v0.0.11")
 
     # Platform-specific release
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
