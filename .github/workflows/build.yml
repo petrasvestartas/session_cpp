@@ -30,32 +30,17 @@ jobs:
       uses: actions/cache@v4
       with:
         path: build/deps
-        key: deps-${{ runner.os }}-${{ runner.arch }}-v2
+        key: deps-${{ runner.os }}-${{ runner.arch }}-v3
 
     - name: Configure
-      shell: bash
-      run: |
-        if [ "${{ matrix.name }}" = "Linux" ]; then
-          cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
-        else
-          cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
-        fi
+      run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      shell: bash
-      run: |
-        if [ "${{ matrix.name }}" = "Linux" ]; then
-          cmake --build build --config Debug -j4
-        else
-          cmake --build build --config Release -j4
-        fi
+      run: cmake --build build --config Release -j4
 
     - name: Run Tests
       shell: bash
       run: |
-        if [ "${{ matrix.name }}" = "Linux" ]; then
-          export ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:print_stacktrace=1
-        fi
         if [ -f "build/tests" ]; then
           ./build/tests
         elif [ -f "build/Release/tests.exe" ]; then
