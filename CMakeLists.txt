@@ -62,16 +62,28 @@ if(ENABLE_PROTOBUF)
 
     # Import pre-built libraries
     add_library(protobuf_lib STATIC IMPORTED)
-    add_library(utf8_lib STATIC IMPORTED)
 
     if(WIN32)
         set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libprotobuf.lib")
-        set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/utf8_validity.lib")
         file(GLOB ABSL_LIBS "${PROTO_DIR}/lib/absl_*.lib")
+        # utf8_validity may be statically linked into protobuf or in subdirectory
+        if(EXISTS "${PROTO_DIR}/lib/utf8_validity.lib")
+            add_library(utf8_lib STATIC IMPORTED)
+            set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/utf8_validity.lib")
+            set(HAS_UTF8_LIB TRUE)
+        else()
+            set(HAS_UTF8_LIB FALSE)
+        endif()
     else()
         set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libprotobuf.a")
-        set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libutf8_validity.a")
         file(GLOB ABSL_LIBS "${PROTO_DIR}/lib/libabsl_*.a")
+        if(EXISTS "${PROTO_DIR}/lib/libutf8_validity.a")
+            add_library(utf8_lib STATIC IMPORTED)
+            set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libutf8_validity.a")
+            set(HAS_UTF8_LIB TRUE)
+        else()
+            set(HAS_UTF8_LIB FALSE)
+        endif()
     endif()
 
     # Compile generated proto sources
@@ -92,18 +104,35 @@ if(ENABLE_PROTOBUF)
         )
         if(UNIX AND NOT APPLE)
             # Linux: use linker group to resolve circular dependencies in static libs
-            target_link_libraries(${target_name} PRIVATE
-                $<TARGET_OBJECTS:proto_objects>
-                -Wl,--start-group
-                protobuf_lib ${ABSL_LIBS} utf8_lib
-                -Wl,--end-group
-                pthread
-            )
+            if(HAS_UTF8_LIB)
+                target_link_libraries(${target_name} PRIVATE
+                    $<TARGET_OBJECTS:proto_objects>
+                    -Wl,--start-group
+                    protobuf_lib ${ABSL_LIBS} utf8_lib
+                    -Wl,--end-group
+                    pthread
+                )
+            else()
+                target_link_libraries(${target_name} PRIVATE
+                    $<TARGET_OBJECTS:proto_objects>
+                    -Wl,--start-group
+                    protobuf_lib ${ABSL_LIBS}
+                    -Wl,--end-group
+                    pthread
+                )
+            endif()
         else()
-            target_link_libraries(${target_name} PRIVATE
-                $<TARGET_OBJECTS:proto_objects>
-                protobuf_lib ${ABSL_LIBS} utf8_lib
-            )
+            if(HAS_UTF8_LIB)
+                target_link_libraries(${target_name} PRIVATE
+                    $<TARGET_OBJECTS:proto_objects>
+                    protobuf_lib ${ABSL_LIBS} utf8_lib
+                )
+            else()
+                target_link_libraries(${target_name} PRIVATE
+                    $<TARGET_OBJECTS:proto_objects>
+                    protobuf_lib ${ABSL_LIBS}
+                )
+            endif()
         endif()
         if(APPLE)
             find_library(COREFOUNDATION CoreFoundation REQUIRED)
