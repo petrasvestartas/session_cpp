@@ -40,6 +40,7 @@ TEST_CASE("Read Bunny OBJ File", "[obj]") {
 }
 
 TEST_CASE("Write and Read OBJ Round-Trip", "[obj]") {
+    std::filesystem::create_directories("../serialization");
     // Create a simple mesh
     Mesh original_mesh;
     auto v0 = original_mesh.add_vertex(Point(0.0, 0.0, 0.0));

@@ -6,6 +6,7 @@
 using namespace session_cpp;
 
 TEST_CASE("Graph JSON roundtrip", "[graph]") {
+    std::filesystem::create_directories("../serialization");
     Graph original("../serialization/test_graph");
     original.add_node("node1", "Node 1");
     original.add_node("node2", "Node 2");

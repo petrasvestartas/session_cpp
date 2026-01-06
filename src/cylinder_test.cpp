@@ -6,6 +6,7 @@
 using namespace session_cpp;
 
 TEST_CASE("Cylinder JSON roundtrip", "[cylinder]") {
+    std::filesystem::create_directories("../serialization");
     Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     Cylinder original(line, 1.0);
     original.name = "test_cylinder";
