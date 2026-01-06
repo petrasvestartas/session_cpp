@@ -22,7 +22,7 @@ cmake --build . --config Release
 ./MyProject
 ```
 
-If a new Ubuntu installation:
+If new Ubuntu installation:
 
 ```bash
 chmod +x /home/petras/brg/2_code/statics/build.sh
