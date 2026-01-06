@@ -31,7 +31,7 @@ if(ENABLE_PROTOBUF)
     set(PROTO_DIR "${DEPS_DIR}/session_proto")
     file(MAKE_DIRECTORY ${DEPS_DIR})
 
-    set(SESSION_PROTO_VERSION "v0.0.14")
+    set(SESSION_PROTO_VERSION "v0.0.15")
 
     # Platform-specific release
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -66,7 +66,7 @@ if(ENABLE_PROTOBUF)
 
     if(WIN32)
         set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libprotobuf.lib")
-        set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/utf8_validity.lib")
+        set_target_properties(utf8_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libutf8_validity.lib")
         file(GLOB ABSL_LIBS "${PROTO_DIR}/lib/absl_*.lib")
     else()
         set_target_properties(protobuf_lib PROPERTIES IMPORTED_LOCATION "${PROTO_DIR}/lib/libprotobuf.a")
