@@ -13,13 +13,10 @@ jobs:
         include:
           - os: ubuntu-22.04
             name: Linux
-            protobuf: OFF
           - os: macos-15
             name: macOS
-            protobuf: ON
           - os: windows-latest
             name: Windows
-            protobuf: ON
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.name }})
@@ -36,14 +33,29 @@ jobs:
         key: deps-${{ runner.os }}-${{ runner.arch }}-v2
 
     - name: Configure
-      run: cmake -B build -DENABLE_PROTOBUF=${{ matrix.protobuf }} -DCMAKE_BUILD_TYPE=Release
+      shell: bash
+      run: |
+        if [ "${{ matrix.name }}" = "Linux" ]; then
+          cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address -fno-omit-frame-pointer"
+        else
+          cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
+        fi
 
     - name: Build
-      run: cmake --build build --config Release -j4
+      shell: bash
+      run: |
+        if [ "${{ matrix.name }}" = "Linux" ]; then
+          cmake --build build --config Debug -j4
+        else
+          cmake --build build --config Release -j4
+        fi
 
     - name: Run Tests
       shell: bash
       run: |
+        if [ "${{ matrix.name }}" = "Linux" ]; then
+          export ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:print_stacktrace=1
+        fi
         if [ -f "build/tests" ]; then
           ./build/tests
         elif [ -f "build/Release/tests.exe" ]; then
