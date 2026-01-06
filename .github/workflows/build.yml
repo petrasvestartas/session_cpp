@@ -13,10 +13,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             name: Linux
+            protobuf: OFF
           - os: macos-15
             name: macOS
+            protobuf: ON
           - os: windows-latest
             name: Windows
+            protobuf: ON
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.name }})
@@ -33,7 +36,7 @@ jobs:
         key: deps-${{ runner.os }}-${{ runner.arch }}-v2
 
     - name: Configure
-      run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -DENABLE_PROTOBUF=${{ matrix.protobuf }} -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: cmake --build build --config Release -j4
