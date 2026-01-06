@@ -10,9 +10,9 @@ TEST_CASE("Arrow JSON roundtrip", "[arrow]") {
     Arrow original(line, 1.0);
     original.name = "test_arrow";
 
-    std::filesystem::create_directories("../serialization");
-    encoders::json_dump(original, "../serialization/test_arrow.json");
-    Arrow loaded = encoders::json_load<Arrow>("../serialization/test_arrow.json");
+    std::filesystem::create_directories("./serialization");
+    encoders::json_dump(original, "./serialization/test_arrow.json");
+    Arrow loaded = encoders::json_load<Arrow>("./serialization/test_arrow.json");
 
     REQUIRE(loaded.radius == original.radius);
     REQUIRE(loaded.name == original.name);

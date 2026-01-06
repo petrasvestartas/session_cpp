@@ -9,9 +9,9 @@ TEST_CASE("Quaternion JSON roundtrip", "[quaternion]") {
     Vector axis(0.0, 0.0, 1.0);
     Quaternion original = Quaternion::from_axis_angle(axis, 1.5708);
 
-    std::filesystem::create_directories("../serialization");
-    encoders::json_dump(original, "../serialization/test_quaternion.json");
-    Quaternion loaded = encoders::json_load<Quaternion>("../serialization/test_quaternion.json");
+    std::filesystem::create_directories("./serialization");
+    encoders::json_dump(original, "./serialization/test_quaternion.json");
+    Quaternion loaded = encoders::json_load<Quaternion>("./serialization/test_quaternion.json");
 
     // Just verify roundtrip works
     REQUIRE(loaded.s == Catch::Approx(original.s).epsilon(0.0001));}

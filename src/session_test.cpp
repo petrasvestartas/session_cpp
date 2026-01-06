@@ -32,8 +32,8 @@ TEST_CASE("Session jsondump.") {
   REQUIRE(data["graph"]["vertices"].size() == 2);
   REQUIRE(data["graph"]["edges"].size() == 1);
 
-  std::filesystem::create_directories("../serialization");
-  encoders::json_dump(session, "../serialization/test_session.json");
+  std::filesystem::create_directories("./serialization");
+  encoders::json_dump(session, "./serialization/test_session.json");
 }
 
 TEST_CASE("Session jsonload.") {
@@ -58,9 +58,9 @@ TEST_CASE("Session file I/O with encoders.") {
   session.add_point(point1);
   session.add_point(point2);
   session.add_edge(point1->guid, point2->guid, "connection");
-  std::string filename = "../serialization/test_session_roundtrip.json";
+  std::string filename = "./serialization/test_session_roundtrip.json";
 
-  std::filesystem::create_directories("../serialization");
+  std::filesystem::create_directories("./serialization");
   encoders::json_dump(session, filename);
   Session loaded_session = encoders::json_load<Session>(filename);
 
@@ -104,15 +104,15 @@ TEST_CASE("Session get_object.") {
 }
 
 TEST_CASE("Session file I/O comprehensive.") {
-  Session session("../serialization/test_session");
+  Session session("./serialization/test_session");
   auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
   auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
   session.add_point(point1);
   session.add_point(point2);
-  session.add_edge(point1->guid, point2->guid, "../serialization/test_connection");
-  std::string filename = "../serialization/test_session_comprehensive.json";
+  session.add_edge(point1->guid, point2->guid, "./serialization/test_connection");
+  std::string filename = "./serialization/test_session_comprehensive.json";
 
-  std::filesystem::create_directories("../serialization");
+  std::filesystem::create_directories("./serialization");
   encoders::json_dump(session, filename);
   Session loaded_session = encoders::json_load<Session>(filename);
 

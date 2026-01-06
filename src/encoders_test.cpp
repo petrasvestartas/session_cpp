@@ -9,11 +9,11 @@ using namespace session_cpp;
 using namespace session_cpp::encoders;
 
 TEST_CASE("Encoders json_dump and json_load", "[encoders]") {
-    std::filesystem::create_directories("../serialization");
+    std::filesystem::create_directories("./serialization");
     Point original(1.5, 2.5, 3.5);
     original.name = "test_point";
     
-    std::string filepath = "../serialization/test_encoders_point.json";
+    std::string filepath = "./serialization/test_encoders_point.json";
     json_dump(original, filepath);
     
     Point loaded = json_load<Point>(filepath);
@@ -114,13 +114,13 @@ TEST_CASE("Encoders nested_collections", "[encoders]") {
 }
 
 TEST_CASE("Encoders roundtrip with file I/O", "[encoders]") {
-    std::filesystem::create_directories("../serialization");
+    std::filesystem::create_directories("./serialization");
     std::vector<Vector> vectors;
     vectors.push_back(Vector(1.0, 0.0, 0.0));
     vectors.push_back(Vector(0.0, 1.0, 0.0));
     vectors.push_back(Vector(0.0, 0.0, 1.0));
     
-    std::string filepath = "../serialization/test_encoders_collection.json";
+    std::string filepath = "./serialization/test_encoders_collection.json";
     auto json_arr = encode_collection(vectors);
     json_dump(json_arr, filepath);
     
