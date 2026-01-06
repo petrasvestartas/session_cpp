@@ -8,7 +8,8 @@ using namespace session_cpp;
 TEST_CASE("Quaternion JSON roundtrip", "[quaternion]") {
     Vector axis(0.0, 0.0, 1.0);
     Quaternion original = Quaternion::from_axis_angle(axis, 1.5708);
-    
+
+    std::filesystem::create_directories("serialization");
     encoders::json_dump(original, "serialization/test_quaternion.json");
     Quaternion loaded = encoders::json_load<Quaternion>("serialization/test_quaternion.json");
 
