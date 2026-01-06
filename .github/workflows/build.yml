@@ -25,6 +25,12 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        fetch-depth: 0
+
+    - name: Verify submodules
+      run: |
+        git submodule status
+        ls -la session_data/ || echo "session_data directory missing"
 
     - name: Cache session_proto release
       uses: actions/cache@v4
