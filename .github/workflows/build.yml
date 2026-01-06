@@ -11,9 +11,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             name: Linux
-          - os: macos-latest
+          - os: macos-15
             name: macOS
           - os: windows-latest
             name: Windows
