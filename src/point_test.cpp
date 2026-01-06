@@ -108,7 +108,7 @@ namespace session_cpp {
         p.width = 2.0;
         p.pointcolor = Color(255, 128, 64, 255);
 
-        std::string filename = "test_point.json";
+        std::string filename = "serialization/test_point.json";
         p.json_dump(filename);
         Point loaded = Point::json_load(filename);
 
@@ -134,7 +134,7 @@ namespace session_cpp {
         p.width = 2.0;
         p.pointcolor = Color(255, 128, 64, 255);
 
-        std::string filename = "test_point.bin";
+        std::string filename = "serialization/test_point.bin";
         p.protobuf_dump(filename);
         Point loaded = Point::protobuf_load(filename);
 

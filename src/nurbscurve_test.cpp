@@ -20,10 +20,24 @@ namespace session_cpp {
 
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
+        // Minimal and Full String Representation
+        std::string cstr = curve.str();
+        std::string crepr = curve.repr();
+
+        // Copy (duplicates everything except guid)
+        NurbsCurve ccopy = curve;
+        NurbsCurve cother = NurbsCurve::create(false, 2, points);
+
         MINI_CHECK(curve.is_valid() == true);
         MINI_CHECK(curve.cv_count() == 3);
         MINI_CHECK(curve.degree() == 2);
         MINI_CHECK(curve.order() == 3);
+        MINI_CHECK(curve.name == "my_nurbscurve");
+        MINI_CHECK(!curve.guid.empty());
+        MINI_CHECK(cstr == "degree=2, cvs=3");
+        MINI_CHECK(crepr == "NurbsCurve(my_nurbscurve, dim=3, order=3, cvs=3, rational=false)");
+        MINI_CHECK(ccopy.cv_count() == curve.cv_count());
+        MINI_CHECK(ccopy.guid != curve.guid);
     }
 
     MINI_TEST("NurbsCurve", "is_valid") {
@@ -332,7 +346,7 @@ namespace session_cpp {
 
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
-        std::string filename = "test_nurbscurve.json";
+        std::string filename = "serialization/test_nurbscurve.json";
         curve.json_dump(filename);
         NurbsCurve loaded = NurbsCurve::json_load(filename);
 
@@ -354,7 +368,7 @@ namespace session_cpp {
 
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
-        std::string filename = "test_nurbscurve.bin";
+        std::string filename = "serialization/test_nurbscurve.bin";
         curve.protobuf_dump(filename);
         NurbsCurve loaded = NurbsCurve::protobuf_load(filename);
 

@@ -127,7 +127,7 @@ MINI_TEST("Line", "json_roundtrip") {
     l.name = "test_line";
 
     // json_dump(fname) / json_load(fname) - file-based serialization
-    std::string fname = "test_line.json";
+    std::string fname = "serialization/test_line.json";
     l.json_dump(fname);
     Line loaded = Line::json_load(fname);
 
@@ -148,7 +148,7 @@ MINI_TEST("Line", "protobuf_roundtrip") {
     l.name = "test_line";
 
     // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
-    std::string fname = "test_line.bin";
+    std::string fname = "serialization/test_line.bin";
     l.protobuf_dump(fname);
     Line loaded = Line::protobuf_load(fname);
 

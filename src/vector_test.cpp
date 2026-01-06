@@ -376,7 +376,7 @@ MINI_TEST("Vector", "json_roundtrip") {
     v.name = "test_vector";
 
     // json_dump(filename) / json_load(filename) - file-based serialization
-    std::string filename = "test_vector.json";
+    std::string filename = "serialization/test_vector.json";
     v.json_dump(filename);
     Vector loaded = Vector::json_load(filename);
 
@@ -393,7 +393,7 @@ MINI_TEST("Vector", "protobuf_roundtrip") {
     v.name = "test_vector";
 
     // protobuf_dump(filename) / protobuf_load(filename) - file-based serialization
-    std::string filename = "test_vector.bin";
+    std::string filename = "serialization/test_vector.bin";
     v.protobuf_dump(filename);
     Vector loaded = Vector::protobuf_load(filename);
 

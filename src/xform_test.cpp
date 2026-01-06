@@ -290,7 +290,7 @@ MINI_TEST("Xform", "json_roundtrip") {
     xform.name = "test_xform";
 
     // json_dump(filename) / json_load(filename) - file-based serialization
-    std::string filename = "test_xform.json";
+    std::string filename = "serialization/test_xform.json";
     xform.json_dump(filename);
     Xform loaded = Xform::json_load(filename);
 
@@ -309,7 +309,7 @@ MINI_TEST("Xform", "protobuf_roundtrip") {
     xform.name = "test_xform_proto";
 
     // protobuf_dump(filename) / protobuf_load(filename) - file-based serialization
-    std::string filename = "test_xform.bin";
+    std::string filename = "serialization/test_xform.bin";
     xform.protobuf_dump(filename);
     Xform loaded = Xform::protobuf_load(filename);
 

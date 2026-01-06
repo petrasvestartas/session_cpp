@@ -221,7 +221,7 @@ MINI_TEST("Plane", "json_roundtrip") {
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
 
-    std::string fname = "test_plane.json";
+    std::string fname = "serialization/test_plane.json";
     pl.json_dump(fname);
     Plane loaded = Plane::json_load(fname);
 
@@ -238,7 +238,7 @@ MINI_TEST("Plane", "protobuf_roundtrip") {
     pl.name = "test_plane";
 
     // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
-    std::string fname = "test_plane.bin";
+    std::string fname = "serialization/test_plane.bin";
     pl.protobuf_dump(fname);
     Plane loaded = Plane::protobuf_load(fname);
 

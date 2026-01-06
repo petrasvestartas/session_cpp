@@ -46,13 +46,13 @@ namespace session_cpp {
     MINI_TEST("Color", "json_roundtrip"){
       // uncomment #include "color.h"
 
-      Color c(255, 128, 64, 255, "test_color");
+      Color c(255, 128, 64, 255, "serialization/test_color");
 
-      std::string filename = "test_color.json";
+      std::string filename = "serialization/test_color.json";
       c.json_dump(filename);
       Color loaded = Color::json_load(filename);
 
-      MINI_CHECK(loaded.name == "test_color");
+      MINI_CHECK(loaded.name == "serialization/test_color");
       MINI_CHECK(loaded[0] == 255);
       MINI_CHECK(loaded[1] == 128);
       MINI_CHECK(loaded[2] == 64);
@@ -63,13 +63,13 @@ namespace session_cpp {
     MINI_TEST("Color", "protobuf_roundtrip"){
       // uncomment #include "color.h"
 
-      Color c(255, 128, 64, 255, "test_color");
+      Color c(255, 128, 64, 255, "serialization/test_color");
 
-      std::string filename = "test_color.bin";
+      std::string filename = "serialization/test_color.bin";
       c.protobuf_dump(filename);
       Color loaded = Color::protobuf_load(filename);
 
-      MINI_CHECK(loaded.name == "test_color");
+      MINI_CHECK(loaded.name == "serialization/test_color");
       MINI_CHECK(loaded[0] == 255);
       MINI_CHECK(loaded[1] == 128);
       MINI_CHECK(loaded[2] == 64);

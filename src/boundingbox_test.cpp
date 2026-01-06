@@ -9,9 +9,9 @@ TEST_CASE("BoundingBox JSON roundtrip", "[boundingbox]") {
     BoundingBox original = BoundingBox::from_point(Point(1.0, 2.0, 3.0), 5.0);
     original.name = "test_bbox";
     
-    encoders::json_dump(original, "test_boundingbox.json");
-    BoundingBox loaded = encoders::json_load<BoundingBox>("test_boundingbox.json");
+    encoders::json_dump(original, "serialization/test_boundingbox.json");
+    BoundingBox loaded = encoders::json_load<BoundingBox>("serialization/test_boundingbox.json");
 
     REQUIRE(loaded.name == original.name);    
-    std::filesystem::remove("test_boundingbox.json");
+    std::filesystem::remove("serialization/test_boundingbox.json");
 }

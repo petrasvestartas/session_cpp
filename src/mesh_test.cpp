@@ -268,7 +268,7 @@ namespace session_cpp {
         size_t v2 = mesh.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
         mesh.add_face({v0, v1, v2}, std::nullopt);
 
-        std::string filename = "test_mesh.json";
+        std::string filename = "serialization/test_mesh.json";
         encoders::json_dump(mesh, filename);
         Mesh loaded = encoders::json_load<Mesh>(filename);
 
@@ -289,7 +289,7 @@ namespace session_cpp {
         size_t v2 = mesh.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
         mesh.add_face({v0, v1, v2}, std::nullopt);
 
-        std::string filename = "test_mesh.bin";
+        std::string filename = "serialization/test_mesh.bin";
         mesh.protobuf_dump(filename);
         Mesh loaded = Mesh::protobuf_load(filename);
 

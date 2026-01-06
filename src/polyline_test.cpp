@@ -112,7 +112,7 @@ MINI_TEST("Polyline", "json_roundtrip") {
     pl.name = "test_polyline";
 
     // json_dump(fname) / json_load(fname) - file-based serialization
-    std::string fname = "test_polyline.json";
+    std::string fname = "serialization/test_polyline.json";
     pl.json_dump(fname);
     Polyline loaded = Polyline::json_load(fname);
 
@@ -135,7 +135,7 @@ MINI_TEST("Polyline", "protobuf_roundtrip") {
     pl.name = "test_polyline";
 
     // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
-    std::string fname = "test_polyline.bin";
+    std::string fname = "serialization/test_polyline.bin";
     pl.protobuf_dump(fname);
     Polyline loaded = Polyline::protobuf_load(fname);
 

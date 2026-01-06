@@ -902,19 +902,29 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     m_cv_capacity = src.m_cv_capacity;
     m_knot = src.m_knot;
     m_cv = src.m_cv;
-    guid = src.guid;
+    guid = ::guid();
     name = src.name;
     width = src.width;
     linecolor = src.linecolor;
     xform = src.xform;
 }
 
-// String & JSON
-std::string NurbsCurve::to_string() const {
+// String Representation
+std::string NurbsCurve::str() const {
     std::ostringstream oss;
-    oss << "NurbsCurve(dim=" << m_dim << ", order=" << m_order 
-        << ", cv_count=" << m_cv_count << ", rational=" << (m_is_rat ? "true" : "false") << ")";
+    oss << "degree=" << degree() << ", cvs=" << m_cv_count;
     return oss.str();
+}
+
+std::string NurbsCurve::repr() const {
+    std::ostringstream oss;
+    oss << "NurbsCurve(" << name << ", dim=" << m_dim << ", order=" << m_order
+        << ", cvs=" << m_cv_count << ", rational=" << (m_is_rat ? "true" : "false") << ")";
+    return oss.str();
+}
+
+std::string NurbsCurve::to_string() const {
+    return repr();
 }
 
 nlohmann::ordered_json NurbsCurve::jsondump() const {

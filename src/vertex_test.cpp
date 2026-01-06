@@ -6,13 +6,13 @@
 using namespace session_cpp;
 
 TEST_CASE("Vertex JSON roundtrip", "[vertex]") {
-    Vertex original("v0", "test_attribute");
+    Vertex original("v0", "serialization/test_attribute");
     
-    encoders::json_dump(original, "test_vertex.json");
-    Vertex loaded = encoders::json_load<Vertex>("test_vertex.json");
+    encoders::json_dump(original, "serialization/test_vertex.json");
+    Vertex loaded = encoders::json_load<Vertex>("serialization/test_vertex.json");
     
     REQUIRE(loaded.name == original.name);
     REQUIRE(loaded.attribute == original.attribute);
     
-    std::filesystem::remove("test_vertex.json");
+    std::filesystem::remove("serialization/test_vertex.json");
 }

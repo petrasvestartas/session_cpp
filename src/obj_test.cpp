@@ -54,7 +54,7 @@ TEST_CASE("Write and Read OBJ Round-Trip", "[obj]") {
     REQUIRE(original_mesh.number_of_faces() == 2);
     
     // Write to file in system temp directory for better portability
-    std::string temp_file = "test_temp_roundtrip.obj";
+    std::string temp_file = "serialization/test_temp_roundtrip.obj";
     obj::write_obj(original_mesh, temp_file);
     
     // Verify file was created and is readable
