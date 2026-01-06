@@ -10,7 +10,7 @@ TEST_CASE("Cylinder JSON roundtrip", "[cylinder]") {
     Cylinder original(line, 1.0);
     original.name = "test_cylinder";
     
-    std::string filename = "serialization/test_cylinder.json";
+    std::string filename = "../serialization/test_cylinder.json";
     encoders::json_dump(original, filename);
     Cylinder loaded = encoders::json_load<Cylinder>(filename);
     

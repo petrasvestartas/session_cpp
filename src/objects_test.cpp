@@ -12,7 +12,7 @@ TEST_CASE("Objects JSON roundtrip", "[objects]") {
     original.points->push_back(point1);
     original.points->push_back(point2);
     
-    std::string filename = "serialization/test_objects.json";
+    std::string filename = "../serialization/test_objects.json";
     encoders::json_dump(original, filename);
     Objects loaded = encoders::json_load<Objects>(filename);
 
