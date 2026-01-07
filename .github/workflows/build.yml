@@ -14,7 +14,7 @@ jobs:
           - os: ubuntu-22.04
             name: Linux
           - os: macos-15
-            name: macOS
+            name: macOS-ARM64
           - os: windows-latest
             name: Windows
 
@@ -26,17 +26,18 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Cache session_proto release
+    - name: Cache FetchContent dependencies
       uses: actions/cache@v4
       with:
-        path: build/deps
-        key: deps-${{ runner.os }}-${{ runner.arch }}-v3
+        path: |
+          build/_deps
+        key: fetchcontent-${{ runner.os }}-${{ runner.arch }}-protobuf33.2-v1
 
     - name: Configure
       run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      run: cmake --build build --config Release -j4
+      run: cmake --build build --config Release --parallel 4
 
     - name: Run Tests
       shell: bash
@@ -48,4 +49,13 @@ jobs:
         else
           echo "Tests executable not found!"
           exit 1
+        fi
+
+    - name: Run Mini Tests
+      shell: bash
+      run: |
+        if [ -f "build/point_minitest" ]; then
+          ./build/point_minitest
+        elif [ -f "build/Release/point_minitest.exe" ]; then
+          ./build/Release/point_minitest.exe
         fi
