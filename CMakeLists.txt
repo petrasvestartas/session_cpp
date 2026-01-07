@@ -31,7 +31,7 @@ if(ENABLE_PROTOBUF)
     set(PROTO_DIR "${DEPS_DIR}/session_proto")
     file(MAKE_DIRECTORY ${DEPS_DIR})
 
-    set(SESSION_PROTO_VERSION "v0.0.17")
+    set(SESSION_PROTO_VERSION "v0.0.19")
 
     # Platform-specific release
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -169,7 +169,7 @@ endif()
 set(MINITEST_SOURCES
     src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
-    src/xform_test.cpp src/mesh_test.cpp src/nurbscurve_test.cpp
+    src/xform_test.cpp src/mesh_test.cpp src/knot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

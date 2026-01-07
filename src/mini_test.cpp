@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 
 namespace session_cpp {
 namespace mini_test {
@@ -51,22 +52,17 @@ void record_check(bool passed, int line, const char *expr_text,
 
 static std::string extract_timed_code(const RegisteredTest &t,
                                       const std::vector<CheckRecord> &checks) {
-  if (checks.empty()) {
-    return std::string();
-  }
-
-  int first_check_line = checks.front().line;
+  // Find the last check line to determine where the test body ends
+  int last_check_line = 0;
   for (const auto &c : checks) {
-    if (c.line < first_check_line) {
-      first_check_line = c.line;
+    if (c.line > last_check_line) {
+      last_check_line = c.line;
     }
   }
 
-  int start_line = t.line + 1;           // line after MINI_TEST macro
-  int end_line = first_check_line - 1;   // last line before first MINI_CHECK
-  if (end_line < start_line) {
-    return std::string();
-  }
+  int start_line = t.line + 1;  // line after MINI_TEST macro
+  // End at last check line + some buffer for closing braces, or use a reasonable range
+  int end_line = last_check_line > 0 ? last_check_line + 2 : start_line + 100;
 
   std::ifstream ifs(t.file);
   if (!ifs.is_open()) {
@@ -76,12 +72,42 @@ static std::string extract_timed_code(const RegisteredTest &t,
   std::string line;
   std::string code;
   int current = 1;
+  bool in_check = false;
+  int paren_depth = 0;
+
   while (std::getline(ifs, line)) {
     if (current >= start_line && current <= end_line) {
-      if (!code.empty()) {
-        code.push_back('\n');
+      // Check if this line starts a MINI_CHECK
+      if (line.find("MINI_CHECK(") != std::string::npos) {
+        in_check = true;
+        paren_depth = 0;
+        for (char ch : line) {
+          if (ch == '(') paren_depth++;
+          else if (ch == ')') paren_depth--;
+        }
+        if (paren_depth <= 0) in_check = false;
+      } else if (in_check) {
+        // Continue tracking multi-line MINI_CHECK
+        for (char ch : line) {
+          if (ch == '(') paren_depth++;
+          else if (ch == ')') paren_depth--;
+        }
+        if (paren_depth <= 0) in_check = false;
+      } else {
+        // Not in a MINI_CHECK - include this line
+        std::string trimmed = line;
+        size_t first = trimmed.find_first_not_of(" \t");
+        if (first != std::string::npos) {
+          trimmed = trimmed.substr(first);
+        }
+        // Skip closing brace only lines
+        if (trimmed != "}" && trimmed != "});") {
+          if (!code.empty()) {
+            code.push_back('\n');
+          }
+          code += line;
+        }
       }
-      code += line;
     }
     if (current > end_line) {
       break;

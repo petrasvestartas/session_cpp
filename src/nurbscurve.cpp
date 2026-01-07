@@ -1,4 +1,5 @@
 #include "nurbscurve.h"
+#include "knot.h"
 #include <cstring>
 #include <sstream>
 #include <limits>
@@ -902,29 +903,28 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     m_cv_capacity = src.m_cv_capacity;
     m_knot = src.m_knot;
     m_cv = src.m_cv;
-    guid = ::guid();
+    guid = ::guid();  // Generate new GUID for copy
     name = src.name;
     width = src.width;
     linecolor = src.linecolor;
     xform = src.xform;
 }
 
-// String Representation
-std::string NurbsCurve::str() const {
+// String & JSON
+std::string NurbsCurve::to_string() const {
     std::ostringstream oss;
-    oss << "degree=" << degree() << ", cvs=" << m_cv_count;
+    oss << "NurbsCurve(dim=" << m_dim << ", order=" << m_order
+        << ", cv_count=" << m_cv_count << ", rational=" << (m_is_rat ? "true" : "false") << ")";
     return oss.str();
+}
+
+std::string NurbsCurve::str() const {
+    return fmt::format("degree={}, cvs={}", degree(), cv_count());
 }
 
 std::string NurbsCurve::repr() const {
-    std::ostringstream oss;
-    oss << "NurbsCurve(" << name << ", dim=" << m_dim << ", order=" << m_order
-        << ", cvs=" << m_cv_count << ", rational=" << (m_is_rat ? "true" : "false") << ")";
-    return oss.str();
-}
-
-std::string NurbsCurve::to_string() const {
-    return repr();
+    return fmt::format("NurbsCurve({}, dim={}, order={}, cvs={}, rational={})",
+                       name, m_dim, m_order, m_cv_count, m_is_rat ? "true" : "false");
 }
 
 nlohmann::ordered_json NurbsCurve::jsondump() const {
@@ -1280,34 +1280,8 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
 bool NurbsCurve::is_clamped(int end) const {
     if (!is_valid()) return false;
     
-    // end: 0 = start, 1 = end, 2 = both
-    bool start_clamped = true;
-    bool end_clamped = true;
-    
-    if (end == 0 || end == 2) {
-        // Check start: first m_order knots should be equal
-        for (int i = 1; i < m_order - 1; i++) {
-            if (m_knot[i] != m_knot[0]) {
-                start_clamped = false;
-                break;
-            }
-        }
-    }
-    
-    if (end == 1 || end == 2) {
-        // Check end: last m_order knots should be equal
-        int kc = knot_count();
-        for (int i = kc - m_order + 2; i < kc; i++) {
-            if (m_knot[i] != m_knot[kc - 1]) {
-                end_clamped = false;
-                break;
-            }
-        }
-    }
-    
-    if (end == 0) return start_clamped;
-    if (end == 1) return end_clamped;
-    return start_clamped && end_clamped;
+    // Use knot module function
+    return knot::is_clamped(m_order, m_cv_count, m_knot, end);
 }
 
 // Get control polygon length
@@ -1518,29 +1492,9 @@ bool NurbsCurve::make_clamped_uniform_knot_vector(double delta) {
     if (m_dim <= 0) return false;
     if (m_order < 2 || m_cv_count < m_order) return false;
     
-    int knot_count = m_order + m_cv_count - 2;
-    m_knot.resize(knot_count);
-    
-    // Create clamped uniform knot vector
-    // Fill interior knots with uniform spacing starting from index (order-2)
-    double k = 0.0;
-    for (int i = m_order - 2; i < m_cv_count; i++, k += delta) {
-        m_knot[i] = k;
-    }
-    
-    // Clamp left end: set first (order-2) knots equal to m_knot[order-2]
-    int i0 = m_order - 2;
-    for (int i = 0; i < i0; i++) {
-        m_knot[i] = m_knot[i0];
-    }
-    
-    // Clamp right end: set knots from (cv_count) onward equal to m_knot[cv_count-1]
-    i0 = m_cv_count - 1;
-    for (int i = i0 + 1; i < knot_count; i++) {
-        m_knot[i] = m_knot[i0];
-    }
-    
-    return true;
+    // Use knot module function
+    m_knot = knot::make_clamped_uniform(m_order, m_cv_count, delta);
+    return !m_knot.empty();
 }
 
 // Make periodic uniform knot vector
@@ -1550,16 +1504,9 @@ bool NurbsCurve::make_periodic_uniform_knot_vector(double delta) {
     if (m_dim <= 0) return false;
     if (m_order < 2 || m_cv_count < m_order) return false;
     
-    int knot_count = m_order + m_cv_count - 2;
-    m_knot.resize(knot_count);
-    
-    // Create periodic uniform knot vector
-    // All knots are distinct and equally spaced
-    for (int i = 0; i < knot_count; i++) {
-        m_knot[i] = i * delta;
-    }
-    
-    return true;
+    // Use knot module function
+    m_knot = knot::make_periodic_uniform(m_order, m_cv_count, delta);
+    return !m_knot.empty();
 }
 
 // Increase degree

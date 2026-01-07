@@ -80,7 +80,13 @@ public:
     
     /// Copy assignment operator
     NurbsSurface& operator=(const NurbsSurface& other);
-    
+
+    /// Equality operator (compares all attributes except guid)
+    bool operator==(const NurbsSurface& other) const;
+
+    /// Inequality operator
+    bool operator!=(const NurbsSurface& other) const;
+
     /// Destructor
     ~NurbsSurface();
 
@@ -91,10 +97,12 @@ public:
     /// Initialize all fields to zero/empty
     void initialize();
     
-    /// Create NURBS surface with specified parameters
+    /// Create NURBS surface with specified parameters and automatic knot vector initialization
     bool create(int dimension, bool is_rational,
                int order0, int order1,
-               int cv_count0, int cv_count1);
+               int cv_count0, int cv_count1,
+               bool is_periodic_u = false, bool is_periodic_v = false,
+               double knot_delta_u = 1.0, double knot_delta_v = 1.0);
     
     /// Create clamped uniform NURBS surface
     bool create_clamped_uniform(int dimension,
@@ -224,9 +232,16 @@ public:
     /// Check if surface side is singular (collapsed to a point)
     /// side: 0=south, 1=east, 2=north, 3=west
     bool is_singular(int side) const;
-    
+
     /// Check if surface is clamped in specified direction
     bool is_clamped(int dir, int end = 2) const;
+
+    /// Subdivide surface into a grid of points
+    /// Evaluates the surface at regular intervals in both parameter directions
+    /// @param nu Number of subdivisions in u direction
+    /// @param nv Number of subdivisions in v direction
+    /// @return 2D vector of points with dimensions (nu+1) x (nv+1)
+    std::vector<std::vector<Point>> subdivide(int nu, int nv) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Knot Vector Operations
@@ -338,6 +353,24 @@ public:
     
     /// Load from JSON
     static NurbsSurface jsonload(const nlohmann::json& data);
+    
+    /// Write JSON to file
+    void json_dump(const std::string& filename) const;
+    
+    /// Read JSON from file
+    static NurbsSurface json_load(const std::string& filename);
+
+    /// Serialize to protobuf binary string
+    std::string to_protobuf() const;
+
+    /// Deserialize from protobuf binary string
+    static NurbsSurface from_protobuf(const std::string& data);
+
+    /// Write protobuf to binary file
+    void protobuf_dump(const std::string& filename) const;
+
+    /// Read protobuf from binary file
+    static NurbsSurface protobuf_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation

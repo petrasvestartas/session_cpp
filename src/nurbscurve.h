@@ -369,15 +369,15 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation
     ///////////////////////////////////////////////////////////////////////////////////////////
+    
+    /// Convert to string
+    std::string to_string() const;
 
-    /// Simple string representation (like Python __str__)
+    /// Simple string representation (like Python str)
     std::string str() const;
 
-    /// Detailed representation (like Python __repr__)
+    /// Detailed representation (like Python repr)
     std::string repr() const;
-
-    /// Alias for repr() - for compatibility
-    std::string to_string() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Helper Functions
@@ -397,7 +397,10 @@ public:
     
     /// Make knot vector a periodic uniform knot vector (does not change CVs)
     bool make_periodic_uniform_knot_vector(double delta = 1.0);
-    
+
+    /// Insert knot into curve (Boehm's algorithm)
+    bool insert_knot(double knot_value, int knot_multiplicity = 1);
+
     /// Check if knot vector is clamped at ends
     bool is_clamped(int end = 2) const;
     
@@ -555,8 +558,6 @@ private:
     /// Compute basis functions and derivatives
     void basis_functions_derivatives(int span, double t, int deriv_order,
                                     std::vector<std::vector<double>>& ders) const;
-    
-    bool insert_knot(double knot_value, int knot_multiplicity);
 
     /// Deep copy from another NurbsCurve
     void deep_copy_from(const NurbsCurve& src);
