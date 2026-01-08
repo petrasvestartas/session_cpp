@@ -15,7 +15,7 @@ namespace session_cpp {
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
+            Point(3.0, 0.0, 0.0)
         };
 
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
