@@ -26,13 +26,6 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Cache FetchContent dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          build/_deps
-        key: fetchcontent-${{ runner.os }}-${{ runner.arch }}-protobuf33.2-v2
-
     - name: Configure
       run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
 
