@@ -1,12 +1,14 @@
+// Build + run: ./bash/run_cpp_main.sh
+// Build + run tests: ./bash/test_cpp.sh
+
 #include "nurbscurve.h"
 #include "point.h"
 #include "vector.h"
+#include <iostream>
 
 using namespace session_cpp;
 
-
 int main() {
-
     std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0),
@@ -15,13 +17,16 @@ int main() {
 
     NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
-    // Minimal and Full String Representation
-    std::string cstr = curve.str();
-    std::string crepr = curve.repr();
+    std::cout << "str:  " << curve.str() << std::endl;
+    std::cout << "repr: " << curve.repr() << std::endl;
 
-    // Copy (duplicates everything except guid)
-    NurbsCurve ccopy = curve;
-    NurbsCurve cother = NurbsCurve::create(false, 2, points);
-        
+    std::vector<Point> divided;
+    curve.divide_by_count(10, divided);
+
+    std::cout << "Subdivided points (" << divided.size() << "):" << std::endl;
+    for (const auto& p : divided) {
+        std::cout << "  " << p[0] << ", " << p[1] << ", " << p[2] << std::endl;
+    }
+
     return 0;
 }

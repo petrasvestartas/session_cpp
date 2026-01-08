@@ -1,5 +1,15 @@
 # session_cpp
 
+## Fast Local Development
+
+```bash
+./bash/run_cpp_main.sh      # Build + run main.cpp (~6 sec)
+./bash/test_cpp.sh          # Build + run tests (~8 sec)
+./bash/test_cpp.sh --clean  # Force cmake reconfigure (after CMakeLists.txt changes)
+```
+
+**Note:** Scripts skip cmake configure if `build/` exists. Use `--clean` after modifying CMakeLists.txt.
+
 ## Build
 
 ```bash
