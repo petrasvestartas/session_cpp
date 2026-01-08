@@ -11,6 +11,7 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "constructor") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
+        // uncomment #include "vector.h"
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
