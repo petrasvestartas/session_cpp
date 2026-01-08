@@ -19,7 +19,6 @@ namespace session_cpp {
         };
 
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.name = "my_nurbscurve";
 
         // Minimal and Full String Representation
         std::string cstr = curve.str();
