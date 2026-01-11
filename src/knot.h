@@ -19,8 +19,21 @@
 namespace session_cpp {
 
 /**
+ * @brief Knot spacing style for interpolated curves.
+ * Matches Rhino's CurveKnotStyle enum.
+ */
+enum class CurveKnotStyle {
+    Uniform = 0,              // Parameter spacing = 1.0
+    Chord = 1,                // Chord-length parameterization
+    ChordSquareRoot = 2,      // Centripetal (sqrt chord) parameterization
+    UniformPeriodic = 3,      // Periodic + uniform
+    ChordPeriodic = 4,        // Periodic + chord
+    ChordSquareRootPeriodic = 5  // Periodic + centripetal
+};
+
+/**
  * @brief Knot vector utility functions.
- * 
+ *
  * All functions are static and operate on knot vector arrays.
  * This matches the OpenNURBS opennurbs_knot.h pattern.
  */
@@ -215,6 +228,44 @@ namespace knot {
     std::vector<double> get_greville_abcissae(int order, int cv_count, 
                                                const std::vector<double>& knot,
                                                bool periodic = false);
+
+    /**
+     * @brief Solve tridiagonal linear system using Thomas algorithm.
+     * This is the core solver for NURBS curve interpolation.
+     * @param dim Dimension of each variable (e.g., 3 for 3D points).
+     * @param n Number of equations.
+     * @param lower Lower diagonal coefficients (length n, first element unused).
+     * @param diag Main diagonal coefficients (length n).
+     * @param upper Upper diagonal coefficients (length n, last element unused).
+     * @param rhs Right-hand side values (length n * dim).
+     * @param solution Output solution (length n * dim).
+     * @return True if successful, false if singular.
+     */
+    bool solve_tridiagonal(int dim, int n,
+                           std::vector<double>& lower,
+                           std::vector<double>& diag,
+                           std::vector<double>& upper,
+                           const std::vector<double>& rhs,
+                           std::vector<double>& solution);
+
+    /**
+     * @brief Compute parameters for interpolation based on knot style.
+     * @param points Input points (flat array: x0,y0,z0,x1,y1,z1,...).
+     * @param point_count Number of points.
+     * @param dim Dimension (2 or 3).
+     * @param style Knot style (Uniform, Chord, or ChordSquareRoot).
+     * @return Parameter values for each point.
+     */
+    std::vector<double> compute_parameters(const double* points, int point_count,
+                                           int dim, CurveKnotStyle style);
+
+    /**
+     * @brief Build clamped knot vector from parameters for interpolation.
+     * @param params Parameter values for each input point.
+     * @param degree Curve degree.
+     * @return Knot vector for interpolated curve.
+     */
+    std::vector<double> build_interp_knots(const std::vector<double>& params, int degree);
 
 } // namespace knot
 

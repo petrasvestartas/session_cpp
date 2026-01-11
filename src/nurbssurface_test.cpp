@@ -475,11 +475,6 @@ namespace session_cpp {
             first_knot_mult = count;
         }
 
-        // Test cv_capacity and knot_capacity
-        int cv_cap = surf.cv_capacity();
-        int knot_cap_u = surf.knot_capacity(0);
-        int knot_cap_v = surf.knot_capacity(1);
-
         MINI_CHECK(surf.is_rational());
         MINI_CHECK(TOLERANCE.is_close(rx, x));
         MINI_CHECK(TOLERANCE.is_close(ry, y));
@@ -491,9 +486,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pt[2], z/w));
         MINI_CHECK(TOLERANCE.is_close(retrieved_w, w));
         MINI_CHECK(first_knot_mult > 0);
-        MINI_CHECK(cv_cap > 0);
-        MINI_CHECK(knot_cap_u > 0);
-        MINI_CHECK(knot_cap_v > 0);
     }
 
     MINI_TEST("NurbsSurface", "clamp_operations") {

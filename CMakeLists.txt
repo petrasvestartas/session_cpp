@@ -101,6 +101,29 @@ FetchContent_Declare(protobuf
 )
 FetchContent_MakeAvailable(protobuf)
 
+# Suppress warnings from protobuf and absl third-party libraries
+if(MSVC)
+    target_compile_options(libprotobuf PRIVATE /w)
+    target_compile_options(libprotobuf-lite PRIVATE /w)
+    if(TARGET utf8_validity)
+        target_compile_options(utf8_validity PRIVATE /w)
+    endif()
+    if(TARGET utf8_range)
+        target_compile_options(utf8_range PRIVATE /w)
+    endif()
+    if(TARGET libupb)
+        target_compile_options(libupb PRIVATE /w)
+    endif()
+    get_property(ABSL_TARGETS DIRECTORY "${absl_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(TGT IN LISTS ABSL_TARGETS)
+        get_target_property(TGT_TYPE ${TGT} TYPE)
+        if(TGT_TYPE STREQUAL "STATIC_LIBRARY" OR TGT_TYPE STREQUAL "OBJECT_LIBRARY")
+            target_compile_options(${TGT} PRIVATE /w)
+        endif()
+    endforeach()
+endif()
+
+
 # Session proto directory
 set(SESSION_PROTO_DIR "${CMAKE_SOURCE_DIR}/../session_proto")
 if(NOT EXISTS "${SESSION_PROTO_DIR}")

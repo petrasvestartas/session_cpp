@@ -487,6 +487,20 @@ public:
   void scale_up();
   void scale_down();
 
+  /// Reflect this vector through a plane with the given normal.
+  ///
+  /// Parameters
+  /// ----------
+  /// plane_normal : const Vector&
+  ///     Normal vector of the reflection plane (should be unit length).
+  ///
+  /// Returns
+  /// -------
+  /// Vector
+  ///     The reflected vector: V - 2*(V·N)*N
+  Vector reflect(const Vector& plane_normal) const;
+
+
 }; // End of Vector class
 
 /**

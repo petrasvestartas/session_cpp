@@ -57,6 +57,25 @@ public:
     /// Equivalent to: NurbsCurve.Create(bool periodic, int degree, IEnumerable<Point3d> points)
     static NurbsCurve create(bool periodic, int degree, const std::vector<Point>& points,
                            int dimension = 3, double knot_delta = 1.0);
+
+    /// Create a circle as a rational NURBS curve
+    static NurbsCurve create_circle(double cx, double cy, double cz, double radius);
+
+    /// Create an ellipse as a rational NURBS curve
+    static NurbsCurve create_ellipse(double cx, double cy, double cz, double major_radius, double minor_radius);
+
+    /// Create an arc through three points
+    static NurbsCurve create_arc(const Point& start, const Point& mid, const Point& end);
+
+    /// Create a parabola through three points
+    static NurbsCurve create_parabola(const Point& p0, const Point& p1, const Point& p2);
+
+    /// Create a hyperbola
+    static NurbsCurve create_hyperbola(const Point& center, double a, double b, double extent);
+
+    /// Create a spiral (helix with varying radius)
+    static NurbsCurve create_spiral(double start_radius, double end_radius, double pitch, double turns);
+
     
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
@@ -202,6 +221,8 @@ public:
     
     /// Get curve domain [start_param, end_param]
     std::pair<double, double> domain() const;
+    double domain_start() const;
+    double domain_end() const;
     
     /// Set curve domain
     bool set_domain(double t0, double t1);
@@ -274,6 +295,23 @@ public:
     
     /// Get tangent vector at parameter t
     Vector tangent_at(double t) const;
+
+    /// Get perpendicular frame at parameter t
+    /// Returns: origin (point), xaxis (tangent), yaxis (normal), zaxis (binormal)
+    bool frame_at(double t, bool normalized, Point& origin, Vector& xaxis, Vector& yaxis, Vector& zaxis) const;
+
+    /// Get rotation minimizing perpendicular frame at parameter t
+    /// This is slightly different than frame_at in that the frame is computed in a way
+    /// so there is minimal rotation from one frame to the next (no unnecessary twist).
+    /// Uses the Double Reflection Method (Wang et al. 2008)
+    /// Returns: origin (point), xaxis (tangent), yaxis (normal), zaxis (binormal)
+    bool perpendicular_frame_at(double t, bool normalized, Point& origin, Vector& xaxis,
+                                            Vector& yaxis, Vector& zaxis) const;
+
+    /// Get multiple rotation minimizing frames along the curve
+    std::vector<std::tuple<Point, Vector, Vector, Vector>>
+    get_perpendicular_frames(const std::vector<double>& params) const;
+
     
     /// Get start point of curve
     Point point_at_start() const;

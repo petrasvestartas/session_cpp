@@ -308,6 +308,16 @@ std::pair<double, double> NurbsCurve::domain() const {
     return {m_knot[m_order-2], m_knot[m_cv_count-1]};
 }
 
+double NurbsCurve::domain_start() const {
+    if (m_knot.empty()) return 0.0;
+    return m_knot[m_order-2];
+}
+
+double NurbsCurve::domain_end() const {
+    if (m_knot.empty()) return 0.0;
+    return m_knot[m_cv_count-1];
+}
+
 bool NurbsCurve::set_domain(double t0, double t1) {
     if (t0 >= t1 || !is_valid()) return false;
     
@@ -614,16 +624,278 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
 }
 
 Vector NurbsCurve::tangent_at(double t) const {
-    auto ders = evaluate(t, 1);
-    if (ders.size() < 2) {
-        return Vector(0, 0, 0);
+    if (!is_valid()) return Vector(0, 0, 0);
+
+    auto [t0, t1] = domain();
+    double h = (t1 - t0) * 1e-7;
+
+    Point p1, p2;
+    if (t <= t0 + h) {
+        p1 = point_at(t0);
+        p2 = point_at(t0 + h);
+    } else if (t >= t1 - h) {
+        p1 = point_at(t1 - h);
+        p2 = point_at(t1);
+    } else {
+        p1 = point_at(t - h);
+        p2 = point_at(t + h);
     }
-    Vector tan = ders[1];
+
+    Vector tan(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]);
     double mag = tan.magnitude();
     if (mag > 1e-14) {
         tan.normalize_self();
     }
     return tan;
+}
+
+bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
+                          Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
+    if (!is_valid()) return false;
+
+    auto [t0, t1] = domain();
+    double param;
+    if (normalized) {
+        if (t < 0.0 || t > 1.0) return false;
+        param = t0 + t * (t1 - t0);
+    } else {
+        if (t < t0 || t > t1) return false;
+        param = t;
+    }
+    double h = (t1 - t0) * 1e-5;
+
+    origin = point_at(param);
+
+    Point pm, p0, pp;
+    if (param <= t0 + h) {
+        p0 = point_at(t0);
+        pp = point_at(t0 + h);
+        Point pp2 = point_at(t0 + 2*h);
+        pm = p0;
+        Vector d1(pp[0] - p0[0], pp[1] - p0[1], pp[2] - p0[2]);
+        Vector d2((pp2[0] - 2*pp[0] + p0[0])/(h*h), (pp2[1] - 2*pp[1] + p0[1])/(h*h), (pp2[2] - 2*pp[2] + p0[2])/(h*h));
+
+        double d1_mag = d1.magnitude();
+        if (d1_mag < 1e-14) return false;
+
+        Vector T = d1;
+        T.normalize_self();
+
+        double d2_dot_T = d2.dot(T);
+        Vector N(d2[0] - d2_dot_T * T[0], d2[1] - d2_dot_T * T[1], d2[2] - d2_dot_T * T[2]);
+        double n_mag = N.magnitude();
+        if (n_mag < 1e-14) {
+            Vector worldZ(0, 0, 1);
+            N = T.cross(worldZ);
+            n_mag = N.magnitude();
+            if (n_mag < 1e-14) {
+                Vector worldY(0, 1, 0);
+                N = T.cross(worldY);
+                n_mag = N.magnitude();
+            }
+        }
+        if (n_mag > 1e-14) N.normalize_self();
+
+        Vector B = T.cross(N);
+        B.normalize_self();
+
+        xaxis = T;
+        yaxis = N;
+        zaxis = B;
+        return true;
+    } else if (param >= t1 - h) {
+        pm = point_at(t1 - h);
+        p0 = point_at(t1);
+        Point pm2 = point_at(t1 - 2*h);
+        Vector d1(p0[0] - pm[0], p0[1] - pm[1], p0[2] - pm[2]);
+        Vector d2((p0[0] - 2*pm[0] + pm2[0])/(h*h), (p0[1] - 2*pm[1] + pm2[1])/(h*h), (p0[2] - 2*pm[2] + pm2[2])/(h*h));
+
+        double d1_mag = d1.magnitude();
+        if (d1_mag < 1e-14) return false;
+
+        Vector T = d1;
+        T.normalize_self();
+
+        double d2_dot_T = d2.dot(T);
+        Vector N(d2[0] - d2_dot_T * T[0], d2[1] - d2_dot_T * T[1], d2[2] - d2_dot_T * T[2]);
+        double n_mag = N.magnitude();
+        if (n_mag < 1e-14) {
+            Vector worldZ(0, 0, 1);
+            N = T.cross(worldZ);
+            n_mag = N.magnitude();
+            if (n_mag < 1e-14) {
+                Vector worldY(0, 1, 0);
+                N = T.cross(worldY);
+                n_mag = N.magnitude();
+            }
+        }
+        if (n_mag > 1e-14) N.normalize_self();
+
+        Vector B = T.cross(N);
+        B.normalize_self();
+
+        xaxis = T;
+        yaxis = N;
+        zaxis = B;
+        return true;
+    }
+
+    pm = point_at(param - h);
+    p0 = point_at(param);
+    pp = point_at(param + h);
+
+    Vector d1((pp[0] - pm[0])/(2*h), (pp[1] - pm[1])/(2*h), (pp[2] - pm[2])/(2*h));
+    Vector d2((pp[0] - 2*p0[0] + pm[0])/(h*h), (pp[1] - 2*p0[1] + pm[1])/(h*h), (pp[2] - 2*p0[2] + pm[2])/(h*h));
+
+    double d1_mag = d1.magnitude();
+    if (d1_mag < 1e-14) return false;
+
+    Vector T = d1;
+    T.normalize_self();
+
+    double d2_dot_T = d2.dot(T);
+    Vector N(d2[0] - d2_dot_T * T[0], d2[1] - d2_dot_T * T[1], d2[2] - d2_dot_T * T[2]);
+    double n_mag = N.magnitude();
+    if (n_mag < 1e-14) {
+        Vector worldZ(0, 0, 1);
+        N = T.cross(worldZ);
+        n_mag = N.magnitude();
+        if (n_mag < 1e-14) {
+            Vector worldY(0, 1, 0);
+            N = T.cross(worldY);
+            n_mag = N.magnitude();
+        }
+    }
+    if (n_mag > 1e-14) N.normalize_self();
+
+    Vector B = T.cross(N);
+    B.normalize_self();
+
+    xaxis = T;
+    yaxis = N;
+    zaxis = B;
+    return true;
+}
+
+bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin,
+                                        Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
+    if (!is_valid()) return false;
+
+    auto [t0, t1] = domain();
+    double param;
+    if (normalized) {
+        if (t < 0.0 || t > 1.0) return false;
+        param = t0 + t * (t1 - t0);
+    } else {
+        if (t < t0 || t > t1) return false;
+        param = t;
+    }
+
+    origin = point_at(param);
+
+    Vector T0 = tangent_at(t0);
+    double T0_mag = T0.magnitude();
+    if (T0_mag < 1e-14) return false;
+    T0.normalize_self();
+
+    Vector worldZ(0, 0, 1);
+    Vector r0 = worldZ.cross(T0);
+    double r0_mag = r0.magnitude();
+    if (r0_mag < 1e-14) {
+        Vector worldY(0, 1, 0);
+        r0 = worldY.cross(T0);
+        r0_mag = r0.magnitude();
+    }
+    if (r0_mag > 1e-14) r0.normalize_self();
+
+    if (std::abs(param - t0) < 1e-14) {
+        Vector s0 = T0.cross(r0);
+        s0.normalize_self();
+        xaxis = r0;
+        yaxis = s0;
+        zaxis = T0;
+        return true;
+    }
+
+    int num_steps = std::max(10, static_cast<int>((param - t0) / (t1 - t0) * 100));
+    double dt = (param - t0) / num_steps;
+
+    Vector ri = r0;
+    double ti = t0;
+    Point xi = point_at(ti);
+    Vector Ti = T0;
+
+    for (int i = 0; i < num_steps && ti < param - 1e-14; i++) {
+        double ti_next = std::min(ti + dt, param);
+        Point xi_next = point_at(ti_next);
+        Vector Ti_next = tangent_at(ti_next);
+        Ti_next.normalize_self();
+
+        Vector v1(xi_next[0] - xi[0], xi_next[1] - xi[1], xi_next[2] - xi[2]);
+        double c1 = v1.dot(v1);
+        if (c1 < 1e-28) {
+            ti = ti_next;
+            xi = xi_next;
+            Ti = Ti_next;
+            continue;
+        }
+
+        double ri_dot_v1 = ri.dot(v1);
+        Vector rL(ri[0] - 2.0 * ri_dot_v1 / c1 * v1[0],
+                  ri[1] - 2.0 * ri_dot_v1 / c1 * v1[1],
+                  ri[2] - 2.0 * ri_dot_v1 / c1 * v1[2]);
+
+        double Ti_dot_v1 = Ti.dot(v1);
+        Vector TL(Ti[0] - 2.0 * Ti_dot_v1 / c1 * v1[0],
+                  Ti[1] - 2.0 * Ti_dot_v1 / c1 * v1[1],
+                  Ti[2] - 2.0 * Ti_dot_v1 / c1 * v1[2]);
+
+        Vector v2(Ti_next[0] - TL[0], Ti_next[1] - TL[1], Ti_next[2] - TL[2]);
+        double c2 = v2.dot(v2);
+        if (c2 < 1e-28) {
+            ri = rL;
+        } else {
+            double rL_dot_v2 = rL.dot(v2);
+            ri = Vector(rL[0] - 2.0 * rL_dot_v2 / c2 * v2[0],
+                        rL[1] - 2.0 * rL_dot_v2 / c2 * v2[1],
+                        rL[2] - 2.0 * rL_dot_v2 / c2 * v2[2]);
+        }
+
+        double ri_mag = ri.magnitude();
+        if (ri_mag > 1e-14) ri.normalize_self();
+
+        ti = ti_next;
+        xi = xi_next;
+        Ti = Ti_next;
+    }
+
+    Vector T = tangent_at(param);
+    T.normalize_self();
+
+    double ri_dot_T = ri.dot(T);
+    ri = Vector(ri[0] - ri_dot_T * T[0], ri[1] - ri_dot_T * T[1], ri[2] - ri_dot_T * T[2]);
+    double ri_mag = ri.magnitude();
+    if (ri_mag > 1e-14) ri.normalize_self();
+
+    Vector s = T.cross(ri);
+    s.normalize_self();
+
+    xaxis = ri;
+    yaxis = s;
+    zaxis = T;
+    return true;
+}
+
+std::vector<std::tuple<Point, Vector, Vector, Vector>>
+NurbsCurve::get_perpendicular_frames(const std::vector<double>& params) const {
+    std::vector<std::tuple<Point, Vector, Vector, Vector>> frames;
+    for (double t : params) {
+        Point o;
+        Vector x, y, z;
+        perpendicular_frame_at(t, true, o, x, y, z);
+        frames.emplace_back(o, x, y, z);
+    }
+    return frames;
 }
 
 Point NurbsCurve::point_at_start() const {

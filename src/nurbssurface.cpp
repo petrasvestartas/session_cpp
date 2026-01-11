@@ -93,10 +93,7 @@ void NurbsSurface::initialize() {
     m_cv_count[1] = 0;
     m_cv_stride[0] = 0;
     m_cv_stride[1] = 0;
-    m_knot_capacity[0] = 0;
-    m_knot_capacity[1] = 0;
-    m_cv_capacity = 0;
-    
+
     m_knot[0].clear();
     m_knot[1].clear();
     m_cv.clear();
@@ -132,14 +129,11 @@ bool NurbsSurface::create(int dimension, bool is_rational,
 
     m_knot[0].resize(knot_count0, 0.0);
     m_knot[1].resize(knot_count1, 0.0);
-    m_knot_capacity[0] = knot_count0;
-    m_knot_capacity[1] = knot_count1;
 
     // Allocate CV array
     int total_cvs = cv_count0 * cv_count1;
     int cv_array_size = total_cvs * cv_size_val;
     m_cv.resize(cv_array_size, 0.0);
-    m_cv_capacity = cv_array_size;
 
     // Initialize weights to 1 if rational
     if (m_is_rat) {
@@ -230,10 +224,6 @@ int NurbsSurface::knot_count(int dir) const {
 int NurbsSurface::span_count(int dir) const {
     if (dir < 0 || dir >= 2) return 0;
     return m_cv_count[dir] - m_order[dir] + 1;
-}
-
-int NurbsSurface::knot_capacity(int dir) const {
-    return (dir >= 0 && dir < 2) ? m_knot_capacity[dir] : 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -468,10 +458,7 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     m_cv_count[1] = src.m_cv_count[1];
     m_cv_stride[0] = src.m_cv_stride[0];
     m_cv_stride[1] = src.m_cv_stride[1];
-    m_knot_capacity[0] = src.m_knot_capacity[0];
-    m_knot_capacity[1] = src.m_knot_capacity[1];
-    m_cv_capacity = src.m_cv_capacity;
-    
+
     m_knot[0] = src.m_knot[0];
     m_knot[1] = src.m_knot[1];
     m_cv = src.m_cv;
@@ -916,11 +903,10 @@ bool NurbsSurface::transpose() {
     std::swap(m_order[0], m_order[1]);
     std::swap(m_cv_count[0], m_cv_count[1]);
     std::swap(m_cv_stride[0], m_cv_stride[1]);
-    
+
     // Swap knot vectors
-    std::swap(m_knot_capacity[0], m_knot_capacity[1]);
     std::swap(m_knot[0], m_knot[1]);
-    
+
     return true;
 }
 
@@ -979,8 +965,7 @@ bool NurbsSurface::make_rational() {
     m_is_rat = 1;
     m_cv_stride[1] = new_stride_1;
     m_cv_stride[0] = new_stride_0;
-    m_cv_capacity = static_cast<int>(new_cv.size());
-    
+
     return true;
 }
 
@@ -1017,8 +1002,7 @@ bool NurbsSurface::make_non_rational() {
     m_is_rat = 0;
     m_cv_stride[1] = new_stride_1;
     m_cv_stride[0] = new_stride_0;
-    m_cv_capacity = static_cast<int>(new_cv.size());
-    
+
     return true;
 }
 
@@ -1064,7 +1048,7 @@ bool NurbsSurface::change_dimension(int desired_dimension) {
         if (cv_size > old_stride0 && cv_size > old_stride1) {
             new_stride0 = (old_stride0 <= old_stride1) ? cv_size : (cv_size * m_cv_count[1]);
             new_stride1 = (old_stride0 <= old_stride1) ? (cv_size * m_cv_count[0]) : cv_size;
-            reserve_cv_capacity(cv_size * m_cv_count[0] * m_cv_count[1]);
+            m_cv.resize(cv_size * m_cv_count[0] * m_cv_count[1]);
         }
         
         // Expand in place, working backwards to avoid overwriting
@@ -1478,19 +1462,6 @@ void NurbsSurface::basis_functions_derivatives(int dir, int span, double t, int 
     }
 }
 
-bool NurbsSurface::reserve_knot_capacity(int dir, int capacity) {
-    if (dir < 0 || dir >= 2) return false;
-    m_knot[dir].reserve(capacity);
-    m_knot_capacity[dir] = capacity;
-    return true;
-}
-
-bool NurbsSurface::reserve_cv_capacity(int capacity) {
-    m_cv.reserve(capacity);
-    m_cv_capacity = capacity;
-    return true;
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Helper Utility Functions (OpenNURBS-style)
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1658,15 +1629,11 @@ bool from_curve_internal(NurbsCurve& crv, NurbsSurface& srf, int dir) {
     }
     
     // Transfer CV array from curve to surface
-    srf.m_cv = crv.m_cv;
-    srf.m_cv_capacity = crv.m_cv_capacity;
-    crv.m_cv.clear();
-    crv.m_cv_capacity = 0;
-    
+    srf.m_cv = std::move(crv.m_cv);
+
     // Transfer knot vector from curve to surface
-    srf.m_knot[dir] = crv.m_knot;
-    srf.m_knot_capacity[dir] = static_cast<int>(crv.m_knot.capacity());
-    
+    srf.m_knot[dir] = std::move(crv.m_knot);
+
     // Update surface parameters
     srf.m_order[dir] = crv.m_order;
     srf.m_cv_count[dir] = crv.m_cv_count;

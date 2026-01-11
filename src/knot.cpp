@@ -444,5 +444,121 @@ std::vector<double> get_greville_abcissae(int order, int cv_count,
     return g;
 }
 
+bool solve_tridiagonal(int dim, int n,
+                       std::vector<double>& lower,
+                       std::vector<double>& diag,
+                       std::vector<double>& upper,
+                       const std::vector<double>& rhs,
+                       std::vector<double>& solution) {
+    if (n < 1 || dim < 1) return false;
+    if (static_cast<int>(lower.size()) < n ||
+        static_cast<int>(diag.size()) < n ||
+        static_cast<int>(upper.size()) < n ||
+        static_cast<int>(rhs.size()) < n * dim) {
+        return false;
+    }
+
+    solution.resize(n * dim);
+    const double eps = 1e-14;
+
+    // Forward elimination (Thomas algorithm)
+    std::vector<double> c_star(n), d_star(n * dim);
+
+    if (std::fabs(diag[0]) < eps) return false;
+    c_star[0] = upper[0] / diag[0];
+    for (int d = 0; d < dim; d++) {
+        d_star[d] = rhs[d] / diag[0];
+    }
+
+    for (int i = 1; i < n; i++) {
+        double denom = diag[i] - lower[i] * c_star[i-1];
+        if (std::fabs(denom) < eps) return false;
+
+        c_star[i] = (i < n-1) ? upper[i] / denom : 0.0;
+        for (int d = 0; d < dim; d++) {
+            d_star[i * dim + d] = (rhs[i * dim + d] - lower[i] * d_star[(i-1) * dim + d]) / denom;
+        }
+    }
+
+    // Back substitution
+    for (int d = 0; d < dim; d++) {
+        solution[(n-1) * dim + d] = d_star[(n-1) * dim + d];
+    }
+
+    for (int i = n - 2; i >= 0; i--) {
+        for (int d = 0; d < dim; d++) {
+            solution[i * dim + d] = d_star[i * dim + d] - c_star[i] * solution[(i+1) * dim + d];
+        }
+    }
+
+    return true;
+}
+
+std::vector<double> compute_parameters(const double* points, int point_count,
+                                       int dim, CurveKnotStyle style) {
+    std::vector<double> params(point_count);
+    if (point_count < 2) return params;
+
+    params[0] = 0.0;
+
+    int base_style = static_cast<int>(style) % 3;  // 0=Uniform, 1=Chord, 2=ChordSquareRoot
+
+    for (int i = 1; i < point_count; i++) {
+        double dist = 0.0;
+        for (int d = 0; d < dim; d++) {
+            double diff = points[i * dim + d] - points[(i-1) * dim + d];
+            dist += diff * diff;
+        }
+        dist = std::sqrt(dist);
+
+        double delta;
+        switch (base_style) {
+            case 0:  // Uniform
+                delta = 1.0;
+                break;
+            case 1:  // Chord
+                delta = dist;
+                break;
+            case 2:  // ChordSquareRoot (centripetal)
+                delta = std::sqrt(dist);
+                break;
+            default:
+                delta = dist;
+        }
+        params[i] = params[i-1] + delta;
+    }
+
+    return params;
+}
+
+std::vector<double> build_interp_knots(const std::vector<double>& params, int degree) {
+    int n = static_cast<int>(params.size());
+    if (n < 2 || degree < 1) return {};
+
+    int order = degree + 1;
+    int cv_count = n + 2;  // Natural end conditions add 2 CVs
+    int kc = knot_count(order, cv_count);
+
+    std::vector<double> knots(kc);
+    double t_max = params[n - 1];
+
+    // Clamped start: first (order-1) knots = 0
+    for (int i = 0; i < order - 1; i++) {
+        knots[i] = 0.0;
+    }
+
+    // Interior knots from parameters (skip first and last)
+    for (int i = 1; i < n - 1; i++) {
+        knots[order - 2 + i] = params[i];
+    }
+
+    // Clamped end: last (order-1) knots = t_max
+    for (int i = 0; i < order - 1; i++) {
+        knots[kc - 1 - i] = t_max;
+    }
+
+    return knots;
+}
+
 } // namespace knot
 } // namespace session_cpp

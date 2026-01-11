@@ -45,10 +45,7 @@ public:
     int m_order[2];         // Order = degree + 1 (order >= 2) for u and v
     int m_cv_count[2];      // Number of control vertices (>= order) in u and v
     int m_cv_stride[2];     // Stride between control vertices in m_cv array
-    
-    int m_knot_capacity[2]; // Capacity of knot arrays
-    int m_cv_capacity;      // Capacity of m_cv array
-    
+
     std::vector<double> m_knot[2];  // Knot vectors for u and v directions
     std::vector<double> m_cv;       // Control vertex data (homogeneous if rational)
 
@@ -151,12 +148,6 @@ public:
     
     /// Get number of spans in specified direction
     int span_count(int dir) const;
-    
-    /// Get CV capacity
-    int cv_capacity() const { return m_cv_capacity; }
-    
-    /// Get knot capacity in specified direction
-    int knot_capacity(int dir) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Control Vertex Access
@@ -415,12 +406,6 @@ private:
     /// Compute basis functions and derivatives
     void basis_functions_derivatives(int dir, int span, double t, int deriv_order,
                                    std::vector<std::vector<double>>& ders) const;
-    
-    /// Reserve knot capacity
-    bool reserve_knot_capacity(int dir, int capacity);
-    
-    /// Reserve CV capacity
-    bool reserve_cv_capacity(int capacity);
 };
 
 } // namespace session_cpp

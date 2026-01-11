@@ -568,12 +568,22 @@ void Vector::scale_up() { scale(static_cast<double>(session_cpp::SCALE)); }
 
 void Vector::scale_down() { scale(1.0 / static_cast<double>(session_cpp::SCALE)); }
 
+Vector Vector::reflect(const Vector& plane_normal) const {
+    double d = this->dot(plane_normal);
+    return Vector(
+        _x - 2.0 * d * plane_normal[0],
+        _y - 2.0 * d * plane_normal[1],
+        _z - 2.0 * d * plane_normal[2]
+    );
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Not class methods
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Vector &point) {
-  return os << point.to_string();
+  return os << point.str();
 }
 
 } // namespace session_cpp

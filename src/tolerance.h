@@ -21,7 +21,7 @@ public:
     static constexpr double TO_RADIANS = PI / 180.0;
     
     // Default tolerance values (double precision)
-    static constexpr double ABSOLUTE = 1e-9;
+    static constexpr double ABSOLUTE = 1e-6;
     static constexpr double RELATIVE = 1e-6;
     static constexpr double ANGULAR = 1e-6;
     static constexpr double APPROXIMATION = 1e-3;

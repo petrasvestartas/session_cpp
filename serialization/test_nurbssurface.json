@@ -1,5 +1,5 @@
 {
-    "guid": "fba70fc1-c18a-4758-a6f6-0faf8c6e659a",
+    "guid": "c0a993db-5338-450a-b1aa-51efe978190e",
     "name": "test_nurbssurface",
     "type": "NurbsSurface",
     "width": 2.0,
@@ -7,13 +7,13 @@
         "a": 255,
         "b": 64,
         "g": 128,
-        "guid": "9141fddb-31c0-4b6f-ab28-eea74f2501f4",
+        "guid": "a70e6e9a-7846-4ef7-b182-b86bf245b8ae",
         "name": "my_color",
         "r": 255,
         "type": "Color"
     },
     "xform": {
-        "guid": "a0d499b9-9533-4b91-9afc-18b99d015ab1",
+        "guid": "cb2c23e7-8efd-4098-bfc7-e599fa773549",
         "m": [
             1.0,
             0.0,
