@@ -1,7 +1,8 @@
 #include "mini_test.h"
 #include "nurbscurve.h"
 #include "point.h"
-
+#include "plane.h"
+#include "vector.h"
 #include "tolerance.h"
 #include <cmath>
 
@@ -57,6 +58,7 @@ namespace session_cpp {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include "vector.h"
+        // uncomment #include "plane.h"
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -74,38 +76,44 @@ namespace session_cpp {
 
         // Whole curve
         bool is_valid = curve.is_valid();
+        MINI_CHECK(is_valid == true);
 
         // Check whole knot vector for
         // For correct size: order + cv_count - 2
         // Non-decreasing (can repeat, can't go down)
         // Valid domain exists
         bool is_valid_knot_vector = curve.is_valid_knot_vector();
+        MINI_CHECK(is_valid_knot_vector == true);
 
         /////////////////////////////////////////////
         // Accessors
         /////////////////////////////////////////////
         // Memory layout 2-2D, 3-3D
         int dimension = curve.dimension();
+        MINI_CHECK(dimension == 3);
         // Degree - Polynomial order, 1=linear, 2=quadratic, 3=cubic
         int degree = curve.degree();
+        MINI_CHECK(degree == 2);
         // Is rational is related to control points having weights
         // is_rational = false means control points [x, y, z]
         // is_rational = false means control points [xw, yw, zw]
         // Rational curves are used to represent:
-        // circles, ellipses, parabolas, hyperbolas exactly
-        bool is_rational = curve.is_rational();
         // Order = degree + 1, control points + order = knots
         int order = curve.order();
+        MINI_CHECK(order == 3);
         // Number of control vertices
         int cv_count = curve.cv_count();
+        MINI_CHECK(cv_count == 4);
         // Number of floats per 1 control vertex
         int cv_size = curve.cv_size();
+        MINI_CHECK(cv_size == 3);
         // The knots are a list of (degree+control_points-1) numbers
         int knot_count = curve.knot_count();
+        MINI_CHECK(knot_count == 5);
         // Span = a knot interval where a single polynomial segment is evaluated
         // Knot vector: [0, 0, 0 ↑, 1 ↑, 2 ↑, 3, 3, 3]  (cubic, 5 CVs)
         int span_count = curve.span_count();
-
+        MINI_CHECK(span_count == 2);
         /////////////////////////////////////////////////////
         // Control Vertex Access
         //  m_cv = [x0, y0, z0, (w0), x1, y1, z1, (w1), ...]
@@ -113,63 +121,131 @@ namespace session_cpp {
         /////////////////////////////////////////////////////
 
         // Get pointer to control vertex
-        // Each CV occupies m_cv_stride doubles (3 for non-rational, 4 for rational)
+        // Each CV occupies m_cv_stride doubles:
+        // (3 for non-rational, 4 for rational)
         // cv(index) returns pointer to m_cv[index * m_cv_stride]
-        double* p = curve.cv(0);
-        double xcoord = p[0];
+        double* p = curve.cv(1);
+        MINI_CHECK(p[0] == 1.0 && p[1] == 1.0 && p[2] == 0.0);
 
         // Returns the control vertex as Point object
-        Point cv_point = curve.get_cv(0);
+        Point cv_point = curve.get_cv(1);
+        MINI_CHECK(cv_point == Point(1.0, 1.0, 0.0));
 
         // Raw homogeneous coords
         double x, y, z, w;
         curve.get_cv_4d(1, x, y, z, w);
+        MINI_CHECK(x == 1.0 && y == 1.0 && z == 0.0 && w == 1.0);
 
         // Use for regular points on curve, Polyline, B-Spline
-        curve.set_cv(2, Point(2.0, 0.5, 0.0));
+        curve.set_cv(2, Point(2.0, 0.0, 0.5));
+        MINI_CHECK(curve.get_cv(2)[0] == 2.0 && curve.get_cv(2)[1] == 0.0 && curve.get_cv(2)[2] == 0.5);
 
         // Use for rational curvers like circles, ellipses
-        curve.set_cv_4d(1, 1*0.707, 1*0.707, 0, 0.707);
+        curve.set_cv_4d(2, 2.0, 0.5, 1.0, 0.707);
+        curve.get_cv_4d(2, x, y, z, w);
+        MINI_CHECK(x == 2.0 && y == 0.5 && z == 1.0 && w == 0.707);
 
         // Get weight of a control vertex (1.0 if non-rational)
-        double weight = curve.weight(1);
+        double weight = curve.weight(2);
+        MINI_CHECK(weight == 0.707);
 
         // Set the weight of a control vertex
-        curve.set_weight(1, 0.5);
+        curve.set_weight(2, 0.5);
+        MINI_CHECK(curve.weight(2) == 0.5);
 
         /////////////////////////////////////////////////////
         // Knot Access
         /////////////////////////////////////////////////////
 
         // Get knot value at index
-        double knot0 = curve.knot(0);
+        double knot3 = curve.knot(3);
+        MINI_CHECK(knot3 == 1);
 
         // Set knot value at index
-        bool success = curve.set_knot(3, 1.5);
+        // ATTENTION you can brake increasing rule
+        bool success = curve.set_knot(4, 2);
+        MINI_CHECK(curve.knot(4) == 2);
 
-        // Count repeated knots at index [0, 0, 0, 1, 2, 2, 3, 3, 3]
-        int m0 = curve.knot_multiplicity(0);  // returns 3 (three 0's)
-        int m1 = curve.knot_multiplicity(3);  // returns 1 (single 1)
-        int m2 = curve.knot_multiplicity(4);  // returns 2 (two 2's)
-        int m3 = curve.knot_multiplicity(6);  // returns 3 (three 3's)
+        // Count repeated knots at index [0, 0, 0.5, 1, 2]
+        int m0 = curve.knot_multiplicity(0);  // 2 (two 0's)
+        int m1 = curve.knot_multiplicity(1);  // 2 (still counting the 0's)
+        int m2 = curve.knot_multiplicity(2);  // 1 (single 0.5)
+        int m3 = curve.knot_multiplicity(3);  // 1 (single 1's)
+        int m4 = curve.knot_multiplicity(4);  // 1 (single 2)
+        MINI_CHECK(m0 == 2);
+        MINI_CHECK(m1 == 2);
+        MINI_CHECK(m2 == 1);
+        MINI_CHECK(m3 == 1);
+        MINI_CHECK(m4 == 1);
 
         // Superflous knots are used for extension of clamped curves
-        double new_knot = curve.superfluous_knot(1);  // get next logical knot
-        curve.insert_knot(new_knot);  // extend the curve
+        // For knot vector [0, 0, 0.5, 1, 2]: 2*knot[4] - knot[1] = 2*2 - 0 = 4
+        double superfluous_knot = curve.superfluous_knot(1);
+        MINI_CHECK(superfluous_knot == 4);
 
         // Direct memory access to knot values, fast, read-only
         // Vector return is slower and makes a copy
         const double* knots = curve.knot_array();
         double k0 = knots[0];
         std::vector<double> knot_vector = curve.get_knots();
+        MINI_CHECK(k0 == 0.0);
+        MINI_CHECK(knot_vector[0] == 0.0 && knot_vector[1] == 0.0 &&
+                   knot_vector[2] == 0.5 && knot_vector[3] == 1.0 &&
+                   knot_vector[4] == 2.0);
 
         // Control vertex array access
         const double* cvs = curve.cv_array();
         double cx0 = cvs[0];
+        MINI_CHECK(cx0 == 0.0);
 
         /////////////////////////////////////////////////////
-        // Domain & Parameterization
+        // Domain & Parameterization - HERE
         /////////////////////////////////////////////////////
+
+        // get start and end of the curve interval
+        std::pair<double, double> interval = curve.domain();
+        double start = interval.first;
+        double end = interval.second;
+
+        // Get start, middle and end values of the interval
+        start = curve.domain_start();
+        double middle = curve.domain_middle();
+        end = curve.domain_end();
+
+        // Change curve domain
+        curve.set_domain(0.0, 1.0);
+
+        // Span of distict knot intervals
+        std::vector<double> intervals =  curve.get_span_vector();
+
+        /////////////////////////////////////////////////////
+        // Geometric checks
+        /////////////////////////////////////////////////////
+        // Is rational is related to control points having weights
+        // is_rational = false means control points [x, y, z]
+        // is_rational = false means control points [xw, yw, zw]
+        // Rational curves are used to represent:
+        // circles, ellipses, parabolas, hyperbolas exactly
+        bool is_rational = curve.is_rational();
+        MINI_CHECK(is_rational == true);
+
+        // circles, ellipses, parabolas, hyperbolas exactly
+        bool closed = curve.is_closed();
+        bool periodic = curve.is_periodic();
+        bool linear = curve.is_linear();
+        bool planar = curve.is_planar();
+        bool arc = curve.is_arc();
+        Plane plane = Plane::xy_plane();
+        bool on_plane = curve.is_in_plane(plane);
+        bool is_open = curve.is_natural();
+        bool is_polyline = curve.is_polyline();
+
+
+
+
+
+
+
 
 
 

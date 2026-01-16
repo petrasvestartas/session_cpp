@@ -242,31 +242,37 @@ bool NurbsCurve::get_cv_4d(int cv_index, double& x, double& y, double& z, double
 bool NurbsCurve::set_cv(int cv_index, const Point& point) {
     double* cv_ptr = cv(cv_index);
     if (!cv_ptr) return false;
-    
+
     cv_ptr[0] = point[0];
     if (m_dim > 1) cv_ptr[1] = point[1];
     if (m_dim > 2) cv_ptr[2] = point[2];
     if (m_is_rat) cv_ptr[m_dim] = 1.0;
-    
+
+    invalidate_rmf_cache();
     return true;
 }
 
 bool NurbsCurve::set_cv_4d(int cv_index, double x, double y, double z, double w) {
+    if (cv_index < 0 || cv_index >= m_cv_count) return false;
+
+    if (!m_is_rat && w != 1.0) {
+        make_rational();
+    }
+
     double* cv_ptr = cv(cv_index);
     if (!cv_ptr) return false;
-    
+
     if (m_is_rat) {
         cv_ptr[0] = x;
         if (m_dim > 1) cv_ptr[1] = y;
         if (m_dim > 2) cv_ptr[2] = z;
         cv_ptr[m_dim] = w;
     } else {
-        if (w != 0.0) {
-            cv_ptr[0] = x / w;
-            if (m_dim > 1) cv_ptr[1] = y / w;
-            if (m_dim > 2) cv_ptr[2] = z / w;
-        }
+        cv_ptr[0] = x;
+        if (m_dim > 1) cv_ptr[1] = y;
+        if (m_dim > 2) cv_ptr[2] = z;
     }
+    invalidate_rmf_cache();
     return true;
 }
 
@@ -283,6 +289,7 @@ bool NurbsCurve::set_weight(int cv_index, double w) {
     double* cv_ptr = cv(cv_index);
     if (!cv_ptr) return false;
     cv_ptr[m_dim] = w;
+    invalidate_rmf_cache();
     return true;
 }
 
@@ -299,6 +306,7 @@ bool NurbsCurve::set_knot(int knot_index, double knot_value) {
         return false;
     }
     m_knot[knot_index] = knot_value;
+    invalidate_rmf_cache();
     return true;
 }
 
@@ -313,6 +321,11 @@ double NurbsCurve::domain_start() const {
     return m_knot[m_order-2];
 }
 
+double NurbsCurve::domain_middle() const{
+    if (m_knot.empty()) return 0.0;
+    return (m_knot[m_order-2]+m_knot[m_cv_count-1])*0.5;
+}
+
 double NurbsCurve::domain_end() const {
     if (m_knot.empty()) return 0.0;
     return m_knot[m_cv_count-1];
@@ -320,16 +333,17 @@ double NurbsCurve::domain_end() const {
 
 bool NurbsCurve::set_domain(double t0, double t1) {
     if (t0 >= t1 || !is_valid()) return false;
-    
+
     auto [d0, d1] = domain();
     if (d0 >= d1) return false;
-    
+
     double scale = (t1 - t0) / (d1 - d0);
-    
+
     for (auto& k : m_knot) {
         k = t0 + (k - d0) * scale;
     }
-    
+
+    invalidate_rmf_cache();
     return true;
 }
 
@@ -777,8 +791,115 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
     return true;
 }
 
-bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin,
-                                        Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
+// Quaternion helpers for RMF caching
+std::array<double, 4> NurbsCurve::frame_to_quaternion(const Vector& r, const Vector& s, const Vector& t) {
+    double trace = r[0] + s[1] + t[2];
+    double w, x, y, z;
+
+    if (trace > 0) {
+        double S = std::sqrt(trace + 1.0) * 2;
+        w = 0.25 * S;
+        x = (s[2] - t[1]) / S;
+        y = (t[0] - r[2]) / S;
+        z = (r[1] - s[0]) / S;
+    } else if (r[0] > s[1] && r[0] > t[2]) {
+        double S = std::sqrt(1.0 + r[0] - s[1] - t[2]) * 2;
+        w = (s[2] - t[1]) / S;
+        x = 0.25 * S;
+        y = (s[0] + r[1]) / S;
+        z = (t[0] + r[2]) / S;
+    } else if (s[1] > t[2]) {
+        double S = std::sqrt(1.0 + s[1] - r[0] - t[2]) * 2;
+        w = (t[0] - r[2]) / S;
+        x = (s[0] + r[1]) / S;
+        y = 0.25 * S;
+        z = (t[1] + s[2]) / S;
+    } else {
+        double S = std::sqrt(1.0 + t[2] - r[0] - s[1]) * 2;
+        w = (r[1] - s[0]) / S;
+        x = (t[0] + r[2]) / S;
+        y = (t[1] + s[2]) / S;
+        z = 0.25 * S;
+    }
+    return {w, x, y, z};
+}
+
+void NurbsCurve::quaternion_to_frame(const std::array<double, 4>& q, Vector& r, Vector& s, Vector& t) {
+    double w = q[0], x = q[1], y = q[2], z = q[3];
+    r = Vector(1 - 2*(y*y + z*z), 2*(x*y + w*z), 2*(x*z - w*y));
+    s = Vector(2*(x*y - w*z), 1 - 2*(x*x + z*z), 2*(y*z + w*x));
+    t = Vector(2*(x*z + w*y), 2*(y*z - w*x), 1 - 2*(x*x + y*y));
+}
+
+std::array<double, 4> NurbsCurve::slerp(const std::array<double, 4>& q0, const std::array<double, 4>& q1, double u) {
+    double dot = q0[0]*q1[0] + q0[1]*q1[1] + q0[2]*q1[2] + q0[3]*q1[3];
+
+    std::array<double, 4> q1_adj = q1;
+    if (dot < 0) {
+        q1_adj = {-q1[0], -q1[1], -q1[2], -q1[3]};
+        dot = -dot;
+    }
+
+    if (dot > 0.9995) {
+        std::array<double, 4> result = {
+            q0[0] + u * (q1_adj[0] - q0[0]),
+            q0[1] + u * (q1_adj[1] - q0[1]),
+            q0[2] + u * (q1_adj[2] - q0[2]),
+            q0[3] + u * (q1_adj[3] - q0[3])
+        };
+        double norm = std::sqrt(result[0]*result[0] + result[1]*result[1] +
+                                result[2]*result[2] + result[3]*result[3]);
+        return {result[0]/norm, result[1]/norm, result[2]/norm, result[3]/norm};
+    }
+
+    double theta = std::acos(dot);
+    double sin_theta = std::sin(theta);
+    double w0 = std::sin((1-u) * theta) / sin_theta;
+    double w1 = std::sin(u * theta) / sin_theta;
+
+    return {
+        w0*q0[0] + w1*q1_adj[0],
+        w0*q0[1] + w1*q1_adj[1],
+        w0*q0[2] + w1*q1_adj[2],
+        w0*q0[3] + w1*q1_adj[3]
+    };
+}
+
+void NurbsCurve::invalidate_rmf_cache() const {
+    m_rmf_cached = false;
+    m_rmf_params.clear();
+    m_rmf_quaternions.clear();
+    m_rmf_origins.clear();
+}
+
+void NurbsCurve::ensure_rmf_cache() const {
+    if (m_rmf_cached) return;
+
+    int num_samples = std::max(20, span_count() * 4);
+    auto [t0, t1] = domain();
+    double dt = (t1 - t0) / (num_samples - 1);
+
+    m_rmf_params.resize(num_samples);
+    m_rmf_quaternions.resize(num_samples);
+    m_rmf_origins.resize(num_samples);
+
+    for (int i = 0; i < num_samples; i++) {
+        double t = t0 + i * dt;
+        m_rmf_params[i] = t;
+
+        Point o;
+        Vector r, s, T;  // xaxis=r, yaxis=s, zaxis=T
+        perpendicular_frame_at_internal(t, false, o, r, s, T);
+
+        m_rmf_origins[i] = o;
+        m_rmf_quaternions[i] = frame_to_quaternion(r, s, T);
+    }
+
+    m_rmf_cached = true;
+}
+
+bool NurbsCurve::perpendicular_frame_at_internal(double t, bool normalized, Point& origin,
+                                                  Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
     if (!is_valid()) return false;
 
     auto [t0, t1] = domain();
@@ -886,6 +1007,13 @@ bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin
     return true;
 }
 
+bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin,
+                                        Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
+    // Use the exact Double Reflection algorithm for accuracy
+    // The SLERP caching introduced too much interpolation error
+    return perpendicular_frame_at_internal(t, normalized, origin, xaxis, yaxis, zaxis);
+}
+
 std::vector<std::tuple<Point, Vector, Vector, Vector>>
 NurbsCurve::get_perpendicular_frames(const std::vector<double>& params) const {
     std::vector<std::tuple<Point, Vector, Vector, Vector>> frames;
@@ -940,14 +1068,14 @@ NurbsCurve NurbsCurve::transformed(const Xform& xf) const {
 // Modification
 bool NurbsCurve::reverse() {
     if (!is_valid()) return false;
-    
+
     // Reverse knots
     auto [d0, d1] = domain();
     for (auto& k : m_knot) {
         k = d0 + d1 - k;
     }
     std::reverse(m_knot.begin(), m_knot.end());
-    
+
     // Reverse CVs
     for (int i = 0; i < m_cv_count / 2; i++) {
         int j = m_cv_count - 1 - i;
@@ -956,7 +1084,8 @@ bool NurbsCurve::reverse() {
         set_cv(i, pj);
         set_cv(j, pi);
     }
-    
+
+    invalidate_rmf_cache();
     return true;
 }
 
@@ -1163,6 +1292,7 @@ bool NurbsCurve::insert_knot(double knot_value, int knot_multiplicity) {
         n = m_cv_count - 1;
     }
 
+    invalidate_rmf_cache();
     return true;
 }
 
@@ -1175,11 +1305,12 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     m_cv_capacity = src.m_cv_capacity;
     m_knot = src.m_knot;
     m_cv = src.m_cv;
-    guid = ::guid();  // Generate new GUID for copy
+    guid = ::guid();
     name = src.name;
     width = src.width;
     linecolor = src.linecolor;
     xform = src.xform;
+    invalidate_rmf_cache();
 }
 
 // String & JSON
@@ -2028,24 +2159,18 @@ int NurbsCurve::knot_multiplicity(int knot_index) const {
     return mult;
 }
 
-// Get superfluous knot
+// Get superfluous knot (matches OpenNURBS ON_SuperfluousKnot)
 double NurbsCurve::superfluous_knot(int end) const {
     if (!is_valid()) return 0.0;
-    
+
+    int kc = knot_count();
     if (end == 0) {
-        // Start: return knot before first domain knot
-        if (m_order >= 3) {
-            return 2.0 * m_knot[m_order-2] - m_knot[m_order-1];
-        }
+        // First superfluous knot: reflect first knot across knot[order-2]
+        return 2.0 * m_knot[0] - m_knot[m_order - 2];
     } else {
-        // End: return knot after last domain knot
-        int kc = knot_count();
-        if (kc >= 2 && m_cv_count >= m_order) {
-            return 2.0 * m_knot[m_cv_count-1] - m_knot[m_cv_count-2];
-        }
+        // Last superfluous knot: reflect last knot across knot[cv_count-order]
+        return 2.0 * m_knot[kc - 1] - m_knot[m_cv_count - m_order];
     }
-    
-    return 0.0;
 }
 
 // Force curve to start at point

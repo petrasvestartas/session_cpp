@@ -14,6 +14,7 @@
 #include <cmath>
 #include <algorithm>
 #include <stdexcept>
+#include <array>
 
 namespace session_cpp {
 
@@ -132,10 +133,7 @@ public:
     
     /// Get dimension
     int dimension() const { return m_dim; }
-    
-    /// Check if curve is rational
-    bool is_rational() const { return m_is_rat != 0; }
-    
+       
     /// Get order (degree + 1)
     int order() const { return m_order; }
     
@@ -221,8 +219,15 @@ public:
     
     /// Get curve domain [start_param, end_param]
     std::pair<double, double> domain() const;
+
+    /// Get start domain
     double domain_start() const;
+
+    /// Get end of domain
     double domain_end() const;
+
+    /// Get domain at the middle
+    double domain_middle() const;
     
     /// Set curve domain
     bool set_domain(double t0, double t1);
@@ -233,7 +238,10 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
+
+    /// Check if curve is rational
+    bool is_rational() const { return m_is_rat != 0; }
+
     /// Check if curve is closed (start point == end point)
     bool is_closed() const;
     
@@ -258,6 +266,10 @@ public:
     /// Check if curve can be represented as a polyline
     int is_polyline(std::vector<Point>* points = nullptr, 
                    std::vector<double>* params = nullptr) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Conversion methods
+    ///////////////////////////////////////////////////////////////////////////////////////////
     
     /// Convert curve to polyline with adaptive sampling (curvature-based)
     /// Returns points and optionally parameters
@@ -304,7 +316,7 @@ public:
     /// This is slightly different than frame_at in that the frame is computed in a way
     /// so there is minimal rotation from one frame to the next (no unnecessary twist).
     /// Uses the Double Reflection Method (Wang et al. 2008)
-    /// Returns: origin (point), xaxis (tangent), yaxis (normal), zaxis (binormal)
+    /// Returns: origin (point), xaxis (normal/r), yaxis (binormal/s), zaxis (tangent/T)
     bool perpendicular_frame_at(double t, bool normalized, Point& origin, Vector& xaxis,
                                             Vector& yaxis, Vector& zaxis) const;
 
@@ -586,19 +598,37 @@ private:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Internal Helpers
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
+
     /// Find knot span index for parameter t (binary search)
     int find_span(double t) const;
-    
+
     /// Compute basis functions at parameter t
     void basis_functions(int span, double t, std::vector<double>& basis) const;
-    
+
     /// Compute basis functions and derivatives
     void basis_functions_derivatives(int span, double t, int deriv_order,
                                     std::vector<std::vector<double>>& ders) const;
 
     /// Deep copy from another NurbsCurve
     void deep_copy_from(const NurbsCurve& src);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // RMF Cache (Rotation Minimizing Frames with Quaternion SLERP)
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    mutable bool m_rmf_cached = false;
+    mutable std::vector<double> m_rmf_params;
+    mutable std::vector<std::array<double, 4>> m_rmf_quaternions;  // [w, x, y, z]
+    mutable std::vector<Point> m_rmf_origins;
+
+    void invalidate_rmf_cache() const;
+    void ensure_rmf_cache() const;
+    bool perpendicular_frame_at_internal(double t, bool normalized, Point& origin,
+                                         Vector& xaxis, Vector& yaxis, Vector& zaxis) const;
+
+    static std::array<double, 4> frame_to_quaternion(const Vector& r, const Vector& s, const Vector& t);
+    static void quaternion_to_frame(const std::array<double, 4>& q, Vector& r, Vector& s, Vector& t);
+    static std::array<double, 4> slerp(const std::array<double, 4>& q0, const std::array<double, 4>& q1, double u);
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////
