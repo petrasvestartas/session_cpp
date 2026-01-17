@@ -3476,168 +3476,330 @@ bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points,
                                      double max_edge_length) const {
     points.clear();
     if (params) params->clear();
-    
+
     if (!is_valid()) return false;
-    if (angle_tolerance <= 0.0) angle_tolerance = 0.1;  // ~5.7 degrees
-    
+    if (angle_tolerance <= 0.0) angle_tolerance = 0.1;
+
     auto [t0, t1] = domain();
     double curve_len = length();
-    
-    // Set reasonable defaults for edge lengths if not specified
-    if (max_edge_length <= 0.0) {
-        max_edge_length = curve_len / 10.0;  // At least 10 segments
-    }
-    if (min_edge_length <= 0.0) {
-        min_edge_length = curve_len / 1000.0;  // Max 1000 segments
-    }
-    
-    // Ensure min < max
-    if (min_edge_length > max_edge_length) {
-        min_edge_length = max_edge_length * 0.1;
-    }
-    
-    // Start with endpoints
-    points.push_back(point_at(t0));
-    if (params) params->push_back(t0);
-    
-    // Recursive subdivision function
-    std::function<void(double, double, const Point&, const Point&, const Vector&, const Vector&)> subdivide;
-    subdivide = [&](double ta, double tb, const Point& pa, const Point& pb,
-                    const Vector& va, const Vector& vb) {
-        // Check if segment is good enough
+
+    if (max_edge_length <= 0.0) max_edge_length = curve_len / 10.0;
+    if (min_edge_length <= 0.0) min_edge_length = curve_len / 1000.0;
+    if (min_edge_length > max_edge_length) min_edge_length = max_edge_length * 0.1;
+
+    // Collect (param, point) pairs, then sort by param
+    std::vector<std::pair<double, Point>> samples;
+    samples.push_back({t0, point_at(t0)});
+    samples.push_back({t1, point_at(t1)});
+
+    // Work queue: segments to potentially subdivide (ta, tb)
+    std::vector<std::pair<double, double>> work_queue;
+    work_queue.push_back({t0, t1});
+
+    const int max_iterations = 10000;
+    int iterations = 0;
+
+    while (!work_queue.empty() && iterations++ < max_iterations) {
+        auto [ta, tb] = work_queue.back();
+        work_queue.pop_back();
+
+        Point pa = point_at(ta);
+        Point pb = point_at(tb);
         double chord_length = pa.distance(pb);
-        
-        // Don't subdivide if too small
-        if (chord_length < min_edge_length) return;
-        
-        // Check angle between tangents
-        double cos_angle = va.dot(vb) / (va.magnitude() * vb.magnitude());
-        cos_angle = std::max(-1.0, std::min(1.0, cos_angle));  // Clamp
-        double angle = std::acos(cos_angle);
-        
-        // Subdivide if angle too large or edge too long
-        bool need_subdivide = (angle > angle_tolerance) || (chord_length > max_edge_length);
-        
-        if (!need_subdivide) {
-            // Accept this segment
-            return;
-        }
-        
-        // Subdivide at midpoint
+
+        if (chord_length < min_edge_length) continue;
+
         double tm = (ta + tb) * 0.5;
         Point pm = point_at(tm);
-        Vector vm = tangent_at(tm);
-        
-        // Recurse on both halves
-        subdivide(ta, tm, pa, pm, va, vm);
-        
-        // Add midpoint
-        points.push_back(pm);
-        if (params) params->push_back(tm);
-        
-        subdivide(tm, tb, pm, pb, vm, vb);
-    };
-    
-    // Start recursive subdivision on entire curve
-    Point p0 = point_at(t0);
-    Point p1 = point_at(t1);
-    Vector v0 = tangent_at(t0);
-    Vector v1 = tangent_at(t1);
-    
-    subdivide(t0, t1, p0, p1, v0, v1);
-    
-    // Add endpoint
-    points.push_back(point_at(t1));
-    if (params) params->push_back(t1);
-    
+
+        // Check deviation: distance from midpoint to chord
+        Vector chord = Vector(pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]);
+        Vector to_mid = Vector(pm[0] - pa[0], pm[1] - pa[1], pm[2] - pa[2]);
+        double chord_len_sq = chord.dot(chord);
+        double deviation = 0.0;
+
+        if (chord_len_sq > 1e-20) {
+            double proj = to_mid.dot(chord) / chord_len_sq;
+            Point projected(pa[0] + proj * chord[0], pa[1] + proj * chord[1], pa[2] + proj * chord[2]);
+            deviation = pm.distance(projected);
+        }
+
+        // Convert angle tolerance to approximate deviation tolerance
+        // For small angles: deviation ≈ chord_length * sin(angle/2) ≈ chord_length * angle/2
+        double deviation_tolerance = chord_length * angle_tolerance * 0.5;
+
+        bool need_subdivide = (deviation > deviation_tolerance) || (chord_length > max_edge_length);
+
+        if (need_subdivide) {
+            samples.push_back({tm, pm});
+            work_queue.push_back({ta, tm});
+            work_queue.push_back({tm, tb});
+        }
+    }
+
+    // Sort by parameter
+    std::sort(samples.begin(), samples.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    // Extract results
+    points.reserve(samples.size());
+    if (params) params->reserve(samples.size());
+
+    for (const auto& [t, p] : samples) {
+        points.push_back(p);
+        if (params) params->push_back(t);
+    }
+
     return points.size() >= 2;
 }
 
-// Divide curve into uniform number of points (simple)
+// Divide curve into equal arc-length segments using Gauss-Legendre quadrature
 bool NurbsCurve::divide_by_count(int count, std::vector<Point>& points,
                                 std::vector<double>* params,
                                 bool include_endpoints) const {
     points.clear();
     if (params) params->clear();
-    
+
     if (!is_valid()) return false;
     if (count < 2) return false;
-    
+
     auto [t0, t1] = domain();
-    double range = t1 - t0;
-    
-    if (include_endpoints) {
-        // Divide into count points including endpoints
-        // This gives (count-1) equal segments
-        for (int i = 0; i < count; i++) {
-            double t = t0 + (range * i) / (count - 1);
-            points.push_back(point_at(t));
-            if (params) params->push_back(t);
+    double dom_len = t1 - t0;
+    double h = dom_len * 1e-8;
+
+    // Compute derivative (un-normalized) at parameter t
+    auto derivative_at = [&](double t) -> Vector {
+        Point p1, p2;
+        double dt;
+        if (t <= t0 + h) {
+            p1 = point_at(t0);
+            p2 = point_at(t0 + h);
+            dt = h;
+        } else if (t >= t1 - h) {
+            p1 = point_at(t1 - h);
+            p2 = point_at(t1);
+            dt = h;
+        } else {
+            p1 = point_at(t - h);
+            p2 = point_at(t + h);
+            dt = 2.0 * h;
         }
-    } else {
-        // Divide into count interior points
-        // This gives (count+1) equal segments
-        for (int i = 0; i < count; i++) {
-            double t = t0 + (range * (i + 1)) / (count + 1);
-            points.push_back(point_at(t));
-            if (params) params->push_back(t);
+        return Vector((p2[0] - p1[0]) / dt, (p2[1] - p1[1]) / dt, (p2[2] - p1[2]) / dt);
+    };
+
+    // 5-point Gauss-Legendre nodes and weights for [-1, 1]
+    static const double GL_NODES[5] = {-0.9061798459386640, -0.5384693101056831, 0.0, 0.5384693101056831, 0.9061798459386640};
+    static const double GL_WEIGHTS[5] = {0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891};
+
+    // Arc length via Gauss-Legendre quadrature
+    auto arc_length_gauss = [&](double ta, double tb) -> double {
+        double mid = (ta + tb) * 0.5;
+        double half = (tb - ta) * 0.5;
+        double sum = 0.0;
+        for (int i = 0; i < 5; i++) {
+            double t = mid + half * GL_NODES[i];
+            sum += GL_WEIGHTS[i] * derivative_at(t).magnitude();
         }
+        return half * sum;
+    };
+
+    // Build arc-length table with high resolution
+    int n_samples = std::max(1000, count * 100);
+    double dt = (t1 - t0) / n_samples;
+
+    std::vector<double> t_vals(n_samples + 1);
+    std::vector<double> s_vals(n_samples + 1);
+
+    t_vals[0] = t0;
+    s_vals[0] = 0.0;
+
+    for (int i = 1; i <= n_samples; i++) {
+        t_vals[i] = t0 + i * dt;
+        s_vals[i] = s_vals[i-1] + arc_length_gauss(t_vals[i-1], t_vals[i]);
     }
-    
+
+    double total_len = s_vals[n_samples];
+    int n_segs = include_endpoints ? (count - 1) : (count + 1);
+    double seg_len = total_len / n_segs;
+
+    // Find parameter at target arc length with Newton-Raphson refinement
+    auto find_t_at_s = [&](double s_target) -> double {
+        if (s_target <= 0.0) return t0;
+        if (s_target >= total_len) return t1;
+
+        // Binary search for bracket
+        int lo = 0, hi = n_samples;
+        while (hi - lo > 1) {
+            int mid = (lo + hi) / 2;
+            if (s_vals[mid] < s_target) lo = mid;
+            else hi = mid;
+        }
+
+        // Initial guess: linear interpolation
+        double frac = (s_target - s_vals[lo]) / (s_vals[hi] - s_vals[lo]);
+        double t = t_vals[lo] + frac * (t_vals[hi] - t_vals[lo]);
+
+        // Newton-Raphson refinement
+        double t_lo = t_vals[lo], t_hi = t_vals[hi];
+        for (int iter = 0; iter < 20; iter++) {
+            double s_cur = s_vals[lo] + arc_length_gauss(t_vals[lo], t);
+            double error = s_cur - s_target;
+
+            if (std::abs(error) < 1e-12) break;
+
+            double speed = derivative_at(t).magnitude();
+            if (speed < 1e-14) {
+                if (error > 0) { t_hi = t; t = (t_lo + t_hi) * 0.5; }
+                else { t_lo = t; t = (t_lo + t_hi) * 0.5; }
+                continue;
+            }
+
+            double t_new = t - error / speed;
+            if (t_new <= t_lo || t_new >= t_hi) {
+                if (error > 0) { t_hi = t; t = (t_lo + t_hi) * 0.5; }
+                else { t_lo = t; t = (t_lo + t_hi) * 0.5; }
+            } else {
+                t = t_new;
+            }
+        }
+        return t;
+    };
+
+    points.reserve(count);
+    if (params) params->reserve(count);
+
+    for (int i = 0; i < count; i++) {
+        double s_target;
+        if (include_endpoints) {
+            s_target = seg_len * i;
+        } else {
+            s_target = seg_len * (i + 1);
+        }
+
+        double t = find_t_at_s(s_target);
+        points.push_back(point_at(t));
+        if (params) params->push_back(t);
+    }
+
     return true;
 }
 
-// Divide curve by approximate arc length
+// Divide curve by arc length using Gauss-Legendre quadrature
 bool NurbsCurve::divide_by_length(double segment_length, std::vector<Point>& points,
                                  std::vector<double>* params) const {
     points.clear();
     if (params) params->clear();
-    
+
     if (!is_valid()) return false;
     if (segment_length <= 0.0) return false;
-    
-    double curve_len = length();
-    int approx_count = static_cast<int>(std::ceil(curve_len / segment_length)) + 1;
-    
-    // Use adaptive approach to get approximately equal arc lengths
+
     auto [t0, t1] = domain();
-    
-    points.push_back(point_at(t0));
-    if (params) params->push_back(t0);
-    
-    double accumulated_length = 0.0;
-    double target_length = segment_length;
-    Point p_current = point_at(t0);
-    
-    // Sample densely and accumulate arc length
-    int num_samples = std::max(100, approx_count * 10);
-    double dt = (t1 - t0) / num_samples;
-    
-    for (int i = 1; i <= num_samples; i++) {
-        double t_next = t0 + i * dt;
-        Point p_next = point_at(t_next);
-        double seg_len = p_current.distance(p_next);
-        
-        accumulated_length += seg_len;
-        
-        // Check if we've reached target length
-        if (accumulated_length >= target_length) {
-            points.push_back(p_next);
-            if (params) params->push_back(t_next);
-            
-            accumulated_length = 0.0;
-            target_length = segment_length;
+    double dom_len = t1 - t0;
+    double h = dom_len * 1e-8;
+
+    // Compute derivative (un-normalized) at parameter t
+    auto derivative_at = [&](double t) -> Vector {
+        Point p1, p2;
+        double dt;
+        if (t <= t0 + h) {
+            p1 = point_at(t0);
+            p2 = point_at(t0 + h);
+            dt = h;
+        } else if (t >= t1 - h) {
+            p1 = point_at(t1 - h);
+            p2 = point_at(t1);
+            dt = h;
+        } else {
+            p1 = point_at(t - h);
+            p2 = point_at(t + h);
+            dt = 2.0 * h;
         }
-        
-        p_current = p_next;
+        return Vector((p2[0] - p1[0]) / dt, (p2[1] - p1[1]) / dt, (p2[2] - p1[2]) / dt);
+    };
+
+    // 5-point Gauss-Legendre nodes and weights for [-1, 1]
+    static const double GL_NODES[5] = {-0.9061798459386640, -0.5384693101056831, 0.0, 0.5384693101056831, 0.9061798459386640};
+    static const double GL_WEIGHTS[5] = {0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891};
+
+    // Arc length via Gauss-Legendre quadrature
+    auto arc_length_gauss = [&](double ta, double tb) -> double {
+        double mid = (ta + tb) * 0.5;
+        double half = (tb - ta) * 0.5;
+        double sum = 0.0;
+        for (int i = 0; i < 5; i++) {
+            double t = mid + half * GL_NODES[i];
+            sum += GL_WEIGHTS[i] * derivative_at(t).magnitude();
+        }
+        return half * sum;
+    };
+
+    // Build arc-length table with high resolution
+    int n_samples = std::max(1000, static_cast<int>(length() / segment_length) * 100);
+    double dt = (t1 - t0) / n_samples;
+
+    std::vector<double> t_vals(n_samples + 1);
+    std::vector<double> s_vals(n_samples + 1);
+
+    t_vals[0] = t0;
+    s_vals[0] = 0.0;
+
+    for (int i = 1; i <= n_samples; i++) {
+        t_vals[i] = t0 + i * dt;
+        s_vals[i] = s_vals[i-1] + arc_length_gauss(t_vals[i-1], t_vals[i]);
     }
-    
-    // Always add endpoint if not already there
-    if (points.back().distance(point_at(t1)) > segment_length * 0.1) {
-        points.push_back(point_at(t1));
-        if (params) params->push_back(t1);
+
+    double total_len = s_vals[n_samples];
+
+    // Find parameter at target arc length with Newton-Raphson refinement
+    auto find_t_at_s = [&](double s_target) -> double {
+        if (s_target <= 0.0) return t0;
+        if (s_target >= total_len) return t1;
+
+        // Binary search for bracket
+        int lo = 0, hi = n_samples;
+        while (hi - lo > 1) {
+            int mid = (lo + hi) / 2;
+            if (s_vals[mid] < s_target) lo = mid;
+            else hi = mid;
+        }
+
+        // Initial guess: linear interpolation
+        double frac = (s_target - s_vals[lo]) / (s_vals[hi] - s_vals[lo]);
+        double t = t_vals[lo] + frac * (t_vals[hi] - t_vals[lo]);
+
+        // Newton-Raphson refinement
+        double t_lo = t_vals[lo], t_hi = t_vals[hi];
+        for (int iter = 0; iter < 20; iter++) {
+            double s_cur = s_vals[lo] + arc_length_gauss(t_vals[lo], t);
+            double error = s_cur - s_target;
+
+            if (std::abs(error) < 1e-12) break;
+
+            double speed = derivative_at(t).magnitude();
+            if (speed < 1e-14) {
+                if (error > 0) { t_hi = t; t = (t_lo + t_hi) * 0.5; }
+                else { t_lo = t; t = (t_lo + t_hi) * 0.5; }
+                continue;
+            }
+
+            double t_new = t - error / speed;
+            if (t_new <= t_lo || t_new >= t_hi) {
+                if (error > 0) { t_hi = t; t = (t_lo + t_hi) * 0.5; }
+                else { t_lo = t; t = (t_lo + t_hi) * 0.5; }
+            } else {
+                t = t_new;
+            }
+        }
+        return t;
+    };
+
+    // Add points at each segment_length interval
+    for (double s = 0.0; s <= total_len + 1e-10; s += segment_length) {
+        double t = find_t_at_s(s);
+        points.push_back(point_at(t));
+        if (params) params->push_back(t);
     }
-    
+
     return points.size() >= 2;
 }
 

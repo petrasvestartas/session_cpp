@@ -1,4 +1,5 @@
 #include "tolerance.h"
+#include "point.h"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -34,6 +35,20 @@ void Tolerance::set_unit(const std::string& value) {
     _unit = value;
 }
 
+void Tolerance::set_absolute(double value) {
+    _absolute = value;
+    _has_absolute = true;
+}
+
+void Tolerance::set_relative(double value) {
+    _relative = value;
+    _has_relative = true;
+}
+
+void Tolerance::set_angular(double value) {
+    _angular = value;
+    _has_angular = true;
+}
 
 void Tolerance::set_approximation(double value) {
     _approximation = value;
@@ -93,6 +108,13 @@ bool Tolerance::is_angle_zero(double a) const {
 
 bool Tolerance::is_angles_close(double a, double b) const {
     return std::abs(a - b) <= angular();
+}
+
+bool Tolerance::is_point_close(const Point& a, const Point& b) const {
+    double dx = b[0] - a[0];
+    double dy = b[1] - a[1];
+    double dz = b[2] - a[2];
+    return (dx * dx + dy * dy + dz * dz) <= absolute() * absolute();
 }
 
 std::string Tolerance::key(double x, double y, double z, int precision) const {

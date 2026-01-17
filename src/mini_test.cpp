@@ -53,16 +53,16 @@ void record_check(bool passed, int line, const char *expr_text,
 
 static std::string extract_timed_code(const RegisteredTest &t,
                                       const std::vector<CheckRecord> &checks) {
-  // Find the first check line to determine where setup code ends
-  int first_check_line = INT_MAX;
+  // Find the last check line to determine where test code ends
+  int last_check_line = 0;
   for (const auto &c : checks) {
-    if (c.line < first_check_line) {
-      first_check_line = c.line;
+    if (c.line > last_check_line) {
+      last_check_line = c.line;
     }
   }
 
   int start_line = t.line + 1;  // line after MINI_TEST macro
-  int end_line = first_check_line > 0 ? first_check_line - 1 : start_line + 100;
+  int end_line = last_check_line > 0 ? last_check_line + 10 : start_line + 200;
 
   std::ifstream ifs(t.file);
   if (!ifs.is_open()) {
@@ -90,8 +90,7 @@ static std::string extract_timed_code(const RegisteredTest &t,
       if (first != std::string::npos) {
         trimmed = trimmed.substr(first);
         if (trimmed == "}") {
-          ++current;
-          continue;
+          break;  // End of test function
         }
       }
       if (!code.empty()) {

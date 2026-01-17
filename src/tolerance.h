@@ -6,6 +6,8 @@
 
 namespace session_cpp {
 
+class Point;
+
 // Scale factor
 constexpr double SCALE = 1e6;
 
@@ -21,7 +23,7 @@ public:
     static constexpr double TO_RADIANS = PI / 180.0;
     
     // Default tolerance values (double precision)
-    static constexpr double ABSOLUTE = 1e-6;
+    static constexpr double ABSOLUTE = 1e-9;
     static constexpr double RELATIVE = 1e-6;
     static constexpr double ANGULAR = 1e-6;
     static constexpr double APPROXIMATION = 1e-3;
@@ -29,7 +31,7 @@ public:
     static constexpr double LINEARDEFLECTION = 1e-3;
     static constexpr double ANGULARDEFLECTION = 1e-1;
     static constexpr double ANGLE_TOLERANCE_DEGREES = 0.11;
-    static constexpr double ZERO_TOLERANCE = 1e-12;
+    static constexpr double ZERO_TOLERANCE = 1e-12; // do not change this value, it is used algorithms heavily
     static constexpr double ROUNDING = 6;
 
 private:
@@ -112,7 +114,9 @@ public:
     bool is_angle_zero(double a) const;
     /// Check if two angles are close (radians)
     bool is_angles_close(double a, double b) const;
-    
+    /// Check if two 3D points are equal within absolute tolerance
+    bool is_point_close(const Point& a, const Point& b) const;
+
     // Formatting
     /// Create a geometric key string for 3D point with optional precision
     std::string key(double x, double y, double z, int precision = -999) const;
