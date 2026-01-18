@@ -452,21 +452,17 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
 }
 
 // Find span using binary search
-// Implementation matches OpenNURBS ON_NurbsSpanIndex
 int NurbsCurve::find_span(double t) const {
-    // OpenNURBS shifts knot pointer by (order-2) to work with compressed format
     // Domain is knot[order-2] to knot[cv_count-1]
     const double* knot = m_knot.data() + (m_order - 2);
     int len = m_cv_count - m_order + 2;
-    
-    // Binary search for span
+
+    if (t <= knot[0]) return 0;
+    if (t >= knot[len - 1]) return len - 2;
+
+    // Binary search
     int low = 0;
     int high = len - 1;
-    
-    if (t <= knot[0]) return 0;
-    if (t >= knot[len-1]) return len - 2;
-    
-    // Binary search
     while (high > low + 1) {
         int mid = (low + high) / 2;
         if (t < knot[mid]) {
@@ -475,37 +471,28 @@ int NurbsCurve::find_span(double t) const {
             low = mid;
         }
     }
-    
+
     return low;
 }
 
 // Compute basis functions (Cox-de Boor algorithm)
-// Defensive implementation to prevent divide-by-zero at repeated knots
 void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis) const {
     basis.resize(m_order);
     std::vector<double> left(m_order);
     std::vector<double> right(m_order);
-    
-    const double eps = 1e-14;
-    
-    // Offset knot pointer like OpenNURBS does
+
     const double* knot = m_knot.data() + (m_order - 2) + span;
-    
+
     basis[0] = 1.0;
-    
+
     for (int j = 1; j < m_order; j++) {
         left[j] = t - knot[1 - j];
         right[j] = knot[j] - t;
         double saved = 0.0;
-        
+
         for (int r = 0; r < j; r++) {
             double denom = right[r + 1] + left[j - r];
-            double temp;
-            if (std::abs(denom) <= eps) {
-                temp = 0.0;  // Safe fallback for zero denominator
-            } else {
-                temp = basis[r] / denom;
-            }
+            double temp = (denom != 0.0) ? basis[r] / denom : 0.0;
             basis[r] = saved + right[r + 1] * temp;
             saved = left[j - r] * temp;
         }
@@ -1599,10 +1586,9 @@ bool NurbsCurve::clean_knots(double knot_tolerance) {
     return false;
 }
 
-// Compute basis function derivatives
+// Compute basis function derivatives using Piegl & Tiller Algorithm A2.3
 void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order,
                                             std::vector<std::vector<double>>& ders) const {
-    // Algorithm A2.3 from "The NURBS Book" (Piegl & Tiller)
     int p = degree();
     int n_der = std::min(deriv_order, p);
 
@@ -1612,16 +1598,17 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
     std::vector<double> right(p + 1);
     std::vector<std::vector<double>> ndu(p + 1, std::vector<double>(p + 1, 0.0));
 
-    // Offset knot pointer like OpenNURBS and basis_functions do
+    // Use same knot offset as basis_functions
     const double* knot = m_knot.data() + (m_order - 2) + span;
-    
+
     ndu[0][0] = 1.0;
     for (int j = 1; j <= p; ++j) {
         left[j] = t - knot[1 - j];
         right[j] = knot[j] - t;
         double saved = 0.0;
         for (int r = 0; r < j; ++r) {
-            double temp = ndu[r][j - 1] / (right[r + 1] + left[j - r]);
+            ndu[j][r] = right[r + 1] + left[j - r];  // Store knot differences
+            double temp = ndu[r][j - 1] / ndu[j][r];
             ndu[r][j] = saved + right[r + 1] * temp;
             saved = left[j - r] * temp;
         }
@@ -1633,54 +1620,47 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
         ders[0][j] = ndu[j][p];
     }
 
-    // Compute derivatives
+    // Compute derivatives using Eq. 2.10 from The NURBS Book
     std::vector<std::vector<double>> a(2, std::vector<double>(p + 1, 0.0));
     for (int r = 0; r <= p; ++r) {
-        int s1 = 0;
-        int s2 = 1;
+        int s1 = 0, s2 = 1;
         a[0][0] = 1.0;
 
         for (int k = 1; k <= n_der; ++k) {
             double d = 0.0;
             int rk = r - k;
             int pk = p - k;
-            int j1, j2;
+
             if (r >= k) {
-                a[s2][0] = a[s1][0] / (right[rk + 1] + left[k]);
+                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
                 d = a[s2][0] * ndu[rk][pk];
-            } else {
-                a[s2][0] = 0.0;
             }
-            if (rk >= -1) {
-                j1 = 1;
-            } else {
-                j1 = -rk;
-            }
-            if (r - 1 <= pk) {
-                j2 = k - 1;
-            } else {
-                j2 = p - r;
-            }
+
+            int j1 = (rk >= -1) ? 1 : -rk;
+            int j2 = (r - 1 <= pk) ? k - 1 : p - r;
+
             for (int j = j1; j <= j2; ++j) {
-                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / (right[rk + j + 1] + left[k - j]);
+                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
                 d += a[s2][j] * ndu[rk + j][pk];
             }
+
             if (r <= pk) {
-                a[s2][k] = -a[s1][k - 1] / (right[r + 1] + left[pk - r]);
+                a[s2][k] = -a[s1][k - 1] / ndu[pk + 1][r];
                 d += a[s2][k] * ndu[r][pk];
             }
+
             ders[k][r] = d;
             std::swap(s1, s2);
         }
     }
 
-    // Multiply derivatives by the correct factorial term
-    double factorial = 1.0;
+    // Apply factorial scaling: p!/(p-k)!
+    double r = (double)p;
     for (int k = 1; k <= n_der; ++k) {
-        factorial *= k;
         for (int j = 0; j <= p; ++j) {
-            ders[k][j] *= factorial;
+            ders[k][j] *= r;
         }
+        r *= (double)(p - k);
     }
 }
 

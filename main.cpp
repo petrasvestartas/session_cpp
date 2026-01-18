@@ -7,7 +7,6 @@
 using namespace session_cpp;
 
 int main() {
-
     std::vector<Point> points = {
         Point(1.957614, 1.140253, -0.191281),
         Point(0.912252, 1.886721, 0),
@@ -23,53 +22,56 @@ int main() {
     };
 
     auto curve = NurbsCurve::create(false, 2, points);
+    auto [t0, t1] = curve.domain();
 
-    // Get point at parameter t
-    Point point_at = curve.point_at(0.5);
-    std::cout << point_at << std::endl;
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "Domain: [" << t0 << ", " << t1 << "]" << std::endl;
 
-    // Get point and derivatives at parameter t
-    std::vector<Vector> derivatives = curve.evaluate(0.5, 2);
-    for (size_t i = 0; i < derivatives.size(); ++i) {
-        Vector d = derivatives[i];
-        std::cout << "Derivative " << i << ": " << d << std::endl;
-        // d is the i-th derivative at t=0.5
+    // Check tangent_at at domain boundaries
+    std::cout << "\ntangent_at(t0): " << curve.tangent_at(t0) << std::endl;
+    std::cout << "tangent_at(t1): " << curve.tangent_at(t1) << std::endl;
+
+    // Check evaluate derivatives at boundaries
+    std::cout << "\nevaluate at t0:" << std::endl;
+    auto d0 = curve.evaluate(t0, 2);
+    for (size_t i = 0; i < d0.size(); ++i) {
+        std::cout << "  D" << i << ": " << d0[i] << std::endl;
     }
 
-    // Tangent vector at parameter t
-    Vector tangent = curve.tangent_at(0.5);
-    std::cout << "Tangent at t=0.5: " << tangent << std::endl;
-    // normalized=true (default): t in [0,1] mapped to domain
-    Point o;
-    Vector t, n, b;
-    curve.frame_at(0.5, true, o, t, n, b);
-    std::cout << "Frame at t=0.5:" << std::endl;
-    std::cout << "Origin: " << o << std::endl;
-    std::cout << "Tangent: " << t << std::endl;
-    std::cout << "Normal: " << n << std::endl;
-    std::cout << "Binormal: " << b << std::endl;
+    std::cout << "\nevaluate at t1:" << std::endl;
+    auto d1 = curve.evaluate(t1, 2);
+    for (size_t i = 0; i < d1.size(); ++i) {
+        std::cout << "  D" << i << ": " << d1[i] << std::endl;
+    }
 
+    // Check perpendicular_frame_at
+    Point o; Vector x, y, z;
+    std::cout << "\nperpendicular_frame_at(0.0, normalized=true):" << std::endl;
+    curve.perpendicular_frame_at(0.0, true, o, x, y, z);
+    std::cout << "  origin: " << o << std::endl;
+    std::cout << "  xaxis:  " << x << std::endl;
+    std::cout << "  yaxis:  " << y << std::endl;
+    std::cout << "  zaxis:  " << z << std::endl;
 
-    // Perpendicular frame at 
-    curve.perpendicular_frame_at(0.5, true, o, t, n, b);
-    std::cout << "Perpendicular Frame at t=0.5:" << std::endl;
-    std::cout << "Origin: " << o << std::endl;
-    std::cout << "Tangent: " << t << std::endl;
-    std::cout << "Normal: " << n << std::endl;
-    std::cout << "Binormal: " << b << std::endl;
+    std::cout << "\nperpendicular_frame_at(0.5, normalized=true):" << std::endl;
+    curve.perpendicular_frame_at(0.5, true, o, x, y, z);
+    std::cout << "  origin: " << o << std::endl;
+    std::cout << "  xaxis:  " << x << std::endl;
+    std::cout << "  yaxis:  " << y << std::endl;
+    std::cout << "  zaxis:  " << z << std::endl;
 
-    // Points
-    Point p0 = curve.point_at_start();
-    Point p1 = curve.point_at_middle();
-    Point p2 = curve.point_at_end();
-    std::cout << "Start Point: " << p0 << std::endl;
-    std::cout << "Middle Point: " << p1 << std::endl;
-    std::cout << "End Point: " << p2 << std::endl;
+    std::cout << "\nperpendicular_frame_at(1.0, normalized=true):" << std::endl;
+    curve.perpendicular_frame_at(1.0, true, o, x, y, z);
+    std::cout << "  origin: " << o << std::endl;
+    std::cout << "  xaxis:  " << x << std::endl;
+    std::cout << "  yaxis:  " << y << std::endl;
+    std::cout << "  zaxis:  " << z << std::endl;
 
-    curve.set_start_point(Point(1.957614, 1.140253, 2.0));
-    curve.set_end_point(Point(2.15032, 1.868606, 2.0));
-    std::cout << "Modified Start Point: " << curve.point_at_start() << std::endl;
-    std::cout << "Modified End Point: " << curve.point_at_end() << std::endl;
+    std::cout << "\nRhino expected at 0.0:" << std::endl;
+    std::cout << "  origin: {1.957614, 1.140253, -0.191281}" << std::endl;
+    std::cout << "  xaxis:  {0.532768, 0.809399, -0.247046}" << std::endl;
+    std::cout << "  yaxis:  {-0.261214, -0.120387, -0.957744}" << std::endl;
+    std::cout << "  zaxis:  {-0.804938, 0.574787, 0.147288}" << std::endl;
 
     return 0;
 }

@@ -7,6 +7,7 @@
 namespace session_cpp {
 
 class Point;
+class Vector;
 
 // Scale factor
 constexpr double SCALE = 1e6;
@@ -116,6 +117,8 @@ public:
     bool is_angles_close(double a, double b) const;
     /// Check if two 3D points are equal within absolute tolerance
     bool is_point_close(const Point& a, const Point& b) const;
+    /// Check if two 3D vectors are equal within absolute tolerance
+    bool is_vector_close(const Vector& a, const Vector& b) const;
 
     // Formatting
     /// Create a geometric key string for 3D point with optional precision

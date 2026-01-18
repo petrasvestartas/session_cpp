@@ -362,16 +362,18 @@ namespace session_cpp {
 
         // Get point at parameter t
         Point point_at = curve.point_at(0.5);
+        MINI_CHECK(TOLERANCE.is_close(point_at[0], 1.445733625) && TOLERANCE.is_close(point_at[1], 1.80199875) && TOLERANCE.is_close(point_at[2], -0.134851625));
 
         // Get point and derivatives at parameter t
         std::vector<Vector> derivatives = curve.evaluate(0.5, 2);
-        for (size_t i = 0; i < derivatives.size(); ++i) {
-            Vector d = derivatives[i];
-            // d is the i-th derivative at t=0.5
-        }
+        MINI_CHECK(derivatives.size() == 3);
+        MINI_CHECK(TOLERANCE.is_close(derivatives[0][0], 1.445733625) && TOLERANCE.is_close(derivatives[0][1], 1.80199875) && TOLERANCE.is_close(derivatives[0][2], -0.134851625));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[1][0], 0.0432025) && TOLERANCE.is_close(derivatives[1][1], 1.154047) && TOLERANCE.is_close(derivatives[1][2], -0.1568445));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[2][0], 4.267853) && TOLERANCE.is_close(derivatives[2][1], -0.677778) && TOLERANCE.is_close(derivatives[2][2], -1.078813));
 
         // Tangent vector at parameter t
         Vector tangent = curve.tangent_at(0.5);
+        MINI_CHECK(TOLERANCE.is_close(tangent[0], 0.037069134389828) && TOLERANCE.is_close(tangent[1], 0.990209443486538) && TOLERANCE.is_close(tangent[2], -0.134577625575985));
 
         // normalized=true (default): t in [0,1] mapped to domain
         Point o;
@@ -404,16 +406,39 @@ namespace session_cpp {
 
         // Get multiple rotation minimization frames along the curve
         std::vector<double> params = {0.0, 0.25, 0.5, 0.75, 1.0};
-        std::vector<std::tuple<Point, Vector, Vector, Vector>> frames;
-        curve.get_perpendicular_frames(params);
+        auto frames = curve.get_perpendicular_frames(params);
+        MINI_CHECK(frames.size() == 5);
+        // Frame 0
+        auto [o0, t0, n0, b0] = frames[0];
+        MINI_CHECK(TOLERANCE.is_point_close(o0, Point(1.957614, 1.140253, -0.191281)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t0, Vector(-0.581125496423736, -0.813813957490449, 0.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n0, Vector(0.11986507185982, -0.085592841886374, 0.989093640645745)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b0, Vector(-0.80493821002255, 0.574787532929819, 0.147288051226654)));
+        // Frame 2 (middle)
+        auto [o2, t2, n2, b2] = frames[2];
+        MINI_CHECK(TOLERANCE.is_point_close(o2, Point(3.156927375, 1.3351115, 0.130488875)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t2, Vector(-0.530889276962602, 0.647586483405068, -0.546615332859574)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n2, Vector(-0.474999702128807, 0.306778027114924, 0.824780288960047)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b2, Vector(0.70180614031488, 0.697509131546342, 0.144738221716994)));
+        // Frame 4 (end)
+        auto [o4, t4, n4, b4] = frames[4];
+        MINI_CHECK(TOLERANCE.is_point_close(o4, Point(2.15032, 1.868606, 0.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t4, Vector(0.046454679835814, 0.020484049742117, -0.998710351617282)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n4, Vector(-0.91381531613289, -0.402944083501, -0.050770400554708)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b4, Vector(-0.403464410725777, 0.914995338391241, 0.0)));
 
         // Points
         Point p0 = curve.point_at_start();
         Point p1 = curve.point_at_middle();
         Point p2 = curve.point_at_end();
+        MINI_CHECK(TOLERANCE.is_close(p0[0], 1.957614) && TOLERANCE.is_close(p0[1], 1.140253) && TOLERANCE.is_close(p0[2], -0.191281));
+        MINI_CHECK(TOLERANCE.is_close(p1[0], 3.156927375) && TOLERANCE.is_close(p1[1], 1.3351115) && TOLERANCE.is_close(p1[2], 0.130488875));
+        MINI_CHECK(TOLERANCE.is_close(p2[0], 2.15032) && TOLERANCE.is_close(p2[1], 1.868606) && TOLERANCE.is_close(p2[2], 0.0));
 
         curve.set_start_point(Point(1.957614, 1.140253, 2.0));
         curve.set_end_point(Point(2.15032, 1.868606, 2.0));
+        MINI_CHECK(TOLERANCE.is_close(curve.point_at_start()[2], 2.0));
+        MINI_CHECK(TOLERANCE.is_close(curve.point_at_end()[2], 2.0));
     }
 
     MINI_TEST("NurbsCurve", "frame_at") {

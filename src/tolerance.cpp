@@ -1,5 +1,6 @@
 #include "tolerance.h"
 #include "point.h"
+#include "vector.h"
 #include <stdexcept>
 #include <cmath>
 #include <algorithm>
@@ -111,6 +112,13 @@ bool Tolerance::is_angles_close(double a, double b) const {
 }
 
 bool Tolerance::is_point_close(const Point& a, const Point& b) const {
+    double dx = b[0] - a[0];
+    double dy = b[1] - a[1];
+    double dz = b[2] - a[2];
+    return (dx * dx + dy * dy + dz * dz) <= absolute() * absolute();
+}
+
+bool Tolerance::is_vector_close(const Vector& a, const Vector& b) const {
     double dx = b[0] - a[0];
     double dy = b[1] - a[1];
     double dz = b[2] - a[2];
