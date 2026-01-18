@@ -391,41 +391,40 @@ namespace session_cpp {
         MINI_CHECK(curve.frame_at(curve.domain_end(), false, o, t, n, b) == true);
         MINI_CHECK(curve.frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
 
-        // Perpendicular frame at 
+        // Perpendicular frame at (RMF with Frenet initialization, matches Rhino)
         curve.perpendicular_frame_at(0.5, true, o, t, n, b);
-
-        MINI_CHECK(TOLERANCE.is_close(o[0], 3.156927375000000) && TOLERANCE.is_close(o[1], 1.335111500000000) && TOLERANCE.is_close(o[2], 0.130488875000000));
-        MINI_CHECK(TOLERANCE.is_close(t[0], -0.530889276962602) && TOLERANCE.is_close(t[1], 0.647586483405068) && TOLERANCE.is_close(t[2], -0.546615332859574));
-        MINI_CHECK(TOLERANCE.is_close(n[0], -0.474999702128807) && TOLERANCE.is_close(n[1], 0.306778027114924) && TOLERANCE.is_close(n[2], 0.824780288960047));
-        MINI_CHECK(TOLERANCE.is_close(b[0], 0.701806140314880) && TOLERANCE.is_close(b[1], 0.697509131546342) && TOLERANCE.is_close(b[2], 0.144738221716994));
+        MINI_CHECK(TOLERANCE.is_point_close(o, Point(3.156927, 1.335111, 0.130489)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t, Vector(0.632708, -0.703687, 0.323272)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n, Vector(0.327335, -0.135297, -0.935172)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b, Vector(0.701806, 0.697509, 0.144738)));
         MINI_CHECK(curve.perpendicular_frame_at(-0.1, true, o, t, n, b) == false);
         MINI_CHECK(curve.perpendicular_frame_at(1.1, true, o, t, n, b) == false);
         MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start(), false, o, t, n, b) == true);
         MINI_CHECK(curve.perpendicular_frame_at(curve.domain_end(), false, o, t, n, b) == true);
         MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
 
-        // Get multiple rotation minimization frames along the curve
+        // Get multiple rotation minimization frames along the curve (matches Rhino)
         std::vector<double> params = {0.0, 0.25, 0.5, 0.75, 1.0};
         auto frames = curve.get_perpendicular_frames(params);
         MINI_CHECK(frames.size() == 5);
-        // Frame 0
+        // Frame 0 (start)
         auto [o0, t0, n0, b0] = frames[0];
         MINI_CHECK(TOLERANCE.is_point_close(o0, Point(1.957614, 1.140253, -0.191281)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t0, Vector(-0.581125496423736, -0.813813957490449, 0.0)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n0, Vector(0.11986507185982, -0.085592841886374, 0.989093640645745)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b0, Vector(-0.80493821002255, 0.574787532929819, 0.147288051226654)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t0, Vector(0.532768, 0.809399, -0.247046)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n0, Vector(-0.261214, -0.120387, -0.957744)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b0, Vector(-0.804938, 0.574787, 0.147288)));
         // Frame 2 (middle)
         auto [o2, t2, n2, b2] = frames[2];
-        MINI_CHECK(TOLERANCE.is_point_close(o2, Point(3.156927375, 1.3351115, 0.130488875)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t2, Vector(-0.530889276962602, 0.647586483405068, -0.546615332859574)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n2, Vector(-0.474999702128807, 0.306778027114924, 0.824780288960047)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b2, Vector(0.70180614031488, 0.697509131546342, 0.144738221716994)));
+        MINI_CHECK(TOLERANCE.is_point_close(o2, Point(3.156927, 1.335111, 0.130489)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t2, Vector(0.632708, -0.703687, 0.323272)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n2, Vector(0.327335, -0.135297, -0.935172)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b2, Vector(0.701806, 0.697509, 0.144738)));
         // Frame 4 (end)
         auto [o4, t4, n4, b4] = frames[4];
         MINI_CHECK(TOLERANCE.is_point_close(o4, Point(2.15032, 1.868606, 0.0)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t4, Vector(0.046454679835814, 0.020484049742117, -0.998710351617282)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n4, Vector(-0.91381531613289, -0.402944083501, -0.050770400554708)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b4, Vector(-0.403464410725777, 0.914995338391241, 0.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t4, Vector(0.183308, 0.080829, 0.979727)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n4, Vector(0.896446, 0.395285, -0.200338)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b4, Vector(-0.403464, 0.914995, 0.0)));
 
         // Points
         Point p0 = curve.point_at_start();

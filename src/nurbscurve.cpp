@@ -996,9 +996,130 @@ bool NurbsCurve::perpendicular_frame_at_internal(double t, bool normalized, Poin
 
 bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin,
                                         Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
-    // Use the exact Double Reflection algorithm for accuracy
-    // The SLERP caching introduced too much interpolation error
-    return perpendicular_frame_at_internal(t, normalized, origin, xaxis, yaxis, zaxis);
+    // Rotation Minimizing Frame initialized with Frenet frame at t=0
+    // Matches Rhino's GetPerpendicularFrame behavior
+    if (!is_valid()) return false;
+
+    auto [t0, t1] = domain();
+    double param;
+    if (normalized) {
+        if (t < 0.0 || t > 1.0) return false;
+        param = t0 + t * (t1 - t0);
+    } else {
+        if (t < t0 || t > t1) return false;
+        param = t;
+    }
+
+    // Get initial frame at t0 using Frenet (curvature-based)
+    auto derivs0 = evaluate(t0, 2);
+    Vector D1_0(derivs0[1][0], derivs0[1][1], derivs0[1][2]);
+    Vector D2_0(derivs0[2][0], derivs0[2][1], derivs0[2][2]);
+
+    double D1_0_mag = D1_0.magnitude();
+    if (D1_0_mag < 1e-14) return false;
+
+    Vector T0 = D1_0 / D1_0_mag;
+
+    // Initial normal from curvature (Frenet)
+    double D2_dot_D1 = D2_0.dot(D1_0);
+    double D1_0_mag_sq = D1_0_mag * D1_0_mag;
+    Vector N0_unnorm(D2_0[0] - (D2_dot_D1 / D1_0_mag_sq) * D1_0[0],
+                     D2_0[1] - (D2_dot_D1 / D1_0_mag_sq) * D1_0[1],
+                     D2_0[2] - (D2_dot_D1 / D1_0_mag_sq) * D1_0[2]);
+
+    double N0_mag = N0_unnorm.magnitude();
+    if (N0_mag < 1e-14) {
+        Vector worldZ(0, 0, 1);
+        N0_unnorm = worldZ.cross(T0);
+        N0_mag = N0_unnorm.magnitude();
+        if (N0_mag < 1e-14) {
+            Vector worldY(0, 1, 0);
+            N0_unnorm = worldY.cross(T0);
+            N0_mag = N0_unnorm.magnitude();
+        }
+    }
+    Vector r0 = N0_unnorm / N0_mag;
+
+    // If at start, return Frenet frame directly
+    origin = point_at(param);
+    if (std::abs(param - t0) < 1e-14) {
+        Vector s0 = T0.cross(r0);
+        s0.normalize_self();
+        xaxis = r0;
+        yaxis = s0;
+        zaxis = T0;
+        return true;
+    }
+
+    // Propagate frame using Double Reflection (RMF) algorithm
+    int num_steps = std::max(10, static_cast<int>((param - t0) / (t1 - t0) * 100));
+    double dt = (param - t0) / num_steps;
+
+    Vector ri = r0;
+    double ti = t0;
+    Point xi = point_at(ti);
+    Vector Ti = T0;
+
+    for (int i = 0; i < num_steps && ti < param - 1e-14; i++) {
+        double ti_next = std::min(ti + dt, param);
+        Point xi_next = point_at(ti_next);
+        Vector Ti_next = tangent_at(ti_next);
+        Ti_next.normalize_self();
+
+        Vector v1(xi_next[0] - xi[0], xi_next[1] - xi[1], xi_next[2] - xi[2]);
+        double c1 = v1.dot(v1);
+        if (c1 < 1e-28) {
+            ti = ti_next;
+            xi = xi_next;
+            Ti = Ti_next;
+            continue;
+        }
+
+        double ri_dot_v1 = ri.dot(v1);
+        Vector rL(ri[0] - 2.0 * ri_dot_v1 / c1 * v1[0],
+                  ri[1] - 2.0 * ri_dot_v1 / c1 * v1[1],
+                  ri[2] - 2.0 * ri_dot_v1 / c1 * v1[2]);
+
+        double Ti_dot_v1 = Ti.dot(v1);
+        Vector TL(Ti[0] - 2.0 * Ti_dot_v1 / c1 * v1[0],
+                  Ti[1] - 2.0 * Ti_dot_v1 / c1 * v1[1],
+                  Ti[2] - 2.0 * Ti_dot_v1 / c1 * v1[2]);
+
+        Vector v2(Ti_next[0] - TL[0], Ti_next[1] - TL[1], Ti_next[2] - TL[2]);
+        double c2 = v2.dot(v2);
+        if (c2 < 1e-28) {
+            ri = rL;
+        } else {
+            double rL_dot_v2 = rL.dot(v2);
+            ri = Vector(rL[0] - 2.0 * rL_dot_v2 / c2 * v2[0],
+                        rL[1] - 2.0 * rL_dot_v2 / c2 * v2[1],
+                        rL[2] - 2.0 * rL_dot_v2 / c2 * v2[2]);
+        }
+
+        double ri_mag = ri.magnitude();
+        if (ri_mag > 1e-14) ri.normalize_self();
+
+        ti = ti_next;
+        xi = xi_next;
+        Ti = Ti_next;
+    }
+
+    Vector T = tangent_at(param);
+    T.normalize_self();
+
+    // Ensure ri is perpendicular to T
+    double ri_dot_T = ri.dot(T);
+    ri = Vector(ri[0] - ri_dot_T * T[0], ri[1] - ri_dot_T * T[1], ri[2] - ri_dot_T * T[2]);
+    double ri_mag = ri.magnitude();
+    if (ri_mag > 1e-14) ri.normalize_self();
+
+    Vector s = T.cross(ri);
+    s.normalize_self();
+
+    xaxis = ri;
+    yaxis = s;
+    zaxis = T;
+    return true;
 }
 
 std::vector<std::tuple<Point, Vector, Vector, Vector>>
