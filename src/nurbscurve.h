@@ -327,6 +327,9 @@ public:
     
     /// Get start point of curve
     Point point_at_start() const;
+
+    /// Get start point of curve
+    Point point_at_middle() const;
     
     /// Get end point of curve
     Point point_at_end() const;

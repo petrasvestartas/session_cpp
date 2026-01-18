@@ -248,7 +248,7 @@ namespace session_cpp {
         MINI_CHECK(planar == false);
         MINI_CHECK(arc == false);
         MINI_CHECK(on_plane == false);
-        MINI_CHECK(is_open == true);
+        MINI_CHECK(is_open == false);
         MINI_CHECK(is_polyline == false);
     }
 
@@ -339,6 +339,83 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494402948975, 0.128829830906625, 0.000000000000000)));
     }
 
+    MINI_TEST("NurbsCurve", "Evaluation"){
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+
+        std::vector<Point> points = {
+            Point(1.957614, 1.140253, -0.191281),
+            Point(0.912252, 1.886721, 0),
+            Point(3.089381, 2.701879, -0.696251),
+            Point(5.015145, 1.189141, 0.35799),
+            Point(1.854155, 0.514663, 0.347694),
+            Point(3.309532, 1.328666, 0),
+            Point(3.544072, 2.194233, 0.696217),
+            Point(2.903513, 2.091287, 0.696217),
+            Point(2.752484, 1.45432, 0),
+            Point(2.406227, 1.288248, 0),
+            Point(2.15032, 1.868606, 0)
+        };
+
+        auto curve = NurbsCurve::create(false, 2, points);
+
+        // Get point at parameter t
+        Point point_at = curve.point_at(0.5);
+
+        // Get point and derivatives at parameter t
+        std::vector<Vector> derivatives = curve.evaluate(0.5, 2);
+        for (size_t i = 0; i < derivatives.size(); ++i) {
+            Vector d = derivatives[i];
+            // d is the i-th derivative at t=0.5
+        }
+
+        // Tangent vector at parameter t
+        Vector tangent = curve.tangent_at(0.5);
+
+        // normalized=true (default): t in [0,1] mapped to domain
+        Point o;
+        Vector t, n, b;
+        curve.frame_at(0.5, true, o, t, n, b);
+
+        MINI_CHECK(TOLERANCE.is_close(o[0], 3.156927375000000) && TOLERANCE.is_close(o[1], 1.335111500000000) && TOLERANCE.is_close(o[2], 0.130488875000000));
+        MINI_CHECK(TOLERANCE.is_close(t[0], 0.701806140304030) && TOLERANCE.is_close(t[1], 0.697509131556264) && TOLERANCE.is_close(t[2], 0.144738221721788));
+        MINI_CHECK(TOLERANCE.is_close(n[0], -0.513930504714161) && TOLERANCE.is_close(n[1], 0.355053088776962) && TOLERANCE.is_close(n[2], 0.780905077761815));
+        MINI_CHECK(TOLERANCE.is_close(b[0], 0.493298669931115) && TOLERANCE.is_close(b[1], -0.622429365908747) && TOLERANCE.is_close(b[2], 0.607649657861031));
+
+        MINI_CHECK(curve.frame_at(-0.1, true, o, t, n, b) == false);
+        MINI_CHECK(curve.frame_at(1.1, true, o, t, n, b) == false);
+        MINI_CHECK(curve.frame_at(curve.domain_start(), false, o, t, n, b) == true);
+        MINI_CHECK(curve.frame_at(curve.domain_end(), false, o, t, n, b) == true);
+        MINI_CHECK(curve.frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
+
+        // Perpendicular frame at 
+        curve.perpendicular_frame_at(0.5, true, o, t, n, b);
+
+        MINI_CHECK(TOLERANCE.is_close(o[0], 3.156927375000000) && TOLERANCE.is_close(o[1], 1.335111500000000) && TOLERANCE.is_close(o[2], 0.130488875000000));
+        MINI_CHECK(TOLERANCE.is_close(t[0], -0.530889276962602) && TOLERANCE.is_close(t[1], 0.647586483405068) && TOLERANCE.is_close(t[2], -0.546615332859574));
+        MINI_CHECK(TOLERANCE.is_close(n[0], -0.474999702128807) && TOLERANCE.is_close(n[1], 0.306778027114924) && TOLERANCE.is_close(n[2], 0.824780288960047));
+        MINI_CHECK(TOLERANCE.is_close(b[0], 0.701806140314880) && TOLERANCE.is_close(b[1], 0.697509131546342) && TOLERANCE.is_close(b[2], 0.144738221716994));
+        MINI_CHECK(curve.perpendicular_frame_at(-0.1, true, o, t, n, b) == false);
+        MINI_CHECK(curve.perpendicular_frame_at(1.1, true, o, t, n, b) == false);
+        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start(), false, o, t, n, b) == true);
+        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_end(), false, o, t, n, b) == true);
+        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
+
+        // Get multiple rotation minimization frames along the curve
+        std::vector<double> params = {0.0, 0.25, 0.5, 0.75, 1.0};
+        std::vector<std::tuple<Point, Vector, Vector, Vector>> frames;
+        curve.get_perpendicular_frames(params);
+
+        // Points
+        Point p0 = curve.point_at_start();
+        Point p1 = curve.point_at_middle();
+        Point p2 = curve.point_at_end();
+
+        curve.set_start_point(Point(1.957614, 1.140253, 2.0));
+        curve.set_end_point(Point(2.15032, 1.868606, 2.0));
+    }
+
     MINI_TEST("NurbsCurve", "frame_at") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
@@ -375,6 +452,7 @@ namespace session_cpp {
         MINI_CHECK(curve.frame_at(curve.domain_start(), false, o, t, n, b) == true);
         MINI_CHECK(curve.frame_at(curve.domain_end(), false, o, t, n, b) == true);
         MINI_CHECK(curve.frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
+
     }
 
     MINI_TEST("NurbsCurve", "perpendicular_frame_at") {

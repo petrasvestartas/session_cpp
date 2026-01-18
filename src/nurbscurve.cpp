@@ -573,7 +573,7 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
     for (int k = 0; k <= max_derivs; ++k) {
         Aders[k] = {0.0, 0.0, 0.0, 0.0};
         for (int j = 0; j <= p; ++j) {
-            int cv_idx = span - p + j;
+            int cv_idx = span + j;
             const double* cv_ptr = cv(cv_idx);
             if (!cv_ptr) continue;
 
@@ -1029,6 +1029,11 @@ NurbsCurve::get_perpendicular_frames(const std::vector<double>& params) const {
 Point NurbsCurve::point_at_start() const {
     auto [t0, t1] = domain();
     return point_at(t0);
+}
+
+Point NurbsCurve::point_at_middle() const {
+    auto [t0, t1] = domain();
+    return point_at((t0 + t1) / 2.0);
 }
 
 Point NurbsCurve::point_at_end() const {
