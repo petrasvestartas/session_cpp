@@ -262,6 +262,21 @@ Xform Xform::xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
     return t * f;
 }
 
+Xform Xform::to_frame(const Plane& frame) {
+    // Transform from world XY to target frame (same as COMPAS from_frame)
+    // Matrix columns are: xaxis, yaxis, zaxis, origin
+    Vector x = frame.x_axis(), y = frame.y_axis(), z = frame.z_axis();
+    x.normalize_self(); y.normalize_self(); z.normalize_self();
+    const Point& o = frame.origin();
+
+    Xform xf;
+    xf.m[0] = x[0]; xf.m[4] = y[0]; xf.m[8]  = z[0]; xf.m[12] = o[0];
+    xf.m[1] = x[1]; xf.m[5] = y[1]; xf.m[9]  = z[1]; xf.m[13] = o[1];
+    xf.m[2] = x[2]; xf.m[6] = y[2]; xf.m[10] = z[2]; xf.m[14] = o[2];
+    xf.m[3] = 0.0;  xf.m[7] = 0.0;  xf.m[11] = 0.0;  xf.m[15] = 1.0;
+    return xf;
+}
+
 Xform Xform::scale_xyz(double scale_x, double scale_y, double scale_z) {
     Xform xform;
     xform.m[0] = scale_x;

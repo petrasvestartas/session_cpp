@@ -7,61 +7,70 @@
 using namespace session_cpp;
 
 int main() {
-    std::vector<Point> points = {
-        Point(1.957614, 1.140253, -0.191281),
-        Point(0.912252, 1.886721, 0),
-        Point(3.089381, 2.701879, -0.696251),
-        Point(5.015145, 1.189141, 0.35799),
-        Point(1.854155, 0.514663, 0.347694),
-        Point(3.309532, 1.328666, 0),
-        Point(3.544072, 2.194233, 0.696217),
-        Point(2.903513, 2.091287, 0.696217),
-        Point(2.752484, 1.45432, 0),
-        Point(2.406227, 1.288248, 0),
-        Point(2.15032, 1.868606, 0)
-    };
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 2.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(3.0, 2.0, 0.0),
+            Point(4.0, 0.0, 0.0)
+        };
 
-    auto curve = NurbsCurve::create(false, 2, points);
+        NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
-    std::cout << std::fixed << std::setprecision(6);
-    Point o; Vector x, y, z;
 
-    std::cout << "=== perpendicular_frame_at comparison with Rhino ===\n" << std::endl;
+        // Reverse the curve
+        NurbsCurve curve_reversed = curve;
+        curve_reversed.reverse();
+        // MINI_CHECK(TOLERANCE.is_point_close(curve_reversed.point_at_start(), curve.point_at_end()));
 
-    curve.perpendicular_frame_at(0.0, true, o, x, y, z);
-    std::cout << "At t=0.0:" << std::endl;
-    std::cout << "  Mine:  origin=" << o << std::endl;
-    std::cout << "         xaxis=" << x << std::endl;
-    std::cout << "         yaxis=" << y << std::endl;
-    std::cout << "         zaxis=" << z << std::endl;
-    std::cout << "  Rhino: origin={1.957614, 1.140253, -0.191281}" << std::endl;
-    std::cout << "         xaxis={0.532768, 0.809399, -0.247046}" << std::endl;
-    std::cout << "         yaxis={-0.261214, -0.120387, -0.957744}" << std::endl;
-    std::cout << "         zaxis={-0.804938, 0.574787, 0.147288}" << std::endl;
+        // Swap coordinates axes
+        curve.swap_coordinates(0, 1);
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(0), Point(0.0, 0.0, 0.0)));
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(1), Point(2.0, 1.0, 0.0)));
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(2), Point(0.0, 2.0, 0.0)));
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(3), Point(2.0, 3.0, 0.0)));
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(4), Point(0.0, 4.0, 0.0)));
 
-    std::cout << std::endl;
-    curve.perpendicular_frame_at(0.5, true, o, x, y, z);
-    std::cout << "At t=0.5:" << std::endl;
-    std::cout << "  Mine:  origin=" << o << std::endl;
-    std::cout << "         xaxis=" << x << std::endl;
-    std::cout << "         yaxis=" << y << std::endl;
-    std::cout << "         zaxis=" << z << std::endl;
-    std::cout << "  Rhino: origin={3.156927, 1.335111, 0.130489}" << std::endl;
-    std::cout << "         xaxis={0.632708, -0.703687, 0.323272}" << std::endl;
-    std::cout << "         yaxis={0.327335, -0.135297, -0.935172}" << std::endl;
-    std::cout << "         zaxis={0.701806, 0.697509, 0.144738}" << std::endl;
+        // Split curve
+        NurbsCurve curve_left;
+        NurbsCurve curve_right;
+        curve.split(0.5, curve_left, curve_right);
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.point_at_middle(), curve_left.point_at_end()));
+        // MINI_CHECK(TOLERANCE.is_point_close(curve.point_at_middle(), curve_right.point_at_start()));
 
-    std::cout << std::endl;
-    curve.perpendicular_frame_at(1.0, true, o, x, y, z);
-    std::cout << "At t=1.0:" << std::endl;
-    std::cout << "  Mine:  origin=" << o << std::endl;
-    std::cout << "         xaxis=" << x << std::endl;
-    std::cout << "         yaxis=" << y << std::endl;
-    std::cout << "         zaxis=" << z << std::endl;
-    std::cout << "  Rhino: origin={2.15032, 1.868606, 0}" << std::endl;
-    std::cout << "         xaxis={0.183308, 0.080829, 0.979727}" << std::endl;
-    std::cout << "         yaxis={0.896446, 0.395285, -0.200338}" << std::endl;
-    std::cout << "         zaxis={-0.403464, 0.914995, 0}" << std::endl;
+        // Extend curve
+        NurbsCurve curve_extended = curve;
+        curve_extended.extend(0.1, 0.1);
+        // MINI_CHECK(curve_extended.length() > curve.length());
+
+        // Make rational or non-rational
+        curve.make_rational();
+        // MINI_CHECK(curve.is_rational() == true);
+        for(size_t i = 0; i < static_cast<size_t>(curve.cv_count()); ++i){
+            // MINI_CHECK(TOLERANCE.is_close(curve.weight(static_cast<int>(i)), 1.0));
+        }
+        
+        curve.make_non_rational();
+        // MINI_CHECK(curve.is_rational() == false);
+
+        // Clamp ends - create unclamped curve manually
+        std::vector<Point> points_open = points;
+        NurbsCurve curve_open(3, false, 3, 5);  // dim=3, non-rational, order=3 (deg 2), 5 CVs
+
+        // Set control points
+        for (int i = 0; i < 5; ++i)
+            curve_open.set_cv(i, points_open[i]);
+
+        // Set unclamped uniform knots: {0, 1, 2, 3, 4, 5} (knot_count = order + cv_count - 2 = 6)
+        for (int i = 0; i < curve_open.knot_count(); ++i)
+            curve_open.set_knot(i, static_cast<double>(i));
+
+        // Now clamp
+        curve_open.clamp_end(2);  // 2 = both ends
+
+        std::vector<double> knots = curve_open.get_knots();
+        // MINI_CHECK(TOLERANCE.is_close(knots[0], knots[1]));
+        // MINI_CHECK(TOLERANCE.is_close(knots[knots.size() - 2], knots[knots.size() - 1]));
 
     return 0;
 }

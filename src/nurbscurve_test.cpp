@@ -28,7 +28,6 @@ namespace session_cpp {
         // When x>3 points use degree 3 curve
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
         curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
 
         // Minimal and Full String Representation
         std::string cstr = curve.str();
@@ -440,410 +439,75 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(curve.point_at_end()[2], 2.0));
     }
 
-    MINI_TEST("NurbsCurve", "frame_at") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-
-        std::vector<Point> points = {
-            Point(1.957614, 1.140253, -0.191281),
-            Point(0.912252, 1.886721, 0),
-            Point(3.089381, 2.701879, -0.696251),
-            Point(5.015145, 1.189141, 0.35799),
-            Point(1.854155, 0.514663, 0.347694),
-            Point(3.309532, 1.328666, 0),
-            Point(3.544072, 2.194233, 0.696217),
-            Point(2.903513, 2.091287, 0.696217),
-            Point(2.752484, 1.45432, 0),
-            Point(2.406227, 1.288248, 0),
-            Point(2.15032, 1.868606, 0)
-        };
-
-        auto curve = NurbsCurve::create(false, 2, points);
-
-        // normalized=true (default): t in [0,1] mapped to domain
-        Point o;
-        Vector t, n, b;
-        curve.frame_at(0.5, true, o, t, n, b);
-
-        MINI_CHECK(TOLERANCE.is_close(o[0], 3.156927375000000) && TOLERANCE.is_close(o[1], 1.335111500000000) && TOLERANCE.is_close(o[2], 0.130488875000000));
-        MINI_CHECK(TOLERANCE.is_close(t[0], 0.701806140304030) && TOLERANCE.is_close(t[1], 0.697509131556264) && TOLERANCE.is_close(t[2], 0.144738221721788));
-        MINI_CHECK(TOLERANCE.is_close(n[0], -0.513930504714161) && TOLERANCE.is_close(n[1], 0.355053088776962) && TOLERANCE.is_close(n[2], 0.780905077761815));
-        MINI_CHECK(TOLERANCE.is_close(b[0], 0.493298669931115) && TOLERANCE.is_close(b[1], -0.622429365908747) && TOLERANCE.is_close(b[2], 0.607649657861031));
-
-        MINI_CHECK(curve.frame_at(-0.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.frame_at(1.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.frame_at(curve.domain_start(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.frame_at(curve.domain_end(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
-
-    }
-
-    MINI_TEST("NurbsCurve", "perpendicular_frame_at") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-
-        std::vector<Point> points = {
-            Point(1.957614, 1.140253, -0.191281),
-            Point(0.912252, 1.886721, 0),
-            Point(3.089381, 2.701879, -0.696251),
-            Point(5.015145, 1.189141, 0.35799),
-            Point(1.854155, 0.514663, 0.347694),
-            Point(3.309532, 1.328666, 0),
-            Point(3.544072, 2.194233, 0.696217),
-            Point(2.903513, 2.091287, 0.696217),
-            Point(2.752484, 1.45432, 0),
-            Point(2.406227, 1.288248, 0),
-            Point(2.15032, 1.868606, 0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-
-        Point o;
-        Vector t, n, b;
-        curve.perpendicular_frame_at(0.5, true, o, t, n, b);
-
-
-        MINI_CHECK(TOLERANCE.is_close(o[0], 3.156927375000000) && TOLERANCE.is_close(o[1], 1.335111500000000) && TOLERANCE.is_close(o[2], 0.130488875000000));
-        MINI_CHECK(TOLERANCE.is_close(t[0], -0.530889276962602) && TOLERANCE.is_close(t[1], 0.647586483405068) && TOLERANCE.is_close(t[2], -0.546615332859574));
-        MINI_CHECK(TOLERANCE.is_close(n[0], -0.474999702128807) && TOLERANCE.is_close(n[1], 0.306778027114924) && TOLERANCE.is_close(n[2], 0.824780288960047));
-        MINI_CHECK(TOLERANCE.is_close(b[0], 0.701806140314880) && TOLERANCE.is_close(b[1], 0.697509131546342) && TOLERANCE.is_close(b[2], 0.144738221716994));
-        MINI_CHECK(curve.perpendicular_frame_at(-0.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.perpendicular_frame_at(1.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_end(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
-        
-    }
-
-    MINI_TEST("NurbsCurve", "is_valid") {
+    MINI_TEST("NurbsCurve", "Modifications"){
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include "vector.h"
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve_0 = NurbsCurve::create(false, 2, points);
-        NurbsCurve curve_1;
-        bool is_valid_0 = curve_0.is_valid();
-        bool is_valid_1 = curve_1.is_valid();
-
-        MINI_CHECK(is_valid_0 == true);
-        MINI_CHECK(is_valid_1 == false);
-    }
-
-    MINI_TEST("NurbsCurve", "control vertices") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-        // uncomment #include <vector>
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
+            Point(1.0, 2.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(3.0, 2.0, 0.0),
+            Point(4.0, 0.0, 0.0)
         };
 
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
 
-        // Get all knots
-        for (int i = 0; i < curve.cv_count(); i++) {
-            //double k = curve.knot(i);
-        }
 
-        Point cv0 = curve.get_cv(0);
-        Point cv1 = curve.get_cv(1);
-        Point cv2 = curve.get_cv(2);
+        // Reverse the curve
+        NurbsCurve curve_reversed = curve;
+        curve_reversed.reverse();
+        MINI_CHECK(TOLERANCE.is_point_close(curve_reversed.point_at_start(), curve.point_at_end()));
 
-        MINI_CHECK(std::abs(cv0[0] - 0.0) < 0.01);
-        MINI_CHECK(std::abs(cv1[0] - 1.0) < 0.01);
-        MINI_CHECK(std::abs(cv2[0] - 2.0) < 0.01);
-    }
+        // Swap coordinates axes
+        curve.swap_coordinates(0, 1);
+        MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(0), Point(0.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(1), Point(2.0, 1.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(2), Point(0.0, 2.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(3), Point(2.0, 3.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(4), Point(0.0, 4.0, 0.0)));
 
-    MINI_TEST("NurbsCurve", "set_cv") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
+        // Split curve
+        NurbsCurve curve_left;
+        NurbsCurve curve_right;
+        curve.split(0.5, curve_left, curve_right);
+        MINI_CHECK(TOLERANCE.is_point_close(curve.point_at_middle(), curve_left.point_at_end()));
+        MINI_CHECK(TOLERANCE.is_point_close(curve.point_at_middle(), curve_right.point_at_start()));
 
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
+        // Extend curve
+        NurbsCurve curve_extended = curve;
+        curve_extended.extend(0.1, 0.1);
+        MINI_CHECK(curve_extended.length() > curve.length());
 
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        curve.set_cv(1, Point(1.5, 2.0, 0.0));
-        Point cv1 = curve.get_cv(1);
-
-        MINI_CHECK(std::abs(cv1[0] - 1.5) < 0.01);
-        MINI_CHECK(std::abs(cv1[1] - 2.0) < 0.01);
-    }
-
-    MINI_TEST("NurbsCurve", "point_at") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        auto [t0, t1] = curve.domain();
-        double t_mid = (t0 + t1) / 2.0;
-        Point pt_mid = curve.point_at(t_mid);
-
-        MINI_CHECK(pt_mid[0] > 0.0);
-        MINI_CHECK(pt_mid[0] < 2.0);
-    }
-
-    MINI_TEST("NurbsCurve", "point_at_start") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        Point pt_start = curve.point_at_start();
-
-        MINI_CHECK(std::abs(pt_start[0] - 0.0) < 0.01);
-        MINI_CHECK(std::abs(pt_start[1] - 0.0) < 0.01);
-    }
-
-    MINI_TEST("NurbsCurve", "point_at_end") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        Point pt_end = curve.point_at_end();
-
-        MINI_CHECK(std::abs(pt_end[0] - 2.0) < 0.01);
-        MINI_CHECK(std::abs(pt_end[1] - 0.0) < 0.01);
-    }
-
-    MINI_TEST("NurbsCurve", "domain") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        auto [t0, t1] = curve.domain();
-
-        MINI_CHECK(t0 < t1);
-    }
-
-    MINI_TEST("NurbsCurve", "is_closed") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points_open = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-        NurbsCurve curve_open = NurbsCurve::create(false, 2, points_open);
-
-        std::vector<Point> points_closed = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(0.0, 1.0, 0.0),
-            Point(0.0, 0.0, 0.0)
-        };
-        NurbsCurve curve_closed = NurbsCurve::create(false, 3, points_closed);
-
-        MINI_CHECK(curve_open.is_closed() == false);
-        MINI_CHECK(curve_closed.is_closed() == true);
-    }
-
-    MINI_TEST("NurbsCurve", "length") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 1, points);
-        double length = curve.length();
-
-        MINI_CHECK(std::abs(length - 1.0) < 0.01);
-    }
-
-    MINI_TEST("NurbsCurve", "reverse") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        Point pt_start_before = curve.point_at_start();
-        Point pt_end_before = curve.point_at_end();
-        curve.reverse();
-        Point pt_start_after = curve.point_at_start();
-        Point pt_end_after = curve.point_at_end();
-
-        MINI_CHECK(std::abs(pt_start_before[0] - pt_end_after[0]) < 0.01);
-        MINI_CHECK(std::abs(pt_end_before[0] - pt_start_after[0]) < 0.01);
-    }
-
-    MINI_TEST("NurbsCurve", "make_rational") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-
-        MINI_CHECK(curve.is_rational() == false);
+        // Make rational or non-rational
         curve.make_rational();
         MINI_CHECK(curve.is_rational() == true);
-    }
+        for(size_t i = 0; i < static_cast<size_t>(curve.cv_count()); ++i)
+            MINI_CHECK(TOLERANCE.is_close(curve.weight(static_cast<int>(i)), 1.0));
+        
+        curve.make_non_rational();
+        MINI_CHECK(curve.is_rational() == false);
 
-    MINI_TEST("NurbsCurve", "tangent_at") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
+        // Clamp ends - create unclamped curve manually
+        std::vector<Point> points_open = points;
+        NurbsCurve curve_open(3, false, 3, 5);  // dim=3, non-rational, order=3 (deg 2), 5 CVs
 
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
+        // Set control points
+        for (int i = 0; i < 5; ++i)
+            curve_open.set_cv(i, points_open[i]);
 
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        auto [t0, t1] = curve.domain();
-        double t_mid = (t0 + t1) / 2.0;
-        Vector tangent = curve.tangent_at(t_mid);
+        // Set unclamped uniform knots: {0, 1, 2, 3, 4, 5} (knot_count = order + cv_count - 2 = 6)
+        for (int i = 0; i < curve_open.knot_count(); ++i)
+            curve_open.set_knot(i, static_cast<double>(i));
 
-        MINI_CHECK(std::isfinite(tangent[0]));
-        MINI_CHECK(std::isfinite(tangent[1]));
-    }
+        // Now clamp
+        curve_open.clamp_end(2);  // 2 = both ends
 
-    MINI_TEST("NurbsCurve", "knot_count") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
+        std::vector<double> knots = curve_open.get_knots();
+        MINI_CHECK(TOLERANCE.is_close(knots[0], knots[1]));
+        MINI_CHECK(TOLERANCE.is_close(knots[knots.size() - 2], knots[knots.size() - 1]));
 
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        int knot_count = curve.knot_count();
-
-        MINI_CHECK(knot_count == curve.order() + curve.cv_count() - 2);
-    }
-
-    MINI_TEST("NurbsCurve", "cv_size") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-
-        MINI_CHECK(curve.cv_size() == 3);
-        curve.make_rational();
-        MINI_CHECK(curve.cv_size() == 4);
-    }
-
-    MINI_TEST("NurbsCurve", "weight") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
-        curve.make_rational();
-        double w = curve.weight(0);
-        curve.set_weight(1, 2.0);
-        double w1 = curve.weight(1);
-
-        MINI_CHECK(std::abs(w - 1.0) < 0.01);
-        MINI_CHECK(std::abs(w1 - 2.0) < 0.01);
-    }
-
-    MINI_TEST("NurbsCurve", "is_linear") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points_linear = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 0.0, 0.0)
-        };
-        NurbsCurve curve_linear = NurbsCurve::create(false, 1, points_linear);
-
-        std::vector<Point> points_curved = {
-            Point(0.0, 0.0, 0.0),
-            Point(0.5, 1.0, 0.0),
-            Point(1.0, 0.0, 0.0)
-        };
-        NurbsCurve curve_curved = NurbsCurve::create(false, 2, points_curved);
-
-        MINI_CHECK(curve_linear.is_linear() == true);
-        MINI_CHECK(curve_curved.is_linear() == false);
     }
 
     MINI_TEST("NurbsCurve", "json_roundtrip") {

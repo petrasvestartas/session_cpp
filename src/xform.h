@@ -68,6 +68,8 @@ public:
     static Xform plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
     /// Transform from XY to a plane coordinate system
     static Xform xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
+    /// Transform from world XY to target frame/plane (same as COMPAS from_frame)
+    static Xform to_frame(const Plane& frame);
     /// Scale along XYZ about the world origin
     static Xform scale_xyz(double scale_x, double scale_y, double scale_z);
     /// Uniform scale about a point
