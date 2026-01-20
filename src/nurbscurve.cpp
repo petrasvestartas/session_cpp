@@ -1332,9 +1332,9 @@ bool NurbsCurve::insert_knot(double knot_value, int knot_multiplicity) {
         }
 
         // Find B-spline span index k in full knot vector
-        // Use existing compressed find_span and map to full index: k = span + 1
+        // find_span returns index relative to m_knot[order-2], map to full: k = span + order - 1
         int span = find_span(knot_value);
-        int k = span + 1;
+        int k = span + m_order - 1;
 
         // Single-knot insertion (Algorithm A5.1 specialized to r = 1)
         int m_full = full_knot_count - 1; // last index in U
@@ -1561,13 +1561,127 @@ bool NurbsCurve::clamp_end(int end) {
 // Trim curve to interval
 bool NurbsCurve::trim(double t0, double t1) {
     if (!is_valid() || t0 >= t1) return false;
-    
+
     auto [d0, d1] = domain();
-    if (t0 == d0 && t1 == d1) return true; // Already at desired domain
-    
-    // This is a simplified trim - for production use, need full de Boor algorithm
-    // For now, just adjust domain
-    return set_domain(t0, t1);
+    if (t0 < d0 - Tolerance::ZERO_TOLERANCE || t1 > d1 + Tolerance::ZERO_TOLERANCE) return false;
+    t0 = std::max(t0, d0);
+    t1 = std::min(t1, d1);
+    if (std::abs(t0 - d0) < Tolerance::ZERO_TOLERANCE && std::abs(t1 - d1) < Tolerance::ZERO_TOLERANCE)
+        return true;
+
+    int p = degree();
+    bool trim_start = (t0 > d0 + Tolerance::ZERO_TOLERANCE);
+    bool trim_end = (t1 < d1 - Tolerance::ZERO_TOLERANCE);
+
+    // Insert knots at trim boundaries to multiplicity = degree
+    if (trim_start) {
+        if (!insert_knot(t0, p)) return false;
+    }
+    if (trim_end) {
+        if (!insert_knot(t1, p)) return false;
+    }
+
+    // Build full knot vector
+    int full_knot_count = m_cv_count + m_order;
+    std::vector<double> U(full_knot_count);
+    U[0] = m_knot.front();
+    for (int i = 0; i < static_cast<int>(m_knot.size()); ++i) {
+        U[i + 1] = m_knot[i];
+    }
+    U[full_knot_count - 1] = m_knot.back();
+
+    // Find span indices for t0 and t1
+    // After knot insertion, t0 and t1 have multiplicity p at interior points
+    const double tol = Tolerance::ZERO_TOLERANCE;
+
+    // Find the LAST knot equal to t0 (this is where the curve "enters" the trimmed domain)
+    int start_span = -1;
+    for (int i = full_knot_count - 1; i >= 0; --i) {
+        if (std::abs(U[i] - t0) < tol) {
+            start_span = i;
+            break;
+        }
+    }
+
+    // Find the FIRST knot equal to t1 (this is where the curve "exits" the trimmed domain)
+    int end_span = -1;
+    for (int i = 0; i < full_knot_count; ++i) {
+        if (std::abs(U[i] - t1) < tol) {
+            end_span = i;
+            break;
+        }
+    }
+
+    if (start_span < 0 || end_span < 0 || start_span >= end_span) return false;
+
+    // For trimmed curve:
+    // - First CV index = start_span - p (but at least 0)
+    // - Number of CVs = end_span - start_span + p
+    int first_cv = start_span - p;
+    if (first_cv < 0) first_cv = 0;
+
+    // CV count: from CV[first_cv] to the CV just before end_span
+    int last_cv = end_span - 1;
+    if (last_cv >= m_cv_count) last_cv = m_cv_count - 1;
+
+    // Ensure we have enough CVs for a valid curve of this order
+    int new_cv_count = last_cv - first_cv + 1;
+    if (new_cv_count < m_order) {
+        // Try to expand range to get minimum CVs
+        new_cv_count = m_order;
+        if (first_cv + new_cv_count - 1 < m_cv_count) {
+            last_cv = first_cv + new_cv_count - 1;
+        } else {
+            return false;
+        }
+    }
+
+    // Extract knot vector - we need new_cv_count + m_order - 2 knots (compressed form)
+    int new_knot_count = new_cv_count + m_order - 2;
+
+    // Build the new knot vector ensuring proper clamping at both ends
+    std::vector<double> new_knot(new_knot_count);
+
+    // For start: first p-1 knots should all be t0
+    // For end: last p-1 knots should all be t1
+    // In between: copy from the original
+    for (int i = 0; i < p - 1; ++i) {
+        new_knot[i] = t0;
+    }
+
+    // Middle knots: copy from position start_span to end_span - p
+    int mid_count = new_knot_count - 2 * (p - 1);
+    if (mid_count > 0) {
+        int src_start = start_span;
+        for (int i = 0; i < mid_count; ++i) {
+            int src_idx = src_start + i;
+            if (src_idx < full_knot_count) {
+                new_knot[p - 1 + i] = U[src_idx];
+            } else {
+                new_knot[p - 1 + i] = t1;
+            }
+        }
+    }
+
+    for (int i = 0; i < p - 1; ++i) {
+        new_knot[new_knot_count - p + 1 + i] = t1;
+    }
+
+    // Extract control points
+    std::vector<double> new_cv(new_cv_count * m_cv_stride);
+    for (int i = 0; i < new_cv_count; ++i) {
+        const double* src = &m_cv[(first_cv + i) * m_cv_stride];
+        double* dst = &new_cv[i * m_cv_stride];
+        std::copy(src, src + m_cv_stride, dst);
+    }
+
+    m_cv_count = new_cv_count;
+    m_cv_capacity = new_cv_count;
+    m_cv = std::move(new_cv);
+    m_knot = std::move(new_knot);
+
+    invalidate_rmf_cache();
+    return true;
 }
 
 // Split curve at parameter t
