@@ -356,7 +356,7 @@ public:
     /// Split curve at parameter t into left and right parts
     bool split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve) const;
     
-    /// Extend curve to include domain
+    /// Extend curve to include domain (natural NURBS extrapolation using De Boor)
     bool extend(double t0, double t1);
     
     /// Make curve rational (if not already)
@@ -614,6 +614,14 @@ private:
 
     /// Deep copy from another NurbsCurve
     void deep_copy_from(const NurbsCurve& src);
+
+    /// De Boor algorithm for trimming/extending B-spline spans
+    /// Based on OpenNURBS ON_EvaluateNurbsDeBoor
+    /// side: -1 = left side, +1 = right side
+    /// Returns false if knot[order-2] == knot[order-1]
+    static bool evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
+                                       double* cv, const double* knot,
+                                       int side, double t);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // RMF Cache (Rotation Minimizing Frames with Quaternion SLERP)

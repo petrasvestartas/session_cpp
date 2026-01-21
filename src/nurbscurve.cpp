@@ -1533,29 +1533,183 @@ std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve) {
     return os;
 }
 
-// Clamp end knots
+// De Boor algorithm for trimming/extending B-spline spans
+// Based on OpenNURBS ON_EvaluateNurbsDeBoor
+bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
+                                        double* cv, const double* knots,
+                                        int side, double t) {
+    int degree = order - 1;
+    double t0 = knots[degree - 1];
+    double t1 = knots[degree];
+
+    if (t0 == t1) return false;
+
+    int cv_inc = cv_stride - cv_dim;
+
+    if (side < 0) {
+        // Return left side of span (for extending right or clamping end)
+        if (t == t1 && t1 == knots[2 * degree - 1]) return true;
+
+        // Check if left end is fully multiple
+        bool fully_multiple = (t0 == knots[0]);
+
+        // Advance knots pointer by degree-1
+        knots += degree - 1;
+
+        if (fully_multiple) {
+            double dt = t - t0;
+            cv += order * cv_stride;
+            int k = order;
+            while (--k) {
+                double* cv1 = cv;
+                double* cv0 = cv1 - cv_stride;
+                const double* k1 = knots + k;
+                int i = k;
+                while (i--) {
+                    double alpha1 = dt / (*k1-- - t0);
+                    double alpha0 = 1.0 - alpha1;
+                    cv0 -= cv_inc;
+                    cv1 -= cv_inc;
+                    int j = cv_dim;
+                    while (j--) {
+                        cv0--;
+                        cv1--;
+                        *cv1 = *cv0 * alpha0 + *cv1 * alpha1;
+                    }
+                }
+            }
+        } else {
+            // Variable left end knots: delta_t = {t - knots[d-1], t - knots[d-2], ..., t - knots[0]}
+            std::vector<double> delta_t(degree);
+            const double* k0 = knots;
+            for (int idx = 0; idx < degree; idx++) {
+                delta_t[idx] = t - *k0--;
+            }
+
+            cv += order * cv_stride;
+            int k = order;
+            while (--k) {
+                double* cv1 = cv;
+                double* cv0 = cv1 - cv_stride;
+                k0 = knots;
+                const double* k1 = k0 + k;
+                int di = 0;
+                int i = k;
+                while (i--) {
+                    double alpha1 = delta_t[di++] / (*k1-- - *k0--);
+                    double alpha0 = 1.0 - alpha1;
+                    cv0 -= cv_inc;
+                    cv1 -= cv_inc;
+                    int j = cv_dim;
+                    while (j--) {
+                        cv0--;
+                        cv1--;
+                        *cv1 = *cv0 * alpha0 + *cv1 * alpha1;
+                    }
+                }
+            }
+        }
+    } else {
+        // Return right side of span (for extending left or clamping start)
+        if (t == t0 && t0 == knots[0]) return true;
+
+        // Check if right end is fully multiple
+        bool fully_multiple = (t1 == knots[2 * degree - 1]);
+
+        // Advance knots pointer by degree
+        knots += degree;
+
+        if (fully_multiple) {
+            double dt = t1 - t;
+            int k = order;
+            while (--k) {
+                double* cv0 = cv;
+                double* cv1 = cv0 + cv_stride;
+                const double* k0 = knots - k;
+                int i = k;
+                while (i--) {
+                    double alpha0 = dt / (t1 - *k0++);
+                    double alpha1 = 1.0 - alpha0;
+                    int j = cv_dim;
+                    while (j--) {
+                        *cv0 = *cv0 * alpha0 + *cv1 * alpha1;
+                        cv0++;
+                        cv1++;
+                    }
+                    cv0 += cv_inc;
+                    cv1 += cv_inc;
+                }
+            }
+        } else {
+            // Variable right end knots: delta_t = {knots[d] - t, knots[d+1] - t, ...}
+            std::vector<double> delta_t(degree);
+            const double* k1 = knots;
+            for (int idx = 0; idx < degree; idx++) {
+                delta_t[idx] = *k1++ - t;
+            }
+
+            int k = order;
+            while (--k) {
+                double* cv0 = cv;
+                double* cv1 = cv0 + cv_stride;
+                k1 = knots;
+                const double* k0 = k1 - k;
+                int di = 0;
+                int i = k;
+                while (i--) {
+                    double alpha0 = delta_t[di++] / (*k1++ - *k0++);
+                    double alpha1 = 1.0 - alpha0;
+                    int j = cv_dim;
+                    while (j--) {
+                        *cv0 = *cv0 * alpha0 + *cv1 * alpha1;
+                        cv0++;
+                        cv1++;
+                    }
+                    cv0 += cv_inc;
+                    cv1 += cv_inc;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+// Clamp end knots with proper CV adjustment using De Boor algorithm
 bool NurbsCurve::clamp_end(int end) {
     if (!is_valid()) return false;
-    
-    // end: 0 = start, 1 = end, 2 = both
     if (end < 0 || end > 2) return false;
-    
+
+    int cvdim = cv_size();
+    bool rc = true;
+
     // Clamp start
     if (end == 0 || end == 2) {
-        for (int i = 0; i < m_order - 1; i++) {
-            m_knot[i] = m_knot[m_order - 2];
+        double t = m_knot[m_order - 2];
+        if (evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[0], &m_knot[0], 1, t)) {
+            for (int i = 0; i < m_order - 2; i++) {
+                m_knot[i] = t;
+            }
+        } else {
+            rc = false;
         }
     }
-    
+
     // Clamp end
     if (end == 1 || end == 2) {
-        int knot_count = this->knot_count();
-        for (int i = m_cv_count; i < knot_count; i++) {
-            m_knot[i] = m_knot[m_cv_count - 1];
+        int i0 = m_cv_count - m_order;
+        double t = m_knot[m_cv_count - 1];
+        if (evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_knot[i0], -1, t)) {
+            int kc = knot_count();
+            for (int i = m_cv_count; i < kc; i++) {
+                m_knot[i] = t;
+            }
+        } else {
+            rc = false;
         }
     }
-    
-    return true;
+
+    return rc;
 }
 
 // Trim curve to interval
@@ -1701,32 +1855,36 @@ bool NurbsCurve::split(double t, NurbsCurve& left, NurbsCurve& right) const {
     return true;
 }
 
-// Extend curve domain
+// Extend curve domain using natural NURBS extrapolation (De Boor algorithm)
 bool NurbsCurve::extend(double t0, double t1) {
     if (!is_valid() || is_closed()) return false;
-    
+
     auto [d0, d1] = domain();
+    int cvdim = cv_size();
     bool changed = false;
-    
+
+    // Extend start (t0 < current domain start)
     if (t0 < d0) {
         clamp_end(0);
-        // Adjust start knots
+        evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[0], &m_knot[0], 1, t0);
         for (int i = 0; i < m_order - 1; i++) {
             m_knot[i] = t0;
         }
         changed = true;
     }
-    
+
+    // Extend end (t1 > current domain end)
     if (t1 > d1) {
         clamp_end(1);
-        // Adjust end knots
-        int knot_count = this->knot_count();
-        for (int i = m_cv_count; i < knot_count; i++) {
+        int i0 = m_cv_count - m_order;
+        evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_knot[i0], -1, t1);
+        int kc = knot_count();
+        for (int i = m_cv_count - 1; i < kc; i++) {
             m_knot[i] = t1;
         }
         changed = true;
     }
-    
+
     return changed;
 }
 

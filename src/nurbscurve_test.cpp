@@ -392,10 +392,10 @@ namespace session_cpp {
 
         // Perpendicular frame at (RMF with Frenet initialization, matches Rhino)
         curve.perpendicular_frame_at(0.5, true, o, t, n, b);
-        MINI_CHECK(TOLERANCE.is_point_close(o, Point(3.156927, 1.335111, 0.130489)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t, Vector(0.632708, -0.703687, 0.323272)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n, Vector(0.327335, -0.135297, -0.935172)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b, Vector(0.701806, 0.697509, 0.144738)));
+        MINI_CHECK(TOLERANCE.is_point_close(o, Point(3.156927375000000, 1.335111500000000, 0.130488875000000)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t, Vector(0.632703652329189, -0.703685357647999, 0.323284713157168)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n, Vector(0.327344206830723, -0.135306795251661, -0.935167279909370)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b, Vector(0.701806140314880, 0.697509131546342, 0.144738221716994)));
         MINI_CHECK(curve.perpendicular_frame_at(-0.1, true, o, t, n, b) == false);
         MINI_CHECK(curve.perpendicular_frame_at(1.1, true, o, t, n, b) == false);
         MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start(), false, o, t, n, b) == true);
@@ -409,21 +409,21 @@ namespace session_cpp {
         // Frame 0 (start)
         auto [o0, t0, n0, b0] = frames[0];
         MINI_CHECK(TOLERANCE.is_point_close(o0, Point(1.957614, 1.140253, -0.191281)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t0, Vector(0.532768, 0.809399, -0.247046)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n0, Vector(-0.261214, -0.120387, -0.957744)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b0, Vector(-0.804938, 0.574787, 0.147288)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t0, Vector(0.532767753269467, 0.809398954921174, -0.247046256496055)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n0, Vector(-0.261213903019039, -0.120386647366337, -0.957744408496053)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b0, Vector(-0.804938393882267, 0.574787253606414, 0.147288136473484)));
         // Frame 2 (middle)
         auto [o2, t2, n2, b2] = frames[2];
-        MINI_CHECK(TOLERANCE.is_point_close(o2, Point(3.156927, 1.335111, 0.130489)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t2, Vector(0.632708, -0.703687, 0.323272)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n2, Vector(0.327335, -0.135297, -0.935172)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b2, Vector(0.701806, 0.697509, 0.144738)));
+        MINI_CHECK(TOLERANCE.is_point_close(o2, Point(3.156927375000000, 1.335111500000000, 0.130488875000000)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t2, Vector(0.632703652329189, -0.703685357647999, 0.323284713157168)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n2, Vector(0.327344206830723, -0.135306795251661, -0.935167279909370)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b2, Vector(0.701806140314880, 0.697509131546342, 0.144738221716994)));
         // Frame 4 (end)
         auto [o4, t4, n4, b4] = frames[4];
-        MINI_CHECK(TOLERANCE.is_point_close(o4, Point(2.15032, 1.868606, 0.0)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t4, Vector(0.183308, 0.080829, 0.979727)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n4, Vector(0.896446, 0.395285, -0.200338)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b4, Vector(-0.403464, 0.914995, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(o4, Point(2.150320000000000, 1.868606000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_vector_close(t4, Vector(0.183261707605497, 0.080808692422033, 0.979737261593412)));
+        MINI_CHECK(TOLERANCE.is_vector_close(n4, Vector(0.896455027206172, 0.395289116914872, -0.200287039634224)));
+        MINI_CHECK(TOLERANCE.is_vector_close(b4, Vector(-0.403464410725777, 0.914995338391241, 0.000000000000000)));
 
         // Points
         Point p0 = curve.point_at_start();
@@ -476,10 +476,10 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), curve_left.point_at_end()));
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), curve_right.point_at_start()));
 
-        // // Extend curve
-        // NurbsCurve curve_extended = curve;
-        // curve_extended.extend(0.1, 0.1);
-        // MINI_CHECK(curve_extended.length() > curve.length());
+        // Extend curve smoothly at both ends
+        NurbsCurve curve_extended = curve;
+        curve_extended.extend(curve.domain_start()-0.5, curve.domain_end()+0.5);
+        MINI_CHECK(curve_extended.length() > curve.length());
 
         // // Make rational or non-rational
         // curve.make_rational();
