@@ -362,8 +362,9 @@ public:
     /// Make curve rational (if not already)
     bool make_rational();
     
-    /// Make curve non-rational if all weights are equal
-    bool make_non_rational();
+    /// Make curve non-rational. If force=false, fails when weights differ.
+    /// If force=true, sets all weights to 1.0 (changes geometry!)
+    bool make_non_rational(bool force = false);
     
     /// Clamp ends (add multiplicity to end knots)
     bool clamp_end(int end); // 0 = start, 1 = end, 2 = both

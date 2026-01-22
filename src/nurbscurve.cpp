@@ -218,13 +218,6 @@ const double* NurbsCurve::cv(int cv_index) const {
 Point NurbsCurve::get_cv(int cv_index) const {
     const double* cv_ptr = cv(cv_index);
     if (!cv_ptr) return Point(0, 0, 0);
-    
-    if (m_is_rat) {
-        double w = cv_ptr[m_dim];
-        if (w != 0.0) {
-            return Point(cv_ptr[0]/w, cv_ptr[1]/w, m_dim > 2 ? cv_ptr[2]/w : 0.0);
-        }
-    }
     return Point(cv_ptr[0], cv_ptr[1], m_dim > 2 ? cv_ptr[2] : 0.0);
 }
 
@@ -521,9 +514,9 @@ Point NurbsCurve::point_at(double t) const {
         double N = basis[i];
         if (m_is_rat) {
             double ww = cv_ptr[m_dim];
-            x += N * cv_ptr[0];
-            y += N * (m_dim > 1 ? cv_ptr[1] : 0.0);
-            z += N * (m_dim > 2 ? cv_ptr[2] : 0.0);
+            x += N * cv_ptr[0] * ww;
+            y += N * (m_dim > 1 ? cv_ptr[1] : 0.0) * ww;
+            z += N * (m_dim > 2 ? cv_ptr[2] : 0.0) * ww;
             w += N * ww;
         } else {
             x += N * cv_ptr[0];
@@ -570,9 +563,9 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
             double cz = (m_dim > 2) ? cv_ptr[2] : 0.0;
             double wv = m_is_rat ? cv_ptr[m_dim] : 1.0;
 
-            Aders[k][0] += Nx * cx;
-            Aders[k][1] += Nx * cy;
-            Aders[k][2] += Nx * cz;
+            Aders[k][0] += Nx * cx * wv;
+            Aders[k][1] += Nx * cy * wv;
+            Aders[k][2] += Nx * cz * wv;
             Aders[k][3] += Nx * wv;
         }
     }
@@ -1225,14 +1218,20 @@ bool NurbsCurve::make_rational() {
     return true;
 }
 
-bool NurbsCurve::make_non_rational() {
+bool NurbsCurve::make_non_rational(bool force) {
     if (!m_is_rat) return true;
-    
-    // Check if all weights are equal
-    double w0 = weight(0);
-    for (int i = 1; i < m_cv_count; i++) {
-        if (std::abs(weight(i) - w0) > Tolerance::ZERO_TOLERANCE) {
-            return false;
+
+    if (force) {
+        for (int i = 0; i < m_cv_count; i++) {
+            double* cv_ptr = cv(i);
+            if (cv_ptr) cv_ptr[m_dim] = 1.0;
+        }
+    } else {
+        double w0 = weight(0);
+        for (int i = 1; i < m_cv_count; i++) {
+            if (std::abs(weight(i) - w0) > Tolerance::ZERO_TOLERANCE) {
+                return false;
+            }
         }
     }
     

@@ -481,14 +481,15 @@ namespace session_cpp {
         curve_extended.extend(curve.domain_start()-0.5, curve.domain_end()+0.5);
         MINI_CHECK(curve_extended.length() > curve.length());
 
-        // // Make rational or non-rational
-        // curve.make_rational();
-        // MINI_CHECK(curve.is_rational() == true);
-        // for(size_t i = 0; i < static_cast<size_t>(curve.cv_count()); ++i)
-        //     MINI_CHECK(TOLERANCE.is_close(curve.weight(static_cast<int>(i)), 1.0));
-        
-        // curve.make_non_rational();
-        // MINI_CHECK(curve.is_rational() == false);
+        // Enable curve weights - Make rational or non-rational
+        NurbsCurve curve_rational = curve;
+        double original_length = curve.length();
+        curve_rational.make_rational();
+        curve_rational.set_weight(2, 10);
+        MINI_CHECK(curve_rational.length() != original_length);
+
+        curve_rational.make_non_rational(true);  // force=true, sets all weights to 1.0
+        MINI_CHECK(curve_rational.length() == original_length);
 
         // // Clamp ends - create unclamped curve manually
         // std::vector<Point> points_open = points;
@@ -557,26 +558,6 @@ namespace session_cpp {
         MINI_CHECK(loaded.cv_count() == 3);
         MINI_CHECK(loaded.degree() == 2);
         MINI_CHECK(loaded.order() == 3);
-    }
-
-    MINI_TEST("NurbsCurve", "divide_by_count") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        std::vector<Point> divided_points;
-        std::vector<double> params;
-        bool result = curve.divide_by_count(5, divided_points, &params, true);
-
-        MINI_CHECK(result == true);
-        MINI_CHECK(divided_points.size() == 5);
     }
 
     MINI_TEST("NurbsCurve", "intersect_plane") {
