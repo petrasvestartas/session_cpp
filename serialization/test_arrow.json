@@ -1,15 +1,15 @@
 {
   "type": "Arrow",
-  "guid": "2b7a642b-f4e2-4aaa-a50e-106eb058a479",
+  "guid": "b60d6937-30ae-46b7-923c-3675ac3e11fd",
   "name": "test_arrow",
   "radius": 1.0,
   "line": {
-    "guid": "cb3e230b-a713-4444-8aa9-5b80520799f8",
+    "guid": "91aa56f4-7929-483d-bdbf-4d706f3a39a3",
     "linecolor": {
       "a": 255,
       "b": 255,
       "g": 255,
-      "guid": "fd590d59-4427-46a5-975f-e6af79e9b412",
+      "guid": "be6e7eec-3bff-47a5-9e79-7a2892fd0f0a",
       "name": "white",
       "r": 255,
       "type": "Color"
@@ -20,7 +20,7 @@
     "x0": 0.0,
     "x1": 0.0,
     "xform": {
-      "guid": "c3eea184-78e1-47ec-8696-f2a1c4729e20",
+      "guid": "a666dfac-4113-4260-8b1c-c638cc42f1b6",
       "m": [
         1.0,
         0.0,
@@ -285,7 +285,7 @@
       255
     ],
     "facedata": null,
-    "guid": "9f5c9531-ff28-436b-9b2e-ab6691d34bff",
+    "guid": "fe3908e0-4d72-4b80-ade0-e3da7da0abbb",
     "halfedge": {
       "1": {
         "3": 1,
@@ -957,7 +957,7 @@
     ]
   },
   "xform": {
-    "guid": "898e9f67-9b98-465c-a353-2739ee7bd1fc",
+    "guid": "a5de8f60-f091-4c51-88c1-4c2501f47ce9",
     "m": [
       1.0,
       0.0,

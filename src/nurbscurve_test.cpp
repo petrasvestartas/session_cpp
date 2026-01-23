@@ -3,6 +3,7 @@
 #include "point.h"
 #include "plane.h"
 #include "vector.h"
+#include "xform.h"
 #include "tolerance.h"
 #include <cmath>
 
@@ -491,24 +492,60 @@ namespace session_cpp {
         curve_rational.make_non_rational(true);  // force=true, sets all weights to 1.0
         MINI_CHECK(curve_rational.length() == original_length);
 
-        // // Clamp ends - create unclamped curve manually
-        // std::vector<Point> points_open = points;
-        // NurbsCurve curve_open(3, false, 3, 5);  // dim=3, non-rational, order=3 (deg 2), 5 CVs
+        // Clamp ends - create unclamped curve manually
+        std::vector<Point> points_open = points;
+        NurbsCurve curve_open(3, false, 3, 5);  // dim=3, non-rational, order=3 (deg 2), 5 CVs
 
-        // // Set control points
-        // for (int i = 0; i < 5; ++i)
-        //     curve_open.set_cv(i, points_open[i]);
+        for (int i = 0; i < 5; ++i)
+            curve_open.set_cv(i, points_open[i]);
 
-        // // Set unclamped uniform knots: {0, 1, 2, 3, 4, 5} (knot_count = order + cv_count - 2 = 6)
-        // for (int i = 0; i < curve_open.knot_count(); ++i)
-        //     curve_open.set_knot(i, static_cast<double>(i));
+        for (int i = 0; i < curve_open.knot_count(); ++i)
+            curve_open.set_knot(i, i * 1.0);
 
-        // // Now clamp
-        // curve_open.clamp_end(2);  // 2 = both ends
+        // Now clamp, making 2 knots at the ends the same
+        curve_open.clamp_end(2);
+        std::vector<double> knots = curve_open.get_knots();
+        MINI_CHECK(TOLERANCE.is_close(knots[0], knots[1]));
+        MINI_CHECK(TOLERANCE.is_close(knots[knots.size() - 2], knots[knots.size() - 1]));
 
-        // std::vector<double> knots = curve_open.get_knots();
-        // MINI_CHECK(TOLERANCE.is_close(knots[0], knots[1]));
-        // MINI_CHECK(TOLERANCE.is_close(knots[knots.size() - 2], knots[knots.size() - 1]));
+    }
+
+    MINI_TEST("NurbsCurve", "transformations"){
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+        // uncomment #include "xform.h"
+
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 2.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(3.0, 2.0, 0.0),
+            Point(4.0, 0.0, 0.0)
+        };
+
+        // 1. transform() - Apply stored xform (in-place)                                                                 
+        //    Uses curve's internal m_xform field                                                                                           
+        NurbsCurve curve1 = NurbsCurve::create(false, 2, points);                                                         
+        curve1.xform = Xform::translation(10.0, 0.0, 0.0);  // assign directly   
+        curve1.transform();  // applies stored xform, modifies curve1  
+
+        // 2. transform(const Xform&) - Apply custom xform (in-place)
+        NurbsCurve curve2 = NurbsCurve::create(false, 2, points);
+        Xform translation = Xform::translation(10.0, 0.0, 0.0);
+        curve2.transform(translation);  // modifies curve2 directly
+
+        // 3. transformed() - Get copy with stored xform applied
+        NurbsCurve curve3 = NurbsCurve::create(false, 2, points);
+        curve3.xform = Xform::translation(10.0, 0.0, 0.0);
+        NurbsCurve curve3_transformed = curve3.transformed();  // curve3 unchanged, returns new curve
+
+        // 4. transformed(const Xform&) - Get copy with custom xform
+        NurbsCurve curve4 = NurbsCurve::create(false, 2, points);
+        Xform scale = Xform::scaling(2.0, 2.0, 2.0);
+        NurbsCurve curve4_scaled = curve4.transformed(scale);  // curve4 unchanged, returns new curve
+
+        // TODO: verify this behavior and add MINI_CHECKs
 
     }
 

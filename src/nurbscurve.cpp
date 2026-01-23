@@ -1145,6 +1145,7 @@ Point NurbsCurve::point_at_end() const {
 // Transformation
 void NurbsCurve::transform() {
     transform(xform);
+    xform = Xform::identity();
 }
 
 bool NurbsCurve::transform(const Xform& xf) {
