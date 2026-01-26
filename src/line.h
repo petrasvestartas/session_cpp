@@ -136,8 +136,6 @@ public:
     // String Representation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert line to string representation.
-    std::string to_string() const;
     std::string str() const;    ///< simple coordinate string (like Python str)
     std::string repr() const;   ///< detailed representation (like Python repr)
 
@@ -194,6 +192,6 @@ template <> struct fmt::formatter<session_cpp::Line> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Line& o, fmt::format_context& ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };

@@ -52,9 +52,6 @@ public:
   /// Detailed representation (like Python __repr__): "Color(name, r, g, b, a)"
   std::string repr() const;
 
-  /// Alias for repr() - for compatibility
-  std::string to_string() const;
-
   /// Equality operator
   bool operator==(const Color &other) const;
 
@@ -91,7 +88,6 @@ public:
   // Protobuf
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
   /// Convert to protobuf message and serialize to binary
   std::string to_protobuf() const;
 
@@ -103,7 +99,6 @@ public:
 
   /// Read protobuf from file
   static Color protobuf_load(const std::string& filename);
-#endif
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details
@@ -206,6 +201,6 @@ template <> struct fmt::formatter<session_cpp::Color> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Color &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };

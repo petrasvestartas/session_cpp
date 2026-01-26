@@ -6,7 +6,6 @@
 #include "xform.h"
 #include "color.h"
 #include "tolerance.h"
-#include "boundingbox.h"
 #include "guid.h"
 #include "json.h"
 #include <vector>
@@ -270,6 +269,9 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Conversion methods
     ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Get length method that is used by division methods
+    double length(double tolerance = 1e-6) const;
     
     /// Convert curve to polyline with adaptive sampling (curvature-based)
     /// Returns points and optionally parameters
@@ -386,19 +388,6 @@ public:
     NurbsCurve transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Geometric Operations
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    
-    /// Get bounding box
-    BoundingBox get_bounding_box() const;
-    
-    /// Get length of curve (approximate)
-    double length(double tolerance = 1e-6) const;
-    
-    /// Closest point on curve to given point
-    Point closest_point(const Point& point, double& t_out) const;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
     
@@ -414,18 +403,21 @@ public:
     /// Read JSON from file
     static NurbsCurve json_load(const std::string& filename);
 
-    /// Write protobuf to file (uses JSON fallback)
+    /// Write protobuf to file
     void protobuf_dump(const std::string& filename) const;
-    
-    /// Read protobuf from file (uses JSON fallback)
+
+    /// Read protobuf from file
     static NurbsCurve protobuf_load(const std::string& filename);
+
+    /// Serialize to protobuf string
+    std::string to_protobuf() const;
+
+    /// Deserialize from protobuf string
+    static NurbsCurve from_protobuf(const std::string& data);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
-    /// Convert to string
-    std::string to_string() const;
 
     /// Simple string representation (like Python str)
     std::string str() const;
@@ -521,44 +513,6 @@ public:
     
     /// Get parameter tolerance at point
     bool get_parameter_tolerance(double t, double* tminus, double* tplus) const;
-    
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Intersection Operations
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    
-    /// Find all intersections between curve and plane
-    /// Returns parameter values where curve intersects plane
-    std::vector<double> intersect_plane(const Plane& plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Find all intersection points between curve and plane
-    std::vector<Point> intersect_plane_points(const Plane& plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Find closest point on curve to test point (improved with Newton-Raphson)
-    std::pair<double, double> closest_point_to(const Point& test_point, 
-                                               double t0 = 0.0, double t1 = 0.0) const;
-    
-    /// Curve-plane intersection using Bézier clipping (advanced, faster for multiple intersections)
-    std::vector<double> intersect_plane_bezier_clipping(const Plane& plane, 
-                                                        double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Curve-plane intersection using algebraic/hodograph method (maximum precision)
-    /// Uses span-based subdivision + Newton-Raphson with derivative information
-    /// Achieves quadratic convergence (machine precision in 2-3 iterations)
-    std::vector<double> intersect_plane_algebraic(const Plane& plane,
-                                                  double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Curve-plane intersection using production CAD kernel method (INDUSTRY STANDARD)
-    /// This is the method used in Rhino, Parasolid, ACIS, and other professional CAD kernels
-    /// Algorithm: Recursive subdivision on Bézier spans + Newton-Raphson refinement
-    /// - Converts curve to Bézier spans
-    /// - Recursively subdivides until nearly linear
-    /// - Detects sign changes (signed distance to plane)
-    /// - Applies Newton-Raphson for quadratic convergence
-    /// - Robust bracketing with fallback bisection
-    /// - Filters duplicates and returns sorted results
-    /// Performance: O(log n) subdivision + O(1) Newton per root
-    std::vector<double> intersect_plane_production(const Plane& plane,
-                                                   double tolerance = Tolerance::ZERO_TOLERANCE) const;
     
     /// Zero all control vertices (and set weights to 1 if rational)
     bool zero_cvs();
@@ -657,6 +611,6 @@ struct fmt::formatter<session_cpp::NurbsCurve> {
     constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
     
     auto format(const session_cpp::NurbsCurve& curve, fmt::format_context& ctx) const {
-        return fmt::format_to(ctx.out(), "{}", curve.to_string());
+        return fmt::format_to(ctx.out(), "{}", curve.str());
     }
 };

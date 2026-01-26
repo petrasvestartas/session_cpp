@@ -266,7 +266,6 @@ public:
     // Protobuf
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
     /// Convert to protobuf binary format
     std::string to_protobuf() const;
     
@@ -278,7 +277,6 @@ public:
     
     /// Read protobuf from file
     static Mesh protobuf_load(const std::string& filename);
-#endif
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Triangle BVH Cache

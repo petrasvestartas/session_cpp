@@ -4,10 +4,8 @@
 #include <fstream>
 #include <sstream>
 
-#ifdef ENABLE_PROTOBUF
 #include "pointcloud.pb.h"
 #include "xform.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -331,7 +329,6 @@ PointCloud PointCloud::json_load(const std::string& filename) {
 // Protobuf Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string PointCloud::to_protobuf() const {
     session_proto::PointCloud proto;
     proto.set_guid(guid);
@@ -397,26 +394,6 @@ PointCloud PointCloud::protobuf_load(const std::string& filename) {
     ifs.close();
     return from_protobuf(data);
 }
-#else
-std::string PointCloud::to_protobuf() const {
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-PointCloud PointCloud::from_protobuf(const std::string& data) {
-    (void)data;
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-void PointCloud::protobuf_dump(const std::string& filename) const {
-    (void)filename;
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-PointCloud PointCloud::protobuf_load(const std::string& filename) {
-    (void)filename;
-    throw std::runtime_error("Protobuf support not enabled");
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Stream operator

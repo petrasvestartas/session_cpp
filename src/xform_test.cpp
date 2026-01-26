@@ -300,7 +300,6 @@ MINI_TEST("Xform", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.m[14], 3.0));
 }
 
-#ifdef ENABLE_PROTOBUF
 MINI_TEST("Xform", "protobuf_roundtrip") {
     // uncomment #include "xform.h"
 
@@ -318,6 +317,5 @@ MINI_TEST("Xform", "protobuf_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.m[13], 2.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.m[14], 3.0));
 }
-#endif
 
 } // namespace session_cpp

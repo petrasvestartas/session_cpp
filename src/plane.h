@@ -64,9 +64,6 @@ namespace session_cpp {
     // Operators - const because they oinly read values, dont modify them
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert point to string representation
-    std::string to_string() const;
-
     /// Minimal string representation
     std::string str() const;
 
@@ -220,6 +217,6 @@ template <> struct fmt::formatter<session_cpp::Plane> {
     constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
   
     auto format(const session_cpp::Plane &o, fmt::format_context &ctx) const {
-      return fmt::format_to(ctx.out(), "{}", o.to_string());
+      return fmt::format_to(ctx.out(), "{}", o.str());
     }
   };

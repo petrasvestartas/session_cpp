@@ -1,16 +1,4 @@
 {
-    "guid": "5a9538f3-f315-4294-8acc-b8c8a3f6e14a",
-    "name": "my_nurbscurve",
-    "dimension": 3,
-    "is_rational": false,
-    "order": 3,
-    "cv_count": 3,
-    "knots": [
-        0.0,
-        0.0,
-        1.0,
-        1.0
-    ],
     "control_points": [
         [
             0.0,
@@ -19,13 +7,71 @@
         ],
         [
             1.0,
-            1.0,
+            2.0,
             0.0
         ],
         [
             2.0,
             0.0,
             0.0
+        ],
+        [
+            3.0,
+            2.0,
+            0.0
+        ],
+        [
+            4.0,
+            0.0,
+            0.0
         ]
-    ]
+    ],
+    "cv_count": 5,
+    "cv_stride": 3,
+    "dimension": 3,
+    "guid": "b6ed0190-28ed-440f-b83e-44018a3590cf",
+    "is_rational": false,
+    "knots": [
+        0.0,
+        0.0,
+        1.0,
+        2.0,
+        3.0,
+        3.0
+    ],
+    "linecolor": {
+        "a": 255,
+        "b": 255,
+        "g": 255,
+        "guid": "0e5bad69-2ff8-41b1-8f3d-7d16af256ef6",
+        "name": "white",
+        "r": 255,
+        "type": "Color"
+    },
+    "name": "my_nurbscurve",
+    "order": 3,
+    "width": 1.0,
+    "xform": {
+        "guid": "31e9738c-168c-4d6f-80c3-e80f8f7e0448",
+        "m": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+        ],
+        "name": "my_xform",
+        "type": "Xform"
+    }
 }

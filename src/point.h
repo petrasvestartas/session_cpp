@@ -104,7 +104,6 @@ public:
   // Protobuf
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
   /**
    * @brief Convert to protobuf binary format.
    * @return Serialized protobuf data.
@@ -130,7 +129,6 @@ public:
    * @return The deserialized Point.
    */
   static Point protobuf_load(const std::string& filename);
-#endif
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // No-copy Operators

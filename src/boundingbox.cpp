@@ -6,6 +6,7 @@
 #include "pointcloud.h"
 #include "arrow.h"
 #include "cylinder.h"
+#include "nurbscurve.h"
 #include "guid.h"
 #include <fstream>
 #include <cmath>
@@ -248,6 +249,204 @@ BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, const Plane& pl
     };
     Vector half(proj_half(Ux), proj_half(Uy), proj_half(Uz));
     return BoundingBox(c, Ux, Uy, Uz, half);
+}
+
+BoundingBox BoundingBox::from_nurbscurve(const NurbsCurve& curve, double inflate_amount, bool tight) {
+    if (!curve.is_valid() || curve.cv_count() == 0) {
+        return BoundingBox();
+    }
+
+    if (!tight) {
+        std::vector<Point> points;
+        for (int i = 0; i < curve.cv_count(); i++) {
+            points.push_back(curve.get_cv(i));
+        }
+        return from_points(points, inflate_amount);
+    }
+
+    // Tight bounding box: find extrema using derivative root-finding
+    // The hodograph (derivative) of a B-spline is also a B-spline
+    // Extrema occur where C'(t) · axis = 0
+    auto [t0, t1] = curve.domain();
+
+    std::vector<Point> extrema_points;
+    extrema_points.push_back(curve.point_at(t0));
+    extrema_points.push_back(curve.point_at(t1));
+
+    // Sample at span boundaries (knot values with multiplicity)
+    auto spans = curve.get_span_vector();
+    for (double t : spans) {
+        if (t > t0 && t < t1) {
+            extrema_points.push_back(curve.point_at(t));
+        }
+    }
+
+    // Find extrema for each axis using Newton-Raphson on derivative
+    // C'(t) · axis = 0 means derivative component equals zero
+    const int NUM_SAMPLES = 20;
+    double dt = (t1 - t0) / NUM_SAMPLES;
+
+    for (int axis = 0; axis < 3; axis++) {
+        for (int i = 0; i < NUM_SAMPLES; i++) {
+            double t_start = t0 + i * dt;
+            double t_end = t_start + dt;
+
+            // Evaluate derivative at interval endpoints
+            auto deriv_start = curve.evaluate(t_start, 1);
+            auto deriv_end = curve.evaluate(t_end, 1);
+            if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+
+            double d_start = deriv_start[1][axis];
+            double d_end = deriv_end[1][axis];
+
+            // Check for sign change (root exists in interval)
+            if (d_start * d_end < 0) {
+                // Bisection + Newton refinement
+                double t_lo = t_start, t_hi = t_end;
+                double t_root = (t_lo + t_hi) * 0.5;
+
+                for (int iter = 0; iter < 20; iter++) {
+                    auto deriv = curve.evaluate(t_root, 2);
+                    if (deriv.size() < 3) break;
+
+                    double f = deriv[1][axis];    // C'(t) component
+                    double fp = deriv[2][axis];   // C''(t) component
+
+                    if (std::abs(f) < 1e-12) break;
+
+                    // Newton step with safeguard
+                    if (std::abs(fp) > 1e-14) {
+                        double t_new = t_root - f / fp;
+                        if (t_new >= t_lo && t_new <= t_hi) {
+                            t_root = t_new;
+                        } else {
+                            // Fallback to bisection
+                            if (f * d_start < 0) {
+                                t_hi = t_root;
+                            } else {
+                                t_lo = t_root;
+                            }
+                            t_root = (t_lo + t_hi) * 0.5;
+                        }
+                    } else {
+                        t_root = (t_lo + t_hi) * 0.5;
+                    }
+
+                    // Update bracket
+                    auto deriv_check = curve.evaluate(t_root, 1);
+                    if (deriv_check.size() >= 2) {
+                        double f_check = deriv_check[1][axis];
+                        if (f_check * d_start < 0) {
+                            t_hi = t_root;
+                            d_end = f_check;
+                        } else {
+                            t_lo = t_root;
+                            d_start = f_check;
+                        }
+                    }
+                }
+
+                extrema_points.push_back(curve.point_at(t_root));
+            }
+        }
+    }
+
+    return from_points(extrema_points, inflate_amount);
+}
+
+BoundingBox BoundingBox::from_nurbscurve(const NurbsCurve& curve, const Plane& plane, double inflate_amount, bool tight) {
+    if (!curve.is_valid() || curve.cv_count() == 0) {
+        return BoundingBox();
+    }
+
+    if (!tight) {
+        std::vector<Point> points;
+        for (int i = 0; i < curve.cv_count(); i++) {
+            points.push_back(curve.get_cv(i));
+        }
+        return from_points(points, plane, inflate_amount);
+    }
+
+    // Tight bounding box in plane's coordinate system
+    // Find extrema along plane axes
+    auto [t0, t1] = curve.domain();
+
+    std::vector<Point> extrema_points;
+    extrema_points.push_back(curve.point_at(t0));
+    extrema_points.push_back(curve.point_at(t1));
+
+    auto spans = curve.get_span_vector();
+    for (double t : spans) {
+        if (t > t0 && t < t1) {
+            extrema_points.push_back(curve.point_at(t));
+        }
+    }
+
+    // Find extrema along each plane axis
+    Vector axes[3] = {plane.x_axis(), plane.y_axis(), plane.z_axis()};
+    const int NUM_SAMPLES = 20;
+    double dt = (t1 - t0) / NUM_SAMPLES;
+
+    for (int axis_idx = 0; axis_idx < 3; axis_idx++) {
+        Vector axis = axes[axis_idx];
+
+        for (int i = 0; i < NUM_SAMPLES; i++) {
+            double t_start = t0 + i * dt;
+            double t_end = t_start + dt;
+
+            auto deriv_start = curve.evaluate(t_start, 1);
+            auto deriv_end = curve.evaluate(t_end, 1);
+            if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+
+            // C'(t) · axis
+            double d_start = deriv_start[1].dot(axis);
+            double d_end = deriv_end[1].dot(axis);
+
+            if (d_start * d_end < 0) {
+                double t_lo = t_start, t_hi = t_end;
+                double t_root = (t_lo + t_hi) * 0.5;
+
+                for (int iter = 0; iter < 20; iter++) {
+                    auto deriv = curve.evaluate(t_root, 2);
+                    if (deriv.size() < 3) break;
+
+                    double f = deriv[1].dot(axis);
+                    double fp = deriv[2].dot(axis);
+
+                    if (std::abs(f) < 1e-12) break;
+
+                    if (std::abs(fp) > 1e-14) {
+                        double t_new = t_root - f / fp;
+                        if (t_new >= t_lo && t_new <= t_hi) {
+                            t_root = t_new;
+                        } else {
+                            if (f * d_start < 0) t_hi = t_root;
+                            else t_lo = t_root;
+                            t_root = (t_lo + t_hi) * 0.5;
+                        }
+                    } else {
+                        t_root = (t_lo + t_hi) * 0.5;
+                    }
+
+                    auto deriv_check = curve.evaluate(t_root, 1);
+                    if (deriv_check.size() >= 2) {
+                        double f_check = deriv_check[1].dot(axis);
+                        if (f_check * d_start < 0) {
+                            t_hi = t_root;
+                            d_end = f_check;
+                        } else {
+                            t_lo = t_root;
+                            d_start = f_check;
+                        }
+                    }
+                }
+
+                extrema_points.push_back(curve.point_at(t_root));
+            }
+        }
+    }
+
+    return from_points(extrema_points, plane, inflate_amount);
 }
 
 BoundingBox BoundingBox::aabb() const {

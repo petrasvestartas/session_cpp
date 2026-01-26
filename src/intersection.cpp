@@ -1,10 +1,12 @@
 #include "intersection.h"
 #include "nurbscurve.h"
+#include "closest.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
 #include <cstring>
 #include <set>
+#include <functional>
 
 namespace session_cpp {
 
@@ -848,6 +850,78 @@ std::vector<Point> Intersection::ray_mesh_bvh(
 }
 
 //==========================================================================================
+// NURBS Curve Intersection Helper Functions
+//==========================================================================================
+
+namespace {
+    double curve_signed_distance_to_plane(const Point& pt, const Plane& plane) {
+        Vector v(pt[0] - plane.origin()[0],
+                pt[1] - plane.origin()[1],
+                pt[2] - plane.origin()[2]);
+        return v.dot(plane.z_axis());
+    }
+
+    bool curve_find_root_bisection(const NurbsCurve& curve, const Plane& plane,
+                            double t0, double t1, double tolerance,
+                            double& t_result) {
+        const int max_iterations = 50;
+        double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
+        double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
+
+        if (d0 * d1 > 0) return false;
+
+        for (int iter = 0; iter < max_iterations; iter++) {
+            double t_mid = (t0 + t1) * 0.5;
+            double d_mid = curve_signed_distance_to_plane(curve.point_at(t_mid), plane);
+
+            if (std::abs(d_mid) < tolerance || (t1 - t0) < tolerance) {
+                t_result = t_mid;
+                return true;
+            }
+
+            if (d0 * d_mid < 0) {
+                t1 = t_mid;
+                d1 = d_mid;
+            } else {
+                t0 = t_mid;
+                d0 = d_mid;
+            }
+        }
+
+        t_result = (t0 + t1) * 0.5;
+        return std::abs(curve_signed_distance_to_plane(curve.point_at(t_result), plane)) < tolerance * 10.0;
+    }
+
+    bool curve_refine_intersection_newton(const NurbsCurve& curve, const Plane& plane,
+                                   double& t, double tolerance) {
+        const int max_iterations = 10;
+        const double step_tolerance = tolerance * 0.01;
+
+        for (int iter = 0; iter < max_iterations; iter++) {
+            Point pt = curve.point_at(t);
+            Vector tangent = curve.tangent_at(t);
+
+            double f = curve_signed_distance_to_plane(pt, plane);
+            double df = tangent.dot(plane.z_axis());
+
+            if (std::abs(f) < tolerance) return true;
+            if (std::abs(df) < 1e-12) return false;
+
+            double dt = -f / df;
+            if (std::abs(dt) < step_tolerance) return true;
+
+            t += dt;
+
+            auto [t0, t1] = curve.domain();
+            if (t < t0) t = t0;
+            if (t > t1) t = t1;
+        }
+
+        return std::abs(curve_signed_distance_to_plane(curve.point_at(t), plane)) < tolerance * 2.0;
+    }
+}
+
+//==========================================================================================
 // NURBS Curve Intersection Methods
 //==========================================================================================
 
@@ -856,7 +930,89 @@ std::vector<double> Intersection::curve_plane(
     const Plane& plane,
     double tolerance
 ) {
-    return curve.intersect_plane(plane, tolerance);
+    std::vector<double> intersections;
+
+    if (!curve.is_valid()) return intersections;
+    if (tolerance <= 0.0) tolerance = Tolerance::ZERO_TOLERANCE;
+
+    auto [t_start, t_end] = curve.domain();
+
+    std::vector<double> span_params = curve.get_span_vector();
+
+    for (size_t i = 0; i < span_params.size() - 1; i++) {
+        double t0 = span_params[i];
+        double t1 = span_params[i + 1];
+
+        if (std::abs(t1 - t0) < tolerance) continue;
+
+        double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
+        double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
+
+        if (d0 * d1 < 0) {
+            double t_intersection;
+            if (curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection)) {
+                curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
+                intersections.push_back(t_intersection);
+            }
+        } else if (std::abs(d0) < tolerance) {
+            bool add = true;
+            if (!intersections.empty() && std::abs(intersections.back() - t0) < tolerance) {
+                add = false;
+            }
+            if (add) intersections.push_back(t0);
+        }
+    }
+
+    double d_end = curve_signed_distance_to_plane(curve.point_at(t_end), plane);
+    if (std::abs(d_end) < tolerance) {
+        bool add = true;
+        if (!intersections.empty() && std::abs(intersections.back() - t_end) < tolerance) {
+            add = false;
+        }
+        if (add) intersections.push_back(t_end);
+    }
+
+    if (curve.degree() > 3 && intersections.size() < static_cast<size_t>(curve.degree())) {
+        int num_samples = curve.degree() * 4;
+        double dt = (t_end - t_start) / num_samples;
+
+        for (int i = 0; i < num_samples; i++) {
+            double t0 = t_start + i * dt;
+            double t1 = t_start + (i + 1) * dt;
+
+            double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
+            double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
+
+            if (d0 * d1 < 0) {
+                double t_intersection;
+                if (curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection)) {
+                    bool is_new = true;
+                    for (double existing : intersections) {
+                        if (std::abs(existing - t_intersection) < tolerance * 2.0) {
+                            is_new = false;
+                            break;
+                        }
+                    }
+                    if (is_new) {
+                        curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
+                        intersections.push_back(t_intersection);
+                    }
+                }
+            }
+        }
+    }
+
+    std::sort(intersections.begin(), intersections.end());
+
+    intersections.erase(
+        std::unique(intersections.begin(), intersections.end(),
+                   [tolerance](double a, double b) {
+                       return std::abs(a - b) < tolerance * 2.0;
+                   }),
+        intersections.end()
+    );
+
+    return intersections;
 }
 
 std::vector<Point> Intersection::curve_plane_points(
@@ -864,7 +1020,15 @@ std::vector<Point> Intersection::curve_plane_points(
     const Plane& plane,
     double tolerance
 ) {
-    return curve.intersect_plane_points(plane, tolerance);
+    std::vector<double> params = curve_plane(curve, plane, tolerance);
+    std::vector<Point> points;
+    points.reserve(params.size());
+
+    for (double t : params) {
+        points.push_back(curve.point_at(t));
+    }
+
+    return points;
 }
 
 std::vector<double> Intersection::curve_plane_bezier_clipping(
@@ -872,7 +1036,133 @@ std::vector<double> Intersection::curve_plane_bezier_clipping(
     const Plane& plane,
     double tolerance
 ) {
-    return curve.intersect_plane_bezier_clipping(plane, tolerance);
+    std::vector<double> results;
+
+    if (!curve.is_valid()) return results;
+    if (tolerance <= 0.0) tolerance = Tolerance::ZERO_TOLERANCE;
+
+    auto [t0, t1] = curve.domain();
+
+    auto signed_distance = [&](const Point& p) -> double {
+        Vector v(p[0] - plane.origin()[0],
+                p[1] - plane.origin()[1],
+                p[2] - plane.origin()[2]);
+        return v.dot(plane.z_axis());
+    };
+
+    std::function<void(double, double, int)> clip_recursive;
+    clip_recursive = [&](double ta, double tb, int depth) {
+        if (depth > 50) {
+            double tm = (ta + tb) * 0.5;
+            Point pm = curve.point_at(tm);
+            double dist = signed_distance(pm);
+
+            if (std::abs(dist) < tolerance) {
+                results.push_back(tm);
+            }
+            return;
+        }
+
+        if (std::abs(tb - ta) < tolerance * 0.01) {
+            double tm = (ta + tb) * 0.5;
+            Point pm = curve.point_at(tm);
+            double dist = signed_distance(pm);
+
+            if (std::abs(dist) < tolerance) {
+                double t = tm;
+                for (int iter = 0; iter < 10; iter++) {
+                    Point pt = curve.point_at(t);
+                    Vector tangent = curve.tangent_at(t);
+
+                    double f = signed_distance(pt);
+                    double df = tangent.dot(plane.z_axis());
+
+                    if (std::abs(df) < 1e-12) break;
+
+                    double dt = -f / df;
+                    t += dt;
+
+                    if (std::abs(dt) < tolerance * 0.01) break;
+                    if (t < ta || t > tb) {
+                        t = tm;
+                        break;
+                    }
+                }
+
+                Point pt_final = curve.point_at(t);
+                if (std::abs(signed_distance(pt_final)) < tolerance && t >= ta && t <= tb) {
+                    results.push_back(t);
+                }
+            }
+            return;
+        }
+
+        int num_samples = std::min(curve.order() + 1, 10);
+        std::vector<double> distances;
+        std::vector<double> params;
+
+        double dt = (tb - ta) / (num_samples - 1);
+        for (int i = 0; i < num_samples; i++) {
+            double t = ta + i * dt;
+            Point p = curve.point_at(t);
+            distances.push_back(signed_distance(p));
+            params.push_back(t);
+        }
+
+        double d_min = *std::min_element(distances.begin(), distances.end());
+        double d_max = *std::max_element(distances.begin(), distances.end());
+
+        if (d_min > tolerance || d_max < -tolerance) {
+            return;
+        }
+
+        double t_min = ta;
+        double t_max = tb;
+
+        for (size_t i = 0; i < distances.size() - 1; i++) {
+            if (distances[i] * distances[i + 1] < 0) {
+                double d0 = distances[i];
+                double d1 = distances[i + 1];
+                double t_clip = params[i] - d0 * (params[i + 1] - params[i]) / (d1 - d0);
+
+                if (d0 > 0) {
+                    t_max = std::min(t_max, t_clip + (tb - ta) * 0.1);
+                } else {
+                    t_min = std::max(t_min, t_clip - (tb - ta) * 0.1);
+                }
+            }
+        }
+
+        if (t_min >= t_max) {
+            t_min = ta;
+            t_max = tb;
+        }
+
+        t_min = std::max(ta, t_min);
+        t_max = std::min(tb, t_max);
+
+        double reduction = (t_max - t_min) / (tb - ta);
+
+        if (reduction > 0.8 || (t_max - t_min) < tolerance * 0.1) {
+            double tm = (ta + tb) * 0.5;
+            clip_recursive(ta, tm, depth + 1);
+            clip_recursive(tm, tb, depth + 1);
+        } else {
+            clip_recursive(t_min, t_max, depth + 1);
+        }
+    };
+
+    clip_recursive(t0, t1, 0);
+
+    std::sort(results.begin(), results.end());
+
+    auto last = std::unique(results.begin(), results.end(),
+                           [tolerance](double a, double b) {
+                               return std::abs(a - b) < tolerance * 2.0;
+                           });
+    results.erase(last, results.end());
+
+    return results;
 }
 
 std::vector<double> Intersection::curve_plane_algebraic(
@@ -880,7 +1170,105 @@ std::vector<double> Intersection::curve_plane_algebraic(
     const Plane& plane,
     double tolerance
 ) {
-    return curve.intersect_plane_algebraic(plane, tolerance);
+    if (!curve.is_valid()) return {};
+
+    std::vector<double> results;
+
+    std::vector<double> spans = curve.get_span_vector();
+    if (spans.size() < 2) return {};
+
+    for (size_t i = 0; i < spans.size() - 1; i++) {
+        double span_t0 = spans[i];
+        double span_t1 = spans[i + 1];
+
+        if (std::abs(span_t1 - span_t0) < tolerance) continue;
+
+        std::function<void(double, double, int)> subdivide = [&](double a, double b, int depth) {
+            if (depth > 30) return;
+
+            Point p_a = curve.point_at(a);
+            Point p_b = curve.point_at(b);
+
+            Vector normal = plane.z_axis();
+            double f_a = normal.dot(p_a - plane.origin());
+            double f_b = normal.dot(p_b - plane.origin());
+
+            if (f_a * f_b > 0) return;
+
+            double mid_t = (a + b) * 0.5;
+            Point p_mid = curve.point_at(mid_t);
+
+            Vector line_dir = p_b - p_a;
+            double line_len = line_dir.magnitude();
+            if (line_len > 1e-14) {
+                line_dir = line_dir / line_len;
+            }
+            double deviation = std::abs((p_mid - p_a).cross(line_dir).magnitude());
+
+            if (deviation < tolerance * 10.0 || (b - a) < tolerance * 10.0) {
+                double t = mid_t;
+                bool converged = false;
+
+                for (int iter = 0; iter < 10; iter++) {
+                    Point p = curve.point_at(t);
+                    double f = normal.dot(p - plane.origin());
+
+                    if (std::abs(f) < tolerance) {
+                        converged = true;
+                        break;
+                    }
+
+                    Vector tangent = curve.tangent_at(t);
+                    double df = normal.dot(tangent);
+
+                    if (std::abs(df) < 1e-14) {
+                        t = (a + b) * 0.5;
+                        break;
+                    }
+
+                    double t_new = t - f / df;
+
+                    if (t_new < a || t_new > b) {
+                        t_new = (a + b) * 0.5;
+                    }
+
+                    if (std::abs(t_new - t) < tolerance) {
+                        t = t_new;
+                        converged = true;
+                        break;
+                    }
+
+                    t = t_new;
+                }
+
+                if (converged && t >= a && t <= b) {
+                    bool is_duplicate = false;
+                    for (double existing : results) {
+                        if (std::abs(existing - t) < tolerance * 10.0) {
+                            is_duplicate = true;
+                            break;
+                        }
+                    }
+                    if (!is_duplicate) {
+                        results.push_back(t);
+                    }
+                }
+            } else {
+                subdivide(a, mid_t, depth + 1);
+                subdivide(mid_t, b, depth + 1);
+            }
+        };
+
+        subdivide(span_t0, span_t1, 0);
+    }
+
+    std::sort(results.begin(), results.end());
+    results.erase(std::unique(results.begin(), results.end(),
+                              [tolerance](double a, double b) {
+                                  return std::abs(a - b) < tolerance * 10.0;
+                              }), results.end());
+
+    return results;
 }
 
 std::vector<double> Intersection::curve_plane_production(
@@ -888,7 +1276,119 @@ std::vector<double> Intersection::curve_plane_production(
     const Plane& plane,
     double tolerance
 ) {
-    return curve.intersect_plane_production(plane, tolerance);
+    if (!curve.is_valid()) return {};
+
+    std::vector<double> results;
+
+    std::vector<double> spans = curve.get_span_vector();
+    if (spans.size() < 2) return {};
+
+    auto is_nearly_linear = [&curve, tolerance](double a, double b) -> bool {
+        Point p_a = curve.point_at(a);
+        Point p_b = curve.point_at(b);
+        Point p_mid = curve.point_at((a + b) * 0.5);
+
+        Vector ab = p_b - p_a;
+        double line_length = ab.magnitude();
+        if (line_length < 1e-14) return true;
+
+        Vector am = p_mid - p_a;
+        double cross_mag = ab.cross(am).magnitude();
+        double deviation = cross_mag / line_length;
+
+        return deviation < tolerance * 10.0;
+    };
+
+    std::function<void(double, double, int)> subdivide = [&](double a, double b, int depth) {
+        if (depth > 30) return;
+
+        Point p_a = curve.point_at(a);
+        Point p_b = curve.point_at(b);
+
+        Vector normal = plane.z_axis();
+        double f_a = normal.dot(p_a - plane.origin());
+        double f_b = normal.dot(p_b - plane.origin());
+
+        if (f_a * f_b > 0) return;
+
+        if (is_nearly_linear(a, b) || (b - a) < tolerance * 10.0) {
+            double t = (a + b) * 0.5;
+            bool converged = false;
+
+            for (int iter = 0; iter < 10; iter++) {
+                Point p = curve.point_at(t);
+                double f = normal.dot(p - plane.origin());
+
+                if (std::abs(f) < tolerance) {
+                    converged = true;
+                    break;
+                }
+
+                Vector tangent = curve.tangent_at(t);
+                double df = normal.dot(tangent);
+
+                if (std::abs(df) < 1e-14) {
+                    if (f * f_a < 0) {
+                        b = t;
+                        f_b = f;
+                    } else {
+                        a = t;
+                        f_a = f;
+                    }
+                    t = (a + b) * 0.5;
+                    continue;
+                }
+
+                double t_new = t - f / df;
+
+                if (t_new < a || t_new > b) {
+                    t_new = (a + b) * 0.5;
+                }
+
+                if (std::abs(t_new - t) < tolerance) {
+                    t = t_new;
+                    converged = true;
+                    break;
+                }
+
+                t = t_new;
+            }
+
+            if (converged && t >= a && t <= b) {
+                bool is_duplicate = false;
+                for (double existing : results) {
+                    if (std::abs(existing - t) < tolerance * 10.0) {
+                        is_duplicate = true;
+                        break;
+                    }
+                }
+                if (!is_duplicate) {
+                    results.push_back(t);
+                }
+            }
+        } else {
+            double mid = (a + b) * 0.5;
+            subdivide(a, mid, depth + 1);
+            subdivide(mid, b, depth + 1);
+        }
+    };
+
+    for (size_t i = 0; i < spans.size() - 1; i++) {
+        double span_t0 = spans[i];
+        double span_t1 = spans[i + 1];
+
+        if (std::abs(span_t1 - span_t0) < tolerance) continue;
+
+        subdivide(span_t0, span_t1, 0);
+    }
+
+    std::sort(results.begin(), results.end());
+    results.erase(std::unique(results.begin(), results.end(),
+                              [tolerance](double a, double b) {
+                                  return std::abs(a - b) < tolerance * 10.0;
+                              }), results.end());
+
+    return results;
 }
 
 std::pair<double, double> Intersection::curve_closest_point(
@@ -897,7 +1397,7 @@ std::pair<double, double> Intersection::curve_closest_point(
     double t0,
     double t1
 ) {
-    return curve.closest_point_to(test_point, t0, t1);
+    return Closest::curve_point(curve, test_point, t0, t1);
 }
 
 } // namespace session_cpp

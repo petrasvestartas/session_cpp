@@ -43,7 +43,7 @@ public:
       : name(name), vertex_count(0), edge_count(0) {}
 
   /// Convert graph to string representation
-  std::string to_string() const;
+  std::string str() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON
@@ -170,7 +170,7 @@ template <> struct fmt::formatter<session_cpp::Vertex> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Vertex &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };
 
@@ -179,7 +179,7 @@ template <> struct fmt::formatter<session_cpp::Edge> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Edge &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };
 
@@ -188,6 +188,6 @@ template <> struct fmt::formatter<session_cpp::Graph> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Graph &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };

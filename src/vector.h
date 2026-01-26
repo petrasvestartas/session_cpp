@@ -79,9 +79,6 @@ public:
   // Operators
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Convert vector to string representation
-  std::string to_string() const;
-
   /// Simple string form (like Python __str__): just coordinates
   std::string str() const;
 
@@ -520,6 +517,6 @@ template <> struct fmt::formatter<session_cpp::Vector> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Vector &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };

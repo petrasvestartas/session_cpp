@@ -44,7 +44,7 @@ Tree Tree::jsonload(const nlohmann::json &data) {
 // Details
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Tree::to_string() const { return fmt::format("Tree: {}", name); }
+std::string Tree::str() const { return fmt::format("Tree: {}", name); }
 
 std::shared_ptr<TreeNode> Tree::root() const { return _root; }
 
@@ -224,7 +224,7 @@ void Tree::print_hierarchy() const {
           return;
 
         // Print current node
-        std::cout << prefix << (is_last ? "└── " : "├── ") << node->to_string()
+        std::cout << prefix << (is_last ? "└── " : "├── ") << node->str()
                   << std::endl;
 
         // New prefix for children
@@ -247,7 +247,7 @@ void Tree::print_hierarchy() const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Tree &tree) {
-  os << tree.to_string();
+  os << tree.str();
   return os;
 }
 

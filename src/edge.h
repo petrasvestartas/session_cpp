@@ -30,7 +30,7 @@ public:
       : v0(v0), v1(v1), attribute(attribute) {}
 
   /// Convert edge to string representation
-  std::string to_string() const;
+  std::string str() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON

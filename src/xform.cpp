@@ -2,9 +2,7 @@
 #include "point.h"
 #include "plane.h"
 
-#ifdef ENABLE_PROTOBUF
 #include "xform.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -480,7 +478,6 @@ Xform Xform::json_load(const std::string& filename) {
     return jsonload(data);
 }
 
-#ifdef ENABLE_PROTOBUF
 std::string Xform::to_protobuf() const {
     session_proto::Xform proto;
     proto.set_guid(guid);
@@ -516,7 +513,6 @@ Xform Xform::protobuf_load(const std::string& filename) {
                       std::istreambuf_iterator<char>());
     return from_protobuf(data);
 }
-#endif
 
 Xform Xform::operator*(const Xform& other) const {
     Xform result;

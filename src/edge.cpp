@@ -2,7 +2,7 @@
 
 namespace session_cpp {
 
-std::string Edge::to_string() const {
+std::string Edge::str() const {
     return fmt::format("Edge({}, {}, {}, {}, {})", guid, name, v0, v1, attribute);
 }
 

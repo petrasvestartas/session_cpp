@@ -5,10 +5,8 @@
 #include <fstream>
 #include <stdexcept>
 
-#ifdef ENABLE_PROTOBUF
 #include "line.pb.h"
 #include "point.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -207,7 +205,6 @@ Line Line::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string Line::to_protobuf() const {
     session_proto::Line proto;
     auto* start = proto.mutable_start();
@@ -258,27 +255,6 @@ Line Line::protobuf_load(const std::string& filename) {
                       std::istreambuf_iterator<char>());
     ifs.close();
     return from_protobuf(data);
-}
-#else
-std::string Line::to_protobuf() const {
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-Line Line::from_protobuf(const std::string& data) {
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-void Line::protobuf_dump(const std::string& filename) const {
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-Line Line::protobuf_load(const std::string& filename) {
-    throw std::runtime_error("Protobuf support not enabled");
-}
-#endif
-
-std::string Line::to_string() const {
-    return fmt::format("Line({}, {}, {}, {}, {}, {})", _x0, _y0, _z0, _x1, _y1, _z1);
 }
 
 /// Simple string form (like Python __str__): just coordinates
@@ -522,7 +498,7 @@ void Line::get_middle_line(const Point& line0_start, const Point& line0_end,
 }
 
 std::ostream& operator<<(std::ostream& os, const Line& line) {
-    return os << line.to_string();
+    return os << line.str();
 }
 
 }  // namespace session_cpp

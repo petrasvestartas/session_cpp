@@ -1,11 +1,9 @@
 #include "point.h"
 #include "tolerance.h"
 
-#ifdef ENABLE_PROTOBUF
 #include "point.pb.h"
 #include "color.pb.h"
 #include "xform.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -100,7 +98,6 @@ Point Point::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string Point::to_protobuf() const {
   session_proto::Point proto;
   proto.set_guid(guid);
@@ -169,7 +166,6 @@ Point Point::protobuf_load(const std::string& filename) {
                     std::istreambuf_iterator<char>());
   return from_protobuf(data);
 }
-#endif
 
 /// Simple string form (like Python __str__): just coordinates
 std::string Point::str() const {

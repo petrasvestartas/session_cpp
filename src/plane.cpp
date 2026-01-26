@@ -2,12 +2,10 @@
 #include "tolerance.h"
 #include <algorithm>
 
-#ifdef ENABLE_PROTOBUF
 #include "plane.pb.h"
 #include "point.pb.h"
 #include "vector.pb.h"
 #include "xform.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -186,12 +184,6 @@ Plane Plane::xz_plane() {
 // Operators
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Plane::to_string() const {
-    return fmt::format("Plane(origin={}, x_axis={}, y_axis={}, z_axis={}, guid={}, name={})",
-                       _origin.str(), _x_axis.to_string(), _y_axis.to_string(),
-                       _z_axis.to_string(), guid, name);
-}
-
 std::string Plane::str() const {
     int prec = static_cast<int>(Tolerance::ROUNDING);
     return fmt::format("{}, {}, {}",
@@ -359,7 +351,6 @@ Plane Plane::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string Plane::to_protobuf() const {
     session_proto::Plane proto;
     proto.set_guid(guid);
@@ -433,26 +424,6 @@ Plane Plane::protobuf_load(const std::string& filename) {
     ifs.close();
     return from_protobuf(data);
 }
-#else
-std::string Plane::to_protobuf() const {
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-Plane Plane::from_protobuf(const std::string& data) {
-    (void)data;
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-void Plane::protobuf_dump(const std::string& filename) const {
-    (void)filename;
-    throw std::runtime_error("Protobuf support not enabled");
-}
-
-Plane Plane::protobuf_load(const std::string& filename) {
-    (void)filename;
-    throw std::runtime_error("Protobuf support not enabled");
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Details
@@ -547,7 +518,7 @@ Plane Plane::translate_by_normal(double distance) const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Plane &plane) {
-    os << plane.to_string();
+    os << plane.str();
     return os;
 }
 

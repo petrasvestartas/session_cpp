@@ -2,7 +2,7 @@
 
 namespace session_cpp {
 
-std::string Objects::to_string() const {
+std::string Objects::str() const {
   return fmt::format("Objects(name={}, guid={}, points={})", name, guid,
                      points->size());
 }
@@ -172,6 +172,6 @@ Objects Objects::jsonload(const nlohmann::json &data) {
 
 
 std::ostream &operator<<(std::ostream &os, const Objects &objects) {
-  return os << objects.to_string();
+  return os << objects.str();
 }
 } // namespace session_cpp

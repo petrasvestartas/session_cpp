@@ -1,8 +1,6 @@
 #include "color.h"
 
-#ifdef ENABLE_PROTOBUF
 #include "color.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -105,7 +103,6 @@ Color Color::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string Color::to_protobuf() const {
   session_proto::Color proto;
   proto.set_guid(guid);
@@ -138,7 +135,6 @@ Color Color::protobuf_load(const std::string& filename) {
                     std::istreambuf_iterator<char>());
   return from_protobuf(data);
 }
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Operators
@@ -154,10 +150,6 @@ std::string Color::repr() const {
   return fmt::format("Color({}, {}, {}, {}, {})", name, r, g, b, a);
 }
 
-/// Alias for repr() - for compatibility
-std::string Color::to_string() const {
-  return repr();
-}
 
 /// Equality operator
 bool Color::operator==(const Color &other) const {
@@ -241,7 +233,7 @@ Color Color::from_unified_array(std::array<double, 4> arr) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Color &color) {
-  return os << color.to_string();
+  return os << color.str();
 }
 
 } // namespace session_cpp

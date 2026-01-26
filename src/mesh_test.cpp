@@ -277,7 +277,6 @@ namespace session_cpp {
         MINI_CHECK(loaded.number_of_faces() == mesh.number_of_faces());
     }
 
-#ifdef ENABLE_PROTOBUF
     MINI_TEST("Mesh", "protobuf_roundtrip") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
@@ -298,7 +297,6 @@ namespace session_cpp {
         MINI_CHECK(loaded.number_of_faces() == mesh.number_of_faces());
         MINI_CHECK(loaded.guid == mesh.guid);
     }
-#endif
 
     MINI_TEST("Mesh", "vertex_position") {
         // uncomment #include "mesh.h"

@@ -27,7 +27,7 @@ public:
       : name(name), attribute(attribute) {}
 
   /// Convert vertex to string representation
-  std::string to_string() const;
+  std::string str() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON

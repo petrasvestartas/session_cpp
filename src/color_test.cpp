@@ -59,7 +59,6 @@ namespace session_cpp {
       MINI_CHECK(loaded[3] == 255);
     }
 
-#ifdef ENABLE_PROTOBUF
     MINI_TEST("Color", "protobuf_roundtrip"){
       // uncomment #include "color.h"
 
@@ -75,7 +74,6 @@ namespace session_cpp {
       MINI_CHECK(loaded[2] == 64);
       MINI_CHECK(loaded[3] == 255);
     }
-#endif
 
     MINI_TEST("Color", "conversion"){
       // uncomment #include "color.h"

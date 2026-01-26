@@ -74,7 +74,7 @@ namespace session_cpp {
         Point point = s.point_at(2.5, 2.5);    // 2.5, 2.5, 4.0
 
         // String representation
-        std::string str_repr = s.to_string();
+        std::string str_repr = s.str();
 
         // Duplicate for comparison
         NurbsSurface s_copy = s;

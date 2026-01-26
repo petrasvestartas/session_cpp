@@ -6,11 +6,9 @@
 #include <limits>
 #include <thread>
 
-#ifdef ENABLE_PROTOBUF
 #include "mesh.pb.h"
 #include "color.pb.h"
 #include "xform.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -825,7 +823,6 @@ void Mesh::clear_triangle_bvh() const {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 
 std::string Mesh::to_protobuf() const {
     session_proto::Mesh proto;
@@ -1057,6 +1054,5 @@ Mesh Mesh::protobuf_load(const std::string& filename) {
     std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     return from_protobuf(data);
 }
-#endif
 
 } // namespace session_cpp

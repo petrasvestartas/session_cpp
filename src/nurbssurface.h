@@ -366,9 +366,9 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
-    /// Get string representation
-    std::string to_string() const;
+
+    /// Simple string representation (like Python str)
+    std::string str() const;
     
     /// Stream output operator
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface);

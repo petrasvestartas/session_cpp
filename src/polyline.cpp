@@ -3,11 +3,9 @@
 #include <cmath>
 #include <sstream>
 
-#ifdef ENABLE_PROTOBUF
 #include "polyline.pb.h"
 #include "point.pb.h"
 #include "xform.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -340,7 +338,6 @@ Polyline Polyline::json_load(const std::string& filename) {
 // Protobuf Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string Polyline::to_protobuf() const {
     session_proto::Polyline proto;
     proto.set_guid(this->guid);
@@ -412,7 +409,6 @@ Polyline Polyline::protobuf_load(const std::string& filename) {
                       std::istreambuf_iterator<char>());
     return from_protobuf(data);
 }
-#endif
 
 std::string Polyline::str() const {
     std::ostringstream oss;

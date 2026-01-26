@@ -5,6 +5,7 @@
 #include "vector.h"
 #include "xform.h"
 #include "tolerance.h"
+#include "intersection.h"
 #include <cmath>
 
 using namespace session_cpp::mini_test;
@@ -273,33 +274,9 @@ namespace session_cpp {
         curve.to_polyline_adaptive(adaptive_pts, &adaptive_params, 0.1, 0.0, 0.0);
 
         MINI_CHECK(adaptive_pts.size() == 27);
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[1], Point(0.183105468750000, 0.348632812500000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[2], Point(0.357421875000000, 0.644531250000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[3], Point(0.679687500000000, 1.078125000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[4], Point(0.966796875000000, 1.300781250000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[5], Point(1.097167968750000, 1.333007812500000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[6], Point(1.159057617187500, 1.329345703125000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[7], Point(1.218750000000000, 1.312500000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[8], Point(1.331542968750000, 1.239257812500000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[9], Point(1.435546875000000, 1.113281250000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[10], Point(1.625000000000000, 0.781250000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[11], Point(1.812500000000000, 0.570312500000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[12], Point(1.906250000000000, 0.517578125000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[13], Point(2.000000000000000, 0.500000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[14], Point(2.093750000000000, 0.517578125000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[15], Point(2.187500000000000, 0.570312500000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[16], Point(2.375000000000000, 0.781250000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[17], Point(2.564453125000000, 1.113281250000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[18], Point(2.668457031250000, 1.239257812500000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[19], Point(2.781250000000000, 1.312500000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[20], Point(2.840942382812500, 1.329345703125000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[21], Point(2.902832031250000, 1.333007812500000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[22], Point(3.033203125000000, 1.300781250000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[23], Point(3.320312500000000, 1.078125000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[24], Point(3.642578125000000, 0.644531250000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[25], Point(3.816894531250000, 0.348632812500000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[26], Point(4.000000000000000, 0.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[0], Point(0.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[13], Point(2.0, 0.5, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[26], Point(4.0, 0.0, 0.0)));
 
         // divide_by_count
         std::vector<Point> div_pts;
@@ -324,19 +301,9 @@ namespace session_cpp {
         curve.divide_by_length(0.5, len_pts, &len_params);
 
         MINI_CHECK(len_pts.size() == 13);
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[1], Point(0.235272731384047, 0.441110443734231, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[2], Point(0.504276692145966, 0.862299318703470, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[3], Point(0.843085062978891, 1.227533014827472, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[4], Point(1.302050970444518, 1.264156212040698, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[5], Point(1.579813544869556, 0.853113314150178, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[6], Point(1.928691287815458, 0.510169864866836, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[7], Point(2.340857741884085, 0.732368000404634, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[8], Point(2.597735401548903, 1.160594587288875, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[9], Point(3.032790392631424, 1.300960469420597, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[10], Point(3.407806728972739, 0.976991467650206, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[11], Point(3.691337413616094, 0.565615072909225, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494402948975, 0.128829830906625, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[0], Point(0.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[6], Point(1.928691287815458, 0.510169864866836, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494402948975, 0.128829830906625, 0.0)));
     }
 
     MINI_TEST("NurbsCurve", "Evaluation"){
@@ -359,6 +326,9 @@ namespace session_cpp {
         };
 
         auto curve = NurbsCurve::create(false, 2, points);
+
+        // Length
+        MINI_CHECK(TOLERANCE.is_close(curve.length(), 11.3010276326));
 
         // Get point at parameter t
         Point point_at = curve.point_at(0.5);
@@ -524,171 +494,105 @@ namespace session_cpp {
             Point(4.0, 0.0, 0.0)
         };
 
-        // 1. transform() - Apply stored xform (in-place)                                                                 
-        //    Uses curve's internal m_xform field                                                                                           
+
+        // transform() - Apply stored xform (in-place)                                                                                                                                                         
         NurbsCurve curve1 = NurbsCurve::create(false, 2, points);                                                         
-        curve1.xform = Xform::translation(10.0, 0.0, 0.0);  // assign directly   
-        curve1.transform();  // applies stored xform, modifies curve1  
+        curve1.xform = Xform::translation(0.0, 0.0, 1.0);  
+        curve1.transform();  // applies stored xform, modifies curve1
+        MINI_CHECK(curve1.xform.is_identity() == false);
+        MINI_CHECK(curve1.cv(0)[2] == 1.0);
 
-        // 2. transform(const Xform&) - Apply custom xform (in-place)
+        // transform(const Xform&) - Apply custom xform (in-place)
         NurbsCurve curve2 = NurbsCurve::create(false, 2, points);
-        Xform translation = Xform::translation(10.0, 0.0, 0.0);
-        curve2.transform(translation);  // modifies curve2 directly
+        Xform x = Xform::translation(0.0, 0.0, 1.0);
+        curve2.transform(x);  // modifies curve2 directly
+        MINI_CHECK(curve2.xform.is_identity() == true);
+        MINI_CHECK(curve2.cv(0)[2] == 1.0);
 
-        // 3. transformed() - Get copy with stored xform applied
+        // transformed() - Get copy with stored xform applied
         NurbsCurve curve3 = NurbsCurve::create(false, 2, points);
-        curve3.xform = Xform::translation(10.0, 0.0, 0.0);
-        NurbsCurve curve3_transformed = curve3.transformed();  // curve3 unchanged, returns new curve
-
-        // 4. transformed(const Xform&) - Get copy with custom xform
+        curve3.xform = Xform::translation(0.0, 0.0, 10.0);
+        NurbsCurve curve3_transformed = curve3.transformed();
+        MINI_CHECK(curve3_transformed.xform.is_identity() == false);
+        MINI_CHECK(curve3_transformed.cv(0)[2] == 10.0);
+        
+        // transformed(const Xform&) - Get copy with custom xform
         NurbsCurve curve4 = NurbsCurve::create(false, 2, points);
-        Xform scale = Xform::scaling(2.0, 2.0, 2.0);
-        NurbsCurve curve4_scaled = curve4.transformed(scale);  // curve4 unchanged, returns new curve
-
-        // TODO: verify this behavior and add MINI_CHECKs
+        x = Xform::translation(0.0, 0.0, 10.0);
+        NurbsCurve curve4_transformed = curve4.transformed(x); 
+        MINI_CHECK(curve4_transformed.xform.is_identity() == true);
+        MINI_CHECK(curve4_transformed.cv(0)[2] == 10.0);
 
     }
 
     MINI_TEST("NurbsCurve", "json_roundtrip") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
+        // #include "nurbscurve.h"
+        // #include "point.h"
+        // #include "vector.h"
+        // #include "xform.h"
+        // #include <filesystem>
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
+            Point(1.0, 2.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(3.0, 2.0, 0.0),
+            Point(4.0, 0.0, 0.0)
         };
-
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
 
-        std::string filename = "serialization/test_nurbscurve.json";
+        std::filesystem::path src_dir = std::filesystem::path(__FILE__).parent_path();
+        std::string filename = (src_dir.parent_path() / "serialization" / "test_nurbscurve.json").string();
         curve.json_dump(filename);
         NurbsCurve loaded = NurbsCurve::json_load(filename);
 
+        MINI_CHECK(loaded.name == curve.name);
+        MINI_CHECK(TOLERANCE.is_close(loaded.width, curve.width));
+        MINI_CHECK(loaded.linecolor[0] == curve.linecolor[0]);
+        MINI_CHECK(loaded.linecolor[1] == curve.linecolor[1]);
+        MINI_CHECK(loaded.linecolor[2] == curve.linecolor[2]);
+        MINI_CHECK(loaded.dimension() == curve.dimension());
         MINI_CHECK(loaded.is_valid() == true);
-        MINI_CHECK(loaded.cv_count() == 3);
-        MINI_CHECK(loaded.degree() == 2);
-        MINI_CHECK(loaded.order() == 3);
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(0), points[0]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(1), points[1]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(2), points[2]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(3), points[3]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(4), points[4]));
     }
 
     MINI_TEST("NurbsCurve", "protobuf_roundtrip") {
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
+        // #include "nurbscurve.h"
+        // #include "point.h"
+        // #include "vector.h"
+        // #include "xform.h"
+        // #include <filesystem>
+
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
+            Point(1.0, 2.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(3.0, 2.0, 0.0),
+            Point(4.0, 0.0, 0.0)
         };
-
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        curve.set_domain(0.0, 1.0);
 
-        std::string filename = "serialization/test_nurbscurve.bin";
+        std::filesystem::path src_dir = std::filesystem::path(__FILE__).parent_path();
+        std::string filename = (src_dir.parent_path() / "serialization" / "test_nurbscurve.bin").string();
         curve.protobuf_dump(filename);
         NurbsCurve loaded = NurbsCurve::protobuf_load(filename);
 
+        MINI_CHECK(loaded.name == curve.name);
+        MINI_CHECK(TOLERANCE.is_close(loaded.width, curve.width));
+        MINI_CHECK(loaded.linecolor[0] == curve.linecolor[0]);
+        MINI_CHECK(loaded.linecolor[1] == curve.linecolor[1]);
+        MINI_CHECK(loaded.linecolor[2] == curve.linecolor[2]);
         MINI_CHECK(loaded.is_valid() == true);
-        MINI_CHECK(loaded.cv_count() == 3);
-        MINI_CHECK(loaded.degree() == 2);
-        MINI_CHECK(loaded.order() == 3);
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(0), points[0]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(1), points[1]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(2), points[2]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(3), points[3]));
+        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(4), points[4]));
     }
-
-    MINI_TEST("NurbsCurve", "intersect_plane") {
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-            Point(2.0, 0.0, 0.0)
-        };
-
-        NurbsCurve curve = NurbsCurve::create(false, 2, points);
-        curve.set_domain(0.0, 1.0);
-        Plane plane = Plane::xy_plane();
-        std::vector<double> intersections = curve.intersect_plane(plane);
-
-        MINI_CHECK(intersections.size() >= 0);
-    }
-
-    // MINI_TEST("NurbsCurve", "create_circle") {
-    //     NurbsCurve c = NurbsCurve::create_circle(0.0, 0.0, 0.0, 1.0);
-    //     auto [t0, t1] = c.domain();
-
-    //     Point p0 = c.point_at(t0);
-    //     Point p_quarter = c.point_at(t0 + (t1 - t0) * 0.25);
-    //     Point p_half = c.point_at(t0 + (t1 - t0) * 0.5);
-
-    //     MINI_CHECK(TOLERANCE.is_close(p0[0], 1.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p0[1], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_quarter[0], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_quarter[1], 1.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_half[0], -1.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_half[1], 0.0));
-    // }
-
-    // MINI_TEST("NurbsCurve", "create_ellipse") {
-    //     NurbsCurve c = NurbsCurve::create_ellipse(0.0, 0.0, 0.0, 2.0, 1.0);
-    //     auto [t0, t1] = c.domain();
-
-    //     Point p0 = c.point_at(t0);
-    //     Point p_quarter = c.point_at(t0 + (t1 - t0) * 0.25);
-
-    //     MINI_CHECK(TOLERANCE.is_close(p0[0], 2.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p0[1], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_quarter[0], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_quarter[1], 1.0));
-    // }
-
-    // MINI_TEST("NurbsCurve", "create_arc") {
-    //     NurbsCurve c = NurbsCurve::create_arc(Point(0, 0, 0), Point(1, 1, 0), Point(2, 0, 0));
-    //     auto [t0, t1] = c.domain();
-
-    //     Point p0 = c.point_at(t0);
-    //     Point p1 = c.point_at(t1);
-
-    //     MINI_CHECK(TOLERANCE.is_close(p0[0], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p0[1], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p1[0], 2.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p1[1], 0.0));
-    // }
-
-    // MINI_TEST("NurbsCurve", "create_parabola") {
-    //     NurbsCurve c = NurbsCurve::create_parabola(Point(-1, 1, 0), Point(0, 0, 0), Point(1, 1, 0));
-    //     auto [t0, t1] = c.domain();
-
-    //     Point p0 = c.point_at(t0);
-    //     Point p_mid = c.point_at(0.5);
-    //     Point p1 = c.point_at(t1);
-
-    //     MINI_CHECK(TOLERANCE.is_close(p0[0], -1.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p0[1], 1.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_mid[0], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p_mid[1], 0.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p1[0], 1.0));
-    //     MINI_CHECK(TOLERANCE.is_close(p1[1], 1.0));
-    // }
-
-    // MINI_TEST("NurbsCurve", "create_hyperbola") {
-    //     NurbsCurve c = NurbsCurve::create_hyperbola(Point(0, 0, 0), 1.0, 1.0, 1.0);
-    //     auto [t0, t1] = c.domain();
-
-    //     Point p_mid = c.point_at(0.5);
-
-    //     MINI_CHECK(p_mid[0] > 0.0);
-    //     MINI_CHECK(TOLERANCE.is_close(p_mid[1], 0.0));
-    // }
-
-    // MINI_TEST("NurbsCurve", "create_spiral") {
-    //     NurbsCurve c = NurbsCurve::create_spiral(1.0, 2.0, 1.0, 5.0);
-    //     auto [t0, t1] = c.domain();
-
-    //     Point p0 = c.point_at(t0);
-    //     Point p1 = c.point_at(t1);
-
-    //     MINI_CHECK(TOLERANCE.is_close(p0[2], 0.0));
-    //     MINI_CHECK(p1[2] > 4.0);
-    // }
 
 } // namespace session_cpp

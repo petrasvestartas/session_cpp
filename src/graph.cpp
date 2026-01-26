@@ -2,7 +2,7 @@
 
 namespace session_cpp {
 
-std::string Graph::to_string() const {
+std::string Graph::str() const {
   return fmt::format("Graph({}, {}, {}, {})", guid, name, vertex_count,
                      edge_count);
 }
@@ -349,14 +349,14 @@ std::string Graph::edge_attribute(const std::string &u, const std::string &v,
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Vertex &vertex) {
-  return os << vertex.to_string();
+  return os << vertex.str();
 }
 
 std::ostream &operator<<(std::ostream &os, const Edge &edge) {
-  return os << edge.to_string();
+  return os << edge.str();
 }
 
 std::ostream &operator<<(std::ostream &os, const Graph &graph) {
-  return os << graph.to_string();
+  return os << graph.str();
 }
 } // namespace session_cpp

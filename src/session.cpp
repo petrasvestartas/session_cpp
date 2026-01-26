@@ -42,9 +42,9 @@
 
 namespace session_cpp {
 
-std::string Session::to_string() const {
+std::string Session::str() const {
   return fmt::format("Session(name={}, objects={}, tree={}, graph={})", name,
-                     objects.to_string(), tree.to_string(), graph.to_string());
+                     objects.str(), tree.str(), graph.str());
 }
 
 // Geometry Management
@@ -693,7 +693,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
 }
 
 std::ostream &operator<<(std::ostream &os, const Session &session) {
-  return os << session.to_string();
+  return os << session.str();
 }
 
 } // namespace session_cpp

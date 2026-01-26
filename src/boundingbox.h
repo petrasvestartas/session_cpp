@@ -19,6 +19,7 @@ class Mesh;
 class PointCloud;
 class Arrow;
 class Cylinder;
+class NurbsCurve;
 
 /**
  * @brief An oriented bounding box with collision detection capabilities
@@ -57,7 +58,9 @@ public:
     static BoundingBox from_arrow(const Arrow& arrow, const Plane& plane, double inflate = 0.0);
     static BoundingBox from_cylinder(const Cylinder& cylinder, double inflate = 0.0);
     static BoundingBox from_cylinder(const Cylinder& cylinder, const Plane& plane, double inflate = 0.0);
-    
+    static BoundingBox from_nurbscurve(const NurbsCurve& curve, double inflate = 0.0, bool tight = false);
+    static BoundingBox from_nurbscurve(const NurbsCurve& curve, const Plane& plane, double inflate = 0.0, bool tight = false);
+
     BoundingBox aabb() const;
     Point min_point() const;
     Point max_point() const;

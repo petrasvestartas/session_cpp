@@ -2,13 +2,10 @@
 #include "knot.h"
 #include "fmt/core.h"
 #include <cstring>
- #include <fstream>
+#include <fstream>
 #include <limits>
 #include <numeric>
-
-#ifdef ENABLE_PROTOBUF
 #include "nurbssurface.pb.h"
-#endif
 
 namespace session_cpp {
 
@@ -432,7 +429,7 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
     return j;
 }
 
-std::string NurbsSurface::to_string() const {
+std::string NurbsSurface::str() const {
     return fmt::format("NurbsSurface(dim={}, order=({},{}), cv_count=({},{}))",
                       m_dim,
                       m_order[0], m_order[1],
@@ -751,7 +748,7 @@ bool NurbsSurface::transform(const Xform& xf) {
 }
 
 std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface) {
-    os << surface.to_string();
+    os << surface.str();
     return os;
 }
 
@@ -1172,7 +1169,6 @@ NurbsSurface NurbsSurface::json_load(const std::string& filename) {
     return jsonload(data);
 }
 
-#ifdef ENABLE_PROTOBUF
 std::string NurbsSurface::to_protobuf() const {
     session_proto::NurbsSurface proto;
 
@@ -1288,27 +1284,6 @@ NurbsSurface NurbsSurface::protobuf_load(const std::string& filename) {
                      std::istreambuf_iterator<char>());
     return from_protobuf(data);
 }
-#else
-void NurbsSurface::protobuf_dump(const std::string& filename) const {
-    // Fallback: uses JSON when protobuf is disabled
-    std::string json_filename = filename;
-    size_t pos = json_filename.rfind(".bin");
-    if (pos != std::string::npos) {
-        json_filename.replace(pos, 4, ".json");
-    }
-    json_dump(json_filename);
-}
-
-NurbsSurface NurbsSurface::protobuf_load(const std::string& filename) {
-    // Fallback: uses JSON when protobuf is disabled
-    std::string json_filename = filename;
-    size_t pos = json_filename.rfind(".bin");
-    if (pos != std::string::npos) {
-        json_filename.replace(pos, 4, ".json");
-    }
-    return json_load(json_filename);
-}
-#endif
 
 bool NurbsSurface::zero_cvs() {
     for (int i = 0; i < m_cv_count[0]; i++) {

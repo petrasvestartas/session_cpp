@@ -44,7 +44,7 @@ std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json &data) {
 // TreeNode Implementation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string TreeNode::to_string() const {
+std::string TreeNode::str() const {
   return fmt::format("TreeNode({}, {}, {} children)", this->name, this->guid,
                      _children.size());
 }
@@ -160,7 +160,7 @@ std::vector<TreeNode *> TreeNode::traverse(const std::string &strategy,
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const TreeNode &node) {
-  os << node.to_string();
+  os << node.str();
   return os;
 }
 

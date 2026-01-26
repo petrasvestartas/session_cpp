@@ -54,8 +54,8 @@ public:
     this->arrows = std::make_shared<std::vector<std::shared_ptr<Arrow>>>();
   }
 
-  /// Convert point to string representation
-  std::string to_string() const;
+  /// Convert objects to string representation
+  std::string str() const;
 
   /**
    * @brief Serializes the Objects instance to JSON.
@@ -96,6 +96,6 @@ template <> struct fmt::formatter<session_cpp::Objects> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
   auto format(const session_cpp::Objects &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.to_string());
+    return fmt::format_to(ctx.out(), "{}", o.str());
   }
 };

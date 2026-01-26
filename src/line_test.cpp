@@ -140,7 +140,6 @@ MINI_TEST("Line", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
 }
 
-#ifdef ENABLE_PROTOBUF
 MINI_TEST("Line", "protobuf_roundtrip") {
     // uncomment #include "line.h"
 
@@ -160,7 +159,6 @@ MINI_TEST("Line", "protobuf_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
 }
-#endif
 
 MINI_TEST("Line", "length") {
     // uncomment #include "line.h"

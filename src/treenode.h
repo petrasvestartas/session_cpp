@@ -39,8 +39,8 @@ public:
   std::string guid = ::guid(); ///< Unique identifier for the tree node itself (distinct from geometry GUID)
   std::string name;            ///< Node identifier/name. For geometry nodes, this is the geometry's GUID
 
-  /// Convert point to string representation
-  std::string to_string() const;
+  /// Convert node to string representation
+  std::string str() const;
 
   /// Equality operator
   bool operator==(const TreeNode &other) const;

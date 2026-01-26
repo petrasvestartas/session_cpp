@@ -126,7 +126,6 @@ MINI_TEST("Polyline", "json_roundtrip") {
 
 }
 
-#ifdef ENABLE_PROTOBUF
 MINI_TEST("Polyline", "protobuf_roundtrip") {
     // uncomment #include "polyline.h"
     // uncomment #include "point.h"
@@ -145,7 +144,6 @@ MINI_TEST("Polyline", "protobuf_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(1)[1], 5.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(2)[2], 9.0));
 }
-#endif
 
 MINI_TEST("Polyline", "length") {
     // uncomment #include "polyline.h"

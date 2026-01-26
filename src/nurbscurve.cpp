@@ -1,8 +1,12 @@
 #include "nurbscurve.h"
+#include "intersection.h"
 #include "knot.h"
 #include <cstring>
 #include <sstream>
 #include <limits>
+#include <fstream>
+
+#include "nurbscurve.pb.h"
 
 namespace session_cpp {
 
@@ -1145,7 +1149,6 @@ Point NurbsCurve::point_at_end() const {
 // Transformation
 void NurbsCurve::transform() {
     transform(xform);
-    xform = Xform::identity();
 }
 
 bool NurbsCurve::transform(const Xform& xf) {
@@ -1427,56 +1430,63 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
 }
 
 // String & JSON
-std::string NurbsCurve::to_string() const {
-    std::ostringstream oss;
-    oss << "NurbsCurve(dim=" << m_dim << ", order=" << m_order
-        << ", cv_count=" << m_cv_count << ", rational=" << (m_is_rat ? "true" : "false") << ")";
-    return oss.str();
-}
-
 std::string NurbsCurve::str() const {
-    return fmt::format("degree={}, cvs={}", degree(), cv_count());
+    return fmt::format("NurbsCurve(degree={}, cvs={})", degree(), cv_count());
 }
 
 std::string NurbsCurve::repr() const {
-    return fmt::format("NurbsCurve({}, dim={}, order={}, cvs={}, rational={})",
-                       name, m_dim, m_order, m_cv_count, m_is_rat ? "true" : "false");
+    std::string result = fmt::format("NurbsCurve(\n  name={},\n  dim={},\n  order={},\n  cvs={},\n  rational={},\n  control_points=[\n",
+                                     name, m_dim, m_order, m_cv_count, m_is_rat ? "true" : "false");
+    for (int i = 0; i < m_cv_count; ++i) {
+        Point p = get_cv(i);
+        result += fmt::format("    cv[{}]: {}, {}, {}\n", i, p[0], p[1], p[2]);
+    }
+    result += "  ]\n)";
+    return result;
 }
 
 nlohmann::ordered_json NurbsCurve::jsondump() const {
     nlohmann::ordered_json j;
-    j["guid"] = guid;
-    j["name"] = name;
-    j["dimension"] = m_dim;
-    j["is_rational"] = m_is_rat != 0;
-    j["order"] = m_order;
-    j["cv_count"] = m_cv_count;
-    j["knots"] = m_knot;
-    j["control_points"] = nlohmann::json::array();
-    
+
+    // Build control_points array
+    nlohmann::json cps = nlohmann::json::array();
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
-        j["control_points"].push_back({p[0], p[1], p[2]});
+        cps.push_back({p[0], p[1], p[2]});
     }
-    
+
+    // Fields in alphabetical order (per CLAUDE.md)
+    j["control_points"] = cps;
+    j["cv_count"] = m_cv_count;
+    j["cv_stride"] = m_cv_stride;
+    j["dimension"] = m_dim;
+    j["guid"] = guid;
+    j["is_rational"] = m_is_rat != 0;
+    j["knots"] = m_knot;
+    j["linecolor"] = linecolor.jsondump();
+    j["name"] = name;
+    j["order"] = m_order;
+    j["width"] = width;
+    j["xform"] = xform.jsondump();
+
     return j;
 }
 
 NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     NurbsCurve curve;
-    
+
     if (data.contains("dimension") && data.contains("order") && data.contains("cv_count")) {
         int dim = data["dimension"];
         bool is_rat = data.value("is_rational", false);
         int order = data["order"];
         int cv_count = data["cv_count"];
-        
+
         curve.create(dim, is_rat, order, cv_count);
-        
+
         if (data.contains("knots")) {
             curve.m_knot = data["knots"].get<std::vector<double>>();
         }
-        
+
         if (data.contains("control_points")) {
             auto cps = data["control_points"];
             for (int i = 0; i < std::min(cv_count, static_cast<int>(cps.size())); i++) {
@@ -1487,11 +1497,18 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
                 curve.set_cv(i, p);
             }
         }
-        
+
         curve.guid = data.value("guid", ::guid());
         curve.name = data.value("name", "my_nurbscurve");
+        curve.width = data.value("width", 1.0);
+        if (data.contains("linecolor")) {
+            curve.linecolor = Color::jsonload(data["linecolor"]);
+        }
+        if (data.contains("xform")) {
+            curve.xform = Xform::jsonload(data["xform"]);
+        }
     }
-    
+
     return curve;
 }
 
@@ -1508,28 +1525,96 @@ NurbsCurve NurbsCurve::json_load(const std::string& filename) {
 }
 
 void NurbsCurve::protobuf_dump(const std::string& filename) const {
-    // Stub: uses JSON fallback (replace .bin with .json)
-    std::string json_filename = filename;
-    size_t pos = json_filename.rfind(".bin");
-    if (pos != std::string::npos) {
-        json_filename.replace(pos, 4, ".json");
-    }
-    json_dump(json_filename);
+    std::ofstream file(filename, std::ios::binary);
+    file << to_protobuf();
 }
 
 NurbsCurve NurbsCurve::protobuf_load(const std::string& filename) {
-    // Stub: uses JSON fallback (replace .bin with .json)
-    std::string json_filename = filename;
-    size_t pos = json_filename.rfind(".bin");
-    if (pos != std::string::npos) {
-        json_filename.replace(pos, 4, ".json");
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+    return from_protobuf(data);
+}
+
+std::string NurbsCurve::to_protobuf() const {
+    session_proto::NurbsCurve proto;
+    proto.set_guid(guid);
+    proto.set_name(name);
+    proto.set_dimension(m_dim);
+    proto.set_is_rational(m_is_rat != 0);
+    proto.set_order(m_order);
+    proto.set_cv_count(m_cv_count);
+    proto.set_cv_stride(m_cv_stride);
+    for (double k : m_knot) {
+        proto.add_knots(k);
     }
-    return json_load(json_filename);
+    for (double c : m_cv) {
+        proto.add_cvs(c);
+    }
+    proto.set_width(width);
+
+    auto* color_proto = proto.mutable_linecolor();
+    color_proto->set_guid(linecolor.guid);
+    color_proto->set_name(linecolor.name);
+    color_proto->set_r(linecolor.r);
+    color_proto->set_g(linecolor.g);
+    color_proto->set_b(linecolor.b);
+    color_proto->set_a(linecolor.a);
+
+    auto* xform_proto = proto.mutable_xform();
+    xform_proto->set_guid(xform.guid);
+    xform_proto->set_name(xform.name);
+    for (int i = 0; i < 16; ++i) {
+        xform_proto->add_matrix(xform.m[i]);
+    }
+
+    return proto.SerializeAsString();
+}
+
+NurbsCurve NurbsCurve::from_protobuf(const std::string& data) {
+    session_proto::NurbsCurve proto;
+    proto.ParseFromString(data);
+
+    NurbsCurve curve(proto.dimension(), proto.is_rational(), proto.order(), proto.cv_count());
+    curve.guid = proto.guid();
+    curve.name = proto.name();
+    curve.width = proto.width() != 0.0 ? proto.width() : 1.0;
+
+    curve.m_knot.clear();
+    for (int i = 0; i < proto.knots_size(); ++i) {
+        curve.m_knot.push_back(proto.knots(i));
+    }
+
+    curve.m_cv.clear();
+    for (int i = 0; i < proto.cvs_size(); ++i) {
+        curve.m_cv.push_back(proto.cvs(i));
+    }
+
+    if (proto.has_linecolor()) {
+        const auto& c = proto.linecolor();
+        curve.linecolor.guid = c.guid();
+        curve.linecolor.name = c.name();
+        curve.linecolor.r = c.r();
+        curve.linecolor.g = c.g();
+        curve.linecolor.b = c.b();
+        curve.linecolor.a = c.a();
+    }
+
+    if (proto.has_xform()) {
+        const auto& x = proto.xform();
+        curve.xform.guid = x.guid();
+        curve.xform.name = x.name();
+        for (int i = 0; i < 16 && i < x.matrix_size(); ++i) {
+            curve.xform.m[i] = x.matrix(i);
+        }
+    }
+
+    return curve;
 }
 
 // Stream operator
 std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve) {
-    os << curve.to_string();
+    os << curve.str();
     return os;
 }
 
@@ -1888,71 +1973,50 @@ bool NurbsCurve::extend(double t0, double t1) {
     return changed;
 }
 
-// Get bounding box
-BoundingBox NurbsCurve::get_bounding_box() const {
-    if (!is_valid() || m_cv_count == 0) {
-        return BoundingBox();
-    }
-    
-    std::vector<Point> points;
-    for (int i = 0; i < m_cv_count; i++) {
-        points.push_back(get_cv(i));
-    }
-    
-    return BoundingBox::from_points(points);
-}
-
-// Compute arc length (approximate)
+// Compute arc length using Gauss-Legendre quadrature
 double NurbsCurve::length(double tolerance) const {
     if (!is_valid()) return 0.0;
-    
-    auto [t0, t1] = domain();
-    
-    // Adaptive sampling based on tolerance
-    // Smaller tolerance = more samples for better accuracy
-    int num_samples = std::max(50, static_cast<int>(100.0 / (tolerance + 1e-10)));
-    num_samples = std::min(num_samples, 1000); // Cap at 1000 samples
-    
-    double dt = (t1 - t0) / num_samples;
-    double total_length = 0.0;
-    
-    Point prev = point_at(t0);
-    for (int i = 1; i <= num_samples; i++) {
-        Point curr = point_at(t0 + i * dt);
-        total_length += prev.distance(curr);
-        prev = curr;
-    }
-    
-    return total_length;
-}
 
-// Find closest point on curve
-Point NurbsCurve::closest_point(const Point& point, double& t_out) const {
-    if (!is_valid()) {
-        t_out = 0.0;
-        return Point(0, 0, 0);
-    }
-    
-    auto [t0, t1] = domain();
-    
-    // Simple search using sampling
-    int num_samples = 100;
-    double dt = (t1 - t0) / num_samples;
-    double min_dist = std::numeric_limits<double>::max();
-    double best_t = t0;
-    
-    for (int i = 0; i <= num_samples; i++) {
-        double t = t0 + i * dt;
-        Point p = point_at(t);
-        double dist = point.distance(p);
-        if (dist < min_dist) {
-            min_dist = dist;
-            best_t = t;
+    static const double GL_X[10] = {
+        -0.9739065285171717, -0.8650633666889845, -0.6794095682990244,
+        -0.4333953941292472, -0.1488743389816312,
+         0.1488743389816312,  0.4333953941292472,  0.6794095682990244,
+         0.8650633666889845,  0.9739065285171717
+    };
+    static const double GL_W[10] = {
+        0.0666713443086881, 0.1494513491505806, 0.2190863625159820,
+        0.2692667193099963, 0.2955242247147529,
+        0.2955242247147529, 0.2692667193099963, 0.2190863625159820,
+        0.1494513491505806, 0.0666713443086881
+    };
+
+    double total = 0.0;
+    int n_spans = span_count();
+    const int SUBDIVISIONS = 4;
+
+    for (int span = 0; span < n_spans; span++) {
+        double span_a = m_knot[m_order - 2 + span];
+        double span_b = m_knot[m_order - 1 + span];
+        if (span_b <= span_a) continue;
+
+        double span_width = (span_b - span_a) / SUBDIVISIONS;
+        for (int sub = 0; sub < SUBDIVISIONS; sub++) {
+            double a = span_a + sub * span_width;
+            double b = a + span_width;
+            double mid = (a + b) * 0.5;
+            double half = (b - a) * 0.5;
+            double s = 0.0;
+
+            for (int i = 0; i < 10; i++) {
+                double t = mid + half * GL_X[i];
+                auto derivs = evaluate(t, 1);
+                s += GL_W[i] * derivs[1].magnitude();
+            }
+            total += half * s;
         }
     }
-    
-    t_out = best_t;
-    return point_at(best_t);
+
+    return total;
 }
 
 // Clean up knots
@@ -3232,463 +3296,23 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
     return is_lin;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
-// Intersection Operations
-///////////////////////////////////////////////////////////////////////////////////////////
-
-// Helper function: Evaluate signed distance from point to plane
-namespace {
-    double signed_distance_to_plane(const Point& pt, const Plane& plane) {
-        Vector v(pt[0] - plane.origin()[0],
-                pt[1] - plane.origin()[1],
-                pt[2] - plane.origin()[2]);
-        return v.dot(plane.z_axis());
-    }
-    
-    // Find root in interval using bisection
-    bool find_root_bisection(const NurbsCurve& curve, const Plane& plane,
-                            double t0, double t1, double tolerance,
-                            double& t_result) {
-        const int max_iterations = 50;
-        double d0 = signed_distance_to_plane(curve.point_at(t0), plane);
-        double d1 = signed_distance_to_plane(curve.point_at(t1), plane);
-        
-        // No sign change, no root in interval
-        if (d0 * d1 > 0) return false;
-        
-        // Bisection method
-        for (int iter = 0; iter < max_iterations; iter++) {
-            double t_mid = (t0 + t1) * 0.5;
-            double d_mid = signed_distance_to_plane(curve.point_at(t_mid), plane);
-            
-            if (std::abs(d_mid) < tolerance || (t1 - t0) < tolerance) {
-                t_result = t_mid;
-                return true;
-            }
-            
-            if (d0 * d_mid < 0) {
-                t1 = t_mid;
-                d1 = d_mid;
-            } else {
-                t0 = t_mid;
-                d0 = d_mid;
-            }
-        }
-        
-        t_result = (t0 + t1) * 0.5;
-        return std::abs(signed_distance_to_plane(curve.point_at(t_result), plane)) < tolerance * 10.0;
-    }
-    
-    // Newton-Raphson refinement for intersection
-    bool refine_intersection_newton(const NurbsCurve& curve, const Plane& plane,
-                                   double& t, double tolerance) {
-        const int max_iterations = 10;
-        const double step_tolerance = tolerance * 0.01;
-        
-        for (int iter = 0; iter < max_iterations; iter++) {
-            Point pt = curve.point_at(t);
-            Vector tangent = curve.tangent_at(t);
-            
-            double f = signed_distance_to_plane(pt, plane);
-            double df = tangent.dot(plane.z_axis());
-            
-            if (std::abs(f) < tolerance) return true;
-            if (std::abs(df) < 1e-12) return false;  // Tangent parallel to plane
-            
-            double dt = -f / df;
-            if (std::abs(dt) < step_tolerance) return true;
-            
-            t += dt;
-            
-            // Clamp to domain
-            auto [t0, t1] = curve.domain();
-            if (t < t0) t = t0;
-            if (t > t1) t = t1;
-        }
-        
-        return std::abs(signed_distance_to_plane(curve.point_at(t), plane)) < tolerance * 2.0;
-    }
-}
-
-// Find all curve-plane intersections (parameter values)
-std::vector<double> NurbsCurve::intersect_plane(const Plane& plane, double tolerance) const {
-    std::vector<double> intersections;
-    
-    if (!is_valid()) return intersections;
-    if (tolerance <= 0.0) tolerance = Tolerance::ZERO_TOLERANCE;
-    
-    auto [t_start, t_end] = domain();
-    
-    // Subdivide curve into spans and look for sign changes
-    std::vector<double> span_params = get_span_vector();
-    
-    for (size_t i = 0; i < span_params.size() - 1; i++) {
-        double t0 = span_params[i];
-        double t1 = span_params[i + 1];
-        
-        // Skip zero-length spans
-        if (std::abs(t1 - t0) < tolerance) continue;
-        
-        // Check for sign change (intersection) in this span
-        double d0 = signed_distance_to_plane(point_at(t0), plane);
-        double d1 = signed_distance_to_plane(point_at(t1), plane);
-        
-        // Check if span crosses plane
-        if (d0 * d1 < 0) {
-            // Sign change - there's an intersection
-            double t_intersection;
-            if (find_root_bisection(*this, plane, t0, t1, tolerance, t_intersection)) {
-                // Refine with Newton-Raphson
-                refine_intersection_newton(*this, plane, t_intersection, tolerance);
-                intersections.push_back(t_intersection);
-            }
-        } else if (std::abs(d0) < tolerance) {
-            // Start point is on plane
-            bool add = true;
-            // Avoid duplicates
-            if (!intersections.empty() && std::abs(intersections.back() - t0) < tolerance) {
-                add = false;
-            }
-            if (add) intersections.push_back(t0);
-        }
-    }
-    
-    // Check end point
-    double d_end = signed_distance_to_plane(point_at(t_end), plane);
-    if (std::abs(d_end) < tolerance) {
-        bool add = true;
-        if (!intersections.empty() && std::abs(intersections.back() - t_end) < tolerance) {
-            add = false;
-        }
-        if (add) intersections.push_back(t_end);
-    }
-    
-    // Further subdivision for high-degree curves or if we might have missed intersections
-    if (degree() > 3 && intersections.size() < static_cast<size_t>(degree())) {
-        // Sample more points to find potential intersections
-        int num_samples = degree() * 4;
-        double dt = (t_end - t_start) / num_samples;
-        
-        for (int i = 0; i < num_samples; i++) {
-            double t0 = t_start + i * dt;
-            double t1 = t_start + (i + 1) * dt;
-            
-            double d0 = signed_distance_to_plane(point_at(t0), plane);
-            double d1 = signed_distance_to_plane(point_at(t1), plane);
-            
-            if (d0 * d1 < 0) {
-                double t_intersection;
-                if (find_root_bisection(*this, plane, t0, t1, tolerance, t_intersection)) {
-                    // Check if this is a new intersection
-                    bool is_new = true;
-                    for (double existing : intersections) {
-                        if (std::abs(existing - t_intersection) < tolerance * 2.0) {
-                            is_new = false;
-                            break;
-                        }
-                    }
-                    if (is_new) {
-                        refine_intersection_newton(*this, plane, t_intersection, tolerance);
-                        intersections.push_back(t_intersection);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Sort intersections
-    std::sort(intersections.begin(), intersections.end());
-    
-    // Remove duplicates
-    intersections.erase(
-        std::unique(intersections.begin(), intersections.end(),
-                   [tolerance](double a, double b) {
-                       return std::abs(a - b) < tolerance * 2.0;
-                   }),
-        intersections.end()
-    );
-    
-    return intersections;
-}
-
-// Find all curve-plane intersections (points)
-std::vector<Point> NurbsCurve::intersect_plane_points(const Plane& plane, double tolerance) const {
-    std::vector<double> params = intersect_plane(plane, tolerance);
-    std::vector<Point> points;
-    points.reserve(params.size());
-    
-    for (double t : params) {
-        points.push_back(point_at(t));
-    }
-    
-    return points;
-}
-
-// Get closest parameter on curve to a point (improved version)
-std::pair<double, double> NurbsCurve::closest_point_to(const Point& test_point, 
-                                                        double t0, double t1) const {
-    if (!is_valid()) return {0.0, std::numeric_limits<double>::infinity()};
-    
-    auto [domain_start, domain_end] = domain();
-    if (t0 < 0.0) t0 = domain_start;
-    if (t1 < 0.0) t1 = domain_end;
-    
-    t0 = std::max(t0, domain_start);
-    t1 = std::min(t1, domain_end);
-    
-    // Multi-start optimization to avoid local minima
-    const int num_samples = std::max(10, degree() * 2);
-    double dt = (t1 - t0) / num_samples;
-    
-    double best_t = t0;
-    double best_dist = point_at(t0).distance(test_point);
-    
-    // Sample curve to find good starting points
-    for (int i = 0; i <= num_samples; i++) {
-        double t = t0 + i * dt;
-        double dist = point_at(t).distance(test_point);
-        if (dist < best_dist) {
-            best_dist = dist;
-            best_t = t;
-        }
-    }
-    
-    // Newton-Raphson refinement from best sample
-    const int max_iterations = 20;
-    const double step_tolerance = (t1 - t0) * 1e-10;
-    
-    double t = best_t;
-    
-    for (int iter = 0; iter < max_iterations; iter++) {
-        Point pt = point_at(t);
-        Vector tangent = tangent_at(t);
-        
-        Vector delta(test_point[0] - pt[0],
-                    test_point[1] - pt[1],
-                    test_point[2] - pt[2]);
-        
-        // f(t) = (C(t) - P) · C'(t) should be zero at closest point
-        double f = -delta.dot(tangent);
-        
-        if (std::abs(f) < step_tolerance) break;
-        
-        // f'(t) = C''(t) · (C(t) - P) - |C'(t)|^2
-        auto derivs = evaluate(t, 2);
-        if (derivs.size() < 3) break;
-        
-        Vector d2(derivs[2][0], derivs[2][1], derivs[2][2]);
-        double tangent_mag = tangent.magnitude();
-        double df = delta.dot(d2) - tangent_mag * tangent_mag;
-        
-        if (std::abs(df) < 1e-12) break;
-        
-        double dt_step = -f / df;
-        
-        // Limit step size
-        if (std::abs(dt_step) > (t1 - t0) * 0.5) {
-            dt_step = std::copysign((t1 - t0) * 0.5, dt_step);
-        }
-        
-        t += dt_step;
-        
-        // Clamp to interval
-        if (t < t0) t = t0;
-        if (t > t1) t = t1;
-        
-        if (std::abs(dt_step) < step_tolerance) break;
-    }
-    
-    double final_dist = point_at(t).distance(test_point);
-    
-    // Also check endpoints
-    double dist_start = point_at(t0).distance(test_point);
-    double dist_end = point_at(t1).distance(test_point);
-    
-    if (dist_start < final_dist) {
-        t = t0;
-        final_dist = dist_start;
-    }
-    if (dist_end < final_dist) {
-        t = t1;
-        final_dist = dist_end;
-    }
-    
-    return {t, final_dist};
-}
-
-// Bézier clipping for curve-plane intersection
-std::vector<double> NurbsCurve::intersect_plane_bezier_clipping(const Plane& plane, double tolerance) const {
-    std::vector<double> results;
-    
-    if (!is_valid()) return results;
-    if (tolerance <= 0.0) tolerance = Tolerance::ZERO_TOLERANCE;
-    
-    auto [t0, t1] = domain();
-    
-    // Helper: compute signed distance from point to plane
-    auto signed_distance = [&](const Point& p) -> double {
-        Vector v(p[0] - plane.origin()[0],
-                p[1] - plane.origin()[1],
-                p[2] - plane.origin()[2]);
-        return v.dot(plane.z_axis());
-    };
-    
-    // Helper: Bézier clipping on interval [ta, tb]
-    std::function<void(double, double, int)> clip_recursive;
-    clip_recursive = [&](double ta, double tb, int depth) {
-        // Prevent infinite recursion
-        if (depth > 50) {
-            // Fall back to Newton-Raphson
-            double tm = (ta + tb) * 0.5;
-            Point pm = point_at(tm);
-            double dist = signed_distance(pm);
-            
-            if (std::abs(dist) < tolerance) {
-                results.push_back(tm);
-            }
-            return;
-        }
-        
-        // Check if interval is small enough
-        if (std::abs(tb - ta) < tolerance * 0.01) {
-            double tm = (ta + tb) * 0.5;
-            Point pm = point_at(tm);
-            double dist = signed_distance(pm);
-            
-            if (std::abs(dist) < tolerance) {
-                // Newton refinement
-                double t = tm;
-                for (int iter = 0; iter < 10; iter++) {
-                    Point pt = point_at(t);
-                    Vector tangent = tangent_at(t);
-                    
-                    double f = signed_distance(pt);
-                    double df = tangent.dot(plane.z_axis());
-                    
-                    if (std::abs(df) < 1e-12) break;
-                    
-                    double dt = -f / df;
-                    t += dt;
-                    
-                    if (std::abs(dt) < tolerance * 0.01) break;
-                    if (t < ta || t > tb) {
-                        t = tm;
-                        break;
-                    }
-                }
-                
-                // Verify solution
-                Point pt_final = point_at(t);
-                if (std::abs(signed_distance(pt_final)) < tolerance && t >= ta && t <= tb) {
-                    results.push_back(t);
-                }
-            }
-            return;
-        }
-        
-        // Sample control points (use order+1 points for Bézier-like behavior)
-        int num_samples = std::min(order() + 1, 10);
-        std::vector<double> distances;
-        std::vector<double> params;
-        
-        double dt = (tb - ta) / (num_samples - 1);
-        for (int i = 0; i < num_samples; i++) {
-            double t = ta + i * dt;
-            Point p = point_at(t);
-            distances.push_back(signed_distance(p));
-            params.push_back(t);
-        }
-        
-        // Find min and max distances
-        double d_min = *std::min_element(distances.begin(), distances.end());
-        double d_max = *std::max_element(distances.begin(), distances.end());
-        
-        // Check if curve segment is entirely on one side
-        if (d_min > tolerance || d_max < -tolerance) {
-            return; // No intersection in this interval
-        }
-        
-        // If curve crosses plane, find clipping bounds using convex hull
-        double t_min = ta;
-        double t_max = tb;
-        
-        // Simple clipping: find where distance function changes sign
-        for (size_t i = 0; i < distances.size() - 1; i++) {
-            if (distances[i] * distances[i + 1] < 0) {
-                // Sign change between params[i] and params[i+1]
-                // Use linear interpolation to clip
-                double d0 = distances[i];
-                double d1 = distances[i + 1];
-                double t_clip = params[i] - d0 * (params[i + 1] - params[i]) / (d1 - d0);
-                
-                if (d0 > 0) {
-                    t_max = std::min(t_max, t_clip + (tb - ta) * 0.1);
-                } else {
-                    t_min = std::max(t_min, t_clip - (tb - ta) * 0.1);
-                }
-            }
-        }
-        
-        // Ensure valid interval
-        if (t_min >= t_max) {
-            t_min = ta;
-            t_max = tb;
-        }
-        
-        // Clamp to original interval
-        t_min = std::max(ta, t_min);
-        t_max = std::min(tb, t_max);
-        
-        // Check if clipping reduced interval significantly
-        double reduction = (t_max - t_min) / (tb - ta);
-        
-        if (reduction > 0.8 || (t_max - t_min) < tolerance * 0.1) {
-            // Not much reduction, split in half
-            double tm = (ta + tb) * 0.5;
-            clip_recursive(ta, tm, depth + 1);
-            clip_recursive(tm, tb, depth + 1);
-        } else {
-            // Good reduction, continue on clipped interval
-            clip_recursive(t_min, t_max, depth + 1);
-        }
-    };
-    
-    // Start recursive clipping
-    clip_recursive(t0, t1, 0);
-    
-    // Sort results
-    std::sort(results.begin(), results.end());
-    
-    // Remove duplicates
-    auto last = std::unique(results.begin(), results.end(),
-                           [tolerance](double a, double b) {
-                               return std::abs(a - b) < tolerance * 2.0;
-                           });
-    results.erase(last, results.end());
-    
-    return results;
-}
-
 // Convert span to Bezier - Extract Bezier segment from span
 bool NurbsCurve::convert_span_to_bezier(int span_index, std::vector<Point>& bezier_cvs) const {
     bezier_cvs.clear();
-    
+
     if (!is_valid()) return false;
     if (span_index < 0 || span_index > m_cv_count - m_order) return false;
-    
-    // Check if span is non-empty
+
     int ki0 = span_index + m_order - 2;
     int ki1 = span_index + m_order - 1;
     if (ki0 >= knot_count() || ki1 >= knot_count()) return false;
-    if (m_knot[ki0] >= m_knot[ki1]) return false;  // Empty span
-    
-    // For a proper Bezier extraction, we need the span to have full multiplicity knots
-    // Simple implementation: just return the order CVs that define this span
+    if (m_knot[ki0] >= m_knot[ki1]) return false;
+
     bezier_cvs.reserve(m_order);
     for (int i = 0; i < m_order; i++) {
         bezier_cvs.push_back(get_cv(span_index + i));
     }
-    
+
     return true;
 }
 
@@ -4179,262 +3803,6 @@ bool NurbsCurve::divide_by_length(double segment_length, std::vector<Point>& poi
     }
 
     return points.size() >= 2;
-}
-
-// Curve-plane intersection using algebraic/hodograph method
-std::vector<double> NurbsCurve::intersect_plane_algebraic(const Plane& plane, double tolerance) const {
-    if (!is_valid()) return {};
-    
-    std::vector<double> results;
-    
-    // Get all spans
-    std::vector<double> spans = get_span_vector();
-    if (spans.size() < 2) return {};
-    
-    // Process each span separately
-    for (size_t i = 0; i < spans.size() - 1; i++) {
-        double span_t0 = spans[i];
-        double span_t1 = spans[i + 1];
-        
-        // Skip degenerate spans
-        if (std::abs(span_t1 - span_t0) < tolerance) continue;
-        
-        // Recursive subdivision helper
-        std::function<void(double, double, int)> subdivide = [&](double a, double b, int depth) {
-            if (depth > 30) return; // Max recursion depth
-            
-            // Evaluate at endpoints
-            Point p_a = point_at(a);
-            Point p_b = point_at(b);
-            
-            // Signed distances to plane (using z_axis as normal)
-            Vector normal = plane.z_axis();
-            double f_a = normal.dot(p_a - plane.origin());
-            double f_b = normal.dot(p_b - plane.origin());
-            
-            // No sign change → no root (or even number)
-            if (f_a * f_b > 0) return;
-            
-            // Check if segment is nearly linear
-            double mid_t = (a + b) * 0.5;
-            Point p_mid = point_at(mid_t);
-            
-            // Distance from midpoint to line connecting endpoints
-            Vector line_dir = p_b - p_a;
-            double line_len = line_dir.magnitude();
-            if (line_len > 1e-14) {
-                line_dir = line_dir / line_len; // Normalize
-            }
-            double deviation = std::abs((p_mid - p_a).cross(line_dir).magnitude());
-            
-            if (deviation < tolerance * 10.0 || (b - a) < tolerance * 10.0) {
-                // Nearly linear - apply Newton-Raphson
-                double t = mid_t;
-                bool converged = false;
-                
-                for (int iter = 0; iter < 10; iter++) {
-                    Point p = point_at(t);
-                    double f = normal.dot(p - plane.origin());
-                    
-                    if (std::abs(f) < tolerance) {
-                        converged = true;
-                        break;
-                    }
-                    
-                    // Derivative: df/dt = normal · C'(t)
-                    Vector tangent = tangent_at(t);
-                    double df = normal.dot(tangent);
-                    
-                    if (std::abs(df) < 1e-14) {
-                        // Tangent to plane - use bisection
-                        t = (a + b) * 0.5;
-                        break;
-                    }
-                    
-                    // Newton step
-                    double t_new = t - f / df;
-                    
-                    // Keep in bounds
-                    if (t_new < a || t_new > b) {
-                        t_new = (a + b) * 0.5; // Fallback to bisection
-                    }
-                    
-                    if (std::abs(t_new - t) < tolerance) {
-                        t = t_new;
-                        converged = true;
-                        break;
-                    }
-                    
-                    t = t_new;
-                }
-                
-                if (converged && t >= a && t <= b) {
-                    // Check for duplicates
-                    bool is_duplicate = false;
-                    for (double existing : results) {
-                        if (std::abs(existing - t) < tolerance * 10.0) {
-                            is_duplicate = true;
-                            break;
-                        }
-                    }
-                    if (!is_duplicate) {
-                        results.push_back(t);
-                    }
-                }
-            } else {
-                // Subdivide further
-                subdivide(a, mid_t, depth + 1);
-                subdivide(mid_t, b, depth + 1);
-            }
-        };
-        
-        // Start subdivision for this span
-        subdivide(span_t0, span_t1, 0);
-    }
-    
-    // Sort and remove duplicates
-    std::sort(results.begin(), results.end());
-    results.erase(std::unique(results.begin(), results.end(),
-                              [tolerance](double a, double b) {
-                                  return std::abs(a - b) < tolerance * 10.0;
-                              }), results.end());
-    
-    return results;
-}
-
-// Curve-plane intersection using production CAD kernel method (INDUSTRY STANDARD)
-std::vector<double> NurbsCurve::intersect_plane_production(const Plane& plane, double tolerance) const {
-    if (!is_valid()) return {};
-    
-    std::vector<double> results;
-    
-    // Get all spans
-    std::vector<double> spans = get_span_vector();
-    if (spans.size() < 2) return {};
-    
-    // Helper: Check if segment is nearly linear
-    auto is_nearly_linear = [this, tolerance](double a, double b) -> bool {
-        Point p_a = point_at(a);
-        Point p_b = point_at(b);
-        Point p_mid = point_at((a + b) * 0.5);
-        
-        // Distance from midpoint to line connecting endpoints
-        Vector ab = p_b - p_a;
-        double line_length = ab.magnitude();
-        if (line_length < 1e-14) return true;
-        
-        Vector am = p_mid - p_a;
-        double cross_mag = ab.cross(am).magnitude();
-        double deviation = cross_mag / line_length;
-        
-        return deviation < tolerance * 10.0;
-    };
-    
-    // Recursive subdivision with Newton refinement
-    std::function<void(double, double, int)> subdivide = [&](double a, double b, int depth) {
-        if (depth > 30) return; // Max recursion depth
-        
-        // Evaluate at endpoints
-        Point p_a = point_at(a);
-        Point p_b = point_at(b);
-        
-        // Signed distances to plane (using z_axis as normal)
-        Vector normal = plane.z_axis();
-        double f_a = normal.dot(p_a - plane.origin());
-        double f_b = normal.dot(p_b - plane.origin());
-        
-        // No sign change → no root (or even number of roots)
-        if (f_a * f_b > 0) return;
-        
-        // Check if nearly linear
-        if (is_nearly_linear(a, b) || (b - a) < tolerance * 10.0) {
-            // Apply Newton-Raphson with robust bracketing
-            double t = (a + b) * 0.5;
-            bool converged = false;
-            
-            for (int iter = 0; iter < 10; iter++) {
-                Point p = point_at(t);
-                double f = normal.dot(p - plane.origin());
-                
-                if (std::abs(f) < tolerance) {
-                    converged = true;
-                    break;
-                }
-                
-                // Derivative
-                Vector tangent = tangent_at(t);
-                double df = normal.dot(tangent);
-                
-                if (std::abs(df) < 1e-14) {
-                    // Nearly tangent - use bisection
-                    if (f * f_a < 0) {
-                        b = t;
-                        f_b = f;
-                    } else {
-                        a = t;
-                        f_a = f;
-                    }
-                    t = (a + b) * 0.5;
-                    continue;
-                }
-                
-                // Newton step
-                double t_new = t - f / df;
-                
-                // Keep in bounds [a, b]
-                if (t_new < a || t_new > b) {
-                    t_new = (a + b) * 0.5; // Fallback to bisection
-                }
-                
-                if (std::abs(t_new - t) < tolerance) {
-                    t = t_new;
-                    converged = true;
-                    break;
-                }
-                
-                t = t_new;
-            }
-            
-            if (converged && t >= a && t <= b) {
-                // Check for duplicates
-                bool is_duplicate = false;
-                for (double existing : results) {
-                    if (std::abs(existing - t) < tolerance * 10.0) {
-                        is_duplicate = true;
-                        break;
-                    }
-                }
-                if (!is_duplicate) {
-                    results.push_back(t);
-                }
-            }
-        } else {
-            // Subdivide at midpoint
-            double mid = (a + b) * 0.5;
-            subdivide(a, mid, depth + 1);
-            subdivide(mid, b, depth + 1);
-        }
-    };
-    
-    // Process each span
-    for (size_t i = 0; i < spans.size() - 1; i++) {
-        double span_t0 = spans[i];
-        double span_t1 = spans[i + 1];
-        
-        // Skip degenerate spans
-        if (std::abs(span_t1 - span_t0) < tolerance) continue;
-        
-        subdivide(span_t0, span_t1, 0);
-    }
-    
-    // Sort and remove duplicates
-    std::sort(results.begin(), results.end());
-    results.erase(std::unique(results.begin(), results.end(),
-                              [tolerance](double a, double b) {
-                                  return std::abs(a - b) < tolerance * 10.0;
-                              }), results.end());
-    
-    return results;
 }
 
 } // namespace session_cpp

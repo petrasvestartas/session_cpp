@@ -142,7 +142,6 @@ MINI_TEST("PointCloud", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
 
-#ifdef ENABLE_PROTOBUF
 MINI_TEST("PointCloud", "protobuf_roundtrip") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
@@ -166,6 +165,5 @@ MINI_TEST("PointCloud", "protobuf_roundtrip") {
     MINI_CHECK(loaded.get_color(0).r == 255 && loaded.get_color(0).g == 0 && loaded.get_color(0).b == 0);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
-#endif
 
 } // namespace session_cpp

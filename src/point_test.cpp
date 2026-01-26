@@ -124,7 +124,6 @@ namespace session_cpp {
 
     }
 
-#ifdef ENABLE_PROTOBUF
     MINI_TEST("Point", "protobuf_roundtrip") {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
@@ -148,7 +147,6 @@ namespace session_cpp {
         MINI_CHECK(loaded.pointcolor.b == 64);
         MINI_CHECK(loaded.pointcolor.a == 255);
     }
-#endif
 
     MINI_TEST("Point", "is_ccw") {
         // uncomment #include "point.h"

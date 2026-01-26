@@ -6,20 +6,13 @@
 #include <cmath>
 #include <fstream>
 
-#ifdef ENABLE_PROTOBUF
 #include "vector.pb.h"
-#endif
 
 namespace session_cpp {
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Operators
 ///////////////////////////////////////////////////////////////////////////////////////////
-
-/// Convert vector to string representation
-std::string Vector::to_string() const {
-  return fmt::format("Vector({}, {}, {}, {}, {})", _x, _y, _z, guid, name);
-}
 
 /// Simple string form (like Python __str__): just coordinates
 std::string Vector::str() const {
@@ -165,7 +158,6 @@ Vector Vector::json_load(const std::string& filename) {
 // Protobuf Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
 std::string Vector::to_protobuf() const {
   session_proto::Vector proto;
   proto.set_x(_x);
@@ -196,23 +188,6 @@ Vector Vector::protobuf_load(const std::string& filename) {
   ifs.close();
   return from_protobuf(data);
 }
-#else
-std::string Vector::to_protobuf() const {
-  throw std::runtime_error("Protobuf support not enabled");
-}
-
-Vector Vector::from_protobuf(const std::string& data) {
-  throw std::runtime_error("Protobuf support not enabled");
-}
-
-void Vector::protobuf_dump(const std::string& filename) const {
-  throw std::runtime_error("Protobuf support not enabled");
-}
-
-Vector Vector::protobuf_load(const std::string& filename) {
-  throw std::runtime_error("Protobuf support not enabled");
-}
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Static methods

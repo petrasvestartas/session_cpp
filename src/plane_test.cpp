@@ -230,7 +230,6 @@ MINI_TEST("Plane", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.d(), 0.0));
 }
 
-#ifdef ENABLE_PROTOBUF
 MINI_TEST("Plane", "protobuf_roundtrip") {
     // uncomment #include "plane.h"
 
@@ -246,6 +245,5 @@ MINI_TEST("Plane", "protobuf_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.c(), 1.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.d(), 0.0));
 }
-#endif
 
 } // namespace session_cpp

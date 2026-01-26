@@ -85,7 +85,7 @@ public:
   }
 
   /// Convert session to string representation
-  std::string to_string() const;
+  std::string str() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Geometry Management

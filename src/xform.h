@@ -104,7 +104,6 @@ public:
     /// Read JSON from file
     static Xform json_load(const std::string& filename);
 
-#ifdef ENABLE_PROTOBUF
     /// Serialize to protobuf binary format
     std::string to_protobuf() const;
     /// Deserialize from protobuf binary data
@@ -113,7 +112,6 @@ public:
     void protobuf_dump(const std::string& filename) const;
     /// Read protobuf from file
     static Xform protobuf_load(const std::string& filename);
-#endif
 
     /// Matrix multiplication
     Xform operator*(const Xform& other) const;

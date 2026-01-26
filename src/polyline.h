@@ -163,7 +163,6 @@ public:
     // Protobuf Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef ENABLE_PROTOBUF
     /// Convert to protobuf binary format
     std::string to_protobuf() const;
 
@@ -175,7 +174,6 @@ public:
 
     /// Read protobuf from file
     static Polyline protobuf_load(const std::string& filename);
-#endif
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Utilities

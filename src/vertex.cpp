@@ -2,7 +2,7 @@
 
 namespace session_cpp {
 
-    std::string Vertex::to_string() const {
+    std::string Vertex::str() const {
     return fmt::format("Vertex({}, {}, {}, {})", guid, name, attribute, index);
     }
 

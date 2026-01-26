@@ -29,8 +29,8 @@ private:
 public:
   Tree(std::string name = "my_tree") { this->name = name; }
 
-  /// Convert point to string representation
-  std::string to_string() const;
+  /// Convert tree to string representation
+  std::string str() const;
 
   /// Equality operator
   bool operator==(const Tree &other) const;
