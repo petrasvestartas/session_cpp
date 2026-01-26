@@ -29,7 +29,7 @@
     "cv_count": 5,
     "cv_stride": 3,
     "dimension": 3,
-    "guid": "6caf84ca-9f2f-4311-91bb-9d3eba771225",
+    "guid": "2921bafc-e53e-4ce3-b151-5087ffaaf0c6",
     "is_rational": false,
     "knots": [
         0.0,
@@ -43,7 +43,7 @@
         "a": 255,
         "b": 255,
         "g": 255,
-        "guid": "6e9e8399-423f-463f-bbb6-a7a0ee148c16",
+        "guid": "64ee0542-c249-486b-afd8-ed32c2a2d831",
         "name": "white",
         "r": 255,
         "type": "Color"
@@ -52,7 +52,7 @@
     "order": 3,
     "width": 1.0,
     "xform": {
-        "guid": "db6ad7d7-5b86-47dd-bf87-c859a1324d1d",
+        "guid": "82d5dd9a-111c-44b3-9e98-984f9a207e33",
         "m": [
             1.0,
             0.0,
