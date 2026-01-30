@@ -1431,15 +1431,15 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
 
 // String & JSON
 std::string NurbsCurve::str() const {
-    return fmt::format("NurbsCurve(degree={}, cvs={})", degree(), cv_count());
+    return fmt::format("NurbsCurve(name={}, degree={}, cvs={})", name, degree(), cv_count());
 }
 
 std::string NurbsCurve::repr() const {
-    std::string result = fmt::format("NurbsCurve(\n  name={},\n  dim={},\n  order={},\n  cvs={},\n  rational={},\n  control_points=[\n",
-                                     name, m_dim, m_order, m_cv_count, m_is_rat ? "true" : "false");
+    std::string result = fmt::format("NurbsCurve(\n  name={},\n  degree={},\n  cvs={},\n  rational={},\n  control_points=[\n",
+                                     name, degree(), m_cv_count, m_is_rat ? "true" : "false");
     for (int i = 0; i < m_cv_count; ++i) {
         Point p = get_cv(i);
-        result += fmt::format("    cv[{}]: {}, {}, {}\n", i, p[0], p[1], p[2]);
+        result += fmt::format("    {}, {}, {}\n", p[0], p[1], p[2]);
     }
     result += "  ]\n)";
     return result;
@@ -2129,33 +2129,35 @@ bool NurbsCurve::is_clamped(int end) const {
     return knot::is_clamped(m_order, m_cv_count, m_knot, end);
 }
 
-// Get control polygon length
-double NurbsCurve::control_polygon_length() const {
-    if (!is_valid() || m_cv_count < 2) return 0.0;
-    
-    double length = 0.0;
-    Point prev = get_cv(0);
-    
-    for (int i = 1; i < m_cv_count; i++) {
-        Point curr = get_cv(i);
-        length += prev.distance(curr);
-        prev = curr;
-    }
-    
-    return length;
-}
-
-// Get Greville abcissa for a control point
+// Get Greville abcissa for a control point (aligned with opennurbs ON_GrevilleAbcissa)
 double NurbsCurve::greville_abcissa(int cv_index) const {
     if (cv_index < 0 || cv_index >= m_cv_count) return 0.0;
-    
-    // Greville abcissa is the average of p consecutive knots starting at cv_index
-    int p = degree();
-    double sum = 0.0;
-    for (int i = 0; i < p; i++) {
-        sum += m_knot[cv_index + i];
+
+    const double* knot = m_knot.data() + cv_index;
+    int order = m_order;
+
+    if (order <= 2 || knot[0] == knot[order - 2]) {
+        return knot[0];
     }
-    return sum / p;
+
+    int p = order - 1;
+    const double k0 = knot[0];
+    const double k = knot[p / 2];
+    const double k1 = knot[p - 1];
+    const double tol = (k1 - k0) * 1.490116119385e-8; // ON_SQRT_EPSILON
+    const double dp = static_cast<double>(p);
+
+    double g = 0.0;
+    for (int i = 0; i < p; i++)
+        g += knot[i];
+    g /= dp;
+
+    // Snap to exact middle knot for uniform knot vectors
+    if (std::fabs(2.0 * k - (k0 + k1)) <= tol &&
+        std::fabs(g - k) <= (std::fabs(g) * 1.490116119385e-8 + tol))
+        g = k;
+
+    return g;
 }
 
 // Get all Greville abcissae
@@ -2248,85 +2250,52 @@ bool NurbsCurve::span_is_singular(int span_index) const {
 // Check if entire curve is singular
 bool NurbsCurve::is_singular() const {
     if (!is_valid()) return false;
-    
-    int span_count = this->span_count();
-    for (int i = 0; i < span_count; i++) {
+
+    int span_cnt = this->span_count();
+    for (int i = 0; i < span_cnt; i++) {
         if (!span_is_singular(i)) {
             return false;
         }
     }
-    
+
     return true;
 }
 
-// Check if curve has bezier spans
-bool NurbsCurve::has_bezier_spans() const {
-    if (!is_valid()) return false;
-    
-    int p = degree();
-    int kc = knot_count();
-    
-    // Check each distinct knot has multiplicity = degree
-    std::vector<double> distinct_knots;
-    std::vector<int> multiplicities;
-    
-    distinct_knots.push_back(m_knot[0]);
-    multiplicities.push_back(1);
-    
-    for (int i = 1; i < kc; i++) {
-        if (std::abs(m_knot[i] - distinct_knots.back()) < Tolerance::ZERO_TOLERANCE) {
-            multiplicities.back()++;
-        } else {
-            distinct_knots.push_back(m_knot[i]);
-            multiplicities.push_back(1);
-        }
-    }
-    
-    // Check interior knots have multiplicity = degree
-    for (size_t i = 1; i < distinct_knots.size() - 1; i++) {
-        if (multiplicities[i] != p) {
+// Check if duplicate
+bool NurbsCurve::is_duplicate(const NurbsCurve& other,
+                              bool ignore_parameterization,
+                              double tolerance) const {
+    if (!is_valid() || !other.is_valid()) return false;
+    if (m_dim != other.m_dim) return false;
+    if (m_is_rat != other.m_is_rat) return false;
+    if (m_order != other.m_order) return false;
+    if (m_cv_count != other.m_cv_count) return false;
+
+    // Check control points
+    for (int i = 0; i < m_cv_count; i++) {
+        Point p1 = get_cv(i);
+        Point p2 = other.get_cv(i);
+        if (p1.distance(p2) > tolerance) {
             return false;
         }
-    }
-    
-    return true;
-}
 
-// Make piecewise bezier
-bool NurbsCurve::make_piecewise_bezier(bool set_end_weights_to_one) {
-    if (has_bezier_spans()) return true;
-    if (!is_valid()) return false;
-    
-    // First clamp the ends
-    if (!clamp_end(2)) return false;
-    
-    // For each span, insert knots to achieve multiplicity = degree
-    int p = degree();
-    std::vector<double> span_params = get_span_vector();
-    
-    // Insert knots at each interior span parameter
-    for (size_t i = 1; i < span_params.size() - 1; i++) {
-        double t = span_params[i];
-        
-        // Count current multiplicity
-        int mult = 0;
-        for (int j = 0; j < knot_count(); j++) {
-            if (std::abs(m_knot[j] - t) < Tolerance::ZERO_TOLERANCE) {
-                mult++;
-            }
-        }
-        
-        // Insert knots to reach degree multiplicity
-        if (mult < p) {
-            if (!insert_knot(t, p - mult)) {
+        // Check weights for rational curves
+        if (m_is_rat) {
+            if (std::abs(weight(i) - other.weight(i)) > tolerance) {
                 return false;
             }
         }
     }
-    
-    // TODO: Implement set_end_weights_to_one if needed
-    (void)set_end_weights_to_one; // Suppress unused warning
-    
+
+    // Check knots if not ignoring parameterization
+    if (!ignore_parameterization) {
+        for (int i = 0; i < knot_count(); i++) {
+            if (std::abs(m_knot[i] - other.m_knot[i]) > tolerance) {
+                return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -2429,92 +2398,6 @@ bool NurbsCurve::increase_degree(int desired_degree) {
         m_knot = new_knots;
         m_cv = new_cvs;
     }
-    
-    return true;
-}
-
-// Append another curve (full implementation)
-bool NurbsCurve::append(const NurbsCurve& other) {
-    if (!is_valid() || !other.is_valid()) return false;
-    if (m_dim != other.m_dim) return false;
-    if (m_is_rat != other.m_is_rat) return false;
-    
-    // Check if curves are connected
-    Point this_end = point_at_end();
-    Point other_start = other.point_at_start();
-    double gap = this_end.distance(other_start);
-    if (gap > Tolerance::ZERO_TOLERANCE * 10.0) {
-        return false; // Curves must be connected
-    }
-    
-    // Make a copy to work with
-    NurbsCurve other_copy = other;
-    
-    // Make both curves same degree
-    int max_degree = std::max(degree(), other_copy.degree());
-    if (degree() < max_degree) {
-        if (!increase_degree(max_degree)) return false;
-    }
-    if (other_copy.degree() < max_degree) {
-        if (!other_copy.increase_degree(max_degree)) return false;
-    }
-    
-    // Get domain information
-    auto [t0_this, t1_this] = domain();
-    auto [t0_other, t1_other] = other_copy.domain();
-    
-    // Reparameterize other curve to continue from this curve's end
-    double domain_shift = t1_this - t0_other;
-    for (int i = 0; i < other_copy.knot_count(); i++) {
-        other_copy.m_knot[i] += domain_shift;
-    }
-    
-    // Merge knot vectors - remove overlapping knots at join
-    std::vector<double> new_knots;
-    int this_knot_count = knot_count();
-    int other_knot_count = other_copy.knot_count();
-    
-    // Add all knots from this curve
-    for (int i = 0; i < this_knot_count; i++) {
-        new_knots.push_back(m_knot[i]);
-    }
-    
-    // Add knots from other curve, skipping the first 'order' knots (overlap region)
-    for (int i = m_order; i < other_knot_count; i++) {
-        new_knots.push_back(other_copy.m_knot[i]);
-    }
-    
-    // Merge control points - average the overlapping CV at join
-    std::vector<double> new_cvs;
-    int cvs = cv_size();
-    
-    // Add all CVs from this curve except the last one
-    for (int i = 0; i < m_cv_count - 1; i++) {
-        for (int j = 0; j < cvs; j++) {
-            new_cvs.push_back(m_cv[i * cvs + j]);
-        }
-    }
-    
-    // Average the last CV of this curve with first CV of other curve
-    for (int j = 0; j < cvs; j++) {
-        double val_this = m_cv[(m_cv_count - 1) * cvs + j];
-        double val_other = other_copy.m_cv[j];
-        new_cvs.push_back((val_this + val_other) * 0.5);
-    }
-    
-    // Add remaining CVs from other curve (skip first one)
-    for (int i = 1; i < other_copy.m_cv_count; i++) {
-        for (int j = 0; j < cvs; j++) {
-            new_cvs.push_back(other_copy.m_cv[i * cvs + j]);
-        }
-    }
-    
-    // Update this curve
-    int new_cv_count = m_cv_count + other_copy.m_cv_count - 1;
-    m_cv_count = new_cv_count;
-    m_knot = new_knots;
-    m_cv = new_cvs;
-    m_cv_capacity = new_cv_count * cvs;
     
     return true;
 }
@@ -2658,81 +2541,6 @@ bool NurbsCurve::set_end_point(const Point& end_point) {
         set_cv(m_cv_count - 1, end_point);
         if (m_is_rat) {
             set_weight(m_cv_count - 1, w);
-        }
-    }
-    
-    return true;
-}
-
-// Get control point spans
-std::pair<int, int> NurbsCurve::control_point_spans(int cv_index) const {
-    if (cv_index < 0 || cv_index >= m_cv_count) {
-        return {0, 0};
-    }
-    
-    int p = degree();
-    int span_start = std::max(0, cv_index - p);
-    int span_end = std::min(m_cv_count - m_order, cv_index);
-    
-    return {span_start, span_end};
-}
-
-// Get control point support (parameter interval)
-std::pair<double, double> NurbsCurve::control_point_support(int cv_index) const {
-    if (cv_index < 0 || cv_index >= m_cv_count) {
-        return {0.0, 0.0};
-    }
-    
-    // Support is from knot[cv_index] to knot[cv_index + order]
-    int ki_start = cv_index;
-    int ki_end = cv_index + m_order;
-    
-    if (ki_start < 0) ki_start = 0;
-    if (ki_end >= knot_count()) ki_end = knot_count() - 1;
-    
-    double t_start = (ki_start < knot_count()) ? m_knot[ki_start] : 0.0;
-    double t_end = (ki_end < knot_count()) ? m_knot[ki_end] : 0.0;
-    
-    // Clamp to domain
-    auto [d0, d1] = domain();
-    t_start = std::max(t_start, d0);
-    t_end = std::min(t_end, d1);
-    
-    return {t_start, t_end};
-}
-
-// Check if duplicate
-bool NurbsCurve::is_duplicate(const NurbsCurve& other,
-                              bool ignore_parameterization,
-                              double tolerance) const {
-    if (!is_valid() || !other.is_valid()) return false;
-    if (m_dim != other.m_dim) return false;
-    if (m_is_rat != other.m_is_rat) return false;
-    if (m_order != other.m_order) return false;
-    if (m_cv_count != other.m_cv_count) return false;
-    
-    // Check control points
-    for (int i = 0; i < m_cv_count; i++) {
-        Point p1 = get_cv(i);
-        Point p2 = other.get_cv(i);
-        if (p1.distance(p2) > tolerance) {
-            return false;
-        }
-        
-        // Check weights for rational curves
-        if (m_is_rat) {
-            if (std::abs(weight(i) - other.weight(i)) > tolerance) {
-                return false;
-            }
-        }
-    }
-    
-    // Check knots if not ignoring parameterization
-    if (!ignore_parameterization) {
-        for (int i = 0; i < knot_count(); i++) {
-            if (std::abs(m_knot[i] - other.m_knot[i]) > tolerance) {
-                return false;
-            }
         }
     }
     
@@ -3122,74 +2930,6 @@ bool NurbsCurve::reparameterize(double c) {
     return true;
 }
 
-// Change end weights - Based on OpenNURBS ON_ChangeRationalNurbsCurveEndWeights
-bool NurbsCurve::change_end_weights(double w0, double w1) {
-    if (m_cv_count < m_order || m_order < 2) return false;
-    if (!std::isfinite(w0) || !std::isfinite(w1)) return false;
-    if (w0 == 0.0 || w1 == 0.0) return false;
-    if ((w0 < 0.0 && w1 > 0.0) || (w0 > 0.0 && w1 < 0.0)) return false;
-    
-    // Make rational if needed
-    if (!m_is_rat) {
-        if (!make_rational()) return false;
-    }
-    
-    // Clamp ends
-    if (!clamp_end(2)) return false;
-    
-    // Get current end weights
-    double v0 = weight(0);
-    double v1 = weight(m_cv_count - 1);
-    
-    if (!std::isfinite(v0) || !std::isfinite(v1) || v0 == 0.0 || v1 == 0.0) return false;
-    if ((v0 < 0.0 && v1 > 0.0) || (v0 > 0.0 && v1 < 0.0)) return false;
-    
-    // Compute scaling factors
-    double r = w0 / v0;
-    double s = w1 / v1;
-    
-    // If r and s are close enough, use simple uniform scaling
-    if (std::abs(r - s) <= std::abs(s) * std::sqrt(std::numeric_limits<double>::epsilon())) {
-        if (r != s) {
-            s = 0.5 * (r + s);
-        }
-        r = s;
-    }
-    
-    // Scale to get last weight set to w1
-    if (s != 1.0 && v1 != w1) {
-        for (int i = 0; i < m_cv_count; i++) {
-            double* cv_ptr = cv(i);
-            for (int j = 0; j <= m_dim; j++) {
-                cv_ptr[j] *= s;
-            }
-        }
-    }
-    
-    // If r != s, need to reparameterize
-    if (r != s) {
-        v0 = weight(0);
-        v1 = weight(m_cv_count - 1);
-        
-        if (std::isfinite(v0) && std::isfinite(v1) && v0 != 0.0) {
-            // Compute reparameterization factor
-            double p = static_cast<double>(m_order - 1);
-            r = std::pow(w0 / v0, 1.0 / p);
-            
-            if (!std::isfinite(r)) return false;
-            if (!reparameterize(r)) return false;
-        }
-    }
-    
-    // Make sure weights agree exactly
-    double* cv0 = cv(0);
-    double* cv1 = cv(m_cv_count - 1);
-    cv0[m_dim] = w0;
-    cv1[m_dim] = w1;
-    
-    return true;
-}
-
 // Check if natural end (zero 2nd derivative) - From OpenNURBS IsNatural
 bool NurbsCurve::is_natural(int end) const {
     if (!is_valid()) return false;
@@ -3294,180 +3034,6 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
     }
     
     return is_lin;
-}
-
-// Convert span to Bezier - Extract Bezier segment from span
-bool NurbsCurve::convert_span_to_bezier(int span_index, std::vector<Point>& bezier_cvs) const {
-    bezier_cvs.clear();
-
-    if (!is_valid()) return false;
-    if (span_index < 0 || span_index > m_cv_count - m_order) return false;
-
-    int ki0 = span_index + m_order - 2;
-    int ki1 = span_index + m_order - 1;
-    if (ki0 >= knot_count() || ki1 >= knot_count()) return false;
-    if (m_knot[ki0] >= m_knot[ki1]) return false;
-
-    bezier_cvs.reserve(m_order);
-    for (int i = 0; i < m_order; i++) {
-        bezier_cvs.push_back(get_cv(span_index + i));
-    }
-
-    return true;
-}
-
-// Remove span from curve
-bool NurbsCurve::remove_span(int span_index) {
-    if (!is_valid()) return false;
-    if (span_index < 0 || span_index > m_cv_count - m_order) return false;
-    
-    // Need at least 2 spans
-    if (span_count() < 2) return false;
-    
-    // Check if span is non-empty
-    int ki0 = span_index + m_order - 2;
-    int ki1 = span_index + m_order - 1;
-    if (ki0 >= knot_count() || ki1 >= knot_count()) return false;
-    if (m_knot[ki0] >= m_knot[ki1]) return false;
-    
-    // Get multiplicities
-    int m0 = knot_multiplicity(ki0);
-    int m1 = knot_multiplicity(ki1);
-    
-    // Calculate how many CVs to remove
-    int cvs_to_remove = m_order - (m0 + m1);
-    if (cvs_to_remove <= 0) return false;
-    
-    // Remove knots
-    int knots_to_remove = m_order;
-    m_knot.erase(m_knot.begin() + ki0, m_knot.begin() + ki0 + knots_to_remove);
-    
-    // Remove CVs
-    int cv_start = span_index;
-    for (int i = 0; i < cvs_to_remove; i++) {
-        int offset = cv_start * m_cv_stride;
-        m_cv.erase(m_cv.begin() + offset, m_cv.begin() + offset + m_cv_stride);
-    }
-    
-    m_cv_count -= cvs_to_remove;
-    
-    return is_valid();
-}
-
-// Remove all singular spans
-int NurbsCurve::remove_singular_spans() {
-    if (!is_valid()) return 0;
-    
-    int removed_count = 0;
-    int span_cnt = span_count();
-    
-    // Iterate backwards to avoid index shifting issues
-    for (int i = span_cnt - 1; i >= 0; i--) {
-        if (span_is_singular(i)) {
-            if (remove_span(i)) {
-                removed_count++;
-            }
-        }
-    }
-    
-    return removed_count;
-}
-
-// Get cubic Bezier approximation of entire curve
-double NurbsCurve::get_cubic_bezier_approximation(double max_deviation, std::vector<Point>& bezier_cvs) const {
-    bezier_cvs.clear();
-    
-    if (!is_valid()) return std::numeric_limits<double>::quiet_NaN();
-    if (m_cv_count < 2) return std::numeric_limits<double>::quiet_NaN();
-    
-    // Get Greville abcissae for sampling
-    std::vector<double> greville;
-    if (!get_greville_abcissae(greville)) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    
-    // For simple approximation: fit cubic through start, end, and weighted interior
-    bezier_cvs.resize(4);
-    
-    // Get domain
-    auto [t0, t1] = domain();
-    
-    // Start and end points
-    bezier_cvs[0] = point_at(t0);
-    bezier_cvs[3] = point_at(t1);
-    
-    // Tangents at ends for control point estimation
-    Vector tan0 = tangent_at(t0);
-    Vector tan1 = tangent_at(t1);
-    
-    // Estimate interior control points from end tangents
-    double arc_length = length();
-    double scale = arc_length / 3.0;
-    
-    bezier_cvs[1] = Point(
-        bezier_cvs[0][0] + tan0[0] * scale,
-        bezier_cvs[0][1] + tan0[1] * scale,
-        bezier_cvs[0][2] + tan0[2] * scale
-    );
-    
-    bezier_cvs[2] = Point(
-        bezier_cvs[3][0] - tan1[0] * scale,
-        bezier_cvs[3][1] - tan1[1] * scale,
-        bezier_cvs[3][2] - tan1[2] * scale
-    );
-    
-    // Calculate maximum deviation at Greville points
-    double max_dev = 0.0;
-    for (double t : greville) {
-        Point pt_nurbs = point_at(t);
-        
-        // Evaluate cubic Bezier at same parameter (normalized)
-        double u = (t - t0) / (t1 - t0);
-        double u2 = u * u;
-        double u3 = u2 * u;
-        double omu = 1.0 - u;
-        double omu2 = omu * omu;
-        double omu3 = omu2 * omu;
-        
-        Point pt_bezier(
-            omu3 * bezier_cvs[0][0] + 3.0 * omu2 * u * bezier_cvs[1][0] +
-            3.0 * omu * u2 * bezier_cvs[2][0] + u3 * bezier_cvs[3][0],
-            
-            omu3 * bezier_cvs[0][1] + 3.0 * omu2 * u * bezier_cvs[1][1] +
-            3.0 * omu * u2 * bezier_cvs[2][1] + u3 * bezier_cvs[3][1],
-            
-            omu3 * bezier_cvs[0][2] + 3.0 * omu2 * u * bezier_cvs[1][2] +
-            3.0 * omu * u2 * bezier_cvs[2][2] + u3 * bezier_cvs[3][2]
-        );
-        
-        double dev = pt_nurbs.distance(pt_bezier);
-        if (dev > max_dev) max_dev = dev;
-    }
-    
-    // Check if deviation is acceptable
-    if (max_deviation >= 0.0 && max_dev > max_deviation) {
-        bezier_cvs.clear();
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    
-    return max_dev;
-}
-
-// Get NURBS form (for NURBS curve, just copy self)
-int NurbsCurve::get_nurbs_form(NurbsCurve& nurbs_form, double tolerance) const {
-    (void)tolerance;  // Not used for NURBS curve
-    
-    if (!is_valid()) return 0;
-    
-    // For a NURBS curve, the NURBS form is itself
-    nurbs_form.deep_copy_from(*this);
-    
-    return 1;  // Perfect parameterization match
-}
-
-// Check if has NURBS form (always true for NURBS curve)
-int NurbsCurve::has_nurbs_form() const {
-    return is_valid() ? 1 : 0;
 }
 
 // Convert to polyline with adaptive sampling (curvature-based)

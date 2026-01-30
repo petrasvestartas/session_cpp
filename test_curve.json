@@ -7,7 +7,7 @@
         ],
         [
             1.0,
-            2.0,
+            1.0,
             0.0
         ],
         [
@@ -17,33 +17,27 @@
         ],
         [
             3.0,
-            2.0,
-            0.0
-        ],
-        [
-            4.0,
-            0.0,
+            1.0,
             0.0
         ]
     ],
-    "cv_count": 5,
+    "cv_count": 4,
     "cv_stride": 3,
     "dimension": 3,
-    "guid": "41789573-2e11-41d3-a1d7-fae0b15dc42b",
+    "guid": "a3ad2900-19f6-48e9-898d-0b9318f0c145",
     "is_rational": false,
     "knots": [
         0.0,
         0.0,
         1.0,
         2.0,
-        3.0,
-        3.0
+        2.0
     ],
     "linecolor": {
         "a": 255,
         "b": 255,
         "g": 255,
-        "guid": "e1a34016-9437-466d-b8ae-53fc9fede659",
+        "guid": "a4d67fab-74ee-442e-9213-a913e6961f0c",
         "name": "white",
         "r": 255,
         "type": "Color"
@@ -52,7 +46,7 @@
     "order": 3,
     "width": 1.0,
     "xform": {
-        "guid": "daf1fd18-ac5a-412c-949d-70d29b03afbf",
+        "guid": "522603ce-fb09-46de-9125-8530cace5b53",
         "m": [
             1.0,
             0.0,

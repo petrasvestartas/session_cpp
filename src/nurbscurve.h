@@ -58,25 +58,8 @@ public:
     static NurbsCurve create(bool periodic, int degree, const std::vector<Point>& points,
                            int dimension = 3, double knot_delta = 1.0);
 
-    /// Create a circle as a rational NURBS curve
-    static NurbsCurve create_circle(double cx, double cy, double cz, double radius);
 
-    /// Create an ellipse as a rational NURBS curve
-    static NurbsCurve create_ellipse(double cx, double cy, double cz, double major_radius, double minor_radius);
 
-    /// Create an arc through three points
-    static NurbsCurve create_arc(const Point& start, const Point& mid, const Point& end);
-
-    /// Create a parabola through three points
-    static NurbsCurve create_parabola(const Point& p0, const Point& p1, const Point& p2);
-
-    /// Create a hyperbola
-    static NurbsCurve create_hyperbola(const Point& center, double a, double b, double extent);
-
-    /// Create a spiral (helix with varying radius)
-    static NurbsCurve create_spiral(double start_radius, double end_radius, double pitch, double turns);
-
-    
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -102,20 +85,20 @@ public:
     
     /// Initialize all fields to zero/empty
     void initialize();
-    
+
     /// Create NURBS curve with specified parameters
     bool create(int dimension, bool is_rational, int order, int cv_count);
-    
+
     /// Create clamped uniform NURBS curve from control points
-    bool create_clamped_uniform(int dimension, int order, 
+    bool create_clamped_uniform(int dimension, int order,
                                const std::vector<Point>& points,
                                double knot_delta = 1.0);
-    
+
     /// Create periodic uniform NURBS curve from control points
     bool create_periodic_uniform(int dimension, int order,
                                 const std::vector<Point>& points,
                                 double knot_delta = 1.0);
-    
+
     /// Deallocate all memory and reset to empty state
     void destroy();
 
@@ -160,57 +143,69 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Control Vertex Access
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
+
     /// Get pointer to CV data at index
     double* cv(int cv_index);
     const double* cv(int cv_index) const;
-    
+
     /// Get control point at index as Point
     Point get_cv(int cv_index) const;
-    
+
     /// Get control point at index as homogeneous point (x, y, z, w)
     bool get_cv_4d(int cv_index, double& x, double& y, double& z, double& w) const;
-    
+
     /// Set control point at index from Point
     bool set_cv(int cv_index, const Point& point);
-    
+
     /// Set control point at index from homogeneous coordinates
     bool set_cv_4d(int cv_index, double x, double y, double z, double w);
-    
+
     /// Get weight at control vertex index (returns 1.0 if non-rational)
     double weight(int cv_index) const;
-    
+
     /// Set weight at control vertex index (converts to rational if needed)
     bool set_weight(int cv_index, double weight);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Knot Access
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
+
     /// Get knot value at index
     double knot(int knot_index) const;
-    
+
     /// Set knot value at index
     bool set_knot(int knot_index, double knot_value);
-    
+
     /// Get knot multiplicity at index
     int knot_multiplicity(int knot_index) const;
-    
+
     /// Get superfluous knot value at end
     double superfluous_knot(int end) const;
-    
+
     /// Get pointer to knot array
     const double* knot_array() const { return m_knot.data(); }
-    
+
     /// Get pointer to CV array (expert use)
     double* cv_array() { return m_cv.data(); }
     const double* cv_array() const { return m_cv.data(); }
-    
+
     /// Get all knot values
     std::vector<double> get_knots() const { return m_knot; }
-    
+
     /// Check if knot vector is valid
     bool is_valid_knot_vector() const;
+
+    /// Insert knot into curve (Boehm's algorithm)
+    bool insert_knot(double knot_value, int knot_multiplicity = 1);
+
+    /// Check if knot vector is clamped at ends
+    bool is_clamped(int end = 2) const;
+
+    /// Get Greville abcissa for a control point
+    double greville_abcissa(int cv_index) const;
+
+    /// Get all Greville abcissae
+    bool get_greville_abcissae(std::vector<double>& abcissae) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Domain & Parameterization
@@ -238,6 +233,14 @@ public:
     // Geometric Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
 
+    /// Find next discontinuity in curve
+    bool get_next_discontinuity(int continuity_type,
+                               double t0, double t1,
+                               double& t_out,
+                               int* hint = nullptr,
+                               double cos_angle_tolerance = 0.99984769515639123,
+                               double curvature_tolerance = 1e-8) const;
+
     /// Check if curve is rational
     bool is_rational() const { return m_is_rat != 0; }
 
@@ -263,8 +266,26 @@ public:
     bool is_natural(int end = 2) const;
     
     /// Check if curve can be represented as a polyline
-    int is_polyline(std::vector<Point>* points = nullptr, 
+    int is_polyline(std::vector<Point>* points = nullptr,
                    std::vector<double>* params = nullptr) const;
+
+    /// Check if entire curve is singular (all spans collapsed to points)
+    bool is_singular() const;
+
+    /// Check if this curve is duplicate of another
+    bool is_duplicate(const NurbsCurve& other,
+                     bool ignore_parameterization,
+                     double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// Test continuity at parameter
+    bool is_continuous(int continuity_type,
+                      double t,
+                      int* hint = nullptr,
+                      double point_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double d1_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double d2_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double cos_angle_tolerance = 0.99984769515639123,
+                      double curvature_tolerance = 1e-8) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Conversion methods
@@ -371,6 +392,18 @@ public:
     /// Clamp ends (add multiplicity to end knots)
     bool clamp_end(int end); // 0 = start, 1 = end, 2 = both
 
+    /// TODO: Increase degree of curve
+    bool increase_degree(int desired_degree);
+
+    /// TODO: Change dimension of curve
+    bool change_dimension(int desired_dimension);
+
+    /// TODO: Change seam point of closed periodic curve
+    bool change_closed_curve_seam(double t);
+
+    /// TODO: Reparameterize rational curve by linear fractional transformation
+    bool reparameterize(double c);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -391,10 +424,10 @@ public:
     // JSON Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
     
-    /// Convert to JSON
+    /// TODO: Convert to JSON
     nlohmann::ordered_json jsondump() const;
-    
-    /// Load from JSON
+
+    /// TODO: Load from JSON
     static NurbsCurve jsonload(const nlohmann::json& data);
 
     /// Write JSON to file
@@ -409,10 +442,10 @@ public:
     /// Read protobuf from file
     static NurbsCurve protobuf_load(const std::string& filename);
 
-    /// Serialize to protobuf string
+    /// TODO: Serialize to protobuf string
     std::string to_protobuf() const;
 
-    /// Deserialize from protobuf string
+    /// TODO: Deserialize from protobuf string
     static NurbsCurve from_protobuf(const std::string& data);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -425,137 +458,44 @@ public:
     /// Detailed representation (like Python repr)
     std::string repr() const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Helper Functions
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    
-    /// Reserve capacity for control vertices
-    bool reserve_cv_capacity(int capacity);
-    
-    /// Reserve capacity for knots
-    bool reserve_knot_capacity(int capacity);
-    
-    /// Clean up invalid knots (remove duplicates, fix spacing issues)
-    bool clean_knots(double knot_tolerance = 0.0);
-    
-    /// Make knot vector a clamped uniform knot vector (does not change CVs)
+    /// TODO: Make knot vector a clamped uniform knot vector (does not change CVs)
     bool make_clamped_uniform_knot_vector(double delta = 1.0);
-    
-    /// Make knot vector a periodic uniform knot vector (does not change CVs)
+
+    /// TODO: Make knot vector a periodic uniform knot vector (does not change CVs)
     bool make_periodic_uniform_knot_vector(double delta = 1.0);
-
-    /// Insert knot into curve (Boehm's algorithm)
-    bool insert_knot(double knot_value, int knot_multiplicity = 1);
-
-    /// Check if knot vector is clamped at ends
-    bool is_clamped(int end = 2) const;
-    
-    /// Get length of control polygon
-    double control_polygon_length() const;
-    
-    /// Get Greville abcissa for a control point
-    double greville_abcissa(int cv_index) const;
-    
-    /// Get all Greville abcissae
-    bool get_greville_abcissae(std::vector<double>& abcissae) const;
-    
-    /// Check if span is linear within tolerance
-    bool span_is_linear(int span_index, double min_length, double tolerance) const;
-    
-    /// Check if span is linear and get the line
-    bool span_is_linear(int span_index, double min_length, double tolerance,
-                       Point* line_start, Point* line_end) const;
-    
-    /// Check if span is singular (collapsed to a point)
-    bool span_is_singular(int span_index) const;
-    
-    /// Check if entire curve is singular
-    bool is_singular() const;
-    
-    /// Check if curve has bezier spans (all distinct knots have multiplicity = degree)
-    bool has_bezier_spans() const;
-    
-    /// Convert a span to Bezier curve (extract individual Bezier segment)
-    bool convert_span_to_bezier(int span_index, std::vector<Point>& bezier_cvs) const;
-    
-    /// Remove a specific span from the curve
-    bool remove_span(int span_index);
-    
-    /// Remove all singular spans from curve
-    int remove_singular_spans();
-    
-    /// Get cubic Bezier approximation of entire curve
-    double get_cubic_bezier_approximation(double max_deviation, std::vector<Point>& bezier_cvs) const;
-    
-    /// Repair bad knots (too close, high multiplicity)
-    bool repair_bad_knots(double knot_tolerance = 0.0, bool repair = true);
-    
-    /// Make curve have piecewise bezier spans
-    bool make_piecewise_bezier(bool set_end_weights_to_one = false);
-    
-    /// Increase degree of curve
-    bool increase_degree(int desired_degree);
-    
-    /// Get NURBS form (returns 1 for NURBS curve)
-    int get_nurbs_form(NurbsCurve& nurbs_form, double tolerance = 0.0) const;
-    
-    /// Check if has NURBS form (always returns 1 for NURBS curve)
-    int has_nurbs_form() const;
-    
-    /// Append another NURBS curve to this one
-    bool append(const NurbsCurve& other);
-    
-    /// Change dimension of curve
-    bool change_dimension(int desired_dimension);
-    
-    /// Change seam point of closed periodic curve
-    bool change_closed_curve_seam(double t);
-    
-    /// Get parameter tolerance at point
-    bool get_parameter_tolerance(double t, double* tminus, double* tplus) const;
-    
-    /// Zero all control vertices (and set weights to 1 if rational)
-    bool zero_cvs();
-    
-    /// Check if this curve is duplicate of another
-    bool is_duplicate(const NurbsCurve& other,
-                     bool ignore_parameterization,
-                     double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Get span indices where control point is active
-    std::pair<int, int> control_point_spans(int cv_index) const;
-    
-    /// Get parameter interval where control point is active
-    std::pair<double, double> control_point_support(int cv_index) const;
-    
-    /// Find next discontinuity in curve
-    bool get_next_discontinuity(int continuity_type,
-                               double t0, double t1,
-                               double& t_out,
-                               int* hint = nullptr,
-                               double cos_angle_tolerance = 0.99984769515639123,
-                               double curvature_tolerance = 1e-8) const;
-    
-    /// Test continuity at parameter
-    bool is_continuous(int continuity_type,
-                      double t,
-                      int* hint = nullptr,
-                      double point_tolerance = Tolerance::ZERO_TOLERANCE,
-                      double d1_tolerance = Tolerance::ZERO_TOLERANCE,
-                      double d2_tolerance = Tolerance::ZERO_TOLERANCE,
-                      double cos_angle_tolerance = 0.99984769515639123,
-                      double curvature_tolerance = 1e-8) const;
-    
-    /// Reparameterize rational curve by linear fractional transformation
-    bool reparameterize(double c);
-    
-    /// Change end weights of rational curve
-    bool change_end_weights(double w0, double w1);
 
 private:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Internal Helpers
     ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Reserve capacity for control vertices
+    bool reserve_cv_capacity(int capacity);
+
+    /// Reserve capacity for knots
+    bool reserve_knot_capacity(int capacity);
+
+    /// Clean up invalid knots (remove duplicates, fix spacing issues)
+    bool clean_knots(double knot_tolerance = 0.0);
+
+    /// Check if span is linear within tolerance
+    bool span_is_linear(int span_index, double min_length, double tolerance) const;
+
+    /// Check if span is linear and get the line
+    bool span_is_linear(int span_index, double min_length, double tolerance,
+                       Point* line_start, Point* line_end) const;
+
+    /// Check if span is singular (collapsed to a point)
+    bool span_is_singular(int span_index) const;
+
+    /// Repair bad knots (too close, high multiplicity)
+    bool repair_bad_knots(double knot_tolerance = 0.0, bool repair = true);
+
+    /// Get parameter tolerance at point
+    bool get_parameter_tolerance(double t, double* tminus, double* tplus) const;
+
+    /// Zero all control vertices (and set weights to 1 if rational)
+    bool zero_cvs();
 
     /// Find knot span index for parameter t (binary search)
     int find_span(double t) const;

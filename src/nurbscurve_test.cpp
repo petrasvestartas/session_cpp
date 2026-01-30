@@ -49,7 +49,7 @@ namespace session_cpp {
         MINI_CHECK(curve.order() == 3);
         MINI_CHECK(curve.name == "my_nurbscurve");
         MINI_CHECK(!curve.guid.empty());
-        MINI_CHECK(cstr == "NurbsCurve(degree=2, cvs=4)");
+        MINI_CHECK(cstr == "NurbsCurve(name=my_nurbscurve, degree=2, cvs=4)");
         MINI_CHECK(crepr.find("name=my_nurbscurve") != std::string::npos);
         MINI_CHECK(ccopy.cv_count() == curve.cv_count());
         MINI_CHECK(ccopy.guid != curve.guid);
@@ -83,6 +83,32 @@ namespace session_cpp {
         // Valid domain exists
         bool is_valid_knot_vector = curve.is_valid_knot_vector();
         MINI_CHECK(is_valid_knot_vector == true);
+
+        // Insert knot into curve
+        // Useful for splittle curves at a parameter
+        // Increase local control without changing shape
+        NurbsCurve copy_curve = curve; 
+        Point before_pt = copy_curve.point_at(1.5);
+        copy_curve.insert_knot(1.5, 1);
+        MINI_CHECK(TOLERANCE.is_point_close(before_pt, copy_curve.point_at(1.5)));
+
+        // Check if the curve is clamped at start, end, or both
+        bool is_clamped_start = curve.is_clamped(0);
+        bool is_clamped_end = curve.is_clamped(1);
+        bool is_clamped_both = curve.is_clamped(2);
+        MINI_CHECK(is_clamped_start == true && is_clamped_end == true && is_clamped_both == true);
+
+        // Useful for controling curve by cv on lying on it
+        double greville0 = curve.greville_abcissa(0);
+        MINI_CHECK(TOLERANCE.is_close(greville0, 0.0));
+
+        std::vector<double> greville;
+        curve.get_greville_abcissae(greville);
+        MINI_CHECK(greville.size() == 4);
+        MINI_CHECK(TOLERANCE.is_close(greville[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(greville[1], 0.5));
+        MINI_CHECK(TOLERANCE.is_close(greville[2], 1.5));
+        MINI_CHECK(TOLERANCE.is_close(greville[3], 2.0));
 
         /////////////////////////////////////////////
         // Accessors
@@ -224,15 +250,17 @@ namespace session_cpp {
         /////////////////////////////////////////////////////
         // Geometric checks
         /////////////////////////////////////////////////////
+
+        double t_out = 0.0;
+        bool found = curve.get_next_discontinuity(2, curve.domain_start(), curve.domain_end(), t_out);
+        MINI_CHECK(found == true && t_out == 0.5);
+
         // Is rational is related to control points having weights
         // is_rational = false means control points [x, y, z]
         // is_rational = false means control points [xw, yw, zw]
         // Rational curves are used to represent:
         // circles, ellipses, parabolas, hyperbolas exactly
         bool is_rational = curve.is_rational();
-        MINI_CHECK(is_rational == true);
-
-        // circles, ellipses, parabolas, hyperbolas exactly
         bool closed = curve.is_closed();
         bool periodic = curve.is_periodic();
         bool linear = curve.is_linear();
@@ -242,7 +270,11 @@ namespace session_cpp {
         bool on_plane = curve.is_in_plane(plane);
         bool is_open = curve.is_natural();
         bool is_polyline = curve.is_polyline();
+        bool is_singular = curve.is_singular();
+        bool is_duplicate = curve.is_duplicate(curve, false);
+        bool is_continuous = curve.is_continuous(1, curve.domain_middle());
 
+        MINI_CHECK(is_rational == true);
         MINI_CHECK(closed == false);
         MINI_CHECK(periodic == false);
         MINI_CHECK(linear == false);
@@ -251,6 +283,9 @@ namespace session_cpp {
         MINI_CHECK(on_plane == false);
         MINI_CHECK(is_open == false);
         MINI_CHECK(is_polyline == false);
+        MINI_CHECK(is_singular == false);
+        MINI_CHECK(is_duplicate == true);
+        MINI_CHECK(is_continuous == true);
     }
 
     MINI_TEST("NurbsCurve", "Conversions") {
@@ -438,6 +473,13 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(2), Point(0.0, 2.0, 0.0)));
         MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(3), Point(2.0, 3.0, 0.0)));
         MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(4), Point(0.0, 4.0, 0.0)));
+
+        // Trim curve at domain parameter
+        NurbsCurve ct = curve;
+        double a = ct.domain_start() + (ct.domain_end() - ct.domain_start()) / 3.0;
+        double b = ct.domain_start() + 2.0 * (ct.domain_end() - ct.domain_start()) / 3.0;
+        ct.trim(a, b);
+        MINI_CHECK(ct.length() < curve.length());
 
         // Split curve at domain middle
         NurbsCurve curve_left;
