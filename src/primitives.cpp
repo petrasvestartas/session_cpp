@@ -1,4 +1,5 @@
 #include "primitives.h"
+#include "nurbssurface.h"
 #include "tolerance.h"
 #include "knot.h"
 #include <cmath>
@@ -236,6 +237,86 @@ NurbsCurve Primitives::spiral(double start_radius, double end_radius, double pit
     curve.m_knot = knot::make_clamped_uniform(curve.m_order, curve.m_cv_count, 1.0);
 
     return curve;
+}
+
+NurbsSurface Primitives::cylinder_surface(double cx, double cy, double cz, double radius, double height) {
+    const double w = std::sqrt(2.0) / 2.0;
+    double circle_weights[] = {1, w, 1, w, 1, w, 1, w, 1};
+    double circle_x[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    double circle_y[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    double v_knots[] = {0, 1};
+
+    NurbsSurface srf(3, true, 3, 2, 9, 2);
+
+    for (int i = 0; i < 10; i++) srf.set_knot(0, i, u_knots[i]);
+    for (int i = 0; i < 2; i++) srf.set_knot(1, i, v_knots[i]);
+
+    for (int i = 0; i < 9; i++) {
+        double wi = circle_weights[i];
+        double px = cx + radius * circle_x[i];
+        double py = cy + radius * circle_y[i];
+        srf.set_cv_4d(i, 0, px * wi, py * wi, cz * wi, wi);
+        srf.set_cv_4d(i, 1, px * wi, py * wi, (cz + height) * wi, wi);
+    }
+
+    return srf;
+}
+
+NurbsSurface Primitives::cone_surface(double cx, double cy, double cz, double radius, double height) {
+    const double w = std::sqrt(2.0) / 2.0;
+    double circle_weights[] = {1, w, 1, w, 1, w, 1, w, 1};
+    double circle_x[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    double circle_y[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    double v_knots[] = {0, 1};
+
+    NurbsSurface srf(3, true, 3, 2, 9, 2);
+
+    for (int i = 0; i < 10; i++) srf.set_knot(0, i, u_knots[i]);
+    for (int i = 0; i < 2; i++) srf.set_knot(1, i, v_knots[i]);
+
+    double apex_z = cz + height;
+    for (int i = 0; i < 9; i++) {
+        double wi = circle_weights[i];
+        double px = cx + radius * circle_x[i];
+        double py = cy + radius * circle_y[i];
+        srf.set_cv_4d(i, 0, px * wi, py * wi, cz * wi, wi);
+        srf.set_cv_4d(i, 1, cx * wi, cy * wi, apex_z * wi, wi);
+    }
+
+    return srf;
+}
+
+NurbsSurface Primitives::torus_surface(double cx, double cy, double cz, double major_radius, double minor_radius) {
+    const double w = std::sqrt(2.0) / 2.0;
+    double cw[] = {1, w, 1, w, 1, w, 1, w, 1};
+    double cos_a[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    double sin_a[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+
+    NurbsSurface srf(3, true, 3, 3, 9, 9);
+
+    for (int d = 0; d < 2; d++)
+        for (int i = 0; i < 10; i++)
+            srf.set_knot(d, i, u_knots[i]);
+
+    for (int i = 0; i < 9; i++) {
+        double ca = cos_a[i];
+        double sa = sin_a[i];
+        for (int j = 0; j < 9; j++) {
+            double cb = cos_a[j];
+            double sb = sin_a[j];
+            double r = major_radius + minor_radius * cb;
+            double px = cx + r * ca;
+            double py = cy + r * sa;
+            double pz = cz + minor_radius * sb;
+            double wij = cw[i] * cw[j];
+            srf.set_cv_4d(i, j, px * wij, py * wij, pz * wij, wij);
+        }
+    }
+
+    return srf;
 }
 
 } // namespace session_cpp

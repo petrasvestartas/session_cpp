@@ -245,6 +245,8 @@ set(MINITEST_SOURCES
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
     src/xform_test.cpp src/mesh_test.cpp src/knot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/primitives_test.cpp
+    src/triangulation_nurbs_test.cpp
+    src/triangulation_2d_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

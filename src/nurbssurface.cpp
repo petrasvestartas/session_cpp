@@ -923,15 +923,19 @@ bool NurbsSurface::swap_coordinates(int axis_i, int axis_j) {
     return true;
 }
 
+// Forward declarations for trim/split impl (defined after helper functions)
+namespace {
+bool trim_impl(NurbsSurface& srf, int dir, const std::pair<double, double>& domain_pair);
+bool split_impl(const NurbsSurface& srf, int dir, double c, NurbsSurface*& lo, NurbsSurface*& hi);
+}
+
 bool NurbsSurface::trim(int dir, const std::pair<double, double>& domain_pair) {
-    // TODO: Implement using curve conversion helpers
-    return false;
+    return trim_impl(*this, dir, domain_pair);
 }
 
 bool NurbsSurface::split(int dir, double c, NurbsSurface*& west_or_south_side,
                         NurbsSurface*& east_or_north_side) const {
-    // TODO: Implement using curve conversion helpers
-    return false;
+    return split_impl(*this, dir, c, west_or_south_side, east_or_north_side);
 }
 
 bool NurbsSurface::extend(int dir, const std::pair<double, double>& domain_pair) {
@@ -1774,6 +1778,37 @@ bool insert_knot_impl(NurbsSurface& srf, int dir, double knot_value, int knot_mu
 
     delete crv;
     return success;
+}
+
+bool trim_impl(NurbsSurface& srf, int dir, const std::pair<double, double>& domain_pair) {
+    if (dir < 0 || dir > 1 || !srf.is_valid()) return false;
+
+    NurbsCurve* crv = to_curve_internal(srf, dir, nullptr);
+    if (!crv) return false;
+
+    bool ok = crv->trim(domain_pair.first, domain_pair.second);
+    if (ok) ok = from_curve_internal(*crv, srf, dir);
+
+    delete crv;
+    return ok;
+}
+
+bool split_impl(const NurbsSurface& srf, int dir, double c,
+                NurbsSurface*& lo, NurbsSurface*& hi) {
+    if (dir < 0 || dir > 1 || !srf.is_valid()) return false;
+
+    auto [t0, t1] = srf.domain(dir);
+    if (c <= t0 || c >= t1) return false;
+
+    lo = new NurbsSurface(srf);
+    hi = new NurbsSurface(srf);
+
+    if (!lo->trim(dir, {t0, c}) || !hi->trim(dir, {c, t1})) {
+        delete lo; lo = nullptr;
+        delete hi; hi = nullptr;
+        return false;
+    }
+    return true;
 }
 
 } // anonymous namespace

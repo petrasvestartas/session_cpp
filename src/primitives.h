@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nurbscurve.h"
+#include "nurbssurface.h"
 #include "point.h"
 
 namespace session_cpp {
@@ -24,6 +25,15 @@ public:
 
     /// Create a spiral (helix with varying radius)
     static NurbsCurve spiral(double start_radius, double end_radius, double pitch, double turns);
+
+    /// Create a cylinder as a rational NURBS surface
+    static NurbsSurface cylinder_surface(double cx, double cy, double cz, double radius, double height);
+
+    /// Create a cone as a rational NURBS surface
+    static NurbsSurface cone_surface(double cx, double cy, double cz, double radius, double height);
+
+    /// Create a torus as a rational NURBS surface
+    static NurbsSurface torus_surface(double cx, double cy, double cz, double major_radius, double minor_radius);
 };
 
 } // namespace session_cpp
