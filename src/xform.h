@@ -103,15 +103,19 @@ public:
     void json_dump(const std::string& filename) const;
     /// Read JSON from file
     static Xform json_load(const std::string& filename);
+    /// Convert to JSON string
+    std::string json_dumps() const;
+    /// Load from JSON string
+    static Xform json_loads(const std::string& json_string);
 
-    /// Serialize to protobuf binary format
-    std::string to_protobuf() const;
-    /// Deserialize from protobuf binary data
-    static Xform from_protobuf(const std::string& data);
+    /// Convert to protobuf binary string
+    std::string pb_dumps() const;
+    /// Load from protobuf binary string
+    static Xform pb_loads(const std::string& data);
     /// Write protobuf to file
-    void protobuf_dump(const std::string& filename) const;
+    void pb_dump(const std::string& filename) const;
     /// Read protobuf from file
-    static Xform protobuf_load(const std::string& filename);
+    static Xform pb_load(const std::string& filename);
 
     /// Matrix multiplication
     Xform operator*(const Xform& other) const;

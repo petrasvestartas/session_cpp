@@ -322,6 +322,14 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
     return polyline;
 }
 
+std::string Polyline::json_dumps() const {
+    return jsondump().dump();
+}
+
+Polyline Polyline::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void Polyline::json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(2);
@@ -338,7 +346,7 @@ Polyline Polyline::json_load(const std::string& filename) {
 // Protobuf Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Polyline::to_protobuf() const {
+std::string Polyline::pb_dumps() const {
     session_proto::Polyline proto;
     proto.set_guid(this->guid);
     proto.set_name(this->name);
@@ -367,7 +375,7 @@ std::string Polyline::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-Polyline Polyline::from_protobuf(const std::string& data) {
+Polyline Polyline::pb_loads(const std::string& data) {
     session_proto::Polyline proto;
     proto.ParseFromString(data);
 
@@ -397,17 +405,17 @@ Polyline Polyline::from_protobuf(const std::string& data) {
     return pl;
 }
 
-void Polyline::protobuf_dump(const std::string& filename) const {
-    std::string data = to_protobuf();
+void Polyline::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
-Polyline Polyline::protobuf_load(const std::string& filename) {
+Polyline Polyline::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 std::string Polyline::str() const {

@@ -88,6 +88,14 @@ Color Color::jsonload(const nlohmann::json &data) {
   return color;
 }
 
+std::string Color::json_dumps() const {
+    return jsondump().dump();
+}
+
+Color Color::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void Color::json_dump(const std::string& filename) const {
   std::ofstream file(filename);
   file << jsondump().dump(4);
@@ -103,7 +111,7 @@ Color Color::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Color::to_protobuf() const {
+std::string Color::pb_dumps() const {
   session_proto::Color proto;
   proto.set_guid(guid);
   proto.set_name(name);
@@ -114,7 +122,7 @@ std::string Color::to_protobuf() const {
   return proto.SerializeAsString();
 }
 
-Color Color::from_protobuf(const std::string& data) {
+Color Color::pb_loads(const std::string& data) {
   session_proto::Color proto;
   proto.ParseFromString(data);
   
@@ -123,17 +131,17 @@ Color Color::from_protobuf(const std::string& data) {
   return color;
 }
 
-void Color::protobuf_dump(const std::string& filename) const {
-  std::string data = to_protobuf();
+void Color::pb_dump(const std::string& filename) const {
+  std::string data = pb_dumps();
   std::ofstream file(filename, std::ios::binary);
   file.write(data.data(), data.size());
 }
 
-Color Color::protobuf_load(const std::string& filename) {
+Color Color::pb_load(const std::string& filename) {
   std::ifstream file(filename, std::ios::binary);
   std::string data((std::istreambuf_iterator<char>(file)),
                     std::istreambuf_iterator<char>());
-  return from_protobuf(data);
+  return pb_loads(data);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

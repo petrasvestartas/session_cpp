@@ -1,5 +1,6 @@
 #include "primitives.h"
 #include "tolerance.h"
+#include "knot.h"
 #include <cmath>
 
 namespace session_cpp {
@@ -232,8 +233,7 @@ NurbsCurve Primitives::spiral(double start_radius, double end_radius, double pit
         curve.set_cv(i, Point(x, y, z));
     }
 
-    // Create clamped uniform knot vector
-    curve.make_clamped_uniform_knot_vector(1.0);
+    curve.m_knot = knot::make_clamped_uniform(curve.m_order, curve.m_cv_count, 1.0);
 
     return curve;
 }

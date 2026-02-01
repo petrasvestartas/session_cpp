@@ -83,7 +83,7 @@ namespace session_cpp {
         auto v = s.subdivide(5, 5);
         MINI_CHECK(s.name == "my_nurbssurface");
         MINI_CHECK(s.width == 1.0);
-        MINI_CHECK(s.surfacecolor == Color::white());
+        MINI_CHECK(s.surfacecolor == Color::black());
         MINI_CHECK(!s.guid.empty());
         MINI_CHECK(s.m_dim == 3);
         MINI_CHECK(!s.m_is_rat);
@@ -388,6 +388,13 @@ namespace session_cpp {
             }
         }
 
+        //   jsondump()      │ ordered_json │ to JSON object (internal use)
+        //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+        //   json_dumps()    │ std::string  │ to JSON string
+        //   json_loads(s)   │ std::string  │ from JSON string
+        //   json_dump(path) │ file         │ write to file
+        //   json_load(path) │ file         │ read from file
+
         // Serialize to JSON
         std::string fname = "serialization/test_nurbssurface.json";
         surf.json_dump(fname);
@@ -423,8 +430,8 @@ namespace session_cpp {
 
         // Serialize to protobuf
         std::string path = "serialization/test_nurbssurface.bin";
-        surf.protobuf_dump(path);
-        NurbsSurface loaded = NurbsSurface::protobuf_load(path);
+        surf.pb_dump(path);
+        NurbsSurface loaded = NurbsSurface::pb_load(path);
 
         MINI_CHECK(loaded.name == surf.name);
         MINI_CHECK(TOLERANCE.is_close(loaded.width, surf.width));
@@ -615,24 +622,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pt[0], 2.0));
         MINI_CHECK(TOLERANCE.is_close(pt[1], 1.0));
         MINI_CHECK(TOLERANCE.is_close(pt[2], 3.0));
-    }
-
-    MINI_TEST("NurbsSurface", "change_dimension") {
-        NurbsSurface surf;
-        surf.create(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        surf.set_cv(0, 0, Point(1.0, 2.0, 3.0));
-
-        int old_dim = surf.dimension();
-        surf.change_dimension(2);
-        int new_dim = surf.dimension();
-
-        Point pt = surf.get_cv(0, 0);
-
-        MINI_CHECK(old_dim == 3);
-        MINI_CHECK(new_dim == 2);
-        MINI_CHECK(TOLERANCE.is_close(pt[0], 1.0));
-        MINI_CHECK(TOLERANCE.is_close(pt[1], 2.0));
     }
 
     MINI_TEST("NurbsSurface", "zero_cvs") {

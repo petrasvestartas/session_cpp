@@ -410,7 +410,7 @@ namespace session_cpp {
 
         // Get multiple rotation minimization frames along the curve (matches Rhino)
         std::vector<double> params = {0.0, 0.25, 0.5, 0.75, 1.0};
-        auto frames = curve.get_perpendicular_frames(params);
+        auto frames = curve.get_perpendicular_frames(params, true);
         MINI_CHECK(frames.size() == 5);
         // Frame 0 (start)
         auto [o0, t0, n0, b0] = frames[0];
@@ -520,6 +520,24 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(knots[0], knots[1]));
         MINI_CHECK(TOLERANCE.is_close(knots[knots.size() - 2], knots[knots.size() - 1]));
 
+        // Increase degree without change the shape
+        NurbsCurve raised = curve;
+        raised.increase_degree(3);
+        MINI_CHECK(curve.degree() != raised.degree() && TOLERANCE.is_point_close(curve.point_at_middle(), raised.point_at_middle()) );
+
+        // Change closed curve seam
+        std::vector<Point> closed_pts = {
+            Point(1.0, 0.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+            Point(-1.0, 0.0, 0.0),
+            Point(0.0, -1.0, 0.0)
+        };
+        NurbsCurve c = NurbsCurve::create(true, 2, closed_pts);
+        Point expected_start = c.point_at(c.domain_middle());
+        c.change_closed_curve_seam(c.domain_middle());
+        MINI_CHECK(TOLERANCE.is_point_close(c.point_at_start(), expected_start));
+
+
     }
 
     MINI_TEST("NurbsCurve", "transformations"){
@@ -568,11 +586,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "json_roundtrip") {
-        // #include "nurbscurve.h"
-        // #include "point.h"
-        // #include "vector.h"
-        // #include "xform.h"
-        // #include <filesystem>
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+        // uncomment #include "xform.h"
+        // uncomment #include <filesystem>
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -583,31 +601,37 @@ namespace session_cpp {
         };
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
-        std::filesystem::path src_dir = std::filesystem::path(__FILE__).parent_path();
-        std::string filename = (src_dir.parent_path() / "serialization" / "test_nurbscurve.json").string();
-        curve.json_dump(filename);
-        NurbsCurve loaded = NurbsCurve::json_load(filename);
+        //   jsondump()      │ ordered_json │ to JSON object (internal use)                                                                          
+        //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+        //   json_dumps()    │ std::string  │ to JSON string                  
+        //   json_loads(s)   │ std::string  │ from JSON string                
+        //   json_dump(path) │ file         │ write to file                   
+        //   json_load(path) │ file         │ read from file  
 
-        MINI_CHECK(loaded.name == curve.name);
-        MINI_CHECK(TOLERANCE.is_close(loaded.width, curve.width));
-        MINI_CHECK(loaded.linecolor[0] == curve.linecolor[0]);
-        MINI_CHECK(loaded.linecolor[1] == curve.linecolor[1]);
-        MINI_CHECK(loaded.linecolor[2] == curve.linecolor[2]);
-        MINI_CHECK(loaded.dimension() == curve.dimension());
-        MINI_CHECK(loaded.is_valid() == true);
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(0), points[0]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(1), points[1]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(2), points[2]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(3), points[3]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(4), points[4]));
+        // JSON object
+        nlohmann::ordered_json json = curve.jsondump();
+        NurbsCurve loaded_json = NurbsCurve::jsonload(json);
+
+        // String
+        std::string json_string = curve.json_dumps();
+        NurbsCurve loaded_json_string = NurbsCurve::json_loads(json_string);
+
+        // File
+        std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbscurve.json").string();
+        curve.json_dump(filename);
+        NurbsCurve loaded_from_file = NurbsCurve::json_load(filename);
+
+        MINI_CHECK(loaded_json == curve);
+        MINI_CHECK(loaded_json_string == curve);
+        MINI_CHECK(loaded_from_file == curve);
     }
 
     MINI_TEST("NurbsCurve", "protobuf_roundtrip") {
-        // #include "nurbscurve.h"
-        // #include "point.h"
-        // #include "vector.h"
-        // #include "xform.h"
-        // #include <filesystem>
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+        // uncomment #include "xform.h"
+        // uncomment #include <filesystem>
 
 
         std::vector<Point> points = {
@@ -619,22 +643,17 @@ namespace session_cpp {
         };
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
-        std::filesystem::path src_dir = std::filesystem::path(__FILE__).parent_path();
-        std::string filename = (src_dir.parent_path() / "serialization" / "test_nurbscurve.bin").string();
-        curve.protobuf_dump(filename);
-        NurbsCurve loaded = NurbsCurve::protobuf_load(filename);
+        // String
+        std::string proto_string = curve.pb_dumps();
+        NurbsCurve loaded_proto_string = NurbsCurve::pb_loads(proto_string);
 
-        MINI_CHECK(loaded.name == curve.name);
-        MINI_CHECK(TOLERANCE.is_close(loaded.width, curve.width));
-        MINI_CHECK(loaded.linecolor[0] == curve.linecolor[0]);
-        MINI_CHECK(loaded.linecolor[1] == curve.linecolor[1]);
-        MINI_CHECK(loaded.linecolor[2] == curve.linecolor[2]);
-        MINI_CHECK(loaded.is_valid() == true);
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(0), points[0]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(1), points[1]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(2), points[2]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(3), points[3]));
-        MINI_CHECK(TOLERANCE.is_point_close(loaded.get_cv(4), points[4]));
+        // File
+        std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbscurve.bin").string();
+        curve.pb_dump(filename);
+        NurbsCurve loaded = NurbsCurve::pb_load(filename);
+
+        MINI_CHECK(loaded_proto_string == curve);
+        MINI_CHECK(loaded == curve);
     }
 
 } // namespace session_cpp

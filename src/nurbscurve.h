@@ -34,7 +34,7 @@ public:
     std::string guid = ::guid();
     std::string name = "my_nurbscurve";
     double width = 1.0;
-    Color linecolor = Color::white();
+    Color linecolor = Color::black();
     Xform xform = Xform::identity();
 
     // Core NURBS data
@@ -75,7 +75,11 @@ public:
     
     /// Copy assignment operator
     NurbsCurve& operator=(const NurbsCurve& other);
-    
+
+    /// Equality operator
+    bool operator==(const NurbsCurve& other) const;
+    bool operator!=(const NurbsCurve& other) const;
+
     /// Destructor
     ~NurbsCurve();
 
@@ -345,7 +349,7 @@ public:
 
     /// Get multiple rotation minimizing frames along the curve
     std::vector<std::tuple<Point, Vector, Vector, Vector>>
-    get_perpendicular_frames(const std::vector<double>& params) const;
+    get_perpendicular_frames(const std::vector<double>& params, bool normalized) const;
 
     
     /// Get start point of curve
@@ -392,17 +396,11 @@ public:
     /// Clamp ends (add multiplicity to end knots)
     bool clamp_end(int end); // 0 = start, 1 = end, 2 = both
 
-    /// TODO: Increase degree of curve
+    /// Increase degree of curve
     bool increase_degree(int desired_degree);
 
-    /// TODO: Change dimension of curve
-    bool change_dimension(int desired_dimension);
-
-    /// TODO: Change seam point of closed periodic curve
+    /// Change seam point of closed periodic curve
     bool change_closed_curve_seam(double t);
-
-    /// TODO: Reparameterize rational curve by linear fractional transformation
-    bool reparameterize(double c);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
@@ -424,29 +422,35 @@ public:
     // JSON Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
     
-    /// TODO: Convert to JSON
+    /// Convert to JSON object
     nlohmann::ordered_json jsondump() const;
 
-    /// TODO: Load from JSON
+    /// Load from JSON object
     static NurbsCurve jsonload(const nlohmann::json& data);
+
+    /// Convert to JSON string
+    std::string json_dumps() const;
+
+    /// Load from JSON string
+    static NurbsCurve json_loads(const std::string& json_string);
 
     /// Write JSON to file
     void json_dump(const std::string& filename) const;
-    
+
     /// Read JSON from file
     static NurbsCurve json_load(const std::string& filename);
 
+    /// Convert to protobuf binary string
+    std::string pb_dumps() const;
+
+    /// Load from protobuf binary string
+    static NurbsCurve pb_loads(const std::string& data);
+
     /// Write protobuf to file
-    void protobuf_dump(const std::string& filename) const;
+    void pb_dump(const std::string& filename) const;
 
     /// Read protobuf from file
-    static NurbsCurve protobuf_load(const std::string& filename);
-
-    /// TODO: Serialize to protobuf string
-    std::string to_protobuf() const;
-
-    /// TODO: Deserialize from protobuf string
-    static NurbsCurve from_protobuf(const std::string& data);
+    static NurbsCurve pb_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation
@@ -457,12 +461,6 @@ public:
 
     /// Detailed representation (like Python repr)
     std::string repr() const;
-
-    /// TODO: Make knot vector a clamped uniform knot vector (does not change CVs)
-    bool make_clamped_uniform_knot_vector(double delta = 1.0);
-
-    /// TODO: Make knot vector a periodic uniform knot vector (does not change CVs)
-    bool make_periodic_uniform_knot_vector(double delta = 1.0);
 
 private:
     ///////////////////////////////////////////////////////////////////////////////////////////

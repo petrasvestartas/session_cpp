@@ -48,6 +48,13 @@ namespace session_cpp {
 
       Color c(255, 128, 64, 255, "serialization/test_color");
 
+      //   jsondump()      │ ordered_json │ to JSON object (internal use)
+      //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+      //   json_dumps()    │ std::string  │ to JSON string
+      //   json_loads(s)   │ std::string  │ from JSON string
+      //   json_dump(path) │ file         │ write to file
+      //   json_load(path) │ file         │ read from file
+
       std::string filename = "serialization/test_color.json";
       c.json_dump(filename);
       Color loaded = Color::json_load(filename);
@@ -65,8 +72,8 @@ namespace session_cpp {
       Color c(255, 128, 64, 255, "serialization/test_color");
 
       std::string filename = "serialization/test_color.bin";
-      c.protobuf_dump(filename);
-      Color loaded = Color::protobuf_load(filename);
+      c.pb_dump(filename);
+      Color loaded = Color::pb_load(filename);
 
       MINI_CHECK(loaded.name == "serialization/test_color");
       MINI_CHECK(loaded[0] == 255);

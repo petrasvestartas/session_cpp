@@ -79,7 +79,7 @@ void NurbsSurface::initialize() {
     guid = ::guid();
     name = "my_nurbssurface";
     width = 1.0;
-    surfacecolor = Color::white();
+    surfacecolor = Color::black();
     xform = Xform::identity();
     
     m_dim = 0;
@@ -1015,83 +1015,6 @@ bool NurbsSurface::increase_degree(int dir, int desired_degree) {
     return false;
 }
 
-bool NurbsSurface::change_dimension(int desired_dimension) {
-    if (desired_dimension < 1) return false;
-    if (desired_dimension == m_dim) return true;
-    
-    if (desired_dimension < m_dim) {
-        // Shrinking dimension
-        if (m_is_rat) {
-            // Move weight to correct position
-            for (int i = 0; i < m_cv_count[0]; i++) {
-                for (int j = 0; j < m_cv_count[1]; j++) {
-                    double* cv_ptr = cv(i, j);
-                    if (cv_ptr) {
-                        cv_ptr[desired_dimension] = cv_ptr[m_dim];
-                    }
-                }
-            }
-        }
-        m_dim = desired_dimension;
-        return true;
-    } else {
-        // Expanding dimension
-        const int old_stride0 = m_cv_stride[0];
-        const int old_stride1 = m_cv_stride[1];
-        const int cv_size = m_is_rat ? (desired_dimension + 1) : desired_dimension;
-        int new_stride0 = old_stride0;
-        int new_stride1 = old_stride1;
-        
-        if (cv_size > old_stride0 && cv_size > old_stride1) {
-            new_stride0 = (old_stride0 <= old_stride1) ? cv_size : (cv_size * m_cv_count[1]);
-            new_stride1 = (old_stride0 <= old_stride1) ? (cv_size * m_cv_count[0]) : cv_size;
-            m_cv.resize(cv_size * m_cv_count[0] * m_cv_count[1]);
-        }
-        
-        // Expand in place, working backwards to avoid overwriting
-        if (old_stride0 <= old_stride1) {
-            for (int j = m_cv_count[1] - 1; j >= 0; j--) {
-                for (int i = m_cv_count[0] - 1; i >= 0; i--) {
-                    const double* old_cv = m_cv.data() + (old_stride0 * i + old_stride1 * j);
-                    double* new_cv = m_cv.data() + (new_stride0 * i + new_stride1 * j);
-                    
-                    if (m_is_rat) {
-                        new_cv[desired_dimension] = old_cv[m_dim];
-                    }
-                    for (int k = desired_dimension - 1; k >= m_dim; k--) {
-                        new_cv[k] = 0.0;
-                    }
-                    for (int k = m_dim - 1; k >= 0; k--) {
-                        new_cv[k] = old_cv[k];
-                    }
-                }
-            }
-        } else {
-            for (int i = m_cv_count[0] - 1; i >= 0; i--) {
-                for (int j = m_cv_count[1] - 1; j >= 0; j--) {
-                    const double* old_cv = m_cv.data() + (old_stride0 * i + old_stride1 * j);
-                    double* new_cv = m_cv.data() + (new_stride0 * i + new_stride1 * j);
-                    
-                    if (m_is_rat) {
-                        new_cv[desired_dimension] = old_cv[m_dim];
-                    }
-                    for (int k = desired_dimension - 1; k >= m_dim; k--) {
-                        new_cv[k] = 0.0;
-                    }
-                    for (int k = m_dim - 1; k >= 0; k--) {
-                        new_cv[k] = old_cv[k];
-                    }
-                }
-            }
-        }
-        
-        m_cv_stride[0] = new_stride0;
-        m_cv_stride[1] = new_stride1;
-        m_dim = desired_dimension;
-        return true;
-    }
-}
-
 void NurbsSurface::transform() {
     transform(xform);
 }
@@ -1157,6 +1080,14 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
     return surface;
 }
 
+std::string NurbsSurface::json_dumps() const {
+    return jsondump().dump();
+}
+
+NurbsSurface NurbsSurface::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void NurbsSurface::json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
@@ -1169,7 +1100,7 @@ NurbsSurface NurbsSurface::json_load(const std::string& filename) {
     return jsonload(data);
 }
 
-std::string NurbsSurface::to_protobuf() const {
+std::string NurbsSurface::pb_dumps() const {
     session_proto::NurbsSurface proto;
 
     // Basic metadata
@@ -1219,7 +1150,7 @@ std::string NurbsSurface::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-NurbsSurface NurbsSurface::from_protobuf(const std::string& data) {
+NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
     session_proto::NurbsSurface proto;
     proto.ParseFromString(data);
 
@@ -1272,17 +1203,17 @@ NurbsSurface NurbsSurface::from_protobuf(const std::string& data) {
     return surface;
 }
 
-void NurbsSurface::protobuf_dump(const std::string& filename) const {
-    std::string data = to_protobuf();
+void NurbsSurface::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
-NurbsSurface NurbsSurface::protobuf_load(const std::string& filename) {
+NurbsSurface NurbsSurface::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)),
                      std::istreambuf_iterator<char>());
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 bool NurbsSurface::zero_cvs() {

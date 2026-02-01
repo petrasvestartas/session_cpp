@@ -111,6 +111,13 @@ MINI_TEST("Polyline", "json_roundtrip") {
     Polyline pl({Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0), Point(7.0, 8.0, 9.0), Point(10.0, 11.0, 12.0)});
     pl.name = "test_polyline";
 
+    //   jsondump()      │ ordered_json │ to JSON object (internal use)
+    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+    //   json_dumps()    │ std::string  │ to JSON string
+    //   json_loads(s)   │ std::string  │ from JSON string
+    //   json_dump(path) │ file         │ write to file
+    //   json_load(path) │ file         │ read from file
+
     // json_dump(fname) / json_load(fname) - file-based serialization
     std::string fname = "serialization/test_polyline.json";
     pl.json_dump(fname);
@@ -133,10 +140,10 @@ MINI_TEST("Polyline", "protobuf_roundtrip") {
     Polyline pl({Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0), Point(7.0, 8.0, 9.0), Point(10.0, 11.0, 12.0)});
     pl.name = "test_polyline";
 
-    // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
+    // pb_dump(fname) / pb_load(fname) - file-based serialization
     std::string fname = "serialization/test_polyline.bin";
-    pl.protobuf_dump(fname);
-    Polyline loaded = Polyline::protobuf_load(fname);
+    pl.pb_dump(fname);
+    Polyline loaded = Polyline::pb_load(fname);
 
     MINI_CHECK(loaded.name == "test_polyline");
     MINI_CHECK(loaded.len() == 4);

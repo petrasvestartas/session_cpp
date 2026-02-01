@@ -120,21 +120,27 @@ namespace session_cpp {
   /// Deserialize from JSON file
   static Plane json_load(const std::string& filename);
 
+  /// Convert to JSON string
+  std::string json_dumps() const;
+
+  /// Load from JSON string
+  static Plane json_loads(const std::string& json_string);
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Convert to protobuf string.
-  std::string to_protobuf() const;
+  /// Convert to protobuf binary string
+  std::string pb_dumps() const;
 
-  /// Create plane from protobuf data.
-  static Plane from_protobuf(const std::string& data);
+  /// Load from protobuf binary string
+  static Plane pb_loads(const std::string& data);
 
-  /// Serialize to protobuf file.
-  void protobuf_dump(const std::string& filename) const;
+  /// Write protobuf to file
+  void pb_dump(const std::string& filename) const;
 
-  /// Deserialize from protobuf file.
-  static Plane protobuf_load(const std::string& filename);
+  /// Read protobuf from file
+  static Plane pb_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details

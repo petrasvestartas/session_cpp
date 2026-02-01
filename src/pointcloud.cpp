@@ -311,6 +311,14 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
     return pc;
 }
 
+std::string PointCloud::json_dumps() const {
+    return jsondump().dump();
+}
+
+PointCloud PointCloud::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void PointCloud::json_dump(const std::string& filename) const {
     std::ofstream ofs(filename);
     ofs << jsondump().dump(2);
@@ -329,7 +337,7 @@ PointCloud PointCloud::json_load(const std::string& filename) {
 // Protobuf Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string PointCloud::to_protobuf() const {
+std::string PointCloud::pb_dumps() const {
     session_proto::PointCloud proto;
     proto.set_guid(guid);
     proto.set_name(name);
@@ -354,7 +362,7 @@ std::string PointCloud::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-PointCloud PointCloud::from_protobuf(const std::string& data) {
+PointCloud PointCloud::pb_loads(const std::string& data) {
     session_proto::PointCloud proto;
     proto.ParseFromString(data);
 
@@ -381,18 +389,18 @@ PointCloud PointCloud::from_protobuf(const std::string& data) {
     return pc;
 }
 
-void PointCloud::protobuf_dump(const std::string& filename) const {
+void PointCloud::pb_dump(const std::string& filename) const {
     std::ofstream ofs(filename, std::ios::binary);
-    ofs << to_protobuf();
+    ofs << pb_dumps();
     ofs.close();
 }
 
-PointCloud PointCloud::protobuf_load(const std::string& filename) {
+PointCloud PointCloud::pb_load(const std::string& filename) {
     std::ifstream ifs(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(ifs)),
                       std::istreambuf_iterator<char>());
     ifs.close();
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

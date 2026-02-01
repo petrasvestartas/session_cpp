@@ -221,6 +221,13 @@ MINI_TEST("Plane", "json_roundtrip") {
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
 
+    //   jsondump()      │ ordered_json │ to JSON object (internal use)
+    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+    //   json_dumps()    │ std::string  │ to JSON string
+    //   json_loads(s)   │ std::string  │ from JSON string
+    //   json_dump(path) │ file         │ write to file
+    //   json_load(path) │ file         │ read from file
+
     std::string fname = "serialization/test_plane.json";
     pl.json_dump(fname);
     Plane loaded = Plane::json_load(fname);
@@ -236,10 +243,10 @@ MINI_TEST("Plane", "protobuf_roundtrip") {
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
 
-    // protobuf_dump(fname) / protobuf_load(fname) - file-based serialization
+    // pb_dump(fname) / pb_load(fname) - file-based serialization
     std::string fname = "serialization/test_plane.bin";
-    pl.protobuf_dump(fname);
-    Plane loaded = Plane::protobuf_load(fname);
+    pl.pb_dump(fname);
+    Plane loaded = Plane::pb_load(fname);
 
     MINI_CHECK(loaded.name == "test_plane");
     MINI_CHECK(TOLERANCE.is_close(loaded.c(), 1.0));

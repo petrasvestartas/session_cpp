@@ -188,6 +188,14 @@ Line Line::jsonload(const nlohmann::json& data) {
     return line;
 }
 
+std::string Line::json_dumps() const {
+    return jsondump().dump();
+}
+
+Line Line::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void Line::json_dump(const std::string& filename) const {
     std::ofstream ofs(filename);
     ofs << jsondump().dump(4);
@@ -205,7 +213,7 @@ Line Line::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Line::to_protobuf() const {
+std::string Line::pb_dumps() const {
     session_proto::Line proto;
     auto* start = proto.mutable_start();
     start->set_x(_x0);
@@ -226,7 +234,7 @@ std::string Line::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-Line Line::from_protobuf(const std::string& data) {
+Line Line::pb_loads(const std::string& data) {
     session_proto::Line proto;
     proto.ParseFromString(data);
     Line line(proto.start().x(), proto.start().y(), proto.start().z(),
@@ -243,18 +251,18 @@ Line Line::from_protobuf(const std::string& data) {
     return line;
 }
 
-void Line::protobuf_dump(const std::string& filename) const {
+void Line::pb_dump(const std::string& filename) const {
     std::ofstream ofs(filename, std::ios::binary);
-    ofs << to_protobuf();
+    ofs << pb_dumps();
     ofs.close();
 }
 
-Line Line::protobuf_load(const std::string& filename) {
+Line Line::pb_load(const std::string& filename) {
     std::ifstream ifs(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(ifs)),
                       std::istreambuf_iterator<char>());
     ifs.close();
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 /// Simple string form (like Python __str__): just coordinates

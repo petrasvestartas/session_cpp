@@ -156,51 +156,27 @@ public:
   ///     The deserialized Vector.
   static Vector json_load(const std::string& filename);
 
+  /// Convert to JSON string
+  std::string json_dumps() const;
+
+  /// Load from JSON string
+  static Vector json_loads(const std::string& json_string);
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf Serialization
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Convert to protobuf binary format.
-  ///
-  /// Returns
-  /// -------
-  /// std::string
-  ///     Serialized protobuf data.
-  std::string to_protobuf() const;
+  /// Convert to protobuf binary string
+  std::string pb_dumps() const;
 
-  /// Create Vector from protobuf binary data.
-  ///
-  /// Parameters
-  /// ----------
-  /// data : const std::string&
-  ///     Protobuf-encoded vector data.
-  ///
-  /// Returns
-  /// -------
-  /// Vector
-  ///     The deserialized Vector.
-  static Vector from_protobuf(const std::string& data);
+  /// Load from protobuf binary string
+  static Vector pb_loads(const std::string& data);
 
-  /// Write protobuf to file.
-  ///
-  /// Parameters
-  /// ----------
-  /// filename : const std::string&
-  ///     Path to the output file.
-  void protobuf_dump(const std::string& filename) const;
+  /// Write protobuf to file
+  void pb_dump(const std::string& filename) const;
 
-  /// Read protobuf from file.
-  ///
-  /// Parameters
-  /// ----------
-  /// filename : const std::string&
-  ///     Path to the protobuf file.
-  ///
-  /// Returns
-  /// -------
-  /// Vector
-  ///     The deserialized Vector.
-  static Vector protobuf_load(const std::string& filename);
+  /// Read protobuf from file
+  static Vector pb_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Static Methods

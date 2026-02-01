@@ -467,6 +467,14 @@ Xform Xform::jsonload(const nlohmann::json& data) {
     return xform;
 }
 
+std::string Xform::json_dumps() const {
+    return jsondump().dump();
+}
+
+Xform Xform::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void Xform::json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
@@ -478,7 +486,7 @@ Xform Xform::json_load(const std::string& filename) {
     return jsonload(data);
 }
 
-std::string Xform::to_protobuf() const {
+std::string Xform::pb_dumps() const {
     session_proto::Xform proto;
     proto.set_guid(guid);
     proto.set_name(name);
@@ -488,7 +496,7 @@ std::string Xform::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-Xform Xform::from_protobuf(const std::string& data) {
+Xform Xform::pb_loads(const std::string& data) {
     session_proto::Xform proto;
     proto.ParseFromString(data);
 
@@ -501,17 +509,17 @@ Xform Xform::from_protobuf(const std::string& data) {
     return xform;
 }
 
-void Xform::protobuf_dump(const std::string& filename) const {
-    std::string data = to_protobuf();
+void Xform::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
-Xform Xform::protobuf_load(const std::string& filename) {
+Xform Xform::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 Xform Xform::operator*(const Xform& other) const {

@@ -819,12 +819,20 @@ void Mesh::clear_triangle_bvh() const {
     vertices_cache.clear();
 }
 
+std::string Mesh::json_dumps() const {
+    return jsondump().dump();
+}
+
+Mesh Mesh::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 
-std::string Mesh::to_protobuf() const {
+std::string Mesh::pb_dumps() const {
     session_proto::Mesh proto;
     proto.set_guid(this->guid);
     proto.set_name(this->name);
@@ -930,7 +938,7 @@ std::string Mesh::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-Mesh Mesh::from_protobuf(const std::string& data) {
+Mesh Mesh::pb_loads(const std::string& data) {
     session_proto::Mesh proto;
     proto.ParseFromString(data);
 
@@ -1043,16 +1051,16 @@ Mesh Mesh::from_protobuf(const std::string& data) {
     return mesh;
 }
 
-void Mesh::protobuf_dump(const std::string& filename) const {
-    std::string data = to_protobuf();
+void Mesh::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
-Mesh Mesh::protobuf_load(const std::string& filename) {
+Mesh Mesh::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 } // namespace session_cpp

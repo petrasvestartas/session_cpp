@@ -257,26 +257,28 @@ public:
     
     /// Create mesh from JSON data
     static Mesh jsonload(const nlohmann::json& data);
-    
-    /// Serialize to JSON file
-    
-    /// Deserialize from JSON file
+
+    /// Convert to JSON string
+    std::string json_dumps() const;
+
+    /// Load from JSON string
+    static Mesh json_loads(const std::string& json_string);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert to protobuf binary format
-    std::string to_protobuf() const;
-    
-    /// Create Mesh from protobuf binary data
-    static Mesh from_protobuf(const std::string& data);
-    
+    /// Convert to protobuf binary string
+    std::string pb_dumps() const;
+
+    /// Load from protobuf binary string
+    static Mesh pb_loads(const std::string& data);
+
     /// Write protobuf to file
-    void protobuf_dump(const std::string& filename) const;
-    
+    void pb_dump(const std::string& filename) const;
+
     /// Read protobuf from file
-    static Mesh protobuf_load(const std::string& filename);
+    static Mesh pb_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Triangle BVH Cache

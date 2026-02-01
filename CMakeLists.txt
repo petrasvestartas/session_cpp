@@ -71,7 +71,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native")
 elseif(MSVC)
-    add_compile_options(/W4 /utf-8)
+    add_compile_options(/W4 /utf-8 /external:W0)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
@@ -214,6 +214,8 @@ endif()
 
 target_include_directories(session_core PUBLIC
     ${GENERATED_DIR}
+)
+target_include_directories(session_core SYSTEM PUBLIC
     ${protobuf_SOURCE_DIR}/src
 )
 target_link_libraries(session_core PUBLIC libprotobuf)

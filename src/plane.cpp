@@ -333,6 +333,14 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     return plane;
 }
 
+std::string Plane::json_dumps() const {
+    return jsondump().dump();
+}
+
+Plane Plane::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void Plane::json_dump(const std::string& filename) const {
     std::ofstream ofs(filename);
     ofs << jsondump().dump(2);
@@ -351,7 +359,7 @@ Plane Plane::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Plane::to_protobuf() const {
+std::string Plane::pb_dumps() const {
     session_proto::Plane proto;
     proto.set_guid(guid);
     proto.set_name(name);
@@ -379,7 +387,7 @@ std::string Plane::to_protobuf() const {
     return proto.SerializeAsString();
 }
 
-Plane Plane::from_protobuf(const std::string& data) {
+Plane Plane::pb_loads(const std::string& data) {
     session_proto::Plane proto;
     proto.ParseFromString(data);
 
@@ -411,18 +419,18 @@ Plane Plane::from_protobuf(const std::string& data) {
     return plane;
 }
 
-void Plane::protobuf_dump(const std::string& filename) const {
+void Plane::pb_dump(const std::string& filename) const {
     std::ofstream ofs(filename, std::ios::binary);
-    ofs << to_protobuf();
+    ofs << pb_dumps();
     ofs.close();
 }
 
-Plane Plane::protobuf_load(const std::string& filename) {
+Plane Plane::pb_load(const std::string& filename) {
     std::ifstream ifs(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(ifs)),
                       std::istreambuf_iterator<char>());
     ifs.close();
-    return from_protobuf(data);
+    return pb_loads(data);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

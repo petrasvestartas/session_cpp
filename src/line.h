@@ -25,7 +25,7 @@ public:
     std::string guid = ::guid();       ///< Unique identifier for the line
     std::string name = "my_line";      ///< Line identifier/name
     double width = 1.0;                ///< Line width in pixels
-    Color linecolor = Color::white();  ///< Color of the line
+    Color linecolor = Color::black();  ///< Color of the line
     Xform xform;   ///< Transformation matrix
 
 private:
@@ -165,21 +165,27 @@ public:
     /// Deserialize from JSON file.
     static Line json_load(const std::string& filename);
 
+    /// Convert to JSON string
+    std::string json_dumps() const;
+
+    /// Load from JSON string
+    static Line json_loads(const std::string& json_string);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert to protobuf string.
-    std::string to_protobuf() const;
+    /// Convert to protobuf binary string
+    std::string pb_dumps() const;
 
-    /// Create line from protobuf data.
-    static Line from_protobuf(const std::string& data);
+    /// Load from protobuf binary string
+    static Line pb_loads(const std::string& data);
 
-    /// Serialize to protobuf file.
-    void protobuf_dump(const std::string& filename) const;
+    /// Write protobuf to file
+    void pb_dump(const std::string& filename) const;
 
-    /// Deserialize from protobuf file.
-    static Line protobuf_load(const std::string& filename);
+    /// Read protobuf from file
+    static Line pb_load(const std::string& filename);
 };
 
 /// Output stream operator for Line.

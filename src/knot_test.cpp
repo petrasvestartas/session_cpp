@@ -144,7 +144,7 @@ MINI_TEST("Knot", "get_domain") {
 MINI_TEST("Knot", "set_domain") {
     // uncomment #include "knot.h"
 
-    // Create and reparameterize knot vector
+    // Create knot vector and set domain
     auto k = knot::make_clamped_uniform(4, 4, 1.0);
     bool set_result = knot::set_domain(4, 4, k, 5.0, 10.0);
     auto [t0, t1] = knot::get_domain(4, 4, k);

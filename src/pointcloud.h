@@ -137,6 +137,8 @@ public:
 
     nlohmann::ordered_json jsondump() const;
     static PointCloud jsonload(const nlohmann::json& data);
+    std::string json_dumps() const;
+    static PointCloud json_loads(const std::string& json_string);
     void json_dump(const std::string& filename) const;
     static PointCloud json_load(const std::string& filename);
 
@@ -144,10 +146,10 @@ public:
     // Protobuf Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    std::string to_protobuf() const;
-    static PointCloud from_protobuf(const std::string& data);
-    void protobuf_dump(const std::string& filename) const;
-    static PointCloud protobuf_load(const std::string& filename);
+    std::string pb_dumps() const;
+    static PointCloud pb_loads(const std::string& data);
+    void pb_dump(const std::string& filename) const;
+    static PointCloud pb_load(const std::string& filename);
 };
 
 /// Stream output operator for point cloud

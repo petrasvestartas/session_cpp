@@ -81,6 +81,14 @@ Point Point::jsonload(const nlohmann::json &data) {
   return point;
 }
 
+std::string Point::json_dumps() const {
+    return jsondump().dump();
+}
+
+Point Point::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 /// Write JSON to file
 void Point::json_dump(const std::string& filename) const {
   std::ofstream file(filename);
@@ -98,7 +106,7 @@ Point Point::json_load(const std::string& filename) {
 // Protobuf
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Point::to_protobuf() const {
+std::string Point::pb_dumps() const {
   session_proto::Point proto;
   proto.set_guid(guid);
   proto.set_name(name);
@@ -126,7 +134,7 @@ std::string Point::to_protobuf() const {
   return proto.SerializeAsString();
 }
 
-Point Point::from_protobuf(const std::string& data) {
+Point Point::pb_loads(const std::string& data) {
   session_proto::Point proto;
   proto.ParseFromString(data);
   
@@ -154,17 +162,17 @@ Point Point::from_protobuf(const std::string& data) {
   return point;
 }
 
-void Point::protobuf_dump(const std::string& filename) const {
-  std::string data = to_protobuf();
+void Point::pb_dump(const std::string& filename) const {
+  std::string data = pb_dumps();
   std::ofstream file(filename, std::ios::binary);
   file.write(data.data(), data.size());
 }
 
-Point Point::protobuf_load(const std::string& filename) {
+Point Point::pb_load(const std::string& filename) {
   std::ifstream file(filename, std::ios::binary);
   std::string data((std::istreambuf_iterator<char>(file)),
                     std::istreambuf_iterator<char>());
-  return from_protobuf(data);
+  return pb_loads(data);
 }
 
 /// Simple string form (like Python __str__): just coordinates

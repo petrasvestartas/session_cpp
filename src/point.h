@@ -100,35 +100,27 @@ public:
   /// Read JSON from file
   static Point json_load(const std::string& filename);
 
+  /// Convert to JSON string
+  std::string json_dumps() const;
+
+  /// Load from JSON string
+  static Point json_loads(const std::string& json_string);
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /**
-   * @brief Convert to protobuf binary format.
-   * @return Serialized protobuf data.
-   */
-  std::string to_protobuf() const;
+  /// Convert to protobuf binary string
+  std::string pb_dumps() const;
 
-  /**
-   * @brief Create Point from protobuf binary data.
-   * @param data Protobuf-encoded point data.
-   * @return The deserialized Point.
-   */
-  static Point from_protobuf(const std::string& data);
+  /// Load from protobuf binary string
+  static Point pb_loads(const std::string& data);
 
-  /**
-   * @brief Write protobuf to file.
-   * @param filename Path to the output file.
-   */
-  void protobuf_dump(const std::string& filename) const;
+  /// Write protobuf to file
+  void pb_dump(const std::string& filename) const;
 
-  /**
-   * @brief Read protobuf from file.
-   * @param filename Path to the protobuf file.
-   * @return The deserialized Point.
-   */
-  static Point protobuf_load(const std::string& filename);
+  /// Read protobuf from file
+  static Point pb_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // No-copy Operators

@@ -289,6 +289,13 @@ MINI_TEST("Xform", "json_roundtrip") {
     Xform xform = Xform::translation(1.0, 2.0, 3.0);
     xform.name = "test_xform";
 
+    //   jsondump()      │ ordered_json │ to JSON object (internal use)
+    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+    //   json_dumps()    │ std::string  │ to JSON string
+    //   json_loads(s)   │ std::string  │ from JSON string
+    //   json_dump(path) │ file         │ write to file
+    //   json_load(path) │ file         │ read from file
+
     // json_dump(filename) / json_load(filename) - file-based serialization
     std::string filename = "serialization/test_xform.json";
     xform.json_dump(filename);
@@ -307,10 +314,10 @@ MINI_TEST("Xform", "protobuf_roundtrip") {
     Xform xform = Xform::translation(1.0, 2.0, 3.0);
     xform.name = "test_xform_proto";
 
-    // protobuf_dump(filename) / protobuf_load(filename) - file-based serialization
+    // pb_dump(filename) / pb_load(filename) - file-based serialization
     std::string filename = "serialization/test_xform.bin";
-    xform.protobuf_dump(filename);
-    Xform loaded = Xform::protobuf_load(filename);
+    xform.pb_dump(filename);
+    Xform loaded = Xform::pb_load(filename);
 
     MINI_CHECK(loaded.name == "test_xform_proto");
     MINI_CHECK(TOLERANCE.is_close(loaded.m[12], 1.0));

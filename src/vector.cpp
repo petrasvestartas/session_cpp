@@ -139,6 +139,14 @@ Vector Vector::jsonload(const nlohmann::json &data) {
   return vector;
 }
 
+std::string Vector::json_dumps() const {
+    return jsondump().dump();
+}
+
+Vector Vector::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 /// Serialize to JSON file
 void Vector::json_dump(const std::string& filename) const {
   std::ofstream ofs(filename);
@@ -158,7 +166,7 @@ Vector Vector::json_load(const std::string& filename) {
 // Protobuf Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-std::string Vector::to_protobuf() const {
+std::string Vector::pb_dumps() const {
   session_proto::Vector proto;
   proto.set_x(_x);
   proto.set_y(_y);
@@ -167,7 +175,7 @@ std::string Vector::to_protobuf() const {
   return proto.SerializeAsString();
 }
 
-Vector Vector::from_protobuf(const std::string& data) {
+Vector Vector::pb_loads(const std::string& data) {
   session_proto::Vector proto;
   proto.ParseFromString(data);
   Vector v(proto.x(), proto.y(), proto.z());
@@ -175,18 +183,18 @@ Vector Vector::from_protobuf(const std::string& data) {
   return v;
 }
 
-void Vector::protobuf_dump(const std::string& filename) const {
+void Vector::pb_dump(const std::string& filename) const {
   std::ofstream ofs(filename, std::ios::binary);
-  ofs << to_protobuf();
+  ofs << pb_dumps();
   ofs.close();
 }
 
-Vector Vector::protobuf_load(const std::string& filename) {
+Vector Vector::pb_load(const std::string& filename) {
   std::ifstream ifs(filename, std::ios::binary);
   std::string data((std::istreambuf_iterator<char>(ifs)),
                     std::istreambuf_iterator<char>());
   ifs.close();
-  return from_protobuf(data);
+  return pb_loads(data);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

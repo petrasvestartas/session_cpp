@@ -36,7 +36,7 @@ public:
     std::string guid = ::guid();
     std::string name = "my_nurbssurface";
     double width = 1.0;
-    Color surfacecolor = Color::white();
+    Color surfacecolor = Color::black();
     Xform xform = Xform::identity();
 
     // Core NURBS data
@@ -298,9 +298,6 @@ public:
     /// Increase degree in specified direction
     bool increase_degree(int dir, int desired_degree);
     
-    /// Change dimension
-    bool change_dimension(int desired_dimension);
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -347,21 +344,27 @@ public:
     
     /// Write JSON to file
     void json_dump(const std::string& filename) const;
-    
+
     /// Read JSON from file
     static NurbsSurface json_load(const std::string& filename);
 
-    /// Serialize to protobuf binary string
-    std::string to_protobuf() const;
+    /// Convert to JSON string
+    std::string json_dumps() const;
 
-    /// Deserialize from protobuf binary string
-    static NurbsSurface from_protobuf(const std::string& data);
+    /// Load from JSON string
+    static NurbsSurface json_loads(const std::string& json_string);
 
-    /// Write protobuf to binary file
-    void protobuf_dump(const std::string& filename) const;
+    /// Convert to protobuf binary string
+    std::string pb_dumps() const;
 
-    /// Read protobuf from binary file
-    static NurbsSurface protobuf_load(const std::string& filename);
+    /// Load from protobuf binary string
+    static NurbsSurface pb_loads(const std::string& data);
+
+    /// Write protobuf to file
+    void pb_dump(const std::string& filename) const;
+
+    /// Read protobuf from file
+    static NurbsSurface pb_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representation

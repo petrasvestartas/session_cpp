@@ -375,6 +375,13 @@ MINI_TEST("Vector", "json_roundtrip") {
     Vector v(42.1, 84.2, 126.3);
     v.name = "test_vector";
 
+    //   jsondump()      │ ordered_json │ to JSON object (internal use)
+    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+    //   json_dumps()    │ std::string  │ to JSON string
+    //   json_loads(s)   │ std::string  │ from JSON string
+    //   json_dump(path) │ file         │ write to file
+    //   json_load(path) │ file         │ read from file
+
     // json_dump(filename) / json_load(filename) - file-based serialization
     std::string filename = "serialization/test_vector.json";
     v.json_dump(filename);
@@ -392,10 +399,10 @@ MINI_TEST("Vector", "protobuf_roundtrip") {
     Vector v(42.1, 84.2, 126.3);
     v.name = "test_vector";
 
-    // protobuf_dump(filename) / protobuf_load(filename) - file-based serialization
+    // pb_dump(filename) / pb_load(filename) - file-based serialization
     std::string filename = "serialization/test_vector.bin";
-    v.protobuf_dump(filename);
-    Vector loaded = Vector::protobuf_load(filename);
+    v.pb_dump(filename);
+    Vector loaded = Vector::pb_load(filename);
 
     MINI_CHECK(loaded.name == "test_vector");
     MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));

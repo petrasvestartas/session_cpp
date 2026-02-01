@@ -29,7 +29,7 @@ public:
     std::vector<double> _coords;  // Flat array [x0, y0, z0, x1, y1, z1, ...]
     Plane plane;
     double width = 1.0;
-    Color linecolor = Color::white();
+    Color linecolor = Color::black();
 
     Xform xform;
 
@@ -159,21 +159,27 @@ public:
     /// Deserialize from JSON file
     static Polyline json_load(const std::string& filename);
 
+    /// Convert to JSON string
+    std::string json_dumps() const;
+
+    /// Load from JSON string
+    static Polyline json_loads(const std::string& json_string);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Convert to protobuf binary format
-    std::string to_protobuf() const;
+    /// Convert to protobuf binary string
+    std::string pb_dumps() const;
 
-    /// Create Polyline from protobuf binary data
-    static Polyline from_protobuf(const std::string& data);
+    /// Load from protobuf binary string
+    static Polyline pb_loads(const std::string& data);
 
     /// Write protobuf to file
-    void protobuf_dump(const std::string& filename) const;
+    void pb_dump(const std::string& filename) const;
 
     /// Read protobuf from file
-    static Polyline protobuf_load(const std::string& filename);
+    static Polyline pb_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Utilities

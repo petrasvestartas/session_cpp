@@ -131,6 +131,13 @@ MINI_TEST("PointCloud", "json_roundtrip") {
     );
     pc.name = "test_pointcloud";
 
+    //   jsondump()      │ ordered_json │ to JSON object (internal use)
+    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+    //   json_dumps()    │ std::string  │ to JSON string
+    //   json_loads(s)   │ std::string  │ from JSON string
+    //   json_dump(path) │ file         │ write to file
+    //   json_load(path) │ file         │ read from file
+
     std::string fname = "serialization/test_pointcloud.json";
     pc.json_dump(fname);
     PointCloud loaded = PointCloud::json_load(fname);
@@ -156,8 +163,8 @@ MINI_TEST("PointCloud", "protobuf_roundtrip") {
     pc.name = "test_pointcloud";
 
     std::string fname = "serialization/test_pointcloud.bin";
-    pc.protobuf_dump(fname);
-    PointCloud loaded = PointCloud::protobuf_load(fname);
+    pc.pb_dump(fname);
+    PointCloud loaded = PointCloud::pb_load(fname);
 
     MINI_CHECK(loaded.name == "test_pointcloud");
     MINI_CHECK(loaded.len() == 2);

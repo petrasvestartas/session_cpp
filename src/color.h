@@ -78,6 +78,12 @@ public:
   /// Create color from JSON data.
   static Color jsonload(const nlohmann::json &data);
 
+  /// Convert to JSON string
+  std::string json_dumps() const;
+
+  /// Load from JSON string
+  static Color json_loads(const std::string& json_string);
+
   /// Write JSON to file
   void json_dump(const std::string& filename) const;
 
@@ -88,17 +94,17 @@ public:
   // Protobuf
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Convert to protobuf message and serialize to binary
-  std::string to_protobuf() const;
+  /// Convert to protobuf binary string
+  std::string pb_dumps() const;
 
-  /// Deserialize from protobuf binary
-  static Color from_protobuf(const std::string& data);
+  /// Load from protobuf binary string
+  static Color pb_loads(const std::string& data);
 
   /// Write protobuf to file
-  void protobuf_dump(const std::string& filename) const;
+  void pb_dump(const std::string& filename) const;
 
   /// Read protobuf from file
-  static Color protobuf_load(const std::string& filename);
+  static Color pb_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details
