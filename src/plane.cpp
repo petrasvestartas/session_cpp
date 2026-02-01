@@ -75,6 +75,18 @@ Plane::Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name) {
     _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
+Plane::Plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
+    xform = Xform::identity();
+    _origin = origin;
+    _x_axis = x_axis;
+    _y_axis = y_axis;
+    _z_axis = z_axis;
+    _a = _z_axis[0];
+    _b = _z_axis[1];
+    _c = _z_axis[2];
+    _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
+}
+
 Plane Plane::from_point_normal(Point& point, Vector& normal) {
     Plane plane;
     plane._origin = point;
@@ -138,6 +150,20 @@ Plane Plane::from_two_points(Point& point1, Point& point2) {
     return plane;
 }
 
+Plane Plane::invalid() {
+    Plane plane;
+    plane._origin = Point(0, 0, 0);
+    plane._x_axis = Vector(0, 0, 0);
+    plane._y_axis = Vector(0, 0, 0);
+    plane._z_axis = Vector(0, 0, 0);
+    plane._a = 0; plane._b = 0; plane._c = 0; plane._d = 0;
+    return plane;
+}
+
+bool Plane::is_valid() const {
+    return _x_axis.magnitude() > 1e-14 && _y_axis.magnitude() > 1e-14 && _z_axis.magnitude() > 1e-14;
+}
+
 Plane Plane::xy_plane() {
     Plane plane;
     plane.name = "xy_plane";
@@ -185,11 +211,7 @@ Plane Plane::xz_plane() {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::string Plane::str() const {
-    int prec = static_cast<int>(Tolerance::ROUNDING);
-    return fmt::format("{}, {}, {}",
-                       TOLERANCE.format_number(_origin[0], prec),
-                       TOLERANCE.format_number(_origin[1], prec),
-                       TOLERANCE.format_number(_origin[2], prec));
+    return fmt::format("{}\n{}\n{}\n{}", _origin.str(), _x_axis.str(), _y_axis.str(), _z_axis.str());
 }
 
 std::string Plane::repr() const {

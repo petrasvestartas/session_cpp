@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <array>
+#include <tuple>
 
 namespace session_cpp {
 
@@ -157,6 +158,7 @@ public:
 
     /// Get control point at index as homogeneous point (x, y, z, w)
     bool get_cv_4d(int cv_index, double& x, double& y, double& z, double& w) const;
+    std::tuple<double, double, double, double> get_cv_4d(int cv_index) const;
 
     /// Set control point at index from Point
     bool set_cv(int cv_index, const Point& point);
@@ -210,6 +212,7 @@ public:
 
     /// Get all Greville abcissae
     bool get_greville_abcissae(std::vector<double>& abcissae) const;
+    std::vector<double> get_greville_abcissae() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Domain & Parameterization
@@ -244,6 +247,7 @@ public:
                                int* hint = nullptr,
                                double cos_angle_tolerance = 0.99984769515639123,
                                double curvature_tolerance = 1e-8) const;
+    std::pair<bool, double> get_next_discontinuity(int continuity_type, double t0, double t1) const;
 
     /// Check if curve is rational
     bool is_rational() const { return m_is_rat != 0; }
@@ -308,6 +312,8 @@ public:
                              double angle_tolerance = 0.1,
                              double min_edge_length = 0.0,
                              double max_edge_length = 0.0) const;
+    std::pair<std::vector<Point>, std::vector<double>> to_polyline_adaptive(
+        double angle_tolerance = 0.1, double min_edge_length = 0.0, double max_edge_length = 0.0) const;
     
     /// Divide curve into uniform number of points (simple linear parameter division)
     /// count: number of points (must be >= 2)
@@ -315,11 +321,13 @@ public:
     bool divide_by_count(int count, std::vector<Point>& points,
                         std::vector<double>* params = nullptr,
                         bool include_endpoints = true) const;
+    std::pair<std::vector<Point>, std::vector<double>> divide_by_count(int count, bool include_endpoints = true) const;
     
     /// Divide curve by approximate arc length
     /// segment_length: target length between points
     bool divide_by_length(double segment_length, std::vector<Point>& points,
                          std::vector<double>* params = nullptr) const;
+    std::pair<std::vector<Point>, std::vector<double>> divide_by_length(double segment_length) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Evaluation
@@ -335,21 +343,15 @@ public:
     /// Get tangent vector at parameter t
     Vector tangent_at(double t) const;
 
-    /// Get perpendicular frame at parameter t
-    /// Returns: origin (point), xaxis (tangent), yaxis (normal), zaxis (binormal)
-    bool frame_at(double t, bool normalized, Point& origin, Vector& xaxis, Vector& yaxis, Vector& zaxis) const;
+    /// Get Frenet frame at parameter t (tangent, normal, binormal)
+    Plane plane_at(double t, bool normalized) const;
 
-    /// Get rotation minimizing perpendicular frame at parameter t
-    /// This is slightly different than frame_at in that the frame is computed in a way
-    /// so there is minimal rotation from one frame to the next (no unnecessary twist).
-    /// Uses the Double Reflection Method (Wang et al. 2008)
-    /// Returns: origin (point), xaxis (normal/r), yaxis (binormal/s), zaxis (tangent/T)
-    bool perpendicular_frame_at(double t, bool normalized, Point& origin, Vector& xaxis,
-                                            Vector& yaxis, Vector& zaxis) const;
+    /// Get rotation minimizing frame at parameter t (Double Reflection Method, Wang et al. 2008)
+    Plane perpendicular_plane_at(double t, bool normalized) const;
 
     /// Get multiple rotation minimizing frames along the curve
-    std::vector<std::tuple<Point, Vector, Vector, Vector>>
-    get_perpendicular_frames(const std::vector<double>& params, bool normalized) const;
+    /// count = number of subdivisions (returns count+1 frames at arc-length equidistant points)
+    std::vector<Plane> get_perpendicular_planes(int count) const;
 
     
     /// Get start point of curve
@@ -382,6 +384,7 @@ public:
     
     /// Split curve at parameter t into left and right parts
     bool split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve) const;
+    std::pair<NurbsCurve, NurbsCurve> split(double t) const;
     
     /// Extend curve to include domain (natural NURBS extrapolation using De Boor)
     bool extend(double t0, double t1);
@@ -527,9 +530,6 @@ private:
 
     void invalidate_rmf_cache() const;
     void ensure_rmf_cache() const;
-    bool perpendicular_frame_at_internal(double t, bool normalized, Point& origin,
-                                         Vector& xaxis, Vector& yaxis, Vector& zaxis) const;
-
     static std::array<double, 4> frame_to_quaternion(const Vector& r, const Vector& s, const Vector& t);
     static void quaternion_to_frame(const std::array<double, 4>& q, Vector& r, Vector& s, Vector& t);
     static std::array<double, 4> slerp(const std::array<double, 4>& q0, const std::array<double, 4>& q1, double u);

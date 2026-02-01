@@ -1,15 +1,13 @@
 #include "src/nurbscurve.h"
 #include "src/point.h"
 #include "src/vector.h"
+#include "src/plane.h"
 #include <iostream>
 #include <iomanip>
 
 using namespace session_cpp;
 
 int main() {
-
-
-
     std::vector<Point> points = {
         Point(1.957614, 1.140253, -0.191281),
         Point(0.912252, 1.886721, 0),
@@ -24,37 +22,32 @@ int main() {
         Point(2.15032, 1.868606, 0)
     };
 
-    NurbsCurve curve = NurbsCurve::create(false, 2, points);
-    std::cout << curve.point_at(curve.domain_start()) << std::endl;
+    auto curve = NurbsCurve::create(false, 2, points);
 
-    // // to_polyline_adaptive
-    // std::vector<Point> adaptive_pts;
-    // std::vector<double> adaptive_params;
-    // std::cout << "Adaptive polyline:" << std::endl;
-    // curve.to_polyline_adaptive(adaptive_pts, &adaptive_params, 0.1, 0.0, 0.0);
-    // for(auto& p : adaptive_pts)
-    //     std::cout << "rg.Point3d(" << p << ")," << std::endl;
-    
+    // Length
 
-    // // divide_by_count
-    // std::vector<Point> div_pts;
-    // std::vector<double> div_params;
-    // std::cout << "Divide by count (10):" << std::endl;
-    // curve.divide_by_count(10, div_pts, &div_params, true);
-    // for(auto& p : div_pts)
-    //     std::cout << "rg.Point3d(" << p << ")," << std::endl;
-    
+    // Get point at parameter t
+    Point point_at = curve.point_at(0.5);
+
+    // Get point and derivatives at parameter t
+    std::vector<Vector> derivatives = curve.evaluate(0.5, 2);
+
+    // Tangent vector at parameter t
+    Vector tangent = curve.tangent_at(0.5);
+
+    // normalized=true (default): t in [0,1] mapped to domain
+    Plane f = curve.plane_at(0.5, true);
 
 
-    // // divide_by_length
-    // std::vector<Point> len_pts;
-    // std::vector<double> len_params;
-    // curve.divide_by_length(0.5, len_pts, &len_params);
 
-    // std::cout << "Divide by length (0.5):" << std::endl;
-    // for(auto& p : len_pts)
-    //     std::cout << "rg.Point3d(" << p << ")," << std::endl;
+    // Perpendicular frame at (RMF with Frenet initialization, matches Rhino)
+    Plane pf = curve.perpendicular_plane_at(0.5, true);
 
+    // Get multiple rotation minimization frames along the curve (matches Rhino)
+    auto frames = curve.get_perpendicular_planes(4);
+    for (const auto& frame : frames) {
+        std:: cout << frame << std::endl;
+    }
 
     return 0;
 }

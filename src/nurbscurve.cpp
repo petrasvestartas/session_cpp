@@ -18,13 +18,22 @@ NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point
                               int dimension, double knot_delta) {
     NurbsCurve curve;
     int order = degree + 1;
-    
+
     if (periodic) {
         curve.create_periodic_uniform(dimension, order, points, knot_delta);
     } else {
         curve.create_clamped_uniform(dimension, order, points, knot_delta);
     }
-    
+
+    // Arc-length parameterization: rescale domain to [0, arc_length]
+    // Matches Rhino's CreateControlPointCurve behavior
+    if (curve.is_valid()) {
+        double L = curve.length();
+        if (L > 0.0) {
+            curve.set_domain(0.0, L);
+        }
+    }
+
     return curve;
 }
 
@@ -1588,22 +1597,21 @@ Vector NurbsCurve::tangent_at(double t) const {
     }
     return tan;
 }
-bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
-                          Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
-    if (!is_valid()) return false;
+Plane NurbsCurve::plane_at(double t, bool normalized) const {
+    if (!is_valid()) return Plane::invalid();
 
     auto [t0, t1] = domain();
     double param;
     if (normalized) {
-        if (t < 0.0 || t > 1.0) return false;
+        if (t < 0.0 || t > 1.0) return Plane::invalid();
         param = t0 + t * (t1 - t0);
     } else {
-        if (t < t0 || t > t1) return false;
+        if (t < t0 || t > t1) return Plane::invalid();
         param = t;
     }
     double h = (t1 - t0) * 1e-5;
 
-    origin = point_at(param);
+    Point origin = point_at(param);
 
     Point pm, p0, pp;
     if (param <= t0 + h) {
@@ -1615,7 +1623,7 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
         Vector d2((pp2[0] - 2*pp[0] + p0[0])/(h*h), (pp2[1] - 2*pp[1] + p0[1])/(h*h), (pp2[2] - 2*pp[2] + p0[2])/(h*h));
 
         double d1_mag = d1.magnitude();
-        if (d1_mag < 1e-14) return false;
+        if (d1_mag < 1e-14) return Plane::invalid();
 
         Vector T = d1;
         T.normalize_self();
@@ -1638,10 +1646,7 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
         Vector B = T.cross(N);
         B.normalize_self();
 
-        xaxis = T;
-        yaxis = N;
-        zaxis = B;
-        return true;
+        return Plane(origin, T, N, B);
     } else if (param >= t1 - h) {
         pm = point_at(t1 - h);
         p0 = point_at(t1);
@@ -1650,7 +1655,7 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
         Vector d2((p0[0] - 2*pm[0] + pm2[0])/(h*h), (p0[1] - 2*pm[1] + pm2[1])/(h*h), (p0[2] - 2*pm[2] + pm2[2])/(h*h));
 
         double d1_mag = d1.magnitude();
-        if (d1_mag < 1e-14) return false;
+        if (d1_mag < 1e-14) return Plane::invalid();
 
         Vector T = d1;
         T.normalize_self();
@@ -1673,10 +1678,7 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
         Vector B = T.cross(N);
         B.normalize_self();
 
-        xaxis = T;
-        yaxis = N;
-        zaxis = B;
-        return true;
+        return Plane(origin, T, N, B);
     }
 
     pm = point_at(param - h);
@@ -1687,7 +1689,7 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
     Vector d2((pp[0] - 2*p0[0] + pm[0])/(h*h), (pp[1] - 2*p0[1] + pm[1])/(h*h), (pp[2] - 2*p0[2] + pm[2])/(h*h));
 
     double d1_mag = d1.magnitude();
-    if (d1_mag < 1e-14) return false;
+    if (d1_mag < 1e-14) return Plane::invalid();
 
     Vector T = d1;
     T.normalize_self();
@@ -1710,24 +1712,18 @@ bool NurbsCurve::frame_at(double t, bool normalized, Point& origin,
     Vector B = T.cross(N);
     B.normalize_self();
 
-    xaxis = T;
-    yaxis = N;
-    zaxis = B;
-    return true;
+    return Plane(origin, T, N, B);
 }
-bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin,
-                                        Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
-    // Rotation Minimizing Frame initialized with Frenet frame at t=0
-    // Matches Rhino's GetPerpendicularFrame behavior
-    if (!is_valid()) return false;
+Plane NurbsCurve::perpendicular_plane_at(double t, bool normalized) const {
+    if (!is_valid()) return Plane::invalid();
 
     auto [t0, t1] = domain();
     double param;
     if (normalized) {
-        if (t < 0.0 || t > 1.0) return false;
+        if (t < 0.0 || t > 1.0) return Plane::invalid();
         param = t0 + t * (t1 - t0);
     } else {
-        if (t < t0 || t > t1) return false;
+        if (t < t0 || t > t1) return Plane::invalid();
         param = t;
     }
 
@@ -1737,7 +1733,7 @@ bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin
     Vector D2_0(derivs0[2][0], derivs0[2][1], derivs0[2][2]);
 
     double D1_0_mag = D1_0.magnitude();
-    if (D1_0_mag < 1e-14) return false;
+    if (D1_0_mag < 1e-14) return Plane::invalid();
 
     Vector T0 = D1_0 / D1_0_mag;
 
@@ -1761,15 +1757,13 @@ bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin
     }
     Vector r0 = N0_unnorm / N0_mag;
 
+    Point origin = point_at(param);
+
     // If at start, return Frenet frame directly
-    origin = point_at(param);
     if (std::abs(param - t0) < 1e-14) {
         Vector s0 = T0.cross(r0);
         s0.normalize_self();
-        xaxis = r0;
-        yaxis = s0;
-        zaxis = T0;
-        return true;
+        return Plane(origin, r0, s0, T0);
     }
 
     // Propagate frame using Double Reflection (RMF) algorithm
@@ -1837,21 +1831,17 @@ bool NurbsCurve::perpendicular_frame_at(double t, bool normalized, Point& origin
     Vector s = T.cross(ri);
     s.normalize_self();
 
-    xaxis = ri;
-    yaxis = s;
-    zaxis = T;
-    return true;
+    return Plane(origin, ri, s, T);
 }
 
-std::vector<std::tuple<Point, Vector, Vector, Vector>>
-NurbsCurve::get_perpendicular_frames(const std::vector<double>& params, bool normalized) const {
-    std::vector<std::tuple<Point, Vector, Vector, Vector>> frames;
-    for (double t : params) {
-        Point o;
-        Vector x, y, z;
-        perpendicular_frame_at(t, normalized, o, x, y, z);
-        frames.emplace_back(o, x, y, z);
-    }
+std::vector<Plane>
+NurbsCurve::get_perpendicular_planes(int count) const {
+    std::vector<Plane> frames;
+    std::vector<Point> pts;
+    std::vector<double> params;
+    divide_by_count(count + 1, pts, &params, true);
+    for (double t : params)
+        frames.push_back(perpendicular_plane_at(t, false));
     return frames;
 }
 Point NurbsCurve::point_at_start() const {
@@ -3340,124 +3330,62 @@ void NurbsCurve::ensure_rmf_cache() const {
         double t = t0 + i * dt;
         m_rmf_params[i] = t;
 
-        Point o;
-        Vector r, s, T;  // xaxis=r, yaxis=s, zaxis=T
-        perpendicular_frame_at_internal(t, false, o, r, s, T);
-
-        m_rmf_origins[i] = o;
-        m_rmf_quaternions[i] = frame_to_quaternion(r, s, T);
+        Plane pl = perpendicular_plane_at(t, false);
+        m_rmf_origins[i] = pl.origin();
+        m_rmf_quaternions[i] = frame_to_quaternion(pl.x_axis(), pl.y_axis(), pl.z_axis());
     }
 
     m_rmf_cached = true;
 }
 
-bool NurbsCurve::perpendicular_frame_at_internal(double t, bool normalized, Point& origin,
-                                                  Vector& xaxis, Vector& yaxis, Vector& zaxis) const {
-    if (!is_valid()) return false;
+///////////////////////////////////////////////////////////////////////////////////////////
+// Return-value overloads
+///////////////////////////////////////////////////////////////////////////////////////////
 
-    auto [t0, t1] = domain();
-    double param;
-    if (normalized) {
-        if (t < 0.0 || t > 1.0) return false;
-        param = t0 + t * (t1 - t0);
-    } else {
-        if (t < t0 || t > t1) return false;
-        param = t;
-    }
+std::tuple<double, double, double, double> NurbsCurve::get_cv_4d(int cv_index) const {
+    double x = 0, y = 0, z = 0, w = 1;
+    get_cv_4d(cv_index, x, y, z, w);
+    return {x, y, z, w};
+}
 
-    origin = point_at(param);
+std::vector<double> NurbsCurve::get_greville_abcissae() const {
+    std::vector<double> result;
+    get_greville_abcissae(result);
+    return result;
+}
 
-    Vector T0 = tangent_at(t0);
-    double T0_mag = T0.magnitude();
-    if (T0_mag < 1e-14) return false;
-    T0.normalize_self();
+std::pair<bool, double> NurbsCurve::get_next_discontinuity(int continuity_type, double t0, double t1) const {
+    double t_out = 0.0;
+    bool found = get_next_discontinuity(continuity_type, t0, t1, t_out);
+    return {found, t_out};
+}
 
-    Vector worldZ(0, 0, 1);
-    Vector r0 = worldZ.cross(T0);
-    double r0_mag = r0.magnitude();
-    if (r0_mag < 1e-14) {
-        Vector worldY(0, 1, 0);
-        r0 = worldY.cross(T0);
-        r0_mag = r0.magnitude();
-    }
-    if (r0_mag > 1e-14) r0.normalize_self();
+std::pair<std::vector<Point>, std::vector<double>> NurbsCurve::to_polyline_adaptive(
+    double angle_tolerance, double min_edge_length, double max_edge_length) const {
+    std::vector<Point> pts;
+    std::vector<double> params;
+    to_polyline_adaptive(pts, &params, angle_tolerance, min_edge_length, max_edge_length);
+    return {pts, params};
+}
 
-    if (std::abs(param - t0) < 1e-14) {
-        Vector s0 = T0.cross(r0);
-        s0.normalize_self();
-        xaxis = r0;
-        yaxis = s0;
-        zaxis = T0;
-        return true;
-    }
+std::pair<std::vector<Point>, std::vector<double>> NurbsCurve::divide_by_count(int count, bool include_endpoints) const {
+    std::vector<Point> pts;
+    std::vector<double> params;
+    divide_by_count(count, pts, &params, include_endpoints);
+    return {pts, params};
+}
 
-    int num_steps = std::max(10, static_cast<int>((param - t0) / (t1 - t0) * 100));
-    double dt = (param - t0) / num_steps;
+std::pair<std::vector<Point>, std::vector<double>> NurbsCurve::divide_by_length(double segment_length) const {
+    std::vector<Point> pts;
+    std::vector<double> params;
+    divide_by_length(segment_length, pts, &params);
+    return {pts, params};
+}
 
-    Vector ri = r0;
-    double ti = t0;
-    Point xi = point_at(ti);
-    Vector Ti = T0;
-
-    for (int i = 0; i < num_steps && ti < param - 1e-14; i++) {
-        double ti_next = std::min(ti + dt, param);
-        Point xi_next = point_at(ti_next);
-        Vector Ti_next = tangent_at(ti_next);
-        Ti_next.normalize_self();
-
-        Vector v1(xi_next[0] - xi[0], xi_next[1] - xi[1], xi_next[2] - xi[2]);
-        double c1 = v1.dot(v1);
-        if (c1 < 1e-28) {
-            ti = ti_next;
-            xi = xi_next;
-            Ti = Ti_next;
-            continue;
-        }
-
-        double ri_dot_v1 = ri.dot(v1);
-        Vector rL(ri[0] - 2.0 * ri_dot_v1 / c1 * v1[0],
-                  ri[1] - 2.0 * ri_dot_v1 / c1 * v1[1],
-                  ri[2] - 2.0 * ri_dot_v1 / c1 * v1[2]);
-
-        double Ti_dot_v1 = Ti.dot(v1);
-        Vector TL(Ti[0] - 2.0 * Ti_dot_v1 / c1 * v1[0],
-                  Ti[1] - 2.0 * Ti_dot_v1 / c1 * v1[1],
-                  Ti[2] - 2.0 * Ti_dot_v1 / c1 * v1[2]);
-
-        Vector v2(Ti_next[0] - TL[0], Ti_next[1] - TL[1], Ti_next[2] - TL[2]);
-        double c2 = v2.dot(v2);
-        if (c2 < 1e-28) {
-            ri = rL;
-        } else {
-            double rL_dot_v2 = rL.dot(v2);
-            ri = Vector(rL[0] - 2.0 * rL_dot_v2 / c2 * v2[0],
-                        rL[1] - 2.0 * rL_dot_v2 / c2 * v2[1],
-                        rL[2] - 2.0 * rL_dot_v2 / c2 * v2[2]);
-        }
-
-        double ri_mag = ri.magnitude();
-        if (ri_mag > 1e-14) ri.normalize_self();
-
-        ti = ti_next;
-        xi = xi_next;
-        Ti = Ti_next;
-    }
-
-    Vector T = tangent_at(param);
-    T.normalize_self();
-
-    double ri_dot_T = ri.dot(T);
-    ri = Vector(ri[0] - ri_dot_T * T[0], ri[1] - ri_dot_T * T[1], ri[2] - ri_dot_T * T[2]);
-    double ri_mag = ri.magnitude();
-    if (ri_mag > 1e-14) ri.normalize_self();
-
-    Vector s = T.cross(ri);
-    s.normalize_self();
-
-    xaxis = ri;
-    yaxis = s;
-    zaxis = T;
-    return true;
+std::pair<NurbsCurve, NurbsCurve> NurbsCurve::split(double t) const {
+    NurbsCurve left, right;
+    split(t, left, right);
+    return {left, right};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

@@ -87,7 +87,7 @@ MINI_TEST("Plane", "constructor") {
     MINI_CHECK(TOLERANCE.is_close(z_axis[0], 0.0) && TOLERANCE.is_close(z_axis[1], 0.0) && TOLERANCE.is_close(z_axis[2], 1.0));
     MINI_CHECK(TOLERANCE.is_close(a, 0.0) && TOLERANCE.is_close(b, 0.0) && TOLERANCE.is_close(c, 1.0) && TOLERANCE.is_close(d, 0.0));
     MINI_CHECK(TOLERANCE.is_close(ax0[0], 1.0) && TOLERANCE.is_close(ax1[1], 1.0) && TOLERANCE.is_close(ax2[2], 1.0));
-    MINI_CHECK(plstr == "0.000000, 0.000000, 0.000000");
+    MINI_CHECK(plstr == "0.000000, 0.000000, 0.000000\n1.000000, 0.000000, 0.000000\n0.000000, 1.000000, 0.000000\n0.000000, 0.000000, 1.000000");
     MINI_CHECK(plrepr == "Plane(my_plane, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 1.000000)");
     MINI_CHECK(plcopy == pl && plcopy.guid != pl.guid);
     MINI_CHECK(TOLERANCE.is_close(pl_pn.origin()[2], 5.0) && TOLERANCE.is_close(pl_pn.z_axis()[2], 1.0) && TOLERANCE.is_close(pl_pn.d(), -5.0));

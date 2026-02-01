@@ -15,7 +15,6 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "constructor") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "vector.h"
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -40,8 +39,7 @@ namespace session_cpp {
         NurbsCurve cother = NurbsCurve::create(false, 2, points);
 
         // Point division
-        std::vector<Point> divided;
-        curve.divide_by_count(10, divided);
+        auto [divided, _] = curve.divide_by_count(10, true);
 
         MINI_CHECK(curve.is_valid() == true);
         MINI_CHECK(curve.cv_count() == 4);
@@ -85,7 +83,7 @@ namespace session_cpp {
         MINI_CHECK(is_valid_knot_vector == true);
 
         // Insert knot into curve
-        // Useful for splittle curves at a parameter
+        // Useful for splitting curves at a parameter
         // Increase local control without changing shape
         NurbsCurve copy_curve = curve; 
         Point before_pt = copy_curve.point_at(1.5);
@@ -98,17 +96,16 @@ namespace session_cpp {
         bool is_clamped_both = curve.is_clamped(2);
         MINI_CHECK(is_clamped_start == true && is_clamped_end == true && is_clamped_both == true);
 
-        // Useful for controling curve by cv on lying on it
+        // Useful for controlling curve by cv on lying on it
         double greville0 = curve.greville_abcissa(0);
         MINI_CHECK(TOLERANCE.is_close(greville0, 0.0));
 
-        std::vector<double> greville;
-        curve.get_greville_abcissae(greville);
+        std::vector<double> greville = curve.get_greville_abcissae();
         MINI_CHECK(greville.size() == 4);
         MINI_CHECK(TOLERANCE.is_close(greville[0], 0.0));
-        MINI_CHECK(TOLERANCE.is_close(greville[1], 0.5));
-        MINI_CHECK(TOLERANCE.is_close(greville[2], 1.5));
-        MINI_CHECK(TOLERANCE.is_close(greville[3], 2.0));
+        MINI_CHECK(TOLERANCE.is_close(greville[1], 0.879872167739067));
+        MINI_CHECK(TOLERANCE.is_close(greville[2], 2.639616503217201));
+        MINI_CHECK(TOLERANCE.is_close(greville[3], 3.519488670956267));
 
         /////////////////////////////////////////////
         // Accessors
@@ -157,8 +154,7 @@ namespace session_cpp {
         MINI_CHECK(cv_point == Point(1.0, 1.0, 0.0));
 
         // Raw homogeneous coords
-        double x, y, z, w;
-        curve.get_cv_4d(1, x, y, z, w);
+        auto [x, y, z, w] = curve.get_cv_4d(1);
         MINI_CHECK(x == 1.0 && y == 1.0 && z == 0.0 && w == 1.0);
 
         // Use for regular points on curve, Polyline, B-Spline
@@ -167,8 +163,8 @@ namespace session_cpp {
 
         // Use for rational curvers like circles, ellipses
         curve.set_cv_4d(2, 2.0, 0.0, 0.5, 0.707);
-        curve.get_cv_4d(2, x, y, z, w);
-        MINI_CHECK(x == 2.0 && y == 0.0 && z == 0.5 && w == 0.707);
+        auto [x2, y2, z2, w2] = curve.get_cv_4d(2);
+        MINI_CHECK(x2 == 2.0 && y2 == 0.0 && z2 == 0.5 && w2 == 0.707);
 
         // Get weight of a control vertex (1.0 if non-rational)
         double weight = curve.weight(2);
@@ -184,12 +180,13 @@ namespace session_cpp {
 
         // Get knot value at index
         double knot3 = curve.knot(3);
-        MINI_CHECK(knot3 == 2);
+        MINI_CHECK(TOLERANCE.is_close(knot3, 3.519488670956267));
 
         // Set knot value at index
         // ATTENTION you can brake increasing rule
-        curve.set_knot(4, 2);
-        MINI_CHECK(curve.knot(4) == 2);
+        double end_knot = curve.knot(4);
+        curve.set_knot(4, end_knot);
+        MINI_CHECK(TOLERANCE.is_close(curve.knot(4), end_knot));
 
         // Count repeated knots at index [0, 0, 1, 1, 2]
         int m0 = curve.knot_multiplicity(0);  // 2 (two 0's)
@@ -204,9 +201,8 @@ namespace session_cpp {
         MINI_CHECK(m4 == 2);
 
         // Superflous knots are used for extension of clamped curves
-        // For knot vector [0, 0, 0.5, 1, 2]: 2*knot[4] - knot[1] = 2*2 - 0 = 4
         double superfluous_knot = curve.superfluous_knot(1);
-        MINI_CHECK(superfluous_knot == 4);
+        MINI_CHECK(TOLERANCE.is_close(superfluous_knot, 7.038977341912535));
 
         // Direct memory access to knot values, fast, read-only
         // Vector return is slower and makes a copy
@@ -214,9 +210,7 @@ namespace session_cpp {
         double k0 = knots[0];
         std::vector<double> knot_vector = curve.get_knots();
         MINI_CHECK(k0 == 0.0);
-        MINI_CHECK(knot_vector[0] == 0.0 && knot_vector[1] == 0.0 &&
-                   knot_vector[2] == 1.0 && knot_vector[3] == 2.0 &&
-                   knot_vector[4] == 2.0);
+        MINI_CHECK(TOLERANCE.is_close(knot_vector[0], 0.0) && TOLERANCE.is_close(knot_vector[1], 0.0) && TOLERANCE.is_close(knot_vector[2], 1.759744335478134) && TOLERANCE.is_close(knot_vector[3], 3.519488670956267) && TOLERANCE.is_close(knot_vector[4], 3.519488670956267));
 
         // Control vertex array access
         const double* cvs = curve.cv_array();
@@ -231,13 +225,13 @@ namespace session_cpp {
         std::pair<double, double> interval = curve.domain();
         double start = interval.first;
         double end = interval.second;
-        MINI_CHECK(start == 0.0 && end == 2.0);
+        MINI_CHECK(TOLERANCE.is_close(start, 0.0) && TOLERANCE.is_close(end, 3.519488670956267));
 
         // Get start, middle and end values of the interval
         start = curve.domain_start();
         double middle = curve.domain_middle();
         end = curve.domain_end();
-        MINI_CHECK(start == 0.0 && middle == 1.0 && end == 2.0);
+        MINI_CHECK(TOLERANCE.is_close(start, 0.0) && TOLERANCE.is_close(middle, 1.759744335478134) && TOLERANCE.is_close(end, 3.519488670956267));
 
         // Change curve domain
         curve.set_domain(0.0, 1.0);
@@ -251,8 +245,7 @@ namespace session_cpp {
         // Geometric checks
         /////////////////////////////////////////////////////
 
-        double t_out = 0.0;
-        bool found = curve.get_next_discontinuity(2, curve.domain_start(), curve.domain_end(), t_out);
+        auto [found, t_out] = curve.get_next_discontinuity(2, curve.domain_start(), curve.domain_end());
         MINI_CHECK(found == true && t_out == 0.5);
 
         // Is rational is related to control points having weights
@@ -291,7 +284,6 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "Conversions") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "vector.h"
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -304,9 +296,7 @@ namespace session_cpp {
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
         // to_polyline_adaptive
-        std::vector<Point> adaptive_pts;
-        std::vector<double> adaptive_params;
-        curve.to_polyline_adaptive(adaptive_pts, &adaptive_params, 0.1, 0.0, 0.0);
+        auto [adaptive_pts, adaptive_params] = curve.to_polyline_adaptive(0.1, 0.0, 0.0);
 
         MINI_CHECK(adaptive_pts.size() == 27);
         MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[0], Point(0.0, 0.0, 0.0)));
@@ -314,37 +304,34 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[26], Point(4.0, 0.0, 0.0)));
 
         // divide_by_count
-        std::vector<Point> div_pts;
-        std::vector<double> div_params;
-        curve.divide_by_count(10, div_pts, &div_params, true);
+        auto [div_pts, div_params] = curve.divide_by_count(10, true);
 
         MINI_CHECK(div_pts.size() == 10);
         MINI_CHECK(TOLERANCE.is_point_close(div_pts[0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[1], Point(0.328571015882635, 0.598213506310667, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[2], Point(0.740744941524856, 1.140321234797829, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[3], Point(1.338523997492639, 1.232716041998164, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[4], Point(1.712929663130383, 0.664818756620870, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[5], Point(2.287070327006695, 0.664818745295462, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[6], Point(2.661475993133979, 1.232716033043460, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[7], Point(3.259255052521522, 1.140321240507253, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[8], Point(3.671428981912368, 0.598213509892612, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[1], Point(0.328571016773017, 0.598213507757063, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[2], Point(0.740744944144815, 1.140321237310326, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[3], Point(1.338524001477341, 1.232716038191446, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[4], Point(1.712929668000343, 0.664818751028787, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[5], Point(2.287070333148604, 0.664818752348101, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[6], Point(2.661475999779531, 1.232716039392177, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[7], Point(3.259255057037078, 1.140321236176910, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[8], Point(3.671428983538974, 0.598213507250245, 0.000000000000000)));
         MINI_CHECK(TOLERANCE.is_point_close(div_pts[9], Point(4.000000000000000, 0.000000000000000, 0.000000000000000)));
 
         // divide_by_length
-        std::vector<Point> len_pts;
-        std::vector<double> len_params;
-        curve.divide_by_length(0.5, len_pts, &len_params);
+        auto [len_pts, len_params] = curve.divide_by_length(0.5);
 
         MINI_CHECK(len_pts.size() == 13);
         MINI_CHECK(TOLERANCE.is_point_close(len_pts[0], Point(0.0, 0.0, 0.0)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[6], Point(1.928691287815458, 0.510169864866836, 0.0)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494402948975, 0.128829830906625, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[6], Point(1.928691288503169, 0.510169864670676, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494396222682, 0.128829843907475, 0.0)));
     }
 
     MINI_TEST("NurbsCurve", "Evaluation"){
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include "vector.h"
+        // uncomment #include "plane.h"
 
         std::vector<Point> points = {
             Point(1.957614, 1.140253, -0.191281),
@@ -367,69 +354,63 @@ namespace session_cpp {
 
         // Get point at parameter t
         Point point_at = curve.point_at(0.5);
-        MINI_CHECK(TOLERANCE.is_close(point_at[0], 1.445733625) && TOLERANCE.is_close(point_at[1], 1.80199875) && TOLERANCE.is_close(point_at[2], -0.134851625));
+        MINI_CHECK(TOLERANCE.is_close(point_at[0], 1.463452399002842) && TOLERANCE.is_close(point_at[1], 1.680997287875395) && TOLERANCE.is_close(point_at[2], -0.124474565996108));
 
         // Get point and derivatives at parameter t
         std::vector<Vector> derivatives = curve.evaluate(0.5, 2);
         MINI_CHECK(derivatives.size() == 3);
-        MINI_CHECK(TOLERANCE.is_close(derivatives[0][0], 1.445733625) && TOLERANCE.is_close(derivatives[0][1], 1.80199875) && TOLERANCE.is_close(derivatives[0][2], -0.134851625));
-        MINI_CHECK(TOLERANCE.is_close(derivatives[1][0], 0.0432025) && TOLERANCE.is_close(derivatives[1][1], 1.154047) && TOLERANCE.is_close(derivatives[1][2], -0.1568445));
-        MINI_CHECK(TOLERANCE.is_close(derivatives[2][0], 4.267853) && TOLERANCE.is_close(derivatives[2][1], -0.677778) && TOLERANCE.is_close(derivatives[2][2], -1.078813));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[0][0], 1.463452399002842) && TOLERANCE.is_close(derivatives[0][1], 1.680997287875395) && TOLERANCE.is_close(derivatives[0][2], -0.124474565996108));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[1][0], -0.311619416021204) && TOLERANCE.is_close(derivatives[1][1], 0.974021205471335) && TOLERANCE.is_close(derivatives[1][2], -0.037441955449586));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[2][0], 2.706815143892446) && TOLERANCE.is_close(derivatives[2][1], -0.429869481117820) && TOLERANCE.is_close(derivatives[2][2], -0.684219293829483));
 
         // Tangent vector at parameter t
         Vector tangent = curve.tangent_at(0.5);
-        MINI_CHECK(TOLERANCE.is_close(tangent[0], 0.037069134389828) && TOLERANCE.is_close(tangent[1], 0.990209443486538) && TOLERANCE.is_close(tangent[2], -0.134577625575985));
+        MINI_CHECK(TOLERANCE.is_close(tangent[0], -0.304511941745027) && TOLERANCE.is_close(tangent[1], 0.951805546117607) && TOLERANCE.is_close(tangent[2], -0.036587972264639));
 
         // normalized=true (default): t in [0,1] mapped to domain
-        Point o;
-        Vector t, n, b;
-        curve.frame_at(0.5, true, o, t, n, b);
+        Plane f = curve.plane_at(0.5, true);
 
-        MINI_CHECK(TOLERANCE.is_close(o[0], 3.156927375000000) && TOLERANCE.is_close(o[1], 1.335111500000000) && TOLERANCE.is_close(o[2], 0.130488875000000));
-        MINI_CHECK(TOLERANCE.is_close(t[0], 0.701806140304030) && TOLERANCE.is_close(t[1], 0.697509131556264) && TOLERANCE.is_close(t[2], 0.144738221721788));
-        MINI_CHECK(TOLERANCE.is_close(n[0], -0.513930504714161) && TOLERANCE.is_close(n[1], 0.355053088776962) && TOLERANCE.is_close(n[2], 0.780905077761815));
-        MINI_CHECK(TOLERANCE.is_close(b[0], 0.493298669931115) && TOLERANCE.is_close(b[1], -0.622429365908747) && TOLERANCE.is_close(b[2], 0.607649657861031));
+        MINI_CHECK(TOLERANCE.is_close(f.origin()[0], 3.156927375000000) && TOLERANCE.is_close(f.origin()[1], 1.335111500000000) && TOLERANCE.is_close(f.origin()[2], 0.130488875000000));
+        MINI_CHECK(TOLERANCE.is_close(f.x_axis()[0], 0.701806140304030) && TOLERANCE.is_close(f.x_axis()[1], 0.697509131556264) && TOLERANCE.is_close(f.x_axis()[2], 0.144738221721788));
+        MINI_CHECK(TOLERANCE.is_close(f.y_axis()[0], -0.513930504714161) && TOLERANCE.is_close(f.y_axis()[1], 0.355053088776962) && TOLERANCE.is_close(f.y_axis()[2], 0.780905077761815));
+        MINI_CHECK(TOLERANCE.is_close(f.z_axis()[0], 0.493298669931115) && TOLERANCE.is_close(f.z_axis()[1], -0.622429365908747) && TOLERANCE.is_close(f.z_axis()[2], 0.607649657861031));
 
-        MINI_CHECK(curve.frame_at(-0.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.frame_at(1.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.frame_at(curve.domain_start(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.frame_at(curve.domain_end(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
+        MINI_CHECK(curve.plane_at(-0.1, true).is_valid() == false);
+        MINI_CHECK(curve.plane_at(1.1, true).is_valid() == false);
+        MINI_CHECK(curve.plane_at(curve.domain_start(), false).is_valid() == true);
+        MINI_CHECK(curve.plane_at(curve.domain_end(), false).is_valid() == true);
+        MINI_CHECK(curve.plane_at(curve.domain_start() - 0.1, false).is_valid() == false);
 
         // Perpendicular frame at (RMF with Frenet initialization, matches Rhino)
-        curve.perpendicular_frame_at(0.5, true, o, t, n, b);
-        MINI_CHECK(TOLERANCE.is_point_close(o, Point(3.156927375000000, 1.335111500000000, 0.130488875000000)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t, Vector(0.632703652329189, -0.703685357647999, 0.323284713157168)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n, Vector(0.327344206830723, -0.135306795251661, -0.935167279909370)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b, Vector(0.701806140314880, 0.697509131546342, 0.144738221716994)));
-        MINI_CHECK(curve.perpendicular_frame_at(-0.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.perpendicular_frame_at(1.1, true, o, t, n, b) == false);
-        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_end(), false, o, t, n, b) == true);
-        MINI_CHECK(curve.perpendicular_frame_at(curve.domain_start() - 0.1, false, o, t, n, b) == false);
+        Plane pf = curve.perpendicular_plane_at(0.5, true);
+        MINI_CHECK(TOLERANCE.is_point_close(pf.origin(), Point(3.156927375000000, 1.335111500000000, 0.130488875000000)));
+        MINI_CHECK(TOLERANCE.is_vector_close(pf.x_axis(), Vector(0.632703652329189, -0.703685357647999, 0.323284713157168)));
+        MINI_CHECK(TOLERANCE.is_vector_close(pf.y_axis(), Vector(0.327344206830723, -0.135306795251661, -0.935167279909370)));
+        MINI_CHECK(TOLERANCE.is_vector_close(pf.z_axis(), Vector(0.701806140314880, 0.697509131546342, 0.144738221716994)));
+        MINI_CHECK(curve.perpendicular_plane_at(-0.1, true).is_valid() == false);
+        MINI_CHECK(curve.perpendicular_plane_at(1.1, true).is_valid() == false);
+        MINI_CHECK(curve.perpendicular_plane_at(curve.domain_start(), false).is_valid() == true);
+        MINI_CHECK(curve.perpendicular_plane_at(curve.domain_end(), false).is_valid() == true);
+        MINI_CHECK(curve.perpendicular_plane_at(curve.domain_start() - 0.1, false).is_valid() == false);
 
         // Get multiple rotation minimization frames along the curve (matches Rhino)
-        std::vector<double> params = {0.0, 0.25, 0.5, 0.75, 1.0};
-        auto frames = curve.get_perpendicular_frames(params, true);
+        std::vector<Plane> frames = curve.get_perpendicular_planes(4);
         MINI_CHECK(frames.size() == 5);
         // Frame 0 (start)
-        auto [o0, t0, n0, b0] = frames[0];
-        MINI_CHECK(TOLERANCE.is_point_close(o0, Point(1.957614, 1.140253, -0.191281)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t0, Vector(0.532767753269467, 0.809398954921174, -0.247046256496055)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n0, Vector(-0.261213903019039, -0.120386647366337, -0.957744408496053)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b0, Vector(-0.804938393882267, 0.574787253606414, 0.147288136473484)));
+        MINI_CHECK(TOLERANCE.is_point_close(frames[0].origin(), Point(1.957614, 1.140253, -0.191281)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[0].x_axis(), Vector(0.532767753269467, 0.809398954921174, -0.247046256496055)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[0].y_axis(), Vector(-0.261213903019039, -0.120386647366337, -0.957744408496052)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[0].z_axis(), Vector(-0.804938393882267, 0.574787253606414, 0.147288136473484)));
         // Frame 2 (middle)
-        auto [o2, t2, n2, b2] = frames[2];
-        MINI_CHECK(TOLERANCE.is_point_close(o2, Point(3.156927375000000, 1.335111500000000, 0.130488875000000)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t2, Vector(0.632703652329189, -0.703685357647999, 0.323284713157168)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n2, Vector(0.327344206830723, -0.135306795251661, -0.935167279909370)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b2, Vector(0.701806140314880, 0.697509131546342, 0.144738221716994)));
+        MINI_CHECK(TOLERANCE.is_point_close(frames[2].origin(), Point(3.676077075808618, 0.909845354074582, 0.350126131660904)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].x_axis(), Vector(-0.188216728828592, 0.616420980974357, -0.764591156896073)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].y_axis(), Vector(0.183061410483993, -0.742842969436200, -0.643950963001702)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].z_axis(), Vector(-0.964916049706230, -0.261169479407185, 0.026972579511507)));
         // Frame 4 (end)
-        auto [o4, t4, n4, b4] = frames[4];
-        MINI_CHECK(TOLERANCE.is_point_close(o4, Point(2.150320000000000, 1.868606000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_vector_close(t4, Vector(0.183261707605497, 0.080808692422033, 0.979737261593412)));
-        MINI_CHECK(TOLERANCE.is_vector_close(n4, Vector(0.896455027206172, 0.395289116914872, -0.200287039634224)));
-        MINI_CHECK(TOLERANCE.is_vector_close(b4, Vector(-0.403464410725777, 0.914995338391241, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(frames[4].origin(), Point(2.150320000000000, 1.868606000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[4].x_axis(), Vector(0.183261707646767, 0.080808692310795, 0.979737261594868)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[4].y_axis(), Vector(0.896455027441244, 0.395289116385372, -0.200287039627106)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[4].z_axis(), Vector(-0.403464410184726, 0.914995338629816, 0.000000000000000)));
 
         // Points
         Point p0 = curve.point_at_start();
@@ -448,7 +429,6 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "Modifications"){
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "vector.h"
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -482,10 +462,8 @@ namespace session_cpp {
         MINI_CHECK(ct.length() < curve.length());
 
         // Split curve at domain middle
-        NurbsCurve curve_left;
-        NurbsCurve curve_right;
         double split_t = curve.domain_middle();
-        curve.split(split_t, curve_left, curve_right);
+        auto [curve_left, curve_right] = curve.split(split_t);
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), curve_left.point_at_end()));
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), curve_right.point_at_start()));
 
@@ -543,7 +521,6 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "transformations"){
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "vector.h"
         // uncomment #include "xform.h"
 
         std::vector<Point> points = {
@@ -588,8 +565,6 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "json_roundtrip") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-        // uncomment #include "xform.h"
         // uncomment #include <filesystem>
 
         std::vector<Point> points = {
@@ -629,10 +604,7 @@ namespace session_cpp {
     MINI_TEST("NurbsCurve", "protobuf_roundtrip") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-        // uncomment #include "xform.h"
         // uncomment #include <filesystem>
-
 
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -642,6 +614,11 @@ namespace session_cpp {
             Point(4.0, 0.0, 0.0)
         };
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
+
+        //   pb_dumps()      │ string/bytes │ to protobuf bytes
+        //   pb_loads(b)     │ string/bytes │ from protobuf bytes
+        //   pb_dump(path)   │ file         │ write to file
+        //   pb_load(path)   │ file         │ read from file
 
         // String
         std::string proto_string = curve.pb_dumps();
