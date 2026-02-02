@@ -43,11 +43,10 @@ int main() {
     NurbsSurface scopy = surface;
     NurbsSurface sother = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-    // Point division
-    auto [divided, _] = surface.divide_by_count(5,6);
+    // Point division matching Rhino's 4x6 grid
+    auto [divided, uv] = surface.divide_by_count(4, 6);
 
     for (const auto& row : divided)
-        
         for (const auto& pt : row)
             std::cout << pt << std::endl;
 
