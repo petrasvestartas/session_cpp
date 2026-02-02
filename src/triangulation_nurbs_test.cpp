@@ -14,7 +14,7 @@ namespace session_cpp {
 
     static NurbsSurface make_flat_surface() {
         NurbsSurface surf;
-        surf.create(3, false, 2, 2, 2, 2);
+        surf.create_raw(3, false, 2, 2, 2, 2);
         surf.make_clamped_uniform_knot_vector(0, 1.0);
         surf.make_clamped_uniform_knot_vector(1, 1.0);
         surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
@@ -26,7 +26,7 @@ namespace session_cpp {
 
     static NurbsSurface make_bump_surface() {
         NurbsSurface surf;
-        surf.create(3, false, 3, 3, 4, 4);
+        surf.create_raw(3, false, 3, 3, 4, 4);
         surf.make_clamped_uniform_knot_vector(0, 1.0);
         surf.make_clamped_uniform_knot_vector(1, 1.0);
         std::vector<Point> cvs = {
@@ -45,7 +45,7 @@ namespace session_cpp {
     static NurbsSurface make_sphere_surface(double radius) {
         double w = std::sqrt(2.0) / 2.0;
         NurbsSurface surf;
-        surf.create(3, true, 3, 3, 9, 5);
+        surf.create_raw(3, true, 3, 3, 9, 5);
         surf.name = "unit_sphere";
 
         double u_knots[] = {0, 0, TOLERANCE.PI * 0.5, TOLERANCE.PI * 0.5,

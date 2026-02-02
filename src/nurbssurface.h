@@ -54,9 +54,15 @@ public:
     // Static Factory Methods
     ///////////////////////////////////////////////////////////////////////////////////////////
     
+    /// Create surface from flat list of control points (row-major: u varies slowest)
+    static NurbsSurface create(bool periodic_u, bool periodic_v,
+                              int degree_u, int degree_v,
+                              int cv_count_u, int cv_count_v,
+                              const std::vector<Point>& points);
+
     /// Create ruled surface from two curves
     static NurbsSurface create_ruled(const NurbsCurve& curveA, const NurbsCurve& curveB);
-    
+
     /// Create planar surface from boundary curve
     static NurbsSurface create_planar(const std::vector<NurbsCurve>& curves);
     
@@ -95,7 +101,7 @@ public:
     void initialize();
     
     /// Create NURBS surface with specified parameters and automatic knot vector initialization
-    bool create(int dimension, bool is_rational,
+    bool create_raw(int dimension, bool is_rational,
                int order0, int order1,
                int cv_count0, int cv_count1,
                bool is_periodic_u = false, bool is_periodic_v = false,
@@ -227,12 +233,9 @@ public:
     /// Check if surface is clamped in specified direction
     bool is_clamped(int dir, int end = 2) const;
 
-    /// Subdivide surface into a grid of points
-    /// Evaluates the surface at regular intervals in both parameter directions
-    /// @param nu Number of subdivisions in u direction
-    /// @param nv Number of subdivisions in v direction
-    /// @return 2D vector of points with dimensions (nu+1) x (nv+1)
-    std::vector<std::vector<Point>> subdivide(int nu, int nv) const;
+    /// Subdivide surface into a grid of points and parameters
+    std::pair<std::vector<std::vector<Point>>, std::vector<std::vector<std::pair<double,double>>>>
+        divide_by_count(int nu, int nv) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Knot Vector Operations
@@ -372,7 +375,10 @@ public:
 
     /// Simple string representation (like Python str)
     std::string str() const;
-    
+
+    /// Detailed representation (like Python repr)
+    std::string repr() const;
+
     /// Stream output operator
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface);
 

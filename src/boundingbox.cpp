@@ -7,6 +7,7 @@
 #include "arrow.h"
 #include "cylinder.h"
 #include "nurbscurve.h"
+#include "nurbssurface.h"
 #include "guid.h"
 #include <fstream>
 #include <cmath>
@@ -447,6 +448,32 @@ BoundingBox BoundingBox::from_nurbscurve(const NurbsCurve& curve, const Plane& p
     }
 
     return from_points(extrema_points, plane, inflate_amount);
+}
+
+BoundingBox BoundingBox::from_nurbssurface(const NurbsSurface& surface, double inflate_amount) {
+    if (!surface.is_valid() || surface.cv_count(0) == 0 || surface.cv_count(1) == 0) {
+        return BoundingBox();
+    }
+    std::vector<Point> points;
+    for (int i = 0; i < surface.cv_count(0); i++) {
+        for (int j = 0; j < surface.cv_count(1); j++) {
+            points.push_back(surface.get_cv(i, j));
+        }
+    }
+    return from_points(points, inflate_amount);
+}
+
+BoundingBox BoundingBox::from_nurbssurface(const NurbsSurface& surface, const Plane& plane, double inflate_amount) {
+    if (!surface.is_valid() || surface.cv_count(0) == 0 || surface.cv_count(1) == 0) {
+        return BoundingBox();
+    }
+    std::vector<Point> points;
+    for (int i = 0; i < surface.cv_count(0); i++) {
+        for (int j = 0; j < surface.cv_count(1); j++) {
+            points.push_back(surface.get_cv(i, j));
+        }
+    }
+    return from_points(points, plane, inflate_amount);
 }
 
 BoundingBox BoundingBox::aabb() const {

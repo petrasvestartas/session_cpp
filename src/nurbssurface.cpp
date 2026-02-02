@@ -21,7 +21,7 @@ NurbsSurface::NurbsSurface(int dimension, bool is_rational,
                           int order0, int order1,
                           int cv_count0, int cv_count1) {
     initialize();
-    create(dimension, is_rational, order0, order1, cv_count0, cv_count1);
+    create_raw(dimension, is_rational, order0, order1, cv_count0, cv_count1);
 }
 
 NurbsSurface::NurbsSurface(const NurbsSurface& other) {
@@ -96,7 +96,7 @@ void NurbsSurface::initialize() {
     m_cv.clear();
 }
 
-bool NurbsSurface::create(int dimension, bool is_rational,
+bool NurbsSurface::create_raw(int dimension, bool is_rational,
                          int order0, int order1,
                          int cv_count0, int cv_count1,
                          bool is_periodic_u, bool is_periodic_v,
@@ -430,10 +430,23 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
 }
 
 std::string NurbsSurface::str() const {
-    return fmt::format("NurbsSurface(dim={}, order=({},{}), cv_count=({},{}))",
-                      m_dim,
-                      m_order[0], m_order[1],
+    return fmt::format("NurbsSurface(name={}, degree=({},{}), cvs=({},{}))",
+                      name,
+                      degree(0), degree(1),
                       m_cv_count[0], m_cv_count[1]);
+}
+
+std::string NurbsSurface::repr() const {
+    std::string result = fmt::format("NurbsSurface(\n  name={},\n  degree=({},{}),\n  cvs=({},{}),\n  rational={},\n  control_points=[\n",
+                                     name, degree(0), degree(1), m_cv_count[0], m_cv_count[1], m_is_rat ? "true" : "false");
+    for (int i = 0; i < m_cv_count[0]; ++i) {
+        for (int j = 0; j < m_cv_count[1]; ++j) {
+            Point p = get_cv(i, j);
+            result += fmt::format("    {}, {}, {}\n", p[0], p[1], p[2]);
+        }
+    }
+    result += "  ]\n)";
+    return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -633,33 +646,7 @@ bool NurbsSurface::make_clamped_uniform_knot_vector(int dir, double delta) {
 }
 
 BoundingBox NurbsSurface::get_bounding_box() const {
-    if (!is_valid() || m_cv_count[0] == 0 || m_cv_count[1] == 0) {
-        return BoundingBox();
-    }
-    
-    Point min_pt = get_cv(0, 0);
-    Point max_pt = min_pt;
-    
-    for (int i = 0; i < m_cv_count[0]; i++) {
-        for (int j = 0; j < m_cv_count[1]; j++) {
-            Point pt = get_cv(i, j);
-            min_pt = Point(std::min(min_pt[0], pt[0]),
-                          std::min(min_pt[1], pt[1]),
-                          std::min(min_pt[2], pt[2]));
-            max_pt = Point(std::max(max_pt[0], pt[0]),
-                          std::max(max_pt[1], pt[1]),
-                          std::max(max_pt[2], pt[2]));
-        }
-    }
-    
-    Point center((min_pt[0] + max_pt[0]) / 2.0,
-                (min_pt[1] + max_pt[1]) / 2.0,
-                (min_pt[2] + max_pt[2]) / 2.0);
-    Vector half_size((max_pt[0] - min_pt[0]) / 2.0,
-                     (max_pt[1] - min_pt[1]) / 2.0,
-                     (max_pt[2] - min_pt[2]) / 2.0);
-    
-    return BoundingBox(center, Vector::x_axis(), Vector::y_axis(), Vector::z_axis(), half_size);
+    return BoundingBox::from_nurbssurface(*this);
 }
 
 NurbsCurve* NurbsSurface::iso_curve(int dir, double c) const {
@@ -1057,7 +1044,7 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
         int cv_count_u = data["cv_count_u"];
         int cv_count_v = data["cv_count_v"];
  
-        surface.create(dim, is_rat, order_u, order_v, cv_count_u, cv_count_v);
+        surface.create_raw(dim, is_rat, order_u, order_v, cv_count_u, cv_count_v);
  
         if (data.contains("knots_u")) {
             surface.m_knot[0] = data["knots_u"].get<std::vector<double>>();
@@ -1160,7 +1147,7 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
 
     // Create surface with correct dimensions
     NurbsSurface surface;
-    surface.create(proto.dimension(), proto.is_rational(),
+    surface.create_raw(proto.dimension(), proto.is_rational(),
                    proto.order_u(), proto.order_v(),
                    proto.cv_count_u(), proto.cv_count_v());
 
@@ -1247,7 +1234,7 @@ bool NurbsSurface::create_clamped_uniform(int dimension,
                                          int cv_count0, int cv_count1,
                                          double knot_delta0,
                                          double knot_delta1) {
-    if (!create(dimension, false, order0, order1, cv_count0, cv_count1)) {
+    if (!create_raw(dimension, false, order0, order1, cv_count0, cv_count1)) {
         return false;
     }
     
@@ -1255,6 +1242,29 @@ bool NurbsSurface::create_clamped_uniform(int dimension,
     make_clamped_uniform_knot_vector(1, knot_delta1);
     
     return true;
+}
+
+NurbsSurface NurbsSurface::create(bool periodic_u, bool periodic_v,
+                                  int degree_u, int degree_v,
+                                  int cv_count_u, int cv_count_v,
+                                  const std::vector<Point>& points) {
+    NurbsSurface surface;
+    if (cv_count_u < 2 || cv_count_v < 2) return surface;
+    if (static_cast<int>(points.size()) != cv_count_u * cv_count_v) return surface;
+
+    int order0 = degree_u + 1;
+    int order1 = degree_v + 1;
+
+    surface.create_raw(3, false, order0, order1, cv_count_u, cv_count_v,
+                       periodic_u, periodic_v, 1.0, 1.0);
+
+    for (int i = 0; i < cv_count_u; i++) {
+        for (int j = 0; j < cv_count_v; j++) {
+            surface.set_cv(i, j, points[i * cv_count_v + j]);
+        }
+    }
+
+    return surface;
 }
 
 NurbsSurface NurbsSurface::create_ruled(const NurbsCurve& curveA, const NurbsCurve& curveB) {
@@ -1670,11 +1680,13 @@ bool NurbsSurface::is_singular(int side) const {
     return rc;
 }
 
-std::vector<std::vector<Point>> NurbsSurface::subdivide(int nu, int nv) const {
+std::pair<std::vector<std::vector<Point>>, std::vector<std::vector<std::pair<double,double>>>>
+NurbsSurface::divide_by_count(int nu, int nv) const {
     std::vector<std::vector<Point>> grid;
+    std::vector<std::vector<std::pair<double,double>>> params;
 
     if (!is_valid()) {
-        return grid;
+        return {grid, params};
     }
 
     auto domain_u = domain(0);
@@ -1684,20 +1696,23 @@ std::vector<std::vector<Point>> NurbsSurface::subdivide(int nu, int nv) const {
     double v0 = domain_v.first;
     double v1 = domain_v.second;
 
-    // Initialize grid dimensions (nu+1) x (nv+1)
     grid.resize(nu + 1);
+    params.resize(nu + 1);
+
     for (int i = 0; i <= nu; i++) {
         grid[i].resize(nv + 1);
+        params[i].resize(nv + 1);
 
         double u = (nu > 0) ? (u0 + (u1 - u0) * (static_cast<double>(i) / nu)) : u0;
 
         for (int j = 0; j <= nv; j++) {
             double v = (nv > 0) ? (v0 + (v1 - v0) * (static_cast<double>(j) / nv)) : v0;
             grid[i][j] = point_at(u, v);
+            params[i][j] = {u, v};
         }
     }
 
-    return grid;
+    return {grid, params};
 }
 
 bool NurbsSurface::is_planar(Plane* plane, double tolerance) const {
