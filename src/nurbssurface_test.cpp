@@ -1,6 +1,8 @@
 #include "mini_test.h"
 #include "nurbssurface.h"
 #include "nurbscurve.h"
+#include "triangulation_nurbs.h"
+#include "mesh.h"
 #include "color.h"
 #include "point.h"
 #include "vector.h"
@@ -16,12 +18,10 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("NurbsSurface", "constructor") {
-        // Create surface with parameters (4x4 quadratic surface, order 3)
-        NurbsSurface s;
-        s.create_raw(3, false, 3, 3, 4, 4, false, false, 2.5, 2.5);
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
 
-        // Set hardcoded control points
-        std::vector<Point> cvs = {
+        std::vector<Point> points = {
             // i=0
             Point(0.0, 0.0, 0.0),
             Point(-1.0, 0.75, 2.0),
@@ -44,92 +44,185 @@ namespace session_cpp {
             Point(5.0, 5.0, 0.0),
         };
 
-        // Setters
-        int idx = 0;
-        for (int i = 0; i < s.cv_count(0); ++i) {
-            for (int j = 0; j < s.cv_count(1); ++j) {
-                s.set_cv(i, j, cvs[idx]);
-                idx++;
-            }
-        }
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-        // Getters
-        Point control_point = s.get_cv(2, 1);  // 3.75, 1.25, 4.0
-        Point point = s.point_at(2.5, 2.5);    // 2.5, 2.5, 4.0
+        // Minimal and Full String Representation
+        std::string sstr = s.str();
+        std::string srepr = s.repr();
 
-        // String representation
-        std::string str_repr = s.str();
+        // Copy (duplicates everything except guid)
+        NurbsSurface scopy = s;
+        NurbsSurface sother = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-        // Duplicate for comparison
-        NurbsSurface s_copy = s;
+        // Point division matching Rhino's 4x6 grid
+        auto [v, uv] = s.divide_by_count(4, 6);
 
-        // Subdivision test
-        auto [v, uv] = s.divide_by_count(5, 5);
-        MINI_CHECK(s.name == "my_nurbssurface");
-        MINI_CHECK(s.width == 1.0);
-        MINI_CHECK(s.surfacecolor == Color::black());
-        MINI_CHECK(!s.guid.empty());
-        MINI_CHECK(s.m_dim == 3);
-        MINI_CHECK(!s.m_is_rat);
-        MINI_CHECK(s.dimension() == 3);
-        MINI_CHECK(!s.is_rational());
-        MINI_CHECK(s.order(0) == 3);
-        MINI_CHECK(s.order(1) == 3);
-        MINI_CHECK(s.degree(0) == 2);
-        MINI_CHECK(s.degree(1) == 2);
+        MINI_CHECK(s.is_valid() == true);
         MINI_CHECK(s.cv_count(0) == 4);
         MINI_CHECK(s.cv_count(1) == 4);
         MINI_CHECK(s.cv_count() == 16);
-        MINI_CHECK(s.knot_count(0) == 5);
-        MINI_CHECK(s.knot_count(1) == 5);
-        MINI_CHECK(control_point[0] == 3.75 && control_point[1] == 1.25 && control_point[2] == 4.0);
-        MINI_CHECK(point[0] == 2.5 && point[1] == 2.5 && point[2] == 4.0);
-        MINI_CHECK(str_repr == "NurbsSurface(dim=3, order=(3,3), cv_count=(4,4))");
-        MINI_CHECK(s_copy == s);
-        MINI_CHECK(s_copy.name == s.name);
-        MINI_CHECK(s_copy.width == s.width);
-        MINI_CHECK(s_copy.surfacecolor == s.surfacecolor);
-        MINI_CHECK(s_copy.guid != s.guid);
-        // Helper lambda for tolerance-based point comparison
-        auto close_pt = [](const Point& a, double x, double y, double z) {
-            return TOLERANCE.is_close(a[0], x) && TOLERANCE.is_close(a[1], y) && TOLERANCE.is_close(a[2], z);
-        };
-        MINI_CHECK(close_pt(v[0][0], 0.0, 0.0, 0.0));
-        MINI_CHECK(close_pt(v[0][1], -0.64, 0.76, 1.28));
-        MINI_CHECK(close_pt(v[0][2], -0.96, 1.84, 1.92));
-        MINI_CHECK(close_pt(v[0][3], -0.96, 3.16, 1.92));
-        MINI_CHECK(close_pt(v[0][4], -0.64, 4.24, 1.28));
-        MINI_CHECK(close_pt(v[0][5], 0.0, 5.0, 0.0));
-        MINI_CHECK(close_pt(v[1][0], 0.76, -0.64, 1.28));
-        MINI_CHECK(close_pt(v[1][1], 0.6832, 0.6832, 2.56));
-        MINI_CHECK(close_pt(v[1][2], 0.6448, 1.9168, 3.2));
-        MINI_CHECK(close_pt(v[1][3], 0.6448, 3.0832, 3.2));
-        MINI_CHECK(close_pt(v[1][4], 0.6832, 4.3168, 2.56));
-        MINI_CHECK(close_pt(v[1][5], 0.76, 5.64, 1.28));
-        MINI_CHECK(close_pt(v[2][0], 1.84, -0.96, 1.92));
-        MINI_CHECK(close_pt(v[2][1], 1.9168, 0.6448, 3.2));
-        MINI_CHECK(close_pt(v[2][2], 1.9552, 1.9552, 3.84));
-        MINI_CHECK(close_pt(v[2][3], 1.9552, 3.0448, 3.84));
-        MINI_CHECK(close_pt(v[2][4], 1.9168, 4.3552, 3.2));
-        MINI_CHECK(close_pt(v[2][5], 1.84, 5.96, 1.92));
-        MINI_CHECK(close_pt(v[3][0], 3.16, -0.96, 1.92));
-        MINI_CHECK(close_pt(v[3][1], 3.0832, 0.6448, 3.2));
-        MINI_CHECK(close_pt(v[3][2], 3.0448, 1.9552, 3.84));
-        MINI_CHECK(close_pt(v[3][3], 3.0448, 3.0448, 3.84));
-        MINI_CHECK(close_pt(v[3][4], 3.0832, 4.3552, 3.2));
-        MINI_CHECK(close_pt(v[3][5], 3.16, 5.96, 1.92));
-        MINI_CHECK(close_pt(v[4][0], 4.24, -0.64, 1.28));
-        MINI_CHECK(close_pt(v[4][1], 4.3168, 0.6832, 2.56));
-        MINI_CHECK(close_pt(v[4][2], 4.3552, 1.9168, 3.2));
-        MINI_CHECK(close_pt(v[4][3], 4.3552, 3.0832, 3.2));
-        MINI_CHECK(close_pt(v[4][4], 4.3168, 4.3168, 2.56));
-        MINI_CHECK(close_pt(v[4][5], 4.24, 5.64, 1.28));
-        MINI_CHECK(close_pt(v[5][0], 5.0, 0.0, 0.0));
-        MINI_CHECK(close_pt(v[5][1], 5.64, 0.76, 1.28));
-        MINI_CHECK(close_pt(v[5][2], 5.96, 1.84, 1.92));
-        MINI_CHECK(close_pt(v[5][3], 5.96, 3.16, 1.92));
-        MINI_CHECK(close_pt(v[5][4], 5.64, 4.24, 1.28));
-        MINI_CHECK(close_pt(v[5][5], 5.0, 5.0, 0.0));
+        MINI_CHECK(s.degree(0) == 3);
+        MINI_CHECK(s.degree(1) == 3);
+        MINI_CHECK(s.order(0) == 4);
+        MINI_CHECK(s.order(1) == 4);
+        MINI_CHECK(s.dimension() == 3);
+        MINI_CHECK(!s.is_rational());
+        MINI_CHECK(s.knot_count(0) == 6);
+        MINI_CHECK(s.knot_count(1) == 6);
+        MINI_CHECK(s.name == "my_nurbssurface");
+        MINI_CHECK(!s.guid.empty());
+        MINI_CHECK(sstr == "NurbsSurface(name=my_nurbssurface, degree=(3,3), cvs=(4,4))");
+        MINI_CHECK(srepr.find("name=my_nurbssurface") != std::string::npos);
+        MINI_CHECK(scopy.cv_count() == s.cv_count());
+        MINI_CHECK(scopy.guid != s.guid);
+
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][1], Point(-0.416666666666667, 0.578703703703704, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][2], Point(-0.666666666666667, 1.462962962962963, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][3], Point(-0.750000000000000, 2.500000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][4], Point(-0.666666666666667, 3.537037037037037, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][5], Point(-0.416666666666667, 4.421296296296297, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[0][6], Point(0.000000000000000, 5.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][0], Point(0.992187500000000, -0.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][1], Point(0.881510416666667, 0.333912037037037, 1.958333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][2], Point(0.815104166666667, 1.379629629629630, 2.458333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][3], Point(0.792968750000000, 2.500000000000000, 2.625000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][4], Point(0.815104166666667, 3.620370370370370, 2.458333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][5], Point(0.881510416666667, 4.666087962962964, 1.958333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[1][6], Point(0.992187500000000, 5.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][0], Point(2.500000000000000, -0.750000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][1], Point(2.500000000000000, 0.252314814814815, 2.333333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][2], Point(2.500000000000000, 1.351851851851852, 2.833333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][3], Point(2.500000000000000, 2.500000000000000, 3.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][4], Point(2.500000000000000, 3.648148148148148, 2.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][5], Point(2.500000000000000, 4.747685185185186, 2.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[2][6], Point(2.500000000000000, 5.750000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][0], Point(4.007812500000000, -0.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][1], Point(4.118489583333334, 0.333912037037037, 1.958333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][2], Point(4.184895833333334, 1.379629629629630, 2.458333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][3], Point(4.207031250000000, 2.500000000000000, 2.625000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][4], Point(4.184895833333333, 3.620370370370370, 2.458333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][5], Point(4.118489583333333, 4.666087962962964, 1.958333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[3][6], Point(4.007812500000000, 5.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][0], Point(5.000000000000000, 0.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][1], Point(5.416666666666668, 0.578703703703704, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][2], Point(5.666666666666668, 1.462962962962963, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][3], Point(5.750000000000000, 2.500000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][4], Point(5.666666666666666, 3.537037037037037, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][5], Point(5.416666666666667, 4.421296296296297, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(v[4][6], Point(5.000000000000000, 5.000000000000000, 0.000000000000000)));
+    }
+
+    MINI_TEST("NurbsSurface", "constructor_ruled_surface") {
+        std::vector<Point> pts_a = {Point(3,0,0), Point(-2,0,5)};
+        std::vector<Point> pts_b = {Point(3,5,5), Point(-2,5,0)};
+        NurbsCurve crvA = NurbsCurve::create(false, 1, pts_a);
+        NurbsCurve crvB = NurbsCurve::create(false, 1, pts_b);
+        NurbsSurface ruled = NurbsSurface::create_ruled(crvA, crvB);
+
+        MINI_CHECK(ruled.is_valid());
+        MINI_CHECK(ruled.degree(0) == 1);
+        MINI_CHECK(ruled.degree(1) == 1);
+        MINI_CHECK(ruled.cv_count(0) == 2);
+        MINI_CHECK(ruled.cv_count(1) == 2);
+
+        auto [rd, ruv] = ruled.divide_by_count(4, 4);
+        MINI_CHECK(rd.size() == 5);
+        MINI_CHECK(rd[0].size() == 5);
+
+        std::vector<Point> pts;
+        for (int i = 0; i < (int)rd.size(); i++)
+            for (int j = 0; j < (int)rd[i].size(); j++)
+                pts.push_back(rd[i][j]);
+
+        std::vector<Vector> normals;
+        for (int i = 0; i < (int)ruv.size(); i++)
+            for (int j = 0; j < (int)ruv[i].size(); j++)
+                normals.push_back(ruled.normal_at(ruv[i][j].first, ruv[i][j].second));
+
+        std::vector<std::pair<double,double>> uvs;
+        for (int i = 0; i < (int)ruv.size(); i++)
+            for (int j = 0; j < (int)ruv[i].size(); j++)
+                uvs.push_back(ruv[i][j]);
+
+        MINI_CHECK(TOLERANCE.is_point_close(pts[0],  Point( 3.00, 0.00, 0.00)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[1],  Point( 3.00, 1.25, 1.25)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[2],  Point( 3.00, 2.50, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[3],  Point( 3.00, 3.75, 3.75)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[4],  Point( 3.00, 5.00, 5.00)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[5],  Point( 1.75, 0.00, 1.25)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[6],  Point( 1.75, 1.25, 1.875)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[7],  Point( 1.75, 2.50, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[8],  Point( 1.75, 3.75, 3.125)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[9],  Point( 1.75, 5.00, 3.75)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[10], Point( 0.50, 0.00, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[11], Point( 0.50, 1.25, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[12], Point( 0.50, 2.50, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[13], Point( 0.50, 3.75, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[14], Point( 0.50, 5.00, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[15], Point(-0.75, 0.00, 3.75)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[16], Point(-0.75, 1.25, 3.125)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[17], Point(-0.75, 2.50, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[18], Point(-0.75, 3.75, 1.875)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[19], Point(-0.75, 5.00, 1.25)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[20], Point(-2.00, 0.00, 5.00)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[21], Point(-2.00, 1.25, 3.75)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[22], Point(-2.00, 2.50, 2.50)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[23], Point(-2.00, 3.75, 1.25)));
+        MINI_CHECK(TOLERANCE.is_point_close(pts[24], Point(-2.00, 5.00, 0.00)));
+
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[0],  Vector( 0.577350269189626, -0.577350269189626,  0.577350269189626)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[1],  Vector( 1.0/3.0, -2.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[2],  Vector( 0.0, -0.707106781186547,  0.707106781186547)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[3],  Vector(-1.0/3.0, -2.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[4],  Vector(-0.577350269189626, -0.577350269189626,  0.577350269189626)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[5],  Vector( 2.0/3.0, -1.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[6],  Vector( 0.408248290463863, -0.408248290463863,  0.816496580927726)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[7],  Vector( 0.0, -0.447213595499958,  0.894427190999916)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[8],  Vector(-0.408248290463863, -0.408248290463863,  0.816496580927726)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[9],  Vector(-2.0/3.0, -1.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[10], Vector( 0.707106781186547,  0.0,  0.707106781186547)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[11], Vector( 0.447213595499958,  0.0,  0.894427190999916)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[12], Vector( 0.0, 0.0, 1.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[13], Vector(-0.447213595499958,  0.0,  0.894427190999916)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[14], Vector(-0.707106781186547,  0.0,  0.707106781186547)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[15], Vector( 2.0/3.0, 1.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[16], Vector( 0.408248290463863,  0.408248290463863,  0.816496580927726)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[17], Vector( 0.0, 0.447213595499958,  0.894427190999916)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[18], Vector(-0.408248290463863,  0.408248290463863,  0.816496580927726)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[19], Vector(-2.0/3.0, 1.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[20], Vector( 0.577350269189626,  0.577350269189626,  0.577350269189626)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[21], Vector( 1.0/3.0, 2.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[22], Vector( 0.0, 0.707106781186547,  0.707106781186547)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[23], Vector(-1.0/3.0, 2.0/3.0, 2.0/3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(normals[24], Vector(-0.577350269189626,  0.577350269189626,  0.577350269189626)));
+
+        MINI_CHECK(TOLERANCE.is_close(uvs[0].first,  0.00) && TOLERANCE.is_close(uvs[0].second,  0.00));
+        MINI_CHECK(TOLERANCE.is_close(uvs[1].first,  0.00) && TOLERANCE.is_close(uvs[1].second,  0.25));
+        MINI_CHECK(TOLERANCE.is_close(uvs[4].first,  0.00) && TOLERANCE.is_close(uvs[4].second,  1.00));
+        MINI_CHECK(TOLERANCE.is_close(uvs[6].first,  0.25) && TOLERANCE.is_close(uvs[6].second,  0.25));
+        MINI_CHECK(TOLERANCE.is_close(uvs[12].first, 0.50) && TOLERANCE.is_close(uvs[12].second, 0.50));
+        MINI_CHECK(TOLERANCE.is_close(uvs[24].first, 1.00) && TOLERANCE.is_close(uvs[24].second, 1.00));
+    }
+
+    MINI_TEST("NurbsSurface", "create_create_planar") {
+
+    }
+
+    MINI_TEST("NurbsSurface", "create_create_loft") {
+
+    }
+
+    MINI_TEST("NurbsSurface", "create_create_revolve") {
+
+    }
+
+    MINI_TEST("NurbsSurface", "create_create_sweep1") {
+
+    }
+
+    MINI_TEST("NurbsSurface", "create_create_sweep2") {
+
     }
 
     MINI_TEST("NurbsSurface", "create_operations") {
@@ -980,6 +1073,188 @@ namespace session_cpp {
         Point mid = surf.point_at(0.0, height * 0.5);
         MINI_CHECK(TOLERANCE.is_close(mid[0], radius * 0.5));
         MINI_CHECK(TOLERANCE.is_close(mid[2], height * 0.5));
+    }
+
+    MINI_TEST("NurbsSurface", "create_loft") {
+        // Loft 3 parallel circles at different Z heights
+        double radius = 2.0;
+        double w = std::sqrt(2.0) / 2.0;
+
+        auto make_circle = [&](double z) -> NurbsCurve {
+            NurbsCurve c(3, true, 3, 9);
+            double knots[] = {0, 0, Tolerance::PI * 0.5, Tolerance::PI * 0.5,
+                              Tolerance::PI, Tolerance::PI, Tolerance::PI * 1.5, Tolerance::PI * 1.5,
+                              Tolerance::PI * 2.0, Tolerance::PI * 2.0};
+            for (int i = 0; i < 10; ++i) c.set_knot(i, knots[i]);
+
+            double angles[] = {0, Tolerance::PI * 0.25, Tolerance::PI * 0.5, Tolerance::PI * 0.75,
+                               Tolerance::PI, Tolerance::PI * 1.25, Tolerance::PI * 1.5, Tolerance::PI * 1.75,
+                               Tolerance::PI * 2.0};
+            for (int i = 0; i < 9; ++i) {
+                double scale = (i % 2 == 0) ? 1.0 : std::sqrt(2.0);
+                double x = radius * scale * std::cos(angles[i]);
+                double y = radius * scale * std::sin(angles[i]);
+                c.set_cv(i, Point(x, y, z));
+                c.set_weight(i, (i % 2 == 0) ? 1.0 : w);
+            }
+            return c;
+        };
+
+        NurbsCurve c0 = make_circle(0.0);
+        NurbsCurve c1 = make_circle(3.0);
+        NurbsCurve c2 = make_circle(6.0);
+
+        NurbsSurface surf = NurbsSurface::create_loft({c0, c1, c2}, 2);
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.cv_count(0) >= 9);
+        MINI_CHECK(surf.cv_count(1) == 3);
+
+        // Check point on bottom circle at angle 0
+        auto dom_u = surf.domain(0);
+        auto dom_v = surf.domain(1);
+        Point pt_bottom = surf.point_at(dom_u.first, dom_v.first);
+        MINI_CHECK(TOLERANCE.is_close(pt_bottom[0], radius));
+        MINI_CHECK(TOLERANCE.is_close(pt_bottom[2], 0.0));
+
+        // Check point on top circle at angle 0
+        Point pt_top = surf.point_at(dom_u.first, dom_v.second);
+        MINI_CHECK(TOLERANCE.is_close(pt_top[0], radius));
+        MINI_CHECK(TOLERANCE.is_close(pt_top[2], 6.0));
+    }
+
+    MINI_TEST("NurbsSurface", "create_revolve_full") {
+        // Revolve a line segment 360 degrees around Z axis -> cylinder
+        double radius = 2.0;
+        double height = 5.0;
+
+        // Profile: vertical line at x=radius
+        NurbsCurve profile = NurbsCurve::create(false, 1, {Point(radius, 0.0, 0.0), Point(radius, 0.0, height)});
+
+        NurbsSurface surf = NurbsSurface::create_revolve(profile, Point(0, 0, 0), Vector(0, 0, 1));
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.is_rational());
+        MINI_CHECK(surf.degree(0) == 2);
+
+        // Check point at angle 0, bottom
+        auto dom_u = surf.domain(0);
+        auto dom_v = surf.domain(1);
+        Point pt0 = surf.point_at(dom_u.first, dom_v.first);
+        MINI_CHECK(TOLERANCE.is_close(pt0[0], radius));
+        MINI_CHECK(TOLERANCE.is_close(pt0[1], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(pt0[2], 0.0));
+
+        // Check point at angle PI/2, bottom
+        Point pt90 = surf.point_at(Tolerance::PI * 0.5, dom_v.first);
+        MINI_CHECK(TOLERANCE.is_close(pt90[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(pt90[1], radius));
+        MINI_CHECK(TOLERANCE.is_close(pt90[2], 0.0));
+
+        // Check point at angle 0, top
+        Point pt_top = surf.point_at(dom_u.first, dom_v.second);
+        MINI_CHECK(TOLERANCE.is_close(pt_top[0], radius));
+        MINI_CHECK(TOLERANCE.is_close(pt_top[2], height));
+    }
+
+    MINI_TEST("NurbsSurface", "create_revolve_partial") {
+        // Revolve a line segment 90 degrees -> quarter cylinder
+        double radius = 3.0;
+        double height = 4.0;
+
+        NurbsCurve profile = NurbsCurve::create(false, 1, {Point(radius, 0.0, 0.0), Point(radius, 0.0, height)});
+
+        double angle = Tolerance::PI * 0.5;
+        NurbsSurface surf = NurbsSurface::create_revolve(profile, Point(0, 0, 0), Vector(0, 0, 1), angle);
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.is_rational());
+        MINI_CHECK(surf.degree(0) == 2);
+
+        // Check start point
+        auto dom_u = surf.domain(0);
+        auto dom_v = surf.domain(1);
+        Point pt_start = surf.point_at(dom_u.first, dom_v.first);
+        MINI_CHECK(TOLERANCE.is_close(pt_start[0], radius));
+        MINI_CHECK(TOLERANCE.is_close(pt_start[1], 0.0));
+
+        // Check end point at 90 degrees
+        Point pt_end = surf.point_at(dom_u.second, dom_v.first);
+        MINI_CHECK(TOLERANCE.is_close(pt_end[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(pt_end[1], radius));
+    }
+
+    MINI_TEST("NurbsSurface", "create_sweep1") {
+        // Sweep a small circle profile along a straight rail
+        // Rail: line along Z axis
+        NurbsCurve rail = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(0, 0, 10)});
+
+        // Profile: small circle in XY plane
+        double r = 1.0;
+        double w = std::sqrt(2.0) / 2.0;
+        NurbsCurve profile(3, true, 3, 9);
+        double knots[] = {0, 0, Tolerance::PI * 0.5, Tolerance::PI * 0.5,
+                          Tolerance::PI, Tolerance::PI, Tolerance::PI * 1.5, Tolerance::PI * 1.5,
+                          Tolerance::PI * 2.0, Tolerance::PI * 2.0};
+        for (int i = 0; i < 10; ++i) profile.set_knot(i, knots[i]);
+
+        double angles[] = {0, Tolerance::PI * 0.25, Tolerance::PI * 0.5, Tolerance::PI * 0.75,
+                           Tolerance::PI, Tolerance::PI * 1.25, Tolerance::PI * 1.5, Tolerance::PI * 1.75,
+                           Tolerance::PI * 2.0};
+        for (int i = 0; i < 9; ++i) {
+            double scale = (i % 2 == 0) ? 1.0 : std::sqrt(2.0);
+            double x = r * scale * std::cos(angles[i]);
+            double y = r * scale * std::sin(angles[i]);
+            profile.set_cv(i, Point(x, y, 0.0));
+            profile.set_weight(i, (i % 2 == 0) ? 1.0 : w);
+        }
+
+        NurbsSurface surf = NurbsSurface::create_sweep1(rail, profile);
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.cv_count(0) >= 9);
+        MINI_CHECK(surf.cv_count(1) >= 2);
+    }
+
+    MINI_TEST("NurbsSurface", "create_sweep2") {
+        // Sweep a line profile along two diverging rails
+        // Rail1: line along Z at x=0
+        // Rail2: line along Z at x=5
+        NurbsCurve rail1 = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(0, 0, 10)});
+        NurbsCurve rail2 = NurbsCurve::create(false, 1, {Point(5, 0, 0), Point(5, 0, 10)});
+
+        // Profile: horizontal line from (0,0,0) to (5,0,0)
+        NurbsCurve profile = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(5, 0, 0)});
+
+        NurbsSurface surf = NurbsSurface::create_sweep2(rail1, rail2, profile);
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.cv_count(0) >= 2);
+        MINI_CHECK(surf.cv_count(1) >= 2);
+    }
+
+    MINI_TEST("NurbsSurface", "create_planar") {
+        std::vector<Point> pts = {Point(0,0,0), Point(3,1,0), Point(5,0.5,0), Point(6,3,0), Point(4,5,0), Point(1,4,0), Point(0,0,0)};
+        NurbsCurve boundary = NurbsCurve::create(false, 3, pts);
+        NurbsSurface surf = NurbsSurface::create_planar({boundary});
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.is_planar());
+        MINI_CHECK(surf.degree(0) == 1);
+        MINI_CHECK(surf.degree(1) == 1);
+        MINI_CHECK(surf.cv_count(0) == 2);
+        MINI_CHECK(surf.cv_count(1) == 2);
+        MINI_CHECK(surf.is_trimmed());
+        MINI_CHECK(surf.get_outer_loop().is_valid());
+
+        auto [pd, puv] = surf.divide_by_count(4, 4);
+        MINI_CHECK(pd.size() == 5);
+        MINI_CHECK(pd[0].size() == 5);
+
+        NurbsTriangulation tri(surf);
+        Mesh mesh = tri.mesh();
+        MINI_CHECK(mesh.number_of_faces() > 0);
+        MINI_CHECK(mesh.number_of_vertices() > 0);
     }
 
 }

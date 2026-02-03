@@ -406,6 +406,15 @@ Vector NurbsSurface::normal_at(double u, double v) const {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
+// Trim Loop
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void NurbsSurface::set_outer_loop(const NurbsCurve& loop) { m_outer_loop = loop; }
+NurbsCurve NurbsSurface::get_outer_loop() const { return m_outer_loop; }
+bool NurbsSurface::is_trimmed() const { return m_outer_loop.is_valid(); }
+void NurbsSurface::clear_outer_loop() { m_outer_loop = NurbsCurve(); }
+
+///////////////////////////////////////////////////////////////////////////////////////////
 // JSON Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -426,6 +435,9 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
     j["knots_u"] = m_knot[0];
     j["knots_v"] = m_knot[1];
     j["control_points"] = m_cv;
+    if (is_trimmed()) {
+        j["outer_loop"] = m_outer_loop.jsondump();
+    }
     return j;
 }
 
@@ -472,6 +484,7 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     m_knot[0] = src.m_knot[0];
     m_knot[1] = src.m_knot[1];
     m_cv = src.m_cv;
+    m_outer_loop = src.m_outer_loop;
 }
 
 int NurbsSurface::find_span(int dir, double t) const {
@@ -1066,8 +1079,11 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
         if (data.contains("xform")) {
             surface.xform = Xform::jsonload(data["xform"]);
         }
+        if (data.contains("outer_loop")) {
+            surface.m_outer_loop = NurbsCurve::jsonload(data["outer_loop"]);
+        }
     }
- 
+
     return surface;
 }
 
@@ -1269,13 +1285,177 @@ NurbsSurface NurbsSurface::create(bool periodic_u, bool periodic_v,
 
 NurbsSurface NurbsSurface::create_ruled(const NurbsCurve& curveA, const NurbsCurve& curveB) {
     NurbsSurface surface;
-    // Stub - would create ruled surface
+    if (!curveA.is_valid() || !curveB.is_valid()) return surface;
+
+    NurbsCurve cA = curveA;
+    NurbsCurve cB = curveB;
+
+    cA.set_domain(0.0, 1.0);
+    cB.set_domain(0.0, 1.0);
+
+    // Elevate degree of lower-degree curve to match
+    if (cA.degree() < cB.degree()) cA.increase_degree(cB.degree());
+    else if (cB.degree() < cA.degree()) cB.increase_degree(cA.degree());
+
+    // Make both rational if either is
+    if (cA.is_rational() || cB.is_rational()) {
+        cA.make_rational();
+        cB.make_rational();
+    }
+
+    // Knot compatibility: insert missing knots from each curve into the other
+    {
+        std::vector<double> knotsA = cA.get_knots();
+        std::vector<double> knotsB = cB.get_knots();
+        const double tol = 1e-10;
+
+        // Insert knots from B that are missing in A
+        for (double k : knotsB) {
+            bool found = false;
+            for (double ka : knotsA) {
+                if (std::abs(ka - k) < tol) { found = true; break; }
+            }
+            if (!found) cA.insert_knot(k, 1);
+        }
+
+        // Refresh and insert knots from A that are missing in B
+        knotsA = cA.get_knots();
+        for (double k : knotsA) {
+            bool found = false;
+            for (double kb : knotsB) {
+                if (std::abs(kb - k) < tol) { found = true; break; }
+            }
+            if (!found) cB.insert_knot(k, 1);
+        }
+    }
+
+    // Both curves should now have the same cv_count and knot vector
+    int order_u = cA.order();
+    int cv_count_u = cA.cv_count();
+    int order_v = 2;
+    int cv_count_v = 2;
+    bool is_rat = cA.is_rational();
+
+    surface.create_raw(3, is_rat, order_u, order_v, cv_count_u, cv_count_v);
+
+    // Copy u-knots from the compatible curves
+    for (int i = 0; i < cA.knot_count(); i++) {
+        surface.set_knot(0, i, cA.knot(i));
+    }
+
+    // v-knots: [0, 1] for linear (order 2, 2 CVs => knot_count = 2)
+    surface.set_knot(1, 0, 0.0);
+    surface.set_knot(1, 1, 1.0);
+
+    // Row 0 CVs = curveA, Row 1 CVs = curveB
+    if (is_rat) {
+        for (int i = 0; i < cv_count_u; i++) {
+            double ax, ay, az, aw;
+            cA.get_cv_4d(i, ax, ay, az, aw);
+            surface.set_cv_4d(i, 0, ax, ay, az, aw);
+
+            double bx, by, bz, bw;
+            cB.get_cv_4d(i, bx, by, bz, bw);
+            surface.set_cv_4d(i, 1, bx, by, bz, bw);
+        }
+    } else {
+        for (int i = 0; i < cv_count_u; i++) {
+            surface.set_cv(i, 0, cA.get_cv(i));
+            surface.set_cv(i, 1, cB.get_cv(i));
+        }
+    }
+
     return surface;
 }
 
 NurbsSurface NurbsSurface::create_planar(const std::vector<NurbsCurve>& curves) {
     NurbsSurface surface;
-    // Stub - would create planar surface from boundary
+    if (curves.empty()) return surface;
+
+    // Collect all control points from all curves
+    std::vector<Point> all_pts;
+    for (const auto& crv : curves) {
+        for (int i = 0; i < crv.cv_count(); i++) {
+            all_pts.push_back(crv.get_cv(i));
+        }
+    }
+    if (all_pts.size() < 3) return surface;
+
+    // Fit plane through points using PCA
+    Plane plane = Plane::from_points_pca(all_pts);
+    if (plane.z_axis().magnitude() < 1e-10) return surface;
+
+    Vector xax = plane.x_axis();
+    Vector yax = plane.y_axis();
+    Point orig = plane.origin();
+
+    double min_u = std::numeric_limits<double>::max();
+    double max_u = -std::numeric_limits<double>::max();
+    double min_v = std::numeric_limits<double>::max();
+    double max_v = -std::numeric_limits<double>::max();
+
+    for (const auto& pt : all_pts) {
+        double dx = pt[0] - orig[0];
+        double dy = pt[1] - orig[1];
+        double dz = pt[2] - orig[2];
+        double u = dx * xax[0] + dy * xax[1] + dz * xax[2];
+        double v = dx * yax[0] + dy * yax[1] + dz * yax[2];
+        if (u < min_u) min_u = u;
+        if (u > max_u) max_u = u;
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
+    }
+
+    // Expand slightly
+    double pad = std::max(max_u - min_u, max_v - min_v) * 0.05;
+    if (pad < 1e-6) pad = 1.0;
+    min_u -= pad; max_u += pad;
+    min_v -= pad; max_v += pad;
+
+    double range_u = max_u - min_u;
+    double range_v = max_v - min_v;
+
+    // Create degree-1 bilinear patch (2x2 CVs, order 2 in both directions)
+    surface.create_raw(3, false, 2, 2, 2, 2);
+    surface.set_knot(0, 0, 0.0);
+    surface.set_knot(0, 1, 1.0);
+    surface.set_knot(1, 0, 0.0);
+    surface.set_knot(1, 1, 1.0);
+
+    auto plane_pt = [&](double u, double v) -> Point {
+        return Point(
+            orig[0] + u * xax[0] + v * yax[0],
+            orig[1] + u * xax[1] + v * yax[1],
+            orig[2] + u * xax[2] + v * yax[2]
+        );
+    };
+
+    surface.set_cv(0, 0, plane_pt(min_u, min_v));
+    surface.set_cv(0, 1, plane_pt(min_u, max_v));
+    surface.set_cv(1, 0, plane_pt(max_u, min_v));
+    surface.set_cv(1, 1, plane_pt(max_u, max_v));
+
+    // Compute outer trim loop in UV space from boundary curves
+    std::vector<Point> uv_pts;
+    for (const auto& crv : curves) {
+        auto [pts3d, params] = crv.divide_by_count(50, true);
+        for (const auto& pt : pts3d) {
+            double dx = pt[0] - orig[0];
+            double dy = pt[1] - orig[1];
+            double dz = pt[2] - orig[2];
+            double pu = dx * xax[0] + dy * xax[1] + dz * xax[2];
+            double pv = dx * yax[0] + dy * yax[1] + dz * yax[2];
+            double nu = (pu - min_u) / range_u;
+            double nv = (pv - min_v) / range_v;
+            uv_pts.push_back(Point(nu, nv, 0.0));
+        }
+    }
+
+    if (uv_pts.size() >= 3) {
+        NurbsCurve loop = NurbsCurve::create(false, 3, uv_pts);
+        surface.set_outer_loop(loop);
+    }
+
     return surface;
 }
 
@@ -1827,5 +2007,645 @@ bool split_impl(const NurbsSurface& srf, int dir, double c,
 }
 
 } // anonymous namespace
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Loft, Revolve, Sweep1, Sweep2
+///////////////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+// Merge two knot vectors into a unified knot vector containing all knots from both
+std::vector<double> merge_knot_vectors(const std::vector<double>& a, const std::vector<double>& b, double tol = 1e-10) {
+    std::vector<double> merged;
+    size_t i = 0, j = 0;
+    while (i < a.size() && j < b.size()) {
+        if (std::abs(a[i] - b[j]) < tol) {
+            merged.push_back(a[i]);
+            i++; j++;
+        } else if (a[i] < b[j]) {
+            merged.push_back(a[i]);
+            i++;
+        } else {
+            merged.push_back(b[j]);
+            j++;
+        }
+    }
+    while (i < a.size()) { merged.push_back(a[i]); i++; }
+    while (j < b.size()) { merged.push_back(b[j]); j++; }
+    return merged;
+}
+
+// Check if two knot vectors are identical within tolerance
+bool knot_vectors_equal(const std::vector<double>& a, const std::vector<double>& b, double tol = 1e-10) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); i++) {
+        if (std::abs(a[i] - b[i]) > tol) return false;
+    }
+    return true;
+}
+
+// Make a set of curves compatible: same degree, same knot vector
+void make_curves_compatible(std::vector<NurbsCurve>& curves) {
+    if (curves.size() < 2) return;
+
+    // Find max degree
+    int max_deg = 0;
+    for (auto& c : curves) {
+        if (c.degree() > max_deg) max_deg = c.degree();
+    }
+
+    // Degree elevate all curves to max degree
+    for (auto& c : curves) {
+        if (c.degree() < max_deg) c.increase_degree(max_deg);
+    }
+
+    // Make all rational if any is rational
+    bool any_rational = false;
+    for (auto& c : curves) {
+        if (c.is_rational()) { any_rational = true; break; }
+    }
+    if (any_rational) {
+        for (auto& c : curves) c.make_rational();
+    }
+
+    // Check if all curves already have same knot vectors and cv counts
+    bool already_compatible = true;
+    for (size_t i = 1; i < curves.size(); i++) {
+        if (curves[i].cv_count() != curves[0].cv_count() ||
+            !knot_vectors_equal(curves[i].get_knots(), curves[0].get_knots())) {
+            already_compatible = false;
+            break;
+        }
+    }
+    if (already_compatible) return;
+
+    // Reparameterize all curves to [0,1]
+    for (auto& c : curves) {
+        c.set_domain(0.0, 1.0);
+    }
+
+    // Merge knot vectors iteratively
+    std::vector<double> unified = curves[0].get_knots();
+    for (size_t i = 1; i < curves.size(); i++) {
+        unified = merge_knot_vectors(unified, curves[i].get_knots());
+    }
+
+    // Insert missing knots into each curve
+    const double tol = 1e-10;
+    for (auto& c : curves) {
+        std::vector<double> cur_knots = c.get_knots();
+        for (double k : unified) {
+            bool found = false;
+            for (double ck : cur_knots) {
+                if (std::abs(ck - k) < tol) { found = true; break; }
+            }
+            if (!found) {
+                c.insert_knot(k, 1);
+                cur_knots = c.get_knots();
+            }
+        }
+    }
+}
+
+} // anonymous namespace
+
+NurbsSurface NurbsSurface::create_loft(const std::vector<NurbsCurve>& input_curves, int degree_v) {
+    NurbsSurface surface;
+    if (input_curves.size() < 2) return surface;
+
+    // Validate all curves
+    for (auto& c : input_curves) {
+        if (!c.is_valid()) return surface;
+    }
+
+    // Copy and make compatible
+    std::vector<NurbsCurve> curves = input_curves;
+    make_curves_compatible(curves);
+
+    int n_sections = static_cast<int>(curves.size());
+    int cv_count_u = curves[0].cv_count();
+    int order_u = curves[0].order();
+    bool is_rat = curves[0].is_rational();
+
+    // Clamp degree_v to valid range
+    if (degree_v >= n_sections) degree_v = n_sections - 1;
+    if (degree_v < 1) degree_v = 1;
+    int order_v = degree_v + 1;
+
+    // Compute v-parameters using chord-length between section midpoints
+    std::vector<double> v_params(n_sections, 0.0);
+    for (int k = 1; k < n_sections; k++) {
+        Point pk_prev = curves[k - 1].point_at_middle();
+        Point pk_curr = curves[k].point_at_middle();
+        double dx = pk_curr[0] - pk_prev[0];
+        double dy = pk_curr[1] - pk_prev[1];
+        double dz = pk_curr[2] - pk_prev[2];
+        v_params[k] = v_params[k - 1] + std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    // Normalize to [0,1]
+    double total_len = v_params.back();
+    if (total_len > 1e-14) {
+        for (int k = 0; k < n_sections; k++) v_params[k] /= total_len;
+    } else {
+        // Uniform fallback
+        for (int k = 0; k < n_sections; k++) v_params[k] = static_cast<double>(k) / (n_sections - 1);
+    }
+
+    // Build v-direction knot vector for interpolation with n_sections CVs
+    // (NOT using build_interp_knots which adds extra CVs for natural end conditions)
+    int cv_count_v = n_sections;
+    int knot_count_v = order_v + cv_count_v - 2;
+    std::vector<double> knots_v(knot_count_v);
+
+    if (degree_v >= n_sections - 1) {
+        // Bezier case: clamped at both ends
+        // For degree d, cv_count = d+1: knot_count = d + (d+1) - 2 + 2 = 2d
+        // No wait: knot_count = order + cv_count - 2
+        // degree-1 zeros, then degree-1 ones
+        int d = degree_v;
+        for (int i = 0; i < d; i++) knots_v[i] = 0.0;
+        for (int i = d; i < knot_count_v; i++) knots_v[i] = 1.0;
+    } else {
+        // Clamped start
+        for (int i = 0; i < order_v - 1; i++) knots_v[i] = v_params[0];
+        // Interior knots using averaging (Piegl & Tiller method)
+        for (int j = 1; j <= n_sections - order_v; j++) {
+            double sum = 0.0;
+            for (int i = j; i < j + degree_v; i++) sum += v_params[i];
+            knots_v[order_v - 2 + j] = sum / degree_v;
+        }
+        // Clamped end
+        for (int i = knot_count_v - order_v + 1; i < knot_count_v; i++) knots_v[i] = v_params[n_sections - 1];
+    }
+
+    // Create the surface
+    surface.create_raw(3, is_rat, order_u, order_v, cv_count_u, cv_count_v);
+
+    // Copy u-knots from the first (compatible) curve
+    for (int i = 0; i < surface.knot_count(0); i++) {
+        surface.set_knot(0, i, curves[0].knot(i));
+    }
+
+    // Set v-knots
+    for (int i = 0; i < static_cast<int>(knots_v.size()) && i < surface.knot_count(1); i++) {
+        surface.set_knot(1, i, knots_v[i]);
+    }
+
+    // For each u-index, interpolate through the section curve CVs in the v-direction
+    // When degree_v == n_sections - 1, the knot vector is fully clamped and interpolation
+    // is exact, so we can just copy CVs directly. For lower degrees, we need to solve.
+    if (degree_v == n_sections - 1) {
+        // Direct copy: each section's CVs become a row of the surface
+        for (int k = 0; k < n_sections; k++) {
+            for (int i = 0; i < cv_count_u; i++) {
+                if (is_rat) {
+                    double x, y, z, w;
+                    curves[k].get_cv_4d(i, x, y, z, w);
+                    surface.set_cv_4d(i, k, x, y, z, w);
+                } else {
+                    surface.set_cv(i, k, curves[k].get_cv(i));
+                }
+            }
+        }
+    } else {
+        // Solve B-spline interpolation in v-direction for each u-index
+        // Build basis matrix N[k][j] = N_j(v_params[k])
+        // We need to evaluate basis functions at each v_param
+
+        // For non-rational case, solve per u-index:
+        // For each i in [0, cv_count_u), collect points P[k] = curve[k].get_cv(i)
+        // Solve: sum_j N_j(v_k) * Q[j] = P[k] for all k
+        // This is a general linear system (not necessarily tridiagonal for arbitrary degree)
+
+        // Build the basis matrix
+        int n = n_sections;
+        std::vector<std::vector<double>> N_matrix(n, std::vector<double>(n, 0.0));
+
+        // Create a temporary curve to evaluate basis functions
+        NurbsCurve temp_crv(1, false, order_v, cv_count_v);
+        for (int i = 0; i < static_cast<int>(knots_v.size()); i++) {
+            temp_crv.set_knot(i, knots_v[i]);
+        }
+
+        for (int k = 0; k < n; k++) {
+            // Evaluate all basis functions at v_params[k]
+            double t = v_params[k];
+            // Clamp t to domain
+            auto [t0, t1] = temp_crv.domain();
+            if (t < t0) t = t0;
+            if (t > t1) t = t1;
+
+            // Find span and compute basis
+            int span = knot::find_span(order_v, cv_count_v, knots_v, t);
+            std::vector<double> basis;
+            // Use NurbsSurface's internal method pattern — replicate basis computation
+            int d = order_v - 1;
+            int knot_base = span + d;
+
+            if (knots_v[knot_base - 1] == knots_v[knot_base]) {
+                // Degenerate
+                continue;
+            }
+
+            std::vector<double> Nvals(order_v * order_v, 0.0);
+            Nvals[order_v * order_v - 1] = 1.0;
+            std::vector<double> left(d), right(d);
+            int N_idx = order_v * order_v - 1;
+            int k_right = knot_base;
+            int k_left = knot_base - 1;
+
+            for (int j = 0; j < d; j++) {
+                int N0_idx = N_idx;
+                N_idx -= (order_v + 1);
+                left[j] = t - knots_v[k_left];
+                right[j] = knots_v[k_right] - t;
+                k_left--;
+                k_right++;
+
+                double x = 0.0;
+                for (int r = 0; r <= j; r++) {
+                    double a0 = left[j - r];
+                    double a1 = right[r];
+                    double y = Nvals[N0_idx + r] / (a0 + a1);
+                    Nvals[N_idx + r] = x + a1 * y;
+                    x = a0 * y;
+                }
+                Nvals[N_idx + j + 1] = x;
+            }
+
+            for (int j = 0; j < order_v; j++) {
+                int col = span + j;
+                if (col >= 0 && col < n) {
+                    N_matrix[k][col] = Nvals[j];
+                }
+            }
+        }
+
+        // Solve the system N_matrix * Q = P for each u-index using Gaussian elimination
+        int dim = is_rat ? 4 : 3;
+        for (int i = 0; i < cv_count_u; i++) {
+            // Collect RHS: points from each section curve at u-index i
+            std::vector<std::vector<double>> rhs(n, std::vector<double>(dim, 0.0));
+            for (int k = 0; k < n; k++) {
+                if (is_rat) {
+                    double x, y, z, w;
+                    curves[k].get_cv_4d(i, x, y, z, w);
+                    rhs[k] = {x, y, z, w};
+                } else {
+                    Point p = curves[k].get_cv(i);
+                    rhs[k] = {p[0], p[1], p[2]};
+                }
+            }
+
+            // Gaussian elimination with partial pivoting
+            std::vector<std::vector<double>> A = N_matrix;
+            std::vector<std::vector<double>> b = rhs;
+
+            for (int col = 0; col < n; col++) {
+                // Find pivot
+                int max_row = col;
+                double max_val = std::abs(A[col][col]);
+                for (int row = col + 1; row < n; row++) {
+                    if (std::abs(A[row][col]) > max_val) {
+                        max_val = std::abs(A[row][col]);
+                        max_row = row;
+                    }
+                }
+                if (max_val < 1e-14) continue;
+
+                std::swap(A[col], A[max_row]);
+                std::swap(b[col], b[max_row]);
+
+                for (int row = col + 1; row < n; row++) {
+                    double factor = A[row][col] / A[col][col];
+                    for (int c = col; c < n; c++) {
+                        A[row][c] -= factor * A[col][c];
+                    }
+                    for (int d2 = 0; d2 < dim; d2++) {
+                        b[row][d2] -= factor * b[col][d2];
+                    }
+                }
+            }
+
+            // Back substitution
+            std::vector<std::vector<double>> Q(n, std::vector<double>(dim, 0.0));
+            for (int row = n - 1; row >= 0; row--) {
+                for (int d2 = 0; d2 < dim; d2++) {
+                    Q[row][d2] = b[row][d2];
+                    for (int c = row + 1; c < n; c++) {
+                        Q[row][d2] -= A[row][c] * Q[c][d2];
+                    }
+                    if (std::abs(A[row][row]) > 1e-14) {
+                        Q[row][d2] /= A[row][row];
+                    }
+                }
+            }
+
+            // Set surface CVs
+            for (int j = 0; j < n; j++) {
+                if (is_rat) {
+                    surface.set_cv_4d(i, j, Q[j][0], Q[j][1], Q[j][2], Q[j][3]);
+                } else {
+                    surface.set_cv(i, j, Point(Q[j][0], Q[j][1], Q[j][2]));
+                }
+            }
+        }
+    }
+
+    return surface;
+}
+
+NurbsSurface NurbsSurface::create_revolve(const NurbsCurve& profile, const Point& axis_origin,
+                                            const Vector& axis_direction, double angle) {
+    NurbsSurface surface;
+    if (!profile.is_valid()) return surface;
+
+    // Normalize axis direction
+    double ax_len = axis_direction.magnitude();
+    if (ax_len < 1e-14) return surface;
+    Vector axis_dir = axis_direction / ax_len;
+
+    // Clamp angle to (0, 2*PI]
+    double PI = Tolerance::PI;
+    if (angle < 0) angle = -angle;
+    if (angle > 2.0 * PI) angle = 2.0 * PI;
+    if (angle < 1e-14) return surface;
+
+    // Determine number of arcs and u-CPs
+    int n_arcs;
+    if (angle <= PI / 2.0 + 1e-10) n_arcs = 1;
+    else if (angle <= PI + 1e-10) n_arcs = 2;
+    else if (angle <= 3.0 * PI / 2.0 + 1e-10) n_arcs = 3;
+    else n_arcs = 4;
+
+    double d_theta = angle / n_arcs;
+    double w_mid = std::cos(d_theta / 2.0);
+    int n_u = 2 * n_arcs + 1;
+
+    // Build u-knots
+    std::vector<double> knots_u;
+    knots_u.push_back(0.0);
+    knots_u.push_back(0.0);
+    for (int i = 1; i <= n_arcs; i++) {
+        double kv = i * d_theta;
+        knots_u.push_back(kv);
+        knots_u.push_back(kv);
+    }
+    // The last two are already pushed; we need to structure it as clamped
+    // Clamped degree-2: first 2 and last 2 knots are repeated
+    // For n_arcs arcs: knot vector has 2*n_arcs + 2 entries
+    // Actually for degree 2 with n_u CVs: knot_count = n_u + 2 - 2 = n_u
+    // n_u = 2*n_arcs + 1, so knot_count = 2*n_arcs + 1
+    // Rebuild properly
+    knots_u.clear();
+    // order=3, cv_count=n_u, knot_count = 3 + n_u - 2 = n_u + 1
+    int knot_count_u = n_u + 1;
+    knots_u.resize(knot_count_u);
+    knots_u[0] = 0.0;
+    knots_u[1] = 0.0;
+    for (int i = 1; i <= n_arcs; i++) {
+        double kv = i * d_theta;
+        knots_u[2 * i] = kv;
+        knots_u[2 * i + 1] = kv;
+    }
+    // The last knot should equal angle
+    knots_u[knot_count_u - 1] = angle;
+    knots_u[knot_count_u - 2] = angle;
+
+    // Profile parameters
+    int cv_count_v = profile.cv_count();
+    int order_v = profile.order();
+    bool profile_rational = profile.is_rational();
+
+    // Surface is always rational (circle arcs need weights)
+    surface.create_raw(3, true, 3, order_v, n_u, cv_count_v);
+
+    // Set u-knots
+    for (int i = 0; i < knot_count_u && i < surface.knot_count(0); i++) {
+        surface.set_knot(0, i, knots_u[i]);
+    }
+
+    // Set v-knots from profile
+    for (int i = 0; i < profile.knot_count() && i < surface.knot_count(1); i++) {
+        surface.set_knot(1, i, profile.knot(i));
+    }
+
+    // Precompute arc angles and weights for each u-CP
+    std::vector<double> u_angles(n_u);
+    std::vector<double> u_weights(n_u);
+    for (int i = 0; i < n_u; i++) {
+        if (i % 2 == 0) {
+            // On-arc point
+            u_angles[i] = (i / 2) * d_theta;
+            u_weights[i] = 1.0;
+        } else {
+            // Mid-arc point
+            u_angles[i] = (i / 2) * d_theta + d_theta / 2.0;
+            u_weights[i] = w_mid;
+        }
+    }
+
+    // For each profile CV, generate the revolution CVs
+    for (int j = 0; j < cv_count_v; j++) {
+        Point P_j = profile.get_cv(j);
+        double profile_w = profile_rational ? profile.weight(j) : 1.0;
+
+        // Project P_j onto axis to find O_j
+        double dx = P_j[0] - axis_origin[0];
+        double dy = P_j[1] - axis_origin[1];
+        double dz = P_j[2] - axis_origin[2];
+        double proj = dx * axis_dir[0] + dy * axis_dir[1] + dz * axis_dir[2];
+        Point O_j(axis_origin[0] + proj * axis_dir[0],
+                  axis_origin[1] + proj * axis_dir[1],
+                  axis_origin[2] + proj * axis_dir[2]);
+
+        // Compute radius
+        double rx = P_j[0] - O_j[0];
+        double ry = P_j[1] - O_j[1];
+        double rz = P_j[2] - O_j[2];
+        double r_j = std::sqrt(rx * rx + ry * ry + rz * rz);
+
+        if (r_j < 1e-14) {
+            // Degenerate: point is on axis — all u-CPs collapse
+            for (int i = 0; i < n_u; i++) {
+                double combined_w = u_weights[i] * profile_w;
+                surface.set_cv(i, j, O_j);
+                surface.set_weight(i, j, combined_w);
+            }
+        } else {
+            // Local coordinate system perpendicular to axis
+            Vector x_local(rx / r_j, ry / r_j, rz / r_j);
+            Vector y_local = axis_dir.cross(x_local);
+            double y_len = y_local.magnitude();
+            if (y_len > 1e-14) {
+                y_local = y_local / y_len;
+            }
+
+            for (int i = 0; i < n_u; i++) {
+                double theta = u_angles[i];
+                double cos_t = std::cos(theta);
+                double sin_t = std::sin(theta);
+
+                double effective_r = r_j;
+                if (i % 2 == 1) {
+                    // Mid-arc point: radius divided by cos(half-arc) to maintain circle
+                    effective_r = r_j / w_mid;
+                }
+
+                double px = O_j[0] + effective_r * (cos_t * x_local[0] + sin_t * y_local[0]);
+                double py = O_j[1] + effective_r * (cos_t * x_local[1] + sin_t * y_local[1]);
+                double pz = O_j[2] + effective_r * (cos_t * x_local[2] + sin_t * y_local[2]);
+
+                double combined_w = u_weights[i] * profile_w;
+                // Store homogeneous coordinates
+                surface.set_cv_4d(i, j, px * combined_w, py * combined_w, pz * combined_w, combined_w);
+            }
+        }
+    }
+
+    return surface;
+}
+
+NurbsSurface NurbsSurface::create_sweep1(const NurbsCurve& rail, const NurbsCurve& profile) {
+    NurbsSurface surface;
+    if (!rail.is_valid() || !profile.is_valid()) return surface;
+
+    // Sample RMF frames along rail
+    int N = std::max(rail.cv_count() * 2, 20);
+    std::vector<Plane> frames = rail.get_perpendicular_planes(N);
+    if (frames.empty()) return surface;
+
+    // Get profile's local frame at its start
+    Point profile_origin = profile.point_at_start();
+
+    // Position profile copies at each frame
+    std::vector<NurbsCurve> positioned_profiles;
+    positioned_profiles.reserve(frames.size());
+
+    for (size_t i = 0; i < frames.size(); i++) {
+        NurbsCurve prof_copy = profile;
+        Plane& frame = frames[i];
+        Point frame_origin = frame.origin();
+        Vector frame_x = frame.x_axis();
+        Vector frame_y = frame.y_axis();
+        Vector frame_z = frame.z_axis();
+
+        // Build transformation: profile local space -> frame
+        // Profile is in world space, so we translate to origin, then map to frame
+        Xform xf = Xform::identity();
+
+        // Step 1: Translate profile so its start is at origin
+        Xform t1 = Xform::translation(-profile_origin[0], -profile_origin[1], -profile_origin[2]);
+
+        // Step 2: Rotate + scale to align with frame
+        // Map standard axes to frame axes
+        Xform rot = Xform::identity();
+        rot.m[0] = frame_x[0]; rot.m[1] = frame_y[0]; rot.m[2] = frame_z[0]; rot.m[3] = frame_origin[0];
+        rot.m[4] = frame_x[1]; rot.m[5] = frame_y[1]; rot.m[6] = frame_z[1]; rot.m[7] = frame_origin[1];
+        rot.m[8] = frame_x[2]; rot.m[9] = frame_y[2]; rot.m[10] = frame_z[2]; rot.m[11] = frame_origin[2];
+        rot.m[12] = 0; rot.m[13] = 0; rot.m[14] = 0; rot.m[15] = 1;
+
+        // Compose: first translate to origin, then apply rotation+translation
+        // Combined: rot * t1
+        // Apply translation first, then rotation
+        prof_copy.transform(t1);
+        prof_copy.transform(rot);
+
+        positioned_profiles.push_back(prof_copy);
+    }
+
+    // Loft through positioned profiles
+    int loft_degree = std::min(3, static_cast<int>(positioned_profiles.size()) - 1);
+    surface = create_loft(positioned_profiles, loft_degree);
+
+    return surface;
+}
+
+NurbsSurface NurbsSurface::create_sweep2(const NurbsCurve& rail1, const NurbsCurve& rail2,
+                                           const NurbsCurve& profile) {
+    NurbsSurface surface;
+    if (!rail1.is_valid() || !rail2.is_valid() || !profile.is_valid()) return surface;
+
+    // Sample both rails at corresponding parameters
+    int N = std::max(std::max(rail1.cv_count(), rail2.cv_count()) * 2, 20);
+
+    std::vector<Point> pts1, pts2;
+    std::vector<double> params1, params2;
+    rail1.divide_by_count(N + 1, pts1, &params1, true);
+    rail2.divide_by_count(N + 1, pts2, &params2, true);
+
+    // Get RMF frames on rail1
+    std::vector<Plane> frames1 = rail1.get_perpendicular_planes(N);
+    if (frames1.empty()) return surface;
+
+    // Profile info
+    Point profile_start = profile.point_at_start();
+    Point profile_end = profile.point_at_end();
+    double profile_width = 0.0;
+    {
+        double dx = profile_end[0] - profile_start[0];
+        double dy = profile_end[1] - profile_start[1];
+        double dz = profile_end[2] - profile_start[2];
+        profile_width = std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    if (profile_width < 1e-14) profile_width = 1.0;
+
+    // Position and scale profile at each sample
+    std::vector<NurbsCurve> positioned_profiles;
+    positioned_profiles.reserve(frames1.size());
+
+    for (size_t i = 0; i < frames1.size() && i < pts1.size() && i < pts2.size(); i++) {
+        Point p1 = pts1[i];
+        Point p2 = pts2[i];
+
+        double dx = p2[0] - p1[0];
+        double dy = p2[1] - p1[1];
+        double dz = p2[2] - p1[2];
+        double rail_dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+        double scale_factor = (rail_dist > 1e-14) ? rail_dist / profile_width : 1.0;
+
+        // Midpoint between rails
+        Point mid((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5, (p1[2] + p2[2]) * 0.5);
+
+        NurbsCurve prof_copy = profile;
+
+        // Translate profile start to origin
+        Xform t1 = Xform::translation(-profile_start[0], -profile_start[1], -profile_start[2]);
+        prof_copy.transform(t1);
+
+        // Scale
+        Xform sc = Xform::scale_xyz(scale_factor, scale_factor, scale_factor);
+        prof_copy.transform(sc);
+
+        // Build orientation: x-axis from rail1 to rail2
+        Plane& frame = frames1[i];
+        Vector frame_z = frame.z_axis(); // tangent along rail
+
+        Vector x_dir(dx, dy, dz);
+        double x_len = x_dir.magnitude();
+        if (x_len > 1e-14) x_dir = x_dir / x_len;
+        else x_dir = frame.x_axis();
+
+        Vector y_dir = frame_z.cross(x_dir);
+        double y_len = y_dir.magnitude();
+        if (y_len > 1e-14) y_dir = y_dir / y_len;
+        else y_dir = frame.y_axis();
+
+        // Rotation matrix
+        Xform rot = Xform::identity();
+        rot.m[0] = x_dir[0]; rot.m[1] = y_dir[0]; rot.m[2] = frame_z[0]; rot.m[3] = p1[0];
+        rot.m[4] = x_dir[1]; rot.m[5] = y_dir[1]; rot.m[6] = frame_z[1]; rot.m[7] = p1[1];
+        rot.m[8] = x_dir[2]; rot.m[9] = y_dir[2]; rot.m[10] = frame_z[2]; rot.m[11] = p1[2];
+        rot.m[12] = 0; rot.m[13] = 0; rot.m[14] = 0; rot.m[15] = 1;
+
+        prof_copy.transform(rot);
+        positioned_profiles.push_back(prof_copy);
+    }
+
+    int loft_degree = std::min(3, static_cast<int>(positioned_profiles.size()) - 1);
+    surface = create_loft(positioned_profiles, loft_degree);
+
+    return surface;
+}
 
 } // namespace session_cpp

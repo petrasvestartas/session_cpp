@@ -56,6 +56,7 @@ namespace session_cpp {
         Plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis);
         static Plane from_point_normal(Point& point, Vector& normal);
         static Plane from_points(std::vector<Point>& points);
+        static Plane from_points_pca(const std::vector<Point>& points);
         static Plane from_two_points(Point& point1, Point& point2);
         static Plane invalid();
         bool is_valid() const;

@@ -620,6 +620,21 @@ int NurbsTriangulation::find_worst_triangle(const Delaunay2D& dt, double max_edg
     return worst_ti;
 }
 
+// Point-in-polygon test (ray casting)
+static bool point_in_polygon(double px, double py,
+                             const std::vector<Vertex2D>& poly) {
+    int n = (int)poly.size();
+    bool inside = false;
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+        double xi = poly[i].x, yi = poly[i].y;
+        double xj = poly[j].x, yj = poly[j].y;
+        if (((yi > py) != (yj > py)) &&
+            (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+            inside = !inside;
+    }
+    return inside;
+}
+
 Mesh NurbsTriangulation::mesh() const {
     double bbox_diag = compute_bbox_diagonal();
     double max_edge = m_max_edge_length > 0 ? m_max_edge_length : bbox_diag / 10.0;
@@ -631,77 +646,118 @@ Mesh NurbsTriangulation::mesh() const {
     auto [u_min, u_max] = m_surface.domain(0);
     auto [v_min, v_max] = m_surface.domain(1);
 
+    bool trimmed = m_surface.is_trimmed();
+    std::vector<Vertex2D> trim_poly;
+
     // Initialize Delaunay2D
     Delaunay2D dt(u_min, v_min, u_max, v_max);
 
-    // Insert corner vertices
-    int c0 = dt.insert(u_min, v_min);
-    int c1 = dt.insert(u_max, v_min);
-    int c2 = dt.insert(u_max, v_max);
-    int c3 = dt.insert(u_min, v_max);
-
-    // Insert knot span points along boundary
-    std::vector<double> u_spans = m_surface.get_span_vector(0);
-    std::vector<double> v_spans = m_surface.get_span_vector(1);
-
-    // Bottom and top boundary (u varies)
-    std::vector<int> bottom_verts, top_verts;
-    bottom_verts.push_back(c0);
-    top_verts.push_back(c3);
-    for (size_t i = 1; i < u_spans.size() - 1; ++i) {
-        bottom_verts.push_back(dt.insert(u_spans[i], v_min));
-        top_verts.push_back(dt.insert(u_spans[i], v_max));
-    }
-    bottom_verts.push_back(c1);
-    top_verts.push_back(c2);
-
-    // Left and right boundary (v varies)
-    std::vector<int> left_verts, right_verts;
-    left_verts.push_back(c0);
-    right_verts.push_back(c1);
-    for (size_t i = 1; i < v_spans.size() - 1; ++i) {
-        left_verts.push_back(dt.insert(u_min, v_spans[i]));
-        right_verts.push_back(dt.insert(u_max, v_spans[i]));
-    }
-    left_verts.push_back(c3);
-    right_verts.push_back(c2);
-
-    // Insert interior knot grid points
-    for (size_t i = 1; i < u_spans.size() - 1; ++i) {
-        for (size_t j = 1; j < v_spans.size() - 1; ++j) {
-            dt.insert(u_spans[i], v_spans[j]);
+    if (trimmed) {
+        // Sample the outer loop to get trim polygon vertices in UV space
+        NurbsCurve loop = m_surface.get_outer_loop();
+        auto [loop_pts, loop_params] = loop.divide_by_count(50, true);
+        for (const auto& pt : loop_pts) {
+            trim_poly.push_back({pt[0], pt[1]});
         }
-    }
 
-    // Constrain boundary edges
-    auto constrain_chain = [&](const std::vector<int>& verts) {
-        for (size_t i = 0; i + 1 < verts.size(); ++i) {
-            if (verts[i] >= 0 && verts[i + 1] >= 0) {
-                dt.insert_constraint(verts[i], verts[i + 1]);
+        // Insert trim polygon vertices into Delaunay
+        std::vector<int> trim_verts;
+        for (const auto& v : trim_poly) {
+            trim_verts.push_back(dt.insert(v.x, v.y));
+        }
+
+        // Also insert some interior grid points that are inside the trim
+        int grid_n = 8;
+        double du = (u_max - u_min) / (grid_n + 1);
+        double dv = (v_max - v_min) / (grid_n + 1);
+        for (int i = 1; i <= grid_n; ++i) {
+            for (int j = 1; j <= grid_n; ++j) {
+                double gu = u_min + i * du;
+                double gv = v_min + j * dv;
+                if (point_in_polygon(gu, gv, trim_poly)) {
+                    dt.insert(gu, gv);
+                }
             }
         }
-    };
-    constrain_chain(bottom_verts);
-    constrain_chain(right_verts);
-    // Top: reverse order (right to left)
-    std::vector<int> top_rev(top_verts.rbegin(), top_verts.rend());
-    constrain_chain(top_rev);
-    // Left: reverse order (top to bottom)
-    std::vector<int> left_rev(left_verts.rbegin(), left_verts.rend());
-    constrain_chain(left_rev);
 
-    // Remove super-triangle
-    dt.cleanup();
+        // Constrain edges along trim polygon
+        for (size_t i = 0; i + 1 < trim_verts.size(); ++i) {
+            if (trim_verts[i] >= 0 && trim_verts[i + 1] >= 0) {
+                dt.insert_constraint(trim_verts[i], trim_verts[i + 1]);
+            }
+        }
 
-    // Remove triangles outside UV domain
-    // Any triangle with centroid outside [u_min,u_max]x[v_min,v_max] is removed
-    for (auto& tri : dt.triangles) {
-        if (!tri.alive) continue;
-        double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
-        double cv = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-        double eps = 1e-10;
-        if (cu < u_min - eps || cu > u_max + eps || cv < v_min - eps || cv > v_max + eps) {
-            tri.alive = false;
+        dt.cleanup();
+
+        // Remove triangles outside trim polygon
+        for (auto& tri : dt.triangles) {
+            if (!tri.alive) continue;
+            double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
+            double cv_val = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
+            if (!point_in_polygon(cu, cv_val, trim_poly)) {
+                tri.alive = false;
+            }
+        }
+    } else {
+        // Untrimmed path: use UV rectangle boundary
+        int c0 = dt.insert(u_min, v_min);
+        int c1 = dt.insert(u_max, v_min);
+        int c2 = dt.insert(u_max, v_max);
+        int c3 = dt.insert(u_min, v_max);
+
+        std::vector<double> u_spans = m_surface.get_span_vector(0);
+        std::vector<double> v_spans = m_surface.get_span_vector(1);
+
+        std::vector<int> bottom_verts, top_verts;
+        bottom_verts.push_back(c0);
+        top_verts.push_back(c3);
+        for (size_t i = 1; i < u_spans.size() - 1; ++i) {
+            bottom_verts.push_back(dt.insert(u_spans[i], v_min));
+            top_verts.push_back(dt.insert(u_spans[i], v_max));
+        }
+        bottom_verts.push_back(c1);
+        top_verts.push_back(c2);
+
+        std::vector<int> left_verts, right_verts;
+        left_verts.push_back(c0);
+        right_verts.push_back(c1);
+        for (size_t i = 1; i < v_spans.size() - 1; ++i) {
+            left_verts.push_back(dt.insert(u_min, v_spans[i]));
+            right_verts.push_back(dt.insert(u_max, v_spans[i]));
+        }
+        left_verts.push_back(c3);
+        right_verts.push_back(c2);
+
+        for (size_t i = 1; i < u_spans.size() - 1; ++i) {
+            for (size_t j = 1; j < v_spans.size() - 1; ++j) {
+                dt.insert(u_spans[i], v_spans[j]);
+            }
+        }
+
+        auto constrain_chain = [&](const std::vector<int>& verts) {
+            for (size_t i = 0; i + 1 < verts.size(); ++i) {
+                if (verts[i] >= 0 && verts[i + 1] >= 0) {
+                    dt.insert_constraint(verts[i], verts[i + 1]);
+                }
+            }
+        };
+        constrain_chain(bottom_verts);
+        constrain_chain(right_verts);
+        std::vector<int> top_rev(top_verts.rbegin(), top_verts.rend());
+        constrain_chain(top_rev);
+        std::vector<int> left_rev(left_verts.rbegin(), left_verts.rend());
+        constrain_chain(left_rev);
+
+        dt.cleanup();
+
+        for (auto& tri : dt.triangles) {
+            if (!tri.alive) continue;
+            double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
+            double cv_val = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
+            double eps = 1e-10;
+            if (cu < u_min - eps || cu > u_max + eps || cv_val < v_min - eps || cv_val > v_max + eps) {
+                tri.alive = false;
+            }
         }
     }
 
@@ -711,21 +767,22 @@ Mesh NurbsTriangulation::mesh() const {
         if (worst < 0) break;
 
         const Triangle& wtri = dt.triangles[worst];
-        double cu, cv;
+        double cu, cv_val;
         Delaunay2D::circumcenter(
             dt.vertices[wtri.v[0]].x, dt.vertices[wtri.v[0]].y,
             dt.vertices[wtri.v[1]].x, dt.vertices[wtri.v[1]].y,
             dt.vertices[wtri.v[2]].x, dt.vertices[wtri.v[2]].y,
-            cu, cv);
+            cu, cv_val);
 
-        // Clamp to domain
         cu = std::max(u_min, std::min(u_max, cu));
-        cv = std::max(v_min, std::min(v_max, cv));
+        cv_val = std::max(v_min, std::min(v_max, cv_val));
 
-        int new_v = dt.insert(cu, cv);
+        if (trimmed && !point_in_polygon(cu, cv_val, trim_poly)) continue;
+
+        int new_v = dt.insert(cu, cv_val);
         if (new_v < 0) break;
 
-        // Remove any newly created triangles outside domain
+        // Remove newly created triangles outside boundary
         for (auto& tri : dt.triangles) {
             if (!tri.alive) continue;
             bool has_new = false;
@@ -735,9 +792,12 @@ Mesh NurbsTriangulation::mesh() const {
             if (!has_new) continue;
             double tc_u = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
             double tc_v = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-            double eps = 1e-10;
-            if (tc_u < u_min - eps || tc_u > u_max + eps || tc_v < v_min - eps || tc_v > v_max + eps) {
-                tri.alive = false;
+            if (trimmed) {
+                if (!point_in_polygon(tc_u, tc_v, trim_poly)) tri.alive = false;
+            } else {
+                double eps = 1e-10;
+                if (tc_u < u_min - eps || tc_u > u_max + eps || tc_v < v_min - eps || tc_v > v_max + eps)
+                    tri.alive = false;
             }
         }
     }

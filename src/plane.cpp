@@ -129,6 +129,77 @@ Plane Plane::from_points(std::vector<Point>& points) {
     return plane;
 }
 
+Plane Plane::from_points_pca(const std::vector<Point>& points) {
+    if (points.size() < 3) return Plane();
+
+    size_t n = points.size();
+
+    // Centroid
+    double cx = 0.0, cy = 0.0, cz = 0.0;
+    for (const auto& p : points) {
+        cx += p[0]; cy += p[1]; cz += p[2];
+    }
+    cx /= n; cy /= n; cz /= n;
+
+    // Covariance matrix
+    double cxx = 0.0, cyy = 0.0, czz = 0.0;
+    double cxy = 0.0, cxz = 0.0, cyz = 0.0;
+    for (const auto& p : points) {
+        double dx = p[0] - cx, dy = p[1] - cy, dz = p[2] - cz;
+        cxx += dx * dx; cyy += dy * dy; czz += dz * dz;
+        cxy += dx * dy; cxz += dx * dz; cyz += dy * dz;
+    }
+
+    // Power iteration for eigenvectors (3 passes with deflation)
+    double eigvec[3][3];
+    double eigval[3];
+    double cov[3][3] = {{cxx, cxy, cxz}, {cxy, cyy, cyz}, {cxz, cyz, czz}};
+
+    for (int e = 0; e < 3; ++e) {
+        double vx = 1.0, vy = 0.0, vz = 0.0;
+        if (e == 1) { vx = 0.0; vy = 1.0; }
+        if (e == 2) { vx = 0.0; vz = 1.0; }
+        for (int iter = 0; iter < 100; ++iter) {
+            double nx = cov[0][0] * vx + cov[0][1] * vy + cov[0][2] * vz;
+            double ny = cov[1][0] * vx + cov[1][1] * vy + cov[1][2] * vz;
+            double nz = cov[2][0] * vx + cov[2][1] * vy + cov[2][2] * vz;
+            double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
+            if (mag < 1e-15) break;
+            vx = nx / mag; vy = ny / mag; vz = nz / mag;
+        }
+        eigvec[e][0] = vx; eigvec[e][1] = vy; eigvec[e][2] = vz;
+        eigval[e] = cov[0][0] * vx * vx + cov[1][1] * vy * vy + cov[2][2] * vz * vz
+                   + 2 * cov[0][1] * vx * vy + 2 * cov[0][2] * vx * vz + 2 * cov[1][2] * vy * vz;
+
+        // Deflate: C = C - lambda * v * v^T
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                cov[i][j] -= eigval[e] * eigvec[e][i] * eigvec[e][j];
+    }
+
+    // eigvec[0] = largest spread (x_axis), eigvec[1] = 2nd (y_axis), eigvec[2] = least (normal)
+    Vector x_axis(eigvec[0][0], eigvec[0][1], eigvec[0][2]);
+    Vector y_axis(eigvec[1][0], eigvec[1][1], eigvec[1][2]);
+    Vector z_axis = x_axis.cross(y_axis);
+    z_axis.normalize_self();
+
+    // Ensure right-handed: recompute y from z cross x
+    y_axis = z_axis.cross(x_axis);
+    y_axis.normalize_self();
+    x_axis.normalize_self();
+
+    Plane plane;
+    plane._origin = Point(cx, cy, cz);
+    plane._x_axis = x_axis;
+    plane._y_axis = y_axis;
+    plane._z_axis = z_axis;
+    plane._a = z_axis[0];
+    plane._b = z_axis[1];
+    plane._c = z_axis[2];
+    plane._d = -(plane._a * cx + plane._b * cy + plane._c * cz);
+    return plane;
+}
+
 Plane Plane::from_two_points(Point& point1, Point& point2) {
     Plane plane;
     plane._origin = point1;

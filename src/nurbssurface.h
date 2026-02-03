@@ -48,6 +48,7 @@ public:
 
     std::vector<double> m_knot[2];  // Knot vectors for u and v directions
     std::vector<double> m_cv;       // Control vertex data (homogeneous if rational)
+    NurbsCurve m_outer_loop;        // 2D trim curve in UV space (empty = untrimmed)
 
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -65,6 +66,20 @@ public:
 
     /// Create planar surface from boundary curve
     static NurbsSurface create_planar(const std::vector<NurbsCurve>& curves);
+
+    /// Loft (skinning) — surface through N section curves
+    static NurbsSurface create_loft(const std::vector<NurbsCurve>& curves, int degree_v = 3);
+
+    /// Surface of revolution — revolve profile curve around axis
+    static NurbsSurface create_revolve(const NurbsCurve& profile, const Point& axis_origin,
+                                        const Vector& axis_direction, double angle = 2.0 * 3.14159265358979323846);
+
+    /// Sweep1 — sweep profile along single rail
+    static NurbsSurface create_sweep1(const NurbsCurve& rail, const NurbsCurve& profile);
+
+    /// Sweep2 — sweep profile along two rails
+    static NurbsSurface create_sweep2(const NurbsCurve& rail1, const NurbsCurve& rail2,
+                                       const NurbsCurve& profile);
     
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
@@ -334,6 +349,18 @@ public:
     
     /// Closest point on surface to test point
     Point closest_point(const Point& point, double& u_out, double& v_out) const;
+
+    /// Set the outer trim loop (2D curve in UV space)
+    void set_outer_loop(const NurbsCurve& loop);
+
+    /// Get the outer trim loop
+    NurbsCurve get_outer_loop() const;
+
+    /// Check if surface is trimmed
+    bool is_trimmed() const;
+
+    /// Clear the outer trim loop
+    void clear_outer_loop();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization
