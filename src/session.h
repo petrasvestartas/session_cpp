@@ -15,6 +15,8 @@
 #include "mesh.h"
 #include "cylinder.h"
 #include "arrow.h"
+#include "nurbscurve.h"
+#include "nurbssurface.h"
 #include "tree.h"
 #include "bvh.h"
 #include "tolerance.h"
@@ -47,8 +49,9 @@ using Geometry = std::variant<
     std::shared_ptr<Plane>,
     std::shared_ptr<Point>,
     std::shared_ptr<PointCloud>,
+    std::shared_ptr<NurbsCurve>,
+    std::shared_ptr<NurbsSurface>,
     std::shared_ptr<Polyline>
-    // ADD NEW GEOMETRY TYPE HERE (e.g., std::shared_ptr<Sphere>)
 >;
 
 /**
@@ -176,14 +179,20 @@ public:
    * @return Shared pointer to the TreeNode created for this arrow
    */
   std::shared_ptr<TreeNode> add_arrow(std::shared_ptr<Arrow> arrow);
+  std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve);
+  std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface);
 
   /**
    * @brief Add a TreeNode to the tree hierarchy.
    * @param node The TreeNode to add
    * @param parent Optional parent TreeNode (defaults to root if not provided)
    */
-  void add(std::shared_ptr<TreeNode> node, 
+  void add(std::shared_ptr<TreeNode> node,
            std::shared_ptr<TreeNode> parent = nullptr);
+
+  /// Add geometry to session (stores object and adds to tree)
+  void add_surface(std::shared_ptr<NurbsSurface> surface);
+  void add_curve(std::shared_ptr<NurbsCurve> curve);
 
   /**
    * @brief Add an edge between two geometry objects in the graph.
@@ -325,17 +334,14 @@ public:
    * @return Session instance created from the data.
    */
   static Session jsonload(const nlohmann::json &data);
-
-  /**
-   * @brief Saves the Session instance to a JSON file.
-   * @param filepath Path where to save the JSON file.
-   */
-
-  /**
-   * @brief Loads a Session instance from a JSON file.
-   * @param filepath Path to the JSON file to load.
-   * @return Session instance loaded from the file.
-   */
+  std::string json_dumps() const;
+  static Session json_loads(const std::string& json_string);
+  void json_dump(const std::string& filename) const;
+  static Session json_load(const std::string& filename);
+  std::string pb_dumps() const;
+  static Session pb_loads(const std::string& data);
+  void pb_dump(const std::string& filename) const;
+  static Session pb_load(const std::string& filename);
 
 private:
   /**

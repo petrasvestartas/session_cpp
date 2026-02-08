@@ -48,6 +48,7 @@ option(ENABLE_PCH "Enable precompiled headers" ON)
 set(UNITY_BUILD_EXCLUDE
     src/nurbscurve.cpp
     src/nurbssurface.cpp
+    src/trimmedsurface.cpp
     src/knot.cpp
     src/mesh.cpp
 )
@@ -221,9 +222,15 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-add_executable(${PROJECT_NAME} main.cpp)
-target_link_libraries(${PROJECT_NAME} PRIVATE session_core)
-LINK_PROTOBUF(${PROJECT_NAME})
+foreach(MAIN_ID 1 2 3)
+    add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
+    target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
+    LINK_PROTOBUF(main_${MAIN_ID})
+endforeach()
+
+add_executable(bench_mesh bench_mesh.cpp)
+target_link_libraries(bench_mesh PRIVATE session_core)
+LINK_PROTOBUF(bench_mesh)
 
 #############################################################################################
 # TESTS
@@ -245,6 +252,7 @@ set(MINITEST_SOURCES
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
     src/xform_test.cpp src/mesh_test.cpp src/knot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/primitives_test.cpp
+    src/trimmedsurface_test.cpp
     src/triangulation_nurbs_test.cpp
     src/triangulation_2d_test.cpp
 )

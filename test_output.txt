@@ -1,0 +1,41 @@
+Randomness seeded to: 2359932617
+
+=== Session Ray Casting (test) ===
+1 hit(s) in 0.0279 ms
+
+=== Comprehensive 10k Mixed Geometry Test (test) ===
+
+(a) AABB BVH Collision Detection:
+  Build + query: 3.3984ms
+  Collision pairs: 3601
+
+(b) Ray BVH Intersection:
+  Query: 0.0073ms
+  Candidates: 2
+
+(c) OOBB BVH Collision Detection (Optimized):
+  BVH broad-phase: 3584 candidates
+  BVH build + query: 3.3936ms
+  Running SAT...
+    Progress: 9% (358/3584)
+    Progress: 19% (716/3584)
+    Progress: 29% (1074/3584)
+    Progress: 39% (1432/3584)
+    Progress: 49% (1790/3584)
+    Progress: 59% (2148/3584)
+    Progress: 69% (2506/3584)
+    Progress: 79% (2864/3584)
+    Progress: 89% (3222/3584)
+    Progress: 99% (3580/3584)
+  SAT: 1.7782ms
+  BVH candidate pairs: 3584
+  True OOBB collisions: 3278
+Session:  1.957ms (1 hits)
+
+=== BVH Collision Detection (test) ===
+100 boxes: build+collisions=0.0276ms (0 pairs, 217 checks)
+5000 boxes: build+collisions=1.5818ms (1496 pairs, 30086 checks)
+10000 boxes: build+collisions=3.7305ms (5819 pairs, 81684 checks)
+===============================================================================
+All tests passed (5425 assertions in 85 test cases)
+

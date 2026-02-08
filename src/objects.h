@@ -11,6 +11,8 @@
 #include "mesh.h"
 #include "cylinder.h"
 #include "arrow.h"
+#include "nurbscurve.h"
+#include "nurbssurface.h"
 #include <fstream>
 #include <memory>
 #include <string>
@@ -36,6 +38,8 @@ public:
   std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes;
   std::shared_ptr<std::vector<std::shared_ptr<Cylinder>>> cylinders;
   std::shared_ptr<std::vector<std::shared_ptr<Arrow>>> arrows;
+  std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves;
+  std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces;
 
   /**
    * @brief Constructor.
@@ -52,6 +56,8 @@ public:
     this->meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
     this->cylinders = std::make_shared<std::vector<std::shared_ptr<Cylinder>>>();
     this->arrows = std::make_shared<std::vector<std::shared_ptr<Arrow>>>();
+    this->nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
+    this->nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
   }
 
   /// Convert objects to string representation
@@ -70,16 +76,14 @@ public:
    */
   static Objects jsonload(const nlohmann::json &data);
 
-  /**
-   * @brief Saves the Objects instance to a JSON file.
-   * @param filepath Path where to save the JSON file.
-   */
-
-  /**
-   * @brief Loads an Objects instance from a JSON file.
-   * @param filepath Path to the JSON file to load.
-   * @return Objects instance loaded from the file.
-   */
+  std::string json_dumps() const;
+  static Objects json_loads(const std::string& json_string);
+  void json_dump(const std::string& filename) const;
+  static Objects json_load(const std::string& filename);
+  std::string pb_dumps() const;
+  static Objects pb_loads(const std::string& data);
+  void pb_dump(const std::string& filename) const;
+  static Objects pb_load(const std::string& filename);
 };
 /**
  * @brief  To use this operator, you can do:

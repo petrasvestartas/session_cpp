@@ -58,12 +58,14 @@ public:
   /// @return Graph instance created from the data.
   static Graph jsonload(const nlohmann::json &data);
 
-  /// @brief Load a Graph from a JSON file.
-  /// @param filepath Path to the JSON file to load.
-  /// @return Graph instance loaded from the file.
-
-  /// @brief Save the Graph to a JSON file.
-  /// @param filepath Path to the JSON file to save.
+  std::string json_dumps() const;
+  static Graph json_loads(const std::string &json_string);
+  void json_dump(const std::string &filename) const;
+  static Graph json_load(const std::string &filename);
+  std::string pb_dumps() const;
+  static Graph pb_loads(const std::string &data);
+  void pb_dump(const std::string &filename) const;
+  static Graph pb_load(const std::string &filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details
@@ -126,6 +128,9 @@ public:
   /// @return Vector of neighbor vertex names.
   /// @throws std::runtime_error If the node is not in the graph.
   std::vector<std::string> neighbors(const std::string &node);
+
+  /// @brief Get all neighbors of a node (API compatibility method).
+  std::vector<std::string> get_neighbors(const std::string &node);
 
   /// @brief Get the number of vertices in the graph.
   /// @return Number of vertices.

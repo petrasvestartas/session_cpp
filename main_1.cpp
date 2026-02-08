@@ -12,7 +12,6 @@ int main() {
     Session session("nurbs_meshing");
 
     // Closed loft
-
     NurbsCurve c1 = Primitives::circle(0, 0, 0.0, 2.0);
     NurbsCurve c2 = Primitives::circle(0, 0, 2.0, 1.0);
     NurbsCurve c3 = Primitives::circle(0, 0, 4.0, 1.5);
@@ -29,7 +28,7 @@ int main() {
         {Point(1, -12, -0), Point(1, -10, 3.0), Point(1, -7, 3.0), Point(1, -5, -0)},
     };
 
-    std::vector<NurbsCurve>  curves = {
+    std::vector<NurbsCurve> curves = {
         NurbsCurve::create(false, 3, points[0]),
         NurbsCurve::create(false, 3, points[1]),
         NurbsCurve::create(false, 3, points[2])
@@ -39,14 +38,9 @@ int main() {
     open_srf->mesh(5);
     session.add_surface(open_srf);
 
+    std::cout << open_srf->str() << std::endl;
+    std::cout << open_srf->repr() << std::endl;
 
-
-
-
-
-    std::string path = "C:/pc/3_code/code_rust/session/session_data/nurbs_meshing.json";
-    std::ofstream f(path);
-    f << session.jsondump().dump(4);
-
+    session.json_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_meshing.json");      
     return 0;
 }

@@ -2,6 +2,7 @@
 #include "graph.h"
 #include "tree.h"
 #include "intersection.h"
+#include "session.pb.h"
 #include <algorithm>
 #include <functional>
 
@@ -125,18 +126,44 @@ std::shared_ptr<TreeNode> Session::add_arrow(std::shared_ptr<Arrow> arrow) {
   objects.arrows->push_back(arrow);
   lookup[arrow->guid] = arrow;
   graph.add_node(arrow->guid, "arrow_" + arrow->name);
-  cache_geometry_aabb(arrow->guid, arrow);  // Incremental AABB caching
+  cache_geometry_aabb(arrow->guid, arrow);
   auto tree_node = std::make_shared<TreeNode>(arrow->guid);
   return tree_node;
 }
 
-void Session::add(std::shared_ptr<TreeNode> node, 
+std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve) {
+  objects.nurbscurves->push_back(nurbscurve);
+  lookup[nurbscurve->guid] = nurbscurve;
+  graph.add_node(nurbscurve->guid, "nurbscurve_" + nurbscurve->name);
+  cache_geometry_aabb(nurbscurve->guid, nurbscurve);
+  auto tree_node = std::make_shared<TreeNode>(nurbscurve->guid);
+  return tree_node;
+}
+
+std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface) {
+  objects.nurbssurfaces->push_back(nurbssurface);
+  lookup[nurbssurface->guid] = nurbssurface;
+  graph.add_node(nurbssurface->guid, "nurbssurface_" + nurbssurface->name);
+  cache_geometry_aabb(nurbssurface->guid, nurbssurface);
+  auto tree_node = std::make_shared<TreeNode>(nurbssurface->guid);
+  return tree_node;
+}
+
+void Session::add(std::shared_ptr<TreeNode> node,
                   std::shared_ptr<TreeNode> parent) {
   if (parent == nullptr) {
     tree.add(node, tree.root());
   } else {
     tree.add(node, parent);
   }
+}
+
+void Session::add_surface(std::shared_ptr<NurbsSurface> surface) {
+  add(add_nurbssurface(surface));
+}
+
+void Session::add_curve(std::shared_ptr<NurbsCurve> curve) {
+  add(add_nurbscurve(curve));
 }
 
 void Session::add_edge(const std::string &guid1, const std::string &guid2,
@@ -278,8 +305,22 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       );
       return bbox;
     }
+    else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {
+      std::vector<Point> points;
+      for (int i = 0; i < geom_ptr->cv_count(); ++i)
+        points.push_back(geom_ptr->get_cv(i));
+      if (points.empty()) return BoundingBox::from_point(Point(0, 0, 0), inflate);
+      return BoundingBox::from_points(points, inflate);
+    }
+    else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsSurface>>) {
+      std::vector<Point> points;
+      for (int i = 0; i < geom_ptr->cv_count(0); ++i)
+        for (int j = 0; j < geom_ptr->cv_count(1); ++j)
+          points.push_back(geom_ptr->get_cv(i, j));
+      if (points.empty()) return BoundingBox::from_point(Point(0, 0, 0), inflate);
+      return BoundingBox::from_points(points, inflate);
+    }
     else {
-      // Fallback - ADD YOUR NEW GEOMETRY TYPE ABOVE THIS LINE
       return BoundingBox::from_point(Point(0, 0, 0), inflate);
     }
   }, geometry);
@@ -350,6 +391,8 @@ Objects Session::get_geometry() const {
   add_to_lookup(transformed_objects.pointclouds);
   add_to_lookup(transformed_objects.meshes);
   add_to_lookup(transformed_objects.cylinders);
+  add_to_lookup(transformed_objects.nurbscurves);
+  add_to_lookup(transformed_objects.nurbssurfaces);
   add_to_lookup(transformed_objects.arrows);
   
   // Helper lambda to recursively transform nodes
@@ -448,6 +491,12 @@ Session Session::jsonload(const nlohmann::json &data) {
   for (const auto &mesh_ptr : *session.objects.meshes) {
     session.lookup[mesh_ptr->guid] = mesh_ptr;
   }
+  for (const auto &nc_ptr : *session.objects.nurbscurves) {
+    session.lookup[nc_ptr->guid] = nc_ptr;
+  }
+  for (const auto &ns_ptr : *session.objects.nurbssurfaces) {
+    session.lookup[ns_ptr->guid] = ns_ptr;
+  }
   for (const auto &plane_ptr : *session.objects.planes) {
     session.lookup[plane_ptr->guid] = plane_ptr;
   }
@@ -472,6 +521,80 @@ Session Session::jsonload(const nlohmann::json &data) {
   }
 
   return session;
+}
+
+std::string Session::json_dumps() const {
+  return jsondump().dump();
+}
+
+Session Session::json_loads(const std::string& json_string) {
+  return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
+void Session::json_dump(const std::string& filename) const {
+  std::ofstream file(filename);
+  file << jsondump().dump(4);
+}
+
+Session Session::json_load(const std::string& filename) {
+  std::ifstream file(filename);
+  nlohmann::json data = nlohmann::json::parse(file);
+  return jsonload(data);
+}
+
+std::string Session::pb_dumps() const {
+  session_proto::Session proto;
+  proto.set_name(name);
+  proto.set_guid(guid);
+  proto.mutable_objects()->ParseFromString(objects.pb_dumps());
+  proto.mutable_tree()->ParseFromString(tree.pb_dumps());
+  proto.mutable_graph()->ParseFromString(graph.pb_dumps());
+  return proto.SerializeAsString();
+}
+
+Session Session::pb_loads(const std::string& data) {
+  session_proto::Session proto;
+  proto.ParseFromString(data);
+
+  Session session(proto.name());
+  session.guid = proto.guid();
+
+  if (proto.has_objects()) {
+    session.objects = Objects::pb_loads(proto.objects().SerializeAsString());
+  }
+  if (proto.has_tree()) {
+    session.tree = Tree::pb_loads(proto.tree().SerializeAsString());
+  }
+  if (proto.has_graph()) {
+    session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
+  }
+
+  for (const auto& p : *session.objects.points) session.lookup[p->guid] = p;
+  for (const auto& l : *session.objects.lines) session.lookup[l->guid] = l;
+  for (const auto& pl : *session.objects.planes) session.lookup[pl->guid] = pl;
+  for (const auto& b : *session.objects.bboxes) session.lookup[b->guid] = b;
+  for (const auto& pl : *session.objects.polylines) session.lookup[pl->guid] = pl;
+  for (const auto& pc : *session.objects.pointclouds) session.lookup[pc->guid] = pc;
+  for (const auto& m : *session.objects.meshes) session.lookup[m->guid] = m;
+  for (const auto& c : *session.objects.cylinders) session.lookup[c->guid] = c;
+  for (const auto& a : *session.objects.arrows) session.lookup[a->guid] = a;
+  for (const auto& nc : *session.objects.nurbscurves) session.lookup[nc->guid] = nc;
+  for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid] = ns;
+
+  return session;
+}
+
+void Session::pb_dump(const std::string& filename) const {
+  std::string data = pb_dumps();
+  std::ofstream file(filename, std::ios::binary);
+  file.write(data.data(), data.size());
+}
+
+Session Session::pb_load(const std::string& filename) {
+  std::ifstream file(filename, std::ios::binary);
+  std::string data((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  return pb_loads(data);
 }
 
 // Ray Intersection
@@ -685,8 +808,13 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       
       return std::nullopt;
     }
+    else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {
+      return std::nullopt;
+    }
+    else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsSurface>>) {
+      return std::nullopt;
+    }
     else {
-      // ADD YOUR NEW GEOMETRY TYPE ABOVE THIS LINE
       return std::nullopt;
     }
   }, geometry);

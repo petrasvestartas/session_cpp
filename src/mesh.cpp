@@ -63,7 +63,7 @@ void Mesh::clear() {
 }
 
 size_t Mesh::add_vertex(const Point& position, std::optional<size_t> vkey) {
-    size_t vertex_key = vkey.value_or(max_vertex + 1);
+    size_t vertex_key = vkey.value_or(max_vertex);
     
     if (vertex_key >= max_vertex) {
         max_vertex = vertex_key + 1;
@@ -98,7 +98,7 @@ std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::o
         return std::nullopt;
     }
     
-    size_t face_key = fkey.value_or(max_face + 1);
+    size_t face_key = fkey.value_or(max_face);
     
     if (face_key >= max_face) {
         max_face = face_key + 1;

@@ -55,9 +55,14 @@ public:
     /// Deserializes a Cylinder from JSON data
     static Cylinder jsonload(const nlohmann::json& data);
     
-    /// Serializes the Cylinder to a JSON file
-    
-    /// Deserializes a Cylinder from a JSON file
+    std::string json_dumps() const;
+    static Cylinder json_loads(const std::string& json_string);
+    void json_dump(const std::string& filename) const;
+    static Cylinder json_load(const std::string& filename);
+    std::string pb_dumps() const;
+    static Cylinder pb_loads(const std::string& data);
+    void pb_dump(const std::string& filename) const;
+    static Cylinder pb_load(const std::string& filename);
 
 private:
     static Mesh create_cylinder_mesh(const Line& line, double radius);

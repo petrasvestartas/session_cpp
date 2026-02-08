@@ -10,6 +10,7 @@
 #include "nurbscurve.h"
 #include "guid.h"
 #include "json.h"
+#include "mesh.h"
 #include <vector>
 #include <string>
 #include <cmath>
@@ -49,6 +50,8 @@ public:
     std::vector<double> m_knot[2];  // Knot vectors for u and v directions
     std::vector<double> m_cv;       // Control vertex data (homogeneous if rational)
     NurbsCurve m_outer_loop;        // 2D trim curve in UV space (empty = untrimmed)
+    std::vector<NurbsCurve> m_inner_loops;  // Inner trim loops (holes)
+    mutable Mesh m_mesh;            // Cached mesh (computed on first mesh() call)
 
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -65,7 +68,7 @@ public:
     static NurbsSurface create_ruled(const NurbsCurve& curveA, const NurbsCurve& curveB);
 
     /// Create planar surface from boundary curve
-    static NurbsSurface create_planar(const std::vector<NurbsCurve>& curves);
+    static NurbsSurface create_planar(const NurbsCurve& boundary);
 
     /// Loft (skinning) — surface through N section curves
     static NurbsSurface create_loft(const std::vector<NurbsCurve>& curves, int degree_v = 3);
@@ -77,9 +80,9 @@ public:
     /// Sweep1 — sweep profile along single rail
     static NurbsSurface create_sweep1(const NurbsCurve& rail, const NurbsCurve& profile);
 
-    /// Sweep2 — sweep profile along two rails
+    /// Sweep2 — sweep shapes along two rails (interpolates between multiple cross-sections)
     static NurbsSurface create_sweep2(const NurbsCurve& rail1, const NurbsCurve& rail2,
-                                       const NurbsCurve& profile);
+                                       const std::vector<NurbsCurve>& shapes);
     
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
@@ -271,13 +274,24 @@ public:
     
     /// Evaluate point on surface at parameter (u, v)
     Point point_at(double u, double v) const;
-    
+
+    /// Fast evaluation — write xyz to output doubles (no Point construction)
+    void point_at(double u, double v, double& x, double& y, double& z) const;
+
     /// Evaluate point and derivatives on surface
     /// Returns array of [point, du, dv, duu, duv, dvv, ...]
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
-    
+
     /// Get normal vector at parameter (u, v)
     Vector normal_at(double u, double v) const;
+
+    /// Fast normal — write xyz to output doubles (no Vector construction)
+    void normal_at(double u, double v, double& nx, double& ny, double& nz) const;
+
+    /// Combined fast point + normal (single span lookup + basis computation)
+    void point_and_normal_at(double u, double v,
+                             double& px, double& py, double& pz,
+                             double& nx, double& ny, double& nz) const;
     
     /// Get point at corner (u_end, v_end) where end is 0 or 1
     Point point_at_corner(int u_end, int v_end) const;
@@ -361,6 +375,36 @@ public:
 
     /// Clear the outer trim loop
     void clear_outer_loop();
+
+    /// Add an inner trim loop (hole) from 2D UV curve
+    void add_inner_loop(const NurbsCurve& loop);
+
+    /// Add a hole by projecting a 3D curve onto the surface UV space
+    void add_hole(const NurbsCurve& curve_3d);
+
+    /// Add multiple holes
+    void add_holes(const std::vector<NurbsCurve>& curves_3d);
+
+    /// Get inner trim loop at index
+    NurbsCurve get_inner_loop(int index) const;
+
+    /// Get number of inner trim loops
+    int inner_loop_count() const;
+
+    /// Clear all inner trim loops
+    void clear_inner_loops();
+
+    /// Compute mesh via TrimeshGrid (UV parameter-space grid meshing)
+    Mesh mesh_grid(double max_angle = 20.0, double max_edge_length = 0.0,
+                   double min_edge_length = 0.0, double max_chord_height = 0.0) const;
+
+    /// Compute mesh via TrimeshDelaunay (constrained Delaunay with refinement)
+    Mesh mesh_delaunay(double max_angle = 20.0, double max_edge_length = 0.0,
+                       double min_edge_length = 0.0, double max_chord_height = 0.0) const;
+
+    /// Compute mesh — auto-selects grid for untrimmed, Delaunay for trimmed
+    Mesh mesh(double max_angle = 20.0, double max_edge_length = 0.0,
+              double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization

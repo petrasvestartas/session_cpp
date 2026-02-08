@@ -48,9 +48,14 @@ public:
   /// Create point from JSON data
   static Tree jsonload(const nlohmann::json &data);
 
-  /// Serialize to JSON file
-
-  /// Deserialize from JSON file
+  std::string json_dumps() const;
+  static Tree json_loads(const std::string& json_string);
+  void json_dump(const std::string& filename) const;
+  static Tree json_load(const std::string& filename);
+  std::string pb_dumps() const;
+  static Tree pb_loads(const std::string& data);
+  void pb_dump(const std::string& filename) const;
+  static Tree pb_load(const std::string& filename);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details

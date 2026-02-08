@@ -1,4 +1,6 @@
 #include "nurbssurface.h"
+#include "trimesh_grid.h"
+#include "trimesh_delaunay.h"
 #include "knot.h"
 #include "fmt/core.h"
 #include <cstring>
@@ -391,17 +393,210 @@ Point NurbsSurface::point_at(double u, double v) const {
                 m_dim > 2 ? point[2] : 0);
 }
 
+static void eval_basis_stack(const double* knot, int order, int span, double t, double* out) {
+    int d = order - 1;
+    int kb = span + d;
+    // Clamped boundary: degenerate initial interval -> basis is endpoint function
+    if (knot[kb - 1] == knot[kb]) {
+        for (int i = 0; i < order; i++) out[i] = 0;
+        if (t <= knot[kb]) out[0] = 1.0;
+        else out[order - 1] = 1.0;
+        return;
+    }
+    double N[100];
+    std::memset(N, 0, order * order * sizeof(double));
+    N[order * order - 1] = 1.0;
+    double left[10], right[10];
+    int N_idx = order * order - 1;
+    int kr = kb, kl = kb - 1;
+    for (int j = 0; j < d; j++) {
+        int N0 = N_idx;
+        N_idx -= (order + 1);
+        left[j] = t - knot[kl];
+        right[j] = knot[kr] - t;
+        kl--; kr++;
+        double x = 0.0;
+        for (int r = 0; r <= j; r++) {
+            double denom = left[j - r] + right[r];
+            double y = (std::abs(denom) > 0.0) ? N[N0 + r] / denom : 0.0;
+            N[N_idx + r] = x + right[r] * y;
+            x = left[j - r] * y;
+        }
+        N[N_idx + j + 1] = x;
+    }
+    for (int i = 0; i < order; i++) out[i] = N[i];
+}
+
+static void eval_basis_derivs_stack(const double* knot, int order, int span, double t,
+                                     double* basis, double* deriv) {
+    int degree = order - 1;
+    int kb = span + degree;
+    for (int i = 0; i < order; i++) { basis[i] = 0; deriv[i] = 0; }
+    if (knot[kb - 1] == knot[kb]) {
+        if (t <= knot[kb]) basis[0] = 1.0;
+        else basis[order - 1] = 1.0;
+        return;
+    }
+
+    double ndu[10][10];
+    std::memset(ndu, 0, order * order * sizeof(double));
+    ndu[0][0] = 1.0;
+    double left[10], right[10];
+    for (int j = 1; j <= degree; j++) {
+        left[j] = t - knot[kb - j];
+        right[j] = knot[kb + j - 1] - t;
+        double saved = 0.0;
+        for (int r = 0; r < j; r++) {
+            ndu[j][r] = right[r + 1] + left[j - r];
+            double temp = (std::abs(ndu[j][r]) > 0.0) ? ndu[r][j - 1] / ndu[j][r] : 0.0;
+            ndu[r][j] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+        ndu[j][j] = saved;
+    }
+    for (int j = 0; j <= degree; j++) basis[j] = ndu[j][degree];
+
+    double a[2][10];
+    std::memset(a, 0, 2 * order * sizeof(double));
+    for (int r = 0; r <= degree; r++) {
+        int s1 = 0, s2 = 1;
+        a[0][0] = 1.0;
+        double d = 0.0;
+        int rk = r - 1, pk = degree - 1;
+        if (r >= 1) {
+            double denom = ndu[pk + 1][rk];
+            a[s2][0] = (std::abs(denom) > 0.0) ? a[s1][0] / denom : 0.0;
+            d = a[s2][0] * ndu[rk][pk];
+        }
+        int j1 = (rk >= -1) ? 1 : -rk;
+        int j2 = (r - 1 <= pk) ? 0 : degree - r;
+        for (int j = j1; j <= j2; j++) {
+            double denom = ndu[pk + 1][rk + j];
+            a[s2][j] = (std::abs(denom) > 0.0) ? (a[s1][j] - a[s1][j - 1]) / denom : 0.0;
+            d += a[s2][j] * ndu[rk + j][pk];
+        }
+        if (r <= pk) {
+            double denom = ndu[pk + 1][r];
+            a[s2][1] = (std::abs(denom) > 0.0) ? -a[s1][0] / denom : 0.0;
+            d += a[s2][1] * ndu[r][pk];
+        }
+        deriv[r] = d;
+        std::memset(a[0], 0, order * sizeof(double));
+        std::memset(a[1], 0, order * sizeof(double));
+    }
+    for (int j = 0; j <= degree; j++) deriv[j] *= degree;
+}
+
+void NurbsSurface::point_at(double u, double v, double& ox, double& oy, double& oz) const {
+    if (!is_valid()) { ox = oy = oz = 0; return; }
+    int su = find_span(0, u), sv = find_span(1, v);
+    double Nu[10], Nv[10];
+    eval_basis_stack(m_knot[0].data(), m_order[0], su, u, Nu);
+    eval_basis_stack(m_knot[1].data(), m_order[1], sv, v, Nv);
+    int cvs = m_is_rat ? (m_dim + 1) : m_dim;
+    double pt[4] = {};
+    for (int i = 0; i < m_order[0]; i++)
+        for (int j = 0; j < m_order[1]; j++) {
+            double c = Nu[i] * Nv[j];
+            const double* p = cv(su + i, sv + j);
+            if (p) for (int d = 0; d < cvs; d++) pt[d] += c * p[d];
+        }
+    if (m_is_rat && std::abs(pt[m_dim]) > 1e-14) {
+        double w = pt[m_dim]; ox = pt[0]/w; oy = pt[1]/w; oz = pt[2]/w;
+    } else {
+        ox = pt[0]; oy = m_dim > 1 ? pt[1] : 0; oz = m_dim > 2 ? pt[2] : 0;
+    }
+}
+
+void NurbsSurface::point_and_normal_at(double u, double v,
+                                       double& px, double& py, double& pz,
+                                       double& nx, double& ny, double& nz) const {
+    if (!is_valid()) { px = py = pz = 0; nx = 0; ny = 0; nz = 1; return; }
+    int su = find_span(0, u), sv = find_span(1, v);
+    double Nu0[10], Nu1[10], Nv0[10], Nv1[10];
+    eval_basis_derivs_stack(m_knot[0].data(), m_order[0], su, u, Nu0, Nu1);
+    eval_basis_derivs_stack(m_knot[1].data(), m_order[1], sv, v, Nv0, Nv1);
+    int cvs = m_is_rat ? (m_dim + 1) : m_dim;
+    double S0[4] = {}, Su[4] = {}, Sv[4] = {};
+    for (int i = 0; i < m_order[0]; i++)
+        for (int j = 0; j < m_order[1]; j++) {
+            const double* p = cv(su + i, sv + j);
+            if (!p) continue;
+            double c0 = Nu0[i] * Nv0[j], cu = Nu1[i] * Nv0[j], cv_c = Nu0[i] * Nv1[j];
+            for (int d = 0; d < cvs; d++) {
+                S0[d] += c0 * p[d]; Su[d] += cu * p[d]; Sv[d] += cv_c * p[d];
+            }
+        }
+    double sux, suy, suz, svx, svy, svz;
+    if (m_is_rat && std::abs(S0[m_dim]) > 1e-14) {
+        double w = S0[m_dim];
+        px = S0[0]/w; py = S0[1]/w; pz = S0[2]/w;
+        sux = Su[0]/w; suy = Su[1]/w; suz = Su[2]/w;
+        svx = Sv[0]/w; svy = Sv[1]/w; svz = Sv[2]/w;
+    } else {
+        px = S0[0]; py = m_dim > 1 ? S0[1] : 0; pz = m_dim > 2 ? S0[2] : 0;
+        sux = Su[0]; suy = m_dim > 1 ? Su[1] : 0; suz = m_dim > 2 ? Su[2] : 0;
+        svx = Sv[0]; svy = m_dim > 1 ? Sv[1] : 0; svz = m_dim > 2 ? Sv[2] : 0;
+    }
+    nx = suy * svz - suz * svy;
+    ny = suz * svx - sux * svz;
+    nz = sux * svy - suy * svx;
+    double len = std::sqrt(nx*nx + ny*ny + nz*nz);
+    if (len < 1e-14) { nx = 0; ny = 0; nz = 1; return; }
+    nx /= len; ny /= len; nz /= len;
+}
+
+void NurbsSurface::normal_at(double u, double v, double& nx, double& ny, double& nz) const {
+    if (!is_valid()) { nx = 0; ny = 0; nz = 1; return; }
+    int su = find_span(0, u), sv = find_span(1, v);
+    double Nu0[10], Nu1[10], Nv0[10], Nv1[10];
+    eval_basis_derivs_stack(m_knot[0].data(), m_order[0], su, u, Nu0, Nu1);
+    eval_basis_derivs_stack(m_knot[1].data(), m_order[1], sv, v, Nv0, Nv1);
+    int cvs = m_is_rat ? (m_dim + 1) : m_dim;
+    double Su[4] = {}, Sv[4] = {};
+    for (int i = 0; i < m_order[0]; i++)
+        for (int j = 0; j < m_order[1]; j++) {
+            const double* p = cv(su + i, sv + j);
+            if (!p) continue;
+            double cu = Nu1[i] * Nv0[j], cv_c = Nu0[i] * Nv1[j];
+            for (int d = 0; d < cvs; d++) { Su[d] += cu * p[d]; Sv[d] += cv_c * p[d]; }
+        }
+    double sux, suy, suz, svx, svy, svz;
+    if (m_is_rat) {
+        double S0[4] = {};
+        for (int i = 0; i < m_order[0]; i++)
+            for (int j = 0; j < m_order[1]; j++) {
+                const double* p = cv(su + i, sv + j);
+                if (!p) continue;
+                double c = Nu0[i] * Nv0[j];
+                for (int d = 0; d < cvs; d++) S0[d] += c * p[d];
+            }
+        double w = S0[m_dim]; if (std::abs(w) < 1e-14) { nx = 0; ny = 0; nz = 1; return; }
+        sux = Su[0]/w; suy = Su[1]/w; suz = Su[2]/w;
+        svx = Sv[0]/w; svy = Sv[1]/w; svz = Sv[2]/w;
+    } else {
+        sux = Su[0]; suy = m_dim > 1 ? Su[1] : 0; suz = m_dim > 2 ? Su[2] : 0;
+        svx = Sv[0]; svy = m_dim > 1 ? Sv[1] : 0; svz = m_dim > 2 ? Sv[2] : 0;
+    }
+    nx = suy * svz - suz * svy;
+    ny = suz * svx - sux * svz;
+    nz = sux * svy - suy * svx;
+    double len = std::sqrt(nx*nx + ny*ny + nz*nz);
+    if (len < 1e-14) { nx = 0; ny = 0; nz = 1; return; }
+    nx /= len; ny /= len; nz /= len;
+}
+
 Vector NurbsSurface::normal_at(double u, double v) const {
     auto derivs = evaluate(u, v, 1);
     if (derivs.size() < 3) return Vector(0, 0, 1);
-    
+
     Vector du = derivs[1];
     Vector dv = derivs[2];
     Vector normal = du.cross(dv);
-    
+
     double len = normal.magnitude();
     if (len < 1e-14) return Vector(0, 0, 1);
-    
+
     return normal / len;
 }
 
@@ -413,6 +608,71 @@ void NurbsSurface::set_outer_loop(const NurbsCurve& loop) { m_outer_loop = loop;
 NurbsCurve NurbsSurface::get_outer_loop() const { return m_outer_loop; }
 bool NurbsSurface::is_trimmed() const { return m_outer_loop.is_valid(); }
 void NurbsSurface::clear_outer_loop() { m_outer_loop = NurbsCurve(); }
+void NurbsSurface::add_inner_loop(const NurbsCurve& loop) { m_inner_loops.push_back(loop); }
+
+void NurbsSurface::add_hole(const NurbsCurve& curve_3d) {
+    auto dom = curve_3d.domain();
+    auto sdom_u = domain(0);
+    auto sdom_v = domain(1);
+    double range_u = sdom_u.second - sdom_u.first;
+    double range_v = sdom_v.second - sdom_v.first;
+
+    // Sample the 3D curve and project each point to UV
+    int n_samples = std::max(curve_3d.cv_count() * 4, 32);
+    std::vector<Point> uv_pts;
+    for (int i = 0; i < n_samples; ++i) {
+        double t = dom.first + (dom.second - dom.first) * i / n_samples;
+        Point pt3d = curve_3d.point_at(t);
+        double u, v;
+        closest_point(pt3d, u, v);
+        // Normalize to [0,1] UV space
+        double nu = (u - sdom_u.first) / range_u;
+        double nv = (v - sdom_v.first) / range_v;
+        uv_pts.push_back(Point(nu, nv, 0.0));
+    }
+    if (uv_pts.size() >= 3)
+        add_inner_loop(NurbsCurve::create(true, 1, uv_pts));
+}
+
+void NurbsSurface::add_holes(const std::vector<NurbsCurve>& curves_3d) {
+    for (const auto& crv : curves_3d) add_hole(crv);
+}
+NurbsCurve NurbsSurface::get_inner_loop(int index) const { return m_inner_loops[index]; }
+int NurbsSurface::inner_loop_count() const { return static_cast<int>(m_inner_loops.size()); }
+void NurbsSurface::clear_inner_loops() { m_inner_loops.clear(); }
+
+Mesh NurbsSurface::mesh_grid(double max_angle, double max_edge_length,
+                             double min_edge_length, double max_chord_height) const {
+    if (m_mesh.number_of_vertices() == 0 && is_valid()) {
+        TrimeshGrid mesher(*this);
+        mesher.set_max_angle(max_angle)
+              .set_max_edge_length(max_edge_length)
+              .set_min_edge_length(min_edge_length)
+              .set_max_chord_height(max_chord_height);
+        m_mesh = mesher.mesh();
+    }
+    return m_mesh;
+}
+
+Mesh NurbsSurface::mesh_delaunay(double max_angle, double max_edge_length,
+                                  double min_edge_length, double max_chord_height) const {
+    if (m_mesh.number_of_vertices() == 0 && is_valid()) {
+        TrimeshDelaunay mesher(*this);
+        mesher.set_max_angle(max_angle)
+              .set_max_edge_length(max_edge_length)
+              .set_min_edge_length(min_edge_length)
+              .set_max_chord_height(max_chord_height);
+        m_mesh = mesher.mesh();
+    }
+    return m_mesh;
+}
+
+Mesh NurbsSurface::mesh(double max_angle, double max_edge_length,
+                        double min_edge_length, double max_chord_height) const {
+    if (is_trimmed())
+        return mesh_delaunay(max_angle, max_edge_length, min_edge_length, max_chord_height);
+    return mesh_grid(max_angle, max_edge_length, min_edge_length, max_chord_height);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // JSON Serialization
@@ -437,6 +697,16 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
     j["control_points"] = m_cv;
     if (is_trimmed()) {
         j["outer_loop"] = m_outer_loop.jsondump();
+    }
+    if (!m_inner_loops.empty()) {
+        nlohmann::ordered_json arr = nlohmann::ordered_json::array();
+        for (const auto& loop : m_inner_loops) {
+            arr.push_back(loop.jsondump());
+        }
+        j["inner_loops"] = arr;
+    }
+    if (m_mesh.number_of_vertices() > 0) {
+        j["mesh"] = m_mesh.jsondump();
     }
     return j;
 }
@@ -485,6 +755,8 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     m_knot[1] = src.m_knot[1];
     m_cv = src.m_cv;
     m_outer_loop = src.m_outer_loop;
+    m_inner_loops = src.m_inner_loops;
+    m_mesh = src.m_mesh;
 }
 
 int NurbsSurface::find_span(int dir, double t) const {
@@ -1040,9 +1312,54 @@ double NurbsSurface::area(double tolerance) const {
 }
 
 Point NurbsSurface::closest_point(const Point& point, double& u_out, double& v_out) const {
-    u_out = 0.5;
-    v_out = 0.5;
-    return Point(0, 0, 0); // Stub
+    auto dom_u = domain(0);
+    auto dom_v = domain(1);
+
+    // Coarse grid search for initial guess
+    int nu = 16, nv = 16;
+    double best_dist2 = 1e300;
+    double best_u = (dom_u.first + dom_u.second) * 0.5;
+    double best_v = (dom_v.first + dom_v.second) * 0.5;
+    for (int i = 0; i <= nu; ++i) {
+        double u = dom_u.first + (dom_u.second - dom_u.first) * i / nu;
+        for (int j = 0; j <= nv; ++j) {
+            double v = dom_v.first + (dom_v.second - dom_v.first) * j / nv;
+            double px, py, pz;
+            point_at(u, v, px, py, pz);
+            double dx = px - point[0], dy = py - point[1], dz = pz - point[2];
+            double d2 = dx*dx + dy*dy + dz*dz;
+            if (d2 < best_dist2) { best_dist2 = d2; best_u = u; best_v = v; }
+        }
+    }
+
+    // Newton iteration to refine
+    double u = best_u, v = best_v;
+    for (int iter = 0; iter < 20; ++iter) {
+        auto derivs = evaluate(u, v, 1);
+        double dx = derivs[0][0] - point[0];
+        double dy = derivs[0][1] - point[1];
+        double dz = derivs[0][2] - point[2];
+        double su0 = derivs[1][0], su1 = derivs[1][1], su2 = derivs[1][2];
+        double sv0 = derivs[2][0], sv1 = derivs[2][1], sv2 = derivs[2][2];
+        double fu = dx*su0 + dy*su1 + dz*su2;
+        double fv = dx*sv0 + dy*sv1 + dz*sv2;
+        if (std::abs(fu) < 1e-14 && std::abs(fv) < 1e-14) break;
+        double juu = su0*su0 + su1*su1 + su2*su2;
+        double juv = su0*sv0 + su1*sv1 + su2*sv2;
+        double jvv = sv0*sv0 + sv1*sv1 + sv2*sv2;
+        double det = juu*jvv - juv*juv;
+        if (std::abs(det) < 1e-30) break;
+        double du = -(jvv*fu - juv*fv) / det;
+        double dv = -(juu*fv - juv*fu) / det;
+        u += du; v += dv;
+        u = std::max(dom_u.first, std::min(dom_u.second, u));
+        v = std::max(dom_v.first, std::min(dom_v.second, v));
+        if (du*du + dv*dv < 1e-28) break;
+    }
+
+    u_out = u;
+    v_out = v;
+    return point_at(u, v);
 }
 
 NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
@@ -1081,6 +1398,14 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
         }
         if (data.contains("outer_loop")) {
             surface.m_outer_loop = NurbsCurve::jsonload(data["outer_loop"]);
+        }
+        if (data.contains("inner_loops")) {
+            for (const auto& loop_data : data["inner_loops"]) {
+                surface.m_inner_loops.push_back(NurbsCurve::jsonload(loop_data));
+            }
+        }
+        if (data.contains("mesh") && !data["mesh"].is_null()) {
+            surface.m_mesh = Mesh::jsonload(data["mesh"]);
         }
     }
 
@@ -1154,6 +1479,20 @@ std::string NurbsSurface::pb_dumps() const {
         xform_proto->add_matrix(xform.m[i]);
     }
 
+    // Outer loop
+    if (is_trimmed()) {
+        std::string loop_data = m_outer_loop.pb_dumps();
+        auto* ol = proto.mutable_outer_loop();
+        ol->ParseFromString(loop_data);
+    }
+
+    // Inner loops
+    for (const auto& inner : m_inner_loops) {
+        std::string loop_data = inner.pb_dumps();
+        auto* il = proto.add_inner_loops();
+        il->ParseFromString(loop_data);
+    }
+
     return proto.SerializeAsString();
 }
 
@@ -1205,6 +1544,18 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
     surface.xform.name = xform_proto.name();
     for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
         surface.xform.m[i] = xform_proto.matrix(i);
+    }
+
+    // Load outer loop
+    if (proto.has_outer_loop()) {
+        std::string loop_data = proto.outer_loop().SerializeAsString();
+        surface.m_outer_loop = NurbsCurve::pb_loads(loop_data);
+    }
+
+    // Load inner loops
+    for (int i = 0; i < proto.inner_loops_size(); ++i) {
+        std::string loop_data = proto.inner_loops(i).SerializeAsString();
+        surface.m_inner_loops.push_back(NurbsCurve::pb_loads(loop_data));
     }
 
     return surface;
@@ -1368,17 +1719,13 @@ NurbsSurface NurbsSurface::create_ruled(const NurbsCurve& curveA, const NurbsCur
     return surface;
 }
 
-NurbsSurface NurbsSurface::create_planar(const std::vector<NurbsCurve>& curves) {
+NurbsSurface NurbsSurface::create_planar(const NurbsCurve& boundary) {
     NurbsSurface surface;
-    if (curves.empty()) return surface;
 
-    // Collect all control points from all curves
+    // Collect control points from boundary
     std::vector<Point> all_pts;
-    for (const auto& crv : curves) {
-        for (int i = 0; i < crv.cv_count(); i++) {
-            all_pts.push_back(crv.get_cv(i));
-        }
-    }
+    for (int i = 0; i < boundary.cv_count(); i++)
+        all_pts.push_back(boundary.get_cv(i));
     if (all_pts.size() < 3) return surface;
 
     // Fit plane through points using PCA
@@ -1436,23 +1783,39 @@ NurbsSurface NurbsSurface::create_planar(const std::vector<NurbsCurve>& curves) 
     surface.set_cv(1, 1, plane_pt(max_u, max_v));
 
     // Compute outer trim loop in UV space from boundary curves
-    std::vector<Point> uv_pts;
-    for (const auto& crv : curves) {
-        auto [pts3d, params] = crv.divide_by_count(50, true);
-        for (const auto& pt : pts3d) {
-            double dx = pt[0] - orig[0];
-            double dy = pt[1] - orig[1];
-            double dz = pt[2] - orig[2];
-            double pu = dx * xax[0] + dy * xax[1] + dz * xax[2];
-            double pv = dx * yax[0] + dy * yax[1] + dz * yax[2];
-            double nu = (pu - min_u) / range_u;
-            double nv = (pv - min_v) / range_v;
-            uv_pts.push_back(Point(nu, nv, 0.0));
+    auto project_to_uv = [&](const Point& pt) -> Point {
+        double dx = pt[0] - orig[0], dy = pt[1] - orig[1], dz = pt[2] - orig[2];
+        double nu = (dx * xax[0] + dy * xax[1] + dz * xax[2] - min_u) / range_u;
+        double nv = (dx * yax[0] + dy * yax[1] + dz * yax[2] - min_v) / range_v;
+        return Point(nu, nv, 0.0);
+    };
+
+    // Project boundary curve to UV
+    auto project_curve_to_uv = [&](const NurbsCurve& crv) -> std::vector<Point> {
+        std::vector<Point> pts;
+        if (crv.degree() <= 1) {
+            for (int i = 0; i < crv.cv_count(); ++i)
+                pts.push_back(project_to_uv(crv.get_cv(i)));
+        } else {
+            auto spans = crv.get_span_vector();
+            for (size_t si = 0; si + 1 < spans.size(); ++si) {
+                int n_sub = 10;
+                for (int k = 0; k <= n_sub; ++k) {
+                    double t = spans[si] + (spans[si + 1] - spans[si]) * k / n_sub;
+                    Point uv = project_to_uv(crv.point_at(t));
+                    if (pts.empty() || (uv[0] - pts.back()[0]) * (uv[0] - pts.back()[0]) +
+                        (uv[1] - pts.back()[1]) * (uv[1] - pts.back()[1]) > 1e-24)
+                        pts.push_back(uv);
+                }
+            }
         }
-    }
+        return pts;
+    };
+
+    std::vector<Point> uv_pts = project_curve_to_uv(boundary);
 
     if (uv_pts.size() >= 3) {
-        NurbsCurve loop = NurbsCurve::create(false, 3, uv_pts);
+        NurbsCurve loop = NurbsCurve::create(false, 1, uv_pts);
         surface.set_outer_loop(loop);
     }
 
@@ -1578,15 +1941,16 @@ bool is_knot_vector_clamped(int order, int cv_count, const std::vector<double>& 
     if (static_cast<int>(knot.size()) != order + cv_count - 2) return false;
     
     int degree = order - 1;
-    
-    // Check start
-    for (int i = 1; i < degree + 1; i++) {
+
+    // OpenNURBS convention: first (order-1) knots equal, last (order-1) knots equal
+    // Check start: knot[0] == knot[1] == ... == knot[degree-1]
+    for (int i = 1; i < degree; i++) {
         if (std::abs(knot[i] - knot[0]) > 1e-10) return false;
     }
-    
-    // Check end
+
+    // Check end: knot[last] == knot[last-1] == ... == knot[last-degree+1]
     int last = static_cast<int>(knot.size()) - 1;
-    for (int i = last - 1; i >= last - degree; i--) {
+    for (int i = last - 1; i > last - degree; i--) {
         if (std::abs(knot[i] - knot[last]) > 1e-10) return false;
     }
     
@@ -2122,6 +2486,8 @@ NurbsSurface NurbsSurface::create_loft(const std::vector<NurbsCurve>& input_curv
     std::vector<NurbsCurve> curves = input_curves;
     make_curves_compatible(curves);
 
+    make_curves_compatible(curves);
+
     int n_sections = static_cast<int>(curves.size());
     int cv_count_u = curves[0].cv_count();
     int order_u = curves[0].order();
@@ -2192,32 +2558,8 @@ NurbsSurface NurbsSurface::create_loft(const std::vector<NurbsCurve>& input_curv
     }
 
     // For each u-index, interpolate through the section curve CVs in the v-direction
-    // When degree_v == n_sections - 1, the knot vector is fully clamped and interpolation
-    // is exact, so we can just copy CVs directly. For lower degrees, we need to solve.
-    if (degree_v == n_sections - 1) {
-        // Direct copy: each section's CVs become a row of the surface
-        for (int k = 0; k < n_sections; k++) {
-            for (int i = 0; i < cv_count_u; i++) {
-                if (is_rat) {
-                    double x, y, z, w;
-                    curves[k].get_cv_4d(i, x, y, z, w);
-                    surface.set_cv_4d(i, k, x, y, z, w);
-                } else {
-                    surface.set_cv(i, k, curves[k].get_cv(i));
-                }
-            }
-        }
-    } else {
-        // Solve B-spline interpolation in v-direction for each u-index
-        // Build basis matrix N[k][j] = N_j(v_params[k])
-        // We need to evaluate basis functions at each v_param
-
-        // For non-rational case, solve per u-index:
-        // For each i in [0, cv_count_u), collect points P[k] = curve[k].get_cv(i)
-        // Solve: sum_j N_j(v_k) * Q[j] = P[k] for all k
-        // This is a general linear system (not necessarily tridiagonal for arbitrary degree)
-
-        // Build the basis matrix
+    // Always solve the interpolation system N * Q = P to find surface control points
+    {
         int n = n_sections;
         std::vector<std::vector<double>> N_matrix(n, std::vector<double>(n, 0.0));
 
@@ -2243,7 +2585,12 @@ NurbsSurface NurbsSurface::create_loft(const std::vector<NurbsCurve>& input_curv
             int knot_base = span + d;
 
             if (knots_v[knot_base - 1] == knots_v[knot_base]) {
-                // Degenerate
+                // Clamped boundary: set endpoint basis function
+                if (t <= knots_v[knot_base]) {
+                    N_matrix[k][span] = 1.0;
+                } else {
+                    N_matrix[k][span + order_v - 1] = 1.0;
+                }
                 continue;
             }
 
@@ -2266,7 +2613,8 @@ NurbsSurface NurbsSurface::create_loft(const std::vector<NurbsCurve>& input_curv
                 for (int r = 0; r <= j; r++) {
                     double a0 = left[j - r];
                     double a1 = right[r];
-                    double y = Nvals[N0_idx + r] / (a0 + a1);
+                    double denom = a0 + a1;
+                    double y = (denom != 0.0) ? Nvals[N0_idx + r] / denom : 0.0;
                     Nvals[N_idx + r] = x + a1 * y;
                     x = a0 * y;
                 }
@@ -2510,133 +2858,270 @@ NurbsSurface NurbsSurface::create_sweep1(const NurbsCurve& rail, const NurbsCurv
     NurbsSurface surface;
     if (!rail.is_valid() || !profile.is_valid()) return surface;
 
-    // Sample RMF frames along rail
-    int N = std::max(rail.cv_count() * 2, 20);
+    // Convert closed-but-clamped profile to periodic for smooth seam
+    NurbsCurve working_profile = profile;
+    if (profile.is_closed() && !profile.is_periodic()) {
+        int nc_orig = profile.cv_count();
+        int deg = profile.degree();
+        int ord = profile.order();
+        bool is_rat = profile.is_rational();
+        Point first_cv = profile.get_cv(0);
+        Point last_cv = profile.get_cv(nc_orig - 1);
+        if (first_cv.distance(last_cv) < 1e-10) {
+            int unique_cv = nc_orig - 1;
+            int periodic_cv = unique_cv + deg;
+            NurbsCurve pcrv(3, is_rat, ord, periodic_cv);
+            for (int i = 0; i < unique_cv; i++) pcrv.set_cv(i, profile.get_cv(i));
+            for (int i = 0; i < deg; i++) pcrv.set_cv(unique_cv + i, profile.get_cv(i));
+            if (is_rat) {
+                for (int i = 0; i < unique_cv; i++) pcrv.set_weight(i, profile.weight(i));
+                for (int i = 0; i < deg; i++) pcrv.set_weight(unique_cv + i, profile.weight(i));
+            }
+            int kc = ord + periodic_cv - 2;
+            for (int i = 0; i < kc; i++) pcrv.set_knot(i, (i - (ord - 2)) * 1.0);
+            pcrv.set_domain(0.0, pcrv.length());
+            working_profile = pcrv;
+        }
+    }
+
+    int N = std::min(std::max(rail.span_count() * 2 + 1, 5), 20);
     std::vector<Plane> frames = rail.get_perpendicular_planes(N);
     if (frames.empty()) return surface;
 
-    // Get profile's local frame at its start
-    Point profile_origin = profile.point_at_start();
+    // Center at bounding box center of profile CVs
+    double cx = 0, cy = 0, cz = 0;
+    int nc = working_profile.cv_count();
+    for (int k = 0; k < nc; k++) {
+        Point cv = working_profile.get_cv(k);
+        cx += cv[0]; cy += cv[1]; cz += cv[2];
+    }
+    cx /= nc; cy /= nc; cz /= nc;
 
-    // Position profile copies at each frame
+    // Compute profile plane from 3 evaluated points
+    auto dom = working_profile.domain();
+    double t0 = dom.first, t1 = dom.second;
+    Point pa = working_profile.point_at(t0);
+    Point pb = working_profile.point_at(t0 + (t1 - t0) / 3.0);
+    Point pc = working_profile.point_at(t0 + 2.0 * (t1 - t0) / 3.0);
+    Vector v1(pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]);
+    Vector v2(pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]);
+    Vector prof_normal = v1.cross(v2);
+    double nlen = prof_normal.magnitude();
+    if (nlen < 1e-14) prof_normal = Vector(1, 0, 0);
+    else prof_normal = prof_normal / nlen;
+
+    // Profile local frame: prof_x from center to first eval point, orthogonalized
+    Vector prof_x(pa[0] - cx, pa[1] - cy, pa[2] - cz);
+    double pxlen = prof_x.magnitude();
+    if (pxlen < 1e-14) prof_x = Vector(0, 1, 0);
+    else prof_x = prof_x / pxlen;
+    // Remove component along normal
+    double dot = prof_x[0] * prof_normal[0] + prof_x[1] * prof_normal[1] + prof_x[2] * prof_normal[2];
+    prof_x = Vector(prof_x[0] - dot * prof_normal[0], prof_x[1] - dot * prof_normal[1], prof_x[2] - dot * prof_normal[2]);
+    pxlen = prof_x.magnitude();
+    if (pxlen < 1e-14) prof_x = Vector(0, 1, 0);
+    else prof_x = prof_x / pxlen;
+    Vector prof_y = prof_normal.cross(prof_x);
+    double pylen = prof_y.magnitude();
+    if (pylen > 1e-14) prof_y = prof_y / pylen;
+
     std::vector<NurbsCurve> positioned_profiles;
     positioned_profiles.reserve(frames.size());
 
     for (size_t i = 0; i < frames.size(); i++) {
-        NurbsCurve prof_copy = profile;
+        NurbsCurve prof_copy = working_profile;
         Plane& frame = frames[i];
-        Point frame_origin = frame.origin();
-        Vector frame_x = frame.x_axis();
-        Vector frame_y = frame.y_axis();
-        Vector frame_z = frame.z_axis();
+        Point fo = frame.origin();
+        Vector fx = frame.x_axis();
+        Vector fy = frame.y_axis();
+        Vector fz = frame.z_axis();
 
-        // Build transformation: profile local space -> frame
-        // Profile is in world space, so we translate to origin, then map to frame
-        Xform xf = Xform::identity();
+        Xform t1x = Xform::translation(-cx, -cy, -cz);
 
-        // Step 1: Translate profile so its start is at origin
-        Xform t1 = Xform::translation(-profile_origin[0], -profile_origin[1], -profile_origin[2]);
-
-        // Step 2: Rotate + scale to align with frame
-        // Map standard axes to frame axes
+        // R = T * S^T: maps prof_normal→fz(tangent), prof_x→fx, prof_y→fy
+        // S = [prof_x | prof_y | prof_normal] (source frame columns)
+        // T = [fx | fy | fz] (target frame columns)
+        // R = T * S^T where T=[fx|fy|fz], S=[prof_x|prof_y|prof_normal]
         Xform rot = Xform::identity();
-        rot.m[0] = frame_x[0]; rot.m[1] = frame_y[0]; rot.m[2] = frame_z[0]; rot.m[3] = frame_origin[0];
-        rot.m[4] = frame_x[1]; rot.m[5] = frame_y[1]; rot.m[6] = frame_z[1]; rot.m[7] = frame_origin[1];
-        rot.m[8] = frame_x[2]; rot.m[9] = frame_y[2]; rot.m[10] = frame_z[2]; rot.m[11] = frame_origin[2];
-        rot.m[12] = 0; rot.m[13] = 0; rot.m[14] = 0; rot.m[15] = 1;
+        rot.m[0]  = fx[0]*prof_x[0] + fy[0]*prof_y[0] + fz[0]*prof_normal[0];
+        rot.m[1]  = fx[1]*prof_x[0] + fy[1]*prof_y[0] + fz[1]*prof_normal[0];
+        rot.m[2]  = fx[2]*prof_x[0] + fy[2]*prof_y[0] + fz[2]*prof_normal[0];
+        rot.m[4]  = fx[0]*prof_x[1] + fy[0]*prof_y[1] + fz[0]*prof_normal[1];
+        rot.m[5]  = fx[1]*prof_x[1] + fy[1]*prof_y[1] + fz[1]*prof_normal[1];
+        rot.m[6]  = fx[2]*prof_x[1] + fy[2]*prof_y[1] + fz[2]*prof_normal[1];
+        rot.m[8]  = fx[0]*prof_x[2] + fy[0]*prof_y[2] + fz[0]*prof_normal[2];
+        rot.m[9]  = fx[1]*prof_x[2] + fy[1]*prof_y[2] + fz[1]*prof_normal[2];
+        rot.m[10] = fx[2]*prof_x[2] + fy[2]*prof_y[2] + fz[2]*prof_normal[2];
+        rot.m[12] = fo[0]; rot.m[13] = fo[1]; rot.m[14] = fo[2];
 
-        // Compose: first translate to origin, then apply rotation+translation
-        // Combined: rot * t1
-        // Apply translation first, then rotation
-        prof_copy.transform(t1);
+        prof_copy.transform(t1x);
         prof_copy.transform(rot);
-
         positioned_profiles.push_back(prof_copy);
     }
 
-    // Loft through positioned profiles
     int loft_degree = std::min(3, static_cast<int>(positioned_profiles.size()) - 1);
     surface = create_loft(positioned_profiles, loft_degree);
-
     return surface;
 }
 
 NurbsSurface NurbsSurface::create_sweep2(const NurbsCurve& rail1, const NurbsCurve& rail2,
-                                           const NurbsCurve& profile) {
+                                           const std::vector<NurbsCurve>& shapes) {
     NurbsSurface surface;
-    if (!rail1.is_valid() || !rail2.is_valid() || !profile.is_valid()) return surface;
+    if (!rail1.is_valid() || !rail2.is_valid() || shapes.empty()) return surface;
+    for (auto& s : shapes) { if (!s.is_valid()) return surface; }
 
-    // Sample both rails at corresponding parameters
-    int N = std::max(std::max(rail1.cv_count(), rail2.cv_count()) * 2, 20);
+    // Make shapes compatible (same degree, knots, cv_count)
+    std::vector<NurbsCurve> compat_shapes = shapes;
+    if (compat_shapes.size() >= 2) make_curves_compatible(compat_shapes);
+
+    int n_shapes = static_cast<int>(compat_shapes.size());
+
+    // Shape parameters: evenly distributed [0..1]
+    std::vector<double> shape_params(n_shapes);
+    for (int k = 0; k < n_shapes; k++)
+        shape_params[k] = (n_shapes == 1) ? 0.0 : (double)k / (n_shapes - 1);
+
+    int N = std::min(std::max(std::max(rail1.span_count(), rail2.span_count()) * 2 + 1, 5), 20);
 
     std::vector<Point> pts1, pts2;
     std::vector<double> params1, params2;
     rail1.divide_by_count(N + 1, pts1, &params1, true);
     rail2.divide_by_count(N + 1, pts2, &params2, true);
 
-    // Get RMF frames on rail1
     std::vector<Plane> frames1 = rail1.get_perpendicular_planes(N);
     if (frames1.empty()) return surface;
 
-    // Profile info
-    Point profile_start = profile.point_at_start();
-    Point profile_end = profile.point_at_end();
-    double profile_width = 0.0;
-    {
-        double dx = profile_end[0] - profile_start[0];
-        double dy = profile_end[1] - profile_start[1];
-        double dz = profile_end[2] - profile_start[2];
-        profile_width = std::sqrt(dx * dx + dy * dy + dz * dz);
+    // Precompute per-shape: start, end, span, width, direction, local frame
+    struct ShapeInfo {
+        Point start, end;
+        double width;
+        Vector dir, side, up;
+    };
+    std::vector<ShapeInfo> sinfo(n_shapes);
+    for (int k = 0; k < n_shapes; k++) {
+        auto& si = sinfo[k];
+        si.start = compat_shapes[k].point_at_start();
+        si.end = compat_shapes[k].point_at_end();
+        Vector span(si.end[0]-si.start[0], si.end[1]-si.start[1], si.end[2]-si.start[2]);
+        si.width = span.magnitude();
+        if (si.width < 1e-14) si.width = 1.0;
+        si.dir = span / si.width;
+        Vector up_try(0, 0, 1);
+        si.side = si.dir.cross(up_try);
+        if (si.side.magnitude() < 1e-10) {
+            up_try = Vector(0, 1, 0);
+            si.side = si.dir.cross(up_try);
+        }
+        si.side = si.side / si.side.magnitude();
+        si.up = si.side.cross(si.dir);
+        double ulen = si.up.magnitude();
+        if (ulen > 1e-14) si.up = si.up / ulen;
     }
-    if (profile_width < 1e-14) profile_width = 1.0;
 
-    // Position and scale profile at each sample
     std::vector<NurbsCurve> positioned_profiles;
     positioned_profiles.reserve(frames1.size());
 
     for (size_t i = 0; i < frames1.size() && i < pts1.size() && i < pts2.size(); i++) {
+        // Section parameter t in [0,1]
+        double t = (frames1.size() <= 1) ? 0.0 : (double)i / (frames1.size() - 1);
+
+        // Find bracketing shapes and interpolation factor
+        int j = 0;
+        double s = 0.0;
+        if (n_shapes == 1) {
+            j = 0; s = 0.0;
+        } else {
+            for (int k = 0; k < n_shapes - 1; k++) {
+                if (t <= shape_params[k + 1] + 1e-14) { j = k; break; }
+                j = k;
+            }
+            double denom = shape_params[j + 1] - shape_params[j];
+            s = (denom > 1e-14) ? (t - shape_params[j]) / denom : 0.0;
+            s = std::max(0.0, std::min(1.0, s));
+        }
+
+        // Interpolate CVs between shapes[j] and shapes[j+1] (or just use shapes[j] if single)
+        NurbsCurve interp_shape = compat_shapes[j];
+        if (n_shapes > 1 && j + 1 < n_shapes) {
+            int nc = compat_shapes[j].cv_count();
+            for (int c = 0; c < nc; c++) {
+                Point cv0 = compat_shapes[j].get_cv(c);
+                Point cv1 = compat_shapes[j + 1].get_cv(c);
+                Point lerped(cv0[0]*(1-s) + cv1[0]*s, cv0[1]*(1-s) + cv1[1]*s, cv0[2]*(1-s) + cv1[2]*s);
+                interp_shape.set_cv(c, lerped);
+            }
+        }
+
+        // Interpolate shape info
+        double shape_width = sinfo[j].width * (1-s) + ((n_shapes > 1 && j+1 < n_shapes) ? sinfo[j+1].width * s : 0.0);
+        if (n_shapes == 1) shape_width = sinfo[0].width;
+        Vector prof_dir(
+            sinfo[j].dir[0]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].dir[0]*s : 0.0),
+            sinfo[j].dir[1]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].dir[1]*s : 0.0),
+            sinfo[j].dir[2]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].dir[2]*s : 0.0));
+        double pdlen = prof_dir.magnitude();
+        if (pdlen > 1e-14) prof_dir = prof_dir / pdlen;
+        Vector prof_side(
+            sinfo[j].side[0]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].side[0]*s : 0.0),
+            sinfo[j].side[1]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].side[1]*s : 0.0),
+            sinfo[j].side[2]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].side[2]*s : 0.0));
+        double pslen = prof_side.magnitude();
+        if (pslen > 1e-14) prof_side = prof_side / pslen;
+        Vector prof_up(
+            sinfo[j].up[0]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].up[0]*s : 0.0),
+            sinfo[j].up[1]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].up[1]*s : 0.0),
+            sinfo[j].up[2]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].up[2]*s : 0.0));
+        double pulen = prof_up.magnitude();
+        if (pulen > 1e-14) prof_up = prof_up / pulen;
+
+        Point interp_start(
+            sinfo[j].start[0]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].start[0]*s : 0.0),
+            sinfo[j].start[1]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].start[1]*s : 0.0),
+            sinfo[j].start[2]*(1-s) + ((n_shapes>1 && j+1<n_shapes) ? sinfo[j+1].start[2]*s : 0.0));
+        if (n_shapes == 1) interp_start = sinfo[0].start;
+
         Point p1 = pts1[i];
         Point p2 = pts2[i];
+        double dx = p2[0] - p1[0], dy = p2[1] - p1[1], dz = p2[2] - p1[2];
+        double rail_dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+        double scale_factor = (rail_dist > 1e-14 && shape_width > 1e-14) ? rail_dist / shape_width : 1.0;
 
-        double dx = p2[0] - p1[0];
-        double dy = p2[1] - p1[1];
-        double dz = p2[2] - p1[2];
-        double rail_dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-        double scale_factor = (rail_dist > 1e-14) ? rail_dist / profile_width : 1.0;
-
-        // Midpoint between rails
-        Point mid((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5, (p1[2] + p2[2]) * 0.5);
-
-        NurbsCurve prof_copy = profile;
-
-        // Translate profile start to origin
-        Xform t1 = Xform::translation(-profile_start[0], -profile_start[1], -profile_start[2]);
+        NurbsCurve prof_copy = interp_shape;
+        Xform t1 = Xform::translation(-interp_start[0], -interp_start[1], -interp_start[2]);
         prof_copy.transform(t1);
 
-        // Scale
         Xform sc = Xform::scale_xyz(scale_factor, scale_factor, scale_factor);
         prof_copy.transform(sc);
 
-        // Build orientation: x-axis from rail1 to rail2
         Plane& frame = frames1[i];
-        Vector frame_z = frame.z_axis(); // tangent along rail
-
+        Vector tangent = frame.z_axis();
         Vector x_dir(dx, dy, dz);
         double x_len = x_dir.magnitude();
         if (x_len > 1e-14) x_dir = x_dir / x_len;
         else x_dir = frame.x_axis();
-
-        Vector y_dir = frame_z.cross(x_dir);
+        Vector y_dir = tangent.cross(x_dir);
         double y_len = y_dir.magnitude();
         if (y_len > 1e-14) y_dir = y_dir / y_len;
         else y_dir = frame.y_axis();
+        // Flip y_dir to match shape's up direction
+        double dot_up = y_dir[0]*prof_up[0] + y_dir[1]*prof_up[1] + y_dir[2]*prof_up[2];
+        if (dot_up < 0) y_dir = Vector(-y_dir[0], -y_dir[1], -y_dir[2]);
+        tangent = x_dir.cross(y_dir);
+        double tz = tangent.magnitude();
+        if (tz > 1e-14) tangent = tangent / tz;
 
-        // Rotation matrix
+        // R = T * S^T where T=[tangent|x_dir|y_dir], S=[prof_side|prof_dir|prof_up]
         Xform rot = Xform::identity();
-        rot.m[0] = x_dir[0]; rot.m[1] = y_dir[0]; rot.m[2] = frame_z[0]; rot.m[3] = p1[0];
-        rot.m[4] = x_dir[1]; rot.m[5] = y_dir[1]; rot.m[6] = frame_z[1]; rot.m[7] = p1[1];
-        rot.m[8] = x_dir[2]; rot.m[9] = y_dir[2]; rot.m[10] = frame_z[2]; rot.m[11] = p1[2];
-        rot.m[12] = 0; rot.m[13] = 0; rot.m[14] = 0; rot.m[15] = 1;
+        rot.m[0]  = tangent[0]*prof_side[0] + x_dir[0]*prof_dir[0] + y_dir[0]*prof_up[0];
+        rot.m[1]  = tangent[1]*prof_side[0] + x_dir[1]*prof_dir[0] + y_dir[1]*prof_up[0];
+        rot.m[2]  = tangent[2]*prof_side[0] + x_dir[2]*prof_dir[0] + y_dir[2]*prof_up[0];
+        rot.m[4]  = tangent[0]*prof_side[1] + x_dir[0]*prof_dir[1] + y_dir[0]*prof_up[1];
+        rot.m[5]  = tangent[1]*prof_side[1] + x_dir[1]*prof_dir[1] + y_dir[1]*prof_up[1];
+        rot.m[6]  = tangent[2]*prof_side[1] + x_dir[2]*prof_dir[1] + y_dir[2]*prof_up[1];
+        rot.m[8]  = tangent[0]*prof_side[2] + x_dir[0]*prof_dir[2] + y_dir[0]*prof_up[2];
+        rot.m[9]  = tangent[1]*prof_side[2] + x_dir[1]*prof_dir[2] + y_dir[1]*prof_up[2];
+        rot.m[10] = tangent[2]*prof_side[2] + x_dir[2]*prof_dir[2] + y_dir[2]*prof_up[2];
+        rot.m[12] = p1[0]; rot.m[13] = p1[1]; rot.m[14] = p1[2];
 
         prof_copy.transform(rot);
         positioned_profiles.push_back(prof_copy);
@@ -2644,7 +3129,6 @@ NurbsSurface NurbsSurface::create_sweep2(const NurbsCurve& rail1, const NurbsCur
 
     int loft_degree = std::min(3, static_cast<int>(positioned_profiles.size()) - 1);
     surface = create_loft(positioned_profiles, loft_degree);
-
     return surface;
 }
 

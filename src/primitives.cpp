@@ -7,56 +7,40 @@
 namespace session_cpp {
 
 NurbsCurve Primitives::circle(double cx, double cy, double cz, double radius) {
-    // Circle as rational quadratic NURBS with 9 control points
-    // Uses the standard 9-point representation for a full circle
-    const double w = std::sqrt(2.0) / 2.0;  // Weight for corner points
-
-    NurbsCurve curve(3, true, 3, 9);  // 3D, rational, order 3 (quadratic), 9 CVs
-
-    // Control points around circle (every 45 degrees)
-    // Homogeneous coordinates: [x*w, y*w, z*w, w] for weighted points
-    double angles[] = {0, Tolerance::PI/4, Tolerance::PI/2, 3*Tolerance::PI/4,
-                       Tolerance::PI, 5*Tolerance::PI/4, 3*Tolerance::PI/2, 7*Tolerance::PI/4, 2*Tolerance::PI};
+    const double w = std::sqrt(2.0) / 2.0;
+    // Tangent intersection pattern: on-circle CVs at cardinal points,
+    // weighted CVs at tangent intersections (NOT on circle)
+    double circle_x[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    double circle_y[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
     double weights[] = {1, w, 1, w, 1, w, 1, w, 1};
 
+    NurbsCurve curve(3, true, 3, 9);
+    double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    for (int i = 0; i < 10; i++) curve.set_knot(i, knots[i]);
+
     for (int i = 0; i < 9; i++) {
-        double x = cx + radius * std::cos(angles[i]);
-        double y = cy + radius * std::sin(angles[i]);
-        double z = cz;
-        curve.set_cv_4d(i, x * weights[i], y * weights[i], z * weights[i], weights[i]);
+        double px = cx + radius * circle_x[i];
+        double py = cy + radius * circle_y[i];
+        curve.set_cv_4d(i, px * weights[i], py * weights[i], cz * weights[i], weights[i]);
     }
-
-    // Knot vector for closed curve: 0,0,0, 1,1, 2,2, 3,3, 4,4,4 (12 knots = 9 CVs + order 3)
-    double knots[] = {0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4};
-    for (int i = 0; i < 12; i++) {
-        curve.set_knot(i, knots[i]);
-    }
-
     return curve;
 }
 
 NurbsCurve Primitives::ellipse(double cx, double cy, double cz, double major_radius, double minor_radius) {
-    // Ellipse as rational quadratic NURBS with 9 control points
     const double w = std::sqrt(2.0) / 2.0;
-
-    NurbsCurve curve(3, true, 3, 9);
-
-    double angles[] = {0, Tolerance::PI/4, Tolerance::PI/2, 3*Tolerance::PI/4,
-                       Tolerance::PI, 5*Tolerance::PI/4, 3*Tolerance::PI/2, 7*Tolerance::PI/4, 2*Tolerance::PI};
+    double ex[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+    double ey[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
     double weights[] = {1, w, 1, w, 1, w, 1, w, 1};
 
+    NurbsCurve curve(3, true, 3, 9);
+    double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    for (int i = 0; i < 10; i++) curve.set_knot(i, knots[i]);
+
     for (int i = 0; i < 9; i++) {
-        double x = cx + major_radius * std::cos(angles[i]);
-        double y = cy + minor_radius * std::sin(angles[i]);
-        double z = cz;
-        curve.set_cv_4d(i, x * weights[i], y * weights[i], z * weights[i], weights[i]);
+        double px = cx + major_radius * ex[i];
+        double py = cy + minor_radius * ey[i];
+        curve.set_cv_4d(i, px * weights[i], py * weights[i], cz * weights[i], weights[i]);
     }
-
-    double knots[] = {0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4};
-    for (int i = 0; i < 12; i++) {
-        curve.set_knot(i, knots[i]);
-    }
-
     return curve;
 }
 

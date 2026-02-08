@@ -81,9 +81,18 @@ public:
     
     nlohmann::ordered_json jsondump() const;
     static BoundingBox jsonload(const nlohmann::json& data);
-    
+
     void to_json_file(const std::string& filepath) const;
     static BoundingBox from_json_file(const std::string& filepath);
+
+    std::string json_dumps() const;
+    static BoundingBox json_loads(const std::string& json_string);
+    void json_dump(const std::string& filename) const;
+    static BoundingBox json_load(const std::string& filename);
+    std::string pb_dumps() const;
+    static BoundingBox pb_loads(const std::string& data);
+    void pb_dump(const std::string& filename) const;
+    static BoundingBox pb_load(const std::string& filename);
 
 private:
     static bool separating_plane_exists(const Vector& relative_position, const Vector& axis, const BoundingBox& box1, const BoundingBox& box2);

@@ -1,4 +1,8 @@
 #include "cylinder.h"
+#include "cylinder.pb.h"
+#include "line.pb.h"
+#include "mesh.pb.h"
+#include "xform.pb.h"
 #include <cmath>
 #include <fstream>
 
@@ -165,6 +169,69 @@ Cylinder Cylinder::jsonload(const nlohmann::json& data) {
     return cylinder;
 }
 
+std::string Cylinder::json_dumps() const {
+    return jsondump().dump();
+}
 
+Cylinder Cylinder::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::json::parse(json_string));
+}
+
+void Cylinder::json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+Cylinder Cylinder::json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    nlohmann::json data;
+    file >> data;
+    return jsonload(data);
+}
+
+std::string Cylinder::pb_dumps() const {
+    session_proto::Cylinder proto;
+    proto.set_guid(guid);
+    proto.set_name(name);
+    proto.set_radius(radius);
+    proto.mutable_line()->ParseFromString(line.pb_dumps());
+    proto.mutable_mesh()->ParseFromString(mesh.pb_dumps());
+    auto* xform_proto = proto.mutable_xform();
+    xform_proto->set_guid(xform.guid);
+    xform_proto->set_name(xform.name);
+    for (int i = 0; i < 16; ++i) {
+        xform_proto->add_matrix(xform.m[i]);
+    }
+    return proto.SerializeAsString();
+}
+
+Cylinder Cylinder::pb_loads(const std::string& data) {
+    session_proto::Cylinder proto;
+    proto.ParseFromString(data);
+    Line ln = Line::pb_loads(proto.line().SerializeAsString());
+    Cylinder cyl(ln, proto.radius());
+    cyl.guid = proto.guid();
+    cyl.name = proto.name();
+    if (proto.has_mesh()) {
+        cyl.mesh = Mesh::pb_loads(proto.mesh().SerializeAsString());
+    }
+    if (proto.has_xform()) {
+        cyl.xform = Xform::pb_loads(proto.xform().SerializeAsString());
+    }
+    return cyl;
+}
+
+void Cylinder::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+
+Cylinder Cylinder::pb_load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+    return pb_loads(data);
+}
 
 } // namespace session_cpp

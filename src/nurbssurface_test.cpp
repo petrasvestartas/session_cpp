@@ -1,13 +1,15 @@
 #include "mini_test.h"
 #include "nurbssurface.h"
 #include "nurbscurve.h"
-#include "triangulation_nurbs.h"
+#include "trimesh_grid.h"
+#include "trimesh_delaunay.h"
 #include "mesh.h"
 #include "color.h"
 #include "point.h"
 #include "vector.h"
 #include "xform.h"
 #include "tolerance.h"
+#include "primitives.h"
 
 #include <cmath>
 #include <filesystem>
@@ -19,7 +21,6 @@ namespace session_cpp {
 
     MINI_TEST("NurbsSurface", "constructor") {
         // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
 
         std::vector<Point> points = {
             // i=0
@@ -46,6 +47,12 @@ namespace session_cpp {
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
+        // Get mesh
+        Mesh m = s.mesh();
+
+        // Point division matching Rhino's 4x6 grid
+        auto [v, uv] = s.divide_by_count(4, 6);
+
         // Minimal and Full String Representation
         std::string sstr = s.str();
         std::string srepr = s.repr();
@@ -53,9 +60,6 @@ namespace session_cpp {
         // Copy (duplicates everything except guid)
         NurbsSurface scopy = s;
         NurbsSurface sother = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
-
-        // Point division matching Rhino's 4x6 grid
-        auto [v, uv] = s.divide_by_count(4, 6);
 
         MINI_CHECK(s.is_valid() == true);
         MINI_CHECK(s.cv_count(0) == 4);
@@ -72,7 +76,7 @@ namespace session_cpp {
         MINI_CHECK(s.name == "my_nurbssurface");
         MINI_CHECK(!s.guid.empty());
         MINI_CHECK(sstr == "NurbsSurface(name=my_nurbssurface, degree=(3,3), cvs=(4,4))");
-        MINI_CHECK(srepr.find("name=my_nurbssurface") != std::string::npos);
+        MINI_CHECK(srepr == "NurbsSurface(\n  name=my_nurbssurface,\n  degree=(3,3),\n  cvs=(4,4),\n  rational=false,\n  control_points=[\n    0, 0, 0\n    -1, 0.75, 2\n    -1, 4.25, 2\n    0, 5, 0\n    0.75, -1, 2\n    1.25, 1.25, 4\n    1.25, 3.75, 4\n    0.75, 6, 2\n    4.25, -1, 2\n    3.75, 1.25, 4\n    3.75, 3.75, 4\n    4.25, 6, 2\n    5, 0, 0\n    6, 0.75, 2\n    6, 4.25, 2\n    5, 5, 0\n  ]\n)");
         MINI_CHECK(scopy.cv_count() == s.cv_count());
         MINI_CHECK(scopy.guid != s.guid);
 
@@ -113,20 +117,25 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(v[4][6], Point(5.000000000000000, 5.000000000000000, 0.000000000000000)));
     }
 
-    MINI_TEST("NurbsSurface", "constructor_ruled_surface") {
+    MINI_TEST("NurbsSurface", "constructor_ruled") {
+        // uncomment #include "nurbssurface.h"
+
         std::vector<Point> pts_a = {Point(3,0,0), Point(-2,0,5)};
         std::vector<Point> pts_b = {Point(3,5,5), Point(-2,5,0)};
         NurbsCurve crvA = NurbsCurve::create(false, 1, pts_a);
         NurbsCurve crvB = NurbsCurve::create(false, 1, pts_b);
-        NurbsSurface ruled = NurbsSurface::create_ruled(crvA, crvB);
+        NurbsSurface srf = NurbsSurface::create_ruled(crvA, crvB);
 
-        MINI_CHECK(ruled.is_valid());
-        MINI_CHECK(ruled.degree(0) == 1);
-        MINI_CHECK(ruled.degree(1) == 1);
-        MINI_CHECK(ruled.cv_count(0) == 2);
-        MINI_CHECK(ruled.cv_count(1) == 2);
+        // Mesh 180 - lowest quality, 5 - highest quality
+        Mesh m = srf.mesh(45);
 
-        auto [rd, ruv] = ruled.divide_by_count(4, 4);
+        MINI_CHECK(srf.is_valid());
+        MINI_CHECK(srf.degree(0) == 1);
+        MINI_CHECK(srf.degree(1) == 1);
+        MINI_CHECK(srf.cv_count(0) == 2);
+        MINI_CHECK(srf.cv_count(1) == 2);
+
+        auto [rd, ruv] = srf.divide_by_count(4, 4);
         MINI_CHECK(rd.size() == 5);
         MINI_CHECK(rd[0].size() == 5);
 
@@ -138,7 +147,7 @@ namespace session_cpp {
         std::vector<Vector> normals;
         for (int i = 0; i < (int)ruv.size(); i++)
             for (int j = 0; j < (int)ruv[i].size(); j++)
-                normals.push_back(ruled.normal_at(ruv[i][j].first, ruv[i][j].second));
+                normals.push_back(srf.normal_at(ruv[i][j].first, ruv[i][j].second));
 
         std::vector<std::pair<double,double>> uvs;
         for (int i = 0; i < (int)ruv.size(); i++)
@@ -205,27 +214,126 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(uvs[24].first, 1.00) && TOLERANCE.is_close(uvs[24].second, 1.00));
     }
 
-    MINI_TEST("NurbsSurface", "create_create_planar") {
+    MINI_TEST("NurbsSurface", "constructor_loft") {
+        // uncomment #include "nurbssurface.h"
 
+        // Closed circles with varying radius and same center
+        NurbsCurve c1 = Primitives::circle(0, 0, 0.0, 2.0);
+        NurbsCurve c2 = Primitives::circle(0, 0, 2.0, 1.0);
+        NurbsCurve c3 = Primitives::circle(0, 0, 4.0, 1.5);
+        NurbsCurve c4 = Primitives::circle(0, 0, 6.0, 0.8);
+
+        NurbsSurface srf = NurbsSurface::create_loft({c1, c2, c3, c4}, 3);
+
+        MINI_CHECK(srf.is_valid());
+        MINI_CHECK(srf.cv_count(0) == 9);
+        MINI_CHECK(srf.cv_count(1) == 4);
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(0, 0), Point(2, 0, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(0, 1), Point(-0.677194251158421, 0, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(0, 2), Point(3.00619893067415, 0, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(0, 3), Point(0.8, 0, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(1, 0), Point(2, 2, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(1, 1), Point(-0.677194251158421, -0.677194251158421, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(1, 2), Point(3.00619893067414, 3.00619893067414, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(1, 3), Point(0.8, 0.8, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(2, 0), Point(0, 2, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(2, 1), Point(0, -0.677194251158421, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(2, 2), Point(0, 3.00619893067415, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(2, 3), Point(0, 0.8, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(3, 0), Point(-2, 2, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(3, 1), Point(0.677194251158421, -0.677194251158421, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(3, 2), Point(-3.00619893067414, 3.00619893067414, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(3, 3), Point(-0.8, 0.8, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(4, 0), Point(-2, 0, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(4, 1), Point(0.677194251158421, 0, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(4, 2), Point(-3.00619893067415, 0, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(4, 3), Point(-0.8, 0, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(5, 0), Point(-2, -2, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(5, 1), Point(0.677194251158421, 0.677194251158421, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(5, 2), Point(-3.00619893067414, -3.00619893067414, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(5, 3), Point(-0.8, -0.8, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(6, 0), Point(0, -2, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(6, 1), Point(0, 0.677194251158421, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(6, 2), Point(0, -3.00619893067415, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(6, 3), Point(0, -0.8, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(7, 0), Point(2, -2, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(7, 1), Point(-0.677194251158421, 0.677194251158421, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(7, 2), Point(3.00619893067414, -3.00619893067414, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(7, 3), Point(0.8, -0.8, 6)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(8, 0), Point(2, 0, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(8, 1), Point(-0.677194251158421, 0, 1.75222035185728)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(8, 2), Point(3.00619893067415, 0, 4.08030037218547)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(8, 3), Point(0.8, 0, 6)));
+
+        // Open loft
+        std::vector<std::vector<Point>> open_pts = {
+            {Point(10, -12, 0), Point(10, -10, 3), Point(10, -7, 3), Point(10, -5, 0)},
+            {Point(5.5, -12, 3.5), Point(5.5, -10.0, 1.5), Point(5.5, -7.0, 1.5), Point(5.5, -5, 3.5)},
+            {Point(1, -12, 0), Point(1, -10, 3.0), Point(1, -7, 3.0), Point(1, -5, 0)},
+        };
+        std::vector<NurbsCurve> open_curves = {
+            NurbsCurve::create(false, 3, open_pts[0]),
+            NurbsCurve::create(false, 3, open_pts[1]),
+            NurbsCurve::create(false, 3, open_pts[2]),
+        };
+        NurbsSurface open_srf = NurbsSurface::create_loft(open_curves, 3);
+
+        MINI_CHECK(open_srf.is_valid());
+        MINI_CHECK(open_srf.cv_count(0) == 4);
+        MINI_CHECK(open_srf.cv_count(1) == 3);
+
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(0, 0), Point(10, -12, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(0, 1), Point(5.5, -12, 7)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(0, 2), Point(1, -12, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(1, 0), Point(10, -10, 3)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(1, 1), Point(5.5, -10, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(1, 2), Point(1, -10, 3)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(2, 0), Point(10, -7, 3)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(2, 1), Point(5.5, -7, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(2, 2), Point(1, -7, 3)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(3, 0), Point(10, -5, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(3, 1), Point(5.5, -5, 7)));
+        MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(3, 2), Point(1, -5, 0)));
     }
 
-    MINI_TEST("NurbsSurface", "create_create_loft") {
+    MINI_TEST("NurbsSurface", "constructor_revolve") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
 
+        NurbsCurve profile = NurbsCurve::create(false, 3, {
+            Point(1.5, 0, 0), Point(1.5, 0, 0.3), Point(0.3, 0, 0.5),
+            Point(0.3, 0, 2.5), Point(0.2, 0, 3.0), Point(2.0, 0, 4.5), Point(1.8, 0, 5.0),
+        });
+        NurbsSurface srf = NurbsSurface::create_revolve(profile, Point(0,0,0), Vector(0,0,1));
     }
 
-    MINI_TEST("NurbsSurface", "create_create_revolve") {
+    MINI_TEST("NurbsSurface", "constructor_sweep") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+        // uncomment #include "primitives.h"
 
-    }
+        // Sweep1
+        NurbsCurve rail = NurbsCurve::create(false, 2, {
+            Point(0,0,0), Point(0,5,0), Point(2,9,0)
+        });
+        NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
+        NurbsSurface srf = NurbsSurface::create_sweep1(rail, profile);
 
-    MINI_TEST("NurbsSurface", "create_create_sweep1") {
-
-    }
-
-    MINI_TEST("NurbsSurface", "create_create_sweep2") {
-
+        // Sweep2
+        NurbsCurve rail1 = NurbsCurve::create(false, 2, {Point(-2,-1,0), Point(-1,3,0), Point(0,4,0)});
+        NurbsCurve rail2 = NurbsCurve::create(false, 2, {Point(2,-1,0), Point(2,3,0), Point(1,4,0)});
+        NurbsCurve shape1 = NurbsCurve::create(false, 2, {Point(-2,-1,0), Point(0,-1,2), Point(2,-1,0)});       
+        NurbsCurve shape2 = NurbsCurve::create(false, 2, {Point(0,4,0), Point(0.5,4,1.5), Point(1,4,0)});
+        srf = NurbsSurface::create_sweep2(rail1, rail2, {shape1, shape2});
+    
     }
 
     MINI_TEST("NurbsSurface", "create_operations") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create a simple 2x2 bilinear surface
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
@@ -246,6 +354,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "accessors") {
+        // uncomment #include "nurbssurface.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 4, 3, 5, 4, false, false, 1.0, 1.0);
 
@@ -274,6 +384,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "knot_operations") {
+        // uncomment #include "nurbssurface.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 4, 4, 4, 4, false, false, 1.0, 1.0);
 
@@ -290,6 +402,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "rational_operations") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create non-rational surface
         NurbsSurface surf;
         surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
@@ -310,6 +425,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "evaluation") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+
         // Create simple bilinear surface
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
@@ -348,6 +467,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "geometric_queries") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create and setup surface
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
@@ -368,6 +490,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "modification") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 3, 2, false, false, 1.0, 1.0);
 
@@ -397,6 +522,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "isocurve") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create surface
         NurbsSurface surf;
         surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
@@ -429,6 +558,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "transformation") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+        // uncomment #include "xform.h"
+
         // Create simple surface
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
@@ -451,14 +584,16 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "json_roundtrip") {
-        // Create and setup surface
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+        // uncomment #include <filesystem>
+
         NurbsSurface surf;
         surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
         surf.name = "test_nurbssurface";
         surf.width = 2.0;
         surf.surfacecolor = Color(255, 128, 64, 255);
 
-        // Set some CVs
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
                 surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
@@ -472,58 +607,63 @@ namespace session_cpp {
         //   json_dump(path) │ file         │ write to file
         //   json_load(path) │ file         │ read from file
 
-        // Serialize to JSON
-        std::string fname = "serialization/test_nurbssurface.json";
-        surf.json_dump(fname);
-        NurbsSurface loaded = NurbsSurface::json_load(fname);
+        // JSON object
+        nlohmann::ordered_json json = surf.jsondump();
+        NurbsSurface loaded_json = NurbsSurface::jsonload(json);
 
-        MINI_CHECK(loaded.name == surf.name);
-        MINI_CHECK(TOLERANCE.is_close(loaded.width, surf.width));
-        MINI_CHECK(loaded.surfacecolor[0] == surf.surfacecolor[0]);
-        MINI_CHECK(loaded.surfacecolor[1] == surf.surfacecolor[1]);
-        MINI_CHECK(loaded.surfacecolor[2] == surf.surfacecolor[2]);
-        MINI_CHECK(loaded.dimension() == surf.dimension());
-        MINI_CHECK(loaded.is_rational() == surf.is_rational());
-        MINI_CHECK(loaded.order(0) == surf.order(0));
-        MINI_CHECK(loaded.order(1) == surf.order(1));
-        MINI_CHECK(loaded.cv_count(0) == surf.cv_count(0));
-        MINI_CHECK(loaded.cv_count(1) == surf.cv_count(1));
+        // String
+        std::string json_string = surf.json_dumps();
+        NurbsSurface loaded_json_string = NurbsSurface::json_loads(json_string);
+
+        // File
+        std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbssurface.json").string();
+        surf.json_dump(filename);
+        NurbsSurface loaded_from_file = NurbsSurface::json_load(filename);
+
+        MINI_CHECK(loaded_json == surf);
+        MINI_CHECK(loaded_json_string == surf);
+        MINI_CHECK(loaded_from_file == surf);
     }
 
     MINI_TEST("NurbsSurface", "protobuf_roundtrip") {
-        // Create and setup surface
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+        // uncomment #include <filesystem>
+
         NurbsSurface surf;
         surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
         surf.name = "test_nurbssurface";
         surf.width = 2.0;
         surf.surfacecolor = Color(255, 128, 64, 255);
 
-        // Set some CVs
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
                 surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
             }
         }
 
-        // Serialize to protobuf
-        std::string path = "serialization/test_nurbssurface.bin";
-        surf.pb_dump(path);
-        NurbsSurface loaded = NurbsSurface::pb_load(path);
+        //   pb_dumps()      │ string/bytes │ to protobuf bytes
+        //   pb_loads(b)     │ string/bytes │ from protobuf bytes
+        //   pb_dump(path)   │ file         │ write to file
+        //   pb_load(path)   │ file         │ read from file
 
-        MINI_CHECK(loaded.name == surf.name);
-        MINI_CHECK(TOLERANCE.is_close(loaded.width, surf.width));
-        MINI_CHECK(loaded.surfacecolor[0] == surf.surfacecolor[0]);
-        MINI_CHECK(loaded.surfacecolor[1] == surf.surfacecolor[1]);
-        MINI_CHECK(loaded.surfacecolor[2] == surf.surfacecolor[2]);
-        MINI_CHECK(loaded.dimension() == surf.dimension());
-        MINI_CHECK(loaded.is_rational() == surf.is_rational());
-        MINI_CHECK(loaded.order(0) == surf.order(0));
-        MINI_CHECK(loaded.order(1) == surf.order(1));
-        MINI_CHECK(loaded.cv_count(0) == surf.cv_count(0));
-        MINI_CHECK(loaded.cv_count(1) == surf.cv_count(1));
+        // String
+        std::string proto_string = surf.pb_dumps();
+        NurbsSurface loaded_proto_string = NurbsSurface::pb_loads(proto_string);
+
+        // File
+        std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbssurface.bin").string();
+        surf.pb_dump(filename);
+        NurbsSurface loaded = NurbsSurface::pb_load(filename);
+
+        MINI_CHECK(loaded_proto_string == surf);
+        MINI_CHECK(loaded == surf);
     }
 
     MINI_TEST("NurbsSurface", "advanced_accessors") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create rational surface for testing get_cv_4d/set_cv_4d
         NurbsSurface surf;
         surf.create_raw(3, true, 3, 3, 3, 3, false, false, 1.0, 1.0);
@@ -573,6 +713,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "clamp_operations") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 4, 4, 4, 4, false, false, 1.0, 1.0);
 
@@ -593,6 +736,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "singularity") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create a simple surface
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
@@ -617,6 +763,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "bounding_box") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 3, 3, false, false, 1.0, 1.0);
 
@@ -634,6 +783,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "domain_operations") {
+        // uncomment #include "nurbssurface.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
 
@@ -663,6 +814,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "corner_points") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
 
@@ -685,6 +839,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "swap_coordinates") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
 
@@ -702,6 +859,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "zero_cvs") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
 
@@ -724,6 +884,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "get_knots") {
+        // uncomment #include "nurbssurface.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 4, 3, 4, 3, false, false, 1.0, 2.0);
 
@@ -737,6 +899,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "make_non_rational") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create rational surface with all weights = 1
         NurbsSurface surf;
         surf.create_raw(3, true, 3, 3, 3, 3, false, false, 1.0, 1.0);
@@ -758,6 +923,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_clamped_uniform") {
+        // uncomment #include "nurbssurface.h"
+
         NurbsSurface surf;
         surf.create_clamped_uniform(3, 4, 3, 4, 4, 1.0, 2.0);
 
@@ -775,6 +942,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "knot_multiplicity") {
+        // uncomment #include "nurbssurface.h"
+
         NurbsSurface surf;
         surf.create_raw(3, false, 4, 4, 4, 4, false, false, 1.0, 1.0);
 
@@ -795,6 +964,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "sphere") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create a sphere as a rational NURBS surface
         // Sphere: 9x5 control points, degree 2 in both directions
         // Based on OpenNURBS sphere representation
@@ -860,6 +1032,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "cylinder") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create an uncapped cylinder as a rational NURBS surface
         // Cylinder: 9x2 control points (circle at bottom, circle at top)
         // Degree 2 in U (angular), degree 1 in V (height)
@@ -930,6 +1105,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "torus") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create a torus as a rational NURBS surface
         // Torus: 9x9 control points (minor circle revolved around major axis)
         // Degree 2 in both directions
@@ -1003,6 +1181,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "cone") {
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Create an uncapped cone as a rational NURBS surface
         // Cone: 9x2 control points (apex at top, circle at base)
         // Degree 2 in U (angular), degree 1 in V (height)
@@ -1076,6 +1257,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_loft") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Loft 3 parallel circles at different Z heights
         double radius = 2.0;
         double w = std::sqrt(2.0) / 2.0;
@@ -1124,6 +1309,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_revolve_full") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Revolve a line segment 360 degrees around Z axis -> cylinder
         double radius = 2.0;
         double height = 5.0;
@@ -1158,6 +1347,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_revolve_partial") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Revolve a line segment 90 degrees -> quarter cylinder
         double radius = 3.0;
         double height = 4.0;
@@ -1185,6 +1378,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_sweep1") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Sweep a small circle profile along a straight rail
         // Rail: line along Z axis
         NurbsCurve rail = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(0, 0, 10)});
@@ -1217,6 +1414,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_sweep2") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+
         // Sweep a line profile along two diverging rails
         // Rail1: line along Z at x=0
         // Rail2: line along Z at x=5
@@ -1226,7 +1427,7 @@ namespace session_cpp {
         // Profile: horizontal line from (0,0,0) to (5,0,0)
         NurbsCurve profile = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(5, 0, 0)});
 
-        NurbsSurface surf = NurbsSurface::create_sweep2(rail1, rail2, profile);
+        NurbsSurface surf = NurbsSurface::create_sweep2(rail1, rail2, {profile});
 
         MINI_CHECK(surf.is_valid());
         MINI_CHECK(surf.cv_count(0) >= 2);
@@ -1234,9 +1435,15 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_planar") {
+        // uncomment #include "mesh.h"
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "nurbssurface.h"
+        // uncomment #include "point.h"
+        // uncomment #include "trimesh_delaunay.h"
+
         std::vector<Point> pts = {Point(0,0,0), Point(3,1,0), Point(5,0.5,0), Point(6,3,0), Point(4,5,0), Point(1,4,0), Point(0,0,0)};
         NurbsCurve boundary = NurbsCurve::create(false, 3, pts);
-        NurbsSurface surf = NurbsSurface::create_planar({boundary});
+        NurbsSurface surf = NurbsSurface::create_planar(boundary);
 
         MINI_CHECK(surf.is_valid());
         MINI_CHECK(surf.is_planar());
@@ -1251,7 +1458,7 @@ namespace session_cpp {
         MINI_CHECK(pd.size() == 5);
         MINI_CHECK(pd[0].size() == 5);
 
-        NurbsTriangulation tri(surf);
+        TrimeshDelaunay tri(surf);
         Mesh mesh = tri.mesh();
         MINI_CHECK(mesh.number_of_faces() > 0);
         MINI_CHECK(mesh.number_of_vertices() > 0);

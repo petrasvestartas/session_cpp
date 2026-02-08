@@ -54,9 +54,14 @@ public:
     /// Deserializes an Arrow from JSON data
     static Arrow jsonload(const nlohmann::json& data);
     
-    /// Serializes the Arrow to a JSON file
-    
-    /// Deserializes an Arrow from a JSON file
+    std::string json_dumps() const;
+    static Arrow json_loads(const std::string& json_string);
+    void json_dump(const std::string& filename) const;
+    static Arrow json_load(const std::string& filename);
+    std::string pb_dumps() const;
+    static Arrow pb_loads(const std::string& data);
+    void pb_dump(const std::string& filename) const;
+    static Arrow pb_load(const std::string& filename);
 
 private:
     static Mesh create_arrow_mesh(const Line& line, double radius);

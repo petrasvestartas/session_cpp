@@ -1,4 +1,5 @@
 #include "arrow.h"
+#include "arrow.pb.h"
 #include <cmath>
 #include <fstream>
 
@@ -191,7 +192,7 @@ Arrow Arrow::jsonload(const nlohmann::json& data) {
     Line line = Line::jsonload(data["line"]);
     double radius = data["radius"];
     Arrow arrow(line, radius);
-    
+
     if (data.contains("guid")) {
         arrow.guid = data["guid"];
     }
@@ -201,10 +202,71 @@ Arrow Arrow::jsonload(const nlohmann::json& data) {
     if (data.contains("xform")) {
         arrow.xform = Xform::jsonload(data["xform"]);
     }
-    
+
     return arrow;
 }
 
+std::string Arrow::json_dumps() const { return jsondump().dump(); }
 
+Arrow Arrow::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
+void Arrow::json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+Arrow Arrow::json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    nlohmann::json data;
+    file >> data;
+    return jsonload(data);
+}
+
+std::string Arrow::pb_dumps() const {
+    session_proto::Arrow proto;
+    proto.set_guid(guid);
+    proto.set_name(name);
+    proto.set_radius(radius);
+    proto.mutable_line()->ParseFromString(line.pb_dumps());
+    proto.mutable_mesh()->ParseFromString(mesh.pb_dumps());
+    auto* xform_proto = proto.mutable_xform();
+    xform_proto->set_guid(xform.guid);
+    xform_proto->set_name(xform.name);
+    for (int i = 0; i < 16; ++i) {
+        xform_proto->add_matrix(xform.m[i]);
+    }
+    return proto.SerializeAsString();
+}
+
+Arrow Arrow::pb_loads(const std::string& data) {
+    session_proto::Arrow proto;
+    proto.ParseFromString(data);
+    Line ln = Line::pb_loads(proto.line().SerializeAsString());
+    Arrow arr(ln, proto.radius());
+    arr.guid = proto.guid();
+    arr.name = proto.name();
+    if (proto.has_mesh()) {
+        arr.mesh = Mesh::pb_loads(proto.mesh().SerializeAsString());
+    }
+    if (proto.has_xform()) {
+        arr.xform = Xform::pb_loads(proto.xform().SerializeAsString());
+    }
+    return arr;
+}
+
+void Arrow::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+
+Arrow Arrow::pb_load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+    return pb_loads(data);
+}
 
 } // namespace session_cpp

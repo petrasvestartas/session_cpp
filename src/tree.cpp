@@ -1,4 +1,6 @@
 #include "tree.h"
+#include "tree.pb.h"
+#include "treenode.pb.h"
 #include "fmt/format.h"
 #include <algorithm>
 #include <iostream>
@@ -36,9 +38,82 @@ Tree Tree::jsonload(const nlohmann::json &data) {
   return *tree;
 }
 
-/// Serialize to JSON file
+std::string Tree::json_dumps() const {
+  return jsondump().dump();
+}
 
-/// Deserialize from JSON file
+Tree Tree::json_loads(const std::string& json_string) {
+  return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
+void Tree::json_dump(const std::string& filename) const {
+  std::ofstream file(filename);
+  file << jsondump().dump(4);
+}
+
+Tree Tree::json_load(const std::string& filename) {
+  std::ifstream file(filename);
+  nlohmann::json data = nlohmann::json::parse(file);
+  return jsonload(data);
+}
+
+std::string Tree::pb_dumps() const {
+  std::function<session_proto::TreeNode(TreeNode*)> node_to_proto =
+    [&](TreeNode* node) -> session_proto::TreeNode {
+      session_proto::TreeNode proto_node;
+      proto_node.set_guid(node->guid);
+      proto_node.set_name(node->name);
+      proto_node.set_parent_guid("");
+      for (auto* child : node->children()) {
+        *proto_node.add_children() = node_to_proto(child);
+      }
+      return proto_node;
+    };
+
+  session_proto::Tree proto;
+  proto.set_guid(guid);
+  proto.set_name(name);
+  if (_root) {
+    *proto.mutable_root() = node_to_proto(_root.get());
+  }
+  return proto.SerializeAsString();
+}
+
+Tree Tree::pb_loads(const std::string& data) {
+  session_proto::Tree proto;
+  proto.ParseFromString(data);
+
+  std::function<std::shared_ptr<TreeNode>(const session_proto::TreeNode&)> proto_to_node =
+    [&](const session_proto::TreeNode& proto_node) -> std::shared_ptr<TreeNode> {
+      auto node = std::make_shared<TreeNode>(proto_node.name());
+      node->guid = proto_node.guid();
+      for (const auto& child_proto : proto_node.children()) {
+        auto child = proto_to_node(child_proto);
+        node->add(child);
+      }
+      return node;
+    };
+
+  Tree tree(proto.name());
+  tree.guid = proto.guid();
+  if (proto.has_root()) {
+    tree.add(proto_to_node(proto.root()));
+  }
+  return tree;
+}
+
+void Tree::pb_dump(const std::string& filename) const {
+  std::string data = pb_dumps();
+  std::ofstream file(filename, std::ios::binary);
+  file.write(data.data(), data.size());
+}
+
+Tree Tree::pb_load(const std::string& filename) {
+  std::ifstream file(filename, std::ios::binary);
+  std::string data((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  return pb_loads(data);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Details

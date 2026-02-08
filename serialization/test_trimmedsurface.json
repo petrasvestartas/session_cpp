@@ -1,0 +1,182 @@
+{
+    "guid": "6497962c-a5fa-4852-a16b-cd6e4af6bb3c",
+    "inner_loops": [],
+    "name": "test_trimmedsurface",
+    "outer_loop": {
+        "control_points": [
+            [
+                0.1,
+                0.1,
+                0.0
+            ],
+            [
+                0.9,
+                0.1,
+                0.0
+            ],
+            [
+                0.9,
+                0.9,
+                0.0
+            ],
+            [
+                0.1,
+                0.9,
+                0.0
+            ],
+            [
+                0.1,
+                0.1,
+                0.0
+            ]
+        ],
+        "cv_count": 5,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "8fbaf04c-f7a5-4d9c-9620-965624e6be58",
+        "is_rational": false,
+        "knots": [
+            0.0,
+            0.8000000000000002,
+            1.6000000000000003,
+            2.4000000000000004,
+            3.2000000000000006
+        ],
+        "linecolor": {
+            "a": 255,
+            "b": 0,
+            "g": 0,
+            "guid": "6ab7635d-e66d-4ba4-a965-a087f572b316",
+            "name": "black",
+            "r": 0,
+            "type": "Color"
+        },
+        "name": "my_nurbscurve",
+        "order": 2,
+        "type": "NurbsCurve",
+        "width": 1.0,
+        "xform": {
+            "guid": "b5709250-424e-456e-bce0-75a4661c54f6",
+            "m": [
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "name": "my_xform",
+            "type": "Xform"
+        }
+    },
+    "surface": {
+        "guid": "5a777ee3-cee5-4122-b652-a58e9892ac15",
+        "name": "my_nurbssurface",
+        "type": "NurbsSurface",
+        "width": 1.0,
+        "surfacecolor": {
+            "a": 255,
+            "b": 0,
+            "g": 0,
+            "guid": "ce1c9bee-1ed0-4d9a-b6bc-aeea07d0d664",
+            "name": "black",
+            "r": 0,
+            "type": "Color"
+        },
+        "xform": {
+            "guid": "45eec76e-f473-4f1b-a745-ca19eef9c421",
+            "m": [
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0
+            ],
+            "name": "my_xform",
+            "type": "Xform"
+        },
+        "dimension": 3,
+        "is_rational": false,
+        "order_u": 2,
+        "order_v": 2,
+        "cv_count_u": 2,
+        "cv_count_v": 2,
+        "knots_u": [
+            0.0,
+            1.0
+        ],
+        "knots_v": [
+            0.0,
+            1.0
+        ],
+        "control_points": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            5.0,
+            0.0,
+            5.0,
+            0.0,
+            0.0,
+            5.0,
+            5.0,
+            0.0
+        ]
+    },
+    "surfacecolor": {
+        "a": 255,
+        "b": 64,
+        "g": 128,
+        "guid": "e856d910-379b-4264-8c10-acf75c2bd717",
+        "name": "my_color",
+        "r": 255,
+        "type": "Color"
+    },
+    "type": "TrimmedSurface",
+    "width": 2.0,
+    "xform": {
+        "guid": "a31af529-7e75-45b7-9734-50557fd72086",
+        "m": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+        ],
+        "name": "my_xform",
+        "type": "Xform"
+    }
+}

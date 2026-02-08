@@ -9,6 +9,10 @@
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "guid.h"
+#include "boundingbox.pb.h"
+#include "point.pb.h"
+#include "vector.pb.h"
+#include "xform.pb.h"
 #include <fstream>
 #include <cmath>
 #include <algorithm>
@@ -699,6 +703,74 @@ BoundingBox BoundingBox::from_json_file(const std::string& filepath) {
     nlohmann::json data;
     file >> data;
     return jsonload(data);
+}
+
+std::string BoundingBox::json_dumps() const {
+    return jsondump().dump();
+}
+
+BoundingBox BoundingBox::json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::json::parse(json_string));
+}
+
+void BoundingBox::json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+BoundingBox BoundingBox::json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    nlohmann::json data;
+    file >> data;
+    return jsonload(data);
+}
+
+std::string BoundingBox::pb_dumps() const {
+    session_proto::BoundingBox proto;
+    proto.mutable_center()->ParseFromString(center.pb_dumps());
+    proto.mutable_x_axis()->ParseFromString(x_axis.pb_dumps());
+    proto.mutable_y_axis()->ParseFromString(y_axis.pb_dumps());
+    proto.mutable_z_axis()->ParseFromString(z_axis.pb_dumps());
+    proto.mutable_half_size()->ParseFromString(half_size.pb_dumps());
+    proto.set_guid(guid);
+    proto.set_name(name);
+    auto* xform_proto = proto.mutable_xform();
+    xform_proto->set_guid(xform.guid);
+    xform_proto->set_name(xform.name);
+    for (int i = 0; i < 16; ++i) {
+        xform_proto->add_matrix(xform.m[i]);
+    }
+    return proto.SerializeAsString();
+}
+
+BoundingBox BoundingBox::pb_loads(const std::string& data) {
+    session_proto::BoundingBox proto;
+    proto.ParseFromString(data);
+    Point c = Point::pb_loads(proto.center().SerializeAsString());
+    Vector xa = Vector::pb_loads(proto.x_axis().SerializeAsString());
+    Vector ya = Vector::pb_loads(proto.y_axis().SerializeAsString());
+    Vector za = Vector::pb_loads(proto.z_axis().SerializeAsString());
+    Vector hs = Vector::pb_loads(proto.half_size().SerializeAsString());
+    BoundingBox box(c, xa, ya, za, hs);
+    box.guid = proto.guid();
+    box.name = proto.name();
+    if (proto.has_xform()) {
+        box.xform = Xform::pb_loads(proto.xform().SerializeAsString());
+    }
+    return box;
+}
+
+void BoundingBox::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+
+BoundingBox BoundingBox::pb_load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+    return pb_loads(data);
 }
 
 }

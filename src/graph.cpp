@@ -1,4 +1,7 @@
 #include "graph.h"
+#include "graph.pb.h"
+#include "vertex.pb.h"
+#include "edge.pb.h"
 
 namespace session_cpp {
 
@@ -65,6 +68,101 @@ Graph Graph::jsonload(const nlohmann::json &data) {
   }
 
   return graph;
+}
+
+std::string Graph::json_dumps() const {
+  return jsondump().dump();
+}
+
+Graph Graph::json_loads(const std::string &json_string) {
+  return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
+void Graph::json_dump(const std::string &filename) const {
+  std::ofstream file(filename);
+  file << jsondump().dump(4);
+}
+
+Graph Graph::json_load(const std::string &filename) {
+  std::ifstream file(filename);
+  nlohmann::json data = nlohmann::json::parse(file);
+  return jsonload(data);
+}
+
+std::string Graph::pb_dumps() const {
+  session_proto::Graph proto;
+  proto.set_name(name);
+  proto.set_guid(guid);
+  proto.set_vertex_count(vertex_count);
+  proto.set_edge_count(edge_count);
+
+  for (const auto &[vname, vertex] : vertices) {
+    auto &v = (*proto.mutable_vertices())[vname];
+    v.set_name(vertex.name);
+    v.set_guid(vertex.guid);
+    v.set_attribute(vertex.attribute);
+    v.set_index(vertex.index);
+  }
+
+  std::set<std::pair<std::string, std::string>> seen;
+  for (const auto &[u, neighbors] : edges) {
+    for (const auto &[v, edge] : neighbors) {
+      auto key = (u < v) ? std::make_pair(u, v) : std::make_pair(v, u);
+      if (seen.find(key) == seen.end()) {
+        seen.insert(key);
+        auto *e = proto.add_edges();
+        e->set_guid(edge.guid);
+        e->set_name(edge.name);
+        e->set_v0(edge.v0);
+        e->set_v1(edge.v1);
+        e->set_attribute(edge.attribute);
+        e->set_index(edge.index);
+      }
+    }
+  }
+
+  return proto.SerializeAsString();
+}
+
+Graph Graph::pb_loads(const std::string &data) {
+  session_proto::Graph proto;
+  proto.ParseFromString(data);
+
+  Graph graph(proto.name());
+  graph.guid = proto.guid();
+  graph.vertex_count = proto.vertex_count();
+  graph.edge_count = proto.edge_count();
+
+  for (const auto &[vname, v] : proto.vertices()) {
+    Vertex vertex(v.name(), v.attribute());
+    vertex.guid = v.guid();
+    vertex.index = v.index();
+    graph.vertices[vname] = vertex;
+  }
+
+  for (const auto &e : proto.edges()) {
+    Edge edge(e.v0(), e.v1(), e.attribute());
+    edge.guid = e.guid();
+    edge.name = e.name();
+    edge.index = e.index();
+    graph.edges[e.v0()][e.v1()] = edge;
+    graph.edges[e.v1()][e.v0()] = edge;
+  }
+
+  return graph;
+}
+
+void Graph::pb_dump(const std::string &filename) const {
+  std::string data = pb_dumps();
+  std::ofstream file(filename, std::ios::binary);
+  file.write(data.data(), data.size());
+}
+
+Graph Graph::pb_load(const std::string &filename) {
+  std::ifstream file(filename, std::ios::binary);
+  std::string data((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  return pb_loads(data);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -277,6 +375,10 @@ std::vector<std::string> Graph::neighbors(const std::string &node) {
     }
   }
   return result;
+}
+
+std::vector<std::string> Graph::get_neighbors(const std::string &node) {
+  return neighbors(node);
 }
 
 int Graph::number_of_vertices() const {

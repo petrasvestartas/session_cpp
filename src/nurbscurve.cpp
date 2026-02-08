@@ -1468,11 +1468,11 @@ Point NurbsCurve::point_at(double t) const {
         
         double N = basis[i];
         if (m_is_rat) {
-            double ww = cv_ptr[m_dim];
-            x += N * cv_ptr[0] * ww;
-            y += N * (m_dim > 1 ? cv_ptr[1] : 0.0) * ww;
-            z += N * (m_dim > 2 ? cv_ptr[2] : 0.0) * ww;
-            w += N * ww;
+            // CVs stored in homogeneous form: (x*w, y*w, z*w, w)
+            x += N * cv_ptr[0];
+            y += N * (m_dim > 1 ? cv_ptr[1] : 0.0);
+            z += N * (m_dim > 2 ? cv_ptr[2] : 0.0);
+            w += N * cv_ptr[m_dim];
         } else {
             x += N * cv_ptr[0];
             y += N * (m_dim > 1 ? cv_ptr[1] : 0.0);
@@ -1518,9 +1518,10 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
             double cz = (m_dim > 2) ? cv_ptr[2] : 0.0;
             double wv = m_is_rat ? cv_ptr[m_dim] : 1.0;
 
-            Aders[k][0] += Nx * cx * wv;
-            Aders[k][1] += Nx * cy * wv;
-            Aders[k][2] += Nx * cz * wv;
+            // CVs stored in homogeneous form: cx=x*w, cy=y*w, cz=z*w
+            Aders[k][0] += Nx * cx;
+            Aders[k][1] += Nx * cy;
+            Aders[k][2] += Nx * cz;
             Aders[k][3] += Nx * wv;
         }
     }
@@ -2555,6 +2556,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     j["linecolor"] = linecolor.jsondump();
     j["name"] = name;
     j["order"] = m_order;
+    j["type"] = "NurbsCurve";
     j["width"] = width;
     j["xform"] = xform.jsondump();
 
