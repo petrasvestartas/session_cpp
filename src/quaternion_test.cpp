@@ -1,11 +1,13 @@
-#include "catch_amalgamated.hpp"
+#include "mini_test.h"
 #include "quaternion.h"
 #include "encoders.h"
+#include "tolerance.h"
 #include <filesystem>
 
-using namespace session_cpp;
+namespace session_cpp {
+using namespace session_cpp::mini_test;
 
-TEST_CASE("Quaternion JSON roundtrip", "[quaternion]") {
+MINI_TEST("Quaternion", "json_roundtrip") {
     Vector axis(0.0, 0.0, 1.0);
     Quaternion original = Quaternion::from_axis_angle(axis, 1.5708);
 
@@ -13,5 +15,7 @@ TEST_CASE("Quaternion JSON roundtrip", "[quaternion]") {
     encoders::json_dump(original, "./serialization/test_quaternion.json");
     Quaternion loaded = encoders::json_load<Quaternion>("./serialization/test_quaternion.json");
 
-    // Just verify roundtrip works
-    REQUIRE(loaded.s == Catch::Approx(original.s).epsilon(0.0001));}
+    MINI_CHECK(TOLERANCE.is_close(loaded.s, original.s));
+}
+
+} // namespace session_cpp

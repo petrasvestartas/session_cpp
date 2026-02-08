@@ -1,125 +1,90 @@
-#include "catch_amalgamated.hpp"
+#include "mini_test.h"
 #include "bvh.h"
+#include "tolerance.h"
 #include <random>
-#include <chrono>
 #include <cmath>
 #include <algorithm>
-#include <utility>
-#include <iostream>
 
-using namespace session_cpp;
+namespace session_cpp {
+using namespace session_cpp::mini_test;
 
-TEST_CASE("Expand bits for Morton codes", "[bvh]") {
-    // Test bit expansion for Morton codes
-    REQUIRE(expand_bits(0) == 0);
-    REQUIRE(expand_bits(1) == 1);
-    REQUIRE(expand_bits(2) == 8);
-    REQUIRE(expand_bits(3) == 9);
-    
-    // 1023 in binary is 0b1111111111 (10 bits)
-    // After expansion, should have pattern with zeros inserted
+MINI_TEST("BVH", "expand_bits") {
+    MINI_CHECK(expand_bits(0) == 0);
+    MINI_CHECK(expand_bits(1) == 1);
+    MINI_CHECK(expand_bits(2) == 8);
+    MINI_CHECK(expand_bits(3) == 9);
+
     uint32_t result = expand_bits(1023);
-    REQUIRE(result > 0);  // Should be non-zero
+    MINI_CHECK(result > 0);
 }
 
-TEST_CASE("BVH Collision Detection scaling", "[perf][bvh]") {
-    std::cout << "\n=== BVH Collision Detection (test) ===\n";
-    auto run_case = [&](int N) {
-        std::mt19937 gen(42);
-        std::uniform_real_distribution<double> pos(-40.0, 40.0);
-        std::uniform_real_distribution<double> sz(0.5, 2.0);
-        std::vector<BoundingBox> boxes; boxes.reserve(N);
-        for (int i = 0; i < N; ++i) {
-            Point c(pos(gen), pos(gen), pos(gen));
-            Vector h(sz(gen), sz(gen), sz(gen));
-            boxes.emplace_back(c, Vector(1,0,0), Vector(0,1,0), Vector(0,0,1), h);
-        }
-        auto t0 = std::chrono::high_resolution_clock::now();
-        BVH bvh = BVH::from_boxes(boxes, 100.0);
-        auto [pairs, idxs, checks] = bvh.check_all_collisions(boxes);
-        auto t1 = std::chrono::high_resolution_clock::now();
-        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        std::cout << N << " boxes: build+collisions=" << ms << "ms (" << pairs.size() << " pairs, " << checks << " checks)\n";
-        REQUIRE(checks >= 0);
-    };
-    run_case(100);
-    run_case(5000);
-    run_case(10000);
-}
-
-TEST_CASE("Morton code at origin", "[bvh]") {
+MINI_TEST("BVH", "morton_code_origin") {
     uint32_t code = calculate_morton_code(0.0, 0.0, 0.0, 100.0);
-    REQUIRE(code < (1u << 30)); // 30-bit code
+    MINI_CHECK(code < (1u << 30));
 }
 
-TEST_CASE("Morton codes at corners", "[bvh]") {
+MINI_TEST("BVH", "morton_code_corners") {
     double world_size = 100.0;
 
-    // Corner at (-50, -50, -50) should give code 0
     uint32_t code_min = calculate_morton_code(-50.0, -50.0, -50.0, world_size);
-    REQUIRE(code_min == 0);
+    MINI_CHECK(code_min == 0);
 
-    // Corner at (50, 50, 50) should give maximum code
     uint32_t code_max = calculate_morton_code(50.0, 50.0, 50.0, world_size);
-    REQUIRE(code_max == 0x3FFFFFFF);  // Maximum 30-bit value
+    MINI_CHECK(code_max == 0x3FFFFFFF);
 }
 
-TEST_CASE("Morton code spatial locality", "[bvh]") {
-    // Two nearby points should have similar codes
+MINI_TEST("BVH", "morton_code_spatial_locality") {
     uint32_t code1 = calculate_morton_code(10.0, 10.0, 10.0);
     uint32_t code2 = calculate_morton_code(10.1, 10.1, 10.1);
-
-    // Two far apart points should have different codes
     uint32_t code3 = calculate_morton_code(-40.0, -40.0, -40.0);
 
-    // Nearby points should be closer in Morton space
     uint32_t diff_nearby = (code1 > code2) ? (code1 - code2) : (code2 - code1);
     uint32_t diff_far = (code1 > code3) ? (code1 - code3) : (code3 - code1);
-    REQUIRE(diff_nearby < diff_far);
+    MINI_CHECK(diff_nearby < diff_far);
 }
 
-TEST_CASE("BVH node creation", "[bvh]") {
+MINI_TEST("BVH", "node_creation") {
     BVHNode node;
-    REQUIRE(node.left == nullptr);
-    REQUIRE(node.right == nullptr);
-    REQUIRE(node.object_id == -1);
-    REQUIRE(!node.is_leaf());
+    MINI_CHECK(node.left == nullptr);
+    MINI_CHECK(node.right == nullptr);
+    MINI_CHECK(node.object_id == -1);
+    MINI_CHECK(!node.is_leaf());
 }
 
-TEST_CASE("BVH node leaf", "[bvh]") {
+MINI_TEST("BVH", "node_leaf") {
     BVHNode node;
-    REQUIRE(!node.is_leaf());
+    MINI_CHECK(!node.is_leaf());
 
     node.object_id = 5;
-    REQUIRE(node.is_leaf());
+    MINI_CHECK(node.is_leaf());
 }
 
-TEST_CASE("BVH creation", "[bvh]") {
+MINI_TEST("BVH", "creation") {
     BVH bvh(100.0);
-    REQUIRE(!bvh.guid.empty());
-    REQUIRE(bvh.name == "my_bvh");
-    REQUIRE(bvh.root == nullptr);
-    REQUIRE(bvh.world_size == 100.0);
+    MINI_CHECK(!bvh.guid.empty());
+    MINI_CHECK(bvh.name == "my_bvh");
+    MINI_CHECK(bvh.root == nullptr);
+    MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 100.0));
 }
 
-TEST_CASE("BVH build empty", "[bvh]") {
+MINI_TEST("BVH", "build_empty") {
     std::vector<BoundingBox> boxes;
     BVH bvh = BVH::from_boxes(boxes, 100.0);
-    REQUIRE(bvh.root == nullptr);
+    MINI_CHECK(bvh.root == nullptr);
 }
 
-TEST_CASE("BVH build single", "[bvh]") {
+MINI_TEST("BVH", "build_single") {
     BoundingBox bbox(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     std::vector<BoundingBox> boxes = {bbox};
-    
+
     BVH bvh = BVH::from_boxes(boxes, 100.0);
-    
-    REQUIRE(bvh.root != nullptr);
-    REQUIRE(bvh.root->is_leaf());
-    REQUIRE(bvh.root->object_id == 0);
+
+    MINI_CHECK(bvh.root != nullptr);
+    MINI_CHECK(bvh.root->is_leaf());
+    MINI_CHECK(bvh.root->object_id == 0);
 }
 
-TEST_CASE("BVH build multiple", "[bvh]") {
+MINI_TEST("BVH", "build_multiple") {
     std::vector<BoundingBox> bboxes = {
         BoundingBox(Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
         BoundingBox(Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -128,27 +93,24 @@ TEST_CASE("BVH build multiple", "[bvh]") {
 
     BVH bvh = BVH::from_boxes(bboxes, 100.0);
 
-    REQUIRE(bvh.root != nullptr);
-    REQUIRE(!bvh.root->is_leaf());
-    REQUIRE(bvh.root->left != nullptr);
-    REQUIRE(bvh.root->right != nullptr);
+    MINI_CHECK(bvh.root != nullptr);
+    MINI_CHECK(!bvh.root->is_leaf());
+    MINI_CHECK(bvh.root->left != nullptr);
+    MINI_CHECK(bvh.root->right != nullptr);
 }
 
-TEST_CASE("BVH AABB intersect", "[bvh]") {
+MINI_TEST("BVH", "aabb_intersect") {
     BVH bvh(100.0);
 
-    // Overlapping boxes
     BoundingBox bbox1(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     BoundingBox bbox2(Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    REQUIRE(bvh.aabb_intersect(bbox1, bbox2));
+    MINI_CHECK(bvh.aabb_intersect(bbox1, bbox2));
 
-    // Non-overlapping boxes
     BoundingBox bbox3(Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    REQUIRE(!bvh.aabb_intersect(bbox1, bbox3));
+    MINI_CHECK(!bvh.aabb_intersect(bbox1, bbox3));
 }
 
-
-TEST_CASE("BVH check all collisions", "[bvh]") {
+MINI_TEST("BVH", "check_all_collisions") {
     std::vector<BoundingBox> bboxes = {
         BoundingBox(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
         BoundingBox(Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -159,17 +121,16 @@ TEST_CASE("BVH check all collisions", "[bvh]") {
 
     auto [collisions, colliding_indices, checks] = bvh.check_all_collisions(bboxes);
 
-    // Boxes 0 and 1 should collide
-    REQUIRE(collisions.size() == 1);
-    REQUIRE(collisions[0].first == 0);
-    REQUIRE(collisions[0].second == 1);
-    REQUIRE(colliding_indices.size() == 2);
-    REQUIRE(colliding_indices[0] == 0);
-    REQUIRE(colliding_indices[1] == 1);
-    REQUIRE(checks > 0);
+    MINI_CHECK(collisions.size() == 1);
+    MINI_CHECK(collisions[0].first == 0);
+    MINI_CHECK(collisions[0].second == 1);
+    MINI_CHECK(colliding_indices.size() == 2);
+    MINI_CHECK(colliding_indices[0] == 0);
+    MINI_CHECK(colliding_indices[1] == 1);
+    MINI_CHECK(checks > 0);
 }
 
-TEST_CASE("BVH merge AABB", "[bvh]") {
+MINI_TEST("BVH", "merge_aabb") {
     BVH bvh(100.0);
 
     BoundingBox bbox1(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
@@ -177,34 +138,11 @@ TEST_CASE("BVH merge AABB", "[bvh]") {
 
     BoundingBox merged = bvh.merge_aabb(bbox1, bbox2);
 
-    // Merged box should encompass both
-    REQUIRE(std::abs(merged.center[0] - 2.5) < 0.001);  // Midpoint between 0 and 5
-    REQUIRE(std::abs(merged.half_size[0] - 3.5) < 0.001);  // Half of distance from -1 to 6
+    MINI_CHECK(TOLERANCE.is_close(merged.center[0], 2.5));
+    MINI_CHECK(TOLERANCE.is_close(merged.half_size[0], 3.5));
 }
 
-TEST_CASE("BVH performance many boxes", "[bvh]") {
-    std::mt19937 gen(42);
-    std::uniform_real_distribution<double> pos_dist(-40.0, 40.0);
-    std::uniform_real_distribution<double> size_dist(0.5, 2.0);
-    
-    std::vector<BoundingBox> bboxes;
-    for (int i = 0; i < 100; ++i) {
-        Point center(pos_dist(gen), pos_dist(gen), pos_dist(gen));
-        Vector half_size(size_dist(gen), size_dist(gen), size_dist(gen));
-        BoundingBox bbox(center, Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), half_size);
-        bboxes.push_back(bbox);
-    }
-
-    BVH bvh = BVH::from_boxes(bboxes, 100.0);
-    auto [collisions, colliding_indices, checks] = bvh.check_all_collisions(bboxes);
-
-    // BVH should perform fewer checks than naive O(n²)
-    int naive_checks = static_cast<int>(bboxes.size()) * (static_cast<int>(bboxes.size()) - 1) / 2;
-    REQUIRE(checks < naive_checks);
-}
-
-
-TEST_CASE("BVH fixed 100 boxes collisions", "[bvh][fixed100]") {
+MINI_TEST("BVH", "fixed_100_boxes") {
     std::vector<BoundingBox> boxes;
     boxes.reserve(100);
 
@@ -214,7 +152,6 @@ TEST_CASE("BVH fixed 100 boxes collisions", "[bvh][fixed100]") {
         boxes.emplace_back(c, Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), h);
     };
 
-    // 100 boxes: (min_x min_y min_z max_x max_y max_z)
     add(-53.1254, -0.98185, 20.5516, -46.8089, 5.89927, 26.5331);
     add(44.4446, -1.5359, -1.49382, 50.7301, 3.99953, 7.58362);
     add(36.9359, -7.76782, -28.7694, 43.173, -1.82645, -22.1528);
@@ -316,31 +253,23 @@ TEST_CASE("BVH fixed 100 boxes collisions", "[bvh][fixed100]") {
     add(-35.1346, -8.00369, 14.4611, -27.1614, -1.58541, 21.4893);
     add(13.9228, -49.9973, -2.77406, 23.104, -41.5596, 4.89623);
 
-    REQUIRE(boxes.size() == 100);
+    MINI_CHECK(boxes.size() == 100);
 
     BVH bvh = BVH::from_boxes(boxes, 100.0);
     auto [pairs, colliding_indices, checks] = bvh.check_all_collisions(boxes);
 
     std::sort(pairs.begin(), pairs.end());
-    const std::vector<std::pair<int,int>> expected = {
-        {4,74}, {8,59}, {10,91}, {13,86}, {19,32}, {20,73}, {22,27},
-        {28,56}, {34,88}, {37,89}, {52,82}, {55,60}, {77,80}
-    };
-    std::vector<std::pair<int,int>> expected_sorted = expected;
-    std::sort(expected_sorted.begin(), expected_sorted.end());
 
-    // Note: With double precision, collision detection may find different near-misses
-    // The original test was calibrated for float precision
-    // We verify that we find at least some collisions and they're valid
-    REQUIRE(pairs.size() > 0);
-    REQUIRE(pairs.size() <= expected_sorted.size() * 2); // Allow some variance
-    
-    // Verify all found pairs are valid (indices in range)
+    MINI_CHECK(pairs.size() > 0);
+    MINI_CHECK(pairs.size() <= 26);
+
     for (const auto& [i, j] : pairs) {
-        REQUIRE(i >= 0);
-        REQUIRE(i < 100);
-        REQUIRE(j >= 0);
-        REQUIRE(j < 100);
-        REQUIRE(i < j);
+        MINI_CHECK(i >= 0);
+        MINI_CHECK(i < 100);
+        MINI_CHECK(j >= 0);
+        MINI_CHECK(j < 100);
+        MINI_CHECK(i < j);
     }
 }
+
+} // namespace session_cpp

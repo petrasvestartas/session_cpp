@@ -3132,4 +3132,483 @@ NurbsSurface NurbsSurface::create_sweep2(const NurbsCurve& rail1, const NurbsCur
     return surface;
 }
 
+NurbsSurface NurbsSurface::create_edge_surface(
+    const NurbsCurve& c0, const NurbsCurve& c1,
+    const NurbsCurve& c2, const NurbsCurve& c3)
+{
+    NurbsSurface surface;
+
+    // Validate all 4 curves
+    if (!c0.is_valid() || !c1.is_valid() || !c2.is_valid() || !c3.is_valid())
+        return surface;
+
+    // Build a boundary loop by matching endpoints
+    // Input: 4 curves in arbitrary order, we chain them into a consistent loop
+    std::vector<NurbsCurve> input = {c0, c1, c2, c3};
+    std::vector<NurbsCurve> loop;
+    std::vector<bool> used(4, false);
+
+    // Start with curve 0
+    loop.push_back(input[0]);
+    used[0] = true;
+    const double tol = 1e-6;
+
+    for (int step = 0; step < 3; step++) {
+        Point tail = loop.back().point_at_end();
+        bool found = false;
+        for (int i = 0; i < 4; i++) {
+            if (used[i]) continue;
+            Point s = input[i].point_at_start();
+            Point e = input[i].point_at_end();
+            if (s.distance(tail) < tol) {
+                loop.push_back(input[i]);
+                used[i] = true;
+                found = true;
+                break;
+            }
+            if (e.distance(tail) < tol) {
+                NurbsCurve rev = input[i];
+                rev.reverse();
+                loop.push_back(rev);
+                used[i] = true;
+                found = true;
+                break;
+            }
+        }
+        if (!found) return surface;
+    }
+
+    // Verify loop closure
+    if (loop[3].point_at_end().distance(loop[0].point_at_start()) > tol)
+        return surface;
+
+    // loop[0]=south, loop[1]=east, loop[2]=north(reversed), loop[3]=west(reversed)
+    // Orient for surface: south & north same v-direction, west & east same u-direction
+    NurbsCurve south = loop[0];                  // u=0, v varies
+    NurbsCurve east  = loop[1];                  // v=1, u varies (u=0 to u=1)
+    NurbsCurve north = loop[2]; north.reverse(); // u=1, v varies (same dir as south)
+    NurbsCurve west  = loop[3]; west.reverse();  // v=0, u varies (same dir as east)
+
+    // Make opposite pairs compatible
+    std::vector<NurbsCurve> v_pair = {south, north};
+    make_curves_compatible(v_pair);
+    south = v_pair[0];
+    north = v_pair[1];
+
+    std::vector<NurbsCurve> u_pair = {west, east};
+    make_curves_compatible(u_pair);
+    west = u_pair[0];
+    east = u_pair[1];
+
+    int order_v = south.order();
+    int cv_count_v = south.cv_count();
+    int order_u = west.order();
+    int cv_count_u = west.cv_count();
+    bool is_rat = south.is_rational() || west.is_rational();
+
+    // Create surface structure
+    surface.create_raw(3, is_rat, order_u, order_v, cv_count_u, cv_count_v);
+
+    // Set u-knots from west/east
+    for (int i = 0; i < surface.knot_count(0); i++)
+        surface.set_knot(0, i, west.knot(i));
+
+    // Set v-knots from south/north
+    for (int i = 0; i < surface.knot_count(1); i++)
+        surface.set_knot(1, i, south.knot(i));
+
+    // Compute Greville abscissae for blending
+    std::vector<double> u_grev = west.get_greville_abcissae();
+    std::vector<double> v_grev = south.get_greville_abcissae();
+
+    // Normalize to [0,1]
+    auto [u0, u1] = west.domain();
+    auto [v0, v1] = south.domain();
+    for (auto& g : u_grev) g = (u1 > u0) ? (g - u0) / (u1 - u0) : 0.0;
+    for (auto& g : v_grev) g = (v1 > v0) ? (g - v0) / (v1 - v0) : 0.0;
+
+    // Corner points
+    Point C00 = south.get_cv(0);
+    Point C01 = south.get_cv(cv_count_v - 1);
+    Point C10 = north.get_cv(0);
+    Point C11 = north.get_cv(cv_count_v - 1);
+
+    // Coons patch: P(i,j) = (1-ui)*S[j] + ui*N[j] + (1-vj)*W[i] + vj*E[i]
+    //                       - (1-ui)*(1-vj)*C00 - (1-ui)*vj*C01
+    //                       - ui*(1-vj)*C10 - ui*vj*C11
+    for (int i = 0; i < cv_count_u; i++) {
+        double ui = u_grev[i];
+        Point wi = west.get_cv(i);
+        Point ei = east.get_cv(i);
+        for (int j = 0; j < cv_count_v; j++) {
+            double vj = v_grev[j];
+            Point sj = south.get_cv(j);
+            Point nj = north.get_cv(j);
+
+            double x = (1-ui)*sj[0] + ui*nj[0] + (1-vj)*wi[0] + vj*ei[0]
+                      - (1-ui)*(1-vj)*C00[0] - (1-ui)*vj*C01[0]
+                      - ui*(1-vj)*C10[0] - ui*vj*C11[0];
+            double y = (1-ui)*sj[1] + ui*nj[1] + (1-vj)*wi[1] + vj*ei[1]
+                      - (1-ui)*(1-vj)*C00[1] - (1-ui)*vj*C01[1]
+                      - ui*(1-vj)*C10[1] - ui*vj*C11[1];
+            double z = (1-ui)*sj[2] + ui*nj[2] + (1-vj)*wi[2] + vj*ei[2]
+                      - (1-ui)*(1-vj)*C00[2] - (1-ui)*vj*C01[2]
+                      - ui*(1-vj)*C10[2] - ui*vj*C11[2];
+
+            surface.set_cv(i, j, Point(x, y, z));
+        }
+    }
+
+    return surface;
+}
+
+NurbsSurface NurbsSurface::create_network(
+    const std::vector<NurbsCurve>& u_curves,
+    const std::vector<NurbsCurve>& v_curves)
+{
+    NurbsSurface surface;
+    int n_u = static_cast<int>(u_curves.size());
+    int n_v = static_cast<int>(v_curves.size());
+    if (n_u < 2 || n_v < 2) return surface;
+
+    auto u_crvs = u_curves;
+    auto v_crvs = v_curves;
+
+    // Helper: min squared distance from point to sampled curve
+    auto min_dist_sq = [](const NurbsCurve& crv, const Point& pt) -> double {
+        auto [t0, t1] = crv.domain();
+        double best = 1e30;
+        for (int i = 0; i <= 50; i++) {
+            double t = t0 + (t1 - t0) * i / 50.0;
+            Point p = crv.point_at(t);
+            double d = (p[0]-pt[0])*(p[0]-pt[0]) + (p[1]-pt[1])*(p[1]-pt[1]) + (p[2]-pt[2])*(p[2]-pt[2]);
+            if (d < best) best = d;
+        }
+        return best;
+    };
+
+    // Helper: find closest parameter on curve to point (sampling + Newton)
+    auto find_param = [](const NurbsCurve& crv, const Point& pt) -> double {
+        auto [t0, t1] = crv.domain();
+        double best_t = t0, best_d = 1e30;
+        int ns = 200;
+        for (int i = 0; i <= ns; i++) {
+            double t = t0 + (t1 - t0) * i / ns;
+            Point p = crv.point_at(t);
+            double d = (p[0]-pt[0])*(p[0]-pt[0]) + (p[1]-pt[1])*(p[1]-pt[1]) + (p[2]-pt[2])*(p[2]-pt[2]);
+            if (d < best_d) { best_d = d; best_t = t; }
+        }
+        for (int iter = 0; iter < 20; iter++) {
+            auto derivs = crv.evaluate(best_t, 2);
+            double dx = derivs[0][0]-pt[0], dy = derivs[0][1]-pt[1], dz = derivs[0][2]-pt[2];
+            double f1 = 2.0*(dx*derivs[1][0] + dy*derivs[1][1] + dz*derivs[1][2]);
+            double f2 = 2.0*(derivs[1][0]*derivs[1][0] + derivs[1][1]*derivs[1][1] + derivs[1][2]*derivs[1][2]
+                            + dx*derivs[2][0] + dy*derivs[2][1] + dz*derivs[2][2]);
+            if (std::abs(f2) < 1e-14) break;
+            double dt = f1 / f2;
+            best_t -= dt;
+            if (best_t < t0) best_t = t0;
+            if (best_t > t1) best_t = t1;
+            if (std::abs(dt) < 1e-14) break;
+        }
+        return best_t;
+    };
+
+    // Orient v-curves: all should start near u_curve[0]
+    for (auto& vc : v_crvs) {
+        Point vs = vc.point_at(vc.domain_start());
+        Point ve = vc.point_at(vc.domain_end());
+        if (min_dist_sq(u_crvs[0], ve) < min_dist_sq(u_crvs[0], vs))
+            vc.reverse();
+    }
+
+    // Find u-params for each v-curve on u_curve[0]
+    std::vector<double> u_params_raw(n_v);
+    for (int j = 0; j < n_v; j++)
+        u_params_raw[j] = find_param(u_crvs[0], v_crvs[j].point_at(v_crvs[j].domain_start()));
+
+    // Sort v-curves by u-parameter
+    std::vector<int> v_order(n_v);
+    std::iota(v_order.begin(), v_order.end(), 0);
+    std::sort(v_order.begin(), v_order.end(), [&](int a, int b) {
+        return u_params_raw[a] < u_params_raw[b];
+    });
+    {
+        std::vector<NurbsCurve> tmp(n_v);
+        for (int j = 0; j < n_v; j++) tmp[j] = v_crvs[v_order[j]];
+        v_crvs = tmp;
+    }
+
+    // Orient u-curves: all should start near first sorted v-curve
+    for (auto& uc : u_crvs) {
+        Point us = uc.point_at(uc.domain_start());
+        Point ue = uc.point_at(uc.domain_end());
+        if (min_dist_sq(v_crvs[0], ue) < min_dist_sq(v_crvs[0], us))
+            uc.reverse();
+    }
+
+    // Make curves compatible (unifies degree & knots)
+    make_curves_compatible(u_crvs);
+    make_curves_compatible(v_crvs);
+    // Ensure [0,1] domain (make_curves_compatible may skip if already compatible)
+    for (auto& c : u_crvs) c.set_domain(0.0, 1.0);
+    for (auto& c : v_crvs) c.set_domain(0.0, 1.0);
+
+    int cv_u = u_crvs[0].cv_count();
+    int cv_v = v_crvs[0].cv_count();
+
+    // Find intersection parameters after compatibility
+    std::vector<double> u_params(n_v);
+    for (int j = 0; j < n_v; j++)
+        u_params[j] = find_param(u_crvs[0], v_crvs[j].point_at(v_crvs[j].domain_start()));
+
+    std::vector<double> v_params(n_u);
+    for (int i = 0; i < n_u; i++)
+        v_params[i] = find_param(v_crvs[0], u_crvs[i].point_at(u_crvs[i].domain_start()));
+
+    // Intersection points
+    std::vector<std::vector<Point>> P_ij(n_u, std::vector<Point>(n_v));
+    for (int i = 0; i < n_u; i++)
+        for (int j = 0; j < n_v; j++)
+            P_ij[i][j] = u_crvs[i].point_at(u_params[j]);
+
+    // Lagrange basis function
+    auto lagrange = [](const std::vector<double>& params, int k, double t) -> double {
+        double r = 1.0;
+        for (int j = 0; j < static_cast<int>(params.size()); j++)
+            if (j != k) r *= (t - params[j]) / (params[k] - params[j]);
+        return r;
+    };
+
+    // Determine sample counts
+    int n_u_samples = n_v * (cv_u + 2) - 1;
+    int n_v_samples = n_u * (cv_v + 2) - 1;
+
+    // Gordon formula evaluator
+    auto eval_gordon = [&](double u, double v) -> Point {
+        std::vector<double> Lk(n_v);
+        for (int k = 0; k < n_v; k++) Lk[k] = lagrange(u_params, k, u);
+        std::vector<double> Ml(n_u);
+        for (int l = 0; l < n_u; l++) Ml[l] = lagrange(v_params, l, v);
+        double x = 0, y = 0, z = 0;
+        for (int k = 0; k < n_v; k++) {
+            Point p = v_crvs[k].point_at(v);
+            x += p[0] * Lk[k]; y += p[1] * Lk[k]; z += p[2] * Lk[k];
+        }
+        for (int l = 0; l < n_u; l++) {
+            Point p = u_crvs[l].point_at(u);
+            x += p[0] * Ml[l]; y += p[1] * Ml[l]; z += p[2] * Ml[l];
+        }
+        for (int l = 0; l < n_u; l++)
+            for (int k = 0; k < n_v; k++) {
+                x -= P_ij[l][k][0] * Lk[k] * Ml[l];
+                y -= P_ij[l][k][1] * Lk[k] * Ml[l];
+                z -= P_ij[l][k][2] * Lk[k] * Ml[l];
+            }
+        return Point(x, y, z);
+    };
+
+    // Cosine (half-cosine) spacing within each interval
+    auto interval_cosine = [](const std::vector<double>& anchors, int n_total) {
+        int n_intervals = static_cast<int>(anchors.size()) - 1;
+        int spi = (n_total - 1) / n_intervals + 1;
+        std::vector<double> params;
+        params.reserve(n_total);
+        for (int j = 0; j < n_intervals; j++) {
+            double a = anchors[j], b = anchors[j + 1];
+            int start_k = (j == 0) ? 0 : 1;
+            for (int k = start_k; k < spi; k++) {
+                double t = (1.0 - std::cos(Tolerance::PI * k / (spi - 1))) / 2.0;
+                params.push_back(a + (b - a) * t);
+            }
+        }
+        return params;
+    };
+
+    // Uniform spacing within each interval for evaluation
+    auto interval_uniform = [](const std::vector<double>& anchors, int n_total) {
+        int n_intervals = static_cast<int>(anchors.size()) - 1;
+        int spi = (n_total - 1) / n_intervals + 1;
+        std::vector<double> params;
+        params.reserve(n_total);
+        for (int j = 0; j < n_intervals; j++) {
+            double a = anchors[j], b = anchors[j + 1];
+            int start_k = (j == 0) ? 0 : 1;
+            for (int k = start_k; k < spi; k++) {
+                double t = static_cast<double>(k) / (spi - 1);
+                params.push_back(a + (b - a) * t);
+            }
+        }
+        return params;
+    };
+    auto u_eval = interval_cosine(u_params, n_u_samples);
+    auto v_eval = interval_cosine(v_params, n_v_samples);
+
+    // Evaluate Gordon at sample points
+    std::vector<std::vector<Point>> grid(n_u_samples, std::vector<Point>(n_v_samples));
+    for (int si = 0; si < n_u_samples; si++)
+        for (int sj = 0; sj < n_v_samples; sj++)
+            grid[si][sj] = eval_gordon(u_eval[si], v_eval[sj]);
+
+    // Reverse u-direction so surface goes from first v-curve (min u) to last
+    std::reverse(grid.begin(), grid.end());
+
+    // Compute centripetal parameters from the evaluated grid (sqrt chord-length)
+    // u-direction: average across all columns
+    std::vector<double> u_sample(n_u_samples, 0.0);
+    for (int sj = 0; sj < n_v_samples; sj++) {
+        std::vector<double> cl(n_u_samples, 0.0);
+        for (int si = 1; si < n_u_samples; si++) {
+            double dx = grid[si][sj][0] - grid[si-1][sj][0];
+            double dy = grid[si][sj][1] - grid[si-1][sj][1];
+            double dz = grid[si][sj][2] - grid[si-1][sj][2];
+            cl[si] = cl[si-1] + std::pow(dx*dx + dy*dy + dz*dz, 0.25);
+        }
+        if (cl.back() > 1e-14)
+            for (int si = 1; si < n_u_samples; si++)
+                u_sample[si] += cl[si] / cl.back();
+    }
+    u_sample[0] = 0.0;
+    for (int si = 1; si < n_u_samples - 1; si++)
+        u_sample[si] /= n_v_samples;
+    u_sample[n_u_samples - 1] = 1.0;
+
+    // v-direction: average across all rows
+    std::vector<double> v_sample(n_v_samples, 0.0);
+    for (int si = 0; si < n_u_samples; si++) {
+        std::vector<double> cl(n_v_samples, 0.0);
+        for (int sj = 1; sj < n_v_samples; sj++) {
+            double dx = grid[si][sj][0] - grid[si][sj-1][0];
+            double dy = grid[si][sj][1] - grid[si][sj-1][1];
+            double dz = grid[si][sj][2] - grid[si][sj-1][2];
+            cl[sj] = cl[sj-1] + std::pow(dx*dx + dy*dy + dz*dz, 0.25);
+        }
+        if (cl.back() > 1e-14)
+            for (int sj = 1; sj < n_v_samples; sj++)
+                v_sample[sj] += cl[sj] / cl.back();
+    }
+    v_sample[0] = 0.0;
+    for (int sj = 1; sj < n_v_samples - 1; sj++)
+        v_sample[sj] /= n_u_samples;
+    v_sample[n_v_samples - 1] = 1.0;
+
+    // Global surface interpolation through sampled grid
+    int degree = 3;
+    int order = degree + 1;
+
+    // Build knot vectors (Piegl-Tiller averaging)
+    auto build_knots = [&](int n_pts, const std::vector<double>& params) {
+        int kc = order + n_pts - 2;
+        std::vector<double> knots(kc);
+        for (int i = 0; i < order - 1; i++) knots[i] = 0.0;
+        for (int j = 1; j <= n_pts - order; j++) {
+            double sum = 0;
+            for (int i = j; i < j + degree; i++) sum += params[i];
+            knots[order - 2 + j] = sum / degree;
+        }
+        for (int i = kc - order + 1; i < kc; i++) knots[i] = 1.0;
+        return knots;
+    };
+
+    auto u_knots = build_knots(n_u_samples, u_sample);
+    auto v_knots = build_knots(n_v_samples, v_sample);
+
+    // Build basis function matrix for interpolation
+    auto build_basis_matrix = [&](int n, const std::vector<double>& params,
+                                  const std::vector<double>& knots) {
+        std::vector<std::vector<double>> N(n, std::vector<double>(n, 0.0));
+        for (int row = 0; row < n; row++) {
+            double t = params[row];
+            int span = knot::find_span(order, n, knots, t);
+            int d = order - 1;
+            int kb = span + d;
+            if (knots[kb - 1] == knots[kb]) {
+                if (t <= knots[kb]) N[row][span] = 1.0;
+                else N[row][span + order - 1] = 1.0;
+                continue;
+            }
+            std::vector<double> Nv(order * order, 0.0);
+            Nv[order * order - 1] = 1.0;
+            std::vector<double> left(d), right(d);
+            int ni = order * order - 1;
+            int kr = kb, kl = kb - 1;
+            for (int j = 0; j < d; j++) {
+                int n0 = ni; ni -= (order + 1);
+                left[j] = t - knots[kl]; right[j] = knots[kr] - t;
+                kl--; kr++;
+                double xv = 0.0;
+                for (int r = 0; r <= j; r++) {
+                    double a0 = left[j - r], a1 = right[r];
+                    double den = a0 + a1;
+                    double yv = (den != 0.0) ? Nv[n0 + r] / den : 0.0;
+                    Nv[ni + r] = xv + a1 * yv;
+                    xv = a0 * yv;
+                }
+                Nv[ni + j + 1] = xv;
+            }
+            for (int j = 0; j < order; j++) {
+                int col = span + j;
+                if (col >= 0 && col < n) N[row][col] = Nv[j];
+            }
+        }
+        return N;
+    };
+
+    auto u_N = build_basis_matrix(n_u_samples, u_sample, u_knots);
+    auto v_N = build_basis_matrix(n_v_samples, v_sample, v_knots);
+
+    // Gaussian elimination solver
+    auto solve = [](int n, int dim, std::vector<std::vector<double>>& A,
+                    std::vector<std::vector<double>>& b) {
+        for (int col = 0; col < n; col++) {
+            int mr = col; double mv = std::abs(A[col][col]);
+            for (int r = col + 1; r < n; r++)
+                if (std::abs(A[r][col]) > mv) { mv = std::abs(A[r][col]); mr = r; }
+            if (mv < 1e-14) continue;
+            std::swap(A[col], A[mr]); std::swap(b[col], b[mr]);
+            for (int r = col + 1; r < n; r++) {
+                double f = A[r][col] / A[col][col];
+                for (int c = col; c < n; c++) A[r][c] -= f * A[col][c];
+                for (int d = 0; d < dim; d++) b[r][d] -= f * b[col][d];
+            }
+        }
+        for (int r = n - 1; r >= 0; r--)
+            for (int d = 0; d < dim; d++) {
+                for (int c = r + 1; c < n; c++) b[r][d] -= A[r][c] * b[c][d];
+                if (std::abs(A[r][r]) > 1e-14) b[r][d] /= A[r][r];
+            }
+    };
+
+    // Interpolate in u first → intermediate R[i][j]
+    std::vector<std::vector<Point>> R(n_u_samples, std::vector<Point>(n_v_samples));
+    for (int sj = 0; sj < n_v_samples; sj++) {
+        auto A = u_N;
+        std::vector<std::vector<double>> rhs(n_u_samples, std::vector<double>(3));
+        for (int si = 0; si < n_u_samples; si++)
+            rhs[si] = {grid[si][sj][0], grid[si][sj][1], grid[si][sj][2]};
+        solve(n_u_samples, 3, A, rhs);
+        for (int si = 0; si < n_u_samples; si++)
+            R[si][sj] = Point(rhs[si][0], rhs[si][1], rhs[si][2]);
+    }
+
+    // Interpolate in v → final surface CVs
+    int u_kc = static_cast<int>(u_knots.size());
+    int v_kc = static_cast<int>(v_knots.size());
+    surface.create_raw(3, false, order, order, n_u_samples, n_v_samples);
+    for (int i = 0; i < u_kc; i++) surface.set_knot(0, i, u_knots[i]);
+    for (int i = 0; i < v_kc; i++) surface.set_knot(1, i, v_knots[i]);
+
+    for (int si = 0; si < n_u_samples; si++) {
+        auto A = v_N;
+        std::vector<std::vector<double>> rhs(n_v_samples, std::vector<double>(3));
+        for (int sj = 0; sj < n_v_samples; sj++)
+            rhs[sj] = {R[si][sj][0], R[si][sj][1], R[si][sj][2]};
+        solve(n_v_samples, 3, A, rhs);
+        for (int sj = 0; sj < n_v_samples; sj++)
+            surface.set_cv(si, sj, Point(rhs[sj][0], rhs[sj][1], rhs[sj][2]));
+    }
+
+    return surface;
+}
+
 } // namespace session_cpp

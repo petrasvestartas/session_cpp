@@ -1,29 +1,30 @@
-#include "catch_amalgamated.hpp"
+#include "mini_test.h"
 #include "obj.h"
 #include "mesh.h"
+#include "tolerance.h"
 #include <fstream>
+#include <filesystem>
 
-using namespace session_cpp;
+namespace session_cpp {
+using namespace session_cpp::mini_test;
 
-TEST_CASE("Read Bunny OBJ File", "[obj]") {
-    // Skip test if data file doesn't exist
+MINI_TEST("OBJ", "read_bunny") {
     std::ifstream test_file("../session_data/bunny.obj");
     if (!test_file.good()) {
-        SKIP("Test data file ../session_data/bunny.obj not found");
+        // Data file not found, skip test
+        return;
     }
     test_file.close();
-    
+
     Mesh mesh = obj::read_obj("../session_data/bunny.obj");
-    
-    // Test vertex and face counts
-    REQUIRE(mesh.number_of_vertices() == 2503);
-    REQUIRE(mesh.number_of_faces() == 4968);
-    
+
+    MINI_CHECK(mesh.number_of_vertices() == 2503);
+    MINI_CHECK(mesh.number_of_faces() == 4968);
+
     auto [vertices, faces] = mesh.to_vertices_and_faces();
-    REQUIRE(vertices.size() == 2503);
-    REQUIRE(faces.size() == 4968);
-    
-    // Check that vertices are valid (not all zeros)
+    MINI_CHECK(vertices.size() == 2503);
+    MINI_CHECK(faces.size() == 4968);
+
     bool has_non_zero = false;
     for (const auto& v : vertices) {
         if (v[0] != 0.0 || v[1] != 0.0 || v[2] != 0.0) {
@@ -31,45 +32,40 @@ TEST_CASE("Read Bunny OBJ File", "[obj]") {
             break;
         }
     }
-    REQUIRE(has_non_zero);
-    
-    // Check that faces have at least 3 vertices
+    MINI_CHECK(has_non_zero);
+
     for (const auto& face : faces) {
-        REQUIRE(face.size() >= 3);
+        MINI_CHECK(face.size() >= 3);
     }
 }
 
-TEST_CASE("Write and Read OBJ Round-Trip", "[obj]") {
+MINI_TEST("OBJ", "write_read_roundtrip") {
     std::filesystem::create_directories("./serialization");
-    // Create a simple mesh
     Mesh original_mesh;
     auto v0 = original_mesh.add_vertex(Point(0.0, 0.0, 0.0));
     auto v1 = original_mesh.add_vertex(Point(1.0, 0.0, 0.0));
     auto v2 = original_mesh.add_vertex(Point(0.0, 1.0, 0.0));
     auto v3 = original_mesh.add_vertex(Point(0.0, 0.0, 1.0));
-    
+
     original_mesh.add_face({v0, v1, v2});
     original_mesh.add_face({v0, v1, v3});
-    
-    REQUIRE(original_mesh.number_of_vertices() == 4);
-    REQUIRE(original_mesh.number_of_faces() == 2);
-    
-    // Write to file in system temp directory for better portability
+
+    MINI_CHECK(original_mesh.number_of_vertices() == 4);
+    MINI_CHECK(original_mesh.number_of_faces() == 2);
+
     std::string temp_file = "./serialization/test_temp_roundtrip.obj";
     obj::write_obj(original_mesh, temp_file);
-    
-    // Verify file was created and is readable
+
     std::ifstream check(temp_file);
-    REQUIRE(check.good());
+    MINI_CHECK(check.good());
     check.close();
-    
-    // Read back
+
     Mesh loaded_mesh = obj::read_obj(temp_file);
-    
-    // Verify counts match
-    REQUIRE(loaded_mesh.number_of_vertices() == original_mesh.number_of_vertices());
-    REQUIRE(loaded_mesh.number_of_faces() == original_mesh.number_of_faces());
-    
-    // Clean up
+
+    MINI_CHECK(loaded_mesh.number_of_vertices() == original_mesh.number_of_vertices());
+    MINI_CHECK(loaded_mesh.number_of_faces() == original_mesh.number_of_faces());
+
     std::remove(temp_file.c_str());
 }
+
+} // namespace session_cpp

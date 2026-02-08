@@ -1,11 +1,13 @@
-#include "catch_amalgamated.hpp"
+#include "mini_test.h"
 #include "arrow.h"
 #include "encoders.h"
+#include "tolerance.h"
 #include <filesystem>
 
-using namespace session_cpp;
+namespace session_cpp {
+using namespace session_cpp::mini_test;
 
-TEST_CASE("Arrow JSON roundtrip", "[arrow]") {
+MINI_TEST("Arrow", "json_roundtrip") {
     Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     Arrow original(line, 1.0);
     original.name = "test_arrow";
@@ -14,7 +16,10 @@ TEST_CASE("Arrow JSON roundtrip", "[arrow]") {
     encoders::json_dump(original, "./serialization/test_arrow.json");
     Arrow loaded = encoders::json_load<Arrow>("./serialization/test_arrow.json");
 
-    REQUIRE(loaded.radius == original.radius);
-    REQUIRE(loaded.name == original.name);
-    REQUIRE(loaded.mesh.number_of_vertices() == 29);
-    REQUIRE(loaded.mesh.number_of_faces() == 28);}
+    MINI_CHECK(TOLERANCE.is_close(loaded.radius, original.radius));
+    MINI_CHECK(loaded.name == original.name);
+    MINI_CHECK(loaded.mesh.number_of_vertices() == 29);
+    MINI_CHECK(loaded.mesh.number_of_faces() == 28);
+}
+
+} // namespace session_cpp

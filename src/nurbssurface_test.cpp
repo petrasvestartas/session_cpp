@@ -1434,6 +1434,43 @@ namespace session_cpp {
         MINI_CHECK(surf.cv_count(1) >= 2);
     }
 
+    MINI_TEST("NurbsSurface", "create_edge_surface") {
+        std::vector<Point> pts_south = {Point(1, 20.569076, 0), Point(1, 22.569076, 3.0), Point(1, 25.569076, 3.0), Point(1, 27.569076, 0)};
+        std::vector<Point> pts_west  = {Point(10, 20.569076, 0), Point(5.5, 20.569076, 3.5), Point(1, 20.569076, 0)};
+        std::vector<Point> pts_north = {Point(10, 20.569076, 0), Point(10, 22.569076, 3), Point(10, 25.569076, 3), Point(10, 27.569076, 0)};
+        std::vector<Point> pts_east  = {Point(10, 27.569076, 0), Point(5.5, 27.569076, 3.5), Point(1, 27.569076, 0)};
+
+        NurbsCurve south = NurbsCurve::create(false, 3, pts_south);
+        NurbsCurve west  = NurbsCurve::create(false, 2, pts_west);
+        NurbsCurve north = NurbsCurve::create(false, 3, pts_north);
+        NurbsCurve east  = NurbsCurve::create(false, 2, pts_east);
+
+        NurbsSurface surf = NurbsSurface::create_edge_surface(south, west, north, east);
+
+        MINI_CHECK(surf.is_valid());
+        MINI_CHECK(surf.degree(0) == 2);
+        MINI_CHECK(surf.degree(1) == 3);
+        MINI_CHECK(surf.cv_count(0) == 3);
+        MINI_CHECK(surf.cv_count(1) == 4);
+
+        // Expected control points (matching Rhino output)
+        std::vector<Point> expected = {
+            Point(1, 20.569076, 0),    Point(1, 22.569076, 3.0),    Point(1, 25.569076, 3.0),    Point(1, 27.569076, 0),
+            Point(5.5, 20.569076, 3.5), Point(5.5, 22.569076, 6.5), Point(5.5, 25.569076, 6.5), Point(5.5, 27.569076, 3.5),
+            Point(10, 20.569076, 0),    Point(10, 22.569076, 3),     Point(10, 25.569076, 3),     Point(10, 27.569076, 0)
+        };
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 4; j++) {
+                Point cv = surf.get_cv(i, j);
+                Point exp = expected[i * 4 + j];
+                MINI_CHECK(std::abs(cv[0] - exp[0]) < 1e-6);
+                MINI_CHECK(std::abs(cv[1] - exp[1]) < 1e-6);
+                MINI_CHECK(std::abs(cv[2] - exp[2]) < 1e-6);
+            }
+        }
+    }
+
     MINI_TEST("NurbsSurface", "create_planar") {
         // uncomment #include "mesh.h"
         // uncomment #include "nurbscurve.h"
@@ -1462,6 +1499,33 @@ namespace session_cpp {
         Mesh mesh = tri.mesh();
         MINI_CHECK(mesh.number_of_faces() > 0);
         MINI_CHECK(mesh.number_of_vertices() > 0);
+    }
+
+    MINI_TEST("NurbsSurface", "create_network") {
+        // u-curves (2 curves, each 3 CVs)
+        auto uc0 = NurbsCurve::create(false, 2, {Point(10,9.569076,0), Point(5.5,9.569076,3.5), Point(1,9.569076,0)});
+        auto uc1 = NurbsCurve::create(false, 2, {Point(10,16.569076,0), Point(5.5,16.569076,3.5), Point(1,16.569076,0)});
+
+        // v-curves (4 curves)
+        auto vc0 = NurbsCurve::create(false, 3, {Point(1,9.569076,0), Point(1,11.569076,3.0), Point(1,14.569076,3.0), Point(1,16.569076,0)});
+        auto vc1 = NurbsCurve::create(false, 2, {Point(4.236484,9.569076,1.612033), Point(3,13.069076,4.250144), Point(3.667141,16.569076,1.459684)});
+        auto vc2 = NurbsCurve::create(false, 2, {Point(7.295129,16.569076,1.471513), Point(8,13.069076,4.250144), Point(6.99265,9.569076,1.557456)});
+        auto vc3 = NurbsCurve::create(false, 3, {Point(10,9.569076,0), Point(10,11.569076,3), Point(10,14.569076,3), Point(10,16.569076,0)});
+
+        auto srf = NurbsSurface::create_network({uc0, uc1}, {vc0, vc1, vc2, vc3});
+
+        // Print all CVs for debugging
+        std::cerr << "Network surface: " << srf.cv_count(0) << "x" << srf.cv_count(1) << std::endl;
+        std::cerr << "Degree: " << srf.degree(0) << "x" << srf.degree(1) << std::endl;
+        for (int i = 0; i < srf.cv_count(0); i++) {
+            for (int j = 0; j < srf.cv_count(1); j++) {
+                Point p = srf.get_cv(i, j);
+                std::cerr << "cv(" << i << "," << j << ") = {" << p[0] << ", " << p[1] << ", " << p[2] << "}" << std::endl;
+            }
+        }
+
+        MINI_CHECK(srf.cv_count(0) == 19);
+        MINI_CHECK(srf.cv_count(1) == 11);
     }
 
 }

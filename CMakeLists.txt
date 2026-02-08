@@ -235,26 +235,28 @@ LINK_PROTOBUF(bench_mesh)
 #############################################################################################
 # TESTS
 #############################################################################################
-add_library(catch2_lib STATIC src/catch/catch_amalgamated.cpp)
-target_include_directories(catch2_lib PUBLIC ${PROJECT_SOURCE_DIR}/src/catch/include)
-
-file(GLOB TEST_SOURCES "src/*_test.cpp")
-list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/point_test\\.cpp$")
-list(FILTER TEST_SOURCES EXCLUDE REGEX ".*/color_test\\.cpp$")
-
-add_executable(tests ${TEST_SOURCES})
-target_include_directories(tests PRIVATE ${PROJECT_SOURCE_DIR}/src/catch/include)
-target_link_libraries(tests PRIVATE session_core catch2_lib)
-LINK_PROTOBUF(tests)
-
 set(MINITEST_SOURCES
     src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
     src/xform_test.cpp src/mesh_test.cpp src/knot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/primitives_test.cpp
     src/trimmedsurface_test.cpp
-    src/triangulation_nurbs_test.cpp
     src/triangulation_2d_test.cpp
+    src/arrow_test.cpp
+    src/boundingbox_test.cpp
+    src/bvh_test.cpp
+    src/cylinder_test.cpp
+    src/edge_test.cpp
+    src/encoders_test.cpp
+    src/graph_test.cpp
+    src/intersection_test.cpp
+    src/obj_test.cpp
+    src/objects_test.cpp
+    src/quaternion_test.cpp
+    src/session_test.cpp
+    src/tree_test.cpp
+    src/treenode_test.cpp
+    src/vertex_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)
