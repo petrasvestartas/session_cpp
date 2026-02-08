@@ -3425,8 +3425,8 @@ NurbsSurface NurbsSurface::create_network(
         return params;
     };
 
-    // Uniform spacing within each interval for evaluation
-    auto interval_uniform = [](const std::vector<double>& anchors, int n_total) {
+    // Power-graded: concentrate at surface boundaries, uniform in middle
+    auto interval_graded = [](const std::vector<double>& anchors, int n_total, double alpha) {
         int n_intervals = static_cast<int>(anchors.size()) - 1;
         int spi = (n_total - 1) / n_intervals + 1;
         std::vector<double> params;
@@ -3435,13 +3435,20 @@ NurbsSurface NurbsSurface::create_network(
             double a = anchors[j], b = anchors[j + 1];
             int start_k = (j == 0) ? 0 : 1;
             for (int k = start_k; k < spi; k++) {
-                double t = static_cast<double>(k) / (spi - 1);
+                double u = static_cast<double>(k) / (spi - 1);
+                double t;
+                if (j == 0) // first interval: concentrate at start
+                    t = std::pow(u, alpha);
+                else if (j == n_intervals - 1) // last interval: concentrate at end
+                    t = 1.0 - std::pow(1.0 - u, alpha);
+                else // middle intervals: uniform
+                    t = u;
                 params.push_back(a + (b - a) * t);
             }
         }
         return params;
     };
-    auto u_eval = interval_cosine(u_params, n_u_samples);
+    auto u_eval = interval_graded(u_params, n_u_samples, 1.5);
     auto v_eval = interval_cosine(v_params, n_v_samples);
 
     // Evaluate Gordon at sample points
@@ -3453,44 +3460,11 @@ NurbsSurface NurbsSurface::create_network(
     // Reverse u-direction so surface goes from first v-curve (min u) to last
     std::reverse(grid.begin(), grid.end());
 
-    // Compute centripetal parameters from the evaluated grid (sqrt chord-length)
-    // u-direction: average across all columns
-    std::vector<double> u_sample(n_u_samples, 0.0);
-    for (int sj = 0; sj < n_v_samples; sj++) {
-        std::vector<double> cl(n_u_samples, 0.0);
-        for (int si = 1; si < n_u_samples; si++) {
-            double dx = grid[si][sj][0] - grid[si-1][sj][0];
-            double dy = grid[si][sj][1] - grid[si-1][sj][1];
-            double dz = grid[si][sj][2] - grid[si-1][sj][2];
-            cl[si] = cl[si-1] + std::pow(dx*dx + dy*dy + dz*dz, 0.25);
-        }
-        if (cl.back() > 1e-14)
-            for (int si = 1; si < n_u_samples; si++)
-                u_sample[si] += cl[si] / cl.back();
-    }
-    u_sample[0] = 0.0;
-    for (int si = 1; si < n_u_samples - 1; si++)
-        u_sample[si] /= n_v_samples;
-    u_sample[n_u_samples - 1] = 1.0;
-
-    // v-direction: average across all rows
-    std::vector<double> v_sample(n_v_samples, 0.0);
-    for (int si = 0; si < n_u_samples; si++) {
-        std::vector<double> cl(n_v_samples, 0.0);
-        for (int sj = 1; sj < n_v_samples; sj++) {
-            double dx = grid[si][sj][0] - grid[si][sj-1][0];
-            double dy = grid[si][sj][1] - grid[si][sj-1][1];
-            double dz = grid[si][sj][2] - grid[si][sj-1][2];
-            cl[sj] = cl[sj-1] + std::pow(dx*dx + dy*dy + dz*dz, 0.25);
-        }
-        if (cl.back() > 1e-14)
-            for (int sj = 1; sj < n_v_samples; sj++)
-                v_sample[sj] += cl[sj] / cl.back();
-    }
-    v_sample[0] = 0.0;
-    for (int sj = 1; sj < n_v_samples - 1; sj++)
-        v_sample[sj] /= n_u_samples;
-    v_sample[n_v_samples - 1] = 1.0;
+    // Use evaluation parameters for fitting (after reversal adjustment)
+    std::vector<double> u_sample(n_u_samples);
+    for (int i = 0; i < n_u_samples; i++)
+        u_sample[i] = 1.0 - u_eval[n_u_samples - 1 - i];
+    auto v_sample = v_eval;
 
     // Global surface interpolation through sampled grid
     int degree = 3;

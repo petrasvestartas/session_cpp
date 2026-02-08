@@ -1502,30 +1502,26 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsSurface", "create_network") {
-        // u-curves (2 curves, each 3 CVs)
         auto uc0 = NurbsCurve::create(false, 2, {Point(10,9.569076,0), Point(5.5,9.569076,3.5), Point(1,9.569076,0)});
         auto uc1 = NurbsCurve::create(false, 2, {Point(10,16.569076,0), Point(5.5,16.569076,3.5), Point(1,16.569076,0)});
-
-        // v-curves (4 curves)
         auto vc0 = NurbsCurve::create(false, 3, {Point(1,9.569076,0), Point(1,11.569076,3.0), Point(1,14.569076,3.0), Point(1,16.569076,0)});
         auto vc1 = NurbsCurve::create(false, 2, {Point(4.236484,9.569076,1.612033), Point(3,13.069076,4.250144), Point(3.667141,16.569076,1.459684)});
         auto vc2 = NurbsCurve::create(false, 2, {Point(7.295129,16.569076,1.471513), Point(8,13.069076,4.250144), Point(6.99265,9.569076,1.557456)});
         auto vc3 = NurbsCurve::create(false, 3, {Point(10,9.569076,0), Point(10,11.569076,3), Point(10,14.569076,3), Point(10,16.569076,0)});
-
         auto srf = NurbsSurface::create_network({uc0, uc1}, {vc0, vc1, vc2, vc3});
-
-        // Print all CVs for debugging
-        std::cerr << "Network surface: " << srf.cv_count(0) << "x" << srf.cv_count(1) << std::endl;
-        std::cerr << "Degree: " << srf.degree(0) << "x" << srf.degree(1) << std::endl;
-        for (int i = 0; i < srf.cv_count(0); i++) {
-            for (int j = 0; j < srf.cv_count(1); j++) {
-                Point p = srf.get_cv(i, j);
-                std::cerr << "cv(" << i << "," << j << ") = {" << p[0] << ", " << p[1] << ", " << p[2] << "}" << std::endl;
-            }
-        }
-
         MINI_CHECK(srf.cv_count(0) == 19);
         MINI_CHECK(srf.cv_count(1) == 11);
+        MINI_CHECK(srf.degree(0) == 3);
+        MINI_CHECK(srf.degree(1) == 3);
+        Point c00 = srf.get_cv(0, 0);
+        Point c0n = srf.get_cv(0, 10);
+        Point cn0 = srf.get_cv(18, 0);
+        Point cnn = srf.get_cv(18, 10);
+        MINI_CHECK(std::abs(c00[0] - 1.0) < 0.01);
+        MINI_CHECK(std::abs(c00[1] - 9.569076) < 0.01);
+        MINI_CHECK(std::abs(cn0[0] - 10.0) < 0.01);
+        MINI_CHECK(std::abs(cnn[0] - 10.0) < 0.01);
+        MINI_CHECK(std::abs(c0n[1] - 16.569076) < 0.01);
     }
 
 }

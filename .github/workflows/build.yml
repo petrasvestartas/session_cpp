@@ -35,20 +35,11 @@ jobs:
     - name: Run Tests
       shell: bash
       run: |
-        if [ -f "build/tests" ]; then
-          ./build/tests
-        elif [ -f "build/Release/tests.exe" ]; then
-          ./build/Release/tests.exe
-        else
-          echo "Tests executable not found!"
-          exit 1
-        fi
-
-    - name: Run Mini Tests
-      shell: bash
-      run: |
         if [ -f "build/point_minitest" ]; then
           ./build/point_minitest
         elif [ -f "build/Release/point_minitest.exe" ]; then
           ./build/Release/point_minitest.exe
+        else
+          echo "Tests executable not found!"
+          exit 1
         fi

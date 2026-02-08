@@ -23,6 +23,6 @@ int main() {
 
     Session session("nurbs_meshing");
     session.add_surface(std::make_shared<NurbsSurface>(surf));
-    session.json_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_meshing.json");
+    session.pb_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_meshing.pb");
     return 0;
 }

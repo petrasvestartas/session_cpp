@@ -55,7 +55,7 @@ int main() {
     session.add_surface(std::make_shared<NurbsSurface>(scopy));
     for (auto& line : normal_lines)
         session.add_line(line);
-    session.json_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_meshing_3.json");    
+    session.pb_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_meshing_3.pb");    
 
 
     return 0;
