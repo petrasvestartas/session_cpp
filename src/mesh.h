@@ -139,6 +139,9 @@ public:
     
     /// Check if mesh is empty
     bool is_empty() const { return vertex.empty(); }
+
+    /// Check if mesh is valid (has vertices, faces, and all face vertex keys exist)
+    bool is_valid() const;
     
     /// Calculate Euler characteristic (V - E + F)
     int euler() const;

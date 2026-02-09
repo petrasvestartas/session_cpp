@@ -85,7 +85,7 @@ public:
                                        const std::vector<NurbsCurve>& shapes);
 
     /// Edge surface (Coons patch) from 4 boundary curves forming a closed loop
-    static NurbsSurface create_edge_surface(const NurbsCurve& c0, const NurbsCurve& c1,
+    static NurbsSurface create_edge(const NurbsCurve& c0, const NurbsCurve& c1,
                                              const NurbsCurve& c2, const NurbsCurve& c3);
 
     /// Network surface (Gordon surface) from intersecting u-curves and v-curves

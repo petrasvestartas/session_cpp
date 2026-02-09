@@ -18,11 +18,11 @@ int main() {
     NurbsCurve north = NurbsCurve::create(false, 3, pts_north);
     NurbsCurve east  = NurbsCurve::create(false, 2, pts_east);
 
-    NurbsSurface surf = NurbsSurface::create_edge_surface(south, west, north, east);
+    NurbsSurface surf = NurbsSurface::create_edge(south, west, north, east);
     Mesh m = surf.mesh(15);
 
     Session session("nurbs_meshing");
     session.add_surface(std::make_shared<NurbsSurface>(surf));
-    session.pb_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_meshing.pb");
+    session.pb_dump("C:/pc/3_code/code_rust/session/session_data/nurbs_edge.pb");
     return 0;
 }

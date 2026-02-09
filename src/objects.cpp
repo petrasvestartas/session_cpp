@@ -234,6 +234,8 @@ std::string Objects::pb_dumps() const {
   for (const auto& m : *meshes) proto.add_meshes()->ParseFromString(m->pb_dumps());
   for (const auto& c : *cylinders) proto.add_cylinders()->ParseFromString(c->pb_dumps());
   for (const auto& a : *arrows) proto.add_arrows()->ParseFromString(a->pb_dumps());
+  for (const auto& nc : *nurbscurves) proto.add_nurbscurves()->ParseFromString(nc->pb_dumps());
+  for (const auto& ns : *nurbssurfaces) proto.add_nurbssurfaces()->ParseFromString(ns->pb_dumps());
   return proto.SerializeAsString();
 }
 
@@ -260,6 +262,10 @@ Objects Objects::pb_loads(const std::string& data) {
     objects.cylinders->push_back(std::make_shared<Cylinder>(Cylinder::pb_loads(c.SerializeAsString())));
   for (const auto& a : proto.arrows())
     objects.arrows->push_back(std::make_shared<Arrow>(Arrow::pb_loads(a.SerializeAsString())));
+  for (const auto& nc : proto.nurbscurves())
+    objects.nurbscurves->push_back(std::make_shared<NurbsCurve>(NurbsCurve::pb_loads(nc.SerializeAsString())));
+  for (const auto& ns : proto.nurbssurfaces())
+    objects.nurbssurfaces->push_back(std::make_shared<NurbsSurface>(NurbsSurface::pb_loads(ns.SerializeAsString())));
   return objects;
 }
 

@@ -1,5 +1,5 @@
 {
-    "guid": "ac73285f-9c66-44f9-8c32-af8ee27b7050",
+    "guid": "2ddea593-23ff-47f3-b12c-1878a1c7167a",
     "inner_loops": [],
     "name": "test_trimmedsurface",
     "outer_loop": {
@@ -33,7 +33,7 @@
         "cv_count": 5,
         "cv_stride": 3,
         "dimension": 3,
-        "guid": "b3ecf3b2-c39a-451c-9fd4-f5ed1d549f88",
+        "guid": "5aa6dfa8-0184-4bf6-ba89-68447f18d10e",
         "is_rational": false,
         "knots": [
             0.0,
@@ -46,7 +46,7 @@
             "a": 255,
             "b": 0,
             "g": 0,
-            "guid": "57105135-244d-4289-9e1b-438fac9ff1d3",
+            "guid": "b3a89901-765f-48c6-b885-1d433674ae10",
             "name": "black",
             "r": 0,
             "type": "Color"
@@ -56,7 +56,7 @@
         "type": "NurbsCurve",
         "width": 1.0,
         "xform": {
-            "guid": "a31a6665-d5c0-45bc-b748-efb74640c2af",
+            "guid": "7b760428-8f49-47ea-82bd-29272d5919ff",
             "m": [
                 1.0,
                 0.0,
@@ -80,7 +80,7 @@
         }
     },
     "surface": {
-        "guid": "1cb5fe19-338d-4e8f-8b48-55c6d9efdb8e",
+        "guid": "01bd307b-f853-4757-b37d-7eb4a58a0b41",
         "name": "my_nurbssurface",
         "type": "NurbsSurface",
         "width": 1.0,
@@ -88,13 +88,13 @@
             "a": 255,
             "b": 0,
             "g": 0,
-            "guid": "061b6a09-7d98-41b1-89ab-f8520477b0b2",
+            "guid": "6a23e673-1d61-4d11-b2ba-2e0de91ee649",
             "name": "black",
             "r": 0,
             "type": "Color"
         },
         "xform": {
-            "guid": "16fbb593-5dc0-42ac-bfc2-8962185c119f",
+            "guid": "faaf84eb-9500-49a1-85c7-bde999252dc8",
             "m": [
                 1.0,
                 0.0,
@@ -149,7 +149,7 @@
         "a": 255,
         "b": 64,
         "g": 128,
-        "guid": "bdf8887f-ef83-4c4f-afde-48157877becc",
+        "guid": "2f4e87ed-b1f0-48c2-a672-c924abb17887",
         "name": "my_color",
         "r": 255,
         "type": "Color"
@@ -157,7 +157,7 @@
     "type": "TrimmedSurface",
     "width": 2.0,
     "xform": {
-        "guid": "1217248c-2540-49c1-b9d1-67e85f03329a",
+        "guid": "3718c855-70e9-4390-845d-9675317ad4bd",
         "m": [
             1.0,
             0.0,

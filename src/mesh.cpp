@@ -34,6 +34,17 @@ size_t Mesh::number_of_edges() const {
     return count;
 }
 
+bool Mesh::is_valid() const {
+    if (vertex.empty() || face.empty()) return false;
+    for (const auto& [fkey, vkeys] : face) {
+        if (vkeys.size() < 3) return false;
+        for (size_t vk : vkeys) {
+            if (vertex.find(vk) == vertex.end()) return false;
+        }
+    }
+    return true;
+}
+
 int Mesh::euler() const {
     return static_cast<int>(number_of_vertices()) - 
            static_cast<int>(number_of_edges()) + 

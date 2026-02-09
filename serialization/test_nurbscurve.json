@@ -29,7 +29,7 @@
     "cv_count": 5,
     "cv_stride": 3,
     "dimension": 3,
-    "guid": "c3ea4575-e78a-44df-b71e-7f8b5d693344",
+    "guid": "cfa3a63b-fecc-4f2f-a53d-11e2cb33bcf4",
     "is_rational": false,
     "knots": [
         0.0,
@@ -43,7 +43,7 @@
         "a": 255,
         "b": 0,
         "g": 0,
-        "guid": "a1620074-d4cc-4ce8-82ad-c1a01eae7642",
+        "guid": "d4d22c42-972b-4f52-9d6c-c75f42d137d7",
         "name": "black",
         "r": 0,
         "type": "Color"
@@ -53,7 +53,7 @@
     "type": "NurbsCurve",
     "width": 1.0,
     "xform": {
-        "guid": "c197e422-897a-4560-854a-92a190798599",
+        "guid": "8e8f2120-0c3c-430e-a97f-f3ed7ba45ced",
         "m": [
             1.0,
             0.0,
