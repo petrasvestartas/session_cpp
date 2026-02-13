@@ -510,12 +510,11 @@ nlohmann::ordered_json Mesh::jsondump() const {
     }
     data["face"] = face_data;
 
-    // Face colors
+    // Face colors (RGBA)
     nlohmann::ordered_json facecolors_arr = nlohmann::ordered_json::array();
     for (const auto& c : facecolors) {
-        facecolors_arr.push_back(c.r);
-        facecolors_arr.push_back(c.g);
-        facecolors_arr.push_back(c.b);
+        facecolors_arr.push_back(c.r); facecolors_arr.push_back(c.g);
+        facecolors_arr.push_back(c.b); facecolors_arr.push_back(c.a);
     }
     data["facecolors"] = facecolors_arr;
     
@@ -539,12 +538,11 @@ nlohmann::ordered_json Mesh::jsondump() const {
     }
     data["halfedge"] = halfedge_data;
 
-    // Line colors
+    // Line colors (RGBA)
     nlohmann::ordered_json linecolors_arr = nlohmann::ordered_json::array();
     for (const auto& c : linecolors) {
-        linecolors_arr.push_back(c.r);
-        linecolors_arr.push_back(c.g);
-        linecolors_arr.push_back(c.b);
+        linecolors_arr.push_back(c.r); linecolors_arr.push_back(c.g);
+        linecolors_arr.push_back(c.b); linecolors_arr.push_back(c.a);
     }
     data["linecolors"] = linecolors_arr;
 
@@ -552,12 +550,11 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["max_vertex"] = max_vertex;
     data["name"] = name;
 
-    // Point colors
+    // Point colors (RGBA)
     nlohmann::ordered_json pointcolors_arr = nlohmann::ordered_json::array();
     for (const auto& c : pointcolors) {
-        pointcolors_arr.push_back(c.r);
-        pointcolors_arr.push_back(c.g);
-        pointcolors_arr.push_back(c.b);
+        pointcolors_arr.push_back(c.r); pointcolors_arr.push_back(c.g);
+        pointcolors_arr.push_back(c.b); pointcolors_arr.push_back(c.a);
     }
     data["pointcolors"] = pointcolors_arr;
 
@@ -668,24 +665,27 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
     if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
         const auto& arr = data["pointcolors"];
         mesh.pointcolors.clear();
-        for (size_t i = 0; i + 2 < arr.size(); i += 3) {
-            mesh.pointcolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(), arr[i+2].get<int>(), 255));
+        for (size_t i = 0; i + 3 < arr.size(); i += 4) {
+            mesh.pointcolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
+                arr[i+2].get<int>(), arr[i+3].get<int>()));
         }
     }
 
     if (data.contains("facecolors") && data["facecolors"].is_array()) {
         const auto& arr = data["facecolors"];
         mesh.facecolors.clear();
-        for (size_t i = 0; i + 2 < arr.size(); i += 3) {
-            mesh.facecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(), arr[i+2].get<int>(), 255));
+        for (size_t i = 0; i + 3 < arr.size(); i += 4) {
+            mesh.facecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
+                arr[i+2].get<int>(), arr[i+3].get<int>()));
         }
     }
 
     if (data.contains("linecolors") && data["linecolors"].is_array()) {
         const auto& arr = data["linecolors"];
         mesh.linecolors.clear();
-        for (size_t i = 0; i + 2 < arr.size(); i += 3) {
-            mesh.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(), arr[i+2].get<int>(), 255));
+        for (size_t i = 0; i + 3 < arr.size(); i += 4) {
+            mesh.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
+                arr[i+2].get<int>(), arr[i+3].get<int>()));
         }
     }
 

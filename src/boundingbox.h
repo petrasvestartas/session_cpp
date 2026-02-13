@@ -17,8 +17,6 @@ class Line;
 class Polyline;
 class Mesh;
 class PointCloud;
-class Arrow;
-class Cylinder;
 class NurbsCurve;
 class NurbsSurface;
 
@@ -55,10 +53,6 @@ public:
     static BoundingBox from_mesh(const Mesh& mesh, const Plane& plane, double inflate = 0.0);
     static BoundingBox from_pointcloud(const PointCloud& pointcloud, double inflate = 0.0);
     static BoundingBox from_pointcloud(const PointCloud& pointcloud, const Plane& plane, double inflate = 0.0);
-    static BoundingBox from_arrow(const Arrow& arrow, double inflate = 0.0);
-    static BoundingBox from_arrow(const Arrow& arrow, const Plane& plane, double inflate = 0.0);
-    static BoundingBox from_cylinder(const Cylinder& cylinder, double inflate = 0.0);
-    static BoundingBox from_cylinder(const Cylinder& cylinder, const Plane& plane, double inflate = 0.0);
     static BoundingBox from_nurbscurve(const NurbsCurve& curve, double inflate = 0.0, bool tight = false);
     static BoundingBox from_nurbscurve(const NurbsCurve& curve, const Plane& plane, double inflate = 0.0, bool tight = false);
     static BoundingBox from_nurbssurface(const NurbsSurface& surface, double inflate = 0.0);

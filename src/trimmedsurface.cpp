@@ -1,4 +1,5 @@
 #include "trimmedsurface.h"
+#include "primitives.h"
 #include "trimesh_delaunay.h"
 #include "fmt/core.h"
 #include <fstream>
@@ -59,13 +60,47 @@ TrimmedSurface TrimmedSurface::create(const NurbsSurface& surface, const NurbsCu
 }
 
 TrimmedSurface TrimmedSurface::create_planar(const NurbsCurve& boundary) {
-    NurbsSurface srf = NurbsSurface::create_planar(boundary);
+    NurbsSurface srf = Primitives::create_planar(boundary);
+    if (!srf.is_valid()) return TrimmedSurface();
+
+    Point p00 = srf.get_cv(0, 0);
+    Point p10 = srf.get_cv(1, 0);
+    Point p01 = srf.get_cv(0, 1);
+    Vector u_axis(p10[0]-p00[0], p10[1]-p00[1], p10[2]-p00[2]);
+    Vector v_axis(p01[0]-p00[0], p01[1]-p00[1], p01[2]-p00[2]);
+    double u_len2 = u_axis[0]*u_axis[0] + u_axis[1]*u_axis[1] + u_axis[2]*u_axis[2];
+    double v_len2 = v_axis[0]*v_axis[0] + v_axis[1]*v_axis[1] + v_axis[2]*v_axis[2];
+    if (u_len2 < 1e-28 || v_len2 < 1e-28) return TrimmedSurface();
+
+    auto project_to_uv = [&](const Point& pt) -> Point {
+        double dx = pt[0]-p00[0], dy = pt[1]-p00[1], dz = pt[2]-p00[2];
+        double nu = (dx*u_axis[0] + dy*u_axis[1] + dz*u_axis[2]) / u_len2;
+        double nv = (dx*v_axis[0] + dy*v_axis[1] + dz*v_axis[2]) / v_len2;
+        return Point(nu, nv, 0.0);
+    };
+
+    std::vector<Point> uv_pts;
+    if (boundary.degree() <= 1) {
+        for (int i = 0; i < boundary.cv_count(); ++i)
+            uv_pts.push_back(project_to_uv(boundary.get_cv(i)));
+    } else {
+        auto spans = boundary.get_span_vector();
+        for (size_t si = 0; si + 1 < spans.size(); ++si) {
+            int n_sub = 10;
+            for (int k = 0; k <= n_sub; ++k) {
+                double t = spans[si] + (spans[si+1] - spans[si]) * k / n_sub;
+                Point uv = project_to_uv(boundary.point_at(t));
+                if (uv_pts.empty() || (uv[0]-uv_pts.back()[0])*(uv[0]-uv_pts.back()[0]) +
+                    (uv[1]-uv_pts.back()[1])*(uv[1]-uv_pts.back()[1]) > 1e-24)
+                    uv_pts.push_back(uv);
+            }
+        }
+    }
+
     TrimmedSurface ts;
     ts.m_surface = srf;
-    ts.m_outer_loop = srf.get_outer_loop();
-    ts.m_inner_loops.clear();
-    for (int i = 0; i < srf.inner_loop_count(); ++i)
-        ts.m_inner_loops.push_back(srf.get_inner_loop(i));
+    if (uv_pts.size() >= 3)
+        ts.m_outer_loop = NurbsCurve::create(false, 1, uv_pts);
     return ts;
 }
 

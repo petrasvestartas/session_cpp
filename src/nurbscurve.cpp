@@ -37,6 +37,219 @@ NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point
     return curve;
 }
 
+NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
+                                           CurveKnotStyle parameterization) {
+    int n = static_cast<int>(points.size());
+    if (n < 2) return NurbsCurve();
+    int dim = 3;
+    int degree = 3;
+    int order = degree + 1;
+
+    bool periodic = (parameterization == CurveKnotStyle::UniformPeriodic ||
+                     parameterization == CurveKnotStyle::ChordPeriodic ||
+                     parameterization == CurveKnotStyle::ChordSquareRootPeriodic);
+
+    if (periodic && n < 3) return NurbsCurve();
+
+    auto pdist = [](const Point& a, const Point& b) {
+        double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
+        return std::sqrt(dx*dx + dy*dy + dz*dz);
+    };
+
+    if (periodic) {
+        int cv_count = n + 3;
+        int kc = cv_count + order - 2;
+
+        CurveKnotStyle base_style = CurveKnotStyle::Chord;
+        if (parameterization == CurveKnotStyle::UniformPeriodic) base_style = CurveKnotStyle::Uniform;
+        if (parameterization == CurveKnotStyle::ChordSquareRootPeriodic) base_style = CurveKnotStyle::ChordSquareRoot;
+
+        std::vector<double> params(n + 1, 0.0);
+        if (base_style == CurveKnotStyle::Uniform) {
+            for (int i = 1; i <= n; i++) params[i] = (double)i;
+        } else {
+            for (int i = 1; i < n; i++) {
+                double d = pdist(points[i-1], points[i]);
+                if (base_style == CurveKnotStyle::ChordSquareRoot) d = std::sqrt(d);
+                params[i] = params[i-1] + d;
+            }
+            double d_close = pdist(points[n-1], points[0]);
+            if (base_style == CurveKnotStyle::ChordSquareRoot) d_close = std::sqrt(d_close);
+            params[n] = params[n-1] + d_close;
+        }
+
+        double dmin = 1e300, dmax = 0;
+        for (int i = 0; i < n; i++) {
+            double d = params[i+1] - params[i];
+            if (d < dmin) dmin = d;
+            if (d > dmax) dmax = d;
+        }
+        if (dmax <= 0.0 || dmax * 1.490116119385e-8 >= dmin)
+            return NurbsCurve();
+
+        std::vector<double> knots(kc);
+        for (int i = 0; i <= n; i++) knots[i + 2] = params[i];
+        knots[cv_count]     = knots[3] - knots[2] + knots[cv_count - 1];
+        knots[1]            = knots[cv_count - 2] - knots[cv_count - 1] + knots[2];
+        knots[cv_count + 1] = knots[4] - knots[3] + knots[cv_count];
+        knots[0]            = knots[cv_count - 3] - knots[cv_count - 2] + knots[1];
+
+        std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
+        std::vector<double> rhs(n * dim);
+
+        for (int i = 0; i < n; i++) {
+            auto basis = knot::eval_basis(order, knots, i, params[i]);
+            int c0 = i % n;
+            int c1 = (i + 1) % n;
+            int c2 = (i + 2) % n;
+            A[i][c0] += basis[0];
+            A[i][c1] += basis[1];
+            A[i][c2] += basis[2];
+            for (int d = 0; d < dim; d++)
+                rhs[i * dim + d] = points[i][d];
+        }
+
+        std::vector<double> cv(n * dim);
+        for (int i = 0; i < n; i++)
+            for (int d = 0; d < dim; d++)
+                cv[i * dim + d] = rhs[i * dim + d];
+
+        for (int col = 0; col < n; col++) {
+            int pivot = col;
+            for (int row = col + 1; row < n; row++)
+                if (std::fabs(A[row][col]) > std::fabs(A[pivot][col])) pivot = row;
+            if (pivot != col) {
+                std::swap(A[col], A[pivot]);
+                for (int d = 0; d < dim; d++)
+                    std::swap(cv[col*dim+d], cv[pivot*dim+d]);
+            }
+            if (std::fabs(A[col][col]) < 1e-300) return NurbsCurve();
+            for (int row = col + 1; row < n; row++) {
+                double factor = A[row][col] / A[col][col];
+                for (int j = col; j < n; j++) A[row][j] -= factor * A[col][j];
+                for (int d = 0; d < dim; d++)
+                    cv[row*dim+d] -= factor * cv[col*dim+d];
+            }
+        }
+        for (int i = n - 1; i >= 0; i--) {
+            for (int d = 0; d < dim; d++) {
+                double sum = cv[i*dim+d];
+                for (int j = i + 1; j < n; j++) sum -= A[i][j] * cv[j*dim+d];
+                cv[i*dim+d] = sum / A[i][i];
+            }
+        }
+
+        NurbsCurve curve(dim, false, order, cv_count);
+        for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+        for (int i = 0; i < n; i++)
+            curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
+        curve.set_cv(n, curve.get_cv(0));
+        curve.set_cv(n + 1, curve.get_cv(1));
+        curve.set_cv(n + 2, curve.get_cv(2));
+        return curve;
+    }
+
+    // Open interpolation
+    int cv_count = n + 2;
+
+    std::vector<double> pts(n * dim);
+    for (int i = 0; i < n; i++) {
+        pts[i*3]   = points[i][0];
+        pts[i*3+1] = points[i][1];
+        pts[i*3+2] = points[i][2];
+    }
+
+    auto params = knot::compute_parameters(pts.data(), n, dim, parameterization);
+    auto knots = knot::build_interp_knots(params, degree);
+    int kc = static_cast<int>(knots.size());
+
+    auto estimate_tangent = [&](int i0, int i1, int i2) -> Vector {
+        double d01 = pdist(points[i0], points[i1]);
+        double d21 = pdist(points[i2], points[i1]);
+        if (d01 + d21 < 1e-300) return Vector(0,0,0);
+        double s = d01 / (d01 + d21);
+        double t = 1.0 - s;
+        double denom = 2.0 * s * t;
+        if (denom < 1e-16) {
+            double dx = points[i1][0]-points[i0][0];
+            double dy = points[i1][1]-points[i0][1];
+            double dz = points[i1][2]-points[i0][2];
+            double len = std::sqrt(dx*dx+dy*dy+dz*dz);
+            return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0,0,0);
+        }
+        double cvx = (-t*t*points[i0][0] + points[i1][0] - s*s*points[i2][0]) / denom;
+        double cvy = (-t*t*points[i0][1] + points[i1][1] - s*s*points[i2][1]) / denom;
+        double cvz = (-t*t*points[i0][2] + points[i1][2] - s*s*points[i2][2]) / denom;
+        double dx = cvx - points[i0][0];
+        double dy = cvy - points[i0][1];
+        double dz = cvz - points[i0][2];
+        double len = std::sqrt(dx*dx + dy*dy + dz*dz);
+        return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0,0,0);
+    };
+
+    Vector tan_start, tan_end;
+    if (n >= 3) {
+        tan_start = estimate_tangent(0, 1, 2);
+        Vector end_raw = estimate_tangent(n-1, n-2, n-3);
+        tan_end = Vector(-end_raw[0], -end_raw[1], -end_raw[2]);
+    } else {
+        double dx = points[1][0]-points[0][0];
+        double dy = points[1][1]-points[0][1];
+        double dz = points[1][2]-points[0][2];
+        double len = std::sqrt(dx*dx+dy*dy+dz*dz);
+        if (len > 0) { tan_start = Vector(dx/len, dy/len, dz/len); tan_end = tan_start; }
+    }
+
+    double d_start = pdist(points[0], points[1]);
+    double d_end = pdist(points[n-1], points[n-2]);
+
+    std::vector<double> cv(cv_count * dim);
+    for (int d = 0; d < dim; d++) cv[d] = points[0][d];
+    double s0 = d_start / 3.0;
+    for (int d = 0; d < dim; d++)
+        cv[dim + d] = points[0][d] + s0 * tan_start[d];
+    for (int i = 1; i <= n-2; i++)
+        for (int d = 0; d < dim; d++)
+            cv[(i+1) * dim + d] = points[i][d];
+    double s1 = -d_end / 3.0;
+    for (int d = 0; d < dim; d++)
+        cv[n * dim + d] = points[n-1][d] + s1 * tan_end[d];
+    for (int d = 0; d < dim; d++) cv[(n+1) * dim + d] = points[n-1][d];
+
+    int sys_n = n;
+    std::vector<double> lower(sys_n, 0.0), diag(sys_n, 0.0), upper(sys_n, 0.0);
+    std::vector<double> rhs(sys_n * dim);
+
+    diag[0] = 1.0;
+    for (int d = 0; d < dim; d++) rhs[d] = cv[dim + d];
+
+    for (int i = 1; i <= n-2; i++) {
+        auto basis = knot::eval_basis(order, knots, i, params[i]);
+        lower[i] = basis[0];
+        diag[i] = basis[1];
+        upper[i] = basis[2];
+        for (int d = 0; d < dim; d++)
+            rhs[i * dim + d] = points[i][d];
+    }
+
+    diag[n-1] = 1.0;
+    for (int d = 0; d < dim; d++) rhs[(n-1) * dim + d] = cv[n * dim + d];
+
+    std::vector<double> solution;
+    knot::solve_tridiagonal(dim, sys_n, lower, diag, upper, rhs, solution);
+
+    for (int i = 0; i < sys_n; i++)
+        for (int d = 0; d < dim; d++)
+            cv[(i+1) * dim + d] = solution[i * dim + d];
+
+    NurbsCurve curve(dim, false, order, cv_count);
+    for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+    for (int i = 0; i < cv_count; i++)
+        curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
+
+    return curve;
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Constructors & Destructor
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -68,7 +281,8 @@ bool NurbsCurve::operator==(const NurbsCurve& other) const {
     if (m_cv_stride != other.m_cv_stride) return false;
     if (name != other.name) return false;
     if (std::abs(width - other.width) > Tolerance::ZERO_TOLERANCE) return false;
-    if (linecolor[0] != other.linecolor[0] || linecolor[1] != other.linecolor[1] || linecolor[2] != other.linecolor[2]) return false;
+    if (pointcolors != other.pointcolors) return false;
+    if (linecolors != other.linecolors) return false;
     if (m_knot.size() != other.m_knot.size()) return false;
     for (size_t i = 0; i < m_knot.size(); i++) {
         if (std::abs(m_knot[i] - other.m_knot[i]) > Tolerance::ZERO_TOLERANCE) return false;
@@ -270,6 +484,11 @@ const double* NurbsCurve::cv(int cv_index) const {
 Point NurbsCurve::get_cv(int cv_index) const {
     const double* cv_ptr = cv(cv_index);
     if (!cv_ptr) return Point(0, 0, 0);
+    if (m_is_rat) {
+        double w = cv_ptr[m_dim];
+        if (std::abs(w) < 1e-14) return Point(0, 0, 0);
+        return Point(cv_ptr[0] / w, cv_ptr[1] / w, m_dim > 2 ? cv_ptr[2] / w : 0.0);
+    }
     return Point(cv_ptr[0], cv_ptr[1], m_dim > 2 ? cv_ptr[2] : 0.0);
 }
 
@@ -2510,11 +2729,15 @@ void NurbsCurve::transform() {
 bool NurbsCurve::transform(const Xform& xf) {
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
-        // Apply xform matrix (column-major: m[col*4 + row])
         double x = xf.m[0] * p[0] + xf.m[4] * p[1] + xf.m[8] * p[2] + xf.m[12];
         double y = xf.m[1] * p[0] + xf.m[5] * p[1] + xf.m[9] * p[2] + xf.m[13];
         double z = xf.m[2] * p[0] + xf.m[6] * p[1] + xf.m[10] * p[2] + xf.m[14];
-        set_cv(i, Point(x, y, z));
+        if (m_is_rat) {
+            double w = weight(i);
+            set_cv_4d(i, x * w, y * w, z * w, w);
+        } else {
+            set_cv(i, Point(x, y, z));
+        }
     }
     return true;
 }
@@ -2553,9 +2776,24 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     j["guid"] = guid;
     j["is_rational"] = m_is_rat != 0;
     j["knots"] = m_knot;
-    j["linecolor"] = linecolor.jsondump();
+
+    nlohmann::ordered_json linecolors_arr = nlohmann::ordered_json::array();
+    for (const auto& c : linecolors) {
+        linecolors_arr.push_back(c.r); linecolors_arr.push_back(c.g);
+        linecolors_arr.push_back(c.b); linecolors_arr.push_back(c.a);
+    }
+    j["linecolors"] = linecolors_arr;
+
     j["name"] = name;
     j["order"] = m_order;
+
+    nlohmann::ordered_json pointcolors_arr = nlohmann::ordered_json::array();
+    for (const auto& c : pointcolors) {
+        pointcolors_arr.push_back(c.r); pointcolors_arr.push_back(c.g);
+        pointcolors_arr.push_back(c.b); pointcolors_arr.push_back(c.a);
+    }
+    j["pointcolors"] = pointcolors_arr;
+
     j["type"] = "NurbsCurve";
     j["width"] = width;
     j["xform"] = xform.jsondump();
@@ -2592,8 +2830,19 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
         curve.guid = data.value("guid", ::guid());
         curve.name = data.value("name", "my_nurbscurve");
         curve.width = data.value("width", 1.0);
-        if (data.contains("linecolor")) {
-            curve.linecolor = Color::jsonload(data["linecolor"]);
+        if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
+            const auto& arr = data["pointcolors"];
+            for (size_t i = 0; i + 3 < arr.size(); i += 4) {
+                curve.pointcolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
+                    arr[i+2].get<int>(), arr[i+3].get<int>()));
+            }
+        }
+        if (data.contains("linecolors") && data["linecolors"].is_array()) {
+            const auto& arr = data["linecolors"];
+            for (size_t i = 0; i + 3 < arr.size(); i += 4) {
+                curve.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
+                    arr[i+2].get<int>(), arr[i+3].get<int>()));
+            }
         }
         if (data.contains("xform")) {
             curve.xform = Xform::jsonload(data["xform"]);
@@ -2652,13 +2901,14 @@ std::string NurbsCurve::pb_dumps() const {
     }
     proto.set_width(width);
 
-    auto* color_proto = proto.mutable_linecolor();
-    color_proto->set_guid(linecolor.guid);
-    color_proto->set_name(linecolor.name);
-    color_proto->set_r(linecolor.r);
-    color_proto->set_g(linecolor.g);
-    color_proto->set_b(linecolor.b);
-    color_proto->set_a(linecolor.a);
+    for (const auto& c : pointcolors) {
+        auto* cp = proto.add_pointcolors();
+        cp->set_r(c.r); cp->set_g(c.g); cp->set_b(c.b); cp->set_a(c.a);
+    }
+    for (const auto& c : linecolors) {
+        auto* cp = proto.add_linecolors();
+        cp->set_r(c.r); cp->set_g(c.g); cp->set_b(c.b); cp->set_a(c.a);
+    }
 
     auto* xform_proto = proto.mutable_xform();
     xform_proto->set_guid(xform.guid);
@@ -2689,14 +2939,13 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
         curve.m_cv.push_back(proto.cvs(i));
     }
 
-    if (proto.has_linecolor()) {
-        const auto& c = proto.linecolor();
-        curve.linecolor.guid = c.guid();
-        curve.linecolor.name = c.name();
-        curve.linecolor.r = c.r();
-        curve.linecolor.g = c.g();
-        curve.linecolor.b = c.b();
-        curve.linecolor.a = c.a();
+    for (int i = 0; i < proto.pointcolors_size(); ++i) {
+        const auto& c = proto.pointcolors(i);
+        curve.pointcolors.push_back(Color(c.r(), c.g(), c.b(), c.a()));
+    }
+    for (int i = 0; i < proto.linecolors_size(); ++i) {
+        const auto& c = proto.linecolors(i);
+        curve.linecolors.push_back(Color(c.r(), c.g(), c.b(), c.a()));
     }
 
     if (proto.has_xform()) {
@@ -3087,7 +3336,8 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     guid = ::guid();
     name = src.name;
     width = src.width;
-    linecolor = src.linecolor;
+    pointcolors = src.pointcolors;
+    linecolors = src.linecolors;
     xform = src.xform;
     invalidate_rmf_cache();
 }

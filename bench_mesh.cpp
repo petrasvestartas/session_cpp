@@ -1,5 +1,6 @@
 #include "nurbssurface.h"
 #include "nurbscurve.h"
+#include "primitives.h"
 #include "trimesh_grid.h"
 #include "trimesh_delaunay.h"
 #include <chrono>
@@ -72,6 +73,53 @@ int main() {
                 pts.push_back(Point(x, y, z));
             }
         cases.push_back({"wave_20x20", NurbsSurface::create(false, false, 3, 3, n, n, pts)});
+    }
+
+    // 5. Revolve test cases
+    {
+        auto pa = NurbsCurve::create(false, 3, {
+            Point(1.5,0,0), Point(1.5,0,0.3), Point(0.3,0,0.5),
+            Point(0.3,0,2.5), Point(0.2,0,3.0), Point(2.0,0,4.5), Point(1.8,0,5.0)});
+        cases.push_back({"vase_revolve", Primitives::create_revolve(pa, Point(0,0,0), Vector(0,0,1))});
+    }
+    {
+        NurbsCurve pb(3, true, 3, 9);
+        double w = std::sqrt(2.0) / 2.0;
+        double cw[] = {1,w,1,w,1,w,1,w,1};
+        double ca[] = {1,1,0,-1,-1,-1,0,1,1};
+        double sa[] = {0,1,1,1,0,-1,-1,-1,0};
+        double ck[] = {0,0,1,1,2,2,3,3,4,4};
+        double R=5.0, r=1.5, tcx=14;
+        for (int i=0; i<10; i++) pb.set_knot(i, ck[i]);
+        for (int i=0; i<9; i++) pb.set_cv_4d(i, (tcx+R+r*ca[i])*cw[i], 0, r*sa[i]*cw[i], cw[i]);
+        cases.push_back({"torus_revolve", Primitives::create_revolve(pb, Point(tcx,0,0), Vector(0,0,1))});
+    }
+    {
+        auto pc = NurbsCurve::create(false, 1, {Point(29,0,-0.5), Point(29,0,0.5)});
+        cases.push_back({"elbow_revolve", Primitives::create_revolve(pc, Point(26,0,0), Vector(0,0,1), PI/2.0)});
+    }
+    {
+        double w = std::sqrt(2.0) / 2.0;
+        double sr=2.0, scx=36;
+        NurbsCurve pd(3, true, 3, 5);
+        double sk[] = {0,0,1,1,2,2};
+        for (int i=0; i<6; i++) pd.set_knot(i, sk[i]);
+        double spx[] = {0,sr,sr,sr,0}, spz[] = {-sr,-sr,0,sr,sr}, spw[] = {1,w,1,w,1};
+        for (int i=0; i<5; i++) pd.set_cv_4d(i, (scx+spx[i])*spw[i], 0, spz[i]*spw[i], spw[i]);
+        cases.push_back({"sphere_revolve", Primitives::create_revolve(pd, Point(scx,0,0), Vector(0,0,1))});
+    }
+    {
+        auto pe = NurbsCurve::create(false, 1, {Point(44,0,3), Point(46,0,0)});
+        cases.push_back({"cone_revolve", Primitives::create_revolve(pe, Point(44,0,0), Vector(0,0,1))});
+    }
+    {
+        NurbsCurve rail = NurbsCurve::create(false, 2, {Point(0,0,0), Point(0,5,0), Point(2,9,0)});
+        NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
+        cases.push_back({"sweep1_circle", Primitives::create_sweep1(rail, profile)});
+    }
+    {
+        auto c2 = Primitives::circle(24, 0, 0, 3.0);
+        cases.push_back({"extrusion_circle", Primitives::create_extrusion(c2, Vector(0,0,5))});
     }
 
     // Benchmark each

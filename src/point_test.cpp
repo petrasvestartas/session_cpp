@@ -11,7 +11,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("Point", "constructor") {
+    MINI_TEST("Point", "Constructor") {
         // uncomment #include "point.h"
         // uncomment #include "vector.h"
         // uncomment #include "color.h"
@@ -85,7 +85,7 @@ namespace session_cpp {
         MINI_CHECK(pdif[0] == 3.0 && pdif[1] == 3.0 && pdif[2] == 3.0);
     }
 
-    MINI_TEST("Point", "transformation") {
+    MINI_TEST("Point", "Transformation") {
         // uncomment #include "point.h"
         // uncomment #include "xform.h"
 
@@ -99,7 +99,7 @@ namespace session_cpp {
         MINI_CHECK(p.xform == Xform::identity());
     }
 
-    MINI_TEST("Point", "json_roundtrip") {
+    MINI_TEST("Point", "Json_roundtrip") {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
@@ -131,7 +131,7 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("Point", "protobuf_roundtrip") {
+    MINI_TEST("Point", "Protobuf_roundtrip") {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
@@ -155,7 +155,7 @@ namespace session_cpp {
         MINI_CHECK(loaded.pointcolor.a == 255);
     }
 
-    MINI_TEST("Point", "is_ccw") {
+    MINI_TEST("Point", "Is_ccw") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 0.0, 0.0);
@@ -170,7 +170,7 @@ namespace session_cpp {
         MINI_CHECK(!is_clock_wise);
     }
 
-    MINI_TEST("Point", "mid_point") {
+    MINI_TEST("Point", "Mid_point") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 2.0, 1.0);
@@ -180,7 +180,7 @@ namespace session_cpp {
         MINI_CHECK(mid[0] == 0.5 && mid[1] == 3.5 && mid[2] == 2.0);
     }
 
-    MINI_TEST("Point", "distance") {
+    MINI_TEST("Point", "Distance") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 2.0, 1.0);
@@ -190,7 +190,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(d, 3.741657));
     }
 
-    MINI_TEST("Point", "squared_distance") {
+    MINI_TEST("Point", "Squared_distance") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 2.0, 1.0);
@@ -200,7 +200,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(d, 14.0));
     }
 
-    MINI_TEST("Point", "area") {
+    MINI_TEST("Point", "Area") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 0.0, 0.0);
@@ -212,7 +212,7 @@ namespace session_cpp {
         MINI_CHECK(area == 4.0);
     }
 
-    MINI_TEST("Point", "centroid_quad") {
+    MINI_TEST("Point", "Centroid_quad") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 0.0, 0.0);

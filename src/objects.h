@@ -9,8 +9,6 @@
 #include "polyline.h"
 #include "pointcloud.h"
 #include "mesh.h"
-#include "cylinder.h"
-#include "arrow.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include <fstream>
@@ -36,8 +34,6 @@ public:
   std::shared_ptr<std::vector<std::shared_ptr<Polyline>>> polylines;
   std::shared_ptr<std::vector<std::shared_ptr<PointCloud>>> pointclouds;
   std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes;
-  std::shared_ptr<std::vector<std::shared_ptr<Cylinder>>> cylinders;
-  std::shared_ptr<std::vector<std::shared_ptr<Arrow>>> arrows;
   std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves;
   std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces;
 
@@ -54,8 +50,6 @@ public:
     this->polylines = std::make_shared<std::vector<std::shared_ptr<Polyline>>>();
     this->pointclouds = std::make_shared<std::vector<std::shared_ptr<PointCloud>>>();
     this->meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
-    this->cylinders = std::make_shared<std::vector<std::shared_ptr<Cylinder>>>();
-    this->arrows = std::make_shared<std::vector<std::shared_ptr<Arrow>>>();
     this->nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
     this->nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
   }

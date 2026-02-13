@@ -18,7 +18,7 @@ int main() {
     NurbsCurve c3 = Primitives::circle(0, 0, 4.0, 1.5);
     NurbsCurve c4 = Primitives::circle(0, 0, 6.0, 0.8);
 
-    auto closed_srf = std::make_shared<NurbsSurface>(NurbsSurface::create_loft({c1, c2, c3, c4}, 3));
+    auto closed_srf = std::make_shared<NurbsSurface>(Primitives::create_loft({c1, c2, c3, c4}, 3));
     closed_srf->mesh(5);
     session.add_surface(closed_srf);
 
@@ -35,7 +35,7 @@ int main() {
         NurbsCurve::create(false, 3, points[2])
     };
 
-    auto open_srf = std::make_shared<NurbsSurface>(NurbsSurface::create_loft(curves, 3));
+    auto open_srf = std::make_shared<NurbsSurface>(Primitives::create_loft(curves, 3));
     open_srf->mesh(5);
     session.add_surface(open_srf);
 

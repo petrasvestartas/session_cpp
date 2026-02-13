@@ -4,8 +4,6 @@
 #include "polyline.h"
 #include "mesh.h"
 #include "pointcloud.h"
-#include "arrow.h"
-#include "cylinder.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "guid.h"
@@ -156,104 +154,6 @@ BoundingBox BoundingBox::from_pointcloud(const PointCloud& pointcloud, double in
 
 BoundingBox BoundingBox::from_pointcloud(const PointCloud& pointcloud, const Plane& plane, double inflate_amount) {
     return from_points(pointcloud.get_points(), plane, inflate_amount);
-}
-
-BoundingBox BoundingBox::from_arrow(const Arrow& arrow, double inflate_amount) {
-    const Line& ln = arrow.line;
-    Point p0 = ln.start();
-    Point p1 = ln.end();
-    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
-    Vector axis = ln.to_vector();
-    double L = ln.length();
-    if (L <= 0.0) {
-        axis = Vector(1.0, 0.0, 0.0);
-    } else {
-        axis.normalize_self();
-    }
-    Vector ux = axis;
-    Vector uy;
-    if (std::abs(ux[2]) < 0.9) {
-        uy = Vector(0.0, 0.0, 1.0).cross(ux);
-        uy.normalize_self();
-    } else {
-        uy = Vector(1.0, 0.0, 0.0).cross(ux);
-        uy.normalize_self();
-    }
-    Vector uz = ux.cross(uy);
-    uz.normalize_self();
-    double r_eff = arrow.radius * 1.5;
-    Vector half((L * 0.5) + inflate_amount, r_eff + inflate_amount, r_eff + inflate_amount);
-    return BoundingBox(c, ux, uy, uz, half);
-}
-
-BoundingBox BoundingBox::from_arrow(const Arrow& arrow, const Plane& plane, double inflate_amount) {
-    const Line& ln = arrow.line;
-    Point p0 = ln.start();
-    Point p1 = ln.end();
-    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
-    Vector dir = ln.to_vector();
-    double L = ln.length();
-    if (L > 0.0) dir.normalize_self();
-    double r_eff = arrow.radius * 1.5;
-    Vector Ux = plane.x_axis();
-    Vector Uy = plane.y_axis();
-    Vector Uz = plane.z_axis();
-    auto proj_half = [&](const Vector& U) {
-        double d = std::abs(dir.dot(U));
-        double radial = r_eff * std::sqrt(std::max(0.0, 1.0 - d * d));
-        return (L * 0.5) * d + radial + inflate_amount;
-    };
-    Vector half(proj_half(Ux), proj_half(Uy), proj_half(Uz));
-    return BoundingBox(c, Ux, Uy, Uz, half);
-}
-
-BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, double inflate_amount) {
-    const Line& ln = cylinder.line;
-    Point p0 = ln.start();
-    Point p1 = ln.end();
-    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
-    Vector axis = ln.to_vector();
-    double L = ln.length();
-    if (L <= 0.0) {
-        axis = Vector(1.0, 0.0, 0.0);
-    } else {
-        axis.normalize_self();
-    }
-    Vector ux = axis;
-    Vector uy;
-    if (std::abs(ux[2]) < 0.9) {
-        uy = Vector(0.0, 0.0, 1.0).cross(ux);
-        uy.normalize_self();
-    } else {
-        uy = Vector(1.0, 0.0, 0.0).cross(ux);
-        uy.normalize_self();
-    }
-    Vector uz = ux.cross(uy);
-    uz.normalize_self();
-    double r = cylinder.radius;
-    Vector half((L * 0.5) + inflate_amount, r + inflate_amount, r + inflate_amount);
-    return BoundingBox(c, ux, uy, uz, half);
-}
-
-BoundingBox BoundingBox::from_cylinder(const Cylinder& cylinder, const Plane& plane, double inflate_amount) {
-    const Line& ln = cylinder.line;
-    Point p0 = ln.start();
-    Point p1 = ln.end();
-    Point c((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
-    Vector dir = ln.to_vector();
-    double L = ln.length();
-    if (L > 0.0) dir.normalize_self();
-    double r = cylinder.radius;
-    Vector Ux = plane.x_axis();
-    Vector Uy = plane.y_axis();
-    Vector Uz = plane.z_axis();
-    auto proj_half = [&](const Vector& U) {
-        double d = std::abs(dir.dot(U));
-        double radial = r * std::sqrt(std::max(0.0, 1.0 - d * d));
-        return (L * 0.5) * d + radial + inflate_amount;
-    };
-    Vector half(proj_half(Ux), proj_half(Uy), proj_half(Uz));
-    return BoundingBox(c, Ux, Uy, Uz, half);
 }
 
 BoundingBox BoundingBox::from_nurbscurve(const NurbsCurve& curve, double inflate_amount, bool tight) {

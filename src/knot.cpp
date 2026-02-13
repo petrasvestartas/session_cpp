@@ -560,5 +560,31 @@ std::vector<double> build_interp_knots(const std::vector<double>& params, int de
     return knots;
 }
 
+std::vector<double> eval_basis(int order, const std::vector<double>& knot, int span, double t) {
+    std::vector<double> basis(order, 0.0);
+    std::vector<double> left(order);
+    std::vector<double> right(order);
+
+    const double* k = knot.data() + (order - 2) + span;
+
+    basis[0] = 1.0;
+
+    for (int j = 1; j < order; j++) {
+        left[j] = t - k[1 - j];
+        right[j] = k[j] - t;
+        double saved = 0.0;
+
+        for (int r = 0; r < j; r++) {
+            double denom = right[r + 1] + left[j - r];
+            double temp = (denom != 0.0) ? basis[r] / denom : 0.0;
+            basis[r] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+        basis[j] = saved;
+    }
+
+    return basis;
+}
+
 } // namespace knot
 } // namespace session_cpp

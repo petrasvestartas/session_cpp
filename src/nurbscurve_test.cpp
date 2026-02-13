@@ -53,6 +53,43 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid != curve.guid);
     }
 
+    MINI_TEST("NurbsCurve", "create_interpolated") {
+            // uncomment #include "nurbscurve.h"
+            // uncomment #include "point.h"
+
+            std::vector<Point> points = {
+                Point(14, 9, 0), Point(21, 22, 0), Point(26, 10, 0),
+                Point(35, 19, 0), Point(41, 13, 0)
+            };
+
+            NurbsCurve c = NurbsCurve::create_interpolated(points, CurveKnotStyle::Chord);
+
+            MINI_CHECK(c.is_valid());
+            MINI_CHECK(c.degree() == 3);
+            MINI_CHECK(c.order() == 4);
+            MINI_CHECK(c.cv_count() == 7);
+            MINI_CHECK(c.is_rational() == false);
+
+            auto [d0, d1] = c.domain();
+            MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d0), points[0]));
+            MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d1), points[4]));
+            MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(0), points[0]));
+            MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(6), points[4]));
+
+            // Periodic closed curve
+            std::vector<Point> closed_pts = {
+                Point(4, 20, 0), Point(-2, 20, 0), Point(-2, 25, 0), Point(-3, 28, 0), Point(-10, 28, 0),
+                Point(-10, 21, 0), Point(-13, 16, 0), Point(-8, 14, 0), Point(-6, 11, 0), Point(0, 15, 0)
+            };
+
+            NurbsCurve cp = NurbsCurve::create_interpolated(closed_pts, CurveKnotStyle::ChordPeriodic);
+
+            MINI_CHECK(cp.is_valid());
+            MINI_CHECK(cp.degree() == 3);
+            MINI_CHECK(cp.cv_count() == 13);
+            MINI_CHECK(cp.is_closed());
+    }
+
     MINI_TEST("NurbsCurve", "attributes") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"

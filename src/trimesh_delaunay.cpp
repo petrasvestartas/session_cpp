@@ -471,7 +471,7 @@ Mesh TrimeshDelaunay::mesh() const {
     double chord_tol = m_max_chord_height > 0 ? m_max_chord_height : bbox_diag / 500.0;
     double angle_rad = m_max_angle * Tolerance::PI / 180.0;
 
-    bool trimmed = m_surface.is_trimmed();
+    bool trimmed = m_surface.get_outer_loop().is_valid();
     std::vector<Vertex2D> trim_poly;
     std::vector<std::vector<Vertex2D>> hole_polys;
 

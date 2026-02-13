@@ -113,24 +113,6 @@ std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh) {
   return tree_node;
 }
 
-std::shared_ptr<TreeNode> Session::add_cylinder(std::shared_ptr<Cylinder> cylinder) {
-  objects.cylinders->push_back(cylinder);
-  lookup[cylinder->guid] = cylinder;
-  graph.add_node(cylinder->guid, "cylinder_" + cylinder->name);
-  cache_geometry_aabb(cylinder->guid, cylinder);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(cylinder->guid);
-  return tree_node;
-}
-
-std::shared_ptr<TreeNode> Session::add_arrow(std::shared_ptr<Arrow> arrow) {
-  objects.arrows->push_back(arrow);
-  lookup[arrow->guid] = arrow;
-  graph.add_node(arrow->guid, "arrow_" + arrow->name);
-  cache_geometry_aabb(arrow->guid, arrow);
-  auto tree_node = std::make_shared<TreeNode>(arrow->guid);
-  return tree_node;
-}
-
 std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve) {
   objects.nurbscurves->push_back(nurbscurve);
   lookup[nurbscurve->guid] = nurbscurve;
@@ -281,30 +263,6 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       // Create bounded box around plane origin
       return BoundingBox::from_point(geom_ptr->origin(), inflate * 10.0);
     }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<Cylinder>>) {
-      // Compute from cylinder line endpoints and radius
-      std::vector<Point> points = {geom_ptr->line.start(), geom_ptr->line.end()};
-      auto bbox = BoundingBox::from_points(points, inflate);
-      // Inflate by cylinder radius
-      bbox.half_size = Vector(
-        bbox.half_size[0] + geom_ptr->radius,
-        bbox.half_size[1] + geom_ptr->radius,
-        bbox.half_size[2] + geom_ptr->radius
-      );
-      return bbox;
-    }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<Arrow>>) {
-      // Compute from arrow line endpoints
-      std::vector<Point> points = {geom_ptr->line.start(), geom_ptr->line.end()};
-      auto bbox = BoundingBox::from_points(points, inflate);
-      // Inflate by arrow radius
-      bbox.half_size = Vector(
-        bbox.half_size[0] + geom_ptr->radius,
-        bbox.half_size[1] + geom_ptr->radius,
-        bbox.half_size[2] + geom_ptr->radius
-      );
-      return bbox;
-    }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(); ++i)
@@ -390,10 +348,8 @@ Objects Session::get_geometry() const {
   add_to_lookup(transformed_objects.polylines);
   add_to_lookup(transformed_objects.pointclouds);
   add_to_lookup(transformed_objects.meshes);
-  add_to_lookup(transformed_objects.cylinders);
   add_to_lookup(transformed_objects.nurbscurves);
   add_to_lookup(transformed_objects.nurbssurfaces);
-  add_to_lookup(transformed_objects.arrows);
   
   // Helper lambda to recursively transform nodes
   std::function<void(std::shared_ptr<TreeNode>, const Xform&)> transform_node = 
@@ -444,13 +400,6 @@ Objects Session::get_geometry() const {
   for (auto& mesh : *transformed_objects.meshes) {
     mesh->transform();
   }
-  for (auto& cylinder : *transformed_objects.cylinders) {
-    cylinder->transform();
-  }
-  for (auto& arrow : *transformed_objects.arrows) {
-    arrow->transform();
-  }
-  
   return transformed_objects;
 }
 
@@ -476,14 +425,8 @@ Session Session::jsonload(const nlohmann::json &data) {
   }
 
   // Rebuild lookup from all objects
-  for (const auto &arrow_ptr : *session.objects.arrows) {
-    session.lookup[arrow_ptr->guid] = arrow_ptr;
-  }
   for (const auto &bbox_ptr : *session.objects.bboxes) {
     session.lookup[bbox_ptr->guid] = bbox_ptr;
-  }
-  for (const auto &cylinder_ptr : *session.objects.cylinders) {
-    session.lookup[cylinder_ptr->guid] = cylinder_ptr;
   }
   for (const auto &line_ptr : *session.objects.lines) {
     session.lookup[line_ptr->guid] = line_ptr;
@@ -576,8 +519,6 @@ Session Session::pb_loads(const std::string& data) {
   for (const auto& pl : *session.objects.polylines) session.lookup[pl->guid] = pl;
   for (const auto& pc : *session.objects.pointclouds) session.lookup[pc->guid] = pc;
   for (const auto& m : *session.objects.meshes) session.lookup[m->guid] = m;
-  for (const auto& c : *session.objects.cylinders) session.lookup[c->guid] = c;
-  for (const auto& a : *session.objects.arrows) session.lookup[a->guid] = a;
   for (const auto& nc : *session.objects.nurbscurves) session.lookup[nc->guid] = nc;
   for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid] = ns;
 
@@ -642,7 +583,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
   
   // BVH OPTIMIZATION: Get candidate indices from CACHED BVH ray traversal
   // This prunes objects whose AABBs don't intersect the ray, providing
-  // acceleration for ALL geometry types (Point, Line, Mesh, Cylinder, etc.)
+  // acceleration for ALL geometry types (Point, Line, Mesh, etc.)
   std::vector<int> candidate_ids;
   cached_ray_bvh.ray_cast(origin, direction, candidate_ids, true);
   
@@ -762,50 +703,6 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
         Point hit = ray.start() + ray_dir * tmin;
         return hit;
       }
-      return std::nullopt;
-    }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<Cylinder>>) {
-      // Ray-cylinder: check distance to cylinder axis
-      const Line& cyl_axis = geom_ptr->line;
-      double radius = geom_ptr->radius;
-      
-      // Find closest points between ray and cylinder axis
-      double t_ray, t_cyl;
-      if (Intersection::line_line_parameters(ray, cyl_axis, t_ray, t_cyl, tolerance, true, false)) {
-        // Check if within cylinder bounds
-        if (t_cyl >= 0.0 && t_cyl <= 1.0) {
-          Point point_on_ray = ray.point_at(t_ray);
-          Point point_on_axis = cyl_axis.point_at(t_cyl);
-          double dist = point_on_ray.distance(point_on_axis);
-          
-          if (dist <= radius + tolerance) {
-            return point_on_ray;
-          }
-        }
-      }
-      
-      return std::nullopt;
-    }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<Arrow>>) {
-      // Ray-arrow: same logic as cylinder
-      const Line& arrow_axis = geom_ptr->line;
-      double radius = geom_ptr->radius;
-      
-      // Find closest points between ray and arrow axis
-      double t_ray, t_arrow;
-      if (Intersection::line_line_parameters(ray, arrow_axis, t_ray, t_arrow, tolerance, true, false)) {
-        // Check if within arrow bounds
-        if (t_arrow >= 0.0 && t_arrow <= 1.0) {
-          Point point_on_ray = ray.point_at(t_ray);
-          Point point_on_axis = arrow_axis.point_at(t_arrow);
-          double dist = point_on_ray.distance(point_on_axis);
-          
-          if (dist <= radius + tolerance) {
-            return point_on_ray;
-          }
-        }
-      }
-      
       return std::nullopt;
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {

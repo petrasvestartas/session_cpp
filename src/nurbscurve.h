@@ -8,6 +8,7 @@
 #include "tolerance.h"
 #include "guid.h"
 #include "json.h"
+#include "knot.h"
 #include <vector>
 #include <string>
 #include <cmath>
@@ -35,7 +36,8 @@ public:
     std::string guid = ::guid();
     std::string name = "my_nurbscurve";
     double width = 1.0;
-    Color linecolor = Color::black();
+    std::vector<Color> pointcolors;
+    std::vector<Color> linecolors;
     Xform xform = Xform::identity();
 
     // Core NURBS data
@@ -59,7 +61,9 @@ public:
     static NurbsCurve create(bool periodic, int degree, const std::vector<Point>& points,
                            int dimension = 3, double knot_delta = 1.0);
 
-
+    /// Create an interpolated cubic NURBS curve through points (Bessel end tangents).
+    static NurbsCurve create_interpolated(const std::vector<Point>& points,
+                                          CurveKnotStyle parameterization = CurveKnotStyle::Chord);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor

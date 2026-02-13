@@ -267,6 +267,16 @@ namespace knot {
      */
     std::vector<double> build_interp_knots(const std::vector<double>& params, int degree);
 
+    /**
+     * @brief Evaluate B-spline basis functions at parameter t (Cox-de Boor).
+     * @param order Order of the B-spline (degree + 1).
+     * @param knot Full knot vector.
+     * @param span Span index (from find_span).
+     * @param t Parameter value.
+     * @return Vector of 'order' basis function values.
+     */
+    std::vector<double> eval_basis(int order, const std::vector<double>& knot, int span, double t);
+
 } // namespace knot
 
 } // namespace session_cpp

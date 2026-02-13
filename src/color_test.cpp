@@ -9,7 +9,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("Color", "constructor"){
+    MINI_TEST("Color", "Constructor"){
         // uncomment #include "color.h"
 
         // Constructor
@@ -43,7 +43,7 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid != c.guid);
     }
 
-    MINI_TEST("Color", "json_roundtrip"){
+    MINI_TEST("Color", "Json_roundtrip"){
       // uncomment #include "color.h"
 
       Color c(255, 128, 64, 255, "serialization/test_color");
@@ -66,7 +66,7 @@ namespace session_cpp {
       MINI_CHECK(loaded[3] == 255);
     }
 
-    MINI_TEST("Color", "protobuf_roundtrip"){
+    MINI_TEST("Color", "Protobuf_roundtrip"){
       // uncomment #include "color.h"
 
       Color c(255, 128, 64, 255, "serialization/test_color");
@@ -82,7 +82,7 @@ namespace session_cpp {
       MINI_CHECK(loaded[3] == 255);
     }
 
-    MINI_TEST("Color", "conversion"){
+    MINI_TEST("Color", "Conversion"){
       // uncomment #include "color.h"
 
       Color c(255, 128, 64, 255);
@@ -96,7 +96,7 @@ namespace session_cpp {
       MINI_CHECK(ints == c);
     }
 
-    MINI_TEST("Color", "presets"){
+    MINI_TEST("Color", "Presets"){
       // uncomment #include "color.h"
 
       Color white = Color::white();

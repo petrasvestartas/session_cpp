@@ -13,8 +13,6 @@
 #include "polyline.h"
 #include "pointcloud.h"
 #include "mesh.h"
-#include "cylinder.h"
-#include "arrow.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "tree.h"
@@ -41,9 +39,7 @@ namespace session_cpp {
 
 // All geometry types as a variant
 using Geometry = std::variant<
-    std::shared_ptr<Arrow>,
     std::shared_ptr<BoundingBox>,
-    std::shared_ptr<Cylinder>,
     std::shared_ptr<Line>,
     std::shared_ptr<Mesh>,
     std::shared_ptr<Plane>,
@@ -168,17 +164,6 @@ public:
    */
   std::shared_ptr<TreeNode> add_mesh(std::shared_ptr<Mesh> mesh);
 
-  /**
-   * @brief Add a cylinder to the session.
-   * @return Shared pointer to the TreeNode created for this cylinder
-   */
-  std::shared_ptr<TreeNode> add_cylinder(std::shared_ptr<Cylinder> cylinder);
-
-  /**
-   * @brief Add an arrow to the session.
-   * @return Shared pointer to the TreeNode created for this arrow
-   */
-  std::shared_ptr<TreeNode> add_arrow(std::shared_ptr<Arrow> arrow);
   std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve);
   std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface);
 

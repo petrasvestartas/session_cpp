@@ -10,22 +10,10 @@ std::string Objects::str() const {
 
 nlohmann::ordered_json Objects::jsondump() const {
   // Build JSON arrays for all geometry types (in alphabetical order)
-  std::vector<nlohmann::ordered_json> arrows_json;
-  arrows_json.reserve(arrows->size());
-  for (const auto &a : *arrows) {
-    arrows_json.push_back(a->jsondump());
-  }
-  
   std::vector<nlohmann::ordered_json> bboxes_json;
   bboxes_json.reserve(bboxes->size());
   for (const auto &b : *bboxes) {
     bboxes_json.push_back(b->jsondump());
-  }
-  
-  std::vector<nlohmann::ordered_json> cylinders_json;
-  cylinders_json.reserve(cylinders->size());
-  for (const auto &c : *cylinders) {
-    cylinders_json.push_back(c->jsondump());
   }
   
   std::vector<nlohmann::ordered_json> lines_json;
@@ -79,9 +67,7 @@ nlohmann::ordered_json Objects::jsondump() const {
   return nlohmann::ordered_json{{"type", "Objects"},
                                 {"guid", guid},
                                 {"name", name},
-                                {"arrows", arrows_json},
                                 {"bboxes", bboxes_json},
-                                {"cylinders", cylinders_json},
                                 {"lines", lines_json},
                                 {"meshes", meshes_json},
                                 {"nurbscurves", nurbscurves_json},
@@ -96,15 +82,6 @@ Objects Objects::jsonload(const nlohmann::json &data) {
   // Create Objects instance
   Objects objects(data["name"].get<std::string>());
   
-  // Load arrows
-  if (data.contains("arrows")) {
-    std::vector<std::shared_ptr<Arrow>> arrows;
-    arrows.reserve(data["arrows"].size());
-    for (const auto &arrow_data : data["arrows"])
-      arrows.push_back(std::make_shared<Arrow>(Arrow::jsonload(arrow_data)));
-    *objects.arrows = std::move(arrows);
-  }
-  
   // Load bboxes
   if (data.contains("bboxes")) {
     std::vector<std::shared_ptr<BoundingBox>> bboxes;
@@ -112,15 +89,6 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     for (const auto &bbox_data : data["bboxes"])
       bboxes.push_back(std::make_shared<BoundingBox>(BoundingBox::jsonload(bbox_data)));
     *objects.bboxes = std::move(bboxes);
-  }
-  
-  // Load cylinders
-  if (data.contains("cylinders")) {
-    std::vector<std::shared_ptr<Cylinder>> cylinders;
-    cylinders.reserve(data["cylinders"].size());
-    for (const auto &cylinder_data : data["cylinders"])
-      cylinders.push_back(std::make_shared<Cylinder>(Cylinder::jsonload(cylinder_data)));
-    *objects.cylinders = std::move(cylinders);
   }
   
   // Load lines
@@ -232,8 +200,6 @@ std::string Objects::pb_dumps() const {
   for (const auto& pl : *polylines) proto.add_polylines()->ParseFromString(pl->pb_dumps());
   for (const auto& pc : *pointclouds) proto.add_pointclouds()->ParseFromString(pc->pb_dumps());
   for (const auto& m : *meshes) proto.add_meshes()->ParseFromString(m->pb_dumps());
-  for (const auto& c : *cylinders) proto.add_cylinders()->ParseFromString(c->pb_dumps());
-  for (const auto& a : *arrows) proto.add_arrows()->ParseFromString(a->pb_dumps());
   for (const auto& nc : *nurbscurves) proto.add_nurbscurves()->ParseFromString(nc->pb_dumps());
   for (const auto& ns : *nurbssurfaces) proto.add_nurbssurfaces()->ParseFromString(ns->pb_dumps());
   return proto.SerializeAsString();
@@ -258,10 +224,6 @@ Objects Objects::pb_loads(const std::string& data) {
     objects.pointclouds->push_back(std::make_shared<PointCloud>(PointCloud::pb_loads(p.SerializeAsString())));
   for (const auto& m : proto.meshes())
     objects.meshes->push_back(std::make_shared<Mesh>(Mesh::pb_loads(m.SerializeAsString())));
-  for (const auto& c : proto.cylinders())
-    objects.cylinders->push_back(std::make_shared<Cylinder>(Cylinder::pb_loads(c.SerializeAsString())));
-  for (const auto& a : proto.arrows())
-    objects.arrows->push_back(std::make_shared<Arrow>(Arrow::pb_loads(a.SerializeAsString())));
   for (const auto& nc : proto.nurbscurves())
     objects.nurbscurves->push_back(std::make_shared<NurbsCurve>(NurbsCurve::pb_loads(nc.SerializeAsString())));
   for (const auto& ns : proto.nurbssurfaces())
