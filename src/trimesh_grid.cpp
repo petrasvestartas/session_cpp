@@ -196,6 +196,31 @@ Mesh TrimeshGrid::mesh() const {
         }
     }
 
+    // Bilinear twist check
+    if (deg_u == 1 && deg_v == 1) {
+        double chord_tol = (bbox_diag > 0) ? bbox_diag * 0.005 : 1e-6;
+        double max_twist = 0.0;
+        for (int i = 0; i < ns_u; ++i)
+            for (int j = 0; j < ns_v; ++j) {
+                double u0 = usp[i], u1 = usp[i+1];
+                double v0 = vsp[j], v1 = vsp[j+1];
+                double pmx, pmy, pmz;
+                m_surface.point_at((u0+u1)*0.5, (v0+v1)*0.5, pmx, pmy, pmz);
+                double p00x, p00y, p00z, p11x, p11y, p11z;
+                m_surface.point_at(u0, v0, p00x, p00y, p00z);
+                m_surface.point_at(u1, v1, p11x, p11y, p11z);
+                double mx = (p00x+p11x)*0.5, my = (p00y+p11y)*0.5, mz = (p00z+p11z)*0.5;
+                double dx = pmx-mx, dy = pmy-my, dz = pmz-mz;
+                double twist = std::sqrt(dx*dx+dy*dy+dz*dz);
+                if (twist > max_twist) max_twist = twist;
+            }
+        if (max_twist > chord_tol) {
+            int twist_subs = std::max(4, std::min((int)std::ceil(2.0 * std::sqrt(max_twist / chord_tol)), 24));
+            for (int& s : u_subs) s = std::max(s, twist_subs);
+            for (int& s : v_subs) s = std::max(s, twist_subs);
+        }
+    }
+
     // Build parameter arrays
     std::vector<double> us, vs;
     for (int i = 0; i < ns_u; ++i)

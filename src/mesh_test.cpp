@@ -12,7 +12,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("Mesh", "constructor") {
+    MINI_TEST("Mesh", "Constructor") {
         // uncomment #include "mesh.h"
 
         Mesh mesh;
@@ -32,7 +32,7 @@ namespace session_cpp {
         MINI_CHECK(!mesh.guid.empty());
     }
 
-    MINI_TEST("Mesh", "add_vertex") {
+    MINI_TEST("Mesh", "Add_vertex") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -51,7 +51,7 @@ namespace session_cpp {
         MINI_CHECK(mesh.number_of_vertices() == 2);
     }
 
-    MINI_TEST("Mesh", "add_face") {
+    MINI_TEST("Mesh", "Add_face") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -76,7 +76,7 @@ namespace session_cpp {
         MINI_CHECK(!invalid3.has_value());
     }
 
-    MINI_TEST("Mesh", "face_vertices") {
+    MINI_TEST("Mesh", "Face_vertices") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -95,7 +95,7 @@ namespace session_cpp {
         MINI_CHECK((*vertices)[2] == v2);
     }
 
-    MINI_TEST("Mesh", "vertex_neighbors") {
+    MINI_TEST("Mesh", "Vertex_neighbors") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -112,7 +112,7 @@ namespace session_cpp {
         MINI_CHECK(std::find(neighbors.begin(), neighbors.end(), v2) != neighbors.end());
     }
 
-    MINI_TEST("Mesh", "vertex_faces") {
+    MINI_TEST("Mesh", "Vertex_faces") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -131,7 +131,7 @@ namespace session_cpp {
         MINI_CHECK(std::find(faces.begin(), faces.end(), *f2) != faces.end());
     }
 
-    MINI_TEST("Mesh", "is_vertex_on_boundary") {
+    MINI_TEST("Mesh", "Is_vertex_on_boundary") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -147,7 +147,7 @@ namespace session_cpp {
         MINI_CHECK(mesh.is_vertex_on_boundary(v2));
     }
 
-    MINI_TEST("Mesh", "face_normal") {
+    MINI_TEST("Mesh", "Face_normal") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
         // uncomment #include "tolerance.h"
@@ -166,7 +166,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close((*normal)[1], 0.0));
     }
 
-    MINI_TEST("Mesh", "face_area") {
+    MINI_TEST("Mesh", "Face_area") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
         // uncomment #include "tolerance.h"
@@ -183,7 +183,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(*area, 0.5));
     }
 
-    MINI_TEST("Mesh", "from_polygons") {
+    MINI_TEST("Mesh", "From_polygons") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -214,7 +214,7 @@ namespace session_cpp {
         MINI_CHECK(mesh2.number_of_faces() == 2);
     }
 
-    MINI_TEST("Mesh", "clear") {
+    MINI_TEST("Mesh", "Clear") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -233,7 +233,7 @@ namespace session_cpp {
         MINI_CHECK(mesh.number_of_faces() == 0);
     }
 
-    MINI_TEST("Mesh", "transformation") {
+    MINI_TEST("Mesh", "Transformation") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
         // uncomment #include "xform.h"
@@ -257,7 +257,7 @@ namespace session_cpp {
         MINI_CHECK(mesh_transformed.xform == Xform::identity());
     }
 
-    MINI_TEST("Mesh", "json_roundtrip") {
+    MINI_TEST("Mesh", "Json_roundtrip") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -284,7 +284,7 @@ namespace session_cpp {
         MINI_CHECK(loaded.number_of_faces() == mesh.number_of_faces());
     }
 
-    MINI_TEST("Mesh", "protobuf_roundtrip") {
+    MINI_TEST("Mesh", "Protobuf_roundtrip") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -305,7 +305,7 @@ namespace session_cpp {
         MINI_CHECK(loaded.guid == mesh.guid);
     }
 
-    MINI_TEST("Mesh", "vertex_position") {
+    MINI_TEST("Mesh", "Vertex_position") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -320,7 +320,7 @@ namespace session_cpp {
         MINI_CHECK(!mesh.vertex_position(999).has_value());
     }
 
-    MINI_TEST("Mesh", "vertex_normal") {
+    MINI_TEST("Mesh", "Vertex_normal") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -338,7 +338,7 @@ namespace session_cpp {
         MINI_CHECK(std::abs((*normal)[2]) == 1.0);
     }
 
-    MINI_TEST("Mesh", "to_vertices_and_faces") {
+    MINI_TEST("Mesh", "To_vertices_and_faces") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 

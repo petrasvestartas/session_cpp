@@ -12,7 +12,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("NurbsCurve", "constructor") {
+    MINI_TEST("NurbsCurve", "Constructor") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
 
@@ -53,7 +53,7 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid != curve.guid);
     }
 
-    MINI_TEST("NurbsCurve", "create_interpolated") {
+    MINI_TEST("NurbsCurve", "Create_interpolated") {
             // uncomment #include "nurbscurve.h"
             // uncomment #include "point.h"
 
@@ -90,7 +90,7 @@ namespace session_cpp {
             MINI_CHECK(cp.is_closed());
     }
 
-    MINI_TEST("NurbsCurve", "attributes") {
+    MINI_TEST("NurbsCurve", "Attributes") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include "plane.h"
@@ -105,7 +105,7 @@ namespace session_cpp {
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
         /////////////////////////////////////////////
-        // Validation
+        // Boolean Queries
         /////////////////////////////////////////////
 
         // Whole curve
@@ -119,19 +119,55 @@ namespace session_cpp {
         bool is_valid_knot_vector = curve.is_valid_knot_vector();
         MINI_CHECK(is_valid_knot_vector == true);
 
-        // Insert knot into curve
-        // Useful for splitting curves at a parameter
-        // Increase local control without changing shape
-        NurbsCurve copy_curve = curve; 
-        Point before_pt = copy_curve.point_at(1.5);
-        copy_curve.insert_knot(1.5, 1);
-        MINI_CHECK(TOLERANCE.is_point_close(before_pt, copy_curve.point_at(1.5)));
-
         // Check if the curve is clamped at start, end, or both
         bool is_clamped_start = curve.is_clamped(0);
         bool is_clamped_end = curve.is_clamped(1);
         bool is_clamped_both = curve.is_clamped(2);
         MINI_CHECK(is_clamped_start == true && is_clamped_end == true && is_clamped_both == true);
+
+        // Is rational is related to control points having weights
+        // is_rational = false means control points [x, y, z]
+        // is_rational = false means control points [xw, yw, zw]
+        // Rational curves are used to represent:
+        // circles, ellipses, parabolas, hyperbolas exactly
+        bool is_rational = curve.is_rational();
+        bool closed = curve.is_closed();
+        bool periodic = curve.is_periodic();
+        bool linear = curve.is_linear();
+        bool planar = curve.is_planar();
+        bool arc = curve.is_arc();
+        Plane plane = Plane::xy_plane();
+        bool on_plane = curve.is_in_plane(plane);
+        bool is_open = curve.is_natural();
+        bool is_polyline = curve.is_polyline();
+        bool is_singular = curve.is_singular();
+        bool is_duplicate = curve.is_duplicate(curve, false);
+        bool is_continuous = curve.is_continuous(1, curve.domain_middle());
+
+        MINI_CHECK(is_rational == true);
+        MINI_CHECK(closed == false);
+        MINI_CHECK(periodic == false);
+        MINI_CHECK(linear == false);
+        MINI_CHECK(planar == false);
+        MINI_CHECK(arc == false);
+        MINI_CHECK(on_plane == false);
+        MINI_CHECK(is_open == false);
+        MINI_CHECK(is_polyline == false);
+        MINI_CHECK(is_singular == false);
+        MINI_CHECK(is_duplicate == true);
+        MINI_CHECK(is_continuous == true);
+
+        /////////////////////////////////////////////
+        // Knot Operations
+        /////////////////////////////////////////////
+
+        // Insert knot into curve
+        // Useful for splitting curves at a parameter
+        // Increase local control without changing shape
+        NurbsCurve copy_curve = curve;
+        Point before_pt = copy_curve.point_at(1.5);
+        copy_curve.insert_knot(1.5, 1);
+        MINI_CHECK(TOLERANCE.is_point_close(before_pt, copy_curve.point_at(1.5)));
 
         // Useful for controlling curve by cv on lying on it
         double greville0 = curve.greville_abcissa(0);
@@ -284,38 +320,6 @@ namespace session_cpp {
 
         auto [found, t_out] = curve.get_next_discontinuity(2, curve.domain_start(), curve.domain_end());
         MINI_CHECK(found == true && t_out == 0.5);
-
-        // Is rational is related to control points having weights
-        // is_rational = false means control points [x, y, z]
-        // is_rational = false means control points [xw, yw, zw]
-        // Rational curves are used to represent:
-        // circles, ellipses, parabolas, hyperbolas exactly
-        bool is_rational = curve.is_rational();
-        bool closed = curve.is_closed();
-        bool periodic = curve.is_periodic();
-        bool linear = curve.is_linear();
-        bool planar = curve.is_planar();
-        bool arc = curve.is_arc();
-        Plane plane = Plane::xy_plane();
-        bool on_plane = curve.is_in_plane(plane);
-        bool is_open = curve.is_natural();
-        bool is_polyline = curve.is_polyline();
-        bool is_singular = curve.is_singular();
-        bool is_duplicate = curve.is_duplicate(curve, false);
-        bool is_continuous = curve.is_continuous(1, curve.domain_middle());
-
-        MINI_CHECK(is_rational == true);
-        MINI_CHECK(closed == false);
-        MINI_CHECK(periodic == false);
-        MINI_CHECK(linear == false);
-        MINI_CHECK(planar == false);
-        MINI_CHECK(arc == false);
-        MINI_CHECK(on_plane == false);
-        MINI_CHECK(is_open == false);
-        MINI_CHECK(is_polyline == false);
-        MINI_CHECK(is_singular == false);
-        MINI_CHECK(is_duplicate == true);
-        MINI_CHECK(is_continuous == true);
     }
 
     MINI_TEST("NurbsCurve", "Conversions") {
@@ -555,7 +559,7 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("NurbsCurve", "transformations"){
+    MINI_TEST("NurbsCurve", "Transformations"){
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include "xform.h"
@@ -599,7 +603,7 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("NurbsCurve", "json_roundtrip") {
+    MINI_TEST("NurbsCurve", "Json_roundtrip") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>
@@ -638,7 +642,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == curve);
     }
 
-    MINI_TEST("NurbsCurve", "protobuf_roundtrip") {
+    MINI_TEST("NurbsCurve", "Protobuf_roundtrip") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>

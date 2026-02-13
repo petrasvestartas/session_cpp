@@ -88,6 +88,9 @@ public:
     /// Create a NURBS sphere surface (rational, degree 2x2).
     static NurbsSurface sphere_surface(double cx, double cy, double cz, double radius);
 
+    /// Create a quad sphere from 6 rational biquadratic Bézier patches (cube projection).
+    static std::vector<NurbsSurface> quad_sphere(double cx, double cy, double cz, double radius);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Surface factory methods
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -119,12 +122,11 @@ public:
     static NurbsSurface create_edge(const NurbsCurve& c0, const NurbsCurve& c1,
                                              const NurbsCurve& c2, const NurbsCurve& c3);
 
-    /// Create a Gordon (network) surface interpolating two families of curves.
-    /// u_curves run in one direction, v_curves in the perpendicular direction.
-    /// Uses Gordon formula: S = L_u + L_v - T where L_u/L_v are loft surfaces
-    /// and T is the bicubic grid surface through intersection points.
-    static NurbsSurface create_network(const std::vector<NurbsCurve>& u_curves,
-                                       const std::vector<NurbsCurve>& v_curves);
+    /// Create a doubly-periodic sinusoidal wave surface (egg-crate pattern).
+    /// Approximates z = amplitude * sin(2*pi*x/size) * sin(2*pi*y/size).
+    /// Tileable: edges match for seamless stacking in both x and y.
+    static NurbsSurface wave_surface(double size, double amplitude);
+
 
 private:
     /// Unit cylinder geometry (10-sided, radius 0.5, height 1, centered at origin).

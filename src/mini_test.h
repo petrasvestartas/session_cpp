@@ -47,7 +47,7 @@ void run_all(const std::string &language = "cpp");
 
 // Macros for defining tests and checks
 // C++ version: use string literals for group and name, similar to Python
-// MINI_TEST("Point", "constructor") {
+// MINI_TEST("Point", "Constructor") {
 //   ...
 // }
 // We generate a unique internal function name using __LINE__.

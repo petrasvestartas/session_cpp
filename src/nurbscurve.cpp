@@ -1332,6 +1332,7 @@ double NurbsCurve::length(double /*tolerance*/) const {
 
     return total;
 }
+
 // Convert to polyline with adaptive sampling (curvature-based)
 bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points,
                                      std::vector<double>* params,

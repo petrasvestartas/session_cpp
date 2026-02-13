@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Vertex", "json_roundtrip") {
+MINI_TEST("Vertex", "Json_roundtrip") {
     Vertex original("v0", "./serialization/test_attribute");
 
     std::filesystem::create_directories("./serialization");

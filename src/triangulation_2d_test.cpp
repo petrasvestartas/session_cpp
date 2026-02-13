@@ -21,7 +21,7 @@ static double total_area(const std::vector<Point>& pts, const std::vector<Triang
     return a;
 }
 
-MINI_TEST("Triangulation2D", "triangle") {
+MINI_TEST("Triangulation2D", "Triangle") {
     Polyline boundary({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0), Point(0, 0, 0)});
     auto tris = Triangulation2D::triangulate(boundary);
 
@@ -31,7 +31,7 @@ MINI_TEST("Triangulation2D", "triangle") {
     MINI_CHECK(tris[0].v2 >= 0);
 }
 
-MINI_TEST("Triangulation2D", "square") {
+MINI_TEST("Triangulation2D", "Square") {
     Polyline boundary({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0), Point(0, 0, 0)});
     auto tris = Triangulation2D::triangulate(boundary);
     std::vector<Point> pts = {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)};
@@ -41,7 +41,7 @@ MINI_TEST("Triangulation2D", "square") {
     MINI_CHECK(std::abs(a - 1.0) < 1e-10);
 }
 
-MINI_TEST("Triangulation2D", "convex_polygon") {
+MINI_TEST("Triangulation2D", "Convex_polygon") {
     double r = 1.0;
     std::vector<Point> hex_pts;
     for (int i = 0; i < 6; ++i) {
@@ -55,7 +55,7 @@ MINI_TEST("Triangulation2D", "convex_polygon") {
     MINI_CHECK(tris.size() == 4);
 }
 
-MINI_TEST("Triangulation2D", "concave_polygon") {
+MINI_TEST("Triangulation2D", "Concave_polygon") {
     Polyline boundary({
         Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0),
         Point(1, 1, 0), Point(0, 2, 0), Point(0, 0, 0)
@@ -72,7 +72,7 @@ MINI_TEST("Triangulation2D", "concave_polygon") {
     MINI_CHECK(std::abs(a - expected) < 1e-10);
 }
 
-MINI_TEST("Triangulation2D", "polygon_with_hole") {
+MINI_TEST("Triangulation2D", "Polygon_with_hole") {
     Polyline boundary({
         Point(0, 0, 0), Point(4, 0, 0), Point(4, 4, 0), Point(0, 4, 0), Point(0, 0, 0)
     });
@@ -91,7 +91,7 @@ MINI_TEST("Triangulation2D", "polygon_with_hole") {
     MINI_CHECK(std::abs(a - expected) < 1e-10);
 }
 
-MINI_TEST("Triangulation2D", "polygon_with_multiple_holes") {
+MINI_TEST("Triangulation2D", "Polygon_with_multiple_holes") {
     Polyline boundary({
         Point(0, 0, 0), Point(10, 0, 0), Point(10, 8, 0), Point(0, 8, 0), Point(0, 0, 0)
     });
@@ -114,7 +114,7 @@ MINI_TEST("Triangulation2D", "polygon_with_multiple_holes") {
     MINI_CHECK(std::abs(a - expected) < 1e-6);
 }
 
-MINI_TEST("Triangulation2D", "winding_correction") {
+MINI_TEST("Triangulation2D", "Winding_correction") {
     Polyline boundary({
         Point(0, 1, 0), Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
     });

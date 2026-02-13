@@ -9,7 +9,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Vector", "constructor") {
+MINI_TEST("Vector", "Constructor") {
     // uncomment #include "vector.h"
     // uncomment #include "point.h"
 
@@ -80,7 +80,7 @@ MINI_TEST("Vector", "constructor") {
     MINI_CHECK(vzero[0] == 0.0 && vzero[1] == 0.0 && vzero[2] == 0.0);
 }
 
-MINI_TEST("Vector", "magnitude") {
+MINI_TEST("Vector", "Magnitude") {
     // uncomment #include "vector.h"
 
     Vector v(3.0, 4.0, 0.0);
@@ -91,7 +91,7 @@ MINI_TEST("Vector", "magnitude") {
     MINI_CHECK(len_squared == 25.0);
 }
 
-MINI_TEST("Vector", "normalize") {
+MINI_TEST("Vector", "Normalize") {
     // uncomment #include "vector.h"
     // uncomment #include "tolerance.h"
 
@@ -105,7 +105,7 @@ MINI_TEST("Vector", "normalize") {
     MINI_CHECK(TOLERANCE.is_close(v2.magnitude(), 1.0));
 }
 
-MINI_TEST("Vector", "reverse") {
+MINI_TEST("Vector", "Reverse") {
     // uncomment #include "vector.h"
 
     Vector v(1.0, -2.0, 3.0);
@@ -114,7 +114,7 @@ MINI_TEST("Vector", "reverse") {
     MINI_CHECK(v[0] == -1.0 && v[1] == 2.0 && v[2] == -3.0);
 }
 
-MINI_TEST("Vector", "dot_product") {
+MINI_TEST("Vector", "Dot_product") {
     // uncomment #include "vector.h"
 
     // Orthogonality and parallelism via dot product
@@ -143,7 +143,7 @@ MINI_TEST("Vector", "dot_product") {
     MINI_CHECK(TOLERANCE.is_close(proj_coeff, 1.5));
 }
 
-MINI_TEST("Vector", "cross_product") {
+MINI_TEST("Vector", "Cross_product") {
     // uncomment #include "vector.h"
 
     // Get normal
@@ -161,7 +161,7 @@ MINI_TEST("Vector", "cross_product") {
     MINI_CHECK(TOLERANCE.is_close(area, 12.0));
 }
 
-MINI_TEST("Vector", "angle") {
+MINI_TEST("Vector", "Angle") {
     // uncomment #include "vector.h"
 
     // angle(): Angle between two vectors (degrees)
@@ -201,7 +201,7 @@ MINI_TEST("Vector", "angle") {
     MINI_CHECK(TOLERANCE.is_close(std::get<1>(pt), 45.0));
 }
 
-MINI_TEST("Vector", "projection") {
+MINI_TEST("Vector", "Projection") {
     // uncomment #include "vector.h"
 
     // Project vector v=(1,1,1) onto each axis
@@ -219,7 +219,7 @@ MINI_TEST("Vector", "projection") {
     MINI_CHECK(proj_z[0] == 0.0 && proj_z[1] == 0.0 && proj_z[2] == 1.0);
 }
 
-MINI_TEST("Vector", "is_parallel_to") {
+MINI_TEST("Vector", "Is_parallel_to") {
     // uncomment #include "vector.h"
 
     // is_parallel_to returns: 1 (parallel), -1 (anti-parallel), 0 (not parallel)
@@ -233,7 +233,7 @@ MINI_TEST("Vector", "is_parallel_to") {
     MINI_CHECK(v1.is_parallel_to(v4) == 0);
 }
 
-MINI_TEST("Vector", "is_perpendicular_to") {
+MINI_TEST("Vector", "Is_perpendicular_to") {
     // uncomment #include "vector.h"
 
     // is_perpendicular_to: checks if two vectors are perpendicular (dot product ~ 0)
@@ -260,7 +260,7 @@ MINI_TEST("Vector", "is_perpendicular_to") {
     MINI_CHECK(perp.is_perpendicular_to(arbitrary));
 }
 
-MINI_TEST("Vector", "get_leveled_vector") {
+MINI_TEST("Vector", "Get_leveled_vector") {
     // uncomment #include "vector.h"
 
     // Scale vector along its direction so its Z-component equals vertical_height.
@@ -271,7 +271,7 @@ MINI_TEST("Vector", "get_leveled_vector") {
     MINI_CHECK(TOLERANCE.is_close(v_leveled.magnitude(), std::sqrt(3.0)));
 }
 
-MINI_TEST("Vector", "cos_sin_laws") {
+MINI_TEST("Vector", "Cos_sin_laws") {
     // uncomment #include "vector.h"
 
     // Given a 3-4-5 right triangle
@@ -318,7 +318,7 @@ MINI_TEST("Vector", "cos_sin_laws") {
     MINI_CHECK(TOLERANCE.is_close(computed_side_a, a));
 }
 
-MINI_TEST("Vector", "sum_of_vectors") {
+MINI_TEST("Vector", "Sum_of_vectors") {
     // uncomment #include "vector.h"
     // uncomment #include <vector>
 
@@ -341,7 +341,7 @@ MINI_TEST("Vector", "sum_of_vectors") {
     MINI_CHECK(zero[2] == 0.0);
 }
 
-MINI_TEST("Vector", "average") {
+MINI_TEST("Vector", "Average") {
     // uncomment #include "vector.h"
     // uncomment #include <vector>
 
@@ -357,7 +357,7 @@ MINI_TEST("Vector", "average") {
     MINI_CHECK(avg[2] == 5.0);
 }
 
-MINI_TEST("Vector", "is_zero") {
+MINI_TEST("Vector", "Is_zero") {
     // uncomment #include "vector.h"
 
     Vector zero(0.0, 0.0, 0.0);
@@ -369,7 +369,7 @@ MINI_TEST("Vector", "is_zero") {
     MINI_CHECK(tiny.is_zero());
 }
 
-MINI_TEST("Vector", "json_roundtrip") {
+MINI_TEST("Vector", "Json_roundtrip") {
     // uncomment #include "vector.h"
 
     Vector v(42.1, 84.2, 126.3);
@@ -393,7 +393,7 @@ MINI_TEST("Vector", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[2], 126.3));
 }
 
-MINI_TEST("Vector", "protobuf_roundtrip") {
+MINI_TEST("Vector", "Protobuf_roundtrip") {
     // uncomment #include "vector.h"
 
     Vector v(42.1, 84.2, 126.3);

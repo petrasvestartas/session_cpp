@@ -8,13 +8,13 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Session", "constructor") {
+MINI_TEST("Session", "Constructor") {
     Session session;
     MINI_CHECK(session.name == "my_session");
     MINI_CHECK(!session.guid.empty());
 }
 
-MINI_TEST("Session", "jsondump") {
+MINI_TEST("Session", "Jsondump") {
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -33,7 +33,7 @@ MINI_TEST("Session", "jsondump") {
     encoders::json_dump(session, "./serialization/test_session.json");
 }
 
-MINI_TEST("Session", "jsonload") {
+MINI_TEST("Session", "Jsonload") {
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -48,7 +48,7 @@ MINI_TEST("Session", "jsonload") {
     MINI_CHECK(session2.graph.number_of_vertices() == 2);
 }
 
-MINI_TEST("Session", "file_io") {
+MINI_TEST("Session", "File_io") {
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -68,7 +68,7 @@ MINI_TEST("Session", "file_io") {
     std::filesystem::remove(filename);
 }
 
-MINI_TEST("Session", "add_point") {
+MINI_TEST("Session", "Add_point") {
     Session session;
     auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
     session.add_point(point);
@@ -78,7 +78,7 @@ MINI_TEST("Session", "add_point") {
     MINI_CHECK(session.graph.has_node(point->guid));
 }
 
-MINI_TEST("Session", "add_edge") {
+MINI_TEST("Session", "Add_edge") {
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -89,7 +89,7 @@ MINI_TEST("Session", "add_edge") {
     MINI_CHECK(session.graph.has_edge({point1->guid, point2->guid}));
 }
 
-MINI_TEST("Session", "get_object") {
+MINI_TEST("Session", "Get_object") {
     Session session;
     auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
     session.add_point(point);
@@ -99,7 +99,7 @@ MINI_TEST("Session", "get_object") {
     MINI_CHECK(retrieved->guid == point->guid);
 }
 
-MINI_TEST("Session", "file_io_comprehensive") {
+MINI_TEST("Session", "File_io_comprehensive") {
     Session session("./serialization/test_session");
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -120,7 +120,7 @@ MINI_TEST("Session", "file_io_comprehensive") {
     std::filesystem::remove(filename);
 }
 
-MINI_TEST("Session", "tree_transformation_hierarchy") {
+MINI_TEST("Session", "Tree_transformation_hierarchy") {
     Session scene("tree_transformation_test");
 
     auto create_box = [](const Point& center, double size) -> std::shared_ptr<Mesh> {

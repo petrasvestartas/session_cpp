@@ -682,7 +682,7 @@ Mesh NurbsSurface::mesh_delaunay(double max_angle, double max_edge_length,
 
 Mesh NurbsSurface::mesh(double max_angle, double max_edge_length,
                         double min_edge_length, double max_chord_height) const {
-    if (m_mesh.number_of_vertices() == 0 && is_valid() && is_planar()) {
+    if (m_mesh.number_of_vertices() == 0 && is_valid() && is_planar(nullptr, 1e-6)) {
         Mesh result;
         Point p00 = point_at_corner(0, 0);
         Point p10 = point_at_corner(1, 0);
@@ -1602,6 +1602,12 @@ std::string NurbsSurface::pb_dumps() const {
         il->ParseFromString(loop_data);
     }
 
+    // Cached mesh
+    if (m_mesh.number_of_vertices() > 0) {
+        std::string mesh_data = m_mesh.pb_dumps();
+        proto.mutable_cached_mesh()->ParseFromString(mesh_data);
+    }
+
     return proto.SerializeAsString();
 }
 
@@ -1670,6 +1676,12 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
     for (int i = 0; i < proto.inner_loops_size(); ++i) {
         std::string loop_data = proto.inner_loops(i).SerializeAsString();
         surface.m_inner_loops.push_back(NurbsCurve::pb_loads(loop_data));
+    }
+
+    // Load cached mesh
+    if (proto.has_cached_mesh() && proto.cached_mesh().vertices_size() > 0) {
+        std::string mesh_data = proto.cached_mesh().SerializeAsString();
+        surface.m_mesh = Mesh::pb_loads(mesh_data);
     }
 
     return surface;
@@ -2194,9 +2206,6 @@ bool NurbsSurface::is_planar(Plane* plane, double tolerance) const {
     
     // Check if all control points are coplanar
     if (m_cv_count[0] < 2 || m_cv_count[1] < 2) return false;
-    
-    // For 2x2 or smaller, all points define a plane (4 points always coplanar in practice)
-    if (m_cv_count[0] <= 2 && m_cv_count[1] <= 2) return true;
     
     // Get three non-colinear points
     Point p0 = get_cv(0, 0);

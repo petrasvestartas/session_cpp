@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("TreeNode", "json_roundtrip") {
+MINI_TEST("TreeNode", "Json_roundtrip") {
     auto original = std::make_shared<TreeNode>("test_node");
     auto child = std::make_shared<TreeNode>("child_node");
     original->add(child);

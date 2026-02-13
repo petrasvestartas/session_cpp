@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Graph", "json_roundtrip") {
+MINI_TEST("Graph", "Json_roundtrip") {
     std::filesystem::create_directories("./serialization");
     Graph original("./serialization/test_graph");
     original.add_node("node1", "Node 1");

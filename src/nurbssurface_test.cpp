@@ -19,7 +19,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("NurbsSurface", "constructor") {
+    MINI_TEST("NurbsSurface", "Constructor") {
         // uncomment #include "nurbssurface.h"
 
         std::vector<Point> points = {
@@ -60,7 +60,7 @@ namespace session_cpp {
         // Copy (duplicates everything except guid)
         NurbsSurface scopy = s;
         NurbsSurface sother = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
-
+    
         MINI_CHECK(s.is_valid() == true);
         MINI_CHECK(s.cv_count(0) == 4);
         MINI_CHECK(s.cv_count(1) == 4);
@@ -79,7 +79,6 @@ namespace session_cpp {
         MINI_CHECK(srepr == "NurbsSurface(\n  name=my_nurbssurface,\n  degree=(3,3),\n  cvs=(4,4),\n  rational=false,\n  control_points=[\n    0, 0, 0\n    -1, 0.75, 2\n    -1, 4.25, 2\n    0, 5, 0\n    0.75, -1, 2\n    1.25, 1.25, 4\n    1.25, 3.75, 4\n    0.75, 6, 2\n    4.25, -1, 2\n    3.75, 1.25, 4\n    3.75, 3.75, 4\n    4.25, 6, 2\n    5, 0, 0\n    6, 0.75, 2\n    6, 4.25, 2\n    5, 5, 0\n  ]\n)");
         MINI_CHECK(scopy.cv_count() == s.cv_count());
         MINI_CHECK(scopy.guid != s.guid);
-
         MINI_CHECK(TOLERANCE.is_point_close(v[0][0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
         MINI_CHECK(TOLERANCE.is_point_close(v[0][1], Point(-0.416666666666667, 0.578703703703704, 0.833333333333333)));
         MINI_CHECK(TOLERANCE.is_point_close(v[0][2], Point(-0.666666666666667, 1.462962962962963, 1.333333333333333)));
@@ -117,61 +116,114 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(v[4][6], Point(5.000000000000000, 5.000000000000000, 0.000000000000000)));
     }
 
-    MINI_TEST("NurbsSurface", "create_operations") {
+    MINI_TEST("NurbsSurface", "Booleans Queries"){
         // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
 
-        // Create a simple 2x2 bilinear surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
+        NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 5.0);
 
-        // Set corner control points
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(1, 0, Point(1.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 1.0, 0.0));
-        surf.set_cv(1, 1, Point(1.0, 1.0, 0.0));
+        // Validity surface and knots
+        bool is_valid = s.is_valid();
+        bool are_knots_valid = s.is_valid_knot_vector(0) && s.is_valid_knot_vector(1);
 
-        // Check knot vectors
-        auto dom_u = surf.domain(0);
-        auto dom_v = surf.domain(1);
+        // Are control points weights enabled?
+        bool is_rational = s.is_rational();
 
-        MINI_CHECK(surf.is_valid());
-        MINI_CHECK(dom_u.first == 0.0);
-        MINI_CHECK(dom_v.first == 0.0);
+        // Sphere has one seam that is closed, but two poles
+        bool is_closed = s.is_closed(0) == true && s.is_closed(1) == false;
+
+        // sphere cannot be truly periodic because it has poles
+        bool is_periodic = s.is_periodic(0) && s.is_periodic(1);
+
+        // Planarity
+        Plane plane = Plane::xy_plane();
+        bool is_planar = s.is_planar(&plane);
+
+        // Surface is collapsed to a point
+        bool is_point = s.is_singular(0) && s.is_singular(1) && s.is_singular(2) && s.is_singular(3);
+
+        // Most surfaces are clamped except periodic surfaces
+        bool is_clamped = s.is_clamped(0, 2) && s.is_clamped(1, 2);
+
+        MINI_CHECK(is_valid);
+        MINI_CHECK(are_knots_valid);
+        MINI_CHECK(is_rational);
+        MINI_CHECK(is_closed);
+        MINI_CHECK(!is_periodic);
+        MINI_CHECK(!is_planar);
+        MINI_CHECK(!is_point);
+        MINI_CHECK(is_clamped);
     }
 
-    MINI_TEST("NurbsSurface", "accessors") {
+
+    MINI_TEST("NurbsSurface", "Attributes") {
         // uncomment #include "nurbssurface.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 4, 3, 5, 4, false, false, 1.0, 1.0);
+        std::vector<Point> points = {
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
+        };
 
-        // Test knot access and set knot
-        surf.set_knot(0, 2, 5.0);
-        double new_val = surf.knot(0, 2);
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-        MINI_CHECK(surf.dimension() == 3);
-        MINI_CHECK(!surf.is_rational());
-        MINI_CHECK(surf.order(0) == 4);
-        MINI_CHECK(surf.order(1) == 3);
-        MINI_CHECK(surf.degree(0) == 3);
-        MINI_CHECK(surf.degree(1) == 2);
-        MINI_CHECK(surf.cv_count(0) == 5);
-        MINI_CHECK(surf.cv_count(1) == 4);
-        MINI_CHECK(surf.cv_count() == 20);
-        MINI_CHECK(surf.cv_size() == 3);
-        MINI_CHECK(surf.knot_count(0) == 7);
-        MINI_CHECK(surf.knot_count(1) == 5);
-        MINI_CHECK(surf.span_count(0) == 2);
-        MINI_CHECK(surf.span_count(1) == 2);
-        MINI_CHECK(new_val == 5.0);
+        // Test Surace validity
+        bool is_valid = s.is_valid();
+
+        // Check the dimentions of a surface
+        // Mostly 3d
+        // But 2d can be used for: scalar field over parameter space e.g. czrvatzre map, distance field
+        // Planar geometry: texture coordinates
+        int dimensions = s.dimension();
+
+
+        
+
+        // // Test knot access and set knot
+        // surf.set_knot(0, 2, 5.0);
+        // double new_val = surf.knot(0, 2);
+
+        // MINI_CHECK(surf.dimension() == 3);
+        // MINI_CHECK(!surf.is_rational());
+        // MINI_CHECK(surf.order(0) == 4);
+        // MINI_CHECK(surf.order(1) == 3);
+        // MINI_CHECK(surf.degree(0) == 3);
+        // MINI_CHECK(surf.degree(1) == 2);
+        // MINI_CHECK(surf.cv_count(0) == 5);
+        // MINI_CHECK(surf.cv_count(1) == 4);
+        // MINI_CHECK(surf.cv_count() == 20);
+        // MINI_CHECK(surf.cv_size() == 3);
+        // MINI_CHECK(surf.knot_count(0) == 7);
+        // MINI_CHECK(surf.knot_count(1) == 5);
+        // MINI_CHECK(surf.span_count(0) == 2);
+        // MINI_CHECK(surf.span_count(1) == 2);
+        // MINI_CHECK(new_val == 5.0);
     }
 
-    MINI_TEST("NurbsSurface", "knot_operations") {
+    MINI_TEST("NurbsSurface", "Knot_operations") {
         // uncomment #include "nurbssurface.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 4, 4, 4, 4, false, false, 1.0, 1.0);
+        std::vector<Point> points;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
         // Verify domain
         auto dom_u = surf.domain(0);
@@ -185,13 +237,13 @@ namespace session_cpp {
         MINI_CHECK(surf.is_clamped(1, 0));
     }
 
-    MINI_TEST("NurbsSurface", "rational_operations") {
+    MINI_TEST("NurbsSurface", "Rational_operations") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        // Create non-rational surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
+        // Create non-rational surface, then make rational
+        std::vector<Point> points(9, Point(0.0, 0.0, 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
 
         // Make it rational
         surf.make_rational();
@@ -208,20 +260,17 @@ namespace session_cpp {
         MINI_CHECK(w == 2.0);
     }
 
-    MINI_TEST("NurbsSurface", "evaluation") {
+    MINI_TEST("NurbsSurface", "Evaluation") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
         // uncomment #include "vector.h"
 
         // Create simple bilinear surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        // Set corner control points
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(1, 0, Point(1.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 1.0, 0.0));
-        surf.set_cv(1, 1, Point(1.0, 1.0, 0.0));
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
+            Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         // Evaluate at corner
         auto dom_u = surf.domain(0);
@@ -250,18 +299,16 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(std::abs(normal[2]), 1.0));
     }
 
-    MINI_TEST("NurbsSurface", "geometric_queries") {
+    MINI_TEST("NurbsSurface", "Geometric_queries") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
         // Create and setup surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(1, 0, Point(1.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 1.0, 0.0));
-        surf.set_cv(1, 1, Point(1.0, 1.0, 0.0));
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
+            Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         MINI_CHECK(surf.is_valid());
         MINI_CHECK(!surf.is_closed(0));
@@ -273,18 +320,16 @@ namespace session_cpp {
         MINI_CHECK(surf.is_planar(nullptr, 1e-6));
     }
 
-    MINI_TEST("NurbsSurface", "modification") {
+    MINI_TEST("NurbsSurface", "Modification") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 3, 2, false, false, 1.0, 1.0);
-
-        // Set some CVs
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(2, 0, Point(2.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 1.0, 0.0));
-        surf.set_cv(2, 1, Point(2.0, 1.0, 0.0));
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
+            Point(0.0, 0.0, 0.0), Point(0.0, 0.0, 0.0),
+            Point(2.0, 0.0, 0.0), Point(2.0, 1.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 3, 2, points);
 
         Point cv_before = surf.get_cv(0, 0);
 
@@ -305,21 +350,17 @@ namespace session_cpp {
         MINI_CHECK(surf.order(1) == order_u_before);
     }
 
-    MINI_TEST("NurbsSurface", "isocurve") {
+    MINI_TEST("NurbsSurface", "Isocurve") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
         // Create surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
-
-        // Set up a grid of control points
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-            }
-        }
+        std::vector<Point> points;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
 
         // Extract iso-u curve (v varies)
         auto dom_u = surf.domain(0);
@@ -341,19 +382,17 @@ namespace session_cpp {
         if (iso_v != nullptr) delete iso_v;
     }
 
-    MINI_TEST("NurbsSurface", "transformation") {
+    MINI_TEST("NurbsSurface", "Transformation") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
         // uncomment #include "xform.h"
 
         // Create simple surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(1, 0, Point(1.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 1.0, 0.0));
-        surf.set_cv(1, 1, Point(1.0, 1.0, 0.0));
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
+            Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         // Apply translation
         Xform xf = Xform::translation(1.0, 2.0, 3.0);
@@ -367,24 +406,21 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pt[2], 3.0));
     }
 
-    MINI_TEST("NurbsSurface", "json_roundtrip") {
+    MINI_TEST("NurbsSurface", "Json_roundtrip") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
+        std::vector<Point> points;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
         surf.name = "test_nurbssurface";
         surf.width = 2.0;
         surf.facecolors.push_back(Color(255, 128, 64, 255));
         surf.pointcolors.push_back(Color(0, 255, 0, 255));
         surf.linecolors.push_back(Color(0, 0, 255, 255));
-
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-            }
-        }
 
         // JSON object
         nlohmann::ordered_json json = surf.jsondump();
@@ -404,24 +440,21 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == surf);
     }
 
-    MINI_TEST("NurbsSurface", "protobuf_roundtrip") {
+    MINI_TEST("NurbsSurface", "Protobuf_roundtrip") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
+        std::vector<Point> points;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
         surf.name = "test_nurbssurface";
         surf.width = 2.0;
         surf.facecolors.push_back(Color(255, 128, 64, 255));
         surf.pointcolors.push_back(Color(0, 255, 0, 255));
         surf.linecolors.push_back(Color(0, 0, 255, 255));
-
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-            }
-        }
 
         //   pb_dumps()      │ string/bytes │ to protobuf bytes
         //   pb_loads(b)     │ string/bytes │ from protobuf bytes
@@ -441,13 +474,14 @@ namespace session_cpp {
         MINI_CHECK(loaded == surf);
     }
 
-    MINI_TEST("NurbsSurface", "advanced_accessors") {
+    MINI_TEST("NurbsSurface", "Advanced_accessors") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
         // Create rational surface for testing get_cv_4d/set_cv_4d
-        NurbsSurface surf;
-        surf.create_raw(3, true, 3, 3, 3, 3, false, false, 1.0, 1.0);
+        std::vector<Point> points(9, Point(0.0, 0.0, 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
+        surf.make_rational();
 
         // Test set_cv_4d with homogeneous coordinates
         double x = 2.0, y = 3.0, z = 4.0, w = 2.0;
@@ -493,19 +527,15 @@ namespace session_cpp {
         MINI_CHECK(first_knot_mult > 0);
     }
 
-    MINI_TEST("NurbsSurface", "clamp_operations") {
+    MINI_TEST("NurbsSurface", "Clamp_operations") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 4, 4, 4, 4, false, false, 1.0, 1.0);
-
-        // Set up control points
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-            }
-        }
+        std::vector<Point> points;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
         surf.clamp_end(0, 2);
 
@@ -513,19 +543,16 @@ namespace session_cpp {
         MINI_CHECK(surf.is_clamped(0, 2));
     }
 
-    MINI_TEST("NurbsSurface", "singularity") {
+    MINI_TEST("NurbsSurface", "Singularity") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        // Create a simple surface
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        // Set all CVs to different points (non-singular)
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(1, 0, Point(1.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 1.0, 0.0));
-        surf.set_cv(1, 1, Point(1.0, 1.0, 0.0));
+        // Create a simple surface with all CVs at different points (non-singular)
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
+            Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         // Test is_singular for each side
         bool is_singular_south = surf.is_singular(0);
@@ -540,19 +567,15 @@ namespace session_cpp {
         MINI_CHECK(!is_singular_west);
     }
 
-    MINI_TEST("NurbsSurface", "bounding_box") {
+    MINI_TEST("NurbsSurface", "Bounding_box") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 3, 3, false, false, 1.0, 1.0);
-
-        // Set CVs in a known range
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-            }
-        }
+        std::vector<Point> points;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 3, 3, points);
 
         // Get bounding box
         BoundingBox bbox = surf.get_bounding_box();
@@ -560,11 +583,11 @@ namespace session_cpp {
         MINI_CHECK(surf.is_valid());
     }
 
-    MINI_TEST("NurbsSurface", "domain_operations") {
+    MINI_TEST("NurbsSurface", "Domain_operations") {
         // uncomment #include "nurbssurface.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 3, 3, 3, 3, false, false, 1.0, 1.0);
+        std::vector<Point> points(9, Point(0.0, 0.0, 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
 
         // Get initial domain
         auto dom_u = surf.domain(0);
@@ -591,18 +614,15 @@ namespace session_cpp {
         MINI_CHECK(span_v.size() > 0);
     }
 
-    MINI_TEST("NurbsSurface", "corner_points") {
+    MINI_TEST("NurbsSurface", "Corner_points") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        // Set corner control points
-        surf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
-        surf.set_cv(1, 0, Point(10.0, 0.0, 0.0));
-        surf.set_cv(0, 1, Point(0.0, 10.0, 0.0));
-        surf.set_cv(1, 1, Point(10.0, 10.0, 0.0));
+        std::vector<Point> points = {
+            Point(0.0, 0.0, 0.0), Point(0.0, 10.0, 0.0),
+            Point(10.0, 0.0, 0.0), Point(10.0, 10.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         // Get corner points
         Point p00 = surf.point_at_corner(0, 0);
@@ -616,15 +636,15 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(p11[0], 10.0) && TOLERANCE.is_close(p11[1], 10.0));
     }
 
-    MINI_TEST("NurbsSurface", "swap_coordinates") {
+    MINI_TEST("NurbsSurface", "Swap_coordinates") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        // Set a control point with distinct coordinates
-        surf.set_cv(0, 0, Point(1.0, 2.0, 3.0));
+        std::vector<Point> points = {
+            Point(1.0, 2.0, 3.0), Point(0.0, 0.0, 0.0),
+            Point(0.0, 0.0, 0.0), Point(0.0, 0.0, 0.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         // Swap X and Y
         surf.swap_coordinates(0, 1);
@@ -636,16 +656,15 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pt[2], 3.0));
     }
 
-    MINI_TEST("NurbsSurface", "zero_cvs") {
+    MINI_TEST("NurbsSurface", "Zero_cvs") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-
-        // Set non-zero control points
-        surf.set_cv(0, 0, Point(1.0, 2.0, 3.0));
-        surf.set_cv(1, 1, Point(4.0, 5.0, 6.0));
+        std::vector<Point> points = {
+            Point(1.0, 2.0, 3.0), Point(0.0, 0.0, 0.0),
+            Point(0.0, 0.0, 0.0), Point(4.0, 5.0, 6.0),
+        };
+        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
 
         // Zero all CVs
         surf.zero_cvs();
@@ -661,11 +680,14 @@ namespace session_cpp {
                    TOLERANCE.is_close(pt1[2], 0.0));
     }
 
-    MINI_TEST("NurbsSurface", "get_knots") {
+    MINI_TEST("NurbsSurface", "Get_knots") {
         // uncomment #include "nurbssurface.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 4, 3, 4, 3, false, false, 1.0, 2.0);
+        std::vector<Point> points;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 3, 2, 4, 3, points);
 
         auto knots_u = surf.get_knots(0);
         auto knots_v = surf.get_knots(1);
@@ -676,18 +698,21 @@ namespace session_cpp {
         MINI_CHECK(knots_v.size() > 0);
     }
 
-    MINI_TEST("NurbsSurface", "make_non_rational") {
+    MINI_TEST("NurbsSurface", "Make_non_rational") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
 
-        // Create rational surface with all weights = 1
-        NurbsSurface surf;
-        surf.create_raw(3, true, 3, 3, 3, 3, false, false, 1.0, 1.0);
+        // Create surface, then make rational with all weights = 1
+        std::vector<Point> points;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
+        surf.make_rational();
 
         // Set all weights to 1.0
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
-                surf.set_cv(i, j, Point(static_cast<double>(i), static_cast<double>(j), 0.0));
                 surf.set_weight(i, j, 1.0);
             }
         }
@@ -700,7 +725,7 @@ namespace session_cpp {
         MINI_CHECK(!is_rational_after);
     }
 
-    MINI_TEST("NurbsSurface", "create_clamped_uniform") {
+    MINI_TEST("NurbsSurface", "Create_clamped_uniform") {
         // uncomment #include "nurbssurface.h"
 
         NurbsSurface surf;
@@ -719,11 +744,14 @@ namespace session_cpp {
         MINI_CHECK(surf.is_clamped(1, 0) && surf.is_clamped(1, 1));
     }
 
-    MINI_TEST("NurbsSurface", "knot_multiplicity") {
+    MINI_TEST("NurbsSurface", "Knot_multiplicity") {
         // uncomment #include "nurbssurface.h"
 
-        NurbsSurface surf;
-        surf.create_raw(3, false, 4, 4, 4, 4, false, false, 1.0, 1.0);
+        std::vector<Point> points;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
+        NurbsSurface surf = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
         // Check first knot multiplicity (should be equal to degree for clamped)
         int mult_u_start = surf.knot_multiplicity(0, 0);
@@ -740,6 +768,5 @@ namespace session_cpp {
         MINI_CHECK(mult_u_end >= surf.degree(0));
         MINI_CHECK(mult_v_end >= surf.degree(1));
     }
-
 
 }

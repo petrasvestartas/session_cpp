@@ -14,132 +14,186 @@
 using namespace session_cpp;
 
 static const double GAP = 2.0;
+static const double ROW_GAP = 15.0;
 
-static void place_line(Session& session, Line ln, double& x) {
+static void place_line(Session& session, Line ln, double& x, double y) {
     auto bb = BoundingBox::from_line(ln);
-    double shift = x - bb.min_point()[0];
-    ln.xform = Xform::translation(shift, 0, 0);
+    double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
+    ln.xform = Xform::translation(sx, sy, 0);
     ln.transform();
     session.add_line(std::make_shared<Line>(ln));
-    auto bb2 = BoundingBox::from_line(ln);
-    x = bb2.max_point()[0] + GAP;
+    x = BoundingBox::from_line(ln).max_point()[0] + GAP;
 }
 
-static void place_polyline(Session& session, Polyline pl, double& x) {
+static void place_polyline(Session& session, Polyline pl, double& x, double y) {
     auto bb = BoundingBox::from_polyline(pl);
-    double shift = x - bb.min_point()[0];
-    pl.xform = Xform::translation(shift, 0, 0);
+    double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
+    pl.xform = Xform::translation(sx, sy, 0);
     pl.transform();
     session.add_polyline(std::make_shared<Polyline>(pl));
-    auto bb2 = BoundingBox::from_polyline(pl);
-    x = bb2.max_point()[0] + GAP;
+    x = BoundingBox::from_polyline(pl).max_point()[0] + GAP;
 }
 
-static void place_curve(Session& session, NurbsCurve crv, double& x) {
+static void place_curve(Session& session, NurbsCurve crv, double& x, double y) {
     auto bb = BoundingBox::from_nurbscurve(crv);
-    double shift = x - bb.min_point()[0];
-    crv.transform(Xform::translation(shift, 0, 0));
+    double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
+    crv.transform(Xform::translation(sx, sy, 0));
     session.add_curve(std::make_shared<NurbsCurve>(crv));
-    auto bb2 = BoundingBox::from_nurbscurve(crv);
-    x = bb2.max_point()[0] + GAP;
+    x = BoundingBox::from_nurbscurve(crv).max_point()[0] + GAP;
 }
 
-static void place_surface(Session& session, NurbsSurface srf, double& x,
+static void place_surface(Session& session, NurbsSurface srf, double& x, double y,
                           double mesh_angle = 25, double max_edge = 0.0) {
     auto bb = BoundingBox::from_nurbssurface(srf);
-    double shift = x - bb.min_point()[0];
-    srf.transform(Xform::translation(shift, 0, 0));
+    double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
+    srf.transform(Xform::translation(sx, sy, 0));
     session.add_surface(std::make_shared<NurbsSurface>(srf));
     Mesh m = srf.mesh(mesh_angle, max_edge);
     session.add_mesh(std::make_shared<Mesh>(m));
-    auto bb2 = BoundingBox::from_nurbssurface(srf);
-    x = bb2.max_point()[0] + GAP;
+    x = BoundingBox::from_nurbssurface(srf).max_point()[0] + GAP;
 }
 
-static void place_mesh(Session& session, Mesh mesh, double& x) {
+static void place_mesh(Session& session, Mesh mesh, double& x, double y) {
     auto bb = BoundingBox::from_mesh(mesh);
-    double shift = x - bb.min_point()[0];
-    mesh.xform = Xform::translation(shift, 0, 0);
+    double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
+    mesh.xform = Xform::translation(sx, sy, 0);
     mesh = mesh.transformed();
     session.add_mesh(std::make_shared<Mesh>(mesh));
-    auto bb2 = BoundingBox::from_mesh(mesh);
-    x = bb2.max_point()[0] + GAP;
+    x = BoundingBox::from_mesh(mesh).max_point()[0] + GAP;
 }
 
 int main() {
     Session session("primitives");
-    double x = 0;
+    double x = 0, y = 0;
 
-    // Line
-    place_line(session, Line(0, 0, 0, 0, 0, 5), x);
+    // Row 0: Lines & Polylines
+    auto ln = Line(0, 0, 0, 0, 0, 5); ln.name = "line";
+    place_line(session, ln, x, y);
+    auto pl = Polyline({Point(0,0,0), Point(1,2,0), Point(2,0,0), Point(3,2,0), Point(4,0,0)});
+    pl.name = "zigzag";
+    place_polyline(session, pl, x, y);
 
-    // Polyline (zigzag)
-    place_polyline(session, Polyline({
-        Point(0,0,0), Point(1,2,0), Point(2,0,0), Point(3,2,0), Point(4,0,0)}), x);
+    // Row 1: Mesh primitives
+    x = 0; y += ROW_GAP;
+    auto m_arrow = Primitives::arrow_mesh(Line(0,0,0, 0,0,8), 1.0); m_arrow.name = "arrow";
+    place_mesh(session, m_arrow, x, y);
+    auto m_cyl = Primitives::cylinder_mesh(Line(0,0,0, 0,0,8), 1.0); m_cyl.name = "cylinder";
+    place_mesh(session, m_cyl, x, y);
+    auto m_tet = Primitives::tetrahedron(3.0); m_tet.name = "tetrahedron";
+    place_mesh(session, m_tet, x, y);
+    auto m_cube = Primitives::cube(3.0); m_cube.name = "cube";
+    place_mesh(session, m_cube, x, y);
+    auto m_oct = Primitives::octahedron(3.0); m_oct.name = "octahedron";
+    place_mesh(session, m_oct, x, y);
+    auto m_ico = Primitives::icosahedron(3.0); m_ico.name = "icosahedron";
+    place_mesh(session, m_ico, x, y);
+    auto m_dod = Primitives::dodecahedron(3.0); m_dod.name = "dodecahedron";
+    place_mesh(session, m_dod, x, y);
 
-    // Mesh primitives
-    place_mesh(session, Primitives::arrow_mesh(Line(0,0,0, 0,0,8), 1.0), x);
-    place_mesh(session, Primitives::cylinder_mesh(Line(0,0,0, 0,0,8), 1.0), x);
-    place_mesh(session, Primitives::tetrahedron(3.0), x);
-    place_mesh(session, Primitives::cube(3.0), x);
-    place_mesh(session, Primitives::octahedron(3.0), x);
-    place_mesh(session, Primitives::icosahedron(3.0), x);
-    place_mesh(session, Primitives::dodecahedron(3.0), x);
+    // Row 2: Curve primitives
+    x = 0; y += ROW_GAP;
+    auto c_polyline = NurbsCurve::create(false, 1, {
+        Point(0,0,0), Point(1,2,0), Point(2,0,0), Point(3,2,0), Point(4,0,0)});
+    c_polyline.name = "polyline";
+    place_curve(session, c_polyline, x, y);
+    auto c_circle = Primitives::circle(0, 0, 0, 1.0); c_circle.name = "circle";
+    place_curve(session, c_circle, x, y);
+    auto c_ellipse = Primitives::ellipse(0, 0, 0, 2.0, 1.0); c_ellipse.name = "ellipse";
+    place_curve(session, c_ellipse, x, y);
+    auto c_arc = Primitives::arc(Point(0,0,0), Point(1,1,0), Point(2,0,0)); c_arc.name = "arc";
+    place_curve(session, c_arc, x, y);
+    auto c_parabola = Primitives::parabola(Point(-1,1,0), Point(0,0,0), Point(1,1,0)); c_parabola.name = "parabola";
+    place_curve(session, c_parabola, x, y);
+    auto c_hyperbola = Primitives::hyperbola(Point(0,0,0), 1.0, 1.0, 1.0); c_hyperbola.name = "hyperbola";
+    place_curve(session, c_hyperbola, x, y);
+    auto c_spiral = Primitives::spiral(1.0, 2.0, 1.0, 5.0); c_spiral.name = "spiral";
+    place_curve(session, c_spiral, x, y);
 
-    // Curve primitives
-    place_curve(session, NurbsCurve::create(false, 1, {
-        Point(0,0,0), Point(1,2,0), Point(2,0,0), Point(3,2,0), Point(4,0,0)}), x);
-    place_curve(session, Primitives::circle(0, 0, 0, 1.0), x);
-    place_curve(session, Primitives::ellipse(0, 0, 0, 2.0, 1.0), x);
-    place_curve(session, Primitives::arc(Point(0,0,0), Point(1,1,0), Point(2,0,0)), x);
-    place_curve(session, Primitives::parabola(Point(-1,1,0), Point(0,0,0), Point(1,1,0)), x);
-    place_curve(session, Primitives::hyperbola(Point(0,0,0), 1.0, 1.0, 1.0), x);
-    place_curve(session, Primitives::spiral(1.0, 2.0, 1.0, 5.0), x);
+    // Row 3: Surface primitives (each with mesh)
+    x = 0; y += ROW_GAP;
+    auto s_cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0); s_cyl.name = "cylinder";
+    place_surface(session, s_cyl, x, y);
+    auto s_cone = Primitives::cone_surface(0, 0, 0, 1.0, 5.0); s_cone.name = "cone";
+    place_surface(session, s_cone, x, y, 15);
 
-    // Surface primitives (each with mesh)
-    place_surface(session, Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0), x);
-    place_surface(session, Primitives::cone_surface(0, 0, 0, 1.0, 5.0), x, 15);
+    auto s_sphere = Primitives::sphere_surface(0, 0, 0, 5.0); s_sphere.name = "sphere";
+    place_surface(session, s_sphere, x, y);
 
-    place_surface(session, Primitives::torus_surface(0, 0, 0, 3.0, 1.0), x);
+    auto quad_faces = Primitives::quad_sphere(0, 0, 0, 5.0);
+    {
+        // Sample actual surface points to get true bounding box
+        Point lo(1e18,1e18,1e18), hi(-1e18,-1e18,-1e18);
+        for (auto& f : quad_faces) {
+            for (int i = 0; i <= 4; i++) for (int j = 0; j <= 4; j++) {
+                Point p = f.point_at(i/4.0, j/4.0);
+                lo = Point(std::min(lo[0],p[0]), std::min(lo[1],p[1]), std::min(lo[2],p[2]));
+                hi = Point(std::max(hi[0],p[0]), std::max(hi[1],p[1]), std::max(hi[2],p[2]));
+            }
+        }
+        auto xf = Xform::translation(x - lo[0], y - lo[1], 0);
+        for (size_t i = 0; i < quad_faces.size(); i++) {
+            quad_faces[i].name = "quad_sphere_" + std::to_string(i);
+            quad_faces[i].transform(xf);
+            session.add_surface(std::make_shared<NurbsSurface>(quad_faces[i]));
+            Mesh m = quad_faces[i].mesh(10, 0.5);
+            session.add_mesh(std::make_shared<Mesh>(m));
+        }
+        x += (hi[0] - lo[0]) + GAP;
+    }
 
+    auto s_torus = Primitives::torus_surface(0, 0, 0, 3.0, 1.0); s_torus.name = "torus";
+    place_surface(session, s_torus, x, y);
+
+    // Row 4: Surface factory methods
+    x = 0; y += ROW_GAP;
     auto crvA = NurbsCurve::create(false, 1, {Point(0,0,0), Point(0,5,5)});
     auto crvB = NurbsCurve::create(false, 1, {Point(5,0,5), Point(5,5,0)});
-    place_surface(session, Primitives::create_ruled(crvA, crvB), x, 10, 0.3);
+    auto s_ruled = Primitives::create_ruled(crvA, crvB); s_ruled.name = "ruled";
+    place_surface(session, s_ruled, x, y, 10, 0.3);
 
     auto c_quad = NurbsCurve::create(false, 1, {
         Point(0,0,0), Point(4,0,0), Point(4,3,0), Point(0,3,0), Point(0,0,0)});
-    place_surface(session, Primitives::create_planar(c_quad), x);
+    auto s_planar = Primitives::create_planar(c_quad); s_planar.name = "planar";
+    place_surface(session, s_planar, x, y);
 
     auto c_ext = NurbsCurve::create(false, 2, {Point(0,0,0), Point(3,5,0), Point(7,0,0)});
-    place_surface(session, Primitives::create_extrusion(c_ext, Vector(0,1,5)), x);
+    auto s_extrusion = Primitives::create_extrusion(c_ext, Vector(0,1,5)); s_extrusion.name = "extrusion";
+    place_surface(session, s_extrusion, x, y);
 
-    place_surface(session, Primitives::create_loft({
+    auto s_loft = Primitives::create_loft({
         Primitives::circle(0, 0, 0.0, 2.0),
         Primitives::circle(0, 0, 2.0, 1.0),
         Primitives::circle(0, 0, 4.0, 1.5),
-        Primitives::circle(0, 0, 6.0, 0.8)}, 3), x);
+        Primitives::circle(0, 0, 6.0, 0.8)}, 3);
+    s_loft.name = "loft";
+    place_surface(session, s_loft, x, y);
 
     auto c_vase = NurbsCurve::create(false, 3, {
         Point(1.5,0,0), Point(1.5,0,0.3), Point(0.3,0,0.5),
         Point(0.3,0,2.5), Point(0.2,0,3.0), Point(2.0,0,4.5), Point(1.8,0,5.0)});
-    place_surface(session, Primitives::create_revolve(c_vase, Point(0,0,0), Vector(0,0,1)), x);
+    auto s_revolve = Primitives::create_revolve(c_vase, Point(0,0,0), Vector(0,0,1)); s_revolve.name = "revolve";
+    place_surface(session, s_revolve, x, y);
 
     NurbsCurve rail = NurbsCurve::create(false, 2, {Point(0,0,0), Point(0,5,0), Point(2,9,0)});
     NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
-    place_surface(session, Primitives::create_sweep1(rail, profile), x);
+    auto s_sweep = Primitives::create_sweep1(rail, profile); s_sweep.name = "sweep";
+    place_surface(session, s_sweep, x, y);
 
     NurbsCurve south = NurbsCurve::create(false, 3, {Point(0,0,0), Point(0,2,3), Point(0,5,3), Point(0,7,0)});
     NurbsCurve west  = NurbsCurve::create(false, 2, {Point(5,0,0), Point(2.5,0,3.5), Point(0,0,0)});
     NurbsCurve north = NurbsCurve::create(false, 3, {Point(5,0,0), Point(5,2,3), Point(5,5,3), Point(5,7,0)});
     NurbsCurve east  = NurbsCurve::create(false, 2, {Point(5,7,0), Point(2.5,7,3.5), Point(0,7,0)});
-    place_surface(session, Primitives::create_edge(south, west, north, east), x);
+    auto s_edge = Primitives::create_edge(south, west, north, east); s_edge.name = "edge";
+    place_surface(session, s_edge, x, y);
+
+    auto s_wave = Primitives::wave_surface(10.0, 2.0); s_wave.name = "wave";
+    place_surface(session, s_wave, x, y);
 
     session.pb_dump("C:/pc/3_code/code_rust/session/session_data/primitives.pb");
     std::cout << "Primitives: " << session.objects.nurbscurves->size() << " curves, "
               << session.objects.nurbssurfaces->size() << " surfaces, "
               << session.objects.meshes->size() << " meshes, "
               << session.objects.lines->size() << " lines, "
-              << session.objects.polylines->size() << " polylines"
-              << " | x_extent: " << x - GAP << std::endl;
+              << session.objects.polylines->size() << " polylines" << std::endl;
     return 0;
 }

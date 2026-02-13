@@ -12,7 +12,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Plane", "constructor") {
+MINI_TEST("Plane", "Constructor") {
     // uncomment #include "plane.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -102,7 +102,7 @@ MINI_TEST("Plane", "constructor") {
     MINI_CHECK(TOLERANCE.is_close(pl_sub.origin()[2], -3.0));
 }
 
-MINI_TEST("Plane", "reverse") {
+MINI_TEST("Plane", "Reverse") {
     // uncomment #include "plane.h"
 
     // Reverse flips normal and swaps x/y axes
@@ -114,7 +114,7 @@ MINI_TEST("Plane", "reverse") {
     MINI_CHECK(TOLERANCE.is_close(pl.c(), -1.0));
 }
 
-MINI_TEST("Plane", "rotate") {
+MINI_TEST("Plane", "Rotate") {
     // uncomment #include "plane.h"
     // uncomment #include "tolerance.h"
 
@@ -125,7 +125,7 @@ MINI_TEST("Plane", "rotate") {
     MINI_CHECK(TOLERANCE.is_close(pl.x_axis()[1], 1.0));
 }
 
-MINI_TEST("Plane", "is_right_hand") {
+MINI_TEST("Plane", "Is_right_hand") {
     // uncomment #include "plane.h"
     // uncomment #include "tolerance.h"
 
@@ -156,7 +156,7 @@ MINI_TEST("Plane", "is_right_hand") {
     MINI_CHECK(rotated_rh == true);
 }
 
-MINI_TEST("Plane", "is_coplanar") {
+MINI_TEST("Plane", "Is_coplanar") {
     // uncomment #include "plane.h"
     // uncomment #include "vector.h"
 
@@ -196,7 +196,7 @@ MINI_TEST("Plane", "is_coplanar") {
     MINI_CHECK(not_coplanar == false);
 }
 
-MINI_TEST("Plane", "transform") {
+MINI_TEST("Plane", "Transform") {
     // uncomment #include "plane.h"
     // uncomment #include "xform.h"
 
@@ -215,7 +215,7 @@ MINI_TEST("Plane", "transform") {
     MINI_CHECK(TOLERANCE.is_close(pl2.origin()[0], 0.0) && TOLERANCE.is_close(pl2.origin()[1], 0.0) && TOLERANCE.is_close(pl2.origin()[2], 0.0));
 }
 
-MINI_TEST("Plane", "json_roundtrip") {
+MINI_TEST("Plane", "Json_roundtrip") {
     // uncomment #include "plane.h"
 
     Plane pl = Plane::xy_plane();
@@ -237,7 +237,7 @@ MINI_TEST("Plane", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.d(), 0.0));
 }
 
-MINI_TEST("Plane", "protobuf_roundtrip") {
+MINI_TEST("Plane", "Protobuf_roundtrip") {
     // uncomment #include "plane.h"
 
     Plane pl = Plane::xy_plane();

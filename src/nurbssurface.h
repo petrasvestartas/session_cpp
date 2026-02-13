@@ -120,7 +120,7 @@ public:
     void destroy();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Validation
+    // Boolean Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Checks structural consistency: orders >= 2, cv_count >= order in both
@@ -129,17 +129,46 @@ public:
     /// consistent with dimension and rationality.
     bool is_valid() const;
 
+    /// Validate the knot vector: must be non-decreasing, no multiplicity
+    /// exceeding order, and correct length relative to cv_count and order.
+    bool is_valid_knot_vector(int dir) const;
+
+    /// True if surface carries per-CV weights (NURBS). False for polynomial
+    /// B-spline surfaces where all weights are implicitly 1.0.
+    bool is_rational() const { return m_is_rat != 0; }
+
+    /// True if the surface wraps in the given direction: the first and last
+    /// rows (dir=0) or columns (dir=1) of CVs coincide within tolerance.
+    /// Does not check knot periodicity — use is_periodic() for that.
+    bool is_closed(int dir) const;
+
+    /// True if the knot vector in dir has periodic structure: the first
+    /// and last degree-many knot intervals are equal. A periodic surface
+    /// is always closed but a closed surface may not be periodic.
+    bool is_periodic(int dir) const;
+
+    /// Tests whether all control points lie within a single plane (up to
+    /// tolerance). If plane is non-null and surface is planar, writes the
+    /// best-fit plane. Uses SVD of the CV centroid-relative matrix.
+    bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// True if the given boundary edge is collapsed to a single point —
+    /// all CVs along that edge coincide within tolerance.
+    /// side: 0=south (v=0), 1=east (u=1), 2=north (v=1), 3=west (u=0).
+    bool is_singular(int side) const;
+
+    /// True if end knots have full multiplicity (equal to order) in dir.
+    /// end: 0=start only, 1=end only, 2=both ends.
+    /// Clamped knots force the surface to interpolate the boundary CVs.
+    bool is_clamped(int dir, int end = 2) const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Accessors
+    // Attributes
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Surface dimension — always 3 for 3D geometry.
     /// Rational surfaces store dim+1 values per CV (x*w, y*w, z*w, w).
     int dimension() const { return m_dim; }
-
-    /// True if surface carries per-CV weights (NURBS). False for polynomial
-    /// B-spline surfaces where all weights are implicitly 1.0.
-    bool is_rational() const { return m_is_rat != 0; }
 
     /// Polynomial order = degree + 1 in the given direction.
     /// dir=0 for u, dir=1 for v. Minimum order is 2 (linear).
@@ -231,10 +260,6 @@ public:
     /// Length is knot_count(dir).
     std::vector<double> get_knots(int dir) const;
 
-    /// Validate the knot vector: must be non-decreasing, no multiplicity
-    /// exceeding order, and correct length relative to cv_count and order.
-    bool is_valid_knot_vector(int dir) const;
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Domain & Parameterization
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -252,35 +277,6 @@ public:
     /// domain. These are the span boundaries — parameter values where
     /// the polynomial pieces join.
     std::vector<double> get_span_vector(int dir) const;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Geometric Queries
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /// True if the surface wraps in the given direction: the first and last
-    /// rows (dir=0) or columns (dir=1) of CVs coincide within tolerance.
-    /// Does not check knot periodicity — use is_periodic() for that.
-    bool is_closed(int dir) const;
-
-    /// True if the knot vector in dir has periodic structure: the first
-    /// and last degree-many knot intervals are equal. A periodic surface
-    /// is always closed but a closed surface may not be periodic.
-    bool is_periodic(int dir) const;
-
-    /// Tests whether all control points lie within a single plane (up to
-    /// tolerance). If plane is non-null and surface is planar, writes the
-    /// best-fit plane. Uses SVD of the CV centroid-relative matrix.
-    bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
-
-    /// True if the given boundary edge is collapsed to a single point —
-    /// all CVs along that edge coincide within tolerance.
-    /// side: 0=south (v=0), 1=east (u=1), 2=north (v=1), 3=west (u=0).
-    bool is_singular(int side) const;
-
-    /// True if end knots have full multiplicity (equal to order) in dir.
-    /// end: 0=start only, 1=end only, 2=both ends.
-    /// Clamped knots force the surface to interpolate the boundary CVs.
-    bool is_clamped(int dir, int end = 2) const;
 
     /// Evaluate the surface at a regular nu x nv grid of parameters spanning
     /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])

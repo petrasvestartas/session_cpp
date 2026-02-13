@@ -11,7 +11,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Xform", "constructor") {
+MINI_TEST("Xform", "Constructor") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
 
@@ -67,7 +67,7 @@ MINI_TEST("Xform", "constructor") {
     MINI_CHECK(TOLERANCE.is_close(result2[0], 12.0) && TOLERANCE.is_close(result2[1], 0.0) && TOLERANCE.is_close(result2[2], 0.0));
 }
 
-MINI_TEST("Xform", "translation") {
+MINI_TEST("Xform", "Translation") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
 
@@ -83,7 +83,7 @@ MINI_TEST("Xform", "translation") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], 9.0));
 }
 
-MINI_TEST("Xform", "scaling") {
+MINI_TEST("Xform", "Scaling") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
 
@@ -99,7 +99,7 @@ MINI_TEST("Xform", "scaling") {
     MINI_CHECK(TOLERANCE.is_close(sp[2], 4.0));
 }
 
-MINI_TEST("Xform", "rotation") {
+MINI_TEST("Xform", "Rotation") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -137,7 +137,7 @@ MINI_TEST("Xform", "rotation") {
     MINI_CHECK(TOLERANCE.is_close(rp[0], 0.0) && TOLERANCE.is_close(rp[1], 1.0) && TOLERANCE.is_close(rp[2], 0.0));
 }
 
-MINI_TEST("Xform", "inverse") {
+MINI_TEST("Xform", "Inverse") {
     // uncomment #include "xform.h"
 
     // Create composite transformation
@@ -155,7 +155,7 @@ MINI_TEST("Xform", "inverse") {
     MINI_CHECK(result.is_identity());
 }
 
-MINI_TEST("Xform", "transform_geometry") {
+MINI_TEST("Xform", "Transform_geometry") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -204,7 +204,7 @@ MINI_TEST("Xform", "transform_geometry") {
     MINI_CHECK(TOLERANCE.is_close(pts[2][0], 11.0) && TOLERANCE.is_close(pts[2][1], 21.0) && TOLERANCE.is_close(pts[2][2], 30.0));
 }
 
-MINI_TEST("Xform", "change_basis") {
+MINI_TEST("Xform", "Change_basis") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -233,7 +233,7 @@ MINI_TEST("Xform", "change_basis") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], 0.0));
 }
 
-MINI_TEST("Xform", "plane_to_plane") {
+MINI_TEST("Xform", "Plane_to_plane") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -262,7 +262,7 @@ MINI_TEST("Xform", "plane_to_plane") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], 0.0));
 }
 
-MINI_TEST("Xform", "look_at_rh") {
+MINI_TEST("Xform", "Look_at_rh") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -282,7 +282,7 @@ MINI_TEST("Xform", "look_at_rh") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], -10.0));
 }
 
-MINI_TEST("Xform", "json_roundtrip") {
+MINI_TEST("Xform", "Json_roundtrip") {
     // uncomment #include "xform.h"
 
     // Create a non-identity xform
@@ -307,7 +307,7 @@ MINI_TEST("Xform", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.m[14], 3.0));
 }
 
-MINI_TEST("Xform", "protobuf_roundtrip") {
+MINI_TEST("Xform", "Protobuf_roundtrip") {
     // uncomment #include "xform.h"
 
     // Create a non-identity xform

@@ -13,7 +13,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Line", "constructor") {
+MINI_TEST("Line", "Constructor") {
     // uncomment #include "line.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -106,7 +106,7 @@ MINI_TEST("Line", "constructor") {
     MINI_CHECK(lc.linecolor[0] == 255 && lc.linecolor[1] == 0 && lc.width == 2.5);
 }
 
-MINI_TEST("Line", "transformation") {
+MINI_TEST("Line", "Transformation") {
     // uncomment #include "line.h"
     // uncomment #include "xform.h"
 
@@ -120,7 +120,7 @@ MINI_TEST("Line", "transformation") {
     MINI_CHECK(l.xform == Xform::identity());
 }
 
-MINI_TEST("Line", "json_roundtrip") {
+MINI_TEST("Line", "Json_roundtrip") {
     // uncomment #include "line.h"
 
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
@@ -147,7 +147,7 @@ MINI_TEST("Line", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
 }
 
-MINI_TEST("Line", "protobuf_roundtrip") {
+MINI_TEST("Line", "Protobuf_roundtrip") {
     // uncomment #include "line.h"
 
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
@@ -167,7 +167,7 @@ MINI_TEST("Line", "protobuf_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
 }
 
-MINI_TEST("Line", "length") {
+MINI_TEST("Line", "Length") {
     // uncomment #include "line.h"
 
     Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
@@ -178,7 +178,7 @@ MINI_TEST("Line", "length") {
     MINI_CHECK(TOLERANCE.is_close(lsq, 25.0));
 }
 
-MINI_TEST("Line", "to_vector") {
+MINI_TEST("Line", "To_vector") {
     // uncomment #include "line.h"
 
     Line l(1.0, 2.0, 3.0, 4.0, 6.0, 9.0);
@@ -187,7 +187,7 @@ MINI_TEST("Line", "to_vector") {
     MINI_CHECK(v[0] == 3.0 && v[1] == 4.0 && v[2] == 6.0);
 }
 
-MINI_TEST("Line", "to_direction") {
+MINI_TEST("Line", "To_direction") {
     // uncomment #include "line.h"
 
     Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
@@ -199,7 +199,7 @@ MINI_TEST("Line", "to_direction") {
     MINI_CHECK(TOLERANCE.is_close(d.magnitude(), 1.0));
 }
 
-MINI_TEST("Line", "point_at") {
+MINI_TEST("Line", "Point_at") {
     // uncomment #include "line.h"
 
     Line l(0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
@@ -212,7 +212,7 @@ MINI_TEST("Line", "point_at") {
     MINI_CHECK(pe[0] == 10.0 && pe[1] == 10.0 && pe[2] == 10.0);
 }
 
-MINI_TEST("Line", "closest_point") {
+MINI_TEST("Line", "Closest_point") {
     // uncomment #include "line.h"
     // uncomment #include "point.h"
 
@@ -229,7 +229,7 @@ MINI_TEST("Line", "closest_point") {
     MINI_CHECK(cp3[0] == 10.0 && cp3[1] == 0.0 && cp3[2] == 0.0);
 }
 
-MINI_TEST("Line", "start_end_center") {
+MINI_TEST("Line", "Start_end_center") {
     // uncomment #include "line.h"
 
     Line l(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
@@ -242,7 +242,7 @@ MINI_TEST("Line", "start_end_center") {
     MINI_CHECK(center[0] == 2.5 && center[1] == 3.5 && center[2] == 4.5);
 }
 
-MINI_TEST("Line", "fit_points") {
+MINI_TEST("Line", "Fit_points") {
     // uncomment #include "line.h"
     // uncomment #include "point.h"
     // uncomment #include <vector>
@@ -253,7 +253,7 @@ MINI_TEST("Line", "fit_points") {
     MINI_CHECK(l_fit.length() > 0.0);
 }
 
-MINI_TEST("Line", "subdivide") {
+MINI_TEST("Line", "Subdivide") {
     // uncomment #include "line.h"
     // uncomment #include <vector>
 

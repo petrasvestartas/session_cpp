@@ -31,8 +31,9 @@ int main() {
     session.add_curve(std::make_shared<NurbsCurve>(v0));
     session.add_curve(std::make_shared<NurbsCurve>(v1));
 
-    auto srf = Primitives::create_network({u0, u1, u2, u3}, {v0, v1});
-    session.add_surface(std::make_shared<NurbsSurface>(srf));
+    // TODO: create_network not yet implemented
+    // auto srf = Primitives::create_network({u0, u1, u2, u3}, {v0, v1});
+    // session.add_surface(std::make_shared<NurbsSurface>(srf));
 
     std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "network_surface.pb").string();
     session.pb_dump(filepath);

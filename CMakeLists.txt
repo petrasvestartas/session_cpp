@@ -213,10 +213,8 @@ if(ENABLE_PCH)
     target_precompile_headers(session_core PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
 endif()
 
-target_include_directories(session_core PUBLIC
-    ${GENERATED_DIR}
-)
 target_include_directories(session_core SYSTEM PUBLIC
+    ${GENERATED_DIR}
     ${protobuf_SOURCE_DIR}/src
 )
 target_link_libraries(session_core PUBLIC libprotobuf)

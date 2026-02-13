@@ -18,7 +18,7 @@ namespace session_cpp {
 // Mesh primitives
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "mesh_arrow") {
+MINI_TEST("Primitives", "Mesh_arrow") {
     // uncomment #include "mesh.h"
     Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     Mesh m = Primitives::arrow_mesh(line, 1.0);
@@ -27,7 +27,7 @@ MINI_TEST("Primitives", "mesh_arrow") {
     MINI_CHECK(m.number_of_faces() == 28);
 }
 
-MINI_TEST("Primitives", "mesh_cylinder") {
+MINI_TEST("Primitives", "Mesh_cylinder") {
     // uncomment #include "mesh.h"
     Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     Mesh m = Primitives::cylinder_mesh(line, 1.0);
@@ -40,7 +40,7 @@ MINI_TEST("Primitives", "mesh_cylinder") {
 // NurbsCurve primitives
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "nurbscurve_polyline") {
+MINI_TEST("Primitives", "Nurbscurve_polyline") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = NurbsCurve::create(false, 1, {
         Point(0,0,0), Point(1,2,0), Point(2,0,0), Point(3,2,0), Point(4,0,0)});
@@ -53,7 +53,7 @@ MINI_TEST("Primitives", "nurbscurve_polyline") {
     MINI_CHECK(TOLERANCE.is_point_close(c.point_at(c.domain_end()), Point(4,0,0)));
 }
 
-MINI_TEST("Primitives", "nurbscurve_circle") {
+MINI_TEST("Primitives", "Nurbscurve_circle") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = Primitives::circle(0.0, 0.0, 0.0, 1.0);
 
@@ -62,7 +62,7 @@ MINI_TEST("Primitives", "nurbscurve_circle") {
     MINI_CHECK(c.is_rational() == true);
 }
 
-MINI_TEST("Primitives", "nurbscurve_ellipse") {
+MINI_TEST("Primitives", "Nurbscurve_ellipse") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = Primitives::ellipse(0.0, 0.0, 0.0, 2.0, 1.0);
 
@@ -71,7 +71,7 @@ MINI_TEST("Primitives", "nurbscurve_ellipse") {
     MINI_CHECK(c.is_rational() == true);
 }
 
-MINI_TEST("Primitives", "nurbscurve_arc") {
+MINI_TEST("Primitives", "Nurbscurve_arc") {
     // uncomment #include "nurbscurve.h"
     Point start(0.0, 0.0, 0.0);
     Point mid(1.0, 1.0, 0.0);
@@ -83,7 +83,7 @@ MINI_TEST("Primitives", "nurbscurve_arc") {
     MINI_CHECK(c.is_rational() == true);
 }
 
-MINI_TEST("Primitives", "nurbscurve_parabola") {
+MINI_TEST("Primitives", "Nurbscurve_parabola") {
     // uncomment #include "nurbscurve.h"
     Point p0(-1.0, 1.0, 0.0);
     Point p1(0.0, 0.0, 0.0);
@@ -95,7 +95,7 @@ MINI_TEST("Primitives", "nurbscurve_parabola") {
     MINI_CHECK(c.is_rational() == false);
 }
 
-MINI_TEST("Primitives", "nurbscurve_hyperbola") {
+MINI_TEST("Primitives", "Nurbscurve_hyperbola") {
     // uncomment #include "nurbscurve.h"
     Point center(0.0, 0.0, 0.0);
     NurbsCurve c = Primitives::hyperbola(center, 1.0, 1.0, 1.0);
@@ -105,7 +105,7 @@ MINI_TEST("Primitives", "nurbscurve_hyperbola") {
     MINI_CHECK(c.is_rational() == false);
 }
 
-MINI_TEST("Primitives", "nurbscurve_spiral") {
+MINI_TEST("Primitives", "Nurbscurve_spiral") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = Primitives::spiral(1.0, 2.0, 1.0, 5.0);
 
@@ -118,9 +118,10 @@ MINI_TEST("Primitives", "nurbscurve_spiral") {
 // NurbsSurface primitives
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "nurbssurface_cylinder") {
+MINI_TEST("Primitives", "Nurbssurface_cylinder") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 5.0);
+    s.name = "cylinder";
 
     MINI_CHECK(s.is_valid());
     MINI_CHECK(s.is_rational());
@@ -145,9 +146,10 @@ MINI_TEST("Primitives", "nurbssurface_cylinder") {
     MINI_CHECK(std::abs(pmid[2] - 2.5) < 1e-10);
 }
 
-MINI_TEST("Primitives", "nurbssurface_cone") {
+MINI_TEST("Primitives", "Nurbssurface_cone") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::cone_surface(0.0, 0.0, 0.0, 1.0, 5.0);
+    s.name = "cone";
 
     MINI_CHECK(s.is_valid());
     MINI_CHECK(s.is_rational());
@@ -172,9 +174,10 @@ MINI_TEST("Primitives", "nurbssurface_cone") {
     MINI_CHECK(std::abs(pmid[2] - 2.5) < 1e-10);
 }
 
-MINI_TEST("Primitives", "nurbssurface_torus") {
+MINI_TEST("Primitives", "Nurbssurface_torus") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::torus_surface(0.0, 0.0, 0.0, 3.0, 1.0);
+    s.name = "torus";
 
     MINI_CHECK(s.is_valid());
     MINI_CHECK(s.is_rational());
@@ -199,9 +202,10 @@ MINI_TEST("Primitives", "nurbssurface_torus") {
     MINI_CHECK(std::abs(p_top[2] - 1.0) < 1e-10);
 }
 
-MINI_TEST("Primitives", "nurbssurface_sphere") {
+MINI_TEST("Primitives", "Nurbssurface_sphere") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    s.name = "sphere";
 
     MINI_CHECK(s.is_valid());
     MINI_CHECK(s.is_rational());
@@ -231,17 +235,71 @@ MINI_TEST("Primitives", "nurbssurface_sphere") {
     MINI_CHECK(std::abs(p_eq2[2] - 0.0) < 1e-10);
 }
 
+MINI_TEST("Primitives", "Nurbssurface_quad_sphere") {
+    // uncomment #include "nurbssurface.h"
+    double R = 5.0;
+    auto faces = Primitives::quad_sphere(0.0, 0.0, 0.0, R);
+
+    MINI_CHECK(faces.size() == 6);
+    for (int f = 0; f < 6; f++) {
+        MINI_CHECK(faces[f].is_valid());
+        MINI_CHECK(faces[f].is_rational());
+        MINI_CHECK(faces[f].order(0) == 3);
+        MINI_CHECK(faces[f].order(1) == 3);
+        MINI_CHECK(faces[f].cv_count(0) == 3);
+        MINI_CHECK(faces[f].cv_count(1) == 3);
+    }
+
+    // All surface points should be close to sphere radius
+    double max_err = 0.0;
+    for (int f = 0; f < 6; f++) {
+        for (int i = 0; i <= 4; i++) {
+            double u = i / 4.0;
+            for (int j = 0; j <= 4; j++) {
+                double v = j / 4.0;
+                Point p = faces[f].point_at(u, v);
+                double dist = std::sqrt(p[0]*p[0] + p[1]*p[1] + p[2]*p[2]);
+                double err = std::abs(dist - R);
+                if (err > max_err) max_err = err;
+            }
+        }
+    }
+    MINI_CHECK(max_err < 0.02 * R);
+
+    // Face centers should be exactly at radius (by construction)
+    Point top = faces[0].point_at(0.5, 0.5);
+    MINI_CHECK(std::abs(top[2] - R) < 1e-10);
+    MINI_CHECK(std::abs(top[0]) < 1e-10);
+    MINI_CHECK(std::abs(top[1]) < 1e-10);
+
+    Point bottom = faces[1].point_at(0.5, 0.5);
+    MINI_CHECK(std::abs(bottom[2] + R) < 1e-10);
+
+    Point right = faces[2].point_at(0.5, 0.5);
+    MINI_CHECK(std::abs(right[0] - R) < 1e-10);
+
+    Point left = faces[3].point_at(0.5, 0.5);
+    MINI_CHECK(std::abs(left[0] + R) < 1e-10);
+
+    Point front = faces[4].point_at(0.5, 0.5);
+    MINI_CHECK(std::abs(front[1] - R) < 1e-10);
+
+    Point back = faces[5].point_at(0.5, 0.5);
+    MINI_CHECK(std::abs(back[1] + R) < 1e-10);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // NurbsSurface factory methods
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "nurbssurface_ruled") {
+MINI_TEST("Primitives", "Nurbssurface_ruled") {
     // uncomment #include "nurbssurface.h"
     std::vector<Point> pts_a = {Point(3,0,0), Point(-2,0,5)};
     std::vector<Point> pts_b = {Point(3,5,5), Point(-2,5,0)};
     NurbsCurve crvA = NurbsCurve::create(false, 1, pts_a);
     NurbsCurve crvB = NurbsCurve::create(false, 1, pts_b);
     NurbsSurface srf = Primitives::create_ruled(crvA, crvB);
+    srf.name = "ruled";
 
     Mesh m = srf.mesh(45);
 
@@ -330,7 +388,7 @@ MINI_TEST("Primitives", "nurbssurface_ruled") {
     MINI_CHECK(TOLERANCE.is_close(uvs[24].first, 1.00) && TOLERANCE.is_close(uvs[24].second, 1.00));
 }
 
-MINI_TEST("Primitives", "nurbssurface_planar"){
+MINI_TEST("Primitives", "Nurbssurface_planar"){
     // uncomment #include "nurbssurface.h"
     double c1=std::cos(0.7), s1=std::sin(0.7);
     double c2=std::cos(0.96), s2=std::sin(0.96);
@@ -344,6 +402,7 @@ MINI_TEST("Primitives", "nurbssurface_planar"){
         Point(0,3*c1,3*s1),
         Point(0,0,0)});
     auto s_quad = Primitives::create_planar(ca);
+    s_quad.name = "quad";
     auto m_quad = s_quad.mesh();
 
     auto cb1 = NurbsCurve::create(false, 1, {
@@ -352,6 +411,7 @@ MINI_TEST("Primitives", "nurbssurface_planar"){
         Point(8+2*c2,3,2*s2),
         Point(8,0,0)});
     auto s_triangle = Primitives::create_planar(cb1);
+    s_triangle.name = "triangle";
     auto m_triangle = s_triangle.mesh();
 
     double ox=18;
@@ -363,6 +423,7 @@ MINI_TEST("Primitives", "nurbssurface_planar"){
         Point(ox-1*c3-3*s3,-1*s3+3*c3,0),
         Point(ox+0*c3,0*s3,0)});
     auto s_polygon = Primitives::create_planar(cb2);
+    s_polygon.name = "polygon";
     auto m_polygon = s_polygon.mesh();
 
     auto cc = NurbsCurve::create(false, 3, {
@@ -374,6 +435,7 @@ MINI_TEST("Primitives", "nurbssurface_planar"){
         Point(27,4*c4,4*s4),
         Point(26,0,0)});
     auto s_nurbs = Primitives::create_planar(cc);
+    s_nurbs.name = "nurbs";
     auto m_nurbs = s_nurbs.mesh();
 
     MINI_CHECK(s_quad.is_valid());
@@ -421,24 +483,28 @@ MINI_TEST("Primitives", "nurbssurface_planar"){
     MINI_CHECK(TOLERANCE.is_point_close(s_nurbs.get_cv(1,1), Point(30.301430747422629, 2.436120711686657, 5.163967229855166)));
 }
 
-MINI_TEST("Primitives", "nurbssurface_extrusion") {
+MINI_TEST("Primitives", "Nurbssurface_extrusion") {
     // uncomment #include "nurbssurface.h"
     Vector dir(0, 1, 5);
 
     auto c1 = NurbsCurve::create(false, 1, {Point(13,0,0), Point(18,0,0)});
     auto s_line = Primitives::create_extrusion(c1, dir);
+    s_line.name = "line";
     auto m_line = s_line.mesh();
 
     auto c2 = Primitives::circle(24, 0, 0, 3.0);
     auto s_circle = Primitives::create_extrusion(c2, dir);
+    s_circle.name = "circle";
     auto m_circle = s_circle.mesh();
 
     auto c3 = NurbsCurve::create(false, 2, {Point(30,0,0), Point(33,5,0), Point(37,0,0)});
     auto s_arc = Primitives::create_extrusion(c3, dir);
+    s_arc.name = "arc";
     auto m_arc = s_arc.mesh();
 
     auto c4 = NurbsCurve::create(false, 1, {Point(40,3,0), Point(45,0,0), Point(50,3,0), Point(55,0,0)});
     auto s_wavy = Primitives::create_extrusion(c4, dir);
+    s_wavy.name = "wavy";
     auto m_wavy = s_wavy.mesh();
 
     MINI_CHECK(s_line.is_valid());
@@ -490,7 +556,7 @@ MINI_TEST("Primitives", "nurbssurface_extrusion") {
     MINI_CHECK(TOLERANCE.is_point_close(s_wavy.get_cv(3,1), Point(55.0, 1.0, 5.0)));
 }
 
-MINI_TEST("Primitives", "nurbssurface_loft") {
+MINI_TEST("Primitives", "Nurbssurface_loft") {
     // uncomment #include "nurbssurface.h"
     NurbsCurve c1 = Primitives::circle(0, 0, 0.0, 2.0);
     NurbsCurve c2 = Primitives::circle(0, 0, 2.0, 1.0);
@@ -498,6 +564,7 @@ MINI_TEST("Primitives", "nurbssurface_loft") {
     NurbsCurve c4 = Primitives::circle(0, 0, 6.0, 0.8);
 
     NurbsSurface srf = Primitives::create_loft({c1, c2, c3, c4}, 3);
+    srf.name = "loft";
 
     MINI_CHECK(srf.is_valid());
     MINI_CHECK(srf.cv_count(0) == 9);
@@ -550,6 +617,7 @@ MINI_TEST("Primitives", "nurbssurface_loft") {
         NurbsCurve::create(false, 3, open_pts[2]),
     };
     NurbsSurface open_srf = Primitives::create_loft(open_curves, 3);
+    open_srf.name = "open_loft";
 
     MINI_CHECK(open_srf.is_valid());
     MINI_CHECK(open_srf.cv_count(0) == 4);
@@ -569,12 +637,13 @@ MINI_TEST("Primitives", "nurbssurface_loft") {
     MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(3, 2), Point(1, -5, 0)));
 }
 
-MINI_TEST("Primitives", "nurbssurface_revolve"){
+MINI_TEST("Primitives", "Nurbssurface_revolve"){
     // uncomment #include "nurbssurface.h"
     auto pa = NurbsCurve::create(false, 3, {
         Point(1.5, 0, 0), Point(1.5, 0, 0.3), Point(0.3, 0, 0.5),
         Point(0.3, 0, 2.5), Point(0.2, 0, 3.0), Point(2.0, 0, 4.5), Point(1.8, 0, 5.0)});
     auto s_vase = Primitives::create_revolve(pa, Point(0,0,0), Vector(0,0,1));
+    s_vase.name = "vase";
     auto m_vase = s_vase.mesh();
 
     NurbsCurve pb(3, true, 3, 9);
@@ -588,10 +657,12 @@ MINI_TEST("Primitives", "nurbssurface_revolve"){
     for (int i = 0; i < 9; i++)
         pb.set_cv_4d(i, (tcx + R + r * ca[i]) * cw[i], 0, r * sa[i] * cw[i], cw[i]);
     auto s_torus = Primitives::create_revolve(pb, Point(tcx,0,0), Vector(0,0,1));
+    s_torus.name = "torus";
     auto m_torus = s_torus.mesh();
 
     auto pc = NurbsCurve::create(false, 1, {Point(29, 0, -0.5), Point(29, 0, 0.5)});
     auto s_elbow = Primitives::create_revolve(pc, Point(26,0,0), Vector(0,0,1), Tolerance::PI / 2.0);
+    s_elbow.name = "elbow";
     auto m_elbow = s_elbow.mesh();
 
     double sr = 2.0, scx = 36;
@@ -602,10 +673,12 @@ MINI_TEST("Primitives", "nurbssurface_revolve"){
     for (int i = 0; i < 5; i++)
         pd.set_cv_4d(i, (scx + spx[i]) * spw[i], 0, spz[i] * spw[i], spw[i]);
     auto s_sphere = Primitives::create_revolve(pd, Point(scx,0,0), Vector(0,0,1));
+    s_sphere.name = "sphere";
     auto m_sphere = s_sphere.mesh();
 
     auto pe = NurbsCurve::create(false, 1, {Point(44, 0, 3), Point(46, 0, 0)});
     auto s_cone = Primitives::create_revolve(pe, Point(44,0,0), Vector(0,0,1));
+    s_cone.name = "cone";
     auto m_cone = s_cone.mesh();
 
     MINI_CHECK(s_vase.is_valid());
@@ -664,11 +737,12 @@ MINI_TEST("Primitives", "nurbssurface_revolve"){
     MINI_CHECK(TOLERANCE.is_point_close(s_cone.get_cv(0,1), Point(46.0, 0.0, 0.0)));
 }
 
-MINI_TEST("Primitives", "nurbssurface_sweep") {
+MINI_TEST("Primitives", "Nurbssurface_sweep") {
     // uncomment #include "nurbssurface.h"
     NurbsCurve rail = NurbsCurve::create(false, 2, {Point(0,0,0), Point(0,5,0), Point(2,9,0)});
     NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
     NurbsSurface s_sweep1 = Primitives::create_sweep1(rail, profile);
+    s_sweep1.name = "sweep1";
     auto m_sweep1 = s_sweep1.mesh();
 
     NurbsCurve rail1 = NurbsCurve::create(false, 2, {Point(6,-1,0), Point(7,3,0), Point(8,4,0)});
@@ -676,6 +750,7 @@ MINI_TEST("Primitives", "nurbssurface_sweep") {
     NurbsCurve shape1 = NurbsCurve::create(false, 2, {Point(6,-1,0), Point(8,-1,2), Point(10,-1,0)});
     NurbsCurve shape2 = NurbsCurve::create(false, 2, {Point(8,4,0), Point(8.5,4,1.5), Point(9,4,0)});
     NurbsSurface s_sweep2 = Primitives::create_sweep2(rail1, rail2, {shape1, shape2});
+    s_sweep2.name = "sweep2";
     auto m_sweep2 = s_sweep2.mesh();
 
     MINI_CHECK(s_sweep1.is_valid());
@@ -764,7 +839,7 @@ MINI_TEST("Primitives", "nurbssurface_sweep") {
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep2.get_cv(2,5), Point(8.999999999999998, 4.000000000000000, 0.000000000000000)));
 }
 
-MINI_TEST("Primitives", "nurbssurface_edge") {
+MINI_TEST("Primitives", "Nurbssurface_edge") {
     // uncomment #include "nurbssurface.h"
     std::vector<Point> pts_south = {Point(1, 20.569076, 0), Point(1, 22.569076, 3.0), Point(1, 25.569076, 3.0), Point(1, 27.569076, 0)};
     std::vector<Point> pts_west  = {Point(10, 20.569076, 0), Point(5.5, 20.569076, 3.5), Point(1, 20.569076, 0)};
@@ -777,6 +852,7 @@ MINI_TEST("Primitives", "nurbssurface_edge") {
     NurbsCurve east  = NurbsCurve::create(false, 2, pts_east);
 
     NurbsSurface surf = Primitives::create_edge(south, west, north, east);
+    surf.name = "edge";
     Mesh m = surf.mesh(15);
 
     MINI_CHECK(surf.is_valid());
@@ -800,51 +876,7 @@ MINI_TEST("Primitives", "nurbssurface_edge") {
     MINI_CHECK(TOLERANCE.is_point_close(surf.get_cv(2, 3), Point(10, 27.569076, 0)));
 }
 
-MINI_TEST("Primitives", "nurbssurface_network") {
-    // U-direction curves (4 curves, each degree 2 with 3 CVs)
-    NurbsCurve u0 = NurbsCurve::create(false, 2, {
-        Point(135, 17, 0), Point(131, 21, 0), Point(135, 26, 0)});
-    NurbsCurve u1 = NurbsCurve::create(false, 2, {
-        Point(138.530306, 25.217183, 3.147742), Point(137.25766, 20.980203, 7.633725),
-        Point(139.228777, 17.799797, 3.377253)});
-    NurbsCurve u2 = NurbsCurve::create(false, 2, {
-        Point(140.519039, 17.722618, 3.491662), Point(142.519039, 22.722618, 7.491662),
-        Point(141.023716, 25.344319, 3.431608)});
-    NurbsCurve u3 = NurbsCurve::create(false, 2, {
-        Point(146, 16, 0), Point(150, 21.0, 7.0), Point(146, 27, 0)});
-
-    // V-direction curves (2 curves, each degree 2 with 3 CVs)
-    NurbsCurve v0 = NurbsCurve::create(false, 2, {
-        Point(135, 17, 0), Point(140, 19, 7.0), Point(146, 16, 0)});
-    NurbsCurve v1 = NurbsCurve::create(false, 2, {
-        Point(135, 26, 0), Point(140, 24, 7.0), Point(146, 27, 0)});
-
-    NurbsSurface srf = Primitives::create_network({u0, u1, u2, u3}, {v0, v1});
-    Mesh m = srf.mesh(15);
-
-    MINI_CHECK(srf.is_valid());
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() > 0);
-    MINI_CHECK(m.number_of_faces() > 0);
-
-    // Check that the surface interpolates corner points
-    // u-dir follows u-curves (y-direction), v-dir across u-curves (x-direction)
-    // (u=0,v=0)=start u0, (u=1,v=0)=end u0, (u=0,v=1)=start u3, (u=1,v=1)=end u3
-    auto [du0, du1] = srf.domain(0);
-    auto [dv0, dv1] = srf.domain(1);
-
-    Point p00 = srf.point_at(du0, dv0);
-    Point p01 = srf.point_at(du0, dv1);
-    Point p10 = srf.point_at(du1, dv0);
-    Point p11 = srf.point_at(du1, dv1);
-
-    MINI_CHECK(p00.distance(Point(135, 17, 0)) < 1.0);
-    MINI_CHECK(p10.distance(Point(135, 26, 0)) < 1.0);
-    MINI_CHECK(p01.distance(Point(146, 16, 0)) < 1.0);
-    MINI_CHECK(p11.distance(Point(146, 27, 0)) < 1.0);
-}
-
-MINI_TEST("Primitives", "nurbscurve_interpolated") {
+MINI_TEST("Primitives", "Nurbscurve_interpolated") {
     // uncomment #include "nurbscurve.h"
     std::vector<Point> points = {
         Point(14, 9, 0), Point(15.342777, 13.734889, 0), Point(21.897914, 32.239195, 0),

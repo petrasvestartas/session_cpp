@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("BoundingBox", "json_roundtrip") {
+MINI_TEST("BoundingBox", "Json_roundtrip") {
     BoundingBox original = BoundingBox::from_point(Point(1.0, 2.0, 3.0), 5.0);
     original.name = "test_bbox";
 

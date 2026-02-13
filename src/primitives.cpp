@@ -333,6 +333,72 @@ NurbsSurface Primitives::sphere_surface(double cx, double cy, double cz, double 
     return srf;
 }
 
+std::vector<NurbsSurface> Primitives::quad_sphere(double cx, double cy, double cz, double radius) {
+    const double R = radius;
+    const double a = R / std::sqrt(3.0);
+    const double e = R * std::sqrt(3.0) / 2.0;
+    const double wk = std::sqrt(2.0 / 3.0);
+    const double wc = (-72.0 - 32.0*std::sqrt(6.0) + 48.0*std::sqrt(3.0) + 56.0*std::sqrt(2.0))
+                    / (48.0*(1.0 + std::sqrt(2.0/3.0) - 1.0/std::sqrt(3.0) - 1.0/std::sqrt(2.0)));
+    const double K = R * (1.0 - 1.0/std::sqrt(3.0) + 2.0*std::sqrt(2.0/3.0) - std::sqrt(2.0));
+    const double h = R + K / wc;
+
+    struct CP { double x, y, z, w; };
+    CP zf[3][3] = {
+        {{-a,-a, a, 1}, {-e, 0, e, wk}, {-a, a, a, 1}},
+        {{ 0,-e, e, wk},{ 0, 0, h, wc}, { 0, e, e, wk}},
+        {{ a,-a, a, 1}, { e, 0, e, wk}, { a, a, a, 1}}
+    };
+
+    // Rotations: +Z, -Z, +X, -X, +Y, -Y
+    double rot[6][3][3] = {
+        {{ 1, 0, 0},{ 0, 1, 0},{ 0, 0, 1}},
+        {{ 1, 0, 0},{ 0,-1, 0},{ 0, 0,-1}},
+        {{ 0, 0, 1},{ 0, 1, 0},{-1, 0, 0}},
+        {{ 0, 0,-1},{ 0, 1, 0},{ 1, 0, 0}},
+        {{ 1, 0, 0},{ 0, 0, 1},{ 0,-1, 0}},
+        {{ 1, 0, 0},{ 0, 0,-1},{ 0, 1, 0}}
+    };
+
+    std::vector<NurbsSurface> faces;
+    for (int f = 0; f < 6; f++) {
+        NurbsSurface srf(3, true, 3, 3, 3, 3);
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                const CP& p = zf[i][j];
+                double rx = rot[f][0][0]*p.x + rot[f][0][1]*p.y + rot[f][0][2]*p.z + cx;
+                double ry = rot[f][1][0]*p.x + rot[f][1][1]*p.y + rot[f][1][2]*p.z + cy;
+                double rz = rot[f][2][0]*p.x + rot[f][2][1]*p.y + rot[f][2][2]*p.z + cz;
+                srf.set_cv_4d(i, j, rx*p.w, ry*p.w, rz*p.w, p.w);
+            }
+        }
+        faces.push_back(srf);
+    }
+    return faces;
+}
+
+NurbsSurface Primitives::wave_surface(double size, double amplitude) {
+    // Approximate z = amplitude * sin(2π*x/size) * sin(2π*y/size)
+    // 13x13 CVs, degree 3, one full period per direction
+    // Edges are at sin(0)=sin(2π)=0, so tiles connect seamlessly
+    const int n = 13;
+    const double PI2 = 2.0 * 3.14159265358979323846;
+
+    std::vector<Point> pts;
+    for (int i = 0; i < n; ++i) {
+        double u = static_cast<double>(i) / (n - 1);
+        double x = size * u;
+        for (int j = 0; j < n; ++j) {
+            double v = static_cast<double>(j) / (n - 1);
+            double y = size * v;
+            double z = amplitude * std::sin(PI2 * u) * std::sin(PI2 * v);
+            pts.push_back(Point(x, y, z));
+        }
+    }
+
+    return NurbsSurface::create(false, false, 3, 3, n, n, pts);
+}
+
 std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> Primitives::unit_cylinder_geometry() {
     std::vector<Point> vertices = {
         Point(0.5, 0.0, -0.5),
@@ -688,370 +754,6 @@ void make_curves_compatible(std::vector<NurbsCurve>& curves) {
                 c.insert_knot(unified[ui], 1);
             }
         }
-    }
-}
-
-bool find_curve_intersection(const NurbsCurve& crv1, const NurbsCurve& crv2,
-                             double& t1, double& t2, Point& pt) {
-    auto [a1, b1] = crv1.domain();
-    auto [a2, b2] = crv2.domain();
-    int n = 80;
-    double best_d2 = 1e30;
-    t1 = a1; t2 = a2;
-
-    for (int i = 0; i <= n; i++) {
-        double s1 = a1 + (b1 - a1) * i / n;
-        Point p1 = crv1.point_at(s1);
-        for (int j = 0; j <= n; j++) {
-            double s2 = a2 + (b2 - a2) * j / n;
-            Point p2 = crv2.point_at(s2);
-            double dx = p1[0]-p2[0], dy = p1[1]-p2[1], dz = p1[2]-p2[2];
-            double d2 = dx*dx + dy*dy + dz*dz;
-            if (d2 < best_d2) { best_d2 = d2; t1 = s1; t2 = s2; }
-        }
-    }
-
-    double dt1 = (b1 - a1) / n, dt2 = (b2 - a2) / n;
-    for (int refine = 0; refine < 4; refine++) {
-        double lo1 = std::max(a1, t1 - dt1), hi1 = std::min(b1, t1 + dt1);
-        double lo2 = std::max(a2, t2 - dt2), hi2 = std::min(b2, t2 + dt2);
-        for (int i = 0; i <= 20; i++) {
-            double s1 = lo1 + (hi1 - lo1) * i / 20;
-            Point p1 = crv1.point_at(s1);
-            for (int j = 0; j <= 20; j++) {
-                double s2 = lo2 + (hi2 - lo2) * j / 20;
-                Point p2 = crv2.point_at(s2);
-                double dx = p1[0]-p2[0], dy = p1[1]-p2[1], dz = p1[2]-p2[2];
-                double d2 = dx*dx + dy*dy + dz*dz;
-                if (d2 < best_d2) { best_d2 = d2; t1 = s1; t2 = s2; }
-            }
-        }
-        dt1 /= 20; dt2 /= 20;
-    }
-
-    Point p1 = crv1.point_at(t1), p2 = crv2.point_at(t2);
-    pt = Point((p1[0]+p2[0])/2, (p1[1]+p2[1])/2, (p1[2]+p2[2])/2);
-    return best_d2 < 1.0;
-}
-
-double arc_length_between(const NurbsCurve& crv, double t0, double t1) {
-    const int n = 10;
-    double length = 0.0;
-    Point prev = crv.point_at(t0);
-    for (int i = 1; i <= n; i++) {
-        double t = t0 + (t1 - t0) * i / n;
-        Point curr = crv.point_at(t);
-        double dx = curr[0]-prev[0], dy = curr[1]-prev[1], dz = curr[2]-prev[2];
-        length += std::sqrt(dx*dx + dy*dy + dz*dz);
-        prev = curr;
-    }
-    return length;
-}
-
-// TL-style cubic interpolation: cv_count = n+2, Bessel tangents, tridiagonal solve
-NurbsCurve cubic_interpolation_curve(const std::vector<Point>& points, const std::vector<double>& params) {
-    int n = (int)points.size();
-    if (n < 2) return NurbsCurve();
-    int dim = 3;
-    int degree = std::min(3, n - 1);
-    int order = degree + 1;
-
-    if (degree < 3) {
-        int cv_count = n;
-        if (degree == 1) {
-            // Degree 1: knots = params directly (knot_count = n)
-            NurbsCurve result(dim, false, order, cv_count);
-            for (int i = 0; i < n; i++) result.set_knot(i, params[i]);
-            for (int i = 0; i < n; i++) result.set_cv(i, points[i]);
-            return result;
-        }
-        // degree 2: Piegl approach with averaged knots
-        cv_count = n;
-        int kn_count = cv_count + order - 2;
-        std::vector<double> kn(kn_count);
-        for (int i = 0; i < order - 1; i++) kn[i] = params[0];
-        for (int i = kn_count - order + 1; i < kn_count; i++) kn[i] = params[n - 1];
-        for (int j = 1; j <= n - order; j++) {
-            double sum = 0.0;
-            for (int i = j; i < j + degree; i++) sum += params[i];
-            kn[order - 2 + j] = sum / degree;
-        }
-        std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
-        for (int k = 0; k < n; k++) {
-            int span = knot::find_span(order, cv_count, kn, params[k]);
-            auto basis = knot::eval_basis(order, kn, span, params[k]);
-            for (int j = 0; j < order && span + j < n; j++)
-                A[k][span + j] = basis[j];
-        }
-        std::vector<double> cv(n * dim);
-        for (int i = 0; i < n; i++)
-            for (int d = 0; d < dim; d++) cv[i * dim + d] = points[i][d];
-        for (int col = 0; col < n; col++) {
-            int pivot = col;
-            for (int row = col + 1; row < n; row++)
-                if (std::fabs(A[row][col]) > std::fabs(A[pivot][col])) pivot = row;
-            if (pivot != col) {
-                std::swap(A[col], A[pivot]);
-                for (int d = 0; d < dim; d++) std::swap(cv[col*dim+d], cv[pivot*dim+d]);
-            }
-            for (int row = col + 1; row < n; row++) {
-                double factor = A[row][col] / A[col][col];
-                for (int j = col; j < n; j++) A[row][j] -= factor * A[col][j];
-                for (int d = 0; d < dim; d++) cv[row*dim+d] -= factor * cv[col*dim+d];
-            }
-        }
-        for (int i = n - 1; i >= 0; i--)
-            for (int d = 0; d < dim; d++) {
-                double sum = cv[i*dim+d];
-                for (int j = i + 1; j < n; j++) sum -= A[i][j] * cv[j*dim+d];
-                cv[i*dim+d] = sum / A[i][i];
-            }
-        NurbsCurve result(dim, false, order, cv_count);
-        for (int i = 0; i < kn_count; i++) result.set_knot(i, kn[i]);
-        for (int i = 0; i < cv_count; i++)
-            result.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
-        return result;
-    }
-
-    // Degree 3: TL approach (cv_count = n+2, Bessel tangents, tridiagonal)
-    int cv_count = n + 2;
-    auto knots = knot::build_interp_knots(params, degree);
-    int kc = (int)knots.size();
-
-    auto pdist = [](const Point& a, const Point& b) {
-        double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
-        return std::sqrt(dx*dx + dy*dy + dz*dz);
-    };
-
-    auto estimate_tangent = [&](int i0, int i1, int i2) -> Vector {
-        double d01 = pdist(points[i0], points[i1]);
-        double d21 = pdist(points[i2], points[i1]);
-        if (d01 + d21 < 1e-300) return Vector(0,0,0);
-        double s = d01 / (d01 + d21);
-        double t = 1.0 - s;
-        double denom = 2.0 * s * t;
-        if (denom < 1e-16) {
-            double dx = points[i1][0]-points[i0][0];
-            double dy = points[i1][1]-points[i0][1];
-            double dz = points[i1][2]-points[i0][2];
-            double len = std::sqrt(dx*dx+dy*dy+dz*dz);
-            return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0,0,0);
-        }
-        double cvx = (-t*t*points[i0][0] + points[i1][0] - s*s*points[i2][0]) / denom;
-        double cvy = (-t*t*points[i0][1] + points[i1][1] - s*s*points[i2][1]) / denom;
-        double cvz = (-t*t*points[i0][2] + points[i1][2] - s*s*points[i2][2]) / denom;
-        double dx = cvx - points[i0][0], dy = cvy - points[i0][1], dz = cvz - points[i0][2];
-        double len = std::sqrt(dx*dx + dy*dy + dz*dz);
-        return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0,0,0);
-    };
-
-    Vector tan_start, tan_end;
-    if (n >= 3) {
-        tan_start = estimate_tangent(0, 1, 2);
-        Vector end_raw = estimate_tangent(n-1, n-2, n-3);
-        tan_end = Vector(-end_raw[0], -end_raw[1], -end_raw[2]);
-    } else {
-        double dx = points[1][0]-points[0][0], dy = points[1][1]-points[0][1], dz = points[1][2]-points[0][2];
-        double len = std::sqrt(dx*dx+dy*dy+dz*dz);
-        if (len > 0) { tan_start = Vector(dx/len, dy/len, dz/len); tan_end = tan_start; }
-    }
-
-    double d_start = pdist(points[0], points[1]);
-    double d_end = pdist(points[n-1], points[n-2]);
-
-    std::vector<double> cv(cv_count * dim);
-    for (int d = 0; d < dim; d++) cv[d] = points[0][d];
-    double s0 = d_start / 3.0;
-    for (int d = 0; d < dim; d++) cv[dim + d] = points[0][d] + s0 * tan_start[d];
-    for (int i = 1; i <= n-2; i++)
-        for (int d = 0; d < dim; d++) cv[(i+1) * dim + d] = points[i][d];
-    double s1 = -d_end / 3.0;
-    for (int d = 0; d < dim; d++) cv[n * dim + d] = points[n-1][d] + s1 * tan_end[d];
-    for (int d = 0; d < dim; d++) cv[(n+1) * dim + d] = points[n-1][d];
-
-    int sys_n = n;
-    std::vector<double> lower(sys_n, 0.0), diag(sys_n, 0.0), upper(sys_n, 0.0);
-    std::vector<double> rhs(sys_n * dim);
-
-    diag[0] = 1.0;
-    for (int d = 0; d < dim; d++) rhs[d] = cv[dim + d];
-
-    for (int i = 1; i <= n-2; i++) {
-        auto basis = knot::eval_basis(order, knots, i, params[i]);
-        lower[i] = basis[0];
-        diag[i] = basis[1];
-        upper[i] = basis[2];
-        for (int d = 0; d < dim; d++) rhs[i * dim + d] = points[i][d];
-    }
-
-    diag[n-1] = 1.0;
-    for (int d = 0; d < dim; d++) rhs[(n-1) * dim + d] = cv[n * dim + d];
-
-    std::vector<double> solution;
-    knot::solve_tridiagonal(dim, sys_n, lower, diag, upper, rhs, solution);
-
-    for (int i = 0; i < sys_n; i++)
-        for (int d = 0; d < dim; d++) cv[(i+1) * dim + d] = solution[i * dim + d];
-
-    NurbsCurve result(dim, false, order, cv_count);
-    for (int i = 0; i < kc; i++) result.set_knot(i, knots[i]);
-    for (int i = 0; i < cv_count; i++)
-        result.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
-    return result;
-}
-
-// Build a loft surface through section curves using explicit cross-section params
-NurbsSurface create_loft_with_params(
-    const std::vector<NurbsCurve>& input_curves,
-    const std::vector<double>& cross_params)
-{
-    std::vector<NurbsCurve> curves = input_curves;
-    make_curves_compatible(curves);
-
-    int n_sections = (int)curves.size();
-    int cv_u = curves[0].cv_count();
-    bool is_rat = curves[0].is_rational();
-
-    // For each CV column, interpolate through sections using cross_params
-    std::vector<NurbsCurve> col_curves;
-    for (int col = 0; col < cv_u; col++) {
-        std::vector<Point> col_pts;
-        for (int k = 0; k < n_sections; k++) {
-            if (is_rat) {
-                double x, y, z, w;
-                curves[k].get_cv_4d(col, x, y, z, w);
-                col_pts.push_back(Point(x/w, y/w, z/w));
-            } else {
-                col_pts.push_back(curves[k].get_cv(col));
-            }
-        }
-        col_curves.push_back(cubic_interpolation_curve(col_pts, cross_params));
-    }
-
-    int cv_v = col_curves[0].cv_count();
-    int order_v = col_curves[0].order();
-
-    NurbsSurface srf;
-    srf.create_raw(3, is_rat, curves[0].order(), order_v, cv_u, cv_v);
-    for (int i = 0; i < srf.knot_count(0); i++)
-        srf.set_knot(0, i, curves[0].knot(i));
-    for (int i = 0; i < srf.knot_count(1); i++)
-        srf.set_knot(1, i, col_curves[0].knot(i));
-    for (int i = 0; i < cv_u; i++)
-        for (int j = 0; j < cv_v; j++) {
-            if (is_rat) {
-                // TODO: handle rational CVs properly
-                Point p = col_curves[i].get_cv(j);
-                srf.set_cv(i, j, p);
-            } else {
-                srf.set_cv(i, j, col_curves[i].get_cv(j));
-            }
-        }
-    return srf;
-}
-
-NurbsSurface create_bicubic_grid_surface(
-    const std::vector<std::vector<Point>>& grid,
-    const std::vector<double>& u_params,
-    const std::vector<double>& v_params)
-{
-    int n_rows = (int)grid.size();
-
-    std::vector<NurbsCurve> row_curves;
-    for (int i = 0; i < n_rows; i++)
-        row_curves.push_back(cubic_interpolation_curve(grid[i], u_params));
-    make_curves_compatible(row_curves);
-
-    int cv_u = row_curves[0].cv_count();
-    int order_u = row_curves[0].order();
-
-    std::vector<NurbsCurve> col_curves;
-    for (int col = 0; col < cv_u; col++) {
-        std::vector<Point> col_pts;
-        for (int row = 0; row < n_rows; row++)
-            col_pts.push_back(row_curves[row].get_cv(col));
-        col_curves.push_back(cubic_interpolation_curve(col_pts, v_params));
-    }
-
-    int cv_v = col_curves[0].cv_count();
-    int order_v = col_curves[0].order();
-
-    NurbsSurface srf;
-    srf.create_raw(3, false, order_u, order_v, cv_u, cv_v);
-    for (int i = 0; i < srf.knot_count(0); i++)
-        srf.set_knot(0, i, row_curves[0].knot(i));
-    for (int i = 0; i < srf.knot_count(1); i++)
-        srf.set_knot(1, i, col_curves[0].knot(i));
-    for (int i = 0; i < cv_u; i++)
-        for (int j = 0; j < cv_v; j++)
-            srf.set_cv(i, j, col_curves[i].get_cv(j));
-    return srf;
-}
-
-void make_surfaces_knot_compatible_1d(NurbsSurface& a, NurbsSurface& b, NurbsSurface& c) {
-    int dir = 0;
-    int max_deg = std::max({a.degree(dir), b.degree(dir), c.degree(dir)});
-    if (a.degree(dir) < max_deg) a.increase_degree(dir, max_deg);
-    if (b.degree(dir) < max_deg) b.increase_degree(dir, max_deg);
-    if (c.degree(dir) < max_deg) c.increase_degree(dir, max_deg);
-
-    a.set_domain(dir, 0.0, 1.0);
-    b.set_domain(dir, 0.0, 1.0);
-    c.set_domain(dir, 0.0, 1.0);
-
-    auto ka = a.get_knots(dir), kb = b.get_knots(dir), kc = c.get_knots(dir);
-    auto unified = merge_knot_vectors(merge_knot_vectors(ka, kb), kc);
-
-    auto insert_missing = [](NurbsSurface& srf, int d, const std::vector<double>& uni) {
-        std::vector<double> orig = srf.get_knots(d);
-        size_t ci = 0;
-        for (size_t ui = 0; ui < uni.size(); ui++) {
-            if (ci < orig.size() && std::abs(orig[ci] - uni[ui]) < 1e-10) ci++;
-            else srf.insert_knot(d, uni[ui], 1);
-        }
-    };
-    insert_missing(a, dir, unified);
-    insert_missing(b, dir, unified);
-    insert_missing(c, dir, unified);
-}
-
-void make_surfaces_knot_compatible(NurbsSurface& a, NurbsSurface& b, NurbsSurface& c) {
-    for (int dir = 0; dir < 2; dir++) {
-        int max_deg = std::max({a.degree(dir), b.degree(dir), c.degree(dir)});
-        if (a.degree(dir) < max_deg) a.increase_degree(dir, max_deg);
-        if (b.degree(dir) < max_deg) b.increase_degree(dir, max_deg);
-        if (c.degree(dir) < max_deg) c.increase_degree(dir, max_deg);
-
-        a.set_domain(dir, 0.0, 1.0);
-        b.set_domain(dir, 0.0, 1.0);
-        c.set_domain(dir, 0.0, 1.0);
-
-        auto ka = a.get_knots(dir);
-        auto kb = b.get_knots(dir);
-        auto kc = c.get_knots(dir);
-        auto unified = merge_knot_vectors(merge_knot_vectors(ka, kb), kc);
-
-        auto insert_missing = [](NurbsSurface& srf, int d, const std::vector<double>& uni) {
-            std::vector<double> orig = srf.get_knots(d);
-            size_t ci = 0;
-            for (size_t ui = 0; ui < uni.size(); ui++) {
-                if (ci < orig.size() && std::abs(orig[ci] - uni[ui]) < 1e-10) {
-                    ci++;
-                } else {
-                    srf.insert_knot(d, uni[ui], 1);
-                }
-            }
-        };
-        insert_missing(a, dir, unified);
-        insert_missing(b, dir, unified);
-        insert_missing(c, dir, unified);
-    }
-
-    bool any_rat = a.is_rational() || b.is_rational() || c.is_rational();
-    if (any_rat) {
-        a.make_rational();
-        b.make_rational();
-        c.make_rational();
     }
 }
 
@@ -1930,158 +1632,6 @@ NurbsSurface Primitives::create_edge(
                       - ui*(1-vj)*C10[2] - ui*vj*C11[2];
 
             surface.set_cv(i, j, Point(x, y, z));
-        }
-    }
-
-    return surface;
-}
-
-NurbsSurface Primitives::create_network(
-    const std::vector<NurbsCurve>& u_curves,
-    const std::vector<NurbsCurve>& v_curves)
-{
-    NurbsSurface surface;
-    int n_u = (int)u_curves.size();
-    int n_v = (int)v_curves.size();
-    if (n_u < 2 || n_v < 2) return surface;
-
-    for (auto& c : u_curves) if (!c.is_valid()) return surface;
-    for (auto& c : v_curves) if (!c.is_valid()) return surface;
-
-    // Step 1: Find intersection parameters
-    std::vector<std::vector<double>> u_par(n_u, std::vector<double>(n_v));
-    std::vector<std::vector<double>> v_par(n_u, std::vector<double>(n_v));
-
-    for (int i = 0; i < n_u; i++) {
-        for (int j = 0; j < n_v; j++) {
-            Point dummy;
-            find_curve_intersection(u_curves[i], v_curves[j],
-                                    u_par[i][j], v_par[i][j], dummy);
-        }
-    }
-
-    // Step 2: Build point grid with averaging (decompiled GetGrid)
-    std::vector<std::vector<Point>> grid(n_u, std::vector<Point>(n_v));
-    for (int i = 0; i < n_u; i++) {
-        for (int j = 0; j < n_v; j++) {
-            Point pu = u_curves[i].point_at(u_par[i][j]);
-            Point pv = v_curves[j].point_at(v_par[i][j]);
-            grid[i][j] = Point(
-                0.5 * (pu[0] + pv[0]),
-                0.5 * (pu[1] + pv[1]),
-                0.5 * (pu[2] + pv[2])
-            );
-        }
-    }
-
-    // Step 3: Compute parameterization using centripetal (sqrt chord-length) formula
-    // from decompiled GetGrid: inc = ((sqrt(max_len) + sqrt(min_len)) / 2)^2
-    auto pdist = [](const Point& a, const Point& b) {
-        double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
-        return std::sqrt(dx*dx + dy*dy + dz*dz);
-    };
-
-    // v_arc_params: positions of u-curves across the surface
-    std::vector<double> v_arc_params(n_u, 0.0);
-    for (int i = 1; i < n_u; i++) {
-        double mx = 0, mn = 1e30;
-        for (int j = 0; j < n_v; j++) {
-            double d = pdist(grid[i-1][j], grid[i][j]);
-            mx = std::max(mx, d); mn = std::min(mn, d);
-        }
-        double inc = (std::sqrt(mx) + std::sqrt(mn)) * 0.5;
-        inc = inc * inc;
-        if (inc < 0.0001) inc = 0.0001;
-        v_arc_params[i] = v_arc_params[i-1] + inc;
-    }
-    if (v_arc_params.back() > 1e-14) for (auto& x : v_arc_params) x /= v_arc_params.back();
-
-    // u_arc_params: positions of v-curves across the surface
-    std::vector<double> u_arc_params(n_v, 0.0);
-    for (int j = 1; j < n_v; j++) {
-        double mx = 0, mn = 1e30;
-        for (int i = 0; i < n_u; i++) {
-            double d = pdist(grid[i][j-1], grid[i][j]);
-            mx = std::max(mx, d); mn = std::min(mn, d);
-        }
-        double inc = (std::sqrt(mx) + std::sqrt(mn)) * 0.5;
-        inc = inc * inc;
-        if (inc < 0.0001) inc = 0.0001;
-        u_arc_params[j] = u_arc_params[j-1] + inc;
-    }
-    if (u_arc_params.back() > 1e-14) for (auto& x : u_arc_params) x /= u_arc_params.back();
-
-    // Step 4: Build grid surface T
-    NurbsSurface T = create_bicubic_grid_surface(grid, u_arc_params, v_arc_params);
-
-    // Step 5: Build L_u (loft through u-curves)
-    std::vector<NurbsCurve> u_crvs(u_curves.begin(), u_curves.end());
-    NurbsSurface L_u = create_loft_with_params(u_crvs, v_arc_params);
-
-    // Step 6: Build L_v — reparametrize v-curves so their intersection params
-    // map to v_arc_params, then loft and transpose
-    auto reparametrize_curve = [](const NurbsCurve& curve,
-                                   const std::vector<double>& old_params,
-                                   const std::vector<double>& new_params,
-                                   int samples_per_span = 10) -> NurbsCurve {
-        int n_pts = (int)old_params.size();
-        std::vector<Point> pts;
-        std::vector<double> params;
-        for (int i = 0; i < n_pts - 1; i++) {
-            double t0 = old_params[i], t1 = old_params[i + 1];
-            double a0 = new_params[i], a1 = new_params[i + 1];
-            int nsamp = (i == n_pts - 2) ? samples_per_span + 1 : samples_per_span;
-            for (int s = 0; s < nsamp; s++) {
-                double frac = (double)s / samples_per_span;
-                pts.push_back(curve.point_at(t0 + (t1 - t0) * frac));
-                params.push_back(a0 + (a1 - a0) * frac);
-            }
-        }
-        return cubic_interpolation_curve(pts, params);
-    };
-    std::vector<NurbsCurve> v_repar;
-    for (int j = 0; j < n_v; j++) {
-        std::vector<double> old_p, new_p;
-        for (int i = 0; i < n_u; i++) {
-            old_p.push_back(v_par[i][j]);
-            new_p.push_back(v_arc_params[i]);
-        }
-        v_repar.push_back(reparametrize_curve(v_curves[j], old_p, new_p));
-    }
-    NurbsSurface L_v = create_loft_with_params(v_repar, u_arc_params);
-    L_v.transpose();
-
-    if (!T.is_valid() || !L_u.is_valid() || !L_v.is_valid()) return surface;
-
-    // Step 7: Knot compatibility via transpose trick (decompiled CreateSurface)
-    make_surfaces_knot_compatible_1d(T, L_u, L_v);
-    T.transpose(); L_u.transpose(); L_v.transpose();
-    make_surfaces_knot_compatible_1d(T, L_u, L_v);
-    T.transpose(); L_u.transpose(); L_v.transpose();
-
-    bool any_rat = T.is_rational() || L_u.is_rational() || L_v.is_rational();
-    if (any_rat) {
-        T.make_rational();
-        L_u.make_rational();
-        L_v.make_rational();
-    }
-
-    // Step 8: Gordon formula: S_cv = L_u_cv + L_v_cv - T_cv
-    surface = T;
-    for (int i = 0; i < surface.cv_count(0); i++) {
-        for (int j = 0; j < surface.cv_count(1); j++) {
-            if (any_rat) {
-                double lux, luy, luz, luw, lvx, lvy, lvz, lvw, tx, ty, tz, tw;
-                L_u.get_cv_4d(i, j, lux, luy, luz, luw);
-                L_v.get_cv_4d(i, j, lvx, lvy, lvz, lvw);
-                T.get_cv_4d(i, j, tx, ty, tz, tw);
-                surface.set_cv_4d(i, j, lux+lvx-tx, luy+lvy-ty, luz+lvz-tz, luw+lvw-tw);
-            } else {
-                Point lu = L_u.get_cv(i, j);
-                Point lv = L_v.get_cv(i, j);
-                Point t = T.get_cv(i, j);
-                surface.set_cv(i, j, Point(lu[0]+lv[0]-t[0], lu[1]+lv[1]-t[1], lu[2]+lv[2]-t[2]));
-            }
         }
     }
 

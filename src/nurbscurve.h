@@ -112,11 +112,63 @@ public:
     void destroy();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Validation
+    // Boolean Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
+
     /// Check if NURBS curve is valid
     bool is_valid() const;
+
+    /// Check if curve is rational
+    bool is_rational() const { return m_is_rat != 0; }
+
+    /// Check if curve is closed (start point == end point)
+    bool is_closed() const;
+
+    /// Check if curve is periodic (wraps around seamlessly)
+    bool is_periodic() const;
+
+    /// Check if curve is a straight line within tolerance
+    bool is_linear(double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// Check if curve is planar within tolerance
+    bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// Check if curve is an arc (with optional arc output)
+    bool is_arc(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// Check if curve lies in a specific plane
+    bool is_in_plane(const Plane& test_plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// Test if curve has natural end (zero 2nd derivative)
+    bool is_natural(int end = 2) const;
+
+    /// Check if curve can be represented as a polyline
+    int is_polyline(std::vector<Point>* points = nullptr,
+                   std::vector<double>* params = nullptr) const;
+
+    /// Check if entire curve is singular (all spans collapsed to points)
+    bool is_singular() const;
+
+    /// Check if this curve is duplicate of another
+    bool is_duplicate(const NurbsCurve& other,
+                     bool ignore_parameterization,
+                     double tolerance = Tolerance::ZERO_TOLERANCE) const;
+
+    /// Test continuity at parameter
+    bool is_continuous(int continuity_type,
+                      double t,
+                      int* hint = nullptr,
+                      double point_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double d1_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double d2_tolerance = Tolerance::ZERO_TOLERANCE,
+                      double cos_angle_tolerance = 0.99984769515639123,
+                      double curvature_tolerance = 1e-8) const;
+
+    /// Check if knot vector is valid
+    bool is_valid_knot_vector() const;
+
+    /// Check if knot vector is clamped at ends
+    bool is_clamped(int end = 2) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Accessors
@@ -202,14 +254,8 @@ public:
     /// Get all knot values
     std::vector<double> get_knots() const { return m_knot; }
 
-    /// Check if knot vector is valid
-    bool is_valid_knot_vector() const;
-
     /// Insert knot into curve (Boehm's algorithm)
     bool insert_knot(double knot_value, int knot_multiplicity = 1);
-
-    /// Check if knot vector is clamped at ends
-    bool is_clamped(int end = 2) const;
 
     /// Get Greville abcissa for a control point
     double greville_abcissa(int cv_index) const;
@@ -253,59 +299,12 @@ public:
                                double curvature_tolerance = 1e-8) const;
     std::pair<bool, double> get_next_discontinuity(int continuity_type, double t0, double t1) const;
 
-    /// Check if curve is rational
-    bool is_rational() const { return m_is_rat != 0; }
-
-    /// Check if curve is closed (start point == end point)
-    bool is_closed() const;
-    
-    /// Check if curve is periodic (wraps around seamlessly)
-    bool is_periodic() const;
-    
-    /// Check if curve is a straight line within tolerance
-    bool is_linear(double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Check if curve is planar within tolerance
-    bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Check if curve is an arc (with optional arc output)
-    bool is_arc(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Check if curve lies in a specific plane
-    bool is_in_plane(const Plane& test_plane, double tolerance = Tolerance::ZERO_TOLERANCE) const;
-    
-    /// Test if curve has natural end (zero 2nd derivative)
-    bool is_natural(int end = 2) const;
-    
-    /// Check if curve can be represented as a polyline
-    int is_polyline(std::vector<Point>* points = nullptr,
-                   std::vector<double>* params = nullptr) const;
-
-    /// Check if entire curve is singular (all spans collapsed to points)
-    bool is_singular() const;
-
-    /// Check if this curve is duplicate of another
-    bool is_duplicate(const NurbsCurve& other,
-                     bool ignore_parameterization,
-                     double tolerance = Tolerance::ZERO_TOLERANCE) const;
-
-    /// Test continuity at parameter
-    bool is_continuous(int continuity_type,
-                      double t,
-                      int* hint = nullptr,
-                      double point_tolerance = Tolerance::ZERO_TOLERANCE,
-                      double d1_tolerance = Tolerance::ZERO_TOLERANCE,
-                      double d2_tolerance = Tolerance::ZERO_TOLERANCE,
-                      double cos_angle_tolerance = 0.99984769515639123,
-                      double curvature_tolerance = 1e-8) const;
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Conversion methods
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Get length method that is used by division methods
     double length(double tolerance = 1e-6) const;
-    
     /// Convert curve to polyline with adaptive sampling (curvature-based)
     /// Returns points and optionally parameters
     /// angle_tolerance: maximum angle between segments (radians)

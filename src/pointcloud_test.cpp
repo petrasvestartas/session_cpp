@@ -11,7 +11,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("PointCloud", "constructor") {
+MINI_TEST("PointCloud", "Constructor") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -98,7 +98,7 @@ MINI_TEST("PointCloud", "constructor") {
     MINI_CHECK(TOLERANCE.is_close(pc4.get_normal(1)[0], 0.0) && TOLERANCE.is_close(pc4.get_normal(1)[1], 0.0) && TOLERANCE.is_close(pc4.get_normal(1)[2], 1.0));
 }
 
-MINI_TEST("PointCloud", "transform") {
+MINI_TEST("PointCloud", "Transform") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
     // uncomment #include "xform.h"
@@ -118,7 +118,7 @@ MINI_TEST("PointCloud", "transform") {
     MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[0], 1.0) && TOLERANCE.is_close(pc2.get_point(0)[1], 2.0) && TOLERANCE.is_close(pc2.get_point(0)[2], 3.0));
 }
 
-MINI_TEST("PointCloud", "json_roundtrip") {
+MINI_TEST("PointCloud", "Json_roundtrip") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -149,7 +149,7 @@ MINI_TEST("PointCloud", "json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
 
-MINI_TEST("PointCloud", "protobuf_roundtrip") {
+MINI_TEST("PointCloud", "Protobuf_roundtrip") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"

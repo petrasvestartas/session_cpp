@@ -17,7 +17,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("TrimmedSurface", "constructor") {
+    MINI_TEST("TrimmedSurface", "Constructor") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -57,7 +57,7 @@ namespace session_cpp {
         MINI_CHECK(tscopy == ts);
     }
 
-    MINI_TEST("TrimmedSurface", "constructor_planar") {
+    MINI_TEST("TrimmedSurface", "Constructor_planar") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
@@ -100,7 +100,7 @@ namespace session_cpp {
         });
     }
 
-    MINI_TEST("TrimmedSurface", "constructor_hole") {
+    MINI_TEST("TrimmedSurface", "Constructor_hole") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -136,7 +136,7 @@ namespace session_cpp {
         MINI_CHECK(ts.inner_loop_count() == 1);
     }
 
-    MINI_TEST("TrimmedSurface", "accessors") {
+    MINI_TEST("TrimmedSurface", "Accessors") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -170,7 +170,7 @@ namespace session_cpp {
         MINI_CHECK(ts.inner_loop_count() == 0);
     }
 
-    MINI_TEST("TrimmedSurface", "add_inner_loop") {
+    MINI_TEST("TrimmedSurface", "Add_inner_loop") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -211,7 +211,7 @@ namespace session_cpp {
         MINI_CHECK(ts.inner_loop_count() == 0);
     }
 
-    MINI_TEST("TrimmedSurface", "point_at") {
+    MINI_TEST("TrimmedSurface", "Point_at") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -244,7 +244,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(std::abs(nm[2]), 1.0));
     }
 
-    MINI_TEST("TrimmedSurface", "mesh") {
+    MINI_TEST("TrimmedSurface", "Mesh") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -271,7 +271,7 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
-    MINI_TEST("TrimmedSurface", "transformation") {
+    MINI_TEST("TrimmedSurface", "Transformation") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -302,7 +302,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pt[2], 30.0));
     }
 
-    MINI_TEST("TrimmedSurface", "json_roundtrip") {
+    MINI_TEST("TrimmedSurface", "Json_roundtrip") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -344,7 +344,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == ts);
     }
 
-    MINI_TEST("TrimmedSurface", "protobuf_roundtrip") {
+    MINI_TEST("TrimmedSurface", "Protobuf_roundtrip") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"

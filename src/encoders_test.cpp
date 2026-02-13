@@ -10,7 +10,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 using namespace session_cpp::encoders;
 
-MINI_TEST("Encoders", "json_dump_load") {
+MINI_TEST("Encoders", "Json_dump_load") {
     std::filesystem::create_directories("./serialization");
     Point original(1.5, 2.5, 3.5);
     original.name = "test_point";
@@ -28,7 +28,7 @@ MINI_TEST("Encoders", "json_dump_load") {
     std::filesystem::remove(filepath);
 }
 
-MINI_TEST("Encoders", "json_dumps_loads") {
+MINI_TEST("Encoders", "Json_dumps_loads") {
     Vector original(42.1, 84.2, 126.3);
     original.name = "test_vector";
 
@@ -44,7 +44,7 @@ MINI_TEST("Encoders", "json_dumps_loads") {
     MINI_CHECK(loaded.name == original.name);
 }
 
-MINI_TEST("Encoders", "encode_collection_values") {
+MINI_TEST("Encoders", "Encode_collection_values") {
     std::vector<Point> points;
     points.push_back(Point(1.0, 2.0, 3.0));
     points.push_back(Point(4.0, 5.0, 6.0));
@@ -59,7 +59,7 @@ MINI_TEST("Encoders", "encode_collection_values") {
     MINI_CHECK(json_arr[2]["z"] == 9.0);
 }
 
-MINI_TEST("Encoders", "encode_collection_shared_ptr") {
+MINI_TEST("Encoders", "Encode_collection_shared_ptr") {
     std::vector<std::shared_ptr<Line>> lines;
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
@@ -72,7 +72,7 @@ MINI_TEST("Encoders", "encode_collection_shared_ptr") {
     MINI_CHECK(json_arr[1]["type"] == "Line");
 }
 
-MINI_TEST("Encoders", "decode_collection") {
+MINI_TEST("Encoders", "Decode_collection") {
     std::vector<Point> original_points;
     original_points.push_back(Point(1.0, 2.0, 3.0));
     original_points.push_back(Point(4.0, 5.0, 6.0));
@@ -85,7 +85,7 @@ MINI_TEST("Encoders", "decode_collection") {
     MINI_CHECK(TOLERANCE.is_close(decoded_points[1][1], 5.0));
 }
 
-MINI_TEST("Encoders", "decode_collection_ptr") {
+MINI_TEST("Encoders", "Decode_collection_ptr") {
     std::vector<std::shared_ptr<Vector>> original_vectors;
     original_vectors.push_back(std::make_shared<Vector>(1.0, 0.0, 0.0));
     original_vectors.push_back(std::make_shared<Vector>(0.0, 1.0, 0.0));
@@ -98,7 +98,7 @@ MINI_TEST("Encoders", "decode_collection_ptr") {
     MINI_CHECK(TOLERANCE.is_close((*decoded_vectors[1])[1], 1.0));
 }
 
-MINI_TEST("Encoders", "nested_collections") {
+MINI_TEST("Encoders", "Nested_collections") {
     std::vector<Line> lines;
     lines.push_back(Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(Line(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
@@ -115,7 +115,7 @@ MINI_TEST("Encoders", "nested_collections") {
     MINI_CHECK(TOLERANCE.is_close(loaded[1].end()[1], 1.0));
 }
 
-MINI_TEST("Encoders", "roundtrip_file_io") {
+MINI_TEST("Encoders", "Roundtrip_file_io") {
     std::filesystem::create_directories("./serialization");
     std::vector<Vector> vectors;
     vectors.push_back(Vector(1.0, 0.0, 0.0));
@@ -137,7 +137,7 @@ MINI_TEST("Encoders", "roundtrip_file_io") {
     std::filesystem::remove(filepath);
 }
 
-MINI_TEST("Encoders", "pretty_vs_compact") {
+MINI_TEST("Encoders", "Pretty_vs_compact") {
     Point point(1.0, 2.0, 3.0);
 
     std::string pretty = json_dumps(point, true);
@@ -154,7 +154,7 @@ MINI_TEST("Encoders", "pretty_vs_compact") {
     MINI_CHECK(TOLERANCE.is_close(loaded_compact[0], 1.0));
 }
 
-MINI_TEST("Encoders", "decode_primitives") {
+MINI_TEST("Encoders", "Decode_primitives") {
     nlohmann::json num = 42;
     std::string json_str = num.dump();
     auto loaded = nlohmann::json::parse(json_str);
@@ -176,7 +176,7 @@ MINI_TEST("Encoders", "decode_primitives") {
     MINI_CHECK(loaded.get<bool>() == true);
 }
 
-MINI_TEST("Encoders", "decode_list") {
+MINI_TEST("Encoders", "Decode_list") {
     std::vector<int> data = {1, 2, 3};
     nlohmann::json j = data;
     std::string json_str = j.dump();
@@ -197,7 +197,7 @@ MINI_TEST("Encoders", "decode_list") {
     MINI_CHECK(TOLERANCE.is_close(decoded[1][0], 4.0));
 }
 
-MINI_TEST("Encoders", "decode_dict") {
+MINI_TEST("Encoders", "Decode_dict") {
     std::map<std::string, int> data;
     data["a"] = 1;
     data["b"] = 2;
@@ -213,7 +213,7 @@ MINI_TEST("Encoders", "decode_dict") {
     MINI_CHECK(TOLERANCE.is_close(loaded_vec[0], 1.0));
 }
 
-MINI_TEST("Encoders", "list_in_list_in_list") {
+MINI_TEST("Encoders", "List_in_list_in_list") {
     nlohmann::json data = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
     std::string json_str = data.dump();
     auto loaded = nlohmann::json::parse(json_str);
@@ -223,7 +223,7 @@ MINI_TEST("Encoders", "list_in_list_in_list") {
     MINI_CHECK(loaded.size() == 2);
 }
 
-MINI_TEST("Encoders", "dict_of_lists") {
+MINI_TEST("Encoders", "Dict_of_lists") {
     std::vector<Point> points;
     points.push_back(Point(1.0, 0.0, 0.0));
     points.push_back(Point(0.0, 1.0, 0.0));
@@ -243,7 +243,7 @@ MINI_TEST("Encoders", "dict_of_lists") {
     MINI_CHECK(TOLERANCE.is_close(loaded_points[0][0], 1.0));
 }
 
-MINI_TEST("Encoders", "list_of_dict") {
+MINI_TEST("Encoders", "List_of_dict") {
     Point point(1.0, 2.0, 3.0);
 
     nlohmann::json data = nlohmann::json::array();
@@ -261,7 +261,7 @@ MINI_TEST("Encoders", "list_of_dict") {
     MINI_CHECK(TOLERANCE.is_close(loaded_point[2], 3.0));
 }
 
-MINI_TEST("Encoders", "dict_of_dicts") {
+MINI_TEST("Encoders", "Dict_of_dicts") {
     Point point(1.0, 2.0, 3.0);
     Vector vec(0.0, 0.0, 1.0);
 
