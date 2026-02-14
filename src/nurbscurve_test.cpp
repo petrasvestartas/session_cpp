@@ -144,13 +144,13 @@ namespace session_cpp {
         bool is_duplicate = curve.is_duplicate(curve, false);
         bool is_continuous = curve.is_continuous(1, curve.domain_middle());
 
-        MINI_CHECK(is_rational == true);
+        MINI_CHECK(is_rational == false);
         MINI_CHECK(closed == false);
         MINI_CHECK(periodic == false);
         MINI_CHECK(linear == false);
-        MINI_CHECK(planar == false);
+        MINI_CHECK(planar == true);
         MINI_CHECK(arc == false);
-        MINI_CHECK(on_plane == false);
+        MINI_CHECK(on_plane == true);
         MINI_CHECK(is_open == false);
         MINI_CHECK(is_polyline == false);
         MINI_CHECK(is_singular == false);

@@ -189,6 +189,39 @@ int main() {
     auto s_wave = Primitives::wave_surface(10.0, 2.0); s_wave.name = "wave";
     place_surface(session, s_wave, x, y);
 
+    auto schwarz_patches = Primitives::schwarz_p(0, 0, 0, 10.0);
+    {
+        Point lo(1e18,1e18,1e18), hi(-1e18,-1e18,-1e18);
+        for (auto& f : schwarz_patches) {
+            for (int i = 0; i <= 4; i++) for (int j = 0; j <= 4; j++) {
+                Point p = f.point_at(i/4.0, j/4.0);
+                lo = Point(std::min(lo[0],p[0]), std::min(lo[1],p[1]), std::min(lo[2],p[2]));
+                hi = Point(std::max(hi[0],p[0]), std::max(hi[1],p[1]), std::max(hi[2],p[2]));
+            }
+        }
+        auto xf = Xform::translation(x - lo[0], y - lo[1], 0);
+        for (size_t i = 0; i < schwarz_patches.size(); i++) {
+            schwarz_patches[i].name = "schwarz_p_" + std::to_string(i);
+            schwarz_patches[i].transform(xf);
+            session.add_surface(std::make_shared<NurbsSurface>(schwarz_patches[i]));
+            Mesh m = schwarz_patches[i].mesh();
+            session.add_mesh(std::make_shared<Mesh>(m));
+        }
+        x += (hi[0] - lo[0]) + GAP;
+    }
+
+    // Row 5: Surface-to-mesh subdivision — one simple surface per pattern
+    x = 0; y += ROW_GAP;
+    auto s_sub = Primitives::create_ruled(
+        NurbsCurve::create(false, 2, {Point(0,0,0), Point(3,0,3), Point(6,0,0)}),
+        NurbsCurve::create(false, 2, {Point(0,5,0), Point(3,5,3), Point(6,5,0)}));
+    auto m_quad = Primitives::quad_mesh(s_sub, 8, 4); m_quad.name = "quad_mesh";
+    place_mesh(session, m_quad, x, y);
+    auto m_diamond = Primitives::diamond_mesh(s_sub, 8, 4); m_diamond.name = "diamond_mesh";
+    place_mesh(session, m_diamond, x, y);
+    auto m_hex = Primitives::hex_mesh(s_sub, 6, 4); m_hex.name = "hex_mesh";
+    place_mesh(session, m_hex, x, y);
+
     session.pb_dump("C:/pc/3_code/code_rust/session/session_data/primitives.pb");
     std::cout << "Primitives: " << session.objects.nurbscurves->size() << " curves, "
               << session.objects.nurbssurfaces->size() << " surfaces, "

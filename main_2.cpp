@@ -6,38 +6,64 @@
 using namespace session_cpp;
 
 int main() {
-    Session session;
 
-    auto u0 = NurbsCurve::create(false, 2, {
-        Point(135, 17, 0), Point(131, 21, 0), Point(135, 26, 0)});
-    auto u1 = NurbsCurve::create(false, 2, {
-        Point(139.228777, 17.799797, 3.377253), Point(137.25766, 20.980203, 7.633725),
-        Point(138.530306, 25.217183, 3.147742)});
-    auto u2 = NurbsCurve::create(false, 2, {
-        Point(140.519039, 17.722618, 3.491662), Point(142.519039, 22.722618, 7.491662),
-        Point(141.023716, 25.344319, 3.431608)});
-    auto u3 = NurbsCurve::create(false, 2, {
-        Point(146, 16, 0), Point(150, 21.0, 7.0), Point(146, 27, 0)});
 
-    auto v0 = NurbsCurve::create(false, 2, {
-        Point(135, 17, 0), Point(140, 19, 7.0), Point(146, 16, 0)});
-    auto v1 = NurbsCurve::create(false, 2, {
-        Point(135, 26, 0), Point(140, 24, 7.0), Point(146, 27, 0)});
+    std::vector<Point> points = {
+        // i=0
+        Point(0.0, 0.0, 0.0),
+        Point(-1.0, 0.75, 2.0),
+        Point(-1.0, 4.25, 2.0),
+        Point(0.0, 5.0, 0.0),
+        // i=1
+        Point(0.75, -1.0, 2.0),
+        Point(1.25, 1.25, 4.0),
+        Point(1.25, 3.75, 4.0),
+        Point(0.75, 6.0, 2.0),
+        // i=2
+        Point(4.25, -1.0, 2.0),
+        Point(3.75, 1.25, 4.0),
+        Point(3.75, 3.75, 4.0),
+        Point(4.25, 6.0, 2.0),
+        // i=3
+        Point(5.0, 0.0, 0.0),
+        Point(6.0, 0.75, 2.0),
+        Point(6.0, 4.25, 2.0),
+        Point(5.0, 5.0, 0.0),
+    };
 
-    session.add_curve(std::make_shared<NurbsCurve>(u0));
-    session.add_curve(std::make_shared<NurbsCurve>(u1));
-    session.add_curve(std::make_shared<NurbsCurve>(u2));
-    session.add_curve(std::make_shared<NurbsCurve>(u3));
-    session.add_curve(std::make_shared<NurbsCurve>(v0));
-    session.add_curve(std::make_shared<NurbsCurve>(v1));
+    NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+    s.make_rational();
 
-    // TODO: create_network not yet implemented
-    // auto srf = Primitives::create_network({u0, u1, u2, u3}, {v0, v1});
-    // session.add_surface(std::make_shared<NurbsSurface>(srf));
 
-    std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "network_surface.pb").string();
-    session.pb_dump(filepath);
-    std::cout << "Saved to: " << filepath << std::endl;
+    // const - to read, non-const point to write
+    const double* const_pointer_cv = s.cv(0,0);
+    std::cout << const_pointer_cv[2] << std::endl; // 0
+    double* pointer_cv = s.cv(0,0);
+    pointer_cv[2] = 10.0; // modifies surface because it is a pointer
+    std::cout << pointer_cv[2] << std::endl; // 10
+
+    // typicial setters and getters
+    Point cv = s.get_cv(0,0);
+    std::cout << cv << std::endl; // 0,0,10
+    double x, y, z, w;
+    s.get_cv_4d(0,0, x, y, z, w);
+    std::cout << x << " " << y << " " << z  << " " << w << std::endl; // 0 0 10 1
+
+    s.set_cv(0,0, Point(0, 0, 5));
+    std::cout <<  s.get_cv(0,0) << " " << w << std::endl; // 0 0 5 1
+    s.set_cv_4d(0,0, 0, 0, 4, 2);
+    std::cout << s.get_cv(0,0) << " " << s.weight(0,0) << std::endl; // 0 0 5 1 << why here 1 ? 
+    std::cout << s.cv(0,0)[2] << std::endl; // 0 0 5 1 << why here 1 ? 
+
+
+    w = s.weight(0,0);
+    s.set_weight(0,0,1);
+    std::cout << s.weight(0,0) << std::endl; // 1
+
+    
+
+
+
 
     return 0;
 }

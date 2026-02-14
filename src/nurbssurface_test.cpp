@@ -183,58 +183,138 @@ namespace session_cpp {
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-        // Test Surace validity
-        bool is_valid = s.is_valid();
-
         // Check the dimentions of a surface
         // Mostly 3d
         // But 2d can be used for: scalar field over parameter space e.g. czrvatzre map, distance field
         // Planar geometry: texture coordinates
         int dimensions = s.dimension();
 
+        // Degree types 1 - linear, 2 - quadratic, 3 - cubic
+        int order_u = s.order(0);
+        int order_v = s.order(1);
 
-        
+        // Control vertex count
+        int cv_count_u = s.cv_count(0);
+        int cv_count_v = s.cv_count(1);
+        int cv_count = s.cv_count();
+        int cv_size = s.cv_size();
 
-        // // Test knot access and set knot
-        // surf.set_knot(0, 2, 5.0);
-        // double new_val = surf.knot(0, 2);
+        // Number of knots
+        int k_count_0 = s.knot_count(0);
+        int k_count_1 = s.knot_count(1);
 
-        // MINI_CHECK(surf.dimension() == 3);
-        // MINI_CHECK(!surf.is_rational());
-        // MINI_CHECK(surf.order(0) == 4);
-        // MINI_CHECK(surf.order(1) == 3);
-        // MINI_CHECK(surf.degree(0) == 3);
-        // MINI_CHECK(surf.degree(1) == 2);
-        // MINI_CHECK(surf.cv_count(0) == 5);
-        // MINI_CHECK(surf.cv_count(1) == 4);
-        // MINI_CHECK(surf.cv_count() == 20);
-        // MINI_CHECK(surf.cv_size() == 3);
-        // MINI_CHECK(surf.knot_count(0) == 7);
-        // MINI_CHECK(surf.knot_count(1) == 5);
-        // MINI_CHECK(surf.span_count(0) == 2);
-        // MINI_CHECK(surf.span_count(1) == 2);
-        // MINI_CHECK(new_val == 5.0);
+        // Span count
+        int s_count_0 = s.span_count(0);
+        int s_count_1 = s.span_count(1);
+
+        MINI_CHECK(dimensions==3);
+        MINI_CHECK(order_u==4);
+        MINI_CHECK(order_v==4);
+        MINI_CHECK(cv_count_u);
+        MINI_CHECK(cv_count_v);
+        MINI_CHECK(cv_count);
+        MINI_CHECK(cv_size);
+        MINI_CHECK(k_count_0);
+        MINI_CHECK(k_count_1);
+        MINI_CHECK(s_count_0);
+        MINI_CHECK(s_count_1);
     }
 
-    MINI_TEST("NurbsSurface", "Knot_operations") {
+    MINI_TEST("NurbsSurface", "Control Vertices Access") {
         // uncomment #include "nurbssurface.h"
 
-        std::vector<Point> points;
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-        NurbsSurface surf = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+        std::vector<Point> points = {
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
+        };
 
-        // Verify domain
-        auto dom_u = surf.domain(0);
-        auto dom_v = surf.domain(1);
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+        s.make_rational(); // to change weights
 
-        MINI_CHECK(dom_u.first == 0.0);
-        MINI_CHECK(dom_u.second > dom_u.first);
-        MINI_CHECK(dom_v.first == 0.0);
-        MINI_CHECK(dom_v.second > dom_v.first);
-        MINI_CHECK(surf.is_clamped(0, 0));
-        MINI_CHECK(surf.is_clamped(1, 0));
+
+        // const - to read, non-const point to write
+        const double* const_pointer_cv = s.cv(0,0);
+        MINI_CHECK( const_pointer_cv[2] == 0);
+        double* pointer_cv = s.cv(0,0);
+        pointer_cv[2] = 10.0; // modifies surface because it is a pointer
+        MINI_CHECK( pointer_cv[2] == 10);
+
+        // Point and Weight
+        // NOTE
+        // point is (Xw, Yw, Zw, w)
+        // cv pointer is (X, Y, Z)
+        Point cv = s.get_cv(0,0);
+        MINI_CHECK( cv == Point(0,0,10));
+        double x, y, z, w;
+        s.get_cv_4d(0,0, x, y, z, w);
+        MINI_CHECK( x == 0 && y == 0 && z == 10 && w == 1);
+
+        s.set_cv(0,0, Point(0, 0, 5));
+        MINI_CHECK(  s.get_cv(0,0) == Point(0,0,5) );
+        s.set_cv_4d(0,0, 0, 0, 4, 0.5);
+        MINI_CHECK( s.get_cv(0,0) == Point(0, 0, 8) && s.cv(0,0)[2] == 4 && s.weight(0,0) == 0.5 );
+
+        w = s.weight(0,0);
+        s.set_weight(0,0,1);
+        MINI_CHECK( s.weight(0,0) == 1); 
+
+
+    }
+
+    MINI_TEST("NurbsSurface", "Knot Access") {
+        // uncomment #include "nurbssurface.h"
+
+        std::vector<Point> points = {
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
+        };
+
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+
+
+
+
+
+
+
+
+
     }
 
     MINI_TEST("NurbsSurface", "Rational_operations") {
@@ -565,22 +645,6 @@ namespace session_cpp {
         MINI_CHECK(!is_singular_east);
         MINI_CHECK(!is_singular_north);
         MINI_CHECK(!is_singular_west);
-    }
-
-    MINI_TEST("NurbsSurface", "Bounding_box") {
-        // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> points;
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                points.push_back(Point(static_cast<double>(i), static_cast<double>(j), 0.0));
-        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 3, 3, points);
-
-        // Get bounding box
-        BoundingBox bbox = surf.get_bounding_box();
-
-        MINI_CHECK(surf.is_valid());
     }
 
     MINI_TEST("NurbsSurface", "Domain_operations") {

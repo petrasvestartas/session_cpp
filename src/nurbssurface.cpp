@@ -1013,10 +1013,6 @@ bool NurbsSurface::make_clamped_uniform_knot_vector(int dir, double delta) {
     return !m_knot[dir].empty();
 }
 
-BoundingBox NurbsSurface::get_bounding_box() const {
-    return BoundingBox::from_nurbssurface(*this);
-}
-
 NurbsCurve* NurbsSurface::iso_curve(int dir, double c) const {
     if ((dir != 0 && dir != 1) || !is_valid()) {
         return nullptr;

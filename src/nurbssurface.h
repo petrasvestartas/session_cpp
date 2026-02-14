@@ -422,11 +422,6 @@ public:
     // Geometric Operations
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Compute the axis-aligned bounding box enclosing all control vertices.
-    /// The actual surface lies within the convex hull of CVs, which is
-    /// always inside this box but may be tighter.
-    BoundingBox get_bounding_box() const;
-
     /// Approximate surface area. Currently a stub returning 0.0.
     /// Future: sum triangle areas from a fine mesh approximation.
     double area(double tolerance = 1e-6) const;
