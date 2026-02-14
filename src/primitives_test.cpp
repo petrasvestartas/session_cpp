@@ -288,41 +288,6 @@ MINI_TEST("Primitives", "Nurbssurface_quad_sphere") {
     MINI_CHECK(std::abs(back[1] + R) < 1e-10);
 }
 
-MINI_TEST("Primitives", "Nurbssurface_schwarz_p") {
-    double S = 10.0;
-    auto patches = Primitives::schwarz_p(0.0, 0.0, 0.0, S);
-
-    MINI_CHECK(patches.size() == 48);
-    for (size_t f = 0; f < 48; f++) {
-        MINI_CHECK(patches[f].is_valid());
-        MINI_CHECK(patches[f].is_rational() == false);
-        MINI_CHECK(patches[f].degree(0) == 2);
-        MINI_CHECK(patches[f].degree(1) == 2);
-        MINI_CHECK(patches[f].cv_count(0) == 3);
-        MINI_CHECK(patches[f].cv_count(1) == 3);
-    }
-
-    const double PI2 = 2.0 * 3.14159265358979323846;
-    double max_err = 0.0;
-    for (size_t f = 0; f < 48; f++) {
-        for (int i = 0; i <= 4; i++) {
-            double u = i / 4.0;
-            for (int j = 0; j <= 4; j++) {
-                double v = j / 4.0;
-                Point p = patches[f].point_at(u, v);
-                double val = std::cos(PI2 * p[0] / S) + std::cos(PI2 * p[1] / S) + std::cos(PI2 * p[2] / S);
-                double err = std::abs(val);
-                if (err > max_err) max_err = err;
-            }
-        }
-    }
-    MINI_CHECK(max_err < 0.15);
-
-    Point mid = patches[0].point_at(0.5, 0.5);
-    double mid_val = std::cos(PI2 * mid[0] / S) + std::cos(PI2 * mid[1] / S) + std::cos(PI2 * mid[2] / S);
-    MINI_CHECK(std::abs(mid_val) < 0.15);
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////
 // NurbsSurface factory methods
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -916,39 +881,64 @@ MINI_TEST("Primitives", "Nurbssurface_edge") {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 MINI_TEST("Primitives", "Mesh_quad_mesh") {
-    NurbsSurface srf = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
-    Mesh m = Primitives::quad_mesh(srf, 8, 4);
-
-    MINI_CHECK(m.number_of_vertices() == 45);
+    NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
+    Mesh m = Primitives::quad_mesh(cyl, 8, 4);
+    MINI_CHECK(m.number_of_vertices() == 40);
     MINI_CHECK(m.number_of_faces() == 32);
     MINI_CHECK(m.is_valid());
+
+    NurbsSurface sph = Primitives::sphere_surface(0, 0, 0, 3.0);
+    Mesh m2 = Primitives::quad_mesh(sph, 8, 4);
+    MINI_CHECK(m2.number_of_vertices() == 26);
+    MINI_CHECK(m2.number_of_faces() == 32);
+    MINI_CHECK(m2.is_valid());
 }
 
 MINI_TEST("Primitives", "Mesh_diamond_mesh") {
-    NurbsSurface srf = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
-    Mesh m = Primitives::diamond_mesh(srf, 8, 4);
-
-    MINI_CHECK(m.number_of_vertices() == 45);
-    MINI_CHECK(m.number_of_faces() == 23);
+    NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
+    Mesh m = Primitives::diamond_mesh(cyl, 8, 4);
+    MINI_CHECK(m.number_of_vertices() == 40);
+    MINI_CHECK(m.number_of_faces() == 20);
     MINI_CHECK(m.is_valid());
+
+    NurbsSurface sph = Primitives::sphere_surface(0, 0, 0, 3.0);
+    Mesh m2 = Primitives::diamond_mesh(sph, 8, 4);
+    MINI_CHECK(m2.number_of_vertices() == 26);
+    MINI_CHECK(m2.number_of_faces() == 12);
+    MINI_CHECK(m2.is_valid());
 }
 
 MINI_TEST("Primitives", "Mesh_hex_mesh") {
-    NurbsSurface srf = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
-    Mesh m = Primitives::hex_mesh(srf, 6, 4, 1.0/3.0);
-
-    MINI_CHECK(m.number_of_vertices() == 91);
-    MINI_CHECK(m.number_of_faces() == 32);
+    NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
+    Mesh m = Primitives::hex_mesh(cyl, 6, 4, 1.0/3.0);
+    MINI_CHECK(m.number_of_vertices() == 78);
+    MINI_CHECK(m.number_of_faces() == 15);
     MINI_CHECK(m.is_valid());
+
+    NurbsSurface sph = Primitives::sphere_surface(0, 0, 0, 3.0);
+    Mesh m2 = Primitives::hex_mesh(sph, 6, 4, 1.0/3.0);
+    MINI_CHECK(m2.number_of_vertices() == 68);
+    MINI_CHECK(m2.number_of_faces() == 15);
+    MINI_CHECK(m2.is_valid());
 }
 
-MINI_TEST("Primitives", "Mesh_hex_mesh2") {
-    NurbsSurface srf = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
-    Mesh m = Primitives::hex_mesh2(srf, 6, 4, 2.0/3.0);
+MINI_TEST("Primitives", "Mesh_cone_subdivisions") {
+    NurbsSurface cone = Primitives::cone_surface(0, 0, 0, 3.0, 5.0);
 
-    MINI_CHECK(m.number_of_vertices() == 91);
-    MINI_CHECK(m.number_of_faces() == 54);
-    MINI_CHECK(m.is_valid());
+    Mesh m1 = Primitives::quad_mesh(cone, 8, 4);
+    MINI_CHECK(m1.number_of_vertices() == 33);
+    MINI_CHECK(m1.number_of_faces() == 32);
+    MINI_CHECK(m1.is_valid());
+
+    Mesh m2 = Primitives::diamond_mesh(cone, 8, 4);
+    MINI_CHECK(m2.number_of_vertices() == 33);
+    MINI_CHECK(m2.number_of_faces() == 16);
+    MINI_CHECK(m2.is_valid());
+
+    Mesh m3 = Primitives::hex_mesh(cone, 6, 4, 1.0/3.0);
+    MINI_CHECK(m3.number_of_vertices() == 73);
+    MINI_CHECK(m3.number_of_faces() == 15);
+    MINI_CHECK(m3.is_valid());
 }
 
 MINI_TEST("Primitives", "Nurbscurve_interpolated") {

@@ -13,12 +13,12 @@
     11.0,
     12.0
   ],
-  "guid": "282d3929-9476-4f69-9510-a064d682b4ba",
+  "guid": "13011c95-d218-4bfb-84cf-77ca6b0cf063",
   "linecolor": {
     "a": 255,
     "b": 0,
     "g": 0,
-    "guid": "da7c26ab-113d-4291-b40e-7163808b3e10",
+    "guid": "baa72dbd-7a90-45a1-9346-e749eca9a225",
     "name": "black",
     "r": 0,
     "type": "Color"
@@ -27,7 +27,7 @@
   "type": "Polyline",
   "width": 1.0,
   "xform": {
-    "guid": "d97e6915-2edf-4f11-a896-061f1bb219c2",
+    "guid": "ac4f9d3a-4a67-4457-8432-9b0529dcc9c6",
     "m": [
       1.0,
       0.0,

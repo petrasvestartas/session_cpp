@@ -189,38 +189,47 @@ int main() {
     auto s_wave = Primitives::wave_surface(10.0, 2.0); s_wave.name = "wave";
     place_surface(session, s_wave, x, y);
 
-    auto schwarz_patches = Primitives::schwarz_p(0, 0, 0, 10.0);
-    {
-        Point lo(1e18,1e18,1e18), hi(-1e18,-1e18,-1e18);
-        for (auto& f : schwarz_patches) {
-            for (int i = 0; i <= 4; i++) for (int j = 0; j <= 4; j++) {
-                Point p = f.point_at(i/4.0, j/4.0);
-                lo = Point(std::min(lo[0],p[0]), std::min(lo[1],p[1]), std::min(lo[2],p[2]));
-                hi = Point(std::max(hi[0],p[0]), std::max(hi[1],p[1]), std::max(hi[2],p[2]));
-            }
-        }
-        auto xf = Xform::translation(x - lo[0], y - lo[1], 0);
-        for (size_t i = 0; i < schwarz_patches.size(); i++) {
-            schwarz_patches[i].name = "schwarz_p_" + std::to_string(i);
-            schwarz_patches[i].transform(xf);
-            session.add_surface(std::make_shared<NurbsSurface>(schwarz_patches[i]));
-            Mesh m = schwarz_patches[i].mesh();
-            session.add_mesh(std::make_shared<Mesh>(m));
-        }
-        x += (hi[0] - lo[0]) + GAP;
-    }
-
     // Row 5: Surface-to-mesh subdivision — one simple surface per pattern
     x = 0; y += ROW_GAP;
     auto s_sub = Primitives::create_ruled(
         NurbsCurve::create(false, 2, {Point(0,0,0), Point(3,0,3), Point(6,0,0)}),
         NurbsCurve::create(false, 2, {Point(0,5,0), Point(3,5,3), Point(6,5,0)}));
-    auto m_quad = Primitives::quad_mesh(s_sub, 8, 4); m_quad.name = "quad_mesh";
+    auto m_quad = Primitives::quad_mesh(s_sub, 12, 6); m_quad.name = "quad_mesh";
     place_mesh(session, m_quad, x, y);
-    auto m_diamond = Primitives::diamond_mesh(s_sub, 8, 4); m_diamond.name = "diamond_mesh";
+    auto m_diamond = Primitives::diamond_mesh(s_sub, 12, 6); m_diamond.name = "diamond_mesh";
     place_mesh(session, m_diamond, x, y);
-    auto m_hex = Primitives::hex_mesh(s_sub, 6, 4); m_hex.name = "hex_mesh";
+    auto m_hex = Primitives::hex_mesh(s_sub, 10, 6, 1.0/4.0); m_hex.name = "hex_mesh";
     place_mesh(session, m_hex, x, y);
+
+    // Row 6: Sphere subdivision meshes (closed + singular)
+    x = 0; y += ROW_GAP;
+    auto s_sph = Primitives::sphere_surface(0, 0, 0, 3.0);
+    auto m_sph_quad = Primitives::quad_mesh(s_sph, 12, 6); m_sph_quad.name = "sphere_quad";
+    place_mesh(session, m_sph_quad, x, y);
+    auto m_sph_diamond = Primitives::diamond_mesh(s_sph, 12, 6); m_sph_diamond.name = "sphere_diamond";
+    place_mesh(session, m_sph_diamond, x, y);
+    auto m_sph_hex = Primitives::hex_mesh(s_sph, 10, 6, 1.0/4.0); m_sph_hex.name = "sphere_hex";
+    place_mesh(session, m_sph_hex, x, y);
+
+    // Row 7: Cylinder subdivision meshes (closed, no poles)
+    x = 0; y += ROW_GAP;
+    auto s_cyl2 = Primitives::cylinder_surface(0, 0, 0, 3.0, 5.0);
+    auto m_cyl_quad = Primitives::quad_mesh(s_cyl2, 12, 6); m_cyl_quad.name = "cyl_quad";
+    place_mesh(session, m_cyl_quad, x, y);
+    auto m_cyl_diamond = Primitives::diamond_mesh(s_cyl2, 12, 6); m_cyl_diamond.name = "cyl_diamond";
+    place_mesh(session, m_cyl_diamond, x, y);
+    auto m_cyl_hex = Primitives::hex_mesh(s_cyl2, 10, 6, 1.0/4.0); m_cyl_hex.name = "cyl_hex";
+    place_mesh(session, m_cyl_hex, x, y);
+
+    // Row 8: Cone subdivision meshes (closed + north pole)
+    x = 0; y += ROW_GAP;
+    auto s_cone2 = Primitives::cone_surface(0, 0, 0, 3.0, 5.0);
+    auto m_cone_quad = Primitives::quad_mesh(s_cone2, 12, 6); m_cone_quad.name = "cone_quad";
+    place_mesh(session, m_cone_quad, x, y);
+    auto m_cone_diamond = Primitives::diamond_mesh(s_cone2, 12, 6); m_cone_diamond.name = "cone_diamond";
+    place_mesh(session, m_cone_diamond, x, y);
+    auto m_cone_hex = Primitives::hex_mesh(s_cone2, 10, 6, 1.0/4.0); m_cone_hex.name = "cone_hex";
+    place_mesh(session, m_cone_hex, x, y);
 
     session.pb_dump("C:/pc/3_code/code_rust/session/session_data/primitives.pb");
     std::cout << "Primitives: " << session.objects.nurbscurves->size() << " curves, "

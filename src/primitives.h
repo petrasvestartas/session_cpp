@@ -91,10 +91,6 @@ public:
     /// Create a quad sphere from 6 rational biquadratic Bézier patches (cube projection).
     static std::vector<NurbsSurface> quad_sphere(double cx, double cy, double cz, double radius);
 
-    /// Create a Schwarz P triply-periodic minimal surface (TPMS) as 8 NURBS patches.
-    /// The unit cell is centered at (cx,cy,cz) with edge length `size`. Tileable in 3D.
-    static std::vector<NurbsSurface> schwarz_p(double cx, double cy, double cz, double size);
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Surface factory methods
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -143,9 +139,6 @@ public:
 
     /// Create a hexagonal mesh by sampling a surface with hex pattern.
     static Mesh hex_mesh(const NurbsSurface& surface, int u_count, int v_count, double t = 1.0 / 3.0);
-
-    /// Create a hexagonal mesh variant with adjustable lerp parameter.
-    static Mesh hex_mesh2(const NurbsSurface& surface, int u_count, int v_count, double t = 2.0 / 3.0);
 
 private:
     /// Unit cylinder geometry (10-sided, radius 0.5, height 1, centered at origin).

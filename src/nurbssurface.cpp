@@ -2199,22 +2199,29 @@ NurbsSurface::divide_by_count(int nu, int nv) const {
 
 bool NurbsSurface::is_planar(Plane* plane, double tolerance) const {
     if (!is_valid()) return false;
-    
-    // Check if all control points are coplanar
+
     if (m_cv_count[0] < 2 || m_cv_count[1] < 2) return false;
-    
-    // Get three non-colinear points
+
+    // Find three non-colinear CVs to define the plane
     Point p0 = get_cv(0, 0);
-    Point p1 = get_cv(m_cv_count[0] - 1, 0);
-    Point p2 = get_cv(0, m_cv_count[1] - 1);
-    
-    Vector v1(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-    Vector v2(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
-    Vector normal = v1.cross(v2);
-    
-    double len = normal.magnitude();
-    if (len < 1e-14) return false;
-    
+    Vector normal;
+    double len = 0.0;
+    for (int i = 0; i < m_cv_count[0] && len < 1e-14; i++) {
+        for (int j = 0; j < m_cv_count[1] && len < 1e-14; j++) {
+            for (int ii = i; ii < m_cv_count[0] && len < 1e-14; ii++) {
+                for (int jj = (ii == i ? j + 1 : 0); jj < m_cv_count[1] && len < 1e-14; jj++) {
+                    Point pa = get_cv(i, j);
+                    Point pb = get_cv(ii, jj);
+                    Vector va(pa[0]-p0[0], pa[1]-p0[1], pa[2]-p0[2]);
+                    Vector vb(pb[0]-p0[0], pb[1]-p0[1], pb[2]-p0[2]);
+                    normal = va.cross(vb);
+                    len = normal.magnitude();
+                }
+            }
+        }
+    }
+    if (len < 1e-14) return true; // all CVs coincident or colinear
+
     normal = normal / len;
     
     // Check all CVs against this plane

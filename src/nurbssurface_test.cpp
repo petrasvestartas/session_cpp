@@ -275,8 +275,6 @@ namespace session_cpp {
         w = s.weight(0,0);
         s.set_weight(0,0,1);
         MINI_CHECK( s.weight(0,0) == 1); 
-
-
     }
 
     MINI_TEST("NurbsSurface", "Knot Access") {

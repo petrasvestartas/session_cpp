@@ -399,82 +399,6 @@ NurbsSurface Primitives::wave_surface(double size, double amplitude) {
     return NurbsSurface::create(false, false, 3, 3, n, n, pts);
 }
 
-std::vector<NurbsSurface> Primitives::schwarz_p(double cx, double cy, double cz, double size) {
-    const double half = size / 2.0;
-    const double PI = 3.14159265358979323846;
-
-    // Sample 3x3 grid on level set cos(pi*x)+cos(pi*y)+cos(pi*z)=0
-    // Fundamental patch in region 0<=y<=x<=z<=1 (1/48 of cube)
-    // Parametrization: y=u*x, z=1-v*(1-x), solve for x via Newton
-    double pts[3][3][3]; // [iu][iv][xyz]
-    for (int iv = 0; iv < 3; ++iv) {
-        double v = iv * 0.5;
-        double xp = 0.5;
-        for (int iu = 0; iu < 3; ++iu) {
-            double u = iu * 0.5;
-            double x = xp;
-            for (int it = 0; it < 50; ++it) {
-                double f = std::cos(PI*x) + std::cos(PI*u*x) - std::cos(PI*v*(1.0-x));
-                double fp = -PI*std::sin(PI*x) - PI*u*std::sin(PI*u*x) - PI*v*std::sin(PI*v*(1.0-x));
-                if (std::abs(fp) < 1e-14) break;
-                double dx = f / fp;
-                x -= dx;
-                if (x < 0.01) x = 0.01;
-                if (x > 0.99) x = 0.99;
-                if (std::abs(dx) < 1e-12) break;
-            }
-            xp = x;
-            pts[iu][iv][0] = x * half;
-            pts[iu][iv][1] = u * x * half;
-            pts[iu][iv][2] = (1.0 - v * (1.0 - x)) * half;
-        }
-    }
-
-    // Degree-2 interpolation: compute CVs from M_inv = [[1,0,0],[-0.5,2,-0.5],[0,0,1]]
-    double mi[3][3] = {{1,0,0},{-0.5,2,-0.5},{0,0,1}};
-    std::vector<Point> cvs;
-    for (int iu = 0; iu < 3; ++iu) {
-        for (int iv = 0; iv < 3; ++iv) {
-            double px = 0, py = 0, pz = 0;
-            for (int k = 0; k < 3; ++k) {
-                for (int l = 0; l < 3; ++l) {
-                    double w = mi[iu][k] * mi[iv][l];
-                    if (std::abs(w) > 1e-15) {
-                        px += w * pts[k][l][0];
-                        py += w * pts[k][l][1];
-                        pz += w * pts[k][l][2];
-                    }
-                }
-            }
-            cvs.push_back(Point(px, py, pz));
-        }
-    }
-    NurbsSurface base = NurbsSurface::create(false, false, 2, 2, 3, 3, cvs);
-
-    // 48 signed permutations (Oh group): 6 coord permutations x 8 sign patterns
-    int perms[6][3] = {{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
-    int sg[8][3] = {{1,1,1},{1,1,-1},{1,-1,1},{1,-1,-1},{-1,1,1},{-1,1,-1},{-1,-1,1},{-1,-1,-1}};
-
-    std::vector<NurbsSurface> patches;
-    for (int pi = 0; pi < 6; ++pi) {
-        for (int si = 0; si < 8; ++si) {
-            NurbsSurface srf = base;
-            for (int i = 0; i < 3; ++i) {
-                for (int j = 0; j < 3; ++j) {
-                    Point p = srf.get_cv(i, j);
-                    double c[3] = {p[0], p[1], p[2]};
-                    double rx = sg[si][0] * c[perms[pi][0]];
-                    double ry = sg[si][1] * c[perms[pi][1]];
-                    double rz = sg[si][2] * c[perms[pi][2]];
-                    srf.set_cv(i, j, Point(cx + rx, cy + ry, cz + rz));
-                }
-            }
-            patches.push_back(srf);
-        }
-    }
-    return patches;
-}
-
 std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> Primitives::unit_cylinder_geometry() {
     std::vector<Point> vertices = {
         Point(0.5, 0.0, -0.5),
@@ -1724,21 +1648,35 @@ Mesh Primitives::quad_mesh(const NurbsSurface& surface, int u_count, int v_count
     auto du = surface.domain(0);
     auto dv = surface.domain(1);
     int nu = u_count + 1, nv = v_count + 1;
+    bool closed_u = surface.is_closed(0);
+    bool singular_south = surface.is_singular(0);
+    bool singular_north = surface.is_singular(2);
 
     std::vector<std::vector<size_t>> vkeys(nu, std::vector<size_t>(nv));
     for (int i = 0; i < nu; i++) {
         double u = du.first + (du.second - du.first) * i / u_count;
         for (int j = 0; j < nv; j++) {
+            if (closed_u && i == u_count) { vkeys[i][j] = vkeys[0][j]; continue; }
+            if (singular_south && j == 0 && i > 0) { vkeys[i][j] = vkeys[0][0]; continue; }
+            if (singular_north && j == v_count && i > 0) { vkeys[i][j] = vkeys[0][v_count]; continue; }
             double v = dv.first + (dv.second - dv.first) * j / v_count;
             vkeys[i][j] = mesh.add_vertex(surface.point_at(u, v));
         }
     }
 
-    for (int i = 0; i < u_count; i++) {
-        for (int j = 0; j < v_count; j++) {
+    if (singular_south)
+        for (int i = 0; i < u_count; i++)
+            mesh.add_face({vkeys[0][0], vkeys[i+1][1], vkeys[i][1]});
+    if (singular_north)
+        for (int i = 0; i < u_count; i++)
+            mesh.add_face({vkeys[0][v_count], vkeys[i][v_count-1], vkeys[i+1][v_count-1]});
+
+    int j0 = singular_south ? 1 : 0;
+    int j1 = singular_north ? v_count - 1 : v_count;
+    for (int i = 0; i < u_count; i++)
+        for (int j = j0; j < j1; j++)
             mesh.add_face({vkeys[i][j], vkeys[i+1][j], vkeys[i+1][j+1], vkeys[i][j+1]});
-        }
-    }
+
     return mesh;
 }
 
@@ -1749,21 +1687,29 @@ Mesh Primitives::diamond_mesh(const NurbsSurface& surface, int u_count, int v_co
     double su = (du.second - du.first) / u_count;
     double sv = (dv.second - dv.first) / v_count;
     int nu = u_count + 1, nv = v_count + 1;
+    bool closed_u = surface.is_closed(0);
+    bool singular_south = surface.is_singular(0);
+    bool singular_north = surface.is_singular(2);
 
     std::vector<std::vector<size_t>> grid(nu, std::vector<size_t>(nv));
     for (int i = 0; i < nu; i++) {
         double u = du.first + su * i;
         for (int j = 0; j < nv; j++) {
+            if (closed_u && i == u_count) { grid[i][j] = grid[0][j]; continue; }
+            if (singular_south && j == 0 && i > 0) { grid[i][j] = grid[0][0]; continue; }
+            if (singular_north && j == v_count && i > 0) { grid[i][j] = grid[0][v_count]; continue; }
             double v = dv.first + sv * j;
             grid[i][j] = mesh.add_vertex(surface.point_at(u, v));
         }
     }
 
-    for (int i = 0; i <= u_count; i++) {
+    int u_end = closed_u ? u_count - 1 : u_count;
+    for (int i = 0; i <= u_end; i++) {
         for (int j = 0; j <= v_count; j++) {
             if ((i + j) % 2 != 0) continue;
             size_t center = grid[i][j];
-            size_t left   = (i > 0) ? grid[i-1][j] : center;
+            int il = i > 0 ? i - 1 : (closed_u ? u_count - 1 : -1);
+            size_t left   = il >= 0 ? grid[il][j] : center;
             size_t bottom = (j > 0) ? grid[i][j-1] : center;
             size_t right  = (i < u_count) ? grid[i+1][j] : center;
             size_t top    = (j < v_count) ? grid[i][j+1] : center;
@@ -1788,30 +1734,37 @@ Mesh Primitives::hex_mesh(const NurbsSurface& surface, int u_count, int v_count,
     double sv = (dv.second - dv.first) / v_count;
 
     int nu = u_count + 1, nv = v_count + 1;
+    bool closed_u = surface.is_closed(0);
+    bool singular_south = surface.is_singular(0);
+    bool singular_north = surface.is_singular(2);
+
     std::vector<std::vector<size_t>> grid(nu, std::vector<size_t>(nv));
     for (int i = 0; i < nu; i++) {
         double u = du.first + su * i;
         for (int j = 0; j < nv; j++) {
+            if (closed_u && i == u_count) { grid[i][j] = grid[0][j]; continue; }
+            if (singular_south && j == 0 && i > 0) { grid[i][j] = grid[0][0]; continue; }
+            if (singular_north && j == v_count && i > 0) { grid[i][j] = grid[0][v_count]; continue; }
             double v = dv.first + sv * j;
             grid[i][j] = mesh.add_vertex(surface.point_at(u, v));
         }
     }
 
-    // mid_a: side vertices at offset +t from row j (used for ul/ur side of hex)
     std::vector<std::vector<size_t>> mid_a(nu, std::vector<size_t>(v_count));
     for (int i = 0; i < nu; i++) {
         double u = du.first + su * i;
         for (int j = 0; j < v_count; j++) {
+            if (closed_u && i == u_count) { mid_a[i][j] = mid_a[0][j]; continue; }
             double v = dv.first + sv * (j + t);
             mid_a[i][j] = mesh.add_vertex(surface.point_at(u, v));
         }
     }
 
-    // mid_b: center vertices at offset +(1-t) from row j (used for tp/bt of hex)
     std::vector<std::vector<size_t>> mid_b(nu, std::vector<size_t>(v_count));
     for (int i = 0; i < nu; i++) {
         double u = du.first + su * i;
         for (int j = 0; j < v_count; j++) {
+            if (closed_u && i == u_count) { mid_b[i][j] = mid_b[0][j]; continue; }
             double v = dv.first + sv * (j + (1.0 - t));
             mid_b[i][j] = mesh.add_vertex(surface.point_at(u, v));
         }
@@ -1825,83 +1778,22 @@ Mesh Primitives::hex_mesh(const NurbsSurface& surface, int u_count, int v_count,
         return r;
     };
 
-    // hex vertex mapping:
-    // ul = mid_a[i-1][j]      at u=(i-1)*su, v=(j+t)*sv
-    // ll = mid_b[i-1][j-1]    at u=(i-1)*su, v=((j-1)+(1-t))*sv = (j-t)*sv
-    // bt = mid_a[i][j-1]      at u=i*su,     v=((j-1)+t)*sv = (j-1+t)*sv
-    // lr = mid_b[i+1][j-1]    at u=(i+1)*su, v=(j-t)*sv
-    // ur = mid_a[i+1][j]      at u=(i+1)*su, v=(j+t)*sv
-    // tp = mid_b[i][j]        at u=i*su,     v=(j+(1-t))*sv
-
-    for (int i = 0; i <= u_count; i++) {
+    int u_end = closed_u ? u_count - 1 : u_count;
+    for (int i = 0; i <= u_end; i++) {
         for (int j = 0; j <= v_count; j++) {
             if ((i + j) % 2 != 0) continue;
             size_t center = grid[i][j];
-            size_t ul = (i > 0 && j < v_count)        ? mid_a[i-1][j]   : ((i > 0) ? grid[i-1][j] : center);
-            size_t ll = (i > 0 && j > 0)              ? mid_b[i-1][j-1] : ((i > 0) ? grid[i-1][j] : center);
+            int il = i > 0 ? i - 1 : (closed_u ? u_count - 1 : -1);
+            size_t ul = (il >= 0 && j < v_count)      ? mid_a[il][j]    : (il >= 0 ? grid[il][j] : center);
+            size_t ll = (il >= 0 && j > 0)             ? mid_b[il][j-1]  : (il >= 0 ? grid[il][j] : center);
             size_t bt = (j > 0)                        ? mid_a[i][j-1]   : center;
             size_t lr = (i < u_count && j > 0)         ? mid_b[i+1][j-1] : ((i < u_count) ? grid[i+1][j] : center);
             size_t ur = (i < u_count && j < v_count)   ? mid_a[i+1][j]   : ((i < u_count) ? grid[i+1][j] : center);
             size_t tp = (j < v_count)                  ? mid_b[i][j]     : center;
 
-            auto lq = dedup_face({bt, ll, ul, tp});
-            if (lq.size() >= 3) mesh.add_face(lq);
-            auto rq = dedup_face({ur, lr, bt, tp});
-            if (rq.size() >= 3) mesh.add_face(rq);
+            auto face = dedup_face({ul, ll, bt, lr, ur, tp});
+            if (face.size() >= 3) mesh.add_face(face);
         }
-    }
-    return mesh;
-}
-
-Mesh Primitives::hex_mesh2(const NurbsSurface& surface, int u_count, int v_count, double t) {
-    Mesh mesh;
-    auto du = surface.domain(0);
-    auto dv = surface.domain(1);
-    double su = (du.second - du.first) / u_count;
-    double sv = (dv.second - dv.first) / v_count;
-
-    int nu = u_count + 1, nv = v_count + 1;
-    std::vector<std::vector<size_t>> grid(nu, std::vector<size_t>(nv));
-    for (int i = 0; i < nu; i++) {
-        double u = du.first + su * i;
-        for (int j = 0; j < nv; j++) {
-            double v = dv.first + sv * j;
-            grid[i][j] = mesh.add_vertex(surface.point_at(u, v));
-        }
-    }
-
-    std::vector<std::vector<std::array<size_t, 2>>> h_pts(nu, std::vector<std::array<size_t, 2>>(v_count));
-    for (int i = 0; i < nu; i++) {
-        double u = du.first + su * i;
-        for (int j = 0; j < v_count; j++) {
-            double v0 = dv.first + sv * j;
-            double v1 = dv.first + sv * (j + 1);
-            double va = v0 + (v1 - v0) * (1.0 - t) * 0.5;
-            double vb = v0 + (v1 - v0) * (1.0 + t) * 0.5;
-            h_pts[i][j][0] = mesh.add_vertex(surface.point_at(u, va));
-            h_pts[i][j][1] = mesh.add_vertex(surface.point_at(u, vb));
-        }
-    }
-
-    for (int i = 0; i < u_count; i++) {
-        for (int j = 0; j < v_count; j++) {
-            mesh.add_face({
-                h_pts[i][j][0], h_pts[i][j][1],
-                h_pts[i+1][j][1], h_pts[i+1][j][0]
-            });
-        }
-    }
-
-    for (int i = 0; i < u_count; i++) {
-        for (int j = 0; j < v_count; j++) {
-            if (j == 0) {
-                mesh.add_face({grid[i][0], h_pts[i][0][0], h_pts[i+1][0][0], grid[i+1][0]});
-            } else {
-                mesh.add_face({h_pts[i][j-1][1], h_pts[i][j][0], h_pts[i+1][j][0], h_pts[i+1][j-1][1]});
-            }
-        }
-        int jj = v_count - 1;
-        mesh.add_face({h_pts[i][jj][1], grid[i][nv-1], grid[i+1][nv-1], h_pts[i+1][jj][1]});
     }
     return mesh;
 }

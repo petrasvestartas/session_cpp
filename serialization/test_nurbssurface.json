@@ -37,7 +37,7 @@
         64,
         255
     ],
-    "guid": "f0ab33cd-663c-4fb2-b430-f0283924a6a6",
+    "guid": "83c1b4ae-c1f5-4924-8949-1e68fab88b2f",
     "is_rational": false,
     "knots_u": [
         0.0,
@@ -69,7 +69,7 @@
     "type": "NurbsSurface",
     "width": 2.0,
     "xform": {
-        "guid": "8880a69f-cd2d-47f4-8415-e8dede4ba48c",
+        "guid": "6bc3b383-dd5f-407e-a38f-a26981eaf287",
         "m": [
             1.0,
             0.0,
