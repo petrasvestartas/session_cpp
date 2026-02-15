@@ -186,6 +186,13 @@ int main() {
     auto s_edge = Primitives::create_edge(south, west, north, east); s_edge.name = "edge";
     place_surface(session, s_edge, x, y);
 
+    auto s_folded = Primitives::create_loft({
+        NurbsCurve::create(false, 1, {Point(0,0,0), Point(0.1,0,0.3), Point(0.2,0,0), Point(0.3,0,0.3), Point(0.4,0,0)}),
+        NurbsCurve::create(false, 1, {Point(0,0.5,0), Point(0.1,0.5,0.3), Point(0.2,0.5,0), Point(0.3,0.5,0.3), Point(0.4,0.5,0)})}, 1);
+    s_folded.transpose();
+    s_folded.name = "folded";
+    place_surface(session, s_folded, x, y, 10, 0.05);
+
     auto s_wave = Primitives::wave_surface(10.0, 2.0); s_wave.name = "wave";
     place_surface(session, s_wave, x, y);
 
@@ -230,6 +237,44 @@ int main() {
     place_mesh(session, m_cone_diamond, x, y);
     auto m_cone_hex = Primitives::hex_mesh(s_cone2, 10, 6, 1.0/4.0); m_cone_hex.name = "cone_hex";
     place_mesh(session, m_cone_hex, x, y);
+
+    // Row 9: Folded plates (diamond subdivision of curved surface)
+    x = 0; y += ROW_GAP;
+    {
+        auto fp_arc = Primitives::arc(Point(-10, 0, 0), Point(0, 0, 10), Point(10, 0, 0));
+        auto fp_srf = Primitives::create_extrusion(fp_arc, Vector(0, 30, 0));
+        fp_srf.transpose();
+        FoldedPlates fp(fp_srf, 5, 2, 0.5, 0.3);
+
+        auto bb = BoundingBox::from_mesh(fp.mesh);
+        double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
+        auto xf = Xform::translation(sx, sy, 0);
+
+        Mesh fm = fp.mesh;
+        fm.name = "folded_plates";
+        fm.xform = xf;
+        fm = fm.transformed();
+        session.add_mesh(std::make_shared<Mesh>(fm));
+
+        for (size_t i = 0; i < fp.polylines.size(); i++) {
+            for (auto& pl : fp.polylines[i]) {
+                Polyline p = pl;
+                p.xform = xf;
+                p.transform();
+                p.name = "plate_" + std::to_string(i);
+                session.add_polyline(std::make_shared<Polyline>(p));
+            }
+        }
+        for (auto& il : fp.insertion_lines) {
+            Line l = il;
+            l.xform = xf;
+            l.transform();
+            l.name = "insertion";
+            session.add_line(std::make_shared<Line>(l));
+        }
+
+        x = BoundingBox::from_mesh(fm).max_point()[0] + GAP;
+    }
 
     session.pb_dump("C:/pc/3_code/code_rust/session/session_data/primitives.pb");
     std::cout << "Primitives: " << session.objects.nurbscurves->size() << " curves, "

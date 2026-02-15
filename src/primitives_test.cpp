@@ -983,4 +983,30 @@ MINI_TEST("Primitives", "Nurbscurve_interpolated") {
     MINI_CHECK(TOLERANCE.is_point_close(c4.point_at(d4_1), pts4[3]));
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// FoldedPlates
+///////////////////////////////////////////////////////////////////////////////////////////
+
+MINI_TEST("Primitives", "FoldedPlates") {
+    auto arc = Primitives::arc(Point(-10, 0, 0), Point(0, 0, 10), Point(10, 0, 0));
+    auto srf = Primitives::create_extrusion(arc, Vector(0, 30, 0));
+    srf.transpose();
+
+    FoldedPlates fp(srf, 5, 2, 0.5, 0.3);
+
+    MINI_CHECK(fp.mesh.is_valid());
+    MINI_CHECK(fp.mesh.number_of_faces() > 0);
+    MINI_CHECK(fp.mesh.number_of_vertices() > 0);
+    MINI_CHECK(fp.flags.size() == fp.mesh.number_of_faces());
+    MINI_CHECK(fp.adjacency.size() > 0);
+    MINI_CHECK(fp.polylines.size() == fp.mesh.number_of_faces());
+    MINI_CHECK(fp.insertion_lines.size() > 0);
+
+    for (size_t i = 0; i < fp.polylines.size(); i++) {
+        MINI_CHECK(fp.polylines[i].size() > 0);
+        for (size_t j = 0; j < fp.polylines[i].size(); j++)
+            MINI_CHECK(fp.polylines[i][j].point_count() >= 3);
+    }
+}
+
 } // namespace session_cpp

@@ -4,12 +4,15 @@
 #include "nurbssurface.h"
 #include "mesh.h"
 #include "line.h"
+#include "polyline.h"
 #include "point.h"
 #include "vector.h"
 #include "plane.h"
 #include "xform.h"
 #include "knot.h"
 #include "tolerance.h"
+#include <map>
+#include <array>
 
 namespace session_cpp {
 
@@ -152,6 +155,51 @@ private:
 
     /// Apply a transform to unit geometry vertices and build a Mesh.
     static Mesh transform_geometry(const std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>>& geometry, const Xform& xform);
+};
+
+/// Diamond subdivision of a NURBS surface into folded timber plates.
+/// Produces a triangle mesh, plate outline polylines, insertion lines, flags, and adjacency.
+class FoldedPlates {
+public:
+    Mesh mesh;
+    std::vector<bool> flags;
+    std::vector<std::array<int, 4>> adjacency;
+    std::vector<std::vector<Polyline>> polylines;
+    std::vector<Line> insertion_lines;
+
+    FoldedPlates(const NurbsSurface& surface, int u_divisions, int v_divisions,
+                 double thickness, double chamfer = 0.0,
+                 const std::vector<Plane>& base_planes = {},
+                 const std::vector<double>& face_positions = {0.0});
+
+private:
+    NurbsSurface _srf;
+    int _udiv, _vdiv;
+    double _thick, _cham;
+    std::vector<Plane> _base_planes;
+    std::vector<double> _face_pos;
+
+    int _f;
+    std::vector<size_t> _fkeys;
+    std::vector<std::vector<size_t>> _fv;
+    std::vector<Plane> _fplanes;
+    std::vector<std::vector<Plane>> _fe_planes;
+    std::vector<Plane> _eplanes;
+    std::map<std::pair<size_t,size_t>, int> _eidx;
+    std::vector<std::vector<int>> _ef;
+
+    void diamond_subdivision();
+    void build_topology();
+    void compute_face_planes();
+    void compute_edge_planes();
+    void compute_face_edge_planes();
+    void compute_face_polylines();
+    void compute_insertion_vectors();
+
+    static Point closest_on_line(const Point& pt, const Point& a, const Point& b);
+    static bool line_plane_t(const Point& a, const Point& b, const Plane& pl, double& t);
+    static bool intersect_3_planes(const Plane& p0, const Plane& p1, const Plane& p2, Point& result);
+    static Polyline chamfer_polyline(const Polyline& pl, double value);
 };
 
 } // namespace session_cpp

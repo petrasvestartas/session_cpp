@@ -1798,4 +1798,328 @@ Mesh Primitives::hex_mesh(const NurbsSurface& surface, int u_count, int v_count,
     return mesh;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// FoldedPlates
+///////////////////////////////////////////////////////////////////////////////////////////
+
+FoldedPlates::FoldedPlates(const NurbsSurface& surface, int u_divisions, int v_divisions,
+                           double thickness, double chamfer,
+                           const std::vector<Plane>& base_planes,
+                           const std::vector<double>& face_positions)
+    : _srf(surface), _udiv(std::max(1, u_divisions)), _vdiv(std::max(1, v_divisions)),
+      _thick(thickness), _cham(chamfer), _base_planes(base_planes), _face_pos(face_positions), _f(0)
+{
+    diamond_subdivision();
+    build_topology();
+    compute_face_planes();
+    compute_edge_planes();
+    compute_face_edge_planes();
+    compute_face_polylines();
+    compute_insertion_vectors();
+}
+
+Point FoldedPlates::closest_on_line(const Point& pt, const Point& a, const Point& b) {
+    double dx = b[0]-a[0], dy = b[1]-a[1], dz = b[2]-a[2];
+    double len2 = dx*dx + dy*dy + dz*dz;
+    if (len2 < 1e-20) return a;
+    double t = ((pt[0]-a[0])*dx + (pt[1]-a[1])*dy + (pt[2]-a[2])*dz) / len2;
+    return Point(a[0]+t*dx, a[1]+t*dy, a[2]+t*dz);
+}
+
+bool FoldedPlates::line_plane_t(const Point& a, const Point& b, const Plane& pl, double& t) {
+    Vector n = pl.z_axis();
+    const Point& o = pl.origin();
+    double dx = b[0]-a[0], dy = b[1]-a[1], dz = b[2]-a[2];
+    double denom = n[0]*dx + n[1]*dy + n[2]*dz;
+    if (std::abs(denom) < 1e-12) return false;
+    t = (n[0]*(o[0]-a[0]) + n[1]*(o[1]-a[1]) + n[2]*(o[2]-a[2])) / denom;
+    return true;
+}
+
+bool FoldedPlates::intersect_3_planes(const Plane& p0, const Plane& p1, const Plane& p2, Point& result) {
+    Vector n0 = p0.z_axis(), n1 = p1.z_axis(), n2 = p2.z_axis();
+    double d0 = n0[0]*p0.origin()[0] + n0[1]*p0.origin()[1] + n0[2]*p0.origin()[2];
+    double d1 = n1[0]*p1.origin()[0] + n1[1]*p1.origin()[1] + n1[2]*p1.origin()[2];
+    double d2 = n2[0]*p2.origin()[0] + n2[1]*p2.origin()[1] + n2[2]*p2.origin()[2];
+    Vector c12 = n1.cross(n2), c20 = n2.cross(n0), c01 = n0.cross(n1);
+    double det = n0.dot(c12);
+    if (std::abs(det) < 1e-12) return false;
+    double inv = 1.0 / det;
+    result = Point((d0*c12[0] + d1*c20[0] + d2*c01[0]) * inv,
+                   (d0*c12[1] + d1*c20[1] + d2*c01[1]) * inv,
+                   (d0*c12[2] + d1*c20[2] + d2*c01[2]) * inv);
+    return true;
+}
+
+Polyline FoldedPlates::chamfer_polyline(const Polyline& pl, double value) {
+    if (std::abs(value) < 1e-10) return pl;
+    size_t n = pl.point_count();
+    if (n < 2) return pl;
+    size_t segs = pl.is_closed() ? n - 1 : n - 1;
+    Polyline result;
+    for (size_t i = 0; i < segs; i++) {
+        Point a = pl.get_point(i), b = pl.get_point(i + 1);
+        double dx = b[0]-a[0], dy = b[1]-a[1], dz = b[2]-a[2];
+        double len = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (len < 1e-10) continue;
+        if (value < 0) {
+            double r = std::abs(value) / len;
+            result.add_point(Point(a[0]+r*dx, a[1]+r*dy, a[2]+r*dz));
+            result.add_point(Point(b[0]-r*dx, b[1]-r*dy, b[2]-r*dz));
+        } else {
+            result.add_point(Point(a[0]+value*dx, a[1]+value*dy, a[2]+value*dz));
+            double omt = 1.0 - value;
+            result.add_point(Point(a[0]+omt*dx, a[1]+omt*dy, a[2]+omt*dz));
+        }
+    }
+    if (result.point_count() > 0) result.add_point(result.get_point(0));
+    return result;
+}
+
+void FoldedPlates::diamond_subdivision() {
+    auto du = _srf.domain(0);
+    auto dv = _srf.domain(1);
+    double su = (du.second - du.first) / _udiv;
+    double sv = (dv.second - dv.first) / _vdiv;
+    std::vector<std::vector<Point>> tris;
+    int fc = 0;
+
+    auto plane_valid = [](const Plane& p) {
+        Vector z = p.z_axis();
+        return std::abs(z[0]) + std::abs(z[1]) + std::abs(z[2]) > 0.01;
+    };
+
+    double uu = du.first;
+    for (int i = 0; i < _udiv; i++) {
+        int a = (i % 2 == 0) ? 1 : 0;
+        int b = (i % 2 == 0) ? 2 : 3;
+
+        auto add_tri = [&](const Point& pa, const Point& pb, const Point& pc) {
+            flags.push_back(fc % 4 == a || fc % 4 == b);
+            tris.push_back({pa, pb, pc});
+            fc++;
+        };
+
+        double vv = dv.first;
+        for (int j = 0; j < _vdiv; j++) {
+            Point p0 = _srf.point_at(uu, vv);
+            Point p1 = _srf.point_at(uu + su, vv);
+            Point p2 = _srf.point_at(uu, vv + sv);
+            Point p3 = _srf.point_at(uu + su, vv + sv);
+            Point p4 = _srf.point_at(uu + su * 0.5, vv + sv * 1.5);
+            Point p5 = _srf.point_at(uu + su * 0.5, vv + sv * 0.5);
+            Point p6 = _srf.point_at(uu + su * 0.5, vv - sv * 0.5);
+
+            if (j == 0) {
+                Point p9 = _srf.point_at(uu + su * 0.5, dv.first);
+                Point cp = closest_on_line(p9, p5, p6);
+                if (!_base_planes.empty() && plane_valid(_base_planes.front())) {
+                    double t;
+                    if (line_plane_t(p5, p6, _base_planes.front(), t))
+                        cp = Point(p5[0]+t*(p6[0]-p5[0]), p5[1]+t*(p6[1]-p5[1]), p5[2]+t*(p6[2]-p5[2]));
+                }
+                add_tri(p5, cp, p1);
+                add_tri(cp, p5, p0);
+            }
+
+            add_tri(p1, p3, p5);
+            add_tri(p2, p0, p5);
+
+            if (j < _vdiv - 1) {
+                add_tri(p4, p5, p3);
+                add_tri(p5, p4, p2);
+            } else {
+                Point p9 = _srf.point_at(uu + su * 0.5, dv.second);
+                Point cp = closest_on_line(p9, p4, p5);
+                if (!_base_planes.empty() && plane_valid(_base_planes.back())) {
+                    double t;
+                    if (line_plane_t(p4, p5, _base_planes.back(), t))
+                        cp = Point(p4[0]+t*(p5[0]-p4[0]), p4[1]+t*(p5[1]-p4[1]), p4[2]+t*(p5[2]-p4[2]));
+                }
+                add_tri(cp, p5, p3);
+                add_tri(p5, cp, p2);
+            }
+            vv += sv;
+        }
+        uu += su;
+    }
+
+    mesh = Mesh::from_polygons(tris, 1e-6);
+}
+
+void FoldedPlates::build_topology() {
+    _fkeys.clear();
+    for (auto& [fk, _] : mesh.face) _fkeys.push_back(fk);
+    std::sort(_fkeys.begin(), _fkeys.end());
+    _f = (int)_fkeys.size();
+
+    _fv.resize(_f);
+    for (int i = 0; i < _f; i++) _fv[i] = mesh.face[_fkeys[i]];
+
+    std::map<std::pair<size_t,size_t>, std::vector<int>> ef_map;
+    for (int i = 0; i < _f; i++) {
+        auto& v = _fv[i];
+        int n = (int)v.size();
+        for (int j = 0; j < n; j++) {
+            auto key = std::make_pair(std::min(v[j], v[(j+1)%n]), std::max(v[j], v[(j+1)%n]));
+            ef_map[key].push_back(i);
+        }
+    }
+
+    int ei = 0;
+    for (auto& [ep, fl] : ef_map) {
+        _eidx[ep] = ei;
+        _ef.push_back(fl);
+        ei++;
+    }
+
+    adjacency.clear();
+    for (int i = 0; i < _f; i++) {
+        if (!flags[i]) continue;
+        auto& v = _fv[i];
+        int n = (int)v.size();
+        std::set<int> neighbors;
+        for (int j = 0; j < n; j++) {
+            auto key = std::make_pair(std::min(v[j], v[(j+1)%n]), std::max(v[j], v[(j+1)%n]));
+            for (int fi : _ef[_eidx[key]])
+                if (fi != i) neighbors.insert(fi);
+        }
+        for (int ni : neighbors)
+            adjacency.push_back({i, ni, -1, -1});
+    }
+}
+
+void FoldedPlates::compute_face_planes() {
+    _fplanes.resize(_f);
+    for (int i = 0; i < _f; i++) {
+        auto& verts = _fv[i];
+        int n = (int)verts.size();
+        double cx = 0, cy = 0, cz = 0, w = 0;
+        for (int j = 0; j < n; j++) {
+            Point pa = mesh.vertex_position(verts[j]).value();
+            Point pb = mesh.vertex_position(verts[(j+1)%n]).value();
+            double d = std::sqrt((pb[0]-pa[0])*(pb[0]-pa[0])+(pb[1]-pa[1])*(pb[1]-pa[1])+(pb[2]-pa[2])*(pb[2]-pa[2]));
+            cx += d * (pa[0]+pb[0]) * 0.5;
+            cy += d * (pa[1]+pb[1]) * 0.5;
+            cz += d * (pa[2]+pb[2]) * 0.5;
+            w += d;
+        }
+        if (w > 1e-10) { cx /= w; cy /= w; cz /= w; }
+        Point center(cx, cy, cz);
+        Vector normal = mesh.face_normal(_fkeys[i]).value_or(Vector(0, 0, 1));
+        _fplanes[i] = Plane::from_point_normal(center, normal);
+    }
+}
+
+void FoldedPlates::compute_edge_planes() {
+    _eplanes.resize(_ef.size());
+    for (auto& [ep, ei] : _eidx) {
+        Point v1 = mesh.vertex_position(ep.first).value();
+        Point v2 = mesh.vertex_position(ep.second).value();
+        Point mid((v1[0]+v2[0])*0.5, (v1[1]+v2[1])*0.5, (v1[2]+v2[2])*0.5);
+        Vector edir(v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2]);
+        edir.normalize_self();
+
+        auto& cf = _ef[ei];
+        Vector z(0,0,1);
+        if (cf.size() == 2) {
+            Vector fn0 = mesh.face_normal(_fkeys[cf[0]]).value();
+            Vector fn1 = mesh.face_normal(_fkeys[cf[1]]).value();
+            Vector avg((fn0[0]+fn1[0])*0.5, (fn0[1]+fn1[1])*0.5, (fn0[2]+fn1[2])*0.5);
+            avg.normalize_self();
+            z = edir.cross(avg);
+        } else {
+            Vector fn0 = mesh.face_normal(_fkeys[cf[0]]).value();
+            z = fn0.cross(edir);
+        }
+
+        _eplanes[ei] = Plane::from_point_normal(mid, z);
+    }
+}
+
+void FoldedPlates::compute_face_edge_planes() {
+    _fe_planes.resize(_f);
+    for (int i = 0; i < _f; i++) {
+        auto& v = _fv[i];
+        int n = (int)v.size();
+        _fe_planes[i].resize(n);
+        for (int j = 0; j < n; j++) {
+            size_t v1 = v[j], v2 = v[(j+1)%n];
+            auto key = std::make_pair(std::min(v1,v2), std::max(v1,v2));
+            auto& cf = _ef[_eidx[key]];
+
+            if (cf.size() == 2) {
+                _fe_planes[i][j] = _eplanes[_eidx[key]];
+            } else {
+                Point p1 = mesh.vertex_position(v1).value();
+                Point p2 = mesh.vertex_position(v2).value();
+                Point mid((p1[0]+p2[0])*0.5, (p1[1]+p2[1])*0.5, (p1[2]+p2[2])*0.5);
+                Vector sum(0, 0, 0);
+                for (int fi : cf) {
+                    Vector fn = mesh.face_normal(_fkeys[fi]).value();
+                    sum = Vector(sum[0]+fn[0], sum[1]+fn[1], sum[2]+fn[2]);
+                }
+                double inv = 1.0 / cf.size();
+                sum = Vector(sum[0]*inv, sum[1]*inv, sum[2]*inv);
+                Vector xdir(p1[0]-p2[0], p1[1]-p2[1], p1[2]-p2[2]);
+                _fe_planes[i][j] = Plane(mid, xdir, sum);
+            }
+        }
+    }
+}
+
+void FoldedPlates::compute_face_polylines() {
+    polylines.resize(_f);
+    for (int i = 0; i < _f; i++) {
+        auto& sides = _fe_planes[i];
+        int n = (int)sides.size();
+
+        for (size_t j = 0; j < _face_pos.size(); j++) {
+            Plane base0 = _fplanes[i].translate_by_normal(-_face_pos[j]);
+            Plane base1 = _fplanes[i].translate_by_normal(-(_face_pos[j] + _thick));
+
+            Polyline pl0, pl1;
+            for (int k = 0; k < n; k++) {
+                Point pt;
+                if (intersect_3_planes(base0, sides[k], sides[(k+1)%n], pt))
+                    pl0.add_point(pt);
+                if (intersect_3_planes(base1, sides[k], sides[(k+1)%n], pt))
+                    pl1.add_point(pt);
+            }
+            if (pl0.point_count() > 0) pl0.add_point(pl0.get_point(0));
+            if (pl1.point_count() > 0) pl1.add_point(pl1.get_point(0));
+
+            polylines[i].push_back(pl0);
+            polylines[i].push_back(pl1);
+        }
+    }
+}
+
+void FoldedPlates::compute_insertion_vectors() {
+    for (int i = 0; i < _f; i++) {
+        if (flags[i]) continue;
+        if (polylines[i].empty() || polylines[i][0].point_count() < 4) continue;
+
+        const Polyline& pl = polylines[i][0];
+        Vector vec(pl.get_point(2)[0] - pl.get_point(0)[0],
+                   pl.get_point(2)[1] - pl.get_point(0)[1],
+                   pl.get_point(2)[2] - pl.get_point(0)[2]);
+        vec.normalize_self();
+        vec = Vector(vec[0]*0.5, vec[1]*0.5, vec[2]*0.5);
+
+        for (int j = 0; j < 3; j++) {
+            Point a = pl.get_point(j);
+            Point b = pl.get_point((j + 1) % 3);
+            Point mid((a[0]+b[0])*0.5, (a[1]+b[1])*0.5, (a[2]+b[2])*0.5);
+            insertion_lines.push_back(Line::from_point_and_vector(mid, vec));
+        }
+    }
+
+    if (_cham > 1e-6) {
+        for (int i = 0; i < _f; i++)
+            for (size_t j = 0; j < polylines[i].size(); j++)
+                polylines[i][j] = chamfer_polyline(polylines[i][j], -_cham);
+    }
+}
+
 } // namespace session_cpp
