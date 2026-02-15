@@ -62,7 +62,8 @@ static std::string extract_timed_code(const RegisteredTest &t,
   }
 
   int start_line = t.line + 1;  // line after MINI_TEST macro
-  int end_line = last_check_line > 0 ? last_check_line + 10 : start_line + 200;
+  // Extend well beyond the last check to capture full test body
+  int end_line = last_check_line > 0 ? last_check_line + 100 : start_line + 200;
 
   std::ifstream ifs(t.file);
   if (!ifs.is_open()) {
@@ -79,20 +80,12 @@ static std::string extract_timed_code(const RegisteredTest &t,
       if (line.find("MINI_TEST(") != std::string::npos) {
         break;
       }
-      // Skip MINI_CHECK lines
+      // Skip MINI_CHECK lines from code display
       if (line.find("MINI_CHECK(") != std::string::npos) {
         ++current;
         continue;
       }
-      // Check for single closing brace (test function end) but keep }; (array end)
-      std::string trimmed = line;
-      size_t first = trimmed.find_first_not_of(" \t");
-      if (first != std::string::npos) {
-        trimmed = trimmed.substr(first);
-        if (trimmed == "}") {
-          break;  // End of test function
-        }
-      }
+      
       if (!code.empty()) {
         code.push_back('\n');
       }

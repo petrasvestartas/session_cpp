@@ -307,9 +307,30 @@ namespace session_cpp {
 
 
 
+        
+        // Get knot vectors and individual knot
+        std::vector<double> knots_u = s.get_knots(0);
+        for (int i = 0; i < s.knot_count(0); i++){
+            double knot = s.knot(0, i);
+            MINI_CHECK(knot == knots_u[i]);
+        }
 
+        std::vector<double> knots_v = s.get_knots(1);
+        for (int i = 0; i < s.knot_count(1); i++){
+            double knot = s.knot(1, i);
+            MINI_CHECK(knot == knots_v[i]);
+        }
 
+        // Set knots
+        bool is_set = s.set_knot(0, 2, 0.5);
+        MINI_CHECK(s.knot(0, 2) == 0.5);
+        is_set = s.set_knot(0, 2, 0.0); // reset
 
+        // Verify start multiplicity
+        int mult_u_start = s.knot_multiplicity(0, 0);
+        int mult_v_start = s.knot_multiplicity(1, 0);
+        MINI_CHECK(mult_u_start == 3);
+        MINI_CHECK(mult_v_start == 3);
 
 
 
