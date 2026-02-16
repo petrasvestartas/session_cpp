@@ -38,7 +38,7 @@ static void place_curve(Session& session, NurbsCurve crv, double& x, double y) {
     auto bb = BoundingBox::from_nurbscurve(crv);
     double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
     crv.transform(Xform::translation(sx, sy, 0));
-    session.add_curve(std::make_shared<NurbsCurve>(crv));
+    session.add_nurbscurve(std::make_shared<NurbsCurve>(crv));
     x = BoundingBox::from_nurbscurve(crv).max_point()[0] + GAP;
 }
 
@@ -47,7 +47,7 @@ static void place_surface(Session& session, NurbsSurface srf, double& x, double 
     auto bb = BoundingBox::from_nurbssurface(srf);
     double sx = x - bb.min_point()[0], sy = y - bb.min_point()[1];
     srf.transform(Xform::translation(sx, sy, 0));
-    session.add_surface(std::make_shared<NurbsSurface>(srf));
+    session.add_nurbssurface(std::make_shared<NurbsSurface>(srf));
     Mesh m = srf.mesh(mesh_angle, max_edge);
     session.add_mesh(std::make_shared<Mesh>(m));
     x = BoundingBox::from_nurbssurface(srf).max_point()[0] + GAP;
@@ -134,7 +134,7 @@ int main() {
         for (size_t i = 0; i < quad_faces.size(); i++) {
             quad_faces[i].name = "quad_sphere_" + std::to_string(i);
             quad_faces[i].transform(xf);
-            session.add_surface(std::make_shared<NurbsSurface>(quad_faces[i]));
+            session.add_nurbssurface(std::make_shared<NurbsSurface>(quad_faces[i]));
             Mesh m = quad_faces[i].mesh(10, 0.5);
             session.add_mesh(std::make_shared<Mesh>(m));
         }

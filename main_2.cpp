@@ -7,6 +7,9 @@ using namespace session_cpp;
 
 int main() {
 
+    
+    Session session;
+
 
     std::vector<Point> points = {
         // i=0
@@ -32,33 +35,36 @@ int main() {
     };
 
     NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
-    s.make_rational();
+
+    // Get domain 0 - 1
+    std::pair<double, double> domain_u = s.domain(0);
+    std::pair<double, double> domain_v = s.domain(1);
+
+    std::cout << domain_u.first << std::endl; 
+    std::cout << domain_u.second << std::endl; 
+
+    // Set Domain
+    bool is_set_u = s.set_domain(0, -1.1, 2.3);
+    bool is_set_v = s.set_domain(1, -5.1, 1.3);
+    std::cout << (s.domain(1).first == -5.1) << std::endl; 
+    std::cout << (s.domain(1).second == 1.3) << " result " << s.domain(1).second  << std::endl; 
+
+    // Get sorted list of distinct knot values
+    std::vector<double> span_vector = s.get_span_vector(0);
+    double first_item = span_vector.front();
+    double last_item = span_vector.back();
 
 
-    // const - to read, non-const point to write
-    const double* const_pointer_cv = s.cv(0,0);
-    std::cout << const_pointer_cv[2] << std::endl; // 0
-    double* pointer_cv = s.cv(0,0);
-    pointer_cv[2] = 10.0; // modifies surface because it is a pointer
-    std::cout << pointer_cv[2] << std::endl; // 10
-
-    // typicial setters and getters
-    Point cv = s.get_cv(0,0);
-    std::cout << cv << std::endl; // 0,0,10
-    double x, y, z, w;
-    s.get_cv_4d(0,0, x, y, z, w);
-    std::cout << x << " " << y << " " << z  << " " << w << std::endl; // 0 0 10 1
-
-    s.set_cv(0,0, Point(0, 0, 5));
-    std::cout <<  s.get_cv(0,0) << " " << w << std::endl; // 0 0 5 1
-    s.set_cv_4d(0,0, 0, 0, 4, 2);
-    std::cout << s.get_cv(0,0) << " " << s.weight(0,0) << std::endl; // 0 0 5 1 << why here 1 ? 
-    std::cout << s.cv(0,0)[2] << std::endl; // 0 0 5 1 << why here 1 ? 
 
 
-    w = s.weight(0,0);
-    s.set_weight(0,0,1);
-    std::cout << s.weight(0,0) << std::endl; // 1
+    // Serialization
+
+    session.add_nurbssurface(std::make_shared<NurbsSurface>(s));
+
+    std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "surface.pb").string();
+    session.pb_dump(filepath);
+
+
 
     
 

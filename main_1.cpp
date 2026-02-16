@@ -39,7 +39,7 @@ int main() {
         }
         std::cout << "Max interpolation error: " << std::scientific << std::setprecision(4)
                   << max_err << (max_err < 1e-10 ? " PASS" : " FAIL") << std::endl;
-        session.add_curve(std::make_shared<NurbsCurve>(curve));
+        session.add_nurbscurve(std::make_shared<NurbsCurve>(curve));
     }
 
     // === Test 2: Periodic (closed) curve ===
@@ -105,7 +105,7 @@ int main() {
         std::cout << "Start: (" << std::fixed << std::setprecision(4) << pstart[0] << "," << pstart[1] << "," << pstart[2] << ")" << std::endl;
         std::cout << "End:   (" << pend[0] << "," << pend[1] << "," << pend[2] << ")" << std::endl;
 
-        session.add_curve(std::make_shared<NurbsCurve>(curve));
+        session.add_nurbscurve(std::make_shared<NurbsCurve>(curve));
     }
 
     std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "interpolated_curve.pb").string();

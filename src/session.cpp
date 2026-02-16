@@ -140,14 +140,6 @@ void Session::add(std::shared_ptr<TreeNode> node,
   }
 }
 
-void Session::add_surface(std::shared_ptr<NurbsSurface> surface) {
-  add(add_nurbssurface(surface));
-}
-
-void Session::add_curve(std::shared_ptr<NurbsCurve> curve) {
-  add(add_nurbscurve(curve));
-}
-
 void Session::add_edge(const std::string &guid1, const std::string &guid2,
                        const std::string &attribute) {
   graph.add_edge(guid1, guid2, attribute);

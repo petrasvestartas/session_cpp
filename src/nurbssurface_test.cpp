@@ -332,7 +332,87 @@ namespace session_cpp {
         MINI_CHECK(mult_u_start == 3);
         MINI_CHECK(mult_v_start == 3);
 
+        s.insert_knot(0, 0.1, 2);
+        MINI_CHECK(s.knot_count(0) == 8);
+        MINI_CHECK(s.knot(0, 3) == 0.1);
+        MINI_CHECK(s.knot_multiplicity(0, 3) == 2);
+    }
 
+    MINI_TEST("NurbsSurface", "Domain") {
+        // uncomment #include "nurbssurface.h"
+
+        std::vector<Point> points = {
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
+        };
+
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+
+
+        // Get domain 0 - 1
+        std::pair<double, double> domain_u = s.domain(0);
+        std::pair<double, double> domain_v = s.domain(1);
+        MINI_CHECK(TOLERANCE.is_close(domain_u.first, 0));
+        MINI_CHECK(TOLERANCE.is_close(domain_u.second, 1));
+
+        // Set Domain
+        bool is_set_u = s.set_domain(0, -1.1, 2.3);
+        bool is_set_v = s.set_domain(1, -5.1, 1.3);
+        MINI_CHECK(TOLERANCE.is_close(s.domain(1).first, -5.1));
+        MINI_CHECK(TOLERANCE.is_close(s.domain(1).second, 1.3));
+
+        // Get sorted list of distinct knot values
+        std::vector<double> span_vector = s.get_span_vector(0);
+        double first_item = span_vector.front();
+        double last_item = span_vector.back();
+        MINI_CHECK(TOLERANCE.is_close(first_item, -1.1));
+        MINI_CHECK(TOLERANCE.is_close(last_item, 2.3));
+    }
+
+    MINI_TEST("NurbsSurface", "Division") {
+
+        std::vector<Point> points = {
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
+        };
+
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
     }
 

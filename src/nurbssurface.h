@@ -260,8 +260,14 @@ public:
     /// Length is knot_count(dir).
     std::vector<double> get_knots(int dir) const;
 
+    /// Insert a knot at the given value in direction dir using Oslo algorithm.
+    /// Adds knot_multiplicity copies. Refines the knot vector without changing
+    /// surface shape — new CVs are computed to maintain geometry.
+    /// Increases cv_count(dir) by knot_multiplicity.
+    bool insert_knot(int dir, double knot_value, int knot_multiplicity = 1);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Domain & Parameterization
+    // Domain
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Returns the parameter interval [t0, t1] where the surface is defined
@@ -278,31 +284,17 @@ public:
     /// the polynomial pieces join.
     std::vector<double> get_span_vector(int dir) const;
 
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Division
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    
     /// Evaluate the surface at a regular nu x nv grid of parameters spanning
     /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])
     /// where each param is (u,v). Useful for visualization and sampling.
     std::pair<std::vector<std::vector<Point>>, std::vector<std::vector<std::pair<double,double>>>>
         divide_by_count(int nu, int nv) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Knot Vector Operations
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /// Replace the knot vector in dir with clamped uniform sequence:
-    /// end knots repeated order times, interior knots evenly spaced by delta.
-    /// Preserves CV count and order. Surface shape changes if knots differ.
-    bool make_clamped_uniform_knot_vector(int dir, double delta = 1.0);
-
-    /// Replace the knot vector in dir with periodic uniform sequence:
-    /// evenly spaced without end-clamping. The surface wraps smoothly
-    /// if CVs are also set up periodically.
-    bool make_periodic_uniform_knot_vector(int dir, double delta = 1.0);
-
-    /// Insert a knot at the given value in direction dir using Oslo algorithm.
-    /// Adds knot_multiplicity copies. Refines the knot vector without changing
-    /// surface shape — new CVs are computed to maintain geometry.
-    /// Increases cv_count(dir) by knot_multiplicity.
-    bool insert_knot(int dir, double knot_value, int knot_multiplicity = 1);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Evaluation
@@ -572,6 +564,16 @@ public:
     /// to a single point (creating a degenerate/singular side).
     /// side: 0=SW, 1=SE, 2=NE, 3=NW.
     bool collapse_side(int side, const Point& point);
+
+    /// Replace the knot vector in dir with clamped uniform sequence:
+    /// end knots repeated order times, interior knots evenly spaced by delta.
+    /// Preserves CV count and order. Surface shape changes if knots differ.
+    bool make_clamped_uniform_knot_vector(int dir, double delta = 1.0);
+
+    /// Replace the knot vector in dir with periodic uniform sequence:
+    /// evenly spaced without end-clamping. The surface wraps smoothly
+    /// if CVs are also set up periodically.
+    bool make_periodic_uniform_knot_vector(int dir, double delta = 1.0);
 
 private:
     ///////////////////////////////////////////////////////////////////////////////////////////
