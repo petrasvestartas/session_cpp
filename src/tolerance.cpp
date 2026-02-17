@@ -125,6 +125,50 @@ bool Tolerance::is_vector_close(const Vector& a, const Vector& b) const {
     return (dx * dx + dy * dy + dz * dz) <= absolute() * absolute();
 }
 
+bool Tolerance::is_allclose(const std::vector<double>& a, const std::vector<double>& b) const {
+    if (a.size() != b.size()) return false;
+    double rtol = relative();
+    double atol = absolute();
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (!compare(a[i], b[i], rtol, atol)) return false;
+    }
+    return true;
+}
+
+ToleranceGuard Tolerance::temporary() {
+    return ToleranceGuard(*this);
+}
+
+ToleranceGuard::ToleranceGuard(Tolerance& t)
+    : target_(t),
+      saved_unit_(t._unit),
+      saved_absolute_(t._absolute), saved_relative_(t._relative),
+      saved_angular_(t._angular), saved_approximation_(t._approximation),
+      saved_precision_(t._precision),
+      saved_lineardeflection_(t._lineardeflection), saved_angulardeflection_(t._angulardeflection),
+      saved_has_absolute_(t._has_absolute), saved_has_relative_(t._has_relative),
+      saved_has_angular_(t._has_angular), saved_has_approximation_(t._has_approximation),
+      saved_has_precision_(t._has_precision),
+      saved_has_lineardeflection_(t._has_lineardeflection), saved_has_angulardeflection_(t._has_angulardeflection) {}
+
+ToleranceGuard::~ToleranceGuard() {
+    target_._unit = saved_unit_;
+    target_._absolute = saved_absolute_;
+    target_._relative = saved_relative_;
+    target_._angular = saved_angular_;
+    target_._approximation = saved_approximation_;
+    target_._precision = saved_precision_;
+    target_._lineardeflection = saved_lineardeflection_;
+    target_._angulardeflection = saved_angulardeflection_;
+    target_._has_absolute = saved_has_absolute_;
+    target_._has_relative = saved_has_relative_;
+    target_._has_angular = saved_has_angular_;
+    target_._has_approximation = saved_has_approximation_;
+    target_._has_precision = saved_has_precision_;
+    target_._has_lineardeflection = saved_has_lineardeflection_;
+    target_._has_angulardeflection = saved_has_angulardeflection_;
+}
+
 std::string Tolerance::key(double x, double y, double z, int precision) const {
     int prec = (precision != -999) ? precision : this->precision();
     

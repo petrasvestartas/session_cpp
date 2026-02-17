@@ -354,31 +354,31 @@ MINI_TEST("Primitives", "Nurbssurface_ruled") {
     MINI_CHECK(TOLERANCE.is_point_close(pts[23], Point(-2.00, 3.75, 1.25)));
     MINI_CHECK(TOLERANCE.is_point_close(pts[24], Point(-2.00, 5.00, 0.00)));
 
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[0],  Vector( 0.577350269189626, -0.577350269189626,  0.577350269189626)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[1],  Vector( 1.0/3.0, -2.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[2],  Vector( 0.0, -0.707106781186547,  0.707106781186547)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[3],  Vector(-1.0/3.0, -2.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[4],  Vector(-0.577350269189626, -0.577350269189626,  0.577350269189626)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[5],  Vector( 2.0/3.0, -1.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[6],  Vector( 0.408248290463863, -0.408248290463863,  0.816496580927726)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[7],  Vector( 0.0, -0.447213595499958,  0.894427190999916)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[8],  Vector(-0.408248290463863, -0.408248290463863,  0.816496580927726)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[9],  Vector(-2.0/3.0, -1.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[10], Vector( 0.707106781186547,  0.0,  0.707106781186547)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[11], Vector( 0.447213595499958,  0.0,  0.894427190999916)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[12], Vector( 0.0, 0.0, 1.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[13], Vector(-0.447213595499958,  0.0,  0.894427190999916)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[14], Vector(-0.707106781186547,  0.0,  0.707106781186547)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[15], Vector( 2.0/3.0, 1.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[16], Vector( 0.408248290463863,  0.408248290463863,  0.816496580927726)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[17], Vector( 0.0, 0.447213595499958,  0.894427190999916)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[18], Vector(-0.408248290463863,  0.408248290463863,  0.816496580927726)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[19], Vector(-2.0/3.0, 1.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[20], Vector( 0.577350269189626,  0.577350269189626,  0.577350269189626)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[21], Vector( 1.0/3.0, 2.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[22], Vector( 0.0, 0.707106781186547,  0.707106781186547)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[23], Vector(-1.0/3.0, 2.0/3.0, 2.0/3.0)));
-    MINI_CHECK(TOLERANCE.is_vector_close(normals[24], Vector(-0.577350269189626,  0.577350269189626,  0.577350269189626)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[0],  Vector(-0.577350269189626,  0.577350269189626, -0.577350269189626)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[1],  Vector(-1.0/3.0,  2.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[2],  Vector( 0.0,  0.707106781186547, -0.707106781186547)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[3],  Vector( 1.0/3.0,  2.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[4],  Vector( 0.577350269189626,  0.577350269189626, -0.577350269189626)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[5],  Vector(-2.0/3.0,  1.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[6],  Vector(-0.408248290463863,  0.408248290463863, -0.816496580927726)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[7],  Vector( 0.0,  0.447213595499958, -0.894427190999916)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[8],  Vector( 0.408248290463863,  0.408248290463863, -0.816496580927726)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[9],  Vector( 2.0/3.0,  1.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[10], Vector(-0.707106781186547,  0.0, -0.707106781186547)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[11], Vector(-0.447213595499958,  0.0, -0.894427190999916)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[12], Vector( 0.0,  0.0, -1.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[13], Vector( 0.447213595499958,  0.0, -0.894427190999916)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[14], Vector( 0.707106781186547,  0.0, -0.707106781186547)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[15], Vector(-2.0/3.0, -1.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[16], Vector(-0.408248290463863, -0.408248290463863, -0.816496580927726)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[17], Vector( 0.0, -0.447213595499958, -0.894427190999916)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[18], Vector( 0.408248290463863, -0.408248290463863, -0.816496580927726)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[19], Vector( 2.0/3.0, -1.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[20], Vector(-0.577350269189626, -0.577350269189626, -0.577350269189626)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[21], Vector(-1.0/3.0, -2.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[22], Vector( 0.0, -0.707106781186547, -0.707106781186547)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[23], Vector( 1.0/3.0, -2.0/3.0, -2.0/3.0)));
+    MINI_CHECK(TOLERANCE.is_vector_close(normals[24], Vector( 0.577350269189626, -0.577350269189626, -0.577350269189626)));
 
     MINI_CHECK(TOLERANCE.is_close(uvs[0].first,  0.00) && TOLERANCE.is_close(uvs[0].second,  0.00));
     MINI_CHECK(TOLERANCE.is_close(uvs[1].first,  0.00) && TOLERANCE.is_close(uvs[1].second,  0.25));
@@ -987,6 +987,18 @@ MINI_TEST("Primitives", "Nurbscurve_interpolated") {
 // FoldedPlates
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+MINI_TEST("Primitives", "Mesh_chevron") {
+    auto surfaces = Primitives::annen_surfaces();
+    MINI_CHECK(surfaces.size() == 23);
+    for (size_t i = 0; i < surfaces.size(); i++)
+        MINI_CHECK(surfaces[i].is_valid());
+
+    Mesh m = Primitives::chevron_mesh(surfaces[0], 4, 900.0, 0.5, 0.05799);
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() > 0);
+    MINI_CHECK(m.number_of_faces() > 0);
+}
+
 MINI_TEST("Primitives", "FoldedPlates") {
     auto arc = Primitives::arc(Point(-10, 0, 0), Point(0, 0, 10), Point(10, 0, 0));
     auto srf = Primitives::create_extrusion(arc, Vector(0, 30, 0));
@@ -1007,6 +1019,86 @@ MINI_TEST("Primitives", "FoldedPlates") {
         for (size_t j = 0; j < fp.polylines[i].size(); j++)
             MINI_CHECK(fp.polylines[i][j].point_count() >= 3);
     }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// CrossConnectors
+///////////////////////////////////////////////////////////////////////////////////////////
+
+MINI_TEST("Primitives", "CrossConnectors") {
+    std::vector<std::vector<Point>> polys = {
+        {Point(-574.485,-574.300,-182.370), Point(-620.030,-480.441,-136.145), Point(-527.510,-476.289,-53.723), Point(-431.548,-637.846,-118.351), Point(-574.485,-574.300,-182.370)},
+        {Point(-545.761,-545.585,-211.069), Point(-589.029,-456.419,-167.156), Point(-501.135,-452.475,-88.854), Point(-409.971,-605.954,-150.251), Point(-545.761,-545.585,-211.069)},
+        {Point(-224.289,-691.254,-65.097), Point(-125.302,-566.359,58.481), Point(125.182,-566.359,58.481), Point(212.579,-691.254,-65.097), Point(-224.289,-691.254,-65.097)},
+        {Point(-213.075,-656.691,-99.659), Point(-119.037,-538.041,17.739), Point(118.923,-538.041,17.739), Point(201.950,-656.691,-99.659), Point(-213.075,-656.691,-99.659)},
+        {Point(456.309,-628.504,-127.534), Point(523.010,-466.370,-45.103), Point(622.146,-472.434,-134.186), Point(574.882,-574.852,-181.916), Point(456.309,-628.504,-127.534)},
+        {Point(433.493,-597.079,-158.975), Point(496.859,-443.052,-80.665), Point(591.038,-448.812,-165.294), Point(546.138,-546.110,-210.638), Point(433.493,-597.079,-158.975)},
+        {Point(-431.100,-638.600,-118.653), Point(-527.510,-476.289,-53.723), Point(-481.982,-362.651,39.785), Point(-234.426,-365.823,142.950), Point(-125.302,-566.359,58.481), Point(-223.832,-690.677,-64.527), Point(-431.100,-638.600,-118.653)},
+        {Point(-409.545,-606.670,-150.538), Point(-501.135,-452.475,-88.854), Point(-457.883,-344.518,-0.022), Point(-222.705,-347.532,97.985), Point(-119.037,-538.041,17.739), Point(-212.641,-656.144,-99.118), Point(-409.545,-606.670,-150.538)},
+        {Point(212.526,-691.178,-65.022), Point(125.182,-566.359,58.481), Point(238.785,-380.979,136.566), Point(478.593,-374.909,36.915), Point(523.010,-466.370,-45.103), Point(455.692,-630.004,-128.297), Point(212.526,-691.178,-65.022)},
+        {Point(201.900,-656.619,-99.589), Point(118.923,-538.041,17.739), Point(226.846,-361.930,91.920), Point(454.664,-356.164,-2.748), Point(496.859,-443.052,-80.665), Point(432.907,-598.504,-159.699), Point(201.900,-656.619,-99.589)},
+        {Point(-481.982,-362.651,39.785), Point(-527.510,-476.289,-53.723), Point(-620.401,-480.458,-136.475), Point(-698.046,-172.509,-57.884), Point(-595.889,-174.723,29.899), Point(-481.982,-362.651,39.785)},
+        {Point(-457.883,-344.518,-0.022), Point(-501.135,-452.475,-88.854), Point(-589.381,-456.435,-167.469), Point(-663.144,-163.884,-92.807), Point(-566.094,-165.987,-9.413), Point(-457.883,-344.518,-0.022)},
+        {Point(-125.302,-566.359,58.481), Point(-234.426,-365.823,142.950), Point(-149.707,-204.103,211.069), Point(150.116,-204.103,211.069), Point(238.785,-380.979,136.566), Point(125.182,-566.359,58.481), Point(-125.302,-566.359,58.481)},
+        {Point(-119.037,-538.041,17.739), Point(-222.705,-347.532,97.985), Point(-142.222,-193.898,162.698), Point(142.610,-193.898,162.698), Point(226.846,-361.930,91.920), Point(118.923,-538.041,17.739), Point(-119.037,-538.041,17.739)},
+        {Point(478.593,-374.909,36.915), Point(596.484,-174.710,29.388), Point(698.046,-172.509,-57.884), Point(622.420,-472.451,-134.432), Point(523.010,-466.370,-45.103), Point(478.593,-374.909,36.915)},
+        {Point(454.664,-356.164,-2.748), Point(566.659,-165.975,-9.899), Point(663.144,-163.884,-92.807), Point(591.299,-448.828,-165.528), Point(496.859,-443.052,-80.665), Point(454.664,-356.164,-2.748)},
+        {Point(-481.982,-362.651,39.785), Point(-595.889,-174.723,29.899), Point(-515.848,-0.000,98.678), Point(-247.814,-0.000,211.069), Point(-149.707,-204.103,211.069), Point(-234.426,-365.823,142.950), Point(-481.982,-362.651,39.785)},
+        {Point(-457.883,-344.518,-0.022), Point(-566.094,-165.987,-9.413), Point(-490.055,-0.000,55.926), Point(-235.423,-0.000,162.698), Point(-142.222,-193.898,162.698), Point(-222.705,-347.532,97.985), Point(-457.883,-344.518,-0.022)},
+        {Point(238.785,-380.979,136.566), Point(150.116,-204.103,211.069), Point(252.071,0.000,211.069), Point(512.707,0.000,101.376), Point(596.484,-174.710,29.388), Point(478.593,-374.909,36.915), Point(238.785,-380.979,136.566)},
+        {Point(226.846,-361.930,91.920), Point(142.610,-193.898,162.698), Point(239.467,-0.000,162.698), Point(487.072,-0.000,58.490), Point(566.659,-165.975,-9.899), Point(454.664,-356.164,-2.748), Point(226.846,-361.930,91.920)},
+        {Point(-515.848,0.000,98.678), Point(-595.889,-174.723,29.899), Point(-698.269,-172.505,-58.075), Point(-698.269,172.505,-58.075), Point(-595.889,174.723,29.899), Point(-515.848,0.000,98.678)},
+        {Point(-490.055,-0.000,55.926), Point(-566.094,-165.987,-9.413), Point(-663.356,-163.879,-92.989), Point(-663.356,163.879,-92.989), Point(-566.094,165.987,-9.413), Point(-490.055,-0.000,55.926)},
+        {Point(-149.707,-204.103,211.069), Point(-247.814,0.000,211.069), Point(-149.707,204.103,211.069), Point(150.116,204.103,211.069), Point(252.071,0.000,211.069), Point(150.116,-204.103,211.069), Point(-149.707,-204.103,211.069)},
+        {Point(-142.222,-193.898,162.698), Point(-235.423,-0.000,162.698), Point(-142.222,193.898,162.698), Point(142.610,193.898,162.698), Point(239.467,0.000,162.698), Point(142.610,-193.898,162.698), Point(-142.222,-193.898,162.698)},
+        {Point(512.707,0.000,101.376), Point(596.484,174.710,29.388), Point(698.269,172.505,-58.075), Point(698.269,-172.505,-58.075), Point(596.484,-174.710,29.388), Point(512.707,0.000,101.376)},
+        {Point(487.072,0.000,58.490), Point(566.659,165.975,-9.899), Point(663.356,163.879,-92.989), Point(663.356,-163.879,-92.989), Point(566.659,-165.975,-9.899), Point(487.072,0.000,58.490)},
+        {Point(-515.848,-0.000,98.678), Point(-595.889,174.723,29.899), Point(-481.982,362.651,39.785), Point(-234.426,365.823,142.950), Point(-149.707,204.103,211.069), Point(-247.814,-0.000,211.069), Point(-515.848,-0.000,98.678)},
+        {Point(-490.055,-0.000,55.926), Point(-566.094,165.987,-9.413), Point(-457.883,344.518,-0.022), Point(-222.705,347.532,97.985), Point(-142.222,193.898,162.698), Point(-235.423,-0.000,162.698), Point(-490.055,-0.000,55.926)},
+        {Point(252.071,0.000,211.069), Point(150.116,204.103,211.069), Point(238.785,380.979,136.566), Point(478.593,374.909,36.915), Point(596.484,174.710,29.388), Point(512.707,-0.000,101.376), Point(252.071,0.000,211.069)},
+        {Point(239.467,-0.000,162.698), Point(142.610,193.898,162.698), Point(226.846,361.930,91.920), Point(454.664,356.164,-2.748), Point(566.659,165.975,-9.899), Point(487.072,-0.000,58.490), Point(239.467,-0.000,162.698)},
+        {Point(-481.982,362.651,39.785), Point(-595.889,174.723,29.899), Point(-698.046,172.509,-57.884), Point(-622.420,472.451,-134.432), Point(-523.550,466.403,-45.588), Point(-481.982,362.651,39.785)},
+        {Point(-457.883,344.518,-0.022), Point(-566.094,165.987,-9.413), Point(-663.144,163.884,-92.807), Point(-591.299,448.828,-165.528), Point(-497.372,443.083,-81.126), Point(-457.883,344.518,-0.022)},
+        {Point(-149.707,204.103,211.069), Point(-234.426,365.823,142.950), Point(-125.302,566.359,58.481), Point(125.182,566.359,58.481), Point(238.785,380.979,136.566), Point(150.116,204.103,211.069), Point(-149.707,204.103,211.069)},
+        {Point(-142.222,193.898,162.698), Point(-222.705,347.532,97.985), Point(-119.037,538.041,17.739), Point(118.923,538.041,17.739), Point(226.846,361.930,91.920), Point(142.610,193.898,162.698), Point(-142.222,193.898,162.698)},
+        {Point(478.593,374.909,36.915), Point(527.834,476.304,-54.011), Point(620.401,480.458,-136.475), Point(698.046,172.509,-57.884), Point(596.484,174.710,29.388), Point(478.593,374.909,36.915)},
+        {Point(454.664,356.164,-2.748), Point(501.442,452.489,-89.128), Point(589.381,456.435,-167.469), Point(663.144,163.884,-92.807), Point(566.659,165.975,-9.899), Point(454.664,356.164,-2.748)},
+        {Point(-481.982,362.651,39.785), Point(-523.550,466.403,-45.588), Point(-441.383,636.016,-121.338), Point(-223.832,690.677,-64.527), Point(-125.302,566.359,58.481), Point(-234.426,365.823,142.950), Point(-481.982,362.651,39.785)},
+        {Point(-457.883,344.518,-0.022), Point(-497.372,443.083,-81.126), Point(-419.314,604.215,-153.089), Point(-212.641,656.144,-99.118), Point(-119.037,538.041,17.739), Point(-222.705,347.532,97.985), Point(-457.883,344.518,-0.022)},
+        {Point(238.785,380.979,136.566), Point(125.182,566.359,58.481), Point(212.526,691.178,-65.022), Point(446.073,632.424,-125.794), Point(527.834,476.304,-54.011), Point(478.593,374.909,36.915), Point(238.785,380.979,136.566)},
+        {Point(226.846,361.930,91.920), Point(118.923,538.041,17.739), Point(201.900,656.619,-99.589), Point(423.769,600.803,-157.321), Point(501.442,452.489,-89.128), Point(454.664,356.164,-2.748), Point(226.846,361.930,91.920)},
+        {Point(-622.146,472.434,-134.186), Point(-574.882,574.852,-181.916), Point(-441.854,635.045,-120.904), Point(-523.550,466.403,-45.588), Point(-622.146,472.434,-134.186)},
+        {Point(-591.038,448.812,-165.294), Point(-546.138,546.110,-210.638), Point(-419.761,603.293,-152.677), Point(-497.372,443.083,-81.126), Point(-591.038,448.812,-165.294)},
+        {Point(-125.302,566.359,58.481), Point(-224.289,691.254,-65.097), Point(212.579,691.254,-65.097), Point(125.182,566.359,58.481), Point(-125.302,566.359,58.481)},
+        {Point(-119.037,538.041,17.739), Point(-213.075,656.691,-99.659), Point(201.950,656.691,-99.659), Point(118.923,538.041,17.739), Point(-119.037,538.041,17.739)},
+        {Point(527.834,476.304,-54.011), Point(446.780,631.075,-125.173), Point(574.485,574.300,-182.370), Point(620.030,480.441,-136.145), Point(527.834,476.304,-54.011)},
+        {Point(501.442,452.489,-89.128), Point(424.440,599.521,-156.732), Point(545.761,545.585,-211.069), Point(589.029,456.419,-167.156), Point(501.442,452.489,-89.128)}
+    };
+
+    // Strip closing vertex (first==last) before from_polygons
+    for (auto& poly : polys)
+        if (poly.size() > 3 && poly.front().distance(poly.back()) < 1e-6)
+            poly.pop_back();
+
+    Mesh m = Mesh::from_polygons(polys, 1.0);
+
+    CrossConnectors cc(m, 2.0, {0.0}, 2, 10.0, 10.0, 2.0, 0.0);
+
+    MINI_CHECK(cc.face_planes.size() == m.number_of_faces());
+    MINI_CHECK(cc.edges.size() > 0);
+    MINI_CHECK(cc.edge_faces.size() == cc.edges.size());
+    MINI_CHECK(cc.face_polylines.size() == m.number_of_faces());
+    MINI_CHECK(cc.edge_polylines.size() > 0);
+
+    for (size_t i = 0; i < cc.face_polylines.size(); i++) {
+        MINI_CHECK(cc.face_polylines[i].size() >= 2);
+        for (auto& pl : cc.face_polylines[i])
+            MINI_CHECK(pl.point_count() >= 4);
+    }
+
+    for (size_t i = 0; i < cc.edge_polylines.size(); i++)
+        for (auto& pl : cc.edge_polylines[i])
+            MINI_CHECK(pl.point_count() == 5);
 }
 
 } // namespace session_cpp

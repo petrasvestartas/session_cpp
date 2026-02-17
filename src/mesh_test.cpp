@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "mesh.h"
 #include "point.h"
+#include "polyline.h"
 #include "xform.h"
 #include "tolerance.h"
 #include "encoders.h"
@@ -354,6 +355,50 @@ namespace session_cpp {
         MINI_CHECK(vertices.size() == 3);
         MINI_CHECK(faces.size() == 1);
         MINI_CHECK(faces[0].size() == 3);
+    }
+
+    MINI_TEST("Mesh", "Loft") {
+        // Two rectangles at z=0 and z=1
+        std::vector<Point> bot_pts = {
+            Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0), Point(0,0,0)
+        };
+        std::vector<Point> top_pts = {
+            Point(0,0,1), Point(1,0,1), Point(1,1,1), Point(0,1,1), Point(0,0,1)
+        };
+        Polyline bot(bot_pts);
+        Polyline top(top_pts);
+
+        Mesh mesh = Mesh::loft({bot}, {top});
+
+        MINI_CHECK(mesh.number_of_vertices() == 8);
+        MINI_CHECK(mesh.number_of_faces() == 8);
+        MINI_CHECK(mesh.is_valid());
+    }
+
+    MINI_TEST("Mesh", "Loft_with_hole") {
+        // Outer rectangle
+        std::vector<Point> outer_bot = {
+            Point(0,0,0), Point(4,0,0), Point(4,4,0), Point(0,4,0), Point(0,0,0)
+        };
+        std::vector<Point> outer_top = {
+            Point(0,0,1), Point(4,0,1), Point(4,4,1), Point(0,4,1), Point(0,0,1)
+        };
+        // Inner hole
+        std::vector<Point> inner_bot = {
+            Point(1,1,0), Point(3,1,0), Point(3,3,0), Point(1,3,0), Point(1,1,0)
+        };
+        std::vector<Point> inner_top = {
+            Point(1,1,1), Point(3,1,1), Point(3,3,1), Point(1,3,1), Point(1,1,1)
+        };
+
+        Polyline ob(outer_bot), ot(outer_top);
+        Polyline ib(inner_bot), it(inner_top);
+
+        Mesh mesh = Mesh::loft({ob, ib}, {ot, it});
+
+        MINI_CHECK(mesh.number_of_vertices() == 16);
+        MINI_CHECK(mesh.number_of_faces() == 24);
+        MINI_CHECK(mesh.is_valid());
     }
 
 } // namespace session_cpp

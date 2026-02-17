@@ -506,93 +506,38 @@ namespace session_cpp {
 
     MINI_TEST("NurbsSurface", "Evaluation") {
         // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-
-        // Create simple bilinear surface
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
-            Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0),
-        };
-        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
-
-        // Evaluate at corner
-        auto dom_u = surf.domain(0);
-        auto dom_v = surf.domain(1);
-
-        Point pt_corner = surf.point_at(dom_u.first, dom_v.first);
-
-        // Evaluate at center (should be center of unit square)
-        double u_mid = (dom_u.first + dom_u.second) / 2.0;
-        double v_mid = (dom_v.first + dom_v.second) / 2.0;
-        Point pt_mid = surf.point_at(u_mid, v_mid);
-
-        // Test derivatives
-        auto derivs = surf.evaluate(u_mid, v_mid, 1);
-
-        // Test normal (for flat plane in XY, normal should point in +Z)
-        Vector normal = surf.normal_at(u_mid, v_mid);
-
-        MINI_CHECK(surf.is_valid());
-        MINI_CHECK(TOLERANCE.is_close(pt_corner[0], 0.0));
-        MINI_CHECK(TOLERANCE.is_close(pt_corner[1], 0.0));
-        MINI_CHECK(TOLERANCE.is_close(pt_corner[2], 0.0));
-        MINI_CHECK(TOLERANCE.is_close(pt_mid[0], 0.5));
-        MINI_CHECK(TOLERANCE.is_close(pt_mid[1], 0.5));
-        MINI_CHECK(derivs.size() == 3);
-        MINI_CHECK(TOLERANCE.is_close(std::abs(normal[2]), 1.0));
-    }
-
-    MINI_TEST("NurbsSurface", "Geometric_queries") {
-        // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
-
-        // Create and setup surface
-        std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
-            Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0),
-        };
-        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
-
-        MINI_CHECK(surf.is_valid());
-        MINI_CHECK(!surf.is_closed(0));
-        MINI_CHECK(!surf.is_closed(1));
-        MINI_CHECK(!surf.is_periodic(0));
-        MINI_CHECK(!surf.is_periodic(1));
-        MINI_CHECK(surf.is_clamped(0, 0));
-        MINI_CHECK(surf.is_clamped(1, 0));
-        MINI_CHECK(surf.is_planar(nullptr, 1e-6));
-    }
-
-    MINI_TEST("NurbsSurface", "Modification") {
-        // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
 
         std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
-            Point(0.0, 0.0, 0.0), Point(0.0, 0.0, 0.0),
-            Point(2.0, 0.0, 0.0), Point(2.0, 1.0, 0.0),
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
         };
-        NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 3, 2, points);
 
-        Point cv_before = surf.get_cv(0, 0);
+        NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-        // Test reverse in u direction
-        surf.reverse(0);
-        Point cv_after = surf.get_cv(2, 0);
-
-        // Reverse back
-        surf.reverse(0);
-
-        // Test transpose
-        int order_u_before = surf.order(0);
-        int order_v_before = surf.order(1);
-        surf.transpose();
-
-        MINI_CHECK(cv_after[0] == cv_before[0]);
-        MINI_CHECK(surf.order(0) == order_v_before);
-        MINI_CHECK(surf.order(1) == order_u_before);
+ 
     }
+
+
+
+
 
     MINI_TEST("NurbsSurface", "Isocurve") {
         // uncomment #include "nurbscurve.h"

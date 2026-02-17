@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "triangulation_2d.h"
 #include <fstream>
 #include <algorithm>
 #include <cmath>
@@ -413,6 +414,159 @@ Mesh Mesh::from_polygons(const std::vector<std::vector<Point>>& polygons, std::o
         }
         mesh.add_face(vkeys);
     }
+    return mesh;
+}
+
+Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1) {
+    if (polylines0.empty() || polylines1.empty()) return Mesh();
+    if (polylines0.size() != polylines1.size()) return Mesh();
+
+    // Find border polyline (largest bbox diagonal) among polylines0
+    int border_idx = 0;
+    double max_diag = 0.0;
+    for (size_t i = 0; i < polylines0.size(); ++i) {
+        auto pts = polylines0[i].get_points();
+        if (pts.empty()) continue;
+        double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
+        double maxx = minx, maxy = miny, maxz = minz;
+        for (const auto& p : pts) {
+            if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
+            if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
+            if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
+        }
+        double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
+        double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (diag > max_diag) { max_diag = diag; border_idx = static_cast<int>(i); }
+    }
+
+    auto get_open_points = [](const Polyline& pl) -> std::vector<Point> {
+        auto pts = pl.get_points();
+        if (pts.size() > 1) {
+            const auto& f = pts.front();
+            const auto& b = pts.back();
+            if (std::abs(f[0]-b[0]) < 1e-12 && std::abs(f[1]-b[1]) < 1e-12 && std::abs(f[2]-b[2]) < 1e-12)
+                pts.pop_back();
+        }
+        return pts;
+    };
+
+    // Compute average plane from border polyline for 2D projection
+    Point origin;
+    Vector xaxis, yaxis, zaxis;
+    polylines0[border_idx].get_average_plane(origin, xaxis, yaxis, zaxis);
+
+    auto project_2d = [&](const Point& p) -> std::pair<double, double> {
+        double dx = p[0] - origin[0];
+        double dy = p[1] - origin[1];
+        double dz = p[2] - origin[2];
+        double u = dx * xaxis[0] + dy * xaxis[1] + dz * xaxis[2];
+        double v = dx * yaxis[0] + dy * yaxis[1] + dz * yaxis[2];
+        return {u, v};
+    };
+
+    // 2D signed area: positive = CCW, negative = CW
+    auto signed_area_2d = [&](const std::vector<Point>& pts) -> double {
+        double area = 0.0;
+        size_t n = pts.size();
+        for (size_t i = 0; i < n; ++i) {
+            size_t j = (i + 1) % n;
+            auto [xi, yi] = project_2d(pts[i]);
+            auto [xj, yj] = project_2d(pts[j]);
+            area += xi * yj - xj * yi;
+        }
+        return area * 0.5;
+    };
+
+    // Build ordered list: border first, then holes
+    std::vector<int> order;
+    order.push_back(border_idx);
+    for (size_t i = 0; i < polylines0.size(); ++i)
+        if (static_cast<int>(i) != border_idx) order.push_back(static_cast<int>(i));
+
+    // Collect open points, enforce winding: border=CCW, holes=CW
+    struct PolyInfo { size_t offset; size_t count; };
+    std::vector<PolyInfo> poly_infos;
+    std::vector<Point> all_bot_pts;
+    std::vector<Point> all_top_pts;
+
+    for (size_t oi = 0; oi < order.size(); ++oi) {
+        int idx = order[oi];
+        auto bot = get_open_points(polylines0[idx]);
+        auto top = get_open_points(polylines1[idx]);
+        size_t n = std::min(bot.size(), top.size());
+        bot.resize(n);
+        top.resize(n);
+
+        bool is_border = (oi == 0);
+        double area = signed_area_2d(bot);
+        if ((is_border && area < 0) || (!is_border && area > 0)) {
+            std::reverse(bot.begin(), bot.end());
+            std::reverse(top.begin(), top.end());
+        }
+
+        poly_infos.push_back({all_bot_pts.size(), n});
+        for (size_t i = 0; i < n; ++i) all_bot_pts.push_back(bot[i]);
+        for (size_t i = 0; i < n; ++i) all_top_pts.push_back(top[i]);
+    }
+
+    size_t total_pts = all_bot_pts.size();
+
+    // Create 2D polylines for triangulation
+    std::vector<Point> boundary_2d_pts;
+    for (size_t i = poly_infos[0].offset; i < poly_infos[0].offset + poly_infos[0].count; ++i) {
+        auto [u, v] = project_2d(all_bot_pts[i]);
+        boundary_2d_pts.push_back(Point(u, v, 0.0));
+    }
+    Polyline boundary_2d(boundary_2d_pts);
+
+    std::vector<Polyline> holes_2d;
+    for (size_t h = 1; h < poly_infos.size(); ++h) {
+        std::vector<Point> hole_pts;
+        for (size_t i = poly_infos[h].offset; i < poly_infos[h].offset + poly_infos[h].count; ++i) {
+            auto [u, v] = project_2d(all_bot_pts[i]);
+            hole_pts.push_back(Point(u, v, 0.0));
+        }
+        holes_2d.push_back(Polyline(hole_pts));
+    }
+
+    auto triangles = Triangulation2D::triangulate(boundary_2d, holes_2d);
+
+    // Build mesh
+    Mesh mesh;
+
+    std::vector<size_t> bot_vkeys;
+    for (size_t i = 0; i < total_pts; ++i)
+        bot_vkeys.push_back(mesh.add_vertex(all_bot_pts[i]));
+
+    std::vector<size_t> top_vkeys;
+    for (size_t i = 0; i < total_pts; ++i)
+        top_vkeys.push_back(mesh.add_vertex(all_top_pts[i]));
+
+    // Bottom cap: reverse winding so normals point DOWN (outward from volume)
+    for (const auto& tri : triangles)
+        mesh.add_face({bot_vkeys[tri.v0], bot_vkeys[tri.v2], bot_vkeys[tri.v1]});
+
+    // Top cap: original winding so normals point UP (outward from volume)
+    for (const auto& tri : triangles)
+        mesh.add_face({top_vkeys[tri.v0], top_vkeys[tri.v1], top_vkeys[tri.v2]});
+
+    // Side quads from original polyline edges
+    for (size_t p = 0; p < poly_infos.size(); ++p) {
+        size_t off = poly_infos[p].offset;
+        size_t n = poly_infos[p].count;
+        bool is_border = (p == 0);
+
+        for (size_t i = 0; i < n; ++i) {
+            size_t j = (i + 1) % n;
+            size_t bi = off + i, bj = off + j;
+
+            if (is_border)
+                mesh.add_face({bot_vkeys[bi], bot_vkeys[bj], top_vkeys[bj], top_vkeys[bi]});
+            else
+                mesh.add_face({bot_vkeys[bi], top_vkeys[bi], top_vkeys[bj], bot_vkeys[bj]});
+        }
+    }
+
     return mesh;
 }
 

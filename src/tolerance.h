@@ -3,11 +3,13 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <vector>
 
 namespace session_cpp {
 
 class Point;
 class Vector;
+class ToleranceGuard;
 
 // Scale factor
 constexpr double SCALE = 1e6;
@@ -34,6 +36,8 @@ public:
     static constexpr double ANGLE_TOLERANCE_DEGREES = 0.11;
     static constexpr double ZERO_TOLERANCE = 1e-12; // do not change this value, it is used algorithms heavily
     static constexpr double ROUNDING = 6;
+
+    friend class ToleranceGuard;
 
 private:
     std::string _unit;
@@ -119,6 +123,11 @@ public:
     bool is_point_close(const Point& a, const Point& b) const;
     /// Check if two 3D vectors are equal within absolute tolerance
     bool is_vector_close(const Vector& a, const Vector& b) const;
+    /// Check if two lists of values are element-wise close
+    bool is_allclose(const std::vector<double>& a, const std::vector<double>& b) const;
+
+    /// Create a RAII guard that restores tolerance on destruction
+    ToleranceGuard temporary();
 
     // Formatting
     /// Create a geometric key string for 3D point with optional precision
@@ -135,6 +144,26 @@ public:
         double factor = std::pow(10.0, ndigits);
         return std::round(value * factor) / factor;
     }
+};
+
+/// RAII guard that restores Tolerance state on destruction
+class ToleranceGuard {
+    Tolerance& target_;
+    std::string saved_unit_;
+    double saved_absolute_, saved_relative_, saved_angular_, saved_approximation_;
+    int saved_precision_;
+    double saved_lineardeflection_, saved_angulardeflection_;
+    bool saved_has_absolute_, saved_has_relative_, saved_has_angular_;
+    bool saved_has_approximation_, saved_has_precision_;
+    bool saved_has_lineardeflection_, saved_has_angulardeflection_;
+public:
+    explicit ToleranceGuard(Tolerance& t);
+    ~ToleranceGuard();
+    ToleranceGuard(const ToleranceGuard&) = delete;
+    ToleranceGuard& operator=(const ToleranceGuard&) = delete;
+    ToleranceGuard(ToleranceGuard&&) = default;
+    Tolerance& operator*() { return target_; }
+    Tolerance* operator->() { return &target_; }
 };
 
 // Global tolerance instance

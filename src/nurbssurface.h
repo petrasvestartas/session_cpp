@@ -312,9 +312,21 @@ public:
     /// weights (perspective division).
     Point point_at(double u, double v) const;
 
-    /// Same as point_at but writes x,y,z directly to output doubles.
-    /// Avoids Point construction overhead — used in tight meshing loops.
-    void point_at(double u, double v, double& x, double& y, double& z) const;
+    /// Evaluate surface point and store coordinates in output parameters.
+    void point_at(double u, double v, double& px, double& py, double& pz) const {
+        Point p = point_at(u, v);
+        px = p[0]; py = p[1]; pz = p[2];
+    }
+
+    /// Evaluate surface point and normal, storing in output parameters.
+    void point_and_normal_at(double u, double v,
+                             double& px, double& py, double& pz,
+                             double& nx, double& ny, double& nz) const {
+        Point p = point_at(u, v);
+        px = p[0]; py = p[1]; pz = p[2];
+        Vector n = normal_at(u, v);
+        nx = n[0]; ny = n[1]; nz = n[2];
+    }
 
     /// Evaluate point and partial derivatives up to num_derivs order at (u,v).
     /// Returns flat array: [S, Su, Sv, Suu, Suv, Svv, ...].
@@ -325,18 +337,6 @@ public:
     /// partial derivatives: N = normalize(dS/du x dS/dv). Returns zero vector
     /// at singular points where partials are parallel.
     Vector normal_at(double u, double v) const;
-
-    /// Same as normal_at but writes nx,ny,nz directly to output doubles.
-    /// Avoids Vector construction overhead.
-    void normal_at(double u, double v, double& nx, double& ny, double& nz) const;
-
-    /// Compute both point and normal at (u,v) in a single call. Shares span
-    /// lookup and basis function computation between point and normal, making
-    /// it faster than calling point_at + normal_at separately.
-    /// Used extensively by the adaptive meshing pipeline.
-    void point_and_normal_at(double u, double v,
-                             double& px, double& py, double& pz,
-                             double& nx, double& ny, double& nz) const;
 
     /// Get surface point at one of the four corners.
     /// u_end=0/1 maps to domain start/end in u, v_end=0/1 in v.

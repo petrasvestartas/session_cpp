@@ -8,6 +8,7 @@
 #include "bvh.h"
 #include "tolerance.h"
 #include "json.h"
+#include "polyline.h"
 #include <map>
 #include <set>
 #include <vector>
@@ -243,6 +244,14 @@ public:
      * @return The constructed mesh.
      */
     static Mesh from_polygons(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
+
+    /**
+     * @brief Loft between two sets of polylines to create a closed mesh volume.
+     * @param polylines0 Bottom polylines (border + optional holes).
+     * @param polylines1 Top polylines (border + optional holes).
+     * @return The lofted mesh with bottom cap, top cap, and side faces.
+     */
+    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation

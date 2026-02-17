@@ -491,115 +491,6 @@ static void eval_basis_derivs_stack(const double* knot, int order, int span, dou
     for (int j = 0; j <= degree; j++) deriv[j] *= degree;
 }
 
-void NurbsSurface::point_at(double u, double v, double& ox, double& oy, double& oz) const {
-    if (!is_valid()) { ox = oy = oz = 0; return; }
-    int su = find_span(0, u), sv = find_span(1, v);
-    double Nu[10], Nv[10];
-    eval_basis_stack(m_knot[0].data(), m_order[0], su, u, Nu);
-    eval_basis_stack(m_knot[1].data(), m_order[1], sv, v, Nv);
-    int cvs = m_is_rat ? (m_dim + 1) : m_dim;
-    double pt[4] = {};
-    for (int i = 0; i < m_order[0]; i++)
-        for (int j = 0; j < m_order[1]; j++) {
-            double c = Nu[i] * Nv[j];
-            const double* p = cv(su + i, sv + j);
-            if (p) for (int d = 0; d < cvs; d++) pt[d] += c * p[d];
-        }
-    if (m_is_rat && std::abs(pt[m_dim]) > 1e-14) {
-        double w = pt[m_dim]; ox = pt[0]/w; oy = pt[1]/w; oz = pt[2]/w;
-    } else {
-        ox = pt[0]; oy = m_dim > 1 ? pt[1] : 0; oz = m_dim > 2 ? pt[2] : 0;
-    }
-}
-
-void NurbsSurface::point_and_normal_at(double u, double v,
-                                       double& px, double& py, double& pz,
-                                       double& nx, double& ny, double& nz) const {
-    if (!is_valid()) { px = py = pz = 0; nx = 0; ny = 0; nz = 1; return; }
-    int su = find_span(0, u), sv = find_span(1, v);
-    double Nu0[10], Nu1[10], Nv0[10], Nv1[10];
-    eval_basis_derivs_stack(m_knot[0].data(), m_order[0], su, u, Nu0, Nu1);
-    eval_basis_derivs_stack(m_knot[1].data(), m_order[1], sv, v, Nv0, Nv1);
-    int cvs = m_is_rat ? (m_dim + 1) : m_dim;
-    double S0[4] = {}, Su[4] = {}, Sv[4] = {};
-    for (int i = 0; i < m_order[0]; i++)
-        for (int j = 0; j < m_order[1]; j++) {
-            const double* p = cv(su + i, sv + j);
-            if (!p) continue;
-            double c0 = Nu0[i] * Nv0[j], cu = Nu1[i] * Nv0[j], cv_c = Nu0[i] * Nv1[j];
-            for (int d = 0; d < cvs; d++) {
-                S0[d] += c0 * p[d]; Su[d] += cu * p[d]; Sv[d] += cv_c * p[d];
-            }
-        }
-    double sux, suy, suz, svx, svy, svz;
-    if (m_is_rat && std::abs(S0[m_dim]) > 1e-14) {
-        double w = S0[m_dim], wu = Su[m_dim], wv = Sv[m_dim];
-        px = S0[0]/w; py = S0[1]/w; pz = S0[2]/w;
-        sux = (Su[0] - wu * px) / w;
-        suy = (Su[1] - wu * py) / w;
-        suz = (Su[2] - wu * pz) / w;
-        svx = (Sv[0] - wv * px) / w;
-        svy = (Sv[1] - wv * py) / w;
-        svz = (Sv[2] - wv * pz) / w;
-    } else {
-        px = S0[0]; py = m_dim > 1 ? S0[1] : 0; pz = m_dim > 2 ? S0[2] : 0;
-        sux = Su[0]; suy = m_dim > 1 ? Su[1] : 0; suz = m_dim > 2 ? Su[2] : 0;
-        svx = Sv[0]; svy = m_dim > 1 ? Sv[1] : 0; svz = m_dim > 2 ? Sv[2] : 0;
-    }
-    nx = suy * svz - suz * svy;
-    ny = suz * svx - sux * svz;
-    nz = sux * svy - suy * svx;
-    double len = std::sqrt(nx*nx + ny*ny + nz*nz);
-    if (len < 1e-14) { nx = 0; ny = 0; nz = 1; return; }
-    nx /= len; ny /= len; nz /= len;
-}
-
-void NurbsSurface::normal_at(double u, double v, double& nx, double& ny, double& nz) const {
-    if (!is_valid()) { nx = 0; ny = 0; nz = 1; return; }
-    int su = find_span(0, u), sv = find_span(1, v);
-    double Nu0[10], Nu1[10], Nv0[10], Nv1[10];
-    eval_basis_derivs_stack(m_knot[0].data(), m_order[0], su, u, Nu0, Nu1);
-    eval_basis_derivs_stack(m_knot[1].data(), m_order[1], sv, v, Nv0, Nv1);
-    int cvs = m_is_rat ? (m_dim + 1) : m_dim;
-    double Su[4] = {}, Sv[4] = {};
-    for (int i = 0; i < m_order[0]; i++)
-        for (int j = 0; j < m_order[1]; j++) {
-            const double* p = cv(su + i, sv + j);
-            if (!p) continue;
-            double cu = Nu1[i] * Nv0[j], cv_c = Nu0[i] * Nv1[j];
-            for (int d = 0; d < cvs; d++) { Su[d] += cu * p[d]; Sv[d] += cv_c * p[d]; }
-        }
-    double sux, suy, suz, svx, svy, svz;
-    if (m_is_rat) {
-        double S0[4] = {};
-        for (int i = 0; i < m_order[0]; i++)
-            for (int j = 0; j < m_order[1]; j++) {
-                const double* p = cv(su + i, sv + j);
-                if (!p) continue;
-                double c = Nu0[i] * Nv0[j];
-                for (int d = 0; d < cvs; d++) S0[d] += c * p[d];
-            }
-        double w = S0[m_dim], wu = Su[m_dim], wv = Sv[m_dim];
-        if (std::abs(w) < 1e-14) { nx = 0; ny = 0; nz = 1; return; }
-        double px = S0[0]/w, py = S0[1]/w, pz = S0[2]/w;
-        sux = (Su[0] - wu * px) / w;
-        suy = (Su[1] - wu * py) / w;
-        suz = (Su[2] - wu * pz) / w;
-        svx = (Sv[0] - wv * px) / w;
-        svy = (Sv[1] - wv * py) / w;
-        svz = (Sv[2] - wv * pz) / w;
-    } else {
-        sux = Su[0]; suy = m_dim > 1 ? Su[1] : 0; suz = m_dim > 2 ? Su[2] : 0;
-        svx = Sv[0]; svy = m_dim > 1 ? Sv[1] : 0; svz = m_dim > 2 ? Sv[2] : 0;
-    }
-    nx = suy * svz - suz * svy;
-    ny = suz * svx - sux * svz;
-    nz = sux * svy - suy * svx;
-    double len = std::sqrt(nx*nx + ny*ny + nz*nz);
-    if (len < 1e-14) { nx = 0; ny = 0; nz = 1; return; }
-    nx /= len; ny /= len; nz /= len;
-}
-
 Vector NurbsSurface::normal_at(double u, double v) const {
     auto derivs = evaluate(u, v, 1);
     if (derivs.size() < 3) return Vector(0, 0, 1);
@@ -950,22 +841,21 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
     basis_functions_derivatives(1, span_v, v, max_derivs, ders_v);
 
     // Tensor product evaluation of derivatives
-    // Result order: [S(u,v), Su, Sv, Suu, Suv, Svv]
+    // Result order: [S(u,v), Sv, Su, Svv, Suv, Suu]
     int cv_size_val = m_is_rat ? (m_dim + 1) : m_dim;
 
-    // Compute all derivative combinations up to max_derivs
+    // Compute all homogeneous derivatives
+    struct SKL { int k; int l; std::vector<double> data; };
+    std::vector<SKL> skl_all;
     for (int k = 0; k <= max_derivs; k++) {
         for (int l = 0; l <= max_derivs - k; l++) {
-            // Compute k-th derivative in u, l-th in v
             std::vector<double> Skl(cv_size_val, 0.0);
-
             for (int i = 0; i < m_order[0]; i++) {
                 int cv_i = span_u + i;
                 for (int j = 0; j < m_order[1]; j++) {
                     int cv_j = span_v + j;
                     double coeff = ders_u[k][i] * ders_v[l][j];
                     const double* cv_ptr = cv(cv_i, cv_j);
-
                     if (cv_ptr) {
                         for (int d = 0; d < cv_size_val; d++) {
                             Skl[d] += coeff * cv_ptr[d];
@@ -973,33 +863,73 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
                     }
                 }
             }
-
-            // Convert to Cartesian (dehomogenize for rational surfaces)
-            Vector deriv_vec;
-            if (m_is_rat && std::abs(Skl[m_dim]) > 1e-14) {
-                double w = Skl[m_dim];
-
-                if (k == 0 && l == 0) {
-                    // Point: S = Sw / w
-                    deriv_vec = Vector(Skl[0] / w,
-                                      m_dim > 1 ? Skl[1] / w : 0,
-                                      m_dim > 2 ? Skl[2] / w : 0);
-                } else {
-                    // For derivatives, need to apply quotient rule
-                    // This is simplified - proper implementation would track all previous derivatives
-                    // For first derivatives: S' = (Sw' * w - Sw * w') / w^2
-                    deriv_vec = Vector(Skl[0] / w,
-                                      m_dim > 1 ? Skl[1] / w : 0,
-                                      m_dim > 2 ? Skl[2] / w : 0);
-                }
-            } else {
-                deriv_vec = Vector(Skl[0],
-                                  m_dim > 1 ? Skl[1] : 0,
-                                  m_dim > 2 ? Skl[2] : 0);
-            }
-
-            result.push_back(deriv_vec);
+            skl_all.push_back({k, l, Skl});
         }
+    }
+
+    if (!m_is_rat) {
+        for (auto& s : skl_all) {
+            result.push_back(Vector(s.data[0],
+                                    m_dim > 1 ? s.data[1] : 0,
+                                    m_dim > 2 ? s.data[2] : 0));
+        }
+        return result;
+    }
+
+    // Rational: proper quotient rule (NURBS Book A4.2)
+    double w00 = skl_all[0].data[m_dim];
+    if (std::abs(w00) < 1e-14) {
+        for (size_t i = 0; i < skl_all.size(); i++)
+            result.push_back(Vector(0, 0, 0));
+        return result;
+    }
+    Vector pt(skl_all[0].data[0] / w00,
+              m_dim > 1 ? skl_all[0].data[1] / w00 : 0,
+              m_dim > 2 ? skl_all[0].data[2] / w00 : 0);
+    result.push_back(pt);
+
+    // Weight derivatives lookup
+    std::map<std::pair<int,int>, double> wders;
+    for (auto& s : skl_all) wders[{s.k, s.l}] = s.data[m_dim];
+
+    // Cartesian derivatives
+    std::map<std::pair<int,int>, Vector> aders;
+    aders[{0, 0}] = pt;
+
+    auto binom = [](int n, int k) -> double {
+        if (k > n || k < 0) return 0.0;
+        double r = 1.0;
+        for (int i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+        return r;
+    };
+
+    for (size_t idx = 1; idx < skl_all.size(); idx++) {
+        int k = skl_all[idx].k;
+        int l = skl_all[idx].l;
+        double a0 = skl_all[idx].data[0];
+        double a1 = m_dim > 1 ? skl_all[idx].data[1] : 0;
+        double a2 = m_dim > 2 ? skl_all[idx].data[2] : 0;
+        for (int i = 1; i <= k; i++) {
+            auto it = aders.find({k - i, l});
+            if (it != aders.end()) {
+                double c = binom(k, i) * wders[{i, 0}];
+                a0 -= c * it->second[0];
+                a1 -= c * it->second[1];
+                a2 -= c * it->second[2];
+            }
+        }
+        for (int j = 1; j <= l; j++) {
+            auto it = aders.find({k, l - j});
+            if (it != aders.end()) {
+                double c = binom(l, j) * wders[{0, j}];
+                a0 -= c * it->second[0];
+                a1 -= c * it->second[1];
+                a2 -= c * it->second[2];
+            }
+        }
+        Vector v(a0 / w00, a1 / w00, a2 / w00);
+        aders[{k, l}] = v;
+        result.push_back(v);
     }
 
     return result;

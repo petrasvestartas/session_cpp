@@ -220,7 +220,7 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-foreach(MAIN_ID 1 2 3)
+foreach(MAIN_ID 1 2 3 4)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
