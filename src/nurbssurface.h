@@ -292,8 +292,14 @@ public:
     /// Evaluate the surface at a regular nu x nv grid of parameters spanning
     /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])
     /// where each param is (u,v). Useful for visualization and sampling.
-    std::pair<std::vector<std::vector<Point>>, std::vector<std::vector<std::pair<double,double>>>>
-        divide_by_count(int nu, int nv) const;
+    std::tuple<std::vector<std::vector<Point>>, std::vector<std::vector<Vector>>, std::vector<std::vector<std::pair<double,double>>>>
+        divide_by_count_points(int nu, int nv) const;
+
+    /// Evaluate the surface at a regular nu x nv grid of parameters spanning
+    /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])
+    /// where each param is (u,v). Useful for visualization and sampling.
+    std::pair<std::vector<std::vector<Plane>>, std::vector<std::vector<std::pair<double,double>>>>
+        divide_by_count_planes(int nu, int nv) const;
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -51,7 +51,7 @@ namespace session_cpp {
         Mesh m = s.mesh();
 
         // Point division matching Rhino's 4x6 grid
-        auto [v, uv] = s.divide_by_count(4, 6);
+        auto [p, v, uv] = s.divide_by_count_points(4, 6);
 
         // Minimal and Full String Representation
         std::string sstr = s.str();
@@ -79,41 +79,41 @@ namespace session_cpp {
         MINI_CHECK(srepr == "NurbsSurface(\n  name=my_nurbssurface,\n  degree=(3,3),\n  cvs=(4,4),\n  rational=false,\n  control_points=[\n    0, 0, 0\n    -1, 0.75, 2\n    -1, 4.25, 2\n    0, 5, 0\n    0.75, -1, 2\n    1.25, 1.25, 4\n    1.25, 3.75, 4\n    0.75, 6, 2\n    4.25, -1, 2\n    3.75, 1.25, 4\n    3.75, 3.75, 4\n    4.25, 6, 2\n    5, 0, 0\n    6, 0.75, 2\n    6, 4.25, 2\n    5, 5, 0\n  ]\n)");
         MINI_CHECK(scopy.cv_count() == s.cv_count());
         MINI_CHECK(scopy.guid != s.guid);
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][1], Point(-0.416666666666667, 0.578703703703704, 0.833333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][2], Point(-0.666666666666667, 1.462962962962963, 1.333333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][3], Point(-0.750000000000000, 2.500000000000000, 1.500000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][4], Point(-0.666666666666667, 3.537037037037037, 1.333333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][5], Point(-0.416666666666667, 4.421296296296297, 0.833333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[0][6], Point(0.000000000000000, 5.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][0], Point(0.992187500000000, -0.562500000000000, 1.125000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][1], Point(0.881510416666667, 0.333912037037037, 1.958333333333334)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][2], Point(0.815104166666667, 1.379629629629630, 2.458333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][3], Point(0.792968750000000, 2.500000000000000, 2.625000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][4], Point(0.815104166666667, 3.620370370370370, 2.458333333333334)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][5], Point(0.881510416666667, 4.666087962962964, 1.958333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[1][6], Point(0.992187500000000, 5.562500000000000, 1.125000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][0], Point(2.500000000000000, -0.750000000000000, 1.500000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][1], Point(2.500000000000000, 0.252314814814815, 2.333333333333334)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][2], Point(2.500000000000000, 1.351851851851852, 2.833333333333334)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][3], Point(2.500000000000000, 2.500000000000000, 3.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][4], Point(2.500000000000000, 3.648148148148148, 2.833333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][5], Point(2.500000000000000, 4.747685185185186, 2.333333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[2][6], Point(2.500000000000000, 5.750000000000000, 1.500000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][0], Point(4.007812500000000, -0.562500000000000, 1.125000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][1], Point(4.118489583333334, 0.333912037037037, 1.958333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][2], Point(4.184895833333334, 1.379629629629630, 2.458333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][3], Point(4.207031250000000, 2.500000000000000, 2.625000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][4], Point(4.184895833333333, 3.620370370370370, 2.458333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][5], Point(4.118489583333333, 4.666087962962964, 1.958333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[3][6], Point(4.007812500000000, 5.562500000000000, 1.125000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][0], Point(5.000000000000000, 0.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][1], Point(5.416666666666668, 0.578703703703704, 0.833333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][2], Point(5.666666666666668, 1.462962962962963, 1.333333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][3], Point(5.750000000000000, 2.500000000000000, 1.500000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][4], Point(5.666666666666666, 3.537037037037037, 1.333333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][5], Point(5.416666666666667, 4.421296296296297, 0.833333333333333)));
-        MINI_CHECK(TOLERANCE.is_point_close(v[4][6], Point(5.000000000000000, 5.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][1], Point(-0.416666666666667, 0.578703703703704, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][2], Point(-0.666666666666667, 1.462962962962963, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][3], Point(-0.750000000000000, 2.500000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][4], Point(-0.666666666666667, 3.537037037037037, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][5], Point(-0.416666666666667, 4.421296296296297, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[0][6], Point(0.000000000000000, 5.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][0], Point(0.992187500000000, -0.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][1], Point(0.881510416666667, 0.333912037037037, 1.958333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][2], Point(0.815104166666667, 1.379629629629630, 2.458333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][3], Point(0.792968750000000, 2.500000000000000, 2.625000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][4], Point(0.815104166666667, 3.620370370370370, 2.458333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][5], Point(0.881510416666667, 4.666087962962964, 1.958333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[1][6], Point(0.992187500000000, 5.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][0], Point(2.500000000000000, -0.750000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][1], Point(2.500000000000000, 0.252314814814815, 2.333333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][2], Point(2.500000000000000, 1.351851851851852, 2.833333333333334)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][3], Point(2.500000000000000, 2.500000000000000, 3.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][4], Point(2.500000000000000, 3.648148148148148, 2.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][5], Point(2.500000000000000, 4.747685185185186, 2.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[2][6], Point(2.500000000000000, 5.750000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][0], Point(4.007812500000000, -0.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][1], Point(4.118489583333334, 0.333912037037037, 1.958333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][2], Point(4.184895833333334, 1.379629629629630, 2.458333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][3], Point(4.207031250000000, 2.500000000000000, 2.625000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][4], Point(4.184895833333333, 3.620370370370370, 2.458333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][5], Point(4.118489583333333, 4.666087962962964, 1.958333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[3][6], Point(4.007812500000000, 5.562500000000000, 1.125000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][0], Point(5.000000000000000, 0.000000000000000, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][1], Point(5.416666666666668, 0.578703703703704, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][2], Point(5.666666666666668, 1.462962962962963, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][3], Point(5.750000000000000, 2.500000000000000, 1.500000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][4], Point(5.666666666666666, 3.537037037037037, 1.333333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][5], Point(5.416666666666667, 4.421296296296297, 0.833333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(p[4][6], Point(5.000000000000000, 5.000000000000000, 0.000000000000000)));
     }
 
     MINI_TEST("NurbsSurface", "Booleans Queries"){
@@ -376,8 +376,8 @@ namespace session_cpp {
         // Set Domain
         bool is_set_u = s.set_domain(0, -1.1, 2.3);
         bool is_set_v = s.set_domain(1, -5.1, 1.3);
-        MINI_CHECK(TOLERANCE.is_close(s.domain(1).first, -5.1));
-        MINI_CHECK(TOLERANCE.is_close(s.domain(1).second, 1.3));
+        MINI_CHECK(is_set_u && TOLERANCE.is_close(s.domain(1).first, -5.1));
+        MINI_CHECK(is_set_v && TOLERANCE.is_close(s.domain(1).second, 1.3));
 
         // Get sorted list of distinct knot values
         std::vector<double> span_vector = s.get_span_vector(0);
@@ -414,30 +414,95 @@ namespace session_cpp {
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
+        // points, normals, uv
+        auto [division_points, vectors, uvs0] = s.divide_by_count_points(3, 3);
+
+        // planes, normals, uv
+        auto [planes, uvs1] = s.divide_by_count_planes(3, 3);
+
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[0][0], Point(0, 0, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[0][1], Point(-0.666666666666667, 1.46296296296296, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[0][2], Point(-0.666666666666667, 3.53703703703704, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[0][3], Point(0, 5, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[1][0], Point(1.46296296296296, -0.666666666666667, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[1][1], Point(1.3641975308642, 1.3641975308642, 2.66666666666667)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[1][2], Point(1.3641975308642, 3.6358024691358, 2.66666666666667)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[1][3], Point(1.46296296296296, 5.66666666666667, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[2][0], Point(3.53703703703704, -0.666666666666667, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[2][1], Point(3.6358024691358, 1.3641975308642, 2.66666666666667)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[2][2], Point(3.6358024691358, 3.6358024691358, 2.66666666666667)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[2][3], Point(3.53703703703704, 5.66666666666667, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[3][0], Point(5, 0, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[3][1], Point(5.66666666666667, 1.46296296296296, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[3][2], Point(5.66666666666667, 3.53703703703704, 1.33333333333333)));
+        MINI_CHECK(TOLERANCE.is_point_close(division_points[3][3], Point(5, 5, 0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[0][0], Vector(-0.704360725060499, -0.704360725060499, -0.0880450906325624)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[0][1], Vector(-0.722897836195991, -0.327787263130091, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[0][2], Vector(-0.722897836195991, 0.327787263130091, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[0][3], Vector(-0.704360725060499, 0.704360725060499, -0.0880450906325624)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[1][0], Vector(-0.327787263130091, -0.722897836195991, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[1][1], Vector(-0.280457757277237, -0.280457757277237, 0.917979788865771)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[1][2], Vector(-0.280457757277237, 0.280457757277237, 0.917979788865771)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[1][3], Vector(-0.327787263130091, 0.722897836195991, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[2][0], Vector(0.327787263130091, -0.722897836195991, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[2][1], Vector(0.280457757277237, -0.280457757277237, 0.917979788865771)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[2][2], Vector(0.280457757277237, 0.280457757277237, 0.917979788865771)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[2][3], Vector(0.327787263130091, 0.722897836195991, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][0], Vector(0.704360725060499, -0.704360725060499, -0.0880450906325624)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][1], Vector(0.722897836195991, -0.327787263130091, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][2], Vector(0.722897836195991, 0.327787263130091, 0.608255068661856)));
+        MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][3], Vector(0.704360725060499, 0.704360725060499, -0.0880450906325624)));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][0].first, 0.0) && TOLERANCE.is_close(uvs0[0][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][1].first, 0.0) && TOLERANCE.is_close(uvs0[0][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][2].first, 0.0) && TOLERANCE.is_close(uvs0[0][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][3].first, 0.0) && TOLERANCE.is_close(uvs0[0][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][0].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][1].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][2].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][3].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][0].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][1].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][2].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][3].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][0].first, 1.0) && TOLERANCE.is_close(uvs0[3][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][1].first, 1.0) && TOLERANCE.is_close(uvs0[3][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][2].first, 1.0) && TOLERANCE.is_close(uvs0[3][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][3].first, 1.0) && TOLERANCE.is_close(uvs0[3][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][0].x_axis(), Vector(0.317999364001908, -0.423999152002544, 0.847998304005088)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][1].x_axis(), Vector(0.657483781160109, -0.0556600026378928, 0.751410035611553)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][2].x_axis(), Vector(0.657483781160109, 0.055660002637893, 0.751410035611553)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][3].x_axis(), Vector(0.317999364001908, 0.423999152002544, 0.847998304005088)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][0].x_axis(), Vector(0.93542594448836, -0.158100159631836, 0.316200319263671)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][1].x_axis(), Vector(0.957938608304167, -0.0211991946512679, 0.286189127792116)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][2].x_axis(), Vector(0.957938608304167, 0.0211991946512677, 0.286189127792116)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][3].x_axis(), Vector(0.93542594448836, 0.158100159631835, 0.316200319263671)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][0].x_axis(), Vector(0.93542594448836, 0.158100159631835, -0.316200319263671)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][1].x_axis(), Vector(0.957938608304167, 0.0211991946512679, -0.286189127792116)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][2].x_axis(), Vector(0.957938608304167, -0.021199194651268, -0.286189127792116)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][3].x_axis(), Vector(0.93542594448836, -0.158100159631836, -0.316200319263671)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][0].x_axis(), Vector(0.317999364001908, 0.423999152002544, -0.847998304005088)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][1].x_axis(), Vector(0.657483781160109, 0.0556600026378928, -0.751410035611553)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][2].x_axis(), Vector(0.657483781160109, -0.0556600026378928, -0.751410035611553)));      
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][3].x_axis(), Vector(0.317999364001908, -0.423999152002544, -0.847998304005088)));  
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][0].y_axis(), Vector(-0.423999152002544, 0.317999364001908, 0.847998304005088)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][1].y_axis(), Vector(-0.158100159631836, 0.93542594448836, 0.316200319263671)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][2].y_axis(), Vector(0.158100159631835, 0.93542594448836, -0.316200319263671)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[0][3].y_axis(), Vector(0.423999152002544, 0.317999364001908, -0.847998304005088)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][0].y_axis(), Vector(-0.0556600026378928, 0.657483781160109, 0.751410035611553)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][1].y_axis(), Vector(-0.0211991946512679, 0.957938608304167, 0.286189127792116)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][2].y_axis(), Vector(0.0211991946512679, 0.957938608304167, -0.286189127792116)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[1][3].y_axis(), Vector(0.0556600026378928, 0.657483781160109, -0.751410035611553)));       
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][0].y_axis(), Vector(0.0556600026378928, 0.657483781160109, 0.751410035611553)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][1].y_axis(), Vector(0.0211991946512678, 0.957938608304167, 0.286189127792116)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][2].y_axis(), Vector(-0.0211991946512678, 0.957938608304167, -0.286189127792116)));      
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[2][3].y_axis(), Vector(-0.0556600026378928, 0.657483781160109, -0.751410035611553)));      
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][0].y_axis(), Vector(0.423999152002544, 0.317999364001908, 0.847998304005088)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][1].y_axis(), Vector(0.158100159631835, 0.93542594448836, 0.316200319263671)));
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][2].y_axis(), Vector(-0.158100159631836, 0.93542594448836, -0.316200319263671)));        
+        MINI_CHECK(TOLERANCE.is_vector_close(planes[3][3].y_axis(), Vector(-0.423999152002544, 0.317999364001908, -0.847998304005088)));  
     }
 
-    MINI_TEST("NurbsSurface", "Rational_operations") {
-        // uncomment #include "nurbssurface.h"
-        // uncomment #include "point.h"
 
-        // Create non-rational surface, then make rational
-        std::vector<Point> points(9, Point(0.0, 0.0, 0.0));
-        NurbsSurface surf = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
-
-        // Make it rational
-        surf.make_rational();
-
-        // Set a control point and weight
-        surf.set_cv(1, 1, Point(1.0, 2.0, 3.0));
-        surf.set_weight(1, 1, 2.0);
-
-        // Verify weight
-        double w = surf.weight(1, 1);
-
-        MINI_CHECK(surf.is_rational());
-        MINI_CHECK(surf.cv_size() == 4);
-        MINI_CHECK(w == 2.0);
-    }
 
     MINI_TEST("NurbsSurface", "Evaluation") {
         // uncomment #include "nurbssurface.h"

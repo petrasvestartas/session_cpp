@@ -2,6 +2,7 @@
 #include "primitives.h"
 #include <iostream>
 #include <filesystem>
+#include <iomanip>
 
 using namespace session_cpp;
 
@@ -36,23 +37,18 @@ int main() {
 
     NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-    // Get domain 0 - 1
-    std::pair<double, double> domain_u = s.domain(0);
-    std::pair<double, double> domain_v = s.domain(1);
+    auto [division_points, vectors, uvs0] = s.divide_by_count_points(3, 3);
+    auto [planes, uvs1] = s.divide_by_count_planes(3, 3);
 
-    std::cout << domain_u.first << std::endl; 
-    std::cout << domain_u.second << std::endl; 
-
-    // Set Domain
-    bool is_set_u = s.set_domain(0, -1.1, 2.3);
-    bool is_set_v = s.set_domain(1, -5.1, 1.3);
-    std::cout << (s.domain(1).first == -5.1) << std::endl; 
-    std::cout << (s.domain(1).second == 1.3) << " result " << s.domain(1).second  << std::endl; 
-
-    // Get sorted list of distinct knot values
-    std::vector<double> span_vector = s.get_span_vector(0);
-    double first_item = span_vector.front();
-    double last_item = span_vector.back();
+    std::cout << std::setprecision(15);
+    for (size_t i = 0; i <= 3; i++) {
+        for (size_t j = 0; j <= 3; j++) {
+            Vector x_axis = planes[i][j].x_axis();
+            Vector y_axis = planes[i][j].y_axis();
+            std::cout << "MINI_CHECK(TOLERANCE.is_vector_close(planes[" << i << "][" << j << "].y_axis(), Vector(" << y_axis[0] << ", " << y_axis[1] << ", " << y_axis[2] << ")));" << std::endl;
+            // std::cout << y_axis[0] << ", " << y_axis[1] << ", " << y_axis[2] << std::endl;
+        }
+    }
 
 
 

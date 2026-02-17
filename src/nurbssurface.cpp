@@ -606,7 +606,7 @@ Vector NurbsSurface::normal_at(double u, double v) const {
 
     Vector du = derivs[1];
     Vector dv = derivs[2];
-    Vector normal = du.cross(dv);
+    Vector normal = dv.cross(du);
 
     double len = normal.magnitude();
     if (len < 1e-14) return Vector(0, 0, 1);
@@ -2162,9 +2162,48 @@ bool NurbsSurface::is_singular(int side) const {
     return rc;
 }
 
-std::pair<std::vector<std::vector<Point>>, std::vector<std::vector<std::pair<double,double>>>>
-NurbsSurface::divide_by_count(int nu, int nv) const {
+std::tuple<std::vector<std::vector<Point>>, std::vector<std::vector<Vector>>, std::vector<std::vector<std::pair<double,double>>>>
+NurbsSurface::divide_by_count_points(int nu, int nv) const {
     std::vector<std::vector<Point>> grid;
+    std::vector<std::vector<Vector>> grid_vector;
+    std::vector<std::vector<std::pair<double,double>>> params;
+
+    if (!is_valid()) {
+        return {grid, grid_vector, params};
+    }
+
+    auto domain_u = domain(0);
+    auto domain_v = domain(1);
+    double u0 = domain_u.first;
+    double u1 = domain_u.second;
+    double v0 = domain_v.first;
+    double v1 = domain_v.second;
+
+    grid.resize(nu + 1);
+    grid_vector.resize(nu + 1);
+    params.resize(nu + 1);
+
+    for (int i = 0; i <= nu; i++) {
+        grid[i].resize(nv + 1);
+        grid_vector[i].resize(nv + 1);
+        params[i].resize(nv + 1);
+
+        double u = (nu > 0) ? (u0 + (u1 - u0) * (static_cast<double>(i) / nu)) : u0;
+
+        for (int j = 0; j <= nv; j++) {
+            double v = (nv > 0) ? (v0 + (v1 - v0) * (static_cast<double>(j) / nv)) : v0;
+            grid[i][j] = point_at(u, v);
+            grid_vector[i][j] = normal_at(u, v);
+            params[i][j] = {u, v};
+        }
+    }
+
+    return {grid, grid_vector, params};
+}
+
+std::pair<std::vector<std::vector<Plane>>, std::vector<std::vector<std::pair<double,double>>>>
+NurbsSurface::divide_by_count_planes(int nu, int nv) const {
+    std::vector<std::vector<Plane>> grid;
     std::vector<std::vector<std::pair<double,double>>> params;
 
     if (!is_valid()) {
@@ -2189,7 +2228,21 @@ NurbsSurface::divide_by_count(int nu, int nv) const {
 
         for (int j = 0; j <= nv; j++) {
             double v = (nv > 0) ? (v0 + (v1 - v0) * (static_cast<double>(j) / nv)) : v0;
-            grid[i][j] = point_at(u, v);
+            Point origin = point_at(u, v);
+
+            // Get derivatives: [S, Su, Sv]
+            auto derivs = evaluate(u, v, 1);
+            Vector su = derivs[2];  // tangent in u direction
+            Vector sv = derivs[1];  // tangent in v direction
+
+            // Normalize for plane axes
+            Vector x_axis = su;
+            if (x_axis.magnitude() > 1e-14) x_axis = x_axis.normalize();
+            Vector y_axis = sv;
+            if (y_axis.magnitude() > 1e-14) y_axis = y_axis.normalize();
+
+            Plane plane = Plane(origin, x_axis, y_axis, normal_at(u, v));
+            grid[i][j] = plane;
             params[i][j] = {u, v};
         }
     }

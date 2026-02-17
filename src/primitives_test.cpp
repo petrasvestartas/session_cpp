@@ -309,7 +309,7 @@ MINI_TEST("Primitives", "Nurbssurface_ruled") {
     MINI_CHECK(srf.cv_count(0) == 2);
     MINI_CHECK(srf.cv_count(1) == 2);
 
-    auto [rd, ruv] = srf.divide_by_count(4, 4);
+    auto [rd, rv, ruv] = srf.divide_by_count_points(4, 4);
     MINI_CHECK(rd.size() == 5);
     MINI_CHECK(rd[0].size() == 5);
 
