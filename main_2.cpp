@@ -31,27 +31,32 @@ int main() {
 
     NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-    double u = 0.5, v = 0.5;
+    double u = 0.25, v = 0.25;
     std::cout << std::setprecision(15);
 
-    // 1. point_at(u, v) - returns Point
+    // point_at(u, v) - returns Point
     Point p1 = s.point_at(u, v);
     std::cout << "point_at(u,v): " << p1 << std::endl;
 
-    // 2. evaluate(u, v, num_derivs) - returns vector of derivatives
-    auto derivs = s.evaluate(u, v, 1);
-    std::cout << "evaluate(u,v,1): point=" << derivs[0] << ", Su=" << derivs[1] << ", Sv=" << derivs[2] << std::endl;
-
-    // 3. normal_at(u, v) - returns Vector
+    // normal_at(u, v) - returns Vector
     Vector n1 = s.normal_at(u, v);
     std::cout << "normal_at(u,v): " << n1 << std::endl;
 
-    // 4. point_at_corner(u_end, v_end) - corner point
+    // evaluate(u, v, num_derivs) - returns vector of derivatives
+    auto derivs = s.evaluate(u, v, 1);
+    std::cout << "evaluate(u,v,1): point=" << derivs[0] << ", Su=" << derivs[1] << ", Sv=" << derivs[2] << std::endl;
+
+    // point_at_corner(u_end, v_end) - corner point
     Point p_corner = s.point_at_corner(1, 1);
     std::cout << "point_at_corner(1,1): " << p_corner << std::endl;
 
     // Serialization
     session.add_nurbssurface(std::make_shared<NurbsSurface>(s));
+    session.add_point(std::make_shared<Point>(p1));
+    session.add_point(std::make_shared<Point>(p_corner));
+    session.add_line(std::make_shared<Line>(Line::from_points(p1, p1 + n1)));
+    session.add_line(std::make_shared<Line>(Line::from_points(p1, p1 + derivs[1])));
+    session.add_line(std::make_shared<Line>(Line::from_points(p1, p1 + derivs[2])));
     std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "surface.pb").string();
     session.pb_dump(filepath);
 

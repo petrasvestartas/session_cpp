@@ -983,6 +983,52 @@ MINI_TEST("Primitives", "Nurbscurve_interpolated") {
     MINI_CHECK(TOLERANCE.is_point_close(c4.point_at(d4_1), pts4[3]));
 }
 
+MINI_TEST("Primitives", "Mesh_tetrahedron") {
+    Mesh m = Primitives::tetrahedron(2.0);
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() == 4);
+    MINI_CHECK(m.number_of_faces() == 4);
+}
+
+MINI_TEST("Primitives", "Mesh_cube") {
+    Mesh m = Primitives::cube(2.0);
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() == 8);
+    MINI_CHECK(m.number_of_faces() == 6);
+}
+
+MINI_TEST("Primitives", "Mesh_octahedron") {
+    Mesh m = Primitives::octahedron(2.0);
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() == 6);
+    MINI_CHECK(m.number_of_faces() == 8);
+}
+
+MINI_TEST("Primitives", "Mesh_icosahedron") {
+    Mesh m = Primitives::icosahedron(2.0);
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() == 12);
+    MINI_CHECK(m.number_of_faces() == 20);
+}
+
+MINI_TEST("Primitives", "Mesh_dodecahedron") {
+    Mesh m = Primitives::dodecahedron(2.0);
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() == 20);
+    MINI_CHECK(m.number_of_faces() == 12);
+}
+
+MINI_TEST("Primitives", "Nurbssurface_wave") {
+    NurbsSurface srf = Primitives::wave_surface(10.0, 2.0);
+    MINI_CHECK(srf.is_valid());
+    MINI_CHECK(srf.degree(0) == 3);
+    MINI_CHECK(srf.degree(1) == 3);
+    MINI_CHECK(srf.cv_count(0) == 13);
+    MINI_CHECK(srf.cv_count(1) == 13);
+    Point corner = srf.point_at(0.0, 0.0);
+    MINI_CHECK(std::abs(corner[2]) < 0.1);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // FoldedPlates
 ///////////////////////////////////////////////////////////////////////////////////////////

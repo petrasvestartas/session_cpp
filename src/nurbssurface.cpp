@@ -397,100 +397,6 @@ Point NurbsSurface::point_at(double u, double v) const {
                 m_dim > 2 ? point[2] : 0);
 }
 
-static void eval_basis_stack(const double* knot, int order, int span, double t, double* out) {
-    int d = order - 1;
-    int kb = span + d;
-    // Clamped boundary: degenerate initial interval -> basis is endpoint function
-    if (knot[kb - 1] == knot[kb]) {
-        for (int i = 0; i < order; i++) out[i] = 0;
-        if (t <= knot[kb]) out[0] = 1.0;
-        else out[order - 1] = 1.0;
-        return;
-    }
-    double N[100];
-    std::memset(N, 0, order * order * sizeof(double));
-    N[order * order - 1] = 1.0;
-    double left[10], right[10];
-    int N_idx = order * order - 1;
-    int kr = kb, kl = kb - 1;
-    for (int j = 0; j < d; j++) {
-        int N0 = N_idx;
-        N_idx -= (order + 1);
-        left[j] = t - knot[kl];
-        right[j] = knot[kr] - t;
-        kl--; kr++;
-        double x = 0.0;
-        for (int r = 0; r <= j; r++) {
-            double denom = left[j - r] + right[r];
-            double y = (std::abs(denom) > 0.0) ? N[N0 + r] / denom : 0.0;
-            N[N_idx + r] = x + right[r] * y;
-            x = left[j - r] * y;
-        }
-        N[N_idx + j + 1] = x;
-    }
-    for (int i = 0; i < order; i++) out[i] = N[i];
-}
-
-static void eval_basis_derivs_stack(const double* knot, int order, int span, double t,
-                                     double* basis, double* deriv) {
-    int degree = order - 1;
-    int kb = span + degree;
-    for (int i = 0; i < order; i++) { basis[i] = 0; deriv[i] = 0; }
-    if (knot[kb - 1] == knot[kb]) {
-        if (t <= knot[kb]) basis[0] = 1.0;
-        else basis[order - 1] = 1.0;
-        return;
-    }
-
-    double ndu[10][10];
-    std::memset(ndu, 0, order * order * sizeof(double));
-    ndu[0][0] = 1.0;
-    double left[10], right[10];
-    for (int j = 1; j <= degree; j++) {
-        left[j] = t - knot[kb - j];
-        right[j] = knot[kb + j - 1] - t;
-        double saved = 0.0;
-        for (int r = 0; r < j; r++) {
-            ndu[j][r] = right[r + 1] + left[j - r];
-            double temp = (std::abs(ndu[j][r]) > 0.0) ? ndu[r][j - 1] / ndu[j][r] : 0.0;
-            ndu[r][j] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
-        }
-        ndu[j][j] = saved;
-    }
-    for (int j = 0; j <= degree; j++) basis[j] = ndu[j][degree];
-
-    double a[2][10];
-    std::memset(a, 0, 2 * order * sizeof(double));
-    for (int r = 0; r <= degree; r++) {
-        int s1 = 0, s2 = 1;
-        a[0][0] = 1.0;
-        double d = 0.0;
-        int rk = r - 1, pk = degree - 1;
-        if (r >= 1) {
-            double denom = ndu[pk + 1][rk];
-            a[s2][0] = (std::abs(denom) > 0.0) ? a[s1][0] / denom : 0.0;
-            d = a[s2][0] * ndu[rk][pk];
-        }
-        int j1 = (rk >= -1) ? 1 : -rk;
-        int j2 = (r - 1 <= pk) ? 0 : degree - r;
-        for (int j = j1; j <= j2; j++) {
-            double denom = ndu[pk + 1][rk + j];
-            a[s2][j] = (std::abs(denom) > 0.0) ? (a[s1][j] - a[s1][j - 1]) / denom : 0.0;
-            d += a[s2][j] * ndu[rk + j][pk];
-        }
-        if (r <= pk) {
-            double denom = ndu[pk + 1][r];
-            a[s2][1] = (std::abs(denom) > 0.0) ? -a[s1][0] / denom : 0.0;
-            d += a[s2][1] * ndu[r][pk];
-        }
-        deriv[r] = d;
-        std::memset(a[0], 0, order * sizeof(double));
-        std::memset(a[1], 0, order * sizeof(double));
-    }
-    for (int j = 0; j <= degree; j++) deriv[j] *= degree;
-}
-
 Vector NurbsSurface::normal_at(double u, double v) const {
     auto derivs = evaluate(u, v, 1);
     if (derivs.size() < 3) return Vector(0, 0, 1);
@@ -927,9 +833,9 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
                 a2 -= c * it->second[2];
             }
         }
-        Vector v(a0 / w00, a1 / w00, a2 / w00);
-        aders[{k, l}] = v;
-        result.push_back(v);
+        Vector dv(a0 / w00, a1 / w00, a2 / w00);
+        aders[{k, l}] = dv;
+        result.push_back(dv);
     }
 
     return result;

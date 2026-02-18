@@ -2465,7 +2465,7 @@ Plane CrossConnectors::move_plane_by_axis(const Plane& pl, double dist, int axis
 
 Polyline CrossConnectors::outline_from_planes(const Plane& face_plane,
                                                const std::vector<Plane>& edge_planes,
-                                               const std::vector<Plane>& bise_planes) {
+                                               const std::vector<Plane>& /*bise_planes*/) {
     // Python outline_from_face_edge_corner T=2 mode:
     // PlanePlane(edge[i], edge[(i+1)%n]) → line, LinePlane(line, face_plane) → point
     Polyline pl;

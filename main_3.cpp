@@ -269,8 +269,8 @@ int main() {
         session.add_mesh(std::make_shared<Mesh>(fm));
 
         for (size_t i = 0; i < fp.polylines.size(); i++) {
-            for (auto& pl : fp.polylines[i]) {
-                Polyline p = pl;
+            for (auto& pli : fp.polylines[i]) {
+                Polyline p = pli;
                 p.xform = xf;
                 p.transform();
                 p.name = "plate_" + std::to_string(i);
@@ -400,8 +400,8 @@ int main() {
         session.add_mesh(std::make_shared<Mesh>(cm));
 
         for (size_t i = 0; i < cc.face_polylines.size(); i++) {
-            for (auto& pl : cc.face_polylines[i]) {
-                Polyline p = pl;
+            for (auto& pli : cc.face_polylines[i]) {
+                Polyline p = pli;
                 p.xform = xf;
                 p.transform();
                 p.name = "face_plate_" + std::to_string(i);
@@ -410,8 +410,8 @@ int main() {
             }
         }
         for (size_t i = 0; i < cc.edge_polylines.size(); i++) {
-            for (auto& pl : cc.edge_polylines[i]) {
-                Polyline p = pl;
+            for (auto& pli : cc.edge_polylines[i]) {
+                Polyline p = pli;
                 p.xform = xf;
                 p.transform();
                 p.name = "connector_" + std::to_string(i);

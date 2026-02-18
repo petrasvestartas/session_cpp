@@ -489,9 +489,10 @@ Mesh TrimeshDelaunay::mesh() const {
         if (!is_super) {
             double u = dt.vertices[vi].x;
             double v = dt.vertices[vi].y;
-            m_surface.point_and_normal_at(u, v,
-                pos_cache[vi][0], pos_cache[vi][1], pos_cache[vi][2],
-                nrm_cache[vi][0], nrm_cache[vi][1], nrm_cache[vi][2]);
+            Point p = m_surface.point_at(u, v);
+            Vector n = m_surface.normal_at(u, v);
+            pos_cache[vi] = {p[0], p[1], p[2]};
+            nrm_cache[vi] = {n[0], n[1], n[2]};
         }
     };
 

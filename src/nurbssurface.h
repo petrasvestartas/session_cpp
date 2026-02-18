@@ -318,25 +318,15 @@ public:
         px = p[0]; py = p[1]; pz = p[2];
     }
 
-    /// Evaluate surface point and normal, storing in output parameters.
-    void point_and_normal_at(double u, double v,
-                             double& px, double& py, double& pz,
-                             double& nx, double& ny, double& nz) const {
-        Point p = point_at(u, v);
-        px = p[0]; py = p[1]; pz = p[2];
-        Vector n = normal_at(u, v);
-        nx = n[0]; ny = n[1]; nz = n[2];
-    }
+    /// Compute unit surface normal at (u,v) as the cross product of the first
+    /// partial derivatives: N = normalize(dS/du x dS/dv). Returns zero vector
+    /// at singular points where partials are parallel.
+    Vector normal_at(double u, double v) const;
 
     /// Evaluate point and partial derivatives up to num_derivs order at (u,v).
     /// Returns flat array: [S, Su, Sv, Suu, Suv, Svv, ...].
     /// num_derivs=0 returns just the point. Uses basis_functions_derivatives.
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
-
-    /// Compute unit surface normal at (u,v) as the cross product of the first
-    /// partial derivatives: N = normalize(dS/du x dS/dv). Returns zero vector
-    /// at singular points where partials are parallel.
-    Vector normal_at(double u, double v) const;
 
     /// Get surface point at one of the four corners.
     /// u_end=0/1 maps to domain start/end in u, v_end=0/1 in v.

@@ -249,7 +249,6 @@ namespace session_cpp {
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
         s.make_rational(); // to change weights
 
-
         // const - to read, non-const point to write
         const double* const_pointer_cv = s.cv(0,0);
         MINI_CHECK( const_pointer_cv[2] == 0);
@@ -305,9 +304,6 @@ namespace session_cpp {
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-
-
-        
         // Get knot vectors and individual knot
         std::vector<double> knots_u = s.get_knots(0);
         for (int i = 0; i < s.knot_count(0); i++){
@@ -365,7 +361,6 @@ namespace session_cpp {
         };
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
-
 
         // Get domain 0 - 1
         std::pair<double, double> domain_u = s.domain(0);
@@ -532,7 +527,25 @@ namespace session_cpp {
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
- 
+        double u = 0.5, v = 0.5;
+
+        // point_at(u, v) - returns Point
+        Point p1 = s.point_at(u, v);
+        MINI_CHECK(TOLERANCE.is_point_close(p1, Point(2.5, 2.5, 3.0)));
+
+        // normal_at(u, v) - returns Vector
+        Vector n1 = s.normal_at(u, v);
+        MINI_CHECK(TOLERANCE.is_vector_close(n1, Vector(0, 0, 1)));
+
+        // evaluate(u, v, num_derivs) - returns vector of derivatives
+        auto derivs = s.evaluate(u, v, 1);
+        MINI_CHECK(TOLERANCE.is_vector_close(derivs[0], Vector(2.5, 2.5, 3.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(derivs[1], Vector(0.0, 6.9375, 0.0)));
+        MINI_CHECK(TOLERANCE.is_vector_close(derivs[2], Vector(6.9375, 0.0, 0.0)));
+
+        // point_at_corner(u_end, v_end) - corner point
+        Point p_corner = s.point_at_corner(1, 1);
+        MINI_CHECK(TOLERANCE.is_point_close(p_corner, Point(5.0, 5.0, 0.0)));
     }
 
 

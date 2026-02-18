@@ -72,13 +72,12 @@ Mesh TrimeshGrid::mesh() const {
                 double max_angle = 0.0;
                 for (int si = 0; si < n_other; ++si) {
                     double s = s_positions[si];
-                    double prev_nx, prev_ny, prev_nz;
+                    double prev_nx = 0, prev_ny = 0, prev_nz = 0;
                     double total_angle = 0.0;
                     for (int k = 0; k <= 4; ++k) {
                         double t = t0 + k * (t1 - t0) / 4.0;
-                        double px, py, pz, nx, ny, nz;
-                        if (dir == 0) m_surface.point_and_normal_at(t, s, px,py,pz, nx,ny,nz);
-                        else          m_surface.point_and_normal_at(s, t, px,py,pz, nx,ny,nz);
+                        Vector nrm = (dir == 0) ? m_surface.normal_at(t, s) : m_surface.normal_at(s, t);
+                        double nx = nrm[0], ny = nrm[1], nz = nrm[2];
                         if (k > 0) {
                             double dot = prev_nx*nx + prev_ny*ny + prev_nz*nz;
                             dot = std::max(-1.0, std::min(1.0, dot));
