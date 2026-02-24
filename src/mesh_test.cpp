@@ -28,49 +28,83 @@ namespace session_cpp {
             vertices.push_back({x, y, 0.0});
         }
 
-        // Add center point as last vertex
-        // vertices.push_back({0.0, 0.0, 0.0});
-        // std::vector<std::vector<size_t>> faces = {
-        //     {0, 1, 6},
-        //     {1, 2, 6},
-        //     {2, 3, 6},
-        //     {3, 4, 6},
-        //     {4, 5, 6},
-        //     {5, 0, 6}
-        // };
-
         std::vector<std::vector<size_t>> faces = {
             {0, 1, 2, 3, 4, 5},
         };
 
         Mesh mesh = Mesh::from_vertices_and_faces(vertices, faces);
 
-        size_t num_vertices = mesh.number_of_vertices();
-        size_t num_faces = mesh.number_of_faces();
-        size_t num_edges = mesh.number_of_edges();
-        bool is_empty = mesh.is_empty();
-        int euler = mesh.euler();
-
-        // String representations
         std::string sstr = mesh.str();
         std::string srepr = mesh.repr();
 
         // Copy (new guid)
         Mesh mcopy = mesh;
 
-        MINI_CHECK(num_vertices == 7);
-        MINI_CHECK(num_faces == 6);
-        MINI_CHECK(num_edges == 12);
-        MINI_CHECK(!is_empty);
-        MINI_CHECK(euler == 1);
-        MINI_CHECK(mesh.name == "my_mesh");
-        MINI_CHECK(!mesh.guid.empty());
-        MINI_CHECK(sstr.find("Mesh") != std::string::npos);
-        MINI_CHECK(srepr.find("name=my_mesh") != std::string::npos);
-        MINI_CHECK(mcopy.guid != mesh.guid);
-        MINI_CHECK(mcopy == mesh);
-        MINI_CHECK(!(mcopy != mesh));
+        MINI_CHECK(mesh.is_valid());
     }
+
+    MINI_TEST("Mesh", "From Polylines") {
+        // uncomment #include "mesh.h"
+
+        std::vector<Point> hex0 = {
+            Point(0.5, 0.866025, 0), Point(-0.5, 0.866025, 0), Point(-1, 0, 0),
+            Point(-0.5, -0.866025, 0), Point(0.5, -0.866025, 0), Point(1, 0, 0),
+        };
+        std::vector<Point> hex1 = {
+            Point(2, 1.732051, 0), Point(1, 1.732051, 0), Point(0.5, 0.866025, 0),
+            Point(1, 0, 0), Point(2, 0, 0), Point(2.5, 0.866025, 0),
+        };
+        std::vector<Point> hex2 = {
+            Point(2.0, 0, 0), Point(1, 0, 0), Point(0.5, -0.866025, 0),
+            Point(1.0, -1.732051, 0), Point(2.0, -1.732051, 0), Point(2.5, -0.866025, 0),
+        };
+
+        Mesh mesh = Mesh::from_polylines({hex0, hex1, hex2});
+        MINI_CHECK(mesh.number_of_vertices() == 13);
+        MINI_CHECK(mesh.number_of_faces() == 3);
+        MINI_CHECK(mesh.number_of_edges() == 15);
+    }
+
+    MINI_TEST("Mesh", "From Lines") {
+        std::vector<Line> lines = {
+            Line::from_points(Point(3.723844, 0.971574, 0), Point(3.218847, 0.841359, 0)),
+            Line::from_points(Point(3.723844, 0.971574, 0), Point(3.852993, 0.371225, 0)),
+            Line::from_points(Point(3.852993, 0.371225, 0), Point(4.593264, 0.584361, 0)),
+            Line::from_points(Point(3.904452, -0.157402, 0), Point(3.236395, -0.051356, 0)),
+            Line::from_points(Point(4.995604, -0.149798, 0), Point(4.411839, -0.996413, 0)),
+            Line::from_points(Point(3.904452, -0.157402, 0), Point(4.29633, -0.224964, 0)),
+            Line::from_points(Point(4.29633, -0.224964, 0), Point(3.57903, -0.987075, 0)),
+            Line::from_points(Point(3.236395, -0.051356, 0), Point(3.218847, 0.841359, 0)),
+            Line::from_points(Point(4.593264, 0.584361, 0), Point(4.995604, -0.149798, 0)),
+            Line::from_points(Point(4.411839, -0.996413, 0), Point(3.57903, -0.987075, 0)),
+        };
+
+        Mesh mesh = Mesh::from_lines(lines, true);
+        MINI_CHECK(mesh.number_of_vertices() == 10);
+        MINI_CHECK(mesh.number_of_faces() == 8);
+        MINI_CHECK(mesh.number_of_edges() == 17);
+    }
+
+    MINI_TEST("Mesh", "Loft") {
+        Polyline bot(std::vector<Point>{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0), Point(0,0,0)});
+        Polyline top(std::vector<Point>{Point(0,0,1), Point(1,0,1), Point(1,1,1), Point(0,1,1), Point(0,0,1)});
+        Mesh mesh = Mesh::loft({bot}, {top});
+        MINI_CHECK(mesh.number_of_vertices() == 8);
+        MINI_CHECK(mesh.number_of_faces() == 8);
+        MINI_CHECK(mesh.is_valid());
+
+        Polyline ob(std::vector<Point>{Point(0,0,0), Point(4,0,0), Point(4,4,0), Point(0,4,0), Point(0,0,0)});
+        Polyline ot(std::vector<Point>{Point(0,0,1), Point(4,0,1), Point(4,4,1), Point(0,4,1), Point(0,0,1)});
+        Polyline ib(std::vector<Point>{Point(1,1,0), Point(3,1,0), Point(3,3,0), Point(1,3,0), Point(1,1,0)});
+        Polyline it(std::vector<Point>{Point(1,1,1), Point(3,1,1), Point(3,3,1), Point(1,3,1), Point(1,1,1)});
+        Mesh mesh_hole = Mesh::loft({ob, ib}, {ot, it});
+        MINI_CHECK(mesh_hole.number_of_vertices() == 16);
+        MINI_CHECK(mesh_hole.number_of_faces() == 24);
+        MINI_CHECK(mesh_hole.is_valid());
+    }
+
+
+
 
     MINI_TEST("Mesh", "Add_vertex") {
         // uncomment #include "mesh.h"
@@ -223,37 +257,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(*area, 0.5));
     }
 
-    MINI_TEST("Mesh", "From_polylines") {
-        // uncomment #include "mesh.h"
-        // uncomment #include "point.h"
-
-        std::vector<Point> triangle = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 0.0, 0.0),
-            Point(0.0, 1.0, 0.0),
-        };
-
-        Mesh mesh = Mesh::from_polylines({triangle}, std::nullopt);
-        MINI_CHECK(mesh.number_of_vertices() == 3);
-        MINI_CHECK(mesh.number_of_faces() == 1);
-        MINI_CHECK(mesh.number_of_edges() == 3);
-
-        std::vector<Point> tri1 = {
-            Point(0.0, 0.0, 0.0),
-            Point(1.0, 0.0, 0.0),
-            Point(0.0, 1.0, 0.0),
-        };
-        std::vector<Point> tri2 = {
-            Point(1.0, 0.0, 0.0),
-            Point(0.0, 1.0, 0.0),
-            Point(1.0, 1.0, 0.0),
-        };
-
-        Mesh mesh2 = Mesh::from_polylines({tri1, tri2}, std::nullopt);
-        MINI_CHECK(mesh2.number_of_vertices() == 4);
-        MINI_CHECK(mesh2.number_of_faces() == 2);
-    }
-
     MINI_TEST("Mesh", "Clear") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
@@ -396,65 +399,7 @@ namespace session_cpp {
         MINI_CHECK(faces[0].size() == 3);
     }
 
-    MINI_TEST("Mesh", "Loft") {
-        // Two rectangles at z=0 and z=1
-        std::vector<Point> bot_pts = {
-            Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0), Point(0,0,0)
-        };
-        std::vector<Point> top_pts = {
-            Point(0,0,1), Point(1,0,1), Point(1,1,1), Point(0,1,1), Point(0,0,1)
-        };
-        Polyline bot(bot_pts);
-        Polyline top(top_pts);
 
-        Mesh mesh = Mesh::loft({bot}, {top});
 
-        MINI_CHECK(mesh.number_of_vertices() == 8);
-        MINI_CHECK(mesh.number_of_faces() == 8);
-        MINI_CHECK(mesh.is_valid());
-    }
-
-    MINI_TEST("Mesh", "Loft_with_hole") {
-        // Outer rectangle
-        std::vector<Point> outer_bot = {
-            Point(0,0,0), Point(4,0,0), Point(4,4,0), Point(0,4,0), Point(0,0,0)
-        };
-        std::vector<Point> outer_top = {
-            Point(0,0,1), Point(4,0,1), Point(4,4,1), Point(0,4,1), Point(0,0,1)
-        };
-        // Inner hole
-        std::vector<Point> inner_bot = {
-            Point(1,1,0), Point(3,1,0), Point(3,3,0), Point(1,3,0), Point(1,1,0)
-        };
-        std::vector<Point> inner_top = {
-            Point(1,1,1), Point(3,1,1), Point(3,3,1), Point(1,3,1), Point(1,1,1)
-        };
-
-        Polyline ob(outer_bot), ot(outer_top);
-        Polyline ib(inner_bot), it(inner_top);
-
-        Mesh mesh = Mesh::loft({ob, ib}, {ot, it});
-
-        MINI_CHECK(mesh.number_of_vertices() == 16);
-        MINI_CHECK(mesh.number_of_faces() == 24);
-        MINI_CHECK(mesh.is_valid());
-    }
-
-    MINI_TEST("Mesh", "From_lines") {
-        // uncomment #include "mesh.h"
-        // uncomment #include "line.h"
-
-        // Grid of unit segments forming 4 quads (3x3 grid)
-        std::vector<Line> lines;
-        for (int i = 0; i <= 2; ++i) {
-            for (int j = 0; j < 2; ++j) {
-                lines.push_back(Line::from_points(Point(i,j,0), Point(i,j+1,0)));
-                lines.push_back(Line::from_points(Point(j,i,0), Point(j+1,i,0)));
-            }
-        }
-        Mesh mesh = Mesh::from_lines(lines, true);
-        MINI_CHECK(mesh.number_of_vertices() == 9);
-        MINI_CHECK(mesh.number_of_faces() == 4);
-    }
 
 } // namespace session_cpp

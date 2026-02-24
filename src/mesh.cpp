@@ -613,7 +613,12 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
     }
 
     for (const auto& cycle : face_cycles) {
-        mesh.add_face(cycle);
+        std::vector<Point> pts;
+        pts.reserve(cycle.size());
+        for (size_t vid : cycle) pts.push_back(verts[vid]);
+        auto tris = Triangulation2D::triangulate(Polyline(pts));
+        for (const auto& t : tris)
+            mesh.add_face({cycle[static_cast<size_t>(t.v0)], cycle[static_cast<size_t>(t.v1)], cycle[static_cast<size_t>(t.v2)]});
     }
 
     return mesh;
