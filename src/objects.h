@@ -11,6 +11,7 @@
 #include "mesh.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include "brep.h"
 #include <fstream>
 #include <memory>
 #include <string>
@@ -36,6 +37,7 @@ public:
   std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes;
   std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves;
   std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces;
+  std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps;
 
   /**
    * @brief Constructor.
@@ -52,6 +54,7 @@ public:
     this->meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
     this->nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
     this->nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
+    this->breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
   }
 
   /// Convert objects to string representation

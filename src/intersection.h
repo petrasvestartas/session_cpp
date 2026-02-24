@@ -13,8 +13,9 @@
 
 namespace session_cpp {
 
-// Forward declaration
+// Forward declarations
 class NurbsCurve;
+class NurbsSurface;
 
 class Intersection {
 public:
@@ -402,6 +403,25 @@ public:
     const Point& test_point,
     double t0 = 0.0,
     double t1 = 0.0
+  );
+
+  //==========================================================================================
+  // NURBS Surface Intersection Methods
+  //==========================================================================================
+
+  /**
+   * @brief Find intersection curves between NURBS surface and plane
+   * @param surface NURBS surface to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of NurbsCurve intersection curves
+   * @note Uses curve tracing: seed finding on UV grid, predictor-corrector
+   *       marching along g(u,v)=0 with Newton refinement, then interpolation
+   */
+  static std::vector<NurbsCurve> surface_plane(
+    const NurbsSurface& surface,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
   );
 
 private:

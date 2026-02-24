@@ -90,6 +90,40 @@ namespace session_cpp {
             MINI_CHECK(cp.is_closed());
     }
 
+    MINI_TEST("NurbsCurve", "Create_fitted") {
+            // uncomment #include "nurbscurve.h"
+            // uncomment #include "point.h"
+
+            // Open: 21 points on sine wave → fit with 8 CVs
+            std::vector<Point> pts;
+            for (int i = 0; i <= 20; i++) {
+                double t = i * 2.0 * Tolerance::PI / 20.0;
+                pts.push_back(Point(t, 3.0 * std::sin(t), 0.0));
+            }
+
+            NurbsCurve c = NurbsCurve::create_fitted(pts, 8, 3, false);
+
+            MINI_CHECK(c.is_valid());
+            MINI_CHECK(c.degree() == 3);
+            MINI_CHECK(c.cv_count() == 8);
+            auto [d0, d1] = c.domain();
+            MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d0), pts[0]));
+            MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d1), pts[20]));
+
+            // Periodic: 24 points on circle → fit with 10 free CVs
+            std::vector<Point> cpts;
+            for (int i = 0; i < 24; i++) {
+                double a = i * 2.0 * Tolerance::PI / 24.0;
+                cpts.push_back(Point(std::cos(a), std::sin(a), 0.0));
+            }
+
+            NurbsCurve cp = NurbsCurve::create_fitted(cpts, 10, 3, true);
+
+            MINI_CHECK(cp.is_valid());
+            MINI_CHECK(cp.is_closed());
+            MINI_CHECK(cp.cv_count() == 13);
+    }
+
     MINI_TEST("NurbsCurve", "Attributes") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"

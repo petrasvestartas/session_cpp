@@ -381,7 +381,7 @@ int main() {
         std::vector<std::vector<Point>> single_layer;
         for (size_t i = 0; i < polys.size(); i += 2)
             single_layer.push_back(polys[i]);
-        Mesh cc_mesh = Mesh::from_polygons(single_layer, 1.0);
+        Mesh cc_mesh = Mesh::from_polylines(single_layer, 1.0);
         double plate_thick = 2.0;
         double conn_w = 30.0;
         double conn_h = 40.0;

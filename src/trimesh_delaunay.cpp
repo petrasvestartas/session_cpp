@@ -186,6 +186,7 @@ int Delaunay2D::insert(double x, double y) {
 
         if (ic > 0) {
             for (int k = 0; k < 3; ++k) {
+                if (tri.constrained[k]) continue;
                 int nb = tri.adj[k];
                 if (nb >= 0 && nb < (int)visit_stamp_.size() && visit_stamp_[nb] != visit_epoch_) {
                     visit_stamp_[nb] = visit_epoch_;
@@ -219,7 +220,8 @@ int Delaunay2D::insert(double x, double y) {
                 }
             }
             if (!nb_bad) {
-                polygon_.push_back({tri.v[(k + 1) % 3], tri.v[(k + 2) % 3]});
+                bool is_c = tri.constrained[k];
+                polygon_.push_back({tri.v[(k + 1) % 3], tri.v[(k + 2) % 3], is_c});
             }
         }
     }
@@ -239,6 +241,7 @@ int Delaunay2D::insert(double x, double y) {
         nt.v[0] = vi;
         if (o > 0) { nt.v[1] = edge.e0; nt.v[2] = edge.e1; }
         else       { nt.v[1] = edge.e1; nt.v[2] = edge.e0; }
+        nt.constrained[0] = edge.constrained;
         nt.adj[0] = -1; nt.adj[1] = -1; nt.adj[2] = -1;
         nt.alive = true;
         triangles.push_back(nt);
@@ -347,20 +350,6 @@ double TrimeshDelaunay::compute_bbox_diagonal() const {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-static bool point_in_polygon(double px, double py,
-                             const std::vector<Vertex2D>& poly) {
-    int n = (int)poly.size();
-    bool inside = false;
-    for (int i = 0, j = n - 1; i < n; j = i++) {
-        double xi = poly[i].x, yi = poly[i].y;
-        double xj = poly[j].x, yj = poly[j].y;
-        if (((yi > py) != (yj > py)) &&
-            (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
-            inside = !inside;
-    }
-    return inside;
-}
-
 static inline double dot3(const Pos3& a, const Pos3& b) {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
@@ -465,17 +454,203 @@ Mesh TrimeshDelaunay::mesh() const {
     auto [u_min, u_max] = m_surface.domain(0);
     auto [v_min, v_max] = m_surface.domain(1);
 
+    bool closed_u = m_surface.is_closed(0);
+    bool closed_v = m_surface.is_closed(1);
+    bool sing_south = m_surface.is_singular(0);
+    bool sing_north = m_surface.is_singular(2);
+
     double bbox_diag = compute_bbox_diagonal();
-    double max_edge = m_max_edge_length > 0 ? m_max_edge_length : bbox_diag / 10.0;
     double min_edge = m_min_edge_length > 0 ? m_min_edge_length : bbox_diag / 1000.0;
     double chord_tol = m_max_chord_height > 0 ? m_max_chord_height : bbox_diag / 500.0;
     double angle_rad = m_max_angle * Tolerance::PI / 180.0;
 
-    bool trimmed = m_surface.get_outer_loop().is_valid();
-    std::vector<Vertex2D> trim_poly;
-    std::vector<std::vector<Vertex2D>> hole_polys;
+    // Curvature-driven span subdivisions (normal-angle + chord-height)
+    std::vector<double> usp = m_surface.get_span_vector(0);
+    std::vector<double> vsp = m_surface.get_span_vector(1);
+    int deg_u = m_surface.degree(0), deg_v = m_surface.degree(1);
+    double max_angle_deg = m_max_angle;
 
-    Delaunay2D dt(u_min, v_min, u_max, v_max);
+    auto span_subs = [&](int dir, const std::vector<double>& sp,
+                         const std::vector<double>& osp) -> std::vector<int> {
+        int n = (int)sp.size() - 1;
+        std::vector<int> subs(n, 1);
+        int n_other = (int)osp.size() - 1;
+        std::vector<double> s_positions(n_other);
+        for (int k = 0; k < n_other; ++k)
+            s_positions[k] = (osp[k] + osp[k + 1]) * 0.5;
+        int degree_dir = (dir == 0) ? deg_u : deg_v;
+        for (int i = 0; i < n; ++i) {
+            double t0 = sp[i], t1 = sp[i + 1];
+            if (degree_dir > 1) {
+                double ma = 0.0;
+                for (int si = 0; si < n_other; ++si) {
+                    double s = s_positions[si];
+                    double prev_nx = 0, prev_ny = 0, prev_nz = 0;
+                    double total_angle = 0.0;
+                    for (int k = 0; k <= 4; ++k) {
+                        double t = t0 + k * (t1 - t0) / 4.0;
+                        Vector nrm = (dir == 0) ? m_surface.normal_at(t, s) : m_surface.normal_at(s, t);
+                        double nx = nrm[0], ny = nrm[1], nz = nrm[2];
+                        if (k > 0) {
+                            double dot = prev_nx*nx + prev_ny*ny + prev_nz*nz;
+                            dot = std::max(-1.0, std::min(1.0, dot));
+                            total_angle += std::acos(dot) * 180.0 / Tolerance::PI;
+                        }
+                        prev_nx = nx; prev_ny = ny; prev_nz = nz;
+                    }
+                    if (total_angle > ma) ma = total_angle;
+                }
+                subs[i] = std::max(1, std::min((int)std::ceil(ma / max_angle_deg), 24));
+            }
+            {
+                double ct = (m_max_chord_height > 0) ? m_max_chord_height : bbox_diag * 0.005;
+                double max_dev = 0.0;
+                int nc = std::min(n_other, 3);
+                for (int ci = 0; ci <= nc; ++ci) {
+                    double s = osp.front() + ci * (osp.back() - osp.front()) / std::max(nc, 1);
+                    double px0, py0, pz0, px1, py1, pz1;
+                    if (dir == 0) {
+                        m_surface.point_at(t0, s, px0, py0, pz0);
+                        m_surface.point_at(t1, s, px1, py1, pz1);
+                    } else {
+                        m_surface.point_at(s, t0, px0, py0, pz0);
+                        m_surface.point_at(s, t1, px1, py1, pz1);
+                    }
+                    for (int k = 1; k <= 3; ++k) {
+                        double frac = k / 4.0;
+                        double tm = t0 + frac * (t1 - t0);
+                        double pmx, pmy, pmz;
+                        if (dir == 0) m_surface.point_at(tm, s, pmx, pmy, pmz);
+                        else          m_surface.point_at(s, tm, pmx, pmy, pmz);
+                        double lx = px0 + frac * (px1 - px0);
+                        double ly = py0 + frac * (py1 - py0);
+                        double lz = pz0 + frac * (pz1 - pz0);
+                        double dx = pmx - lx, dy = pmy - ly, dz = pmz - lz;
+                        double dev = std::sqrt(dx*dx + dy*dy + dz*dz);
+                        if (dev > max_dev) max_dev = dev;
+                    }
+                }
+                if (max_dev > ct) {
+                    int chord_subs = std::max(2, (int)std::ceil(std::sqrt(max_dev / ct)));
+                    subs[i] = std::max(subs[i], std::min(chord_subs, 24));
+                }
+            }
+            if (m_max_edge_length > 0) {
+                double s_mid = (osp.front() + osp.back()) * 0.5;
+                double px0, py0, pz0, px1, py1, pz1;
+                if (dir == 0) {
+                    m_surface.point_at(t0, s_mid, px0, py0, pz0);
+                    m_surface.point_at(t1, s_mid, px1, py1, pz1);
+                } else {
+                    m_surface.point_at(s_mid, t0, px0, py0, pz0);
+                    m_surface.point_at(s_mid, t1, px1, py1, pz1);
+                }
+                double span_len = std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
+                int edge_subs = std::max(1, (int)std::ceil(span_len / m_max_edge_length));
+                subs[i] = std::max(subs[i], std::min(edge_subs, 64));
+            }
+            if (degree_dir > 1) subs[i] = std::max(subs[i], 2);
+        }
+        return subs;
+    };
+
+    std::vector<int> u_subs = span_subs(0, usp, vsp);
+    std::vector<int> v_subs = span_subs(1, vsp, usp);
+
+    // Aspect ratio balancing
+    {
+        int total_u = 0, total_v = 0;
+        for (int s : u_subs) total_u += s;
+        for (int s : v_subs) total_v += s;
+        total_u += 1; total_v += 1;
+        double v_mid = (vsp.front() + vsp.back()) * 0.5;
+        double u_mid = (usp.front() + usp.back()) * 0.5;
+        double u_len = 0.0, v_len = 0.0;
+        {
+            double px0, py0, pz0;
+            m_surface.point_at(usp.front(), v_mid, px0, py0, pz0);
+            int n_sample = std::max(total_u, 10);
+            for (int i = 1; i <= n_sample; ++i) {
+                double u = usp.front() + i * (usp.back() - usp.front()) / n_sample;
+                double px1, py1, pz1;
+                m_surface.point_at(u, v_mid, px1, py1, pz1);
+                u_len += std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
+                px0 = px1; py0 = py1; pz0 = pz1;
+            }
+        }
+        {
+            double px0, py0, pz0;
+            m_surface.point_at(u_mid, vsp.front(), px0, py0, pz0);
+            int n_sample = std::max(total_v, 10);
+            for (int i = 1; i <= n_sample; ++i) {
+                double v = vsp.front() + i * (vsp.back() - vsp.front()) / n_sample;
+                double px1, py1, pz1;
+                m_surface.point_at(u_mid, v, px1, py1, pz1);
+                v_len += std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
+                px0 = px1; py0 = py1; pz0 = pz1;
+            }
+        }
+        if (u_len > 1e-14 && v_len > 1e-14 && total_u > 0 && total_v > 0) {
+            double spacing_u = u_len / total_u;
+            double spacing_v = v_len / total_v;
+            double ratio = spacing_u / spacing_v;
+            if (ratio > 2.0 && deg_u > 1) {
+                double scale = std::sqrt(ratio);
+                for (int& s : u_subs) s = std::min((int)std::ceil(s * scale), 24);
+            } else if (ratio < 0.5 && deg_v > 1) {
+                double scale = std::sqrt(1.0 / ratio);
+                for (int& s : v_subs) s = std::min((int)std::ceil(s * scale), 24);
+            }
+        }
+    }
+
+    // Bilinear twist check
+    int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
+    if (deg_u == 1 && deg_v == 1) {
+        double twist_tol = (bbox_diag > 0) ? bbox_diag * 0.005 : 1e-6;
+        double max_twist = 0.0;
+        for (int i = 0; i < ns_u; ++i)
+            for (int j = 0; j < ns_v; ++j) {
+                double u0 = usp[i], u1 = usp[i+1];
+                double v0 = vsp[j], v1 = vsp[j+1];
+                double pmx, pmy, pmz;
+                m_surface.point_at((u0+u1)*0.5, (v0+v1)*0.5, pmx, pmy, pmz);
+                double p00x, p00y, p00z, p11x, p11y, p11z;
+                m_surface.point_at(u0, v0, p00x, p00y, p00z);
+                m_surface.point_at(u1, v1, p11x, p11y, p11z);
+                double mx = (p00x+p11x)*0.5, my = (p00y+p11y)*0.5, mz = (p00z+p11z)*0.5;
+                double dx = pmx-mx, dy = pmy-my, dz = pmz-mz;
+                double twist = std::sqrt(dx*dx+dy*dy+dz*dz);
+                if (twist > max_twist) max_twist = twist;
+            }
+        if (max_twist > twist_tol) {
+            int twist_subs = std::max(4, std::min((int)std::ceil(2.0 * std::sqrt(max_twist / twist_tol)), 24));
+            for (int& s : u_subs) s = std::max(s, twist_subs);
+            for (int& s : v_subs) s = std::max(s, twist_subs);
+        }
+    }
+
+    // Build parameter arrays (full UV rectangle)
+    std::vector<double> us, vs;
+    for (int i = 0; i < ns_u; ++i)
+        for (int s = 0; s < u_subs[i]; ++s)
+            us.push_back(usp[i] + s * (usp[i+1] - usp[i]) / u_subs[i]);
+    us.push_back(usp.back());
+    for (int i = 0; i < ns_v; ++i)
+        for (int s = 0; s < v_subs[i]; ++s)
+            vs.push_back(vsp[i] + s * (vsp[i+1] - vsp[i]) / v_subs[i]);
+    vs.push_back(vsp.back());
+
+    int nu = (int)us.size(), nv = (int)vs.size();
+
+    // Pole rows: exclude from CDT, handle explicitly
+    int j_start = sing_south ? 1 : 0;
+    int j_end = sing_north ? nv - 1 : nv;
+
+    // CDT in non-pole UV domain
+    double cdt_v_lo = vs[j_start];
+    double cdt_v_hi = vs[j_end - 1];
+    Delaunay2D dt(u_min, cdt_v_lo, u_max, cdt_v_hi);
 
     std::vector<Pos3> pos_cache;
     std::vector<Pos3> nrm_cache;
@@ -504,135 +679,65 @@ Mesh TrimeshDelaunay::mesh() const {
         return vi;
     };
 
-    if (trimmed) {
-        NurbsCurve loop = m_surface.get_outer_loop();
-        for (int i = 0; i < loop.cv_count(); ++i) {
-            Point cv = loop.get_cv(i);
-            trim_poly.push_back({cv[0], cv[1]});
-        }
+    // Insert grid vertices (excluding pole rows)
+    std::vector<std::vector<int>> grid_vi(nu, std::vector<int>(nv, -1));
+    for (int i = 0; i < nu; ++i)
+        for (int j = j_start; j < j_end; ++j)
+            grid_vi[i][j] = insert_and_cache(us[i], vs[j]);
 
-        std::vector<int> trim_verts;
-        for (const auto& v : trim_poly)
-            trim_verts.push_back(insert_and_cache(v.x, v.y));
-
-        for (int hi = 0; hi < m_surface.inner_loop_count(); ++hi) {
-            NurbsCurve hole_loop = m_surface.get_inner_loop(hi);
-            std::vector<Vertex2D> hole_poly;
-            std::vector<int> hole_verts;
-            for (int i = 0; i < hole_loop.cv_count(); ++i) {
-                Point cv = hole_loop.get_cv(i);
-                hole_poly.push_back({cv[0], cv[1]});
-                hole_verts.push_back(insert_and_cache(cv[0], cv[1]));
-            }
-            for (size_t i = 0; i + 1 < hole_verts.size(); ++i) {
-                if (hole_verts[i] >= 0 && hole_verts[i + 1] >= 0)
-                    dt.insert_constraint(hole_verts[i], hole_verts[i + 1]);
-            }
-            hole_polys.push_back(std::move(hole_poly));
-        }
-
-        if (!m_surface.is_planar()) {
-            int grid_n = 8;
-            double du = (u_max - u_min) / (grid_n + 1);
-            double dv = (v_max - v_min) / (grid_n + 1);
-            for (int i = 1; i <= grid_n; ++i) {
-                for (int j = 1; j <= grid_n; ++j) {
-                    double gu = u_min + i * du;
-                    double gv = v_min + j * dv;
-                    if (!point_in_polygon(gu, gv, trim_poly)) continue;
-                    bool in_hole = false;
-                    for (const auto& hp : hole_polys) {
-                        if (point_in_polygon(gu, gv, hp)) { in_hole = true; break; }
-                    }
-                    if (!in_hole) insert_and_cache(gu, gv);
-                }
-            }
-        }
-
-        for (size_t i = 0; i + 1 < trim_verts.size(); ++i) {
-            if (trim_verts[i] >= 0 && trim_verts[i + 1] >= 0)
-                dt.insert_constraint(trim_verts[i], trim_verts[i + 1]);
-        }
-
-        dt.cleanup();
-
-        for (auto& tri : dt.triangles) {
-            if (!tri.alive) continue;
-            double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
-            double cv_val = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-            if (!point_in_polygon(cu, cv_val, trim_poly)) {
-                tri.alive = false;
-                continue;
-            }
-            for (const auto& hp : hole_polys) {
-                if (point_in_polygon(cu, cv_val, hp)) { tri.alive = false; break; }
-            }
-        }
-    } else {
-        int c0 = insert_and_cache(u_min, v_min);
-        int c1 = insert_and_cache(u_max, v_min);
-        int c2 = insert_and_cache(u_max, v_max);
-        int c3 = insert_and_cache(u_min, v_max);
-
-        std::vector<double> u_spans = m_surface.get_span_vector(0);
-        std::vector<double> v_spans = m_surface.get_span_vector(1);
-
-        std::vector<int> bottom_verts, top_verts;
-        bottom_verts.push_back(c0);
-        top_verts.push_back(c3);
-        for (size_t i = 1; i < u_spans.size() - 1; ++i) {
-            bottom_verts.push_back(insert_and_cache(u_spans[i], v_min));
-            top_verts.push_back(insert_and_cache(u_spans[i], v_max));
-        }
-        bottom_verts.push_back(c1);
-        top_verts.push_back(c2);
-
-        std::vector<int> left_verts, right_verts;
-        left_verts.push_back(c0);
-        right_verts.push_back(c1);
-        for (size_t i = 1; i < v_spans.size() - 1; ++i) {
-            left_verts.push_back(insert_and_cache(u_min, v_spans[i]));
-            right_verts.push_back(insert_and_cache(u_max, v_spans[i]));
-        }
-        left_verts.push_back(c3);
-        right_verts.push_back(c2);
-
-        for (size_t i = 1; i < u_spans.size() - 1; ++i)
-            for (size_t j = 1; j < v_spans.size() - 1; ++j)
-                insert_and_cache(u_spans[i], v_spans[j]);
-
-        auto constrain_chain = [&](const std::vector<int>& verts) {
-            for (size_t i = 0; i + 1 < verts.size(); ++i) {
-                if (verts[i] >= 0 && verts[i + 1] >= 0)
-                    dt.insert_constraint(verts[i], verts[i + 1]);
-            }
-        };
-        constrain_chain(bottom_verts);
-        constrain_chain(right_verts);
-        std::vector<int> top_rev(top_verts.rbegin(), top_verts.rend());
-        constrain_chain(top_rev);
-        std::vector<int> left_rev(left_verts.rbegin(), left_verts.rend());
-        constrain_chain(left_rev);
-
-        dt.cleanup();
-
-        for (auto& tri : dt.triangles) {
-            if (!tri.alive) continue;
-            double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
-            double cv_val = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-            double eps = 1e-10;
-            if (cu < u_min - eps || cu > u_max + eps || cv_val < v_min - eps || cv_val > v_max + eps)
-                tri.alive = false;
-        }
+    // Constrain all 4 boundary edges
+    auto constrain_chain = [&](const std::vector<int>& verts) {
+        for (size_t i = 0; i + 1 < verts.size(); ++i)
+            if (verts[i] >= 0 && verts[i + 1] >= 0)
+                dt.insert_constraint(verts[i], verts[i + 1]);
+    };
+    {
+        std::vector<int> bottom, top, left, right;
+        for (int i = 0; i < nu; ++i) bottom.push_back(grid_vi[i][j_start]);
+        for (int i = nu - 1; i >= 0; --i) top.push_back(grid_vi[i][j_end - 1]);
+        for (int j = j_start; j < j_end; ++j) left.push_back(grid_vi[0][j]);
+        for (int j = j_end - 1; j >= j_start; --j) right.push_back(grid_vi[nu - 1][j]);
+        constrain_chain(bottom);
+        constrain_chain(top);
+        constrain_chain(left);
+        constrain_chain(right);
     }
 
+    dt.cleanup();
+
+    // Cull triangles outside CDT domain
+    for (auto& tri : dt.triangles) {
+        if (!tri.alive) continue;
+        double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
+        double cv_val = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
+        double eps = 1e-10;
+        if (cu < u_min - eps || cu > u_max + eps || cv_val < cdt_v_lo - eps || cv_val > cdt_v_hi + eps)
+            tri.alive = false;
+    }
+
+    // Refinement — curvature-driven (no edge-length unless user-specified)
     FlatMap64<double> edge_chord_cache;
     edge_chord_cache.reserve(4096);
 
-    double max_edge_sq = max_edge * max_edge;
+    double refine_max_edge, refine_max_edge_sq;
+    if (m_max_edge_length > 0) {
+        refine_max_edge = m_max_edge_length;
+        refine_max_edge_sq = refine_max_edge * refine_max_edge;
+    } else {
+        refine_max_edge = 1e30;
+        refine_max_edge_sq = 1e60;
+    }
     double min_edge_sq = min_edge * min_edge;
     double chord_tol_sq = chord_tol * chord_tol;
     double cos_angle = std::cos(angle_rad);
+
+    // Clamp margins: keep refinement strictly inside boundaries
+    double u_margin = (u_max - u_min) * 1e-4;
+    double v_margin = (cdt_v_hi - cdt_v_lo) * 1e-4;
+    double clamp_u_lo = u_min + u_margin;
+    double clamp_u_hi = u_max - u_margin;
+    double clamp_v_lo = cdt_v_lo + v_margin;
+    double clamp_v_hi = cdt_v_hi - v_margin;
 
     std::priority_queue<TriScore> pq;
 
@@ -640,8 +745,8 @@ Mesh TrimeshDelaunay::mesh() const {
         for (int ti = 0; ti < (int)dt.triangles.size(); ++ti) {
             if (!dt.triangles[ti].alive) continue;
             double s = score_triangle(ti, dt, pos_cache, nrm_cache, edge_chord_cache,
-                                      m_surface, max_edge_sq, chord_tol_sq, cos_angle, min_edge_sq,
-                                      max_edge, chord_tol, angle_rad);
+                                      m_surface, refine_max_edge_sq, chord_tol_sq, cos_angle, min_edge_sq,
+                                      refine_max_edge, chord_tol, angle_rad);
             if (s > 0) pq.push({s, ti});
         }
     }
@@ -649,9 +754,9 @@ Mesh TrimeshDelaunay::mesh() const {
     for (int iter = 0; iter < m_max_iterations && !m_surface.is_planar(); ++iter) {
         int worst = -1;
         while (!pq.empty()) {
-            auto top = pq.top(); pq.pop();
-            if (dt.triangles[top.tri_idx].alive) {
-                worst = top.tri_idx;
+            auto top_item = pq.top(); pq.pop();
+            if (dt.triangles[top_item.tri_idx].alive) {
+                worst = top_item.tri_idx;
                 break;
             }
         }
@@ -666,17 +771,8 @@ Mesh TrimeshDelaunay::mesh() const {
             dt.vertices[wtri.v[2]].x, dt.vertices[wtri.v[2]].y,
             cu, cv_val);
 
-        cu = std::max(u_min, std::min(u_max, cu));
-        cv_val = std::max(v_min, std::min(v_max, cv_val));
-
-        if (trimmed) {
-            if (!point_in_polygon(cu, cv_val, trim_poly)) continue;
-            bool in_hole = false;
-            for (const auto& hp : hole_polys) {
-                if (point_in_polygon(cu, cv_val, hp)) { in_hole = true; break; }
-            }
-            if (in_hole) continue;
-        }
+        cu = std::max(clamp_u_lo, std::min(clamp_u_hi, cu));
+        cv_val = std::max(clamp_v_lo, std::min(clamp_v_hi, cv_val));
 
         int old_count = (int)dt.vertices.size();
         int tri_before = (int)dt.triangles.size();
@@ -691,49 +787,113 @@ Mesh TrimeshDelaunay::mesh() const {
             if (!tri.alive) continue;
             double tc_u = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
             double tc_v = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-            if (trimmed) {
-                if (!point_in_polygon(tc_u, tc_v, trim_poly)) { tri.alive = false; continue; }
-                for (const auto& hp : hole_polys) {
-                    if (point_in_polygon(tc_u, tc_v, hp)) { tri.alive = false; break; }
-                }
-            } else {
-                double eps = 1e-10;
-                if (tc_u < u_min - eps || tc_u > u_max + eps || tc_v < v_min - eps || tc_v > v_max + eps)
-                    tri.alive = false;
-            }
+            double eps = 1e-10;
+            if (tc_u < u_min - eps || tc_u > u_max + eps || tc_v < cdt_v_lo - eps || tc_v > cdt_v_hi + eps)
+                tri.alive = false;
         }
 
         for (int ti = tri_before; ti < (int)dt.triangles.size(); ++ti) {
             if (!dt.triangles[ti].alive) continue;
             double s = score_triangle(ti, dt, pos_cache, nrm_cache, edge_chord_cache,
-                                      m_surface, max_edge_sq, chord_tol_sq, cos_angle, min_edge_sq,
-                                      max_edge, chord_tol, angle_rad);
+                                      m_surface, refine_max_edge_sq, chord_tol_sq, cos_angle, min_edge_sq,
+                                      refine_max_edge, chord_tol, angle_rad);
             if (s > 0) pq.push({s, ti});
         }
     }
 
-    // Build output Mesh
+    // Build output mesh — explicit seam mapping (no 3D-distance merge)
     Mesh result;
-    FlatMap64<size_t> vertex_map;
 
-    auto tris = dt.get_triangles();
-    for (const auto& tri : tris) {
-        for (int k = 0; k < 3; ++k) {
-            int vi = tri[k];
-            if (!vertex_map.find((uint64_t)vi)) {
-                const Pos3& pt = pos_cache[vi];
-                const Pos3& n = nrm_cache[vi];
-                size_t vk = result.add_vertex(Point(pt[0], pt[1], pt[2]));
-                result.vertex[vk].set_normal(n[0], n[1], n[2]);
-                vertex_map[(uint64_t)vi] = vk;
+    // Seam map: right boundary → left boundary for closed surfaces
+    FlatMap64<int> seam_map;
+    if (closed_u) {
+        for (int j = j_start; j < j_end; ++j) {
+            int right_vi = grid_vi[nu - 1][j];
+            int left_vi = grid_vi[0][j];
+            if (right_vi >= 0 && left_vi >= 0 && right_vi != left_vi)
+                seam_map[(uint64_t)right_vi] = left_vi;
+        }
+    }
+    if (closed_v && !sing_south && !sing_north) {
+        for (int i = 0; i < nu; ++i) {
+            int top_vi = grid_vi[i][j_end - 1];
+            int bot_vi = grid_vi[i][j_start];
+            if (top_vi >= 0 && bot_vi >= 0 && top_vi != bot_vi) {
+                // Follow existing chain for canonical target
+                int canonical = bot_vi;
+                int* m;
+                while ((m = seam_map.find((uint64_t)canonical)) != nullptr) canonical = *m;
+                seam_map[(uint64_t)top_vi] = canonical;
             }
         }
-        std::vector<size_t> face_verts = {
-            vertex_map[(uint64_t)tri[0]],
-            vertex_map[(uint64_t)tri[1]],
-            vertex_map[(uint64_t)tri[2]]
-        };
-        result.add_face(face_verts);
+    }
+
+    auto resolve_vi = [&](int vi) -> int {
+        for (int i = 0; i < 4; ++i) {
+            int* m = seam_map.find((uint64_t)vi);
+            if (!m) break;
+            vi = *m;
+        }
+        return vi;
+    };
+
+    FlatMap64<size_t> vertex_map;
+
+    auto get_or_create_vertex = [&](int vi) -> size_t {
+        vi = resolve_vi(vi);
+        size_t* existing = vertex_map.find((uint64_t)vi);
+        if (existing) return *existing;
+
+        const Pos3& pt = pos_cache[vi];
+        const Pos3& n = nrm_cache[vi];
+        size_t vk = result.add_vertex(Point(pt[0], pt[1], pt[2]));
+        result.vertex[vk].set_normal(n[0], n[1], n[2]);
+        vertex_map[(uint64_t)vi] = vk;
+        return vk;
+    };
+
+    // Pole vertices
+    size_t south_pole_vk = 0, north_pole_vk = 0;
+    if (sing_south) {
+        Point p = m_surface.point_at(us[0], vs[0]);
+        Vector n = m_surface.normal_at(us[0], vs[0]);
+        south_pole_vk = result.add_vertex(p);
+        result.vertex[south_pole_vk].set_normal(n[0], n[1], n[2]);
+    }
+    if (sing_north) {
+        Point p = m_surface.point_at(us[0], vs[nv - 1]);
+        Vector n = m_surface.normal_at(us[0], vs[nv - 1]);
+        north_pole_vk = result.add_vertex(p);
+        result.vertex[north_pole_vk].set_normal(n[0], n[1], n[2]);
+    }
+
+    // CDT interior triangles
+    auto tris = dt.get_triangles();
+    for (const auto& tri : tris) {
+        size_t vk0 = get_or_create_vertex(tri[0]);
+        size_t vk1 = get_or_create_vertex(tri[1]);
+        size_t vk2 = get_or_create_vertex(tri[2]);
+        if (vk0 == vk1 || vk1 == vk2 || vk2 == vk0) continue;
+        result.add_face({vk0, vk1, vk2});
+    }
+
+    // Pole fan triangles
+    if (sing_south) {
+        for (int i = 0; i < nu - 1; ++i) {
+            size_t v0 = get_or_create_vertex(grid_vi[i][j_start]);
+            size_t v1 = get_or_create_vertex(grid_vi[i + 1][j_start]);
+            if (v0 != v1)
+                result.add_face({south_pole_vk, v1, v0});
+        }
+    }
+    if (sing_north) {
+        int j_last = j_end - 1;
+        for (int i = 0; i < nu - 1; ++i) {
+            size_t v0 = get_or_create_vertex(grid_vi[i][j_last]);
+            size_t v1 = get_or_create_vertex(grid_vi[i + 1][j_last]);
+            if (v0 != v1)
+                result.add_face({v0, v1, north_pole_vk});
+        }
     }
 
     return result;

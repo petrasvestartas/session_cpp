@@ -131,6 +131,14 @@ std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface
   return tree_node;
 }
 
+std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep) {
+  objects.breps->push_back(brep);
+  lookup[brep->guid] = brep;
+  graph.add_node(brep->guid, "brep_" + brep->name);
+  auto tree_node = std::make_shared<TreeNode>(brep->guid);
+  return tree_node;
+}
+
 void Session::add(std::shared_ptr<TreeNode> node,
                   std::shared_ptr<TreeNode> parent) {
   if (parent == nullptr) {

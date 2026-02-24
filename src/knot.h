@@ -277,6 +277,32 @@ namespace knot {
      */
     std::vector<double> eval_basis(int order, const std::vector<double>& knot, int span, double t);
 
+    /**
+     * @brief Build clamped knot vector for least-squares fitting (Piegl eq 9.68).
+     * @param params Chord-length parameters for data points.
+     * @param num_cvs Desired number of control vertices.
+     * @param degree Curve degree.
+     * @return Clamped knot vector with averaged interior knots.
+     */
+    std::vector<double> build_fitted_knots(const std::vector<double>& params, int num_cvs, int degree);
+
+    std::vector<double> build_fitted_knots_adaptive(const std::vector<double>& params,
+        const double* points, int point_count, int dim, int num_cvs, int degree, double scale = 3.0);
+
+    std::vector<double> build_fitted_knots_periodic_adaptive(const std::vector<double>& params,
+        const double* points, int n, int dim, int num_cvs, int degree, double scale = 3.0);
+
+    /**
+     * @brief Solve banded symmetric positive-definite system via Cholesky.
+     * @param dim Dimension of each variable (e.g. 3 for 3D).
+     * @param n Number of equations.
+     * @param half_bw Half-bandwidth of the matrix.
+     * @param band Compact lower-triangle storage (n*(half_bw+1)), modified in place.
+     * @param rhs Right-hand side (n*dim), replaced by solution in place.
+     * @return True if successful, false if not positive definite.
+     */
+    bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, std::vector<double>& rhs);
+
 } // namespace knot
 
 } // namespace session_cpp

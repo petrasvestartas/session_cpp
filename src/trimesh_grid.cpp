@@ -270,18 +270,24 @@ Mesh TrimeshGrid::mesh() const {
         double px, py, pz;
         m_surface.point_at(us[0], vs[0], px, py, pz);
         south_pole = result.add_vertex(Point(px, py, pz));
+        result.vertex[south_pole].attributes["u"] = us[0];
+        result.vertex[south_pole].attributes["v"] = vs[0];
     }
     if (sing_v1) {
         double px, py, pz;
         m_surface.point_at(us[0], vs[nv - 1], px, py, pz);
         north_pole = result.add_vertex(Point(px, py, pz));
+        result.vertex[north_pole].attributes["u"] = us[0];
+        result.vertex[north_pole].attributes["v"] = vs[nv - 1];
     }
     size_t grid_base = result.vertex.size();
     for (int i = 0; i < nu; ++i)
         for (int j = j_start; j < j_end; ++j) {
             double px, py, pz;
             m_surface.point_at(us[i], vs[j], px, py, pz);
-            result.add_vertex(Point(px, py, pz));
+            size_t vk = result.add_vertex(Point(px, py, pz));
+            result.vertex[vk].attributes["u"] = us[i];
+            result.vertex[vk].attributes["v"] = vs[j];
         }
 
     auto grid_idx = [&](int i, int j) -> size_t {

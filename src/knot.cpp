@@ -586,5 +586,177 @@ std::vector<double> eval_basis(int order, const std::vector<double>& knot, int s
     return basis;
 }
 
+std::vector<double> build_fitted_knots(const std::vector<double>& params, int num_cvs, int degree) {
+    int m = static_cast<int>(params.size());
+    int n_interior = num_cvs - degree - 1;
+    int order = degree + 1;
+    int kc = knot_count(order, num_cvs);
+    std::vector<double> knots(kc);
+
+    for (int i = 0; i < degree; i++) knots[i] = params[0];
+
+    double d = (double)m / (num_cvs - degree);
+    for (int j = 1; j <= n_interior; j++) {
+        int i = (int)(j * d);
+        double alpha = j * d - i;
+        knots[degree - 1 + j] = (1.0 - alpha) * params[i - 1] + alpha * params[i];
+    }
+
+    for (int i = num_cvs - 1; i < kc; i++) knots[i] = params[m - 1];
+
+    return knots;
+}
+
+std::vector<double> build_fitted_knots_adaptive(const std::vector<double>& params,
+    const double* points, int point_count, int dim, int num_cvs, int degree, double scale) {
+    int m = point_count;
+    if (m < 3 || !points)
+        return build_fitted_knots(params, num_cvs, degree);
+
+    std::vector<double> turn(m, 0.0);
+    for (int i = 1; i < m - 1; i++) {
+        double dot = 0, len1sq = 0, len2sq = 0;
+        for (int d = 0; d < dim; d++) {
+            double a = points[i*dim+d] - points[(i-1)*dim+d];
+            double b = points[(i+1)*dim+d] - points[i*dim+d];
+            dot += a * b; len1sq += a * a; len2sq += b * b;
+        }
+        double len1 = std::sqrt(len1sq), len2 = std::sqrt(len2sq);
+        if (len1 > 1e-14 && len2 > 1e-14) {
+            double c = std::max(-1.0, std::min(1.0, dot / (len1 * len2)));
+            turn[i] = std::acos(c);
+        }
+    }
+
+    std::vector<double> cum(m, 0.0);
+    for (int i = 0; i < m - 1; i++) {
+        double chord = params[i+1] - params[i];
+        if (chord < 1e-14) chord = 1e-14;
+        cum[i+1] = cum[i] + chord * (1.0 + scale * (turn[i] + turn[i+1]) * 0.5);
+    }
+    double total = cum[m-1];
+
+    int n_interior = num_cvs - degree - 1;
+    int order = degree + 1;
+    int kc = knot_count(order, num_cvs);
+    std::vector<double> knots(kc);
+    for (int i = 0; i < degree; i++) knots[i] = params[0];
+
+    for (int j = 1; j <= n_interior; j++) {
+        double target = total * j / (n_interior + 1);
+        int lo = 0, hi = m - 2;
+        while (lo < hi) { int mid = (lo + hi) / 2; if (cum[mid+1] < target) lo = mid + 1; else hi = mid; }
+        double frac = (cum[lo+1] > cum[lo]) ? (target - cum[lo]) / (cum[lo+1] - cum[lo]) : 0.0;
+        knots[degree - 1 + j] = params[lo] + frac * (params[lo+1] - params[lo]);
+    }
+
+    for (int i = num_cvs - 1; i < kc; i++) knots[i] = params[m - 1];
+    return knots;
+}
+
+std::vector<double> build_fitted_knots_periodic_adaptive(const std::vector<double>& params,
+    const double* points, int n, int dim, int num_cvs, int degree, double scale) {
+    int cv_count = num_cvs + degree;
+    int order = degree + 1;
+    int kc = cv_count + order - 2;
+    double T = params[n];
+
+    if (n < 3 || !points) {
+        double delta = T / num_cvs;
+        std::vector<double> knots(kc);
+        for (int i = 0; i < kc; i++) knots[i] = (i - degree + 1) * delta;
+        return knots;
+    }
+
+    std::vector<double> turn(n, 0.0);
+    for (int i = 0; i < n; i++) {
+        int prev = (i - 1 + n) % n, next = (i + 1) % n;
+        double dot = 0, len1sq = 0, len2sq = 0;
+        for (int d = 0; d < dim; d++) {
+            double a = points[i*dim+d] - points[prev*dim+d];
+            double b = points[next*dim+d] - points[i*dim+d];
+            dot += a * b; len1sq += a * a; len2sq += b * b;
+        }
+        double len1 = std::sqrt(len1sq), len2 = std::sqrt(len2sq);
+        if (len1 > 1e-14 && len2 > 1e-14) {
+            double c = std::max(-1.0, std::min(1.0, dot / (len1 * len2)));
+            turn[i] = std::acos(c);
+        }
+    }
+
+    std::vector<double> cum(n + 1, 0.0);
+    for (int i = 0; i < n; i++) {
+        double chord = params[i+1] - params[i];
+        if (chord < 1e-14) chord = 1e-14;
+        int next = (i + 1) % n;
+        cum[i+1] = cum[i] + chord * (1.0 + scale * (turn[i] + turn[next]) * 0.5);
+    }
+    double total = cum[n];
+
+    std::vector<double> base(num_cvs);
+    for (int j = 0; j < num_cvs; j++) {
+        double target = total * j / num_cvs;
+        int lo = 0, hi = n - 1;
+        while (lo < hi) { int mid = (lo + hi) / 2; if (cum[mid+1] < target) lo = mid + 1; else hi = mid; }
+        double frac = (cum[lo+1] > cum[lo]) ? (target - cum[lo]) / (cum[lo+1] - cum[lo]) : 0.0;
+        base[j] = params[lo] + frac * (params[lo+1] - params[lo]);
+    }
+
+    std::vector<double> intervals(num_cvs);
+    for (int j = 0; j < num_cvs - 1; j++) intervals[j] = base[j+1] - base[j];
+    intervals[num_cvs - 1] = T - base[num_cvs - 1];
+
+    std::vector<double> knots(kc);
+    knots[degree - 1] = 0.0;
+    for (int i = 1; i < degree; i++)
+        knots[degree - 1 - i] = knots[degree - i] - intervals[num_cvs - i];
+    for (int i = 0; i < kc - degree; i++)
+        knots[degree + i] = knots[degree - 1 + i] + intervals[i % num_cvs];
+
+    return knots;
+}
+
+bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, std::vector<double>& rhs) {
+    int bw1 = half_bw + 1;
+
+    // Cholesky factorization: A = L * L^T
+    for (int i = 0; i < n; i++) {
+        for (int j = std::max(0, i - half_bw); j <= i; j++) {
+            double sum = 0.0;
+            for (int k = std::max(0, i - half_bw); k < j; k++)
+                sum += band[i * bw1 + (i - k)] * band[j * bw1 + (j - k)];
+            if (i == j) {
+                double val = band[i * bw1] - sum;
+                if (val <= 1e-30) return false;
+                band[i * bw1] = std::sqrt(val);
+            } else {
+                band[i * bw1 + (i - j)] = (band[i * bw1 + (i - j)] - sum) / band[j * bw1];
+            }
+        }
+    }
+
+    // Forward substitution: L * y = rhs
+    for (int i = 0; i < n; i++) {
+        for (int d = 0; d < dim; d++) {
+            double sum = 0.0;
+            for (int k = std::max(0, i - half_bw); k < i; k++)
+                sum += band[i * bw1 + (i - k)] * rhs[k * dim + d];
+            rhs[i * dim + d] = (rhs[i * dim + d] - sum) / band[i * bw1];
+        }
+    }
+
+    // Back substitution: L^T * x = y
+    for (int i = n - 1; i >= 0; i--) {
+        for (int d = 0; d < dim; d++) {
+            double sum = 0.0;
+            for (int k = i + 1; k < std::min(n, i + half_bw + 1); k++)
+                sum += band[k * bw1 + (k - i)] * rhs[k * dim + d];
+            rhs[i * dim + d] = (rhs[i * dim + d] - sum) / band[i * bw1];
+        }
+    }
+
+    return true;
+}
+
 } // namespace knot
 } // namespace session_cpp

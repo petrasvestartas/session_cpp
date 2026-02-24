@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "intersection.h"
+#include "nurbssurface.h"
 #include "tolerance.h"
 #include <cmath>
 
@@ -331,7 +332,7 @@ MINI_TEST("Intersection", "Ray_mesh") {
         {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
     };
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -350,7 +351,7 @@ MINI_TEST("Intersection", "Ray_mesh_first") {
         {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
     };
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -367,7 +368,7 @@ MINI_TEST("Intersection", "Ray_mesh_miss") {
         {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)}
     };
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(5.0, 5.0, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -385,7 +386,7 @@ MINI_TEST("Intersection", "Ray_mesh_bvh") {
         {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
     };
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -404,7 +405,7 @@ MINI_TEST("Intersection", "Ray_mesh_bvh_first") {
         {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
     };
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -421,7 +422,7 @@ MINI_TEST("Intersection", "Ray_mesh_bvh_miss") {
         {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)}
     };
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(5.0, 5.0, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -448,7 +449,7 @@ MINI_TEST("Intersection", "Ray_mesh_bvh_vs_naive") {
         }
     }
 
-    Mesh mesh = Mesh::from_polygons(polygons);
+    Mesh mesh = Mesh::from_polylines(polygons);
 
     Point origin(5.5, 5.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -523,6 +524,79 @@ MINI_TEST("Intersection", "Ray_triangle_real_world") {
     MINI_CHECK(std::fabs(triangle_hit[0] - 500.0) < 0.1);
     MINI_CHECK(std::fabs(triangle_hit[1] - 340.616) < 0.01);
     MINI_CHECK(std::fabs(triangle_hit[2] - 486.451) < 0.01);
+}
+
+MINI_TEST("Intersection", "Surface_plane") {
+    // Bilinear surface: z = x (0 to 10), cut at z=5
+    std::vector<Point> pts = {
+        Point(0, 0, 0), Point(0, 10, 0),
+        Point(10, 0, 10), Point(10, 10, 10)
+    };
+    auto srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
+
+    Point pp(0, 0, 5);
+    Vector pn(0, 0, 1);
+    Plane plane = Plane::from_point_normal(pp, pn);
+    auto curves = Intersection::surface_plane(srf, plane);
+
+    MINI_CHECK(curves.size() == 1);
+    MINI_CHECK(curves[0].is_valid());
+
+    // Evaluate curve — all points should lie on x≈5, z≈5
+    auto [t0, t1] = curves[0].domain();
+    for (int i = 0; i <= 10; i++) {
+        double t = t0 + (t1 - t0) * i / 10.0;
+        Point p = curves[0].point_at(t);
+        MINI_CHECK(std::fabs(p[0] - 5.0) < 0.5);
+        MINI_CHECK(std::fabs(p[2] - 5.0) < 0.5);
+    }
+}
+
+MINI_TEST("Intersection", "Surface_plane_curved") {
+    // Degree 3 surface with bump, cut at z=3
+    std::vector<Point> pts;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            double x = i * 10.0;
+            double y = j * 10.0;
+            double z = ((i == 1 || i == 2) && (j == 1 || j == 2)) ? 10.0 : 0.0;
+            pts.push_back(Point(x, y, z));
+        }
+    }
+    auto srf = NurbsSurface::create(false, false, 3, 3, 4, 4, pts);
+
+    Point pp(0, 0, 3);
+    Vector pn(0, 0, 1);
+    Plane plane = Plane::from_point_normal(pp, pn);
+    auto curves = Intersection::surface_plane(srf, plane);
+
+    MINI_CHECK(curves.size() >= 1);
+    MINI_CHECK(curves[0].is_valid());
+    MINI_CHECK(curves[0].degree() == 3);
+
+    // Evaluate — points should be near z=3
+    auto [t0, t1] = curves[0].domain();
+    for (int i = 0; i <= 10; i++) {
+        double t = t0 + (t1 - t0) * i / 10.0;
+        Point p = curves[0].point_at(t);
+        MINI_CHECK(std::fabs(p[2] - 3.0) < 1.0);
+    }
+}
+
+MINI_TEST("Intersection", "Surface_plane_miss") {
+    // Flat surface at z=0, plane at z=5 -> no intersection
+    std::vector<Point> pts = {
+        Point(0, 0, 0), Point(0, 10, 0),
+        Point(10, 0, 0), Point(10, 10, 0)
+    };
+    auto srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
+
+    Point pp(0, 0, 5);
+    Vector pn(0, 0, 1);
+    Plane plane = Plane::from_point_normal(pp, pn);
+    auto curves = Intersection::surface_plane(srf, plane);
+
+    MINI_CHECK(curves.size() == 0);
 }
 
 } // namespace session_cpp

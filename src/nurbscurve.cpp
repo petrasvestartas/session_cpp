@@ -250,6 +250,157 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
     return curve;
 }
 
+NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
+                                     int num_cvs, int degree,
+                                     bool is_periodic) {
+    int m = static_cast<int>(points.size());
+    int dim = 3;
+    int order = degree + 1;
+
+    auto pdist = [](const Point& a, const Point& b) {
+        double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
+        return std::sqrt(dx*dx + dy*dy + dz*dz);
+    };
+
+    if (is_periodic) {
+        int n = m;
+        if (n >= 2 && pdist(points[0], points[n-1]) < 1e-10) n--;
+        if (n <= num_cvs || num_cvs < order)
+            return n < 3 ? NurbsCurve() :
+                create_interpolated(std::vector<Point>(points.begin(), points.begin() + n),
+                                    CurveKnotStyle::ChordPeriodic);
+
+        int cv_count = num_cvs + degree;
+        int kc = cv_count + order - 2;
+
+        std::vector<double> params(n + 1, 0.0);
+        for (int i = 1; i < n; i++)
+            params[i] = params[i-1] + pdist(points[i-1], points[i]);
+        params[n] = params[n-1] + pdist(points[n-1], points[0]);
+        double T = params[n];
+        if (T < 1e-14) return NurbsCurve();
+
+        std::vector<double> ppts(n * dim);
+        for (int i = 0; i < n; i++) {
+            ppts[i*3] = points[i][0]; ppts[i*3+1] = points[i][1]; ppts[i*3+2] = points[i][2];
+        }
+        auto knots = knot::build_fitted_knots_periodic_adaptive(params, ppts.data(), n, dim, num_cvs, degree);
+
+        std::vector<std::vector<double>> NtN(num_cvs, std::vector<double>(num_cvs, 0.0));
+        std::vector<double> NtQ(num_cvs * dim, 0.0);
+
+        for (int k = 0; k < n; k++) {
+            int span = knot::find_span(order, cv_count, knots, params[k]);
+            auto basis = knot::eval_basis(order, knots, span, params[k]);
+            for (int a = 0; a < order; a++) {
+                int ci = (span + a) % num_cvs;
+                for (int d = 0; d < dim; d++)
+                    NtQ[ci * dim + d] += basis[a] * points[k][d];
+                for (int b = 0; b < order; b++) {
+                    int cj = (span + b) % num_cvs;
+                    NtN[ci][cj] += basis[a] * basis[b];
+                }
+            }
+        }
+
+        std::vector<double> cv(num_cvs * dim);
+        for (int i = 0; i < num_cvs * dim; i++) cv[i] = NtQ[i];
+
+        for (int col = 0; col < num_cvs; col++) {
+            int pivot = col;
+            for (int row = col + 1; row < num_cvs; row++)
+                if (std::fabs(NtN[row][col]) > std::fabs(NtN[pivot][col])) pivot = row;
+            if (pivot != col) {
+                std::swap(NtN[col], NtN[pivot]);
+                for (int d = 0; d < dim; d++)
+                    std::swap(cv[col*dim+d], cv[pivot*dim+d]);
+            }
+            if (std::fabs(NtN[col][col]) < 1e-300) return NurbsCurve();
+            for (int row = col + 1; row < num_cvs; row++) {
+                double factor = NtN[row][col] / NtN[col][col];
+                for (int j = col; j < num_cvs; j++) NtN[row][j] -= factor * NtN[col][j];
+                for (int d = 0; d < dim; d++)
+                    cv[row*dim+d] -= factor * cv[col*dim+d];
+            }
+        }
+        for (int i = num_cvs - 1; i >= 0; i--) {
+            for (int d = 0; d < dim; d++) {
+                double sum = cv[i*dim+d];
+                for (int j = i + 1; j < num_cvs; j++) sum -= NtN[i][j] * cv[j*dim+d];
+                cv[i*dim+d] = sum / NtN[i][i];
+            }
+        }
+
+        NurbsCurve curve(dim, false, order, cv_count);
+        for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+        for (int i = 0; i < num_cvs; i++)
+            curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
+        for (int i = 0; i < degree; i++)
+            curve.set_cv(num_cvs + i, curve.get_cv(i));
+        return curve;
+    }
+
+    // Open fitting
+    if (m <= num_cvs || num_cvs < order)
+        return create_interpolated(points);
+
+    std::vector<double> pts(m * dim);
+    for (int i = 0; i < m; i++) {
+        pts[i*3] = points[i][0]; pts[i*3+1] = points[i][1]; pts[i*3+2] = points[i][2];
+    }
+
+    auto params = knot::compute_parameters(pts.data(), m, dim, CurveKnotStyle::Chord);
+    auto knots = knot::build_fitted_knots_adaptive(params, pts.data(), m, dim, num_cvs, degree);
+    int n = num_cvs - 1;
+    int sys_n = num_cvs - 2;
+    int bw = degree;
+    int bw1 = bw + 1;
+
+    std::vector<double> band(sys_n * bw1, 0.0);
+    std::vector<double> rhs(sys_n * dim, 0.0);
+
+    for (int k = 1; k < m - 1; k++) {
+        int span = knot::find_span(order, num_cvs, knots, params[k]);
+        auto basis = knot::eval_basis(order, knots, span, params[k]);
+
+        double rk[3];
+        for (int d = 0; d < dim; d++) rk[d] = points[k][d];
+        for (int a = 0; a < order; a++) {
+            int ci = span + a;
+            if (ci == 0)
+                for (int d = 0; d < dim; d++) rk[d] -= basis[a] * points[0][d];
+            if (ci == n)
+                for (int d = 0; d < dim; d++) rk[d] -= basis[a] * points[m-1][d];
+        }
+
+        for (int a = 0; a < order; a++) {
+            int ci = span + a;
+            if (ci < 1 || ci > n - 1) continue;
+            int ri = ci - 1;
+            for (int d = 0; d < dim; d++)
+                rhs[ri * dim + d] += basis[a] * rk[d];
+            for (int b = a; b < order; b++) {
+                int cj = span + b;
+                if (cj < 1 || cj > n - 1) continue;
+                int rj = cj - 1;
+                band[rj * bw1 + (rj - ri)] += basis[a] * basis[b];
+            }
+        }
+    }
+
+    if (!knot::solve_banded_spd(dim, sys_n, bw, band, rhs))
+        return create_interpolated(points);
+
+    int kc = static_cast<int>(knots.size());
+    NurbsCurve curve(dim, false, order, num_cvs);
+    for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+    curve.set_cv(0, points[0]);
+    for (int i = 0; i < sys_n; i++)
+        curve.set_cv(i + 1, Point(rhs[i*3], rhs[i*3+1], rhs[i*3+2]));
+    curve.set_cv(n, points[m-1]);
+    return curve;
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Constructors & Destructor
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -2762,11 +2913,17 @@ NurbsCurve NurbsCurve::transformed(const Xform& xf) const {
 nlohmann::ordered_json NurbsCurve::jsondump() const {
     nlohmann::ordered_json j;
 
-    // Build control_points array
+    // Build control_points array (4D for rational to preserve weights)
     nlohmann::json cps = nlohmann::json::array();
     for (int i = 0; i < m_cv_count; i++) {
-        Point p = get_cv(i);
-        cps.push_back({p[0], p[1], p[2]});
+        if (m_is_rat) {
+            double x, y, z, w;
+            get_cv_4d(i, x, y, z, w);
+            cps.push_back({x, y, z, w});
+        } else {
+            Point p = get_cv(i);
+            cps.push_back({p[0], p[1], p[2]});
+        }
     }
 
     // Fields in alphabetical order (per CLAUDE.md)
@@ -2823,8 +2980,13 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
                 double x = cps[i][0];
                 double y = cps[i][1];
                 double z = (cps[i].size() > 2) ? cps[i][2].get<double>() : 0.0;
-                Point p(x, y, z);
-                curve.set_cv(i, p);
+                if (is_rat && cps[i].size() > 3) {
+                    double w = cps[i][3].get<double>();
+                    curve.set_cv_4d(i, x, y, z, w);
+                } else {
+                    Point p(x, y, z);
+                    curve.set_cv(i, p);
+                }
             }
         }
 
@@ -3177,26 +3339,6 @@ bool NurbsCurve::get_parameter_tolerance(double t, double* tminus, double* tplus
     // Clamp to domain
     if (*tminus < t0) *tminus = t0;
     if (*tplus > t1) *tplus = t1;
-    
-    return true;
-}
-// Zero all control vertices
-bool NurbsCurve::zero_cvs() {
-    if (!is_valid()) return false;
-    
-    for (auto& val : m_cv) {
-        val = 0.0;
-    }
-    
-    // Set weights to 1.0 if rational
-    if (m_is_rat) {
-        for (int i = 0; i < m_cv_count; i++) {
-            double* cv_ptr = cv(i);
-            if (cv_ptr) {
-                cv_ptr[m_dim] = 1.0;
-            }
-        }
-    }
     
     return true;
 }

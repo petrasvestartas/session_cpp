@@ -525,7 +525,7 @@ Mesh Primitives::tetrahedron(double edge) {
         {Point(0, 0, z1), Point(0, r, z0), Point(-a, -r/2.0, z0)},
         {Point(0, 0, z1), Point(a, -r/2.0, z0), Point(0, r, z0)},
     };
-    return Mesh::from_polygons(faces, 1e-10);
+    return Mesh::from_polylines(faces, 1e-10);
 }
 
 Mesh Primitives::cube(double edge) {
@@ -540,7 +540,7 @@ Mesh Primitives::cube(double edge) {
         {v0, v4, v7, v3},
         {v1, v2, v6, v5},
     };
-    return Mesh::from_polygons(faces, 1e-10);
+    return Mesh::from_polylines(faces, 1e-10);
 }
 
 Mesh Primitives::octahedron(double edge) {
@@ -552,7 +552,7 @@ Mesh Primitives::octahedron(double edge) {
         {pz, px, py}, {pz, py, nx}, {pz, nx, ny}, {pz, ny, px},
         {nz, py, px}, {nz, nx, py}, {nz, ny, nx}, {nz, px, ny},
     };
-    return Mesh::from_polygons(faces, 1e-10);
+    return Mesh::from_polylines(faces, 1e-10);
 }
 
 Mesh Primitives::icosahedron(double edge) {
@@ -573,7 +573,7 @@ Mesh Primitives::icosahedron(double edge) {
     std::vector<std::vector<Point>> faces;
     for (auto& f : idx)
         faces.push_back({verts[f[0]], verts[f[1]], verts[f[2]]});
-    return Mesh::from_polygons(faces, 1e-10);
+    return Mesh::from_polylines(faces, 1e-10);
 }
 
 Mesh Primitives::dodecahedron(double edge) {
@@ -599,7 +599,7 @@ Mesh Primitives::dodecahedron(double edge) {
     std::vector<std::vector<Point>> faces;
     for (auto& f : idx)
         faces.push_back({verts[f[0]], verts[f[1]], verts[f[2]], verts[f[3]], verts[f[4]]});
-    return Mesh::from_polygons(faces, 1e-10);
+    return Mesh::from_polylines(faces, 1e-10);
 }
 
 Mesh Primitives::arrow_mesh(const Line& line, double radius) {
@@ -1930,7 +1930,7 @@ Mesh Primitives::chevron_mesh(const NurbsSurface& surface,
         ctU += StepU;
     }
 
-    return Mesh::from_polygons(polygons, 0.01);
+    return Mesh::from_polylines(polygons, 0.01);
 }
 
 std::vector<NurbsSurface> Primitives::annen_surfaces() {
@@ -2097,7 +2097,7 @@ void FoldedPlates::diamond_subdivision() {
         uu += su;
     }
 
-    mesh = Mesh::from_polygons(tris, 1e-6);
+    mesh = Mesh::from_polylines(tris, 1e-6);
 }
 
 void FoldedPlates::build_topology() {

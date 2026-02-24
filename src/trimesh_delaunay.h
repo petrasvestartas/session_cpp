@@ -178,7 +178,7 @@ private:
     std::vector<int> visit_stamp_;
 
     mutable std::vector<int> bad_;
-    struct BEdge { int e0, e1; };
+    struct BEdge { int e0, e1; bool constrained = false; };
     mutable std::vector<BEdge> polygon_;
 
     void register_triangle_edges(int ti);

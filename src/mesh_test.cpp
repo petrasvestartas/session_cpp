@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "mesh.h"
 #include "point.h"
+#include "line.h"
 #include "polyline.h"
 #include "xform.h"
 #include "tolerance.h"
@@ -16,7 +17,29 @@ namespace session_cpp {
     MINI_TEST("Mesh", "Constructor") {
         // uncomment #include "mesh.h"
 
-        Mesh mesh;
+        const int sides = 6;
+
+        // Create hexagon vertices in XY plane
+        std::vector<Point> vertices;
+        for (int i = 0; i < sides; ++i) {
+            double angle = 2.0 * TOLERANCE.PI * i / sides;
+            double x = 1.0 * std::cos(angle);
+            double y = 1.0 * std::sin(angle);
+            vertices.push_back({x, y, 0.0});
+        }
+
+        // Add center point as last vertex
+        vertices.push_back({0.0, 0.0, 0.0});
+        std::vector<std::vector<size_t>> faces = {
+            {0, 1, 6},
+            {1, 2, 6},
+            {2, 3, 6},
+            {3, 4, 6},
+            {4, 5, 6},
+            {5, 0, 6}
+        };
+
+        Mesh mesh = Mesh::from_vertices_and_faces(vertices, faces);
 
         size_t num_vertices = mesh.number_of_vertices();
         size_t num_faces = mesh.number_of_faces();
@@ -24,13 +47,25 @@ namespace session_cpp {
         bool is_empty = mesh.is_empty();
         int euler = mesh.euler();
 
-        MINI_CHECK(num_vertices == 0);
-        MINI_CHECK(num_faces == 0);
-        MINI_CHECK(num_edges == 0);
-        MINI_CHECK(is_empty);
-        MINI_CHECK(euler == 0);
+        // String representations
+        std::string sstr = mesh.str();
+        std::string srepr = mesh.repr();
+
+        // Copy (new guid)
+        Mesh mcopy = mesh;
+
+        MINI_CHECK(num_vertices == 7);
+        MINI_CHECK(num_faces == 6);
+        MINI_CHECK(num_edges == 12);
+        MINI_CHECK(!is_empty);
+        MINI_CHECK(euler == 1);
         MINI_CHECK(mesh.name == "my_mesh");
         MINI_CHECK(!mesh.guid.empty());
+        MINI_CHECK(sstr.find("Mesh") != std::string::npos);
+        MINI_CHECK(srepr.find("name=my_mesh") != std::string::npos);
+        MINI_CHECK(mcopy.guid != mesh.guid);
+        MINI_CHECK(mcopy == mesh);
+        MINI_CHECK(!(mcopy != mesh));
     }
 
     MINI_TEST("Mesh", "Add_vertex") {
@@ -184,7 +219,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(*area, 0.5));
     }
 
-    MINI_TEST("Mesh", "From_polygons") {
+    MINI_TEST("Mesh", "From_polylines") {
         // uncomment #include "mesh.h"
         // uncomment #include "point.h"
 
@@ -194,7 +229,7 @@ namespace session_cpp {
             Point(0.0, 1.0, 0.0),
         };
 
-        Mesh mesh = Mesh::from_polygons({triangle}, std::nullopt);
+        Mesh mesh = Mesh::from_polylines({triangle}, std::nullopt);
         MINI_CHECK(mesh.number_of_vertices() == 3);
         MINI_CHECK(mesh.number_of_faces() == 1);
         MINI_CHECK(mesh.number_of_edges() == 3);
@@ -210,7 +245,7 @@ namespace session_cpp {
             Point(1.0, 1.0, 0.0),
         };
 
-        Mesh mesh2 = Mesh::from_polygons({tri1, tri2}, std::nullopt);
+        Mesh mesh2 = Mesh::from_polylines({tri1, tri2}, std::nullopt);
         MINI_CHECK(mesh2.number_of_vertices() == 4);
         MINI_CHECK(mesh2.number_of_faces() == 2);
     }
@@ -399,6 +434,23 @@ namespace session_cpp {
         MINI_CHECK(mesh.number_of_vertices() == 16);
         MINI_CHECK(mesh.number_of_faces() == 24);
         MINI_CHECK(mesh.is_valid());
+    }
+
+    MINI_TEST("Mesh", "From_lines") {
+        // uncomment #include "mesh.h"
+        // uncomment #include "line.h"
+
+        // Grid of unit segments forming 4 quads (3x3 grid)
+        std::vector<Line> lines;
+        for (int i = 0; i <= 2; ++i) {
+            for (int j = 0; j < 2; ++j) {
+                lines.push_back(Line::from_points(Point(i,j,0), Point(i,j+1,0)));
+                lines.push_back(Line::from_points(Point(j,i,0), Point(j+1,i,0)));
+            }
+        }
+        Mesh mesh = Mesh::from_lines(lines, true);
+        MINI_CHECK(mesh.number_of_vertices() == 9);
+        MINI_CHECK(mesh.number_of_faces() == 4);
     }
 
 } // namespace session_cpp

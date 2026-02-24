@@ -1121,12 +1121,12 @@ MINI_TEST("Primitives", "CrossConnectors") {
         {Point(501.442,452.489,-89.128), Point(424.440,599.521,-156.732), Point(545.761,545.585,-211.069), Point(589.029,456.419,-167.156), Point(501.442,452.489,-89.128)}
     };
 
-    // Strip closing vertex (first==last) before from_polygons
+    // Strip closing vertex (first==last) before from_polylines
     for (auto& poly : polys)
         if (poly.size() > 3 && poly.front().distance(poly.back()) < 1e-6)
             poly.pop_back();
 
-    Mesh m = Mesh::from_polygons(polys, 1.0);
+    Mesh m = Mesh::from_polylines(polys, 1.0);
 
     CrossConnectors cc(m, 2.0, {0.0}, 2, 10.0, 10.0, 2.0, 0.0);
 

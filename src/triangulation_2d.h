@@ -15,6 +15,9 @@ public:
         const std::vector<Polyline>& holes = {}
     );
 
+    static bool point_in_polygon_2d(double px, double py,
+        const std::vector<double>& coords);
+
 private:
     static double cross_2d(double ax, double ay, double bx, double by, double cx, double cy);
     static double signed_area_2d(const std::vector<double>& coords);

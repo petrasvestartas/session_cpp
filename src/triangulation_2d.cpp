@@ -289,6 +289,28 @@ std::vector<int> Triangulation2D::merge_holes(std::vector<double>& coords, std::
     return merged;
 }
 
+bool Triangulation2D::point_in_polygon_2d(double px, double py,
+                                          const std::vector<double>& coords) {
+    int winding = 0;
+    size_t n = coords.size() / 2;
+    for (size_t i = 0; i < n; ++i) {
+        size_t j = (i + 1) % n;
+        double y0 = coords[i * 2 + 1], y1 = coords[j * 2 + 1];
+        if (y0 <= py) {
+            if (y1 > py) {
+                double x0 = coords[i * 2], x1 = coords[j * 2];
+                if (cross_2d(x0, y0, x1, y1, px, py) > 0.0) ++winding;
+            }
+        } else {
+            if (y1 <= py) {
+                double x0 = coords[i * 2], x1 = coords[j * 2];
+                if (cross_2d(x0, y0, x1, y1, px, py) < 0.0) --winding;
+            }
+        }
+    }
+    return winding != 0;
+}
+
 std::vector<Triangle2D> Triangulation2D::triangulate(const Polyline& boundary,
                                                      const std::vector<Polyline>& holes) {
     if (boundary.point_count() < 3) return {};

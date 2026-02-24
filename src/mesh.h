@@ -6,8 +6,10 @@
 #include "xform.h"
 #include "boundingbox.h"
 #include "bvh.h"
+#include "aabb.h"
 #include "tolerance.h"
 #include "json.h"
+#include "line.h"
 #include "polyline.h"
 #include <map>
 #include <set>
@@ -36,6 +38,10 @@ struct VertexData {
 
     VertexData() = default;
     VertexData(const Point& p) : x(p[0]), y(p[1]), z(p[2]) {}
+    bool operator==(const VertexData& other) const {
+        return x == other.x && y == other.y && z == other.z && attributes == other.attributes;
+    }
+    bool operator!=(const VertexData& other) const { return !(*this == other); }
 
     /// Get vertex position as Point
     Point position() const { return Point(x, y, z); }
@@ -119,11 +125,17 @@ private:
     mutable std::vector<TriangleIndex> triangle_indices_cache; ///< Triangle vertex indices
     mutable std::vector<std::pair<size_t, size_t>> triangle_face_subidx_cache; ///< (face_idx, sub_idx)
     mutable std::vector<Point> vertices_cache; ///< Cached vertices for fast lookup
+    mutable std::shared_ptr<AABBTree> triangle_aabb_tree;
 
 public:
 
-    /// Constructor
+    /// Constructors
     Mesh();
+    Mesh(const Mesh& other);
+    Mesh& operator=(const Mesh& other);
+    bool operator==(const Mesh& other) const;
+    bool operator!=(const Mesh& other) const;
+    ~Mesh();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Basic Queries
@@ -243,7 +255,9 @@ public:
      * @param precision Optional precision for vertex merging.
      * @return The constructed mesh.
      */
-    static Mesh from_polygons(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
+    static Mesh from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
+    static Mesh from_vertices_and_faces(const std::vector<Point>& vertices, const std::vector<std::vector<size_t>>& faces);
+    static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);
 
     /**
      * @brief Loft between two sets of polylines to create a closed mesh volume.
@@ -293,6 +307,14 @@ public:
     static Mesh pb_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // String Representation
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    std::string str() const;
+    std::string repr() const;
+    friend std::ostream& operator<<(std::ostream& os, const Mesh& mesh);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Triangle BVH Cache
     ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -307,6 +329,15 @@ public:
 
     /// Clear triangle BVH caches manually
     void clear_triangle_bvh() const;
+
+    /// Get cached BVH pointer (returns nullptr if not built)
+    const BVH* get_cached_bvh() const { return triangle_bvh.get(); }
+
+    /// Build or rebuild cached AABBTree from triangle AABBs (idempotent unless force=true)
+    void build_triangle_aabb_tree(bool force = false) const;
+
+    /// Get cached AABBTree pointer (returns nullptr if not built)
+    const AABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
 };
 
 } // namespace session_cpp

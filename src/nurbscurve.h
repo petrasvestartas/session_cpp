@@ -65,6 +65,11 @@ public:
     static NurbsCurve create_interpolated(const std::vector<Point>& points,
                                           CurveKnotStyle parameterization = CurveKnotStyle::Chord);
 
+    /// Create a least-squares fitted NURBS curve (Piegl & Tiller §9.4).
+    static NurbsCurve create_fitted(const std::vector<Point>& points,
+                                    int num_cvs, int degree = 3,
+                                    bool is_periodic = false);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -468,6 +473,9 @@ public:
     /// Detailed representation (like Python repr)
     std::string repr() const;
 
+    /// Stream output operator (calls str())
+    friend std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve);
+
 private:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Internal Helpers
@@ -497,9 +505,6 @@ private:
 
     /// Get parameter tolerance at point
     bool get_parameter_tolerance(double t, double* tminus, double* tplus) const;
-
-    /// Zero all control vertices (and set weights to 1 if rational)
-    bool zero_cvs();
 
     /// Find knot span index for parameter t (binary search)
     int find_span(double t) const;
@@ -538,11 +543,6 @@ private:
     static std::array<double, 4> slerp(const std::array<double, 4>& q0, const std::array<double, 4>& q1, double u);
 };
 
-///////////////////////////////////////////////////////////////////////////////////////////
-// Stream operator
-///////////////////////////////////////////////////////////////////////////////////////////
-
-std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve);
 
 } // namespace session_cpp
 

@@ -258,17 +258,31 @@ namespace session_cpp {
         srf.set_cv(0, 1, Point(0, 6, 0));
         srf.set_cv(1, 1, Point(6, 6, 0));
 
-        NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.05, 0.05, 0), Point(0.95, 0.05, 0),
-            Point(0.95, 0.95, 0), Point(0.05, 0.95, 0)
-        });
+        // Untrimmed mesh
+        Mesh m_full = srf.mesh();
 
+        // Trimmed mesh (smaller outer boundary)
+        NurbsCurve outer = NurbsCurve::create(true, 1, {
+            Point(0.1, 0.1, 0), Point(0.9, 0.1, 0),
+            Point(0.9, 0.9, 0), Point(0.1, 0.9, 0)
+        });
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
         Mesh m = ts.mesh();
+
+        // Trimmed with hole
+        NurbsCurve hole = NurbsCurve::create(true, 1, {
+            Point(0.3, 0.3, 0), Point(0.7, 0.3, 0),
+            Point(0.7, 0.7, 0), Point(0.3, 0.7, 0)
+        });
+        TrimmedSurface ts_hole = TrimmedSurface::create(srf, outer);
+        ts_hole.add_inner_loop(hole);
+        Mesh m_hole = ts_hole.mesh();
 
         MINI_CHECK(!m.is_empty());
         MINI_CHECK(m.number_of_vertices() > 0);
         MINI_CHECK(m.number_of_faces() > 0);
+        MINI_CHECK(m.number_of_faces() > 0);
+        MINI_CHECK(m_hole.number_of_faces() > 0);
     }
 
     MINI_TEST("TrimmedSurface", "Transformation") {

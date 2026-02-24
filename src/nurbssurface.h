@@ -38,8 +38,6 @@ public:
 
     std::vector<double> m_knot[2];
     std::vector<double> m_cv;
-    NurbsCurve m_outer_loop;
-    std::vector<NurbsCurve> m_inner_loops;
     mutable Mesh m_mesh;
 
 public:
@@ -72,7 +70,7 @@ public:
                 int order0, int order1,
                 int cv_count0, int cv_count1);
 
-    /// Deep copy. Copies all CV data, knots, trim loops, metadata (guid, name,
+    /// Deep copy. Copies all CV data, knots, metadata (guid, name,
     /// color, xform). The copy gets a new guid.
     NurbsSurface(const NurbsSurface& other);
 
@@ -161,6 +159,13 @@ public:
     /// end: 0=start only, 1=end only, 2=both ends.
     /// Clamped knots force the surface to interpolate the boundary CVs.
     bool is_clamped(int dir, int end = 2) const;
+
+    /// True if surfaces have identical structure (dim, order, cv_count, CVs,
+    /// weights). When ignore_parameterization is false, knot vectors must also
+    /// match within tolerance.
+    bool is_duplicate(const NurbsSurface& other,
+                      bool ignore_parameterization,
+                      double tolerance = Tolerance::ZERO_TOLERANCE) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Attributes
@@ -333,6 +338,11 @@ public:
     /// Equivalent to point_at(domain(0).first/second, domain(1).first/second).
     Point point_at_corner(int u_end, int v_end) const;
 
+    /// Extract an isoparametric curve at parameter c.
+    /// dir=0: fix u=c, return curve in v (column of surface).
+    /// dir=1: fix v=c, return curve in u (row of surface).
+    NurbsCurve iso_curve(int dir, double c) const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Modification
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -358,12 +368,8 @@ public:
     bool trim(int dir, const std::pair<double, double>& domain);
 
     /// Split the surface at parameter c in dir into two separate surfaces.
-    /// Allocates new NurbsSurface objects via new — caller must delete.
-    /// Returns false if c is outside the domain.
-    bool split(int dir, double c, NurbsSurface*& west_or_south_side, NurbsSurface*& east_or_north_side) const;
-
-    /// Stub — not yet implemented. Always returns false.
-    bool extend(int dir, const std::pair<double, double>& domain);
+    /// Returns {west/south, east/north}. Both are invalid if c is outside domain.
+    std::pair<NurbsSurface, NurbsSurface> split(int dir, double c) const;
 
     /// Convert polynomial B-spline to rational form by adding weights=1.0
     /// to every CV. Surface shape is unchanged. No-op if already rational.
@@ -373,11 +379,6 @@ public:
     /// if all weights are equal (within tolerance). Divides each CV by its
     /// weight and strips the w component.
     bool make_non_rational();
-
-    /// Ensure end knots in dir have full multiplicity (equal to order).
-    /// Inserts knots at domain boundaries as needed. end: 0=start, 1=end.
-    /// Clamping forces the surface to interpolate boundary CVs exactly.
-    bool clamp_end(int dir, int end);
 
     /// Elevate polynomial degree in dir to desired_degree by inserting new
     /// knots and recomputing CVs. Surface shape is preserved exactly.
@@ -407,85 +408,16 @@ public:
     NurbsSurface transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Geometric Operations
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /// Approximate surface area. Currently a stub returning 0.0.
-    /// Future: sum triangle areas from a fine mesh approximation.
-    double area(double tolerance = 1e-6) const;
-
-    /// Extract an isoparametric curve at parameter c.
-    /// dir=0: fix u=c, return curve in v (column of surface).
-    /// dir=1: fix v=c, return curve in u (row of surface).
-    /// Caller owns the returned pointer and must delete it.
-    NurbsCurve* iso_curve(int dir, double c) const;
-
-    /// Find closest point on the surface to the given 3D test point.
-    /// Uses Newton iteration seeded from a coarse parameter grid search.
-    /// Writes the parameter values to u_out, v_out. Returns the 3D point.
-    Point closest_point(const Point& point, double& u_out, double& v_out) const;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Trimming
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /// Set the outer boundary trim curve. Lives in 2D UV parameter space and
-    /// defines the valid region. If set, mesh() uses Delaunay triangulation
-    /// constrained to this boundary instead of the UV-grid approach.
-    void set_outer_loop(const NurbsCurve& loop);
-
-    /// Return the outer trim loop. Returns empty/invalid NurbsCurve
-    /// if no outer loop has been set (untrimmed surface).
-    NurbsCurve get_outer_loop() const;
-
-    /// Remove the outer trim loop, reverting to an untrimmed surface.
-    void clear_outer_loop();
-
-    /// Add an inner trim loop (hole) as a closed 2D curve in UV space.
-    /// Inner loops are subtracted from the outer boundary during meshing.
-    /// The curve must be oriented clockwise in UV space.
-    void add_inner_loop(const NurbsCurve& loop);
-
-    /// Project a 3D curve onto the surface UV space using closest_point,
-    /// then add it as an inner trim loop (hole). The 3D curve should lie
-    /// on or very near the surface for accurate projection.
-    void add_hole(const NurbsCurve& curve_3d);
-
-    /// Project multiple 3D curves onto UV space and add each as a hole.
-    /// Convenience wrapper calling add_hole for each curve.
-    void add_holes(const std::vector<NurbsCurve>& curves_3d);
-
-    /// Get the inner trim loop at the given index.
-    /// Index must be in [0, inner_loop_count()-1].
-    NurbsCurve get_inner_loop(int index) const;
-
-    /// Number of inner trim loops (holes) currently defined.
-    int inner_loop_count() const;
-
-    /// Remove all inner trim loops.
-    void clear_inner_loops();
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Meshing
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Tessellate using adaptive UV-parameter grid. Per span, samples normals
-    /// at interior points and measures chord-height deviation to decide
-    /// subdivision count. max_angle is normal-angle threshold in degrees.
-    /// Produces structured quad-like triangle mesh. Best for untrimmed surfaces.
-    Mesh mesh_grid(double max_angle = 20.0, double max_edge_length = 0.0,
-                   double min_edge_length = 0.0, double max_chord_height = 0.0) const;
-
     /// Tessellate using constrained Delaunay triangulation with Ruppert
-    /// refinement in UV space. outer_loop and inner_loops define the boundary.
-    /// Refines triangles exceeding angle/edge/chord thresholds.
-    /// Required for trimmed surfaces with holes.
+    /// refinement in UV space. Refines triangles exceeding angle/edge/chord
+    /// thresholds.
     Mesh mesh_delaunay(double max_angle = 20.0, double max_edge_length = 0.0,
                        double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
-    /// Auto-select meshing strategy: mesh_grid for untrimmed surfaces
-    /// (no outer loop) and mesh_delaunay for trimmed. This is the primary
-    /// meshing entry point for general use.
+    /// Primary meshing entry point. Uses mesh_grid strategy.
     Mesh mesh(double max_angle = 20.0, double max_edge_length = 0.0,
               double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
@@ -539,42 +471,25 @@ public:
     /// knot counts, domain ranges, and trim loop info.
     std::string repr() const;
 
+    /// Stream output operator (calls str())
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface);
 
+private:
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Advanced
+    // Internal
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Set all CV coordinates to zero. For rational surfaces, sets weights
-    /// to 1.0. Useful for initializing a surface before filling CVs manually.
+    /// Tessellate using adaptive UV-parameter grid. Called by mesh().
+    Mesh mesh_grid(double max_angle = 20.0, double max_edge_length = 0.0,
+                   double min_edge_length = 0.0, double max_chord_height = 0.0) const;
+
     bool zero_cvs();
-
-    /// Stub — not yet implemented. Intended to compare two surfaces
-    /// geometrically within tolerance, optionally ignoring parameterization
-    /// differences. Currently always returns false.
-    bool is_duplicate(const NurbsSurface& other,
-                     bool ignore_parameterization,
-                     double tolerance = Tolerance::ZERO_TOLERANCE) const;
-
-    /// Stub — not yet implemented. Intended to collapse one boundary edge
-    /// to a single point (creating a degenerate/singular side).
-    /// side: 0=SW, 1=SE, 2=NE, 3=NW.
-    bool collapse_side(int side, const Point& point);
-
-    /// Replace the knot vector in dir with clamped uniform sequence:
-    /// end knots repeated order times, interior knots evenly spaced by delta.
-    /// Preserves CV count and order. Surface shape changes if knots differ.
     bool make_clamped_uniform_knot_vector(int dir, double delta = 1.0);
 
     /// Replace the knot vector in dir with periodic uniform sequence:
     /// evenly spaced without end-clamping. The surface wraps smoothly
     /// if CVs are also set up periodically.
     bool make_periodic_uniform_knot_vector(int dir, double delta = 1.0);
-
-private:
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Internal
-    ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Deep copy all data from src: dimension, orders, CV counts, strides,
     /// knot vectors, CV array, trim loops, and visual metadata.

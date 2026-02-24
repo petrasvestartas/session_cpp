@@ -1,9 +1,14 @@
 #include "closest.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include "mesh.h"
+#include "pointcloud.h"
+#include "bvh.h"
+#include "aabb.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <queue>
 
 namespace session_cpp {
 
@@ -63,7 +68,7 @@ std::pair<double, double> Closest::curve_point(
 
         if (std::abs(df) < 1e-12) break;
 
-        double dt_step = -f / df;
+        double dt_step = f / df;
 
         if (std::abs(dt_step) > (t1 - t0) * 0.5) {
             dt_step = std::copysign((t1 - t0) * 0.5, dt_step);
@@ -232,8 +237,8 @@ std::tuple<double, double, double> Closest::surface_point(
         if (derivs.size() < 3) break;
 
         Point pt = surface.point_at(u, v);
-        Vector du_vec = derivs[1];
-        Vector dv_vec = derivs[2];
+        Vector du_vec = derivs[2];  // evaluate returns [S, Sv, Su, ...]
+        Vector dv_vec = derivs[1];
 
         Vector delta(test_point[0] - pt[0],
                     test_point[1] - pt[1],
@@ -270,6 +275,201 @@ std::tuple<double, double, double> Closest::surface_point(
     double final_dist = surface.point_at(u, v).distance(test_point);
 
     return {u, v, final_dist};
+}
+
+static Point closest_point_on_triangle(const Point& p, const Point& a, const Point& b, const Point& c) {
+    double abx = b[0]-a[0], aby = b[1]-a[1], abz = b[2]-a[2];
+    double acx = c[0]-a[0], acy = c[1]-a[1], acz = c[2]-a[2];
+    double apx = p[0]-a[0], apy = p[1]-a[1], apz = p[2]-a[2];
+
+    double d1 = abx*apx + aby*apy + abz*apz;
+    double d2 = acx*apx + acy*apy + acz*apz;
+    if (d1 <= 0.0 && d2 <= 0.0) return a;
+
+    double bpx = p[0]-b[0], bpy = p[1]-b[1], bpz = p[2]-b[2];
+    double d3 = abx*bpx + aby*bpy + abz*bpz;
+    double d4 = acx*bpx + acy*bpy + acz*bpz;
+    if (d3 >= 0.0 && d4 <= d3) return b;
+
+    double vc = d1*d4 - d3*d2;
+    if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) {
+        double v = d1 / (d1 - d3);
+        return Point(a[0] + v*abx, a[1] + v*aby, a[2] + v*abz);
+    }
+
+    double cpx = p[0]-c[0], cpy = p[1]-c[1], cpz = p[2]-c[2];
+    double d5 = abx*cpx + aby*cpy + abz*cpz;
+    double d6 = acx*cpx + acy*cpy + acz*cpz;
+    if (d6 >= 0.0 && d5 <= d6) return c;
+
+    double vb = d5*d2 - d1*d6;
+    if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0) {
+        double w = d2 / (d2 - d6);
+        return Point(a[0] + w*acx, a[1] + w*acy, a[2] + w*acz);
+    }
+
+    double va = d3*d6 - d5*d4;
+    if (va <= 0.0 && (d4-d3) >= 0.0 && (d5-d6) >= 0.0) {
+        double w = (d4-d3) / ((d4-d3) + (d5-d6));
+        return Point(b[0] + w*(c[0]-b[0]), b[1] + w*(c[1]-b[1]), b[2] + w*(c[2]-b[2]));
+    }
+
+    double denom = 1.0 / (va + vb + vc);
+    double v = vb * denom;
+    double w = vc * denom;
+    return Point(a[0] + abx*v + acx*w, a[1] + aby*v + acy*w, a[2] + abz*v + acz*w);
+}
+
+static double aabb_min_distance(const BvhAABB& aabb, const Point& p) {
+    double dx = std::max(0.0, std::max(aabb.cx - aabb.hx - p[0], p[0] - aabb.cx - aabb.hx));
+    double dy = std::max(0.0, std::max(aabb.cy - aabb.hy - p[1], p[1] - aabb.cy - aabb.hy));
+    double dz = std::max(0.0, std::max(aabb.cz - aabb.hz - p[2], p[2] - aabb.cz - aabb.hz));
+    return std::sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+std::tuple<Point, size_t, double> Closest::mesh_point(
+    const Mesh& mesh,
+    const Point& test_point
+) {
+    if (mesh.number_of_faces() == 0) {
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+    }
+
+    mesh.build_triangle_bvh();
+    const BVH* bvh = mesh.get_cached_bvh();
+
+    std::vector<size_t> face_keys;
+    face_keys.reserve(mesh.face.size());
+    for (const auto& [key, _] : mesh.face) face_keys.push_back(key);
+
+    Point best_point(0, 0, 0);
+    size_t best_face_key = 0;
+    double best_dist = std::numeric_limits<double>::infinity();
+
+    if (!bvh || !bvh->root) {
+        return {best_point, best_face_key, best_dist};
+    }
+
+    using PQEntry = std::pair<double, const BVHNode*>;
+    std::priority_queue<PQEntry, std::vector<PQEntry>, std::greater<PQEntry>> pq;
+    pq.push({aabb_min_distance(bvh->root->aabb, test_point), bvh->root});
+
+    while (!pq.empty()) {
+        auto [d, node] = pq.top();
+        pq.pop();
+        if (d >= best_dist) break;
+
+        if (node->is_leaf()) {
+            Point v0, v1, v2;
+            size_t face_idx, sub_idx;
+            if (mesh.get_triangle_by_id(node->object_id, face_idx, sub_idx, v0, v1, v2)) {
+                Point cp = closest_point_on_triangle(test_point, v0, v1, v2);
+                double dist = cp.distance(test_point);
+                if (dist < best_dist) {
+                    best_dist = dist;
+                    best_point = cp;
+                    best_face_key = face_keys[face_idx];
+                }
+            }
+        } else {
+            if (node->left) {
+                double ld = aabb_min_distance(node->left->aabb, test_point);
+                if (ld < best_dist) pq.push({ld, node->left});
+            }
+            if (node->right) {
+                double rd = aabb_min_distance(node->right->aabb, test_point);
+                if (rd < best_dist) pq.push({rd, node->right});
+            }
+        }
+    }
+
+    return {best_point, best_face_key, best_dist};
+}
+
+static void aabb_dfs_closest(
+    const AABBTree& tree, int ni, const Point& tp,
+    const Mesh& mesh, const std::vector<size_t>& fkeys,
+    Point& bp, size_t& bk, double& bd
+) {
+    const auto& n = tree.nodes[ni];
+    if (aabb_min_distance(n.aabb, tp) >= bd) return;
+
+    if (n.object_id >= 0) {
+        Point v0, v1, v2;
+        size_t fi, si;
+        if (mesh.get_triangle_by_id(n.object_id, fi, si, v0, v1, v2)) {
+            Point cp = closest_point_on_triangle(tp, v0, v1, v2);
+            double d = cp.distance(tp);
+            if (d < bd) { bd = d; bp = cp; bk = fkeys[fi]; }
+        }
+        return;
+    }
+
+    int left = ni + 1;
+    int right = n.right;
+    double ld = aabb_min_distance(tree.nodes[left].aabb, tp);
+    double rd = aabb_min_distance(tree.nodes[right].aabb, tp);
+
+    if (ld <= rd) {
+        if (ld < bd) aabb_dfs_closest(tree, left, tp, mesh, fkeys, bp, bk, bd);
+        if (rd < bd) aabb_dfs_closest(tree, right, tp, mesh, fkeys, bp, bk, bd);
+    } else {
+        if (rd < bd) aabb_dfs_closest(tree, right, tp, mesh, fkeys, bp, bk, bd);
+        if (ld < bd) aabb_dfs_closest(tree, left, tp, mesh, fkeys, bp, bk, bd);
+    }
+}
+
+std::tuple<Point, size_t, double> Closest::mesh_point_aabb(
+    const Mesh& mesh,
+    const Point& test_point
+) {
+    if (mesh.number_of_faces() == 0) {
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+    }
+
+    mesh.build_triangle_aabb_tree();
+    const AABBTree* tree = mesh.get_cached_aabb_tree();
+
+    std::vector<size_t> face_keys;
+    face_keys.reserve(mesh.face.size());
+    for (const auto& [key, _] : mesh.face) face_keys.push_back(key);
+
+    Point best_point(0, 0, 0);
+    size_t best_face_key = 0;
+    double best_dist = std::numeric_limits<double>::infinity();
+
+    if (!tree || tree->empty()) {
+        return {best_point, best_face_key, best_dist};
+    }
+
+    aabb_dfs_closest(*tree, 0, test_point, mesh, face_keys, best_point, best_face_key, best_dist);
+
+    return {best_point, best_face_key, best_dist};
+}
+
+std::tuple<Point, size_t, double> Closest::pointcloud_point(
+    const PointCloud& cloud,
+    const Point& test_point
+) {
+    if (cloud.point_count() == 0) {
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+    }
+
+    Point best_point = cloud.get_point(0);
+    size_t best_index = 0;
+    double best_dist = best_point.distance(test_point);
+
+    for (size_t i = 1; i < cloud.point_count(); i++) {
+        Point p = cloud.get_point(i);
+        double dist = p.distance(test_point);
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_point = p;
+            best_index = i;
+        }
+    }
+
+    return {best_point, best_index, best_dist};
 }
 
 } // namespace session_cpp

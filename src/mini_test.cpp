@@ -73,6 +73,8 @@ static std::string extract_timed_code(const RegisteredTest &t,
   std::string line;
   std::string code;
   int current = 1;
+  // MINI_TEST(...) { opens with depth 1; stop when we close it
+  int brace_depth = 1;
 
   while (std::getline(ifs, line)) {
     if (current >= start_line && current <= end_line) {
@@ -80,12 +82,18 @@ static std::string extract_timed_code(const RegisteredTest &t,
       if (line.find("MINI_TEST(") != std::string::npos) {
         break;
       }
+      // Track brace depth to find end of test body
+      for (char ch : line) {
+        if (ch == '{') ++brace_depth;
+        else if (ch == '}') --brace_depth;
+      }
+      if (brace_depth <= 0) break;
       // Skip MINI_CHECK lines from code display
       if (line.find("MINI_CHECK(") != std::string::npos) {
         ++current;
         continue;
       }
-      
+
       if (!code.empty()) {
         code.push_back('\n');
       }
@@ -95,6 +103,23 @@ static std::string extract_timed_code(const RegisteredTest &t,
       break;
     }
     ++current;
+  }
+
+  // Strip trailing lines that are only whitespace / braces (empty loop bodies)
+  while (!code.empty()) {
+    auto pos = code.find_last_of('\n');
+    std::string_view tail = (pos == std::string::npos)
+        ? std::string_view(code)
+        : std::string_view(code).substr(pos + 1);
+    bool only_ws_brace = true;
+    for (char ch : tail) {
+      if (ch != ' ' && ch != '\t' && ch != '{' && ch != '}') {
+        only_ws_brace = false;
+        break;
+      }
+    }
+    if (!only_ws_brace || tail.empty()) break;
+    code.erase(pos == std::string::npos ? 0 : pos);
   }
 
   return code;

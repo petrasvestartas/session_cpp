@@ -1,5 +1,6 @@
 #include "mesh.h"
 #include "triangulation_2d.h"
+#include "fmt/core.h"
 #include <fstream>
 #include <algorithm>
 #include <cmath>
@@ -19,6 +20,66 @@ Mesh::Mesh() {
     default_vertex_attributes["y"] = 0.0;
     default_vertex_attributes["z"] = 0.0;
 }
+
+Mesh::Mesh(const Mesh& other) {
+    guid = ::guid();
+    name = other.name;
+    halfedge = other.halfedge;
+    vertex = other.vertex;
+    face = other.face;
+    facedata = other.facedata;
+    edgedata = other.edgedata;
+    default_vertex_attributes = other.default_vertex_attributes;
+    default_face_attributes = other.default_face_attributes;
+    default_edge_attributes = other.default_edge_attributes;
+    pointcolors = other.pointcolors;
+    facecolors = other.facecolors;
+    linecolors = other.linecolors;
+    widths = other.widths;
+    xform = other.xform;
+    max_vertex = other.max_vertex;
+    max_face = other.max_face;
+    triangulation = other.triangulation;
+}
+
+Mesh& Mesh::operator=(const Mesh& other) {
+    if (this != &other) {
+        guid = ::guid();
+        name = other.name;
+        halfedge = other.halfedge;
+        vertex = other.vertex;
+        face = other.face;
+        facedata = other.facedata;
+        edgedata = other.edgedata;
+        default_vertex_attributes = other.default_vertex_attributes;
+        default_face_attributes = other.default_face_attributes;
+        default_edge_attributes = other.default_edge_attributes;
+        pointcolors = other.pointcolors;
+        facecolors = other.facecolors;
+        linecolors = other.linecolors;
+        widths = other.widths;
+        xform = other.xform;
+        max_vertex = other.max_vertex;
+        max_face = other.max_face;
+        triangulation = other.triangulation;
+        triangle_bvh_built = false;
+        triangle_bvh.reset();
+        triangle_aabb_tree.reset();
+    }
+    return *this;
+}
+
+bool Mesh::operator==(const Mesh& other) const {
+    if (name != other.name) return false;
+    if (vertex != other.vertex) return false;
+    if (face != other.face) return false;
+    if (xform != other.xform) return false;
+    return true;
+}
+
+bool Mesh::operator!=(const Mesh& other) const { return !(*this == other); }
+
+Mesh::~Mesh() {}
 
 size_t Mesh::number_of_edges() const {
     std::set<std::pair<size_t, size_t>> seen;
@@ -368,7 +429,7 @@ std::map<size_t, Vector> Mesh::vertex_normals_weighted(NormalWeighting weighting
     return normals;
 }
 
-Mesh Mesh::from_polygons(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision) {
+Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision) {
     Mesh mesh;
     
     std::map<std::tuple<int64_t, int64_t, int64_t>, size_t> map_eps;
@@ -414,6 +475,147 @@ Mesh Mesh::from_polygons(const std::vector<std::vector<Point>>& polygons, std::o
         }
         mesh.add_face(vkeys);
     }
+    return mesh;
+}
+
+Mesh Mesh::from_vertices_and_faces(const std::vector<Point>& vertices,
+                                    const std::vector<std::vector<size_t>>& faces) {
+    Mesh mesh;
+    for (const auto& pt : vertices)
+        mesh.add_vertex(pt);
+    for (const auto& f : faces)
+        mesh.add_face(f);
+    return mesh;
+}
+
+Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face, std::optional<double> precision) {
+    if (lines.empty()) return Mesh();
+
+    // Collect all endpoints
+    std::vector<Point> all_pts;
+    all_pts.reserve(lines.size() * 2);
+    for (const auto& ln : lines) {
+        all_pts.push_back(ln.start());
+        all_pts.push_back(ln.end());
+    }
+
+    // Compute precision from bbox if not given
+    double eps = precision.value_or(0.0);
+    if (eps <= 0.0) {
+        double minx = all_pts[0][0], miny = all_pts[0][1], minz = all_pts[0][2];
+        double maxx = minx, maxy = miny, maxz = minz;
+        for (const auto& p : all_pts) {
+            if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
+            if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
+            if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
+        }
+        double diag = std::sqrt((maxx-minx)*(maxx-minx) + (maxy-miny)*(maxy-miny) + (maxz-minz)*(maxz-minz));
+        eps = diag * 1e-6;
+        if (eps < 1e-12) eps = 1e-12;
+    }
+
+    // Merge vertices using grid quantization
+    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t> vmap;
+    std::vector<Point> verts;
+    auto get_vid = [&](const Point& p) -> size_t {
+        int64_t kx = static_cast<int64_t>(std::round(p[0] / eps));
+        int64_t ky = static_cast<int64_t>(std::round(p[1] / eps));
+        int64_t kz = static_cast<int64_t>(std::round(p[2] / eps));
+        auto key = std::make_tuple(kx, ky, kz);
+        auto it = vmap.find(key);
+        if (it != vmap.end()) return it->second;
+        size_t id = verts.size();
+        verts.push_back(p);
+        vmap[key] = id;
+        return id;
+    };
+
+    // Build adjacency from line segments
+    size_t nv = 0;
+    std::map<size_t, std::vector<size_t>> adj;
+    for (const auto& ln : lines) {
+        size_t a = get_vid(ln.start());
+        size_t b = get_vid(ln.end());
+        if (a == b) continue;
+        adj[a].push_back(b);
+        adj[b].push_back(a);
+    }
+    nv = verts.size();
+
+    // Sort neighbors CCW by angle at each vertex
+    for (auto& [v, nbrs] : adj) {
+        // Remove duplicates
+        std::sort(nbrs.begin(), nbrs.end());
+        nbrs.erase(std::unique(nbrs.begin(), nbrs.end()), nbrs.end());
+        // Sort by atan2 angle
+        double vx = verts[v][0], vy = verts[v][1];
+        std::sort(nbrs.begin(), nbrs.end(), [&](size_t a, size_t b) {
+            double aa = std::atan2(verts[a][1] - vy, verts[a][0] - vx);
+            double ba = std::atan2(verts[b][1] - vy, verts[b][0] - vx);
+            return aa < ba;
+        });
+    }
+
+    // Half-edge traversal to find face cycles
+    // For directed edge u->v, next edge starts at v, going to the neighbor
+    // just CW after u in v's CCW-sorted list (predecessor of u)
+    std::set<std::pair<size_t, size_t>> visited;
+    std::vector<std::vector<size_t>> face_cycles;
+
+    for (auto& [u, nbrs] : adj) {
+        for (size_t v : nbrs) {
+            if (visited.count({u, v})) continue;
+
+            std::vector<size_t> cycle;
+            size_t cu = u, cv = v;
+            bool valid = true;
+            while (true) {
+                if (visited.count({cu, cv})) break;
+                visited.insert({cu, cv});
+                cycle.push_back(cu);
+
+                // Find next: at vertex cv, find cu in cv's neighbor list,
+                // then take the predecessor (CW neighbor = previous in CCW order)
+                auto& cv_nbrs = adj[cv];
+                auto it = std::find(cv_nbrs.begin(), cv_nbrs.end(), cu);
+                if (it == cv_nbrs.end()) { valid = false; break; }
+                size_t idx = static_cast<size_t>(it - cv_nbrs.begin());
+                size_t prev_idx = (idx == 0) ? cv_nbrs.size() - 1 : idx - 1;
+                size_t nxt = cv_nbrs[prev_idx];
+
+                cu = cv;
+                cv = nxt;
+
+                if (cycle.size() > nv * 2) { valid = false; break; }
+            }
+
+            if (valid && cycle.size() >= 3) {
+                face_cycles.push_back(cycle);
+            }
+        }
+    }
+
+    // Build mesh from cycles
+    Mesh mesh;
+    for (const auto& pt : verts) mesh.add_vertex(pt);
+
+    // Optionally delete the largest face (boundary)
+    if (delete_boundary_face && !face_cycles.empty()) {
+        size_t max_idx = 0;
+        size_t max_size = face_cycles[0].size();
+        for (size_t i = 1; i < face_cycles.size(); ++i) {
+            if (face_cycles[i].size() > max_size) {
+                max_size = face_cycles[i].size();
+                max_idx = i;
+            }
+        }
+        face_cycles.erase(face_cycles.begin() + max_idx);
+    }
+
+    for (const auto& cycle : face_cycles) {
+        mesh.add_face(cycle);
+    }
+
     return mesh;
 }
 
@@ -977,11 +1179,19 @@ bool Mesh::get_triangle_by_id(int tri_id, size_t& face_idx, size_t& sub_idx, Poi
 void Mesh::clear_triangle_bvh() const {
     triangle_bvh_built = false;
     triangle_bvh.reset();
+    triangle_aabb_tree.reset();
     triangle_boxes_cache.clear();
     triangle_aabbs_cache.clear();
     triangle_indices_cache.clear();
     triangle_face_subidx_cache.clear();
     vertices_cache.clear();
+}
+
+void Mesh::build_triangle_aabb_tree(bool force) const {
+    build_triangle_bvh(false);
+    if (triangle_aabb_tree && !force) return;
+    triangle_aabb_tree = std::make_shared<AABBTree>();
+    triangle_aabb_tree->build(triangle_aabbs_cache.data(), triangle_aabbs_cache.size());
 }
 
 std::string Mesh::json_dumps() const {
@@ -1226,6 +1436,25 @@ Mesh Mesh::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     return pb_loads(data);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// String Representation
+///////////////////////////////////////////////////////////////////////////////////////////
+
+std::string Mesh::str() const {
+    return fmt::format("Mesh(name={}, vertices={}, faces={})",
+                       name, number_of_vertices(), number_of_faces());
+}
+
+std::string Mesh::repr() const {
+    return fmt::format("Mesh(\n  name={},\n  vertices={},\n  faces={},\n  edges={}\n)",
+                       name, number_of_vertices(), number_of_faces(), number_of_edges());
+}
+
+std::ostream& operator<<(std::ostream& os, const Mesh& mesh) {
+    os << mesh.str();
+    return os;
 }
 
 } // namespace session_cpp

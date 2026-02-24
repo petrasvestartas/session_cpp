@@ -15,6 +15,7 @@
 #include "mesh.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include "brep.h"
 #include "tree.h"
 #include "bvh.h"
 #include "tolerance.h"
@@ -47,7 +48,8 @@ using Geometry = std::variant<
     std::shared_ptr<PointCloud>,
     std::shared_ptr<NurbsCurve>,
     std::shared_ptr<NurbsSurface>,
-    std::shared_ptr<Polyline>
+    std::shared_ptr<Polyline>,
+    std::shared_ptr<BRep>
 >;
 
 /**
@@ -166,6 +168,7 @@ public:
 
   std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve);
   std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface);
+  std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep);
 
   /**
    * @brief Add a TreeNode to the tree hierarchy.
