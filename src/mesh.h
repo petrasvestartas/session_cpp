@@ -137,6 +137,44 @@ public:
     bool operator!=(const Mesh& other) const;
     ~Mesh();
 
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Construction
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /**
+     * @brief Create a mesh from a list of vertices and faces.
+     * @param vertices List of vertex positions.
+     * @param faces List of faces as lists of vertex indices.
+     * @return The constructed mesh.
+     */
+    static Mesh from_vertices_and_faces(const std::vector<Point>& vertices, const std::vector<std::vector<size_t>>& faces);
+
+    /**
+     * @brief Create a mesh from a list of polygons.
+     * @param polygons List of polygons as point lists.
+     * @param precision Optional precision for vertex merging.
+     * @return The constructed mesh.
+     */
+    static Mesh from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
+    
+    /**
+     * @brief Create a mesh from a list of lines.
+     * @param lines List of lines to build the mesh from.
+     * @param delete_boundary_face If true, removes the boundary face after construction.
+     * @param precision Optional precision for vertex merging.
+     * @return The constructed mesh.
+     */
+    static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);
+
+    /**
+     * @brief Loft between two sets of polylines to create a closed mesh volume.
+     * @param polylines0 Bottom polylines (border + optional holes).
+     * @param polylines1 Top polylines (border + optional holes).
+     * @return The lofted mesh with bottom cap, top cap, and side faces.
+     */
+    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Basic Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -244,28 +282,6 @@ public:
      * @return A pair of (vertices, faces) where faces use sequential indices.
      */
     std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Construction
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /**
-     * @brief Create a mesh from a list of polygons.
-     * @param polygons List of polygons as point lists.
-     * @param precision Optional precision for vertex merging.
-     * @return The constructed mesh.
-     */
-    static Mesh from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
-    static Mesh from_vertices_and_faces(const std::vector<Point>& vertices, const std::vector<std::vector<size_t>>& faces);
-    static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);
-
-    /**
-     * @brief Loft between two sets of polylines to create a closed mesh volume.
-     * @param polylines0 Bottom polylines (border + optional holes).
-     * @param polylines1 Top polylines (border + optional holes).
-     * @return The lofted mesh with bottom cap, top cap, and side faces.
-     */
-    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
