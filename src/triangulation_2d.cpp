@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <numeric>
 
 namespace session_cpp {
@@ -155,7 +156,31 @@ std::vector<Triangle2D> Triangulation2D::ear_clip(const std::vector<double>& coo
                     break;
                 }
             }
-            if (!removed) break;
+            if (!removed) {
+                std::map<std::pair<int64_t,int64_t>, size_t> coord_map;
+                bool did_split = false;
+                for (size_t pos = 0; pos < indices.size(); ++pos) {
+                    int64_t kx = static_cast<int64_t>(std::round(coords[indices[pos]*2] * 1e8));
+                    int64_t ky = static_cast<int64_t>(std::round(coords[indices[pos]*2+1] * 1e8));
+                    auto key = std::make_pair(kx, ky);
+                    auto it2 = coord_map.find(key);
+                    if (it2 != coord_map.end()) {
+                        size_t sf = it2->second;
+                        std::vector<int> poly_a(indices.begin() + sf, indices.begin() + pos);
+                        std::vector<int> poly_b(indices.begin() + pos, indices.end());
+                        poly_b.insert(poly_b.end(), indices.begin(), indices.begin() + sf);
+                        auto ta = ear_clip(coords, poly_a);
+                        auto tb = ear_clip(coords, poly_b);
+                        triangles.insert(triangles.end(), ta.begin(), ta.end());
+                        triangles.insert(triangles.end(), tb.begin(), tb.end());
+                        did_split = true;
+                        break;
+                    }
+                    coord_map[key] = pos;
+                }
+                if (did_split) { indices.clear(); }
+                break;
+            }
         }
         ++iter;
     }
@@ -324,6 +349,37 @@ std::vector<Triangle2D> Triangulation2D::triangulate(const Polyline& boundary,
     if (bn > 1 && std::abs(bpts[0][0] - bpts[bn - 1][0]) < 1e-12 &&
         std::abs(bpts[0][1] - bpts[bn - 1][1]) < 1e-12)
         --bn;
+
+    // Fast path: no holes — try triangle/quad/convex fan before ear clipping
+    if (holes.empty()) {
+        if (bn == 3) return {{0, 1, 2}};
+        if (bn == 4) {
+            double d02 = (bpts[0][0]-bpts[2][0])*(bpts[0][0]-bpts[2][0]) +
+                         (bpts[0][1]-bpts[2][1])*(bpts[0][1]-bpts[2][1]);
+            double d13 = (bpts[1][0]-bpts[3][0])*(bpts[1][0]-bpts[3][0]) +
+                         (bpts[1][1]-bpts[3][1])*(bpts[1][1]-bpts[3][1]);
+            if (d02 <= d13) return {{0, 1, 2}, {0, 2, 3}};
+            else return {{0, 1, 3}, {1, 2, 3}};
+        }
+        // Check convexity: all cross products same sign
+        bool convex = true;
+        double first_cross = 0.0;
+        for (size_t i = 0; i < bn && convex; ++i) {
+            size_t j = (i + 1) % bn;
+            size_t k = (i + 2) % bn;
+            double c = cross_2d(bpts[i][0], bpts[i][1], bpts[j][0], bpts[j][1], bpts[k][0], bpts[k][1]);
+            if (std::abs(c) < 1e-12) continue;
+            if (first_cross == 0.0) first_cross = c;
+            else if ((c > 0) != (first_cross > 0)) convex = false;
+        }
+        if (convex && bn >= 5) {
+            std::vector<Triangle2D> tris;
+            tris.reserve(bn - 2);
+            for (size_t i = 1; i + 1 < bn; ++i)
+                tris.push_back({0, static_cast<int>(i), static_cast<int>(i + 1)});
+            return tris;
+        }
+    }
 
     std::vector<int> boundary_indices;
     for (size_t i = 0; i < bn; ++i) {

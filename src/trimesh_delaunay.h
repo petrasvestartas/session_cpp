@@ -159,6 +159,7 @@ public:
 
     int insert(double x, double y);
     void insert_constraint(int v0, int v1);
+    bool flip_edge(int ti, int k);
     void cleanup();
     std::vector<std::array<int, 3>> get_triangles() const;
 

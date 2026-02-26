@@ -253,17 +253,181 @@ int Delaunay2D::insert(double x, double y) {
     return vi;
 }
 
-void Delaunay2D::insert_constraint(int v0, int v1) {
-    if (v0 == v1) return;
-    for (auto& tri : triangles) {
+static int find_slot(const Triangle& t, int v) {
+    for (int k = 0; k < 3; ++k) if (t.v[k] == v) return k;
+    return -1;
+}
+
+static int opposed_vertex(const Triangle& tOpo, int from_ti) {
+    for (int k = 0; k < 3; ++k) if (tOpo.adj[k] == from_ti) return tOpo.v[k];
+    return -1;
+}
+
+static bool tri_contains(const Triangle& t, int v) {
+    return t.v[0] == v || t.v[1] == v || t.v[2] == v;
+}
+
+static void mark_edge_constrained(std::vector<Triangle>& tris, int v0, int v1) {
+    for (auto& tri : tris) {
         if (!tri.alive) continue;
         for (int k = 0; k < 3; ++k) {
-            int e0 = tri.v[(k + 1) % 3];
-            int e1 = tri.v[(k + 2) % 3];
+            int e0 = tri.v[(k + 1) % 3], e1 = tri.v[(k + 2) % 3];
             if ((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0))
                 tri.constrained[k] = true;
         }
     }
+}
+
+bool Delaunay2D::flip_edge(int, int) { return false; } // unused
+
+void Delaunay2D::insert_constraint(int v0, int v1) {
+    if (v0 == v1) return;
+
+    // --- Step 1: check if edge already exists (linear scan) ---
+    for (int ti = 0; ti < (int)triangles.size(); ++ti) {
+        if (!triangles[ti].alive) continue;
+        for (int k = 0; k < 3; ++k) {
+            int e0 = triangles[ti].v[(k + 1) % 3], e1 = triangles[ti].v[(k + 2) % 3];
+            if ((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0)) {
+                triangles[ti].constrained[k] = true;
+                int nb = triangles[ti].adj[k];
+                if (nb >= 0 && triangles[nb].alive)
+                    for (int kk = 0; kk < 3; ++kk)
+                        if (triangles[nb].adj[kk] == ti) { triangles[nb].constrained[kk] = true; break; }
+                return;
+            }
+        }
+    }
+
+    // --- Step 2: fan walk around v0 to find the first straddled triangle ---
+    // Find any triangle containing v0
+    int start_ti = -1;
+    for (int i = (int)triangles.size() - 1; i >= 0; --i)
+        if (triangles[i].alive)
+            for (int k = 0; k < 3; ++k)
+                if (triangles[i].v[k] == v0) { start_ti = i; break; }
+    if (start_ti < 0) return;
+
+    const Vertex2D& a = vertices[v0];
+    const Vertex2D& b = vertices[v1];
+
+    // Walk CW around v0's fan: at slot k of v0, the CW-next triangle is adj[(k+1)%3]
+    // Look for triangle where CCW-neighbor (v[(k+1)%3]) is Right of v0→v1
+    //   and  CW-neighbor  (v[(k+2)%3]) is Left  of v0→v1
+    int iVL = -1, iVR = -1, iT = -1;
+    {
+        int ti = start_ti;
+        int guard = (int)triangles.size() + 4;
+        do {
+            if (!triangles[ti].alive) break;
+            const Triangle& t = triangles[ti];
+            int k = find_slot(t, v0);
+            if (k < 0) break;
+            int iP2 = t.v[(k + 1) % 3]; // CCW from v0
+            int iP1 = t.v[(k + 2) % 3]; // CW from v0
+            double oP2 = orient2d(a.x, a.y, b.x, b.y, vertices[iP2].x, vertices[iP2].y);
+            double oP1 = orient2d(a.x, a.y, b.x, b.y, vertices[iP1].x, vertices[iP1].y);
+            // Straddled: P2 strictly Right, P1 Left-or-on
+            if (oP2 < 0 && oP1 >= 0) { iVL = iP1; iVR = iP2; iT = ti; break; }
+            int next = t.adj[(k + 1) % 3]; // CW fan step
+            if (next < 0 || !triangles[next].alive) break;
+            ti = next;
+        } while (ti != start_ti && --guard > 0);
+    }
+    if (iT < 0) return;
+
+    // --- Step 3: walk across all intersected triangles (CDT cavity walk) ---
+    // iV tracks which vertex of cur_iT is "behind" us (the vertex whose opposite
+    // triangle is the next one to cross).  Start with iV=v0 so we cross edge (iVL,iVR).
+    std::vector<int> polyL = {v0, iVL}; // left boundary chain
+    std::vector<int> polyR = {v0, iVR}; // right boundary chain
+    std::vector<int> intersected = {iT};
+    int iV = v0, cur_iT = iT;
+
+    int guard = (int)triangles.size() * 2 + 8;
+    while (!tri_contains(triangles[cur_iT], v1) && --guard > 0) {
+        const Triangle& t = triangles[cur_iT];
+        int k_iV = find_slot(t, iV);
+        if (k_iV < 0) break;
+        int iTopo = t.adj[k_iV]; // cross edge opposite iV
+        if (iTopo < 0 || !triangles[iTopo].alive) break;
+        int iVopo = opposed_vertex(triangles[iTopo], cur_iT);
+        if (iVopo < 0) break;
+
+        double o = orient2d(a.x, a.y, b.x, b.y, vertices[iVopo].x, vertices[iVopo].y);
+        if (o < 0) { // Right of v0→v1
+            if (iVopo != v1) polyR.push_back(iVopo);
+            iV = iVR;
+            iVR = iVopo;
+        } else {     // Left or on line
+            if (iVopo != v1) polyL.push_back(iVopo);
+            iV = iVL;
+            iVL = iVopo;
+        }
+        intersected.push_back(iTopo);
+        cur_iT = iTopo;
+    }
+    polyL.push_back(v1);
+    polyR.push_back(v1);
+
+    // --- Step 4: kill all intersected triangles ---
+    for (int ti : intersected) {
+        unregister_triangle_edges(ti);
+        triangles[ti].alive = false;
+    }
+
+    // --- Step 5: fan-triangulate each cavity half from the shared endpoints ---
+    // Left cavity:  polyL = [v0, L1..Lk, v1]  → fan from v1 (gives CCW triangles)
+    // Right cavity: polyR = [v0, R1..Rm, v1]  → fan from v0 (gives CCW triangles)
+    // For both, let orient decide and swap v[1]/v[2] if CW.
+    int first_new = (int)triangles.size();
+
+    auto emit = [&](int pa, int pb, int pc) {
+        double o = orient2d(vertices[pa].x, vertices[pa].y,
+                            vertices[pb].x, vertices[pb].y,
+                            vertices[pc].x, vertices[pc].y);
+        if (std::abs(o) < 1e-20) return;
+        Triangle nt;
+        nt.v[0] = pa;
+        if (o > 0) { nt.v[1] = pb; nt.v[2] = pc; }
+        else       { nt.v[1] = pc; nt.v[2] = pb; }
+        nt.adj[0] = nt.adj[1] = nt.adj[2] = -1;
+        nt.constrained[0] = nt.constrained[1] = nt.constrained[2] = false;
+        nt.alive = true;
+        int new_ti = (int)triangles.size();
+        triangles.push_back(nt);
+        register_triangle_edges(new_ti);
+    };
+
+    // Left fan from v1 (fan apex = v1 = polyL.back())
+    {
+        int apex = v1;
+        for (int i = 0; i + 2 < (int)polyL.size(); ++i)
+            emit(apex, polyL[i + 1], polyL[i]);
+    }
+    // Right fan from v0 (fan apex = v0 = polyR[0], skip i=0 which is apex itself)
+    {
+        int apex = v0;
+        for (int i = 1; i + 1 < (int)polyR.size(); ++i)
+            emit(apex, polyR[i], polyR[i + 1]);
+    }
+
+    // --- Step 6: propagate constrained flags from outer neighbors ---
+    for (int new_ti = first_new; new_ti < (int)triangles.size(); ++new_ti) {
+        if (!triangles[new_ti].alive) continue;
+        Triangle& nt = triangles[new_ti];
+        for (int k = 0; k < 3; ++k) {
+            int nb = nt.adj[k];
+            if (nb < 0 || nb >= first_new || !triangles[nb].alive) continue;
+            Triangle& nb_t = triangles[nb];
+            for (int kk = 0; kk < 3; ++kk)
+                if (nb_t.adj[kk] == new_ti && nb_t.constrained[kk])
+                    { nt.constrained[k] = true; break; }
+        }
+    }
+
+    // --- Step 7: mark constraint edge ---
+    mark_edge_constrained(triangles, v0, v1);
 }
 
 void Delaunay2D::cleanup() {

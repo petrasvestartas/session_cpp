@@ -168,12 +168,21 @@ public:
     static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);
 
     /**
-     * @brief Loft between two sets of polylines to create a closed mesh volume.
+     * @brief Create a mesh from a polygon boundary with optional holes.
+     * @param polylines List of polylines (boundary + holes).
+     * @param sort_by_bbox If true, finds the largest polyline by bbox diagonal as boundary.
+     * @return The triangulated mesh.
+     */
+    static Mesh from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox = false);
+
+    /**
+     * @brief Loft between two sets of polylines to create a mesh volume.
      * @param polylines0 Bottom polylines (border + optional holes).
      * @param polylines1 Top polylines (border + optional holes).
-     * @return The lofted mesh with bottom cap, top cap, and side faces.
+     * @param cap If true, adds bottom and top cap faces.
+     * @return The lofted mesh with side faces and optional caps.
      */
-    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1);
+    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap = true);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Basic Queries
@@ -199,6 +208,9 @@ public:
 
     /// Clear all mesh data
     void clear();
+
+    /// Unify face winding by BFS; returns true if any face was flipped
+    bool unify_winding();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Vertex and Face Operations
@@ -232,12 +244,36 @@ public:
     
     /// Get neighboring vertices of a vertex
     std::vector<size_t> vertex_neighbors(size_t vertex_key) const;
-    
+
     /// Get faces incident to a vertex
     std::vector<size_t> vertex_faces(size_t vertex_key) const;
-    
+
+    /// Get edges incident to a vertex as (vertex_key, neighbor) pairs
+    std::vector<std::pair<size_t, size_t>> vertex_edges(size_t vertex_key) const;
+
+    /// Get edges of a face as (vi, vi+1) pairs
+    std::vector<std::pair<size_t, size_t>> face_edges(size_t face_key) const;
+
+    /// Get faces adjacent to a face (sharing an edge)
+    std::vector<size_t> face_neighbors(size_t face_key) const;
+
+    /// Get the two vertices of an edge
+    std::array<size_t, 2> edge_vertices(size_t u, size_t v) const;
+
+    /// Get the faces on each side of an edge
+    std::pair<std::optional<size_t>, std::optional<size_t>> edge_faces(size_t u, size_t v) const;
+
+    /// Get all edges sharing a vertex with edge (u,v), excluding (u,v) and (v,u)
+    std::vector<std::pair<size_t, size_t>> edge_edges(size_t u, size_t v) const;
+
     /// Check if a vertex is on the boundary
     bool is_vertex_on_boundary(size_t vertex_key) const;
+
+    /// Check if an edge is on the boundary
+    bool is_edge_on_boundary(size_t u, size_t v) const;
+
+    /// Check if a face is on the boundary
+    bool is_face_on_boundary(size_t face_key) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Properties
