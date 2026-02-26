@@ -1,6 +1,6 @@
 #include "mesh.h"
 #include "triangulation_2d.h"
-#include "trimesh_delaunay.h"
+#include "trimesh_cdt.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <algorithm>
@@ -778,101 +778,6 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
     return mesh;
 }
 
-// CDT triangulation of a 2D polygon with holes.
-// border_2d: CCW outer boundary.  holes_2d: CW inner boundaries.
-// Returns face index triples into the flat array [border..., hole0..., hole1..., ...].
-static std::vector<std::array<int,3>> cdt_fill(
-    const std::vector<std::pair<double,double>>& border_2d,
-    const std::vector<std::vector<std::pair<double,double>>>& holes_2d)
-{
-    double xmin = border_2d[0].first,  xmax = xmin;
-    double ymin = border_2d[0].second, ymax = ymin;
-    auto expand = [&](double x, double y) {
-        if (x < xmin) xmin = x; if (x > xmax) xmax = x;
-        if (y < ymin) ymin = y; if (y > ymax) ymax = y;
-    };
-    for (auto& p : border_2d)      expand(p.first, p.second);
-    for (auto& h : holes_2d) for (auto& p : h) expand(p.first, p.second);
-    double pad = std::max(xmax - xmin, ymax - ymin) * 0.01 + 1e-9;
-
-    Delaunay2D dt(xmin - pad, ymin - pad, xmax + pad, ymax + pad);
-
-    int n_b = (int)border_2d.size();
-    std::vector<int> cb(n_b);
-    for (int i = 0; i < n_b; ++i)
-        cb[i] = dt.insert(border_2d[i].first, border_2d[i].second);
-
-    std::vector<std::vector<int>> ch(holes_2d.size());
-    for (size_t h = 0; h < holes_2d.size(); ++h) {
-        ch[h].resize(holes_2d[h].size());
-        for (int i = 0; i < (int)holes_2d[h].size(); ++i)
-            ch[h][i] = dt.insert(holes_2d[h][i].first, holes_2d[h][i].second);
-    }
-
-    std::unordered_map<int,int> cdt_to_flat;
-    for (int i = 0; i < n_b; ++i)
-        if (cb[i] >= 0) cdt_to_flat[cb[i]] = i;
-    int off = n_b;
-    for (size_t h = 0; h < holes_2d.size(); ++h) {
-        for (int i = 0; i < (int)ch[h].size(); ++i)
-            if (ch[h][i] >= 0) cdt_to_flat[ch[h][i]] = off + i;
-        off += (int)ch[h].size();
-    }
-
-    for (int i = 0; i < n_b; ++i)
-        dt.insert_constraint(cb[i], cb[(i + 1) % n_b]);
-    for (size_t h = 0; h < holes_2d.size(); ++h) {
-        int n_h = (int)ch[h].size();
-        for (int i = 0; i < n_h; ++i)
-            dt.insert_constraint(ch[h][i], ch[h][(i + 1) % n_h]);
-    }
-
-    int nt = (int)dt.triangles.size();
-    std::vector<int> level(nt, -1);
-    std::queue<int> bfs;
-    auto is_super = [&](int v) {
-        return v == dt.super_v[0] || v == dt.super_v[1] || v == dt.super_v[2];
-    };
-    for (int i = 0; i < nt; ++i) {
-        if (!dt.triangles[i].alive) continue;
-        const Triangle& t = dt.triangles[i];
-        if (is_super(t.v[0]) || is_super(t.v[1]) || is_super(t.v[2]))
-            { level[i] = 0; bfs.push(i); }
-    }
-    for (int i = 0; i < nt; ++i) {
-        if (!dt.triangles[i].alive || level[i] >= 0) continue;
-        const Triangle& t = dt.triangles[i];
-        for (int k = 0; k < 3; ++k)
-            if (t.adj[k] < 0 && !t.constrained[k]) { level[i] = 0; bfs.push(i); break; }
-    }
-    while (!bfs.empty()) {
-        int ti = bfs.front(); bfs.pop();
-        const Triangle& t = dt.triangles[ti];
-        for (int k = 0; k < 3; ++k) {
-            int nb = t.adj[k];
-            if (nb < 0 || !dt.triangles[nb].alive || level[nb] >= 0) continue;
-            level[nb] = level[ti] + (t.constrained[k] ? 1 : 0);
-            bfs.push(nb);
-        }
-    }
-
-    std::vector<std::array<int,3>> result;
-    for (int i = 0; i < nt; ++i) {
-        if (!dt.triangles[i].alive || level[i] < 0 || level[i] % 2 == 0) continue;
-        const Triangle& t = dt.triangles[i];
-        if (is_super(t.v[0]) || is_super(t.v[1]) || is_super(t.v[2])) continue;
-        auto it0 = cdt_to_flat.find(t.v[0]);
-        auto it1 = cdt_to_flat.find(t.v[1]);
-        auto it2 = cdt_to_flat.find(t.v[2]);
-        if (it0 == cdt_to_flat.end() || it1 == cdt_to_flat.end() || it2 == cdt_to_flat.end()) continue;
-        double o = Delaunay2D::orient2d(dt.vertices[t.v[0]].x, dt.vertices[t.v[0]].y,
-                                        dt.vertices[t.v[1]].x, dt.vertices[t.v[1]].y,
-                                        dt.vertices[t.v[2]].x, dt.vertices[t.v[2]].y);
-        if (o > 0) result.push_back({it0->second, it1->second, it2->second});
-        else       result.push_back({it0->second, it2->second, it1->second});
-    }
-    return result;
-}
 
 Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox) {
     if (polylines.empty()) return Mesh();
@@ -966,129 +871,20 @@ Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polyli
         holes_2d.push_back(std::move(h2d));
     }
 
-    // Compute 2D bbox
-    double xmin = boundary_2d[0].first,  xmax = xmin;
-    double ymin = boundary_2d[0].second, ymax = ymin;
-    for (const auto& p : boundary_2d) {
-        if (p.first  < xmin) xmin = p.first;  if (p.first  > xmax) xmax = p.first;
-        if (p.second < ymin) ymin = p.second; if (p.second > ymax) ymax = p.second;
-    }
-    for (const auto& h : holes_2d)
-        for (const auto& p : h) {
-            if (p.first  < xmin) xmin = p.first;  if (p.first  > xmax) xmax = p.first;
-            if (p.second < ymin) ymin = p.second; if (p.second > ymax) ymax = p.second;
-        }
-    double pad = (std::max(xmax - xmin, ymax - ymin)) * 0.01 + 1e-9;
+    auto tris = cdt_triangulate(boundary_2d, holes_2d);
 
-    // CDT
-    Delaunay2D dt(xmin - pad, ymin - pad, xmax + pad, ymax + pad);
-
-    // Insert border vertices
-    int n_b = (int)border.size();
-    std::vector<int> cdt_border(n_b);
-    for (int i = 0; i < n_b; ++i)
-        cdt_border[i] = dt.insert(boundary_2d[i].first, boundary_2d[i].second);
-
-    // Insert hole vertices
-    std::vector<std::vector<int>> cdt_holes(hole_pts_3d.size());
-    for (size_t h = 0; h < hole_pts_3d.size(); ++h) {
-        int n_h = (int)hole_pts_3d[h].size();
-        cdt_holes[h].resize(n_h);
-        for (int i = 0; i < n_h; ++i)
-            cdt_holes[h][i] = dt.insert(holes_2d[h][i].first, holes_2d[h][i].second);
-    }
-
-    // Map CDT vertex index → index in all_pts (border first, then holes)
-    // all_pts: border[0..n_b-1], hole0[0..], hole1[0..], ...
-    std::unordered_map<int,int> cdt_to_allpts;
-    for (int i = 0; i < n_b; ++i)
-        if (cdt_border[i] >= 0) cdt_to_allpts[cdt_border[i]] = i;
-    int offset = n_b;
-    for (size_t h = 0; h < hole_pts_3d.size(); ++h) {
-        int n_h = (int)hole_pts_3d[h].size();
-        for (int i = 0; i < n_h; ++i)
-            if (cdt_holes[h][i] >= 0) cdt_to_allpts[cdt_holes[h][i]] = offset + i;
-        offset += n_h;
-    }
-
-    // Insert constraints
-    for (int i = 0; i < n_b; ++i)
-        dt.insert_constraint(cdt_border[i], cdt_border[(i + 1) % n_b]);
-    for (size_t h = 0; h < hole_pts_3d.size(); ++h) {
-        int n_h = (int)cdt_holes[h].size();
-        for (int i = 0; i < n_h; ++i)
-            dt.insert_constraint(cdt_holes[h][i], cdt_holes[h][(i + 1) % n_h]);
-    }
-
-    // Flood-fill nesting level
-    int nt = (int)dt.triangles.size();
-    std::vector<int> level(nt, -1);
-    std::queue<int> bfs;
-
-    // Seed: all alive triangles touching any super-vertex → level 0
-    auto is_super = [&](int v) {
-        return v == dt.super_v[0] || v == dt.super_v[1] || v == dt.super_v[2];
-    };
-    for (int i = 0; i < nt; ++i) {
-        if (!dt.triangles[i].alive) continue;
-        const Triangle& t = dt.triangles[i];
-        if (is_super(t.v[0]) || is_super(t.v[1]) || is_super(t.v[2])) {
-            level[i] = 0;
-            bfs.push(i);
-        }
-    }
-    // BFS over all alive triangles (including those without super-vertex)
-    // Initialize remaining unchosen tris — seed with boundary-touching ones
-    // Actually: also seed any alive tri with adj==-1 on a non-constrained edge
-    for (int i = 0; i < nt; ++i) {
-        if (!dt.triangles[i].alive || level[i] >= 0) continue;
-        const Triangle& t = dt.triangles[i];
-        for (int k = 0; k < 3; ++k)
-            if (t.adj[k] < 0 && !t.constrained[k]) { level[i] = 0; bfs.push(i); break; }
-    }
-
-    while (!bfs.empty()) {
-        int ti = bfs.front(); bfs.pop();
-        const Triangle& t = dt.triangles[ti];
-        for (int k = 0; k < 3; ++k) {
-            int nb = t.adj[k];
-            if (nb < 0 || !dt.triangles[nb].alive || level[nb] >= 0) continue;
-            level[nb] = level[ti] + (t.constrained[k] ? 1 : 0);
-            bfs.push(nb);
-        }
-    }
-
-    // Collect all 3D vertices in order: border, then holes
     std::vector<Point> all_pts = border;
     for (const auto& h : hole_pts_3d)
         for (const auto& p : h) all_pts.push_back(p);
 
-    // Build mesh: keep triangles at odd nesting level (inside boundary, outside holes)
     Mesh mesh;
     std::vector<size_t> vkeys;
     for (const auto& p : all_pts) vkeys.push_back(mesh.add_vertex(p));
 
-    for (int i = 0; i < nt; ++i) {
-        if (!dt.triangles[i].alive) continue;
-        if (level[i] < 0 || level[i] % 2 == 0) continue;
-        const Triangle& t = dt.triangles[i];
-        if (is_super(t.v[0]) || is_super(t.v[1]) || is_super(t.v[2])) continue;
-        auto it0 = cdt_to_allpts.find(t.v[0]);
-        auto it1 = cdt_to_allpts.find(t.v[1]);
-        auto it2 = cdt_to_allpts.find(t.v[2]);
-        if (it0 == cdt_to_allpts.end() || it1 == cdt_to_allpts.end() || it2 == cdt_to_allpts.end()) continue;
-        size_t vk0 = vkeys[it0->second];
-        size_t vk1 = vkeys[it1->second];
-        size_t vk2 = vkeys[it2->second];
-        if (vk0 == vk1 || vk1 == vk2 || vk2 == vk0) continue;
-        // ensure CCW winding in 2D
-        double o = Delaunay2D::orient2d(dt.vertices[t.v[0]].x, dt.vertices[t.v[0]].y,
-                                        dt.vertices[t.v[1]].x, dt.vertices[t.v[1]].y,
-                                        dt.vertices[t.v[2]].x, dt.vertices[t.v[2]].y);
-        if (o > 0) mesh.add_face({vk0, vk1, vk2});
-        else       mesh.add_face({vk0, vk2, vk1});
+    for (const auto& f : tris) {
+        if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
+        mesh.add_face({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
     }
-
     return mesh;
 }
 
@@ -1210,7 +1006,7 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
             holes_2d_pairs.push_back(std::move(hole));
         }
 
-        auto cap_tris = cdt_fill(border_2d_pairs, holes_2d_pairs);
+        auto cap_tris = cdt_triangulate(border_2d_pairs, holes_2d_pairs);
 
         for (const auto& f : cap_tris)
             mesh.add_face({bot_vkeys[f[0]], bot_vkeys[f[2]], bot_vkeys[f[1]]});
