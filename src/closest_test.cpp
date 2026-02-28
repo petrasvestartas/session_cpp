@@ -16,7 +16,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Closest", "Line_point") {
+MINI_TEST("Closest", "Line Point") {
     Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
 
     auto [cp1, t1, d1] = Closest::line_point(l, Point(5.0, 5.0, 0.0));
@@ -36,7 +36,7 @@ MINI_TEST("Closest", "Line_point") {
     MINI_CHECK(TOLERANCE.is_close(d3, 5.0));
 }
 
-MINI_TEST("Closest", "Polyline_point") {
+MINI_TEST("Closest", "Polyline Point") {
     Polyline pl({Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0), Point(10.0, 10.0, 0.0)});
 
     auto [cp1, t1, d1] = Closest::polyline_point(pl, Point(5.0, 5.0, 0.0));
@@ -48,10 +48,12 @@ MINI_TEST("Closest", "Polyline_point") {
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
 }
 
-MINI_TEST("Closest", "Curve_point") {
+MINI_TEST("Closest", "Curve Point") {
     std::vector<Point> pts = {
-        Point(0.0, 0.0, 0.0), Point(1.0, 2.0, 0.0),
-        Point(3.0, 2.0, 0.0), Point(4.0, 0.0, 0.0)
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 2.0, 0.0),
+        Point(3.0, 2.0, 0.0),
+        Point(4.0, 0.0, 0.0),
     };
     NurbsCurve crv = NurbsCurve::create(false, 3, pts);
 
@@ -64,12 +66,28 @@ MINI_TEST("Closest", "Curve_point") {
     MINI_CHECK(dist2 < 0.01);
 }
 
-MINI_TEST("Closest", "Surface_point") {
+MINI_TEST("Closest", "Surface Point") {
     std::vector<Point> pts = {
-        Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(2.0, 0.0, 0.0), Point(3.0, 0.0, 0.0),
-        Point(0.0, 1.0, 0.0), Point(1.0, 1.0, 1.0), Point(2.0, 1.0, 1.0), Point(3.0, 1.0, 0.0),
-        Point(0.0, 2.0, 0.0), Point(1.0, 2.0, 1.0), Point(2.0, 2.0, 1.0), Point(3.0, 2.0, 0.0),
-        Point(0.0, 3.0, 0.0), Point(1.0, 3.0, 0.0), Point(2.0, 3.0, 0.0), Point(3.0, 3.0, 0.0),
+        // i=0
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(3.0, 0.0, 0.0),
+        // i=1
+        Point(0.0, 1.0, 0.0),
+        Point(1.0, 1.0, 1.0),
+        Point(2.0, 1.0, 1.0),
+        Point(3.0, 1.0, 0.0),
+        // i=2
+        Point(0.0, 2.0, 0.0),
+        Point(1.0, 2.0, 1.0),
+        Point(2.0, 2.0, 1.0),
+        Point(3.0, 2.0, 0.0),
+        // i=3
+        Point(0.0, 3.0, 0.0),
+        Point(1.0, 3.0, 0.0),
+        Point(2.0, 3.0, 0.0),
+        Point(3.0, 3.0, 0.0),
     };
     NurbsSurface srf = NurbsSurface::create(false, false, 3, 3, 4, 4, pts);
 
@@ -82,7 +100,7 @@ MINI_TEST("Closest", "Surface_point") {
     MINI_CHECK(dist2 < 0.01);
 }
 
-MINI_TEST("Closest", "Mesh_point") {
+MINI_TEST("Closest", "Mesh Point") {
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point(m, Point(0.0, 0.0, 2.0));
@@ -93,8 +111,13 @@ MINI_TEST("Closest", "Mesh_point") {
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
 }
 
-MINI_TEST("Closest", "Pointcloud_point") {
-    PointCloud pc({Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0), Point(10.0, 10.0, 0.0)}, {}, {});
+MINI_TEST("Closest", "Pointcloud Point") {
+    PointCloud pc({
+        Point(0.0, 0.0, 0.0),
+        Point(5.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+        Point(10.0, 10.0, 0.0),
+    }, {}, {});
 
     auto [cp1, i1, d1] = Closest::pointcloud_point(pc, Point(4.0, 0.0, 0.0));
     MINI_CHECK(TOLERANCE.is_close(cp1[0], 5.0));

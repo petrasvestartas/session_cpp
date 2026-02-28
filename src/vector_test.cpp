@@ -59,7 +59,9 @@ MINI_TEST("Vector", "Constructor") {
     Vector vz = Vector::z_axis();
     Vector vzero = Vector::zero();
 
-    MINI_CHECK(v.name == "my_vector" && v[0] == 10.0 && v[1] == 20.0 && v[2] == 30.0 && !v.guid.empty());
+    MINI_CHECK(v.name == "my_vector");
+    MINI_CHECK(v[0] == 10.0 && v[1] == 20.0 && v[2] == 30.0);
+    MINI_CHECK(!v.guid.empty());
     MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
     MINI_CHECK(v_2p[0] == 1.0 && v_2p[1] == 2.0 && v_2p[2] == 3.0);
     MINI_CHECK(vstr == "10.000000, 20.000000, 30.000000");
@@ -114,7 +116,7 @@ MINI_TEST("Vector", "Reverse") {
     MINI_CHECK(v[0] == -1.0 && v[1] == 2.0 && v[2] == -3.0);
 }
 
-MINI_TEST("Vector", "Dot_product") {
+MINI_TEST("Vector", "Dot Product") {
     // uncomment #include "vector.h"
 
     // Orthogonality and parallelism via dot product
@@ -143,7 +145,7 @@ MINI_TEST("Vector", "Dot_product") {
     MINI_CHECK(TOLERANCE.is_close(proj_coeff, 1.5));
 }
 
-MINI_TEST("Vector", "Cross_product") {
+MINI_TEST("Vector", "Cross Product") {
     // uncomment #include "vector.h"
 
     // Get normal
@@ -219,7 +221,7 @@ MINI_TEST("Vector", "Projection") {
     MINI_CHECK(proj_z[0] == 0.0 && proj_z[1] == 0.0 && proj_z[2] == 1.0);
 }
 
-MINI_TEST("Vector", "Is_parallel_to") {
+MINI_TEST("Vector", "Is Parallel To") {
     // uncomment #include "vector.h"
 
     // is_parallel_to returns: 1 (parallel), -1 (anti-parallel), 0 (not parallel)
@@ -233,7 +235,7 @@ MINI_TEST("Vector", "Is_parallel_to") {
     MINI_CHECK(v1.is_parallel_to(v4) == 0);
 }
 
-MINI_TEST("Vector", "Is_perpendicular_to") {
+MINI_TEST("Vector", "Is Perpendicular To") {
     // uncomment #include "vector.h"
 
     // is_perpendicular_to: checks if two vectors are perpendicular (dot product ~ 0)
@@ -260,7 +262,7 @@ MINI_TEST("Vector", "Is_perpendicular_to") {
     MINI_CHECK(perp.is_perpendicular_to(arbitrary));
 }
 
-MINI_TEST("Vector", "Get_leveled_vector") {
+MINI_TEST("Vector", "Get Leveled Vector") {
     // uncomment #include "vector.h"
 
     // Scale vector along its direction so its Z-component equals vertical_height.
@@ -271,7 +273,7 @@ MINI_TEST("Vector", "Get_leveled_vector") {
     MINI_CHECK(TOLERANCE.is_close(v_leveled.magnitude(), std::sqrt(3.0)));
 }
 
-MINI_TEST("Vector", "Cos_sin_laws") {
+MINI_TEST("Vector", "Cos Sin Laws") {
     // uncomment #include "vector.h"
 
     // Given a 3-4-5 right triangle
@@ -318,7 +320,7 @@ MINI_TEST("Vector", "Cos_sin_laws") {
     MINI_CHECK(TOLERANCE.is_close(computed_side_a, a));
 }
 
-MINI_TEST("Vector", "Sum_of_vectors") {
+MINI_TEST("Vector", "Sum Of Vectors") {
     // uncomment #include "vector.h"
     // uncomment #include <vector>
 
@@ -357,7 +359,7 @@ MINI_TEST("Vector", "Average") {
     MINI_CHECK(avg[2] == 5.0);
 }
 
-MINI_TEST("Vector", "Is_zero") {
+MINI_TEST("Vector", "Is Zero") {
     // uncomment #include "vector.h"
 
     Vector zero(0.0, 0.0, 0.0);
@@ -369,7 +371,7 @@ MINI_TEST("Vector", "Is_zero") {
     MINI_CHECK(tiny.is_zero());
 }
 
-MINI_TEST("Vector", "Json_roundtrip") {
+MINI_TEST("Vector", "Json Roundtrip") {
     // uncomment #include "vector.h"
 
     Vector v(42.1, 84.2, 126.3);
@@ -393,7 +395,7 @@ MINI_TEST("Vector", "Json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[2], 126.3));
 }
 
-MINI_TEST("Vector", "Protobuf_roundtrip") {
+MINI_TEST("Vector", "Protobuf Roundtrip") {
     // uncomment #include "vector.h"
 
     Vector v(42.1, 84.2, 126.3);

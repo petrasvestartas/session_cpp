@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Quaternion", "Json_roundtrip") {
+MINI_TEST("Quaternion", "Json Roundtrip") {
     Vector axis(0.0, 0.0, 1.0);
     Quaternion original = Quaternion::from_axis_angle(axis, 1.5708);
 

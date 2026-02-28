@@ -35,7 +35,9 @@ namespace session_cpp {
         Color ccopy = c;
         Color cother(255, 0, 0, 255, "red");
 
-        MINI_CHECK(c.name == "red" && c.guid != "" && c[0] == 255 && c[1] == 0 && c[2] == 0 && c[3] == 255);
+        MINI_CHECK(c.name == "red");
+        MINI_CHECK(c.guid != "");
+        MINI_CHECK(c[0] == 255 && c[1] == 0 && c[2] == 0 && c[3] == 255);
         MINI_CHECK(r == 255 && g == 0 && b == 0 && a == 255);
         MINI_CHECK(cstr == "255, 0, 0, 255");
         MINI_CHECK(crepr == "Color(red, 255, 0, 0, 255)");
@@ -43,7 +45,7 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid != c.guid);
     }
 
-    MINI_TEST("Color", "Json_roundtrip"){
+    MINI_TEST("Color", "Json Roundtrip"){
       // uncomment #include "color.h"
 
       Color c(255, 128, 64, 255, "serialization/test_color");
@@ -66,7 +68,7 @@ namespace session_cpp {
       MINI_CHECK(loaded[3] == 255);
     }
 
-    MINI_TEST("Color", "Protobuf_roundtrip"){
+    MINI_TEST("Color", "Protobuf Roundtrip"){
       // uncomment #include "color.h"
 
       Color c(255, 128, 64, 255, "serialization/test_color");

@@ -11,7 +11,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Knot", "Knot_count") {
+MINI_TEST("Knot", "Knot Count") {
     // uncomment #include "knot.h"
 
     // Calculate knot counts for various order/cv_count combinations
@@ -28,7 +28,7 @@ MINI_TEST("Knot", "Knot_count") {
     MINI_CHECK(count5 == 5);
 }
 
-MINI_TEST("Knot", "Make_clamped_uniform") {
+MINI_TEST("Knot", "Make Clamped Uniform") {
     // uncomment #include "knot.h"
 
     // Basic clamped uniform knot vector
@@ -55,7 +55,7 @@ MINI_TEST("Knot", "Make_clamped_uniform") {
     MINI_CHECK(k_invalid2.empty());
 }
 
-MINI_TEST("Knot", "Make_periodic_uniform") {
+MINI_TEST("Knot", "Make Periodic Uniform") {
     // uncomment #include "knot.h"
 
     // Create periodic uniform knot vector
@@ -81,7 +81,7 @@ MINI_TEST("Knot", "Clamp") {
     MINI_CHECK(last_clamped);
 }
 
-MINI_TEST("Knot", "Is_valid") {
+MINI_TEST("Knot", "Is Valid") {
     // uncomment #include "knot.h"
 
     // Valid clamped knot vector
@@ -96,7 +96,7 @@ MINI_TEST("Knot", "Is_valid") {
     MINI_CHECK(!invalid);
 }
 
-MINI_TEST("Knot", "Is_clamped") {
+MINI_TEST("Knot", "Is Clamped") {
     // uncomment #include "knot.h"
 
     // Clamped knot vector
@@ -115,7 +115,7 @@ MINI_TEST("Knot", "Is_clamped") {
     MINI_CHECK(!not_clamped);
 }
 
-MINI_TEST("Knot", "Is_periodic") {
+MINI_TEST("Knot", "Is Periodic") {
     // uncomment #include "knot.h"
 
     // Periodic knot vector
@@ -130,7 +130,7 @@ MINI_TEST("Knot", "Is_periodic") {
     MINI_CHECK(!not_periodic);
 }
 
-MINI_TEST("Knot", "Get_domain") {
+MINI_TEST("Knot", "Get Domain") {
     // uncomment #include "knot.h"
 
     // Get domain of clamped knot vector
@@ -141,7 +141,7 @@ MINI_TEST("Knot", "Get_domain") {
     MINI_CHECK(t1 == 1.0);
 }
 
-MINI_TEST("Knot", "Set_domain") {
+MINI_TEST("Knot", "Set Domain") {
     // uncomment #include "knot.h"
 
     // Create knot vector and set domain
@@ -184,7 +184,7 @@ MINI_TEST("Knot", "Multiplicity") {
     MINI_CHECK(mult_last == 3);
 }
 
-MINI_TEST("Knot", "Span_count") {
+MINI_TEST("Knot", "Span Count") {
     // uncomment #include "knot.h"
 
     // Single Bezier span
@@ -199,7 +199,7 @@ MINI_TEST("Knot", "Span_count") {
     MINI_CHECK(span2 == 3);
 }
 
-MINI_TEST("Knot", "Find_span") {
+MINI_TEST("Knot", "Find Span") {
     // uncomment #include "knot.h"
 
     // Find span in single-span knot vector
@@ -218,7 +218,7 @@ MINI_TEST("Knot", "Find_span") {
     MINI_CHECK(span2_0 == 0 && span2_mid == 1 && span2_end == 2);
 }
 
-MINI_TEST("Knot", "Greville_abcissae") {
+MINI_TEST("Knot", "Greville Abcissae") {
     // uncomment #include "knot.h"
 
     // Get Greville abcissae (control point parameter values)
@@ -229,7 +229,7 @@ MINI_TEST("Knot", "Greville_abcissae") {
     MINI_CHECK(g_len == 4);
 }
 
-MINI_TEST("Knot", "Domain_tolerance") {
+MINI_TEST("Knot", "Domain Tolerance") {
     // uncomment #include "knot.h"
 
     // Calculate domain tolerance

@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <limits>
 #include <thread>
+#include <atomic>
 
 #include "mesh.pb.h"
 #include "color.pb.h"
@@ -106,6 +107,49 @@ bool Mesh::is_valid() const {
         }
     }
     return true;
+}
+
+bool Mesh::is_closed() const {
+    for (const auto& [u, nbrs] : halfedge)
+        for (const auto& [v, fkey] : nbrs)
+            if (!fkey.has_value()) return false;
+    return !halfedge.empty();
+}
+
+static void parallel_for(size_t n, std::function<void(size_t)> fn) {
+    unsigned int hw = std::max(1u, std::thread::hardware_concurrency());
+    unsigned int nthreads = static_cast<unsigned int>(std::min((size_t)hw, n));
+    std::atomic<size_t> idx{0};
+    std::vector<std::thread> threads;
+    threads.reserve(nthreads);
+    for (unsigned int t = 0; t < nthreads; ++t)
+        threads.emplace_back([&] {
+            for (size_t i = idx.fetch_add(1); i < n; i = idx.fetch_add(1))
+                fn(i);
+        });
+    for (auto& th : threads) th.join();
+}
+
+std::vector<Mesh> Mesh::from_polygon_with_holes_many(
+    const std::vector<std::vector<std::vector<Point>>>& inputs,
+    bool sort_by_bbox, bool parallel)
+{
+    std::vector<Mesh> results(inputs.size());
+    auto fn = [&](size_t i) { results[i] = from_polygon_with_holes(inputs[i], sort_by_bbox); };
+    if (parallel && inputs.size() > 1) parallel_for(inputs.size(), fn);
+    else for (size_t i = 0; i < inputs.size(); ++i) fn(i);
+    return results;
+}
+
+std::vector<Mesh> Mesh::loft_many(
+    const std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>>& pairs,
+    bool cap, bool parallel)
+{
+    std::vector<Mesh> results(pairs.size());
+    auto fn = [&](size_t i) { results[i] = loft(pairs[i].first, pairs[i].second, cap); };
+    if (parallel && pairs.size() > 1) parallel_for(pairs.size(), fn);
+    else for (size_t i = 0; i < pairs.size(); ++i) fn(i);
+    return results;
 }
 
 int Mesh::euler() const {
@@ -557,6 +601,16 @@ std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_
     return std::acos(cos_angle);
 }
 
+std::optional<double> Mesh::dihedral_angle(size_t u, size_t v) const {
+    auto [f0_opt, f1_opt] = edge_faces(u, v);
+    if (!f0_opt.has_value() || !f1_opt.has_value()) return std::nullopt;
+    auto n0_opt = face_normal(f0_opt.value());
+    auto n1_opt = face_normal(f1_opt.value());
+    if (!n0_opt.has_value() || !n1_opt.has_value()) return std::nullopt;
+    double dot = std::clamp(n0_opt->dot(*n1_opt), -1.0, 1.0);
+    return Tolerance::PI - std::acos(dot);
+}
+
 std::map<size_t, Vector> Mesh::face_normals() const {
     std::map<size_t, Vector> normals;
     for (const auto& [face_key, _] : face) {
@@ -640,6 +694,29 @@ Mesh Mesh::from_vertices_and_faces(const std::vector<Point>& vertices,
     for (const auto& f : faces)
         mesh.add_face(f);
     return mesh;
+}
+
+Mesh Mesh::create_box(double x, double y, double z) {
+    double hx = x * 0.5, hy = y * 0.5, hz = z * 0.5;
+    std::vector<Point> vertices = {
+        Point(-hx, -hy, -hz),
+        Point( hx, -hy, -hz),
+        Point( hx,  hy, -hz),
+        Point(-hx,  hy, -hz),
+        Point(-hx, -hy,  hz),
+        Point( hx, -hy,  hz),
+        Point( hx,  hy,  hz),
+        Point(-hx,  hy,  hz),
+    };
+    std::vector<std::vector<size_t>> faces = {
+        {0, 3, 2, 1},  // bottom
+        {4, 5, 6, 7},  // top
+        {0, 1, 5, 4},  // front
+        {2, 3, 7, 6},  // back
+        {0, 4, 7, 3},  // left
+        {1, 2, 6, 5},  // right
+    };
+    return from_vertices_and_faces(vertices, faces);
 }
 
 Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face, std::optional<double> precision) {
@@ -1018,16 +1095,11 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
     for (size_t p = 0; p < poly_infos.size(); ++p) {
         size_t off = poly_infos[p].offset;
         size_t n = poly_infos[p].count;
-        bool is_border = (p == 0);
 
         for (size_t i = 0; i < n; ++i) {
             size_t j = (i + 1) % n;
             size_t bi = off + i, bj = off + j;
-
-            if (is_border)
-                mesh.add_face({bot_vkeys[bi], bot_vkeys[bj], top_vkeys[bj], top_vkeys[bi]});
-            else
-                mesh.add_face({bot_vkeys[bi], top_vkeys[bi], top_vkeys[bj], bot_vkeys[bj]});
+            mesh.add_face({bot_vkeys[bi], bot_vkeys[bj], top_vkeys[bj], top_vkeys[bi]});
         }
     }
 
@@ -1081,15 +1153,14 @@ std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> Mesh::to_vertice
     return {vertices, faces};
 }
 
-void Mesh::transform() {
+bool Mesh::transform(const Xform& xf) {
   for (auto& [idx, vdata] : vertex) {
     Point pt(vdata.x, vdata.y, vdata.z);
-    xform.transform_point(pt);
+    xf.transform_point(pt);
     vdata.x = pt[0];
     vdata.y = pt[1];
     vdata.z = pt[2];
   }
-  xform = Xform::identity();
   triangle_bvh_built = false;
   triangle_bvh.reset();
   triangle_boxes_cache.clear();
@@ -1097,11 +1168,22 @@ void Mesh::transform() {
   triangle_indices_cache.clear();
   triangle_face_subidx_cache.clear();
   vertices_cache.clear();
+  return true;
+}
+
+void Mesh::transform() {
+  transform(xform);
 }
 
 Mesh Mesh::transformed() const {
   Mesh result = *this;
   result.transform();
+  return result;
+}
+
+Mesh Mesh::transformed(const Xform& xf) const {
+  Mesh result = *this;
+  result.transform(xf);
   return result;
 }
 
@@ -1462,6 +1544,19 @@ std::string Mesh::json_dumps() const {
 
 Mesh Mesh::json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
+void Mesh::json_dump(const std::string& filename) const {
+    nlohmann::ordered_json j = jsondump();
+    std::ofstream f(filename);
+    f << j.dump(2);
+}
+
+Mesh Mesh::json_load(const std::string& filename) {
+    std::ifstream f(filename);
+    nlohmann::json j;
+    f >> j;
+    return jsonload(j);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

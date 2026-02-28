@@ -129,18 +129,16 @@ private:
 
 public:
 
-    /// Constructors
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Constructors
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     Mesh();
     Mesh(const Mesh& other);
     Mesh& operator=(const Mesh& other);
     bool operator==(const Mesh& other) const;
     bool operator!=(const Mesh& other) const;
     ~Mesh();
-
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Construction
-    ///////////////////////////////////////////////////////////////////////////////////////////
 
     /**
      * @brief Create a mesh from a list of vertices and faces.
@@ -184,27 +182,74 @@ public:
      */
     static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap = true);
 
+    static std::vector<Mesh> from_polygon_with_holes_many(
+        const std::vector<std::vector<std::vector<Point>>>& inputs,
+        bool sort_by_bbox = false, bool parallel = true);
+
+    static std::vector<Mesh> loft_many(
+        const std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>>& pairs,
+        bool cap = true, bool parallel = true);
+
+    /**
+     * @brief Create a box mesh centered at the origin.
+     * @param x Size in the x direction.
+     * @param y Size in the y direction.
+     * @param z Size in the z direction.
+     * @return A closed box mesh with 8 vertices and 6 quad faces.
+     */
+    static Mesh create_box(double x, double y, double z);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Boolean Queries
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Check if mesh is empty
+    bool is_empty() const { return vertex.empty(); }
+
+    /// Check if mesh is valid (has vertices, faces, and all face vertex keys exist)
+    bool is_valid() const;
+
+    /// Check if mesh is closed (no boundary edges — every halfedge has an opposite face)
+    bool is_closed() const;
+
+    /// Check if a vertex is on the boundary
+    bool is_vertex_on_boundary(size_t vertex_key) const;
+
+    /// Check if an edge is on the boundary
+    bool is_edge_on_boundary(size_t u, size_t v) const;
+
+    /// Check if a face is on the boundary
+    bool is_face_on_boundary(size_t face_key) const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Basic Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Get number of vertices
     size_t number_of_vertices() const { return vertex.size(); }
-    
+
     /// Get number of faces
     size_t number_of_faces() const { return face.size(); }
-    
+
     /// Get number of edges
     size_t number_of_edges() const;
-    
-    /// Check if mesh is empty
-    bool is_empty() const { return vertex.empty(); }
 
-    /// Check if mesh is valid (has vertices, faces, and all face vertex keys exist)
-    bool is_valid() const;
-    
     /// Calculate Euler characteristic (V - E + F)
     int euler() const;
+
+    /**
+     * @brief Create a mapping from sparse vertex keys to sequential indices.
+     * @return A map of vertex_key -> sequential_index (0, 1, 2, ...).
+     */
+    std::map<size_t, size_t> vertex_index() const;
+
+    /**
+     * @brief Export vertices and faces with sequential 0-based indices.
+     * @return A pair of (vertices, faces) where faces use sequential indices.
+     */
+    std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
+    
+
 
     /// Clear all mesh data
     void clear();
@@ -266,14 +311,6 @@ public:
     /// Get all edges sharing a vertex with edge (u,v), excluding (u,v) and (v,u)
     std::vector<std::pair<size_t, size_t>> edge_edges(size_t u, size_t v) const;
 
-    /// Check if a vertex is on the boundary
-    bool is_vertex_on_boundary(size_t vertex_key) const;
-
-    /// Check if an edge is on the boundary
-    bool is_edge_on_boundary(size_t u, size_t v) const;
-
-    /// Check if a face is on the boundary
-    bool is_face_on_boundary(size_t face_key) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Properties
@@ -294,6 +331,10 @@ public:
     /// Calculate the angle at a vertex in a face
     std::optional<double> vertex_angle_in_face(size_t vertex_key, size_t face_key) const;
 
+    /// Calculate the dihedral angle (in radians) between two faces sharing edge (u,v).
+    /// Returns nullopt for boundary edges (only one face) or invalid edges.
+    std::optional<double> dihedral_angle(size_t u, size_t v) const;
+
     /// Calculate normals for all faces
     std::map<size_t, Vector> face_normals() const;
     
@@ -304,27 +345,13 @@ public:
     std::map<size_t, Vector> vertex_normals_weighted(NormalWeighting weighting) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // COMPAS-style Export Methods
-    ///////////////////////////////////////////////////////////////////////////////////////////
-
-    /**
-     * @brief Create a mapping from sparse vertex keys to sequential indices.
-     * @return A map of vertex_key -> sequential_index (0, 1, 2, ...).
-     */
-    std::map<size_t, size_t> vertex_index() const;
-
-    /**
-     * @brief Export vertices and faces with sequential 0-based indices.
-     * @return A pair of (vertices, faces) where faces use sequential indices.
-     */
-    std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
-
-    ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
+    bool transform(const Xform& xf);
     void transform();
     Mesh transformed() const;
+    Mesh transformed(const Xform& xf) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON
@@ -341,6 +368,12 @@ public:
 
     /// Load from JSON string
     static Mesh json_loads(const std::string& json_string);
+
+    /// Write JSON to file
+    void json_dump(const std::string& filename) const;
+
+    /// Read JSON from file
+    static Mesh json_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf
@@ -366,29 +399,15 @@ public:
     std::string repr() const;
     friend std::ostream& operator<<(std::ostream& os, const Mesh& mesh);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
-    // Triangle BVH Cache
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    friend class Closest;
+    friend class Intersection;
 
-    /// Build or rebuild cached per-triangle AABBs and BVH (idempotent unless force=true)
     void build_triangle_bvh(bool force = false) const;
-
-    /// Cast a ray against the cached triangle BVH to get candidate triangle IDs
     bool triangle_bvh_ray_cast(const Point& origin, const Vector& direction, std::vector<int>& candidate_ids, bool find_all = false) const;
-
-    /// Retrieve triangle data by ID from cache
     bool get_triangle_by_id(int tri_id, size_t& face_idx, size_t& sub_idx, Point& v0, Point& v1, Point& v2) const;
-
-    /// Clear triangle BVH caches manually
     void clear_triangle_bvh() const;
-
-    /// Get cached BVH pointer (returns nullptr if not built)
-    const BVH* get_cached_bvh() const { return triangle_bvh.get(); }
-
-    /// Build or rebuild cached AABBTree from triangle AABBs (idempotent unless force=true)
     void build_triangle_aabb_tree(bool force = false) const;
-
-    /// Get cached AABBTree pointer (returns nullptr if not built)
+    const BVH* get_cached_bvh() const { return triangle_bvh.get(); }
     const AABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
 };
 

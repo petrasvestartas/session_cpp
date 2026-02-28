@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Intersection", "Line_line") {
+MINI_TEST("Intersection", "Line Line") {
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
 
@@ -20,7 +20,7 @@ MINI_TEST("Intersection", "Line_line") {
     MINI_CHECK(TOLERANCE.is_close(output[2], 0.0));
 }
 
-MINI_TEST("Intersection", "Line_line_parallel") {
+MINI_TEST("Intersection", "Line Line Parallel") {
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 1.0, 0.0, 1.0, 1.0, 0.0);
 
@@ -30,7 +30,7 @@ MINI_TEST("Intersection", "Line_line_parallel") {
     MINI_CHECK(!result);
 }
 
-MINI_TEST("Intersection", "Line_line_parameters") {
+MINI_TEST("Intersection", "Line Line Parameters") {
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
 
@@ -42,7 +42,7 @@ MINI_TEST("Intersection", "Line_line_parameters") {
     MINI_CHECK(TOLERANCE.is_close(t1, 0.5));
 }
 
-MINI_TEST("Intersection", "Line_line_parameters_endpoints") {
+MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
@@ -54,7 +54,7 @@ MINI_TEST("Intersection", "Line_line_parameters_endpoints") {
     MINI_CHECK(TOLERANCE.is_close(t1, 0.0));
 }
 
-MINI_TEST("Intersection", "Line_line_parameters_infinite") {
+MINI_TEST("Intersection", "Line Line Parameters Infinite") {
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(2.0, -1.0, 0.0, 2.0, 1.0, 0.0);
 
@@ -65,7 +65,7 @@ MINI_TEST("Intersection", "Line_line_parameters_infinite") {
     MINI_CHECK(TOLERANCE.is_close(t0, 2.0));
 }
 
-MINI_TEST("Intersection", "Plane_plane") {
+MINI_TEST("Intersection", "Plane Plane") {
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Plane plane0 = Plane::from_point_normal(p0, n0);
@@ -85,7 +85,7 @@ MINI_TEST("Intersection", "Plane_plane") {
     MINI_CHECK(std::fabs(line_dir[2]) < 1e-4);
 }
 
-MINI_TEST("Intersection", "Plane_plane_complex") {
+MINI_TEST("Intersection", "Plane Plane Complex") {
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
     Vector plane_yaxis_0(0.272094, 0.96225, 0.006285);
@@ -113,7 +113,7 @@ MINI_TEST("Intersection", "Plane_plane_complex") {
     MINI_CHECK(std::fabs(end[2] - (-9.888727)) < 0.01);
 }
 
-MINI_TEST("Intersection", "Line_plane") {
+MINI_TEST("Intersection", "Line Plane") {
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(p, n);
@@ -129,7 +129,7 @@ MINI_TEST("Intersection", "Line_plane") {
     MINI_CHECK(TOLERANCE.is_close(output[2], 1.0));
 }
 
-MINI_TEST("Intersection", "Line_plane_parallel") {
+MINI_TEST("Intersection", "Line Plane Parallel") {
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(p, n);
@@ -142,7 +142,7 @@ MINI_TEST("Intersection", "Line_plane_parallel") {
     MINI_CHECK(!result);
 }
 
-MINI_TEST("Intersection", "Line_plane_real_world") {
+MINI_TEST("Intersection", "Line Plane Real World") {
     Line l0(500.000, -573.576, -819.152, 500.000, 573.576, 819.152);
 
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
@@ -159,7 +159,7 @@ MINI_TEST("Intersection", "Line_plane_real_world") {
     MINI_CHECK(std::fabs(lp[2] - 111.043) < 0.01);
 }
 
-MINI_TEST("Intersection", "Plane_plane_plane") {
+MINI_TEST("Intersection", "Plane Plane Plane") {
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
     Vector plane_yaxis_0(0.272094, 0.96225, 0.006285);
@@ -184,7 +184,7 @@ MINI_TEST("Intersection", "Plane_plane_plane") {
     MINI_CHECK(std::fabs(output[2] - 0.0) < 0.1);
 }
 
-MINI_TEST("Intersection", "Plane_plane_plane_parallel") {
+MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Plane plane0 = Plane::from_point_normal(p0, n0);
@@ -203,7 +203,7 @@ MINI_TEST("Intersection", "Plane_plane_plane_parallel") {
     MINI_CHECK(!result);
 }
 
-MINI_TEST("Intersection", "Ray_box") {
+MINI_TEST("Intersection", "Ray Box") {
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
     Vector y_axis(0.0, 1.0, 0.0);
@@ -222,7 +222,7 @@ MINI_TEST("Intersection", "Ray_box") {
     MINI_CHECK(std::fabs(tmax - 6.0) < 1e-4);
 }
 
-MINI_TEST("Intersection", "Ray_box_miss") {
+MINI_TEST("Intersection", "Ray Box Miss") {
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
     Vector y_axis(0.0, 1.0, 0.0);
@@ -239,7 +239,7 @@ MINI_TEST("Intersection", "Ray_box_miss") {
     MINI_CHECK(!result);
 }
 
-MINI_TEST("Intersection", "Ray_sphere") {
+MINI_TEST("Intersection", "Ray Sphere") {
     Point origin(-5.0, 0.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
@@ -253,7 +253,7 @@ MINI_TEST("Intersection", "Ray_sphere") {
     MINI_CHECK(std::fabs(t1 - 7.0) < 1e-4);
 }
 
-MINI_TEST("Intersection", "Ray_sphere_tangent") {
+MINI_TEST("Intersection", "Ray Sphere Tangent") {
     Point origin(-5.0, 2.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
@@ -266,7 +266,7 @@ MINI_TEST("Intersection", "Ray_sphere_tangent") {
     MINI_CHECK(std::fabs(t0 - 5.0) < 1e-4);
 }
 
-MINI_TEST("Intersection", "Ray_sphere_miss") {
+MINI_TEST("Intersection", "Ray Sphere Miss") {
     Point origin(-5.0, 5.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
@@ -278,7 +278,7 @@ MINI_TEST("Intersection", "Ray_sphere_miss") {
     MINI_CHECK(hits == 0);
 }
 
-MINI_TEST("Intersection", "Ray_triangle") {
+MINI_TEST("Intersection", "Ray Triangle") {
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
 
@@ -295,7 +295,7 @@ MINI_TEST("Intersection", "Ray_triangle") {
     MINI_CHECK(std::fabs(t - 1.0) < 1e-4);
 }
 
-MINI_TEST("Intersection", "Ray_triangle_miss") {
+MINI_TEST("Intersection", "Ray Triangle Miss") {
     Point origin(2.0, 2.0, -1.0);
     Vector direction(0.0, 0.0, 1.0);
 
@@ -310,7 +310,7 @@ MINI_TEST("Intersection", "Ray_triangle_miss") {
     MINI_CHECK(!result);
 }
 
-MINI_TEST("Intersection", "Ray_triangle_parallel") {
+MINI_TEST("Intersection", "Ray Triangle Parallel") {
     Point origin(0.5, 0.5, -1.0);
     Vector direction(1.0, 0.0, 0.0);
 
@@ -326,10 +326,20 @@ MINI_TEST("Intersection", "Ray_triangle_parallel") {
     MINI_CHECK(parallel);
 }
 
-MINI_TEST("Intersection", "Ray_mesh") {
+MINI_TEST("Intersection", "Ray Mesh") {
     std::vector<std::vector<Point>> polygons = {
-        {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)},
-        {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        },
+        {
+            Point(0.0, 0.0, 1.0),
+            Point(1.0, 0.0, 1.0),
+            Point(1.0, 1.0, 1.0),
+            Point(0.0, 1.0, 1.0),
+        },
     };
 
     Mesh mesh = Mesh::from_polylines(polygons);
@@ -345,10 +355,20 @@ MINI_TEST("Intersection", "Ray_mesh") {
     MINI_CHECK(std::fabs(hits[0].t - 1.0) < 1e-3);
 }
 
-MINI_TEST("Intersection", "Ray_mesh_first") {
+MINI_TEST("Intersection", "Ray Mesh First") {
     std::vector<std::vector<Point>> polygons = {
-        {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)},
-        {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        },
+        {
+            Point(0.0, 0.0, 1.0),
+            Point(1.0, 0.0, 1.0),
+            Point(1.0, 1.0, 1.0),
+            Point(0.0, 1.0, 1.0),
+        },
     };
 
     Mesh mesh = Mesh::from_polylines(polygons);
@@ -363,9 +383,14 @@ MINI_TEST("Intersection", "Ray_mesh_first") {
     MINI_CHECK(hits.size() == 1);
 }
 
-MINI_TEST("Intersection", "Ray_mesh_miss") {
+MINI_TEST("Intersection", "Ray Mesh Miss") {
     std::vector<std::vector<Point>> polygons = {
-        {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)}
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        },
     };
 
     Mesh mesh = Mesh::from_polylines(polygons);
@@ -380,10 +405,20 @@ MINI_TEST("Intersection", "Ray_mesh_miss") {
     MINI_CHECK(hits.size() == 0);
 }
 
-MINI_TEST("Intersection", "Ray_mesh_bvh") {
+MINI_TEST("Intersection", "Ray Mesh Bvh") {
     std::vector<std::vector<Point>> polygons = {
-        {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)},
-        {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        },
+        {
+            Point(0.0, 0.0, 1.0),
+            Point(1.0, 0.0, 1.0),
+            Point(1.0, 1.0, 1.0),
+            Point(0.0, 1.0, 1.0),
+        },
     };
 
     Mesh mesh = Mesh::from_polylines(polygons);
@@ -399,10 +434,20 @@ MINI_TEST("Intersection", "Ray_mesh_bvh") {
     MINI_CHECK(std::fabs(hits[0].t - 1.0) < 1e-3);
 }
 
-MINI_TEST("Intersection", "Ray_mesh_bvh_first") {
+MINI_TEST("Intersection", "Ray Mesh Bvh First") {
     std::vector<std::vector<Point>> polygons = {
-        {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)},
-        {Point(0.0, 0.0, 1.0), Point(1.0, 0.0, 1.0), Point(1.0, 1.0, 1.0), Point(0.0, 1.0, 1.0)}
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        },
+        {
+            Point(0.0, 0.0, 1.0),
+            Point(1.0, 0.0, 1.0),
+            Point(1.0, 1.0, 1.0),
+            Point(0.0, 1.0, 1.0),
+        },
     };
 
     Mesh mesh = Mesh::from_polylines(polygons);
@@ -417,9 +462,14 @@ MINI_TEST("Intersection", "Ray_mesh_bvh_first") {
     MINI_CHECK(hits.size() == 1);
 }
 
-MINI_TEST("Intersection", "Ray_mesh_bvh_miss") {
+MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
     std::vector<std::vector<Point>> polygons = {
-        {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)}
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        },
     };
 
     Mesh mesh = Mesh::from_polylines(polygons);
@@ -434,7 +484,7 @@ MINI_TEST("Intersection", "Ray_mesh_bvh_miss") {
     MINI_CHECK(hits.size() == 0);
 }
 
-MINI_TEST("Intersection", "Ray_mesh_bvh_vs_naive") {
+MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
     std::vector<std::vector<Point>> polygons;
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 10; ++j) {
@@ -469,7 +519,7 @@ MINI_TEST("Intersection", "Ray_mesh_bvh_vs_naive") {
     }
 }
 
-MINI_TEST("Intersection", "Ray_box_real_world") {
+MINI_TEST("Intersection", "Ray Box Real World") {
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point min(214.0, 192.0, 484.0);
     Point max(694.0, 567.0, 796.0);
@@ -491,7 +541,7 @@ MINI_TEST("Intersection", "Ray_box_real_world") {
     MINI_CHECK(std::fabs(intersection_points[1][2] - 796.0) < 0.1);
 }
 
-MINI_TEST("Intersection", "Ray_sphere_real_world") {
+MINI_TEST("Intersection", "Ray Sphere Real World") {
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point sphere_center(457.0, 192.0, 207.0);
     double radius = 265.0;
@@ -511,7 +561,7 @@ MINI_TEST("Intersection", "Ray_sphere_real_world") {
     MINI_CHECK(std::fabs(sphere_points[1][2] - 440.97) < 0.1);
 }
 
-MINI_TEST("Intersection", "Ray_triangle_real_world") {
+MINI_TEST("Intersection", "Ray Triangle Real World") {
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point p1(214.0, 567.0, 484.0);
     Point p2(214.0, 192.0, 796.0);
@@ -526,11 +576,13 @@ MINI_TEST("Intersection", "Ray_triangle_real_world") {
     MINI_CHECK(std::fabs(triangle_hit[2] - 486.451) < 0.01);
 }
 
-MINI_TEST("Intersection", "Surface_plane") {
+MINI_TEST("Intersection", "Surface Plane") {
     // Bilinear surface: z = x (0 to 10), cut at z=5
     std::vector<Point> pts = {
-        Point(0, 0, 0), Point(0, 10, 0),
-        Point(10, 0, 10), Point(10, 10, 10)
+        Point(0, 0, 0),
+        Point(0, 10, 0),
+        Point(10, 0, 10),
+        Point(10, 10, 10),
     };
     auto srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
 
@@ -552,7 +604,7 @@ MINI_TEST("Intersection", "Surface_plane") {
     }
 }
 
-MINI_TEST("Intersection", "Surface_plane_curved") {
+MINI_TEST("Intersection", "Surface Plane Curved") {
     // Degree 3 surface with bump, cut at z=3
     std::vector<Point> pts;
     for (int i = 0; i < 4; i++) {
@@ -583,11 +635,13 @@ MINI_TEST("Intersection", "Surface_plane_curved") {
     }
 }
 
-MINI_TEST("Intersection", "Surface_plane_miss") {
+MINI_TEST("Intersection", "Surface Plane Miss") {
     // Flat surface at z=0, plane at z=5 -> no intersection
     std::vector<Point> pts = {
-        Point(0, 0, 0), Point(0, 10, 0),
-        Point(10, 0, 0), Point(10, 10, 0)
+        Point(0, 0, 0),
+        Point(0, 10, 0),
+        Point(10, 0, 0),
+        Point(10, 10, 0),
     };
     auto srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
 

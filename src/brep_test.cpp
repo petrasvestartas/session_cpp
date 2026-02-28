@@ -42,7 +42,7 @@ namespace session_cpp {
         MINI_CHECK(!(bcopy != b));
     }
 
-    MINI_TEST("BRep", "Create_box") {
+    MINI_TEST("BRep", "Create Box") {
         // uncomment #include "brep.h"
         // uncomment #include "point.h"
 
@@ -75,7 +75,7 @@ namespace session_cpp {
         MINI_CHECK((int)box.m_trims.size() == 24);
     }
 
-    MINI_TEST("BRep", "Add_face") {
+    MINI_TEST("BRep", "Add Face") {
         // uncomment #include "brep.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -84,14 +84,14 @@ namespace session_cpp {
         BRep b;
         NurbsSurface srf;
         srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-        srf.set_cv(0, 0, Point(0,0,0)); srf.set_cv(1, 0, Point(1,0,0));
-        srf.set_cv(0, 1, Point(0,1,0)); srf.set_cv(1, 1, Point(1,1,0));
+        srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
+        srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
 
         int si = b.add_surface(srf);
         int fi = b.add_face(si, false);
         int li = b.add_loop(fi, BRepLoopType::Outer);
 
-        NurbsCurve trim = NurbsCurve::create(false, 1, {Point(0,0,0), Point(1,0,0)});
+        NurbsCurve trim = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(1, 0, 0)});
         int ci = b.add_curve_2d(trim);
         b.add_trim(ci, -1, li, false, BRepTrimType::Boundary);
 
@@ -113,7 +113,7 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
-    MINI_TEST("BRep", "Point_at") {
+    MINI_TEST("BRep", "Point At") {
         // uncomment #include "brep.h"
         // uncomment #include "point.h"
         // uncomment #include "tolerance.h"
@@ -126,7 +126,7 @@ namespace session_cpp {
                    std::abs(pt[0] + 1.0) < 0.01 || std::abs(pt[0] - 1.0) < 0.01);
     }
 
-    MINI_TEST("BRep", "Is_solid") {
+    MINI_TEST("BRep", "Is Solid") {
         // uncomment #include "brep.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -139,11 +139,11 @@ namespace session_cpp {
         BRep single;
         NurbsSurface srf;
         srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-        srf.set_cv(0, 0, Point(0,0,0)); srf.set_cv(1, 0, Point(1,0,0));
-        srf.set_cv(0, 1, Point(0,1,0)); srf.set_cv(1, 1, Point(1,1,0));
+        srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
+        srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
         int si = single.add_surface(srf);
         single.add_face(si, false);
-        single.add_vertex(Point(0,0,0));
+        single.add_vertex(Point(0, 0, 0));
 
         MINI_CHECK(box.is_solid());
         MINI_CHECK(!single.is_solid());
@@ -167,7 +167,7 @@ namespace session_cpp {
         MINI_CHECK(std::abs(pt[2] - pt_orig[2] - 30.0) < 0.01);
     }
 
-    MINI_TEST("BRep", "Json_roundtrip") {
+    MINI_TEST("BRep", "Json Roundtrip") {
         // uncomment #include "brep.h"
         // uncomment #include "color.h"
         // uncomment #include <filesystem>
@@ -195,7 +195,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == box);
     }
 
-    MINI_TEST("BRep", "Create_cylinder") {
+    MINI_TEST("BRep", "Create Cylinder") {
         // uncomment #include "brep.h"
         // uncomment #include "mesh.h"
 
@@ -210,7 +210,7 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_vertices() > 0);
     }
 
-    MINI_TEST("BRep", "Create_sphere") {
+    MINI_TEST("BRep", "Create Sphere") {
         // uncomment #include "brep.h"
         // uncomment #include "mesh.h"
 
@@ -225,16 +225,16 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_vertices() > 0);
     }
 
-    MINI_TEST("BRep", "From_polylines") {
+    MINI_TEST("BRep", "From Polylines") {
         // uncomment #include "brep.h"
         // uncomment #include "polyline.h"
         // uncomment #include "mesh.h"
 
         double hx = 1.0, hy = 1.5, hz = 2.0;
         Point c[8] = {
-            Point(-hx,-hy,-hz), Point( hx,-hy,-hz),
-            Point( hx, hy,-hz), Point(-hx, hy,-hz),
-            Point(-hx,-hy, hz), Point( hx,-hy, hz),
+            Point(-hx, -hy, -hz), Point( hx, -hy, -hz),
+            Point( hx, hy, -hz), Point(-hx, hy, -hz),
+            Point(-hx, -hy, hz), Point( hx, -hy, hz),
             Point( hx, hy, hz), Point(-hx, hy, hz)
         };
 
@@ -257,16 +257,16 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
-    MINI_TEST("BRep", "From_nurbscurves") {
+    MINI_TEST("BRep", "From Nurbscurves") {
         // uncomment #include "brep.h"
         // uncomment #include "nurbscurve.h"
         // uncomment #include "mesh.h"
 
         double hx = 1.0, hy = 1.5, hz = 2.0;
         Point c[8] = {
-            Point(-hx,-hy,-hz), Point( hx,-hy,-hz),
-            Point( hx, hy,-hz), Point(-hx, hy,-hz),
-            Point(-hx,-hy, hz), Point( hx,-hy, hz),
+            Point(-hx, -hy, -hz), Point( hx, -hy, -hz),
+            Point( hx, hy, -hz), Point(-hx, hy, -hz),
+            Point(-hx, -hy, hz), Point( hx, -hy, hz),
             Point( hx, hy, hz), Point(-hx, hy, hz)
         };
 
@@ -286,13 +286,14 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
-    MINI_TEST("BRep", "From_nurbscurves_holes") {
+    MINI_TEST("BRep", "From Nurbscurves Holes") {
         // uncomment #include "brep.h"
         // uncomment #include "nurbscurve.h"
         // uncomment #include "mesh.h"
         // uncomment #include "primitives.h"
 
-        auto outer = NurbsCurve::create(false, 1, {Point(-5,-5,0), Point(5,-5,0), Point(5,5,0), Point(-5,5,0), Point(-5,-5,0)});
+        auto outer = NurbsCurve::create(false, 1, {
+            Point(-5, -5, 0), Point(5, -5, 0), Point(5, 5, 0), Point(-5, 5, 0), Point(-5, -5, 0)});
         auto hole = Primitives::circle(0.0, 0.0, 0.0, 2.0);
 
         BRep b = BRep::from_nurbscurves({outer}, {{hole}});
@@ -307,7 +308,7 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
-    MINI_TEST("BRep", "Create_block_with_hole") {
+    MINI_TEST("BRep", "Create Block With Hole") {
         // uncomment #include "brep.h"
         // uncomment #include "mesh.h"
 
@@ -322,7 +323,7 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
-    MINI_TEST("BRep", "Protobuf_roundtrip") {
+    MINI_TEST("BRep", "Protobuf Roundtrip") {
         // uncomment #include "brep.h"
         // uncomment #include "color.h"
         // uncomment #include <filesystem>

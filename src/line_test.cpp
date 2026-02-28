@@ -86,10 +86,16 @@ MINI_TEST("Line", "Constructor") {
     lc.linecolor = Color(255, 0, 0, 255, "red");
     lc.width = 2.5;
 
-    MINI_CHECK(l.name == "my_line" && l[0] == 10.0 && l[1] == 20.0 && l[2] == 30.0 && !l.guid.empty());
+    MINI_CHECK(l.name == "my_line");
+    MINI_CHECK(l[0] == 10.0 && l[1] == 20.0 && l[2] == 30.0);
+    MINI_CHECK(!l.guid.empty());
     MINI_CHECK(x0 == 10.0 && y0 == 20.0 && z0 == 30.0 && x1 == 40.0 && y1 == 50.0 && z1 == 60.0);
-    MINI_CHECK(lstr.find("10") != std::string::npos && lstr.find("20") != std::string::npos && lstr.find("60") != std::string::npos);
-    MINI_CHECK(lrepr.find("my_line") != std::string::npos && lrepr.find("10") != std::string::npos && lrepr.find("Color") != std::string::npos);
+    MINI_CHECK(lstr.find("10") != std::string::npos);
+    MINI_CHECK(lstr.find("20") != std::string::npos);
+    MINI_CHECK(lstr.find("60") != std::string::npos);
+    MINI_CHECK(lrepr.find("my_line") != std::string::npos);
+    MINI_CHECK(lrepr.find("10") != std::string::npos);
+    MINI_CHECK(lrepr.find("Color") != std::string::npos);
     MINI_CHECK(lcopy.guid != l.guid);
     MINI_CHECK(lmult[0] == 20.0 && lmult[3] == 80.0);
     MINI_CHECK(ldiv[0] == 5.0 && ldiv[3] == 20.0);
@@ -99,9 +105,11 @@ MINI_TEST("Line", "Constructor") {
     MINI_CHECK(rdiv[0] == 5.0 && rdiv[3] == 20.0);
     MINI_CHECK(radd[0] == 11.0 && radd[3] == 41.0);
     MINI_CHECK(rdif[0] == 9.0 && rdif[3] == 39.0);
-    MINI_CHECK(neg[0] == 4.0 && neg[1] == 5.0 && neg[2] == 6.0 && neg[3] == 1.0 && neg[4] == 2.0 && neg[5] == 3.0);
+    MINI_CHECK(neg[0] == 4.0 && neg[1] == 5.0 && neg[2] == 6.0);
+    MINI_CHECK(neg[3] == 1.0 && neg[4] == 2.0 && neg[5] == 3.0);
     MINI_CHECK(l2p[0] == 1.0 && l2p[3] == 4.0);
-    MINI_CHECK(l_pv[0] == 1.0 && l_pv[1] == 2.0 && l_pv[2] == 3.0 && l_pv[3] == 4.0 && l_pv[4] == 6.0 && l_pv[5] == 8.0);
+    MINI_CHECK(l_pv[0] == 1.0 && l_pv[1] == 2.0 && l_pv[2] == 3.0);
+    MINI_CHECK(l_pv[3] == 4.0 && l_pv[4] == 6.0 && l_pv[5] == 8.0);
     MINI_CHECK(l_pdl[0] == 0.0 && l_pdl[3] == 5.0);
     MINI_CHECK(lc.linecolor[0] == 255 && lc.linecolor[1] == 0 && lc.width == 2.5);
 }
@@ -120,7 +128,7 @@ MINI_TEST("Line", "Transformation") {
     MINI_CHECK(l.xform == Xform::identity());
 }
 
-MINI_TEST("Line", "Json_roundtrip") {
+MINI_TEST("Line", "Json Roundtrip") {
     // uncomment #include "line.h"
 
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
@@ -147,7 +155,7 @@ MINI_TEST("Line", "Json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
 }
 
-MINI_TEST("Line", "Protobuf_roundtrip") {
+MINI_TEST("Line", "Protobuf Roundtrip") {
     // uncomment #include "line.h"
 
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
@@ -178,7 +186,7 @@ MINI_TEST("Line", "Length") {
     MINI_CHECK(TOLERANCE.is_close(lsq, 25.0));
 }
 
-MINI_TEST("Line", "To_vector") {
+MINI_TEST("Line", "To Vector") {
     // uncomment #include "line.h"
 
     Line l(1.0, 2.0, 3.0, 4.0, 6.0, 9.0);
@@ -187,7 +195,7 @@ MINI_TEST("Line", "To_vector") {
     MINI_CHECK(v[0] == 3.0 && v[1] == 4.0 && v[2] == 6.0);
 }
 
-MINI_TEST("Line", "To_direction") {
+MINI_TEST("Line", "To Direction") {
     // uncomment #include "line.h"
 
     Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
@@ -199,7 +207,7 @@ MINI_TEST("Line", "To_direction") {
     MINI_CHECK(TOLERANCE.is_close(d.magnitude(), 1.0));
 }
 
-MINI_TEST("Line", "Point_at") {
+MINI_TEST("Line", "Point At") {
     // uncomment #include "line.h"
 
     Line l(0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
@@ -212,7 +220,7 @@ MINI_TEST("Line", "Point_at") {
     MINI_CHECK(pe[0] == 10.0 && pe[1] == 10.0 && pe[2] == 10.0);
 }
 
-MINI_TEST("Line", "Closest_point") {
+MINI_TEST("Line", "Closest Point") {
     // uncomment #include "line.h"
     // uncomment #include "point.h"
 
@@ -229,7 +237,7 @@ MINI_TEST("Line", "Closest_point") {
     MINI_CHECK(cp3[0] == 10.0 && cp3[1] == 0.0 && cp3[2] == 0.0);
 }
 
-MINI_TEST("Line", "Start_end_center") {
+MINI_TEST("Line", "Start End Center") {
     // uncomment #include "line.h"
 
     Line l(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
@@ -242,12 +250,17 @@ MINI_TEST("Line", "Start_end_center") {
     MINI_CHECK(center[0] == 2.5 && center[1] == 3.5 && center[2] == 4.5);
 }
 
-MINI_TEST("Line", "Fit_points") {
+MINI_TEST("Line", "Fit Points") {
     // uncomment #include "line.h"
     // uncomment #include "point.h"
     // uncomment #include <vector>
 
-    std::vector<Point> fit_pts = {Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 0.5), Point(2.0, 2.0, 1.0), Point(3.0, 3.0, 1.5)};
+    std::vector<Point> fit_pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.5),
+        Point(2.0, 2.0, 1.0),
+        Point(3.0, 3.0, 1.5),
+    };
     Line l_fit = Line::fit_points(fit_pts);
 
     MINI_CHECK(l_fit.length() > 0.0);

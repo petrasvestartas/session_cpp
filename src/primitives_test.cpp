@@ -18,7 +18,7 @@ namespace session_cpp {
 // Mesh primitives
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "Mesh_arrow") {
+MINI_TEST("Primitives", "Mesh Arrow") {
     // uncomment #include "mesh.h"
     Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     Mesh m = Primitives::arrow_mesh(line, 1.0);
@@ -27,7 +27,7 @@ MINI_TEST("Primitives", "Mesh_arrow") {
     MINI_CHECK(m.number_of_faces() == 28);
 }
 
-MINI_TEST("Primitives", "Mesh_cylinder") {
+MINI_TEST("Primitives", "Mesh Cylinder") {
     // uncomment #include "mesh.h"
     Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     Mesh m = Primitives::cylinder_mesh(line, 1.0);
@@ -40,20 +40,20 @@ MINI_TEST("Primitives", "Mesh_cylinder") {
 // NurbsCurve primitives
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "Nurbscurve_polyline") {
+MINI_TEST("Primitives", "Nurbscurve Polyline") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = NurbsCurve::create(false, 1, {
-        Point(0,0,0), Point(1,2,0), Point(2,0,0), Point(3,2,0), Point(4,0,0)});
+        Point(0, 0, 0), Point(1, 2, 0), Point(2, 0, 0), Point(3, 2, 0), Point(4, 0, 0)});
 
     MINI_CHECK(c.cv_count() == 5);
     MINI_CHECK(c.order() == 2);
     MINI_CHECK(c.degree() == 1);
     MINI_CHECK(c.is_rational() == false);
-    MINI_CHECK(TOLERANCE.is_point_close(c.point_at(c.domain_start()), Point(0,0,0)));
-    MINI_CHECK(TOLERANCE.is_point_close(c.point_at(c.domain_end()), Point(4,0,0)));
+    MINI_CHECK(TOLERANCE.is_point_close(c.point_at(c.domain_start()), Point(0, 0, 0)));
+    MINI_CHECK(TOLERANCE.is_point_close(c.point_at(c.domain_end()), Point(4, 0, 0)));
 }
 
-MINI_TEST("Primitives", "Nurbscurve_circle") {
+MINI_TEST("Primitives", "Nurbscurve Circle") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = Primitives::circle(0.0, 0.0, 0.0, 1.0);
 
@@ -62,7 +62,7 @@ MINI_TEST("Primitives", "Nurbscurve_circle") {
     MINI_CHECK(c.is_rational() == true);
 }
 
-MINI_TEST("Primitives", "Nurbscurve_ellipse") {
+MINI_TEST("Primitives", "Nurbscurve Ellipse") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = Primitives::ellipse(0.0, 0.0, 0.0, 2.0, 1.0);
 
@@ -71,7 +71,7 @@ MINI_TEST("Primitives", "Nurbscurve_ellipse") {
     MINI_CHECK(c.is_rational() == true);
 }
 
-MINI_TEST("Primitives", "Nurbscurve_arc") {
+MINI_TEST("Primitives", "Nurbscurve Arc") {
     // uncomment #include "nurbscurve.h"
     Point start(0.0, 0.0, 0.0);
     Point mid(1.0, 1.0, 0.0);
@@ -83,7 +83,7 @@ MINI_TEST("Primitives", "Nurbscurve_arc") {
     MINI_CHECK(c.is_rational() == true);
 }
 
-MINI_TEST("Primitives", "Nurbscurve_parabola") {
+MINI_TEST("Primitives", "Nurbscurve Parabola") {
     // uncomment #include "nurbscurve.h"
     Point p0(-1.0, 1.0, 0.0);
     Point p1(0.0, 0.0, 0.0);
@@ -95,7 +95,7 @@ MINI_TEST("Primitives", "Nurbscurve_parabola") {
     MINI_CHECK(c.is_rational() == false);
 }
 
-MINI_TEST("Primitives", "Nurbscurve_hyperbola") {
+MINI_TEST("Primitives", "Nurbscurve Hyperbola") {
     // uncomment #include "nurbscurve.h"
     Point center(0.0, 0.0, 0.0);
     NurbsCurve c = Primitives::hyperbola(center, 1.0, 1.0, 1.0);
@@ -105,7 +105,7 @@ MINI_TEST("Primitives", "Nurbscurve_hyperbola") {
     MINI_CHECK(c.is_rational() == false);
 }
 
-MINI_TEST("Primitives", "Nurbscurve_spiral") {
+MINI_TEST("Primitives", "Nurbscurve Spiral") {
     // uncomment #include "nurbscurve.h"
     NurbsCurve c = Primitives::spiral(1.0, 2.0, 1.0, 5.0);
 
@@ -118,7 +118,7 @@ MINI_TEST("Primitives", "Nurbscurve_spiral") {
 // NurbsSurface primitives
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "Nurbssurface_cylinder") {
+MINI_TEST("Primitives", "Nurbssurface Cylinder") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 5.0);
     s.name = "cylinder";
@@ -146,7 +146,7 @@ MINI_TEST("Primitives", "Nurbssurface_cylinder") {
     MINI_CHECK(std::abs(pmid[2] - 2.5) < 1e-10);
 }
 
-MINI_TEST("Primitives", "Nurbssurface_cone") {
+MINI_TEST("Primitives", "Nurbssurface Cone") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::cone_surface(0.0, 0.0, 0.0, 1.0, 5.0);
     s.name = "cone";
@@ -174,7 +174,7 @@ MINI_TEST("Primitives", "Nurbssurface_cone") {
     MINI_CHECK(std::abs(pmid[2] - 2.5) < 1e-10);
 }
 
-MINI_TEST("Primitives", "Nurbssurface_torus") {
+MINI_TEST("Primitives", "Nurbssurface Torus") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::torus_surface(0.0, 0.0, 0.0, 3.0, 1.0);
     s.name = "torus";
@@ -202,7 +202,7 @@ MINI_TEST("Primitives", "Nurbssurface_torus") {
     MINI_CHECK(std::abs(p_top[2] - 1.0) < 1e-10);
 }
 
-MINI_TEST("Primitives", "Nurbssurface_sphere") {
+MINI_TEST("Primitives", "Nurbssurface Sphere") {
     // uncomment #include "nurbssurface.h"
     NurbsSurface s = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     s.name = "sphere";
@@ -235,7 +235,7 @@ MINI_TEST("Primitives", "Nurbssurface_sphere") {
     MINI_CHECK(std::abs(p_eq2[2] - 0.0) < 1e-10);
 }
 
-MINI_TEST("Primitives", "Nurbssurface_quad_sphere") {
+MINI_TEST("Primitives", "Nurbssurface Quad Sphere") {
     // uncomment #include "nurbssurface.h"
     double R = 5.0;
     auto faces = Primitives::quad_sphere(0.0, 0.0, 0.0, R);
@@ -292,10 +292,10 @@ MINI_TEST("Primitives", "Nurbssurface_quad_sphere") {
 // NurbsSurface factory methods
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "Nurbssurface_ruled") {
+MINI_TEST("Primitives", "Nurbssurface Ruled") {
     // uncomment #include "nurbssurface.h"
-    std::vector<Point> pts_a = {Point(3,0,0), Point(-2,0,5)};
-    std::vector<Point> pts_b = {Point(3,5,5), Point(-2,5,0)};
+    std::vector<Point> pts_a = {Point(3, 0, 0), Point(-2, 0, 5)};
+    std::vector<Point> pts_b = {Point(3, 5, 5), Point(-2, 5, 0)};
     NurbsCurve crvA = NurbsCurve::create(false, 1, pts_a);
     NurbsCurve crvB = NurbsCurve::create(false, 1, pts_b);
     NurbsSurface srf = Primitives::create_ruled(crvA, crvB);
@@ -380,15 +380,21 @@ MINI_TEST("Primitives", "Nurbssurface_ruled") {
     MINI_CHECK(TOLERANCE.is_vector_close(normals[23], Vector( 1.0/3.0, -2.0/3.0, -2.0/3.0)));
     MINI_CHECK(TOLERANCE.is_vector_close(normals[24], Vector( 0.577350269189626, -0.577350269189626, -0.577350269189626)));
 
-    MINI_CHECK(TOLERANCE.is_close(uvs[0].first,  0.00) && TOLERANCE.is_close(uvs[0].second,  0.00));
-    MINI_CHECK(TOLERANCE.is_close(uvs[1].first,  0.00) && TOLERANCE.is_close(uvs[1].second,  0.25));
-    MINI_CHECK(TOLERANCE.is_close(uvs[4].first,  0.00) && TOLERANCE.is_close(uvs[4].second,  1.00));
-    MINI_CHECK(TOLERANCE.is_close(uvs[6].first,  0.25) && TOLERANCE.is_close(uvs[6].second,  0.25));
-    MINI_CHECK(TOLERANCE.is_close(uvs[12].first, 0.50) && TOLERANCE.is_close(uvs[12].second, 0.50));
-    MINI_CHECK(TOLERANCE.is_close(uvs[24].first, 1.00) && TOLERANCE.is_close(uvs[24].second, 1.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[0].first,  0.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[0].second,  0.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[1].first,  0.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[1].second,  0.25));
+    MINI_CHECK(TOLERANCE.is_close(uvs[4].first,  0.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[4].second,  1.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[6].first,  0.25));
+    MINI_CHECK(TOLERANCE.is_close(uvs[6].second,  0.25));
+    MINI_CHECK(TOLERANCE.is_close(uvs[12].first, 0.50));
+    MINI_CHECK(TOLERANCE.is_close(uvs[12].second, 0.50));
+    MINI_CHECK(TOLERANCE.is_close(uvs[24].first, 1.00));
+    MINI_CHECK(TOLERANCE.is_close(uvs[24].second, 1.00));
 }
 
-MINI_TEST("Primitives", "Nurbssurface_planar"){
+MINI_TEST("Primitives", "Nurbssurface Planar"){
     // uncomment #include "nurbssurface.h"
     double c1=std::cos(0.7), s1=std::sin(0.7);
     double c2=std::cos(0.96), s2=std::sin(0.96);
@@ -396,44 +402,44 @@ MINI_TEST("Primitives", "Nurbssurface_planar"){
     double c4=std::cos(1.13), s4=std::sin(1.13);
 
     auto ca = NurbsCurve::create(false, 1, {
-        Point(0,0,0),
-        Point(4,0,0),
-        Point(4,3*c1,3*s1),
-        Point(0,3*c1,3*s1),
-        Point(0,0,0)});
+        Point(0, 0, 0),
+        Point(4, 0, 0),
+        Point(4, 3*c1, 3*s1),
+        Point(0, 3*c1, 3*s1),
+        Point(0, 0, 0)});
     auto s_quad = Primitives::create_planar(ca);
     s_quad.name = "quad";
     auto m_quad = s_quad.mesh();
 
     auto cb1 = NurbsCurve::create(false, 1, {
-        Point(8,0,0),
-        Point(8+5*c2,0,5*s2),
-        Point(8+2*c2,3,2*s2),
-        Point(8,0,0)});
+        Point(8, 0, 0),
+        Point(8+5*c2, 0, 5*s2),
+        Point(8+2*c2, 3, 2*s2),
+        Point(8, 0, 0)});
     auto s_triangle = Primitives::create_planar(cb1);
     s_triangle.name = "triangle";
     auto m_triangle = s_triangle.mesh();
 
     double ox=18;
     auto cb2 = NurbsCurve::create(false, 1, {
-        Point(ox+0*c3,0*s3,0),
-        Point(ox+4*c3,4*s3,0),
-        Point(ox+5*c3-2*s3,5*s3+2*c3,0),
-        Point(ox+3*c3-4*s3,3*s3+4*c3,0),
-        Point(ox-1*c3-3*s3,-1*s3+3*c3,0),
-        Point(ox+0*c3,0*s3,0)});
+        Point(ox+0*c3, 0*s3, 0),
+        Point(ox+4*c3, 4*s3, 0),
+        Point(ox+5*c3-2*s3, 5*s3+2*c3, 0),
+        Point(ox+3*c3-4*s3, 3*s3+4*c3, 0),
+        Point(ox-1*c3-3*s3, -1*s3+3*c3, 0),
+        Point(ox+0*c3, 0*s3, 0)});
     auto s_polygon = Primitives::create_planar(cb2);
     s_polygon.name = "polygon";
     auto m_polygon = s_polygon.mesh();
 
     auto cc = NurbsCurve::create(false, 3, {
-        Point(26,0,0),
-        Point(29,1*c4,1*s4),
-        Point(31,0.5*c4,0.5*s4),
-        Point(32,3*c4,3*s4),
-        Point(30,5*c4,5*s4),
-        Point(27,4*c4,4*s4),
-        Point(26,0,0)});
+        Point(26, 0, 0),
+        Point(29, 1*c4, 1*s4),
+        Point(31, 0.5*c4, 0.5*s4),
+        Point(32, 3*c4, 3*s4),
+        Point(30, 5*c4, 5*s4),
+        Point(27, 4*c4, 4*s4),
+        Point(26, 0, 0)});
     auto s_nurbs = Primitives::create_planar(cc);
     s_nurbs.name = "nurbs";
     auto m_nurbs = s_nurbs.mesh();
@@ -483,11 +489,11 @@ MINI_TEST("Primitives", "Nurbssurface_planar"){
     MINI_CHECK(TOLERANCE.is_point_close(s_nurbs.get_cv(1,1), Point(30.301430747422629, 2.436120711686657, 5.163967229855166)));
 }
 
-MINI_TEST("Primitives", "Nurbssurface_extrusion") {
+MINI_TEST("Primitives", "Nurbssurface Extrusion") {
     // uncomment #include "nurbssurface.h"
     Vector dir(0, 1, 5);
 
-    auto c1 = NurbsCurve::create(false, 1, {Point(13,0,0), Point(18,0,0)});
+    auto c1 = NurbsCurve::create(false, 1, {Point(13, 0, 0), Point(18, 0, 0)});
     auto s_line = Primitives::create_extrusion(c1, dir);
     s_line.name = "line";
     auto m_line = s_line.mesh();
@@ -497,12 +503,13 @@ MINI_TEST("Primitives", "Nurbssurface_extrusion") {
     s_circle.name = "circle";
     auto m_circle = s_circle.mesh();
 
-    auto c3 = NurbsCurve::create(false, 2, {Point(30,0,0), Point(33,5,0), Point(37,0,0)});
+    auto c3 = NurbsCurve::create(false, 2, {Point(30, 0, 0), Point(33, 5, 0), Point(37, 0, 0)});
     auto s_arc = Primitives::create_extrusion(c3, dir);
     s_arc.name = "arc";
     auto m_arc = s_arc.mesh();
 
-    auto c4 = NurbsCurve::create(false, 1, {Point(40,3,0), Point(45,0,0), Point(50,3,0), Point(55,0,0)});
+    auto c4 = NurbsCurve::create(false, 1, {
+        Point(40, 3, 0), Point(45, 0, 0), Point(50, 3, 0), Point(55, 0, 0)});
     auto s_wavy = Primitives::create_extrusion(c4, dir);
     s_wavy.name = "wavy";
     auto m_wavy = s_wavy.mesh();
@@ -556,7 +563,7 @@ MINI_TEST("Primitives", "Nurbssurface_extrusion") {
     MINI_CHECK(TOLERANCE.is_point_close(s_wavy.get_cv(3,1), Point(55.0, 1.0, 5.0)));
 }
 
-MINI_TEST("Primitives", "Nurbssurface_loft") {
+MINI_TEST("Primitives", "Nurbssurface Loft") {
     // uncomment #include "nurbssurface.h"
     NurbsCurve c1 = Primitives::circle(0, 0, 0.0, 2.0);
     NurbsCurve c2 = Primitives::circle(0, 0, 2.0, 1.0);
@@ -607,9 +614,24 @@ MINI_TEST("Primitives", "Nurbssurface_loft") {
     MINI_CHECK(TOLERANCE.is_point_close(srf.get_cv(8, 3), Point(0.8, 0, 6)));
 
     std::vector<std::vector<Point>> open_pts = {
-        {Point(10, -12, 0), Point(10, -10, 3), Point(10, -7, 3), Point(10, -5, 0)},
-        {Point(5.5, -12, 3.5), Point(5.5, -10.0, 1.5), Point(5.5, -7.0, 1.5), Point(5.5, -5, 3.5)},
-        {Point(1, -12, 0), Point(1, -10, 3.0), Point(1, -7, 3.0), Point(1, -5, 0)},
+        {
+            Point(10, -12, 0),
+            Point(10, -10, 3),
+            Point(10, -7, 3),
+            Point(10, -5, 0),
+        },
+        {
+            Point(5.5, -12, 3.5),
+            Point(5.5, -10.0, 1.5),
+            Point(5.5, -7.0, 1.5),
+            Point(5.5, -5, 3.5),
+        },
+        {
+            Point(1, -12, 0),
+            Point(1, -10, 3.0),
+            Point(1, -7, 3.0),
+            Point(1, -5, 0),
+        },
     };
     std::vector<NurbsCurve> open_curves = {
         NurbsCurve::create(false, 3, open_pts[0]),
@@ -637,12 +659,18 @@ MINI_TEST("Primitives", "Nurbssurface_loft") {
     MINI_CHECK(TOLERANCE.is_point_close(open_srf.get_cv(3, 2), Point(1, -5, 0)));
 }
 
-MINI_TEST("Primitives", "Nurbssurface_revolve"){
+MINI_TEST("Primitives", "Nurbssurface Revolve"){
     // uncomment #include "nurbssurface.h"
     auto pa = NurbsCurve::create(false, 3, {
-        Point(1.5, 0, 0), Point(1.5, 0, 0.3), Point(0.3, 0, 0.5),
-        Point(0.3, 0, 2.5), Point(0.2, 0, 3.0), Point(2.0, 0, 4.5), Point(1.8, 0, 5.0)});
-    auto s_vase = Primitives::create_revolve(pa, Point(0,0,0), Vector(0,0,1));
+        Point(1.5, 0, 0),
+        Point(1.5, 0, 0.3),
+        Point(0.3, 0, 0.5),
+        Point(0.3, 0, 2.5),
+        Point(0.2, 0, 3.0),
+        Point(2.0, 0, 4.5),
+        Point(1.8, 0, 5.0),
+    });
+    auto s_vase = Primitives::create_revolve(pa, Point(0, 0, 0), Vector(0, 0, 1));
     s_vase.name = "vase";
     auto m_vase = s_vase.mesh();
 
@@ -656,12 +684,12 @@ MINI_TEST("Primitives", "Nurbssurface_revolve"){
     for (int i = 0; i < 10; i++) pb.set_knot(i, ck[i]);
     for (int i = 0; i < 9; i++)
         pb.set_cv_4d(i, (tcx + R + r * ca[i]) * cw[i], 0, r * sa[i] * cw[i], cw[i]);
-    auto s_torus = Primitives::create_revolve(pb, Point(tcx,0,0), Vector(0,0,1));
+    auto s_torus = Primitives::create_revolve(pb, Point(tcx, 0, 0), Vector(0, 0, 1));
     s_torus.name = "torus";
     auto m_torus = s_torus.mesh();
 
     auto pc = NurbsCurve::create(false, 1, {Point(29, 0, -0.5), Point(29, 0, 0.5)});
-    auto s_elbow = Primitives::create_revolve(pc, Point(26,0,0), Vector(0,0,1), Tolerance::PI / 2.0);
+    auto s_elbow = Primitives::create_revolve(pc, Point(26, 0, 0), Vector(0, 0, 1), Tolerance::PI / 2.0);
     s_elbow.name = "elbow";
     auto m_elbow = s_elbow.mesh();
 
@@ -672,12 +700,12 @@ MINI_TEST("Primitives", "Nurbssurface_revolve"){
     double spx[] = {0, sr, sr, sr, 0}, spz[] = {-sr, -sr, 0, sr, sr}, spw[] = {1, w, 1, w, 1};
     for (int i = 0; i < 5; i++)
         pd.set_cv_4d(i, (scx + spx[i]) * spw[i], 0, spz[i] * spw[i], spw[i]);
-    auto s_sphere = Primitives::create_revolve(pd, Point(scx,0,0), Vector(0,0,1));
+    auto s_sphere = Primitives::create_revolve(pd, Point(scx, 0, 0), Vector(0, 0, 1));
     s_sphere.name = "sphere";
     auto m_sphere = s_sphere.mesh();
 
     auto pe = NurbsCurve::create(false, 1, {Point(44, 0, 3), Point(46, 0, 0)});
-    auto s_cone = Primitives::create_revolve(pe, Point(44,0,0), Vector(0,0,1));
+    auto s_cone = Primitives::create_revolve(pe, Point(44, 0, 0), Vector(0, 0, 1));
     s_cone.name = "cone";
     auto m_cone = s_cone.mesh();
 
@@ -737,18 +765,23 @@ MINI_TEST("Primitives", "Nurbssurface_revolve"){
     MINI_CHECK(TOLERANCE.is_point_close(s_cone.get_cv(0,1), Point(46.0, 0.0, 0.0)));
 }
 
-MINI_TEST("Primitives", "Nurbssurface_sweep") {
+MINI_TEST("Primitives", "Nurbssurface Sweep") {
     // uncomment #include "nurbssurface.h"
-    NurbsCurve rail = NurbsCurve::create(false, 2, {Point(0,0,0), Point(0,5,0), Point(2,9,0)});
+    NurbsCurve rail = NurbsCurve::create(false, 2, {
+        Point(0, 0, 0), Point(0, 5, 0), Point(2, 9, 0)});
     NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
     NurbsSurface s_sweep1 = Primitives::create_sweep1(rail, profile);
     s_sweep1.name = "sweep1";
     auto m_sweep1 = s_sweep1.mesh();
 
-    NurbsCurve rail1 = NurbsCurve::create(false, 2, {Point(6,-1,0), Point(7,3,0), Point(8,4,0)});
-    NurbsCurve rail2 = NurbsCurve::create(false, 2, {Point(10,-1,0), Point(10,3,0), Point(9,4,0)});
-    NurbsCurve shape1 = NurbsCurve::create(false, 2, {Point(6,-1,0), Point(8,-1,2), Point(10,-1,0)});
-    NurbsCurve shape2 = NurbsCurve::create(false, 2, {Point(8,4,0), Point(8.5,4,1.5), Point(9,4,0)});
+    NurbsCurve rail1 = NurbsCurve::create(false, 2, {
+        Point(6, -1, 0), Point(7, 3, 0), Point(8, 4, 0)});
+    NurbsCurve rail2 = NurbsCurve::create(false, 2, {
+        Point(10, -1, 0), Point(10, 3, 0), Point(9, 4, 0)});
+    NurbsCurve shape1 = NurbsCurve::create(false, 2, {
+        Point(6, -1, 0), Point(8, -1, 2), Point(10, -1, 0)});
+    NurbsCurve shape2 = NurbsCurve::create(false, 2, {
+        Point(8, 4, 0), Point(8.5, 4, 1.5), Point(9, 4, 0)});
     NurbsSurface s_sweep2 = Primitives::create_sweep2(rail1, rail2, {shape1, shape2});
     s_sweep2.name = "sweep2";
     auto m_sweep2 = s_sweep2.mesh();
@@ -839,12 +872,30 @@ MINI_TEST("Primitives", "Nurbssurface_sweep") {
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep2.get_cv(2,5), Point(8.999999999999998, 4.000000000000000, 0.000000000000000)));
 }
 
-MINI_TEST("Primitives", "Nurbssurface_edge") {
+MINI_TEST("Primitives", "Nurbssurface Edge") {
     // uncomment #include "nurbssurface.h"
-    std::vector<Point> pts_south = {Point(1, 20.569076, 0), Point(1, 22.569076, 3.0), Point(1, 25.569076, 3.0), Point(1, 27.569076, 0)};
-    std::vector<Point> pts_west  = {Point(10, 20.569076, 0), Point(5.5, 20.569076, 3.5), Point(1, 20.569076, 0)};
-    std::vector<Point> pts_north = {Point(10, 20.569076, 0), Point(10, 22.569076, 3), Point(10, 25.569076, 3), Point(10, 27.569076, 0)};
-    std::vector<Point> pts_east  = {Point(10, 27.569076, 0), Point(5.5, 27.569076, 3.5), Point(1, 27.569076, 0)};
+    std::vector<Point> pts_south = {
+        Point(1, 20.569076, 0),
+        Point(1, 22.569076, 3.0),
+        Point(1, 25.569076, 3.0),
+        Point(1, 27.569076, 0),
+    };
+    std::vector<Point> pts_west  = {
+        Point(10, 20.569076, 0),
+        Point(5.5, 20.569076, 3.5),
+        Point(1, 20.569076, 0),
+    };
+    std::vector<Point> pts_north = {
+        Point(10, 20.569076, 0),
+        Point(10, 22.569076, 3),
+        Point(10, 25.569076, 3),
+        Point(10, 27.569076, 0),
+    };
+    std::vector<Point> pts_east  = {
+        Point(10, 27.569076, 0),
+        Point(5.5, 27.569076, 3.5),
+        Point(1, 27.569076, 0),
+    };
 
     NurbsCurve south = NurbsCurve::create(false, 3, pts_south);
     NurbsCurve west  = NurbsCurve::create(false, 2, pts_west);
@@ -880,7 +931,7 @@ MINI_TEST("Primitives", "Nurbssurface_edge") {
 // Surface-to-mesh subdivision
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "Mesh_quad_mesh") {
+MINI_TEST("Primitives", "Mesh Quad Mesh") {
     NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = Primitives::quad_mesh(cyl, 8, 4);
     MINI_CHECK(m.number_of_vertices() == 40);
@@ -894,7 +945,7 @@ MINI_TEST("Primitives", "Mesh_quad_mesh") {
     MINI_CHECK(m2.is_valid());
 }
 
-MINI_TEST("Primitives", "Mesh_diamond_mesh") {
+MINI_TEST("Primitives", "Mesh Diamond Mesh") {
     NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = Primitives::diamond_mesh(cyl, 8, 4);
     MINI_CHECK(m.number_of_vertices() == 40);
@@ -908,7 +959,7 @@ MINI_TEST("Primitives", "Mesh_diamond_mesh") {
     MINI_CHECK(m2.is_valid());
 }
 
-MINI_TEST("Primitives", "Mesh_hex_mesh") {
+MINI_TEST("Primitives", "Mesh Hex Mesh") {
     NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = Primitives::hex_mesh(cyl, 6, 4, 1.0/3.0);
     MINI_CHECK(m.number_of_vertices() == 78);
@@ -922,7 +973,7 @@ MINI_TEST("Primitives", "Mesh_hex_mesh") {
     MINI_CHECK(m2.is_valid());
 }
 
-MINI_TEST("Primitives", "Mesh_cone_subdivisions") {
+MINI_TEST("Primitives", "Mesh Cone Subdivisions") {
     NurbsSurface cone = Primitives::cone_surface(0, 0, 0, 3.0, 5.0);
 
     Mesh m1 = Primitives::quad_mesh(cone, 8, 4);
@@ -941,7 +992,7 @@ MINI_TEST("Primitives", "Mesh_cone_subdivisions") {
     MINI_CHECK(m3.is_valid());
 }
 
-MINI_TEST("Primitives", "Nurbscurve_interpolated") {
+MINI_TEST("Primitives", "Nurbscurve Interpolated") {
     // uncomment #include "nurbscurve.h"
     std::vector<Point> points = {
         Point(14, 9, 0), Point(15.342777, 13.734889, 0), Point(21.897914, 32.239195, 0),
@@ -973,7 +1024,7 @@ MINI_TEST("Primitives", "Nurbscurve_interpolated") {
     MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(8), points[6]));
 
     // Test with 4 points
-    std::vector<Point> pts4 = {Point(0,0,0), Point(1,2,0), Point(3,1,0), Point(5,3,0)};
+    std::vector<Point> pts4 = {Point(0, 0, 0), Point(1, 2, 0), Point(3, 1, 0), Point(5, 3, 0)};
     NurbsCurve c4 = Primitives::create_interpolated(pts4, CurveKnotStyle::Chord);
     MINI_CHECK(c4.is_valid());
     MINI_CHECK(c4.degree() == 3);
@@ -983,42 +1034,42 @@ MINI_TEST("Primitives", "Nurbscurve_interpolated") {
     MINI_CHECK(TOLERANCE.is_point_close(c4.point_at(d4_1), pts4[3]));
 }
 
-MINI_TEST("Primitives", "Mesh_tetrahedron") {
+MINI_TEST("Primitives", "Mesh Tetrahedron") {
     Mesh m = Primitives::tetrahedron(2.0);
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 4);
     MINI_CHECK(m.number_of_faces() == 4);
 }
 
-MINI_TEST("Primitives", "Mesh_cube") {
+MINI_TEST("Primitives", "Mesh Cube") {
     Mesh m = Primitives::cube(2.0);
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 8);
     MINI_CHECK(m.number_of_faces() == 6);
 }
 
-MINI_TEST("Primitives", "Mesh_octahedron") {
+MINI_TEST("Primitives", "Mesh Octahedron") {
     Mesh m = Primitives::octahedron(2.0);
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 6);
     MINI_CHECK(m.number_of_faces() == 8);
 }
 
-MINI_TEST("Primitives", "Mesh_icosahedron") {
+MINI_TEST("Primitives", "Mesh Icosahedron") {
     Mesh m = Primitives::icosahedron(2.0);
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 12);
     MINI_CHECK(m.number_of_faces() == 20);
 }
 
-MINI_TEST("Primitives", "Mesh_dodecahedron") {
+MINI_TEST("Primitives", "Mesh Dodecahedron") {
     Mesh m = Primitives::dodecahedron(2.0);
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 20);
     MINI_CHECK(m.number_of_faces() == 12);
 }
 
-MINI_TEST("Primitives", "Nurbssurface_wave") {
+MINI_TEST("Primitives", "Nurbssurface Wave") {
     NurbsSurface srf = Primitives::wave_surface(10.0, 2.0);
     MINI_CHECK(srf.is_valid());
     MINI_CHECK(srf.degree(0) == 3);
@@ -1033,7 +1084,7 @@ MINI_TEST("Primitives", "Nurbssurface_wave") {
 // FoldedPlates
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-MINI_TEST("Primitives", "Mesh_chevron") {
+MINI_TEST("Primitives", "Mesh Chevron") {
     auto surfaces = Primitives::annen_surfaces();
     MINI_CHECK(surfaces.size() == 23);
     for (size_t i = 0; i < surfaces.size(); i++)
@@ -1073,52 +1124,384 @@ MINI_TEST("Primitives", "FoldedPlates") {
 
 MINI_TEST("Primitives", "CrossConnectors") {
     std::vector<std::vector<Point>> polys = {
-        {Point(-574.485,-574.300,-182.370), Point(-620.030,-480.441,-136.145), Point(-527.510,-476.289,-53.723), Point(-431.548,-637.846,-118.351), Point(-574.485,-574.300,-182.370)},
-        {Point(-545.761,-545.585,-211.069), Point(-589.029,-456.419,-167.156), Point(-501.135,-452.475,-88.854), Point(-409.971,-605.954,-150.251), Point(-545.761,-545.585,-211.069)},
-        {Point(-224.289,-691.254,-65.097), Point(-125.302,-566.359,58.481), Point(125.182,-566.359,58.481), Point(212.579,-691.254,-65.097), Point(-224.289,-691.254,-65.097)},
-        {Point(-213.075,-656.691,-99.659), Point(-119.037,-538.041,17.739), Point(118.923,-538.041,17.739), Point(201.950,-656.691,-99.659), Point(-213.075,-656.691,-99.659)},
-        {Point(456.309,-628.504,-127.534), Point(523.010,-466.370,-45.103), Point(622.146,-472.434,-134.186), Point(574.882,-574.852,-181.916), Point(456.309,-628.504,-127.534)},
-        {Point(433.493,-597.079,-158.975), Point(496.859,-443.052,-80.665), Point(591.038,-448.812,-165.294), Point(546.138,-546.110,-210.638), Point(433.493,-597.079,-158.975)},
-        {Point(-431.100,-638.600,-118.653), Point(-527.510,-476.289,-53.723), Point(-481.982,-362.651,39.785), Point(-234.426,-365.823,142.950), Point(-125.302,-566.359,58.481), Point(-223.832,-690.677,-64.527), Point(-431.100,-638.600,-118.653)},
-        {Point(-409.545,-606.670,-150.538), Point(-501.135,-452.475,-88.854), Point(-457.883,-344.518,-0.022), Point(-222.705,-347.532,97.985), Point(-119.037,-538.041,17.739), Point(-212.641,-656.144,-99.118), Point(-409.545,-606.670,-150.538)},
-        {Point(212.526,-691.178,-65.022), Point(125.182,-566.359,58.481), Point(238.785,-380.979,136.566), Point(478.593,-374.909,36.915), Point(523.010,-466.370,-45.103), Point(455.692,-630.004,-128.297), Point(212.526,-691.178,-65.022)},
-        {Point(201.900,-656.619,-99.589), Point(118.923,-538.041,17.739), Point(226.846,-361.930,91.920), Point(454.664,-356.164,-2.748), Point(496.859,-443.052,-80.665), Point(432.907,-598.504,-159.699), Point(201.900,-656.619,-99.589)},
-        {Point(-481.982,-362.651,39.785), Point(-527.510,-476.289,-53.723), Point(-620.401,-480.458,-136.475), Point(-698.046,-172.509,-57.884), Point(-595.889,-174.723,29.899), Point(-481.982,-362.651,39.785)},
-        {Point(-457.883,-344.518,-0.022), Point(-501.135,-452.475,-88.854), Point(-589.381,-456.435,-167.469), Point(-663.144,-163.884,-92.807), Point(-566.094,-165.987,-9.413), Point(-457.883,-344.518,-0.022)},
-        {Point(-125.302,-566.359,58.481), Point(-234.426,-365.823,142.950), Point(-149.707,-204.103,211.069), Point(150.116,-204.103,211.069), Point(238.785,-380.979,136.566), Point(125.182,-566.359,58.481), Point(-125.302,-566.359,58.481)},
-        {Point(-119.037,-538.041,17.739), Point(-222.705,-347.532,97.985), Point(-142.222,-193.898,162.698), Point(142.610,-193.898,162.698), Point(226.846,-361.930,91.920), Point(118.923,-538.041,17.739), Point(-119.037,-538.041,17.739)},
-        {Point(478.593,-374.909,36.915), Point(596.484,-174.710,29.388), Point(698.046,-172.509,-57.884), Point(622.420,-472.451,-134.432), Point(523.010,-466.370,-45.103), Point(478.593,-374.909,36.915)},
-        {Point(454.664,-356.164,-2.748), Point(566.659,-165.975,-9.899), Point(663.144,-163.884,-92.807), Point(591.299,-448.828,-165.528), Point(496.859,-443.052,-80.665), Point(454.664,-356.164,-2.748)},
-        {Point(-481.982,-362.651,39.785), Point(-595.889,-174.723,29.899), Point(-515.848,-0.000,98.678), Point(-247.814,-0.000,211.069), Point(-149.707,-204.103,211.069), Point(-234.426,-365.823,142.950), Point(-481.982,-362.651,39.785)},
-        {Point(-457.883,-344.518,-0.022), Point(-566.094,-165.987,-9.413), Point(-490.055,-0.000,55.926), Point(-235.423,-0.000,162.698), Point(-142.222,-193.898,162.698), Point(-222.705,-347.532,97.985), Point(-457.883,-344.518,-0.022)},
-        {Point(238.785,-380.979,136.566), Point(150.116,-204.103,211.069), Point(252.071,0.000,211.069), Point(512.707,0.000,101.376), Point(596.484,-174.710,29.388), Point(478.593,-374.909,36.915), Point(238.785,-380.979,136.566)},
-        {Point(226.846,-361.930,91.920), Point(142.610,-193.898,162.698), Point(239.467,-0.000,162.698), Point(487.072,-0.000,58.490), Point(566.659,-165.975,-9.899), Point(454.664,-356.164,-2.748), Point(226.846,-361.930,91.920)},
-        {Point(-515.848,0.000,98.678), Point(-595.889,-174.723,29.899), Point(-698.269,-172.505,-58.075), Point(-698.269,172.505,-58.075), Point(-595.889,174.723,29.899), Point(-515.848,0.000,98.678)},
-        {Point(-490.055,-0.000,55.926), Point(-566.094,-165.987,-9.413), Point(-663.356,-163.879,-92.989), Point(-663.356,163.879,-92.989), Point(-566.094,165.987,-9.413), Point(-490.055,-0.000,55.926)},
-        {Point(-149.707,-204.103,211.069), Point(-247.814,0.000,211.069), Point(-149.707,204.103,211.069), Point(150.116,204.103,211.069), Point(252.071,0.000,211.069), Point(150.116,-204.103,211.069), Point(-149.707,-204.103,211.069)},
-        {Point(-142.222,-193.898,162.698), Point(-235.423,-0.000,162.698), Point(-142.222,193.898,162.698), Point(142.610,193.898,162.698), Point(239.467,0.000,162.698), Point(142.610,-193.898,162.698), Point(-142.222,-193.898,162.698)},
-        {Point(512.707,0.000,101.376), Point(596.484,174.710,29.388), Point(698.269,172.505,-58.075), Point(698.269,-172.505,-58.075), Point(596.484,-174.710,29.388), Point(512.707,0.000,101.376)},
-        {Point(487.072,0.000,58.490), Point(566.659,165.975,-9.899), Point(663.356,163.879,-92.989), Point(663.356,-163.879,-92.989), Point(566.659,-165.975,-9.899), Point(487.072,0.000,58.490)},
-        {Point(-515.848,-0.000,98.678), Point(-595.889,174.723,29.899), Point(-481.982,362.651,39.785), Point(-234.426,365.823,142.950), Point(-149.707,204.103,211.069), Point(-247.814,-0.000,211.069), Point(-515.848,-0.000,98.678)},
-        {Point(-490.055,-0.000,55.926), Point(-566.094,165.987,-9.413), Point(-457.883,344.518,-0.022), Point(-222.705,347.532,97.985), Point(-142.222,193.898,162.698), Point(-235.423,-0.000,162.698), Point(-490.055,-0.000,55.926)},
-        {Point(252.071,0.000,211.069), Point(150.116,204.103,211.069), Point(238.785,380.979,136.566), Point(478.593,374.909,36.915), Point(596.484,174.710,29.388), Point(512.707,-0.000,101.376), Point(252.071,0.000,211.069)},
-        {Point(239.467,-0.000,162.698), Point(142.610,193.898,162.698), Point(226.846,361.930,91.920), Point(454.664,356.164,-2.748), Point(566.659,165.975,-9.899), Point(487.072,-0.000,58.490), Point(239.467,-0.000,162.698)},
-        {Point(-481.982,362.651,39.785), Point(-595.889,174.723,29.899), Point(-698.046,172.509,-57.884), Point(-622.420,472.451,-134.432), Point(-523.550,466.403,-45.588), Point(-481.982,362.651,39.785)},
-        {Point(-457.883,344.518,-0.022), Point(-566.094,165.987,-9.413), Point(-663.144,163.884,-92.807), Point(-591.299,448.828,-165.528), Point(-497.372,443.083,-81.126), Point(-457.883,344.518,-0.022)},
-        {Point(-149.707,204.103,211.069), Point(-234.426,365.823,142.950), Point(-125.302,566.359,58.481), Point(125.182,566.359,58.481), Point(238.785,380.979,136.566), Point(150.116,204.103,211.069), Point(-149.707,204.103,211.069)},
-        {Point(-142.222,193.898,162.698), Point(-222.705,347.532,97.985), Point(-119.037,538.041,17.739), Point(118.923,538.041,17.739), Point(226.846,361.930,91.920), Point(142.610,193.898,162.698), Point(-142.222,193.898,162.698)},
-        {Point(478.593,374.909,36.915), Point(527.834,476.304,-54.011), Point(620.401,480.458,-136.475), Point(698.046,172.509,-57.884), Point(596.484,174.710,29.388), Point(478.593,374.909,36.915)},
-        {Point(454.664,356.164,-2.748), Point(501.442,452.489,-89.128), Point(589.381,456.435,-167.469), Point(663.144,163.884,-92.807), Point(566.659,165.975,-9.899), Point(454.664,356.164,-2.748)},
-        {Point(-481.982,362.651,39.785), Point(-523.550,466.403,-45.588), Point(-441.383,636.016,-121.338), Point(-223.832,690.677,-64.527), Point(-125.302,566.359,58.481), Point(-234.426,365.823,142.950), Point(-481.982,362.651,39.785)},
-        {Point(-457.883,344.518,-0.022), Point(-497.372,443.083,-81.126), Point(-419.314,604.215,-153.089), Point(-212.641,656.144,-99.118), Point(-119.037,538.041,17.739), Point(-222.705,347.532,97.985), Point(-457.883,344.518,-0.022)},
-        {Point(238.785,380.979,136.566), Point(125.182,566.359,58.481), Point(212.526,691.178,-65.022), Point(446.073,632.424,-125.794), Point(527.834,476.304,-54.011), Point(478.593,374.909,36.915), Point(238.785,380.979,136.566)},
-        {Point(226.846,361.930,91.920), Point(118.923,538.041,17.739), Point(201.900,656.619,-99.589), Point(423.769,600.803,-157.321), Point(501.442,452.489,-89.128), Point(454.664,356.164,-2.748), Point(226.846,361.930,91.920)},
-        {Point(-622.146,472.434,-134.186), Point(-574.882,574.852,-181.916), Point(-441.854,635.045,-120.904), Point(-523.550,466.403,-45.588), Point(-622.146,472.434,-134.186)},
-        {Point(-591.038,448.812,-165.294), Point(-546.138,546.110,-210.638), Point(-419.761,603.293,-152.677), Point(-497.372,443.083,-81.126), Point(-591.038,448.812,-165.294)},
-        {Point(-125.302,566.359,58.481), Point(-224.289,691.254,-65.097), Point(212.579,691.254,-65.097), Point(125.182,566.359,58.481), Point(-125.302,566.359,58.481)},
-        {Point(-119.037,538.041,17.739), Point(-213.075,656.691,-99.659), Point(201.950,656.691,-99.659), Point(118.923,538.041,17.739), Point(-119.037,538.041,17.739)},
-        {Point(527.834,476.304,-54.011), Point(446.780,631.075,-125.173), Point(574.485,574.300,-182.370), Point(620.030,480.441,-136.145), Point(527.834,476.304,-54.011)},
-        {Point(501.442,452.489,-89.128), Point(424.440,599.521,-156.732), Point(545.761,545.585,-211.069), Point(589.029,456.419,-167.156), Point(501.442,452.489,-89.128)}
+        {
+            Point(-574.485, -574.300, -182.370),
+            Point(-620.030, -480.441, -136.145),
+            Point(-527.510, -476.289, -53.723),
+            Point(-431.548, -637.846, -118.351),
+            Point(-574.485, -574.300, -182.370),
+        },
+        {
+            Point(-545.761, -545.585, -211.069),
+            Point(-589.029, -456.419, -167.156),
+            Point(-501.135, -452.475, -88.854),
+            Point(-409.971, -605.954, -150.251),
+            Point(-545.761, -545.585, -211.069),
+        },
+        {
+            Point(-224.289, -691.254, -65.097),
+            Point(-125.302, -566.359, 58.481),
+            Point(125.182, -566.359, 58.481),
+            Point(212.579, -691.254, -65.097),
+            Point(-224.289, -691.254, -65.097),
+        },
+        {
+            Point(-213.075, -656.691, -99.659),
+            Point(-119.037, -538.041, 17.739),
+            Point(118.923, -538.041, 17.739),
+            Point(201.950, -656.691, -99.659),
+            Point(-213.075, -656.691, -99.659),
+        },
+        {
+            Point(456.309, -628.504, -127.534),
+            Point(523.010, -466.370, -45.103),
+            Point(622.146, -472.434, -134.186),
+            Point(574.882, -574.852, -181.916),
+            Point(456.309, -628.504, -127.534),
+        },
+        {
+            Point(433.493, -597.079, -158.975),
+            Point(496.859, -443.052, -80.665),
+            Point(591.038, -448.812, -165.294),
+            Point(546.138, -546.110, -210.638),
+            Point(433.493, -597.079, -158.975),
+        },
+        {
+            Point(-431.100, -638.600, -118.653),
+            Point(-527.510, -476.289, -53.723),
+            Point(-481.982, -362.651, 39.785),
+            Point(-234.426, -365.823, 142.950),
+            Point(-125.302, -566.359, 58.481),
+            Point(-223.832, -690.677, -64.527),
+            Point(-431.100, -638.600, -118.653),
+        },
+        {
+            Point(-409.545, -606.670, -150.538),
+            Point(-501.135, -452.475, -88.854),
+            Point(-457.883, -344.518, -0.022),
+            Point(-222.705, -347.532, 97.985),
+            Point(-119.037, -538.041, 17.739),
+            Point(-212.641, -656.144, -99.118),
+            Point(-409.545, -606.670, -150.538),
+        },
+        {
+            Point(212.526, -691.178, -65.022),
+            Point(125.182, -566.359, 58.481),
+            Point(238.785, -380.979, 136.566),
+            Point(478.593, -374.909, 36.915),
+            Point(523.010, -466.370, -45.103),
+            Point(455.692, -630.004, -128.297),
+            Point(212.526, -691.178, -65.022),
+        },
+        {
+            Point(201.900, -656.619, -99.589),
+            Point(118.923, -538.041, 17.739),
+            Point(226.846, -361.930, 91.920),
+            Point(454.664, -356.164, -2.748),
+            Point(496.859, -443.052, -80.665),
+            Point(432.907, -598.504, -159.699),
+            Point(201.900, -656.619, -99.589),
+        },
+        {
+            Point(-481.982, -362.651, 39.785),
+            Point(-527.510, -476.289, -53.723),
+            Point(-620.401, -480.458, -136.475),
+            Point(-698.046, -172.509, -57.884),
+            Point(-595.889, -174.723, 29.899),
+            Point(-481.982, -362.651, 39.785),
+        },
+        {
+            Point(-457.883, -344.518, -0.022),
+            Point(-501.135, -452.475, -88.854),
+            Point(-589.381, -456.435, -167.469),
+            Point(-663.144, -163.884, -92.807),
+            Point(-566.094, -165.987, -9.413),
+            Point(-457.883, -344.518, -0.022),
+        },
+        {
+            Point(-125.302, -566.359, 58.481),
+            Point(-234.426, -365.823, 142.950),
+            Point(-149.707, -204.103, 211.069),
+            Point(150.116, -204.103, 211.069),
+            Point(238.785, -380.979, 136.566),
+            Point(125.182, -566.359, 58.481),
+            Point(-125.302, -566.359, 58.481),
+        },
+        {
+            Point(-119.037, -538.041, 17.739),
+            Point(-222.705, -347.532, 97.985),
+            Point(-142.222, -193.898, 162.698),
+            Point(142.610, -193.898, 162.698),
+            Point(226.846, -361.930, 91.920),
+            Point(118.923, -538.041, 17.739),
+            Point(-119.037, -538.041, 17.739),
+        },
+        {
+            Point(478.593, -374.909, 36.915),
+            Point(596.484, -174.710, 29.388),
+            Point(698.046, -172.509, -57.884),
+            Point(622.420, -472.451, -134.432),
+            Point(523.010, -466.370, -45.103),
+            Point(478.593, -374.909, 36.915),
+        },
+        {
+            Point(454.664, -356.164, -2.748),
+            Point(566.659, -165.975, -9.899),
+            Point(663.144, -163.884, -92.807),
+            Point(591.299, -448.828, -165.528),
+            Point(496.859, -443.052, -80.665),
+            Point(454.664, -356.164, -2.748),
+        },
+        {
+            Point(-481.982, -362.651, 39.785),
+            Point(-595.889, -174.723, 29.899),
+            Point(-515.848, -0.000, 98.678),
+            Point(-247.814, -0.000, 211.069),
+            Point(-149.707, -204.103, 211.069),
+            Point(-234.426, -365.823, 142.950),
+            Point(-481.982, -362.651, 39.785),
+        },
+        {
+            Point(-457.883, -344.518, -0.022),
+            Point(-566.094, -165.987, -9.413),
+            Point(-490.055, -0.000, 55.926),
+            Point(-235.423, -0.000, 162.698),
+            Point(-142.222, -193.898, 162.698),
+            Point(-222.705, -347.532, 97.985),
+            Point(-457.883, -344.518, -0.022),
+        },
+        {
+            Point(238.785, -380.979, 136.566),
+            Point(150.116, -204.103, 211.069),
+            Point(252.071, 0.000, 211.069),
+            Point(512.707, 0.000, 101.376),
+            Point(596.484, -174.710, 29.388),
+            Point(478.593, -374.909, 36.915),
+            Point(238.785, -380.979, 136.566),
+        },
+        {
+            Point(226.846, -361.930, 91.920),
+            Point(142.610, -193.898, 162.698),
+            Point(239.467, -0.000, 162.698),
+            Point(487.072, -0.000, 58.490),
+            Point(566.659, -165.975, -9.899),
+            Point(454.664, -356.164, -2.748),
+            Point(226.846, -361.930, 91.920),
+        },
+        {
+            Point(-515.848, 0.000, 98.678),
+            Point(-595.889, -174.723, 29.899),
+            Point(-698.269, -172.505, -58.075),
+            Point(-698.269, 172.505, -58.075),
+            Point(-595.889, 174.723, 29.899),
+            Point(-515.848, 0.000, 98.678),
+        },
+        {
+            Point(-490.055, -0.000, 55.926),
+            Point(-566.094, -165.987, -9.413),
+            Point(-663.356, -163.879, -92.989),
+            Point(-663.356, 163.879, -92.989),
+            Point(-566.094, 165.987, -9.413),
+            Point(-490.055, -0.000, 55.926),
+        },
+        {
+            Point(-149.707, -204.103, 211.069),
+            Point(-247.814, 0.000, 211.069),
+            Point(-149.707, 204.103, 211.069),
+            Point(150.116, 204.103, 211.069),
+            Point(252.071, 0.000, 211.069),
+            Point(150.116, -204.103, 211.069),
+            Point(-149.707, -204.103, 211.069),
+        },
+        {
+            Point(-142.222, -193.898, 162.698),
+            Point(-235.423, -0.000, 162.698),
+            Point(-142.222, 193.898, 162.698),
+            Point(142.610, 193.898, 162.698),
+            Point(239.467, 0.000, 162.698),
+            Point(142.610, -193.898, 162.698),
+            Point(-142.222, -193.898, 162.698),
+        },
+        {
+            Point(512.707, 0.000, 101.376),
+            Point(596.484, 174.710, 29.388),
+            Point(698.269, 172.505, -58.075),
+            Point(698.269, -172.505, -58.075),
+            Point(596.484, -174.710, 29.388),
+            Point(512.707, 0.000, 101.376),
+        },
+        {
+            Point(487.072, 0.000, 58.490),
+            Point(566.659, 165.975, -9.899),
+            Point(663.356, 163.879, -92.989),
+            Point(663.356, -163.879, -92.989),
+            Point(566.659, -165.975, -9.899),
+            Point(487.072, 0.000, 58.490),
+        },
+        {
+            Point(-515.848, -0.000, 98.678),
+            Point(-595.889, 174.723, 29.899),
+            Point(-481.982, 362.651, 39.785),
+            Point(-234.426, 365.823, 142.950),
+            Point(-149.707, 204.103, 211.069),
+            Point(-247.814, -0.000, 211.069),
+            Point(-515.848, -0.000, 98.678),
+        },
+        {
+            Point(-490.055, -0.000, 55.926),
+            Point(-566.094, 165.987, -9.413),
+            Point(-457.883, 344.518, -0.022),
+            Point(-222.705, 347.532, 97.985),
+            Point(-142.222, 193.898, 162.698),
+            Point(-235.423, -0.000, 162.698),
+            Point(-490.055, -0.000, 55.926),
+        },
+        {
+            Point(252.071, 0.000, 211.069),
+            Point(150.116, 204.103, 211.069),
+            Point(238.785, 380.979, 136.566),
+            Point(478.593, 374.909, 36.915),
+            Point(596.484, 174.710, 29.388),
+            Point(512.707, -0.000, 101.376),
+            Point(252.071, 0.000, 211.069),
+        },
+        {
+            Point(239.467, -0.000, 162.698),
+            Point(142.610, 193.898, 162.698),
+            Point(226.846, 361.930, 91.920),
+            Point(454.664, 356.164, -2.748),
+            Point(566.659, 165.975, -9.899),
+            Point(487.072, -0.000, 58.490),
+            Point(239.467, -0.000, 162.698),
+        },
+        {
+            Point(-481.982, 362.651, 39.785),
+            Point(-595.889, 174.723, 29.899),
+            Point(-698.046, 172.509, -57.884),
+            Point(-622.420, 472.451, -134.432),
+            Point(-523.550, 466.403, -45.588),
+            Point(-481.982, 362.651, 39.785),
+        },
+        {
+            Point(-457.883, 344.518, -0.022),
+            Point(-566.094, 165.987, -9.413),
+            Point(-663.144, 163.884, -92.807),
+            Point(-591.299, 448.828, -165.528),
+            Point(-497.372, 443.083, -81.126),
+            Point(-457.883, 344.518, -0.022),
+        },
+        {
+            Point(-149.707, 204.103, 211.069),
+            Point(-234.426, 365.823, 142.950),
+            Point(-125.302, 566.359, 58.481),
+            Point(125.182, 566.359, 58.481),
+            Point(238.785, 380.979, 136.566),
+            Point(150.116, 204.103, 211.069),
+            Point(-149.707, 204.103, 211.069),
+        },
+        {
+            Point(-142.222, 193.898, 162.698),
+            Point(-222.705, 347.532, 97.985),
+            Point(-119.037, 538.041, 17.739),
+            Point(118.923, 538.041, 17.739),
+            Point(226.846, 361.930, 91.920),
+            Point(142.610, 193.898, 162.698),
+            Point(-142.222, 193.898, 162.698),
+        },
+        {
+            Point(478.593, 374.909, 36.915),
+            Point(527.834, 476.304, -54.011),
+            Point(620.401, 480.458, -136.475),
+            Point(698.046, 172.509, -57.884),
+            Point(596.484, 174.710, 29.388),
+            Point(478.593, 374.909, 36.915),
+        },
+        {
+            Point(454.664, 356.164, -2.748),
+            Point(501.442, 452.489, -89.128),
+            Point(589.381, 456.435, -167.469),
+            Point(663.144, 163.884, -92.807),
+            Point(566.659, 165.975, -9.899),
+            Point(454.664, 356.164, -2.748),
+        },
+        {
+            Point(-481.982, 362.651, 39.785),
+            Point(-523.550, 466.403, -45.588),
+            Point(-441.383, 636.016, -121.338),
+            Point(-223.832, 690.677, -64.527),
+            Point(-125.302, 566.359, 58.481),
+            Point(-234.426, 365.823, 142.950),
+            Point(-481.982, 362.651, 39.785),
+        },
+        {
+            Point(-457.883, 344.518, -0.022),
+            Point(-497.372, 443.083, -81.126),
+            Point(-419.314, 604.215, -153.089),
+            Point(-212.641, 656.144, -99.118),
+            Point(-119.037, 538.041, 17.739),
+            Point(-222.705, 347.532, 97.985),
+            Point(-457.883, 344.518, -0.022),
+        },
+        {
+            Point(238.785, 380.979, 136.566),
+            Point(125.182, 566.359, 58.481),
+            Point(212.526, 691.178, -65.022),
+            Point(446.073, 632.424, -125.794),
+            Point(527.834, 476.304, -54.011),
+            Point(478.593, 374.909, 36.915),
+            Point(238.785, 380.979, 136.566),
+        },
+        {
+            Point(226.846, 361.930, 91.920),
+            Point(118.923, 538.041, 17.739),
+            Point(201.900, 656.619, -99.589),
+            Point(423.769, 600.803, -157.321),
+            Point(501.442, 452.489, -89.128),
+            Point(454.664, 356.164, -2.748),
+            Point(226.846, 361.930, 91.920),
+        },
+        {
+            Point(-622.146, 472.434, -134.186),
+            Point(-574.882, 574.852, -181.916),
+            Point(-441.854, 635.045, -120.904),
+            Point(-523.550, 466.403, -45.588),
+            Point(-622.146, 472.434, -134.186),
+        },
+        {
+            Point(-591.038, 448.812, -165.294),
+            Point(-546.138, 546.110, -210.638),
+            Point(-419.761, 603.293, -152.677),
+            Point(-497.372, 443.083, -81.126),
+            Point(-591.038, 448.812, -165.294),
+        },
+        {
+            Point(-125.302, 566.359, 58.481),
+            Point(-224.289, 691.254, -65.097),
+            Point(212.579, 691.254, -65.097),
+            Point(125.182, 566.359, 58.481),
+            Point(-125.302, 566.359, 58.481),
+        },
+        {
+            Point(-119.037, 538.041, 17.739),
+            Point(-213.075, 656.691, -99.659),
+            Point(201.950, 656.691, -99.659),
+            Point(118.923, 538.041, 17.739),
+            Point(-119.037, 538.041, 17.739),
+        },
+        {
+            Point(527.834, 476.304, -54.011),
+            Point(446.780, 631.075, -125.173),
+            Point(574.485, 574.300, -182.370),
+            Point(620.030, 480.441, -136.145),
+            Point(527.834, 476.304, -54.011),
+        },
+        {
+            Point(501.442, 452.489, -89.128),
+            Point(424.440, 599.521, -156.732),
+            Point(545.761, 545.585, -211.069),
+            Point(589.029, 456.419, -167.156),
+            Point(501.442, 452.489, -89.128),
+        },
     };
 
     // Strip closing vertex (first==last) before from_polylines

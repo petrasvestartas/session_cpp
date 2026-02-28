@@ -5,7 +5,7 @@
 
 namespace session_cpp {
 
-// Constrained Delaunay Triangulation (Clipper2 sweep-line + Delaunay legalization).
+// Constrained Delaunay Triangulation — sweep-line + Delaunay legalization.
 // border_2d: CCW outer boundary.  holes_2d: CW inner boundaries (zero or more).
 // Returns face index triples into flat array [border..., hole0..., hole1...].
 std::vector<std::array<int,3>> cdt_triangulate(

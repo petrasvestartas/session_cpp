@@ -2,7 +2,8 @@
 #include "nurbscurve.h"
 #include "primitives.h"
 #include "trimesh_grid.h"
-#include "trimesh_delaunay.h"
+#include "mesh.h"
+#include "polyline.h"
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -143,6 +144,57 @@ int main() {
                (int)m.number_of_faces(),
                "-",
                ms);
+    }
+
+    // --- loft_many benchmark ---
+    {
+        const int N = 100;
+        std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>> inputs;
+        inputs.reserve(N);
+        for (int i = 0; i < N; ++i) {
+            double x = i * 3.0;
+            Polyline b(std::vector<Point>{{x,0,0},{x+1,0,0},{x+1,1,0},{x,1,0},{x,0,0}});
+            Polyline t(std::vector<Point>{{x,0,1+i*0.05},{x+1,0,1+i*0.05},{x+1,1,1+i*0.05},{x,1,1+i*0.05},{x,0,1+i*0.05}});
+            inputs.push_back({{b}, {t}});
+        }
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto r0 = Mesh::loft_many(inputs, true, false);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto r1 = Mesh::loft_many(inputs, true, true);
+        auto t2 = std::chrono::high_resolution_clock::now();
+
+        double ms_seq = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        double ms_par = std::chrono::duration<double, std::milli>(t2 - t1).count();
+        printf("\nloft_many(%d):\n", N);
+        printf("  sequential: %.1f ms\n", ms_seq);
+        printf("  parallel:   %.1f ms  (%.1fx)\n", ms_par, ms_seq / ms_par);
+    }
+
+    // --- from_polygon_with_holes_many benchmark ---
+    {
+        const int N = 100;
+        std::vector<std::vector<std::vector<Point>>> inputs;
+        inputs.reserve(N);
+        for (int i = 0; i < N; ++i) {
+            double x = i * 7.0;
+            inputs.push_back({
+                {{x,0,0},{x+5,0,0},{x+5,5,0},{x,5,0}},
+                {{x+1,1,0},{x+4,1,0},{x+4,4,0},{x+1,4,0}},
+            });
+        }
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto r0 = Mesh::from_polygon_with_holes_many(inputs, false, false);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto r1 = Mesh::from_polygon_with_holes_many(inputs, false, true);
+        auto t2 = std::chrono::high_resolution_clock::now();
+
+        double ms_seq = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        double ms_par = std::chrono::duration<double, std::milli>(t2 - t1).count();
+        printf("\nfrom_polygon_with_holes_many(%d):\n", N);
+        printf("  sequential: %.1f ms\n", ms_seq);
+        printf("  parallel:   %.1f ms  (%.1fx)\n", ms_par, ms_seq / ms_par);
     }
 
     return 0;

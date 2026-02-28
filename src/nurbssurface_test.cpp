@@ -258,14 +258,14 @@ namespace session_cpp {
         // NOTE
         // point is (Xw, Yw, Zw, w)
         // cv pointer is (X, Y, Z)
-        Point cv = s.get_cv(0,0);
-        MINI_CHECK( cv == Point(0,0,10));
+        Point cv = s.get_cv(0, 0);
+        MINI_CHECK( cv == Point(0, 0, 10));
         double x, y, z, w;
-        s.get_cv_4d(0,0, x, y, z, w);
+        s.get_cv_4d(0, 0, x, y, z, w);
         MINI_CHECK( x == 0 && y == 0 && z == 10 && w == 1);
 
-        s.set_cv(0,0, Point(0, 0, 5));
-        MINI_CHECK(  s.get_cv(0,0) == Point(0,0,5) );
+        s.set_cv(0, 0, Point(0, 0, 5));
+        MINI_CHECK(  s.get_cv(0, 0) == Point(0, 0, 5) );
         s.set_cv_4d(0,0, 0, 0, 4, 0.5);
         MINI_CHECK( s.get_cv(0,0) == Point(0, 0, 8) && s.cv(0,0)[2] == 4 && s.weight(0,0) == 0.5 );
 
@@ -445,22 +445,38 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][1], Vector(0.722897836195991, -0.327787263130091, 0.608255068661856)));
         MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][2], Vector(0.722897836195991, 0.327787263130091, 0.608255068661856)));
         MINI_CHECK(TOLERANCE.is_vector_close(vectors[3][3], Vector(0.704360725060499, 0.704360725060499, -0.0880450906325624)));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[0][0].first, 0.0) && TOLERANCE.is_close(uvs0[0][0].second, 0.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[0][1].first, 0.0) && TOLERANCE.is_close(uvs0[0][1].second, 0.333333333333333));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[0][2].first, 0.0) && TOLERANCE.is_close(uvs0[0][2].second, 0.666666666666667));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[0][3].first, 0.0) && TOLERANCE.is_close(uvs0[0][3].second, 1.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[1][0].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][0].second, 0.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[1][1].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][1].second, 0.333333333333333));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[1][2].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][2].second, 0.666666666666667));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[1][3].first, 0.333333333333333) && TOLERANCE.is_close(uvs0[1][3].second, 1.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[2][0].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][0].second, 0.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[2][1].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][1].second, 0.333333333333333));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[2][2].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][2].second, 0.666666666666667));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[2][3].first, 0.666666666666667) && TOLERANCE.is_close(uvs0[2][3].second, 1.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[3][0].first, 1.0) && TOLERANCE.is_close(uvs0[3][0].second, 0.0));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[3][1].first, 1.0) && TOLERANCE.is_close(uvs0[3][1].second, 0.333333333333333));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[3][2].first, 1.0) && TOLERANCE.is_close(uvs0[3][2].second, 0.666666666666667));
-        MINI_CHECK(TOLERANCE.is_close(uvs0[3][3].first, 1.0) && TOLERANCE.is_close(uvs0[3][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][0].first, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][1].first, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][2].first, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][3].first, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[0][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][0].first, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][1].first, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][2].first, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][3].first, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[1][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][0].first, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][1].first, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][2].first, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][3].first, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[2][3].second, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][0].first, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][0].second, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][1].first, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][1].second, 0.333333333333333));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][2].first, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][2].second, 0.666666666666667));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][3].first, 1.0));
+        MINI_CHECK(TOLERANCE.is_close(uvs0[3][3].second, 1.0));
         MINI_CHECK(TOLERANCE.is_vector_close(planes[0][0].x_axis(), Vector(0.317999364001908, -0.423999152002544, 0.847998304005088)));        
         MINI_CHECK(TOLERANCE.is_vector_close(planes[0][1].x_axis(), Vector(0.657483781160109, -0.0556600026378928, 0.751410035611553)));       
         MINI_CHECK(TOLERANCE.is_vector_close(planes[0][2].x_axis(), Vector(0.657483781160109, 0.055660002637893, 0.751410035611553)));
@@ -601,7 +617,8 @@ namespace session_cpp {
         // Trim surface, domain changed but parametrization preserved
         NurbsSurface s_trim = s;
         s_trim.trim(0, {0.25, 0.75});
-        MINI_CHECK(TOLERANCE.is_close(s_trim.domain(0).first, 0.25) && TOLERANCE.is_close(s_trim.domain(0).second, 0.75));
+        MINI_CHECK(TOLERANCE.is_close(s_trim.domain(0).first, 0.25));
+        MINI_CHECK(TOLERANCE.is_close(s_trim.domain(0).second, 0.75));
         MINI_CHECK(TOLERANCE.is_point_close(s.point_at(0.25, 0.5), s_trim.point_at(0.25, 0.5)));
        
         // Split surface into 4 quadrants, check shared corner point is the same
@@ -696,23 +713,23 @@ namespace session_cpp {
         // 1. Sphere — two poles, closed U, rational
         NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 3.0);
         Mesh mesh_sphere = sphere.mesh();
-        Mesh mesh_sphere_delaunay = sphere.mesh_delaunay(45.0);
+        Mesh mesh_sphere_adaptive = sphere.mesh_adaptive(45.0);
         MINI_CHECK(mesh_sphere.is_valid());
-        MINI_CHECK(mesh_sphere_delaunay.is_valid());
+        MINI_CHECK(mesh_sphere_adaptive.is_valid());
 
         // 2. Cone — singular apex (pole), closed U
         NurbsSurface cone = Primitives::cone_surface(0, 12, 0, 2.0, 6.0);
         Mesh mesh_cone = cone.mesh();
-        Mesh mesh_cone_delaunay = cone.mesh_delaunay(45.0);
+        Mesh mesh_cone_adaptive = cone.mesh_adaptive(45.0);
         MINI_CHECK(mesh_cone.is_valid());
-        MINI_CHECK(mesh_cone_delaunay.is_valid());
+        MINI_CHECK(mesh_cone_adaptive.is_valid());
 
         // 3. Torus — doubly closed (U and V), rational
         NurbsSurface torus = Primitives::torus_surface(0, 24, 0, 4.0, 1.5);
         Mesh mesh_torus = torus.mesh();
-        Mesh mesh_torus_delaunay = torus.mesh_delaunay(45.0);
+        Mesh mesh_torus_adaptive = torus.mesh_adaptive(45.0);
         MINI_CHECK(mesh_torus.is_valid());
-        MINI_CHECK(mesh_torus_delaunay.is_valid());
+        MINI_CHECK(mesh_torus_adaptive.is_valid());
 
         // 4. Loft — varying radius circles, closed U, multi-span V
         NurbsSurface loft = Primitives::create_loft({
@@ -721,9 +738,9 @@ namespace session_cpp {
             Primitives::circle(0, 38, 4, 1.5), 
             Primitives::circle(0, 38, 6, 0.8)}, 3);
         Mesh mesh_loft = loft.mesh();
-        Mesh mesh_loft_delaunay = loft.mesh_delaunay(45.0);
+        Mesh mesh_loft_adaptive = loft.mesh_adaptive(45.0);
         MINI_CHECK(mesh_loft.is_valid());
-        MINI_CHECK(mesh_loft_delaunay.is_valid());
+        MINI_CHECK(mesh_loft_adaptive.is_valid());
 
         // 5. Extrusion (circle) — closed U, linear V, rational
         Vector ext_dir(0, 0, 5);
@@ -731,9 +748,9 @@ namespace session_cpp {
             Primitives::circle(0, 52, 0, 3.0), 
             ext_dir);
         Mesh mesh_cylinder = cylinder.mesh();
-        Mesh mesh_cylinder_delaunay = cylinder.mesh_delaunay(45.0);
+        Mesh mesh_cylinder_adaptive = cylinder.mesh_adaptive(45.0);
         MINI_CHECK(mesh_cylinder.is_valid());
-        MINI_CHECK(mesh_cylinder_delaunay.is_valid());
+        MINI_CHECK(mesh_cylinder_adaptive.is_valid());
 
         // 6. Ruled — bilinear (degree 1×1), tests twist subdivision
         auto ra = NurbsCurve::create(false, 1, {
@@ -743,9 +760,9 @@ namespace session_cpp {
             Point(0, 64 + 5, 5), Point(5, 64 + 5, 0)});
         NurbsSurface hypar = Primitives::create_ruled(ra, rb);
         Mesh mesh_hypar = hypar.mesh();
-        Mesh mesh_hypar_delaunay = hypar.mesh_delaunay(45.0);
+        Mesh mesh_hypar_adaptive = hypar.mesh_adaptive(45.0);
         MINI_CHECK(mesh_hypar.is_valid());
-        MINI_CHECK(mesh_hypar_delaunay.is_valid());
+        MINI_CHECK(mesh_hypar_adaptive.is_valid());
 
         // 7. Sweep1 — circle along curved rail
         NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
@@ -755,9 +772,9 @@ namespace session_cpp {
             Point(2, 85, 0)});
         NurbsSurface sweep1 = Primitives::create_sweep1(rail, profile);
         Mesh mesh_sweep1 = sweep1.mesh();
-        Mesh mesh_sweep1_delaunay = sweep1.mesh_delaunay(45.0);
+        Mesh mesh_sweep1_adaptive = sweep1.mesh_adaptive(45.0);
         MINI_CHECK(mesh_sweep1.is_valid());
-        MINI_CHECK(mesh_sweep1_delaunay.is_valid());
+        MINI_CHECK(mesh_sweep1_adaptive.is_valid());
 
         // 8. Sweep2 — two rails + cross sections
         NurbsCurve r1 = NurbsCurve::create(false, 2, {
@@ -778,9 +795,9 @@ namespace session_cpp {
             Point(3, 90 + 4, 0)});
         NurbsSurface sweep2 = Primitives::create_sweep2(r1, r2, {sh1, sh2});
         Mesh mesh_sweep2 = sweep2.mesh();
-        Mesh mesh_sweep2_delaunay = sweep2.mesh_delaunay(45.0);
+        Mesh mesh_sweep2_adaptive = sweep2.mesh_adaptive(45.0);
         MINI_CHECK(mesh_sweep2.is_valid());
-        MINI_CHECK(mesh_sweep2_delaunay.is_valid());
+        MINI_CHECK(mesh_sweep2_adaptive.is_valid());
 
         // 9. Edge surface (Coons patch) — 4 boundary curves
         auto south = NurbsCurve::create(false, 3, {
@@ -803,16 +820,16 @@ namespace session_cpp {
             Point(1, 104 + 7, 0)});
         NurbsSurface arched = Primitives::create_edge(south, west, north, east);
         Mesh mesh_arched = arched.mesh();
-        Mesh mesh_arched_delaunay = arched.mesh_delaunay(45.0);
+        Mesh mesh_arched_adaptive = arched.mesh_adaptive(45.0);
         MINI_CHECK(mesh_arched.is_valid());
-        MINI_CHECK(mesh_arched_delaunay.is_valid());
+        MINI_CHECK(mesh_arched_adaptive.is_valid());
 
         // 10. Wave — multi-span freeform (13×13 CVs, 10 spans)
         NurbsSurface wave = Primitives::wave_surface(5.0, 1.5);
         Mesh mesh_wave = wave.mesh();
-        Mesh mesh_wave_delaunay = wave.mesh_delaunay(45.0);
+        Mesh mesh_wave_adaptive = wave.mesh_adaptive(45.0);
         MINI_CHECK(mesh_wave.is_valid());
-        MINI_CHECK(mesh_wave_delaunay.is_valid());
+        MINI_CHECK(mesh_wave_adaptive.is_valid());
 
         // 11. Planar — mesh() early exit: 2 triangles
         auto planar = NurbsCurve::create(false, 1, {
@@ -823,22 +840,38 @@ namespace session_cpp {
             Point(0, 132, 0)});
         NurbsSurface pln = Primitives::create_planar(planar);
         Mesh mesh_planar = pln.mesh();
-        Mesh mesh_planar_delaunay = pln.mesh_delaunay(45.0);
+        Mesh mesh_planar_adaptive = pln.mesh_adaptive(45.0);
         MINI_CHECK(mesh_planar.is_valid());
-        MINI_CHECK(mesh_planar_delaunay.is_valid());
+        MINI_CHECK(mesh_planar_adaptive.is_valid());
 
     }
    
-    MINI_TEST("NurbsSurface", "Json_roundtrip") {
+    MINI_TEST("NurbsSurface", "Json Roundtrip") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>
 
         std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0), Point(-1.0, 0.75, 2.0), Point(-1.0, 4.25, 2.0), Point(0.0, 5.0, 0.0),
-            Point(0.75, -1.0, 2.0), Point(1.25, 1.25, 4.0), Point(1.25, 3.75, 4.0), Point(0.75, 6.0, 2.0),
-            Point(4.25, -1.0, 2.0), Point(3.75, 1.25, 4.0), Point(3.75, 3.75, 4.0), Point(4.25, 6.0, 2.0),
-            Point(5.0, 0.0, 0.0), Point(6.0, 0.75, 2.0), Point(6.0, 4.25, 2.0), Point(5.0, 5.0, 0.0),
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
         };
         NurbsSurface surface = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
@@ -860,16 +893,32 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == surface);
     }
 
-    MINI_TEST("NurbsSurface", "Protobuf_roundtrip") {
+    MINI_TEST("NurbsSurface", "Protobuf Roundtrip") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>
 
         std::vector<Point> points = {
-            Point(0.0, 0.0, 0.0), Point(-1.0, 0.75, 2.0), Point(-1.0, 4.25, 2.0), Point(0.0, 5.0, 0.0),
-            Point(0.75, -1.0, 2.0), Point(1.25, 1.25, 4.0), Point(1.25, 3.75, 4.0), Point(0.75, 6.0, 2.0),
-            Point(4.25, -1.0, 2.0), Point(3.75, 1.25, 4.0), Point(3.75, 3.75, 4.0), Point(4.25, 6.0, 2.0),
-            Point(5.0, 0.0, 0.0), Point(6.0, 0.75, 2.0), Point(6.0, 4.25, 2.0), Point(5.0, 5.0, 0.0),
+            // i=0
+            Point(0.0, 0.0, 0.0),
+            Point(-1.0, 0.75, 2.0),
+            Point(-1.0, 4.25, 2.0),
+            Point(0.0, 5.0, 0.0),
+            // i=1
+            Point(0.75, -1.0, 2.0),
+            Point(1.25, 1.25, 4.0),
+            Point(1.25, 3.75, 4.0),
+            Point(0.75, 6.0, 2.0),
+            // i=2
+            Point(4.25, -1.0, 2.0),
+            Point(3.75, 1.25, 4.0),
+            Point(3.75, 3.75, 4.0),
+            Point(4.25, 6.0, 2.0),
+            // i=3
+            Point(5.0, 0.0, 0.0),
+            Point(6.0, 0.75, 2.0),
+            Point(6.0, 4.25, 2.0),
+            Point(5.0, 5.0, 0.0),
         };
         NurbsSurface surface = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 

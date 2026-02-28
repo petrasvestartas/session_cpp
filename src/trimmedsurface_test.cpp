@@ -57,33 +57,43 @@ namespace session_cpp {
         MINI_CHECK(tscopy == ts);
     }
 
-    MINI_TEST("TrimmedSurface", "Constructor_planar") {
+    MINI_TEST("TrimmedSurface", "Constructor Planar") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
 
         // Planar curve boundary
-        std::vector<Point> pts = {Point(0,0,0), Point(3,1,0), Point(5,0.5,0), Point(6,3,0), Point(4,5,0), Point(1,4,0)};
+        std::vector<Point> pts = {
+            Point(0, 0, 0),
+            Point(3, 1, 0),
+            Point(5, 0.5, 0),
+            Point(6, 3, 0),
+            Point(4, 5, 0),
+            Point(1, 4, 0),
+        };
         NurbsCurve bnd = NurbsCurve::create(true, 3, pts);
         TrimmedSurface ts = TrimmedSurface::create_planar(bnd);
 
         // Rotated planar
-        pts = {Point(0,0,0), Point(3,1,-2), Point(5,2,-3), Point(4,4,0), Point(1,3,2)};
+        pts = {Point(0, 0, 0), Point(3, 1, -2), Point(5, 2, -3), Point(4, 4, 0), Point(1, 3, 2)};
         bnd = NurbsCurve::create(true, 3, pts);
         ts = TrimmedSurface::create_planar(bnd);
 
         // Triangle
-        bnd = NurbsCurve::create(true, 1, {Point(0,0,0), Point(6,3,3), Point(2,5,1)});
+        bnd = NurbsCurve::create(true, 1, {Point(0, 0, 0), Point(6, 3, 3), Point(2, 5, 1)});
         ts = TrimmedSurface::create_planar(bnd);
 
         // Trapezoid
-        bnd = NurbsCurve::create(true, 1, {Point(0,0,6), Point(5,0,6), Point(4,4,2), Point(1,4,2)});
+        bnd = NurbsCurve::create(true, 1, {
+            Point(0, 0, 6), Point(5, 0, 6), Point(4, 4, 2), Point(1, 4, 2)});
         ts = TrimmedSurface::create_planar(bnd);
 
         // Rectangle with a hole
-        bnd = NurbsCurve::create(true, 1, {Point(0,0,0), Point(6,0,0), Point(6,6,0), Point(0,6,0)});
+        bnd = NurbsCurve::create(true, 1, {
+            Point(0, 0, 0), Point(6, 0, 0), Point(6, 6, 0), Point(0, 6, 0)});
         ts = TrimmedSurface::create_planar(bnd);
-        ts.add_hole(NurbsCurve::create(true, 1, {Point(2,2,0), Point(4,2,0), Point(4,4,0), Point(2,4,0)}));
+        ts.add_hole(NurbsCurve::create(true, 1, {
+            Point(2, 2, 0), Point(4, 2, 0), Point(4, 4, 0), Point(2, 4, 0)}));
 
         // Hexagon with 2 holes
         double R = 4.0;
@@ -95,12 +105,15 @@ namespace session_cpp {
         bnd = NurbsCurve::create(true, 1, pts);
         ts = TrimmedSurface::create_planar(bnd);
         ts.add_holes({
-            NurbsCurve::create(true, 1, {Point(1.5,0.5,0.75), Point(2.5,0.5,1.25), Point(2.0,1.5,1.0)}),
-            NurbsCurve::create(true, 1, {Point(-2,-0.5,-1), Point(-1,-0.5,-0.5), Point(-1,-1.5,-0.5), Point(-2,-1.5,-1)})
+            NurbsCurve::create(true, 1, {
+                Point(1.5, 0.5, 0.75), Point(2.5, 0.5, 1.25), Point(2.0, 1.5, 1.0)}),
+            NurbsCurve::create(true, 1, {
+                Point(-2, -0.5, -1), Point(-1, -0.5, -0.5),
+                Point(-1, -1.5, -0.5), Point(-2, -1.5, -1)})
         });
     }
 
-    MINI_TEST("TrimmedSurface", "Constructor_hole") {
+    MINI_TEST("TrimmedSurface", "Constructor Hole") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -170,7 +183,7 @@ namespace session_cpp {
         MINI_CHECK(ts.inner_loop_count() == 0);
     }
 
-    MINI_TEST("TrimmedSurface", "Add_inner_loop") {
+    MINI_TEST("TrimmedSurface", "Add Inner Loop") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -211,7 +224,7 @@ namespace session_cpp {
         MINI_CHECK(ts.inner_loop_count() == 0);
     }
 
-    MINI_TEST("TrimmedSurface", "Point_at") {
+    MINI_TEST("TrimmedSurface", "Point At") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -316,7 +329,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pt[2], 30.0));
     }
 
-    MINI_TEST("TrimmedSurface", "Json_roundtrip") {
+    MINI_TEST("TrimmedSurface", "Json Roundtrip") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
@@ -358,7 +371,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == ts);
     }
 
-    MINI_TEST("TrimmedSurface", "Protobuf_roundtrip") {
+    MINI_TEST("TrimmedSurface", "Protobuf Roundtrip") {
         // uncomment #include "trimmedsurface.h"
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"

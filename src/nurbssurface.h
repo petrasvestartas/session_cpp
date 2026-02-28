@@ -411,10 +411,9 @@ public:
     // Meshing
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Tessellate using constrained Delaunay triangulation with Ruppert
-    /// refinement in UV space. Refines triangles exceeding angle/edge/chord
-    /// thresholds.
-    Mesh mesh_delaunay(double max_angle = 20.0, double max_edge_length = 0.0,
+    /// Tessellate using hierarchical quadtree adaptive subdivision in UV space.
+    /// Refines cells exceeding angle/edge/chord thresholds up to depth 8.
+    Mesh mesh_adaptive(double max_angle = 20.0, double max_edge_length = 0.0,
                        double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
     /// Primary meshing entry point. Uses mesh_grid strategy.

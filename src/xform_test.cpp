@@ -28,7 +28,12 @@ MINI_TEST("Xform", "Constructor") {
     bool is_id = x.is_identity();
 
     // From matrix constructor
-    Xform xfrom = Xform::from_matrix({1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 10.0, 15.0, 1.0});
+    Xform xfrom = Xform::from_matrix({
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        5.0, 10.0, 15.0, 1.0,
+    });
 
     // Minimal and Full String Representation
     std::string xstr = x.str();
@@ -59,12 +64,17 @@ MINI_TEST("Xform", "Constructor") {
     MINI_CHECK(is_id == true);
     MINI_CHECK(xfrom.m[12] == 5.0 && xfrom.m[13] == 10.0 && xfrom.m[14] == 15.0);
     MINI_CHECK(xstr.find("1.000000") != std::string::npos);
-    MINI_CHECK(xrepr.find("Xform(") != std::string::npos && xrepr.find("my_xform") != std::string::npos);
+    MINI_CHECK(xrepr.find("Xform(") != std::string::npos);
+    MINI_CHECK(xrepr.find("my_xform") != std::string::npos);
     MINI_CHECK(xcopy == x && xcopy.guid != x.guid);
     MINI_CHECK(x_eq == true && x_ne == true);
     // (1,0,0) * scale(2,1,1) = (2,0,0), then translate(10,0,0) = (12,0,0)
-    MINI_CHECK(TOLERANCE.is_close(result[0], 12.0) && TOLERANCE.is_close(result[1], 0.0) && TOLERANCE.is_close(result[2], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(result2[0], 12.0) && TOLERANCE.is_close(result2[1], 0.0) && TOLERANCE.is_close(result2[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result[0], 12.0));
+    MINI_CHECK(TOLERANCE.is_close(result[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result2[0], 12.0));
+    MINI_CHECK(TOLERANCE.is_close(result2[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result2[2], 0.0));
 }
 
 MINI_TEST("Xform", "Translation") {
@@ -131,10 +141,18 @@ MINI_TEST("Xform", "Rotation") {
     Point p(1.0, 0.0, 0.0);
     Point rp = r.transformed_point(p);
 
-    MINI_CHECK(TOLERANCE.is_close(rpx[0], 0.0) && TOLERANCE.is_close(rpx[1], 0.0) && TOLERANCE.is_close(rpx[2], 1.0));
-    MINI_CHECK(TOLERANCE.is_close(rpy[0], 1.0) && TOLERANCE.is_close(rpy[1], 0.0) && TOLERANCE.is_close(rpy[2], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(rpz[0], 0.0) && TOLERANCE.is_close(rpz[1], 1.0) && TOLERANCE.is_close(rpz[2], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(rp[0], 0.0) && TOLERANCE.is_close(rp[1], 1.0) && TOLERANCE.is_close(rp[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rpx[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rpx[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rpx[2], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rpy[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rpy[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rpy[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rpz[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rpz[1], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rpz[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[1], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rp[2], 0.0));
 }
 
 MINI_TEST("Xform", "Inverse") {
@@ -155,7 +173,7 @@ MINI_TEST("Xform", "Inverse") {
     MINI_CHECK(result.is_identity());
 }
 
-MINI_TEST("Xform", "Transform_geometry") {
+MINI_TEST("Xform", "Transform Geometry") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -194,17 +212,33 @@ MINI_TEST("Xform", "Transform_geometry") {
     Polyline poly_transformed = poly.transformed();
     std::vector<Point> pts = poly_transformed.get_points();
 
-    MINI_CHECK(TOLERANCE.is_close(pt_transformed[0], 11.0) && TOLERANCE.is_close(pt_transformed[1], 22.0) && TOLERANCE.is_close(pt_transformed[2], 33.0));
-    MINI_CHECK(TOLERANCE.is_close(v_transformed[0], 1.0) && TOLERANCE.is_close(v_transformed[1], 0.0) && TOLERANCE.is_close(v_transformed[2], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(ln_transformed[0], 10.0) && TOLERANCE.is_close(ln_transformed[1], 20.0) && TOLERANCE.is_close(ln_transformed[2], 30.0));
-    MINI_CHECK(TOLERANCE.is_close(ln_transformed[3], 11.0) && TOLERANCE.is_close(ln_transformed[4], 20.0) && TOLERANCE.is_close(ln_transformed[5], 30.0));
-    MINI_CHECK(TOLERANCE.is_close(pl_transformed.origin()[0], 10.0) && TOLERANCE.is_close(pl_transformed.origin()[1], 20.0) && TOLERANCE.is_close(pl_transformed.origin()[2], 30.0));
-    MINI_CHECK(TOLERANCE.is_close(pts[0][0], 10.0) && TOLERANCE.is_close(pts[0][1], 20.0) && TOLERANCE.is_close(pts[0][2], 30.0));
-    MINI_CHECK(TOLERANCE.is_close(pts[1][0], 11.0) && TOLERANCE.is_close(pts[1][1], 20.0) && TOLERANCE.is_close(pts[1][2], 30.0));
-    MINI_CHECK(TOLERANCE.is_close(pts[2][0], 11.0) && TOLERANCE.is_close(pts[2][1], 21.0) && TOLERANCE.is_close(pts[2][2], 30.0));
+    MINI_CHECK(TOLERANCE.is_close(pt_transformed[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pt_transformed[1], 22.0));
+    MINI_CHECK(TOLERANCE.is_close(pt_transformed[2], 33.0));
+    MINI_CHECK(TOLERANCE.is_close(v_transformed[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(v_transformed[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(v_transformed[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(ln_transformed[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(ln_transformed[1], 20.0));
+    MINI_CHECK(TOLERANCE.is_close(ln_transformed[2], 30.0));
+    MINI_CHECK(TOLERANCE.is_close(ln_transformed[3], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(ln_transformed[4], 20.0));
+    MINI_CHECK(TOLERANCE.is_close(ln_transformed[5], 30.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_transformed.origin()[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_transformed.origin()[1], 20.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_transformed.origin()[2], 30.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[0][0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[0][1], 20.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[0][2], 30.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[1][0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[1][1], 20.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[1][2], 30.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[2][0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[2][1], 21.0));
+    MINI_CHECK(TOLERANCE.is_close(pts[2][2], 30.0));
 }
 
-MINI_TEST("Xform", "Change_basis") {
+MINI_TEST("Xform", "Change Basis") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -233,7 +267,7 @@ MINI_TEST("Xform", "Change_basis") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], 0.0));
 }
 
-MINI_TEST("Xform", "Plane_to_plane") {
+MINI_TEST("Xform", "Plane To Plane") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -262,7 +296,7 @@ MINI_TEST("Xform", "Plane_to_plane") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], 0.0));
 }
 
-MINI_TEST("Xform", "Look_at_rh") {
+MINI_TEST("Xform", "Look At Rh") {
     // uncomment #include "xform.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -282,7 +316,7 @@ MINI_TEST("Xform", "Look_at_rh") {
     MINI_CHECK(TOLERANCE.is_close(tp[2], -10.0));
 }
 
-MINI_TEST("Xform", "Json_roundtrip") {
+MINI_TEST("Xform", "Json Roundtrip") {
     // uncomment #include "xform.h"
 
     // Create a non-identity xform
@@ -307,7 +341,7 @@ MINI_TEST("Xform", "Json_roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.m[14], 3.0));
 }
 
-MINI_TEST("Xform", "Protobuf_roundtrip") {
+MINI_TEST("Xform", "Protobuf Roundtrip") {
     // uncomment #include "xform.h"
 
     // Create a non-identity xform

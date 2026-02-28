@@ -7,7 +7,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Edge", "Json_roundtrip") {
+MINI_TEST("Edge", "Json Roundtrip") {
     Edge original("./serialization/test_edge", "v0", "v1");
 
     std::filesystem::create_directories("./serialization");

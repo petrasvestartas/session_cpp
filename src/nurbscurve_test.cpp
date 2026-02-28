@@ -53,7 +53,7 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid != curve.guid);
     }
 
-    MINI_TEST("NurbsCurve", "Create_interpolated") {
+    MINI_TEST("NurbsCurve", "Create Interpolated") {
             // uncomment #include "nurbscurve.h"
             // uncomment #include "point.h"
 
@@ -78,8 +78,16 @@ namespace session_cpp {
 
             // Periodic closed curve
             std::vector<Point> closed_pts = {
-                Point(4, 20, 0), Point(-2, 20, 0), Point(-2, 25, 0), Point(-3, 28, 0), Point(-10, 28, 0),
-                Point(-10, 21, 0), Point(-13, 16, 0), Point(-8, 14, 0), Point(-6, 11, 0), Point(0, 15, 0)
+                Point(4, 20, 0),
+                Point(-2, 20, 0),
+                Point(-2, 25, 0),
+                Point(-3, 28, 0),
+                Point(-10, 28, 0),
+                Point(-10, 21, 0),
+                Point(-13, 16, 0),
+                Point(-8, 14, 0),
+                Point(-6, 11, 0),
+                Point(0, 15, 0),
             };
 
             NurbsCurve cp = NurbsCurve::create_interpolated(closed_pts, CurveKnotStyle::ChordPeriodic);
@@ -90,7 +98,7 @@ namespace session_cpp {
             MINI_CHECK(cp.is_closed());
     }
 
-    MINI_TEST("NurbsCurve", "Create_fitted") {
+    MINI_TEST("NurbsCurve", "Create Fitted") {
             // uncomment #include "nurbscurve.h"
             // uncomment #include "point.h"
 
@@ -266,7 +274,9 @@ namespace session_cpp {
 
         // Use for regular points on curve, Polyline, B-Spline
         curve.set_cv(2, Point(2.0, 0.0, 0.5));
-        MINI_CHECK(curve.get_cv(2)[0] == 2.0 && curve.get_cv(2)[1] == 0.0 && curve.get_cv(2)[2] == 0.5);
+        MINI_CHECK(curve.get_cv(2)[0] == 2.0);
+        MINI_CHECK(curve.get_cv(2)[1] == 0.0);
+        MINI_CHECK(curve.get_cv(2)[2] == 0.5);
 
         // Use for rational curvers like circles, ellipses
         curve.set_cv_4d(2, 2.0, 0.0, 0.5, 0.707);
@@ -317,7 +327,11 @@ namespace session_cpp {
         double k0 = knots[0];
         std::vector<double> knot_vector = curve.get_knots();
         MINI_CHECK(k0 == 0.0);
-        MINI_CHECK(TOLERANCE.is_close(knot_vector[0], 0.0) && TOLERANCE.is_close(knot_vector[1], 0.0) && TOLERANCE.is_close(knot_vector[2], 1.759744335478134) && TOLERANCE.is_close(knot_vector[3], 3.519488670956267) && TOLERANCE.is_close(knot_vector[4], 3.519488670956267));
+        MINI_CHECK(TOLERANCE.is_close(knot_vector[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(knot_vector[1], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(knot_vector[2], 1.759744335478134));
+        MINI_CHECK(TOLERANCE.is_close(knot_vector[3], 3.519488670956267));
+        MINI_CHECK(TOLERANCE.is_close(knot_vector[4], 3.519488670956267));
 
         // Control vertex array access
         const double* cvs = curve.cv_array();
@@ -332,17 +346,22 @@ namespace session_cpp {
         std::pair<double, double> interval = curve.domain();
         double start = interval.first;
         double end = interval.second;
-        MINI_CHECK(TOLERANCE.is_close(start, 0.0) && TOLERANCE.is_close(end, 3.519488670956267));
+        MINI_CHECK(TOLERANCE.is_close(start, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(end, 3.519488670956267));
 
         // Get start, middle and end values of the interval
         start = curve.domain_start();
         double middle = curve.domain_middle();
         end = curve.domain_end();
-        MINI_CHECK(TOLERANCE.is_close(start, 0.0) && TOLERANCE.is_close(middle, 1.759744335478134) && TOLERANCE.is_close(end, 3.519488670956267));
+        MINI_CHECK(TOLERANCE.is_close(start, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(middle, 1.759744335478134));
+        MINI_CHECK(TOLERANCE.is_close(end, 3.519488670956267));
 
         // Change curve domain
         curve.set_domain(0.0, 1.0);
-        MINI_CHECK(curve.domain_start() == 0.0 && curve.domain_middle() == 0.5 && curve.domain_end() == 1.0);
+        MINI_CHECK(curve.domain_start() == 0.0);
+        MINI_CHECK(curve.domain_middle() == 0.5);
+        MINI_CHECK(curve.domain_end() == 1.0);
 
         // Span of distict knot intervals
         std::vector<double> intervals =  curve.get_span_vector();
@@ -429,26 +448,44 @@ namespace session_cpp {
 
         // Get point at parameter t
         Point point_at = curve.point_at(0.5);
-        MINI_CHECK(TOLERANCE.is_close(point_at[0], 1.463452399002842) && TOLERANCE.is_close(point_at[1], 1.680997287875395) && TOLERANCE.is_close(point_at[2], -0.124474565996108));
+        MINI_CHECK(TOLERANCE.is_close(point_at[0], 1.463452399002842));
+        MINI_CHECK(TOLERANCE.is_close(point_at[1], 1.680997287875395));
+        MINI_CHECK(TOLERANCE.is_close(point_at[2], -0.124474565996108));
 
         // Get point and derivatives at parameter t
         std::vector<Vector> derivatives = curve.evaluate(0.5, 2);
         MINI_CHECK(derivatives.size() == 3);
-        MINI_CHECK(TOLERANCE.is_close(derivatives[0][0], 1.463452399002842) && TOLERANCE.is_close(derivatives[0][1], 1.680997287875395) && TOLERANCE.is_close(derivatives[0][2], -0.124474565996108));
-        MINI_CHECK(TOLERANCE.is_close(derivatives[1][0], -0.311619416021204) && TOLERANCE.is_close(derivatives[1][1], 0.974021205471335) && TOLERANCE.is_close(derivatives[1][2], -0.037441955449586));
-        MINI_CHECK(TOLERANCE.is_close(derivatives[2][0], 2.706815143892446) && TOLERANCE.is_close(derivatives[2][1], -0.429869481117820) && TOLERANCE.is_close(derivatives[2][2], -0.684219293829483));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[0][0], 1.463452399002842));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[0][1], 1.680997287875395));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[0][2], -0.124474565996108));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[1][0], -0.311619416021204));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[1][1], 0.974021205471335));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[1][2], -0.037441955449586));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[2][0], 2.706815143892446));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[2][1], -0.429869481117820));
+        MINI_CHECK(TOLERANCE.is_close(derivatives[2][2], -0.684219293829483));
 
         // Tangent vector at parameter t
         Vector tangent = curve.tangent_at(0.5);
-        MINI_CHECK(TOLERANCE.is_close(tangent[0], -0.304511941745027) && TOLERANCE.is_close(tangent[1], 0.951805546117607) && TOLERANCE.is_close(tangent[2], -0.036587972264639));
+        MINI_CHECK(TOLERANCE.is_close(tangent[0], -0.304511941745027));
+        MINI_CHECK(TOLERANCE.is_close(tangent[1], 0.951805546117607));
+        MINI_CHECK(TOLERANCE.is_close(tangent[2], -0.036587972264639));
 
         // normalized=true (default): t in [0,1] mapped to domain
         Plane f = curve.plane_at(0.5, true);
 
-        MINI_CHECK(TOLERANCE.is_close(f.origin()[0], 3.156927375000000) && TOLERANCE.is_close(f.origin()[1], 1.335111500000000) && TOLERANCE.is_close(f.origin()[2], 0.130488875000000));
-        MINI_CHECK(TOLERANCE.is_close(f.x_axis()[0], 0.701806140304030) && TOLERANCE.is_close(f.x_axis()[1], 0.697509131556264) && TOLERANCE.is_close(f.x_axis()[2], 0.144738221721788));
-        MINI_CHECK(TOLERANCE.is_close(f.y_axis()[0], -0.513930504714161) && TOLERANCE.is_close(f.y_axis()[1], 0.355053088776962) && TOLERANCE.is_close(f.y_axis()[2], 0.780905077761815));
-        MINI_CHECK(TOLERANCE.is_close(f.z_axis()[0], 0.493298669931115) && TOLERANCE.is_close(f.z_axis()[1], -0.622429365908747) && TOLERANCE.is_close(f.z_axis()[2], 0.607649657861031));
+        MINI_CHECK(TOLERANCE.is_close(f.origin()[0], 3.156927375000000));
+        MINI_CHECK(TOLERANCE.is_close(f.origin()[1], 1.335111500000000));
+        MINI_CHECK(TOLERANCE.is_close(f.origin()[2], 0.130488875000000));
+        MINI_CHECK(TOLERANCE.is_close(f.x_axis()[0], 0.701806140304030));
+        MINI_CHECK(TOLERANCE.is_close(f.x_axis()[1], 0.697509131556264));
+        MINI_CHECK(TOLERANCE.is_close(f.x_axis()[2], 0.144738221721788));
+        MINI_CHECK(TOLERANCE.is_close(f.y_axis()[0], -0.513930504714161));
+        MINI_CHECK(TOLERANCE.is_close(f.y_axis()[1], 0.355053088776962));
+        MINI_CHECK(TOLERANCE.is_close(f.y_axis()[2], 0.780905077761815));
+        MINI_CHECK(TOLERANCE.is_close(f.z_axis()[0], 0.493298669931115));
+        MINI_CHECK(TOLERANCE.is_close(f.z_axis()[1], -0.622429365908747));
+        MINI_CHECK(TOLERANCE.is_close(f.z_axis()[2], 0.607649657861031));
 
         MINI_CHECK(curve.plane_at(-0.1, true).is_valid() == false);
         MINI_CHECK(curve.plane_at(1.1, true).is_valid() == false);
@@ -491,9 +528,15 @@ namespace session_cpp {
         Point p0 = curve.point_at_start();
         Point p1 = curve.point_at_middle();
         Point p2 = curve.point_at_end();
-        MINI_CHECK(TOLERANCE.is_close(p0[0], 1.957614) && TOLERANCE.is_close(p0[1], 1.140253) && TOLERANCE.is_close(p0[2], -0.191281));
-        MINI_CHECK(TOLERANCE.is_close(p1[0], 3.156927375) && TOLERANCE.is_close(p1[1], 1.3351115) && TOLERANCE.is_close(p1[2], 0.130488875));
-        MINI_CHECK(TOLERANCE.is_close(p2[0], 2.15032) && TOLERANCE.is_close(p2[1], 1.868606) && TOLERANCE.is_close(p2[2], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(p0[0], 1.957614));
+        MINI_CHECK(TOLERANCE.is_close(p0[1], 1.140253));
+        MINI_CHECK(TOLERANCE.is_close(p0[2], -0.191281));
+        MINI_CHECK(TOLERANCE.is_close(p1[0], 3.156927375));
+        MINI_CHECK(TOLERANCE.is_close(p1[1], 1.3351115));
+        MINI_CHECK(TOLERANCE.is_close(p1[2], 0.130488875));
+        MINI_CHECK(TOLERANCE.is_close(p2[0], 2.15032));
+        MINI_CHECK(TOLERANCE.is_close(p2[1], 1.868606));
+        MINI_CHECK(TOLERANCE.is_close(p2[2], 0.0));
 
         curve.set_start_point(Point(1.957614, 1.140253, 2.0));
         curve.set_end_point(Point(2.15032, 1.868606, 2.0));
@@ -576,7 +619,8 @@ namespace session_cpp {
         // Increase degree without change the shape
         NurbsCurve raised = curve;
         raised.increase_degree(3);
-        MINI_CHECK(curve.degree() != raised.degree() && TOLERANCE.is_point_close(curve.point_at_middle(), raised.point_at_middle()) );
+        MINI_CHECK(curve.degree() != raised.degree());
+        MINI_CHECK(TOLERANCE.is_point_close(curve.point_at_middle(), raised.point_at_middle()));
 
         // Change closed curve seam
         std::vector<Point> closed_pts = {
@@ -637,7 +681,7 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("NurbsCurve", "Json_roundtrip") {
+    MINI_TEST("NurbsCurve", "Json Roundtrip") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>
@@ -676,7 +720,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_from_file == curve);
     }
 
-    MINI_TEST("NurbsCurve", "Protobuf_roundtrip") {
+    MINI_TEST("NurbsCurve", "Protobuf Roundtrip") {
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
         // uncomment #include <filesystem>

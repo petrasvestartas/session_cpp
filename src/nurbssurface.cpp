@@ -1447,7 +1447,7 @@ Mesh NurbsSurface::mesh_grid(double max_angle, double max_edge_length,
     return m_mesh;
 }
 
-Mesh NurbsSurface::mesh_delaunay(double max_angle, double max_edge_length,
+Mesh NurbsSurface::mesh_adaptive(double max_angle, double max_edge_length,
                                   double min_edge_length, double max_chord_height) const {
     if (m_mesh.number_of_vertices() == 0 && is_valid()) {
         TrimeshAdaptive mesher(*this);

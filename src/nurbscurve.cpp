@@ -166,7 +166,7 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
     auto estimate_tangent = [&](int i0, int i1, int i2) -> Vector {
         double d01 = pdist(points[i0], points[i1]);
         double d21 = pdist(points[i2], points[i1]);
-        if (d01 + d21 < 1e-300) return Vector(0,0,0);
+        if (d01 + d21 < 1e-300) return Vector(0, 0, 0);
         double s = d01 / (d01 + d21);
         double t = 1.0 - s;
         double denom = 2.0 * s * t;
@@ -175,7 +175,7 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
             double dy = points[i1][1]-points[i0][1];
             double dz = points[i1][2]-points[i0][2];
             double len = std::sqrt(dx*dx+dy*dy+dz*dz);
-            return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0,0,0);
+            return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0, 0, 0);
         }
         double cvx = (-t*t*points[i0][0] + points[i1][0] - s*s*points[i2][0]) / denom;
         double cvy = (-t*t*points[i0][1] + points[i1][1] - s*s*points[i2][1]) / denom;
@@ -184,7 +184,7 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         double dy = cvy - points[i0][1];
         double dz = cvz - points[i0][2];
         double len = std::sqrt(dx*dx + dy*dy + dz*dz);
-        return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0,0,0);
+        return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0, 0, 0);
     };
 
     Vector tan_start, tan_end;

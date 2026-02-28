@@ -242,6 +242,9 @@ set(MINITEST_SOURCES
     src/primitives_test.cpp
     src/trimmedsurface_test.cpp
     src/triangulation_2d_test.cpp
+    src/trimesh_cdt_test.cpp
+    src/trimesh_adaptive_test.cpp
+    src/trimesh_grid_test.cpp
     src/boundingbox_test.cpp
     src/bvh_test.cpp
     src/aabb_test.cpp

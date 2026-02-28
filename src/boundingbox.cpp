@@ -387,7 +387,7 @@ BoundingBox BoundingBox::aabb() const {
     double hx = std::abs(x_axis[0]) * ex + std::abs(y_axis[0]) * ey + std::abs(z_axis[0]) * ez;
     double hy = std::abs(x_axis[1]) * ex + std::abs(y_axis[1]) * ey + std::abs(z_axis[1]) * ez;
     double hz = std::abs(x_axis[2]) * ex + std::abs(y_axis[2]) * ey + std::abs(z_axis[2]) * ez;
-    return BoundingBox(center, Vector(1,0,0), Vector(0,1,0), Vector(0,0,1), Vector(hx, hy, hz));
+    return BoundingBox(center, Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(hx, hy, hz));
 }
 
 Point BoundingBox::point_at(double x, double y, double z) const {

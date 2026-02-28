@@ -99,7 +99,7 @@ namespace session_cpp {
         MINI_CHECK(p.xform == Xform::identity());
     }
 
-    MINI_TEST("Point", "Json_roundtrip") {
+    MINI_TEST("Point", "Json Roundtrip") {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
@@ -131,7 +131,7 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("Point", "Protobuf_roundtrip") {
+    MINI_TEST("Point", "Protobuf Roundtrip") {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
@@ -155,7 +155,7 @@ namespace session_cpp {
         MINI_CHECK(loaded.pointcolor.a == 255);
     }
 
-    MINI_TEST("Point", "Is_ccw") {
+    MINI_TEST("Point", "Is Ccw") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 0.0, 0.0);
@@ -170,7 +170,7 @@ namespace session_cpp {
         MINI_CHECK(!is_clock_wise);
     }
 
-    MINI_TEST("Point", "Mid_point") {
+    MINI_TEST("Point", "Mid Point") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 2.0, 1.0);
@@ -190,7 +190,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(d, 3.741657));
     }
 
-    MINI_TEST("Point", "Squared_distance") {
+    MINI_TEST("Point", "Squared Distance") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 2.0, 1.0);
@@ -212,7 +212,7 @@ namespace session_cpp {
         MINI_CHECK(area == 4.0);
     }
 
-    MINI_TEST("Point", "Centroid_quad") {
+    MINI_TEST("Point", "Centroid Quad") {
         // uncomment #include "point.h"
 
         Point p0(0.0, 0.0, 0.0);

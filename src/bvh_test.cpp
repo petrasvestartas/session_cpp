@@ -8,7 +8,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("BVH", "Expand_bits") {
+MINI_TEST("BVH", "Expand Bits") {
     MINI_CHECK(expand_bits(0) == 0);
     MINI_CHECK(expand_bits(1) == 1);
     MINI_CHECK(expand_bits(2) == 8);
@@ -18,12 +18,12 @@ MINI_TEST("BVH", "Expand_bits") {
     MINI_CHECK(result > 0);
 }
 
-MINI_TEST("BVH", "Morton_code_origin") {
+MINI_TEST("BVH", "Morton Code Origin") {
     uint32_t code = calculate_morton_code(0.0, 0.0, 0.0, 100.0);
     MINI_CHECK(code < (1u << 30));
 }
 
-MINI_TEST("BVH", "Morton_code_corners") {
+MINI_TEST("BVH", "Morton Code Corners") {
     double world_size = 100.0;
 
     uint32_t code_min = calculate_morton_code(-50.0, -50.0, -50.0, world_size);
@@ -33,7 +33,7 @@ MINI_TEST("BVH", "Morton_code_corners") {
     MINI_CHECK(code_max == 0x3FFFFFFF);
 }
 
-MINI_TEST("BVH", "Morton_code_spatial_locality") {
+MINI_TEST("BVH", "Morton Code Spatial Locality") {
     uint32_t code1 = calculate_morton_code(10.0, 10.0, 10.0);
     uint32_t code2 = calculate_morton_code(10.1, 10.1, 10.1);
     uint32_t code3 = calculate_morton_code(-40.0, -40.0, -40.0);
@@ -43,7 +43,7 @@ MINI_TEST("BVH", "Morton_code_spatial_locality") {
     MINI_CHECK(diff_nearby < diff_far);
 }
 
-MINI_TEST("BVH", "Node_creation") {
+MINI_TEST("BVH", "Node Creation") {
     BVHNode node;
     MINI_CHECK(node.left == nullptr);
     MINI_CHECK(node.right == nullptr);
@@ -51,7 +51,7 @@ MINI_TEST("BVH", "Node_creation") {
     MINI_CHECK(!node.is_leaf());
 }
 
-MINI_TEST("BVH", "Node_leaf") {
+MINI_TEST("BVH", "Node Leaf") {
     BVHNode node;
     MINI_CHECK(!node.is_leaf());
 
@@ -67,14 +67,15 @@ MINI_TEST("BVH", "Creation") {
     MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 100.0));
 }
 
-MINI_TEST("BVH", "Build_empty") {
+MINI_TEST("BVH", "Build Empty") {
     std::vector<BoundingBox> boxes;
     BVH bvh = BVH::from_boxes(boxes, 100.0);
     MINI_CHECK(bvh.root == nullptr);
 }
 
-MINI_TEST("BVH", "Build_single") {
-    BoundingBox bbox(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+MINI_TEST("BVH", "Build Single") {
+    BoundingBox bbox(
+        Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     std::vector<BoundingBox> boxes = {bbox};
 
     BVH bvh = BVH::from_boxes(boxes, 100.0);
@@ -84,11 +85,14 @@ MINI_TEST("BVH", "Build_single") {
     MINI_CHECK(bvh.root->object_id == 0);
 }
 
-MINI_TEST("BVH", "Build_multiple") {
+MINI_TEST("BVH", "Build Multiple") {
     std::vector<BoundingBox> bboxes = {
-        BoundingBox(Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(Point(0, 10, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
+        BoundingBox(
+            Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        BoundingBox(
+            Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        BoundingBox(
+            Point(0, 10, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
     };
 
     BVH bvh = BVH::from_boxes(bboxes, 100.0);
@@ -99,22 +103,28 @@ MINI_TEST("BVH", "Build_multiple") {
     MINI_CHECK(bvh.root->right != nullptr);
 }
 
-MINI_TEST("BVH", "Aabb_intersect") {
+MINI_TEST("BVH", "Aabb Intersect") {
     BVH bvh(100.0);
 
-    BoundingBox bbox1(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    BoundingBox bbox2(Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+    BoundingBox bbox1(
+        Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+    BoundingBox bbox2(
+        Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     MINI_CHECK(bvh.aabb_intersect(bbox1, bbox2));
 
-    BoundingBox bbox3(Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+    BoundingBox bbox3(
+        Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     MINI_CHECK(!bvh.aabb_intersect(bbox1, bbox3));
 }
 
-MINI_TEST("BVH", "Check_all_collisions") {
+MINI_TEST("BVH", "Check All Collisions") {
     std::vector<BoundingBox> bboxes = {
-        BoundingBox(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
+        BoundingBox(
+            Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        BoundingBox(
+            Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        BoundingBox(
+            Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
     };
 
     BVH bvh = BVH::from_boxes(bboxes, 100.0);
@@ -130,11 +140,13 @@ MINI_TEST("BVH", "Check_all_collisions") {
     MINI_CHECK(checks > 0);
 }
 
-MINI_TEST("BVH", "Merge_aabb") {
+MINI_TEST("BVH", "Merge Aabb") {
     BVH bvh(100.0);
 
-    BoundingBox bbox1(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    BoundingBox bbox2(Point(5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+    BoundingBox bbox1(
+        Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+    BoundingBox bbox2(
+        Point(5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
 
     BoundingBox merged = bvh.merge_aabb(bbox1, bbox2);
 
@@ -142,7 +154,7 @@ MINI_TEST("BVH", "Merge_aabb") {
     MINI_CHECK(TOLERANCE.is_close(merged.half_size[0], 3.5));
 }
 
-MINI_TEST("BVH", "Fixed_100_boxes") {
+MINI_TEST("BVH", "Fixed 100 Boxes") {
     std::vector<BoundingBox> boxes;
     boxes.reserve(100);
 

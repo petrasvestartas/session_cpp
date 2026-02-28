@@ -8,7 +8,7 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("OBJ", "Read_bunny") {
+MINI_TEST("OBJ", "Read Bunny") {
     std::ifstream test_file("../session_data/bunny.obj");
     if (!test_file.good()) {
         // Data file not found, skip test
@@ -39,7 +39,7 @@ MINI_TEST("OBJ", "Read_bunny") {
     }
 }
 
-MINI_TEST("OBJ", "Write_read_roundtrip") {
+MINI_TEST("OBJ", "Write Read Roundtrip") {
     std::filesystem::create_directories("./serialization");
     Mesh original_mesh;
     auto v0 = original_mesh.add_vertex(Point(0.0, 0.0, 0.0));

@@ -32,7 +32,8 @@ MINI_TEST("Triangulation2D", "Triangle") {
 }
 
 MINI_TEST("Triangulation2D", "Square") {
-    Polyline boundary({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0), Point(0, 0, 0)});
+    Polyline boundary({
+        Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0), Point(0, 0, 0)});
     auto tris = Triangulation2D::triangulate(boundary);
     std::vector<Point> pts = {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)};
     double a = total_area(pts, tris);
@@ -41,7 +42,7 @@ MINI_TEST("Triangulation2D", "Square") {
     MINI_CHECK(std::abs(a - 1.0) < 1e-10);
 }
 
-MINI_TEST("Triangulation2D", "Convex_polygon") {
+MINI_TEST("Triangulation2D", "Convex Polygon") {
     double r = 1.0;
     std::vector<Point> hex_pts;
     for (int i = 0; i < 6; ++i) {
@@ -55,7 +56,7 @@ MINI_TEST("Triangulation2D", "Convex_polygon") {
     MINI_CHECK(tris.size() == 4);
 }
 
-MINI_TEST("Triangulation2D", "Concave_polygon") {
+MINI_TEST("Triangulation2D", "Concave Polygon") {
     Polyline boundary({
         Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0),
         Point(1, 1, 0), Point(0, 2, 0), Point(0, 0, 0)
@@ -72,7 +73,7 @@ MINI_TEST("Triangulation2D", "Concave_polygon") {
     MINI_CHECK(std::abs(a - expected) < 1e-10);
 }
 
-MINI_TEST("Triangulation2D", "Polygon_with_hole") {
+MINI_TEST("Triangulation2D", "Polygon With Hole") {
     Polyline boundary({
         Point(0, 0, 0), Point(4, 0, 0), Point(4, 4, 0), Point(0, 4, 0), Point(0, 0, 0)
     });
@@ -91,7 +92,7 @@ MINI_TEST("Triangulation2D", "Polygon_with_hole") {
     MINI_CHECK(std::abs(a - expected) < 1e-10);
 }
 
-MINI_TEST("Triangulation2D", "Polygon_with_multiple_holes") {
+MINI_TEST("Triangulation2D", "Polygon With Multiple Holes") {
     Polyline boundary({
         Point(0, 0, 0), Point(10, 0, 0), Point(10, 8, 0), Point(0, 8, 0), Point(0, 0, 0)
     });
@@ -114,16 +115,23 @@ MINI_TEST("Triangulation2D", "Polygon_with_multiple_holes") {
     MINI_CHECK(std::abs(a - expected) < 1e-6);
 }
 
-MINI_TEST("Triangulation2D", "Winding_correction") {
+MINI_TEST("Triangulation2D", "Winding Correction") {
     Polyline boundary({
         Point(0, 1, 0), Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
     });
-    auto tris = Triangulation2D::triangulate(boundary);
+    std::vector<Triangle2D> tris = Triangulation2D::triangulate(boundary);
     std::vector<Point> pts = {Point(0, 1, 0), Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0)};
     double a = total_area(pts, tris);
 
     MINI_CHECK(tris.size() == 2);
     MINI_CHECK(std::abs(a - 1.0) < 1e-10);
+}
+
+MINI_TEST("Triangulation2D", "Point In Polygon") {
+    std::vector<double> square = {0, 0, 1, 0, 1, 1, 0, 1};
+    MINI_CHECK(Triangulation2D::point_in_polygon_2d(0.5, 0.5, square));
+    MINI_CHECK(!Triangulation2D::point_in_polygon_2d(2.0, 2.0, square));
+    MINI_CHECK(!Triangulation2D::point_in_polygon_2d(-0.1, 0.5, square));
 }
 
 } // namespace session_cpp

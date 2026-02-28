@@ -80,22 +80,50 @@ MINI_TEST("PointCloud", "Constructor") {
     MINI_CHECK(pcstr.find("3 points") != std::string::npos);
     MINI_CHECK(pcrepr.find("PointCloud(my_pointcloud") != std::string::npos);
     MINI_CHECK(pccopy == pc && pccopy.guid != pc.guid);
-    MINI_CHECK(TOLERANCE.is_close(pt0[0], 0.0) && TOLERANCE.is_close(pt0[1], 0.0) && TOLERANCE.is_close(pt0[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pt0[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pt0[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pt0[2], 0.0));
     MINI_CHECK(col0.r == 255 && col0.g == 0 && col0.b == 0 && col0.a == 255);
-    MINI_CHECK(TOLERANCE.is_close(norm0[0], 0.0) && TOLERANCE.is_close(norm0[1], 0.0) && TOLERANCE.is_close(norm0[2], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(norm0[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(norm0[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(norm0[2], 1.0));
     MINI_CHECK(pc2.len() == 1 && pc2.color_count() == 1 && pc2.normal_count() == 1);
-    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[0], 4.0) && TOLERANCE.is_close(pc2.get_point(0)[1], 5.0) && TOLERANCE.is_close(pc2.get_point(0)[2], 6.0));
-    MINI_CHECK(pc2.get_color(0).r == 200 && pc2.get_color(0).g == 100 && pc2.get_color(0).b == 50 && pc2.get_color(0).a == 255);
-    MINI_CHECK(TOLERANCE.is_close(pc2.get_normal(0)[0], 0.0) && TOLERANCE.is_close(pc2.get_normal(0)[1], 1.0) && TOLERANCE.is_close(pc2.get_normal(0)[2], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(pc_iadd.get_point(0)[0], 11.0) && TOLERANCE.is_close(pc_iadd.get_point(0)[1], 22.0) && TOLERANCE.is_close(pc_iadd.get_point(0)[2], 33.0));
-    MINI_CHECK(TOLERANCE.is_close(pc_isub.get_point(0)[0], -9.0) && TOLERANCE.is_close(pc_isub.get_point(0)[1], -18.0) && TOLERANCE.is_close(pc_isub.get_point(0)[2], -27.0));
-    MINI_CHECK(TOLERANCE.is_close(pc_add.get_point(0)[0], 11.0) && TOLERANCE.is_close(pc_add.get_point(0)[1], 22.0) && TOLERANCE.is_close(pc_add.get_point(0)[2], 33.0));
-    MINI_CHECK(TOLERANCE.is_close(pc_sub.get_point(0)[0], -9.0) && TOLERANCE.is_close(pc_sub.get_point(0)[1], -18.0) && TOLERANCE.is_close(pc_sub.get_point(0)[2], -27.0));
-    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[0], 1.0) && TOLERANCE.is_close(pc3.get_point(0)[1], 2.0) && TOLERANCE.is_close(pc3.get_point(0)[2], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[0], 4.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[1], 5.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[2], 6.0));
+    MINI_CHECK(pc2.get_color(0).r == 200);
+    MINI_CHECK(pc2.get_color(0).g == 100);
+    MINI_CHECK(pc2.get_color(0).b == 50);
+    MINI_CHECK(pc2.get_color(0).a == 255);
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_normal(0)[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_normal(0)[1], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_normal(0)[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_iadd.get_point(0)[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_iadd.get_point(0)[1], 22.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_iadd.get_point(0)[2], 33.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_isub.get_point(0)[0], -9.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_isub.get_point(0)[1], -18.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_isub.get_point(0)[2], -27.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_add.get_point(0)[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_add.get_point(0)[1], 22.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_add.get_point(0)[2], 33.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_sub.get_point(0)[0], -9.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_sub.get_point(0)[1], -18.0));
+    MINI_CHECK(TOLERANCE.is_close(pc_sub.get_point(0)[2], -27.0));
+    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[2], 3.0));
     MINI_CHECK(pc4.len() == 3 && pc4.color_count() == 3 && pc4.normal_count() == 3);
-    MINI_CHECK(TOLERANCE.is_close(pc4.get_point(1)[0], 1.0) && TOLERANCE.is_close(pc4.get_point(1)[1], 0.0) && TOLERANCE.is_close(pc4.get_point(1)[2], 0.0));
-    MINI_CHECK(pc4.get_color(1).r == 0 && pc4.get_color(1).g == 255 && pc4.get_color(1).b == 0 && pc4.get_color(1).a == 255);
-    MINI_CHECK(TOLERANCE.is_close(pc4.get_normal(1)[0], 0.0) && TOLERANCE.is_close(pc4.get_normal(1)[1], 0.0) && TOLERANCE.is_close(pc4.get_normal(1)[2], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pc4.get_point(1)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pc4.get_point(1)[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pc4.get_point(1)[2], 0.0));
+    MINI_CHECK(pc4.get_color(1).r == 0);
+    MINI_CHECK(pc4.get_color(1).g == 255);
+    MINI_CHECK(pc4.get_color(1).b == 0);
+    MINI_CHECK(pc4.get_color(1).a == 255);
+    MINI_CHECK(TOLERANCE.is_close(pc4.get_normal(1)[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pc4.get_normal(1)[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pc4.get_normal(1)[2], 1.0));
 }
 
 MINI_TEST("PointCloud", "Transform") {
@@ -113,12 +141,18 @@ MINI_TEST("PointCloud", "Transform") {
     pc2.xform = Xform::translation(10.0, 20.0, 30.0);
     PointCloud pc3 = pc2.transformed();
 
-    MINI_CHECK(TOLERANCE.is_close(pc.get_point(0)[0], 11.0) && TOLERANCE.is_close(pc.get_point(0)[1], 22.0) && TOLERANCE.is_close(pc.get_point(0)[2], 33.0));
-    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[0], 11.0) && TOLERANCE.is_close(pc3.get_point(0)[1], 22.0) && TOLERANCE.is_close(pc3.get_point(0)[2], 33.0));
-    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[0], 1.0) && TOLERANCE.is_close(pc2.get_point(0)[1], 2.0) && TOLERANCE.is_close(pc2.get_point(0)[2], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(pc.get_point(0)[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pc.get_point(0)[1], 22.0));
+    MINI_CHECK(TOLERANCE.is_close(pc.get_point(0)[2], 33.0));
+    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[1], 22.0));
+    MINI_CHECK(TOLERANCE.is_close(pc3.get_point(0)[2], 33.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[2], 3.0));
 }
 
-MINI_TEST("PointCloud", "Json_roundtrip") {
+MINI_TEST("PointCloud", "Json Roundtrip") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -144,12 +178,16 @@ MINI_TEST("PointCloud", "Json_roundtrip") {
 
     MINI_CHECK(loaded.name == "test_pointcloud");
     MINI_CHECK(loaded.len() == 2);
-    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0) && TOLERANCE.is_close(loaded.get_point(0)[1], 2.0) && TOLERANCE.is_close(loaded.get_point(0)[2], 3.0));
-    MINI_CHECK(loaded.get_color(0).r == 255 && loaded.get_color(0).g == 0 && loaded.get_color(0).b == 0);
+    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[2], 3.0));
+    MINI_CHECK(loaded.get_color(0).r == 255);
+    MINI_CHECK(loaded.get_color(0).g == 0);
+    MINI_CHECK(loaded.get_color(0).b == 0);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
 
-MINI_TEST("PointCloud", "Protobuf_roundtrip") {
+MINI_TEST("PointCloud", "Protobuf Roundtrip") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
     // uncomment #include "vector.h"
@@ -168,8 +206,12 @@ MINI_TEST("PointCloud", "Protobuf_roundtrip") {
 
     MINI_CHECK(loaded.name == "test_pointcloud");
     MINI_CHECK(loaded.len() == 2);
-    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0) && TOLERANCE.is_close(loaded.get_point(0)[1], 2.0) && TOLERANCE.is_close(loaded.get_point(0)[2], 3.0));
-    MINI_CHECK(loaded.get_color(0).r == 255 && loaded.get_color(0).g == 0 && loaded.get_color(0).b == 0);
+    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[2], 3.0));
+    MINI_CHECK(loaded.get_color(0).r == 255);
+    MINI_CHECK(loaded.get_color(0).g == 0);
+    MINI_CHECK(loaded.get_color(0).b == 0);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
 

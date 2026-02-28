@@ -127,7 +127,10 @@ BRep BRep::create_box(double sx, double sy, double sz) {
 
         // 4 trim curves in UV space (unit square boundary)
         Point uv_corners[4] = {
-            Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
         };
         // Edge mapping for each face: which of the 12 edges correspond to each face edge
         // We find edges by matching vertex pairs
@@ -334,7 +337,12 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
         int si = brep.add_surface(srf);
         int face_idx = brep.add_face(si, false);
         int loop_idx = brep.add_loop(face_idx, BRepLoopType::Outer);
-        Point uv[4] = {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)};
+        Point uv[4] = {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        };
         for (int ei = 0; ei < 4; ++ei) {
             int next = (ei + 1) % 4;
             auto tc = NurbsCurve::create(false, 1, {uv[ei], uv[next]});
@@ -515,7 +523,7 @@ BRep BRep::from_polylines(const std::vector<Polyline>& polylines) {
             int j = (i + 1) % n;
             double u0 = (us[i] - umin) / du, v0 = (vs[i] - vmin) / dv;
             double u1 = (us[j] - umin) / du, v1 = (vs[j] - vmin) / dv;
-            auto tc = NurbsCurve::create(false, 1, {Point(u0,v0,0), Point(u1,v1,0)});
+            auto tc = NurbsCurve::create(false, 1, {Point(u0, v0, 0), Point(u1, v1, 0)});
             int c2d = brep.add_curve_2d(tc);
             auto [ei, rev] = get_edge(vi[i], vi[j]);
             BRepTrimType type = brep.m_topology_edges[ei].trim_indices.empty()

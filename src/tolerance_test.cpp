@@ -5,32 +5,32 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("Tolerance", "Is_zero") {
+    MINI_TEST("Tolerance", "Is Zero") {
         bool result = TOLERANCE.is_zero(1e-10);
         MINI_CHECK(result == true);
     }
 
-    MINI_TEST("Tolerance", "Is_close") {
+    MINI_TEST("Tolerance", "Is Close") {
         bool result = TOLERANCE.is_close(1.0, 1.0 + 1e-7);
         MINI_CHECK(result == true);
     }
 
-    MINI_TEST("Tolerance", "Is_positive") {
+    MINI_TEST("Tolerance", "Is Positive") {
         bool result = TOLERANCE.is_positive(1.0);
         MINI_CHECK(result == true);
     }
 
-    MINI_TEST("Tolerance", "Is_negative") {
+    MINI_TEST("Tolerance", "Is Negative") {
         bool result = TOLERANCE.is_negative(-1.0);
         MINI_CHECK(result == true);
     }
 
-    MINI_TEST("Tolerance", "Is_between") {
+    MINI_TEST("Tolerance", "Is Between") {
         bool result = TOLERANCE.is_between(0.5, 0.0, 1.0);
         MINI_CHECK(result == true);
     }
 
-    MINI_TEST("Tolerance", "Format_number") {
+    MINI_TEST("Tolerance", "Format Number") {
         std::string result = TOLERANCE.format_number(3.14159, 2);
         MINI_CHECK(result == "3.14");
     }
@@ -40,7 +40,7 @@ namespace session_cpp {
         MINI_CHECK(result == "1.000,2.000,3.000");
     }
 
-    MINI_TEST("Tolerance", "Runtime_modification") {
+    MINI_TEST("Tolerance", "Runtime Modification") {
         // Get current default values
         double original_absolute = TOLERANCE.absolute();
         double original_relative = TOLERANCE.relative();

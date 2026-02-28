@@ -530,8 +530,8 @@ Mesh Primitives::tetrahedron(double edge) {
 
 Mesh Primitives::cube(double edge) {
     double a = edge / 2.0;
-    Point v0(-a,-a,-a), v1(a,-a,-a), v2(a,a,-a), v3(-a,a,-a);
-    Point v4(-a,-a,a), v5(a,-a,a), v6(a,a,a), v7(-a,a,a);
+    Point v0(-a, -a, -a), v1(a, -a, -a), v2(a, a, -a), v3(-a, a, -a);
+    Point v4(-a, -a, a), v5(a, -a, a), v6(a, a, a), v7(-a, a, a);
     std::vector<std::vector<Point>> faces = {
         {v3, v2, v1, v0},
         {v4, v5, v6, v7},
@@ -545,9 +545,9 @@ Mesh Primitives::cube(double edge) {
 
 Mesh Primitives::octahedron(double edge) {
     double a = edge / std::sqrt(2.0);
-    Point px(a,0,0), nx(-a,0,0);
-    Point py(0,a,0), ny(0,-a,0);
-    Point pz(0,0,a), nz(0,0,-a);
+    Point px(a, 0, 0), nx(-a, 0, 0);
+    Point py(0, a, 0), ny(0, -a, 0);
+    Point pz(0, 0, a), nz(0, 0, -a);
     std::vector<std::vector<Point>> faces = {
         {pz, px, py}, {pz, py, nx}, {pz, nx, ny}, {pz, ny, px},
         {nz, py, px}, {nz, nx, py}, {nz, ny, nx}, {nz, px, ny},
@@ -560,9 +560,18 @@ Mesh Primitives::icosahedron(double edge) {
     double s = edge / 2.0;
     double sp = s * phi;
     Point verts[12] = {
-        Point(-s, sp, 0), Point(s, sp, 0), Point(-s,-sp, 0), Point(s,-sp, 0),
-        Point(0,-s, sp), Point(0, s, sp), Point(0,-s,-sp), Point(0, s,-sp),
-        Point(sp, 0,-s), Point(sp, 0, s), Point(-sp, 0,-s), Point(-sp, 0, s),
+        Point(-s, sp, 0),
+        Point(s, sp, 0),
+        Point(-s, -sp, 0),
+        Point(s, -sp, 0),
+        Point(0, -s, sp),
+        Point(0, s, sp),
+        Point(0, -s, -sp),
+        Point(0, s, -sp),
+        Point(sp, 0, -s),
+        Point(sp, 0, s),
+        Point(-sp, 0, -s),
+        Point(-sp, 0, s),
     };
     int idx[20][3] = {
         {0,11,5},{0,5,1},{0,1,7},{0,7,10},{0,10,11},
@@ -581,14 +590,26 @@ Mesh Primitives::dodecahedron(double edge) {
     double ip = 1.0 / phi;
     double s = edge / (2.0 * ip); // scale so actual edge length = edge
     Point verts[20] = {
-        Point( s,  s,  s), Point( s,  s, -s), Point( s, -s,  s), Point( s, -s, -s),
-        Point(-s,  s,  s), Point(-s,  s, -s), Point(-s, -s,  s), Point(-s, -s, -s),
-        Point(0,  s*ip,  s*phi), Point(0,  s*ip, -s*phi),
-        Point(0, -s*ip,  s*phi), Point(0, -s*ip, -s*phi),
-        Point( s*ip,  s*phi, 0), Point( s*ip, -s*phi, 0),
-        Point(-s*ip,  s*phi, 0), Point(-s*ip, -s*phi, 0),
-        Point( s*phi, 0,  s*ip), Point( s*phi, 0, -s*ip),
-        Point(-s*phi, 0,  s*ip), Point(-s*phi, 0, -s*ip),
+        Point(s, s, s),
+        Point(s, s, -s),
+        Point(s, -s, s),
+        Point(s, -s, -s),
+        Point(-s, s, s),
+        Point(-s, s, -s),
+        Point(-s, -s, s),
+        Point(-s, -s, -s),
+        Point(0, s*ip, s*phi),
+        Point(0, s*ip, -s*phi),
+        Point(0, -s*ip, s*phi),
+        Point(0, -s*ip, -s*phi),
+        Point(s*ip, s*phi, 0),
+        Point(s*ip, -s*phi, 0),
+        Point(-s*ip, s*phi, 0),
+        Point(-s*ip, -s*phi, 0),
+        Point(s*phi, 0, s*ip),
+        Point(s*phi, 0, -s*ip),
+        Point(-s*phi, 0, s*ip),
+        Point(-s*phi, 0, -s*ip),
     };
     int idx[12][5] = {
         {0, 8,10, 2,16}, {0,16,17, 1,12}, {0,12,14, 4, 8},
@@ -2376,7 +2397,7 @@ void CrossConnectors::compute_face_edge_planes() {
                 for (int k = 0; k < fn; k++) {
                     auto ek = std::make_pair(std::min(fv[k], fv[(k+1)%fn]), std::max(fv[k], fv[(k+1)%fn]));
                     if (ek == key) {
-                        Vector fn_vec = mesh.face_normal(_fkeys[fi]).value_or(Vector(0,0,1));
+                        Vector fn_vec = mesh.face_normal(_fkeys[fi]).value_or(Vector(0, 0, 1));
                         sum = Vector(sum[0]+fn_vec[0], sum[1]+fn_vec[1], sum[2]+fn_vec[2]);
                         count++;
                         break;
