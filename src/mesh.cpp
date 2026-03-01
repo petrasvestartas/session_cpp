@@ -98,6 +98,15 @@ size_t Mesh::number_of_edges() const {
     return count;
 }
 
+std::vector<std::pair<size_t, size_t>> Mesh::edges() const {
+    std::vector<std::pair<size_t, size_t>> result;
+    for (const auto& [u, neighbors] : halfedge)
+        for (const auto& [v, face_opt] : neighbors)
+            if (!face_opt.has_value())
+                result.push_back({u, v});
+    return result;
+}
+
 bool Mesh::is_valid() const {
     if (vertex.empty() || face.empty()) return false;
     for (const auto& [fkey, vkeys] : face) {
@@ -178,6 +187,20 @@ void Mesh::clear() {
     triangle_indices_cache.clear();
     triangle_face_subidx_cache.clear();
     vertices_cache.clear();
+}
+
+Mesh Mesh::unweld() const {
+    Mesh m;
+    for (const auto& [fkey, vkeys] : face) {
+        std::vector<size_t> new_vkeys;
+        new_vkeys.reserve(vkeys.size());
+        for (size_t vk : vkeys) {
+            const auto& vd = vertex.at(vk);
+            new_vkeys.push_back(m.add_vertex(Point(vd.x, vd.y, vd.z)));
+        }
+        m.add_face(new_vkeys);
+    }
+    return m;
 }
 
 bool Mesh::unify_winding() {
@@ -1032,7 +1055,7 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
         if (static_cast<int>(i) != border_idx) order.push_back(static_cast<int>(i));
 
     // Collect open points, enforce winding: border=CCW, holes=CW
-    struct PolyInfo { size_t offset; size_t count; };
+    struct PolyInfo { size_t bot_off; size_t bot_n; size_t top_off; size_t top_n; };
     std::vector<PolyInfo> poly_infos;
     std::vector<Point> all_bot_pts;
     std::vector<Point> all_top_pts;
@@ -1041,9 +1064,6 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
         int idx = order[oi];
         auto bot = get_open_points(polylines0[idx]);
         auto top = get_open_points(polylines1[idx]);
-        size_t n = std::min(bot.size(), top.size());
-        bot.resize(n);
-        top.resize(n);
 
         bool is_border = (oi == 0);
         double area = signed_area_2d(bot);
@@ -1052,54 +1072,106 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
             std::reverse(top.begin(), top.end());
         }
 
-        poly_infos.push_back({all_bot_pts.size(), n});
-        for (size_t i = 0; i < n; ++i) all_bot_pts.push_back(bot[i]);
-        for (size_t i = 0; i < n; ++i) all_top_pts.push_back(top[i]);
+        poly_infos.push_back({all_bot_pts.size(), bot.size(), all_top_pts.size(), top.size()});
+        for (const auto& p : bot) all_bot_pts.push_back(p);
+        for (const auto& p : top) all_top_pts.push_back(p);
     }
-
-    size_t total_pts = all_bot_pts.size();
 
     // Build mesh
     Mesh mesh;
 
     std::vector<size_t> bot_vkeys;
-    for (size_t i = 0; i < total_pts; ++i)
-        bot_vkeys.push_back(mesh.add_vertex(all_bot_pts[i]));
+    for (const auto& p : all_bot_pts)
+        bot_vkeys.push_back(mesh.add_vertex(p));
 
     std::vector<size_t> top_vkeys;
-    for (size_t i = 0; i < total_pts; ++i)
-        top_vkeys.push_back(mesh.add_vertex(all_top_pts[i]));
+    for (const auto& p : all_top_pts)
+        top_vkeys.push_back(mesh.add_vertex(p));
 
     if (cap) {
-        std::vector<std::pair<double,double>> border_2d_pairs;
-        for (size_t i = poly_infos[0].offset; i < poly_infos[0].offset + poly_infos[0].count; ++i)
-            border_2d_pairs.push_back(project_2d(all_bot_pts[i]));
-
-        std::vector<std::vector<std::pair<double,double>>> holes_2d_pairs;
+        // Bottom cap CDT
+        std::vector<std::pair<double,double>> b_border_2d;
+        for (size_t i = 0; i < poly_infos[0].bot_n; ++i)
+            b_border_2d.push_back(project_2d(all_bot_pts[i]));
+        std::vector<std::vector<std::pair<double,double>>> b_holes_2d;
         for (size_t h = 1; h < poly_infos.size(); ++h) {
             std::vector<std::pair<double,double>> hole;
-            for (size_t i = poly_infos[h].offset; i < poly_infos[h].offset + poly_infos[h].count; ++i)
+            for (size_t i = poly_infos[h].bot_off; i < poly_infos[h].bot_off + poly_infos[h].bot_n; ++i)
                 hole.push_back(project_2d(all_bot_pts[i]));
-            holes_2d_pairs.push_back(std::move(hole));
+            b_holes_2d.push_back(std::move(hole));
         }
-
-        auto cap_tris = cdt_triangulate(border_2d_pairs, holes_2d_pairs);
-
-        for (const auto& f : cap_tris)
+        for (const auto& f : cdt_triangulate(b_border_2d, b_holes_2d))
             mesh.add_face({bot_vkeys[f[0]], bot_vkeys[f[2]], bot_vkeys[f[1]]});
-        for (const auto& f : cap_tris)
+
+        // Top cap CDT
+        std::vector<std::pair<double,double>> t_border_2d;
+        for (size_t i = 0; i < poly_infos[0].top_n; ++i)
+            t_border_2d.push_back(project_2d(all_top_pts[i]));
+        std::vector<std::vector<std::pair<double,double>>> t_holes_2d;
+        for (size_t h = 1; h < poly_infos.size(); ++h) {
+            std::vector<std::pair<double,double>> hole;
+            for (size_t i = poly_infos[h].top_off; i < poly_infos[h].top_off + poly_infos[h].top_n; ++i)
+                hole.push_back(project_2d(all_top_pts[i]));
+            t_holes_2d.push_back(std::move(hole));
+        }
+        for (const auto& f : cdt_triangulate(t_border_2d, t_holes_2d))
             mesh.add_face({top_vkeys[f[0]], top_vkeys[f[1]], top_vkeys[f[2]]});
     }
 
-    // Side quads from original polyline edges
-    for (size_t p = 0; p < poly_infos.size(); ++p) {
-        size_t off = poly_infos[p].offset;
-        size_t n = poly_infos[p].count;
-
-        for (size_t i = 0; i < n; ++i) {
-            size_t j = (i + 1) % n;
-            size_t bi = off + i, bj = off + j;
-            mesh.add_face({bot_vkeys[bi], bot_vkeys[bj], top_vkeys[bj], top_vkeys[bi]});
+    // Side faces: align by longest edge, quads for equal counts, zipper+triangles otherwise
+    auto edsq = [](const std::vector<Point>& pts, size_t i) -> double {
+        size_t j = (i + 1) % pts.size();
+        double dx = pts[j][0]-pts[i][0], dy = pts[j][1]-pts[i][1], dz = pts[j][2]-pts[i][2];
+        return dx*dx + dy*dy + dz*dz;
+    };
+    for (const auto& pi : poly_infos) {
+        size_t bot_off = pi.bot_off, bot_n = pi.bot_n, top_off = pi.top_off, top_n = pi.top_n;
+        std::vector<Point> bpts(all_bot_pts.begin()+bot_off, all_bot_pts.begin()+bot_off+bot_n);
+        std::vector<Point> tpts(all_top_pts.begin()+top_off, all_top_pts.begin()+top_off+top_n);
+        size_t ia = 0, ib = 0;
+        double max_b = 0, max_t = 0;
+        for (size_t k = 0; k < bot_n; ++k) { double v = edsq(bpts, k); if (v > max_b) { max_b = v; ia = k; } }
+        for (size_t k = 0; k < top_n; ++k) { double v = edsq(tpts, k); if (v > max_t) { max_t = v; ib = k; } }
+        if (bot_n == top_n) {
+            for (size_t k = 0; k < bot_n; ++k) {
+                size_t cb = bot_off+(ia+k)%bot_n, ct = top_off+(ib+k)%top_n;
+                size_t nb = bot_off+(ia+k+1)%bot_n, nt = top_off+(ib+k+1)%top_n;
+                mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[nt], top_vkeys[ct]});
+            }
+            continue;
+        }
+        std::vector<double> b_arcs(bot_n+1, 0.0);
+        for (size_t k = 0; k < bot_n; ++k) {
+            size_t i = (ia+k)%bot_n, j = (ia+k+1)%bot_n;
+            double dx = bpts[j][0]-bpts[i][0], dy = bpts[j][1]-bpts[i][1], dz = bpts[j][2]-bpts[i][2];
+            b_arcs[k+1] = b_arcs[k] + std::sqrt(dx*dx+dy*dy+dz*dz);
+        }
+        std::vector<double> t_arcs(top_n+1, 0.0);
+        for (size_t k = 0; k < top_n; ++k) {
+            size_t i = (ib+k)%top_n, j = (ib+k+1)%top_n;
+            double dx = tpts[j][0]-tpts[i][0], dy = tpts[j][1]-tpts[i][1], dz = tpts[j][2]-tpts[i][2];
+            t_arcs[k+1] = t_arcs[k] + std::sqrt(dx*dx+dy*dy+dz*dz);
+        }
+        double inv_b = b_arcs[bot_n] > 0 ? 1.0/b_arcs[bot_n] : 1.0;
+        double inv_t = t_arcs[top_n] > 0 ? 1.0/t_arcs[top_n] : 1.0;
+        size_t bi = 0, ti = 0;
+        while (bi < bot_n || ti < top_n) {
+            size_t cb = bot_off+(ia+bi)%bot_n, ct = top_off+(ib+ti)%top_n;
+            size_t nb = bot_off+(ia+bi+1)%bot_n, nt = top_off+(ib+ti+1)%top_n;
+            if (bi >= bot_n) {
+                mesh.add_face({bot_vkeys[cb], top_vkeys[ct], top_vkeys[nt]}); ++ti;
+            } else if (ti >= top_n) {
+                mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]}); ++bi;
+            } else {
+                double bp = b_arcs[bi+1]*inv_b, tp = t_arcs[ti+1]*inv_t;
+                if (std::abs(bp-tp) < 1e-9) {
+                    mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[nt], top_vkeys[ct]}); ++bi; ++ti;
+                } else if (bp < tp) {
+                    mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]}); ++bi;
+                } else {
+                    mesh.add_face({bot_vkeys[cb], top_vkeys[ct], top_vkeys[nt]}); ++ti;
+                }
+            }
         }
     }
 

@@ -386,6 +386,18 @@ namespace session_cpp {
         MINI_CHECK(n0_after->dot(*n1_after) > 0.0);  // correct: normals agree
     }
 
+    MINI_TEST("Mesh", "Unweld") {
+        // uncomment #include "mesh.h"
+
+        Mesh box = Mesh::create_box(1.0, 1.0, 1.0);
+        Mesh u = box.unweld();
+
+        MINI_CHECK(u.number_of_faces() == box.number_of_faces());
+        MINI_CHECK(u.number_of_vertices() == 24);
+        for (auto& [vk, vdata] : u.vertex)
+            MINI_CHECK(u.vertex_faces(vk).size() == 1);
+    }
+
     MINI_TEST("Mesh", "Connectivity Queries") {
         // uncomment #include "mesh.h"
 

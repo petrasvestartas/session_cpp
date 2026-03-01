@@ -31,6 +31,9 @@ public:
     /// Create a cylinder mesh (10-sided) oriented along a line.
     static Mesh cylinder_mesh(const Line& line, double radius);
 
+    /// Returns one colored cylinder mesh per edge using mesh.linecolors[i] for edges()[i].
+    static std::vector<Mesh> edge_pipes(const Mesh& mesh, double radius);
+
     /// Create a tetrahedron mesh (4 triangular faces) with given edge length.
     static Mesh tetrahedron(double edge = 2.0);
 

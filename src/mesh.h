@@ -234,6 +234,10 @@ public:
     /// Get number of edges
     size_t number_of_edges() const;
 
+    /// Returns all undirected edges as (u, v) pairs in stable sorted order.
+    /// linecolors[i] corresponds to edges()[i].
+    std::vector<std::pair<size_t, size_t>> edges() const;
+
     /// Calculate Euler characteristic (V - E + F)
     int euler() const;
 
@@ -253,6 +257,10 @@ public:
 
     /// Clear all mesh data
     void clear();
+
+    /// Return a new mesh with all vertices duplicated so each face has its own unique vertices.
+    /// After unweld, number_of_vertices() == sum of each face's vertex count.
+    Mesh unweld() const;
 
     /// Unify face winding by BFS; returns true if any face was flipped
     bool unify_winding();

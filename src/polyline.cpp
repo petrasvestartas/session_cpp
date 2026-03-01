@@ -679,6 +679,35 @@ bool Polyline::is_closed() const {
     return get_point(0).distance(get_point(point_count() - 1)) < static_cast<double>(Tolerance::ZERO_TOLERANCE);
 }
 
+void Polyline::merge_collinear(double tol) {
+    bool closed = is_closed();
+    std::vector<Point> pts = get_points();
+    if (closed && pts.size() > 1) pts.pop_back();
+    const double zt2 = Tolerance::ZERO_TOLERANCE * Tolerance::ZERO_TOLERANCE;
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        int m = (int)pts.size();
+        if (m < 3) break;
+        std::vector<Point> out;
+        for (int i = 0; i < m; i++) {
+            int p = (i - 1 + m) % m, nx = (i + 1) % m;
+            if (!closed && (i == 0 || i == m - 1)) { out.push_back(pts[i]); continue; }
+            double ax=pts[i][0]-pts[p][0], ay=pts[i][1]-pts[p][1], az=pts[i][2]-pts[p][2];
+            double bx=pts[nx][0]-pts[i][0], by=pts[nx][1]-pts[i][1], bz=pts[nx][2]-pts[i][2];
+            double cx=ay*bz-az*by, cy=az*bx-ax*bz, cz=ax*by-ay*bx;
+            double a2=ax*ax+ay*ay+az*az, b2=bx*bx+by*by+bz*bz;
+            if (a2<zt2||b2<zt2||cx*cx+cy*cy+cz*cz<tol*tol*a2*b2) changed=true;
+            else out.push_back(pts[i]);
+        }
+        pts = out;
+    }
+    _coords.clear();
+    for (const auto& p : pts) { _coords.push_back(p[0]); _coords.push_back(p[1]); _coords.push_back(p[2]); }
+    if (closed && !pts.empty()) { _coords.push_back(pts[0][0]); _coords.push_back(pts[0][1]); _coords.push_back(pts[0][2]); }
+    recompute_plane_if_needed();
+}
+
 Point Polyline::center() const {
     if (_coords.empty()) return Point(0, 0, 0);
 

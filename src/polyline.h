@@ -251,8 +251,11 @@ public:
     void get_convex_corners(std::vector<bool>& convex_or_concave) const;
 
     /// Interpolate between two polylines
-    static Polyline tween_two_polylines(const Polyline& polyline0, const Polyline& polyline1, 
+    static Polyline tween_two_polylines(const Polyline& polyline0, const Polyline& polyline1,
                                        double weight);
+
+    /// Merge consecutive collinear segments (in-place); closed polyline wraps around
+    void merge_collinear(double tol = Tolerance::APPROXIMATION);
 
 private:
     /// Helper to recompute plane when points change

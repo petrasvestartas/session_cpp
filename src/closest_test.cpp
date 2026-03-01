@@ -111,6 +111,17 @@ MINI_TEST("Closest", "Mesh Point") {
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
 }
 
+MINI_TEST("Closest", "Mesh Point AABB") {
+    Mesh m = Primitives::cube(2.0);
+
+    auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
+    MINI_CHECK(TOLERANCE.is_close(cp1[2], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
+
+    auto [cp2, fk2, d2] = Closest::mesh_point_aabb(m, Point(1.0, 1.0, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
+}
+
 MINI_TEST("Closest", "Pointcloud Point") {
     PointCloud pc({
         Point(0.0, 0.0, 0.0),

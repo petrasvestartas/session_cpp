@@ -86,6 +86,14 @@ MINI_TEST("Line", "Constructor") {
     lc.linecolor = Color(255, 0, 0, 255, "red");
     lc.width = 2.5;
 
+    // with_name constructor
+    Line lwn = Line::with_name("custom", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+    // get_middle_line
+    Point ms, me;
+    Line::get_middle_line(Point(0.0, 0.0, 0.0), Point(2.0, 0.0, 0.0),
+                          Point(0.0, 2.0, 0.0), Point(2.0, 2.0, 0.0), ms, me);
+
     MINI_CHECK(l.name == "my_line");
     MINI_CHECK(l[0] == 10.0 && l[1] == 20.0 && l[2] == 30.0);
     MINI_CHECK(!l.guid.empty());
@@ -112,6 +120,8 @@ MINI_TEST("Line", "Constructor") {
     MINI_CHECK(l_pv[3] == 4.0 && l_pv[4] == 6.0 && l_pv[5] == 8.0);
     MINI_CHECK(l_pdl[0] == 0.0 && l_pdl[3] == 5.0);
     MINI_CHECK(lc.linecolor[0] == 255 && lc.linecolor[1] == 0 && lc.width == 2.5);
+    MINI_CHECK(lwn.name == "custom" && lwn[3] == 1.0);
+    MINI_CHECK(TOLERANCE.is_close(ms[1], 1.0) && TOLERANCE.is_close(me[1], 1.0));
 }
 
 MINI_TEST("Line", "Transformation") {
@@ -129,23 +139,25 @@ MINI_TEST("Line", "Transformation") {
 }
 
 MINI_TEST("Line", "Json Roundtrip") {
-    // uncomment #include "line.h"
-
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
     l.name = "test_line";
 
-    //   jsondump()      │ ordered_json │ to JSON object (internal use)
-    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   json_dumps()    │ std::string  │ to JSON string
-    //   json_loads(s)   │ std::string  │ from JSON string
-    //   json_dump(path) │ file         │ write to file
-    //   json_load(path) │ file         │ read from file
+    // JSON object
+    nlohmann::ordered_json j = l.jsondump();
+    Line loaded_j = Line::jsonload(j);
+    MINI_CHECK(loaded_j.name == "test_line");
+    MINI_CHECK(TOLERANCE.is_close(loaded_j[0], 42.1));
 
-    // json_dump(fname) / json_load(fname) - file-based serialization
+    // String
+    std::string s = l.json_dumps();
+    Line loaded_s = Line::json_loads(s);
+    MINI_CHECK(loaded_s.name == "test_line");
+    MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
+
+    // File
     std::string fname = "serialization/test_line.json";
     l.json_dump(fname);
     Line loaded = Line::json_load(fname);
-
     MINI_CHECK(loaded.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
     MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));
@@ -156,16 +168,20 @@ MINI_TEST("Line", "Json Roundtrip") {
 }
 
 MINI_TEST("Line", "Protobuf Roundtrip") {
-    // uncomment #include "line.h"
-
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
     l.name = "test_line";
 
-    // pb_dump(fname) / pb_load(fname) - file-based serialization
+    // String
+    std::string s = l.pb_dumps();
+    Line loaded_s = Line::pb_loads(s);
+    MINI_CHECK(loaded_s.name == "test_line");
+    MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
+    MINI_CHECK(loaded_s.guid == l.guid);
+
+    // File
     std::string fname = "serialization/test_line.bin";
     l.pb_dump(fname);
     Line loaded = Line::pb_load(fname);
-
     MINI_CHECK(loaded.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
     MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));
@@ -173,6 +189,7 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
     MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
+    MINI_CHECK(loaded.guid == l.guid);
 }
 
 MINI_TEST("Line", "Length") {

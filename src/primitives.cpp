@@ -513,6 +513,21 @@ Mesh Primitives::cylinder_mesh(const Line& line, double radius) {
     return transform_geometry(unit_cyl, xform);
 }
 
+std::vector<Mesh> Primitives::edge_pipes(const Mesh& mesh, double radius) {
+    auto edge_list = mesh.edges();
+    std::vector<Mesh> result;
+    for (size_t i = 0; i < edge_list.size() && i < mesh.linecolors.size(); ++i) {
+        auto [v, u] = edge_list[i];
+        Point start = mesh.vertex.at(v).position();
+        Point end = mesh.vertex.at(u).position();
+        Mesh pipe = Primitives::cylinder_mesh(Line::from_points(start, end), radius);
+        for (auto& c : pipe.facecolors)
+            c = mesh.linecolors[i];
+        result.push_back(std::move(pipe));
+    }
+    return result;
+}
+
 Mesh Primitives::tetrahedron(double edge) {
     double a = edge / 2.0;
     double h = edge * std::sqrt(2.0 / 3.0);
