@@ -161,13 +161,16 @@ int main() {
     Mesh mesh_e = base;
     for (size_t i = 0; i < mesh_e.linecolors.size(); ++i) {
         mesh_e.linecolors[i] = pal[i % 6];
-        mesh_e.widths[i] = 50.0;
+        mesh_e.widths[i] = 5.0+i;
     }
     session.add_mesh(std::make_shared<Mesh>(mesh_e));
 
     // b) Vertex colors — rhino_mesh.py applies as vertex color array
+    // Number of mesh vertices is not equal to pointcolors.size() 
     Mesh mesh_v = base;
     mesh_v.transform(Xform::translation(6000, 0, 0));
+    std::cout << "mesh_v.pointcolors.size() = " << mesh_v.pointcolors.size() << std::endl;
+    std::cout << "mesh_v.number_of_vertices() = " << mesh_v.number_of_vertices() << std::endl;
     for (size_t i = 0; i < mesh_v.pointcolors.size(); ++i)
         mesh_v.pointcolors[i] = pal[i % 6];
     session.add_mesh(std::make_shared<Mesh>(mesh_v));

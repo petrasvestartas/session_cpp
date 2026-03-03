@@ -11,6 +11,25 @@
 #include <cmath>
 #include <iostream>
 
+
+//   c:\brg\code_rust\session\session_cpp\main_1.cpp                            
+                                                                             
+//   I dont care about face colors, remove coloring                             
+//   nor name of mesh                                                           
+                                                                             
+//   Dont use                                                                   
+                                                                             
+//   using V3d = std::array<double, 3>;                                         
+//   using PolyRaw = std::vector<V3d>;                                          
+//   using PolysRaw = std::vector<PolyRaw>;                                     
+                                                                             
+//   Instead use Polyline class                                                 
+                                                                             
+//   Implement new feature: at the center of loft edge quad draw a line in      
+//   the direction of a mesh edge, the center can be computer by taking 4       
+//   corner points and making the line in both direction by half length of      
+//   the edge lnegth, the orientation must be quad face orientation  
+
 using namespace session_cpp;
 using V3d = std::array<double, 3>;
 using PolyRaw = std::vector<V3d>;
