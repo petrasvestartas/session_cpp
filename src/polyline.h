@@ -48,6 +48,9 @@ public:
     /// Constructor with flat coords
     static Polyline from_coords(const std::vector<double>& coords);
 
+    /// Create a regular polygon with given number of sides and radius.
+    static Polyline from_sides(int sides, double radius = 1.0, bool close = false);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Core Methods (str, repr, duplicate, eq)
     ///////////////////////////////////////////////////////////////////////////////////////////

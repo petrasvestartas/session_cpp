@@ -176,6 +176,9 @@ public:
   /// Create a silver color.
   static Color silver();
 
+  /// Return a palette of 12 spectral colors in order.
+  static std::vector<Color> palette();
+
   /**
    * @brief Convert to normalized float array [0-1].
    * @return Array [r, g, b, a] with values normalized to [0.0, 1.0].

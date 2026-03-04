@@ -1,5 +1,6 @@
-#include "mini_test.h"
+﻿#include "mini_test.h"
 #include "mesh.h"
+#include "color.h"
 #include "point.h"
 #include "line.h"
 #include "polyline.h"
@@ -19,30 +20,66 @@ namespace session_cpp {
     MINI_TEST("Mesh", "Constructor") {
         // uncomment #include "mesh.h"
 
-        const int sides = 6;
-
-        // Create hexagon vertices in XY plane
-        std::vector<Point> vertices;
-        for (int i = 0; i < sides; ++i) {
-            double angle = 2.0 * TOLERANCE.PI * i / sides;
-            double x = 1.0 * std::cos(angle);
-            double y = 1.0 * std::sin(angle);
-            vertices.push_back({x, y, 0.0});
-        }
-
-        std::vector<std::vector<size_t>> faces = {
-            {0, 1, 2, 3, 4, 5},
-        };
-
-        Mesh mesh = Mesh::from_vertices_and_faces(vertices, faces);
-
+        std::vector<Point> vertices = Polyline::from_sides(6, 1.0, false).get_points();
+        Mesh mesh = Mesh::from_vertices_and_faces(vertices, {{0, 1, 2, 3, 4, 5}});
         std::string sstr = mesh.str();
         std::string srepr = mesh.repr();
-
-        // Copy (new guid)
         Mesh mcopy = mesh;
-
         MINI_CHECK(mesh.is_valid());
+        mesh.name = "hexagon";
+
+        std::vector<Color> palette = Color::palette();
+
+        // set_objectcolor does not change color_mode
+        mesh.set_objectcolor(Color::grey());
+        MINI_CHECK(mesh.color_mode == ColorMode::OBJECTCOLOR);
+
+        // set_pointcolors → color_mode = PointColors
+        std::vector<Color> pc;
+        pc.reserve(mesh.number_of_vertices());
+        for (size_t i = 0; i < mesh.number_of_vertices(); ++i)
+            pc.emplace_back(palette[i % palette.size()]);
+        mesh.set_pointcolors(std::move(pc));
+        MINI_CHECK(mesh.color_mode == ColorMode::POINTCOLORS);
+        MINI_CHECK(mesh.get_pointcolors().size() == mesh.number_of_vertices());
+
+        // set_facecolors → color_mode = FaceColors
+        std::vector<Color> fc;
+        fc.reserve(mesh.number_of_faces());
+        for (size_t i = 0; i < mesh.number_of_faces(); ++i)
+            fc.emplace_back(palette[i % palette.size()]);
+        mesh.set_facecolors(std::move(fc));
+        MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+        MINI_CHECK(mesh.get_facecolors().size() == mesh.number_of_faces());
+
+        // set_linecolors does not change color_mode
+        std::vector<Color> lc;
+        std::vector<double> lw(mesh.number_of_edges(), 0.1);
+        lc.reserve(mesh.number_of_edges());
+        for (size_t i = 0; i < mesh.number_of_edges(); ++i)
+            lc.emplace_back(palette[i % palette.size()]);
+        mesh.set_linecolors(std::move(lc), std::move(lw));
+        MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+        MINI_CHECK(mesh.get_linecolors().size() == mesh.number_of_edges());
+
+        // clear_facecolors reverts color_mode only if currently FaceColors
+        mesh.color_mode = ColorMode::FACECOLORS;
+        MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+        mesh.clear_facecolors();
+        MINI_CHECK(mesh.color_mode == ColorMode::OBJECTCOLOR);
+        MINI_CHECK(mesh.get_facecolors().empty());
+
+        // clear_pointcolors does not revert if color_mode != PointColors
+        mesh.color_mode = ColorMode::FACECOLORS;
+        MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+        mesh.clear_pointcolors();
+        MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+
+        // clear_linecolors does not change color_mode
+        mesh.color_mode = ColorMode::POINTCOLORS;
+        mesh.clear_linecolors();
+        MINI_CHECK(mesh.color_mode == ColorMode::POINTCOLORS);
+        MINI_CHECK(mesh.get_linecolors().empty());
     }
 
     MINI_TEST("Mesh", "From Polylines") {
@@ -73,7 +110,7 @@ namespace session_cpp {
                 {1.28955, -0, 1.127558},
                 {1.853404, 0.866025, 1.578581},
             },
-        });
+        }, 0.001);
         MINI_CHECK(mesh.is_valid());
     }
 
@@ -480,7 +517,7 @@ namespace session_cpp {
         size_t v2 = mesh.add_vertex(Point(-1.0, 0.0, 0.0), std::nullopt);
         size_t v3 = mesh.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
         size_t f0 = *mesh.add_face({v0, v1, v3}, std::nullopt);
-        size_t f1 = *mesh.add_face({v0, v3, v2}, std::nullopt);
+        (void)*mesh.add_face({v0, v3, v2}, std::nullopt);
 
         // face_normal
         std::optional<Vector> fn = mesh.face_normal(f0);
@@ -576,15 +613,22 @@ namespace session_cpp {
 
         Mesh mesh;
         mesh.name = "test_mesh";
+        mesh.set_objectcolor(Color(255, 0, 0, 255));
         size_t v0 = mesh.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
         size_t v1 = mesh.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
         size_t v2 = mesh.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
         mesh.add_face({v0, v1, v2}, std::nullopt);
+        std::vector<Color> fc;
+        fc.reserve(mesh.get_facecolors().size());
+        for (size_t i = 0; i < mesh.get_facecolors().size(); ++i) fc.push_back(Color(255, 0, 0, 255));
+        mesh.set_facecolors(std::move(fc));
 
         // JSON object
         nlohmann::ordered_json json = mesh.jsondump();
         Mesh loaded_json = Mesh::jsonload(json);
         MINI_CHECK(loaded_json.name == mesh.name);
+        MINI_CHECK(loaded_json.get_objectcolor() == mesh.get_objectcolor());
+        MINI_CHECK(loaded_json.color_mode == mesh.color_mode);
         MINI_CHECK(loaded_json.number_of_vertices() == mesh.number_of_vertices());
         MINI_CHECK(loaded_json.number_of_faces() == mesh.number_of_faces());
 
@@ -608,15 +652,22 @@ namespace session_cpp {
         
         Mesh mesh;
         mesh.name = "test_mesh_proto";
+        mesh.set_objectcolor(Color(255, 0, 0, 255));
         size_t v0 = mesh.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
         size_t v1 = mesh.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
         size_t v2 = mesh.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
         mesh.add_face({v0, v1, v2}, std::nullopt);
+        std::vector<Color> fc;
+        fc.reserve(mesh.get_facecolors().size());
+        for (size_t i = 0; i < mesh.get_facecolors().size(); ++i) fc.push_back(Color(255, 0, 0, 255));
+        mesh.set_facecolors(std::move(fc));
 
         // String
         std::string proto_string = mesh.pb_dumps();
         Mesh loaded_string = Mesh::pb_loads(proto_string);
         MINI_CHECK(loaded_string.name == mesh.name);
+        MINI_CHECK(loaded_string.get_objectcolor() == mesh.get_objectcolor());
+        MINI_CHECK(loaded_string.color_mode == mesh.color_mode);
         MINI_CHECK(loaded_string.number_of_vertices() == mesh.number_of_vertices());
 
         // File
@@ -624,6 +675,7 @@ namespace session_cpp {
         mesh.pb_dump(filename);
         Mesh loaded_file = Mesh::pb_load(filename);
         MINI_CHECK(loaded_file.name == mesh.name);
+        MINI_CHECK(loaded_file.get_objectcolor() == mesh.get_objectcolor());
         MINI_CHECK(loaded_file.number_of_vertices() == mesh.number_of_vertices());
         MINI_CHECK(loaded_file.number_of_faces() == mesh.number_of_faces());
         MINI_CHECK(loaded_file.guid == mesh.guid);

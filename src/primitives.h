@@ -31,6 +31,9 @@ public:
     /// Create a cylinder mesh (10-sided) oriented along a line.
     static Mesh cylinder_mesh(const Line& line, double radius);
 
+    /// Create a capsule mesh (10-sided cylinder + hemispherical caps) oriented along a line.
+    static Mesh capsule_mesh(const Line& line, double radius);
+
     /// Returns one colored cylinder mesh per edge using mesh.linecolors[i] for edges()[i].
     static std::vector<Mesh> edge_pipes(const Mesh& mesh, double radius);
 
@@ -159,6 +162,9 @@ public:
 private:
     /// Unit cylinder geometry (10-sided, radius 0.5, height 1, centered at origin).
     static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> unit_cylinder_geometry();
+
+    /// Capsule geometry (10-sided cylinder + hemispherical caps) in world space.
+    static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> capsule_geometry(const Point& start, const Point& end, double radius);
 
     /// Unit cone geometry (8-sided, apex at (0,0,0.5), base radius 0.5 at z=-0.5).
     static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> unit_cone_geometry();

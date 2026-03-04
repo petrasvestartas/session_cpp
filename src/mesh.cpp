@@ -1,4 +1,4 @@
-#include "mesh.h"
+﻿#include "mesh.h"
 #include "triangulation_2d.h"
 #include "trimesh_cdt.h"
 #include "fmt/core.h"
@@ -38,6 +38,8 @@ Mesh::Mesh(const Mesh& other) {
     facecolors = other.facecolors;
     linecolors = other.linecolors;
     widths = other.widths;
+    objectcolor = other.objectcolor;
+    color_mode = other.color_mode;
     xform = other.xform;
     max_vertex = other.max_vertex;
     max_face = other.max_face;
@@ -60,6 +62,7 @@ Mesh& Mesh::operator=(const Mesh& other) {
         facecolors = other.facecolors;
         linecolors = other.linecolors;
         widths = other.widths;
+        color_mode = other.color_mode;
         xform = other.xform;
         max_vertex = other.max_vertex;
         max_face = other.max_face;
@@ -180,6 +183,8 @@ void Mesh::clear() {
     facecolors.clear();
     linecolors.clear();
     widths.clear();
+    objectcolor = Color::white();
+    color_mode = ColorMode::OBJECTCOLOR;
     triangle_bvh_built = false;
     triangle_bvh.reset();
     triangle_boxes_cache.clear();
@@ -1321,6 +1326,8 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["max_face"] = max_face;
     data["max_vertex"] = max_vertex;
     data["name"] = name;
+    data["objectcolor"] = objectcolor.jsondump();
+    data["color_mode"] = color_mode_to_string(color_mode);
 
     // Point colors (RGBA)
     nlohmann::ordered_json pointcolors_arr = nlohmann::ordered_json::array();
@@ -1463,6 +1470,13 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
 
     if (data.contains("widths") && data["widths"].is_array()) {
         mesh.widths = data["widths"].get<std::vector<double>>();
+    }
+
+    if (data.contains("objectcolor")) {
+        mesh.objectcolor = Color::jsonload(data["objectcolor"]);
+    }
+    if (data.contains("color_mode")) {
+        mesh.color_mode = color_mode_from_string(data["color_mode"].get<std::string>());
     }
 
     return mesh;
@@ -1731,6 +1745,16 @@ std::string Mesh::pb_dumps() const {
         proto.add_widths(w);
     }
 
+    // Object color
+    auto* oc_proto = proto.mutable_objectcolor();
+    oc_proto->set_guid(objectcolor.guid);
+    oc_proto->set_name(objectcolor.name);
+    oc_proto->set_r(objectcolor.r);
+    oc_proto->set_g(objectcolor.g);
+    oc_proto->set_b(objectcolor.b);
+    oc_proto->set_a(objectcolor.a);
+    proto.set_color_mode(static_cast<int>(color_mode));
+
     // Xform
     auto* xform_proto = proto.mutable_xform();
     xform_proto->set_guid(xform.guid);
@@ -1835,6 +1859,15 @@ Mesh Mesh::pb_loads(const std::string& data) {
     for (double w : proto.widths()) {
         mesh.widths.push_back(w);
     }
+
+    // Object color
+    {
+        const auto& oc = proto.objectcolor();
+        mesh.objectcolor = Color(oc.r(), oc.g(), oc.b(), oc.a());
+        mesh.objectcolor.guid = oc.guid();
+        mesh.objectcolor.name = oc.name();
+    }
+    mesh.color_mode = static_cast<ColorMode>(proto.color_mode());
 
     // Xform
     const auto& xform_proto = proto.xform();

@@ -221,6 +221,10 @@ Color Color::purple() { return Color(128, 0, 128, 255, "purple"); }
 
 Color Color::silver() { return Color(192, 192, 192, 255, "silver"); }
 
+std::vector<Color> Color::palette() {
+    return { red(), orange(), yellow(), lime(), green(), mint(), cyan(), azure(), blue(), violet(), magenta(), pink() };
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Details
 ///////////////////////////////////////////////////////////////////////////////////////////

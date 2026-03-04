@@ -2,51 +2,27 @@
 #include "objects.h"
 #include "mesh.h"
 #include "point.h"
-#include "color.h"
 #include "polyline.h"
 #include <filesystem>
 #include <vector>
-#include <array>
 #include <map>
 #include <cmath>
 #include <iostream>
 
-
-//   c:\brg\code_rust\session\session_cpp\main_1.cpp                            
-                                                                             
-//   I dont care about face colors, remove coloring                             
-//   nor name of mesh                                                           
-                                                                             
-//   Dont use                                                                   
-                                                                             
-//   using V3d = std::array<double, 3>;                                         
-//   using PolyRaw = std::vector<V3d>;                                          
-//   using PolysRaw = std::vector<PolyRaw>;                                     
-                                                                             
-//   Instead use Polyline class                                                 
-                                                                             
-//   Implement new feature: at the center of loft edge quad draw a line in      
-//   the direction of a mesh edge, the center can be computer by taking 4       
-//   corner points and making the line in both direction by half length of      
-//   the edge lnegth, the orientation must be quad face orientation  
-
 using namespace session_cpp;
-using V3d = std::array<double, 3>;
-using PolyRaw = std::vector<V3d>;
-using PolysRaw = std::vector<PolyRaw>;
 
-static std::pair<PolysRaw, PolysRaw> load_polys_from_pb(const std::string& filepath) {
+static std::pair<std::vector<Polyline>, std::vector<Polyline>> load_polys_from_pb(const std::string& filepath) {
     auto obj = Objects::pb_load(filepath);
-    PolysRaw top, bot;
+    std::vector<Polyline> top, bot;
     for (const auto& pl : *obj.polylines) {
-        PolyRaw raw;
+        std::vector<Point> pts;
         const auto& c = pl->_coords;
         for (size_t i = 0; i + 2 < c.size(); i += 3)
-            raw.push_back({c[i], c[i+1], c[i+2]});
+            pts.push_back(Point(c[i], c[i+1], c[i+2]));
         if (pl->name.rfind("top_", 0) == 0)
-            top.push_back(std::move(raw));
+            top.emplace_back(pts);
         else
-            bot.push_back(std::move(raw));
+            bot.emplace_back(pts);
     }
     return {top, bot};
 }
@@ -64,15 +40,14 @@ static std::array<double,3> newell_normal(const std::vector<Point>& pts) {
     return {nx, ny, nz};
 }
 
-static std::vector<std::vector<Point>> to_polys(const PolysRaw& raw) {
+static std::vector<std::vector<Point>> to_polys(const std::vector<Polyline>& polylines) {
     std::vector<std::vector<Point>> result;
-    result.reserve(raw.size());
-    for (const auto& poly : raw) {
+    result.reserve(polylines.size());
+    for (const auto& pl : polylines) {
         std::vector<Point> pts;
-        pts.reserve(poly.size());
-        for (const auto& v : poly)
-            pts.push_back(Point(v[0], v[1], v[2]));
-        // Remove closing point and any near-duplicate consecutive vertices (incl. wrap-around)
+        const auto& c = pl._coords;
+        for (size_t i = 0; i + 2 < c.size(); i += 3)
+            pts.push_back(Point(c[i], c[i+1], c[i+2]));
         const double tol = 1e-3;
         bool changed = true;
         while (changed && pts.size() >= 3) {
@@ -119,7 +94,6 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
     for (auto vk : top_vkeys) top_pts.push_back(*top_mesh.vertex_position(vk));
     for (auto vk : bot_vkeys) bot_pts.push_back(*bot_mesh.vertex_position(vk));
 
-    // Merge collinear segments
     {
         auto merge = [](std::vector<Point>& pts, std::vector<size_t>& vkeys) {
             const double tol = Tolerance::APPROXIMATION;
@@ -177,7 +151,6 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         panel.orig_bot_to_local[bot_vkeys[j]] = lk;
     }
 
-    // Top cap
     {
         std::vector<size_t> top_cap;
         for (auto vk : top_vkeys) top_cap.push_back(panel.orig_top_to_local[vk]);
@@ -264,7 +237,6 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         if (fk) { WallFaceInfo w; w.face_key = *fk; w.is_quad = false; panel.wall_faces.push_back(w); }
     }
 
-    // Bot cap
     {
         std::vector<size_t> bot_cap;
         for (int j = 0; j < m; j++)
@@ -276,27 +248,14 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
     return panel;
 }
 
-static Color panel_color(int idx) {
-    const Color colors[] = {
-        Color::orange(), Color::yellow(), Color::lime(),    Color::green(),
-        Color::mint(),   Color::cyan(),   Color::blue(),    Color::violet(),
-        Color::magenta(),Color::pink(),   Color::red(),     Color::grey()
-    };
-    return colors[idx % 12];
-}
-
-static void run_dataset(const PolysRaw& top_raw, const PolysRaw& bot_raw,
+static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<Polyline>& bot_raw,
                         const std::string& name, const std::string& sdir) {
     auto top_pts = to_polys(top_raw);
     auto bot_pts = to_polys(bot_raw);
 
     Mesh top_mesh = Mesh::from_polylines(top_pts, 0.001);
     Mesh bot_mesh = Mesh::from_polylines(bot_pts, 0.001);
-    top_mesh.facecolors = {Color::blue()};
-    bot_mesh.facecolors = {Color::green()};
 
-    // 1-to-1 optimal matching by centroid proximity: sort all pairs by distance,
-    // assign closest pairs first (each face used at most once)
     auto face_centroid = [](const Mesh& m, size_t fk) -> Point {
         auto vkeys = *m.face_vertices(fk);
         double cx=0,cy=0,cz=0;
@@ -329,18 +288,29 @@ static void run_dataset(const PolysRaw& top_raw, const PolysRaw& bot_raw,
     Session session(name);
     session.add_mesh(std::make_shared<Mesh>(top_mesh));
     session.add_mesh(std::make_shared<Mesh>(bot_mesh));
-    for (int i = 0; i < (int)panels.size(); i++) {
-        panels[i].mesh.facecolors = {panel_color(i)};
-        session.add_mesh(std::make_shared<Mesh>(panels[i].mesh));
-        for (const auto& w : panels[i].wall_faces) {
+    for (auto& panel : panels) {
+        session.add_mesh(std::make_shared<Mesh>(panel.mesh));
+        for (const auto& w : panel.wall_faces) {
             if (!w.is_quad) continue;
-            auto pt0 = *panels[i].mesh.vertex_position(panels[i].orig_top_to_local.at(w.top_v0));
-            auto pt1 = *panels[i].mesh.vertex_position(panels[i].orig_top_to_local.at(w.top_v1));
-            auto pb0 = *panels[i].mesh.vertex_position(panels[i].orig_bot_to_local.at(w.bot_v0));
-            auto pb1 = *panels[i].mesh.vertex_position(panels[i].orig_bot_to_local.at(w.bot_v1));
-            Point mid0((pt0[0]+pb0[0])*0.5, (pt0[1]+pb0[1])*0.5, (pt0[2]+pb0[2])*0.5);
-            Point mid1((pt1[0]+pb1[0])*0.5, (pt1[1]+pb1[1])*0.5, (pt1[2]+pb1[2])*0.5);
-            session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{mid0, mid1}));
+            auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
+            auto pt1 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v1));
+            auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
+            auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
+            double cx = (pt0[0]+pt1[0]+pb0[0]+pb1[0])*0.25;
+            double cy = (pt0[1]+pt1[1]+pb0[1]+pb1[1])*0.25;
+            double cz = (pt0[2]+pt1[2]+pb0[2]+pb1[2])*0.25;
+            double ex = (pt1[0]-pt0[0]) + (pb1[0]-pb0[0]);
+            double ey = (pt1[1]-pt0[1]) + (pb1[1]-pb0[1]);
+            double ez = (pt1[2]-pt0[2]) + (pb1[2]-pb0[2]);
+            double elen = std::sqrt(ex*ex + ey*ey + ez*ez);
+            if (elen < 1e-12) continue;
+            ex /= elen; ey /= elen; ez /= elen;
+            double tlen = std::sqrt((pt1[0]-pt0[0])*(pt1[0]-pt0[0])+(pt1[1]-pt0[1])*(pt1[1]-pt0[1])+(pt1[2]-pt0[2])*(pt1[2]-pt0[2]));
+            double blen = std::sqrt((pb1[0]-pb0[0])*(pb1[0]-pb0[0])+(pb1[1]-pb0[1])*(pb1[1]-pb0[1])+(pb1[2]-pb0[2])*(pb1[2]-pb0[2]));
+            double half = (tlen + blen) * 0.25;
+            Point a(cx - half*ex, cy - half*ey, cz - half*ez);
+            Point b(cx + half*ex, cy + half*ey, cz + half*ez);
+            session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b}));
         }
     }
     std::string filepath = (std::filesystem::path(sdir) / (name + "_out.pb")).string();

@@ -513,16 +513,73 @@ Mesh Primitives::cylinder_mesh(const Line& line, double radius) {
     return transform_geometry(unit_cyl, xform);
 }
 
+std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>>
+Primitives::capsule_geometry(const Point& start, const Point& end, double radius) {
+    const int n = 10;
+    const double lat = Tolerance::PI / 4.0;
+    double r_hemi = radius * std::sin(lat);
+    double off = radius * std::cos(lat);
+    double ax = end[0]-start[0], ay = end[1]-start[1], az = end[2]-start[2];
+    double len = std::sqrt(ax*ax + ay*ay + az*az);
+    if (len < 1e-12) { ax=0; ay=0; az=1; } else { ax/=len; ay/=len; az/=len; }
+    double xx, xy, xz;
+    if (std::abs(az) < 0.9) { xx=-ay; xy=ax; xz=0; }
+    else                     { xx=0;   xy=-az; xz=ay; }
+    double xl = std::sqrt(xx*xx+xy*xy+xz*xz); xx/=xl; xy/=xl; xz/=xl;
+    double yx=ay*xz-az*xy, yy=az*xx-ax*xz, yz=ax*xy-ay*xx;
+    auto ring = [&](double cx,double cy,double cz,double aoff,double rr) {
+        std::vector<Point> pts;
+        for (int i=0;i<n;++i) {
+            double a=2*Tolerance::PI*i/n, ca=std::cos(a), sa=std::sin(a);
+            pts.emplace_back(cx+aoff*ax+rr*(ca*xx+sa*yx),
+                             cy+aoff*ay+rr*(ca*xy+sa*yy),
+                             cz+aoff*az+rr*(ca*xz+sa*yz));
+        }
+        return pts;
+    };
+    std::vector<Point> verts;
+    for (auto& p: ring(start[0],start[1],start[2],0,radius))  verts.push_back(p); // 0-9
+    for (auto& p: ring(end[0],  end[1],  end[2],  0,radius))  verts.push_back(p); // 10-19
+    for (auto& p: ring(start[0],start[1],start[2],-off,r_hemi)) verts.push_back(p); // 20-29
+    verts.emplace_back(start[0]-radius*ax,start[1]-radius*ay,start[2]-radius*az);  // 30
+    for (auto& p: ring(end[0],end[1],end[2],off,r_hemi)) verts.push_back(p);       // 31-40
+    verts.emplace_back(end[0]+radius*ax,end[1]+radius*ay,end[2]+radius*az);        // 41
+    std::vector<std::array<size_t,3>> tris;
+    for (int i=0;i<n;++i) {
+        int ni=(i+1)%n;
+        tris.push_back({(size_t)i,(size_t)ni,(size_t)(10+ni)});
+        tris.push_back({(size_t)i,(size_t)(10+ni),(size_t)(10+i)});
+        tris.push_back({(size_t)(20+i),(size_t)ni,(size_t)i});
+        tris.push_back({(size_t)(20+i),(size_t)(20+ni),(size_t)ni});
+        tris.push_back({(size_t)(10+i),(size_t)(10+ni),(size_t)(31+ni)});
+        tris.push_back({(size_t)(10+i),(size_t)(31+ni),(size_t)(31+i)});
+    }
+    for (int i=0;i<n;++i) {
+        int ni=(i+1)%n;
+        tris.push_back({30,(size_t)(20+ni),(size_t)(20+i)});
+        tris.push_back({41,(size_t)(31+i),(size_t)(31+ni)});
+    }
+    return {verts, tris};
+}
+
+Mesh Primitives::capsule_mesh(const Line& line, double radius) {
+    auto [verts, tris] = capsule_geometry(line.start(), line.end(), radius);
+    Mesh mesh;
+    std::vector<size_t> vkeys;
+    for (const auto& v : verts) vkeys.push_back(mesh.add_vertex(v));
+    for (const auto& t : tris)  mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+    return mesh;
+}
+
 std::vector<Mesh> Primitives::edge_pipes(const Mesh& mesh, double radius) {
     auto edge_list = mesh.edges();
     std::vector<Mesh> result;
-    for (size_t i = 0; i < edge_list.size() && i < mesh.linecolors.size(); ++i) {
+    for (size_t i = 0; i < edge_list.size() && i < mesh.get_linecolors().size(); ++i) {
         auto [v, u] = edge_list[i];
         Point start = mesh.vertex.at(v).position();
         Point end = mesh.vertex.at(u).position();
-        Mesh pipe = Primitives::cylinder_mesh(Line::from_points(start, end), radius);
-        for (auto& c : pipe.facecolors)
-            c = mesh.linecolors[i];
+        Mesh pipe = Primitives::capsule_mesh(Line::from_points(start, end), radius);
+        pipe.set_facecolors(std::vector<Color>(pipe.number_of_faces(), mesh.get_linecolors()[i]));
         result.push_back(std::move(pipe));
     }
     return result;

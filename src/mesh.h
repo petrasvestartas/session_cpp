@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "point.h"
 #include "vector.h"
 #include "color.h"
@@ -21,6 +21,24 @@
 
 namespace session_cpp {
 
+
+enum class ColorMode : int {
+    OBJECTCOLOR = 0, POINTCOLORS = 1, FACECOLORS = 2, NONE = 3
+};
+inline std::string color_mode_to_string(ColorMode m) {
+    switch (m) {
+        case ColorMode::POINTCOLORS: return "pointcolors";
+        case ColorMode::FACECOLORS:  return "facecolors";
+        case ColorMode::NONE:        return "none";
+        default:                     return "objectcolor";
+    }
+}
+inline ColorMode color_mode_from_string(const std::string& s) {
+    if (s == "pointcolors") return ColorMode::POINTCOLORS;
+    if (s == "facecolors")  return ColorMode::FACECOLORS;
+    if (s == "none")        return ColorMode::NONE;
+    return ColorMode::OBJECTCOLOR;
+}
 
 /// Normal weighting scheme for vertex normal computation
 enum class NormalWeighting {
@@ -105,13 +123,29 @@ public:
     std::map<std::string, double> default_edge_attributes;                ///< Default edge attrs
     std::string guid = ::guid();                                         ///< Unique identifier
     std::string name = "my_mesh";                                        ///< Mesh name
+    ColorMode color_mode = ColorMode::OBJECTCOLOR;                        ///< Active color mode
+    Xform xform;                                     ///< Transformation matrix
+
+    void set_pointcolors(std::vector<Color> v) { pointcolors = std::move(v); color_mode = ColorMode::POINTCOLORS; }
+    void set_facecolors(std::vector<Color> v) { facecolors = std::move(v); color_mode = ColorMode::FACECOLORS; }
+    void set_linecolors(std::vector<Color> v, std::vector<double> w = {}) { linecolors = std::move(v); if (!w.empty()) widths = std::move(w); }
+    void set_objectcolor(Color c) { objectcolor = std::move(c); }
+    void clear_pointcolors() { pointcolors.clear(); if (color_mode == ColorMode::POINTCOLORS) color_mode = ColorMode::OBJECTCOLOR; }
+    void clear_facecolors() { facecolors.clear(); if (color_mode == ColorMode::FACECOLORS) color_mode = ColorMode::OBJECTCOLOR; }
+    void clear_linecolors() { linecolors.clear(); widths.clear(); }
+
+    const std::vector<Color>& get_pointcolors() const { return pointcolors; }
+    const std::vector<Color>& get_facecolors() const  { return facecolors; }
+    const std::vector<Color>& get_linecolors() const  { return linecolors; }
+    const std::vector<double>& get_widths() const     { return widths; }
+    const Color& get_objectcolor() const              { return objectcolor; }
+
+private:
     std::vector<Color> pointcolors;                                      ///< Vertex colors
     std::vector<Color> facecolors;                                       ///< Face colors
     std::vector<Color> linecolors;                                       ///< Edge colors
     std::vector<double> widths;                                           ///< Edge widths
-    Xform xform;                                     ///< Transformation matrix
-
-private:
+    Color objectcolor = Color::white();                                  ///< Object color
     size_t max_vertex = 0;                                               ///< Next vertex key
     size_t max_face = 0;                                                 ///< Next face key
     std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation; ///< Cached triangulations

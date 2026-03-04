@@ -47,6 +47,17 @@ Polyline::Polyline(const std::vector<Point>& pts)
     recompute_plane_if_needed();
 }
 
+Polyline Polyline::from_sides(int sides, double radius, bool close) {
+    std::vector<Point> pts;
+    pts.reserve(close ? sides + 1 : sides);
+    for (int i = 0; i < sides; ++i) {
+        double angle = 2.0 * TOLERANCE.PI * i / sides;
+        pts.push_back({radius * std::cos(angle), radius * std::sin(angle), 0.0});
+    }
+    if (close) pts.push_back(pts.front());
+    return Polyline(pts);
+}
+
 Polyline Polyline::from_coords(const std::vector<double>& coords) {
     Polyline pl;
     pl._coords = coords;
