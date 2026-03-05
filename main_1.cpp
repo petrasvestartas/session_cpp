@@ -289,48 +289,47 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
     Session session(name);
     session.add_mesh(std::make_shared<Mesh>(top_mesh));
     session.add_mesh(std::make_shared<Mesh>(bot_mesh));
+    // Helper: vertical edge midpoint from a panel
+    auto vmed = [](const LoftPanel& p, size_t tvk, size_t bvk) -> Point {
+        auto pt = *p.mesh.vertex_position(p.orig_top_to_local.at(tvk));
+        auto pb = *p.mesh.vertex_position(p.orig_bot_to_local.at(bvk));
+        return Point((pt[0]+pb[0])*0.5, (pt[1]+pb[1])*0.5, (pt[2]+pb[2])*0.5);
+    };
+
     for (auto& panel : panels) {
         session.add_mesh(std::make_shared<Mesh>(panel.mesh));
-        // Per-face centerlines (unchanged)
         for (const auto& w : panel.wall_faces) {
             if (!w.is_quad) continue;
-            auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
-            auto pt1 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v1));
-            auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
-            auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
-            Point a((pb0[0]+pt0[0])*0.5, (pb0[1]+pt0[1])*0.5, (pb0[2]+pt0[2])*0.5);
-            Point b((pb1[0]+pt1[0])*0.5, (pb1[1]+pt1[1])*0.5, (pb1[2]+pt1[2])*0.5);
+            Point a = vmed(panel, w.top_v0, w.bot_v0);
+            Point b = vmed(panel, w.top_v1, w.bot_v1);
             session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b}));
         }
-        // Interior edge lines: centered at shared edge midpoint M, averaged direction+length
-        using EKey = std::pair<size_t, size_t>; // (orig_top_vk, orig_bot_vk)
-        std::map<EKey, std::vector<EKey>> edge_opp;
-        for (const auto& w : panel.wall_faces) {
+    }
+
+    // Interior edge lines: bot mesh interior edges are the adjacency key.
+    // Each interior bot edge is shared by two panels; its interior line = average of both centerlines.
+    using BotEdge = std::pair<size_t, size_t>; // canonical (min, max) orig bot vertex keys
+    std::map<BotEdge, std::vector<std::pair<size_t, const WallFaceInfo*>>> bot_edge_map;
+    for (size_t pi = 0; pi < panels.size(); pi++)
+        for (const auto& w : panels[pi].wall_faces) {
             if (!w.is_quad) continue;
-            EKey eL{w.top_v0, w.bot_v0}, eR{w.top_v1, w.bot_v1};
-            edge_opp[eL].push_back(eR);
-            edge_opp[eR].push_back(eL);
+            bot_edge_map[{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)}].push_back({pi, &w});
         }
-        auto vmid = [&](EKey ek) -> Point {
-            auto pt = *panel.mesh.vertex_position(panel.orig_top_to_local.at(ek.first));
-            auto pb = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(ek.second));
-            return Point((pt[0]+pb[0])*0.5, (pt[1]+pb[1])*0.5, (pt[2]+pb[2])*0.5);
-        };
-        for (const auto& [ek, opps] : edge_opp) {
-            if (opps.size() < 2) continue;  // skip boundary edges
-            Point M = vmid(ek);
-            Point pA = vmid(opps[0]), pB = vmid(opps[1]);
-            // direction along the face centerlines through M
-            double dx = pB[0]-pA[0], dy = pB[1]-pA[1], dz = pB[2]-pA[2];
-            double dlen = std::sqrt(dx*dx + dy*dy + dz*dz);
-            if (dlen < 1e-12) continue;
-            dx /= dlen; dy /= dlen; dz /= dlen;
-            // half = average of the two adjacent face centerline half-lengths
-            double half = (M.distance(pA) + pB.distance(M)) * 0.25;
-            Point a(M[0]-half*dx, M[1]-half*dy, M[2]-half*dz);
-            Point b(M[0]+half*dx, M[1]+half*dy, M[2]+half*dz);
-            session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b}));
+    for (const auto& [be, entries] : bot_edge_map) {
+        if (entries.size() < 2) continue;
+        const LoftPanel& p0 = panels[entries[0].first]; const WallFaceInfo* w0 = entries[0].second;
+        const LoftPanel& p1 = panels[entries[1].first]; const WallFaceInfo* w1 = entries[1].second;
+        Point p0a = vmed(p0, w0->top_v0, w0->bot_v0), p0b = vmed(p0, w0->top_v1, w0->bot_v1);
+        // align w1's direction to match w0 (w0->bot_v0 anchors the "a" side)
+        Point p1a, p1b;
+        if (w1->bot_v0 == w0->bot_v0) {
+            p1a = vmed(p1, w1->top_v0, w1->bot_v0); p1b = vmed(p1, w1->top_v1, w1->bot_v1);
+        } else {
+            p1a = vmed(p1, w1->top_v1, w1->bot_v1); p1b = vmed(p1, w1->top_v0, w1->bot_v0);
         }
+        Point a((p0a[0]+p1a[0])*0.5, (p0a[1]+p1a[1])*0.5, (p0a[2]+p1a[2])*0.5);
+        Point b((p0b[0]+p1b[0])*0.5, (p0b[1]+p1b[1])*0.5, (p0b[2]+p1b[2])*0.5);
+        session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b}));
     }
     std::string filepath = (std::filesystem::path(sdir) / (name + "_out.pb")).string();
     session.pb_dump(filepath);
