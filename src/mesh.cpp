@@ -856,7 +856,9 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
 
     // Build mesh from cycles
     Mesh mesh;
-    for (const auto& pt : verts) mesh.add_vertex(pt);
+    std::vector<size_t> vkeys;
+    vkeys.reserve(verts.size());
+    for (const auto& pt : verts) vkeys.push_back(mesh.add_vertex(pt));
 
     // Optionally delete the largest face (boundary)
     if (delete_boundary_face && !face_cycles.empty()) {
@@ -872,12 +874,21 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
     }
 
     for (const auto& cycle : face_cycles) {
-        std::vector<Point> pts;
-        pts.reserve(cycle.size());
-        for (size_t vid : cycle) pts.push_back(verts[vid]);
-        auto tris = Triangulation2D::triangulate(Polyline(pts));
-        for (const auto& t : tris)
-            mesh.add_face({cycle[static_cast<size_t>(t.v0)], cycle[static_cast<size_t>(t.v1)], cycle[static_cast<size_t>(t.v2)]});
+        std::vector<size_t> fvkeys;
+        fvkeys.reserve(cycle.size());
+        for (size_t vid : cycle) fvkeys.push_back(vkeys[vid]);
+        auto fk_opt = mesh.add_face(fvkeys);
+        if (!fk_opt) continue;
+        if (cycle.size() > 3) {
+            std::vector<Point> pts;
+            pts.reserve(cycle.size());
+            for (size_t vid : cycle) pts.push_back(verts[vid]);
+            auto tris = Triangulation2D::triangulate(Polyline(pts));
+            auto& tri_list = mesh.triangulation[*fk_opt];
+            tri_list.reserve(tris.size());
+            for (const auto& t : tris)
+                tri_list.push_back({fvkeys[t.v0], fvkeys[t.v1], fvkeys[t.v2]});
+        }
     }
 
     return mesh;
@@ -1495,8 +1506,29 @@ void Mesh::build_triangle_bvh(bool force) const {
     vertices_cache = vf.first;
     const std::vector<std::vector<size_t>>& faces_vec = vf.second;
 
+    std::vector<size_t> vertex_keys;
+    vertex_keys.reserve(vertex.size());
+    for (const auto& kv : vertex) vertex_keys.push_back(kv.first);
+    std::sort(vertex_keys.begin(), vertex_keys.end());
+    std::unordered_map<size_t, size_t> vkey_to_idx;
+    vkey_to_idx.reserve(vertex_keys.size());
+    for (size_t i = 0; i < vertex_keys.size(); ++i) vkey_to_idx[vertex_keys[i]] = i;
+
+    std::vector<size_t> face_keys;
+    face_keys.reserve(face.size());
+    for (const auto& kv : face) face_keys.push_back(kv.first);
+    std::sort(face_keys.begin(), face_keys.end());
+
     size_t tri_count = 0;
-    for (const auto& f : faces_vec) if (f.size() >= 3) tri_count += (f.size() - 2);
+    for (size_t fi = 0; fi < faces_vec.size(); ++fi) {
+        const auto& fv = faces_vec[fi];
+        if (fv.size() < 3) continue;
+        if (fv.size() >= 5 && fi < face_keys.size()) {
+            auto it = triangulation.find(face_keys[fi]);
+            if (it != triangulation.end()) { tri_count += it->second.size(); continue; }
+        }
+        tri_count += fv.size() - 2;
+    }
     triangle_aabbs_cache.resize(tri_count);
     triangle_indices_cache.resize(tri_count);
     triangle_face_subidx_cache.resize(tri_count);
@@ -1509,6 +1541,17 @@ void Mesh::build_triangle_bvh(bool force) const {
     for (size_t fi = 0; fi < faces_vec.size(); ++fi) {
         const auto& fv = faces_vec[fi];
         if (fv.size() < 3) continue;
+        if (fv.size() >= 5 && fi < face_keys.size()) {
+            auto it = triangulation.find(face_keys[fi]);
+            if (it != triangulation.end()) {
+                for (size_t j = 0; j < it->second.size(); ++j) {
+                    const auto& t = it->second[j];
+                    tasks.push_back(TriTask{static_cast<uint32_t>(vkey_to_idx.at(t[0])), static_cast<uint32_t>(vkey_to_idx.at(t[1])), static_cast<uint32_t>(vkey_to_idx.at(t[2])), fi, j, out});
+                    out++;
+                }
+                continue;
+            }
+        }
         for (size_t j = 1; j + 1 < fv.size(); ++j) {
             tasks.push_back(TriTask{static_cast<uint32_t>(fv[0]), static_cast<uint32_t>(fv[j]), static_cast<uint32_t>(fv[j+1]), fi, j, out});
             out++;
