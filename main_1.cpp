@@ -3,12 +3,23 @@
 #include "mesh.h"
 #include "point.h"
 #include "polyline.h"
+#include "nurbscurve.h"
+#include "brep.h"
 #include <filesystem>
 #include <vector>
 #include <map>
 #include <set>
 #include <cmath>
 #include <iostream>
+#include <chrono>
+
+static double ms_from_polylines = 0, ms_build_panel = 0, ms_brep = 0, ms_pb_dump = 0;
+#define TIMED(var, ...) do { \
+    auto _t0 = std::chrono::high_resolution_clock::now(); \
+    __VA_ARGS__; \
+    var += std::chrono::duration<double,std::milli>( \
+        std::chrono::high_resolution_clock::now() - _t0).count(); \
+} while(0)
 
 using namespace session_cpp;
 
@@ -82,8 +93,70 @@ struct LoftPanel {
     std::map<size_t, size_t> orig_bot_to_local;
 };
 
+/// Removes collinear or near-zero-length vertices from a polygon in-place.
+/// Uses cross-product magnitude against APPROXIMATION tolerance to detect collinearity.
+/// Repeats until no more vertices are removed; stops early if fewer than 3 remain.
+static void merge_collinear(std::vector<Point>& pts, std::vector<size_t>& vkeys) {
+    const double tol = Tolerance::APPROXIMATION;
+    const double zt2 = Tolerance::ZERO_TOLERANCE * Tolerance::ZERO_TOLERANCE;
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        int m = (int)pts.size();
+        if (m < 3) break;
+        std::vector<Point> np; std::vector<size_t> nk;
+        for (int i = 0; i < m; i++) {
+            int p=(i-1+m)%m, nx=(i+1)%m;
+            double ax=pts[i][0]-pts[p][0], ay=pts[i][1]-pts[p][1], az=pts[i][2]-pts[p][2];
+            double bx=pts[nx][0]-pts[i][0], by=pts[nx][1]-pts[i][1], bz=pts[nx][2]-pts[i][2];
+            double cx=ay*bz-az*by, cy=az*bx-ax*bz, cz=ax*by-ay*bx;
+            double a2=ax*ax+ay*ay+az*az, b2=bx*bx+by*by+bz*bz;
+            if (a2<zt2||b2<zt2||cx*cx+cy*cy+cz*cz<tol*tol*a2*b2) changed=true;
+            else { np.push_back(pts[i]); nk.push_back(vkeys[i]); }
+        }
+        pts=np; vkeys=nk;
+    }
+}
+
+/// Returns p moved toward (cx, cy, cz) by exactly gap units.
+/// If the distance is below 1e-10 the point is returned unchanged.
+static Point offset_toward(const Point& p, double cx, double cy, double cz, double gap) {
+    double dx=cx-p[0], dy=cy-p[1], dz=cz-p[2];
+    double len=std::sqrt(dx*dx+dy*dy+dz*dz);
+    if (len>1e-10) { dx*=gap/len; dy*=gap/len; dz*=gap/len; }
+    return Point(p[0]+dx, p[1]+dy, p[2]+dz);
+}
+
+/// Returns the average position of all vertices of face fk in mesh m.
+static Point face_centroid(const Mesh& m, size_t fk) {
+    auto vkeys = *m.face_vertices(fk);
+    double cx=0,cy=0,cz=0;
+    for (auto vk : vkeys) { auto p=*m.vertex_position(vk); cx+=p[0]; cy+=p[1]; cz+=p[2]; }
+    return Point(cx/vkeys.size(), cy/vkeys.size(), cz/vkeys.size());
+}
+
+/// Returns the midpoint of the vertical edge connecting top vertex tvk and bottom vertex bvk
+/// within the local mesh of panel p.
+static Point vmed(const LoftPanel& p, size_t tvk, size_t bvk) {
+    auto pt = *p.mesh.vertex_position(p.orig_top_to_local.at(tvk));
+    auto pb = *p.mesh.vertex_position(p.orig_bot_to_local.at(bvk));
+    return Point((pt[0]+pb[0])*0.5, (pt[1]+pb[1])*0.5, (pt[2]+pb[2])*0.5);
+}
+
+/// Creates a named layer node under the session root.
+/// If r >= 0, sets the node color so the Rhino reader can apply it to the Rhino layer.
+static std::shared_ptr<TreeNode> add_layer(Session& session, const std::string& n, int r = -1, int g = -1, int b = -1) {
+    auto node = std::make_shared<TreeNode>(n);
+    if (r >= 0) node->color = Color(r, g, b);
+    session.add(node);
+    return node;
+}
+
 static LoftPanel build_panel(size_t tfk, size_t bfk,
-                              const Mesh& top_mesh, const Mesh& bot_mesh) {
+                              const Mesh& top_mesh, const Mesh& bot_mesh,
+                              bool open_top = false,
+                              bool skip_triangles = false,
+                              double edge_gap = 0.0) {
     LoftPanel panel;
     panel.top_face_key = tfk;
     panel.bot_face_key = bfk;
@@ -95,31 +168,8 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
     for (auto vk : top_vkeys) top_pts.push_back(*top_mesh.vertex_position(vk));
     for (auto vk : bot_vkeys) bot_pts.push_back(*bot_mesh.vertex_position(vk));
 
-    {
-        auto merge = [](std::vector<Point>& pts, std::vector<size_t>& vkeys) {
-            const double tol = Tolerance::APPROXIMATION;
-            const double zt2 = Tolerance::ZERO_TOLERANCE * Tolerance::ZERO_TOLERANCE;
-            bool changed = true;
-            while (changed) {
-                changed = false;
-                int m = (int)pts.size();
-                if (m < 3) break;
-                std::vector<Point> np; std::vector<size_t> nk;
-                for (int i = 0; i < m; i++) {
-                    int p=(i-1+m)%m, nx=(i+1)%m;
-                    double ax=pts[i][0]-pts[p][0], ay=pts[i][1]-pts[p][1], az=pts[i][2]-pts[p][2];
-                    double bx=pts[nx][0]-pts[i][0], by=pts[nx][1]-pts[i][1], bz=pts[nx][2]-pts[i][2];
-                    double cx=ay*bz-az*by, cy=az*bx-ax*bz, cz=ax*by-ay*bx;
-                    double a2=ax*ax+ay*ay+az*az, b2=bx*bx+by*by+bz*bz;
-                    if (a2<zt2||b2<zt2||cx*cx+cy*cy+cz*cz<tol*tol*a2*b2) changed=true;
-                    else { np.push_back(pts[i]); nk.push_back(vkeys[i]); }
-                }
-                pts=np; vkeys=nk;
-            }
-        };
-        merge(top_pts, top_vkeys);
-        merge(bot_pts, bot_vkeys);
-    }
+    merge_collinear(top_pts, top_vkeys);
+    merge_collinear(bot_pts, bot_vkeys);
     int n = (int)top_pts.size();
     int m = (int)bot_pts.size();
 
@@ -155,7 +205,8 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
     {
         std::vector<size_t> top_cap;
         for (auto vk : top_vkeys) top_cap.push_back(panel.orig_top_to_local[vk]);
-        panel.mesh.add_face(top_cap);
+        auto fk = panel.mesh.add_face(top_cap);
+        if (fk) panel.top_face_key = *fk;
     }
 
     std::vector<Point> top_mids(n), bot_mids(m);
@@ -204,7 +255,21 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
                    tdy = top_pts[(ti+1)%n][1]-top_pts[ti][1],
                    tdz = top_pts[(ti+1)%n][2]-top_pts[ti][2];
             if (bdx*tdx + bdy*tdy + bdz*tdz < 0) std::swap(t0, t1);
-            auto fk = panel.mesh.add_face({b0, b1, t1, t0});
+            std::optional<size_t> fk;
+            if (edge_gap > 0.0) {
+                auto pb0 = *panel.mesh.vertex_position(b0);
+                auto pb1 = *panel.mesh.vertex_position(b1);
+                auto pt0 = *panel.mesh.vertex_position(t0);
+                auto pt1 = *panel.mesh.vertex_position(t1);
+                double cx=(pb0[0]+pb1[0]+pt0[0]+pt1[0])*0.25;
+                double cy=(pb0[1]+pb1[1]+pt0[1]+pt1[1])*0.25;
+                double cz=(pb0[2]+pb1[2]+pt0[2]+pt1[2])*0.25;
+                size_t nb0 = panel.mesh.add_vertex(offset_toward(pb0, cx, cy, cz, edge_gap));
+                size_t nb1 = panel.mesh.add_vertex(offset_toward(pb1, cx, cy, cz, edge_gap));
+                fk = panel.mesh.add_face({nb0, nb1, t1, t0});
+            } else {
+                fk = panel.mesh.add_face({b0, b1, t1, t0});
+            }
             if (fk) {
                 WallFaceInfo w; w.face_key = *fk; w.is_quad = true;
                 w.top_v0 = top_vkeys[ti]; w.top_v1 = top_vkeys[(ti+1)%n];
@@ -212,7 +277,7 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
                 panel.wall_faces.push_back(w);
             }
             top_used[ti] = true;
-        } else {
+        } else if (!skip_triangles) {
             double best_d = 1e300; int best_tv = 0;
             for (int i = 0; i < n; i++) {
                 double d = bot_mids[j].distance(top_pts[i]);
@@ -224,21 +289,23 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         }
     }
 
-    for (int i = 0; i < n; i++) {
-        if (top_used[i]) continue;
-        size_t t0 = panel.orig_top_to_local[top_vkeys[i]];
-        size_t t1 = panel.orig_top_to_local[top_vkeys[(i+1)%n]];
-        double best_d = 1e300; int best_bv = 0;
-        for (int j = 0; j < m; j++) {
-            double d = top_mids[i].distance(bot_pts[j]);
-            if (d < best_d) { best_d = d; best_bv = j; }
+    if (!skip_triangles) {
+        for (int i = 0; i < n; i++) {
+            if (top_used[i]) continue;
+            size_t t0 = panel.orig_top_to_local[top_vkeys[i]];
+            size_t t1 = panel.orig_top_to_local[top_vkeys[(i+1)%n]];
+            double best_d = 1e300; int best_bv = 0;
+            for (int j = 0; j < m; j++) {
+                double d = top_mids[i].distance(bot_pts[j]);
+                if (d < best_d) { best_d = d; best_bv = j; }
+            }
+            size_t bv = panel.orig_bot_to_local[bot_vkeys[best_bv]];
+            auto fk = panel.mesh.add_face({t1, t0, bv});
+            if (fk) { WallFaceInfo w; w.face_key = *fk; w.is_quad = false; panel.wall_faces.push_back(w); }
         }
-        size_t bv = panel.orig_bot_to_local[bot_vkeys[best_bv]];
-        auto fk = panel.mesh.add_face({t1, t0, bv});
-        if (fk) { WallFaceInfo w; w.face_key = *fk; w.is_quad = false; panel.wall_faces.push_back(w); }
     }
 
-    {
+    if (!open_top) {
         std::vector<size_t> bot_cap;
         for (int j = 0; j < m; j++)
             bot_cap.push_back(panel.orig_bot_to_local[bot_vkeys[j]]);
@@ -249,20 +316,67 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
     return panel;
 }
 
+static NurbsCurve make_polyline_loop(const std::vector<Point>& pts) {
+    int n = (int)pts.size();
+    NurbsCurve crv(3, false, 2, n+1);
+    for (int k = 0; k <= n; k++) crv.set_knot(k, (double)k);
+    for (int k = 0; k < n; k++) crv.set_cv(k, pts[k]);
+    crv.set_cv(n, pts[0]);
+    return crv;
+}
+
+static std::vector<NurbsCurve> make_wall_circles(
+    const Point& pt0,
+    const Point& pb0, const Point& pb1,
+    const Point& a, const Point& b,
+    double circle_rad, double division_dist)
+{
+    double e1x=pb1[0]-pb0[0], e1y=pb1[1]-pb0[1], e1z=pb1[2]-pb0[2];
+    double e2x=pt0[0]-pb0[0], e2y=pt0[1]-pb0[1], e2z=pt0[2]-pb0[2];
+    double nx=e1y*e2z-e1z*e2y, ny=e1z*e2x-e1x*e2z, nz=e1x*e2y-e1y*e2x;
+    double nlen=std::sqrt(nx*nx+ny*ny+nz*nz);
+    std::vector<NurbsCurve> circles;
+    if (nlen < 1e-12) return circles;
+    nx/=nlen; ny/=nlen; nz/=nlen;
+    double dx=b[0]-a[0], dy=b[1]-a[1], dz=b[2]-a[2];
+    double dlen=std::sqrt(dx*dx+dy*dy+dz*dz);
+    if (dlen < 1e-12) return circles;
+    dx/=dlen; dy/=dlen; dz/=dlen;
+    double tx=ny*dz-nz*dy, ty=nz*dx-nx*dz, tz=nx*dy-ny*dx;
+    int ndiv = std::max(1, (int)std::round(dlen / division_dist));
+    for (int i = 1; i < ndiv; i++) {
+        double t = dlen * i / ndiv;
+        Point ctr(a[0]+t*dx, a[1]+t*dy, a[2]+t*dz);
+        const double sw = std::sqrt(2.0) / 2.0;
+        double cxs[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+        double cys[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+        double wts[] = {1, sw, 1, sw, 1, sw, 1, sw, 1};
+        NurbsCurve crv(3, true, 3, 9);
+        double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+        for (int k = 0; k < 10; k++) crv.set_knot(k, knots[k]);
+        for (int k = 0; k < 9; k++) {
+            double px = ctr[0] + circle_rad*(cxs[k]*dx + cys[k]*tx);
+            double py = ctr[1] + circle_rad*(cxs[k]*dy + cys[k]*ty);
+            double pz = ctr[2] + circle_rad*(cxs[k]*dz + cys[k]*tz);
+            crv.set_cv_4d(k, px*wts[k], py*wts[k], pz*wts[k], wts[k]);
+        }
+        circles.push_back(crv);
+    }
+    return circles;
+}
+
 static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<Polyline>& bot_raw,
-                        const std::string& name, const std::string& sdir) {
+                        const std::string& name, const std::string& sdir,
+                        bool open_top = false, bool skip_triangles = false, double edge_gap = 0.0) {
     auto top_pts = to_polys(top_raw);
     auto bot_pts = to_polys(bot_raw);
 
-    Mesh top_mesh = Mesh::from_polylines(top_pts, 0.001);
-    Mesh bot_mesh = Mesh::from_polylines(bot_pts, 0.001);
+    Mesh top_mesh, bot_mesh;
+    TIMED(ms_from_polylines,
+        top_mesh = Mesh::from_polylines(top_pts, 0.001);
+        bot_mesh = Mesh::from_polylines(bot_pts, 0.001);
+    );
 
-    auto face_centroid = [](const Mesh& m, size_t fk) -> Point {
-        auto vkeys = *m.face_vertices(fk);
-        double cx=0,cy=0,cz=0;
-        for (auto vk : vkeys) { auto p=*m.vertex_position(vk); cx+=p[0]; cy+=p[1]; cz+=p[2]; }
-        return Point(cx/vkeys.size(), cy/vkeys.size(), cz/vkeys.size());
-    };
     std::vector<size_t> tfks, bfks;
     for (auto& [fk, _] : top_mesh.face) tfks.push_back(fk);
     for (auto& [fk, _] : bot_mesh.face) bfks.push_back(fk);
@@ -283,66 +397,136 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
     }
 
     std::vector<LoftPanel> panels;
-    for (auto& [tfk, bfk] : face_match)
-        panels.push_back(build_panel(tfk, bfk, top_mesh, bot_mesh));
+    TIMED(ms_build_panel,
+        for (auto& [tfk, bfk] : face_match)
+            panels.push_back(build_panel(tfk, bfk, top_mesh, bot_mesh, open_top, skip_triangles, edge_gap));
+    );
+
+    std::vector<LoftPanel> orig_panels;
+    TIMED(ms_build_panel,
+        for (auto& [tfk, bfk] : face_match)
+            orig_panels.push_back(build_panel(tfk, bfk, top_mesh, bot_mesh));
+    );
 
     Session session(name);
-    session.add_mesh(std::make_shared<Mesh>(top_mesh));
-    session.add_mesh(std::make_shared<Mesh>(bot_mesh));
-    // Helper: vertical edge midpoint from a panel
-    auto vmed = [](const LoftPanel& p, size_t tvk, size_t bvk) -> Point {
-        auto pt = *p.mesh.vertex_position(p.orig_top_to_local.at(tvk));
-        auto pb = *p.mesh.vertex_position(p.orig_bot_to_local.at(bvk));
-        return Point((pt[0]+pb[0])*0.5, (pt[1]+pb[1])*0.5, (pt[2]+pb[2])*0.5);
-    };
+    auto layer_bot    = add_layer(session, "bottom mesh",              200, 100,  50);
+    auto layer_top    = add_layer(session, "top mesh",                  50, 150, 220);
+    auto layer_closed = add_layer(session, "loft closed meshes",       180, 180, 180);
+    auto layer_folded = add_layer(session, "folded meshes with holes", 240, 160,  40);
+    session.add(session.add_mesh(std::make_shared<Mesh>(top_mesh)), layer_bot);
+    session.add(session.add_mesh(std::make_shared<Mesh>(bot_mesh)), layer_top);
+    for (auto& p : orig_panels)
+        session.add(session.add_mesh(std::make_shared<Mesh>(p.mesh)), layer_closed);
+
+    // Build bot mesh edge map: interior edges shared by two panels use the averaged centerline
+    using BotEdge = std::pair<size_t, size_t>; // canonical (min, max) orig bot vertex keys
+    std::map<BotEdge, std::pair<Point,Point>> interior_line; // pre-computed averaged centerline
+    {
+        std::map<BotEdge, std::vector<std::pair<size_t, const WallFaceInfo*>>> bot_edge_map;
+        for (size_t pi = 0; pi < panels.size(); pi++)
+            for (const auto& w : panels[pi].wall_faces) {
+                if (!w.is_quad) continue;
+                bot_edge_map[{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)}].push_back({pi, &w});
+            }
+        for (const auto& [be, entries] : bot_edge_map) {
+            if (entries.size() < 2) continue;
+            const LoftPanel& p0 = panels[entries[0].first]; const WallFaceInfo* w0 = entries[0].second;
+            const LoftPanel& p1 = panels[entries[1].first]; const WallFaceInfo* w1 = entries[1].second;
+            Point p0a = vmed(p0, w0->top_v0, w0->bot_v0), p0b = vmed(p0, w0->top_v1, w0->bot_v1);
+            Point p1a, p1b;
+            if (w1->bot_v0 == w0->bot_v0) {
+                p1a = vmed(p1, w1->top_v0, w1->bot_v0); p1b = vmed(p1, w1->top_v1, w1->bot_v1);
+            } else {
+                p1a = vmed(p1, w1->top_v1, w1->bot_v1); p1b = vmed(p1, w1->top_v0, w1->bot_v0);
+            }
+            interior_line[be] = {
+                Point((p0a[0]+p1a[0])*0.5, (p0a[1]+p1a[1])*0.5, (p0a[2]+p1a[2])*0.5),
+                Point((p0b[0]+p1b[0])*0.5, (p0b[1]+p1b[1])*0.5, (p0b[2]+p1b[2])*0.5)
+            };
+        }
+    }
+
+    const double division_dist = 100.0; // target spacing between circle centres
+    const double circle_rad    = 5.0; // circle radius
 
     for (auto& panel : panels) {
-        session.add_mesh(std::make_shared<Mesh>(panel.mesh));
+        auto mesh_node = session.add_mesh(std::make_shared<Mesh>(panel.mesh));
+        session.add(mesh_node, layer_folded);
         for (const auto& w : panel.wall_faces) {
             if (!w.is_quad) continue;
-            Point a = vmed(panel, w.top_v0, w.bot_v0);
-            Point b = vmed(panel, w.top_v1, w.bot_v1);
-            session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b}));
+            auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
+            auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
+            auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
+            BotEdge be{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)};
+            Point a, b;
+            auto it = interior_line.find(be);
+            if (it != interior_line.end()) {
+                a = it->second.first; b = it->second.second;
+            } else {
+                a = vmed(panel, w.top_v0, w.bot_v0); b = vmed(panel, w.top_v1, w.bot_v1);
+            }
+            session.add(session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b})), mesh_node);
+            for (const auto& crv : make_wall_circles(pt0, pb0, pb1, a, b, circle_rad, division_dist))
+                session.add(session.add_nurbscurve(std::make_shared<NurbsCurve>(crv)), mesh_node);
         }
     }
 
-    // Interior edge lines: bot mesh interior edges are the adjacency key.
-    // Each interior bot edge is shared by two panels; its interior line = average of both centerlines.
-    using BotEdge = std::pair<size_t, size_t>; // canonical (min, max) orig bot vertex keys
-    std::map<BotEdge, std::vector<std::pair<size_t, const WallFaceInfo*>>> bot_edge_map;
-    for (size_t pi = 0; pi < panels.size(); pi++)
-        for (const auto& w : panels[pi].wall_faces) {
+    auto layer_brep = add_layer(session, "brep panels", 100, 200, 120);
+    for (auto& panel : panels) {
+        std::vector<NurbsCurve> outer_curves;
+        std::vector<std::vector<NurbsCurve>> hole_curves;
+        {
+            auto cap_lkeys = *panel.mesh.face_vertices(panel.top_face_key);
+            std::vector<Point> cap_pts;
+            for (auto lk : cap_lkeys) cap_pts.push_back(*panel.mesh.vertex_position(lk));
+            outer_curves.push_back(make_polyline_loop(cap_pts));
+            hole_curves.push_back({});
+        }
+        for (const auto& w : panel.wall_faces) {
             if (!w.is_quad) continue;
-            bot_edge_map[{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)}].push_back({pi, &w});
+            auto face_lkeys = *panel.mesh.face_vertices(w.face_key);
+            std::vector<Point> face_pts;
+            for (auto lk : face_lkeys) face_pts.push_back(*panel.mesh.vertex_position(lk));
+            outer_curves.push_back(make_polyline_loop(face_pts));
+            auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
+            auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
+            auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
+            BotEdge be{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)};
+            Point a, b;
+            auto it = interior_line.find(be);
+            if (it != interior_line.end()) {
+                a = it->second.first; b = it->second.second;
+            } else {
+                a = vmed(panel, w.top_v0, w.bot_v0); b = vmed(panel, w.top_v1, w.bot_v1);
+            }
+            hole_curves.push_back(make_wall_circles(pt0, pb0, pb1, a, b, circle_rad, division_dist));
         }
-    for (const auto& [be, entries] : bot_edge_map) {
-        if (entries.size() < 2) continue;
-        const LoftPanel& p0 = panels[entries[0].first]; const WallFaceInfo* w0 = entries[0].second;
-        const LoftPanel& p1 = panels[entries[1].first]; const WallFaceInfo* w1 = entries[1].second;
-        Point p0a = vmed(p0, w0->top_v0, w0->bot_v0), p0b = vmed(p0, w0->top_v1, w0->bot_v1);
-        // align w1's direction to match w0 (w0->bot_v0 anchors the "a" side)
-        Point p1a, p1b;
-        if (w1->bot_v0 == w0->bot_v0) {
-            p1a = vmed(p1, w1->top_v0, w1->bot_v0); p1b = vmed(p1, w1->top_v1, w1->bot_v1);
-        } else {
-            p1a = vmed(p1, w1->top_v1, w1->bot_v1); p1b = vmed(p1, w1->top_v0, w1->bot_v0);
-        }
-        Point a((p0a[0]+p1a[0])*0.5, (p0a[1]+p1a[1])*0.5, (p0a[2]+p1a[2])*0.5);
-        Point b((p0b[0]+p1b[0])*0.5, (p0b[1]+p1b[1])*0.5, (p0b[2]+p1b[2])*0.5);
-        session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{a, b}));
+        BRep brep;
+        TIMED(ms_brep, brep = BRep::from_nurbscurves(outer_curves, hole_curves));
+        auto brep_node = session.add_brep(std::make_shared<BRep>(brep));
+        session.add(brep_node, layer_brep);
     }
     std::string filepath = (std::filesystem::path(sdir) / (name + "_out.pb")).string();
-    session.pb_dump(filepath);
+    TIMED(ms_pb_dump, session.pb_dump(filepath));
     std::cout << "Saved " << filepath << "\n";
 }
 
 int main() {
     std::string sdir = (std::filesystem::path(__FILE__).parent_path().parent_path()
                         / "session_data").string();
+    auto t_main = std::chrono::high_resolution_clock::now();
     for (int i = 0; i <= 11; i++) {
         std::string name = "mesh_quad_tri_loft" + std::to_string(i);
         auto [top, bot] = load_polys_from_pb(sdir + "/" + name + ".pb");
-        run_dataset(top, bot, name, sdir);
+        run_dataset(top, bot, name, sdir, true, true, 0.1);
     }
+    double total = std::chrono::duration<double,std::milli>(
+        std::chrono::high_resolution_clock::now() - t_main).count();
+    std::cout << "\n=== Profile (all 12 datasets) ===\n"
+              << "  from_polylines : " << (int)ms_from_polylines << " ms\n"
+              << "  build_panel    : " << (int)ms_build_panel    << " ms\n"
+              << "  brep           : " << (int)ms_brep           << " ms\n"
+              << "  pb_dump        : " << (int)ms_pb_dump        << " ms\n"
+              << "  total          : " << (int)total             << " ms\n";
     return 0;
 }

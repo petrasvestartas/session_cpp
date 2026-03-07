@@ -354,12 +354,24 @@ std::vector<Triangle2D> Triangulation2D::triangulate(const Polyline& boundary,
     if (holes.empty()) {
         if (bn == 3) return {{0, 1, 2}};
         if (bn == 4) {
-            double d02 = (bpts[0][0]-bpts[2][0])*(bpts[0][0]-bpts[2][0]) +
-                         (bpts[0][1]-bpts[2][1])*(bpts[0][1]-bpts[2][1]);
-            double d13 = (bpts[1][0]-bpts[3][0])*(bpts[1][0]-bpts[3][0]) +
-                         (bpts[1][1]-bpts[3][1])*(bpts[1][1]-bpts[3][1]);
-            if (d02 <= d13) return {{0, 1, 2}, {0, 2, 3}};
-            else return {{0, 1, 3}, {1, 2, 3}};
+            bool quad_convex = true;
+            double qfirst = 0.0;
+            for (int qi = 0; qi < 4 && quad_convex; ++qi) {
+                double c = cross_2d(bpts[qi%4][0], bpts[qi%4][1],
+                                    bpts[(qi+1)%4][0], bpts[(qi+1)%4][1],
+                                    bpts[(qi+2)%4][0], bpts[(qi+2)%4][1]);
+                if (std::abs(c) < 1e-12) continue;
+                if (qfirst == 0.0) qfirst = c;
+                else if ((c > 0) != (qfirst > 0)) quad_convex = false;
+            }
+            if (quad_convex) {
+                double d02 = (bpts[0][0]-bpts[2][0])*(bpts[0][0]-bpts[2][0]) +
+                             (bpts[0][1]-bpts[2][1])*(bpts[0][1]-bpts[2][1]);
+                double d13 = (bpts[1][0]-bpts[3][0])*(bpts[1][0]-bpts[3][0]) +
+                             (bpts[1][1]-bpts[3][1])*(bpts[1][1]-bpts[3][1]);
+                if (d02 <= d13) return {{0, 1, 2}, {0, 2, 3}};
+                else return {{0, 1, 3}, {1, 2, 3}};
+            }
         }
         // Check convexity: all cross products same sign
         bool convex = true;

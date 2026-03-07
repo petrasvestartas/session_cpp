@@ -860,34 +860,38 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
     vkeys.reserve(verts.size());
     for (const auto& pt : verts) vkeys.push_back(mesh.add_vertex(pt));
 
-    // Optionally delete the largest face (boundary)
+    // Optionally delete the exterior face (most-negative signed area)
     if (delete_boundary_face && !face_cycles.empty()) {
-        size_t max_idx = 0;
-        size_t max_size = face_cycles[0].size();
-        for (size_t i = 1; i < face_cycles.size(); ++i) {
-            if (face_cycles[i].size() > max_size) {
-                max_size = face_cycles[i].size();
-                max_idx = i;
+        size_t min_idx = 0;
+        double min_area = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < face_cycles.size(); ++i) {
+            double area = 0.0;
+            const auto& cyc = face_cycles[i];
+            size_t cn = cyc.size();
+            for (size_t j = 0; j < cn; ++j) {
+                size_t a = cyc[j], b = cyc[(j+1)%cn];
+                area += verts[a][0] * verts[b][1] - verts[b][0] * verts[a][1];
             }
+            area *= 0.5;
+            if (area < min_area) { min_area = area; min_idx = i; }
         }
-        face_cycles.erase(face_cycles.begin() + max_idx);
+        face_cycles.erase(face_cycles.begin() + min_idx);
     }
 
     for (const auto& cycle : face_cycles) {
         std::vector<size_t> fvkeys;
         fvkeys.reserve(cycle.size());
         for (size_t vid : cycle) fvkeys.push_back(vkeys[vid]);
-        auto fk_opt = mesh.add_face(fvkeys);
-        if (!fk_opt) continue;
-        if (cycle.size() > 3) {
+        auto fkey_opt = mesh.add_face(fvkeys);
+        if (fkey_opt.has_value()) {
             std::vector<Point> pts;
             pts.reserve(cycle.size());
             for (size_t vid : cycle) pts.push_back(verts[vid]);
             auto tris = Triangulation2D::triangulate(Polyline(pts));
-            auto& tri_list = mesh.triangulation[*fk_opt];
-            tri_list.reserve(tris.size());
+            std::vector<std::array<size_t, 3>> tri_list;
             for (const auto& t : tris)
-                tri_list.push_back({fvkeys[t.v0], fvkeys[t.v1], fvkeys[t.v2]});
+                tri_list.push_back({vkeys[cycle[t.v0]], vkeys[cycle[t.v1]], vkeys[cycle[t.v2]]});
+            mesh.triangulation[fkey_opt.value()] = tri_list;
         }
     }
 
@@ -1723,6 +1727,16 @@ std::string Mesh::pb_dumps() const {
         }
     }
 
+    // Triangulation
+    for (const auto& [fkey, tris] : triangulation) {
+        auto& tri_list = (*proto.mutable_triangulation())[fkey];
+        for (const auto& t : tris) {
+            tri_list.add_vertices(t[0]);
+            tri_list.add_vertices(t[1]);
+            tri_list.add_vertices(t[2]);
+        }
+    }
+
     // Halfedges
     for (const auto& [u, neighbors] : halfedge) {
         auto& hmap = (*proto.mutable_halfedges())[u];
@@ -1842,6 +1856,15 @@ Mesh Mesh::pb_loads(const std::string& data) {
                 mesh.facedata[fkey][k] = v;
             }
         }
+    }
+
+    // Triangulation
+    for (const auto& [fkey, tri_list] : proto.triangulation()) {
+        std::vector<std::array<size_t, 3>> tris;
+        const auto& vlist = tri_list.vertices();
+        for (int i = 0; i + 2 < vlist.size(); i += 3)
+            tris.push_back({static_cast<size_t>(vlist[i]), static_cast<size_t>(vlist[i+1]), static_cast<size_t>(vlist[i+2])});
+        mesh.triangulation[fkey] = tris;
     }
 
     // Halfedges

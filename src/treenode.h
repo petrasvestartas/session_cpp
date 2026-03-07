@@ -1,4 +1,5 @@
 #pragma once
+#include "color.h"
 #include <algorithm>
 #include <fstream>
 #include <functional>
@@ -6,6 +7,7 @@
 #include <iostream>
 #include <json.h>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,8 +38,9 @@ private:
 public:
   TreeNode(std::string name = "my_node") { this->name = name; }
 
-  std::string guid = ::guid(); ///< Unique identifier for the tree node itself (distinct from geometry GUID)
-  std::string name;            ///< Node identifier/name. For geometry nodes, this is the geometry's GUID
+  std::string guid = ::guid();    ///< Unique identifier for the tree node itself (distinct from geometry GUID)
+  std::string name;               ///< Node identifier/name. For geometry nodes, this is the geometry's GUID
+  std::optional<Color> color;     ///< Optional display color, used for layer nodes
 
   /// Convert node to string representation
   std::string str() const;

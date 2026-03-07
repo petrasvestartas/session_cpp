@@ -20,23 +20,24 @@ nlohmann::ordered_json TreeNode::jsondump() const {
   for (const auto &child : _children)
     children_array.push_back(child->jsondump());
 
-  return nlohmann::ordered_json{{"type", "TreeNode"},
-                                {"guid", guid},
-                                {"name", name},
-                                {"children", children_array}};
+  nlohmann::ordered_json j{{"type", "TreeNode"},
+                           {"guid", guid},
+                           {"name", name},
+                           {"children", children_array}};
+  if (color) j["color"] = color->jsondump();
+  return j;
 }
 
 /// Create TreeNode from JSON data
 std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json &data) {
   auto node = std::make_shared<TreeNode>(data["name"]);
   node->guid = data["guid"];
-
-  // Recursively create children (matching Python behavior)
+  if (data.contains("color") && !data["color"].is_null())
+    node->color = Color::jsonload(data["color"]);
   for (const auto &child_data : data["children"]) {
     auto child = TreeNode::jsonload(child_data);
     node->add(child);
   }
-
   return node;
 }
 

@@ -64,6 +64,13 @@ std::string Tree::pb_dumps() const {
       proto_node.set_guid(node->guid);
       proto_node.set_name(node->name);
       proto_node.set_parent_guid("");
+      if (node->color) {
+        auto* pc = proto_node.mutable_color();
+        pc->set_r(node->color->r);
+        pc->set_g(node->color->g);
+        pc->set_b(node->color->b);
+        pc->set_a(node->color->a);
+      }
       for (auto* child : node->children()) {
         *proto_node.add_children() = node_to_proto(child);
       }
@@ -87,6 +94,9 @@ Tree Tree::pb_loads(const std::string& data) {
     [&](const session_proto::TreeNode& proto_node) -> std::shared_ptr<TreeNode> {
       auto node = std::make_shared<TreeNode>(proto_node.name());
       node->guid = proto_node.guid();
+      if (proto_node.has_color() && proto_node.color().a() > 0)
+        node->color = Color(proto_node.color().r(), proto_node.color().g(),
+                            proto_node.color().b(), proto_node.color().a());
       for (const auto& child_proto : proto_node.children()) {
         auto child = proto_to_node(child_proto);
         node->add(child);
