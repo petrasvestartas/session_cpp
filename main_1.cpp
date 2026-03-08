@@ -304,35 +304,47 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         size_t b1 = panel.orig_bot_to_local[bot_vkeys[(j+1)%m]];
         int ti = bot_to_top[j];
         if (ti >= 0 && bot_dist[j] <= threshold && top_to_bot[ti] == j) {
-            size_t t0 = panel.orig_top_to_local[top_vkeys[ti]];
-            size_t t1 = panel.orig_top_to_local[top_vkeys[(ti+1)%n]];
             double bdx = bot_pts[(j+1)%m][0]-bot_pts[j][0],
                    bdy = bot_pts[(j+1)%m][1]-bot_pts[j][1],
                    bdz = bot_pts[(j+1)%m][2]-bot_pts[j][2];
             double tdx = top_pts[(ti+1)%n][0]-top_pts[ti][0],
                    tdy = top_pts[(ti+1)%n][1]-top_pts[ti][1],
                    tdz = top_pts[(ti+1)%n][2]-top_pts[ti][2];
-            if (bdx*tdx + bdy*tdy + bdz*tdz < 0) std::swap(t0, t1);
-            std::optional<size_t> fk;
-            if (edge_gap > 0.0) {
-                auto pb0 = *panel.mesh.vertex_position(b0);
-                auto pb1 = *panel.mesh.vertex_position(b1);
-                auto pt0 = *panel.mesh.vertex_position(t0);
-                auto pt1 = *panel.mesh.vertex_position(t1);
-                double cx=(pb0[0]+pb1[0]+pt0[0]+pt1[0])*0.25;
-                double cy=(pb0[1]+pb1[1]+pt0[1]+pt1[1])*0.25;
-                double cz=(pb0[2]+pb1[2]+pt0[2]+pt1[2])*0.25;
-                size_t nb0 = panel.mesh.add_vertex(offset_toward(pb0, cx, cy, cz, edge_gap));
-                size_t nb1 = panel.mesh.add_vertex(offset_toward(pb1, cx, cy, cz, edge_gap));
-                fk = panel.mesh.add_face({nb0, nb1, t1, t0});
+            if (bdx*tdx + bdy*tdy + bdz*tdz < 0) {
+                if (!skip_triangles) {
+                    double best_d = 1e300; int best_tv = 0;
+                    for (int i2 = 0; i2 < n; i2++) {
+                        double d = bot_mids[j].distance(top_pts[i2]);
+                        if (d < best_d) { best_d = d; best_tv = i2; }
+                    }
+                    size_t tv = panel.orig_top_to_local[top_vkeys[best_tv]];
+                    auto afk = panel.mesh.add_face({b0, b1, tv});
+                    if (afk) { WallFaceInfo w; w.face_key = *afk; w.is_quad = false; panel.wall_faces.push_back(w); }
+                }
             } else {
-                fk = panel.mesh.add_face({b0, b1, t1, t0});
-            }
-            if (fk) {
-                WallFaceInfo w; w.face_key = *fk; w.is_quad = true;
-                w.top_v0 = top_vkeys[ti]; w.top_v1 = top_vkeys[(ti+1)%n];
-                w.bot_v0 = bot_vkeys[j];  w.bot_v1 = bot_vkeys[(j+1)%m];
-                panel.wall_faces.push_back(w);
+                size_t t0 = panel.orig_top_to_local[top_vkeys[ti]];
+                size_t t1 = panel.orig_top_to_local[top_vkeys[(ti+1)%n]];
+                std::optional<size_t> fk;
+                if (edge_gap > 0.0) {
+                    auto pb0 = *panel.mesh.vertex_position(b0);
+                    auto pb1 = *panel.mesh.vertex_position(b1);
+                    auto pt0 = *panel.mesh.vertex_position(t0);
+                    auto pt1 = *panel.mesh.vertex_position(t1);
+                    double cx=(pb0[0]+pb1[0]+pt0[0]+pt1[0])*0.25;
+                    double cy=(pb0[1]+pb1[1]+pt0[1]+pt1[1])*0.25;
+                    double cz=(pb0[2]+pb1[2]+pt0[2]+pt1[2])*0.25;
+                    size_t nb0 = panel.mesh.add_vertex(offset_toward(pb0, cx, cy, cz, edge_gap));
+                    size_t nb1 = panel.mesh.add_vertex(offset_toward(pb1, cx, cy, cz, edge_gap));
+                    fk = panel.mesh.add_face({nb0, nb1, t1, t0});
+                } else {
+                    fk = panel.mesh.add_face({b0, b1, t1, t0});
+                }
+                if (fk) {
+                    WallFaceInfo w; w.face_key = *fk; w.is_quad = true;
+                    w.top_v0 = top_vkeys[ti]; w.top_v1 = top_vkeys[(ti+1)%n];
+                    w.bot_v0 = bot_vkeys[j];  w.bot_v1 = bot_vkeys[(j+1)%m];
+                    panel.wall_faces.push_back(w);
+                }
             }
             top_used[ti] = true;
         } else if (!skip_triangles) {
