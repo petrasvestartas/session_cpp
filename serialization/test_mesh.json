@@ -14,6 +14,7 @@
       2
     ]
   },
+  "face_holes": null,
   "facecolors": [
     255,
     0,
@@ -21,7 +22,7 @@
     255
   ],
   "facedata": null,
-  "guid": "da86d5ca-3f20-4d2b-9a85-1c09b19ef50b",
+  "guid": "9997d973-cd52-4d75-900b-043cd11e91fb",
   "halfedge": {
     "0": {
       "1": 0,
@@ -57,7 +58,7 @@
     "a": 255,
     "b": 0,
     "g": 0,
-    "guid": "9d6df9e1-edfc-49e7-9f0f-3d416c127e08",
+    "guid": "86bc611a-c8dc-43e4-b56f-176f3151f51e",
     "name": "my_color",
     "r": 255,
     "type": "Color"

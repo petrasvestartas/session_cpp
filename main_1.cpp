@@ -12,10 +12,9 @@ static double ms_from_polylines = 0, ms_build_panel = 0, ms_brep = 0, ms_pb_dump
 using namespace session_cpp;
 
 // ── User-facing configuration ─────────────────────────────────────────────────
-// Maximum gap between consecutive polyline vertices that is treated as a
-// near-duplicate and collapsed.  Input polylines are closed (first == last),
-// and numerical noise sometimes leaves a spurious tiny edge just before the
-// closing point.  Any edge shorter than this is removed during preprocessing.
+// Minimum gap threshold for near-duplicate vertex removal.  Polyline vertices
+// closer than this are collapsed to remove systematic near-duplicate artifacts
+// in the input data.
 static constexpr double VERTEX_DEDUP_TOLERANCE  = 0.5;
 
 // Precision used when building the shared-vertex mesh from the raw polylines.
@@ -78,13 +77,12 @@ static std::vector<std::vector<Point>> to_polys(const std::vector<Polyline>& pol
         const auto& c = pl._coords;
         for (size_t i = 0; i + 2 < c.size(); i += 3)
             pts.push_back(Point(c[i], c[i+1], c[i+2]));
-        const double tol = VERTEX_DEDUP_TOLERANCE;
         bool changed = true;
         while (changed && pts.size() >= 3) {
             changed = false;
             std::vector<Point> clean;
             for (size_t i = 0; i < pts.size(); i++) {
-                if (pts[i].distance(pts[(i+1) % pts.size()]) > tol)
+                if (pts[i].distance(pts[(i+1) % pts.size()]) > VERTEX_DEDUP_TOLERANCE)
                     clean.push_back(pts[i]);
                 else
                     changed = true;
@@ -188,6 +186,24 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
 
     merge_collinear(top_pts, top_vkeys);
     merge_collinear(bot_pts, bot_vkeys);
+    {
+        double max_te = 0;
+        int sz = (int)top_pts.size();
+        for (int i = 0; i < sz; i++)
+            max_te = std::max(max_te, top_pts[i].distance(top_pts[(i+1)%sz]));
+        const double stol = max_te * 0.001;
+        bool changed = true;
+        while (changed && (int)top_pts.size() >= 3) {
+            changed = false;
+            std::vector<Point> tp; std::vector<size_t> tk;
+            for (int i = 0; i < (int)top_pts.size(); i++) {
+                if (top_pts[i].distance(top_pts[(i+1)%(int)top_pts.size()]) > stol) {
+                    tp.push_back(top_pts[i]); tk.push_back(top_vkeys[i]);
+                } else { changed = true; }
+            }
+            top_pts = tp; top_vkeys = tk;
+        }
+    }
     int n = (int)top_pts.size();
     int m = (int)bot_pts.size();
 
