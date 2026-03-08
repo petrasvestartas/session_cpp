@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 #include <limits>
 #include <thread>
 #include <atomic>
@@ -1042,6 +1043,13 @@ Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polyli
             for (const auto& f : tris) {
                 if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
                 tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+            }
+            std::unordered_set<size_t> covered;
+            for (const auto& t : tri_list) { covered.insert(t[0]); covered.insert(t[1]); covered.insert(t[2]); }
+            size_t n_vk = border.size();
+            for (size_t m = 0; m < n_vk; ++m) {
+                if (!covered.count(vkeys[m]))
+                    tri_list.push_back({vkeys[(m + n_vk - 1) % n_vk], vkeys[m], vkeys[(m + 1) % n_vk]});
             }
             mesh.triangulation[fkey.value()] = tri_list;
         }
