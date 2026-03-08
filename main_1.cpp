@@ -11,6 +11,36 @@ static double ms_from_polylines = 0, ms_build_panel = 0, ms_brep = 0, ms_pb_dump
 
 using namespace session_cpp;
 
+// ── User-facing configuration ─────────────────────────────────────────────────
+// Maximum gap between consecutive polyline vertices that is treated as a
+// near-duplicate and collapsed.  Input polylines are closed (first == last),
+// and numerical noise sometimes leaves a spurious tiny edge just before the
+// closing point.  Any edge shorter than this is removed during preprocessing.
+static constexpr double VERTEX_DEDUP_TOLERANCE  = 0.5;
+
+// Precision used when building the shared-vertex mesh from the raw polylines.
+// Two vertices whose coordinates round to the same grid cell of this size are
+// merged into one.  Must be smaller than VERTEX_DEDUP_TOLERANCE.
+static constexpr double VERTEX_MERGE_PRECISION  = 0.001;
+
+// A bot edge midpoint is considered to match a top edge midpoint only when
+// their distance is at most this factor times the average bot-edge distance.
+// Increase to be more permissive when pairing irregular polygons.
+static constexpr double EDGE_MATCH_THRESHOLD_FACTOR = 2.0;
+
+// Gap (in model units) by which each quad wall vertex is pulled inward from
+// the bot edge when building the folded / open-top panels.  Set to 0 to
+// produce flush wall edges with no inset.
+static constexpr double FOLDED_EDGE_GAP        = 0.1;
+
+// Target arc-length spacing between consecutive circle centres placed along
+// each interior wall edge.
+static constexpr double CIRCLE_DIVISION_DIST   = 100.0;
+
+// Radius of each decorative circle arc placed on the wall faces.
+static constexpr double CIRCLE_RADIUS          = 5.0;
+// ─────────────────────────────────────────────────────────────────────────────
+
 static std::pair<std::vector<Polyline>, std::vector<Polyline>> load_polys_from_pb(const std::string& filepath) {
     auto obj = Objects::pb_load(filepath);
     std::vector<Polyline> top, bot;
@@ -48,7 +78,7 @@ static std::vector<std::vector<Point>> to_polys(const std::vector<Polyline>& pol
         const auto& c = pl._coords;
         for (size_t i = 0; i + 2 < c.size(); i += 3)
             pts.push_back(Point(c[i], c[i+1], c[i+2]));
-        const double tol = 1e-3;
+        const double tol = VERTEX_DEDUP_TOLERANCE;
         bool changed = true;
         while (changed && pts.size() >= 3) {
             changed = false;
@@ -250,7 +280,7 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
     double avg = 0;
     for (int j = 0; j < m; j++) avg += bot_dist[j];
     avg /= m;
-    double threshold = avg * 2.0;
+    double threshold = avg * EDGE_MATCH_THRESHOLD_FACTOR;
 
     std::vector<bool> top_used(n, false);
     for (int j = 0; j < m; j++) {
@@ -321,7 +351,31 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         std::vector<size_t> bot_cap;
         for (int j = 0; j < m; j++)
             bot_cap.push_back(panel.orig_bot_to_local[bot_vkeys[j]]);
-        panel.mesh.add_face(bot_cap);
+        auto bot_cap_fk = panel.mesh.add_face(bot_cap);
+        if (bot_cap_fk && bot_cap.size() >= 3) {
+            auto [bcnx, bcny, bcnz] = newell_normal(bot_pts);
+            double bcmag = std::sqrt(bcnx*bcnx + bcny*bcny + bcnz*bcnz);
+            if (bcmag > 1e-12) {
+                bcnx /= bcmag; bcny /= bcmag; bcnz /= bcmag;
+                double bcux = 1, bcuy = 0, bcuz = 0;
+                if (std::abs(bcnx) > 0.9) { bcux = 0; bcuy = 1; }
+                double bcdot = bcux*bcnx + bcuy*bcny + bcuz*bcnz;
+                bcux -= bcdot*bcnx; bcuy -= bcdot*bcny; bcuz -= bcdot*bcnz;
+                double bcum = std::sqrt(bcux*bcux + bcuy*bcuy + bcuz*bcuz);
+                bcux /= bcum; bcuy /= bcum; bcuz /= bcum;
+                double bcvx = bcny*bcuz - bcnz*bcuy, bcvy = bcnz*bcux - bcnx*bcuz, bcvz = bcnx*bcuy - bcny*bcux;
+                std::vector<std::pair<double,double>> bpts2;
+                for (const auto& p : bot_pts)
+                    bpts2.push_back({p[0]*bcux + p[1]*bcuy + p[2]*bcuz, p[0]*bcvx + p[1]*bcvy + p[2]*bcvz});
+                auto btris = cdt_triangulate(bpts2, {});
+                if (!btris.empty()) {
+                    std::vector<std::array<size_t,3>> tri_list;
+                    for (const auto& t : btris)
+                        tri_list.push_back({bot_cap[t[0]], bot_cap[t[1]], bot_cap[t[2]]});
+                    panel.mesh.set_face_triangulation(*bot_cap_fk, std::move(tri_list));
+                }
+            }
+        }
     }
 
     panel.mesh.unify_winding();
@@ -385,8 +439,8 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
 
     Mesh top_mesh, bot_mesh;
     TIMED(ms_from_polylines,
-        top_mesh = Mesh::from_polylines(top_pts, 0.001);
-        bot_mesh = Mesh::from_polylines(bot_pts, 0.001);
+        top_mesh = Mesh::from_polylines(top_pts, VERTEX_MERGE_PRECISION);
+        bot_mesh = Mesh::from_polylines(bot_pts, VERTEX_MERGE_PRECISION);
     );
 
     std::vector<size_t> tfks, bfks;
@@ -458,8 +512,8 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
         }
     }
 
-    const double division_dist = 100.0; // target spacing between circle centres
-    const double circle_rad    = 5.0; // circle radius
+    const double division_dist = CIRCLE_DIVISION_DIST;
+    const double circle_rad    = CIRCLE_RADIUS;
 
     for (auto& panel : panels) {
         auto mesh_node = session.add_mesh(std::make_shared<Mesh>(panel.mesh));
@@ -527,10 +581,10 @@ int main() {
     std::string sdir = (std::filesystem::path(__FILE__).parent_path().parent_path()
                         / "session_data").string();
     auto t_main = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i <= 12; i++) {
+    for (int i = 0; i <= 13; i++) {
         std::string name = "mesh_quad_tri_loft" + std::to_string(i);
         auto [top, bot] = load_polys_from_pb(sdir + "/" + name + ".pb");
-        run_dataset(top, bot, name, sdir, true, true, 0.1);
+        run_dataset(top, bot, name, sdir, true, true, FOLDED_EDGE_GAP);
     }
     double total = std::chrono::duration<double,std::milli>(
         std::chrono::high_resolution_clock::now() - t_main).count();

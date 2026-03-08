@@ -272,7 +272,10 @@ namespace session_cpp {
             });
         }
         std::vector<Mesh> meshes = Mesh::from_polygon_with_holes_many(inputs);
-        for (auto& m : meshes) MINI_CHECK(m.is_valid());
+        MINI_CHECK(meshes[0].is_valid());
+        MINI_CHECK(meshes[1].is_valid());
+        MINI_CHECK(meshes[2].is_valid());
+        MINI_CHECK(meshes[3].is_valid());
         std::vector<Mesh> meshes_seq = Mesh::from_polygon_with_holes_many(inputs, false, false);
         MINI_CHECK(meshes_seq[0].number_of_faces() == meshes[0].number_of_faces());
     }
@@ -655,6 +658,16 @@ namespace session_cpp {
         size_t fk = pmesh.get_triangulation().begin()->first;
         MINI_CHECK(!loaded_tri.get_triangulation().empty());
         MINI_CHECK(loaded_tri.get_triangulation().count(fk) > 0);
+
+        // Face holes roundtrip
+        Mesh hmesh = Mesh::from_polygon_with_holes(
+            {{Point(0,0,0),Point(4,0,0),Point(4,4,0),Point(0,4,0)},
+             {Point(1,1,0),Point(3,1,0),Point(3,3,0),Point(1,3,0)}}, true);
+        MINI_CHECK(!hmesh.get_face_holes().empty());
+        Mesh loaded_holes = Mesh::jsonload(hmesh.jsondump());
+        size_t hfk = hmesh.get_face_holes().begin()->first;
+        MINI_CHECK(!loaded_holes.get_face_holes().empty());
+        MINI_CHECK(loaded_holes.get_face_holes().at(hfk) == hmesh.get_face_holes().at(hfk));
     }
 
     MINI_TEST("Mesh", "Protobuf Roundtrip") {
@@ -698,6 +711,16 @@ namespace session_cpp {
         size_t fk = pmesh.get_triangulation().begin()->first;
         MINI_CHECK(!loaded_tri.get_triangulation().empty());
         MINI_CHECK(loaded_tri.get_triangulation().count(fk) > 0);
+
+        // Face holes roundtrip
+        Mesh hmesh = Mesh::from_polygon_with_holes(
+            {{Point(0,0,0),Point(4,0,0),Point(4,4,0),Point(0,4,0)},
+             {Point(1,1,0),Point(3,1,0),Point(3,3,0),Point(1,3,0)}}, true);
+        MINI_CHECK(!hmesh.get_face_holes().empty());
+        Mesh loaded_holes = Mesh::pb_loads(hmesh.pb_dumps());
+        size_t hfk = hmesh.get_face_holes().begin()->first;
+        MINI_CHECK(!loaded_holes.get_face_holes().empty());
+        MINI_CHECK(loaded_holes.get_face_holes().at(hfk) == hmesh.get_face_holes().at(hfk));
     }
 
 

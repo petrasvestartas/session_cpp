@@ -116,6 +116,7 @@ public:
     std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge;  ///< Halfedge connectivity
     std::map<size_t, VertexData> vertex;                                  ///< Vertex data
     std::map<size_t, std::vector<size_t>> face;                          ///< Face vertex lists
+    std::map<size_t, std::vector<std::vector<size_t>>> face_holes;       ///< Face hole rings (inner boundaries)
     std::map<size_t, std::map<std::string, double>> facedata;             ///< Face attributes
     std::map<std::pair<size_t, size_t>, std::map<std::string, double>> edgedata;  ///< Edge attributes
     std::map<std::string, double> default_vertex_attributes;              ///< Default vertex attrs
@@ -141,6 +142,8 @@ public:
     const Color& get_objectcolor() const              { return objectcolor; }
     const std::map<size_t, std::vector<std::array<size_t, 3>>>& get_triangulation() const { return triangulation; }
     void set_face_triangulation(size_t fk, std::vector<std::array<size_t,3>> tris) { triangulation[fk] = std::move(tris); }
+    const auto& get_face_holes() const { return face_holes; }
+    void set_face_holes(size_t fkey, std::vector<std::vector<size_t>> rings) { face_holes[fkey] = std::move(rings); }
 
 private:
     std::vector<Color> pointcolors;                                      ///< Vertex colors

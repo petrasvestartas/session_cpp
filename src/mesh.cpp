@@ -45,6 +45,7 @@ Mesh::Mesh(const Mesh& other) {
     max_vertex = other.max_vertex;
     max_face = other.max_face;
     triangulation = other.triangulation;
+    face_holes = other.face_holes;
 }
 
 Mesh& Mesh::operator=(const Mesh& other) {
@@ -68,6 +69,7 @@ Mesh& Mesh::operator=(const Mesh& other) {
         max_vertex = other.max_vertex;
         max_face = other.max_face;
         triangulation = other.triangulation;
+        face_holes = other.face_holes;
         triangle_bvh_built = false;
         triangle_bvh.reset();
         triangle_aabb_tree.reset();
@@ -178,6 +180,7 @@ void Mesh::clear() {
     facedata.clear();
     edgedata.clear();
     triangulation.clear();
+    face_holes.clear();
     max_vertex = 0;
     max_face = 0;
     pointcolors.clear();
@@ -728,14 +731,15 @@ Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::
                 nx/=nlen; ny/=nlen; nz/=nlen;
                 double ux=1,uy=0,uz=0;
                 if (std::abs(nx) > 0.9) { ux=0; uy=1; }
+                double dot=ux*nx+uy*ny+uz*nz;
+                ux-=dot*nx; uy-=dot*ny; uz-=dot*nz;
+                double um=std::sqrt(ux*ux+uy*uy+uz*uz);
+                ux/=um; uy/=um; uz/=um;
                 double vx=ny*uz-nz*uy, vy=nz*ux-nx*uz, vz=nx*uy-ny*ux;
-                double vlen=std::sqrt(vx*vx+vy*vy+vz*vz);
-                vx/=vlen; vy/=vlen; vz/=vlen;
-                double wx=ny*vz-nz*vy, wy=nz*vx-nx*vz, wz=nx*vy-ny*vx;
                 std::vector<std::pair<double,double>> bpts;
                 int nk = (int)vkeys.size();
                 for (int i = 0; i < nk; ++i)
-                    bpts.push_back({poly[i][0]*wx+poly[i][1]*wy+poly[i][2]*wz,
+                    bpts.push_back({poly[i][0]*ux+poly[i][1]*uy+poly[i][2]*uz,
                                     poly[i][0]*vx+poly[i][1]*vy+poly[i][2]*vz});
                 auto tris = cdt_triangulate(bpts, {});
                 std::vector<std::array<size_t,3>> tri_list;
@@ -1054,9 +1058,21 @@ Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polyli
             mesh.triangulation[fkey.value()] = tri_list;
         }
     } else {
-        for (const auto& f : tris) {
-            if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
-            mesh.add_face({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+        std::vector<size_t> fvkeys(vkeys.begin(), vkeys.begin() + border.size());
+        auto fkey = mesh.add_face(fvkeys);
+        if (fkey.has_value()) {
+            std::vector<std::vector<size_t>> hole_rings;
+            size_t off = border.size();
+            for (const auto& h : hole_pts_3d) {
+                std::vector<size_t> ring(vkeys.begin()+off, vkeys.begin()+off+h.size());
+                hole_rings.push_back(ring); off += h.size();
+            }
+            mesh.set_face_holes(fkey.value(), hole_rings);
+            std::vector<std::array<size_t,3>> tri_list;
+            for (const auto& f : tris)
+                if (vkeys[f[0]]!=vkeys[f[1]] && vkeys[f[1]]!=vkeys[f[2]] && vkeys[f[2]]!=vkeys[f[0]])
+                    tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+            mesh.triangulation[fkey.value()] = tri_list;
         }
     }
     return mesh;
@@ -1185,8 +1201,25 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
                 hole.push_back(project_2d(all_bot_pts[i]));
             b_holes_2d.push_back(std::move(hole));
         }
-        for (const auto& f : cdt_triangulate(b_border_2d, b_holes_2d))
-            mesh.add_face({bot_vkeys[f[0]], bot_vkeys[f[2]], bot_vkeys[f[1]]});
+        auto b_tris = cdt_triangulate(b_border_2d, b_holes_2d);
+        std::vector<size_t> bot_fvkeys(poly_infos[0].bot_n);
+        for (size_t i = 0; i < poly_infos[0].bot_n; ++i) bot_fvkeys[i] = bot_vkeys[i];
+        auto fk_bot = mesh.add_face(bot_fvkeys);
+        if (fk_bot.has_value()) {
+            if (!b_holes_2d.empty()) {
+                std::vector<std::vector<size_t>> hole_rings;
+                for (size_t h = 1; h < poly_infos.size(); ++h) {
+                    std::vector<size_t> ring;
+                    for (size_t i = poly_infos[h].bot_off; i < poly_infos[h].bot_off + poly_infos[h].bot_n; ++i)
+                        ring.push_back(bot_vkeys[i]);
+                    hole_rings.push_back(std::move(ring));
+                }
+                mesh.set_face_holes(fk_bot.value(), std::move(hole_rings));
+            }
+            std::vector<std::array<size_t,3>> tri_list;
+            for (const auto& f : b_tris) tri_list.push_back({bot_vkeys[f[0]], bot_vkeys[f[2]], bot_vkeys[f[1]]});
+            mesh.triangulation[fk_bot.value()] = tri_list;
+        }
 
         // Top cap CDT
         std::vector<std::pair<double,double>> t_border_2d;
@@ -1199,8 +1232,25 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
                 hole.push_back(project_2d(all_top_pts[i]));
             t_holes_2d.push_back(std::move(hole));
         }
-        for (const auto& f : cdt_triangulate(t_border_2d, t_holes_2d))
-            mesh.add_face({top_vkeys[f[0]], top_vkeys[f[1]], top_vkeys[f[2]]});
+        auto t_tris = cdt_triangulate(t_border_2d, t_holes_2d);
+        std::vector<size_t> top_fvkeys(poly_infos[0].top_n);
+        for (size_t i = 0; i < poly_infos[0].top_n; ++i) top_fvkeys[i] = top_vkeys[i];
+        auto fk_top = mesh.add_face(top_fvkeys);
+        if (fk_top.has_value()) {
+            if (!t_holes_2d.empty()) {
+                std::vector<std::vector<size_t>> hole_rings;
+                for (size_t h = 1; h < poly_infos.size(); ++h) {
+                    std::vector<size_t> ring;
+                    for (size_t i = poly_infos[h].top_off; i < poly_infos[h].top_off + poly_infos[h].top_n; ++i)
+                        ring.push_back(top_vkeys[i]);
+                    hole_rings.push_back(std::move(ring));
+                }
+                mesh.set_face_holes(fk_top.value(), std::move(hole_rings));
+            }
+            std::vector<std::array<size_t,3>> tri_list;
+            for (const auto& f : t_tris) tri_list.push_back({top_vkeys[f[0]], top_vkeys[f[1]], top_vkeys[f[2]]});
+            mesh.triangulation[fk_top.value()] = tri_list;
+        }
     }
 
     // Side faces: align by longest edge, quads for equal counts, zipper+triangles otherwise
@@ -1367,6 +1417,16 @@ nlohmann::ordered_json Mesh::jsondump() const {
     }
     data["face"] = face_data;
 
+    // Face holes
+    nlohmann::ordered_json face_holes_json;
+    for (const auto& [fkey, rings] : face_holes) {
+        nlohmann::json rings_arr = nlohmann::json::array();
+        for (const auto& ring : rings)
+            rings_arr.push_back(ring);
+        face_holes_json[std::to_string(fkey)] = rings_arr;
+    }
+    data["face_holes"] = face_holes_json;
+
     // Face colors (RGBA)
     nlohmann::ordered_json facecolors_arr = nlohmann::ordered_json::array();
     for (const auto& c : facecolors) {
@@ -1495,6 +1555,17 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
         }
     }
     
+    // Load face holes
+    if (data.contains("face_holes")) {
+        for (const auto& [fk_str, rings_val] : data["face_holes"].items()) {
+            size_t fk = std::stoull(fk_str);
+            std::vector<std::vector<size_t>> rings;
+            for (const auto& ring : rings_val)
+                rings.push_back(ring.get<std::vector<size_t>>());
+            mesh.face_holes[fk] = rings;
+        }
+    }
+
     // Load face attributes
     if (data.contains("facedata")) {
         for (const auto& [key_str, attrs] : data["facedata"].items()) {
@@ -1809,6 +1880,13 @@ std::string Mesh::pb_dumps() const {
                 (*face_proto.mutable_attributes())[k] = v;
             }
         }
+        auto hit = face_holes.find(fkey);
+        if (hit != face_holes.end()) {
+            for (const auto& ring : hit->second) {
+                auto* hole_proto = face_proto.add_holes();
+                for (size_t v : ring) hole_proto->add_vertices(v);
+            }
+        }
     }
 
     // Triangulation
@@ -1939,6 +2017,15 @@ Mesh Mesh::pb_loads(const std::string& data) {
             for (const auto& [k, v] : fdata.attributes()) {
                 mesh.facedata[fkey][k] = v;
             }
+        }
+        if (fdata.holes_size() > 0) {
+            std::vector<std::vector<size_t>> rings;
+            for (const auto& hole : fdata.holes()) {
+                std::vector<size_t> ring;
+                for (uint64_t v : hole.vertices()) ring.push_back(v);
+                rings.push_back(ring);
+            }
+            mesh.face_holes[fkey] = rings;
         }
     }
 

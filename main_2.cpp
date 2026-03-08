@@ -73,10 +73,9 @@ int main() {
         }),
     };
     Mesh mesh = Mesh::loft(bottom, top, true);
-    Mesh mesh_no_cap = Mesh::loft(bottom, top, false);
-    
+
     session.add_mesh(std::make_shared<Mesh>(mesh));
-    session.add_mesh(std::make_shared<Mesh>(mesh_no_cap));
+
 
     std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "mesh_recheck.pb").string();
     session.pb_dump(filepath);
