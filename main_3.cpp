@@ -1,9 +1,6 @@
 #include "session.h"
-#include "mesh.h"
 #include "primitives.h"
-#include "color.h"
 #include "xform.h"
-#include <filesystem>
 
 using namespace session_cpp;
 

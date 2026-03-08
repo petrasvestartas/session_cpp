@@ -139,6 +139,8 @@ public:
     const std::vector<Color>& get_linecolors() const  { return linecolors; }
     const std::vector<double>& get_widths() const     { return widths; }
     const Color& get_objectcolor() const              { return objectcolor; }
+    const std::map<size_t, std::vector<std::array<size_t, 3>>>& get_triangulation() const { return triangulation; }
+    void set_face_triangulation(size_t fk, std::vector<std::array<size_t,3>> tris) { triangulation[fk] = std::move(tris); }
 
 private:
     std::vector<Color> pointcolors;                                      ///< Vertex colors

@@ -5,10 +5,7 @@
 #include "bvh.h"
 #include "aabb.h"
 #include "obj.h"
-#include <chrono>
 #include <cstdio>
-#include <filesystem>
-#include <limits>
 #include <queue>
 #include <random>
 

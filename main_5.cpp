@@ -1,10 +1,5 @@
-#include "brep.h"
-#include "nurbssurface.h"
-#include "nurbscurve.h"
 #include "session.h"
 #include "primitives.h"
-#include <filesystem>
-#include <iostream>
 
 using namespace session_cpp;
 

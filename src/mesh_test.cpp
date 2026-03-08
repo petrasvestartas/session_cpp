@@ -645,6 +645,16 @@ namespace session_cpp {
         MINI_CHECK(loaded_file.name == mesh.name);
         MINI_CHECK(loaded_file.number_of_vertices() == mesh.number_of_vertices());
         MINI_CHECK(loaded_file.number_of_faces() == mesh.number_of_faces());
+
+        // Triangulation roundtrip
+        std::vector<std::vector<Point>> polys = {{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}};
+        Mesh pmesh = Mesh::from_polylines(polys, std::nullopt);
+        MINI_CHECK(!pmesh.get_triangulation().empty());
+        nlohmann::ordered_json pjson = pmesh.jsondump();
+        Mesh loaded_tri = Mesh::jsonload(pjson);
+        size_t fk = pmesh.get_triangulation().begin()->first;
+        MINI_CHECK(!loaded_tri.get_triangulation().empty());
+        MINI_CHECK(loaded_tri.get_triangulation().count(fk) > 0);
     }
 
     MINI_TEST("Mesh", "Protobuf Roundtrip") {
@@ -679,6 +689,15 @@ namespace session_cpp {
         MINI_CHECK(loaded_file.number_of_vertices() == mesh.number_of_vertices());
         MINI_CHECK(loaded_file.number_of_faces() == mesh.number_of_faces());
         MINI_CHECK(loaded_file.guid == mesh.guid);
+
+        // Triangulation roundtrip
+        std::vector<std::vector<Point>> polys = {{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}};
+        Mesh pmesh = Mesh::from_polylines(polys, std::nullopt);
+        MINI_CHECK(!pmesh.get_triangulation().empty());
+        Mesh loaded_tri = Mesh::pb_loads(pmesh.pb_dumps());
+        size_t fk = pmesh.get_triangulation().begin()->first;
+        MINI_CHECK(!loaded_tri.get_triangulation().empty());
+        MINI_CHECK(loaded_tri.get_triangulation().count(fk) > 0);
     }
 
 

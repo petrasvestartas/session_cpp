@@ -597,10 +597,31 @@ BRep BRep::from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::ve
         brep.add_trim(c2d, ei, li, false, BRepTrimType::Boundary);
     };
 
+    auto cv_points = [](const NurbsCurve& c) -> std::vector<Point> {
+        std::vector<Point> pts;
+        int nc = c.cv_count();
+        pts.reserve(nc);
+        for (int k = 0; k < nc; ++k) {
+            if (c.is_rational()) {
+                auto [wx, wy, wz, w] = c.get_cv_4d(k);
+                if (w != 0.0) pts.emplace_back(wx/w, wy/w, wz/w);
+            } else {
+                pts.push_back(c.get_cv(k));
+            }
+        }
+        return pts;
+    };
+
     for (int ci = 0; ci < (int)curves.size(); ++ci) {
         const auto& crv = curves[ci];
-        auto pts = crv.divide_by_count(std::max(crv.cv_count() * 2, 4)).first;
-        int n = crv.is_closed() ? (int)pts.size() - 1 : (int)pts.size();
+        auto pts = cv_points(crv);
+        // drop the repeated last point if closed (first == last)
+        if (pts.size() >= 2) {
+            auto& f = pts.front(); auto& b = pts.back();
+            double dd = (f[0]-b[0])*(f[0]-b[0])+(f[1]-b[1])*(f[1]-b[1])+(f[2]-b[2])*(f[2]-b[2]);
+            if (dd < tol*tol) pts.pop_back();
+        }
+        int n = (int)pts.size();
         if (n < 3) continue;
 
         Polyline pl(pts);
@@ -618,11 +639,10 @@ BRep BRep::from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::ve
             umin = std::min(umin, us[i]); umax = std::max(umax, us[i]);
             vmin = std::min(vmin, vs[i]); vmax = std::max(vmax, vs[i]);
         }
-        // Include hole points in bounds
+        // Include hole CVs in bounds (convex hull property guarantees curve lies within)
         if (ci < (int)holes.size()) {
             for (const auto& hcrv : holes[ci]) {
-                auto hpts = hcrv.divide_by_count(std::max(hcrv.cv_count() * 2, 4)).first;
-                for (const auto& hp : hpts) {
+                for (const auto& hp : cv_points(hcrv)) {
                     double dx = hp[0]-org[0], dy = hp[1]-org[1], dz = hp[2]-org[2];
                     double hu = dx*xa[0]+dy*xa[1]+dz*xa[2], hv = dx*ya[0]+dy*ya[1]+dz*ya[2];
                     umin = std::min(umin, hu); umax = std::max(umax, hu);

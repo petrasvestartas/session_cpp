@@ -225,11 +225,17 @@ foreach(MAIN_ID 1 2 3 4 5)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
+    if(ENABLE_PCH)
+        target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+    endif()
 endforeach()
 
 add_executable(bench_mesh bench_mesh.cpp)
 target_link_libraries(bench_mesh PRIVATE session_core)
 LINK_PROTOBUF(bench_mesh)
+if(ENABLE_PCH)
+    target_precompile_headers(bench_mesh PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
 
 #############################################################################################
 # TESTS

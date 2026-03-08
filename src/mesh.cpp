@@ -703,13 +703,46 @@ Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::
     
     for (const auto& poly : polygons) {
         if (poly.size() < 3) continue;
-        
+
         std::vector<size_t> vkeys;
         vkeys.reserve(poly.size());
         for (const auto& p : poly) {
             vkeys.push_back(get_vkey(p));
         }
-        mesh.add_face(vkeys);
+        if (vkeys.size() > 1 && vkeys.back() == vkeys.front())
+            vkeys.pop_back();
+        if (vkeys.size() < 3) continue;
+        auto fk = mesh.add_face(vkeys);
+        if (fk && vkeys.size() >= 4) {
+            int np = (int)poly.size();
+            double nx=0, ny=0, nz=0;
+            for (int i = 0; i < np; i++) {
+                const auto& a = poly[i]; const auto& b = poly[(i+1)%np];
+                nx += (a[1]-b[1])*(a[2]+b[2]);
+                ny += (a[2]-b[2])*(a[0]+b[0]);
+                nz += (a[0]-b[0])*(a[1]+b[1]);
+            }
+            double nlen = std::sqrt(nx*nx+ny*ny+nz*nz);
+            if (nlen > 1e-12) {
+                nx/=nlen; ny/=nlen; nz/=nlen;
+                double ux=1,uy=0,uz=0;
+                if (std::abs(nx) > 0.9) { ux=0; uy=1; }
+                double vx=ny*uz-nz*uy, vy=nz*ux-nx*uz, vz=nx*uy-ny*ux;
+                double vlen=std::sqrt(vx*vx+vy*vy+vz*vz);
+                vx/=vlen; vy/=vlen; vz/=vlen;
+                double wx=ny*vz-nz*vy, wy=nz*vx-nx*vz, wz=nx*vy-ny*vx;
+                std::vector<std::pair<double,double>> bpts;
+                int nk = (int)vkeys.size();
+                for (int i = 0; i < nk; ++i)
+                    bpts.push_back({poly[i][0]*wx+poly[i][1]*wy+poly[i][2]*wz,
+                                    poly[i][0]*vx+poly[i][1]*vy+poly[i][2]*vz});
+                auto tris = cdt_triangulate(bpts, {});
+                std::vector<std::array<size_t,3>> tri_list;
+                for (const auto& t : tris)
+                    tri_list.push_back({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+                mesh.triangulation[*fk] = tri_list;
+            }
+        }
     }
     return mesh;
 }
@@ -1001,9 +1034,22 @@ Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polyli
     std::vector<size_t> vkeys;
     for (const auto& p : all_pts) vkeys.push_back(mesh.add_vertex(p));
 
-    for (const auto& f : tris) {
-        if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
-        mesh.add_face({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+    if (hole_pts_3d.empty()) {
+        std::vector<size_t> fvkeys(vkeys.begin(), vkeys.begin() + border.size());
+        auto fkey = mesh.add_face(fvkeys);
+        if (fkey.has_value()) {
+            std::vector<std::array<size_t,3>> tri_list;
+            for (const auto& f : tris) {
+                if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
+                tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+            }
+            mesh.triangulation[fkey.value()] = tri_list;
+        }
+    } else {
+        for (const auto& f : tris) {
+            if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
+            mesh.add_face({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+        }
     }
     return mesh;
 }
@@ -1045,6 +1091,17 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
     Point origin;
     Vector xaxis, yaxis, zaxis;
     polylines0[border_idx].get_average_plane(origin, xaxis, yaxis, zaxis);
+
+    // Orient zaxis from bottom toward top so winding check is consistent
+    {
+        Point c0 = polylines0[border_idx].center();
+        Point c1 = polylines1[border_idx].center();
+        Vector bottom_to_top(c1[0]-c0[0], c1[1]-c0[1], c1[2]-c0[2]);
+        if (zaxis.dot(bottom_to_top) < 0) {
+            zaxis = Vector(-zaxis[0], -zaxis[1], -zaxis[2]);
+            yaxis = Vector(-yaxis[0], -yaxis[1], -yaxis[2]);
+        }
+    }
 
     auto project_2d = [&](const Point& p) -> std::pair<double, double> {
         double dx = p[0] - origin[0];
@@ -1352,6 +1409,15 @@ nlohmann::ordered_json Mesh::jsondump() const {
     }
     data["pointcolors"] = pointcolors_arr;
 
+    nlohmann::ordered_json triangulation_json;
+    for (const auto& [fkey, tris] : triangulation) {
+        nlohmann::json tri_arr = nlohmann::json::array();
+        for (const auto& t : tris)
+            tri_arr.push_back({t[0], t[1], t[2]});
+        triangulation_json[std::to_string(fkey)] = tri_arr;
+    }
+    data["triangulation"] = triangulation_json;
+
     data["type"] = "Mesh";
     
     // Vertex data
@@ -1492,6 +1558,16 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
     }
     if (data.contains("color_mode")) {
         mesh.color_mode = color_mode_from_string(data["color_mode"].get<std::string>());
+    }
+
+    if (data.contains("triangulation")) {
+        for (const auto& [fk_str, tris_val] : data["triangulation"].items()) {
+            size_t fk = std::stoull(fk_str);
+            std::vector<std::array<size_t,3>> tris;
+            for (const auto& t : tris_val)
+                tris.push_back({t[0].get<size_t>(), t[1].get<size_t>(), t[2].get<size_t>()});
+            mesh.triangulation[fk] = tris;
+        }
     }
 
     return mesh;

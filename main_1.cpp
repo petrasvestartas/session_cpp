@@ -1,17 +1,5 @@
 #include "session.h"
-#include "objects.h"
-#include "mesh.h"
-#include "point.h"
-#include "polyline.h"
-#include "nurbscurve.h"
-#include "brep.h"
-#include <filesystem>
-#include <vector>
-#include <map>
-#include <set>
-#include <cmath>
-#include <iostream>
-#include <chrono>
+#include "src/trimesh_cdt.h"
 
 static double ms_from_polylines = 0, ms_build_panel = 0, ms_brep = 0, ms_pb_dump = 0;
 #define TIMED(var, ...) do { \
@@ -207,6 +195,30 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         for (auto vk : top_vkeys) top_cap.push_back(panel.orig_top_to_local[vk]);
         auto fk = panel.mesh.add_face(top_cap);
         if (fk) panel.top_face_key = *fk;
+        if (fk && top_cap.size() >= 3) {
+            auto [nx, ny, nz] = newell_normal(top_pts);
+            double mag = std::sqrt(nx*nx + ny*ny + nz*nz);
+            if (mag > 1e-12) {
+                nx /= mag; ny /= mag; nz /= mag;
+                double ux = 1, uy = 0, uz = 0;
+                if (std::abs(nx) > 0.9) { ux = 0; uy = 1; }
+                double dot = ux*nx + uy*ny + uz*nz;
+                ux -= dot*nx; uy -= dot*ny; uz -= dot*nz;
+                double um = std::sqrt(ux*ux + uy*uy + uz*uz);
+                ux /= um; uy /= um; uz /= um;
+                double vx = ny*uz - nz*uy, vy = nz*ux - nx*uz, vz = nx*uy - ny*ux;
+                std::vector<std::pair<double,double>> bpts;
+                for (const auto& p : top_pts)
+                    bpts.push_back({p[0]*ux + p[1]*uy + p[2]*uz, p[0]*vx + p[1]*vy + p[2]*vz});
+                auto tris = cdt_triangulate(bpts, {});
+                if (!tris.empty()) {
+                    std::vector<std::array<size_t,3>> tri_list;
+                    for (const auto& t : tris)
+                        tri_list.push_back({top_cap[t[0]], top_cap[t[1]], top_cap[t[2]]});
+                    panel.mesh.set_face_triangulation(*fk, std::move(tri_list));
+                }
+            }
+        }
     }
 
     std::vector<Point> top_mids(n), bot_mids(m);
@@ -515,7 +527,7 @@ int main() {
     std::string sdir = (std::filesystem::path(__FILE__).parent_path().parent_path()
                         / "session_data").string();
     auto t_main = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i <= 11; i++) {
+    for (int i = 0; i <= 12; i++) {
         std::string name = "mesh_quad_tri_loft" + std::to_string(i);
         auto [top, bot] = load_polys_from_pb(sdir + "/" + name + ".pb");
         run_dataset(top, bot, name, sdir, true, true, 0.1);
