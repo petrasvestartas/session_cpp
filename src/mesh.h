@@ -21,6 +21,8 @@
 
 namespace session_cpp {
 
+struct LoftPanel;  // defined in loft section below
+
 
 enum class ColorMode : int {
     OBJECTCOLOR = 0, POINTCOLORS = 1, FACECOLORS = 2, NONE = 3
@@ -228,6 +230,27 @@ public:
     static std::vector<Mesh> loft_many(
         const std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>>& pairs,
         bool cap = true, bool parallel = true);
+
+    /**
+     * @brief Loft between matched pairs of top/bottom polygons, producing one panel per pair.
+     * Each panel mesh has a top cap, optional bottom cap, matched quad walls, and triangle fill.
+     * @param top_polygons  Pre-cleaned top polygon ring(s) as point lists.
+     * @param bot_polygons  Pre-cleaned bottom polygon ring(s) as point lists.
+     * @param merge_precision  Vertex-merge tolerance passed to from_polylines.
+     * @param edge_gap  If > 0, insets bottom wall vertices toward face center.
+     * @param edge_match_threshold  Multiplier on average edge-midpoint distance for quad matching.
+     * @param add_caps  If true, adds top and bottom cap faces.
+     * @param skip_triangles  If true, omits triangle fill for unmatched edges.
+     * @return One LoftPanel per matched face pair, in centroid-distance order.
+     */
+    static std::vector<LoftPanel> loft_panels(
+        const std::vector<std::vector<Point>>& top_polygons,
+        const std::vector<std::vector<Point>>& bot_polygons,
+        double merge_precision      = 0.001,
+        double edge_gap             = 0.0,
+        double edge_match_threshold = 2.0,
+        bool   add_caps             = true,
+        bool   skip_triangles       = false);
 
     /**
      * @brief Create a box mesh centered at the origin.
@@ -456,6 +479,27 @@ public:
     void build_triangle_aabb_tree(bool force = false) const;
     const BVH* get_cached_bvh() const { return triangle_bvh.get(); }
     const AABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Loft
+///////////////////////////////////////////////////////////////////////////////////////////
+
+struct LoftWallFace {
+    size_t face_key;        ///< local panel mesh face key
+    bool   is_quad;
+    size_t top_v0, top_v1; ///< original top-mesh vertex keys
+    size_t bot_v0, bot_v1; ///< original bot-mesh vertex keys (valid if is_quad)
+};
+
+struct LoftPanel {
+    Mesh   mesh;
+    size_t top_face_key;                        ///< local key of top cap face
+    size_t bot_face_key;                        ///< local key of bot cap face (0 if no caps)
+    std::vector<LoftWallFace>  wall_faces;
+    std::map<size_t,size_t>    orig_top_to_local;
+    std::map<size_t,size_t>    orig_bot_to_local;
+    std::vector<Point>         bot_pts;
 };
 
 } // namespace session_cpp

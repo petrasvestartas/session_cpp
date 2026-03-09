@@ -324,8 +324,23 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("Mesh", "Loft with quads and triangles"){
-        
+    MINI_TEST("Mesh", "Loft with quads and triangles") {
+        // uncomment #include "mesh.h"
+        std::vector<std::vector<Point>> bot = {{{0,0,0},{4,0,0},{4,4,0},{0,4,0}}};
+        std::vector<std::vector<Point>> top = {{{0.5,0.5,2},{3.5,0.5,2},{2,3,2}}};
+        std::vector<LoftPanel> panels = Mesh::loft_panels(bot, top);
+        MINI_CHECK(panels.size() == 1);
+        MINI_CHECK(panels[0].mesh.is_valid());
+        int nquad = 0, ntri = 0;
+        for (const auto& w : panels[0].wall_faces) {
+            if (w.is_quad) nquad++; else ntri++;
+        }
+        MINI_CHECK(nquad > 0);
+        MINI_CHECK(ntri > 0);
+        std::vector<LoftPanel> panels_no_tri = Mesh::loft_panels(bot, top, 0.001, 0.0, 2.0, true, true);
+        int ntri2 = 0;
+        for (const auto& w : panels_no_tri[0].wall_faces) { if (!w.is_quad) ntri2++; }
+        MINI_CHECK(ntri2 == 0);
     }
 
     MINI_TEST("Mesh", "Boolean Queries") {
