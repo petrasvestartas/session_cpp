@@ -6,73 +6,52 @@ int main() {
 
     Session session;
 
-   
 
-    std::vector<Polyline> bottom = {
-        Polyline(std::vector<Point>{
-            {13.20069,-0.556523,-0.178103},
-            {12.248787,0.148384,0.416685},
-            {12.673247,2.119511,1.167431},
-            {16.910464,2.961749,0.289102},
-            {15.364327,0.465135,-0.363618},
-            {15.953685,-1.032727,-1.203717},
-            {13.20069,-0.556523,-0.178103},
-        }),
-        Polyline(std::vector<Point>{
-            {14.646845,0.917382,0.049546},
-            {14.636404,1.36458,0.251429},
-            {14.660418,1.595448,0.346958},
-            {15.163581,1.821395,0.298639},
-            {15.422988,1.014296,-0.136839},
-            {15.068958,0.91534,-0.07616},
-            {15.03918,0.459713,-0.269899},
-            {14.771618,0.635281,-0.112748},
-            {14.646845,0.917382,0.049546},
-        }),
-        Polyline(std::vector<Point>{
-            {13.628016,0.548716,0.186877},
-            {13.116088,0.844297,0.469625},
-            {13.114799,1.185147,0.621527},
-            {13.591866,1.424645,0.586947},
-            {13.884637,1.32996,0.458299},
-            {14.013519,0.88254,0.2213},
-            {13.656275,0.924872,0.345738},
-            {13.628016,0.548716,0.186877},
-        }),
-    };
-    std::vector<Polyline> top = {
-        Polyline(std::vector<Point>{
-            {13.375135,-0.818817,0.411936},
-            {12.423233,-0.113909,1.006724},
-            {12.847692,1.857217,1.75747},
-            {17.084909,2.699455,0.879141},
-            {15.538772,0.202841,0.226421},
-            {16.12813,-1.295021,-0.613678},
-            {13.375135,-0.818817,0.411936},
-        }),
-        Polyline(std::vector<Point>{
-            {14.82129,0.655088,0.639585},
-            {14.810849,1.102286,0.841468},
-            {14.834864,1.333154,0.936997},
-            {15.338026,1.559101,0.888678},
-            {15.597433,0.752002,0.4532},
-            {15.243404,0.653046,0.513879},
-            {15.213626,0.197419,0.32014},
-            {14.946063,0.372987,0.477291},
-            {14.82129,0.655088,0.639585},
-        }),
-        Polyline(std::vector<Point>{
-            {13.802461,0.286422,0.776916},
-            {13.290534,0.582003,1.059664},
-            {13.289245,0.922853,1.211566},
-            {13.766312,1.162351,1.176986},
-            {14.059082,1.067666,1.048338},
-            {14.187964,0.620246,0.811339},
-            {13.83072,0.662578,0.935777},
-            {13.802461,0.286422,0.776916},
-        }),
-    };
-    Mesh mesh = Mesh::loft(bottom, top, true);
+    std::vector<Point> vertices = Polyline::from_sides(6, 1.0, false).get_points();
+    Mesh mesh = Mesh::from_vertices_and_faces(vertices, {{0, 1, 2, 3, 4, 5}});
+    std::string sstr = mesh.str();
+    std::string srepr = mesh.repr();
+    Mesh mcopy = mesh;
+    mesh.name = "hexagon";
+
+    std::vector<Color> palette = Color::palette();
+
+    // set_objectcolor does not change color_mode
+    mesh.set_objectcolor(Color::grey());
+
+    // set_pointcolors → color_mode = PointColors
+    std::vector<Color> pc;
+    pc.reserve(mesh.number_of_vertices());
+    for (size_t i = 0; i < mesh.number_of_vertices(); ++i)
+        pc.emplace_back(palette[i % palette.size()]);
+    mesh.set_pointcolors(std::move(pc));
+
+    // set_facecolors → color_mode = FaceColors
+    std::vector<Color> fc;
+    fc.reserve(mesh.number_of_faces());
+    for (size_t i = 0; i < mesh.number_of_faces(); ++i)
+        fc.emplace_back(palette[i % palette.size()]);
+    mesh.set_facecolors(std::move(fc));
+
+    // set_linecolors does not change color_mode
+    std::vector<Color> lc;
+    std::vector<double> lw(mesh.number_of_edges(), 0.1);
+    lc.reserve(mesh.number_of_edges());
+    for (size_t i = 0; i < mesh.number_of_edges(); ++i)
+        lc.emplace_back(palette[i % palette.size()]);
+    mesh.set_linecolors(std::move(lc), std::move(lw));
+
+    // // clear_facecolors reverts color_mode only if currently FaceColors
+    // mesh.color_mode = ColorMode::FACECOLORS;
+    // mesh.clear_facecolors();
+
+    // // clear_pointcolors does not revert if color_mode != PointColors
+    // mesh.color_mode = ColorMode::FACECOLORS;
+    // mesh.clear_pointcolors();
+
+    // // clear_linecolors does not change color_mode
+    // mesh.color_mode = ColorMode::POINTCOLORS;
+    // mesh.clear_linecolors();
 
     session.add_mesh(std::make_shared<Mesh>(mesh));
 
