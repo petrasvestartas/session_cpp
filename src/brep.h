@@ -48,6 +48,7 @@ struct BRepFace {
     int surface_index = -1;
     std::vector<int> loop_indices;
     bool reversed = false;
+    Color facecolor = Color(0, 0, 0, 0);  // a=0 → not set
 };
 
 /**

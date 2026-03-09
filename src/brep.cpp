@@ -1062,6 +1062,7 @@ nlohmann::ordered_json BRep::jsondump() const {
     j["faces"] = nlohmann::ordered_json::array();
     for (const auto& f : m_faces) {
         nlohmann::ordered_json fj;
+        if (f.facecolor.a > 0) fj["facecolor"] = f.facecolor.jsondump();
         fj["loop_indices"] = f.loop_indices;
         fj["reversed"] = f.reversed;
         fj["surface_index"] = f.surface_index;
@@ -1170,6 +1171,7 @@ BRep BRep::jsonload(const nlohmann::json& data) {
             bf.surface_index = f["surface_index"];
             bf.loop_indices = f["loop_indices"].get<std::vector<int>>();
             bf.reversed = f["reversed"];
+            if (f.contains("facecolor")) bf.facecolor = Color::jsonload(f["facecolor"]);
             b.m_faces.push_back(bf);
         }
     return b;
@@ -1249,6 +1251,11 @@ std::string BRep::pb_dumps() const {
         p->set_surface_index(f.surface_index);
         for (int li : f.loop_indices) p->add_loop_indices(li);
         p->set_reversed(f.reversed);
+        if (f.facecolor.a > 0) {
+            auto* fc = p->mutable_facecolor();
+            fc->set_r(f.facecolor.r); fc->set_g(f.facecolor.g);
+            fc->set_b(f.facecolor.b); fc->set_a(f.facecolor.a);
+        }
     }
 
     auto* color_proto = proto.mutable_surfacecolor();
@@ -1328,6 +1335,8 @@ BRep BRep::pb_loads(const std::string& data) {
         for (int j = 0; j < f.loop_indices_size(); ++j)
             bf.loop_indices.push_back(f.loop_indices(j));
         bf.reversed = f.reversed();
+        if (f.has_facecolor())
+            bf.facecolor = Color(f.facecolor().r(), f.facecolor().g(), f.facecolor().b(), f.facecolor().a());
         b.m_faces.push_back(bf);
     }
 

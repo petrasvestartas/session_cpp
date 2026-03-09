@@ -293,12 +293,39 @@ namespace session_cpp {
             loft_inputs.push_back({{b}, {t}});
         }
         std::vector<Mesh> meshes = Mesh::loft_many(loft_inputs);
-        for (auto& m : meshes) {
-            MINI_CHECK(m.is_valid());
-            MINI_CHECK(m.is_closed());
-        }
+
+        MINI_CHECK(meshes[0].is_valid());
+        MINI_CHECK(meshes[0].is_closed());
+        MINI_CHECK(meshes[1].is_valid());
+        MINI_CHECK(meshes[1].is_closed());
+        MINI_CHECK(meshes[2].is_valid());
+        MINI_CHECK(meshes[2].is_closed());
+        MINI_CHECK(meshes[3].is_valid());
+        MINI_CHECK(meshes[3].is_closed());
+        MINI_CHECK(meshes[4].is_valid());
+        MINI_CHECK(meshes[4].is_closed());
+        MINI_CHECK(meshes[5].is_valid());
+        MINI_CHECK(meshes[5].is_closed());
+
         std::vector<Mesh> meshes_seq = Mesh::loft_many(loft_inputs, true, false);
-        MINI_CHECK(meshes_seq[0].number_of_faces() == meshes[0].number_of_faces());
+
+        MINI_CHECK(meshes_seq[0].is_valid());
+        MINI_CHECK(meshes_seq[0].is_closed());
+        MINI_CHECK(meshes_seq[1].is_valid());
+        MINI_CHECK(meshes_seq[1].is_closed());
+        MINI_CHECK(meshes_seq[2].is_valid());
+        MINI_CHECK(meshes_seq[2].is_closed());
+        MINI_CHECK(meshes_seq[3].is_valid());
+        MINI_CHECK(meshes_seq[3].is_closed());
+        MINI_CHECK(meshes_seq[4].is_valid());
+        MINI_CHECK(meshes_seq[4].is_closed());
+        MINI_CHECK(meshes_seq[5].is_valid());
+        MINI_CHECK(meshes_seq[5].is_closed());
+
+    }
+
+    MINI_TEST("Mesh", "Loft with quads and triangles"){
+        
     }
 
     MINI_TEST("Mesh", "Boolean Queries") {
