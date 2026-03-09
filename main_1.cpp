@@ -107,6 +107,7 @@ struct LoftPanel {
     std::vector<WallFaceInfo> wall_faces;
     std::map<size_t, size_t> orig_top_to_local;
     std::map<size_t, size_t> orig_bot_to_local;
+    std::vector<Point> bot_pts;
 };
 
 /// Removes collinear or near-zero-length vertices from a polygon in-place.
@@ -226,6 +227,7 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
         std::reverse(bot_pts.begin(), bot_pts.end());
         std::reverse(bot_vkeys.begin(), bot_vkeys.end());
     }
+    panel.bot_pts = bot_pts;
 
     for (int i = 0; i < n; i++) {
         size_t lk = panel.mesh.add_vertex(top_pts[i]);
@@ -324,7 +326,7 @@ static LoftPanel build_panel(size_t tfk, size_t bfk,
             if (fk) {
                 WallFaceInfo w; w.face_key = *fk; w.is_quad = true;
                 w.top_v0 = top_vkeys[ti]; w.top_v1 = top_vkeys[(ti+1)%n];
-                w.bot_v0 = bot_vkeys[j];  w.bot_v1 = bot_vkeys[(j+1)%m];
+                w.bot_v0 = bot_vkeys[(j+1)%m]; w.bot_v1 = bot_vkeys[j];
                 panel.wall_faces.push_back(w);
             }
             top_used[ti] = true;
@@ -557,11 +559,11 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
             hole_curves.push_back({});
         }
         for (const auto& w : panel.wall_faces) {
-            if (!w.is_quad) continue;
             auto face_lkeys = *panel.mesh.face_vertices(w.face_key);
             std::vector<Point> face_pts;
             for (auto lk : face_lkeys) face_pts.push_back(*panel.mesh.vertex_position(lk));
             outer_curves.push_back(make_polyline_loop(face_pts));
+            if (!w.is_quad) { hole_curves.push_back({}); continue; }
             auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
             auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
             auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
@@ -575,8 +577,19 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
             }
             hole_curves.push_back(make_wall_circles(pt0, pb0, pb1, a, b, circle_rad, division_dist));
         }
+        if (!panel.bot_pts.empty()) {
+            outer_curves.push_back(make_polyline_loop(panel.bot_pts));
+            hole_curves.push_back({});
+        }
         BRep brep;
         TIMED(ms_brep, brep = BRep::from_nurbscurves(outer_curves, hole_curves));
+        if (!brep.m_faces.empty()) {
+            size_t nwall = outer_curves.size() - 2;
+            brep.m_faces[0].facecolor = Color(0, 255, 0, 255);
+            for (size_t fi = 1; fi <= nwall; fi++)
+                brep.m_faces[fi].facecolor = Color(255, 255, 255, 255);
+            brep.m_faces.back().facecolor = Color(255, 0, 0, 255);
+        }
         auto brep_node = session.add_brep(std::make_shared<BRep>(brep));
         session.add(brep_node, layer_brep);
     }
@@ -592,7 +605,7 @@ int main() {
     for (int i = 0; i <= 13; i++) {
         std::string name = "mesh_quad_tri_loft" + std::to_string(i);
         auto [top, bot] = load_polys_from_pb(sdir + "/" + name + ".pb");
-        run_dataset(top, bot, name, sdir, true, true, FOLDED_EDGE_GAP);
+        run_dataset(top, bot, name, sdir, false, false, FOLDED_EDGE_GAP);
     }
     double total = std::chrono::duration<double,std::milli>(
         std::chrono::high_resolution_clock::now() - t_main).count();
