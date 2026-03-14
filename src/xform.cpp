@@ -36,7 +36,8 @@ Xform& Xform::operator=(const Xform& other) {
 }
 
 Xform Xform::identity() {
-    return Xform();
+    thread_local static Xform _identity;
+    return _identity;
 }
 
 Xform Xform::from_matrix(const std::array<double, 16>& matrix) {

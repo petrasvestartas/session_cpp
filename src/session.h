@@ -178,6 +178,9 @@ public:
   void add(std::shared_ptr<TreeNode> node,
            std::shared_ptr<TreeNode> parent = nullptr);
 
+  /// Create a named layer (TreeNode) and add it to the root of the tree.
+  std::shared_ptr<TreeNode> add_group(const std::string& group_name);
+
   /// Add geometry to session (stores object and adds to tree)
   void add_surface(std::shared_ptr<NurbsSurface> surface);
   void add_curve(std::shared_ptr<NurbsCurve> curve);

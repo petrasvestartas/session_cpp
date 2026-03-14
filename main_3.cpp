@@ -7,47 +7,69 @@ using namespace session_cpp;
 int main() {
     Session session("mesh_color");
 
-    Mesh base = Primitives::dodecahedron(1000.0);
-    std::vector<Color> pal = {
-        Color::red(), Color::orange(), Color::yellow(),
-        Color::green(), Color::blue(), Color::violet()
-    };
+    Mesh mesh = Mesh::from_polylines({
+        {
+            {1.28955, 0, 1.127558},
+            {0.85791, 0, 0.225512},
+            {0.64209, -0.866025, -0.225512},
+            {0.85791, -1.732051, 0.225512},
+            {1.458565, -1.732051, 1.127558},
+            {1.50537, -0.866025, 1.578581},
+        },
+        {
+            {0.64209, 0.866025, -0.225512},
+            {0.114274, 0.866025, -0.686294},
+            {-0.00537, 0, -1.578581},
+            {0.21045, -0.866025, -1.127558},
+            {0.64209, -0.866025, -0.225512},
+            {0.85791, 0, 0.225512},
+        },
+        {
+            {1.28955, 1.732051, 1.127558},
+            {0.85791, 1.732051, 0.225512},
+            {0.64209, 0.866025, -0.225512},
+            {0.85791, 0, 0.225512},
+            {1.28955, -0, 1.127558},
+            {1.853404, 0.866025, 1.578581},
+        },
+    }, 0.001);
 
-    // a) Edge pipes — linecolors trigger pipes in rhino_mesh.py
-    Mesh mesh_e = base;
-    std::vector<Color> ec; ec.reserve(mesh_e.get_linecolors().size());
-    std::vector<double> ew; ew.reserve(mesh_e.get_linecolors().size());
-    for (size_t i = 0; i < mesh_e.get_linecolors().size(); ++i) { ec.push_back(pal[i % 6]); ew.push_back(5.0 + i); }
-    mesh_e.set_linecolors(std::move(ec), std::move(ew));
-    session.add_mesh(std::make_shared<Mesh>(mesh_e));
+    size_t v0 = 1;
+    size_t v1 = 2;
+    size_t v2 = 3;
+    size_t f0 = 0;
 
-    // b) Vertex colors — rhino_mesh.py applies as vertex color array
-    Mesh mesh_v = base;
-    mesh_v.transform(Xform::translation(6000, 0, 0));
-    std::vector<Color> pc; pc.reserve(mesh_v.get_pointcolors().size());
-    for (size_t i = 0; i < mesh_v.get_pointcolors().size(); ++i) pc.push_back(pal[i % 6]);
-    mesh_v.set_pointcolors(std::move(pc));
-    session.add_mesh(std::make_shared<Mesh>(mesh_v));
 
-    // c) Face colors — rhino_mesh.py unwelds + assigns per-face vertex colors
-    Mesh mesh_f = base;
-    mesh_f.transform(Xform::translation(12000, 0, 0));
-    std::vector<Color> fc; fc.reserve(mesh_f.get_facecolors().size());
-    for (size_t i = 0; i < mesh_f.get_facecolors().size(); ++i) fc.push_back(pal[i % 6]);
-    mesh_f.set_facecolors(std::move(fc));
-    session.add_mesh(std::make_shared<Mesh>(mesh_f));
+    bool not_empty = mesh.is_empty();
 
-    // d) Face colors + edge pipes simultaneously
-    Mesh mesh_ef = base;
-    mesh_ef.transform(Xform::translation(18000, 0, 0));
-    std::vector<Color> efc; efc.reserve(mesh_ef.get_facecolors().size());
-    for (size_t i = 0; i < mesh_ef.get_facecolors().size(); ++i) efc.push_back(pal[i % 6]);
-    mesh_ef.set_facecolors(std::move(efc));
-    std::vector<Color> elc; elc.reserve(mesh_ef.get_linecolors().size());
-    std::vector<double> elw; elw.reserve(mesh_ef.get_linecolors().size());
-    for (size_t i = 0; i < mesh_ef.get_linecolors().size(); ++i) { elc.push_back(pal[i % 6]); elw.push_back(50.0); }
-    mesh_ef.set_linecolors(std::move(elc), std::move(elw));
-    session.add_mesh(std::make_shared<Mesh>(mesh_ef));
+    bool valid = mesh.is_valid();
+
+    bool closed = mesh.is_closed();
+
+    bool vertex_on_boundary = mesh.is_vertex_on_boundary(v0);
+
+    bool edge_not_on_boundary = mesh.is_edge_on_boundary(v0, v1);
+    bool edge_on_boundary = mesh.is_edge_on_boundary(v1, v2);
+
+    bool face_on_boundary = mesh.is_face_on_boundary(f0);
+
+    std::cout << "Mesh is_empty: " << not_empty << std::endl;
+    std::cout << "Mesh is_valid: " << valid << std::endl;
+    std::cout << "Mesh is_closed: " << closed << std::endl;
+    std::cout << "Vertex " << v0 << " on boundary: " << vertex_on_boundary << std::endl;
+    std::cout << "Edge (" << v0 << ", " << v1 << ") on boundary: " << edge_not_on_boundary << std::endl;
+    std::cout << "Edge (" << v1 << ", " << v2 << ") on boundary: " << edge_on_boundary << std::endl;
+
+    std::cout << "Face " << f0 << " on boundary: " << face_on_boundary << std::endl;
+
+    session.add_mesh(std::make_shared<Mesh>(mesh));
+    for (size_t i = 0; i < mesh.vertex.size(); ++i) {
+        Point p = mesh.vertex[i].position();
+        p.name = std::to_string(i);
+        session.add_point(std::make_shared<Point>(p));
+    }
+    session.add_point(std::make_shared<Point>(mesh.vertex[0].position()));
+
 
     std::string filepath = (std::filesystem::path(__FILE__).parent_path().parent_path()
                             / "session_data" / "mesh.pb").string();

@@ -326,34 +326,202 @@ namespace session_cpp {
 
     MINI_TEST("Mesh", "Loft with quads and triangles") {
         // uncomment #include "mesh.h"
-        std::vector<std::vector<Point>> bot = {{{0,0,0},{4,0,0},{4,4,0},{0,4,0}}};
-        std::vector<std::vector<Point>> top = {{{0.5,0.5,2},{3.5,0.5,2},{2,3,2}}};
-        std::vector<LoftPanel> panels = Mesh::loft_panels(bot, top);
-        MINI_CHECK(panels.size() == 1);
-        MINI_CHECK(panels[0].mesh.is_valid());
-        int nquad = 0, ntri = 0;
-        for (const auto& w : panels[0].wall_faces) {
-            if (w.is_quad) nquad++; else ntri++;
+
+        std::vector<std::vector<Point>> top7 = {
+            {
+                {250,-250,500},
+                {250,250,500},
+                {-250,250,500},
+                {-250,-250,500},
+                {250,-250,500},
+            },
+            {
+                {-250,500,250},
+                {-250,250,500},
+                {250,250,500},
+                {250,500,250},
+                {-250,500,250},
+            },
+            {
+                {250,-250,500},
+                {500,-250,250},
+                {500,250,250},
+                {250,250,500},
+                {250,-250,500},
+            },
+            {
+                {250,500,250},
+                {250,250,500},
+                {500,250,250},
+                {250,500,250},
+            },
+            {
+                {-250,500,250},
+                {250,500,250},
+                {250,500,-250},
+                {-250,500,-250},
+                {-250,500,250},
+            },
+            {
+                {250,500,250},
+                {500,250,250},
+                {500,250,-250},
+                {250,500,-250},
+                {250,500,250},
+            },
+            {
+                {500,-250,250},
+                {500,-250,-250},
+                {500,250,-250},
+                {500,250,250},
+                {500,-250,250},
+            },
+        };
+        std::vector<std::vector<Point>> bot7 = {
+            {
+                {270.710678,-250,550},
+                {270.710678,265.891862,550},
+                {265.891862,270.710678,550},
+                {-250,270.710678,550},
+                {-250,-250,550},
+                {270.710678,-250,550},
+            },
+            {
+                {270.710678,-250,550},
+                {550,-250,270.710678},
+                {550,265.891862,270.710678},
+                {270.710678,265.891862,550},
+                {270.710678,-250,550},
+            },
+            {
+                {-250,550,270.710678},
+                {-250,270.710678,550},
+                {265.891862,270.710678,550},
+                {265.891862,550,270.710678},
+                {-250,550,270.710678},
+            },
+            {
+                {265.891862,550,270.710678},
+                {265.891862,270.710678,550},
+                {270.710678,265.891862,550},
+                {550,265.891862,270.710678},
+                {550,270.710678,265.891862},
+                {270.710678,550,265.891862},
+                {265.891862,550,270.710678},
+            },
+            {
+                {-250,550,270.710678},
+                {265.891862,550,270.710678},
+                {270.710678,550,265.891862},
+                {270.710678,550,-250},
+                {-250,550,-250},
+                {-250,550,270.710678},
+            },
+            {
+                {270.710678,550,265.891862},
+                {550,270.710678,265.891862},
+                {550,270.710678,-250},
+                {270.710678,550,-250},
+                {270.710678,550,265.891862},
+            },
+            {
+                {550,-250,270.710678},
+                {550,-250,-250},
+                {550,270.710678,-250},
+                {550,270.710678,265.891862},
+                {550,265.891862,270.710678},
+                {550,-250,270.710678},
+            },
+        };
+        auto [panels, adj, top_mesh, bot_mesh] = Mesh::loft_panels(top7, bot7);
+
+        // Color faces: blue=top cap, red=bot cap, gray=quad wall, yellow=tri wall
+        for (size_t i = 0; i < panels.size(); i++) {
+            std::vector<Color> face_colors;
+            face_colors.reserve(panels[i].face_roles.size());
+            for (const auto& [face_key, role] : panels[i].face_roles) {
+                switch (role) {
+                    case LoftFaceRole::TopCap:   face_colors.push_back(Color::blue()); break;
+                    case LoftFaceRole::BotCap:   face_colors.push_back(Color::red());  break;
+                    case LoftFaceRole::TriWall:  face_colors.push_back(Color::yellow()); break;
+                    case LoftFaceRole::QuadWall: face_colors.push_back(Color::grey());break;
+                }
+            }
+            panels[i].mesh.set_facecolors(face_colors);
         }
-        MINI_CHECK(nquad > 0);
-        MINI_CHECK(ntri > 0);
-        std::vector<LoftPanel> panels_no_tri = Mesh::loft_panels(bot, top, 0.001, 0.0, 2.0, true, true);
-        int ntri2 = 0;
-        for (const auto& w : panels_no_tri[0].wall_faces) { if (!w.is_quad) ntri2++; }
-        MINI_CHECK(ntri2 == 0);
+
+        // face centroids labelled with panel index
+        for (size_t i = 0; i < panels.size(); i++) {
+            auto c = panels[i].mesh.centroid();
+            c.name = std::format("p{}", i);
+        }
+
+        // adjacency: for each shared edge — text dot at midpoint labelled "p{i}f{idx}<->p{j}f{idx}"
+        for (const auto& [i, wi, pj, wj] : adj) {
+            const auto& w = panels[i].wall_faces[wi];
+            auto pt = *panels[i].mesh.face_centroid(w.face_key);
+            pt.name = std::format("p{} f{} - p{} f{}", i, w.face_index, pj, panels[pj].wall_faces[wj].face_index);
+        }
+
+        MINI_CHECK(panels.size() == 7);
+        MINI_CHECK(panels[0].mesh.is_valid());
+        MINI_CHECK(panels[1].mesh.is_valid());
+        MINI_CHECK(panels[2].mesh.is_valid());
+        MINI_CHECK(panels[3].mesh.is_valid());
+        MINI_CHECK(panels[4].mesh.is_valid());
+        MINI_CHECK(panels[5].mesh.is_valid());
+        MINI_CHECK(panels[6].mesh.is_valid());
+
+        MINI_CHECK(adj.size() == 9);
+        MINI_CHECK(adj[0].pi == 0 && adj[0].pj == 2);
+        MINI_CHECK(adj[1].pi == 0 && adj[1].pj == 1);
+        MINI_CHECK(adj[2].pi == 1 && adj[2].pj == 3);
+        MINI_CHECK(adj[3].pi == 1 && adj[3].pj == 4);
+        MINI_CHECK(adj[4].pi == 2 && adj[4].pj == 6);
+        MINI_CHECK(adj[5].pi == 2 && adj[5].pj == 3);
+        MINI_CHECK(adj[6].pi == 3 && adj[6].pj == 5);
+        MINI_CHECK(adj[7].pi == 4 && adj[7].pj == 5);
+        MINI_CHECK(adj[8].pi == 5 && adj[8].pj == 6);
+          
     }
 
     MINI_TEST("Mesh", "Boolean Queries") {
         // uncomment #include "mesh.h"
 
-        Mesh mesh;
-        size_t v0 = mesh.add_vertex(Point(0, 0, 0), std::nullopt);
-        size_t v1 = mesh.add_vertex(Point(1, 0, 0), std::nullopt);
-        size_t v2 = mesh.add_vertex(Point(0, 1, 0), std::nullopt);
-        size_t f0 = *mesh.add_face({v0, v1, v2}, std::nullopt);
+        Mesh mesh = Mesh::from_polylines({
+            {
+                {1.28955, 0, 1.127558},
+                {0.85791, 0, 0.225512},
+                {0.64209, -0.866025, -0.225512},
+                {0.85791, -1.732051, 0.225512},
+                {1.458565, -1.732051, 1.127558},
+                {1.50537, -0.866025, 1.578581},
+            },
+            {
+                {0.64209, 0.866025, -0.225512},
+                {0.114274, 0.866025, -0.686294},
+                {-0.00537, 0, -1.578581},
+                {0.21045, -0.866025, -1.127558},
+                {0.64209, -0.866025, -0.225512},
+                {0.85791, 0, 0.225512},
+            },
+            {
+                {1.28955, 1.732051, 1.127558},
+                {0.85791, 1.732051, 0.225512},
+                {0.64209, 0.866025, -0.225512},
+                {0.85791, 0, 0.225512},
+                {1.28955, -0, 1.127558},
+                {1.853404, 0.866025, 1.578581},
+            },
+        }, 0.001);
 
-        bool not_empty = mesh.is_empty();
-        MINI_CHECK(!not_empty);
+        size_t v0 = 1;
+        size_t v1 = 2;
+        size_t v2 = 3;
+        size_t f0 = 0;
+
+        bool empty = mesh.is_empty();
+        MINI_CHECK(!empty);
 
         bool valid = mesh.is_valid();
         MINI_CHECK(valid);
@@ -362,9 +530,12 @@ namespace session_cpp {
         MINI_CHECK(!closed);
 
         bool vertex_on_boundary = mesh.is_vertex_on_boundary(v0);
-        MINI_CHECK(vertex_on_boundary);
+        MINI_CHECK(!vertex_on_boundary);
 
-        bool edge_on_boundary = mesh.is_edge_on_boundary(v0, v1);
+        bool edge_not_on_boundary = mesh.is_edge_on_boundary(v0, v1);
+        MINI_CHECK(!edge_not_on_boundary);
+
+        bool edge_on_boundary = mesh.is_edge_on_boundary(v1, v2);
         MINI_CHECK(edge_on_boundary);
 
         bool face_on_boundary = mesh.is_face_on_boundary(f0);
@@ -406,17 +577,47 @@ namespace session_cpp {
         MINI_CHECK((faces[4] == std::vector<size_t>{0, 4, 7, 3}));
         MINI_CHECK((faces[5] == std::vector<size_t>{1, 2, 6, 5}));
 
-        std::map<size_t, size_t> vindex = mesh.vertex_index();
-        MINI_CHECK(vindex.size() == n_vertices);
-        MINI_CHECK(vindex[0] == 0);
-        MINI_CHECK(vindex[1] == 1);
-        MINI_CHECK(vindex[2] == 2);
-        MINI_CHECK(vindex[3] == 3);
-        MINI_CHECK(vindex[4] == 4);
-        MINI_CHECK(vindex[5] == 5);
-        MINI_CHECK(vindex[6] == 6);
-        MINI_CHECK(vindex[7] == 7);
+        std::map<size_t, size_t> vertex_to_index = mesh.vertex_index();
+        MINI_CHECK(vertex_to_index.size() == n_vertices);
+        MINI_CHECK(vertex_to_index[0] == 0);
+        MINI_CHECK(vertex_to_index[1] == 1);
+        MINI_CHECK(vertex_to_index[2] == 2);
+        MINI_CHECK(vertex_to_index[3] == 3);
+        MINI_CHECK(vertex_to_index[4] == 4);
+        MINI_CHECK(vertex_to_index[5] == 5);
+        MINI_CHECK(vertex_to_index[6] == 6);
+        MINI_CHECK(vertex_to_index[7] == 7);
 
+        // sparse keys: key != index
+        Mesh mesh2;
+        size_t k0 = mesh2.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
+        size_t k1 = mesh2.add_vertex(Point(1.0, 0.0, 0.0), 5);
+        size_t k2 = mesh2.add_vertex(Point(0.0, 1.0, 0.0), 10);
+        MINI_CHECK(k0 == 0);
+        MINI_CHECK(k1 == 5);
+        MINI_CHECK(k2 == 10);
+        vertex_to_index = mesh2.vertex_index();
+        size_t v0 = vertex_to_index[0];
+        size_t v5 = vertex_to_index[5];
+        size_t v10 = vertex_to_index[10];
+        MINI_CHECK(v0  == 0);
+        MINI_CHECK(v5 == 1);
+        MINI_CHECK(v10 == 2);
+    }
+
+    MINI_TEST("Mesh", "Edges") {
+        // uncomment #include "mesh.h"
+
+        Mesh mesh;
+        size_t v0 = mesh.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
+        size_t v1 = mesh.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
+        size_t v2 = mesh.add_vertex(Point(1.0, 1.0, 0.0), std::nullopt);
+        size_t v3 = mesh.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
+        mesh.add_face({v0, v1, v2, v3}, std::nullopt);
+
+        auto edges = mesh.edges();
+        MINI_CHECK(edges.size() == 4);
+        MINI_CHECK((edges[0] == std::make_pair((size_t)0, (size_t)3)));
     }
 
     MINI_TEST("Mesh", "Vertex and Face Operations") {
@@ -466,19 +667,20 @@ namespace session_cpp {
         std::optional<Vector> n1_after = mesh.face_normal(f1);
         MINI_CHECK(n0_after.has_value() && n1_after.has_value());
         MINI_CHECK(n0_after->dot(*n1_after) > 0.0);  // correct: normals agree
-    }
 
-    MINI_TEST("Mesh", "Unweld") {
-        // uncomment #include "mesh.h"
-
-        Mesh box = Mesh::create_box(1.0, 1.0, 1.0);
-        Mesh u = box.unweld();
-
-        MINI_CHECK(u.number_of_faces() == box.number_of_faces());
+        // unweld and weld
+        mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        Mesh u = mesh.unweld();
         MINI_CHECK(u.number_of_vertices() == 24);
-        for (auto& [vk, vdata] : u.vertex)
-            MINI_CHECK(u.vertex_faces(vk).size() == 1);
+
+        Mesh w = u.weld(0.001);
+        MINI_CHECK(w.number_of_vertices() == 8);
+        MINI_CHECK(w.number_of_faces() == 6);
+        for (const auto& [vk, _] : w.vertex)
+            MINI_CHECK(w.vertex_faces(vk).size() == 3);
+
     }
+
 
     MINI_TEST("Mesh", "Connectivity Queries") {
         // uncomment #include "mesh.h"
@@ -611,9 +813,14 @@ namespace session_cpp {
         std::map<size_t, Vector> vnsw = mesh.vertex_normals_weighted(NormalWeighting::Angle);
         MINI_CHECK(vnsw.size() == mesh.number_of_vertices());
         MINI_CHECK(TOLERANCE.is_close(vnsw[v0][2], 1.0));
+
+        // area
+        Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
+        MINI_CHECK(TOLERANCE.is_close(box.area(), 24.0));
+
+        // volume
+        MINI_CHECK(TOLERANCE.is_close(box.volume(), 8.0));
     }
-
-
 
     MINI_TEST("Mesh", "Transformation") {
         // uncomment #include "mesh.h"
@@ -669,6 +876,7 @@ namespace session_cpp {
         mesh.set_facecolors(std::move(fc));
 
         // JSON object
+        mesh.xform = Xform::translation(1.0, 2.0, 3.0);
         nlohmann::ordered_json json = mesh.jsondump();
         Mesh loaded_json = Mesh::jsonload(json);
         MINI_CHECK(loaded_json.name == mesh.name);
@@ -676,6 +884,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_json.color_mode == mesh.color_mode);
         MINI_CHECK(loaded_json.number_of_vertices() == mesh.number_of_vertices());
         MINI_CHECK(loaded_json.number_of_faces() == mesh.number_of_faces());
+        MINI_CHECK(loaded_json.xform == mesh.xform);
 
         // String
         std::string json_string = mesh.json_dumps();

@@ -1,6 +1,6 @@
 #include "session.h"
 
-static double ms_from_polylines = 0, ms_build_panel = 0, ms_brep = 0, ms_pb_dump = 0;
+static double ms_build_panel = 0, ms_brep = 0, ms_pb_dump = 0;
 #define TIMED(var, ...) do { \
     auto _t0 = std::chrono::high_resolution_clock::now(); \
     __VA_ARGS__; \
@@ -78,7 +78,7 @@ static Point vmed(const LoftPanel& p, size_t tvk, size_t bvk) {
 
 /// Creates a named layer node under the session root.
 /// If r >= 0, sets the node color so the Rhino reader can apply it to the Rhino layer.
-static std::shared_ptr<TreeNode> add_layer(Session& session, const std::string& n, int r = -1, int g = -1, int b = -1) {
+static std::shared_ptr<TreeNode> add_group(Session& session, const std::string& n, int r = -1, int g = -1, int b = -1) {
     auto node = std::make_shared<TreeNode>(n);
     if (r >= 0) node->color = Color(r, g, b);
     session.add(node);
@@ -139,22 +139,19 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
     auto top_pts = to_polys(top_raw);
     auto bot_pts = to_polys(bot_raw);
 
-    Mesh top_mesh, bot_mesh;
-    TIMED(ms_from_polylines,
-        top_mesh = Mesh::from_polylines(top_pts, VERTEX_MERGE_PRECISION);
-        bot_mesh = Mesh::from_polylines(bot_pts, VERTEX_MERGE_PRECISION);
-    );
-
-    std::vector<LoftPanel> panels;
+    LoftResult loft_result;
     TIMED(ms_build_panel,
-        panels = Mesh::loft_panels(top_pts, bot_pts, VERTEX_MERGE_PRECISION);
+        loft_result = Mesh::loft_panels(top_pts, bot_pts, VERTEX_MERGE_PRECISION);
     );
+    Mesh& top_mesh = loft_result.top_mesh;
+    Mesh& bot_mesh = loft_result.bot_mesh;
+    std::vector<LoftPanel>& panels = loft_result.panels;
 
     Session session(name);
-    auto layer_bot    = add_layer(session, "bottom mesh",              200, 100,  50);
-    auto layer_top    = add_layer(session, "top mesh",                  50, 150, 220);
-    auto layer_closed = add_layer(session, "loft closed meshes",       180, 180, 180);
-    auto layer_folded = add_layer(session, "folded meshes with holes", 240, 160,  40);
+    auto layer_bot    = add_group(session, "bottom mesh",              200, 100,  50);
+    auto layer_top    = add_group(session, "top mesh",                  50, 150, 220);
+    auto layer_closed = add_group(session, "loft closed meshes",       180, 180, 180);
+    auto layer_folded = add_group(session, "folded meshes with holes", 240, 160,  40);
     session.add(session.add_mesh(std::make_shared<Mesh>(top_mesh)), layer_bot);
     session.add(session.add_mesh(std::make_shared<Mesh>(bot_mesh)), layer_top);
     for (auto& p : panels)
@@ -213,15 +210,14 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
         }
     }
 
-    auto layer_brep = add_layer(session, "brep panels", 100, 200, 120);
+    auto layer_brep = add_group(session, "brep panels", 100, 200, 120);
     for (auto& panel : panels) {
         std::vector<NurbsCurve> outer_curves;
         std::vector<std::vector<NurbsCurve>> hole_curves;
-        {
-            auto cap_lkeys = *panel.mesh.face_vertices(panel.top_face_key);
-            std::vector<Point> cap_pts;
-            for (auto lk : cap_lkeys) cap_pts.push_back(*panel.mesh.vertex_position(lk));
-            outer_curves.push_back(make_polyline_loop(cap_pts));
+        if (!panel.top_vertices.empty()) {
+            std::vector<Point> pts;
+            for (auto lk : panel.top_vertices) pts.push_back(*panel.mesh.vertex_position(lk));
+            outer_curves.push_back(make_polyline_loop(pts));
             hole_curves.push_back({});
         }
         for (const auto& w : panel.wall_faces) {
@@ -243,8 +239,10 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
             }
             hole_curves.push_back(make_wall_circles(pt0, pb0, pb1, a, b, circle_rad, division_dist));
         }
-        if (!panel.bot_pts.empty()) {
-            outer_curves.push_back(make_polyline_loop(panel.bot_pts));
+        if (!panel.bot_vertices.empty()) {
+            std::vector<Point> pts;
+            for (auto lk : panel.bot_vertices) pts.push_back(*panel.mesh.vertex_position(lk));
+            outer_curves.push_back(make_polyline_loop(pts));
             hole_curves.push_back({});
         }
         BRep brep;
@@ -276,7 +274,6 @@ int main() {
     double total = std::chrono::duration<double,std::milli>(
         std::chrono::high_resolution_clock::now() - t_main).count();
     std::cout << "\n=== Profile (all 12 datasets) ===\n"
-              << "  from_polylines : " << (int)ms_from_polylines << " ms\n"
               << "  build_panel    : " << (int)ms_build_panel    << " ms\n"
               << "  brep           : " << (int)ms_brep           << " ms\n"
               << "  pb_dump        : " << (int)ms_pb_dump        << " ms\n"

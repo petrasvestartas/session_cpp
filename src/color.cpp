@@ -177,49 +177,28 @@ bool Color::operator!=(const Color &other) const { return !(*this == other); }
 // Presets
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-Color Color::white() { return Color(255, 255, 255, 255, "white"); }
-
-Color Color::black() { return Color(0, 0, 0, 255, "black"); }
-
-Color Color::grey() { return Color(128, 128, 128, 255, "grey"); }
-
-Color Color::red() { return Color(255, 0, 0, 255, "red"); }
-
-Color Color::orange() { return Color(255, 128, 0, 255, "orange"); }
-
-Color Color::yellow() { return Color(255, 255, 0, 255, "yellow"); }
-
-Color Color::lime() { return Color(128, 255, 0, 255, "lime"); }
-
-Color Color::green() { return Color(0, 255, 0, 255, "green"); }
-
-Color Color::mint() { return Color(0, 255, 128, 255, "mint"); }
-
-Color Color::cyan() { return Color(0, 255, 255, 255, "cyan"); }
-
-Color Color::azure() { return Color(0, 128, 255, 255, "azure"); }
-
-Color Color::blue() { return Color(0, 0, 255, 255, "blue"); }
-
-Color Color::violet() { return Color(128, 0, 255, 255, "violet"); }
-
-Color Color::magenta() { return Color(255, 0, 255, 255, "magenta"); }
-
-Color Color::pink() { return Color(255, 0, 128, 255, "pink"); }
-
-Color Color::maroon() { return Color(128, 0, 0, 255, "maroon"); }
-
-Color Color::brown() { return Color(128, 64, 0, 255, "brown"); }
-
-Color Color::olive() { return Color(128, 128, 0, 255, "olive"); }
-
-Color Color::teal() { return Color(0, 128, 128, 255, "teal"); }
-
-Color Color::navy() { return Color(0, 0, 128, 255, "navy"); }
-
-Color Color::purple() { return Color(128, 0, 128, 255, "purple"); }
-
-Color Color::silver() { return Color(192, 192, 192, 255, "silver"); }
+Color Color::white()   { thread_local static Color _c(255, 255, 255, 255, "white");   return _c; }
+Color Color::black()   { thread_local static Color _c(0, 0, 0, 255, "black");         return _c; }
+Color Color::grey()    { thread_local static Color _c(128, 128, 128, 255, "grey");    return _c; }
+Color Color::red()     { thread_local static Color _c(255, 0, 0, 255, "red");         return _c; }
+Color Color::orange()  { thread_local static Color _c(255, 128, 0, 255, "orange");    return _c; }
+Color Color::yellow()  { thread_local static Color _c(255, 255, 0, 255, "yellow");    return _c; }
+Color Color::lime()    { thread_local static Color _c(128, 255, 0, 255, "lime");      return _c; }
+Color Color::green()   { thread_local static Color _c(0, 255, 0, 255, "green");       return _c; }
+Color Color::mint()    { thread_local static Color _c(0, 255, 128, 255, "mint");      return _c; }
+Color Color::cyan()    { thread_local static Color _c(0, 255, 255, 255, "cyan");      return _c; }
+Color Color::azure()   { thread_local static Color _c(0, 128, 255, 255, "azure");     return _c; }
+Color Color::blue()    { thread_local static Color _c(0, 0, 255, 255, "blue");        return _c; }
+Color Color::violet()  { thread_local static Color _c(128, 0, 255, 255, "violet");    return _c; }
+Color Color::magenta() { thread_local static Color _c(255, 0, 255, 255, "magenta");   return _c; }
+Color Color::pink()    { thread_local static Color _c(255, 0, 128, 255, "pink");      return _c; }
+Color Color::maroon()  { thread_local static Color _c(128, 0, 0, 255, "maroon");      return _c; }
+Color Color::brown()   { thread_local static Color _c(128, 64, 0, 255, "brown");      return _c; }
+Color Color::olive()   { thread_local static Color _c(128, 128, 0, 255, "olive");     return _c; }
+Color Color::teal()    { thread_local static Color _c(0, 128, 128, 255, "teal");      return _c; }
+Color Color::navy()    { thread_local static Color _c(0, 0, 128, 255, "navy");        return _c; }
+Color Color::purple()  { thread_local static Color _c(128, 0, 128, 255, "purple");    return _c; }
+Color Color::silver()  { thread_local static Color _c(192, 192, 192, 255, "silver");  return _c; }
 
 std::vector<Color> Color::palette() {
     return { red(), orange(), yellow(), lime(), green(), mint(), cyan(), azure(), blue(), violet(), magenta(), pink() };

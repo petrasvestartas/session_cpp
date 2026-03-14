@@ -5,6 +5,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <limits>
@@ -208,6 +209,68 @@ Mesh Mesh::unweld() const {
             new_vkeys.push_back(m.add_vertex(Point(vd.x, vd.y, vd.z)));
         }
         m.add_face(new_vkeys);
+    }
+    return m;
+}
+
+Mesh Mesh::weld(double tolerance) const {
+    if (vertex.empty()) return Mesh();
+
+    std::vector<size_t> vkeys;
+    std::vector<Point> positions;
+    vkeys.reserve(vertex.size());
+    positions.reserve(vertex.size());
+    for (const auto& [vk, vd] : vertex) {
+        vkeys.push_back(vk);
+        positions.push_back(vd.position());
+    }
+    size_t n = vkeys.size();
+
+    std::vector<size_t> parent(n);
+    std::iota(parent.begin(), parent.end(), 0);
+    std::function<size_t(size_t)> find = [&](size_t x) -> size_t {
+        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    };
+
+    if (tolerance > 0.0) {
+        std::vector<BoundingBox> boxes;
+        boxes.reserve(n);
+        for (const auto& p : positions)
+            boxes.push_back(BoundingBox::from_point(p, tolerance));
+        double ws = BVH::compute_world_size(boxes);
+        BVH bvh = BVH::from_boxes(boxes, ws);
+        auto [pairs, ignore1, ignore2] = bvh.check_all_collisions(boxes);
+        for (const auto& [i, j] : pairs) {
+            if (positions[i].distance(positions[j]) <= tolerance) {
+                size_t ri = find(i), rj = find(j);
+                if (ri != rj) parent[ri] = rj;
+            }
+        }
+    }
+
+    std::map<size_t, size_t> root_to_rep;
+    for (size_t i = 0; i < n; i++) {
+        size_t root = find(i);
+        auto [it, inserted] = root_to_rep.emplace(root, vkeys[i]);
+        if (!inserted && vkeys[i] < it->second) it->second = vkeys[i];
+    }
+    std::map<size_t, size_t> vkey_to_rep;
+    for (size_t i = 0; i < n; i++)
+        vkey_to_rep[vkeys[i]] = root_to_rep.at(find(i));
+
+    Mesh m;
+    std::set<size_t> added;
+    for (size_t i = 0; i < n; i++) {
+        size_t rep = vkey_to_rep.at(vkeys[i]);
+        if (added.insert(rep).second)
+            m.add_vertex(vertex.at(rep).position(), rep);
+    }
+    for (const auto& [fk, fvkeys] : face) {
+        std::vector<size_t> new_vkeys;
+        new_vkeys.reserve(fvkeys.size());
+        for (size_t vk : fvkeys) new_vkeys.push_back(vkey_to_rep.at(vk));
+        m.add_face(new_vkeys, fk);
     }
     return m;
 }
@@ -524,6 +587,29 @@ std::optional<Vector> Mesh::face_normal(size_t face_key) const {
     return std::nullopt;
 }
 
+std::optional<Point> Mesh::face_centroid(size_t face_key) const {
+    auto verts = face_vertices(face_key);
+    if (!verts || verts->empty()) return std::nullopt;
+    double x = 0, y = 0, z = 0;
+    for (auto vk : *verts) {
+        auto p = vertex_position(vk);
+        if (!p) return std::nullopt;
+        x += (*p)[0]; y += (*p)[1]; z += (*p)[2];
+    }
+    double n = (double)verts->size();
+    return Point(x / n, y / n, z / n);
+}
+
+Point Mesh::centroid() const {
+    double x = 0, y = 0, z = 0;
+    for (const auto& [vk, v] : vertex) {
+        auto p = v.position();
+        x += p[0]; y += p[1]; z += p[2];
+    }
+    double n = vertex.empty() ? 1.0 : (double)vertex.size();
+    return Point(x / n, y / n, z / n);
+}
+
 std::optional<Vector> Mesh::vertex_normal(size_t vertex_key) const {
     return vertex_normal_weighted(vertex_key, NormalWeighting::Area);
 }
@@ -593,6 +679,36 @@ std::optional<double> Mesh::face_area(size_t face_key) const {
         area += u.cross(v).magnitude() * 0.5;
     }
     return area;
+}
+
+double Mesh::area() const {
+    double total = 0.0;
+    for (const auto& [fk, _] : face) {
+        auto a = face_area(fk);
+        if (a) total += *a;
+    }
+    return total;
+}
+
+double Mesh::volume() const {
+    double total = 0.0;
+    for (const auto& [fk, vkeys] : face) {
+        if (vkeys.size() < 3) continue;
+        auto p0o = vertex_position(vkeys[0]);
+        if (!p0o) continue;
+        const auto& p0 = *p0o;
+        for (size_t i = 1; i + 1 < vkeys.size(); ++i) {
+            auto p1o = vertex_position(vkeys[i]);
+            auto p2o = vertex_position(vkeys[i + 1]);
+            if (!p1o || !p2o) continue;
+            const auto& p1 = *p1o;
+            const auto& p2 = *p2o;
+            total += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+                   + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
+                   + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+        }
+    }
+    return std::abs(total) / 6.0;
 }
 
 std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_key) const {
@@ -1203,7 +1319,7 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
         }
         auto b_tris = cdt_triangulate(b_border_2d, b_holes_2d);
         std::vector<size_t> bot_fvkeys(poly_infos[0].bot_n);
-        for (size_t i = 0; i < poly_infos[0].bot_n; ++i) bot_fvkeys[i] = bot_vkeys[i];
+        for (size_t i = 0; i < poly_infos[0].bot_n; ++i) bot_fvkeys[i] = bot_vkeys[poly_infos[0].bot_n - 1 - i];
         auto fk_bot = mesh.add_face(bot_fvkeys);
         if (fk_bot.has_value()) {
             if (!b_holes_2d.empty()) {
@@ -1250,6 +1366,16 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
             std::vector<std::array<size_t,3>> tri_list;
             for (const auto& f : t_tris) tri_list.push_back({top_vkeys[f[0]], top_vkeys[f[1]], top_vkeys[f[2]]});
             mesh.triangulation[fk_top.value()] = tri_list;
+        }
+        for (size_t h = 1; h < poly_infos.size(); ++h) {
+            size_t bn = poly_infos[h].bot_n, bo = poly_infos[h].bot_off;
+            size_t tn = poly_infos[h].top_n, t_off = poly_infos[h].top_off;
+            std::vector<size_t> bh(bn);
+            for (size_t j = 0; j < bn; ++j) bh[j] = bot_vkeys[bo + bn - 1 - j];
+            mesh.add_face(bh);
+            std::vector<size_t> th(tn);
+            for (size_t j = 0; j < tn; ++j) th[j] = top_vkeys[t_off + j];
+            mesh.add_face(th);
         }
     }
 
@@ -1501,6 +1627,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["vertex"] = vertex_data;
 
     data["widths"] = widths;
+    data["xform"] = xform.jsondump();
 
     return data;
 }
@@ -1630,6 +1757,9 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
 
     if (data.contains("widths") && data["widths"].is_array()) {
         mesh.widths = data["widths"].get<std::vector<double>>();
+    }
+    if (data.contains("xform")) {
+        mesh.xform = Xform::jsonload(data["xform"]);
     }
 
     if (data.contains("objectcolor")) {
@@ -1900,7 +2030,7 @@ static Point lp_face_centroid(const Mesh& m, size_t fk) {
     return Point(cx/vkeys.size(), cy/vkeys.size(), cz/vkeys.size());
 }
 
-std::vector<LoftPanel> Mesh::loft_panels(
+LoftResult Mesh::loft_panels(
     const std::vector<std::vector<Point>>& top_polygons,
     const std::vector<std::vector<Point>>& bot_polygons,
     double merge_precision,
@@ -1936,7 +2066,8 @@ std::vector<LoftPanel> Mesh::loft_panels(
 
     std::vector<LoftPanel> panels;
     panels.reserve(face_match.size());
-    for (auto& [tfk, bfk] : face_match) {
+    for (size_t si = 0; si < face_match.size(); si++) {
+        auto& [tfk, bfk] = face_match[si];
         LoftPanel panel;
         panel.top_face_key = 0;
         panel.bot_face_key = 0;
@@ -1991,22 +2122,22 @@ std::vector<LoftPanel> Mesh::loft_panels(
             std::reverse(bot_pts.begin(), bot_pts.end());
             std::reverse(bot_vkeys.begin(), bot_vkeys.end());
         }
-        panel.bot_pts = bot_pts;
-
         for (int i = 0; i < n; i++) {
             size_t lk = panel.mesh.add_vertex(top_pts[i]);
             panel.orig_top_to_local[top_vkeys[i]] = lk;
+            panel.top_vertices.push_back(lk);
         }
         for (int j = 0; j < m; j++) {
             size_t lk = panel.mesh.add_vertex(bot_pts[j]);
             panel.orig_bot_to_local[bot_vkeys[j]] = lk;
+            panel.bot_vertices.push_back(lk);
         }
 
         if (add_caps) {
             std::vector<size_t> top_cap;
             for (auto vk : top_vkeys) top_cap.push_back(panel.orig_top_to_local[vk]);
             auto fk = panel.mesh.add_face(top_cap);
-            if (fk) panel.top_face_key = *fk;
+            panel.top_face_key = fk;
             if (fk && top_cap.size() >= 3) {
                 auto [nx, ny, nz] = lp_newell_normal(top_pts);
                 double mag = std::sqrt(nx*nx + ny*ny + nz*nz);
@@ -2127,7 +2258,7 @@ std::vector<LoftPanel> Mesh::loft_panels(
             for (int j = 0; j < m; j++)
                 bot_cap.push_back(panel.orig_bot_to_local[bot_vkeys[j]]);
             auto bot_cap_fk = panel.mesh.add_face(bot_cap);
-            if (bot_cap_fk) panel.bot_face_key = *bot_cap_fk;
+            panel.bot_face_key = bot_cap_fk;
             if (bot_cap_fk && bot_cap.size() >= 3) {
                 auto [bcnx, bcny, bcnz] = lp_newell_normal(bot_pts);
                 double bcmag = std::sqrt(bcnx*bcnx + bcny*bcny + bcnz*bcnz);
@@ -2154,9 +2285,44 @@ std::vector<LoftPanel> Mesh::loft_panels(
             }
         }
 
+        std::map<size_t,size_t> fkey_to_idx;
+        size_t fi = 0;
+        for (const auto& [fk, _] : panel.mesh.face)
+            fkey_to_idx[fk] = fi++;
+        for (auto& w : panel.wall_faces) {
+            w.face_index = fkey_to_idx[w.face_key];
+            panel.face_roles[w.face_key] = w.is_quad ? LoftFaceRole::QuadWall : LoftFaceRole::TriWall;
+        }
+        if (panel.top_face_key) panel.face_roles[*panel.top_face_key] = LoftFaceRole::TopCap;
+        if (panel.bot_face_key) panel.face_roles[*panel.bot_face_key] = LoftFaceRole::BotCap;
+
         panels.push_back(std::move(panel));
     }
-    return panels;
+    std::map<std::pair<size_t,size_t>, std::pair<size_t,size_t>> edge_to_wall;
+    for (size_t pi = 0; pi < panels.size(); pi++)
+        for (size_t wi = 0; wi < panels[pi].wall_faces.size(); wi++) {
+            const auto& w = panels[pi].wall_faces[wi];
+            if (!w.is_quad) continue;
+            edge_to_wall[{w.top_v0, w.top_v1}] = {pi, wi};
+        }
+    std::vector<LoftAdjPair> adjacency;
+    for (size_t pi = 0; pi < panels.size(); pi++)
+        for (size_t wi = 0; wi < panels[pi].wall_faces.size(); wi++) {
+            const auto& w = panels[pi].wall_faces[wi];
+            if (!w.is_quad) continue;
+            auto it = edge_to_wall.find({w.top_v1, w.top_v0});
+            if (it != edge_to_wall.end() && it->second.first > pi)
+                adjacency.push_back({pi, wi, it->second.first, it->second.second});
+        }
+    Mesh top_ordered, bot_ordered;
+    for (size_t i = 0; i < panels.size(); i++) {
+        std::vector<size_t> tvks, bvks;
+        for (auto lk : panels[i].top_vertices) tvks.push_back(top_ordered.add_vertex(*panels[i].mesh.vertex_position(lk)));
+        for (auto lk : panels[i].bot_vertices) bvks.push_back(bot_ordered.add_vertex(*panels[i].mesh.vertex_position(lk)));
+        top_ordered.add_face(tvks, i);
+        bot_ordered.add_face(bvks, i);
+    }
+    return {std::move(panels), std::move(adjacency), std::move(top_ordered), std::move(bot_ordered)};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

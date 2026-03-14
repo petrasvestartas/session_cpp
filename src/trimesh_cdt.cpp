@@ -136,15 +136,6 @@ static EdgeContainsResult EdgeContains(const Edge* edge, const Vertex2* v)
     return EdgeContainsResult::neither;
 }
 
-// Angle at b between rays b→a and b→c (used for local-minimum classification).
-static double GetAngle(const Point64& a, const Point64& b, const Point64& c)
-{
-    double abx = static_cast<double>(b.x - a.x);
-    double aby = static_cast<double>(b.y - a.y);
-    double bcx = static_cast<double>(b.x - c.x);
-    double bcy = static_cast<double>(b.y - c.y);
-    return std::atan2(abx * bcy - aby * bcx, abx * bcx + aby * bcy);
-}
 
 static void RemoveEdgeFromVertex(Vertex2* vert, Edge* edge)
 {

@@ -21,7 +21,9 @@
 
 namespace session_cpp {
 
-struct LoftPanel;  // defined in loft section below
+struct LoftPanel;     // defined in loft section below
+struct LoftAdjPair;   // defined in loft section below
+struct LoftResult;    // defined in loft section below
 
 
 enum class ColorMode : int {
@@ -243,7 +245,7 @@ public:
      * @param skip_triangles  If true, omits triangle fill for unmatched edges.
      * @return One LoftPanel per matched face pair, in centroid-distance order.
      */
-    static std::vector<LoftPanel> loft_panels(
+    static LoftResult loft_panels(
         const std::vector<std::vector<Point>>& top_polygons,
         const std::vector<std::vector<Point>>& bot_polygons,
         double merge_precision      = 0.001,
@@ -284,7 +286,7 @@ public:
     bool is_face_on_boundary(size_t face_key) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Basic Queries
+    // Attributes
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Get number of vertices
@@ -314,18 +316,6 @@ public:
      * @return A pair of (vertices, faces) where faces use sequential indices.
      */
     std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
-    
-
-
-    /// Clear all mesh data
-    void clear();
-
-    /// Return a new mesh with all vertices duplicated so each face has its own unique vertices.
-    /// After unweld, number_of_vertices() == sum of each face's vertex count.
-    Mesh unweld() const;
-
-    /// Unify face winding by BFS; returns true if any face was flipped
-    bool unify_winding();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Vertex and Face Operations
@@ -346,6 +336,20 @@ public:
      * @return The face key, or nullopt if invalid.
      */
     std::optional<size_t> add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey = std::nullopt);
+
+    /// Clear all mesh data
+    void clear();
+
+    /// Return a new mesh with all vertices duplicated so each face has its own unique vertices.
+    /// After unweld, number_of_vertices() == sum of each face's vertex count.
+    Mesh unweld() const;
+
+    /// Merge vertices within Euclidean distance <= tolerance using BVH spatial acceleration.
+    /// Degenerate faces (collapsed vertices) are discarded. tolerance=0 merges only exact duplicates.
+    Mesh weld(double tolerance = 0.0) const;
+
+    /// Unify face winding by BFS; returns true if any face was flipped
+    bool unify_winding();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Connectivity Queries
@@ -388,6 +392,12 @@ public:
 
     /// Calculate the normal of a face
     std::optional<Vector> face_normal(size_t face_key) const;
+
+    /// Calculate the centroid of a face (average of vertex positions)
+    std::optional<Point> face_centroid(size_t face_key) const;
+
+    /// Calculate the centroid of the mesh (average of all vertex positions)
+    Point centroid() const;
     
     /// Calculate the normal of a vertex (area-weighted)
     std::optional<Vector> vertex_normal(size_t vertex_key) const;
@@ -397,7 +407,13 @@ public:
     
     /// Calculate the area of a face
     std::optional<double> face_area(size_t face_key) const;
-    
+
+    /// Calculate the total surface area of all faces
+    double area() const;
+
+    /// Calculate the enclosed volume of a closed mesh
+    double volume() const;
+
     /// Calculate the angle at a vertex in a face
     std::optional<double> vertex_angle_in_face(size_t vertex_key, size_t face_key) const;
 
@@ -485,21 +501,42 @@ public:
 // Loft
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+
+
+enum class LoftFaceRole { TopCap, BotCap, QuadWall, TriWall };
+
 struct LoftWallFace {
     size_t face_key;        ///< local panel mesh face key
+    size_t face_index;      ///< 0-based position of face_key in panel mesh.face (sorted map order)
     bool   is_quad;
     size_t top_v0, top_v1; ///< original top-mesh vertex keys
     size_t bot_v0, bot_v1; ///< original bot-mesh vertex keys (valid if is_quad)
 };
 
+// serve as a bridge between the original input meshes and the new local panel mesh:
 struct LoftPanel {
     Mesh   mesh;
-    size_t top_face_key;                        ///< local key of top cap face
-    size_t bot_face_key;                        ///< local key of bot cap face (0 if no caps)
-    std::vector<LoftWallFace>  wall_faces;
+    std::optional<size_t> top_face_key;         ///< local key of top cap face (nullopt if no cap)
+    std::optional<size_t> bot_face_key;         ///< local key of bot cap face (nullopt if no cap)
+    std::vector<LoftWallFace>      wall_faces;
+    std::map<size_t,LoftFaceRole>  face_roles;  ///< face_key → role for every face in mesh
+    //  original vertex key → local panel mesh vertex key
     std::map<size_t,size_t>    orig_top_to_local;
     std::map<size_t,size_t>    orig_bot_to_local;
-    std::vector<Point>         bot_pts;
+    std::vector<size_t>        top_vertices;
+    std::vector<size_t>        bot_vertices;
+};
+
+struct LoftAdjPair {
+    size_t pi, wi;   ///< panel index + wall_faces index for side i
+    size_t pj, wj;   ///< panel index + wall_faces index for side j
+};
+
+struct LoftResult {
+    std::vector<LoftPanel>   panels;
+    std::vector<LoftAdjPair> adjacency;
+    Mesh top_mesh;   ///< merged top input mesh (from_polylines of all top polygons)
+    Mesh bot_mesh;   ///< merged bot input mesh (from_polylines of all bot polygons)
 };
 
 } // namespace session_cpp

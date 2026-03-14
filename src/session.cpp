@@ -139,6 +139,12 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep) {
   return tree_node;
 }
 
+std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
+  auto node = std::make_shared<TreeNode>(group_name);
+  add(node);
+  return node;
+}
+
 void Session::add(std::shared_ptr<TreeNode> node,
                   std::shared_ptr<TreeNode> parent) {
   if (parent == nullptr) {
