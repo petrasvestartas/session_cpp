@@ -339,11 +339,11 @@ Mesh TrimeshGrid::mesh() const {
     std::vector<double> vnx(nv_total, 0.0), vny(nv_total, 0.0), vnz(nv_total, 0.0);
     for (auto& [fi, vids] : result.face) {
         if (vids.size() < 3) continue;
-        auto& p0 = result.vertex.at(vids[0]);
-        auto& p1 = result.vertex.at(vids[1]);
-        auto& p2 = result.vertex.at(vids[2]);
-        double e1x = p1.x-p0.x, e1y = p1.y-p0.y, e1z = p1.z-p0.z;
-        double e2x = p2.x-p0.x, e2y = p2.y-p0.y, e2z = p2.z-p0.z;
+        Point pos0 = result.vertex.at(vids[0]).position();
+        Point pos1 = result.vertex.at(vids[1]).position();
+        Point pos2 = result.vertex.at(vids[2]).position();
+        double e1x = pos1[0]-pos0[0], e1y = pos1[1]-pos0[1], e1z = pos1[2]-pos0[2];
+        double e2x = pos2[0]-pos0[0], e2y = pos2[1]-pos0[1], e2z = pos2[2]-pos0[2];
         double fnx = e1y*e2z - e1z*e2y, fny = e1z*e2x - e1x*e2z, fnz = e1x*e2y - e1y*e2x;
         for (auto vi : vids) { vnx[vi] += fnx; vny[vi] += fny; vnz[vi] += fnz; }
     }

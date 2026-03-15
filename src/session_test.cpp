@@ -202,28 +202,28 @@ MINI_TEST("Session", "Tree Transformation Hierarchy") {
     auto& m1 = (*transformed.meshes)[0];
     MINI_CHECK(m1->vertex.size() == 8);
     for (size_t i = 0; i < 8; ++i) {
-        const auto& v = m1->vertex.at(i);
-        MINI_CHECK(std::abs(v.x - expected_box1[i][0]) < 1e-4);
-        MINI_CHECK(std::abs(v.y - expected_box1[i][1]) < 1e-4);
-        MINI_CHECK(std::abs(v.z - expected_box1[i][2]) < 1e-4);
+        Point vp = m1->vertex.at(i).position();
+        MINI_CHECK(std::abs(vp[0] - expected_box1[i][0]) < 1e-4);
+        MINI_CHECK(std::abs(vp[1] - expected_box1[i][1]) < 1e-4);
+        MINI_CHECK(std::abs(vp[2] - expected_box1[i][2]) < 1e-4);
     }
 
     auto& m2 = (*transformed.meshes)[1];
     MINI_CHECK(m2->vertex.size() == 8);
     for (size_t i = 0; i < 8; ++i) {
-        const auto& v = m2->vertex.at(i);
-        MINI_CHECK(std::abs(v.x - expected_box2[i][0]) < 1e-4);
-        MINI_CHECK(std::abs(v.y - expected_box2[i][1]) < 1e-4);
-        MINI_CHECK(std::abs(v.z - expected_box2[i][2]) < 1e-4);
+        Point vp = m2->vertex.at(i).position();
+        MINI_CHECK(std::abs(vp[0] - expected_box2[i][0]) < 1e-4);
+        MINI_CHECK(std::abs(vp[1] - expected_box2[i][1]) < 1e-4);
+        MINI_CHECK(std::abs(vp[2] - expected_box2[i][2]) < 1e-4);
     }
 
     auto& m3 = (*transformed.meshes)[2];
     MINI_CHECK(m3->vertex.size() == 8);
     for (size_t i = 0; i < 8; ++i) {
-        const auto& v = m3->vertex.at(i);
-        MINI_CHECK(std::abs(v.x - expected_box3[i][0]) < 1e-4);
-        MINI_CHECK(std::abs(v.y - expected_box3[i][1]) < 1e-4);
-        MINI_CHECK(std::abs(v.z - expected_box3[i][2]) < 1e-4);
+        Point vp = m3->vertex.at(i).position();
+        MINI_CHECK(std::abs(vp[0] - expected_box3[i][0]) < 1e-4);
+        MINI_CHECK(std::abs(vp[1] - expected_box3[i][1]) < 1e-4);
+        MINI_CHECK(std::abs(vp[2] - expected_box3[i][2]) < 1e-4);
     }
 
     for (auto* mesh : {&m1, &m2, &m3}) {

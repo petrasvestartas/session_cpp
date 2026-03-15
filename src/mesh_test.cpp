@@ -1,4 +1,5 @@
 ﻿#include "mini_test.h"
+#include "fmt/format.h"
 #include "mesh.h"
 #include "color.h"
 #include "point.h"
@@ -453,14 +454,14 @@ namespace session_cpp {
         // face centroids labelled with panel index
         for (size_t i = 0; i < panels.size(); i++) {
             auto c = panels[i].mesh.centroid();
-            c.name = std::format("p{}", i);
+            c.name = fmt::format("p{}", i);
         }
 
         // adjacency: for each shared edge — text dot at midpoint labelled "p{i}f{idx}<->p{j}f{idx}"
         for (const auto& [i, wi, pj, wj] : adj) {
             const auto& w = panels[i].wall_faces[wi];
             auto pt = *panels[i].mesh.face_centroid(w.face_key);
-            pt.name = std::format("p{} f{} - p{} f{}", i, w.face_index, pj, panels[pj].wall_faces[wj].face_index);
+            pt.name = fmt::format("p{} f{} - p{} f{}", i, w.face_index, pj, panels[pj].wall_faces[wj].face_index);
         }
 
         MINI_CHECK(panels.size() == 7);

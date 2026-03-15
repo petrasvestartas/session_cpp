@@ -248,7 +248,7 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
       // Extract vertices from mesh
       std::vector<Point> points;
       for (const auto& [key, vertex] : geom_ptr->vertex) {
-        points.push_back(Point(vertex.x, vertex.y, vertex.z));
+        points.push_back(vertex.position());
       }
       if (points.empty()) {
         return BoundingBox::from_point(Point(0, 0, 0), inflate);
