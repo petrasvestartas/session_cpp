@@ -52,6 +52,11 @@ set(UNITY_BUILD_EXCLUDE
     src/knot.cpp
     src/mesh.cpp
     src/brep.cpp
+    src/mesh_iso.cpp
+    src/graph.cpp
+    src/tree.cpp
+    src/treenode.cpp
+    src/session.cpp
 )
 
 #############################################################################################
@@ -266,6 +271,7 @@ set(MINITEST_SOURCES
     src/treenode_test.cpp
     src/vertex_test.cpp
     src/brep_test.cpp
+    src/mesh_iso_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

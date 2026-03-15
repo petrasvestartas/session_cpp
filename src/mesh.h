@@ -298,24 +298,33 @@ public:
     /// Get number of edges
     size_t number_of_edges() const;
 
-    /// Returns all undirected edges as (u, v) pairs in stable sorted order.
-    /// linecolors[i] corresponds to edges()[i].
-    std::vector<std::pair<size_t, size_t>> edges() const;
-
     /// Calculate Euler characteristic (V - E + F)
     int euler() const;
-
-    /**
-     * @brief Create a mapping from sparse vertex keys to sequential indices.
-     * @return A map of vertex_key -> sequential_index (0, 1, 2, ...).
-     */
-    std::map<size_t, size_t> vertex_index() const;
 
     /**
      * @brief Export vertices and faces with sequential 0-based indices.
      * @return A pair of (vertices, faces) where faces use sequential indices.
      */
     std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
+
+    /// Returns all undirected edges as (u, v) pairs in stable sorted order.
+    /// linecolors[i] corresponds to edges()[i].
+    std::vector<std::pair<size_t, size_t>> edges() const;
+
+    /// Returns boundary (naked=true) or interior (naked=false) edges.
+    std::vector<std::pair<size_t, size_t>> naked_edges(bool boundary = true) const;
+
+    /// Returns boundary (naked=true) or interior (naked=false) vertices.
+    std::vector<size_t> naked_vertices(bool boundary = true) const;
+
+    /// Returns boundary (naked=true) or interior (naked=false) faces.
+    std::vector<size_t> naked_faces(bool boundary = true) const;
+
+    /**
+     * @brief Create a mapping from sparse vertex keys to sequential indices.
+     * @return A map of vertex_key -> sequential_index (0, 1, 2, ...).
+     */
+    std::map<size_t, size_t> vertex_index() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Vertex and Face Operations
@@ -336,6 +345,15 @@ public:
      * @return The face key, or nullopt if invalid.
      */
     std::optional<size_t> add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey = std::nullopt);
+
+    /// Remove a face and its orphaned halfedges. Resizes color arrays to new counts.
+    void remove_face(size_t fkey);
+
+    /// Remove a vertex and all faces that use it, then clean up orphaned halfedges.
+    void remove_vertex(size_t vkey);
+
+    /// Remove an edge, its adjacent faces, and its halfedges.
+    void remove_edge(size_t u, size_t v);
 
     /// Clear all mesh data
     void clear();

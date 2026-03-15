@@ -578,6 +578,9 @@ namespace session_cpp {
         MINI_CHECK((faces[4] == std::vector<size_t>{0, 4, 7, 3}));
         MINI_CHECK((faces[5] == std::vector<size_t>{1, 2, 6, 5}));
 
+        auto edges = mesh.edges();
+        MINI_CHECK(edges.size() == 12);
+
         std::map<size_t, size_t> vertex_to_index = mesh.vertex_index();
         MINI_CHECK(vertex_to_index.size() == n_vertices);
         MINI_CHECK(vertex_to_index[0] == 0);
@@ -604,6 +607,26 @@ namespace session_cpp {
         MINI_CHECK(v0  == 0);
         MINI_CHECK(v5 == 1);
         MINI_CHECK(v10 == 2);
+
+        // naked (closed box: no naked edges before removal)
+        MINI_CHECK(mesh.naked_edges(true).size() == 0);
+        MINI_CHECK(mesh.naked_faces(false).size() == 6);
+        // remove one face — box becomes open, check naked
+        size_t fk0 = mesh.face.begin()->first;
+        mesh.remove_face(fk0);
+        auto ne = mesh.naked_edges(true);
+        MINI_CHECK(ne.size() == 4);
+        MINI_CHECK(ne[0] == std::make_pair(0ul, 1ul));
+        auto ni = mesh.naked_edges(false);
+        MINI_CHECK(ni.size() == 8);
+        auto nv = mesh.naked_vertices(true);
+        MINI_CHECK(nv.size() == 4);
+        auto nvi = mesh.naked_vertices(false);
+        MINI_CHECK(nvi.size() == 4);
+        auto nf = mesh.naked_faces(true);
+        MINI_CHECK(nf.size() == 4);
+        auto nfi = mesh.naked_faces(false);
+        MINI_CHECK(nfi.size() == 1);
     }
 
     MINI_TEST("Mesh", "Edges") {
@@ -618,7 +641,7 @@ namespace session_cpp {
 
         auto edges = mesh.edges();
         MINI_CHECK(edges.size() == 4);
-        MINI_CHECK((edges[0] == std::make_pair((size_t)0, (size_t)3)));
+        MINI_CHECK(edges[0] == std::make_pair(v0, v1));
     }
 
     MINI_TEST("Mesh", "Vertex and Face Operations") {
@@ -679,6 +702,62 @@ namespace session_cpp {
         MINI_CHECK(w.number_of_faces() == 6);
         for (const auto& [vk, _] : w.vertex)
             MINI_CHECK(w.vertex_faces(vk).size() == 3);
+
+        // remove_face
+        Mesh mesh3;
+        size_t a0 = mesh3.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
+        size_t a1 = mesh3.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
+        size_t a2 = mesh3.add_vertex(Point(1.0, 1.0, 0.0), std::nullopt);
+        size_t a3 = mesh3.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
+        size_t fa = *mesh3.add_face({a0, a1, a2, a3}, std::nullopt);
+        mesh3.remove_face(fa);
+        MINI_CHECK(mesh3.number_of_faces() == 0);
+        MINI_CHECK(mesh3.number_of_edges() == 0);
+        MINI_CHECK(mesh3.number_of_vertices() == 4);
+
+        // remove_vertex
+        Mesh mesh4;
+        size_t b0 = mesh4.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
+        size_t b1 = mesh4.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
+        size_t b2 = mesh4.add_vertex(Point(1.0, 1.0, 0.0), std::nullopt);
+        size_t b3 = mesh4.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
+        mesh4.add_face({b0, b1, b2, b3}, std::nullopt);
+        mesh4.remove_vertex(b0);
+        MINI_CHECK(mesh4.vertex.find(b0) == mesh4.vertex.end());
+        MINI_CHECK(mesh4.number_of_faces() == 0);
+        MINI_CHECK(mesh4.number_of_vertices() == 3);
+
+        // remove_edge
+        Mesh mesh5;
+        size_t c0 = mesh5.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
+        size_t c1 = mesh5.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
+        size_t c2 = mesh5.add_vertex(Point(1.0, 1.0, 0.0), std::nullopt);
+        size_t c3 = mesh5.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
+        size_t c4 = mesh5.add_vertex(Point(2.0, 0.0, 0.0), std::nullopt);
+        size_t c5 = mesh5.add_vertex(Point(2.0, 1.0, 0.0), std::nullopt);
+        mesh5.add_face({c0, c1, c2, c3}, std::nullopt);
+        mesh5.add_face({c1, c4, c5, c2}, std::nullopt);
+        mesh5.remove_edge(c1, c2);
+        MINI_CHECK(mesh5.number_of_faces() == 0);
+        MINI_CHECK(mesh5.number_of_edges() == 0);
+        MINI_CHECK(mesh5.number_of_vertices() == 6);
+
+        // remove_face then check naked: 2-face mesh, remove one face, remaining face is naked
+        Mesh mesh6;
+        size_t d0 = mesh6.add_vertex(Point(0.0, 0.0, 0.0), std::nullopt);
+        size_t d1 = mesh6.add_vertex(Point(1.0, 0.0, 0.0), std::nullopt);
+        size_t d2 = mesh6.add_vertex(Point(1.0, 1.0, 0.0), std::nullopt);
+        size_t d3 = mesh6.add_vertex(Point(0.0, 1.0, 0.0), std::nullopt);
+        size_t d4 = mesh6.add_vertex(Point(2.0, 0.0, 0.0), std::nullopt);
+        size_t d5 = mesh6.add_vertex(Point(2.0, 1.0, 0.0), std::nullopt);
+        size_t fd0 = *mesh6.add_face({d0, d1, d2, d3}, std::nullopt);
+        mesh6.add_face({d1, d4, d5, d2}, std::nullopt);
+        mesh6.remove_face(fd0);
+        MINI_CHECK(mesh6.number_of_faces() == 1);
+        MINI_CHECK(mesh6.naked_edges(true).size() == 4);
+        MINI_CHECK(mesh6.naked_edges(false).size() == 0);
+        MINI_CHECK(mesh6.naked_faces(true).size() == 1);
+        MINI_CHECK(mesh6.naked_faces(false).size() == 0);
 
     }
 

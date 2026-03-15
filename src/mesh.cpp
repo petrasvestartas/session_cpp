@@ -106,11 +106,45 @@ size_t Mesh::number_of_edges() const {
 }
 
 std::vector<std::pair<size_t, size_t>> Mesh::edges() const {
+    std::set<std::pair<size_t, size_t>> seen;
     std::vector<std::pair<size_t, size_t>> result;
-    for (const auto& [u, neighbors] : halfedge)
-        for (const auto& [v, face_opt] : neighbors)
-            if (!face_opt.has_value())
-                result.push_back({u, v});
+    for (const auto& [u, neighbors] : halfedge) {
+        for (const auto& [v, _] : neighbors) {
+            auto edge = std::minmax(u, v);
+            if (seen.insert(edge).second)
+                result.push_back(edge);
+        }
+    }
+    return result;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::naked_edges(bool boundary) const {
+    std::set<std::pair<size_t, size_t>> seen;
+    std::vector<std::pair<size_t, size_t>> result;
+    for (const auto& [u, neighbors] : halfedge) {
+        for (const auto& [v, _] : neighbors) {
+            auto edge = std::minmax(u, v);
+            if (!seen.insert(edge).second) continue;
+            if (is_edge_on_boundary(u, v) == boundary)
+                result.push_back(edge);
+        }
+    }
+    return result;
+}
+
+std::vector<size_t> Mesh::naked_vertices(bool boundary) const {
+    std::vector<size_t> result;
+    for (const auto& [vk, _] : vertex)
+        if (is_vertex_on_boundary(vk) == boundary)
+            result.push_back(vk);
+    return result;
+}
+
+std::vector<size_t> Mesh::naked_faces(bool boundary) const {
+    std::vector<size_t> result;
+    for (const auto& [fk, _] : face)
+        if (is_face_on_boundary(fk) == boundary)
+            result.push_back(fk);
     return result;
 }
 
@@ -408,6 +442,113 @@ std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::o
     triangle_face_subidx_cache.clear();
     vertices_cache.clear();
     return face_key;
+}
+
+void Mesh::remove_face(size_t fkey) {
+    auto it = face.find(fkey);
+    if (it == face.end()) return;
+    const auto& verts = it->second;
+    size_t n = verts.size();
+    for (size_t i = 0; i < n; ++i) {
+        size_t u = verts[i];
+        size_t v = verts[(i + 1) % n];
+        auto uit = halfedge.find(u);
+        if (uit == halfedge.end()) continue;
+        auto vit = uit->second.find(v);
+        if (vit == uit->second.end()) continue;
+        vit->second = std::nullopt;
+        auto vit2 = halfedge.find(v);
+        if (vit2 != halfedge.end()) {
+            auto uit2 = vit2->second.find(u);
+            if (uit2 != vit2->second.end() && !uit2->second.has_value()) {
+                uit->second.erase(v);
+                vit2->second.erase(u);
+            }
+        }
+    }
+    face.erase(fkey);
+    triangulation.erase(fkey);
+    facedata.erase(fkey);
+    face_holes.erase(fkey);
+    size_t n_edges = number_of_edges();
+    if (linecolors.size() > n_edges) linecolors.resize(n_edges);
+    if (widths.size() > n_edges) widths.resize(n_edges);
+    size_t n_faces = face.size();
+    if (facecolors.size() > n_faces) facecolors.resize(n_faces);
+    triangle_bvh_built = false;
+    triangle_bvh.reset();
+    triangle_boxes_cache.clear();
+    triangle_aabbs_cache.clear();
+    triangle_indices_cache.clear();
+    triangle_face_subidx_cache.clear();
+    vertices_cache.clear();
+}
+
+void Mesh::remove_vertex(size_t vkey) {
+    if (vertex.find(vkey) == vertex.end()) return;
+    std::vector<size_t> faces_to_remove;
+    for (const auto& [fk, verts] : face)
+        for (size_t vk : verts)
+            if (vk == vkey) { faces_to_remove.push_back(fk); break; }
+    for (size_t fk : faces_to_remove)
+        remove_face(fk);
+    auto hit = halfedge.find(vkey);
+    if (hit != halfedge.end()) {
+        for (auto& [v, _] : hit->second) {
+            auto vit = halfedge.find(v);
+            if (vit != halfedge.end()) vit->second.erase(vkey);
+        }
+        halfedge.erase(vkey);
+    }
+    for (auto it = edgedata.begin(); it != edgedata.end(); ) {
+        if (it->first.first == vkey || it->first.second == vkey)
+            it = edgedata.erase(it);
+        else ++it;
+    }
+    vertex.erase(vkey);
+    size_t n_vertices = vertex.size();
+    if (pointcolors.size() > n_vertices) pointcolors.resize(n_vertices);
+    triangle_bvh_built = false;
+    triangle_bvh.reset();
+    triangle_boxes_cache.clear();
+    triangle_aabbs_cache.clear();
+    triangle_indices_cache.clear();
+    triangle_face_subidx_cache.clear();
+    vertices_cache.clear();
+}
+
+void Mesh::remove_edge(size_t u, size_t v) {
+    std::vector<size_t> faces_to_remove;
+    auto uit = halfedge.find(u);
+    if (uit != halfedge.end()) {
+        auto vit = uit->second.find(v);
+        if (vit != uit->second.end() && vit->second.has_value())
+            faces_to_remove.push_back(*vit->second);
+    }
+    auto vit = halfedge.find(v);
+    if (vit != halfedge.end()) {
+        auto uit2 = vit->second.find(u);
+        if (uit2 != vit->second.end() && uit2->second.has_value())
+            faces_to_remove.push_back(*uit2->second);
+    }
+    for (size_t fk : faces_to_remove)
+        remove_face(fk);
+    auto hit = halfedge.find(u);
+    if (hit != halfedge.end()) hit->second.erase(v);
+    auto hit2 = halfedge.find(v);
+    if (hit2 != halfedge.end()) hit2->second.erase(u);
+    edgedata.erase({u, v});
+    edgedata.erase({v, u});
+    size_t n_edges = number_of_edges();
+    if (linecolors.size() > n_edges) linecolors.resize(n_edges);
+    if (widths.size() > n_edges) widths.resize(n_edges);
+    triangle_bvh_built = false;
+    triangle_bvh.reset();
+    triangle_boxes_cache.clear();
+    triangle_aabbs_cache.clear();
+    triangle_indices_cache.clear();
+    triangle_face_subidx_cache.clear();
+    vertices_cache.clear();
 }
 
 std::optional<Point> Mesh::vertex_position(size_t vertex_key) const {
