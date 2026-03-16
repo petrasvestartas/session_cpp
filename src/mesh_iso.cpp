@@ -375,16 +375,16 @@ static Mesh marching_cubes_from_field(const std::vector<double>& field,
                     int v1 = make_vertex(tris[t + 1]);
                     int v2 = make_vertex(tris[t + 2]);
                     if (v0 >= 0 && v1 >= 0 && v2 >= 0) {
-                        mesh.add_face({(size_t)v0, (size_t)v1, (size_t)v2});
+                        mesh.add_face({(size_t)v0, (size_t)v2, (size_t)v1});
                         double ax=vpos[v0*3],ay=vpos[v0*3+1],az=vpos[v0*3+2];
                         double bx=vpos[v1*3],by=vpos[v1*3+1],bz=vpos[v1*3+2];
                         double cx=vpos[v2*3],cy=vpos[v2*3+1],cz=vpos[v2*3+2];
                         double ue=bx-ax,uf=by-ay,ug=bz-az;
                         double ve=cx-ax,vf=cy-ay,vg=cz-az;
-                        double nx=uf*vg-ug*vf,ny=ug*ve-ue*vg,nz=ue*vf-uf*ve;
-                        vacc[v0*3]+=nx; vacc[v0*3+1]+=ny; vacc[v0*3+2]+=nz;
-                        vacc[v1*3]+=nx; vacc[v1*3+1]+=ny; vacc[v1*3+2]+=nz;
-                        vacc[v2*3]+=nx; vacc[v2*3+1]+=ny; vacc[v2*3+2]+=nz;
+                        double fnx=uf*vg-ug*vf,fny=ug*ve-ue*vg,fnz=ue*vf-uf*ve;
+                        vacc[v0*3]-=fnx; vacc[v0*3+1]-=fny; vacc[v0*3+2]-=fnz;
+                        vacc[v1*3]-=fnx; vacc[v1*3+1]-=fny; vacc[v1*3+2]-=fnz;
+                        vacc[v2*3]-=fnx; vacc[v2*3+1]-=fny; vacc[v2*3+2]-=fnz;
                     }
                 }
             }
@@ -392,11 +392,15 @@ static Mesh marching_cubes_from_field(const std::vector<double>& field,
     }
     size_t nv = vacc.size() / 3;
     for (size_t vi = 0; vi < nv; ++vi) {
-        double nx=vacc[vi*3], ny=vacc[vi*3+1], nz=vacc[vi*3+2];
-        double len = std::sqrt(nx*nx + ny*ny + nz*nz);
+        double vnx=vacc[vi*3], vny=vacc[vi*3+1], vnz=vacc[vi*3+2];
+        double len = std::sqrt(vnx*vnx + vny*vny + vnz*vnz);
         if (len > 1e-12)
-            mesh.vertex[vi].set_normal(nx/len, ny/len, nz/len);
+            mesh.vertex[vi].set_normal(vnx/len, vny/len, vnz/len);
     }
+    mesh.halfedge.clear();
+    mesh.clear_pointcolors();
+    mesh.clear_facecolors();
+    mesh.clear_linecolors();
     return mesh;
 }
 
@@ -427,7 +431,12 @@ static Mesh merge_meshes(const Mesh& m1, const Mesh& m2) {
         for (size_t idx : f) nf.push_back(idx + offset);
         faces.push_back(nf);
     }
-    return Mesh::from_vertices_and_faces(verts, faces);
+    Mesh result = Mesh::from_vertices_and_faces(verts, faces);
+    result.halfedge.clear();
+    result.clear_pointcolors();
+    result.clear_facecolors();
+    result.clear_linecolors();
+    return result;
 }
 
 double MeshIso::eval(TpmsType type, double x, double y, double z, double period) {

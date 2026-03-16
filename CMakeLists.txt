@@ -235,18 +235,11 @@ foreach(MAIN_ID 1 2 3 4 5)
     endif()
 endforeach()
 
-add_executable(bench_mesh bench_mesh.cpp)
-target_link_libraries(bench_mesh PRIVATE session_core)
-LINK_PROTOBUF(bench_mesh)
-if(ENABLE_PCH)
-    target_precompile_headers(bench_mesh PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-endif()
-
 #############################################################################################
 # TESTS
 #############################################################################################
 set(MINITEST_SOURCES
-    src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp
+    src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp src/session_config_test.cpp
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
     src/xform_test.cpp src/mesh_test.cpp src/knot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/closest_test.cpp
@@ -258,6 +251,7 @@ set(MINITEST_SOURCES
     src/trimesh_grid_test.cpp
     src/boundingbox_test.cpp
     src/bvh_test.cpp
+    src/rtree_test.cpp
     src/aabb_test.cpp
     src/edge_test.cpp
     src/encoders_test.cpp

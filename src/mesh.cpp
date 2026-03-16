@@ -2895,4 +2895,91 @@ std::ostream& operator<<(std::ostream& os, const Mesh& mesh) {
     return os;
 }
 
+Mesh Mesh::from_polyline_pairs(const std::vector<Polyline>& pairs, double scale) {
+    if (pairs.empty() || pairs.size() % 2 != 0) return Mesh();
+
+    // Number of open (non-duplicate) points in a polyline
+    auto open_count = [](const Polyline& pl) -> size_t {
+        size_t n = pl.point_count();
+        if (n > 1 && pl.is_closed()) return n - 1;
+        return n;
+    };
+
+    // Validate: each top/bottom pair must have the same vertex count and at least 3 points
+    for (size_t i = 0; i < pairs.size(); i += 2) {
+        size_t a = open_count(pairs[i]);
+        size_t b = open_count(pairs[i + 1]);
+        if (a != b || a < 3) return Mesh();
+    }
+
+    // Separate into top / bottom polylines, strip closing vertex, apply scale
+    std::vector<Polyline> top_polys, bot_polys;
+    top_polys.reserve(pairs.size() / 2);
+    bot_polys.reserve(pairs.size() / 2);
+
+    for (size_t i = 0; i < pairs.size(); i += 2) {
+        auto make_scaled = [&](const Polyline& src) -> Polyline {
+            size_t limit = open_count(src);
+            std::vector<Point> pts;
+            pts.reserve(limit);
+            for (size_t j = 0; j < limit; ++j) {
+                Point p = src.get_point(j);
+                pts.push_back(Point(p[0] / scale, p[1] / scale, p[2] / scale));
+            }
+            return Polyline(pts);
+        };
+        top_polys.push_back(make_scaled(pairs[i]));
+        bot_polys.push_back(make_scaled(pairs[i + 1]));
+    }
+
+    return loft(top_polys, bot_polys, /*cap=*/true);
+}
+
+void Mesh::from_polyline_pairs_vnf(
+    const std::vector<Polyline>& pairs,
+    std::vector<double>& out_vertices,
+    std::vector<double>& out_normals,
+    std::vector<int>& out_triangles,
+    double scale)
+{
+    Mesh m = from_polyline_pairs(pairs, scale);
+    if (m.is_empty()) return;
+
+    auto face_nrms = m.face_normals();
+
+    for (size_t fk : m.faces()) {
+        auto maybe_verts = m.face_vertices(fk);
+        if (!maybe_verts || maybe_verts->size() < 3) continue;
+        const auto& fverts = *maybe_verts;
+
+        // Collect all vertex positions up front; skip degenerate faces
+        std::vector<Point> fpts;
+        fpts.reserve(fverts.size());
+        bool valid = true;
+        for (size_t vk : fverts) {
+            auto pos = m.vertex_position(vk);
+            if (!pos) { valid = false; break; }
+            fpts.push_back(*pos);
+        }
+        if (!valid) continue;
+
+        Vector nrm(0.0, 0.0, 1.0);
+        auto it = face_nrms.find(fk);
+        if (it != face_nrms.end()) nrm = it->second;
+
+        // Fan-triangulate and emit flat VNF (each triangle owns its 3 vertex slots)
+        for (size_t i = 1; i + 1 < fpts.size(); ++i) {
+            for (const Point* p : {&fpts[0], &fpts[i], &fpts[i + 1]}) {
+                out_triangles.push_back(static_cast<int>(out_triangles.size()));
+                out_vertices.push_back((*p)[0]);
+                out_vertices.push_back((*p)[1]);
+                out_vertices.push_back((*p)[2]);
+                out_normals.push_back(nrm[0]);
+                out_normals.push_back(nrm[1]);
+                out_normals.push_back(nrm[2]);
+            }
+        }
+    }
+}
+
 } // namespace session_cpp

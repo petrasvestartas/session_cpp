@@ -241,8 +241,14 @@ public:
                        double proportion0 = 0.0, double proportion1 = 0.0);
 
     /// Extend segment equally on both ends (static utility)
-    static void extend_segment_equally(Point& segment_start, Point& segment_end, 
+    static void extend_segment_equally(Point& segment_start, Point& segment_end,
                                       double dist, double proportion = 0.0);
+
+    /// Extend a line segment independently at each end by a real (normalized) distance
+    static void extend_line_segment(Point& start, Point& end, double d0, double d1);
+
+    /// Shrink a line segment equally from both ends by a fraction of its length (not normalized)
+    static void shrink_line_segment(Point& start, Point& end, double dist);
 
     /// Extend polyline segment equally
     void extend_segment_equally(int segment_id, double dist, double proportion = 0.0);

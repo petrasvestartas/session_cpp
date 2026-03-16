@@ -840,6 +840,19 @@ void Polyline::extend_segment_equally(int segment_id, double dist, double propor
     }
 }
 
+void Polyline::extend_line_segment(Point& start, Point& end, double d0, double d1) {
+    Vector v = end - start;
+    v.normalize_self();
+    start = start - v * d0;
+    end = end + v * d1;
+}
+
+void Polyline::shrink_line_segment(Point& start, Point& end, double dist) {
+    Vector v = end - start;
+    start = start + v * dist;
+    end = end - v * dist;
+}
+
 bool Polyline::is_clockwise(const Plane& pln) const {
     (void)pln;  // Reserved for future use - may project to plane
     if (point_count() < 3) return false;

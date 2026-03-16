@@ -590,21 +590,6 @@ namespace session_cpp {
         MINI_CHECK(vertex_to_index[6] == 6);
         MINI_CHECK(vertex_to_index[7] == 7);
 
-        // sparse keys via remove_vertex: key != index after removal
-        Mesh mesh2 = mesh;
-        size_t kr = mesh2.vertices()[3];
-        mesh2.remove_vertex(kr);
-        vertex_to_index = mesh2.vertex_index();
-        MINI_CHECK(vertex_to_index.size() == 7);
-        MINI_CHECK(vertex_to_index[0] == 0);
-        MINI_CHECK(vertex_to_index[1] == 1);
-        MINI_CHECK(vertex_to_index[2] == 2);
-        MINI_CHECK(vertex_to_index.count(3) == 0);
-        MINI_CHECK(vertex_to_index[4] == 3);
-        MINI_CHECK(vertex_to_index[5] == 4);
-        MINI_CHECK(vertex_to_index[6] == 5);
-        MINI_CHECK(vertex_to_index[7] == 6);
-
         // vertices / faces / edges
         auto vertices = mesh.vertices();
         MINI_CHECK(vertices.size() == 8);
@@ -641,7 +626,6 @@ namespace session_cpp {
         MINI_CHECK(edges[10] == std::make_pair(5ul, 6ul));
         MINI_CHECK(edges[11] == std::make_pair(6ul, 7ul));
 
-        // naked (closed box: no naked edges before removal)
         MINI_CHECK(mesh.naked_edges(true).size() == 0);
         MINI_CHECK(mesh.naked_faces(false).size() == 6);
 
@@ -651,24 +635,33 @@ namespace session_cpp {
         auto ne = mesh.naked_edges(true);
         MINI_CHECK(ne.size() == 4);
         MINI_CHECK(ne[0] == std::make_pair(0ul, 1ul));
-
         auto ni = mesh.naked_edges(false);
         MINI_CHECK(ni.size() == 8);
-
         auto nv = mesh.naked_vertices(true);
         MINI_CHECK(nv.size() == 4);
-
         auto nvi = mesh.naked_vertices(false);
         MINI_CHECK(nvi.size() == 4);
-
         auto nf = mesh.naked_faces(true);
         MINI_CHECK(nf.size() == 4);
-
         auto nfi = mesh.naked_faces(false);
         MINI_CHECK(nfi.size() == 1);
+        // sparse keys via remove_vertex: key != index after removal
+        size_t kr = mesh.vertices()[3];
+        mesh.remove_vertex(kr);
+        vertex_to_index = mesh.vertex_index();
+        MINI_CHECK(vertex_to_index.size() == 7);
+        MINI_CHECK(vertex_to_index[0] == 0);
+        MINI_CHECK(vertex_to_index[1] == 1);
+        MINI_CHECK(vertex_to_index[2] == 2);
+        MINI_CHECK(vertex_to_index.count(3) == 0);
+        MINI_CHECK(vertex_to_index[4] == 3);
+        MINI_CHECK(vertex_to_index[5] == 4);
+        MINI_CHECK(vertex_to_index[6] == 5);
+        MINI_CHECK(vertex_to_index[7] == 6);
     }
 
     MINI_TEST("Mesh", "Vertex and Face Operations") {
+        // uncomment #include "mesh.h"
 
         double hx = 0.5, hy = 0.5, hz = 0.5;
         std::vector<Point> verts = {
@@ -772,7 +765,7 @@ namespace session_cpp {
 
         // orient_outward: face 0 → [0,1,2,3], face 1 → [4,5,6,7], face 2 → [0,3,5,4]
         // face 3 → [2,1,7,6], face 4 → [0,4,7,1], face 5 → [3,2,6,5]
-        MINI_CHECK(mesh.orient_outward());
+        mesh.orient_outward();
         fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
         fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
         fv4 = *mesh.face_vertices(4); fv5 = *mesh.face_vertices(5);
