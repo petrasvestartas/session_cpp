@@ -42,14 +42,31 @@ int main() {
     for (const auto& f : faces)
         mesh.add_face(f);
 
-    // Remove
+    // Removes vertex 0 + its 3 adjacent faces (0,2,4)
+    // vertices() → [1,2,3,4,5,6,7]   ← position 0 is now key 1
+    // faces()    → [1,3,5]
     mesh.remove_vertex(0);
+
+    // Removes faces adjacent to (1,2): face 5 [1,2,6,5] (face 0 already gone)
+    // vertices() → [1,2,3,4,5,6,7]   ← vertex keys unchanged
+    // faces()    → [1,3]
+    // edges()    → (1,2) pair gone
     mesh.remove_edge(1,2);
-    mesh.remove_face(0);
-    for (const auto& e : mesh.edges())
-        std::cout << e.first << " " << e.second << std::endl;
-    for (const auto& f : mesh.faces())
-        std::cout << f << std::endl;
+
+    // Removes face 1 [4,5,6,7]
+    // faces()    → [3]                ← only face 3 [2,3,7,6] remains
+    mesh.remove_face(1);
+
+    // Removes everything
+    mesh.clear();
+
+    // Bring back original mesh for testing batch operations
+    for (const auto& v : vertices)
+        mesh.add_vertex(v);
+
+    for (const auto& f : faces)
+        mesh.add_face(f);
+
     session.add_mesh(std::make_shared<Mesh>(mesh));
 
 
