@@ -294,8 +294,14 @@ MINI_TEST("Primitives", "Nurbssurface Quad Sphere") {
 
 MINI_TEST("Primitives", "Nurbssurface Ruled") {
     // uncomment #include "nurbssurface.h"
-    std::vector<Point> pts_a = {Point(3, 0, 0), Point(-2, 0, 5)};
-    std::vector<Point> pts_b = {Point(3, 5, 5), Point(-2, 5, 0)};
+    std::vector<Point> pts_a = {
+        Point(3.0, 0.0, 0.0),
+        Point(-2.0, 0.0, 5.0),
+    };
+    std::vector<Point> pts_b = {
+        Point(3.0, 5.0, 5.0),
+        Point(-2.0, 5.0, 0.0),
+    };
     NurbsCurve crvA = NurbsCurve::create(false, 1, pts_a);
     NurbsCurve crvB = NurbsCurve::create(false, 1, pts_b);
     NurbsSurface srf = Primitives::create_ruled(crvA, crvB);
@@ -1024,7 +1030,12 @@ MINI_TEST("Primitives", "Nurbscurve Interpolated") {
     MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(8), points[6]));
 
     // Test with 4 points
-    std::vector<Point> pts4 = {Point(0, 0, 0), Point(1, 2, 0), Point(3, 1, 0), Point(5, 3, 0)};
+    std::vector<Point> pts4 = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 2.0, 0.0),
+        Point(3.0, 1.0, 0.0),
+        Point(5.0, 3.0, 0.0),
+    };
     NurbsCurve c4 = Primitives::create_interpolated(pts4, CurveKnotStyle::Chord);
     MINI_CHECK(c4.is_valid());
     MINI_CHECK(c4.degree() == 3);

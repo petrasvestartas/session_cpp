@@ -35,7 +35,12 @@ MINI_TEST("Triangulation2D", "Square") {
     Polyline boundary({
         Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0), Point(0, 0, 0)});
     auto tris = Triangulation2D::triangulate(boundary);
-    std::vector<Point> pts = {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)};
+    std::vector<Point> pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+    };
     double a = total_area(pts, tris);
 
     MINI_CHECK(tris.size() == 2);
@@ -120,7 +125,12 @@ MINI_TEST("Triangulation2D", "Winding Correction") {
         Point(0, 1, 0), Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
     });
     std::vector<Triangle2D> tris = Triangulation2D::triangulate(boundary);
-    std::vector<Point> pts = {Point(0, 1, 0), Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0)};
+    std::vector<Point> pts = {
+        Point(0.0, 1.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+    };
     double a = total_area(pts, tris);
 
     MINI_CHECK(tris.size() == 2);

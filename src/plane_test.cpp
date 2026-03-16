@@ -51,7 +51,11 @@ MINI_TEST("Plane", "Constructor") {
     Plane pl_pn = Plane::from_point_normal(p, n);
 
     // From three points
-    std::vector<Point> pts = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0)};
+    std::vector<Point> pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+    };
     Plane pl_pts = Plane::from_points(pts);
 
     // From two points

@@ -766,7 +766,13 @@ namespace session_cpp {
     MINI_TEST("Mesh", "Connectivity Queries") {
         // uncomment #include "mesh.h"
 
-        std::vector<Point> pts = {{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, {2,0,0}};
+        std::vector<Point> pts = {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+        };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0,1,2,3}, {1,4,2}});
         auto vi = mesh.vertex_index();
         auto vkeys = mesh.vertices();
@@ -838,7 +844,12 @@ namespace session_cpp {
     MINI_TEST("Mesh", "Geometric Properties") {
         // uncomment #include "mesh.h"
 
-        std::vector<Point> pts = {{0,0,0}, {1,0,0}, {-1,0,0}, {0,1,0}};
+        std::vector<Point> pts = {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(-1.0, 0.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0,1,3}, {0,3,2}});
         auto vi = mesh.vertex_index();
         auto vkeys = mesh.vertices();
@@ -904,7 +915,11 @@ namespace session_cpp {
     MINI_TEST("Mesh", "Transformation") {
         // uncomment #include "mesh.h"
 
-        std::vector<Point> pts = {{0,0,0}, {1,0,0}, {0,1,0}};
+        std::vector<Point> pts = {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0,1,2}});
         size_t v0 = mesh.vertices()[0];
 
@@ -974,7 +989,12 @@ namespace session_cpp {
         MINI_CHECK(loaded_file.number_of_faces() == mesh.number_of_faces());
 
         // Triangulation roundtrip
-        std::vector<std::vector<Point>> polys = {{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}};
+        std::vector<std::vector<Point>> polys = {{
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        }};
         Mesh pmesh = Mesh::from_polylines(polys, std::nullopt);
         MINI_CHECK(!pmesh.get_triangulation().empty());
         nlohmann::ordered_json pjson = pmesh.jsondump();
@@ -1024,7 +1044,12 @@ namespace session_cpp {
         MINI_CHECK(loaded_file.guid == mesh.guid);
 
         // Triangulation roundtrip
-        std::vector<std::vector<Point>> polys = {{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}};
+        std::vector<std::vector<Point>> polys = {{
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        }};
         Mesh pmesh = Mesh::from_polylines(polys, std::nullopt);
         MINI_CHECK(!pmesh.get_triangulation().empty());
         Mesh loaded_tri = Mesh::pb_loads(pmesh.pb_dumps());
