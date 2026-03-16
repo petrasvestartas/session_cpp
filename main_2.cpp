@@ -67,7 +67,21 @@ int main() {
     for (const auto& f : faces)
         mesh.add_face(f);
 
+    // Unweld
+    mesh.unweld();
+    std::cout << (mesh.number_of_vertices() == 24) << std::endl;
+
+    // Weld
+    mesh.weld();
+    std::cout << (mesh.number_of_vertices() == 8) << std::endl;
+
+    // Unify winding
+    mesh.unify_winding();
+    
+
     session.add_mesh(std::make_shared<Mesh>(mesh));
+
+
 
 
     std::string fp = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data" / "vertex_and_face_attributes.pb").string();
