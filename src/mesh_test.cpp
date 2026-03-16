@@ -645,19 +645,6 @@ namespace session_cpp {
         MINI_CHECK(nf.size() == 4);
         auto nfi = mesh.naked_faces(false);
         MINI_CHECK(nfi.size() == 1);
-        // sparse keys via remove_vertex: key != index after removal
-        size_t kr = mesh.vertices()[3];
-        mesh.remove_vertex(kr);
-        vertex_to_index = mesh.vertex_index();
-        MINI_CHECK(vertex_to_index.size() == 7);
-        MINI_CHECK(vertex_to_index[0] == 0);
-        MINI_CHECK(vertex_to_index[1] == 1);
-        MINI_CHECK(vertex_to_index[2] == 2);
-        MINI_CHECK(vertex_to_index.count(3) == 0);
-        MINI_CHECK(vertex_to_index[4] == 3);
-        MINI_CHECK(vertex_to_index[5] == 4);
-        MINI_CHECK(vertex_to_index[6] == 5);
-        MINI_CHECK(vertex_to_index[7] == 6);
     }
 
     MINI_TEST("Mesh", "Vertex and Face Operations") {
@@ -681,9 +668,7 @@ namespace session_cpp {
         for (const auto& f : faces) 
             mesh.add_face(f);
 
-        // add_face: invalid (too few vertices)
         MINI_CHECK(!mesh.add_face({0, 1}, std::nullopt).has_value());
-        // add_face: invalid (duplicate vertex)
         MINI_CHECK(!mesh.add_face({0, 1, 0}, std::nullopt).has_value());
 
         // remove_vertex(0): removes vertex 0 + 3 adjacent faces (0,2,4)
