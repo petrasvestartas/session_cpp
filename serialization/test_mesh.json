@@ -73,7 +73,7 @@
     255
   ],
   "facedata": null,
-  "guid": "1be6c78d-0e84-4571-8e75-510d72d333da",
+  "guid": "699c5f53-5ee9-4488-be61-666dc9137f59",
   "halfedge": {
     "0": {
       "1": 2,
@@ -173,7 +173,7 @@
     "a": 255,
     "b": 0,
     "g": 0,
-    "guid": "e8c857b4-1aad-418c-86c5-ab37e86c50df",
+    "guid": "5e1e568d-1303-470e-80fd-2b06b75c1bab",
     "name": "my_color",
     "r": 255,
     "type": "Color"
@@ -280,7 +280,7 @@
     1.0
   ],
   "xform": {
-    "guid": "6080297d-2766-4ff0-b3ba-d2a4a718b302",
+    "guid": "b9d33e1d-b647-465c-b758-b761014a89e4",
     "m": [
       1.0,
       0.0,
