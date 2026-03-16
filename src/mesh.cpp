@@ -105,6 +105,22 @@ size_t Mesh::number_of_edges() const {
     return count;
 }
 
+std::vector<size_t> Mesh::vertices() const {
+    std::vector<size_t> result;
+    result.reserve(vertex.size());
+    for (const auto& [k, _] : vertex)
+        result.push_back(k);
+    return result;
+}
+
+std::vector<size_t> Mesh::faces() const {
+    std::vector<size_t> result;
+    result.reserve(face.size());
+    for (const auto& [k, _] : face)
+        result.push_back(k);
+    return result;
+}
+
 std::vector<std::pair<size_t, size_t>> Mesh::edges() const {
     std::set<std::pair<size_t, size_t>> seen;
     std::vector<std::pair<size_t, size_t>> result;

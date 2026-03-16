@@ -111,10 +111,7 @@ struct VertexData {
     }
 };
 
-/**
- * @class Mesh
- * @brief A halfedge mesh data structure for representing polygonal surfaces.
- */
+/// A halfedge mesh data structure for representing polygonal surfaces.
 class Mesh {
 public:
     std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge;  ///< Halfedge connectivity
@@ -183,68 +180,44 @@ public:
     bool operator!=(const Mesh& other) const;
     ~Mesh();
 
-    /**
-     * @brief Create a mesh from a list of vertices and faces.
-     * @param vertices List of vertex positions.
-     * @param faces List of faces as lists of vertex indices.
-     * @return The constructed mesh.
-     */
+    /// Create a mesh from a list of vertices and faces.
     static Mesh from_vertices_and_faces(const std::vector<Point>& vertices, const std::vector<std::vector<size_t>>& faces);
 
-    /**
-     * @brief Create a mesh from a list of polygons.
-     * @param polygons List of polygons as point lists.
-     * @param precision Optional precision for vertex merging.
-     * @return The constructed mesh.
-     */
+    /// Create a mesh from a list of polygons.
+    /// precision: optional tolerance for vertex merging.
     static Mesh from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
     
-    /**
-     * @brief Create a mesh from a list of lines.
-     * @param lines List of lines to build the mesh from.
-     * @param delete_boundary_face If true, removes the boundary face after construction.
-     * @param precision Optional precision for vertex merging.
-     * @return The constructed mesh.
-     */
+    /// Create a mesh from a list of lines.
+    /// delete_boundary_face: if true, removes the boundary face.
+    /// precision: optional tolerance for vertex merging.
     static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);
 
-    /**
-     * @brief Create a mesh from a polygon boundary with optional holes.
-     * @param polylines List of polylines (boundary + holes).
-     * @param sort_by_bbox If true, finds the largest polyline by bbox diagonal as boundary.
-     * @return The triangulated mesh.
-     */
+    /// Create a mesh from a polygon boundary with optional holes.
+    /// sort_by_bbox: if true, picks the largest polyline by bbox diagonal as boundary.
     static Mesh from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox = false);
 
-    /**
-     * @brief Loft between two sets of polylines to create a mesh volume.
-     * @param polylines0 Bottom polylines (border + optional holes).
-     * @param polylines1 Top polylines (border + optional holes).
-     * @param cap If true, adds bottom and top cap faces.
-     * @return The lofted mesh with side faces and optional caps.
-     */
+    /// Loft between two sets of polylines to create a mesh volume.
+    /// cap: if true, adds bottom and top cap faces.
     static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap = true);
 
+    /// Batch version of from_polygon_with_holes, with optional parallel execution.
     static std::vector<Mesh> from_polygon_with_holes_many(
         const std::vector<std::vector<std::vector<Point>>>& inputs,
         bool sort_by_bbox = false, bool parallel = true);
 
+    /// Batch version of loft, with optional parallel execution.
     static std::vector<Mesh> loft_many(
         const std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>>& pairs,
         bool cap = true, bool parallel = true);
 
-    /**
-     * @brief Loft between matched pairs of top/bottom polygons, producing one panel per pair.
-     * Each panel mesh has a top cap, optional bottom cap, matched quad walls, and triangle fill.
-     * @param top_polygons  Pre-cleaned top polygon ring(s) as point lists.
-     * @param bot_polygons  Pre-cleaned bottom polygon ring(s) as point lists.
-     * @param merge_precision  Vertex-merge tolerance passed to from_polylines.
-     * @param edge_gap  If > 0, insets bottom wall vertices toward face center.
-     * @param edge_match_threshold  Multiplier on average edge-midpoint distance for quad matching.
-     * @param add_caps  If true, adds top and bottom cap faces.
-     * @param skip_triangles  If true, omits triangle fill for unmatched edges.
-     * @return One LoftPanel per matched face pair, in centroid-distance order.
-     */
+    /// Loft between matched pairs of top/bottom polygons, producing one panel per pair.
+    /// Each panel has a top cap, optional bottom cap, matched quad walls, and triangle fill.
+    /// merge_precision: vertex-merge tolerance.
+    /// edge_gap: if > 0, insets bottom wall vertices toward face center.
+    /// edge_match_threshold: multiplier on average edge-midpoint distance for quad matching.
+    /// add_caps: if true, adds top and bottom cap faces.
+    /// skip_triangles: if true, omits triangle fill for unmatched edges.
+    /// Returns one LoftPanel per matched face pair, in centroid-distance order.
     static LoftResult loft_panels(
         const std::vector<std::vector<Point>>& top_polygons,
         const std::vector<std::vector<Point>>& bot_polygons,
@@ -254,13 +227,8 @@ public:
         bool   add_caps             = true,
         bool   skip_triangles       = false);
 
-    /**
-     * @brief Create a box mesh centered at the origin.
-     * @param x Size in the x direction.
-     * @param y Size in the y direction.
-     * @param z Size in the z direction.
-     * @return A closed box mesh with 8 vertices and 6 quad faces.
-     */
+    /// Create a box mesh centered at the origin.
+    /// Returns a closed mesh with 8 vertices and 6 quad faces.
     static Mesh create_box(double x, double y, double z);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -301,15 +269,21 @@ public:
     /// Calculate Euler characteristic (V - E + F)
     int euler() const;
 
-    /**
-     * @brief Export vertices and faces with sequential 0-based indices.
-     * @return A pair of (vertices, faces) where faces use sequential indices.
-     */
-    std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
+    /// Returns sorted vertex keys.
+    std::vector<size_t> vertices() const;
+
+    /// Returns sorted face keys.
+    std::vector<size_t> faces() const;
 
     /// Returns all undirected edges as (u, v) pairs in stable sorted order.
     /// linecolors[i] corresponds to edges()[i].
     std::vector<std::pair<size_t, size_t>> edges() const;
+
+    /// Returns vertices and faces with sequential 0-based indices.
+    std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
+
+    /// Returns a map from sparse vertex keys to sequential indices (0, 1, 2, ...).
+    std::map<size_t, size_t> vertex_index() const;
 
     /// Returns boundary (naked=true) or interior (naked=false) edges.
     std::vector<std::pair<size_t, size_t>> naked_edges(bool boundary = true) const;
@@ -320,37 +294,26 @@ public:
     /// Returns boundary (naked=true) or interior (naked=false) faces.
     std::vector<size_t> naked_faces(bool boundary = true) const;
 
-    /**
-     * @brief Create a mapping from sparse vertex keys to sequential indices.
-     * @return A map of vertex_key -> sequential_index (0, 1, 2, ...).
-     */
-    std::map<size_t, size_t> vertex_index() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Vertex and Face Operations
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /**
-     * @brief Add a vertex to the mesh.
-     * @param position The position of the vertex.
-     * @param vkey Optional vertex key.
-     * @return The vertex key.
-     */
+    /// Add a vertex to the mesh.
+    /// vkey: optional explicit key.
+    /// Returns the vertex key.
     size_t add_vertex(const Point& position, std::optional<size_t> vkey = std::nullopt);
     
-    /**
-     * @brief Add a face to the mesh.
-     * @param vertices The vertex keys forming the face.
-     * @param fkey Optional face key.
-     * @return The face key, or nullopt if invalid.
-     */
+    /// Add a face to the mesh.
+    /// fkey: optional explicit key.
+    /// Returns the face key, or nullopt if invalid.
     std::optional<size_t> add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey = std::nullopt);
-
-    /// Remove a face and its orphaned halfedges. Resizes color arrays to new counts.
-    void remove_face(size_t fkey);
 
     /// Remove a vertex and all faces that use it, then clean up orphaned halfedges.
     void remove_vertex(size_t vkey);
+
+    /// Remove a face and its orphaned halfedges. Resizes color arrays to new counts.
+    void remove_face(size_t fkey);
 
     /// Remove an edge, its adjacent faces, and its halfedges.
     void remove_edge(size_t u, size_t v);
@@ -358,7 +321,7 @@ public:
     /// Clear all mesh data
     void clear();
 
-    /// Return a new mesh with all vertices duplicated so each face has its own unique vertices.
+    /// Returns a new mesh with all vertices duplicated so each face has its own unique vertices.
     /// After unweld, number_of_vertices() == sum of each face's vertex count.
     Mesh unweld() const;
 
@@ -366,7 +329,8 @@ public:
     /// Degenerate faces (collapsed vertices) are discarded. tolerance=0 merges only exact duplicates.
     Mesh weld(double tolerance = 0.0) const;
 
-    /// Unify face winding by BFS; returns true if any face was flipped
+    /// Unify face winding by BFS.
+    /// Returns true if any face was flipped.
     bool unify_winding();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
