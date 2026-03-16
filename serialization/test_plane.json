@@ -13,12 +13,12 @@
     0.0,
     1.0
   ],
-  "guid": "179c09b8-052b-4291-a79c-3acc36b57d79",
+  "guid": "d7e42222-92af-46d7-ac77-732885ab1546",
   "name": "test_plane",
   "type": "Plane",
   "width": 1.0,
   "xform": {
-    "guid": "440315f8-0b29-4061-b593-35b0961c5582",
+    "guid": "2e719d5c-d68f-4e52-b1c1-34d350ad9a77",
     "m": [
       1.0,
       0.0,
