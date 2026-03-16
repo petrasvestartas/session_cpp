@@ -270,17 +270,10 @@ static constexpr int TRI_TABLE[256][16] = {
     {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1}, // 255
 };
 
-static Mesh marching_cubes(const std::function<double(double,double,double)>& fn,
-                            const BoundingBox& box, int nx, int ny, int nz,
-                            double isovalue) {
-    Point mn = box.min_point();
-    Point mx = box.max_point();
-    double min_x = mn[0], min_y = mn[1], min_z = mn[2];
-    double dx = (mx[0] - min_x) / nx;
-    double dy = (mx[1] - min_y) / ny;
-    double dz = (mx[2] - min_z) / nz;
-    double h = std::min({dx, dy, dz}) * 0.5;
-
+static std::vector<double> eval_field(
+    const std::function<double(double,double,double)>& fn,
+    double min_x, double min_y, double min_z,
+    double dx, double dy, double dz, int nx, int ny, int nz) {
     int nxg = nx + 1, nyg = ny + 1, nzg = nz + 1;
     std::vector<double> field(nxg * nyg * nzg);
     for (int i = 0; i <= nx; i++)
@@ -288,7 +281,20 @@ static Mesh marching_cubes(const std::function<double(double,double,double)>& fn
             for (int k = 0; k <= nz; k++)
                 field[i * nyg * nzg + j * nzg + k] =
                     fn(min_x + i * dx, min_y + j * dy, min_z + k * dz);
+    return field;
+}
 
+static Mesh marching_cubes_from_field(const std::vector<double>& field,
+                                       const BoundingBox& box, int nx, int ny, int nz,
+                                       double isovalue) {
+    Point mn = box.min_point();
+    Point mx = box.max_point();
+    double min_x = mn[0], min_y = mn[1], min_z = mn[2];
+    double dx = (mx[0] - min_x) / nx;
+    double dy = (mx[1] - min_y) / ny;
+    double dz = (mx[2] - min_z) / nz;
+
+    int nxg = nx + 1, nyg = ny + 1, nzg = nz + 1;
     std::vector<int> edge_x(nx * nyg * nzg, -1);
     std::vector<int> edge_y(nxg * ny * nzg, -1);
     std::vector<int> edge_z(nxg * nyg * nz, -1);
@@ -298,6 +304,8 @@ static Mesh marching_cubes(const std::function<double(double,double,double)>& fn
     auto ez = [&](int a, int b, int c) -> int& { return edge_z[a * nyg * nz + b * nz + c]; };
 
     Mesh mesh;
+    std::vector<double> vpos;
+    std::vector<double> vacc;
 
     for (int i = 0; i < nx; i++) {
         for (int j = 0; j < ny; j++) {
@@ -353,13 +361,9 @@ static Mesh marching_cubes(const std::function<double(double,double,double)>& fn
                     double px = pt[ca][0] + t * (pt[cb][0] - pt[ca][0]);
                     double py = pt[ca][1] + t * (pt[cb][1] - pt[ca][1]);
                     double pz = pt[ca][2] + t * (pt[cb][2] - pt[ca][2]);
-                    double gnx = fn(px + h, py, pz) - fn(px - h, py, pz);
-                    double gny = fn(px, py + h, pz) - fn(px, py - h, pz);
-                    double gnz = fn(px, py, pz + h) - fn(px, py, pz - h);
-                    double gl = std::sqrt(gnx*gnx + gny*gny + gnz*gnz);
-                    if (gl > 1e-12) { gnx /= gl; gny /= gl; gnz /= gl; }
                     size_t vk = mesh.add_vertex(Point(px, py, pz));
-                    mesh.vertex[vk].set_normal(gnx, gny, gnz);
+                    vpos.push_back(px); vpos.push_back(py); vpos.push_back(pz);
+                    vacc.push_back(0.0); vacc.push_back(0.0); vacc.push_back(0.0);
                     *sp = (int)vk;
                     return *sp;
                 };
@@ -370,13 +374,43 @@ static Mesh marching_cubes(const std::function<double(double,double,double)>& fn
                     int v0 = make_vertex(tris[t]);
                     int v1 = make_vertex(tris[t + 1]);
                     int v2 = make_vertex(tris[t + 2]);
-                    if (v0 >= 0 && v1 >= 0 && v2 >= 0)
+                    if (v0 >= 0 && v1 >= 0 && v2 >= 0) {
                         mesh.add_face({(size_t)v0, (size_t)v1, (size_t)v2});
+                        double ax=vpos[v0*3],ay=vpos[v0*3+1],az=vpos[v0*3+2];
+                        double bx=vpos[v1*3],by=vpos[v1*3+1],bz=vpos[v1*3+2];
+                        double cx=vpos[v2*3],cy=vpos[v2*3+1],cz=vpos[v2*3+2];
+                        double ue=bx-ax,uf=by-ay,ug=bz-az;
+                        double ve=cx-ax,vf=cy-ay,vg=cz-az;
+                        double nx=uf*vg-ug*vf,ny=ug*ve-ue*vg,nz=ue*vf-uf*ve;
+                        vacc[v0*3]+=nx; vacc[v0*3+1]+=ny; vacc[v0*3+2]+=nz;
+                        vacc[v1*3]+=nx; vacc[v1*3+1]+=ny; vacc[v1*3+2]+=nz;
+                        vacc[v2*3]+=nx; vacc[v2*3+1]+=ny; vacc[v2*3+2]+=nz;
+                    }
                 }
             }
         }
     }
+    size_t nv = vacc.size() / 3;
+    for (size_t vi = 0; vi < nv; ++vi) {
+        double nx=vacc[vi*3], ny=vacc[vi*3+1], nz=vacc[vi*3+2];
+        double len = std::sqrt(nx*nx + ny*ny + nz*nz);
+        if (len > 1e-12)
+            mesh.vertex[vi].set_normal(nx/len, ny/len, nz/len);
+    }
     return mesh;
+}
+
+static Mesh marching_cubes(const std::function<double(double,double,double)>& fn,
+                            const BoundingBox& box, int nx, int ny, int nz,
+                            double isovalue) {
+    Point mn = box.min_point();
+    Point mx = box.max_point();
+    double min_x = mn[0], min_y = mn[1], min_z = mn[2];
+    double dx = (mx[0] - min_x) / nx;
+    double dy = (mx[1] - min_y) / ny;
+    double dz = (mx[2] - min_z) / nz;
+    auto field = eval_field(fn, min_x, min_y, min_z, dx, dy, dz, nx, ny, nz);
+    return marching_cubes_from_field(field, box, nx, ny, nz, isovalue);
 }
 
 static Mesh merge_meshes(const Mesh& m1, const Mesh& m2) {
@@ -452,8 +486,15 @@ Mesh MeshIso::from_tpms(TpmsType type, const BoundingBox& box,
     if (mode == TpmsMode::SOLID) {
         return marching_cubes(fn, box, nx, ny, nz, isovalue);
     }
-    Mesh m1 = marching_cubes(fn, box, nx, ny, nz, isovalue - thickness);
-    Mesh m2 = marching_cubes(fn, box, nx, ny, nz, isovalue + thickness);
+    Point mn = box.min_point();
+    Point mx = box.max_point();
+    double min_x = mn[0], min_y = mn[1], min_z = mn[2];
+    double dx = (mx[0] - min_x) / nx;
+    double dy = (mx[1] - min_y) / ny;
+    double dz = (mx[2] - min_z) / nz;
+    auto field = eval_field(fn, min_x, min_y, min_z, dx, dy, dz, nx, ny, nz);
+    Mesh m1 = marching_cubes_from_field(field, box, nx, ny, nz, isovalue - thickness);
+    Mesh m2 = marching_cubes_from_field(field, box, nx, ny, nz, isovalue + thickness);
     return merge_meshes(m1, m2);
 }
 
@@ -508,7 +549,7 @@ double MeshIso::smooth_union(double a, double b, double k) {
 }
 
 double MeshIso::smooth_subtract(double a, double b, double k) {
-    return smooth_union(a, -b, k);
+    return -smooth_union(-a, b, k);
 }
 
 double MeshIso::smooth_intersect(double a, double b, double k) {

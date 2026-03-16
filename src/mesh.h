@@ -318,6 +318,12 @@ public:
     /// Remove an edge, its adjacent faces, and its halfedges.
     void remove_edge(size_t u, size_t v);
 
+    /// Reverse the winding of a face in place (remove → reverse → re-add with same key).
+    void flip_face(size_t fkey);
+
+    /// Reverse the winding of all faces in place.
+    void flip();
+
     /// Clear all mesh data
     void clear();
 
@@ -326,12 +332,15 @@ public:
     Mesh unweld() const;
 
     /// Merge vertices within Euclidean distance <= tolerance using BVH spatial acceleration.
-    /// Degenerate faces (collapsed vertices) are discarded. tolerance=0 merges only exact duplicates.
-    Mesh weld(double tolerance = 0.0) const;
+    /// Degenerate faces (collapsed vertices) are discarded.
+    Mesh weld(double tolerance = 0.001) const;
 
     /// Unify face winding by BFS.
     /// Returns true if any face was flipped.
     bool unify_winding();
+
+    /// For closed meshes: flip entire mesh if normals point inward. Returns true if flipped.
+    bool orient_outward();
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Connectivity Queries

@@ -50,4 +50,28 @@ void AABBTree::build_node(int* ids, int count, const BvhAABB* aabbs) {
     build_node(ids + mid, count - mid, aabbs);
 }
 
+std::vector<int> AABBTree::query_aabb(const BvhAABB& query) const {
+    std::vector<int> hits;
+    if (empty()) return hits;
+    std::vector<int> stack = {0};
+    while (!stack.empty()) {
+        int idx = stack.back(); stack.pop_back();
+        const auto& node = nodes[idx];
+        const BvhAABB& a = node.aabb;
+        if (!(a.cx - a.hx <= query.cx + query.hx &&
+              a.cx + a.hx >= query.cx - query.hx &&
+              a.cy - a.hy <= query.cy + query.hy &&
+              a.cy + a.hy >= query.cy - query.hy &&
+              a.cz - a.hz <= query.cz + query.hz &&
+              a.cz + a.hz >= query.cz - query.hz)) continue;
+        if (node.object_id >= 0) {
+            hits.push_back(node.object_id);
+        } else {
+            stack.push_back(idx + 1);       // left child
+            stack.push_back(node.right);    // right child
+        }
+    }
+    return hits;
+}
+
 }

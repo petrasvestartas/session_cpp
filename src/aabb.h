@@ -20,6 +20,9 @@ public:
     bool empty() const { return nodes.empty(); }
     size_t size() const { return nodes.size(); }
 
+    // Find all leaf object_ids whose BvhAABB overlaps the query box.
+    std::vector<int> query_aabb(const BvhAABB& query) const;
+
 private:
     void build_node(int* ids, int count, const BvhAABB* aabbs);
 };

@@ -387,6 +387,37 @@ bool Mesh::unify_winding() {
         }
     }
 
+    orient_outward();
+    return true;
+}
+
+bool Mesh::orient_outward() {
+    if (face.empty() || !naked_edges(true).empty()) return false;
+    double vol = 0.0;
+    for (const auto& [fk, verts] : face) {
+        size_t n = verts.size();
+        auto p0 = *vertex_position(verts[0]);
+        for (size_t i = 1; i + 1 < n; ++i) {
+            auto p1 = *vertex_position(verts[i]);
+            auto p2 = *vertex_position(verts[i + 1]);
+            vol += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+                 + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
+                 + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+        }
+    }
+    if (vol >= 0.0) return false;
+    for (auto& [fk, verts] : face)
+        std::reverse(verts.begin(), verts.end());
+    for (auto& [u, nbrs] : halfedge) nbrs.clear();
+    for (const auto& [fk, verts] : face) {
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            size_t u = verts[i], v = verts[(i + 1) % n];
+            halfedge[u][v] = fk;
+            if (!halfedge[v].count(u))
+                halfedge[v][u] = std::nullopt;
+        }
+    }
     return true;
 }
 
@@ -565,6 +596,32 @@ void Mesh::remove_edge(size_t u, size_t v) {
     triangle_indices_cache.clear();
     triangle_face_subidx_cache.clear();
     vertices_cache.clear();
+}
+
+void Mesh::flip_face(size_t fkey) {
+    auto it = face.find(fkey);
+    if (it == face.end()) return;
+    auto fv = it->second;
+    remove_face(fkey);
+    std::reverse(fv.begin(), fv.end());
+    add_face(fv, fkey);
+}
+
+void Mesh::flip() {
+    for (auto& [fkey, verts] : face)
+        std::reverse(verts.begin(), verts.end());
+    for (auto& [u, nbrs] : halfedge)
+        nbrs.clear();
+    for (auto& [fkey, verts] : face) {
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            size_t u = verts[i];
+            size_t v = verts[(i + 1) % n];
+            halfedge[u][v] = fkey;
+            if (!halfedge[v].count(u))
+                halfedge[v][u] = std::nullopt;
+        }
+    }
 }
 
 std::optional<Point> Mesh::vertex_position(size_t vertex_key) const {
@@ -932,12 +989,59 @@ std::map<size_t, Vector> Mesh::vertex_normals() const {
 }
 
 std::map<size_t, Vector> Mesh::vertex_normals_weighted(NormalWeighting weighting) const {
-    std::map<size_t, Vector> normals;
-    for (const auto& [vertex_key, _] : vertex) {
-        auto normal_opt = vertex_normal_weighted(vertex_key, weighting);
-        if (normal_opt) {
-            normals[vertex_key] = *normal_opt;
+    std::map<size_t, Vector> acc;
+    for (const auto& [fk, vkeys] : face) {
+        size_t n = vkeys.size();
+        if (n < 3) continue;
+        std::vector<double> px(n), py(n), pz(n);
+        bool ok = true;
+        for (size_t i = 0; i < n; ++i) {
+            auto p = vertex_position(vkeys[i]);
+            if (!p) { ok = false; break; }
+            px[i] = (*p)[0]; py[i] = (*p)[1]; pz[i] = (*p)[2];
         }
+        if (!ok) continue;
+        double ex = px[1]-px[0], ey = py[1]-py[0], ez = pz[1]-pz[0];
+        double fx = px[2]-px[0], fy = py[2]-py[0], fz = pz[2]-pz[0];
+        double cnx = ey*fz-ez*fy, cny = ez*fx-ex*fz, cnz = ex*fy-ey*fx;
+        double len = std::sqrt(cnx*cnx + cny*cny + cnz*cnz);
+        if (len < Tolerance::ZERO_TOLERANCE) continue;
+        double ux = cnx/len, uy = cny/len, uz = cnz/len;
+        double area = 0.0;
+        if (weighting == NormalWeighting::Area) {
+            for (size_t i = 1; i+1 < n; ++i) {
+                double ax = px[i]-px[0], ay = py[i]-py[0], az = pz[i]-pz[0];
+                double bx = px[i+1]-px[0], by = py[i+1]-py[0], bz = pz[i+1]-pz[0];
+                double cx = ay*bz-az*by, cy = az*bx-ax*bz, cz = ax*by-ay*bx;
+                area += std::sqrt(cx*cx + cy*cy + cz*cz) * 0.5;
+            }
+        }
+        for (size_t i = 0; i < n; ++i) {
+            double weight;
+            if (weighting == NormalWeighting::Uniform) {
+                weight = 1.0;
+            } else if (weighting == NormalWeighting::Area) {
+                weight = area;
+            } else {
+                size_t prev = (i + n - 1) % n, next = (i + 1) % n;
+                double ax = px[prev]-px[i], ay = py[prev]-py[i], az = pz[prev]-pz[i];
+                double bx = px[next]-px[i], by = py[next]-py[i], bz = pz[next]-pz[i];
+                double a_len = std::sqrt(ax*ax + ay*ay + az*az);
+                double b_len = std::sqrt(bx*bx + by*by + bz*bz);
+                if (a_len < Tolerance::ZERO_TOLERANCE || b_len < Tolerance::ZERO_TOLERANCE) weight = 0.0;
+                else { double cos_a = std::clamp((ax*bx+ay*by+az*bz)/(a_len*b_len), -1.0, 1.0); weight = std::acos(cos_a); }
+            }
+            auto& v = acc[vkeys[i]];
+            v[0] = v[0] + ux * weight;
+            v[1] = v[1] + uy * weight;
+            v[2] = v[2] + uz * weight;
+        }
+    }
+    std::map<size_t, Vector> normals;
+    for (auto& [vk, v] : acc) {
+        double len = v.magnitude();
+        if (len > Tolerance::ZERO_TOLERANCE)
+            normals[vk] = Vector(v[0] / len, v[1] / len, v[2] / len);
     }
     return normals;
 }

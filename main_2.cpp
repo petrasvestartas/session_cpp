@@ -68,16 +68,92 @@ int main() {
         mesh.add_face(f);
 
     // Unweld
-    mesh.unweld();
+    mesh = mesh.unweld();
     std::cout << (mesh.number_of_vertices() == 24) << std::endl;
 
     // Weld
-    mesh.weld();
+    mesh = mesh.weld(0.001);
     std::cout << (mesh.number_of_vertices() == 8) << std::endl;
 
-    // Unify winding
+    // flip the only face to create a winding inconsistency
+    // face 0: 0 1 2 3
+    // face 1: 4 5 6 7
+    // face 2: 0 3 5 4
+    // face 3: 2 1 7 6
+    // face 4: 0 4 7 1
+    // face 5: 3 2 6 5
+    for (size_t fk : mesh.faces()) {                                                                                          
+        auto verts = *mesh.face_vertices(fk);
+        std::cout << "face " << fk << ":";                                                                              
+        for (size_t vk : verts)
+            std::cout << " " << vk;
+        std::cout << "\n";
+    }
+    std::cout << "Flipping face " << std::endl;
+
+    mesh.flip_face(0); 
+    // face 0: 3 2 1 0
+    // face 1: 4 5 6 7
+    // face 2: 0 3 5 4
+    // face 3: 2 1 7 6
+    // face 4: 0 4 7 1
+    // face 5: 3 2 6 5
+    for (size_t fk : mesh.faces()) {                                                                                          
+        auto verts = *mesh.face_vertices(fk);
+        std::cout << "face " << fk << ":";                                                                              
+        for (size_t vk : verts)
+            std::cout << " " << vk;
+        std::cout << "\n";
+    }
+
+    // Unify winding and orient outward for closed mesh
     mesh.unify_winding();
     
+    // face 0: 0 1 2 3
+    // face 1: 4 5 6 7
+    // face 2: 0 3 5 4
+    // face 3: 2 1 7 6
+    // face 4: 0 4 7 1
+    // face 5: 3 2 6 5
+    for (size_t fk : mesh.faces()) {                                                                                          
+        auto verts = *mesh.face_vertices(fk);
+        std::cout << "face " << fk << ":";                                                                              
+        for (size_t vk : verts)
+            std::cout << " " << vk;
+        std::cout << "\n";
+    }
+
+
+    mesh.flip();
+    // face 0: 3 2 1 0
+    // face 1: 7 6 5 4
+    // face 2: 4 5 3 0
+    // face 3: 6 7 1 2
+    // face 4: 1 7 4 0
+    // face 5: 5 6 2 3
+    std::cout << "Flipping mesh " << std::endl;
+    for (size_t fk : mesh.faces()) {                                                                                          
+        auto verts = *mesh.face_vertices(fk);
+        std::cout << "face " << fk << ":";                                                                              
+        for (size_t vk : verts)
+            std::cout << " " << vk;
+        std::cout << "\n";
+    }
+    mesh.orient_outward();
+    // face 0: 0 1 2 3
+    // face 1: 4 5 6 7
+    // face 2: 0 3 5 4
+    // face 3: 2 1 7 6
+    // face 4: 0 4 7 1
+    // face 5: 3 2 6 5
+    std::cout << "orient_outward " << std::endl;
+    for (size_t fk : mesh.faces()) {                                                                                          
+        auto verts = *mesh.face_vertices(fk);
+        std::cout << "face " << fk << ":";                                                                              
+        for (size_t vk : verts)
+            std::cout << " " << vk;
+        std::cout << "\n";
+    }
 
     session.add_mesh(std::make_shared<Mesh>(mesh));
 

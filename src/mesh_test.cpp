@@ -616,6 +616,7 @@ namespace session_cpp {
         MINI_CHECK(vertices[5] == 5);
         MINI_CHECK(vertices[6] == 6);
         MINI_CHECK(vertices[7] == 7);
+
         auto faces = mesh.faces();
         MINI_CHECK(faces.size() == 6);
         MINI_CHECK(faces[0] == 0);
@@ -624,6 +625,7 @@ namespace session_cpp {
         MINI_CHECK(faces[3] == 3);
         MINI_CHECK(faces[4] == 4);
         MINI_CHECK(faces[5] == 5);
+
         auto edges = mesh.edges();
         MINI_CHECK(edges.size() == 12);
         MINI_CHECK(edges[0]  == std::make_pair(0ul, 1ul));
@@ -645,136 +647,141 @@ namespace session_cpp {
 
         // remove one face — box becomes open, check naked
         mesh.remove_face(mesh.faces()[0]);
+
         auto ne = mesh.naked_edges(true);
         MINI_CHECK(ne.size() == 4);
         MINI_CHECK(ne[0] == std::make_pair(0ul, 1ul));
+
         auto ni = mesh.naked_edges(false);
         MINI_CHECK(ni.size() == 8);
+
         auto nv = mesh.naked_vertices(true);
         MINI_CHECK(nv.size() == 4);
+
         auto nvi = mesh.naked_vertices(false);
         MINI_CHECK(nvi.size() == 4);
+
         auto nf = mesh.naked_faces(true);
         MINI_CHECK(nf.size() == 4);
+
         auto nfi = mesh.naked_faces(false);
         MINI_CHECK(nfi.size() == 1);
     }
-    
-    MINI_TEST("Mesh", "Vertex and Face Operations") {
-        // uncomment #include "mesh.h"
 
-        // Create Mesh
+    MINI_TEST("Mesh", "Vertex and Face Operations") {
+
         double hx = 0.5, hy = 0.5, hz = 0.5;
-        std::vector<Point> vertices = {
-            Point(-hx, -hy, -hz),
-            Point( hx, -hy, -hz),
-            Point( hx,  hy, -hz),
-            Point(-hx,  hy, -hz),
-            Point(-hx, -hy,  hz),
-            Point( hx, -hy,  hz),
-            Point( hx,  hy,  hz),
-            Point(-hx,  hy,  hz),
+        std::vector<Point> verts = {
+            Point(-hx, -hy, -hz), Point( hx, -hy, -hz), Point( hx,  hy, -hz), Point(-hx,  hy, -hz),
+            Point(-hx, -hy,  hz), Point( hx, -hy,  hz), Point( hx,  hy,  hz), Point(-hx,  hy,  hz),
         };
         std::vector<std::vector<size_t>> faces = {
-            {0, 3, 2, 1},  // bottom
-            {4, 5, 6, 7},  // top
-            {0, 1, 5, 4},  // front
-            {2, 3, 7, 6},  // back
-            {0, 4, 7, 3},  // left
-            {1, 2, 6, 5},  // right
+            {0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4}, {2, 3, 7, 6}, {0, 4, 7, 3}, {1, 2, 6, 5},
         };
 
         Mesh mesh = Mesh();
 
-        for (const auto& v : vertices)
+        
+        for (const auto& v : verts) 
             mesh.add_vertex(v);
-
-        for (const auto& f : faces)
+    
+        for (const auto& f : faces) 
             mesh.add_face(f);
 
-        // Remove
+        // add_face: invalid (too few vertices)
+        MINI_CHECK(!mesh.add_face({0, 1}, std::nullopt).has_value());
+        // add_face: invalid (duplicate vertex)
+        MINI_CHECK(!mesh.add_face({0, 1, 0}, std::nullopt).has_value());
+
+        // remove_vertex(0): removes vertex 0 + 3 adjacent faces (0,2,4)
+        // vertices → [1,2,3,4,5,6,7], faces → [1,3,5]
         mesh.remove_vertex(0);
+        MINI_CHECK(mesh.number_of_vertices() == 7);
+        MINI_CHECK(mesh.number_of_faces() == 3);
 
-        // size_t v0 = mesh.vertices()[0], v1 = mesh.vertices()[1];
-        // MINI_CHECK(!mesh.is_empty());
-        // MINI_CHECK(mesh.number_of_vertices() == 8);
+        // remove_edge(1,2): removes face 5 [1,2,6,5], faces → [1,3]
+        mesh.remove_edge(1, 2);
+        MINI_CHECK(mesh.number_of_faces() == 2);
 
-        // // add_face: invalid (too few vertices)
-        // std::optional<size_t> invalid1 = mesh.add_face({v0, v1}, std::nullopt);
-        // MINI_CHECK(!invalid1.has_value());
-        // // add_face: invalid (duplicate vertex)
-        // std::optional<size_t> invalid2 = mesh.add_face({v0, v1, v0}, std::nullopt);
-        // MINI_CHECK(!invalid2.has_value());
+        // remove_face(1): removes face 1 [4,5,6,7], faces → [3]
+        mesh.remove_face(1);
+        MINI_CHECK(mesh.number_of_faces() == 1);
 
-        // // clear
-        // Mesh mesh2 = mesh;
-        // mesh2.clear();
-        // MINI_CHECK(mesh2.is_empty());
-        // MINI_CHECK(mesh2.number_of_vertices() == 0);
-        // MINI_CHECK(mesh2.number_of_faces() == 0);
+        // clear
+        mesh.clear();
+        MINI_CHECK(mesh.is_empty());
 
-        // // unify_winding — from_vertices_and_faces creates 2 triangles with mismatched normals
-        // std::vector<Point> pts = {{0,0,0}, {1,0,0}, {1,1,0}, {2,1,0}};
-        // Mesh mesh3 = Mesh::from_vertices_and_faces(pts, {{0,1,2}, {1,2,3}});
-        // auto fkeys3 = mesh3.faces();
-        // size_t f0 = fkeys3[0], f1 = fkeys3[1];
-        // std::optional<Vector> n0_before = mesh3.face_normal(f0);
-        // std::optional<Vector> n1_before = mesh3.face_normal(f1);
-        // MINI_CHECK(n0_before.has_value() && n1_before.has_value());
-        // MINI_CHECK(n0_before->dot(*n1_before) < 0.0);  // wrong: normals point opposite ways
+        // rebuild
+        for (const auto& v : verts) mesh.add_vertex(v);
+        for (const auto& f : faces) mesh.add_face(f);
 
-        // mesh3.unify_winding();
+        // unweld and weld
+        mesh = mesh.unweld();
+        MINI_CHECK(mesh.number_of_vertices() == 24);
+        mesh = mesh.weld(0.001);
+        MINI_CHECK(mesh.number_of_vertices() == 8);
+        MINI_CHECK(mesh.number_of_faces() == 6);
+        // face 0: 0 1 2 3, face 1: 4 5 6 7, face 2: 0 3 5 4
+        // face 3: 2 1 7 6, face 4: 0 4 7 1, face 5: 3 2 6 5
+        auto fv0 = *mesh.face_vertices(0); auto fv1 = *mesh.face_vertices(1);
+        auto fv2 = *mesh.face_vertices(2); auto fv3 = *mesh.face_vertices(3);
+        auto fv4 = *mesh.face_vertices(4); auto fv5 = *mesh.face_vertices(5);
+        MINI_CHECK(fv0[0] == 0 && fv0[1] == 1 && fv0[2] == 2 && fv0[3] == 3);
+        MINI_CHECK(fv1[0] == 4 && fv1[1] == 5 && fv1[2] == 6 && fv1[3] == 7);
+        MINI_CHECK(fv2[0] == 0 && fv2[1] == 3 && fv2[2] == 5 && fv2[3] == 4);
+        MINI_CHECK(fv3[0] == 2 && fv3[1] == 1 && fv3[2] == 7 && fv3[3] == 6);
+        MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
+        MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
 
-        // std::optional<Vector> n0_after = mesh3.face_normal(f0);
-        // std::optional<Vector> n1_after = mesh3.face_normal(f1);
-        // MINI_CHECK(n0_after.has_value() && n1_after.has_value());
-        // MINI_CHECK(n0_after->dot(*n1_after) > 0.0);  // correct: normals agree
+        // flip_face(0): face 0 → [3,2,1,0], faces 1-5 unchanged
+        mesh.flip_face(0);
+        fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
+        fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
+        fv4 = *mesh.face_vertices(4); fv5 = *mesh.face_vertices(5);
+        MINI_CHECK(fv0[0] == 3 && fv0[1] == 2 && fv0[2] == 1 && fv0[3] == 0);
+        MINI_CHECK(fv1[0] == 4 && fv1[1] == 5 && fv1[2] == 6 && fv1[3] == 7);
+        MINI_CHECK(fv2[0] == 0 && fv2[1] == 3 && fv2[2] == 5 && fv2[3] == 4);
+        MINI_CHECK(fv3[0] == 2 && fv3[1] == 1 && fv3[2] == 7 && fv3[3] == 6);
+        MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
+        MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
 
-        // // unweld and weld
-        // Mesh u = mesh.unweld();
-        // MINI_CHECK(u.number_of_vertices() == 24);
+        // unify_winding: face 0 restored to [0,1,2,3], faces 1-5 unchanged
+        mesh.unify_winding();
+        fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
+        fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
+        fv4 = *mesh.face_vertices(4); fv5 = *mesh.face_vertices(5);
+        MINI_CHECK(fv0[0] == 0 && fv0[1] == 1 && fv0[2] == 2 && fv0[3] == 3);
+        MINI_CHECK(fv1[0] == 4 && fv1[1] == 5 && fv1[2] == 6 && fv1[3] == 7);
+        MINI_CHECK(fv2[0] == 0 && fv2[1] == 3 && fv2[2] == 5 && fv2[3] == 4);
+        MINI_CHECK(fv3[0] == 2 && fv3[1] == 1 && fv3[2] == 7 && fv3[3] == 6);
+        MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
+        MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
 
-        // Mesh w = u.weld(0.001);
-        // MINI_CHECK(w.number_of_vertices() == 8);
-        // MINI_CHECK(w.number_of_faces() == 6);
-        // for (const auto& [vk, _] : w.vertex)
-        //     MINI_CHECK(w.vertex_faces(vk).size() == 3);
+        // flip: face 0 → [3,2,1,0], face 1 → [7,6,5,4], face 2 → [4,5,3,0]
+        // face 3 → [6,7,1,2], face 4 → [1,7,4,0], face 5 → [5,6,2,3]
+        mesh.flip();
+        fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
+        fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
+        fv4 = *mesh.face_vertices(4); fv5 = *mesh.face_vertices(5);
+        MINI_CHECK(fv0[0] == 3 && fv0[1] == 2 && fv0[2] == 1 && fv0[3] == 0);
+        MINI_CHECK(fv1[0] == 7 && fv1[1] == 6 && fv1[2] == 5 && fv1[3] == 4);
+        MINI_CHECK(fv2[0] == 4 && fv2[1] == 5 && fv2[2] == 3 && fv2[3] == 0);
+        MINI_CHECK(fv3[0] == 6 && fv3[1] == 7 && fv3[2] == 1 && fv3[3] == 2);
+        MINI_CHECK(fv4[0] == 1 && fv4[1] == 7 && fv4[2] == 4 && fv4[3] == 0);
+        MINI_CHECK(fv5[0] == 5 && fv5[1] == 6 && fv5[2] == 2 && fv5[3] == 3);
 
-        // // remove_face
-        // Mesh mesh5 = mesh;
-        // size_t fa = mesh5.faces()[0];
-        // mesh5.remove_face(fa);
-        // MINI_CHECK(mesh5.number_of_faces() == 5);
-        // MINI_CHECK(mesh5.number_of_edges() == 12);
-        // MINI_CHECK(mesh5.number_of_vertices() == 8);
-
-        // // remove_vertex
-        // Mesh mesh6 = mesh;
-        // size_t vr = mesh6.vertices()[0];
-        // mesh6.remove_vertex(vr);
-        // auto vi6 = mesh6.vertex_index();
-        // MINI_CHECK(vi6.count(vr) == 0);
-        // MINI_CHECK(mesh6.number_of_faces() == 3);
-        // MINI_CHECK(mesh6.number_of_vertices() == 7);
-
-        // // remove_edge
-        // Mesh mesh7 = mesh;
-        // size_t ea = mesh7.vertices()[0], eb = mesh7.vertices()[1];
-        // mesh7.remove_edge(ea, eb);
-        // MINI_CHECK(mesh7.number_of_faces() == 4);
-        // MINI_CHECK(mesh7.number_of_edges() == 11);
-        // MINI_CHECK(mesh7.number_of_vertices() == 8);
-
-        // // remove_face then check naked: box minus one face → 5 faces with 4 naked edges
-        // Mesh mesh8 = mesh;
-        // size_t fd0 = mesh8.faces()[0];
-        // mesh8.remove_face(fd0);
-        // MINI_CHECK(mesh8.number_of_faces() == 5);
-        // MINI_CHECK(mesh8.naked_edges(true).size() == 4);
-        // MINI_CHECK(mesh8.naked_edges(false).size() == 8);
-        // MINI_CHECK(mesh8.naked_faces(true).size() == 4);
-        // MINI_CHECK(mesh8.naked_faces(false).size() == 1);
-
+        // orient_outward: face 0 → [0,1,2,3], face 1 → [4,5,6,7], face 2 → [0,3,5,4]
+        // face 3 → [2,1,7,6], face 4 → [0,4,7,1], face 5 → [3,2,6,5]
+        MINI_CHECK(mesh.orient_outward());
+        fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
+        fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
+        fv4 = *mesh.face_vertices(4); fv5 = *mesh.face_vertices(5);
+        MINI_CHECK(fv0[0] == 0 && fv0[1] == 1 && fv0[2] == 2 && fv0[3] == 3);
+        MINI_CHECK(fv1[0] == 4 && fv1[1] == 5 && fv1[2] == 6 && fv1[3] == 7);
+        MINI_CHECK(fv2[0] == 0 && fv2[1] == 3 && fv2[2] == 5 && fv2[3] == 4);
+        MINI_CHECK(fv3[0] == 2 && fv3[1] == 1 && fv3[2] == 7 && fv3[3] == 6);
+        MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
+        MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
     }
 
 
@@ -1057,9 +1064,5 @@ namespace session_cpp {
         MINI_CHECK(!loaded_holes.get_face_holes().empty());
         MINI_CHECK(loaded_holes.get_face_holes().at(hfk) == hmesh.get_face_holes().at(hfk));
     }
-
-
-
-
 
 } // namespace session_cpp

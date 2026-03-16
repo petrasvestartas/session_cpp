@@ -8,7 +8,7 @@
 
 namespace session_cpp {
 
-bool BVH::aabb_intersect(const BvhAABB& aabb1, const BvhAABB& aabb2) {
+bool BVH::aabb_intersect(const BvhAABB& aabb1, const BvhAABB& aabb2) const {
     double min1_x = aabb1.cx - aabb1.hx;
     double max1_x = aabb1.cx + aabb1.hx;
     double min1_y = aabb1.cy - aabb1.hy;
@@ -194,6 +194,25 @@ void BVH::build_from_aabbs(const BvhAABB* aabbs, size_t count, double ws) {
                           (max_z - min_z) * 0.5};
     };
     compute(root);
+}
+
+std::vector<int> BVH::query_aabb(const BvhAABB& query) const {
+    std::vector<int> hits;
+    if (!root) return hits;
+    std::vector<const BVHNode*> stack;
+    stack.reserve(64);
+    stack.push_back(root);
+    while (!stack.empty()) {
+        const BVHNode* node = stack.back(); stack.pop_back();
+        if (!aabb_intersect(node->aabb, query)) continue;
+        if (node->is_leaf()) {
+            hits.push_back(node->object_id);
+        } else {
+            if (node->left)  stack.push_back(node->left);
+            if (node->right) stack.push_back(node->right);
+        }
+    }
+    return hits;
 }
 
 // Overload for lightweight internal BVH AABB
@@ -601,7 +620,7 @@ BoundingBox BVH::merge_aabb(const BoundingBox& aabb1, const BoundingBox& aabb2) 
     );
 }
 
-bool BVH::aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2) {
+bool BVH::aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2) const {
     double min1_x = aabb1.center[0] - aabb1.half_size[0];
     double max1_x = aabb1.center[0] + aabb1.half_size[0];
     double min1_y = aabb1.center[1] - aabb1.half_size[1];

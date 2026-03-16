@@ -67,8 +67,11 @@ public:
 
     // Public helper methods for testing
     BoundingBox merge_aabb(const BoundingBox& aabb1, const BoundingBox& aabb2);
-    bool aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2);
-    bool aabb_intersect(const BvhAABB& aabb1, const BvhAABB& aabb2);
+    bool aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2) const;
+    bool aabb_intersect(const BvhAABB& aabb1, const BvhAABB& aabb2) const;
+
+    // Find all leaf object_ids whose BvhAABB overlaps the query box.
+    std::vector<int> query_aabb(const BvhAABB& query) const;
 
     // Ray cast traversal over BVH nodes returning candidate leaf indices ordered by AABB entry t.
     bool ray_cast(const Point& origin,
