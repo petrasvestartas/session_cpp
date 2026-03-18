@@ -362,35 +362,41 @@ public:
     // Connectivity Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Get the position of a vertex
-    std::optional<Point> vertex_position(size_t vertex_key) const;
-    
-    /// Get the vertices of a face
-    std::optional<std::vector<size_t>> face_vertices(size_t face_key) const;
-    
-    /// Get neighboring vertices of a vertex
-    std::vector<size_t> vertex_neighbors(size_t vertex_key) const;
-
-    /// Get faces incident to a vertex
-    std::vector<size_t> vertex_faces(size_t vertex_key) const;
-
-    /// Get edges incident to a vertex as (vertex_key, neighbor) pairs
-    std::vector<std::pair<size_t, size_t>> vertex_edges(size_t vertex_key) const;
-
-    /// Get edges of a face as (vi, vi+1) pairs
-    std::vector<std::pair<size_t, size_t>> face_edges(size_t face_key) const;
-
-    /// Get faces adjacent to a face (sharing an edge)
-    std::vector<size_t> face_neighbors(size_t face_key) const;
-
-    /// Get the two vertices of an edge
-    std::array<size_t, 2> edge_vertices(size_t u, size_t v) const;
+    /// Get all edges sharing a vertex with edge (u,v), excluding (u,v) and (v,u)
+    std::optional<std::vector<std::pair<size_t, size_t>>> edge_edges(size_t u, size_t v) const;
 
     /// Get the faces on each side of an edge
-    std::pair<std::optional<size_t>, std::optional<size_t>> edge_faces(size_t u, size_t v) const;
+    std::optional<std::vector<size_t>> edge_faces(size_t u, size_t v) const;
 
-    /// Get all edges sharing a vertex with edge (u,v), excluding (u,v) and (v,u)
-    std::vector<std::pair<size_t, size_t>> edge_edges(size_t u, size_t v) const;
+    /// Get the edge as a Line
+    std::optional<Line> edge_line(size_t u, size_t v) const;
+
+    /// Get edges of a face as (vi, vi+1) pairs
+    std::optional<std::vector<std::pair<size_t, size_t>>> face_edges(size_t face_key) const;
+
+    /// Get faces adjacent to a face (sharing an edge)
+    std::optional<std::vector<size_t>> face_faces(size_t face_key) const;
+
+    /// Get the points of a face
+    std::optional<std::vector<Point>> face_points(size_t face_key) const;
+
+    /// Get the face as a Polyline
+    std::optional<Polyline> face_polyline(size_t face_key) const;
+
+    /// Get the vertices of a face
+    std::optional<std::vector<size_t>> face_vertices(size_t face_key) const;
+
+    /// Get edges incident to a vertex as (vertex_key, neighbor) pairs
+    std::optional<std::vector<std::pair<size_t, size_t>>> vertex_edges(size_t vertex_key) const;
+
+    /// Get faces incident to a vertex
+    std::optional<std::vector<size_t>> vertex_faces(size_t vertex_key) const;
+
+    /// Get the position of a vertex
+    std::optional<Point> vertex_point(size_t vertex_key) const;
+
+    /// Get neighboring vertices of a vertex
+    std::optional<std::vector<size_t>> vertex_vertices(size_t vertex_key) const;
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////

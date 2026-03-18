@@ -6,6 +6,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <sstream>
 
 namespace session_cpp {
 namespace mini_test {
@@ -120,6 +121,62 @@ static std::string extract_timed_code(const RegisteredTest &t,
     }
     if (!only_ws_brace || tail.empty()) break;
     code.erase(pos == std::string::npos ? 0 : pos);
+  }
+
+  // Remove empty if-blocks (entire body was MINI_CHECK calls)
+  {
+    std::vector<std::string> lines;
+    {
+      std::istringstream ss(code);
+      std::string ln;
+      while (std::getline(ss, ln)) lines.push_back(ln);
+    }
+    std::vector<std::string> out;
+    size_t i = 0;
+    while (i < lines.size()) {
+      std::string trimmed = lines[i];
+      size_t start = trimmed.find_first_not_of(" \t");
+      if (start != std::string::npos) trimmed = trimmed.substr(start);
+      bool is_if = (trimmed.size() >= 3 &&
+                    (trimmed.substr(0, 3) == "if " || trimmed.substr(0, 3) == "if(")) &&
+                   trimmed.back() == '{';
+      if (is_if) {
+        // Find matching closing brace
+        int depth = 0;
+        for (char ch : lines[i]) {
+          if (ch == '{') ++depth;
+          else if (ch == '}') --depth;
+        }
+        size_t j = i + 1;
+        while (j < lines.size() && depth > 0) {
+          for (char ch : lines[j]) {
+            if (ch == '{') ++depth;
+            else if (ch == '}') --depth;
+          }
+          ++j;
+        }
+        // j is now one past the closing brace line; check if body is empty
+        bool body_empty = true;
+        for (size_t k = i + 1; k < j - 1; ++k) {
+          std::string_view lv(lines[k]);
+          for (char ch : lv) {
+            if (ch != ' ' && ch != '\t') { body_empty = false; break; }
+          }
+          if (!body_empty) break;
+        }
+        if (body_empty) {
+          i = j;
+          continue;
+        }
+      }
+      out.push_back(lines[i]);
+      ++i;
+    }
+    code.clear();
+    for (size_t k = 0; k < out.size(); ++k) {
+      if (k > 0) code += '\n';
+      code += out[k];
+    }
   }
 
   return code;

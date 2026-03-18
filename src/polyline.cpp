@@ -960,4 +960,185 @@ std::ostream& operator<<(std::ostream& os, const Polyline& polyline) {
     return os << polyline.repr();
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// Free functions on raw std::vector<Point> polylines (CGAL_Polyline compat)
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void shift(std::vector<Point>& pline, int times) {
+    Polyline tmp(pline);
+    tmp.shift(times);
+    pline = tmp.get_points();
+}
+
+double polyline_length(const std::vector<Point>& pline) {
+    double len = 0;
+    for (size_t i = 0; i + 1 < pline.size(); i++) {
+        double dx = pline[i+1][0]-pline[i][0], dy = pline[i+1][1]-pline[i][1], dz = pline[i+1][2]-pline[i][2];
+        len += std::sqrt(dx*dx + dy*dy + dz*dz);
+    }
+    return len;
+}
+
+double polyline_length_squared(const std::vector<Point>& pline) {
+    double len = 0;
+    for (size_t i = 0; i + 1 < pline.size(); i++) {
+        double dx = pline[i+1][0]-pline[i][0], dy = pline[i+1][1]-pline[i][1], dz = pline[i+1][2]-pline[i][2];
+        len += dx*dx + dy*dy + dz*dz;
+    }
+    return len;
+}
+
+bool is_closed(const std::vector<Point>& pline) {
+    if (pline.size() < 2) return false;
+    return pline.front().distance(pline.back()) < static_cast<double>(Tolerance::ZERO_TOLERANCE);
+}
+
+Point center(const std::vector<Point>& pline) {
+    size_t n = (is_closed(pline) && pline.size() > 1) ? pline.size()-1 : pline.size();
+    double x=0, y=0, z=0;
+    for (size_t i=0; i<n; i++) { x+=pline[i][0]; y+=pline[i][1]; z+=pline[i][2]; }
+    return Point(x/n, y/n, z/n);
+}
+
+Vector center_vec(const std::vector<Point>& pline) {
+    Point c = center(pline);
+    return Vector(c[0], c[1], c[2]);
+}
+
+void get_average_plane(const std::vector<Point>& pline, Vector (&axes)[4]) {
+    Point o = center(pline);
+    axes[0] = Vector(o[0], o[1], o[2]);
+
+    size_t len = (is_closed(pline) && pline.size() > 1) ? pline.size()-1 : pline.size();
+    Vector normal(0,0,0);
+    for (size_t i = 0; i < len; i++) {
+        size_t prev = (i == 0) ? len-1 : i-1;
+        size_t next = (i+1 == len) ? 0 : i+1;
+        double ax = pline[i][0]-pline[prev][0], ay = pline[i][1]-pline[prev][1], az = pline[i][2]-pline[prev][2];
+        double bx = pline[next][0]-pline[i][0],  by = pline[next][1]-pline[i][1],  bz = pline[next][2]-pline[i][2];
+        normal[0] += ay*bz - az*by;
+        normal[1] += az*bx - ax*bz;
+        normal[2] += ax*by - ay*bx;
+    }
+    normal.normalize_self();
+
+    double xdx = pline[1][0]-pline[0][0], xdy = pline[1][1]-pline[0][1], xdz = pline[1][2]-pline[0][2];
+    Vector x_axis(xdx, xdy, xdz);
+    x_axis.normalize_self();
+    Vector y_axis = normal.cross(x_axis);
+    axes[1] = x_axis;
+    axes[2] = y_axis;
+    axes[3] = normal;
+}
+
+void get_fast_plane(const std::vector<Point>& pline, Point& origin, Plane& pln) {
+    Polyline(pline).get_fast_plane(origin, pln);
+}
+
+void transform(std::vector<Point>& pline, const Xform& xf) {
+    for (auto& p : pline) xf.transform_point(p);
+}
+
+void move(std::vector<Point>& pline, const Vector& dir) {
+    for (auto& p : pline) { p[0]+=dir[0]; p[1]+=dir[1]; p[2]+=dir[2]; }
+}
+
+bool is_clockwise(std::vector<Point>& pline, const Plane& pln) {
+    return Polyline(pline).is_clockwise(pln);
+}
+
+void flip(std::vector<Point>& pline) {
+    std::reverse(pline.begin(), pline.end());
+}
+
+void get_convex_corners(const std::vector<Point>& pline, std::vector<bool>& flags) {
+    Polyline(pline).get_convex_corners(flags);
+}
+
+std::vector<Point> tween_two_polylines(const std::vector<Point>& p0, const std::vector<Point>& p1, double w) {
+    std::vector<Point> result;
+    result.reserve(p0.size());
+    for (size_t i = 0; i < p0.size(); i++)
+        result.push_back(Point(p0[i][0]+(p1[i][0]-p0[i][0])*w, p0[i][1]+(p1[i][1]-p0[i][1])*w, p0[i][2]+(p1[i][2]-p0[i][2])*w));
+    return result;
+}
+
+void line_line_average(const Line& l0, const Line& l1, Line& out) {
+    Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
+    out = Line::from_points(Point((s0[0]+s1[0])*0.5,(s0[1]+s1[1])*0.5,(s0[2]+s1[2])*0.5),
+                            Point((e0[0]+e1[0])*0.5,(e0[1]+e1[1])*0.5,(e0[2]+e1[2])*0.5));
+}
+
+bool line_line_overlap(const Line& l0, const Line& l1, Line& out) {
+    Point os, oe;
+    bool r = Polyline::line_line_overlap(l0.start(), l0.end(), l1.start(), l1.end(), os, oe);
+    out = Line::from_points(os, oe);
+    return r;
+}
+
+void line_line_overlap_average(const Line& l0, const Line& l1, Line& out) {
+    Line lineA, lineB;
+    line_line_overlap(l0, l1, lineA);
+    line_line_overlap(l1, l0, lineB);
+    Point a0=lineA.start(), a1=lineA.end(), b0=lineB.start(), b1=lineB.end();
+    Point m0s((a0[0]+b0[0])*0.5,(a0[1]+b0[1])*0.5,(a0[2]+b0[2])*0.5);
+    Point m0e((a1[0]+b1[0])*0.5,(a1[1]+b1[1])*0.5,(a1[2]+b1[2])*0.5);
+    Point m1s((a0[0]+b1[0])*0.5,(a0[1]+b1[1])*0.5,(a0[2]+b1[2])*0.5);
+    Point m1e((a1[0]+b0[0])*0.5,(a1[1]+b0[1])*0.5,(a1[2]+b0[2])*0.5);
+    double dx0=m0e[0]-m0s[0], dy0=m0e[1]-m0s[1], dz0=m0e[2]-m0s[2];
+    double dx1=m1e[0]-m1s[0], dy1=m1e[1]-m1s[1], dz1=m1e[2]-m1s[2];
+    out = (dx0*dx0+dy0*dy0+dz0*dz0 >= dx1*dx1+dy1*dy1+dz1*dz1)
+          ? Line::from_points(m0s, m0e) : Line::from_points(m1s, m1e);
+}
+
+void line_line_overlap_average(const std::vector<Point>& l0, const std::vector<Point>& l1, Line& out) {
+    line_line_overlap_average(Line::from_points(l0[0], l0[1]), Line::from_points(l1[0], l1[1]), out);
+}
+
+bool line_from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out) {
+    Point os, oe;
+    bool r = Polyline::line_from_projected_points(line.start(), line.end(), pts, os, oe);
+    out = Line::from_points(os, oe);
+    return r;
+}
+
+void extend_line(Line& line, double d0, double d1) {
+    Point s = line.start(), e = line.end();
+    Polyline::extend_line_segment(s, e, d0, d1);
+    line = Line::from_points(s, e);
+}
+
+void extend_equally(Line& line, double dist, double proportion) {
+    if (dist == 0 && proportion == 0) return;
+    Point s = line.start(), e = line.end();
+    Polyline::extend_segment_equally(s, e, dist, proportion);
+    line = Line::from_points(s, e);
+}
+
+void scale_line(Line& line, double dist) {
+    Point s = line.start(), e = line.end();
+    Vector v(e[0]-s[0], e[1]-s[1], e[2]-s[2]);
+    s[0]+=v[0]*dist; s[1]+=v[1]*dist; s[2]+=v[2]*dist;
+    e[0]-=v[0]*dist; e[1]-=v[1]*dist; e[2]-=v[2]*dist;
+    line = Line::from_points(s, e);
+}
+
+void extend(std::vector<Point>& pline, int sID, double d0, double d1, double proportion0, double proportion1) {
+    if (d0==0 && d1==0 && proportion0==0 && proportion1==0) return;
+    Polyline tmp(pline);
+    tmp.extend_segment(sID, d0, d1, proportion0, proportion1);
+    pline = tmp.get_points();
+}
+
+double closest_distance_and_point(const Point& pt, const std::vector<Point>& poly, size_t& edge_id, Point& closest_point) {
+    return Polyline(poly).closest_distance_and_point(pt, edge_id, closest_point);
+}
+
+void get_middle_line(const Line& l0, const Line& l1, Line& out) {
+    Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
+    Point os, oe;
+    Line::get_middle_line(s0, e0, s1, e1, os, oe);
+    out = Line::from_points(os, oe);
+}
+
 } // namespace session_cpp

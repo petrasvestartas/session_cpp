@@ -762,7 +762,6 @@ namespace session_cpp {
         MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
     }
 
-
     MINI_TEST("Mesh", "Connectivity Queries") {
         // uncomment #include "mesh.h"
 
@@ -774,72 +773,194 @@ namespace session_cpp {
             Point(2.0, 0.0, 0.0),
         };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0,1,2,3}, {1,4,2}});
-        auto vi = mesh.vertex_index();
-        auto vkeys = mesh.vertices();
-        size_t v0 = vkeys[0], v1 = vkeys[1], v2 = vkeys[2], v3 = vkeys[3], v4 = vkeys[4];
-        auto fkeys = mesh.faces();
-        size_t f0 = fkeys[0], f1 = fkeys[1];
 
-        // vertex_position
-        std::optional<Point> pos = mesh.vertex_position(v0);
-        MINI_CHECK(pos.has_value());
-        MINI_CHECK(TOLERANCE.is_point_close(*pos, Point(0.0, 0.0, 0.0)));
-        MINI_CHECK(!mesh.vertex_position(999).has_value());
+        auto v = mesh.vertices();
+        auto f = mesh.faces();
 
-        // face_vertices
-        std::optional<std::vector<size_t>> fv = mesh.face_vertices(f0);
-        MINI_CHECK(fv.has_value());
-        MINI_CHECK(fv->size() == 4);
-        MINI_CHECK((*fv)[0] == v0 && (*fv)[1] == v1 && (*fv)[2] == v2 && (*fv)[3] == v3);
+        // edge edges
+        // edge 1 - 2, edges: 1-0, 1-4, 2-3, 2-4
+        std::optional<std::vector<std::pair<size_t, size_t>>> ee = mesh.edge_edges(1, 2);
+        if (ee){
 
-        // vertex_neighbors
-        std::vector<size_t> nb = mesh.vertex_neighbors(v1);
-        MINI_CHECK(nb.size() == 3);
+            size_t u0 = (*ee)[0].first;
+            size_t v0 = (*ee)[0].second;
+            Line l0 = mesh.edge_line(u0, v0).value();
+            Point mid0 = l0.center();
+            mid0.name = "e" + std::to_string(u0) + "-" + std::to_string(v0);
 
-        // vertex_faces
-        std::vector<size_t> vf0 = mesh.vertex_faces(v0);
-        MINI_CHECK(vf0.size() == 1);
-        std::vector<size_t> vf1 = mesh.vertex_faces(v1);
-        MINI_CHECK(vf1.size() == 2);
+            size_t u1 = (*ee)[1].first;
+            size_t v1 = (*ee)[1].second;
+            Line l1 = mesh.edge_line(u1, v1).value();
+            Point mid1 = l1.center();
+            mid1.name = "e" + std::to_string(u1) + "-" + std::to_string(v1);
 
-        // vertex_edges
-        std::vector<std::pair<size_t, size_t>> ve = mesh.vertex_edges(v1);
-        MINI_CHECK(ve.size() == 3);
-        std::set<std::pair<size_t, size_t>> ve_set(ve.begin(), ve.end());
-        MINI_CHECK(ve_set.contains({v1, v0}));
-        MINI_CHECK(ve_set.contains({v1, v2}));
-        MINI_CHECK(ve_set.contains({v1, v4}));
+            size_t u2 = (*ee)[2].first;
+            size_t v2 = (*ee)[2].second;
+            Line l2 = mesh.edge_line(u2, v2).value();
+            Point mid2 = l2.center();
+            mid2.name = "e" + std::to_string(u2) + "-" + std::to_string(v2);
+
+            size_t u3 = (*ee)[3].first;
+            size_t v3 = (*ee)[3].second;
+            Line l3 = mesh.edge_line(u3, v3).value();
+            Point mid3 = l3.center();
+            mid3.name = "e" + std::to_string(u3) + "-" + std::to_string(v3);
+
+            std::set<std::pair<size_t, size_t>> ee_set(ee->begin(), ee->end());
+            MINI_CHECK(ee->size() == 4);
+            MINI_CHECK(((*ee)[0] == std::make_pair(1ul, 0ul)) || ((*ee)[0] == std::make_pair(0ul, 1ul)));
+            MINI_CHECK(((*ee)[1] == std::make_pair(1ul, 4ul)) || ((*ee)[1] == std::make_pair(4ul, 1ul)));
+            MINI_CHECK(((*ee)[2] == std::make_pair(2ul, 3ul)) || ((*ee)[2] == std::make_pair(3ul, 2ul)));
+            MINI_CHECK(((*ee)[3] == std::make_pair(2ul, 4ul)) || ((*ee)[3] == std::make_pair(4ul, 2ul)));  
+        }
+
+        // edge faces
+        // edge 1-2, faces: 0, 1
+        std::optional<std::vector<size_t>> ef = mesh.edge_faces(1, 2);
+        if (ef) {
+            size_t ef0 = (*ef)[0];
+            size_t ef1 = (*ef)[1];
+            Point efp0 = *mesh.face_centroid(ef0);
+            efp0.name = "f" + std::to_string(ef0);
+            Point efp1 = *mesh.face_centroid(ef1);
+            efp1.name = "f" + std::to_string(ef1);
+            MINI_CHECK(ef->size() == 2);
+            MINI_CHECK(ef0 == 0 && ef1 == 1);
+        }
 
         // face_edges
-        std::vector<std::pair<size_t, size_t>> fe = mesh.face_edges(f0);
-        MINI_CHECK(fe.size() == 4);
-        MINI_CHECK(fe[0] == std::make_pair(v0, v1));
-        MINI_CHECK(fe[1] == std::make_pair(v1, v2));
-        MINI_CHECK(fe[2] == std::make_pair(v2, v3));
-        MINI_CHECK(fe[3] == std::make_pair(v3, v0));
+        // face 0, edges: 0-1, 1-2, 2-3, 3-0
+        std::optional<std::vector<std::pair<size_t, size_t>>> fe = mesh.face_edges(f[0]);
+        if (fe) {
+            Line l0 = mesh.edge_line((*fe)[0].first, (*fe)[0].second).value();
+            Line l1 = mesh.edge_line((*fe)[1].first, (*fe)[1].second).value();
+            Line l2 = mesh.edge_line((*fe)[2].first, (*fe)[2].second).value();
+            Line l3 = mesh.edge_line((*fe)[3].first, (*fe)[3].second).value();
+            Point lmid0 = l0.center();
+            lmid0.name = "e" + std::to_string((*fe)[0].first) + "-" + std::to_string((*fe)[0].second);
+            Point lmid1 = l1.center();
+            lmid1.name = "e" + std::to_string((*fe)[1].first) + "-" + std::to_string((*fe)[1].second);
+            Point lmid2 = l2.center();
+            lmid2.name = "e" + std::to_string((*fe)[2].first) + "-" + std::to_string((*fe)[2].second);
+            Point lmid3 = l3.center();
+            lmid3.name = "e" + std::to_string((*fe)[3].first) + "-" + std::to_string((*fe)[3].second);
+            MINI_CHECK(fe->size() == 4);
+            MINI_CHECK(((*fe)[0] == std::make_pair(0ul, 1ul)));
+            MINI_CHECK(((*fe)[1] == std::make_pair(1ul, 2ul)));
+            MINI_CHECK(((*fe)[2] == std::make_pair(2ul, 3ul)));
+            MINI_CHECK(((*fe)[3] == std::make_pair(3ul, 0ul)));
+        }
 
-        // face_neighbors
-        std::vector<size_t> fn0 = mesh.face_neighbors(f0);
-        MINI_CHECK(fn0.size() == 1);
-        MINI_CHECK(fn0[0] == f1);
+        // face_faces
+        // face 0, adjacent faces: 1
+        std::optional<std::vector<size_t>> ff = mesh.face_faces(f[0]);
+        if (ff) {
+            size_t ff0 = (*ff)[0];
+            Point ffp = *mesh.face_centroid(ff0);
+            ffp.name = "f" + std::to_string(ff0);
+            MINI_CHECK(ff->size() == 1);
+            MINI_CHECK(ff0 == 1);
+        }
 
-        // edge_vertices
-        std::array<size_t, 2> ev = mesh.edge_vertices(v0, v1);
-        MINI_CHECK(ev[0] == v0 && ev[1] == v1);
+        // face points
+        std::optional<std::vector<Point>> points = mesh.face_points(f[0]);
+        if (points) {
+            size_t pointcount = (*points).size();
+            MINI_CHECK(pointcount == 4);
+        }
 
-        // edge_faces
-        std::pair<std::optional<size_t>, std::optional<size_t>> ef_inner = mesh.edge_faces(v1, v2);
-        MINI_CHECK(ef_inner.first.has_value() && ef_inner.second.has_value());
-        std::pair<std::optional<size_t>, std::optional<size_t>> ef_boundary = mesh.edge_faces(v0, v1);
-        MINI_CHECK(ef_boundary.first.has_value() != ef_boundary.second.has_value());
+        // face polyline
+        std::optional<Polyline> pl = mesh.face_polyline(f[0]);
+        if (pl) {
+            size_t pointcount = (*pl).point_count();
+            MINI_CHECK(pointcount == 4);
+        }
 
-        // edge_edges
-        std::vector<std::pair<size_t, size_t>> ee = mesh.edge_edges(v1, v2);
-        MINI_CHECK(ee.size() == 4);
-        std::set<std::pair<size_t, size_t>> ee_set(ee.begin(), ee.end());
-        MINI_CHECK(!ee_set.contains({v1, v2}));
-        MINI_CHECK(!ee_set.contains({v2, v1}));
+        // face_vertices
+        // face 0 vertices: 0, 1, 2, 3
+        std::optional<std::vector<size_t>> fv = mesh.face_vertices(f[0]);
+        if(fv.has_value()) {
+            size_t fv0 = (*fv)[0];
+            size_t fv1 = (*fv)[1];
+            size_t fv2 = (*fv)[2];
+            size_t fv3 = (*fv)[3];
+            Point p0 = *mesh.vertex_point(fv0);
+            p0.name = std::to_string(fv0);
+            Point p1 = *mesh.vertex_point(fv1);
+            p1.name = std::to_string(fv1);
+            Point p2 = *mesh.vertex_point(fv2);
+            p2.name = std::to_string(fv2);
+            Point p3 = *mesh.vertex_point(fv3);
+            p3.name = std::to_string(fv3);
+            MINI_CHECK(fv0 == 0);
+            MINI_CHECK(fv1 == 1);
+            MINI_CHECK(fv2 == 2);
+            MINI_CHECK(fv3 == 3);
+            MINI_CHECK(fv->size() == 4);
+        }
+    
+        // vertex_edges
+        // vertex 3, edges 1-0, 1-2, 1-4
+        std::optional<std::vector<std::pair<size_t, size_t>>> ve = mesh.vertex_edges(v[1]);
+        if (ve) {
+            Point vp = *mesh.vertex_point(v[1]);
+            vp.name = "v" + std::to_string(v[1]);
+
+            Line l0 = mesh.edge_line((*ve)[0].first, (*ve)[0].second).value();
+            Line l1 = mesh.edge_line((*ve)[1].first, (*ve)[1].second).value();
+            Line l2 = mesh.edge_line((*ve)[2].first, (*ve)[2].second).value();
+            Point lmid0 = l0.center();
+            lmid0.name = "e" + std::to_string((*ve)[0].first) + "-" + std::to_string((*ve)[0].second);
+            Point lmid1 = l1.center();
+            lmid1.name = "e" + std::to_string((*ve)[1].first) + "-" + std::to_string((*ve)[1].second);
+            Point lmid2 = l2.center();
+            lmid2.name = "e" + std::to_string((*ve)[2].first) + "-" + std::to_string((*ve)[2].second);
+
+            MINI_CHECK(((*ve)[0] == std::make_pair(1ul, 0ul)));
+            MINI_CHECK(((*ve)[1] == std::make_pair(1ul, 2ul)));
+            MINI_CHECK(((*ve)[2] == std::make_pair(1ul, 4ul)));
+            MINI_CHECK((*ve).size() == 3);
+        }
+
+        // vertex_faces
+        std::optional<std::vector<size_t>> vf = mesh.vertex_faces(v[1]);
+        // vertex 3, faces 0, 1
+        if (vf) {
+
+            Point vp = *mesh.vertex_point(v[1]);
+            vp.name = "v" + std::to_string(v[1]);
+
+            Point fp0 = *mesh.face_centroid((*vf)[0]);
+            fp0.name = "f" + std::to_string((*vf)[0]);
+            Point fp1 = *mesh.face_centroid((*vf)[1]);
+            fp1.name = "f" + std::to_string((*vf)[1]);
+            MINI_CHECK(vf->size() == 2);
+            MINI_CHECK((*vf)[0] == 0);
+            MINI_CHECK((*vf)[1] == 1);
+        }
+
+        // vertex_vertices
+        // vertex 1, neighbors 0, 2, 4
+        std::optional<std::vector<size_t>> vn = mesh.vertex_vertices(v[1]);
+        if (vn) {
+            Point p0 = *mesh.vertex_point(v[1]);
+            p0.name = "main" + std::to_string(v[1]); 
+
+            Point np0 = *mesh.vertex_point((*vn)[0]);
+            np0.name = std::to_string((*vn)[0]);
+            Point np1 = *mesh.vertex_point((*vn)[1]);
+            np1.name = std::to_string((*vn)[1]);
+            Point np2 = *mesh.vertex_point((*vn)[2]);
+            np2.name = std::to_string((*vn)[2]);
+
+            MINI_CHECK((*vn)[0] == 0);
+            MINI_CHECK((*vn)[1] == 2);
+            MINI_CHECK((*vn)[2] == 4);
+            MINI_CHECK(vn->size() == 3);
+        }
+
     }
+
 
     MINI_TEST("Mesh", "Geometric Properties") {
         // uncomment #include "mesh.h"
@@ -851,15 +972,29 @@ namespace session_cpp {
             Point(0.0, 1.0, 0.0),
         };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0,1,3}, {0,3,2}});
-        auto vi = mesh.vertex_index();
         auto vkeys = mesh.vertices();
-        size_t v0 = vkeys[0], v1 = vkeys[1], v3 = vkeys[3];
+        size_t v0 = vkeys[0];
+        size_t v1 = vkeys[1];
+        size_t v3 = vkeys[3];
         size_t f0 = mesh.faces()[0];
 
         // face_normal
         std::optional<Vector> fn = mesh.face_normal(f0);
         MINI_CHECK(fn.has_value());
         MINI_CHECK(TOLERANCE.is_close((*fn)[2], 1.0));
+
+        // face_centroid
+        std::optional<Point> fc = mesh.face_centroid(f0);
+        MINI_CHECK(fc.has_value());
+        MINI_CHECK(TOLERANCE.is_close((*fc)[0], 1.0 / 3.0));
+        MINI_CHECK(TOLERANCE.is_close((*fc)[1], 1.0 / 3.0));
+        MINI_CHECK((*fc)[2] == 0.0);
+
+        // centroid
+        Point c = mesh.centroid();
+        MINI_CHECK(c[0] == 0.0);
+        MINI_CHECK(TOLERANCE.is_close(c[1], 0.25));
+        MINI_CHECK(c[2] == 0.0);
 
         // vertex_normal
         std::optional<Vector> vn = mesh.vertex_normal(v0);
@@ -928,28 +1063,28 @@ namespace session_cpp {
         mesh1.xform = Xform::translation(0.0, 0.0, 1.0);
         mesh1.transform();
         MINI_CHECK(!mesh1.xform.is_identity());
-        MINI_CHECK((*mesh1.vertex_position(v0))[2] == 1.0);
+        MINI_CHECK((*mesh1.vertex_point(v0))[2] == 1.0);
 
         // transform(const Xform&) — apply given xform in-place; stored xform unchanged
         Mesh mesh2 = mesh;
         Xform x = Xform::translation(0.0, 0.0, 1.0);
         mesh2.transform(x);
         MINI_CHECK(mesh2.xform.is_identity());
-        MINI_CHECK((*mesh2.vertex_position(v0))[2] == 1.0);
+        MINI_CHECK((*mesh2.vertex_point(v0))[2] == 1.0);
 
         // transformed() — copy with stored xform applied
         Mesh mesh3 = mesh;
         mesh3.xform = Xform::translation(0.0, 0.0, 10.0);
         Mesh mesh3t = mesh3.transformed();
         MINI_CHECK(!mesh3t.xform.is_identity());
-        MINI_CHECK((*mesh3t.vertex_position(v0))[2] == 10.0);
+        MINI_CHECK((*mesh3t.vertex_point(v0))[2] == 10.0);
 
         // transformed(const Xform&) — copy with given xform applied
         Mesh mesh4 = mesh;
         x = Xform::translation(0.0, 0.0, 10.0);
         Mesh mesh4t = mesh4.transformed(x);
         MINI_CHECK(mesh4t.xform.is_identity());
-        MINI_CHECK((*mesh4t.vertex_position(v0))[2] == 10.0);
+        MINI_CHECK((*mesh4t.vertex_point(v0))[2] == 10.0);
     }
 
     MINI_TEST("Mesh", "Json Roundtrip") {

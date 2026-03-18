@@ -491,6 +491,17 @@ public:
  */
 std::ostream &operator<<(std::ostream &os, const Vector &vector);
 
+// ── Free functions ported from cgal_vector_util ──────────────────────────────
+
+/// Compute area-weighted average normal of a polygon (closed or open polyline).
+/// Points are std::vector<Point> — matches CGAL_Polyline alias.
+void average_normal(const std::vector<Point>& pts, Vector& out);
+
+/// Interpolate points between `from` and `to`.
+/// type: 0 = no endpoints, 1 = with both endpoints, 2 = with start only.
+void interpolate_points(const Point& from, const Point& to, int steps,
+                        std::vector<Point>& points, int type = 0);
+
 } // namespace session_cpp
 
 // fmt formatter specialization for Vector - enables direct fmt::print(vector)

@@ -71,8 +71,8 @@ static std::vector<std::vector<Point>> to_polys(const std::vector<Polyline>& pol
 /// Returns the midpoint of the vertical edge connecting top vertex tvk and bottom vertex bvk
 /// within the local mesh of panel p.
 static Point vmed(const LoftPanel& p, size_t tvk, size_t bvk) {
-    auto pt = *p.mesh.vertex_position(p.orig_top_to_local.at(tvk));
-    auto pb = *p.mesh.vertex_position(p.orig_bot_to_local.at(bvk));
+    auto pt = *p.mesh.vertex_point(p.orig_top_to_local.at(tvk));
+    auto pb = *p.mesh.vertex_point(p.orig_bot_to_local.at(bvk));
     return Point((pt[0]+pb[0])*0.5, (pt[1]+pb[1])*0.5, (pt[2]+pb[2])*0.5);
 }
 
@@ -193,9 +193,9 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
         session.add(mesh_node, layer_folded);
         for (const auto& w : panel.wall_faces) {
             if (!w.is_quad) continue;
-            auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
-            auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
-            auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
+            auto pt0 = *panel.mesh.vertex_point(panel.orig_top_to_local.at(w.top_v0));
+            auto pb0 = *panel.mesh.vertex_point(panel.orig_bot_to_local.at(w.bot_v0));
+            auto pb1 = *panel.mesh.vertex_point(panel.orig_bot_to_local.at(w.bot_v1));
             BotEdge be{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)};
             Point a, b;
             auto it = interior_line.find(be);
@@ -216,19 +216,19 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
         std::vector<std::vector<NurbsCurve>> hole_curves;
         if (!panel.top_vertices.empty()) {
             std::vector<Point> pts;
-            for (auto lk : panel.top_vertices) pts.push_back(*panel.mesh.vertex_position(lk));
+            for (auto lk : panel.top_vertices) pts.push_back(*panel.mesh.vertex_point(lk));
             outer_curves.push_back(make_polyline_loop(pts));
             hole_curves.push_back({});
         }
         for (const auto& w : panel.wall_faces) {
             auto face_lkeys = *panel.mesh.face_vertices(w.face_key);
             std::vector<Point> face_pts;
-            for (auto lk : face_lkeys) face_pts.push_back(*panel.mesh.vertex_position(lk));
+            for (auto lk : face_lkeys) face_pts.push_back(*panel.mesh.vertex_point(lk));
             outer_curves.push_back(make_polyline_loop(face_pts));
             if (!w.is_quad) { hole_curves.push_back({}); continue; }
-            auto pt0 = *panel.mesh.vertex_position(panel.orig_top_to_local.at(w.top_v0));
-            auto pb0 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v0));
-            auto pb1 = *panel.mesh.vertex_position(panel.orig_bot_to_local.at(w.bot_v1));
+            auto pt0 = *panel.mesh.vertex_point(panel.orig_top_to_local.at(w.top_v0));
+            auto pb0 = *panel.mesh.vertex_point(panel.orig_bot_to_local.at(w.bot_v0));
+            auto pb1 = *panel.mesh.vertex_point(panel.orig_bot_to_local.at(w.bot_v1));
             BotEdge be{std::min(w.bot_v0,w.bot_v1), std::max(w.bot_v0,w.bot_v1)};
             Point a, b;
             auto it = interior_line.find(be);
@@ -241,7 +241,7 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
         }
         if (!panel.bot_vertices.empty()) {
             std::vector<Point> pts;
-            for (auto lk : panel.bot_vertices) pts.push_back(*panel.mesh.vertex_position(lk));
+            for (auto lk : panel.bot_vertices) pts.push_back(*panel.mesh.vertex_point(lk));
             outer_curves.push_back(make_polyline_loop(pts));
             hole_curves.push_back({});
         }

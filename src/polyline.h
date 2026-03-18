@@ -4,7 +4,7 @@
 #include "vector.h"
 #include "color.h"
 #include "xform.h"
-#include "xform.h"
+#include "line.h"
 #include "guid.h"
 #include "json.h"
 #include <vector>
@@ -279,6 +279,64 @@ private:
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream& operator<<(std::ostream& os, const Polyline& polyline);
+
+// ── Free functions on raw std::vector<Point> polylines (CGAL_Polyline compat) ─
+
+/// Cyclic shift: rotate points left by `times` positions (in-place)
+void shift(std::vector<Point>& pline, int times);
+/// Total arc-length of a polyline
+double polyline_length(const std::vector<Point>& pline);
+/// Squared arc-length (no sqrt)
+double polyline_length_squared(const std::vector<Point>& pline);
+/// True if last ≈ first point
+bool is_closed(const std::vector<Point>& pline);
+/// Arithmetic mean of all points
+Point center(const std::vector<Point>& pline);
+/// Center expressed as Vector from world origin
+Vector center_vec(const std::vector<Point>& pline);
+/// Best-fit plane axes: axes[0]=origin, [1]=x, [2]=y, [3]=z
+void get_average_plane(const std::vector<Point>& pline, Vector (&axes)[4]);
+/// Quick plane from first distinct points
+void get_fast_plane(const std::vector<Point>& pline, Point& origin, Plane& pln);
+/// Apply affine transform to all points in-place
+void transform(std::vector<Point>& pline, const Xform& xf);
+/// Translate all points by direction vector
+void move(std::vector<Point>& pline, const Vector& dir);
+/// True if polygon is clockwise relative to given plane
+bool is_clockwise(std::vector<Point>& pline, const Plane& pln);
+/// Reverse point order in-place
+void flip(std::vector<Point>& pline);
+/// Compute convex/concave corner flags
+void get_convex_corners(const std::vector<Point>& pline, std::vector<bool>& flags);
+/// Linearly interpolate between two raw polylines; returns result
+std::vector<Point> tween_two_polylines(const std::vector<Point>& p0,
+                                       const std::vector<Point>& p1, double w);
+/// Average of two line segments
+void line_line_average(const Line& l0, const Line& l1, Line& out);
+/// Overlap segment of two co-linear lines; returns false if disjoint
+bool line_line_overlap(const Line& l0, const Line& l1, Line& out);
+/// Overlap-average of two line segments
+void line_line_overlap_average(const Line& l0, const Line& l1, Line& out);
+/// Overlap-average overload for raw 2-point polylines
+void line_line_overlap_average(const std::vector<Point>& l0,
+                               const std::vector<Point>& l1, Line& out);
+/// Project points onto line, return extreme sub-segment
+bool line_from_projected_points(const Line& line, const std::vector<Point>& pts,
+                                Line& out);
+/// Extend line segment: grow start by d0, grow end by d1 (in-place)
+void extend_line(Line& line, double d0, double d1);
+/// Extend equally: absolute dist or fraction proportion
+void extend_equally(Line& line, double dist = 0, double proportion = 0);
+/// Scale line to given length (shrink symmetrically from both ends)
+void scale_line(Line& line, double dist);
+/// Extend a polyline segment in-place
+void extend(std::vector<Point>& pline, int sID, double d0, double d1,
+            double proportion0 = 0, double proportion1 = 0);
+/// Closest distance and point from pt to polyline
+double closest_distance_and_point(const Point& pt, const std::vector<Point>& poly,
+                                  size_t& edge_id, Point& closest_point);
+/// Midpoint segment between two parallel line segments
+void get_middle_line(const Line& l0, const Line& l1, Line& out);
 
 } // namespace session_cpp
 
