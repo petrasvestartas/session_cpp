@@ -647,6 +647,15 @@ namespace session_cpp {
         MINI_CHECK(nfi.size() == 1);
     }
 
+    MINI_TEST("Mesh", "Create Dodecahedron") {
+        // uncomment #include "mesh.h"
+
+        Mesh m = Mesh::create_dodecahedron(2.0);
+        MINI_CHECK(m.is_valid());
+        MINI_CHECK(m.number_of_vertices() == 20);
+        MINI_CHECK(m.number_of_faces() == 12);
+    }
+
     MINI_TEST("Mesh", "Vertex and Face Operations") {
         // uncomment #include "mesh.h"
 

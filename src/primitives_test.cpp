@@ -1073,13 +1073,6 @@ MINI_TEST("Primitives", "Mesh Icosahedron") {
     MINI_CHECK(m.number_of_faces() == 20);
 }
 
-MINI_TEST("Primitives", "Mesh Dodecahedron") {
-    Mesh m = Primitives::dodecahedron(2.0);
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 20);
-    MINI_CHECK(m.number_of_faces() == 12);
-}
-
 MINI_TEST("Primitives", "Nurbssurface Wave") {
     NurbsSurface srf = Primitives::wave_surface(10.0, 2.0);
     MINI_CHECK(srf.is_valid());

@@ -231,6 +231,9 @@ public:
     /// Returns a closed mesh with 8 vertices and 6 quad faces.
     static Mesh create_box(double x, double y, double z);
 
+    /// Create a dodecahedron mesh (12 pentagonal faces) with given edge length.
+    static Mesh create_dodecahedron(double edge = 2.0);
+
     /// Create a closed mesh from interleaved top/bottom polyline pairs [top0, bot0, top1, bot1, ...].
     /// top0/top1/... are the outer boundary and optional inner holes; bot* are the matching bottoms.
     /// Equivalent to loft() but accepts the CGAL-style interleaved format directly.

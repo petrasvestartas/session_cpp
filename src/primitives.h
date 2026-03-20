@@ -49,9 +49,6 @@ public:
     /// Create an icosahedron mesh (20 triangular faces) with given edge length.
     static Mesh icosahedron(double edge = 2.0);
 
-    /// Create a dodecahedron mesh (12 pentagonal faces) with given edge length.
-    static Mesh dodecahedron(double edge = 2.0);
-
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Curve primitives
     ///////////////////////////////////////////////////////////////////////////////////////////

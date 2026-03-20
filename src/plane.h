@@ -200,13 +200,26 @@ namespace session_cpp {
 
   /**
    * @brief Translate (move) a plane along its normal direction by a specified distance.
-   * 
+   *
    * @param distance Distance to move the plane along its normal (positive = normal direction, negative = opposite).
    * @return New plane translated by the specified distance.
    */
   Plane translate_by_normal(double distance) const;
 
-  
+  /**
+   * @brief Project a point onto this plane (orthogonal projection).
+   *
+   * @param p The point to project.
+   * @return The projected point on the plane.
+   */
+  Point project(const Point& p) const {
+      const Vector& n = z_axis();
+      const Point&  o = origin();
+      double dist = (p[0]-o[0])*n[0] + (p[1]-o[1])*n[1] + (p[2]-o[2])*n[2];
+      return Point(p[0]-dist*n[0], p[1]-dist*n[1], p[2]-dist*n[2]);
+  }
+
+
 }; // End of Plane class
 
 /**

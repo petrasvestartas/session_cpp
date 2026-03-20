@@ -8,7 +8,6 @@
 #include "polyline.h"
 #include "session.h"
 #include "xform.h"
-
 using namespace session_cpp;
 
 static Line make_arrow(const Point& o, const Vector& d, double s) {
@@ -18,56 +17,21 @@ static Line make_arrow(const Point& o, const Vector& d, double s) {
 int main() {
     Session session("Mesh Geometry");
 
-    // ── Flat mesh (4 verts, 2 triangles, XY plane) ───────────────────────
-    // v0=(0,0,0) v1=(1,0,0) v2=(-1,0,0) v3=(0,1,0)
-    // f0={0,1,3}  f1={0,3,2}
-    std::vector<Point> fpts = {
-        Point(0.0,  0.0, 0.0),
-        Point(1.0,  0.0, 0.0),
-        Point(-1.0, 0.0, 0.0),
-        Point(0.0,  1.0, 0.0),
-    };
-    Mesh flat = Mesh::from_vertices_and_faces(fpts, {{0,1,3}, {0,3,2}});
-    flat.name = "flat_mesh";
-    auto fvkeys = flat.vertices();
-    auto ffkeys = flat.faces();
+    // Single mesh: 2×2×2 box, area=24, vol=8
+    Mesh mesh = Mesh::create_dodecahedron(1.5);
+    mesh.name = "box_2x2x2";
+    auto vkeys = mesh.vertices();
+    auto fkeys = mesh.faces();
     const double arrow_s = 0.5;
-
-    // ── Dihedral "tent" mesh (90° dihedral, y=3) ─────────────────────────
-    // v0=(0,3,0) v1=(2,3,0) v2=(1,4,0) v3=(1,3,-1)
-    // f0={0,1,2} normal=(0,0,1)  f1={1,0,3} normal=(0,-1,0)
-    // shared edge v0–v1, dihedral_angle = PI/2
-    std::vector<Point> dpts = {
-        Point(0.0, 3.0,  0.0),
-        Point(2.0, 3.0,  0.0),
-        Point(1.0, 4.0,  0.0),
-        Point(1.0, 3.0, -1.0),
-    };
-    Mesh dmesh = Mesh::from_vertices_and_faces(dpts, {{0,1,2}, {1,0,3}});
-    dmesh.name = "dihedral_tent";
-    auto dvkeys = dmesh.vertices();
-
-    // ── Box mesh (area=24, vol=8, centered at y=6) ────────────────────────
-    Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
-    box.transform(Xform::translation(0.0, 6.0, 0.0));
-    box.name = "box_area=24.0_vol=8.0";
-
-    // ── Base triangle for transform demos (x=5) ───────────────────────────
-    std::vector<Point> tpts = {
-        Point(5.0, 0.0, 0.0),
-        Point(6.0, 0.0, 0.0),
-        Point(5.5, 1.0, 0.0),
-    };
-    Mesh tmesh = Mesh::from_vertices_and_faces(tpts, {{0,1,2}});
 
     // ─────────────────────────────────────────────────────────────────────
     // Layer 1: Mesh
     // ─────────────────────────────────────────────────────────────────────
     auto grp_mesh = session.add_group("Mesh");
     {
-        auto mf = std::make_shared<Mesh>(flat);
-        mf->set_objectcolor(Color(180, 180, 180));
-        session.add(session.add_mesh(mf), grp_mesh);
+        auto m = std::make_shared<Mesh>(mesh);
+        m->set_objectcolor(Color(180, 180, 180));
+        session.add(session.add_mesh(m), grp_mesh);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -75,13 +39,13 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_centroids = session.add_group("Centroids");
     {
-        Point mc = flat.centroid();
+        Point mc = mesh.centroid();
         auto pt = std::make_shared<Point>(mc[0], mc[1], mc[2], "mesh_centroid");
         pt->pointcolor = Color::white();
         session.add(session.add_point(pt), grp_centroids);
 
-        for (size_t fk : ffkeys) {
-            auto fc = flat.face_centroid(fk);
+        for (size_t fk : fkeys) {
+            auto fc = mesh.face_centroid(fk);
             if (!fc) continue;
             auto fpt = std::make_shared<Point>(
                 (*fc)[0], (*fc)[1], (*fc)[2],
@@ -96,9 +60,9 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_fnormals = session.add_group("Face Normals");
     {
-        auto fns = flat.face_normals();
+        auto fns = mesh.face_normals();
         for (auto& [fk, fn] : fns) {
-            auto fc = flat.face_centroid(fk);
+            auto fc = mesh.face_centroid(fk);
             if (!fc) continue;
             Line arrow = make_arrow(*fc, fn, arrow_s);
             arrow.name = "fn_f" + std::to_string(fk);
@@ -112,9 +76,9 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_vnarea = session.add_group("Vertex Normals (Area)");
     {
-        auto vns = flat.vertex_normals();
+        auto vns = mesh.vertex_normals();
         for (auto& [vk, vn] : vns) {
-            auto vp = flat.vertex_point(vk);
+            auto vp = mesh.vertex_point(vk);
             if (!vp) continue;
             Line arrow = make_arrow(*vp, vn, arrow_s);
             arrow.name = "vn_area_v" + std::to_string(vk);
@@ -128,9 +92,9 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_vnangle = session.add_group("Vertex Normals (Angle)");
     {
-        auto vnsw = flat.vertex_normals_weighted(NormalWeighting::Angle);
+        auto vnsw = mesh.vertex_normals_weighted(NormalWeighting::Angle);
         for (auto& [vk, vn] : vnsw) {
-            auto vp = flat.vertex_point(vk);
+            auto vp = mesh.vertex_point(vk);
             if (!vp) continue;
             Line arrow = make_arrow(*vp, vn, arrow_s);
             arrow.name = "vn_angle_v" + std::to_string(vk);
@@ -146,8 +110,8 @@ int main() {
     {
         const double arc_r = 0.2;
         const int arc_n = 8;
-        for (size_t fk : ffkeys) {
-            auto fvs_opt = flat.face_vertices(fk);
+        for (size_t fk : fkeys) {
+            auto fvs_opt = mesh.face_vertices(fk);
             if (!fvs_opt) continue;
             auto& fvs = *fvs_opt;
             int n = (int)fvs.size();
@@ -155,11 +119,11 @@ int main() {
                 size_t vk = fvs[i];
                 size_t pk = fvs[(i - 1 + n) % n];
                 size_t nk = fvs[(i + 1) % n];
-                auto vp = flat.vertex_point(vk);
-                auto pp = flat.vertex_point(pk);
-                auto np = flat.vertex_point(nk);
+                auto vp = mesh.vertex_point(vk);
+                auto pp = mesh.vertex_point(pk);
+                auto np = mesh.vertex_point(nk);
                 if (!vp || !pp || !np) continue;
-                auto theta_opt = flat.vertex_angle_in_face(vk, fk);
+                auto theta_opt = mesh.vertex_angle_in_face(vk, fk);
                 if (!theta_opt) continue;
                 double theta = *theta_opt;
                 if (std::abs(std::sin(theta)) < 1e-10) continue;
@@ -194,16 +158,16 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_trib = session.add_group("Tributary Area");
     {
-        for (size_t vk : fvkeys) {
-            auto vp = flat.vertex_point(vk);
+        for (size_t vk : vkeys) {
+            auto vp = mesh.vertex_point(vk);
             if (!vp) continue;
-            auto vfaces_opt = flat.vertex_faces(vk);
+            auto vfaces_opt = mesh.vertex_faces(vk);
             if (!vfaces_opt) continue;
             double total = 0.0;
             for (size_t fk : *vfaces_opt) {
-                auto fc = flat.face_centroid(fk);
-                auto fa = flat.face_area(fk);
-                auto fvs = flat.face_vertices(fk);
+                auto fc = mesh.face_centroid(fk);
+                auto fa = mesh.face_area(fk);
+                auto fvs = mesh.face_vertices(fk);
                 if (!fc || !fa || !fvs) continue;
                 total += *fa / (double)fvs->size();
                 std::vector<Point> seg_pts = {
@@ -228,29 +192,70 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_dihedral = session.add_group("Dihedral Angle");
     {
-        auto dm = std::make_shared<Mesh>(dmesh);
-        dm->set_objectcolor(Color(160, 160, 200));
-        session.add(session.add_mesh(dm), grp_dihedral);
-
-        auto dfns = dmesh.face_normals();
-        for (auto& [fk, fn] : dfns) {
-            auto fc = dmesh.face_centroid(fk);
+        auto fns = mesh.face_normals();
+        for (auto& [fk, fn] : fns) {
+            auto fc = mesh.face_centroid(fk);
             if (!fc) continue;
             Line arrow = make_arrow(*fc, fn, arrow_s);
-            arrow.name = "dfn_f" + std::to_string(fk);
+            arrow.name = "fn_f" + std::to_string(fk);
             arrow.linecolor = Color(220, 50, 50);
             session.add(session.add_line(std::make_shared<Line>(arrow)), grp_dihedral);
         }
 
-        auto da   = dmesh.dihedral_angle(dvkeys[0], dvkeys[1]);
-        auto ep0  = dmesh.vertex_point(dvkeys[0]);
-        auto ep1  = dmesh.vertex_point(dvkeys[1]);
-        if (da && ep0 && ep1) {
-            auto eline = std::make_shared<Line>(Line::from_points(*ep0, *ep1));
-            eline->name = "da=" + std::to_string(*da);
-            eline->linecolor = Color(240, 220, 0);
-            eline->width = 3.0;
-            session.add(session.add_line(eline), grp_dihedral);
+        const double arc_r = 0.3;
+        const int arc_n = 12;
+        const double pi = std::acos(-1.0);
+        for (auto& [u, v] : mesh.edges()) {
+            auto da  = mesh.dihedral_angle(u, v);
+            auto ep0 = mesh.vertex_point(u);
+            auto ep1 = mesh.vertex_point(v);
+            if (!da || !ep0 || !ep1) continue;
+            auto ef = mesh.edge_faces(u, v);
+            if (!ef || ef->size() < 2) continue;
+            double mx = ((*ep0)[0]+(*ep1)[0])*0.5;
+            double my = ((*ep0)[1]+(*ep1)[1])*0.5;
+            double mz = ((*ep0)[2]+(*ep1)[2])*0.5;
+            double ex = (*ep1)[0]-(*ep0)[0], ey = (*ep1)[1]-(*ep0)[1], ez = (*ep1)[2]-(*ep0)[2];
+            double elen = std::sqrt(ex*ex + ey*ey + ez*ez);
+            if (elen < 1e-10) continue;
+            ex /= elen; ey /= elen; ez /= elen;
+            auto fc0 = mesh.face_centroid((*ef)[0]);
+            auto fc1 = mesh.face_centroid((*ef)[1]);
+            if (!fc0 || !fc1) continue;
+            double d0x = (*fc0)[0]-mx, d0y = (*fc0)[1]-my, d0z = (*fc0)[2]-mz;
+            double dot0 = d0x*ex + d0y*ey + d0z*ez;
+            d0x -= dot0*ex; d0y -= dot0*ey; d0z -= dot0*ez;
+            double d0len = std::sqrt(d0x*d0x + d0y*d0y + d0z*d0z);
+            if (d0len < 1e-10) continue;
+            d0x /= d0len; d0y /= d0len; d0z /= d0len;
+            double d1x = (*fc1)[0]-mx, d1y = (*fc1)[1]-my, d1z = (*fc1)[2]-mz;
+            double dot1 = d1x*ex + d1y*ey + d1z*ez;
+            d1x -= dot1*ex; d1y -= dot1*ey; d1z -= dot1*ez;
+            double d1len = std::sqrt(d1x*d1x + d1y*d1y + d1z*d1z);
+            if (d1len < 1e-10) continue;
+            d1x /= d1len; d1y /= d1len; d1z /= d1len;
+            double theta = std::acos(std::max(-1.0, std::min(1.0, d0x*d1x + d0y*d1y + d0z*d1z)));
+            if (std::abs(std::sin(theta)) < 1e-10) continue;
+            double deg = theta * 180.0 / pi;
+            std::vector<Point> arc_pts;
+            for (int j = 0; j <= arc_n; j++) {
+                double t  = (double)j / arc_n;
+                double w1 = std::sin((1.0-t)*theta) / std::sin(theta);
+                double w2 = std::sin(t*theta) / std::sin(theta);
+                arc_pts.push_back(Point(
+                    mx + (w1*d0x + w2*d1x)*arc_r,
+                    my + (w1*d0y + w2*d1y)*arc_r,
+                    mz + (w1*d0z + w2*d1z)*arc_r));
+            }
+            auto arc = std::make_shared<Polyline>(arc_pts);
+            arc->name = "dihedral_e"+std::to_string(u)+"_"+std::to_string(v)+"="+std::to_string(deg);
+            arc->linecolor = Color(240, 220, 0);
+            session.add(session.add_polyline(arc), grp_dihedral);
+            auto tpt = std::make_shared<Point>(
+                arc_pts[arc_n/2][0], arc_pts[arc_n/2][1], arc_pts[arc_n/2][2],
+                std::to_string(deg));
+            tpt->pointcolor = Color(240, 220, 0);
+            session.add(session.add_point(tpt), grp_dihedral);
         }
     }
 
@@ -259,9 +264,10 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_area_vol = session.add_group("Area Volume");
     {
-        auto bm = std::make_shared<Mesh>(box);
-        bm->set_objectcolor(Color(100, 180, 100));
-        session.add(session.add_mesh(bm), grp_area_vol);
+        auto m = std::make_shared<Mesh>(mesh);
+        m->name = "area=" + std::to_string(mesh.area()) + "_vol=" + std::to_string(mesh.volume());
+        m->set_objectcolor(Color(100, 180, 100));
+        session.add(session.add_mesh(m), grp_area_vol);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -269,31 +275,31 @@ int main() {
     // ─────────────────────────────────────────────────────────────────────
     auto grp_xform = session.add_group("Transformation");
     {
-        // transform() — apply stored xform in-place; xform field unchanged
-        Mesh m1 = tmesh;
+        // transform() — apply stored xform in-place
+        Mesh m1 = mesh;
         m1.name = "transform_stored_xform";
-        m1.xform = Xform::translation(0.0, 0.0, 1.0);
+        m1.xform = Xform::translation(4.0, 0.0, 0.0);
         m1.transform();
         m1.set_objectcolor(Color(200, 100, 50));
         session.add(session.add_mesh(std::make_shared<Mesh>(m1)), grp_xform);
 
-        // transform(Xform&) — apply given xform in-place; stored xform unchanged
-        Mesh m2 = tmesh;
+        // transform(Xform&) — apply given xform in-place
+        Mesh m2 = mesh;
         m2.name = "transform_given_xform";
-        m2.transform(Xform::translation(0.0, 0.0, 2.0));
+        m2.transform(Xform::translation(8.0, 0.0, 0.0));
         m2.set_objectcolor(Color(50, 150, 200));
         session.add(session.add_mesh(std::make_shared<Mesh>(m2)), grp_xform);
 
-        // transformed() — copy with stored xform applied; xform kept
-        Mesh m3 = tmesh;
-        m3.xform = Xform::translation(0.0, 0.0, 3.0);
+        // transformed() — copy with stored xform applied
+        Mesh m3 = mesh;
+        m3.xform = Xform::translation(12.0, 0.0, 0.0);
         Mesh m3t = m3.transformed();
         m3t.name = "transformed_stored_copy";
         m3t.set_objectcolor(Color(180, 50, 180));
         session.add(session.add_mesh(std::make_shared<Mesh>(m3t)), grp_xform);
 
-        // transformed(Xform&) — copy with given xform applied; xform identity
-        Mesh m4t = tmesh.transformed(Xform::translation(0.0, 0.0, 4.0));
+        // transformed(Xform&) — copy with given xform applied
+        Mesh m4t = mesh.transformed(Xform::translation(16.0, 0.0, 0.0));
         m4t.name = "transformed_given_xform";
         m4t.set_objectcolor(Color(200, 200, 50));
         session.add(session.add_mesh(std::make_shared<Mesh>(m4t)), grp_xform);
