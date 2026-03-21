@@ -2,6 +2,9 @@
 #include "tolerance.h"
 #include <cmath>
 #include <sstream>
+#include <array>
+#include <functional>
+#include <limits>
 
 #include "polyline.pb.h"
 #include "point.pb.h"
@@ -950,6 +953,208 @@ void Polyline::average_normal(Vector& avg_normal) const {
         avg_normal += cross;
     }
     avg_normal.normalize_self();
+}
+
+Polyline Polyline::quick_hull(const Polyline& polygon) {
+    Point origin;
+    Vector xa, ya, za;
+    polygon.get_average_plane(origin, xa, ya, za);
+    std::vector<Point> pts = polygon.get_points();
+
+    std::vector<std::array<double,2>> pts2d;
+    pts2d.reserve(pts.size());
+    for (const auto& p : pts) {
+        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+        pts2d.push_back({dx*xa[0]+dy*xa[1]+dz*xa[2], dx*ya[0]+dy*ya[1]+dz*ya[2]});
+    }
+
+    auto ccw2d = [](double ax, double ay, double bx, double by, double px, double py) -> double {
+        return (bx-ax)*(py-ay) - (by-ay)*(px-ax);
+    };
+
+    std::function<void(const std::vector<std::array<double,2>>&, double, double, double, double,
+                       std::vector<std::array<double,2>>&)> qh_recurse;
+    qh_recurse = [&](const std::vector<std::array<double,2>>& v,
+                     double ax, double ay, double bx, double by,
+                     std::vector<std::array<double,2>>& hull) {
+        if (v.empty()) return;
+        size_t fi = 0;
+        double best = -std::numeric_limits<double>::infinity();
+        for (size_t i = 0; i < v.size(); i++) {
+            double val = ccw2d(ax, ay, bx, by, v[i][0], v[i][1]);
+            if (val >= best) { best = val; fi = i; }
+        }
+        double fx = v[fi][0], fy = v[fi][1];
+        std::vector<std::array<double,2>> left, right;
+        for (const auto& p : v) {
+            if (ccw2d(ax, ay, fx, fy, p[0], p[1]) > 0.0) left.push_back(p);
+        }
+        qh_recurse(left, ax, ay, fx, fy, hull);
+        hull.push_back({fx, fy});
+        for (const auto& p : v) {
+            if (ccw2d(fx, fy, bx, by, p[0], p[1]) > 0.0) right.push_back(p);
+        }
+        qh_recurse(right, fx, fy, bx, by, hull);
+    };
+
+    size_t ai = 0, bi = 0;
+    for (size_t i = 1; i < pts2d.size(); i++) {
+        if (pts2d[i][0] < pts2d[ai][0]) ai = i;
+        if (pts2d[i][0] >= pts2d[bi][0]) bi = i;
+    }
+    double ax = pts2d[ai][0], ay = pts2d[ai][1];
+    double bx = pts2d[bi][0], by = pts2d[bi][1];
+
+    std::vector<std::array<double,2>> left_pts, right_pts;
+    for (const auto& p : pts2d) {
+        if (ccw2d(ax, ay, bx, by, p[0], p[1]) > 0.0) left_pts.push_back(p);
+        else right_pts.push_back(p);
+    }
+    std::vector<std::array<double,2>> hull;
+    hull.push_back({ax, ay});
+    qh_recurse(left_pts, ax, ay, bx, by, hull);
+    hull.push_back({bx, by});
+    qh_recurse(right_pts, bx, by, ax, ay, hull);
+
+    std::vector<Point> pts3d;
+    pts3d.reserve(hull.size());
+    for (const auto& h : hull) {
+        pts3d.emplace_back(
+            origin[0] + h[0]*xa[0] + h[1]*ya[0],
+            origin[1] + h[0]*xa[1] + h[1]*ya[1],
+            origin[2] + h[0]*xa[2] + h[1]*ya[2]
+        );
+    }
+    return Polyline(pts3d);
+}
+
+std::optional<Polyline> Polyline::bounding_rectangle(const Polyline& polygon) {
+    Polyline hull = quick_hull(polygon);
+    if (hull.point_count() <= 2) return std::nullopt;
+    Point origin;
+    Vector xa, ya, za;
+    polygon.get_average_plane(origin, xa, ya, za);
+
+    std::vector<Point> hull_pts = hull.get_points();
+    std::vector<std::array<double,2>> hull2d;
+    hull2d.reserve(hull_pts.size());
+    for (const auto& p : hull_pts) {
+        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+        hull2d.push_back({dx*xa[0]+dy*xa[1]+dz*xa[2], dx*ya[0]+dy*ya[1]+dz*ya[2]});
+    }
+
+    double best_area = std::numeric_limits<double>::max();
+    double best_min_u=0, best_max_u=0, best_min_v=0, best_max_v=0, best_angle=0;
+    size_t hn = hull2d.size();
+    for (size_t i = 0; i < hn; i++) {
+        size_t j = (i + 1) % hn;
+        double ex = hull2d[j][0]-hull2d[i][0], ey = hull2d[j][1]-hull2d[i][1];
+        double len = std::sqrt(ex*ex + ey*ey);
+        if (len < 1e-12) continue;
+        double ca = ex/len, sa = ey/len;
+        double min_u = std::numeric_limits<double>::max(), max_u = -std::numeric_limits<double>::max();
+        double min_v = std::numeric_limits<double>::max(), max_v = -std::numeric_limits<double>::max();
+        for (const auto& h : hull2d) {
+            double u =  h[0]*ca + h[1]*sa;
+            double v = -h[0]*sa + h[1]*ca;
+            min_u = std::min(min_u, u); max_u = std::max(max_u, u);
+            min_v = std::min(min_v, v); max_v = std::max(max_v, v);
+        }
+        double area = (max_u-min_u)*(max_v-min_v);
+        if (area < best_area) {
+            best_area = area;
+            best_min_u = min_u; best_max_u = max_u;
+            best_min_v = min_v; best_max_v = max_v;
+            best_angle = std::atan2(ey, ex);
+        }
+    }
+
+    double ca = std::cos(best_angle), sa = std::sin(best_angle);
+    auto rot_back = [&](double u, double v) -> std::array<double,2> {
+        return {u*ca - v*sa, u*sa + v*ca};
+    };
+    auto to3d = [&](double u2, double v2) -> Point {
+        return Point(
+            origin[0] + u2*xa[0] + v2*ya[0],
+            origin[1] + u2*xa[1] + v2*ya[1],
+            origin[2] + u2*xa[2] + v2*ya[2]
+        );
+    };
+    auto c0 = rot_back(best_min_u, best_min_v);
+    auto c1 = rot_back(best_min_u, best_max_v);
+    auto c2 = rot_back(best_max_u, best_max_v);
+    auto c3 = rot_back(best_max_u, best_min_v);
+    std::vector<Point> pts3d = {
+        to3d(c0[0], c0[1]),
+        to3d(c1[0], c1[1]),
+        to3d(c2[0], c2[1]),
+        to3d(c3[0], c3[1]),
+        to3d(c0[0], c0[1]),
+    };
+    return Polyline(pts3d);
+}
+
+std::vector<Point> Polyline::grid_of_points_in_polygon(const Polyline& polygon,
+                                                       double offset_dist, double div_dist,
+                                                       size_t max_pts) {
+    (void)offset_dist;
+    if (div_dist < 1e-12) return {};
+    Point origin;
+    Vector xa, ya, za;
+    polygon.get_average_plane(origin, xa, ya, za);
+    std::vector<Point> pts = polygon.get_points();
+
+    size_t last = pts.size();
+    if (last > 1) {
+        const Point& a = pts[0];
+        const Point& b = pts.back();
+        if (std::abs(a[0]-b[0])<1e-10 && std::abs(a[1]-b[1])<1e-10 && std::abs(a[2]-b[2])<1e-10)
+            last--;
+    }
+
+    std::vector<std::array<double,2>> poly2d;
+    poly2d.reserve(last);
+    for (size_t i = 0; i < last; i++) {
+        const Point& p = pts[i];
+        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+        poly2d.push_back({dx*xa[0]+dy*xa[1]+dz*xa[2], dx*ya[0]+dy*ya[1]+dz*ya[2]});
+    }
+    if (poly2d.empty()) return {};
+
+    double x_min = std::numeric_limits<double>::max(), x_max = -std::numeric_limits<double>::max();
+    double y_min = std::numeric_limits<double>::max(), y_max = -std::numeric_limits<double>::max();
+    for (const auto& p : poly2d) {
+        x_min = std::min(x_min, p[0]); x_max = std::max(x_max, p[0]);
+        y_min = std::min(y_min, p[1]); y_max = std::max(y_max, p[1]);
+    }
+
+    auto pt_in_poly = [&](double px, double py) -> bool {
+        size_t n = poly2d.size();
+        bool inside = false;
+        size_t j = n - 1;
+        for (size_t i = 0; i < n; i++) {
+            double xi = poly2d[i][0], yi = poly2d[i][1];
+            double xj = poly2d[j][0], yj = poly2d[j][1];
+            if (((yi > py) != (yj > py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi))
+                inside = !inside;
+            j = i;
+        }
+        return inside;
+    };
+
+    std::vector<Point> result;
+    for (double u = x_min; u <= x_max + 1e-10 && result.size() < max_pts; u += div_dist) {
+        for (double v = y_min; v <= y_max + 1e-10 && result.size() < max_pts; v += div_dist) {
+            if (pt_in_poly(u, v)) {
+                result.emplace_back(
+                    origin[0] + u*xa[0] + v*ya[0],
+                    origin[1] + u*xa[1] + v*ya[1],
+                    origin[2] + u*xa[2] + v*ya[2]
+                );
+            }
+        }
+    }
+    return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

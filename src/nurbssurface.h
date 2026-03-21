@@ -6,7 +6,7 @@
 #include "xform.h"
 #include "color.h"
 #include "tolerance.h"
-#include "boundingbox.h"
+#include "obb.h"
 #include "nurbscurve.h"
 #include "guid.h"
 #include "json.h"

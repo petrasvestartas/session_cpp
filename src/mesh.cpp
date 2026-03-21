@@ -284,10 +284,10 @@ Mesh Mesh::weld(double tolerance) const {
     };
 
     if (tolerance > 0.0) {
-        std::vector<BoundingBox> boxes;
+        std::vector<Obb> boxes;
         boxes.reserve(n);
         for (const auto& p : positions)
-            boxes.push_back(BoundingBox::from_point(p, tolerance));
+            boxes.push_back(Obb::from_point(p, tolerance));
         double ws = BVH::compute_world_size(boxes);
         BVH bvh = BVH::from_boxes(boxes, ws);
         auto [pairs, ignore1, ignore2] = bvh.check_all_collisions(boxes);
@@ -804,48 +804,13 @@ bool Mesh::is_vertex_on_boundary(size_t vertex_key) const {
     return false;
 }
 
-std::optional<Vector> Mesh::face_normal(size_t face_key) const {
-    auto vertices_opt = face_vertices(face_key);
-    if (!vertices_opt.has_value() || vertices_opt->size() < 3) {
-        return std::nullopt;
+double Mesh::area() const {
+    double total = 0.0;
+    for (const auto& [fk, _] : face) {
+        auto a = face_area(fk);
+        if (a) total += *a;
     }
-    
-    const auto& vertices = *vertices_opt;
-    auto p0_opt = vertex_point(vertices[0]);
-    auto p1_opt = vertex_point(vertices[1]);
-    auto p2_opt = vertex_point(vertices[2]);
-    
-    if (!p0_opt || !p1_opt || !p2_opt) {
-        return std::nullopt;
-    }
-    
-    const auto& p0 = *p0_opt;
-    const auto& p1 = *p1_opt;
-    const auto& p2 = *p2_opt;
-    
-    Vector u(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-    Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
-    
-    Vector normal = u.cross(v);
-    double len = normal.magnitude();
-    
-    if (len > Tolerance::ZERO_TOLERANCE) {
-        return Vector(normal[0] / len, normal[1] / len, normal[2] / len);
-    }
-    return std::nullopt;
-}
-
-std::optional<Point> Mesh::face_centroid(size_t face_key) const {
-    auto verts = face_vertices(face_key);
-    if (!verts || verts->empty()) return std::nullopt;
-    double x = 0, y = 0, z = 0;
-    for (auto vk : *verts) {
-        auto p = vertex_point(vk);
-        if (!p) return std::nullopt;
-        x += (*p)[0]; y += (*p)[1]; z += (*p)[2];
-    }
-    double n = (double)verts->size();
-    return Point(x / n, y / n, z / n);
+    return total;
 }
 
 Point Mesh::centroid() const {
@@ -858,47 +823,87 @@ Point Mesh::centroid() const {
     return Point(x / n, y / n, z / n);
 }
 
-std::optional<Vector> Mesh::vertex_normal(size_t vertex_key) const {
-    return vertex_normal_weighted(vertex_key, NormalWeighting::Area);
+std::optional<double> Mesh::dihedral_angle(size_t u, size_t v) const {
+    auto ef = edge_faces(u, v);
+    if (!ef || ef->size() < 2) return std::nullopt;
+    auto n0_opt = face_normal((*ef)[0]);
+    auto n1_opt = face_normal((*ef)[1]);
+    if (!n0_opt.has_value() || !n1_opt.has_value()) return std::nullopt;
+    double dot = std::clamp(n0_opt->dot(*n1_opt), -1.0, 1.0);
+    return (Tolerance::PI - std::acos(dot)) * 180.0 / Tolerance::PI;
 }
 
-std::optional<Vector> Mesh::vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const {
-    auto faces_opt = vertex_faces(vertex_key);
-    if (!faces_opt || faces_opt->empty()) {
-        return std::nullopt;
-    }
-
-    Vector normal_acc(0.0, 0.0, 0.0);
-
-    for (size_t face_key : *faces_opt) {
-        auto face_normal_opt = face_normal(face_key);
-        if (!face_normal_opt) continue;
-        
-        const auto& fn = *face_normal_opt;
-        double weight = 1.0;
-        
-        switch (weighting) {
-            case NormalWeighting::Area:
-                weight = face_area(face_key).value_or(1.0);
-                break;
-            case NormalWeighting::Angle:
-                weight = vertex_angle_in_face(vertex_key, face_key).value_or(1.0);
-                break;
-            case NormalWeighting::Uniform:
-                weight = 1.0;
-                break;
+std::tuple<std::map<std::pair<size_t,size_t>,double>, std::vector<Polyline>, std::vector<Point>>
+Mesh::dihedral_angles(double scale, bool with_arcs, bool with_points) const {
+    std::map<std::pair<size_t,size_t>,double> angles;
+    std::vector<Polyline> arcs;
+    std::vector<Point> points;
+    const int arc_n = 12;
+    for (auto& [u, v] : edges()) {
+        auto da = dihedral_angle(u, v);
+        if (!da) continue;
+        angles[{u, v}] = *da;
+        double deg = *da;
+        auto ep0 = vertex_point(u);
+        auto ep1 = vertex_point(v);
+        if (!ep0 || !ep1) continue;
+        double mx = ((*ep0)[0]+(*ep1)[0])*0.5;
+        double my = ((*ep0)[1]+(*ep1)[1])*0.5;
+        double mz = ((*ep0)[2]+(*ep1)[2])*0.5;
+        if (scale == 0.0) {
+            if (with_points) {
+                Point pt(mx, my, mz, std::to_string(deg));
+                pt.pointcolor = Color(240, 220, 0);
+                points.push_back(pt);
+            }
+            continue;
         }
-        
-        normal_acc[0] = normal_acc[0] + fn[0] * weight;
-        normal_acc[1] = normal_acc[1] + fn[1] * weight;
-        normal_acc[2] = normal_acc[2] + fn[2] * weight;
+        auto ef = edge_faces(u, v);
+        if (!ef || ef->size() < 2) continue;
+        double ex=(*ep1)[0]-(*ep0)[0], ey=(*ep1)[1]-(*ep0)[1], ez=(*ep1)[2]-(*ep0)[2];
+        double elen=std::sqrt(ex*ex+ey*ey+ez*ez);
+        if (elen < 1e-10) continue;
+        ex/=elen; ey/=elen; ez/=elen;
+        auto fc0 = face_centroid((*ef)[0]);
+        auto fc1 = face_centroid((*ef)[1]);
+        if (!fc0 || !fc1) continue;
+        double d0x=(*fc0)[0]-mx, d0y=(*fc0)[1]-my, d0z=(*fc0)[2]-mz;
+        double dot0=d0x*ex+d0y*ey+d0z*ez;
+        d0x-=dot0*ex; d0y-=dot0*ey; d0z-=dot0*ez;
+        double d0len=std::sqrt(d0x*d0x+d0y*d0y+d0z*d0z);
+        if (d0len < 1e-10) continue;
+        d0x/=d0len; d0y/=d0len; d0z/=d0len;
+        double d1x=(*fc1)[0]-mx, d1y=(*fc1)[1]-my, d1z=(*fc1)[2]-mz;
+        double dot1=d1x*ex+d1y*ey+d1z*ez;
+        d1x-=dot1*ex; d1y-=dot1*ey; d1z-=dot1*ez;
+        double d1len=std::sqrt(d1x*d1x+d1y*d1y+d1z*d1z);
+        if (d1len < 1e-10) continue;
+        d1x/=d1len; d1y/=d1len; d1z/=d1len;
+        double theta=std::acos(std::max(-1.0, std::min(1.0, d0x*d1x+d0y*d1y+d0z*d1z)));
+        if (std::abs(std::sin(theta)) < 1e-10) continue;
+        std::vector<Point> arc_pts;
+        for (int j = 0; j <= arc_n; j++) {
+            double t=(double)j/arc_n;
+            double w1=std::sin((1.0-t)*theta)/std::sin(theta);
+            double w2=std::sin(t*theta)/std::sin(theta);
+            arc_pts.push_back(Point(
+                mx+(w1*d0x+w2*d1x)*scale,
+                my+(w1*d0y+w2*d1y)*scale,
+                mz+(w1*d0z+w2*d1z)*scale));
+        }
+        if (with_arcs) {
+            Polyline arc(arc_pts);
+            arc.name = "dihedral_e"+std::to_string(u)+"_"+std::to_string(v)+"="+std::to_string(deg);
+            arc.linecolor = Color(240, 220, 0);
+            arcs.push_back(arc);
+        }
+        if (with_points) {
+            Point pt(arc_pts[arc_n/2][0], arc_pts[arc_n/2][1], arc_pts[arc_n/2][2], std::to_string(deg));
+            pt.pointcolor = Color(240, 220, 0);
+            points.push_back(pt);
+        }
     }
-    
-    double len = normal_acc.magnitude();
-    if (len > Tolerance::ZERO_TOLERANCE) {
-        return Vector(normal_acc[0] / len, normal_acc[1] / len, normal_acc[2] / len);
-    }
-    return std::nullopt;
+    return {angles, arcs, points};
 }
 
 std::optional<double> Mesh::face_area(size_t face_key) const {
@@ -929,82 +934,48 @@ std::optional<double> Mesh::face_area(size_t face_key) const {
     return area;
 }
 
-double Mesh::area() const {
-    double total = 0.0;
-    for (const auto& [fk, _] : face) {
-        auto a = face_area(fk);
-        if (a) total += *a;
+std::optional<Point> Mesh::face_centroid(size_t face_key) const {
+    auto verts = face_vertices(face_key);
+    if (!verts || verts->empty()) return std::nullopt;
+    double x = 0, y = 0, z = 0;
+    for (auto vk : *verts) {
+        auto p = vertex_point(vk);
+        if (!p) return std::nullopt;
+        x += (*p)[0]; y += (*p)[1]; z += (*p)[2];
     }
-    return total;
+    double n = (double)verts->size();
+    return Point(x / n, y / n, z / n);
 }
 
-double Mesh::volume() const {
-    double total = 0.0;
-    for (const auto& [fk, vkeys] : face) {
-        if (vkeys.size() < 3) continue;
-        auto p0o = vertex_point(vkeys[0]);
-        if (!p0o) continue;
-        const auto& p0 = *p0o;
-        for (size_t i = 1; i + 1 < vkeys.size(); ++i) {
-            auto p1o = vertex_point(vkeys[i]);
-            auto p2o = vertex_point(vkeys[i + 1]);
-            if (!p1o || !p2o) continue;
-            const auto& p1 = *p1o;
-            const auto& p2 = *p2o;
-            total += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
-                   + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
-                   + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
-        }
-    }
-    return std::abs(total) / 6.0;
-}
-
-std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_key) const {
+std::optional<Vector> Mesh::face_normal(size_t face_key) const {
     auto vertices_opt = face_vertices(face_key);
-    if (!vertices_opt) return std::nullopt;
-    
-    const auto& vertices = *vertices_opt;
-    auto it = std::find(vertices.begin(), vertices.end(), vertex_key);
-    if (it == vertices.end()) return std::nullopt;
-    
-    size_t vertex_index = std::distance(vertices.begin(), it);
-    size_t n = vertices.size();
-    size_t prev_vertex = vertices[(vertex_index + n - 1) % n];
-    size_t next_vertex = vertices[(vertex_index + 1) % n];
-    
-    auto center_opt = vertex_point(vertex_key);
-    auto prev_opt = vertex_point(prev_vertex);
-    auto next_opt = vertex_point(next_vertex);
-    
-    if (!center_opt || !prev_opt || !next_opt) return std::nullopt;
-    
-    const auto& center = *center_opt;
-    const auto& prev_pos = *prev_opt;
-    const auto& next_pos = *next_opt;
-    
-    Vector u(prev_pos[0] - center[0], prev_pos[1] - center[1], prev_pos[2] - center[2]);
-    Vector v(next_pos[0] - center[0], next_pos[1] - center[1], next_pos[2] - center[2]);
-    
-    double u_len = u.magnitude();
-    double v_len = v.magnitude();
-    
-    if (u_len < Tolerance::ZERO_TOLERANCE || v_len < Tolerance::ZERO_TOLERANCE) {
-        return 0.0;
+    if (!vertices_opt.has_value() || vertices_opt->size() < 3) {
+        return std::nullopt;
     }
-    
-    double cos_angle = u.dot(v) / (u_len * v_len);
-    cos_angle = std::clamp(cos_angle, -1.0, 1.0);
-    return std::acos(cos_angle);
-}
 
-std::optional<double> Mesh::dihedral_angle(size_t u, size_t v) const {
-    auto ef = edge_faces(u, v);
-    if (!ef || ef->size() < 2) return std::nullopt;
-    auto n0_opt = face_normal((*ef)[0]);
-    auto n1_opt = face_normal((*ef)[1]);
-    if (!n0_opt.has_value() || !n1_opt.has_value()) return std::nullopt;
-    double dot = std::clamp(n0_opt->dot(*n1_opt), -1.0, 1.0);
-    return Tolerance::PI - std::acos(dot);
+    const auto& vertices = *vertices_opt;
+    auto p0_opt = vertex_point(vertices[0]);
+    auto p1_opt = vertex_point(vertices[1]);
+    auto p2_opt = vertex_point(vertices[2]);
+
+    if (!p0_opt || !p1_opt || !p2_opt) {
+        return std::nullopt;
+    }
+
+    const auto& p0 = *p0_opt;
+    const auto& p1 = *p1_opt;
+    const auto& p2 = *p2_opt;
+
+    Vector u(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+    Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
+
+    Vector normal = u.cross(v);
+    double len = normal.magnitude();
+
+    if (len > Tolerance::ZERO_TOLERANCE) {
+        return Vector(normal[0] / len, normal[1] / len, normal[2] / len);
+    }
+    return std::nullopt;
 }
 
 std::map<size_t, Vector> Mesh::face_normals() const {
@@ -1016,6 +987,87 @@ std::map<size_t, Vector> Mesh::face_normals() const {
         }
     }
     return normals;
+}
+
+std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_key) const {
+    auto vertices_opt = face_vertices(face_key);
+    if (!vertices_opt) return std::nullopt;
+
+    const auto& vertices = *vertices_opt;
+    auto it = std::find(vertices.begin(), vertices.end(), vertex_key);
+    if (it == vertices.end()) return std::nullopt;
+
+    size_t vertex_index = std::distance(vertices.begin(), it);
+    size_t n = vertices.size();
+    size_t prev_vertex = vertices[(vertex_index + n - 1) % n];
+    size_t next_vertex = vertices[(vertex_index + 1) % n];
+
+    auto center_opt = vertex_point(vertex_key);
+    auto prev_opt = vertex_point(prev_vertex);
+    auto next_opt = vertex_point(next_vertex);
+
+    if (!center_opt || !prev_opt || !next_opt) return std::nullopt;
+
+    const auto& center = *center_opt;
+    const auto& prev_pos = *prev_opt;
+    const auto& next_pos = *next_opt;
+
+    Vector u(prev_pos[0] - center[0], prev_pos[1] - center[1], prev_pos[2] - center[2]);
+    Vector v(next_pos[0] - center[0], next_pos[1] - center[1], next_pos[2] - center[2]);
+
+    double u_len = u.magnitude();
+    double v_len = v.magnitude();
+
+    if (u_len < Tolerance::ZERO_TOLERANCE || v_len < Tolerance::ZERO_TOLERANCE) {
+        return 0.0;
+    }
+
+    double cos_angle = u.dot(v) / (u_len * v_len);
+    cos_angle = std::clamp(cos_angle, -1.0, 1.0);
+    return std::acos(cos_angle);
+}
+
+std::optional<Vector> Mesh::vertex_normal(size_t vertex_key) const {
+    return vertex_normal_weighted(vertex_key, NormalWeighting::Area);
+}
+
+std::optional<Vector> Mesh::vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const {
+    auto faces_opt = vertex_faces(vertex_key);
+    if (!faces_opt || faces_opt->empty()) {
+        return std::nullopt;
+    }
+
+    Vector normal_acc(0.0, 0.0, 0.0);
+
+    for (size_t face_key : *faces_opt) {
+        auto face_normal_opt = face_normal(face_key);
+        if (!face_normal_opt) continue;
+
+        const auto& fn = *face_normal_opt;
+        double weight = 1.0;
+
+        switch (weighting) {
+            case NormalWeighting::Area:
+                weight = face_area(face_key).value_or(1.0);
+                break;
+            case NormalWeighting::Angle:
+                weight = vertex_angle_in_face(vertex_key, face_key).value_or(1.0);
+                break;
+            case NormalWeighting::Uniform:
+                weight = 1.0;
+                break;
+        }
+
+        normal_acc[0] = normal_acc[0] + fn[0] * weight;
+        normal_acc[1] = normal_acc[1] + fn[1] * weight;
+        normal_acc[2] = normal_acc[2] + fn[2] * weight;
+    }
+
+    double len = normal_acc.magnitude();
+    if (len > Tolerance::ZERO_TOLERANCE) {
+        return Vector(normal_acc[0] / len, normal_acc[1] / len, normal_acc[2] / len);
+    }
+    return std::nullopt;
 }
 
 std::map<size_t, Vector> Mesh::vertex_normals() const {
@@ -1078,6 +1130,27 @@ std::map<size_t, Vector> Mesh::vertex_normals_weighted(NormalWeighting weighting
             normals[vk] = Vector(v[0] / len, v[1] / len, v[2] / len);
     }
     return normals;
+}
+
+double Mesh::volume() const {
+    double total = 0.0;
+    for (const auto& [fk, vkeys] : face) {
+        if (vkeys.size() < 3) continue;
+        auto p0o = vertex_point(vkeys[0]);
+        if (!p0o) continue;
+        const auto& p0 = *p0o;
+        for (size_t i = 1; i + 1 < vkeys.size(); ++i) {
+            auto p1o = vertex_point(vkeys[i]);
+            auto p2o = vertex_point(vkeys[i + 1]);
+            if (!p1o || !p2o) continue;
+            const auto& p1 = *p1o;
+            const auto& p2 = *p2o;
+            total += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+                   + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
+                   + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+        }
+    }
+    return std::abs(total) / 6.0;
 }
 
 Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision) {

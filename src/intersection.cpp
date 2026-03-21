@@ -420,7 +420,7 @@ bool Intersection::plane_plane_plane(
 bool Intersection::ray_box(
     const Point& origin,
     const Vector& direction,
-    const BoundingBox& box,
+    const Obb& box,
     double t0,
     double t1,
     double& tmin,
@@ -461,7 +461,7 @@ bool Intersection::ray_box(
 
 bool Intersection::ray_box(
     const Line& line,
-    const BoundingBox& box,
+    const Obb& box,
     double t0,
     double t1,
     double& tmin,
@@ -475,7 +475,7 @@ bool Intersection::ray_box(
 
 bool Intersection::ray_box(
     const Line& line,
-    const BoundingBox& box,
+    const Obb& box,
     double t0,
     double t1,
     std::vector<Point>& intersection_points) {
@@ -2025,6 +2025,138 @@ std::vector<NurbsCurve> Intersection::surface_plane(
     }
 
     return result;
+}
+
+// ── Joint geometry utilities ─────────────────────────────────────────────────
+
+static bool vectors_nearly_parallel(const Vector& v0, const Vector& v1, double angle_tol) {
+    double m0 = v0.magnitude();
+    double m1 = v1.magnitude();
+    if (m0 < Tolerance::ZERO_TOLERANCE || m1 < Tolerance::ZERO_TOLERANCE) return false;
+    double cos_angle = std::fabs(v0.dot(v1) / (m0 * m1));
+    return cos_angle >= std::cos(angle_tol);
+}
+
+bool Intersection::plane_plane_plane_check(const Plane& p0, const Plane& p1, const Plane& p2, double angle_tol, Point& output) {
+    if (vectors_nearly_parallel(p0.z_axis(), p1.z_axis(), angle_tol)) return false;
+    if (vectors_nearly_parallel(p0.z_axis(), p2.z_axis(), angle_tol)) return false;
+    if (vectors_nearly_parallel(p1.z_axis(), p2.z_axis(), angle_tol)) return false;
+    return plane_plane_plane(p0, p1, p2, output);
+}
+
+double Intersection::remap(double val, double from1, double to1, double from2, double to2) {
+    double span = to1 - from1;
+    if (std::fabs(span) < Tolerance::ZERO_TOLERANCE) return from2;
+    double t = (val - from1) / span;
+    return from2 + t * (to2 - from2);
+}
+
+bool Intersection::closest_point_on_segment(const Point& pt, const Line& seg, Point& output, double& t) {
+    Point start = seg.start();
+    Point end = seg.end();
+    double dx = end[0] - start[0];
+    double dy = end[1] - start[1];
+    double dz = end[2] - start[2];
+    double len_sq = dx*dx + dy*dy + dz*dz;
+    if (len_sq < 1e-20) {
+        output = start;
+        t = 0.0;
+        return true;
+    }
+    double vx = pt[0] - start[0];
+    double vy = pt[1] - start[1];
+    double vz = pt[2] - start[2];
+    t = (vx*dx + vy*dy + vz*dz) / len_sq;
+    if (t < 0.0) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    output = Point(start[0] + t*dx, start[1] + t*dy, start[2] + t*dz);
+    return true;
+}
+
+bool Intersection::plane_4planes(const Plane& main_plane, const std::array<Plane, 4>& planes, Polyline& output) {
+    Point p0, p1, p2, p3;
+    if (!plane_plane_plane_check(planes[0], planes[1], main_plane, 0.1, p0)) return false;
+    if (!plane_plane_plane_check(planes[1], planes[2], main_plane, 0.1, p1)) return false;
+    if (!plane_plane_plane_check(planes[2], planes[3], main_plane, 0.1, p2)) return false;
+    if (!plane_plane_plane_check(planes[3], planes[0], main_plane, 0.1, p3)) return false;
+    output = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
+    return true;
+}
+
+bool Intersection::plane_4planes_open(const Plane& main_plane, const std::array<Plane, 4>& planes, Polyline& output) {
+    Point p0, p1, p2, p3;
+    if (!plane_plane_plane_check(planes[0], planes[1], main_plane, 0.1, p0)) return false;
+    if (!plane_plane_plane_check(planes[1], planes[2], main_plane, 0.1, p1)) return false;
+    if (!plane_plane_plane_check(planes[2], planes[3], main_plane, 0.1, p2)) return false;
+    if (!plane_plane_plane_check(planes[3], planes[0], main_plane, 0.1, p3)) return false;
+    output = Polyline(std::vector<Point>{p0, p1, p2, p3});
+    return true;
+}
+
+bool Intersection::plane_4lines(const Plane& plane, const Line& l0, const Line& l1, const Line& l2, const Line& l3, Polyline& output) {
+    Point p0, p1, p2, p3;
+    if (!line_plane(l0, plane, p0, false)) return false;
+    if (!line_plane(l1, plane, p1, false)) return false;
+    if (!line_plane(l2, plane, p2, false)) return false;
+    if (!line_plane(l3, plane, p3, false)) return false;
+    output = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
+    return true;
+}
+
+bool Intersection::line_two_planes(const Line& line, const Plane& plane0, const Plane& plane1, Line& output) {
+    Point q0, q1;
+    if (!line_plane(line, plane0, q0, true)) return false;
+    if (!line_plane(line, plane1, q1, true)) return false;
+    output = Line(q0[0], q0[1], q0[2], q1[0], q1[1], q1[2]);
+    return true;
+}
+
+bool Intersection::polyline_plane(const Polyline& polyline, const Plane& plane, std::vector<Point>& points, std::vector<int>& edge_ids) {
+    size_t n = polyline.point_count();
+    if (n < 2) return false;
+    for (size_t i = 0; i < n - 1; i++) {
+        Point a = polyline.get_point(i);
+        Point b = polyline.get_point(i + 1);
+        double va = plane_value_at(plane, a);
+        double vb = plane_value_at(plane, b);
+        if (std::fabs(va) < Tolerance::ZERO_TOLERANCE || std::fabs(vb) < Tolerance::ZERO_TOLERANCE)
+            continue;
+        Line seg(a[0], a[1], a[2], b[0], b[1], b[2]);
+        Point hit;
+        if (line_plane(seg, plane, hit, true)) {
+            points.push_back(hit);
+            edge_ids.push_back(static_cast<int>(i));
+        }
+    }
+    return !points.empty();
+}
+
+bool Intersection::line_line_3d(const Line& cutter, const Line& seg, Point& output) {
+    double t0, t1;
+    if (!line_line_parameters(cutter, seg, t0, t1, 0.0, false, false)) return false;
+    output = cutter.point_at(t0);
+    return true;
+}
+
+bool Intersection::scale_vector_to_distance_of_2planes(const Vector& direction, const Plane& plane0, const Plane& plane1, Vector& output) {
+    if (direction.magnitude() < Tolerance::ZERO_TOLERANCE) return false;
+    Line ray(0.0, 0.0, 0.0, direction[0], direction[1], direction[2]);
+    Point q0, q1;
+    if (!line_plane(ray, plane0, q0, false)) return false;
+    if (!line_plane(ray, plane1, q1, false)) return false;
+    output = Vector(q1[0]-q0[0], q1[1]-q0[1], q1[2]-q0[2]);
+    Vector n1 = plane1.z_axis();
+    double n1_mag = n1.magnitude();
+    if (n1_mag < Tolerance::ZERO_TOLERANCE) return false;
+    Point o0 = plane0.origin();
+    double d = ((o0[0]-plane1.origin()[0])*n1[0]
+              + (o0[1]-plane1.origin()[1])*n1[1]
+              + (o0[2]-plane1.origin()[2])*n1[2]) / n1_mag;
+    double dist_ortho_sq = d * d;
+    if (dist_ortho_sq < Tolerance::ZERO_TOLERANCE) return false;
+    double dist_sq = output.dot(output);
+    if (dist_sq / dist_ortho_sq >= 10.0) return false;
+    return true;
 }
 
 } // namespace session_cpp

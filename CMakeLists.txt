@@ -249,7 +249,7 @@ set(MINITEST_SOURCES
     src/trimesh_cdt_test.cpp
     src/trimesh_adaptive_test.cpp
     src/trimesh_grid_test.cpp
-    src/boundingbox_test.cpp
+    src/obb_test.cpp
     src/bvh_test.cpp
     src/rtree_test.cpp
     src/aabb_test.cpp

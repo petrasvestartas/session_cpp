@@ -11,6 +11,7 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <optional>
 
 namespace session_cpp {
 
@@ -262,6 +263,17 @@ public:
     /// Interpolate between two polylines
     static Polyline tween_two_polylines(const Polyline& polyline0, const Polyline& polyline1,
                                        double weight);
+
+    /// 2D convex hull (quickhull) in the polygon's local plane.
+    static Polyline quick_hull(const Polyline& polygon);
+
+    /// Minimum-area bounding rectangle via rotating calipers; returns closed 5-pt Polyline.
+    static std::optional<Polyline> bounding_rectangle(const Polyline& polygon);
+
+    /// Grid of interior points; offset_dist ignored (no Clipper2); div_dist = grid spacing.
+    static std::vector<Point> grid_of_points_in_polygon(const Polyline& polygon,
+                                                        double offset_dist, double div_dist,
+                                                        size_t max_pts = 100);
 
     /// Merge consecutive collinear segments (in-place); closed polyline wraps around
     void merge_collinear(double tol = Tolerance::APPROXIMATION);

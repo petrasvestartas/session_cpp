@@ -3,10 +3,12 @@
 #include "vector.h"
 #include "plane.h"
 #include "line.h"
+#include "polyline.h"
 #include "mesh.h"
-#include "boundingbox.h"
+#include "obb.h"
 #include "bvh.h"
 #include "tolerance.h"
+#include <array>
 #include <tuple>
 #include <vector>
 #include <optional>
@@ -128,7 +130,7 @@ public:
   static bool ray_box(
     const Point& origin,
     const Vector& direction,
-    const BoundingBox& box,
+    const Obb& box,
     double t0,
     double t1,
     double& tmin,
@@ -147,7 +149,7 @@ public:
    */
   static bool ray_box(
     const Line& line,
-    const BoundingBox& box,
+    const Obb& box,
     double t0,
     double t1,
     double& tmin,
@@ -166,7 +168,7 @@ public:
    */
   static bool ray_box(
     const Line& line,
-    const BoundingBox& box,
+    const Obb& box,
     double t0,
     double t1,
     std::vector<Point>& intersection_points
@@ -422,6 +424,146 @@ public:
     const NurbsSurface& surface,
     const Plane& plane,
     double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Three-plane intersection with parallel-pair guard
+   * @param p0 First plane
+   * @param p1 Second plane
+   * @param p2 Third plane
+   * @param angle_tol Angle tolerance in radians; pairs with |cos| >= cos(tol) are rejected
+   * @param output Intersection point
+   * @return true if no two planes are nearly parallel and a point exists
+   */
+  static bool plane_plane_plane_check(
+    const Plane& p0,
+    const Plane& p1,
+    const Plane& p2,
+    double angle_tol,
+    Point& output
+  );
+
+  /**
+   * @brief Linear remap: map val from [from1,to1] to [from2,to2]
+   */
+  static double remap(double val, double from1, double to1, double from2, double to2);
+
+  /**
+   * @brief Project point onto finite segment; return closest point and parameter t in [0,1]
+   * @param pt Test point
+   * @param seg Segment
+   * @param output Closest point on segment
+   * @param t Parameter in [0,1]
+   * @return true always
+   */
+  static bool closest_point_on_segment(
+    const Point& pt,
+    const Line& seg,
+    Point& output,
+    double& t
+  );
+
+  /**
+   * @brief Intersect main plane with 4 ordered boundary planes; closed quad (5 pts)
+   * @param main_plane Main cutting plane
+   * @param planes Array of 4 boundary planes (consecutive pairs define edges)
+   * @param output Closed polyline (first == last, 5 points)
+   * @return true if all 4 corner intersections succeeded
+   */
+  static bool plane_4planes(
+    const Plane& main_plane,
+    const std::array<Plane, 4>& planes,
+    Polyline& output
+  );
+
+  /**
+   * @brief Intersect main plane with 4 ordered boundary planes; open polyline (4 pts)
+   * @param main_plane Main cutting plane
+   * @param planes Array of 4 boundary planes
+   * @param output Open polyline (4 points)
+   * @return true if all 4 corner intersections succeeded
+   */
+  static bool plane_4planes_open(
+    const Plane& main_plane,
+    const std::array<Plane, 4>& planes,
+    Polyline& output
+  );
+
+  /**
+   * @brief Intersect plane with 4 infinite lines; closed quad (5 pts)
+   * @param plane Cutting plane
+   * @param l0 First line
+   * @param l1 Second line
+   * @param l2 Third line
+   * @param l3 Fourth line
+   * @param output Closed polyline (5 points, first == last)
+   * @return true if all 4 intersections succeeded
+   */
+  static bool plane_4lines(
+    const Plane& plane,
+    const Line& l0,
+    const Line& l1,
+    const Line& l2,
+    const Line& l3,
+    Polyline& output
+  );
+
+  /**
+   * @brief Clip line segment so start/end snap to two plane intersections
+   * @param line Input segment (finite)
+   * @param plane0 Plane for start point
+   * @param plane1 Plane for end point
+   * @param output Clipped line
+   * @return true if both intersections exist within the segment
+   */
+  static bool line_two_planes(
+    const Line& line,
+    const Plane& plane0,
+    const Plane& plane1,
+    Line& output
+  );
+
+  /**
+   * @brief Find all polyline perimeter edge intersections with a plane
+   * @param polyline Input polyline
+   * @param plane Cutting plane
+   * @param points Output intersection points
+   * @param edge_ids Output edge indices (0-based) where each hit occurred
+   * @return true if any intersections found
+   */
+  static bool polyline_plane(
+    const Polyline& polyline,
+    const Plane& plane,
+    std::vector<Point>& points,
+    std::vector<int>& edge_ids
+  );
+
+  /**
+   * @brief 3D skew-line intersection via closest approach on cutter (infinite lines)
+   * @param cutter Line whose point is returned
+   * @param seg Second line
+   * @param output Point on cutter at closest approach
+   * @return true if lines are not parallel
+   */
+  static bool line_line_3d(
+    const Line& cutter,
+    const Line& seg,
+    Point& output
+  );
+
+  /**
+   * @brief Scale direction vector to span the distance between two planes
+   * @param direction Direction vector
+   * @param plane0 First plane
+   * @param plane1 Second plane
+   * @param output Scaled vector connecting plane0 to plane1 along direction
+   * @return true if successful
+   */
+  static bool scale_vector_to_distance_of_2planes(
+    const Vector& direction,
+    const Plane& plane0,
+    const Plane& plane1,
+    Vector& output
   );
 
 private:

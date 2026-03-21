@@ -1,6 +1,6 @@
 #include "mini_test.h"
 #include "mesh_iso.h"
-#include "boundingbox.h"
+#include "obb.h"
 #include "point.h"
 #include "tolerance.h"
 
@@ -24,7 +24,7 @@ MINI_TEST("MeshIso", "Eval Diamond") {
 }
 
 MINI_TEST("MeshIso", "From Tpms Gyroid Solid") {
-    BoundingBox box = BoundingBox::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
+    Obb box = Obb::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
     Mesh m = MeshIso::from_tpms(TpmsType::GYROID, box, 10, 10, 10, 0.0, 1.0, TpmsMode::SOLID);
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() > 0);
@@ -32,13 +32,13 @@ MINI_TEST("MeshIso", "From Tpms Gyroid Solid") {
 }
 
 MINI_TEST("MeshIso", "From Tpms Diamond Sheet") {
-    BoundingBox box = BoundingBox::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
+    Obb box = Obb::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
     Mesh m = MeshIso::from_tpms(TpmsType::DIAMOND, box, 10, 10, 10, 0.0, 1.0, TpmsMode::SHEET, 0.1);
     MINI_CHECK(m.is_valid());
 }
 
 MINI_TEST("MeshIso", "From Tpms Neovius Shell") {
-    BoundingBox box = BoundingBox::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
+    Obb box = Obb::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
     Mesh m = MeshIso::from_tpms(TpmsType::NEOVIUS, box, 10, 10, 10, 0.0, 1.0, TpmsMode::SHELL, 0.1);
     MINI_CHECK(m.is_valid());
 }
@@ -55,7 +55,7 @@ MINI_TEST("MeshIso", "Smooth Union") {
 }
 
 MINI_TEST("MeshIso", "From Function") {
-    BoundingBox box = BoundingBox::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
+    Obb box = Obb::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
     auto fn = [](double x, double y, double z) {
         return MeshIso::sdf_sphere(0.0, 0.0, 0.0, 1.0, x, y, z);
     };
@@ -65,7 +65,7 @@ MINI_TEST("MeshIso", "From Function") {
 }
 
 MINI_TEST("MeshIso", "All Tpms Shells") {
-    BoundingBox box = BoundingBox::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
+    Obb box = Obb::from_points({Point(0.0, 0.0, 0.0), Point(1.0, 1.0, 1.0)});
     TpmsType types[] = {
         TpmsType::GYROID, TpmsType::SCHWARZ_P, TpmsType::DIAMOND,
         TpmsType::NEOVIUS, TpmsType::IWP, TpmsType::LIDINOID,
@@ -79,7 +79,7 @@ MINI_TEST("MeshIso", "All Tpms Shells") {
 }
 
 MINI_TEST("MeshIso", "SDF Box") {
-    BoundingBox box = BoundingBox::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
+    Obb box = Obb::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
     Mesh m = MeshIso::from_function([](double x, double y, double z) {
         return MeshIso::sdf_box(0.0, 0.0, 0.0, 1.0, 0.7, 1.3, x, y, z);
     }, box, 10, 10, 10);
@@ -88,7 +88,7 @@ MINI_TEST("MeshIso", "SDF Box") {
 }
 
 MINI_TEST("MeshIso", "SDF Torus") {
-    BoundingBox box = BoundingBox::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
+    Obb box = Obb::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
     Mesh m = MeshIso::from_function([](double x, double y, double z) {
         return MeshIso::sdf_torus(0.0, 0.0, 0.0, 1.1, 0.4, x, y, z);
     }, box, 10, 10, 10);
@@ -97,7 +97,7 @@ MINI_TEST("MeshIso", "SDF Torus") {
 }
 
 MINI_TEST("MeshIso", "SDF Capsule") {
-    BoundingBox box = BoundingBox::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
+    Obb box = Obb::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
     Mesh m = MeshIso::from_function([](double x, double y, double z) {
         return MeshIso::sdf_capsule(Point(0.0, -1.0, 0.0), Point(0.0, 1.0, 0.0), 0.5, x, y, z);
     }, box, 10, 10, 10);
@@ -106,7 +106,7 @@ MINI_TEST("MeshIso", "SDF Capsule") {
 }
 
 MINI_TEST("MeshIso", "Smooth Subtract") {
-    BoundingBox box = BoundingBox::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
+    Obb box = Obb::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
     Mesh m = MeshIso::from_function([](double x, double y, double z) {
         double a = MeshIso::sdf_sphere(0.0, 0.0, 0.0, 1.2, x, y, z);
         double b = MeshIso::sdf_box(0.0, 0.0, 0.0, 0.8, 0.8, 0.8, x, y, z);
@@ -117,7 +117,7 @@ MINI_TEST("MeshIso", "Smooth Subtract") {
 }
 
 MINI_TEST("MeshIso", "Smooth Intersect") {
-    BoundingBox box = BoundingBox::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
+    Obb box = Obb::from_points({Point(-2.0, -2.0, -2.0), Point(2.0, 2.0, 2.0)});
     Mesh m = MeshIso::from_function([](double x, double y, double z) {
         double a = MeshIso::sdf_sphere(0.0, 0.0, 0.0, 1.4, x, y, z);
         double b = MeshIso::sdf_box(0.0, 0.0, 0.0, 1.1, 1.1, 1.1, x, y, z);
@@ -128,7 +128,7 @@ MINI_TEST("MeshIso", "Smooth Intersect") {
 }
 
 MINI_TEST("MeshIso", "Gyroid Sphere Shell") {
-    BoundingBox box = BoundingBox::from_points({Point(-1.6, -1.6, -1.6), Point(1.6, 1.6, 1.6)});
+    Obb box = Obb::from_points({Point(-1.6, -1.6, -1.6), Point(1.6, 1.6, 1.6)});
     Mesh m = MeshIso::from_function([](double x, double y, double z) {
         double tpms = MeshIso::eval(TpmsType::GYROID, x, y, z, 1.0);
         double shell = std::abs(MeshIso::sdf_sphere(0.0, 0.0, 0.0, 1.3, x, y, z)) - 0.08;

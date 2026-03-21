@@ -49,7 +49,7 @@ MINI_TEST("Xform", "Constructor") {
 
     // Matrix multiplication (*)
     Xform t = Xform::translation(10.0, 0.0, 0.0);
-    Xform s = Xform::scaling(2.0, 1.0, 1.0);
+    Xform s = Xform::scale_xyz(2.0, 1.0, 1.0);
     Xform combined = t * s;
     Point p(1.0, 0.0, 0.0);
     Point result = combined.transformed_point(p);
@@ -98,7 +98,7 @@ MINI_TEST("Xform", "Scaling") {
     // uncomment #include "point.h"
 
     // Scaling matrix
-    Xform s = Xform::scaling(2.0, 3.0, 4.0);
+    Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
 
     // Apply to point
     Point p(1.0, 1.0, 1.0);
@@ -160,7 +160,7 @@ MINI_TEST("Xform", "Inverse") {
 
     // Create composite transformation
     Xform t = Xform::translation(1.0, 2.0, 3.0);
-    Xform s = Xform::scaling(2.0, 2.0, 2.0);
+    Xform s = Xform::scale_xyz(2.0, 2.0, 2.0);
     Xform composite = t * s;
 
     // Compute inverse

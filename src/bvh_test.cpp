@@ -68,15 +68,15 @@ MINI_TEST("BVH", "Creation") {
 }
 
 MINI_TEST("BVH", "Build Empty") {
-    std::vector<BoundingBox> boxes;
+    std::vector<Obb> boxes;
     BVH bvh = BVH::from_boxes(boxes, 100.0);
     MINI_CHECK(bvh.root == nullptr);
 }
 
 MINI_TEST("BVH", "Build Single") {
-    BoundingBox bbox(
+    Obb bbox(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    std::vector<BoundingBox> boxes = {bbox};
+    std::vector<Obb> boxes = {bbox};
 
     BVH bvh = BVH::from_boxes(boxes, 100.0);
 
@@ -86,12 +86,12 @@ MINI_TEST("BVH", "Build Single") {
 }
 
 MINI_TEST("BVH", "Build Multiple") {
-    std::vector<BoundingBox> bboxes = {
-        BoundingBox(
+    std::vector<Obb> bboxes = {
+        Obb(
             Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(
+        Obb(
             Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(
+        Obb(
             Point(0, 10, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
     };
 
@@ -106,24 +106,24 @@ MINI_TEST("BVH", "Build Multiple") {
 MINI_TEST("BVH", "Aabb Intersect") {
     BVH bvh(100.0);
 
-    BoundingBox bbox1(
+    Obb bbox1(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    BoundingBox bbox2(
+    Obb bbox2(
         Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     MINI_CHECK(bvh.aabb_intersect(bbox1, bbox2));
 
-    BoundingBox bbox3(
+    Obb bbox3(
         Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     MINI_CHECK(!bvh.aabb_intersect(bbox1, bbox3));
 }
 
 MINI_TEST("BVH", "Check All Collisions") {
-    std::vector<BoundingBox> bboxes = {
-        BoundingBox(
+    std::vector<Obb> bboxes = {
+        Obb(
             Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(
+        Obb(
             Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        BoundingBox(
+        Obb(
             Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
     };
 
@@ -143,19 +143,19 @@ MINI_TEST("BVH", "Check All Collisions") {
 MINI_TEST("BVH", "Merge Aabb") {
     BVH bvh(100.0);
 
-    BoundingBox bbox1(
+    Obb bbox1(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    BoundingBox bbox2(
+    Obb bbox2(
         Point(5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
 
-    BoundingBox merged = bvh.merge_aabb(bbox1, bbox2);
+    Obb merged = bvh.merge_aabb(bbox1, bbox2);
 
     MINI_CHECK(TOLERANCE.is_close(merged.center[0], 2.5));
     MINI_CHECK(TOLERANCE.is_close(merged.half_size[0], 3.5));
 }
 
 MINI_TEST("BVH", "Fixed 100 Boxes") {
-    std::vector<BoundingBox> boxes;
+    std::vector<Obb> boxes;
     boxes.reserve(100);
 
     auto add = [&](double min_x, double min_y, double min_z, double max_x, double max_y, double max_z) {

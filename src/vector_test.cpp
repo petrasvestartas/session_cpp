@@ -371,6 +371,72 @@ MINI_TEST("Vector", "Is Zero") {
     MINI_CHECK(tiny.is_zero());
 }
 
+MINI_TEST("Vector", "Scale") {
+    // uncomment #include "vector.h"
+
+    Vector v(2.0, 4.0, 6.0);
+    v.scale(0.5);
+    Vector v_up(1.0, 2.0, 3.0);
+    v_up.scale_up();
+    Vector v_rt(1.0, 2.0, 3.0);
+    v_rt.scale_up();
+    v_rt.scale_down();
+
+    MINI_CHECK(v[0] == 1.0 && v[1] == 2.0 && v[2] == 3.0);
+    MINI_CHECK(v_up[0] > 1.0);
+    MINI_CHECK(TOLERANCE.is_close(v_rt[0], 1.0) && TOLERANCE.is_close(v_rt[1], 2.0) && TOLERANCE.is_close(v_rt[2], 3.0));
+}
+
+MINI_TEST("Vector", "Reflect") {
+    // uncomment #include "vector.h"
+
+    // Reflect across YZ plane (normal = x_axis): x flips, y/z unchanged
+    Vector v(1.0, 2.0, 3.0);
+    Vector n = Vector::x_axis();
+    Vector r = v.reflect(n);
+
+    MINI_CHECK(TOLERANCE.is_close(r[0], -1.0));
+    MINI_CHECK(TOLERANCE.is_close(r[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(r[2], 3.0));
+}
+
+MINI_TEST("Vector", "Average Normal") {
+    // uncomment #include "vector.h"
+    // uncomment #include "point.h"
+
+    // Closed square in XY plane — normal should be z_axis
+    std::vector<Point> sq = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    };
+    Vector n;
+    average_normal(sq, n);
+
+    MINI_CHECK(TOLERANCE.is_close(std::abs(n[2]), 1.0));
+    MINI_CHECK(TOLERANCE.is_close(n[0], 0.0) && TOLERANCE.is_close(n[1], 0.0));
+}
+
+MINI_TEST("Vector", "Interpolate Points") {
+    // uncomment #include "vector.h"
+    // uncomment #include "point.h"
+
+    Point from(0.0, 0.0, 0.0);
+    Point to(1.0, 0.0, 0.0);
+    std::vector<Point> pts0;
+    interpolate_points(from, to, 2, pts0, 0);
+    std::vector<Point> pts1;
+    interpolate_points(from, to, 1, pts1, 1);
+
+    MINI_CHECK((int)pts0.size() == 2);
+    MINI_CHECK(TOLERANCE.is_close(pts0[0][0], 1.0 / 3.0));
+    MINI_CHECK(TOLERANCE.is_close(pts0[1][0], 2.0 / 3.0));
+    MINI_CHECK((int)pts1.size() == 3);
+    MINI_CHECK(TOLERANCE.is_close(pts1[0][0], 0.0) && TOLERANCE.is_close(pts1[2][0], 1.0));
+}
+
 MINI_TEST("Vector", "Json Roundtrip") {
     // uncomment #include "vector.h"
 

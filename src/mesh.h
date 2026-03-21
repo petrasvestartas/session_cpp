@@ -4,7 +4,7 @@
 #include "color.h"
 #include "xform.h"
 #include "xform.h"
-#include "boundingbox.h"
+#include "obb.h"
 #include "bvh.h"
 #include "aabb.h"
 #include "tolerance.h"
@@ -159,7 +159,7 @@ private:
     // Cached per-triangle data for BVH ray casting
     mutable bool triangle_bvh_built = false;
     mutable std::shared_ptr<BVH> triangle_bvh;  ///< BVH over cached triangle AABBs
-    mutable std::vector<BoundingBox> triangle_boxes_cache;  ///< Per-triangle AABBs (legacy, may be empty)
+    mutable std::vector<Obb> triangle_boxes_cache;  ///< Per-triangle AABBs (legacy, may be empty)
     mutable std::vector<BvhAABB> triangle_aabbs_cache;      ///< Lightweight AABBs for fast BVH build
     struct TriangleIndex { uint32_t i0, i1, i2; };
     mutable std::vector<TriangleIndex> triangle_indices_cache; ///< Triangle vertex indices
@@ -406,45 +406,51 @@ public:
     // Geometric Properties
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Calculate the normal of a face
-    std::optional<Vector> face_normal(size_t face_key) const;
+    /// Calculate the total surface area of all faces
+    double area() const;
+
+    /// Calculate the centroid of the mesh (average of all vertex positions)
+    Point centroid() const;
+
+    /// Calculate the dihedral angle (in degrees) between two faces sharing edge (u,v).
+    /// Returns nullopt for boundary edges (only one face) or invalid edges.
+    std::optional<double> dihedral_angle(size_t u, size_t v) const;
+
+    /// Calculate dihedral angles for all interior edges.
+    /// Returns (angles, arcs, points): angles map (u,v)->radians; arcs slerp polylines if scale>0;
+    /// points at arc midpoint (scale>0) or edge midpoint (scale==0). arcs/points empty if flags false.
+    std::tuple<std::map<std::pair<size_t,size_t>,double>, std::vector<Polyline>, std::vector<Point>>
+    dihedral_angles(double scale = 0.3, bool with_arcs = true, bool with_points = true) const;
+
+    /// Calculate the area of a face
+    std::optional<double> face_area(size_t face_key) const;
 
     /// Calculate the centroid of a face (average of vertex positions)
     std::optional<Point> face_centroid(size_t face_key) const;
 
-    /// Calculate the centroid of the mesh (average of all vertex positions)
-    Point centroid() const;
-    
-    /// Calculate the normal of a vertex (area-weighted)
-    std::optional<Vector> vertex_normal(size_t vertex_key) const;
-    
-    /// Calculate the normal of a vertex with specified weighting
-    std::optional<Vector> vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const;
-    
-    /// Calculate the area of a face
-    std::optional<double> face_area(size_t face_key) const;
+    /// Calculate the normal of a face
+    std::optional<Vector> face_normal(size_t face_key) const;
 
-    /// Calculate the total surface area of all faces
-    double area() const;
-
-    /// Calculate the enclosed volume of a closed mesh
-    double volume() const;
+    /// Calculate normals for all faces
+    std::map<size_t, Vector> face_normals() const;
 
     /// Calculate the angle at a vertex in a face
     std::optional<double> vertex_angle_in_face(size_t vertex_key, size_t face_key) const;
 
-    /// Calculate the dihedral angle (in radians) between two faces sharing edge (u,v).
-    /// Returns nullopt for boundary edges (only one face) or invalid edges.
-    std::optional<double> dihedral_angle(size_t u, size_t v) const;
+    /// Calculate the normal of a vertex (area-weighted)
+    std::optional<Vector> vertex_normal(size_t vertex_key) const;
 
-    /// Calculate normals for all faces
-    std::map<size_t, Vector> face_normals() const;
-    
+    /// Calculate the normal of a vertex with specified weighting
+    std::optional<Vector> vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const;
+
     /// Calculate normals for all vertices (area-weighted)
     std::map<size_t, Vector> vertex_normals() const;
-    
+
     /// Calculate normals for all vertices with specified weighting
     std::map<size_t, Vector> vertex_normals_weighted(NormalWeighting weighting) const;
+
+    /// Calculate the enclosed volume of a closed mesh
+    double volume() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation

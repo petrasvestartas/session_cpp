@@ -49,8 +49,6 @@ public:
     
     /// Translation by x, y, z
     static Xform translation(double x, double y, double z);
-    /// Non-uniform scale by x, y, z
-    static Xform scaling(double x, double y, double z);
     /// Rotation around X axis (radians)
     static Xform rotation_x(double angle_radians);
     /// Rotation around Y axis (radians)

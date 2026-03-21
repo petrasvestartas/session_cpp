@@ -308,7 +308,7 @@ uint32_t calculate_morton_code(double x, double y, double z, double world_size) 
 // BVH implementation
 BVH::BVH(double world_size) : guid(::guid()), name("my_bvh"), root(nullptr), world_size(world_size) {}
 
-double BVH::compute_world_size(const std::vector<BoundingBox>& bounding_boxes) {
+double BVH::compute_world_size(const std::vector<Obb>& bounding_boxes) {
     if (bounding_boxes.empty()) {
         return 1000.0;
     }
@@ -330,17 +330,17 @@ double BVH::compute_world_size(const std::vector<BoundingBox>& bounding_boxes) {
     return std::max(max_extent * 2.2, 10.0);
 }
 
-BVH BVH::from_boxes(const std::vector<BoundingBox>& bounding_boxes, double world_size) {
+BVH BVH::from_boxes(const std::vector<Obb>& bounding_boxes, double world_size) {
     BVH bvh(world_size);
     bvh.build_from_boxes(bounding_boxes.data(), bounding_boxes.size(), world_size);
     return bvh;
 }
 
-void BVH::build(const std::vector<BoundingBox>& bounding_boxes) {
+void BVH::build(const std::vector<Obb>& bounding_boxes) {
     build_from_boxes(bounding_boxes.data(), bounding_boxes.size(), world_size);
 }
 
-void BVH::build_from_boxes(const BoundingBox* boxes, size_t count, double ws) {
+void BVH::build_from_boxes(const Obb* boxes, size_t count, double ws) {
     if (count == 0) {
         root = nullptr;
         node_arena.clear();
@@ -401,7 +401,7 @@ void BVH::build_from_boxes(const BoundingBox* boxes, size_t count, double ws) {
         // Single leaf
         BVHNode* leaf = alloc_node();
         leaf->object_id = objects[0].id;
-        const BoundingBox& bb = boxes[objects[0].id];
+        const Obb& bb = boxes[objects[0].id];
         leaf->aabb = BvhAABB{bb.center[0], bb.center[1], bb.center[2], bb.half_size[0], bb.half_size[1], bb.half_size[2]};
         leaf->left = leaf->right = nullptr;
         root = leaf;
@@ -472,7 +472,7 @@ void BVH::build_from_boxes(const BoundingBox* boxes, size_t count, double ws) {
     for (int i = 0; i < N; ++i) {
         BVHNode* leaf = alloc_node();
         leaf->object_id = objects[i].id;
-        const BoundingBox& bb = boxes[objects[i].id];
+        const Obb& bb = boxes[objects[i].id];
         leaf->aabb = BvhAABB{bb.center[0], bb.center[1], bb.center[2], bb.half_size[0], bb.half_size[1], bb.half_size[2]};
         leaf->left = leaf->right = nullptr;
         leaves[i] = leaf;
@@ -546,12 +546,12 @@ BVHNode* BVH::alloc_node() {
     return &node_arena.back();
 }
 
-BVHNode* BVH::create_subtree(std::vector<ObjectInfo>& objects, int begin, int end, const BoundingBox* boxes) {
+BVHNode* BVH::create_subtree(std::vector<ObjectInfo>& objects, int begin, int end, const Obb* boxes) {
     if (begin == end) {
         // Create leaf node
         BVHNode* node = alloc_node();
         node->object_id = objects[begin].id;
-        const BoundingBox& bb = boxes[objects[begin].id];
+        const Obb& bb = boxes[objects[begin].id];
         node->aabb = BvhAABB{bb.center[0], bb.center[1], bb.center[2],
                              bb.half_size[0], bb.half_size[1], bb.half_size[2]};
         node->left = nullptr;
@@ -596,7 +596,7 @@ BVHNode* BVH::create_subtree(std::vector<ObjectInfo>& objects, int begin, int en
     }
 }
 
-BoundingBox BVH::merge_aabb(const BoundingBox& aabb1, const BoundingBox& aabb2) {
+Obb BVH::merge_aabb(const Obb& aabb1, const Obb& aabb2) {
     // Cache center and half_size components (avoid repeated method calls)
     double c1x = aabb1.center[0], c1y = aabb1.center[1], c1z = aabb1.center[2];
     double h1x = aabb1.half_size[0], h1y = aabb1.half_size[1], h1z = aabb1.half_size[2];
@@ -613,14 +613,14 @@ BoundingBox BVH::merge_aabb(const BoundingBox& aabb1, const BoundingBox& aabb2) 
     double max_z = std::max(c1z + h1z, c2z + h2z);
 
     // Calculate new center and half_size in one go
-    return BoundingBox(
+    return Obb(
         Point((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, (min_z + max_z) * 0.5),
         Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1),
         Vector((max_x - min_x) * 0.5, (max_y - min_y) * 0.5, (max_z - min_z) * 0.5)
     );
 }
 
-bool BVH::aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2) const {
+bool BVH::aabb_intersect(const Obb& aabb1, const Obb& aabb2) const {
     double min1_x = aabb1.center[0] - aabb1.half_size[0];
     double max1_x = aabb1.center[0] + aabb1.half_size[0];
     double min1_y = aabb1.center[1] - aabb1.half_size[1];
@@ -640,7 +640,7 @@ bool BVH::aabb_intersect(const BoundingBox& aabb1, const BoundingBox& aabb2) con
             min1_z <= max2_z && max1_z >= min2_z);
 }
 
-std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> BVH::check_all_collisions(const std::vector<BoundingBox>& bounding_boxes) {
+std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> BVH::check_all_collisions(const std::vector<Obb>& bounding_boxes) {
     std::vector<std::pair<int, int>> all_collisions;
     all_collisions.reserve(bounding_boxes.size());
     std::vector<char> visited(bounding_boxes.size(), 0);

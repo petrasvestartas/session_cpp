@@ -9,7 +9,7 @@
 #include "vector.h"
 #include "line.h"
 #include "plane.h"
-#include "boundingbox.h"
+#include "obb.h"
 #include "polyline.h"
 #include "pointcloud.h"
 #include "mesh.h"
@@ -40,7 +40,7 @@ namespace session_cpp {
 
 // All geometry types as a variant
 using Geometry = std::variant<
-    std::shared_ptr<BoundingBox>,
+    std::shared_ptr<Obb>,
     std::shared_ptr<Line>,
     std::shared_ptr<Mesh>,
     std::shared_ptr<Plane>,
@@ -70,7 +70,7 @@ public:
   // BVH caching for ray casting performance
   BVH cached_ray_bvh;                           ///< Cached BVH for ray casting
   std::vector<std::string> cached_guids;        ///< GUID mapping for cached BVH
-  std::vector<BoundingBox> cached_boxes;        ///< Cached AABBs (avoid recomputing)
+  std::vector<Obb> cached_boxes;        ///< Cached AABBs (avoid recomputing)
   bool bvh_cache_dirty = true;                  ///< Flag to rebuild BVH cache
 
   /**
@@ -146,7 +146,7 @@ public:
    * @brief Add a bounding box to the session.
    * @return Shared pointer to the TreeNode created for this bounding box
    */
-  std::shared_ptr<TreeNode> add_bbox(std::shared_ptr<BoundingBox> bbox);
+  std::shared_ptr<TreeNode> add_bbox(std::shared_ptr<Obb> bbox);
 
   /**
    * @brief Add a polyline to the session.
@@ -251,7 +251,7 @@ public:
    * @param geometry The geometry variant
    * @return Inflated bounding box for collision detection
    */
-  static BoundingBox compute_bounding_box(const Geometry& geometry);
+  static Obb compute_bounding_box(const Geometry& geometry);
 
   /**
    * @brief Get all collision pairs using BVH and add them as graph edges.

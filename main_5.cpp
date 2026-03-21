@@ -1,6 +1,6 @@
 #include "session.h"
 #include "mesh_iso.h"
-#include "boundingbox.h"
+#include "obb.h"
 
 using namespace session_cpp;
 
@@ -17,7 +17,7 @@ int main() {
     std::string base = (std::filesystem::path(__FILE__).parent_path().parent_path() / "session_data").string();
 
     // Row 0-8: SHELL — 9 TPMS types stacked in Y, one full period per 2×2×2 box.
-    BoundingBox box = BoundingBox::from_points({Point(0, 0, 0), Point(2, 2, 2)});
+    Obb box = Obb::from_points({Point(0, 0, 0), Point(2, 2, 2)});
     int    n    = 20;
     double step = 4.0;
 
@@ -39,7 +39,7 @@ int main() {
     }
 
     // Row 9: SDF primitives + smooth booleans
-    BoundingBox sbox = BoundingBox::from_points({Point(-2, -2, -2), Point(2, 2, 2)});
+    Obb sbox = Obb::from_points({Point(-2, -2, -2), Point(2, 2, 2)});
     int    sn    = 18;
     double sdf_y = 11.0 * step;
 
@@ -92,7 +92,7 @@ int main() {
         "smooth_intersect", 6 * step, sdf_y);
 
     {
-        BoundingBox gbox = BoundingBox::from_points({Point(-1.6, -1.6, -1.6), Point(1.6, 1.6, 1.6)});
+        Obb gbox = Obb::from_points({Point(-1.6, -1.6, -1.6), Point(1.6, 1.6, 1.6)});
         add(session,
             MeshIso::from_function([](double x, double y, double z) {
                 double tpms  = MeshIso::eval(TpmsType::GYROID, x, y, z, 1.0);

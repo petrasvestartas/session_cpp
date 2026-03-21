@@ -5,7 +5,7 @@
 #include "vector.h"
 #include "line.h"
 #include "plane.h"
-#include "boundingbox.h"
+#include "obb.h"
 #include "polyline.h"
 #include "pointcloud.h"
 #include "mesh.h"
@@ -31,7 +31,7 @@ public:
   std::shared_ptr<std::vector<std::shared_ptr<Point>>> points;
   std::shared_ptr<std::vector<std::shared_ptr<Line>>> lines;
   std::shared_ptr<std::vector<std::shared_ptr<Plane>>> planes;
-  std::shared_ptr<std::vector<std::shared_ptr<BoundingBox>>> bboxes;
+  std::shared_ptr<std::vector<std::shared_ptr<Obb>>> bboxes;
   std::shared_ptr<std::vector<std::shared_ptr<Polyline>>> polylines;
   std::shared_ptr<std::vector<std::shared_ptr<PointCloud>>> pointclouds;
   std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes;
@@ -48,7 +48,7 @@ public:
     this->points = std::make_shared<std::vector<std::shared_ptr<Point>>>();
     this->lines = std::make_shared<std::vector<std::shared_ptr<Line>>>();
     this->planes = std::make_shared<std::vector<std::shared_ptr<Plane>>>();
-    this->bboxes = std::make_shared<std::vector<std::shared_ptr<BoundingBox>>>();
+    this->bboxes = std::make_shared<std::vector<std::shared_ptr<Obb>>>();
     this->polylines = std::make_shared<std::vector<std::shared_ptr<Polyline>>>();
     this->pointclouds = std::make_shared<std::vector<std::shared_ptr<PointCloud>>>();
     this->meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();

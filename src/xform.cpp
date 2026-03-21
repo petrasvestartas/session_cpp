@@ -52,14 +52,6 @@ Xform Xform::translation(double x, double y, double z) {
     return xform;
 }
 
-Xform Xform::scaling(double x, double y, double z) {
-    Xform xform;
-    xform.m[0] = x;
-    xform.m[5] = y;
-    xform.m[10] = z;
-    return xform;
-}
-
 Xform Xform::rotation_x(double angle_radians) {
     Xform xform;
     double cos_angle = std::cos(angle_radians);
@@ -286,7 +278,7 @@ Xform Xform::scale_xyz(double scale_x, double scale_y, double scale_z) {
 
 Xform Xform::scale_uniform(Point& origin, double scale_value) {
     Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
-    Xform t1 = scaling(scale_value, scale_value, scale_value);
+    Xform t1 = scale_xyz(scale_value, scale_value, scale_value);
     Xform t2 = translation(origin[0], origin[1], origin[2]);
     return t2 * (t1 * t0);
 }

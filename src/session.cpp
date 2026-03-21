@@ -77,7 +77,7 @@ std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane) {
   return tree_node;
 }
 
-std::shared_ptr<TreeNode> Session::add_bbox(std::shared_ptr<BoundingBox> bbox) {
+std::shared_ptr<TreeNode> Session::add_bbox(std::shared_ptr<Obb> bbox) {
   objects.bboxes->push_back(bbox);
   lookup[bbox->guid] = bbox;
   graph.add_node(bbox->guid, "bbox_" + bbox->name);
@@ -225,24 +225,24 @@ std::vector<std::string> Session::get_neighbours(const std::string &obj_guid) {
 // BVH Collision Detection
 
 // ADD NEW GEOMETRY TYPES HERE: Add bounding box computation for collision detection
-BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
+Obb Session::compute_bounding_box(const Geometry& geometry) {
   double inflate = Tolerance::APPROXIMATION;
   
-  return std::visit([inflate](auto&& geom_ptr) -> BoundingBox {
+  return std::visit([inflate](auto&& geom_ptr) -> Obb {
     using T = std::decay_t<decltype(geom_ptr)>;
     
     if constexpr (std::is_same_v<T, std::shared_ptr<Point>>) {
-      return BoundingBox::from_point(*geom_ptr, inflate);
+      return Obb::from_point(*geom_ptr, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Line>>) {
       std::vector<Point> points = {geom_ptr->start(), geom_ptr->end()};
-      return BoundingBox::from_points(points, inflate);
+      return Obb::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Polyline>>) {
-      return BoundingBox::from_points(geom_ptr->get_points(), inflate);
+      return Obb::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<PointCloud>>) {
-      return BoundingBox::from_points(geom_ptr->get_points(), inflate);
+      return Obb::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
       // Extract vertices from mesh
@@ -251,11 +251,11 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
         points.push_back(vertex.position());
       }
       if (points.empty()) {
-        return BoundingBox::from_point(Point(0, 0, 0), inflate);
+        return Obb::from_point(Point(0, 0, 0), inflate);
       }
-      return BoundingBox::from_points(points, inflate);
+      return Obb::from_points(points, inflate);
     }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<BoundingBox>>) {
+    else if constexpr (std::is_same_v<T, std::shared_ptr<Obb>>) {
       // Inflate existing bounding box
       auto inflated = *geom_ptr;
       inflated.half_size = Vector(
@@ -267,38 +267,38 @@ BoundingBox Session::compute_bounding_box(const Geometry& geometry) {
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Plane>>) {
       // Create bounded box around plane origin
-      return BoundingBox::from_point(geom_ptr->origin(), inflate * 10.0);
+      return Obb::from_point(geom_ptr->origin(), inflate * 10.0);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(); ++i)
         points.push_back(geom_ptr->get_cv(i));
-      if (points.empty()) return BoundingBox::from_point(Point(0, 0, 0), inflate);
-      return BoundingBox::from_points(points, inflate);
+      if (points.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
+      return Obb::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsSurface>>) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(0); ++i)
         for (int j = 0; j < geom_ptr->cv_count(1); ++j)
           points.push_back(geom_ptr->get_cv(i, j));
-      if (points.empty()) return BoundingBox::from_point(Point(0, 0, 0), inflate);
-      return BoundingBox::from_points(points, inflate);
+      if (points.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
+      return Obb::from_points(points, inflate);
     }
     else {
-      return BoundingBox::from_point(Point(0, 0, 0), inflate);
+      return Obb::from_point(Point(0, 0, 0), inflate);
     }
   }, geometry);
 }
 
 std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
   // Collect all objects with their bounding boxes and GUIDs
-  std::vector<BoundingBox> boxes;
+  std::vector<Obb> boxes;
   std::vector<std::string> guids;
   boxes.reserve(lookup.size());
   guids.reserve(lookup.size());
   
   for (const auto& [g, geometry] : lookup) {
-    BoundingBox bbox = compute_bounding_box(geometry);
+    Obb bbox = compute_bounding_box(geometry);
     boxes.push_back(bbox);
     guids.push_back(g);
   }
@@ -700,7 +700,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       }
       return std::nullopt;
     }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<BoundingBox>>) {
+    else if constexpr (std::is_same_v<T, std::shared_ptr<Obb>>) {
       // Ray-bbox: use slab test to find entry point
       double tmin, tmax;
       if (Intersection::ray_box(ray.start(), ray.end() - ray.start(), *geom_ptr, 0.0, 1.0, tmin, tmax)) {

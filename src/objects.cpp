@@ -91,10 +91,10 @@ Objects Objects::jsonload(const nlohmann::json &data) {
   
   // Load bboxes
   if (data.contains("bboxes")) {
-    std::vector<std::shared_ptr<BoundingBox>> bboxes;
+    std::vector<std::shared_ptr<Obb>> bboxes;
     bboxes.reserve(data["bboxes"].size());
     for (const auto &bbox_data : data["bboxes"])
-      bboxes.push_back(std::make_shared<BoundingBox>(BoundingBox::jsonload(bbox_data)));
+      bboxes.push_back(std::make_shared<Obb>(Obb::jsonload(bbox_data)));
     *objects.bboxes = std::move(bboxes);
   }
   
@@ -234,7 +234,7 @@ Objects Objects::pb_loads(const std::string& data) {
   for (const auto& p : proto.planes())
     objects.planes->push_back(std::make_shared<Plane>(Plane::pb_loads(p.SerializeAsString())));
   for (const auto& b : proto.bboxes())
-    objects.bboxes->push_back(std::make_shared<BoundingBox>(BoundingBox::pb_loads(b.SerializeAsString())));
+    objects.bboxes->push_back(std::make_shared<Obb>(Obb::pb_loads(b.SerializeAsString())));
   for (const auto& p : proto.polylines())
     objects.polylines->push_back(std::make_shared<Polyline>(Polyline::pb_loads(p.SerializeAsString())));
   for (const auto& p : proto.pointclouds())

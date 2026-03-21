@@ -209,7 +209,7 @@ MINI_TEST("Intersection", "Ray Box") {
     Vector y_axis(0.0, 1.0, 0.0);
     Vector z_axis(0.0, 0.0, 1.0);
     Vector half_size(1.0, 1.0, 1.0);
-    BoundingBox box(center, x_axis, y_axis, z_axis, half_size);
+    Obb box(center, x_axis, y_axis, z_axis, half_size);
 
     Point origin(-5.0, 0.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
@@ -228,7 +228,7 @@ MINI_TEST("Intersection", "Ray Box Miss") {
     Vector y_axis(0.0, 1.0, 0.0);
     Vector z_axis(0.0, 0.0, 1.0);
     Vector half_size(1.0, 1.0, 1.0);
-    BoundingBox box(center, x_axis, y_axis, z_axis, half_size);
+    Obb box(center, x_axis, y_axis, z_axis, half_size);
 
     Point origin(-5.0, 5.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
@@ -524,7 +524,7 @@ MINI_TEST("Intersection", "Ray Box Real World") {
     Point min(214.0, 192.0, 484.0);
     Point max(694.0, 567.0, 796.0);
     std::vector<Point> points {min, max};
-    BoundingBox box = BoundingBox::from_points(points);
+    Obb box = Obb::from_points(points);
 
     std::vector<Point> intersection_points;
     bool result = Intersection::ray_box(l0, box, 0.0, 1000.0, intersection_points);
@@ -651,6 +651,179 @@ MINI_TEST("Intersection", "Surface Plane Miss") {
     auto curves = Intersection::surface_plane(srf, plane);
 
     MINI_CHECK(curves.size() == 0);
+}
+
+MINI_TEST("Intersection", "Remap") {
+    MINI_CHECK(std::fabs(Intersection::remap(5.0, 0.0, 10.0, 0.0, 1.0) - 0.5) < 1e-9);
+    MINI_CHECK(std::fabs(Intersection::remap(0.0, 0.0, 10.0, 0.0, 1.0) - 0.0) < 1e-9);
+    MINI_CHECK(std::fabs(Intersection::remap(10.0, 0.0, 10.0, 0.0, 1.0) - 1.0) < 1e-9);
+}
+
+MINI_TEST("Intersection", "Closest Point On Segment") {
+    Line seg(0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
+    Point pt(2.0, 3.0, 0.0);
+    Point cp;
+    double t;
+    bool result = Intersection::closest_point_on_segment(pt, seg, cp, t);
+    MINI_CHECK(result);
+    MINI_CHECK(std::fabs(cp[0] - 2.0) < 1e-9);
+    MINI_CHECK(std::fabs(cp[1] - 0.0) < 1e-9);
+    MINI_CHECK(std::fabs(t - 0.5) < 1e-9);
+
+    Point pt2(-2.0, 1.0, 0.0);
+    Point cp2;
+    double t2;
+    Intersection::closest_point_on_segment(pt2, seg, cp2, t2);
+    MINI_CHECK(std::fabs(cp2[0] - 0.0) < 1e-9);
+    MINI_CHECK(std::fabs(t2 - 0.0) < 1e-9);
+}
+
+MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
+    Point o0(0.0, 0.0, 0.0);
+    Vector n0(0.0, 0.0, 1.0);
+    Point o1(0.0, 0.0, 1.0);
+    Vector n1(0.0, 0.0, 1.0);
+    Point o2(0.0, 0.0, 2.0);
+    Vector n2(0.0, 0.0, 1.0);
+    Plane p0 = Plane::from_point_normal(o0, n0);
+    Plane p1 = Plane::from_point_normal(o1, n1);
+    Plane p2 = Plane::from_point_normal(o2, n2);
+    Point out;
+    MINI_CHECK(!Intersection::plane_plane_plane_check(p0, p1, p2, 0.1, out));
+
+    Point px_o(1.0, 0.0, 0.0);
+    Vector px_n(1.0, 0.0, 0.0);
+    Point py_o(0.0, 2.0, 0.0);
+    Vector py_n(0.0, 1.0, 0.0);
+    Point pz_o(0.0, 0.0, 3.0);
+    Vector pz_n(0.0, 0.0, 1.0);
+    Plane px = Plane::from_point_normal(px_o, px_n);
+    Plane py = Plane::from_point_normal(py_o, py_n);
+    Plane pz = Plane::from_point_normal(pz_o, pz_n);
+    Point pt;
+    bool ok = Intersection::plane_plane_plane_check(px, py, pz, 0.1, pt);
+    MINI_CHECK(ok);
+    MINI_CHECK(std::fabs(pt[0] - 1.0) < 1e-6);
+    MINI_CHECK(std::fabs(pt[1] - 2.0) < 1e-6);
+    MINI_CHECK(std::fabs(pt[2] - 3.0) < 1e-6);
+}
+
+MINI_TEST("Intersection", "Plane 4 Planes Closed") {
+    Point mp(0.0, 0.0, 0.0);
+    Vector mn(0.0, 0.0, 1.0);
+    Plane main_plane = Plane::from_point_normal(mp, mn);
+    Point o0(-1.0, 0.0, 0.0); Vector n0(1.0, 0.0, 0.0);
+    Point o1(0.0, -1.0, 0.0); Vector n1(0.0, 1.0, 0.0);
+    Point o2(1.0,  0.0, 0.0); Vector n2(1.0, 0.0, 0.0);
+    Point o3(0.0,  1.0, 0.0); Vector n3(0.0, 1.0, 0.0);
+    std::array<Plane, 4> planes = {
+        Plane::from_point_normal(o0, n0),
+        Plane::from_point_normal(o1, n1),
+        Plane::from_point_normal(o2, n2),
+        Plane::from_point_normal(o3, n3),
+    };
+    Polyline result;
+    bool ok = Intersection::plane_4planes(main_plane, planes, result);
+    MINI_CHECK(ok);
+    MINI_CHECK(result.point_count() == 5);
+    for (size_t i = 0; i < result.point_count(); i++) {
+        Point p = result.get_point(i);
+        MINI_CHECK(std::fabs(p[2]) < 1e-6);
+    }
+    Point first = result.get_point(0);
+    Point last = result.get_point(4);
+    MINI_CHECK(std::fabs(first[0] - last[0]) < 1e-6);
+    MINI_CHECK(std::fabs(first[1] - last[1]) < 1e-6);
+}
+
+MINI_TEST("Intersection", "Plane 4 Planes Open") {
+    Point mp(0.0, 0.0, 0.0);
+    Vector mn(0.0, 0.0, 1.0);
+    Plane main_plane = Plane::from_point_normal(mp, mn);
+    Point o0(-1.0, 0.0, 0.0); Vector n0(1.0, 0.0, 0.0);
+    Point o1(0.0, -1.0, 0.0); Vector n1(0.0, 1.0, 0.0);
+    Point o2(1.0,  0.0, 0.0); Vector n2(1.0, 0.0, 0.0);
+    Point o3(0.0,  1.0, 0.0); Vector n3(0.0, 1.0, 0.0);
+    std::array<Plane, 4> planes = {
+        Plane::from_point_normal(o0, n0),
+        Plane::from_point_normal(o1, n1),
+        Plane::from_point_normal(o2, n2),
+        Plane::from_point_normal(o3, n3),
+    };
+    Polyline result;
+    bool ok = Intersection::plane_4planes_open(main_plane, planes, result);
+    MINI_CHECK(ok);
+    MINI_CHECK(result.point_count() == 4);
+}
+
+MINI_TEST("Intersection", "Plane 4 Lines") {
+    Point pp(0.0, 0.0, 0.0);
+    Vector pn(0.0, 0.0, 1.0);
+    Plane plane = Plane::from_point_normal(pp, pn);
+    Line l0(-1.0, -1.0, -1.0, -1.0,  1.0, 1.0);
+    Line l1( 1.0, -1.0, -1.0,  1.0,  1.0, 1.0);
+    Line l2(-1.0, -1.0, -1.0,  1.0, -1.0, 1.0);
+    Line l3(-1.0,  1.0, -1.0,  1.0,  1.0, 1.0);
+    Polyline result;
+    bool ok = Intersection::plane_4lines(plane, l0, l1, l2, l3, result);
+    MINI_CHECK(ok);
+    MINI_CHECK(result.point_count() == 5);
+    for (size_t i = 0; i < result.point_count(); i++) {
+        Point p = result.get_point(i);
+        MINI_CHECK(std::fabs(p[2]) < 1e-6);
+    }
+}
+
+MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
+    Point p0o(0.0, 0.0, 0.0);
+    Vector p0n(0.0, 0.0, 1.0);
+    Point p1o(0.0, 0.0, 3.0);
+    Vector p1n(0.0, 0.0, 1.0);
+    Plane pl0 = Plane::from_point_normal(p0o, p0n);
+    Plane pl1 = Plane::from_point_normal(p1o, p1n);
+    Vector direction(0.0, 0.0, 1.0);
+    Vector result;
+    bool ok = Intersection::scale_vector_to_distance_of_2planes(direction, pl0, pl1, result);
+    MINI_CHECK(ok);
+    MINI_CHECK(std::fabs(result[2] - 3.0) < 1e-6);
+}
+
+MINI_TEST("Intersection", "Polyline Plane") {
+    std::vector<Point> pts = {
+        Point(-1.0, -1.0, 0.0),
+        Point( 1.0, -1.0, 0.0),
+        Point( 1.0,  1.0, 0.0),
+        Point(-1.0,  1.0, 0.0),
+        Point(-1.0, -1.0, 0.0),
+    };
+    Polyline poly(pts);
+    Point pp(0.0, 0.0, 0.0);
+    Vector pn(1.0, 0.0, 0.0);
+    Plane plane = Plane::from_point_normal(pp, pn);
+    std::vector<Point> points;
+    std::vector<int> edge_ids;
+    bool result = Intersection::polyline_plane(poly, plane, points, edge_ids);
+    MINI_CHECK(result);
+    MINI_CHECK(points.size() == 2);
+    for (const auto& p : points) {
+        MINI_CHECK(std::fabs(p[0]) < 1e-9);
+    }
+}
+
+MINI_TEST("Intersection", "Line Line 3D") {
+    Line cutter(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
+    Line seg(1.0, 0.0, 0.0, 1.0, 2.0, 0.0);
+    Point result;
+    bool ok = Intersection::line_line_3d(cutter, seg, result);
+    MINI_CHECK(ok);
+    MINI_CHECK(std::fabs(result[0] - 1.0) < 1e-6);
+    MINI_CHECK(std::fabs(result[1] - 1.0) < 1e-6);
+    MINI_CHECK(std::fabs(result[2] - 0.0) < 1e-6);
+
+    Line par0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line par1(0.0, 1.0, 0.0, 1.0, 1.0, 0.0);
+    Point out2;
+    MINI_CHECK(!Intersection::line_line_3d(par0, par1, out2));
 }
 
 } // namespace session_cpp

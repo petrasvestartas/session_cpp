@@ -446,4 +446,47 @@ MINI_TEST("Polyline", "Average Plane") {
     MINI_CHECK(fast_origin[0] >= 0.0);
 }
 
+MINI_TEST("Polyline", "Quick Hull") {
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(2.0, 2.0, 0.0),
+        Point(0.0, 2.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+    });
+    Polyline hull = Polyline::quick_hull(poly);
+
+    MINI_CHECK(hull.point_count() == 4);
+}
+
+MINI_TEST("Polyline", "Bounding Rectangle") {
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+        Point(4.0, 3.0, 0.0),
+        Point(0.0, 3.0, 0.0),
+    });
+    std::optional<Polyline> rect = Polyline::bounding_rectangle(poly);
+
+    MINI_CHECK(rect.has_value() && rect->point_count() == 5);
+    MINI_CHECK(TOLERANCE.is_close(rect->get_point(0)[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(rect->get_point(0)[0], rect->get_point(4)[0]));
+}
+
+MINI_TEST("Polyline", "Grid Of Points In Polygon") {
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+        Point(4.0, 4.0, 0.0),
+        Point(0.0, 4.0, 0.0),
+    });
+    std::vector<Point> pts = Polyline::grid_of_points_in_polygon(poly, 0.0, 1.0, 100);
+
+    MINI_CHECK(pts.size() > 0);
+    for (const auto& p : pts) {
+        MINI_CHECK(p[0] >= 0.0 && p[0] <= 4.0);
+        MINI_CHECK(p[1] >= 0.0 && p[1] <= 4.0);
+    }
+}
+
 } // namespace session_cpp
