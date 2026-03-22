@@ -247,8 +247,8 @@ set(MINITEST_SOURCES
     src/trimmedsurface_test.cpp
     src/triangulation_2d_test.cpp
     src/trimesh_cdt_test.cpp
-    src/trimesh_adaptive_test.cpp
-    src/trimesh_grid_test.cpp
+    src/remesh_nurbssurface_adaptive_test.cpp
+    src/remesh_nurbssurface_grid_test.cpp
     src/obb_test.cpp
     src/bvh_test.cpp
     src/rtree_test.cpp

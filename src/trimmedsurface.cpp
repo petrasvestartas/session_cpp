@@ -1,7 +1,7 @@
 #include "trimmedsurface.h"
 #include "closest.h"
 #include "primitives.h"
-#include "trimesh_grid.h"
+#include "remesh_nurbssurface_grid.h"
 #include "triangulation_2d.h"
 #include "fmt/core.h"
 #include <fstream>

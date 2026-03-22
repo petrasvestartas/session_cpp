@@ -1,5 +1,5 @@
 #include "brep.h"
-#include "trimesh_grid.h"
+#include "remesh_nurbssurface_grid.h"
 #include "primitives.h"
 #include "fmt/core.h"
 #include <fstream>
@@ -788,7 +788,7 @@ int BRep::add_face(int surface_idx, bool reversed) {
 Mesh BRep::mesh() const {
     int nf = (int)m_faces.size();
 
-    // Phase 1: Classify faces as direct (TrimeshGrid) or CDT
+    // Phase 1: Classify faces as direct (RemeshNurbsSurfaceGrid) or CDT
     std::vector<bool> face_direct(nf, false);
     for (int fi = 0; fi < nf; ++fi) {
         const auto& face = m_faces[fi];

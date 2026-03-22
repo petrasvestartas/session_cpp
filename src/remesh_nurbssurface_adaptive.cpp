@@ -1,4 +1,4 @@
-#include "trimesh_adaptive.h"
+#include "remesh_nurbssurface_adaptive.h"
 #include <cmath>
 #include <algorithm>
 #include <vector>
@@ -6,30 +6,30 @@
 
 namespace session_cpp {
 
-TrimeshAdaptive::TrimeshAdaptive(const NurbsSurface& surface)
+RemeshNurbssurfaceAdaptive::RemeshNurbssurfaceAdaptive(const NurbsSurface& surface)
     : m_surface(surface) {}
 
-TrimeshAdaptive& TrimeshAdaptive::set_max_angle(double degrees) {
+RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_max_angle(double degrees) {
     m_max_angle = degrees;
     return *this;
 }
 
-TrimeshAdaptive& TrimeshAdaptive::set_max_edge_length(double length) {
+RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_max_edge_length(double length) {
     m_max_edge_length = length;
     return *this;
 }
 
-TrimeshAdaptive& TrimeshAdaptive::set_min_edge_length(double length) {
+RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_min_edge_length(double length) {
     m_min_edge_length = length;
     return *this;
 }
 
-TrimeshAdaptive& TrimeshAdaptive::set_max_chord_height(double height) {
+RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_max_chord_height(double height) {
     m_max_chord_height = height;
     return *this;
 }
 
-double TrimeshAdaptive::compute_bbox_diagonal() const {
+double RemeshNurbssurfaceAdaptive::compute_bbox_diagonal() const {
     double minx = 1e30, miny = 1e30, minz = 1e30;
     double maxx = -1e30, maxy = -1e30, maxz = -1e30;
     for (int i = 0; i < m_surface.cv_count(0); ++i)
@@ -42,7 +42,7 @@ double TrimeshAdaptive::compute_bbox_diagonal() const {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-Mesh TrimeshAdaptive::mesh() const {
+Mesh RemeshNurbssurfaceAdaptive::mesh() const {
     auto usp = m_surface.get_span_vector(0);
     auto vsp = m_surface.get_span_vector(1);
     int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
@@ -173,6 +173,41 @@ Mesh TrimeshAdaptive::mesh() const {
             double me = m_max_edge_length * m_max_edge_length;
             if (pdist2(p.c[0], p.c[1]) > me || pdist2(p.c[2], p.c[3]) > me) split_u = true;
             if (pdist2(p.c[1], p.c[2]) > me || pdist2(p.c[3], p.c[0]) > me) split_v = true;
+        }
+
+        // --- Analytical curvature at cell center ---
+        if (!split_u || !split_v) {
+            auto derivs2 = m_surface.evaluate(um, vm, 2);
+            if (derivs2.size() >= 6) {
+                double dux = derivs2[2][0], duy = derivs2[2][1], duz = derivs2[2][2];
+                double dvx = derivs2[1][0], dvy = derivs2[1][1], dvz = derivs2[1][2];
+                double d2ux = derivs2[5][0], d2uy = derivs2[5][1], d2uz = derivs2[5][2];
+                double d2vx = derivs2[3][0], d2vy = derivs2[3][1], d2vz = derivs2[3][2];
+                double nx = duy * dvz - duz * dvy;
+                double ny = duz * dvx - dux * dvz;
+                double nz = dux * dvy - duy * dvx;
+                double nlen = std::sqrt(nx * nx + ny * ny + nz * nz);
+                double E = dux*dux + duy*duy + duz*duz;
+                double G = dvx*dvx + dvy*dvy + dvz*dvz;
+                if (nlen > 1e-10 && E > 1e-20 && G > 1e-20) {
+                    double inv_nlen = 1.0 / nlen;
+                    double nnx = nx * inv_nlen, nny = ny * inv_nlen, nnz = nz * inv_nlen;
+                    double e_coeff = d2ux*nnx + d2uy*nny + d2uz*nnz;
+                    double g_coeff = d2vx*nnx + d2vy*nny + d2vz*nnz;
+                    double kappa_u = std::abs(e_coeff) / E;
+                    double kappa_v = std::abs(g_coeff) / G;
+                    double span_u = std::sqrt(E) * (p.u1 - p.u0);
+                    double span_v = std::sqrt(G) * (p.v1 - p.v0);
+                    if (!split_u && kappa_u > 1e-20) {
+                        double needed_u = span_u * std::sqrt(kappa_u / (8.0 * chord_tol));
+                        if (needed_u > 1.0) split_u = true;
+                    }
+                    if (!split_v && kappa_v > 1e-20) {
+                        double needed_v = span_v * std::sqrt(kappa_v / (8.0 * chord_tol));
+                        if (needed_v > 1.0) split_v = true;
+                    }
+                }
+            }
         }
 
         if (!split_u && !split_v) return;

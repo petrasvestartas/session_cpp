@@ -263,20 +263,20 @@ static void run_dataset(const std::vector<Polyline>& top_raw, const std::vector<
 }
 
 int main() {
-    std::string sdir = (std::filesystem::path(__FILE__).parent_path().parent_path()
-                        / "session_data").string();
-    auto t_main = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i <= 13; i++) {
-        std::string name = "mesh_quad_tri_loft" + std::to_string(i);
-        auto [top, bot] = load_polys_from_pb(sdir + "/" + name + ".pb");
-        run_dataset(top, bot, name, sdir);
-    }
-    double total = std::chrono::duration<double,std::milli>(
-        std::chrono::high_resolution_clock::now() - t_main).count();
-    std::cout << "\n=== Profile (all 12 datasets) ===\n"
-              << "  build_panel    : " << (int)ms_build_panel    << " ms\n"
-              << "  brep           : " << (int)ms_brep           << " ms\n"
-              << "  pb_dump        : " << (int)ms_pb_dump        << " ms\n"
-              << "  total          : " << (int)total             << " ms\n";
+    // std::string sdir = (std::filesystem::path(__FILE__).parent_path().parent_path()
+    //                     / "session_data").string();
+    // auto t_main = std::chrono::high_resolution_clock::now();
+    // for (int i = 0; i <= 13; i++) {
+    //     std::string name = "mesh_quad_tri_loft" + std::to_string(i);
+    //     auto [top, bot] = load_polys_from_pb(sdir + "/" + name + ".pb");
+    //     run_dataset(top, bot, name, sdir);
+    // }
+    // double total = std::chrono::duration<double,std::milli>(
+    //     std::chrono::high_resolution_clock::now() - t_main).count();
+    // std::cout << "\n=== Profile (all 12 datasets) ===\n"
+    //           << "  build_panel    : " << (int)ms_build_panel    << " ms\n"
+    //           << "  brep           : " << (int)ms_brep           << " ms\n"
+    //           << "  pb_dump        : " << (int)ms_pb_dump        << " ms\n"
+    //           << "  total          : " << (int)total             << " ms\n";
     return 0;
 }

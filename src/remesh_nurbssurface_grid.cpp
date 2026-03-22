@@ -1,38 +1,24 @@
-#include "trimesh_grid.h"
+#include "remesh_nurbssurface_grid.h"
+#include "tolerance.h"
 #include <cmath>
 #include <algorithm>
 
 namespace session_cpp {
 
-TrimeshGrid::TrimeshGrid(const NurbsSurface& surface)
-    : m_surface(surface) {}
+static constexpr double MAX_ANGLE = 20.0;
 
-TrimeshGrid& TrimeshGrid::set_max_angle(double degrees) {
-    m_max_angle = degrees;
-    return *this;
-}
+Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
+    std::vector<double> usp = s.get_span_vector(0);
+    std::vector<double> vsp = s.get_span_vector(1);
+    int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
 
-TrimeshGrid& TrimeshGrid::set_max_edge_length(double length) {
-    m_max_edge_length = length;
-    return *this;
-}
+    int deg_u = s.degree(0), deg_v = s.degree(1);
 
-TrimeshGrid& TrimeshGrid::set_min_edge_length(double length) {
-    m_min_edge_length = length;
-    return *this;
-}
-
-TrimeshGrid& TrimeshGrid::set_max_chord_height(double height) {
-    m_max_chord_height = height;
-    return *this;
-}
-
-double TrimeshGrid::compute_bbox_diagonal() const {
     double minx = 1e30, miny = 1e30, minz = 1e30;
     double maxx = -1e30, maxy = -1e30, maxz = -1e30;
-    for (int i = 0; i < m_surface.cv_count(0); ++i) {
-        for (int j = 0; j < m_surface.cv_count(1); ++j) {
-            Point p = m_surface.get_cv(i, j);
+    for (int i = 0; i < s.cv_count(0); ++i) {
+        for (int j = 0; j < s.cv_count(1); ++j) {
+            Point p = s.get_cv(i, j);
             if (p[0] < minx) minx = p[0];
             if (p[1] < miny) miny = p[1];
             if (p[2] < minz) minz = p[2];
@@ -41,21 +27,8 @@ double TrimeshGrid::compute_bbox_diagonal() const {
             if (p[2] > maxz) maxz = p[2];
         }
     }
-    double dx = maxx - minx;
-    double dy = maxy - miny;
-    double dz = maxz - minz;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-Mesh TrimeshGrid::mesh() const {
-    std::vector<double> usp = m_surface.get_span_vector(0);
-    std::vector<double> vsp = m_surface.get_span_vector(1);
-    int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
-
-    double max_angle_deg = m_max_angle;
-
-    int deg_u = m_surface.degree(0), deg_v = m_surface.degree(1);
-    double bbox_diag = compute_bbox_diagonal();
+    double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
+    double bbox_diag = std::sqrt(dx * dx + dy * dy + dz * dz);
 
     auto span_subs = [&](int dir, const std::vector<double>& sp,
                          const std::vector<double>& osp) -> std::vector<int> {
@@ -71,73 +44,62 @@ Mesh TrimeshGrid::mesh() const {
             if (degree_dir > 1) {
                 double max_angle = 0.0;
                 for (int si = 0; si < n_other; ++si) {
-                    double s = s_positions[si];
-                    double prev_nx = 0, prev_ny = 0, prev_nz = 0;
-                    double total_angle = 0.0;
+                    double sv = s_positions[si];
+                    double fn[3]={0,0,0}, ln[3]={0,0,0};
+                    bool has_first = false;
                     for (int k = 0; k <= 4; ++k) {
                         double t = t0 + k * (t1 - t0) / 4.0;
-                        Vector nrm = (dir == 0) ? m_surface.normal_at(t, s) : m_surface.normal_at(s, t);
+                        Vector nrm = (dir == 0) ? s.normal_at(t, sv) : s.normal_at(sv, t);
                         double nx = nrm[0], ny = nrm[1], nz = nrm[2];
-                        if (k > 0) {
-                            double dot = prev_nx*nx + prev_ny*ny + prev_nz*nz;
-                            dot = std::max(-1.0, std::min(1.0, dot));
-                            total_angle += std::acos(dot) * 180.0 / Tolerance::PI;
-                        }
-                        prev_nx = nx; prev_ny = ny; prev_nz = nz;
+                        double len = std::sqrt(nx*nx + ny*ny + nz*nz);
+                        if (len < 1e-10) continue;
+                        nx/=len; ny/=len; nz/=len;
+                        if (!has_first) { fn[0]=nx; fn[1]=ny; fn[2]=nz; has_first=true; }
+                        ln[0]=nx; ln[1]=ny; ln[2]=nz;
+                    }
+                    double total_angle = 0.0;
+                    if (has_first) {
+                        double dot = fn[0]*ln[0] + fn[1]*ln[1] + fn[2]*ln[2];
+                        total_angle = std::acos(std::max(-1.0, std::min(1.0, dot))) * 180.0 / Tolerance::PI;
                     }
                     if (total_angle > max_angle) max_angle = total_angle;
                 }
-                subs[i] = std::max(1, std::min((int)std::ceil(max_angle / max_angle_deg), 24));
+                subs[i] = std::max(1, (int)std::ceil(max_angle / MAX_ANGLE));
             }
 
             // Direct chord-height deviation check
             {
-                double chord_tol = (m_max_chord_height > 0) ? m_max_chord_height : bbox_diag * 0.005;
+                double chord_tol = bbox_diag * 0.005;
                 double max_dev = 0.0;
                 int nc = std::min(n_other, 3);
                 for (int ci = 0; ci <= nc; ++ci) {
-                    double s = osp.front() + ci * (osp.back() - osp.front()) / std::max(nc, 1);
+                    double sv = osp.front() + ci * (osp.back() - osp.front()) / std::max(nc, 1);
                     double px0, py0, pz0, px1, py1, pz1;
                     if (dir == 0) {
-                        m_surface.point_at(t0, s, px0, py0, pz0);
-                        m_surface.point_at(t1, s, px1, py1, pz1);
+                        s.point_at(t0, sv, px0, py0, pz0);
+                        s.point_at(t1, sv, px1, py1, pz1);
                     } else {
-                        m_surface.point_at(s, t0, px0, py0, pz0);
-                        m_surface.point_at(s, t1, px1, py1, pz1);
+                        s.point_at(sv, t0, px0, py0, pz0);
+                        s.point_at(sv, t1, px1, py1, pz1);
                     }
                     for (int k = 1; k <= 3; ++k) {
                         double frac = k / 4.0;
                         double tm = t0 + frac * (t1 - t0);
                         double pmx, pmy, pmz;
-                        if (dir == 0) m_surface.point_at(tm, s, pmx, pmy, pmz);
-                        else          m_surface.point_at(s, tm, pmx, pmy, pmz);
+                        if (dir == 0) s.point_at(tm, sv, pmx, pmy, pmz);
+                        else          s.point_at(sv, tm, pmx, pmy, pmz);
                         double lx = px0 + frac * (px1 - px0);
                         double ly = py0 + frac * (py1 - py0);
                         double lz = pz0 + frac * (pz1 - pz0);
-                        double dx = pmx - lx, dy = pmy - ly, dz = pmz - lz;
-                        double dev = std::sqrt(dx*dx + dy*dy + dz*dz);
+                        double ddx = pmx - lx, ddy = pmy - ly, ddz = pmz - lz;
+                        double dev = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
                         if (dev > max_dev) max_dev = dev;
                     }
                 }
                 if (max_dev > chord_tol) {
                     int chord_subs = std::max(2, (int)std::ceil(std::sqrt(max_dev / chord_tol)));
-                    subs[i] = std::max(subs[i], std::min(chord_subs, 24));
+                    subs[i] = std::max(subs[i], chord_subs);
                 }
-            }
-
-            if (m_max_edge_length > 0) {
-                double s_mid = (osp.front() + osp.back()) * 0.5;
-                double px0, py0, pz0, px1, py1, pz1;
-                if (dir == 0) {
-                    m_surface.point_at(t0, s_mid, px0, py0, pz0);
-                    m_surface.point_at(t1, s_mid, px1, py1, pz1);
-                } else {
-                    m_surface.point_at(s_mid, t0, px0, py0, pz0);
-                    m_surface.point_at(s_mid, t1, px1, py1, pz1);
-                }
-                double span_len = std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
-                int edge_subs = std::max(1, (int)std::ceil(span_len / m_max_edge_length));
-                subs[i] = std::max(subs[i], std::min(edge_subs, 64));
             }
 
             if (degree_dir > 1) subs[i] = std::max(subs[i], 2);
@@ -151,32 +113,32 @@ Mesh TrimeshGrid::mesh() const {
     // Arc-length aspect ratio balancing
     {
         int total_u = 0, total_v = 0;
-        for (int s : u_subs) total_u += s;
-        for (int s : v_subs) total_v += s;
+        for (int sv : u_subs) total_u += sv;
+        for (int sv : v_subs) total_v += sv;
         total_u += 1; total_v += 1;
         double v_mid = (vsp.front() + vsp.back()) * 0.5;
         double u_mid = (usp.front() + usp.back()) * 0.5;
         double u_len = 0.0, v_len = 0.0;
         {
             double px0, py0, pz0;
-            m_surface.point_at(usp.front(), v_mid, px0, py0, pz0);
+            s.point_at(usp.front(), v_mid, px0, py0, pz0);
             int n_sample = std::max(total_u, 10);
             for (int i = 1; i <= n_sample; ++i) {
                 double u = usp.front() + i * (usp.back() - usp.front()) / n_sample;
                 double px1, py1, pz1;
-                m_surface.point_at(u, v_mid, px1, py1, pz1);
+                s.point_at(u, v_mid, px1, py1, pz1);
                 u_len += std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
                 px0 = px1; py0 = py1; pz0 = pz1;
             }
         }
         {
             double px0, py0, pz0;
-            m_surface.point_at(u_mid, vsp.front(), px0, py0, pz0);
+            s.point_at(u_mid, vsp.front(), px0, py0, pz0);
             int n_sample = std::max(total_v, 10);
             for (int i = 1; i <= n_sample; ++i) {
                 double v = vsp.front() + i * (vsp.back() - vsp.front()) / n_sample;
                 double px1, py1, pz1;
-                m_surface.point_at(u_mid, v, px1, py1, pz1);
+                s.point_at(u_mid, v, px1, py1, pz1);
                 v_len += std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
                 px0 = px1; py0 = py1; pz0 = pz1;
             }
@@ -187,16 +149,16 @@ Mesh TrimeshGrid::mesh() const {
             double ratio = spacing_u / spacing_v;
             if (ratio > 2.0 && deg_u > 1) {
                 double scale = std::sqrt(ratio);
-                for (int& s : u_subs) s = std::min((int)std::ceil(s * scale), 24);
+                for (int& sv : u_subs) sv = (int)std::ceil(sv * scale);
             } else if (ratio < 0.5 && deg_v > 1) {
                 double scale = std::sqrt(1.0 / ratio);
-                for (int& s : v_subs) s = std::min((int)std::ceil(s * scale), 24);
+                for (int& sv : v_subs) sv = (int)std::ceil(sv * scale);
             }
         }
     }
 
-    // Bilinear twist check
-    if (deg_u == 1 && deg_v == 1) {
+    // Bilinear twist check (skip for singular surfaces — fan triangulation handles those)
+    if (deg_u == 1 && deg_v == 1 && !s.is_singular(0) && !s.is_singular(2)) {
         double chord_tol = (bbox_diag > 0) ? bbox_diag * 0.005 : 1e-6;
         double max_twist = 0.0;
         for (int i = 0; i < ns_u; ++i)
@@ -204,42 +166,98 @@ Mesh TrimeshGrid::mesh() const {
                 double u0 = usp[i], u1 = usp[i+1];
                 double v0 = vsp[j], v1 = vsp[j+1];
                 double pmx, pmy, pmz;
-                m_surface.point_at((u0+u1)*0.5, (v0+v1)*0.5, pmx, pmy, pmz);
+                s.point_at((u0+u1)*0.5, (v0+v1)*0.5, pmx, pmy, pmz);
                 double p00x, p00y, p00z, p11x, p11y, p11z;
-                m_surface.point_at(u0, v0, p00x, p00y, p00z);
-                m_surface.point_at(u1, v1, p11x, p11y, p11z);
+                s.point_at(u0, v0, p00x, p00y, p00z);
+                s.point_at(u1, v1, p11x, p11y, p11z);
                 double mx = (p00x+p11x)*0.5, my = (p00y+p11y)*0.5, mz = (p00z+p11z)*0.5;
-                double dx = pmx-mx, dy = pmy-my, dz = pmz-mz;
-                double twist = std::sqrt(dx*dx+dy*dy+dz*dz);
+                double ddx = pmx-mx, ddy = pmy-my, ddz = pmz-mz;
+                double twist = std::sqrt(ddx*ddx+ddy*ddy+ddz*ddz);
                 if (twist > max_twist) max_twist = twist;
             }
         if (max_twist > chord_tol) {
-            int twist_subs = std::max(4, std::min((int)std::ceil(2.0 * std::sqrt(max_twist / chord_tol)), 24));
-            for (int& s : u_subs) s = std::max(s, twist_subs);
-            for (int& s : v_subs) s = std::max(s, twist_subs);
+            int twist_subs = std::max(4, (int)std::ceil(2.0 * std::sqrt(max_twist / chord_tol)));
+            for (int& sv : u_subs) sv = std::max(sv, twist_subs);
+            for (int& sv : v_subs) sv = std::max(sv, twist_subs);
         }
     }
 
-    // Build parameter arrays
-    std::vector<double> us, vs;
-    for (int i = 0; i < ns_u; ++i)
-        for (int s = 0; s < u_subs[i]; ++s)
-            us.push_back(usp[i] + s * (usp[i+1] - usp[i]) / u_subs[i]);
-    us.push_back(usp.back());
-    for (int i = 0; i < ns_v; ++i)
-        for (int s = 0; s < v_subs[i]; ++s)
-            vs.push_back(vsp[i] + s * (vsp[i+1] - vsp[i]) / v_subs[i]);
-    vs.push_back(vsp.back());
+    bool closed_u = s.is_closed(0);
+    bool closed_v = s.is_closed(1);
 
-    bool closed_u = m_surface.is_closed(0);
-    bool closed_v = m_surface.is_closed(1);
+    // Ensure odd total subdivisions for closed directions (seamless checkerboard triangulation)
+    if (closed_u && max_u == 0) {
+        int total = 0; for (int sv : u_subs) total += sv;
+        if (total % 2 == 0) *std::max_element(u_subs.begin(), u_subs.end()) += 1;
+    }
+    if (closed_v && max_v == 0) {
+        int total = 0; for (int sv : v_subs) total += sv;
+        if (total % 2 == 0) *std::max_element(v_subs.begin(), v_subs.end()) += 1;
+    }
+
+    // Arc-length parameterization: sample dense curve, redistribute n points evenly by 3D length
+    auto arclen_params = [&](int n, const std::vector<double>& sp, double fixed) -> std::vector<double> {
+        int nsample = std::max(n * 20, 200);
+        std::vector<double> st(nsample + 1);
+        std::vector<double> sl(nsample + 1, 0.0);
+        double px0, py0, pz0;
+        bool is_u = (&sp == &usp);
+        double t0 = sp.front();
+        if (is_u) s.point_at(t0, fixed, px0, py0, pz0);
+        else      s.point_at(fixed, t0, px0, py0, pz0);
+        for (int k = 0; k <= nsample; ++k) {
+            double t = sp.front() + k * (sp.back() - sp.front()) / nsample;
+            st[k] = t;
+            if (k > 0) {
+                double px1, py1, pz1;
+                if (is_u) s.point_at(t, fixed, px1, py1, pz1);
+                else      s.point_at(fixed, t, px1, py1, pz1);
+                double d = std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
+                sl[k] = sl[k-1] + d;
+                px0 = px1; py0 = py1; pz0 = pz1;
+            }
+        }
+        double total = sl[nsample];
+        std::vector<double> params;
+        params.push_back(sp.front());
+        int j = 0;
+        for (int i = 1; i < n - 1; ++i) {
+            double target = total * i / (n - 1);
+            while (j < nsample && sl[j] < target) ++j;
+            double ta = st[j > 0 ? j-1 : 0], tb = st[j];
+            double la = sl[j > 0 ? j-1 : 0], lb = sl[j];
+            double frac = (lb > la) ? (target - la) / (lb - la) : 0.0;
+            params.push_back(ta + frac * (tb - ta));
+        }
+        params.push_back(sp.back());
+        return params;
+    };
+
+    // Build parameter arrays
+    double v_mid = (vsp.front() + vsp.back()) * 0.5;
+    double u_mid = (usp.front() + usp.back()) * 0.5;
+    std::vector<double> us, vs;
+    if (max_u > 0) {
+        us = arclen_params(std::max(max_u, 2), usp, v_mid);
+    } else {
+        for (int i = 0; i < ns_u; ++i)
+            for (int sv = 0; sv < u_subs[i]; ++sv)
+                us.push_back(usp[i] + sv * (usp[i+1] - usp[i]) / u_subs[i]);
+        us.push_back(usp.back());
+    }
+    if (max_v > 0) {
+        vs = arclen_params(std::max(max_v, 2), vsp, u_mid);
+    } else {
+        for (int i = 0; i < ns_v; ++i)
+            for (int sv = 0; sv < v_subs[i]; ++sv)
+                vs.push_back(vsp[i] + sv * (vsp[i+1] - vsp[i]) / v_subs[i]);
+        vs.push_back(vsp.back());
+    }
 
     // For closed surfaces, ensure the wrapping gap is not disproportionately large.
-    // The last span's subdivision might be lower than others, causing the closing
-    // seam faces to span a gap much larger than interior faces.
     auto fix_closed_gap = [](std::vector<double>& params, const std::vector<double>& spans, bool closed) {
         if (!closed || params.size() < 3) return;
-        params.pop_back(); // Remove duplicate endpoint (maps to same point as first)
+        params.pop_back();
         double domain_end = spans.back();
         double wrap_gap = domain_end - params.back();
         double max_gap = 0;
@@ -258,8 +276,8 @@ Mesh TrimeshGrid::mesh() const {
     int nu = (int)us.size(), nv = (int)vs.size();
 
     // Detect singular edges (collapsed to a single point)
-    bool sing_v0 = m_surface.is_singular(0); // south: v=vs[0]
-    bool sing_v1 = m_surface.is_singular(2); // north: v=vs[nv-1]
+    bool sing_v0 = s.is_singular(0); // south: v=vs[0]
+    bool sing_v1 = s.is_singular(2); // north: v=vs[nv-1]
     int j_start = sing_v0 ? 1 : 0;
     int j_end = sing_v1 ? nv - 1 : nv;
     int nv_grid = j_end - j_start;
@@ -268,14 +286,14 @@ Mesh TrimeshGrid::mesh() const {
     size_t south_pole = 0, north_pole = 0;
     if (sing_v0) {
         double px, py, pz;
-        m_surface.point_at(us[0], vs[0], px, py, pz);
+        s.point_at(us[0], vs[0], px, py, pz);
         south_pole = result.add_vertex(Point(px, py, pz));
         result.vertex[south_pole].attributes["u"] = us[0];
         result.vertex[south_pole].attributes["v"] = vs[0];
     }
     if (sing_v1) {
         double px, py, pz;
-        m_surface.point_at(us[0], vs[nv - 1], px, py, pz);
+        s.point_at(us[0], vs[nv - 1], px, py, pz);
         north_pole = result.add_vertex(Point(px, py, pz));
         result.vertex[north_pole].attributes["u"] = us[0];
         result.vertex[north_pole].attributes["v"] = vs[nv - 1];
@@ -284,7 +302,7 @@ Mesh TrimeshGrid::mesh() const {
     for (int i = 0; i < nu; ++i)
         for (int j = j_start; j < j_end; ++j) {
             double px, py, pz;
-            m_surface.point_at(us[i], vs[j], px, py, pz);
+            s.point_at(us[i], vs[j], px, py, pz);
             size_t vk = result.add_vertex(Point(px, py, pz));
             result.vertex[vk].attributes["u"] = us[i];
             result.vertex[vk].attributes["v"] = vs[j];
@@ -353,6 +371,10 @@ Mesh TrimeshGrid::mesh() const {
         result.vertex[i].set_normal(vnx[i], vny[i], vnz[i]);
     }
     return result;
+}
+
+Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
+    return remesh_nurbssurface_grid(s, max_u, max_v);
 }
 
 } // namespace session_cpp

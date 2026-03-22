@@ -1,6 +1,6 @@
 #include "nurbssurface.h"
-#include "trimesh_grid.h"
-#include "trimesh_adaptive.h"
+#include "remesh_nurbssurface_grid.h"
+#include "remesh_nurbssurface_adaptive.h"
 #include "knot.h"
 #include "fmt/core.h"
 #include <cstring>
@@ -1434,15 +1434,9 @@ NurbsCurve NurbsSurface::iso_curve(int dir, double c) const {
 // Meshing
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-Mesh NurbsSurface::mesh_grid(double max_angle, double max_edge_length,
-                             double min_edge_length, double max_chord_height) const {
+Mesh NurbsSurface::mesh_grid() const {
     if (m_mesh.number_of_vertices() == 0 && is_valid()) {
-        TrimeshGrid mesher(*this);
-        mesher.set_max_angle(max_angle)
-              .set_max_edge_length(max_edge_length)
-              .set_min_edge_length(min_edge_length)
-              .set_max_chord_height(max_chord_height);
-        m_mesh = mesher.mesh();
+        m_mesh = remesh_nurbssurface_grid(*this, 0, 0);
     }
     return m_mesh;
 }
@@ -1450,7 +1444,7 @@ Mesh NurbsSurface::mesh_grid(double max_angle, double max_edge_length,
 Mesh NurbsSurface::mesh_adaptive(double max_angle, double max_edge_length,
                                   double min_edge_length, double max_chord_height) const {
     if (m_mesh.number_of_vertices() == 0 && is_valid()) {
-        TrimeshAdaptive mesher(*this);
+        RemeshNurbssurfaceAdaptive mesher(*this);
         mesher.set_max_angle(max_angle)
               .set_max_edge_length(max_edge_length)
               .set_min_edge_length(min_edge_length)
@@ -1460,8 +1454,7 @@ Mesh NurbsSurface::mesh_adaptive(double max_angle, double max_edge_length,
     return m_mesh;
 }
 
-Mesh NurbsSurface::mesh(double max_angle, double max_edge_length,
-                        double min_edge_length, double max_chord_height) const {
+Mesh NurbsSurface::mesh(double max_angle, double max_edge_length) const {
     if (m_mesh.number_of_vertices() == 0 && is_valid() && is_planar(nullptr, 1e-6)) {
         Mesh result;
         Point p00 = point_at_corner(0, 0);
@@ -1495,7 +1488,7 @@ Mesh NurbsSurface::mesh(double max_angle, double max_edge_length,
         m_mesh = result;
         return m_mesh;
     }
-    return mesh_grid(max_angle, max_edge_length, min_edge_length, max_chord_height);
+    return mesh_grid();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

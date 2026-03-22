@@ -417,8 +417,7 @@ public:
                        double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
     /// Primary meshing entry point. Uses mesh_grid strategy.
-    Mesh mesh(double max_angle = 20.0, double max_edge_length = 0.0,
-              double min_edge_length = 0.0, double max_chord_height = 0.0) const;
+    Mesh mesh(double max_angle = 20.0, double max_edge_length = 0.0) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Serialization
@@ -479,8 +478,7 @@ private:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Tessellate using adaptive UV-parameter grid. Called by mesh().
-    Mesh mesh_grid(double max_angle = 20.0, double max_edge_length = 0.0,
-                   double min_edge_length = 0.0, double max_chord_height = 0.0) const;
+    Mesh mesh_grid() const;
 
     bool zero_cvs();
     bool make_clamped_uniform_knot_vector(int dir, double delta = 1.0);

@@ -6,14 +6,14 @@
 
 namespace session_cpp {
 
-class TrimeshGrid {
+class RemeshNurbssurfaceAdaptive {
 public:
-    explicit TrimeshGrid(const NurbsSurface& surface);
+    explicit RemeshNurbssurfaceAdaptive(const NurbsSurface& surface);
 
-    TrimeshGrid& set_max_angle(double degrees);
-    TrimeshGrid& set_max_edge_length(double length);
-    TrimeshGrid& set_min_edge_length(double length);
-    TrimeshGrid& set_max_chord_height(double height);
+    RemeshNurbssurfaceAdaptive& set_max_angle(double degrees);
+    RemeshNurbssurfaceAdaptive& set_max_edge_length(double length);
+    RemeshNurbssurfaceAdaptive& set_min_edge_length(double length);
+    RemeshNurbssurfaceAdaptive& set_max_chord_height(double height);
 
     double get_max_angle() const { return m_max_angle; }
     double get_max_edge_length() const { return m_max_edge_length; }
