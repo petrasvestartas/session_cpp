@@ -161,10 +161,18 @@ Mesh RemeshNurbssurfaceAdaptive::mesh() const {
         // --- Bilinear twist: center vs diagonal midpoints (catches saddle surfaces) ---
         // Only when NEITHER edge check triggered; looser tolerance (diagonal is ~1.4x edge)
         if (!split_u && !split_v) {
-            double twist_tol2 = 4.0 * chord_tol * chord_tol;
-            for (int d = 0; d < 2; d++) {
-                Corner mid = pmid(p.c[d], p.c[d + 2]);
-                if (pdist2(p.c[4], mid) > twist_tol2) { split_u = true; split_v = true; }
+            // Skip for degenerate cells where an adjacent edge has collapsed (singular surface)
+            bool degenerate = false;
+            for (int ci = 0; ci < 4; ci++) {
+                if (pdist2(p.c[ci], p.c[(ci + 1) % 4]) < chord_tol * chord_tol)
+                    degenerate = true;
+            }
+            if (!degenerate) {
+                double twist_tol2 = 4.0 * chord_tol * chord_tol;
+                for (int d = 0; d < 2; d++) {
+                    Corner mid = pmid(p.c[d], p.c[d + 2]);
+                    if (pdist2(p.c[4], mid) > twist_tol2) { split_u = true; split_v = true; }
+                }
             }
         }
 
