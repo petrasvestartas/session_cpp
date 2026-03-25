@@ -417,7 +417,7 @@ public:
                        double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
     /// Primary meshing entry point. Uses mesh_grid strategy.
-    Mesh mesh(double max_angle = 20.0, double max_edge_length = 0.0) const;
+    Mesh mesh() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Serialization

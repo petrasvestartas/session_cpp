@@ -1,5 +1,5 @@
 #include "mini_test.h"
-#include "trimesh_cdt.h"
+#include "remesh_cdt.h"
 #include "tolerance.h"
 
 #include <cmath>
@@ -12,7 +12,7 @@ static double tri_area(const std::pair<double,double>& a, const std::pair<double
     return std::abs((b.first-a.first)*(c.second-a.second) - (c.first-a.first)*(b.second-a.second)) * 0.5;
 }
 
-MINI_TEST("TrimeshCdt", "Triangle") {
+MINI_TEST("RemeshCDT", "Triangle") {
     std::vector<std::array<int, 3>> tris = cdt_triangulate(
         {{0, 0}, {1, 0}, {0, 1}},
         {});
@@ -23,7 +23,7 @@ MINI_TEST("TrimeshCdt", "Triangle") {
     MINI_CHECK(tris[0][0] != tris[0][2]);
 }
 
-MINI_TEST("TrimeshCdt", "Square") {
+MINI_TEST("RemeshCDT", "Square") {
     std::vector<std::array<int, 3>> tris = cdt_triangulate(
         {{0, 0}, {1, 0}, {1, 1}, {0, 1}},
         {});
@@ -31,7 +31,7 @@ MINI_TEST("TrimeshCdt", "Square") {
     MINI_CHECK(tris.size() == 2);
 }
 
-MINI_TEST("TrimeshCdt", "Convex Polygon") {
+MINI_TEST("RemeshCDT", "Convex Polygon") {
     std::vector<std::pair<double, double>> hex;
     for (int i = 0; i < 6; ++i) {
         double a = i * TOLERANCE.PI / 3.0;
@@ -42,7 +42,7 @@ MINI_TEST("TrimeshCdt", "Convex Polygon") {
     MINI_CHECK(tris.size() == 4);
 }
 
-MINI_TEST("TrimeshCdt", "Polygon With Hole") {
+MINI_TEST("RemeshCDT", "Polygon With Hole") {
     std::vector<std::pair<double,double>> border = {{0,0},{4,0},{4,4},{0,4}};
     std::vector<std::pair<double,double>> hole   = {{1,1},{1,3},{3,3},{3,1}};
     std::vector<std::array<int, 3>> tris = cdt_triangulate(border, {hole});

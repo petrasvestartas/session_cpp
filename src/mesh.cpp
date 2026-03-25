@@ -1,6 +1,5 @@
 ﻿#include "mesh.h"
-#include "triangulation_2d.h"
-#include "trimesh_cdt.h"
+#include "remesh_cdt.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <algorithm>
@@ -1444,13 +1443,20 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
         for (size_t vid : cycle) fvkeys.push_back(vkeys[vid]);
         auto fkey_opt = mesh.add_face(fvkeys);
         if (fkey_opt.has_value()) {
-            std::vector<Point> pts;
-            pts.reserve(cycle.size());
-            for (size_t vid : cycle) pts.push_back(verts[vid]);
-            auto tris = Triangulation2D::triangulate(Polyline(pts));
+            std::vector<size_t> ordered = cycle;
+            std::vector<std::pair<double,double>> bpts;
+            bpts.reserve(ordered.size());
+            for (size_t vid : ordered) bpts.push_back({verts[vid][0], verts[vid][1]});
+            double area = 0.0;
+            for (size_t j = 0, cn = bpts.size(); j < cn; ++j) {
+                size_t k = (j + 1) % cn;
+                area += bpts[j].first * bpts[k].second - bpts[k].first * bpts[j].second;
+            }
+            if (area < 0.0) { std::reverse(bpts.begin(), bpts.end()); std::reverse(ordered.begin(), ordered.end()); }
+            auto tris = cdt_triangulate(bpts, {});
             std::vector<std::array<size_t, 3>> tri_list;
             for (const auto& t : tris)
-                tri_list.push_back({vkeys[cycle[t.v0]], vkeys[cycle[t.v1]], vkeys[cycle[t.v2]]});
+                tri_list.push_back({vkeys[ordered[t[0]]], vkeys[ordered[t[1]]], vkeys[ordered[t[2]]]});
             mesh.triangulation[fkey_opt.value()] = tri_list;
         }
     }

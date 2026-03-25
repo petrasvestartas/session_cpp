@@ -12,4 +12,6 @@ std::vector<std::array<int,3>> cdt_triangulate(
     const std::vector<std::pair<double,double>>& border_2d,
     const std::vector<std::vector<std::pair<double,double>>>& holes_2d);
 
+bool point_in_polygon_2d(double px, double py, const std::vector<double>& coords);
+
 } // namespace session_cpp

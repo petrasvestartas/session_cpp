@@ -2,7 +2,7 @@
 #include "closest.h"
 #include "primitives.h"
 #include "remesh_nurbssurface_grid.h"
-#include "triangulation_2d.h"
+#include "remesh_cdt.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <set>
@@ -632,9 +632,9 @@ Mesh TrimmedSurface::mesh() const {
     for (const auto& hp : hole_uvs) hole_coords.push_back(to_flat(hp));
 
     auto inside_trim = [&](double u, double v) -> bool {
-        if (!Triangulation2D::point_in_polygon_2d(u, v, outer_coords)) return false;
+        if (!point_in_polygon_2d(u, v, outer_coords)) return false;
         for (const auto& hc : hole_coords)
-            if (Triangulation2D::point_in_polygon_2d(u, v, hc)) return false;
+            if (point_in_polygon_2d(u, v, hc)) return false;
         return true;
     };
 

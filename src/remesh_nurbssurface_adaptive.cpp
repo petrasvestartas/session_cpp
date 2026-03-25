@@ -6,30 +6,30 @@
 
 namespace session_cpp {
 
-RemeshNurbssurfaceAdaptive::RemeshNurbssurfaceAdaptive(const NurbsSurface& surface)
+RemeshNurbsSurfaceAdaptive::RemeshNurbsSurfaceAdaptive(const NurbsSurface& surface)
     : m_surface(surface) {}
 
-RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_max_angle(double degrees) {
+RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_max_angle(double degrees) {
     m_max_angle = degrees;
     return *this;
 }
 
-RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_max_edge_length(double length) {
+RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_max_edge_length(double length) {
     m_max_edge_length = length;
     return *this;
 }
 
-RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_min_edge_length(double length) {
+RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_min_edge_length(double length) {
     m_min_edge_length = length;
     return *this;
 }
 
-RemeshNurbssurfaceAdaptive& RemeshNurbssurfaceAdaptive::set_max_chord_height(double height) {
+RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_max_chord_height(double height) {
     m_max_chord_height = height;
     return *this;
 }
 
-double RemeshNurbssurfaceAdaptive::compute_bbox_diagonal() const {
+double RemeshNurbsSurfaceAdaptive::compute_bbox_diagonal() const {
     double minx = 1e30, miny = 1e30, minz = 1e30;
     double maxx = -1e30, maxy = -1e30, maxz = -1e30;
     for (int i = 0; i < m_surface.cv_count(0); ++i)
@@ -42,7 +42,7 @@ double RemeshNurbssurfaceAdaptive::compute_bbox_diagonal() const {
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-Mesh RemeshNurbssurfaceAdaptive::mesh() const {
+Mesh RemeshNurbsSurfaceAdaptive::mesh() const {
     auto usp = m_surface.get_span_vector(0);
     auto vsp = m_surface.get_span_vector(1);
     int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;

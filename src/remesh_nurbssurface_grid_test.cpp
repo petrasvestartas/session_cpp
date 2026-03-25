@@ -86,4 +86,23 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Triangle") {
     MINI_CHECK(m.number_of_faces() == 1);
 }
 
+MINI_TEST("RemeshNurbsSurfaceGrid", "Double-Curved Triangle") {
+    NurbsSurface s = NurbsSurface::create(false, false, 2, 2, 3, 3, {
+        Point(0, 0, 0),
+        Point(2, 0, 3),
+        Point(4, 0, 0),
+        Point(0, 2, 2),
+        Point(2, 2, 5),
+        Point(4, 2, 2),
+        Point(2, 4, 0),
+        Point(2, 4, 0),
+        Point(2, 4, 0),
+    });
+    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+
+    MINI_CHECK(m.is_valid());
+    MINI_CHECK(m.number_of_vertices() == 64);
+    MINI_CHECK(m.number_of_faces() == 98);
+}
+
 } // namespace session_cpp

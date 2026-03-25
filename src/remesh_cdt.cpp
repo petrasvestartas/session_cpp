@@ -1,4 +1,4 @@
-#include "trimesh_cdt.h"
+#include "remesh_cdt.h"
 #include <vector>
 #include <array>
 #include <map>
@@ -900,6 +900,30 @@ std::vector<std::array<int,3>> cdt_triangulate(
         if (ok) out.push_back(f);
     }
     return out;
+}
+
+bool point_in_polygon_2d(double px, double py, const std::vector<double>& coords) {
+    auto cross_2d = [](double ax, double ay, double bx, double by, double cx, double cy) -> double {
+        return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    };
+    int winding = 0;
+    size_t n = coords.size() / 2;
+    for (size_t i = 0; i < n; ++i) {
+        size_t j = (i + 1) % n;
+        double y0 = coords[i * 2 + 1], y1 = coords[j * 2 + 1];
+        if (y0 <= py) {
+            if (y1 > py) {
+                double x0 = coords[i * 2], x1 = coords[j * 2];
+                if (cross_2d(x0, y0, x1, y1, px, py) > 0.0) ++winding;
+            }
+        } else {
+            if (y1 <= py) {
+                double x0 = coords[i * 2], x1 = coords[j * 2];
+                if (cross_2d(x0, y0, x1, y1, px, py) < 0.0) --winding;
+            }
+        }
+    }
+    return winding != 0;
 }
 
 } // namespace session_cpp

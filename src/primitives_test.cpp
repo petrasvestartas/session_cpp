@@ -307,7 +307,7 @@ MINI_TEST("Primitives", "Nurbssurface Ruled") {
     NurbsSurface srf = Primitives::create_ruled(crvA, crvB);
     srf.name = "ruled";
 
-    Mesh m = srf.mesh(45);
+    Mesh m = srf.mesh();
 
     MINI_CHECK(srf.is_valid());
     MINI_CHECK(srf.degree(0) == 1);
@@ -910,7 +910,7 @@ MINI_TEST("Primitives", "Nurbssurface Edge") {
 
     NurbsSurface surf = Primitives::create_edge(south, west, north, east);
     surf.name = "edge";
-    Mesh m = surf.mesh(15);
+    Mesh m = surf.mesh();
 
     MINI_CHECK(surf.is_valid());
     MINI_CHECK(m.is_valid());

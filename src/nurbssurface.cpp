@@ -1436,7 +1436,7 @@ NurbsCurve NurbsSurface::iso_curve(int dir, double c) const {
 
 Mesh NurbsSurface::mesh_grid() const {
     if (m_mesh.number_of_vertices() == 0 && is_valid()) {
-        m_mesh = remesh_nurbssurface_grid(*this, 0, 0);
+        m_mesh = RemeshNurbsSurfaceGrid::from_u_v(*this, 0, 0);
     }
     return m_mesh;
 }
@@ -1444,7 +1444,7 @@ Mesh NurbsSurface::mesh_grid() const {
 Mesh NurbsSurface::mesh_adaptive(double max_angle, double max_edge_length,
                                   double min_edge_length, double max_chord_height) const {
     if (m_mesh.number_of_vertices() == 0 && is_valid()) {
-        RemeshNurbssurfaceAdaptive mesher(*this);
+        RemeshNurbsSurfaceAdaptive mesher(*this);
         mesher.set_max_angle(max_angle)
               .set_max_edge_length(max_edge_length)
               .set_min_edge_length(min_edge_length)
@@ -1454,7 +1454,7 @@ Mesh NurbsSurface::mesh_adaptive(double max_angle, double max_edge_length,
     return m_mesh;
 }
 
-Mesh NurbsSurface::mesh(double max_angle, double max_edge_length) const {
+Mesh NurbsSurface::mesh() const {
     if (m_mesh.number_of_vertices() == 0 && is_valid() && is_planar(nullptr, 1e-6)) {
         Mesh result;
         Point p00 = point_at_corner(0, 0);

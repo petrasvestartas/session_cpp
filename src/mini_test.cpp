@@ -250,6 +250,7 @@ void run_all(const std::string &language) {
       std::string code_str = extract_timed_code(*t, checks);
 
       nlohmann::ordered_json result = {
+          {"group", group},
           {"test_name", t->name},
           {"passed", passed},
           {"time_ms", rounded_ms},

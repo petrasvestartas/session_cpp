@@ -6,14 +6,14 @@
 
 namespace session_cpp {
 
-class RemeshNurbssurfaceAdaptive {
+class RemeshNurbsSurfaceAdaptive {
 public:
-    explicit RemeshNurbssurfaceAdaptive(const NurbsSurface& surface);
+    explicit RemeshNurbsSurfaceAdaptive(const NurbsSurface& surface);
 
-    RemeshNurbssurfaceAdaptive& set_max_angle(double degrees);
-    RemeshNurbssurfaceAdaptive& set_max_edge_length(double length);
-    RemeshNurbssurfaceAdaptive& set_min_edge_length(double length);
-    RemeshNurbssurfaceAdaptive& set_max_chord_height(double height);
+    RemeshNurbsSurfaceAdaptive& set_max_angle(double degrees);
+    RemeshNurbsSurfaceAdaptive& set_max_edge_length(double length);
+    RemeshNurbsSurfaceAdaptive& set_min_edge_length(double length);
+    RemeshNurbsSurfaceAdaptive& set_max_chord_height(double height);
 
     double get_max_angle() const { return m_max_angle; }
     double get_max_edge_length() const { return m_max_edge_length; }

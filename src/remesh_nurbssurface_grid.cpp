@@ -5,9 +5,8 @@
 
 namespace session_cpp {
 
-static constexpr double MAX_ANGLE = 20.0;
-
-Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
+Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
+    constexpr double MAX_ANGLE = 20.0;
     std::vector<double> usp = s.get_span_vector(0);
     std::vector<double> vsp = s.get_span_vector(1);
     int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
@@ -64,7 +63,7 @@ Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
                     }
                     if (total_angle > max_angle) max_angle = total_angle;
                 }
-                subs[i] = std::max(1, (int)std::ceil(max_angle / MAX_ANGLE));
+                subs[i] = std::min(24, std::max(1, (int)std::ceil(max_angle / MAX_ANGLE)));
             }
 
             // Direct chord-height deviation check
@@ -97,7 +96,7 @@ Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
                     }
                 }
                 if (max_dev > chord_tol) {
-                    int chord_subs = std::max(2, (int)std::ceil(std::sqrt(max_dev / chord_tol)));
+                    int chord_subs = std::min(24, std::max(2, (int)std::ceil(std::sqrt(max_dev / chord_tol))));
                     subs[i] = std::max(subs[i], chord_subs);
                 }
             }
@@ -149,10 +148,10 @@ Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
             double ratio = spacing_u / spacing_v;
             if (ratio > 2.0 && deg_u > 1) {
                 double scale = std::sqrt(ratio);
-                for (int& sv : u_subs) sv = (int)std::ceil(sv * scale);
+                for (int& sv : u_subs) sv = std::min(24, (int)std::ceil(sv * scale));
             } else if (ratio < 0.5 && deg_v > 1) {
                 double scale = std::sqrt(1.0 / ratio);
-                for (int& sv : v_subs) sv = (int)std::ceil(sv * scale);
+                for (int& sv : v_subs) sv = std::min(24, (int)std::ceil(sv * scale));
             }
         }
     }
@@ -176,7 +175,7 @@ Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
                 if (twist > max_twist) max_twist = twist;
             }
         if (max_twist > chord_tol) {
-            int twist_subs = std::max(4, (int)std::ceil(2.0 * std::sqrt(max_twist / chord_tol)));
+            int twist_subs = std::min(24, std::max(4, (int)std::ceil(2.0 * std::sqrt(max_twist / chord_tol))));
             for (int& sv : u_subs) sv = std::max(sv, twist_subs);
             for (int& sv : v_subs) sv = std::max(sv, twist_subs);
         }
@@ -371,10 +370,6 @@ Mesh remesh_nurbssurface_grid(const NurbsSurface& s, int max_u, int max_v) {
         result.vertex[i].set_normal(vnx[i], vny[i], vnz[i]);
     }
     return result;
-}
-
-Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
-    return remesh_nurbssurface_grid(s, max_u, max_v);
 }
 
 } // namespace session_cpp
