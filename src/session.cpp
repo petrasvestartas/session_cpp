@@ -139,6 +139,14 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep) {
   return tree_node;
 }
 
+std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element) {
+  objects.elements->push_back(element);
+  lookup[element->guid] = element;
+  graph.add_node(element->guid, "element_" + element->name);
+  auto tree_node = std::make_shared<TreeNode>(element->guid);
+  return tree_node;
+}
+
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
   auto node = std::make_shared<TreeNode>(group_name);
   add(node);
@@ -284,6 +292,10 @@ Obb Session::compute_bounding_box(const Geometry& geometry) {
       if (points.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
       return Obb::from_points(points, inflate);
     }
+    else if constexpr (std::is_same_v<T, std::shared_ptr<Element>>) {
+      auto e_copy = *geom_ptr;
+      return e_copy.aabb();
+    }
     else {
       return Obb::from_point(Point(0, 0, 0), inflate);
     }
@@ -356,7 +368,9 @@ Objects Session::get_geometry() const {
   add_to_lookup(transformed_objects.meshes);
   add_to_lookup(transformed_objects.nurbscurves);
   add_to_lookup(transformed_objects.nurbssurfaces);
-  
+  add_to_lookup(transformed_objects.breps);
+  add_to_lookup(transformed_objects.elements);
+
   // Helper lambda to recursively transform nodes
   std::function<void(std::shared_ptr<TreeNode>, const Xform&)> transform_node = 
     [&](std::shared_ptr<TreeNode> node, const Xform& parent_xform) {
@@ -368,8 +382,14 @@ Objects Session::get_geometry() const {
       if (it != transformed_lookup.end()) {
         // Transform in-place
         std::visit([&](auto&& geom_ptr) {
-          geom_ptr->xform = parent_xform * geom_ptr->xform;
-          current_xform = geom_ptr->xform;
+          using T = std::decay_t<decltype(geom_ptr)>;
+          if constexpr (std::is_same_v<T, std::shared_ptr<Element>>) {
+            geom_ptr->session_transformation = parent_xform * geom_ptr->session_transformation;
+            current_xform = geom_ptr->session_transformation;
+          } else {
+            geom_ptr->xform = parent_xform * geom_ptr->xform;
+            current_xform = geom_ptr->xform;
+          }
         }, it->second);
       }
       
@@ -458,6 +478,12 @@ Session Session::jsonload(const nlohmann::json &data) {
   for (const auto &polyline_ptr : *session.objects.polylines) {
     session.lookup[polyline_ptr->guid] = polyline_ptr;
   }
+  for (const auto &brep_ptr : *session.objects.breps) {
+    session.lookup[brep_ptr->guid] = brep_ptr;
+  }
+  for (const auto &element_ptr : *session.objects.elements) {
+    session.lookup[element_ptr->guid] = element_ptr;
+  }
 
   // Load tree structure
   if (data.contains("tree")) {
@@ -527,6 +553,8 @@ Session Session::pb_loads(const std::string& data) {
   for (const auto& m : *session.objects.meshes) session.lookup[m->guid] = m;
   for (const auto& nc : *session.objects.nurbscurves) session.lookup[nc->guid] = nc;
   for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid] = ns;
+  for (const auto& b : *session.objects.breps) session.lookup[b->guid] = b;
+  for (const auto& e : *session.objects.elements) session.lookup[e->guid] = e;
 
   return session;
 }

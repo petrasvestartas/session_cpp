@@ -49,7 +49,8 @@ using Geometry = std::variant<
     std::shared_ptr<NurbsCurve>,
     std::shared_ptr<NurbsSurface>,
     std::shared_ptr<Polyline>,
-    std::shared_ptr<BRep>
+    std::shared_ptr<BRep>,
+    std::shared_ptr<Element>
 >;
 
 /**
@@ -169,6 +170,7 @@ public:
   std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve);
   std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface);
   std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep);
+  std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element);
 
   /**
    * @brief Add a TreeNode to the tree hierarchy.

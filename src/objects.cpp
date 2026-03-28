@@ -46,6 +46,12 @@ nlohmann::ordered_json Objects::jsondump() const {
     breps_json.push_back(b->jsondump());
   }
 
+  std::vector<nlohmann::ordered_json> elements_json;
+  elements_json.reserve(elements->size());
+  for (const auto &e : *elements) {
+    elements_json.push_back(e->jsondump());
+  }
+
   std::vector<nlohmann::ordered_json> planes_json;
   planes_json.reserve(planes->size());
   for (const auto &p : *planes) {
@@ -75,6 +81,7 @@ nlohmann::ordered_json Objects::jsondump() const {
                                 {"name", name},
                                 {"bboxes", bboxes_json},
                                 {"breps", breps_json},
+                                {"elements", elements_json},
                                 {"lines", lines_json},
                                 {"meshes", meshes_json},
                                 {"nurbscurves", nurbscurves_json},
@@ -141,6 +148,15 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     for (const auto &b_data : data["breps"])
       breps.push_back(std::make_shared<BRep>(BRep::jsonload(b_data)));
     *objects.breps = std::move(breps);
+  }
+
+  // Load elements
+  if (data.contains("elements")) {
+    std::vector<std::shared_ptr<Element>> elements;
+    elements.reserve(data["elements"].size());
+    for (const auto &e_data : data["elements"])
+      elements.push_back(std::make_shared<Element>(Element::jsonload(e_data)));
+    *objects.elements = std::move(elements);
   }
 
   // Load planes
@@ -219,6 +235,7 @@ std::string Objects::pb_dumps() const {
   for (const auto& nc : *nurbscurves) proto.add_nurbscurves()->ParseFromString(nc->pb_dumps());
   for (const auto& ns : *nurbssurfaces) proto.add_nurbssurfaces()->ParseFromString(ns->pb_dumps());
   for (const auto& b : *breps) proto.add_breps()->ParseFromString(b->pb_dumps());
+  for (const auto& e : *elements) proto.add_elements()->ParseFromString(e->pb_dumps());
   return proto.SerializeAsString();
 }
 
@@ -247,6 +264,8 @@ Objects Objects::pb_loads(const std::string& data) {
     objects.nurbssurfaces->push_back(std::make_shared<NurbsSurface>(NurbsSurface::pb_loads(ns.SerializeAsString())));
   for (const auto& b : proto.breps())
     objects.breps->push_back(std::make_shared<BRep>(BRep::pb_loads(b.SerializeAsString())));
+  for (const auto& e : proto.elements())
+    objects.elements->push_back(std::make_shared<Element>(Element::pb_loads(e.SerializeAsString())));
   return objects;
 }
 

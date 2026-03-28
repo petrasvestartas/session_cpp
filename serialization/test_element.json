@@ -1,0 +1,180 @@
+{
+  "geometry_data": {
+    "default_edge_attributes": {},
+    "default_face_attributes": {},
+    "default_vertex_attributes": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "edgedata": null,
+    "face": {
+      "0": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "face_holes": null,
+    "facecolors": [
+      255,
+      255,
+      255,
+      255
+    ],
+    "facedata": null,
+    "guid": "8d93a85d-5b58-4d07-8bbb-0191fc7a6efe",
+    "halfedge": {
+      "0": {
+        "1": 0,
+        "3": null
+      },
+      "1": {
+        "0": null,
+        "2": 0
+      },
+      "2": {
+        "1": null,
+        "3": 0
+      },
+      "3": {
+        "0": 0,
+        "2": null
+      }
+    },
+    "linecolors": [
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255
+    ],
+    "max_face": 1,
+    "max_vertex": 4,
+    "name": "my_mesh",
+    "objectcolor": {
+      "a": 255,
+      "b": 255,
+      "g": 255,
+      "guid": "676f5879-ee75-4698-a184-64995be0b700",
+      "name": "white",
+      "r": 255,
+      "type": "Color"
+    },
+    "color_mode": "objectcolor",
+    "pointcolors": [
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255,
+      255
+    ],
+    "triangulation": null,
+    "type": "Mesh",
+    "vertex": {
+      "0": {
+        "attributes": {},
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "1": {
+        "attributes": {},
+        "x": 1.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "2": {
+        "attributes": {},
+        "x": 1.0,
+        "y": 1.0,
+        "z": 0.0
+      },
+      "3": {
+        "attributes": {},
+        "x": 0.0,
+        "y": 1.0,
+        "z": 0.0
+      }
+    },
+    "widths": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "xform": {
+      "guid": "f3743db6-5d9b-4d41-8200-0c6fd87d3687",
+      "m": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "my_xform",
+      "type": "Xform"
+    }
+  },
+  "geometry_type": "Mesh",
+  "guid": "086bab3c-3f54-4e12-bcf0-04a8d26d473d",
+  "name": "json_test",
+  "session_transformation": {
+    "guid": "a1f50cf7-0935-4f68-9d33-439d2382c2f0",
+    "m": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      2.0,
+      3.0,
+      1.0
+    ],
+    "name": "my_xform",
+    "type": "Xform"
+  },
+  "type": "Element"
+}

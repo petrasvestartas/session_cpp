@@ -1,13 +1,13 @@
 {
     "type": "Obb",
     "center": {
-        "guid": "7f25841e-3234-421c-a78a-0d1645fa4844",
+        "guid": "34684269-6dc7-401e-a858-df9cf6fcdf7f",
         "name": "my_point",
         "pointcolor": {
             "a": 255,
             "b": 255,
             "g": 0,
-            "guid": "532bf8d9-b22b-4a2f-9ba0-a95852389d84",
+            "guid": "432d9ac4-496e-479c-90ce-b026e7ef1c9d",
             "name": "blue",
             "r": 0,
             "type": "Color"
@@ -16,7 +16,7 @@
         "width": 1.0,
         "x": 1.0,
         "xform": {
-            "guid": "11331f2a-5e93-4494-802d-bd15ec9bdbaa",
+            "guid": "8c56a848-0619-4740-9cd3-7276e5a24f4f",
             "m": [
                 1.0,
                 0.0,
@@ -42,7 +42,7 @@
         "z": 3.0
     },
     "x_axis": {
-        "guid": "e0d43a60-43c1-4ede-ab01-3ce8116595b2",
+        "guid": "f601b06e-f55b-453f-b4e3-c25b65a853e5",
         "name": "my_vector",
         "type": "Vector",
         "x": 1.0,
@@ -50,7 +50,7 @@
         "z": 0.0
     },
     "y_axis": {
-        "guid": "34ec9bfd-c998-4c91-a883-f45169439fdc",
+        "guid": "52f7dc59-a4e3-4215-a94a-737fde862b05",
         "name": "my_vector",
         "type": "Vector",
         "x": 0.0,
@@ -58,7 +58,7 @@
         "z": 0.0
     },
     "z_axis": {
-        "guid": "f7e07f26-0095-4ae5-b4d1-116d0249f600",
+        "guid": "8cd793fa-7cdc-4673-b4ac-e9b6d1c3db7c",
         "name": "my_vector",
         "type": "Vector",
         "x": 0.0,
@@ -66,13 +66,13 @@
         "z": 1.0
     },
     "half_size": {
-        "guid": "78501d3e-dafc-49da-a549-b72ef31d9500",
+        "guid": "875d99c6-e9c7-4c54-ac11-937d351d35a0",
         "name": "my_vector",
         "type": "Vector",
         "x": 5.0,
         "y": 5.0,
         "z": 5.0
     },
-    "guid": "f5cef629-b34e-4b00-8376-1414cf77481d",
+    "guid": "74b4c2f0-ebdc-42b7-9340-9a293911f910",
     "name": "test_bbox"
 }

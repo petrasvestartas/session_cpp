@@ -57,6 +57,7 @@ set(UNITY_BUILD_EXCLUDE
     src/tree.cpp
     src/treenode.cpp
     src/session.cpp
+    src/element.cpp
 )
 
 #############################################################################################
@@ -265,6 +266,7 @@ set(MINITEST_SOURCES
     src/vertex_test.cpp
     src/brep_test.cpp
     src/mesh_iso_test.cpp
+    src/element_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

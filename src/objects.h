@@ -12,6 +12,7 @@
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "brep.h"
+#include "element.h"
 #include <fstream>
 #include <memory>
 #include <string>
@@ -38,6 +39,7 @@ public:
   std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves;
   std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces;
   std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps;
+  std::shared_ptr<std::vector<std::shared_ptr<Element>>> elements;
 
   /**
    * @brief Constructor.
@@ -55,6 +57,7 @@ public:
     this->nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
     this->nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
     this->breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
+    this->elements = std::make_shared<std::vector<std::shared_ptr<Element>>>();
   }
 
   /// Convert objects to string representation
