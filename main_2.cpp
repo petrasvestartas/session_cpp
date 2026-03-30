@@ -92,9 +92,9 @@ int main() {
     // solve_banded_spd — 3x3 tridiagonal SPD: [4 1 0; 1 4 1; 0 1 4] x = [5 6 5]
     int bw = 1, n = 3;
     std::vector<double> band(n * (bw + 1)); // lower triangle in banded storage
-    band[0*2+0]=4; band[0*2+1]=1; // row0: diag=4, sub=1
-    band[1*2+0]=4; band[1*2+1]=1; // row1: diag=4, sub=1
-    band[2*2+0]=4; band[2*2+1]=0; // row2: diag=4, sub=0
+    band[0*2+0]=4; band[0*2+1]=0; // row0: diag=4, no sub-diag
+    band[1*2+0]=4; band[1*2+1]=1; // row1: diag=4, sub=A[1][0]=1
+    band[2*2+0]=4; band[2*2+1]=1; // row2: diag=4, sub=A[2][1]=1
     std::vector<double> rhs2 = {5, 6, 5};
     knot::solve_banded_spd(1, n, bw, band, rhs2);
     for (auto v : rhs2) std::cout << v << " "; std::cout << "\n"; // 1 1 1
