@@ -1386,13 +1386,32 @@ struct BIVec2 { int64_t x, y; };
 inline bool operator==(BIVec2 a, BIVec2 b) { return a.x==b.x && a.y==b.y; }
 inline bool operator!=(BIVec2 a, BIVec2 b) { return !(a==b); }
 
-// SIMD-optimized rounding on MSVC x64 — same trick Clipper2 uses.
-#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_X64))
-#include <xmmintrin.h>
+// SIMD rounding — SSE2 on x64 (MSVC, GCC, Clang all have it)
+#if (defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_X64))) || \
+    (defined(__SSE2__))
 #include <emmintrin.h>
+#define VATTI_HAS_SSE2 1
 #define VATTI_NEARBYINT(a) _mm_cvtsd_si64(_mm_set_sd(a))
+// Convert stride-3 double[x,y,z] → BIVec2{x,y} using packed SSE2 mul+cvt
+inline BIVec2 v_cvt_to_i64(const double* p, __m128d scale) {
+    __m128d xy = _mm_mul_pd(_mm_loadu_pd(p), scale);
+    return {_mm_cvtsd_si64(xy), _mm_cvtsd_si64(_mm_unpackhi_pd(xy, xy))};
+}
+// Convert BIVec2{x,y} → stride-3 double[x,y,0] using packed SSE2 mul
+inline void v_cvt_to_dbl(double* dst, BIVec2 pt, __m128d inv_scale) {
+    __m128d xy = _mm_mul_pd(_mm_set_pd(double(pt.y), double(pt.x)), inv_scale);
+    _mm_storeu_pd(dst, xy);
+    dst[2] = 0.0;
+}
 #else
+#define VATTI_HAS_SSE2 0
 #define VATTI_NEARBYINT(a) static_cast<int64_t>(std::nearbyint(a))
+inline BIVec2 v_cvt_to_i64(const double* p, double scale) {
+    return {(int64_t)std::nearbyint(p[0]*scale), (int64_t)std::nearbyint(p[1]*scale)};
+}
+inline void v_cvt_to_dbl(double* dst, BIVec2 pt, double inv_scale) {
+    dst[0] = pt.x * inv_scale; dst[1] = pt.y * inv_scale; dst[2] = 0.0;
+}
 #endif
 
 enum : uint32_t { VF_None=0, VF_LocalMax=4, VF_LocalMin=8 };
@@ -2400,9 +2419,7 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
     if (na < 3 || nb < 3) return {};
 
-    // Fixed-point scaling: coords assumed < 2.3e9 (covers all practical geometry).
-    // Scale = 1e9 → 9 decimal digits of sub-unit precision, max safe coord ~2.3e9.
-    // This eliminates the max-abs scan entirely.
+    // Fixed-point: scale=1e9, 9 digits precision, max safe coord ~2.3e9
     constexpr double BOOL_SCALE = 1e9;
     constexpr double BOOL_INV_SCALE = 1e-9;
     VattiScratch& sc = vtls; sc.reset();
@@ -2410,27 +2427,30 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     auto& vb = sc.vb; vb.resize(nb);
     double scale = BOOL_SCALE;
 
-    // Scale + AABB in one pass. NEARBYINT with constant scale → compiler can
-    // use a single fused multiply-convert instruction per coordinate.
+    // SSE2 packed scale+convert: load (x,y) as 128-bit, mul, cvt both at once
     int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
     {
-        const double S = BOOL_SCALE;
-        int64_t x=VATTI_NEARBYINT(ca[0]*S), y=VATTI_NEARBYINT(ca[1]*S);
-        va[0]={x,y}; aMinX=aMaxX=x; aMinY=aMaxY=y;
+#if VATTI_HAS_SSE2
+        const __m128d sv = _mm_set1_pd(BOOL_SCALE);
+#define V_CVT(p) v_cvt_to_i64(p, sv)
+#else
+#define V_CVT(p) v_cvt_to_i64(p, BOOL_SCALE)
+#endif
+        va[0] = V_CVT(ca); aMinX=aMaxX=va[0].x; aMinY=aMaxY=va[0].y;
         for (int i=1;i<na;i++) {
-            x=VATTI_NEARBYINT(ca[i*3]*S); y=VATTI_NEARBYINT(ca[i*3+1]*S);
-            va[i]={x,y};
+            va[i] = V_CVT(ca+i*3);
+            int64_t x=va[i].x, y=va[i].y;
             if(x<aMinX) aMinX=x; else if(x>aMaxX) aMaxX=x;
             if(y<aMinY) aMinY=y; else if(y>aMaxY) aMaxY=y;
         }
-        x=VATTI_NEARBYINT(cb[0]*S); y=VATTI_NEARBYINT(cb[1]*S);
-        vb[0]={x,y}; bMinX=bMaxX=x; bMinY=bMaxY=y;
+        vb[0] = V_CVT(cb); bMinX=bMaxX=vb[0].x; bMinY=bMaxY=vb[0].y;
         for (int i=1;i<nb;i++) {
-            x=VATTI_NEARBYINT(cb[i*3]*S); y=VATTI_NEARBYINT(cb[i*3+1]*S);
-            vb[i]={x,y};
+            vb[i] = V_CVT(cb+i*3);
+            int64_t x=vb[i].x, y=vb[i].y;
             if(x<bMinX) bMinX=x; else if(x>bMaxX) bMaxX=x;
             if(y<bMinY) bMinY=y; else if(y>bMaxY) bMaxY=y;
         }
+#undef V_CVT
     }
 
     // AABB disjoint → containment fast-path
@@ -2477,8 +2497,13 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     v_add_path(vb, nb, 1, sc);
     if (!v_execute_internal(sc, clip_type)) return {};
 
-    // Extract: OutPt → Polyline._coords (single pass, z=0)
-    constexpr double inv_scale = BOOL_INV_SCALE;
+    // Extract: OutPt → Polyline._coords — SSE2 packed int64→double conversion
+#if VATTI_HAS_SSE2
+    const __m128d isv = _mm_set1_pd(BOOL_INV_SCALE);
+#define V_OUT(d,pt) v_cvt_to_dbl(d, pt, isv)
+#else
+#define V_OUT(d,pt) v_cvt_to_dbl(d, pt, BOOL_INV_SCALE)
+#endif
     std::vector<Polyline> out;
     for (size_t i = 0; i < sc.outrec_list.size(); i++) {
         VOutRec* outrec = sc.outrec_list[i];
@@ -2495,11 +2520,12 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
         result._coords.resize(cnt * 3);
         double* dst = result._coords.data();
         VOutPt* o = op->next; BIVec2 last = o->pt;
-        dst[0]=last.x*inv_scale; dst[1]=last.y*inv_scale; dst[2]=0.0; dst+=3;
+        V_OUT(dst, last); dst+=3;
         for (o=o->next; o!=op->next; o=o->next) {
             if (o->pt==last) continue; last=o->pt;
-            dst[0]=last.x*inv_scale; dst[1]=last.y*inv_scale; dst[2]=0.0; dst+=3;
+            V_OUT(dst, last); dst+=3;
         }
+#undef V_OUT
         out.push_back(std::move(result));
     }
     return out;
