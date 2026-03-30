@@ -6,7 +6,7 @@
 #include <functional>
 #include <limits>
 #include <queue>
-#include <set>
+#include <algorithm>
 
 #include "polyline.pb.h"
 #include "point.pb.h"
@@ -1368,184 +1368,1019 @@ void get_middle_line(const Line& l0, const Line& l1, Line& out) {
     out = Line::from_points(os, oe);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Vatti scanline polygon clipping — ported from Clipper2 (Angus Johnson,
+// Boost licence) into session_cpp types. Closed-path NonZero fill only.
+// ═══════════════════════════════════════════════════════════════════════════
 namespace {
 
 struct BIVec2 { int64_t x, y; };
+inline bool operator==(BIVec2 a, BIVec2 b) { return a.x==b.x && a.y==b.y; }
+inline bool operator!=(BIVec2 a, BIVec2 b) { return !(a==b); }
 
-struct BAVertex {
+// SIMD-optimized rounding on MSVC x64 — same trick Clipper2 uses.
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_X64))
+#include <xmmintrin.h>
+#include <emmintrin.h>
+#define VATTI_NEARBYINT(a) _mm_cvtsd_si64(_mm_set_sd(a))
+#else
+#define VATTI_NEARBYINT(a) static_cast<int64_t>(std::nearbyint(a))
+#endif
+
+enum : uint32_t { VF_None=0, VF_LocalMax=4, VF_LocalMin=8 };
+
+struct VVertex {
     BIVec2 pt;
-    bool   is_alpha  = false;
-    bool   entering  = false;
-    int    isect_id  = -1;
-    int    neighbor  = -1;
+    VVertex* next = nullptr;
+    VVertex* prev = nullptr;
+    uint32_t flags = VF_None;
 };
 
-struct BIsect { BIVec2 pt; int ea, eb, id; double s, t; };
+struct VLocalMinima { VVertex* vertex; int8_t polytype; };
 
-struct BOScratch {
-    std::vector<BIVec2>   va, vb;
-    std::vector<BIsect>   isects;
-    std::vector<BAVertex> listA, listB;
-    std::vector<int>      posA, posB;
-    std::vector<bool>     usedA;
-    std::vector<double>   poly_coords;
+struct VHorzSeg;
+struct VOutPt {
+    BIVec2 pt;
+    VOutPt* next = nullptr;
+    VOutPt* prev = nullptr;
+    struct VOutRec* outrec;
+    VHorzSeg* horz = nullptr;
 };
-static thread_local BOScratch tls;
 
-static int64_t cross2i(BIVec2 a, BIVec2 b) { return a.x * b.y - a.y * b.x; }
+struct VOutRec {
+    size_t idx = 0;
+    struct VActive* front_edge = nullptr;
+    struct VActive* back_edge = nullptr;
+    VOutPt* pts = nullptr;
+    VOutRec* owner = nullptr;
+};
+
+struct VActive {
+    BIVec2 bot, top;
+    int64_t curr_x = 0;
+    double dx = 0.0;
+    int wind_dx = 1;
+    int wind_cnt = 0;
+    int wind_cnt2 = 0;
+    VOutRec* outrec = nullptr;
+    VActive* prev_in_ael = nullptr;
+    VActive* next_in_ael = nullptr;
+    VActive* prev_in_sel = nullptr;
+    VActive* next_in_sel = nullptr;
+    VActive* jump = nullptr;
+    VVertex* vertex_top = nullptr;
+    VLocalMinima* local_min = nullptr;
+    bool is_left_bound = false;
+    int8_t join_with = 0; // 0=None, 1=Left, 2=Right
+};
+
+struct VIntersectNode { BIVec2 pt; VActive* edge1; VActive* edge2; };
+struct VHorzSeg { VOutPt* left_op; VOutPt* right_op = nullptr; bool left_to_right = true; };
+struct VHorzJoin { VOutPt* op1; VOutPt* op2; };
+
+// Pool allocator — items are never freed mid-run; reset() recycles all memory.
+// Uses a single flat vector; pointers stay valid because we never shrink.
+template<typename T> struct Pool {
+    std::vector<T> buf;
+    size_t count = 0;
+    void ensure(size_t n) { if (buf.size() < n) buf.resize(n); }
+    T* alloc() {
+        if (count >= buf.size()) buf.resize(std::max<size_t>(buf.size()*2, 256));
+        return &buf[count++];
+    }
+    void reset() { count = 0; }
+};
+
+// Max-heap using sorted vector — avoids std::priority_queue realloc on reset.
+struct ScanlineHeap {
+    std::vector<int64_t> buf;
+    size_t sz = 0;
+    void clear() { sz = 0; }
+    bool empty() const { return sz == 0; }
+    void push(int64_t y) {
+        if (sz >= buf.size()) buf.resize(std::max<size_t>(buf.size()*2, 64));
+        buf[sz] = y;
+        // sift up
+        size_t i = sz++;
+        while (i > 0) { size_t p=(i-1)/2; if (buf[p]>=buf[i]) break; std::swap(buf[p],buf[i]); i=p; }
+    }
+    int64_t top() const { return buf[0]; }
+    void pop() {
+        buf[0] = buf[--sz];
+        // sift down
+        size_t i=0;
+        for(;;) { size_t l=2*i+1, r=l+1, m=i;
+            if(l<sz&&buf[l]>buf[m]) m=l; if(r<sz&&buf[r]>buf[m]) m=r;
+            if(m==i) break; std::swap(buf[i],buf[m]); i=m; }
+    }
+};
+
+struct VattiScratch {
+    Pool<VVertex> vtx_pool;
+    Pool<VActive> act_pool;
+    Pool<VOutPt>  opt_pool;
+    Pool<VOutRec> orc_pool;
+    std::vector<VLocalMinima> locmin_list;
+    std::vector<VIntersectNode> intersect_nodes;
+    std::vector<VHorzSeg> horz_seg_list;
+    std::vector<VHorzJoin> horz_join_list;
+    std::vector<VOutRec*> outrec_list;
+    ScanlineHeap scanline_list;
+    std::vector<BIVec2> va, vb;
+    // Engine state
+    VActive* actives = nullptr;
+    VActive* sel = nullptr;
+    int64_t bot_y = 0;
+    size_t locmin_idx = 0;
+    bool succeeded = true;
+    void reset() {
+        vtx_pool.reset(); act_pool.reset(); opt_pool.reset(); orc_pool.reset();
+        locmin_list.clear(); intersect_nodes.clear(); horz_seg_list.clear();
+        horz_join_list.clear(); outrec_list.clear(); scanline_list.clear();
+        actives = nullptr; sel = nullptr; bot_y = 0; locmin_idx = 0; succeeded = true;
+    }
+    VVertex* new_vertex() { auto* v = vtx_pool.alloc(); *v = VVertex{}; return v; }
+    VActive* new_active() { auto* a = act_pool.alloc(); *a = VActive{}; return a; }
+    VOutPt* new_outpt(BIVec2 pt, VOutRec* rec) { auto* o = opt_pool.alloc(); *o = VOutPt{}; o->pt=pt; o->outrec=rec; o->next=o; o->prev=o; return o; }
+    VOutRec* new_outrec() { auto* r = orc_pool.alloc(); *r = VOutRec{}; r->idx = outrec_list.size(); outrec_list.push_back(r); return r; }
+};
+static thread_local VattiScratch vtls;
+
+// ── Geometry helpers ─────────────────────────────────────────────────────
+
+inline double v_get_dx(BIVec2 p1, BIVec2 p2) {
+    double dy = double(p2.y - p1.y);
+    if (dy != 0) return double(p2.x - p1.x) / dy;
+    return (p2.x > p1.x) ? -std::numeric_limits<double>::max() : std::numeric_limits<double>::max();
+}
+
+inline int64_t v_top_x(const VActive& ae, int64_t y) {
+    if (y == ae.top.y || ae.top.x == ae.bot.x) return ae.top.x;
+    if (y == ae.bot.y) return ae.bot.x;
+    return ae.bot.x + VATTI_NEARBYINT(ae.dx * double(y - ae.bot.y));
+}
+
+inline bool v_is_horizontal(const VActive& e) { return e.top.y == e.bot.y; }
+inline bool v_is_hot(const VActive& e) { return e.outrec != nullptr; }
+inline bool v_is_maxima(const VVertex& v) { return (v.flags & VF_LocalMax) != 0; }
+inline bool v_is_maxima(const VActive& e) { return v_is_maxima(*e.vertex_top); }
+inline bool v_is_front(const VActive& e) { return &e == e.outrec->front_edge; }
+inline bool v_is_joined(const VActive& e) { return e.join_with != 0; }
+inline bool v_same_polytype(const VActive& a, const VActive& b) { return a.local_min->polytype == b.local_min->polytype; }
+inline int8_t v_polytype(const VActive& e) { return e.local_min->polytype; }
+inline void v_set_dx(VActive& e) { e.dx = v_get_dx(e.bot, e.top); }
+
+inline VVertex* v_next_vertex(const VActive& e) { return (e.wind_dx > 0) ? e.vertex_top->next : e.vertex_top->prev; }
+inline VVertex* v_prev_prev_vertex(const VActive& ae) { return (ae.wind_dx > 0) ? ae.vertex_top->prev->prev : ae.vertex_top->next->next; }
+
+inline double v_cross_product(BIVec2 p1, BIVec2 p2, BIVec2 p3) {
+    return double(p2.x-p1.x)*double(p3.y-p2.y) - double(p2.y-p1.y)*double(p3.x-p2.x);
+}
+inline double v_dot_product(BIVec2 p1, BIVec2 p2, BIVec2 p3) {
+    return double(p2.x-p1.x)*double(p3.x-p2.x) + double(p2.y-p1.y)*double(p3.y-p2.y);
+}
+
+inline bool v_products_equal(int64_t a, int64_t b, int64_t c, int64_t d) {
+#if (defined(__clang__) || defined(__GNUC__)) && UINTPTR_MAX >= UINT64_MAX
+    return static_cast<__int128_t>(a)*static_cast<__int128_t>(b) == static_cast<__int128_t>(c)*static_cast<__int128_t>(d);
+#else
+    auto lo = [](uint64_t x){ return x & 0xFFFFFFFF; };
+    auto hi = [](uint64_t x){ return x >> 32; };
+    auto mul = [&](uint64_t a, uint64_t b) -> std::pair<uint64_t,uint64_t> {
+        uint64_t x1=lo(a)*lo(b); uint64_t x2=hi(a)*lo(b)+hi(x1); uint64_t x3=lo(a)*hi(b)+lo(x2);
+        return {lo(x3)<<32|lo(x1), hi(a)*hi(b)+hi(x2)+hi(x3)};
+    };
+    auto sign = [](int64_t x){ return (x>0)-(x<0); };
+    uint64_t ua=std::abs(a), ub=std::abs(b), uc=std::abs(c), ud=std::abs(d);
+    auto [r1,c1]=mul(ua,ub); auto [r2,c2]=mul(uc,ud);
+    return r1==r2 && c1==c2 && sign(a)*sign(b)==sign(c)*sign(d);
+#endif
+}
+
+inline bool v_is_collinear(BIVec2 p1, BIVec2 shared, BIVec2 p2) {
+    return v_products_equal(shared.x-p1.x, p2.y-shared.y, shared.y-p1.y, p2.x-shared.x);
+}
+
+inline double v_perpendic_dist_sq(BIVec2 pt, BIVec2 l1, BIVec2 l2) {
+    double a=double(pt.x-l1.x), b=double(pt.y-l1.y), c=double(l2.x-l1.x), d=double(l2.y-l1.y);
+    if (c==0 && d==0) return 0;
+    double e = a*d - c*b;
+    return (e*e) / (c*c + d*d);
+}
+
+inline bool v_get_seg_isect_pt(BIVec2 a, BIVec2 b, BIVec2 c, BIVec2 d, BIVec2& ip) {
+    double dx1=double(b.x-a.x), dy1=double(b.y-a.y), dx2=double(d.x-c.x), dy2=double(d.y-c.y);
+    double det = dy1*dx2 - dy2*dx1;
+    if (det == 0.0) return false;
+    double t = (double(a.x-c.x)*dy2 - double(a.y-c.y)*dx2) / det;
+    if (t <= 0.0) ip = a;
+    else if (t >= 1.0) ip = b;
+    else { ip.x = a.x + VATTI_NEARBYINT(t*dx1); ip.y = a.y + VATTI_NEARBYINT(t*dy1); }
+    return true;
+}
+
+inline BIVec2 v_closest_pt_on_seg(BIVec2 pt, BIVec2 s1, BIVec2 s2) {
+    if (s1==s2) return s1;
+    double dx=double(s2.x-s1.x), dy=double(s2.y-s1.y);
+    double q = (double(pt.x-s1.x)*dx + double(pt.y-s1.y)*dy) / (dx*dx + dy*dy);
+    if (q<0) q=0; else if (q>1) q=1;
+    return {s1.x + VATTI_NEARBYINT(q*dx), s1.y + VATTI_NEARBYINT(q*dy)};
+}
+
+inline bool v_segs_intersect(BIVec2 a, BIVec2 b, BIVec2 c, BIVec2 d) {
+    auto sign = [](double v) -> int { if (!v) return 0; return v>0?1:-1; };
+    return (sign(v_cross_product(a,c,d)) * sign(v_cross_product(b,c,d)) < 0) &&
+           (sign(v_cross_product(c,a,b)) * sign(v_cross_product(d,a,b)) < 0);
+}
+
+inline double v_area_outpt(VOutPt* op) {
+    double r = 0.0; VOutPt* o = op;
+    do { r += double(o->prev->pt.y + o->pt.y) * double(o->prev->pt.x - o->pt.x); o = o->next; } while (o != op);
+    return r * 0.5;
+}
+
+inline double v_area_tri(BIVec2 p1, BIVec2 p2, BIVec2 p3) {
+    return double(p3.y+p1.y)*double(p3.x-p1.x) + double(p1.y+p2.y)*double(p1.x-p2.x) + double(p2.y+p3.y)*double(p2.x-p3.x);
+}
+
+inline bool v_pts_close(BIVec2 a, BIVec2 b) { return std::llabs(a.x-b.x)<2 && std::llabs(a.y-b.y)<2; }
+
+inline bool v_very_small_tri(VOutPt& op) {
+    return op.next->next==op.prev && (v_pts_close(op.prev->pt,op.next->pt) || v_pts_close(op.pt,op.next->pt) || v_pts_close(op.pt,op.prev->pt));
+}
+
+inline bool v_valid_closed(VOutPt* op) { return op && op->next!=op && op->next!=op->prev && !v_very_small_tri(*op); }
 
 static bool pip_i(BIVec2 pt, const std::vector<BIVec2>& poly) {
     int winding = 0, n = (int)poly.size();
     for (int i = 0; i < n; i++) {
         BIVec2 a = poly[i], b = poly[(i+1)%n];
-        if (a.y <= pt.y) {
-            if (b.y > pt.y && cross2i({b.x-a.x, b.y-a.y}, {pt.x-a.x, pt.y-a.y}) > 0) ++winding;
-        } else {
-            if (b.y <= pt.y && cross2i({b.x-a.x, b.y-a.y}, {pt.x-a.x, pt.y-a.y}) < 0) --winding;
-        }
+        if (a.y <= pt.y) { if (b.y > pt.y && (int64_t(b.x-a.x)*int64_t(pt.y-a.y) - int64_t(b.y-a.y)*int64_t(pt.x-a.x)) > 0) ++winding; }
+        else { if (b.y <= pt.y && (int64_t(b.x-a.x)*int64_t(pt.y-a.y) - int64_t(b.y-a.y)*int64_t(pt.x-a.x)) < 0) --winding; }
     }
     return winding != 0;
 }
 
-static bool on_seg_i(BIVec2 p, BIVec2 a, BIVec2 b) {
-    BIVec2 d = {b.x-a.x, b.y-a.y}, e = {p.x-a.x, p.y-a.y};
-    if (cross2i(d, e) != 0) return false;
-    int64_t dd = d.x*d.x + d.y*d.y;
-    if (!dd) return false;
-    int64_t de = d.x*e.x + d.y*e.y;
-    return de > 0 && de < dd;
+// ── Vertex building + local minima detection ─────────────────────────────
+
+static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, VattiScratch& sc) {
+    if (n < 3) return;
+    VVertex* v0 = sc.new_vertex(); v0->pt = pts[0];
+    VVertex* prev_v = v0;
+    int cnt = 1;
+    for (int i = 1; i < n; i++) {
+        if (pts[i] == prev_v->pt) continue;
+        VVertex* cv = sc.new_vertex(); cv->pt = pts[i];
+        cv->prev = prev_v; prev_v->next = cv;
+        prev_v = cv; cnt++;
+    }
+    if (cnt < 3) return;
+    if (prev_v->pt == v0->pt) { prev_v = prev_v->prev; cnt--; }
+    if (cnt < 3) return;
+    prev_v->next = v0; v0->prev = prev_v;
+
+    // Find local minima in the closed path
+    VVertex* pv = v0->prev;
+    while (pv != v0 && pv->pt.y == v0->pt.y) pv = pv->prev;
+    if (pv == v0) return;
+    bool going_up = pv->pt.y > v0->pt.y;
+    bool going_up0 = going_up;
+    pv = v0;
+    VVertex* cv = v0->next;
+    while (cv != v0) {
+        if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
+        else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+        pv = cv; cv = cv->next;
+    }
+    if (going_up != going_up0) {
+        if (going_up0) { pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+        else pv->flags |= VF_LocalMax;
+    }
 }
 
-static BIVec2 perturb_off_seg(BIVec2 p, BIVec2 a, BIVec2 b) {
-    int64_t dx = b.x-a.x, dy = b.y-a.y;
-    if (std::abs(dy) >= std::abs(dx)) p.x += (dy > 0) ? 1 : -1;
-    else                              p.y += (dx > 0) ? 1 : -1;
+// ── AEL operations (doubly-linked list — all O(1)) ──────────────────────
+
+inline VActive* v_get_maxima_pair(const VActive& e) {
+    VActive* e2 = e.next_in_ael;
+    while (e2) { if (e2->vertex_top == e.vertex_top) return e2; e2 = e2->next_in_ael; }
+    return nullptr;
+}
+
+inline VVertex* v_get_curr_y_maxima(const VActive& e) {
+    VVertex* r = e.vertex_top;
+    if (e.wind_dx > 0) while (r->next->pt.y == r->pt.y) r = r->next;
+    else while (r->prev->pt.y == r->pt.y) r = r->prev;
+    return v_is_maxima(*r) ? r : nullptr;
+}
+
+inline VActive* v_get_prev_hot(const VActive& e) {
+    VActive* p = e.prev_in_ael;
+    while (p && !v_is_hot(*p)) p = p->prev_in_ael;
     return p;
 }
 
-static bool seg_isect_i(BIVec2 a, BIVec2 b, BIVec2 c, BIVec2 d,
-                        double& s, double& t, BIVec2& pt) {
-    BIVec2 ab = {b.x-a.x, b.y-a.y}, cd = {d.x-c.x, d.y-c.y};
-    int64_t denom = cross2i(ab, cd);
-    if (!denom) return false;
-    BIVec2 ac = {c.x-a.x, c.y-a.y};
-    int64_t sn = cross2i(ac, cd), tn = cross2i(ac, ab);
-    auto in01 = [](int64_t num, int64_t den) {
-        return den > 0 ? (num > 0 && num < den) : (num < 0 && num > den);
-    };
-    if (!in01(sn, denom) || !in01(tn, denom)) return false;
-    s = (double)sn / (double)denom;
-    t = (double)tn / (double)denom;
-    pt = {a.x + (int64_t)std::round(s*ab.x), a.y + (int64_t)std::round(s*ab.y)};
-    return true;
+static bool v_is_valid_ael_order(const VActive& resident, const VActive& newcomer) {
+    if (newcomer.curr_x != resident.curr_x) return newcomer.curr_x > resident.curr_x;
+    double d = v_cross_product(resident.top, newcomer.bot, newcomer.top);
+    if (d != 0) return d < 0;
+    if (!v_is_maxima(resident) && resident.top.y > newcomer.top.y)
+        return v_cross_product(newcomer.bot, resident.top, v_next_vertex(resident)->pt) <= 0;
+    if (!v_is_maxima(newcomer) && newcomer.top.y > resident.top.y)
+        return v_cross_product(newcomer.bot, newcomer.top, v_next_vertex(newcomer)->pt) >= 0;
+    int64_t y = newcomer.bot.y;
+    if (resident.bot.y != y || resident.local_min->vertex->pt.y != y) return newcomer.is_left_bound;
+    if (resident.is_left_bound != newcomer.is_left_bound) return newcomer.is_left_bound;
+    if (v_is_collinear(v_prev_prev_vertex(resident)->pt, resident.bot, resident.top)) return true;
+    return (v_cross_product(v_prev_prev_vertex(resident)->pt, newcomer.bot, v_prev_prev_vertex(newcomer)->pt) > 0) == newcomer.is_left_bound;
 }
 
-// Sweep-line O((n+k) log n) A-B intersection finder.
-// Events: kind 0=RIGHT(remove) 1=ISECT(swap) 2=LEFT(insert)
-// At same (x,y): RIGHT first, then ISECT, then LEFT — keeps AET consistent.
-static void find_isects_sweep(
-    const std::vector<BIVec2>& va, int na,
-    const std::vector<BIVec2>& vb, int nb,
-    std::vector<BIsect>& isects)
-{
-    struct Ev {
-        int64_t x, y;
-        int8_t  kind;  // 0=right, 1=isect, 2=left
-        int8_t  poly;
-        int     ia, ib;
-        double  s, t;
-        BIVec2  pt;
-        bool operator>(const Ev& o) const {
-            if (x != o.x) return x > o.x;
-            if (y != o.y) return y > o.y;
-            return (int)kind > (int)o.kind;
+static void v_insert_left_edge(VattiScratch& sc, VActive& e) {
+    if (!sc.actives) { e.prev_in_ael=nullptr; e.next_in_ael=nullptr; sc.actives=&e; }
+    else if (!v_is_valid_ael_order(*sc.actives, e)) {
+        e.prev_in_ael=nullptr; e.next_in_ael=sc.actives; sc.actives->prev_in_ael=&e; sc.actives=&e;
+    } else {
+        VActive* e2 = sc.actives;
+        while (e2->next_in_ael && v_is_valid_ael_order(*e2->next_in_ael, e)) e2 = e2->next_in_ael;
+        if (e2->join_with == 2/*Right*/) e2 = e2->next_in_ael;
+        if (!e2) return;
+        e.next_in_ael = e2->next_in_ael; if (e2->next_in_ael) e2->next_in_ael->prev_in_ael = &e;
+        e.prev_in_ael = e2; e2->next_in_ael = &e;
+    }
+}
+
+inline void v_insert_right_edge(VActive& e, VActive& e2) {
+    e2.next_in_ael = e.next_in_ael; if (e.next_in_ael) e.next_in_ael->prev_in_ael = &e2;
+    e2.prev_in_ael = &e; e.next_in_ael = &e2;
+}
+
+inline void v_swap_positions_in_ael(VattiScratch& sc, VActive& e1, VActive& e2) {
+    VActive* next = e2.next_in_ael; if (next) next->prev_in_ael = &e1;
+    VActive* prev = e1.prev_in_ael; if (prev) prev->next_in_ael = &e2;
+    e2.prev_in_ael = prev; e2.next_in_ael = &e1; e1.prev_in_ael = &e2; e1.next_in_ael = next;
+    if (!e2.prev_in_ael) sc.actives = &e2;
+}
+
+inline void v_delete_from_ael(VattiScratch& sc, VActive& e) {
+    VActive* prev = e.prev_in_ael; VActive* next = e.next_in_ael;
+    if (!prev && !next && &e != sc.actives) return;
+    if (prev) prev->next_in_ael = next; else sc.actives = next;
+    if (next) next->prev_in_ael = prev;
+}
+
+// ── Scanline ─────────────────────────────────────────────────────────────
+
+inline void v_insert_scanline(VattiScratch& sc, int64_t y) { sc.scanline_list.push(y); }
+inline bool v_pop_scanline(VattiScratch& sc, int64_t& y) {
+    if (sc.scanline_list.empty()) return false;
+    y = sc.scanline_list.top(); sc.scanline_list.pop();
+    while (!sc.scanline_list.empty() && y == sc.scanline_list.top()) sc.scanline_list.pop();
+    return true;
+}
+inline bool v_pop_locmin(VattiScratch& sc, int64_t y, VLocalMinima*& lm) {
+    if (sc.locmin_idx >= sc.locmin_list.size() || sc.locmin_list[sc.locmin_idx].vertex->pt.y != y) return false;
+    lm = &sc.locmin_list[sc.locmin_idx++];
+    return true;
+}
+inline void v_push_horz(VattiScratch& sc, VActive& e) { e.next_in_sel = sc.sel; sc.sel = &e; }
+inline bool v_pop_horz(VattiScratch& sc, VActive*& e) { e = sc.sel; if (!e) return false; sc.sel = sc.sel->next_in_sel; return true; }
+
+// ── Winding + contribution ───────────────────────────────────────────────
+
+static void v_set_wind_count(VattiScratch& sc, VActive& e) {
+    VActive* e2 = e.prev_in_ael;
+    int8_t pt = v_polytype(e);
+    while (e2 && v_polytype(*e2) != pt) e2 = e2->prev_in_ael;
+    if (!e2) { e.wind_cnt = e.wind_dx; e2 = sc.actives; }
+    else {
+        if (e2->wind_cnt * e2->wind_dx < 0) {
+            if (std::abs(e2->wind_cnt) > 1)
+                e.wind_cnt = (e2->wind_dx * e.wind_dx < 0) ? e2->wind_cnt : e2->wind_cnt + e.wind_dx;
+            else e.wind_cnt = e.wind_dx;
+        } else {
+            e.wind_cnt = (e2->wind_dx * e.wind_dx < 0) ? e2->wind_cnt : e2->wind_cnt + e.wind_dx;
         }
-    };
-    std::priority_queue<Ev, std::vector<Ev>, std::greater<Ev>> Q;
-
-    for (int i = 0; i < na; i++) {
-        BIVec2 p=va[i], q=va[(i+1)%na];
-        bool pl=p.x<q.x||(p.x==q.x&&p.y<=q.y);
-        BIVec2 L=pl?p:q, R=pl?q:p;
-        Q.push({L.x,L.y,2,0,i,-1,0,0,L}); Q.push({R.x,R.y,0,0,i,-1,0,0,R});
+        e.wind_cnt2 = e2->wind_cnt2; e2 = e2->next_in_ael;
     }
-    for (int j = 0; j < nb; j++) {
-        BIVec2 p=vb[j], q=vb[(j+1)%nb];
-        bool pl=p.x<q.x||(p.x==q.x&&p.y<=q.y);
-        BIVec2 L=pl?p:q, R=pl?q:p;
-        Q.push({L.x,L.y,2,1,j,-1,0,0,L}); Q.push({R.x,R.y,0,1,j,-1,0,0,R});
+    while (e2 != &e) {
+        if (v_polytype(*e2) != pt) e.wind_cnt2 += e2->wind_dx;
+        e2 = e2->next_in_ael;
     }
+}
 
-    int64_t cur_x = std::numeric_limits<int64_t>::min();
-    struct AE { int8_t poly; int idx; };
-    std::vector<AE> aet;
-    aet.reserve(16);
+static bool v_is_contributing(const VActive& e, int cliptype) {
+    // NonZero fill rule only
+    if (std::abs(e.wind_cnt) != 1) return false;
+    int wc2 = std::abs(e.wind_cnt2);
+    if (cliptype == 0) return wc2 != 0;              // intersection
+    if (cliptype == 1) return wc2 == 0;              // union
+    // difference
+    bool r = (wc2 == 0);
+    return (v_polytype(e) == 0) ? r : !r; // subject vs clip
+}
 
-    auto yat = [&](const AE& e, int64_t x) -> double {
-        const auto& v=(e.poly==0)?va:vb; int n=(e.poly==0)?na:nb;
-        BIVec2 p=v[e.idx],q=v[(e.idx+1)%n];
-        if(p.x==q.x) return (double)std::min(p.y,q.y);
-        return p.y+(double)(q.y-p.y)*(double)(x-p.x)/(double)(q.x-p.x);
-    };
+// ── Output operations ────────────────────────────────────────────────────
 
-    std::set<std::pair<int,int>> queued;
+inline void v_set_sides(VOutRec& or_, VActive& f, VActive& b) { or_.front_edge = &f; or_.back_edge = &b; }
 
-    auto maybe_q = [&](int i) {
-        if(i<0||i+1>=(int)aet.size()) return;
-        if(aet[i].poly==aet[i+1].poly) return;
-        int ea=aet[i].poly==0?aet[i].idx:aet[i+1].idx;
-        int eb=aet[i].poly==0?aet[i+1].idx:aet[i].idx;
-        if(!queued.insert({ea,eb}).second) return;
-        double s,t; BIVec2 pt;
-        if(seg_isect_i(va[ea],va[(ea+1)%na],vb[eb],vb[(eb+1)%nb],s,t,pt)&&pt.x>=cur_x)
-            Q.push({pt.x,pt.y,1,-1,ea,eb,s,t,pt});
-        else queued.erase({ea,eb});
-    };
+static void v_swap_outrecs(VActive& e1, VActive& e2) {
+    VOutRec* or1=e1.outrec, *or2=e2.outrec;
+    if (or1==or2) { VActive* t=or1->front_edge; or1->front_edge=or1->back_edge; or1->back_edge=t; return; }
+    if (or1) { if (&e1==or1->front_edge) or1->front_edge=&e2; else or1->back_edge=&e2; }
+    if (or2) { if (&e2==or2->front_edge) or2->front_edge=&e1; else or2->back_edge=&e1; }
+    e1.outrec=or2; e2.outrec=or1;
+}
 
-    while(!Q.empty()) {
-        auto ev=Q.top(); Q.pop();
-        cur_x=ev.x;
-        if(ev.kind==2) { // LEFT: insert
-            double yi=yat({ev.poly,ev.ia},cur_x);
-            int pos=0;
-            while(pos<(int)aet.size()&&yat(aet[pos],cur_x)<yi) pos++;
-            aet.insert(aet.begin()+pos,{ev.poly,ev.ia});
-            maybe_q(pos-1); maybe_q(pos);
-        } else if(ev.kind==0) { // RIGHT: remove
-            for(int i=0;i<(int)aet.size();i++) {
-                if(aet[i].poly==ev.poly&&aet[i].idx==ev.ia) {
-                    aet.erase(aet.begin()+i);
-                    if(i>0&&i<(int)aet.size()) maybe_q(i-1);
-                    break;
+static VOutPt* v_add_outpt(const VActive& e, BIVec2 pt, VattiScratch& sc) {
+    VOutRec* outrec = e.outrec;
+    bool to_front = v_is_front(e);
+    VOutPt* op_front = outrec->pts, *op_back = op_front->next;
+    if (to_front && pt == op_front->pt) return op_front;
+    if (!to_front && pt == op_back->pt) return op_back;
+    VOutPt* nop = sc.new_outpt(pt, outrec);
+    op_back->prev = nop; nop->prev = op_front; nop->next = op_back; op_front->next = nop;
+    if (to_front) outrec->pts = nop;
+    return nop;
+}
+
+static VOutPt* v_add_local_min_poly(VActive& e1, VActive& e2, BIVec2 pt, VattiScratch& sc, bool is_new) {
+    VOutRec* outrec = sc.new_outrec();
+    e1.outrec = outrec; e2.outrec = outrec;
+    VActive* prev_hot = v_get_prev_hot(e1);
+    if (prev_hot) {
+        if ((prev_hot == prev_hot->outrec->front_edge) == is_new) v_set_sides(*outrec, e2, e1);
+        else v_set_sides(*outrec, e1, e2);
+    } else {
+        outrec->owner = nullptr;
+        if (is_new) v_set_sides(*outrec, e1, e2); else v_set_sides(*outrec, e2, e1);
+    }
+    VOutPt* op = sc.new_outpt(pt, outrec);
+    outrec->pts = op;
+    return op;
+}
+
+static void v_uncouple(VActive& ae) {
+    VOutRec* or_ = ae.outrec; if (!or_) return;
+    or_->front_edge->outrec = nullptr; or_->back_edge->outrec = nullptr;
+    or_->front_edge = nullptr; or_->back_edge = nullptr;
+}
+
+static void v_join_outrec_paths(VActive& e1, VActive& e2) {
+    VOutPt* p1_st=e1.outrec->pts, *p2_st=e2.outrec->pts;
+    VOutPt* p1_end=p1_st->next, *p2_end=p2_st->next;
+    if (v_is_front(e1)) {
+        p2_end->prev=p1_st; p1_st->next=p2_end; p2_st->next=p1_end; p1_end->prev=p2_st;
+        e1.outrec->pts=p2_st; e1.outrec->front_edge=e2.outrec->front_edge;
+        if (e1.outrec->front_edge) e1.outrec->front_edge->outrec=e1.outrec;
+    } else {
+        p1_end->prev=p2_st; p2_st->next=p1_end; p1_st->next=p2_end; p2_end->prev=p1_st;
+        e1.outrec->back_edge=e2.outrec->back_edge;
+        if (e1.outrec->back_edge) e1.outrec->back_edge->outrec=e1.outrec;
+    }
+    e2.outrec->front_edge=nullptr; e2.outrec->back_edge=nullptr; e2.outrec->pts=nullptr;
+    e2.outrec->owner = e1.outrec;
+    e1.outrec=nullptr; e2.outrec=nullptr;
+}
+
+static void v_split(VActive& e, BIVec2 pt, VattiScratch& sc); // forward decl
+
+static VOutPt* v_add_local_max_poly(VActive& e1, VActive& e2, BIVec2 pt, VattiScratch& sc) {
+    if (v_is_joined(e1)) v_split(e1, pt, sc);
+    if (v_is_joined(e2)) v_split(e2, pt, sc);
+
+    // Reset joins more carefully
+    // (simplified: no open path handling)
+    if (v_is_front(e1) == v_is_front(e2)) { sc.succeeded = false; return nullptr; }
+
+    VOutPt* result = v_add_outpt(e1, pt, sc);
+    if (e1.outrec == e2.outrec) {
+        VOutRec& outrec = *e1.outrec; outrec.pts = result;
+        v_uncouple(e1); result = outrec.pts;
+    } else if (e1.outrec->idx < e2.outrec->idx) v_join_outrec_paths(e1, e2);
+    else v_join_outrec_paths(e2, e1);
+    return result;
+}
+
+// ── Split + CheckJoin ────────────────────────────────────────────────────
+
+static void v_split(VActive& e, BIVec2 pt, VattiScratch& sc) {
+    if (e.join_with == 2/*Right*/) {
+        e.join_with = 0; e.next_in_ael->join_with = 0;
+        v_add_local_min_poly(e, *e.next_in_ael, pt, sc, true);
+    } else {
+        e.join_with = 0; e.prev_in_ael->join_with = 0;
+        v_add_local_min_poly(*e.prev_in_ael, e, pt, sc, true);
+    }
+}
+
+static void v_check_join_left(VActive& e, BIVec2 pt, VattiScratch& sc, bool check_curr_x = false) {
+    VActive* prev = e.prev_in_ael;
+    if (!prev || !v_is_hot(e) || !v_is_hot(*prev) || v_is_horizontal(e) || v_is_horizontal(*prev)) return;
+    if ((pt.y < e.top.y+2 || pt.y < prev->top.y+2) && (e.bot.y > pt.y || prev->bot.y > pt.y)) return;
+    if (check_curr_x) { if (v_perpendic_dist_sq(pt, prev->bot, prev->top) > 0.25) return; }
+    else if (e.curr_x != prev->curr_x) return;
+    if (!v_is_collinear(e.top, pt, prev->top)) return;
+    if (e.outrec->idx == prev->outrec->idx) v_add_local_max_poly(*prev, e, pt, sc);
+    else if (e.outrec->idx < prev->outrec->idx) v_join_outrec_paths(e, *prev);
+    else v_join_outrec_paths(*prev, e);
+    prev->join_with = 2; e.join_with = 1;
+}
+
+static void v_check_join_right(VActive& e, BIVec2 pt, VattiScratch& sc, bool check_curr_x = false) {
+    VActive* next = e.next_in_ael;
+    if (!next || !v_is_hot(e) || !v_is_hot(*next) || v_is_horizontal(e) || v_is_horizontal(*next)) return;
+    if ((pt.y < e.top.y+2 || pt.y < next->top.y+2) && (e.bot.y > pt.y || next->bot.y > pt.y)) return;
+    if (check_curr_x) { if (v_perpendic_dist_sq(pt, next->bot, next->top) > 0.35) return; }
+    else if (e.curr_x != next->curr_x) return;
+    if (!v_is_collinear(e.top, pt, next->top)) return;
+    if (e.outrec->idx == next->outrec->idx) v_add_local_max_poly(e, *next, pt, sc);
+    else if (e.outrec->idx < next->outrec->idx) v_join_outrec_paths(e, *next);
+    else v_join_outrec_paths(*next, e);
+    e.join_with = 2; next->join_with = 1;
+}
+
+// ── IntersectEdges ───────────────────────────────────────────────────────
+
+static void v_intersect_edges(VActive& e1, VActive& e2, BIVec2 pt, VattiScratch& sc, int cliptype) {
+    // Closed paths only
+    if (v_is_joined(e1)) v_split(e1, pt, sc);
+    if (v_is_joined(e2)) v_split(e2, pt, sc);
+
+    int old_e1_wc, old_e2_wc;
+    if (v_polytype(e1) == v_polytype(e2)) {
+        // NonZero fill
+        if (e1.wind_cnt + e2.wind_dx == 0) e1.wind_cnt = -e1.wind_cnt; else e1.wind_cnt += e2.wind_dx;
+        if (e2.wind_cnt - e1.wind_dx == 0) e2.wind_cnt = -e2.wind_cnt; else e2.wind_cnt -= e1.wind_dx;
+    } else {
+        e1.wind_cnt2 += e2.wind_dx;
+        e2.wind_cnt2 -= e1.wind_dx;
+    }
+    old_e1_wc = std::abs(e1.wind_cnt);
+    old_e2_wc = std::abs(e2.wind_cnt);
+
+    bool e1_in01 = old_e1_wc==0||old_e1_wc==1;
+    bool e2_in01 = old_e2_wc==0||old_e2_wc==1;
+    if ((!v_is_hot(e1) && !e1_in01) || (!v_is_hot(e2) && !e2_in01)) return;
+
+    if (v_is_hot(e1) && v_is_hot(e2)) {
+        if ((old_e1_wc!=0&&old_e1_wc!=1) || (old_e2_wc!=0&&old_e2_wc!=1) || (v_polytype(e1)!=v_polytype(e2))) {
+            v_add_local_max_poly(e1, e2, pt, sc);
+        } else if (v_is_front(e1) || e1.outrec==e2.outrec) {
+            v_add_local_max_poly(e1, e2, pt, sc);
+            v_add_local_min_poly(e1, e2, pt, sc, false);
+        } else {
+            v_add_outpt(e1, pt, sc); v_add_outpt(e2, pt, sc);
+            v_swap_outrecs(e1, e2);
+        }
+    } else if (v_is_hot(e1)) { v_add_outpt(e1, pt, sc); v_swap_outrecs(e1, e2); }
+    else if (v_is_hot(e2)) { v_add_outpt(e2, pt, sc); v_swap_outrecs(e1, e2); }
+    else {
+        int64_t e1Wc2 = std::abs(e1.wind_cnt2), e2Wc2 = std::abs(e2.wind_cnt2);
+        if (!v_same_polytype(e1, e2)) { v_add_local_min_poly(e1, e2, pt, sc, false); }
+        else if (old_e1_wc==1 && old_e2_wc==1) {
+            if (cliptype==0) { if (e1Wc2>0 && e2Wc2>0) v_add_local_min_poly(e1, e2, pt, sc, false); }
+            else if (cliptype==1) { if (e1Wc2<=0 && e2Wc2<=0) v_add_local_min_poly(e1, e2, pt, sc, false); }
+            else { // difference
+                if ((v_polytype(e1)==1/*clip*/ && e1Wc2>0 && e2Wc2>0) ||
+                    (v_polytype(e1)==0/*subj*/ && e1Wc2<=0 && e2Wc2<=0))
+                    v_add_local_min_poly(e1, e2, pt, sc, false);
+            }
+        }
+    }
+}
+
+// ── Horizontal edge processing ───────────────────────────────────────────
+
+static void v_add_trial_horz_join(VattiScratch& sc, VOutPt* op) { sc.horz_seg_list.push_back({op}); }
+
+inline VOutPt* v_get_last_op(const VActive& e) {
+    VOutPt* r = e.outrec->pts;
+    if (&e != e.outrec->front_edge) r = r->next;
+    return r;
+}
+
+inline void v_update_edge_into_ael(VattiScratch& sc, VActive* e, int cliptype) {
+    e->bot = e->top; e->vertex_top = v_next_vertex(*e); e->top = e->vertex_top->pt;
+    e->curr_x = e->bot.x; v_set_dx(*e);
+    if (v_is_joined(*e)) v_split(*e, e->bot, sc);
+    if (v_is_horizontal(*e)) {
+        // Trim 180-deg spikes
+        BIVec2 pt = v_next_vertex(*e)->pt;
+        while (pt.y == e->top.y) {
+            if ((pt.x < e->top.x) != (e->bot.x < e->top.x)) break;
+            e->vertex_top = v_next_vertex(*e); e->top = pt;
+            if (v_is_maxima(*e)) break;
+            pt = v_next_vertex(*e)->pt;
+        }
+        v_set_dx(*e);
+        return;
+    }
+    v_insert_scanline(sc, e->top.y);
+    v_check_join_left(*e, e->bot, sc);
+    v_check_join_right(*e, e->bot, sc, true);
+}
+
+static bool v_reset_horz_dir(const VActive& horz, const VVertex* max_v, int64_t& left, int64_t& right) {
+    if (horz.bot.x == horz.top.x) { left=horz.curr_x; right=horz.curr_x;
+        VActive* e=horz.next_in_ael; while(e && e->vertex_top!=max_v) e=e->next_in_ael; return e!=nullptr; }
+    if (horz.curr_x < horz.top.x) { left=horz.curr_x; right=horz.top.x; return true; }
+    left=horz.top.x; right=horz.curr_x; return false;
+}
+
+static void v_do_horizontal(VActive& horz, VattiScratch& sc, int cliptype) {
+    int64_t y = horz.bot.y;
+    VVertex* vertex_max = v_get_curr_y_maxima(horz);
+    int64_t horz_left, horz_right;
+    bool is_ltr = v_reset_horz_dir(horz, vertex_max, horz_left, horz_right);
+    if (v_is_hot(horz)) { VOutPt* op = v_add_outpt(horz, {horz.curr_x, y}, sc); v_add_trial_horz_join(sc, op); }
+
+    while (true) {
+        VActive* e = is_ltr ? horz.next_in_ael : horz.prev_in_ael;
+        while (e) {
+            if (e->vertex_top == vertex_max) {
+                if (v_is_hot(horz) && v_is_joined(*e)) v_split(*e, e->top, sc);
+                if (v_is_hot(horz)) {
+                    while (horz.vertex_top != vertex_max) { v_add_outpt(horz, horz.top, sc); v_update_edge_into_ael(sc, &horz, cliptype); }
+                    if (is_ltr) v_add_local_max_poly(horz, *e, horz.top, sc);
+                    else v_add_local_max_poly(*e, horz, horz.top, sc);
+                }
+                v_delete_from_ael(sc, *e); v_delete_from_ael(sc, horz); return;
+            }
+            if (vertex_max != horz.vertex_top) {
+                if ((is_ltr && e->curr_x > horz_right) || (!is_ltr && e->curr_x < horz_left)) break;
+                if (e->curr_x == horz.top.x && !v_is_horizontal(*e)) {
+                    BIVec2 pt2 = v_next_vertex(horz)->pt;
+                    if (is_ltr) { if (v_top_x(*e, pt2.y) >= pt2.x) break; }
+                    else { if (v_top_x(*e, pt2.y) <= pt2.x) break; }
                 }
             }
-        } else { // ISECT: record + swap
-            isects.push_back({ev.pt,ev.ia,ev.ib,(int)isects.size(),ev.s,ev.t});
-            queued.erase({ev.ia,ev.ib});
-            int pa=-1,pb=-1;
-            for(int i=0;i<(int)aet.size();i++) {
-                if(aet[i].poly==0&&aet[i].idx==ev.ia) pa=i;
-                if(aet[i].poly==1&&aet[i].idx==ev.ib) pb=i;
+            BIVec2 pt = {e->curr_x, horz.bot.y};
+            if (is_ltr) {
+                v_intersect_edges(horz, *e, pt, sc, cliptype);
+                v_swap_positions_in_ael(sc, horz, *e);
+                v_check_join_left(*e, pt, sc);
+                horz.curr_x = e->curr_x; e = horz.next_in_ael;
+            } else {
+                v_intersect_edges(*e, horz, pt, sc, cliptype);
+                v_swap_positions_in_ael(sc, *e, horz);
+                v_check_join_right(*e, pt, sc);
+                horz.curr_x = e->curr_x; e = horz.prev_in_ael;
             }
-            if(pa>=0&&pb>=0&&std::abs(pa-pb)==1) {
-                int lo=std::min(pa,pb);
-                std::swap(aet[lo],aet[lo+1]);
-                maybe_q(lo-1); maybe_q(lo+1);
+            if (horz.outrec) v_add_trial_horz_join(sc, v_get_last_op(horz));
+        }
+        if (v_next_vertex(horz)->pt.y != horz.top.y) break;
+        if (v_is_hot(horz)) v_add_outpt(horz, horz.top, sc);
+        v_update_edge_into_ael(sc, &horz, cliptype);
+        is_ltr = v_reset_horz_dir(horz, vertex_max, horz_left, horz_right);
+    }
+    if (v_is_hot(horz)) { VOutPt* op = v_add_outpt(horz, horz.top, sc); v_add_trial_horz_join(sc, op); }
+    v_update_edge_into_ael(sc, &horz, cliptype);
+}
+
+// ── HorzSeg/HorzJoin handling ────────────────────────────────────────────
+
+static VOutPt* v_dup_outpt(VOutPt* op, bool after, VattiScratch& sc) {
+    VOutPt* r = sc.new_outpt(op->pt, op->outrec);
+    if (after) { r->next=op->next; r->next->prev=r; r->prev=op; op->next=r; }
+    else { r->prev=op->prev; r->prev->next=r; r->next=op; op->prev=r; }
+    return r;
+}
+
+static void v_convert_horz_segs_to_joins(VattiScratch& sc) {
+    // Update horz segments to find proper left/right ops
+    int valid = 0;
+    for (auto& hs : sc.horz_seg_list) {
+        VOutPt* op = hs.left_op;
+        VOutRec* outrec = op->outrec; while (outrec && !outrec->pts) outrec = outrec->owner;
+        if (!outrec) { hs.right_op = nullptr; continue; }
+        bool has_edges = outrec->front_edge != nullptr;
+        int64_t cy = op->pt.y;
+        VOutPt* opP = op, *opN = op;
+        if (has_edges) {
+            VOutPt* opA=outrec->pts, *opZ=opA->next;
+            while (opP!=opZ && opP->prev->pt.y==cy) opP=opP->prev;
+            while (opN!=opA && opN->next->pt.y==cy) opN=opN->next;
+        } else {
+            while (opP->prev!=opN && opP->prev->pt.y==cy) opP=opP->prev;
+            while (opN->next!=opP && opN->next->pt.y==cy) opN=opN->next;
+        }
+        if (opP->pt.x == opN->pt.x) { hs.right_op=nullptr; continue; }
+        if (opP->pt.x < opN->pt.x) { hs.left_op=opP; hs.right_op=opN; hs.left_to_right=true; }
+        else { hs.left_op=opN; hs.right_op=opP; hs.left_to_right=false; }
+        if (hs.left_op->horz) { hs.right_op=nullptr; continue; }
+        hs.left_op->horz = reinterpret_cast<VHorzSeg*>(1); // mark used
+        valid++;
+    }
+    if (valid < 2) return;
+    std::stable_sort(sc.horz_seg_list.begin(), sc.horz_seg_list.end(),
+        [](const VHorzSeg& a, const VHorzSeg& b) { if (!a.right_op||!b.right_op) return (a.right_op!=nullptr); return b.left_op->pt.x > a.left_op->pt.x; });
+    int j = valid;
+    for (int i=0; i<j-1; i++) {
+        auto& hs1 = sc.horz_seg_list[i];
+        for (int k=i+1; k<j; k++) {
+            auto& hs2 = sc.horz_seg_list[k];
+            if (hs2.left_op->pt.x >= hs1.right_op->pt.x || hs2.left_to_right==hs1.left_to_right || hs2.right_op->pt.x <= hs1.left_op->pt.x) continue;
+            int64_t cy = hs1.left_op->pt.y;
+            if (hs1.left_to_right) {
+                while (hs1.left_op->next->pt.y==cy && hs1.left_op->next->pt.x<=hs2.left_op->pt.x) hs1.left_op=hs1.left_op->next;
+                while (hs2.left_op->prev->pt.y==cy && hs2.left_op->prev->pt.x<=hs1.left_op->pt.x) hs2.left_op=hs2.left_op->prev;
+                sc.horz_join_list.push_back({v_dup_outpt(hs1.left_op, true, sc), v_dup_outpt(hs2.left_op, false, sc)});
+            } else {
+                while (hs1.left_op->prev->pt.y==cy && hs1.left_op->prev->pt.x<=hs2.left_op->pt.x) hs1.left_op=hs1.left_op->prev;
+                while (hs2.left_op->next->pt.y==cy && hs2.left_op->next->pt.x<=hs1.left_op->pt.x) hs2.left_op=hs2.left_op->next;
+                sc.horz_join_list.push_back({v_dup_outpt(hs2.left_op, true, sc), v_dup_outpt(hs1.left_op, false, sc)});
             }
         }
     }
+}
+
+static void v_fix_outrec_pts(VOutRec* outrec) { VOutPt* op=outrec->pts; do { op->outrec=outrec; op=op->next; } while(op!=outrec->pts); }
+
+static void v_process_horz_joins(VattiScratch& sc) {
+    for (auto& j : sc.horz_join_list) {
+        VOutRec* or1 = j.op1->outrec; while(or1 && !or1->pts) or1=or1->owner;
+        VOutRec* or2 = j.op2->outrec; while(or2 && !or2->pts) or2=or2->owner;
+        VOutPt* op1b=j.op1->next, *op2b=j.op2->prev;
+        j.op1->next=j.op2; j.op2->prev=j.op1; op1b->prev=op2b; op2b->next=op1b;
+        if (or1==or2) {
+            or2 = sc.new_outrec(); or2->pts = op1b; v_fix_outrec_pts(or2);
+            if (or1->pts->outrec==or2) { or1->pts=j.op1; or1->pts->outrec=or1; }
+            or2->owner = or1;
+        } else { or2->pts=nullptr; or2->owner=or1; }
+    }
+}
+
+// ── Intersection detection (merge sort) ──────────────────────────────────
+
+inline void v_adjust_curr_x_copy_to_sel(VattiScratch& sc, int64_t top_y) {
+    VActive* e = sc.actives; sc.sel = e;
+    while (e) {
+        e->prev_in_sel=e->prev_in_ael; e->next_in_sel=e->next_in_ael; e->jump=e->next_in_sel;
+        if (e->join_with==1) e->curr_x = e->prev_in_ael->curr_x;
+        else e->curr_x = v_top_x(*e, top_y);
+        e = e->next_in_ael;
+    }
+}
+
+inline VActive* v_extract_from_sel(VActive* ae) {
+    VActive* res = ae->next_in_sel; if (res) res->prev_in_sel = ae->prev_in_sel;
+    ae->prev_in_sel->next_in_sel = res; return res;
+}
+inline void v_insert1_before2_in_sel(VActive* a1, VActive* a2) {
+    a1->prev_in_sel=a2->prev_in_sel; if(a1->prev_in_sel) a1->prev_in_sel->next_in_sel=a1;
+    a1->next_in_sel=a2; a2->prev_in_sel=a1;
+}
+
+static void v_add_new_isect_node(VattiScratch& sc, VActive& e1, VActive& e2, int64_t top_y) {
+    BIVec2 ip;
+    if (!v_get_seg_isect_pt(e1.bot, e1.top, e2.bot, e2.top, ip)) ip = {e1.curr_x, top_y};
+    if (ip.y > sc.bot_y || ip.y < top_y) {
+        double ad1=std::fabs(e1.dx), ad2=std::fabs(e2.dx);
+        if (ad1>100 && ad2>100) ip = (ad1>ad2) ? v_closest_pt_on_seg(ip,e1.bot,e1.top) : v_closest_pt_on_seg(ip,e2.bot,e2.top);
+        else if (ad1>100) ip = v_closest_pt_on_seg(ip,e1.bot,e1.top);
+        else if (ad2>100) ip = v_closest_pt_on_seg(ip,e2.bot,e2.top);
+        else { if (ip.y<top_y) ip.y=top_y; else ip.y=sc.bot_y; ip.x = (ad1<ad2) ? v_top_x(e1,ip.y) : v_top_x(e2,ip.y); }
+    }
+    sc.intersect_nodes.push_back({ip, &e1, &e2});
+}
+
+static bool v_build_intersect_list(VattiScratch& sc, int64_t top_y) {
+    if (!sc.actives || !sc.actives->next_in_ael) return false;
+    v_adjust_curr_x_copy_to_sel(sc, top_y);
+    VActive* left = sc.sel;
+    while (left && left->jump) {
+        VActive* prev_base = nullptr;
+        while (left && left->jump) {
+            VActive* curr_base = left;
+            VActive* right = left->jump;
+            VActive* l_end = right;
+            VActive* r_end = right->jump;
+            left->jump = r_end;
+            while (left != l_end && right != r_end) {
+                if (right->curr_x < left->curr_x) {
+                    VActive* tmp = right->prev_in_sel;
+                    for (;;) { v_add_new_isect_node(sc, *tmp, *right, top_y); if (tmp==left) break; tmp=tmp->prev_in_sel; }
+                    tmp = right; right = v_extract_from_sel(tmp); l_end = right;
+                    v_insert1_before2_in_sel(tmp, left);
+                    if (left==curr_base) { curr_base=tmp; curr_base->jump=r_end; if(!prev_base) sc.sel=curr_base; else prev_base->jump=curr_base; }
+                } else left = left->next_in_sel;
+            }
+            prev_base = curr_base; left = r_end;
+        }
+        left = sc.sel;
+    }
+    return !sc.intersect_nodes.empty();
+}
+
+static void v_process_intersect_list(VattiScratch& sc, int cliptype) {
+    std::sort(sc.intersect_nodes.begin(), sc.intersect_nodes.end(),
+        [](const VIntersectNode& a, const VIntersectNode& b) { return (a.pt.y==b.pt.y) ? a.pt.x<b.pt.x : a.pt.y>b.pt.y; });
+    for (size_t i = 0; i < sc.intersect_nodes.size(); i++) {
+        auto& node = sc.intersect_nodes[i];
+        if (!(node.edge1->next_in_ael==node.edge2 || node.edge1->prev_in_ael==node.edge2)) {
+            for (size_t j=i+1; j<sc.intersect_nodes.size(); j++) {
+                if (sc.intersect_nodes[j].edge1->next_in_ael==sc.intersect_nodes[j].edge2 || sc.intersect_nodes[j].edge1->prev_in_ael==sc.intersect_nodes[j].edge2)
+                    { std::swap(sc.intersect_nodes[i], sc.intersect_nodes[j]); node = sc.intersect_nodes[i]; break; }
+            }
+        }
+        v_intersect_edges(*node.edge1, *node.edge2, node.pt, sc, cliptype);
+        v_swap_positions_in_ael(sc, *node.edge1, *node.edge2);
+        node.edge1->curr_x = node.pt.x; node.edge2->curr_x = node.pt.x;
+        v_check_join_left(*node.edge2, node.pt, sc, true);
+        v_check_join_right(*node.edge1, node.pt, sc, true);
+    }
+}
+
+// ── InsertLocalMinimaIntoAEL ─────────────────────────────────────────────
+
+static void v_insert_local_minima_into_ael(VattiScratch& sc, int64_t bot_y, int cliptype) {
+    VLocalMinima* lm;
+    while (v_pop_locmin(sc, bot_y, lm)) {
+        VActive* lb = sc.new_active();
+        lb->bot = lm->vertex->pt; lb->curr_x = lb->bot.x; lb->wind_dx = -1;
+        lb->vertex_top = lm->vertex->prev; lb->top = lb->vertex_top->pt;
+        lb->local_min = lm; v_set_dx(*lb);
+
+        VActive* rb = sc.new_active();
+        rb->bot = lm->vertex->pt; rb->curr_x = rb->bot.x; rb->wind_dx = 1;
+        rb->vertex_top = lm->vertex->next; rb->top = rb->vertex_top->pt;
+        rb->local_min = lm; v_set_dx(*rb);
+
+        if (v_is_horizontal(*lb)) {
+            if (lb->dx == -std::numeric_limits<double>::max()) std::swap(lb, rb);
+        } else if (v_is_horizontal(*rb)) {
+            if (rb->dx == std::numeric_limits<double>::max()) std::swap(lb, rb);
+        } else if (lb->dx < rb->dx) std::swap(lb, rb);
+
+        lb->is_left_bound = true;
+        v_insert_left_edge(sc, *lb);
+        v_set_wind_count(sc, *lb);
+        bool contributing = v_is_contributing(*lb, cliptype);
+
+        rb->is_left_bound = false;
+        rb->wind_cnt = lb->wind_cnt; rb->wind_cnt2 = lb->wind_cnt2;
+        v_insert_right_edge(*lb, *rb);
+        if (contributing) {
+            v_add_local_min_poly(*lb, *rb, lb->bot, sc, true);
+            if (!v_is_horizontal(*lb)) v_check_join_left(*lb, lb->bot, sc);
+        }
+        while (rb->next_in_ael && v_is_valid_ael_order(*rb->next_in_ael, *rb)) {
+            v_intersect_edges(*rb, *rb->next_in_ael, rb->bot, sc, cliptype);
+            v_swap_positions_in_ael(sc, *rb, *rb->next_in_ael);
+        }
+        if (v_is_horizontal(*rb)) v_push_horz(sc, *rb);
+        else { v_check_join_right(*rb, rb->bot, sc); v_insert_scanline(sc, rb->top.y); }
+        if (v_is_horizontal(*lb)) v_push_horz(sc, *lb);
+        else v_insert_scanline(sc, lb->top.y);
+    }
+}
+
+// ── DoMaxima ─────────────────────────────────────────────────────────────
+
+static VActive* v_do_maxima(VActive& e, VattiScratch& sc, int cliptype) {
+    VActive* prev_e = e.prev_in_ael;
+    VActive* next_e = e.next_in_ael;
+    VActive* max_pair = v_get_maxima_pair(e);
+    if (!max_pair) return next_e;
+    if (v_is_joined(e)) v_split(e, e.top, sc);
+    if (v_is_joined(*max_pair)) v_split(*max_pair, max_pair->top, sc);
+    while (next_e != max_pair) {
+        v_intersect_edges(e, *next_e, e.top, sc, cliptype);
+        v_swap_positions_in_ael(sc, e, *next_e);
+        next_e = e.next_in_ael;
+    }
+    if (v_is_hot(e)) v_add_local_max_poly(e, *max_pair, e.top, sc);
+    v_delete_from_ael(sc, *max_pair); v_delete_from_ael(sc, e);
+    return prev_e ? prev_e->next_in_ael : sc.actives;
+}
+
+// ── DoTopOfScanbeam ──────────────────────────────────────────────────────
+
+static void v_do_top_of_scanbeam(VattiScratch& sc, int64_t y, int cliptype) {
+    sc.sel = nullptr;
+    VActive* e = sc.actives;
+    while (e) {
+        if (e->top.y == y) {
+            e->curr_x = e->top.x;
+            if (v_is_maxima(*e)) { e = v_do_maxima(*e, sc, cliptype); continue; }
+            if (v_is_hot(*e)) v_add_outpt(*e, e->top, sc);
+            v_update_edge_into_ael(sc, e, cliptype);
+            if (v_is_horizontal(*e)) v_push_horz(sc, *e);
+        } else e->curr_x = v_top_x(*e, y);
+        e = e->next_in_ael;
+    }
+}
+
+// ── CleanCollinear + FixSelfIntersects ───────────────────────────────────
+
+static VOutPt* v_dispose_outpt(VOutPt* op) {
+    VOutPt* r = op->next; op->prev->next=op->next; op->next->prev=op->prev; return r;
+}
+
+static void v_do_split_op(VattiScratch& sc, VOutRec* outrec, VOutPt* splitOp) {
+    VOutPt* prevOp = splitOp->prev; VOutPt* nnOp = splitOp->next->next;
+    outrec->pts = prevOp;
+    BIVec2 ip;
+    v_get_seg_isect_pt(prevOp->pt, splitOp->pt, splitOp->next->pt, nnOp->pt, ip);
+    double area1 = v_area_outpt(outrec->pts);
+    if (std::fabs(area1) < 2) { outrec->pts=nullptr; return; }
+    double area2 = v_area_tri(ip, splitOp->pt, splitOp->next->pt);
+    double absA2 = std::fabs(area2);
+    if (ip==prevOp->pt || ip==nnOp->pt) { nnOp->prev=prevOp; prevOp->next=nnOp; }
+    else {
+        VOutPt* nop = sc.new_outpt(ip, prevOp->outrec);
+        nop->prev=prevOp; nop->next=nnOp; nnOp->prev=nop; prevOp->next=nop;
+    }
+    if (absA2>=1 && (absA2>std::fabs(area1) || (area2>0)==(area1>0))) {
+        VOutRec* nr = sc.new_outrec(); nr->owner=outrec->owner;
+        splitOp->outrec=nr; splitOp->next->outrec=nr;
+        VOutPt* nop = sc.new_outpt(ip, nr);
+        nop->prev=splitOp->next; nop->next=splitOp; nr->pts=nop;
+        splitOp->prev=nop; splitOp->next->next=nop;
+    }
+}
+
+static void v_fix_self_intersects(VattiScratch& sc, VOutRec* outrec) {
+    VOutPt* op2 = outrec->pts;
+    for (;;) {
+        if (op2->prev == op2->next->next) break;
+        if (v_segs_intersect(op2->prev->pt, op2->pt, op2->next->pt, op2->next->next->pt)) {
+            if (op2==outrec->pts || op2->next==outrec->pts) outrec->pts=outrec->pts->prev;
+            v_do_split_op(sc, outrec, op2);
+            if (!outrec->pts) break;
+            op2 = outrec->pts; continue;
+        }
+        op2 = op2->next;
+        if (op2 == outrec->pts) break;
+    }
+}
+
+static void v_clean_collinear(VattiScratch& sc, VOutRec* outrec) {
+    while (outrec && !outrec->pts) outrec=outrec->owner;
+    if (!outrec) return;
+    if (!v_valid_closed(outrec->pts)) { outrec->pts=nullptr; return; }
+    VOutPt* startOp = outrec->pts, *op2 = startOp;
+    for (;;) {
+        if (v_is_collinear(op2->prev->pt, op2->pt, op2->next->pt) &&
+            (op2->pt==op2->prev->pt || op2->pt==op2->next->pt || v_dot_product(op2->prev->pt, op2->pt, op2->next->pt)<0)) {
+            if (op2==outrec->pts) outrec->pts=op2->prev;
+            op2 = v_dispose_outpt(op2);
+            if (!v_valid_closed(op2)) { outrec->pts=nullptr; return; }
+            startOp = op2; continue;
+        }
+        op2 = op2->next;
+        if (op2==startOp) break;
+    }
+    v_fix_self_intersects(sc, outrec);
+}
+
+// ── ExecuteInternal ──────────────────────────────────────────────────────
+
+static bool v_execute_internal(VattiScratch& sc, int cliptype) {
+    std::stable_sort(sc.locmin_list.begin(), sc.locmin_list.end(),
+        [](const VLocalMinima& a, const VLocalMinima& b) {
+            if (b.vertex->pt.y != a.vertex->pt.y) return b.vertex->pt.y < a.vertex->pt.y;
+            return b.vertex->pt.x > a.vertex->pt.x;
+        });
+    for (auto& lm : sc.locmin_list) v_insert_scanline(sc, lm.vertex->pt.y);
+    sc.locmin_idx = 0;
+
+    int64_t y;
+    if (!v_pop_scanline(sc, y)) return true;
+    while (sc.succeeded) {
+        v_insert_local_minima_into_ael(sc, y, cliptype);
+        VActive* e;
+        while (v_pop_horz(sc, e)) v_do_horizontal(*e, sc, cliptype);
+        if (!sc.horz_seg_list.empty()) { v_convert_horz_segs_to_joins(sc); sc.horz_seg_list.clear(); }
+        sc.bot_y = y;
+        if (!v_pop_scanline(sc, y)) break;
+        if (sc.succeeded && v_build_intersect_list(sc, y)) { v_process_intersect_list(sc, cliptype); sc.intersect_nodes.clear(); }
+        v_do_top_of_scanbeam(sc, y, cliptype);
+        while (v_pop_horz(sc, e)) v_do_horizontal(*e, sc, cliptype);
+    }
+    if (sc.succeeded) v_process_horz_joins(sc);
+    return sc.succeeded;
+}
+
+// ── Build output paths from OutRec list ──────────────────────────────────
+
+static bool v_build_path(VOutPt* op, std::vector<BIVec2>& path) {
+    if (!op || op->next==op || op->next==op->prev) return false;
+    path.clear();
+    BIVec2 last = op->next->pt;
+    VOutPt* op2 = op->next->next;
+    path.push_back(last);
+    while (op2 != op->next) { if (op2->pt != last) { last=op2->pt; path.push_back(last); } op2=op2->next; }
+    return path.size() >= 3 && !v_very_small_tri(*op);
 }
 
 } // anonymous namespace
 
 std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, int clip_type) {
-    // Work directly on _coords — never construct Point/Vector/Polyline objects in the hot path.
     const double* ca = a._coords.data();
     const double* cb = b._coords.data();
     int na = (int)(a._coords.size() / 3);
     int nb = (int)(b._coords.size() / 3);
 
-    // Strip closing duplicate if present
     auto dup_last = [](const double* c, int n) {
         if (n < 2) return false;
         double dx=c[(n-1)*3]-c[0], dy=c[(n-1)*3+1]-c[1], dz=c[(n-1)*3+2]-c[2];
@@ -1555,8 +2390,6 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     if (dup_last(cb, nb)) --nb;
     if (na < 3 || nb < 3) return {};
 
-    // 2D fast path: if all z≈0, skip Newell normal and projection entirely.
-    // Just scale x,y directly — eliminates ~3 full vertex passes + 2 sqrts.
     bool flat=true;
     for(int i=0;i<na&&flat;i++) flat=std::abs(ca[i*3+2])<1e-10;
     for(int i=0;i<nb&&flat;i++) flat=std::abs(cb[i*3+2])<1e-10;
@@ -1565,9 +2398,9 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     double xax,xay,xaz,yax,yay,yaz,scale;
 
     constexpr int64_t INT_SAFE_MAX=2305843009213693952LL;
-    BOScratch* sc = &tls;
-    auto& va = sc->va; va.resize(na);
-    auto& vb = sc->vb; vb.resize(nb);
+    VattiScratch& sc = vtls; sc.reset();
+    auto& va = sc.va; va.resize(na);
+    auto& vb = sc.vb; vb.resize(nb);
 
     if(flat) {
         xax=1;xay=0;xaz=0; yax=0;yay=1;yaz=0;
@@ -1579,7 +2412,6 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
         for(int i=0;i<na;i++) va[i]={(int64_t)std::round(ca[i*3]*scale),(int64_t)std::round(ca[i*3+1]*scale)};
         for(int i=0;i<nb;i++) vb[i]={(int64_t)std::round(cb[i*3]*scale),(int64_t)std::round(cb[i*3+1]*scale)};
     } else {
-        // Full 3D projection: centroid → Newell normal → axis setup → per-vertex dot product
         for(int i=0;i<na;i++){ox+=ca[i*3];oy+=ca[i*3+1];oz+=ca[i*3+2];}
         for(int i=0;i<nb;i++){ox+=cb[i*3];oy+=cb[i*3+1];oz+=cb[i*3+2];}
         double inv_tot=1.0/(na+nb); ox*=inv_tot; oy*=inv_tot; oz*=inv_tot;
@@ -1620,14 +2452,13 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
         for(int i=0;i<nb;i++) vb[i]=proj_c(cb,i);
     }
 
-    // AABB pre-check — reject disjoint pairs before any O(na*nb) work
+    // AABB pre-check
     {
         int64_t aMinX=va[0].x,aMaxX=va[0].x,aMinY=va[0].y,aMaxY=va[0].y;
         for (auto& p:va){aMinX=std::min(aMinX,p.x);aMaxX=std::max(aMaxX,p.x);aMinY=std::min(aMinY,p.y);aMaxY=std::max(aMaxY,p.y);}
         int64_t bMinX=vb[0].x,bMaxX=vb[0].x,bMinY=vb[0].y,bMaxY=vb[0].y;
         for (auto& p:vb){bMinX=std::min(bMinX,p.x);bMaxX=std::max(bMaxX,p.x);bMinY=std::min(bMinY,p.y);bMaxY=std::max(bMaxY,p.y);}
         if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) {
-            // Disjoint bounding boxes — skip all intersection work
             bool a_in_b = pip_i(va[0], vb), b_in_a = pip_i(vb[0], va);
             if (clip_type == 0) { if (a_in_b) return {a}; if (b_in_a) return {b}; return {}; }
             if (clip_type == 1) { if (a_in_b) return {b}; if (b_in_a) return {a}; return {a, b}; }
@@ -1635,151 +2466,72 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
         }
     }
 
-    // Degenerate handling: perturb vertices coincident with or lying on the other polygon's edges
-    for (int i = 0; i < na; i++) {
-        for (int j = 0; j < nb; j++) {
-            if (va[i].x == vb[j].x && va[i].y == vb[j].y) {
-                BIVec2 prev_b=vb[(j-1+nb)%nb], next_b=vb[(j+1)%nb];
-                va[i]=perturb_off_seg(va[i],prev_b,vb[j]);
-                if(va[i].x==vb[j].x&&va[i].y==vb[j].y) va[i]=perturb_off_seg(va[i],vb[j],next_b);
-                goto next_va;
+    // Quick containment test: if polygon pair is small enough, check all edge pairs
+    // for crossings. If no crossings, handle as pure containment (avoids Vatti overhead).
+    if ((int64_t)na * nb <= 10000) {
+        bool any_cross = false;
+        for (int i = 0; i < na && !any_cross; i++) {
+            BIVec2 a1=va[i], a2=va[(i+1)%na];
+            int64_t axmin=std::min(a1.x,a2.x), axmax=std::max(a1.x,a2.x);
+            int64_t aymin=std::min(a1.y,a2.y), aymax=std::max(a1.y,a2.y);
+            for (int j = 0; j < nb && !any_cross; j++) {
+                BIVec2 b1=vb[j], b2=vb[(j+1)%nb];
+                if (std::max(b1.x,b2.x)<axmin||std::min(b1.x,b2.x)>axmax||
+                    std::max(b1.y,b2.y)<aymin||std::min(b1.y,b2.y)>aymax) continue;
+                any_cross = v_segs_intersect(a1,a2,b1,b2);
             }
         }
-        for (int j = 0; j < nb; j++) {
-            if (on_seg_i(va[i],vb[j],vb[(j+1)%nb])) {
-                va[i]=perturb_off_seg(va[i],vb[j],vb[(j+1)%nb]); goto next_va;
-            }
-        }
-        next_va:;
-    }
-    for (int j = 0; j < nb; j++) {
-        for (int i = 0; i < na; i++) {
-            if (vb[j].x == va[i].x && vb[j].y == va[i].y) {
-                BIVec2 prev_a=va[(i-1+na)%na], next_a=va[(i+1)%na];
-                vb[j]=perturb_off_seg(vb[j],prev_a,va[i]);
-                if(vb[j].x==va[i].x&&vb[j].y==va[i].y) vb[j]=perturb_off_seg(vb[j],va[i],next_a);
-                goto next_vb;
-            }
-        }
-        for (int i = 0; i < na; i++) {
-            if (on_seg_i(vb[j],va[i],va[(i+1)%na])) {
-                vb[j]=perturb_off_seg(vb[j],va[i],va[(i+1)%na]); goto next_vb;
-            }
-        }
-        next_vb:;
-    }
-
-    // Find all proper A-B intersections using sweep-line O((n+k) log n)
-    auto& isects = sc->isects; isects.clear();
-    find_isects_sweep(va, na, vb, nb, isects);
-    int ni = (int)isects.size();
-
-    if (ni == 0) {
-        bool a_in_b=pip_i(va[0],vb), b_in_a=pip_i(vb[0],va);
-        if (clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
-        if (clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
-        if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
-    }
-
-    auto& listA=sc->listA; listA.clear(); listA.reserve(na+ni);
-    auto& listB=sc->listB; listB.clear(); listB.reserve(nb+ni);
-
-    std::sort(isects.begin(),isects.end(),[](const BIsect& x,const BIsect& y){
-        return x.ea<y.ea||(x.ea==y.ea&&x.s<y.s);
-    });
-    for(int i=0,k=0;i<na;i++){
-        listA.push_back({va[i]});
-        while(k<ni&&isects[k].ea==i){BAVertex av;av.pt=isects[k].pt;av.is_alpha=true;av.isect_id=isects[k].id;listA.push_back(av);k++;}
-    }
-    std::sort(isects.begin(),isects.end(),[](const BIsect& x,const BIsect& y){
-        return x.eb<y.eb||(x.eb==y.eb&&x.t<y.t);
-    });
-    for(int j=0,k=0;j<nb;j++){
-        listB.push_back({vb[j]});
-        while(k<ni&&isects[k].eb==j){BAVertex av;av.pt=isects[k].pt;av.is_alpha=true;av.isect_id=isects[k].id;listB.push_back(av);k++;}
-    }
-
-    int lenA=(int)listA.size(), lenB=(int)listB.size();
-    auto& posA=sc->posA; posA.assign(ni,-1);
-    auto& posB=sc->posB; posB.assign(ni,-1);
-    for(int i=0;i<lenA;i++) if(listA[i].is_alpha) posA[listA[i].isect_id]=i;
-    for(int j=0;j<lenB;j++) if(listB[j].is_alpha) posB[listB[j].isect_id]=j;
-    for(int k=0;k<ni;k++) if(posA[k]>=0&&posB[k]>=0){listA[posA[k]].neighbor=posB[k];listB[posB[k]].neighbor=posA[k];}
-
-    {
-        int first=-1;
-        for(int i=0;i<lenA&&first<0;i++) if(!listA[i].is_alpha) first=i;
-        if(first>=0){
-            bool cur_inside=pip_i(listA[first].pt,vb);
-            for(int k=1;k<=lenA;k++){
-                int i=(first+k)%lenA;
-                if(!listA[i].is_alpha) continue;
-                listA[i].entering=!cur_inside; cur_inside=!cur_inside;
-                if(listA[i].neighbor>=0) listB[listA[i].neighbor].entering=listA[i].entering;
-            }
+        if (!any_cross) {
+            bool a_in_b=pip_i(va[0],vb), b_in_a=pip_i(vb[0],va);
+            if (clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
+            if (clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
+            if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
         }
     }
 
-    auto& usedA=sc->usedA; usedA.assign(lenA,false);
-    int find_cursor=0;
-    auto find_start=[&]()->int{
-        for(int k=0;k<lenA;k++){
-            int i=(find_cursor+k)%lenA;
-            if(!listA[i].is_alpha||usedA[i]) continue;
-            if(clip_type==0&&!listA[i].entering) continue;
-            if(clip_type!=0&& listA[i].entering) continue;
-            find_cursor=i; return i;
-        }
-        return -1;
-    };
+    // Pre-reserve pools to avoid reallocation during Vatti
+    int total = na + nb;
+    sc.vtx_pool.ensure(total + 4);
+    sc.act_pool.ensure(total + 4);
+    sc.opt_pool.ensure(total * 2);
+    sc.orc_pool.ensure(total);
+    sc.locmin_list.reserve(total);
+    sc.outrec_list.reserve(total);
 
+    // Build vertex lists and local minima, then run Vatti
+    v_add_path(va, na, 0, sc);
+    v_add_path(vb, nb, 1, sc);
+
+    // Map clip_type: 0=intersection, 1=union, 2=difference
+    if (!v_execute_internal(sc, clip_type)) return {};
+
+    // Extract output paths and back-project to 3D
     auto push_coord=[&](BIVec2 iv){
         double u=iv.x/scale, v=iv.y/scale;
         if(flat){
-            sc->poly_coords.push_back(u);
-            sc->poly_coords.push_back(v);
-            sc->poly_coords.push_back(0.0);
+            sc.poly_coords.push_back(u); sc.poly_coords.push_back(v); sc.poly_coords.push_back(0.0);
         } else {
-            sc->poly_coords.push_back(ox+u*xax+v*yax);
-            sc->poly_coords.push_back(oy+u*xay+v*yay);
-            sc->poly_coords.push_back(oz+u*xaz+v*yaz);
+            sc.poly_coords.push_back(ox+u*xax+v*yax);
+            sc.poly_coords.push_back(oy+u*xay+v*yay);
+            sc.poly_coords.push_back(oz+u*xaz+v*yaz);
         }
     };
 
     std::vector<Polyline> out;
-    int start;
-    while((start=find_start())>=0){
-        sc->poly_coords.clear();
-        push_coord(listA[start].pt); usedA[start]=true;
-        bool on_a=true; int cur=start;
-        for(int iter=0;iter<lenA+lenB+10;iter++){
-            int next;
-            if(on_a) next=(cur+1)%lenA;
-            else if(clip_type==2) next=(cur-1+lenB)%lenB;
-            else next=(cur+1)%lenB;
-            cur=next;
-            BIVec2 cpt=on_a?listA[cur].pt:listB[cur].pt;
-            int64_t dx=cpt.x-listA[start].pt.x, dy=cpt.y-listA[start].pt.y;
-            if(dx==0&&dy==0) break;
-            push_coord(cpt);
-            bool is_alpha=on_a?listA[cur].is_alpha:listB[cur].is_alpha;
-            if(!is_alpha) continue;
-            bool ent=on_a?listA[cur].entering:listB[cur].entering;
-            bool sw;
-            if(on_a)             sw=(clip_type==0)?!ent:ent;
-            else if(clip_type==0) sw=ent;
-            else if(clip_type==1) sw=!ent;
-            else                  sw=ent;
-            if(!sw) continue;
-            int nb_idx=on_a?listA[cur].neighbor:listB[cur].neighbor;
-            if(nb_idx<0) break;
-            if(on_a) usedA[cur]=true;
-            on_a=!on_a; cur=nb_idx;
-        }
-        if((int)sc->poly_coords.size()>=9){
-            Polyline result;
-            result._coords=sc->poly_coords;
-            out.push_back(std::move(result));
+    std::vector<BIVec2> path_buf;
+    for (size_t i = 0; i < sc.outrec_list.size(); i++) {
+        VOutRec* outrec = sc.outrec_list[i];
+        if (!outrec->pts) continue;
+        v_clean_collinear(sc, outrec);
+        if (!outrec->pts) continue;
+        if (v_build_path(outrec->pts, path_buf)) {
+            sc.poly_coords.clear();
+            for (auto& pt : path_buf) push_coord(pt);
+            if ((int)sc.poly_coords.size() >= 9) {
+                Polyline result;
+                result._coords = sc.poly_coords;
+                out.push_back(std::move(result));
+            }
         }
     }
     return out;

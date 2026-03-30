@@ -281,7 +281,7 @@ public:
 
     /// Boolean operation on two closed planar polylines.
     /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
-    /// Returns 0-2 result polygons. Uses integer-scaled Greiner-Hormann (Clipper2-style).
+    /// Returns 0+ result polygons. Uses Vatti scanline algorithm (ported from Clipper2).
     static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, int clip_type);
 
     /// Merge consecutive collinear segments (in-place); closed polyline wraps around
