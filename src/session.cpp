@@ -52,98 +52,98 @@ std::string Session::str() const {
 
 std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point) {
   objects.points->push_back(point);
-  lookup[point->guid] = point;
-  graph.add_node(point->guid, "point_" + point->name);
-  cache_geometry_aabb(point->guid, point);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(point->guid);
+  lookup[point->guid()] = point;
+  graph.add_node(point->guid(), "point_" + point->name);
+  cache_geometry_aabb(point->guid(), point);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(point->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line) {
   objects.lines->push_back(line);
-  lookup[line->guid] = line;
-  graph.add_node(line->guid, "line_" + line->name);
-  cache_geometry_aabb(line->guid, line);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(line->guid);
+  lookup[line->guid()] = line;
+  graph.add_node(line->guid(), "line_" + line->name);
+  cache_geometry_aabb(line->guid(), line);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(line->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane) {
   objects.planes->push_back(plane);
-  lookup[plane->guid] = plane;
-  graph.add_node(plane->guid, "plane_" + plane->name);
-  cache_geometry_aabb(plane->guid, plane);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(plane->guid);
+  lookup[plane->guid()] = plane;
+  graph.add_node(plane->guid(), "plane_" + plane->name);
+  cache_geometry_aabb(plane->guid(), plane);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(plane->guid());
   return tree_node;
 }
 
-std::shared_ptr<TreeNode> Session::add_bbox(std::shared_ptr<Obb> bbox) {
+std::shared_ptr<TreeNode> Session::add_bbox(std::shared_ptr<OBB> bbox) {
   objects.bboxes->push_back(bbox);
-  lookup[bbox->guid] = bbox;
-  graph.add_node(bbox->guid, "bbox_" + bbox->name);
-  cache_geometry_aabb(bbox->guid, bbox);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(bbox->guid);
+  lookup[bbox->guid()] = bbox;
+  graph.add_node(bbox->guid(), "bbox_" + bbox->name);
+  cache_geometry_aabb(bbox->guid(), bbox);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(bbox->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline) {
   objects.polylines->push_back(polyline);
-  lookup[polyline->guid] = polyline;
-  graph.add_node(polyline->guid, "polyline_" + polyline->name);
-  cache_geometry_aabb(polyline->guid, polyline);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(polyline->guid);
+  lookup[polyline->guid()] = polyline;
+  graph.add_node(polyline->guid(), "polyline_" + polyline->name);
+  cache_geometry_aabb(polyline->guid(), polyline);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(polyline->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> pointcloud) {
   objects.pointclouds->push_back(pointcloud);
-  lookup[pointcloud->guid] = pointcloud;
-  graph.add_node(pointcloud->guid, "pointcloud_" + pointcloud->name);
-  cache_geometry_aabb(pointcloud->guid, pointcloud);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(pointcloud->guid);
+  lookup[pointcloud->guid()] = pointcloud;
+  graph.add_node(pointcloud->guid(), "pointcloud_" + pointcloud->name);
+  cache_geometry_aabb(pointcloud->guid(), pointcloud);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(pointcloud->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh) {
   objects.meshes->push_back(mesh);
-  lookup[mesh->guid] = mesh;
-  graph.add_node(mesh->guid, "mesh_" + mesh->name);
-  cache_geometry_aabb(mesh->guid, mesh);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(mesh->guid);
+  lookup[mesh->guid()] = mesh;
+  graph.add_node(mesh->guid(), "mesh_" + mesh->name);
+  cache_geometry_aabb(mesh->guid(), mesh);  // Incremental AABB caching
+  auto tree_node = std::make_shared<TreeNode>(mesh->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve) {
   objects.nurbscurves->push_back(nurbscurve);
-  lookup[nurbscurve->guid] = nurbscurve;
-  graph.add_node(nurbscurve->guid, "nurbscurve_" + nurbscurve->name);
-  cache_geometry_aabb(nurbscurve->guid, nurbscurve);
-  auto tree_node = std::make_shared<TreeNode>(nurbscurve->guid);
+  lookup[nurbscurve->guid()] = nurbscurve;
+  graph.add_node(nurbscurve->guid(), "nurbscurve_" + nurbscurve->name);
+  cache_geometry_aabb(nurbscurve->guid(), nurbscurve);
+  auto tree_node = std::make_shared<TreeNode>(nurbscurve->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface) {
   objects.nurbssurfaces->push_back(nurbssurface);
-  lookup[nurbssurface->guid] = nurbssurface;
-  graph.add_node(nurbssurface->guid, "nurbssurface_" + nurbssurface->name);
-  cache_geometry_aabb(nurbssurface->guid, nurbssurface);
-  auto tree_node = std::make_shared<TreeNode>(nurbssurface->guid);
+  lookup[nurbssurface->guid()] = nurbssurface;
+  graph.add_node(nurbssurface->guid(), "nurbssurface_" + nurbssurface->name);
+  cache_geometry_aabb(nurbssurface->guid(), nurbssurface);
+  auto tree_node = std::make_shared<TreeNode>(nurbssurface->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep) {
   objects.breps->push_back(brep);
-  lookup[brep->guid] = brep;
-  graph.add_node(brep->guid, "brep_" + brep->name);
-  auto tree_node = std::make_shared<TreeNode>(brep->guid);
+  lookup[brep->guid()] = brep;
+  graph.add_node(brep->guid(), "brep_" + brep->name);
+  auto tree_node = std::make_shared<TreeNode>(brep->guid());
   return tree_node;
 }
 
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element) {
   objects.elements->push_back(element);
-  lookup[element->guid] = element;
-  graph.add_node(element->guid, "element_" + element->name);
-  auto tree_node = std::make_shared<TreeNode>(element->guid);
+  lookup[element->guid()] = element;
+  graph.add_node(element->guid(), "element_" + element->name);
+  auto tree_node = std::make_shared<TreeNode>(element->guid());
   return tree_node;
 }
 
@@ -183,7 +183,7 @@ bool Session::remove_object(const std::string &obj_guid) {
           auto &points = *objects.points;
           points.erase(std::remove_if(
                            points.begin(), points.end(),
-                           [&](const auto &p) { return p->guid == ptr->guid; }),
+                           [&](const auto &p) { return p->guid() == ptr->guid(); }),
                        points.end());
         }
         // Add other types when Objects class supports them
@@ -233,24 +233,24 @@ std::vector<std::string> Session::get_neighbours(const std::string &obj_guid) {
 // BVH Collision Detection
 
 // ADD NEW GEOMETRY TYPES HERE: Add bounding box computation for collision detection
-Obb Session::compute_bounding_box(const Geometry& geometry) {
+OBB Session::compute_bounding_box(const Geometry& geometry) {
   double inflate = Tolerance::APPROXIMATION;
   
-  return std::visit([inflate](auto&& geom_ptr) -> Obb {
+  return std::visit([inflate](auto&& geom_ptr) -> OBB {
     using T = std::decay_t<decltype(geom_ptr)>;
     
     if constexpr (std::is_same_v<T, std::shared_ptr<Point>>) {
-      return Obb::from_point(*geom_ptr, inflate);
+      return OBB::from_point(*geom_ptr, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Line>>) {
       std::vector<Point> points = {geom_ptr->start(), geom_ptr->end()};
-      return Obb::from_points(points, inflate);
+      return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Polyline>>) {
-      return Obb::from_points(geom_ptr->get_points(), inflate);
+      return OBB::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<PointCloud>>) {
-      return Obb::from_points(geom_ptr->get_points(), inflate);
+      return OBB::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
       // Extract vertices from mesh
@@ -259,11 +259,11 @@ Obb Session::compute_bounding_box(const Geometry& geometry) {
         points.push_back(vertex.position());
       }
       if (points.empty()) {
-        return Obb::from_point(Point(0, 0, 0), inflate);
+        return OBB::from_point(Point(0, 0, 0), inflate);
       }
-      return Obb::from_points(points, inflate);
+      return OBB::from_points(points, inflate);
     }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<Obb>>) {
+    else if constexpr (std::is_same_v<T, std::shared_ptr<OBB>>) {
       // Inflate existing bounding box
       auto inflated = *geom_ptr;
       inflated.half_size = Vector(
@@ -275,42 +275,42 @@ Obb Session::compute_bounding_box(const Geometry& geometry) {
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Plane>>) {
       // Create bounded box around plane origin
-      return Obb::from_point(geom_ptr->origin(), inflate * 10.0);
+      return OBB::from_point(geom_ptr->origin(), inflate * 10.0);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(); ++i)
         points.push_back(geom_ptr->get_cv(i));
-      if (points.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
-      return Obb::from_points(points, inflate);
+      if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
+      return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsSurface>>) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(0); ++i)
         for (int j = 0; j < geom_ptr->cv_count(1); ++j)
           points.push_back(geom_ptr->get_cv(i, j));
-      if (points.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
-      return Obb::from_points(points, inflate);
+      if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
+      return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Element>>) {
       auto e_copy = *geom_ptr;
       return e_copy.aabb();
     }
     else {
-      return Obb::from_point(Point(0, 0, 0), inflate);
+      return OBB::from_point(Point(0, 0, 0), inflate);
     }
   }, geometry);
 }
 
 std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
   // Collect all objects with their bounding boxes and GUIDs
-  std::vector<Obb> boxes;
+  std::vector<OBB> boxes;
   std::vector<std::string> guids;
   boxes.reserve(lookup.size());
   guids.reserve(lookup.size());
   
   for (const auto& [g, geometry] : lookup) {
-    Obb bbox = compute_bounding_box(geometry);
+    OBB bbox = compute_bounding_box(geometry);
     boxes.push_back(bbox);
     guids.push_back(g);
   }
@@ -355,7 +355,7 @@ Objects Session::get_geometry() const {
   
   auto add_to_lookup = [&](auto& collection) {
     for (auto& geom : *collection) {
-      transformed_lookup[geom->guid] = geom;
+      transformed_lookup[geom->guid()] = geom;
     }
   };
   
@@ -435,7 +435,7 @@ nlohmann::ordered_json Session::jsondump() const {
   nlohmann::ordered_json data;
   data["type"] = "Session";
   data["name"] = name;
-  data["guid"] = guid;
+  data["guid"] = guid();
   data["objects"] = objects.jsondump();
   data["tree"] = tree.jsondump();
   data["graph"] = graph.jsondump();
@@ -452,37 +452,37 @@ Session Session::jsonload(const nlohmann::json &data) {
 
   // Rebuild lookup from all objects
   for (const auto &bbox_ptr : *session.objects.bboxes) {
-    session.lookup[bbox_ptr->guid] = bbox_ptr;
+    session.lookup[bbox_ptr->guid()] = bbox_ptr;
   }
   for (const auto &line_ptr : *session.objects.lines) {
-    session.lookup[line_ptr->guid] = line_ptr;
+    session.lookup[line_ptr->guid()] = line_ptr;
   }
   for (const auto &mesh_ptr : *session.objects.meshes) {
-    session.lookup[mesh_ptr->guid] = mesh_ptr;
+    session.lookup[mesh_ptr->guid()] = mesh_ptr;
   }
   for (const auto &nc_ptr : *session.objects.nurbscurves) {
-    session.lookup[nc_ptr->guid] = nc_ptr;
+    session.lookup[nc_ptr->guid()] = nc_ptr;
   }
   for (const auto &ns_ptr : *session.objects.nurbssurfaces) {
-    session.lookup[ns_ptr->guid] = ns_ptr;
+    session.lookup[ns_ptr->guid()] = ns_ptr;
   }
   for (const auto &plane_ptr : *session.objects.planes) {
-    session.lookup[plane_ptr->guid] = plane_ptr;
+    session.lookup[plane_ptr->guid()] = plane_ptr;
   }
   for (const auto &point_ptr : *session.objects.points) {
-    session.lookup[point_ptr->guid] = point_ptr;
+    session.lookup[point_ptr->guid()] = point_ptr;
   }
   for (const auto &pointcloud_ptr : *session.objects.pointclouds) {
-    session.lookup[pointcloud_ptr->guid] = pointcloud_ptr;
+    session.lookup[pointcloud_ptr->guid()] = pointcloud_ptr;
   }
   for (const auto &polyline_ptr : *session.objects.polylines) {
-    session.lookup[polyline_ptr->guid] = polyline_ptr;
+    session.lookup[polyline_ptr->guid()] = polyline_ptr;
   }
   for (const auto &brep_ptr : *session.objects.breps) {
-    session.lookup[brep_ptr->guid] = brep_ptr;
+    session.lookup[brep_ptr->guid()] = brep_ptr;
   }
   for (const auto &element_ptr : *session.objects.elements) {
-    session.lookup[element_ptr->guid] = element_ptr;
+    session.lookup[element_ptr->guid()] = element_ptr;
   }
 
   // Load tree structure
@@ -520,7 +520,7 @@ Session Session::json_load(const std::string& filename) {
 std::string Session::pb_dumps() const {
   session_proto::Session proto;
   proto.set_name(name);
-  proto.set_guid(guid);
+  proto.set_guid(guid());
   proto.mutable_objects()->ParseFromString(objects.pb_dumps());
   proto.mutable_tree()->ParseFromString(tree.pb_dumps());
   proto.mutable_graph()->ParseFromString(graph.pb_dumps());
@@ -532,7 +532,7 @@ Session Session::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
 
   Session session(proto.name());
-  session.guid = proto.guid();
+  session.guid() = proto.guid();
 
   if (proto.has_objects()) {
     session.objects = Objects::pb_loads(proto.objects().SerializeAsString());
@@ -544,17 +544,17 @@ Session Session::pb_loads(const std::string& data) {
     session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
   }
 
-  for (const auto& p : *session.objects.points) session.lookup[p->guid] = p;
-  for (const auto& l : *session.objects.lines) session.lookup[l->guid] = l;
-  for (const auto& pl : *session.objects.planes) session.lookup[pl->guid] = pl;
-  for (const auto& b : *session.objects.bboxes) session.lookup[b->guid] = b;
-  for (const auto& pl : *session.objects.polylines) session.lookup[pl->guid] = pl;
-  for (const auto& pc : *session.objects.pointclouds) session.lookup[pc->guid] = pc;
-  for (const auto& m : *session.objects.meshes) session.lookup[m->guid] = m;
-  for (const auto& nc : *session.objects.nurbscurves) session.lookup[nc->guid] = nc;
-  for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid] = ns;
-  for (const auto& b : *session.objects.breps) session.lookup[b->guid] = b;
-  for (const auto& e : *session.objects.elements) session.lookup[e->guid] = e;
+  for (const auto& p : *session.objects.points) session.lookup[p->guid()] = p;
+  for (const auto& l : *session.objects.lines) session.lookup[l->guid()] = l;
+  for (const auto& pl : *session.objects.planes) session.lookup[pl->guid()] = pl;
+  for (const auto& b : *session.objects.bboxes) session.lookup[b->guid()] = b;
+  for (const auto& pl : *session.objects.polylines) session.lookup[pl->guid()] = pl;
+  for (const auto& pc : *session.objects.pointclouds) session.lookup[pc->guid()] = pc;
+  for (const auto& m : *session.objects.meshes) session.lookup[m->guid()] = m;
+  for (const auto& nc : *session.objects.nurbscurves) session.lookup[nc->guid()] = nc;
+  for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid()] = ns;
+  for (const auto& b : *session.objects.breps) session.lookup[b->guid()] = b;
+  for (const auto& e : *session.objects.elements) session.lookup[e->guid()] = e;
 
   return session;
 }
@@ -640,7 +640,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
         if (dist < closest_dist - tolerance) {
           hits.clear();
         }
-        hits.push_back({guid, *hit, dist});
+        hits.push_back({guid(), *hit, dist});
         closest_dist = dist;
       }
     }
@@ -728,7 +728,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       }
       return std::nullopt;
     }
-    else if constexpr (std::is_same_v<T, std::shared_ptr<Obb>>) {
+    else if constexpr (std::is_same_v<T, std::shared_ptr<OBB>>) {
       // Ray-bbox: use slab test to find entry point
       double tmin, tmax;
       if (Intersection::ray_box(ray.start(), ray.end() - ray.start(), *geom_ptr, 0.0, 1.0, tmin, tmax)) {

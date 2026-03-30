@@ -20,10 +20,12 @@ class Tree {
   friend class TreeNode;
 
 public:
-  std::string guid = ::guid();  ///< Unique identifier for the node
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string name = "my_tree"; ///< Tree identifier/name
 
 private:
+  mutable std::string _guid;
   std::shared_ptr<TreeNode> _root; ///< Root node of the tree root node
 
 public:

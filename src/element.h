@@ -20,7 +20,8 @@ using ElementGeometry = std::variant<std::monostate, Mesh, BRep>;
 
 class Element {
 public:
-    std::string guid = ::guid();
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;
     Xform session_transformation = Xform::identity();
 
@@ -35,13 +36,13 @@ public:
     bool has_geometry() const;
     std::string geometry_type_name() const;
     ElementGeometry session_geometry() const;
-    Obb aabb();
-    Obb obb();
+    OBB aabb();
+    OBB obb();
     Mesh collision_mesh();
     Point point();
     bool is_dirty() const { return _is_dirty; }
-    const std::optional<Obb>& cached_aabb() const { return _aabb; }
-    const std::optional<Obb>& cached_obb() const { return _obb; }
+    const std::optional<OBB>& cached_aabb() const { return _aabb; }
+    const std::optional<OBB>& cached_obb() const { return _obb; }
     const std::optional<Mesh>& cached_collision_mesh() const { return _collision_mesh; }
     const std::optional<Point>& cached_point() const { return _point; }
     size_t features_count() const { return _features.size(); }
@@ -70,21 +71,24 @@ public:
     void pb_dump(const std::string& path) const;
     static Element pb_load(const std::string& path);
 
+private:
+    mutable std::string _guid;
+
 protected:
     ElementGeometry _geometry;
     bool _is_dirty = true;
-    std::optional<Obb> _aabb;
-    std::optional<Obb> _obb;
+    std::optional<OBB> _aabb;
+    std::optional<OBB> _obb;
     std::optional<Mesh> _collision_mesh;
     std::optional<Point> _point;
     std::vector<std::function<Mesh(Mesh)>> _features;
 
-    Obb compute_aabb();
-    Obb compute_obb();
+    OBB compute_aabb();
+    OBB compute_obb();
     Mesh compute_collision_mesh();
     Point compute_point();
     Mesh apply_features(Mesh geo) const;
-    static Obb obb_from_geometry(const ElementGeometry& geo, bool as_aabb);
+    static OBB obb_from_geometry(const ElementGeometry& geo);
 };
 
 class ColumnElement : public Element {

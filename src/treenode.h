@@ -30,6 +30,7 @@ class Tree;
 class TreeNode : public std::enable_shared_from_this<TreeNode> {
   friend class Tree; // Allow Tree to access private members
 private:
+  mutable std::string _guid;
   std::weak_ptr<TreeNode> _parent; //< Non-owning pointer to parent
   std::vector<std::shared_ptr<TreeNode>>
       _children;             //< Owning pointers to children
@@ -38,7 +39,8 @@ private:
 public:
   TreeNode(std::string name = "my_node") { this->name = name; }
 
-  std::string guid = ::guid();    ///< Unique identifier for the tree node itself (distinct from geometry GUID)
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string name;               ///< Node identifier/name. For geometry nodes, this is the geometry's GUID
   std::optional<Color> color;     ///< Optional display color, used for layer nodes
 

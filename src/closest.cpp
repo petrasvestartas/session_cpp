@@ -320,7 +320,7 @@ static Point closest_point_on_triangle(const Point& p, const Point& a, const Poi
     return Point(a[0] + abx*v + acx*w, a[1] + aby*v + acy*w, a[2] + abz*v + acz*w);
 }
 
-static double aabb_min_distance(const BvhAABB& aabb, const Point& p) {
+static double aabb_min_distance(const AABB& aabb, const Point& p) {
     double dx = std::max(0.0, std::max(aabb.cx - aabb.hx - p[0], p[0] - aabb.cx - aabb.hx));
     double dy = std::max(0.0, std::max(aabb.cy - aabb.hy - p[1], p[1] - aabb.cy - aabb.hy));
     double dz = std::max(0.0, std::max(aabb.cz - aabb.hz - p[2], p[2] - aabb.cz - aabb.hz));

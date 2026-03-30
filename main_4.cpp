@@ -23,7 +23,7 @@ struct Timer {
     }
 };
 
-static BvhAABB make_aabb(double x0, double y0, double z0,
+static AABB make_aabb(double x0, double y0, double z0,
                           double x1, double y1, double z1) {
     constexpr double eps = 0.001;
     double lx = std::min(x0, x1) - eps, hx = std::max(x0, x1) + eps;
@@ -33,12 +33,12 @@ static BvhAABB make_aabb(double x0, double y0, double z0,
             (hx-lx)*0.5, (hy-ly)*0.5, (hz-lz)*0.5};
 }
 
-static BvhAABB line_aabb(const Line& l) {
+static AABB line_aabb(const Line& l) {
     return make_aabb(l.start()[0], l.start()[1], l.start()[2],
                      l.end()[0],   l.end()[1],   l.end()[2]);
 }
 
-static BvhAABB polyline_aabb(const Polyline& pl) {
+static AABB polyline_aabb(const Polyline& pl) {
     auto pts = pl.get_points();
     double lx=1e308, ly=1e308, lz=1e308, hx=-1e308, hy=-1e308, hz=-1e308;
     for (const auto& p : pts) {
@@ -49,7 +49,7 @@ static BvhAABB polyline_aabb(const Polyline& pl) {
     return make_aabb(lx, ly, lz, hx, hy, hz);
 }
 
-static BvhAABB curve_aabb(const NurbsCurve& c) {
+static AABB curve_aabb(const NurbsCurve& c) {
     double lx=1e308, ly=1e308, lz=1e308, hx=-1e308, hy=-1e308, hz=-1e308;
     for (int i = 0; i < c.cv_count(); i++) {
         Point p = c.get_cv(i);
@@ -60,14 +60,14 @@ static BvhAABB curve_aabb(const NurbsCurve& c) {
     return make_aabb(lx, ly, lz, hx, hy, hz);
 }
 
-static double aabb_min_dist(const BvhAABB& b, const Point& p) {
+static double aabb_min_dist(const AABB& b, const Point& p) {
     double dx = std::max(0.0, std::max(b.cx-b.hx - p[0], p[0] - b.cx-b.hx));
     double dy = std::max(0.0, std::max(b.cy-b.hy - p[1], p[1] - b.cy-b.hy));
     double dz = std::max(0.0, std::max(b.cz-b.hz - p[2], p[2] - b.cz-b.hz));
     return std::sqrt(dx*dx + dy*dy + dz*dz);
 }
 
-static double compute_ws(const std::vector<BvhAABB>& aabbs) {
+static double compute_ws(const std::vector<AABB>& aabbs) {
     double mx = 0;
     for (const auto& b : aabbs) {
         mx = std::max(mx, std::fabs(b.cx-b.hx));
@@ -183,7 +183,7 @@ int main() {
     // }
     // double bf_lines = timer.ms();
 
-    // std::vector<BvhAABB> la(N_LINES);
+    // std::vector<AABB> la(N_LINES);
     // for (int i = 0; i < N_LINES; i++) la[i] = line_aabb(lines[i]);
 
     // // BVH
@@ -243,7 +243,7 @@ int main() {
     // }
     // double bf_pl = timer.ms();
 
-    // std::vector<BvhAABB> pa(N_PL);
+    // std::vector<AABB> pa(N_PL);
     // for (int i = 0; i < N_PL; i++) pa[i] = polyline_aabb(pls[i]);
 
     // std::vector<double> bvh_pl_d(Q_PL);
@@ -304,7 +304,7 @@ int main() {
     // double bf_crv = timer.ms();
 
     // // per-curve AABBs (shared by BVH and AABB)
-    // std::vector<BvhAABB> ca(N_CRV);
+    // std::vector<AABB> ca(N_CRV);
     // for (int i = 0; i < N_CRV; i++) ca[i] = curve_aabb(crvs[i]);
 
     // // BVH per whole curve
@@ -365,7 +365,7 @@ int main() {
 
     // // 1) Uniform 20/curve
     // std::vector<ProxySeg> u20_segs;
-    // std::vector<BvhAABB> u20_aabbs;
+    // std::vector<AABB> u20_aabbs;
     // AABBTree u20_tree;
     // timer.start();
     // {
@@ -388,7 +388,7 @@ int main() {
     // //    ratio > 3 → very curvy      → 100 segs
     // //    Linear interpolation, clamped [5, 100]
     // std::vector<ProxySeg> hyb_segs;
-    // std::vector<BvhAABB> hyb_aabbs;
+    // std::vector<AABB> hyb_aabbs;
     // AABBTree hyb_tree;
     // std::vector<int> hyb_n_per(N_CRV);
     // timer.start();
@@ -421,7 +421,7 @@ int main() {
 
     // // 3) Uniform 50/curve
     // std::vector<ProxySeg> u50_segs;
-    // std::vector<BvhAABB> u50_aabbs;
+    // std::vector<AABB> u50_aabbs;
     // AABBTree u50_tree;
     // timer.start();
     // {
@@ -504,7 +504,7 @@ int main() {
     // for (int i = 0; i < Q_PC; i++) { auto [cp, idx, d] = Closest::pointcloud_point(pc, pcq[i]); bf_pc_d[i] = d; }
     // double bf_pc = timer.ms();
 
-    // std::vector<BvhAABB> pca(N_PC);
+    // std::vector<AABB> pca(N_PC);
     // for (int i = 0; i < N_PC; i++)
     //     pca[i] = {cloud[i][0], cloud[i][1], cloud[i][2], 0.001, 0.001, 0.001};
 

@@ -20,13 +20,15 @@ namespace session_cpp {
  */
 class Point {
 public:
-  std::string guid = ::guid();       ///< Unique identifier for the point
   std::string name = "my_point";     ///< Point identifier/name
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   double width = 1.0;                ///< Point diameter in pixels
   Color pointcolor = Color::blue();  ///< Color of the point (default: blue)
   Xform xform = Xform::identity();   ///< Transformation matrix
 
 private:
+  mutable std::string _guid;         ///< Lazily generated unique identifier
   double _x = 0.0;                   ///< X coordinate (private)
   double _y = 0.0;                   ///< Y coordinate (private)
   double _z = 0.0;                   ///< Z coordinate (private)

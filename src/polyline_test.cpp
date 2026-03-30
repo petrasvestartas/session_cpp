@@ -39,7 +39,7 @@ MINI_TEST("Polyline", "Constructor") {
     std::string plstr = pl.str();
     std::string plrepr = pl.repr();
 
-    // Copy (duplicates everything except guid)
+    // Copy (duplicates everything except guid())
     Polyline plcopy = pl;
     Polyline plother({
         Point(0.0, 0.0, 0.0),
@@ -83,14 +83,14 @@ MINI_TEST("Polyline", "Constructor") {
     plc.linecolor = Color(255, 0, 0, 255, "red");
     plc.width = 2.5;
 
-    MINI_CHECK(pl.name == "my_polyline" && !pl.guid.empty() && point_count == 4);
-    MINI_CHECK(segment_count == 3 && is_empty == false);
+    MINI_CHECK(pl.name == "my_polyline" && !pl.guid().empty() && point_count == 4);
+    MINI_CHECK(segment_count == 3 && !is_empty);
     MINI_CHECK(pt[0] == 1.0 && pt[1] == 0.0 && pt[2] == 0.0);
     MINI_CHECK(plstr.find("(0, 0, 0)") != std::string::npos);
     MINI_CHECK(plrepr.find("Polyline(my_polyline") != std::string::npos);
     MINI_CHECK(plrepr.find("4 points") != std::string::npos);
     MINI_CHECK(plcopy == plother);
-    MINI_CHECK(plcopy.guid != pl.guid);
+    MINI_CHECK(plcopy.guid() != pl.guid());
     MINI_CHECK(plmult.get_point(1)[0] == 2.0);
     MINI_CHECK(pldiv.get_point(1)[0] == 0.5);
     MINI_CHECK(pladd.get_point(0)[0] == 1.0 && pladd.get_point(0)[1] == 1.0);
@@ -245,8 +245,8 @@ MINI_TEST("Polyline", "Is Closed") {
     });
     bool is_closed = closed_pl.is_closed();
 
-    MINI_CHECK(is_open == false);
-    MINI_CHECK(is_closed == true);
+    MINI_CHECK(!is_open);
+    MINI_CHECK(is_closed);
 
 
 }
@@ -390,8 +390,8 @@ MINI_TEST("Polyline", "Is Clockwise") {
     });
     Plane plane;
 
-    MINI_CHECK(cw_pl.is_clockwise(plane) == true);
-    MINI_CHECK(ccw_pl.is_clockwise(plane) == false);
+    MINI_CHECK(cw_pl.is_clockwise(plane));
+    MINI_CHECK(!ccw_pl.is_clockwise(plane));
 }
 
 MINI_TEST("Polyline", "Convex Corners") {
@@ -487,6 +487,139 @@ MINI_TEST("Polyline", "Grid Of Points In Polygon") {
         MINI_CHECK(p[0] >= 0.0 && p[0] <= 4.0);
         MINI_CHECK(p[1] >= 0.0 && p[1] <= 4.0);
     }
+}
+
+MINI_TEST("Polyline", "Boolean Op") {
+    using P = Point;
+    Polyline sq_a({
+        P(-1.0, -1.0, 0.0),
+        P( 1.0, -1.0, 0.0),
+        P( 1.0,  1.0, 0.0),
+        P(-1.0,  1.0, 0.0),
+    });
+    Polyline sq_b({
+        P(0.0, 0.0, 0.0),
+        P(2.0, 0.0, 0.0),
+        P(2.0, 2.0, 0.0),
+        P(0.0, 2.0, 0.0),
+    });
+    Polyline sq_inside({
+        P(-0.5, -0.5, 0.0),
+        P( 0.5, -0.5, 0.0),
+        P( 0.5,  0.5, 0.0),
+        P(-0.5,  0.5, 0.0),
+    });
+    Polyline sq_disjoint({
+        P(5.0, 5.0, 0.0),
+        P(6.0, 5.0, 0.0),
+        P(6.0, 6.0, 0.0),
+        P(5.0, 6.0, 0.0),
+    });
+
+    auto isect  = Polyline::boolean_op(sq_a, sq_b, 0);
+    auto uni    = Polyline::boolean_op(sq_a, sq_b, 1);
+    auto diff   = Polyline::boolean_op(sq_a, sq_b, 2);
+
+    MINI_CHECK(isect.size() == 1);
+    MINI_CHECK(isect[0].point_count() == 4);
+    MINI_CHECK(uni.size() == 1);
+    MINI_CHECK(uni[0].point_count() == 8);
+    MINI_CHECK(diff.size() == 1);
+    MINI_CHECK(diff[0].point_count() == 6);
+
+    auto isect_in  = Polyline::boolean_op(sq_a, sq_inside, 0);
+    auto uni_in    = Polyline::boolean_op(sq_a, sq_inside, 1);
+    auto diff_in   = Polyline::boolean_op(sq_a, sq_inside, 2);
+
+    MINI_CHECK(isect_in.size() == 1);
+    MINI_CHECK(isect_in[0].point_count() == 4);
+    MINI_CHECK(uni_in.size() == 1);
+    MINI_CHECK(uni_in[0].point_count() == 4);
+    MINI_CHECK(diff_in.size() == 1);
+    MINI_CHECK(diff_in[0].point_count() == 4);
+
+    auto isect_dis = Polyline::boolean_op(sq_a, sq_disjoint, 0);
+    auto uni_dis   = Polyline::boolean_op(sq_a, sq_disjoint, 1);
+    auto diff_dis  = Polyline::boolean_op(sq_a, sq_disjoint, 2);
+
+    MINI_CHECK(isect_dis.size() == 0);
+    MINI_CHECK(uni_dis.size() == 2);
+    MINI_CHECK(diff_dis.size() == 1);
+}
+
+MINI_TEST("Polyline", "Simplify Points") {
+    std::vector<Point> pts;
+    for (int i = 0; i < 100; ++i) {
+        double x = static_cast<double>(i);
+        double y = std::sin(static_cast<double>(i) * 0.1) * 0.001;
+        double z = 0.0;
+        pts.push_back(Point(x, y, z));
+    }
+    std::vector<Point> result_tight = Polyline::simplify_points(pts, 0.0001);
+    std::vector<Point> result_loose = Polyline::simplify_points(pts, 0.01);
+    std::vector<Point> result_very_loose = Polyline::simplify_points(pts, 1.0);
+
+    MINI_CHECK(result_tight.size() <= pts.size());
+    MINI_CHECK(result_loose.size() <= result_tight.size());
+    MINI_CHECK(result_very_loose.size() <= result_loose.size());
+    MINI_CHECK(result_tight.front()[0] == pts.front()[0]);
+    MINI_CHECK(result_tight.back()[0] == pts.back()[0]);
+}
+
+MINI_TEST("Polyline", "Simplify") {
+    std::vector<Point> pts;
+    for (int i = 0; i < 20; ++i) {
+        double x = static_cast<double>(i);
+        double y = 0.0;
+        double z = 0.0;
+        pts.push_back(Point(x, y, z));
+    }
+    Polyline pl(pts);
+    Polyline result = pl.simplify(0.001);
+
+    MINI_CHECK(result.point_count() == 2);
+    MINI_CHECK(TOLERANCE.is_close(result.get_point(0)[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result.get_point(1)[0], 19.0));
+}
+
+MINI_TEST("Polyline", "Simplify Collinear") {
+    std::vector<Point> pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(3.0, 0.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+    };
+    std::vector<Point> result = Polyline::simplify_points(pts, 0.001);
+
+    MINI_CHECK(result.size() == 2);
+    MINI_CHECK(TOLERANCE.is_close(result.front()[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result.back()[0], 4.0));
+}
+
+MINI_TEST("Polyline", "Simplify Zigzag") {
+    std::vector<Point> pts;
+    for (int i = 0; i < 10; ++i) {
+        double x = static_cast<double>(i);
+        double y = (i % 2 == 1) ? 1.0 : 0.0;
+        double z = 0.0;
+        pts.push_back(Point(x, y, z));
+    }
+    std::vector<Point> result_tight = Polyline::simplify_points(pts, 0.1);
+    std::vector<Point> result_loose = Polyline::simplify_points(pts, 2.0);
+
+    MINI_CHECK(result_tight.size() == 10);
+    MINI_CHECK(result_loose.size() < result_tight.size());
+}
+
+MINI_TEST("Polyline", "Simplify Two Points") {
+    std::vector<Point> pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 1.0, 1.0),
+    };
+    std::vector<Point> result = Polyline::simplify_points(pts, 0.001);
+
+    MINI_CHECK(result.size() == 2);
 }
 
 } // namespace session_cpp

@@ -21,12 +21,14 @@ namespace session_cpp {
  */
 class PointCloud {
 public:
-    std::string guid = ::guid();
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name = "my_pointcloud";
     double point_size = 1.0;
     Xform xform;
 
 private:
+    mutable std::string _guid;
     std::vector<double> _coords;
     std::vector<int> _colors;
     std::vector<double> _normals;

@@ -36,7 +36,7 @@ std::string Vector::repr() {
       TOLERANCE.format_number(magnitude(), prec));
 }
 
-/// Equality operator (compares name and coordinates with tolerance, excludes guid)
+/// Equality operator (compares name and coordinates with tolerance, excludes guid())
 bool Vector::operator==(const Vector &other) const {
   return name == other.name &&
          std::round(_x * 1000000.0) == std::round(other._x * 1000000.0) &&
@@ -122,7 +122,7 @@ Vector operator*(double factor, const Vector &v) { return v * factor; }
 nlohmann::ordered_json Vector::jsondump() const {
   auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
   nlohmann::ordered_json data;
-  data["guid"] = guid;
+  data["guid"] = guid();
   data["name"] = name;
   data["type"] = "Vector";
   data["x"] = clean_float(_x);
@@ -134,7 +134,7 @@ nlohmann::ordered_json Vector::jsondump() const {
 /// Create vector from JSON data
 Vector Vector::jsonload(const nlohmann::json &data) {
   Vector vector(data["x"], data["y"], data["z"]);
-  vector.guid = data["guid"];
+  vector.guid() = data["guid"];
   vector.name = data["name"];
   return vector;
 }
@@ -575,7 +575,7 @@ void average_normal(const std::vector<Point>& pts, Vector& avg_normal) {
     double dy = pts.back()[1] - pts.front()[1];
     double dz = pts.back()[2] - pts.front()[2];
     size_t len = (dx*dx + dy*dy + dz*dz) < DISTANCE_SQUARED ? pts.size()-1 : pts.size();
-    avg_normal = Vector(0,0,0);
+    avg_normal = Vector(0, 0, 0);
     for (size_t i = 0; i < len; i++) {
         size_t prev = ((int)i - 1 + len) % len;
         size_t next = (i + 1) % len;

@@ -7,9 +7,9 @@
 
 namespace session_cpp {
 
-/// Copy constructor (creates a new guid while copying data)
+/// Copy constructor (creates a new guid() while copying data)
 Point::Point(const Point &other)
-    : guid(::guid()),
+    :
       name(other.name),
       width(other.width),
       pointcolor(other.pointcolor),
@@ -18,10 +18,10 @@ Point::Point(const Point &other)
       _y(other._y),
       _z(other._z) {}
 
-/// Copy assignment (creates a new guid while copying data)
+/// Copy assignment (creates a new guid() while copying data)
 Point &Point::operator=(const Point &other) {
   if (this != &other) {
-    guid = ::guid();
+    _guid.clear();
     name = other.name;
     width = other.width;
     pointcolor = other.pointcolor;
@@ -56,7 +56,7 @@ Point Point::transformed() const {
 nlohmann::ordered_json Point::jsondump() const {
   auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
   nlohmann::ordered_json data;
-  data["guid"] = guid;
+  data["guid"] = guid();
   data["name"] = name;
   data["pointcolor"] = pointcolor.jsondump();
   data["type"] = "Point";
@@ -71,7 +71,7 @@ nlohmann::ordered_json Point::jsondump() const {
 /// Create point from JSON data
 Point Point::jsonload(const nlohmann::json &data) {
   Point point(data["x"], data["y"], data["z"]);
-  point.guid = data["guid"];
+  point.guid() = data["guid"];
   point.name = data["name"];
   point.pointcolor = Color::jsonload(data["pointcolor"]);
   point.width = data["width"];
@@ -108,14 +108,14 @@ Point Point::json_load(const std::string& filename) {
 
 std::string Point::pb_dumps() const {
   session_proto::Point proto;
-  proto.set_guid(guid);
+  proto.set_guid(guid());
   proto.set_name(name);
   proto.set_x(_x);
   proto.set_y(_y);
   proto.set_z(_z);
   proto.set_width(width);
   
-  // Set color (no guid in proto schema)
+  // Set color (no guid() in proto schema)
   auto* color_proto = proto.mutable_pointcolor();
   color_proto->set_name(pointcolor.name);
   color_proto->set_r(pointcolor.r);
@@ -125,7 +125,7 @@ std::string Point::pb_dumps() const {
   
   // Set xform
   auto* xform_proto = proto.mutable_xform();
-  xform_proto->set_guid(xform.guid);
+  xform_proto->set_guid(xform.guid());
   xform_proto->set_name(xform.name);
   for (int i = 0; i < 16; ++i) {
     xform_proto->add_matrix(xform.m[i]);
@@ -139,11 +139,11 @@ Point Point::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
   
   Point point(proto.x(), proto.y(), proto.z());
-  point.guid = proto.guid();
+  point.guid() = proto.guid();
   point.name = proto.name();
   point.width = proto.width();
   
-  // Load color (no guid in proto schema)
+  // Load color (no guid() in proto schema)
   const auto& color_proto = proto.pointcolor();
   point.pointcolor.name = color_proto.name();
   point.pointcolor.r = color_proto.r();
@@ -153,7 +153,7 @@ Point Point::pb_loads(const std::string& data) {
   
   // Load xform
   const auto& xform_proto = proto.xform();
-  point.xform.guid = xform_proto.guid();
+  point.xform.guid() = xform_proto.guid();
   point.xform.name = xform_proto.name();
   for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
     point.xform.m[i] = xform_proto.matrix(i);

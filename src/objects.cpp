@@ -4,7 +4,7 @@
 namespace session_cpp {
 
 std::string Objects::str() const {
-  return fmt::format("Objects(name={}, guid={}, points={})", name, guid,
+  return fmt::format("Objects(name={}, guid={}, points={})", name, guid(),
                      points->size());
 }
 
@@ -77,7 +77,7 @@ nlohmann::ordered_json Objects::jsondump() const {
   }
 
   return nlohmann::ordered_json{{"type", "Objects"},
-                                {"guid", guid},
+                                {"guid", guid()},
                                 {"name", name},
                                 {"bboxes", bboxes_json},
                                 {"breps", breps_json},
@@ -98,10 +98,10 @@ Objects Objects::jsonload(const nlohmann::json &data) {
   
   // Load bboxes
   if (data.contains("bboxes")) {
-    std::vector<std::shared_ptr<Obb>> bboxes;
+    std::vector<std::shared_ptr<OBB>> bboxes;
     bboxes.reserve(data["bboxes"].size());
     for (const auto &bbox_data : data["bboxes"])
-      bboxes.push_back(std::make_shared<Obb>(Obb::jsonload(bbox_data)));
+      bboxes.push_back(std::make_shared<OBB>(OBB::jsonload(bbox_data)));
     *objects.bboxes = std::move(bboxes);
   }
   
@@ -195,8 +195,8 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     *objects.polylines = std::move(polylines);
   }
 
-  // Set guid if provided, otherwise generate a new one
-  objects.guid =
+  // Set guid() if provided, otherwise generate a new one
+  objects.guid() =
       data.contains("guid") ? data["guid"].get<std::string>() : ::guid();
 
   return objects;
@@ -224,7 +224,7 @@ Objects Objects::json_load(const std::string& filename) {
 std::string Objects::pb_dumps() const {
   session_proto::Objects proto;
   proto.set_name(name);
-  proto.set_guid(guid);
+  proto.set_guid(guid());
   for (const auto& p : *points) proto.add_points()->ParseFromString(p->pb_dumps());
   for (const auto& l : *lines) proto.add_lines()->ParseFromString(l->pb_dumps());
   for (const auto& pl : *planes) proto.add_planes()->ParseFromString(pl->pb_dumps());
@@ -243,7 +243,7 @@ Objects Objects::pb_loads(const std::string& data) {
   session_proto::Objects proto;
   proto.ParseFromString(data);
   Objects objects(proto.name());
-  objects.guid = proto.guid();
+  objects.guid() = proto.guid();
   for (const auto& p : proto.points())
     objects.points->push_back(std::make_shared<Point>(Point::pb_loads(p.SerializeAsString())));
   for (const auto& l : proto.lines())
@@ -251,7 +251,7 @@ Objects Objects::pb_loads(const std::string& data) {
   for (const auto& p : proto.planes())
     objects.planes->push_back(std::make_shared<Plane>(Plane::pb_loads(p.SerializeAsString())));
   for (const auto& b : proto.bboxes())
-    objects.bboxes->push_back(std::make_shared<Obb>(Obb::pb_loads(b.SerializeAsString())));
+    objects.bboxes->push_back(std::make_shared<OBB>(OBB::pb_loads(b.SerializeAsString())));
   for (const auto& p : proto.polylines())
     objects.polylines->push_back(std::make_shared<Polyline>(Polyline::pb_loads(p.SerializeAsString())));
   for (const auto& p : proto.pointclouds())

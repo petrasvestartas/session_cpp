@@ -64,8 +64,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Grid Target") {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
     NurbsSurface s = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-        Point(0,0,0), Point(0,4,0),
-        Point(4,0,0), Point(4,4,0),
+        Point(0, 0, 0),
+        Point(0, 4, 0),
+        Point(4, 0, 0),
+        Point(4, 4, 0),
     });
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 
@@ -76,8 +78,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Triangle") {
     NurbsSurface s = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-        Point(0,0,0), Point(2,4,0),
-        Point(4,0,0), Point(2,4,0),
+        Point(0, 0, 0),
+        Point(2, 4, 0),
+        Point(4, 0, 0),
+        Point(2, 4, 0),
     });
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 

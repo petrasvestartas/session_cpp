@@ -27,10 +27,12 @@ class Point; // Forward declaration
  */
 class Vector {
 public:
-  std::string guid = ::guid();    ///< Unique identifier for the vector
   std::string name = "my_vector"; ///< Vector identifier/name
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
 private:
+  mutable std::string _guid;            ///< Lazily generated unique identifier
   double _x = 0.0;                   ///< X coordinate (access via [0])
   double _y = 0.0;                   ///< Y coordinate (access via [1])
   double _z = 0.0;                   ///< Z coordinate (access via [2])
@@ -61,15 +63,15 @@ public:
   Vector(double x, double y, double z) : _x(x), _y(y), _z(z) {}
   Vector() : _x(0.0), _y(0.0), _z(0.0) {}
 
-  /// Copy constructor - creates new GUID for the copy
+  /// Copy constructor - creates new GUID for the copy (lazily)
   Vector(const Vector &other)
-      : guid(::guid()), name(other.name), _x(other._x), _y(other._y), _z(other._z),
+      : name(other.name), _x(other._x), _y(other._y), _z(other._z),
         _magnitude(other._magnitude), _has_magnitude(other._has_magnitude) {}
 
-  /// Copy assignment operator - creates new GUID for the copy
+  /// Copy assignment operator - creates new GUID for the copy (lazily)
   Vector &operator=(const Vector &other) {
     if (this != &other) {
-      guid = ::guid();
+      _guid.clear();
       name = other.name;
       _x = other._x;
       _y = other._y;

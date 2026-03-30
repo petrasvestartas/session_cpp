@@ -33,7 +33,7 @@ MINI_TEST("Vector", "Constructor") {
     std::string vstr = v.str();
     std::string vrepr = v.repr();
 
-    // Copy (duplicate everything but guid)
+    // Copy (duplicate everything but guid())
     Vector vcopy = v;
     Vector vother(1.0, 2.0, 3.0);
 
@@ -61,12 +61,12 @@ MINI_TEST("Vector", "Constructor") {
 
     MINI_CHECK(v.name == "my_vector");
     MINI_CHECK(v[0] == 10.0 && v[1] == 20.0 && v[2] == 30.0);
-    MINI_CHECK(!v.guid.empty());
+    MINI_CHECK(!v.guid().empty());
     MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
     MINI_CHECK(v_2p[0] == 1.0 && v_2p[1] == 2.0 && v_2p[2] == 3.0);
     MINI_CHECK(vstr == "10.000000, 20.000000, 30.000000");
     MINI_CHECK(vrepr == "Vector(my_vector, 10.000000, 20.000000, 30.000000, 37.416574)");
-    MINI_CHECK(vcopy == v && vcopy.guid != v.guid);
+    MINI_CHECK(vcopy == v && vcopy.guid() != v.guid());
     MINI_CHECK(vother != v);
     MINI_CHECK(vmult[0] == 20.0 && vmult[1] == 40.0 && vmult[2] == 60.0);
     MINI_CHECK(vdiv[0] == 5.0 && vdiv[1] == 10.0 && vdiv[2] == 15.0);
@@ -331,6 +331,7 @@ MINI_TEST("Vector", "Sum Of Vectors") {
         Vector(3.0, 3.0, 3.0),
     };
     Vector sum_v = Vector::sum_of_vectors(vecs);
+
     MINI_CHECK(sum_v[0] == 6.0);
     MINI_CHECK(sum_v[1] == 6.0);
     MINI_CHECK(sum_v[2] == 6.0);
@@ -338,6 +339,7 @@ MINI_TEST("Vector", "Sum Of Vectors") {
     // Empty list returns zero vector
     std::vector<Vector> empty;
     Vector zero = Vector::sum_of_vectors(empty);
+
     MINI_CHECK(zero[0] == 0.0);
     MINI_CHECK(zero[1] == 0.0);
     MINI_CHECK(zero[2] == 0.0);
@@ -354,6 +356,7 @@ MINI_TEST("Vector", "Average") {
         Vector(5.0, 6.0, 7.0),
     };
     Vector avg = Vector::average(vecs);
+
     MINI_CHECK(avg[0] == 3.0);
     MINI_CHECK(avg[1] == 4.0);
     MINI_CHECK(avg[2] == 5.0);
@@ -384,7 +387,9 @@ MINI_TEST("Vector", "Scale") {
 
     MINI_CHECK(v[0] == 1.0 && v[1] == 2.0 && v[2] == 3.0);
     MINI_CHECK(v_up[0] > 1.0);
-    MINI_CHECK(TOLERANCE.is_close(v_rt[0], 1.0) && TOLERANCE.is_close(v_rt[1], 2.0) && TOLERANCE.is_close(v_rt[2], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(v_rt[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(v_rt[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(v_rt[2], 3.0));
 }
 
 MINI_TEST("Vector", "Reflect") {

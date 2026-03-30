@@ -6,6 +6,7 @@ using namespace session_cpp::mini_test;
 
 MINI_TEST("RTree", "Creation") {
     RTree3 t;
+
     MINI_CHECK(t.count() == 0);
 }
 
@@ -13,6 +14,7 @@ MINI_TEST("RTree", "Insert") {
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 42);
+
     MINI_CHECK(t.count() == 1);
 }
 
@@ -24,6 +26,7 @@ MINI_TEST("RTree", "Insert Multiple") {
     t.insert(a1, b1, 1);
     double a2[3] = {4, 4, 4}, b2[3] = {5, 5, 5};
     t.insert(a2, b2, 2);
+
     MINI_CHECK(t.count() == 3);
 }
 
@@ -37,6 +40,7 @@ MINI_TEST("RTree", "Search Hit") {
         found = data;
         return true;
     });
+
     MINI_CHECK(hits == 1);
     MINI_CHECK(found == 0);
 }
@@ -47,6 +51,7 @@ MINI_TEST("RTree", "Search Miss") {
     t.insert(a_min, a_max, 7);
     double q_min[3] = {2, 2, 2}, q_max[3] = {3, 3, 3};
     int hits = t.search(q_min, q_max, [](int) -> bool { return true; });
+
     MINI_CHECK(hits == 0);
 }
 
@@ -55,6 +60,7 @@ MINI_TEST("RTree", "Remove") {
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 5);
     t.remove(a_min, a_max, 5);
+
     MINI_CHECK(t.count() == 0);
 }
 
@@ -67,6 +73,7 @@ MINI_TEST("RTree", "Remove All") {
     double a2[3] = {4, 4, 4}, b2[3] = {5, 5, 5};
     t.insert(a2, b2, 2);
     t.remove_all();
+
     MINI_CHECK(t.count() == 0);
 }
 
@@ -84,6 +91,7 @@ MINI_TEST("RTree", "Search Count") {
     t.insert(a4, b4, 4);
     double q_min[3] = {0, 0, 0}, q_max[3] = {4, 4, 4};
     int hits = t.search(q_min, q_max, [](int) -> bool { return true; });
+
     MINI_CHECK(hits == 3);
 }
 
@@ -95,6 +103,7 @@ MINI_TEST("RTree", "Search Stop") {
     t.insert(a_min, a_max, 2);
     double q_min[3] = {0, 0, 0}, q_max[3] = {1, 1, 1};
     int hits = t.search(q_min, q_max, [](int) -> bool { return false; });
+
     MINI_CHECK(hits == 1);
 }
 
@@ -212,6 +221,7 @@ MINI_TEST("RTree", "Search 100 Boxes") {
         found.push_back(data);
         return true;
     });
+
     MINI_CHECK(hits > 0);
     MINI_CHECK(hits <= 100);
     for (int d : found) {

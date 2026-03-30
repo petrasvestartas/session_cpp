@@ -420,7 +420,7 @@ bool Intersection::plane_plane_plane(
 bool Intersection::ray_box(
     const Point& origin,
     const Vector& direction,
-    const Obb& box,
+    const OBB& box,
     double t0,
     double t1,
     double& tmin,
@@ -461,7 +461,7 @@ bool Intersection::ray_box(
 
 bool Intersection::ray_box(
     const Line& line,
-    const Obb& box,
+    const OBB& box,
     double t0,
     double t1,
     double& tmin,
@@ -475,7 +475,7 @@ bool Intersection::ray_box(
 
 bool Intersection::ray_box(
     const Line& line,
-    const Obb& box,
+    const OBB& box,
     double t0,
     double t1,
     std::vector<Point>& intersection_points) {
@@ -2079,7 +2079,13 @@ bool Intersection::plane_4planes(const Plane& main_plane, const std::array<Plane
     if (!plane_plane_plane_check(planes[1], planes[2], main_plane, 0.1, p1)) return false;
     if (!plane_plane_plane_check(planes[2], planes[3], main_plane, 0.1, p2)) return false;
     if (!plane_plane_plane_check(planes[3], planes[0], main_plane, 0.1, p3)) return false;
-    output = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
+    output = Polyline(std::vector<Point>{
+        p0,
+        p1,
+        p2,
+        p3,
+        p0,
+    });
     return true;
 }
 
@@ -2089,7 +2095,9 @@ bool Intersection::plane_4planes_open(const Plane& main_plane, const std::array<
     if (!plane_plane_plane_check(planes[1], planes[2], main_plane, 0.1, p1)) return false;
     if (!plane_plane_plane_check(planes[2], planes[3], main_plane, 0.1, p2)) return false;
     if (!plane_plane_plane_check(planes[3], planes[0], main_plane, 0.1, p3)) return false;
-    output = Polyline(std::vector<Point>{p0, p1, p2, p3});
+    output = Polyline(std::vector<Point>{
+        p0, p1, p2, p3,
+    });
     return true;
 }
 
@@ -2099,7 +2107,13 @@ bool Intersection::plane_4lines(const Plane& plane, const Line& l0, const Line& 
     if (!line_plane(l1, plane, p1, false)) return false;
     if (!line_plane(l2, plane, p2, false)) return false;
     if (!line_plane(l3, plane, p3, false)) return false;
-    output = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
+    output = Polyline(std::vector<Point>{
+        p0,
+        p1,
+        p2,
+        p3,
+        p0,
+    });
     return true;
 }
 

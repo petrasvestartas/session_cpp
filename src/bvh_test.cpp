@@ -15,11 +15,13 @@ MINI_TEST("BVH", "Expand Bits") {
     MINI_CHECK(expand_bits(3) == 9);
 
     uint32_t result = expand_bits(1023);
+
     MINI_CHECK(result > 0);
 }
 
 MINI_TEST("BVH", "Morton Code Origin") {
     uint32_t code = calculate_morton_code(0.0, 0.0, 0.0, 100.0);
+
     MINI_CHECK(code < (1u << 30));
 }
 
@@ -27,9 +29,11 @@ MINI_TEST("BVH", "Morton Code Corners") {
     double world_size = 100.0;
 
     uint32_t code_min = calculate_morton_code(-50.0, -50.0, -50.0, world_size);
+
     MINI_CHECK(code_min == 0);
 
     uint32_t code_max = calculate_morton_code(50.0, 50.0, 50.0, world_size);
+
     MINI_CHECK(code_max == 0x3FFFFFFF);
 }
 
@@ -40,11 +44,13 @@ MINI_TEST("BVH", "Morton Code Spatial Locality") {
 
     uint32_t diff_nearby = (code1 > code2) ? (code1 - code2) : (code2 - code1);
     uint32_t diff_far = (code1 > code3) ? (code1 - code3) : (code3 - code1);
+
     MINI_CHECK(diff_nearby < diff_far);
 }
 
 MINI_TEST("BVH", "Node Creation") {
     BVHNode node;
+
     MINI_CHECK(node.left == nullptr);
     MINI_CHECK(node.right == nullptr);
     MINI_CHECK(node.object_id == -1);
@@ -53,30 +59,34 @@ MINI_TEST("BVH", "Node Creation") {
 
 MINI_TEST("BVH", "Node Leaf") {
     BVHNode node;
+
     MINI_CHECK(!node.is_leaf());
 
     node.object_id = 5;
+
     MINI_CHECK(node.is_leaf());
 }
 
 MINI_TEST("BVH", "Creation") {
     BVH bvh(100.0);
-    MINI_CHECK(!bvh.guid.empty());
+
+    MINI_CHECK(!bvh.guid().empty());
     MINI_CHECK(bvh.name == "my_bvh");
     MINI_CHECK(bvh.root == nullptr);
     MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 100.0));
 }
 
 MINI_TEST("BVH", "Build Empty") {
-    std::vector<Obb> boxes;
+    std::vector<OBB> boxes;
     BVH bvh = BVH::from_boxes(boxes, 100.0);
+
     MINI_CHECK(bvh.root == nullptr);
 }
 
 MINI_TEST("BVH", "Build Single") {
-    Obb bbox(
+    OBB bbox(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    std::vector<Obb> boxes = {bbox};
+    std::vector<OBB> boxes = {bbox};
 
     BVH bvh = BVH::from_boxes(boxes, 100.0);
 
@@ -86,12 +96,12 @@ MINI_TEST("BVH", "Build Single") {
 }
 
 MINI_TEST("BVH", "Build Multiple") {
-    std::vector<Obb> bboxes = {
-        Obb(
+    std::vector<OBB> bboxes = {
+        OBB(
             Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        Obb(
+        OBB(
             Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        Obb(
+        OBB(
             Point(0, 10, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
     };
 
@@ -106,24 +116,26 @@ MINI_TEST("BVH", "Build Multiple") {
 MINI_TEST("BVH", "Aabb Intersect") {
     BVH bvh(100.0);
 
-    Obb bbox1(
+    OBB bbox1(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    Obb bbox2(
+    OBB bbox2(
         Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+
     MINI_CHECK(bvh.aabb_intersect(bbox1, bbox2));
 
-    Obb bbox3(
+    OBB bbox3(
         Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+
     MINI_CHECK(!bvh.aabb_intersect(bbox1, bbox3));
 }
 
 MINI_TEST("BVH", "Check All Collisions") {
-    std::vector<Obb> bboxes = {
-        Obb(
+    std::vector<OBB> bboxes = {
+        OBB(
             Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        Obb(
+        OBB(
             Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
-        Obb(
+        OBB(
             Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
     };
 
@@ -143,19 +155,19 @@ MINI_TEST("BVH", "Check All Collisions") {
 MINI_TEST("BVH", "Merge Aabb") {
     BVH bvh(100.0);
 
-    Obb bbox1(
+    OBB bbox1(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
-    Obb bbox2(
+    OBB bbox2(
         Point(5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
 
-    Obb merged = bvh.merge_aabb(bbox1, bbox2);
+    OBB merged = bvh.merge_aabb(bbox1, bbox2);
 
     MINI_CHECK(TOLERANCE.is_close(merged.center[0], 2.5));
     MINI_CHECK(TOLERANCE.is_close(merged.half_size[0], 3.5));
 }
 
 MINI_TEST("BVH", "Fixed 100 Boxes") {
-    std::vector<Obb> boxes;
+    std::vector<OBB> boxes;
     boxes.reserve(100);
 
     auto add = [&](double min_x, double min_y, double min_z, double max_x, double max_y, double max_z) {

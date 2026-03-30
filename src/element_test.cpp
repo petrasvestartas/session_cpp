@@ -12,14 +12,19 @@ namespace session_cpp {
 
 MINI_TEST("Element", "Constructor") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m, "test_element");
 
     auto& geo = e.geometry();
     std::string name = e.name;
-    std::string guid = e.guid;
+    const std::string& guid = e.guid();
     bool dirty = e.is_dirty();
 
     std::string estr = e.str();
@@ -36,14 +41,19 @@ MINI_TEST("Element", "Constructor") {
     MINI_CHECK(std::holds_alternative<Mesh>(geo));
     MINI_CHECK(estr == "Element(test_element, Mesh)");
     MINI_CHECK(erepr == "Element(" + guid + ", test_element, Mesh)");
-    MINI_CHECK(ecopy == e && ecopy.guid != e.guid);
+    MINI_CHECK(ecopy == e && ecopy.guid() != e.guid());
     MINI_CHECK(e == e2);
     MINI_CHECK(e != e3);
 }
 
 MINI_TEST("Element", "Session Transformation") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
@@ -56,7 +66,12 @@ MINI_TEST("Element", "Session Transformation") {
 
 MINI_TEST("Element", "Add Feature") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
@@ -70,24 +85,34 @@ MINI_TEST("Element", "Add Feature") {
 
 MINI_TEST("Element", "Aabb") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
-    Obb aabb = e.aabb();
+    OBB aabb = e.aabb();
 
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[0], 0.5));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[1], 0.5));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[2], 0.0));
 }
 
-MINI_TEST("Element", "Obb") {
+MINI_TEST("Element", "OBB") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
-    Obb obb = e.obb();
+    OBB obb = e.obb();
 
     MINI_CHECK(TOLERANCE.is_close(obb.half_size[0], 0.5));
     MINI_CHECK(TOLERANCE.is_close(obb.half_size[1], 0.5));
@@ -95,7 +120,12 @@ MINI_TEST("Element", "Obb") {
 
 MINI_TEST("Element", "Session Geometry") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
@@ -113,7 +143,12 @@ MINI_TEST("Element", "Session Geometry") {
 
 MINI_TEST("Element", "Reset") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0)},
+        {
+            Point(0, 0, 0),
+            Point(2, 0, 0),
+            Point(2, 2, 0),
+            Point(0, 2, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
@@ -130,7 +165,12 @@ MINI_TEST("Element", "Reset") {
 
 MINI_TEST("Element", "Compute Point") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0)},
+        {
+            Point(0, 0, 0),
+            Point(2, 0, 0),
+            Point(2, 2, 0),
+            Point(0, 2, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m);
@@ -144,7 +184,7 @@ MINI_TEST("Element", "Compute Point") {
 MINI_TEST("Element", "Brep Aabb") {
     BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "brep_element");
-    Obb aabb = e.aabb();
+    OBB aabb = e.aabb();
     Point pt = e.point();
 
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[0], 1.0));
@@ -157,7 +197,12 @@ MINI_TEST("Element", "Brep Aabb") {
 
 MINI_TEST("Element", "Json Roundtrip") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        },
         {{0, 1, 2, 3}}
     );
     Element e(m, "json_test");
@@ -196,7 +241,7 @@ MINI_TEST("ColumnElement", "Constructor") {
 
     auto& geo = c.geometry();
     std::string name = c.name;
-    std::string guid = c.guid;
+    const std::string& guid = c.guid();
     std::string cstr = c.str();
     std::string crepr = c.repr();
 
@@ -212,7 +257,7 @@ MINI_TEST("ColumnElement", "Constructor") {
     MINI_CHECK(c.height() == 3.0);
     MINI_CHECK(cstr == "ColumnElement(col1, 0.4, 0.4, 3)");
     MINI_CHECK(crepr == "ColumnElement(" + guid + ", col1, 0.4, 0.4, 3)");
-    MINI_CHECK(ccopy == c && ccopy.guid != c.guid);
+    MINI_CHECK(ccopy == c && ccopy.guid() != c.guid());
     MINI_CHECK(c == c2);
     MINI_CHECK(c != c3);
 }
@@ -246,7 +291,7 @@ MINI_TEST("ColumnElement", "Extend") {
 
 MINI_TEST("ColumnElement", "Aabb") {
     ColumnElement c(0.4, 0.4, 3.0);
-    Obb aabb = c.aabb();
+    OBB aabb = c.aabb();
 
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[0], 0.2));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[1], 0.2));
@@ -311,7 +356,7 @@ MINI_TEST("BeamElement", "Constructor") {
 
     auto& geo = b.geometry();
     std::string name = b.name;
-    std::string guid = b.guid;
+    const std::string& guid = b.guid();
     std::string bstr = b.str();
     std::string brepr = b.repr();
 
@@ -327,7 +372,7 @@ MINI_TEST("BeamElement", "Constructor") {
     MINI_CHECK(b.length() == 3.0);
     MINI_CHECK(bstr == "BeamElement(beam1, 0.1, 0.2, 3)");
     MINI_CHECK(brepr == "BeamElement(" + guid + ", beam1, 0.1, 0.2, 3)");
-    MINI_CHECK(bcopy == b && bcopy.guid != b.guid);
+    MINI_CHECK(bcopy == b && bcopy.guid() != b.guid());
     MINI_CHECK(b == b2);
     MINI_CHECK(b != b3);
 }
@@ -361,7 +406,7 @@ MINI_TEST("BeamElement", "Extend") {
 
 MINI_TEST("BeamElement", "Aabb") {
     BeamElement b(0.1, 0.2, 3.0);
-    Obb aabb = b.aabb();
+    OBB aabb = b.aabb();
 
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[0], 0.05));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[1], 0.1));
@@ -423,13 +468,16 @@ MINI_TEST("BeamElement", "Protobuf Roundtrip") {
 
 MINI_TEST("PlateElement", "Constructor") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0),
+        Point(0, 0, 0),
+        Point(2, 0, 0),
+        Point(2, 2, 0),
+        Point(0, 2, 0),
     };
     PlateElement p(polygon, 0.2, "plate1");
 
     auto& geo = p.geometry();
     std::string name = p.name;
-    std::string guid = p.guid;
+    const std::string& guid = p.guid();
     std::string pstr = p.str();
     std::string prepr = p.repr();
 
@@ -444,7 +492,7 @@ MINI_TEST("PlateElement", "Constructor") {
     MINI_CHECK(p.thickness() == 0.2);
     MINI_CHECK(pstr == "PlateElement(plate1, 4 pts, 0.2)");
     MINI_CHECK(prepr == "PlateElement(" + guid + ", plate1, 4 pts, 0.2)");
-    MINI_CHECK(pcopy == p && pcopy.guid != p.guid);
+    MINI_CHECK(pcopy == p && pcopy.guid() != p.guid());
     MINI_CHECK(p == p2);
     MINI_CHECK(p != p3);
 }
@@ -461,7 +509,10 @@ MINI_TEST("PlateElement", "Setters") {
     PlateElement p;
     p.set_thickness(0.3);
     p.set_polygon({
-        Point(0, 0, 0), Point(3, 0, 0), Point(3, 3, 0), Point(0, 3, 0),
+        Point(0, 0, 0),
+        Point(3, 0, 0),
+        Point(3, 3, 0),
+        Point(0, 3, 0),
     });
 
     MINI_CHECK(p.thickness() == 0.3);
@@ -471,7 +522,10 @@ MINI_TEST("PlateElement", "Setters") {
 
 MINI_TEST("PlateElement", "Mesh Topology") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0),
+        Point(0, 0, 0),
+        Point(1, 0, 0),
+        Point(1, 1, 0),
+        Point(0, 1, 0),
     };
     PlateElement p(polygon, 0.5);
     auto& geo = std::get<Mesh>(p.geometry());
@@ -482,10 +536,13 @@ MINI_TEST("PlateElement", "Mesh Topology") {
 
 MINI_TEST("PlateElement", "Aabb") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0),
+        Point(0, 0, 0),
+        Point(2, 0, 0),
+        Point(2, 2, 0),
+        Point(0, 2, 0),
     };
     PlateElement p(polygon, 0.2);
-    Obb aabb = p.aabb();
+    OBB aabb = p.aabb();
 
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[1], 1.0));
@@ -494,7 +551,10 @@ MINI_TEST("PlateElement", "Aabb") {
 
 MINI_TEST("PlateElement", "Compute Point") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0),
+        Point(0, 0, 0),
+        Point(2, 0, 0),
+        Point(2, 2, 0),
+        Point(0, 2, 0),
     };
     PlateElement p(polygon, 0.2);
     Point pt = p.point();
@@ -506,7 +566,9 @@ MINI_TEST("PlateElement", "Compute Point") {
 
 MINI_TEST("PlateElement", "Triangle Polygon") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(1, 0, 0), Point(0.5, 1, 0),
+        Point(0, 0, 0),
+        Point(1, 0, 0),
+        Point(0.5, 1, 0),
     };
     PlateElement p(polygon, 0.1);
     auto& geo = std::get<Mesh>(p.geometry());
@@ -517,7 +579,10 @@ MINI_TEST("PlateElement", "Triangle Polygon") {
 
 MINI_TEST("PlateElement", "Json Roundtrip") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0),
+        Point(0, 0, 0),
+        Point(2, 0, 0),
+        Point(2, 2, 0),
+        Point(0, 2, 0),
     };
     PlateElement p(polygon, 0.3, "json_plate");
     p.session_transformation = Xform::translation(1.0, 2.0, 3.0);
@@ -534,7 +599,10 @@ MINI_TEST("PlateElement", "Json Roundtrip") {
 
 MINI_TEST("PlateElement", "Protobuf Roundtrip") {
     std::vector<Point> polygon = {
-        Point(0, 0, 0), Point(2, 0, 0), Point(2, 2, 0), Point(0, 2, 0),
+        Point(0, 0, 0),
+        Point(2, 0, 0),
+        Point(2, 2, 0),
+        Point(0, 2, 0),
     };
     PlateElement p(polygon, 0.3, "proto_plate");
     p.session_transformation = Xform::translation(1.0, 2.0, 3.0);

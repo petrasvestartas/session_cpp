@@ -1,125 +1,103 @@
-#include <filesystem>
-#include "mesh.h"
-#include "nurbssurface.h"
-#include "primitives.h"
-#include "remesh_nurbssurface_grid.h"
-#include "session.h"
+#include <iostream>
+#include "knot.h"
 using namespace session_cpp;
 
 int main() {
-    Session session("RemeshNurbsSurfaceGrid");
+    int order = 4, cv = 5;
 
-    std::string fp = (std::filesystem::path(__FILE__).parent_path().parent_path()
-                      / "session_data" / "RemeshNurbsSurfaceGrid.pb").string();
+    // knot_count
+    std::cout << knot::knot_count(order, cv) << "\n"; // 7
 
-    // // Sphere
-    // {
-    //     NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    // domain_tolerance
+    std::cout << knot::domain_tolerance(0, 10) << "\n"; // ~2.98e-07
 
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 191;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Sphere: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
+    // make_clamped_uniform
+    auto k = knot::make_clamped_uniform(order, cv);
+    for (auto v : k) std::cout << v << " "; std::cout << "\n"; // 0 0 0 1 2 2 2
 
+    // make_periodic_uniform
+    auto p = knot::make_periodic_uniform(order, cv);
+    for (auto v : p) std::cout << v << " "; std::cout << "\n"; // 0 1 2 3 4 5 6
 
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
+    // clamp
+    auto c = p;
+    knot::clamp(order, cv, c, 2);
+    for (auto v : c) std::cout << v << " "; std::cout << "\n"; // 2 2 2 3 4 4 4
 
-    // // Torus
-    // {
-    //     NurbsSurface s = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    // is_valid
+    std::cout << knot::is_valid(order, cv, k) << " " << knot::is_valid(2, 2, {}) << "\n"; // 1 0
 
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 693;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Cone: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
+    // is_clamped
+    std::cout << knot::is_clamped(order, cv, k, 2) << " " << knot::is_clamped(order, cv, p, 2) << "\n"; // 1 0
 
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
+    // is_periodic
+    std::cout << knot::is_periodic(order, cv, k) << " " << knot::is_periodic(order, cv, p) << "\n"; // 0 1
 
-    // // Cylinder
-    // {
-    //     NurbsSurface s = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    // get_domain
+    auto [t0, t1] = knot::get_domain(order, cv, k);
+    std::cout << t0 << " " << t1 << "\n"; // 0 2
 
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 42;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Cylinder: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
+    // set_domain
+    auto d = k;
+    knot::set_domain(order, cv, d, 5, 15);
+    for (auto v : d) std::cout << v << " "; std::cout << "\n"; // 5 5 5 10 15 15 15
 
+    // reverse
+    auto r = k;
+    knot::reverse(order, cv, r);
+    for (auto v : r) std::cout << v << " "; std::cout << "\n"; // 0 0 0 1 2 2 2
 
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
+    // multiplicity
+    std::cout << knot::multiplicity(order, cv, k, 0) << " " << knot::multiplicity(order, cv, k, 3) << "\n"; // 3 1
 
-    // // Cone
-    // {
-    //     NurbsSurface s = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    // span_count
+    std::cout << knot::span_count(order, cv, k) << "\n"; // 2
 
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 22;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Cone: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
+    // find_span
+    std::cout << knot::find_span(order, cv, k, 0.5) << " " << knot::find_span(order, cv, k, 1.5) << "\n"; // 0 1
 
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
+    // get_greville_abcissae
+    auto g = knot::get_greville_abcissae(order, cv, k);
+    for (auto v : g) std::cout << v << " "; std::cout << "\n"; // 0 0.333 1 1.667 2
 
-    // // Doubly curved — quality vs grid target
-    // {
-    //     NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
-    
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    // solve_tridiagonal
+    std::vector<double> lo={0,1}, di={2,2}, up={1,0}, rh={3,3}, sol;
+    knot::solve_tridiagonal(1, 2, lo, di, up, rh, sol);
+    std::cout << sol[0] << " " << sol[1] << "\n"; // 1 1
 
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 961;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Cone: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
+    // compute_parameters
+    double pts[] = {0,0,0, 1,0,0, 2,0,0, 3,0,0};
+    auto par = knot::compute_parameters(pts, 4, 3, CurveKnotStyle::Chord);
+    for (auto v : par) std::cout << v << " "; std::cout << "\n"; // 0 1 2 3
 
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
+    // build_interp_knots
+    auto ik = knot::build_interp_knots(par, 3);
+    for (auto v : ik) std::cout << v << " "; std::cout << "\n";
 
-    // // Flat quad — 2x2 bilinear patch, expect 4 vertices, 2 faces
-    // {
-    //     NurbsSurface s = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-    //         Point(0,0,0), Point(0,4,0),
-    //         Point(4,0,0), Point(4,4,0),
-    //     });
+    // eval_basis
+    int span = knot::find_span(order, cv, k, 1.0);
+    auto b = knot::eval_basis(order, k, span, 1.0);
+    for (auto v : b) std::cout << v << " "; std::cout << "\n"; // partition of unity
 
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    // build_fitted_knots_adaptive
+    auto fk = knot::build_fitted_knots_adaptive(par, pts, 4, 3, 4, 3);
+    std::cout << fk.size() << "\n";
 
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 4;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Cone: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
+    // build_fitted_knots_periodic_adaptive — n=4 unique points, params has 5 entries (including closing segment)
+    double cpts[] = {1,0,0, 0,1,0, -1,0,0, 0,-1,0, 1,0,0};
+    auto cpar = knot::compute_parameters(cpts, 5, 3, CurveKnotStyle::Chord);
+    auto fpk = knot::build_fitted_knots_periodic_adaptive(cpar, cpts, 4, 3, 4, 3);
+    std::cout << fpk.size() << "\n";
 
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
+    // solve_banded_spd — 3x3 tridiagonal SPD: [4 1 0; 1 4 1; 0 1 4] x = [5 6 5]
+    int bw = 1, n = 3;
+    std::vector<double> band(n * (bw + 1)); // lower triangle in banded storage
+    band[0*2+0]=4; band[0*2+1]=1; // row0: diag=4, sub=1
+    band[1*2+0]=4; band[1*2+1]=1; // row1: diag=4, sub=1
+    band[2*2+0]=4; band[2*2+1]=0; // row2: diag=4, sub=0
+    std::vector<double> rhs2 = {5, 6, 5};
+    knot::solve_banded_spd(1, n, bw, band, rhs2);
+    for (auto v : rhs2) std::cout << v << " "; std::cout << "\n"; // 1 1 1
 
-    // // Flat triangle — v=max edge collapsed to apex, expect 3 vertices, 1 face
-    // {
-    //     NurbsSurface s = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-    //         Point(0,0,0), Point(2,4,0),
-    //         Point(4,0,0), Point(2,4,0),
-    //     });
-    //     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
-    //     bool is_valid = m.is_valid();
-    //     bool has_correct_vertex_count = m.number_of_vertices() == 3;
-    //     std::cout << is_valid << " " << has_correct_vertex_count << " Cone: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
-
-    //     session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    // }
-
-    // Double-curved triangle — degree-2 in U and V, singular apex at v=max
-    {
-        NurbsSurface s = NurbsSurface::create(false, false, 2, 2, 3, 3, {
-            Point(0,0,0), Point(2,0,3), Point(4,0,0),
-            Point(0,2,2), Point(2,2,5), Point(4,2,2),
-            Point(2,4,0), Point(2,4,0), Point(2,4,0),
-        });
-        Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
-
-        bool is_valid = m.is_valid();
-        std::cout << is_valid << " Double-Curved Triangle: is_valid=" << is_valid << ", vertex_count=" << m.number_of_vertices() << "\n";
-
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    }
-
-    session.pb_dump(fp);
     return 0;
 }

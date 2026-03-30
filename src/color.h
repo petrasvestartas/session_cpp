@@ -18,7 +18,8 @@ namespace session_cpp {
 class Color {
 public:
   std::string name = "my_color"; ///< Name of the color
-  std::string guid = ::guid();   ///< Unique identifier
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   unsigned int r;                ///< Red component (0-255)
   unsigned int g;                ///< Green component (0-255)
   unsigned int b;                ///< Blue component (0-255)
@@ -32,9 +33,13 @@ public:
    * @param a Alpha component (0-255). Default: 255.
    * @param name Name for the color. Default: "my_color".
    */
-  Color(unsigned int r = 255, unsigned int g = 255, unsigned int b = 255,
-        unsigned int a = 255, std::string name = "my_color")
-      : name(name), r(r), g(g), b(b), a(a) {}
+  Color(int r = 255, int g = 255, int b = 255,
+        int a = 255, std::string name = "my_color")
+      : name(name),
+        r(static_cast<unsigned int>(std::clamp(r, 0, 255))),
+        g(static_cast<unsigned int>(std::clamp(g, 0, 255))),
+        b(static_cast<unsigned int>(std::clamp(b, 0, 255))),
+        a(static_cast<unsigned int>(std::clamp(a, 0, 255))) {}
 
   /// Copy constructor (creates a new guid while copying data)
   Color(const Color &other);
@@ -191,6 +196,9 @@ public:
    * @return A new Color with values converted to 0-255 range.
    */
   static Color from_unified_array(std::array<double, 4> arr);
+
+private:
+  mutable std::string _guid; ///< Lazily generated unique identifier
 };
 
 /**

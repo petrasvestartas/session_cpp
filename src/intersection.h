@@ -130,7 +130,7 @@ public:
   static bool ray_box(
     const Point& origin,
     const Vector& direction,
-    const Obb& box,
+    const OBB& box,
     double t0,
     double t1,
     double& tmin,
@@ -149,7 +149,7 @@ public:
    */
   static bool ray_box(
     const Line& line,
-    const Obb& box,
+    const OBB& box,
     double t0,
     double t1,
     double& tmin,
@@ -168,7 +168,7 @@ public:
    */
   static bool ray_box(
     const Line& line,
-    const Obb& box,
+    const OBB& box,
     double t0,
     double t1,
     std::vector<Point>& intersection_points

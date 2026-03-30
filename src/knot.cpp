@@ -171,43 +171,6 @@ bool is_periodic(int order, int cv_count, const std::vector<double>& knot) {
     return true;
 }
 
-bool is_uniform(int order, int cv_count, const std::vector<double>& knot) {
-    if (order < 2 || cv_count < order) {
-        return false;
-    }
-    
-    int kc = knot_count(order, cv_count);
-    if (static_cast<int>(knot.size()) != kc) {
-        return false;
-    }
-    
-    // Check interior knots (from order-2 to cv_count-1)
-    if (cv_count <= order) {
-        return true;  // No interior knots
-    }
-    
-    int start_idx = order - 2;
-    int end_idx = cv_count - 1;
-    
-    if (end_idx <= start_idx) {
-        return true;
-    }
-    
-    double delta = knot[start_idx + 1] - knot[start_idx];
-    if (delta <= 0) {
-        return false;
-    }
-    
-    const double tol = 1e-10;
-    for (int i = start_idx + 2; i <= end_idx; i++) {
-        if (std::fabs((knot[i] - knot[i - 1]) - delta) > tol) {
-            return false;
-        }
-    }
-    
-    return true;
-}
-
 std::pair<double, double> get_domain(int order, int cv_count, const std::vector<double>& knot) {
     if (order < 2 || cv_count < order || 
         static_cast<int>(knot.size()) < knot_count(order, cv_count)) {
@@ -316,32 +279,6 @@ int span_count(int order, int cv_count, const std::vector<double>& knot) {
     return count;
 }
 
-std::vector<double> get_span_vector(int order, int cv_count, const std::vector<double>& knot) {
-    if (order < 2 || cv_count < order) {
-        return std::vector<double>();
-    }
-    
-    int kc = knot_count(order, cv_count);
-    if (static_cast<int>(knot.size()) != kc) {
-        return std::vector<double>();
-    }
-    
-    std::vector<double> spans;
-    const double tol = 1e-14;
-    
-    for (int i = 0; i < kc - 1; i++) {
-        if (std::fabs(knot[i + 1] - knot[i]) > tol) {
-            spans.push_back(knot[i]);
-        }
-    }
-    
-    if (kc > 0) {
-        spans.push_back(knot[kc - 1]);
-    }
-    
-    return spans;
-}
-
 int find_span(int order, int cv_count, const std::vector<double>& knot, 
               double t, int side, int hint) {
     (void)side;  // Not used in this implementation
@@ -382,38 +319,6 @@ int find_span(int order, int cv_count, const std::vector<double>& knot,
     }
     
     return low;
-}
-
-double superfluous_knot(int order, int cv_count, const std::vector<double>& knot, int end) {
-    if (order < 2 || cv_count < order) {
-        return 0.0;
-    }
-    
-    int kc = knot_count(order, cv_count);
-    if (static_cast<int>(knot.size()) != kc) {
-        return 0.0;
-    }
-    
-    if (end == 0) {
-        // First superfluous knot
-        return 2.0 * knot[0] - knot[order - 2];
-    } else {
-        // Last superfluous knot
-        return 2.0 * knot[kc - 1] - knot[cv_count - order];
-    }
-}
-
-double greville_abcissa(int order, const double* knot) {
-    if (order < 2 || knot == nullptr) {
-        return 0.0;
-    }
-    
-    int d = order - 1;  // degree
-    double sum = 0.0;
-    for (int i = 0; i < d; i++) {
-        sum += knot[i];
-    }
-    return sum / d;
 }
 
 std::vector<double> get_greville_abcissae(int order, int cv_count, 
@@ -586,7 +491,7 @@ std::vector<double> eval_basis(int order, const std::vector<double>& knot, int s
     return basis;
 }
 
-std::vector<double> build_fitted_knots(const std::vector<double>& params, int num_cvs, int degree) {
+static std::vector<double> build_fitted_knots(const std::vector<double>& params, int num_cvs, int degree) {
     int m = static_cast<int>(params.size());
     int n_interior = num_cvs - degree - 1;
     int order = degree + 1;

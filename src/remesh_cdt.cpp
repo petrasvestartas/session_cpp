@@ -1,17 +1,30 @@
 #include "remesh_cdt.h"
+#include "session_config.h"
 #include <vector>
 #include <array>
 #include <map>
+#include <set>
 #include <stack>
 #include <algorithm>
 #include <numeric>
 #include <stdexcept>
 #include <cmath>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace session_cpp {
 namespace {
 
 // ---- Types ----
+
+// Hash for pair<int64_t,int64_t> used in unordered_map.
+struct P64Hash {
+    size_t operator()(const std::pair<int64_t,int64_t>& p) const noexcept {
+        size_t h = std::hash<int64_t>()(p.first);
+        h ^= std::hash<int64_t>()(p.second) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        return h;
+    }
+};
 
 // Integer point scaled by 1e6 for exact arithmetic during sweep.
 struct Point64 {
@@ -271,6 +284,25 @@ private:
     bool                 useDelaunay = true;
     Vertex2*             lowermostVertex = nullptr;
     Edge*                firstActive = nullptr; // head of doubly-linked active-edge list
+    int64_t              sweepY_ = 0;
+
+    // Comparator: orders active edges by x-intercept at current sweepY_.
+    // Non-crossing invariant (CDT input) ensures relative order is stable across y-bands.
+    struct EdgeXCmp {
+        const int64_t* pY = nullptr;
+        static double xAt(const Edge* e, int64_t y) noexcept {
+            int64_t dy = e->vB->pt.y - e->vT->pt.y;
+            if (dy == 0) return (double)(e->vT->pt.x + e->vB->pt.x) * 0.5;
+            return e->vT->pt.x + (double)(e->vB->pt.x - e->vT->pt.x)
+                   * (double)(y - e->vT->pt.y) / (double)dy;
+        }
+        bool operator()(const Edge* a, const Edge* b) const noexcept {
+            double xa = xAt(a, *pY), xb = xAt(b, *pY);
+            if (xa != xb) return xa < xb;
+            return a < b; // pointer tiebreak for strict weak ordering
+        }
+    };
+    std::set<Edge*, EdgeXCmp> activeSet_;
 
     void      AddPath(const Path64& path);
     bool      AddPaths(const Paths64& paths);
@@ -288,7 +320,8 @@ private:
     void      ForceLegal(Edge* edge);
 
 public:
-    explicit Delaunay(bool delaunay = true) : useDelaunay(delaunay) {}
+    explicit Delaunay(bool delaunay = true)
+        : useDelaunay(delaunay), activeSet_(EdgeXCmp{&sweepY_}) {}
     ~Delaunay() { CleanUp(); }
     Paths64 Execute(const Paths64& paths, TriangulateResult& triResult);
 };
@@ -301,11 +334,12 @@ void Delaunay::CleanUp()
     allEdges.resize(0);
     for (auto t : allTriangles) delete t;
     allTriangles.resize(0);
+    activeSet_.clear();
     firstActive = nullptr;
     lowermostVertex = nullptr;
 }
 
-// Prepend edge to the active-edge doubly-linked list.
+// Prepend edge to the active-edge doubly-linked list and insert into BST.
 void Delaunay::AddEdgeToActives(Edge* edge)
 {
     if (edge->isActive) return;
@@ -314,11 +348,13 @@ void Delaunay::AddEdgeToActives(Edge* edge)
     edge->isActive = true;
     if (firstActive) firstActive->prevE = edge;
     firstActive = edge;
+    activeSet_.insert(edge);
 }
 
-// Remove edge from active list and from both endpoint vertex edge-lists.
+// Remove edge from active list/BST and from both endpoint vertex edge-lists.
 void Delaunay::RemoveEdgeFromActives(Edge* edge)
 {
+    activeSet_.erase(edge);
     RemoveEdgeFromVertex(edge->vB, edge);
     RemoveEdgeFromVertex(edge->vT, edge);
     Edge* prev = edge->prevE;
@@ -420,19 +456,33 @@ Edge* Delaunay::CreateInnerLocMinLooseEdge(Vertex2* vAbove)
 
     int64_t xAbove = vAbove->pt.x;
     int64_t yAbove = vAbove->pt.y;
+    sweepY_ = yAbove;
 
-    Edge* e = firstActive, *eBelow = nullptr;
+    // Binary-search the BST (ordered by x-intercept at sweepY_) for the edge
+    // directly below vAbove.  Qualifying edges have x-intercept <= xAbove, so
+    // they lie to the left of the lower_bound of a sentinel at xAbove.
+    // Non-crossing invariant guarantees BST ordering is consistent at any y.
+    Vertex2 sv({xAbove, yAbove});
+    Edge    sentEdge;
+    sentEdge.vT = &sv; sentEdge.vB = &sv; sentEdge.vL = &sv; sentEdge.vR = &sv;
+
+    Edge* eBelow = nullptr;
     double bestD = -1.0;
-    while (e) {
-        if (e->vL->pt.x <= xAbove && e->vR->pt.x >= xAbove &&
-            e->vB->pt.y >= yAbove && e->vB != vAbove && e->vT != vAbove &&
-            !LeftTurning(e->vL->pt, vAbove->pt, e->vR->pt))
-        {
-            double d = ShortestDistFromSegment(vAbove->pt, e->vL->pt, e->vR->pt);
-            if (!eBelow || d < bestD) { eBelow = e; bestD = d; }
-        }
-        e = e->nextE;
-    }
+    auto tryE = [&](Edge* e) {
+        if (e->vL->pt.x > xAbove || e->vR->pt.x < xAbove) return;
+        if (e->vB->pt.y < yAbove || e->vB == vAbove || e->vT == vAbove) return;
+        if (LeftTurning(e->vL->pt, vAbove->pt, e->vR->pt)) return;
+        double d = ShortestDistFromSegment(vAbove->pt, e->vL->pt, e->vR->pt);
+        if (!eBelow || d < bestD) { eBelow = e; bestD = d; }
+    };
+
+    auto it = activeSet_.lower_bound(&sentEdge);
+    // Scan up to 4 candidates to the left (qualifying edges have x-intercept < xAbove).
+    auto rit = it;
+    for (int i = 0; i < 4 && rit != activeSet_.begin(); ++i) { --rit; tryE(*rit); }
+    // Also check the element at lower_bound itself (x-intercept == xAbove edge case).
+    if (it != activeSet_.end()) tryE(*it);
+
     if (!eBelow) return nullptr;
 
     Vertex2* vBest = (eBelow->vT->pt.y <= yAbove) ? eBelow->vB : eBelow->vT;
@@ -440,7 +490,7 @@ Edge* Delaunay::CreateInnerLocMinLooseEdge(Vertex2* vAbove)
     int64_t yBest = vBest->pt.y;
 
     // Refine: if any active edge crosses the tentative connection, prefer its endpoint.
-    e = firstActive;
+    Edge* e = firstActive;
     if (xBest < xAbove) {
         while (e) {
             if (e->vR->pt.x > xBest && e->vL->pt.x < xAbove &&
@@ -755,6 +805,7 @@ Paths64 Delaunay::Execute(const Paths64& paths, TriangulateResult& triResult)
     MergeDupOrCollinearVertices();
 
     int64_t currY = allVertices[0]->pt.y;
+    sweepY_ = currY;
     for (auto vIt = allVertices.begin(); vIt != allVertices.end(); ++vIt) {
         Vertex2* v = *vIt;
         if (v->edges.empty()) continue;
@@ -794,6 +845,7 @@ Paths64 Delaunay::Execute(const Paths64& paths, TriangulateResult& triResult)
                 }
             }
             currY = v->pt.y;
+            sweepY_ = currY;
         }
 
         for (int i = static_cast<int>(v->edges.size()) - 1; i >= 0; --i) {
@@ -866,7 +918,8 @@ std::vector<std::array<int,3>> cdt_triangulate(
     for (auto& p : border_2d) flat.push_back(p);
     for (auto& h : holes_2d) for (auto& p : h) flat.push_back(p);
 
-    std::map<std::pair<int64_t,int64_t>, int> pt_map;
+    std::unordered_map<std::pair<int64_t,int64_t>, int, P64Hash> pt_map;
+    pt_map.reserve(flat.size());
     for (int i = 0; i < (int)flat.size(); ++i)
         pt_map.emplace(std::make_pair(
             int64_t(std::round(flat[i].first  * scale)),
@@ -924,6 +977,184 @@ bool point_in_polygon_2d(double px, double py, const std::vector<double>& coords
         }
     }
     return winding != 0;
+}
+
+namespace {
+
+static std::vector<Point> strip_close_pl(const Polyline& pl) {
+    auto pts = pl.get_points();
+    if (pts.size() > 1) {
+        const auto& f = pts.front();
+        const auto& b = pts.back();
+        if (std::abs(f[0]-b[0]) < 1e-12 && std::abs(f[1]-b[1]) < 1e-12 && std::abs(f[2]-b[2]) < 1e-12)
+            pts.pop_back();
+    }
+    return pts;
+}
+
+static double signed_area_2d(const std::vector<std::pair<double,double>>& pts) {
+    double area = 0.0;
+    size_t n = pts.size();
+    for (size_t i = 0; i < n; ++i) {
+        size_t j = (i + 1) % n;
+        area += pts[i].first * pts[j].second - pts[j].first * pts[i].second;
+    }
+    return area * 0.5;
+}
+
+} // anonymous namespace
+
+std::vector<std::array<int,3>> RemeshCDT::triangulate(const std::vector<Polyline>& polylines) {
+    if (polylines.empty()) return {};
+    auto border_pts = strip_close_pl(polylines[0]);
+    if (border_pts.size() < 3) return {};
+    std::vector<std::pair<double,double>> boundary_2d;
+    for (const auto& p : border_pts) boundary_2d.push_back({p[0], p[1]});
+    std::vector<std::vector<std::pair<double,double>>> holes_2d;
+    for (size_t i = 1; i < polylines.size(); ++i) {
+        auto h = strip_close_pl(polylines[i]);
+        if (h.size() < 3) continue;
+        std::vector<std::pair<double,double>> h2d;
+        for (const auto& p : h) h2d.push_back({p[0], p[1]});
+        holes_2d.push_back(std::move(h2d));
+    }
+    return cdt_triangulate(boundary_2d, holes_2d);
+}
+
+
+Mesh RemeshCDT::from_polylines(const std::vector<Polyline>& polylines, bool is_2d, bool is_first_boundary) {
+    if (polylines.empty()) return Mesh();
+
+    // Find border index
+    int border_idx = 0;
+    if (!is_first_boundary && polylines.size() > 1) {
+        double max_diag = 0.0;
+        for (size_t i = 0; i < polylines.size(); ++i) {
+            auto pts = polylines[i].get_points();
+            if (pts.size() < 3) continue;
+            double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
+            double maxx = minx, maxy = miny, maxz = minz;
+            for (const auto& p : pts) {
+                if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
+                if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
+                if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
+            }
+            double dx = maxx-minx, dy = maxy-miny, dz = maxz-minz;
+            double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
+            if (diag > max_diag) { max_diag = diag; border_idx = static_cast<int>(i); }
+        }
+    }
+
+    // Strip closing duplicates
+    auto border = strip_close_pl(polylines[border_idx]);
+    if (border.size() < 3) return Mesh();
+
+    std::vector<std::vector<Point>> hole_pts_3d;
+    for (size_t i = 0; i < polylines.size(); ++i) {
+        if (static_cast<int>(i) == border_idx) continue;
+        auto h = strip_close_pl(polylines[i]);
+        if (h.size() < 3) continue;
+        hole_pts_3d.push_back(h);
+    }
+
+    // Project to 2D
+    std::vector<std::pair<double,double>> boundary_2d;
+    std::vector<std::vector<std::pair<double,double>>> holes_2d;
+
+    if (is_2d) {
+        for (const auto& p : border) boundary_2d.push_back({p[0], p[1]});
+        for (auto& hole : hole_pts_3d) {
+            std::vector<std::pair<double,double>> h2d;
+            for (const auto& p : hole) h2d.push_back({p[0], p[1]});
+            holes_2d.push_back(std::move(h2d));
+        }
+    } else {
+        std::vector<Point> all_pts = border;
+        for (const auto& h : hole_pts_3d)
+            for (const auto& p : h) all_pts.push_back(p);
+        Polyline all_pl(all_pts);
+        Point origin;
+        Vector xaxis, yaxis, zaxis;
+        all_pl.get_average_plane(origin, xaxis, yaxis, zaxis);
+
+        auto project_2d = [&](const Point& p) -> std::pair<double,double> {
+            double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+            return { dx*xaxis[0]+dy*xaxis[1]+dz*xaxis[2],
+                     dx*yaxis[0]+dy*yaxis[1]+dz*yaxis[2] };
+        };
+        for (const auto& p : border) boundary_2d.push_back(project_2d(p));
+        for (auto& hole : hole_pts_3d) {
+            std::vector<std::pair<double,double>> h2d;
+            for (const auto& p : hole) h2d.push_back(project_2d(p));
+            holes_2d.push_back(std::move(h2d));
+        }
+    }
+
+    // Enforce CCW border, CW holes
+    if (signed_area_2d(boundary_2d) < 0.0) {
+        std::reverse(border.begin(), border.end());
+        std::reverse(boundary_2d.begin(), boundary_2d.end());
+    }
+    for (size_t i = 0; i < hole_pts_3d.size(); ++i) {
+        if (signed_area_2d(holes_2d[i]) > 0.0) {
+            std::reverse(hole_pts_3d[i].begin(), hole_pts_3d[i].end());
+            std::reverse(holes_2d[i].begin(), holes_2d[i].end());
+        }
+    }
+
+    auto tris = cdt_triangulate(boundary_2d, holes_2d);
+
+    std::vector<Point> all_pts = border;
+    for (const auto& h : hole_pts_3d)
+        for (const auto& p : h) all_pts.push_back(p);
+
+    Mesh mesh;
+    std::vector<size_t> vkeys;
+    for (const auto& p : all_pts) vkeys.push_back(mesh.add_vertex(p));
+
+    if (SESSION_CONFIG.explode_mesh_faces) {
+        for (const auto& t : tris)
+            mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+        return mesh;
+    }
+
+    if (hole_pts_3d.empty()) {
+        std::vector<size_t> fvkeys(vkeys.begin(), vkeys.begin() + border.size());
+        auto fkey = mesh.add_face(fvkeys);
+        if (fkey.has_value()) {
+            std::vector<std::array<size_t,3>> tri_list;
+            for (const auto& f : tris) {
+                if (vkeys[f[0]]==vkeys[f[1]] || vkeys[f[1]]==vkeys[f[2]] || vkeys[f[2]]==vkeys[f[0]]) continue;
+                tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+            }
+            std::unordered_set<size_t> covered;
+            for (const auto& t : tri_list) { covered.insert(t[0]); covered.insert(t[1]); covered.insert(t[2]); }
+            size_t n_vk = border.size();
+            for (size_t m = 0; m < n_vk; ++m) {
+                if (!covered.count(vkeys[m]))
+                    tri_list.push_back({vkeys[(m+n_vk-1)%n_vk], vkeys[m], vkeys[(m+1)%n_vk]});
+            }
+            mesh.set_face_triangulation(fkey.value(), std::move(tri_list));
+        }
+    } else {
+        std::vector<size_t> fvkeys(vkeys.begin(), vkeys.begin() + border.size());
+        auto fkey = mesh.add_face(fvkeys);
+        if (fkey.has_value()) {
+            std::vector<std::vector<size_t>> hole_rings;
+            size_t off = border.size();
+            for (const auto& h : hole_pts_3d) {
+                std::vector<size_t> ring(vkeys.begin()+off, vkeys.begin()+off+h.size());
+                hole_rings.push_back(ring); off += h.size();
+            }
+            mesh.set_face_holes(fkey.value(), hole_rings);
+            std::vector<std::array<size_t,3>> tri_list;
+            for (const auto& f : tris)
+                if (vkeys[f[0]]!=vkeys[f[1]] && vkeys[f[1]]!=vkeys[f[2]] && vkeys[f[2]]!=vkeys[f[0]])
+                    tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
+            mesh.set_face_triangulation(fkey.value(), std::move(tri_list));
+        }
+    }
+    return mesh;
 }
 
 } // namespace session_cpp

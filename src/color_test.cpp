@@ -31,18 +31,18 @@ namespace session_cpp {
         std::string cstr = c.str();
         std::string crepr = c.repr();
 
-        // Copy (duplicates everything except guid)
+        // Copy (duplicates everything except guid())
         Color ccopy = c;
         Color cother(255, 0, 0, 255, "red");
 
         MINI_CHECK(c.name == "red");
-        MINI_CHECK(c.guid != "");
+        MINI_CHECK(c.guid() != "");
         MINI_CHECK(c[0] == 255 && c[1] == 0 && c[2] == 0 && c[3] == 255);
         MINI_CHECK(r == 255 && g == 0 && b == 0 && a == 255);
         MINI_CHECK(cstr == "255, 0, 0, 255");
         MINI_CHECK(crepr == "Color(red, 255, 0, 0, 255)");
         MINI_CHECK(ccopy == cother);
-        MINI_CHECK(ccopy.guid != c.guid);
+        MINI_CHECK(ccopy.guid() != c.guid());
     }
 
     MINI_TEST("Color", "Json Roundtrip"){
@@ -123,6 +123,7 @@ namespace session_cpp {
       Color navy = Color::navy();
       Color purple = Color::purple();
       Color silver = Color::silver();
+
       MINI_CHECK(white == Color(255, 255, 255, 255, "white"));
       MINI_CHECK(black == Color(0, 0, 0, 255, "black"));
       MINI_CHECK(grey == Color(128, 128, 128, 255, "grey"));

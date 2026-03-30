@@ -40,7 +40,7 @@ MINI_TEST("PointCloud", "Constructor") {
     std::string pcstr = pc.str();
     std::string pcrepr = pc.repr();
 
-    // Copy (duplicates everything except guid)
+    // Copy (duplicates everything except guid())
     PointCloud pccopy = pc;
 
     // Get point/color/normal at index
@@ -75,11 +75,11 @@ MINI_TEST("PointCloud", "Constructor") {
     std::vector<double> normals_arr = {0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0};
     PointCloud pc4 = PointCloud::from_coords(coords, colors_arr, normals_arr);
 
-    MINI_CHECK(pc.name == "my_pointcloud" && !pc.guid.empty() && point_count == 3);
-    MINI_CHECK(color_count == 3 && normal_count == 3 && is_empty == false);
+    MINI_CHECK(pc.name == "my_pointcloud" && !pc.guid().empty() && point_count == 3);
+    MINI_CHECK(color_count == 3 && normal_count == 3 && !is_empty);
     MINI_CHECK(pcstr.find("3 points") != std::string::npos);
     MINI_CHECK(pcrepr.find("PointCloud(my_pointcloud") != std::string::npos);
-    MINI_CHECK(pccopy == pc && pccopy.guid != pc.guid);
+    MINI_CHECK(pccopy == pc && pccopy.guid() != pc.guid());
     MINI_CHECK(TOLERANCE.is_close(pt0[0], 0.0));
     MINI_CHECK(TOLERANCE.is_close(pt0[1], 0.0));
     MINI_CHECK(TOLERANCE.is_close(pt0[2], 0.0));
@@ -159,9 +159,18 @@ MINI_TEST("PointCloud", "Json Roundtrip") {
     // uncomment #include "color.h"
 
     PointCloud pc(
-        {Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)},
-        {Vector(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)},
-        {Color(255, 0, 0, 255), Color(0, 255, 0, 255)}
+        {
+            Point(1.0, 2.0, 3.0),
+            Point(4.0, 5.0, 6.0),
+        },
+        {
+            Vector(0.0, 0.0, 1.0),
+            Vector(0.0, 0.0, 1.0),
+        },
+        {
+            Color(255, 0, 0, 255),
+            Color(0, 255, 0, 255),
+        }
     );
     pc.name = "test_pointcloud";
 
@@ -194,9 +203,18 @@ MINI_TEST("PointCloud", "Protobuf Roundtrip") {
     // uncomment #include "color.h"
 
     PointCloud pc(
-        {Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)},
-        {Vector(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)},
-        {Color(255, 0, 0, 255), Color(0, 255, 0, 255)}
+        {
+            Point(1.0, 2.0, 3.0),
+            Point(4.0, 5.0, 6.0),
+        },
+        {
+            Vector(0.0, 0.0, 1.0),
+            Vector(0.0, 0.0, 1.0),
+        },
+        {
+            Color(255, 0, 0, 255),
+            Color(0, 255, 0, 255),
+        }
     );
     pc.name = "test_pointcloud";
 

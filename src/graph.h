@@ -11,13 +11,54 @@
 // Implementation-only headers required by this translation unit
 #include <algorithm> // std::sort
 #include <climits>   // INT_MAX
+#include <deque>     // std::deque
 #include <fstream>   // std::ifstream, std::ofstream
 #include <set>       // std::set
 #include <stdexcept> // std::runtime_error
-#include "vertex.h"
-#include "edge.h"
-
 namespace session_cpp {
+
+class Vertex {
+public:
+  std::string name = "my_vertex"; ///< The name of the vertex
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string attribute = "";     ///< Vertex attribute data as string
+  int index = -1;                 ///< Integer index for the vertex
+
+  Vertex(std::string name = "my_vertex", std::string attribute = "")
+      : name(name), attribute(attribute) {}
+
+  std::string str() const;
+  nlohmann::ordered_json jsondump() const;
+  static Vertex jsonload(const nlohmann::json &data);
+
+private:
+  mutable std::string _guid; ///< Lazily generated unique identifier
+};
+
+class Edge {
+public:
+  std::string name = "my_edge"; ///< The name of the edge.
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string v0 = "";          ///< The first vertex of the edge.
+  std::string v1 = "";          ///< The second vertex of the edge.
+  std::string attribute = "";   ///< Edge attribute data as string.
+  int index = -1;               ///< Integer index for the edge.
+
+  Edge(std::string v0 = "", std::string v1 = "", std::string attribute = "")
+      : v0(v0), v1(v1), attribute(attribute) {}
+
+  std::string str() const;
+  nlohmann::ordered_json jsondump() const;
+  static Edge jsonload(const nlohmann::json &data);
+  std::tuple<std::string, std::string> vertices() const;
+  bool connects(const std::string &vertex_id);
+  std::string other_vertex(const std::string &vertex_id);
+
+private:
+  mutable std::string _guid; ///< Lazily generated unique identifier
+};
 
 /**
  * @class Graph
@@ -31,7 +72,8 @@ public:
   std::map<std::string, std::map<std::string, Edge>>
       edges; /// node_name -> {neighbor_name -> Edge object}
   std::string name = "my_graph"; ///< The name of the graph
-  std::string guid = ::guid();   ///< The unique identifier of the graph
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   int vertex_count = 0;          ///< Track next available vertex index
   int edge_count = 0;            ///< Track next available edge index
 
@@ -107,6 +149,8 @@ public:
   void remove_edge(const std::tuple<std::string, std::string> &edge);
 
 private:
+  mutable std::string _guid;
+
   /// @brief Reassign vertex indices to maintain contiguous sequence 0, 1, 2,
   /// ...
   void _reassign_indices();
@@ -157,6 +201,21 @@ public:
   /// @return attribute value as string
   std::string edge_attribute(const std::string &u, const std::string &v,
                              const std::string &value = "");
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  // Algorithms
+  ///////////////////////////////////////////////////////////////////////////////////////////
+
+  std::vector<std::string> bfs(const std::string &start);
+  std::vector<std::string> dfs(const std::string &start);
+  std::vector<std::vector<std::string>> connected_components();
+  bool is_connected();
+  int number_connected_components();
+  std::vector<std::string> shortest_path(const std::string &u,
+                                         const std::string &v);
+  int shortest_path_length(const std::string &u, const std::string &v);
+  bool has_cycle();
+  std::vector<std::vector<std::string>> cycle_basis();
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////

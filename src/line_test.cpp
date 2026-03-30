@@ -42,7 +42,7 @@ MINI_TEST("Line", "Constructor") {
     std::string lstr = l.str();
     std::string lrepr = l.repr();
 
-    // Copy (duplicate everything but guid)
+    // Copy (duplicate everything but guid())
     Line lcopy = l;
     Line lother(10.0, 20.0, 30.0, 40.0, 50.0, 60.0);
 
@@ -96,7 +96,7 @@ MINI_TEST("Line", "Constructor") {
 
     MINI_CHECK(l.name == "my_line");
     MINI_CHECK(l[0] == 10.0 && l[1] == 20.0 && l[2] == 30.0);
-    MINI_CHECK(!l.guid.empty());
+    MINI_CHECK(!l.guid().empty());
     MINI_CHECK(x0 == 10.0 && y0 == 20.0 && z0 == 30.0 && x1 == 40.0 && y1 == 50.0 && z1 == 60.0);
     MINI_CHECK(lstr.find("10") != std::string::npos);
     MINI_CHECK(lstr.find("20") != std::string::npos);
@@ -104,7 +104,7 @@ MINI_TEST("Line", "Constructor") {
     MINI_CHECK(lrepr.find("my_line") != std::string::npos);
     MINI_CHECK(lrepr.find("10") != std::string::npos);
     MINI_CHECK(lrepr.find("Color") != std::string::npos);
-    MINI_CHECK(lcopy.guid != l.guid);
+    MINI_CHECK(lcopy.guid() != l.guid());
     MINI_CHECK(lmult[0] == 20.0 && lmult[3] == 80.0);
     MINI_CHECK(ldiv[0] == 5.0 && ldiv[3] == 20.0);
     MINI_CHECK(ladd[0] == 11.0 && ladd[3] == 41.0);
@@ -145,6 +145,7 @@ MINI_TEST("Line", "Json Roundtrip") {
     // JSON object
     nlohmann::ordered_json j = l.jsondump();
     Line loaded_j = Line::jsonload(j);
+
     MINI_CHECK(loaded_j.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded_j[0], 42.1));
 
@@ -174,9 +175,10 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
     // String
     std::string s = l.pb_dumps();
     Line loaded_s = Line::pb_loads(s);
+
     MINI_CHECK(loaded_s.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
-    MINI_CHECK(loaded_s.guid == l.guid);
+    MINI_CHECK(loaded_s.guid() == l.guid());
 
     // File
     std::string fname = "serialization/test_line.bin";
@@ -189,7 +191,7 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
     MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
-    MINI_CHECK(loaded.guid == l.guid);
+    MINI_CHECK(loaded.guid() == l.guid());
 }
 
 MINI_TEST("Line", "Length") {

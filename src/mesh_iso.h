@@ -20,13 +20,13 @@ class MeshIso {
 public:
     static double eval(TpmsType type, double x, double y, double z, double period = 1.0);
 
-    static Mesh from_tpms(TpmsType type, const Obb& box,
+    static Mesh from_tpms(TpmsType type, const OBB& box,
                            int nx, int ny, int nz,
                            double isovalue = 0.0, double period = 1.0,
                            TpmsMode mode = TpmsMode::SOLID, double thickness = 0.2);
 
     static Mesh from_function(std::function<double(double,double,double)> fn,
-                               const Obb& box, int nx, int ny, int nz,
+                               const OBB& box, int nx, int ny, int nz,
                                double isovalue = 0.0);
 
     static double sdf_sphere(double cx, double cy, double cz, double r,

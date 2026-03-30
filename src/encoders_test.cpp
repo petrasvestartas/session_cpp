@@ -33,6 +33,7 @@ MINI_TEST("Encoders", "Json Dumps Loads") {
     original.name = "test_vector";
 
     std::string json_str = json_dumps(original);
+
     MINI_CHECK(!json_str.empty());
     MINI_CHECK(json_str.find("Vector") != std::string::npos);
 
@@ -105,6 +106,7 @@ MINI_TEST("Encoders", "Nested Collections") {
 
     auto json_arr = encode_collection(lines);
     std::string json_str = json_arr.dump();
+
     MINI_CHECK(!json_str.empty());
 
     auto loaded_json = nlohmann::json::parse(json_str);
@@ -158,6 +160,7 @@ MINI_TEST("Encoders", "Decode Primitives") {
     nlohmann::json num = 42;
     std::string json_str = num.dump();
     auto loaded = nlohmann::json::parse(json_str);
+
     MINI_CHECK(loaded.get<int>() == 42);
 
     nlohmann::json float_val = 3.14;
@@ -182,6 +185,7 @@ MINI_TEST("Encoders", "Decode List") {
     std::string json_str = j.dump();
     auto loaded = nlohmann::json::parse(json_str);
     auto loaded_vec = loaded.get<std::vector<int>>();
+
     MINI_CHECK(loaded_vec.size() == 3);
     MINI_CHECK(loaded_vec[0] == 1);
     MINI_CHECK(loaded_vec[2] == 3);
@@ -204,6 +208,7 @@ MINI_TEST("Encoders", "Decode Dict") {
     nlohmann::json j = data;
     std::string json_str = j.dump();
     auto loaded = nlohmann::json::parse(json_str);
+
     MINI_CHECK(loaded["a"].get<int>() == 1);
     MINI_CHECK(loaded["b"].get<int>() == 2);
 

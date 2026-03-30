@@ -1,5 +1,11 @@
 ﻿#include "mesh.h"
 #include "remesh_cdt.h"
+namespace session_cpp {
+std::vector<std::array<int,3>> cdt_triangulate(
+    const std::vector<std::pair<double,double>>&,
+    const std::vector<std::vector<std::pair<double,double>>>&);
+bool point_in_polygon_2d(double, double, const std::vector<double>&);
+}
 #include "fmt/core.h"
 #include <fstream>
 #include <algorithm>
@@ -25,7 +31,7 @@ Mesh::Mesh() {
 }
 
 Mesh::Mesh(const Mesh& other) {
-    guid = ::guid();
+    _guid.clear();
     name = other.name;
     halfedge = other.halfedge;
     vertex = other.vertex;
@@ -50,7 +56,7 @@ Mesh::Mesh(const Mesh& other) {
 
 Mesh& Mesh::operator=(const Mesh& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         halfedge = other.halfedge;
         vertex = other.vertex;
@@ -283,10 +289,10 @@ Mesh Mesh::weld(double tolerance) const {
     };
 
     if (tolerance > 0.0) {
-        std::vector<Obb> boxes;
+        std::vector<OBB> boxes;
         boxes.reserve(n);
         for (const auto& p : positions)
-            boxes.push_back(Obb::from_point(p, tolerance));
+            boxes.push_back(OBB::from_point(p, tolerance));
         double ws = BVH::compute_world_size(boxes);
         BVH bvh = BVH::from_boxes(boxes, ws);
         auto [pairs, ignore1, ignore2] = bvh.check_all_collisions(boxes);
@@ -1467,143 +1473,9 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
 
 Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox) {
     if (polylines.empty()) return Mesh();
-
-    // Find border polyline index
-    int border_idx = 0;
-    if (sort_by_bbox && polylines.size() > 1) {
-        double max_diag = 0.0;
-        for (size_t i = 0; i < polylines.size(); ++i) {
-            if (polylines[i].size() < 3) continue;
-            double minx = polylines[i][0][0], miny = polylines[i][0][1], minz = polylines[i][0][2];
-            double maxx = minx, maxy = miny, maxz = minz;
-            for (const auto& p : polylines[i]) {
-                if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
-                if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
-                if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
-            }
-            double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
-            double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
-            if (diag > max_diag) { max_diag = diag; border_idx = static_cast<int>(i); }
-        }
-    }
-
-    // Strip closing duplicates
-    auto strip_close = [](const std::vector<Point>& pts) -> std::vector<Point> {
-        if (pts.size() > 1) {
-            const auto& f = pts.front();
-            const auto& b = pts.back();
-            if (std::abs(f[0]-b[0]) < 1e-12 && std::abs(f[1]-b[1]) < 1e-12 && std::abs(f[2]-b[2]) < 1e-12) {
-                return std::vector<Point>(pts.begin(), pts.end() - 1);
-            }
-        }
-        return pts;
-    };
-
-    auto border = strip_close(polylines[border_idx]);
-    if (border.size() < 3) return Mesh();
-
-    // Collect holes
-    std::vector<std::vector<Point>> hole_pts_3d;
-    for (size_t i = 0; i < polylines.size(); ++i) {
-        if (static_cast<int>(i) == border_idx) continue;
-        auto hole = strip_close(polylines[i]);
-        if (hole.size() < 3) continue;
-        hole_pts_3d.push_back(hole);
-    }
-
-    // Compute average plane from all points (border + holes) for stable normal
-    std::vector<Point> all_pts_for_plane = border;
-    for (const auto& h : hole_pts_3d)
-        for (const auto& p : h) all_pts_for_plane.push_back(p);
-    Polyline all_pl(all_pts_for_plane);
-    Point origin;
-    Vector xaxis, yaxis, zaxis;
-    all_pl.get_average_plane(origin, xaxis, yaxis, zaxis);
-
-    auto project_2d = [&](const Point& p) -> std::pair<double,double> {
-        double dx = p[0] - origin[0], dy = p[1] - origin[1], dz = p[2] - origin[2];
-        return { dx * xaxis[0] + dy * xaxis[1] + dz * xaxis[2],
-                 dx * yaxis[0] + dy * yaxis[1] + dz * yaxis[2] };
-    };
-
-    // Project border to 2D
-    std::vector<std::pair<double,double>> boundary_2d;
-    for (const auto& p : border) boundary_2d.push_back(project_2d(p));
-
-    // Enforce boundary = CCW
-    auto signed_area = [](const std::vector<std::pair<double,double>>& pts) -> double {
-        double area = 0.0;
-        size_t n = pts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t j = (i + 1) % n;
-            area += pts[i].first * pts[j].second - pts[j].first * pts[i].second;
-        }
-        return area * 0.5;
-    };
-    if (signed_area(boundary_2d) < 0.0) {
-        std::reverse(border.begin(), border.end());
-        std::reverse(boundary_2d.begin(), boundary_2d.end());
-    }
-
-    // Project holes to 2D, enforce CW
-    std::vector<std::vector<std::pair<double,double>>> holes_2d;
-    for (auto& hole : hole_pts_3d) {
-        std::vector<std::pair<double,double>> h2d;
-        for (const auto& p : hole) h2d.push_back(project_2d(p));
-        if (signed_area(h2d) > 0.0) {
-            std::reverse(hole.begin(), hole.end());
-            std::reverse(h2d.begin(), h2d.end());
-        }
-        holes_2d.push_back(std::move(h2d));
-    }
-
-    auto tris = cdt_triangulate(boundary_2d, holes_2d);
-
-    std::vector<Point> all_pts = border;
-    for (const auto& h : hole_pts_3d)
-        for (const auto& p : h) all_pts.push_back(p);
-
-    Mesh mesh;
-    std::vector<size_t> vkeys;
-    for (const auto& p : all_pts) vkeys.push_back(mesh.add_vertex(p));
-
-    if (hole_pts_3d.empty()) {
-        std::vector<size_t> fvkeys(vkeys.begin(), vkeys.begin() + border.size());
-        auto fkey = mesh.add_face(fvkeys);
-        if (fkey.has_value()) {
-            std::vector<std::array<size_t,3>> tri_list;
-            for (const auto& f : tris) {
-                if (vkeys[f[0]] == vkeys[f[1]] || vkeys[f[1]] == vkeys[f[2]] || vkeys[f[2]] == vkeys[f[0]]) continue;
-                tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
-            }
-            std::unordered_set<size_t> covered;
-            for (const auto& t : tri_list) { covered.insert(t[0]); covered.insert(t[1]); covered.insert(t[2]); }
-            size_t n_vk = border.size();
-            for (size_t m = 0; m < n_vk; ++m) {
-                if (!covered.count(vkeys[m]))
-                    tri_list.push_back({vkeys[(m + n_vk - 1) % n_vk], vkeys[m], vkeys[(m + 1) % n_vk]});
-            }
-            mesh.triangulation[fkey.value()] = tri_list;
-        }
-    } else {
-        std::vector<size_t> fvkeys(vkeys.begin(), vkeys.begin() + border.size());
-        auto fkey = mesh.add_face(fvkeys);
-        if (fkey.has_value()) {
-            std::vector<std::vector<size_t>> hole_rings;
-            size_t off = border.size();
-            for (const auto& h : hole_pts_3d) {
-                std::vector<size_t> ring(vkeys.begin()+off, vkeys.begin()+off+h.size());
-                hole_rings.push_back(ring); off += h.size();
-            }
-            mesh.set_face_holes(fkey.value(), hole_rings);
-            std::vector<std::array<size_t,3>> tri_list;
-            for (const auto& f : tris)
-                if (vkeys[f[0]]!=vkeys[f[1]] && vkeys[f[1]]!=vkeys[f[2]] && vkeys[f[2]]!=vkeys[f[0]])
-                    tri_list.push_back({vkeys[f[0]], vkeys[f[1]], vkeys[f[2]]});
-            mesh.triangulation[fkey.value()] = tri_list;
-        }
-    }
-    return mesh;
+    std::vector<Polyline> pls;
+    for (const auto& v : polylines) pls.emplace_back(v);
+    return RemeshCDT::from_polylines(pls, false, !sort_by_bbox);
 }
 
 Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap) {
@@ -1980,7 +1852,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
     }
     data["facedata"] = facedata_json;
     
-    data["guid"] = guid;
+    data["guid"] = guid();
     
     // Halfedge connectivity
     nlohmann::ordered_json halfedge_data;
@@ -2047,7 +1919,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
 Mesh Mesh::jsonload(const nlohmann::json& data) {
     Mesh mesh;
     
-    if (data.contains("guid")) mesh.guid = data["guid"];
+    if (data.contains("guid")) mesh.guid() = data["guid"];
     if (data.contains("name")) mesh.name = data["name"];
     
     // Load halfedge connectivity
@@ -2280,7 +2152,7 @@ void Mesh::build_triangle_bvh(bool force) const {
             double hy = (max_y - min_y) * 0.5;
             double hz = (max_z - min_z) * 0.5;
 
-            BvhAABB bb{cx, cy, cz, hx, hy, hz};
+            AABB bb{cx, cy, cz, hx, hy, hz};
             triangle_aabbs_cache[t.out_idx] = bb;
             triangle_indices_cache[t.out_idx] = TriangleIndex{t.i0, t.i1, t.i2};
             triangle_face_subidx_cache[t.out_idx] = {t.face_idx, t.sub_idx};
@@ -2744,7 +2616,7 @@ LoftResult Mesh::loft_panels(
 
 std::string Mesh::pb_dumps() const {
     session_proto::Mesh proto;
-    proto.set_guid(this->guid);
+    proto.set_guid(this->guid());
     proto.set_name(this->name);
 
     // Vertices
@@ -2821,7 +2693,7 @@ std::string Mesh::pb_dumps() const {
     // Colors
     for (const auto& c : pointcolors) {
         auto* color_proto = proto.add_pointcolors();
-        color_proto->set_guid(c.guid);
+        color_proto->set_guid(c.guid());
         color_proto->set_name(c.name);
         color_proto->set_r(c.r);
         color_proto->set_g(c.g);
@@ -2831,7 +2703,7 @@ std::string Mesh::pb_dumps() const {
 
     for (const auto& c : facecolors) {
         auto* color_proto = proto.add_facecolors();
-        color_proto->set_guid(c.guid);
+        color_proto->set_guid(c.guid());
         color_proto->set_name(c.name);
         color_proto->set_r(c.r);
         color_proto->set_g(c.g);
@@ -2841,7 +2713,7 @@ std::string Mesh::pb_dumps() const {
 
     for (const auto& c : linecolors) {
         auto* color_proto = proto.add_linecolors();
-        color_proto->set_guid(c.guid);
+        color_proto->set_guid(c.guid());
         color_proto->set_name(c.name);
         color_proto->set_r(c.r);
         color_proto->set_g(c.g);
@@ -2856,7 +2728,7 @@ std::string Mesh::pb_dumps() const {
 
     // Object color
     auto* oc_proto = proto.mutable_objectcolor();
-    oc_proto->set_guid(objectcolor.guid);
+    oc_proto->set_guid(objectcolor.guid());
     oc_proto->set_name(objectcolor.name);
     oc_proto->set_r(objectcolor.r);
     oc_proto->set_g(objectcolor.g);
@@ -2866,7 +2738,7 @@ std::string Mesh::pb_dumps() const {
 
     // Xform
     auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid);
+    xform_proto->set_guid(xform.guid());
     xform_proto->set_name(xform.name);
     for (int i = 0; i < 16; ++i) {
         xform_proto->add_matrix(xform.m[i]);
@@ -2880,7 +2752,7 @@ Mesh Mesh::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Mesh mesh;
-    mesh.guid = proto.guid();
+    mesh.guid() = proto.guid();
     mesh.name = proto.name();
 
     // Vertices
@@ -2963,21 +2835,21 @@ Mesh Mesh::pb_loads(const std::string& data) {
     // Colors
     for (const auto& c : proto.pointcolors()) {
         Color color(c.r(), c.g(), c.b(), c.a());
-        color.guid = c.guid();
+        color.guid() = c.guid();
         color.name = c.name();
         mesh.pointcolors.push_back(color);
     }
 
     for (const auto& c : proto.facecolors()) {
         Color color(c.r(), c.g(), c.b(), c.a());
-        color.guid = c.guid();
+        color.guid() = c.guid();
         color.name = c.name();
         mesh.facecolors.push_back(color);
     }
 
     for (const auto& c : proto.linecolors()) {
         Color color(c.r(), c.g(), c.b(), c.a());
-        color.guid = c.guid();
+        color.guid() = c.guid();
         color.name = c.name();
         mesh.linecolors.push_back(color);
     }
@@ -2991,14 +2863,14 @@ Mesh Mesh::pb_loads(const std::string& data) {
     {
         const auto& oc = proto.objectcolor();
         mesh.objectcolor = Color(oc.r(), oc.g(), oc.b(), oc.a());
-        mesh.objectcolor.guid = oc.guid();
+        mesh.objectcolor.guid() = oc.guid();
         mesh.objectcolor.name = oc.name();
     }
     mesh.color_mode = static_cast<ColorMode>(proto.color_mode());
 
     // Xform
     const auto& xform_proto = proto.xform();
-    mesh.xform.guid = xform_proto.guid();
+    mesh.xform.guid() = xform_proto.guid();
     mesh.xform.name = xform_proto.name();
     for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
         mesh.xform.m[i] = xform_proto.matrix(i);

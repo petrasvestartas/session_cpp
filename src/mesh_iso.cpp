@@ -285,7 +285,7 @@ static std::vector<double> eval_field(
 }
 
 static Mesh marching_cubes_from_field(const std::vector<double>& field,
-                                       const Obb& box, int nx, int ny, int nz,
+                                       const OBB& box, int nx, int ny, int nz,
                                        double isovalue) {
     Point mn = box.min_point();
     Point mx = box.max_point();
@@ -405,7 +405,7 @@ static Mesh marching_cubes_from_field(const std::vector<double>& field,
 }
 
 static Mesh marching_cubes(const std::function<double(double,double,double)>& fn,
-                            const Obb& box, int nx, int ny, int nz,
+                            const OBB& box, int nx, int ny, int nz,
                             double isovalue) {
     Point mn = box.min_point();
     Point mx = box.max_point();
@@ -485,7 +485,7 @@ double MeshIso::eval(TpmsType type, double x, double y, double z, double period)
     }
 }
 
-Mesh MeshIso::from_tpms(TpmsType type, const Obb& box,
+Mesh MeshIso::from_tpms(TpmsType type, const OBB& box,
                          int nx, int ny, int nz,
                          double isovalue, double period,
                          TpmsMode mode, double thickness) {
@@ -508,7 +508,7 @@ Mesh MeshIso::from_tpms(TpmsType type, const Obb& box,
 }
 
 Mesh MeshIso::from_function(std::function<double(double,double,double)> fn,
-                             const Obb& box, int nx, int ny, int nz,
+                             const OBB& box, int nx, int ny, int nz,
                              double isovalue) {
     return marching_cubes(fn, box, nx, ny, nz, isovalue);
 }

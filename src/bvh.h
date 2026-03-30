@@ -1,8 +1,15 @@
+// BVH — binary tree with OBB leaves, Morton-code (LBVH) construction.
+// Use for: collision detection and closest-point between many dynamic objects.
+//   Handles oriented boxes; supports OBB-OBB overlap as the inner test.
+// Prefer over AABBTree when objects rotate or you need OBB tightness.
+// Prefer over RTree  when all queries are nearest-object, not region overlap.
+// Prefer over KDTree when objects are volumetric (not point clouds).
 #pragma once
 
 #include "point.h"
 #include "vector.h"
 #include "obb.h"
+#include "aabb.h"
 #include "guid.h"
 #include <string>
 #include <vector>
@@ -10,12 +17,6 @@
 #include <tuple>
 
 namespace session_cpp {
-
-// Lightweight axis-aligned bounding box used internally by BVH
-struct BvhAABB {
-    double cx, cy, cz; // center
-    double hx, hy, hz; // half-size
-};
 
 /**
  * @brief A node in the Bounding Volume Hierarchy tree
@@ -28,7 +29,7 @@ public:
     BVHNode* left;
     BVHNode* right;
     int object_id;
-    BvhAABB aabb;
+    AABB aabb;
 
     BVHNode();
     bool is_leaf() const;
@@ -42,7 +43,8 @@ public:
  */
 class BVH {
 public:
-    std::string guid;
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;
     BVHNode* root;
     double world_size;
@@ -53,25 +55,25 @@ public:
     BVH(double world_size = 1000.0);
     
     // Compute world size from bounding boxes
-    static double compute_world_size(const std::vector<Obb>& bounding_boxes);
+    static double compute_world_size(const std::vector<OBB>& bounding_boxes);
     
-    static BVH from_boxes(const std::vector<Obb>& bounding_boxes, double world_size);
+    static BVH from_boxes(const std::vector<OBB>& bounding_boxes, double world_size);
     
     // Fast build accepting continuous array of boxes (no copies)
-    void build_from_boxes(const Obb* boxes, size_t count, double ws);
-    // Fast build accepting continuous array of lightweight AABBs (no Obb construction)
-    void build_from_aabbs(const BvhAABB* aabbs, size_t count, double ws);
+    void build_from_boxes(const OBB* boxes, size_t count, double ws);
+    // Fast build accepting continuous array of lightweight AABBs (no OBB construction)
+    void build_from_aabbs(const AABB* aabbs, size_t count, double ws);
     
-    void build(const std::vector<Obb>& bounding_boxes);
-    std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> check_all_collisions(const std::vector<Obb>& bounding_boxes);
+    void build(const std::vector<OBB>& bounding_boxes);
+    std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> check_all_collisions(const std::vector<OBB>& bounding_boxes);
 
     // Public helper methods for testing
-    Obb merge_aabb(const Obb& aabb1, const Obb& aabb2);
-    bool aabb_intersect(const Obb& aabb1, const Obb& aabb2) const;
-    bool aabb_intersect(const BvhAABB& aabb1, const BvhAABB& aabb2) const;
+    OBB merge_aabb(const OBB& aabb1, const OBB& aabb2);
+    bool aabb_intersect(const OBB& aabb1, const OBB& aabb2) const;
+    bool aabb_intersect(const AABB& aabb1, const AABB& aabb2) const;
 
-    // Find all leaf object_ids whose BvhAABB overlaps the query box.
-    std::vector<int> query_aabb(const BvhAABB& query) const;
+    // Find all leaf object_ids whose AABB overlaps the query box.
+    std::vector<int> query_aabb(const AABB& query) const;
 
     // Ray cast traversal over BVH nodes returning candidate leaf indices ordered by AABB entry t.
     bool ray_cast(const Point& origin,
@@ -80,6 +82,8 @@ public:
                   bool find_all = false) const;
 
 private:
+    mutable std::string _guid;
+
     struct ObjectInfo {
         int id;
         uint32_t morton_code;
@@ -89,7 +93,7 @@ private:
     BVHNode* alloc_node();
 
     // Subtree creation using sorted object keys and read-only boxes array
-    BVHNode* create_subtree(std::vector<ObjectInfo>& objects, int begin, int end, const Obb* boxes);
+    BVHNode* create_subtree(std::vector<ObjectInfo>& objects, int begin, int end, const OBB* boxes);
 };
 
 // Morton code functions

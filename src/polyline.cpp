@@ -5,6 +5,8 @@
 #include <array>
 #include <functional>
 #include <limits>
+#include <queue>
+#include <set>
 
 #include "polyline.pb.h"
 #include "point.pb.h"
@@ -12,11 +14,11 @@
 
 namespace session_cpp {
 
-Polyline::Polyline() : guid(::guid()), name("my_polyline"), plane(Plane()) {}
+Polyline::Polyline() : name("my_polyline"), plane(Plane()) {}
 
-/// Copy constructor (creates a new guid while copying data)
+/// Copy constructor (creates a new guid() while copying data)
 Polyline::Polyline(const Polyline& other)
-    : guid(::guid()),
+    :
       name(other.name),
       _coords(other._coords),
       plane(other.plane),
@@ -24,10 +26,10 @@ Polyline::Polyline(const Polyline& other)
       linecolor(other.linecolor),
       xform(other.xform) {}
 
-/// Copy assignment (creates a new guid while copying data)
+/// Copy assignment (creates a new guid() while copying data)
 Polyline& Polyline::operator=(const Polyline& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         _coords = other._coords;
         plane = other.plane;
@@ -39,7 +41,7 @@ Polyline& Polyline::operator=(const Polyline& other) {
 }
 
 Polyline::Polyline(const std::vector<Point>& pts)
-    : guid(::guid()), name("my_polyline") {
+    : name("my_polyline") {
     // Convert points to flat coords
     _coords.reserve(pts.size() * 3);
     for (const auto& p : pts) {
@@ -295,7 +297,7 @@ nlohmann::ordered_json Polyline::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json j;
     j["coords"] = _coords;
-    j["guid"] = guid;
+    j["guid"] = guid();
     j["linecolor"] = linecolor.jsondump();
     j["name"] = name;
     j["type"] = "Polyline";
@@ -306,7 +308,7 @@ nlohmann::ordered_json Polyline::jsondump() const {
 
 Polyline Polyline::jsonload(const nlohmann::json& data) {
     Polyline polyline;
-    polyline.guid = data["guid"];
+    polyline.guid() = data["guid"];
     polyline.name = data["name"];
 
     // Support both new coords format and legacy points format
@@ -362,7 +364,7 @@ Polyline Polyline::json_load(const std::string& filename) {
 
 std::string Polyline::pb_dumps() const {
     session_proto::Polyline proto;
-    proto.set_guid(this->guid);
+    proto.set_guid(this->guid());
     proto.set_name(this->name);
     proto.set_width(this->width);
 
@@ -397,7 +399,7 @@ Polyline Polyline::pb_loads(const std::string& data) {
     std::vector<double> coords(proto.coords().begin(), proto.coords().end());
 
     Polyline pl = Polyline::from_coords(coords);
-    pl.guid = proto.guid();
+    pl.guid() = proto.guid();
     pl.name = proto.name();
     pl.width = proto.width();
 
@@ -760,6 +762,26 @@ void Polyline::get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, 
     // Y-axis (cross product)
     y_axis = z_axis.cross(x_axis);
     y_axis.normalize_self();
+}
+
+bool Polyline::point_in_polygon_2d(const Point& p) const {
+    double px = p[0], py = p[1];
+    int winding = 0;
+    size_t n = _coords.size() / 3;
+    for (size_t i = 0; i < n; ++i) {
+        size_t j = (i + 1) % n;
+        double y0 = _coords[i*3+1], y1 = _coords[j*3+1];
+        if (y0 <= py) {
+            if (y1 > py) {
+                double x0 = _coords[i*3], x1 = _coords[j*3];
+                if ((x1-x0)*(py-y0) - (px-x0)*(y1-y0) > 0.0) ++winding;
+            }
+        } else if (y1 <= py) {
+            double x0 = _coords[i*3], x1 = _coords[j*3];
+            if ((x1-x0)*(py-y0) - (px-x0)*(y1-y0) < 0.0) --winding;
+        }
+    }
+    return winding != 0;
 }
 
 void Polyline::get_fast_plane(Point& origin, Plane& pln) const {
@@ -1215,7 +1237,7 @@ void get_average_plane(const std::vector<Point>& pline, Vector (&axes)[4]) {
     axes[0] = Vector(o[0], o[1], o[2]);
 
     size_t len = (is_closed(pline) && pline.size() > 1) ? pline.size()-1 : pline.size();
-    Vector normal(0,0,0);
+    Vector normal(0, 0, 0);
     for (size_t i = 0; i < len; i++) {
         size_t prev = (i == 0) ? len-1 : i-1;
         size_t next = (i+1 == len) ? 0 : i+1;
@@ -1270,8 +1292,8 @@ std::vector<Point> tween_two_polylines(const std::vector<Point>& p0, const std::
 
 void line_line_average(const Line& l0, const Line& l1, Line& out) {
     Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
-    out = Line::from_points(Point((s0[0]+s1[0])*0.5,(s0[1]+s1[1])*0.5,(s0[2]+s1[2])*0.5),
-                            Point((e0[0]+e1[0])*0.5,(e0[1]+e1[1])*0.5,(e0[2]+e1[2])*0.5));
+    out = Line::from_points(Point((s0[0]+s1[0])*0.5, (s0[1]+s1[1])*0.5, (s0[2]+s1[2])*0.5),
+                            Point((e0[0]+e1[0])*0.5, (e0[1]+e1[1])*0.5, (e0[2]+e1[2])*0.5));
 }
 
 bool line_line_overlap(const Line& l0, const Line& l1, Line& out) {
@@ -1286,10 +1308,10 @@ void line_line_overlap_average(const Line& l0, const Line& l1, Line& out) {
     line_line_overlap(l0, l1, lineA);
     line_line_overlap(l1, l0, lineB);
     Point a0=lineA.start(), a1=lineA.end(), b0=lineB.start(), b1=lineB.end();
-    Point m0s((a0[0]+b0[0])*0.5,(a0[1]+b0[1])*0.5,(a0[2]+b0[2])*0.5);
-    Point m0e((a1[0]+b1[0])*0.5,(a1[1]+b1[1])*0.5,(a1[2]+b1[2])*0.5);
-    Point m1s((a0[0]+b1[0])*0.5,(a0[1]+b1[1])*0.5,(a0[2]+b1[2])*0.5);
-    Point m1e((a1[0]+b0[0])*0.5,(a1[1]+b0[1])*0.5,(a1[2]+b0[2])*0.5);
+    Point m0s((a0[0]+b0[0])*0.5, (a0[1]+b0[1])*0.5, (a0[2]+b0[2])*0.5);
+    Point m0e((a1[0]+b1[0])*0.5, (a1[1]+b1[1])*0.5, (a1[2]+b1[2])*0.5);
+    Point m1s((a0[0]+b1[0])*0.5, (a0[1]+b1[1])*0.5, (a0[2]+b1[2])*0.5);
+    Point m1e((a1[0]+b0[0])*0.5, (a1[1]+b0[1])*0.5, (a1[2]+b0[2])*0.5);
     double dx0=m0e[0]-m0s[0], dy0=m0e[1]-m0s[1], dz0=m0e[2]-m0s[2];
     double dx1=m1e[0]-m1s[0], dy1=m1e[1]-m1s[1], dz1=m1e[2]-m1s[2];
     out = (dx0*dx0+dy0*dy0+dz0*dz0 >= dx1*dx1+dy1*dy1+dz1*dz1)
@@ -1344,6 +1366,484 @@ void get_middle_line(const Line& l0, const Line& l1, Line& out) {
     Point os, oe;
     Line::get_middle_line(s0, e0, s1, e1, os, oe);
     out = Line::from_points(os, oe);
+}
+
+namespace {
+
+struct BIVec2 { int64_t x, y; };
+
+struct BAVertex {
+    BIVec2 pt;
+    bool   is_alpha  = false;
+    bool   entering  = false;
+    int    isect_id  = -1;
+    int    neighbor  = -1;
+};
+
+struct BIsect { BIVec2 pt; int ea, eb, id; double s, t; };
+
+struct BOScratch {
+    std::vector<BIVec2>   va, vb;
+    std::vector<BIsect>   isects;
+    std::vector<BAVertex> listA, listB;
+    std::vector<int>      posA, posB;
+    std::vector<bool>     usedA;
+    std::vector<double>   poly_coords;
+};
+static thread_local BOScratch tls;
+
+static int64_t cross2i(BIVec2 a, BIVec2 b) { return a.x * b.y - a.y * b.x; }
+
+static bool pip_i(BIVec2 pt, const std::vector<BIVec2>& poly) {
+    int winding = 0, n = (int)poly.size();
+    for (int i = 0; i < n; i++) {
+        BIVec2 a = poly[i], b = poly[(i+1)%n];
+        if (a.y <= pt.y) {
+            if (b.y > pt.y && cross2i({b.x-a.x, b.y-a.y}, {pt.x-a.x, pt.y-a.y}) > 0) ++winding;
+        } else {
+            if (b.y <= pt.y && cross2i({b.x-a.x, b.y-a.y}, {pt.x-a.x, pt.y-a.y}) < 0) --winding;
+        }
+    }
+    return winding != 0;
+}
+
+static bool on_seg_i(BIVec2 p, BIVec2 a, BIVec2 b) {
+    BIVec2 d = {b.x-a.x, b.y-a.y}, e = {p.x-a.x, p.y-a.y};
+    if (cross2i(d, e) != 0) return false;
+    int64_t dd = d.x*d.x + d.y*d.y;
+    if (!dd) return false;
+    int64_t de = d.x*e.x + d.y*e.y;
+    return de > 0 && de < dd;
+}
+
+static BIVec2 perturb_off_seg(BIVec2 p, BIVec2 a, BIVec2 b) {
+    int64_t dx = b.x-a.x, dy = b.y-a.y;
+    if (std::abs(dy) >= std::abs(dx)) p.x += (dy > 0) ? 1 : -1;
+    else                              p.y += (dx > 0) ? 1 : -1;
+    return p;
+}
+
+static bool seg_isect_i(BIVec2 a, BIVec2 b, BIVec2 c, BIVec2 d,
+                        double& s, double& t, BIVec2& pt) {
+    BIVec2 ab = {b.x-a.x, b.y-a.y}, cd = {d.x-c.x, d.y-c.y};
+    int64_t denom = cross2i(ab, cd);
+    if (!denom) return false;
+    BIVec2 ac = {c.x-a.x, c.y-a.y};
+    int64_t sn = cross2i(ac, cd), tn = cross2i(ac, ab);
+    auto in01 = [](int64_t num, int64_t den) {
+        return den > 0 ? (num > 0 && num < den) : (num < 0 && num > den);
+    };
+    if (!in01(sn, denom) || !in01(tn, denom)) return false;
+    s = (double)sn / (double)denom;
+    t = (double)tn / (double)denom;
+    pt = {a.x + (int64_t)std::round(s*ab.x), a.y + (int64_t)std::round(s*ab.y)};
+    return true;
+}
+
+// Sweep-line O((n+k) log n) A-B intersection finder.
+// Events: kind 0=RIGHT(remove) 1=ISECT(swap) 2=LEFT(insert)
+// At same (x,y): RIGHT first, then ISECT, then LEFT — keeps AET consistent.
+static void find_isects_sweep(
+    const std::vector<BIVec2>& va, int na,
+    const std::vector<BIVec2>& vb, int nb,
+    std::vector<BIsect>& isects)
+{
+    struct Ev {
+        int64_t x, y;
+        int8_t  kind;  // 0=right, 1=isect, 2=left
+        int8_t  poly;
+        int     ia, ib;
+        double  s, t;
+        BIVec2  pt;
+        bool operator>(const Ev& o) const {
+            if (x != o.x) return x > o.x;
+            if (y != o.y) return y > o.y;
+            return (int)kind > (int)o.kind;
+        }
+    };
+    std::priority_queue<Ev, std::vector<Ev>, std::greater<Ev>> Q;
+
+    for (int i = 0; i < na; i++) {
+        BIVec2 p=va[i], q=va[(i+1)%na];
+        bool pl=p.x<q.x||(p.x==q.x&&p.y<=q.y);
+        BIVec2 L=pl?p:q, R=pl?q:p;
+        Q.push({L.x,L.y,2,0,i,-1,0,0,L}); Q.push({R.x,R.y,0,0,i,-1,0,0,R});
+    }
+    for (int j = 0; j < nb; j++) {
+        BIVec2 p=vb[j], q=vb[(j+1)%nb];
+        bool pl=p.x<q.x||(p.x==q.x&&p.y<=q.y);
+        BIVec2 L=pl?p:q, R=pl?q:p;
+        Q.push({L.x,L.y,2,1,j,-1,0,0,L}); Q.push({R.x,R.y,0,1,j,-1,0,0,R});
+    }
+
+    int64_t cur_x = std::numeric_limits<int64_t>::min();
+    struct AE { int8_t poly; int idx; };
+    std::vector<AE> aet;
+    aet.reserve(16);
+
+    auto yat = [&](const AE& e, int64_t x) -> double {
+        const auto& v=(e.poly==0)?va:vb; int n=(e.poly==0)?na:nb;
+        BIVec2 p=v[e.idx],q=v[(e.idx+1)%n];
+        if(p.x==q.x) return (double)std::min(p.y,q.y);
+        return p.y+(double)(q.y-p.y)*(double)(x-p.x)/(double)(q.x-p.x);
+    };
+
+    std::set<std::pair<int,int>> queued;
+
+    auto maybe_q = [&](int i) {
+        if(i<0||i+1>=(int)aet.size()) return;
+        if(aet[i].poly==aet[i+1].poly) return;
+        int ea=aet[i].poly==0?aet[i].idx:aet[i+1].idx;
+        int eb=aet[i].poly==0?aet[i+1].idx:aet[i].idx;
+        if(!queued.insert({ea,eb}).second) return;
+        double s,t; BIVec2 pt;
+        if(seg_isect_i(va[ea],va[(ea+1)%na],vb[eb],vb[(eb+1)%nb],s,t,pt)&&pt.x>=cur_x)
+            Q.push({pt.x,pt.y,1,-1,ea,eb,s,t,pt});
+        else queued.erase({ea,eb});
+    };
+
+    while(!Q.empty()) {
+        auto ev=Q.top(); Q.pop();
+        cur_x=ev.x;
+        if(ev.kind==2) { // LEFT: insert
+            double yi=yat({ev.poly,ev.ia},cur_x);
+            int pos=0;
+            while(pos<(int)aet.size()&&yat(aet[pos],cur_x)<yi) pos++;
+            aet.insert(aet.begin()+pos,{ev.poly,ev.ia});
+            maybe_q(pos-1); maybe_q(pos);
+        } else if(ev.kind==0) { // RIGHT: remove
+            for(int i=0;i<(int)aet.size();i++) {
+                if(aet[i].poly==ev.poly&&aet[i].idx==ev.ia) {
+                    aet.erase(aet.begin()+i);
+                    if(i>0&&i<(int)aet.size()) maybe_q(i-1);
+                    break;
+                }
+            }
+        } else { // ISECT: record + swap
+            isects.push_back({ev.pt,ev.ia,ev.ib,(int)isects.size(),ev.s,ev.t});
+            queued.erase({ev.ia,ev.ib});
+            int pa=-1,pb=-1;
+            for(int i=0;i<(int)aet.size();i++) {
+                if(aet[i].poly==0&&aet[i].idx==ev.ia) pa=i;
+                if(aet[i].poly==1&&aet[i].idx==ev.ib) pb=i;
+            }
+            if(pa>=0&&pb>=0&&std::abs(pa-pb)==1) {
+                int lo=std::min(pa,pb);
+                std::swap(aet[lo],aet[lo+1]);
+                maybe_q(lo-1); maybe_q(lo+1);
+            }
+        }
+    }
+}
+
+} // anonymous namespace
+
+std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, int clip_type) {
+    // Work directly on _coords — never construct Point/Vector/Polyline objects in the hot path.
+    const double* ca = a._coords.data();
+    const double* cb = b._coords.data();
+    int na = (int)(a._coords.size() / 3);
+    int nb = (int)(b._coords.size() / 3);
+
+    // Strip closing duplicate if present
+    auto dup_last = [](const double* c, int n) {
+        if (n < 2) return false;
+        double dx=c[(n-1)*3]-c[0], dy=c[(n-1)*3+1]-c[1], dz=c[(n-1)*3+2]-c[2];
+        return dx*dx+dy*dy+dz*dz < 1e-20;
+    };
+    if (dup_last(ca, na)) --na;
+    if (dup_last(cb, nb)) --nb;
+    if (na < 3 || nb < 3) return {};
+
+    // 2D fast path: if all z≈0, skip Newell normal and projection entirely.
+    // Just scale x,y directly — eliminates ~3 full vertex passes + 2 sqrts.
+    bool flat=true;
+    for(int i=0;i<na&&flat;i++) flat=std::abs(ca[i*3+2])<1e-10;
+    for(int i=0;i<nb&&flat;i++) flat=std::abs(cb[i*3+2])<1e-10;
+
+    double ox=0,oy=0,oz=0;
+    double xax,xay,xaz,yax,yay,yaz,scale;
+
+    constexpr int64_t INT_SAFE_MAX=2305843009213693952LL;
+    BOScratch* sc = &tls;
+    auto& va = sc->va; va.resize(na);
+    auto& vb = sc->vb; vb.resize(nb);
+
+    if(flat) {
+        xax=1;xay=0;xaz=0; yax=0;yay=1;yaz=0;
+        double max_abs=1.0;
+        for(int i=0;i<na;i++) max_abs=std::max(max_abs,std::max(std::abs(ca[i*3]),std::abs(ca[i*3+1])));
+        for(int i=0;i<nb;i++) max_abs=std::max(max_abs,std::max(std::abs(cb[i*3]),std::abs(cb[i*3+1])));
+        int prec=std::clamp((int)std::floor(std::log10((double)INT_SAFE_MAX/max_abs)),0,9);
+        scale=std::pow(10.0,prec);
+        for(int i=0;i<na;i++) va[i]={(int64_t)std::round(ca[i*3]*scale),(int64_t)std::round(ca[i*3+1]*scale)};
+        for(int i=0;i<nb;i++) vb[i]={(int64_t)std::round(cb[i*3]*scale),(int64_t)std::round(cb[i*3+1]*scale)};
+    } else {
+        // Full 3D projection: centroid → Newell normal → axis setup → per-vertex dot product
+        for(int i=0;i<na;i++){ox+=ca[i*3];oy+=ca[i*3+1];oz+=ca[i*3+2];}
+        for(int i=0;i<nb;i++){ox+=cb[i*3];oy+=cb[i*3+1];oz+=cb[i*3+2];}
+        double inv_tot=1.0/(na+nb); ox*=inv_tot; oy*=inv_tot; oz*=inv_tot;
+        xax=ca[3]-ca[0];xay=ca[4]-ca[1];xaz=ca[5]-ca[2];
+        double xl=std::sqrt(xax*xax+xay*xay+xaz*xaz);
+        if(xl>1e-12){xax/=xl;xay/=xl;xaz/=xl;}else{xax=1;xay=0;xaz=0;}
+        double znx=0,zny=0,znz=0;
+        for(int i=0;i<na;i++){
+            int j=(i+1)%na;
+            double ax=ca[i*3]-ca[0],ay=ca[i*3+1]-ca[1],az=ca[i*3+2]-ca[2];
+            double bx=ca[j*3]-ca[0],by=ca[j*3+1]-ca[1],bz=ca[j*3+2]-ca[2];
+            double v2x=bx-ax,v2y=by-ay,v2z=bz-az;
+            znx+=ay*v2z-az*v2y; zny+=az*v2x-ax*v2z; znz+=ax*v2y-ay*v2x;
+        }
+        double zl=std::sqrt(znx*znx+zny*zny+znz*znz);
+        if(zl>1e-12){znx/=zl;zny/=zl;znz/=zl;}else{znx=0;zny=0;znz=1;}
+        yax=zny*xaz-znz*xay; yay=znz*xax-znx*xaz; yaz=znx*xay-zny*xax;
+        double yl=std::sqrt(yax*yax+yay*yay+yaz*yaz);
+        if(yl>1e-12){yax/=yl;yay/=yl;yaz/=yl;}else{yax=0;yay=1;yaz=0;}
+        double max_abs=1.0;
+        auto scan_max=[&](const double* c,int n){
+            for(int i=0;i<n;i++){
+                double dx=c[i*3]-ox,dy=c[i*3+1]-oy,dz=c[i*3+2]-oz;
+                double u=dx*xax+dy*xay+dz*xaz, v=dx*yax+dy*yay+dz*yaz;
+                double m=std::max(std::abs(u),std::abs(v));
+                if(m>max_abs) max_abs=m;
+            }
+        };
+        scan_max(ca,na); scan_max(cb,nb);
+        int prec=std::clamp((int)std::floor(std::log10((double)INT_SAFE_MAX/max_abs)),0,9);
+        scale=std::pow(10.0,prec);
+        auto proj_c=[&](const double* c,int i)->BIVec2{
+            double dx=c[i*3]-ox,dy=c[i*3+1]-oy,dz=c[i*3+2]-oz;
+            double u=dx*xax+dy*xay+dz*xaz, v=dx*yax+dy*yay+dz*yaz;
+            return{(int64_t)std::round(u*scale),(int64_t)std::round(v*scale)};
+        };
+        for(int i=0;i<na;i++) va[i]=proj_c(ca,i);
+        for(int i=0;i<nb;i++) vb[i]=proj_c(cb,i);
+    }
+
+    // AABB pre-check — reject disjoint pairs before any O(na*nb) work
+    {
+        int64_t aMinX=va[0].x,aMaxX=va[0].x,aMinY=va[0].y,aMaxY=va[0].y;
+        for (auto& p:va){aMinX=std::min(aMinX,p.x);aMaxX=std::max(aMaxX,p.x);aMinY=std::min(aMinY,p.y);aMaxY=std::max(aMaxY,p.y);}
+        int64_t bMinX=vb[0].x,bMaxX=vb[0].x,bMinY=vb[0].y,bMaxY=vb[0].y;
+        for (auto& p:vb){bMinX=std::min(bMinX,p.x);bMaxX=std::max(bMaxX,p.x);bMinY=std::min(bMinY,p.y);bMaxY=std::max(bMaxY,p.y);}
+        if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) {
+            // Disjoint bounding boxes — skip all intersection work
+            bool a_in_b = pip_i(va[0], vb), b_in_a = pip_i(vb[0], va);
+            if (clip_type == 0) { if (a_in_b) return {a}; if (b_in_a) return {b}; return {}; }
+            if (clip_type == 1) { if (a_in_b) return {b}; if (b_in_a) return {a}; return {a, b}; }
+            if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
+        }
+    }
+
+    // Degenerate handling: perturb vertices coincident with or lying on the other polygon's edges
+    for (int i = 0; i < na; i++) {
+        for (int j = 0; j < nb; j++) {
+            if (va[i].x == vb[j].x && va[i].y == vb[j].y) {
+                BIVec2 prev_b=vb[(j-1+nb)%nb], next_b=vb[(j+1)%nb];
+                va[i]=perturb_off_seg(va[i],prev_b,vb[j]);
+                if(va[i].x==vb[j].x&&va[i].y==vb[j].y) va[i]=perturb_off_seg(va[i],vb[j],next_b);
+                goto next_va;
+            }
+        }
+        for (int j = 0; j < nb; j++) {
+            if (on_seg_i(va[i],vb[j],vb[(j+1)%nb])) {
+                va[i]=perturb_off_seg(va[i],vb[j],vb[(j+1)%nb]); goto next_va;
+            }
+        }
+        next_va:;
+    }
+    for (int j = 0; j < nb; j++) {
+        for (int i = 0; i < na; i++) {
+            if (vb[j].x == va[i].x && vb[j].y == va[i].y) {
+                BIVec2 prev_a=va[(i-1+na)%na], next_a=va[(i+1)%na];
+                vb[j]=perturb_off_seg(vb[j],prev_a,va[i]);
+                if(vb[j].x==va[i].x&&vb[j].y==va[i].y) vb[j]=perturb_off_seg(vb[j],va[i],next_a);
+                goto next_vb;
+            }
+        }
+        for (int i = 0; i < na; i++) {
+            if (on_seg_i(vb[j],va[i],va[(i+1)%na])) {
+                vb[j]=perturb_off_seg(vb[j],va[i],va[(i+1)%na]); goto next_vb;
+            }
+        }
+        next_vb:;
+    }
+
+    // Find all proper A-B intersections using sweep-line O((n+k) log n)
+    auto& isects = sc->isects; isects.clear();
+    find_isects_sweep(va, na, vb, nb, isects);
+    int ni = (int)isects.size();
+
+    if (ni == 0) {
+        bool a_in_b=pip_i(va[0],vb), b_in_a=pip_i(vb[0],va);
+        if (clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
+        if (clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
+        if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
+    }
+
+    auto& listA=sc->listA; listA.clear(); listA.reserve(na+ni);
+    auto& listB=sc->listB; listB.clear(); listB.reserve(nb+ni);
+
+    std::sort(isects.begin(),isects.end(),[](const BIsect& x,const BIsect& y){
+        return x.ea<y.ea||(x.ea==y.ea&&x.s<y.s);
+    });
+    for(int i=0,k=0;i<na;i++){
+        listA.push_back({va[i]});
+        while(k<ni&&isects[k].ea==i){BAVertex av;av.pt=isects[k].pt;av.is_alpha=true;av.isect_id=isects[k].id;listA.push_back(av);k++;}
+    }
+    std::sort(isects.begin(),isects.end(),[](const BIsect& x,const BIsect& y){
+        return x.eb<y.eb||(x.eb==y.eb&&x.t<y.t);
+    });
+    for(int j=0,k=0;j<nb;j++){
+        listB.push_back({vb[j]});
+        while(k<ni&&isects[k].eb==j){BAVertex av;av.pt=isects[k].pt;av.is_alpha=true;av.isect_id=isects[k].id;listB.push_back(av);k++;}
+    }
+
+    int lenA=(int)listA.size(), lenB=(int)listB.size();
+    auto& posA=sc->posA; posA.assign(ni,-1);
+    auto& posB=sc->posB; posB.assign(ni,-1);
+    for(int i=0;i<lenA;i++) if(listA[i].is_alpha) posA[listA[i].isect_id]=i;
+    for(int j=0;j<lenB;j++) if(listB[j].is_alpha) posB[listB[j].isect_id]=j;
+    for(int k=0;k<ni;k++) if(posA[k]>=0&&posB[k]>=0){listA[posA[k]].neighbor=posB[k];listB[posB[k]].neighbor=posA[k];}
+
+    {
+        int first=-1;
+        for(int i=0;i<lenA&&first<0;i++) if(!listA[i].is_alpha) first=i;
+        if(first>=0){
+            bool cur_inside=pip_i(listA[first].pt,vb);
+            for(int k=1;k<=lenA;k++){
+                int i=(first+k)%lenA;
+                if(!listA[i].is_alpha) continue;
+                listA[i].entering=!cur_inside; cur_inside=!cur_inside;
+                if(listA[i].neighbor>=0) listB[listA[i].neighbor].entering=listA[i].entering;
+            }
+        }
+    }
+
+    auto& usedA=sc->usedA; usedA.assign(lenA,false);
+    int find_cursor=0;
+    auto find_start=[&]()->int{
+        for(int k=0;k<lenA;k++){
+            int i=(find_cursor+k)%lenA;
+            if(!listA[i].is_alpha||usedA[i]) continue;
+            if(clip_type==0&&!listA[i].entering) continue;
+            if(clip_type!=0&& listA[i].entering) continue;
+            find_cursor=i; return i;
+        }
+        return -1;
+    };
+
+    auto push_coord=[&](BIVec2 iv){
+        double u=iv.x/scale, v=iv.y/scale;
+        if(flat){
+            sc->poly_coords.push_back(u);
+            sc->poly_coords.push_back(v);
+            sc->poly_coords.push_back(0.0);
+        } else {
+            sc->poly_coords.push_back(ox+u*xax+v*yax);
+            sc->poly_coords.push_back(oy+u*xay+v*yay);
+            sc->poly_coords.push_back(oz+u*xaz+v*yaz);
+        }
+    };
+
+    std::vector<Polyline> out;
+    int start;
+    while((start=find_start())>=0){
+        sc->poly_coords.clear();
+        push_coord(listA[start].pt); usedA[start]=true;
+        bool on_a=true; int cur=start;
+        for(int iter=0;iter<lenA+lenB+10;iter++){
+            int next;
+            if(on_a) next=(cur+1)%lenA;
+            else if(clip_type==2) next=(cur-1+lenB)%lenB;
+            else next=(cur+1)%lenB;
+            cur=next;
+            BIVec2 cpt=on_a?listA[cur].pt:listB[cur].pt;
+            int64_t dx=cpt.x-listA[start].pt.x, dy=cpt.y-listA[start].pt.y;
+            if(dx==0&&dy==0) break;
+            push_coord(cpt);
+            bool is_alpha=on_a?listA[cur].is_alpha:listB[cur].is_alpha;
+            if(!is_alpha) continue;
+            bool ent=on_a?listA[cur].entering:listB[cur].entering;
+            bool sw;
+            if(on_a)             sw=(clip_type==0)?!ent:ent;
+            else if(clip_type==0) sw=ent;
+            else if(clip_type==1) sw=!ent;
+            else                  sw=ent;
+            if(!sw) continue;
+            int nb_idx=on_a?listA[cur].neighbor:listB[cur].neighbor;
+            if(nb_idx<0) break;
+            if(on_a) usedA[cur]=true;
+            on_a=!on_a; cur=nb_idx;
+        }
+        if((int)sc->poly_coords.size()>=9){
+            Polyline result;
+            result._coords=sc->poly_coords;
+            out.push_back(std::move(result));
+        }
+    }
+    return out;
+}
+
+double Polyline::simplify_perp_dist(const Point& pt, const Point& line_start, const Point& line_end) {
+    double dx = line_end[0] - line_start[0];
+    double dy = line_end[1] - line_start[1];
+    double dz = line_end[2] - line_start[2];
+    double len_sq = dx * dx + dy * dy + dz * dz;
+    if (len_sq == 0.0) {
+        double ex = pt[0] - line_start[0];
+        double ey = pt[1] - line_start[1];
+        double ez = pt[2] - line_start[2];
+        return std::sqrt(ex * ex + ey * ey + ez * ez);
+    }
+    double t = ((pt[0] - line_start[0]) * dx + (pt[1] - line_start[1]) * dy + (pt[2] - line_start[2]) * dz) / len_sq;
+    if (t < 0.0) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    double cx = line_start[0] + t * dx;
+    double cy = line_start[1] + t * dy;
+    double cz = line_start[2] + t * dz;
+    double ex = pt[0] - cx;
+    double ey = pt[1] - cy;
+    double ez = pt[2] - cz;
+    return std::sqrt(ex * ex + ey * ey + ez * ez);
+}
+
+void Polyline::simplify_rdp(const std::vector<Point>& points, int start, int end, double tolerance, std::vector<bool>& keep) {
+    if (end <= start + 1) return;
+    double max_dist = 0.0;
+    int max_idx = start;
+    for (int i = start + 1; i < end; ++i) {
+        double d = simplify_perp_dist(points[i], points[start], points[end]);
+        if (d > max_dist) {
+            max_dist = d;
+            max_idx = i;
+        }
+    }
+    if (max_dist > tolerance) {
+        keep[max_idx] = true;
+        simplify_rdp(points, start, max_idx, tolerance, keep);
+        simplify_rdp(points, max_idx, end, tolerance, keep);
+    }
+}
+
+std::vector<Point> Polyline::simplify_points(const std::vector<Point>& points, double tolerance) {
+    int n = static_cast<int>(points.size());
+    if (n < 3) return points;
+    std::vector<bool> keep(n, false);
+    keep[0] = true;
+    keep[n - 1] = true;
+    simplify_rdp(points, 0, n - 1, tolerance, keep);
+    std::vector<Point> result;
+    for (int i = 0; i < n; ++i) {
+        if (keep[i]) result.push_back(points[i]);
+    }
+    return result;
+}
+
+Polyline Polyline::simplify(double tolerance) const {
+    std::vector<Point> pts = get_points();
+    std::vector<Point> simplified = simplify_points(pts, tolerance);
+    return Polyline(simplified);
 }
 
 } // namespace session_cpp

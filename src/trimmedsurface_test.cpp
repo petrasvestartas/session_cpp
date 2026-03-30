@@ -33,8 +33,10 @@ namespace session_cpp {
 
         // Outer trim loop (rectangle in UV space)
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.1, 0.1, 0.0), Point(0.9, 0.1, 0.0),
-            Point(0.9, 0.9, 0.0), Point(0.1, 0.9, 0.0)
+            Point(0.1, 0.1, 0.0),
+            Point(0.9, 0.1, 0.0),
+            Point(0.9, 0.9, 0.0),
+            Point(0.1, 0.9, 0.0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
@@ -43,17 +45,17 @@ namespace session_cpp {
         std::string sstr = ts.str();
         std::string srepr = ts.repr();
 
-        // Copy (new guid)
+        // Copy (new guid())
         TrimmedSurface tscopy = ts;
 
         MINI_CHECK(ts.is_valid());
         MINI_CHECK(ts.is_trimmed());
         MINI_CHECK(ts.name == "my_trimmedsurface");
-        MINI_CHECK(!ts.guid.empty());
+        MINI_CHECK(!ts.guid().empty());
         MINI_CHECK(sstr.find("TrimmedSurface") != std::string::npos);
         MINI_CHECK(srepr.find("name=my_trimmedsurface") != std::string::npos);
         MINI_CHECK(tscopy.is_valid());
-        MINI_CHECK(tscopy.guid != ts.guid);
+        MINI_CHECK(tscopy.guid() != ts.guid());
         MINI_CHECK(tscopy == ts);
     }
 
@@ -75,25 +77,47 @@ namespace session_cpp {
         TrimmedSurface ts = TrimmedSurface::create_planar(bnd);
 
         // Rotated planar
-        pts = {Point(0, 0, 0), Point(3, 1, -2), Point(5, 2, -3), Point(4, 4, 0), Point(1, 3, 2)};
+        pts = {
+            Point(0, 0, 0),
+            Point(3, 1, -2),
+            Point(5, 2, -3),
+            Point(4, 4, 0),
+            Point(1, 3, 2),
+        };
         bnd = NurbsCurve::create(true, 3, pts);
         ts = TrimmedSurface::create_planar(bnd);
 
         // Triangle
-        bnd = NurbsCurve::create(true, 1, {Point(0, 0, 0), Point(6, 3, 3), Point(2, 5, 1)});
+        bnd = NurbsCurve::create(true, 1, {
+            Point(0, 0, 0),
+            Point(6, 3, 3),
+            Point(2, 5, 1),
+        });
         ts = TrimmedSurface::create_planar(bnd);
 
         // Trapezoid
         bnd = NurbsCurve::create(true, 1, {
-            Point(0, 0, 6), Point(5, 0, 6), Point(4, 4, 2), Point(1, 4, 2)});
+            Point(0, 0, 6),
+            Point(5, 0, 6),
+            Point(4, 4, 2),
+            Point(1, 4, 2),
+        });
         ts = TrimmedSurface::create_planar(bnd);
 
         // Rectangle with a hole
         bnd = NurbsCurve::create(true, 1, {
-            Point(0, 0, 0), Point(6, 0, 0), Point(6, 6, 0), Point(0, 6, 0)});
+            Point(0, 0, 0),
+            Point(6, 0, 0),
+            Point(6, 6, 0),
+            Point(0, 6, 0),
+        });
         ts = TrimmedSurface::create_planar(bnd);
         ts.add_hole(NurbsCurve::create(true, 1, {
-            Point(2, 2, 0), Point(4, 2, 0), Point(4, 4, 0), Point(2, 4, 0)}));
+            Point(2, 2, 0),
+            Point(4, 2, 0),
+            Point(4, 4, 0),
+            Point(2, 4, 0),
+        }));
 
         // Hexagon with 2 holes
         double R = 4.0;
@@ -106,10 +130,16 @@ namespace session_cpp {
         ts = TrimmedSurface::create_planar(bnd);
         ts.add_holes({
             NurbsCurve::create(true, 1, {
-                Point(1.5, 0.5, 0.75), Point(2.5, 0.5, 1.25), Point(2.0, 1.5, 1.0)}),
+                Point(1.5, 0.5, 0.75),
+                Point(2.5, 0.5, 1.25),
+                Point(2.0, 1.5, 1.0),
+            }),
             NurbsCurve::create(true, 1, {
-                Point(-2, -0.5, -1), Point(-1, -0.5, -0.5),
-                Point(-1, -1.5, -0.5), Point(-2, -1.5, -1)})
+                Point(-2, -0.5, -1),
+                Point(-1, -0.5, -0.5),
+                Point(-1, -1.5, -0.5),
+                Point(-2, -1.5, -1),
+            }),
         });
     }
 
@@ -135,7 +165,10 @@ namespace session_cpp {
 
         // Create outer loop (full boundary in UV)
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
@@ -163,8 +196,10 @@ namespace session_cpp {
         srf.set_cv(1, 1, Point(5, 5, 0));
 
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.1, 0.1, 0), Point(0.9, 0.1, 0),
-            Point(0.9, 0.9, 0), Point(0.1, 0.9, 0)
+            Point(0.1, 0.1, 0),
+            Point(0.9, 0.1, 0),
+            Point(0.9, 0.9, 0),
+            Point(0.1, 0.9, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
@@ -197,19 +232,26 @@ namespace session_cpp {
         srf.set_cv(1, 1, Point(10, 10, 0));
 
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
 
         // Add inner loop (hole in UV)
         NurbsCurve hole1 = NurbsCurve::create(true, 1, {
-            Point(0.2, 0.2, 0), Point(0.4, 0.2, 0),
-            Point(0.4, 0.4, 0), Point(0.2, 0.4, 0)
+            Point(0.2, 0.2, 0),
+            Point(0.4, 0.2, 0),
+            Point(0.4, 0.4, 0),
+            Point(0.2, 0.4, 0),
         });
         NurbsCurve hole2 = NurbsCurve::create(true, 1, {
-            Point(0.6, 0.6, 0), Point(0.8, 0.6, 0),
-            Point(0.8, 0.8, 0), Point(0.6, 0.8, 0)
+            Point(0.6, 0.6, 0),
+            Point(0.8, 0.6, 0),
+            Point(0.8, 0.8, 0),
+            Point(0.6, 0.8, 0),
         });
 
         ts.add_inner_loop(hole1);
@@ -238,7 +280,10 @@ namespace session_cpp {
         srf.set_cv(1, 1, Point(4, 4, 0));
 
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
@@ -276,16 +321,20 @@ namespace session_cpp {
 
         // Trimmed mesh (smaller outer boundary)
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.1, 0.1, 0), Point(0.9, 0.1, 0),
-            Point(0.9, 0.9, 0), Point(0.1, 0.9, 0)
+            Point(0.1, 0.1, 0),
+            Point(0.9, 0.1, 0),
+            Point(0.9, 0.9, 0),
+            Point(0.1, 0.9, 0),
         });
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
         Mesh m = ts.mesh();
 
         // Trimmed with hole
         NurbsCurve hole = NurbsCurve::create(true, 1, {
-            Point(0.3, 0.3, 0), Point(0.7, 0.3, 0),
-            Point(0.7, 0.7, 0), Point(0.3, 0.7, 0)
+            Point(0.3, 0.3, 0),
+            Point(0.7, 0.3, 0),
+            Point(0.7, 0.7, 0),
+            Point(0.3, 0.7, 0),
         });
         TrimmedSurface ts_hole = TrimmedSurface::create(srf, outer);
         ts_hole.add_inner_loop(hole);
@@ -313,7 +362,10 @@ namespace session_cpp {
         srf.set_cv(1, 1, Point(1, 1, 0));
 
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
@@ -344,8 +396,10 @@ namespace session_cpp {
         srf.set_cv(1, 1, Point(5, 5, 0));
 
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.1, 0.1, 0), Point(0.9, 0.1, 0),
-            Point(0.9, 0.9, 0), Point(0.1, 0.9, 0)
+            Point(0.1, 0.1, 0),
+            Point(0.9, 0.1, 0),
+            Point(0.9, 0.9, 0),
+            Point(0.1, 0.9, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);
@@ -386,8 +440,10 @@ namespace session_cpp {
         srf.set_cv(1, 1, Point(5, 5, 0));
 
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.1, 0.1, 0), Point(0.9, 0.1, 0),
-            Point(0.9, 0.9, 0), Point(0.1, 0.9, 0)
+            Point(0.1, 0.1, 0),
+            Point(0.9, 0.1, 0),
+            Point(0.9, 0.9, 0),
+            Point(0.1, 0.9, 0),
         });
 
         TrimmedSurface ts = TrimmedSurface::create(srf, outer);

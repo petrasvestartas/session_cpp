@@ -9,6 +9,7 @@
 #include "trimmedsurface.pb.h"
 
 namespace session_cpp {
+bool point_in_polygon_2d(double, double, const std::vector<double>&);
 namespace {
 
 // ---- FlatMap64: open-addressing hash map with uint64_t keys ----
@@ -457,7 +458,7 @@ bool TrimmedSurface::operator!=(const TrimmedSurface& other) const {
 TrimmedSurface::~TrimmedSurface() {}
 
 void TrimmedSurface::deep_copy_from(const TrimmedSurface& src) {
-    guid = ::guid();
+    _guid.clear();
     name = src.name;
     width = src.width;
     surfacecolor = src.surfacecolor;
@@ -855,7 +856,7 @@ TrimmedSurface TrimmedSurface::transformed() const {
 
 nlohmann::ordered_json TrimmedSurface::jsondump() const {
     nlohmann::ordered_json j;
-    j["guid"] = guid;
+    j["guid"] = guid();
     j["inner_loops"] = nlohmann::ordered_json::array();
     for (const auto& loop : m_inner_loops)
         j["inner_loops"].push_back(loop.jsondump());
@@ -872,7 +873,7 @@ nlohmann::ordered_json TrimmedSurface::jsondump() const {
 
 TrimmedSurface TrimmedSurface::jsonload(const nlohmann::json& data) {
     TrimmedSurface ts;
-    if (data.contains("guid")) ts.guid = data["guid"];
+    if (data.contains("guid")) ts.guid() = data["guid"];
     if (data.contains("name")) ts.name = data["name"];
     if (data.contains("width")) ts.width = data["width"];
     if (data.contains("surfacecolor")) ts.surfacecolor = Color::jsonload(data["surfacecolor"]);
@@ -909,7 +910,7 @@ TrimmedSurface TrimmedSurface::json_load(const std::string& filename) {
 
 std::string TrimmedSurface::pb_dumps() const {
     session_proto::TrimmedSurface proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_width(width);
 
@@ -942,7 +943,7 @@ std::string TrimmedSurface::pb_dumps() const {
 
     // Transform
     auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid);
+    xform_proto->set_guid(xform.guid());
     xform_proto->set_name(xform.name);
     for (int i = 0; i < 16; ++i)
         xform_proto->add_matrix(xform.m[i]);
@@ -955,7 +956,7 @@ TrimmedSurface TrimmedSurface::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     TrimmedSurface ts;
-    ts.guid = proto.guid();
+    ts.guid() = proto.guid();
     ts.name = proto.name();
     ts.width = proto.width();
 
@@ -987,7 +988,7 @@ TrimmedSurface TrimmedSurface::pb_loads(const std::string& data) {
 
     // Transform
     const auto& xform_proto = proto.xform();
-    ts.xform.guid = xform_proto.guid();
+    ts.xform.guid() = xform_proto.guid();
     ts.xform.name = xform_proto.name();
     for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i)
         ts.xform.m[i] = xform_proto.matrix(i);

@@ -28,16 +28,16 @@ namespace session_cpp {
         std::string sstr = b.str();
         std::string srepr = b.repr();
 
-        // Copy (new guid)
+        // Copy (new guid())
         BRep bcopy = b;
 
         MINI_CHECK(!b.is_valid());
         MINI_CHECK(b.face_count() == 0);
         MINI_CHECK(b.name == "my_brep");
-        MINI_CHECK(!b.guid.empty());
+        MINI_CHECK(!b.guid().empty());
         MINI_CHECK(sstr.find("BRep") != std::string::npos);
         MINI_CHECK(srepr.find("name=my_brep") != std::string::npos);
-        MINI_CHECK(bcopy.guid != b.guid);
+        MINI_CHECK(bcopy.guid() != b.guid());
         MINI_CHECK(bcopy == b);
         MINI_CHECK(!(bcopy != b));
     }
@@ -91,7 +91,10 @@ namespace session_cpp {
         int fi = b.add_face(si, false);
         int li = b.add_loop(fi, BRepLoopType::Outer);
 
-        NurbsCurve trim = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(1, 0, 0)});
+        NurbsCurve trim = NurbsCurve::create(false, 1, {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+        });
         int ci = b.add_curve_2d(trim);
         b.add_trim(ci, -1, li, false, BRepTrimType::Boundary);
 
@@ -232,18 +235,58 @@ namespace session_cpp {
 
         double hx = 1.0, hy = 1.5, hz = 2.0;
         Point c[8] = {
-            Point(-hx, -hy, -hz), Point( hx, -hy, -hz),
-            Point( hx, hy, -hz), Point(-hx, hy, -hz),
-            Point(-hx, -hy, hz), Point( hx, -hy, hz),
-            Point( hx, hy, hz), Point(-hx, hy, hz)
+            Point(-hx, -hy, -hz),
+            Point( hx, -hy, -hz),
+            Point( hx,  hy, -hz),
+            Point(-hx,  hy, -hz),
+            Point(-hx, -hy,  hz),
+            Point( hx, -hy,  hz),
+            Point( hx,  hy,  hz),
+            Point(-hx,  hy,  hz),
         };
 
-        Polyline bottom(std::vector<Point>{c[0],c[3],c[2],c[1],c[0]});
-        Polyline top(std::vector<Point>{c[4],c[5],c[6],c[7],c[4]});
-        Polyline front(std::vector<Point>{c[0],c[1],c[5],c[4],c[0]});
-        Polyline right(std::vector<Point>{c[1],c[2],c[6],c[5],c[1]});
-        Polyline back(std::vector<Point>{c[2],c[3],c[7],c[6],c[2]});
-        Polyline left(std::vector<Point>{c[3],c[0],c[4],c[7],c[3]});
+        Polyline bottom(std::vector<Point>{
+            c[0],
+            c[3],
+            c[2],
+            c[1],
+            c[0],
+        });
+        Polyline top(std::vector<Point>{
+            c[4],
+            c[5],
+            c[6],
+            c[7],
+            c[4],
+        });
+        Polyline front(std::vector<Point>{
+            c[0],
+            c[1],
+            c[5],
+            c[4],
+            c[0],
+        });
+        Polyline right(std::vector<Point>{
+            c[1],
+            c[2],
+            c[6],
+            c[5],
+            c[1],
+        });
+        Polyline back(std::vector<Point>{
+            c[2],
+            c[3],
+            c[7],
+            c[6],
+            c[2],
+        });
+        Polyline left(std::vector<Point>{
+            c[3],
+            c[0],
+            c[4],
+            c[7],
+            c[3],
+        });
 
         BRep b = BRep::from_polylines({bottom, top, front, right, back, left});
         Mesh m = b.mesh();
@@ -264,18 +307,58 @@ namespace session_cpp {
 
         double hx = 1.0, hy = 1.5, hz = 2.0;
         Point c[8] = {
-            Point(-hx, -hy, -hz), Point( hx, -hy, -hz),
-            Point( hx, hy, -hz), Point(-hx, hy, -hz),
-            Point(-hx, -hy, hz), Point( hx, -hy, hz),
-            Point( hx, hy, hz), Point(-hx, hy, hz)
+            Point(-hx, -hy, -hz),
+            Point( hx, -hy, -hz),
+            Point( hx,  hy, -hz),
+            Point(-hx,  hy, -hz),
+            Point(-hx, -hy,  hz),
+            Point( hx, -hy,  hz),
+            Point( hx,  hy,  hz),
+            Point(-hx,  hy,  hz),
         };
 
-        auto bottom = NurbsCurve::create(false, 1, {c[0],c[3],c[2],c[1],c[0]});
-        auto top = NurbsCurve::create(false, 1, {c[4],c[5],c[6],c[7],c[4]});
-        auto front = NurbsCurve::create(false, 1, {c[0],c[1],c[5],c[4],c[0]});
-        auto right = NurbsCurve::create(false, 1, {c[1],c[2],c[6],c[5],c[1]});
-        auto back = NurbsCurve::create(false, 1, {c[2],c[3],c[7],c[6],c[2]});
-        auto left = NurbsCurve::create(false, 1, {c[3],c[0],c[4],c[7],c[3]});
+        auto bottom = NurbsCurve::create(false, 1, {
+            c[0],
+            c[3],
+            c[2],
+            c[1],
+            c[0],
+        });
+        auto top = NurbsCurve::create(false, 1, {
+            c[4],
+            c[5],
+            c[6],
+            c[7],
+            c[4],
+        });
+        auto front = NurbsCurve::create(false, 1, {
+            c[0],
+            c[1],
+            c[5],
+            c[4],
+            c[0],
+        });
+        auto right = NurbsCurve::create(false, 1, {
+            c[1],
+            c[2],
+            c[6],
+            c[5],
+            c[1],
+        });
+        auto back = NurbsCurve::create(false, 1, {
+            c[2],
+            c[3],
+            c[7],
+            c[6],
+            c[2],
+        });
+        auto left = NurbsCurve::create(false, 1, {
+            c[3],
+            c[0],
+            c[4],
+            c[7],
+            c[3],
+        });
 
         BRep b = BRep::from_nurbscurves({bottom, top, front, right, back, left});
         Mesh m = b.mesh();
@@ -293,7 +376,12 @@ namespace session_cpp {
         // uncomment #include "primitives.h"
 
         auto outer = NurbsCurve::create(false, 1, {
-            Point(-5, -5, 0), Point(5, -5, 0), Point(5, 5, 0), Point(-5, 5, 0), Point(-5, -5, 0)});
+            Point(-5, -5, 0),
+            Point(5, -5, 0),
+            Point(5, 5, 0),
+            Point(-5, 5, 0),
+            Point(-5, -5, 0),
+        });
         auto hole = Primitives::circle(0.0, 0.0, 0.0, 2.0);
 
         BRep b = BRep::from_nurbscurves({outer}, {{hole}});

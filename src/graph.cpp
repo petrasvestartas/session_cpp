@@ -5,8 +5,65 @@
 
 namespace session_cpp {
 
+std::string Vertex::str() const {
+  return fmt::format("Vertex({}, {}, {}, {})", guid(), name, attribute, index);
+}
+
+nlohmann::ordered_json Vertex::jsondump() const {
+  return nlohmann::ordered_json{{"type", "Vertex"},
+                                {"name", name},
+                                {"guid", guid()},
+                                {"attribute", attribute},
+                                {"index", index}};
+}
+
+Vertex Vertex::jsonload(const nlohmann::json &data) {
+  Vertex vertex(data["name"], data["attribute"]);
+  vertex.index = data["index"];
+  vertex.guid() = data["guid"];
+  return vertex;
+}
+
+std::string Edge::str() const {
+  return fmt::format("Edge({}, {}, {}, {}, {})", guid(), name, v0, v1, attribute);
+}
+
+nlohmann::ordered_json Edge::jsondump() const {
+  return nlohmann::ordered_json{{"type", "Edge"},
+                                {"name", name},
+                                {"guid", guid()},
+                                {"v0", v0},
+                                {"v1", v1},
+                                {"attribute", attribute},
+                                {"index", index}};
+}
+
+Edge Edge::jsonload(const nlohmann::json &data) {
+  Edge edge(data["v0"], data["v1"], data["attribute"]);
+  edge.name = data["name"];
+  edge.guid() = data["guid"];
+  edge.index = data["index"];
+  return edge;
+}
+
+std::tuple<std::string, std::string> Edge::vertices() const {
+  return std::make_tuple(v0, v1);
+}
+
+bool Edge::connects(const std::string &vertex_id) {
+  return v0 == vertex_id || v1 == vertex_id;
+}
+
+std::string Edge::other_vertex(const std::string &vertex_id) {
+  if (v0 == vertex_id)
+    return v1;
+  else if (v1 == vertex_id)
+    return v0;
+  return "";
+}
+
 std::string Graph::str() const {
-  return fmt::format("Graph({}, {}, {}, {})", guid, name, vertex_count,
+  return fmt::format("Graph({}, {}, {}, {})", guid(), name, vertex_count,
                      edge_count);
 }
 
@@ -33,7 +90,7 @@ nlohmann::ordered_json Graph::jsondump() const {
 
   return nlohmann::ordered_json{{"type", "Graph"},
                                 {"name", name},
-                                {"guid", guid},
+                                {"guid", guid()},
                                 {"vertices", vertices_json},
                                 {"edges", edges_json},
                                 {"vertex_count", vertex_count},
@@ -42,7 +99,7 @@ nlohmann::ordered_json Graph::jsondump() const {
 
 Graph Graph::jsonload(const nlohmann::json &data) {
   Graph graph(data["name"]);
-  graph.guid = data["guid"];
+  graph.guid() = data["guid"];
   graph.vertex_count = data["vertex_count"];
   graph.edge_count = data["edge_count"];
 
@@ -92,14 +149,14 @@ Graph Graph::json_load(const std::string &filename) {
 std::string Graph::pb_dumps() const {
   session_proto::Graph proto;
   proto.set_name(name);
-  proto.set_guid(guid);
+  proto.set_guid(guid());
   proto.set_vertex_count(vertex_count);
   proto.set_edge_count(edge_count);
 
   for (const auto &[vname, vertex] : vertices) {
     auto &v = (*proto.mutable_vertices())[vname];
     v.set_name(vertex.name);
-    v.set_guid(vertex.guid);
+    v.set_guid(vertex.guid());
     v.set_attribute(vertex.attribute);
     v.set_index(vertex.index);
   }
@@ -111,7 +168,7 @@ std::string Graph::pb_dumps() const {
       if (seen.find(key) == seen.end()) {
         seen.insert(key);
         auto *e = proto.add_edges();
-        e->set_guid(edge.guid);
+        e->set_guid(edge.guid());
         e->set_name(edge.name);
         e->set_v0(edge.v0);
         e->set_v1(edge.v1);
@@ -129,20 +186,20 @@ Graph Graph::pb_loads(const std::string &data) {
   proto.ParseFromString(data);
 
   Graph graph(proto.name());
-  graph.guid = proto.guid();
+  graph.guid() = proto.guid();
   graph.vertex_count = proto.vertex_count();
   graph.edge_count = proto.edge_count();
 
   for (const auto &[vname, v] : proto.vertices()) {
     Vertex vertex(v.name(), v.attribute());
-    vertex.guid = v.guid();
+    vertex.guid() = v.guid();
     vertex.index = v.index();
     graph.vertices[vname] = vertex;
   }
 
   for (const auto &e : proto.edges()) {
     Edge edge(e.v0(), e.v1(), e.attribute());
-    edge.guid = e.guid();
+    edge.guid() = e.guid();
     edge.name = e.name();
     edge.index = e.index();
     graph.edges[e.v0()][e.v1()] = edge;
@@ -326,7 +383,7 @@ void Graph::_reassign_edge_indices() {
     for (auto &[v, edge] : neighbors) {
       // Find the updated edge in the sorted list to get its new index
       for (const auto &sorted_edge : edge_list) {
-        if (sorted_edge->guid == edge.guid) {
+        if (sorted_edge->guid() == edge.guid()) {
           edge.index = sorted_edge->index;
           break;
         }
@@ -449,6 +506,186 @@ std::string Graph::edge_attribute(const std::string &u, const std::string &v,
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Not class methods
 ///////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Algorithms
+///////////////////////////////////////////////////////////////////////////////////////////
+
+std::vector<std::string> Graph::bfs(const std::string &start) {
+  if (!has_node(start)) return {};
+  std::set<std::string> visited;
+  std::deque<std::string> queue;
+  queue.push_back(start);
+  visited.insert(start);
+  std::vector<std::string> result;
+  while (!queue.empty()) {
+    std::string node = queue.front();
+    queue.pop_front();
+    result.push_back(node);
+    auto nbrs = get_neighbors(node);
+    std::sort(nbrs.begin(), nbrs.end());
+    for (const auto &neighbor : nbrs) {
+      if (!visited.count(neighbor)) {
+        visited.insert(neighbor);
+        queue.push_back(neighbor);
+      }
+    }
+  }
+  return result;
+}
+
+std::vector<std::string> Graph::dfs(const std::string &start) {
+  if (!has_node(start)) return {};
+  std::set<std::string> visited;
+  std::vector<std::string> result;
+  std::vector<std::string> stack = {start};
+  while (!stack.empty()) {
+    std::string node = stack.back();
+    stack.pop_back();
+    if (visited.count(node)) continue;
+    visited.insert(node);
+    result.push_back(node);
+    auto nbrs = get_neighbors(node);
+    std::sort(nbrs.begin(), nbrs.end());
+    for (auto it = nbrs.rbegin(); it != nbrs.rend(); ++it) {
+      if (!visited.count(*it)) {
+        stack.push_back(*it);
+      }
+    }
+  }
+  return result;
+}
+
+std::vector<std::vector<std::string>> Graph::connected_components() {
+  std::set<std::string> visited;
+  std::vector<std::vector<std::string>> comps;
+  for (const auto &[vname, vertex] : vertices) {
+    if (visited.count(vname)) continue;
+    auto comp = bfs(vname);
+    for (const auto &n : comp) visited.insert(n);
+    std::sort(comp.begin(), comp.end());
+    comps.push_back(comp);
+  }
+  return comps;
+}
+
+bool Graph::is_connected() {
+  return connected_components().size() <= 1;
+}
+
+int Graph::number_connected_components() {
+  return static_cast<int>(connected_components().size());
+}
+
+std::vector<std::string> Graph::shortest_path(const std::string &u,
+                                               const std::string &v) {
+  if (!has_node(u) || !has_node(v)) return {};
+  if (u == v) return {u};
+  std::map<std::string, std::string> parent;
+  parent[u] = "";
+  std::deque<std::string> queue;
+  queue.push_back(u);
+  while (!queue.empty()) {
+    std::string node = queue.front();
+    queue.pop_front();
+    auto nbrs = get_neighbors(node);
+    std::sort(nbrs.begin(), nbrs.end());
+    for (const auto &neighbor : nbrs) {
+      if (!parent.count(neighbor)) {
+        parent[neighbor] = node;
+        if (neighbor == v) {
+          std::vector<std::string> path;
+          std::string cur = v;
+          while (cur != u) {
+            path.push_back(cur);
+            cur = parent[cur];
+          }
+          path.push_back(u);
+          std::reverse(path.begin(), path.end());
+          return path;
+        }
+        queue.push_back(neighbor);
+      }
+    }
+  }
+  return {};
+}
+
+int Graph::shortest_path_length(const std::string &u, const std::string &v) {
+  auto path = shortest_path(u, v);
+  if (path.empty()) return -1;
+  return static_cast<int>(path.size()) - 1;
+}
+
+bool Graph::has_cycle() {
+  std::set<std::string> visited;
+  for (const auto &[vname, vertex] : vertices) {
+    if (visited.count(vname)) continue;
+    std::map<std::string, std::string> parent;
+    parent[vname] = "";
+    std::deque<std::string> queue;
+    queue.push_back(vname);
+    visited.insert(vname);
+    while (!queue.empty()) {
+      std::string node = queue.front();
+      queue.pop_front();
+      for (const auto &neighbor : get_neighbors(node)) {
+        if (!visited.count(neighbor)) {
+          visited.insert(neighbor);
+          parent[neighbor] = node;
+          queue.push_back(neighbor);
+        } else if (parent[node] != neighbor) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+std::vector<std::vector<std::string>> Graph::cycle_basis() {
+  std::vector<std::vector<std::string>> result;
+  std::map<std::string, int> disc;
+  std::map<std::string, std::string> par;
+  int timer = 0;
+  for (const auto &[vname, vertex] : vertices) {
+    if (disc.count(vname)) continue;
+    par[vname] = "";
+    disc[vname] = timer++;
+    auto nbrs = get_neighbors(vname);
+    std::sort(nbrs.begin(), nbrs.end());
+    using Frame = std::tuple<std::string, std::string, std::vector<std::string>, int>;
+    std::vector<Frame> stk;
+    stk.reserve(number_of_vertices());
+    stk.emplace_back(vname, "", nbrs, 0);
+    while (!stk.empty()) {
+      auto &[u, p, nbrs_u, idx] = stk.back();
+      if (idx < (int)nbrs_u.size()) {
+        std::string v = nbrs_u[idx];
+        idx++;
+        if (!disc.count(v)) {
+          par[v] = u;
+          disc[v] = timer++;
+          auto v_nbrs = get_neighbors(v);
+          std::sort(v_nbrs.begin(), v_nbrs.end());
+          stk.emplace_back(v, u, v_nbrs, 0);
+        } else if (v != p && disc[v] < disc[u]) {
+          std::vector<std::string> cycle;
+          std::string node = u;
+          while (node != v) {
+            cycle.push_back(node);
+            node = par[node];
+          }
+          cycle.push_back(v);
+          result.push_back(cycle);
+        }
+      } else {
+        stk.pop_back();
+      }
+    }
+  }
+  return result;
+}
 
 std::ostream &operator<<(std::ostream &os, const Vertex &vertex) {
   return os << vertex.str();

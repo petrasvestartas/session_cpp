@@ -43,6 +43,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Mesh") {
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Torus") {
     NurbsSurface s = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 1024);
 }
@@ -50,6 +51,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Torus") {
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cylinder") {
     NurbsSurface s = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 64);
 }
@@ -57,6 +59,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cylinder") {
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cone") {
     NurbsSurface s = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 33);
 }
@@ -64,6 +67,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cone") {
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Doubly Curved") {
     NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 1175);
 }
@@ -71,6 +75,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Doubly Curved") {
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Flat") {
     NurbsSurface s = Primitives::wave_surface(1.0, 0.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 169);
 }
@@ -85,6 +90,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Singular Triangle") {
         Point(2, 4, 0),
     });
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 83);
 }
@@ -102,6 +108,7 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Double-Curved Triangle") {
         Point(2, 4, 0),
     });
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
+
     MINI_CHECK(m.is_valid());
     MINI_CHECK(m.number_of_vertices() == 91);
 }

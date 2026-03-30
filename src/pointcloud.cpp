@@ -46,7 +46,7 @@ PointCloud::PointCloud(const std::vector<Point>& points,
 }
 
 PointCloud::PointCloud(const PointCloud& other)
-    : guid(::guid()),
+    :
       name(other.name),
       point_size(other.point_size),
       xform(other.xform),
@@ -57,7 +57,7 @@ PointCloud::PointCloud(const PointCloud& other)
 
 PointCloud& PointCloud::operator=(const PointCloud& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         point_size = other.point_size;
         xform = other.xform;
@@ -285,7 +285,7 @@ nlohmann::ordered_json PointCloud::jsondump() const {
     nlohmann::ordered_json data;
     data["colors"] = _colors;
     data["coords"] = _coords;
-    data["guid"] = guid;
+    data["guid"] = guid();
     data["name"] = name;
     data["normals"] = _normals;
     data["point_size"] = point_size;
@@ -300,7 +300,7 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
     std::vector<double> normals = data.value("normals", std::vector<double>{});
 
     PointCloud pc = from_coords(coords, colors, normals);
-    pc.guid = data.value("guid", pc.guid);
+    pc.guid() = data.value("guid", pc.guid());
     pc.name = data.value("name", pc.name);
     pc.point_size = data.value("point_size", 1.0);
 
@@ -339,7 +339,7 @@ PointCloud PointCloud::json_load(const std::string& filename) {
 
 std::string PointCloud::pb_dumps() const {
     session_proto::PointCloud proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_point_size(point_size);
 
@@ -375,7 +375,7 @@ PointCloud PointCloud::pb_loads(const std::string& data) {
     std::vector<double> normals(proto.normals().begin(), proto.normals().end());
 
     PointCloud pc = from_coords(coords, colors, normals);
-    pc.guid = proto.guid();
+    pc.guid() = proto.guid();
     pc.name = proto.name();
     pc.point_size = proto.point_size() > 0 ? proto.point_size() : 1.0;
 

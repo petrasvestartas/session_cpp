@@ -26,13 +26,14 @@ namespace session_cpp {
 class Objects {
 public:
   std::string name = "my_objects"; ///< The name of the objects
-  std::string guid = ::guid();     ///< The unique identifier of the objects
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   
   // Collections for all geometry types
   std::shared_ptr<std::vector<std::shared_ptr<Point>>> points;
   std::shared_ptr<std::vector<std::shared_ptr<Line>>> lines;
   std::shared_ptr<std::vector<std::shared_ptr<Plane>>> planes;
-  std::shared_ptr<std::vector<std::shared_ptr<Obb>>> bboxes;
+  std::shared_ptr<std::vector<std::shared_ptr<OBB>>> bboxes;
   std::shared_ptr<std::vector<std::shared_ptr<Polyline>>> polylines;
   std::shared_ptr<std::vector<std::shared_ptr<PointCloud>>> pointclouds;
   std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes;
@@ -50,7 +51,7 @@ public:
     this->points = std::make_shared<std::vector<std::shared_ptr<Point>>>();
     this->lines = std::make_shared<std::vector<std::shared_ptr<Line>>>();
     this->planes = std::make_shared<std::vector<std::shared_ptr<Plane>>>();
-    this->bboxes = std::make_shared<std::vector<std::shared_ptr<Obb>>>();
+    this->bboxes = std::make_shared<std::vector<std::shared_ptr<OBB>>>();
     this->polylines = std::make_shared<std::vector<std::shared_ptr<Polyline>>>();
     this->pointclouds = std::make_shared<std::vector<std::shared_ptr<PointCloud>>>();
     this->meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
@@ -84,6 +85,9 @@ public:
   static Objects pb_loads(const std::string& data);
   void pb_dump(const std::string& filename) const;
   static Objects pb_load(const std::string& filename);
+
+private:
+  mutable std::string _guid;
 };
 /**
  * @brief  To use this operator, you can do:

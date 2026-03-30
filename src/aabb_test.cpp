@@ -5,6 +5,7 @@
 #include "primitives.h"
 #include "point.h"
 #include "tolerance.h"
+#include <cmath>
 
 using namespace session_cpp::mini_test;
 
@@ -13,36 +14,40 @@ namespace session_cpp {
 MINI_TEST("AABBTree", "Build Empty") {
     AABBTree tree;
     tree.build(nullptr, 0);
+
     MINI_CHECK(tree.empty());
 }
 
 MINI_TEST("AABBTree", "Build Single") {
-    BvhAABB aabb = {0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
+    AABB aabb = {0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
     AABBTree tree;
     tree.build(&aabb, 1);
+
     MINI_CHECK(tree.size() == 1);
     MINI_CHECK(tree.nodes[0].object_id == 0);
 }
 
 MINI_TEST("AABBTree", "Build Multiple") {
-    std::vector<BvhAABB> aabbs = {
+    std::vector<AABB> aabbs = {
         {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
         {5.0, 0.0, 0.0, 1.0, 1.0, 1.0},
         {10.0, 0.0, 0.0, 1.0, 1.0, 1.0}
     };
     AABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
+
     MINI_CHECK(tree.size() == 5);
     MINI_CHECK(tree.nodes[0].object_id == -1);
 }
 
 MINI_TEST("AABBTree", "Node Count") {
-    std::vector<BvhAABB> aabbs;
+    std::vector<AABB> aabbs;
     for (int i = 0; i < 100; i++) {
         aabbs.push_back({static_cast<double>(i), 0.0, 0.0, 0.5, 0.5, 0.5});
     }
     AABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
+
     MINI_CHECK(tree.size() == 199);
 }
 
@@ -50,6 +55,7 @@ MINI_TEST("AABBTree", "Mesh Point Aabb") {
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
+
     MINI_CHECK(TOLERANCE.is_close(cp1[2], 1.0));
     MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
 
@@ -68,6 +74,35 @@ MINI_TEST("AABBTree", "Mesh Point Aabb Matches Bvh") {
     MINI_CHECK(TOLERANCE.is_close(cp_bvh[0], cp_aabb[0]));
     MINI_CHECK(TOLERANCE.is_close(cp_bvh[1], cp_aabb[1]));
     MINI_CHECK(TOLERANCE.is_close(cp_bvh[2], cp_aabb[2]));
+}
+
+MINI_TEST("Aabb", "Constructor") {
+    // AABB(0,0,0, 1,2,3) — dims 2×4×6
+    AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
+
+    MINI_CHECK(TOLERANCE.is_close(a.area(), 88.0));
+    MINI_CHECK(a.center() == Point(0.0, 0.0, 0.0));
+    MINI_CHECK(TOLERANCE.is_close(a.diagonal(), 2.0 * std::sqrt(14.0)));
+    MINI_CHECK(a.is_valid());
+    MINI_CHECK(TOLERANCE.is_close(a.volume(), 48.0));
+
+    MINI_CHECK(a.closest_point(Point(0.0, 0.0, 0.0)) == Point(0.0, 0.0, 0.0));
+    MINI_CHECK(a.closest_point(Point(10.0, 0.0, 0.0)) == Point(1.0, 0.0, 0.0));
+    MINI_CHECK(a.contains(Point(0.0, 0.0, 0.0)));
+    MINI_CHECK(!a.contains(Point(10.0, 0.0, 0.0)));
+
+    MINI_CHECK(a.corner(false, false, false) == Point(-1.0, -2.0, -3.0));
+    MINI_CHECK(a.corner(true, true, true) == Point(1.0, 2.0, 3.0));
+    MINI_CHECK(a.get_corners().size() == 8);
+    MINI_CHECK(a.get_edges().size() == 12);
+
+    MINI_CHECK(a.point_at(1.0, 0.0, 0.0) == Point(1.0, 0.0, 0.0));
+    MINI_CHECK(a.point_at(0.0, 0.0, 0.0) == Point(0.0, 0.0, 0.0));
+
+    AABB b(5.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+    a.union_with(b);
+    MINI_CHECK(a.min_point() == Point(-1.0, -2.0, -3.0));
+    MINI_CHECK(a.max_point() == Point(6.0, 2.0, 3.0));
 }
 
 }

@@ -240,4 +240,57 @@ MINI_TEST("Knot", "Domain Tolerance") {
     MINI_CHECK(tol_diff > 0.0);
 }
 
+MINI_TEST("Knot", "Eval Basis") {
+    // Basis functions for degree-3 single-span at t=0.5
+    auto k = knot::make_clamped_uniform(4, 4, 1.0);
+    int span = knot::find_span(4, 4, k, 0.5);
+    auto b = knot::eval_basis(4, k, span, 0.5);
+    double sum = b[0] + b[1] + b[2] + b[3];
+    bool all_nonneg = b[0] >= 0.0 && b[1] >= 0.0 && b[2] >= 0.0 && b[3] >= 0.0;
+    bool sum_one = std::fabs(sum - 1.0) < 1e-10;
+
+    // At endpoint t=0.0, first basis = 1
+    int span0 = knot::find_span(4, 4, k, 0.0);
+    auto b0 = knot::eval_basis(4, k, span0, 0.0);
+    bool endpoint_b0 = std::fabs(b0[0] - 1.0) < 1e-10;
+
+    MINI_CHECK(all_nonneg);
+    MINI_CHECK(sum_one);
+    MINI_CHECK(endpoint_b0);
+}
+
+MINI_TEST("Knot", "Compute Parameters") {
+    // Uniform: equal spacing regardless of distances
+    double pts1[9] = {0,0,0, 3,0,0, 4,0,0};
+    auto p_uniform = knot::compute_parameters(pts1, 3, 3, CurveKnotStyle::Uniform);
+    bool uniform_equal = std::fabs(p_uniform[1] - 1.0) < 1e-10 && std::fabs(p_uniform[2] - 2.0) < 1e-10;
+
+    // Chord: spacing = chord distances
+    double pts2[9] = {0,0,0, 3,0,0, 4,0,0};
+    auto p_chord = knot::compute_parameters(pts2, 3, 3, CurveKnotStyle::Chord);
+    bool chord_dist = std::fabs(p_chord[1] - 3.0) < 1e-10 && std::fabs(p_chord[2] - 4.0) < 1e-10;
+
+    // Both start at 0
+    bool starts_zero = p_uniform[0] == 0.0 && p_chord[0] == 0.0;
+
+    MINI_CHECK(uniform_equal);
+    MINI_CHECK(chord_dist);
+    MINI_CHECK(starts_zero);
+}
+
+MINI_TEST("Knot", "Build Interp Knots") {
+    // 4 points, degree 3 → cv_count = 6, knot_count = 8
+    double pts[12] = {0,0,0, 1,0,0, 2,0,0, 3,0,0};
+    auto params = knot::compute_parameters(pts, 4, 3, CurveKnotStyle::Chord);
+    auto knots = knot::build_interp_knots(params, 3);
+    size_t expected_size = knot::knot_count(4, 6);
+    bool correct_size = knots.size() == expected_size;
+    bool clamped_start = knots[0] == 0.0 && knots[1] == 0.0 && knots[2] == 0.0;
+    bool clamped_end = std::fabs(knots.back() - params[3]) < 1e-10;
+
+    MINI_CHECK(correct_size);
+    MINI_CHECK(clamped_start);
+    MINI_CHECK(clamped_end);
+}
+
 } // namespace session_cpp

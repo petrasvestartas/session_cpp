@@ -34,7 +34,7 @@ namespace session_cpp {
         std::string cstr = curve.str();
         std::string crepr = curve.repr();
 
-        // Copy (duplicates everything except guid)
+        // Copy (duplicates everything except guid())
         NurbsCurve ccopy = curve;
         NurbsCurve cother = NurbsCurve::create(false, 2, points);
 
@@ -46,11 +46,11 @@ namespace session_cpp {
         MINI_CHECK(curve.degree() == 2);
         MINI_CHECK(curve.order() == 3);
         MINI_CHECK(curve.name == "my_nurbscurve");
-        MINI_CHECK(!curve.guid.empty());
+        MINI_CHECK(!curve.guid().empty());
         MINI_CHECK(cstr == "NurbsCurve(name=my_nurbscurve, degree=2, cvs=4)");
         MINI_CHECK(crepr.find("name=my_nurbscurve") != std::string::npos);
         MINI_CHECK(ccopy.cv_count() == curve.cv_count());
-        MINI_CHECK(ccopy.guid != curve.guid);
+        MINI_CHECK(ccopy.guid() != curve.guid());
     }
 
     MINI_TEST("NurbsCurve", "Create Interpolated") {
@@ -58,8 +58,11 @@ namespace session_cpp {
             // uncomment #include "point.h"
 
             std::vector<Point> points = {
-                Point(14, 9, 0), Point(21, 22, 0), Point(26, 10, 0),
-                Point(35, 19, 0), Point(41, 13, 0)
+                Point(14, 9, 0),
+                Point(21, 22, 0),
+                Point(26, 10, 0),
+                Point(35, 19, 0),
+                Point(41, 13, 0)
             };
 
             NurbsCurve c = NurbsCurve::create_interpolated(points, CurveKnotStyle::Chord);
@@ -152,20 +155,21 @@ namespace session_cpp {
 
         // Whole curve
         bool is_valid = curve.is_valid();
-        MINI_CHECK(is_valid == true);
+
+        MINI_CHECK(is_valid);
 
         // Check whole knot vector for
         // For correct size: order + cv_count - 2
         // Non-decreasing (can repeat, can't go down)
         // Valid domain exists
         bool is_valid_knot_vector = curve.is_valid_knot_vector();
-        MINI_CHECK(is_valid_knot_vector == true);
+        MINI_CHECK(is_valid_knot_vector);
 
         // Check if the curve is clamped at start, end, or both
         bool is_clamped_start = curve.is_clamped(0);
         bool is_clamped_end = curve.is_clamped(1);
         bool is_clamped_both = curve.is_clamped(2);
-        MINI_CHECK(is_clamped_start == true && is_clamped_end == true && is_clamped_both == true);
+        MINI_CHECK(is_clamped_start && is_clamped_end && is_clamped_both);
 
         // Is rational is related to control points having weights
         // is_rational = false means control points [x, y, z]
@@ -186,18 +190,18 @@ namespace session_cpp {
         bool is_duplicate = curve.is_duplicate(curve, false);
         bool is_continuous = curve.is_continuous(1, curve.domain_middle());
 
-        MINI_CHECK(is_rational == false);
-        MINI_CHECK(closed == false);
-        MINI_CHECK(periodic == false);
-        MINI_CHECK(linear == false);
-        MINI_CHECK(planar == true);
-        MINI_CHECK(arc == false);
-        MINI_CHECK(on_plane == true);
-        MINI_CHECK(is_open == false);
-        MINI_CHECK(is_polyline == false);
-        MINI_CHECK(is_singular == false);
-        MINI_CHECK(is_duplicate == true);
-        MINI_CHECK(is_continuous == true);
+        MINI_CHECK(!is_rational);
+        MINI_CHECK(!closed);
+        MINI_CHECK(!periodic);
+        MINI_CHECK(!linear);
+        MINI_CHECK(planar);
+        MINI_CHECK(!arc);
+        MINI_CHECK(on_plane);
+        MINI_CHECK(!is_open);
+        MINI_CHECK(!is_polyline);
+        MINI_CHECK(!is_singular);
+        MINI_CHECK(is_duplicate);
+        MINI_CHECK(is_continuous);
 
         /////////////////////////////////////////////
         // Knot Operations
@@ -372,7 +376,7 @@ namespace session_cpp {
         /////////////////////////////////////////////////////
 
         auto [found, t_out] = curve.get_next_discontinuity(2, curve.domain_start(), curve.domain_end());
-        MINI_CHECK(found == true && t_out == 0.5);
+        MINI_CHECK(found && t_out == 0.5);
     }
 
     MINI_TEST("NurbsCurve", "Conversions") {
@@ -562,6 +566,7 @@ namespace session_cpp {
         // Reverse the curve
         NurbsCurve curve_reversed = curve;
         curve_reversed.reverse();
+
         MINI_CHECK(TOLERANCE.is_point_close(curve_reversed.point_at_start(), curve.point_at_end()));
 
         // Swap coordinates axes
@@ -653,8 +658,9 @@ namespace session_cpp {
 
         // transform() - Apply stored xform (in-place)                                                                                                                                                         
         NurbsCurve curve1 = NurbsCurve::create(false, 2, points);                                                         
-        curve1.xform = Xform::translation(0.0, 0.0, 1.0);  
+        curve1.xform = Xform::translation(0.0, 0.0, 1.0);
         curve1.transform();  // applies stored xform, modifies curve1
+
         MINI_CHECK(curve1.xform.is_identity() == false);
         MINI_CHECK(curve1.cv(0)[2] == 1.0);
 

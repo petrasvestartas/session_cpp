@@ -42,7 +42,7 @@ MINI_TEST("Plane", "Constructor") {
     std::string plstr = pl.str();
     std::string plrepr = pl.repr();
 
-    // Copy (duplicates everything except guid)
+    // Copy (duplicates everything except guid())
     Plane plcopy = pl;
 
     // From point and normal
@@ -84,7 +84,7 @@ MINI_TEST("Plane", "Constructor") {
     Plane pl_add = pl_base + offset;
     Plane pl_sub = pl_base - offset;
 
-    MINI_CHECK(pl.name == "my_plane" && !pl.guid.empty());
+    MINI_CHECK(pl.name == "my_plane" && !pl.guid().empty());
     MINI_CHECK(TOLERANCE.is_close(origin[0], 0.0));
     MINI_CHECK(TOLERANCE.is_close(origin[1], 0.0));
     MINI_CHECK(TOLERANCE.is_close(origin[2], 0.0));
@@ -106,7 +106,7 @@ MINI_TEST("Plane", "Constructor") {
     MINI_CHECK(TOLERANCE.is_close(ax2[2], 1.0));
     MINI_CHECK(plstr == "0.000000, 0.000000, 0.000000\n1.000000, 0.000000, 0.000000\n0.000000, 1.000000, 0.000000\n0.000000, 0.000000, 1.000000");
     MINI_CHECK(plrepr == "Plane(my_plane, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 1.000000)");
-    MINI_CHECK(plcopy == pl && plcopy.guid != pl.guid);
+    MINI_CHECK(plcopy == pl && plcopy.guid() != pl.guid());
     MINI_CHECK(TOLERANCE.is_close(pl_pn.origin()[2], 5.0));
     MINI_CHECK(TOLERANCE.is_close(pl_pn.z_axis()[2], 1.0));
     MINI_CHECK(TOLERANCE.is_close(pl_pn.d(), -5.0));
@@ -178,12 +178,12 @@ MINI_TEST("Plane", "Is Right Hand") {
     default_pl.rotate(Tolerance::PI / 4.0);
     bool rotated_rh = default_pl.is_right_hand();
 
-    MINI_CHECK(xy_rh == true);
-    MINI_CHECK(yz_rh == true);
-    MINI_CHECK(xz_rh == true);
-    MINI_CHECK(default_rh == true);
-    MINI_CHECK(reversed_rh == true);
-    MINI_CHECK(rotated_rh == true);
+    MINI_CHECK(xy_rh);
+    MINI_CHECK(yz_rh);
+    MINI_CHECK(xz_rh);
+    MINI_CHECK(default_rh);
+    MINI_CHECK(reversed_rh);
+    MINI_CHECK(rotated_rh);
 }
 
 MINI_TEST("Plane", "Is Coplanar") {
@@ -216,14 +216,14 @@ MINI_TEST("Plane", "Is Coplanar") {
     p6 += Vector(0.0, 0.0, 1.0);
     bool not_coplanar = Plane::is_coplanar(p5, p6, true);
 
-    MINI_CHECK(same_dir == true);
-    MINI_CHECK(same_dir_flipped == true);
-    MINI_CHECK(same_dir_strict == false);
-    MINI_CHECK(same_pos == true);
-    MINI_CHECK(diff_pos == false);
-    MINI_CHECK(coplanar == true);
-    MINI_CHECK(coplanar_reversed == true);
-    MINI_CHECK(not_coplanar == false);
+    MINI_CHECK(same_dir);
+    MINI_CHECK(same_dir_flipped);
+    MINI_CHECK(!same_dir_strict);
+    MINI_CHECK(same_pos);
+    MINI_CHECK(!diff_pos);
+    MINI_CHECK(coplanar);
+    MINI_CHECK(coplanar_reversed);
+    MINI_CHECK(!not_coplanar);
 }
 
 MINI_TEST("Plane", "Transform") {

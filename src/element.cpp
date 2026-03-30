@@ -18,14 +18,14 @@ Element::Element(const BRep& geometry, const std::string& name)
     : name(name), _geometry(geometry) {}
 
 Element::Element(const Element& other)
-    : guid(::guid()), name(other.name),
+    : name(other.name),
       session_transformation(other.session_transformation),
       _geometry(other._geometry), _is_dirty(true),
       _features(other._features) {}
 
 Element& Element::operator=(const Element& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         session_transformation = other.session_transformation;
         _geometry = other._geometry;
@@ -67,12 +67,12 @@ ElementGeometry Element::session_geometry() const {
     return geo;
 }
 
-Obb Element::aabb() {
+OBB Element::aabb() {
     if (_is_dirty || !_aabb.has_value()) _aabb = compute_aabb();
     return _aabb.value();
 }
 
-Obb Element::obb() {
+OBB Element::obb() {
     if (_is_dirty || !_obb.has_value()) _obb = compute_obb();
     return _obb.value();
 }
@@ -112,7 +112,7 @@ void Element::reset() {
 
 Element Element::duplicate() const {
     Element result(*this);
-    result.guid = ::guid();
+
     return result;
 }
 
@@ -127,25 +127,25 @@ std::string Element::str() const {
 }
 
 std::string Element::repr() const {
-    return fmt::format("Element({}, {}, {})", guid, name, geometry_type_name());
+    return fmt::format("Element({}, {}, {})", guid(), name, geometry_type_name());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Element - Computation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-Obb Element::compute_aabb() {
+OBB Element::compute_aabb() {
     auto geo = session_geometry();
     if (std::holds_alternative<std::monostate>(geo))
-        return Obb::from_point(Point(0, 0, 0), 0.0);
-    return obb_from_geometry(geo, true);
+        return OBB::from_point(Point(0, 0, 0), 0.0);
+    return obb_from_geometry(geo);
 }
 
-Obb Element::compute_obb() {
+OBB Element::compute_obb() {
     auto geo = session_geometry();
     if (std::holds_alternative<std::monostate>(geo))
-        return Obb::from_point(Point(0, 0, 0), 0.0);
-    return obb_from_geometry(geo, false);
+        return OBB::from_point(Point(0, 0, 0), 0.0);
+    return obb_from_geometry(geo);
 }
 
 Mesh Element::compute_collision_mesh() {
@@ -182,20 +182,20 @@ Mesh Element::apply_features(Mesh geo) const {
     return geo;
 }
 
-Obb Element::obb_from_geometry(const ElementGeometry& geo, bool as_aabb) {
+OBB Element::obb_from_geometry(const ElementGeometry& geo) {
     double inflate = 0.0;
     if (auto* mesh = std::get_if<Mesh>(&geo)) {
         std::vector<Point> points;
         for (const auto& [k, v] : mesh->vertex)
             points.push_back(v.position());
-        if (points.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
-        return Obb::from_points(points, inflate);
+        if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
+        return OBB::from_points(points, inflate);
     }
     if (auto* brep = std::get_if<BRep>(&geo)) {
-        if (brep->m_vertices.empty()) return Obb::from_point(Point(0, 0, 0), inflate);
-        return Obb::from_points(brep->m_vertices, inflate);
+        if (brep->m_vertices.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
+        return OBB::from_points(brep->m_vertices, inflate);
     }
-    return Obb::from_point(Point(0, 0, 0), inflate);
+    return OBB::from_point(Point(0, 0, 0), inflate);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -215,7 +215,7 @@ nlohmann::ordered_json Element::jsondump() const {
     return nlohmann::ordered_json{
         {"geometry_data", geo_data},
         {"geometry_type", geo_type},
-        {"guid", guid},
+        {"guid", guid()},
         {"name", name},
         {"session_transformation", session_transformation.jsondump()},
         {"type", "Element"},
@@ -230,7 +230,7 @@ Element Element::jsonload(const nlohmann::json& data) {
     } else if (geo_type == "BRep" && data.contains("geometry_data") && !data["geometry_data"].is_null()) {
         elem._geometry = BRep::jsonload(data["geometry_data"]);
     }
-    elem.guid = data.value("guid", elem.guid);
+    elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("session_transformation"))
         elem.session_transformation = Xform::jsonload(data["session_transformation"]);
@@ -259,7 +259,7 @@ Element Element::json_load(const std::string& path) {
 
 std::string Element::pb_dumps() const {
     session_proto::Element proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     if (auto* mesh = std::get_if<Mesh>(&_geometry)) {
         proto.set_geometry_type("Mesh");
@@ -280,7 +280,7 @@ Element Element::pb_loads(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
     Element elem;
-    elem.guid = proto.guid();
+    elem.guid() = proto.guid();
     elem.name = proto.name();
     std::string geo_type = proto.geometry_type();
     if (geo_type == "Mesh" && !proto.geometry_data().empty()) {
@@ -321,9 +321,7 @@ ColumnElement::ColumnElement(double width, double depth, double height, const st
 }
 
 ColumnElement::ColumnElement(const ColumnElement& other)
-    : Element(other), _width(other._width), _depth(other._depth), _height(other._height) {
-    guid = ::guid();
-}
+    : Element(other), _width(other._width), _depth(other._depth), _height(other._height) {}
 
 ColumnElement& ColumnElement::operator=(const ColumnElement& other) {
     if (this != &other) {
@@ -367,10 +365,14 @@ Mesh ColumnElement::compute_element_geometry() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     std::vector<Point> vertices = {
-        Point(-hx, -hy, 0),       Point( hx, -hy, 0),
-        Point( hx,  hy, 0),       Point(-hx,  hy, 0),
-        Point(-hx, -hy, _height), Point( hx, -hy, _height),
-        Point( hx,  hy, _height), Point(-hx,  hy, _height),
+        Point(-hx, -hy, 0),
+        Point( hx, -hy, 0),
+        Point( hx,  hy, 0),
+        Point(-hx,  hy, 0),
+        Point(-hx, -hy, _height),
+        Point( hx, -hy, _height),
+        Point( hx,  hy, _height),
+        Point(-hx,  hy, _height),
     };
     std::vector<std::vector<size_t>> faces = {
         {0, 3, 2, 1}, {4, 5, 6, 7},
@@ -382,7 +384,7 @@ Mesh ColumnElement::compute_element_geometry() const {
 
 ColumnElement ColumnElement::duplicate() const {
     ColumnElement result(*this);
-    result.guid = ::guid();
+
     return result;
 }
 
@@ -397,7 +399,7 @@ std::string ColumnElement::str() const {
 }
 
 std::string ColumnElement::repr() const {
-    return fmt::format("ColumnElement({}, {}, {}, {}, {})", guid, name, _width, _depth, _height);
+    return fmt::format("ColumnElement({}, {}, {}, {}, {})", guid(), name, _width, _depth, _height);
 }
 
 nlohmann::ordered_json ColumnElement::jsondump() const {
@@ -406,7 +408,7 @@ nlohmann::ordered_json ColumnElement::jsondump() const {
         {"depth", _depth},
         {"geometry_data", mesh ? mesh->jsondump() : nullptr},
         {"geometry_type", mesh ? "Mesh" : "None"},
-        {"guid", guid},
+        {"guid", guid()},
         {"height", _height},
         {"name", name},
         {"session_transformation", session_transformation.jsondump()},
@@ -421,7 +423,7 @@ ColumnElement ColumnElement::jsonload(const nlohmann::json& data) {
         data.value("depth", 0.4),
         data.value("height", 3.0)
     );
-    elem.guid = data.value("guid", elem.guid);
+    elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("session_transformation"))
         elem.session_transformation = Xform::jsonload(data["session_transformation"]);
@@ -439,7 +441,7 @@ ColumnElement ColumnElement::json_load(const std::string& path) {
 
 std::string ColumnElement::pb_dumps() const {
     session_proto::Element proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_geometry_type("ColumnElement");
     nlohmann::json params = {{"width", _width}, {"depth", _depth}, {"height", _height}};
@@ -456,7 +458,7 @@ ColumnElement ColumnElement::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     auto params = nlohmann::json::parse(proto.geometry_data());
     ColumnElement elem(params["width"], params["depth"], params["height"]);
-    elem.guid = proto.guid();
+    elem.guid() = proto.guid();
     elem.name = proto.name();
     Xform xf;
     xf.name = proto.session_transformation().name();
@@ -483,9 +485,7 @@ BeamElement::BeamElement(double width, double depth, double length, const std::s
 }
 
 BeamElement::BeamElement(const BeamElement& other)
-    : Element(other), _width(other._width), _depth(other._depth), _length(other._length) {
-    guid = ::guid();
-}
+    : Element(other), _width(other._width), _depth(other._depth), _length(other._length) {}
 
 BeamElement& BeamElement::operator=(const BeamElement& other) {
     if (this != &other) {
@@ -529,10 +529,14 @@ Mesh BeamElement::compute_element_geometry() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     std::vector<Point> vertices = {
-        Point(-hx, -hy, 0),       Point( hx, -hy, 0),
-        Point( hx,  hy, 0),       Point(-hx,  hy, 0),
-        Point(-hx, -hy, _length), Point( hx, -hy, _length),
-        Point( hx,  hy, _length), Point(-hx,  hy, _length),
+        Point(-hx, -hy, 0),
+        Point( hx, -hy, 0),
+        Point( hx,  hy, 0),
+        Point(-hx,  hy, 0),
+        Point(-hx, -hy, _length),
+        Point( hx, -hy, _length),
+        Point( hx,  hy, _length),
+        Point(-hx,  hy, _length),
     };
     std::vector<std::vector<size_t>> faces = {
         {0, 3, 2, 1}, {4, 5, 6, 7},
@@ -544,7 +548,7 @@ Mesh BeamElement::compute_element_geometry() const {
 
 BeamElement BeamElement::duplicate() const {
     BeamElement result(*this);
-    result.guid = ::guid();
+
     return result;
 }
 
@@ -559,7 +563,7 @@ std::string BeamElement::str() const {
 }
 
 std::string BeamElement::repr() const {
-    return fmt::format("BeamElement({}, {}, {}, {}, {})", guid, name, _width, _depth, _length);
+    return fmt::format("BeamElement({}, {}, {}, {}, {})", guid(), name, _width, _depth, _length);
 }
 
 nlohmann::ordered_json BeamElement::jsondump() const {
@@ -568,7 +572,7 @@ nlohmann::ordered_json BeamElement::jsondump() const {
         {"depth", _depth},
         {"geometry_data", mesh ? mesh->jsondump() : nullptr},
         {"geometry_type", mesh ? "Mesh" : "None"},
-        {"guid", guid},
+        {"guid", guid()},
         {"length", _length},
         {"name", name},
         {"session_transformation", session_transformation.jsondump()},
@@ -583,7 +587,7 @@ BeamElement BeamElement::jsonload(const nlohmann::json& data) {
         data.value("depth", 0.2),
         data.value("length", 3.0)
     );
-    elem.guid = data.value("guid", elem.guid);
+    elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("session_transformation"))
         elem.session_transformation = Xform::jsonload(data["session_transformation"]);
@@ -601,7 +605,7 @@ BeamElement BeamElement::json_load(const std::string& path) {
 
 std::string BeamElement::pb_dumps() const {
     session_proto::Element proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_geometry_type("BeamElement");
     nlohmann::json params = {{"width", _width}, {"depth", _depth}, {"length", _length}};
@@ -618,7 +622,7 @@ BeamElement BeamElement::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     auto params = nlohmann::json::parse(proto.geometry_data());
     BeamElement elem(params["width"], params["depth"], params["length"]);
-    elem.guid = proto.guid();
+    elem.guid() = proto.guid();
     elem.name = proto.name();
     Xform xf;
     xf.name = proto.session_transformation().name();
@@ -644,8 +648,10 @@ PlateElement::PlateElement(const std::vector<Point>& polygon, double thickness,
     : Element(name), _thickness(thickness) {
     if (polygon.empty()) {
         _polygon = {
-            Point(-0.5, -0.5, 0), Point( 0.5, -0.5, 0),
-            Point( 0.5,  0.5, 0), Point(-0.5,  0.5, 0),
+            Point(-0.5, -0.5, 0),
+            Point( 0.5, -0.5, 0),
+            Point( 0.5,  0.5, 0),
+            Point(-0.5,  0.5, 0),
         };
     } else {
         _polygon.reserve(polygon.size());
@@ -656,9 +662,7 @@ PlateElement::PlateElement(const std::vector<Point>& polygon, double thickness,
 }
 
 PlateElement::PlateElement(const PlateElement& other)
-    : Element(other), _polygon(other._polygon), _thickness(other._thickness) {
-    guid = ::guid();
-}
+    : Element(other), _polygon(other._polygon), _thickness(other._thickness) {}
 
 PlateElement& PlateElement::operator=(const PlateElement& other) {
     if (this != &other) {
@@ -732,7 +736,7 @@ Mesh PlateElement::compute_element_geometry() const {
 
 PlateElement PlateElement::duplicate() const {
     PlateElement result(*this);
-    result.guid = ::guid();
+
     return result;
 }
 
@@ -756,7 +760,7 @@ std::string PlateElement::str() const {
 }
 
 std::string PlateElement::repr() const {
-    return fmt::format("PlateElement({}, {}, {} pts, {})", guid, name, _polygon.size(), _thickness);
+    return fmt::format("PlateElement({}, {}, {} pts, {})", guid(), name, _polygon.size(), _thickness);
 }
 
 nlohmann::ordered_json PlateElement::jsondump() const {
@@ -767,7 +771,7 @@ nlohmann::ordered_json PlateElement::jsondump() const {
     return nlohmann::ordered_json{
         {"geometry_data", mesh ? mesh->jsondump() : nullptr},
         {"geometry_type", mesh ? "Mesh" : "None"},
-        {"guid", guid},
+        {"guid", guid()},
         {"name", name},
         {"polygon", poly_json},
         {"session_transformation", session_transformation.jsondump()},
@@ -784,7 +788,7 @@ PlateElement PlateElement::jsonload(const nlohmann::json& data) {
     }
     PlateElement elem(polygon.empty() ? std::vector<Point>{} : polygon,
                       data.value("thickness", 0.1));
-    elem.guid = data.value("guid", elem.guid);
+    elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("session_transformation"))
         elem.session_transformation = Xform::jsonload(data["session_transformation"]);
@@ -802,7 +806,7 @@ PlateElement PlateElement::json_load(const std::string& path) {
 
 std::string PlateElement::pb_dumps() const {
     session_proto::Element proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_geometry_type("PlateElement");
     nlohmann::json params;
@@ -827,7 +831,7 @@ PlateElement PlateElement::pb_loads(const std::string& data) {
     for (const auto& p : params["polygon"])
         polygon.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
     PlateElement elem(polygon, params["thickness"]);
-    elem.guid = proto.guid();
+    elem.guid() = proto.guid();
     elem.name = proto.name();
     Xform xf;
     xf.name = proto.session_transformation().name();

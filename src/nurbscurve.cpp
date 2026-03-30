@@ -2931,7 +2931,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     j["cv_count"] = m_cv_count;
     j["cv_stride"] = m_cv_stride;
     j["dimension"] = m_dim;
-    j["guid"] = guid;
+    j["guid"] = guid();
     j["is_rational"] = m_is_rat != 0;
     j["knots"] = m_knot;
 
@@ -2990,7 +2990,7 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
             }
         }
 
-        curve.guid = data.value("guid", ::guid());
+        curve.guid() = data.value("guid", ::guid());
         curve.name = data.value("name", "my_nurbscurve");
         curve.width = data.value("width", 1.0);
         if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
@@ -3049,7 +3049,7 @@ NurbsCurve NurbsCurve::pb_load(const std::string& filename) {
 
 std::string NurbsCurve::pb_dumps() const {
     session_proto::NurbsCurve proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_dimension(m_dim);
     proto.set_is_rational(m_is_rat != 0);
@@ -3074,7 +3074,7 @@ std::string NurbsCurve::pb_dumps() const {
     }
 
     auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid);
+    xform_proto->set_guid(xform.guid());
     xform_proto->set_name(xform.name);
     for (int i = 0; i < 16; ++i) {
         xform_proto->add_matrix(xform.m[i]);
@@ -3088,7 +3088,7 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     NurbsCurve curve(proto.dimension(), proto.is_rational(), proto.order(), proto.cv_count());
-    curve.guid = proto.guid();
+    curve.guid() = proto.guid();
     curve.name = proto.name();
     curve.width = proto.width() != 0.0 ? proto.width() : 1.0;
 
@@ -3113,7 +3113,7 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
 
     if (proto.has_xform()) {
         const auto& x = proto.xform();
-        curve.xform.guid = x.guid();
+        curve.xform.guid() = x.guid();
         curve.xform.name = x.name();
         for (int i = 0; i < 16 && i < x.matrix_size(); ++i) {
             curve.xform.m[i] = x.matrix(i);
@@ -3476,7 +3476,7 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     m_cv_capacity = src.m_cv_capacity;
     m_knot = src.m_knot;
     m_cv = src.m_cv;
-    guid = ::guid();
+    _guid.clear();
     name = src.name;
     width = src.width;
     pointcolors = src.pointcolors;

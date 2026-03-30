@@ -4,9 +4,11 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 namespace session_cpp {
 namespace mini_test {
@@ -188,12 +190,12 @@ static fs::path compute_repo_root() {
   return here.parent_path().parent_path().parent_path();
 }
 
-void run_all(const std::string &language) {
+int run_all(const std::string &language) {
   (void)language; // currently only "cpp" is used for folder selection
 
   auto &tests = registry();
   if (tests.empty()) {
-    return;
+    return 0;
   }
 
   // Group tests by logical group name
@@ -204,6 +206,10 @@ void run_all(const std::string &language) {
 
   fs::path repo_root = compute_repo_root();
   fs::path subdir = repo_root / "session_tests" / "session_cpp";
+
+  int total_passed = 0;
+  int total_tests = 0;
+  std::vector<std::tuple<std::string, std::string, std::string, int, nlohmann::ordered_json>> failed_tests;
 
   for (const auto &[group, group_tests] : tests_by_group) {
     nlohmann::ordered_json results = nlohmann::json::array();
@@ -249,6 +255,13 @@ void run_all(const std::string &language) {
 
       std::string code_str = extract_timed_code(*t, checks);
 
+      total_tests++;
+      if (passed) {
+        total_passed++;
+      } else {
+        failed_tests.emplace_back(group, t->name, t->file, t->line, failures);
+      }
+
       nlohmann::ordered_json result = {
           {"group", group},
           {"test_name", t->name},
@@ -272,6 +285,23 @@ void run_all(const std::string &language) {
       }
     }
   }
+
+  if (!failed_tests.empty()) {
+    std::cerr << "\n[cpp-minitest] FAILURES:" << std::endl;
+    for (const auto &[grp, name, file, line, fails] : failed_tests) {
+      std::cerr << "  FAIL " << grp << "::" << name << "  " << file << ":" << line << std::endl;
+      for (const auto &f : fails) {
+        if (f.contains("error")) {
+          std::cerr << "       " << f["error"].get<std::string>() << std::endl;
+        }
+      }
+    }
+    std::cerr << "\n[cpp-minitest] " << total_passed << "/" << total_tests
+              << " passed, " << failed_tests.size() << " failed" << std::endl;
+  } else {
+    std::cout << "[cpp-minitest] " << total_passed << "/" << total_tests << " passed" << std::endl;
+  }
+  return static_cast<int>(failed_tests.size());
 }
 
 } // namespace mini_test

@@ -19,16 +19,16 @@ Xform::Xform() {
 
 Xform::Xform(const std::array<double, 16>& matrix) : m(matrix) {}
 
-/// Copy constructor (creates a new guid while copying data)
+/// Copy constructor (creates a new guid() while copying data)
 Xform::Xform(const Xform& other)
-    : guid(::guid()),
+    :
       name(other.name),
       m(other.m) {}
 
-/// Copy assignment (creates a new guid while copying data)
+/// Copy assignment (creates a new guid() while copying data)
 Xform& Xform::operator=(const Xform& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         m = other.m;
     }
@@ -375,7 +375,7 @@ std::optional<Xform> Xform::inverse() const {
     double itz = -(m20 * tx + m21 * ty + m22 * tz);
 
     Xform res;
-    res.guid = "";
+    res.guid() = "";
     res.name = "";
     res.m[0] = m00;  res.m[4] = m01;  res.m[8] = m02;   res.m[12] = itx;
     res.m[1] = m10;  res.m[5] = m11;  res.m[9] = m12;   res.m[13] = ity;
@@ -445,7 +445,7 @@ void Xform::transform_vector(Vector& vector) const {
 nlohmann::ordered_json Xform::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json data;
-    data["guid"] = guid;
+    data["guid"] = guid();
     data["m"] = m;
     data["name"] = name;
     data["type"] = "Xform";
@@ -454,7 +454,7 @@ nlohmann::ordered_json Xform::jsondump() const {
 
 Xform Xform::jsonload(const nlohmann::json& data) {
     Xform xform;
-    xform.guid = data["guid"].get<std::string>();
+    xform.guid() = data["guid"].get<std::string>();
     xform.name = data["name"].get<std::string>();
     xform.m = data["m"].get<std::array<double, 16>>();
     return xform;
@@ -481,7 +481,7 @@ Xform Xform::json_load(const std::string& filename) {
 
 std::string Xform::pb_dumps() const {
     session_proto::Xform proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     for (int i = 0; i < 16; ++i) {
         proto.add_matrix(m[i]);
@@ -494,7 +494,7 @@ Xform Xform::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Xform xform;
-    xform.guid = proto.guid();
+    xform.guid() = proto.guid();
     xform.name = proto.name();
     for (int i = 0; i < 16 && i < proto.matrix_size(); ++i) {
         xform.m[i] = proto.matrix(i);
@@ -581,7 +581,7 @@ std::string Xform::str() const {
 }
 
 std::string Xform::repr() const {
-    return fmt::format("Xform({}, {})", name, guid.substr(0, 8));
+    return fmt::format("Xform({}, {})", name, guid().substr(0, 8));
 }
 
 } // namespace session_cpp

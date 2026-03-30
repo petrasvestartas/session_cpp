@@ -123,7 +123,8 @@ public:
     std::map<std::string, double> default_vertex_attributes;              ///< Default vertex attrs
     std::map<std::string, double> default_face_attributes;                ///< Default face attrs
     std::map<std::string, double> default_edge_attributes;                ///< Default edge attrs
-    std::string guid = ::guid();                                         ///< Unique identifier
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name = "my_mesh";                                        ///< Mesh name
     ColorMode color_mode = ColorMode::OBJECTCOLOR;                        ///< Active color mode
     Xform xform;                                     ///< Transformation matrix
@@ -147,6 +148,7 @@ public:
     void set_face_holes(size_t fkey, std::vector<std::vector<size_t>> rings) { face_holes[fkey] = std::move(rings); }
 
 private:
+    mutable std::string _guid;
     std::vector<Color> pointcolors;                                      ///< Vertex colors
     std::vector<Color> facecolors;                                       ///< Face colors
     std::vector<Color> linecolors;                                       ///< Edge colors
@@ -159,8 +161,8 @@ private:
     // Cached per-triangle data for BVH ray casting
     mutable bool triangle_bvh_built = false;
     mutable std::shared_ptr<BVH> triangle_bvh;  ///< BVH over cached triangle AABBs
-    mutable std::vector<Obb> triangle_boxes_cache;  ///< Per-triangle AABBs (legacy, may be empty)
-    mutable std::vector<BvhAABB> triangle_aabbs_cache;      ///< Lightweight AABBs for fast BVH build
+    mutable std::vector<OBB> triangle_boxes_cache;  ///< Per-triangle AABBs (legacy, may be empty)
+    mutable std::vector<AABB> triangle_aabbs_cache;      ///< Lightweight AABBs for fast BVH build
     struct TriangleIndex { uint32_t i0, i1, i2; };
     mutable std::vector<TriangleIndex> triangle_indices_cache; ///< Triangle vertex indices
     mutable std::vector<std::pair<size_t, size_t>> triangle_face_subidx_cache; ///< (face_idx, sub_idx)

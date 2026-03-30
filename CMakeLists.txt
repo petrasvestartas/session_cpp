@@ -109,6 +109,23 @@ FetchContent_Declare(protobuf
 )
 FetchContent_MakeAvailable(protobuf)
 
+#############################################################################################
+# CLIPPER2
+#############################################################################################
+FetchContent_Declare(Clipper2
+    GIT_REPOSITORY https://github.com/AngusJohnson/Clipper2.git
+    GIT_TAG Clipper2_1.4.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR CPP
+)
+set(CLIPPER2_UTILS OFF CACHE BOOL "" FORCE)
+set(CLIPPER2_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(CLIPPER2_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(Clipper2)
+if(MSVC)
+    target_compile_options(Clipper2 PRIVATE /w)
+endif()
+
 # Suppress warnings from protobuf and absl third-party libraries
 if(MSVC)
     target_compile_options(libprotobuf PRIVATE /w)
@@ -253,7 +270,6 @@ set(MINITEST_SOURCES
     src/bvh_test.cpp
     src/rtree_test.cpp
     src/aabb_test.cpp
-    src/edge_test.cpp
     src/encoders_test.cpp
     src/graph_test.cpp
     src/intersection_test.cpp
@@ -263,11 +279,26 @@ set(MINITEST_SOURCES
     src/session_test.cpp
     src/tree_test.cpp
     src/treenode_test.cpp
-    src/vertex_test.cpp
     src/brep_test.cpp
     src/mesh_iso_test.cpp
     src/element_test.cpp
+    src/matrix_test.cpp
+    src/convex_hull_test.cpp
+    src/kdtree_test.cpp
+    src/marching_squares_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
+
+#############################################################################################
+# BOOL BENCH
+#############################################################################################
+add_executable(bool_bench bool_bench.cpp)
+target_link_libraries(bool_bench PRIVATE session_core Clipper2)
+LINK_PROTOBUF(bool_bench)
+if(MSVC)
+    target_compile_options(bool_bench PRIVATE /W3 /O2)
+else()
+    target_compile_options(bool_bench PRIVATE -O3)
+endif()

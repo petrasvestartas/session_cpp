@@ -7,36 +7,43 @@ namespace session_cpp {
 
     MINI_TEST("Tolerance", "Is Zero") {
         bool result = TOLERANCE.is_zero(1e-10);
-        MINI_CHECK(result == true);
+
+        MINI_CHECK(result);
     }
 
     MINI_TEST("Tolerance", "Is Close") {
         bool result = TOLERANCE.is_close(1.0, 1.0 + 1e-7);
-        MINI_CHECK(result == true);
+
+        MINI_CHECK(result);
     }
 
     MINI_TEST("Tolerance", "Is Positive") {
         bool result = TOLERANCE.is_positive(1.0);
-        MINI_CHECK(result == true);
+
+        MINI_CHECK(result);
     }
 
     MINI_TEST("Tolerance", "Is Negative") {
         bool result = TOLERANCE.is_negative(-1.0);
-        MINI_CHECK(result == true);
+
+        MINI_CHECK(result);
     }
 
     MINI_TEST("Tolerance", "Is Between") {
         bool result = TOLERANCE.is_between(0.5, 0.0, 1.0);
-        MINI_CHECK(result == true);
+
+        MINI_CHECK(result);
     }
 
     MINI_TEST("Tolerance", "Format Number") {
         std::string result = TOLERANCE.format_number(3.14159, 2);
+
         MINI_CHECK(result == "3.14");
     }
 
     MINI_TEST("Tolerance", "Key") {
         std::string result = TOLERANCE.key(1.0, 2.0, 3.0);
+
         MINI_CHECK(result == "1.000,2.000,3.000");
     }
 
@@ -44,6 +51,7 @@ namespace session_cpp {
         // Get current default values
         double original_absolute = TOLERANCE.absolute();
         double original_relative = TOLERANCE.relative();
+
         MINI_CHECK(original_absolute == 1e-9);
         MINI_CHECK(original_relative == 1e-6);
 
@@ -55,7 +63,7 @@ namespace session_cpp {
 
         // Test with new tolerance - 1e-11 difference now fails is_close
         bool close_with_tight = TOLERANCE.is_close(1.0, 1.0 + 1e-11);
-        MINI_CHECK(close_with_tight == false);
+        MINI_CHECK(!close_with_tight);
 
         // Reset to defaults
         TOLERANCE.reset();
@@ -64,7 +72,7 @@ namespace session_cpp {
 
         // Same test now passes with default tolerance
         bool close_with_default = TOLERANCE.is_close(1.0, 1.0 + 1e-11);
-        MINI_CHECK(close_with_default == true);
+        MINI_CHECK(close_with_default);
     }
 
 }

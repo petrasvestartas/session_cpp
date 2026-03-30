@@ -10,8 +10,9 @@ using namespace session_cpp::mini_test;
 
 MINI_TEST("Session", "Constructor") {
     Session session;
+
     MINI_CHECK(session.name == "my_session");
-    MINI_CHECK(!session.guid.empty());
+    MINI_CHECK(!session.guid().empty());
 }
 
 MINI_TEST("Session", "Jsondump") {
@@ -20,9 +21,10 @@ MINI_TEST("Session", "Jsondump") {
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     session.add_point(point1);
     session.add_point(point2);
-    session.add_edge(point1->guid, point2->guid, "connection");
+    session.add_edge(point1->guid(), point2->guid(), "connection");
 
     auto data = session.jsondump();
+
     MINI_CHECK(data["name"] == "my_session");
     MINI_CHECK(data.contains("guid"));
     MINI_CHECK(data["objects"]["points"].size() == 2);
@@ -39,10 +41,11 @@ MINI_TEST("Session", "Jsonload") {
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     session.add_point(point1);
     session.add_point(point2);
-    session.add_edge(point1->guid, point2->guid, "connection");
+    session.add_edge(point1->guid(), point2->guid(), "connection");
 
     auto data = session.jsondump();
     Session session2 = Session::jsonload(data);
+
     MINI_CHECK(session2.name == "my_session");
     MINI_CHECK(session2.lookup.size() == 2);
     MINI_CHECK(session2.graph.number_of_vertices() == 2);
@@ -54,7 +57,7 @@ MINI_TEST("Session", "File Io") {
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     session.add_point(point1);
     session.add_point(point2);
-    session.add_edge(point1->guid, point2->guid, "connection");
+    session.add_edge(point1->guid(), point2->guid(), "connection");
     std::string filename = "./serialization/test_session_roundtrip.json";
 
     std::filesystem::create_directories("./serialization");
@@ -74,8 +77,8 @@ MINI_TEST("Session", "Add Point") {
     session.add_point(point);
 
     MINI_CHECK(session.objects.points->size() == 1);
-    MINI_CHECK(session.lookup.count(point->guid) == 1);
-    MINI_CHECK(session.graph.has_node(point->guid));
+    MINI_CHECK(session.lookup.count(point->guid()) == 1);
+    MINI_CHECK(session.graph.has_node(point->guid()));
 }
 
 MINI_TEST("Session", "Add Edge") {
@@ -84,9 +87,9 @@ MINI_TEST("Session", "Add Edge") {
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     session.add_point(point1);
     session.add_point(point2);
-    session.add_edge(point1->guid, point2->guid, "connection");
+    session.add_edge(point1->guid(), point2->guid(), "connection");
 
-    MINI_CHECK(session.graph.has_edge({point1->guid, point2->guid}));
+    MINI_CHECK(session.graph.has_edge({point1->guid(), point2->guid()}));
 }
 
 MINI_TEST("Session", "Get Object") {
@@ -94,9 +97,10 @@ MINI_TEST("Session", "Get Object") {
     auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
     session.add_point(point);
 
-    auto retrieved = session.get_object<Point>(point->guid);
+    auto retrieved = session.get_object<Point>(point->guid());
+
     MINI_CHECK(retrieved != nullptr);
-    MINI_CHECK(retrieved->guid == point->guid);
+    MINI_CHECK(retrieved->guid() == point->guid());
 }
 
 MINI_TEST("Session", "File Io Comprehensive") {
@@ -105,7 +109,7 @@ MINI_TEST("Session", "File Io Comprehensive") {
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     session.add_point(point1);
     session.add_point(point2);
-    session.add_edge(point1->guid, point2->guid, "./serialization/test_connection");
+    session.add_edge(point1->guid(), point2->guid(), "./serialization/test_connection");
     std::string filename = "./serialization/test_session_comprehensive.json";
 
     std::filesystem::create_directories("./serialization");

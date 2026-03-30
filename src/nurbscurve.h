@@ -33,7 +33,8 @@ namespace session_cpp {
  */
 class NurbsCurve {
 public:
-    std::string guid = ::guid();
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name = "my_nurbscurve";
     double width = 1.0;
     std::vector<Color> pointcolors;
@@ -477,6 +478,8 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve);
 
 private:
+    mutable std::string _guid;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Internal Helpers
     ///////////////////////////////////////////////////////////////////////////////////////////

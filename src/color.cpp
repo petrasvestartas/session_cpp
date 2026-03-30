@@ -8,20 +8,19 @@ namespace session_cpp {
 // Copy Constructor and Assignment
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-/// Copy constructor (creates a new guid while copying data)
+/// Copy constructor (creates a new guid() while copying data)
 Color::Color(const Color &other)
     : name(other.name),
-      guid(::guid()),
       r(other.r),
       g(other.g),
       b(other.b),
       a(other.a) {}
 
-/// Copy assignment (creates a new guid while copying data)
+/// Copy assignment (creates a new guid() while copying data)
 Color &Color::operator=(const Color &other) {
   if (this != &other) {
     name = other.name;
-    guid = ::guid();
+    _guid.clear();
     r = other.r;
     g = other.g;
     b = other.b;
@@ -72,7 +71,7 @@ nlohmann::ordered_json Color::jsondump() const {
   data["a"] = static_cast<int>(a);
   data["b"] = static_cast<int>(b);
   data["g"] = static_cast<int>(g);
-  data["guid"] = guid;
+  data["guid"] = guid();
   data["name"] = name;
   data["r"] = static_cast<int>(r);
   data["type"] = "Color";
@@ -84,7 +83,7 @@ Color Color::jsonload(const nlohmann::json &data) {
                       static_cast<unsigned int>(data["g"]),
                       static_cast<unsigned int>(data["b"]),
                       static_cast<unsigned int>(data["a"]), data["name"]);
-  color.guid = data["guid"];
+  color.guid() = data["guid"];
   return color;
 }
 
@@ -113,7 +112,7 @@ Color Color::json_load(const std::string& filename) {
 
 std::string Color::pb_dumps() const {
   session_proto::Color proto;
-  proto.set_guid(guid);
+  proto.set_guid(guid());
   proto.set_name(name);
   proto.set_r(r);
   proto.set_g(g);
@@ -127,7 +126,7 @@ Color Color::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
   
   Color color(proto.r(), proto.g(), proto.b(), proto.a(), proto.name());
-  color.guid = proto.guid();
+  color.guid() = proto.guid();
   return color;
 }
 
@@ -201,7 +200,20 @@ Color Color::purple()  { thread_local static Color _c(128, 0, 128, 255, "purple"
 Color Color::silver()  { thread_local static Color _c(192, 192, 192, 255, "silver");  return _c; }
 
 std::vector<Color> Color::palette() {
-    return { red(), orange(), yellow(), lime(), green(), mint(), cyan(), azure(), blue(), violet(), magenta(), pink() };
+    return {
+        red(),
+        orange(),
+        yellow(),
+        lime(),
+        green(),
+        mint(),
+        cyan(),
+        azure(),
+        blue(),
+        violet(),
+        magenta(),
+        pink(),
+    };
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

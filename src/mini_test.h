@@ -43,7 +43,7 @@ void register_test(const std::string &group, const std::string &test_name,
 void record_check(bool passed, int line, const char *expr_text,
                   std::chrono::high_resolution_clock::time_point check_start);
 
-void run_all(const std::string &language = "cpp");
+int run_all(const std::string &language = "cpp");
 
 // Macros for defining tests and checks
 // C++ version: use string literals for group and name, similar to Python

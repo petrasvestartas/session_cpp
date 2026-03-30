@@ -40,7 +40,7 @@ namespace session_cpp {
 
 // All geometry types as a variant
 using Geometry = std::variant<
-    std::shared_ptr<Obb>,
+    std::shared_ptr<OBB>,
     std::shared_ptr<Line>,
     std::shared_ptr<Mesh>,
     std::shared_ptr<Plane>,
@@ -60,7 +60,8 @@ using Geometry = std::variant<
 class Session {
 public:
   std::string name = "my_session"; ///< The name of the session
-  std::string guid = ::guid();     ///< The unique identifier of the session
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   Objects objects;                 ///< Collection of geometry objects
   std::unordered_map<std::string, Geometry>
       lookup; ///< Fast lookup table for objects by GUID
@@ -71,7 +72,7 @@ public:
   // BVH caching for ray casting performance
   BVH cached_ray_bvh;                           ///< Cached BVH for ray casting
   std::vector<std::string> cached_guids;        ///< GUID mapping for cached BVH
-  std::vector<Obb> cached_boxes;        ///< Cached AABBs (avoid recomputing)
+  std::vector<OBB> cached_boxes;        ///< Cached AABBs (avoid recomputing)
   bool bvh_cache_dirty = true;                  ///< Flag to rebuild BVH cache
 
   /**
@@ -147,7 +148,7 @@ public:
    * @brief Add a bounding box to the session.
    * @return Shared pointer to the TreeNode created for this bounding box
    */
-  std::shared_ptr<TreeNode> add_bbox(std::shared_ptr<Obb> bbox);
+  std::shared_ptr<TreeNode> add_bbox(std::shared_ptr<OBB> bbox);
 
   /**
    * @brief Add a polyline to the session.
@@ -253,7 +254,7 @@ public:
    * @param geometry The geometry variant
    * @return Inflated bounding box for collision detection
    */
-  static Obb compute_bounding_box(const Geometry& geometry);
+  static OBB compute_bounding_box(const Geometry& geometry);
 
   /**
    * @brief Get all collision pairs using BVH and add them as graph edges.
@@ -337,6 +338,8 @@ public:
   static Session pb_load(const std::string& filename);
 
 private:
+  mutable std::string _guid;
+
   /**
    * @brief Test ray intersection with a specific geometry object.
    * @param ray The ray to test

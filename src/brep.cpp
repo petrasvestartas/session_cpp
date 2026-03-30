@@ -39,7 +39,7 @@ bool BRep::operator!=(const BRep& other) const { return !(*this == other); }
 BRep::~BRep() {}
 
 void BRep::deep_copy_from(const BRep& src) {
-    guid = ::guid();
+    _guid.clear();
     name = src.name;
     width = src.width;
     surfacecolor = src.surfacecolor;
@@ -66,10 +66,14 @@ BRep BRep::create_box(double sx, double sy, double sz) {
 
     // 8 vertices: corners of the box
     Point corners[8] = {
-        Point(-hx, -hy, -hz), Point( hx, -hy, -hz),
-        Point( hx,  hy, -hz), Point(-hx,  hy, -hz),
-        Point(-hx, -hy,  hz), Point( hx, -hy,  hz),
-        Point( hx,  hy,  hz), Point(-hx,  hy,  hz)
+        Point(-hx, -hy, -hz),
+        Point( hx, -hy, -hz),
+        Point( hx,  hy, -hz),
+        Point(-hx,  hy, -hz),
+        Point(-hx, -hy,  hz),
+        Point( hx, -hy,  hz),
+        Point( hx,  hy,  hz),
+        Point(-hx,  hy,  hz),
     };
     for (int i = 0; i < 8; ++i) brep.add_vertex(corners[i]);
 
@@ -204,13 +208,25 @@ BRep BRep::create_cylinder(double radius, double height) {
 
     int fi_body = brep.add_face(si_body, false);
     int li_body = brep.add_loop(fi_body, BRepLoopType::Outer);
-    auto c2d_bot = NurbsCurve::create(false, 1, {Point(dom_u.first, dom_v.first, 0), Point(dom_u.second, dom_v.first, 0)});
+    auto c2d_bot = NurbsCurve::create(false, 1, {
+        Point(dom_u.first, dom_v.first, 0),
+        Point(dom_u.second, dom_v.first, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_bot), ei_bot, li_body, false, BRepTrimType::Mated);
-    auto c2d_sr = NurbsCurve::create(false, 1, {Point(dom_u.second, dom_v.first, 0), Point(dom_u.second, dom_v.second, 0)});
+    auto c2d_sr = NurbsCurve::create(false, 1, {
+        Point(dom_u.second, dom_v.first, 0),
+        Point(dom_u.second, dom_v.second, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_sr), ei_seam, li_body, false, BRepTrimType::Seam);
-    auto c2d_top = NurbsCurve::create(false, 1, {Point(dom_u.second, dom_v.second, 0), Point(dom_u.first, dom_v.second, 0)});
+    auto c2d_top = NurbsCurve::create(false, 1, {
+        Point(dom_u.second, dom_v.second, 0),
+        Point(dom_u.first, dom_v.second, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_top), ei_top, li_body, true, BRepTrimType::Mated);
-    auto c2d_sl = NurbsCurve::create(false, 1, {Point(dom_u.first, dom_v.second, 0), Point(dom_u.first, dom_v.first, 0)});
+    auto c2d_sl = NurbsCurve::create(false, 1, {
+        Point(dom_u.first, dom_v.second, 0),
+        Point(dom_u.first, dom_v.first, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_sl), ei_seam, li_body, true, BRepTrimType::Seam);
 
     // Circular 2D trim in UV space: circle at (0.5,0.5) radius 0.5
@@ -262,13 +278,25 @@ BRep BRep::create_sphere(double radius) {
     int fi = brep.add_face(si, false);
     int li = brep.add_loop(fi, BRepLoopType::Outer);
 
-    auto c2d_south = NurbsCurve::create(false, 1, {Point(dom_u.first, dom_v.first, 0), Point(dom_u.second, dom_v.first, 0)});
+    auto c2d_south = NurbsCurve::create(false, 1, {
+        Point(dom_u.first, dom_v.first, 0),
+        Point(dom_u.second, dom_v.first, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_south), -1, li, false, BRepTrimType::Singular);
-    auto c2d_sr = NurbsCurve::create(false, 1, {Point(dom_u.second, dom_v.first, 0), Point(dom_u.second, dom_v.second, 0)});
+    auto c2d_sr = NurbsCurve::create(false, 1, {
+        Point(dom_u.second, dom_v.first, 0),
+        Point(dom_u.second, dom_v.second, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_sr), ei_seam, li, false, BRepTrimType::Seam);
-    auto c2d_north = NurbsCurve::create(false, 1, {Point(dom_u.second, dom_v.second, 0), Point(dom_u.first, dom_v.second, 0)});
+    auto c2d_north = NurbsCurve::create(false, 1, {
+        Point(dom_u.second, dom_v.second, 0),
+        Point(dom_u.first, dom_v.second, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_north), -1, li, false, BRepTrimType::Singular);
-    auto c2d_sl = NurbsCurve::create(false, 1, {Point(dom_u.first, dom_v.second, 0), Point(dom_u.first, dom_v.first, 0)});
+    auto c2d_sl = NurbsCurve::create(false, 1, {
+        Point(dom_u.first, dom_v.second, 0),
+        Point(dom_u.first, dom_v.first, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_sl), ei_seam, li, true, BRepTrimType::Seam);
 
     for (int ei = 0; ei < (int)brep.m_topology_edges.size(); ++ei) {
@@ -285,10 +313,14 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
 
     // 8 box corners
     Point corners[8] = {
-        Point(-hx, -hy, -hz), Point( hx, -hy, -hz),
-        Point( hx,  hy, -hz), Point(-hx,  hy, -hz),
-        Point(-hx, -hy,  hz), Point( hx, -hy,  hz),
-        Point( hx,  hy,  hz), Point(-hx,  hy,  hz)
+        Point(-hx, -hy, -hz),
+        Point( hx, -hy, -hz),
+        Point( hx,  hy, -hz),
+        Point(-hx,  hy, -hz),
+        Point(-hx, -hy,  hz),
+        Point( hx, -hy,  hz),
+        Point( hx,  hy,  hz),
+        Point(-hx,  hy,  hz),
     };
     for (int i = 0; i < 8; ++i) brep.add_vertex(corners[i]);
 
@@ -364,7 +396,10 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
     // Hole 3D edge curves (circles at bottom and top)
     NurbsCurve circle_bot = Primitives::circle(0, 0, -hz, hole_radius);
     NurbsCurve circle_top = Primitives::circle(0, 0, hz, hole_radius);
-    NurbsCurve seam_line = NurbsCurve::create(false, 1, {Point(hole_radius, 0, -hz), Point(hole_radius, 0, hz)});
+    NurbsCurve seam_line = NurbsCurve::create(false, 1, {
+        Point(hole_radius, 0, -hz),
+        Point(hole_radius, 0, hz),
+    });
     int ci_bot = brep.add_curve_3d(circle_bot);
     int ci_top = brep.add_curve_3d(circle_top);
     int ci_seam = brep.add_curve_3d(seam_line);
@@ -380,13 +415,25 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
     int ei_seam = brep.add_edge(ci_seam, 8, 9);
 
     // 4 trims for cylinder body (same pattern as create_cylinder)
-    auto c2d_bot = NurbsCurve::create(false, 1, {Point(dom_u.first, dom_v.first, 0), Point(dom_u.second, dom_v.first, 0)});
+    auto c2d_bot = NurbsCurve::create(false, 1, {
+        Point(dom_u.first, dom_v.first, 0),
+        Point(dom_u.second, dom_v.first, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_bot), ei_bot, li_cyl, false, BRepTrimType::Mated);
-    auto c2d_sr = NurbsCurve::create(false, 1, {Point(dom_u.second, dom_v.first, 0), Point(dom_u.second, dom_v.second, 0)});
+    auto c2d_sr = NurbsCurve::create(false, 1, {
+        Point(dom_u.second, dom_v.first, 0),
+        Point(dom_u.second, dom_v.second, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_sr), ei_seam, li_cyl, false, BRepTrimType::Seam);
-    auto c2d_top = NurbsCurve::create(false, 1, {Point(dom_u.second, dom_v.second, 0), Point(dom_u.first, dom_v.second, 0)});
+    auto c2d_top = NurbsCurve::create(false, 1, {
+        Point(dom_u.second, dom_v.second, 0),
+        Point(dom_u.first, dom_v.second, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_top), ei_top, li_cyl, true, BRepTrimType::Mated);
-    auto c2d_sl = NurbsCurve::create(false, 1, {Point(dom_u.first, dom_v.second, 0), Point(dom_u.first, dom_v.first, 0)});
+    auto c2d_sl = NurbsCurve::create(false, 1, {
+        Point(dom_u.first, dom_v.second, 0),
+        Point(dom_u.first, dom_v.first, 0),
+    });
     brep.add_trim(brep.add_curve_2d(c2d_sl), ei_seam, li_cyl, true, BRepTrimType::Seam);
 
     // Bottom and top faces: planar with circular hole
@@ -409,7 +456,10 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
             double v0 = (corners[fv[ei]][1] + r) / (2.0 * r);
             double u1 = (corners[fv[next]][0] + r) / (2.0 * r);
             double v1 = (corners[fv[next]][1] + r) / (2.0 * r);
-            auto tc = NurbsCurve::create(false, 1, {Point(u0, v0, 0), Point(u1, v1, 0)});
+            auto tc = NurbsCurve::create(false, 1, {
+                Point(u0, v0, 0),
+                Point(u1, v1, 0),
+            });
             int c2d = brep.add_curve_2d(tc);
             int edge_idx = find_edge(fv[ei], fv[next]);
             bool rev = (edge_verts[edge_idx][0] != fv[ei]);
@@ -523,7 +573,10 @@ BRep BRep::from_polylines(const std::vector<Polyline>& polylines) {
             int j = (i + 1) % n;
             double u0 = (us[i] - umin) / du, v0 = (vs[i] - vmin) / dv;
             double u1 = (us[j] - umin) / du, v1 = (vs[j] - vmin) / dv;
-            auto tc = NurbsCurve::create(false, 1, {Point(u0, v0, 0), Point(u1, v1, 0)});
+            auto tc = NurbsCurve::create(false, 1, {
+                Point(u0, v0, 0),
+                Point(u1, v1, 0),
+            });
             int c2d = brep.add_curve_2d(tc);
             auto [ei, rev] = get_edge(vi[i], vi[j]);
             BRepTrimType type = brep.m_topology_edges[ei].trim_indices.empty()
@@ -1068,7 +1121,7 @@ nlohmann::ordered_json BRep::jsondump() const {
         fj["surface_index"] = f.surface_index;
         j["faces"].push_back(fj);
     }
-    j["guid"] = guid;
+    j["guid"] = guid();
     j["loops"] = nlohmann::ordered_json::array();
     for (const auto& l : m_loops) {
         nlohmann::ordered_json lj;
@@ -1118,7 +1171,7 @@ nlohmann::ordered_json BRep::jsondump() const {
 
 BRep BRep::jsonload(const nlohmann::json& data) {
     BRep b;
-    if (data.contains("guid")) b.guid = data["guid"];
+    if (data.contains("guid")) b.guid() = data["guid"];
     if (data.contains("name")) b.name = data["name"];
     if (data.contains("width")) b.width = data["width"];
     if (data.contains("surfacecolor")) b.surfacecolor = Color::jsonload(data["surfacecolor"]);
@@ -1200,7 +1253,7 @@ BRep BRep::json_load(const std::string& filename) {
 
 std::string BRep::pb_dumps() const {
     session_proto::BRep proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_width(width);
 
@@ -1266,7 +1319,7 @@ std::string BRep::pb_dumps() const {
     color_proto->set_a(surfacecolor.a);
 
     auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid);
+    xform_proto->set_guid(xform.guid());
     xform_proto->set_name(xform.name);
     for (int i = 0; i < 16; ++i) xform_proto->add_matrix(xform.m[i]);
 
@@ -1277,7 +1330,7 @@ BRep BRep::pb_loads(const std::string& data) {
     session_proto::BRep proto;
     proto.ParseFromString(data);
     BRep b;
-    b.guid = proto.guid();
+    b.guid() = proto.guid();
     b.name = proto.name();
     b.width = proto.width();
 
@@ -1348,7 +1401,7 @@ BRep BRep::pb_loads(const std::string& data) {
     b.surfacecolor.a = cp.a();
 
     const auto& xp = proto.xform();
-    b.xform.guid = xp.guid();
+    b.xform.guid() = xp.guid();
     b.xform.name = xp.name();
     for (int i = 0; i < 16 && i < xp.matrix_size(); ++i)
         b.xform.m[i] = xp.matrix(i);

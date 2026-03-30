@@ -22,12 +22,14 @@ namespace session_cpp {
      */
     class Plane {
         public:
-        std::string guid = ::guid();       ///< Unique identifier for the plane
         std::string name = "my_plane";     ///< Plane identifier/name
+        const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+        std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
         double width = 1.0;                ///< Width for plane visualization
         Xform xform;   ///< Transformation matrix
 
         private:
+        mutable std::string _guid;         ///< Lazily generated unique identifier
         Point _origin = Point();   ///< Origin (private)
         Vector _x_axis = Vector::x_axis(); ///< X axis (private)
         Vector _y_axis = Vector::y_axis(); ///< Y axis (private)

@@ -22,7 +22,8 @@ namespace session_cpp {
  */
 class TrimmedSurface {
 public:
-    std::string guid = ::guid();
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name = "my_trimmedsurface";
     double width = 1.0;
     Color surfacecolor = Color::black();
@@ -177,6 +178,8 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const TrimmedSurface& ts);
 
 private:
+    mutable std::string _guid;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Internal Helpers
     ///////////////////////////////////////////////////////////////////////////////////////////

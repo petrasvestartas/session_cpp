@@ -25,8 +25,9 @@ namespace session_cpp {
  */
 class Polyline {
 public:
-    std::string guid = ::guid();
     std::string name = "my_polyline";
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::vector<double> _coords;  // Flat array [x0, y0, z0, x1, y1, z1, ...]
     Plane plane;
     double width = 1.0;
@@ -234,6 +235,9 @@ public:
     /// Get average plane from polyline points
     void get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const;
 
+    /// Winding-number point-in-polygon test. p.x/y tested; polygon vertex z ignored.
+    bool point_in_polygon_2d(const Point& p) const;
+
     /// Get fast plane calculation from polyline
     void get_fast_plane(Point& origin, Plane& pln) const;
 
@@ -275,15 +279,31 @@ public:
                                                         double offset_dist, double div_dist,
                                                         size_t max_pts = 100);
 
+    /// Boolean operation on two closed planar polylines.
+    /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
+    /// Returns 0-2 result polygons. Uses integer-scaled Greiner-Hormann (Clipper2-style).
+    static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, int clip_type);
+
     /// Merge consecutive collinear segments (in-place); closed polyline wraps around
     void merge_collinear(double tol = Tolerance::APPROXIMATION);
 
+    /// Simplify a point list using Ramer-Douglas-Peucker
+    static std::vector<Point> simplify_points(const std::vector<Point>& points, double tolerance);
+
+    /// Simplify this polyline using Ramer-Douglas-Peucker
+    Polyline simplify(double tolerance) const;
+
 private:
+    mutable std::string _guid; ///< Lazily generated unique identifier
+
     /// Helper to recompute plane when points change
     void recompute_plane_if_needed();
 
     /// Calculate average normal from polyline points
     void average_normal(Vector& average_normal) const;
+
+    static double simplify_perp_dist(const Point& pt, const Point& line_start, const Point& line_end);
+    static void simplify_rdp(const std::vector<Point>& points, int start, int end, double tolerance, std::vector<bool>& keep);
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -358,6 +378,6 @@ template <> struct fmt::formatter<session_cpp::Polyline> {
 
     auto format(const session_cpp::Polyline& polyline, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "Polyline(guid={}, name={}, points={})",
-                            polyline.guid, polyline.name, polyline.point_count());
+                            polyline.guid(), polyline.name, polyline.point_count());
     }
 };

@@ -96,9 +96,9 @@ Line Line::with_name(const std::string& name, double x0, double y0, double z0, d
     return line;
 }
 
-/// Copy constructor (creates a new guid while copying data)
+/// Copy constructor (creates a new guid() while copying data)
 Line::Line(const Line& other)
-    : guid(::guid()),
+    :
       name(other.name),
       width(other.width),
       linecolor(other.linecolor),
@@ -110,10 +110,10 @@ Line::Line(const Line& other)
       _y1(other._y1),
       _z1(other._z1) {}
 
-/// Copy assignment (creates a new guid while copying data)
+/// Copy assignment (creates a new guid() while copying data)
 Line& Line::operator=(const Line& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         width = other.width;
         linecolor = other.linecolor;
@@ -161,7 +161,7 @@ Line Line::transformed() const {
 nlohmann::ordered_json Line::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json data;
-    data["guid"] = guid;
+    data["guid"] = guid();
     data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
     data["type"] = "Line";
@@ -178,7 +178,7 @@ nlohmann::ordered_json Line::jsondump() const {
 
 Line Line::jsonload(const nlohmann::json& data) {
     Line line(data["x0"], data["y0"], data["z0"], data["x1"], data["y1"], data["z1"]);
-    line.guid = data["guid"];
+    line.guid() = data["guid"];
     line.name = data["name"];
     line.linecolor = Color::jsonload(data["linecolor"]);
     line.width = data["width"];
@@ -223,7 +223,7 @@ std::string Line::pb_dumps() const {
     end->set_x(_x1);
     end->set_y(_y1);
     end->set_z(_z1);
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     // Serialize xform
     auto* proto_xform = proto.mutable_xform();
@@ -239,7 +239,7 @@ Line Line::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     Line line(proto.start().x(), proto.start().y(), proto.start().z(),
               proto.end().x(), proto.end().y(), proto.end().z());
-    line.guid = proto.guid();
+    line.guid() = proto.guid();
     line.name = proto.name();
     // Deserialize xform if present
     if (proto.has_xform()) {

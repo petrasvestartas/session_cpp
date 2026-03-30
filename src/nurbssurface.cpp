@@ -262,7 +262,7 @@ NurbsSurface& NurbsSurface::operator=(const NurbsSurface& other) {
 }
 
 bool NurbsSurface::operator==(const NurbsSurface& other) const {
-    // Compare metadata (excluding guid)
+    // Compare metadata (excluding guid())
     if (name != other.name) return false;
     if (width != other.width) return false;
     if (pointcolors != other.pointcolors) return false;
@@ -303,7 +303,7 @@ NurbsSurface::~NurbsSurface() {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void NurbsSurface::initialize() {
-    guid = ::guid();
+    _guid.clear();
     name = "my_nurbssurface";
     width = 1.0;
     pointcolors.clear();
@@ -1521,7 +1521,7 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
     }
     j["facecolors"] = facecolors_arr;
 
-    j["guid"] = guid;
+    j["guid"] = guid();
     j["is_rational"] = m_is_rat != 0;
     j["knots_u"] = m_knot[0];
     j["knots_v"] = m_knot[1];
@@ -1577,7 +1577,7 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
             surface.m_cv = data["control_points"].get<std::vector<double>>();
         }
 
-        surface.guid = data.value("guid", ::guid());
+        surface.guid() = data.value("guid", ::guid());
         surface.name = data.value("name", "my_nurbssurface");
         surface.width = data.value("width", 1.0);
 
@@ -1637,7 +1637,7 @@ std::string NurbsSurface::pb_dumps() const {
     session_proto::NurbsSurface proto;
 
     // Basic metadata
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
     proto.set_dimension(m_dim);
     proto.set_is_rational(m_is_rat != 0);
@@ -1683,7 +1683,7 @@ std::string NurbsSurface::pb_dumps() const {
 
     // Transform
     auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid);
+    xform_proto->set_guid(xform.guid());
     xform_proto->set_name(xform.name);
     for (int i = 0; i < 16; ++i) {
         xform_proto->add_matrix(xform.m[i]);
@@ -1709,7 +1709,7 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
                    proto.cv_count_u(), proto.cv_count_v());
 
     // Load metadata
-    surface.guid = proto.guid();
+    surface.guid() = proto.guid();
     surface.name = proto.name();
 
     // Load knot vectors
@@ -1747,7 +1747,7 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
 
     // Load transform
     const auto& xform_proto = proto.xform();
-    surface.xform.guid = xform_proto.guid();
+    surface.xform.guid() = xform_proto.guid();
     surface.xform.name = xform_proto.name();
     for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
         surface.xform.m[i] = xform_proto.matrix(i);
@@ -1841,7 +1841,7 @@ bool NurbsSurface::make_periodic_uniform_knot_vector(int dir, double delta) {
 }
 
 void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
-    guid = ::guid(); // Generate new GUID for copy
+    _guid.clear();
     name = src.name;
     width = src.width;
     pointcolors = src.pointcolors;

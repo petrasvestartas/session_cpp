@@ -21,7 +21,7 @@ nlohmann::ordered_json TreeNode::jsondump() const {
     children_array.push_back(child->jsondump());
 
   nlohmann::ordered_json j{{"type", "TreeNode"},
-                           {"guid", guid},
+                           {"guid", guid()},
                            {"name", name},
                            {"children", children_array}};
   if (color) j["color"] = color->jsondump();
@@ -31,7 +31,7 @@ nlohmann::ordered_json TreeNode::jsondump() const {
 /// Create TreeNode from JSON data
 std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json &data) {
   auto node = std::make_shared<TreeNode>(data["name"]);
-  node->guid = data["guid"];
+  node->guid() = data["guid"];
   if (data.contains("color") && !data["color"].is_null())
     node->color = Color::jsonload(data["color"]);
   for (const auto &child_data : data["children"]) {
@@ -46,12 +46,12 @@ std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json &data) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::string TreeNode::str() const {
-  return fmt::format("TreeNode({}, {}, {} children)", this->name, this->guid,
+  return fmt::format("TreeNode({}, {}, {} children)", this->name, this->guid(),
                      _children.size());
 }
 
 bool TreeNode::operator==(const TreeNode &other) const {
-  return this->guid == other.guid;
+  return this->guid() == other.guid();
 }
 
 bool TreeNode::operator!=(const TreeNode &other) const {

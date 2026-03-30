@@ -55,7 +55,7 @@ namespace session_cpp {
         std::string sstr = s.str();
         std::string srepr = s.repr();
 
-        // Copy (duplicates everything except guid)
+        // Copy (duplicates everything except guid())
         NurbsSurface scopy = s;
         NurbsSurface sother = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
     
@@ -72,11 +72,11 @@ namespace session_cpp {
         MINI_CHECK(s.knot_count(0) == 6);
         MINI_CHECK(s.knot_count(1) == 6);
         MINI_CHECK(s.name == "my_nurbssurface");
-        MINI_CHECK(!s.guid.empty());
+        MINI_CHECK(!s.guid().empty());
         MINI_CHECK(sstr == "NurbsSurface(name=my_nurbssurface, degree=(3,3), cvs=(4,4))");
         MINI_CHECK(srepr == "NurbsSurface(\n  name=my_nurbssurface,\n  degree=(3,3),\n  cvs=(4,4),\n  rational=false,\n  control_points=[\n    0, 0, 0\n    -1, 0.75, 2\n    -1, 4.25, 2\n    0, 5, 0\n    0.75, -1, 2\n    1.25, 1.25, 4\n    1.25, 3.75, 4\n    0.75, 6, 2\n    4.25, -1, 2\n    3.75, 1.25, 4\n    3.75, 3.75, 4\n    4.25, 6, 2\n    5, 0, 0\n    6, 0.75, 2\n    6, 4.25, 2\n    5, 5, 0\n  ]\n)");
         MINI_CHECK(scopy.cv_count() == s.cv_count());
-        MINI_CHECK(scopy.guid != s.guid);
+        MINI_CHECK(scopy.guid() != s.guid());
         MINI_CHECK(TOLERANCE.is_point_close(p[0][0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
         MINI_CHECK(TOLERANCE.is_point_close(p[0][1], Point(-0.416666666666667, 0.578703703703704, 0.833333333333333)));
         MINI_CHECK(TOLERANCE.is_point_close(p[0][2], Point(-0.666666666666667, 1.462962962962963, 1.333333333333333)));
@@ -249,6 +249,7 @@ namespace session_cpp {
 
         // const - to read, non-const point to write
         const double* const_pointer_cv = s.cv(0,0);
+
         MINI_CHECK( const_pointer_cv[2] == 0);
         double* pointer_cv = s.cv(0,0);
         pointer_cv[2] = 10.0; // modifies surface because it is a pointer
@@ -267,7 +268,9 @@ namespace session_cpp {
         s.set_cv(0, 0, Point(0, 0, 5));
         MINI_CHECK(  s.get_cv(0, 0) == Point(0, 0, 5) );
         s.set_cv_4d(0,0, 0, 0, 4, 0.5);
-        MINI_CHECK( s.get_cv(0,0) == Point(0, 0, 8) && s.cv(0,0)[2] == 4 && s.weight(0,0) == 0.5 );
+        MINI_CHECK(s.get_cv(0, 0) == Point(0, 0, 8));
+        MINI_CHECK(s.cv(0, 0)[2] == 4);
+        MINI_CHECK(s.weight(0, 0) == 0.5);
 
         w = s.weight(0,0);
         s.set_weight(0,0,1);
@@ -363,6 +366,7 @@ namespace session_cpp {
         // Get domain 0 - 1
         std::pair<double, double> domain_u = s.domain(0);
         std::pair<double, double> domain_v = s.domain(1);
+
         MINI_CHECK(TOLERANCE.is_close(domain_u.first, 0));
         MINI_CHECK(TOLERANCE.is_close(domain_u.second, 1));
 
@@ -545,6 +549,7 @@ namespace session_cpp {
 
         // point_at(u, v) - returns Point
         Point p1 = s.point_at(u, v);
+
         MINI_CHECK(TOLERANCE.is_point_close(p1, Point(2.5, 2.5, 3.0)));
 
         // normal_at(u, v) - returns Vector
@@ -600,6 +605,7 @@ namespace session_cpp {
         // Reverse one direction
         NurbsSurface s_rev = s;
         s_rev.reverse(0);
+
         MINI_CHECK(s_rev.point_at_corner(0, 0) == s.point_at_corner(1, 0));
         MINI_CHECK(s_rev.normal_at(0.5, 0.5) == s.normal_at(0.5, 0.5)*-1);
 
@@ -681,6 +687,7 @@ namespace session_cpp {
         NurbsSurface surface1 = NurbsSurface::create(false, false, 3, 3, 4, 4, points);                                                         
         surface1.xform = Xform::translation(0.0, 0.0, 1.0);  
         surface1.transform();  // applies stored xform, modifies surface1
+
         MINI_CHECK(surface1.xform.is_identity() == false);
         MINI_CHECK(surface1.cv(0, 0)[2] == 1.0);
 
@@ -714,6 +721,7 @@ namespace session_cpp {
         NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 3.0);
         Mesh mesh_sphere = sphere.mesh();
         Mesh mesh_sphere_adaptive = sphere.mesh_adaptive(45.0);
+
         MINI_CHECK(mesh_sphere.is_valid());
         MINI_CHECK(mesh_sphere_adaptive.is_valid());
 
@@ -757,7 +765,8 @@ namespace session_cpp {
             Point(0, 64, 0), 
             Point(5, 64, 5)});
         auto rb = NurbsCurve::create(false, 1, {
-            Point(0, 64 + 5, 5), Point(5, 64 + 5, 0)});
+            Point(0, 64 + 5, 5),
+            Point(5, 64 + 5, 0)});
         NurbsSurface hypar = Primitives::create_ruled(ra, rb);
         Mesh mesh_hypar = hypar.mesh();
         Mesh mesh_hypar_adaptive = hypar.mesh_adaptive(45.0);

@@ -22,7 +22,7 @@ nlohmann::ordered_json Tree::jsondump() const {
 
   return nlohmann::ordered_json{
       {"type", "Tree"},
-      {"guid", guid},
+      {"guid", guid()},
       {"name", name},
       {"root",
        _root ? _root->jsondump() : nlohmann::ordered_json(nullptr)}};
@@ -30,7 +30,7 @@ nlohmann::ordered_json Tree::jsondump() const {
 
 Tree Tree::jsonload(const nlohmann::json &data) {
   auto tree = std::make_shared<Tree>(data["name"]);
-  tree->guid = data["guid"];
+  tree->guid() = data["guid"];
   if (!data["root"].is_null()) {
     auto root = TreeNode::jsonload(data["root"]);
     tree->add(root);
@@ -61,7 +61,7 @@ std::string Tree::pb_dumps() const {
   std::function<session_proto::TreeNode(TreeNode*)> node_to_proto =
     [&](TreeNode* node) -> session_proto::TreeNode {
       session_proto::TreeNode proto_node;
-      proto_node.set_guid(node->guid);
+      proto_node.set_guid(node->guid());
       proto_node.set_name(node->name);
       proto_node.set_parent_guid("");
       if (node->color) {
@@ -78,7 +78,7 @@ std::string Tree::pb_dumps() const {
     };
 
   session_proto::Tree proto;
-  proto.set_guid(guid);
+  proto.set_guid(guid());
   proto.set_name(name);
   if (_root) {
     *proto.mutable_root() = node_to_proto(_root.get());
@@ -93,7 +93,7 @@ Tree Tree::pb_loads(const std::string& data) {
   std::function<std::shared_ptr<TreeNode>(const session_proto::TreeNode&)> proto_to_node =
     [&](const session_proto::TreeNode& proto_node) -> std::shared_ptr<TreeNode> {
       auto node = std::make_shared<TreeNode>(proto_node.name());
-      node->guid = proto_node.guid();
+      node->guid() = proto_node.guid();
       if (proto_node.has_color() && proto_node.color().a() > 0)
         node->color = Color(proto_node.color().r(), proto_node.color().g(),
                             proto_node.color().b(), proto_node.color().a());
@@ -105,7 +105,7 @@ Tree Tree::pb_loads(const std::string& data) {
     };
 
   Tree tree(proto.name());
-  tree.guid = proto.guid();
+  tree.guid() = proto.guid();
   if (proto.has_root()) {
     tree.add(proto_to_node(proto.root()));
   }
@@ -253,7 +253,7 @@ Tree::get_nodes_by_name(const std::string &node_name) const {
 std::shared_ptr<TreeNode>
 Tree::find_node_by_guid(const std::string &node_guid) const {
   for (const auto &node : nodes()) {
-    if (node->guid == node_guid) {
+    if (node->guid() == node_guid) {
       return node;
     }
   }
@@ -291,7 +291,7 @@ Tree::get_children_guids(const std::string &node_guid) const {
 
   std::vector<std::string> result;
   for (const auto &child : node->children()) {
-    result.push_back(child->guid);
+    result.push_back(child->guid());
   }
   return result;
 }

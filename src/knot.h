@@ -121,15 +121,6 @@ namespace knot {
     bool is_periodic(int order, int cv_count, const std::vector<double>& knot);
 
     /**
-     * @brief Check if a knot vector is uniform (interior knots evenly spaced).
-     * @param order Order of the NURBS (degree + 1).
-     * @param cv_count Number of control vertices.
-     * @param knot Knot vector to check.
-     * @return True if the interior knots are uniformly spaced.
-     */
-    bool is_uniform(int order, int cv_count, const std::vector<double>& knot);
-
-    /**
      * @brief Get the domain of a knot vector.
      * @param order Order of the NURBS (degree + 1).
      * @param cv_count Number of control vertices.
@@ -178,15 +169,6 @@ namespace knot {
     int span_count(int order, int cv_count, const std::vector<double>& knot);
 
     /**
-     * @brief Get the span breakpoints of a knot vector.
-     * @param order Order of the NURBS (degree + 1).
-     * @param cv_count Number of control vertices.
-     * @param knot Knot vector.
-     * @return Vector of unique knot values that define span boundaries.
-     */
-    std::vector<double> get_span_vector(int order, int cv_count, const std::vector<double>& knot);
-
-    /**
      * @brief Find the knot span containing parameter t.
      * @param order Order of the NURBS (degree + 1).
      * @param cv_count Number of control vertices.
@@ -198,24 +180,6 @@ namespace knot {
      */
     int find_span(int order, int cv_count, const std::vector<double>& knot, 
                   double t, int side = 0, int hint = 0);
-
-    /**
-     * @brief Get the superfluous knot value at the specified end.
-     * @param order Order of the NURBS (degree + 1).
-     * @param cv_count Number of control vertices.
-     * @param knot Knot vector.
-     * @param end 0 = first superfluous knot, 1 = last superfluous knot.
-     * @return Superfluous knot value.
-     */
-    double superfluous_knot(int order, int cv_count, const std::vector<double>& knot, int end);
-
-    /**
-     * @brief Compute a single Greville abscissa.
-     * @param order Order of the NURBS (degree + 1).
-     * @param knot Array of (order - 1) knot values.
-     * @return Greville abscissa (average of the knots).
-     */
-    double greville_abcissa(int order, const double* knot);
 
     /**
      * @brief Get all Greville abscissae for a knot vector.
@@ -276,15 +240,6 @@ namespace knot {
      * @return Vector of 'order' basis function values.
      */
     std::vector<double> eval_basis(int order, const std::vector<double>& knot, int span, double t);
-
-    /**
-     * @brief Build clamped knot vector for least-squares fitting (Piegl eq 9.68).
-     * @param params Chord-length parameters for data points.
-     * @param num_cvs Desired number of control vertices.
-     * @param degree Curve degree.
-     * @return Clamped knot vector with averaged interior knots.
-     */
-    std::vector<double> build_fitted_knots(const std::vector<double>& params, int num_cvs, int degree);
 
     std::vector<double> build_fitted_knots_adaptive(const std::vector<double>& params,
         const double* points, int point_count, int dim, int num_cvs, int degree, double scale = 3.0);

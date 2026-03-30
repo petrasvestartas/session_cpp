@@ -1,89 +1,85 @@
 #include <filesystem>
-#include <numbers>
-#include <cmath>
-#include "mesh.h"
-#include "remesh_cdt.h"
+#include "marching_squares.h"
+#include "polyline.h"
 #include "session.h"
+#include "session_config.h"
+#include "color.h"
+#include "treenode.h"
 
 using namespace session_cpp;
 
-static Mesh mesh_from_cdt(
-    const std::vector<std::pair<double,double>>& border,
-    const std::vector<std::vector<std::pair<double,double>>>& holes,
-    double ox = 0.0, double oy = 0.0)
-{
-    std::vector<std::pair<double,double>> flat;
-    for (auto& p : border) flat.push_back(p);
-    for (auto& h : holes) for (auto& p : h) flat.push_back(p);
-
-    auto tris = cdt_triangulate(border, holes);
-
-    Mesh m;
-    for (auto& p : flat)
-        m.add_vertex(Point(p.first + ox, p.second + oy, 0.0));
-    for (auto& t : tris)
-        m.add_face({(size_t)t[0], (size_t)t[1], (size_t)t[2]});
-    return m;
+static std::shared_ptr<TreeNode> add_group(Session& session, const std::string& n, int r, int g, int b) {
+    auto node = std::make_shared<TreeNode>(n);
+    node->color = Color(r, g, b);
+    session.add(node);
+    return node;
 }
 
 int main() {
-    Session session("RemeshCDT");
-
+    SESSION_CONFIG.explode_mesh_faces = false;
+    Session session("MarchingSquares");
     std::string fp = (std::filesystem::path(__FILE__).parent_path().parent_path()
-                      / "session_data" / "RemeshCDT.pb").string();
+                      / "session_data" / "MarchingSquares.pb").string();
 
-    // Triangle — simplest valid input: 3 vertices, 1 output face
+    // 1. Circle: iso-contour of 1 - (x^2 + y^2) = 0 → unit circle
     {
-        Mesh m = mesh_from_cdt(
-            {{0,0},{1,0},{0,1}},
-            {});
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    }
-
-    // Square — minimal quad: 4 vertices, 2 output faces
-    {
-        Mesh m = mesh_from_cdt(
-            {{0,0},{2,0},{2,2},{0,2}},
-            {}, 3.0, 0.0);
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
-    }
-
-    // Convex polygon — regular hexagon: 6 vertices, 4 output faces
-    {
-        std::vector<std::pair<double,double>> hex;
-        for (int i = 0; i < 6; ++i) {
-            double a = i * std::numbers::pi / 3.0;
-            hex.push_back({std::cos(a), std::sin(a)});
+        auto grp = add_group(session, "Circle (r=1)", 80, 160, 220);
+        auto segs = MarchingSquares::extract_from_func(
+            [](double x, double y) { return 1.0 - (x * x + y * y); },
+            {-1.5, 1.5}, {-1.5, 1.5}, 60, 60, 0.0
+        );
+        for (auto& pl : segs) {
+            pl.linecolor = Color(80, 160, 220);
+            session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
         }
-        Mesh m = mesh_from_cdt(hex, {}, 7.0, 0.0);
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
     }
 
-    // Non-convex polygon — L-shape: reflex vertex forces interior diagonal
+    // 2. Saddle: iso-contour of x^2 - y^2 = 0 → crossing diagonals (hyperbolas)
     {
-        Mesh m = mesh_from_cdt(
-            {{0,0},{3,0},{3,1},{1,1},{1,3},{0,3}},
-            {}, 11.0, 0.0);
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
+        auto grp = add_group(session, "Saddle (x^2-y^2=0)", 220, 120, 60);
+        auto segs = MarchingSquares::extract_from_func(
+            [](double x, double y) { return x * x - y * y; },
+            {-2.0, 2.0}, {-2.0, 2.0}, 60, 60, 0.0
+        );
+        for (auto& pl : segs) {
+            pl.linecolor = Color(220, 120, 60);
+            session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
+        }
     }
 
-    // Polygon with rectangular hole — area = outer - inner
+    // 3. Sine wave: iso-contour of sin(x)*cos(y) = 0 → wave grid
     {
-        Mesh m = mesh_from_cdt(
-            {{0,0},{4,0},{4,4},{0,4}},
-            {{{1,1},{1,3},{3,3},{3,1}}},
-            16.0, 0.0);
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
+        auto grp = add_group(session, "Sin*Cos wave", 100, 200, 100);
+        auto segs = MarchingSquares::extract_from_func(
+            [](double x, double y) { return std::sin(x) * std::cos(y); },
+            {-6.3, 6.3}, {-6.3, 6.3}, 100, 100, 0.0
+        );
+        for (auto& pl : segs) {
+            pl.linecolor = Color(100, 200, 100);
+            session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
+        }
     }
 
-    // Polygon with two holes — frame with two rectangular cutouts
+    // 4. Grid example: extract from scalar grid (Gaussian bump)
     {
-        Mesh m = mesh_from_cdt(
-            {{0,0},{6,0},{6,3},{0,3}},
-            {{{0.5,0.5},{2.5,0.5},{2.5,2.5},{0.5,2.5}},
-             {{3.5,0.5},{5.5,0.5},{5.5,2.5},{3.5,2.5}}},
-            22.0, 0.0);
-        session.add_mesh(std::make_shared<Mesh>(std::move(m)));
+        auto grp = add_group(session, "Gaussian bump (grid)", 200, 80, 200);
+        int n = 40;
+        std::vector<std::vector<double>> grid(n, std::vector<double>(n));
+        for (int r = 0; r < n; ++r) {
+            for (int c = 0; c < n; ++c) {
+                double x = (c - n / 2.0) * 0.2;
+                double y = (r - n / 2.0) * 0.2;
+                grid[r][c] = std::exp(-(x * x + y * y));
+            }
+        }
+        for (double iso : {0.2, 0.4, 0.6, 0.8}) {
+            auto segs = MarchingSquares::extract(grid, iso, 0.2);
+            int ci = static_cast<int>(iso * 255.0);
+            for (auto& pl : segs) {
+                pl.linecolor = Color(ci, 80, 200 - ci);
+                session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
+            }
+        }
     }
 
     session.pb_dump(fp);

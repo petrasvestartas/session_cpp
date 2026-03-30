@@ -347,19 +347,31 @@ std::vector<NurbsSurface> Primitives::quad_sphere(double cx, double cy, double c
 
     struct CP { double x, y, z, w; };
     CP zf[3][3] = {
-        {{-a,-a, a, 1}, {-e, 0, e, wk}, {-a, a, a, 1}},
-        {{ 0,-e, e, wk},{ 0, 0, h, wc}, { 0, e, e, wk}},
-        {{ a,-a, a, 1}, { e, 0, e, wk}, { a, a, a, 1}}
+        {
+            {-a, -a, a, 1},
+            {-e, 0, e, wk},
+            {-a, a, a, 1},
+        },
+        {
+            { 0, -e, e, wk},
+            { 0, 0, h, wc},
+            { 0, e, e, wk},
+        },
+        {
+            { a, -a, a, 1},
+            { e, 0, e, wk},
+            { a, a, a, 1},
+        },
     };
 
     // Rotations: +Z, -Z, +X, -X, +Y, -Y
     double rot[6][3][3] = {
-        {{ 1, 0, 0},{ 0, 1, 0},{ 0, 0, 1}},
-        {{ 1, 0, 0},{ 0,-1, 0},{ 0, 0,-1}},
-        {{ 0, 0, 1},{ 0, 1, 0},{-1, 0, 0}},
-        {{ 0, 0,-1},{ 0, 1, 0},{ 1, 0, 0}},
-        {{ 1, 0, 0},{ 0, 0, 1},{ 0,-1, 0}},
-        {{ 1, 0, 0},{ 0, 0,-1},{ 0, 1, 0}}
+        {{ 1, 0, 0}, { 0, 1, 0}, { 0, 0, 1}},
+        {{ 1, 0, 0}, { 0, -1, 0}, { 0, 0, -1}},
+        {{ 0, 0, 1}, { 0, 1, 0}, {-1, 0, 0}},
+        {{ 0, 0, -1}, { 0, 1, 0}, { 1, 0, 0}},
+        {{ 1, 0, 0}, { 0, 0, 1}, { 0, -1, 0}},
+        {{ 1, 0, 0}, { 0, 0, -1}, { 0, 1, 0}}
     };
 
     std::vector<NurbsSurface> faces;
@@ -592,18 +604,40 @@ Mesh Primitives::tetrahedron(double edge) {
     double z0 = -h / 4.0;
     double z1 = 3.0 * h / 4.0;
     std::vector<std::vector<Point>> faces = {
-        {Point(a, -r/2.0, z0), Point(-a, -r/2.0, z0), Point(0, r, z0)},
-        {Point(0, 0, z1), Point(-a, -r/2.0, z0), Point(a, -r/2.0, z0)},
-        {Point(0, 0, z1), Point(0, r, z0), Point(-a, -r/2.0, z0)},
-        {Point(0, 0, z1), Point(a, -r/2.0, z0), Point(0, r, z0)},
+        {
+            Point(a, -r/2.0, z0),
+            Point(-a, -r/2.0, z0),
+            Point(0, r, z0),
+        },
+        {
+            Point(0, 0, z1),
+            Point(-a, -r/2.0, z0),
+            Point(a, -r/2.0, z0),
+        },
+        {
+            Point(0, 0, z1),
+            Point(0, r, z0),
+            Point(-a, -r/2.0, z0),
+        },
+        {
+            Point(0, 0, z1),
+            Point(a, -r/2.0, z0),
+            Point(0, r, z0),
+        },
     };
     return Mesh::from_polylines(faces, 1e-10);
 }
 
 Mesh Primitives::cube(double edge) {
     double a = edge / 2.0;
-    Point v0(-a, -a, -a), v1(a, -a, -a), v2(a, a, -a), v3(-a, a, -a);
-    Point v4(-a, -a, a), v5(a, -a, a), v6(a, a, a), v7(-a, a, a);
+    Point v0(-a, -a, -a);
+    Point v1(a, -a, -a);
+    Point v2(a, a, -a);
+    Point v3(-a, a, -a);
+    Point v4(-a, -a, a);
+    Point v5(a, -a, a);
+    Point v6(a, a, a);
+    Point v7(-a, a, a);
     std::vector<std::vector<Point>> faces = {
         {v3, v2, v1, v0},
         {v4, v5, v6, v7},
@@ -617,12 +651,21 @@ Mesh Primitives::cube(double edge) {
 
 Mesh Primitives::octahedron(double edge) {
     double a = edge / std::sqrt(2.0);
-    Point px(a, 0, 0), nx(-a, 0, 0);
-    Point py(0, a, 0), ny(0, -a, 0);
-    Point pz(0, 0, a), nz(0, 0, -a);
+    Point px(a, 0, 0);
+    Point nx(-a, 0, 0);
+    Point py(0, a, 0);
+    Point ny(0, -a, 0);
+    Point pz(0, 0, a);
+    Point nz(0, 0, -a);
     std::vector<std::vector<Point>> faces = {
-        {pz, px, py}, {pz, py, nx}, {pz, nx, ny}, {pz, ny, px},
-        {nz, py, px}, {nz, nx, py}, {nz, ny, nx}, {nz, px, ny},
+        {pz, px, py},
+        {pz, py, nx},
+        {pz, nx, ny},
+        {pz, ny, px},
+        {nz, py, px},
+        {nz, nx, py},
+        {nz, ny, nx},
+        {nz, px, ny},
     };
     return Mesh::from_polylines(faces, 1e-10);
 }

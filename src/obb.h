@@ -1,5 +1,6 @@
 #pragma once
 
+#include "aabb.h"
 #include "point.h"
 #include "vector.h"
 #include "plane.h"
@@ -26,70 +27,83 @@ class NurbsSurface;
  * Represents an oriented bounding box (OBB) defined by a center point,
  * three orthogonal axes, and half-size extents along each axis.
  */
-class Obb {
+class OBB {
 public:
     Point center;
     Vector x_axis;
     Vector y_axis;
     Vector z_axis;
     Vector half_size;
-    std::string guid;
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;
 
     Xform xform;
 
-    Obb();
-    Obb(const Point& center, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis, const Vector& half_size);
-    Obb(const Plane&plane, double dx, double dy, double dz);
+    OBB();
+    OBB(const Point& center, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis, const Vector& half_size);
+    OBB(const Plane&plane, double dx, double dy, double dz);
 
-    static Obb from_point(const Point& point, double inflate = 0.0);
-    static Obb from_points(const std::vector<Point>& points, double inflate = 0.0);
-    static Obb from_points(const std::vector<Point>& points, const Plane& plane, double inflate = 0.0);
-    static Obb from_line(const Line& line, double inflate = 0.0);
-    static Obb from_line(const Line& line, const Plane& plane, double inflate = 0.0);
-    static Obb from_polyline(const Polyline& polyline, double inflate = 0.0);
-    static Obb from_polyline(const Polyline& polyline, const Plane& plane, double inflate = 0.0);
-    static Obb from_mesh(const Mesh& mesh, double inflate = 0.0);
-    static Obb from_mesh(const Mesh& mesh, const Plane& plane, double inflate = 0.0);
-    static Obb from_pointcloud(const PointCloud& pointcloud, double inflate = 0.0);
-    static Obb from_pointcloud(const PointCloud& pointcloud, const Plane& plane, double inflate = 0.0);
-    static Obb from_nurbscurve(const NurbsCurve& curve, double inflate = 0.0, bool tight = false);
-    static Obb from_nurbscurve(const NurbsCurve& curve, const Plane& plane, double inflate = 0.0, bool tight = false);
-    static Obb from_nurbssurface(const NurbsSurface& surface, double inflate = 0.0);
-    static Obb from_nurbssurface(const NurbsSurface& surface, const Plane& plane, double inflate = 0.0);
+    static OBB from_point(const Point& point, double inflate = 0.0);
+    static OBB from_points(const std::vector<Point>& points, double inflate = 0.0);
+    static OBB from_points(const std::vector<Point>& points, const Plane& plane, double inflate = 0.0);
+    static OBB from_line(const Line& line, double inflate = 0.0);
+    static OBB from_line(const Line& line, const Plane& plane, double inflate = 0.0);
+    static OBB from_polyline(const Polyline& polyline, double inflate = 0.0);
+    static OBB from_polyline(const Polyline& polyline, const Plane& plane, double inflate = 0.0);
+    static OBB from_mesh(const Mesh& mesh, double inflate = 0.0);
+    static OBB from_mesh(const Mesh& mesh, const Plane& plane, double inflate = 0.0);
+    static OBB from_pointcloud(const PointCloud& pointcloud, double inflate = 0.0);
+    static OBB from_pointcloud(const PointCloud& pointcloud, const Plane& plane, double inflate = 0.0);
+    static OBB from_nurbscurve(const NurbsCurve& curve, double inflate = 0.0, bool tight = false);
+    static OBB from_nurbscurve(const NurbsCurve& curve, const Plane& plane, double inflate = 0.0, bool tight = false);
+    static OBB from_nurbssurface(const NurbsSurface& surface, double inflate = 0.0);
+    static OBB from_nurbssurface(const NurbsSurface& surface, const Plane& plane, double inflate = 0.0);
 
-    Obb aabb() const;
+    AABB aabb() const;
     Point min_point() const;
     Point max_point() const;
+    double area() const;
+    double diagonal() const;
+    bool is_valid() const;
+    double volume() const;
+    Point closest_point(const Point& pt) const;
+    bool contains(const Point& pt) const;
+    Point corner(bool x_max, bool y_max, bool z_max) const;
     std::array<Point, 8> corners() const;
+    std::array<Point, 8> get_corners() const;
+    std::vector<Line> get_edges() const;
     std::array<Point, 10> two_rectangles() const;
     Point point_at(double x, double y, double z) const;
     void inflate(double amount);
+    void union_with(const OBB& other);
 
-    bool collides_with(const Obb& other) const;
-    bool collides_with_rtcd(const Obb& other) const;
-    bool collides_with_naive(const Obb& other) const;
+    bool collides_with(const OBB& other) const;
+    bool collides_with_broad(const OBB& other) const;
+    bool collides_with_rtcd(const OBB& other) const;
+    bool collides_with_naive(const OBB& other) const;
 
     void transform();
-    Obb transformed() const;
+    OBB transformed() const;
 
     nlohmann::ordered_json jsondump() const;
-    static Obb jsonload(const nlohmann::json& data);
+    static OBB jsonload(const nlohmann::json& data);
 
     void to_json_file(const std::string& filepath) const;
-    static Obb from_json_file(const std::string& filepath);
+    static OBB from_json_file(const std::string& filepath);
 
     std::string json_dumps() const;
-    static Obb json_loads(const std::string& json_string);
+    static OBB json_loads(const std::string& json_string);
     void json_dump(const std::string& filename) const;
-    static Obb json_load(const std::string& filename);
+    static OBB json_load(const std::string& filename);
     std::string pb_dumps() const;
-    static Obb pb_loads(const std::string& data);
+    static OBB pb_loads(const std::string& data);
     void pb_dump(const std::string& filename) const;
-    static Obb pb_load(const std::string& filename);
+    static OBB pb_load(const std::string& filename);
 
 private:
-    static bool separating_plane_exists(const Vector& relative_position, const Vector& axis, const Obb& box1, const Obb& box2);
+    mutable std::string _guid;
+    static bool separating_plane_exists(const Vector& relative_position, const Vector& axis, const OBB& box1, const OBB& box2);
 };
 
 }

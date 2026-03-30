@@ -25,8 +25,9 @@ class Plane; // Forward declaration
  */
 class Xform {
 public:
-    std::string guid = ::guid();      ///< Unique identifier generated on construction
     std::string name = "my_xform";   ///< Human-readable name
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::array<double, 16> m;          ///< Column-major 4x4 matrix values
 
     /// Default constructor (identity)
@@ -135,6 +136,8 @@ public:
     /// Full string representation (name, guid prefix)
     std::string repr() const;
 
+private:
+    mutable std::string _guid; ///< Lazily generated unique identifier
 };
 
 } // namespace session_cpp

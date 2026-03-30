@@ -39,7 +39,7 @@ MINI_TEST("Xform", "Constructor") {
     std::string xstr = x.str();
     std::string xrepr = x.repr();
 
-    // Copy (duplicates everything except guid)
+    // Copy (duplicates everything except guid())
     Xform xcopy = x;
     Xform xother;
 
@@ -59,15 +59,15 @@ MINI_TEST("Xform", "Constructor") {
     t2 *= s;
     Point result2 = t2.transformed_point(p);
 
-    MINI_CHECK(x.name == "my_xform" && !x.guid.empty());
+    MINI_CHECK(x.name == "my_xform" && !x.guid().empty());
     MINI_CHECK(m00 == 1.0 && m11 == 1.0 && m22 == 1.0 && m33 == 1.0);
-    MINI_CHECK(is_id == true);
+    MINI_CHECK(is_id);
     MINI_CHECK(xfrom.m[12] == 5.0 && xfrom.m[13] == 10.0 && xfrom.m[14] == 15.0);
     MINI_CHECK(xstr.find("1.000000") != std::string::npos);
     MINI_CHECK(xrepr.find("Xform(") != std::string::npos);
     MINI_CHECK(xrepr.find("my_xform") != std::string::npos);
-    MINI_CHECK(xcopy == x && xcopy.guid != x.guid);
-    MINI_CHECK(x_eq == true && x_ne == true);
+    MINI_CHECK(xcopy == x && xcopy.guid() != x.guid());
+    MINI_CHECK(x_eq && x_ne);
     // (1,0,0) * scale(2,1,1) = (2,0,0), then translate(10,0,0) = (12,0,0)
     MINI_CHECK(TOLERANCE.is_close(result[0], 12.0));
     MINI_CHECK(TOLERANCE.is_close(result[1], 0.0));
@@ -207,7 +207,11 @@ MINI_TEST("Xform", "Transform Geometry") {
     Plane pl_transformed = pl.transformed();
 
     // Transform Polyline: 3 points translated
-    Polyline poly({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+    });
     poly.xform = t;
     Polyline poly_transformed = poly.transformed();
     std::vector<Point> pts = poly_transformed.get_points();

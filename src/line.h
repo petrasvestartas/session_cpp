@@ -22,13 +22,15 @@ namespace session_cpp {
  */
 class Line {
 public:
-    std::string guid = ::guid();       ///< Unique identifier for the line
     std::string name = "my_line";      ///< Line identifier/name
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     double width = 1.0;                ///< Line width in pixels
     Color linecolor = Color::black();  ///< Color of the line
     Xform xform;   ///< Transformation matrix
 
 private:
+    mutable std::string _guid;         ///< Lazily generated unique identifier
     double _x0 = 0.0;                  ///< X coordinate of start point
     double _y0 = 0.0;                  ///< Y coordinate of start point
     double _z0 = 0.0;                  ///< Z coordinate of start point

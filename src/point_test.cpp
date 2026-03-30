@@ -33,7 +33,7 @@ namespace session_cpp {
         std::string pstr = p.str();
         std::string prepr = p.repr();
 
-        // Copy (duplicate everything but guid)
+        // Copy (duplicate everything but guid())
         Point pcopy = p;
         Point pother(1.0, 2.0, 3.0);
 
@@ -59,19 +59,17 @@ namespace session_cpp {
         Point psum = Point::sum(p1, p2);
         Point pdif = Point::sub(p2, p1);
 
-        MINI_CHECK(
-            p.name == "my_point" &&
-            p[0] == 10.0 &&
-            p[1] == 20.0 &&
-            p[2] == 30.0 &&
-            p.width == 1.0 &&
-            p.pointcolor == Color::blue() &&
-            !p.guid.empty()
-        );
+        MINI_CHECK(p.name == "my_point");
+        MINI_CHECK(p[0] == 10.0);
+        MINI_CHECK(p[1] == 20.0);
+        MINI_CHECK(p[2] == 30.0);
+        MINI_CHECK(p.width == 1.0);
+        MINI_CHECK(p.pointcolor == Color::blue());
+        MINI_CHECK(!p.guid().empty());
         MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
         MINI_CHECK(pstr == "10.000000, 20.000000, 30.000000");
         MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 255, 255), 1.000000)");
-        MINI_CHECK(pcopy == p && pcopy.guid != p.guid);
+        MINI_CHECK(pcopy == p && pcopy.guid() != p.guid());
         MINI_CHECK(pother != p);
         MINI_CHECK(pmult[0] == 20.0 && pmult[1] == 40.0 && pmult[2] == 60.0);
         MINI_CHECK(pdiv[0] == 5.0 && pdiv[1] == 10.0 && pdiv[2] == 15.0);
@@ -229,7 +227,6 @@ namespace session_cpp {
 }
 
 int main() {
-    session_cpp::mini_test::run_all("cpp");
-    return 0;
+    return session_cpp::mini_test::run_all("cpp") ? 1 : 0;
 }
 

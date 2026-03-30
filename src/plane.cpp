@@ -26,7 +26,7 @@ Plane::Plane() {
 }
 
 Plane::Plane(const Plane& other)
-    : guid(::guid()),
+    :
       name(other.name),
       width(other.width),
       xform(other.xform),
@@ -42,7 +42,7 @@ Plane::Plane(const Plane& other)
 
 Plane& Plane::operator=(const Plane& other) {
     if (this != &other) {
-        guid = ::guid();
+        _guid.clear();
         name = other.name;
         width = other.width;
         xform = other.xform;
@@ -393,7 +393,7 @@ nlohmann::ordered_json Plane::jsondump() const {
         clean_float(_y_axis[0]), clean_float(_y_axis[1]), clean_float(_y_axis[2]),
         clean_float(_z_axis[0]), clean_float(_z_axis[1]), clean_float(_z_axis[2])
     };
-    data["guid"] = guid;
+    data["guid"] = guid();
     data["name"] = name;
     data["type"] = "Plane";
     data["width"] = clean_float(width);
@@ -410,7 +410,7 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     plane._x_axis = Vector(frame[3].get<double>(), frame[4].get<double>(), frame[5].get<double>());
     plane._y_axis = Vector(frame[6].get<double>(), frame[7].get<double>(), frame[8].get<double>());
     plane._z_axis = Vector(frame[9].get<double>(), frame[10].get<double>(), frame[11].get<double>());
-    plane.guid = data["guid"];
+    plane.guid() = data["guid"];
     plane.name = data["name"];
     if (data.contains("width")) {
         plane.width = data["width"].get<double>();
@@ -454,7 +454,7 @@ Plane Plane::json_load(const std::string& filename) {
 
 std::string Plane::pb_dumps() const {
     session_proto::Plane proto;
-    proto.set_guid(guid);
+    proto.set_guid(guid());
     proto.set_name(name);
 
     // Frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
@@ -485,7 +485,7 @@ Plane Plane::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Plane plane;
-    plane.guid = proto.guid();
+    plane.guid() = proto.guid();
     plane.name = proto.name();
 
     // Parse frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
