@@ -1238,8 +1238,55 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
         int cnt = (int)((dst - dst0) / 3);
         if (cnt < 3) continue;
         Polyline result;
-        result._coords.assign(dst0, dst0 + cnt * 3); // exact-size malloc + memcpy
+        result._coords.assign(dst0, dst0 + cnt * 3);
         out.push_back(std::move(result));
     }
     return out;
+}
+
+int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polyline& b, int clip_type) {
+    const double* ca = a._coords.data();
+    const double* cb = b._coords.data();
+    int na = (int)(a._coords.size() / 3);
+    int nb = (int)(b._coords.size() / 3);
+    if (na>=2) { double dx=ca[(na-1)*3]-ca[0],dy=ca[(na-1)*3+1]-ca[1]; if(dx*dx+dy*dy<1e-20) --na; }
+    if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
+    if (na < 3 || nb < 3) return 0;
+
+    constexpr double BOOL_SCALE = 1e9;
+    VattiScratch& sc = vtls; sc.reset();
+    int total = na + nb;
+    sc.vtx_pool.ensure(total + 4);
+    sc.act_pool.ensure(total * 2 + 4);
+    sc.opt_pool.ensure(total * 4);
+    sc.orc_pool.ensure(total);
+    sc.locmin_list.reserve(total);
+    sc.outrec_list.reserve(total);
+    sc.scanline_list.buf.reserve(total * 2);
+
+#if VATTI_HAS_SSE2
+    const __m128d sv = _mm_set1_pd(BOOL_SCALE);
+#else
+    double sv = BOOL_SCALE;
+#endif
+    int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
+    VVertex* va_head = v_add_path_from_doubles(ca, na, 0, sv, sc, aMinX, aMaxX, aMinY, aMaxY);
+    VVertex* vb_head = v_add_path_from_doubles(cb, nb, 1, sv, sc, bMinX, bMaxX, bMinY, bMaxY);
+    if (!va_head || !vb_head) return 0;
+    if (aMaxX<bMinX||bMaxX<aMinX||aMaxY<bMinY||bMaxY<aMinY) return 0;
+
+    if (!v_execute_internal(sc, clip_type)) return 0;
+
+    // Just count output points — no conversion, no Polyline allocation
+    int total_pts = 0;
+    for (size_t i = 0; i < sc.outrec_list.size(); i++) {
+        VOutRec* outrec = sc.outrec_list[i];
+        if (!outrec->pts) continue;
+        v_clean_collinear(sc, outrec);
+        if (!outrec->pts) continue;
+        VOutPt* op = outrec->pts;
+        if (!op || op->next==op || op->next==op->prev || v_very_small_tri(*op)) continue;
+        VOutPt* o = op; do { total_pts++; o = o->next; } while (o != op);
+    }
+    return total_pts;
 }

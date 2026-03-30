@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include "polyline.h"
+#include "boolean_polyline.h"
 #include "clipper2/clipper.h"
 #include <chrono>
 #include <cmath>
@@ -10,7 +11,6 @@
 using namespace session_cpp;
 namespace C2 = Clipper2Lib;
 
-// Generate a regular convex N-gon centered at (cx,cy) with radius r
 static Polyline make_ngon(int n, double cx, double cy, double r) {
     std::vector<Point> pts;
     pts.reserve(n + 1);
@@ -35,9 +35,7 @@ static C2::Path64 to_path64(const Polyline& pl) {
 }
 
 static int count_pts(const C2::Paths64& ps) {
-    int s = 0;
-    for (auto& p : ps) s += (int)p.size();
-    return s;
+    int s = 0; for (auto& p : ps) s += (int)p.size(); return s;
 }
 
 int main() {
@@ -45,12 +43,12 @@ int main() {
     const int iters_med    = 5000;
     const int iters_large  = 500;
     const int iters_xlarge = 50;
-
     const char* op_names[] = {"intersect", "union", "difference"};
+    const C2::ClipType c2ops[] = {C2::ClipType::Intersection, C2::ClipType::Union, C2::ClipType::Difference};
 
-    std::printf("%-12s  %6s  %10s  %10s  %8s\n",
-        "operation", "N", "wrapper(ms)", "raw_c2(ms)", "overhead");
-    std::printf("%s\n", std::string(56, '-').c_str());
+    std::printf("%-12s  %4s  %9s %9s %7s  %9s %9s %7s  out\n",
+        "operation", "N", "full(ms)", "c2_full", "ratio", "engine", "c2_eng", "ratio");
+    std::printf("%s\n", std::string(88, '-').c_str());
 
     for (int op = 0; op < 3; op++) {
         int cases[][2] = {{10,iters_small},{50,iters_med},{100,iters_med},
@@ -64,14 +62,11 @@ int main() {
 
             // Warm up
             Polyline::boolean_op(a, b, op);
-            {
-                C2::Paths64 s{pa}, cl{pb};
-                if (op == 0) C2::Intersect(s, cl, C2::FillRule::NonZero);
-                else if (op == 1) C2::Union(s, cl, C2::FillRule::NonZero);
-                else C2::Difference(s, cl, C2::FillRule::NonZero);
-            }
+            BooleanPolyline::compute_count(a, b, op);
+            { C2::Clipper64 cl; cl.AddSubject({pa}); cl.AddClip({pb});
+              C2::Paths64 r; cl.Execute(c2ops[op], C2::FillRule::NonZero, r); }
 
-            // Bench wrapper (boolean_op: 3D→2D + Clipper2 + back-project)
+            // 1. Full pipeline (our wrapper with output)
             volatile int sink1 = 0;
             auto t0 = std::chrono::high_resolution_clock::now();
             for (int i = 0; i < iters; i++) {
@@ -79,9 +74,9 @@ int main() {
                 for (auto& pl : res) sink1 += (int)pl.get_points().size();
             }
             auto t1 = std::chrono::high_resolution_clock::now();
-            double wrap_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            double full_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-            // Bench raw Clipper2 (pre-built paths, clip only)
+            // 2. Full Clipper2 pipeline (with output)
             volatile int sink2 = 0;
             auto t2 = std::chrono::high_resolution_clock::now();
             for (int i = 0; i < iters; i++) {
@@ -93,15 +88,34 @@ int main() {
                 sink2 += count_pts(res);
             }
             auto t3 = std::chrono::high_resolution_clock::now();
-            double raw_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+            double c2_full_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
 
-            double ratio = (raw_ms > 0) ? wrap_ms / raw_ms : 0.0;
-            // output size from last iteration
-            auto res_check = Polyline::boolean_op(a, b, op);
-            int out_pts = 0; for (auto& pl : res_check) out_pts += pl.point_count();
-            (void)sink1; (void)sink2;
-            std::printf("%-12s  %6d  %10.2f  %10.2f  %7.2fx  out=%d\n",
-                op_names[op], n, wrap_ms, raw_ms, ratio, out_pts);
+            // 3. Engine only (our Vatti, no output Polyline construction)
+            volatile int sink3 = 0;
+            auto t4 = std::chrono::high_resolution_clock::now();
+            for (int i = 0; i < iters; i++)
+                sink3 += BooleanPolyline::compute_count(a, b, op);
+            auto t5 = std::chrono::high_resolution_clock::now();
+            double eng_ms = std::chrono::duration<double, std::milli>(t5 - t4).count();
+
+            // 4. Clipper2 engine only (AddPaths + Execute, skip BuildPaths)
+            volatile int sink4 = 0;
+            auto t6 = std::chrono::high_resolution_clock::now();
+            for (int i = 0; i < iters; i++) {
+                C2::Clipper64 cl;
+                cl.AddSubject({pa}); cl.AddClip({pb});
+                C2::Paths64 r; cl.Execute(c2ops[op], C2::FillRule::NonZero, r);
+                sink4 += count_pts(r);
+            }
+            auto t7 = std::chrono::high_resolution_clock::now();
+            double c2_eng_ms = std::chrono::duration<double, std::milli>(t7 - t6).count();
+
+            int out_pts = BooleanPolyline::compute_count(a, b, op);
+            (void)sink1; (void)sink2; (void)sink3; (void)sink4;
+            double r1 = c2_full_ms > 0 ? full_ms / c2_full_ms : 0;
+            double r2 = c2_eng_ms > 0 ? eng_ms / c2_eng_ms : 0;
+            std::printf("%-12s  %4d  %8.1f %8.1f %6.2fx  %8.1f %8.1f %6.2fx  %d\n",
+                op_names[op], n, full_ms, c2_full_ms, r1, eng_ms, c2_eng_ms, r2, out_pts);
         }
         std::printf("\n");
     }
