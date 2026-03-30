@@ -267,6 +267,14 @@ Polyline Polyline::operator-() const {
     return reversed();
 }
 
+Point Polyline::operator[](size_t index) const {
+    if (index >= point_count()) {
+        throw std::out_of_range("Index out of range");
+    }
+    size_t idx = index * 3;
+    return Point(_coords[idx], _coords[idx + 1], _coords[idx + 2]);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1625,29 +1633,34 @@ static bool pip_i(BIVec2 pt, const std::vector<BIVec2>& poly) {
 
 static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, VattiScratch& sc) {
     if (n < 3) return;
-    VVertex* v0 = sc.new_vertex(); v0->pt = pts[0];
-    VVertex* prev_v = v0;
+    // Bulk-allocate all vertices at once — one bounds check, contiguous in memory.
+    auto& pool = sc.vtx_pool;
+    pool.ensure(pool.count + n);
+    VVertex* base = &pool.buf[pool.count];
+    // Fill vertices, dedup, build linked list in single pass
+    base[0] = VVertex{}; base[0].pt = pts[0];
+    VVertex* prev_v = &base[0];
     int cnt = 1;
     for (int i = 1; i < n; i++) {
         if (pts[i] == prev_v->pt) continue;
-        VVertex* cv = sc.new_vertex(); cv->pt = pts[i];
+        VVertex* cv = &base[cnt]; *cv = VVertex{}; cv->pt = pts[i];
         cv->prev = prev_v; prev_v->next = cv;
         prev_v = cv; cnt++;
     }
     if (cnt < 3) return;
-    if (prev_v->pt == v0->pt) { prev_v = prev_v->prev; cnt--; }
+    if (prev_v->pt == base[0].pt) { prev_v = prev_v->prev; cnt--; }
     if (cnt < 3) return;
-    prev_v->next = v0; v0->prev = prev_v;
+    pool.count += cnt; // commit allocation
+    prev_v->next = &base[0]; base[0].prev = prev_v;
 
-    // Find local minima in the closed path
-    VVertex* pv = v0->prev;
-    while (pv != v0 && pv->pt.y == v0->pt.y) pv = pv->prev;
-    if (pv == v0) return;
-    bool going_up = pv->pt.y > v0->pt.y;
-    bool going_up0 = going_up;
-    pv = v0;
-    VVertex* cv = v0->next;
-    while (cv != v0) {
+    // Find local minima in the closed path (single pass)
+    VVertex* pv = base[0].prev;
+    while (pv != &base[0] && pv->pt.y == base[0].pt.y) pv = pv->prev;
+    if (pv == &base[0]) return;
+    bool going_up = pv->pt.y > base[0].pt.y, going_up0 = going_up;
+    pv = &base[0];
+    VVertex* cv = base[0].next;
+    while (cv != &base[0]) {
         if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
         else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
         pv = cv; cv = cv->next;
@@ -1731,9 +1744,10 @@ inline void v_delete_from_ael(VattiScratch& sc, VActive& e) {
 
 inline void v_insert_scanline(VattiScratch& sc, int64_t y) { sc.scanline_list.push(y); }
 inline bool v_pop_scanline(VattiScratch& sc, int64_t& y) {
-    if (sc.scanline_list.empty()) return false;
-    y = sc.scanline_list.top(); sc.scanline_list.pop();
-    while (!sc.scanline_list.empty() && y == sc.scanline_list.top()) sc.scanline_list.pop();
+    auto& sl = sc.scanline_list;
+    if (sl.empty()) return false;
+    y = sl.top(); sl.pop();
+    while (!sl.empty() && y == sl.top()) sl.pop();
     return true;
 }
 inline bool v_pop_locmin(VattiScratch& sc, int64_t y, VLocalMinima*& lm) {
@@ -2381,93 +2395,49 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     int na = (int)(a._coords.size() / 3);
     int nb = (int)(b._coords.size() / 3);
 
-    auto dup_last = [](const double* c, int n) {
-        if (n < 2) return false;
-        double dx=c[(n-1)*3]-c[0], dy=c[(n-1)*3+1]-c[1], dz=c[(n-1)*3+2]-c[2];
-        return dx*dx+dy*dy+dz*dz < 1e-20;
-    };
-    if (dup_last(ca, na)) --na;
-    if (dup_last(cb, nb)) --nb;
+    // Strip closing duplicate
+    if (na>=2) { double dx=ca[(na-1)*3]-ca[0],dy=ca[(na-1)*3+1]-ca[1]; if(dx*dx+dy*dy<1e-20) --na; }
+    if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
     if (na < 3 || nb < 3) return {};
 
-    bool flat=true;
-    for(int i=0;i<na&&flat;i++) flat=std::abs(ca[i*3+2])<1e-10;
-    for(int i=0;i<nb&&flat;i++) flat=std::abs(cb[i*3+2])<1e-10;
-
-    double ox=0,oy=0,oz=0;
-    double xax,xay,xaz,yax,yay,yaz,scale;
-
-    constexpr int64_t INT_SAFE_MAX=2305843009213693952LL;
+    // Scale double→int64 + compute AABB in single pass (2D, z=0)
+    constexpr int64_t INT_SAFE_MAX = 2305843009213693952LL;
     VattiScratch& sc = vtls; sc.reset();
     auto& va = sc.va; va.resize(na);
     auto& vb = sc.vb; vb.resize(nb);
 
-    if(flat) {
-        xax=1;xay=0;xaz=0; yax=0;yay=1;yaz=0;
-        double max_abs=1.0;
-        for(int i=0;i<na;i++) max_abs=std::max(max_abs,std::max(std::abs(ca[i*3]),std::abs(ca[i*3+1])));
-        for(int i=0;i<nb;i++) max_abs=std::max(max_abs,std::max(std::abs(cb[i*3]),std::abs(cb[i*3+1])));
-        int prec=std::clamp((int)std::floor(std::log10((double)INT_SAFE_MAX/max_abs)),0,9);
-        scale=std::pow(10.0,prec);
-        for(int i=0;i<na;i++) va[i]={(int64_t)std::round(ca[i*3]*scale),(int64_t)std::round(ca[i*3+1]*scale)};
-        for(int i=0;i<nb;i++) vb[i]={(int64_t)std::round(cb[i*3]*scale),(int64_t)std::round(cb[i*3+1]*scale)};
-    } else {
-        for(int i=0;i<na;i++){ox+=ca[i*3];oy+=ca[i*3+1];oz+=ca[i*3+2];}
-        for(int i=0;i<nb;i++){ox+=cb[i*3];oy+=cb[i*3+1];oz+=cb[i*3+2];}
-        double inv_tot=1.0/(na+nb); ox*=inv_tot; oy*=inv_tot; oz*=inv_tot;
-        xax=ca[3]-ca[0];xay=ca[4]-ca[1];xaz=ca[5]-ca[2];
-        double xl=std::sqrt(xax*xax+xay*xay+xaz*xaz);
-        if(xl>1e-12){xax/=xl;xay/=xl;xaz/=xl;}else{xax=1;xay=0;xaz=0;}
-        double znx=0,zny=0,znz=0;
-        for(int i=0;i<na;i++){
-            int j=(i+1)%na;
-            double ax=ca[i*3]-ca[0],ay=ca[i*3+1]-ca[1],az=ca[i*3+2]-ca[2];
-            double bx=ca[j*3]-ca[0],by=ca[j*3+1]-ca[1],bz=ca[j*3+2]-ca[2];
-            double v2x=bx-ax,v2y=by-ay,v2z=bz-az;
-            znx+=ay*v2z-az*v2y; zny+=az*v2x-ax*v2z; znz+=ax*v2y-ay*v2x;
-        }
-        double zl=std::sqrt(znx*znx+zny*zny+znz*znz);
-        if(zl>1e-12){znx/=zl;zny/=zl;znz/=zl;}else{znx=0;zny=0;znz=1;}
-        yax=zny*xaz-znz*xay; yay=znz*xax-znx*xaz; yaz=znx*xay-zny*xax;
-        double yl=std::sqrt(yax*yax+yay*yay+yaz*yaz);
-        if(yl>1e-12){yax/=yl;yay/=yl;yaz/=yl;}else{yax=0;yay=1;yaz=0;}
-        double max_abs=1.0;
-        auto scan_max=[&](const double* c,int n){
-            for(int i=0;i<n;i++){
-                double dx=c[i*3]-ox,dy=c[i*3+1]-oy,dz=c[i*3+2]-oz;
-                double u=dx*xax+dy*xay+dz*xaz, v=dx*yax+dy*yay+dz*yaz;
-                double m=std::max(std::abs(u),std::abs(v));
-                if(m>max_abs) max_abs=m;
-            }
-        };
-        scan_max(ca,na); scan_max(cb,nb);
-        int prec=std::clamp((int)std::floor(std::log10((double)INT_SAFE_MAX/max_abs)),0,9);
-        scale=std::pow(10.0,prec);
-        auto proj_c=[&](const double* c,int i)->BIVec2{
-            double dx=c[i*3]-ox,dy=c[i*3+1]-oy,dz=c[i*3+2]-oz;
-            double u=dx*xax+dy*xay+dz*xaz, v=dx*yax+dy*yay+dz*yaz;
-            return{(int64_t)std::round(u*scale),(int64_t)std::round(v*scale)};
-        };
-        for(int i=0;i<na;i++) va[i]=proj_c(ca,i);
-        for(int i=0;i<nb;i++) vb[i]=proj_c(cb,i);
+    double max_abs = 1.0;
+    for (int i=0;i<na;i++) { double ax=std::abs(ca[i*3]),ay=std::abs(ca[i*3+1]); if(ax>max_abs) max_abs=ax; if(ay>max_abs) max_abs=ay; }
+    for (int i=0;i<nb;i++) { double bx=std::abs(cb[i*3]),by=std::abs(cb[i*3+1]); if(bx>max_abs) max_abs=bx; if(by>max_abs) max_abs=by; }
+    double scale = std::pow(10.0, std::clamp((int)std::floor(std::log10((double)INT_SAFE_MAX/max_abs)),0,9));
+
+    int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
+    va[0]={VATTI_NEARBYINT(ca[0]*scale), VATTI_NEARBYINT(ca[1]*scale)};
+    aMinX=aMaxX=va[0].x; aMinY=aMaxY=va[0].y;
+    for (int i=1;i<na;i++) {
+        int64_t x=VATTI_NEARBYINT(ca[i*3]*scale), y=VATTI_NEARBYINT(ca[i*3+1]*scale);
+        va[i]={x,y};
+        if(x<aMinX) aMinX=x; else if(x>aMaxX) aMaxX=x;
+        if(y<aMinY) aMinY=y; else if(y>aMaxY) aMaxY=y;
+    }
+    vb[0]={VATTI_NEARBYINT(cb[0]*scale), VATTI_NEARBYINT(cb[1]*scale)};
+    bMinX=bMaxX=vb[0].x; bMinY=bMaxY=vb[0].y;
+    for (int i=1;i<nb;i++) {
+        int64_t x=VATTI_NEARBYINT(cb[i*3]*scale), y=VATTI_NEARBYINT(cb[i*3+1]*scale);
+        vb[i]={x,y};
+        if(x<bMinX) bMinX=x; else if(x>bMaxX) bMaxX=x;
+        if(y<bMinY) bMinY=y; else if(y>bMaxY) bMaxY=y;
     }
 
-    // AABB pre-check
-    {
-        int64_t aMinX=va[0].x,aMaxX=va[0].x,aMinY=va[0].y,aMaxY=va[0].y;
-        for (auto& p:va){aMinX=std::min(aMinX,p.x);aMaxX=std::max(aMaxX,p.x);aMinY=std::min(aMinY,p.y);aMaxY=std::max(aMaxY,p.y);}
-        int64_t bMinX=vb[0].x,bMaxX=vb[0].x,bMinY=vb[0].y,bMaxY=vb[0].y;
-        for (auto& p:vb){bMinX=std::min(bMinX,p.x);bMaxX=std::max(bMaxX,p.x);bMinY=std::min(bMinY,p.y);bMaxY=std::max(bMaxY,p.y);}
-        if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) {
-            bool a_in_b = pip_i(va[0], vb), b_in_a = pip_i(vb[0], va);
-            if (clip_type == 0) { if (a_in_b) return {a}; if (b_in_a) return {b}; return {}; }
-            if (clip_type == 1) { if (a_in_b) return {b}; if (b_in_a) return {a}; return {a, b}; }
-            if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
-        }
+    // AABB disjoint → containment fast-path
+    if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) {
+        bool a_in_b = pip_i(va[0], vb), b_in_a = pip_i(vb[0], va);
+        if (clip_type == 0) { if (a_in_b) return {a}; if (b_in_a) return {b}; return {}; }
+        if (clip_type == 1) { if (a_in_b) return {b}; if (b_in_a) return {a}; return {a, b}; }
+        if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
     }
 
-    // Quick containment test: if polygon pair is small enough, check all edge pairs
-    // for crossings. If no crossings, handle as pure containment (avoids Vatti overhead).
+    // Small polygon containment test (no edge crossings → pure containment)
     if ((int64_t)na * nb <= 10000) {
         bool any_cross = false;
         for (int i = 0; i < na && !any_cross; i++) {
@@ -2489,50 +2459,44 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
         }
     }
 
-    // Pre-reserve pools to avoid reallocation during Vatti
+    // Pre-reserve pools + run Vatti
     int total = na + nb;
     sc.vtx_pool.ensure(total + 4);
-    sc.act_pool.ensure(total + 4);
-    sc.opt_pool.ensure(total * 2);
+    sc.act_pool.ensure(total * 2 + 4);
+    sc.opt_pool.ensure(total * 4);
     sc.orc_pool.ensure(total);
     sc.locmin_list.reserve(total);
     sc.outrec_list.reserve(total);
+    sc.scanline_list.buf.reserve(total * 2);
 
-    // Build vertex lists and local minima, then run Vatti
     v_add_path(va, na, 0, sc);
     v_add_path(vb, nb, 1, sc);
-
-    // Map clip_type: 0=intersection, 1=union, 2=difference
     if (!v_execute_internal(sc, clip_type)) return {};
 
-    // Extract output paths and back-project to 3D
-    auto push_coord=[&](BIVec2 iv){
-        double u=iv.x/scale, v=iv.y/scale;
-        if(flat){
-            sc.poly_coords.push_back(u); sc.poly_coords.push_back(v); sc.poly_coords.push_back(0.0);
-        } else {
-            sc.poly_coords.push_back(ox+u*xax+v*yax);
-            sc.poly_coords.push_back(oy+u*xay+v*yay);
-            sc.poly_coords.push_back(oz+u*xaz+v*yaz);
-        }
-    };
-
+    // Extract: OutPt → Polyline._coords (single pass, z=0)
+    double inv_scale = 1.0 / scale;
     std::vector<Polyline> out;
-    std::vector<BIVec2> path_buf;
     for (size_t i = 0; i < sc.outrec_list.size(); i++) {
         VOutRec* outrec = sc.outrec_list[i];
         if (!outrec->pts) continue;
         v_clean_collinear(sc, outrec);
         if (!outrec->pts) continue;
-        if (v_build_path(outrec->pts, path_buf)) {
-            sc.poly_coords.clear();
-            for (auto& pt : path_buf) push_coord(pt);
-            if ((int)sc.poly_coords.size() >= 9) {
-                Polyline result;
-                result._coords = sc.poly_coords;
-                out.push_back(std::move(result));
-            }
+        VOutPt* op = outrec->pts;
+        if (!op || op->next==op || op->next==op->prev || v_very_small_tri(*op)) continue;
+        int cnt = 0;
+        { VOutPt* o = op->next; BIVec2 last = o->pt; cnt = 1;
+          for (o = o->next; o != op->next; o = o->next) if (o->pt != last) { last = o->pt; cnt++; } }
+        if (cnt < 3) continue;
+        Polyline result;
+        result._coords.resize(cnt * 3);
+        double* dst = result._coords.data();
+        VOutPt* o = op->next; BIVec2 last = o->pt;
+        dst[0]=last.x*inv_scale; dst[1]=last.y*inv_scale; dst[2]=0.0; dst+=3;
+        for (o=o->next; o!=op->next; o=o->next) {
+            if (o->pt==last) continue; last=o->pt;
+            dst[0]=last.x*inv_scale; dst[1]=last.y*inv_scale; dst[2]=0.0; dst+=3;
         }
+        out.push_back(std::move(result));
     }
     return out;
 }

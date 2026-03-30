@@ -35,6 +35,11 @@ MINI_TEST("Polyline", "Constructor") {
     // Get point
     Point pt = pl.get_point(1);
 
+    // Index operator
+    Point pt_idx = pl[1];
+    Polyline pl_copy = pl;
+    pl_copy.set_point(0, Point(5.0, 6.0, 7.0));
+
     // Minimal and Full String Representation
     std::string plstr = pl.str();
     std::string plrepr = pl.repr();
@@ -86,6 +91,7 @@ MINI_TEST("Polyline", "Constructor") {
     MINI_CHECK(pl.name == "my_polyline" && !pl.guid().empty() && point_count == 4);
     MINI_CHECK(segment_count == 3 && !is_empty);
     MINI_CHECK(pt[0] == 1.0 && pt[1] == 0.0 && pt[2] == 0.0);
+    MINI_CHECK(pt_idx[0] == 1.0 && pl_copy[0][0] == 5.0 && pl_copy[0][1] == 6.0);
     MINI_CHECK(plstr.find("(0, 0, 0)") != std::string::npos);
     MINI_CHECK(plrepr.find("Polyline(my_polyline") != std::string::npos);
     MINI_CHECK(plrepr.find("4 points") != std::string::npos);
