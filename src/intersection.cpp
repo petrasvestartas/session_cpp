@@ -1,4 +1,5 @@
 #include "intersection.h"
+#include "boolean_polyline.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "closest.h"
@@ -2174,7 +2175,7 @@ bool Intersection::scale_vector_to_distance_of_2planes(const Vector& direction, 
 }
 
 std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Polyline& b, int clip_type) {
-    return Polyline::boolean_op(a, b, clip_type);
+    return BooleanPolyline::compute(a, b, clip_type);
 }
 
 } // namespace session_cpp

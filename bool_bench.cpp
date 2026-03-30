@@ -96,9 +96,12 @@ int main() {
             double raw_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
 
             double ratio = (raw_ms > 0) ? wrap_ms / raw_ms : 0.0;
+            // output size from last iteration
+            auto res_check = Polyline::boolean_op(a, b, op);
+            int out_pts = 0; for (auto& pl : res_check) out_pts += pl.point_count();
             (void)sink1; (void)sink2;
-            std::printf("%-12s  %6d  %10.2f  %10.2f  %7.2fx\n",
-                op_names[op], n, wrap_ms, raw_ms, ratio);
+            std::printf("%-12s  %6d  %10.2f  %10.2f  %7.2fx  out=%d\n",
+                op_names[op], n, wrap_ms, raw_ms, ratio, out_pts);
         }
         std::printf("\n");
     }
