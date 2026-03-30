@@ -2400,33 +2400,37 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
     if (na < 3 || nb < 3) return {};
 
-    // Scale double→int64 + compute AABB in single pass (2D, z=0)
-    constexpr int64_t INT_SAFE_MAX = 2305843009213693952LL;
+    // Fixed-point scaling: coords assumed < 2.3e9 (covers all practical geometry).
+    // Scale = 1e9 → 9 decimal digits of sub-unit precision, max safe coord ~2.3e9.
+    // This eliminates the max-abs scan entirely.
+    constexpr double BOOL_SCALE = 1e9;
+    constexpr double BOOL_INV_SCALE = 1e-9;
     VattiScratch& sc = vtls; sc.reset();
     auto& va = sc.va; va.resize(na);
     auto& vb = sc.vb; vb.resize(nb);
+    double scale = BOOL_SCALE;
 
-    double max_abs = 1.0;
-    for (int i=0;i<na;i++) { double ax=std::abs(ca[i*3]),ay=std::abs(ca[i*3+1]); if(ax>max_abs) max_abs=ax; if(ay>max_abs) max_abs=ay; }
-    for (int i=0;i<nb;i++) { double bx=std::abs(cb[i*3]),by=std::abs(cb[i*3+1]); if(bx>max_abs) max_abs=bx; if(by>max_abs) max_abs=by; }
-    double scale = std::pow(10.0, std::clamp((int)std::floor(std::log10((double)INT_SAFE_MAX/max_abs)),0,9));
-
+    // Scale + AABB in one pass. NEARBYINT with constant scale → compiler can
+    // use a single fused multiply-convert instruction per coordinate.
     int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
-    va[0]={VATTI_NEARBYINT(ca[0]*scale), VATTI_NEARBYINT(ca[1]*scale)};
-    aMinX=aMaxX=va[0].x; aMinY=aMaxY=va[0].y;
-    for (int i=1;i<na;i++) {
-        int64_t x=VATTI_NEARBYINT(ca[i*3]*scale), y=VATTI_NEARBYINT(ca[i*3+1]*scale);
-        va[i]={x,y};
-        if(x<aMinX) aMinX=x; else if(x>aMaxX) aMaxX=x;
-        if(y<aMinY) aMinY=y; else if(y>aMaxY) aMaxY=y;
-    }
-    vb[0]={VATTI_NEARBYINT(cb[0]*scale), VATTI_NEARBYINT(cb[1]*scale)};
-    bMinX=bMaxX=vb[0].x; bMinY=bMaxY=vb[0].y;
-    for (int i=1;i<nb;i++) {
-        int64_t x=VATTI_NEARBYINT(cb[i*3]*scale), y=VATTI_NEARBYINT(cb[i*3+1]*scale);
-        vb[i]={x,y};
-        if(x<bMinX) bMinX=x; else if(x>bMaxX) bMaxX=x;
-        if(y<bMinY) bMinY=y; else if(y>bMaxY) bMaxY=y;
+    {
+        const double S = BOOL_SCALE;
+        int64_t x=VATTI_NEARBYINT(ca[0]*S), y=VATTI_NEARBYINT(ca[1]*S);
+        va[0]={x,y}; aMinX=aMaxX=x; aMinY=aMaxY=y;
+        for (int i=1;i<na;i++) {
+            x=VATTI_NEARBYINT(ca[i*3]*S); y=VATTI_NEARBYINT(ca[i*3+1]*S);
+            va[i]={x,y};
+            if(x<aMinX) aMinX=x; else if(x>aMaxX) aMaxX=x;
+            if(y<aMinY) aMinY=y; else if(y>aMaxY) aMaxY=y;
+        }
+        x=VATTI_NEARBYINT(cb[0]*S); y=VATTI_NEARBYINT(cb[1]*S);
+        vb[0]={x,y}; bMinX=bMaxX=x; bMinY=bMaxY=y;
+        for (int i=1;i<nb;i++) {
+            x=VATTI_NEARBYINT(cb[i*3]*S); y=VATTI_NEARBYINT(cb[i*3+1]*S);
+            vb[i]={x,y};
+            if(x<bMinX) bMinX=x; else if(x>bMaxX) bMaxX=x;
+            if(y<bMinY) bMinY=y; else if(y>bMaxY) bMaxY=y;
+        }
     }
 
     // AABB disjoint → containment fast-path
@@ -2474,7 +2478,7 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     if (!v_execute_internal(sc, clip_type)) return {};
 
     // Extract: OutPt → Polyline._coords (single pass, z=0)
-    double inv_scale = 1.0 / scale;
+    constexpr double inv_scale = BOOL_INV_SCALE;
     std::vector<Polyline> out;
     for (size_t i = 0; i < sc.outrec_list.size(); i++) {
         VOutRec* outrec = sc.outrec_list[i];
