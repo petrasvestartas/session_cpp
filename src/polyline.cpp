@@ -101,6 +101,18 @@ size_t Polyline::segment_count() const {
     return n > 1 ? n - 1 : 0;
 }
 
+std::vector<Line> Polyline::get_lines() const {
+    std::vector<Line> result;
+    result.reserve(segment_count());
+    for (size_t i = 0; i < segment_count(); i++) {
+        size_t idx0 = i * 3;
+        size_t idx1 = (i + 1) * 3;
+        result.emplace_back(_coords[idx0], _coords[idx0 + 1], _coords[idx0 + 2],
+                           _coords[idx1], _coords[idx1 + 1], _coords[idx1 + 2]);
+    }
+    return result;
+}
+
 double Polyline::length() const {
     double total_length = 0.0;
     for (size_t i = 0; i < segment_count(); i++) {
@@ -1686,16 +1698,17 @@ static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t poly
 #else
     auto cvt = [&](const double* p) { return v_cvt_to_i64(p, sv); };
 #endif
-    // First vertex
+    // Only zero flags (must start at 0). Skip full 40-byte VVertex{} init per vertex.
+    for (int i=0;i<n;i++) base[i].flags = VF_None;
     BIVec2 pt0 = cvt(coords);
-    base[0] = VVertex{}; base[0].pt = pt0;
+    base[0].pt = pt0;
     minX = maxX = pt0.x; minY = maxY = pt0.y;
     VVertex* prev_v = &base[0];
     int cnt = 1;
     for (int i = 1; i < n; i++) {
         BIVec2 pt = cvt(coords + i*3);
         if (pt == prev_v->pt) continue;
-        VVertex* cv = &base[cnt]; *cv = VVertex{}; cv->pt = pt;
+        VVertex* cv = &base[cnt]; cv->pt = pt;
         cv->prev = prev_v; prev_v->next = cv;
         prev_v = cv; cnt++;
         if (pt.x < minX) minX = pt.x; else if (pt.x > maxX) maxX = pt.x;
@@ -1731,13 +1744,13 @@ static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, V
     auto& pool = sc.vtx_pool;
     pool.ensure(pool.count + n);
     VVertex* base = &pool.buf[pool.count];
-    // Fill vertices, dedup, build linked list in single pass
-    base[0] = VVertex{}; base[0].pt = pts[0];
+    for (int i=0;i<n;i++) base[i].flags = VF_None;
+    base[0].pt = pts[0];
     VVertex* prev_v = &base[0];
     int cnt = 1;
     for (int i = 1; i < n; i++) {
         if (pts[i] == prev_v->pt) continue;
-        VVertex* cv = &base[cnt]; *cv = VVertex{}; cv->pt = pts[i];
+        VVertex* cv = &base[cnt]; cv->pt = pts[i];
         cv->prev = prev_v; prev_v->next = cv;
         prev_v = cv; cnt++;
     }
@@ -2569,12 +2582,11 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     double scale = BOOL_SCALE;
     if (!v_execute_internal(sc, clip_type)) return {};
 
-    // Extract: OutPt → Polyline._coords — SSE2 packed int64→double conversion
+    // Extract: single-pass OutPt → Polyline._coords. Pool-allocated OutPt nodes
+    // are mostly contiguous in memory, so the linked-list walk is cache-friendly.
+    // Write directly — no intermediate buffer.
 #if VATTI_HAS_SSE2
     const __m128d isv = _mm_set1_pd(BOOL_INV_SCALE);
-#define V_OUT(d,pt) v_cvt_to_dbl(d, pt, isv)
-#else
-#define V_OUT(d,pt) v_cvt_to_dbl(d, pt, BOOL_INV_SCALE)
 #endif
     std::vector<Polyline> out;
     for (size_t i = 0; i < sc.outrec_list.size(); i++) {
@@ -2584,20 +2596,26 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
         if (!outrec->pts) continue;
         VOutPt* op = outrec->pts;
         if (!op || op->next==op || op->next==op->prev || v_very_small_tri(*op)) continue;
-        int cnt = 0;
-        { VOutPt* o = op->next; BIVec2 last = o->pt; cnt = 1;
-          for (o = o->next; o != op->next; o = o->next) if (o->pt != last) { last = o->pt; cnt++; } }
-        if (cnt < 3) continue;
         Polyline result;
-        result._coords.resize(cnt * 3);
-        double* dst = result._coords.data();
+        result._coords.reserve(total * 3);
         VOutPt* o = op->next; BIVec2 last = o->pt;
-        V_OUT(dst, last); dst+=3;
+        double tmp[2];
+#if VATTI_HAS_SSE2
+        _mm_storeu_pd(tmp, _mm_mul_pd(_mm_set_pd(double(last.y), double(last.x)), isv));
+#else
+        tmp[0] = last.x * BOOL_INV_SCALE; tmp[1] = last.y * BOOL_INV_SCALE;
+#endif
+        result._coords.push_back(tmp[0]); result._coords.push_back(tmp[1]); result._coords.push_back(0.0);
         for (o=o->next; o!=op->next; o=o->next) {
             if (o->pt==last) continue; last=o->pt;
-            V_OUT(dst, last); dst+=3;
+#if VATTI_HAS_SSE2
+            _mm_storeu_pd(tmp, _mm_mul_pd(_mm_set_pd(double(last.y), double(last.x)), isv));
+#else
+            tmp[0] = last.x * BOOL_INV_SCALE; tmp[1] = last.y * BOOL_INV_SCALE;
+#endif
+            result._coords.push_back(tmp[0]); result._coords.push_back(tmp[1]); result._coords.push_back(0.0);
         }
-#undef V_OUT
+        if ((int)result._coords.size() < 9) continue;
         out.push_back(std::move(result));
     }
     return out;

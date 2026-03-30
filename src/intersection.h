@@ -566,6 +566,10 @@ public:
     Vector& output
   );
 
+  /// Boolean operation on two closed planar polylines.
+  /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
+  static std::vector<Polyline> polyline_boolean(const Polyline& a, const Polyline& b, int clip_type);
+
 private:
   static int solve_3x3(
     const double row0[3],

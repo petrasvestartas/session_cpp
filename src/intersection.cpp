@@ -2173,4 +2173,8 @@ bool Intersection::scale_vector_to_distance_of_2planes(const Vector& direction, 
     return true;
 }
 
+std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Polyline& b, int clip_type) {
+    return Polyline::boolean_op(a, b, clip_type);
+}
+
 } // namespace session_cpp

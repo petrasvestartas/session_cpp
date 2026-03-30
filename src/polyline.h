@@ -89,6 +89,9 @@ public:
     /// Returns the number of segments (n-1 for n points)
     size_t segment_count() const;
 
+    /// Returns all segments as Line objects
+    std::vector<Line> get_lines() const;
+
     /// Calculates the total length of the polyline
     double length() const;
 

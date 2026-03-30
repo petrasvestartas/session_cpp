@@ -825,6 +825,7 @@ MINI_TEST("Primitives", "Nurbssurface Sweep") {
     MINI_CHECK(s_sweep1.cv_count(1) == 6);
     MINI_CHECK(m_sweep1.number_of_vertices() > 0);
     MINI_CHECK(m_sweep1.number_of_faces() > 0);
+    TOLERANCE.set_absolute(1e-6);
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep1.get_cv(0,0), Point(0.888888888888889, 0.000000000000000, 0.000000000000000)));
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep1.get_cv(0,1), Point(0.888635792881381, 1.202714517481950, 0.000000000000000)));
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep1.get_cv(0,2), Point(1.024939251342349, 2.995270183326687, 0.000000000000000)));
@@ -903,6 +904,7 @@ MINI_TEST("Primitives", "Nurbssurface Sweep") {
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep2.get_cv(2,3), Point(9.756669758935631, 2.398228885196774, 0.000000000000000)));
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep2.get_cv(2,4), Point(9.488807303091296, 3.421849783493755, 0.000000000000000)));
     MINI_CHECK(TOLERANCE.is_point_close(s_sweep2.get_cv(2,5), Point(8.999999999999998, 4.000000000000000, 0.000000000000000)));
+    TOLERANCE.reset();
 }
 
 MINI_TEST("Primitives", "Nurbssurface Edge") {

@@ -353,6 +353,21 @@ MINI_TEST("Polyline", "Get Points") {
     MINI_CHECK(TOLERANCE.is_close(points[3][0], 0.0) && TOLERANCE.is_close(points[3][1], 1.0));
 }
 
+MINI_TEST("Polyline", "Get Lines") {
+    Polyline pl({
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+    });
+    std::vector<Line> lines = pl.get_lines();
+
+    MINI_CHECK(lines.size() == 3);
+    MINI_CHECK(TOLERANCE.is_close(lines[0][0], 0.0) && TOLERANCE.is_close(lines[0][3], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(lines[1][0], 1.0) && TOLERANCE.is_close(lines[1][4], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(lines[2][0], 1.0) && TOLERANCE.is_close(lines[2][3], 0.0));
+}
+
 MINI_TEST("Polyline", "Shift") {
     Polyline pl({
         Point(0.0, 0.0, 0.0),

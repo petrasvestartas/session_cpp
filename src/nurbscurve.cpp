@@ -983,10 +983,23 @@ bool NurbsCurve::set_domain(double t0, double t1) {
     auto [d0, d1] = domain();
     if (d0 >= d1) return false;
 
+    // Check if ends are clamped before rescaling
+    bool clamped_start = (m_order >= 2 &&
+        std::abs(m_knot[0] - m_knot[m_order - 2]) < Tolerance::ZERO_TOLERANCE);
+    bool clamped_end = (m_cv_count < (int)m_knot.size() &&
+        std::abs(m_knot.back() - m_knot[m_cv_count - 1]) < Tolerance::ZERO_TOLERANCE);
+
     double scale = (t1 - t0) / (d1 - d0);
 
     for (auto& k : m_knot) {
         k = t0 + (k - d0) * scale;
+    }
+
+    if (clamped_start) {
+        for (int i = 0; i < m_order - 1; i++) m_knot[i] = t0;
+    }
+    if (clamped_end) {
+        for (int i = m_cv_count - 1; i < (int)m_knot.size(); i++) m_knot[i] = t1;
     }
 
     invalidate_rmf_cache();
@@ -1078,7 +1091,7 @@ bool NurbsCurve::is_closed() const {
 
 bool NurbsCurve::is_periodic() const {
     if (m_order < 2) return false;
-    
+
     // Check if last degree CVs match first degree CVs
     int deg = degree();
     for (int i = 0; i < deg; i++) {
@@ -1088,16 +1101,18 @@ bool NurbsCurve::is_periodic() const {
             return false;
         }
     }
-    
-    // Check knot spacing
+
+    // Check knot spacing is uniform across ALL knots (not just interior)
     int kc = knot_count();
+    if (kc < 2) return false;
     double delta = m_knot[m_order-1] - m_knot[m_order-2];
-    for (int i = m_order; i < kc - m_order + 1; i++) {
+    if (delta < Tolerance::ZERO_TOLERANCE) return false;
+    for (int i = 1; i < kc; i++) {
         if (std::abs((m_knot[i] - m_knot[i-1]) - delta) > Tolerance::ZERO_TOLERANCE) {
             return false;
         }
     }
-    
+
     return true;
 }
 
