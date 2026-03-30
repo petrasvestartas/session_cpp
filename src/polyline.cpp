@@ -1648,7 +1648,82 @@ static bool pip_i(BIVec2 pt, const std::vector<BIVec2>& poly) {
     return winding != 0;
 }
 
+// pip on VVertex circular linked list (for disjoint AABB fast-path without arrays)
+static bool pip_vertex(BIVec2 pt, VVertex* head) {
+    int winding = 0;
+    VVertex* v = head;
+    do {
+        BIVec2 a = v->pt, b = v->next->pt;
+        if (a.y <= pt.y) { if (b.y > pt.y && (int64_t(b.x-a.x)*int64_t(pt.y-a.y) - int64_t(b.y-a.y)*int64_t(pt.x-a.x)) > 0) ++winding; }
+        else { if (b.y <= pt.y && (int64_t(b.x-a.x)*int64_t(pt.y-a.y) - int64_t(b.y-a.y)*int64_t(pt.x-a.x)) < 0) --winding; }
+        v = v->next;
+    } while (v != head);
+    return winding != 0;
+}
+
 // ── Vertex building + local minima detection ─────────────────────────────
+
+// Build VVertex linked list directly from stride-3 doubles — single pass,
+// no intermediate BIVec2 array. Also computes AABB as side-effect.
+// Returns pointer to first vertex (nullptr if degenerate).
+#if VATTI_HAS_SSE2
+static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t polytype,
+    __m128d sv, VattiScratch& sc,
+    int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY)
+#else
+static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t polytype,
+    double sv, VattiScratch& sc,
+    int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY)
+#endif
+{
+    if (n < 3) return nullptr;
+    auto& pool = sc.vtx_pool;
+    pool.ensure(pool.count + n);
+    VVertex* base = &pool.buf[pool.count];
+
+#if VATTI_HAS_SSE2
+    auto cvt = [&](const double* p) { return v_cvt_to_i64(p, sv); };
+#else
+    auto cvt = [&](const double* p) { return v_cvt_to_i64(p, sv); };
+#endif
+    // First vertex
+    BIVec2 pt0 = cvt(coords);
+    base[0] = VVertex{}; base[0].pt = pt0;
+    minX = maxX = pt0.x; minY = maxY = pt0.y;
+    VVertex* prev_v = &base[0];
+    int cnt = 1;
+    for (int i = 1; i < n; i++) {
+        BIVec2 pt = cvt(coords + i*3);
+        if (pt == prev_v->pt) continue;
+        VVertex* cv = &base[cnt]; *cv = VVertex{}; cv->pt = pt;
+        cv->prev = prev_v; prev_v->next = cv;
+        prev_v = cv; cnt++;
+        if (pt.x < minX) minX = pt.x; else if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y; else if (pt.y > maxY) maxY = pt.y;
+    }
+    if (cnt < 3) return nullptr;
+    if (prev_v->pt == base[0].pt) { prev_v = prev_v->prev; cnt--; }
+    if (cnt < 3) return nullptr;
+    pool.count += cnt;
+    prev_v->next = &base[0]; base[0].prev = prev_v;
+
+    // Local minima detection
+    VVertex* pv = base[0].prev;
+    while (pv != &base[0] && pv->pt.y == base[0].pt.y) pv = pv->prev;
+    if (pv == &base[0]) return &base[0];
+    bool going_up = pv->pt.y > base[0].pt.y, going_up0 = going_up;
+    pv = &base[0]; VVertex* cv = base[0].next;
+    while (cv != &base[0]) {
+        if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
+        else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+        pv = cv; cv = cv->next;
+    }
+    if (going_up != going_up0) {
+        if (going_up0) { pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+        else pv->flags |= VF_LocalMax;
+    }
+    return &base[0];
+}
 
 static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, VattiScratch& sc) {
     if (n < 3) return;
@@ -2419,71 +2494,9 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
     if (na < 3 || nb < 3) return {};
 
-    // Fixed-point: scale=1e9, 9 digits precision, max safe coord ~2.3e9
     constexpr double BOOL_SCALE = 1e9;
     constexpr double BOOL_INV_SCALE = 1e-9;
     VattiScratch& sc = vtls; sc.reset();
-    auto& va = sc.va; va.resize(na);
-    auto& vb = sc.vb; vb.resize(nb);
-    double scale = BOOL_SCALE;
-
-    // SSE2 packed scale+convert: load (x,y) as 128-bit, mul, cvt both at once
-    int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
-    {
-#if VATTI_HAS_SSE2
-        const __m128d sv = _mm_set1_pd(BOOL_SCALE);
-#define V_CVT(p) v_cvt_to_i64(p, sv)
-#else
-#define V_CVT(p) v_cvt_to_i64(p, BOOL_SCALE)
-#endif
-        va[0] = V_CVT(ca); aMinX=aMaxX=va[0].x; aMinY=aMaxY=va[0].y;
-        for (int i=1;i<na;i++) {
-            va[i] = V_CVT(ca+i*3);
-            int64_t x=va[i].x, y=va[i].y;
-            if(x<aMinX) aMinX=x; else if(x>aMaxX) aMaxX=x;
-            if(y<aMinY) aMinY=y; else if(y>aMaxY) aMaxY=y;
-        }
-        vb[0] = V_CVT(cb); bMinX=bMaxX=vb[0].x; bMinY=bMaxY=vb[0].y;
-        for (int i=1;i<nb;i++) {
-            vb[i] = V_CVT(cb+i*3);
-            int64_t x=vb[i].x, y=vb[i].y;
-            if(x<bMinX) bMinX=x; else if(x>bMaxX) bMaxX=x;
-            if(y<bMinY) bMinY=y; else if(y>bMaxY) bMaxY=y;
-        }
-#undef V_CVT
-    }
-
-    // AABB disjoint → containment fast-path
-    if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) {
-        bool a_in_b = pip_i(va[0], vb), b_in_a = pip_i(vb[0], va);
-        if (clip_type == 0) { if (a_in_b) return {a}; if (b_in_a) return {b}; return {}; }
-        if (clip_type == 1) { if (a_in_b) return {b}; if (b_in_a) return {a}; return {a, b}; }
-        if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
-    }
-
-    // Small polygon containment test (no edge crossings → pure containment)
-    if ((int64_t)na * nb <= 10000) {
-        bool any_cross = false;
-        for (int i = 0; i < na && !any_cross; i++) {
-            BIVec2 a1=va[i], a2=va[(i+1)%na];
-            int64_t axmin=std::min(a1.x,a2.x), axmax=std::max(a1.x,a2.x);
-            int64_t aymin=std::min(a1.y,a2.y), aymax=std::max(a1.y,a2.y);
-            for (int j = 0; j < nb && !any_cross; j++) {
-                BIVec2 b1=vb[j], b2=vb[(j+1)%nb];
-                if (std::max(b1.x,b2.x)<axmin||std::min(b1.x,b2.x)>axmax||
-                    std::max(b1.y,b2.y)<aymin||std::min(b1.y,b2.y)>aymax) continue;
-                any_cross = v_segs_intersect(a1,a2,b1,b2);
-            }
-        }
-        if (!any_cross) {
-            bool a_in_b=pip_i(va[0],vb), b_in_a=pip_i(vb[0],va);
-            if (clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
-            if (clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
-            if (a_in_b) return {}; if (b_in_a) return {a}; return {a};
-        }
-    }
-
-    // Pre-reserve pools + run Vatti
     int total = na + nb;
     sc.vtx_pool.ensure(total + 4);
     sc.act_pool.ensure(total * 2 + 4);
@@ -2493,8 +2506,67 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     sc.outrec_list.reserve(total);
     sc.scanline_list.buf.reserve(total * 2);
 
-    v_add_path(va, na, 0, sc);
-    v_add_path(vb, nb, 1, sc);
+    // Small polygons: use intermediate arrays for containment check
+    if ((int64_t)na * nb <= 400) {
+        auto& va = sc.va; va.resize(na);
+        auto& vb = sc.vb; vb.resize(nb);
+        int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
+#if VATTI_HAS_SSE2
+        const __m128d sv = _mm_set1_pd(BOOL_SCALE);
+        auto cvt = [&](const double* p) { return v_cvt_to_i64(p, sv); };
+#else
+        auto cvt = [](const double* p) { return BIVec2{VATTI_NEARBYINT(p[0]*BOOL_SCALE), VATTI_NEARBYINT(p[1]*BOOL_SCALE)}; };
+#endif
+        va[0]=cvt(ca); aMinX=aMaxX=va[0].x; aMinY=aMaxY=va[0].y;
+        for(int i=1;i<na;i++) { va[i]=cvt(ca+i*3); int64_t x=va[i].x,y=va[i].y;
+            if(x<aMinX) aMinX=x; else if(x>aMaxX) aMaxX=x; if(y<aMinY) aMinY=y; else if(y>aMaxY) aMaxY=y; }
+        vb[0]=cvt(cb); bMinX=bMaxX=vb[0].x; bMinY=bMaxY=vb[0].y;
+        for(int i=1;i<nb;i++) { vb[i]=cvt(cb+i*3); int64_t x=vb[i].x,y=vb[i].y;
+            if(x<bMinX) bMinX=x; else if(x>bMaxX) bMaxX=x; if(y<bMinY) bMinY=y; else if(y>bMaxY) bMaxY=y; }
+        // AABB disjoint
+        if (aMaxX<bMinX||bMaxX<aMinX||aMaxY<bMinY||bMaxY<aMinY) {
+            bool a_in_b=pip_i(va[0],vb), b_in_a=pip_i(vb[0],va);
+            if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
+            if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
+            if(a_in_b)return{};if(b_in_a)return{a};return{a};
+        }
+        // Containment: no crossings → pure containment
+        bool any_cross=false;
+        for(int i=0;i<na&&!any_cross;i++) {
+            BIVec2 a1=va[i],a2=va[(i+1)%na];
+            int64_t axmin=std::min(a1.x,a2.x),axmax=std::max(a1.x,a2.x),aymin=std::min(a1.y,a2.y),aymax=std::max(a1.y,a2.y);
+            for(int j=0;j<nb&&!any_cross;j++) { BIVec2 b1=vb[j],b2=vb[(j+1)%nb];
+                if(std::max(b1.x,b2.x)<axmin||std::min(b1.x,b2.x)>axmax||std::max(b1.y,b2.y)<aymin||std::min(b1.y,b2.y)>aymax) continue;
+                any_cross=v_segs_intersect(a1,a2,b1,b2); } }
+        if(!any_cross) {
+            bool a_in_b=pip_i(va[0],vb),b_in_a=pip_i(vb[0],va);
+            if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
+            if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
+            if(a_in_b)return{};if(b_in_a)return{a};return{a};
+        }
+        v_add_path(va, na, 0, sc);
+        v_add_path(vb, nb, 1, sc);
+    }
+    else {
+        // Large polygons: single pass double→VVertex, no intermediate arrays.
+        int64_t aMinX,aMaxX,aMinY,aMaxY,bMinX,bMaxX,bMinY,bMaxY;
+#if VATTI_HAS_SSE2
+        const __m128d sv = _mm_set1_pd(BOOL_SCALE);
+#else
+        double sv = BOOL_SCALE;
+#endif
+        VVertex* va_head = v_add_path_from_doubles(ca, na, 0, sv, sc, aMinX, aMaxX, aMinY, aMaxY);
+        VVertex* vb_head = v_add_path_from_doubles(cb, nb, 1, sv, sc, bMinX, bMaxX, bMinY, bMaxY);
+        if (!va_head || !vb_head) return {};
+        // AABB disjoint
+        if (aMaxX<bMinX||bMaxX<aMinX||aMaxY<bMinY||bMaxY<aMinY) {
+            bool a_in_b=pip_vertex(va_head->pt, vb_head), b_in_a=pip_vertex(vb_head->pt, va_head);
+            if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
+            if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
+            if(a_in_b)return{};if(b_in_a)return{a};return{a};
+        }
+    }
+    double scale = BOOL_SCALE;
     if (!v_execute_internal(sc, clip_type)) return {};
 
     // Extract: OutPt → Polyline._coords — SSE2 packed int64→double conversion
