@@ -240,8 +240,8 @@ MINI_TEST("Matrix", "Rank") {
 MINI_TEST("Matrix", "Json Roundtrip") {
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix";
-    a.json_dump("../serialization/test_matrix.json");
-    Matrix loaded = Matrix::json_load("../serialization/test_matrix.json");
+    a.json_dump("serialization/test_matrix.json");
+    Matrix loaded = Matrix::json_load("serialization/test_matrix.json");
 
     MINI_CHECK(loaded.name == "test_matrix");
     MINI_CHECK(loaded.rows == 2 && loaded.cols == 3);
@@ -251,8 +251,8 @@ MINI_TEST("Matrix", "Json Roundtrip") {
 MINI_TEST("Matrix", "Protobuf Roundtrip") {
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix_proto";
-    a.pb_dump("../serialization/test_matrix.bin");
-    Matrix loaded = Matrix::pb_load("../serialization/test_matrix.bin");
+    a.pb_dump("serialization/test_matrix.bin");
+    Matrix loaded = Matrix::pb_load("serialization/test_matrix.bin");
 
     MINI_CHECK(loaded.name == "test_matrix_proto");
     MINI_CHECK(loaded.rows == 2 && loaded.cols == 3);

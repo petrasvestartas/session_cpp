@@ -77,7 +77,7 @@ std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane) {
   return tree_node;
 }
 
-std::shared_ptr<TreeNode> Session::add_bbox(std::shared_ptr<OBB> bbox) {
+std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
   objects.bboxes->push_back(bbox);
   lookup[bbox->guid()] = bbox;
   graph.add_node(bbox->guid(), "bbox_" + bbox->name);

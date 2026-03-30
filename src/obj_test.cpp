@@ -9,14 +9,14 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("OBJ", "Read Bunny") {
-    std::ifstream test_file("../session_data/bunny.obj");
+    std::ifstream test_file("session_data/bunny.obj");
     if (!test_file.good()) {
         // Data file not found, skip test
         return;
     }
     test_file.close();
 
-    Mesh mesh = obj::read_obj("../session_data/bunny.obj");
+    Mesh mesh = obj::read_obj("session_data/bunny.obj");
 
     MINI_CHECK(mesh.number_of_vertices() == 2503);
     MINI_CHECK(mesh.number_of_faces() == 4968);

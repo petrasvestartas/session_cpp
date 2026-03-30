@@ -148,7 +148,7 @@ public:
    * @brief Add a bounding box to the session.
    * @return Shared pointer to the TreeNode created for this bounding box
    */
-  std::shared_ptr<TreeNode> add_bbox(std::shared_ptr<OBB> bbox);
+  std::shared_ptr<TreeNode> add_obb(std::shared_ptr<OBB> bbox);
 
   /**
    * @brief Add a polyline to the session.
