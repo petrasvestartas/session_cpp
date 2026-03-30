@@ -1309,7 +1309,7 @@ Mesh Mesh::create_dodecahedron(double edge) {
     std::vector<std::vector<Point>> faces;
     for (auto& f : idx)
         faces.push_back({verts[f[0]], verts[f[1]], verts[f[2]], verts[f[3]], verts[f[4]]});
-    return from_polylines(faces, 1e-10);
+    return from_polylines(faces, 1e-6);
 }
 
 Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face, std::optional<double> precision) {

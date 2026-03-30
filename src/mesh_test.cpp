@@ -1048,8 +1048,9 @@ namespace session_cpp {
 
         // face area
         for (size_t f : mesh.faces()) {
-            double face_area = mesh.face_area(f).value();
-            MINI_CHECK(TOLERANCE.is_close(face_area, 3.87107415132518));
+            auto face_area = mesh.face_area(f);
+            MINI_CHECK(face_area.has_value());
+            MINI_CHECK(TOLERANCE.is_close(*face_area, 3.87107415132518));
         }
         
         // face centroid
@@ -1073,9 +1074,9 @@ namespace session_cpp {
         // face normal / s
         std::map<size_t, Vector> face_normals = mesh.face_normals();
         for (size_t f : mesh.faces()) {
-            Vector normal0 = mesh.face_normal(f).value();
-            Vector normal1 = face_normals.at(f);
-            MINI_CHECK(TOLERANCE.is_vector_close(face_normals.at(f), *mesh.face_normal(f)));
+            auto fn = mesh.face_normal(f);
+            MINI_CHECK(fn.has_value());
+            MINI_CHECK(TOLERANCE.is_vector_close(face_normals.at(f), *fn));
         }
 
         MINI_CHECK(TOLERANCE.is_vector_close(face_normals[0],  Vector( 0.5257311121191336,  0.0,                 0.8506508083520400)));
@@ -1094,16 +1095,17 @@ namespace session_cpp {
         // vertex angle in face
         for (const size_t f : mesh.faces())
             for (const size_t v : *mesh.face_vertices(f)){
-                double angle = mesh.vertex_angle_in_face(v, f).value();
-                MINI_CHECK(TOLERANCE.is_close(mesh.vertex_angle_in_face(v, f).value(), 1.8849555921538759));
+                auto angle = mesh.vertex_angle_in_face(v, f);
+                MINI_CHECK(angle.has_value());
+                MINI_CHECK(TOLERANCE.is_close(*angle, 1.8849555921538759));
             }
 
         // vertex normal / s
         std::map<size_t, Vector> vertex_normals = mesh.vertex_normals();
         for (const size_t v : mesh.vertices()){
-            Vector normal0 = mesh.vertex_normal(v).value();
-            Vector normal1 = vertex_normals.at(v);
-            MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals.at(v), *mesh.vertex_normal(v)));
+            auto vn = mesh.vertex_normal(v);
+            MINI_CHECK(vn.has_value());
+            MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals.at(v), *vn));
         }
 
         MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals[0],  Vector( 0.5773502691896258,  0.5773502691896258,  0.5773502691896258)));
@@ -1130,9 +1132,9 @@ namespace session_cpp {
         // vertex normal weighted / s
         std::map<size_t, Vector> vertex_normals_weighted = mesh.vertex_normals_weighted(NormalWeighting::Angle);
         for (const size_t v : mesh.vertices()){
-            Vector normal0 = mesh.vertex_normal_weighted(v, NormalWeighting::Angle).value();
-            Vector normal1 = vertex_normals_weighted.at(v);
-            MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals_weighted.at(v), *mesh.vertex_normal_weighted(v, NormalWeighting::Angle)));
+            auto vnw = mesh.vertex_normal_weighted(v, NormalWeighting::Angle);
+            MINI_CHECK(vnw.has_value());
+            MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals_weighted.at(v), *vnw));
         }
 
         MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals_weighted[0],  Vector( 0.5773502691896257,  0.5773502691896257,  0.5773502691896257)));
