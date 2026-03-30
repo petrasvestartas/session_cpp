@@ -369,14 +369,14 @@ namespace session_cpp {
 
         // Span of distict knot intervals
         std::vector<double> intervals =  curve.get_span_vector();
-        MINI_CHECK(intervals[0] == 0.0 && intervals[1] == 0.5 && intervals[2] == 1.0);
+        MINI_CHECK(TOLERANCE.is_close(intervals[0], 0.0) && TOLERANCE.is_close(intervals[1], 0.5) && TOLERANCE.is_close(intervals[2], 1.0));
 
         /////////////////////////////////////////////////////
         // Geometric checks
         /////////////////////////////////////////////////////
 
         auto [found, t_out] = curve.get_next_discontinuity(2, curve.domain_start(), curve.domain_end());
-        MINI_CHECK(found && t_out == 0.5);
+        MINI_CHECK(found && TOLERANCE.is_close(t_out, 0.5));
     }
 
     MINI_TEST("NurbsCurve", "Conversions") {

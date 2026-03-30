@@ -49,10 +49,6 @@ private:
   double compute_magnitude() const;
 
 public:
-  // Coordinate getters — mirror IK::Vector_3 API for drop-in CGAL bridge usage
-  double x() const { return _x; }
-  double y() const { return _y; }
-  double z() const { return _z; }
 
   /**
    * @brief Constructor.

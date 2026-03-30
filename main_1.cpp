@@ -36,10 +36,16 @@ int main() {
     if (!diff.empty()) std::cout << ", " << diff[0].point_count() << " pts";
     std::cout << "\n";
 
-    // Write results to protobuf
-    if (!isect.empty()) isect[0].pb_dump("bool_intersect.pb");
-    if (!uni.empty())   uni[0].pb_dump("bool_union.pb");
-    if (!diff.empty())  diff[0].pb_dump("bool_diff.pb");
+    // Write results to protobuf as Session
+    auto to_session = [](const std::vector<Polyline>& polys) {
+        Session s;
+        for (auto& p : polys)
+            s.objects.polylines->push_back(std::make_shared<Polyline>(p));
+        return s;
+    };
+    to_session(isect).pb_dump("bool_intersect.pb");
+    to_session(uni).pb_dump("bool_union.pb");
+    to_session(diff).pb_dump("bool_diff.pb");
 
     // Print intersection polygon points
     if (!isect.empty()) {

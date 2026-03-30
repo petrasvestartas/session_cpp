@@ -1,10 +1,10 @@
 {
   "type": "Session",
   "name": "my_session",
-  "guid": "ebfdca73-56e2-41d9-b817-003096159203",
+  "guid": "a06825aa-b920-4644-9cdd-83c088b7b3d6",
   "objects": {
     "type": "Objects",
-    "guid": "c46a91ac-02fa-464a-9d9c-18e76bc7da23",
+    "guid": "0ffca237-6583-473c-89fc-e7ede4ff7a36",
     "name": "my_objects",
     "bboxes": [],
     "breps": [],
@@ -16,13 +16,13 @@
     "planes": [],
     "points": [
       {
-        "guid": "28da60b1-d5a1-4274-9b06-674bda9fb43c",
+        "guid": "72e2c9ca-29db-42ff-af13-cd966ef787a4",
         "name": "my_point",
         "pointcolor": {
           "a": 255,
           "b": 255,
           "g": 0,
-          "guid": "1e2ba345-51bb-4b10-be0f-c5c9ef0f83e9",
+          "guid": "36072c11-ccc5-4d90-ad62-7a80be3f5708",
           "name": "blue",
           "r": 0,
           "type": "Color"
@@ -31,7 +31,7 @@
         "width": 1.0,
         "x": 1.0,
         "xform": {
-          "guid": "bd4c27e5-cd47-4266-890f-91ce4443369d",
+          "guid": "5872a798-ea6e-4fa9-90cd-06e5b44d9a1d",
           "m": [
             1.0,
             0.0,
@@ -57,13 +57,13 @@
         "z": 3.0
       },
       {
-        "guid": "32755e1c-0fc0-402e-a12c-f9b0eaa62e7f",
+        "guid": "8c539c10-b169-42b0-bf34-b491c7d0ec21",
         "name": "my_point",
         "pointcolor": {
           "a": 255,
           "b": 255,
           "g": 0,
-          "guid": "de35a429-9d13-44d0-a32c-fdd165c4ba90",
+          "guid": "139de74a-b115-4b23-89da-62c766396f9b",
           "name": "blue",
           "r": 0,
           "type": "Color"
@@ -72,7 +72,7 @@
         "width": 1.0,
         "x": 4.0,
         "xform": {
-          "guid": "885b7249-539b-418a-90a9-2618c4de4f79",
+          "guid": "796e2b16-9964-4e32-b1af-b75b05dd9236",
           "m": [
             1.0,
             0.0,
@@ -103,11 +103,11 @@
   },
   "tree": {
     "type": "Tree",
-    "guid": "a352ab97-8d81-4b3f-be09-288cd254796c",
+    "guid": "fad20095-2d1a-4702-9a15-8df67d4a90f9",
     "name": "my_session_tree",
     "root": {
       "type": "TreeNode",
-      "guid": "98f5f64f-d04c-4410-9cb9-2571696ee77a",
+      "guid": "93a65076-37b1-4fd7-af10-39dd6a3608de",
       "name": "my_session",
       "children": []
     }
@@ -115,19 +115,19 @@
   "graph": {
     "type": "Graph",
     "name": "my_session_graph",
-    "guid": "e5b966ef-2932-4506-bc70-1e8624f059db",
+    "guid": "9709f310-e44b-43f2-85e2-25aebc15a43a",
     "vertices": [
       {
         "type": "Vertex",
-        "name": "28da60b1-d5a1-4274-9b06-674bda9fb43c",
-        "guid": "fed6ff5d-4879-425d-a15f-cc8c82c37712",
+        "name": "72e2c9ca-29db-42ff-af13-cd966ef787a4",
+        "guid": "97859b57-1fb8-47f3-b4bf-c5a2a15da958",
         "attribute": "point_my_point",
         "index": 0
       },
       {
         "type": "Vertex",
-        "name": "32755e1c-0fc0-402e-a12c-f9b0eaa62e7f",
-        "guid": "e89a1c6f-5639-4ae2-b41a-1253bd804740",
+        "name": "8c539c10-b169-42b0-bf34-b491c7d0ec21",
+        "guid": "74bb4ced-f742-4906-9a0d-8fbcd12cebe2",
         "attribute": "point_my_point",
         "index": 1
       }
@@ -136,9 +136,9 @@
       {
         "type": "Edge",
         "name": "my_edge",
-        "guid": "9a3afbde-f1aa-4f85-bab2-e54c2515e4ea",
-        "v0": "28da60b1-d5a1-4274-9b06-674bda9fb43c",
-        "v1": "32755e1c-0fc0-402e-a12c-f9b0eaa62e7f",
+        "guid": "0c602c2c-2b4a-4dcf-a1f1-c20ea579bd6d",
+        "v0": "72e2c9ca-29db-42ff-af13-cd966ef787a4",
+        "v1": "8c539c10-b169-42b0-bf34-b491c7d0ec21",
         "attribute": "connection",
         "index": 0
       }
