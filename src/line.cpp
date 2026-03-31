@@ -462,17 +462,19 @@ Point Line::center() const {
     );
 }
 
-Point Line::closest_point(const Point& point) const {
+std::pair<double, Point> Line::closest_point(const Point& point, bool limited) const {
     double dx = _x1 - _x0;
     double dy = _y1 - _y0;
     double dz = _z1 - _z0;
     double len_sq = dx * dx + dy * dy + dz * dz;
     if (len_sq < 1e-20) {
-        return start();
+        return {0.0, start()};
     }
     double t = ((point[0] - _x0) * dx + (point[1] - _y0) * dy + (point[2] - _z0) * dz) / len_sq;
-    t = std::max(0.0, std::min(1.0, t));
-    return point_at(t);
+    if (limited) {
+        t = std::max(0.0, std::min(1.0, t));
+    }
+    return {t, point_at(t)};
 }
 
 Line Line::from_point_and_vector(const Point& point, const Vector& vector) {

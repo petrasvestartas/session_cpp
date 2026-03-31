@@ -100,7 +100,7 @@ public:
     Point center() const;
 
     /// Find the closest point on the line to a given point.
-    Point closest_point(const Point& point) const;
+    std::pair<double, Point> closest_point(const Point& point, bool limited = true) const;
 
     /// Create a line from a point and a vector.
     static Line from_point_and_vector(const Point& point, const Vector& vector);
