@@ -1093,12 +1093,14 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_vector_close(face_normals[11], Vector(-0.8506508083520400, -0.5257311121191336,  0.0               )));
 
         // vertex angle in face
-        for (const size_t f : mesh.faces())
-            for (const size_t v : *mesh.face_vertices(f)){
+        for (const size_t f : mesh.faces()) {
+            auto fv = *mesh.face_vertices(f);
+            for (const size_t v : fv) {
                 auto angle = mesh.vertex_angle_in_face(v, f);
                 MINI_CHECK(angle.has_value());
                 MINI_CHECK(TOLERANCE.is_close(*angle, 1.8849555921538759));
             }
+        }
 
         // vertex normal / s
         std::map<size_t, Vector> vertex_normals = mesh.vertex_normals();
