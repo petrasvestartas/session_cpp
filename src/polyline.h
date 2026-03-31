@@ -234,6 +234,7 @@ public:
 
     /// Check if polyline is closed (first and last points are the same)
     bool is_closed() const;
+    Polyline closed() const;
 
     /// Calculate center point of polyline
     Point center() const;

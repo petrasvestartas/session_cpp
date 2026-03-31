@@ -716,6 +716,15 @@ bool Polyline::is_closed() const {
     return get_point(0).distance(get_point(point_count() - 1)) < static_cast<double>(Tolerance::ZERO_TOLERANCE);
 }
 
+Polyline Polyline::closed() const {
+    if (is_closed()) return Polyline::from_coords(_coords);
+    std::vector<double> new_coords(_coords);
+    new_coords.push_back(_coords[0]);
+    new_coords.push_back(_coords[1]);
+    new_coords.push_back(_coords[2]);
+    return Polyline::from_coords(new_coords);
+}
+
 void Polyline::merge_collinear(double tol) {
     bool closed = is_closed();
     std::vector<Point> pts = get_points();
