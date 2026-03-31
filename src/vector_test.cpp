@@ -101,7 +101,7 @@ MINI_TEST("Vector", "Normalize") {
     v0.normalize_self();
 
     Vector v1(3.0, 4.0, 0.0);
-    Vector v2 = v1.normalize();
+    Vector v2 = v1.normalized();
 
     MINI_CHECK(TOLERANCE.is_close(v0.magnitude(), 1.0));
     MINI_CHECK(TOLERANCE.is_close(v2.magnitude(), 1.0));

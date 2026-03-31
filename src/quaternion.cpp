@@ -21,25 +21,25 @@ Quaternion Quaternion::from_sv(double s, const Vector& v) {
 }
 
 Quaternion Quaternion::from_axis_angle(const Vector& axis, double angle) {
-    Vector ax = axis.normalize();
+    Vector ax = axis.normalized();
     double half = angle * 0.5;
     return Quaternion(std::cos(half), ax * std::sin(half));
 }
 
 Quaternion Quaternion::from_arc(const Vector& src, const Vector& dst) {
-    Vector s = src.normalize();
-    Vector d = dst.normalize();
+    Vector s = src.normalized();
+    Vector d = dst.normalized();
     Vector cross = s.cross(d);
     double dot_val = s.dot(d);
     if (cross.magnitude() < 1e-10) {
         if (dot_val < 0.0) {
             Vector perp = s.cross(Vector(0.0, 0.0, 1.0));
             if (perp.magnitude() < 1e-10) perp = s.cross(Vector(0.0, 1.0, 0.0));
-            return from_axis_angle(perp.normalize(), QUAT_PI);
+            return from_axis_angle(perp.normalized(), QUAT_PI);
         }
         return identity();
     }
-    return Quaternion(1.0 + dot_val, cross).normalize();
+    return Quaternion(1.0 + dot_val, cross).normalized();
 }
 
 Quaternion Quaternion::from_euler(double x, double y, double z) {
@@ -69,7 +69,7 @@ double Quaternion::magnitude2() const {
     return s * s + v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 }
 
-Quaternion Quaternion::normalize() const {
+Quaternion Quaternion::normalized() const {
     double mag = magnitude();
     if (mag > 1e-10) {
         Quaternion q(s / mag, v / mag);
@@ -106,7 +106,7 @@ double Quaternion::dot(const Quaternion& other) const {
 Quaternion Quaternion::slerp(const Quaternion& other, double amount) const {
     double dot_val = dot(other);
     if (dot_val > 0.9995) {
-        return (*this + (other - *this) * amount).normalize();
+        return (*this + (other - *this) * amount).normalized();
     }
     double robust_dot = std::max(-1.0, std::min(1.0, dot_val));
     double theta = std::acos(robust_dot);
@@ -117,7 +117,7 @@ Quaternion Quaternion::slerp(const Quaternion& other, double amount) const {
 }
 
 Quaternion Quaternion::nlerp(const Quaternion& other, double amount) const {
-    return (*this * (1.0 - amount) + other * amount).normalize();
+    return (*this * (1.0 - amount) + other * amount).normalized();
 }
 
 Quaternion Quaternion::operator*(const Quaternion& other) const {

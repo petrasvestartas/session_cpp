@@ -980,9 +980,9 @@ NurbsSurface::divide_by_count_planes(int nu, int nv) const {
 
             // Normalize for plane axes
             Vector x_axis = su;
-            if (x_axis.magnitude() > 1e-14) x_axis = x_axis.normalize();
+            if (x_axis.magnitude() > 1e-14) x_axis = x_axis.normalized();
             Vector y_axis = sv;
-            if (y_axis.magnitude() > 1e-14) y_axis = y_axis.normalize();
+            if (y_axis.magnitude() > 1e-14) y_axis = y_axis.normalized();
 
             Plane plane = Plane(origin, x_axis, y_axis, normal_at(u, v));
             grid[i][j] = plane;

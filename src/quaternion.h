@@ -32,7 +32,7 @@ public:
     Vector rotate_vector(const Vector& vec) const;
     double magnitude() const;
     double magnitude2() const;
-    Quaternion normalize() const;
+    Quaternion normalized() const;
     Quaternion conjugate() const;
     Quaternion invert() const;
     double dot(const Quaternion& other) const;

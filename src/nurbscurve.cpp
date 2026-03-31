@@ -1195,12 +1195,12 @@ bool NurbsCurve::is_arc(Plane* plane, double tolerance) const {
     Vector d2(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]);
     Vector normal = d1.cross(d2);
     if (normal.magnitude() < Tolerance::ZERO_TOLERANCE) return false;
-    normal = normal.normalize();
+    normal = normal.normalized();
 
     Point m1((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
     Point m2((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5, (p1[2] + p2[2]) * 0.5);
-    Vector perp1 = d1.cross(normal).normalize();
-    Vector perp2 = d2.cross(normal).normalize();
+    Vector perp1 = d1.cross(normal).normalized();
+    Vector perp2 = d2.cross(normal).normalized();
 
     double denom = perp1[0] * perp2[1] - perp1[1] * perp2[0];
     if (std::abs(denom) < Tolerance::ZERO_TOLERANCE)

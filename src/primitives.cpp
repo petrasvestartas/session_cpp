@@ -67,11 +67,11 @@ NurbsCurve Primitives::arc(const Point& start, const Point& mid, const Point& en
         return NurbsCurve::create(false, 1, pts);
     }
 
-    normal = normal.normalize();
+    normal = normal.normalized();
 
     // Perpendicular bisectors
-    Vector perp1 = d1.cross(normal).normalize();
-    Vector perp2 = d2.cross(normal).normalize();
+    Vector perp1 = d1.cross(normal).normalized();
+    Vector perp2 = d2.cross(normal).normalized();
 
     // Find intersection of perpendicular bisectors (circle center)
     // Solve: m1 + t1*perp1 = m2 + t2*perp2
@@ -116,7 +116,7 @@ NurbsCurve Primitives::arc(const Point& start, const Point& mid, const Point& en
                    center[2] + radius * std::cos(half_angle) * (v1[2]/radius + std::tan(half_angle) * perp1[2]));
 
     // Simpler shoulder calculation
-    Vector tangent1 = normal.cross(v1).normalize();
+    Vector tangent1 = normal.cross(v1).normalized();
     double shoulder_dist = radius / std::cos(half_angle);
     shoulder = Point(center[0] + shoulder_dist * (v1[0] + v2[0]) / (v1.magnitude() + v2.magnitude()) * v1.magnitude(),
                      center[1] + shoulder_dist * (v1[1] + v2[1]) / (v1.magnitude() + v2.magnitude()) * v1.magnitude(),

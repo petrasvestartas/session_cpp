@@ -286,7 +286,7 @@ bool Vector::normalize_self() {
   return false;
 }
 
-Vector Vector::normalize() const {
+Vector Vector::normalized() const {
   Vector result(_x, _y, _z);
   result.normalize_self();
   return result;

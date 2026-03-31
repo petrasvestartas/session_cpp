@@ -395,7 +395,7 @@ Vector Line::to_vector() const {
 }
 
 Vector Line::to_direction() const {
-    return to_vector().normalize();
+    return to_vector().normalized();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -483,7 +483,7 @@ Line Line::from_point_and_vector(const Point& point, const Vector& vector) {
 }
 
 Line Line::from_point_direction_length(const Point& point, const Vector& direction, double length) {
-    Vector d = direction.normalize();
+    Vector d = direction.normalized();
     return Line(
         point[0], point[1], point[2],
         point[0] + d[0] * length, point[1] + d[1] * length, point[2] + d[2] * length

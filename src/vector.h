@@ -270,7 +270,7 @@ public:
   /// -------
   /// Vector
   ///     A new Vector with unit length pointing in the same direction.
-  Vector normalize() const;
+  Vector normalized() const;
 
   /// Project this vector onto `projection_vector`.
   /// Returns: (projection_vector, projected_length, perpendicular_vector, perpendicular_length)
