@@ -13,6 +13,7 @@ bool point_in_polygon_2d(double, double, const std::vector<double>&);
 #include <numeric>
 #include <unordered_map>
 #include <unordered_set>
+#include <bit>
 #include <limits>
 #include <thread>
 #include <atomic>
@@ -1180,9 +1181,10 @@ Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::
             map_eps[key] = vk;
             return vk;
         } else {
-            union { double f; uint64_t i; } ux, uy, uz;
-            ux.f = p[0]; uy.f = p[1]; uz.f = p[2];
-            auto key = std::make_tuple(ux.i, uy.i, uz.i);
+            auto key = std::make_tuple(
+                std::bit_cast<uint64_t>(p[0]),
+                std::bit_cast<uint64_t>(p[1]),
+                std::bit_cast<uint64_t>(p[2]));
             
             auto it = map_exact.find(key);
             if (it != map_exact.end()) {
