@@ -126,6 +126,7 @@ public:
   Vector operator/(double factor) const;
   Vector operator+(const Vector &other) const;
   Vector operator-(const Vector &other) const;
+  Vector operator-() const;
   friend Vector operator*(double factor, const Vector &v);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
