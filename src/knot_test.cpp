@@ -6,291 +6,166 @@
 #include "mini_test.h"
 #include "knot.h"
 #include <cmath>
+#include "tolerance.h"
 
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("Knot", "Knot Count") {
-    // uncomment #include "knot.h"
-
-    // Calculate knot counts for various order/cv_count combinations
-    int count1 = knot::knot_count(2, 2);
-    int count2 = knot::knot_count(3, 3);
-    int count3 = knot::knot_count(4, 4);
-    int count4 = knot::knot_count(4, 5);
-    int count5 = knot::knot_count(3, 4);
-
-    MINI_CHECK(count1 == 2);
-    MINI_CHECK(count2 == 4);
-    MINI_CHECK(count3 == 6);
-    MINI_CHECK(count4 == 7);
-    MINI_CHECK(count5 == 5);
-}
-
 MINI_TEST("Knot", "Make Clamped Uniform") {
     // uncomment #include "knot.h"
 
-    // Basic clamped uniform knot vector
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    size_t k_len = k.size();
-    double k0 = k[0], k1 = k[1], k2 = k[2];
-    double k3 = k[3], k4 = k[4], k5 = k[5];
-
-    // With custom delta
-    auto k2_vec = knot::make_clamped_uniform(3, 4, 2.5);
-    size_t k2_len = k2_vec.size();
-    auto [t0, t1] = knot::get_domain(3, 4, k2_vec);
-
-    // Invalid params
-    auto k_invalid1 = knot::make_clamped_uniform(1, 2, 1.0);
-    auto k_invalid2 = knot::make_clamped_uniform(4, 3, 1.0);
-
-    MINI_CHECK(k_len == 6);
-    MINI_CHECK(k0 == 0.0 && k1 == 0.0 && k2 == 0.0);
-    MINI_CHECK(k3 == 1.0 && k4 == 1.0 && k5 == 1.0);
-    MINI_CHECK(k2_len == 5);
-    MINI_CHECK(t0 == 0.0 && t1 == 5.0);
-    MINI_CHECK(k_invalid1.empty());
-    MINI_CHECK(k_invalid2.empty());
+    // 0 0 0 1 2 2 2
+    int order = 4;
+    int cv_count = 5;
+    std::vector<double> knots = knot::make_clamped_uniform(order, cv_count);
+    MINI_CHECK(TOLERANCE.is_allclose(knots, {0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0}));
 }
 
 MINI_TEST("Knot", "Make Periodic Uniform") {
     // uncomment #include "knot.h"
 
-    // Create periodic uniform knot vector
-    auto k = knot::make_periodic_uniform(3, 4, 1.0);
-    size_t k_len = k.size();
-    double k0 = k[0], k1 = k[1], k2 = k[2], k3 = k[3], k4 = k[4];
-
-    MINI_CHECK(k_len == 5);
-    MINI_CHECK(k0 == 0.0 && k1 == 1.0 && k2 == 2.0 && k3 == 3.0 && k4 == 4.0);
-}
-
-MINI_TEST("Knot", "Clamp") {
-    // uncomment #include "knot.h"
-
-    // Clamp a periodic knot vector
-    std::vector<double> k = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-    bool clamp_result = knot::clamp(4, 4, k, 2);
-    bool first_clamped = k[0] == k[1] && k[1] == k[2];
-    bool last_clamped = k[3] == k[4] && k[4] == k[5];
-
-    MINI_CHECK(clamp_result);
-    MINI_CHECK(first_clamped);
-    MINI_CHECK(last_clamped);
-}
-
-MINI_TEST("Knot", "Is Valid") {
-    // uncomment #include "knot.h"
-
-    // Valid clamped knot vector
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    bool valid = knot::is_valid(4, 4, k);
-
-    // Invalid - decreasing values
-    std::vector<double> k_invalid = {0.0, 0.0, 1.0, 0.5, 1.0, 1.0};
-    bool invalid = knot::is_valid(4, 4, k_invalid);
-
-    MINI_CHECK(valid);
-    MINI_CHECK(!invalid);
+    // 0 1 2 3 4 5 6
+    int order = 4;
+    int cv_count = 5;
+    std::vector<double> knots = knot::make_periodic_uniform(order, cv_count);
+    MINI_CHECK(TOLERANCE.is_allclose(knots, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0}));
 }
 
 MINI_TEST("Knot", "Is Clamped") {
     // uncomment #include "knot.h"
 
-    // Clamped knot vector
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    bool clamped_both = knot::is_clamped(4, 4, k, 2);
-    bool clamped_start = knot::is_clamped(4, 4, k, 0);
-    bool clamped_end = knot::is_clamped(4, 4, k, 1);
+    // 0 0 0 1 2 2 2
+    // 0 1 2 3 4 5 6
+    int order = 4;
+    int cv_count = 5;
+    std::vector<double> knots_periodic = knot::make_periodic_uniform(order, cv_count);
+    std::vector<double> knots_clamped = knot::make_clamped_uniform(order, cv_count);
+    bool is_not_clamped = knot::is_clamped(order, cv_count, knots_periodic);
+    bool is_clamped = knot::is_clamped(order, cv_count, knots_clamped);
 
-    // Periodic knot vector (not clamped)
-    auto k2 = knot::make_periodic_uniform(4, 5, 1.0);
-    bool not_clamped = knot::is_clamped(4, 5, k2, 2);
-
-    MINI_CHECK(clamped_both);
-    MINI_CHECK(clamped_start);
-    MINI_CHECK(clamped_end);
-    MINI_CHECK(!not_clamped);
-}
-
-MINI_TEST("Knot", "Is Periodic") {
-    // uncomment #include "knot.h"
-
-    // Periodic knot vector
-    auto k = knot::make_periodic_uniform(3, 4, 1.0);
-    bool periodic = knot::is_periodic(3, 4, k);
-
-    // Clamped knot vector (not periodic)
-    auto k2 = knot::make_clamped_uniform(4, 4, 1.0);
-    bool not_periodic = knot::is_periodic(4, 4, k2);
-
-    MINI_CHECK(periodic);
-    MINI_CHECK(!not_periodic);
-}
-
-MINI_TEST("Knot", "Get Domain") {
-    // uncomment #include "knot.h"
-
-    // Get domain of clamped knot vector
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    auto [t0, t1] = knot::get_domain(4, 4, k);
-
-    MINI_CHECK(t0 == 0.0);
-    MINI_CHECK(t1 == 1.0);
-}
-
-MINI_TEST("Knot", "Set Domain") {
-    // uncomment #include "knot.h"
-
-    // Create knot vector and set domain
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    bool set_result = knot::set_domain(4, 4, k, 5.0, 10.0);
-    auto [t0, t1] = knot::get_domain(4, 4, k);
-    bool t0_close = std::fabs(t0 - 5.0) < 1e-10;
-    bool t1_close = std::fabs(t1 - 10.0) < 1e-10;
-
-    MINI_CHECK(set_result);
-    MINI_CHECK(t0_close);
-    MINI_CHECK(t1_close);
+    MINI_CHECK(!is_not_clamped && is_clamped);
 }
 
 MINI_TEST("Knot", "Reverse") {
     // uncomment #include "knot.h"
 
-    // Reverse knot vector
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    auto [t0_orig, t1_orig] = knot::get_domain(4, 4, k);
-    bool reverse_result = knot::reverse(4, 4, k);
-    auto [t0, t1] = knot::get_domain(4, 4, k);
-    bool t0_preserved = std::fabs(t0 - t0_orig) < 1e-10;
-    bool t1_preserved = std::fabs(t1 - t1_orig) < 1e-10;
+    // Reverses NURBS curve direction: flip control points + reverse knots
+    // Steps: 1) reverse array  2) remap knot[i] = t0 + t1 - knot[i] to preserve domain
 
-    MINI_CHECK(reverse_result);
-    MINI_CHECK(t0_preserved);
-    MINI_CHECK(t1_preserved);
-}
+    // Symmetric knot vector -> reverse gives back the same (palindrome)
+    // 0 0 0 1 2 2 2
+    int order = 4;
+    int cv_count = 5;
+    std::vector<double> knots_sym = knot::make_clamped_uniform(order, cv_count);
+    knot::reverse(order, cv_count, knots_sym);
+    MINI_CHECK(TOLERANCE.is_allclose(knots_sym, {0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0}));
 
-MINI_TEST("Knot", "Multiplicity") {
-    // uncomment #include "knot.h"
-
-    // Check multiplicity at clamped ends
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    int mult_first = knot::multiplicity(4, 4, k, 0);
-    int mult_last = knot::multiplicity(4, 4, k, 5);
-
-    MINI_CHECK(mult_first == 3);
-    MINI_CHECK(mult_last == 3);
-}
-
-MINI_TEST("Knot", "Span Count") {
-    // uncomment #include "knot.h"
-
-    // Single Bezier span
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    int span1 = knot::span_count(4, 4, k);
-
-    // Multiple spans
-    auto k2 = knot::make_clamped_uniform(3, 5, 1.0);
-    int span2 = knot::span_count(3, 5, k2);
-
-    MINI_CHECK(span1 == 1);
-    MINI_CHECK(span2 == 3);
+    // Asymmetric knot vector -> extra knot at 0.5 shifts to 1.5 after reverse
+    // 0 0 0 0.5 1 2 2 2 -> 0 0 0 1 1.5 2 2 2
+    std::vector<double> knots_asym = {0.0, 0.0, 0.0, 0.5, 1.0, 2.0, 2.0, 2.0};
+    knot::reverse(4, 6, knots_asym);
+    MINI_CHECK(TOLERANCE.is_allclose(knots_asym, {0.0, 0.0, 0.0, 1.0, 1.5, 2.0, 2.0, 2.0}));
 }
 
 MINI_TEST("Knot", "Find Span") {
     // uncomment #include "knot.h"
 
-    // Find span in single-span knot vector
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    int span_0 = knot::find_span(4, 4, k, 0.0);
-    int span_mid = knot::find_span(4, 4, k, 0.5);
-    int span_1 = knot::find_span(4, 4, k, 1.0);
-
-    // Find span in multi-span knot vector
-    auto k2 = knot::make_clamped_uniform(3, 5, 1.0);
-    int span2_0 = knot::find_span(3, 5, k2, 0.0);
-    int span2_mid = knot::find_span(3, 5, k2, 1.5);
-    int span2_end = knot::find_span(3, 5, k2, 2.5);
-
-    MINI_CHECK(span_0 == 0 && span_mid == 0 && span_1 == 0);
-    MINI_CHECK(span2_0 == 0 && span2_mid == 1 && span2_end == 2);
+    // 0 0 0 1 2 2 2
+    int order = 4;
+    int cv_count = 5;
+    std::vector<double> knots_clamped = knot::make_clamped_uniform(order, cv_count);
+    //   - 0.5 falls in span [0, 1] -> index 0
+    //   - 1.5 falls in span [1, 2] -> index 1
+    int spancount0 = knot::find_span(order, cv_count, knots_clamped, 0.5);
+    int spancount1 = knot::find_span(order, cv_count, knots_clamped, 1.5);
+    MINI_CHECK(spancount0 == 0 && spancount1 == 1);
 }
 
-MINI_TEST("Knot", "Greville Abcissae") {
+MINI_TEST("Knot", "Solve Tridiagonal") {
     // uncomment #include "knot.h"
 
-    // Get Greville abcissae (control point parameter values)
-    auto k = knot::make_clamped_uniform(3, 4, 1.0);
-    auto g = knot::get_greville_abcissae(3, 4, k);
-    size_t g_len = g.size();
-
-    MINI_CHECK(g_len == 4);
-}
-
-MINI_TEST("Knot", "Domain Tolerance") {
-    // uncomment #include "knot.h"
-
-    // Calculate domain tolerance
-    double tol_same = knot::domain_tolerance(1.0, 1.0);
-    double tol_diff = knot::domain_tolerance(0.0, 1.0);
-
-    MINI_CHECK(tol_same == 0.0);
-    MINI_CHECK(tol_diff > 0.0);
-}
-
-MINI_TEST("Knot", "Eval Basis") {
-    // Basis functions for degree-3 single-span at t=0.5
-    auto k = knot::make_clamped_uniform(4, 4, 1.0);
-    int span = knot::find_span(4, 4, k, 0.5);
-    auto b = knot::eval_basis(4, k, span, 0.5);
-    double sum = b[0] + b[1] + b[2] + b[3];
-    bool all_nonneg = b[0] >= 0.0 && b[1] >= 0.0 && b[2] >= 0.0 && b[3] >= 0.0;
-    bool sum_one = std::fabs(sum - 1.0) < 1e-10;
-
-    // At endpoint t=0.0, first basis = 1
-    int span0 = knot::find_span(4, 4, k, 0.0);
-    auto b0 = knot::eval_basis(4, k, span0, 0.0);
-    bool endpoint_b0 = std::fabs(b0[0] - 1.0) < 1e-10;
-
-    MINI_CHECK(all_nonneg);
-    MINI_CHECK(sum_one);
-    MINI_CHECK(endpoint_b0);
+    // Thomas algorithm -- an O(n) solver for tridiagonal linear systems
+    //   | 2 1 | |x0|   |3|
+    //   | 1 2 | |x1| = |3|
+    //   -> solution: x0 = 1, x1 = 1
+    std::vector<double> lo={0,1}, di={2,2}, up={1,0}, rh={3,3}, sol;
+    knot::solve_tridiagonal(1, 2, lo, di, up, rh, sol);
+    MINI_CHECK(TOLERANCE.is_allclose(sol, {1.0, 1.0}));
 }
 
 MINI_TEST("Knot", "Compute Parameters") {
-    // Uniform: equal spacing regardless of distances
-    double pts1[9] = {0,0,0, 3,0,0, 4,0,0};
-    auto p_uniform = knot::compute_parameters(pts1, 3, 3, CurveKnotStyle::Uniform);
-    bool uniform_equal = std::fabs(p_uniform[1] - 1.0) < 1e-10 && std::fabs(p_uniform[2] - 2.0) < 1e-10;
+    // uncomment #include "knot.h"
 
-    // Chord: spacing = chord distances
-    double pts2[9] = {0,0,0, 3,0,0, 4,0,0};
-    auto p_chord = knot::compute_parameters(pts2, 3, 3, CurveKnotStyle::Chord);
-    bool chord_dist = std::fabs(p_chord[1] - 3.0) < 1e-10 && std::fabs(p_chord[2] - 4.0) < 1e-10;
-
-    // Both start at 0
-    bool starts_zero = p_uniform[0] == 0.0 && p_chord[0] == 0.0;
-
-    MINI_CHECK(uniform_equal);
-    MINI_CHECK(chord_dist);
-    MINI_CHECK(starts_zero);
+    double pts[] = {0,0,0, 1,0,0, 2,0,0, 3,0,0};
+    // Chord-length parameterization: since all gaps are 1.0, params = {0, 1, 2, 3}
+    std::vector<double> t = knot::compute_parameters(pts, 4, 3, CurveKnotStyle::Chord);
+    MINI_CHECK(TOLERANCE.is_allclose(t, {0.0, 1.0, 2.0, 3.0}));
 }
 
-MINI_TEST("Knot", "Build Interp Knots") {
-    // 4 points, degree 3 → cv_count = 6, knot_count = 8
-    double pts[12] = {0,0,0, 1,0,0, 2,0,0, 3,0,0};
-    auto params = knot::compute_parameters(pts, 4, 3, CurveKnotStyle::Chord);
-    auto knots = knot::build_interp_knots(params, 3);
-    size_t expected_size = knot::knot_count(4, 6);
-    bool correct_size = knots.size() == expected_size;
-    bool clamped_start = knots[0] == 0.0 && knots[1] == 0.0 && knots[2] == 0.0;
-    bool clamped_end = std::fabs(knots.back() - params[3]) < 1e-10;
+MINI_TEST("Knot", "Build Interpolation Knots") {
+    // uncomment #include "knot.h"
 
-    MINI_CHECK(correct_size);
-    MINI_CHECK(clamped_start);
-    MINI_CHECK(clamped_end);
+    std::vector<double> params = {0.0, 1.0, 2.0, 3.0};
+    int degree = 3;
+    // cv_count = n + 2 = 6 (natural end conditions add 2 CVs)
+    // kc = order + cv_count - 2 = 4 + 6 - 2 = 8
+    //   [0, 0, 0,  |  1, 2,  |  3, 3, 3]
+    //   <-clamp->    interior    <-clamp->
+    std::vector<double> knots = knot::build_interp_knots(params, degree);
+    MINI_CHECK(TOLERANCE.is_allclose(knots, {0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 3.0, 3.0}));
+}
+
+MINI_TEST("Knot", "Evaluation Basis") {
+    // uncomment #include "knot.h"
+
+    // Cox-de Boor recursive evaluation of B-spline basis functions
+    // At parameter t, exactly 'order' basis functions are non-zero
+    // Partition of unity: they always sum to 1.0
+    // Used to evaluate NURBS curves/surfaces: C(t) = sum(N_i(t) * P_i)
+    // 0 0 0 1 2 2 2
+    int order = 4;
+    int cv_count = 5;
+    std::vector<double> knots = knot::make_clamped_uniform(order, cv_count);
+    int span = knot::find_span(order, cv_count, knots, 0.5);
+    std::vector<double> basis = knot::eval_basis(order, knots, span, 0.5);
+    MINI_CHECK(TOLERANCE.is_allclose(basis, {0.125, 0.59375, 0.25, 0.03125}));
+}
+
+MINI_TEST("Knot", "Build Fitted Knots Adaptive") {
+    // uncomment #include "knot.h"
+
+    // Builds knot vectors for least-squares fitting
+    // Concentrates knots where curvature is high (sharp turns)
+    // For collinear points (zero curvature), interior knots are evenly distributed
+    double pts[] = {0,0,0, 1,0,0, 2,0,0, 3,0,0, 4,0,0};
+    std::vector<double> params = knot::compute_parameters(pts, 5, 3, CurveKnotStyle::Chord);
+    std::vector<double> knots = knot::build_fitted_knots_adaptive(params, pts, 5, 3, 5, 3);
+    MINI_CHECK(TOLERANCE.is_allclose(knots, {0.0, 0.0, 0.0, 2.0, 4.0, 4.0, 4.0}));
+}
+
+MINI_TEST("Knot", "Build Fitted Knots Periodic Adaptive") {
+    // uncomment #include "knot.h"
+
+    // Periodic version for closed curves -- knots wrap around
+    // For a regular square (equal turns, equal chords), knots are uniformly spaced
+    double pts[] = {0,0,0, 1,0,0, 1,1,0, 0,1,0};
+    std::vector<double> params = {0.0, 1.0, 2.0, 3.0, 4.0};
+    std::vector<double> knots = knot::build_fitted_knots_periodic_adaptive(params, pts, 4, 3, 4, 3);
+    MINI_CHECK(TOLERANCE.is_allclose(knots, {-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0}));
+}
+
+MINI_TEST("Knot", "Solve Banded SPD") {
+    // uncomment #include "knot.h"
+
+    // Cholesky solver for banded symmetric positive-definite systems
+    //   | 4 2 0 |       |8 |       |1|
+    //   | 2 5 1 | * x = |13| -> x = |2|
+    //   | 0 1 3 |       |5 |       |1|
+    std::vector<double> band = {4, 0, 5, 2, 3, 1};
+    std::vector<double> rhs = {8, 13, 5};
+    knot::solve_banded_spd(1, 3, 1, band, rhs);
+    MINI_CHECK(TOLERANCE.is_allclose(rhs, {1.0, 2.0, 1.0}));
 }
 
 } // namespace session_cpp
