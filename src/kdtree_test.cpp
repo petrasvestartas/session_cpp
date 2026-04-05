@@ -11,6 +11,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("KDTree", "Nearest") {
+    // uncomment #include "kdtree.h"
+    // uncomment #include "point.h"
     // Simple deterministic random using LCG
     uint64_t seed = 42;
     auto rng = [&]() -> double {
@@ -34,6 +36,8 @@ MINI_TEST("KDTree", "Nearest") {
 }
 
 MINI_TEST("KDTree", "Nearest K") {
+    // uncomment #include "kdtree.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -52,6 +56,8 @@ MINI_TEST("KDTree", "Nearest K") {
 }
 
 MINI_TEST("KDTree", "Radius Search") {
+    // uncomment #include "kdtree.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -68,6 +74,8 @@ MINI_TEST("KDTree", "Radius Search") {
 }
 
 MINI_TEST("KDTree", "Single Point") {
+    // uncomment #include "kdtree.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {Point(3.0, 4.0, 0.0)};
     KDTree tree(pts);
     Point query(0.0, 0.0, 0.0);
@@ -78,6 +86,8 @@ MINI_TEST("KDTree", "Single Point") {
 }
 
 MINI_TEST("KDTree", "Nearest Brute Force") {
+    // uncomment #include "kdtree.h"
+    // uncomment #include "point.h"
     uint64_t seed = 7;
     auto rng = [&]() -> double {
         seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;

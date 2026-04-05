@@ -128,6 +128,7 @@ nlohmann::ordered_json Vector::jsondump() const {
   data["name"] = name;
   data["type"] = "Vector";
   data["x"] = clean_float(_x);
+  data["xform"] = xform.jsondump();
   data["y"] = clean_float(_y);
   data["z"] = clean_float(_z);
   return data;
@@ -138,6 +139,9 @@ Vector Vector::jsonload(const nlohmann::json &data) {
   Vector vector(data["x"], data["y"], data["z"]);
   vector.guid() = data["guid"];
   vector.name = data["name"];
+  if (data.contains("xform")) {
+    vector.xform = Xform::jsonload(data["xform"]);
+  }
   return vector;
 }
 
@@ -174,6 +178,12 @@ std::string Vector::pb_dumps() const {
   proto.set_y(_y);
   proto.set_z(_z);
   proto.set_name(name);
+  auto* xform_proto = proto.mutable_xform();
+  xform_proto->set_guid(xform.guid());
+  xform_proto->set_name(xform.name);
+  for (int i = 0; i < 16; ++i) {
+    xform_proto->add_matrix(xform.m[i]);
+  }
   return proto.SerializeAsString();
 }
 
@@ -182,6 +192,12 @@ Vector Vector::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
   Vector v(proto.x(), proto.y(), proto.z());
   v.name = proto.name();
+  const auto& xform_proto = proto.xform();
+  v.xform.guid() = xform_proto.guid();
+  v.xform.name = xform_proto.name();
+  for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
+    v.xform.m[i] = xform_proto.matrix(i);
+  }
   return v;
 }
 
@@ -197,6 +213,24 @@ Vector Vector::pb_load(const std::string& filename) {
                     std::istreambuf_iterator<char>());
   ifs.close();
   return pb_loads(data);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Transform
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void Vector::transform() {
+  double x = _x, y = _y, z = _z;
+  _x = xform.m[0]*x + xform.m[4]*y + xform.m[8]*z;
+  _y = xform.m[1]*x + xform.m[5]*y + xform.m[9]*z;
+  _z = xform.m[2]*x + xform.m[6]*y + xform.m[10]*z;
+  xform = Xform::identity();
+}
+
+Vector Vector::transformed() const {
+  Vector result = *this;
+  result.transform();
+  return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -283,6 +317,8 @@ bool Vector::normalize_self() {
     (*this)[0] = _x / d;
     (*this)[1] = _y / d;
     (*this)[2] = _z / d;
+    _magnitude = 1.0;
+    _has_magnitude = true;
     return true;
   }
   return false;
@@ -320,24 +356,17 @@ Vector::projection(Vector &projection_vector, double tolerance) {
 }
 
 int Vector::is_parallel_to(const Vector &other) {
+  static const double cos_tol = std::cos(
+      static_cast<double>(Tolerance::ANGLE_TOLERANCE_DEGREES) *
+      static_cast<double>(Tolerance::TO_RADIANS));
+
   double ll = cached_magnitude() * other.cached_magnitude();
-  int result;
-  
-  if (ll > 0.0) {
-    const double cos_angle = ((*this)[0] * other[0] + (*this)[1] * other[1] + (*this)[2] * other[2]) / ll;
-    const double angle_in_radians = static_cast<double>(Tolerance::ANGLE_TOLERANCE_DEGREES) * static_cast<double>(Tolerance::TO_RADIANS);
-    const double cos_tol = std::cos(angle_in_radians);
-    if (cos_angle >= cos_tol)
-      result = 1;  // Parallel
-    else if (cos_angle <= -cos_tol)
-      result = -1; // Antiparallel
-    else
-      result = 0;  // Not parallel
-  } else {
-    result = 0;  // Not parallel
-  }
-  
-  return result;
+  if (ll <= 0.0) return 0;
+
+  double cos_angle = ((*this)[0] * other[0] + (*this)[1] * other[1] + (*this)[2] * other[2]) / ll;
+  if (cos_angle >= cos_tol) return 1;
+  if (cos_angle <= -cos_tol) return -1;
+  return 0;
 }
 
 double Vector::dot(const Vector &other) const {

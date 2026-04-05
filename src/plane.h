@@ -26,6 +26,7 @@ namespace session_cpp {
         const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
         std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
         double width = 1.0;                ///< Width for plane visualization
+        Color linecolor = Color::blue();   ///< Color of the plane (default: blue)
         Xform xform;   ///< Transformation matrix
 
         private:
@@ -54,9 +55,9 @@ namespace session_cpp {
         Plane();
         Plane(const Plane& other);
         Plane& operator=(const Plane& other);
-        Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name = "my_plane");
+        Plane(const Point& point, const Vector& x_axis, const Vector& y_axis, std::string name = "my_plane");
         Plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis);
-        static Plane from_point_normal(Point& point, Vector& normal);
+        static Plane from_point_normal(Point& point, Vector& normal, bool normalize = true);
         static Plane from_points(std::vector<Point>& points);
         static Plane from_points_pca(const std::vector<Point>& points);
         static Plane from_two_points(Point& point1, Point& point2);
@@ -199,6 +200,9 @@ namespace session_cpp {
    * @return True if two planes are pointing to the same or flipped normal and share the same origin.
    */
   static bool is_coplanar(const Plane &plane0, const Plane plane1, bool can_be_flipped = true);
+  static bool is_coplanar(const Point& origin0, const Vector& normal0,
+                          const Point& origin1, const Vector& normal1,
+                          bool can_be_flipped = true);
 
   /**
    * @brief Translate (move) a plane along its normal direction by a specified distance.

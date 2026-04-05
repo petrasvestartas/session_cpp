@@ -9,6 +9,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("ConvexHull", "Hull2d") {
+    // uncomment #include "convex_hull.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -23,6 +25,8 @@ MINI_TEST("ConvexHull", "Hull2d") {
 }
 
 MINI_TEST("ConvexHull", "Hull2dCollinear") {
+    // uncomment #include "convex_hull.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -36,6 +40,8 @@ MINI_TEST("ConvexHull", "Hull2dCollinear") {
 }
 
 MINI_TEST("ConvexHull", "Hull2dCircle") {
+    // uncomment #include "convex_hull.h"
+    // uncomment #include "point.h"
     int n = 12;
     std::vector<Point> pts;
     for (int i = 0; i < n; ++i) {
@@ -49,6 +55,9 @@ MINI_TEST("ConvexHull", "Hull2dCircle") {
 }
 
 MINI_TEST("ConvexHull", "Hull3d") {
+    // uncomment #include "convex_hull.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -63,6 +72,9 @@ MINI_TEST("ConvexHull", "Hull3d") {
 }
 
 MINI_TEST("ConvexHull", "Hull3dCube") {
+    // uncomment #include "convex_hull.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),

@@ -12,6 +12,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("AABBTree", "Build Empty") {
+    // uncomment #include "aabb.h"
     AABBTree tree;
     tree.build(nullptr, 0);
 
@@ -19,6 +20,7 @@ MINI_TEST("AABBTree", "Build Empty") {
 }
 
 MINI_TEST("AABBTree", "Build Single") {
+    // uncomment #include "aabb.h"
     AABB aabb = {0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
     AABBTree tree;
     tree.build(&aabb, 1);
@@ -28,6 +30,7 @@ MINI_TEST("AABBTree", "Build Single") {
 }
 
 MINI_TEST("AABBTree", "Build Multiple") {
+    // uncomment #include "aabb.h"
     std::vector<AABB> aabbs = {
         {0.0, 0.0, 0.0, 1.0, 1.0, 1.0},
         {5.0, 0.0, 0.0, 1.0, 1.0, 1.0},
@@ -41,6 +44,7 @@ MINI_TEST("AABBTree", "Build Multiple") {
 }
 
 MINI_TEST("AABBTree", "Node Count") {
+    // uncomment #include "aabb.h"
     std::vector<AABB> aabbs;
     for (int i = 0; i < 100; i++) {
         aabbs.push_back({static_cast<double>(i), 0.0, 0.0, 0.5, 0.5, 0.5});
@@ -52,6 +56,11 @@ MINI_TEST("AABBTree", "Node Count") {
 }
 
 MINI_TEST("AABBTree", "Mesh Point Aabb") {
+    // uncomment #include "aabb.h"
+    // uncomment #include "closest.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "primitives.h"
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
@@ -64,6 +73,11 @@ MINI_TEST("AABBTree", "Mesh Point Aabb") {
 }
 
 MINI_TEST("AABBTree", "Mesh Point Aabb Matches Bvh") {
+    // uncomment #include "aabb.h"
+    // uncomment #include "closest.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "primitives.h"
     Mesh m = Primitives::cube(2.0);
     Point tp(0.3, 0.7, 1.5);
 
@@ -77,6 +91,8 @@ MINI_TEST("AABBTree", "Mesh Point Aabb Matches Bvh") {
 }
 
 MINI_TEST("Aabb", "Constructor") {
+    // uncomment #include "aabb.h"
+    // uncomment #include "point.h"
     // AABB(0,0,0, 1,2,3) — dims 2×4×6
     AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
 

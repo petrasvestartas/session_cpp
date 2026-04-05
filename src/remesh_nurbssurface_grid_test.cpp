@@ -7,6 +7,10 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 
@@ -16,6 +20,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Torus") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 
@@ -25,6 +33,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Torus") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Cylinder") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 
@@ -34,6 +46,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Cylinder") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Cone") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 
@@ -43,6 +59,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Cone") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Doubly Curved") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
     Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
 
@@ -52,6 +72,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Doubly Curved") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Grid Target") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
     Mesh m_lo = RemeshNurbsSurfaceGrid::from_u_v(s, 8, 8);
     Mesh m_hi = RemeshNurbsSurfaceGrid::from_u_v(s, 32, 32);
@@ -63,6 +87,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Grid Target") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
+    // uncomment #include "remesh_nurbssurface_grid.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "point.h"
     NurbsSurface s = NurbsSurface::create(false, false, 1, 1, 2, 2, {
         Point(0, 0, 0),
         Point(0, 4, 0),

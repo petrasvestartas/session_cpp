@@ -8,17 +8,51 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Quaternion", "Json Roundtrip") {
-    Vector axis(0.0, 0.0, 1.0);
-    Quaternion original = Quaternion::from_axis_angle(axis, 1.5708);
-    std::filesystem::create_directories("./serialization");
-    encoders::json_dump(original, "./serialization/test_quaternion.json");
-    Quaternion loaded = encoders::json_load<Quaternion>("./serialization/test_quaternion.json");
+MINI_TEST("Quaternion", "Constructor") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
+    double pi = std::acos(-1.0);
 
-    MINI_CHECK(TOLERANCE.is_close(loaded.s, original.s));
+    // Default constructor (identity)
+    Quaternion q0;
+
+    // Constructor with args
+    Quaternion q1 = Quaternion::from_sv(2.0, Vector(1.0, 0.0, 0.0));
+
+    // Quaternion multiplication
+    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 2.0);
+    Quaternion r = q * q;
+    Vector v = r.rotate_vector(Vector(1.0, 0.0, 0.0));
+
+    // Scalar multiplication
+    Quaternion scaled = Quaternion::identity() * 2.0;
+
+    // Addition
+    Quaternion a = Quaternion::from_sv(1.0, Vector(0.0, 0.0, 0.0));
+    Quaternion b = Quaternion::from_sv(0.0, Vector(0.0, 0.0, 1.0));
+    Quaternion sum = a + b;
+
+    // Subtraction
+    Quaternion diff = q - q;
+
+    // Negation
+    Quaternion neg = -Quaternion::identity();
+
+    MINI_CHECK(q0.name == "my_quaternion");
+    MINI_CHECK(!q0.guid().empty());
+    MINI_CHECK(TOLERANCE.is_close(q0.s, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(q0.v[0], 0.0) && TOLERANCE.is_close(q0.v[1], 0.0) && TOLERANCE.is_close(q0.v[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(q1.s, 2.0) && TOLERANCE.is_close(q1.v[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(v[0], -1.0) && TOLERANCE.is_close(v[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(scaled.s, 2.0));
+    MINI_CHECK(TOLERANCE.is_close(sum.s, 1.0) && TOLERANCE.is_close(sum.v[2], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(diff.s, 0.0) && TOLERANCE.is_close(diff.v[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(neg.s, -1.0));
 }
 
 MINI_TEST("Quaternion", "From Arc") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
     Vector src(1.0, 0.0, 0.0);
     Vector dst(0.0, 1.0, 0.0);
     Quaternion q = Quaternion::from_arc(src, dst);
@@ -36,6 +70,8 @@ MINI_TEST("Quaternion", "From Arc") {
 }
 
 MINI_TEST("Quaternion", "From Euler") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
     double pi = std::acos(-1.0);
     Quaternion q_euler = Quaternion::from_euler(0.0, 0.0, pi / 2.0);
     Quaternion q_axis = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 2.0);
@@ -44,7 +80,50 @@ MINI_TEST("Quaternion", "From Euler") {
     MINI_CHECK(TOLERANCE.is_close(q_euler.v[2], q_axis.v[2]));
 }
 
-MINI_TEST("Quaternion", "slerp") {
+MINI_TEST("Quaternion", "Magnitude Squared") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
+    double pi = std::acos(-1.0);
+    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 4.0);
+
+    MINI_CHECK(TOLERANCE.is_close(q.magnitude_squared(), q.magnitude() * q.magnitude()));
+}
+
+MINI_TEST("Quaternion", "Conjugate") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
+    double pi = std::acos(-1.0);
+    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 4.0);
+    Quaternion r = q.conjugate();
+
+    MINI_CHECK(TOLERANCE.is_close(r.s, q.s));
+    MINI_CHECK(TOLERANCE.is_close(r.v[0], -q.v[0]));
+    MINI_CHECK(TOLERANCE.is_close(r.v[2], -q.v[2]));
+}
+
+MINI_TEST("Quaternion", "Invert") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
+    double pi = std::acos(-1.0);
+    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 3.0);
+    Quaternion result = q * q.invert();
+
+    MINI_CHECK(TOLERANCE.is_close(result.s, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(result.v[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result.v[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(result.v[2], 0.0));
+}
+
+MINI_TEST("Quaternion", "Dot") {
+    // uncomment #include "quaternion.h"
+    Quaternion q = Quaternion::identity();
+
+    MINI_CHECK(TOLERANCE.is_close(q.dot(q), 1.0));
+}
+
+MINI_TEST("Quaternion", "Slerp") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
     double pi = std::acos(-1.0);
     Quaternion q1 = Quaternion::identity();
     Quaternion q2 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 2.0);
@@ -59,7 +138,9 @@ MINI_TEST("Quaternion", "slerp") {
     MINI_CHECK(TOLERANCE.is_close(mid2.s, half.s));
 }
 
-MINI_TEST("Quaternion", "nlerp") {
+MINI_TEST("Quaternion", "Nlerp") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "vector.h"
     double pi = std::acos(-1.0);
     Quaternion q1 = Quaternion::identity();
     Quaternion q2 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 2.0);
@@ -70,80 +151,17 @@ MINI_TEST("Quaternion", "nlerp") {
     MINI_CHECK(TOLERANCE.is_close(r1.s, q2.s));
 }
 
-MINI_TEST("Quaternion", "invert") {
-    double pi = std::acos(-1.0);
-    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 3.0);
-    Quaternion result = q * q.invert();
+MINI_TEST("Quaternion", "Json Roundtrip") {
+    // uncomment #include "quaternion.h"
+    // uncomment #include "encoders.h"
+    // uncomment #include "vector.h"
+    Vector axis(0.0, 0.0, 1.0);
+    Quaternion original = Quaternion::from_axis_angle(axis, 1.5708);
+    std::filesystem::create_directories("./serialization");
+    encoders::json_dump(original, "./serialization/test_quaternion.json");
+    Quaternion loaded = encoders::json_load<Quaternion>("./serialization/test_quaternion.json");
 
-    MINI_CHECK(TOLERANCE.is_close(result.s, 1.0));
-    MINI_CHECK(TOLERANCE.is_close(result.v[0], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(result.v[1], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(result.v[2], 0.0));
-}
-
-MINI_TEST("Quaternion", "dot") {
-    Quaternion q = Quaternion::identity();
-
-    MINI_CHECK(TOLERANCE.is_close(q.dot(q), 1.0));
-}
-
-MINI_TEST("Quaternion", "magnitude2") {
-    double pi = std::acos(-1.0);
-    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 4.0);
-
-    MINI_CHECK(TOLERANCE.is_close(q.magnitude2(), q.magnitude() * q.magnitude()));
-}
-
-MINI_TEST("Quaternion", "add") {
-    Quaternion a = Quaternion::from_sv(1.0, Vector(0.0, 0.0, 0.0));
-    Quaternion b = Quaternion::from_sv(0.0, Vector(0.0, 0.0, 1.0));
-    Quaternion r = a + b;
-
-    MINI_CHECK(TOLERANCE.is_close(r.s, 1.0));
-    MINI_CHECK(TOLERANCE.is_close(r.v[2], 1.0));
-}
-
-MINI_TEST("Quaternion", "sub") {
-    double pi = std::acos(-1.0);
-    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 4.0);
-    Quaternion r = q - q;
-
-    MINI_CHECK(TOLERANCE.is_close(r.s, 0.0));
-    MINI_CHECK(TOLERANCE.is_close(r.v[2], 0.0));
-}
-
-MINI_TEST("Quaternion", "neg") {
-    Quaternion q = Quaternion::identity();
-    Quaternion r = -q;
-
-    MINI_CHECK(TOLERANCE.is_close(r.s, -1.0));
-}
-
-MINI_TEST("Quaternion", "Mul Scalar") {
-    Quaternion q = Quaternion::identity();
-    Quaternion r = q * 2.0;
-
-    MINI_CHECK(TOLERANCE.is_close(r.s, 2.0));
-}
-
-MINI_TEST("Quaternion", "conjugate") {
-    double pi = std::acos(-1.0);
-    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 4.0);
-    Quaternion r = q.conjugate();
-
-    MINI_CHECK(TOLERANCE.is_close(r.s, q.s));
-    MINI_CHECK(TOLERANCE.is_close(r.v[0], -q.v[0]));
-    MINI_CHECK(TOLERANCE.is_close(r.v[2], -q.v[2]));
-}
-
-MINI_TEST("Quaternion", "mul") {
-    double pi = std::acos(-1.0);
-    Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), pi / 2.0);
-    Quaternion r = q * q;
-    Vector v = r.rotate_vector(Vector(1.0, 0.0, 0.0));
-
-    MINI_CHECK(TOLERANCE.is_close(v[0], -1.0));
-    MINI_CHECK(TOLERANCE.is_close(v[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.s, original.s));
 }
 
 } // namespace session_cpp

@@ -73,4 +73,40 @@ Mesh read_obj(const std::string& filepath) {
     return mesh;
 }
 
+std::vector<Polyline> read_obj_polylines(const std::string& filepath) {
+    std::ifstream in(filepath);
+    std::string line;
+    std::vector<Point> verts;
+    std::vector<Polyline> polylines;
+    std::vector<int> curv_indices;
+    bool in_curv = false;
+
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        if (line.rfind("v ", 0) == 0) {
+            std::istringstream iss(line);
+            char v; double x, y, z; iss >> v >> x >> y >> z;
+            verts.emplace_back(x, y, z);
+        } else if (line.rfind("curv ", 0) == 0) {
+            std::istringstream iss(line.substr(5));
+            double u0, u1; iss >> u0 >> u1;
+            curv_indices.clear();
+            int idx;
+            while (iss >> idx) curv_indices.push_back(idx);
+            in_curv = true;
+        } else if (line.rfind("end", 0) == 0 && in_curv) {
+            if (!curv_indices.empty()) {
+                std::vector<Point> pts;
+                for (int idx : curv_indices) {
+                    size_t vi = static_cast<size_t>(idx - 1);
+                    if (vi < verts.size()) pts.push_back(verts[vi]);
+                }
+                if (pts.size() >= 3) polylines.emplace_back(pts);
+            }
+            in_curv = false;
+        }
+    }
+    return polylines;
+}
+
 } } // namespace session_cpp::obj

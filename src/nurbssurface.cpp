@@ -1347,7 +1347,7 @@ bool NurbsSurface::transform(const Xform& xf) {
     for (int i = 0; i < m_cv_count[0]; i++) {
         for (int j = 0; j < m_cv_count[1]; j++) {
             Point pt = get_cv(i, j);
-            xf.transform_point(pt);
+            pt.xform = xf; pt.transform();
             set_cv(i, j, pt);
         }
     }

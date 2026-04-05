@@ -2,6 +2,7 @@
 #include "vector.h"
 #include "point.h"
 #include "tolerance.h"
+#include "xform.h"
 
 #include <cmath>
 
@@ -80,6 +81,25 @@ MINI_TEST("Vector", "Constructor") {
     MINI_CHECK(vy[0] == 0.0 && vy[1] == 1.0 && vy[2] == 0.0);
     MINI_CHECK(vz[0] == 0.0 && vz[1] == 0.0 && vz[2] == 1.0);
     MINI_CHECK(vzero[0] == 0.0 && vzero[1] == 0.0 && vzero[2] == 0.0);
+}
+
+MINI_TEST("Vector", "Transformation") {
+    // uncomment #include "vector.h"
+    // uncomment #include "xform.h"
+
+    Vector v(1.0, 2.0, 3.0);
+    v.xform = Xform::translation(10.0, 20.0, 30.0);
+    Vector v_transformed = v.transformed();
+    v.transform();
+
+    MINI_CHECK(v_transformed[0] == 1.0 && v_transformed[1] == 2.0 && v_transformed[2] == 3.0);
+    MINI_CHECK(v[0] == 1.0 && v[1] == 2.0 && v[2] == 3.0);
+    MINI_CHECK(v.xform == Xform::identity());
+
+    Vector v2(1.0, 0.0, 0.0);
+    v2.xform = Xform::rotation_z(Tolerance::PI / 2.0);
+    v2.transform();
+    MINI_CHECK(TOLERANCE.is_close(v2[0], 0.0) && TOLERANCE.is_close(v2[1], 1.0) && TOLERANCE.is_close(v2[2], 0.0));
 }
 
 MINI_TEST("Vector", "Magnitude") {

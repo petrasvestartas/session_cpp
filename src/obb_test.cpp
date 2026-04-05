@@ -10,6 +10,10 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("OBB", "Constructor") {
+    // uncomment #include "obb.h"
+    // uncomment #include "aabb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     // from_point
     OBB bb1 = OBB::from_point(Point(5.0, 5.0, 5.0), 2.0);
 
@@ -77,6 +81,8 @@ MINI_TEST("OBB", "Constructor") {
 }
 
 MINI_TEST("OBB", "Collision") {
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
     OBB bb1 = OBB::from_point(Point(0.0, 0.0, 0.0), 1.0);
     OBB bb2 = OBB::from_point(Point(1.5, 0.0, 0.0), 1.0);
     OBB bb3 = OBB::from_point(Point(5.0, 5.0, 5.0), 0.5);
@@ -92,6 +98,9 @@ MINI_TEST("OBB", "Collision") {
 }
 
 MINI_TEST("OBB", "Transformation") {
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0),
@@ -110,6 +119,8 @@ MINI_TEST("OBB", "Transformation") {
 }
 
 MINI_TEST("OBB", "Json Roundtrip") {
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox";
 
@@ -138,6 +149,8 @@ MINI_TEST("OBB", "Json Roundtrip") {
 }
 
 MINI_TEST("OBB", "Protobuf Roundtrip") {
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox_proto";
 
@@ -161,6 +174,8 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("OBB", "Accessors") {
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
     // axis-aligned OBB: center=(1,2,3), half_size=(1,2,3), dims 2×4×6
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),

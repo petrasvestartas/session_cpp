@@ -509,7 +509,7 @@ Mesh Primitives::transform_geometry(
     std::vector<size_t> vertex_keys;
     vertex_keys.reserve(vertices.size());
     for (const auto& v : vertices) {
-        Point transformed = xform.transformed_point(v);
+        Point transformed = v; transformed.xform = xform; transformed = transformed.transformed();
         vertex_keys.push_back(mesh.add_vertex(transformed));
     }
     for (const auto& tri : triangles) {
@@ -749,7 +749,7 @@ Mesh Primitives::arrow_mesh(const Line& line, double radius) {
 
     std::vector<size_t> body_vertex_map;
     for (const auto& v : body_geometry.first) {
-        Point transformed = body_xform.transformed_point(v);
+        Point transformed = v; transformed.xform = body_xform; transformed = transformed.transformed();
         body_vertex_map.push_back(mesh.add_vertex(transformed));
     }
     for (const auto& tri : body_geometry.second) {
@@ -759,7 +759,7 @@ Mesh Primitives::arrow_mesh(const Line& line, double radius) {
 
     std::vector<size_t> cone_vertex_map;
     for (const auto& v : cone_geometry.first) {
-        Point transformed = cone_xform.transformed_point(v);
+        Point transformed = v; transformed.xform = cone_xform; transformed = transformed.transformed();
         cone_vertex_map.push_back(mesh.add_vertex(transformed));
     }
     for (const auto& tri : cone_geometry.second) {

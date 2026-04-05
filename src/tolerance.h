@@ -141,6 +141,11 @@ public:
     /// Determine decimal precision from a tolerance value
     int precision_from_tolerance(double tol = -1) const;
 
+    /// Convert degrees to radians
+    static double to_radians(double degrees) { return degrees * TO_RADIANS; }
+    /// Convert radians to degrees
+    static double to_degrees(double radians) { return radians * TO_DEGREES; }
+
     /// Round a value to a given number of decimal places (like Python's round(value, ndigits))
     static double round_to(double value, int ndigits) {
         double factor = std::pow(10.0, ndigits);

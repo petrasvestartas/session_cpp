@@ -8,6 +8,9 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Intersection", "Line Line") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
 
@@ -21,6 +24,9 @@ MINI_TEST("Intersection", "Line Line") {
 }
 
 MINI_TEST("Intersection", "Line Line Parallel") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 1.0, 0.0, 1.0, 1.0, 0.0);
 
@@ -31,6 +37,8 @@ MINI_TEST("Intersection", "Line Line Parallel") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
 
@@ -43,6 +51,8 @@ MINI_TEST("Intersection", "Line Line Parameters") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
@@ -55,6 +65,8 @@ MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters Infinite") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(2.0, -1.0, 0.0, 2.0, 1.0, 0.0);
 
@@ -66,6 +78,11 @@ MINI_TEST("Intersection", "Line Line Parameters Infinite") {
 }
 
 MINI_TEST("Intersection", "Plane Plane") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Plane plane0 = Plane::from_point_normal(p0, n0);
@@ -86,6 +103,11 @@ MINI_TEST("Intersection", "Plane Plane") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Complex") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
     Vector plane_yaxis_0(0.272094, 0.96225, 0.006285);
@@ -114,6 +136,11 @@ MINI_TEST("Intersection", "Plane Plane Complex") {
 }
 
 MINI_TEST("Intersection", "Line Plane") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(p, n);
@@ -130,6 +157,11 @@ MINI_TEST("Intersection", "Line Plane") {
 }
 
 MINI_TEST("Intersection", "Line Plane Parallel") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(p, n);
@@ -143,6 +175,11 @@ MINI_TEST("Intersection", "Line Plane Parallel") {
 }
 
 MINI_TEST("Intersection", "Line Plane Real World") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Line l0(500.000, -573.576, -819.152, 500.000, 573.576, 819.152);
 
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
@@ -160,6 +197,10 @@ MINI_TEST("Intersection", "Line Plane Real World") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
     Vector plane_yaxis_0(0.272094, 0.96225, 0.006285);
@@ -185,6 +226,10 @@ MINI_TEST("Intersection", "Plane Plane Plane") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Plane plane0 = Plane::from_point_normal(p0, n0);
@@ -204,6 +249,10 @@ MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
 }
 
 MINI_TEST("Intersection", "Ray Box") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
     Vector y_axis(0.0, 1.0, 0.0);
@@ -223,6 +272,10 @@ MINI_TEST("Intersection", "Ray Box") {
 }
 
 MINI_TEST("Intersection", "Ray Box Miss") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
     Vector y_axis(0.0, 1.0, 0.0);
@@ -240,6 +293,9 @@ MINI_TEST("Intersection", "Ray Box Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point origin(-5.0, 0.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
@@ -254,6 +310,9 @@ MINI_TEST("Intersection", "Ray Sphere") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Tangent") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point origin(-5.0, 2.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
@@ -267,6 +326,9 @@ MINI_TEST("Intersection", "Ray Sphere Tangent") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Miss") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point origin(-5.0, 5.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
@@ -279,6 +341,9 @@ MINI_TEST("Intersection", "Ray Sphere Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
 
@@ -296,6 +361,9 @@ MINI_TEST("Intersection", "Ray Triangle") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Miss") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point origin(2.0, 2.0, -1.0);
     Vector direction(0.0, 0.0, 1.0);
 
@@ -311,6 +379,9 @@ MINI_TEST("Intersection", "Ray Triangle Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Parallel") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point origin(0.5, 0.5, -1.0);
     Vector direction(1.0, 0.0, 0.0);
 
@@ -327,6 +398,10 @@ MINI_TEST("Intersection", "Ray Triangle Parallel") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -356,6 +431,10 @@ MINI_TEST("Intersection", "Ray Mesh") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh First") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -384,6 +463,10 @@ MINI_TEST("Intersection", "Ray Mesh First") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Miss") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -406,6 +489,10 @@ MINI_TEST("Intersection", "Ray Mesh Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -435,6 +522,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh First") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -463,6 +554,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh First") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -485,6 +580,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<std::vector<Point>> polygons;
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 10; ++j) {
@@ -520,6 +619,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
 }
 
 MINI_TEST("Intersection", "Ray Box Real World") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point min(214.0, 192.0, 484.0);
     Point max(694.0, 567.0, 796.0);
@@ -542,6 +645,9 @@ MINI_TEST("Intersection", "Ray Box Real World") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Real World") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point sphere_center(457.0, 192.0, 207.0);
     double radius = 265.0;
@@ -562,6 +668,9 @@ MINI_TEST("Intersection", "Ray Sphere Real World") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Real World") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point p1(214.0, 567.0, 484.0);
     Point p2(214.0, 192.0, 796.0);
@@ -577,6 +686,11 @@ MINI_TEST("Intersection", "Ray Triangle Real World") {
 }
 
 MINI_TEST("Intersection", "Surface Plane") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     // Bilinear surface: z = x (0 to 10), cut at z=5
     std::vector<Point> pts = {
         Point(0, 0, 0),
@@ -605,6 +719,11 @@ MINI_TEST("Intersection", "Surface Plane") {
 }
 
 MINI_TEST("Intersection", "Surface Plane Curved") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     // Degree 3 surface with bump, cut at z=3
     std::vector<Point> pts;
     for (int i = 0; i < 4; i++) {
@@ -636,6 +755,11 @@ MINI_TEST("Intersection", "Surface Plane Curved") {
 }
 
 MINI_TEST("Intersection", "Surface Plane Miss") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     // Flat surface at z=0, plane at z=5 -> no intersection
     std::vector<Point> pts = {
         Point(0, 0, 0),
@@ -654,12 +778,16 @@ MINI_TEST("Intersection", "Surface Plane Miss") {
 }
 
 MINI_TEST("Intersection", "Remap") {
+    // uncomment #include "intersection.h"
     MINI_CHECK(std::fabs(Intersection::remap(5.0, 0.0, 10.0, 0.0, 1.0) - 0.5) < 1e-9);
     MINI_CHECK(std::fabs(Intersection::remap(0.0, 0.0, 10.0, 0.0, 1.0) - 0.0) < 1e-9);
     MINI_CHECK(std::fabs(Intersection::remap(10.0, 0.0, 10.0, 0.0, 1.0) - 1.0) < 1e-9);
 }
 
 MINI_TEST("Intersection", "Closest Point On Segment") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line seg(0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
     Point pt(2.0, 3.0, 0.0);
     Point cp;
@@ -680,6 +808,10 @@ MINI_TEST("Intersection", "Closest Point On Segment") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point o0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Point o1(0.0, 0.0, 1.0);
@@ -711,6 +843,11 @@ MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Planes Closed") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "polyline.h"
+    // uncomment #include "vector.h"
     Point mp(0.0, 0.0, 0.0);
     Vector mn(0.0, 0.0, 1.0);
     Plane main_plane = Plane::from_point_normal(mp, mn);
@@ -740,6 +877,11 @@ MINI_TEST("Intersection", "Plane 4 Planes Closed") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Planes Open") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "polyline.h"
+    // uncomment #include "vector.h"
     Point mp(0.0, 0.0, 0.0);
     Vector mn(0.0, 0.0, 1.0);
     Plane main_plane = Plane::from_point_normal(mp, mn);
@@ -761,6 +903,12 @@ MINI_TEST("Intersection", "Plane 4 Planes Open") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Lines") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "polyline.h"
+    // uncomment #include "vector.h"
     Point pp(0.0, 0.0, 0.0);
     Vector pn(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(pp, pn);
@@ -780,6 +928,10 @@ MINI_TEST("Intersection", "Plane 4 Lines") {
 }
 
 MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point p0o(0.0, 0.0, 0.0);
     Vector p0n(0.0, 0.0, 1.0);
     Point p1o(0.0, 0.0, 3.0);
@@ -795,6 +947,11 @@ MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
 }
 
 MINI_TEST("Intersection", "Polyline Plane") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "polyline.h"
+    // uncomment #include "vector.h"
     std::vector<Point> pts = {
         Point(-1.0, -1.0, 0.0),
         Point( 1.0, -1.0, 0.0),
@@ -818,6 +975,9 @@ MINI_TEST("Intersection", "Polyline Plane") {
 }
 
 MINI_TEST("Intersection", "Line Line 3D") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line cutter(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
     Line seg(1.0, 0.0, 0.0, 1.0, 2.0, 0.0);
     Point result;

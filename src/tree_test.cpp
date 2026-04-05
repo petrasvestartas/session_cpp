@@ -9,6 +9,10 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Tree", "Json Roundtrip") {
+    // uncomment #include "tree.h"
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
+    // uncomment #include "treenode.h"
     Tree original("./serialization/test_tree");
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto node1 = std::make_shared<TreeNode>(point1->guid());

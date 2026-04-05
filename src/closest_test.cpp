@@ -17,6 +17,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Closest", "Line Point") {
+    // uncomment #include "closest.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
     Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
 
     auto [cp1, t1, d1] = Closest::line_point(l, Point(5.0, 5.0, 0.0));
@@ -38,6 +41,9 @@ MINI_TEST("Closest", "Line Point") {
 }
 
 MINI_TEST("Closest", "Polyline Point") {
+    // uncomment #include "closest.h"
+    // uncomment #include "point.h"
+    // uncomment #include "polyline.h"
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -55,6 +61,9 @@ MINI_TEST("Closest", "Polyline Point") {
 }
 
 MINI_TEST("Closest", "Curve Point") {
+    // uncomment #include "closest.h"
+    // uncomment #include "nurbscurve.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 2.0, 0.0),
@@ -74,6 +83,9 @@ MINI_TEST("Closest", "Curve Point") {
 }
 
 MINI_TEST("Closest", "Surface Point") {
+    // uncomment #include "closest.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "point.h"
     std::vector<Point> pts = {
         // i=0
         Point(0.0, 0.0, 0.0),
@@ -109,6 +121,10 @@ MINI_TEST("Closest", "Surface Point") {
 }
 
 MINI_TEST("Closest", "Mesh Point") {
+    // uncomment #include "closest.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "primitives.h"
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point(m, Point(0.0, 0.0, 2.0));
@@ -121,6 +137,10 @@ MINI_TEST("Closest", "Mesh Point") {
 }
 
 MINI_TEST("Closest", "Mesh Point AABB") {
+    // uncomment #include "closest.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "primitives.h"
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
@@ -133,6 +153,9 @@ MINI_TEST("Closest", "Mesh Point AABB") {
 }
 
 MINI_TEST("Closest", "Pointcloud Point") {
+    // uncomment #include "closest.h"
+    // uncomment #include "point.h"
+    // uncomment #include "pointcloud.h"
     PointCloud pc({
         Point(0.0, 0.0, 0.0),
         Point(5.0, 0.0, 0.0),

@@ -72,7 +72,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
     double max_z = std::numeric_limits<double>::lowest();
 
     for (const auto& pt : points) {
-        Point local_pt = plane_to_xy.transformed_point(pt);
+        Point local_pt = pt; local_pt.xform = plane_to_xy; local_pt = local_pt.transformed();
         min_x = std::min(min_x, local_pt[0]);
         min_y = std::min(min_y, local_pt[1]);
         min_z = std::min(min_z, local_pt[2]);
@@ -89,7 +89,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
     );
 
     Xform xy_to_plane = Xform::xy_to_plane(origin, x_axis, y_axis, z_axis);
-    Point world_center = xy_to_plane.transformed_point(local_center);
+    Point world_center = local_center; world_center.xform = xy_to_plane; world_center = world_center.transformed();
 
     return OBB(world_center, x_axis, y_axis, z_axis, half_size);
 }
@@ -418,10 +418,10 @@ bool OBB::separating_plane_exists(const Vector& relative_position, const Vector&
 }
 
 void OBB::transform() {
-  xform.transform_point(center);
-  xform.transform_vector(x_axis);
-  xform.transform_vector(y_axis);
-  xform.transform_vector(z_axis);
+  center.xform = xform; center.transform();
+  x_axis.xform = xform; x_axis.transform();
+  y_axis.xform = xform; y_axis.transform();
+  z_axis.xform = xform; z_axis.transform();
   xform = Xform::identity();
 }
 

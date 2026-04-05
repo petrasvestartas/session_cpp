@@ -9,6 +9,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Session", "Constructor") {
+    // uncomment #include "session.h"
     Session session;
 
     MINI_CHECK(session.name == "my_session");
@@ -16,6 +17,9 @@ MINI_TEST("Session", "Constructor") {
 }
 
 MINI_TEST("Session", "Jsondump") {
+    // uncomment #include "session.h"
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -36,6 +40,8 @@ MINI_TEST("Session", "Jsondump") {
 }
 
 MINI_TEST("Session", "Jsonload") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -52,6 +58,9 @@ MINI_TEST("Session", "Jsonload") {
 }
 
 MINI_TEST("Session", "File Io") {
+    // uncomment #include "session.h"
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -72,6 +81,8 @@ MINI_TEST("Session", "File Io") {
 }
 
 MINI_TEST("Session", "Add Point") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
     Session session;
     auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
     session.add_point(point);
@@ -82,6 +93,8 @@ MINI_TEST("Session", "Add Point") {
 }
 
 MINI_TEST("Session", "Add Edge") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
     Session session;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -93,6 +106,8 @@ MINI_TEST("Session", "Add Edge") {
 }
 
 MINI_TEST("Session", "Get Object") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
     Session session;
     auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
     session.add_point(point);
@@ -104,6 +119,9 @@ MINI_TEST("Session", "Get Object") {
 }
 
 MINI_TEST("Session", "File Io Comprehensive") {
+    // uncomment #include "session.h"
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     Session session("./serialization/test_session");
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
@@ -125,6 +143,12 @@ MINI_TEST("Session", "File Io Comprehensive") {
 }
 
 MINI_TEST("Session", "Tree Transformation Hierarchy") {
+    // uncomment #include "session.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    // uncomment #include "xform.h"
     Session scene("tree_transformation_test");
 
     auto create_box = [](const Point& center, double size) -> std::shared_ptr<Mesh> {

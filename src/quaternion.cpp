@@ -65,7 +65,7 @@ double Quaternion::magnitude() const {
     return std::sqrt(s * s + v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }
 
-double Quaternion::magnitude2() const {
+double Quaternion::magnitude_squared() const {
     return s * s + v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
 }
 
@@ -90,7 +90,7 @@ Quaternion Quaternion::conjugate() const {
 }
 
 Quaternion Quaternion::invert() const {
-    double mag2 = magnitude2();
+    double mag2 = magnitude_squared();
     if (mag2 < 1e-20) return identity();
     Quaternion q(s / mag2, v * (-1.0 / mag2));
     q.typ = typ;

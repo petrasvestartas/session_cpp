@@ -5,12 +5,14 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("RTree", "Creation") {
+    // uncomment #include "rtree.h"
     RTree3 t;
 
     MINI_CHECK(t.count() == 0);
 }
 
 MINI_TEST("RTree", "Insert") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 42);
@@ -19,6 +21,7 @@ MINI_TEST("RTree", "Insert") {
 }
 
 MINI_TEST("RTree", "Insert Multiple") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -31,6 +34,7 @@ MINI_TEST("RTree", "Insert Multiple") {
 }
 
 MINI_TEST("RTree", "Search Hit") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {2, 2, 2};
     t.insert(a_min, a_max, 0);
@@ -46,6 +50,7 @@ MINI_TEST("RTree", "Search Hit") {
 }
 
 MINI_TEST("RTree", "Search Miss") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 7);
@@ -56,6 +61,7 @@ MINI_TEST("RTree", "Search Miss") {
 }
 
 MINI_TEST("RTree", "Remove") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 5);
@@ -65,6 +71,7 @@ MINI_TEST("RTree", "Remove") {
 }
 
 MINI_TEST("RTree", "Remove All") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -78,6 +85,7 @@ MINI_TEST("RTree", "Remove All") {
 }
 
 MINI_TEST("RTree", "Search Count") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -96,6 +104,7 @@ MINI_TEST("RTree", "Search Count") {
 }
 
 MINI_TEST("RTree", "Search Stop") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 0);
@@ -108,6 +117,7 @@ MINI_TEST("RTree", "Search Stop") {
 }
 
 MINI_TEST("RTree", "Search 100 Boxes") {
+    // uncomment #include "rtree.h"
     RTree3 t;
     int id = 0;
     auto add = [&](double x0, double y0, double z0, double x1, double y1, double z1) {

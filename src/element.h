@@ -6,7 +6,9 @@
 #include "obb.h"
 #include "xform.h"
 #include "line.h"
+#include "plane.h"
 #include "point.h"
+#include "polyline.h"
 #include "vector.h"
 #include <functional>
 #include <optional>
@@ -40,6 +42,10 @@ public:
     OBB obb();
     Mesh collision_mesh();
     Point point();
+    std::vector<Polyline> polylines();
+    std::vector<Plane> planes();
+    std::vector<Vector> edge_vectors();
+    std::optional<Line> axis();
     bool is_dirty() const { return _is_dirty; }
     const std::optional<OBB>& cached_aabb() const { return _aabb; }
     const std::optional<OBB>& cached_obb() const { return _obb; }
@@ -81,12 +87,20 @@ protected:
     std::optional<OBB> _obb;
     std::optional<Mesh> _collision_mesh;
     std::optional<Point> _point;
+    std::optional<std::vector<Polyline>> _polylines;
+    std::optional<std::vector<Plane>> _planes;
+    std::optional<std::vector<Vector>> _edge_vectors;
+    std::optional<Line> _axis;
     std::vector<std::function<Mesh(Mesh)>> _features;
 
     OBB compute_aabb();
     OBB compute_obb();
     Mesh compute_collision_mesh();
     Point compute_point();
+    virtual std::vector<Polyline> compute_polylines() const;
+    virtual std::vector<Plane> compute_planes() const;
+    virtual std::vector<Vector> compute_edge_vectors() const;
+    virtual std::optional<Line> compute_axis() const;
     Mesh apply_features(Mesh geo) const;
     static OBB obb_from_geometry(const ElementGeometry& geo);
 };
@@ -107,6 +121,10 @@ public:
     Line center_line() const;
     void extend(double distance);
     Mesh compute_element_geometry() const;
+    std::vector<Polyline> compute_polylines() const override;
+    std::vector<Plane> compute_planes() const override;
+    std::vector<Vector> compute_edge_vectors() const override;
+    std::optional<Line> compute_axis() const override;
 
     ColumnElement duplicate() const;
     bool operator==(const Element& other) const override;
@@ -141,6 +159,10 @@ public:
     Line center_line() const;
     void extend(double distance);
     Mesh compute_element_geometry() const;
+    std::vector<Polyline> compute_polylines() const override;
+    std::vector<Plane> compute_planes() const override;
+    std::vector<Vector> compute_edge_vectors() const override;
+    std::optional<Line> compute_axis() const override;
 
     BeamElement duplicate() const;
     bool operator==(const Element& other) const override;
@@ -159,19 +181,43 @@ private:
     double _width, _depth, _length;
 };
 
+struct JointConnection {
+    int joint_id;
+    bool is_male;
+    double parameter;
+};
+
 class PlateElement : public Element {
 public:
     PlateElement(const std::vector<Point>& polygon = {}, double thickness = 0.1,
+                 const std::string& name = "my_plate");
+    PlateElement(const std::vector<Point>& bottom, const std::vector<Point>& top,
                  const std::string& name = "my_plate");
     PlateElement(const PlateElement& other);
     PlateElement& operator=(const PlateElement& other);
 
     const std::vector<Point>& polygon() const { return _polygon; }
+    const std::vector<Point>& polygon_top() const { return _polygon_top; }
     double thickness() const { return _thickness; }
     void set_polygon(const std::vector<Point>& pts);
+    void set_polygon_top(const std::vector<Point>& pts);
     void set_thickness(double v);
     Mesh compute_element_geometry() const;
     static Vector polygon_normal(const std::vector<Point>& pts);
+
+    const std::vector<int>& joint_types() const { return _joint_types; }
+    void set_joint_types(const std::vector<int>& v) { _joint_types = v; }
+    const std::vector<std::vector<JointConnection>>& j_mf() const { return _j_mf; }
+    void set_j_mf(const std::vector<std::vector<JointConnection>>& v) { _j_mf = v; }
+    const std::string& key() const { return _key; }
+    void set_key(const std::string& v) { _key = v; }
+    const std::optional<Plane>& component_plane() const { return _component_plane; }
+    void set_component_plane(const Plane& v) { _component_plane = v; }
+
+    std::vector<Polyline> compute_polylines() const override;
+    std::vector<Plane> compute_planes() const override;
+    std::vector<Vector> compute_edge_vectors() const override;
+    std::optional<Line> compute_axis() const override;
 
     PlateElement duplicate() const;
     bool operator==(const Element& other) const override;
@@ -188,7 +234,12 @@ public:
 
 private:
     std::vector<Point> _polygon;
+    std::vector<Point> _polygon_top;
     double _thickness;
+    std::vector<int> _joint_types;
+    std::vector<std::vector<JointConnection>> _j_mf;
+    std::string _key;
+    std::optional<Plane> _component_plane;
 };
 
 std::ostream& operator<<(std::ostream& os, const Element& e);

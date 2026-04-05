@@ -296,7 +296,7 @@ void Polyline::transform() {
     for (size_t i = 0; i < point_count(); i++) {
         size_t idx = i * 3;
         Point pt(_coords[idx], _coords[idx + 1], _coords[idx + 2]);
-        xform.transform_point(pt);
+        pt.xform = xform; pt.transform();
         _coords[idx] = pt[0];
         _coords[idx + 1] = pt[1];
         _coords[idx + 2] = pt[2];
@@ -1293,7 +1293,7 @@ void get_fast_plane(const std::vector<Point>& pline, Point& origin, Plane& pln) 
 }
 
 void transform(std::vector<Point>& pline, const Xform& xf) {
-    for (auto& p : pline) xf.transform_point(p);
+    for (auto& p : pline) { p.xform = xf; p.transform(); }
 }
 
 void move(std::vector<Point>& pline, const Vector& dir) {
@@ -1400,6 +1400,40 @@ void get_middle_line(const Line& l0, const Line& l1, Line& out) {
 
 std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, int clip_type) {
     return BooleanPolyline::compute(a, b, clip_type);
+}
+
+std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, const Plane& plane, int clip_type) {
+    double ox = plane.origin()[0], oy = plane.origin()[1], oz = plane.origin()[2];
+    double xx = plane.x_axis()[0], xy = plane.x_axis()[1], xz = plane.x_axis()[2];
+    double yx = plane.y_axis()[0], yy = plane.y_axis()[1], yz = plane.y_axis()[2];
+
+    // Project to 2D as raw stride-3 coords (z=0) — no Polyline construction
+    auto project = [&](const Polyline& pl) -> Polyline {
+        Polyline p2d;
+        int n = pl.point_count();
+        p2d._coords.resize(n * 3);
+        for (int i = 0; i < n; i++) {
+            double dx = pl._coords[i*3] - ox, dy = pl._coords[i*3+1] - oy, dz = pl._coords[i*3+2] - oz;
+            p2d._coords[i*3]   = dx*xx + dy*xy + dz*xz;
+            p2d._coords[i*3+1] = dx*yx + dy*yy + dz*yz;
+            p2d._coords[i*3+2] = 0.0;
+        }
+        return p2d;
+    };
+
+    auto results = BooleanPolyline::compute(project(a), project(b), clip_type);
+
+    // Inverse-transform results back to 3D (in-place on _coords)
+    for (auto& r : results) {
+        int n = (int)(r._coords.size() / 3);
+        for (int i = 0; i < n; i++) {
+            double u = r._coords[i*3], v = r._coords[i*3+1];
+            r._coords[i*3]   = ox + u*xx + v*yx;
+            r._coords[i*3+1] = oy + u*xy + v*yy;
+            r._coords[i*3+2] = oz + u*xz + v*yz;
+        }
+    }
+    return results;
 }
 
 double Polyline::simplify_perp_dist(const Point& pt, const Point& line_start, const Point& line_end) {

@@ -8,6 +8,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Matrix", "Constructor") {
+    // uncomment #include "matrix.h"
     Matrix m = Matrix::zeros(2, 3);
     Matrix eye = Matrix::identity(3);
     Matrix ml = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
@@ -37,6 +38,7 @@ MINI_TEST("Matrix", "Constructor") {
 }
 
 MINI_TEST("Matrix", "Properties") {
+    // uncomment #include "matrix.h"
     Matrix m1 = Matrix::identity(3);
     Matrix m2 = Matrix::zeros(2, 3);
     Matrix m3 = Matrix::from_vec(3, 3, {1.0, 2.0, 3.0, 2.0, 5.0, 6.0, 3.0, 6.0, 9.0});
@@ -55,6 +57,7 @@ MINI_TEST("Matrix", "Properties") {
 }
 
 MINI_TEST("Matrix", "Add") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
     Matrix b = Matrix::from_vec(2, 2, {5.0, 6.0, 7.0, 8.0});
     Matrix c = a.add(b);
@@ -66,6 +69,7 @@ MINI_TEST("Matrix", "Add") {
 }
 
 MINI_TEST("Matrix", "Subtract") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 2, {5.0, 6.0, 7.0, 8.0});
     Matrix b = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
     Matrix c = a.subtract(b);
@@ -77,6 +81,7 @@ MINI_TEST("Matrix", "Subtract") {
 }
 
 MINI_TEST("Matrix", "Scale") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
     Matrix b = a.scale(2.0);
     Matrix c = a.scale(3.0);
@@ -86,6 +91,7 @@ MINI_TEST("Matrix", "Scale") {
 }
 
 MINI_TEST("Matrix", "Multiply") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     Matrix b = Matrix::from_vec(3, 2, {7.0, 8.0, 9.0, 10.0, 11.0, 12.0});
     Matrix c = a.multiply(b);
@@ -98,6 +104,7 @@ MINI_TEST("Matrix", "Multiply") {
 }
 
 MINI_TEST("Matrix", "Transpose") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     Matrix t = a.transpose();
 
@@ -107,6 +114,7 @@ MINI_TEST("Matrix", "Transpose") {
 }
 
 MINI_TEST("Matrix", "Determinant") {
+    // uncomment #include "matrix.h"
     Matrix a1 = Matrix::from_vec(1, 1, {5.0});
     Matrix a2 = Matrix::from_vec(2, 2, {4.0, 7.0, 2.0, 6.0});
     Matrix a3 = Matrix::from_vec(3, 3, {1.0, 2.0, 3.0, 0.0, 1.0, 4.0, 5.0, 6.0, 0.0});
@@ -119,6 +127,7 @@ MINI_TEST("Matrix", "Determinant") {
 }
 
 MINI_TEST("Matrix", "Inverse") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 2, {4.0, 7.0, 2.0, 6.0});
     auto inv = a.inverse();
     Matrix singular = Matrix::from_vec(2, 2, {1.0, 2.0, 2.0, 4.0});
@@ -134,6 +143,7 @@ MINI_TEST("Matrix", "Inverse") {
 }
 
 MINI_TEST("Matrix", "Solve") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 2, {2.0, 1.0, 1.0, 3.0});
     Matrix b = Matrix::from_vec(2, 1, {5.0, 10.0});
     auto x = a.solve(b);
@@ -150,6 +160,7 @@ MINI_TEST("Matrix", "Solve") {
 }
 
 MINI_TEST("Matrix", "LuDecompose") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {2.0, 1.0, 1.0, 4.0, 3.0, 3.0, 8.0, 7.0, 9.0});
     auto [l, u, p] = a.lu_decompose();
     Matrix pa = p.multiply(a);
@@ -163,6 +174,7 @@ MINI_TEST("Matrix", "LuDecompose") {
 }
 
 MINI_TEST("Matrix", "QrDecompose") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {12.0, -51.0, 4.0, 6.0, 167.0, -68.0, -4.0, 24.0, -41.0});
     auto [q, r] = a.qr_decompose();
     Matrix qt = q.transpose();
@@ -179,6 +191,7 @@ MINI_TEST("Matrix", "QrDecompose") {
 }
 
 MINI_TEST("Matrix", "Cholesky") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {4.0, 2.0, 2.0, 2.0, 5.0, 3.0, 2.0, 3.0, 6.0});
     auto l = a.cholesky();
 
@@ -195,6 +208,7 @@ MINI_TEST("Matrix", "Cholesky") {
 }
 
 MINI_TEST("Matrix", "Eigenvalues") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0});
     std::vector<double> evs = a.eigenvalues();
     std::sort(evs.begin(), evs.end());
@@ -206,6 +220,7 @@ MINI_TEST("Matrix", "Eigenvalues") {
 }
 
 MINI_TEST("Matrix", "Svd") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0});
     auto [u, sv, vt] = a.svd();
     std::sort(sv.begin(), sv.end(), std::greater<double>());
@@ -217,6 +232,7 @@ MINI_TEST("Matrix", "Svd") {
 }
 
 MINI_TEST("Matrix", "Norms") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 2, {1.0, -2.0, 3.0, -4.0});
     double nf = a.norm_frobenius();
     double n1 = a.norm_1();
@@ -228,6 +244,7 @@ MINI_TEST("Matrix", "Norms") {
 }
 
 MINI_TEST("Matrix", "Rank") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::identity(3);
     Matrix b = Matrix::from_vec(3, 3, {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0});
     Matrix c = Matrix::zeros(3, 3);
@@ -238,6 +255,7 @@ MINI_TEST("Matrix", "Rank") {
 }
 
 MINI_TEST("Matrix", "Json Roundtrip") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix";
     a.json_dump("serialization/test_matrix.json");
@@ -249,6 +267,7 @@ MINI_TEST("Matrix", "Json Roundtrip") {
 }
 
 MINI_TEST("Matrix", "Protobuf Roundtrip") {
+    // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix_proto";
     a.pb_dump("serialization/test_matrix.bin");

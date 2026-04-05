@@ -8,6 +8,9 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Objects", "Json Roundtrip") {
+    // uncomment #include "objects.h"
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     std::filesystem::create_directories("./serialization");
     Objects original;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);

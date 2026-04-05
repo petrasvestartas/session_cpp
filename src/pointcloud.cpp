@@ -212,7 +212,7 @@ void PointCloud::transform() {
     for (size_t i = 0; i < point_count(); ++i) {
         size_t idx = i * 3;
         Point pt(_coords[idx], _coords[idx + 1], _coords[idx + 2]);
-        xform.transform_point(pt);
+        pt.xform = xform; pt.transform();
         _coords[idx] = pt[0];
         _coords[idx + 1] = pt[1];
         _coords[idx + 2] = pt[2];
@@ -221,7 +221,7 @@ void PointCloud::transform() {
     for (size_t i = 0; i < normal_count(); ++i) {
         size_t idx = i * 3;
         Vector n(_normals[idx], _normals[idx + 1], _normals[idx + 2]);
-        xform.transform_vector(n);
+        n.xform = xform; n.transform();
         _normals[idx] = n[0];
         _normals[idx + 1] = n[1];
         _normals[idx + 2] = n[2];

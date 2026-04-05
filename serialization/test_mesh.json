@@ -1,4 +1,5 @@
 {
+  "color_mode": "objectcolor",
   "default_edge_attributes": {},
   "default_face_attributes": {},
   "default_vertex_attributes": {
@@ -6,7 +7,7 @@
     "y": 0.0,
     "z": 0.0
   },
-  "edgedata": null,
+  "edgedata": {},
   "face": {
     "0": [
       0,
@@ -45,7 +46,7 @@
       5
     ]
   },
-  "face_holes": null,
+  "face_holes": {},
   "facecolors": [
     255,
     255,
@@ -72,8 +73,8 @@
     255,
     255
   ],
-  "facedata": null,
-  "guid": "4719ff0b-ee0a-482a-8b63-65629db050ea",
+  "facedata": {},
+  "guid": "a7a87740-9b08-4192-91e7-9f2d2f613b6a",
   "halfedge": {
     "0": {
       "1": 2,
@@ -173,12 +174,11 @@
     "a": 255,
     "b": 255,
     "g": 255,
-    "guid": "773daffd-349d-4fb4-ae7f-c1c12ce89798",
+    "guid": "1f41d0ed-1be8-4f2f-bce4-83952cb51f5b",
     "name": "white",
     "r": 255,
     "type": "Color"
   },
-  "color_mode": "objectcolor",
   "pointcolors": [
     255,
     255,
@@ -213,7 +213,7 @@
     255,
     255
   ],
-  "triangulation": null,
+  "triangulation": {},
   "type": "Mesh",
   "vertex": {
     "0": {
@@ -280,7 +280,7 @@
     1.0
   ],
   "xform": {
-    "guid": "2127af65-e6eb-4e4a-99cd-e5d731f5973e",
+    "guid": "34948876-d4df-4899-9135-49f9b7e5ac3d",
     "m": [
       1.0,
       0.0,

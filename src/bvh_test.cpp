@@ -9,6 +9,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("BVH", "Expand Bits") {
+    // uncomment #include "bvh.h"
     MINI_CHECK(expand_bits(0) == 0);
     MINI_CHECK(expand_bits(1) == 1);
     MINI_CHECK(expand_bits(2) == 8);
@@ -20,12 +21,14 @@ MINI_TEST("BVH", "Expand Bits") {
 }
 
 MINI_TEST("BVH", "Morton Code Origin") {
+    // uncomment #include "bvh.h"
     uint32_t code = calculate_morton_code(0.0, 0.0, 0.0, 100.0);
 
     MINI_CHECK(code < (1u << 30));
 }
 
 MINI_TEST("BVH", "Morton Code Corners") {
+    // uncomment #include "bvh.h"
     double world_size = 100.0;
 
     uint32_t code_min = calculate_morton_code(-50.0, -50.0, -50.0, world_size);
@@ -38,6 +41,7 @@ MINI_TEST("BVH", "Morton Code Corners") {
 }
 
 MINI_TEST("BVH", "Morton Code Spatial Locality") {
+    // uncomment #include "bvh.h"
     uint32_t code1 = calculate_morton_code(10.0, 10.0, 10.0);
     uint32_t code2 = calculate_morton_code(10.1, 10.1, 10.1);
     uint32_t code3 = calculate_morton_code(-40.0, -40.0, -40.0);
@@ -49,6 +53,7 @@ MINI_TEST("BVH", "Morton Code Spatial Locality") {
 }
 
 MINI_TEST("BVH", "Node Creation") {
+    // uncomment #include "bvh.h"
     BVHNode node;
 
     MINI_CHECK(node.left == nullptr);
@@ -58,6 +63,7 @@ MINI_TEST("BVH", "Node Creation") {
 }
 
 MINI_TEST("BVH", "Node Leaf") {
+    // uncomment #include "bvh.h"
     BVHNode node;
 
     MINI_CHECK(!node.is_leaf());
@@ -68,6 +74,7 @@ MINI_TEST("BVH", "Node Leaf") {
 }
 
 MINI_TEST("BVH", "Creation") {
+    // uncomment #include "bvh.h"
     BVH bvh(100.0);
 
     MINI_CHECK(!bvh.guid().empty());
@@ -77,6 +84,8 @@ MINI_TEST("BVH", "Creation") {
 }
 
 MINI_TEST("BVH", "Build Empty") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
     std::vector<OBB> boxes;
     BVH bvh = BVH::from_boxes(boxes, 100.0);
 
@@ -84,6 +93,10 @@ MINI_TEST("BVH", "Build Empty") {
 }
 
 MINI_TEST("BVH", "Build Single") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     OBB bbox(
         Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     std::vector<OBB> boxes = {bbox};
@@ -96,6 +109,10 @@ MINI_TEST("BVH", "Build Single") {
 }
 
 MINI_TEST("BVH", "Build Multiple") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<OBB> bboxes = {
         OBB(
             Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -114,6 +131,10 @@ MINI_TEST("BVH", "Build Multiple") {
 }
 
 MINI_TEST("BVH", "Aabb Intersect") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     BVH bvh(100.0);
 
     OBB bbox1(
@@ -130,6 +151,10 @@ MINI_TEST("BVH", "Aabb Intersect") {
 }
 
 MINI_TEST("BVH", "Check All Collisions") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<OBB> bboxes = {
         OBB(
             Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -153,6 +178,10 @@ MINI_TEST("BVH", "Check All Collisions") {
 }
 
 MINI_TEST("BVH", "Merge Aabb") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     BVH bvh(100.0);
 
     OBB bbox1(
@@ -167,6 +196,10 @@ MINI_TEST("BVH", "Merge Aabb") {
 }
 
 MINI_TEST("BVH", "Fixed 100 Boxes") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     std::vector<OBB> boxes;
     boxes.reserve(100);
 

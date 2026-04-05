@@ -8,6 +8,8 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Vertex", "Json Roundtrip") {
+    // uncomment #include "graph.h"
+    // uncomment #include "encoders.h"
     Vertex original("v0", "./serialization/test_attribute");
 
     std::filesystem::create_directories("./serialization");
@@ -21,6 +23,8 @@ MINI_TEST("Vertex", "Json Roundtrip") {
 }
 
 MINI_TEST("Edge", "Json Roundtrip") {
+    // uncomment #include "graph.h"
+    // uncomment #include "encoders.h"
     Edge original("./serialization/test_edge", "v0", "v1");
 
     std::filesystem::create_directories("./serialization");
@@ -34,6 +38,8 @@ MINI_TEST("Edge", "Json Roundtrip") {
 }
 
 MINI_TEST("Graph", "Json Roundtrip") {
+    // uncomment #include "graph.h"
+    // uncomment #include "encoders.h"
     std::filesystem::create_directories("./serialization");
     Graph original("./serialization/test_graph");
     original.add_node("node1", "Node 1");
@@ -52,6 +58,7 @@ MINI_TEST("Graph", "Json Roundtrip") {
 }
 
 MINI_TEST("Graph", "Bfs") {
+    // uncomment #include "graph.h"
     Graph g("test");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -64,6 +71,7 @@ MINI_TEST("Graph", "Bfs") {
 }
 
 MINI_TEST("Graph", "Dfs") {
+    // uncomment #include "graph.h"
     Graph g("test");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -76,6 +84,7 @@ MINI_TEST("Graph", "Dfs") {
 }
 
 MINI_TEST("Graph", "Connected Components") {
+    // uncomment #include "graph.h"
     Graph g("test");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -92,6 +101,7 @@ MINI_TEST("Graph", "Connected Components") {
 }
 
 MINI_TEST("Graph", "Shortest Path") {
+    // uncomment #include "graph.h"
     Graph g("test");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -106,6 +116,7 @@ MINI_TEST("Graph", "Shortest Path") {
 }
 
 MINI_TEST("Graph", "Has Cycle") {
+    // uncomment #include "graph.h"
     Graph g("test");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -121,6 +132,7 @@ MINI_TEST("Graph", "Has Cycle") {
 }
 
 MINI_TEST("Graph", "Cycle Basis") {
+    // uncomment #include "graph.h"
     Graph g("test");
     g.add_edge("a", "b");
     g.add_edge("b", "c");

@@ -1,10 +1,16 @@
 #include "xform.h"
+#include "vector.h"
 #include "point.h"
 #include "plane.h"
+#include "line.h"
 
 #include "xform.pb.h"
 
 namespace session_cpp {
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Constructors
+///////////////////////////////////////////////////////////////////////////////////////////
 
 Xform::Xform() {
     m = {0.0, 0.0, 0.0, 0.0,
@@ -44,6 +50,10 @@ Xform Xform::from_matrix(const std::array<double, 16>& matrix) {
     return Xform(matrix);
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// Transformations
+///////////////////////////////////////////////////////////////////////////////////////////
+
 Xform Xform::translation(double x, double y, double z) {
     Xform xform;
     xform.m[12] = x;
@@ -52,10 +62,11 @@ Xform Xform::translation(double x, double y, double z) {
     return xform;
 }
 
-Xform Xform::rotation_x(double angle_radians) {
+Xform Xform::rotation_x(double angle, bool degrees) {
+    if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    double cos_angle = std::cos(angle_radians);
-    double sin_angle = std::sin(angle_radians);
+    double cos_angle = std::cos(angle);
+    double sin_angle = std::sin(angle);
     xform.m[5] = cos_angle;
     xform.m[6] = sin_angle;
     xform.m[9] = -sin_angle;
@@ -63,10 +74,11 @@ Xform Xform::rotation_x(double angle_radians) {
     return xform;
 }
 
-Xform Xform::rotation_y(double angle_radians) {
+Xform Xform::rotation_y(double angle, bool degrees) {
+    if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    double cos_angle = std::cos(angle_radians);
-    double sin_angle = std::sin(angle_radians);
+    double cos_angle = std::cos(angle);
+    double sin_angle = std::sin(angle);
     xform.m[0] = cos_angle;
     xform.m[2] = -sin_angle;
     xform.m[8] = sin_angle;
@@ -74,10 +86,11 @@ Xform Xform::rotation_y(double angle_radians) {
     return xform;
 }
 
-Xform Xform::rotation_z(double angle_radians) {
+Xform Xform::rotation_z(double angle, bool degrees) {
+    if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    double cos_angle = std::cos(angle_radians);
-    double sin_angle = std::sin(angle_radians);
+    double cos_angle = std::cos(angle);
+    double sin_angle = std::sin(angle);
     xform.m[0] = cos_angle;
     xform.m[1] = sin_angle;
     xform.m[4] = -sin_angle;
@@ -85,12 +98,13 @@ Xform Xform::rotation_z(double angle_radians) {
     return xform;
 }
 
-Xform Xform::rotation(Vector& axis, double angle_radians) {
+Xform Xform::rotation(Vector& axis, double angle, bool degrees) {
+    if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
     axis.normalize_self();
-    
-    double cos_angle = std::cos(angle_radians);
-    double sin_angle = std::sin(angle_radians);
+
+    double cos_angle = std::cos(angle);
+    double sin_angle = std::sin(angle);
     double one_minus_cos = 1.0 - cos_angle;
 
     double xx = axis[0] * axis[0];
@@ -113,6 +127,15 @@ Xform Xform::rotation(Vector& axis, double angle_radians) {
     xform.m[10] = cos_angle + zz * one_minus_cos;
 
     return xform;
+}
+
+Xform Xform::rotation_around_line(const Line& line, double angle, bool degrees) {
+    Point p = line.start();
+    Vector d = line.to_direction();
+    Xform t0 = translation(-p[0], -p[1], -p[2]);
+    Xform r = rotation(d, angle, degrees);
+    Xform t1 = translation(p[0], p[1], p[2]);
+    return t1 * (r * t0);
 }
 
 Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
@@ -290,7 +313,8 @@ Xform Xform::scale_non_uniform(Point& origin, double scale_x, double scale_y, do
     return t2 * (t1 * t0);
 }
 
-Xform Xform::axis_rotation(double angle, Vector& axis) {
+Xform Xform::axis_rotation(double angle, Vector& axis, bool degrees) {
+    if (degrees) angle = angle * Tolerance::TO_RADIANS;
     double c = std::cos(angle);
     double s = std::sin(angle);
     double ux = axis[0];
@@ -314,7 +338,7 @@ Xform Xform::axis_rotation(double angle, Vector& axis) {
     return xform;
 }
 
-Xform Xform::look_at_rh(const Point& eye, const Point& target, const Vector& up) {
+Xform Xform::look_at_right_handed(const Point& eye, const Point& target, const Vector& up) {
     Vector f = target - eye;
     f.normalize_self();
     Vector up_copy = up;
@@ -322,27 +346,119 @@ Xform Xform::look_at_rh(const Point& eye, const Point& target, const Vector& up)
     Vector s = f.cross(up_copy);
     s.normalize_self();
     Vector u = s.cross(f);
-    
+
     Xform xform;
     xform.m[0] = s[0];
     xform.m[4] = s[1];
     xform.m[8] = s[2];
-    
+
     xform.m[1] = u[0];
     xform.m[5] = u[1];
     xform.m[9] = u[2];
-    
+
     xform.m[2] = -f[0];
     xform.m[6] = -f[1];
     xform.m[10] = -f[2];
-    
+
     Vector eye_vec(eye[0], eye[1], eye[2]);
     xform.m[12] = -s.dot(eye_vec);
     xform.m[13] = -u.dot(eye_vec);
     xform.m[14] = f.dot(eye_vec);
-    
+
     return xform;
 }
+
+Xform Xform::look_to_right_handed(const Point& eye, const Vector& direction, const Vector& up) {
+    Vector f = direction;
+    f.normalize_self();
+    Vector up_copy = up;
+    up_copy.normalize_self();
+    Vector s = f.cross(up_copy);
+    s.normalize_self();
+    Vector u = s.cross(f);
+
+    Xform xform;
+    xform.m[0] = s[0];
+    xform.m[4] = s[1];
+    xform.m[8] = s[2];
+
+    xform.m[1] = u[0];
+    xform.m[5] = u[1];
+    xform.m[9] = u[2];
+
+    xform.m[2] = -f[0];
+    xform.m[6] = -f[1];
+    xform.m[10] = -f[2];
+
+    Vector eye_vec(eye[0], eye[1], eye[2]);
+    xform.m[12] = -s.dot(eye_vec);
+    xform.m[13] = -u.dot(eye_vec);
+    xform.m[14] = f.dot(eye_vec);
+
+    return xform;
+}
+
+Xform Xform::perspective(double fov_y, double aspect, double near, double far) {
+    double f = 1.0 / std::tan(fov_y / 2.0);
+    double nf = near - far;
+    Xform xform;
+    xform.m.fill(0.0);
+    xform.m[0] = f / aspect;
+    xform.m[5] = f;
+    xform.m[10] = far / nf;
+    xform.m[11] = -1.0;
+    xform.m[14] = (near * far) / nf;
+    return xform;
+}
+
+Xform Xform::orthographic(double left, double right, double bottom, double top, double near, double far) {
+    double rl = right - left;
+    double tb = top - bottom;
+    double nf = near - far;
+    Xform xform;
+    xform.m.fill(0.0);
+    xform.m[0] = 2.0 / rl;
+    xform.m[5] = 2.0 / tb;
+    xform.m[10] = 1.0 / nf;
+    xform.m[12] = (left + right) / (left - right);
+    xform.m[13] = (bottom + top) / (bottom - top);
+    xform.m[14] = near / nf;
+    xform.m[15] = 1.0;
+    return xform;
+}
+
+Xform Xform::project_to_plane(const Plane& plane) {
+    const Vector& n = plane.z_axis();
+    const Point& o = plane.origin();
+    double nx = n[0], ny = n[1], nz = n[2];
+    double d = o[0] * nx + o[1] * ny + o[2] * nz;
+    Xform xform;
+    xform.m[0]  = 1.0 - nx * nx;  xform.m[4]  = -nx * ny;        xform.m[8]  = -nx * nz;        xform.m[12] = nx * d;
+    xform.m[1]  = -ny * nx;       xform.m[5]  = 1.0 - ny * ny;   xform.m[9]  = -ny * nz;        xform.m[13] = ny * d;
+    xform.m[2]  = -nz * nx;       xform.m[6]  = -nz * ny;        xform.m[10] = 1.0 - nz * nz;   xform.m[14] = nz * d;
+    xform.m[3]  = 0.0;            xform.m[7]  = 0.0;             xform.m[11] = 0.0;              xform.m[15] = 1.0;
+    return xform;
+}
+
+Xform Xform::project_to_plane_by_axis(const Plane& plane, const Vector& direction) {
+    const Vector& n = plane.z_axis();
+    const Point& o = plane.origin();
+    double nx = n[0], ny = n[1], nz = n[2];
+    double dx = direction[0], dy = direction[1], dz = direction[2];
+    double dot_nd = nx * dx + ny * dy + nz * dz;
+    double s = 1.0 / dot_nd;
+    double d = o[0] * nx + o[1] * ny + o[2] * nz;
+    Xform xform;
+    xform.m[0]  = 1.0 - dx*s*nx;  xform.m[4]  = -dx*s*ny;        xform.m[8]  = -dx*s*nz;        xform.m[12] = dx*s*d;
+    xform.m[1]  = -dy*s*nx;       xform.m[5]  = 1.0 - dy*s*ny;   xform.m[9]  = -dy*s*nz;        xform.m[13] = dy*s*d;
+    xform.m[2]  = -dz*s*nx;       xform.m[6]  = -dz*s*ny;        xform.m[10] = 1.0 - dz*s*nz;   xform.m[14] = dz*s*d;
+    xform.m[3]  = 0.0;            xform.m[7]  = 0.0;             xform.m[11] = 0.0;              xform.m[15] = 1.0;
+    return xform;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Details
+///////////////////////////////////////////////////////////////////////////////////////////
 
 std::optional<Xform> Xform::inverse() const {
     double a00 = m[0], a01 = m[4], a02 = m[8];
@@ -394,53 +510,14 @@ bool Xform::is_identity() const {
     return true;
 }
 
-Point Xform::transformed_point(const Point& point) const {
-    double x = point[0];
-    double y = point[1];
-    double z = point[2];
-    double w = m[3] * x + m[7] * y + m[11] * z + m[15];
-    double w_inv = (std::abs(w) > 1e-10) ? 1.0 / w : 1.0;
+///////////////////////////////////////////////////////////////////////////////////////////
+// Apply Transformations
+///////////////////////////////////////////////////////////////////////////////////////////
 
-    return Point(
-        (m[0] * x + m[4] * y + m[8] * z + m[12]) * w_inv,
-        (m[1] * x + m[5] * y + m[9] * z + m[13]) * w_inv,
-        (m[2] * x + m[6] * y + m[10] * z + m[14]) * w_inv
-    );
-}
 
-Vector Xform::transformed_vector(const Vector& vector) const {
-    double x = vector[0];
-    double y = vector[1];
-    double z = vector[2];
-
-    return Vector(
-        m[0] * x + m[4] * y + m[8] * z,
-        m[1] * x + m[5] * y + m[9] * z,
-        m[2] * x + m[6] * y + m[10] * z
-    );
-}
-
-void Xform::transform_point(Point& point) const {
-    double x = point[0];
-    double y = point[1];
-    double z = point[2];
-    double w = m[3] * x + m[7] * y + m[11] * z + m[15];
-    double w_inv = (std::abs(w) > 1e-10) ? 1.0 / w : 1.0;
-
-    point[0] = (m[0] * x + m[4] * y + m[8] * z + m[12]) * w_inv;
-    point[1] = (m[1] * x + m[5] * y + m[9] * z + m[13]) * w_inv;
-    point[2] = (m[2] * x + m[6] * y + m[10] * z + m[14]) * w_inv;
-}
-
-void Xform::transform_vector(Vector& vector) const {
-    double x = vector[0];
-    double y = vector[1];
-    double z = vector[2];
-
-    vector[0] = m[0] * x + m[4] * y + m[8] * z;
-    vector[1] = m[1] * x + m[5] * y + m[9] * z;
-    vector[2] = m[2] * x + m[6] * y + m[10] * z;
-}
+///////////////////////////////////////////////////////////////////////////////////////////
+// JSON
+///////////////////////////////////////////////////////////////////////////////////////////
 
 nlohmann::ordered_json Xform::jsondump() const {
     // Alphabetical order to match Rust's serde_json
@@ -479,6 +556,10 @@ Xform Xform::json_load(const std::string& filename) {
     return jsonload(data);
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// Protobuf
+///////////////////////////////////////////////////////////////////////////////////////////
+
 std::string Xform::pb_dumps() const {
     session_proto::Xform proto;
     proto.set_guid(guid());
@@ -514,6 +595,10 @@ Xform Xform::pb_load(const std::string& filename) {
                       std::istreambuf_iterator<char>());
     return pb_loads(data);
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Operators
+///////////////////////////////////////////////////////////////////////////////////////////
 
 Xform Xform::operator*(const Xform& other) const {
     Xform result;
@@ -567,6 +652,10 @@ bool Xform::operator==(const Xform& other) const {
 bool Xform::operator!=(const Xform& other) const {
     return !(*this == other);
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// String Representations
+///////////////////////////////////////////////////////////////////////////////////////////
 
 std::string Xform::str() const {
     std::ostringstream oss;

@@ -4,7 +4,6 @@
 #include "fmt/core.h"
 #include "guid.h"
 #include "json.h"
-#include "vector.h"
 #include <array>
 #include <cmath>
 #include <fstream>
@@ -16,8 +15,10 @@
 
 namespace session_cpp {
 
-class Point; // Forward declaration
-class Plane; // Forward declaration
+class Point;  // Forward declaration
+class Vector; // Forward declaration
+class Plane;  // Forward declaration
+class Line;   // Forward declaration
 
 /**
  * @class Xform
@@ -25,114 +26,192 @@ class Plane; // Forward declaration
  */
 class Xform {
 public:
-    std::string name = "my_xform";   ///< Human-readable name
+    /// Human-readable name
+    std::string name = "my_xform";
+
+    /// Lazy GUID accessor (const)
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+    /// Lazy GUID accessor (mutable)
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    std::array<double, 16> m;          ///< Column-major 4x4 matrix values
+
+    /// Column-major 4x4 matrix values
+    std::array<double, 16> m;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Constructors
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Default constructor (identity)
     Xform();
+
     /// Construct from matrix values (column-major)
     Xform(const std::array<double, 16>& matrix);
+
     /// Copy constructor (creates a new guid while copying data)
     Xform(const Xform& other);
+
     /// Copy assignment (creates a new guid while copying data)
     Xform& operator=(const Xform& other);
 
     /// Identity matrix
     static Xform identity();
+
     /// Build from array values (column-major)
     static Xform from_matrix(const std::array<double, 16>& matrix);
-    
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformations
     ///////////////////////////////////////////////////////////////////////////////////////////
-    
+
     /// Translation by x, y, z
     static Xform translation(double x, double y, double z);
-    /// Rotation around X axis (radians)
-    static Xform rotation_x(double angle_radians);
-    /// Rotation around Y axis (radians)
-    static Xform rotation_y(double angle_radians);
-    /// Rotation around Z axis (radians)
-    static Xform rotation_z(double angle_radians);
-    /// Rotation around arbitrary axis (radians)
-    static Xform rotation(Vector& axis, double angle_radians);
+
+    /// Rotation around X axis
+    static Xform rotation_x(double angle, bool degrees = false);
+
+    /// Rotation around Y axis
+    static Xform rotation_y(double angle, bool degrees = false);
+
+    /// Rotation around Z axis
+    static Xform rotation_z(double angle, bool degrees = false);
+
+    /// Rotation around arbitrary axis
+    static Xform rotation(Vector& axis, double angle, bool degrees = false);
+
+    /// Rotation around a line (point + direction)
+    static Xform rotation_around_line(const Line& line, double angle, bool degrees = false);
+
     /// Change of basis between two coordinate systems
     static Xform change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
                                Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0);
+
     /// Transform mapping one plane to another
     static Xform plane_to_plane(const Plane& plane_from, const Plane& plane_to);
+
     /// Transform from a plane coordinate system to XY
     static Xform plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
+
     /// Transform from XY to a plane coordinate system
     static Xform xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
+
     /// Transform from world XY to target frame/plane (same as COMPAS from_frame)
     static Xform to_frame(const Plane& frame);
+
     /// Scale along XYZ about the world origin
     static Xform scale_xyz(double scale_x, double scale_y, double scale_z);
+
     /// Uniform scale about a point
     static Xform scale_uniform(Point& origin, double scale_value);
+
     /// Non-uniform scale about a point
     static Xform scale_non_uniform(Point& origin, double scale_x, double scale_y, double scale_z);
+
     /// Axis-angle rotation using Rodrigues' formula
-    static Xform axis_rotation(double angle, Vector& axis);
-    /// Right-handed look-at matrix
-    static Xform look_at_rh(const Point& eye, const Point& target, const Vector& up);
+    static Xform axis_rotation(double angle, Vector& axis, bool degrees = false);
+
+    /// Right-handed view matrix: camera at eye looking at target point.
+    /// Right-handed means X cross Y = Z (OpenGL/Vulkan convention). Camera looks down -Z.
+    /// Left-handed (DirectX) would look down +Z instead.
+    /// Not a projection — rigid transform (rotation + translation), no distortion.
+    /// up should be (0,0,1) for Z-up convention.
+    /// up must not be parallel to the view direction — produces NaN.
+    /// Handling parallel up is the camera controller's responsibility, not this function's.
+    static Xform look_at_right_handed(const Point& eye, const Point& target, const Vector& up);
+
+    /// Same as look_at_right_handed but takes a direction vector instead of a target point.
+    /// look_to(eye, dir, up) == look_at(eye, eye+dir, up)
+    static Xform look_to_right_handed(const Point& eye, const Vector& direction, const Vector& up);
+
+    /// Perspective projection (right-handed, depth [0,1])
+    static Xform perspective(double fov_y, double aspect, double near, double far);
+
+    /// Orthographic projection (right-handed, depth [0,1])
+    static Xform orthographic(double left, double right, double bottom, double top, double near, double far);
+
+    /// Orthogonal projection onto an arbitrary plane
+    static Xform project_to_plane(const Plane& plane);
+
+    /// Projection onto an arbitrary plane along a direction vector
+    static Xform project_to_plane_by_axis(const Plane& plane, const Vector& direction);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Details
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Matrix inverse if invertible
     std::optional<Xform> inverse() const;
+
     /// Check if matrix is identity (within tolerance)
     bool is_identity() const;
 
-    /// Return transformed copy of a point
-    Point transformed_point(const Point& point) const;
-    /// Return transformed copy of a vector
-    Vector transformed_vector(const Vector& vector) const;
-    /// Transform a point in place
-    void transform_point(Point& point) const;
-    /// Transform a vector in place
-    void transform_vector(Vector& vector) const;
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // JSON
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Serialize to ordered JSON object
     nlohmann::ordered_json jsondump() const;
+
     /// Deserialize from JSON object
     static Xform jsonload(const nlohmann::json& data);
+
     /// Write JSON to file
     void json_dump(const std::string& filename) const;
+
     /// Read JSON from file
     static Xform json_load(const std::string& filename);
+
     /// Convert to JSON string
     std::string json_dumps() const;
+
     /// Load from JSON string
     static Xform json_loads(const std::string& json_string);
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Protobuf
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     /// Convert to protobuf binary string
     std::string pb_dumps() const;
+
     /// Load from protobuf binary string
     static Xform pb_loads(const std::string& data);
+
     /// Write protobuf to file
     void pb_dump(const std::string& filename) const;
+
     /// Read protobuf from file
     static Xform pb_load(const std::string& filename);
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Operators
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     /// Matrix multiplication
     Xform operator*(const Xform& other) const;
+
     /// In-place matrix multiplication
     Xform& operator*=(const Xform& other);
 
     /// Matrix element (row, col) mutable accessor
     double& operator()(int row, int col);
+
     /// Matrix element (row, col) const accessor
     const double& operator()(int row, int col) const;
 
     /// Equality operator (compare matrix values with tolerance)
     bool operator==(const Xform& other) const;
+
     /// Inequality operator
     bool operator!=(const Xform& other) const;
 
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // String Representations
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
     /// Minimal string representation (matrix values)
     std::string str() const;
+
     /// Full string representation (name, guid prefix)
     std::string repr() const;
 

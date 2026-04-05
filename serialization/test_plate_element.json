@@ -1,5 +1,7 @@
 {
+  "component_plane": null,
   "geometry_data": {
+    "color_mode": "objectcolor",
     "default_edge_attributes": {},
     "default_face_attributes": {},
     "default_vertex_attributes": {
@@ -7,7 +9,7 @@
       "y": 0.0,
       "z": 0.0
     },
-    "edgedata": null,
+    "edgedata": {},
     "face": {
       "0": [
         3,
@@ -46,7 +48,7 @@
         7
       ]
     },
-    "face_holes": null,
+    "face_holes": {},
     "facecolors": [
       255,
       255,
@@ -73,8 +75,8 @@
       255,
       255
     ],
-    "facedata": null,
-    "guid": "6ee7ee83-654a-4f4e-8668-07a91be0843f",
+    "facedata": {},
+    "guid": "fc77fe39-f528-478c-82fa-453b79aabe44",
     "halfedge": {
       "0": {
         "1": 2,
@@ -174,12 +176,11 @@
       "a": 255,
       "b": 255,
       "g": 255,
-      "guid": "4724c223-b647-428b-af83-9f9a3748e981",
+      "guid": "4e928b91-30fb-4df1-9469-fae623fc000e",
       "name": "white",
       "r": 255,
       "type": "Color"
     },
-    "color_mode": "objectcolor",
     "pointcolors": [
       255,
       255,
@@ -214,7 +215,7 @@
       255,
       255
     ],
-    "triangulation": null,
+    "triangulation": {},
     "type": "Mesh",
     "vertex": {
       "0": {
@@ -281,7 +282,7 @@
       1.0
     ],
     "xform": {
-      "guid": "007ecca2-784c-4565-8fe3-f432abf6cb1c",
+      "guid": "8e0dab21-0441-404f-958b-fdd1016b15f0",
       "m": [
         1.0,
         0.0,
@@ -305,7 +306,10 @@
     }
   },
   "geometry_type": "Mesh",
-  "guid": "fa0c28c2-c5fb-4a29-9a80-14f2db992ede",
+  "guid": "f18ba5f7-39f0-496e-ab5e-334f79e6d4c9",
+  "j_mf": [],
+  "joint_types": [],
+  "key": "",
   "name": "json_plate",
   "polygon": [
     [
@@ -329,8 +333,30 @@
       0.0
     ]
   ],
+  "polygon_top": [
+    [
+      0.0,
+      0.0,
+      -0.3
+    ],
+    [
+      2.0,
+      0.0,
+      -0.3
+    ],
+    [
+      2.0,
+      2.0,
+      -0.3
+    ],
+    [
+      0.0,
+      2.0,
+      -0.3
+    ]
+  ],
   "session_transformation": {
-    "guid": "8d25a83f-e687-4aa3-bc13-3692bc1d4345",
+    "guid": "01a64c3a-10e8-4938-95f9-145b7baef8d7",
     "m": [
       1.0,
       0.0,

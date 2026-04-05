@@ -136,8 +136,8 @@ void Line::transform() {
   Point start(_x0, _y0, _z0);
   Point end(_x1, _y1, _z1);
   
-  xform.transform_point(start);
-  xform.transform_point(end);
+  start.xform = xform; start.transform();
+  end.xform = xform; end.transform();
   
   _x0 = start[0];
   _y0 = start[1];

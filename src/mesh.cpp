@@ -1775,7 +1775,7 @@ std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> Mesh::to_vertice
 bool Mesh::transform(const Xform& xf) {
   for (auto& [idx, vdata] : vertex) {
     Point pt(vdata.x, vdata.y, vdata.z);
-    xf.transform_point(pt);
+    pt.xform = xf; pt.transform();
     vdata.x = pt[0];
     vdata.y = pt[1];
     vdata.z = pt[2];
@@ -1810,12 +1810,13 @@ nlohmann::ordered_json Mesh::jsondump() const {
     nlohmann::ordered_json data;
     
     // Alphabetical order to match Rust's serde_json output
+    data["color_mode"] = color_mode_to_string(color_mode);
     data["default_edge_attributes"] = default_edge_attributes;
     data["default_face_attributes"] = default_face_attributes;
     data["default_vertex_attributes"] = default_vertex_attributes;
     
     // Edge attributes
-    nlohmann::ordered_json edgedata_json;
+    nlohmann::ordered_json edgedata_json = nlohmann::ordered_json::object();
     for (const auto& [edge, attrs] : edgedata) {
         std::string edge_key = std::to_string(edge.first) + "," + std::to_string(edge.second);
         edgedata_json[edge_key] = attrs;
@@ -1830,7 +1831,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["face"] = face_data;
 
     // Face holes
-    nlohmann::ordered_json face_holes_json;
+    nlohmann::ordered_json face_holes_json = nlohmann::ordered_json::object();
     for (const auto& [fkey, rings] : face_holes) {
         nlohmann::json rings_arr = nlohmann::json::array();
         for (const auto& ring : rings)
@@ -1848,7 +1849,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["facecolors"] = facecolors_arr;
     
     // Face attributes
-    nlohmann::ordered_json facedata_json;
+    nlohmann::ordered_json facedata_json = nlohmann::ordered_json::object();
     for (const auto& [key, attrs] : facedata) {
         facedata_json[std::to_string(key)] = attrs;
     }
@@ -1879,7 +1880,6 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["max_vertex"] = max_vertex;
     data["name"] = name;
     data["objectcolor"] = objectcolor.jsondump();
-    data["color_mode"] = color_mode_to_string(color_mode);
 
     // Point colors (RGBA)
     nlohmann::ordered_json pointcolors_arr = nlohmann::ordered_json::array();
@@ -1889,7 +1889,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
     }
     data["pointcolors"] = pointcolors_arr;
 
-    nlohmann::ordered_json triangulation_json;
+    nlohmann::ordered_json triangulation_json = nlohmann::ordered_json::object();
     for (const auto& [fkey, tris] : triangulation) {
         nlohmann::json tri_arr = nlohmann::json::array();
         for (const auto& t : tris)

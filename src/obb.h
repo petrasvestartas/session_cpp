@@ -136,15 +136,16 @@ inline bool get_separating_plane(
 
 } // namespace internal
 
-/// Transform the center component (index 0) using xform.transform_point and
-/// axes (indices 1–3) using xform.transform_vector.
+/// Transform the center component (index 0) as a point and
+/// axes (indices 1–3) as vectors using the standard xform pattern.
 inline void transform_plane_as_vector_array(Vector* plane, const Xform& xform)
 {
     Point p = {plane[0][0], plane[0][1], plane[0][2]};
-    xform.transform_point(p);
+    p.xform = xform; p.transform();
     plane[0] = {p[0], p[1], p[2]};
-    for (int i = 1; i < 4; i++)
-        xform.transform_vector(plane[i]);
+    for (int i = 1; i < 4; i++) {
+        plane[i].xform = xform; plane[i].transform();
+    }
 }
 
 /// Copy n Vector elements from source to target.

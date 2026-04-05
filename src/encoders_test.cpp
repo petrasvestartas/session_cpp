@@ -11,6 +11,8 @@ using namespace session_cpp::mini_test;
 using namespace session_cpp::encoders;
 
 MINI_TEST("Encoders", "Json Dump Load") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     std::filesystem::create_directories("./serialization");
     Point original(1.5, 2.5, 3.5);
     original.name = "test_point";
@@ -29,6 +31,8 @@ MINI_TEST("Encoders", "Json Dump Load") {
 }
 
 MINI_TEST("Encoders", "Json Dumps Loads") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "vector.h"
     Vector original(42.1, 84.2, 126.3);
     original.name = "test_vector";
 
@@ -46,6 +50,8 @@ MINI_TEST("Encoders", "Json Dumps Loads") {
 }
 
 MINI_TEST("Encoders", "Encode Collection Values") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     std::vector<Point> points;
     points.push_back(Point(1.0, 2.0, 3.0));
     points.push_back(Point(4.0, 5.0, 6.0));
@@ -61,6 +67,8 @@ MINI_TEST("Encoders", "Encode Collection Values") {
 }
 
 MINI_TEST("Encoders", "Encode Collection Shared Ptr") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "line.h"
     std::vector<std::shared_ptr<Line>> lines;
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
@@ -74,6 +82,8 @@ MINI_TEST("Encoders", "Encode Collection Shared Ptr") {
 }
 
 MINI_TEST("Encoders", "Decode Collection") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     std::vector<Point> original_points;
     original_points.push_back(Point(1.0, 2.0, 3.0));
     original_points.push_back(Point(4.0, 5.0, 6.0));
@@ -87,6 +97,8 @@ MINI_TEST("Encoders", "Decode Collection") {
 }
 
 MINI_TEST("Encoders", "Decode Collection Ptr") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "vector.h"
     std::vector<std::shared_ptr<Vector>> original_vectors;
     original_vectors.push_back(std::make_shared<Vector>(1.0, 0.0, 0.0));
     original_vectors.push_back(std::make_shared<Vector>(0.0, 1.0, 0.0));
@@ -100,6 +112,8 @@ MINI_TEST("Encoders", "Decode Collection Ptr") {
 }
 
 MINI_TEST("Encoders", "Nested Collections") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "line.h"
     std::vector<Line> lines;
     lines.push_back(Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(Line(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
@@ -118,6 +132,8 @@ MINI_TEST("Encoders", "Nested Collections") {
 }
 
 MINI_TEST("Encoders", "Roundtrip File Io") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "vector.h"
     std::filesystem::create_directories("./serialization");
     std::vector<Vector> vectors;
     vectors.push_back(Vector(1.0, 0.0, 0.0));
@@ -140,6 +156,8 @@ MINI_TEST("Encoders", "Roundtrip File Io") {
 }
 
 MINI_TEST("Encoders", "Pretty Vs Compact") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     Point point(1.0, 2.0, 3.0);
 
     std::string pretty = json_dumps(point, true);
@@ -157,6 +175,7 @@ MINI_TEST("Encoders", "Pretty Vs Compact") {
 }
 
 MINI_TEST("Encoders", "Decode Primitives") {
+    // uncomment #include "encoders.h"
     nlohmann::json num = 42;
     std::string json_str = num.dump();
     auto loaded = nlohmann::json::parse(json_str);
@@ -180,6 +199,8 @@ MINI_TEST("Encoders", "Decode Primitives") {
 }
 
 MINI_TEST("Encoders", "Decode List") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     std::vector<int> data = {1, 2, 3};
     nlohmann::json j = data;
     std::string json_str = j.dump();
@@ -202,6 +223,8 @@ MINI_TEST("Encoders", "Decode List") {
 }
 
 MINI_TEST("Encoders", "Decode Dict") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "vector.h"
     std::map<std::string, int> data;
     data["a"] = 1;
     data["b"] = 2;
@@ -219,6 +242,7 @@ MINI_TEST("Encoders", "Decode Dict") {
 }
 
 MINI_TEST("Encoders", "List In List In List") {
+    // uncomment #include "encoders.h"
     nlohmann::json data = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
     std::string json_str = data.dump();
     auto loaded = nlohmann::json::parse(json_str);
@@ -229,6 +253,8 @@ MINI_TEST("Encoders", "List In List In List") {
 }
 
 MINI_TEST("Encoders", "Dict Of Lists") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     std::vector<Point> points;
     points.push_back(Point(1.0, 0.0, 0.0));
     points.push_back(Point(0.0, 1.0, 0.0));
@@ -249,6 +275,8 @@ MINI_TEST("Encoders", "Dict Of Lists") {
 }
 
 MINI_TEST("Encoders", "List Of Dict") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
     Point point(1.0, 2.0, 3.0);
 
     nlohmann::json data = nlohmann::json::array();
@@ -267,6 +295,9 @@ MINI_TEST("Encoders", "List Of Dict") {
 }
 
 MINI_TEST("Encoders", "Dict Of Dicts") {
+    // uncomment #include "encoders.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
     Point point(1.0, 2.0, 3.0);
     Vector vec(0.0, 0.0, 1.0);
 

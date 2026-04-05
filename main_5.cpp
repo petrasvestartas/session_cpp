@@ -1,87 +1,76 @@
 #include <filesystem>
-#include "marching_squares.h"
-#include "polyline.h"
+#include <fstream>
 #include "session.h"
-#include "session_config.h"
-#include "color.h"
-#include "treenode.h"
-
+#include "element.h"
+#include "polyline.h"
+#include "json.h"
 using namespace session_cpp;
 
-static std::shared_ptr<TreeNode> add_group(Session& session, const std::string& n, int r, int g, int b) {
-    auto node = std::make_shared<TreeNode>(n);
-    node->color = Color(r, g, b);
-    session.add(node);
-    return node;
-}
-
 int main() {
-    SESSION_CONFIG.explode_mesh_faces = false;
-    Session session("MarchingSquares");
-    std::string fp = (std::filesystem::path(__FILE__).parent_path().parent_path()
-                      / "session_data" / "MarchingSquares.pb").string();
+    auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
+    auto json_in = (base / "session_data" / "WoodStep4_data.json").string();
+    auto pb_path = (base / "session_data" / "WoodStep5.pb").string();
 
-    // 1. Circle: iso-contour of 1 - (x^2 + y^2) = 0 → unit circle
+    std::ifstream fin(json_in);
+    if (!fin.is_open()) { fmt::print("ERROR: cannot open {}\n", json_in); return 1; }
+    nlohmann::json data = nlohmann::json::parse(fin);
+    fmt::print("Loaded {} elements, {} joints\n", data["elements"].size(), data["joints"].size());
+
+    Session session("WoodStep5_Complete");
+
+    // Merged plate mesh
     {
-        auto grp = add_group(session, "Circle (r=1)", 80, 160, 220);
-        auto segs = MarchingSquares::extract_from_func(
-            [](double x, double y) { return 1.0 - (x * x + y * y); },
-            {-1.5, 1.5}, {-1.5, 1.5}, 60, 60, 0.0
-        );
-        for (auto& pl : segs) {
-            pl.linecolor = Color(80, 160, 220);
-            session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
+        std::vector<Point> av; std::vector<std::vector<size_t>> af;
+        for (auto& e : data["elements"]) {
+            std::vector<Point> bot, top;
+            for (auto& p : e["polygon"]) bot.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
+            if (e.contains("polygon_top"))
+                for (auto& p : e["polygon_top"]) top.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
+            else top = bot;
+            size_t np = std::min(bot.size(), top.size());
+            Vector na = PlateElement::polygon_normal(bot);
+            double dx=0,dy=0,dz=0;
+            for(size_t k=0;k<np;k++){dx+=top[k][0]-bot[k][0];dy+=top[k][1]-bot[k][1];dz+=top[k][2]-bot[k][2];}
+            if(dx*na[0]+dy*na[1]+dz*na[2]<0) std::swap(bot,top);
+            size_t base=av.size();
+            for(size_t k=0;k<np;k++) av.push_back(bot[k]);
+            for(size_t k=0;k<np;k++) av.push_back(top[k]);
+            std::vector<size_t> bf; for(size_t k=np;k-->0;) bf.push_back(base+k); af.push_back(bf);
+            std::vector<size_t> tf; for(size_t k=0;k<np;k++) tf.push_back(base+np+k); af.push_back(tf);
+            for(size_t k=0;k<np;k++){size_t k1=(k+1)%np; af.push_back({base+k,base+k1,base+k1+np,base+k+np});}
         }
+        auto g = session.add_group("Elements");
+        session.add(session.add_mesh(std::make_shared<Mesh>(Mesh::from_vertices_and_faces(av, af))), g);
     }
 
-    // 2. Saddle: iso-contour of x^2 - y^2 = 0 → crossing diagonals (hyperbolas)
+    // Joint areas colored by type
     {
-        auto grp = add_group(session, "Saddle (x^2-y^2=0)", 220, 120, 60);
-        auto segs = MarchingSquares::extract_from_func(
-            [](double x, double y) { return x * x - y * y; },
-            {-2.0, 2.0}, {-2.0, 2.0}, 60, 60, 0.0
-        );
-        for (auto& pl : segs) {
-            pl.linecolor = Color(220, 120, 60);
-            session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
-        }
-    }
-
-    // 3. Sine wave: iso-contour of sin(x)*cos(y) = 0 → wave grid
-    {
-        auto grp = add_group(session, "Sin*Cos wave", 100, 200, 100);
-        auto segs = MarchingSquares::extract_from_func(
-            [](double x, double y) { return std::sin(x) * std::cos(y); },
-            {-6.3, 6.3}, {-6.3, 6.3}, 100, 100, 0.0
-        );
-        for (auto& pl : segs) {
-            pl.linecolor = Color(100, 200, 100);
-            session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
-        }
-    }
-
-    // 4. Grid example: extract from scalar grid (Gaussian bump)
-    {
-        auto grp = add_group(session, "Gaussian bump (grid)", 200, 80, 200);
-        int n = 40;
-        std::vector<std::vector<double>> grid(n, std::vector<double>(n));
-        for (int r = 0; r < n; ++r) {
-            for (int c = 0; c < n; ++c) {
-                double x = (c - n / 2.0) * 0.2;
-                double y = (r - n / 2.0) * 0.2;
-                grid[r][c] = std::exp(-(x * x + y * y));
+        const char* names[] = {"Joints Side-Side", "Joints Side-Top", "Joints Top-Top"};
+        Color colors[] = {Color(255,50,50), Color(50,255,50), Color(50,50,255)};
+        for (int t = 0; t < 3; t++) {
+            std::vector<Point> jv; std::vector<std::vector<size_t>> jf;
+            for (auto& j : data["joints"]) {
+                if (j["type"].get<int>() != t) continue;
+                std::vector<Point> pts;
+                for (auto& p : j["joint_area"]) pts.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
+                size_t np = pts.size();
+                if(np>3 && std::abs(pts[np-1][0]-pts[0][0])<1e-6 &&
+                   std::abs(pts[np-1][1]-pts[0][1])<1e-6 &&
+                   std::abs(pts[np-1][2]-pts[0][2])<1e-6) np--;
+                if (np < 3) continue;
+                size_t base=jv.size();
+                for(size_t k=0;k<np;k++) jv.push_back(pts[k]);
+                for(size_t k=1;k+1<np;k++) jf.push_back({base,base+k,base+k+1});
             }
-        }
-        for (double iso : {0.2, 0.4, 0.6, 0.8}) {
-            auto segs = MarchingSquares::extract(grid, iso, 0.2);
-            int ci = static_cast<int>(iso * 255.0);
-            for (auto& pl : segs) {
-                pl.linecolor = Color(ci, 80, 200 - ci);
-                session.add(session.add_polyline(std::make_shared<Polyline>(pl)), grp);
-            }
+            if(jf.empty()) continue;
+            auto g = session.add_group(names[t]);
+            auto m = std::make_shared<Mesh>(Mesh::from_vertices_and_faces(jv, jf));
+            m->set_objectcolor(colors[t]);
+            session.add(session.add_mesh(m), g);
         }
     }
 
-    session.pb_dump(fp);
+    session.pb_dump(pb_path);
+    fmt::print("Wrote {}\n", pb_path);
     return 0;
 }

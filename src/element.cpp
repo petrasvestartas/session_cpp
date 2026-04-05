@@ -35,6 +35,10 @@ Element& Element::operator=(const Element& other) {
         _obb.reset();
         _collision_mesh.reset();
         _point.reset();
+        _polylines.reset();
+        _planes.reset();
+        _edge_vectors.reset();
+        _axis.reset();
     }
     return *this;
 }
@@ -87,6 +91,26 @@ Point Element::point() {
     return _point.value();
 }
 
+std::vector<Polyline> Element::polylines() {
+    if (_is_dirty || !_polylines.has_value()) _polylines = compute_polylines();
+    return _polylines.value();
+}
+
+std::vector<Plane> Element::planes() {
+    if (_is_dirty || !_planes.has_value()) _planes = compute_planes();
+    return _planes.value();
+}
+
+std::vector<Vector> Element::edge_vectors() {
+    if (_is_dirty || !_edge_vectors.has_value()) _edge_vectors = compute_edge_vectors();
+    return _edge_vectors.value();
+}
+
+std::optional<Line> Element::axis() {
+    if (_is_dirty || !_axis.has_value()) _axis = compute_axis();
+    return _axis;
+}
+
 void Element::add_feature(std::function<Mesh(Mesh)> f) {
     _features.push_back(std::move(f));
     _is_dirty = true;
@@ -108,6 +132,10 @@ void Element::reset() {
     _obb.reset();
     _collision_mesh.reset();
     _point.reset();
+    _polylines.reset();
+    _planes.reset();
+    _edge_vectors.reset();
+    _axis.reset();
 }
 
 Element Element::duplicate() const {
@@ -176,6 +204,11 @@ Point Element::compute_point() {
     }
     return Point(0, 0, 0);
 }
+
+std::vector<Polyline> Element::compute_polylines() const { return {}; }
+std::vector<Plane> Element::compute_planes() const { return {}; }
+std::vector<Vector> Element::compute_edge_vectors() const { return {}; }
+std::optional<Line> Element::compute_axis() const { return std::nullopt; }
 
 Mesh Element::apply_features(Mesh geo) const {
     for (const auto& f : _features) geo = f(geo);
@@ -382,6 +415,46 @@ Mesh ColumnElement::compute_element_geometry() const {
     return Mesh::from_vertices_and_faces(vertices, faces);
 }
 
+std::vector<Polyline> ColumnElement::compute_polylines() const {
+    double hx = _width * 0.5;
+    double hy = _depth * 0.5;
+    Point b0(-hx, -hy, 0), b1(hx, -hy, 0), b2(hx, hy, 0), b3(-hx, hy, 0);
+    Point t0(-hx, -hy, _height), t1(hx, -hy, _height), t2(hx, hy, _height), t3(-hx, hy, _height);
+    return {
+        Polyline({b0, b3, b2, b1, b0}),
+        Polyline({t0, t1, t2, t3, t0}),
+        Polyline({b0, b1, t1, t0, b0}),
+        Polyline({b2, b3, t3, t2, b2}),
+        Polyline({b0, t0, t3, b3, b0}),
+        Polyline({b1, b2, t2, t1, b1}),
+    };
+}
+
+std::vector<Plane> ColumnElement::compute_planes() const {
+    double hx = _width * 0.5;
+    double hy = _depth * 0.5;
+    double hz = _height * 0.5;
+    Point p0(0,0,0), p1(0,0,_height), p2(0,-hy,hz), p3(0,hy,hz), p4(-hx,0,hz), p5(hx,0,hz);
+    Vector n0(0,0,-1), n1(0,0,1), n2(0,-1,0), n3(0,1,0), n4(-1,0,0), n5(1,0,0);
+    return {
+        Plane::from_point_normal(p0, n0), Plane::from_point_normal(p1, n1),
+        Plane::from_point_normal(p2, n2), Plane::from_point_normal(p3, n3),
+        Plane::from_point_normal(p4, n4), Plane::from_point_normal(p5, n5),
+    };
+}
+
+std::vector<Vector> ColumnElement::compute_edge_vectors() const {
+    return {
+        Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
+        Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
+        Vector(0, 0, 1), Vector(0, 0, 1), Vector(0, 0, 1), Vector(0, 0, 1),
+    };
+}
+
+std::optional<Line> ColumnElement::compute_axis() const {
+    return Line(0, 0, 0, 0, 0, _height);
+}
+
 ColumnElement ColumnElement::duplicate() const {
     ColumnElement result(*this);
 
@@ -546,6 +619,46 @@ Mesh BeamElement::compute_element_geometry() const {
     return Mesh::from_vertices_and_faces(vertices, faces);
 }
 
+std::vector<Polyline> BeamElement::compute_polylines() const {
+    double hx = _width * 0.5;
+    double hy = _depth * 0.5;
+    Point b0(-hx, -hy, 0), b1(hx, -hy, 0), b2(hx, hy, 0), b3(-hx, hy, 0);
+    Point t0(-hx, -hy, _length), t1(hx, -hy, _length), t2(hx, hy, _length), t3(-hx, hy, _length);
+    return {
+        Polyline({b0, b3, b2, b1, b0}),
+        Polyline({t0, t1, t2, t3, t0}),
+        Polyline({b0, b1, t1, t0, b0}),
+        Polyline({b2, b3, t3, t2, b2}),
+        Polyline({b0, t0, t3, b3, b0}),
+        Polyline({b1, b2, t2, t1, b1}),
+    };
+}
+
+std::vector<Plane> BeamElement::compute_planes() const {
+    double hx = _width * 0.5;
+    double hy = _depth * 0.5;
+    double hz = _length * 0.5;
+    Point p0(0,0,0), p1(0,0,_length), p2(0,-hy,hz), p3(0,hy,hz), p4(-hx,0,hz), p5(hx,0,hz);
+    Vector n0(0,0,-1), n1(0,0,1), n2(0,-1,0), n3(0,1,0), n4(-1,0,0), n5(1,0,0);
+    return {
+        Plane::from_point_normal(p0, n0), Plane::from_point_normal(p1, n1),
+        Plane::from_point_normal(p2, n2), Plane::from_point_normal(p3, n3),
+        Plane::from_point_normal(p4, n4), Plane::from_point_normal(p5, n5),
+    };
+}
+
+std::vector<Vector> BeamElement::compute_edge_vectors() const {
+    return {
+        Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
+        Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
+        Vector(0, 0, 1), Vector(0, 0, 1), Vector(0, 0, 1), Vector(0, 0, 1),
+    };
+}
+
+std::optional<Line> BeamElement::compute_axis() const {
+    return Line(0, 0, 0, 0, 0, _length);
+}
+
 BeamElement BeamElement::duplicate() const {
     BeamElement result(*this);
 
@@ -647,28 +760,58 @@ PlateElement::PlateElement(const std::vector<Point>& polygon, double thickness,
                            const std::string& name)
     : Element(name), _thickness(thickness) {
     if (polygon.empty()) {
-        _polygon = {
-            Point(-0.5, -0.5, 0),
-            Point( 0.5, -0.5, 0),
-            Point( 0.5,  0.5, 0),
-            Point(-0.5,  0.5, 0),
-        };
+        _polygon = {Point(-0.5,-0.5,0), Point(0.5,-0.5,0), Point(0.5,0.5,0), Point(-0.5,0.5,0)};
     } else {
         _polygon.reserve(polygon.size());
-        for (const auto& p : polygon)
-            _polygon.emplace_back(p[0], p[1], p[2]);
+        for (const auto& p : polygon) _polygon.emplace_back(p[0], p[1], p[2]);
     }
+    // Compute top polygon from offset
+    Vector normal = polygon_normal(_polygon);
+    _polygon_top.reserve(_polygon.size());
+    for (const auto& p : _polygon)
+        _polygon_top.emplace_back(p[0]-normal[0]*_thickness, p[1]-normal[1]*_thickness, p[2]-normal[2]*_thickness);
+    _geometry = compute_element_geometry();
+}
+
+PlateElement::PlateElement(const std::vector<Point>& bottom, const std::vector<Point>& top,
+                           const std::string& name)
+    : Element(name) {
+    _polygon.reserve(bottom.size());
+    for (const auto& p : bottom) _polygon.emplace_back(p[0], p[1], p[2]);
+    _polygon_top.reserve(top.size());
+    for (const auto& p : top) _polygon_top.emplace_back(p[0], p[1], p[2]);
+    // Ensure bottom normal points toward top
+    Vector norm = polygon_normal(_polygon);
+    size_t np = std::min(_polygon.size(), _polygon_top.size());
+    double d = 0;
+    for (size_t k = 0; k < np; k++)
+        d += (_polygon_top[k][0]-_polygon[k][0])*norm[0] + (_polygon_top[k][1]-_polygon[k][1])*norm[1] + (_polygon_top[k][2]-_polygon[k][2])*norm[2];
+    if (d < 0) std::swap(_polygon, _polygon_top);
+    // Compute thickness from average distance
+    _thickness = 0;
+    for (size_t k = 0; k < np; k++) {
+        double dx=_polygon_top[k][0]-_polygon[k][0], dy=_polygon_top[k][1]-_polygon[k][1], dz=_polygon_top[k][2]-_polygon[k][2];
+        _thickness += std::sqrt(dx*dx+dy*dy+dz*dz);
+    }
+    _thickness /= np;
     _geometry = compute_element_geometry();
 }
 
 PlateElement::PlateElement(const PlateElement& other)
-    : Element(other), _polygon(other._polygon), _thickness(other._thickness) {}
+    : Element(other), _polygon(other._polygon), _polygon_top(other._polygon_top),
+      _thickness(other._thickness), _joint_types(other._joint_types), _j_mf(other._j_mf),
+      _key(other._key), _component_plane(other._component_plane) {}
 
 PlateElement& PlateElement::operator=(const PlateElement& other) {
     if (this != &other) {
         Element::operator=(other);
         _polygon = other._polygon;
+        _polygon_top = other._polygon_top;
         _thickness = other._thickness;
+        _joint_types = other._joint_types;
+        _j_mf = other._j_mf;
+        _key = other._key;
+        _component_plane = other._component_plane;
     }
     return *this;
 }
@@ -681,8 +824,21 @@ void PlateElement::set_polygon(const std::vector<Point>& pts) {
     reset();
 }
 
+void PlateElement::set_polygon_top(const std::vector<Point>& pts) {
+    _polygon_top.clear();
+    _polygon_top.reserve(pts.size());
+    for (const auto& p : pts) _polygon_top.emplace_back(p[0], p[1], p[2]);
+    _geometry = compute_element_geometry();
+    reset();
+}
+
 void PlateElement::set_thickness(double v) {
     _thickness = v;
+    Vector normal = polygon_normal(_polygon);
+    _polygon_top.clear();
+    _polygon_top.reserve(_polygon.size());
+    for (const auto& p : _polygon)
+        _polygon_top.emplace_back(p[0]-normal[0]*v, p[1]-normal[1]*v, p[2]-normal[2]*v);
     _geometry = compute_element_geometry();
     reset();
 }
@@ -703,20 +859,11 @@ Vector PlateElement::polygon_normal(const std::vector<Point>& pts) {
 }
 
 Mesh PlateElement::compute_element_geometry() const {
-    Vector normal = polygon_normal(_polygon);
-    size_t n = _polygon.size();
+    size_t n = std::min(_polygon.size(), _polygon_top.size());
     std::vector<Point> vertices;
     vertices.reserve(n * 2);
-    for (const auto& p : _polygon) {
-        vertices.emplace_back(p[0], p[1], p[2]);
-    }
-    for (const auto& p : _polygon) {
-        vertices.emplace_back(
-            p[0] - normal[0] * _thickness,
-            p[1] - normal[1] * _thickness,
-            p[2] - normal[2] * _thickness
-        );
-    }
+    for (size_t i = 0; i < n; ++i) vertices.emplace_back(_polygon[i][0], _polygon[i][1], _polygon[i][2]);
+    for (size_t i = 0; i < n; ++i) vertices.emplace_back(_polygon_top[i][0], _polygon_top[i][1], _polygon_top[i][2]);
     std::vector<std::vector<size_t>> faces;
     std::vector<size_t> bottom_face;
     for (size_t i = n; i-- > 0;) bottom_face.push_back(i);
@@ -732,6 +879,84 @@ Mesh PlateElement::compute_element_geometry() const {
         faces.push_back({a, b, c, d});
     }
     return Mesh::from_vertices_and_faces(vertices, faces);
+}
+
+std::vector<Polyline> PlateElement::compute_polylines() const {
+    size_t n = std::min(_polygon.size(), _polygon_top.size());
+    // [0]=top polyline, [1]=bottom polyline, [2+]=side polylines (matching wood)
+    std::vector<Point> top_closed;
+    for (size_t i = 0; i < n; ++i) top_closed.push_back(_polygon_top[i]);
+    top_closed.push_back(_polygon_top[0]);
+    std::vector<Point> bot_closed;
+    for (size_t i = 0; i < n; ++i) bot_closed.push_back(_polygon[i]);
+    bot_closed.push_back(_polygon[0]);
+    std::vector<Polyline> result;
+    result.push_back(Polyline(top_closed));
+    result.push_back(Polyline(bot_closed));
+    for (size_t i = 0; i < n; ++i) {
+        size_t j = (i + 1) % n;
+        result.push_back(Polyline({_polygon_top[i], _polygon_top[j], _polygon[j], _polygon[i], _polygon_top[i]}));
+    }
+    return result;
+}
+
+std::vector<Plane> PlateElement::compute_planes() const {
+    Vector normal = polygon_normal(_polygon);
+    size_t n = std::min(_polygon.size(), _polygon_top.size());
+    // [0]=top plane, [1]=bottom plane, [2+]=side planes (matching wood)
+    double tcx=0,tcy=0,tcz=0, bcx=0,bcy=0,bcz=0;
+    for (size_t i=0;i<n;i++){
+        tcx+=_polygon_top[i][0]; tcy+=_polygon_top[i][1]; tcz+=_polygon_top[i][2];
+        bcx+=_polygon[i][0]; bcy+=_polygon[i][1]; bcz+=_polygon[i][2];
+    }
+    tcx/=n;tcy/=n;tcz/=n; bcx/=n;bcy/=n;bcz/=n;
+    std::vector<Plane> result;
+    Point tp(tcx,tcy,tcz);
+    result.push_back(Plane::from_point_normal(tp, normal));
+    Point bp(bcx,bcy,bcz);
+    Vector neg(-normal[0],-normal[1],-normal[2]);
+    result.push_back(Plane::from_point_normal(bp, neg));
+    // Side planes from 3 actual points: cross(top[k]-top[k+1], bot[k+1]-top[k+1])
+    for (size_t i=0;i<n;i++){
+        size_t j=(i+1)%n;
+        double ax=_polygon_top[i][0]-_polygon_top[j][0], ay=_polygon_top[i][1]-_polygon_top[j][1], az=_polygon_top[i][2]-_polygon_top[j][2];
+        double bx=_polygon[j][0]-_polygon_top[j][0], by=_polygon[j][1]-_polygon_top[j][1], bz=_polygon[j][2]-_polygon_top[j][2];
+        double nx=ay*bz-az*by, ny=az*bx-ax*bz, nz=ax*by-ay*bx;
+        double mag=std::sqrt(nx*nx+ny*ny+nz*nz);
+        if(mag>1e-12){nx/=mag;ny/=mag;nz/=mag;}
+        double cx=(_polygon_top[i][0]+_polygon_top[j][0]+_polygon[j][0]+_polygon[i][0])*0.25;
+        double cy=(_polygon_top[i][1]+_polygon_top[j][1]+_polygon[j][1]+_polygon[i][1])*0.25;
+        double cz=(_polygon_top[i][2]+_polygon_top[j][2]+_polygon[j][2]+_polygon[i][2])*0.25;
+        Point sp(cx,cy,cz); Vector sn(nx,ny,nz);
+        result.push_back(Plane::from_point_normal(sp, sn));
+    }
+    return result;
+}
+
+std::vector<Vector> PlateElement::compute_edge_vectors() const {
+    size_t n = _polygon.size();
+    std::vector<Vector> result;
+    result.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        size_t j = (i + 1) % n;
+        double dx = _polygon[j][0] - _polygon[i][0];
+        double dy = _polygon[j][1] - _polygon[i][1];
+        double dz = _polygon[j][2] - _polygon[i][2];
+        double mag = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (mag > 1e-12) result.emplace_back(dx / mag, dy / mag, dz / mag);
+        else result.emplace_back(0, 0, 0);
+    }
+    return result;
+}
+
+std::optional<Line> PlateElement::compute_axis() const {
+    size_t n = std::min(_polygon.size(), _polygon_top.size());
+    double bcx=0,bcy=0,bcz=0,tcx=0,tcy=0,tcz=0;
+    for (size_t i=0;i<n;i++){
+        bcx+=_polygon[i][0];bcy+=_polygon[i][1];bcz+=_polygon[i][2];
+        tcx+=_polygon_top[i][0];tcy+=_polygon_top[i][1];tcz+=_polygon_top[i][2];
+    }
+    return Line(bcx/n,bcy/n,bcz/n, tcx/n,tcy/n,tcz/n);
 }
 
 PlateElement PlateElement::duplicate() const {
@@ -768,12 +993,27 @@ nlohmann::ordered_json PlateElement::jsondump() const {
     nlohmann::ordered_json poly_json = nlohmann::ordered_json::array();
     for (const auto& p : _polygon)
         poly_json.push_back({p[0], p[1], p[2]});
+    nlohmann::ordered_json j_mf_json = nlohmann::ordered_json::array();
+    for (const auto& face : _j_mf) {
+        nlohmann::ordered_json face_json = nlohmann::ordered_json::array();
+        for (const auto& jc : face)
+            face_json.push_back({jc.joint_id, jc.is_male, jc.parameter});
+        j_mf_json.push_back(face_json);
+    }
+    nlohmann::ordered_json poly_top_json = nlohmann::ordered_json::array();
+    for (const auto& p : _polygon_top)
+        poly_top_json.push_back({p[0], p[1], p[2]});
     return nlohmann::ordered_json{
+        {"component_plane", _component_plane.has_value() ? _component_plane->jsondump() : nullptr},
         {"geometry_data", mesh ? mesh->jsondump() : nullptr},
         {"geometry_type", mesh ? "Mesh" : "None"},
         {"guid", guid()},
+        {"j_mf", j_mf_json},
+        {"joint_types", _joint_types},
+        {"key", _key},
         {"name", name},
         {"polygon", poly_json},
+        {"polygon_top", poly_top_json},
         {"session_transformation", session_transformation.jsondump()},
         {"thickness", _thickness},
         {"type", "PlateElement"},
@@ -786,12 +1026,31 @@ PlateElement PlateElement::jsonload(const nlohmann::json& data) {
         for (const auto& p : data["polygon"])
             polygon.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
     }
-    PlateElement elem(polygon.empty() ? std::vector<Point>{} : polygon,
-                      data.value("thickness", 0.1));
+    std::vector<Point> polygon_top;
+    if (data.contains("polygon_top")) {
+        for (const auto& p : data["polygon_top"])
+            polygon_top.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
+    }
+    PlateElement elem = polygon_top.empty()
+        ? PlateElement(polygon.empty() ? std::vector<Point>{} : polygon, data.value("thickness", 0.1))
+        : PlateElement(polygon, polygon_top);
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("session_transformation"))
         elem.session_transformation = Xform::jsonload(data["session_transformation"]);
+    if (data.contains("joint_types"))
+        elem._joint_types = data["joint_types"].get<std::vector<int>>();
+    if (data.contains("j_mf")) {
+        for (const auto& face : data["j_mf"]) {
+            std::vector<JointConnection> fv;
+            for (const auto& jc : face)
+                fv.push_back({jc[0].get<int>(), jc[1].get<bool>(), jc[2].get<double>()});
+            elem._j_mf.push_back(fv);
+        }
+    }
+    elem._key = data.value("key", std::string(""));
+    if (data.contains("component_plane") && !data["component_plane"].is_null())
+        elem._component_plane = Plane::jsonload(data["component_plane"]);
     return elem;
 }
 
@@ -820,6 +1079,33 @@ std::string PlateElement::pb_dumps() const {
     auto* xf = proto.mutable_session_transformation();
     xf->set_name(session_transformation.name);
     for (int i = 0; i < 16; ++i) xf->add_matrix(session_transformation.m[i]);
+    for (int jt : _joint_types) proto.add_joint_types(jt);
+    for (const auto& face : _j_mf) {
+        auto* fj = proto.add_j_mf();
+        for (const auto& jc : face) {
+            auto* c = fj->add_connections();
+            c->set_joint_id(jc.joint_id);
+            c->set_is_male(jc.is_male);
+            c->set_parameter(jc.parameter);
+        }
+    }
+    proto.set_key(_key);
+    if (_component_plane.has_value()) {
+        auto* cp = proto.mutable_component_plane();
+        cp->set_name(_component_plane->name);
+        cp->add_frame(_component_plane->origin()[0]);
+        cp->add_frame(_component_plane->origin()[1]);
+        cp->add_frame(_component_plane->origin()[2]);
+        cp->add_frame(_component_plane->x_axis()[0]);
+        cp->add_frame(_component_plane->x_axis()[1]);
+        cp->add_frame(_component_plane->x_axis()[2]);
+        cp->add_frame(_component_plane->y_axis()[0]);
+        cp->add_frame(_component_plane->y_axis()[1]);
+        cp->add_frame(_component_plane->y_axis()[2]);
+        cp->add_frame(_component_plane->z_axis()[0]);
+        cp->add_frame(_component_plane->z_axis()[1]);
+        cp->add_frame(_component_plane->z_axis()[2]);
+    }
     return proto.SerializeAsString();
 }
 
@@ -838,6 +1124,23 @@ PlateElement PlateElement::pb_loads(const std::string& data) {
     if (proto.session_transformation().matrix_size() == 16)
         for (int i = 0; i < 16; ++i) xf.m[i] = proto.session_transformation().matrix(i);
     elem.session_transformation = xf;
+    elem._joint_types.assign(proto.joint_types().begin(), proto.joint_types().end());
+    for (const auto& fj : proto.j_mf()) {
+        std::vector<JointConnection> face;
+        for (const auto& c : fj.connections())
+            face.push_back({c.joint_id(), c.is_male(), c.parameter()});
+        elem._j_mf.push_back(face);
+    }
+    elem._key = proto.key();
+    if (proto.has_component_plane() && proto.component_plane().frame_size() == 12) {
+        const auto& f = proto.component_plane().frame();
+        elem._component_plane = Plane(
+            Point(f[0], f[1], f[2]),
+            Vector(f[3], f[4], f[5]),
+            Vector(f[6], f[7], f[8])
+        );
+        elem._component_plane->name = proto.component_plane().name();
+    }
     return elem;
 }
 

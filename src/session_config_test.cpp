@@ -6,11 +6,13 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("SessionConfig", "Default Values") {
+        // uncomment #include "session_config.h"
         MINI_CHECK(!SESSION_CONFIG.explode_mesh_faces);
         MINI_CHECK(std::abs(SESSION_CONFIG.scale_factor - 1.0) < 1e-10);
     }
 
     MINI_TEST("SessionConfig", "Runtime Modification") {
+        // uncomment #include "session_config.h"
         MINI_CHECK(!SESSION_CONFIG.explode_mesh_faces);
         SESSION_CONFIG.explode_mesh_faces = true;
         MINI_CHECK(SESSION_CONFIG.explode_mesh_faces);

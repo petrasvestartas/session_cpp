@@ -29,6 +29,7 @@ Plane::Plane(const Plane& other)
     :
       name(other.name),
       width(other.width),
+      linecolor(other.linecolor),
       xform(other.xform),
       _origin(other._origin),
       _x_axis(other._x_axis),
@@ -45,6 +46,7 @@ Plane& Plane::operator=(const Plane& other) {
         _guid.clear();
         name = other.name;
         width = other.width;
+        linecolor = other.linecolor;
         xform = other.xform;
         _origin = other._origin;
         _x_axis = other._x_axis;
@@ -58,7 +60,7 @@ Plane& Plane::operator=(const Plane& other) {
     return *this;
 }
 
-Plane::Plane(Point& point, Vector& x_axis, Vector& y_axis, std::string name) {
+Plane::Plane(const Point& point, const Vector& x_axis, const Vector& y_axis, std::string name) {
     xform = Xform::identity();
     this->name = name;
     _origin = point;
@@ -87,16 +89,20 @@ Plane::Plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, co
     _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
-Plane Plane::from_point_normal(Point& point, Vector& normal) {
+Plane Plane::from_point_normal(Point& point, Vector& normal, bool normalize) {
     Plane plane;
     plane._origin = point;
     plane._z_axis = normal;
-    plane._z_axis.normalize_self();
-    plane._x_axis.perpendicular_to(plane._z_axis);
-    plane._x_axis.normalize_self();
-    plane._y_axis = plane._z_axis.cross(plane._x_axis);
-    plane._y_axis.normalize_self();
-    
+    if (normalize) {
+        plane._z_axis.normalize_self();
+        plane._x_axis.perpendicular_to(plane._z_axis);
+        plane._x_axis.normalize_self();
+        plane._y_axis = plane._z_axis.cross(plane._x_axis);
+        plane._y_axis.normalize_self();
+    } else {
+        plane._x_axis.perpendicular_to(plane._z_axis);
+        plane._y_axis = plane._z_axis.cross(plane._x_axis);
+    }
     plane._a = plane._z_axis[0];
     plane._b = plane._z_axis[1];
     plane._c = plane._z_axis[2];
@@ -287,14 +293,15 @@ std::string Plane::str() const {
 
 std::string Plane::repr() const {
     int prec = static_cast<int>(Tolerance::ROUNDING);
-    return fmt::format("Plane({}, {}, {}, {}, {}, {}, {})",
+    return fmt::format("Plane({}, {}, {}, {}, {}, {}, {}, {})",
                        name,
                        TOLERANCE.format_number(_origin[0], prec),
                        TOLERANCE.format_number(_origin[1], prec),
                        TOLERANCE.format_number(_origin[2], prec),
                        TOLERANCE.format_number(_z_axis[0], prec),
                        TOLERANCE.format_number(_z_axis[1], prec),
-                       TOLERANCE.format_number(_z_axis[2], prec));
+                       TOLERANCE.format_number(_z_axis[2], prec),
+                       linecolor.repr());
 }
 
 
@@ -303,10 +310,10 @@ std::string Plane::repr() const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void Plane::transform() {
-  xform.transform_point(_origin);
-  xform.transform_vector(_x_axis);
-  xform.transform_vector(_y_axis);
-  xform.transform_vector(_z_axis);
+  _origin.xform = xform; _origin.transform();
+  _x_axis.xform = xform; _x_axis.transform();
+  _y_axis.xform = xform; _y_axis.transform();
+  _z_axis.xform = xform; _z_axis.transform();
   xform = Xform::identity();
 }
 
@@ -321,7 +328,8 @@ bool Plane::operator==(const Plane &other) const {
            _origin == other._origin &&
            _x_axis == other._x_axis &&
            _y_axis == other._y_axis &&
-           _z_axis == other._z_axis;
+           _z_axis == other._z_axis &&
+           linecolor == other.linecolor;
 }
 
 bool Plane::operator!=(const Plane &other) const {
@@ -387,6 +395,7 @@ nlohmann::ordered_json Plane::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     // Use single flat frame array of 12 numbers: [ox, oy, oz, xx, xy, xz, yx, yy, yz, zx, zy, zz]
     nlohmann::ordered_json data;
+    data["linecolor"] = linecolor.jsondump();
     data["frame"] = {
         clean_float(_origin[0]), clean_float(_origin[1]), clean_float(_origin[2]),
         clean_float(_x_axis[0]), clean_float(_x_axis[1]), clean_float(_x_axis[2]),
@@ -412,6 +421,9 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     plane._z_axis = Vector(frame[9].get<double>(), frame[10].get<double>(), frame[11].get<double>());
     plane.guid() = data["guid"];
     plane.name = data["name"];
+    if (data.contains("linecolor")) {
+        plane.linecolor = Color::jsonload(data["linecolor"]);
+    }
     if (data.contains("width")) {
         plane.width = data["width"].get<double>();
     }
@@ -471,6 +483,14 @@ std::string Plane::pb_dumps() const {
     proto.add_frame(_z_axis[1]);
     proto.add_frame(_z_axis[2]);
 
+    // Serialize linecolor
+    auto* color_proto = proto.mutable_linecolor();
+    color_proto->set_name(linecolor.name);
+    color_proto->set_r(linecolor.r);
+    color_proto->set_g(linecolor.g);
+    color_proto->set_b(linecolor.b);
+    color_proto->set_a(linecolor.a);
+
     // Serialize xform
     auto* proto_xform = proto.mutable_xform();
     proto_xform->set_name(xform.name);
@@ -501,6 +521,14 @@ Plane Plane::pb_loads(const std::string& data) {
     plane._b = plane._z_axis[1];
     plane._c = plane._z_axis[2];
     plane._d = -(plane._a * plane._origin[0] + plane._b * plane._origin[1] + plane._c * plane._origin[2]);
+
+    // Deserialize linecolor
+    const auto& color_proto = proto.linecolor();
+    plane.linecolor.name = color_proto.name();
+    plane.linecolor.r = color_proto.r();
+    plane.linecolor.g = color_proto.g();
+    plane.linecolor.b = color_proto.b();
+    plane.linecolor.a = color_proto.a();
 
     // Deserialize xform if present
     if (proto.has_xform()) {
@@ -568,36 +596,59 @@ bool Plane::is_right_hand() const {
 }
 
 bool Plane::is_same_direction(const Plane &plane0, const Plane &plane1, bool can_be_flipped) {
+    // Use non-const copies because is_parallel_to caches magnitude
+    // But z_axis is already normalized, so magnitude is 1.0
     Vector n0 = plane0._z_axis;
     Vector n1 = plane1._z_axis;
-    
     int parallel = n0.is_parallel_to(n1);
-    
+
     if (can_be_flipped) {
         return parallel != 0;
     } else {
-        return parallel == 1;
+        return parallel == -1; // opposite normals (faces point at each other)
     }
 }
 
 bool Plane::is_same_position(const Plane &plane0, const Plane &plane1) {
-    double dist0 = std::abs(plane0._a * plane1._origin[0] + 
-                           plane0._b * plane1._origin[1] + 
-                           plane0._c * plane1._origin[2] + 
+    double dist0 = std::abs(plane0._a * plane1._origin[0] +
+                           plane0._b * plane1._origin[1] +
+                           plane0._c * plane1._origin[2] +
                            plane0._d);
-    
-    double dist1 = std::abs(plane1._a * plane0._origin[0] + 
-                           plane1._b * plane0._origin[1] + 
-                           plane1._c * plane0._origin[2] + 
+
+    double dist1 = std::abs(plane1._a * plane0._origin[0] +
+                           plane1._b * plane0._origin[1] +
+                           plane1._c * plane0._origin[2] +
                            plane1._d);
-    
-    double tolerance = static_cast<double>(session_cpp::Tolerance::ZERO_TOLERANCE);
+
+    double tolerance = static_cast<double>(session_cpp::Tolerance::APPROXIMATION);
     return dist0 < tolerance && dist1 < tolerance;
 }
 
 bool Plane::is_coplanar(const Plane &plane0, const Plane plane1, bool can_be_flipped) {
-    return is_same_direction(plane0, plane1, can_be_flipped) && 
+    return is_same_direction(plane0, plane1, can_be_flipped) &&
            is_same_position(plane0, plane1);
+}
+
+bool Plane::is_coplanar(const Point& origin0, const Vector& normal0,
+                        const Point& origin1, const Vector& normal1,
+                        bool can_be_flipped) {
+    // Direction check (normals assumed unit-length)
+    Vector n0 = normal0;
+    Vector n1 = normal1;
+    int parallel = n0.is_parallel_to(n1);
+    if (can_be_flipped ? (parallel == 0) : (parallel != -1)) return false;
+
+    // Position check: plane equation distance both directions
+    double a0 = n0[0], b0 = n0[1], c0 = n0[2];
+    double d0 = -(a0 * origin0[0] + b0 * origin0[1] + c0 * origin0[2]);
+    double a1 = n1[0], b1 = n1[1], c1 = n1[2];
+    double d1 = -(a1 * origin1[0] + b1 * origin1[1] + c1 * origin1[2]);
+
+    double dist0 = std::abs(a0 * origin1[0] + b0 * origin1[1] + c0 * origin1[2] + d0);
+    double dist1 = std::abs(a1 * origin0[0] + b1 * origin0[1] + c1 * origin0[2] + d1);
+
+    double tolerance = static_cast<double>(Tolerance::APPROXIMATION);
+    return dist0 < tolerance && dist1 < tolerance;
 }
 
 Plane Plane::translate_by_normal(double distance) const {

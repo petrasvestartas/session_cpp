@@ -38,7 +38,12 @@ Point &Point::operator=(const Point &other) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void Point::transform() {
-  xform.transform_point(*this);
+  double x = _x, y = _y, z = _z;
+  double w = xform.m[3]*x + xform.m[7]*y + xform.m[11]*z + xform.m[15];
+  double w_inv = (std::abs(w) > 1e-10) ? 1.0 / w : 1.0;
+  _x = (xform.m[0]*x + xform.m[4]*y + xform.m[8]*z + xform.m[12]) * w_inv;
+  _y = (xform.m[1]*x + xform.m[5]*y + xform.m[9]*z + xform.m[13]) * w_inv;
+  _z = (xform.m[2]*x + xform.m[6]*y + xform.m[10]*z + xform.m[14]) * w_inv;
   xform = Xform::identity();
 }
 

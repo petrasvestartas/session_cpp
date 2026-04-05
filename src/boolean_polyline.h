@@ -12,6 +12,12 @@ public:
 
     /// Engine-only: runs Vatti but returns total output point count (no Polyline construction).
     static int compute_count(const Polyline& a, const Polyline& b, int clip_type);
+
+    /// Raw-array version: takes flat 2D coords (x,y pairs, stride=2), returns flat 2D result coords.
+    /// No Polyline construction. Returns number of result points (0 if no intersection).
+    static int compute_raw(const double* a_xy, int na, const double* b_xy, int nb,
+                           int clip_type, double* out_xy, int max_out);
+
 };
 
 } // namespace session_cpp

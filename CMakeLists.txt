@@ -286,6 +286,7 @@ set(MINITEST_SOURCES
     src/convex_hull_test.cpp
     src/kdtree_test.cpp
     src/marching_squares_test.cpp
+    src/boolean_polyline_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

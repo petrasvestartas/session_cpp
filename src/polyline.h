@@ -286,10 +286,14 @@ public:
                                                         double offset_dist, double div_dist,
                                                         size_t max_pts = 100);
 
-    /// Boolean operation on two closed planar polylines.
+    /// Boolean operation on two closed planar polylines (2D, uses x,y only).
     /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
     /// Returns 0+ result polygons. Uses Vatti scanline algorithm (ported from Clipper2).
     static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, int clip_type);
+
+    /// Boolean operation on two 3D coplanar polylines.
+    /// Projects to plane's local 2D, runs boolean, inverse-transforms back to 3D.
+    static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, const Plane& plane, int clip_type);
 
     /// Merge consecutive collinear segments (in-place); closed polyline wraps around
     void merge_collinear(double tol = Tolerance::APPROXIMATION);

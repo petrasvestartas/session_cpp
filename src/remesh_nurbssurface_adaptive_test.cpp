@@ -8,6 +8,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Constructor") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     RemeshNurbsSurfaceAdaptive ta(s);
 
@@ -18,6 +21,9 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Constructor") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Parameters") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     RemeshNurbsSurfaceAdaptive ta(s);
     ta.set_max_angle(15.0)
@@ -32,6 +38,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Parameters") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Mesh") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     RemeshNurbsSurfaceAdaptive ta(s);
     Mesh m = ta.mesh();
@@ -41,6 +51,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Mesh") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Torus") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
 
@@ -49,6 +63,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Torus") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cylinder") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
 
@@ -57,6 +75,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cylinder") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cone") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
 
@@ -65,6 +87,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cone") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Doubly Curved") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
 
@@ -73,6 +99,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Doubly Curved") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Flat") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
     NurbsSurface s = Primitives::wave_surface(1.0, 0.0);
     Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
 
@@ -81,6 +111,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Flat") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Singular Triangle") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "point.h"
     NurbsSurface s = NurbsSurface::create(false, false, 2, 1, 3, 2, {
         Point(0, 0, 0),
         Point(2, 0, 3),
@@ -96,6 +130,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Singular Triangle") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Double-Curved Triangle") {
+    // uncomment #include "remesh_nurbssurface_adaptive.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "point.h"
     NurbsSurface s = NurbsSurface::create(false, false, 2, 2, 3, 3, {
         Point(0, 0, 0),
         Point(2, 0, 3),
