@@ -631,14 +631,12 @@ bool Plane::is_coplanar(const Plane &plane0, const Plane plane1, bool can_be_fli
 
 bool Plane::is_coplanar(const Point& origin0, const Vector& normal0,
                         const Point& origin1, const Vector& normal1,
-                        bool can_be_flipped) {
-    // Direction check (normals assumed unit-length)
+                        bool can_be_flipped, double tolerance) {
     Vector n0 = normal0;
     Vector n1 = normal1;
     int parallel = n0.is_parallel_to(n1);
     if (can_be_flipped ? (parallel == 0) : (parallel != -1)) return false;
 
-    // Position check: plane equation distance both directions
     double a0 = n0[0], b0 = n0[1], c0 = n0[2];
     double d0 = -(a0 * origin0[0] + b0 * origin0[1] + c0 * origin0[2]);
     double a1 = n1[0], b1 = n1[1], c1 = n1[2];
@@ -647,8 +645,8 @@ bool Plane::is_coplanar(const Point& origin0, const Vector& normal0,
     double dist0 = std::abs(a0 * origin1[0] + b0 * origin1[1] + c0 * origin1[2] + d0);
     double dist1 = std::abs(a1 * origin0[0] + b1 * origin0[1] + c1 * origin0[2] + d1);
 
-    double tolerance = static_cast<double>(Tolerance::APPROXIMATION);
-    return dist0 < tolerance && dist1 < tolerance;
+    double tol = tolerance < 0 ? static_cast<double>(Tolerance::APPROXIMATION) : tolerance;
+    return dist0 < tol && dist1 < tol;
 }
 
 Plane Plane::translate_by_normal(double distance) const {

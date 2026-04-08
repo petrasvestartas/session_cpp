@@ -584,6 +584,26 @@ MINI_TEST("Polyline", "Boolean Op") {
     MINI_CHECK(diff_dis.size() == 1);
 }
 
+MINI_TEST("Polyline", "Boolean Op Plane") {
+    using P = Point;
+    // Two overlapping squares lifted to z=5 and clipped against the z=5 plane
+    Point origin(0,0,5);
+    Vector normal(0,0,1);
+    Plane plane = Plane::from_point_normal(origin, normal);
+    Polyline sq_a({P(-1,-1,5), P(1,-1,5), P(1,1,5), P(-1,1,5), P(-1,-1,5)});
+    Polyline sq_b({P(0,0,5),  P(2,0,5), P(2,2,5), P(0,2,5), P(0,0,5)});
+    auto isect = Polyline::boolean_op(sq_a, sq_b, plane, 0);
+    auto uni   = Polyline::boolean_op(sq_a, sq_b, plane, 1);
+    auto diff  = Polyline::boolean_op(sq_a, sq_b, plane, 2);
+    MINI_CHECK(isect.size() == 1);
+    MINI_CHECK(uni.size() == 1);
+    MINI_CHECK(diff.size() == 1);
+    // All result points must lie on the plane (z ≈ 5)
+    for (size_t i = 0; i < isect[0].point_count(); ++i) MINI_CHECK(TOLERANCE.is_close(isect[0][i][2], 5.0));
+    for (size_t i = 0; i < uni[0].point_count(); ++i)   MINI_CHECK(TOLERANCE.is_close(uni[0][i][2], 5.0));
+    for (size_t i = 0; i < diff[0].point_count(); ++i)  MINI_CHECK(TOLERANCE.is_close(diff[0][i][2], 5.0));
+}
+
 MINI_TEST("Polyline", "Simplify Points") {
     std::vector<Point> pts;
     for (int i = 0; i < 100; ++i) {

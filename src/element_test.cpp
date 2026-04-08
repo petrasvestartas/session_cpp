@@ -715,6 +715,23 @@ MINI_TEST("PlateElement", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.polygon()[1][0], 2.0));
 }
 
+MINI_TEST("PlateElement", "From Top Bottom") {
+    // uncomment #include "element_plate.h"
+    // uncomment #include "point.h"
+    std::vector<Point> bottom = {Point(0,0,0), Point(2,0,0), Point(2,2,0), Point(0,2,0), Point(0,0,0)};
+    std::vector<Point> top    = {Point(0,0,1), Point(2,0,1), Point(2,2,1), Point(0,2,1), Point(0,0,1)};
+    PlateElement p(bottom, top, "tb_plate");
+    MINI_CHECK(p.polygon().size() == 4);
+    MINI_CHECK(p.polygon_top().size() == 4);
+    MINI_CHECK(TOLERANCE.is_close(p.thickness(), 1.0));
+    MINI_CHECK(TOLERANCE.is_close(p.polygon()[0][2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(p.polygon_top()[0][2], 1.0));
+    // Reversed argument order should auto-swap
+    PlateElement pr(top, bottom, "tb_plate_r");
+    MINI_CHECK(TOLERANCE.is_close(pr.polygon()[0][2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pr.polygon_top()[0][2], 1.0));
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Element - Polylines
 ///////////////////////////////////////////////////////////////////////////////////////////

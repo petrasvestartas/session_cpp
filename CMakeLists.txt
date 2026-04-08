@@ -271,6 +271,8 @@ set(MINITEST_SOURCES
     src/rtree_test.cpp
     src/aabb_test.cpp
     src/encoders_test.cpp
+    src/vertex_test.cpp
+    src/edge_test.cpp
     src/graph_test.cpp
     src/intersection_test.cpp
     src/obj_test.cpp
@@ -287,6 +289,7 @@ set(MINITEST_SOURCES
     src/kdtree_test.cpp
     src/marching_squares_test.cpp
     src/boolean_polyline_test.cpp
+    src/feature_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

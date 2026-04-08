@@ -57,7 +57,7 @@ Polyline Polyline::from_sides(int sides, double radius, bool close) {
     std::vector<Point> pts;
     pts.reserve(close ? sides + 1 : sides);
     for (int i = 0; i < sides; ++i) {
-        double angle = 2.0 * TOLERANCE.PI * i / sides;
+        double angle = 2.0 * Tolerance::PI * i / sides;
         pts.push_back({radius * std::cos(angle), radius * std::sin(angle), 0.0});
     }
     if (close) pts.push_back(pts.front());
@@ -198,10 +198,34 @@ Polyline Polyline::reversed() const {
 }
 
 void Polyline::recompute_plane_if_needed() {
-    if (point_count() >= 3) {
-        std::vector<Point> pts = get_points();
-        plane = Plane::from_points(pts);
+    _plane_dirty = true; // defer computation to get_plane()
+}
+
+const Plane& Polyline::get_plane() const {
+    if (_plane_dirty && point_count() >= 3) {
+        size_t n = point_count();
+        Point p0(_coords[0], _coords[1], _coords[2]);
+        bool found = false;
+        for (size_t i = 1; i < n && !found; i++) {
+            Vector v1(_coords[i*3]-p0[0], _coords[i*3+1]-p0[1], _coords[i*3+2]-p0[2]);
+            if (v1.magnitude_squared() < 1e-20) continue;
+            for (size_t j = i + 1; j < n; j++) {
+                Vector v2(_coords[j*3]-p0[0], _coords[j*3+1]-p0[1], _coords[j*3+2]-p0[2]);
+                Vector normal = v1.cross(v2);
+                if (normal.magnitude_squared() < 1e-20) continue;
+                normal.normalize_self();
+                v1.normalize_self();
+                Vector yax = normal.cross(v1);
+                yax.normalize_self();
+                plane = Plane(p0, v1, yax, normal);
+                found = true;
+                break;
+            }
+        }
+        if (!found) plane = Plane();
+        _plane_dirty = false;
     }
+    return plane;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1418,10 +1442,50 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
             p2d._coords[i*3+1] = dx*yx + dy*yy + dz*yz;
             p2d._coords[i*3+2] = 0.0;
         }
+        // Ensure closing point matches first point exactly (avoid float drift)
+        if (n >= 4) {
+            double dx = p2d._coords[(n-1)*3] - p2d._coords[0];
+            double dy = p2d._coords[(n-1)*3+1] - p2d._coords[1];
+            if (dx*dx + dy*dy < 1.0) { // within 1mm = was meant to be closed
+                p2d._coords[(n-1)*3] = p2d._coords[0];
+                p2d._coords[(n-1)*3+1] = p2d._coords[1];
+            }
+        }
         return p2d;
     };
 
-    auto results = BooleanPolyline::compute(project(a), project(b), clip_type);
+    auto pa2d = project(a);
+    auto pb2d = project(b);
+
+    // Ensure CCW winding in 2D (Vatti containment check requires CCW)
+    auto ensure_ccw = [](Polyline& p2d) {
+        int n = p2d.point_count();
+        // Strip closing point for area calc
+        int m = n;
+        if (m >= 4) {
+            double dx = p2d._coords[(m-1)*3] - p2d._coords[0];
+            double dy = p2d._coords[(m-1)*3+1] - p2d._coords[1];
+            if (dx*dx + dy*dy < 1e-10) m--;
+        }
+        if (m < 3) return;
+        double area = 0;
+        for (int i = 0; i < m; i++) {
+            int j = (i + 1) % m;
+            area += p2d._coords[i*3] * p2d._coords[j*3+1] - p2d._coords[j*3] * p2d._coords[i*3+1];
+        }
+        if (area < 0) { // CW → reverse to CCW
+            for (int i = 0; i < n / 2; i++) {
+                int j = n - 1 - i;
+                std::swap(p2d._coords[i*3],   p2d._coords[j*3]);
+                std::swap(p2d._coords[i*3+1], p2d._coords[j*3+1]);
+                std::swap(p2d._coords[i*3+2], p2d._coords[j*3+2]);
+            }
+        }
+    };
+    ensure_ccw(pa2d);
+    ensure_ccw(pb2d);
+
+    auto results = BooleanPolyline::compute(pa2d, pb2d, clip_type);
 
     // Inverse-transform results back to 3D (in-place on _coords)
     for (auto& r : results) {

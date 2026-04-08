@@ -1120,8 +1120,14 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
     if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
     if (na < 3 || nb < 3) return {};
 
-    constexpr double BOOL_SCALE = 1e9;
-    constexpr double BOOL_INV_SCALE = 1e-9;
+    // Compute safe scale from actual coordinate range to prevent int64 overflow
+    // in cross products: (max_coord * scale)^2 must fit in int64
+    double max_coord = 0;
+    for (int i = 0; i < na; i++) { max_coord = std::max(max_coord, std::max(std::abs(ca[i*3]), std::abs(ca[i*3+1]))); }
+    for (int i = 0; i < nb; i++) { max_coord = std::max(max_coord, std::max(std::abs(cb[i*3]), std::abs(cb[i*3+1]))); }
+    if (max_coord < 1e-12) max_coord = 1.0;
+    const double BOOL_SCALE = std::floor(std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / max_coord * 0.99);
+    const double BOOL_INV_SCALE = 1.0 / BOOL_SCALE;
     VattiScratch& sc = vtls; sc.reset();
     int total = na + nb;
     sc.vtx_pool.ensure(total + 4);
@@ -1253,7 +1259,11 @@ int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polylin
     if (nb>=2) { double dx=cb[(nb-1)*3]-cb[0],dy=cb[(nb-1)*3+1]-cb[1]; if(dx*dx+dy*dy<1e-20) --nb; }
     if (na < 3 || nb < 3) return 0;
 
-    constexpr double BOOL_SCALE = 1e9;
+    double max_coord = 0;
+    for (int i = 0; i < na; i++) { max_coord = std::max(max_coord, std::max(std::abs(ca[i*3]), std::abs(ca[i*3+1]))); }
+    for (int i = 0; i < nb; i++) { max_coord = std::max(max_coord, std::max(std::abs(cb[i*3]), std::abs(cb[i*3+1]))); }
+    if (max_coord < 1e-12) max_coord = 1.0;
+    const double BOOL_SCALE = std::floor(std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / max_coord * 0.99);
     VattiScratch& sc = vtls; sc.reset();
     int total = na + nb;
     sc.vtx_pool.ensure(total + 4);

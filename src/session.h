@@ -18,6 +18,7 @@
 #include "brep.h"
 #include "tree.h"
 #include "bvh.h"
+#include "feature.h"
 #include "tolerance.h"
 #include <fstream>
 #include <iostream>
@@ -67,6 +68,8 @@ public:
       lookup; ///< Fast lookup table for objects by GUID
   Tree tree;  ///< Tree structure for hierarchy
   Graph graph; ///< Graph structure for relationships
+  std::unordered_map<std::string, EdgeFeature>
+      edge_features; ///< Typed edge features keyed by feature GUID
   BVH bvh;    ///< Bounding volume hierarchy for collision detection
   
   // BVH caching for ray casting performance
@@ -130,19 +133,19 @@ public:
    * @param point Shared pointer to the point to add
    * @return Shared pointer to the TreeNode created for this point
    */
-  std::shared_ptr<TreeNode> add_point(std::shared_ptr<Point> point);
+  std::shared_ptr<TreeNode> add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a line to the session.
    * @return Shared pointer to the TreeNode created for this line
    */
-  std::shared_ptr<TreeNode> add_line(std::shared_ptr<Line> line);
+  std::shared_ptr<TreeNode> add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a plane to the session.
    * @return Shared pointer to the TreeNode created for this plane
    */
-  std::shared_ptr<TreeNode> add_plane(std::shared_ptr<Plane> plane);
+  std::shared_ptr<TreeNode> add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a bounding box to the session.
@@ -154,24 +157,23 @@ public:
    * @brief Add a polyline to the session.
    * @return Shared pointer to the TreeNode created for this polyline
    */
-  std::shared_ptr<TreeNode> add_polyline(std::shared_ptr<Polyline> polyline);
+  std::shared_ptr<TreeNode> add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a point cloud to the session.
    * @return Shared pointer to the TreeNode created for this point cloud
    */
-  std::shared_ptr<TreeNode> add_pointcloud(std::shared_ptr<PointCloud> pointcloud);
+  std::shared_ptr<TreeNode> add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a mesh to the session.
    * @return Shared pointer to the TreeNode created for this mesh
    */
-  std::shared_ptr<TreeNode> add_mesh(std::shared_ptr<Mesh> mesh);
-
-  std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve);
-  std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface);
-  std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep);
-  std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element);
+  std::shared_ptr<TreeNode> add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent = nullptr);
+  std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve, std::shared_ptr<TreeNode> parent = nullptr);
+  std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface, std::shared_ptr<TreeNode> parent = nullptr);
+  std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent = nullptr);
+  std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a TreeNode to the tree hierarchy.
@@ -196,6 +198,20 @@ public:
    */
   void add_edge(const std::string &guid1, const std::string &guid2,
                 const std::string &attribute = "");
+
+  /**
+   * @brief Store a typed edge feature and create a graph edge referencing it.
+   * The feature is stored in `edge_features` keyed by its GUID, and a graph
+   * edge between `guid_a` and `guid_b` is created with `attribute` set to the
+   * feature GUID. Returns the feature GUID.
+   */
+  std::string add_feature(const std::string &guid_a, const std::string &guid_b,
+                          EdgeFeature feature);
+
+  /// Compute face-to-face contacts between all elements.
+  /// Uses BVH + OBB for adjacency, then boolean intersection for contact areas.
+  /// Results stored as polylines + graph edges between elements.
+  void compute_face_to_face(double inflate = 5.0, double coplanar_tolerance = 50.0);
 
   /**
    * @brief Remove an object from the session

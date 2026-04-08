@@ -225,4 +225,20 @@ MINI_TEST("Boolean Polyline", "Two Large Circles 1000") {
     MINI_CHECK(diff[0].point_count() > 0);
 }
 
+MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
+    // Coordinates near 1e7 would overflow int64 cross products with the old
+    // fixed 1e9 scale: (1e7*1e9)^2 = 1e32 >> int64::max (~9.2e18)
+    Polyline a({Point(64e6,1e6,0), Point(64e6+2e6,1e6,0), Point(64e6+2e6,1e6+2e6,0), Point(64e6,1e6+2e6,0), Point(64e6,1e6,0)});
+    Polyline b({Point(64e6+1e6,1e6+1e6,0), Point(64e6+3e6,1e6+1e6,0), Point(64e6+3e6,1e6+3e6,0), Point(64e6+1e6,1e6+3e6,0), Point(64e6+1e6,1e6+1e6,0)});
+    auto isect = Polyline::boolean_op(a, b, 0);
+    auto uni   = Polyline::boolean_op(a, b, 1);
+    auto diff  = Polyline::boolean_op(a, b, 2);
+    MINI_CHECK(isect.size() >= 1);
+    MINI_CHECK(isect[0].point_count() > 0);
+    MINI_CHECK(uni.size() >= 1);
+    MINI_CHECK(uni[0].point_count() > 0);
+    MINI_CHECK(diff.size() >= 1);
+    MINI_CHECK(diff[0].point_count() > 0);
+}
+
 } // namespace session_cpp

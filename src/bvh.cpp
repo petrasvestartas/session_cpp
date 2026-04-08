@@ -8,6 +8,13 @@
 
 namespace session_cpp {
 
+static AABB aabb_from_obb(const OBB& bb) {
+    double hx = std::abs(bb.x_axis[0])*bb.half_size[0] + std::abs(bb.y_axis[0])*bb.half_size[1] + std::abs(bb.z_axis[0])*bb.half_size[2];
+    double hy = std::abs(bb.x_axis[1])*bb.half_size[0] + std::abs(bb.y_axis[1])*bb.half_size[1] + std::abs(bb.z_axis[1])*bb.half_size[2];
+    double hz = std::abs(bb.x_axis[2])*bb.half_size[0] + std::abs(bb.y_axis[2])*bb.half_size[1] + std::abs(bb.z_axis[2])*bb.half_size[2];
+    return AABB{bb.center[0], bb.center[1], bb.center[2], hx, hy, hz};
+}
+
 bool BVH::aabb_intersect(const AABB& aabb1, const AABB& aabb2) const {
     double min1_x = aabb1.cx - aabb1.hx;
     double max1_x = aabb1.cx + aabb1.hx;
@@ -215,6 +222,23 @@ std::vector<int> BVH::query_aabb(const AABB& query) const {
     return hits;
 }
 
+std::vector<int> BVH::nearest_neighbors(int object_id,
+                                        const std::vector<OBB>& bounding_boxes,
+                                        double inflate) const {
+    std::vector<int> result;
+    if (object_id < 0 || static_cast<size_t>(object_id) >= bounding_boxes.size()) return result;
+    AABB query = aabb_from_obb(bounding_boxes[object_id]);
+    query.hx *= inflate;
+    query.hy *= inflate;
+    query.hz *= inflate;
+    std::vector<int> hits = query_aabb(query);
+    result.reserve(hits.size());
+    for (int id : hits) {
+        if (id != object_id) result.push_back(id);
+    }
+    return result;
+}
+
 // Overload for lightweight internal BVH AABB
 static bool ray_aabb_intersect(const Point& origin,
                                const Vector& direction,
@@ -402,7 +426,7 @@ void BVH::build_from_boxes(const OBB* boxes, size_t count, double ws) {
         BVHNode* leaf = alloc_node();
         leaf->object_id = objects[0].id;
         const OBB& bb = boxes[objects[0].id];
-        leaf->aabb = AABB{bb.center[0], bb.center[1], bb.center[2], bb.half_size[0], bb.half_size[1], bb.half_size[2]};
+        leaf->aabb = aabb_from_obb(bb);
         leaf->left = leaf->right = nullptr;
         root = leaf;
         return;
@@ -473,7 +497,7 @@ void BVH::build_from_boxes(const OBB* boxes, size_t count, double ws) {
         BVHNode* leaf = alloc_node();
         leaf->object_id = objects[i].id;
         const OBB& bb = boxes[objects[i].id];
-        leaf->aabb = AABB{bb.center[0], bb.center[1], bb.center[2], bb.half_size[0], bb.half_size[1], bb.half_size[2]};
+        leaf->aabb = aabb_from_obb(bb);
         leaf->left = leaf->right = nullptr;
         leaves[i] = leaf;
     }

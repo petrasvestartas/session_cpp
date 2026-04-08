@@ -19,111 +19,91 @@ class Tree;
 /**
  * @class TreeNode
  * @brief A node of a tree data structure
- * 
+ *
  * TreeNodes can represent either:
  * - Geometry nodes: name is set to the geometry's GUID for lookup
  * - Organizational nodes: name is a descriptive string (e.g., "folder", "group")
- * 
- * When adding geometry to a Session, the TreeNode.name is automatically set to
- * the geometry.guid, allowing the tree hierarchy to reference geometry objects.
  */
 class TreeNode : public std::enable_shared_from_this<TreeNode> {
   friend class Tree; // Allow Tree to access private members
 private:
   mutable std::string _guid;
-  std::weak_ptr<TreeNode> _parent; //< Non-owning pointer to parent
-  std::vector<std::shared_ptr<TreeNode>>
-      _children;             //< Owning pointers to children
-  std::weak_ptr<Tree> _tree; //< Non-owning pointer to tree.
+  std::weak_ptr<TreeNode> _parent;                    ///< Non-owning pointer to parent
+  std::vector<std::shared_ptr<TreeNode>> _children;   ///< Owning pointers to children
+  std::weak_ptr<Tree> _tree;                          ///< Non-owning pointer to tree
 
 public:
+  /// Default / named constructor
   TreeNode(std::string name = "my_node") { this->name = name; }
 
+  /// Lazy GUID accessor (const)
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string name;               ///< Node identifier/name. For geometry nodes, this is the geometry's GUID
-  std::optional<Color> color;     ///< Optional display color, used for layer nodes
 
-  /// Convert node to string representation
+  /// Lazy GUID accessor (mutable)
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Node identifier/name. For geometry nodes, this is the geometry's GUID
+  std::string name;
+
+  /// Optional display color, used for layer nodes
+  std::optional<Color> color;
+
+  /// Simple string form (like Python __str__)
   std::string str() const;
 
-  /// Equality operator
+  /// Equality (compares guid)
   bool operator==(const TreeNode &other) const;
 
-  /// Inequality operator
+  /// Inequality (compares guid)
   bool operator!=(const TreeNode &other) const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Convert to JSON-serializable object
+  /// Serialize to ordered JSON object
   nlohmann::ordered_json jsondump() const;
 
-  /// Create TreeNode from JSON data
+  /// Deserialize from JSON object
   static std::shared_ptr<TreeNode> jsonload(const nlohmann::json &data);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details
   ///////////////////////////////////////////////////////////////////////////////////////////
 
+  /// True if this node has no parent
   bool is_root() const;
 
+  /// True if this node has no children
   bool is_leaf() const;
 
-  /// Get root node
-  TreeNode *root() const;
-
-  /// Get all nodes in the tree
-  std::vector<TreeNode *> nodes() const;
-
+  /// Get the owning tree (nullptr if not attached to a tree)
   Tree *tree() const;
 
-  /// @brief Add a child node to this node.
-  /// @param child
+  /// Add a child node to this node
   void add(std::shared_ptr<TreeNode> child);
 
-  /// @brief Remove a child node from this node.
-  /// @param child
+  /// Remove a child node and return it (nullptr if not found)
   std::shared_ptr<TreeNode> remove(std::shared_ptr<TreeNode> child);
 
-  /// @brief Get the parent node of this node.
-  /// @return The parent node of this node. Returns nullptr if this node is the
-  /// root node.
+  /// Parent node, or nullptr if this is the root
   std::shared_ptr<TreeNode> parent() const;
 
-  /// @brief Get all ancestors of this node.
-  /// @return A vector of all ancestors of this node.
+  /// All ancestors from immediate parent up to root
   std::vector<TreeNode *> ancestors() const;
 
-  /// @brief Get all the descendants of this node.
-  /// @return A vector of all the descendants of this node.
+  /// All descendants of this node, depth-first
   std::vector<TreeNode *> descendants() const;
 
-  /// @brief Get the children of this node.
-  /// @return A vector of raw pointers to the children of this node.
+  /// Direct children of this node
   std::vector<TreeNode *> children() const;
 
-  /// @brief Get the parent of this node.
-  /// @return Raw pointer to the parent node, or nullptr if this is the root.
-
-  /// @brief Traverse the tree from this node.
-  /// @param strategy The traversal strategy ("depthfirst" or "breadthfirst")
-  /// @param order The traversal order ("preorder" or "postorder") - only for
-  /// depth-first
-  /// @return Vector of nodes in traversal order
+  /// Traverse from this node ("depthfirst"|"breadthfirst", "preorder"|"postorder")
   std::vector<TreeNode *> traverse(const std::string &strategy = "depthfirst",
                                    const std::string &order = "preorder") const;
 };
 
-/**
- * @brief  To use this operator, you can do:
- *         TreeNode node("my_node");
- *         std::cout << node << std::endl;
- * @param os The output stream.
- * @param node The TreeNode to insert into the stream.
- * @return A reference to the output stream.
- */
+/// Stream output operator for tree node
 std::ostream &operator<<(std::ostream &os, const TreeNode &node);
 
 } // namespace session_cpp

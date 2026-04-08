@@ -29,11 +29,15 @@ public:
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::vector<double> _coords;  // Flat array [x0, y0, z0, x1, y1, z1, ...]
-    Plane plane;
+    mutable Plane plane;
+    mutable bool _plane_dirty = true;
     double width = 1.0;
     Color linecolor = Color::black();
 
     Xform xform;
+
+    /// Get plane (lazy — computed on first access from first 3 points)
+    const Plane& get_plane() const;
 
     /// Default constructor
     Polyline();

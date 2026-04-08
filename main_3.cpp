@@ -1,213 +1,273 @@
 #include <filesystem>
-#include <fstream>
-#include <chrono>
 #include "session.h"
-#include "element.h"
-#include "polyline.h"
+#include "quaternion.h"
+#include "plane.h"
+#include "vector.h"
+#include "point.h"
 #include "line.h"
-#include "rtree.h"
-#include "aabb.h"
-#include "obb.h"
-#include "json.h"
+#include "polyline.h"
+#include "tolerance.h"
 using namespace session_cpp;
+
+// Visualize quaternions as planes — one group per MINI_TEST in quaternion_test.cpp.
+// Each group is shifted on +X so they sit side-by-side in the viewer.
+// Run, then load session_data/QuaternionViz.pb in the Vue viewer.
+
+static constexpr double STEP = 5.0;
+static constexpr double PI = Tolerance::PI;
+
+static std::shared_ptr<Plane> make_plane(const Plane& src, const std::string& name, const Color& color, double dx) {
+    auto p = std::make_shared<Plane>(src);
+    *p += Vector(dx, 0.0, 0.0);
+    p->name = name;
+    p->linecolor = color;
+    return p;
+}
+
+static std::shared_ptr<Plane> identity_plane(const std::string& name, double dx) {
+    return make_plane(Plane::xy_plane(), name, Color(160, 160, 160), dx);
+}
+
+static std::shared_ptr<Line> shifted_line(const Point& a, const Point& b, const std::string& name, const Color& color, double dx) {
+    auto l = std::make_shared<Line>(a[0] + dx, a[1], a[2], b[0] + dx, b[1], b[2]);
+    l->name = name;
+    l->linecolor = color;
+    return l;
+}
+
+static std::shared_ptr<Polyline> shifted_polyline(const std::vector<Point>& pts, const std::string& name, const Color& color, double dx) {
+    std::vector<Point> moved;
+    moved.reserve(pts.size());
+    for (auto& p : pts) moved.emplace_back(p[0] + dx, p[1], p[2]);
+    auto pl = std::make_shared<Polyline>(moved);
+    pl->name = name;
+    pl->linecolor = color;
+    return pl;
+}
 
 int main() {
     auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
-    auto json_in = (base / "session_data" / "WoodStep2_data.json").string();
-    auto pb_path = (base / "session_data" / "WoodStep3.pb").string();
-    auto json_out = (base / "session_data" / "WoodStep3_data.json").string();
+    auto out = (base / "session_data" / "QuaternionViz.pb").string();
 
-    // 1. Load elements from Step 2
-    std::ifstream fin(json_in);
-    nlohmann::json data = nlohmann::json::parse(fin);
-    std::vector<PlateElement> elements;
-    nlohmann::json elem_array_out = nlohmann::json::array();
-    for (auto& e : data["elements"]) {
-        std::vector<Point> polygon;
-        for (auto& p : e["polygon"])
-            polygon.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
-        double thickness = e["thickness"].get<double>();
-        std::string name = e["name"].get<std::string>();
-        elements.emplace_back(polygon, thickness, name);
-        elem_array_out.push_back(e);
-    }
-    fmt::print("Loaded {} elements\n", elements.size());
+    Session session("QuaternionViz");
+    int gi = 0;
 
-    auto t0 = std::chrono::high_resolution_clock::now();
-
-    // 2. Compute AABB + OBB for each element
-    size_t N = elements.size();
-    std::vector<AABB> aabbs(N);
-    std::vector<OBB> obbs(N);
-    for (size_t i = 0; i < N; i++) {
-        auto pls = elements[i].compute_polylines();
-        std::vector<Point> all_pts;
-        for (auto& pl : pls)
-            for (auto& p : pl.get_points())
-                all_pts.push_back(p);
-        aabbs[i] = AABB::from_points(all_pts);
-        obbs[i] = OBB::from_points(all_pts);
-    }
-
-    // 3. Build RTree
-    RTree<int, double, 3> tree;
-    for (size_t i = 0; i < N; i++) {
-        double mn[3] = {aabbs[i].cx - aabbs[i].hx, aabbs[i].cy - aabbs[i].hy, aabbs[i].cz - aabbs[i].hz};
-        double mx[3] = {aabbs[i].cx + aabbs[i].hx, aabbs[i].cy + aabbs[i].hy, aabbs[i].cz + aabbs[i].hz};
-        tree.insert(mn, mx, static_cast<int>(i));
-    }
-
-    // 4. Search: AABB broad phase + OBB narrow phase
-    std::vector<int> adjacency;
-    for (size_t i = 0; i < N; i++) {
-        double mn[3] = {aabbs[i].cx - aabbs[i].hx, aabbs[i].cy - aabbs[i].hy, aabbs[i].cz - aabbs[i].hz};
-        double mx[3] = {aabbs[i].cx + aabbs[i].hx, aabbs[i].cy + aabbs[i].hy, aabbs[i].cz + aabbs[i].hz};
-
-        auto callback = [&](int j) -> bool {
-            if ((int)i < j && obbs[i].collides_with(obbs[j])) {
-                adjacency.push_back(static_cast<int>(i));
-                adjacency.push_back(j);
-                adjacency.push_back(-1);
-                adjacency.push_back(-1);
-            }
-            return true;
-        };
-        tree.search(mn, mx, callback);
-    }
-
-    auto t1 = std::chrono::high_resolution_clock::now();
-    double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    fmt::print("RTree+OBB: {} adjacency pairs in {:.1f} ms (precompute+search)\n", adjacency.size() / 4, ms);
-
-    // 4b. Combined benchmark: RTree + face-to-face using raw arrays (no Polyline overhead)
+    // 1. Constructor — identity, q90 (Z by π/2), q180 (q90*q90)
     {
-        auto tc0 = std::chrono::high_resolution_clock::now();
+        double dx = gi++ * STEP;
+        auto g = session.add_group("01_Constructor");
+        Quaternion q90 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        Quaternion q180 = q90 * q90;
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q90.get_rotation(), "q90", Color::blue(), dx), g);
+        session.add_plane(make_plane(q180.get_rotation(), "q90*q90 = q180", Color::red(), dx), g);
+    }
 
-        // Lightweight face cache: just coords + plane data as flat doubles
-        // Each element has nf faces. Each face has np points (4 for quads).
-        // Store: coords[face][point*3+dim], normal[face*3+dim], origin[face*3+dim], aabb[face]
-        struct FaceData {
-            int nf;                         // number of faces
-            std::vector<std::vector<double>> coords; // [face][pt*3+xyz]
-            std::vector<int> npts;          // points per face (open, no closing)
-            std::vector<double> normals;    // [face*3+xyz]
-            std::vector<double> origins;    // [face*3+xyz]
-            std::vector<AABB> aabbs;        // [face]
-        };
-        std::vector<FaceData> fd(N);
-        for (size_t ei = 0; ei < N; ei++) {
-            auto pls = elements[ei].compute_polylines();
-            auto plns = elements[ei].compute_planes();
-            int nf = (int)pls.size();
-            fd[ei].nf = nf;
-            fd[ei].coords.resize(nf);
-            fd[ei].npts.resize(nf);
-            fd[ei].normals.resize(nf * 3);
-            fd[ei].origins.resize(nf * 3);
-            fd[ei].aabbs.resize(nf);
-            for (int f = 0; f < nf; f++) {
-                auto pts = pls[f].get_points();
-                int np = (int)pts.size();
-                // Remove closing point
-                if (np > 3 && std::abs(pts[np-1][0]-pts[0][0])<1e-6 &&
-                    std::abs(pts[np-1][1]-pts[0][1])<1e-6 &&
-                    std::abs(pts[np-1][2]-pts[0][2])<1e-6) np--;
-                fd[ei].npts[f] = np;
-                fd[ei].coords[f].resize(np * 3);
-                double minx=1e30,miny=1e30,minz=1e30,maxx=-1e30,maxy=-1e30,maxz=-1e30;
-                for (int p = 0; p < np; p++) {
-                    double x=pts[p][0], y=pts[p][1], z=pts[p][2];
-                    fd[ei].coords[f][p*3]=x; fd[ei].coords[f][p*3+1]=y; fd[ei].coords[f][p*3+2]=z;
-                    if(x<minx)minx=x; if(y<miny)miny=y; if(z<minz)minz=z;
-                    if(x>maxx)maxx=x; if(y>maxy)maxy=y; if(z>maxz)maxz=z;
-                }
-                double inf = 25.0;
-                fd[ei].aabbs[f] = AABB{(minx+maxx)*0.5,(miny+maxy)*0.5,(minz+maxz)*0.5,
-                                       (maxx-minx)*0.5+inf,(maxy-miny)*0.5+inf,(maxz-minz)*0.5+inf};
-                Vector n = plns[f].z_axis(); Point o = plns[f].origin();
-                fd[ei].normals[f*3]=n[0]; fd[ei].normals[f*3+1]=n[1]; fd[ei].normals[f*3+2]=n[2];
-                fd[ei].origins[f*3]=o[0]; fd[ei].origins[f*3+1]=o[1]; fd[ei].origins[f*3+2]=o[2];
-            }
+    // 2. Identity — single frame, the do-nothing rotation
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("02_Identity");
+        session.add_plane(make_plane(Quaternion::identity().get_rotation(), "identity", Color::blue(), dx), g);
+    }
+
+    // 3. From Scalar And Vector — raw quaternion is not unit; show normalized form
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("03_FromScalarVector");
+        Quaternion raw = Quaternion::from_scalar_and_vector(2.0, Vector(1.0, 2.0, 3.0));
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(raw.normalized().get_rotation(), "raw.normalized()", Color::blue(), dx), g);
+    }
+
+    // 4. From Axis Angle — show the rotation axis as a literal line
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("04_FromAxisAngle");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "rot(Z, 90deg)", Color::blue(), dx), g);
+        session.add_line(shifted_line(Point(0.0, 0.0, -1.5), Point(0.0, 0.0, 1.5), "axis_Z", Color::red(), dx), g);
+    }
+
+    // 5. From Arc — sample the great-circle path src->dst on the unit circle
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("05_FromArc");
+        Vector src(1.0, 0.0, 0.0);
+        Vector dst(0.0, 1.0, 0.0);
+        Quaternion q = Quaternion::from_arc(src, dst);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "from_arc(X,Y)", Color::blue(), dx), g);
+        std::vector<Point> arc;
+        for (int i = 0; i <= 20; i++) {
+            double t = double(i) / 20.0 * (PI / 2.0);
+            arc.emplace_back(std::cos(t), std::sin(t), 0.0);
         }
+        session.add_polyline(shifted_polyline(arc, "arc_X_to_Y", Color::red(), dx), g);
+    }
 
-        auto tc1 = std::chrono::high_resolution_clock::now();
+    // 6. From Euler — equivalent to axis-angle around Z
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("06_FromEuler");
+        Quaternion q_euler = Quaternion::from_euler(0.0, 0.0, PI / 2.0);
+        Quaternion q_axis = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q_euler.get_rotation(), "from_euler(0,0,90)", Color::blue(), dx), g);
+        session.add_plane(make_plane(q_axis.get_rotation(), "from_axis_angle(Z,90)", Color::red(), dx), g);
+    }
 
-        int combined_joints = 0;
-        for (size_t idx = 0; idx < adjacency.size(); idx += 4) {
-            int a = adjacency[idx], b = adjacency[idx+1];
-            auto& ca = fd[a]; auto& cb = fd[b];
-            bool found = false;
-            for (int i = 0; i < ca.nf && !found; i++) {
-                double nix=ca.normals[i*3], niy=ca.normals[i*3+1], niz=ca.normals[i*3+2];
-                for (int j = 0; j < cb.nf; j++) {
-                    double dot = nix*cb.normals[j*3]+niy*cb.normals[j*3+1]+niz*cb.normals[j*3+2];
-                    if (std::abs(std::abs(dot)-1.0) > 0.01) continue;
-                    double dx=cb.origins[j*3]-ca.origins[i*3];
-                    double dy=cb.origins[j*3+1]-ca.origins[i*3+1];
-                    double dz=cb.origins[j*3+2]-ca.origins[i*3+2];
-                    if (std::abs(dx*nix+dy*niy+dz*niz) > 50.0) continue;
-                    if (!ca.aabbs[i].intersects(cb.aabbs[j])) continue;
-                    combined_joints++;
-                    found = true;
-                    break;
-                }
-            }
+    // 7. From Rotation — quaternion that maps plane_a -> plane_b
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("07_FromRotation");
+        Plane plane_a = Plane::xy_plane();
+        Plane plane_b(Point(0.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), Vector(-1.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0));
+        Quaternion q = Quaternion::from_rotation(plane_a, plane_b);
+        session.add_plane(make_plane(plane_a, "plane_a", Color(160, 160, 160), dx), g);
+        session.add_plane(make_plane(plane_b, "plane_b", Color::blue(), dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "from_rotation(a,b)", Color::red(), dx), g);
+    }
+
+    // 8. Rotate Vector — input X, output Y
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("08_RotateVector");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        Vector in(1.0, 0.0, 0.0);
+        Vector out = q.rotate_vector(in);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "q", Color::blue(), dx), g);
+        session.add_line(shifted_line(Point(0.0, 0.0, 0.0), Point(in[0], in[1], in[2]), "input", Color(160, 160, 160), dx), g);
+        session.add_line(shifted_line(Point(0.0, 0.0, 0.0), Point(out[0], out[1], out[2]), "rotated", Color::red(), dx), g);
+    }
+
+    // 9. Get Rotation — the canonical example: q -> Plane
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("09_GetRotation");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "q.get_rotation()", Color::blue(), dx), g);
+    }
+
+    // 10. Magnitude — unit quaternion is a valid rotation, non-unit is not
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("10_Magnitude");
+        Quaternion qu = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 4.0);
+        Quaternion qbad = qu * 2.0;
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(qu.get_rotation(), "|q|=1 valid", Color::blue(), dx), g);
+        session.add_plane(make_plane(qbad.get_rotation(), "|q|=2 invalid", Color::red(), dx), g);
+    }
+
+    // 11. Magnitude Squared — same scene as #10 (mag^2 is just an optimization)
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("11_MagnitudeSquared");
+        Quaternion qu = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 4.0);
+        Quaternion qbad = qu * 2.0;
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(qu.get_rotation(), "|q|^2=1 valid", Color::blue(), dx), g);
+        session.add_plane(make_plane(qbad.get_rotation(), "|q|^2=4 invalid", Color::red(), dx), g);
+    }
+
+    // 12. Normalized — before vs after normalize, side-by-side
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("12_Normalized");
+        Quaternion raw = Quaternion::from_scalar_and_vector(2.0, Vector(0.0, 0.0, 2.0));
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(raw.get_rotation(), "raw skewed", Color::red(), dx), g);
+        session.add_plane(make_plane(raw.normalized().get_rotation(), "normalized", Color::blue(), dx), g);
+    }
+
+    // 13. Conjugate — the inverse rotation (mirror about the rotation axis)
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("13_Conjugate");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 4.0);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "q", Color::blue(), dx), g);
+        session.add_plane(make_plane(q.conjugate().get_rotation(), "q.conjugate()", Color::red(), dx), g);
+    }
+
+    // 14. Invert — q * q.invert() must overlay identity exactly
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("14_Invert");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 3.0);
+        Quaternion qid = q * q.invert();
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "q", Color::blue(), dx), g);
+        session.add_plane(make_plane(qid.get_rotation(), "q*q.invert()", Color::red(), dx), g);
+    }
+
+    // 15. Dot — algebraic, not geometric. Print result, show single frame.
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("15_Dot");
+        Quaternion qid = Quaternion::identity();
+        fmt::print("dot(identity, identity) = {}\n", qid.dot(qid));
+        session.add_plane(make_plane(qid.get_rotation(), "identity", Color::blue(), dx), g);
+    }
+
+    // 16. Slerp — 11 frames sampled along q1 -> q2 (smooth angular sweep)
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("16_Slerp");
+        Quaternion q1 = Quaternion::identity();
+        Quaternion q2 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        for (int i = 0; i <= 10; i++) {
+            double t = double(i) / 10.0;
+            Quaternion qt = q1.slerp(q2, t);
+            session.add_plane(make_plane(qt.get_rotation(), "slerp_" + std::to_string(i), Color::blue(), dx), g);
         }
-
-        auto tc2 = std::chrono::high_resolution_clock::now();
-        double precomp_ms = std::chrono::duration<double, std::milli>(tc1 - tc0).count();
-        double detect_ms = std::chrono::duration<double, std::milli>(tc2 - tc1).count();
-        double total_ms = ms + std::chrono::duration<double, std::milli>(tc2 - tc0).count();
-        fmt::print("Combined: {:.1f} ms total (RTree={:.1f} + precompute={:.1f} + detect={:.1f}), joints={}\n",
-                   total_ms, ms, precomp_ms, detect_ms, combined_joints);
     }
 
-    // 5. Visualize — join all plates into ONE mesh, all adj lines into polylines
-    Session session("WoodStep3_Adjacency");
-
-    // Build one combined mesh from all plates
-    std::vector<Point> all_verts;
-    std::vector<std::vector<size_t>> all_faces;
-    for (auto& e : data["elements"]) {
-        std::vector<Point> bot, top;
-        for (auto& p : e["polygon"]) bot.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
-        if (e.contains("polygon_top"))
-            for (auto& p : e["polygon_top"]) top.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
-        else top = bot;
-        size_t np = std::min(bot.size(), top.size());
-        Vector na = PlateElement::polygon_normal(bot);
-        double dx = 0, dy = 0, dz = 0;
-        for (size_t k = 0; k < np; k++) { dx += top[k][0]-bot[k][0]; dy += top[k][1]-bot[k][1]; dz += top[k][2]-bot[k][2]; }
-        if (dx*na[0]+dy*na[1]+dz*na[2] < 0) std::swap(bot, top);
-        size_t base = all_verts.size();
-        for (size_t k = 0; k < np; k++) all_verts.push_back(bot[k]);
-        for (size_t k = 0; k < np; k++) all_verts.push_back(top[k]);
-        std::vector<size_t> bf; for (size_t k = np; k-- > 0;) bf.push_back(base+k); all_faces.push_back(bf);
-        std::vector<size_t> tf; for (size_t k = 0; k < np; k++) tf.push_back(base+np+k); all_faces.push_back(tf);
-        for (size_t k = 0; k < np; k++) { size_t k1=(k+1)%np; all_faces.push_back({base+k,base+k1,base+k1+np,base+k+np}); }
+    // 17. Nlerp — same endpoints, slightly uneven middle (place beside #16 to compare)
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("17_Nlerp");
+        Quaternion q1 = Quaternion::identity();
+        Quaternion q2 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        for (int i = 0; i <= 10; i++) {
+            double t = double(i) / 10.0;
+            Quaternion qt = q1.nlerp(q2, t);
+            session.add_plane(make_plane(qt.get_rotation(), "nlerp_" + std::to_string(i), Color::red(), dx), g);
+        }
     }
-    auto g_mesh = session.add_group("Elements");
-    auto m = std::make_shared<Mesh>(Mesh::from_vertices_and_faces(all_verts, all_faces));
-    session.add(session.add_mesh(m), g_mesh);
 
-    // Adjacency lines as polylines (faster in Rhino than individual Lines)
-    auto g_adj = session.add_group("Adjacency");
-    for (size_t i = 0; i < adjacency.size(); i += 4) {
-        int a = adjacency[i], b = adjacency[i + 1];
-        Point ca = elements[a].point();
-        Point cb = elements[b].point();
-        auto pl = std::make_shared<Polyline>(std::vector<Point>{ca, cb});
-        session.add(session.add_polyline(pl), g_adj);
+    // 18. Json Roundtrip — q and json-loaded q should overlay perfectly
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("18_JsonRoundtrip");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        q.name = "serialization/test_quaternion";
+        std::string fn = (base / "session_data" / "QuaternionViz_q.json").string();
+        q.json_dump(fn);
+        Quaternion loaded = Quaternion::json_load(fn);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "q", Color::blue(), dx), g);
+        session.add_plane(make_plane(loaded.get_rotation(), "json_load(q)", Color::red(), dx), g);
     }
-    session.pb_dump(pb_path);
 
-    // 6. Write intermediate data
-    nlohmann::ordered_json out_data;
-    out_data["elements"] = elem_array_out;
-    out_data["adjacency"] = adjacency;
-    std::ofstream fout(json_out);
-    fout << out_data.dump(2);
+    // 19. Protobuf Roundtrip — same as #18 but with pb_dump/pb_load
+    {
+        double dx = gi++ * STEP;
+        auto g = session.add_group("19_ProtobufRoundtrip");
+        Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
+        q.name = "serialization/test_quaternion";
+        std::string fn = (base / "session_data" / "QuaternionViz_q.bin").string();
+        q.pb_dump(fn);
+        Quaternion loaded = Quaternion::pb_load(fn);
+        session.add_plane(identity_plane("identity", dx), g);
+        session.add_plane(make_plane(q.get_rotation(), "q", Color::blue(), dx), g);
+        session.add_plane(make_plane(loaded.get_rotation(), "pb_load(q)", Color::red(), dx), g);
+    }
 
-    fmt::print("Wrote {} and {}\n", pb_path, json_out);
+    session.pb_dump(out);
+    fmt::print("Wrote {} groups -> {}\n", gi, out);
     return 0;
 }

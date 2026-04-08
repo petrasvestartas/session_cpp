@@ -56,6 +56,8 @@ public:
     void add_feature(std::function<Mesh(Mesh)> f);
     void set_geometry(const Mesh& geo);
     void set_geometry(const BRep& geo);
+    void set_polylines(std::vector<Polyline> polys);
+    void set_planes(std::vector<Plane> plns);
     void reset();
 
     Element duplicate() const;
@@ -193,6 +195,8 @@ public:
                  const std::string& name = "my_plate");
     PlateElement(const std::vector<Point>& bottom, const std::vector<Point>& top,
                  const std::string& name = "my_plate");
+    PlateElement(const Polyline& bottom, const Polyline& top,
+                 const std::string& name = "my_plate");
     PlateElement(const PlateElement& other);
     PlateElement& operator=(const PlateElement& other);
 
@@ -203,6 +207,7 @@ public:
     void set_polygon_top(const std::vector<Point>& pts);
     void set_thickness(double v);
     Mesh compute_element_geometry() const;
+    AABB compute_aabb_fast(double inflate = 0.0) const;
     static Vector polygon_normal(const std::vector<Point>& pts);
 
     const std::vector<int>& joint_types() const { return _joint_types; }

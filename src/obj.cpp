@@ -1,9 +1,13 @@
 #include "obj.h"
 #include "mesh.h"
+#include "element.h"
+#include "rtree.h"
+#include "aabb.h"
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cmath>
 
 namespace session_cpp { namespace obj {
 
@@ -107,6 +111,57 @@ std::vector<Polyline> read_obj_polylines(const std::string& filepath) {
         }
     }
     return polylines;
+}
+
+std::vector<std::pair<int,int>> pair_polylines(const std::vector<Polyline>& polylines, double search_radius) {
+    size_t NP = polylines.size();
+    std::vector<Point> centroids(NP);
+    std::vector<Vector> normals(NP);
+    std::vector<AABB> aabbs(NP);
+
+    // Helper to strip closing point
+    auto open_pts = [](const Polyline& pl) {
+        auto pts = pl.get_points();
+        if (pts.size() > 3) {
+            auto& f = pts.front(); auto& l = pts.back();
+            if (std::abs(f[0]-l[0])<1e-6 && std::abs(f[1]-l[1])<1e-6 && std::abs(f[2]-l[2])<1e-6)
+                pts.pop_back();
+        }
+        return pts;
+    };
+
+    RTree<int, double, 3> tree;
+    for (size_t i = 0; i < NP; i++) {
+        auto pts = open_pts(polylines[i]);
+        double cx=0,cy=0,cz=0;
+        for (auto& p : pts) { cx+=p[0]; cy+=p[1]; cz+=p[2]; }
+        centroids[i] = Point(cx/pts.size(), cy/pts.size(), cz/pts.size());
+        normals[i] = PlateElement::polygon_normal(pts);
+        aabbs[i] = AABB::from_polyline(polylines[i], search_radius);
+        double mn[3]={aabbs[i].cx-aabbs[i].hx, aabbs[i].cy-aabbs[i].hy, aabbs[i].cz-aabbs[i].hz};
+        double mx[3]={aabbs[i].cx+aabbs[i].hx, aabbs[i].cy+aabbs[i].hy, aabbs[i].cz+aabbs[i].hz};
+        tree.insert(mn, mx, (int)i);
+    }
+
+    std::vector<bool> paired(NP, false);
+    std::vector<std::pair<int,int>> pairs;
+    for (size_t i = 0; i < NP; i++) {
+        if (paired[i]) continue;
+        int best = -1; double best_d = 1e30;
+        double mn[3]={aabbs[i].cx-aabbs[i].hx, aabbs[i].cy-aabbs[i].hy, aabbs[i].cz-aabbs[i].hz};
+        double mx[3]={aabbs[i].cx+aabbs[i].hx, aabbs[i].cy+aabbs[i].hy, aabbs[i].cz+aabbs[i].hz};
+        tree.search(mn, mx, [&](int j) {
+            if (j <= (int)i || paired[j]) return true;
+            double dot = normals[i][0]*normals[j][0]+normals[i][1]*normals[j][1]+normals[i][2]*normals[j][2];
+            if (std::abs(dot) < 0.7) return true;
+            double dx=centroids[i][0]-centroids[j][0], dy=centroids[i][1]-centroids[j][1], dz=centroids[i][2]-centroids[j][2];
+            double d = dx*dx+dy*dy+dz*dz;
+            if (d < best_d) { best_d = d; best = j; }
+            return true;
+        });
+        if (best >= 0) { pairs.push_back({(int)i, best}); paired[i] = paired[best] = true; }
+    }
+    return pairs;
 }
 
 } } // namespace session_cpp::obj

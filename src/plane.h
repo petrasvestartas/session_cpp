@@ -202,7 +202,7 @@ namespace session_cpp {
   static bool is_coplanar(const Plane &plane0, const Plane plane1, bool can_be_flipped = true);
   static bool is_coplanar(const Point& origin0, const Vector& normal0,
                           const Point& origin1, const Vector& normal1,
-                          bool can_be_flipped = true);
+                          bool can_be_flipped = true, double tolerance = -1.0);
 
   /**
    * @brief Translate (move) a plane along its normal direction by a specified distance.

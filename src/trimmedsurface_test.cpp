@@ -123,7 +123,7 @@ namespace session_cpp {
         double R = 4.0;
         pts = {};
         for (int k = 0; k < 6; ++k) {
-            double a = k * TOLERANCE.PI / 3.0;
+            double a = k * Tolerance::PI / 3.0;
             pts.push_back(Point(R*cos(a), R*sin(a), R*cos(a)*0.5));
         }
         bnd = NurbsCurve::create(true, 1, pts);

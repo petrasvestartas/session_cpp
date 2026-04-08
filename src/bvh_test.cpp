@@ -177,6 +177,33 @@ MINI_TEST("BVH", "Check All Collisions") {
     MINI_CHECK(checks > 0);
 }
 
+MINI_TEST("BVH", "Nearest Neighbors") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> bboxes = {
+        OBB(
+            Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        OBB(
+            Point(0.5, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        OBB(
+            Point(10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1))
+    };
+
+    BVH bvh = BVH::from_boxes(bboxes, 100.0);
+
+    std::vector<int> n0 = bvh.nearest_neighbors(0, bboxes, 1.2);
+    MINI_CHECK(n0.size() == 1);
+    MINI_CHECK(n0[0] == 1);
+
+    std::vector<int> n2 = bvh.nearest_neighbors(2, bboxes, 1.2);
+    MINI_CHECK(n2.size() == 0);
+
+    std::vector<int> n2_wide = bvh.nearest_neighbors(2, bboxes, 10.0);
+    MINI_CHECK(n2_wide.size() == 2);
+}
+
 MINI_TEST("BVH", "Merge Aabb") {
     // uncomment #include "bvh.h"
     // uncomment #include "obb.h"

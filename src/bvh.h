@@ -75,6 +75,12 @@ public:
     // Find all leaf object_ids whose AABB overlaps the query box.
     std::vector<int> query_aabb(const AABB& query) const;
 
+    // Convenience: find leaf object_ids near `object_id`, excluding self.
+    // Inflates the half-extents of the object's AABB by `inflate` and queries.
+    std::vector<int> nearest_neighbors(int object_id,
+                                       const std::vector<OBB>& bounding_boxes,
+                                       double inflate = 1.2) const;
+
     // Ray cast traversal over BVH nodes returning candidate leaf indices ordered by AABB entry t.
     bool ray_cast(const Point& origin,
                   const Vector& direction,

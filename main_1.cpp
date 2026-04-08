@@ -1,46 +1,40 @@
 #include <filesystem>
-#include <fstream>
+#include <chrono>
 #include "session.h"
+#include "element.h"
 #include "obj.h"
-#include "polyline.h"
-#include "json.h"
 using namespace session_cpp;
 
 int main() {
     auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
-    auto obj_path = (base / "session_data" / "annen_polylines.obj").string();
-    auto pb_path = (base / "session_data" / "WoodStep1.pb").string();
-    auto json_path = (base / "session_data" / "WoodStep1_data.json").string();
+    using Clock = std::chrono::high_resolution_clock;
+    auto t0 = Clock::now();
 
-    // 1. Import polylines from OBJ
-    auto polylines = obj::read_obj_polylines(obj_path);
-    fmt::print("Imported {} polylines\n", polylines.size());
+    // 1. Import + pair polylines
+    auto polylines = obj::read_obj_polylines((base / "session_data" / "annen_polylines.obj").string());
+    auto pairs = obj::pair_polylines(polylines);
+    auto t1 = Clock::now();
 
-    // 2. Visualize in Session
-    Session session("WoodStep1_Polylines");
-    auto g = session.add_group("Polylines");
-    for (size_t i = 0; i < polylines.size(); i++) {
-        auto pl = std::make_shared<Polyline>(polylines[i]);
-        session.add(session.add_polyline(pl), g);
-    }
-    session.pb_dump(pb_path);
+    // 2. Create session with elements
+    Session session("WoodComplete");
+    auto g = session.add_group("Elements");
+    for (auto [a, b] : pairs)
+        session.add_element(std::make_shared<PlateElement>(
+            polylines[a], polylines[b], "plate_" + std::to_string(a)), g);
+    auto t2 = Clock::now();
 
-    // 3. Write intermediate data JSON
-    nlohmann::ordered_json data;
-    nlohmann::json pl_array = nlohmann::json::array();
-    for (size_t i = 0; i < polylines.size(); i++) {
-        nlohmann::json entry;
-        auto pts = polylines[i].get_points();
-        nlohmann::json coords = nlohmann::json::array();
-        for (auto& p : pts) coords.push_back({p[0], p[1], p[2]});
-        entry["coords"] = coords;
-        entry["name"] = "pl_" + std::to_string(i);
-        pl_array.push_back(entry);
-    }
-    data["polylines"] = pl_array;
-    std::ofstream out(json_path);
-    out << data.dump(2);
+    // 3. Compute face-to-face contacts (adjacency + boolean intersection → graph edges)
+    session.compute_face_to_face(5.0, 50.0);
+    auto t3 = Clock::now();
 
-    fmt::print("Wrote {} and {}\n", pb_path, json_path);
+    // 4. Save
+    session.pb_dump((base / "session_data" / "WoodComplete.pb").string());
+    auto t4 = Clock::now();
+
+    auto ms = [](auto a, auto b) { return std::chrono::duration<double,std::milli>(b-a).count(); };
+    fmt::print("{} polylines -> {} elements -> {} joints\n",
+        polylines.size(), pairs.size(), session.graph.number_of_edges());
+    fmt::print("  import+pair: {:.0f}ms  elements: {:.0f}ms  contacts: {:.0f}ms  save: {:.0f}ms  total: {:.0f}ms\n",
+        ms(t0,t1), ms(t1,t2), ms(t2,t3), ms(t3,t4), ms(t0,t4));
     return 0;
 }

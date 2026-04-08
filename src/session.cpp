@@ -50,101 +50,167 @@ std::string Session::str() const {
 
 // Geometry Management
 
-std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point) {
+std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent) {
   objects.points->push_back(point);
   lookup[point->guid()] = point;
   graph.add_node(point->guid(), "point_" + point->name);
-  cache_geometry_aabb(point->guid(), point);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(point->guid());
-  return tree_node;
+  cache_geometry_aabb(point->guid(), point);
+  auto node = std::make_shared<TreeNode>(point->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line) {
+std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent) {
   objects.lines->push_back(line);
   lookup[line->guid()] = line;
   graph.add_node(line->guid(), "line_" + line->name);
-  cache_geometry_aabb(line->guid(), line);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(line->guid());
-  return tree_node;
+  cache_geometry_aabb(line->guid(), line);
+  auto node = std::make_shared<TreeNode>(line->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane) {
+std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent) {
   objects.planes->push_back(plane);
   lookup[plane->guid()] = plane;
   graph.add_node(plane->guid(), "plane_" + plane->name);
-  cache_geometry_aabb(plane->guid(), plane);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(plane->guid());
-  return tree_node;
+  cache_geometry_aabb(plane->guid(), plane);
+  auto node = std::make_shared<TreeNode>(plane->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
 std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
   objects.bboxes->push_back(bbox);
   lookup[bbox->guid()] = bbox;
   graph.add_node(bbox->guid(), "bbox_" + bbox->name);
-  cache_geometry_aabb(bbox->guid(), bbox);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(bbox->guid());
-  return tree_node;
+  cache_geometry_aabb(bbox->guid(), bbox);
+  auto node = std::make_shared<TreeNode>(bbox->guid());
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline) {
+std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent) {
   objects.polylines->push_back(polyline);
   lookup[polyline->guid()] = polyline;
   graph.add_node(polyline->guid(), "polyline_" + polyline->name);
-  cache_geometry_aabb(polyline->guid(), polyline);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(polyline->guid());
-  return tree_node;
+  cache_geometry_aabb(polyline->guid(), polyline);
+  auto node = std::make_shared<TreeNode>(polyline->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> pointcloud) {
+std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent) {
   objects.pointclouds->push_back(pointcloud);
   lookup[pointcloud->guid()] = pointcloud;
   graph.add_node(pointcloud->guid(), "pointcloud_" + pointcloud->name);
-  cache_geometry_aabb(pointcloud->guid(), pointcloud);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(pointcloud->guid());
-  return tree_node;
+  cache_geometry_aabb(pointcloud->guid(), pointcloud);
+  auto node = std::make_shared<TreeNode>(pointcloud->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh) {
+std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent) {
   objects.meshes->push_back(mesh);
   lookup[mesh->guid()] = mesh;
   graph.add_node(mesh->guid(), "mesh_" + mesh->name);
-  cache_geometry_aabb(mesh->guid(), mesh);  // Incremental AABB caching
-  auto tree_node = std::make_shared<TreeNode>(mesh->guid());
-  return tree_node;
+  cache_geometry_aabb(mesh->guid(), mesh);
+  auto node = std::make_shared<TreeNode>(mesh->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve) {
+std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve, std::shared_ptr<TreeNode> parent) {
   objects.nurbscurves->push_back(nurbscurve);
   lookup[nurbscurve->guid()] = nurbscurve;
   graph.add_node(nurbscurve->guid(), "nurbscurve_" + nurbscurve->name);
   cache_geometry_aabb(nurbscurve->guid(), nurbscurve);
-  auto tree_node = std::make_shared<TreeNode>(nurbscurve->guid());
-  return tree_node;
+  auto node = std::make_shared<TreeNode>(nurbscurve->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface) {
+std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface, std::shared_ptr<TreeNode> parent) {
   objects.nurbssurfaces->push_back(nurbssurface);
   lookup[nurbssurface->guid()] = nurbssurface;
   graph.add_node(nurbssurface->guid(), "nurbssurface_" + nurbssurface->name);
   cache_geometry_aabb(nurbssurface->guid(), nurbssurface);
-  auto tree_node = std::make_shared<TreeNode>(nurbssurface->guid());
-  return tree_node;
+  auto node = std::make_shared<TreeNode>(nurbssurface->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep) {
+std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent) {
   objects.breps->push_back(brep);
   lookup[brep->guid()] = brep;
   graph.add_node(brep->guid(), "brep_" + brep->name);
-  auto tree_node = std::make_shared<TreeNode>(brep->guid());
-  return tree_node;
+  auto node = std::make_shared<TreeNode>(brep->guid());
+  if (parent) add(node, parent);
+  return node;
 }
 
-std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element) {
+std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
   objects.elements->push_back(element);
   lookup[element->guid()] = element;
   graph.add_node(element->guid(), "element_" + element->name);
-  auto tree_node = std::make_shared<TreeNode>(element->guid());
-  return tree_node;
+  auto node = std::make_shared<TreeNode>(element->guid());
+  if (parent) add(node, parent);
+  return node;
+}
+
+void Session::compute_face_to_face(double inflate, double coplanar_tolerance) {
+    auto& elems = *objects.elements;
+    size_t N = elems.size();
+    if (N == 0) return;
+
+    // Step A: Fast AABB from raw polygon data (no Polyline construction)
+    std::vector<AABB> aabbs(N);
+    for (size_t i = 0; i < N; i++) {
+        auto* plate = dynamic_cast<PlateElement*>(elems[i].get());
+        if (plate) aabbs[i] = plate->compute_aabb_fast(inflate);
+        else aabbs[i] = AABB::from_points({}, inflate); // fallback
+    }
+
+    // Step B: BVH broad phase
+    double ws = 0;
+    for (auto& a : aabbs) {
+        ws = std::max(ws, std::abs(a.cx+a.hx)); ws = std::max(ws, std::abs(a.cy+a.hy));
+        ws = std::max(ws, std::abs(a.cz+a.hz)); ws = std::max(ws, std::abs(a.cx-a.hx));
+        ws = std::max(ws, std::abs(a.cy-a.hy)); ws = std::max(ws, std::abs(a.cz-a.hz));
+    }
+    BVH bvh;
+    bvh.build_from_aabbs(aabbs.data(), N, ws * 2);
+    std::vector<int> adjacency;
+    for (size_t i = 0; i < N; i++) {
+        auto hits = bvh.query_aabb(aabbs[i]);
+        for (int j : hits) {
+            if ((int)i < j) {
+                adjacency.push_back(static_cast<int>(i));
+                adjacency.push_back(j);
+                adjacency.push_back(-1);
+                adjacency.push_back(-1);
+            }
+        }
+    }
+
+    // Step C: Cache polylines + planes, then face-to-face
+    std::vector<std::vector<Polyline>> all_polys(N);
+    std::vector<std::vector<Plane>> all_planes(N);
+    for (size_t i = 0; i < N; i++) {
+        all_polys[i] = elems[i]->polylines();
+        all_planes[i] = elems[i]->planes();
+    }
+    auto joints = Intersection::face_to_face(adjacency, all_polys, all_planes, coplanar_tolerance);
+
+    auto g = add_group("Joints");
+    for (size_t k = 0; k < joints.size(); k++) {
+        auto& [a, b, fi, fj, type, poly] = joints[k];
+        auto jpl = std::make_shared<Polyline>(std::move(poly));
+        jpl->name = "joint_" + std::to_string(k);
+        add_polyline(jpl, g);
+        add_edge(elems[a]->guid(), elems[b]->guid(),
+            std::to_string(fi) + "," + std::to_string(fj) + "," +
+            std::to_string(type) + "," + jpl->guid());
+    }
 }
 
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
@@ -165,6 +231,16 @@ void Session::add(std::shared_ptr<TreeNode> node,
 void Session::add_edge(const std::string &guid1, const std::string &guid2,
                        const std::string &attribute) {
   graph.add_edge(guid1, guid2, attribute);
+}
+
+std::string Session::add_feature(const std::string &guid_a,
+                                 const std::string &guid_b,
+                                 EdgeFeature feature) {
+  std::string key = edge_feature_guid(feature);
+  if (key.empty()) key = ::guid();
+  edge_features[key] = std::move(feature);
+  graph.add_edge(guid_a, guid_b, key);
+  return key;
 }
 
 bool Session::remove_object(const std::string &obj_guid) {
@@ -439,6 +515,11 @@ nlohmann::ordered_json Session::jsondump() const {
   data["objects"] = objects.jsondump();
   data["tree"] = tree.jsondump();
   data["graph"] = graph.jsondump();
+  nlohmann::ordered_json feats = nlohmann::ordered_json::object();
+  for (const auto &[key, feat] : edge_features) {
+    feats[key] = edge_feature_jsondump(feat);
+  }
+  data["edge_features"] = feats;
   return data;
 }
 
@@ -495,6 +576,13 @@ Session Session::jsonload(const nlohmann::json &data) {
     session.graph = Graph::jsonload(data["graph"]);
   }
 
+  // Load edge features
+  if (data.contains("edge_features")) {
+    for (auto it = data["edge_features"].begin(); it != data["edge_features"].end(); ++it) {
+      session.edge_features[it.key()] = edge_feature_jsonload(it.value());
+    }
+  }
+
   return session;
 }
 
@@ -524,6 +612,9 @@ std::string Session::pb_dumps() const {
   proto.mutable_objects()->ParseFromString(objects.pb_dumps());
   proto.mutable_tree()->ParseFromString(tree.pb_dumps());
   proto.mutable_graph()->ParseFromString(graph.pb_dumps());
+  for (const auto &[key, feat] : edge_features) {
+    (*proto.mutable_edge_features())[key].ParseFromString(edge_feature_pb_dumps(feat));
+  }
   return proto.SerializeAsString();
 }
 
@@ -542,6 +633,10 @@ Session Session::pb_loads(const std::string& data) {
   }
   if (proto.has_graph()) {
     session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
+  }
+
+  for (const auto &[key, feat_proto] : proto.edge_features()) {
+    session.edge_features[key] = edge_feature_pb_loads(feat_proto.SerializeAsString());
   }
 
   for (const auto& p : *session.objects.points) session.lookup[p->guid()] = p;

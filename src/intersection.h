@@ -7,6 +7,7 @@
 #include "mesh.h"
 #include "obb.h"
 #include "bvh.h"
+#include "element.h"
 #include "tolerance.h"
 #include <array>
 #include <tuple>
@@ -570,6 +571,70 @@ public:
   /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
   static std::vector<Polyline> polyline_boolean(const Polyline& a, const Polyline& b, int clip_type);
 
+  /// Face-to-face joint detection between elements via coplanar boolean intersection.
+  /// adjacency: flat array [a0,b0,?,?, a1,b1,?,?, ...] processed in groups of 4.
+  /// Returns: vector of (element_a, element_b, face_a, face_b, type, polyline).
+  /// type: 0=side-side, 1=side-top, 2=top-top.
+  static std::vector<std::tuple<int, int, int, int, int, Polyline>> face_to_face(
+    const std::vector<int>& adjacency,
+    const std::vector<std::vector<Polyline>>& polylines,
+    const std::vector<std::vector<Plane>>& planes,
+    double coplanar_tolerance = 5.0
+  );
+
+  /// Adjacency search: BVH broad phase + OBB SAT narrow phase.
+  static std::vector<int> adjacency_search(
+    std::vector<Element*>& elements, double inflate = 5.0);
+
+  /// Face-to-face overload taking elements directly.
+  static std::vector<std::tuple<int, int, int, int, int, Polyline>> face_to_face(
+    const std::vector<int>& adjacency,
+    std::vector<Element*>& elements,
+    double coplanar_tolerance = 5.0
+  );
+
+  /**
+   * @brief Result of a side-to-side cross/lap joint between two plate elements.
+   */
+  struct CrossJoint {
+    int type = 30;                        ///< Joint type code (30 = side-to-side cross)
+    std::pair<int,int> face_ids_a{-1,-1}; ///< Two side-face indices of element A involved
+    std::pair<int,int> face_ids_b{-1,-1}; ///< Two side-face indices of element B involved
+    Polyline joint_area;                  ///< Closed quad on the mid-plane (5 pts)
+    std::array<Polyline,2> joint_lines;   ///< Two perpendicular centerlines of joint_area (2 pts each)
+    std::array<Polyline,2> joint_volumes; ///< Two parallel quads bounding the joint volume
+  };
+
+  /**
+   * @brief Cross/lap joint detection between two plate elements (side-to-side).
+   * @param polylines_a Top + bottom polylines of plate A (size 2)
+   * @param polylines_b Top + bottom polylines of plate B (size 2)
+   * @param planes_a    Top + bottom planes of plate A (size 2)
+   * @param planes_b    Top + bottom planes of plate B (size 2)
+   * @param result      Output joint geometry (only valid if return is true)
+   * @param angle_tol   Reject if planes are within this angle (degrees) of parallel
+   * @param extension   Optional joint volume extension {edge_d0, edge_d1, depth}
+   * @return true if a cross joint was found
+   */
+  static bool plane_to_face(
+    const std::array<Polyline,2>& polylines_a,
+    const std::array<Polyline,2>& polylines_b,
+    const std::array<Plane,2>& planes_a,
+    const std::array<Plane,2>& planes_b,
+    CrossJoint& result,
+    double angle_tol = 5.0,
+    const std::array<double,3>& extension = {0.0, 0.0, 0.0}
+  );
+
+  /// Convenience overload taking PlateElement pointers (extracts polylines/planes).
+  static bool plane_to_face(
+    PlateElement* a,
+    PlateElement* b,
+    CrossJoint& result,
+    double angle_tol = 5.0,
+    const std::array<double,3>& extension = {0.0, 0.0, 0.0}
+  );
+
 private:
   static int solve_3x3(
     const double row0[3],
@@ -580,6 +645,25 @@ private:
     double& pivot_ratio
   );
   static double plane_value_at(const Plane& plane, const Point& point);
+
+  /// Project polygon + test points to plane local 2D, run point-in-polygon, fill inside indices.
+  static int are_points_inside(
+    const Polyline& polygon,
+    const Plane& plane,
+    const std::vector<Point>& test_points,
+    std::vector<int>& inside_indices_out
+  );
+
+  /// Cross-joint chord between two polylines via reciprocal polyline-plane intersections.
+  /// Returns the contact segment + the (edge_in_c0, edge_in_c1) pair.
+  static bool polyline_plane_cross_joint(
+    const Polyline& c0,
+    const Polyline& c1,
+    const Plane& p0,
+    const Plane& p1,
+    Line& contact_out,
+    std::pair<int,int>& edge_pair_out
+  );
 };
 
 } // namespace session_cpp

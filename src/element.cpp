@@ -126,6 +126,14 @@ void Element::set_geometry(const BRep& geo) {
     _is_dirty = true;
 }
 
+void Element::set_polylines(std::vector<Polyline> polys) {
+    _polylines = std::move(polys);
+}
+
+void Element::set_planes(std::vector<Plane> plns) {
+    _planes = std::move(plns);
+}
+
 void Element::reset() {
     _is_dirty = true;
     _aabb.reset();
@@ -773,13 +781,28 @@ PlateElement::PlateElement(const std::vector<Point>& polygon, double thickness,
     _geometry = compute_element_geometry();
 }
 
+// Strip closing duplicate if polygon is closed (last == first)
+static std::vector<Point> strip_closing(const std::vector<Point>& pts) {
+    if (pts.size() > 3) {
+        auto& f = pts.front(); auto& l = pts.back();
+        if (std::abs(f[0]-l[0])<1e-6 && std::abs(f[1]-l[1])<1e-6 && std::abs(f[2]-l[2])<1e-6)
+            return std::vector<Point>(pts.begin(), pts.end()-1);
+    }
+    return pts;
+}
+
+PlateElement::PlateElement(const Polyline& bottom, const Polyline& top, const std::string& name)
+    : PlateElement(bottom.get_points(), top.get_points(), name) {}
+
 PlateElement::PlateElement(const std::vector<Point>& bottom, const std::vector<Point>& top,
                            const std::string& name)
     : Element(name) {
-    _polygon.reserve(bottom.size());
-    for (const auto& p : bottom) _polygon.emplace_back(p[0], p[1], p[2]);
-    _polygon_top.reserve(top.size());
-    for (const auto& p : top) _polygon_top.emplace_back(p[0], p[1], p[2]);
+    auto bot = strip_closing(bottom);
+    auto tp = strip_closing(top);
+    _polygon.reserve(bot.size());
+    for (const auto& p : bot) _polygon.emplace_back(p[0], p[1], p[2]);
+    _polygon_top.reserve(tp.size());
+    for (const auto& p : tp) _polygon_top.emplace_back(p[0], p[1], p[2]);
     // Ensure bottom normal points toward top
     Vector norm = polygon_normal(_polygon);
     size_t np = std::min(_polygon.size(), _polygon_top.size());
@@ -858,6 +881,18 @@ Vector PlateElement::polygon_normal(const std::vector<Point>& pts) {
     return Vector(nx / mag, ny / mag, nz / mag);
 }
 
+AABB PlateElement::compute_aabb_fast(double inflate) const {
+    double minx=1e30,miny=1e30,minz=1e30,maxx=-1e30,maxy=-1e30,maxz=-1e30;
+    for (auto* poly : {&_polygon, &_polygon_top}) {
+        for (auto& p : *poly) {
+            if(p[0]<minx)minx=p[0]; if(p[1]<miny)miny=p[1]; if(p[2]<minz)minz=p[2];
+            if(p[0]>maxx)maxx=p[0]; if(p[1]>maxy)maxy=p[1]; if(p[2]>maxz)maxz=p[2];
+        }
+    }
+    return AABB{(minx+maxx)*0.5, (miny+maxy)*0.5, (minz+maxz)*0.5,
+                (maxx-minx)*0.5+inflate, (maxy-miny)*0.5+inflate, (maxz-minz)*0.5+inflate};
+}
+
 Mesh PlateElement::compute_element_geometry() const {
     size_t n = std::min(_polygon.size(), _polygon_top.size());
     std::vector<Point> vertices;
@@ -878,7 +913,19 @@ Mesh PlateElement::compute_element_geometry() const {
         size_t d = a + n;
         faces.push_back({a, b, c, d});
     }
-    return Mesh::from_vertices_and_faces(vertices, faces);
+    Mesh mesh = Mesh::from_vertices_and_faces(vertices, faces);
+    // Store triangulation for all faces (enables explode_mesh_faces in Rhino)
+    for (auto& [fk, vks] : mesh.face) {
+        if (vks.size() == 4) {
+            mesh.set_face_triangulation(fk, {{vks[0], vks[1], vks[2]}, {vks[0], vks[2], vks[3]}});
+        } else if (vks.size() > 4) {
+            std::vector<std::array<size_t,3>> tris;
+            for (size_t k = 1; k + 1 < vks.size(); k++)
+                tris.push_back({vks[0], vks[k], vks[k+1]});
+            mesh.set_face_triangulation(fk, tris);
+        }
+    }
+    return mesh;
 }
 
 std::vector<Polyline> PlateElement::compute_polylines() const {
