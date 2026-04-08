@@ -1147,7 +1147,7 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
         const __m128d sv = _mm_set1_pd(BOOL_SCALE);
         auto cvt = [&](const double* p) { return v_cvt_to_i64(p, sv); };
 #else
-        auto cvt = [](const double* p) { return BIVec2{VATTI_NEARBYINT(p[0]*BOOL_SCALE), VATTI_NEARBYINT(p[1]*BOOL_SCALE)}; };
+        auto cvt = [&](const double* p) { return BIVec2{VATTI_NEARBYINT(p[0]*BOOL_SCALE), VATTI_NEARBYINT(p[1]*BOOL_SCALE)}; };
 #endif
         va[0]=cvt(ca); aMinX=aMaxX=va[0].x; aMinY=aMaxY=va[0].y;
         for(int i=1;i<na;i++) { va[i]=cvt(ca+i*3); int64_t x=va[i].x,y=va[i].y;

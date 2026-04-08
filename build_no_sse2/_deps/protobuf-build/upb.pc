@@ -1,0 +1,10 @@
+prefix=C:/Program Files (x86)/MyProject
+exec_prefix=C:/Program Files (x86)/MyProject
+libdir=C:/Program Files (x86)/MyProject/lib
+includedir=C:/Program Files (x86)/MyProject/include
+
+Name: Protocol Buffers
+Description: Google's Data Interchange Format
+Version: 33.2.0
+Libs: -L${libdir} -lupb 
+Cflags: -I${includedir}

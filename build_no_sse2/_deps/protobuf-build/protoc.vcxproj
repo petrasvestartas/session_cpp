@@ -1,0 +1,698 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{C589A05F-592E-357A-9868-1389398FDBD2}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>protoc</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">protoc.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">protoc</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">protoc.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">protoc</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">protoc.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">protoc</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">protoc.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">protoc</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;VATTI_HAS_SSE2=0;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>Debug\libprotocd.lib;Debug\libprotobufd.lib;..\absl-build\absl\base\Debug\absl_base.lib;..\absl-build\absl\strings\Debug\absl_cord.lib;..\absl-build\absl\log\Debug\absl_die_if_null.lib;..\absl-build\absl\hash\Debug\absl_hash.lib;..\absl-build\absl\log\Debug\absl_log_initialize.lib;..\absl-build\absl\log\Debug\absl_log_globals.lib;..\absl-build\absl\base\Debug\absl_log_severity.lib;..\absl-build\absl\random\Debug\absl_random_distributions.lib;..\absl-build\absl\status\Debug\absl_status.lib;..\absl-build\absl\status\Debug\absl_statusor.lib;..\absl-build\absl\strings\Debug\absl_strings.lib;..\absl-build\absl\synchronization\Debug\absl_synchronization.lib;..\absl-build\absl\time\Debug\absl_time.lib;third_party\utf8_range\Debug\libutf8_validity.lib;..\absl-build\absl\log\Debug\absl_log_internal_check_op.lib;..\absl-build\absl\log\Debug\absl_log_internal_conditions.lib;..\absl-build\absl\log\Debug\absl_log_internal_message.lib;..\absl-build\absl\log\Debug\absl_log_internal_nullguard.lib;..\absl-build\absl\debugging\Debug\absl_examine_stack.lib;..\absl-build\absl\log\Debug\absl_log_internal_format.lib;..\absl-build\absl\log\Debug\absl_log_internal_structured_proto.lib;..\absl-build\absl\log\Debug\absl_log_internal_proto.lib;..\absl-build\absl\log\Debug\absl_log_internal_log_sink_set.lib;..\absl-build\absl\log\Debug\absl_log_sink.lib;..\absl-build\absl\flags\Debug\absl_flags_internal.lib;..\absl-build\absl\flags\Debug\absl_flags_marshalling.lib;..\absl-build\absl\flags\Debug\absl_flags_reflection.lib;..\absl-build\absl\flags\Debug\absl_flags_config.lib;..\absl-build\absl\flags\Debug\absl_flags_program_name.lib;..\absl-build\absl\flags\Debug\absl_flags_private_handle_accessor.lib;..\absl-build\absl\flags\Debug\absl_flags_commandlineflag.lib;..\absl-build\absl\flags\Debug\absl_flags_commandlineflag_internal.lib;..\absl-build\absl\log\Debug\absl_log_internal_globals.lib;..\absl-build\absl\log\Debug\absl_log_globals.lib;..\absl-build\absl\log\Debug\absl_vlog_config_internal.lib;..\absl-build\absl\log\Debug\absl_log_internal_fnmatch.lib;..\absl-build\absl\container\Debug\absl_raw_hash_set.lib;..\absl-build\absl\hash\Debug\absl_hash.lib;..\absl-build\absl\hash\Debug\absl_city.lib;..\absl-build\absl\hash\Debug\absl_low_level_hash.lib;..\absl-build\absl\container\Debug\absl_hashtablez_sampler.lib;..\absl-build\absl\random\Debug\absl_random_distributions.lib;..\absl-build\absl\random\Debug\absl_random_seed_sequences.lib;..\absl-build\absl\random\Debug\absl_random_internal_entropy_pool.lib;..\absl-build\absl\random\Debug\absl_random_internal_randen.lib;..\absl-build\absl\random\Debug\absl_random_internal_randen_hwaes.lib;..\absl-build\absl\random\Debug\absl_random_internal_randen_hwaes_impl.lib;..\absl-build\absl\random\Debug\absl_random_internal_randen_slow.lib;..\absl-build\absl\random\Debug\absl_random_internal_platform.lib;..\absl-build\absl\random\Debug\absl_random_internal_seed_material.lib;..\absl-build\absl\random\Debug\absl_random_seed_gen_exception.lib;..\absl-build\absl\status\Debug\absl_status.lib;..\absl-build\absl\strings\Debug\absl_cord.lib;..\absl-build\absl\strings\Debug\absl_cordz_info.lib;..\absl-build\absl\strings\Debug\absl_cord_internal.lib;..\absl-build\absl\strings\Debug\absl_cordz_functions.lib;..\absl-build\absl\profiling\Debug\absl_exponential_biased.lib;..\absl-build\absl\strings\Debug\absl_cordz_handle.lib;..\absl-build\absl\crc\Debug\absl_crc_cord_state.lib;..\absl-build\absl\crc\Debug\absl_crc32c.lib;..\absl-build\absl\crc\Debug\absl_crc_internal.lib;..\absl-build\absl\crc\Debug\absl_crc_cpu_detect.lib;..\absl-build\absl\debugging\Debug\absl_leak_check.lib;..\absl-build\absl\base\Debug\absl_strerror.lib;..\absl-build\absl\strings\Debug\absl_str_format_internal.lib;..\absl-build\absl\synchronization\Debug\absl_synchronization.lib;..\absl-build\absl\debugging\Debug\absl_stacktrace.lib;..\absl-build\absl\debugging\Debug\absl_symbolize.lib;..\absl-build\absl\debugging\Debug\absl_debugging_internal.lib;..\absl-build\absl\debugging\Debug\absl_demangle_internal.lib;..\absl-build\absl\debugging\Debug\absl_demangle_rust.lib;..\absl-build\absl\debugging\Debug\absl_decode_rust_punycode.lib;..\absl-build\absl\debugging\Debug\absl_utf8_for_code_point.lib;..\absl-build\absl\synchronization\Debug\absl_graphcycles_internal.lib;..\absl-build\absl\synchronization\Debug\absl_kernel_timeout_internal.lib;..\absl-build\absl\base\Debug\absl_malloc_internal.lib;..\absl-build\absl\base\Debug\absl_tracing_internal.lib;..\absl-build\absl\time\Debug\absl_time.lib;..\absl-build\absl\strings\Debug\absl_strings.lib;..\absl-build\absl\strings\Debug\absl_strings_internal.lib;..\absl-build\absl\strings\Debug\absl_string_view.lib;..\absl-build\absl\base\Debug\absl_throw_delegate.lib;..\absl-build\absl\numeric\Debug\absl_int128.lib;..\absl-build\absl\base\Debug\absl_base.lib;..\absl-build\absl\base\Debug\absl_raw_logging_internal.lib;..\absl-build\absl\base\Debug\absl_log_severity.lib;..\absl-build\absl\base\Debug\absl_spinlock_wait.lib;..\absl-build\absl\time\Debug\absl_civil_time.lib;..\absl-build\absl\time\Debug\absl_time_zone.lib;-ignore:4221;Debug\libupbd.lib;third_party\utf8_range\Debug\libutf8_range.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/Debug/protoc.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/Debug/protoc.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NDEBUG;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;VATTI_HAS_SSE2=0;NDEBUG;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>Release\libprotoc.lib;Release\libprotobuf.lib;..\absl-build\absl\base\Release\absl_base.lib;..\absl-build\absl\strings\Release\absl_cord.lib;..\absl-build\absl\log\Release\absl_die_if_null.lib;..\absl-build\absl\hash\Release\absl_hash.lib;..\absl-build\absl\log\Release\absl_log_initialize.lib;..\absl-build\absl\log\Release\absl_log_globals.lib;..\absl-build\absl\base\Release\absl_log_severity.lib;..\absl-build\absl\random\Release\absl_random_distributions.lib;..\absl-build\absl\status\Release\absl_status.lib;..\absl-build\absl\status\Release\absl_statusor.lib;..\absl-build\absl\strings\Release\absl_strings.lib;..\absl-build\absl\synchronization\Release\absl_synchronization.lib;..\absl-build\absl\time\Release\absl_time.lib;third_party\utf8_range\Release\libutf8_validity.lib;..\absl-build\absl\log\Release\absl_log_internal_check_op.lib;..\absl-build\absl\log\Release\absl_log_internal_conditions.lib;..\absl-build\absl\log\Release\absl_log_internal_message.lib;..\absl-build\absl\log\Release\absl_log_internal_nullguard.lib;..\absl-build\absl\debugging\Release\absl_examine_stack.lib;..\absl-build\absl\log\Release\absl_log_internal_format.lib;..\absl-build\absl\log\Release\absl_log_internal_structured_proto.lib;..\absl-build\absl\log\Release\absl_log_internal_proto.lib;..\absl-build\absl\log\Release\absl_log_internal_log_sink_set.lib;..\absl-build\absl\log\Release\absl_log_sink.lib;..\absl-build\absl\flags\Release\absl_flags_internal.lib;..\absl-build\absl\flags\Release\absl_flags_marshalling.lib;..\absl-build\absl\flags\Release\absl_flags_reflection.lib;..\absl-build\absl\flags\Release\absl_flags_config.lib;..\absl-build\absl\flags\Release\absl_flags_program_name.lib;..\absl-build\absl\flags\Release\absl_flags_private_handle_accessor.lib;..\absl-build\absl\flags\Release\absl_flags_commandlineflag.lib;..\absl-build\absl\flags\Release\absl_flags_commandlineflag_internal.lib;..\absl-build\absl\log\Release\absl_log_internal_globals.lib;..\absl-build\absl\log\Release\absl_log_globals.lib;..\absl-build\absl\log\Release\absl_vlog_config_internal.lib;..\absl-build\absl\log\Release\absl_log_internal_fnmatch.lib;..\absl-build\absl\container\Release\absl_raw_hash_set.lib;..\absl-build\absl\hash\Release\absl_hash.lib;..\absl-build\absl\hash\Release\absl_city.lib;..\absl-build\absl\hash\Release\absl_low_level_hash.lib;..\absl-build\absl\container\Release\absl_hashtablez_sampler.lib;..\absl-build\absl\random\Release\absl_random_distributions.lib;..\absl-build\absl\random\Release\absl_random_seed_sequences.lib;..\absl-build\absl\random\Release\absl_random_internal_entropy_pool.lib;..\absl-build\absl\random\Release\absl_random_internal_randen.lib;..\absl-build\absl\random\Release\absl_random_internal_randen_hwaes.lib;..\absl-build\absl\random\Release\absl_random_internal_randen_hwaes_impl.lib;..\absl-build\absl\random\Release\absl_random_internal_randen_slow.lib;..\absl-build\absl\random\Release\absl_random_internal_platform.lib;..\absl-build\absl\random\Release\absl_random_internal_seed_material.lib;..\absl-build\absl\random\Release\absl_random_seed_gen_exception.lib;..\absl-build\absl\status\Release\absl_status.lib;..\absl-build\absl\strings\Release\absl_cord.lib;..\absl-build\absl\strings\Release\absl_cordz_info.lib;..\absl-build\absl\strings\Release\absl_cord_internal.lib;..\absl-build\absl\strings\Release\absl_cordz_functions.lib;..\absl-build\absl\profiling\Release\absl_exponential_biased.lib;..\absl-build\absl\strings\Release\absl_cordz_handle.lib;..\absl-build\absl\crc\Release\absl_crc_cord_state.lib;..\absl-build\absl\crc\Release\absl_crc32c.lib;..\absl-build\absl\crc\Release\absl_crc_internal.lib;..\absl-build\absl\crc\Release\absl_crc_cpu_detect.lib;..\absl-build\absl\debugging\Release\absl_leak_check.lib;..\absl-build\absl\base\Release\absl_strerror.lib;..\absl-build\absl\strings\Release\absl_str_format_internal.lib;..\absl-build\absl\synchronization\Release\absl_synchronization.lib;..\absl-build\absl\debugging\Release\absl_stacktrace.lib;..\absl-build\absl\debugging\Release\absl_symbolize.lib;..\absl-build\absl\debugging\Release\absl_debugging_internal.lib;..\absl-build\absl\debugging\Release\absl_demangle_internal.lib;..\absl-build\absl\debugging\Release\absl_demangle_rust.lib;..\absl-build\absl\debugging\Release\absl_decode_rust_punycode.lib;..\absl-build\absl\debugging\Release\absl_utf8_for_code_point.lib;..\absl-build\absl\synchronization\Release\absl_graphcycles_internal.lib;..\absl-build\absl\synchronization\Release\absl_kernel_timeout_internal.lib;..\absl-build\absl\base\Release\absl_malloc_internal.lib;..\absl-build\absl\base\Release\absl_tracing_internal.lib;..\absl-build\absl\time\Release\absl_time.lib;..\absl-build\absl\strings\Release\absl_strings.lib;..\absl-build\absl\strings\Release\absl_strings_internal.lib;..\absl-build\absl\strings\Release\absl_string_view.lib;..\absl-build\absl\base\Release\absl_throw_delegate.lib;..\absl-build\absl\numeric\Release\absl_int128.lib;..\absl-build\absl\base\Release\absl_base.lib;..\absl-build\absl\base\Release\absl_raw_logging_internal.lib;..\absl-build\absl\base\Release\absl_log_severity.lib;..\absl-build\absl\base\Release\absl_spinlock_wait.lib;..\absl-build\absl\time\Release\absl_civil_time.lib;..\absl-build\absl\time\Release\absl_time_zone.lib;-ignore:4221;Release\libupb.lib;third_party\utf8_range\Release\libutf8_range.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/Release/protoc.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/Release/protoc.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MinSpace</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NDEBUG;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;VATTI_HAS_SSE2=0;NDEBUG;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>MinSizeRel\libprotoc.lib;MinSizeRel\libprotobuf.lib;..\absl-build\absl\base\MinSizeRel\absl_base.lib;..\absl-build\absl\strings\MinSizeRel\absl_cord.lib;..\absl-build\absl\log\MinSizeRel\absl_die_if_null.lib;..\absl-build\absl\hash\MinSizeRel\absl_hash.lib;..\absl-build\absl\log\MinSizeRel\absl_log_initialize.lib;..\absl-build\absl\log\MinSizeRel\absl_log_globals.lib;..\absl-build\absl\base\MinSizeRel\absl_log_severity.lib;..\absl-build\absl\random\MinSizeRel\absl_random_distributions.lib;..\absl-build\absl\status\MinSizeRel\absl_status.lib;..\absl-build\absl\status\MinSizeRel\absl_statusor.lib;..\absl-build\absl\strings\MinSizeRel\absl_strings.lib;..\absl-build\absl\synchronization\MinSizeRel\absl_synchronization.lib;..\absl-build\absl\time\MinSizeRel\absl_time.lib;third_party\utf8_range\MinSizeRel\libutf8_validity.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_check_op.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_conditions.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_message.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_nullguard.lib;..\absl-build\absl\debugging\MinSizeRel\absl_examine_stack.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_format.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_structured_proto.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_proto.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_log_sink_set.lib;..\absl-build\absl\log\MinSizeRel\absl_log_sink.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_internal.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_marshalling.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_reflection.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_config.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_program_name.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_private_handle_accessor.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_commandlineflag.lib;..\absl-build\absl\flags\MinSizeRel\absl_flags_commandlineflag_internal.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_globals.lib;..\absl-build\absl\log\MinSizeRel\absl_log_globals.lib;..\absl-build\absl\log\MinSizeRel\absl_vlog_config_internal.lib;..\absl-build\absl\log\MinSizeRel\absl_log_internal_fnmatch.lib;..\absl-build\absl\container\MinSizeRel\absl_raw_hash_set.lib;..\absl-build\absl\hash\MinSizeRel\absl_hash.lib;..\absl-build\absl\hash\MinSizeRel\absl_city.lib;..\absl-build\absl\hash\MinSizeRel\absl_low_level_hash.lib;..\absl-build\absl\container\MinSizeRel\absl_hashtablez_sampler.lib;..\absl-build\absl\random\MinSizeRel\absl_random_distributions.lib;..\absl-build\absl\random\MinSizeRel\absl_random_seed_sequences.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_entropy_pool.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_randen.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_randen_hwaes.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_randen_hwaes_impl.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_randen_slow.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_platform.lib;..\absl-build\absl\random\MinSizeRel\absl_random_internal_seed_material.lib;..\absl-build\absl\random\MinSizeRel\absl_random_seed_gen_exception.lib;..\absl-build\absl\status\MinSizeRel\absl_status.lib;..\absl-build\absl\strings\MinSizeRel\absl_cord.lib;..\absl-build\absl\strings\MinSizeRel\absl_cordz_info.lib;..\absl-build\absl\strings\MinSizeRel\absl_cord_internal.lib;..\absl-build\absl\strings\MinSizeRel\absl_cordz_functions.lib;..\absl-build\absl\profiling\MinSizeRel\absl_exponential_biased.lib;..\absl-build\absl\strings\MinSizeRel\absl_cordz_handle.lib;..\absl-build\absl\crc\MinSizeRel\absl_crc_cord_state.lib;..\absl-build\absl\crc\MinSizeRel\absl_crc32c.lib;..\absl-build\absl\crc\MinSizeRel\absl_crc_internal.lib;..\absl-build\absl\crc\MinSizeRel\absl_crc_cpu_detect.lib;..\absl-build\absl\debugging\MinSizeRel\absl_leak_check.lib;..\absl-build\absl\base\MinSizeRel\absl_strerror.lib;..\absl-build\absl\strings\MinSizeRel\absl_str_format_internal.lib;..\absl-build\absl\synchronization\MinSizeRel\absl_synchronization.lib;..\absl-build\absl\debugging\MinSizeRel\absl_stacktrace.lib;..\absl-build\absl\debugging\MinSizeRel\absl_symbolize.lib;..\absl-build\absl\debugging\MinSizeRel\absl_debugging_internal.lib;..\absl-build\absl\debugging\MinSizeRel\absl_demangle_internal.lib;..\absl-build\absl\debugging\MinSizeRel\absl_demangle_rust.lib;..\absl-build\absl\debugging\MinSizeRel\absl_decode_rust_punycode.lib;..\absl-build\absl\debugging\MinSizeRel\absl_utf8_for_code_point.lib;..\absl-build\absl\synchronization\MinSizeRel\absl_graphcycles_internal.lib;..\absl-build\absl\synchronization\MinSizeRel\absl_kernel_timeout_internal.lib;..\absl-build\absl\base\MinSizeRel\absl_malloc_internal.lib;..\absl-build\absl\base\MinSizeRel\absl_tracing_internal.lib;..\absl-build\absl\time\MinSizeRel\absl_time.lib;..\absl-build\absl\strings\MinSizeRel\absl_strings.lib;..\absl-build\absl\strings\MinSizeRel\absl_strings_internal.lib;..\absl-build\absl\strings\MinSizeRel\absl_string_view.lib;..\absl-build\absl\base\MinSizeRel\absl_throw_delegate.lib;..\absl-build\absl\numeric\MinSizeRel\absl_int128.lib;..\absl-build\absl\base\MinSizeRel\absl_base.lib;..\absl-build\absl\base\MinSizeRel\absl_raw_logging_internal.lib;..\absl-build\absl\base\MinSizeRel\absl_log_severity.lib;..\absl-build\absl\base\MinSizeRel\absl_spinlock_wait.lib;..\absl-build\absl\time\MinSizeRel\absl_civil_time.lib;..\absl-build\absl\time\MinSizeRel\absl_time_zone.lib;-ignore:4221;MinSizeRel\libupb.lib;third_party\utf8_range\MinSizeRel\libutf8_range.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/MinSizeRel/protoc.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/MinSizeRel/protoc.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NDEBUG;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;VATTI_HAS_SSE2=0;NDEBUG;_CRT_SECURE_NO_WARNINGS;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\third_party\utf8_range;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\upb\reflection\cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>RelWithDebInfo\libprotoc.lib;RelWithDebInfo\libprotobuf.lib;..\absl-build\absl\base\RelWithDebInfo\absl_base.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_cord.lib;..\absl-build\absl\log\RelWithDebInfo\absl_die_if_null.lib;..\absl-build\absl\hash\RelWithDebInfo\absl_hash.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_initialize.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_globals.lib;..\absl-build\absl\base\RelWithDebInfo\absl_log_severity.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_distributions.lib;..\absl-build\absl\status\RelWithDebInfo\absl_status.lib;..\absl-build\absl\status\RelWithDebInfo\absl_statusor.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_strings.lib;..\absl-build\absl\synchronization\RelWithDebInfo\absl_synchronization.lib;..\absl-build\absl\time\RelWithDebInfo\absl_time.lib;third_party\utf8_range\RelWithDebInfo\libutf8_validity.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_check_op.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_conditions.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_message.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_nullguard.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_examine_stack.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_format.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_structured_proto.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_proto.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_log_sink_set.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_sink.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_internal.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_marshalling.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_reflection.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_config.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_program_name.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_private_handle_accessor.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_commandlineflag.lib;..\absl-build\absl\flags\RelWithDebInfo\absl_flags_commandlineflag_internal.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_globals.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_globals.lib;..\absl-build\absl\log\RelWithDebInfo\absl_vlog_config_internal.lib;..\absl-build\absl\log\RelWithDebInfo\absl_log_internal_fnmatch.lib;..\absl-build\absl\container\RelWithDebInfo\absl_raw_hash_set.lib;..\absl-build\absl\hash\RelWithDebInfo\absl_hash.lib;..\absl-build\absl\hash\RelWithDebInfo\absl_city.lib;..\absl-build\absl\hash\RelWithDebInfo\absl_low_level_hash.lib;..\absl-build\absl\container\RelWithDebInfo\absl_hashtablez_sampler.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_distributions.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_seed_sequences.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_entropy_pool.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_randen.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_randen_hwaes.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_randen_hwaes_impl.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_randen_slow.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_platform.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_internal_seed_material.lib;..\absl-build\absl\random\RelWithDebInfo\absl_random_seed_gen_exception.lib;..\absl-build\absl\status\RelWithDebInfo\absl_status.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_cord.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_cordz_info.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_cord_internal.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_cordz_functions.lib;..\absl-build\absl\profiling\RelWithDebInfo\absl_exponential_biased.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_cordz_handle.lib;..\absl-build\absl\crc\RelWithDebInfo\absl_crc_cord_state.lib;..\absl-build\absl\crc\RelWithDebInfo\absl_crc32c.lib;..\absl-build\absl\crc\RelWithDebInfo\absl_crc_internal.lib;..\absl-build\absl\crc\RelWithDebInfo\absl_crc_cpu_detect.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_leak_check.lib;..\absl-build\absl\base\RelWithDebInfo\absl_strerror.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_str_format_internal.lib;..\absl-build\absl\synchronization\RelWithDebInfo\absl_synchronization.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_stacktrace.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_symbolize.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_debugging_internal.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_demangle_internal.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_demangle_rust.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_decode_rust_punycode.lib;..\absl-build\absl\debugging\RelWithDebInfo\absl_utf8_for_code_point.lib;..\absl-build\absl\synchronization\RelWithDebInfo\absl_graphcycles_internal.lib;..\absl-build\absl\synchronization\RelWithDebInfo\absl_kernel_timeout_internal.lib;..\absl-build\absl\base\RelWithDebInfo\absl_malloc_internal.lib;..\absl-build\absl\base\RelWithDebInfo\absl_tracing_internal.lib;..\absl-build\absl\time\RelWithDebInfo\absl_time.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_strings.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_strings_internal.lib;..\absl-build\absl\strings\RelWithDebInfo\absl_string_view.lib;..\absl-build\absl\base\RelWithDebInfo\absl_throw_delegate.lib;..\absl-build\absl\numeric\RelWithDebInfo\absl_int128.lib;..\absl-build\absl\base\RelWithDebInfo\absl_base.lib;..\absl-build\absl\base\RelWithDebInfo\absl_raw_logging_internal.lib;..\absl-build\absl\base\RelWithDebInfo\absl_log_severity.lib;..\absl-build\absl\base\RelWithDebInfo\absl_spinlock_wait.lib;..\absl-build\absl\time\RelWithDebInfo\absl_civil_time.lib;..\absl-build\absl\time\RelWithDebInfo\absl_time_zone.lib;-ignore:4221;RelWithDebInfo\libupb.lib;third_party\utf8_range\RelWithDebInfo\libutf8_range.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/RelWithDebInfo/protoc.lib</ImportLibrary>
+      <ProgramDataBaseFile>C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/RelWithDebInfo/protoc.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-src/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent\CMakeLists.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\FindGit.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeInspectCLinker.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\abseil-cpp.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\dependencies.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\install.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf-lite.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libupb.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config-version.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-configure-target.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-generate.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-lite.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-module.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-options.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb_generators.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\utf8_range.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\version.rc.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src\file_lists.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-src/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent\CMakeLists.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\FindGit.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeInspectCLinker.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\abseil-cpp.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\dependencies.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\install.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf-lite.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libupb.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config-version.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-configure-target.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-generate.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-lite.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-module.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-options.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb_generators.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\utf8_range.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\version.rc.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src\file_lists.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-src/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent\CMakeLists.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\FindGit.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeInspectCLinker.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\abseil-cpp.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\dependencies.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\install.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf-lite.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libupb.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config-version.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-configure-target.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-generate.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-lite.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-module.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-options.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb_generators.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\utf8_range.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\version.rc.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src\file_lists.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-src/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/protobuf-build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompiler.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCCompilerABI.c;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCheckCompilerFlagCommonPatterns.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeCompilerIdDetection.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDependentOption.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerABI.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeDetermineCompilerSupport.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeFindBinUtils.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitIncludeInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseImplicitLinkInfo.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeParseLibraryArchitecture.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CMakeTestCompilerCommon.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckCSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckIncludeFile.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLibraryExists.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ADSP-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMCC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\ARMClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\AppleClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Borland-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Bruce-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Clang-DetermineCompilerInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Compaq-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Cray-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\CrayClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Embarcadero-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Fujitsu-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\FujitsuClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GHS-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\GNU-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\HP-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IAR-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMCPP-C-DetermineVersionInternal.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IBMClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Intel-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\IntelLLVM-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\LCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVHPC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\NVIDIA-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OpenWatcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\OrangeC-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PGI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\PathScale-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SCO-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SDCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\SunPro-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TI-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TIClang-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Tasking-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\TinyCC-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\VisualAge-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\Watcom-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XL-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\XLClang-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Compiler\zOS-C-DetermineCompiler.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\CompilerId\VS-10.vcxproj.in;C:\Program Files\CMake\share\cmake-4.0\Modules\ExternalProject\shared_internal_commands.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FetchContent\CMakeLists.cmake.in;C:\Program Files\CMake\share\cmake-4.0\Modules\FindGit.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageHandleStandardArgs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindPackageMessage.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\FindThreads.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\GNUInstallDirs.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeDetermineLinkerId.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CMakeInspectCLinker.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckFlagCommonConfig.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckLinkerFlag.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\CheckSourceCompiles.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Internal\FeatureTesting.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.0\Modules\Platform\Windows-MSVC.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\4.0.1\CMakeCCompiler.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\abseil-cpp.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\dependencies.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\install.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf-lite.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotobuf.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libprotoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\libupb.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config-version.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-config.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-configure-target.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-generate.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-lite.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-module.cmake.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf-options.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protobuf.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\protoc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb.pc.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\upb_generators.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\utf8_range.cmake;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\cmake\version.rc.in;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src\file_lists.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src\google\protobuf\compiler\main.cc" />
+    <ResourceCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\version.rc" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\ZERO_CHECK.vcxproj">
+      <Project>{5BB797A5-963B-38B8-B5CA-BD29E801BCC5}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\base.vcxproj">
+      <Project>{E8ACF080-ECED-303A-89BF-9B43D75DFE24}</Project>
+      <Name>base</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\hash\city.vcxproj">
+      <Project>{17DD5857-4310-3DA6-B60D-21A4510D0988}</Project>
+      <Name>city</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\time\civil_time.vcxproj">
+      <Project>{0DE9E38D-0419-3DAE-907A-88940835A232}</Project>
+      <Name>civil_time</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cord.vcxproj">
+      <Project>{27C38393-3334-31A0-BACB-CFDBB1CE1D26}</Project>
+      <Name>cord</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cord_internal.vcxproj">
+      <Project>{2BEECA79-A581-3863-8E2D-541885060D88}</Project>
+      <Name>cord_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cordz_functions.vcxproj">
+      <Project>{E173F566-E9E7-3691-88DA-CF6B55EFB4EF}</Project>
+      <Name>cordz_functions</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cordz_handle.vcxproj">
+      <Project>{20780907-B226-379D-BF87-5B04E70378C7}</Project>
+      <Name>cordz_handle</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cordz_info.vcxproj">
+      <Project>{342E6FAD-39E2-3AD0-B651-CF34ABDA3958}</Project>
+      <Name>cordz_info</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc32c.vcxproj">
+      <Project>{443D781A-C573-322C-82EE-85CCA85147BC}</Project>
+      <Name>crc32c</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc_cord_state.vcxproj">
+      <Project>{26E94E30-92B5-3320-8562-D82AF2EA4631}</Project>
+      <Name>crc_cord_state</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc_cpu_detect.vcxproj">
+      <Project>{91BA7521-1861-3C4C-8A29-6680F5B6D537}</Project>
+      <Name>crc_cpu_detect</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc_internal.vcxproj">
+      <Project>{A77A0130-B4C4-312A-BF4F-4AB9C5D4E027}</Project>
+      <Name>crc_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\debugging_internal.vcxproj">
+      <Project>{A790FF01-3F4E-3FED-9A73-AE1DCE996732}</Project>
+      <Name>debugging_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\decode_rust_punycode.vcxproj">
+      <Project>{72BF8D5E-0846-3C48-8C08-313680B39447}</Project>
+      <Name>decode_rust_punycode</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\demangle_internal.vcxproj">
+      <Project>{69F9B133-5C0C-3B5A-96DE-D36A5146237A}</Project>
+      <Name>demangle_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\demangle_rust.vcxproj">
+      <Project>{7678D1A1-CD95-340E-9D3D-9071844ADFB0}</Project>
+      <Name>demangle_rust</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\die_if_null.vcxproj">
+      <Project>{8F09DE88-EB03-38EB-8BDC-FF1E8D88F50E}</Project>
+      <Name>die_if_null</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\examine_stack.vcxproj">
+      <Project>{59F968AC-CB85-3C81-84B5-6298AC601E12}</Project>
+      <Name>examine_stack</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\profiling\exponential_biased.vcxproj">
+      <Project>{27E55103-BBF3-3271-B76D-636915D3033C}</Project>
+      <Name>exponential_biased</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_commandlineflag.vcxproj">
+      <Project>{765B26C6-4BFD-3456-909C-887F8FC6816A}</Project>
+      <Name>flags_commandlineflag</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_commandlineflag_internal.vcxproj">
+      <Project>{C6A88B7A-87B4-3D52-B400-50C53E2367C3}</Project>
+      <Name>flags_commandlineflag_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_config.vcxproj">
+      <Project>{372971C5-4C13-3545-AC4B-2A5BD377AE50}</Project>
+      <Name>flags_config</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_internal.vcxproj">
+      <Project>{AE6E42C4-9458-3A9F-BDE8-A0D1C8187565}</Project>
+      <Name>flags_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_marshalling.vcxproj">
+      <Project>{A506FB99-98E6-386A-A767-608D3090B0F6}</Project>
+      <Name>flags_marshalling</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_private_handle_accessor.vcxproj">
+      <Project>{B949A151-9283-3F37-9977-AA848441B535}</Project>
+      <Name>flags_private_handle_accessor</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_program_name.vcxproj">
+      <Project>{1115CBB7-E334-3334-94F0-67272CF17258}</Project>
+      <Name>flags_program_name</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\flags\flags_reflection.vcxproj">
+      <Project>{A33DCD7E-8AE9-3F02-B037-4C35BB627BDE}</Project>
+      <Name>flags_reflection</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\synchronization\graphcycles_internal.vcxproj">
+      <Project>{2EC4CAAC-9043-3356-BB2C-A5840DAFC5B4}</Project>
+      <Name>graphcycles_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\hash\hash.vcxproj">
+      <Project>{8D9002E3-98EB-3E00-B062-45FF82247E48}</Project>
+      <Name>hash</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\container\hashtablez_sampler.vcxproj">
+      <Project>{772794E3-6233-3E16-AA2C-FF6D45196C5A}</Project>
+      <Name>hashtablez_sampler</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\numeric\int128.vcxproj">
+      <Project>{9EBD12D3-9EA4-3D30-9A93-3D434CAA3364}</Project>
+      <Name>int128</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\synchronization\kernel_timeout_internal.vcxproj">
+      <Project>{7B65B4C6-960F-32A6-8904-4F2A623D585E}</Project>
+      <Name>kernel_timeout_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\leak_check.vcxproj">
+      <Project>{85CECE49-6442-3586-8F11-A58366369548}</Project>
+      <Name>leak_check</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\libprotobuf.vcxproj">
+      <Project>{DBE81EDB-E65A-3C48-B430-1BBEF16ACA9C}</Project>
+      <Name>libprotobuf</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\libprotoc.vcxproj">
+      <Project>{53E3B0B5-2B0E-3BCF-9A59-20642E6BBE57}</Project>
+      <Name>libprotoc</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\libupb.vcxproj">
+      <Project>{EC3450A1-6FBE-3D31-A42A-115454F922D6}</Project>
+      <Name>libupb</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_globals.vcxproj">
+      <Project>{23EED20E-4B69-362A-9504-F6AB96FDCFED}</Project>
+      <Name>log_globals</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_initialize.vcxproj">
+      <Project>{8617E9AF-6101-3267-BDB1-B35ECFBA7CDC}</Project>
+      <Name>log_initialize</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_check_op.vcxproj">
+      <Project>{4DEF3F6B-C52D-3CCE-9170-651D05C66CC0}</Project>
+      <Name>log_internal_check_op</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_conditions.vcxproj">
+      <Project>{9CF83E8B-C928-3B80-A8F6-797690530D1F}</Project>
+      <Name>log_internal_conditions</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_fnmatch.vcxproj">
+      <Project>{13A1BCD5-C92A-3CF9-B11A-125E35CFD8D9}</Project>
+      <Name>log_internal_fnmatch</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_format.vcxproj">
+      <Project>{D15CD5C1-D2F1-3E09-AB13-04C5A02D611D}</Project>
+      <Name>log_internal_format</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_globals.vcxproj">
+      <Project>{0BBC9226-DBA8-3741-B399-4802F8842EA0}</Project>
+      <Name>log_internal_globals</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_log_sink_set.vcxproj">
+      <Project>{D753ABCF-7EE7-33CC-9151-CBF7278A0331}</Project>
+      <Name>log_internal_log_sink_set</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_message.vcxproj">
+      <Project>{2270AAA4-CE6F-33C3-B789-5709F18A8E19}</Project>
+      <Name>log_internal_message</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_nullguard.vcxproj">
+      <Project>{6FF47FC7-9C45-317A-8F2F-8FE4AA189542}</Project>
+      <Name>log_internal_nullguard</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_proto.vcxproj">
+      <Project>{5E852502-E18E-3359-B1CA-15F0BCAFD50F}</Project>
+      <Name>log_internal_proto</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_internal_structured_proto.vcxproj">
+      <Project>{EE7A0013-AC59-3BC0-AC4F-2CB49A019015}</Project>
+      <Name>log_internal_structured_proto</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\log_severity.vcxproj">
+      <Project>{DA88D980-25D7-3A46-AA51-A34797A83041}</Project>
+      <Name>log_severity</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\log_sink.vcxproj">
+      <Project>{B1E2C88C-4FBB-35AB-94F2-EBACF904245C}</Project>
+      <Name>log_sink</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\hash\low_level_hash.vcxproj">
+      <Project>{906E4567-5421-387C-8252-D091BED496E8}</Project>
+      <Name>low_level_hash</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\malloc_internal.vcxproj">
+      <Project>{F7B18158-3DAB-3537-8B3B-078F2B8E9FBC}</Project>
+      <Name>malloc_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_distributions.vcxproj">
+      <Project>{13C66FC5-22AF-3772-8EDF-1CE0AD909D3A}</Project>
+      <Name>random_distributions</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_entropy_pool.vcxproj">
+      <Project>{095BED32-B57A-3F3B-BE8F-E9C79B290BEE}</Project>
+      <Name>random_internal_entropy_pool</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_platform.vcxproj">
+      <Project>{BAE21B50-BFE2-3909-9C24-501E2DF8BC67}</Project>
+      <Name>random_internal_platform</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_randen.vcxproj">
+      <Project>{BB71813A-2AE7-315A-AC15-6AC6FDB1DE38}</Project>
+      <Name>random_internal_randen</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_randen_hwaes.vcxproj">
+      <Project>{BB8026DD-D11B-3E50-AAA4-AB8A914ED071}</Project>
+      <Name>random_internal_randen_hwaes</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_randen_hwaes_impl.vcxproj">
+      <Project>{9DD2AB78-F6D7-3BE8-AEB8-9616E45CEF79}</Project>
+      <Name>random_internal_randen_hwaes_impl</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_randen_slow.vcxproj">
+      <Project>{BB515844-4C1B-334C-A31B-637D46149667}</Project>
+      <Name>random_internal_randen_slow</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_internal_seed_material.vcxproj">
+      <Project>{BCF1D74B-1D72-3C3A-9ECB-8C5963109EE0}</Project>
+      <Name>random_internal_seed_material</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_seed_gen_exception.vcxproj">
+      <Project>{9C911F98-F614-30F3-B514-D622E7D0933A}</Project>
+      <Name>random_seed_gen_exception</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\random\random_seed_sequences.vcxproj">
+      <Project>{C2A530F0-66CC-3B2D-96DA-557FF85140F6}</Project>
+      <Name>random_seed_sequences</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\container\raw_hash_set.vcxproj">
+      <Project>{AC7880FD-D848-3307-9544-8397A56B78D5}</Project>
+      <Name>raw_hash_set</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\raw_logging_internal.vcxproj">
+      <Project>{87BF0718-6DE3-3344-9B58-D28D97D23299}</Project>
+      <Name>raw_logging_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\spinlock_wait.vcxproj">
+      <Project>{8EE34EE0-67B8-38F2-ADF5-EAA244C18849}</Project>
+      <Name>spinlock_wait</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\stacktrace.vcxproj">
+      <Project>{CA08DBDC-4C3B-3858-9DEE-541F186878EA}</Project>
+      <Name>stacktrace</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\status\status.vcxproj">
+      <Project>{B77F69B9-324B-34A6-A4DB-FB986BD888D7}</Project>
+      <Name>status</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\status\statusor.vcxproj">
+      <Project>{5A695C33-36D3-3B90-8F38-DA55D0CF6C6D}</Project>
+      <Name>statusor</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\str_format_internal.vcxproj">
+      <Project>{FC82420D-30B1-3385-B84A-ECA670F9E9FE}</Project>
+      <Name>str_format_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\strerror.vcxproj">
+      <Project>{43DEC0A2-32E4-36E4-B42F-B1CBDFFECBAE}</Project>
+      <Name>strerror</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\string_view.vcxproj">
+      <Project>{0F85EF38-2D79-3A89-80CA-BC4EA662FEC4}</Project>
+      <Name>string_view</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\strings.vcxproj">
+      <Project>{E91ABA02-879A-39BF-AF05-8602DCA604DB}</Project>
+      <Name>strings</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\strings_internal.vcxproj">
+      <Project>{7F6B0D89-F461-373A-9555-2AECBCB643FE}</Project>
+      <Name>strings_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\symbolize.vcxproj">
+      <Project>{BC62FF7D-C709-3BCA-B5C5-AF9C3308FBC4}</Project>
+      <Name>symbolize</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\synchronization\synchronization.vcxproj">
+      <Project>{D112D099-72DC-31C6-93E8-67C5238DA023}</Project>
+      <Name>synchronization</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\throw_delegate.vcxproj">
+      <Project>{53B6FE75-213C-3605-8FB0-4CEF6035FF62}</Project>
+      <Name>throw_delegate</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\time\time.vcxproj">
+      <Project>{9A0ED774-D299-3D38-BA2D-32197ED1552A}</Project>
+      <Name>time</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\time\time_zone.vcxproj">
+      <Project>{DBC2D795-A2B4-34CA-B299-32C97CA3C7E1}</Project>
+      <Name>time_zone</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\tracing_internal.vcxproj">
+      <Project>{72CC4652-EAAA-30C9-B27B-70D6A7A72EFD}</Project>
+      <Name>tracing_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\utf8_for_code_point.vcxproj">
+      <Project>{36100C30-C983-3918-993F-7077317B9CCC}</Project>
+      <Name>utf8_for_code_point</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\third_party\utf8_range\utf8_range.vcxproj">
+      <Project>{AFCE5102-4844-310F-A839-FE1A696FCF94}</Project>
+      <Name>utf8_range</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\third_party\utf8_range\utf8_validity.vcxproj">
+      <Project>{B66DEEC1-7F69-37D1-8C93-F77F5E9E98AF}</Project>
+      <Name>utf8_validity</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\log\vlog_config_internal.vcxproj">
+      <Project>{4E7B2BDB-54DA-36F4-B564-E9F42AA73AA1}</Project>
+      <Name>vlog_config_internal</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

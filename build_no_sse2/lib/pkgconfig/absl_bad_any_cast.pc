@@ -1,0 +1,12 @@
+prefix=C:/Program Files (x86)/MyProject
+exec_prefix=${prefix}
+libdir=C:/Program Files (x86)/MyProject/lib
+includedir=C:/Program Files (x86)/MyProject/include
+
+Name: absl_bad_any_cast
+Description: Abseil bad_any_cast library
+URL: https://abseil.io/
+Version: 20250512
+Requires:
+Libs: -L${libdir}  
+Cflags: -I${includedir}

@@ -1,0 +1,150 @@
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-MKDIR.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -Dcfgdir=/Debug -P C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/tmp/absl-populate-mkdirs.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-mkdir
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-DOWNLOAD.RULE
+setlocal
+cd C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/tmp/absl-populate-gitclone.cmake
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-download
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-UPDATE.RULE
+setlocal
+cd C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -Dcan_fetch=YES -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE -P C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/tmp/absl-populate-gitupdate.cmake
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-PATCH.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-patch
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-CONFIGURE.RULE
+setlocal
+cd C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-configure
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-BUILD.RULE
+setlocal
+cd C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-build
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-INSTALL.RULE
+setlocal
+cd C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-install
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\15B1D5B3414ED9C4B14264EA48981E49\ABSL-POPULATE-TEST.RULE
+setlocal
+cd C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E echo_append
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-test
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\8BF35A4E7DD2FA7F1DDBC53A3994B387\ABSL-POPULATE-COMPLETE.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -E make_directory C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/CMakeFiles/Debug
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/CMakeFiles/Debug/absl-populate-complete
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E touch C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/absl-populate-prefix/src/absl-populate-stamp/Debug/absl-populate-done
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKEFILES\E634AC19EF41BCA1763879C56BF44474\ABSL-POPULATE.RULE
+setlocal
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\BRG\CODE_RUST\SESSION\SESSION_CPP\BUILD_NO_SSE2\_DEPS\ABSL-SUBBUILD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild -BC:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

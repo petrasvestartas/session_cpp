@@ -1,0 +1,165 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\cmake_pch.cxx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\Unity\unity_2_cxx.cxx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\Unity\unity_1_cxx.cxx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\Unity\unity_0_cxx.cxx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\aabb.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\boolean_polyline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\brep.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\bvh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\closest.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\color.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\convex_hull.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\element.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\feature.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\graph.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\intersection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\kdtree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\knot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\line.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\marching_squares.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\matrix.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\mesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\mesh_iso.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\nurbscurve.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\nurbssurface.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\obb.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\obj.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\objects.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\plane.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\point.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\pointcloud.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\polyline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\primitives.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\quaternion.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\remesh_cdt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\remesh_nurbssurface_adaptive.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\remesh_nurbssurface_grid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\rtree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\session.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\session_config.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\tolerance.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\tree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\treenode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\trimmedsurface.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\vector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\xform.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\Debug\cmake_pch.hxx">
+      <Filter>Precompile Header File</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\Release\cmake_pch.hxx">
+      <Filter>Precompile Header File</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\MinSizeRel\cmake_pch.hxx">
+      <Filter>Precompile Header File</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\CMakeFiles\session_core.dir\RelWithDebInfo\cmake_pch.hxx">
+      <Filter>Precompile Header File</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\brg\code_rust\session\session_cpp\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Precompile Header File">
+      <UniqueIdentifier>{765B5594-1300-33BD-8106-ADE9AE509B60}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{7BED5020-6E5D-3E66-B483-C34E11C3822C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

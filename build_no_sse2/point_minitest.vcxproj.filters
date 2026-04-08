@@ -1,0 +1,201 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\mini_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\point_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\color_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\vector_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\tolerance_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\session_config_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\line_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\polyline_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\plane_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\pointcloud_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\xform_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\mesh_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\knot_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\nurbscurve_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\nurbssurface_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\closest_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\primitives_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\trimmedsurface_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\remesh_cdt_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\remesh_nurbssurface_adaptive_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\remesh_nurbssurface_grid_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\obb_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\bvh_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\rtree_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\aabb_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\encoders_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\vertex_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\edge_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\graph_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\intersection_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\obj_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\objects_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\quaternion_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\session_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\tree_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\treenode_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\brep_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\mesh_iso_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\element_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\matrix_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\convex_hull_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\kdtree_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\marching_squares_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\boolean_polyline_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\src\feature_test.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\brg\code_rust\session\session_cpp\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\cmake_pch.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\unity_2_cxx.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\unity_1_cxx.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\unity_0_cxx.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\brep.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\element.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\graph.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\knot.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\mesh.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\mesh_iso.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\nurbscurve.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\nurbssurface.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\session.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\tree.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\treenode.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+    <Object Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\session_core.dir\$(Configuration)\trimmedsurface.obj">
+      <Filter>Object Libraries</Filter>
+    </Object>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Object Libraries">
+      <UniqueIdentifier>{340B10EA-1417-370E-A7A9-A2A63FA80007}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{7BED5020-6E5D-3E66-B483-C34E11C3822C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

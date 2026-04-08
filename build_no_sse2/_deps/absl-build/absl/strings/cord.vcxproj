@@ -1,0 +1,461 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{27C38393-3334-31A0-BACB-CFDBB1CE1D26}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>cord</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\Debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">cord.dir\Debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">absl_cord</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.lib</TargetExt>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\Release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">cord.dir\Release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">absl_cord</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.lib</TargetExt>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\MinSizeRel\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">cord.dir\MinSizeRel\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">absl_cord</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.lib</TargetExt>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\RelWithDebInfo\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">cord.dir\RelWithDebInfo\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">absl_cord</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.lib</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8 /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4005;4068;4180;4503;4800</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR="Debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;VATTI_HAS_SSE2=0;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR=\"Debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /ignore:4221</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8 /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DisableSpecificWarnings>4005;4068;4180;4503;4800</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NDEBUG;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR="Release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;VATTI_HAS_SSE2=0;NDEBUG;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR=\"Release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /ignore:4221</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8 /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DisableSpecificWarnings>4005;4068;4180;4503;4800</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MinSpace</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NDEBUG;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR="MinSizeRel"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <DebugInformationFormat>
+      </DebugInformationFormat>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;VATTI_HAS_SSE2=0;NDEBUG;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR=\"MinSizeRel\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /ignore:4221</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8 /bigobj</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4005;4068;4180;4503;4800</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <MinimalRebuild></MinimalRebuild>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <SupportJustMyCode></SupportJustMyCode>
+      <UndefinePreprocessorDefinitions>__SSE2__</UndefinePreprocessorDefinitions>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);VATTI_HAS_SSE2=0;NDEBUG;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR="RelWithDebInfo"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;VATTI_HAS_SSE2=0;NDEBUG;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;_ENABLE_EXTENDED_ALIGNED_STORAGE;CMAKE_INTDIR=\"RelWithDebInfo\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) -l0x409</AdditionalOptions>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-build\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\protobuf-src\src;C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64 /ignore:4221</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src\absl\strings\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-src/absl/strings/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-build/absl/strings/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-src/absl/strings/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-build/absl/strings/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-src/absl/strings/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-build/absl/strings/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-src/absl/strings/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/brg/code_rust/session/session_cpp -BC:/brg/code_rust/session/session_cpp/build_no_sse2 --check-stamp-file C:/brg/code_rust/session/session_cpp/build_no_sse2/_deps/absl-build/absl/strings/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src\absl\strings\cord.cc" />
+    <ClCompile Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src\absl\strings\cord_analysis.cc" />
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src\absl\strings\cord_analysis.h" />
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src\absl\strings\cord.h" />
+    <ClInclude Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-src\absl\strings\cord_buffer.h" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\ZERO_CHECK.vcxproj">
+      <Project>{5BB797A5-963B-38B8-B5CA-BD29E801BCC5}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\base.vcxproj">
+      <Project>{E8ACF080-ECED-303A-89BF-9B43D75DFE24}</Project>
+      <Name>base</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\time\civil_time.vcxproj">
+      <Project>{0DE9E38D-0419-3DAE-907A-88940835A232}</Project>
+      <Name>civil_time</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cord_internal.vcxproj">
+      <Project>{2BEECA79-A581-3863-8E2D-541885060D88}</Project>
+      <Name>cord_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cordz_functions.vcxproj">
+      <Project>{E173F566-E9E7-3691-88DA-CF6B55EFB4EF}</Project>
+      <Name>cordz_functions</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cordz_handle.vcxproj">
+      <Project>{20780907-B226-379D-BF87-5B04E70378C7}</Project>
+      <Name>cordz_handle</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\cordz_info.vcxproj">
+      <Project>{342E6FAD-39E2-3AD0-B651-CF34ABDA3958}</Project>
+      <Name>cordz_info</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc32c.vcxproj">
+      <Project>{443D781A-C573-322C-82EE-85CCA85147BC}</Project>
+      <Name>crc32c</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc_cord_state.vcxproj">
+      <Project>{26E94E30-92B5-3320-8562-D82AF2EA4631}</Project>
+      <Name>crc_cord_state</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc_cpu_detect.vcxproj">
+      <Project>{91BA7521-1861-3C4C-8A29-6680F5B6D537}</Project>
+      <Name>crc_cpu_detect</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\crc\crc_internal.vcxproj">
+      <Project>{A77A0130-B4C4-312A-BF4F-4AB9C5D4E027}</Project>
+      <Name>crc_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\debugging_internal.vcxproj">
+      <Project>{A790FF01-3F4E-3FED-9A73-AE1DCE996732}</Project>
+      <Name>debugging_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\decode_rust_punycode.vcxproj">
+      <Project>{72BF8D5E-0846-3C48-8C08-313680B39447}</Project>
+      <Name>decode_rust_punycode</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\demangle_internal.vcxproj">
+      <Project>{69F9B133-5C0C-3B5A-96DE-D36A5146237A}</Project>
+      <Name>demangle_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\demangle_rust.vcxproj">
+      <Project>{7678D1A1-CD95-340E-9D3D-9071844ADFB0}</Project>
+      <Name>demangle_rust</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\profiling\exponential_biased.vcxproj">
+      <Project>{27E55103-BBF3-3271-B76D-636915D3033C}</Project>
+      <Name>exponential_biased</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\synchronization\graphcycles_internal.vcxproj">
+      <Project>{2EC4CAAC-9043-3356-BB2C-A5840DAFC5B4}</Project>
+      <Name>graphcycles_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\numeric\int128.vcxproj">
+      <Project>{9EBD12D3-9EA4-3D30-9A93-3D434CAA3364}</Project>
+      <Name>int128</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\synchronization\kernel_timeout_internal.vcxproj">
+      <Project>{7B65B4C6-960F-32A6-8904-4F2A623D585E}</Project>
+      <Name>kernel_timeout_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\log_severity.vcxproj">
+      <Project>{DA88D980-25D7-3A46-AA51-A34797A83041}</Project>
+      <Name>log_severity</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\malloc_internal.vcxproj">
+      <Project>{F7B18158-3DAB-3537-8B3B-078F2B8E9FBC}</Project>
+      <Name>malloc_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\raw_logging_internal.vcxproj">
+      <Project>{87BF0718-6DE3-3344-9B58-D28D97D23299}</Project>
+      <Name>raw_logging_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\spinlock_wait.vcxproj">
+      <Project>{8EE34EE0-67B8-38F2-ADF5-EAA244C18849}</Project>
+      <Name>spinlock_wait</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\stacktrace.vcxproj">
+      <Project>{CA08DBDC-4C3B-3858-9DEE-541F186878EA}</Project>
+      <Name>stacktrace</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\str_format_internal.vcxproj">
+      <Project>{FC82420D-30B1-3385-B84A-ECA670F9E9FE}</Project>
+      <Name>str_format_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\string_view.vcxproj">
+      <Project>{0F85EF38-2D79-3A89-80CA-BC4EA662FEC4}</Project>
+      <Name>string_view</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\strings.vcxproj">
+      <Project>{E91ABA02-879A-39BF-AF05-8602DCA604DB}</Project>
+      <Name>strings</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\strings\strings_internal.vcxproj">
+      <Project>{7F6B0D89-F461-373A-9555-2AECBCB643FE}</Project>
+      <Name>strings_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\symbolize.vcxproj">
+      <Project>{BC62FF7D-C709-3BCA-B5C5-AF9C3308FBC4}</Project>
+      <Name>symbolize</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\synchronization\synchronization.vcxproj">
+      <Project>{D112D099-72DC-31C6-93E8-67C5238DA023}</Project>
+      <Name>synchronization</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\throw_delegate.vcxproj">
+      <Project>{53B6FE75-213C-3605-8FB0-4CEF6035FF62}</Project>
+      <Name>throw_delegate</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\time\time.vcxproj">
+      <Project>{9A0ED774-D299-3D38-BA2D-32197ED1552A}</Project>
+      <Name>time</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\time\time_zone.vcxproj">
+      <Project>{DBC2D795-A2B4-34CA-B299-32C97CA3C7E1}</Project>
+      <Name>time_zone</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\base\tracing_internal.vcxproj">
+      <Project>{72CC4652-EAAA-30C9-B27B-70D6A7A72EFD}</Project>
+      <Name>tracing_internal</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\brg\code_rust\session\session_cpp\build_no_sse2\_deps\absl-build\absl\debugging\utf8_for_code_point.vcxproj">
+      <Project>{36100C30-C983-3918-993F-7077317B9CCC}</Project>
+      <Name>utf8_for_code_point</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
