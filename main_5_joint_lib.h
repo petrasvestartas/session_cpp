@@ -36,6 +36,37 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #pragma once
 
+// Wood verbatim: `wood::cut::cut_type` enum from
+// `wood/cmake/src/wood/include/wood_cut.h`. Each joint constructor
+// populates `WoodJoint::m_cut_types` and `f_cut_types` with one value
+// per outline polyline (index-aligned with `m_outlines[face]` and
+// `f_outlines[face]`). The merge function reads these to decide
+// whether each polyline is a contour, a hole, a drill, etc. Stage 3
+// of the wood port (`project_main_5_full_port_roadmap.md`).
+namespace wood_cut {
+    enum cut_type : int {
+        nothing                          = 0,
+        // Plates (faces, top/bottom + edges)
+        hole                             = 1,
+        edge_insertion                   = 2,
+        insert_between_multiple_edges    = 3,
+        // Beams (always projected or inside volume)
+        slice                            = 4,
+        slice_projectsheer               = 5,
+        mill                             = 6,
+        mill_project                     = 7,
+        mill_projectsheer                = 8,
+        cut                              = 9,
+        cut_project                      = 10,
+        cut_projectsheer                 = 11,
+        cut_reverse                      = 12,
+        conic                            = 13,
+        conic_reverse                    = 14,
+        // Vertical drill (plates & beams)
+        drill                            = 15,
+    };
+}
+
 // Wood verbatim: `interpolate_points(from, to, steps, include_ends=false, ...)`
 // from wood_joint_lib.cpp:392-416 produces `steps` points at parameters
 //   i / (1 + steps)  for i = 1..steps
@@ -112,6 +143,13 @@ static void ss_e_ip_0(WoodJoint& joint) {
     joint.f_outlines[1] = build_plus();
     joint.m_outlines[0] = build_minus();
     joint.m_outlines[1] = build_plus();
+    // Wood: f_boolean_type / m_boolean_type = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:665-666). The 2nd entry is the endpoint marker —
+    // session merge tags it edge_insertion too for backwards compatibility.
+    joint.f_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ss_e_ip_1: side-to-side IN-PLANE PARAMETRIC zigzag joint (type=12, id=1).
@@ -174,6 +212,12 @@ static void ss_e_ip_1(WoodJoint& joint) {
     joint.f_outlines[1] = { outline1, endpoints1 };
     joint.m_outlines[0] = { outline0, endpoints0 };
     joint.m_outlines[1] = { outline1, endpoints1 };
+    // Wood: f/m boolean types = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:752-753).
+    joint.f_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +276,12 @@ static void ss_e_op_0(WoodJoint& joint) {
     });
     Polyline m1_endpoints(std::vector<Point>{ P(-0.5, -0.5, 0.5), P(-0.5, -0.5, -0.5) });
     joint.m_outlines[1] = { m1_outline, m1_endpoints };
+    // Wood: f/m boolean types = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:1604-1605).
+    joint.f_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ss_e_op_1: side-to-side out-of-plane PARAMETRIC finger joint (type=11,
@@ -302,6 +352,12 @@ static void ss_e_op_1(WoodJoint& joint) {
         int idx = (i < 2) ? 0 : 1;
         joint.f_outlines[idx] = {outline, endpoints};
     }
+    // Wood: f/m boolean types = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:1746-1747).
+    joint.f_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ss_e_op_2: side-to-side out-of-plane parametric (type=11, joint name id=11).
@@ -376,6 +432,12 @@ static void ss_e_op_2(WoodJoint& joint) {
         int idx = (i < 2) ? 0 : 1;
         joint.f_outlines[idx] = {outline, endpoints};
     }
+    // Wood: f/m boolean types = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:1896-1897).
+    joint.f_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -441,6 +503,14 @@ static void ts_e_p_0(WoodJoint& joint) {
     });
     Polyline m1_endpoints(std::vector<Point>{ P(-0.5,-0.5,-a), P(-0.5,-0.5, a) });
     joint.m_outlines[1] = { m1_outline, m1_endpoints };
+    // Wood: f_boolean_type = {hole, hole, hole, insert_between_multiple_edges}×2
+    //       m_boolean_type = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:3562-3563). Note: f_outlines[face] has 4 entries
+    // (3 mortise holes + 1 bounding rectangle).
+    joint.f_cut_types[0] = { wood_cut::hole, wood_cut::hole, wood_cut::hole, wood_cut::insert_between_multiple_edges };
+    joint.f_cut_types[1] = { wood_cut::hole, wood_cut::hole, wood_cut::hole, wood_cut::insert_between_multiple_edges };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ts_e_p_1: top-to-side HARDCODED 3-finger tenon-mortise (type=20, joint
@@ -510,6 +580,14 @@ static void ts_e_p_1(WoodJoint& joint) {
             P(-0.5, 0.5, z_bot2), P(-0.5,-0.5, z_bot2)}),
         Polyline(std::vector<Point>{P(-0.5,-0.5, 0.5), P(-0.5,-0.5,-0.5)}),
     };
+    // Wood: f_boolean_type = {hole, hole, insert_between_multiple_edges}×2
+    //       m_boolean_type = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:3596-3597). f_outlines[face] has 3 entries
+    // (2 mortise holes + 1 bounding rectangle).
+    joint.f_cut_types[0] = { wood_cut::hole, wood_cut::hole, wood_cut::insert_between_multiple_edges };
+    joint.f_cut_types[1] = { wood_cut::hole, wood_cut::hole, wood_cut::insert_between_multiple_edges };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ts_e_p_2: top-to-side parametric tenon-mortise (type=20, joint name id=22).
@@ -588,6 +666,21 @@ static void ts_e_p_2(WoodJoint& joint) {
             first1.get_point(0), first1.get_point(3),
             last1.get_point(3),  last1.get_point(0),  first1.get_point(0)}));
     }
+    // Wood: f_boolean_type = vector<size, hole> + insert_between_multiple_edges
+    //       m_boolean_type = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:3708-3709). f_outlines[face] has `size-1` mortise
+    // holes + 1 bounding rectangle = `size` total entries.
+    auto build_f_cuts = [&](size_t entries) {
+        std::vector<int> v;
+        v.reserve(entries);
+        for (size_t k = 0; k + 1 < entries; k++) v.push_back(wood_cut::hole);
+        v.push_back(wood_cut::insert_between_multiple_edges);
+        return v;
+    };
+    joint.f_cut_types[0] = build_f_cuts(joint.f_outlines[0].size());
+    joint.f_cut_types[1] = build_f_cuts(joint.f_outlines[1].size());
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
 // ts_e_p_3: top-to-side PARAMETRIC tenon-mortise (type=20, joint name id=20
@@ -675,4 +768,29 @@ static void ts_e_p_3(WoodJoint& joint) {
             first1.get_point(0), first1.get_point(3),
             last1.get_point(3), last1.get_point(0), first1.get_point(0)}));
     }
+    // Wood: f_boolean_type = vector<size, hole>
+    //       m_boolean_type = {edge_insertion, edge_insertion}
+    // (wood_joint_lib.cpp:3873-3874). NOTE: wood populates ALL slots with
+    // `hole` for ts_e_p_3 (no special insert_between_multiple_edges for the
+    // bounding rect — its size==`size` and the merge's "skip last" loop
+    // explicitly drops it). For consistency with ts_e_p_2 we still tag the
+    // last entry as insert_between_multiple_edges so the cut-type-aware
+    // merge in main_5.cpp can use a single uniform iteration rule.
+    {
+        std::vector<int> v0; v0.reserve(joint.f_outlines[0].size());
+        for (size_t k = 0; k + 1 < joint.f_outlines[0].size(); k++)
+            v0.push_back(wood_cut::hole);
+        if (!joint.f_outlines[0].empty())
+            v0.push_back(wood_cut::insert_between_multiple_edges);
+        joint.f_cut_types[0] = std::move(v0);
+
+        std::vector<int> v1; v1.reserve(joint.f_outlines[1].size());
+        for (size_t k = 0; k + 1 < joint.f_outlines[1].size(); k++)
+            v1.push_back(wood_cut::hole);
+        if (!joint.f_outlines[1].empty())
+            v1.push_back(wood_cut::insert_between_multiple_edges);
+        joint.f_cut_types[1] = std::move(v1);
+    }
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }

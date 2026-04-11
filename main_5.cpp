@@ -62,6 +62,12 @@ struct WoodJoint {
     // Joinery library output
     std::array<std::vector<Polyline>, 2> m_outlines; // male [0]=top face, [1]=bottom face
     std::array<std::vector<Polyline>, 2> f_outlines; // female [0]=top, [1]=bottom
+    // Per-polyline cut types (Stage 3). Each entry indexes 1:1 with
+    // `m_outlines[face][i]` / `f_outlines[face][i]`. Empty vectors mean
+    // "all entries are edge_insertion" (the legacy default before Stage 3
+    // landed). See `wood_cut::cut_type` in main_5_joint_lib.h.
+    std::array<std::vector<int>, 2> m_cut_types;
+    std::array<std::vector<int>, 2> f_cut_types;
     int divisions = 1;
     double shift = 0.5;
     double length = 0;
@@ -1603,6 +1609,17 @@ static std::vector<Polyline> merge_joints_for_element(
     // Wood emits holes BEFORE the merged plate polylines so the consumer
     // sees [hole0_top, hole0_bot, hole1_top, hole1_bot, ..., merged_top, merged_bot].
     // wood_element.cpp:1285-1343
+    //
+    // Stage 3: cut-type-aware iteration. We read `f_cut_types` (or
+    // `m_cut_types` if is_male) and only emit polylines tagged
+    // `wood_cut::hole`. Bounding rectangles are tagged
+    // `insert_between_multiple_edges` (skipped). Drilled holes / mill cuts
+    // / slices for non-edge_insertion joint variants will use this same
+    // filter when those constructors land.
+    //
+    // Backwards compatibility: an EMPTY cut_types vector means "all
+    // entries are edge_insertion" (the legacy default). For Phase B we
+    // fall back to the previous "skip last entry" behavior in that case.
     std::vector<Polyline> result;
     for (size_t i = 0; i < 2 && i < el_jmf.size(); i++) {
         for (size_t k = 0; k < el_jmf[i].size(); k++) {
@@ -1610,6 +1627,7 @@ static std::vector<Polyline> merge_joints_for_element(
             bool male_or_female = el_jmf[i][k].second;
             WoodJoint& jt = joints[joint_id];
             auto& jm = male_or_female ? jt.m_outlines : jt.f_outlines;
+            auto& jct = male_or_female ? jt.m_cut_types : jt.f_cut_types;
             if (jm[0].empty() || jm[1].empty()) continue;
 
             // Phase B uses a DIFFERENT is_geo_reversed test: it compares the
@@ -1619,12 +1637,23 @@ static std::vector<Polyline> merge_joints_for_element(
             Point f_back0 = jm[1].back().get_point(0);
             double dt = Point::distance(t_back0, el.planes[0].project(t_back0));
             double df = Point::distance(f_back0, el.planes[0].project(f_back0));
-            if ((dt * dt) > (df * df)) std::swap(jm[0], jm[1]);
+            if ((dt * dt) > (df * df)) {
+                std::swap(jm[0], jm[1]);
+                std::swap(jct[0], jct[1]);
+            }
 
-            // Iterate hole outlines, skipping the LAST entry (the bounding
-            // rectangle that all holes sit inside). wood_element.cpp:1326
-            size_t lim = jm[0].size() > 1 ? jm[0].size() - 1 : 0;
+            const bool have_cut_types = !jct[0].empty();
+            // Legacy fallback: no cut types → iterate up to size-1 (skip
+            // bounding rectangle), tag everything as hole.
+            size_t lim = have_cut_types
+                ? jm[0].size()
+                : (jm[0].size() > 1 ? jm[0].size() - 1 : 0);
+
             for (size_t kk = 0; kk < lim && kk < jm[1].size(); kk++) {
+                if (have_cut_types) {
+                    int ct = (kk < jct[0].size()) ? jct[0][kk] : wood_cut::edge_insertion;
+                    if (ct != wood_cut::hole) continue; // skip bounding rect, slices, drills, etc.
+                }
                 Polyline top = jm[0][kk];
                 Polyline bot = jm[1][kk];
                 // Winding check uses planes[0] (the TOP plane) for BOTH holes,
