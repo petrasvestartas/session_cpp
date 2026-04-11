@@ -492,6 +492,17 @@ public:
   ///     The reflected vector: V - 2*(V·N)*N
   Vector reflect(const Vector& plane_normal) const;
 
+  /**
+   * @brief Area-weighted average normal of a polygon (Newell's method).
+   *
+   * Convenience wrapper for the free function `average_normal(pts, out)`
+   * — returns the vector instead of taking an out-parameter.
+   *
+   * @param points Polygon vertices (closed or open polyline).
+   * @return Unit (or zero) average normal computed from cross-products of
+   *         consecutive edges.
+   */
+  static Vector average_normal(const std::vector<Point>& points);
 
 }; // End of Vector class
 

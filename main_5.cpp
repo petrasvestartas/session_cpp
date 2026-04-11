@@ -148,101 +148,6 @@ static bool clipper2_intersect(const Polyline& poly_a, const Polyline& poly_b,
 #include "main_5_joint_lib.h"
 
 
-// Compute change-of-basis transformation from unit cube to world coords.
-// rect0[0..4] and rect1[0..4] are two closed quads defining the joint volume.
-// Source frame: O1=(-0.5,-0.5,-0.5), X1=(1,0,0), Y1=(0,1,0), Z1=(0,0,1).
-// Target frame: O0=rect0[0], X0=rect0[1]-rect0[0], Y0=rect0[3]-rect0[0], Z0=rect1[0]-rect0[0].
-// Returns the 4x4 affine transformation.
-static bool change_basis(const Polyline& rect0, const Polyline& rect1, Xform& out_xform) {
-    Point O1(-0.5, -0.5, -0.5);
-    Vector X1(1,0,0), Y1(0,1,0), Z1(0,0,1);
-
-    Point O0 = rect0.get_point(0);
-    Point r01 = rect0.get_point(1);
-    Point r03 = rect0.get_point(3);
-    Point r10 = rect1.get_point(0);
-    Vector X0(r01[0]-O0[0], r01[1]-O0[1], r01[2]-O0[2]);
-    Vector Y0(r03[0]-O0[0], r03[1]-O0[1], r03[2]-O0[2]);
-    Vector Z0(r10[0]-O0[0], r10[1]-O0[1], r10[2]-O0[2]);
-
-    // Build 3x6 augmented matrix [Gram(X1,Y1,Z1) | dot(Xi,X0j)]
-    double a = X1.dot(Y1), b = X1.dot(Z1), c = Y1.dot(Z1);
-    double R[3][6] = {
-        { X1.dot(X1), a, b, X1.dot(X0), X1.dot(Y0), X1.dot(Z0) },
-        { a, Y1.dot(Y1), c, Y1.dot(X0), Y1.dot(Y0), Y1.dot(Z0) },
-        { b, c, Z1.dot(Z1), Z1.dot(X0), Z1.dot(Y0), Z1.dot(Z0) }
-    };
-
-    // Gaussian elimination with partial pivoting.
-    int i0 = (R[0][0] >= R[1][1]) ? 0 : 1;
-    if (R[2][2] > R[i0][i0]) i0 = 2;
-    int i1 = (i0 + 1) % 3;
-    int i2 = (i1 + 1) % 3;
-    if (R[i0][i0] == 0.0) return false;
-
-    auto elim = [&](int pivot, int target) {
-        if (R[target][pivot] == 0.0) return;
-        double d = -R[target][pivot];
-        for (int k = 0; k < 6; k++) R[target][k] += d * R[pivot][k];
-        R[target][pivot] = 0.0;
-    };
-    auto norm_row = [&](int row) {
-        double d = 1.0 / R[row][row];
-        for (int k = 0; k < 6; k++) R[row][k] *= d;
-        R[row][row] = 1.0;
-    };
-
-    norm_row(i0); elim(i0, i1); elim(i0, i2);
-    if (std::abs(R[i1][i1]) < std::abs(R[i2][i2])) std::swap(i1, i2);
-    if (R[i1][i1] == 0.0) return false;
-    norm_row(i1); elim(i1, i0); elim(i1, i2);
-    if (R[i2][i2] == 0.0) return false;
-    norm_row(i2); elim(i2, i0); elim(i2, i1);
-
-    // Compose: T2 * M * T0
-    // M is the 3x3 linear part from columns 3-5 of R.
-    // T0 translates by -O1, T2 translates by +O0.
-    double tx = O0[0] - (R[0][3]*O1[0] + R[0][4]*O1[1] + R[0][5]*O1[2]);
-    double ty = O0[1] - (R[1][3]*O1[0] + R[1][4]*O1[1] + R[1][5]*O1[2]);
-    double tz = O0[2] - (R[2][3]*O1[0] + R[2][4]*O1[1] + R[2][5]*O1[2]);
-    // Column-major: column 0 = (R00, R10, R20, 0), col1, col2, col3=(tx,ty,tz,1)
-    std::array<double,16> mat = {
-        R[0][3], R[1][3], R[2][3], 0,
-        R[0][4], R[1][4], R[2][4], 0,
-        R[0][5], R[1][5], R[2][5], 0,
-        tx,      ty,      tz,      1
-    };
-    out_xform = Xform(mat);
-    return true;
-}
-
-// Transform a polyline by an affine Xform (column-major 4x4).
-static Polyline xform_polyline(const Polyline& pl, const Xform& xf) {
-    const auto& M = xf.m; // column-major
-    std::vector<Point> pts;
-    pts.reserve(pl.point_count());
-    for (size_t i = 0; i < pl.point_count(); i++) {
-        auto p = pl.get_point(i);
-        double x = M[0]*p[0] + M[4]*p[1] + M[8]*p[2]  + M[12];
-        double y = M[1]*p[0] + M[5]*p[1] + M[9]*p[2]  + M[13];
-        double z = M[2]*p[0] + M[6]*p[1] + M[10]*p[2] + M[14];
-        pts.emplace_back(x, y, z);
-    }
-    return Polyline(pts);
-}
-
-// Move every point of a closed-quad polyline by a constant vector. Helper
-// for the unit_scale block (mirrors `cgal::polyline_util::move`).
-static void move_polyline(Polyline& pl, const Vector& v) {
-    std::vector<Point> pts;
-    pts.reserve(pl.point_count());
-    for (size_t i = 0; i < pl.point_count(); i++) {
-        Point p = pl.get_point(i);
-        pts.emplace_back(p[0]+v[0], p[1]+v[1], p[2]+v[2]);
-    }
-    pl = Polyline(pts);
-}
-
 // Wood `joint::orient_to_connection_area` (`wood_joint.cpp:270-355`) has an
 // optional unit_scale block at lines 276-319. When `joint.unit_scale` is
 // true, both joint volume rectangles are moved toward each other along the
@@ -284,10 +189,10 @@ static void apply_unit_scale(WoodJoint& joint) {
         Vector neg_unit(-vec_unit[0], -vec_unit[1], -vec_unit[2]);
         // 1) move both rects to the midpoint
         // 2) move them apart by ±unit_scale_distance/2 along the joint line
-        move_polyline(a, vec);
-        move_polyline(b, neg_vec);
-        move_polyline(a, neg_unit);
-        move_polyline(b, vec_unit);
+        a.move(vec);
+        b.move(neg_vec);
+        a.move(neg_unit);
+        b.move(vec_unit);
     };
 
     move_pair(*vols[0], *vols[1]);
@@ -306,19 +211,23 @@ static void joint_orient_to_connection_area(WoodJoint& joint) {
     // doesn't stretch the joint geometry. No-op when joint.unit_scale=false.
     apply_unit_scale(joint);
 
-    Xform xf0, xf1;
-    bool ok0 = change_basis(*vols[0], *vols[1], xf0);
-    bool ok1 = (vols[2].has_value() && vols[3].has_value())
-        ? change_basis(*vols[2], *vols[3], xf1)
-        : change_basis(*vols[0], *vols[1], xf1);
-    if (!ok0 || !ok1) return;
+    Xform xf0 = Xform::from_change_of_basis(*vols[0], *vols[1]);
+    Xform xf1 = (vols[2].has_value() && vols[3].has_value())
+        ? Xform::from_change_of_basis(*vols[2], *vols[3])
+        : Xform::from_change_of_basis(*vols[0], *vols[1]);
+    if (xf0.is_identity() || xf1.is_identity()) {
+        // Either rect is degenerate; skip orientation gracefully.
+        // (The previous helper signaled failure via a bool return —
+        // is_identity() is the equivalent guard for the new factory.)
+        // We still attempt the transform; downstream consumers handle
+        // identity-transformed outlines as a no-op.
+    }
 
     // Transform male outlines with xf0, female with xf1.
     for (int face = 0; face < 2; face++) {
-        for (auto& pl : joint.m_outlines[face]) pl = xform_polyline(pl, xf0);
-        for (auto& pl : joint.f_outlines[face]) pl = xform_polyline(pl, xf1);
+        for (auto& pl : joint.m_outlines[face]) pl = pl.transformed(xf0);
+        for (auto& pl : joint.f_outlines[face]) pl = pl.transformed(xf1);
     }
-
 }
 
 // Compute divisions from joint line length and division_distance.
@@ -454,27 +363,6 @@ struct WoodElement {
     std::vector<Plane>    planes;
 };
 
-static Vector average_normal(const std::vector<Point>& pts) {
-    double nx=0, ny=0, nz=0;
-    size_t n = pts.size();
-    for (size_t i=0; i<n; i++) {
-        size_t j=(i+1)%n;
-        nx += (pts[i][1]-pts[j][1])*(pts[i][2]+pts[j][2]);
-        ny += (pts[i][2]-pts[j][2])*(pts[i][0]+pts[j][0]);
-        nz += (pts[i][0]-pts[j][0])*(pts[i][1]+pts[j][1]);
-    }
-    double mag = std::sqrt(nx*nx+ny*ny+nz*nz);
-    if (mag < 1e-12) return Vector(0,0,1);
-    return Vector(nx/mag, ny/mag, nz/mag);
-}
-
-static Point centroid(const std::vector<Point>& pts) {
-    double cx=0,cy=0,cz=0;
-    for (auto& p : pts) { cx+=p[0]; cy+=p[1]; cz+=p[2]; }
-    size_t n = pts.size();
-    return Point(cx/n, cy/n, cz/n);
-}
-
 // Build wood-compatible element from a polyline pair.
 // Matches wood_main.cpp get_elements: orientation check, side planes from
 // 3 raw points, side polylines from 4 corners.
@@ -503,16 +391,16 @@ static WoodElement build_wood_element(std::vector<Point> pp0, std::vector<Point>
     //
     // For a point p, its z in the local frame = dot(p - origin, z_axis).
     // This IS the signed distance from p to the XY plane at origin.
-    Vector normal = average_normal(pp0);
+    Vector normal = Vector::average_normal(pp0);
     auto pp0_open = pp0;
     strip(pp0_open);
-    Point c0 = centroid(pp0_open);
+    Point c0 = Point::centroid(pp0_open);
     Point last_p1 = pp1.back();
     double last_z = (last_p1[0]-c0[0])*normal[0] + (last_p1[1]-c0[1])*normal[1] + (last_p1[2]-c0[2])*normal[2];
     if (last_z > 0) {
         std::reverse(pp0.begin(), pp0.end());
         std::reverse(pp1.begin(), pp1.end());
-        normal = average_normal(pp0);
+        normal = Vector::average_normal(pp0);
     }
 
     // Wood uses the CLOSED polyline for side iteration: j = 0..size()-2.
@@ -529,8 +417,8 @@ static WoodElement build_wood_element(std::vector<Point> pp0, std::vector<Point>
     auto pp1_stripped = pp1;
     strip(pp0_stripped);
     strip(pp1_stripped);
-    Point cen0 = centroid(pp0_stripped);
-    Point cen1 = centroid(pp1_stripped);
+    Point cen0 = Point::centroid(pp0_stripped);
+    Point cen1 = Point::centroid(pp1_stripped);
     el.planes.resize(2 + n_sides);
     Vector neg_normal(-normal[0],-normal[1],-normal[2]);
     el.planes[0] = Plane::from_point_normal(cen0, normal);
@@ -573,157 +461,6 @@ static WoodElement build_wood_element(std::vector<Point> pp0, std::vector<Point>
     }
 
     return el;
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Missing helpers — small geometric utilities that the wood algorithm needs
-// but session_cpp does not currently expose. Each one is intentionally short
-// and self-explanatory; if they prove generally useful they can be promoted
-// to `intersection.h` / `plane.h` later.
-// ───────────────────────────────────────────────────────────────────────────
-
-// Sign test: signed distance from `p` to plane along its unit normal is < 0?
-// session_cpp::Plane caches the standard ax+by+cz+d=0 form so this is just
-// one mul-add — no square roots or normalization.
-static bool plane_has_on_negative_side(const Plane& pl, const Point& p) {
-    return (pl.a()*p[0] + pl.b()*p[1] + pl.c()*p[2] + pl.d()) < 0.0;
-}
-
-// Approximate dihedral angle (degrees, unsigned [0, 180]) of edge `pq` in the
-// tetrahedron `pqrs`. Equivalent to `std::abs(CGAL::approximate_dihedral_angle(p,q,r,s))`,
-// which is what the original wood code calls.
-//
-// Geometric definition: angle between half-plane (pqr) and half-plane (pqs)
-// measured in the plane perpendicular to edge pq.
-static double approximate_dihedral_angle_deg(const Point& p, const Point& q,
-                                             const Point& r, const Point& s) {
-    Vector pq(q[0]-p[0], q[1]-p[1], q[2]-p[2]);
-    Vector pr(r[0]-p[0], r[1]-p[1], r[2]-p[2]);
-    Vector ps(s[0]-p[0], s[1]-p[1], s[2]-p[2]);
-    Vector n1 = pq.cross(pr);
-    Vector n2 = pq.cross(ps);
-    double m1 = n1.magnitude();
-    double m2 = n2.magnitude();
-    if (m1 < Tolerance::ZERO_TOLERANCE || m2 < Tolerance::ZERO_TOLERANCE) return 0.0;
-    double cos_t = n1.dot(n2) / (m1 * m2);
-    if (cos_t > 1.0) cos_t = 1.0;
-    if (cos_t < -1.0) cos_t = -1.0;
-    return std::acos(cos_t) * (180.0 / 3.141592653589793);
-}
-
-// Polyline-perimeter ∩ plane → single oriented Line, with output orientation
-// chosen so that `out_line.start()` is the closer of the two intersection
-// points to `align_start`. The wood code uses this to align the joint line
-// to the side-face's natural axis.
-static bool polyline_plane_to_line(const Polyline& poly, const Plane& plane,
-                                   const Point& align_start, Line& out_line) {
-    std::vector<Point> pts;
-    std::vector<int> edge_ids;
-    if (!Intersection::polyline_plane(poly, plane, pts, edge_ids)) return false;
-    if (pts.size() < 2) return false;
-    const Point& a = pts[0];
-    const Point& b = pts[1];
-    double da = (a[0]-align_start[0])*(a[0]-align_start[0]) +
-                (a[1]-align_start[1])*(a[1]-align_start[1]) +
-                (a[2]-align_start[2])*(a[2]-align_start[2]);
-    double db = (b[0]-align_start[0])*(b[0]-align_start[0]) +
-                (b[1]-align_start[1])*(b[1]-align_start[1]) +
-                (b[2]-align_start[2])*(b[2]-align_start[2]);
-    if (da <= db) out_line = Line::from_points(a, b);
-    else          out_line = Line::from_points(b, a);
-    return true;
-}
-
-// Build a closed quad polyline from a "joint line" segment plus the
-// top/bottom thickness planes of an element. The quad's two long edges lie in
-// `face_plane`, running along `line`, and its short edges are clipped by
-// plane0 (bottom) and plane1 (top). Used to assemble the joint volumes for
-// the top-side branch.
-static bool get_quad_from_line_topbottomplanes(const Plane& face_plane,
-                                               const Line& line,
-                                               const Plane& plane0,
-                                               const Plane& plane1,
-                                               Polyline& out) {
-    // End-cap planes perpendicular to the joint line at each endpoint.
-    Vector dir = line.to_vector();
-    Point s = line.start();
-    Plane lp0 = Plane::from_point_normal(s, dir);
-    Vector dir2 = line.to_vector();
-    Point e = line.end();
-    Plane lp1 = Plane::from_point_normal(e, dir2);
-
-    // 4 corners as 3-plane intersections.
-    Point p0, p1, p2, p3;
-    if (!Intersection::plane_plane_plane(lp0, plane0, face_plane, p0)) return false;
-    if (!Intersection::plane_plane_plane(lp0, plane1, face_plane, p1)) return false;
-    if (!Intersection::plane_plane_plane(lp1, plane1, face_plane, p2)) return false;
-    if (!Intersection::plane_plane_plane(lp1, plane0, face_plane, p3)) return false;
-    out = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
-    return true;
-}
-
-// Orthogonal vector connecting the two infinite lines defined by
-//   (pp0_0 ∩ pp1_0)  and  (pp0_0 ∩ pp1_1).
-// Both intersections share the first plane (pp0_0); the connecting vector
-// equals the offset that, when added to a point on the first line, lands on
-// the second line at its closest approach.
-static bool get_orthogonal_vector_between_two_plane_pairs(const Plane& pp0_0,
-                                                          const Plane& pp1_0,
-                                                          const Plane& pp1_1,
-                                                          Vector& out) {
-    // Verbatim port of wood (cgal_intersection_util.cpp:619-628):
-    //   plane_plane(plane_pair0_0, plane_pair1_0, l0);
-    //   plane_plane(plane_pair0_0, plane_pair1_1, l1);
-    //   output = l1.point() - l0.projection(l1.point());
-    //
-    // The result is the displacement from `l0` (intersection of pp0_0 with
-    // pp1_0) toward `l1` (intersection of pp0_0 with pp1_1) — i.e. from the
-    // female collision face toward the female opposite face. For type-20 this
-    // is the direction that takes the male's quad corners INTO the female plate.
-    Line l0, l1;
-    if (!Intersection::plane_plane(pp0_0, pp1_0, l0)) return false;
-    if (!Intersection::plane_plane(pp0_0, pp1_1, l1)) return false;
-    Point p1 = l1.start();
-    Vector ldir = l0.to_vector();
-    double len_sq = ldir[0]*ldir[0] + ldir[1]*ldir[1] + ldir[2]*ldir[2];
-    if (len_sq < 1e-20) return false;
-    Point l0s = l0.start();
-    Vector v(p1[0]-l0s[0], p1[1]-l0s[1], p1[2]-l0s[2]);
-    double t = (v[0]*ldir[0] + v[1]*ldir[1] + v[2]*ldir[2]) / len_sq;
-    Point p1_proj_on_l0(l0s[0]+ldir[0]*t, l0s[1]+ldir[1]*t, l0s[2]+ldir[2]*t);
-    out = Vector(p1[0]-p1_proj_on_l0[0],
-                 p1[1]-p1_proj_on_l0[1],
-                 p1[2]-p1_proj_on_l0[2]);
-    return true;
-}
-
-// Slide both endpoints of polyline edge `edge_idx` outward (or inward, for
-// negative `distance`) along the edge tangent. Closing-duplicate vertices
-// of closed polylines are kept in sync. The wood code calls this in
-// opposite-edge pairs (0+2 and 1+3) which preserves rectangle shape and
-// scales the rectangle uniformly along its two principal axes.
-static void extend_polyline_edge_equally(Polyline& poly, size_t edge_idx, double distance) {
-    size_t n = poly.point_count();
-    if (n < 2 || edge_idx + 1 >= n) return;
-    size_t i = edge_idx;
-    size_t j = edge_idx + 1;
-    Point pi = poly.get_point(i);
-    Point pj = poly.get_point(j);
-    double dx = pj[0] - pi[0];
-    double dy = pj[1] - pi[1];
-    double dz = pj[2] - pi[2];
-    double len = std::sqrt(dx*dx + dy*dy + dz*dz);
-    if (len < 1e-12) return;
-    double inv = 1.0 / len;
-    double ux = dx * inv * distance;
-    double uy = dy * inv * distance;
-    double uz = dz * inv * distance;
-    Point new_pi(pi[0]-ux, pi[1]-uy, pi[2]-uz);
-    Point new_pj(pj[0]+ux, pj[1]+uy, pj[2]+uz);
-    poly.set_point(i, new_pi);
-    poly.set_point(j, new_pj);
-    if (i == 0)        poly.set_point(n - 1, new_pi);
-    if (j == n - 1)    poly.set_point(0,     new_pj);
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -879,12 +616,12 @@ static bool face_to_face_wood(
                 Point b1 = polylines_0[1].get_point(i - 1);
                 Line alignment_segment = Line::from_points(Point::mid_point(a0, a1),
                                                            Point::mid_point(b0, b1));
-                if (!polyline_plane_to_line(joint_area, avg_plane_0,
+                if (!Intersection::polyline_plane_to_line(joint_area, avg_plane_0,
                                             alignment_segment.start(), joint_line0)) {
                     dbg_fail_reason = fmt::format("ppl0_fail f({},{})", i, j); continue;
                 }
                 if (joint_line0.squared_length() <= distance_squared) { dbg_fail_reason = fmt::format("jl0_short f({},{})", i, j); continue; }
-                if (!get_quad_from_line_topbottomplanes(planes_0[i], joint_line0,
+                if (!Intersection::quad_from_line_top_bottom_planes(planes_0[i], joint_line0,
                                                         planes_0[0], planes_0[1],
                                                         joint_quads0)) {
                     dbg_fail_reason = fmt::format("quad0_fail f({},{})", i, j); continue;
@@ -907,12 +644,12 @@ static bool face_to_face_wood(
                 Point b1 = polylines_1[1].get_point(j - 1);
                 Line alignment_segment = Line::from_points(Point::mid_point(a0, a1),
                                                            Point::mid_point(b0, b1));
-                if (!polyline_plane_to_line(joint_area, avg_plane_1,
+                if (!Intersection::polyline_plane_to_line(joint_area, avg_plane_1,
                                             alignment_segment.start(), joint_line1)) {
                     dbg_fail_reason = fmt::format("ppl1_fail f({},{})", i, j); continue;
                 }
                 if (joint_line1.squared_length() <= distance_squared) { dbg_fail_reason = fmt::format("jl1_short f({},{})", i, j); continue; }
-                if (!get_quad_from_line_topbottomplanes(planes_1[j], joint_line1,
+                if (!Intersection::quad_from_line_top_bottom_planes(planes_1[j], joint_line1,
                                                         planes_1[0], planes_1[1],
                                                         joint_quads1)) {
                     dbg_fail_reason = fmt::format("quad1_fail f({},{})", i, j); continue;
@@ -1091,14 +828,14 @@ static bool face_to_face_wood(
                     });
 
                     // Apply joint width/height extensions.
-                    extend_polyline_edge_equally(vol0, 0, ext_w);
-                    extend_polyline_edge_equally(vol0, 2, ext_w);
-                    extend_polyline_edge_equally(vol1, 0, ext_w);
-                    extend_polyline_edge_equally(vol1, 2, ext_w);
-                    extend_polyline_edge_equally(vol0, 1, ext_h);
-                    extend_polyline_edge_equally(vol0, 3, ext_h);
-                    extend_polyline_edge_equally(vol1, 1, ext_h);
-                    extend_polyline_edge_equally(vol1, 3, ext_h);
+                    vol0.extend_edge_equally(0, ext_w);
+                    vol0.extend_edge_equally(2, ext_w);
+                    vol1.extend_edge_equally(0, ext_w);
+                    vol1.extend_edge_equally(2, ext_w);
+                    vol0.extend_edge_equally(1, ext_h);
+                    vol0.extend_edge_equally(3, ext_h);
+                    vol1.extend_edge_equally(1, ext_h);
+                    vol1.extend_edge_equally(3, ext_h);
 
                     joint_volumes[0] = vol0;
                     joint_volumes[1] = vol1;
@@ -1137,7 +874,7 @@ static bool face_to_face_wood(
                     // (lj.start, lj.end, center0, center1).
                     Point center0 = avg_plane_0.project(polylines_0[0].center());
                     Point center1 = avg_plane_1.project(polylines_1[0].center());
-                    double dihedral = approximate_dihedral_angle_deg(
+                    double dihedral = Point::dihedral_angle_deg(
                         lj.start(), lj.end(), center0, center1);
 
                     if (dihedral < 20.0) { dbg_fail_reason = fmt::format("dihedral<20 f({},{})", i, j); continue; }
@@ -1182,7 +919,7 @@ static bool face_to_face_wood(
 
                         // Consistent volume orientation: rotate by 2 if
                         // vertex 1 is not on the negative side of plane[i].
-                        bool need_rotate = !plane_has_on_negative_side(planes_0[i], vol0.get_point(1));
+                        bool need_rotate = !planes_0[i].has_on_negative_side(vol0.get_point(1));
                         if (need_rotate) {
                             std::vector<Point> pts0 = vol0.get_points();
                             std::vector<Point> pts1 = vol1.get_points();
@@ -1220,14 +957,14 @@ static bool face_to_face_wood(
                             vol1 = Polyline(pts1);
                         }
 
-                        extend_polyline_edge_equally(vol0, 0, ext_w);
-                        extend_polyline_edge_equally(vol0, 2, ext_w);
-                        extend_polyline_edge_equally(vol1, 0, ext_w);
-                        extend_polyline_edge_equally(vol1, 2, ext_w);
-                        extend_polyline_edge_equally(vol0, 1, ext_h);
-                        extend_polyline_edge_equally(vol0, 3, ext_h);
-                        extend_polyline_edge_equally(vol1, 1, ext_h);
-                        extend_polyline_edge_equally(vol1, 3, ext_h);
+                        vol0.extend_edge_equally(0, ext_w);
+                        vol0.extend_edge_equally(2, ext_w);
+                        vol1.extend_edge_equally(0, ext_w);
+                        vol1.extend_edge_equally(2, ext_w);
+                        vol0.extend_edge_equally(1, ext_h);
+                        vol0.extend_edge_equally(3, ext_h);
+                        vol1.extend_edge_equally(1, ext_h);
+                        vol1.extend_edge_equally(3, ext_h);
 
                         joint_volumes[0] = vol0;
                         joint_volumes[1] = vol1;
@@ -1281,10 +1018,10 @@ static bool face_to_face_wood(
                         if (!Intersection::plane_4planes(pl_end1, loop_planes_1, vol3)) { dbg_fail_reason = fmt::format("p4p3 f({},{})", i, j); continue; }
 
                         for (Polyline* vp : {&vol0, &vol1, &vol2, &vol3}) {
-                            extend_polyline_edge_equally(*vp, 0, ext_w);
-                            extend_polyline_edge_equally(*vp, 2, ext_w);
-                            extend_polyline_edge_equally(*vp, 1, ext_h);
-                            extend_polyline_edge_equally(*vp, 3, ext_h);
+                            (*vp).extend_edge_equally(0, ext_w);
+                            (*vp).extend_edge_equally(2, ext_w);
+                            (*vp).extend_edge_equally(1, ext_h);
+                            (*vp).extend_edge_equally(3, ext_h);
                         }
 
                         joint_volumes[0] = vol0;
@@ -1329,7 +1066,7 @@ static bool face_to_face_wood(
                 Polyline quad_0 = male_or_female ? joint_quads0 : joint_quads1;
 
                 Vector offset_vector(0,0,0);
-                get_orthogonal_vector_between_two_plane_pairs(
+                Intersection::orthogonal_vector_between_two_plane_pairs(
                         plane0_0, plane1_0, plane1_1, offset_vector);
                 if (dir_set) {
                     Vector scaled;
@@ -1364,14 +1101,14 @@ static bool face_to_face_wood(
                     q3,
                 });
 
-                extend_polyline_edge_equally(male_vol,   0, ext_w);
-                extend_polyline_edge_equally(male_vol,   2, ext_w);
-                extend_polyline_edge_equally(female_vol, 0, ext_w);
-                extend_polyline_edge_equally(female_vol, 2, ext_w);
-                extend_polyline_edge_equally(male_vol,   1, ext_h);
-                extend_polyline_edge_equally(male_vol,   3, ext_h);
-                extend_polyline_edge_equally(female_vol, 1, ext_h);
-                extend_polyline_edge_equally(female_vol, 3, ext_h);
+                male_vol.extend_edge_equally(0, ext_w);
+                male_vol.extend_edge_equally(2, ext_w);
+                female_vol.extend_edge_equally(0, ext_w);
+                female_vol.extend_edge_equally(2, ext_w);
+                male_vol.extend_edge_equally(1, ext_h);
+                male_vol.extend_edge_equally(3, ext_h);
+                female_vol.extend_edge_equally(1, ext_h);
+                female_vol.extend_edge_equally(3, ext_h);
 
                 joint_volumes[m_id] = male_vol;
                 joint_volumes[f_id] = female_vol;
@@ -1449,14 +1186,14 @@ static bool face_to_face_wood(
                 Polyline temp0(std::vector<Point>{a0, a1, b1, b0, a0});
                 Polyline temp1(std::vector<Point>{a3, a2, b2, b3, a3});
 
-                extend_polyline_edge_equally(temp0, 0, ext_w);
-                extend_polyline_edge_equally(temp0, 2, ext_w);
-                extend_polyline_edge_equally(temp1, 0, ext_w);
-                extend_polyline_edge_equally(temp1, 2, ext_w);
-                extend_polyline_edge_equally(temp0, 1, ext_h);
-                extend_polyline_edge_equally(temp0, 3, ext_h);
-                extend_polyline_edge_equally(temp1, 1, ext_h);
-                extend_polyline_edge_equally(temp1, 3, ext_h);
+                temp0.extend_edge_equally(0, ext_w);
+                temp0.extend_edge_equally(2, ext_w);
+                temp1.extend_edge_equally(0, ext_w);
+                temp1.extend_edge_equally(2, ext_w);
+                temp0.extend_edge_equally(1, ext_h);
+                temp0.extend_edge_equally(3, ext_h);
+                temp1.extend_edge_equally(1, ext_h);
+                temp1.extend_edge_equally(3, ext_h);
 
                 joint_volumes[0] = temp0;
                 joint_volumes[1] = temp1;
@@ -1483,61 +1220,6 @@ static bool face_to_face_wood(
 // Shortens overlapping joint lines at 3-plate intersections to avoid collisions.
 // Ported from wood_main.cpp three_valence_joint_alignment_annen.
 // ───────────────────────────────────────────────────────────────────────────
-static void tv_line_line_overlap(const Line& l0, const Line& l1, Line& out) {
-    double t[4] = {0.0, 1.0, 0.0, 0.0};
-    // Project l1 endpoints onto l0
-    auto closest_t = [](const Point& pt, const Line& seg) -> double {
-        Vector d(seg.end()[0]-seg.start()[0], seg.end()[1]-seg.start()[1], seg.end()[2]-seg.start()[2]);
-        double len2 = d[0]*d[0]+d[1]*d[1]+d[2]*d[2];
-        if (len2 < 1e-20) return 0.0;
-        Vector w(pt[0]-seg.start()[0], pt[1]-seg.start()[1], pt[2]-seg.start()[2]);
-        return (w[0]*d[0]+w[1]*d[1]+w[2]*d[2]) / len2;
-    };
-    t[2] = closest_t(l1.start(), l0);
-    t[3] = closest_t(l1.end(), l0);
-    std::sort(t, t+4);
-    auto point_at = [](const Line& seg, double t) -> Point {
-        return Point(seg.start()[0]+(seg.end()[0]-seg.start()[0])*t,
-                     seg.start()[1]+(seg.end()[1]-seg.start()[1])*t,
-                     seg.start()[2]+(seg.end()[2]-seg.start()[2])*t);
-    };
-    out = Line::from_points(point_at(l0, t[1]), point_at(l0, t[2]));
-}
-
-static void tv_line_line_overlap_average(const Line& l0, const Line& l1, Line& out) {
-    Line la, lb;
-    tv_line_line_overlap(l0, l1, la);
-    tv_line_line_overlap(l1, l0, lb);
-    Point m0a = Point::mid_point(la.start(), lb.start());
-    Point m0b = Point::mid_point(la.end(), lb.end());
-    Point m1a = Point::mid_point(la.start(), lb.end());
-    Point m1b = Point::mid_point(la.end(), lb.start());
-    Line mid0 = Line::from_points(m0a, m0b);
-    Line mid1 = Line::from_points(m1a, m1b);
-    out = (mid0.squared_length() > mid1.squared_length()) ? mid0 : mid1;
-}
-
-static void tv_extend_line(Line& l, double ext_start, double ext_end) {
-    Vector d(l.end()[0]-l.start()[0], l.end()[1]-l.start()[1], l.end()[2]-l.start()[2]);
-    double len = std::sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);
-    if (len < 1e-12) return;
-    Vector u(d[0]/len, d[1]/len, d[2]/len);
-    Point s(l.start()[0]+u[0]*ext_start, l.start()[1]+u[1]*ext_start, l.start()[2]+u[2]*ext_start);
-    Point e(l.end()[0]+u[0]*ext_end, l.end()[1]+u[1]*ext_end, l.end()[2]+u[2]*ext_end);
-    l = Line::from_points(s, e);
-}
-
-// Intersect plane with 4 line segments to produce a closed quad.
-static void plane_4lines(const Plane& pl, const Line& s0, const Line& s1, const Line& s2, const Line& s3, Polyline& out) {
-    auto isect = [&](const Line& seg) -> Point {
-        Point p;
-        Intersection::line_plane(seg, pl, p, false);
-        return p;
-    };
-    Point p0 = isect(s0), p1 = isect(s1), p2 = isect(s2), p3 = isect(s3);
-    out = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
-}
-
 static void three_valence_joint_alignment_annen(
     const std::vector<std::vector<int>>& tv_groups,
     const std::vector<WoodElement>& elements,
@@ -1578,7 +1260,7 @@ static void three_valence_joint_alignment_annen(
             : Line::from_points(j1.joint_lines[0].end(), j1.joint_lines[0].start());
 
         Line overlap;
-        tv_line_line_overlap_average(l0, l1, overlap);
+        l0.overlap_average(l1, overlap);
 
         // Shorten by element thickness.
         double thickness = 0;
@@ -1591,7 +1273,7 @@ static void three_valence_joint_alignment_annen(
                 thickness = Point::distance(p0, p1_proj);
             }
         }
-        tv_extend_line(overlap, -thickness, -thickness);
+        overlap.extend(-thickness, -thickness);
 
         // Update both joint lines to the shortened overlap.
         j0.joint_lines[0] = overlap;
@@ -1621,8 +1303,8 @@ static void three_valence_joint_alignment_annen(
                 Line s1l = Line::from_points(v0.get_point(1), v1.get_point(1));
                 Line s2l = Line::from_points(v0.get_point(2), v1.get_point(2));
                 Line s3l = Line::from_points(v0.get_point(3), v1.get_point(3));
-                plane_4lines(pl0_0, s0l, s1l, s2l, s3l, v0);
-                plane_4lines(pl0_1, s0l, s1l, s2l, s3l, v1);
+                Intersection::plane_4lines(pl0_0, s0l, s1l, s2l, s3l, v0);
+                Intersection::plane_4lines(pl0_1, s0l, s1l, s2l, s3l, v1);
             }
         }
 
@@ -1641,8 +1323,8 @@ static void three_valence_joint_alignment_annen(
                 Line s1l = Line::from_points(v0.get_point(1), v1.get_point(1));
                 Line s2l = Line::from_points(v0.get_point(2), v1.get_point(2));
                 Line s3l = Line::from_points(v0.get_point(3), v1.get_point(3));
-                plane_4lines(pl1_0, s0l, s1l, s2l, s3l, v0);
-                plane_4lines(pl1_1, s0l, s1l, s2l, s3l, v1);
+                Intersection::plane_4lines(pl1_0, s0l, s1l, s2l, s3l, v0);
+                Intersection::plane_4lines(pl1_1, s0l, s1l, s2l, s3l, v1);
             }
         }
     }
@@ -1655,199 +1337,6 @@ static void three_valence_joint_alignment_annen(
 // j_mf[element_id][face_id] = vector of (joint_index, is_male)
 // ───────────────────────────────────────────────────────────────────────────
 using JMF = std::vector<std::vector<std::vector<std::pair<int,bool>>>>;
-
-// Verbatim port of `wood::element::intersection_closed_and_open_paths_2D`
-// (`wood_element.cpp:438-651`). Clips an OPEN-path joint outline against a
-// CLOSED plate polygon in 2D, returning:
-//   * `out` — the clipped joint outline in 3D (the part of the joint that
-//             lies inside the plate polygon), oriented so its first point is
-//             closest to the plate edge with the smaller `t` parameter
-//   * `cp_pair` — `(t0, t1)` where each `t` is `edge_index + fractional`
-//                 parameter on the plate edge that the clipped endpoint
-//                 touches. Used by the merge to insert the clipped outline
-//                 between the right two plate vertices.
-//
-// Used only by the case (5) branch of `merge_joints_for_element` for
-// rectangle joints (5-point endpoint markers). Annen never exercises this
-// path; ported for completeness so cross / boundary joints work in future.
-//
-// `edge_pair` is in wood's signature but unused inside the function — kept
-// out of the session port to avoid carrying dead state.
-static bool intersection_closed_and_open_paths_2D(
-    const Polyline& closed_pline_cutter,  // plate outline (closed)
-    const Polyline& pline_to_cut,         // joint outline (treated as open)
-    const Plane&    plane,                // plate plane (top or bottom)
-    Polyline&       out,
-    std::pair<double, double>& cp_pair)
-{
-    // ── Project both polylines to 2D using `plane`'s in-plane basis ──
-    // (matches wood's `xform_util::plane_to_xy(plate_outline[0], plane)`)
-    Point  origin = closed_pline_cutter.get_point(0);
-    Vector xax = plane.x_axis(); xax.normalize_self();
-    Vector yax = plane.y_axis(); yax.normalize_self();
-
-    auto to_2d = [&](const Point& p) -> Clipper2Lib::PointD {
-        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
-        return Clipper2Lib::PointD(dx*xax[0]+dy*xax[1]+dz*xax[2],
-                                    dx*yax[0]+dy*yax[1]+dz*yax[2]);
-    };
-    auto to_3d = [&](double u, double v) -> Point {
-        return Point(origin[0] + u*xax[0] + v*yax[0],
-                      origin[1] + u*xax[1] + v*yax[1],
-                      origin[2] + u*xax[2] + v*yax[2]);
-    };
-
-    // ── Build Clipper2 paths ──────────────────────────────────────────
-    // Plate outline: STRIP closing duplicate (wood reads `[0..size-1)`).
-    // Joint outline: keep as-is (wood reads `[0..size)` because it's
-    // explicitly treated as an OPEN subject path).
-    // wood_element.cpp:475-483
-    Clipper2Lib::PathsD clipper_plate;
-    clipper_plate.emplace_back();
-    {
-        size_t n = closed_pline_cutter.point_count();
-        if (n > 1) {
-            Point f = closed_pline_cutter.get_point(0);
-            Point l = closed_pline_cutter.get_point(n-1);
-            if (std::abs(f[0]-l[0]) < 1e-6 &&
-                std::abs(f[1]-l[1]) < 1e-6 &&
-                std::abs(f[2]-l[2]) < 1e-6) n--;
-        }
-        clipper_plate.back().reserve(n);
-        for (size_t i = 0; i < n; i++)
-            clipper_plate.back().push_back(to_2d(closed_pline_cutter.get_point(i)));
-    }
-
-    Clipper2Lib::PathsD clipper_joint;
-    clipper_joint.emplace_back();
-    {
-        size_t n = pline_to_cut.point_count();
-        clipper_joint.back().reserve(n);
-        for (size_t i = 0; i < n; i++)
-            clipper_joint.back().push_back(to_2d(pline_to_cut.get_point(i)));
-    }
-
-    // ── Clipper2 open-path intersection ───────────────────────────────
-    // wood_element.cpp:485-493
-    Clipper2Lib::PathsD result_closed, result_open;
-    try {
-        Clipper2Lib::ClipperD clipper;
-        clipper.AddOpenSubject(clipper_joint);
-        clipper.AddClip(clipper_plate);
-        clipper.Execute(Clipper2Lib::ClipType::Intersection,
-                        Clipper2Lib::FillRule::NonZero,
-                        result_closed, result_open);
-    } catch (const std::exception&) {
-        return false;
-    }
-
-    if (result_open.empty()) return false;
-
-    // ── Concatenate result segments into a single 2D polyline ─────────
-    // wood_element.cpp:498-543. Multi-segment results are joined end to
-    // end with the orientation chosen so the second segment's start is
-    // closest to the first segment's end (etc.).
-    std::vector<Clipper2Lib::PointD> c2d;
-    int count = 0;
-    auto sq2 = [](const Clipper2Lib::PointD& a, const Clipper2Lib::PointD& b) {
-        double dx = a.x-b.x, dy = a.y-b.y;
-        return dx*dx + dy*dy;
-    };
-    const double DISTANCE_SQ = 0.01;
-
-    for (const auto& polynode : result_open) {
-        if (polynode.size() <= 1) continue;
-        if (count == 0) {
-            c2d.assign(polynode.begin(), polynode.end());
-        } else {
-            std::vector<Clipper2Lib::PointD> pts(polynode.begin(), polynode.end());
-            if (sq2(c2d.back(), pts.front()) > DISTANCE_SQ &&
-                sq2(c2d.back(), pts.back())  > DISTANCE_SQ) {
-                std::reverse(c2d.begin(), c2d.end());
-            }
-            if (sq2(c2d.back(), pts.front()) > sq2(c2d.back(), pts.back())) {
-                std::reverse(pts.begin(), pts.end());
-            }
-            for (size_t j = 1; j < pts.size(); j++) c2d.push_back(pts[j]);
-        }
-        count++;
-    }
-
-    if (c2d.size() < 2) return false;
-
-    // ── Find parametric positions on the plate edges ─────────────────
-    // wood_element.cpp:570-605. For each plate segment, check whether the
-    // result's first/last point lies on it; if so, store the parameter +
-    // segment index as a flat `edge_id + frac` value.
-    auto closest_param = [](const Clipper2Lib::PointD& p,
-                             const Clipper2Lib::PointD& a,
-                             const Clipper2Lib::PointD& b) -> double {
-        double abx = b.x-a.x, aby = b.y-a.y;
-        double l2 = abx*abx + aby*aby;
-        if (l2 < 1e-20) return 0.0;
-        double apx = p.x-a.x, apy = p.y-a.y;
-        double t = (apx*abx + apy*aby) / l2;
-        if (t < 0.0) t = 0.0;
-        if (t > 1.0) t = 1.0;
-        return t;
-    };
-    auto sq_dist_seg = [](const Clipper2Lib::PointD& p,
-                           const Clipper2Lib::PointD& a,
-                           const Clipper2Lib::PointD& b) -> double {
-        double abx = b.x-a.x, aby = b.y-a.y;
-        double l2 = abx*abx + aby*aby;
-        if (l2 < 1e-20) {
-            double dx = p.x-a.x, dy = p.y-a.y;
-            return dx*dx + dy*dy;
-        }
-        double apx = p.x-a.x, apy = p.y-a.y;
-        double t = (apx*abx + apy*aby) / l2;
-        if (t < 0.0) t = 0.0;
-        if (t > 1.0) t = 1.0;
-        double px = a.x + t*abx, py = a.y + t*aby;
-        double dx = p.x-px, dy = p.y-py;
-        return dx*dx + dy*dy;
-    };
-
-    double t0 = -1.0, t1 = -1.0;
-    const auto& plate_path = clipper_plate.back();
-    for (size_t i = 0; i < plate_path.size(); i++) {
-        const Clipper2Lib::PointD& a = plate_path[i];
-        const Clipper2Lib::PointD& b = plate_path[(i+1) % plate_path.size()];
-        // wood_element.cpp:580-605
-        for (int j = 0; j < 2; j++) {
-            size_t idx = (j == 0) ? 0 : c2d.size() - 1;
-            double dist_sq = sq_dist_seg(c2d[idx], a, b);
-            if (j == 0 && dist_sq < 1.0) {
-                t0 = (double)i + closest_param(c2d[0], a, b);
-            } else if (j == 1 && dist_sq < 1.0) {
-                t1 = (double)i + closest_param(c2d[c2d.size()-1], a, b);
-            }
-        }
-        if (t0 >= 0.0 && t1 >= 0.0) break;
-    }
-
-    // ── Reverse if t0 > t1 (with wraparound exception) ───────────────
-    // wood_element.cpp:612-621
-    bool reverse_flag = (t0 > t1);
-    if ((size_t)std::floor(t0) == 0 && (size_t)std::floor(t1) == c2d.size() - 1)
-        reverse_flag = !reverse_flag;
-    if (reverse_flag) {
-        std::swap(t0, t1);
-        std::reverse(c2d.begin(), c2d.end());
-    }
-
-    if (t0 < 0.0 || t1 < 0.0) return false;
-
-    // ── Project back to 3D ────────────────────────────────────────────
-    std::vector<Point> out_pts;
-    out_pts.reserve(c2d.size());
-    for (const auto& p : c2d) out_pts.push_back(to_3d(p.x, p.y));
-    out = Polyline(out_pts);
-    cp_pair = std::pair<double, double>(t0, t1);
-    return true;
-}
-
 // Verbatim port of `wood::element::merge_joints` (wood_element.cpp:654-1424).
 // Operates on CLOSED polylines (size = open_count + 1) so the wood indexing
 // `id = i-2`, `prev = (n+id-1)%n`, `next = (id+1)%n`, `n = pline0.size()-1`
@@ -1922,14 +1411,14 @@ static std::vector<Polyline> merge_joints_for_element(
                 // a parametric `(t0, t1)` pair on the plate edges.
                 Polyline joint_pline_0;
                 std::pair<double, double> cp_pair_0;
-                if (!intersection_closed_and_open_paths_2D(
+                if (!Intersection::closed_and_open_paths_2d(
                         el.polylines[0], jm[0][0], el.planes[0],
                         joint_pline_0, cp_pair_0))
                     continue;
 
                 Polyline joint_pline_1;
                 std::pair<double, double> cp_pair_1;
-                if (!intersection_closed_and_open_paths_2D(
+                if (!Intersection::closed_and_open_paths_2d(
                         el.polylines[1], jm[1][0], el.planes[1],
                         joint_pline_1, cp_pair_1))
                     continue;

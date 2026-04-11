@@ -241,7 +241,7 @@ target_include_directories(session_core SYSTEM PUBLIC
     ${GENERATED_DIR}
     ${protobuf_SOURCE_DIR}/src
 )
-target_link_libraries(session_core PUBLIC libprotobuf)
+target_link_libraries(session_core PUBLIC libprotobuf Clipper2)
 add_dependencies(session_core proto_objects)
 
 foreach(MAIN_ID 1 2 3 4)

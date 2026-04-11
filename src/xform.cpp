@@ -3,6 +3,7 @@
 #include "point.h"
 #include "plane.h"
 #include "line.h"
+#include "polyline.h"
 
 #include "xform.pb.h"
 
@@ -223,6 +224,73 @@ Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, V
     Xform t0 = translation(-origin_1[0], -origin_1[1], -origin_1[2]);
     Xform t2 = translation(origin_0[0], origin_0[1], origin_0[2]);
     return t2 * (m_xform * t0);
+}
+
+Xform Xform::from_change_of_basis(const Polyline& rect0, const Polyline& rect1) {
+    // Verbatim port of the inline `change_basis(rect0, rect1, out)`
+    // helper from main_5.cpp:782 (which mirrored wood `wood_joint.cpp:103`).
+    // Maps the unit cube [-0.5, +0.5]³ → world frame defined by rect0/rect1.
+
+    if (rect0.point_count() < 4 || rect1.point_count() < 1) {
+        return Xform::identity();
+    }
+
+    Point  O1(-0.5, -0.5, -0.5);
+    Vector X1(1, 0, 0), Y1(0, 1, 0), Z1(0, 0, 1);
+
+    Point O0 = rect0.get_point(0);
+    Point r01 = rect0.get_point(1);
+    Point r03 = rect0.get_point(3);
+    Point r10 = rect1.get_point(0);
+    Vector X0(r01[0]-O0[0], r01[1]-O0[1], r01[2]-O0[2]);
+    Vector Y0(r03[0]-O0[0], r03[1]-O0[1], r03[2]-O0[2]);
+    Vector Z0(r10[0]-O0[0], r10[1]-O0[1], r10[2]-O0[2]);
+
+    // Build 3x6 augmented matrix [Gram(X1,Y1,Z1) | dot(Xi,X0j)]
+    double a = X1.dot(Y1), b = X1.dot(Z1), c = Y1.dot(Z1);
+    double R[3][6] = {
+        { X1.dot(X1), a, b, X1.dot(X0), X1.dot(Y0), X1.dot(Z0) },
+        { a, Y1.dot(Y1), c, Y1.dot(X0), Y1.dot(Y0), Y1.dot(Z0) },
+        { b, c, Z1.dot(Z1), Z1.dot(X0), Z1.dot(Y0), Z1.dot(Z0) }
+    };
+
+    // Gaussian elimination with partial pivoting (verbatim from wood).
+    int i0 = (R[0][0] >= R[1][1]) ? 0 : 1;
+    if (R[2][2] > R[i0][i0]) i0 = 2;
+    int i1 = (i0 + 1) % 3;
+    int i2 = (i1 + 1) % 3;
+    if (R[i0][i0] == 0.0) return Xform::identity();
+
+    auto elim = [&](int pivot, int target) {
+        if (R[target][pivot] == 0.0) return;
+        double dd = -R[target][pivot];
+        for (int k = 0; k < 6; k++) R[target][k] += dd * R[pivot][k];
+        R[target][pivot] = 0.0;
+    };
+    auto norm_row = [&](int row) {
+        double dd = 1.0 / R[row][row];
+        for (int k = 0; k < 6; k++) R[row][k] *= dd;
+        R[row][row] = 1.0;
+    };
+
+    norm_row(i0); elim(i0, i1); elim(i0, i2);
+    if (std::abs(R[i1][i1]) < std::abs(R[i2][i2])) std::swap(i1, i2);
+    if (R[i1][i1] == 0.0) return Xform::identity();
+    norm_row(i1); elim(i1, i0); elim(i1, i2);
+    if (R[i2][i2] == 0.0) return Xform::identity();
+    norm_row(i2); elim(i2, i0); elim(i2, i1);
+
+    // Compose: T2 * M * T0
+    double tx = O0[0] - (R[0][3]*O1[0] + R[0][4]*O1[1] + R[0][5]*O1[2]);
+    double ty = O0[1] - (R[1][3]*O1[0] + R[1][4]*O1[1] + R[1][5]*O1[2]);
+    double tz = O0[2] - (R[2][3]*O1[0] + R[2][4]*O1[1] + R[2][5]*O1[2]);
+    std::array<double, 16> mat = {
+        R[0][3], R[1][3], R[2][3], 0,
+        R[0][4], R[1][4], R[2][4], 0,
+        R[0][5], R[1][5], R[2][5], 0,
+        tx,      ty,      tz,      1
+    };
+    return Xform(mat);
 }
 
 Xform Xform::plane_to_plane(const Plane& plane_from, const Plane& plane_to) {

@@ -334,6 +334,58 @@ Polyline Polyline::transformed() const {
     return result;
 }
 
+Polyline Polyline::transformed(const Xform& xf) const {
+    // Verbatim port of `xform_polyline()` from main_5.cpp. Applies a
+    // column-major affine transformation matrix.
+    const auto& M = xf.m;
+    std::vector<Point> pts;
+    pts.reserve(point_count());
+    for (size_t i = 0; i < point_count(); i++) {
+        Point p = get_point(i);
+        double x = M[0]*p[0] + M[4]*p[1] + M[8]*p[2]  + M[12];
+        double y = M[1]*p[0] + M[5]*p[1] + M[9]*p[2]  + M[13];
+        double z = M[2]*p[0] + M[6]*p[1] + M[10]*p[2] + M[14];
+        pts.emplace_back(x, y, z);
+    }
+    return Polyline(pts);
+}
+
+void Polyline::move(const Vector& v) {
+    // Verbatim of `move_polyline()` from main_5.cpp.
+    std::vector<Point> pts;
+    pts.reserve(point_count());
+    for (size_t i = 0; i < point_count(); i++) {
+        Point p = get_point(i);
+        pts.emplace_back(p[0]+v[0], p[1]+v[1], p[2]+v[2]);
+    }
+    *this = Polyline(pts);
+}
+
+void Polyline::extend_edge_equally(size_t edge_idx, double distance) {
+    // Verbatim of `extend_polyline_edge_equally()` from main_5.cpp:803.
+    size_t n = point_count();
+    if (n < 2 || edge_idx + 1 >= n) return;
+    size_t i = edge_idx;
+    size_t j = edge_idx + 1;
+    Point pi = get_point(i);
+    Point pj = get_point(j);
+    double dx = pj[0] - pi[0];
+    double dy = pj[1] - pi[1];
+    double dz = pj[2] - pi[2];
+    double len = std::sqrt(dx*dx + dy*dy + dz*dz);
+    if (len < 1e-12) return;
+    double inv = 1.0 / len;
+    double ux = dx * inv * distance;
+    double uy = dy * inv * distance;
+    double uz = dz * inv * distance;
+    Point new_pi(pi[0]-ux, pi[1]-uy, pi[2]-uz);
+    Point new_pj(pj[0]+ux, pj[1]+uy, pj[2]+uz);
+    set_point(i, new_pi);
+    set_point(j, new_pj);
+    if (i == 0)        set_point(n - 1, new_pi);
+    if (j == n - 1)    set_point(0,     new_pj);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // JSON Serialization
 ///////////////////////////////////////////////////////////////////////////////////////////

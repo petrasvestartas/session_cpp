@@ -60,15 +60,9 @@ static std::vector<Point> interpolate_points(const Point& a, const Point& b, int
     return pts;
 }
 
-// Linear remap from one numeric range to another. Mirrors wood's
-// `internal::remap_numbers` (used by ss_e_op_2 / ts_e_p_2 / ss_e_op_1 /
-// ts_e_p_3 to translate `joint.shift` from [0,1] into the unit cube's
-// [-0.5,+0.5] range).
-static double remap_numbers(double value, double in_min, double in_max,
-                             double out_min, double out_max) {
-    if (in_max == in_min) return out_min;
-    return out_min + (value - in_min) * (out_max - out_min) / (in_max - in_min);
-}
+// Wood's `internal::remap_numbers` already exists in session as
+// `Intersection::remap(value, in_min, in_max, out_min, out_max)` —
+// callers use it directly.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // group 0 — ss_e_ip (side-side in-plane, type 12)
@@ -132,7 +126,7 @@ static void ss_e_ip_1(WoodJoint& joint) {
 
     auto pts0 = interpolate_points(Point(0, -0.5, 0.5), Point(0, -0.5, -0.5), div);
     Vector v(0.5, 0, 0);
-    double shift_ = remap_numbers(joint.shift, 0, 1.0, -0.5, 0.5);
+    double shift_ = Intersection::remap(joint.shift, 0, 1.0, -0.5, 0.5);
     Vector v_d(0, 0, -(1.0 / ((div + 1) * 2)) * shift_);
 
     std::vector<Point> pline0;
@@ -329,7 +323,7 @@ static void ss_e_op_2(WoodJoint& joint) {
 
     double vz = (joint.shift == 0)
         ? 0.0
-        : remap_numbers(joint.shift, 0, 1.0, -0.5, 0.5) / (div + 1);
+        : Intersection::remap(joint.shift, 0, 1.0, -0.5, 0.5) / (div + 1);
     Vector v(0, 0, vz);
     for (int i = 0; i < 4; i++) {
         auto& a = *arrays[i];
@@ -538,7 +532,7 @@ static void ts_e_p_2(WoodJoint& joint) {
 
     double vz = (joint.shift == 0)
         ? 0.0
-        : remap_numbers(joint.shift, 0, 1.0, -0.5, 0.5) / (div + 1);
+        : Intersection::remap(joint.shift, 0, 1.0, -0.5, 0.5) / (div + 1);
     Vector v(0, 0, vz);
     for (int i = 0; i < 4; i++) {
         auto& a = *arrays[i];

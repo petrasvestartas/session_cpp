@@ -158,6 +158,42 @@ public:
     void transform();
     Polyline transformed() const;
 
+    /**
+     * @brief Return a copy of this polyline with `xf` applied to every point.
+     *
+     * Verbatim of the inlined `xform_polyline()` helper from main_5.cpp:
+     * applies a column-major affine transformation matrix.
+     *
+     * @param xf Column-major affine transformation matrix.
+     * @return New polyline with transformed coordinates.
+     */
+    Polyline transformed(const Xform& xf) const;
+
+    /**
+     * @brief Translate every point of this polyline by `v` (in place).
+     *
+     * Mirrors the free function `move(std::vector<Point>&, const Vector&)`
+     * in this header — promoted to a class method for ergonomics.
+     *
+     * @param v Translation vector.
+     */
+    void move(const Vector& v);
+
+    /**
+     * @brief Slide both endpoints of edge `edge_idx` outward (or inward
+     *        for negative `distance`) along the edge tangent.
+     *
+     * For closed polylines, the closing-duplicate vertex is kept in sync
+     * (i.e. modifying point 0 also modifies point n-1 if they coincide).
+     * Wood's `merge_joints` calls this in opposite-edge pairs (0+2, 1+3)
+     * to scale rectangle joint volumes uniformly along their two
+     * principal axes.
+     *
+     * @param edge_idx Index of the first vertex of the edge.
+     * @param distance Signed distance to extend each endpoint by.
+     */
+    void extend_edge_equally(size_t edge_idx, double distance);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization
     ///////////////////////////////////////////////////////////////////////////////////////////

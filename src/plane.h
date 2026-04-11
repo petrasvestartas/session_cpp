@@ -229,6 +229,19 @@ namespace session_cpp {
       return Point(p[0]-dist*n[0], p[1]-dist*n[1], p[2]-dist*n[2]);
   }
 
+  /**
+   * @brief Sign test using the cached plane equation `ax+by+cz+d`.
+   *
+   * Returns true if `p` is on the negative side (`ax+by+cz+d < 0`).
+   * Mirrors CGAL's `Plane_3::has_on_negative_side()`.
+   *
+   * @param p Point to test.
+   * @return true if `a()*p[0] + b()*p[1] + c()*p[2] + d() < 0`.
+   */
+  bool has_on_negative_side(const Point& p) const {
+      return (a() * p[0] + b() * p[1] + c() * p[2] + d()) < 0.0;
+  }
+
 
 }; // End of Plane class
 

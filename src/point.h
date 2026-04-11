@@ -212,11 +212,36 @@ public:
 
   /**
    * @brief Calculate the centroid of a quadrilateral.
-   * 
+   *
    * @param vertices The vertices of the quadrilateral.
    * @return The centroid of the quadrilateral.
    */
   static Point centroid_quad(const std::vector<Point>& vertices);
+
+  /**
+   * @brief Calculate the centroid (arithmetic mean) of N points.
+   *
+   * @param points The points to average. Empty input returns the origin.
+   * @return The centroid: (sum_x/N, sum_y/N, sum_z/N).
+   */
+  static Point centroid(const std::vector<Point>& points);
+
+  /**
+   * @brief Approximate dihedral angle (degrees, [0, 180]) of edge `pq`
+   *        in the tetrahedron `(p, q, r, s)`.
+   *
+   * Geometric definition: angle between half-plane (pqr) and half-plane
+   * (pqs) measured in the plane perpendicular to edge pq. Equivalent to
+   * `std::abs(CGAL::approximate_dihedral_angle(p, q, r, s))`.
+   *
+   * @param p First vertex of the shared edge.
+   * @param q Second vertex of the shared edge.
+   * @param r Third vertex (defines first half-plane via pq, pr).
+   * @param s Fourth vertex (defines second half-plane via pq, ps).
+   * @return Unsigned dihedral angle in degrees, in [0, 180].
+   */
+  static double dihedral_angle_deg(const Point& p, const Point& q,
+                                    const Point& r, const Point& s);
 
 }; // End of Point class
 

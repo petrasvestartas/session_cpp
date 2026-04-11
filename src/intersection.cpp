@@ -4,6 +4,7 @@
 #include "nurbssurface.h"
 #include "closest.h"
 #include "bvh.h"
+#include "clipper2/clipper.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -2177,6 +2178,237 @@ bool Intersection::scale_vector_to_distance_of_2planes(const Vector& direction, 
 
 std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Polyline& b, int clip_type) {
     return BooleanPolyline::compute(a, b, clip_type);
+}
+
+bool Intersection::polyline_plane_to_line(const Polyline& poly, const Plane& plane,
+                                            const Point& align_start, Line& out) {
+    std::vector<Point> pts;
+    std::vector<int> edge_ids;
+    if (!polyline_plane(poly, plane, pts, edge_ids)) return false;
+    if (pts.size() < 2) return false;
+    const Point& a = pts[0];
+    const Point& b = pts[1];
+    double da = (a[0]-align_start[0])*(a[0]-align_start[0]) +
+                (a[1]-align_start[1])*(a[1]-align_start[1]) +
+                (a[2]-align_start[2])*(a[2]-align_start[2]);
+    double db = (b[0]-align_start[0])*(b[0]-align_start[0]) +
+                (b[1]-align_start[1])*(b[1]-align_start[1]) +
+                (b[2]-align_start[2])*(b[2]-align_start[2]);
+    if (da <= db) out = Line::from_points(a, b);
+    else          out = Line::from_points(b, a);
+    return true;
+}
+
+bool Intersection::quad_from_line_top_bottom_planes(const Plane& face_plane,
+                                                      const Line& line,
+                                                      const Plane& plane0,
+                                                      const Plane& plane1,
+                                                      Polyline& out) {
+    // End-cap planes perpendicular to the joint line at each endpoint.
+    Vector dir = line.to_vector();
+    Point s = line.start();
+    Plane lp0 = Plane::from_point_normal(s, dir);
+    Vector dir2 = line.to_vector();
+    Point e = line.end();
+    Plane lp1 = Plane::from_point_normal(e, dir2);
+
+    // 4 corners as 3-plane intersections.
+    Point p0, p1, p2, p3;
+    if (!plane_plane_plane(lp0, plane0, face_plane, p0)) return false;
+    if (!plane_plane_plane(lp0, plane1, face_plane, p1)) return false;
+    if (!plane_plane_plane(lp1, plane1, face_plane, p2)) return false;
+    if (!plane_plane_plane(lp1, plane0, face_plane, p3)) return false;
+    out = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
+    return true;
+}
+
+bool Intersection::orthogonal_vector_between_two_plane_pairs(const Plane& pp00,
+                                                               const Plane& pp10,
+                                                               const Plane& pp11,
+                                                               Vector& out) {
+    // Verbatim port of wood `cgal_intersection_util.cpp:619-628`:
+    //   plane_plane(pp00, pp10, l0);
+    //   plane_plane(pp00, pp11, l1);
+    //   output = l1.point() - l0.projection(l1.point());
+    Line l0, l1;
+    if (!plane_plane(pp00, pp10, l0)) return false;
+    if (!plane_plane(pp00, pp11, l1)) return false;
+    Point p1 = l1.start();
+    Vector ldir = l0.to_vector();
+    double len_sq = ldir[0]*ldir[0] + ldir[1]*ldir[1] + ldir[2]*ldir[2];
+    if (len_sq < 1e-20) return false;
+    Point l0s = l0.start();
+    Vector v(p1[0]-l0s[0], p1[1]-l0s[1], p1[2]-l0s[2]);
+    double t = (v[0]*ldir[0] + v[1]*ldir[1] + v[2]*ldir[2]) / len_sq;
+    Point p1_proj_on_l0(l0s[0]+ldir[0]*t, l0s[1]+ldir[1]*t, l0s[2]+ldir[2]*t);
+    out = Vector(p1[0]-p1_proj_on_l0[0],
+                 p1[1]-p1_proj_on_l0[1],
+                 p1[2]-p1_proj_on_l0[2]);
+    return true;
+}
+
+bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
+                                              const Polyline& joint,
+                                              const Plane& plane,
+                                              Polyline& out,
+                                              std::pair<double, double>& cp_pair) {
+    // Verbatim port of wood `wood_element.cpp:438-651`. Clips an
+    // OPEN-path joint outline against a CLOSED plate polygon in 2D
+    // and returns the clipped 3D segment + parametric positions on
+    // the plate edges.
+
+    Point  origin = plate.get_point(0);
+    Vector xax = plane.x_axis(); xax.normalize_self();
+    Vector yax = plane.y_axis(); yax.normalize_self();
+
+    auto to_2d = [&](const Point& p) -> Clipper2Lib::PointD {
+        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+        return Clipper2Lib::PointD(dx*xax[0]+dy*xax[1]+dz*xax[2],
+                                    dx*yax[0]+dy*yax[1]+dz*yax[2]);
+    };
+    auto to_3d = [&](double u, double v) -> Point {
+        return Point(origin[0] + u*xax[0] + v*yax[0],
+                      origin[1] + u*xax[1] + v*yax[1],
+                      origin[2] + u*xax[2] + v*yax[2]);
+    };
+
+    // Plate outline: STRIP closing duplicate.
+    Clipper2Lib::PathsD clipper_plate;
+    clipper_plate.emplace_back();
+    {
+        size_t n = plate.point_count();
+        if (n > 1) {
+            Point f = plate.get_point(0);
+            Point l = plate.get_point(n-1);
+            if (std::abs(f[0]-l[0]) < 1e-6 &&
+                std::abs(f[1]-l[1]) < 1e-6 &&
+                std::abs(f[2]-l[2]) < 1e-6) n--;
+        }
+        clipper_plate.back().reserve(n);
+        for (size_t i = 0; i < n; i++)
+            clipper_plate.back().push_back(to_2d(plate.get_point(i)));
+    }
+
+    // Joint outline as open path (no closing-duplicate strip).
+    Clipper2Lib::PathsD clipper_joint;
+    clipper_joint.emplace_back();
+    {
+        size_t n = joint.point_count();
+        clipper_joint.back().reserve(n);
+        for (size_t i = 0; i < n; i++)
+            clipper_joint.back().push_back(to_2d(joint.get_point(i)));
+    }
+
+    // Clipper2 open-path intersection.
+    Clipper2Lib::PathsD result_closed, result_open;
+    try {
+        Clipper2Lib::ClipperD clipper;
+        clipper.AddOpenSubject(clipper_joint);
+        clipper.AddClip(clipper_plate);
+        clipper.Execute(Clipper2Lib::ClipType::Intersection,
+                        Clipper2Lib::FillRule::NonZero,
+                        result_closed, result_open);
+    } catch (const std::exception&) {
+        return false;
+    }
+
+    if (result_open.empty()) return false;
+
+    // Concatenate result segments into a single 2D polyline.
+    std::vector<Clipper2Lib::PointD> c2d;
+    int count = 0;
+    auto sq2 = [](const Clipper2Lib::PointD& a, const Clipper2Lib::PointD& b) {
+        double dx = a.x-b.x, dy = a.y-b.y;
+        return dx*dx + dy*dy;
+    };
+    const double DISTANCE_SQ = 0.01;
+
+    for (const auto& polynode : result_open) {
+        if (polynode.size() <= 1) continue;
+        if (count == 0) {
+            c2d.assign(polynode.begin(), polynode.end());
+        } else {
+            std::vector<Clipper2Lib::PointD> pts(polynode.begin(), polynode.end());
+            if (sq2(c2d.back(), pts.front()) > DISTANCE_SQ &&
+                sq2(c2d.back(), pts.back())  > DISTANCE_SQ) {
+                std::reverse(c2d.begin(), c2d.end());
+            }
+            if (sq2(c2d.back(), pts.front()) > sq2(c2d.back(), pts.back())) {
+                std::reverse(pts.begin(), pts.end());
+            }
+            for (size_t j = 1; j < pts.size(); j++) c2d.push_back(pts[j]);
+        }
+        count++;
+    }
+
+    if (c2d.size() < 2) return false;
+
+    // Find parametric positions on the plate edges.
+    auto closest_param = [](const Clipper2Lib::PointD& p,
+                             const Clipper2Lib::PointD& a,
+                             const Clipper2Lib::PointD& b) -> double {
+        double abx = b.x-a.x, aby = b.y-a.y;
+        double l2 = abx*abx + aby*aby;
+        if (l2 < 1e-20) return 0.0;
+        double apx = p.x-a.x, apy = p.y-a.y;
+        double t = (apx*abx + apy*aby) / l2;
+        if (t < 0.0) t = 0.0;
+        if (t > 1.0) t = 1.0;
+        return t;
+    };
+    auto sq_dist_seg = [](const Clipper2Lib::PointD& p,
+                           const Clipper2Lib::PointD& a,
+                           const Clipper2Lib::PointD& b) -> double {
+        double abx = b.x-a.x, aby = b.y-a.y;
+        double l2 = abx*abx + aby*aby;
+        if (l2 < 1e-20) {
+            double dx = p.x-a.x, dy = p.y-a.y;
+            return dx*dx + dy*dy;
+        }
+        double apx = p.x-a.x, apy = p.y-a.y;
+        double t = (apx*abx + apy*aby) / l2;
+        if (t < 0.0) t = 0.0;
+        if (t > 1.0) t = 1.0;
+        double px = a.x + t*abx, py = a.y + t*aby;
+        double dx = p.x-px, dy = p.y-py;
+        return dx*dx + dy*dy;
+    };
+
+    double t0 = -1.0, t1 = -1.0;
+    const auto& plate_path = clipper_plate.back();
+    for (size_t i = 0; i < plate_path.size(); i++) {
+        const Clipper2Lib::PointD& a = plate_path[i];
+        const Clipper2Lib::PointD& b = plate_path[(i+1) % plate_path.size()];
+        for (int j = 0; j < 2; j++) {
+            size_t idx = (j == 0) ? 0 : c2d.size() - 1;
+            double dist_sq = sq_dist_seg(c2d[idx], a, b);
+            if (j == 0 && dist_sq < 1.0) {
+                t0 = (double)i + closest_param(c2d[0], a, b);
+            } else if (j == 1 && dist_sq < 1.0) {
+                t1 = (double)i + closest_param(c2d[c2d.size()-1], a, b);
+            }
+        }
+        if (t0 >= 0.0 && t1 >= 0.0) break;
+    }
+
+    // Reverse if t0 > t1 (with wraparound exception).
+    bool reverse_flag = (t0 > t1);
+    if ((size_t)std::floor(t0) == 0 && (size_t)std::floor(t1) == c2d.size() - 1)
+        reverse_flag = !reverse_flag;
+    if (reverse_flag) {
+        std::swap(t0, t1);
+        std::reverse(c2d.begin(), c2d.end());
+    }
+
+    if (t0 < 0.0 || t1 < 0.0) return false;
+
+    // Project back to 3D.
+    std::vector<Point> out_pts;
+    out_pts.reserve(c2d.size());
+    for (const auto& p : c2d) out_pts.push_back(to_3d(p.x, p.y));
+    out = Polyline(out_pts);
+    cp_pair = std::pair<double, double>(t0, t1);
+    return true;
 }
 
 std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to_face(

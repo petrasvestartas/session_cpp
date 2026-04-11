@@ -591,6 +591,12 @@ Vector Vector::reflect(const Vector& plane_normal) const {
     );
 }
 
+Vector Vector::average_normal(const std::vector<Point>& points) {
+    Vector out;
+    ::session_cpp::average_normal(points, out);
+    return out;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Not class methods

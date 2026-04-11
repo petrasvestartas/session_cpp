@@ -425,6 +425,33 @@ Point Point::centroid_quad(const std::vector<Point>& vertices) {
     return Point(result[0], result[1], result[2]);
 }
 
+Point Point::centroid(const std::vector<Point>& points) {
+    if (points.empty()) return Point(0, 0, 0);
+    double cx = 0.0, cy = 0.0, cz = 0.0;
+    for (const Point& p : points) { cx += p[0]; cy += p[1]; cz += p[2]; }
+    double n = static_cast<double>(points.size());
+    return Point(cx / n, cy / n, cz / n);
+}
+
+double Point::dihedral_angle_deg(const Point& p, const Point& q,
+                                  const Point& r, const Point& s) {
+    // Build half-plane normals via shared edge pq.
+    Vector pq(q[0]-p[0], q[1]-p[1], q[2]-p[2]);
+    Vector pr(r[0]-p[0], r[1]-p[1], r[2]-p[2]);
+    Vector ps(s[0]-p[0], s[1]-p[1], s[2]-p[2]);
+    Vector n1 = pq.cross(pr);
+    Vector n2 = pq.cross(ps);
+    double m1 = n1.magnitude();
+    double m2 = n2.magnitude();
+    if (m1 < Tolerance::ZERO_TOLERANCE || m2 < Tolerance::ZERO_TOLERANCE) {
+        return 0.0;
+    }
+    double cos_t = n1.dot(n2) / (m1 * m2);
+    if (cos_t > 1.0) cos_t = 1.0;
+    if (cos_t < -1.0) cos_t = -1.0;
+    return std::acos(cos_t) * (180.0 / 3.141592653589793);
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Not class methods
 ///////////////////////////////////////////////////////////////////////////////////////////

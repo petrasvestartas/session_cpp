@@ -113,6 +113,46 @@ public:
                                const Point& line1_start, const Point& line1_end,
                                Point& output_start, Point& output_end);
 
+    /**
+     * @brief Co-linear / overlapping segment between this line and `other`.
+     *
+     * Projects `other`'s endpoints onto this line and returns the
+     * portion of this line covered by the projected interval.
+     * Mirrors `polyline_util::line_line_overlap` (free function in polyline.h).
+     *
+     * @param other The other line to overlap with.
+     * @param out On success, the overlap segment on this line.
+     * @return true if a non-empty overlap was found.
+     */
+    bool overlap(const Line& other, Line& out) const;
+
+    /**
+     * @brief Average of `this->overlap(other)` and `other.overlap(this)`,
+     *        computing the longer of the two midpoint segments.
+     *
+     * Mirrors `polyline_util::line_line_overlap_average` (free function).
+     *
+     * @param other The other line to overlap with.
+     * @param out On success, the averaged overlap segment.
+     * @return true if a non-empty overlap was found.
+     */
+    bool overlap_average(const Line& other, Line& out) const;
+
+    /**
+     * @brief Extend this line in place by `ext_start` at the start and
+     *        `ext_end` at the end, both along the line's direction.
+     *
+     * Mirrors `polyline_util::extend_line` (free function in polyline.h)
+     * and the wood `tv_extend_line` helper used in
+     * `three_valence_joint_alignment_annen`.
+     *
+     * @param ext_start Distance to extend from the start point (negative
+     *                  shrinks).
+     * @param ext_end Distance to extend from the end point (negative
+     *                shrinks).
+     */
+    void extend(double ext_start, double ext_end);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Operators
     ///////////////////////////////////////////////////////////////////////////////////////////

@@ -567,6 +567,95 @@ public:
     Vector& output
   );
 
+  /**
+   * @brief Polyline-perimeter ∩ plane → single oriented Line.
+   *
+   * Walks the perimeter of `poly`, finds all edge-plane intersections,
+   * and returns a 2-point line through the first two hits. The output
+   * orientation is chosen so `out.start()` is the closer endpoint to
+   * `align_start`. Mirrors the wood `polyline_plane_to_line` helper used
+   * by `face_to_face` to align joint lines along a side-face axis.
+   *
+   * @param poly Polyline whose edges are tested.
+   * @param plane Plane to intersect.
+   * @param align_start Reference point for picking which intersection is the start.
+   * @param out Output line (start = closer to align_start, end = farther).
+   * @return true if at least 2 intersections were found.
+   */
+  static bool polyline_plane_to_line(const Polyline& poly,
+                                      const Plane& plane,
+                                      const Point& align_start,
+                                      Line& out);
+
+  /**
+   * @brief Build a closed quad polyline from a joint line plus the
+   *        top/bottom thickness planes of an element.
+   *
+   * The quad's two long edges lie in `face_plane`, running along
+   * `line`, and its short edges are clipped by `plane0` (bottom) and
+   * `plane1` (top). Used by the wood face_to_face top-side branch to
+   * assemble joint volumes.
+   *
+   * @param face_plane The element's side-face plane (containing line).
+   * @param line The joint line (segment along the side face).
+   * @param plane0 Element's bottom plane.
+   * @param plane1 Element's top plane.
+   * @param out Output closed quad (5 points: p0, p1, p2, p3, p0).
+   * @return true if all four 3-plane intersections succeeded.
+   */
+  static bool quad_from_line_top_bottom_planes(const Plane& face_plane,
+                                                const Line& line,
+                                                const Plane& plane0,
+                                                const Plane& plane1,
+                                                Polyline& out);
+
+  /**
+   * @brief Orthogonal vector connecting two infinite lines defined by
+   *        `(pp00 ∩ pp10)` and `(pp00 ∩ pp11)`.
+   *
+   * Both intersection lines share `pp00`. The result is the
+   * displacement from a point on `l0` to its closest approach on `l1`.
+   * Wood uses this in the type-20 (top-side) joint branch to compute
+   * the offset vector that takes the male's quad corners INTO the
+   * female plate.
+   *
+   * @param pp00 Common plane (typically the male's top plane).
+   * @param pp10 First intersected plane (typically the female's collision face).
+   * @param pp11 Second intersected plane (typically the female's opposite face).
+   * @param out Output displacement vector pointing from l0 → l1.
+   * @return true on success (false if either plane-plane fails).
+   */
+  static bool orthogonal_vector_between_two_plane_pairs(const Plane& pp00,
+                                                         const Plane& pp10,
+                                                         const Plane& pp11,
+                                                         Vector& out);
+
+  /**
+   * @brief Clip an OPEN-path joint outline against a CLOSED plate
+   *        polygon in 2D and return the clipped 3D segment plus
+   *        parametric positions on the plate edges where it touches.
+   *
+   * Uses Clipper2's `AddOpenSubject` for the joint outline and
+   * `AddClip` for the plate polygon. Mirrors wood's
+   * `intersection_closed_and_open_paths_2D` (`wood_element.cpp:438-651`).
+   * Used by `merge_joints` for the case-5 rectangle joint branch.
+   *
+   * @param plate The plate polygon (closed; first point may equal last).
+   * @param joint The joint outline (treated as an open path).
+   * @param plane The plate plane (used for the 2D projection basis).
+   * @param out Output clipped 3D polyline (oriented start → end matching the
+   *            plate's edge order).
+   * @param cp_pair Output `(t0, t1)` parametric positions on the plate
+   *                edges where the clip starts/ends. Each `t` is
+   *                `edge_index + fractional_position_on_edge`.
+   * @return true if a non-empty clip was found.
+   */
+  static bool closed_and_open_paths_2d(const Polyline& plate,
+                                        const Polyline& joint,
+                                        const Plane& plane,
+                                        Polyline& out,
+                                        std::pair<double, double>& cp_pair);
+
   /// Boolean operation on two closed planar polylines.
   /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
   static std::vector<Polyline> polyline_boolean(const Polyline& a, const Polyline& b, int clip_type);

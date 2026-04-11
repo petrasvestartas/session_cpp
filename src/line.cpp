@@ -1,4 +1,5 @@
 #include "line.h"
+#include "polyline.h"  // free fns line_line_overlap, line_line_overlap_average, extend_line
 #include "tolerance.h"
 #include <algorithm>
 #include <cmath>
@@ -505,6 +506,19 @@ void Line::get_middle_line(const Point& line0_start, const Point& line0_end,
         (line0_end[1] + line1_end[1]) * 0.5,
         (line0_end[2] + line1_end[2]) * 0.5
     );
+}
+
+bool Line::overlap(const Line& other, Line& out) const {
+    return ::session_cpp::line_line_overlap(*this, other, out);
+}
+
+bool Line::overlap_average(const Line& other, Line& out) const {
+    ::session_cpp::line_line_overlap_average(*this, other, out);
+    return out.squared_length() > 0.0;
+}
+
+void Line::extend(double ext_start, double ext_end) {
+    ::session_cpp::extend_line(*this, ext_start, ext_end);
 }
 
 std::ostream& operator<<(std::ostream& os, const Line& line) {

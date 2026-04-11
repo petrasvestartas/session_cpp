@@ -15,10 +15,11 @@
 
 namespace session_cpp {
 
-class Point;  // Forward declaration
-class Vector; // Forward declaration
-class Plane;  // Forward declaration
-class Line;   // Forward declaration
+class Point;    // Forward declaration
+class Vector;   // Forward declaration
+class Plane;    // Forward declaration
+class Line;     // Forward declaration
+class Polyline; // Forward declaration
 
 /**
  * @class Xform
@@ -85,6 +86,28 @@ public:
     /// Change of basis between two coordinate systems
     static Xform change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
                                Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0);
+
+    /**
+     * @brief Build a change-of-basis Xform that maps the unit cube
+     *        `[-0.5, +0.5]³` to the world frame defined by two
+     *        joint-volume rectangles.
+     *
+     * Source frame (unit cube): O1=(-0.5,-0.5,-0.5),
+     * X1=(1,0,0), Y1=(0,1,0), Z1=(0,0,1).
+     *
+     * Target frame: O0=rect0[0],
+     * X0=rect0[1]-rect0[0], Y0=rect0[3]-rect0[0], Z0=rect1[0]-rect0[0].
+     *
+     * Verbatim port of the wood `change_basis(rect0, rect1)` overload
+     * used by the joint orientation pipeline. Wood reference:
+     * `wood_joint.cpp:103-245`.
+     *
+     * @param rect0 First joint volume rectangle (5 points, closed quad).
+     * @param rect1 Second joint volume rectangle (5 points, closed quad).
+     * @return The change-of-basis matrix, or `Xform::identity()` if the
+     *         input frame is degenerate.
+     */
+    static Xform from_change_of_basis(const Polyline& rect0, const Polyline& rect1);
 
     /// Transform mapping one plane to another
     static Xform plane_to_plane(const Plane& plane_from, const Plane& plane_to);
