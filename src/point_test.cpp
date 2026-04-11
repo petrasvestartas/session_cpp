@@ -224,6 +224,35 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(centroid[2], 1.0));
     }
 
+    MINI_TEST("Point", "Centroid") {
+        // uncomment #include "point.h"
+
+        Point p0(0.0, 0.0, 0.0);
+        Point p1(2.0, 0.0, 0.0);
+        Point p2(2.0, 2.0, 0.0);
+        Point p3(0.0, 2.0, 0.0);
+        Point centroid = Point::centroid({p0, p1, p2, p3});
+
+        MINI_CHECK(TOLERANCE.is_close(centroid[0], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(centroid[1], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(centroid[2], 0.0));
+    }
+
+    MINI_TEST("Point", "Dihedral Angle Deg") {
+        // uncomment #include "point.h"
+
+        // Edge from origin to (1,0,0); r at (0,1,0); s at (0,0,1).
+        // Both half-planes share the X edge; angle between (X x Y) and (X x Z)
+        // is 90 degrees.
+        Point p(0.0, 0.0, 0.0);
+        Point q(1.0, 0.0, 0.0);
+        Point r(0.0, 1.0, 0.0);
+        Point s(0.0, 0.0, 1.0);
+        double angle = Point::dihedral_angle_deg(p, q, r, s);
+
+        MINI_CHECK(TOLERANCE.is_close(angle, 90.0));
+    }
+
 }
 
 int main() {

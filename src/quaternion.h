@@ -97,7 +97,10 @@ public:
      */
     static Quaternion from_components(double scalar, const Vector& vector);
 
-    /// Create from axis of rotation and angle
+    /// Build a unit quaternion that rotates by `angle` radians around `axis`.
+    /// THE everyday rotation builder. Use this whenever you can describe the
+    /// rotation as "spin by N radians around this direction" - turning a wheel,
+    /// opening a door, orbiting a camera. The result is always unit-length.
     static Quaternion from_axis_angle(const Vector& axis, double angle);
 
     /**
@@ -123,23 +126,41 @@ public:
      */
     std::pair<Vector, double> to_axis_angle() const;
 
-    /// Create rotation from source vector to destination vector
+    /// Build the shortest rotation that maps direction `src` to direction `dst`.
+    /// Use this for "look at" logic (point a camera at a target), aligning a
+    /// model's forward axis with a desired direction, or snapping one face
+    /// normal to another. Both arguments are normalized internally.
     static Quaternion from_arc(const Vector& src, const Vector& dst);
 
-    /// Create from Euler angles (XYZ convention)
+    /// Build a quaternion from three Euler angles (XYZ convention).
+    /// Use only at I/O boundaries: importing rotations stored as pitch/yaw/roll
+    /// or accepting user input. AVOID for composition - Euler angles suffer
+    /// from gimbal lock. Store/compose as quaternions, convert to Euler only
+    /// to display or save.
     static Quaternion from_euler(double x, double y, double z);
 
-    /// Create rotation that maps the basis of plane_a onto the basis of plane_b (Rhino: Quaternion.Rotation(plane, plane))
+    /// Build the quaternion that maps the basis of `plane_a` onto the basis of
+    /// `plane_b`. Use this to snap one local frame to another - aligning two
+    /// CAD parts by their reference planes, transferring a frame between
+    /// objects, or computing the relative rotation between two coordinate
+    /// systems. (Rhino: Quaternion.Rotation(plane, plane))
     static Quaternion from_rotation(const Plane& plane_a, const Plane& plane_b);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transforms
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Rotate a vector by this quaternion
+    /// Apply this rotation to a 3D vector and return the rotated vector.
+    /// Use this when you have a quaternion orientation and need to know where
+    /// a specific direction points after the rotation - the camera's forward
+    /// axis, a bone's tip, the normal of a rotated face. Math: q*v_pure*q^-1.
     Vector rotate_vector(const Vector& vec) const;
 
-    /// Apply this quaternion's rotation to the world XY plane and return the resulting plane (Rhino: Quaternion.GetRotation(out plane))
+    /// Apply this rotation to the world XY plane and return the resulting Plane.
+    /// Use this to visualize a quaternion as a frame in 3D, or to convert a
+    /// stored quaternion into a Plane for frame-based APIs in the rest of the
+    /// kernel. Inverse: from_rotation(xy_plane(), result).
+    /// (Rhino: Quaternion.GetRotation(out plane))
     Plane get_rotation() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -152,22 +173,35 @@ public:
     /// Squared magnitude
     double magnitude_squared() const;
 
-    /// Unit quaternion with same direction
+    /// Return a unit-length copy. Use periodically after composing many
+    /// rotations - floating-point drift slowly makes a quaternion non-unit,
+    /// and a non-unit quaternion no longer represents a valid rotation.
     Quaternion normalized() const;
 
-    /// Conjugate (negates vector part)
+    /// Flip the sign of the vector part: (s, v) -> (s, -v). For UNIT
+    /// quaternions this equals the inverse - the opposite rotation. Use as
+    /// the cheap inverse when you KNOW the quaternion is unit-length.
     Quaternion conjugate() const;
 
-    /// Multiplicative inverse
+    /// True multiplicative inverse: conjugate / magnitude_squared. Works for
+    /// non-unit quaternions too. Use as the safe inverse when the quaternion
+    /// may not be unit-length. q * q.invert() always equals identity.
     Quaternion invert() const;
 
-    /// Dot product with another quaternion
+    /// Algebraic 4D dot product (NOT a geometric operation). Used inside
+    /// slerp implementations and as a similarity measure between two unit
+    /// quaternions (1 = same, 0 = 90 deg apart).
     double dot(const Quaternion& other) const;
 
-    /// Spherical linear interpolation
+    /// Spherical Linear intERPolation along the shortest great-circle path
+    /// on S^3. Constant angular velocity. Use for high-quality animation
+    /// between two orientations - camera transitions, character bones,
+    /// anything where smoothness matters more than raw speed.
     Quaternion slerp(const Quaternion& other, double amount) const;
 
-    /// Normalized linear interpolation
+    /// Normalized Linear intERPolation. Cheaper than slerp but the angular
+    /// velocity isn't perfectly uniform. Use in real-time loops where every
+    /// microsecond matters and the visual difference from slerp is negligible.
     Quaternion nlerp(const Quaternion& other, double amount) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////

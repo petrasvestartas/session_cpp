@@ -679,4 +679,52 @@ MINI_TEST("Polyline", "Simplify Two Points") {
     MINI_CHECK(result.size() == 2);
 }
 
+MINI_TEST("Polyline", "Transformed Xform") {
+    // uncomment #include "polyline.h"
+    // uncomment #include "xform.h"
+
+    Polyline pl({
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+    });
+    Xform xf = Xform::translation(10.0, 0.0, 0.0);
+    Polyline pl_x = pl.transformed_xform(xf);
+
+    MINI_CHECK(TOLERANCE.is_close(pl_x.get_point(0)[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_x.get_point(1)[0], 11.0));
+}
+
+MINI_TEST("Polyline", "Translate") {
+    // uncomment #include "polyline.h"
+    // uncomment #include "vector.h"
+
+    Polyline pl({
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+    });
+    pl.translate(Vector(5.0, 0.0, 0.0));
+
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(0)[0], 5.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(2)[0], 6.0));
+}
+
+MINI_TEST("Polyline", "Extend Edge Equally") {
+    // uncomment #include "polyline.h"
+
+    Polyline pl({
+        Point(0.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+        Point(10.0, 10.0, 0.0),
+        Point(0.0, 10.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    pl.extend_edge_equally(0, 1.0);
+
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(0)[0], -1.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(1)[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(4)[0], -1.0));
+}
+
 } // namespace session_cpp

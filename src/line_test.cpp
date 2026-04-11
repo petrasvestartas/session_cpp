@@ -311,4 +311,42 @@ MINI_TEST("Line", "Subdivide") {
     MINI_CHECK(TOLERANCE.is_close(pts_dist[4][0], 10.0));
 }
 
+MINI_TEST("Line", "Overlap") {
+    // uncomment #include "line.h"
+
+    // Two collinear segments overlapping in [5, 10] along X.
+    Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+    Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
+    Line out;
+    bool ok = l0.overlap(l1, out);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(TOLERANCE.is_close(out.start()[0], 5.0));
+    MINI_CHECK(TOLERANCE.is_close(out.end()[0], 10.0));
+}
+
+MINI_TEST("Line", "Overlap Average") {
+    // uncomment #include "line.h"
+
+    // Two collinear segments overlapping in [5, 10] along X.
+    Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+    Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
+    Line out;
+    bool ok = l0.overlap_average(l1, out);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(TOLERANCE.is_close(out.start()[0], 5.0));
+    MINI_CHECK(TOLERANCE.is_close(out.end()[0], 10.0));
+}
+
+MINI_TEST("Line", "Extend") {
+    // uncomment #include "line.h"
+
+    Line l = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+    l.extend(1.0, 2.0);
+
+    MINI_CHECK(TOLERANCE.is_close(l.start()[0], -1.0));
+    MINI_CHECK(TOLERANCE.is_close(l.end()[0], 12.0));
+}
+
 } // namespace session_cpp

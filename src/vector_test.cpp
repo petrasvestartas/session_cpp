@@ -437,8 +437,7 @@ MINI_TEST("Vector", "Average Normal") {
         Point(0.0, 1.0, 0.0),
         Point(0.0, 0.0, 0.0),
     };
-    Vector n;
-    average_normal(sq, n);
+    Vector n = Vector::average_normal(sq);
 
     MINI_CHECK(TOLERANCE.is_close(std::abs(n[2]), 1.0));
     MINI_CHECK(TOLERANCE.is_close(n[0], 0.0) && TOLERANCE.is_close(n[1], 0.0));

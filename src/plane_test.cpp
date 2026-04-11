@@ -251,4 +251,15 @@ MINI_TEST("Plane", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.c(), 1.0));
 }
 
+MINI_TEST("Plane", "Has On Negative Side") {
+    // uncomment #include "plane.h"
+
+    Plane pl = Plane::xy_plane();
+    Point above(0.0, 0.0, 1.0);
+    Point below(0.0, 0.0, -1.0);
+
+    MINI_CHECK(pl.has_on_negative_side(below));
+    MINI_CHECK(!pl.has_on_negative_side(above));
+}
+
 } // namespace session_cpp

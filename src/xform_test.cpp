@@ -554,4 +554,26 @@ MINI_TEST("Xform", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.m[14], 3.0) && TOLERANCE.is_close(loaded.m[15], 1.0));
 }
 
+MINI_TEST("Xform", "From Change Of Basis") {
+    // uncomment #include "xform.h"
+    // uncomment #include "polyline.h"
+
+    // rect0: axis-aligned 2x3 quad in XY at the origin.
+    // rect1: anchor 4 units up the Z axis from rect0[0].
+    // The mapped origin (the unit-cube centre, (0,0,0) in the source frame)
+    // should land at the centroid of the joint volume, (1, 1.5, 2).
+    Polyline rect0({
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(2.0, 3.0, 0.0),
+        Point(0.0, 3.0, 0.0),
+    });
+    Polyline rect1({Point(0.0, 0.0, 4.0)});
+    Xform xf = Xform::from_change_of_basis(rect0, rect1);
+
+    MINI_CHECK(TOLERANCE.is_close(xf.m[12], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(xf.m[13], 1.5));
+    MINI_CHECK(TOLERANCE.is_close(xf.m[14], 2.0));
+}
+
 } // namespace session_cpp

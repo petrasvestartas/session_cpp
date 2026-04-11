@@ -994,4 +994,109 @@ MINI_TEST("Intersection", "Line Line 3D") {
     MINI_CHECK(!Intersection::line_line_3d(par0, par1, out2));
 }
 
+MINI_TEST("Intersection", "Polyline Plane To Line") {
+    // uncomment #include "intersection.h"
+
+    // Square in XY at z=0; cutting plane y=2 with normal (0,1,0).
+    // The intersection is the segment from (0,2,0) to (4,2,0).
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+        Point(4.0, 4.0, 0.0),
+        Point(0.0, 4.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    Point pln_origin(0.0, 2.0, 0.0);
+    Vector pln_normal(0.0, 1.0, 0.0);
+    Plane pln = Plane::from_point_normal(pln_origin, pln_normal);
+    Point align_start(0.0, 0.0, 0.0);
+    Line out;
+    bool ok = Intersection::polyline_plane_to_line(poly, pln, align_start, out);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(TOLERANCE.is_close(out.start()[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(out.end()[0], 4.0));
+}
+
+MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
+    // uncomment #include "intersection.h"
+
+    // Face plane: XY plane (z=0).
+    // Joint line: x-axis from (0,0,0) to (10,0,0).
+    // Side planes: y=-2 and y=+2.
+    // Expected quad: 4 corners at (0,-2,0), (0,2,0), (10,2,0), (10,-2,0).
+    Plane face = Plane::xy_plane();
+    Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    Point p0_o(0.0, -2.0, 0.0); Vector p0_n(0.0, 1.0, 0.0);
+    Point p1_o(0.0,  2.0, 0.0); Vector p1_n(0.0, 1.0, 0.0);
+    Plane plane0 = Plane::from_point_normal(p0_o, p0_n);
+    Plane plane1 = Plane::from_point_normal(p1_o, p1_n);
+    Polyline out;
+    bool ok = Intersection::quad_from_line_top_bottom_planes(face, line, plane0, plane1, out);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(out.point_count() == 5);
+    MINI_CHECK(TOLERANCE.is_close(std::abs(out.get_point(0)[1]), 2.0));
+    MINI_CHECK(TOLERANCE.is_close(std::abs(out.get_point(2)[1]), 2.0));
+    MINI_CHECK(TOLERANCE.is_close(out.get_point(2)[0], 10.0));
+}
+
+MINI_TEST("Intersection", "Orthogonal Vector Between Two Plane Pairs") {
+    // uncomment #include "intersection.h"
+
+    // pp00 = XY plane.
+    // pp10 = plane x=0 (YZ), pp11 = plane x=4 (parallel to YZ, offset).
+    // The intersections with pp00 give two parallel lines along Y at x=0
+    // and x=4. The orthogonal connector between them has magnitude 4 along
+    // X (sign depends on plane_plane line orientation).
+    Plane pp00 = Plane::xy_plane();
+    Point yz0_o(0.0, 0.0, 0.0); Vector yz_n(1.0, 0.0, 0.0);
+    Plane pp10 = Plane::from_point_normal(yz0_o, yz_n);
+    Point yz4_o(4.0, 0.0, 0.0); Vector yz_n2(1.0, 0.0, 0.0);
+    Plane pp11 = Plane::from_point_normal(yz4_o, yz_n2);
+    Vector out;
+    bool ok = Intersection::orthogonal_vector_between_two_plane_pairs(pp00, pp10, pp11, out);
+
+    MINI_CHECK(ok);
+    double mag = std::sqrt(out[0]*out[0] + out[1]*out[1] + out[2]*out[2]);
+    MINI_CHECK(TOLERANCE.is_close(mag, 4.0));
+    MINI_CHECK(TOLERANCE.is_close(out[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(out[2], 0.0));
+}
+
+MINI_TEST("Intersection", "Closed And Open Paths 2D") {
+    // uncomment #include "intersection.h"
+
+    // Square plate (0,0)..(10,10) in XY plane; open joint outline crossing
+    // through it horizontally at y=5 from x=-2 to x=12. Intersection with
+    // the plate is the segment (0,5)..(10,5), with parametric positions
+    // 1.5 and 3.5 on the plate edges (i.e. midway along edges 1 and 3).
+    Polyline plate({
+        Point(0.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+        Point(10.0, 10.0, 0.0),
+        Point(0.0, 10.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    Polyline joint({
+        Point(-2.0, 5.0, 0.0),
+        Point(12.0, 5.0, 0.0),
+    });
+    Plane pln = Plane::xy_plane();
+    Polyline out;
+    std::pair<double, double> cp_pair;
+    bool ok = Intersection::closed_and_open_paths_2d(plate, joint, pln, out, cp_pair);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(out.point_count() == 2);
+    // The clipped result is parallel to the X axis at y=5.
+    MINI_CHECK(TOLERANCE.is_close(out.get_point(0)[1], 5.0));
+    MINI_CHECK(TOLERANCE.is_close(out.get_point(1)[1], 5.0));
+    // t0 / t1 should be 1.5 and 3.5 (in either order).
+    double t_lo = std::min(cp_pair.first, cp_pair.second);
+    double t_hi = std::max(cp_pair.first, cp_pair.second);
+    MINI_CHECK(TOLERANCE.is_close(t_lo, 1.5));
+    MINI_CHECK(TOLERANCE.is_close(t_hi, 3.5));
+}
+
 } // namespace session_cpp

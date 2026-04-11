@@ -302,14 +302,3 @@ add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
 
-#############################################################################################
-# BOOL BENCH
-#############################################################################################
-add_executable(bool_bench bool_bench.cpp)
-target_link_libraries(bool_bench PRIVATE session_core Clipper2)
-LINK_PROTOBUF(bool_bench)
-if(MSVC)
-    target_compile_options(bool_bench PRIVATE /W3 /O2)
-else()
-    target_compile_options(bool_bench PRIVATE -O3)
-endif()
