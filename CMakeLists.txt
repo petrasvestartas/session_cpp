@@ -241,7 +241,7 @@ target_include_directories(session_core SYSTEM PUBLIC
     ${GENERATED_DIR}
     ${protobuf_SOURCE_DIR}/src
 )
-target_link_libraries(session_core PUBLIC libprotobuf Clipper2)
+target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
 foreach(MAIN_ID 1 2 3 4)
@@ -252,9 +252,9 @@ foreach(MAIN_ID 1 2 3 4)
         target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endforeach()
-# main_5 with Clipper2 for wood boolean intersection
+# main_5 (wood face_to_face port — uses native session boolean, no Clipper2)
 add_executable(main_5 main_5.cpp)
-target_link_libraries(main_5 PRIVATE session_core Clipper2)
+target_link_libraries(main_5 PRIVATE session_core)
 LINK_PROTOBUF(main_5)
 if(ENABLE_PCH)
     target_precompile_headers(main_5 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)

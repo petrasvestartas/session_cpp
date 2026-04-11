@@ -334,7 +334,7 @@ Polyline Polyline::transformed() const {
     return result;
 }
 
-Polyline Polyline::transformed(const Xform& xf) const {
+Polyline Polyline::transformed_xform(const Xform& xf) const {
     // Verbatim port of `xform_polyline()` from main_5.cpp. Applies a
     // column-major affine transformation matrix.
     const auto& M = xf.m;
@@ -350,7 +350,7 @@ Polyline Polyline::transformed(const Xform& xf) const {
     return Polyline(pts);
 }
 
-void Polyline::move(const Vector& v) {
+void Polyline::translate(const Vector& v) {
     // Verbatim of `move_polyline()` from main_5.cpp.
     std::vector<Point> pts;
     pts.reserve(point_count());

@@ -164,10 +164,14 @@ public:
      * Verbatim of the inlined `xform_polyline()` helper from main_5.cpp:
      * applies a column-major affine transformation matrix.
      *
+     * Named `transformed_xform` (not an overload of `transformed()`) so the
+     * Rust + Python ports can share the same name (Rust + Python don't
+     * support overload-by-signature).
+     *
      * @param xf Column-major affine transformation matrix.
      * @return New polyline with transformed coordinates.
      */
-    Polyline transformed(const Xform& xf) const;
+    Polyline transformed_xform(const Xform& xf) const;
 
     /**
      * @brief Translate every point of this polyline by `v` (in place).
@@ -175,9 +179,12 @@ public:
      * Mirrors the free function `move(std::vector<Point>&, const Vector&)`
      * in this header — promoted to a class method for ergonomics.
      *
+     * Named `translate` (not `move`) for cross-language parity: Rust's
+     * `move` is a keyword, and `translate` is more descriptive.
+     *
      * @param v Translation vector.
      */
-    void move(const Vector& v);
+    void translate(const Vector& v);
 
     /**
      * @brief Slide both endpoints of edge `edge_idx` outward (or inward

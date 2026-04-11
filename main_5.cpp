@@ -19,7 +19,6 @@
 #include "element.h"
 #include "obj.h"
 #include "intersection.h"
-#include <clipper2/clipper.h>
 #include "plane.h"
 #include "polyline.h"
 #include "line.h"
@@ -86,8 +85,10 @@ struct WoodJoint {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// Clipper2-based boolean intersection, matching wood's
-// collider::clipper_util::get_intersection_between_two_polylines exactly.
+// 2D plate-vs-plate polygon intersection in the plate plane frame, using
+// the session-side Vatti boolean (Intersection::polyline_boolean). Matches
+// wood's collider::clipper_util::get_intersection_between_two_polylines
+// in shape; numerical results are within Vatti scale precision of Clipper2.
 // ───────────────────────────────────────────────────────────────────────────
 static bool clipper2_intersect(const Polyline& poly_a, const Polyline& poly_b,
                                const Plane& plane, Polyline& result) {
@@ -99,46 +100,62 @@ static bool clipper2_intersect(const Polyline& poly_a, const Polyline& poly_b,
     xax.normalize_self();
     yax.normalize_self();
 
-    auto project = [&](const Polyline& pl, std::vector<Clipper2Lib::PointD>& path) {
+    auto project_2d = [&](const Polyline& pl) -> Polyline {
         size_t n = pl.point_count();
-        // Strip closing point
         if (n > 3) {
             auto f = pl.get_point(0); auto l = pl.get_point(n-1);
             if (std::abs(f[0]-l[0])<1e-6 && std::abs(f[1]-l[1])<1e-6 && std::abs(f[2]-l[2])<1e-6)
                 n--;
         }
-        path.resize(n);
+        std::vector<Point> pts2d;
+        pts2d.reserve(n + 1);
         for (size_t k = 0; k < n; k++) {
             auto p = pl.get_point(k);
             double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
-            path[k] = Clipper2Lib::PointD(dx*xax[0]+dy*xax[1]+dz*xax[2],
-                                          dx*yax[0]+dy*yax[1]+dz*yax[2]);
+            double u = dx*xax[0]+dy*xax[1]+dz*xax[2];
+            double v = dx*yax[0]+dy*yax[1]+dz*yax[2];
+            pts2d.emplace_back(u, v, 0.0);
         }
+        // BooleanPolyline expects a closing-duplicate vertex.
+        pts2d.push_back(pts2d.front());
+        return Polyline(pts2d);
     };
 
-    Clipper2Lib::PathsD pathA, pathB;
-    pathA.resize(1); pathB.resize(1);
-    project(poly_a, pathA[0]);
-    project(poly_b, pathB[0]);
+    Polyline pa = project_2d(poly_a);
+    Polyline pb = project_2d(poly_b);
 
-    int precision = 2;
-    Clipper2Lib::PathsD C = Clipper2Lib::Intersect(pathA, pathB, Clipper2Lib::FillRule::NonZero, precision);
+    // clip_type: 0 = intersection (matches BooleanPolyline::compute).
+    std::vector<Polyline> result_2d = Intersection::polyline_boolean(pa, pb, 0);
+    if (result_2d.empty() || result_2d[0].point_count() < 3) return false;
 
-    if (C.empty() || C[0].size() < 3) return false;
+    const Polyline& C = result_2d[0];
+    size_t n = C.point_count();
+    // Strip closing duplicate before computing area.
+    {
+        auto f = C.get_point(0); auto l = C.get_point(n-1);
+        if (n > 1 && std::abs(f[0]-l[0])<1e-9 && std::abs(f[1]-l[1])<1e-9) n--;
+    }
 
-    // Check area
-    double area = std::abs(Clipper2Lib::Area(C[0]));
+    // Shoelace area in the projected (u,v) plane.
+    double area = 0.0;
+    for (size_t i = 0; i < n; i++) {
+        auto p0 = C.get_point(i);
+        auto p1 = C.get_point((i+1) % n);
+        area += p0[0]*p1[1] - p1[0]*p0[1];
+    }
+    area = std::abs(area) * 0.5;
     if (area < 0.01) return false;
 
-    // Transform back to 3D
-    std::vector<Point> pts(C[0].size() + 1);
-    for (size_t k = 0; k < C[0].size(); k++) {
-        double u = C[0][k].x, v = C[0][k].y;
+    // Transform back to 3D in the plate plane.
+    std::vector<Point> pts(n + 1);
+    for (size_t k = 0; k < n; k++) {
+        auto pp = C.get_point(k);
+        double u = pp[0], v = pp[1];
         pts[k] = Point(origin[0] + u*xax[0] + v*yax[0],
                         origin[1] + u*xax[1] + v*yax[1],
                         origin[2] + u*xax[2] + v*yax[2]);
     }
-    pts[C[0].size()] = pts[0]; // close
+    pts[n] = pts[0]; // close
     result = Polyline(pts);
     return true;
 }
@@ -195,10 +212,10 @@ static void apply_unit_scale(WoodJoint& joint) {
         Vector neg_unit(-vec_unit[0], -vec_unit[1], -vec_unit[2]);
         // 1) move both rects to the midpoint
         // 2) move them apart by ±unit_scale_distance/2 along the joint line
-        a.move(vec);
-        b.move(neg_vec);
-        a.move(neg_unit);
-        b.move(vec_unit);
+        a.translate(vec);
+        b.translate(neg_vec);
+        a.translate(neg_unit);
+        b.translate(vec_unit);
     };
 
     move_pair(*vols[0], *vols[1]);
@@ -231,8 +248,8 @@ static void joint_orient_to_connection_area(WoodJoint& joint) {
 
     // Transform male outlines with xf0, female with xf1.
     for (int face = 0; face < 2; face++) {
-        for (auto& pl : joint.m_outlines[face]) pl = pl.transformed(xf0);
-        for (auto& pl : joint.f_outlines[face]) pl = pl.transformed(xf1);
+        for (auto& pl : joint.m_outlines[face]) pl = pl.transformed_xform(xf0);
+        for (auto& pl : joint.f_outlines[face]) pl = pl.transformed_xform(xf1);
     }
 }
 

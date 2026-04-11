@@ -4,7 +4,6 @@
 #include "nurbssurface.h"
 #include "closest.h"
 #include "bvh.h"
-#include "clipper2/clipper.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -2252,19 +2251,28 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
                                               const Plane& plane,
                                               Polyline& out,
                                               std::pair<double, double>& cp_pair) {
-    // Verbatim port of wood `wood_element.cpp:438-651`. Clips an
-    // OPEN-path joint outline against a CLOSED plate polygon in 2D
-    // and returns the clipped 3D segment + parametric positions on
-    // the plate edges.
+    // Native (no Clipper2) port of wood `wood_element.cpp:438-651`. Clips an
+    // OPEN-path joint outline against a CLOSED plate polygon in 2D and
+    // returns the clipped 3D segment + parametric positions on the plate
+    // edges.
+    //
+    // Algorithm: project plate + joint into the plate-frame 2D, then for
+    // each joint segment compute its intersection parameters against every
+    // plate edge, sort, classify each sub-segment by midpoint test
+    // (point-in-polygon), keep insides, concatenate using the
+    // distance-based reorientation rule, then locate t0/t1 on the plate
+    // boundary.
+
+    struct P2 { double x, y; };
 
     Point  origin = plate.get_point(0);
     Vector xax = plane.x_axis(); xax.normalize_self();
     Vector yax = plane.y_axis(); yax.normalize_self();
 
-    auto to_2d = [&](const Point& p) -> Clipper2Lib::PointD {
+    auto to_2d = [&](const Point& p) -> P2 {
         double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
-        return Clipper2Lib::PointD(dx*xax[0]+dy*xax[1]+dz*xax[2],
-                                    dx*yax[0]+dy*yax[1]+dz*yax[2]);
+        return {dx*xax[0]+dy*xax[1]+dz*xax[2],
+                dx*yax[0]+dy*yax[1]+dz*yax[2]};
     };
     auto to_3d = [&](double u, double v) -> Point {
         return Point(origin[0] + u*xax[0] + v*yax[0],
@@ -2272,9 +2280,8 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
                       origin[2] + u*xax[2] + v*yax[2]);
     };
 
-    // Plate outline: STRIP closing duplicate.
-    Clipper2Lib::PathsD clipper_plate;
-    clipper_plate.emplace_back();
+    // Plate outline (2D): strip closing duplicate.
+    std::vector<P2> plate2d;
     {
         size_t n = plate.point_count();
         if (n > 1) {
@@ -2284,51 +2291,133 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
                 std::abs(f[1]-l[1]) < 1e-6 &&
                 std::abs(f[2]-l[2]) < 1e-6) n--;
         }
-        clipper_plate.back().reserve(n);
-        for (size_t i = 0; i < n; i++)
-            clipper_plate.back().push_back(to_2d(plate.get_point(i)));
+        plate2d.reserve(n);
+        for (size_t i = 0; i < n; i++) plate2d.push_back(to_2d(plate.get_point(i)));
+    }
+    if (plate2d.size() < 3) return false;
+
+    // Joint outline (2D, open path).
+    std::vector<P2> joint2d;
+    joint2d.reserve(joint.point_count());
+    for (size_t i = 0; i < joint.point_count(); i++)
+        joint2d.push_back(to_2d(joint.get_point(i)));
+    if (joint2d.size() < 2) return false;
+
+    // 2D winding-number point-in-polygon (matches Polyline::point_in_polygon_2d).
+    auto pip = [&](double px, double py) -> bool {
+        int wn = 0;
+        size_t n = plate2d.size();
+        for (size_t i = 0; i < n; i++) {
+            const P2& a = plate2d[i];
+            const P2& b = plate2d[(i+1)%n];
+            if (a.y <= py) {
+                if (b.y > py) {
+                    double e = (b.x-a.x)*(py-a.y) - (px-a.x)*(b.y-a.y);
+                    if (e > 0.0) wn++;
+                }
+            } else {
+                if (b.y <= py) {
+                    double e = (b.x-a.x)*(py-a.y) - (px-a.x)*(b.y-a.y);
+                    if (e < 0.0) wn--;
+                }
+            }
+        }
+        return wn != 0;
+    };
+
+    // 2D segment-segment intersection. Returns true if segments overlap at
+    // a single point with parameters t_s in [-eps, 1+eps] and t_e in
+    // [-eps, 1+eps]; outputs the parameters.
+    auto seg_seg_2d = [](const P2& s0, const P2& s1, const P2& e0, const P2& e1,
+                         double& t_s, double& t_e) -> bool {
+        double sx = s1.x-s0.x, sy = s1.y-s0.y;
+        double ex = e1.x-e0.x, ey = e1.y-e0.y;
+        double denom = sx*ey - sy*ex;
+        if (std::abs(denom) < 1e-20) return false;
+        double dx = e0.x-s0.x, dy = e0.y-s0.y;
+        t_s = (dx*ey - dy*ex) / denom;
+        t_e = (dx*sy - dy*sx) / denom;
+        return true;
+    };
+
+    // Walk each joint segment, gather inside sub-pieces. A "piece" is a
+    // contiguous run of (P2) vertices that lie inside the plate polygon.
+    std::vector<std::vector<P2>> pieces;
+    const double EPS = 1e-9;
+    for (size_t s = 0; s + 1 < joint2d.size(); s++) {
+        const P2& p0 = joint2d[s];
+        const P2& p1 = joint2d[s+1];
+        std::vector<double> ts;
+        ts.push_back(0.0);
+        for (size_t i = 0; i < plate2d.size(); i++) {
+            const P2& a = plate2d[i];
+            const P2& b = plate2d[(i+1)%plate2d.size()];
+            double t_s, t_e;
+            if (seg_seg_2d(p0, p1, a, b, t_s, t_e)) {
+                if (t_s > EPS && t_s < 1.0 - EPS &&
+                    t_e >= -EPS && t_e <= 1.0 + EPS) {
+                    ts.push_back(t_s);
+                }
+            }
+        }
+        ts.push_back(1.0);
+        std::sort(ts.begin(), ts.end());
+        ts.erase(std::unique(ts.begin(), ts.end(),
+                              [](double x, double y){ return std::abs(x-y)<EPS; }),
+                  ts.end());
+
+        std::vector<P2> current;
+        for (size_t i = 0; i + 1 < ts.size(); i++) {
+            double t_mid = 0.5 * (ts[i] + ts[i+1]);
+            double mx = p0.x + (p1.x-p0.x)*t_mid;
+            double my = p0.y + (p1.y-p0.y)*t_mid;
+            if (pip(mx, my)) {
+                P2 sub_a{p0.x + (p1.x-p0.x)*ts[i],   p0.y + (p1.y-p0.y)*ts[i]};
+                P2 sub_b{p0.x + (p1.x-p0.x)*ts[i+1], p0.y + (p1.y-p0.y)*ts[i+1]};
+                if (current.empty()) {
+                    current.push_back(sub_a);
+                    current.push_back(sub_b);
+                } else {
+                    // Continuation: drop the duplicate vertex at the join.
+                    double dx = current.back().x - sub_a.x;
+                    double dy = current.back().y - sub_a.y;
+                    if (dx*dx + dy*dy < 1e-18) {
+                        current.push_back(sub_b);
+                    } else {
+                        pieces.push_back(std::move(current));
+                        current.clear();
+                        current.push_back(sub_a);
+                        current.push_back(sub_b);
+                    }
+                }
+            } else if (!current.empty()) {
+                pieces.push_back(std::move(current));
+                current.clear();
+            }
+        }
+        if (!current.empty()) {
+            // Try to extend across the segment-to-segment join.
+            // The next iteration starts at p1 == joint2d[s+1] which equals
+            // current.back() if the previous sub-segment ended at t=1.
+            pieces.push_back(std::move(current));
+        }
     }
 
-    // Joint outline as open path (no closing-duplicate strip).
-    Clipper2Lib::PathsD clipper_joint;
-    clipper_joint.emplace_back();
-    {
-        size_t n = joint.point_count();
-        clipper_joint.back().reserve(n);
-        for (size_t i = 0; i < n; i++)
-            clipper_joint.back().push_back(to_2d(joint.get_point(i)));
-    }
-
-    // Clipper2 open-path intersection.
-    Clipper2Lib::PathsD result_closed, result_open;
-    try {
-        Clipper2Lib::ClipperD clipper;
-        clipper.AddOpenSubject(clipper_joint);
-        clipper.AddClip(clipper_plate);
-        clipper.Execute(Clipper2Lib::ClipType::Intersection,
-                        Clipper2Lib::FillRule::NonZero,
-                        result_closed, result_open);
-    } catch (const std::exception&) {
-        return false;
-    }
-
-    if (result_open.empty()) return false;
-
-    // Concatenate result segments into a single 2D polyline.
-    std::vector<Clipper2Lib::PointD> c2d;
+    // Concatenate pieces into a single polyline using the same
+    // distance-based reorientation rule as the Clipper2 version.
+    std::vector<P2> c2d;
     int count = 0;
-    auto sq2 = [](const Clipper2Lib::PointD& a, const Clipper2Lib::PointD& b) {
+    auto sq2 = [](const P2& a, const P2& b) {
         double dx = a.x-b.x, dy = a.y-b.y;
         return dx*dx + dy*dy;
     };
     const double DISTANCE_SQ = 0.01;
-
-    for (const auto& polynode : result_open) {
-        if (polynode.size() <= 1) continue;
+    for (const auto& piece : pieces) {
+        if (piece.size() <= 1) continue;
         if (count == 0) {
-            c2d.assign(polynode.begin(), polynode.end());
+            c2d = piece;
         } else {
-            std::vector<Clipper2Lib::PointD> pts(polynode.begin(), polynode.end());
+            std::vector<P2> pts = piece;
             if (sq2(c2d.back(), pts.front()) > DISTANCE_SQ &&
                 sq2(c2d.back(), pts.back())  > DISTANCE_SQ) {
                 std::reverse(c2d.begin(), c2d.end());
@@ -2343,10 +2432,8 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
 
     if (c2d.size() < 2) return false;
 
-    // Find parametric positions on the plate edges.
-    auto closest_param = [](const Clipper2Lib::PointD& p,
-                             const Clipper2Lib::PointD& a,
-                             const Clipper2Lib::PointD& b) -> double {
+    // Locate parametric t0/t1 on plate edges (same logic as Clipper version).
+    auto closest_param = [](const P2& p, const P2& a, const P2& b) -> double {
         double abx = b.x-a.x, aby = b.y-a.y;
         double l2 = abx*abx + aby*aby;
         if (l2 < 1e-20) return 0.0;
@@ -2356,9 +2443,7 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         if (t > 1.0) t = 1.0;
         return t;
     };
-    auto sq_dist_seg = [](const Clipper2Lib::PointD& p,
-                           const Clipper2Lib::PointD& a,
-                           const Clipper2Lib::PointD& b) -> double {
+    auto sq_dist_seg = [](const P2& p, const P2& a, const P2& b) -> double {
         double abx = b.x-a.x, aby = b.y-a.y;
         double l2 = abx*abx + aby*aby;
         if (l2 < 1e-20) {
@@ -2375,10 +2460,9 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
     };
 
     double t0 = -1.0, t1 = -1.0;
-    const auto& plate_path = clipper_plate.back();
-    for (size_t i = 0; i < plate_path.size(); i++) {
-        const Clipper2Lib::PointD& a = plate_path[i];
-        const Clipper2Lib::PointD& b = plate_path[(i+1) % plate_path.size()];
+    for (size_t i = 0; i < plate2d.size(); i++) {
+        const P2& a = plate2d[i];
+        const P2& b = plate2d[(i+1) % plate2d.size()];
         for (int j = 0; j < 2; j++) {
             size_t idx = (j == 0) ? 0 : c2d.size() - 1;
             double dist_sq = sq_dist_seg(c2d[idx], a, b);
@@ -2391,7 +2475,6 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         if (t0 >= 0.0 && t1 >= 0.0) break;
     }
 
-    // Reverse if t0 > t1 (with wraparound exception).
     bool reverse_flag = (t0 > t1);
     if ((size_t)std::floor(t0) == 0 && (size_t)std::floor(t1) == c2d.size() - 1)
         reverse_flag = !reverse_flag;
@@ -2402,7 +2485,6 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
 
     if (t0 < 0.0 || t1 < 0.0) return false;
 
-    // Project back to 3D.
     std::vector<Point> out_pts;
     out_pts.reserve(c2d.size());
     for (const auto& p : c2d) out_pts.push_back(to_3d(p.x, p.y));
