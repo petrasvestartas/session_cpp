@@ -18,7 +18,7 @@ MINI_TEST("Quaternion", "Constructor") {
     Quaternion q0;
 
     // Constructor with arguments
-    Quaternion q = Quaternion::from_scalar_and_vector(2.0, Vector(1.0, 0.0, 0.0));
+    Quaternion q = Quaternion::from_components(2.0, Vector(1.0, 0.0, 0.0));
 
     // Setters
     q[0] = 5.0;
@@ -38,14 +38,14 @@ MINI_TEST("Quaternion", "Constructor") {
 
     // Copy (duplicates everything except guid)
     Quaternion qcopy = q.duplicate();
-    Quaternion qother = Quaternion::from_scalar_and_vector(2.0, Vector(1.0, 0.0, 0.0));
+    Quaternion qother = Quaternion::from_components(2.0, Vector(1.0, 0.0, 0.0));
 
     // Copy operators
     Quaternion qrot = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
     Quaternion qmul = qrot * qrot;
     Quaternion qscaled = Quaternion::identity() * 2.0;
-    Quaternion a = Quaternion::from_scalar_and_vector(1.0, Vector(0.0, 0.0, 0.0));
-    Quaternion b = Quaternion::from_scalar_and_vector(0.0, Vector(0.0, 0.0, 1.0));
+    Quaternion a = Quaternion::from_components(1.0, Vector(0.0, 0.0, 0.0));
+    Quaternion b = Quaternion::from_components(0.0, Vector(0.0, 0.0, 1.0));
     Quaternion qsum = a + b;
     Quaternion qdiff = qrot - qrot;
     Quaternion qneg = -Quaternion::identity();
@@ -78,16 +78,38 @@ MINI_TEST("Quaternion", "Identity") {
     MINI_CHECK(TOLERANCE.is_close(q.vector[2], 0.0));
 }
 
-MINI_TEST("Quaternion", "From Scalar And Vector") {
+MINI_TEST("Quaternion", "From Components") {
     // uncomment #include "quaternion.h"
     // uncomment #include "vector.h"
 
-    Quaternion q = Quaternion::from_scalar_and_vector(2.0, Vector(1.0, 2.0, 3.0));
+    // q = s + xi + yj + zk: first arg is scalar, second arg is (i,j,k) coefficients (NOT a rotation axis).
+    Quaternion q = Quaternion::from_components(2.0, Vector(1.0, 2.0, 3.0));
 
     MINI_CHECK(TOLERANCE.is_close(q.scalar, 2.0));
     MINI_CHECK(TOLERANCE.is_close(q.vector[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(q.vector[1], 2.0));
     MINI_CHECK(TOLERANCE.is_close(q.vector[2], 3.0));
+
+    // Geometric meaning of (s, v): a rotation by `angle` around `axis`.
+    // to_axis_angle() extracts these — for q=(2,(1,2,3)):
+    //   axis  = (1,2,3)/sqrt(14)
+    //   angle = 2*acos(2/sqrt(18)) ≈ 2.1617 rad ≈ 123.85°
+    auto axis_angle = q.to_axis_angle();
+    Vector axis = axis_angle.first;
+    double angle = axis_angle.second;
+    double sqrt14 = std::sqrt(14.0);
+    MINI_CHECK(TOLERANCE.is_close(axis[0], 1.0 / sqrt14));
+    MINI_CHECK(TOLERANCE.is_close(axis[1], 2.0 / sqrt14));
+    MINI_CHECK(TOLERANCE.is_close(axis[2], 3.0 / sqrt14));
+    MINI_CHECK(TOLERANCE.is_close(angle, 2.0 * std::acos(2.0 / std::sqrt(18.0))));
+
+    // Round-trip: from_axis_angle(to_axis_angle(q)) == q.normalized()
+    Quaternion q_round = Quaternion::from_axis_angle(axis, angle);
+    Quaternion qn = q.normalized();
+    MINI_CHECK(TOLERANCE.is_close(q_round.scalar, qn.scalar));
+    MINI_CHECK(TOLERANCE.is_close(q_round.vector[0], qn.vector[0]));
+    MINI_CHECK(TOLERANCE.is_close(q_round.vector[1], qn.vector[1]));
+    MINI_CHECK(TOLERANCE.is_close(q_round.vector[2], qn.vector[2]));
 }
 
 MINI_TEST("Quaternion", "From Axis Angle") {
@@ -192,7 +214,7 @@ MINI_TEST("Quaternion", "Normalized") {
     // uncomment #include "quaternion.h"
     // uncomment #include "vector.h"
 
-    Quaternion q = Quaternion::from_scalar_and_vector(2.0, Vector(0.0, 0.0, 2.0));
+    Quaternion q = Quaternion::from_components(2.0, Vector(0.0, 0.0, 2.0));
     Quaternion n = q.normalized();
 
     MINI_CHECK(TOLERANCE.is_close(n.magnitude(), 1.0));

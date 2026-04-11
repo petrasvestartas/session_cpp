@@ -1,4 +1,5 @@
 #include "plane.h"
+#include "polyline.h"
 #include "tolerance.h"
 #include <algorithm>
 
@@ -653,14 +654,36 @@ Plane Plane::translate_by_normal(double distance) const {
     // Get normalized normal vector (z_axis)
     Vector normal = _z_axis;
     normal.normalize_self();
-    
+
     // Move origin along the normal
     Point new_origin = _origin + (normal * distance);
-    
+
     // Create new plane with same orientation but new origin
     Vector x_copy = _x_axis;
     Vector y_copy = _y_axis;
     return Plane(new_origin, x_copy, y_copy, name);
+}
+
+std::vector<Polyline> Plane::to_polylines(double scale) const {
+    double s = scale * 0.5;
+    const Point& o = _origin;
+    const Vector& x = _x_axis;
+    const Vector& y = _y_axis;
+    const Vector& z = _z_axis;
+    Point c0(o[0] - x[0]*s - y[0]*s, o[1] - x[1]*s - y[1]*s, o[2] - x[2]*s - y[2]*s);
+    Point c1(o[0] + x[0]*s - y[0]*s, o[1] + x[1]*s - y[1]*s, o[2] + x[2]*s - y[2]*s);
+    Point c2(o[0] + x[0]*s + y[0]*s, o[1] + x[1]*s + y[1]*s, o[2] + x[2]*s + y[2]*s);
+    Point c3(o[0] - x[0]*s + y[0]*s, o[1] - x[1]*s + y[1]*s, o[2] - x[2]*s + y[2]*s);
+    Polyline rect({c0, c1, c2, c3, c0});
+    rect.linecolor = linecolor;
+    Point origin_pt(o[0], o[1], o[2]);
+    Polyline x_line({origin_pt, Point(o[0] + x[0]*s, o[1] + x[1]*s, o[2] + x[2]*s)});
+    x_line.linecolor = Color::red();
+    Polyline y_line({origin_pt, Point(o[0] + y[0]*s, o[1] + y[1]*s, o[2] + y[2]*s)});
+    y_line.linecolor = Color::green();
+    Polyline z_line({origin_pt, Point(o[0] + z[0]*s, o[1] + z[1]*s, o[2] + z[2]*s)});
+    z_line.linecolor = Color::blue();
+    return {rect, x_line, y_line, z_line};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

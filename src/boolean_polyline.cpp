@@ -1126,7 +1126,7 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
     for (int i = 0; i < na; i++) { max_coord = std::max(max_coord, std::max(std::abs(ca[i*3]), std::abs(ca[i*3+1]))); }
     for (int i = 0; i < nb; i++) { max_coord = std::max(max_coord, std::max(std::abs(cb[i*3]), std::abs(cb[i*3+1]))); }
     if (max_coord < 1e-12) max_coord = 1.0;
-    const double BOOL_SCALE = std::floor(std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / max_coord * 0.99);
+    const double BOOL_SCALE = std::floor(std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / (2.0 * max_coord));
     const double BOOL_INV_SCALE = 1.0 / BOOL_SCALE;
     VattiScratch& sc = vtls; sc.reset();
     int total = na + nb;
@@ -1172,6 +1172,22 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
                 any_cross=v_segs_intersect(a1,a2,b1,b2); } }
         if(!any_cross) {
             bool a_in_b=pip_i(va[0],vb),b_in_a=pip_i(vb[0],va);
+            // If vertex tests fail, try centroids — catches near-identical
+            // polygons with shared vertices (boundary points return false).
+            if (!a_in_b && !b_in_a) {
+                BIVec2 ca_cen{0,0}, cb_cen{0,0};
+                for(int i=0;i<na;i++){ca_cen.x+=va[i].x;ca_cen.y+=va[i].y;}
+                ca_cen.x/=na; ca_cen.y/=na;
+                for(int i=0;i<nb;i++){cb_cen.x+=vb[i].x;cb_cen.y+=vb[i].y;}
+                cb_cen.x/=nb; cb_cen.y/=nb;
+                a_in_b=pip_i(ca_cen,vb); b_in_a=pip_i(cb_cen,va);
+                // If centroid also lands on boundary (exact y-match),
+                // perturb by 1 int64 unit to escape the edge.
+                if (!a_in_b && !b_in_a) {
+                    a_in_b=pip_i({ca_cen.x+1,ca_cen.y+1},vb);
+                    b_in_a=pip_i({cb_cen.x+1,cb_cen.y+1},va);
+                }
+            }
             if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
             if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
             if(a_in_b)return{};if(b_in_a)return{a};return{a};
@@ -1263,7 +1279,7 @@ int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polylin
     for (int i = 0; i < na; i++) { max_coord = std::max(max_coord, std::max(std::abs(ca[i*3]), std::abs(ca[i*3+1]))); }
     for (int i = 0; i < nb; i++) { max_coord = std::max(max_coord, std::max(std::abs(cb[i*3]), std::abs(cb[i*3+1]))); }
     if (max_coord < 1e-12) max_coord = 1.0;
-    const double BOOL_SCALE = std::floor(std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / max_coord * 0.99);
+    const double BOOL_SCALE = std::floor(std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / (2.0 * max_coord));
     VattiScratch& sc = vtls; sc.reset();
     int total = na + nb;
     sc.vtx_pool.ensure(total + 4);

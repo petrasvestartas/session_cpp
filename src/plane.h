@@ -16,6 +16,8 @@
 
 namespace session_cpp {
 
+    class Polyline; // forward declaration
+
     /**
      * @class Plane
      * @brief A plane defined by origina and x-axis, z-axis, y-axis.
@@ -218,6 +220,8 @@ namespace session_cpp {
    * @param p The point to project.
    * @return The projected point on the plane.
    */
+  std::vector<Polyline> to_polylines(double scale = 1.0) const;
+
   Point project(const Point& p) const {
       const Vector& n = z_axis();
       const Point&  o = origin();

@@ -5,6 +5,7 @@
 #include "tolerance.h"
 #include "fmt/core.h"
 #include "quaternion.pb.h"
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 
@@ -39,7 +40,7 @@ Quaternion Quaternion::identity() {
     return Quaternion(1.0, Vector(0.0, 0.0, 0.0));
 }
 
-Quaternion Quaternion::from_scalar_and_vector(double scalar, const Vector& vector) {
+Quaternion Quaternion::from_components(double scalar, const Vector& vector) {
     return Quaternion(scalar, vector);
 }
 
@@ -47,6 +48,18 @@ Quaternion Quaternion::from_axis_angle(const Vector& axis, double angle) {
     Vector ax = axis.normalized();
     double half = angle * 0.5;
     return Quaternion(std::cos(half), ax * std::sin(half));
+}
+
+std::pair<Vector, double> Quaternion::to_axis_angle() const {
+    Quaternion qn = normalized();
+    double s = std::clamp(qn.scalar, -1.0, 1.0);
+    double angle = 2.0 * std::acos(s);
+    double sin_half = std::sqrt(1.0 - s * s);
+    if (sin_half < 1e-12) {
+        return { Vector(0.0, 0.0, 1.0), 0.0 };
+    }
+    Vector axis(qn.vector[0] / sin_half, qn.vector[1] / sin_half, qn.vector[2] / sin_half);
+    return { axis, angle };
 }
 
 Quaternion Quaternion::from_arc(const Vector& src, const Vector& dst) {
