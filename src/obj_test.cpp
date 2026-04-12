@@ -1,22 +1,16 @@
 #include "mini_test.h"
 #include "obj.h"
 #include "mesh.h"
-#include "tolerance.h"
-#include <fstream>
+#include <algorithm>
 #include <filesystem>
 
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("OBJ", "Read Bunny") {
-    // uncomment #include "obj.h"
-    // uncomment #include "mesh.h"
-    std::ifstream test_file("session_data/bunny.obj");
-    if (!test_file.good()) {
-        // Data file not found, skip test
+    // load Stanford Bunny (real-world OBJ: 2503 vertices, 4968 faces)
+    if (!std::filesystem::exists("session_data/bunny.obj"))
         return;
-    }
-    test_file.close();
 
     Mesh mesh = obj::read_obj("session_data/bunny.obj");
 
@@ -27,24 +21,16 @@ MINI_TEST("OBJ", "Read Bunny") {
     MINI_CHECK(vertices.size() == 2503);
     MINI_CHECK(faces.size() == 4968);
 
-    bool has_non_zero = false;
-    for (const auto& v : vertices) {
-        if (v[0] != 0.0 || v[1] != 0.0 || v[2] != 0.0) {
-            has_non_zero = true;
-            break;
-        }
-    }
+    bool has_non_zero = std::any_of(vertices.begin(), vertices.end(),
+        [](const auto& v) { return v[0] != 0.0 || v[1] != 0.0 || v[2] != 0.0; });
     MINI_CHECK(has_non_zero);
 
-    for (const auto& face : faces) {
-        MINI_CHECK(face.size() >= 3);
-    }
+    MINI_CHECK(std::all_of(faces.begin(), faces.end(),
+        [](const auto& f) { return f.size() >= 3; }));
 }
 
 MINI_TEST("OBJ", "Write Read Roundtrip") {
-    // uncomment #include "obj.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
+    // build a small mesh (4 verts, 2 faces), write to OBJ, read back, compare counts
     std::filesystem::create_directories("./serialization");
     Mesh original_mesh;
     auto v0 = original_mesh.add_vertex(Point(0.0, 0.0, 0.0));
@@ -61,16 +47,14 @@ MINI_TEST("OBJ", "Write Read Roundtrip") {
     std::string temp_file = "./serialization/test_temp_roundtrip.obj";
     obj::write_obj(original_mesh, temp_file);
 
-    std::ifstream check(temp_file);
-    MINI_CHECK(check.good());
-    check.close();
+    MINI_CHECK(std::filesystem::exists(temp_file));
 
     Mesh loaded_mesh = obj::read_obj(temp_file);
 
     MINI_CHECK(loaded_mesh.number_of_vertices() == original_mesh.number_of_vertices());
     MINI_CHECK(loaded_mesh.number_of_faces() == original_mesh.number_of_faces());
 
-    std::remove(temp_file.c_str());
+    std::filesystem::remove(temp_file);
 }
 
 } // namespace session_cpp

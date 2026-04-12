@@ -115,10 +115,15 @@ MINI_TEST("Aabb", "Constructor") {
     MINI_CHECK(a.point_at(1.0, 0.0, 0.0) == Point(1.0, 0.0, 0.0));
     MINI_CHECK(a.point_at(0.0, 0.0, 0.0) == Point(0.0, 0.0, 0.0));
 
+    MINI_CHECK(a.intersects(AABB(0.5, 0.0, 0.0, 0.5, 0.5, 0.5)));
+    MINI_CHECK(!a.intersects(AABB(10.0, 0.0, 0.0, 0.5, 0.5, 0.5)));
     AABB b(5.0, 0.0, 0.0, 1.0, 1.0, 1.0);
     a.union_with(b);
     MINI_CHECK(a.min_point() == Point(-1.0, -2.0, -3.0));
     MINI_CHECK(a.max_point() == Point(6.0, 2.0, 3.0));
+    AABB c = AABB::merge(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0), AABB(4.0, 0.0, 0.0, 1.0, 1.0, 1.0));
+    MINI_CHECK(c.min_point() == Point(-1.0, -1.0, -1.0));
+    MINI_CHECK(c.max_point() == Point(5.0, 1.0, 1.0));
 }
 
 }

@@ -799,6 +799,156 @@ static void ts_e_p_3(WoodJoint& joint) {
     joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
+// ─── ts_e_p_5 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:4342-4542. Parametric repeating
+// tenon-mortise, `divisions` copies translated along Z.
+// Male: all divisions concatenated into one polyline per face (22 pts × div).
+// Female: `divisions` separate 5-pt rectangles + 1 bounding rectangle.
+// f_cut_types = all hole; m_cut_types = {edge_insertion, edge_insertion}.
+// unit_scale = true.
+static void ts_e_p_5(WoodJoint& joint) {
+    int divisions = std::max(1, joint.divisions);
+    double edge_length = joint.length * joint.scale[2];
+    double jv_len = 40.0;
+    if (joint.joint_volumes_pair_a_pair_b[0]) {
+        const auto& jv = *joint.joint_volumes_pair_a_pair_b[0];
+        if (jv.point_count() >= 3) {
+            Point p1 = jv.get_point(1);
+            Point p2 = jv.get_point(2);
+            double dx = p2[0]-p1[0], dy = p2[1]-p1[1], dz = p2[2]-p1[2];
+            jv_len = std::sqrt(dx*dx + dy*dy + dz*dz);
+        }
+    }
+    double step = edge_length / (divisions * jv_len);
+    double total = edge_length / jv_len;
+    double z0 = total * 0.5 - step * 0.5; // unit-space Z shift for division 0
+
+    // Hardcoded male profiles (22 pts, x=-0.5 and x=+0.5 faces).
+    static const double m0[22][3] = {
+        {-0.499996349848395,-0.499996349847159, 1.62789509252326},
+        {-0.499996349848395,-3.40695187221018,  1.62789509252326},
+        {-0.499996349848395,-3.40695187221018,  1.10464309849792},
+        {-0.499996349848395,-0.0232556441796868,1.10464309849801},
+        {-0.499996349848395,-0.0232556441796339,0.843017101485296},
+        {-0.499996349848395, 0.49999634984571,  0.843017101485296},
+        {-0.499996349848395, 0.49999634984571,  1.19185176416881},
+        {-0.499996349848395, 0.6038871791861,   1.19185176416881},
+        {-0.499996349848395, 1.01079104575736,  1.04650398805065},
+        {-0.499996349848395, 1.01079104575736,  0.261625997012692},
+        {-0.499996349848395,-3.40695187221018,  0.261625997012692},
+        {-0.499996349848395,-3.40695187221018, -0.261625997012652},
+        {-0.499996349848395, 1.01079104575736, -0.261625997012652},
+        {-0.499996349848395, 1.01079104575736, -1.04650398805062},
+        {-0.499996349848395, 0.6038871791861,  -1.19185176416877},
+        {-0.499996349848395, 0.49999634984571, -1.19185176416877},
+        {-0.499996349848395, 0.49999634984571, -0.843017101485257},
+        {-0.499996349848395,-0.0232556441796339,-0.843017101485257},
+        {-0.499996349848395,-0.0232556441796868,-1.10464309849797},
+        {-0.499996349848395,-3.40695187221018, -1.10464309849788},
+        {-0.499996349848395,-3.40695187221018, -1.62789509252322},
+        {-0.499996349848395,-0.499996349847159,-1.62789509252322},
+    };
+    static const double m1[22][3] = {
+        {0.499996349844421,-0.49999634984737,   1.62789509252334},
+        {0.499996349844421,-3.40695187221039,   1.62789509252334},
+        {0.499996349844421,-3.40695187221039,   1.10464309849799},
+        {0.499996349844421,-0.0232556441798983, 1.10464309849809},
+        {0.499996349844421,-0.0232556441798454, 0.843017101485375},
+        {0.499996349844421, 0.499996349845499,  0.843017101485375},
+        {0.499996349844421, 0.499996349845499,  1.19185176416889},
+        {0.499996349844421, 0.603887179185889,  1.19185176416889},
+        {0.499996349844421, 1.01079104575715,   1.04650398805073},
+        {0.499996349844421, 1.01079104575715,   0.261625997012771},
+        {0.499996349844421,-3.40695187221039,   0.261625997012771},
+        {0.499996349844421,-3.40695187221039,  -0.261625997012573},
+        {0.499996349844421, 1.01079104575715,  -0.261625997012573},
+        {0.499996349844421, 1.01079104575715,  -1.04650398805054},
+        {0.499996349844421, 0.603887179185889, -1.19185176416869},
+        {0.499996349844421, 0.499996349845499, -1.19185176416869},
+        {0.499996349844421, 0.499996349845499, -0.843017101485177},
+        {0.499996349844421,-0.0232556441798454,-0.843017101485177},
+        {0.499996349844421,-0.0232556441798983,-1.1046430984979},
+        {0.499996349844421,-3.40695187221039,  -1.1046430984978},
+        {0.499996349844421,-3.40695187221039,  -1.62789509252314},
+        {0.499996349844421,-0.49999634984737,  -1.62789509252314},
+    };
+    // Hardcoded female profiles (5 pts, y≈-0.5 and y≈+0.5).
+    static const double f0[5][3] = {
+        {-0.499996349848395,-0.499996349847212, 1.10464309849788},
+        {-0.499996349848395,-0.499996349847212,-1.104643098498},
+        { 0.499996349844421,-0.499996349847317,-1.104643098498},
+        { 0.499996349844421,-0.499996349847317, 1.10464309849788},
+        {-0.499996349848395,-0.499996349847212, 1.10464309849788},
+    };
+    static const double f1[5][3] = {
+        {-0.499996349848395, 0.499996349845604, 1.104643098498},
+        {-0.499996349848395, 0.499996349845604,-1.10464309849788},
+        { 0.499996349844421, 0.499996349845499,-1.10464309849788},
+        { 0.499996349844421, 0.499996349845499, 1.104643098498},
+        {-0.499996349848395, 0.499996349845604, 1.104643098498},
+    };
+
+    // Build male: concatenate all divisions into one polyline per face.
+    std::vector<Point> m0_pts;
+    std::vector<Point> m1_pts;
+    m0_pts.reserve(22 * divisions);
+    m1_pts.reserve(22 * divisions);
+    for (int i = 0; i < divisions; i++) {
+        double z_off = z0 - step * i;
+        for (int k = 0; k < 22; k++) {
+            m0_pts.emplace_back(m0[k][0], m0[k][1], m0[k][2] + z_off);
+            m1_pts.emplace_back(m1[k][0], m1[k][1], m1[k][2] + z_off);
+        }
+    }
+    joint.m_outlines[0] = {
+        Polyline(m0_pts),
+        Polyline(std::vector<Point>{m0_pts.front(), m0_pts.back()}),
+    };
+    joint.m_outlines[1] = {
+        Polyline(m1_pts),
+        Polyline(std::vector<Point>{m1_pts.front(), m1_pts.back()}),
+    };
+
+    // Build female: one 5-pt rectangle per division, then bounding rectangle.
+    joint.f_outlines[0].reserve(divisions + 1);
+    joint.f_outlines[1].reserve(divisions + 1);
+    for (int i = 0; i < divisions; i++) {
+        double z_off = z0 - step * i;
+        std::vector<Point> fp0;
+        std::vector<Point> fp1;
+        fp0.reserve(5);
+        fp1.reserve(5);
+        for (int k = 0; k < 5; k++) {
+            fp0.emplace_back(f0[k][0], f0[k][1], f0[k][2] + z_off);
+            fp1.emplace_back(f1[k][0], f1[k][1], f1[k][2] + z_off);
+        }
+        joint.f_outlines[0].push_back(Polyline(fp0));
+        joint.f_outlines[1].push_back(Polyline(fp1));
+    }
+    // Bounding rectangle spanning all divisions.
+    joint.f_outlines[0].push_back(Polyline(std::vector<Point>{
+        joint.f_outlines[0].front().get_point(0),
+        joint.f_outlines[0].front().get_point(3),
+        joint.f_outlines[0].back().get_point(2),
+        joint.f_outlines[0].back().get_point(1),
+        joint.f_outlines[0].front().get_point(0),
+    }));
+    joint.f_outlines[1].push_back(Polyline(std::vector<Point>{
+        joint.f_outlines[1].front().get_point(0),
+        joint.f_outlines[1].front().get_point(3),
+        joint.f_outlines[1].back().get_point(2),
+        joint.f_outlines[1].back().get_point(1),
+        joint.f_outlines[1].front().get_point(0),
+    }));
+
+    // Cut types: all holes for female, edge_insertion×2 for male.
+    joint.f_cut_types[0] = std::vector<int>(joint.f_outlines[0].size(), wood_cut::hole);
+    joint.f_cut_types[1] = std::vector<int>(joint.f_outlines[1].size(), wood_cut::hole);
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.unit_scale = true;
+}
+
 // ─── ss_e_ip_3 ──────────────────────────────────────────────────────────────
 // Verbatim port of wood_joint_lib.cpp:970-1116. Hardcoded mill+drill in-plane
 // joint with 6 outlines per face (2 mill_project + 4 drill).
@@ -1382,4 +1532,256 @@ static void cr_c_ip_5(WoodJoint& joint) {
         wood_cut::drill, wood_cut::drill, wood_cut::drill, wood_cut::drill,
     };
     cr_c_ip_shared(joint, drills, 0.15, 0.6, 1.8, -0.5, 2, ct);
+}
+
+// ─── ss_e_r_0 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:2310-2379. World-space geometry built
+// from joint volumes (no unit cube — orient must be skipped). Splits each
+// joint volume in half along the thickness axis; the two halves form female
+// and male rectangles, offset in 4 positions along the joint line.
+// Cut types: all slice. joint.no_orient = true.
+static void ss_e_r_0(WoodJoint& joint) {
+    if (!joint.joint_volumes_pair_a_pair_b[0] || !joint.joint_volumes_pair_a_pair_b[1])
+        return;
+    const Polyline& vol0 = *joint.joint_volumes_pair_a_pair_b[0];
+    const Polyline& vol1 = *joint.joint_volumes_pair_a_pair_b[1];
+    if (vol0.point_count() < 4 || vol1.point_count() < 4)
+        return;
+
+    // tween_two_polylines(vol0, vol1, 0.5) — midpoint of each vertex pair
+    auto lerp = [](const Point& a, const Point& b, double t) {
+        return Point(a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t);
+    };
+    Point r0 = lerp(vol0.get_point(0), vol1.get_point(0), 0.5);
+    Point r1 = lerp(vol0.get_point(1), vol1.get_point(1), 0.5);
+    Point r2 = lerp(vol0.get_point(2), vol1.get_point(2), 0.5);
+    Point r3 = lerp(vol0.get_point(3), vol1.get_point(3), 0.5);
+
+    Point p_mid_01 = Point::mid_point(r0, r1);
+    Point p_mid_32 = Point::mid_point(r3, r2);
+    // z_scaled = (p_mid_01 - r1) * 0.75
+    double zsx = (p_mid_01[0]-r1[0])*0.75;
+    double zsy = (p_mid_01[1]-r1[1])*0.75;
+    double zsz = (p_mid_01[2]-r1[2])*0.75;
+    // x = (vol1[0] - vol0[0]) * 0.5
+    double xx = (vol1.get_point(0)[0]-vol0.get_point(0)[0])*0.5;
+    double xy = (vol1.get_point(0)[1]-vol0.get_point(0)[1])*0.5;
+    double xz = (vol1.get_point(0)[2]-vol0.get_point(0)[2])*0.5;
+    double x_len = std::sqrt(xx*xx + xy*xy + xz*xz);
+    if (x_len < 1e-12) return;
+
+    // rect_half_0: "male" half (points below midline)
+    Polyline rh0(std::vector<Point>{
+        p_mid_01,
+        Point(r0[0]-zsx, r0[1]-zsy, r0[2]-zsz),
+        Point(r3[0]-zsx, r3[1]-zsy, r3[2]-zsz),
+        p_mid_32,
+        p_mid_01,
+    });
+    // rect_half_1: "female" half (points above midline)
+    Polyline rh1(std::vector<Point>{
+        p_mid_01,
+        Point(r1[0]+zsx, r1[1]+zsy, r1[2]+zsz),
+        Point(r2[0]+zsx, r2[1]+zsy, r2[2]+zsz),
+        p_mid_32,
+        p_mid_01,
+    });
+    double y_ext = joint.scale[1];
+    rh0.extend_edge_equally(1, y_ext);
+    rh0.extend_edge_equally(3, y_ext);
+    rh1.extend_edge_equally(1, y_ext);
+    rh1.extend_edge_equally(3, y_ext);
+
+    double x_target = joint.scale[0];
+    double factor_far  = (5.0 + x_len + x_target) / x_len;
+    double factor_near = 0.25 / x_len;
+
+    // offset_vectors[j] = {x*near, x*far, -x*near, -x*far}
+    auto off = [&](double f) -> std::array<double,3> {
+        return {xx*f, xy*f, xz*f};
+    };
+    std::array<std::array<double,3>, 4> offsets = {
+        off( factor_near), off( factor_far),
+        off(-factor_near), off(-factor_far),
+    };
+
+    // Translate copies of rh0/rh1 by each offset
+    auto translate_poly = [](const Polyline& pl, const std::array<double,3>& d) {
+        std::vector<Point> pts;
+        pts.reserve(pl.point_count());
+        for (int k = 0; k < pl.point_count(); k++) {
+            Point p = pl.get_point(k);
+            pts.emplace_back(p[0]+d[0], p[1]+d[1], p[2]+d[2]);
+        }
+        return Polyline(pts);
+    };
+
+    // m[0]={off0,off0,off2,off2}, m[1]={off1,off1,off3,off3}
+    // f[0]={off0,off0,off2,off2}, f[1]={off1,off1,off3,off3}
+    for (int fi = 0; fi < 2; fi++) {
+        joint.m_outlines[fi].clear();
+        joint.m_outlines[fi].reserve(4);
+        joint.f_outlines[fi].clear();
+        joint.f_outlines[fi].reserve(4);
+    }
+    for (int oi : {0, 0, 2, 2}) joint.m_outlines[0].push_back(translate_poly(rh0, offsets[oi]));
+    for (int oi : {1, 1, 3, 3}) joint.m_outlines[1].push_back(translate_poly(rh0, offsets[oi]));
+    for (int oi : {0, 0, 2, 2}) joint.f_outlines[0].push_back(translate_poly(rh1, offsets[oi]));
+    for (int oi : {1, 1, 3, 3}) joint.f_outlines[1].push_back(translate_poly(rh1, offsets[oi]));
+    joint.m_cut_types[0] = std::vector<int>(4, wood_cut::slice);
+    joint.m_cut_types[1] = std::vector<int>(4, wood_cut::slice);
+    joint.f_cut_types[0] = std::vector<int>(4, wood_cut::slice);
+    joint.f_cut_types[1] = std::vector<int>(4, wood_cut::slice);
+    joint.no_orient = true; // geometry is already world-space
+}
+
+// ─── ss_e_r_2/3 shared helpers ───────────────────────────────────────────────
+// Both ss_e_r_2 and ss_e_r_3 share the same structure:
+//   divisions copies along Z, each pushed twice per face (mill_project×2/div),
+//   unit_scale=true, joint volumes resized to 120×shift square.
+// `unit_scale_distance` must be pre-set to element thickness before calling.
+static void ss_e_r_impl(WoodJoint& joint,
+    const double m0[][3], int m0n,
+    const double m1[][3], int m1n,
+    const double f0[][3], int f0n,
+    const double f1[][3], int f1n)
+{
+    int divisions = std::max(1, joint.divisions);
+    double edge_length = joint.length * joint.scale[2];
+    double jv_len = (joint.unit_scale_distance > 0) ? joint.unit_scale_distance : 40.0;
+    double step = edge_length / (divisions * jv_len);
+    double total = edge_length / jv_len;
+    double z0 = total * 0.5 - step * 0.5;
+
+    joint.m_outlines[0].reserve(2 * divisions);
+    joint.m_outlines[1].reserve(2 * divisions);
+    joint.f_outlines[0].reserve(2 * divisions);
+    joint.f_outlines[1].reserve(2 * divisions);
+
+    for (int i = 0; i < divisions; i++) {
+        double z_off = z0 - step * i;
+        // Translate shape copies
+        auto make_poly = [&](const double pts[][3], int n) {
+            std::vector<Point> v;
+            v.reserve(n);
+            for (int k = 0; k < n; k++)
+                v.emplace_back(pts[k][0], pts[k][1], pts[k][2] + z_off);
+            return Polyline(v);
+        };
+        Polyline pm0 = make_poly(m0, m0n);
+        Polyline pm1 = make_poly(m1, m1n);
+        Polyline pf0 = make_poly(f0, f0n);
+        Polyline pf1 = make_poly(f1, f1n);
+        // Push each twice (wood: emplace_back twice per division)
+        joint.m_outlines[0].push_back(pm0);
+        joint.m_outlines[0].push_back(pm0);
+        joint.m_outlines[1].push_back(pm1);
+        joint.m_outlines[1].push_back(pm1);
+        joint.f_outlines[0].push_back(pf0);
+        joint.f_outlines[0].push_back(pf0);
+        joint.f_outlines[1].push_back(pf1);
+        joint.f_outlines[1].push_back(pf1);
+    }
+    int n = 2 * divisions;
+    joint.m_cut_types[0] = std::vector<int>(n, wood_cut::mill_project);
+    joint.m_cut_types[1] = std::vector<int>(n, wood_cut::mill_project);
+    joint.f_cut_types[0] = std::vector<int>(n, wood_cut::mill_project);
+    joint.f_cut_types[1] = std::vector<int>(n, wood_cut::mill_project);
+    joint.unit_scale = true;
+
+    // Resize each joint volume to a fixed 120×shift square.
+    double size = 120.0 * joint.shift;
+    joint.unit_scale_distance = size;
+    for (int vi = 0; vi < 4; vi++) {
+        auto& opt = joint.joint_volumes_pair_a_pair_b[vi];
+        if (!opt || opt->point_count() != 5) continue;
+        Polyline& vol = *opt;
+        Point p0 = vol.get_point(0);
+        Point p1 = vol.get_point(1);
+        Point p2 = vol.get_point(2);
+        // center = midpoint(p0, p1)
+        double cx = (p0[0]+p1[0])*0.5, cy = (p0[1]+p1[1])*0.5, cz = (p0[2]+p1[2])*0.5;
+        // x_dir = (p1-p0) normalized × size/2
+        double xdx=p1[0]-p0[0], xdy=p1[1]-p0[1], xdz=p1[2]-p0[2];
+        double xl = std::sqrt(xdx*xdx+xdy*xdy+xdz*xdz);
+        if (xl < 1e-12) continue;
+        xdx *= size*0.5/xl; xdy *= size*0.5/xl; xdz *= size*0.5/xl;
+        // y_dir = (p2-p1) normalized × size/2
+        double ydx=p2[0]-p1[0], ydy=p2[1]-p1[1], ydz=p2[2]-p1[2];
+        double yl = std::sqrt(ydx*ydx+ydy*ydy+ydz*ydz);
+        if (yl < 1e-12) continue;
+        ydx *= size*0.5/yl; ydy *= size*0.5/yl; ydz *= size*0.5/yl;
+        // new vol: {center+x+2y, center-x+2y, center-x, center+x, center+x+2y}
+        vol = Polyline(std::vector<Point>{
+            Point(cx+xdx+2*ydx, cy+xdy+2*ydy, cz+xdz+2*ydz),
+            Point(cx-xdx+2*ydx, cy-xdy+2*ydy, cz-xdz+2*ydz),
+            Point(cx-xdx,       cy-xdy,        cz-xdz),
+            Point(cx+xdx,       cy+xdy,        cz+xdz),
+            Point(cx+xdx+2*ydx, cy+xdy+2*ydy, cz+xdz+2*ydz),
+        });
+    }
+}
+
+// ─── ss_e_r_2 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:3115-3314. Hardcoded mill-project
+// hook-style tenon, parametric along Z. unit_scale=true.
+// Caller must set joint.unit_scale_distance = element_thickness before calling.
+static void ss_e_r_2(WoodJoint& joint) {
+    static const double m0[][3] = {
+        {0.2,  0.275, 0.166667}, {-0.116667, 0.275, 0.166667},
+        {-0.619628, 0.275, 0.375}, {-1.0, 0.275, 0.375},
+        {-1.0, 0.275, -0.375}, {-0.619628, 0.275, -0.375},
+        {-0.116667, 0.275, -0.166667}, {0.2, 0.275, -0.166667},
+        {0.2, 0.275, 0.166667},
+    };
+    static const double m1[][3] = {
+        {0.2, -0.7, 0.166667}, {-0.116667, -0.7, 0.166667},
+        {-0.619628, -0.7, 0.375}, {-1.0, -0.7, 0.375},
+        {-1.0, -0.7, -0.375}, {-0.619628, -0.7, -0.375},
+        {-0.116667, -0.7, -0.166667}, {0.2, -0.7, -0.166667},
+        {0.2, -0.7, 0.166667},
+    };
+    static const double f0[][3] = {
+        {-0.2, 0.275, 0.166667}, {-0.2, 0.275, -0.166667},
+        {0.116667, 0.275, -0.166667}, {0.619628, 0.275, -0.375},
+        {1.0, 0.275, -0.375}, {1.0, 0.275, 0.375},
+        {0.619628, 0.275, 0.375}, {0.116667, 0.275, 0.166667},
+        {-0.2, 0.275, 0.166667},
+    };
+    static const double f1[][3] = {
+        {-0.2, -0.7, 0.166667}, {-0.2, -0.7, -0.166667},
+        {0.116667, -0.7, -0.166667}, {0.619628, -0.7, -0.375},
+        {1.0, -0.7, -0.375}, {1.0, -0.7, 0.375},
+        {0.619628, -0.7, 0.375}, {0.116667, -0.7, 0.166667},
+        {-0.2, -0.7, 0.166667},
+    };
+    ss_e_r_impl(joint, m0, 9, m1, 9, f0, 9, f1, 9);
+}
+
+// ─── ss_e_r_3 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:3317-3519. Diamond-profile tenon,
+// parametric along Z. unit_scale=true.
+// Caller must set joint.unit_scale_distance = element_thickness before calling.
+static void ss_e_r_3(WoodJoint& joint) {
+    static const double m0[][3] = {
+        {0.40237, 0.6, 0}, {-0.502961, 0.6, 0.375},
+        {-1.0, 0.6, 0.375}, {-1.0, 0.6, -0.375},
+        {-0.502961, 0.6, -0.375}, {0.40237, 0.6, 0},
+    };
+    static const double m1[][3] = {
+        {0.40237, -0.6, 0}, {-0.502961, -0.6, 0.375},
+        {-1.0, -0.6, 0.375}, {-1.0, -0.6, -0.375},
+        {-0.502961, -0.6, -0.375}, {0.40237, -0.6, 0},
+    };
+    static const double f0[][3] = {
+        {-0.40237, 0.6, 0}, {0.502961, 0.6, -0.375},
+        {1.0, 0.6, -0.375}, {1.0, 0.6, 0.375},
+        {0.502961, 0.6, 0.375}, {-0.40237, 0.6, 0},
+    };
+    static const double f1[][3] = {
+        {-0.40237, -0.6, 0}, {0.502961, -0.6, -0.375},
+        {1.0, -0.6, -0.375}, {1.0, -0.6, 0.375},
+        {0.502961, -0.6, 0.375}, {-0.40237, -0.6, 0},
+    };
+    ss_e_r_impl(joint, m0, 6, m1, 6, f0, 6, f1, 6);
 }

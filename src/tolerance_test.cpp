@@ -1,7 +1,9 @@
 #include "mini_test.h"
 #include "tolerance.h"
 #include "point.h"
+#include "vector.h"
 #include <cstdint>
+#include <limits>
 
 using namespace session_cpp::mini_test;
 
@@ -58,16 +60,24 @@ namespace session_cpp {
 
     MINI_TEST("Tolerance", "To Radians") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(std::abs(Tolerance::to_radians(180.0) - Tolerance::PI) < 1e-9);
-        MINI_CHECK(std::abs(Tolerance::to_radians(90.0) - Tolerance::PI / 2.0) < 1e-9);
-        MINI_CHECK(std::abs(Tolerance::to_radians(0.0)) < 1e-9);
+        double r0 = Tolerance::to_radians(180.0);
+        double r1 = Tolerance::to_radians(90.0);
+        double r2 = Tolerance::to_radians(0.0);
+
+        MINI_CHECK(std::abs(r0 - Tolerance::PI) < 1e-9);
+        MINI_CHECK(std::abs(r1 - Tolerance::PI / 2.0) < 1e-9);
+        MINI_CHECK(std::abs(r2) < 1e-9);
     }
 
     MINI_TEST("Tolerance", "To Degrees") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(std::abs(Tolerance::to_degrees(Tolerance::PI) - 180.0) < 1e-9);
-        MINI_CHECK(std::abs(Tolerance::to_degrees(Tolerance::PI / 2.0) - 90.0) < 1e-9);
-        MINI_CHECK(std::abs(Tolerance::to_degrees(0.0)) < 1e-9);
+        double d0 = Tolerance::to_degrees(Tolerance::PI);
+        double d1 = Tolerance::to_degrees(Tolerance::PI / 2.0);
+        double d2 = Tolerance::to_degrees(0.0);
+
+        MINI_CHECK(std::abs(d0 - 180.0) < 1e-9);
+        MINI_CHECK(std::abs(d1 - 90.0) < 1e-9);
+        MINI_CHECK(std::abs(d2) < 1e-9);
     }
 
     MINI_TEST("Tolerance", "Runtime Modification") {
@@ -110,11 +120,17 @@ namespace session_cpp {
 
     MINI_TEST("Tolerance", "Wrap Index") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(wrap_index(0, 4)  == 0);
-        MINI_CHECK(wrap_index(3, 4)  == 3);
-        MINI_CHECK(wrap_index(4, 4)  == 0);
-        MINI_CHECK(wrap_index(-1, 4) == 3);
-        MINI_CHECK(wrap_index(0, 0)  == 0);
+        int r0 = wrap_index(0, 4);
+        int r1 = wrap_index(3, 4);
+        int r2 = wrap_index(4, 4);
+        int r3 = wrap_index(-1, 4);
+        int r4 = wrap_index(0, 0);
+
+        MINI_CHECK(r0 == 0);
+        MINI_CHECK(r1 == 3);
+        MINI_CHECK(r2 == 0);
+        MINI_CHECK(r3 == 3);
+        MINI_CHECK(r4 == 0);
     }
 
     MINI_TEST("Tolerance", "Triangle Edge By Angle") {
@@ -128,32 +144,49 @@ namespace session_cpp {
 
     MINI_TEST("Tolerance", "Rad Deg Conversion") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(std::abs(rad_to_deg(Tolerance::PI) - 180.0) < 1e-9);
-        MINI_CHECK(std::abs(deg_to_rad(180.0) - Tolerance::PI) < 1e-9);
-        MINI_CHECK(std::abs(deg_to_rad(rad_to_deg(1.234)) - 1.234) < 1e-9);
+        double r0 = rad_to_deg(Tolerance::PI);
+        double r1 = deg_to_rad(180.0);
+        double r2 = deg_to_rad(rad_to_deg(1.234));
+
+        MINI_CHECK(std::abs(r0 - 180.0) < 1e-9);
+        MINI_CHECK(std::abs(r1 - Tolerance::PI) < 1e-9);
+        MINI_CHECK(std::abs(r2 - 1.234) < 1e-9);
     }
 
     MINI_TEST("Tolerance", "Count Digits") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(count_digits(0.0)   == 0);
-        MINI_CHECK(count_digits(1.0)   == 1);
-        MINI_CHECK(count_digits(9.9)   == 1);
-        MINI_CHECK(count_digits(10.0)  == 2);
-        MINI_CHECK(count_digits(100.5) == 3);
-        MINI_CHECK(count_digits(-42.0) == 2);
+        int r0 = count_digits(0.0);
+        int r1 = count_digits(1.0);
+        int r2 = count_digits(9.9);
+        int r3 = count_digits(10.0);
+        int r4 = count_digits(100.5);
+        int r5 = count_digits(-42.0);
+
+        MINI_CHECK(r0 == 0);
+        MINI_CHECK(r1 == 1);
+        MINI_CHECK(r2 == 1);
+        MINI_CHECK(r3 == 2);
+        MINI_CHECK(r4 == 3);
+        MINI_CHECK(r5 == 2);
     }
 
     MINI_TEST("Tolerance", "Is Angle Zero") {
         // uncomment #include "tolerance.h"
         // Angular tolerance default is 1e-6
-        MINI_CHECK(TOLERANCE.is_angle_zero(1e-8));
-        MINI_CHECK(!TOLERANCE.is_angle_zero(0.1));
+        bool r0 = TOLERANCE.is_angle_zero(1e-8);
+        bool r1 = TOLERANCE.is_angle_zero(0.1);
+
+        MINI_CHECK(r0);
+        MINI_CHECK(!r1);
     }
 
     MINI_TEST("Tolerance", "Is Angles Close") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(TOLERANCE.is_angles_close(1.0, 1.0 + 1e-8));
-        MINI_CHECK(!TOLERANCE.is_angles_close(1.0, 2.0));
+        bool r0 = TOLERANCE.is_angles_close(1.0, 1.0 + 1e-8);
+        bool r1 = TOLERANCE.is_angles_close(1.0, 2.0);
+
+        MINI_CHECK(r0);
+        MINI_CHECK(!r1);
     }
 
     MINI_TEST("Tolerance", "Is Point Close") {
@@ -185,8 +218,11 @@ namespace session_cpp {
 
     MINI_TEST("Tolerance", "Round To") {
         // uncomment #include "tolerance.h"
-        MINI_CHECK(std::abs(Tolerance::round_to(3.14159, 2) - 3.14) < 1e-9);
-        MINI_CHECK(std::abs(Tolerance::round_to(2.5, 0) - 3.0) < 1e-9);
+        double r0 = Tolerance::round_to(3.14159, 2);
+        double r1 = Tolerance::round_to(2.5, 0);
+
+        MINI_CHECK(std::abs(r0 - 3.14) < 1e-9);
+        MINI_CHECK(std::abs(r1 - 3.0) < 1e-9);
     }
 
     MINI_TEST("Tolerance", "Precision From Tolerance") {
@@ -195,6 +231,57 @@ namespace session_cpp {
         int prec = TOLERANCE.precision_from_tolerance();
 
         MINI_CHECK(prec == 9);
+    }
+
+    MINI_TEST("Tolerance", "Tolerance") {
+        // uncomment #include "tolerance.h"
+        // rtol * abs(truevalue) + atol
+        double result = TOLERANCE.tolerance(1.0, 1e-6, 1e-9);
+
+        MINI_CHECK(std::abs(result - (1e-6 + 1e-9)) < 1e-18);
+    }
+
+    MINI_TEST("Tolerance", "Compare") {
+        // uncomment #include "tolerance.h"
+        bool r0 = TOLERANCE.compare(1.0, 1.0 + 1e-7, 1e-6, 1e-9);
+        bool r1 = TOLERANCE.compare(1.0, 2.0, 1e-6, 1e-9);
+
+        MINI_CHECK(r0);
+        MINI_CHECK(!r1);
+    }
+
+    MINI_TEST("Tolerance", "Is Finite") {
+        // uncomment #include "tolerance.h"
+        bool r0 = is_finite(1.0);
+        bool r1 = is_finite(std::numeric_limits<double>::infinity());
+
+        MINI_CHECK(r0);
+        MINI_CHECK(!r1);
+    }
+
+    MINI_TEST("Tolerance", "Is Vector Close") {
+        // uncomment #include "tolerance.h"
+        Vector a(1.0, 2.0, 3.0);
+        Vector b(1.0, 2.0, 3.0 + 1e-12);
+        Vector c(1.0, 2.0, 4.0);
+
+        MINI_CHECK(TOLERANCE.is_vector_close(a, b));
+        MINI_CHECK(!TOLERANCE.is_vector_close(a, c));
+    }
+
+    MINI_TEST("Tolerance", "Temporary") {
+        // uncomment #include "tolerance.h"
+        double original = TOLERANCE.absolute();
+        bool inside = false;
+        {
+            auto guard = TOLERANCE.temporary();
+            TOLERANCE.set_absolute(1e-12);
+            inside = TOLERANCE.absolute() == 1e-12;
+        }
+        bool restored = TOLERANCE.absolute() == original;
+
+        MINI_CHECK(inside);
+        MINI_CHECK(restored);
     }
 
 }

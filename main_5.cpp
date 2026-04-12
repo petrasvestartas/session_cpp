@@ -84,7 +84,8 @@ struct WoodJoint {
     // geometry for the linked joints simultaneously.
     std::vector<int> linked_joints;
     std::vector<std::vector<std::array<int, 4>>> linked_joints_seq;
-    bool link = false; // true for shadow joints created by three_valence_addition
+    bool link = false;     // true for shadow joints created by three_valence_addition
+    bool no_orient = false; // true for world-space joints (ss_e_r_0): skip orient step
     // Debug
     int dbg_coplanar = 0;
     int dbg_boolean = 0;
@@ -440,7 +441,7 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 23: ts_e_p_0(joint); break;        // ported (hardcoded 12-pt)
                 // case 24: ts_e_p_4(joint); break;     // TODO: 458 lines, complex
                                                         // chamfer/extension logic
-                // case 25: ts_e_p_5(joint); break;     // TODO: 203 lines
+                case 25: ts_e_p_5(joint); break;
                 // ts_e_p_1 is portable but wood's dispatcher does not call it.
                 // Available as a TODO if you want to wire it in (currently
                 // ported to main_5.cpp but unreferenced.)
@@ -458,7 +459,15 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 default: cr_c_ip_0(joint); break;
             }
             break;
-        // Groups 4, 5, 6 (tt_e_p, ss_e_r, b) not yet wired.
+        case 5: // ss_e_r (side-side rotated, type 13) -- wood:6525-6553
+            switch (id) {
+                case 54: ss_e_r_3(joint); break;
+                case 55: ss_e_r_2(joint); break;
+                case 56: ss_e_r_0(joint); break;
+                default: ss_e_r_0(joint); break;
+            }
+            break;
+        // Groups 4, 6 (tt_e_p, b) not yet wired.
         default:
             switch (joint.joint_type) {
                 case 11: case 12: ss_e_op_1(joint); break;
@@ -476,7 +485,8 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
 struct WoodElement {
     std::vector<Polyline> polylines;
     std::vector<Plane>    planes;
-    bool reversed = false; // true if build_wood_element reversed the winding
+    bool reversed = false;  // true if build_wood_element reversed the winding
+    double thickness = 0.0; // perpendicular distance between face planes 0 and 1
 };
 
 // Build wood-compatible element from a polyline pair.
@@ -540,6 +550,7 @@ static WoodElement build_wood_element(std::vector<Point> pp0, std::vector<Point>
     Vector neg_normal(-normal[0],-normal[1],-normal[2]);
     el.planes[0] = Plane::from_point_normal(cen0, normal);
     el.planes[1] = Plane::from_point_normal(cen1, neg_normal);
+    el.thickness = Point::distance(cen0, el.planes[1].project(cen0));
 
     // Side planes from 3 points on the CLOSED polyline: (pp0[j+1], pp0[j], pp1[j+1])
     for (size_t j = 0; j < n_sides; j++) {
@@ -2404,6 +2415,18 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                 div_dist  = 200.0;  // annen overrides default 450 with 200
                 shift_val = 0.64;   // ss_e_op default
                 break;
+            case 13:
+                div_dist  = 300.0;  // ss_e_r default
+                shift_val = 0.5;
+                // Pre-set element thickness for ss_e_r_2/3 (unit_scale_distance).
+                // The constructors read it as joint_volume_edge_length, then
+                // override it with 120*shift at the end.
+                {
+                    int ei = j.el_ids.first;
+                    if (ei >= 0 && ei < (int)wood_elems.size())
+                        j.unit_scale_distance = wood_elems[ei].thickness;
+                }
+                break;
             case 20:
                 div_dist  = 450.0;  // ts_e_p default
                 shift_val = 0.5;    // ts_e_p default
@@ -2413,12 +2436,14 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                 shift_val = 0.5;
         }
         joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name, &all_joints);
-        joint_orient_to_connection_area(j);
+        if (!j.no_orient)
+            joint_orient_to_connection_area(j);
         // wood_joint_lib.cpp:6621-6626: orient shadows then interleave geometry into primary
         if (!j.linked_joints.empty() &&
             (id_representing_joint_name == 15 || id_representing_joint_name == 16)) {
             for (int sid : j.linked_joints)
-                joint_orient_to_connection_area(all_joints[sid]);
+                if (!all_joints[sid].no_orient)
+                    joint_orient_to_connection_area(all_joints[sid]);
             merge_linked_joints(j, all_joints);
         }
     }

@@ -703,7 +703,8 @@ std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> BVH::check_a
         if (aLeaf && bLeaf) {
             int i = a->object_id;
             int j = b->object_id;
-            if (i >= 0 && j >= 0 && i < j) {
+            if (i >= 0 && j >= 0 && i != j) {
+                if (i > j) std::swap(i, j);
                 all_collisions.emplace_back(i, j);
                 if (static_cast<size_t>(i) < visited.size()) visited[static_cast<size_t>(i)] = 1;
                 if (static_cast<size_t>(j) < visited.size()) visited[static_cast<size_t>(j)] = 1;

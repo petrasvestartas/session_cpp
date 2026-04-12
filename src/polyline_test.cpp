@@ -111,6 +111,25 @@ MINI_TEST("Polyline", "Constructor") {
 
 }
 
+MINI_TEST("Polyline", "From Coords") {
+    std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0};
+    Polyline pl = Polyline::from_coords(coords);
+
+    MINI_CHECK(pl.point_count() == 3);
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(0)[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(1)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(2)[1], 1.0));
+}
+
+MINI_TEST("Polyline", "From Sides") {
+    Polyline sq = Polyline::from_sides(4, 1.0, false);
+    Polyline sq_closed = Polyline::from_sides(4, 1.0, true);
+
+    MINI_CHECK(sq.point_count() == 4);
+    MINI_CHECK(sq_closed.point_count() == 5);
+    MINI_CHECK(sq_closed.is_closed());
+}
+
 MINI_TEST("Polyline", "Transformation") {
     // uncomment #include "polyline.h"
     // uncomment #include "point.h"
@@ -323,6 +342,77 @@ MINI_TEST("Polyline", "Closest Point") {
 
 }
 
+MINI_TEST("Polyline", "Closest Point To Line") {
+    Point line_start(0.0, 0.0, 0.0);
+    Point line_end(2.0, 0.0, 0.0);
+    Point pt(1.0, 1.0, 0.0);
+    double t;
+    Polyline::closest_point_to_line(pt, line_start, line_end, t);
+
+    MINI_CHECK(TOLERANCE.is_close(t, 0.5));
+}
+
+MINI_TEST("Polyline", "Line Line Overlap") {
+    Point s0(0.0, 0.0, 0.0), e0(2.0, 0.0, 0.0);
+    Point s1(1.0, 0.0, 0.0), e1(3.0, 0.0, 0.0);
+    Point os, oe;
+    bool overlaps = Polyline::line_line_overlap(s0, e0, s1, e1, os, oe);
+
+    MINI_CHECK(overlaps);
+    MINI_CHECK(TOLERANCE.is_close(os[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(oe[0], 2.0));
+
+    Point s2(5.0, 0.0, 0.0), e2(6.0, 0.0, 0.0);
+    Point os2, oe2;
+    bool no_overlap = Polyline::line_line_overlap(s0, e0, s2, e2, os2, oe2);
+    MINI_CHECK(!no_overlap);
+}
+
+MINI_TEST("Polyline", "Line Line Average") {
+    Point s0(0.0, 0.0, 0.0), e0(2.0, 0.0, 0.0);
+    Point s1(0.0, 2.0, 0.0), e1(2.0, 2.0, 0.0);
+    Point os, oe;
+    Polyline::line_line_average(s0, e0, s1, e1, os, oe);
+
+    MINI_CHECK(TOLERANCE.is_close(os[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(os[1], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(oe[0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(oe[1], 1.0));
+}
+
+MINI_TEST("Polyline", "Line Line Overlap Average") {
+    Point s0(0.0, 0.0, 0.0), e0(2.0, 0.0, 0.0);
+    Point s1(1.0, 2.0, 0.0), e1(3.0, 2.0, 0.0);
+    Point os, oe;
+    Polyline::line_line_overlap_average(s0, e0, s1, e1, os, oe);
+
+    MINI_CHECK(TOLERANCE.is_close(os[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(oe[0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(os[1], 1.0));
+}
+
+MINI_TEST("Polyline", "Line From Projected Points") {
+    Point s(0.0, 0.0, 0.0), e(4.0, 0.0, 0.0);
+    std::vector<Point> pts = {Point(1.0, 1.0, 0.0), Point(3.0, -1.0, 0.0)};
+    Point os, oe;
+    bool ok = Polyline::line_from_projected_points(s, e, pts, os, oe);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(TOLERANCE.is_close(os[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(oe[0], 3.0));
+}
+
+MINI_TEST("Polyline", "Point In Polygon 2d") {
+    Polyline sq({
+        Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+
+    MINI_CHECK(sq.point_in_polygon_2d(Point(0.5, 0.5, 0.0)));
+    MINI_CHECK(!sq.point_in_polygon_2d(Point(2.0, 2.0, 0.0)));
+}
+
 MINI_TEST("Polyline", "Extend Segment") {
     Polyline pl({
         Point(0.0, 0.0, 0.0),
@@ -351,6 +441,22 @@ MINI_TEST("Polyline", "Extend Segment Equally") {
 
     MINI_CHECK(TOLERANCE.is_close(first, -0.5));
     MINI_CHECK(TOLERANCE.is_close(second, 1.5));
+}
+
+MINI_TEST("Polyline", "Extend Line Segment") {
+    Point start(1.0, 0.0, 0.0), end(3.0, 0.0, 0.0);
+    Polyline::extend_line_segment(start, end, 0.5, 0.5);
+
+    MINI_CHECK(TOLERANCE.is_close(start[0], 0.5));
+    MINI_CHECK(TOLERANCE.is_close(end[0], 3.5));
+}
+
+MINI_TEST("Polyline", "Shrink Line Segment") {
+    Point start(0.0, 0.0, 0.0), end(10.0, 0.0, 0.0);
+    Polyline::shrink_line_segment(start, end, 0.1);
+
+    MINI_CHECK(TOLERANCE.is_close(start[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(end[0], 9.0));
 }
 
 MINI_TEST("Polyline", "Get Points") {
@@ -382,6 +488,34 @@ MINI_TEST("Polyline", "Get Lines") {
     MINI_CHECK(TOLERANCE.is_close(lines[0][0], 0.0) && TOLERANCE.is_close(lines[0][3], 1.0));
     MINI_CHECK(TOLERANCE.is_close(lines[1][0], 1.0) && TOLERANCE.is_close(lines[1][4], 1.0));
     MINI_CHECK(TOLERANCE.is_close(lines[2][0], 1.0) && TOLERANCE.is_close(lines[2][3], 0.0));
+}
+
+MINI_TEST("Polyline", "Add Point") {
+    Polyline pl({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0)});
+    pl.add_point(Point(2.0, 0.0, 0.0));
+
+    MINI_CHECK(pl.point_count() == 3);
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(2)[0], 2.0));
+}
+
+MINI_TEST("Polyline", "Insert Point") {
+    Polyline pl({Point(0.0, 0.0, 0.0), Point(2.0, 0.0, 0.0)});
+    pl.insert_point(1, Point(1.0, 0.0, 0.0));
+
+    MINI_CHECK(pl.point_count() == 3);
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(1)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(2)[0], 2.0));
+}
+
+MINI_TEST("Polyline", "Remove Point") {
+    Polyline pl({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(2.0, 0.0, 0.0)});
+    Point out;
+    bool removed = pl.remove_point(1, out);
+
+    MINI_CHECK(removed);
+    MINI_CHECK(pl.point_count() == 2);
+    MINI_CHECK(TOLERANCE.is_close(out[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(1)[0], 2.0));
 }
 
 MINI_TEST("Polyline", "Shift") {
@@ -627,6 +761,18 @@ MINI_TEST("Polyline", "Boolean Op Plane") {
     for (size_t i = 0; i < isect[0].point_count(); ++i) MINI_CHECK(TOLERANCE.is_close(isect[0][i][2], 5.0));
     for (size_t i = 0; i < uni[0].point_count(); ++i)   MINI_CHECK(TOLERANCE.is_close(uni[0][i][2], 5.0));
     for (size_t i = 0; i < diff[0].point_count(); ++i)  MINI_CHECK(TOLERANCE.is_close(diff[0][i][2], 5.0));
+}
+
+MINI_TEST("Polyline", "Merge Collinear") {
+    Polyline pl({
+        Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0), Point(2.0, 1.0, 0.0),
+    });
+    pl.merge_collinear();
+
+    MINI_CHECK(pl.point_count() == 3);
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(1)[0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.get_point(2)[1], 1.0));
 }
 
 MINI_TEST("Polyline", "Simplify Points") {

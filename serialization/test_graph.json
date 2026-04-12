@@ -1,34 +1,34 @@
 {
-  "type": "Graph",
-  "name": "test_graph",
-  "guid": "55603e87-0b5d-4859-ac9d-6322766a61a2",
-  "vertices": [
-    {
-      "type": "Vertex",
-      "name": "node1",
-      "guid": "c821c10e-cfe2-43a4-a136-aab13770a4b1",
-      "attribute": "Node 1",
-      "index": 0
-    },
-    {
-      "type": "Vertex",
-      "name": "node2",
-      "guid": "28f9f454-142b-452a-8b95-f355c7418d20",
-      "attribute": "Node 2",
-      "index": 1
-    }
-  ],
-  "edges": [
-    {
-      "type": "Edge",
-      "name": "my_edge",
-      "guid": "35b3be07-3a77-46ca-8a25-aa4e1111e450",
-      "v0": "node1",
-      "v1": "node2",
-      "attribute": "edge1",
-      "index": 0
-    }
-  ],
-  "vertex_count": 2,
-  "edge_count": 1
+    "type": "Graph",
+    "name": "test_graph",
+    "guid": "3c341f3a-a74f-4623-9bbe-ffc94e1cec46",
+    "vertices": [
+        {
+            "type": "Vertex",
+            "name": "node1",
+            "guid": "87f00c50-4e75-41bb-9375-8af1e22c55b0",
+            "attribute": "Node 1",
+            "index": 0
+        },
+        {
+            "type": "Vertex",
+            "name": "node2",
+            "guid": "8bbe6765-7ff6-4fd9-8469-eafe563adb32",
+            "attribute": "Node 2",
+            "index": 1
+        }
+    ],
+    "edges": [
+        {
+            "type": "Edge",
+            "name": "my_edge",
+            "guid": "c13a62b4-4437-4dc7-bf5f-6337c69acaff",
+            "v0": "node1",
+            "v1": "node2",
+            "attribute": "edge1",
+            "index": 0
+        }
+    ],
+    "vertex_count": 2,
+    "edge_count": 1
 }

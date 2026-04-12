@@ -5,9 +5,88 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
-MINI_TEST("Graph", "Constructor") {
-    // uncomment #include "graph.h"
+///////////////////////////////////////////////////////////////////////////////////////////
+// Vertex
+///////////////////////////////////////////////////////////////////////////////////////////
 
+MINI_TEST("Vertex", "Constructor") {
+    // Default constructor
+    Vertex v0;
+
+    // Constructor with name + attribute
+    Vertex v("v_named", "attr");
+
+    MINI_CHECK(v0.name == "my_vertex");
+    MINI_CHECK(v0.attribute == "");
+    MINI_CHECK(!v0.guid().empty());
+    MINI_CHECK(v.name == "v_named");
+    MINI_CHECK(v.attribute == "attr");
+}
+
+MINI_TEST("Vertex", "Json Roundtrip") {
+    Vertex original("v0", "test_attribute");
+
+    std::string fname = "serialization/test_vertex.json";
+    encoders::json_dump(original, fname);
+    Vertex loaded = encoders::json_load<Vertex>(fname);
+
+    MINI_CHECK(loaded.name == original.name);
+    MINI_CHECK(loaded.attribute == original.attribute);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Edge
+///////////////////////////////////////////////////////////////////////////////////////////
+
+MINI_TEST("Edge", "Constructor") {
+    // Constructor with v0/v1/attribute
+    Edge e("a", "b", "attr");
+
+    MINI_CHECK(e.v0 == "a");
+    MINI_CHECK(e.v1 == "b");
+    MINI_CHECK(e.attribute == "attr");
+    MINI_CHECK(!e.guid().empty());
+}
+
+MINI_TEST("Edge", "Json Roundtrip") {
+    Edge original("v0", "v1", "test_edge_attr");
+
+    std::string fname = "serialization/test_edge.json";
+    encoders::json_dump(original, fname);
+    Edge loaded = encoders::json_load<Edge>(fname);
+
+    MINI_CHECK(loaded.name == original.name);
+    MINI_CHECK(loaded.v0 == original.v0);
+    MINI_CHECK(loaded.v1 == original.v1);
+}
+
+MINI_TEST("Edge", "Vertices") {
+    Edge e("a", "b");
+    auto [u, v] = e.vertices();
+
+    MINI_CHECK(u == "a" && v == "b");
+}
+
+MINI_TEST("Edge", "Connects") {
+    Edge e("a", "b");
+
+    MINI_CHECK(e.connects("a"));
+    MINI_CHECK(e.connects("b"));
+    MINI_CHECK(!e.connects("c"));
+}
+
+MINI_TEST("Edge", "Other Vertex") {
+    Edge e("a", "b");
+
+    MINI_CHECK(e.other_vertex("a") == "b");
+    MINI_CHECK(e.other_vertex("b") == "a");
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Graph
+///////////////////////////////////////////////////////////////////////////////////////////
+
+MINI_TEST("Graph", "Constructor") {
     // Default constructor
     Graph g0;
 
@@ -15,26 +94,53 @@ MINI_TEST("Graph", "Constructor") {
     Graph g("my_named_graph");
 
     // Minimal string representation
-    std::string gstr = g.str();
+    std::string gstr = g0.str();
 
     MINI_CHECK(g0.name == "my_graph");
     MINI_CHECK(!g0.guid().empty());
+    MINI_CHECK(g0.vertex_count == 0);
+    MINI_CHECK(g0.edge_count == 0);
     MINI_CHECK(g.name == "my_named_graph");
-    MINI_CHECK(gstr.find("Graph") != std::string::npos);
+    MINI_CHECK(gstr.find("my_graph") != std::string::npos);
 }
 
 MINI_TEST("Graph", "Json Roundtrip") {
-    // uncomment #include "graph.h"
-    // uncomment #include "encoders.h"
-
     Graph original("test_graph");
     original.add_node("node1", "Node 1");
     original.add_node("node2", "Node 2");
     original.add_edge("node1", "node2", "edge1");
 
+    //   jsondump()      │ ordered_json │ to JSON object (internal use)
+    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
+    //   json_dumps()    │ std::string  │ to JSON string
+    //   json_loads(s)   │ std::string  │ from JSON string
+    //   json_dump(path) │ file         │ write to file
+    //   json_load(path) │ file         │ read from file
+
     std::string fname = "serialization/test_graph.json";
-    encoders::json_dump(original, fname);
-    Graph loaded = encoders::json_load<Graph>(fname);
+    original.json_dump(fname);
+    Graph loaded = Graph::json_load(fname);
+
+    MINI_CHECK(loaded.number_of_vertices() == 2);
+    MINI_CHECK(loaded.number_of_edges() == 1);
+    auto edge_key = std::make_tuple<std::string, std::string>("node1", "node2");
+    MINI_CHECK(loaded.has_edge(edge_key));
+}
+
+MINI_TEST("Graph", "Protobuf Roundtrip") {
+    Graph original("test_graph");
+    original.add_node("node1", "Node 1");
+    original.add_node("node2", "Node 2");
+    original.add_edge("node1", "node2", "edge1");
+
+    //   pb_dumps()      │ std::string  │ to protobuf binary string
+    //   pb_loads(data)  │ std::string  │ from protobuf binary string
+    //   pb_dump(path)   │ file         │ write to file
+    //   pb_load(path)   │ file         │ read from file
+
+    std::string filename = "serialization/test_graph.bin";
+    original.pb_dump(filename);
+    Graph loaded = Graph::pb_load(filename);
 
     MINI_CHECK(loaded.number_of_vertices() == 2);
     MINI_CHECK(loaded.number_of_edges() == 1);
@@ -43,8 +149,6 @@ MINI_TEST("Graph", "Json Roundtrip") {
 }
 
 MINI_TEST("Graph", "Has Node") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_node("a");
 
@@ -53,8 +157,6 @@ MINI_TEST("Graph", "Has Node") {
 }
 
 MINI_TEST("Graph", "Has Edge") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
 
@@ -65,8 +167,6 @@ MINI_TEST("Graph", "Has Edge") {
 }
 
 MINI_TEST("Graph", "Add Node") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     auto key = g.add_node("a");
 
@@ -76,8 +176,6 @@ MINI_TEST("Graph", "Add Node") {
 }
 
 MINI_TEST("Graph", "Add Edge") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     auto edge = g.add_edge("a", "b");
     auto [u, v] = edge;
@@ -87,8 +185,6 @@ MINI_TEST("Graph", "Add Edge") {
 }
 
 MINI_TEST("Graph", "Remove Node") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.remove_node("a");
@@ -98,8 +194,6 @@ MINI_TEST("Graph", "Remove Node") {
 }
 
 MINI_TEST("Graph", "Remove Edge") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     auto edge_key = std::make_tuple<std::string, std::string>("a", "b");
@@ -111,8 +205,6 @@ MINI_TEST("Graph", "Remove Edge") {
 }
 
 MINI_TEST("Graph", "Get Vertices") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_node("a");
     g.add_node("b");
@@ -123,8 +215,6 @@ MINI_TEST("Graph", "Get Vertices") {
 }
 
 MINI_TEST("Graph", "Get Edges") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -135,8 +225,6 @@ MINI_TEST("Graph", "Get Edges") {
 }
 
 MINI_TEST("Graph", "Neighbors") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("a", "c");
@@ -146,9 +234,17 @@ MINI_TEST("Graph", "Neighbors") {
     MINI_CHECK(neigh.size() == 2);
 }
 
-MINI_TEST("Graph", "Number Of Vertices") {
-    // uncomment #include "graph.h"
+MINI_TEST("Graph", "Get Neighbors") {
+    Graph g("g");
+    g.add_edge("a", "b");
+    g.add_edge("a", "c");
 
+    auto neigh = g.get_neighbors("a");
+
+    MINI_CHECK(neigh.size() == 2);
+}
+
+MINI_TEST("Graph", "Number Of Vertices") {
     Graph g("g");
     g.add_node("a");
     g.add_node("b");
@@ -158,8 +254,6 @@ MINI_TEST("Graph", "Number Of Vertices") {
 }
 
 MINI_TEST("Graph", "Number Of Edges") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -168,8 +262,6 @@ MINI_TEST("Graph", "Number Of Edges") {
 }
 
 MINI_TEST("Graph", "Clear") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.clear();
@@ -179,8 +271,6 @@ MINI_TEST("Graph", "Clear") {
 }
 
 MINI_TEST("Graph", "Node Attribute") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_node("a", "initial");
     g.node_attribute("a", "updated");
@@ -189,8 +279,6 @@ MINI_TEST("Graph", "Node Attribute") {
 }
 
 MINI_TEST("Graph", "Edge Attribute") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b", "initial");
     g.edge_attribute("a", "b", "updated");
@@ -199,8 +287,6 @@ MINI_TEST("Graph", "Edge Attribute") {
 }
 
 MINI_TEST("Graph", "Bfs") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -213,8 +299,6 @@ MINI_TEST("Graph", "Bfs") {
 }
 
 MINI_TEST("Graph", "Dfs") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -227,8 +311,6 @@ MINI_TEST("Graph", "Dfs") {
 }
 
 MINI_TEST("Graph", "Connected Components") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -243,8 +325,6 @@ MINI_TEST("Graph", "Connected Components") {
 }
 
 MINI_TEST("Graph", "Shortest Path") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -259,8 +339,6 @@ MINI_TEST("Graph", "Shortest Path") {
 }
 
 MINI_TEST("Graph", "Has Cycle") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -274,8 +352,6 @@ MINI_TEST("Graph", "Has Cycle") {
 }
 
 MINI_TEST("Graph", "Cycle Basis") {
-    // uncomment #include "graph.h"
-
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");

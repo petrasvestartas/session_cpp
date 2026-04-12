@@ -56,6 +56,24 @@ MINI_TEST("Session", "Add Plane") {
     MINI_CHECK(session.lookup.count(plane->guid()) == 1);
 }
 
+MINI_TEST("Session", "Add OBB") {
+    // uncomment #include "session.h"
+    // uncomment #include "obb.h"
+
+    Session session;
+    auto obb = std::make_shared<OBB>(
+        Point(0.0, 0.0, 0.0),
+        Vector(1.0, 0.0, 0.0),
+        Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0),
+        Vector(1.0, 1.0, 1.0)
+    );
+    session.add_obb(obb);
+
+    MINI_CHECK(session.objects.bboxes->size() == 1);
+    MINI_CHECK(session.lookup.count(obb->guid()) == 1);
+}
+
 MINI_TEST("Session", "Add Polyline") {
     // uncomment #include "session.h"
     // uncomment #include "polyline.h"
@@ -96,6 +114,49 @@ MINI_TEST("Session", "Add Mesh") {
     MINI_CHECK(session.lookup.count(mesh->guid()) == 1);
 }
 
+MINI_TEST("Session", "Add Nurbscurve") {
+    // uncomment #include "session.h"
+    // uncomment #include "nurbscurve.h"
+
+    Session session;
+    std::vector<Point> pts = {Point(0,0,0), Point(1,1,0), Point(2,0,0), Point(3,1,0)};
+    auto nc = std::make_shared<NurbsCurve>(NurbsCurve::create(false, 2, pts));
+    session.add_nurbscurve(nc);
+
+    MINI_CHECK(session.objects.nurbscurves->size() == 1);
+    MINI_CHECK(session.lookup.count(nc->guid()) == 1);
+}
+
+MINI_TEST("Session", "Add Nurbssurface") {
+    // uncomment #include "session.h"
+    // uncomment #include "nurbssurface.h"
+
+    Session session;
+    std::vector<Point> pts = {
+        Point(0,0,0), Point(0,1,0), Point(0,2,0), Point(0,3,0),
+        Point(1,0,0), Point(1,1,0), Point(1,2,0), Point(1,3,0),
+        Point(2,0,0), Point(2,1,0), Point(2,2,0), Point(2,3,0),
+        Point(3,0,0), Point(3,1,0), Point(3,2,0), Point(3,3,0),
+    };
+    auto ns = std::make_shared<NurbsSurface>(NurbsSurface::create(false, false, 3, 3, 4, 4, pts));
+    session.add_nurbssurface(ns);
+
+    MINI_CHECK(session.objects.nurbssurfaces->size() == 1);
+    MINI_CHECK(session.lookup.count(ns->guid()) == 1);
+}
+
+MINI_TEST("Session", "Add Brep") {
+    // uncomment #include "session.h"
+    // uncomment #include "brep.h"
+
+    Session session;
+    auto brep = std::make_shared<BRep>(BRep::create_box(1.0, 1.0, 1.0));
+    session.add_brep(brep);
+
+    MINI_CHECK(session.objects.breps->size() == 1);
+    MINI_CHECK(session.lookup.count(brep->guid()) == 1);
+}
+
 MINI_TEST("Session", "Add Element") {
     // uncomment #include "session.h"
     // uncomment #include "element_plate.h"
@@ -131,6 +192,26 @@ MINI_TEST("Session", "Add Edge") {
     session.add_point(p2);
     session.add_edge(p1->guid(), p2->guid(), "connection");
 
+    MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
+}
+
+MINI_TEST("Session", "Add Feature") {
+    // uncomment #include "session.h"
+    // uncomment #include "feature.h"
+    // uncomment #include "point.h"
+
+    Session session;
+    auto p1 = std::make_shared<Point>(0.0, 0.0, 0.0);
+    auto p2 = std::make_shared<Point>(1.0, 0.0, 0.0);
+    session.add_point(p1);
+    session.add_point(p2);
+    FaceFeature f;
+    f.face_id_a = 0;
+    f.face_id_b = 0;
+    std::string fguid = session.add_feature(p1->guid(), p2->guid(), EdgeFeature{f});
+
+    MINI_CHECK(!fguid.empty());
+    MINI_CHECK(session.edge_features.count(fguid) == 1);
     MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
 }
 
@@ -198,6 +279,48 @@ MINI_TEST("Session", "Get Neighbours") {
 
     MINI_CHECK(neighbours.size() == 1);
     MINI_CHECK(neighbours[0] == p2->guid());
+}
+
+MINI_TEST("Session", "Get Collisions") {
+    // uncomment #include "session.h"
+    // uncomment #include "obb.h"
+
+    Session session;
+    auto obb1 = std::make_shared<OBB>(
+        Point(0.0, 0.0, 0.0),
+        Vector(1.0, 0.0, 0.0),
+        Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0),
+        Vector(2.0, 2.0, 2.0)
+    );
+    auto obb2 = std::make_shared<OBB>(
+        Point(1.0, 0.0, 0.0),
+        Vector(1.0, 0.0, 0.0),
+        Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0),
+        Vector(2.0, 2.0, 2.0)
+    );
+    session.add_obb(obb1);
+    session.add_obb(obb2);
+    auto pairs = session.get_collisions();
+
+    MINI_CHECK(pairs.size() >= 1);
+}
+
+MINI_TEST("Session", "Ray Cast") {
+    // uncomment #include "session.h"
+    // uncomment #include "mesh.h"
+
+    Session session;
+    auto mesh = std::make_shared<Mesh>();
+    mesh->add_vertex(Point(-1.0, -1.0, 0.0), 0);
+    mesh->add_vertex(Point(1.0, -1.0, 0.0), 1);
+    mesh->add_vertex(Point(0.0, 1.0, 0.0), 2);
+    mesh->add_face(std::vector<size_t>{0, 1, 2});
+    session.add_mesh(mesh);
+    auto hits = session.ray_cast(Point(0.0, 0.0, 2.0), Vector(0.0, 0.0, -1.0));
+
+    MINI_CHECK(hits.size() >= 1);
 }
 
 MINI_TEST("Session", "Get Object") {
