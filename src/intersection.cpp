@@ -2363,7 +2363,7 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         ts.push_back(1.0);
         std::sort(ts.begin(), ts.end());
         ts.erase(std::unique(ts.begin(), ts.end(),
-                              [](double x, double y){ return std::abs(x-y)<EPS; }),
+                              [EPS](double x, double y){ return std::abs(x-y)<EPS; }),
                   ts.end());
 
         std::vector<P2> current;

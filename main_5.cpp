@@ -309,6 +309,7 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
             case 12: group = 0; break; // ss_e_ip
             case 13: group = 5; break; // ss_e_r
             case 20: group = 2; break; // ts_e_p
+            case 30: group = 3; break; // cr_c_ip
             case 40: group = 4; break; // tt_e_p
             default: group = -1;
         }
