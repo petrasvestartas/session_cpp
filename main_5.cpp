@@ -2066,19 +2066,21 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
     }
 
     // Merge joints with plate polylines (polylines only, no meshes).
+    // Each element gets its own group so merged plates are selectable per element.
     Color col_merged(50, 50, 50, 255, "merged_dark");
-    auto g_merged = session.add_group("MergedPlates"); g_merged->color = col_merged;
     // Per-element summary printed to a side file so we can diff against
     // annen_wood_output_meta.txt line by line.
     std::ofstream meta_out((base / "session_data" /
                             (std::string(pb_name) + "_meta.txt")).string());
     for (size_t ei = 0; ei < n_elems; ei++) {
         auto merged = merge_joints_for_element(wood_elems[ei], j_mf[ei], all_joints);
+        auto g_el = session.add_group(fmt::format("element_{}", ei));
+        g_el->color = col_merged;
         for (size_t mi = 0; mi < merged.size(); mi++) {
             auto mpl = std::make_shared<Polyline>(merged[mi]);
             mpl->name = fmt::format("merged_{}_{}", ei, mi);
             mpl->linecolor = col_merged;
-            session.add_polyline(mpl, g_merged);
+            session.add_polyline(mpl, g_el);
         }
         // Meta line matches wood: "<n_polylines> <pt_count_1> <pt_count_2> ..."
         meta_out << merged.size();
