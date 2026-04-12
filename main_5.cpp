@@ -79,6 +79,12 @@ struct WoodJoint {
     // joints (`ss_e_op_0/1`, `ts_e_p_3`) leave it false → no rescale.
     bool unit_scale = false;
     double unit_scale_distance = 0.0;
+    // Joint linking (Vidy three-valence). The primary joint stores indices
+    // of shadow joints it links to. `ss_e_op_5` uses these to generate
+    // geometry for the linked joints simultaneously.
+    std::vector<int> linked_joints;
+    std::vector<std::vector<std::array<int, 4>>> linked_joints_seq;
+    bool link = false; // true for shadow joints created by three_valence_addition
     // Debug
     int dbg_coplanar = 0;
     int dbg_boolean = 0;
@@ -278,7 +284,8 @@ static void joint_get_divisions(WoodJoint& joint, double division_distance) {
 // branches. This keeps behavior unchanged for datasets without a per-face
 // id (annen_box_pair, hexbox).
 static void joint_create_geometry(WoodJoint& joint, double division_distance,
-                                  double shift_param, int id) {
+                                  double shift_param, int id,
+                                  std::vector<WoodJoint>* all_joints = nullptr) {
     joint_get_divisions(joint, division_distance);
     joint.shift = shift_param;
 
@@ -336,8 +343,8 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 12: ss_e_op_0(joint); break;
                 case 13: ss_e_op_3(joint); break;
                 case 14: ss_e_op_4(joint); break;
-                // case 15: ss_e_op_5(joint); break;    // TODO joint linking
-                // case 16: ss_e_op_6(joint); break;    // TODO joint linking
+                case 15: if (all_joints) ss_e_op_5(joint, *all_joints, false); else ss_e_op_4(joint); break;
+                case 16: if (all_joints) ss_e_op_5(joint, *all_joints, true); else ss_e_op_4(joint); break;
                 default: ss_e_op_1(joint); break;
             }
             break;
@@ -1269,6 +1276,171 @@ static bool face_to_face_wood(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Three-valence joint addition (Vidy method).
+// Creates shadow joints for the cross-connections at 3-plate intersections.
+// Sets `linked_joints` on the primary joint so `ss_e_op_5` can generate
+// geometry for them simultaneously.
+// Ported from wood_main.cpp three_valence_joint_addition_vidy (~1552-1847).
+// ───────────────────────────────────────────────────────────────────────────
+static void three_valence_joint_addition_vidy(
+    const std::vector<std::vector<int>>& tv_groups,
+    std::vector<WoodElement>& elements,
+    std::vector<WoodJoint>& joints,
+    std::unordered_map<uint64_t, int>& joints_map,
+    const std::vector<std::pair<int,int>>& adjacency_pairs)
+{
+    if (tv_groups.size() < 2) return;
+
+    auto pair_key = [](int a, int b) -> uint64_t {
+        if (a > b) std::swap(a, b);
+        return ((uint64_t)a << 32) | (uint64_t)b;
+    };
+
+    for (size_t gi = 1; gi < tv_groups.size(); gi++) {
+        auto& g = tv_groups[gi];
+        if (g.size() != 4) continue;
+        int s0 = g[0], s1 = g[1], e20 = g[2], e31 = g[3];
+        int n_elems = (int)elements.size();
+        if (s0 < 0 || s1 < 0 || e20 < 0 || e31 < 0) continue;
+        if (s0 >= n_elems || s1 >= n_elems || e20 >= n_elems || e31 >= n_elems) continue;
+
+        // Find primary joint between s0-s1
+        auto it = joints_map.find(pair_key(s0, s1));
+        if (it == joints_map.end()) continue;
+        int id = it->second;
+
+        // Find nearest/farthest planes between element pairs
+        auto sq_dist_pt_plane = [](const Point& p, const Plane& pl) -> double {
+            double v = pl.a()*p[0] + pl.b()*p[1] + pl.c()*p[2] + pl.d();
+            return v * v;
+        };
+
+        double d00 = sq_dist_pt_plane(elements[s0].planes[0].origin(), elements[e31].planes[0]);
+        double d01 = sq_dist_pt_plane(elements[s0].planes[0].origin(), elements[e31].planes[1]);
+        Plane plane00_far = d00 < d01 ? elements[e31].planes[0] : elements[e31].planes[1];
+
+        d00 = sq_dist_pt_plane(plane00_far.origin(), elements[s0].planes[0]);
+        d01 = sq_dist_pt_plane(plane00_far.origin(), elements[s0].planes[1]);
+        Plane plane01_near = d00 < d01 ? elements[s0].planes[1] : elements[s0].planes[0];
+
+        double d10 = sq_dist_pt_plane(elements[s1].planes[0].origin(), elements[e20].planes[0]);
+        double d11 = sq_dist_pt_plane(elements[s1].planes[0].origin(), elements[e20].planes[1]);
+        Plane plane10_far = d10 < d11 ? elements[e20].planes[0] : elements[e20].planes[1];
+
+        d10 = sq_dist_pt_plane(plane10_far.origin(), elements[s1].planes[0]);
+        d11 = sq_dist_pt_plane(plane10_far.origin(), elements[s1].planes[1]);
+        Plane plane11_near = d10 < d11 ? elements[s1].planes[1] : elements[s1].planes[0];
+
+        // Joint volume edge lines for projection
+        auto& jv0 = *joints[id].joint_volumes_pair_a_pair_b[0];
+        Line l0 = Line::from_points(jv0.get_point(0), jv0.get_point(1));
+        Line l1 = Line::from_points(jv0.get_point(1), jv0.get_point(2));
+
+        // Determine which edge is parallel to which projection
+        Vector proj_l0_dir(
+            plane01_near.project(jv0.get_point(0))[0] - plane01_near.project(jv0.get_point(1))[0],
+            plane01_near.project(jv0.get_point(0))[1] - plane01_near.project(jv0.get_point(1))[1],
+            plane01_near.project(jv0.get_point(0))[2] - plane01_near.project(jv0.get_point(1))[2]);
+        Vector proj_l1_dir(
+            plane01_near.project(jv0.get_point(1))[0] - plane01_near.project(jv0.get_point(2))[0],
+            plane01_near.project(jv0.get_point(1))[1] - plane01_near.project(jv0.get_point(2))[1],
+            plane01_near.project(jv0.get_point(1))[2] - plane01_near.project(jv0.get_point(2))[2]);
+        bool is_par_01 = (proj_l1_dir.is_parallel_to(l1.to_vector()) == 0);
+        std::array<Line, 2> ll = is_par_01 ? std::array<Line, 2>{l1, l0} : std::array<Line, 2>{l0, l1};
+
+        // Find translation endpoints via line-plane intersection (infinite line)
+        Point p00, p01, p10, p11;
+        if (!Intersection::line_plane(ll[0], plane00_far, p00, false)) continue;
+        if (!Intersection::line_plane(ll[0], plane01_near, p01, false)) continue;
+        if (!Intersection::line_plane(ll[1], plane10_far, p10, false)) continue;
+        if (!Intersection::line_plane(ll[1], plane11_near, p11, false)) continue;
+
+        if (e20 == e31) { p10 = p00; p11 = p01; }
+
+        Vector trans0(p00[0]-p01[0], p00[1]-p01[1], p00[2]-p01[2]);
+        Vector trans1(p10[0]-p11[0], p10[1]-p11[1], p10[2]-p11[2]);
+
+        // Validate translations
+        double vsum = std::abs(trans0[0]) + std::abs(trans0[1]) + std::abs(trans0[2])
+                    + std::abs(trans1[0]) + std::abs(trans1[1]) + std::abs(trans1[2]);
+        if (vsum > 1e8 || vsum < 1e-12) continue;
+
+        // Copy and translate joint volumes
+        auto copy_vols = [&]() -> std::array<Polyline, 4> {
+            std::array<Polyline, 4> vols;
+            for (int k = 0; k < 4; k++) {
+                if (joints[id].joint_volumes_pair_a_pair_b[k].has_value())
+                    vols[k] = *joints[id].joint_volumes_pair_a_pair_b[k];
+            }
+            return vols;
+        };
+        auto jv0_copy = copy_vols();
+        auto jv1_copy = copy_vols();
+
+        // Shift jv1 volumes to align with translation direction
+        int shift_amt = 0;
+        for (int j = 0; j < 4; j++) {
+            Vector v(jv1_copy[0].get_point(j)[0] - jv1_copy[0].get_point(j+1)[0],
+                     jv1_copy[0].get_point(j)[1] - jv1_copy[0].get_point(j+1)[1],
+                     jv1_copy[0].get_point(j)[2] - jv1_copy[0].get_point(j+1)[2]);
+            if (v.is_parallel_to(trans1) == 1) { shift_amt = j; break; }
+        }
+        for (int k = 0; k < 4; k++)
+            if (jv1_copy[k].point_count() == 5)
+                jv1_copy[k].shift(shift_amt);
+
+        // Translate volumes and joint lines
+        auto jlines0 = joints[id].joint_lines;
+        auto jlines1 = joints[id].joint_lines;
+        for (int k = 0; k < 2; k++) {
+            jv0_copy[k].translate(trans0);
+            jv1_copy[k].translate(trans1);
+        }
+
+        // Check if joint order was reversed
+        if (joints[id].el_ids.first == s1) {
+            std::swap(s0, s1); // note: local swap only
+            // For the element wiring below, we use the swapped values
+        }
+
+        // Create shadow joint 0 (s0 ↔ e20)
+        WoodJoint shadow0;
+        shadow0.el_ids = {s0, e20};
+        shadow0.face_ids = joints[id].face_ids;
+        shadow0.joint_type = joints[id].joint_type;
+        shadow0.joint_area = joints[id].joint_area;
+        shadow0.joint_lines = jlines0;
+        shadow0.joint_volumes_pair_a_pair_b = {jv0_copy[0], jv0_copy[1], std::nullopt, std::nullopt};
+        shadow0.link = true;
+        int shadow0_idx = (int)joints.size();
+        joints.push_back(shadow0);
+        joints_map[pair_key(s0, e20)] = shadow0_idx;
+
+        // Create shadow joint 1 if e20 != e31 (s1 ↔ e31)
+        int shadow1_idx = -1;
+        if (e20 != e31) {
+            WoodJoint shadow1;
+            shadow1.el_ids = {s1, e31};
+            shadow1.face_ids = joints[id].face_ids;
+            shadow1.joint_type = joints[id].joint_type;
+            shadow1.joint_area = joints[id].joint_area;
+            shadow1.joint_lines = jlines1;
+            shadow1.joint_volumes_pair_a_pair_b = {jv1_copy[0], jv1_copy[1], std::nullopt, std::nullopt};
+            shadow1.link = true;
+            shadow1_idx = (int)joints.size();
+            joints.push_back(shadow1);
+            joints_map[pair_key(s1, e31)] = shadow1_idx;
+        }
+
+        // Wire linked_joints on the primary joint
+        if (e20 != e31)
+            joints[id].linked_joints = {shadow0_idx, shadow1_idx};
+        else
+            joints[id].linked_joints = {shadow0_idx};
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Three-valence joint alignment (Annen method).
 // Shortens overlapping joint lines at 3-plate intersections to avoid collisions.
 // Ported from wood_main.cpp three_valence_joint_alignment_annen.
@@ -1947,8 +2119,28 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             while (iss >> v) group.push_back(v);
             if (!group.empty()) tv_groups.push_back(group);
         }
-        if (tv_groups.size() > 1)
+        if (tv_groups.size() > 1) {
+            // Build joints_map for the addition function
+            auto pair_key = [](int a, int b) -> uint64_t {
+                if (a > b) std::swap(a, b);
+                return ((uint64_t)a << 32) | (uint64_t)b;
+            };
+            std::unordered_map<uint64_t, int> joints_map;
+            for (size_t ji = 0; ji < all_joints.size(); ji++) {
+                int e0 = all_joints[ji].el_ids.first, e1 = all_joints[ji].el_ids.second;
+                joints_map[pair_key(e0, e1)] = (int)ji;
+            }
+            // The first group's first element is the instruction flag:
+            //   0 = annen alignment only
+            //   1 = vidy addition (create shadow joints) + alignment
+            int instruction = tv_groups[0].empty() ? 0 : tv_groups[0][0];
+            if (instruction == 1) {
+                // Vidy addition: create shadow joints for joint linking
+                three_valence_joint_addition_vidy(tv_groups, wood_elems, all_joints, joints_map, adjacency_pairs);
+            }
+            // Annen alignment: shorten overlapping joint lines (always runs)
             three_valence_joint_alignment_annen(tv_groups, wood_elems, all_joints, adjacency_pairs);
+        }
         fmt::print("three_valence: {} groups applied\n", tv_groups.size());
     }
 
@@ -2042,7 +2234,7 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                 div_dist  = 300.0;
                 shift_val = 0.5;
         }
-        joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name);
+        joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name, &all_joints);
         joint_orient_to_connection_area(j);
     }
     if (!jt_name.empty()) {
@@ -2166,13 +2358,12 @@ int main() {
                 "vidy_folding_insertion_vectors.txt");
 
     // Example 9: Vidy chapel corner (42 plates, three-valence, types 15/16)
-    // Note: types 15/16 (ss_e_op_5/6) not yet ported — falls back to
-    // ss_e_op_1. Three-valence alignment still runs correctly.
+    // ss_e_op_5/6 with joint linking via three_valence_joint_addition_vidy.
     run_dataset("vidy_corner.obj",
                 "vidy_corner_adjacency.txt",
                 "WoodF2F_vidy_corner.pb",
                 "vidy_corner_three_valence.txt",
-                "",  // no insertion_vectors
+                "",
                 "vidy_corner_joints_types.txt");
 
     return 0;
