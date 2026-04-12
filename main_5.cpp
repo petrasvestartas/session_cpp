@@ -333,7 +333,7 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 11: ss_e_op_2(joint); break;
                 case 12: ss_e_op_0(joint); break;
                 case 13: ss_e_op_3(joint); break;
-                // case 14: ss_e_op_4(joint); break;    // TODO 9 extra params
+                case 14: ss_e_op_4(joint); break;
                 // case 15: ss_e_op_5(joint); break;    // TODO joint linking
                 // case 16: ss_e_op_6(joint); break;    // TODO joint linking
                 default: ss_e_op_1(joint); break;
