@@ -2011,6 +2011,43 @@ static std::vector<Polyline> merge_joints_for_element(
         }
     }
 
+    // ── Phase C: collect HOLES from side joints (i = 2..N) ──────────────────
+    // Wood: wood_element.cpp:1352-1412
+    for (size_t i = 2; i < el_jmf.size(); i++) {
+        for (size_t k = 0; k < el_jmf[i].size(); k++) {
+            int joint_id = el_jmf[i][k].first;
+            bool male_or_female = el_jmf[i][k].second;
+            WoodJoint& jt = joints[joint_id];
+            if (jt.link) continue;
+            auto& jm  = male_or_female ? jt.m_outlines : jt.f_outlines;
+            auto& jct = male_or_female ? jt.m_cut_types : jt.f_cut_types;
+            if (jm[0].empty() || jm[1].empty()) continue;
+            if (jct[0].empty()) continue;
+            std::vector<int> id_of_holes;
+            for (int ki = 0; ki < (int)jct[0].size(); ki += 2)
+                if (jct[0][ki] == wood_cut::hole)
+                    id_of_holes.push_back(ki);
+            if (id_of_holes.empty()) continue;
+            Point t_back = jm[0].back().get_point(0);
+            Point f_back = jm[1].back().get_point(0);
+            double dt = Point::distance(t_back, el.planes[0].project(t_back));
+            double df = Point::distance(f_back, el.planes[0].project(f_back));
+            if ((dt * dt) > (df * df)) {
+                std::swap(jm[0], jm[1]);
+                std::swap(jct[0], jct[1]);
+            }
+            for (int ki : id_of_holes) {
+                if (ki >= (int)jm[0].size() || ki >= (int)jm[1].size()) continue;
+                Polyline top = jm[0][ki];
+                Polyline bot = jm[1][ki];
+                bool is_cw = top.is_clockwise(el.planes[0]);
+                if (!is_cw) { top.reverse(); bot.reverse(); }
+                result.push_back(top);
+                result.push_back(bot);
+            }
+        }
+    }
+
     // ── Output: merged plate polylines last ────────────────────────────────
     // wood_element.cpp:1421-1422
     result.push_back(merged_top);
