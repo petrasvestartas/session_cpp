@@ -2142,10 +2142,20 @@ int main() {
                 "WoodF2F_hexbox.pb");
 
     // Example 4: cross-joint dataset (exercises cr_c_ip constructors)
-    // From wood_test.cpp type_plates_name_cross_corners: search_type=1,
-    // JOINT_VOLUME_EXTENSION[1]=2, no custom joints_types/insertion_vectors.
     run_dataset("cross_corners.obj", "",
                 "WoodF2F_cross_corners.pb");
+
+    // Example 5: side-to-side in-plane butterflies (exercises ss_e_ip)
+    run_dataset("inplane_butterflies.obj", "",
+                "WoodF2F_inplane_butterflies.pb");
+
+    // Example 6: cross VDA corner (another cr_c_ip dataset)
+    run_dataset("cross_vda_corner.obj", "",
+                "WoodF2F_cross_vda_corner.pb");
+
+    // Example 7: side-to-side out-of-plane box (exercises ss_e_op)
+    run_dataset("outofplane_box.obj", "",
+                "WoodF2F_outofplane_box.pb");
 
     return 0;
 }
