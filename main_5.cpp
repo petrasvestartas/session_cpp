@@ -1232,6 +1232,35 @@ static bool face_to_face_wood(
             }
         }
     }
+    // ── Cross-joint fallback (type 30) ──────────────────────────────────
+    // If no coplanar match was found, try perpendicular cross/lap detection.
+    // Wood does this in wood_main.cpp after the coplanar loop.
+    if (polylines_0.size() >= 2 && polylines_1.size() >= 2 &&
+        planes_0.size() >= 2 && planes_1.size() >= 2) {
+        std::array<Polyline, 2> pa = { polylines_0[0], polylines_0[1] };
+        std::array<Polyline, 2> pb = { polylines_1[0], polylines_1[1] };
+        std::array<Plane, 2> pla = { planes_0[0], planes_0[1] };
+        std::array<Plane, 2> plb = { planes_1[0], planes_1[1] };
+        Intersection::CrossJoint cj;
+        std::array<double, 3> cj_ext = { ext_w, ext_h, ext_l };
+        if (Intersection::plane_to_face(pa, pb, pla, plb, cj, coplanar_tolerance, cj_ext)) {
+            out_joint.el_ids       = el_ids;
+            out_joint.face_ids     = { {{ cj.face_ids_a.first,  cj.face_ids_a.second }},
+                                       {{ cj.face_ids_b.first,  cj.face_ids_b.second }} };
+            out_joint.joint_type   = 30;
+            out_joint.joint_area   = cj.joint_area;
+            out_joint.joint_lines  = {{
+                Line::from_points(cj.joint_lines[0].get_point(0), cj.joint_lines[0].get_point(1)),
+                Line::from_points(cj.joint_lines[1].get_point(0), cj.joint_lines[1].get_point(1)),
+            }};
+            out_joint.joint_volumes_pair_a_pair_b = {
+                cj.joint_volumes[0], cj.joint_volumes[1],
+                std::nullopt, std::nullopt
+            };
+            return true;
+        }
+    }
+
     out_joint.dbg_coplanar = dbg_coplanar;
     out_joint.dbg_boolean = dbg_boolean;
     out_joint.dbg_fail_reason = dbg_fail_reason;
@@ -1846,7 +1875,7 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                    total_loaded, ei, iv_name);
     }
 
-    int counts[5] = {0, 0, 0, 0, 0}; // [11, 12, 13, 20, 40]
+    int counts[6] = {0, 0, 0, 0, 0, 0}; // [11, 12, 13, 20, 30, 40]
     int n_failed  = 0;
     int n_success = 0;
     std::vector<WoodJoint> all_joints;
@@ -1889,7 +1918,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             case 12: ++counts[1]; break;
             case 13: ++counts[2]; break;
             case 20: ++counts[3]; break;
-            case 40: ++counts[4]; break;
+            case 30: ++counts[4]; break;
+            case 40: ++counts[5]; break;
             default: break;
         }
         all_joints.push_back(std::move(joint));
@@ -2088,8 +2118,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
     fmt::print("{} polylines -> {} elements -> {} adjacency pairs\n",
                polylines.size(), pairs.size(), adjacency_pairs.size());
     fmt::print("  joints: {} success / {} failed\n", n_success, n_failed);
-    fmt::print("  by type: 11={} 12={} 13={} 20={} 40={}\n",
-               counts[0], counts[1], counts[2], counts[3], counts[4]);
+    fmt::print("  by type: 11={} 12={} 13={} 20={} 30={} 40={}\n",
+               counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
     fmt::print("  time: {:.0f}ms\n", ms(t0, t4));
 }
 
@@ -2109,5 +2139,12 @@ int main() {
     // Example 3: different geometry type
     run_dataset("hexbox_and_corner.obj", "",
                 "WoodF2F_hexbox.pb");
+
+    // Example 4: cross-joint dataset (exercises cr_c_ip constructors)
+    // From wood_test.cpp type_plates_name_cross_corners: search_type=1,
+    // JOINT_VOLUME_EXTENSION[1]=2, no custom joints_types/insertion_vectors.
+    run_dataset("cross_corners.obj", "",
+                "WoodF2F_cross_corners.pb");
+
     return 0;
 }
