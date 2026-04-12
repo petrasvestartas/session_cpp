@@ -794,3 +794,126 @@ static void ts_e_p_3(WoodJoint& joint) {
     joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
     joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
+
+// ─── ss_e_ip_3 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:970-1116. Hardcoded mill+drill in-plane
+// joint with 6 outlines per face (2 mill_project + 4 drill).
+static void ss_e_ip_3(WoodJoint& joint) {
+    joint.f_outlines[0] = {
+        Polyline({Point(-1.25,-0.5,-0.5), Point(1,-0.5,-0.5), Point(1,-0.2,-0.5), Point(-1,0.2,-0.5), Point(-1,0.5,-0.5), Point(-1.25,0.5,-0.5), Point(-1.25,-0.5,-0.5)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    joint.f_outlines[1] = {
+        Polyline({Point(-1.25,-0.5,0.5), Point(1,-0.5,0.5), Point(1,-0.2,0.5), Point(-1,0.2,0.5), Point(-1,0.5,0.5), Point(-1.25,0.5,0.5), Point(-1.25,-0.5,0.5)}),
+        Polyline({Point(0,0.5,0.5), Point(0,0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    joint.m_outlines[0] = {
+        Polyline({Point(1.25,0.5,-0.5), Point(-1,0.5,-0.5), Point(-1,0.2,-0.5), Point(1,-0.2,-0.5), Point(1,-0.5,-0.5), Point(1.25,-0.5,-0.5), Point(1.25,0.5,-0.5)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    joint.m_outlines[1] = {
+        Polyline({Point(1.25,0.5,0.5), Point(-1,0.5,0.5), Point(-1,0.2,0.5), Point(1,-0.2,0.5), Point(1,-0.5,0.5), Point(1.25,-0.5,0.5), Point(1.25,0.5,0.5)}),
+        Polyline({Point(0,0.5,0.5), Point(0,0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    for (int face = 0; face < 2; face++) {
+        joint.f_cut_types[face] = { wood_cut::mill_project, wood_cut::mill_project, wood_cut::drill, wood_cut::drill, wood_cut::drill, wood_cut::drill };
+        joint.m_cut_types[face] = { wood_cut::mill_project, wood_cut::mill_project, wood_cut::drill, wood_cut::drill, wood_cut::drill, wood_cut::drill };
+    }
+}
+
+// ─── ss_e_ip_4 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:1118-1317. Hardcoded mill+drill in-plane
+// joint with 8 outlines per face (4 mill_project + 4 drill).
+static void ss_e_ip_4(WoodJoint& joint) {
+    joint.f_outlines[0] = {
+        Polyline({Point(-1.25,-0.5,0), Point(1,-0.5,0), Point(1,-0.2,0), Point(-1,0.2,0), Point(-1,0.5,0), Point(-1.25,0.5,0), Point(-1.25,-0.5,0)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-1.25,0.5,0), Point(1,0.5,0), Point(1,0.2,0), Point(-1,-0.2,0), Point(-1,-0.5,0), Point(-1.25,-0.5,0), Point(-1.25,0.5,0)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    joint.f_outlines[1] = {
+        Polyline({Point(-1.25,-0.5,-0.5), Point(1,-0.5,-0.5), Point(1,-0.2,-0.5), Point(-1,0.2,-0.5), Point(-1,0.5,-0.5), Point(-1.25,0.5,-0.5), Point(-1.25,-0.5,-0.5)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-1.25,0.5,0.5), Point(1,0.5,0.5), Point(1,0.2,0.5), Point(-1,-0.2,0.5), Point(-1,-0.5,0.5), Point(-1.25,-0.5,0.5), Point(-1.25,0.5,0.5)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    joint.m_outlines[0] = {
+        Polyline({Point(1.25,0.5,0), Point(-1,0.5,0), Point(-1,0.2,0), Point(1,-0.2,0), Point(1,-0.5,0), Point(1.25,-0.5,0), Point(1.25,0.5,0)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(1.25,-0.5,0), Point(-1,-0.5,0), Point(-1,-0.2,0), Point(1,0.2,0), Point(1,0.5,0), Point(1.25,0.5,0), Point(1.25,-0.5,0)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    joint.m_outlines[1] = {
+        Polyline({Point(1.25,0.5,-0.5), Point(-1,0.5,-0.5), Point(-1,0.2,-0.5), Point(1,-0.2,-0.5), Point(1,-0.5,-0.5), Point(1.25,-0.5,-0.5), Point(1.25,0.5,-0.5)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(1.25,-0.5,0.5), Point(-1,-0.5,0.5), Point(-1,-0.2,0.5), Point(1,0.2,0.5), Point(1,0.5,0.5), Point(1.25,0.5,0.5), Point(1.25,-0.5,0.5)}),
+        Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(-0.333333,-0.6,0), Point(-0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+        Polyline({Point(0.333333,-0.6,0), Point(0.333333,0.6,0)}),
+    };
+    for (int face = 0; face < 2; face++) {
+        joint.f_cut_types[face] = { wood_cut::mill_project, wood_cut::mill_project, wood_cut::mill_project, wood_cut::mill_project, wood_cut::drill, wood_cut::drill, wood_cut::drill, wood_cut::drill };
+        joint.m_cut_types[face] = { wood_cut::mill_project, wood_cut::mill_project, wood_cut::mill_project, wood_cut::mill_project, wood_cut::drill, wood_cut::drill, wood_cut::drill, wood_cut::drill };
+    }
+}
+
+// ─── ss_e_op_3 ──────────────────────────────────────────────────────────────
+// Verbatim port of wood_joint_lib.cpp:1901-2003. Miter tenon-mortise with
+// 4 female outlines (2 insert_between + 2 hole) and 2 male outlines
+// (2 insert_between).
+static void ss_e_op_3(WoodJoint& joint) {
+    joint.f_outlines[0] = {
+        Polyline({Point(0.5,0.5,0.3), Point(0.5,-1.499975,0.3), Point(0.5,-1.499975,-0.3), Point(0.5,0.5,-0.3)}),
+        Polyline({Point(0.5,0.5,0.3), Point(0.5,0.5,-0.3)}),
+        Polyline({Point(0.5,-0.5,0.25), Point(0.5,0.5,0.25), Point(0.5,0.5,-0.25), Point(0.5,-0.5,-0.25), Point(0.5,-0.5,0.25)}),
+        Polyline({Point(0.5,-0.5,0.25), Point(0.5,0.5,0.25), Point(0.5,0.5,-0.25), Point(0.5,-0.5,-0.25), Point(0.5,-0.5,0.25)}),
+    };
+    joint.f_outlines[1] = {
+        Polyline({Point(-0.5,-0.499975,0.3), Point(-0.5,-1.49995,0.3), Point(-0.5,-1.49995,-0.3), Point(-0.5,-0.5,-0.3)}),
+        Polyline({Point(-0.5,-0.499975,0.3), Point(-0.5,-0.5,-0.3)}),
+        Polyline({Point(-0.5,-0.499975,0.25), Point(-0.5,0.500025,0.25), Point(-0.5,0.500025,-0.25), Point(-0.5,-0.499975,-0.25), Point(-0.5,-0.499975,0.25)}),
+        Polyline({Point(-0.5,-0.499975,0.25), Point(-0.5,0.500025,0.25), Point(-0.5,0.500025,-0.25), Point(-0.5,-0.499975,-0.25), Point(-0.5,-0.499975,0.25)}),
+    };
+    joint.m_outlines[0] = {
+        Polyline({Point(-0.5,-0.5,0.3), Point(0.5,-0.5,0.3), Point(0.5,-0.5,0.25), Point(-1,-0.5,0.25), Point(-1,-0.5,-0.25), Point(0.5,-0.5,-0.25), Point(0.5,-0.5,-0.3), Point(-0.5,-0.5,-0.3)}),
+        Polyline({Point(-0.5,-0.5,0.3), Point(-0.5,-0.5,-0.3)}),
+    };
+    joint.m_outlines[1] = {
+        Polyline({Point(0.5,0.5,0.3), Point(0.510075,0.5,0.3), Point(0.5,0.5,0.25), Point(-1,0.5,0.25), Point(-1,0.5,-0.25), Point(0.5,0.5,-0.25), Point(0.510075,0.5,-0.3), Point(0.5,0.5,-0.3)}),
+        Polyline({Point(0.5,0.5,0.3), Point(0.5,0.5,-0.3)}),
+    };
+    for (int face = 0; face < 2; face++) {
+        joint.f_cut_types[face] = { wood_cut::insert_between_multiple_edges, wood_cut::insert_between_multiple_edges, wood_cut::hole, wood_cut::hole };
+        joint.m_cut_types[face] = { wood_cut::insert_between_multiple_edges, wood_cut::insert_between_multiple_edges };
+    }
+}

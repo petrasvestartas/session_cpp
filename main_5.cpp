@@ -9,7 +9,7 @@
 // as local variables right where they are used.
 //
 // Pipeline:
-//   1. Read polylines from an OBJ, pair top/bottom faces, build PlateElements.
+//   1. Read polylines from an OBJ, pair top/bottom faces, build ElementPlates.
 //   2. BVH broad-phase to find candidate adjacent pairs.
 //   3. For every adjacent pair, call `face_to_face_wood` with locally-defined
 //      wood parameters.
@@ -316,37 +316,27 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
     switch (group) {
         case 0: // ss_e_ip (side-side in-plane, type 12) -- wood:6290-6332
             switch (id) {
-                case 1: ss_e_ip_1(joint); break;        // wood says ss_e_ip_1
-                case 2: ss_e_ip_0(joint); break;        // wood says ss_e_ip_0
-                // case 3: ss_e_ip_2(joint, elements); break; // TODO needs
-                                                        // element catalog
-                // case 4: ss_e_ip_3(joint); break;     // TODO mill_project +
-                                                        // drill cut types
-                // case 5: ss_e_ip_4(joint); break;     // TODO same
-                // case 6: ss_e_ip_5(joint, elements); break; // TODO needs
-                                                        // element catalog
+                case 1: ss_e_ip_1(joint); break;
+                case 2: ss_e_ip_0(joint); break;
+                // case 3: ss_e_ip_2(joint, elements); break; // TODO element catalog
+                case 4: ss_e_ip_3(joint); break;
+                case 5: ss_e_ip_4(joint); break;
+                // case 6: ss_e_ip_5(joint, elements); break; // TODO element catalog
                 // case 8: side_removal(joint, elements); break; // TODO Stage 9
                 // case 9: ss_e_ip_custom(joint); break; // TODO XML loader
-                default: ss_e_ip_1(joint); break;       // wood default
+                default: ss_e_ip_1(joint); break;
             }
             break;
         case 1: // ss_e_op (side-side out-of-plane, type 11) -- wood:6334-6392
             switch (id) {
-                case 10: ss_e_op_1(joint); break;       // wood says ss_e_op_1
-                case 11: ss_e_op_2(joint); break;       // ported (parametric)
-                case 12: ss_e_op_0(joint); break;       // ported (hardcoded 12-pt)
-                // case 13: ss_e_op_3(joint); break;    // TODO: hardcoded but
-                                                        // uses insert_between_
-                                                        // multiple_edges + hole
-                                                        // booleans not yet
-                                                        // handled by merge
-                // case 14: ss_e_op_4(joint); break;    // TODO: takes 9 extra
-                                                        // params (chamfer, ext)
-                // case 15: ss_e_op_5(joint); break;    // TODO: takes
-                                                        // all_joints + does
-                                                        // joint linking
-                // case 16: ss_e_op_6(joint); break;    // TODO: takes all_joints
-                default: ss_e_op_1(joint); break;       // wood default
+                case 10: ss_e_op_1(joint); break;
+                case 11: ss_e_op_2(joint); break;
+                case 12: ss_e_op_0(joint); break;
+                case 13: ss_e_op_3(joint); break;
+                // case 14: ss_e_op_4(joint); break;    // TODO 9 extra params
+                // case 15: ss_e_op_5(joint); break;    // TODO joint linking
+                // case 16: ss_e_op_6(joint); break;    // TODO joint linking
+                default: ss_e_op_1(joint); break;
             }
             break;
         case 2: // ts_e_p (top-side, type 20) -- wood:6395-6448
@@ -1721,13 +1711,13 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         wood_elems.push_back(build_wood_element(
             polylines[a].get_points(), polylines[b].get_points()));
 
-    // PlateElements for session storage + OBB adjacency.
+    // ElementPlates for session storage + OBB adjacency.
     Session session("WoodF2F");
     auto g = session.add_group("Elements");
-    std::vector<std::shared_ptr<PlateElement>> plates;
+    std::vector<std::shared_ptr<ElementPlate>> plates;
     plates.reserve(pairs.size());
     for (auto [a, b] : pairs) {
-        auto plate = std::make_shared<PlateElement>(
+        auto plate = std::make_shared<ElementPlate>(
             polylines[a], polylines[b], "plate_" + std::to_string(a));
         session.add_element(plate, g);
         plates.push_back(plate);
