@@ -1,7 +1,7 @@
 {
   "type": "Edge",
   "name": "my_edge",
-  "guid": "9cf64d35-ffc0-4185-8fba-862b2ab1280b",
+  "guid": "513e3ec6-1065-446e-af54-b42a17db37f2",
   "v0": "v0",
   "v1": "v1",
   "attribute": "test_edge_attr",

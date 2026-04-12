@@ -159,7 +159,7 @@ MINI_TEST("Matrix", "Solve") {
     MINI_CHECK(TOLERANCE.is_close(residual_1, 10.0));
 }
 
-MINI_TEST("Matrix", "LuDecompose") {
+MINI_TEST("Matrix", "Lu Decompose") {
     // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {2.0, 1.0, 1.0, 4.0, 3.0, 3.0, 8.0, 7.0, 9.0});
     auto [l, u, p] = a.lu_decompose();
@@ -173,7 +173,7 @@ MINI_TEST("Matrix", "LuDecompose") {
     MINI_CHECK(TOLERANCE.is_close(l(1, 2), 0.0));
 }
 
-MINI_TEST("Matrix", "QrDecompose") {
+MINI_TEST("Matrix", "Qr Decompose") {
     // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(3, 3, {12.0, -51.0, 4.0, 6.0, 167.0, -68.0, -4.0, 24.0, -41.0});
     auto [q, r] = a.qr_decompose();

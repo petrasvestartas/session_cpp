@@ -1291,9 +1291,21 @@ static void three_valence_joint_addition_vidy(
 {
     if (tv_groups.size() < 2) return;
 
+    // Pre-reserve to prevent reallocation during push_back (which would
+    // invalidate joints[id] references). Each group can add up to 2 joints.
+    joints.reserve(joints.size() + (tv_groups.size() - 1) * 2);
+
     auto pair_key = [](int a, int b) -> uint64_t {
         if (a > b) std::swap(a, b);
         return ((uint64_t)a << 32) | (uint64_t)b;
+    };
+
+    // FIX #2: Proper CGAL-compatible squared distance from point to plane.
+    // CGAL::squared_distance(point, plane) = (a*px+b*py+c*pz+d)^2 / (a^2+b^2+c^2)
+    auto sq_dist_pt_plane = [](const Point& p, const Plane& pl) -> double {
+        double v = pl.a()*p[0] + pl.b()*p[1] + pl.c()*p[2] + pl.d();
+        double n2 = pl.a()*pl.a() + pl.b()*pl.b() + pl.c()*pl.c();
+        return (n2 > 1e-20) ? (v * v) / n2 : (v * v);
     };
 
     for (size_t gi = 1; gi < tv_groups.size(); gi++) {
@@ -1304,17 +1316,24 @@ static void three_valence_joint_addition_vidy(
         if (s0 < 0 || s1 < 0 || e20 < 0 || e31 < 0) continue;
         if (s0 >= n_elems || s1 >= n_elems || e20 >= n_elems || e31 >= n_elems) continue;
 
+        // Parallel check (wood lines 1610-1624)
+        if (e20 != e31) {
+            Vector n_s0 = elements[s0].planes[0].z_axis();
+            Vector n_e31 = elements[e31].planes[0].z_axis();
+            Vector n_s1 = elements[s1].planes[0].z_axis();
+            Vector n_e20 = elements[e20].planes[0].z_axis();
+            bool same_dir_0 = (n_s0.dot(n_e31) > 0);
+            bool same_dir_1 = (n_s1.dot(n_e20) > 0);
+            if (!same_dir_0 || !same_dir_1) continue;
+        }
+
         // Find primary joint between s0-s1
         auto it = joints_map.find(pair_key(s0, s1));
         if (it == joints_map.end()) continue;
         int id = it->second;
+        if (!joints[id].joint_volumes_pair_a_pair_b[0].has_value()) continue;
 
         // Find nearest/farthest planes between element pairs
-        auto sq_dist_pt_plane = [](const Point& p, const Plane& pl) -> double {
-            double v = pl.a()*p[0] + pl.b()*p[1] + pl.c()*p[2] + pl.d();
-            return v * v;
-        };
-
         double d00 = sq_dist_pt_plane(elements[s0].planes[0].origin(), elements[e31].planes[0]);
         double d01 = sq_dist_pt_plane(elements[s0].planes[0].origin(), elements[e31].planes[1]);
         Plane plane00_far = d00 < d01 ? elements[e31].planes[0] : elements[e31].planes[1];
@@ -1331,24 +1350,25 @@ static void three_valence_joint_addition_vidy(
         d11 = sq_dist_pt_plane(plane10_far.origin(), elements[s1].planes[1]);
         Plane plane11_near = d10 < d11 ? elements[s1].planes[1] : elements[s1].planes[0];
 
-        // Joint volume edge lines for projection
-        auto& jv0 = *joints[id].joint_volumes_pair_a_pair_b[0];
-        Line l0 = Line::from_points(jv0.get_point(0), jv0.get_point(1));
-        Line l1 = Line::from_points(jv0.get_point(1), jv0.get_point(2));
+        // Joint volume edge lines for projection (wood lines 1685-1686)
+        auto& jvol = *joints[id].joint_volumes_pair_a_pair_b[0];
+        Line l0 = Line::from_points(jvol.get_point(0), jvol.get_point(1));
+        Line l1 = Line::from_points(jvol.get_point(1), jvol.get_point(2));
 
-        // Determine which edge is parallel to which projection
-        Vector proj_l0_dir(
-            plane01_near.project(jv0.get_point(0))[0] - plane01_near.project(jv0.get_point(1))[0],
-            plane01_near.project(jv0.get_point(0))[1] - plane01_near.project(jv0.get_point(1))[1],
-            plane01_near.project(jv0.get_point(0))[2] - plane01_near.project(jv0.get_point(1))[2]);
-        Vector proj_l1_dir(
-            plane01_near.project(jv0.get_point(1))[0] - plane01_near.project(jv0.get_point(2))[0],
-            plane01_near.project(jv0.get_point(1))[1] - plane01_near.project(jv0.get_point(2))[1],
-            plane01_near.project(jv0.get_point(1))[2] - plane01_near.project(jv0.get_point(2))[2]);
-        bool is_par_01 = (proj_l1_dir.is_parallel_to(l1.to_vector()) == 0);
-        std::array<Line, 2> ll = is_par_01 ? std::array<Line, 2>{l1, l0} : std::array<Line, 2>{l0, l1};
+        // Determine which edge is parallel to which projection (wood 1703-1730)
+        // Project volume edges onto plane01_near and check parallelism
+        Point proj_p0 = plane01_near.project(jvol.get_point(0));
+        Point proj_p1 = plane01_near.project(jvol.get_point(1));
+        Point proj_p2 = plane01_near.project(jvol.get_point(2));
+        Vector proj_l1_dir(proj_p1[0]-proj_p2[0], proj_p1[1]-proj_p2[1], proj_p1[2]-proj_p2[2]);
+        // is_parallel_01: 0 means NOT parallel (projection collapsed the edge)
+        bool is_parallel_01 = (proj_l1_dir.is_parallel_to(l1.to_vector()) == 0);
+        // Wood: if l1's projection is NOT parallel → use l1 first
+        std::array<Line, 2> ll = is_parallel_01
+            ? std::array<Line, 2>{l1, l0}
+            : std::array<Line, 2>{l0, l1};
 
-        // Find translation endpoints via line-plane intersection (infinite line)
+        // Find translation endpoints via line-plane intersection (infinite)
         Point p00, p01, p10, p11;
         if (!Intersection::line_plane(ll[0], plane00_far, p00, false)) continue;
         if (!Intersection::line_plane(ll[0], plane01_near, p01, false)) continue;
@@ -1360,12 +1380,12 @@ static void three_valence_joint_addition_vidy(
         Vector trans0(p00[0]-p01[0], p00[1]-p01[1], p00[2]-p01[2]);
         Vector trans1(p10[0]-p11[0], p10[1]-p11[1], p10[2]-p11[2]);
 
-        // Validate translations
-        double vsum = std::abs(trans0[0]) + std::abs(trans0[1]) + std::abs(trans0[2])
-                    + std::abs(trans1[0]) + std::abs(trans1[1]) + std::abs(trans1[2]);
-        if (vsum > 1e8 || vsum < 1e-12) continue;
+        // Validate translations (wood lines 1767-1778, signed sum check)
+        double vsum = trans0[0] + trans0[1] + trans0[2]
+                    + trans1[0] + trans1[1] + trans1[2];
+        if (vsum < -1e8 || vsum > 1e8) continue;
 
-        // Copy and translate joint volumes
+        // Copy joint volumes (wood lines 1761-1762)
         auto copy_vols = [&]() -> std::array<Polyline, 4> {
             std::array<Polyline, 4> vols;
             for (int k = 0; k < 4; k++) {
@@ -1377,7 +1397,7 @@ static void three_valence_joint_addition_vidy(
         auto jv0_copy = copy_vols();
         auto jv1_copy = copy_vols();
 
-        // Shift jv1 volumes to align with translation direction
+        // Shift jv1 volumes to align with translation direction (wood 1782-1796)
         int shift_amt = 0;
         for (int j = 0; j < 4; j++) {
             Vector v(jv1_copy[0].get_point(j)[0] - jv1_copy[0].get_point(j+1)[0],
@@ -1385,28 +1405,50 @@ static void three_valence_joint_addition_vidy(
                      jv1_copy[0].get_point(j)[2] - jv1_copy[0].get_point(j+1)[2]);
             if (v.is_parallel_to(trans1) == 1) { shift_amt = j; break; }
         }
-        for (int k = 0; k < 4; k++)
+        for (size_t k = 0; k < 4; k++)
             if (jv1_copy[k].point_count() == 5)
                 jv1_copy[k].shift(shift_amt);
 
-        // Translate volumes and joint lines
+        // Copy joint lines (wood lines 1798-1799)
         auto jlines0 = joints[id].joint_lines;
         auto jlines1 = joints[id].joint_lines;
+
+        // FIX #3: Translate BOTH volumes AND lines (wood lines 1802-1806)
         for (int k = 0; k < 2; k++) {
             jv0_copy[k].translate(trans0);
             jv1_copy[k].translate(trans1);
+            // Translate joint lines too
+            Point js0 = jlines0[k].start();
+            Point je0 = jlines0[k].end();
+            jlines0[k] = Line::from_points(
+                Point(js0[0]+trans0[0], js0[1]+trans0[1], js0[2]+trans0[2]),
+                Point(je0[0]+trans0[0], je0[1]+trans0[1], je0[2]+trans0[2]));
+            Point js1 = jlines1[k].start();
+            Point je1 = jlines1[k].end();
+            jlines1[k] = Line::from_points(
+                Point(js1[0]+trans1[0], js1[1]+trans1[1], js1[2]+trans1[2]),
+                Point(je1[0]+trans1[0], je1[1]+trans1[1], je1[2]+trans1[2]));
         }
 
-        // Check if joint order was reversed
+        // Check if joint order was reversed (wood line 1813)
         if (joints[id].el_ids.first == s1) {
-            std::swap(s0, s1); // note: local swap only
-            // For the element wiring below, we use the swapped values
+            std::swap(e20, e31);
+            std::swap(s0, s1);
         }
 
-        // Create shadow joint 0 (s0 ↔ e20)
+        // FIX #9: Shadow joints get face_ids = -1 (wood passes -1,-1,-1,-1)
+        // The j_mf rebuild uses face_ids to assign joints to element faces.
+        // For shadow joints, wood wires them via elements[el].j_mf.back()
+        // (the last side face). We compute the last side face index.
+        int last_face_s0 = (int)elements[s0].planes.size() - 1;
+        int last_face_e20 = (int)elements[e20].planes.size() - 1;
+        int last_face_s1 = (int)elements[s1].planes.size() - 1;
+        int last_face_e31 = (int)elements[e31].planes.size() - 1;
+
+        // Create shadow joint 0 (s0 ↔ e20) — wood lines 1824-1829
         WoodJoint shadow0;
         shadow0.el_ids = {s0, e20};
-        shadow0.face_ids = joints[id].face_ids;
+        shadow0.face_ids = { {{last_face_s0, last_face_s0}}, {{last_face_e20, last_face_e20}} };
         shadow0.joint_type = joints[id].joint_type;
         shadow0.joint_area = joints[id].joint_area;
         shadow0.joint_lines = jlines0;
@@ -1416,12 +1458,12 @@ static void three_valence_joint_addition_vidy(
         joints.push_back(shadow0);
         joints_map[pair_key(s0, e20)] = shadow0_idx;
 
-        // Create shadow joint 1 if e20 != e31 (s1 ↔ e31)
+        // Create shadow joint 1 if e20 != e31 — wood lines 1831-1839
         int shadow1_idx = -1;
         if (e20 != e31) {
             WoodJoint shadow1;
             shadow1.el_ids = {s1, e31};
-            shadow1.face_ids = joints[id].face_ids;
+            shadow1.face_ids = { {{last_face_s1, last_face_s1}}, {{last_face_e31, last_face_e31}} };
             shadow1.joint_type = joints[id].joint_type;
             shadow1.joint_area = joints[id].joint_area;
             shadow1.joint_lines = jlines1;
@@ -1432,7 +1474,7 @@ static void three_valence_joint_addition_vidy(
             joints_map[pair_key(s1, e31)] = shadow1_idx;
         }
 
-        // Wire linked_joints on the primary joint
+        // Wire linked_joints on the primary joint — wood line 1841
         if (e20 != e31)
             joints[id].linked_joints = {shadow0_idx, shadow1_idx};
         else

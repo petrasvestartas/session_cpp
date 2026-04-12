@@ -8,7 +8,7 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-MINI_TEST("ConvexHull", "Hull2d") {
+MINI_TEST("ConvexHull", "Hull 2d") {
     // uncomment #include "convex_hull.h"
     // uncomment #include "point.h"
     std::vector<Point> pts = {
@@ -24,7 +24,7 @@ MINI_TEST("ConvexHull", "Hull2d") {
     MINI_CHECK(hull.size() == 4);
 }
 
-MINI_TEST("ConvexHull", "Hull2dCollinear") {
+MINI_TEST("ConvexHull", "Hull 2d Collinear") {
     // uncomment #include "convex_hull.h"
     // uncomment #include "point.h"
     std::vector<Point> pts = {
@@ -39,7 +39,7 @@ MINI_TEST("ConvexHull", "Hull2dCollinear") {
     MINI_CHECK(hull.size() >= 3);
 }
 
-MINI_TEST("ConvexHull", "Hull2dCircle") {
+MINI_TEST("ConvexHull", "Hull 2d Circle") {
     // uncomment #include "convex_hull.h"
     // uncomment #include "point.h"
     int n = 12;
@@ -54,7 +54,7 @@ MINI_TEST("ConvexHull", "Hull2dCircle") {
     MINI_CHECK(hull.size() == static_cast<size_t>(n));
 }
 
-MINI_TEST("ConvexHull", "Hull3d") {
+MINI_TEST("ConvexHull", "Hull 3d") {
     // uncomment #include "convex_hull.h"
     // uncomment #include "mesh.h"
     // uncomment #include "point.h"
@@ -71,7 +71,7 @@ MINI_TEST("ConvexHull", "Hull3d") {
     MINI_CHECK(mesh.number_of_faces() == 4);
 }
 
-MINI_TEST("ConvexHull", "Hull3dCube") {
+MINI_TEST("ConvexHull", "Hull 3d Cube") {
     // uncomment #include "convex_hull.h"
     // uncomment #include "mesh.h"
     // uncomment #include "point.h"
