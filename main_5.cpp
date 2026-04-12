@@ -260,6 +260,90 @@ static void joint_orient_to_connection_area(WoodJoint& joint) {
     }
 }
 
+// Port of wood_joint.cpp:418-510
+// remove_geo_from_linked_joint_and_merge_with_current_joint
+// Interleaves shadow joint outlines into the primary joint after both are oriented.
+static void merge_linked_joints(WoodJoint& joint, std::vector<WoodJoint>& all_joints) {
+    if (joint.linked_joints_seq.size() != joint.linked_joints.size()) return;
+
+    for (int i = 0; i < (int)joint.linked_joints.size(); i++) {
+        // wood: m_f_curr = v0 == linked.v0
+        bool m_f_curr = joint.el_ids.first == all_joints[joint.linked_joints[i]].el_ids.first;
+        bool m_f_next = m_f_curr;
+        if (i == 1) m_f_next = !m_f_next; // wood: invert for second link
+
+        // (true,true)=m[0], (true,false)=m[1], (false,true)=f[0], (false,false)=f[1]
+        auto& curr = m_f_curr ? joint.m_outlines : joint.f_outlines;
+        auto& next = m_f_next ? all_joints[joint.linked_joints[i]].m_outlines
+                               : all_joints[joint.linked_joints[i]].f_outlines;
+
+        if (joint.linked_joints_seq[i].size() * 2 != curr[0].size()) continue;
+
+        for (int j = 0; j < (int)curr[0].size(); j += 2) {
+            auto& seq      = joint.linked_joints_seq[i][j / 2];
+            int start_curr = seq[0];
+            int step_curr  = seq[1];
+            int start_next = seq[2];
+            int step_next  = seq[3];
+
+            if (start_curr == 0 && step_curr == 0 && start_next == 0 && step_next == 0) continue;
+            if (step_curr == 0 || step_next == 0) continue;
+
+            // wood always operates on [0] — the main outline of each face
+            auto pts_t  = curr[0][0].get_points(); // copy before curr is modified
+            auto pts_f  = curr[1][0].get_points();
+            auto npts_t = next[0][0].get_points();
+            auto npts_f = next[1][0].get_points();
+
+            std::vector<Point> m0, m1;
+            m0.reserve(pts_t.size() + npts_t.size());
+            m1.reserve(pts_f.size() + npts_f.size());
+
+            // begin shift (wood line 472)
+            m0.insert(m0.end(), pts_t.begin(), pts_t.begin() + start_curr);
+            m1.insert(m1.end(), pts_f.begin(), pts_f.begin() + start_curr);
+
+            // wood loop: k from start_curr while k < size - start_curr, step step_curr
+            int loop_limit = (int)pts_t.size() - start_curr;
+            for (int k = start_curr, it = 0; k < loop_limit; k += step_curr, it++) {
+                int half = step_curr / 2; // step_curr * 0.5 from wood (always even)
+                // current 1st half (wood line 479)
+                m0.insert(m0.end(),
+                    pts_t.begin() + start_curr + it * step_curr,
+                    pts_t.begin() + start_curr + it * step_curr + half);
+                m1.insert(m1.end(),
+                    pts_f.begin() + start_curr + it * step_curr,
+                    pts_f.begin() + start_curr + it * step_curr + half);
+                // linked insertion (wood line 485)
+                m0.insert(m0.end(),
+                    npts_t.begin() + start_next + it * step_next,
+                    npts_t.begin() + start_next + (it + 1) * step_next);
+                m1.insert(m1.end(),
+                    npts_f.begin() + start_next + it * step_next,
+                    npts_f.begin() + start_next + (it + 1) * step_next);
+                // current 2nd half (wood line 491)
+                m0.insert(m0.end(),
+                    pts_t.begin() + start_curr + it * step_curr + half,
+                    pts_t.begin() + start_curr + (it + 1) * step_curr);
+                m1.insert(m1.end(),
+                    pts_f.begin() + start_curr + it * step_curr + half,
+                    pts_f.begin() + start_curr + (it + 1) * step_curr);
+            }
+
+            // end shift (wood line 498)
+            m0.insert(m0.end(), pts_t.end() - start_curr, pts_t.end());
+            m1.insert(m1.end(), pts_f.end() - start_curr, pts_f.end());
+
+            curr[0][0] = Polyline(m0);
+            curr[1][0] = Polyline(m1);
+        }
+
+        // clear shadow geometry (wood line 507)
+        next[0].clear();
+        next[1].clear();
+    }
+}
+
 // Compute divisions from joint line length and division_distance.
 static void joint_get_divisions(WoodJoint& joint, double division_distance) {
     if (joint.joint_lines[0].squared_length() > 1e-10) {
@@ -392,6 +476,7 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
 struct WoodElement {
     std::vector<Polyline> polylines;
     std::vector<Plane>    planes;
+    bool reversed = false; // true if build_wood_element reversed the winding
 };
 
 // Build wood-compatible element from a polyline pair.
@@ -432,6 +517,7 @@ static WoodElement build_wood_element(std::vector<Point> pp0, std::vector<Point>
         std::reverse(pp0.begin(), pp0.end());
         std::reverse(pp1.begin(), pp1.end());
         normal = Vector::average_normal(pp0);
+        el.reversed = true;
     }
 
     // Wood uses the CLOSED polyline for side iteration: j = 0..size()-2.
@@ -1436,19 +1522,14 @@ static void three_valence_joint_addition_vidy(
             std::swap(s0, s1);
         }
 
-        // FIX #9: Shadow joints get face_ids = -1 (wood passes -1,-1,-1,-1)
-        // The j_mf rebuild uses face_ids to assign joints to element faces.
-        // For shadow joints, wood wires them via elements[el].j_mf.back()
-        // (the last side face). We compute the last side face index.
-        int last_face_s0 = (int)elements[s0].planes.size() - 1;
-        int last_face_e20 = (int)elements[e20].planes.size() - 1;
-        int last_face_s1 = (int)elements[s1].planes.size() - 1;
-        int last_face_e31 = (int)elements[e31].planes.size() - 1;
+        // Shadow joints go to j_mf.back() — the extra slot beyond planes (wood line 1827-1828).
+        // face_ids = -1 so the j_mf build loop routes them via the link==true path.
+        // (wood: joints.emplace_back(..., -1, -1, -1, -1, ...))
 
         // Create shadow joint 0 (s0 ↔ e20) — wood lines 1824-1829
         WoodJoint shadow0;
         shadow0.el_ids = {s0, e20};
-        shadow0.face_ids = { {{last_face_s0, last_face_s0}}, {{last_face_e20, last_face_e20}} };
+        shadow0.face_ids = { {{-1,-1}}, {{-1,-1}} };
         shadow0.joint_type = joints[id].joint_type;
         shadow0.joint_area = joints[id].joint_area;
         shadow0.joint_lines = jlines0;
@@ -1463,7 +1544,7 @@ static void three_valence_joint_addition_vidy(
         if (e20 != e31) {
             WoodJoint shadow1;
             shadow1.el_ids = {s1, e31};
-            shadow1.face_ids = { {{last_face_s1, last_face_s1}}, {{last_face_e31, last_face_e31}} };
+            shadow1.face_ids = { {{-1,-1}}, {{-1,-1}} };
             shadow1.joint_type = joints[id].joint_type;
             shadow1.joint_area = joints[id].joint_area;
             shadow1.joint_lines = jlines1;
@@ -2178,7 +2259,10 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             int instruction = tv_groups[0].empty() ? 0 : tv_groups[0][0];
             if (instruction == 1) {
                 // Vidy addition: create shadow joints for joint linking
+                size_t before_vidy = all_joints.size();
                 three_valence_joint_addition_vidy(tv_groups, wood_elems, all_joints, joints_map, adjacency_pairs);
+                fmt::print("vidy_addition: {} shadow joints created (total {})\n",
+                           all_joints.size() - before_vidy, all_joints.size());
             }
             // Annen alignment: shorten overlapping joint lines (always runs)
             three_valence_joint_alignment_annen(tv_groups, wood_elems, all_joints, adjacency_pairs);
@@ -2237,12 +2321,25 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         if (!per_element_joints_types.empty()) {
             int e0 = j.el_ids.first, e1 = j.el_ids.second;
             int f0 = j.face_ids.first[0], f1 = j.face_ids.second[0];
+            // Remap post-reversal face index back to original face index for
+            // JOINTS_TYPES lookup. build_wood_element may reverse the winding,
+            // which reorders the side planes: orig_side_j = n_sides-1 - rev_side_j.
+            // The joints_types file uses original (pre-reversal) face indices.
+            auto orig_face = [&](int ei, int fi) -> int {
+                if (ei < 0 || ei >= (int)wood_elems.size()) return fi;
+                if (!wood_elems[ei].reversed) return fi;
+                if (fi < 2) return 1 - fi; // top(0)↔bottom(1)
+                int n_sides = (int)wood_elems[ei].planes.size() - 2;
+                return 2 + (n_sides - 1 - (fi - 2));
+            };
+            int of0 = orig_face(e0, f0);
+            int of1 = orig_face(e1, f1);
             int id0 = (e0 >= 0 && e0 < (int)per_element_joints_types.size()
-                       && f0 >= 0 && f0 < (int)per_element_joints_types[e0].size())
-                      ? std::abs(per_element_joints_types[e0][f0]) : 0;
+                       && of0 >= 0 && of0 < (int)per_element_joints_types[e0].size())
+                      ? std::abs(per_element_joints_types[e0][of0]) : 0;
             int id1 = (e1 >= 0 && e1 < (int)per_element_joints_types.size()
-                       && f1 >= 0 && f1 < (int)per_element_joints_types[e1].size())
-                      ? std::abs(per_element_joints_types[e1][f1]) : 0;
+                       && of1 >= 0 && of1 < (int)per_element_joints_types[e1].size())
+                      ? std::abs(per_element_joints_types[e1][of1]) : 0;
             // Only treat the file as authoritative if either element actually
             // had a non-empty per-face id list. Elements with an empty list
             // (e.g. parsing skipped a line) fall through to the topology
@@ -2261,6 +2358,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             }
         }
 
+        if (j.link) continue; // shadow joints: geometry set by ss_e_op_5, orient+merge below
+
         double div_dist;
         double shift_val;
         switch (j.joint_type) {
@@ -2278,25 +2377,38 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         }
         joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name, &all_joints);
         joint_orient_to_connection_area(j);
-    }
-    if (!jt_name.empty()) {
-        fmt::print("joints_types filter: skipped {} of {} detected joints\n",
-                   n_filtered, all_joints.size());
+        // wood_joint_lib.cpp:6621-6626: orient shadows then interleave geometry into primary
+        if (!j.linked_joints.empty() &&
+            (id_representing_joint_name == 15 || id_representing_joint_name == 16)) {
+            for (int sid : j.linked_joints)
+                joint_orient_to_connection_area(all_joints[sid]);
+            merge_linked_joints(j, all_joints);
+        }
     }
 
     // Build per-element j_mf mapping: j_mf[element_id][face_id] = [(joint_idx, is_male)]
+    // Wood sizes j_mf as (sides)+2+1: +1 is the extra slot for shadow joints (j_mf.back()).
+    // The merge iterator `i < planes.size()` excludes the extra slot, so shadow joints
+    // placed there are never processed during plate merge — they exist only to mirror wood's
+    // data layout. After merge_linked_joints clears their outlines they are harmless.
     size_t n_elems = wood_elems.size();
     JMF j_mf(n_elems);
     for (size_t ei = 0; ei < n_elems; ei++)
-        j_mf[ei].resize(wood_elems[ei].planes.size());
+        j_mf[ei].resize(wood_elems[ei].planes.size() + 1); // +1 = extra slot for shadow joints
     for (size_t ji = 0; ji < all_joints.size(); ji++) {
         auto& j = all_joints[ji];
         int e0 = j.el_ids.first, e1 = j.el_ids.second;
-        int f0 = j.face_ids.first[0], f1 = j.face_ids.second[0];
-        if (e0 >= 0 && e0 < (int)n_elems && f0 >= 0 && f0 < (int)j_mf[e0].size())
-            j_mf[e0][f0].push_back({(int)ji, true});
-        if (e1 >= 0 && e1 < (int)n_elems && f1 >= 0 && f1 < (int)j_mf[e1].size())
-            j_mf[e1][f1].push_back({(int)ji, false});
+        if (j.link) {
+            // Shadow joints → j_mf.back() (wood line 1827-1828)
+            if (e0 >= 0 && e0 < (int)n_elems) j_mf[e0].back().push_back({(int)ji, true});
+            if (e1 >= 0 && e1 < (int)n_elems) j_mf[e1].back().push_back({(int)ji, false});
+        } else {
+            int f0 = j.face_ids.first[0], f1 = j.face_ids.second[0];
+            if (e0 >= 0 && e0 < (int)n_elems && f0 >= 0 && f0 < (int)j_mf[e0].size())
+                j_mf[e0][f0].push_back({(int)ji, true});
+            if (e1 >= 0 && e1 < (int)n_elems && f1 >= 0 && f1 < (int)j_mf[e1].size())
+                j_mf[e1][f1].push_back({(int)ji, false});
+        }
     }
 
     // Merge joints with plate polylines (polylines only, no meshes).
