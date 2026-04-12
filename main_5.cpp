@@ -70,6 +70,7 @@ struct WoodJoint {
     int divisions = 1;
     double shift = 0.5;
     double length = 0;
+    std::array<double, 3> scale = {1.0, 1.0, 1.0};
     // Wood `joint::unit_scale` (`wood_joint.h:85`). When true,
     // `joint_orient_to_connection_area` rescales the joint volumes along
     // the Z axis (joint-line direction) so the unit-cube → world transform
