@@ -358,10 +358,10 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
             switch (id) {
                 case 30: cr_c_ip_0(joint); break;
                 case 31: cr_c_ip_1(joint); break;
-                // case 32: cr_c_ip_2(joint); break;    // TODO complex variant
-                // case 33: cr_c_ip_3(joint); break;    // TODO complex variant
-                // case 34: cr_c_ip_4(joint); break;    // TODO complex variant
-                // case 35: cr_c_ip_5(joint); break;    // TODO complex variant
+                case 32: cr_c_ip_2(joint); break;
+                case 33: cr_c_ip_3(joint); break;
+                case 34: cr_c_ip_4(joint); break;
+                case 35: cr_c_ip_5(joint); break;
                 default: cr_c_ip_0(joint); break;
             }
             break;
