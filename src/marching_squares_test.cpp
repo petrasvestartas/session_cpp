@@ -21,7 +21,7 @@ MINI_TEST("MarchingSquares", "Extract") {
     MINI_CHECK(result[0].is_closed());
 }
 
-MINI_TEST("MarchingSquares", "ExtractFromFunc") {
+MINI_TEST("MarchingSquares", "Extract From Func") {
     // uncomment #include "marching_squares.h"
     auto result = MarchingSquares::extract_from_func(
         [](double x, double y) { return 1.0 - (x * x + y * y); },
@@ -31,7 +31,7 @@ MINI_TEST("MarchingSquares", "ExtractFromFunc") {
     MINI_CHECK(result.size() > 0);
 }
 
-MINI_TEST("MarchingSquares", "EmptyGrid") {
+MINI_TEST("MarchingSquares", "Empty Grid") {
     // uncomment #include "marching_squares.h"
     std::vector<std::vector<double>> grid;
     auto result = MarchingSquares::extract(grid, 0.5, 1.0);
@@ -39,7 +39,7 @@ MINI_TEST("MarchingSquares", "EmptyGrid") {
     MINI_CHECK(result.size() == 0);
 }
 
-MINI_TEST("MarchingSquares", "AllAbove") {
+MINI_TEST("MarchingSquares", "All Above") {
     // uncomment #include "marching_squares.h"
     std::vector<std::vector<double>> grid = {
         {2.0, 2.0, 2.0},
@@ -51,7 +51,7 @@ MINI_TEST("MarchingSquares", "AllAbove") {
     MINI_CHECK(result.size() == 0);
 }
 
-MINI_TEST("MarchingSquares", "AllBelow") {
+MINI_TEST("MarchingSquares", "All Below") {
     // uncomment #include "marching_squares.h"
     std::vector<std::vector<double>> grid = {
         {0.0, 0.0, 0.0},

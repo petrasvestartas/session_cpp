@@ -1325,4 +1325,16 @@ namespace session_cpp {
         MINI_CHECK(loaded_holes.get_face_holes().at(hfk) == hmesh.get_face_holes().at(hfk));
     }
 
+    MINI_TEST("Mesh", "Edges") {
+        // uncomment #include "mesh.h"
+
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        size_t v0 = mesh.vertices()[0];
+        size_t v1 = mesh.vertices()[1];
+        auto edges = mesh.edges();
+
+        MINI_CHECK(edges.size() == 12);
+        MINI_CHECK(edges[0] == std::make_pair(v0, v1));
+    }
+
 } // namespace session_cpp

@@ -263,4 +263,33 @@ bool is_finite(double x) {
     return std::isfinite(x);
 }
 
+uint64_t unique_from_two_int(int a, int b) {
+    uint64_t lo = static_cast<uint64_t>(std::min(a, b));
+    uint64_t hi = static_cast<uint64_t>(std::max(a, b));
+    return (hi << 32) | lo;
+}
+
+int wrap_index(int index, int n) {
+    if (n == 0) return 0;
+    return ((index % n) + n) % n;
+}
+
+double triangle_edge_by_angle(double edge_length, double angle_deg) {
+    return edge_length * std::tan(Tolerance::to_radians(angle_deg));
+}
+
+double rad_to_deg(double radians) {
+    return radians * Tolerance::TO_DEGREES;
+}
+
+double deg_to_rad(double degrees) {
+    return degrees * Tolerance::TO_RADIANS;
+}
+
+int count_digits(double n) {
+    n = std::abs(n);
+    if (n < 1.0) return 0;
+    return static_cast<int>(std::log10(n)) + 1;
+}
+
 } // namespace session_cpp

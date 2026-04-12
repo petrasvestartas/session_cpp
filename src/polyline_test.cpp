@@ -483,6 +483,31 @@ MINI_TEST("Polyline", "Average Plane") {
     MINI_CHECK(fast_origin[0] >= 0.0);
 }
 
+MINI_TEST("Polyline", "Interpolate Points") {
+    // uncomment #include "polyline.h"
+    // uncomment #include "point.h"
+
+    Point a(0.0, 0.0, 0.0);
+    Point b(4.0, 0.0, 0.0);
+
+    // kind 0: no endpoints — 3 interior points at t=0.25, 0.5, 0.75
+    auto pts0 = Polyline::interpolate_points(a, b, 3, 0);
+    // kind 1: both endpoints — 5 points
+    auto pts1 = Polyline::interpolate_points(a, b, 3, 1);
+    // kind 2: start only — 4 points (from + 3 interior)
+    auto pts2 = Polyline::interpolate_points(a, b, 3, 2);
+
+    MINI_CHECK(pts0.size() == 3);
+    MINI_CHECK(TOLERANCE.is_close(pts0[0][0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pts0[1][0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(pts0[2][0], 3.0));
+    MINI_CHECK(pts1.size() == 5);
+    MINI_CHECK(TOLERANCE.is_close(pts1[0][0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(pts1[4][0], 4.0));
+    MINI_CHECK(pts2.size() == 4);
+    MINI_CHECK(TOLERANCE.is_close(pts2[0][0], 0.0));
+}
+
 MINI_TEST("Polyline", "Quick Hull") {
     Polyline poly({
         Point(0.0, 0.0, 0.0),

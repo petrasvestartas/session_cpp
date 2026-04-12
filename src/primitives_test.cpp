@@ -6,6 +6,7 @@
 #include "line.h"
 #include "point.h"
 #include "vector.h"
+#include "color.h"
 #include "tolerance.h"
 
 #include <cmath>
@@ -34,6 +35,29 @@ MINI_TEST("Primitives", "Mesh Cylinder") {
 
     MINI_CHECK(m.number_of_vertices() == 20);
     MINI_CHECK(m.number_of_faces() == 20);
+}
+
+MINI_TEST("Primitives", "Mesh Edge Pipes") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "mesh.h"
+    // uncomment #include "point.h"
+    // uncomment #include "color.h"
+    Mesh mesh;
+    size_t v0 = mesh.add_vertex(Point(0.0, 0.0, 0.0));
+    size_t v1 = mesh.add_vertex(Point(1.0, 0.0, 0.0));
+    size_t v2 = mesh.add_vertex(Point(1.0, 1.0, 0.0));
+    size_t v3 = mesh.add_vertex(Point(0.0, 1.0, 0.0));
+    mesh.add_face({v0, v1, v2, v3});
+    mesh.set_linecolors({
+        Color(255, 0, 0, 255),
+        Color(255, 0, 0, 255),
+        Color(255, 0, 0, 255),
+        Color(255, 0, 0, 255),
+    });
+
+    std::vector<Mesh> pipes = Primitives::edge_pipes(mesh, 0.1);
+    MINI_CHECK(pipes.size() == 4);
+    MINI_CHECK(pipes[0].number_of_faces() > 0);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -967,6 +991,9 @@ MINI_TEST("Primitives", "Nurbssurface Edge") {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 MINI_TEST("Primitives", "Mesh Quad Mesh") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "mesh.h"
     NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = Primitives::quad_mesh(cyl, 8, 4);
 
@@ -983,6 +1010,9 @@ MINI_TEST("Primitives", "Mesh Quad Mesh") {
 }
 
 MINI_TEST("Primitives", "Mesh Diamond Mesh") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "mesh.h"
     NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = Primitives::diamond_mesh(cyl, 8, 4);
 
@@ -999,6 +1029,9 @@ MINI_TEST("Primitives", "Mesh Diamond Mesh") {
 }
 
 MINI_TEST("Primitives", "Mesh Hex Mesh") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "mesh.h"
     NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     Mesh m = Primitives::hex_mesh(cyl, 6, 4, 1.0/3.0);
 
@@ -1015,6 +1048,9 @@ MINI_TEST("Primitives", "Mesh Hex Mesh") {
 }
 
 MINI_TEST("Primitives", "Mesh Cone Subdivisions") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "mesh.h"
     NurbsSurface cone = Primitives::cone_surface(0, 0, 0, 3.0, 5.0);
 
     Mesh m1 = Primitives::quad_mesh(cone, 8, 4);
@@ -1089,6 +1125,8 @@ MINI_TEST("Primitives", "Nurbscurve Interpolated") {
 }
 
 MINI_TEST("Primitives", "Mesh Tetrahedron") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "mesh.h"
     Mesh m = Primitives::tetrahedron(2.0);
 
     MINI_CHECK(m.is_valid());
@@ -1097,6 +1135,8 @@ MINI_TEST("Primitives", "Mesh Tetrahedron") {
 }
 
 MINI_TEST("Primitives", "Mesh Cube") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "mesh.h"
     Mesh m = Primitives::cube(2.0);
 
     MINI_CHECK(m.is_valid());
@@ -1105,6 +1145,8 @@ MINI_TEST("Primitives", "Mesh Cube") {
 }
 
 MINI_TEST("Primitives", "Mesh Octahedron") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "mesh.h"
     Mesh m = Primitives::octahedron(2.0);
 
     MINI_CHECK(m.is_valid());
@@ -1113,6 +1155,8 @@ MINI_TEST("Primitives", "Mesh Octahedron") {
 }
 
 MINI_TEST("Primitives", "Mesh Icosahedron") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "mesh.h"
     Mesh m = Primitives::icosahedron(2.0);
 
     MINI_CHECK(m.is_valid());
@@ -1121,6 +1165,8 @@ MINI_TEST("Primitives", "Mesh Icosahedron") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Wave") {
+    // uncomment #include "primitives.h"
+    // uncomment #include "nurbssurface.h"
     NurbsSurface srf = Primitives::wave_surface(10.0, 2.0);
 
     MINI_CHECK(srf.is_valid());

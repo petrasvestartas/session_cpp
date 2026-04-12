@@ -11,20 +11,17 @@ MINI_TEST("Objects", "Json Roundtrip") {
     // uncomment #include "objects.h"
     // uncomment #include "encoders.h"
     // uncomment #include "point.h"
-    std::filesystem::create_directories("./serialization");
     Objects original;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
     auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     original.points->push_back(point1);
     original.points->push_back(point2);
 
-    std::string filename = "./serialization/test_objects.json";
+    std::string filename = "serialization/test_objects.json";
     encoders::json_dump(original, filename);
     Objects loaded = encoders::json_load<Objects>(filename);
 
     MINI_CHECK(loaded.points->size() == original.points->size());
-
-    std::filesystem::remove(filename);
 }
 
 } // namespace session_cpp

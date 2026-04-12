@@ -2159,5 +2159,21 @@ int main() {
     run_dataset("outofplane_box.obj", "",
                 "WoodF2F_outofplane_box.pb");
 
+    // Example 8: Vidy folding (20 folded plates with insertion vectors)
+    run_dataset("vidy_folding.obj", "",
+                "WoodF2F_vidy_folding.pb",
+                "",  // no three_valence
+                "vidy_folding_insertion_vectors.txt");
+
+    // Example 9: Vidy chapel corner (42 plates, three-valence, types 15/16)
+    // Note: types 15/16 (ss_e_op_5/6) not yet ported — falls back to
+    // ss_e_op_1. Three-valence alignment still runs correctly.
+    run_dataset("vidy_corner.obj",
+                "vidy_corner_adjacency.txt",
+                "WoodF2F_vidy_corner.pb",
+                "vidy_corner_three_valence.txt",
+                "",  // no insertion_vectors
+                "vidy_corner_joints_types.txt");
+
     return 0;
 }

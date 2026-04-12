@@ -356,4 +356,35 @@ MINI_TEST("BVH", "Fixed 100 Boxes") {
     }
 }
 
+MINI_TEST("BVH", "Query Aabb") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> bboxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(5.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.0, 5.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    BVH bvh = BVH::from_boxes(bboxes, 100.0);
+    // Query near origin — should hit box 0 only
+    AABB query(0.0, 0.0, 0.0, 0.5, 0.5, 0.5);
+    std::vector<int> hits = bvh.query_aabb(query);
+
+    MINI_CHECK(!hits.empty());
+    MINI_CHECK(std::find(hits.begin(), hits.end(), 0) != hits.end());
+    MINI_CHECK(std::find(hits.begin(), hits.end(), 1) == hits.end());
+    MINI_CHECK(std::find(hits.begin(), hits.end(), 2) == hits.end());
+    // Query covering all three boxes
+    AABB query_all(2.5, 2.5, 0.0, 5.0, 5.0, 2.0);
+    std::vector<int> hits_all = bvh.query_aabb(query_all);
+    MINI_CHECK(hits_all.size() == 3);
+}
+
 } // namespace session_cpp

@@ -176,7 +176,13 @@ public:
 // Global tolerance instance
 extern Tolerance TOLERANCE;
 
-// Utility function
+// Utility functions
 bool is_finite(double x);
+uint64_t unique_from_two_int(int a, int b);
+int wrap_index(int index, int n);
+double triangle_edge_by_angle(double edge_length, double angle_deg);
+double rad_to_deg(double radians);
+double deg_to_rad(double degrees);
+int count_digits(double n);
 
 } // namespace session_cpp

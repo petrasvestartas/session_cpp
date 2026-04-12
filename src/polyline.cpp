@@ -1083,6 +1083,25 @@ void Polyline::average_normal(Vector& avg_normal) const {
     avg_normal.normalize_self();
 }
 
+std::vector<Point> Polyline::interpolate_points(const Point& from, const Point& to, int steps, int kind) {
+    std::vector<Point> pts;
+    if (kind == 1 || kind == 2) {
+        pts.push_back(from);
+    }
+    for (int i = 1; i <= steps; ++i) {
+        double t = static_cast<double>(i) / static_cast<double>(steps + 1);
+        pts.push_back(Point(
+            from[0] + t * (to[0] - from[0]),
+            from[1] + t * (to[1] - from[1]),
+            from[2] + t * (to[2] - from[2])
+        ));
+    }
+    if (kind == 1) {
+        pts.push_back(to);
+    }
+    return pts;
+}
+
 Polyline Polyline::quick_hull(const Polyline& polygon) {
     Point origin;
     Vector xa, ya, za;

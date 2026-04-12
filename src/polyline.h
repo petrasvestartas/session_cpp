@@ -322,6 +322,10 @@ public:
     static Polyline tween_two_polylines(const Polyline& polyline0, const Polyline& polyline1,
                                        double weight);
 
+    /// Linear interpolation between two points.
+    /// kind: 0=no endpoints, 1=both endpoints, 2=start only
+    static std::vector<Point> interpolate_points(const Point& from, const Point& to, int steps, int kind = 0);
+
     /// 2D convex hull (quickhull) in the polygon's local plane.
     static Polyline quick_hull(const Polyline& polygon);
 

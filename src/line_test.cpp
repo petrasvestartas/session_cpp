@@ -139,8 +139,17 @@ MINI_TEST("Line", "Transformation") {
 }
 
 MINI_TEST("Line", "Json Roundtrip") {
+    // uncomment #include "line.h"
+
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
     l.name = "test_line";
+
+    //   jsondump()      | ordered_json | to JSON object
+    //   jsonload(j)     | ordered_json | from JSON object
+    //   json_dumps()    | string       | to JSON string
+    //   json_loads(s)   | string       | from JSON string
+    //   json_dump(path) | file         | write to file
+    //   json_load(path) | file         | read from file
 
     // JSON object
     nlohmann::ordered_json j = l.jsondump();
@@ -169,8 +178,15 @@ MINI_TEST("Line", "Json Roundtrip") {
 }
 
 MINI_TEST("Line", "Protobuf Roundtrip") {
+    // uncomment #include "line.h"
+
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
     l.name = "test_line";
+
+    //   pb_dumps()      | string       | to protobuf bytes
+    //   pb_loads(s)     | string       | from protobuf bytes
+    //   pb_dump(path)   | file         | write to file
+    //   pb_load(path)   | file         | read from file
 
     // String
     std::string s = l.pb_dumps();
