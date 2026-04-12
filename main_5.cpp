@@ -354,9 +354,18 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 default: ts_e_p_3(joint); break;        // wood default
             }
             break;
-        // Groups 0, 3, 4, 5, 6 (ss_e_ip, cr_c_ip, tt_e_p, ss_e_r, b) are
-        // not exercised by annen / annen_box_pair / hexbox. Add cases when a
-        // dataset needs them.
+        case 3: // cr_c_ip (cross, type 30) -- wood:6450-6502
+            switch (id) {
+                case 30: cr_c_ip_0(joint); break;
+                case 31: cr_c_ip_1(joint); break;
+                // case 32: cr_c_ip_2(joint); break;    // TODO complex variant
+                // case 33: cr_c_ip_3(joint); break;    // TODO complex variant
+                // case 34: cr_c_ip_4(joint); break;    // TODO complex variant
+                // case 35: cr_c_ip_5(joint); break;    // TODO complex variant
+                default: cr_c_ip_0(joint); break;
+            }
+            break;
+        // Groups 4, 5, 6 (tt_e_p, ss_e_r, b) not yet wired.
         default:
             switch (joint.joint_type) {
                 case 11: case 12: ss_e_op_1(joint); break;

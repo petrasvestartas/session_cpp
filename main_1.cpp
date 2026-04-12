@@ -19,7 +19,7 @@ int main() {
     Session session("WoodComplete");
     auto g = session.add_group("Elements");
     for (auto [a, b] : pairs)
-        session.add_element(std::make_shared<PlateElement>(
+        session.add_element(std::make_shared<ElementPlate>(
             polylines[a], polylines[b], "plate_" + std::to_string(a)), g);
     auto t2 = Clock::now();
 

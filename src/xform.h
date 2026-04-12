@@ -65,6 +65,10 @@ public:
     // Transformations
     ///////////////////////////////////////////////////////////////////////////////////////////
 
+    /// Build a pure rotation (no translation) from three column axis vectors.
+    /// Port of wood `internal::rotation_in_xy_plane(x, y, z)`.
+    static Xform from_axes(const Vector& col_x, const Vector& col_y, const Vector& col_z);
+
     /// Translation by x, y, z
     static Xform translation(double x, double y, double z);
 

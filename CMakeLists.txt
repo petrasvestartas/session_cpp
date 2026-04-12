@@ -291,6 +291,9 @@ set(MINITEST_SOURCES
     src/brep_test.cpp
     src/mesh_iso_test.cpp
     src/element_test.cpp
+    src/element_beam_test.cpp
+    src/element_column_test.cpp
+    src/element_plate_test.cpp
     src/matrix_test.cpp
     src/convex_hull_test.cpp
     src/kdtree_test.cpp

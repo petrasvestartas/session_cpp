@@ -353,18 +353,18 @@ Element Element::pb_load(const std::string& path) {
 std::ostream& operator<<(std::ostream& os, const Element& e) { return os << e.str(); }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// ColumnElement
+// ElementColumn
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-ColumnElement::ColumnElement(double width, double depth, double height, const std::string& name)
+ElementColumn::ElementColumn(double width, double depth, double height, const std::string& name)
     : Element(name), _width(width), _depth(depth), _height(height) {
     _geometry = compute_element_geometry();
 }
 
-ColumnElement::ColumnElement(const ColumnElement& other)
+ElementColumn::ElementColumn(const ElementColumn& other)
     : Element(other), _width(other._width), _depth(other._depth), _height(other._height) {}
 
-ColumnElement& ColumnElement::operator=(const ColumnElement& other) {
+ElementColumn& ElementColumn::operator=(const ElementColumn& other) {
     if (this != &other) {
         Element::operator=(other);
         _width = other._width;
@@ -374,35 +374,35 @@ ColumnElement& ColumnElement::operator=(const ColumnElement& other) {
     return *this;
 }
 
-void ColumnElement::set_width(double v) {
+void ElementColumn::set_width(double v) {
     _width = v;
     _geometry = compute_element_geometry();
     reset();
 }
 
-void ColumnElement::set_depth(double v) {
+void ElementColumn::set_depth(double v) {
     _depth = v;
     _geometry = compute_element_geometry();
     reset();
 }
 
-void ColumnElement::set_height(double v) {
+void ElementColumn::set_height(double v) {
     _height = v;
     _geometry = compute_element_geometry();
     reset();
 }
 
-Line ColumnElement::center_line() const {
+Line ElementColumn::center_line() const {
     return Line(0, 0, 0, 0, 0, _height);
 }
 
-void ColumnElement::extend(double distance) {
+void ElementColumn::extend(double distance) {
     _height += distance * 2;
     _geometry = compute_element_geometry();
     reset();
 }
 
-Mesh ColumnElement::compute_element_geometry() const {
+Mesh ElementColumn::compute_element_geometry() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     std::vector<Point> vertices = {
@@ -423,7 +423,7 @@ Mesh ColumnElement::compute_element_geometry() const {
     return Mesh::from_vertices_and_faces(vertices, faces);
 }
 
-std::vector<Polyline> ColumnElement::compute_polylines() const {
+std::vector<Polyline> ElementColumn::compute_polylines() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     Point b0(-hx, -hy, 0), b1(hx, -hy, 0), b2(hx, hy, 0), b3(-hx, hy, 0);
@@ -438,7 +438,7 @@ std::vector<Polyline> ColumnElement::compute_polylines() const {
     };
 }
 
-std::vector<Plane> ColumnElement::compute_planes() const {
+std::vector<Plane> ElementColumn::compute_planes() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     double hz = _height * 0.5;
@@ -451,7 +451,7 @@ std::vector<Plane> ColumnElement::compute_planes() const {
     };
 }
 
-std::vector<Vector> ColumnElement::compute_edge_vectors() const {
+std::vector<Vector> ElementColumn::compute_edge_vectors() const {
     return {
         Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
         Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
@@ -459,31 +459,31 @@ std::vector<Vector> ColumnElement::compute_edge_vectors() const {
     };
 }
 
-std::optional<Line> ColumnElement::compute_axis() const {
+std::optional<Line> ElementColumn::compute_axis() const {
     return Line(0, 0, 0, 0, 0, _height);
 }
 
-ColumnElement ColumnElement::duplicate() const {
-    ColumnElement result(*this);
+ElementColumn ElementColumn::duplicate() const {
+    ElementColumn result(*this);
 
     return result;
 }
 
-bool ColumnElement::operator==(const Element& other) const {
-    auto* o = dynamic_cast<const ColumnElement*>(&other);
+bool ElementColumn::operator==(const Element& other) const {
+    auto* o = dynamic_cast<const ElementColumn*>(&other);
     if (!o) return false;
     return name == o->name && _width == o->_width && _depth == o->_depth && _height == o->_height;
 }
 
-std::string ColumnElement::str() const {
-    return fmt::format("ColumnElement({}, {}, {}, {})", name, _width, _depth, _height);
+std::string ElementColumn::str() const {
+    return fmt::format("ElementColumn({}, {}, {}, {})", name, _width, _depth, _height);
 }
 
-std::string ColumnElement::repr() const {
-    return fmt::format("ColumnElement({}, {}, {}, {}, {})", guid(), name, _width, _depth, _height);
+std::string ElementColumn::repr() const {
+    return fmt::format("ElementColumn({}, {}, {}, {}, {})", guid(), name, _width, _depth, _height);
 }
 
-nlohmann::ordered_json ColumnElement::jsondump() const {
+nlohmann::ordered_json ElementColumn::jsondump() const {
     auto* mesh = std::get_if<Mesh>(&_geometry);
     return nlohmann::ordered_json{
         {"depth", _depth},
@@ -493,13 +493,13 @@ nlohmann::ordered_json ColumnElement::jsondump() const {
         {"height", _height},
         {"name", name},
         {"session_transformation", session_transformation.jsondump()},
-        {"type", "ColumnElement"},
+        {"type", "ElementColumn"},
         {"width", _width},
     };
 }
 
-ColumnElement ColumnElement::jsonload(const nlohmann::json& data) {
-    ColumnElement elem(
+ElementColumn ElementColumn::jsonload(const nlohmann::json& data) {
+    ElementColumn elem(
         data.value("width", 0.4),
         data.value("depth", 0.4),
         data.value("height", 3.0)
@@ -511,20 +511,20 @@ ColumnElement ColumnElement::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-ColumnElement ColumnElement::json_loads(const std::string& s) {
+ElementColumn ElementColumn::json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-ColumnElement ColumnElement::json_load(const std::string& path) {
+ElementColumn ElementColumn::json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }
 
-std::string ColumnElement::pb_dumps() const {
+std::string ElementColumn::pb_dumps() const {
     session_proto::Element proto;
     proto.set_guid(guid());
     proto.set_name(name);
-    proto.set_geometry_type("ColumnElement");
+    proto.set_geometry_type("ElementColumn");
     nlohmann::json params = {{"width", _width}, {"depth", _depth}, {"height", _height}};
     std::string params_str = params.dump();
     proto.set_geometry_data(params_str);
@@ -534,11 +534,11 @@ std::string ColumnElement::pb_dumps() const {
     return proto.SerializeAsString();
 }
 
-ColumnElement ColumnElement::pb_loads(const std::string& data) {
+ElementColumn ElementColumn::pb_loads(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
     auto params = nlohmann::json::parse(proto.geometry_data());
-    ColumnElement elem(params["width"], params["depth"], params["height"]);
+    ElementColumn elem(params["width"], params["depth"], params["height"]);
     elem.guid() = proto.guid();
     elem.name = proto.name();
     Xform xf;
@@ -549,7 +549,7 @@ ColumnElement ColumnElement::pb_loads(const std::string& data) {
     return elem;
 }
 
-ColumnElement ColumnElement::pb_load(const std::string& path) {
+ElementColumn ElementColumn::pb_load(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());
@@ -557,18 +557,18 @@ ColumnElement ColumnElement::pb_load(const std::string& path) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// BeamElement
+// ElementBeam
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-BeamElement::BeamElement(double width, double depth, double length, const std::string& name)
+ElementBeam::ElementBeam(double width, double depth, double length, const std::string& name)
     : Element(name), _width(width), _depth(depth), _length(length) {
     _geometry = compute_element_geometry();
 }
 
-BeamElement::BeamElement(const BeamElement& other)
+ElementBeam::ElementBeam(const ElementBeam& other)
     : Element(other), _width(other._width), _depth(other._depth), _length(other._length) {}
 
-BeamElement& BeamElement::operator=(const BeamElement& other) {
+ElementBeam& ElementBeam::operator=(const ElementBeam& other) {
     if (this != &other) {
         Element::operator=(other);
         _width = other._width;
@@ -578,35 +578,35 @@ BeamElement& BeamElement::operator=(const BeamElement& other) {
     return *this;
 }
 
-void BeamElement::set_width(double v) {
+void ElementBeam::set_width(double v) {
     _width = v;
     _geometry = compute_element_geometry();
     reset();
 }
 
-void BeamElement::set_depth(double v) {
+void ElementBeam::set_depth(double v) {
     _depth = v;
     _geometry = compute_element_geometry();
     reset();
 }
 
-void BeamElement::set_length(double v) {
+void ElementBeam::set_length(double v) {
     _length = v;
     _geometry = compute_element_geometry();
     reset();
 }
 
-Line BeamElement::center_line() const {
+Line ElementBeam::center_line() const {
     return Line(0, 0, 0, 0, 0, _length);
 }
 
-void BeamElement::extend(double distance) {
+void ElementBeam::extend(double distance) {
     _length += distance * 2;
     _geometry = compute_element_geometry();
     reset();
 }
 
-Mesh BeamElement::compute_element_geometry() const {
+Mesh ElementBeam::compute_element_geometry() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     std::vector<Point> vertices = {
@@ -627,7 +627,7 @@ Mesh BeamElement::compute_element_geometry() const {
     return Mesh::from_vertices_and_faces(vertices, faces);
 }
 
-std::vector<Polyline> BeamElement::compute_polylines() const {
+std::vector<Polyline> ElementBeam::compute_polylines() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     Point b0(-hx, -hy, 0), b1(hx, -hy, 0), b2(hx, hy, 0), b3(-hx, hy, 0);
@@ -642,7 +642,7 @@ std::vector<Polyline> BeamElement::compute_polylines() const {
     };
 }
 
-std::vector<Plane> BeamElement::compute_planes() const {
+std::vector<Plane> ElementBeam::compute_planes() const {
     double hx = _width * 0.5;
     double hy = _depth * 0.5;
     double hz = _length * 0.5;
@@ -655,7 +655,7 @@ std::vector<Plane> BeamElement::compute_planes() const {
     };
 }
 
-std::vector<Vector> BeamElement::compute_edge_vectors() const {
+std::vector<Vector> ElementBeam::compute_edge_vectors() const {
     return {
         Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
         Vector(1, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, -1, 0),
@@ -663,31 +663,31 @@ std::vector<Vector> BeamElement::compute_edge_vectors() const {
     };
 }
 
-std::optional<Line> BeamElement::compute_axis() const {
+std::optional<Line> ElementBeam::compute_axis() const {
     return Line(0, 0, 0, 0, 0, _length);
 }
 
-BeamElement BeamElement::duplicate() const {
-    BeamElement result(*this);
+ElementBeam ElementBeam::duplicate() const {
+    ElementBeam result(*this);
 
     return result;
 }
 
-bool BeamElement::operator==(const Element& other) const {
-    auto* o = dynamic_cast<const BeamElement*>(&other);
+bool ElementBeam::operator==(const Element& other) const {
+    auto* o = dynamic_cast<const ElementBeam*>(&other);
     if (!o) return false;
     return name == o->name && _width == o->_width && _depth == o->_depth && _length == o->_length;
 }
 
-std::string BeamElement::str() const {
-    return fmt::format("BeamElement({}, {}, {}, {})", name, _width, _depth, _length);
+std::string ElementBeam::str() const {
+    return fmt::format("ElementBeam({}, {}, {}, {})", name, _width, _depth, _length);
 }
 
-std::string BeamElement::repr() const {
-    return fmt::format("BeamElement({}, {}, {}, {}, {})", guid(), name, _width, _depth, _length);
+std::string ElementBeam::repr() const {
+    return fmt::format("ElementBeam({}, {}, {}, {}, {})", guid(), name, _width, _depth, _length);
 }
 
-nlohmann::ordered_json BeamElement::jsondump() const {
+nlohmann::ordered_json ElementBeam::jsondump() const {
     auto* mesh = std::get_if<Mesh>(&_geometry);
     return nlohmann::ordered_json{
         {"depth", _depth},
@@ -697,13 +697,13 @@ nlohmann::ordered_json BeamElement::jsondump() const {
         {"length", _length},
         {"name", name},
         {"session_transformation", session_transformation.jsondump()},
-        {"type", "BeamElement"},
+        {"type", "ElementBeam"},
         {"width", _width},
     };
 }
 
-BeamElement BeamElement::jsonload(const nlohmann::json& data) {
-    BeamElement elem(
+ElementBeam ElementBeam::jsonload(const nlohmann::json& data) {
+    ElementBeam elem(
         data.value("width", 0.1),
         data.value("depth", 0.2),
         data.value("length", 3.0)
@@ -715,20 +715,20 @@ BeamElement BeamElement::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-BeamElement BeamElement::json_loads(const std::string& s) {
+ElementBeam ElementBeam::json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-BeamElement BeamElement::json_load(const std::string& path) {
+ElementBeam ElementBeam::json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }
 
-std::string BeamElement::pb_dumps() const {
+std::string ElementBeam::pb_dumps() const {
     session_proto::Element proto;
     proto.set_guid(guid());
     proto.set_name(name);
-    proto.set_geometry_type("BeamElement");
+    proto.set_geometry_type("ElementBeam");
     nlohmann::json params = {{"width", _width}, {"depth", _depth}, {"length", _length}};
     std::string params_str = params.dump();
     proto.set_geometry_data(params_str);
@@ -738,11 +738,11 @@ std::string BeamElement::pb_dumps() const {
     return proto.SerializeAsString();
 }
 
-BeamElement BeamElement::pb_loads(const std::string& data) {
+ElementBeam ElementBeam::pb_loads(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
     auto params = nlohmann::json::parse(proto.geometry_data());
-    BeamElement elem(params["width"], params["depth"], params["length"]);
+    ElementBeam elem(params["width"], params["depth"], params["length"]);
     elem.guid() = proto.guid();
     elem.name = proto.name();
     Xform xf;
@@ -753,7 +753,7 @@ BeamElement BeamElement::pb_loads(const std::string& data) {
     return elem;
 }
 
-BeamElement BeamElement::pb_load(const std::string& path) {
+ElementBeam ElementBeam::pb_load(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());
@@ -761,10 +761,10 @@ BeamElement BeamElement::pb_load(const std::string& path) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// PlateElement
+// ElementPlate
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-PlateElement::PlateElement(const std::vector<Point>& polygon, double thickness,
+ElementPlate::ElementPlate(const std::vector<Point>& polygon, double thickness,
                            const std::string& name)
     : Element(name), _thickness(thickness) {
     if (polygon.empty()) {
@@ -791,10 +791,10 @@ static std::vector<Point> strip_closing(const std::vector<Point>& pts) {
     return pts;
 }
 
-PlateElement::PlateElement(const Polyline& bottom, const Polyline& top, const std::string& name)
-    : PlateElement(bottom.get_points(), top.get_points(), name) {}
+ElementPlate::ElementPlate(const Polyline& bottom, const Polyline& top, const std::string& name)
+    : ElementPlate(bottom.get_points(), top.get_points(), name) {}
 
-PlateElement::PlateElement(const std::vector<Point>& bottom, const std::vector<Point>& top,
+ElementPlate::ElementPlate(const std::vector<Point>& bottom, const std::vector<Point>& top,
                            const std::string& name)
     : Element(name) {
     auto bot = strip_closing(bottom);
@@ -820,12 +820,12 @@ PlateElement::PlateElement(const std::vector<Point>& bottom, const std::vector<P
     _geometry = compute_element_geometry();
 }
 
-PlateElement::PlateElement(const PlateElement& other)
+ElementPlate::ElementPlate(const ElementPlate& other)
     : Element(other), _polygon(other._polygon), _polygon_top(other._polygon_top),
       _thickness(other._thickness), _joint_types(other._joint_types), _j_mf(other._j_mf),
       _key(other._key), _component_plane(other._component_plane) {}
 
-PlateElement& PlateElement::operator=(const PlateElement& other) {
+ElementPlate& ElementPlate::operator=(const ElementPlate& other) {
     if (this != &other) {
         Element::operator=(other);
         _polygon = other._polygon;
@@ -839,7 +839,7 @@ PlateElement& PlateElement::operator=(const PlateElement& other) {
     return *this;
 }
 
-void PlateElement::set_polygon(const std::vector<Point>& pts) {
+void ElementPlate::set_polygon(const std::vector<Point>& pts) {
     _polygon.clear();
     _polygon.reserve(pts.size());
     for (const auto& p : pts) _polygon.emplace_back(p[0], p[1], p[2]);
@@ -847,7 +847,7 @@ void PlateElement::set_polygon(const std::vector<Point>& pts) {
     reset();
 }
 
-void PlateElement::set_polygon_top(const std::vector<Point>& pts) {
+void ElementPlate::set_polygon_top(const std::vector<Point>& pts) {
     _polygon_top.clear();
     _polygon_top.reserve(pts.size());
     for (const auto& p : pts) _polygon_top.emplace_back(p[0], p[1], p[2]);
@@ -855,7 +855,7 @@ void PlateElement::set_polygon_top(const std::vector<Point>& pts) {
     reset();
 }
 
-void PlateElement::set_thickness(double v) {
+void ElementPlate::set_thickness(double v) {
     _thickness = v;
     Vector normal = polygon_normal(_polygon);
     _polygon_top.clear();
@@ -866,7 +866,7 @@ void PlateElement::set_thickness(double v) {
     reset();
 }
 
-Vector PlateElement::polygon_normal(const std::vector<Point>& pts) {
+Vector ElementPlate::polygon_normal(const std::vector<Point>& pts) {
     double nx = 0, ny = 0, nz = 0;
     size_t n = pts.size();
     for (size_t i = 0; i < n; ++i) {
@@ -881,7 +881,7 @@ Vector PlateElement::polygon_normal(const std::vector<Point>& pts) {
     return Vector(nx / mag, ny / mag, nz / mag);
 }
 
-AABB PlateElement::compute_aabb_fast(double inflate) const {
+AABB ElementPlate::compute_aabb_fast(double inflate) const {
     double minx=1e30,miny=1e30,minz=1e30,maxx=-1e30,maxy=-1e30,maxz=-1e30;
     for (auto* poly : {&_polygon, &_polygon_top}) {
         for (auto& p : *poly) {
@@ -893,7 +893,7 @@ AABB PlateElement::compute_aabb_fast(double inflate) const {
                 (maxx-minx)*0.5+inflate, (maxy-miny)*0.5+inflate, (maxz-minz)*0.5+inflate};
 }
 
-Mesh PlateElement::compute_element_geometry() const {
+Mesh ElementPlate::compute_element_geometry() const {
     size_t n = std::min(_polygon.size(), _polygon_top.size());
     std::vector<Point> vertices;
     vertices.reserve(n * 2);
@@ -928,7 +928,7 @@ Mesh PlateElement::compute_element_geometry() const {
     return mesh;
 }
 
-std::vector<Polyline> PlateElement::compute_polylines() const {
+std::vector<Polyline> ElementPlate::compute_polylines() const {
     size_t n = std::min(_polygon.size(), _polygon_top.size());
     // [0]=top polyline, [1]=bottom polyline, [2+]=side polylines (matching wood)
     std::vector<Point> top_closed;
@@ -947,7 +947,7 @@ std::vector<Polyline> PlateElement::compute_polylines() const {
     return result;
 }
 
-std::vector<Plane> PlateElement::compute_planes() const {
+std::vector<Plane> ElementPlate::compute_planes() const {
     Vector normal = polygon_normal(_polygon);
     size_t n = std::min(_polygon.size(), _polygon_top.size());
     // [0]=top plane, [1]=bottom plane, [2+]=side planes (matching wood)
@@ -980,7 +980,7 @@ std::vector<Plane> PlateElement::compute_planes() const {
     return result;
 }
 
-std::vector<Vector> PlateElement::compute_edge_vectors() const {
+std::vector<Vector> ElementPlate::compute_edge_vectors() const {
     size_t n = _polygon.size();
     std::vector<Vector> result;
     result.reserve(n);
@@ -996,7 +996,7 @@ std::vector<Vector> PlateElement::compute_edge_vectors() const {
     return result;
 }
 
-std::optional<Line> PlateElement::compute_axis() const {
+std::optional<Line> ElementPlate::compute_axis() const {
     size_t n = std::min(_polygon.size(), _polygon_top.size());
     double bcx=0,bcy=0,bcz=0,tcx=0,tcy=0,tcz=0;
     for (size_t i=0;i<n;i++){
@@ -1006,14 +1006,14 @@ std::optional<Line> PlateElement::compute_axis() const {
     return Line(bcx/n,bcy/n,bcz/n, tcx/n,tcy/n,tcz/n);
 }
 
-PlateElement PlateElement::duplicate() const {
-    PlateElement result(*this);
+ElementPlate ElementPlate::duplicate() const {
+    ElementPlate result(*this);
 
     return result;
 }
 
-bool PlateElement::operator==(const Element& other) const {
-    auto* o = dynamic_cast<const PlateElement*>(&other);
+bool ElementPlate::operator==(const Element& other) const {
+    auto* o = dynamic_cast<const ElementPlate*>(&other);
     if (!o) return false;
     if (name != o->name) return false;
     if (_thickness != o->_thickness) return false;
@@ -1027,15 +1027,15 @@ bool PlateElement::operator==(const Element& other) const {
     return true;
 }
 
-std::string PlateElement::str() const {
-    return fmt::format("PlateElement({}, {} pts, {})", name, _polygon.size(), _thickness);
+std::string ElementPlate::str() const {
+    return fmt::format("ElementPlate({}, {} pts, {})", name, _polygon.size(), _thickness);
 }
 
-std::string PlateElement::repr() const {
-    return fmt::format("PlateElement({}, {}, {} pts, {})", guid(), name, _polygon.size(), _thickness);
+std::string ElementPlate::repr() const {
+    return fmt::format("ElementPlate({}, {}, {} pts, {})", guid(), name, _polygon.size(), _thickness);
 }
 
-nlohmann::ordered_json PlateElement::jsondump() const {
+nlohmann::ordered_json ElementPlate::jsondump() const {
     auto* mesh = std::get_if<Mesh>(&_geometry);
     nlohmann::ordered_json poly_json = nlohmann::ordered_json::array();
     for (const auto& p : _polygon)
@@ -1063,11 +1063,11 @@ nlohmann::ordered_json PlateElement::jsondump() const {
         {"polygon_top", poly_top_json},
         {"session_transformation", session_transformation.jsondump()},
         {"thickness", _thickness},
-        {"type", "PlateElement"},
+        {"type", "ElementPlate"},
     };
 }
 
-PlateElement PlateElement::jsonload(const nlohmann::json& data) {
+ElementPlate ElementPlate::jsonload(const nlohmann::json& data) {
     std::vector<Point> polygon;
     if (data.contains("polygon")) {
         for (const auto& p : data["polygon"])
@@ -1078,9 +1078,9 @@ PlateElement PlateElement::jsonload(const nlohmann::json& data) {
         for (const auto& p : data["polygon_top"])
             polygon_top.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
     }
-    PlateElement elem = polygon_top.empty()
-        ? PlateElement(polygon.empty() ? std::vector<Point>{} : polygon, data.value("thickness", 0.1))
-        : PlateElement(polygon, polygon_top);
+    ElementPlate elem = polygon_top.empty()
+        ? ElementPlate(polygon.empty() ? std::vector<Point>{} : polygon, data.value("thickness", 0.1))
+        : ElementPlate(polygon, polygon_top);
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("session_transformation"))
@@ -1101,20 +1101,20 @@ PlateElement PlateElement::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-PlateElement PlateElement::json_loads(const std::string& s) {
+ElementPlate ElementPlate::json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-PlateElement PlateElement::json_load(const std::string& path) {
+ElementPlate ElementPlate::json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }
 
-std::string PlateElement::pb_dumps() const {
+std::string ElementPlate::pb_dumps() const {
     session_proto::Element proto;
     proto.set_guid(guid());
     proto.set_name(name);
-    proto.set_geometry_type("PlateElement");
+    proto.set_geometry_type("ElementPlate");
     nlohmann::json params;
     nlohmann::json poly_json = nlohmann::json::array();
     for (const auto& p : _polygon)
@@ -1156,14 +1156,14 @@ std::string PlateElement::pb_dumps() const {
     return proto.SerializeAsString();
 }
 
-PlateElement PlateElement::pb_loads(const std::string& data) {
+ElementPlate ElementPlate::pb_loads(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
     auto params = nlohmann::json::parse(proto.geometry_data());
     std::vector<Point> polygon;
     for (const auto& p : params["polygon"])
         polygon.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
-    PlateElement elem(polygon, params["thickness"]);
+    ElementPlate elem(polygon, params["thickness"]);
     elem.guid() = proto.guid();
     elem.name = proto.name();
     Xform xf;
@@ -1191,7 +1191,7 @@ PlateElement PlateElement::pb_loads(const std::string& data) {
     return elem;
 }
 
-PlateElement PlateElement::pb_load(const std::string& path) {
+ElementPlate ElementPlate::pb_load(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     std::string data((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());

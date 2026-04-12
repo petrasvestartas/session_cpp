@@ -136,7 +136,7 @@ std::vector<std::pair<int,int>> pair_polylines(const std::vector<Polyline>& poly
         double cx=0,cy=0,cz=0;
         for (auto& p : pts) { cx+=p[0]; cy+=p[1]; cz+=p[2]; }
         centroids[i] = Point(cx/pts.size(), cy/pts.size(), cz/pts.size());
-        normals[i] = PlateElement::polygon_normal(pts);
+        normals[i] = ElementPlate::polygon_normal(pts);
         aabbs[i] = AABB::from_polyline(polylines[i], search_radius);
         double mn[3]={aabbs[i].cx-aabbs[i].hx, aabbs[i].cy-aabbs[i].hy, aabbs[i].cz-aabbs[i].hz};
         double mx[3]={aabbs[i].cx+aabbs[i].hx, aabbs[i].cy+aabbs[i].hy, aabbs[i].cz+aabbs[i].hz};

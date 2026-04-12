@@ -165,7 +165,7 @@ void Session::compute_face_to_face(double inflate, double coplanar_tolerance) {
     // Step A: Fast AABB from raw polygon data (no Polyline construction)
     std::vector<AABB> aabbs(N);
     for (size_t i = 0; i < N; i++) {
-        auto* plate = dynamic_cast<PlateElement*>(elems[i].get());
+        auto* plate = dynamic_cast<ElementPlate*>(elems[i].get());
         if (plate) aabbs[i] = plate->compute_aabb_fast(inflate);
         else aabbs[i] = AABB::from_points({}, inflate); // fallback
     }

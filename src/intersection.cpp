@@ -2926,8 +2926,8 @@ bool Intersection::plane_to_face(
 }
 
 bool Intersection::plane_to_face(
-    PlateElement* a,
-    PlateElement* b,
+    ElementPlate* a,
+    ElementPlate* b,
     CrossJoint& result,
     double angle_tol,
     const std::array<double,3>& extension) {

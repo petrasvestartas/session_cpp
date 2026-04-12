@@ -715,10 +715,10 @@ public:
     const std::array<double,3>& extension = {0.0, 0.0, 0.0}
   );
 
-  /// Convenience overload taking PlateElement pointers (extracts polylines/planes).
+  /// Convenience overload taking ElementPlate pointers (extracts polylines/planes).
   static bool plane_to_face(
-    PlateElement* a,
-    PlateElement* b,
+    ElementPlate* a,
+    ElementPlate* b,
     CrossJoint& result,
     double angle_tol = 5.0,
     const std::array<double,3>& extension = {0.0, 0.0, 0.0}

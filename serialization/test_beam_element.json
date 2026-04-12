@@ -76,7 +76,7 @@
       255
     ],
     "facedata": {},
-    "guid": "cc9991c2-f19f-4d85-8e90-58ecb6f0e1a7",
+    "guid": "9ef6c30d-1da0-4f97-9b2b-fb0636f0a65a",
     "halfedge": {
       "0": {
         "1": 2,
@@ -176,7 +176,7 @@
       "a": 255,
       "b": 255,
       "g": 255,
-      "guid": "92e003d5-1a8e-4b29-bf78-8c6c70337029",
+      "guid": "24152814-3e6b-4dbe-93d3-ec618f150400",
       "name": "white",
       "r": 255,
       "type": "Color"
@@ -282,7 +282,7 @@
       1.0
     ],
     "xform": {
-      "guid": "41209607-a8d2-4af1-adfc-43c26933fa49",
+      "guid": "8cb79bfa-2e21-47d4-a757-588f025d6f9d",
       "m": [
         1.0,
         0.0,
@@ -306,11 +306,11 @@
     }
   },
   "geometry_type": "Mesh",
-  "guid": "2050c3d1-b969-4b42-ae67-85d70c02f806",
+  "guid": "0b7e6983-ca38-475f-9820-3a4d34cd72ea",
   "length": 5.0,
   "name": "json_beam",
   "session_transformation": {
-    "guid": "69bfc04a-e87b-4aee-8d68-fa06ff657eb1",
+    "guid": "cabdc16e-95fb-4e37-b6b0-99ec579a84d3",
     "m": [
       1.0,
       0.0,
@@ -332,6 +332,6 @@
     "name": "my_xform",
     "type": "Xform"
   },
-  "type": "BeamElement",
+  "type": "ElementBeam",
   "width": 0.15
 }

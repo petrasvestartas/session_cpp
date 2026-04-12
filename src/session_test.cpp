@@ -102,7 +102,7 @@ MINI_TEST("Session", "Add Element") {
 
     Session session;
     std::vector<Point> polygon = {Point(0,0,0), Point(2,0,0), Point(2,2,0), Point(0,2,0)};
-    auto plate = std::make_shared<PlateElement>(polygon, 0.2, "p1");
+    auto plate = std::make_shared<ElementPlate>(polygon, 0.2, "p1");
     session.add_element(plate);
 
     MINI_CHECK(session.objects.elements->size() == 1);
@@ -245,8 +245,8 @@ MINI_TEST("Session", "Compute Face To Face") {
     // uncomment #include "element_plate.h"
 
     Session session;
-    auto p1 = std::make_shared<PlateElement>(std::vector<Point>{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}, 0.2, "p1");
-    auto p2 = std::make_shared<PlateElement>(std::vector<Point>{Point(0,0,-0.2), Point(1,0,-0.2), Point(1,1,-0.2), Point(0,1,-0.2)}, 0.2, "p2");
+    auto p1 = std::make_shared<ElementPlate>(std::vector<Point>{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}, 0.2, "p1");
+    auto p2 = std::make_shared<ElementPlate>(std::vector<Point>{Point(0,0,-0.2), Point(1,0,-0.2), Point(1,1,-0.2), Point(0,1,-0.2)}, 0.2, "p2");
     session.add_element(p1);
     session.add_element(p2);
     session.compute_face_to_face(5.0, 0.001);

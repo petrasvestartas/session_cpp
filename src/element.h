@@ -107,12 +107,12 @@ protected:
     static OBB obb_from_geometry(const ElementGeometry& geo);
 };
 
-class ColumnElement : public Element {
+class ElementColumn : public Element {
 public:
-    ColumnElement(double width = 0.4, double depth = 0.4, double height = 3.0,
+    ElementColumn(double width = 0.4, double depth = 0.4, double height = 3.0,
                   const std::string& name = "my_column");
-    ColumnElement(const ColumnElement& other);
-    ColumnElement& operator=(const ColumnElement& other);
+    ElementColumn(const ElementColumn& other);
+    ElementColumn& operator=(const ElementColumn& other);
 
     double width() const { return _width; }
     double depth() const { return _depth; }
@@ -128,29 +128,29 @@ public:
     std::vector<Vector> compute_edge_vectors() const override;
     std::optional<Line> compute_axis() const override;
 
-    ColumnElement duplicate() const;
+    ElementColumn duplicate() const;
     bool operator==(const Element& other) const override;
     std::string str() const override;
     std::string repr() const override;
     nlohmann::ordered_json jsondump() const override;
     std::string pb_dumps() const override;
 
-    static ColumnElement jsonload(const nlohmann::json& data);
-    static ColumnElement json_loads(const std::string& s);
-    static ColumnElement json_load(const std::string& path);
-    static ColumnElement pb_loads(const std::string& data);
-    static ColumnElement pb_load(const std::string& path);
+    static ElementColumn jsonload(const nlohmann::json& data);
+    static ElementColumn json_loads(const std::string& s);
+    static ElementColumn json_load(const std::string& path);
+    static ElementColumn pb_loads(const std::string& data);
+    static ElementColumn pb_load(const std::string& path);
 
 private:
     double _width, _depth, _height;
 };
 
-class BeamElement : public Element {
+class ElementBeam : public Element {
 public:
-    BeamElement(double width = 0.1, double depth = 0.2, double length = 3.0,
+    ElementBeam(double width = 0.1, double depth = 0.2, double length = 3.0,
                 const std::string& name = "my_beam");
-    BeamElement(const BeamElement& other);
-    BeamElement& operator=(const BeamElement& other);
+    ElementBeam(const ElementBeam& other);
+    ElementBeam& operator=(const ElementBeam& other);
 
     double width() const { return _width; }
     double depth() const { return _depth; }
@@ -166,18 +166,18 @@ public:
     std::vector<Vector> compute_edge_vectors() const override;
     std::optional<Line> compute_axis() const override;
 
-    BeamElement duplicate() const;
+    ElementBeam duplicate() const;
     bool operator==(const Element& other) const override;
     std::string str() const override;
     std::string repr() const override;
     nlohmann::ordered_json jsondump() const override;
     std::string pb_dumps() const override;
 
-    static BeamElement jsonload(const nlohmann::json& data);
-    static BeamElement json_loads(const std::string& s);
-    static BeamElement json_load(const std::string& path);
-    static BeamElement pb_loads(const std::string& data);
-    static BeamElement pb_load(const std::string& path);
+    static ElementBeam jsonload(const nlohmann::json& data);
+    static ElementBeam json_loads(const std::string& s);
+    static ElementBeam json_load(const std::string& path);
+    static ElementBeam pb_loads(const std::string& data);
+    static ElementBeam pb_load(const std::string& path);
 
 private:
     double _width, _depth, _length;
@@ -189,16 +189,16 @@ struct JointConnection {
     double parameter;
 };
 
-class PlateElement : public Element {
+class ElementPlate : public Element {
 public:
-    PlateElement(const std::vector<Point>& polygon = {}, double thickness = 0.1,
+    ElementPlate(const std::vector<Point>& polygon = {}, double thickness = 0.1,
                  const std::string& name = "my_plate");
-    PlateElement(const std::vector<Point>& bottom, const std::vector<Point>& top,
+    ElementPlate(const std::vector<Point>& bottom, const std::vector<Point>& top,
                  const std::string& name = "my_plate");
-    PlateElement(const Polyline& bottom, const Polyline& top,
+    ElementPlate(const Polyline& bottom, const Polyline& top,
                  const std::string& name = "my_plate");
-    PlateElement(const PlateElement& other);
-    PlateElement& operator=(const PlateElement& other);
+    ElementPlate(const ElementPlate& other);
+    ElementPlate& operator=(const ElementPlate& other);
 
     const std::vector<Point>& polygon() const { return _polygon; }
     const std::vector<Point>& polygon_top() const { return _polygon_top; }
@@ -224,18 +224,18 @@ public:
     std::vector<Vector> compute_edge_vectors() const override;
     std::optional<Line> compute_axis() const override;
 
-    PlateElement duplicate() const;
+    ElementPlate duplicate() const;
     bool operator==(const Element& other) const override;
     std::string str() const override;
     std::string repr() const override;
     nlohmann::ordered_json jsondump() const override;
     std::string pb_dumps() const override;
 
-    static PlateElement jsonload(const nlohmann::json& data);
-    static PlateElement json_loads(const std::string& s);
-    static PlateElement json_load(const std::string& path);
-    static PlateElement pb_loads(const std::string& data);
-    static PlateElement pb_load(const std::string& path);
+    static ElementPlate jsonload(const nlohmann::json& data);
+    static ElementPlate json_loads(const std::string& s);
+    static ElementPlate json_load(const std::string& path);
+    static ElementPlate pb_loads(const std::string& data);
+    static ElementPlate pb_load(const std::string& path);
 
 private:
     std::vector<Point> _polygon;

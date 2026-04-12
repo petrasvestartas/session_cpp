@@ -28,7 +28,7 @@ int main() {
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    // 2. Create PlateElements and add to session
+    // 2. Create ElementPlates and add to session
     Session session("WoodStep4_Joints");
     auto g_elem = session.add_group("Elements");
     std::vector<Element*> elem_ptrs(N);
@@ -36,7 +36,7 @@ int main() {
         auto& e = data["elements"][i];
         auto bottom = json_to_points(e["polygon"]);
         auto top = e.contains("polygon_top") ? json_to_points(e["polygon_top"]) : bottom;
-        auto elem = std::make_shared<PlateElement>(bottom, top, "plate_" + std::to_string(i));
+        auto elem = std::make_shared<ElementPlate>(bottom, top, "plate_" + std::to_string(i));
         session.add_element(elem, g_elem);
         elem_ptrs[i] = elem.get();
     }

@@ -21,7 +21,7 @@ int main() {
     Session session("WoodCross");
     auto g_input = session.add_group("Input");
     auto g_elems = session.add_group("Elements");
-    std::vector<std::shared_ptr<PlateElement>> plates;
+    std::vector<std::shared_ptr<ElementPlate>> plates;
     for (auto [a, b] : pairs) {
         auto pa = std::make_shared<Polyline>(polylines[a]);
         pa->name = "input_" + std::to_string(a);
@@ -29,7 +29,7 @@ int main() {
         auto pb = std::make_shared<Polyline>(polylines[b]);
         pb->name = "input_" + std::to_string(b);
         session.add_polyline(pb, g_input);
-        auto plate = std::make_shared<PlateElement>(
+        auto plate = std::make_shared<ElementPlate>(
             polylines[a], polylines[b], "plate_" + std::to_string(a));
         plates.push_back(plate);
         session.add_element(plate, g_elems);

@@ -55,6 +55,14 @@ Xform Xform::from_matrix(const std::array<double, 16>& matrix) {
 // Transformations
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+Xform Xform::from_axes(const Vector& col_x, const Vector& col_y, const Vector& col_z) {
+    Xform xform;
+    xform.m[0]  = col_x[0]; xform.m[1]  = col_x[1]; xform.m[2]  = col_x[2];
+    xform.m[4]  = col_y[0]; xform.m[5]  = col_y[1]; xform.m[6]  = col_y[2];
+    xform.m[8]  = col_z[0]; xform.m[9]  = col_z[1]; xform.m[10] = col_z[2];
+    return xform;
+}
+
 Xform Xform::translation(double x, double y, double z) {
     Xform xform;
     xform.m[12] = x;
