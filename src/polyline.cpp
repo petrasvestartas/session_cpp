@@ -985,26 +985,30 @@ void Polyline::shrink_line_segment(Point& start, Point& end, double dist) {
 }
 
 bool Polyline::is_clockwise(const Plane& pln) const {
-    (void)pln;  // Reserved for future use - may project to plane
-    if (point_count() < 3) return false;
+    size_t n = point_count();
+    if (n < 3) return false;
 
-    // Create a copy for transformation
-    Polyline cp = *this;
+    // Project onto plane's local XY axes and compute shoelace signed area.
+    // Matches wood's cgal_polyline_util::is_clockwise which uses plane_to_xy.
+    const Vector& xv = pln.x_axis();
+    const Vector& yv = pln.y_axis();
+    const Point& orig = pln.origin();
 
-    // Ensure closed for winding calculation
-    if (!cp.is_closed()) {
-        cp.add_point(cp.get_point(0));
+    // For closed polylines the last point duplicates the first; iterate n-1
+    // unique edges. For open polylines iterate n edges (last→first closes it).
+    size_t lim = is_closed() ? n - 1 : n;
+
+    double area = 0.0;
+    for (size_t i = 0; i < lim; i++) {
+        Point pi  = get_point(i);
+        Point pi1 = get_point((i + 1) % lim);
+        double u0 = (pi[0]-orig[0])*xv[0]  + (pi[1]-orig[1])*xv[1]  + (pi[2]-orig[2])*xv[2];
+        double v0 = (pi[0]-orig[0])*yv[0]  + (pi[1]-orig[1])*yv[1]  + (pi[2]-orig[2])*yv[2];
+        double u1 = (pi1[0]-orig[0])*xv[0] + (pi1[1]-orig[1])*xv[1] + (pi1[2]-orig[2])*xv[2];
+        double v1 = (pi1[0]-orig[0])*yv[0] + (pi1[1]-orig[1])*yv[1] + (pi1[2]-orig[2])*yv[2];
+        area += (u1 - u0) * (v1 + v0);
     }
-
-    // Calculate signed area (shoelace formula)
-    double signed_area = 0.0;
-    for (size_t i = 0; i < cp.point_count() - 1; i++) {
-        Point pi = cp.get_point(i);
-        Point pi1 = cp.get_point(i + 1);
-        signed_area += (pi1[0] - pi[0]) * (pi1[1] + pi[1]);
-    }
-
-    return signed_area > 0;
+    return area > 0;
 }
 
 void Polyline::get_convex_corners(std::vector<bool>& convex_or_concave) const {

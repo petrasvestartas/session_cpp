@@ -1465,14 +1465,19 @@ static void three_valence_joint_addition_vidy(
             ? std::array<Line, 2>{l1, l0}
             : std::array<Line, 2>{l0, l1};
 
-        // Find translation endpoints via line-plane intersection (infinite)
+        // Find translation endpoints via line-plane intersection (infinite).
+        // Wood does not check for failure here; it just calls line_plane unconditionally
+        // and then overrides p10/p11 when e20==e31. We must skip the e20==e31 checks
+        // to avoid a spurious continue when ll[1] is parallel to the plane.
         Point p00, p01, p10, p11;
         if (!Intersection::line_plane(ll[0], plane00_far, p00, false)) continue;
         if (!Intersection::line_plane(ll[0], plane01_near, p01, false)) continue;
-        if (!Intersection::line_plane(ll[1], plane10_far, p10, false)) continue;
-        if (!Intersection::line_plane(ll[1], plane11_near, p11, false)) continue;
-
-        if (e20 == e31) { p10 = p00; p11 = p01; }
+        if (e20 == e31) {
+            p10 = p00; p11 = p01;
+        } else {
+            if (!Intersection::line_plane(ll[1], plane10_far, p10, false)) continue;
+            if (!Intersection::line_plane(ll[1], plane11_near, p11, false)) continue;
+        }
 
         Vector trans0(p00[0]-p01[0], p00[1]-p01[1], p00[2]-p01[2]);
         Vector trans1(p10[0]-p11[0], p10[1]-p11[1], p10[2]-p11[2]);
@@ -2024,12 +2029,13 @@ static std::vector<Polyline> merge_joints_for_element(
 
     // ── Phase C: collect HOLES from side joints (i = 2..N) ──────────────────
     // Wood: wood_element.cpp:1352-1412
+    // Note: shadow joints (link=true) at j_mf.back() are NOT skipped here —
+    // they contribute hole geometry to their female element.
     for (size_t i = 2; i < el_jmf.size(); i++) {
         for (size_t k = 0; k < el_jmf[i].size(); k++) {
             int joint_id = el_jmf[i][k].first;
             bool male_or_female = el_jmf[i][k].second;
             WoodJoint& jt = joints[joint_id];
-            if (jt.link) continue;
             auto& jm  = male_or_female ? jt.m_outlines : jt.f_outlines;
             auto& jct = male_or_female ? jt.m_cut_types : jt.f_cut_types;
             if (jm[0].empty() || jm[1].empty()) continue;
@@ -2051,8 +2057,7 @@ static std::vector<Polyline> merge_joints_for_element(
                 if (ki >= (int)jm[0].size() || ki >= (int)jm[1].size()) continue;
                 Polyline top = jm[0][ki];
                 Polyline bot = jm[1][ki];
-                bool is_cw = top.is_clockwise(el.planes[0]);
-                if (!is_cw) { top.reverse(); bot.reverse(); }
+                if (!top.is_clockwise(el.planes[0])) { top.reverse(); bot.reverse(); }
                 result.push_back(top);
                 result.push_back(bot);
             }
@@ -2073,7 +2078,9 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                         const std::string& pb_name,
                         const std::string& tv_name = "",
                         const std::string& iv_name = "",
-                        const std::string& jt_name = "") {
+                        const std::string& jt_name = "",
+                        double ss_div_dist = 200.0,
+                        double line_ext    = 0.0) {
     using Clock = std::chrono::high_resolution_clock;
     auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
     auto t0 = Clock::now();
@@ -2162,9 +2169,9 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         // (width_ext, height_ext, line_ext) triple, applied to every joint.
         // Width and height grow each joint volume rectangle in its plane;
         // line_ext grows the joint axis at both ends. Negative values shrink.
-        0.0,   // width  extension (edges 0,2)
-        0.0,   // height extension (edges 1,3)
-        0.0,   // joint  axis extension (extend_equally on the alignment line)
+        0.0,      // width  extension (edges 0,2)
+        0.0,      // height extension (edges 1,3)
+        line_ext, // joint  axis extension — wood vidy: JOINT_VOLUME_EXTENSION[2]=-10
     };
     double  limit_min_joint_length      = 0.0;
     double  distance_squared            = 1e-6;
@@ -2253,6 +2260,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             /*rotated_joint_as_average*/ rotated_joint_as_average,
             /*out_joint*/                joint);
         if (!ok) {
+            fmt::print("  FAIL pair ({},{}) coplanar={} boolean={} reason={}\n",
+                       ia, ib, joint.dbg_coplanar, joint.dbg_boolean, joint.dbg_fail_reason);
             ++n_failed;
             continue;
         }
@@ -2306,14 +2315,16 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             //   1 = vidy addition (create shadow joints) + alignment
             int instruction = tv_groups[0].empty() ? 0 : tv_groups[0][0];
             if (instruction == 1) {
-                // Vidy addition: create shadow joints for joint linking
+                // Vidy addition: create shadow joints for joint linking.
+                // Wood switch case 1 — only this runs, NOT annen alignment.
                 size_t before_vidy = all_joints.size();
                 three_valence_joint_addition_vidy(tv_groups, wood_elems, all_joints, joints_map, adjacency_pairs);
                 fmt::print("vidy_addition: {} shadow joints created (total {})\n",
                            all_joints.size() - before_vidy, all_joints.size());
+            } else {
+                // Annen alignment: shorten overlapping joint lines (instruction == 0 only).
+                three_valence_joint_alignment_annen(tv_groups, wood_elems, all_joints, adjacency_pairs);
             }
-            // Annen alignment: shorten overlapping joint lines (always runs)
-            three_valence_joint_alignment_annen(tv_groups, wood_elems, all_joints, adjacency_pairs);
         }
         fmt::print("three_valence: {} groups applied\n", tv_groups.size());
     }
@@ -2412,8 +2423,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         double shift_val;
         switch (j.joint_type) {
             case 11: case 12:
-                div_dist  = 200.0;  // annen overrides default 450 with 200
-                shift_val = 0.64;   // ss_e_op default
+                div_dist  = ss_div_dist; // wood vidy=150, annen=200
+                shift_val = 0.64;        // ss_e_op default
                 break;
             case 13:
                 div_dist  = 300.0;  // ss_e_r default
@@ -2476,10 +2487,11 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
     // Merge joints with plate polylines (polylines only, no meshes).
     // Each element gets its own group so merged plates are selectable per element.
     Color col_merged(50, 50, 50, 255, "merged_dark");
-    // Per-element summary printed to a side file so we can diff against
-    // annen_wood_output_meta.txt line by line.
+    // Per-element summary (meta) + coordinate dump for byte-by-byte comparison with wood.
     std::ofstream meta_out((base / "session_data" /
                             (std::string(pb_name) + "_meta.txt")).string());
+    std::ofstream coord_out((base / "session_data" /
+                             (std::string(pb_name) + "_coords.txt")).string());
     for (size_t ei = 0; ei < n_elems; ei++) {
         auto merged = merge_joints_for_element(wood_elems[ei], j_mf[ei], all_joints);
         auto g_el = session.add_group(fmt::format("element_{}", ei));
@@ -2495,8 +2507,19 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         for (size_t mi = 0; mi < merged.size(); mi++)
             meta_out << ' ' << merged[mi].point_count();
         meta_out << '\n';
+        // Coordinate dump: matches wood's out.xml polyline_group[ei] structure
+        coord_out << "element " << ei << "\n";
+        for (size_t mi = 0; mi < merged.size(); mi++) {
+            coord_out << "  poly " << mi << ":";
+            for (size_t pi = 0; pi < merged[mi].point_count(); pi++) {
+                Point p = merged[mi].get_point(pi);
+                coord_out << " " << p[0] << " " << p[1] << " " << p[2];
+            }
+            coord_out << "\n";
+        }
     }
     meta_out.close();
+    coord_out.close();
 
     // Store joint detection results (areas, lines, volumes) in typed/colored groups.
     for (size_t ji = 0; ji < all_joints.size(); ji++) {
@@ -2580,7 +2603,9 @@ int main() {
                 "WoodF2F_vidy_corner.pb",
                 "vidy_corner_three_valence.txt",
                 "",
-                "vidy_corner_joints_types.txt");
+                "vidy_corner_joints_types.txt",
+                150.0,   // wood: JOINTS_PARAMETERS_AND_TYPES[1*3+0]=150
+                -10.0);  // wood: JOINT_VOLUME_EXTENSION[2]=-10
 
     return 0;
 }
