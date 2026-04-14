@@ -427,10 +427,15 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 11: ss_e_op_2(joint); break;
                 case 12: ss_e_op_0(joint); break;
                 case 13: ss_e_op_3(joint); break;
-                case 14: ss_e_op_4(joint); break;
+                case 14: ss_e_op_4(joint, 0.0, true); break;
                 case 15: if (all_joints) ss_e_op_5(joint, *all_joints, false); else ss_e_op_4(joint); break;
                 case 16: if (all_joints) ss_e_op_5(joint, *all_joints, true); else ss_e_op_4(joint); break;
-                default: if (all_joints) ss_e_op_5(joint, *all_joints, false); else ss_e_op_4(joint); break;
+                default:
+                    // id<0: topology-based (no jt file, vidy-style) → ss_e_op_5
+                    // id≥0 with no specific case: wood falls to ss_e_op_1
+                    if (id < 0) { if (all_joints) ss_e_op_5(joint, *all_joints, false); else ss_e_op_4(joint); }
+                    else ss_e_op_1(joint);
+                    break;
             }
             break;
         case 2: // ts_e_p (top-side, type 20) -- wood:6395-6448
@@ -2106,7 +2111,9 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                         double ss_div_dist = 200.0,
                         double line_ext    = 0.0,
                         std::vector<double> ext_vec = {},
-                        bool remove_duplicate_pts = false) {
+                        bool remove_duplicate_pts = false,
+                        int joint_count = 0,
+                        double ss_op_shift = 0.64) {
     using Clock = std::chrono::high_resolution_clock;
     auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
     auto t0 = Clock::now();
@@ -2462,14 +2469,20 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
             }
         }
 
+        // When no jt file (id=-1) and caller provided a joint_count override,
+        // resolve to that id — mirrors wood's default_parameters_for_four_types[group*3+2]
+        // lookup in wood_joint_lib.cpp:6191-6196.
+        if (id_representing_joint_name == -1 && joint_count > 0)
+            id_representing_joint_name = joint_count;
+
         if (j.link) continue; // shadow joints: geometry set by ss_e_op_5, orient+merge below
 
         double div_dist;
         double shift_val;
         switch (j.joint_type) {
             case 11: case 12:
-                div_dist  = ss_div_dist; // wood vidy=150, annen=200
-                shift_val = 0.64;        // ss_e_op default
+                div_dist  = ss_div_dist;
+                shift_val = ss_op_shift;
                 break;
             case 13:
                 div_dist  = 300.0;  // ss_e_r default
@@ -2602,64 +2615,28 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
 }
 
 int main() {
-    // Example 1: precomputed adjacency + three_valence + insertion vectors + joints_types
-    run_dataset("annen_grid_small.obj",
-                "annen_grid_small_adjacency.txt",
-                "WoodF2F_annen.pb",
-                "annen_grid_small_three_valence.txt",
-                "annen_grid_small_insertion_vectors.txt",
-                "annen_grid_small_joints_types.txt");
+    // Calls ordered to match wood_test.cpp function order.
 
-    // Example 2: OBB+BVH adjacency (no precomputed, like most wood datasets)
-    run_dataset("annen_box_pair.obj", "",
-                "WoodF2F_annen_box_pair.pb");
-
-    // Example 3: different geometry type
+    // wood line 204: hexbox_and_corner
     run_dataset("hexbox_and_corner.obj", "",
                 "WoodF2F_hexbox.pb");
 
-    // Example 4: cross-joint dataset (exercises cr_c_ip constructors)
-    run_dataset("cross_corners.obj", "",
-                "WoodF2F_cross_corners.pb");
-
-    // Example 5: side-to-side in-plane butterflies (exercises ss_e_ip)
-    run_dataset("inplane_butterflies.obj", "",
-                "WoodF2F_inplane_butterflies.pb");
-
-    // Example 6: cross VDA corner (another cr_c_ip dataset)
-    run_dataset("cross_vda_corner.obj", "",
-                "WoodF2F_cross_vda_corner.pb");
-
-    // Example 7: side-to-side out-of-plane box (exercises ss_e_op)
-    run_dataset("outofplane_box.obj", "",
-                "WoodF2F_outofplane_box.pb");
-
-    // Example 8: Vidy folding (20 folded plates with insertion vectors)
-    run_dataset("vidy_folding.obj", "",
-                "WoodF2F_vidy_folding.pb",
-                "",  // no three_valence
-                "vidy_folding_insertion_vectors.txt");
-
-    // Example 9: Vidy chapel corner (42 plates, three-valence, types 15/16)
-    // ss_e_op_5/6 with joint linking via three_valence_joint_addition_vidy.
+    // wood line 265: vidy_corner
     run_dataset("vidy_corner.obj",
                 "vidy_corner_adjacency.txt",
                 "WoodF2F_vidy_corner.pb",
                 "vidy_corner_three_valence.txt",
                 "",
                 "vidy_corner_joints_types.txt",
-                150.0,   // wood: JOINTS_PARAMETERS_AND_TYPES[1*3+0]=150
-                -10.0);  // wood: JOINT_VOLUME_EXTENSION[2]=-10
+                150.0, -10.0);
 
-    // Example 10: Vidy one_layer (42 plates, all auto-detect, div_dist=50, line_ext=-15)
-    // wood: read_xml_polylines called with remove_duplicates=true (wood_test.cpp:435)
+    // wood line 428: vidy_one_layer
     run_dataset("vidy_one_layer.obj", "",
                 "WoodF2F_vidy_one_layer.pb",
                 "", "", "",
                 50.0, -15.0, {}, true);
 
-    // Example 11: Vidy one_axis_two_layers (18 plates, per-joint ext_vec, div_dist=50)
-    // wood: JOINT_VOLUME_EXTENSION = {0,0,-200,0,0,-200,0,0,-20,0,0,-20}
+    // wood line 488: vidy_one_axis_two_layers
     run_dataset("vidy_one_axis_two_layers.obj",
                 "vidy_one_axis_two_layers_adjacency.txt",
                 "WoodF2F_vidy_one_axis_two_layers.pb",
@@ -2669,7 +2646,7 @@ int main() {
                 50.0, 0.0,
                 {0,0,-200,0,0,-200,0,0,-20,0,0,-20});
 
-    // Example 12: Vidy full (84 plates, div_dist=50, line_ext=-10)
+    // wood line 611: vidy_full
     run_dataset("vidy_full.obj",
                 "vidy_full_adjacency.txt",
                 "WoodF2F_vidy_full.pb",
@@ -2677,6 +2654,106 @@ int main() {
                 "vidy_full_insertion_vectors.txt",
                 "vidy_full_joints_types.txt",
                 50.0, -10.0);
+
+    // wood line 888: inplane_butterflies
+    run_dataset("inplane_butterflies.obj", "",
+                "WoodF2F_inplane_butterflies.pb");
+
+    // wood line 1129: outofplane_folding
+    // JOINT_VOLUME_EXTENSION[2]=-20; per-element insertion vectors
+    run_dataset("vidy_folding.obj", "",
+                "WoodF2F_vidy_folding.pb",
+                "", "vidy_folding_insertion_vectors.txt", "",
+                200.0, -20.0);
+
+    // wood line 1384: outofplane_box
+    // [1*3+2]=17; JOINT_VOLUME_EXTENSION[2]=-100; div_dist=450 (global default)
+    run_dataset("outofplane_box.obj", "",
+                "WoodF2F_outofplane_box.pb",
+                "", "", "",
+                450.0, -100.0, {}, false, 17);
+
+    // wood line 1440: outofplane_tetra
+    // [1*3+1]=0.5; [1*3+2]=17; JOINT_VOLUME_EXTENSION[2]=-100; div_dist=450
+    run_dataset("outofplane_tetra.obj", "",
+                "WoodF2F_outofplane_tetra.pb",
+                "", "", "",
+                450.0, -100.0, {}, false, 17, 0.5);
+
+    // wood line 1497: outofplane_dodecahedron
+    // [1*3+0]=1000; [1*3+1]=0.5; [1*3+2]=14; JOINT_VOLUME_EXTENSION[2]=-250
+    run_dataset("outofplane_dodecahedron.obj", "",
+                "WoodF2F_outofplane_dodecahedron.pb",
+                "", "", "",
+                1000.0, -250.0, {}, false, 14, 0.5);
+
+    // wood line 1555: outofplane_icosahedron
+    // [1*3+0]=1000; [1*3+1]=0.5; [1*3+2]=14; JOINT_VOLUME_EXTENSION[2]=-250
+    run_dataset("outofplane_icosahedron.obj", "",
+                "WoodF2F_outofplane_icosahedron.pb",
+                "", "", "",
+                1000.0, -250.0, {}, false, 14, 0.5);
+
+    // wood line 1613: outofplane_octahedron
+    // [1*3+0]=1000; [1*3+1]=0.5; [1*3+2]=14; JOINT_VOLUME_EXTENSION[2]=-250
+    run_dataset("outofplane_octahedron.obj", "",
+                "WoodF2F_outofplane_octahedron.pb",
+                "", "", "",
+                1000.0, -250.0, {}, false, 14, 0.5);
+
+    // wood line 1671: simple_corners
+    // [0*3+2]=2; [1*3+2]=12; JOINT_VOLUME_EXTENSION[2]=-20
+    run_dataset("simple_corners.obj", "",
+                "WoodF2F_simple_corners.pb",
+                "", "", "",
+                200.0, -20.0);
+
+    // wood line 1729: simple_corners_combined
+    // [0*3+2]=2; [1*3+2]=12; JOINT_VOLUME_EXTENSION[2]=-20
+    run_dataset("simple_corners_combined.obj", "",
+                "WoodF2F_simple_corners_combined.pb",
+                "", "", "",
+                200.0, -20.0);
+
+    // wood line 1787: simple_corners_diff_lengths
+    // [0,1]*3+{0,1,2}={140,0.5,1}; {140,0.5,10}; JOINT_VOLUME_EXTENSION[2]=-20
+    run_dataset("simple_corners_diff_lengths.obj", "",
+                "WoodF2F_simple_corners_diff_lengths.pb",
+                "", "", "",
+                140.0, -20.0);
+
+    // wood line 1912: top_to_top_pairs
+    // JOINT_VOLUME_EXTENSION[2]=-10
+    run_dataset("top_to_top_pairs.obj", "",
+                "WoodF2F_top_to_top_pairs.pb",
+                "", "", "",
+                200.0, -10.0);
+
+    // wood line 2488: annen_box_pair
+    run_dataset("annen_box_pair.obj", "",
+                "WoodF2F_annen_box_pair.pb");
+
+    // wood line 2698: annen_grid_small
+    run_dataset("annen_grid_small.obj",
+                "annen_grid_small_adjacency.txt",
+                "WoodF2F_annen.pb",
+                "annen_grid_small_three_valence.txt",
+                "annen_grid_small_insertion_vectors.txt",
+                "annen_grid_small_joints_types.txt");
+
+    // wood line 3016: cross_corners
+    // search_type=1 in wood; JOINT_VOLUME_EXTENSION[1]=2 → ext_vec={0,2,0}
+    run_dataset("cross_corners.obj", "",
+                "WoodF2F_cross_corners.pb",
+                "", "", "",
+                200.0, 0.0, {0, 2, 0});
+
+    // wood line 3080: cross_vda_corner
+    // search_type=1 in wood; JOINT_VOLUME_EXTENSION[1]=2 → ext_vec={0,2,0}
+    run_dataset("cross_vda_corner.obj", "",
+                "WoodF2F_cross_vda_corner.pb",
+                "", "", "",
+                200.0, 0.0, {0, 2, 0});
 
     return 0;
 }
