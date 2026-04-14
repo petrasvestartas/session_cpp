@@ -430,7 +430,7 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 14: ss_e_op_4(joint); break;
                 case 15: if (all_joints) ss_e_op_5(joint, *all_joints, false); else ss_e_op_4(joint); break;
                 case 16: if (all_joints) ss_e_op_5(joint, *all_joints, true); else ss_e_op_4(joint); break;
-                default: ss_e_op_1(joint); break;
+                default: if (all_joints) ss_e_op_5(joint, *all_joints, false); else ss_e_op_4(joint); break;
             }
             break;
         case 2: // ts_e_p (top-side, type 20) -- wood:6395-6448
@@ -688,8 +688,14 @@ static bool face_to_face_wood(
             // Coplanarity check matching wood's cgal::plane_util::is_coplanar:
             // 1. Check anti-parallel (is_parallel_to == -1)
             // 2. Check squared_distance(projection, point) < DISTANCE_SQUARED
-            int parallel = n0.is_parallel_to(n1);
-            if (parallel != -1) continue;
+            // Wood uses ANGLE = 0.11 RADIANS (cos ≈ 0.9940, ~6.3°), not 0.11 degrees.
+            // Session's Vector::is_parallel_to uses ANGLE_TOLERANCE_DEGREES=0.11° which
+            // is far too strict and misses ts_e_p connections in one_layer/full datasets.
+            {
+                double n0n1 = n0[0]*n1[0]+n0[1]*n1[1]+n0[2]*n1[2];
+                double ll = std::sqrt((n0[0]*n0[0]+n0[1]*n0[1]+n0[2]*n0[2])*(n1[0]*n1[0]+n1[1]*n1[1]+n1[2]*n1[2]));
+                if (ll <= 0.0 || n0n1/ll > -std::cos(0.11)) continue; // not antiparallel
+            }
             // Projection-based distance (invariant to normal magnitude):
             double mag0_sq = n0[0]*n0[0]+n0[1]*n0[1]+n0[2]*n0[2];
             double mag1_sq = n1[0]*n1[0]+n1[1]*n1[1]+n1[2]*n1[2];
@@ -805,7 +811,6 @@ static bool face_to_face_wood(
                 dir = (i > j) ? insertion_vectors_0[i] : insertion_vectors_1[j];
                 dir_set = (std::abs(dir[0]) + std::abs(dir[1]) + std::abs(dir[2])) > 0.01;
             }
-
             // 9. Branch on joint type.
             std::array<Line, 2> joint_lines = {
                 Line::from_points(Point(0,0,0), Point(0,0,0)),
@@ -821,13 +826,25 @@ static bool face_to_face_wood(
                 joint_lines[1] = joint_line1;
 
                 // Are the two side faces' alignment lines parallel?
+                // Wood uses ANGLE=0.11 radians (~6.3°) not degrees.
                 Vector v0(joint_line0.start()[0] - joint_line0.end()[0],
                           joint_line0.start()[1] - joint_line0.end()[1],
                           joint_line0.start()[2] - joint_line0.end()[2]);
                 Vector v1(joint_line1.start()[0] - joint_line1.end()[0],
                           joint_line1.start()[1] - joint_line1.end()[1],
                           joint_line1.start()[2] - joint_line1.end()[2]);
-                int parallel = v0.is_parallel_to(v1);
+                int parallel;
+                {
+                    static const double wood_cos_tol = std::cos(0.11);
+                    double ll_ = v0.magnitude() * v1.magnitude();
+                    if (ll_ <= 0.0) { parallel = 0; }
+                    else {
+                        double ca = (v0[0]*v1[0] + v0[1]*v1[1] + v0[2]*v1[2]) / ll_;
+                        if      (ca >=  wood_cos_tol) parallel =  1;
+                        else if (ca <= -wood_cos_tol) parallel = -1;
+                        else                          parallel =  0;
+                    }
+                }
 
                 if (parallel == 0 || all_treated_as_rotated) {
                     // ────────────────────────────────────────────────────────
@@ -999,7 +1016,7 @@ static bool face_to_face_wood(
                     Plane pl_end1 = Plane::from_point_normal(lj_e, pl_end0_n);
 
                     // Dihedral angle of the joint edge in the tetrahedron
-                    // (lj.start, lj.end, center0, center1).
+                    // (lj.start, lj.end, center0, center1). Matches CGAL::approximate_dihedral_angle.
                     Point center0 = avg_plane_0.project(polylines_0[0].center());
                     Point center1 = avg_plane_1.project(polylines_1[0].center());
                     double dihedral = Point::dihedral_angle_deg(
@@ -1411,17 +1428,23 @@ static void three_valence_joint_addition_vidy(
         int s0 = g[0], s1 = g[1], e20 = g[2], e31 = g[3];
         int n_elems = (int)elements.size();
         if (s0 < 0 || s1 < 0 || e20 < 0 || e31 < 0) continue;
-        if (s0 >= n_elems || s1 >= n_elems || e20 >= n_elems || e31 >= n_elems) continue;
+        if (s0 >= n_elems || s1 >= n_elems) continue;
+        // Match wood's behavior: out-of-range e20/e31 causes UB → huge vsum → return
+        if (e20 >= n_elems || e31 >= n_elems) return;
 
-        // Parallel check (wood lines 1610-1624)
+        // Parallel check matching wood's is_same_direction(can_be_flipped=true)
+        // wood: is_parallel_to != 0 → |cos_angle| >= cos(0.11) ≈ 0.994
         if (e20 != e31) {
+            auto is_parallel_wood = [](const Vector& a, const Vector& b) -> bool {
+                double ll = a.magnitude() * b.magnitude();
+                if (ll <= 0.0) return false;
+                return std::abs(a.dot(b) / ll) >= std::cos(0.11);
+            };
             Vector n_s0 = elements[s0].planes[0].z_axis();
             Vector n_e31 = elements[e31].planes[0].z_axis();
             Vector n_s1 = elements[s1].planes[0].z_axis();
             Vector n_e20 = elements[e20].planes[0].z_axis();
-            bool same_dir_0 = (n_s0.dot(n_e31) > 0);
-            bool same_dir_1 = (n_s1.dot(n_e20) > 0);
-            if (!same_dir_0 || !same_dir_1) continue;
+            if (!is_parallel_wood(n_s0, n_e31) || !is_parallel_wood(n_s1, n_e20)) continue;
         }
 
         // Find primary joint between s0-s1
@@ -1817,7 +1840,8 @@ static std::vector<Polyline> merge_joints_for_element(
             Vector x_axis(j0_e[0]-j0_s[0], j0_e[1]-j0_s[1], j0_e[2]-j0_s[2]);
             Vector y_axis(j0_s[0]-j1_s[0], j0_s[1]-j1_s[1], j0_s[2]-j1_s[2]);
             Vector z_axis = x_axis.cross(y_axis);
-            if (z_axis.magnitude() > 1e-12) {
+            bool z_axis_valid = (z_axis.magnitude() > 1e-12);
+            if (z_axis_valid) {
                 joint_planes[i] = Plane::from_point_normal(j0_s, z_axis);
             }
 
@@ -1830,13 +1854,14 @@ static std::vector<Polyline> merge_joints_for_element(
             // 4 plane-plane-plane intersections to compute the relocated
             // plate vertices at this joint's two ends, top and bottom.
             // wood_element.cpp:894-901
-            // session's plane_plane_plane returns false on parallel planes,
-            // matching wood's `plane_plane_plane_with_parallel_check`.
+            // When z_axis=0 (degenerate endpoint marker), wood assigns a zero-normal
+            // plane which makes all intersections fail → plate vertices stay at
+            // original positions. We replicate this by skipping the intersections.
             Point p0_int, p1_int, p2_int, p3_int;
-            bool is_intersected_0 = Intersection::plane_plane_plane(joint_planes[2 + prev], joint_planes[i], joint_planes[0], p0_int);
-            bool is_intersected_1 = Intersection::plane_plane_plane(joint_planes[2 + next], joint_planes[i], joint_planes[0], p1_int);
-            bool is_intersected_2 = Intersection::plane_plane_plane(joint_planes[2 + prev], joint_planes[i], joint_planes[1], p2_int);
-            bool is_intersected_3 = Intersection::plane_plane_plane(joint_planes[2 + next], joint_planes[i], joint_planes[1], p3_int);
+            bool is_intersected_0 = z_axis_valid && Intersection::plane_plane_plane(joint_planes[2 + prev], joint_planes[i], joint_planes[0], p0_int);
+            bool is_intersected_1 = z_axis_valid && Intersection::plane_plane_plane(joint_planes[2 + next], joint_planes[i], joint_planes[0], p1_int);
+            bool is_intersected_2 = z_axis_valid && Intersection::plane_plane_plane(joint_planes[2 + prev], joint_planes[i], joint_planes[1], p2_int);
+            bool is_intersected_3 = z_axis_valid && Intersection::plane_plane_plane(joint_planes[2 + next], joint_planes[i], joint_planes[1], p3_int);
 
             // Back-relocation: if the immediately previous edge also had a
             // joint AND the current joint line is OFFSET from the original
@@ -1881,10 +1906,9 @@ static std::vector<Polyline> merge_joints_for_element(
             last_id = (int)i;
 
             // is_geo_flipped: reverse the joint outline if the data orientation
-            // doesn't match the polygon walk direction. Wood reads the original
-            // (pre-swap) m[0] outline as the reference: after `joint::reverse`
-            // the slot `(male, !is_geo_reversed)` always returns the original
-            // m[0]. After our swap, that slot is jm[is_geo_reversed ? 1 : 0].
+            // doesn't match the polygon walk direction. Wood reads
+            // `(male, !is_geo_reversed)[0]` as the reference. After our swap,
+            // that slot is jm[is_geo_reversed ? 1 : 0][0].
             // wood_element.cpp:1003-1010
             //
             // Wood compares against pline0[id+1]. id+1 may equal n; pline0 is
@@ -1950,8 +1974,8 @@ static std::vector<Polyline> merge_joints_for_element(
             }
         }
 
-        // Concatenate everything in sorted order, then close.
-        // wood_element.cpp:1178-1182, 1252
+        // Concatenate everything in sorted order then close.
+        // wood_element.cpp:1178-1182, 1252 — no deduplication, wood preserves C_dup
         std::vector<Point> merged;
         for (auto& kv : sorted)
             for (size_t pi = 0; pi < kv.second.second.point_count(); pi++)
@@ -2029,8 +2053,8 @@ static std::vector<Polyline> merge_joints_for_element(
 
     // ── Phase C: collect HOLES from side joints (i = 2..N) ──────────────────
     // Wood: wood_element.cpp:1352-1412
-    // Note: shadow joints (link=true) at j_mf.back() are NOT skipped here —
-    // they contribute hole geometry to their female element.
+    // Shadow joints (link=true) ARE included — ss_e_op_5 creates ss_e_op_4
+    // geometry for them; the female side has holes that must be collected here.
     for (size_t i = 2; i < el_jmf.size(); i++) {
         for (size_t k = 0; k < el_jmf[i].size(); k++) {
             int joint_id = el_jmf[i][k].first;
@@ -2080,7 +2104,9 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
                         const std::string& iv_name = "",
                         const std::string& jt_name = "",
                         double ss_div_dist = 200.0,
-                        double line_ext    = 0.0) {
+                        double line_ext    = 0.0,
+                        std::vector<double> ext_vec = {},
+                        bool remove_duplicate_pts = false) {
     using Clock = std::chrono::high_resolution_clock;
     auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
     auto t0 = Clock::now();
@@ -2090,6 +2116,22 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
     // 1. Load polylines (consecutive pairs from wood XML export).
     auto polylines = obj::read_obj_polylines(
         (base / "session_data" / obj_name).string());
+    // wood_xml.cpp:135-138: remove consecutive duplicates when flagged
+    // (wood's type_plates_name_joint_linking_vidychapel_one_layer passes true)
+    if (remove_duplicate_pts) {
+        const double DIST_SQ = 0.01;
+        for (auto& pl : polylines) {
+            auto pts = pl.get_points();
+            std::vector<Point> cleaned;
+            cleaned.reserve(pts.size());
+            for (auto& p : pts) {
+                if (cleaned.empty()) { cleaned.push_back(p); continue; }
+                double dx=p[0]-cleaned.back()[0], dy=p[1]-cleaned.back()[1], dz=p[2]-cleaned.back()[2];
+                if (dx*dx+dy*dy+dz*dz >= DIST_SQ) cleaned.push_back(p);
+            }
+            pl = Polyline(cleaned);
+        }
+    }
     std::vector<std::pair<int,int>> pairs;
     for (size_t i = 0; i + 1 < polylines.size(); i += 2)
         pairs.emplace_back(static_cast<int>(i), static_cast<int>(i + 1));
@@ -2165,14 +2207,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
     //    No globals, no config struct — every tunable is right here so the
     //    caller can see what knobs the algorithm exposes. The names match
     //    the original wood::GLOBALS::* fields one-for-one.
-    std::vector<double> joint_volume_extension = {
-        // (width_ext, height_ext, line_ext) triple, applied to every joint.
-        // Width and height grow each joint volume rectangle in its plane;
-        // line_ext grows the joint axis at both ends. Negative values shrink.
-        0.0,      // width  extension (edges 0,2)
-        0.0,      // height extension (edges 1,3)
-        line_ext, // joint  axis extension — wood vidy: JOINT_VOLUME_EXTENSION[2]=-10
-    };
+    std::vector<double> joint_volume_extension =
+        ext_vec.empty() ? std::vector<double>{0.0, 0.0, line_ext} : ext_vec;
     double  limit_min_joint_length      = 0.0;
     double  distance_squared            = 1e-6;
     double  coplanar_tolerance          = 0.01; // DISTANCE_SQUARED, used as squared distance
@@ -2224,6 +2260,15 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
         }
         fmt::print("insertion_vectors: {} vectors across {} elements from {}\n",
                    total_loaded, ei, iv_name);
+    }
+    // Wood reverses side-face insertion vectors when an element is orientation-
+    // reversed (same as wood_main.cpp get_elements line 156-157).
+    for (size_t ei = 0; ei < wood_elems.size(); ei++) {
+        if (wood_elems[ei].reversed) {
+            auto& vecs = per_element_insertion_vectors[ei];
+            if (vecs.size() > 2)
+                std::reverse(vecs.begin() + 2, vecs.end());
+        }
     }
 
     int counts[6] = {0, 0, 0, 0, 0, 0}; // [11, 12, 13, 20, 30, 40]
@@ -2461,9 +2506,8 @@ static void run_dataset(const std::string& obj_name, const std::string& adj_name
 
     // Build per-element j_mf mapping: j_mf[element_id][face_id] = [(joint_idx, is_male)]
     // Wood sizes j_mf as (sides)+2+1: +1 is the extra slot for shadow joints (j_mf.back()).
-    // The merge iterator `i < planes.size()` excludes the extra slot, so shadow joints
-    // placed there are never processed during plate merge — they exist only to mirror wood's
-    // data layout. After merge_linked_joints clears their outlines they are harmless.
+    // Phase C in merge_joints_for_element processes j_mf.back() — shadow joints carry
+    // f_outlines (holes) set by ss_e_op_4 called inside ss_e_op_5 for the primary joint.
     size_t n_elems = wood_elems.size();
     JMF j_mf(n_elems);
     for (size_t ei = 0; ei < n_elems; ei++)
@@ -2606,6 +2650,33 @@ int main() {
                 "vidy_corner_joints_types.txt",
                 150.0,   // wood: JOINTS_PARAMETERS_AND_TYPES[1*3+0]=150
                 -10.0);  // wood: JOINT_VOLUME_EXTENSION[2]=-10
+
+    // Example 10: Vidy one_layer (42 plates, all auto-detect, div_dist=50, line_ext=-15)
+    // wood: read_xml_polylines called with remove_duplicates=true (wood_test.cpp:435)
+    run_dataset("vidy_one_layer.obj", "",
+                "WoodF2F_vidy_one_layer.pb",
+                "", "", "",
+                50.0, -15.0, {}, true);
+
+    // Example 11: Vidy one_axis_two_layers (18 plates, per-joint ext_vec, div_dist=50)
+    // wood: JOINT_VOLUME_EXTENSION = {0,0,-200,0,0,-200,0,0,-20,0,0,-20}
+    run_dataset("vidy_one_axis_two_layers.obj",
+                "vidy_one_axis_two_layers_adjacency.txt",
+                "WoodF2F_vidy_one_axis_two_layers.pb",
+                "vidy_one_axis_two_layers_three_valence.txt",
+                "vidy_one_axis_two_layers_insertion_vectors.txt",
+                "vidy_one_axis_two_layers_joints_types.txt",
+                50.0, 0.0,
+                {0,0,-200,0,0,-200,0,0,-20,0,0,-20});
+
+    // Example 12: Vidy full (84 plates, div_dist=50, line_ext=-10)
+    run_dataset("vidy_full.obj",
+                "vidy_full_adjacency.txt",
+                "WoodF2F_vidy_full.pb",
+                "vidy_full_three_valence.txt",
+                "vidy_full_insertion_vectors.txt",
+                "vidy_full_joints_types.txt",
+                50.0, -10.0);
 
     return 0;
 }
