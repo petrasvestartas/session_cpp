@@ -2404,7 +2404,14 @@ bool Intersection::offset_in_3d(Polyline& polyline, const Plane& plane, double o
         double cos_a = np.x*nn.x + np.y*nn.y;
         double sin_a = np.x*nn.y - np.y*nn.x;
         double denom = 1.0 + cos_a;
-        bool concave = (cos_a > -0.999) && (sin_a * delta < 0.0);
+        // 3-vertex concave emission is only correct for OUTER offsets
+        // (user `offset > 0`). For inner offsets, Clipper2 also emits 3
+        // vertices but then runs a finishing Vatti union with
+        // fill-rule-Negative to cancel the inward tabs. Session does not
+        // replicate that cleanup, so we must use the single miter bisector
+        // for inner offsets — which equals Clipper2's post-cleanup output
+        // at convex corners.
+        bool concave = (cos_a > -0.999) && (sin_a * delta < 0.0) && (offset > 0.0);
         if (concave) {
             // 3-vertex emission at reflex corner.
             out.push_back({ path[i].x + np.x * delta, path[i].y + np.y * delta });
