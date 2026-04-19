@@ -41,7 +41,17 @@ inline void v_cvt_to_dbl(double* dst, BIVec2 pt, double inv_scale) {
 }
 #endif
 
-enum : uint32_t { VF_None=0, VF_LocalMax=4, VF_LocalMin=8 };
+enum : uint32_t {
+    VF_None = 0,
+    VF_LocalMax = 4,
+    VF_LocalMin = 8,
+    // Open-subject path endpoint markers. Set by v_add_path*(is_open=true)
+    // on the first / last vertex of an open polyline. Used by
+    // v_intersect_edges to recognize an open-edge starting point and by
+    // output extraction to terminate linear traversal.
+    VF_OpenStart = 16,
+    VF_OpenEnd   = 32,
+};
 
 struct VVertex {
     BIVec2 pt;
@@ -67,6 +77,10 @@ struct VOutRec {
     struct VActive* back_edge = nullptr;
     VOutPt* pts = nullptr;
     VOutRec* owner = nullptr;
+    // Marks output regions produced by open-subject paths. Such OutRecs
+    // have a linear (non-circular) VOutPt chain and are emitted as open
+    // polylines rather than closed polygons.
+    bool is_open = false;
 };
 
 struct VActive {
@@ -145,11 +159,16 @@ struct VattiScratch {
     int64_t bot_y = 0;
     size_t locmin_idx = 0;
     bool succeeded = true;
+    // Set by v_add_path*(is_open=true, polytype=2). When false, the sweep
+    // runs the original closed-vs-closed logic; when true, open-subject
+    // branches in v_intersect_edges / v_is_contributing are taken.
+    bool has_open_subj = false;
     void reset() {
         vtx_pool.reset(); act_pool.reset(); opt_pool.reset(); orc_pool.reset();
         locmin_list.clear(); intersect_nodes.clear(); horz_seg_list.clear();
         horz_join_list.clear(); outrec_list.clear(); scanline_list.clear();
         actives = nullptr; sel = nullptr; bot_y = 0; locmin_idx = 0; succeeded = true;
+        has_open_subj = false;
     }
     VVertex* new_vertex() { auto* v = vtx_pool.alloc(); *v = VVertex{}; return v; }
     VActive* new_active() { auto* a = act_pool.alloc(); *a = VActive{}; return a; }
@@ -294,14 +313,16 @@ static bool pip_vertex(BIVec2 pt, VVertex* head) {
 #if VATTI_HAS_SSE2
 static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t polytype,
     __m128d sv, VattiScratch& sc,
-    int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY)
+    int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY,
+    bool is_open = false)
 #else
 static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t polytype,
     double sv, VattiScratch& sc,
-    int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY)
+    int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY,
+    bool is_open = false)
 #endif
 {
-    if (n < 3) return nullptr;
+    if (n < (is_open ? 2 : 3)) return nullptr;
     auto& pool = sc.vtx_pool;
     pool.ensure(pool.count + n);
     VVertex* base = &pool.buf[pool.count];
@@ -327,32 +348,103 @@ static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t poly
         if (pt.x < minX) minX = pt.x; else if (pt.x > maxX) maxX = pt.x;
         if (pt.y < minY) minY = pt.y; else if (pt.y > maxY) maxY = pt.y;
     }
-    if (cnt < 3) return nullptr;
-    if (prev_v->pt == base[0].pt) { prev_v = prev_v->prev; cnt--; }
-    if (cnt < 3) return nullptr;
+    if (cnt < (is_open ? 2 : 3)) return nullptr;
+    // Closing-duplicate strip: applied only for closed paths. Open paths
+    // may legitimately start and end at the same point (self-closing open
+    // polyline); don't strip.
+    if (!is_open && prev_v->pt == base[0].pt) { prev_v = prev_v->prev; cnt--; }
+    if (cnt < (is_open ? 2 : 3)) return nullptr;
     pool.count += cnt;
-    prev_v->next = &base[0]; base[0].prev = prev_v;
+    if (!is_open) {
+        // Closed: circularize. Standard Vatti vertex-list convention.
+        prev_v->next = &base[0]; base[0].prev = prev_v;
 
-    // Local minima detection
-    VVertex* pv = base[0].prev;
-    while (pv != &base[0] && pv->pt.y == base[0].pt.y) pv = pv->prev;
-    if (pv == &base[0]) return &base[0];
-    bool going_up = pv->pt.y > base[0].pt.y, going_up0 = going_up;
-    pv = &base[0]; VVertex* cv = base[0].next;
-    while (cv != &base[0]) {
-        if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
-        else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+        // Local minima detection — closed-path traversal (wraps around).
+        VVertex* pv = base[0].prev;
+        while (pv != &base[0] && pv->pt.y == base[0].pt.y) pv = pv->prev;
+        if (pv == &base[0]) return &base[0];
+        bool going_up = pv->pt.y > base[0].pt.y, going_up0 = going_up;
+        pv = &base[0]; VVertex* cv = base[0].next;
+        while (cv != &base[0]) {
+            if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
+            else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+            pv = cv; cv = cv->next;
+        }
+        if (going_up != going_up0) {
+            if (going_up0) { pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+            else pv->flags |= VF_LocalMax;
+        }
+        return &base[0];
+    }
+
+    // Open-subject path. Linear list (next/prev pointers terminate at
+    // endpoints — base[0].prev stays nullptr, last vertex's next stays
+    // nullptr as set by VVertex{} default). Mark endpoints with
+    // VF_OpenStart / VF_OpenEnd. Rules mirror Clipper2
+    // AddPaths_(is_open=true) at clipper.engine.cpp:654-703:
+    //   - First vertex is ALWAYS a local minimum (added to locmin_list).
+    //     If the y-trajectory starts ascending, first vertex marked
+    //     VF_LocalMin. If descending, first vertex marked VF_LocalMax
+    //     AND still a local min in the sweep sense.
+    //   - Interior direction changes create minima/maxima as normal.
+    //   - Last vertex: if descending, marked VF_LocalMin + added to
+    //     locmin_list (the path terminates going down → local min).
+    //     If ascending, marked VF_LocalMax.
+    VVertex* v0 = &base[0];
+    v0->flags |= VF_OpenStart;
+    // Find the first neighbour with a DIFFERENT y to determine initial direction.
+    VVertex* nv = v0->next;
+    while (nv && nv->pt.y == v0->pt.y) nv = nv->next;
+    bool going_up;
+    if (!nv) {
+        // All vertices at same y — degenerate (no scanline work). Mark
+        // endpoints so sweep doesn't trip; return early.
+        v0->flags |= VF_LocalMin;
+        sc.locmin_list.push_back({v0, polytype});
+        prev_v->flags |= VF_OpenEnd | VF_LocalMax;
+        sc.has_open_subj = (polytype == 2);
+        return v0;
+    }
+    going_up = nv->pt.y > v0->pt.y;
+    if (going_up) {
+        v0->flags |= VF_LocalMin;
+        sc.locmin_list.push_back({v0, polytype});
+    } else {
+        v0->flags |= VF_LocalMax;
+    }
+    // Interior minima/maxima.
+    VVertex* pv = v0;
+    VVertex* cv = v0->next;
+    while (cv && cv->next) {
+        if (cv->pt.y > pv->pt.y && going_up) {
+            cv->flags |= VF_LocalMax; going_up = false;
+        } else if (cv->pt.y < pv->pt.y && !going_up) {
+            going_up = true;
+            cv->flags |= VF_LocalMin;
+            sc.locmin_list.push_back({cv, polytype});
+        }
         pv = cv; cv = cv->next;
     }
-    if (going_up != going_up0) {
-        if (going_up0) { pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
-        else pv->flags |= VF_LocalMax;
+    // Last vertex: apply the open-path endpoint rule.
+    VVertex* last = prev_v;
+    last->flags |= VF_OpenEnd;
+    // Compare direction entering last vertex to decide min vs max.
+    if (last->prev && last->pt.y > last->prev->pt.y) {
+        // Ascending at end → local max.
+        last->flags |= VF_LocalMax;
+    } else if (last->prev && last->pt.y < last->prev->pt.y) {
+        // Descending at end → local min + add to locmin_list.
+        last->flags |= VF_LocalMin;
+        sc.locmin_list.push_back({last, polytype});
     }
-    return &base[0];
+    // (If y equal, no flag needed — horizontal terminal edge.)
+    sc.has_open_subj = sc.has_open_subj || (polytype == 2);
+    return v0;
 }
 
-static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, VattiScratch& sc) {
-    if (n < 3) return;
+static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, VattiScratch& sc,
+                       bool is_open = false) {
+    if (n < (is_open ? 2 : 3)) return;
     // Bulk-allocate all vertices at once — one bounds check, contiguous in memory.
     auto& pool = sc.vtx_pool;
     pool.ensure(pool.count + n);
@@ -367,28 +459,74 @@ static void v_add_path(const std::vector<BIVec2>& pts, int n, int8_t polytype, V
         cv->prev = prev_v; prev_v->next = cv;
         prev_v = cv; cnt++;
     }
-    if (cnt < 3) return;
-    if (prev_v->pt == base[0].pt) { prev_v = prev_v->prev; cnt--; }
-    if (cnt < 3) return;
+    if (cnt < (is_open ? 2 : 3)) return;
+    if (!is_open && prev_v->pt == base[0].pt) { prev_v = prev_v->prev; cnt--; }
+    if (cnt < (is_open ? 2 : 3)) return;
     pool.count += cnt; // commit allocation
-    prev_v->next = &base[0]; base[0].prev = prev_v;
+    if (!is_open) {
+        prev_v->next = &base[0]; base[0].prev = prev_v;
 
-    // Find local minima in the closed path (single pass)
-    VVertex* pv = base[0].prev;
-    while (pv != &base[0] && pv->pt.y == base[0].pt.y) pv = pv->prev;
-    if (pv == &base[0]) return;
-    bool going_up = pv->pt.y > base[0].pt.y, going_up0 = going_up;
-    pv = &base[0];
-    VVertex* cv = base[0].next;
-    while (cv != &base[0]) {
-        if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
-        else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+        // Find local minima in the closed path (single pass)
+        VVertex* pv = base[0].prev;
+        while (pv != &base[0] && pv->pt.y == base[0].pt.y) pv = pv->prev;
+        if (pv == &base[0]) return;
+        bool going_up = pv->pt.y > base[0].pt.y, going_up0 = going_up;
+        pv = &base[0];
+        VVertex* cv = base[0].next;
+        while (cv != &base[0]) {
+            if (cv->pt.y > pv->pt.y && going_up) { pv->flags |= VF_LocalMax; going_up = false; }
+            else if (cv->pt.y < pv->pt.y && !going_up) { going_up = true; pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+            pv = cv; cv = cv->next;
+        }
+        if (going_up != going_up0) {
+            if (going_up0) { pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
+            else pv->flags |= VF_LocalMax;
+        }
+        return;
+    }
+
+    // Open-subject path: linear list, explicit endpoint flagging. Same
+    // semantics as v_add_path_from_doubles's open branch.
+    VVertex* v0 = &base[0];
+    v0->flags |= VF_OpenStart;
+    VVertex* nv = v0->next;
+    while (nv && nv->pt.y == v0->pt.y) nv = nv->next;
+    bool going_up;
+    if (!nv) {
+        v0->flags |= VF_LocalMin;
+        sc.locmin_list.push_back({v0, polytype});
+        prev_v->flags |= VF_OpenEnd | VF_LocalMax;
+        sc.has_open_subj = sc.has_open_subj || (polytype == 2);
+        return;
+    }
+    going_up = nv->pt.y > v0->pt.y;
+    if (going_up) {
+        v0->flags |= VF_LocalMin;
+        sc.locmin_list.push_back({v0, polytype});
+    } else {
+        v0->flags |= VF_LocalMax;
+    }
+    VVertex* pv = v0;
+    VVertex* cv = v0->next;
+    while (cv && cv->next) {
+        if (cv->pt.y > pv->pt.y && going_up) {
+            cv->flags |= VF_LocalMax; going_up = false;
+        } else if (cv->pt.y < pv->pt.y && !going_up) {
+            going_up = true;
+            cv->flags |= VF_LocalMin;
+            sc.locmin_list.push_back({cv, polytype});
+        }
         pv = cv; cv = cv->next;
     }
-    if (going_up != going_up0) {
-        if (going_up0) { pv->flags |= VF_LocalMin; sc.locmin_list.push_back({pv, polytype}); }
-        else pv->flags |= VF_LocalMax;
+    VVertex* last = prev_v;
+    last->flags |= VF_OpenEnd;
+    if (last->prev && last->pt.y > last->prev->pt.y) {
+        last->flags |= VF_LocalMax;
+    } else if (last->prev && last->pt.y < last->prev->pt.y) {
+        last->flags |= VF_LocalMin;
+        sc.locmin_list.push_back({last, polytype});
     }
+    sc.has_open_subj = sc.has_open_subj || (polytype == 2);
 }
 
 // ── AEL operations (doubly-linked list — all O(1)) ──────────────────────
@@ -1172,14 +1310,22 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
                 any_cross=v_segs_intersect(a1,a2,b1,b2); } }
         if(!any_cross) {
             bool a_in_b=pip_i(va[0],vb),b_in_a=pip_i(vb[0],va);
+            // Validate containment with centroid — pip_i can return true for a
+            // vertex of A that lies on B's boundary (shared vertex / shared
+            // edge), giving a false-positive containment. A convex polygon's
+            // centroid is strictly interior to itself, so if A is truly
+            // contained in B, A's centroid must also test inside B. If it
+            // doesn't, the vertex test was a boundary artefact.
+            BIVec2 ca_cen{0,0}, cb_cen{0,0};
+            for(int i=0;i<na;i++){ca_cen.x+=va[i].x;ca_cen.y+=va[i].y;}
+            ca_cen.x/=na; ca_cen.y/=na;
+            for(int i=0;i<nb;i++){cb_cen.x+=vb[i].x;cb_cen.y+=vb[i].y;}
+            cb_cen.x/=nb; cb_cen.y/=nb;
+            if (a_in_b && !pip_i(ca_cen, vb)) a_in_b = false;
+            if (b_in_a && !pip_i(cb_cen, va)) b_in_a = false;
             // If vertex tests fail, try centroids — catches near-identical
             // polygons with shared vertices (boundary points return false).
             if (!a_in_b && !b_in_a) {
-                BIVec2 ca_cen{0,0}, cb_cen{0,0};
-                for(int i=0;i<na;i++){ca_cen.x+=va[i].x;ca_cen.y+=va[i].y;}
-                ca_cen.x/=na; ca_cen.y/=na;
-                for(int i=0;i<nb;i++){cb_cen.x+=vb[i].x;cb_cen.y+=vb[i].y;}
-                cb_cen.x/=nb; cb_cen.y/=nb;
                 a_in_b=pip_i(ca_cen,vb); b_in_a=pip_i(cb_cen,va);
                 // If centroid also lands on boundary (exact y-match),
                 // perturb by 1 int64 unit to escape the edge.
