@@ -1597,25 +1597,15 @@ static bool face_to_face_wood(
                     }
                     x = y.cross(z);
 
-                    // Manually project world points into a local frame with
-                    // (x, y, z) as unit basis vectors at origin `o`. Session's
-                    // `Xform::plane_to_xy` stores the basis as matrix COLUMNS
-                    // (local-to-world), not rows (world-to-local), so it
-                    // collapses the joint-area when the area's normal aligns
-                    // with a basis axis — exactly the hilti case.
-                    Vector xu = x; xu.normalize_self();
-                    Vector yu = y; yu.normalize_self();
-                    Vector zu = z; zu.normalize_self();
-                    std::vector<Point> proj_pts;
-                    proj_pts.reserve(joint_area.point_count());
-                    for (size_t k = 0; k < joint_area.point_count(); k++) {
-                        Point wp = joint_area.get_point(k);
-                        double dx = wp[0]-o[0], dy = wp[1]-o[1], dz = wp[2]-o[2];
-                        proj_pts.emplace_back(
-                            dx*xu[0] + dy*xu[1] + dz*xu[2],
-                            dx*yu[0] + dy*yu[1] + dz*yu[2],
-                            dx*zu[0] + dy*zu[1] + dz*zu[2]);
-                    }
+                    // Project into local (x,y,z) frame. Uses Xform::world_to_frame
+                    // (the correct world-to-local). Legacy Xform::plane_to_xy
+                    // stores the basis as matrix COLUMNS — actually a
+                    // local-to-world rotation despite the name — which
+                    // collapses a dimension when the input geometry's normal
+                    // aligns with a basis axis (the hilti failure mode).
+                    Xform world_to_local = Xform::world_to_frame(o, x, y, z);
+                    std::vector<Point> proj_pts = joint_area.get_points();
+                    transform(proj_pts, world_to_local);
                     if (proj_pts.empty()) { dbg_fail_reason = fmt::format("proj_empty f({},{})", i, j); continue; }
                     double xmin = proj_pts[0][0], xmax = xmin;
                     double ymin = proj_pts[0][1], ymax = ymin;
@@ -1635,13 +1625,8 @@ static bool face_to_face_wood(
                         Point(xmax, ymin, zmin),
                     };
                     // Inverse projection (local→world) using the same basis.
-                    for (auto& lp : rect_local) {
-                        double u = lp[0], v = lp[1], w = lp[2];
-                        lp = Point(
-                            o[0] + u*xu[0] + v*yu[0] + w*zu[0],
-                            o[1] + u*xu[1] + v*yu[1] + w*zu[1],
-                            o[2] + u*xu[2] + v*yu[2] + w*zu[2]);
-                    }
+                    Xform local_to_world = Xform::frame_to_world(o, x, y, z);
+                    transform(rect_local, local_to_world);
 
                     // Offset by element thickness along z (or insertion dir).
                     Vector offset_vector = dir_set ? dir : z;
@@ -3764,37 +3749,16 @@ void beam_volumes_pipeline(
     auto base = internal::session_data_dir();
 
     Session session("WoodF2F");
-    auto g_axes      = session.add_group("BeamAxes");
-    auto g_vols      = session.add_group("JointVolumes");
-    auto g_areas     = session.add_group("JointAreas");
-    auto g_lines     = session.add_group("JointLines");
-    auto g_out_male  = session.add_group("JointOutlinesMale");
-    auto g_out_fem   = session.add_group("JointOutlinesFemale");
-    g_axes->color     = Color(180,180,180,255,"grey");
-    g_vols->color     = Color(220, 80,180,255,"magenta");
-    g_areas->color    = Color(220, 60, 60,255,"red");
-    g_lines->color    = Color( 60,220, 60,255,"green");
-    g_out_male->color = Color( 60,140,240,255,"blue");
-    g_out_fem->color  = Color(240,180, 60,255,"orange");
+    auto g_axes = session.add_group("BeamAxes");
+    auto g_vols = session.add_group("JointVolumes");
+    g_axes->color = Color(180,180,180,255,"grey");
+    g_vols->color = Color(220, 80,180,255,"magenta");
 
-    // Per-beam thickness = 2·average_radius. Used by joint_create_geometry
-    // for type-12/13 joints that read `elements[v0].thickness` as the
-    // unit-scale distance. Beams don't have plate-style planes, so we seed
-    // a minimal WoodElement carrying just `thickness`.
-    std::vector<WoodElement> global_elems(axes.size());
+    // Emit each input axis as ONE polyline (matches the OBJ `curv` entry).
     for (size_t i = 0; i < axes.size(); i++) {
-        double s = 0.0; size_t n = 0;
-        if (i < segment_radii.size()) for (double r : segment_radii[i]) { s += r; n++; }
-        global_elems[i].thickness = (n > 0) ? 2.0 * (s / (double)n) : 0.0;
-    }
-
-    // Add axes as lines for viz.
-    for (const auto& pl : axes) {
-        auto pts = pl.get_points();
-        for (size_t k = 0; k + 1 < pts.size(); k++) {
-            auto ln = std::make_shared<Line>(Line::from_points(pts[k], pts[k+1]));
-            session.add_line(ln, g_axes);
-        }
+        auto pl = std::make_shared<Polyline>(axes[i]);
+        pl->name = fmt::format("axis_{}", i);
+        session.add_polyline(pl, g_axes);
     }
 
     // ── Pass 1: collect closest per-element-pair contact ──────────────────
@@ -3843,13 +3807,6 @@ void beam_volumes_pipeline(
     // loop so the compare script can diff against wood's ref XML.
     std::vector<std::array<Polyline, 4>> joint_rects;
     joint_rects.reserve(contacts.size());
-
-    // Accumulator for WoodJoints produced by face_to_face_wood. Processed
-    // after the contact loop so we can run `joint_create_geometry` +
-    // `joint_orient_to_connection_area` to produce actual finger-joint
-    // outlines instead of emitting only raw rectangles + areas.
-    std::vector<WoodJoint> all_joints;
-    all_joints.reserve(contacts.size());
 
     // ── Pass 2: per-contact rectangle generation + joint detection ────────
     for (auto& [id, c] : contacts) {
@@ -4039,77 +3996,7 @@ void beam_volumes_pipeline(
         else if (t == 30) counts[4]++;
         else if (t == 40) counts[5]++;
 
-        if (jt.joint_area.point_count() > 0) {
-            auto a = std::make_shared<Polyline>(jt.joint_area);
-            a->name = fmt::format("joint_{}_{}_area_t{}", c.pid0, c.pid1, t);
-            session.add_polyline(a, g_areas);
-        }
-        for (int li = 0; li < 2; li++) {
-            const Line& jl = jt.joint_lines[li];
-            if (jl.squared_length() > 1e-9) {
-                auto ln = std::make_shared<Line>(jl);
-                ln->name = fmt::format("joint_{}_{}_line{}_t{}", c.pid0, c.pid1, li, t);
-                session.add_line(ln, g_lines);
-            }
-        }
-
         joint_rects.push_back(beam_vol);
-        all_joints.push_back(std::move(jt));
-    }
-
-    // ── Pass 3: finger-joint geometry dispatch. Mirrors the post-detection
-    // logic in `get_connection_zones` (wood_main.cpp:3400-3556). For each
-    // joint: look up {div_dist, shift, id} from JOINTS_PARAMETERS_AND_TYPES,
-    // pre-seed unit_scale_distance for type 12/13, then build unit-cube
-    // outlines and orient them to the connection area.
-    auto row_for_type = [](int t) -> int {
-        switch (t) {
-            case 11: return 1;
-            case 12: return 0;
-            case 13: return 5;
-            case 20: return 2;
-            case 30: return 3;
-            case 40: return 4;
-            case 60: return 6;
-            default: return 1;
-        }
-    };
-    const auto& JPT = JOINTS_PARAMETERS_AND_TYPES;
-    for (size_t ji = 0; ji < all_joints.size(); ji++) {
-        auto& j = all_joints[ji];
-        int row = row_for_type(j.joint_type);
-        double div_dist  = JPT[row*3 + 0];
-        double shift_val = JPT[row*3 + 1];
-        int id_default   = (int)JPT[row*3 + 2];
-        if (j.joint_type == 12 || j.joint_type == 13) {
-            int ei = j.el_ids.first;
-            if (ei >= 0 && ei < (int)global_elems.size())
-                j.unit_scale_distance = global_elems[ei].thickness;
-        }
-        joint_get_divisions(j, div_dist);
-        j.shift = shift_val;
-        joint_create_geometry(j, div_dist, shift_val, id_default,
-                              &all_joints, &global_elems);
-        if (!j.no_orient)
-            joint_orient_to_connection_area(j);
-
-        // Emit outlines as polylines for viz. Each joint has two outline faces
-        // (top-cut and bottom-cut) per element (male, female). Both faces are
-        // useful for a visual check — the Vue viewer stacks them colour-coded.
-        for (int face = 0; face < 2; face++) {
-            for (size_t k = 0; k < j.m_outlines[face].size(); k++) {
-                if (j.m_outlines[face][k].point_count() < 2) continue;
-                auto pl = std::make_shared<Polyline>(j.m_outlines[face][k]);
-                pl->name = fmt::format("j{}_m_f{}_{}", ji, face, k);
-                session.add_polyline(pl, g_out_male);
-            }
-            for (size_t k = 0; k < j.f_outlines[face].size(); k++) {
-                if (j.f_outlines[face][k].point_count() < 2) continue;
-                auto pl = std::make_shared<Polyline>(j.f_outlines[face][k]);
-                pl->name = fmt::format("j{}_f_f{}_{}", ji, face, k);
-                session.add_polyline(pl, g_out_fem);
-            }
-        }
     }
 
     // Meta + coords dump. Two sections:
@@ -4139,13 +4026,9 @@ void beam_volumes_pipeline(
     }
 
     session.pb_dump((base / pb_name).string());
-    size_t n_outlines = 0;
-    for (const auto& j : all_joints)
-        for (int f = 0; f < 2; f++)
-            n_outlines += j.m_outlines[f].size() + j.f_outlines[f].size();
     fmt::print("\n=== beam_volumes_pipeline ===\n");
-    fmt::print("{} axes -> {} contacts -> {} joints ({} failed) -> {} joint outlines\n",
-               axes.size(), n_pairs, n_success, n_failed, n_outlines);
+    fmt::print("{} axes -> {} contacts -> {} volumes ({} failed)\n",
+               axes.size(), n_pairs, n_success, n_failed);
     fmt::print("  by type: 11={} 12={} 13={} 20={} 30={} 40={}\n",
                counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
 }

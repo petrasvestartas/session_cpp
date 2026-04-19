@@ -352,6 +352,48 @@ Xform Xform::xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
     return t * f;
 }
 
+// Correct world→local rotation + translation. Stores basis as matrix ROWS
+// (column-major indices: m[0]=row0col0, m[4]=row0col1, m[8]=row0col2). For
+// a world point p the result is `f*(p - origin)` where `f` is the rotation
+// whose rows are the unit basis vectors — i.e. the dot-products (x·(p-o),
+// y·(p-o), z·(p-o)).
+Xform Xform::world_to_frame(const Point& origin, Vector x_axis, Vector y_axis, Vector z_axis) {
+    x_axis.normalize_self();
+    y_axis.normalize_self();
+    z_axis.normalize_self();
+
+    Xform f;
+    // Row 0 = x_axis
+    f.m[0]  = x_axis[0]; f.m[4]  = x_axis[1]; f.m[8]  = x_axis[2];
+    // Row 1 = y_axis
+    f.m[1]  = y_axis[0]; f.m[5]  = y_axis[1]; f.m[9]  = y_axis[2];
+    // Row 2 = z_axis
+    f.m[2]  = z_axis[0]; f.m[6]  = z_axis[1]; f.m[10] = z_axis[2];
+
+    Xform t = translation(-origin[0], -origin[1], -origin[2]);
+    return f * t;
+}
+
+// Correct local→world rotation + translation (inverse of world_to_frame).
+// Stores basis as matrix COLUMNS. For a local point (u,v,w):
+//   world = origin + u*x + v*y + w*z
+Xform Xform::frame_to_world(const Point& origin, Vector x_axis, Vector y_axis, Vector z_axis) {
+    x_axis.normalize_self();
+    y_axis.normalize_self();
+    z_axis.normalize_self();
+
+    Xform f;
+    // Column 0 = x_axis
+    f.m[0]  = x_axis[0]; f.m[1]  = x_axis[1]; f.m[2]  = x_axis[2];
+    // Column 1 = y_axis
+    f.m[4]  = y_axis[0]; f.m[5]  = y_axis[1]; f.m[6]  = y_axis[2];
+    // Column 2 = z_axis
+    f.m[8]  = z_axis[0]; f.m[9]  = z_axis[1]; f.m[10] = z_axis[2];
+
+    Xform t = translation(origin[0], origin[1], origin[2]);
+    return t * f;
+}
+
 Xform Xform::to_frame(const Plane& frame) {
     // Transform from world XY to target frame (same as COMPAS from_frame)
     // Matrix columns are: xaxis, yaxis, zaxis, origin

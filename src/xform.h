@@ -122,6 +122,20 @@ public:
     /// Transform from XY to a plane coordinate system
     static Xform xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis);
 
+    /// Transform world points INTO a local frame defined by (origin, x, y, z).
+    /// Given a world point p, returns (u, v, w) such that
+    /// `p = origin + u*x_hat + v*y_hat + w*z_hat`. Stores the basis as matrix
+    /// ROWS (world-to-local), unlike `plane_to_xy` which stores them as
+    /// COLUMNS and therefore actually does local-to-world despite its name.
+    /// Use this when you need a faithful 3D projection — especially when the
+    /// input geometry's normal can align with one of the basis axes (where
+    /// `plane_to_xy` collapses a dimension). See wood_main.cpp type-13 branch.
+    static Xform world_to_frame(const Point& origin, Vector x_axis, Vector y_axis, Vector z_axis);
+
+    /// Inverse of `world_to_frame`: local (u,v,w) → world point at
+    /// `origin + u*x_hat + v*y_hat + w*z_hat`.
+    static Xform frame_to_world(const Point& origin, Vector x_axis, Vector y_axis, Vector z_axis);
+
     /// Transform from world XY to target frame/plane (same as COMPAS from_frame)
     static Xform to_frame(const Plane& frame);
 

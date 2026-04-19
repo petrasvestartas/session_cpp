@@ -62,7 +62,15 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
     Vector x_axis = plane.x_axis();
     Vector y_axis = plane.y_axis();
     Vector z_axis = plane.z_axis();
-    Xform plane_to_xy = Xform::plane_to_xy(origin, x_axis, y_axis, z_axis);
+    // Use the new world_to_frame / frame_to_world. The legacy plane_to_xy /
+    // xy_to_plane pair stores basis vectors as matrix COLUMNS (a local→world
+    // rotation in both directions), so the forward call silently permutes
+    // coordinates for non-axis-aligned planes; the bounding box it computed
+    // happened to be correct only because the Plane::xy_plane unit test
+    // uses the identity basis. See wood_main.cpp type-13 branch for the
+    // failure mode this would have surfaced for rotated input.
+    Xform world_to_local = Xform::world_to_frame(origin, x_axis, y_axis, z_axis);
+    Xform local_to_world = Xform::frame_to_world(origin, x_axis, y_axis, z_axis);
 
     double min_x = std::numeric_limits<double>::max();
     double min_y = std::numeric_limits<double>::max();
@@ -72,7 +80,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
     double max_z = std::numeric_limits<double>::lowest();
 
     for (const auto& pt : points) {
-        Point local_pt = pt; local_pt.xform = plane_to_xy; local_pt = local_pt.transformed();
+        Point local_pt = pt; local_pt.xform = world_to_local; local_pt = local_pt.transformed();
         min_x = std::min(min_x, local_pt[0]);
         min_y = std::min(min_y, local_pt[1]);
         min_z = std::min(min_z, local_pt[2]);
@@ -88,8 +96,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
         (max_z - min_z) * 0.5 + inflate_amount
     );
 
-    Xform xy_to_plane = Xform::xy_to_plane(origin, x_axis, y_axis, z_axis);
-    Point world_center = local_center; world_center.xform = xy_to_plane; world_center = world_center.transformed();
+    Point world_center = local_center; world_center.xform = local_to_world; world_center = world_center.transformed();
 
     return OBB(world_center, x_axis, y_axis, z_axis, half_size);
 }

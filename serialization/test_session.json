@@ -1,10 +1,10 @@
 {
     "type": "Session",
     "name": "my_session",
-    "guid": "44dc465e-088c-440a-96b5-ef14ce9625e7",
+    "guid": "eb1bca22-7901-422f-a78e-8b076f0d5b35",
     "objects": {
         "type": "Objects",
-        "guid": "e5af23d4-83d1-427d-8e66-5a69379dcc93",
+        "guid": "3a61ddd6-83ad-4428-b4a1-6d6e7b8f676c",
         "name": "my_objects",
         "bboxes": [],
         "breps": [],
@@ -16,13 +16,13 @@
         "planes": [],
         "points": [
             {
-                "guid": "d9549d93-7aa0-4674-8986-8897644fc271",
+                "guid": "24f8467b-227b-4eec-b208-842210646b20",
                 "name": "my_point",
                 "pointcolor": {
                     "a": 255,
                     "b": 255,
                     "g": 0,
-                    "guid": "84664596-b1fb-4de9-9872-ad2da9baa623",
+                    "guid": "35176bdf-e148-49e6-be53-364d41ccf2ac",
                     "name": "blue",
                     "r": 0,
                     "type": "Color"
@@ -31,7 +31,7 @@
                 "width": 1.0,
                 "x": 1.0,
                 "xform": {
-                    "guid": "f4facfb9-8bcc-48c8-823e-c31ae71435d4",
+                    "guid": "13bcb7d8-f1ef-434f-87ae-1618891fc8dc",
                     "m": [
                         1.0,
                         0.0,
@@ -57,13 +57,13 @@
                 "z": 3.0
             },
             {
-                "guid": "1a55e803-a39a-433e-b543-a0c32160ae24",
+                "guid": "36259c7e-9609-4b8c-b599-dec66b0e8508",
                 "name": "my_point",
                 "pointcolor": {
                     "a": 255,
                     "b": 255,
                     "g": 0,
-                    "guid": "8ad13234-11dd-4d65-915d-86187a71eee8",
+                    "guid": "eebb0bb4-8fe5-4829-8696-880d88de55ad",
                     "name": "blue",
                     "r": 0,
                     "type": "Color"
@@ -72,7 +72,7 @@
                 "width": 1.0,
                 "x": 4.0,
                 "xform": {
-                    "guid": "3f4f85c6-60cf-488d-b4c5-6a9309732375",
+                    "guid": "fb7f9f38-1fd7-47ba-9fe6-27844556385c",
                     "m": [
                         1.0,
                         0.0,
@@ -104,11 +104,11 @@
     },
     "tree": {
         "type": "Tree",
-        "guid": "4ce3b285-9162-4701-b48a-f1b2dc705066",
+        "guid": "88500851-de6a-4d42-9d13-cb7781592497",
         "name": "my_session_tree",
         "root": {
             "type": "TreeNode",
-            "guid": "d4490c28-cba0-412a-b1e7-438c218b5e41",
+            "guid": "de645df7-4b07-417e-b468-f84ca435b15c",
             "name": "my_session",
             "children": []
         }
@@ -116,30 +116,30 @@
     "graph": {
         "type": "Graph",
         "name": "my_session_graph",
-        "guid": "6df5b827-e85c-4570-bd8b-c92e060e4a87",
+        "guid": "225fd28a-6951-4998-aad4-36cb6007a599",
         "vertices": [
             {
                 "type": "Vertex",
-                "name": "1a55e803-a39a-433e-b543-a0c32160ae24",
-                "guid": "4d2c8a11-99df-4821-8ed1-42b6300274c7",
+                "name": "24f8467b-227b-4eec-b208-842210646b20",
+                "guid": "b676d2fa-1621-46b2-808b-73fadf8fd759",
                 "attribute": "point_my_point",
-                "index": 1
+                "index": 0
             },
             {
                 "type": "Vertex",
-                "name": "d9549d93-7aa0-4674-8986-8897644fc271",
-                "guid": "65aed7c7-7c20-4e2c-a8ad-5da075c40e9a",
+                "name": "36259c7e-9609-4b8c-b599-dec66b0e8508",
+                "guid": "3fe85d2f-9086-4d1a-92a1-4abd09370255",
                 "attribute": "point_my_point",
-                "index": 0
+                "index": 1
             }
         ],
         "edges": [
             {
                 "type": "Edge",
                 "name": "my_edge",
-                "guid": "79009c79-2b20-48b8-8756-413667dd35cf",
-                "v0": "d9549d93-7aa0-4674-8986-8897644fc271",
-                "v1": "1a55e803-a39a-433e-b543-a0c32160ae24",
+                "guid": "fc6d0dd2-0807-4f15-8132-08003bc14b25",
+                "v0": "24f8467b-227b-4eec-b208-842210646b20",
+                "v1": "36259c7e-9609-4b8c-b599-dec66b0e8508",
                 "attribute": "connection",
                 "index": 0
             }
