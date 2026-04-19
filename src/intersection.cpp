@@ -2485,9 +2485,12 @@ bool Intersection::polyline_boolean_2d_in_plane(
     if (n0 < 3 || n1 < 3) return false;
 
     // Project both polylines to the plane's 2D frame (origin = polyline0[0]).
+    // Use base1/base2 (smallest-|coef| pivot rule) for a deterministic frame
+    // that depends only on the plane normal — avoids frame-rotation bias in
+    // Vatti output vertex ordering.
     Point origin = polyline0.get_point(0);
-    Vector xax = plane.x_axis(); xax.normalize_self();
-    Vector yax = plane.y_axis(); yax.normalize_self();
+    Vector xax = plane.base1();
+    Vector yax = plane.base2();
 
     auto to_2d_polyline = [&](const Polyline& pl) -> Polyline {
         size_t n = pl.point_count();
@@ -2664,8 +2667,10 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
     struct P2 { double x, y; };
 
     Point  origin = plate.get_point(0);
-    Vector xax = plane.x_axis(); xax.normalize_self();
-    Vector yax = plane.y_axis(); yax.normalize_self();
+    // base1/base2 frame (smallest-|coef| pivot rule) — depends only on
+    // normal, consistent with wood's CGAL Plane_3::base1/base2.
+    Vector xax = plane.base1();
+    Vector yax = plane.base2();
 
     auto to_2d = [&](const Point& p) -> P2 {
         double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
@@ -2995,67 +3000,131 @@ int Intersection::are_points_inside(
     const std::vector<Point>& test_points,
     std::vector<int>& inside_indices_out) {
 
-    // Project polygon + test points to plane local 2D (z=0) using the plane's
-    // canonical in-plane axes. This ties the PIP classification to a frame
-    // that depends only on the plane normal.
+    // Project polygon + test points to 2D in the plane's canonical
+    // (base1/base2) frame so the classification depends only on the normal.
     const Point& o = plane.origin();
     Vector xa = plane.base1();
     Vector ya = plane.base2();
 
     auto poly_pts = polygon.get_points();
-    size_t np = poly_pts.size();
-
-    // Project polygon once; cache flat (x,y) pairs for the boundary test.
-    std::vector<double> pxy;
-    pxy.reserve(np * 2);
-    for (const auto& p : poly_pts) {
-        double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
-        pxy.push_back(dx*xa[0]+dy*xa[1]+dz*xa[2]);
-        pxy.push_back(dx*ya[0]+dy*ya[1]+dz*ya[2]);
+    size_t np_raw = poly_pts.size();
+    // Strip closing duplicate if present.
+    if (np_raw > 1) {
+        const Point& f = poly_pts.front();
+        const Point& l = poly_pts.back();
+        if (std::fabs(f[0]-l[0])<1e-12 && std::fabs(f[1]-l[1])<1e-12 && std::fabs(f[2]-l[2])<1e-12)
+            np_raw--;
     }
-    std::vector<Point> projected;
-    projected.reserve(np);
-    for (size_t i = 0; i < np; i++)
-        projected.emplace_back(pxy[i*2], pxy[i*2+1], 0.0);
-    Polyline poly2d(projected);
 
-    // Boundary-inclusive classification: a point is "inside" if winding is
-    // non-zero OR the point sits on any edge within a tiny collinearity
-    // tolerance. Matches the boundary convention used by the cross-joint
-    // detector: a test point exactly on a polygon edge should count as
-    // inside, not outside.
-    const double COLLINEAR_EPS = 1e-9;
-    const double PARAM_EPS = 1e-9;
+    // Project polygon once; cache flat (x,y) pairs.
+    std::vector<double> px, py;
+    px.reserve(np_raw);
+    py.reserve(np_raw);
+    for (size_t i = 0; i < np_raw; i++) {
+        const Point& p = poly_pts[i];
+        double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
+        px.push_back(dx*xa[0]+dy*xa[1]+dz*xa[2]);
+        py.push_back(dx*ya[0]+dy*ya[1]+dz*ya[2]);
+    }
+    size_t np = px.size();
+    if (np < 3) return 0;
+
+    // Boundary-inclusive ray-cast PIP (horizontal ray to +x). A test point
+    // is classified as:
+    //   - on-boundary (exact vertex match, on horizontal edge between
+    //     vertices, or collinear with a crossed edge): inside
+    //   - ray crosses an odd number of edges: inside
+    //   - otherwise: outside
+    // Mirrors the boundary convention of the cross-joint detector: any
+    // point sitting on a polygon edge counts as inside.
+    auto cross_sign = [](double ax, double ay, double bx, double by,
+                          double cx, double cy) -> int {
+        double v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+        if (v > 0.0) return 1;
+        if (v < 0.0) return -1;
+        return 0;
+    };
+
+    auto pip = [&](double tx, double ty) -> int {
+        // Returns 2 = on-boundary, 1 = inside, 0 = outside.
+        // Skip leading vertices with y == ty so the first compared vertex
+        // is strictly above or below the test y.
+        size_t first = 0;
+        while (first < np && py[first] == ty) first++;
+        if (first == np) {
+            // All vertices on the horizontal test-line; treat collinearly.
+            for (size_t i = 0; i < np; i++) {
+                size_t j = (i + 1) % np;
+                if ((std::min(px[i], px[j]) <= tx) && (tx <= std::max(px[i], px[j])))
+                    return 2;
+            }
+            return 0;
+        }
+
+        bool is_above = py[first] < ty;
+        bool starting_above = is_above;
+        int val = 0;
+        size_t curr = first + 1;
+        size_t cend = np;
+        while (true) {
+            if (curr == cend) {
+                if (cend == first || first == 0) break;
+                cend = first;
+                curr = 0;
+            }
+
+            if (is_above) {
+                while (curr != cend && py[curr] < ty) curr++;
+                if (curr == cend) continue;
+            } else {
+                while (curr != cend && py[curr] > ty) curr++;
+                if (curr == cend) continue;
+            }
+
+            size_t prev = (curr == 0) ? (np - 1) : (curr - 1);
+
+            if (py[curr] == ty) {
+                if (px[curr] == tx ||
+                    (py[curr] == py[prev] &&
+                     ((tx < px[prev]) != (tx < px[curr]))))
+                    return 2;
+                curr++;
+                if (curr == first) break;
+                continue;
+            }
+
+            if (tx < px[curr] && tx < px[prev]) {
+                // ray's left of both endpoints — no crossing on the right.
+            } else if (tx > px[prev] && tx > px[curr]) {
+                val = 1 - val;
+            } else {
+                int d = cross_sign(px[prev], py[prev], px[curr], py[curr], tx, ty);
+                if (d == 0) return 2;
+                if ((d < 0) == is_above) val = 1 - val;
+            }
+            is_above = !is_above;
+            curr++;
+        }
+
+        if (is_above != starting_above) {
+            if (curr == np) curr = 0;
+            size_t prev = (curr == 0) ? (np - 1) : (curr - 1);
+            int d = cross_sign(px[prev], py[prev], px[curr], py[curr], tx, ty);
+            if (d == 0) return 2;
+            if ((d < 0) == is_above) val = 1 - val;
+        }
+
+        return val;
+    };
 
     int count = 0;
     for (size_t i = 0; i < test_points.size(); i++) {
         const Point& p = test_points[i];
         double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
-        double px = dx*xa[0]+dy*xa[1]+dz*xa[2];
-        double py = dx*ya[0]+dy*ya[1]+dz*ya[2];
-        Point p2d(px, py, 0.0);
-
-        bool inside = poly2d.point_in_polygon_2d(p2d);
-        if (!inside) {
-            // Per-edge collinearity + parametric bounds: 2D orientation sign
-            // zero AND foot-of-perpendicular parameter in [0, 1].
-            for (size_t e = 0; e + 1 < np; e++) {
-                double x0 = pxy[e*2], y0 = pxy[e*2+1];
-                double x1 = pxy[(e+1)*2], y1 = pxy[(e+1)*2+1];
-                double ex = x1 - x0, ey = y1 - y0;
-                double len_sq = ex*ex + ey*ey;
-                if (len_sq < 1e-20) continue;
-                double cross = (x1 - x0) * (py - y0) - (px - x0) * (y1 - y0);
-                if (std::fabs(cross) > COLLINEAR_EPS) continue;
-                double t = ((px - x0) * ex + (py - y0) * ey) / len_sq;
-                if (t >= -PARAM_EPS && t <= 1.0 + PARAM_EPS) {
-                    inside = true;
-                    break;
-                }
-            }
-        }
-
-        if (inside) {
+        double tx = dx*xa[0]+dy*xa[1]+dz*xa[2];
+        double ty = dx*ya[0]+dy*ya[1]+dz*ya[2];
+        int r = pip(tx, ty);
+        if (r != 0) {
             inside_indices_out.push_back(static_cast<int>(i));
             count++;
         }
