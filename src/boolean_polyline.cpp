@@ -797,7 +797,63 @@ static void v_check_join_right(VActive& e, BIVec2 pt, VattiScratch& sc, bool che
 
 // ── IntersectEdges ───────────────────────────────────────────────────────
 
+// Helper: start (or re-start) an open-subject output region at `pt`.
+// Called when an open-subject edge first enters the clip polygon, or when
+// it re-enters after exiting. Produces a new VOutRec with is_open=true and
+// one VOutPt holding `pt`. Mirrors Clipper2 StartOpenPath
+// (clipper.engine.cpp:1685-1706).
+static VOutPt* v_start_open_path(VActive& e, BIVec2 pt, VattiScratch& sc) {
+    VOutRec* outrec = sc.new_outrec();
+    outrec->is_open = true;
+    outrec->front_edge = &e;
+    outrec->back_edge = nullptr;
+    e.outrec = outrec;
+    VOutPt* op = sc.new_outpt(pt, outrec);
+    outrec->pts = op;
+    return op;
+}
+
+// Helper: vertex is an open-path endpoint (start or end).
+static inline bool v_is_open_end(const VVertex& v) {
+    return (v.flags & (VF_OpenStart | VF_OpenEnd)) != 0;
+}
+
 static void v_intersect_edges(VActive& e1, VActive& e2, BIVec2 pt, VattiScratch& sc, int cliptype) {
+    // Open-subject × clip intersection — special handling before the
+    // closed-path logic. Mirrors Clipper2 IntersectEdges open-path branch
+    // (clipper.engine.cpp:1772-1851). Semantics: only Intersection
+    // cliptype supported; open edge toggles output as it crosses clip
+    // boundary (enter → start OutRec; exit → close OutRec).
+    if (sc.has_open_subj && (v_polytype(e1) == 2 || v_polytype(e2) == 2)) {
+        // Two open-subject edges intersecting: no-op (degenerate input).
+        if (v_polytype(e1) == 2 && v_polytype(e2) == 2) return;
+        VActive* edge_o = (v_polytype(e1) == 2) ? &e1 : &e2;
+        VActive* edge_c = (v_polytype(e1) == 2) ? &e2 : &e1;
+
+        // Only Intersection cliptype produces open output.
+        if (cliptype != 0) return;
+        // Clip edge must be polytype=1 (the closed clip polygon), not
+        // polytype=0 (closed subject) or anything else.
+        if (v_polytype(*edge_c) != 1) return;
+        // Clip edge must be at a boundary crossing (|wind_cnt| == 1 for
+        // NonZero fill — a valid polygon-boundary transition).
+        if (std::abs(edge_c->wind_cnt) != 1) return;
+
+        if (v_is_hot(*edge_o)) {
+            // Open edge is currently inside clip (OutRec started earlier).
+            // This intersection means we're exiting the clip polygon:
+            // emit the point, then disconnect the OutRec.
+            v_add_outpt(*edge_o, pt, sc);
+            if (v_is_front(*edge_o)) edge_o->outrec->front_edge = nullptr;
+            else                      edge_o->outrec->back_edge  = nullptr;
+            edge_o->outrec = nullptr;
+        } else {
+            // Open edge entering clip polygon: start a new OutRec.
+            v_start_open_path(*edge_o, pt, sc);
+        }
+        return;
+    }
+
     // Closed paths only
     if (v_is_joined(e1)) v_split(e1, pt, sc);
     if (v_is_joined(e2)) v_split(e2, pt, sc);
