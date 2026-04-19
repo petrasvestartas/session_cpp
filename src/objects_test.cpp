@@ -95,6 +95,11 @@ MINI_TEST("Objects", "Objects Component Json Roundtrip") {
     c.type_name = "FloorBuilder";
     c.name      = "floor_builder";
     c.extra     = {{"size", 3000}, {"height", 650}};
+    // Pin the guid before push_back so both sides of the later equality have
+    // the same value. Otherwise `c.guid()` after the push copy lazily
+    // generates a fresh random guid on `c` that differs from the one cached
+    // on original.components->at(0) during dump.
+    std::string expected_guid = c.guid();
     original.components->push_back(c);
 
     std::string filename = "serialization/test_objects_component.json";
@@ -104,7 +109,7 @@ MINI_TEST("Objects", "Objects Component Json Roundtrip") {
     MINI_CHECK(loaded.components->size() == 1);
     MINI_CHECK(loaded.components->at(0).type_name        == "FloorBuilder");
     MINI_CHECK(loaded.components->at(0).extra["size"]    == 3000);
-    MINI_CHECK(loaded.components->at(0).guid()           == c.guid());
+    MINI_CHECK(loaded.components->at(0).guid()           == expected_guid);
 }
 
 } // namespace session_cpp
