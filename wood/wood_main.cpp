@@ -2251,8 +2251,13 @@ static std::vector<Polyline> merge_joints_for_element(
     // (e.g. `hexboxes` multiplies DISTANCE_SQUARED by 100) take effect.
     const double DISTANCE_SQUARED = wood_session::globals::DISTANCE_SQUARED;
 
-    std::map<size_t, std::pair<std::pair<double,double>, Polyline>> sorted_by_id_plines_0;
-    std::map<size_t, std::pair<std::pair<double,double>, Polyline>> sorted_by_id_plines_1;
+    // Multimap (not map): when multiple joints produce identical cp_pair
+    // keys on the same plate edge (e.g. rossiniere's rectangle joints whose
+    // long edges exactly align with plate edges → cp = integer corner), a
+    // std::map would silently drop all but the first insert. Multimap keeps
+    // all entries, so Phase 3 emits every joint's clipped polyline.
+    std::multimap<size_t, std::pair<std::pair<double,double>, Polyline>> sorted_by_id_plines_0;
+    std::multimap<size_t, std::pair<std::pair<double,double>, Polyline>> sorted_by_id_plines_1;
 
     int last_id = -1;
     // Closing-corner trackers (wood_element.cpp:684-687). When the first and
@@ -2467,7 +2472,7 @@ static std::vector<Polyline> merge_joints_for_element(
     // ── Build merged polylines from sorted maps ────────────────────────────
     // wood_element.cpp:1129-1253
     auto build_merged = [&](std::vector<Point>& pline,
-                            std::map<size_t, std::pair<std::pair<double,double>, Polyline>>& sorted)
+                            std::multimap<size_t, std::pair<std::pair<double,double>, Polyline>>& sorted)
         -> Polyline
     {
         // pline is CLOSED (size = open + 1). Flag every vertex as kept,
