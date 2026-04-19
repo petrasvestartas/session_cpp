@@ -2750,6 +2750,55 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         return true;
     };
 
+    // Collinear-overlap detection. If joint segment s0→s1 is collinear with
+    // plate edge e0→e1 (cross product of unit directions below sin(angle_eps)
+    // AND perpendicular distance of s0 from edge-line below dist_eps), compute
+    // the parametric range of overlap on the joint segment.
+    //
+    // Returns true if overlap exists; outputs t_enter, t_exit (on joint
+    // segment). This is the proper algorithm for handling rectangle-edge
+    // coincident with plate-edge — what Clipper2's Vatti sweep handles via
+    // integer-grid quantization, here handled via direct angle+distance
+    // test. No grid snapping; thresholds are true FP-noise tolerances.
+    auto collinear_overlap = [](const P2& s0, const P2& s1, const P2& e0, const P2& e1,
+                                 double& t_enter, double& t_exit) -> bool {
+        double sx = s1.x-s0.x, sy = s1.y-s0.y;
+        double ex = e1.x-e0.x, ey = e1.y-e0.y;
+        double sl2 = sx*sx + sy*sy;
+        double el2 = ex*ex + ey*ey;
+        if (sl2 < 1e-20 || el2 < 1e-20) return false;
+        // Normalized cross (= sin of angle between directions).
+        double cross_norm = (sx*ey - sy*ex) / std::sqrt(sl2 * el2);
+        const double ANGLE_SIN_EPS = 1e-4; // 0.006° — true parallel
+        if (std::abs(cross_norm) > ANGLE_SIN_EPS) return false;
+        // Perpendicular distance of s0 from line through (e0, e1).
+        double apx = s0.x-e0.x, apy = s0.y-e0.y;
+        double perp = (apx*ey - apy*ex) / std::sqrt(el2);
+        const double DIST_EPS = 1e-3; // 0.001 mm — true FP noise
+        if (std::abs(perp) > DIST_EPS) return false;
+        // Parametric positions of s0, s1 along edge direction.
+        double ts0 = (apx*ex + apy*ey) / el2;
+        double bpx = s1.x-e0.x, bpy = s1.y-e0.y;
+        double ts1 = (bpx*ex + bpy*ey) / el2;
+        // Overlap in edge-param space: [max(0, min(ts0,ts1)), min(1, max(ts0,ts1))].
+        double tmin = std::min(ts0, ts1), tmax = std::max(ts0, ts1);
+        double ov_min = std::max(0.0, tmin);
+        double ov_max = std::min(1.0, tmax);
+        if (ov_max - ov_min < 1e-9) return false; // no overlap
+        // Convert overlap back to joint segment param.
+        // joint param: t such that s0 + t*(s1-s0) = point, where point is
+        // at param ts along edge. ts = ts0 + t*(ts1-ts0) → t = (ts-ts0)/(ts1-ts0).
+        double tsr = ts1 - ts0;
+        if (std::abs(tsr) < 1e-20) return false; // degenerate
+        t_enter = (ov_min - ts0) / tsr;
+        t_exit  = (ov_max - ts0) / tsr;
+        if (t_enter > t_exit) std::swap(t_enter, t_exit);
+        // Clamp to [0, 1] in joint-segment space.
+        if (t_enter < 0.0) t_enter = 0.0;
+        if (t_exit  > 1.0) t_exit  = 1.0;
+        return (t_exit - t_enter) > 1e-9;
+    };
+
     // Walk each joint segment, gather inside sub-pieces. A "piece" is a
     // contiguous run of (P2) vertices that lie inside the plate polygon.
     std::vector<std::vector<P2>> pieces;
@@ -2759,6 +2808,9 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         const P2& p1 = joint2d[s+1];
         std::vector<double> ts;
         ts.push_back(0.0);
+        // Collinear-overlap flags per sub-segment: if sub-segment [ts[i], ts[i+1]]
+        // is collinear with any plate edge, treat it as "on boundary" → inside.
+        std::vector<std::pair<double, double>> coll_ranges;
         for (size_t i = 0; i < plate2d.size(); i++) {
             const P2& a = plate2d[i];
             const P2& b = plate2d[(i+1)%plate2d.size()];
@@ -2769,6 +2821,12 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
                     ts.push_back(t_s);
                 }
             }
+            double t_in, t_out;
+            if (collinear_overlap(p0, p1, a, b, t_in, t_out)) {
+                coll_ranges.emplace_back(t_in, t_out);
+                if (t_in > EPS && t_in < 1.0 - EPS) ts.push_back(t_in);
+                if (t_out > EPS && t_out < 1.0 - EPS) ts.push_back(t_out);
+            }
         }
         ts.push_back(1.0);
         std::sort(ts.begin(), ts.end());
@@ -2776,12 +2834,21 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
                               [EPS](double x, double y){ return std::abs(x-y)<EPS; }),
                   ts.end());
 
+        auto sub_is_collinear = [&](double t_a, double t_b) -> bool {
+            double t_mid = 0.5 * (t_a + t_b);
+            for (const auto& r : coll_ranges) {
+                if (t_mid >= r.first - EPS && t_mid <= r.second + EPS) return true;
+            }
+            return false;
+        };
+
         std::vector<P2> current;
         for (size_t i = 0; i + 1 < ts.size(); i++) {
             double t_mid = 0.5 * (ts[i] + ts[i+1]);
             double mx = p0.x + (p1.x-p0.x)*t_mid;
             double my = p0.y + (p1.y-p0.y)*t_mid;
-            if (pip(mx, my)) {
+            bool include = pip(mx, my) || sub_is_collinear(ts[i], ts[i+1]);
+            if (include) {
                 P2 sub_a{p0.x + (p1.x-p0.x)*ts[i],   p0.y + (p1.y-p0.y)*ts[i]};
                 P2 sub_b{p0.x + (p1.x-p0.x)*ts[i+1], p0.y + (p1.y-p0.y)*ts[i+1]};
                 if (current.empty()) {
