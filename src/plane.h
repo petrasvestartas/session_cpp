@@ -230,6 +230,31 @@ namespace session_cpp {
   }
 
   /**
+   * @brief Canonical first in-plane axis using smallest-magnitude pivot.
+   *
+   * Selects the coordinate of the plane normal with the smallest absolute
+   * value, zeroes that coordinate in the output, and populates the other
+   * two with the negated pair. The result is orthogonal to the normal and
+   * numerically well-conditioned for near-axis-aligned normals.
+   *
+   * Rule:
+   *   if |nx| is smallest → (0, -nz, ny)
+   *   if |ny| is smallest → (-nz, 0, nx)
+   *   else               → (-ny, nx, 0)
+   *
+   * Output is unit length.
+   */
+  Vector base1() const;
+
+  /**
+   * @brief Canonical second in-plane axis = z_axis × base1, unit length.
+   *
+   * Together with `base1()` and `z_axis()` forms a right-handed orthonormal
+   * frame on the plane suitable for 2D projection of polygons.
+   */
+  Vector base2() const;
+
+  /**
    * @brief Sign test using the cached plane equation `ax+by+cz+d`.
    *
    * Returns true if `p` is on the negative side (`ax+by+cz+d < 0`).

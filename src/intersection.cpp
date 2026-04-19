@@ -321,29 +321,77 @@ bool Intersection::plane_plane(
     const Plane& plane0,
     const Plane& plane1,
     Line& output) {
-    
+
     Vector d = plane1.z_axis().cross(plane0.z_axis());
-    
+
     Point p = Point(
         (plane0.origin()[0] + plane1.origin()[0]) * 0.5,
         (plane0.origin()[1] + plane1.origin()[1]) * 0.5,
         (plane0.origin()[2] + plane1.origin()[2]) * 0.5
     );
-    
+
     Plane plane2 = Plane::from_point_normal(p, d);
-    
+
     Point output_p;
     bool rc = plane_plane_plane(plane0, plane1, plane2, output_p);
     if (!rc) {
         return false;
     }
-    
+
     output = Line::from_points(output_p, Point(
         output_p[0] + d[0],
         output_p[1] + d[1],
         output_p[2] + d[2]
     ));
-    
+
+    return true;
+}
+
+bool Intersection::plane_plane_to_line_canonical(
+    const Plane& plane0,
+    const Plane& plane1,
+    Line& output)
+{
+    // Direct port of the CGAL canonical formulation used by wood's
+    // `cgal::intersection_util::plane_plane` (cgal_intersection_util.cpp:493-511)
+    // and downstream `get_orthogonal_vector_between_two_plane_pairs`
+    // (cgal_intersection_util.cpp:618-628). Anchor is foot-of-
+    // perpendicular from world origin onto the intersection line:
+    //     c0 = (k0·(n1·n1) - k1·(n0·n1)) / det
+    //     c1 = (k1·(n0·n0) - k0·(n0·n1)) / det
+    //     anchor = c0·n0 + c1·n1
+    // where k_i = n_i·plane_i.origin() and det = |n0|²|n1|² - (n0·n1)².
+    //
+    // Direction convention: d = n1 × n0 (matches session's existing
+    // `plane_plane` at line 325 + wood's cgal_intersection_util.cpp:497).
+    Vector n0 = plane0.z_axis();
+    Vector n1 = plane1.z_axis();
+    Vector d(
+        n1[1]*n0[2] - n1[2]*n0[1],
+        n1[2]*n0[0] - n1[0]*n0[2],
+        n1[0]*n0[1] - n1[1]*n0[0]
+    );
+    double d_sq = d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
+    if (d_sq < 1e-20) return false;
+
+    double k0 = n0[0]*plane0.origin()[0] + n0[1]*plane0.origin()[1] + n0[2]*plane0.origin()[2];
+    double k1 = n1[0]*plane1.origin()[0] + n1[1]*plane1.origin()[1] + n1[2]*plane1.origin()[2];
+    double n0n0 = n0[0]*n0[0] + n0[1]*n0[1] + n0[2]*n0[2];
+    double n1n1 = n1[0]*n1[0] + n1[1]*n1[1] + n1[2]*n1[2];
+    double n0n1 = n0[0]*n1[0] + n0[1]*n1[1] + n0[2]*n1[2];
+    double det = n0n0 * n1n1 - n0n1 * n0n1;
+    if (std::abs(det) < 1e-20) return false;
+    double c0 = (k0 * n1n1 - k1 * n0n1) / det;
+    double c1 = (k1 * n0n0 - k0 * n0n1) / det;
+    Point anchor(
+        c0 * n0[0] + c1 * n1[0],
+        c0 * n0[1] + c1 * n1[1],
+        c0 * n0[2] + c1 * n1[2]
+    );
+    output = Line::from_points(
+        anchor,
+        Point(anchor[0] + d[0], anchor[1] + d[1], anchor[2] + d[2])
+    );
     return true;
 }
 
@@ -401,22 +449,32 @@ bool Intersection::plane_plane_plane(
     const Plane& plane1,
     const Plane& plane2,
     Point& output) {
-    
+
     double pr = 0.0;
     double x, y, z;
-    
+
     const double plane_0[3] = { plane0.a(), plane0.b(), plane0.c() };
     const double plane_1[3] = { plane1.a(), plane1.b(), plane1.c() };
     const double plane_2[3] = { plane2.a(), plane2.b(), plane2.c() };
-    
+
     const int rank = solve_3x3(
         plane_0, plane_1, plane_2,
         -plane0.d(), -plane1.d(), -plane2.d(),
         x, y, z, pr
     );
-    
+
     output = Point(x, y, z);
-    return (rank == 3);
+    // `rank == 3` is a necessary but not sufficient condition: the Gaussian
+    // elimination can complete with a tiny final pivot (e.g. ~1e-15), which
+    // makes the reported solution mathematically nonsingular but numerically
+    // meaningless — `1.0 / tiny_pivot` propagates into coordinates on the
+    // order of 1e14, well past any real geometry. `solve_3x3` already reports
+    // this through `pr = minpiv / maxpiv`; any ratio under ~1e-12 indicates
+    // the three planes are effectively linearly dependent (normals coplanar)
+    // and we cannot deliver a trustworthy intersection. Returning false puts
+    // us on the same footing as CGAL's exact kernel, which declines these
+    // intersections outright.
+    return (rank == 3 && pr > 1e-12);
 }
 
 bool Intersection::ray_box(
@@ -2092,11 +2150,43 @@ bool Intersection::plane_4planes(const Plane& main_plane, const std::array<Plane
 }
 
 bool Intersection::plane_4planes_open(const Plane& main_plane, const std::array<Plane, 4>& planes, Polyline& output) {
+    // Two-step formulation with a stable closed-form plane-plane → line
+    // step, then line-plane → point. Each corner pair (A,B):
+    //   1. line direction  = nA × nB
+    //   2. line anchor     = (dA (nB × v) + dB (v × nA)) / |v|²  (closest to origin)
+    //   3. corner          = intersect(line, main_plane)
+    // This replaces the 3-plane determinant (plane_plane_plane_check)
+    // which loses precision under steep fold angles — source of
+    // vidy_folding's 2-40 mm jv[0] deviations when two side planes are
+    // close to parallel or meet at a grazing angle. `plane_plane` itself
+    // is kept on the original midpoint-bisector formulation to preserve
+    // its published `start`/`end` anchor for existing callers.
+    auto corner = [&](const Plane& a, const Plane& b, Point& out) -> bool {
+        Vector nA = a.z_axis();
+        nA.normalize_self();
+        Vector nB = b.z_axis();
+        nB.normalize_self();
+        Vector v = nA.cross(nB);
+        double v_sq = v.magnitude_squared();
+        if (v_sq < 1e-24) return false;
+        double dA = nA[0]*a.origin()[0] + nA[1]*a.origin()[1] + nA[2]*a.origin()[2];
+        double dB = nB[0]*b.origin()[0] + nB[1]*b.origin()[1] + nB[2]*b.origin()[2];
+        Vector nB_x_v = nB.cross(v);
+        Vector v_x_nA = v.cross(nA);
+        double inv = 1.0 / v_sq;
+        Point anchor(
+            (dA * nB_x_v[0] + dB * v_x_nA[0]) * inv,
+            (dA * nB_x_v[1] + dB * v_x_nA[1]) * inv,
+            (dA * nB_x_v[2] + dB * v_x_nA[2]) * inv
+        );
+        Line l = Line::from_points(anchor, Point(anchor[0]+v[0], anchor[1]+v[1], anchor[2]+v[2]));
+        return line_plane(l, main_plane, out, false);
+    };
     Point p0, p1, p2, p3;
-    if (!plane_plane_plane_check(planes[0], planes[1], main_plane, 0.1, p0)) return false;
-    if (!plane_plane_plane_check(planes[1], planes[2], main_plane, 0.1, p1)) return false;
-    if (!plane_plane_plane_check(planes[2], planes[3], main_plane, 0.1, p2)) return false;
-    if (!plane_plane_plane_check(planes[3], planes[0], main_plane, 0.1, p3)) return false;
+    if (!corner(planes[0], planes[1], p0)) return false;
+    if (!corner(planes[1], planes[2], p1)) return false;
+    if (!corner(planes[2], planes[3], p2)) return false;
+    if (!corner(planes[3], planes[0], p3)) return false;
     output = Polyline(std::vector<Point>{
         p0, p1, p2, p3,
     });
@@ -2147,6 +2237,49 @@ bool Intersection::polyline_plane(const Polyline& polyline, const Plane& plane, 
     return !points.empty();
 }
 
+// Wood's private variant — rejects the entire polyline if ANY segment
+// endpoint is within `distance_squared` of the plane. Used ONLY from
+// polyline_plane_cross_joint (cgal_intersection_util.cpp:771-803); wood's
+// polyline_plane_to_line does NOT use this check.
+// The threshold is a tunable: wood reads from wood::GLOBALS::DISTANCE_SQUARED
+// which hexboxes multiplies by 100. Caller passes current value.
+namespace {
+    double g_cross_distance_squared = 0.01; // default DISTANCE_SQUARED
+}
+
+static bool polyline_plane_cross(const Polyline& polyline, const Plane& plane,
+                                 std::vector<Point>& points, std::vector<int>& edge_ids) {
+    size_t n = polyline.point_count();
+    if (n < 2) return false;
+    const double DISTANCE_SQUARED = g_cross_distance_squared;
+    Vector n_plane = plane.z_axis();
+    double n_mag_sq = n_plane[0]*n_plane[0] + n_plane[1]*n_plane[1] + n_plane[2]*n_plane[2];
+    Point o = plane.origin();
+    auto sq_dist_to_plane = [&](const Point& p) -> double {
+        double dx = p[0]-o[0], dy = p[1]-o[1], dz = p[2]-o[2];
+        double num = dx*n_plane[0] + dy*n_plane[1] + dz*n_plane[2];
+        return (n_mag_sq > 0.0) ? (num * num / n_mag_sq) : 0.0;
+    };
+    for (size_t i = 0; i < n - 1; i++) {
+        Point a = polyline.get_point(i);
+        Point b = polyline.get_point(i + 1);
+        if (sq_dist_to_plane(a) < DISTANCE_SQUARED) { points.clear(); edge_ids.clear(); return false; }
+        if (sq_dist_to_plane(b) < DISTANCE_SQUARED) { points.clear(); edge_ids.clear(); return false; }
+        Line seg(a[0], a[1], a[2], b[0], b[1], b[2]);
+        Point hit;
+        if (Intersection::line_plane(seg, plane, hit, true)) {
+            points.push_back(hit);
+            edge_ids.push_back(static_cast<int>(i));
+        }
+    }
+    // Wood requires EXACTLY 2 intersections (`return points.size () == 2`).
+    return points.size() == 2;
+}
+
+void Intersection::set_cross_joint_distance_squared(double dist_sq) {
+    g_cross_distance_squared = dist_sq;
+}
+
 bool Intersection::line_line_3d(const Line& cutter, const Line& seg, Point& output) {
     double t0, t1;
     if (!line_line_parameters(cutter, seg, t0, t1, 0.0, false, false)) return false;
@@ -2177,6 +2310,257 @@ bool Intersection::scale_vector_to_distance_of_2planes(const Vector& direction, 
 
 std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Polyline& b, int clip_type) {
     return BooleanPolyline::compute(a, b, clip_type);
+}
+
+// Native miter-join polygon offset in plane-space 2D. Replaces Clipper2's
+// InflatePaths for wood's `clipper_util::offset_in_3d`. For each vertex of
+// the CCW-oriented input polygon, compute the bisector of the two adjacent
+// edge outward normals and translate the vertex by `delta` along the
+// bisector — giving a parallel offset curve with mitered corners.
+//
+// For a convex vertex the miter point is exactly at the intersection of the
+// two offset edges. For concave vertices the same formula produces the
+// correct "inward" offset (since both normals and bisector point outward
+// relative to CCW winding).
+//
+// Degenerate cases handled:
+//   - length < 3 after closing-dup strip → fail
+//   - zero-length edges → skipped
+//   - miter angle ≈ 180° (`1 + n_prev·n_next` near zero) → fall back to
+//     plain edge-normal offset (equivalent to square cap for that vertex).
+bool Intersection::offset_in_3d(Polyline& polyline, const Plane& plane, double offset) {
+    size_t n_raw = polyline.point_count();
+    if (n_raw < 3) return false;
+
+    Point origin = polyline.get_point(0);
+    // Use plane's canonical in-plane axes (smallest-|coef| pivot rule) so
+    // the 2D projection depends only on the normal, not on how the plane
+    // was constructed. Keeps offset output deterministic across call sites.
+    Vector xax = plane.base1();
+    Vector yax = plane.base2();
+
+    // Project to 2D + strip closing duplicate.
+    struct P2 { double x, y; };
+    std::vector<P2> path;
+    path.reserve(n_raw);
+    for (size_t i = 0; i < n_raw; ++i) {
+        Point p = polyline.get_point(i);
+        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+        double u = dx*xax[0] + dy*xax[1] + dz*xax[2];
+        double v = dx*yax[0] + dy*yax[1] + dz*yax[2];
+        path.push_back({u, v});
+    }
+    if (path.size() >= 2) {
+        double dx = path.back().x - path.front().x;
+        double dy = path.back().y - path.front().y;
+        if (dx*dx + dy*dy < 1e-12) path.pop_back();
+    }
+    size_t n = path.size();
+    if (n < 3) return false;
+
+    // Shoelace signed area determines winding. Wood expects outward miter
+    // when delta > 0; ensure CCW winding (positive signed area) by mirroring
+    // delta if the input is CW.
+    double signed_area = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const P2& a = path[i];
+        const P2& b = path[(i+1) % n];
+        signed_area += a.x * b.y - b.x * a.y;
+    }
+    double delta = offset;
+    if (signed_area < 0.0) delta = -delta;
+
+    // Per-edge outward normal for CCW polygon: rotate edge vector 90° CW.
+    // edge_i = path[i+1] - path[i]; outward = (edge.y, -edge.x) / |edge|.
+    auto edge_normal = [&](size_t i) -> P2 {
+        const P2& a = path[i];
+        const P2& b = path[(i+1) % n];
+        double ex = b.x - a.x, ey = b.y - a.y;
+        double len = std::sqrt(ex*ex + ey*ey);
+        if (len < 1e-12) return {0.0, 0.0};
+        return { ey/len, -ex/len };
+    };
+
+    std::vector<P2> normals;
+    normals.reserve(n);
+    for (size_t i = 0; i < n; ++i) normals.push_back(edge_normal(i));
+
+    // At vertex i, the two adjacent edges are (i-1)→i and i→(i+1). Their
+    // outward normals are n_prev = normals[(i+n-1)%n] and n_next = normals[i].
+    // Three cases:
+    //   - concave corner (sin_a·delta < 0 AND cos_a > -0.999): emit 3 vertices
+    //     (vertex offset along n_prev, original vertex, vertex offset along
+    //     n_next) to preserve polygon simplicity at inward-turning corners.
+    //   - near-180° turn (|1+cos_a| < 1e-9): mean-normal fallback.
+    //   - convex corner (default): single miter bisector.
+    // The 3-vertex branch avoids the miter-spike that would otherwise jut
+    // into the offset polygon at a reflex corner (output would self-intersect
+    // or cover incorrect area).
+    std::vector<P2> out;
+    out.reserve(n * 3);
+    for (size_t i = 0; i < n; ++i) {
+        const P2& np = normals[(i + n - 1) % n];
+        const P2& nn = normals[i];
+        double cos_a = np.x*nn.x + np.y*nn.y;
+        double sin_a = np.x*nn.y - np.y*nn.x;
+        double denom = 1.0 + cos_a;
+        bool concave = (cos_a > -0.999) && (sin_a * delta < 0.0);
+        if (concave) {
+            // 3-vertex emission at reflex corner.
+            out.push_back({ path[i].x + np.x * delta, path[i].y + np.y * delta });
+            out.push_back({ path[i].x, path[i].y });
+            out.push_back({ path[i].x + nn.x * delta, path[i].y + nn.y * delta });
+        } else if (std::abs(denom) < 1e-9) {
+            // Anti-parallel edges (180° turn) — mean-normal displacement.
+            double bx = np.x + nn.x;
+            double by = np.y + nn.y;
+            double bl = std::sqrt(bx*bx + by*by);
+            if (bl < 1e-12) {
+                out.push_back({ path[i].x + nn.x * delta, path[i].y + nn.y * delta });
+            } else {
+                out.push_back({ path[i].x + (bx/bl) * delta, path[i].y + (by/bl) * delta });
+            }
+        } else {
+            // Convex corner: miter bisector.
+            // bisector b = (n_prev + n_next), k = delta / (1 + cos_a).
+            double k = delta / denom;
+            out.push_back({ path[i].x + (np.x + nn.x) * k,
+                            path[i].y + (np.y + nn.y) * k });
+        }
+    }
+    size_t nout = out.size();
+    if (nout < 3) return false;
+
+    // Shoelace on result — reject degenerate output.
+    double out_area = 0.0;
+    for (size_t i = 0; i < nout; ++i) {
+        const P2& a = out[i];
+        const P2& b = out[(i+1) % nout];
+        out_area += a.x * b.y - b.x * a.y;
+    }
+    if (std::abs(out_area) * 0.5 < 0.0001) return false;
+
+    // Rotate result to start at vertex closest to input[0] (wood does this
+    // so downstream code that indexes offset[0] gets a point near the
+    // original first vertex).
+    size_t cp = 0;
+    double cd = (out[0].x - path[0].x)*(out[0].x - path[0].x)
+              + (out[0].y - path[0].y)*(out[0].y - path[0].y);
+    for (size_t i = 1; i < nout; ++i) {
+        double d = (out[i].x - path[0].x)*(out[i].x - path[0].x)
+                 + (out[i].y - path[0].y)*(out[i].y - path[0].y);
+        if (d < cd) { cd = d; cp = i; }
+    }
+    if (cp != 0) std::rotate(out.begin(), out.begin() + cp, out.end());
+
+    // Transform back to 3D, close polyline.
+    std::vector<Point> pts;
+    pts.reserve(nout + 1);
+    for (const P2& p2 : out) {
+        double u = p2.x, v = p2.y;
+        pts.emplace_back(origin[0] + u*xax[0] + v*yax[0],
+                          origin[1] + u*xax[1] + v*yax[1],
+                          origin[2] + u*xax[2] + v*yax[2]);
+    }
+    pts.push_back(pts.front());
+    polyline = Polyline(pts);
+    return true;
+}
+
+// Verbatim port of wood's cgal::collider::clipper_util::get_intersection_between_two_polylines
+// (clipper_util.cpp:524-620). Plane-space 2D boolean. Uses session's native
+// BooleanPolyline (Vatti implementation — no Clipper2 dependency), matching
+// the pattern session already uses for `polyline_boolean`.
+bool Intersection::polyline_boolean_2d_in_plane(
+    const Polyline& polyline0,
+    const Polyline& polyline1,
+    const Plane& plane,
+    Polyline& intersection_result,
+    int intersection_type,
+    bool include_triangles,
+    double min_area)
+{
+    size_t n0 = polyline0.point_count();
+    size_t n1 = polyline1.point_count();
+    if (n0 < 3 || n1 < 3) return false;
+
+    // Project both polylines to the plane's 2D frame (origin = polyline0[0]).
+    Point origin = polyline0.get_point(0);
+    Vector xax = plane.x_axis(); xax.normalize_self();
+    Vector yax = plane.y_axis(); yax.normalize_self();
+
+    auto to_2d_polyline = [&](const Polyline& pl) -> Polyline {
+        size_t n = pl.point_count();
+        std::vector<Point> pts2d;
+        pts2d.reserve(n + 1);
+        for (size_t i = 0; i < n; ++i) {
+            Point p = pl.get_point(i);
+            double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+            double u = dx*xax[0] + dy*xax[1] + dz*xax[2];
+            double v = dx*yax[0] + dy*yax[1] + dz*yax[2];
+            pts2d.emplace_back(u, v, 0.0);
+        }
+        // Ensure closed for BooleanPolyline.
+        if (pts2d.size() > 1) {
+            const Point& f = pts2d.front();
+            const Point& l = pts2d.back();
+            double dx=f[0]-l[0], dy=f[1]-l[1];
+            if (dx*dx+dy*dy > 1e-12) pts2d.push_back(pts2d.front());
+        }
+        return Polyline(pts2d);
+    };
+    Polyline a2d = to_2d_polyline(polyline0);
+    Polyline b2d = to_2d_polyline(polyline1);
+
+    // XOR not supported by session's BooleanPolyline — synthesise via union-minus-intersection.
+    std::vector<Polyline> result_2d;
+    if (intersection_type >= 0 && intersection_type <= 2) {
+        result_2d = BooleanPolyline::compute(a2d, b2d, intersection_type);
+    } else if (intersection_type == 3) {
+        // A XOR B = (A ∪ B) − (A ∩ B). Rare in wood — done for completeness.
+        auto u = BooleanPolyline::compute(a2d, b2d, 1);
+        auto inter = BooleanPolyline::compute(a2d, b2d, 0);
+        if (u.empty()) return false;
+        if (inter.empty()) result_2d = u;
+        else               result_2d = BooleanPolyline::compute(u[0], inter[0], 2);
+    } else {
+        return false;
+    }
+    if (result_2d.empty()) return false;
+    const Polyline& C = result_2d[0];
+    size_t nc = C.point_count();
+    // Strip closing duplicate before area + triangle checks to match wood.
+    if (nc > 1) {
+        Point f = C.get_point(0);
+        Point l = C.get_point(nc-1);
+        double dx=f[0]-l[0], dy=f[1]-l[1];
+        if (dx*dx+dy*dy < 1e-12) --nc;
+    }
+    if (nc < 3) return false;
+    if (nc == 3 && !include_triangles) return false;
+
+    // Shoelace area in the projected (u,v) plane.
+    double area = 0.0;
+    for (size_t i = 0; i < nc; ++i) {
+        Point p0 = C.get_point(i);
+        Point p1 = C.get_point((i+1) % nc);
+        area += p0[0]*p1[1] - p1[0]*p0[1];
+    }
+    if (std::abs(area) * 0.5 <= min_area) return false;
+
+    // Transform back to 3D (u,v → origin + u*xax + v*yax).
+    std::vector<Point> pts;
+    pts.reserve(nc + 1);
+    for (size_t i = 0; i < nc; ++i) {
+        Point p2 = C.get_point(i);
+        double u = p2[0], v = p2[1];
+        pts.emplace_back(origin[0] + u*xax[0] + v*yax[0],
+                          origin[1] + u*xax[1] + v*yax[1],
+                          origin[2] + u*xax[2] + v*yax[2]);
+    }
+    pts.push_back(pts.front());
+    intersection_result = Polyline(pts);
+    return true;
 }
 
 bool Intersection::polyline_plane_to_line(const Polyline& poly, const Plane& plane,
@@ -2211,12 +2595,21 @@ bool Intersection::quad_from_line_top_bottom_planes(const Plane& face_plane,
     Point e = line.end();
     Plane lp1 = Plane::from_point_normal(e, dir2);
 
-    // 4 corners as 3-plane intersections.
+    // Two-step formulation: corner = line(topOrBot ∩ face) ∩ endcap. More
+    // numerically stable than the single 3-plane determinant — source of the
+    // top_to_side_box 0.5 mm x-shift when face_plane and topOrBot meet at
+    // close-to-right-angle. Mirrors the `plane_4planes_open` refactor landed
+    // in Phase 6.2 for vidy_folding.
+    auto corner = [&](const Plane& endcap, const Plane& topOrBot, Point& outp) -> bool {
+        Line l;
+        if (!plane_plane(topOrBot, face_plane, l)) return false;
+        return line_plane(l, endcap, outp, false);
+    };
     Point p0, p1, p2, p3;
-    if (!plane_plane_plane(lp0, plane0, face_plane, p0)) return false;
-    if (!plane_plane_plane(lp0, plane1, face_plane, p1)) return false;
-    if (!plane_plane_plane(lp1, plane1, face_plane, p2)) return false;
-    if (!plane_plane_plane(lp1, plane0, face_plane, p3)) return false;
+    if (!corner(lp0, plane0, p0)) return false;
+    if (!corner(lp0, plane1, p1)) return false;
+    if (!corner(lp1, plane1, p2)) return false;
+    if (!corner(lp1, plane0, p3)) return false;
     out = Polyline(std::vector<Point>{p0, p1, p2, p3, p0});
     return true;
 }
@@ -2229,9 +2622,14 @@ bool Intersection::orthogonal_vector_between_two_plane_pairs(const Plane& pp00,
     //   plane_plane(pp00, pp10, l0);
     //   plane_plane(pp00, pp11, l1);
     //   output = l1.point() - l0.projection(l1.point());
+    // Use the CGAL-canonical anchor variant so `l1.start()` matches
+    // wood's `l1.point()` (foot of perpendicular from world origin);
+    // the downstream perpendicular-projection formula relies on this
+    // anchor choice for parallel-line cases (plate top/bottom face
+    // pairs in ts_e_p_5 → 0.5 mm drift on top_to_side_box).
     Line l0, l1;
-    if (!plane_plane(pp00, pp10, l0)) return false;
-    if (!plane_plane(pp00, pp11, l1)) return false;
+    if (!plane_plane_to_line_canonical(pp00, pp10, l0)) return false;
+    if (!plane_plane_to_line_canonical(pp00, pp11, l1)) return false;
     Point p1 = l1.start();
     Vector ldir = l0.to_vector();
     double len_sq = ldir[0]*ldir[0] + ldir[1]*ldir[1] + ldir[2]*ldir[2];
@@ -2597,33 +2995,67 @@ int Intersection::are_points_inside(
     const std::vector<Point>& test_points,
     std::vector<int>& inside_indices_out) {
 
-    // Project polygon + test points to plane local 2D (z=0) using x_axis/y_axis dot products.
+    // Project polygon + test points to plane local 2D (z=0) using the plane's
+    // canonical in-plane axes. This ties the PIP classification to a frame
+    // that depends only on the plane normal.
     const Point& o = plane.origin();
-    const Vector& xa = plane.x_axis();
-    const Vector& ya = plane.y_axis();
+    Vector xa = plane.base1();
+    Vector ya = plane.base2();
 
     auto poly_pts = polygon.get_points();
-    Polyline poly2d;
-    {
-        std::vector<Point> projected;
-        projected.reserve(poly_pts.size());
-        for (const auto& p : poly_pts) {
-            double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
-            projected.emplace_back(dx*xa[0]+dy*xa[1]+dz*xa[2],
-                                   dx*ya[0]+dy*ya[1]+dz*ya[2],
-                                   0.0);
-        }
-        poly2d = Polyline(projected);
+    size_t np = poly_pts.size();
+
+    // Project polygon once; cache flat (x,y) pairs for the boundary test.
+    std::vector<double> pxy;
+    pxy.reserve(np * 2);
+    for (const auto& p : poly_pts) {
+        double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
+        pxy.push_back(dx*xa[0]+dy*xa[1]+dz*xa[2]);
+        pxy.push_back(dx*ya[0]+dy*ya[1]+dz*ya[2]);
     }
+    std::vector<Point> projected;
+    projected.reserve(np);
+    for (size_t i = 0; i < np; i++)
+        projected.emplace_back(pxy[i*2], pxy[i*2+1], 0.0);
+    Polyline poly2d(projected);
+
+    // Boundary-inclusive classification: a point is "inside" if winding is
+    // non-zero OR the point sits on any edge within a tiny collinearity
+    // tolerance. Matches the boundary convention used by the cross-joint
+    // detector: a test point exactly on a polygon edge should count as
+    // inside, not outside.
+    const double COLLINEAR_EPS = 1e-9;
+    const double PARAM_EPS = 1e-9;
 
     int count = 0;
     for (size_t i = 0; i < test_points.size(); i++) {
         const Point& p = test_points[i];
         double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
-        Point p2d(dx*xa[0]+dy*xa[1]+dz*xa[2],
-                  dx*ya[0]+dy*ya[1]+dz*ya[2],
-                  0.0);
-        if (poly2d.point_in_polygon_2d(p2d)) {
+        double px = dx*xa[0]+dy*xa[1]+dz*xa[2];
+        double py = dx*ya[0]+dy*ya[1]+dz*ya[2];
+        Point p2d(px, py, 0.0);
+
+        bool inside = poly2d.point_in_polygon_2d(p2d);
+        if (!inside) {
+            // Per-edge collinearity + parametric bounds: 2D orientation sign
+            // zero AND foot-of-perpendicular parameter in [0, 1].
+            for (size_t e = 0; e + 1 < np; e++) {
+                double x0 = pxy[e*2], y0 = pxy[e*2+1];
+                double x1 = pxy[(e+1)*2], y1 = pxy[(e+1)*2+1];
+                double ex = x1 - x0, ey = y1 - y0;
+                double len_sq = ex*ex + ey*ey;
+                if (len_sq < 1e-20) continue;
+                double cross = (x1 - x0) * (py - y0) - (px - x0) * (y1 - y0);
+                if (std::fabs(cross) > COLLINEAR_EPS) continue;
+                double t = ((px - x0) * ex + (py - y0) * ey) / len_sq;
+                if (t >= -PARAM_EPS && t <= 1.0 + PARAM_EPS) {
+                    inside = true;
+                    break;
+                }
+            }
+        }
+
+        if (inside) {
             inside_indices_out.push_back(static_cast<int>(i));
             count++;
         }
@@ -2639,15 +3071,15 @@ bool Intersection::polyline_plane_cross_joint(
     Line& contact_out,
     std::pair<int,int>& edge_pair_out) {
 
-    // c0 vs p1
+    // c0 vs p1 — uses wood's near-coplanar rejection (DISTANCE_SQUARED=0.01).
     std::vector<Point> pts0;
     std::vector<int> edge_ids_0;
-    if (!polyline_plane(c0, p1, pts0, edge_ids_0)) return false;
+    if (!polyline_plane_cross(c0, p1, pts0, edge_ids_0)) return false;
 
     // c1 vs p0
     std::vector<Point> pts1;
     std::vector<int> edge_ids_1;
-    if (!polyline_plane(c1, p0, pts1, edge_ids_1)) return false;
+    if (!polyline_plane_cross(c1, p0, pts1, edge_ids_1)) return false;
 
     if (pts0.size() < 2 || pts1.size() < 2) return false;
 
@@ -2811,14 +3243,23 @@ bool Intersection::plane_to_face(
             cx1_py1__cy1_px1 = opposite_segment(cx1_py1__cy1_px1);
     }
 
-    // 5. Reference axis: midline of two contact segments, grown ×10 about its midpoint.
+    // 5. Reference axis: midline of two contact segments, scaled ×10 about
+    // its midpoint. **Important**: wood uses `scale_line(c, 10)` whose
+    // implementation at `cgal_polyline_util.cpp:395-403` does
+    //     p0 += v*distance;  p1 -= v*distance;
+    // where `v = p1 - p0`. For `distance >= 1` this FLIPS the direction of
+    // the segment as well as extending it. The downstream `closest_point_to`
+    // parameters rely on this flipped frame — using a plain symmetric extend
+    // here produces a correctly-long-but-reverse-oriented c, which makes
+    // `maxID` pick the wrong end and the final `v` point the wrong way, so
+    // the cross-joint notch ends up on the opposite plate edge. Session's
+    // `scale_line` at `polyline.cpp:1474` matches wood's semantics exactly.
     Line c;
     get_middle_line(cx0_py1__cy1_px0, cx1_py0__cy0_px1, c);
     {
         double len = c.length();
         if (len < Tolerance::ZERO_TOLERANCE) return false;
-        double pad = len * 4.5; // grow ×10 total: each end pushed out by 4.5×len
-        extend_line(c, pad, pad);
+        scale_line(c, 10.0);
     }
 
     Point c_start = c.start();
@@ -2906,11 +3347,19 @@ bool Intersection::plane_to_face(
         result.joint_lines[1] = Polyline(std::vector<Point>{m12, m30});
     }
 
-    // 10. Joint volume faces = joint_area ± v.
+    // 10. Joint volume faces = joint_area ± v. Wood assigns [0]=area+v,
+    // [1]=area-v (wood_main.cpp:436-437). Match that convention exactly.
     result.joint_volumes[0] = translate_quad(result.joint_area, v);
     result.joint_volumes[1] = translate_quad(result.joint_area, Vector(-v[0], -v[1], -v[2]));
 
-    // 11. Optional in-plane edge extensions.
+    // 11. Optional in-plane edge extensions. Both `extend(pts, sID, d, d, 0, 0)`
+    // calls must hit the closing-point sync path in `Polyline::extend_segment`
+    // for segments 0 and 3 (which touch the closing-duplicate vertex). Wood
+    // mutates the pline in place across all four calls; session's
+    // `extend(std::vector<Point>&, ...)` constructs a fresh `Polyline tmp(pline)`
+    // every call, so the per-call sync sees the freshly-constructed state.
+    // The free function still writes back after each call, so the overall
+    // effect is identical to wood's in-place mutation.
     if (extension[0] + extension[1] > 0.0) {
         for (int k = 0; k < 2; k++) {
             auto pts = result.joint_volumes[k].get_points();

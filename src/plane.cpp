@@ -687,6 +687,41 @@ std::vector<Polyline> Plane::to_polylines(double scale) const {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
+// Canonical in-plane axes (smallest-|coef| pivot rule).
+//
+// For projecting polygons onto a plane's 2D coordinates, a frame defined
+// purely from the normal (without construction-time hints) gives stable,
+// deterministic results. The rule: pivot on the normal coordinate with
+// smallest magnitude — that axis gets zero in base1, the other two get
+// the negated-pair pattern. This keeps base1 well-conditioned even when
+// the normal is nearly aligned with an axis.
+///////////////////////////////////////////////////////////////////////////////////////////
+
+Vector Plane::base1() const {
+    const Vector& n = z_axis();
+    double nx = n[0], ny = n[1], nz = n[2];
+    double ax = std::fabs(nx), ay = std::fabs(ny), az = std::fabs(nz);
+    Vector b;
+    if (ax <= ay && ax <= az)      b = Vector(0.0, -nz, ny);
+    else if (ay <= ax && ay <= az) b = Vector(-nz, 0.0, nx);
+    else                            b = Vector(-ny, nx, 0.0);
+    b.normalize_self();
+    return b;
+}
+
+Vector Plane::base2() const {
+    Vector b1 = base1();
+    const Vector& n = z_axis();
+    Vector b2(
+        n[1]*b1[2] - n[2]*b1[1],
+        n[2]*b1[0] - n[0]*b1[2],
+        n[0]*b1[1] - n[1]*b1[0]
+    );
+    b2.normalize_self();
+    return b2;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
 // Stream operator
 ///////////////////////////////////////////////////////////////////////////////////////////
 
