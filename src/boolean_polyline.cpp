@@ -619,8 +619,25 @@ inline bool v_pop_horz(VattiScratch& sc, VActive*& e) { e = sc.sel; if (!e) retu
 // ── Winding + contribution ───────────────────────────────────────────────
 
 static void v_set_wind_count(VattiScratch& sc, VActive& e) {
-    VActive* e2 = e.prev_in_ael;
     int8_t pt = v_polytype(e);
+    // Open-subject edges: wind_cnt is undefined (open polylines don't create
+    // a consistent winding direction). Count only clip-edge wind_dx to get
+    // wind_cnt2 = clip winding at this edge's x at the sweepline y.
+    // Mirrors Clipper2 SetWindCountForOpenPathEdge (clipper.engine.cpp:1089-1117).
+    if (pt == 2) {
+        e.wind_cnt = 0;                                 // sentinel; unread for polytype=2
+        e.wind_cnt2 = 0;
+        VActive* e2 = sc.actives;
+        while (e2 && e2 != &e) {
+            if (v_polytype(*e2) == 1) e.wind_cnt2 += e2->wind_dx;  // clip polygon only
+            // Skip closed-subject (0) and other open-subject (2) edges —
+            // they don't contribute to the clip-polygon winding an open
+            // subject edge sees.
+            e2 = e2->next_in_ael;
+        }
+        return;
+    }
+    VActive* e2 = e.prev_in_ael;
     while (e2 && v_polytype(*e2) != pt) e2 = e2->prev_in_ael;
     if (!e2) { e.wind_cnt = e.wind_dx; e2 = sc.actives; }
     else {
@@ -640,6 +657,14 @@ static void v_set_wind_count(VattiScratch& sc, VActive& e) {
 }
 
 static bool v_is_contributing(const VActive& e, int cliptype) {
+    // Open-subject edges (polytype=2) have no inherent winding — they're
+    // just polylines, not polygon boundaries. For Intersection mode, they
+    // contribute wherever they're inside the clip polygon (|wind_cnt2| != 0).
+    // Matches Clipper2 IsContributingOpen (clipper.engine.cpp:984-1008).
+    if (v_polytype(e) == 2) {
+        if (cliptype != 0) return false;              // open: intersection only
+        return std::abs(e.wind_cnt2) != 0;             // inside clip polygon
+    }
     // NonZero fill rule only
     if (std::abs(e.wind_cnt) != 1) return false;
     int wc2 = std::abs(e.wind_cnt2);
