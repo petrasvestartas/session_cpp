@@ -18,6 +18,17 @@ public:
     static int compute_raw(const double* a_xy, int na, const double* b_xy, int nb,
                            int clip_type, double* out_xy, int max_out);
 
+    /// Open-subject × closed-clip Intersection (NonZero fill rule).
+    /// Returns the portion(s) of `open_subject` that lie inside `closed_clip`,
+    /// as one or more open polylines. Input `open_subject` is treated as a
+    /// polyline (not closed, not filled); `closed_clip` is a filled polygon.
+    /// Robust for near-parallel near-coincident geometries via full Vatti
+    /// sweep-line — unlike naive per-segment clipping, this handles edges
+    /// that run along clip boundary without spurious vertex collapse.
+    static std::vector<Polyline> clip_open_against_closed(
+        const Polyline& open_subject,
+        const Polyline& closed_clip);
+
 };
 
 } // namespace session_cpp

@@ -1543,3 +1543,104 @@ int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polylin
     }
     return total_pts;
 }
+
+// ── Public entry: open-subject × closed-clip Intersection ────────────────
+//
+// Sets up a VattiScratch, feeds the open subject as polytype=2
+// (is_open=true) and the closed clip as polytype=1 (is_open=false), runs
+// the sweep with cliptype=0 (Intersection), then extracts VOutRec chains
+// flagged `is_open` as a vector of open polylines.
+//
+// Output extraction differs from compute() (closed-polygon case):
+//   - No collinear-point cleanup (open paths are polylines; removing
+//     collinear points would shorten them incorrectly)
+//   - No triangle rejection (open paths with 2-3 points are valid)
+//   - Linear traversal (not circular) — start at outrec->pts, walk via
+//     ->next until we return to start or hit nullptr
+//   - Produces ≥2 point polylines; <2 pt results are skipped
+std::vector<Polyline> session_cpp::BooleanPolyline::clip_open_against_closed(
+    const Polyline& open_subject, const Polyline& closed_clip)
+{
+    std::vector<Polyline> result;
+    const double* cs = open_subject._coords.data();
+    const double* cc = closed_clip._coords.data();
+    int ns = (int)(open_subject._coords.size() / 3);
+    int nc = (int)(closed_clip._coords.size() / 3);
+
+    // Strip closing-duplicate from CLIP only — open subject may legitimately
+    // have first == last (a closed-shape polyline fed as open).
+    if (nc >= 2) {
+        double dx = cc[(nc-1)*3] - cc[0], dy = cc[(nc-1)*3+1] - cc[1];
+        if (dx*dx + dy*dy < 1e-20) --nc;
+    }
+    if (ns < 2 || nc < 3) return result;
+
+    // Compute integer scale (same formula as compute()).
+    double max_coord = 0;
+    for (int i = 0; i < ns; i++) {
+        max_coord = std::max(max_coord, std::max(std::fabs(cs[i*3]), std::fabs(cs[i*3+1])));
+    }
+    for (int i = 0; i < nc; i++) {
+        max_coord = std::max(max_coord, std::max(std::fabs(cc[i*3]), std::fabs(cc[i*3+1])));
+    }
+    if (max_coord < 1e-12) max_coord = 1.0;
+    const double BOOL_SCALE = std::floor(
+        std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / (2.0 * max_coord));
+    const double BOOL_INV_SCALE = 1.0 / BOOL_SCALE;
+
+    VattiScratch& sc = vtls;
+    sc.reset();
+    int total = ns + nc;
+    sc.vtx_pool.ensure(total + 4);
+    sc.act_pool.ensure(total * 2 + 4);
+    sc.opt_pool.ensure(total * 4);
+    sc.orc_pool.ensure(total);
+    sc.locmin_list.reserve(total);
+    sc.outrec_list.reserve(total);
+    sc.scanline_list.buf.reserve(total * 2);
+
+#if VATTI_HAS_SSE2
+    const __m128d sv = _mm_set1_pd(BOOL_SCALE);
+#else
+    const double sv = BOOL_SCALE;
+#endif
+    int64_t sMinX, sMaxX, sMinY, sMaxY, cMinX, cMaxX, cMinY, cMaxY;
+    // Open subject: polytype=2, is_open=true.
+    v_add_path_from_doubles(cs, ns, /*polytype=*/2, sv, sc,
+                             sMinX, sMaxX, sMinY, sMaxY, /*is_open=*/true);
+    // Closed clip: polytype=1, is_open=false.
+    v_add_path_from_doubles(cc, nc, /*polytype=*/1, sv, sc,
+                             cMinX, cMaxX, cMinY, cMaxY, /*is_open=*/false);
+
+    if (!v_execute_internal(sc, /*cliptype=*/0)) return result;
+
+    // Extract open-path OutRecs. Linear traversal, no cleanup/filtering.
+    for (size_t i = 0; i < sc.outrec_list.size(); i++) {
+        VOutRec* outrec = sc.outrec_list[i];
+        if (!outrec || !outrec->is_open || !outrec->pts) continue;
+        std::vector<double> coords;
+        coords.reserve(32 * 3);
+        VOutPt* head = outrec->pts;
+        VOutPt* o = head;
+        BIVec2 last{INT64_MAX, INT64_MAX};
+        // Walk forward; circular list for OutPts is reused for open paths
+        // too (StartOpenPath initializes op->next = op->prev = op). Each
+        // v_add_outpt call inserts the new VOutPt into the chain. Stop
+        // when we return to `head` OR encounter a nullptr.
+        do {
+            if (o->pt != last) {
+                coords.push_back(o->pt.x * BOOL_INV_SCALE);
+                coords.push_back(o->pt.y * BOOL_INV_SCALE);
+                coords.push_back(0.0);
+                last = o->pt;
+            }
+            o = o->next;
+        } while (o && o != head);
+        size_t n_pts = coords.size() / 3;
+        if (n_pts < 2) continue;
+        Polyline p;
+        p._coords = std::move(coords);
+        result.emplace_back(std::move(p));
+    }
+    return result;
+}
