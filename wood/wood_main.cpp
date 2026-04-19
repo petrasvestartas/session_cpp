@@ -207,6 +207,45 @@ static bool polygon_intersect_2d(const Polyline& poly_a, const Polyline& poly_b,
     area = std::abs(area) * 0.5;
     if (area < 0.01) return false;
 
+    // Sliver filter: reject polygons that would collapse under a 1/128 mm
+    // quantization grid (the effective resolution of wood's Clipper2 at
+    // precision=2). Without this filter, loose-tolerance datasets like
+    // hexboxes (DISTANCE_SQUARED*100) produce many sliver polygons whose
+    // area exceeds 0.01 mm² in raw doubles but which wood's integer-grid
+    // boolean never produces.
+    //
+    // Rules (cumulative, any hit → reject):
+    //   1. bbox min-dimension < grid spacing → polygon collapses to a line
+    //      under quantization.
+    //   2. quantized-area: round every vertex to nearest 1/128 grid,
+    //      recompute shoelace. If quantized area < 0.01, polygon's nonzero
+    //      area is FP-noise artifacts.
+    {
+        const double GRID = 1.0 / 128.0;
+        double umin = collapsed[0][0], umax = umin;
+        double vmin = collapsed[0][1], vmax = vmin;
+        for (size_t i = 1; i < n; i++) {
+            double u = collapsed[i][0], v = collapsed[i][1];
+            if (u < umin) umin = u; if (u > umax) umax = u;
+            if (v < vmin) vmin = v; if (v > vmax) vmax = v;
+        }
+        double bw = umax - umin;
+        double bh = vmax - vmin;
+        if (bw < GRID || bh < GRID) return false;
+
+        // Quantize vertices to 1/128 grid, recompute area.
+        double qarea = 0.0;
+        for (size_t i = 0; i < n; i++) {
+            double u0 = std::round(collapsed[i][0]    / GRID) * GRID;
+            double v0 = std::round(collapsed[i][1]    / GRID) * GRID;
+            double u1 = std::round(collapsed[(i+1)%n][0] / GRID) * GRID;
+            double v1 = std::round(collapsed[(i+1)%n][1] / GRID) * GRID;
+            qarea += u0 * v1 - u1 * v0;
+        }
+        qarea = std::abs(qarea) * 0.5;
+        if (qarea < 0.01) return false;
+    }
+
     // Transform back to 3D in the plate plane.
     std::vector<Point> pts(n + 1);
     for (size_t k = 0; k < n; k++) {
