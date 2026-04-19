@@ -19,6 +19,51 @@
 #include <vector>
 
 namespace session_cpp {
+
+/**
+ * @struct Component
+ * @brief A custom domain object stored generically in a Session.
+ *
+ * Allows external packages (e.g. session_tf) to store arbitrary serializable
+ * objects (FloorBuilder, WallBuilder, …) without the core session needing to
+ * know their concrete types.  The full JSON dict is preserved in `extra` so
+ * downstream code can reconstruct the concrete object via a factory registry.
+ */
+struct Component {
+  std::string type_name;               ///< Class name, e.g. "FloorBuilder"
+  std::string name = "my_component";   ///< Human-readable name
+  nlohmann::ordered_json extra;        ///< All custom fields (everything except type/guid/name)
+
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid()       { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  nlohmann::ordered_json jsondump() const {
+    nlohmann::ordered_json j = extra;
+    j["type"] = type_name;
+    j["guid"] = guid();
+    j["name"] = name;
+    return j;
+  }
+
+  static Component jsonload(const nlohmann::json& j) {
+    Component c;
+    c.type_name   = j.value("type", "");
+    c.guid()      = j.value("guid", ::guid());
+    c.name        = j.value("name", "my_component");
+    c.extra       = j;
+    c.extra.erase("type");
+    c.extra.erase("guid");
+    c.extra.erase("name");
+    return c;
+  }
+
+  std::string pb_dumps() const;
+  static Component pb_loads(const std::string& data);
+
+private:
+  mutable std::string _guid;
+};
+
 /**
  * @class Objects
  * @brief A collection of geometry objects.
@@ -41,6 +86,7 @@ public:
   std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces;
   std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps;
   std::shared_ptr<std::vector<std::shared_ptr<Element>>> elements;
+  std::shared_ptr<std::vector<Component>> components;
 
   /**
    * @brief Constructor.
@@ -58,7 +104,8 @@ public:
     this->nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
     this->nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
     this->breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
-    this->elements = std::make_shared<std::vector<std::shared_ptr<Element>>>();
+    this->elements   = std::make_shared<std::vector<std::shared_ptr<Element>>>();
+    this->components = std::make_shared<std::vector<Component>>();
   }
 
   /// Convert objects to string representation

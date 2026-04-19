@@ -2713,6 +2713,90 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         joint2d.push_back(to_2d(joint.get_point(i)));
     if (joint2d.size() < 2) return false;
 
+    // New Vatti sweep-line path for open-subject clipping, gated by
+    // VATTI_OPEN env var for safe progressive rollout. Produces c2d from
+    // BooleanPolyline::clip_open_against_closed; falls through to the
+    // legacy per-segment algorithm when the env var is unset.
+    //
+    // Robust handling of near-parallel near-coincident edges (rossiniere's
+    // side_removal rectangles) — the Vatti sweep treats these consistently
+    // via scanline winding rather than per-segment midpoint tests.
+    static const bool USE_VATTI_OPEN = []{
+        const char* v = std::getenv("VATTI_OPEN");
+        return v && v[0] && v[0] != '0';
+    }();
+    if (USE_VATTI_OPEN) {
+        // Build 2D polylines from the projected P2 arrays (z=0).
+        std::vector<Point> joint_2d_pts;
+        joint_2d_pts.reserve(joint2d.size());
+        for (const auto& p : joint2d) joint_2d_pts.emplace_back(p.x, p.y, 0.0);
+        std::vector<Point> plate_2d_pts;
+        plate_2d_pts.reserve(plate2d.size() + 1);
+        for (const auto& p : plate2d) plate_2d_pts.emplace_back(p.x, p.y, 0.0);
+        plate_2d_pts.push_back(plate_2d_pts.front()); // close
+        Polyline joint_2d_pl(joint_2d_pts);
+        Polyline plate_2d_pl(plate_2d_pts);
+        auto pieces = BooleanPolyline::clip_open_against_closed(joint_2d_pl, plate_2d_pl);
+        if (pieces.empty() || pieces[0].point_count() < 2) return false;
+        // Take the first (typically longest) piece as c2d.
+        const Polyline& first = pieces[0];
+        std::vector<P2> c2d;
+        c2d.reserve(first.point_count());
+        for (size_t i = 0; i < first.point_count(); i++) {
+            Point p = first.get_point(i);
+            c2d.push_back({p[0], p[1]});
+        }
+        // Locate t0/t1 on plate edges (same logic as legacy path).
+        auto closest_param_v = [](const P2& p, const P2& a, const P2& b) -> double {
+            double abx = b.x-a.x, aby = b.y-a.y;
+            double l2 = abx*abx + aby*aby;
+            if (l2 < 1e-20) return 0.0;
+            double apx = p.x-a.x, apy = p.y-a.y;
+            double t = (apx*abx + apy*aby) / l2;
+            if (t < 0.0) t = 0.0;
+            if (t > 1.0) t = 1.0;
+            return t;
+        };
+        auto sq_dist_seg_v = [](const P2& p, const P2& a, const P2& b) -> double {
+            double abx = b.x-a.x, aby = b.y-a.y;
+            double l2 = abx*abx + aby*aby;
+            if (l2 < 1e-20) { double dx = p.x-a.x, dy = p.y-a.y; return dx*dx+dy*dy; }
+            double apx = p.x-a.x, apy = p.y-a.y;
+            double t = (apx*abx+apy*aby)/l2;
+            if (t < 0.0) t = 0.0;
+            if (t > 1.0) t = 1.0;
+            double px = a.x+t*abx, py = a.y+t*aby;
+            double dx = p.x-px, dy = p.y-py;
+            return dx*dx+dy*dy;
+        };
+        double t0 = -1.0, t1 = -1.0;
+        for (size_t i = 0; i < plate2d.size(); i++) {
+            const P2& a = plate2d[i];
+            const P2& b = plate2d[(i+1) % plate2d.size()];
+            for (int j = 0; j < 2; j++) {
+                size_t idx = (j == 0) ? 0 : c2d.size() - 1;
+                double dist_sq = sq_dist_seg_v(c2d[idx], a, b);
+                if (j == 0 && dist_sq < 1.0) t0 = (double)i + closest_param_v(c2d[0], a, b);
+                else if (j == 1 && dist_sq < 1.0) t1 = (double)i + closest_param_v(c2d[c2d.size()-1], a, b);
+            }
+            if (t0 >= 0.0 && t1 >= 0.0) break;
+        }
+        bool reverse_flag = (t0 > t1);
+        if ((size_t)std::floor(t0) == 0 && (size_t)std::floor(t1) == c2d.size() - 1)
+            reverse_flag = !reverse_flag;
+        if (reverse_flag) {
+            std::swap(t0, t1);
+            std::reverse(c2d.begin(), c2d.end());
+        }
+        if (t0 < 0.0 || t1 < 0.0) return false;
+        std::vector<Point> out_pts;
+        out_pts.reserve(c2d.size());
+        for (const auto& p : c2d) out_pts.push_back(to_3d(p.x, p.y));
+        out = Polyline(out_pts);
+        cp_pair = std::pair<double, double>(t0, t1);
+        return true;
+    }
+
     // 2D winding-number point-in-polygon (matches Polyline::point_in_polygon_2d).
     auto pip = [&](double px, double py) -> bool {
         int wn = 0;

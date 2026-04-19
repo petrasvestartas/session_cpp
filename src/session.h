@@ -70,6 +70,8 @@ public:
   Graph graph; ///< Graph structure for relationships
   std::unordered_map<std::string, EdgeFeature>
       edge_features; ///< Typed edge features keyed by feature GUID
+  std::unordered_map<std::string, Component>
+      component_lookup; ///< Fast lookup for custom components by GUID
   BVH bvh;    ///< Bounding volume hierarchy for collision detection
   
   // BVH caching for ray casting performance
@@ -176,6 +178,12 @@ public:
   std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
+   * @brief Add a custom component (any object with type_name/guid/name/extra).
+   * @return Shared pointer to the TreeNode created for this component
+   */
+  std::shared_ptr<TreeNode> add_component(Component component, std::shared_ptr<TreeNode> parent = nullptr);
+
+  /**
    * @brief Add a TreeNode to the tree hierarchy.
    * @param node The TreeNode to add
    * @param parent Optional parent TreeNode (defaults to root if not provided)
@@ -185,6 +193,9 @@ public:
 
   /// Create a named layer (TreeNode) and add it to the root of the tree.
   std::shared_ptr<TreeNode> add_group(const std::string& group_name);
+
+  /// Find an existing group by name. Throws std::runtime_error if not found.
+  std::shared_ptr<TreeNode> find_group(const std::string& group_name) const;
 
   /// Add geometry to session (stores object and adds to tree)
   void add_surface(std::shared_ptr<NurbsSurface> surface);

@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "closest.h"
+#include "aabb.h"
 #include "line.h"
 #include "polyline.h"
 #include "nurbscurve.h"
@@ -172,6 +173,100 @@ MINI_TEST("Closest", "Pointcloud Point") {
     auto [cp2, i2, d2] = Closest::pointcloud_point(pc, Point(10.0, 10.0, 0.0));
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
     MINI_CHECK(i2 == 3);
+}
+
+MINI_TEST("Closest", "Pointcloud Point KDTree") {
+    // uncomment #include "closest.h"
+    // uncomment #include "point.h"
+    // uncomment #include "pointcloud.h"
+    // KDTree variant: same result as linear scan, O(log n) query
+    PointCloud pc({
+        Point(0.0, 0.0, 0.0),
+        Point(5.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+        Point(10.0, 10.0, 0.0),
+    }, {}, {});
+
+    auto [cp1, i1, d1] = Closest::pointcloud_point_kdtree(pc, Point(4.0, 0.0, 0.0));
+
+    MINI_CHECK(TOLERANCE.is_close(cp1[0], 5.0));
+    MINI_CHECK(i1 == 1);
+    MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
+
+    auto [cp2, i2, d2] = Closest::pointcloud_point_kdtree(pc, Point(10.0, 10.0, 0.0));
+    MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
+    MINI_CHECK(i2 == 3);
+}
+
+MINI_TEST("Closest", "Lines Closest") {
+    // uncomment #include "closest.h"
+    // uncomment #include "aabb.h"
+    // uncomment #include "line.h"
+    // 3 lines: first two sharing an endpoint, third far away
+    std::vector<Line> lines = {
+        Line(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
+        Line(5.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+        Line(100.0, 0.0, 0.0, 110.0, 0.0, 0.0),
+    };
+
+    auto pairs = Closest::lines_closest(lines, 0.01);
+
+    MINI_CHECK(pairs.size() == 1);
+    MINI_CHECK(pairs[0].first == 0);
+    MINI_CHECK(pairs[0].second == 1);
+}
+
+MINI_TEST("Closest", "Polylines Closest") {
+    // uncomment #include "closest.h"
+    // uncomment #include "aabb.h"
+    // uncomment #include "polyline.h"
+    // uncomment #include "point.h"
+    std::vector<Polyline> pls = {
+        Polyline({Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
+        Polyline({Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)}),
+        Polyline({Point(100.0, 0.0, 0.0), Point(110.0, 0.0, 0.0)}),
+    };
+
+    auto pairs = Closest::polylines_closest(pls, 0.01);
+
+    MINI_CHECK(pairs.size() == 1);
+    MINI_CHECK(pairs[0].first == 0);
+    MINI_CHECK(pairs[0].second == 1);
+}
+
+MINI_TEST("Closest", "Nurbscurves Closest") {
+    // uncomment #include "closest.h"
+    // uncomment #include "aabb.h"
+    // uncomment #include "nurbscurve.h"
+    // uncomment #include "point.h"
+    std::vector<NurbsCurve> curves = {
+        NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
+        NurbsCurve::create(false, 1, {Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)}),
+        NurbsCurve::create(false, 1, {Point(100.0, 0.0, 0.0), Point(110.0, 0.0, 0.0)}),
+    };
+
+    auto pairs = Closest::nurbscurves_closest(curves, 0.01);
+
+    MINI_CHECK(pairs.size() == 1);
+    MINI_CHECK(pairs[0].first == 0);
+    MINI_CHECK(pairs[0].second == 1);
+}
+
+MINI_TEST("Closest", "Boxes Closest") {
+    // uncomment #include "closest.h"
+    // uncomment #include "aabb.h"
+    // 3 boxes: first two touching faces (shared at x=1), third far away
+    std::vector<AABB> boxes = {
+        AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+        AABB(2.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+        AABB(20.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+    };
+
+    auto pairs = Closest::boxes_closest(boxes, 0.01);
+
+    MINI_CHECK(pairs.size() == 1);
+    MINI_CHECK(pairs[0].first == 0);
+    MINI_CHECK(pairs[0].second == 1);
 }
 
 }

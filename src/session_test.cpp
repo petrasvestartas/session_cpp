@@ -483,4 +483,48 @@ MINI_TEST("Session", "Tree Transformation Hierarchy") {
     MINI_CHECK(std::abs(v0[2] - 0.0) < 1e-4);
 }
 
+MINI_TEST("Session", "Add Component") {
+    // add_component stores a custom domain object in the session.
+    // It is indexed by guid in component_lookup and registered in the graph.
+    // uncomment #include "session.h"
+
+    Session session;
+
+    Component c;
+    c.type_name = "FloorBuilder";
+    c.name      = "floor_builder";
+    c.extra     = {{"size", 3000}, {"height", 650}};
+    std::string guid = c.guid();
+
+    session.add_component(c);
+
+    MINI_CHECK(session.objects.components->size() == 1);
+    MINI_CHECK(session.component_lookup.count(guid) == 1);
+    MINI_CHECK(session.graph.has_node(guid));
+}
+
+MINI_TEST("Session", "Component Json Roundtrip") {
+    // A session with a component round-trips through JSON:
+    // the component survives with all custom fields intact.
+    // uncomment #include "session.h"
+    // uncomment #include "encoders.h"
+
+    Session original;
+    Component c;
+    c.type_name = "FloorBuilder";
+    c.name      = "floor_builder";
+    c.extra     = {{"size", 3000}, {"height", 650}, {"rise", 453}};
+    std::string guid = c.guid();
+    original.add_component(c);
+
+    std::string filename = "serialization/test_session_component.json";
+    encoders::json_dump(original, filename);
+    Session loaded = encoders::json_load<Session>(filename);
+
+    MINI_CHECK(loaded.objects.components->size() == 1);
+    MINI_CHECK(loaded.objects.components->at(0).type_name     == "FloorBuilder");
+    MINI_CHECK(loaded.objects.components->at(0).extra["size"] == 3000);
+    MINI_CHECK(loaded.objects.components->at(0).guid()        == guid);
+}
+
 } // namespace session_cpp

@@ -4,6 +4,22 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
+MINI_TEST("RTree", "Constructor") {
+    // uncomment #include "rtree.h"
+    // RTree3: dynamic spatial index — insert/remove support, O(log n) overlap search
+    RTree3 t;
+    double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
+    t.insert(a0, b0, 0);
+    double a1[3] = {5, 0, 0}, b1[3] = {6, 1, 1};
+    t.insert(a1, b1, 1);
+    double a2[3] = {10, 0, 0}, b2[3] = {11, 1, 1};
+    t.insert(a2, b2, 2);
+    int found = -1;
+    t.search(a0, b0, [&](int id) -> bool { found = id; return true; });
+
+    MINI_CHECK(found == 0);
+}
+
 MINI_TEST("RTree", "Creation") {
     // uncomment #include "rtree.h"
     RTree3 t;

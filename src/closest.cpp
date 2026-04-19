@@ -3,6 +3,7 @@
 #include "nurbssurface.h"
 #include "mesh.h"
 #include "pointcloud.h"
+#include "kdtree.h"
 #include "bvh.h"
 #include "aabb.h"
 #include <cmath>
@@ -470,6 +471,168 @@ std::tuple<Point, size_t, double> Closest::pointcloud_point(
     }
 
     return {best_point, best_index, best_dist};
+}
+
+static double aabb_to_aabb_min_dist(const AABB& a, const AABB& b) {
+    double dx = std::max(0.0, std::abs(a.cx - b.cx) - a.hx - b.hx);
+    double dy = std::max(0.0, std::abs(a.cy - b.cy) - a.hy - b.hy);
+    double dz = std::max(0.0, std::abs(a.cz - b.cz) - a.hz - b.hz);
+    return std::sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+static void collection_aabb_dfs(
+    const AABBTree& tree, int ni, const AABB& query_aabb,
+    std::vector<int>& result
+) {
+    const auto& n = tree.nodes[ni];
+    if (!n.aabb.intersects(query_aabb)) return;
+    if (n.object_id >= 0) {
+        result.push_back(n.object_id);
+        return;
+    }
+    collection_aabb_dfs(tree, ni + 1, query_aabb, result);
+    collection_aabb_dfs(tree, n.right, query_aabb, result);
+}
+
+std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(
+    const PointCloud& cloud,
+    const Point& test_point
+) {
+    if (cloud.point_count() == 0) {
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+    }
+    std::vector<Point> pts;
+    pts.reserve(cloud.point_count());
+    for (size_t i = 0; i < cloud.point_count(); i++) pts.push_back(cloud.get_point(i));
+    KDTree kd(std::move(pts));
+    auto [idx, dist] = kd.nearest(test_point);
+    return {cloud.get_point(idx), static_cast<size_t>(idx), dist};
+}
+
+std::vector<std::pair<size_t, size_t>> Closest::lines_closest(
+    const std::vector<Line>& lines,
+    double threshold
+) {
+    std::vector<std::pair<size_t, size_t>> result;
+    if (lines.size() < 2) return result;
+
+    std::vector<AABB> aabbs;
+    aabbs.reserve(lines.size());
+    for (const auto& ln : lines) aabbs.push_back(AABB::from_line(ln, threshold));
+
+    AABBTree tree;
+    tree.build(aabbs.data(), aabbs.size());
+
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::vector<int> candidates;
+        collection_aabb_dfs(tree, 0, aabbs[i], candidates);
+        for (int j_raw : candidates) {
+            size_t j = static_cast<size_t>(j_raw);
+            if (j <= i) continue;
+            auto [cp_a, t_a, d_a] = line_point(lines[j], lines[i].start());
+            auto [cp_b, t_b, d_b] = line_point(lines[j], lines[i].end());
+            auto [cp_c, t_c, d_c] = line_point(lines[i], lines[j].start());
+            auto [cp_d, t_d, d_d] = line_point(lines[i], lines[j].end());
+            double dist = std::min({d_a, d_b, d_c, d_d});
+            if (dist <= threshold) result.push_back({i, j});
+        }
+    }
+    return result;
+}
+
+std::vector<std::pair<size_t, size_t>> Closest::polylines_closest(
+    const std::vector<Polyline>& polylines,
+    double threshold
+) {
+    std::vector<std::pair<size_t, size_t>> result;
+    if (polylines.size() < 2) return result;
+
+    std::vector<AABB> aabbs;
+    aabbs.reserve(polylines.size());
+    for (const auto& pl : polylines) aabbs.push_back(AABB::from_polyline(pl, threshold));
+
+    AABBTree tree;
+    tree.build(aabbs.data(), aabbs.size());
+
+    for (size_t i = 0; i < polylines.size(); i++) {
+        std::vector<int> candidates;
+        collection_aabb_dfs(tree, 0, aabbs[i], candidates);
+        for (int j_raw : candidates) {
+            size_t j = static_cast<size_t>(j_raw);
+            if (j <= i) continue;
+            const auto pts_a = polylines[i].get_points();
+            double dist = std::numeric_limits<double>::infinity();
+            for (const auto& pt : pts_a) {
+                auto [cp, t, d] = polyline_point(polylines[j], pt);
+                if (d < dist) dist = d;
+            }
+            if (dist <= threshold) result.push_back({i, j});
+        }
+    }
+    return result;
+}
+
+std::vector<std::pair<size_t, size_t>> Closest::nurbscurves_closest(
+    const std::vector<NurbsCurve>& curves,
+    double threshold
+) {
+    std::vector<std::pair<size_t, size_t>> result;
+    if (curves.size() < 2) return result;
+
+    std::vector<AABB> aabbs;
+    aabbs.reserve(curves.size());
+    for (const auto& crv : curves) aabbs.push_back(AABB::from_nurbscurve(crv, threshold, false));
+
+    AABBTree tree;
+    tree.build(aabbs.data(), aabbs.size());
+
+    for (size_t i = 0; i < curves.size(); i++) {
+        std::vector<int> candidates;
+        collection_aabb_dfs(tree, 0, aabbs[i], candidates);
+        for (int j_raw : candidates) {
+            size_t j = static_cast<size_t>(j_raw);
+            if (j <= i) continue;
+            auto [domain_s, domain_e] = curves[i].domain();
+            Point p_start = curves[i].point_at(domain_s);
+            Point p_end = curves[i].point_at(domain_e);
+            auto [t_a, d_a] = curve_point(curves[j], p_start);
+            auto [t_b, d_b] = curve_point(curves[j], p_end);
+            double dist = std::min(d_a, d_b);
+            if (dist <= threshold) result.push_back({i, j});
+        }
+    }
+    return result;
+}
+
+std::vector<std::pair<size_t, size_t>> Closest::boxes_closest(
+    const std::vector<AABB>& boxes,
+    double threshold
+) {
+    std::vector<std::pair<size_t, size_t>> result;
+    if (boxes.size() < 2) return result;
+
+    std::vector<AABB> inflated;
+    inflated.reserve(boxes.size());
+    for (const auto& b : boxes) {
+        AABB inf = b;
+        inf.inflate(threshold);
+        inflated.push_back(inf);
+    }
+
+    AABBTree tree;
+    tree.build(inflated.data(), inflated.size());
+
+    for (size_t i = 0; i < boxes.size(); i++) {
+        std::vector<int> candidates;
+        collection_aabb_dfs(tree, 0, inflated[i], candidates);
+        for (int j_raw : candidates) {
+            size_t j = static_cast<size_t>(j_raw);
+            if (j <= i) continue;
+            double dist = aabb_to_aabb_min_dist(boxes[i], boxes[j]);
+            if (dist <= threshold) result.push_back({i, j});
+        }
+    }
+    return result;
 }
 
 } // namespace session_cpp

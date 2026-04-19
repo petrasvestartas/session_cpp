@@ -1,8 +1,18 @@
 #include "mini_test.h"
 #include "obb.h"
+#include "color.h"
+#include "line.h"
+#include "mesh.h"
+#include "nurbscurve.h"
+#include "nurbssurface.h"
 #include "plane.h"
-#include "xform.h"
+#include "point.h"
+#include "pointcloud.h"
+#include "polyline.h"
+#include "primitives.h"
 #include "tolerance.h"
+#include "vector.h"
+#include "xform.h"
 #include <cmath>
 
 using namespace session_cpp::mini_test;
@@ -206,6 +216,121 @@ MINI_TEST("OBB", "Accessors") {
     b.union_with(c);
 
     MINI_CHECK(TOLERANCE.is_close(b.half_size[0], 3.0));
+}
+
+MINI_TEST("OBB", "From Geometry") {
+    // uncomment #include "line.h"
+    // uncomment #include "polyline.h"
+    // uncomment #include "pointcloud.h"
+    // uncomment #include "nurbscurve.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
+    OBB bb_line = OBB::from_line(Line(0.0, 0.0, 0.0, 4.0, 0.0, 0.0), 0.1);
+
+    MINI_CHECK(bb_line.is_valid());
+    MINI_CHECK(TOLERANCE.is_close(bb_line.center[0], 2.0));
+
+    OBB bb_pl = OBB::from_polyline(Polyline({
+        Point(0.0, 0.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+        Point(4.0, 4.0, 4.0),
+    }), 0.0);
+
+    MINI_CHECK(bb_pl.is_valid());
+    MINI_CHECK(bb_pl.volume() > 0.0);
+
+    OBB bb_mesh = OBB::from_mesh(Primitives::cube(2.0), 0.0);
+
+    MINI_CHECK(bb_mesh.is_valid());
+    MINI_CHECK(TOLERANCE.is_close(bb_mesh.center[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(bb_mesh.volume(), 8.0));
+
+    OBB bb_pc = OBB::from_pointcloud(PointCloud(
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(0.0, 2.0, 0.0),
+            Point(0.0, 0.0, 2.0),
+        },
+        {
+            Vector(0.0, 0.0, 1.0),
+            Vector(0.0, 0.0, 1.0),
+            Vector(0.0, 0.0, 1.0),
+            Vector(0.0, 0.0, 1.0),
+        },
+        {
+            Color(255, 0, 0, 255),
+            Color(0, 255, 0, 255),
+            Color(0, 0, 255, 255),
+            Color(255, 255, 0, 255),
+        }
+    ), 0.0);
+
+    MINI_CHECK(bb_pc.is_valid());
+    MINI_CHECK(bb_pc.volume() > 0.0);
+
+    OBB bb_nc = OBB::from_nurbscurve(NurbsCurve::create(false, 2, {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(3.0, 0.0, 0.0),
+    }), 0.5, false);
+
+    MINI_CHECK(bb_nc.is_valid());
+
+    OBB bb_ns = OBB::from_nurbssurface(NurbsSurface::create(false, false, 1, 1, 2, 2, {
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(0.0, 2.0, 0.0),
+        Point(2.0, 2.0, 2.0),
+    }), 0.0);
+
+    MINI_CHECK(bb_ns.is_valid());
+}
+
+MINI_TEST("OBB", "From Plane") {
+    // uncomment #include "obb.h"
+    // uncomment #include "plane.h"
+    Plane plane = Plane::xy_plane();
+    OBB box(plane, 2.0, 3.0, 4.0);
+
+    MINI_CHECK(TOLERANCE.is_close(box.half_size[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(box.half_size[1], 1.5));
+    MINI_CHECK(TOLERANCE.is_close(box.half_size[2], 2.0));
+    MINI_CHECK(box.center == Point(0.0, 0.0, 0.0));
+
+    std::vector<Point> pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(2.0, 3.0, 0.0),
+        Point(0.0, 3.0, 0.0),
+    };
+    OBB bb = OBB::from_points(pts, plane, 0.0);
+
+    MINI_CHECK(TOLERANCE.is_close(bb.half_size[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(bb.half_size[1], 1.5));
+    MINI_CHECK(TOLERANCE.is_close(bb.x_axis[0], 1.0));
+}
+
+MINI_TEST("OBB", "Two Rectangles") {
+    // uncomment #include "obb.h"
+    OBB bb(
+        Point(1.0, 2.0, 3.0),
+        Vector(1.0, 0.0, 0.0),
+        Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0),
+        Vector(2.0, 3.0, 4.0)
+    );
+    std::array<Point, 10> rects = bb.two_rectangles();
+
+    // bottom rect (z=-4 offset): corners at z=-1; top rect (z=+4 offset): corners at z=7
+    MINI_CHECK(rects.size() == 10);
+    MINI_CHECK(rects[0] == Point(3.0, 5.0, -1.0));
+    MINI_CHECK(rects[2] == Point(-1.0, -1.0, -1.0));
+    MINI_CHECK(rects[4] == rects[0]);
+    MINI_CHECK(rects[5] == Point(3.0, 5.0, 7.0));
+    MINI_CHECK(rects[7] == Point(-1.0, -1.0, 7.0));
+    MINI_CHECK(rects[9] == rects[5]);
 }
 
 } // namespace session_cpp

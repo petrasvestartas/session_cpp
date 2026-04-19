@@ -88,6 +88,34 @@ public:
   );
 
   /**
+   * @brief Plane-plane intersection line with CGAL-canonical anchor
+   * (closest-to-world-origin point on the line).
+   *
+   * Matches wood's `cgal::intersection_util::plane_plane` at
+   * `cgal_intersection_util.cpp:493-511` which uses CGAL's
+   * `Plane_3::point()` = foot-of-perpendicular from origin canonical.
+   * The anchor is independent of input-plane origin choice, so the
+   * downstream `l1.start() - l0.projection(l1.start())` formula in
+   * `orthogonal_vector_between_two_plane_pairs` gives a bit-exact
+   * match to wood for parallel input planes (e.g., plate top/bottom
+   * face pairs in ts_e_p joint construction).
+   *
+   * Existing `plane_plane` is left intact — pinned by the
+   * `Plane Plane Complex` minitest which hardcodes the specific
+   * anchor values produced by the midpoint-bisector formulation.
+   *
+   * @param plane0 First plane
+   * @param plane1 Second plane
+   * @param output Intersection line (anchor = canonical foot of origin)
+   * @return true if planes intersect (not parallel), false otherwise
+   */
+  static bool plane_plane_to_line_canonical(
+    const Plane& plane0,
+    const Plane& plane1,
+    Line& output
+  );
+
+  /**
    * @brief Find intersection point between a line and a plane
    * @param line Line to intersect
    * @param plane Plane to intersect
@@ -660,6 +688,32 @@ public:
   /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
   static std::vector<Polyline> polyline_boolean(const Polyline& a, const Polyline& b, int clip_type);
 
+  /// 2D polygon offset in plane space using Clipper2 InflatePaths (Miter,
+  /// Polygon end). Transforms `polyline` to the 2D frame of `plane`, offsets
+  /// by `offset` (positive = outward), rotates result to best-align with the
+  /// original first vertex, and transforms back to 3D. Mutates `polyline` to
+  /// the offset result. Returns false if Clipper2 returns no paths or the
+  /// result is degenerate (area < 0.0001). Verbatim port of wood's
+  /// `cgal::collider::clipper_util::offset_in_3d` at
+  /// `clipper_util.cpp:707-790`.
+  static bool offset_in_3d(Polyline& polyline, const Plane& plane, double offset);
+
+  /// 2D boolean between two closed planar polylines using Clipper2.
+  /// `intersection_type`: 0=Intersect, 1=Union, 2=Difference, 3=Xor.
+  /// `include_triangles`: when false, 3-vertex results are rejected.
+  /// Writes result back to `intersection_result`; returns false on empty,
+  /// degenerate (<3 vertices), triangle-reject, or area below `CLIPPER_AREA`.
+  /// Verbatim port of wood's `get_intersection_between_two_polylines` at
+  /// `clipper_util.cpp:524-620`.
+  static bool polyline_boolean_2d_in_plane(
+      const Polyline& polyline0,
+      const Polyline& polyline1,
+      const Plane& plane,
+      Polyline& intersection_result,
+      int intersection_type,
+      bool include_triangles = false,
+      double min_area = 0.01);
+
   /// Face-to-face joint detection between elements via coplanar boolean intersection.
   /// adjacency: flat array [a0,b0,?,?, a1,b1,?,?, ...] processed in groups of 4.
   /// Returns: vector of (element_a, element_b, face_a, face_b, type, polyline).
@@ -723,6 +777,13 @@ public:
     double angle_tol = 5.0,
     const std::array<double,3>& extension = {0.0, 0.0, 0.0}
   );
+
+public:
+  /// Set the near-coplanar rejection threshold used by
+  /// polyline_plane_cross_joint. Wood reads from
+  /// wood::GLOBALS::DISTANCE_SQUARED which some tests (hexboxes) mutate.
+  /// Caller syncs this before face_to_face iteration.
+  static void set_cross_joint_distance_squared(double dist_sq);
 
 private:
   static int solve_3x3(

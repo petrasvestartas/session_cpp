@@ -105,7 +105,7 @@ std::vector<Polyline> read_obj_polylines(const std::string& filepath) {
                     size_t vi = static_cast<size_t>(idx - 1);
                     if (vi < verts.size()) pts.push_back(verts[vi]);
                 }
-                if (pts.size() >= 3) polylines.emplace_back(pts);
+                if (pts.size() >= 2) polylines.emplace_back(pts);
             }
             in_curv = false;
         }

@@ -157,6 +157,15 @@ std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element,
   return node;
 }
 
+std::shared_ptr<TreeNode> Session::add_component(Component component, std::shared_ptr<TreeNode> parent) {
+  component_lookup[component.guid()] = component;
+  objects.components->push_back(component);
+  graph.add_node(component.guid(), "component_" + component.name);
+  auto node = std::make_shared<TreeNode>(component.guid());
+  if (parent) add(node, parent);
+  return node;
+}
+
 void Session::compute_face_to_face(double inflate, double coplanar_tolerance) {
     auto& elems = *objects.elements;
     size_t N = elems.size();
@@ -217,6 +226,18 @@ std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
   auto node = std::make_shared<TreeNode>(group_name);
   add(node);
   return node;
+}
+
+std::shared_ptr<TreeNode> Session::find_group(const std::string& group_name) const {
+  auto r = tree.root();
+  if (r) {
+    for (auto* child : r->children()) {
+      if (child && child->name == group_name) {
+        return child->shared_from_this();
+      }
+    }
+  }
+  throw std::runtime_error("Group '" + group_name + "' not found");
 }
 
 void Session::add(std::shared_ptr<TreeNode> node,

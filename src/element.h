@@ -27,9 +27,9 @@ public:
     std::string name;
     Xform session_transformation = Xform::identity();
 
-    Element(const std::string& name = "my_element");
-    Element(const Mesh& geometry, const std::string& name = "my_element");
-    Element(const BRep& geometry, const std::string& name = "my_element");
+    Element(const std::string& name = "my_element", const Xform& transformation = Xform::identity());
+    Element(const Mesh& geometry, const std::string& name = "my_element", const Xform& transformation = Xform::identity());
+    Element(const BRep& geometry, const std::string& name = "my_element", const Xform& transformation = Xform::identity());
     Element(const Element& other);
     Element& operator=(const Element& other);
     virtual ~Element() = default;
@@ -110,7 +110,7 @@ protected:
 class ElementColumn : public Element {
 public:
     ElementColumn(double width = 0.4, double depth = 0.4, double height = 3.0,
-                  const std::string& name = "my_column");
+                  const std::string& name = "my_column", const Xform& transformation = Xform::identity());
     ElementColumn(const ElementColumn& other);
     ElementColumn& operator=(const ElementColumn& other);
 
@@ -148,7 +148,7 @@ private:
 class ElementBeam : public Element {
 public:
     ElementBeam(double width = 0.1, double depth = 0.2, double length = 3.0,
-                const std::string& name = "my_beam");
+                const std::string& name = "my_beam", const Xform& transformation = Xform::identity());
     ElementBeam(const ElementBeam& other);
     ElementBeam& operator=(const ElementBeam& other);
 
@@ -192,11 +192,11 @@ struct JointConnection {
 class ElementPlate : public Element {
 public:
     ElementPlate(const std::vector<Point>& polygon = {}, double thickness = 0.1,
-                 const std::string& name = "my_plate");
+                 const std::string& name = "my_plate", const Xform& transformation = Xform::identity());
     ElementPlate(const std::vector<Point>& bottom, const std::vector<Point>& top,
-                 const std::string& name = "my_plate");
+                 const std::string& name = "my_plate", const Xform& transformation = Xform::identity());
     ElementPlate(const Polyline& bottom, const Polyline& top,
-                 const std::string& name = "my_plate");
+                 const std::string& name = "my_plate", const Xform& transformation = Xform::identity());
     ElementPlate(const ElementPlate& other);
     ElementPlate& operator=(const ElementPlate& other);
 

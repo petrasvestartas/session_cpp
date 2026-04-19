@@ -1,71 +1,42 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// main_5_joint_lib.h — wood joint geometry constructors (the
-// `wood_joint_lib.cpp` equivalent for session_cpp/main_5.cpp).
+// ═══════════════════════════════════════════════════════════════════════════
+// wood/wood_joint_lib.h — wood joint geometry constructors (the
+// `wood_joint_lib.cpp` equivalent for the session wood port).
 //
-// This header is intentionally a single-include drop-in for `main_5.cpp`. It
-// is NOT a stand-alone library — it relies on `Point`, `Vector`, `Polyline`,
-// `WoodJoint` and several other names being already in scope at the
-// include point. Including this anywhere other than `main_5.cpp` will fail.
+// This header is a single-include drop-in: it relies on `Point`, `Vector`,
+// `Polyline`, `WoodJoint`, `wood_cut::cut_type`, and several other names
+// being already in scope at the include point. Including this anywhere
+// other than `wood/wood_main.cpp` will fail.
 //
-// Mirrors the wood file `cmake/src/wood/include/wood_joint_lib.cpp`.
+// Mirrors `cmake/src/wood/include/wood_joint_lib.cpp` from the wood project.
 // Each function below carries a `wood_joint_lib.cpp:LINE-LINE` reference to
 // the wood source it was ported from. The `joint_create_geometry` two-level
-// dispatcher that selects between these constructors lives in `main_5.cpp`
-// (after the include) — see `wood_joint_lib.cpp:6075-6448` for wood's
+// dispatcher that selects between these constructors lives in
+// `wood/wood_main.cpp` — see `wood_joint_lib.cpp:6075-6448` for wood's
 // equivalent dispatcher.
 //
 // What's currently here:
-//   group 0 (ss_e_ip, type 12): ss_e_ip_0 (id 2), ss_e_ip_1 (id 1)
-//   group 1 (ss_e_op, type 11): ss_e_op_0 (id 12), ss_e_op_1 (id 10),
-//                               ss_e_op_2 (id 11)
-//   group 2 (ts_e_p,  type 20): ts_e_p_0 (id 23), ts_e_p_1 (no dispatch),
-//                               ts_e_p_2 (id 21), ts_e_p_3 (id 20, 22)
+//   group 0 (ss_e_ip, type 12): ss_e_ip_0 (id 2), ss_e_ip_1 (id 1),
+//                               ss_e_ip_3 (id 4), ss_e_ip_4 (id 5)
+//   group 1 (ss_e_op, type 11): ss_e_op_0..6 (ids 10..16)
+//   group 2 (ts_e_p,  type 20): ts_e_p_0 (id 23), ts_e_p_1 (unwired),
+//                               ts_e_p_2 (id 21), ts_e_p_3 (id 20, 22),
+//                               ts_e_p_5 (id 25)
+//   group 3 (cr_c_ip, type 30): cr_c_ip_0..5 (ids 30..35)
+//   group 5 (ss_e_r,  type 13): ss_e_r_0 (id 56), ss_e_r_2 (id 55),
+//                               ss_e_r_3 (id 54)
 //   helpers: interpolate_points (no-endpoints), remap_numbers
 //
-// What's NOT here (each blocked on a specific dependency, see
-// `project_main_5_full_port_roadmap.md` in memory):
-//   - ss_e_ip_2/3/4/5/custom         — element catalog OR cut types OR XML
-//   - ss_e_op_3/4/5/6/custom         — cut types OR extra params OR linking
-//   - ts_e_p_4/5/custom              — long parametric OR XML
-//   - cr_c_ip_*  (group 3, type 30) — non-coplanar detection + cut types
+// What's NOT here (each blocked on a specific dependency):
+//   - ss_e_ip_2/5/custom             — element catalog OR XML
+//   - ss_e_op_custom                 — XML loader
+//   - ts_e_p_4/custom                — 458-line chamfer/extension OR XML
 //   - tt_e_p_*   (group 4, type 40) — element catalog + 5 CGAL helpers + drill
-//   - ss_e_r_*   (group 5, type 13) — element catalog + rotated logic
 //   - b_*        (group 6, type 60) — joint.scale field + slice cut type
 //   - side_removal*                  — pre-detection face removal pipeline
-//
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
 #pragma once
 
-// Wood verbatim: `wood::cut::cut_type` enum from
-// `wood/cmake/src/wood/include/wood_cut.h`. Each joint constructor
-// populates `WoodJoint::m_cut_types` and `f_cut_types` with one value
-// per outline polyline (index-aligned with `m_outlines[face]` and
-// `f_outlines[face]`). The merge function reads these to decide
-// whether each polyline is a contour, a hole, a drill, etc. Stage 3
-// of the wood port (`project_main_5_full_port_roadmap.md`).
-namespace wood_cut {
-    enum cut_type : int {
-        nothing                          = 0,
-        // Plates (faces, top/bottom + edges)
-        hole                             = 1,
-        edge_insertion                   = 2,
-        insert_between_multiple_edges    = 3,
-        // Beams (always projected or inside volume)
-        slice                            = 4,
-        slice_projectsheer               = 5,
-        mill                             = 6,
-        mill_project                     = 7,
-        mill_projectsheer                = 8,
-        cut                              = 9,
-        cut_project                      = 10,
-        cut_projectsheer                 = 11,
-        cut_reverse                      = 12,
-        conic                            = 13,
-        conic_reverse                    = 14,
-        // Vertical drill (plates & beams)
-        drill                            = 15,
-    };
-}
+#include "wood_cut.h"
 
 // Wood verbatim: `interpolate_points(from, to, steps, include_ends=false, ...)`
 // from wood_joint_lib.cpp:392-416 produces `steps` points at parameters
@@ -81,14 +52,12 @@ namespace wood_cut {
 // duplicate at the end of the outline (the explicit append duplicates the
 // last loop push) and creates a visible back-and-forth spike where the
 // joint outline meets the surrounding plate polyline.
-static std::vector<Point> interpolate_points(const Point& a, const Point& b, int steps) {
-    std::vector<Point> pts;
-    pts.reserve(steps);
-    for (int i = 1; i < steps + 1; i++) {
-        double t = static_cast<double>(i) / static_cast<double>(1 + steps);
-        pts.emplace_back(a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t);
-    }
-    return pts;
+// Wrapper around `session_cpp::Polyline::interpolate_points(a, b, steps, 0)`.
+// The session primitive already has the no-endpoints variant wood needs;
+// keeping a thin free function here preserves the short call-site spelling
+// used across every joint constructor below.
+static inline std::vector<Point> interpolate_points(const Point& a, const Point& b, int steps) {
+    return Polyline::interpolate_points(a, b, steps, /*kind=*/0);
 }
 
 // Wood's `internal::remap_numbers` already exists in session as
@@ -113,6 +82,7 @@ static void ss_e_op_4(WoodJoint& joint, double t, bool chamfer, bool female_modi
 // the same outline, because for an in-plane edge joint both elements share
 // the same boundary line and just slot into each other.
 static void ss_e_ip_0(WoodJoint& joint) {
+    joint.name = "ss_e_ip_0";
     auto P = [](double x, double y, double z) { return Point(x, y, z); };
     const double a = 0.357142857142857;   // 5/14
     const double b = 0.214285714285714;   // 3/14
@@ -163,6 +133,7 @@ static void ss_e_ip_0(WoodJoint& joint) {
 // (y=+0.5) is the same line offset by `v_o = (0, 1, 0)`. Both faces use the
 // same outline for m and f (in-plane joints are symmetric).
 static void ss_e_ip_1(WoodJoint& joint) {
+    joint.name = "ss_e_ip_1";
     int div = std::max(2, std::min(100, joint.divisions));
     div += div % 2; // force even
 
@@ -224,6 +195,93 @@ static void ss_e_ip_1(WoodJoint& joint) {
     joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
 }
 
+// ss_e_ip_2: butterfly / X-fix joint. Verbatim port of wood_joint_lib.cpp:757-967.
+// Unit-cube geometry — N copies of a 4-pt butterfly tooth merged into a single
+// polyline along the joint axis, plus a 2-pt endpoint marker per face.
+// Cut types: edge_insertion. unit_scale = true.
+static void ss_e_ip_2(WoodJoint& joint) {
+    joint.name = "ss_e_ip_2";
+    // Safe defaults when joint_lines missing (e.g. in library-only tests).
+    double edge_length = 1000.0;
+    {
+        Point a = joint.joint_lines[0].start();
+        Point b = joint.joint_lines[0].end();
+        double d = Point::distance(a, b);
+        if (d > 1e-9) edge_length = d;
+    }
+    int divisions = std::max(1, std::min(100, joint.divisions));
+    double joint_volume_edge_length =
+        (joint.unit_scale_distance > 0.0) ? joint.unit_scale_distance : 40.0;
+    edge_length *= joint.scale[2];
+    double move_length_scaled = edge_length / (divisions * joint_volume_edge_length);
+    double total_length_scaled = edge_length / joint_volume_edge_length;
+    // Axis unit vector = +z; move_from_center_to_end brings the first tooth's
+    // centre out to `+Z * (total-move)/2`; each step steps BACK by move_length.
+    double mv_end  = (total_length_scaled * 0.5) - (move_length_scaled * 0.5);
+    double mv_step = -move_length_scaled;
+
+    // Base butterfly teeth (4 pts each, + 2-pt markers).
+    auto P = [](double x, double y, double z) { return Point(x, y, z); };
+    std::vector<Point> base_m0 = {
+        P(0.0, -0.5, 0.1166666667),
+        P(-0.5, -0.5, 0.4),
+        P(-0.5, -0.5, -0.4),
+        P(0.0, -0.5, -0.1166666667),
+    };
+    std::vector<Point> base_m1 = {
+        P(0.0, 0.5, 0.1166666667),
+        P(-0.5, 0.5, 0.4),
+        P(-0.5, 0.5, -0.4),
+        P(0.0, 0.5, -0.1166666667),
+    };
+    std::vector<Point> base_f0 = {
+        P(0.0, -0.5, 0.1166666667),
+        P(0.5, -0.5, 0.4),
+        P(0.5, -0.5, -0.4),
+        P(0.0, -0.5, -0.1166666667),
+    };
+    std::vector<Point> base_f1 = {
+        P(0.0, 0.5, 0.1166666667),
+        P(0.5, 0.5, 0.4),
+        P(0.5, 0.5, -0.4),
+        P(0.0, 0.5, -0.1166666667),
+    };
+
+    auto build = [&](const std::vector<Point>& base) -> std::vector<Point> {
+        std::vector<Point> out;
+        out.reserve(base.size() * divisions);
+        for (int i = 0; i < divisions; ++i) {
+            double dz = mv_end + mv_step * i;
+            for (const Point& p : base)
+                out.emplace_back(p[0], p[1], p[2] + dz);
+        }
+        return out;
+    };
+    std::vector<Point> m0 = build(base_m0);
+    std::vector<Point> m1 = build(base_m1);
+    std::vector<Point> f0 = build(base_f0);
+    std::vector<Point> f1 = build(base_f1);
+
+    Polyline pl_m0(m0);
+    Polyline pl_m1(m1);
+    Polyline pl_f0(f0);
+    Polyline pl_f1(f1);
+    Polyline ep_m0(std::vector<Point>{ m0.front(), m0.back() });
+    Polyline ep_m1(std::vector<Point>{ m1.front(), m1.back() });
+    Polyline ep_f0(std::vector<Point>{ f0.front(), f0.back() });
+    Polyline ep_f1(std::vector<Point>{ f1.front(), f1.back() });
+
+    joint.m_outlines[0] = { pl_m0, ep_m0 };
+    joint.m_outlines[1] = { pl_m1, ep_m1 };
+    joint.f_outlines[0] = { pl_f0, ep_f0 };
+    joint.f_outlines[1] = { pl_f1, ep_f1 };
+    joint.m_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.m_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[0] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.f_cut_types[1] = { wood_cut::edge_insertion, wood_cut::edge_insertion };
+    joint.unit_scale = true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // group 1 — ss_e_op (side-side out-of-plane, type 11)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +290,7 @@ static void ss_e_ip_1(WoodJoint& joint) {
 // joint name id=12 in the dispatcher). Verbatim port of
 // wood_joint_lib.cpp:1577-1606.
 static void ss_e_op_0(WoodJoint& joint) {
+    joint.name = "ss_e_op_0";
     auto P = [](double x, double y, double z) { return Point(x, y, z); };
     const double a = 0.357142857142857;   // 5/14
     const double b = 0.214285714285714;   // 3/14
@@ -293,6 +352,7 @@ static void ss_e_op_0(WoodJoint& joint) {
 // Creates parametric geometry in the [-0.5, 0.5]³ unit cube. Default annen
 // dispatch target.
 static void ss_e_op_1(WoodJoint& joint) {
+    joint.name = "ss_e_op_1";
     int div = std::max(2, std::min(20, joint.divisions));
     div += div % 2; // force even
 
@@ -372,6 +432,7 @@ static void ss_e_op_1(WoodJoint& joint) {
 // scales the central two pairs more than the outer pairs (4*v vs 2*v) and
 // flips sign across the polyline midpoint.
 static void ss_e_op_2(WoodJoint& joint) {
+    joint.name = "ss_e_op_2";
     int div = std::max(4, std::min(20, joint.divisions));
     div += div % 2; // force even
 
@@ -457,6 +518,7 @@ static void ss_e_op_2(WoodJoint& joint) {
 // m[1] = 12-pt zigzag at x=-0.5 with 2-pt endpoint marker
 // boolean: f = hole×4, m = edge_insertion×2.
 static void ts_e_p_0(WoodJoint& joint) {
+    joint.name = "ts_e_p_0";
     auto P = [](double x, double y, double z) { return Point(x, y, z); };
     const double a = 0.357142857142857;   // 5/14
     const double b = 0.214285714285714;   // 3/14
@@ -528,7 +590,7 @@ static void ts_e_p_0(WoodJoint& joint) {
 // (`wood_joint_lib.cpp:6395-6448` has no `case (21): ts_e_p_1` line). Kept
 // here as a complete port; wire it into `joint_create_geometry` if a
 // dataset needs it.
-static void ts_e_p_1(WoodJoint& joint) {
+[[maybe_unused]] static void ts_e_p_1(WoodJoint& joint) {
     auto P = [](double x, double y, double z) { return Point(x, y, z); };
     const double z_top   = 0.166666666666667;
     const double z_top2  = 0.0555555555555556;
@@ -602,6 +664,7 @@ static void ts_e_p_1(WoodJoint& joint) {
 // have 2-pt endpoint markers; `f[0]/f[1]` are vectors of 5-point hole
 // rectangles plus a bounding-rect at the end.
 static void ts_e_p_2(WoodJoint& joint) {
+    joint.name = "ts_e_p_2";
     int div = std::max(2, std::min(20, joint.divisions));
     div += div % 2; // force even
     int size = div / 2 + 1;
@@ -692,6 +755,7 @@ static void ts_e_p_2(WoodJoint& joint) {
 // Male: zigzag polyline with every-other-pair skip + 2-point endpoints.
 // Female: rectangular holes from every 4 male points + bounding rectangle.
 static void ts_e_p_3(WoodJoint& joint) {
+    joint.name = "ts_e_p_3";
     int div = std::max(8, std::min(100, joint.divisions));
     div -= div % 4; // force multiple of 4
     if (div == 0) return;
@@ -779,7 +843,7 @@ static void ts_e_p_3(WoodJoint& joint) {
     // bounding rect — its size==`size` and the merge's "skip last" loop
     // explicitly drops it). For consistency with ts_e_p_2 we still tag the
     // last entry as insert_between_multiple_edges so the cut-type-aware
-    // merge in main_5.cpp can use a single uniform iteration rule.
+    // merge in wood_main.cpp can use a single uniform iteration rule.
     {
         std::vector<int> v0; v0.reserve(joint.f_outlines[0].size());
         for (size_t k = 0; k + 1 < joint.f_outlines[0].size(); k++)
@@ -807,6 +871,7 @@ static void ts_e_p_3(WoodJoint& joint) {
 // f_cut_types = all hole; m_cut_types = {edge_insertion, edge_insertion}.
 // unit_scale = true.
 static void ts_e_p_5(WoodJoint& joint) {
+    joint.name = "ts_e_p_5";
     int divisions = std::max(1, joint.divisions);
     double edge_length = joint.length * joint.scale[2];
     double jv_len = 40.0;
@@ -953,6 +1018,7 @@ static void ts_e_p_5(WoodJoint& joint) {
 // Verbatim port of wood_joint_lib.cpp:970-1116. Hardcoded mill+drill in-plane
 // joint with 6 outlines per face (2 mill_project + 4 drill).
 static void ss_e_ip_3(WoodJoint& joint) {
+    joint.name = "ss_e_ip_3";
     joint.f_outlines[0] = {
         Polyline({Point(-1.25,-0.5,-0.5), Point(1,-0.5,-0.5), Point(1,-0.2,-0.5), Point(-1,0.2,-0.5), Point(-1,0.5,-0.5), Point(-1.25,0.5,-0.5), Point(-1.25,-0.5,-0.5)}),
         Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
@@ -995,6 +1061,7 @@ static void ss_e_ip_3(WoodJoint& joint) {
 // Verbatim port of wood_joint_lib.cpp:1118-1317. Hardcoded mill+drill in-plane
 // joint with 8 outlines per face (4 mill_project + 4 drill).
 static void ss_e_ip_4(WoodJoint& joint) {
+    joint.name = "ss_e_ip_4";
     joint.f_outlines[0] = {
         Polyline({Point(-1.25,-0.5,0), Point(1,-0.5,0), Point(1,-0.2,0), Point(-1,0.2,0), Point(-1,0.5,0), Point(-1.25,0.5,0), Point(-1.25,-0.5,0)}),
         Polyline({Point(0,-0.5,0.5), Point(0,-0.5,-0.5)}),
@@ -1046,6 +1113,7 @@ static void ss_e_ip_4(WoodJoint& joint) {
 // 4 female outlines (2 insert_between + 2 hole) and 2 male outlines
 // (2 insert_between).
 static void ss_e_op_3(WoodJoint& joint) {
+    joint.name = "ss_e_op_3";
     joint.f_outlines[0] = {
         Polyline({Point(0.5,0.5,0.3), Point(0.5,-1.499975,0.3), Point(0.5,-1.499975,-0.3), Point(0.5,0.5,-0.3)}),
         Polyline({Point(0.5,0.5,0.3), Point(0.5,0.5,-0.3)}),
@@ -1077,6 +1145,7 @@ static void ss_e_op_3(WoodJoint& joint) {
 // If no linked_joints → falls back to ss_e_op_4 with chamfer.
 // Otherwise generates geometry for self AND linked shadow joints.
 static void ss_e_op_5(WoodJoint& jo, std::vector<WoodJoint>& all_joints, bool disable_joint_divisions) {
+    jo.name = "ss_e_op_5";
     if (jo.linked_joints.empty() || jo.linked_joints.size() > 2) {
         ss_e_op_4(jo, 0.00, true, true, -0.75, 0.5, -0.5, 0.5, -0.5, 0.5);
         return;
@@ -1116,6 +1185,7 @@ static void ss_e_op_5(WoodJoint& jo, std::vector<WoodJoint>& all_joints, bool di
 // Verbatim port of wood_joint_lib.cpp:4583-4602. Trivial cross-joint stub:
 // each face has 2 identical closed rectangles.
 static void cr_c_ip_0(WoodJoint& joint) {
+    joint.name = "cr_c_ip_0";
     double s = 1.0;
     joint.f_outlines[0] = {
         Polyline({Point(-0.5,0.5,s), Point(-0.5,-0.5,s), Point(-0.5,-0.5,0), Point(-0.5,0.5,0), Point(-0.5,0.5,s)}),
@@ -1145,6 +1215,7 @@ static void cr_c_ip_0(WoodJoint& joint) {
 // along normals, rotated for male, then duplicated 2×. 18 total outlines per
 // face. Cut types: 6× mill_project + 12× slice = 18 entries.
 static void cr_c_ip_1(WoodJoint& joint) {
+    joint.name = "cr_c_ip_1";
     double s_param = std::max(std::min(joint.shift, 1.0), 0.0);
     s_param = 0.05 + (s_param - 0.0) * (0.4 - 0.05) / (1.0 - 0.0);
 
@@ -1477,6 +1548,7 @@ static void ss_e_op_4(WoodJoint& joint,
 }
 
 static void cr_c_ip_2(WoodJoint& joint) {
+    joint.name = "cr_c_ip_2";
     // 5 base polylines, no drills. Cut: 2×mill_project + 4×slice_projectsheer + 4×mill_project = 10
     std::vector<int> ct = {
         wood_cut::mill_project, wood_cut::mill_project,
@@ -1487,6 +1559,7 @@ static void cr_c_ip_2(WoodJoint& joint) {
 }
 
 static void cr_c_ip_3(WoodJoint& joint) {
+    joint.name = "cr_c_ip_3";
     // 7 base polylines = 5 base + 2 diagonal drills. Skip offset for 2-pt drills.
     // Cut: 2×mill_project + 4×slice_projectsheer + 4×mill_project + 4×drill = 14
     std::vector<Polyline> drills = {
@@ -1503,6 +1576,7 @@ static void cr_c_ip_3(WoodJoint& joint) {
 }
 
 static void cr_c_ip_4(WoodJoint& joint) {
+    joint.name = "cr_c_ip_4";
     // 6 base polylines = 5 base + 1 vertical drill.
     // Cut: 2×mill_project + 4×slice_projectsheer + 4×mill_project + 2×drill = 12
     std::vector<Polyline> drills = {
@@ -1518,6 +1592,7 @@ static void cr_c_ip_4(WoodJoint& joint) {
 }
 
 static void cr_c_ip_5(WoodJoint& joint) {
+    joint.name = "cr_c_ip_5";
     // 7 base polylines = 5 base + 1 vertical drill + 1 horizontal drill.
     // Asymmetric extend: side factor a=1.8, b=-0.5 (wood lines 5357-5364).
     // Cut: 2×mill_project + 4×slice_projectsheer + 4×mill_project + 4×drill = 14
@@ -1541,6 +1616,7 @@ static void cr_c_ip_5(WoodJoint& joint) {
 // and male rectangles, offset in 4 positions along the joint line.
 // Cut types: all slice. joint.no_orient = true.
 static void ss_e_r_0(WoodJoint& joint) {
+    joint.name = "ss_e_r_0";
     if (!joint.joint_volumes_pair_a_pair_b[0] || !joint.joint_volumes_pair_a_pair_b[1])
         return;
     const Polyline& vol0 = *joint.joint_volumes_pair_a_pair_b[0];
@@ -1727,6 +1803,7 @@ static void ss_e_r_impl(WoodJoint& joint,
 // hook-style tenon, parametric along Z. unit_scale=true.
 // Caller must set joint.unit_scale_distance = element_thickness before calling.
 static void ss_e_r_2(WoodJoint& joint) {
+    joint.name = "ss_e_r_2";
     static const double m0[][3] = {
         {0.2,  0.275, 0.166667}, {-0.116667, 0.275, 0.166667},
         {-0.619628, 0.275, 0.375}, {-1.0, 0.275, 0.375},
@@ -1763,6 +1840,7 @@ static void ss_e_r_2(WoodJoint& joint) {
 // parametric along Z. unit_scale=true.
 // Caller must set joint.unit_scale_distance = element_thickness before calling.
 static void ss_e_r_3(WoodJoint& joint) {
+    joint.name = "ss_e_r_3";
     static const double m0[][3] = {
         {0.40237, 0.6, 0}, {-0.502961, 0.6, 0.375},
         {-1.0, 0.6, 0.375}, {-1.0, 0.6, -0.375},
@@ -1784,4 +1862,78 @@ static void ss_e_r_3(WoodJoint& joint) {
         {0.502961, -0.6, 0.375}, {-0.40237, -0.6, 0},
     };
     ss_e_r_impl(joint, m0, 6, m1, 6, f0, 6, f1, 6);
+}
+
+// ─── ss_e_r_1 (default case — miter tenon-mortise) ─────────────────────────
+// Verbatim port of wood_joint_lib.cpp:2507-2720 default case. 39-pt circular
+// arc profile in YZ-plane, replicated at x=0 and x=0.5 for the two faces.
+// Cut types: f=conic, m=conic_reverse. unit_scale=true.
+static void ss_e_r_1(WoodJoint& joint) {
+    joint.name = "ss_e_r_1";
+    // The 39 outline points share identical (y, z) for all four face outlines.
+    // X is 0.5 for face index 0 of f/m[1], 0.0 for the others (matching wood).
+    static const double yz[][2] = {
+        {-0.825,  0.0         },
+        {-0.825, -0.151041813 },
+        {-0.825, -0.302083626 },
+        {-0.825, -0.39066965  },
+        {-0.764910275, -0.37364172  },
+        {-0.619590501, -0.332461718 },
+        {-0.474270727, -0.291281717 },
+        {-0.328950953, -0.250101715 },
+        {-0.183631179, -0.208921714 },
+        {-0.038311405, -0.167741712 },
+        { 0.078145959, -0.134740598 },
+        { 0.097349939, -0.129031066 },
+        { 0.106158874, -0.124374202 },
+        { 0.11914747,  -0.117507751 },
+        { 0.138265279, -0.101937742 },
+        { 0.153962352, -0.082924124 },
+        { 0.165630347, -0.061203771 },
+        { 0.172817069, -0.037618462 },
+        { 0.175,       -0.01554903  },
+        { 0.175,       -3.4e-08     },
+        { 0.175,        0.01554903  },
+        { 0.172817069,  0.037618462 },
+        { 0.165630347,  0.061203771 },
+        { 0.153962352,  0.082924124 },
+        { 0.138265279,  0.101937742 },
+        { 0.11914747,   0.117507751 },
+        { 0.106158839,  0.12437399  },
+        { 0.09734984,   0.129030732 },
+        { 0.078145959,  0.134740598 },
+        {-0.038311405,  0.167741712 },
+        {-0.183631179,  0.208921714 },
+        {-0.328950953,  0.250101715 },
+        {-0.474270727,  0.291281717 },
+        {-0.619590501,  0.332461718 },
+        {-0.764910275,  0.37364172  },
+        {-0.825,        0.39066965  },
+        {-0.825,        0.302083626 },
+        {-0.825,        0.151041813 },
+        {-0.825,        0.0         },
+    };
+    static const double yz_marker[][2] = {
+        {-0.825,  0.39066965 },
+        { 0.175,  0.39066965 },
+        { 0.175, -0.39066965 },
+        {-0.825, -0.39066965 },
+        {-0.825,  0.39066965 },
+    };
+    auto make_poly = [&](double x, const double data[][2], size_t n) {
+        std::vector<Point> pts;
+        pts.reserve(n);
+        for (size_t i = 0; i < n; ++i)
+            pts.emplace_back(x, data[i][0], data[i][1]);
+        return Polyline(pts);
+    };
+    joint.f_outlines[0] = { make_poly(0.5, yz, 39), make_poly(0.5, yz_marker, 5) };
+    joint.f_outlines[1] = { make_poly(0.0, yz, 39), make_poly(0.0, yz_marker, 5) };
+    joint.m_outlines[0] = { make_poly(0.0, yz, 39), make_poly(0.0, yz_marker, 5) };
+    joint.m_outlines[1] = { make_poly(0.5, yz, 39), make_poly(0.5, yz_marker, 5) };
+    joint.f_cut_types[0] = { wood_cut::conic, wood_cut::conic };
+    joint.f_cut_types[1] = { wood_cut::conic, wood_cut::conic };
+    joint.m_cut_types[0] = { wood_cut::conic_reverse, wood_cut::conic_reverse };
+    joint.m_cut_types[1] = { wood_cut::conic_reverse, wood_cut::conic_reverse };
+    joint.unit_scale = true;
 }

@@ -3,6 +3,7 @@
 #include "vector.h"
 #include "line.h"
 #include "polyline.h"
+#include "aabb.h"
 #include "tolerance.h"
 #include <tuple>
 #include <vector>
@@ -13,7 +14,6 @@ class NurbsCurve;
 class NurbsSurface;
 class Mesh;
 class PointCloud;
-class AABBTree;
 
 class Closest {
 public:
@@ -57,6 +57,31 @@ public:
   static std::tuple<Point, size_t, double> pointcloud_point(
     const PointCloud& cloud,
     const Point& test_point
+  );
+
+  static std::tuple<Point, size_t, double> pointcloud_point_kdtree(
+    const PointCloud& cloud,
+    const Point& test_point
+  );
+
+  static std::vector<std::pair<size_t, size_t>> lines_closest(
+    const std::vector<Line>& lines,
+    double threshold = 0.0
+  );
+
+  static std::vector<std::pair<size_t, size_t>> polylines_closest(
+    const std::vector<Polyline>& polylines,
+    double threshold = 0.0
+  );
+
+  static std::vector<std::pair<size_t, size_t>> nurbscurves_closest(
+    const std::vector<NurbsCurve>& curves,
+    double threshold = 0.0
+  );
+
+  static std::vector<std::pair<size_t, size_t>> boxes_closest(
+    const std::vector<AABB>& boxes,
+    double threshold = 0.0
   );
 
 };

@@ -911,6 +911,18 @@ void Polyline::extend_segment(int segment_id, double dist0, double dist1,
     if (segment_id < 0 || segment_id >= static_cast<int>(segment_count())) return;
     if (dist0 == 0 && dist1 == 0 && proportion0 == 0 && proportion1 == 0) return;
 
+    // Cache closed-ness BEFORE the mutations below. The two `set_point`
+    // calls move either pts[0] (when segment_id==0) or pts[last] (when
+    // segment_id+1==last) in isolation; the other endpoint is still at
+    // its old value, so a post-mutation `is_closed()` would falsely
+    // report "open" (distance ≥ extension amount ≫ ZERO_TOLERANCE) and
+    // the closing-duplicate sync below would be skipped — leaving the
+    // polyline's closing vertex stale. Wood's
+    // `cgal::polyline_util::extend` (`cgal_polyline_util.cpp:405-435`)
+    // does the sync unconditionally based on `sID`; caching here gives
+    // the same semantics without losing the closed-polyline precondition.
+    const bool was_closed = is_closed();
+
     Point p0 = get_point(segment_id);
     Point p1 = get_point(segment_id + 1);
     Vector v = p1 - p0;
@@ -927,8 +939,7 @@ void Polyline::extend_segment(int segment_id, double dist0, double dist1,
     set_point(segment_id, p0);
     set_point(segment_id + 1, p1);
 
-    // Handle closed polylines
-    if (is_closed()) {
+    if (was_closed) {
         if (segment_id == 0) {
             set_point(point_count() - 1, get_point(0));
         } else if ((segment_id + 1) == static_cast<int>(point_count() - 1)) {

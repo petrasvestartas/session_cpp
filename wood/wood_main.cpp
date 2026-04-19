@@ -240,6 +240,22 @@ static bool polygon_intersect_2d(const Polyline& poly_a, const Polyline& poly_b,
 // here for any future joint variant that does (`ss_e_op_2..6`, `ts_e_p_4/5`,
 // `ss_e_r_3`, `ss_e_ip_5`).
 static void apply_unit_scale(WoodJoint& joint) {
+    if (const char* dp = std::getenv("WOOD_APPLY_DUMP")) {
+        std::ofstream alog(dp, std::ios::app);
+        alog << "apply_unit_scale: joint v0=" << joint.el_ids.first << " v1=" << joint.el_ids.second
+             << " unit_scale=" << joint.unit_scale << " usd=" << joint.unit_scale_distance << "\n";
+        auto& vols = joint.joint_volumes_pair_a_pair_b;
+        for (int i = 0; i < 4; i++) {
+            alog << "  BEFORE vols[" << i << "] ";
+            if (vols[i].has_value()) {
+                for (size_t k = 0; k < vols[i]->point_count(); k++) {
+                    Point p = vols[i]->get_point(k);
+                    alog << "(" << p[0] << "," << p[1] << "," << p[2] << ") ";
+                }
+            } else alog << "nullopt";
+            alog << "\n";
+        }
+    }
     if (!joint.unit_scale) return;
     auto& vols = joint.joint_volumes_pair_a_pair_b;
     if (!vols[0].has_value() || !vols[1].has_value()) return;
@@ -1022,6 +1038,216 @@ static WoodElement build_wood_element(std::vector<Point> pp0, std::vector<Point>
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Beam-pipeline helpers — ports of `cgal::box_search::*` used only by
+// `beam_volumes_pipeline` (below). Kept scoped here because they are
+// wood-specific and exercise only one input family (beam axes + radii).
+// ───────────────────────────────────────────────────────────────────────────
+
+// Port of cgal_box_search.h:148-194 two_rect_from_point_vector_and_zaxis.
+// Builds two coplanar-pairs of rectangles (the top+bottom cross-sections of
+// a local beam prism) around `p`, oriented so the prism axis is
+// `segment_vector` and the cross-section normal reference is `zaxis`.
+//  - `middle=true`  : beam crosses through the joint (type=1 contact)
+//  - `middle=false` : beam ENDS at the joint (type=0); `flip_male` ±1 rotates
+//                     the corner ordering to mirror wood's male-end flip.
+// Each output is a closed 5-point polyline (start repeated at end).
+static void two_rect_from_point_vector_and_zaxis(
+    const Point&  p,
+    const Vector& segment_vector,
+    const Vector& zaxis,
+    bool          middle,
+    double        radius,
+    double        length,
+    int           flip_male,
+    Polyline&     rect0,
+    Polyline&     rect1)
+{
+    Vector y_axis = zaxis.cross(segment_vector);
+    Vector x_axis = y_axis.cross(segment_vector);
+    x_axis.normalize_self();
+    y_axis.normalize_self();
+    x_axis = x_axis * radius;
+    y_axis = y_axis * radius;
+
+    Vector sv0 = segment_vector * (length * -0.5);
+    Vector sv1 = segment_vector * ( length *  0.5);
+
+    std::array<Vector, 4> v = {
+        Vector(-x_axis[0] - y_axis[0], -x_axis[1] - y_axis[1], -x_axis[2] - y_axis[2]),
+        Vector( x_axis[0] - y_axis[0],  x_axis[1] - y_axis[1],  x_axis[2] - y_axis[2]),
+        Vector( x_axis[0] + y_axis[0],  x_axis[1] + y_axis[1],  x_axis[2] + y_axis[2]),
+        Vector(-x_axis[0] + y_axis[0], -x_axis[1] + y_axis[1], -x_axis[2] + y_axis[2]),
+    };
+    if (!middle) {
+        if      (flip_male ==  1) std::rotate(v.begin(),  v.begin()  + 1, v.end());
+        else if (flip_male == -1) std::rotate(v.rbegin(), v.rbegin() + 1, v.rend());
+    }
+
+    auto pt = [&](const Vector& sv, const Vector& uv) {
+        return Point(p[0]+sv[0]+uv[0], p[1]+sv[1]+uv[1], p[2]+sv[2]+uv[2]);
+    };
+    rect0 = Polyline(std::vector<Point>{
+        pt(sv0, v[1]), pt(sv1, v[1]), pt(sv1, v[0]), pt(sv0, v[0]), pt(sv0, v[1])
+    });
+    rect1 = Polyline(std::vector<Point>{
+        pt(sv0, v[2]), pt(sv1, v[2]), pt(sv1, v[3]), pt(sv0, v[3]), pt(sv0, v[2])
+    });
+}
+
+// Port of cgal_box_search.h:252-496 line_line_intersection_with_properties.
+// Classifies two (finite) segments s0, s1 as end-to-end (type0+type1=0),
+// side-to-end (=1) or cross (=2) based on `above_closer_to_edge` ∈ [0,1]
+// (wood's `cross_or_side_to_end`). Outputs:
+//   p0,p1    : intersection points on each segment (clamped to [0,1])
+//   v0,v1    : unit direction on each segment, flipped so it points AWAY
+//              from the far end when type=0 (male-end orientation)
+//   normal   : unit vector perpendicular to both segments
+//   type0/1  : 0 = end on segment i, 1 = side (middle) on segment i
+//   is_parallel : true when v0 × v1 ~ 0
+// Returns false for degenerate cases.
+static bool line_line_intersection_with_properties(
+    const Line& s0,
+    const Line& s1,
+    int  n_segments_0,
+    int  n_segments_1,
+    int  cur_segment_0,
+    int  cur_segment_1,
+    double above_closer_to_edge,
+    Point& p0, Point& p1,
+    Vector& v0, Vector& v1,
+    Vector& normal,
+    bool& type0, bool& type1,
+    bool& is_parallel)
+{
+    constexpr double DIST_SQ  = 1e-6;  // wood::GLOBALS::DISTANCE (squared)
+    constexpr double EPS_PAR  = 1.0;   // degrees
+
+    v0 = s0.to_vector();
+    v1 = s1.to_vector();
+    normal = v0.cross(v1);
+    double nmag2 = normal[0]*normal[0] + normal[1]*normal[1] + normal[2]*normal[2];
+    // parallel if cross is zero or the angle between v0,v1 is within 1°
+    // of 0° or 180° (same formula as wood).
+    double ang = v0.angle(v1, false, true);            // degrees, unsigned
+    is_parallel = (nmag2 < 1e-24) || ((90.0 - std::abs(ang - 90.0)) < EPS_PAR);
+    if (is_parallel) {
+        // Seed normal with a plane.base1 of the first segment (wood does
+        // the same via `IK::Plane_3(s0[0], s0.to_vector()).base1()`).
+        Point  tmp_origin = s0.start();
+        Vector tmp_normal = v0;
+        Plane  pl_tmp = Plane::from_point_normal(tmp_origin, tmp_normal);
+        normal = pl_tmp.base1();
+    }
+    normal.normalize_self();
+
+    // Shared-endpoint shortcut: 4 possible end-end matches.
+    auto eq = [&](const Point& a, const Point& b) {
+        double dx=a[0]-b[0], dy=a[1]-b[1], dz=a[2]-b[2];
+        return dx*dx+dy*dy+dz*dz < DIST_SQ;
+    };
+    auto endcase = [&](const Point& pp, const Vector& dv0, const Vector& dv1) {
+        p0 = pp; p1 = pp;
+        v0 = dv0; v0.normalize_self();
+        v1 = dv1; v1.normalize_self();
+        type0 = 0; type1 = 0;
+    };
+    if (eq(s0.start(), s1.start())) { endcase(s0.start(), s0.end()-s0.start(), s1.end()-s1.start()); return true; }
+    if (eq(s0.start(), s1.end()  )) { endcase(s0.start(), s0.end()-s0.start(), s1.start()-s1.end()); return true; }
+    if (eq(s0.end(),   s1.start())) { endcase(s0.end(),   s0.start()-s0.end(), s1.end()-s1.start()); return true; }
+    if (eq(s0.end(),   s1.end()  )) { endcase(s0.end(),   s0.start()-s0.end(), s1.start()-s1.end()); return true; }
+
+    if (is_parallel) {
+        // Parallel overlap: project all 4 endpoints onto the supporting lines,
+        // find the middle-2 parameters per line, take midpoints. Same as wood.
+        v0.normalize_self();
+        v1.normalize_self();
+        auto signed_t = [](const Point& src, const Vector& unit, const Point& q) {
+            return (q[0]-src[0])*unit[0] + (q[1]-src[1])*unit[1] + (q[2]-src[2])*unit[2];
+        };
+        auto proj_onto_line = [](const Line& L, const Point& q) {
+            return L.closest_point(q, false).second;
+        };
+        std::vector<std::pair<double,double>> pts;
+        auto push = [&](const Point& q) {
+            Point q0 = proj_onto_line(s0, q);
+            Point q1 = proj_onto_line(s1, q);
+            pts.emplace_back(signed_t(s0.start(), v0, q0),
+                             signed_t(s1.start(), v1, q1));
+        };
+        push(s0.start()); push(s0.end());
+        push(s1.start()); push(s1.end());
+        std::sort(pts.begin(), pts.end(),
+                  [](const auto&a, const auto&b){ return a.first < b.first; });
+        // Middle-2 midpoint on each supporting line
+        Point seg0_a(s0.start()[0]+pts[1].first*v0[0],
+                     s0.start()[1]+pts[1].first*v0[1],
+                     s0.start()[2]+pts[1].first*v0[2]);
+        Point seg0_b(s0.start()[0]+pts[2].first*v0[0],
+                     s0.start()[1]+pts[2].first*v0[1],
+                     s0.start()[2]+pts[2].first*v0[2]);
+        Point seg1_a(s1.start()[0]+pts[1].second*v1[0],
+                     s1.start()[1]+pts[1].second*v1[1],
+                     s1.start()[2]+pts[1].second*v1[2]);
+        Point seg1_b(s1.start()[0]+pts[2].second*v1[0],
+                     s1.start()[1]+pts[2].second*v1[1],
+                     s1.start()[2]+pts[2].second*v1[2]);
+        Point m0((seg0_a[0]+seg0_b[0])*0.5, (seg0_a[1]+seg0_b[1])*0.5, (seg0_a[2]+seg0_b[2])*0.5);
+        Point m1((seg1_a[0]+seg1_b[0])*0.5, (seg1_a[1]+seg1_b[1])*0.5, (seg1_a[2]+seg1_b[2])*0.5);
+        Point avg((m0[0]+m1[0])*0.5, (m0[1]+m1[1])*0.5, (m0[2]+m1[2])*0.5);
+        p0 = proj_onto_line(s0, avg);
+        p1 = proj_onto_line(s1, avg);
+        // Orient v0,v1 away from the "far" end (t > 0.5 → flip).
+        auto t_of = [](const Line& L, const Point& q) {
+            return L.closest_point(q, false).first;
+        };
+        double t0 = t_of(s0, p0);
+        double t1 = t_of(s1, p1);
+        if (t0 > 0.5) v0 = Vector(-v0[0], -v0[1], -v0[2]);
+        if (t1 > 0.5) v1 = Vector(-v1[0], -v1[1], -v1[2]);
+        type0 = 0; type1 = 0;
+        return true;
+    }
+
+    // Skew case — find closest points between infinite lines (unclamped),
+    // then clamp to segment bounds.
+    v0.normalize_self();
+    v1.normalize_self();
+    double t0, t1;
+    if (!Intersection::line_line_parameters(s0, s1, t0, t1,
+            /*tolerance*/ 0.0, /*intersect_segments*/ false,
+            /*near_parallel_as_closest*/ true)) {
+        return false;
+    }
+    double t0c = std::max(0.0, std::min(1.0, t0));
+    double t1c = std::max(0.0, std::min(1.0, t1));
+    p0 = s0.point_at(t0c);
+    p1 = s1.point_at(t1c);
+
+    // Remap t to full-polyline parameter (wood uses this for type decision).
+    double tt0 = (t0c + (double)cur_segment_0) / (double)n_segments_0;
+    double tt1 = (t1c + (double)cur_segment_1) / (double)n_segments_1;
+    double close0 = 2.0 * std::abs(0.5 - tt0);  // 0=middle, 1=end
+    double close1 = 2.0 * std::abs(0.5 - tt1);
+
+    if (above_closer_to_edge < 0.0) {
+        type0 = 1; type1 = 1;
+    } else if (above_closer_to_edge > 1.0) {
+        type0 = tt0 < tt1 ? 0 : 1;
+        type1 = tt0 < tt1 ? 1 : 0;
+    } else {
+        type0 = close0 > above_closer_to_edge ? 0 : 1;
+        type1 = close1 > above_closer_to_edge ? 0 : 1;
+        if (close0 > close1 && type0 == 0 && type1 == 0) { type0 = 0; type1 = 1; }
+        else if (close0 < close1 && type0 == 0 && type1 == 0) { type0 = 1; type1 = 0; }
+    }
+
+    // Flip v0/v1 so male ends point AWAY from the far end of the polyline
+    if (tt0 > 0.5 && type0 == 0) v0 = Vector(-v0[0], -v0[1], -v0[2]);
+    if (tt1 > 0.5 && type1 == 0) v1 = Vector(-v1[0], -v1[1], -v1[2]);
+    return true;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // face_to_face_wood — main timber-joint topology detector
 // ───────────────────────────────────────────────────────────────────────────
 //
@@ -1371,11 +1597,25 @@ static bool face_to_face_wood(
                     }
                     x = y.cross(z);
 
-                    Xform xform = Xform::plane_to_xy(o, x, y, z);
-
-                    // Project joint area into local 2D, grab AABB.
-                    std::vector<Point> proj_pts = joint_area.get_points();
-                    transform(proj_pts, xform);
+                    // Manually project world points into a local frame with
+                    // (x, y, z) as unit basis vectors at origin `o`. Session's
+                    // `Xform::plane_to_xy` stores the basis as matrix COLUMNS
+                    // (local-to-world), not rows (world-to-local), so it
+                    // collapses the joint-area when the area's normal aligns
+                    // with a basis axis — exactly the hilti case.
+                    Vector xu = x; xu.normalize_self();
+                    Vector yu = y; yu.normalize_self();
+                    Vector zu = z; zu.normalize_self();
+                    std::vector<Point> proj_pts;
+                    proj_pts.reserve(joint_area.point_count());
+                    for (size_t k = 0; k < joint_area.point_count(); k++) {
+                        Point wp = joint_area.get_point(k);
+                        double dx = wp[0]-o[0], dy = wp[1]-o[1], dz = wp[2]-o[2];
+                        proj_pts.emplace_back(
+                            dx*xu[0] + dy*xu[1] + dz*xu[2],
+                            dx*yu[0] + dy*yu[1] + dz*yu[2],
+                            dx*zu[0] + dy*zu[1] + dz*zu[2]);
+                    }
                     if (proj_pts.empty()) { dbg_fail_reason = fmt::format("proj_empty f({},{})", i, j); continue; }
                     double xmin = proj_pts[0][0], xmax = xmin;
                     double ymin = proj_pts[0][1], ymax = ymin;
@@ -1394,9 +1634,14 @@ static bool face_to_face_wood(
                         Point(xmin, ymin, zmin),
                         Point(xmax, ymin, zmin),
                     };
-                    auto xform_inv_opt = xform.inverse();
-                    if (!xform_inv_opt) { dbg_fail_reason = fmt::format("inv_xform f({},{})", i, j); continue; }
-                    transform(rect_local, *xform_inv_opt);
+                    // Inverse projection (local→world) using the same basis.
+                    for (auto& lp : rect_local) {
+                        double u = lp[0], v = lp[1], w = lp[2];
+                        lp = Point(
+                            o[0] + u*xu[0] + v*yu[0] + w*zu[0],
+                            o[1] + u*xu[1] + v*yu[1] + w*zu[1],
+                            o[2] + u*xu[2] + v*yu[2] + w*zu[2]);
+                    }
 
                     // Offset by element thickness along z (or insertion dir).
                     Vector offset_vector = dir_set ? dir : z;
@@ -1434,6 +1679,17 @@ static bool face_to_face_wood(
                     vol1.extend_edge_equally(1, ext_h);
                     vol1.extend_edge_equally(3, ext_h);
 
+                    if (const char* fp = std::getenv("WOOD_F2F_DUMP")) {
+                        std::ofstream flog(fp, std::ios::app);
+                        flog << "F2F type13 el=(" << el_ids.first << "," << el_ids.second << ") i=" << i << " j=" << j << "\n";
+                        flog << "  vol0: ";
+                        for (size_t k=0;k<vol0.point_count();k++) { Point p=vol0.get_point(k); flog<<"("<<p[0]<<","<<p[1]<<","<<p[2]<<") "; }
+                        flog << "\n  vol1: ";
+                        for (size_t k=0;k<vol1.point_count();k++) { Point p=vol1.get_point(k); flog<<"("<<p[0]<<","<<p[1]<<","<<p[2]<<") "; }
+                        flog << "\n  rect_local: ";
+                        for (auto& p : rect_local) flog<<"("<<p[0]<<","<<p[1]<<","<<p[2]<<") ";
+                        flog << "\n  offset_vec: ("<<offset_vector[0]<<","<<offset_vector[1]<<","<<offset_vector[2]<<")\n";
+                    }
                     joint_volumes[0] = vol0;
                     joint_volumes[1] = vol1;
                     joint_type = 13;
@@ -2234,8 +2490,45 @@ using JMF = std::vector<std::vector<std::vector<std::pair<int,bool>>>>;
 static std::vector<Polyline> merge_joints_for_element(
     const WoodElement& el,
     const std::vector<std::vector<std::pair<int,bool>>>& el_jmf,
-    std::vector<WoodJoint>& joints)
+    std::vector<WoodJoint>& joints,
+    int dbg_element_id = -1)
 {
+    // ── WOOD_MERGE_DUMP=<path> per-decision diagnostic dump ────────────────
+    // Filtered by DIAG_TEST=<short_name> (matches DATA_SET_INPUT_NAME). Re-checked
+    // per call because DATA_SET_INPUT_NAME changes between tests in a single
+    // main_5 run. Opens in append mode so multi-element runs accumulate.
+    std::ofstream* dbg_merge_log = nullptr;
+    std::ofstream dbg_merge_owned;
+    {
+        const char* dpath = std::getenv("WOOD_MERGE_DUMP");
+        const char* dfilter = std::getenv("DIAG_TEST");
+        if (dpath && (!dfilter || wood_session::globals::DATA_SET_INPUT_NAME == dfilter)) {
+            dbg_merge_owned.open(dpath, std::ios::app);
+            if (dbg_merge_owned.is_open()) {
+                dbg_merge_log = &dbg_merge_owned;
+            }
+        }
+    }
+    if (dbg_merge_log && dbg_element_id >= 0) {
+        *dbg_merge_log << "ELEMENT " << dbg_element_id
+                       << " planes0_o=(" << el.planes[0].origin()[0] << "," << el.planes[0].origin()[1] << "," << el.planes[0].origin()[2]
+                       << ") planes0_n=(" << el.planes[0].z_axis()[0] << "," << el.planes[0].z_axis()[1] << "," << el.planes[0].z_axis()[2]
+                       << ") planes1_o=(" << el.planes[1].origin()[0] << "," << el.planes[1].origin()[1] << "," << el.planes[1].origin()[2]
+                       << ") planes1_n=(" << el.planes[1].z_axis()[0] << "," << el.planes[1].z_axis()[1] << "," << el.planes[1].z_axis()[2]
+                       << ")\n";
+        *dbg_merge_log << "  pline0 pts=" << el.polylines[0].point_count();
+        for (size_t k = 0; k < el.polylines[0].point_count(); k++) {
+            Point p = el.polylines[0].get_point(k);
+            *dbg_merge_log << " (" << p[0] << "," << p[1] << "," << p[2] << ")";
+        }
+        *dbg_merge_log << "\n  pline1 pts=" << el.polylines[1].point_count();
+        for (size_t k = 0; k < el.polylines[1].point_count(); k++) {
+            Point p = el.polylines[1].get_point(k);
+            *dbg_merge_log << " (" << p[0] << "," << p[1] << "," << p[2] << ")";
+        }
+        *dbg_merge_log << "\n";
+    }
+
     // CLOSED polylines (mutable copies — wood relocates vertices in place).
     auto pline0 = el.polylines[0].get_points();
     auto pline1 = el.polylines[1].get_points();
@@ -2298,6 +2591,15 @@ static std::vector<Polyline> merge_joints_for_element(
             double d_top = Point::distance(ep_top0, el.planes[0].project(ep_top0));
             double d_bot = Point::distance(ep_bot0, el.planes[0].project(ep_bot0));
             bool is_geo_reversed = (d_top * d_top) > (d_bot * d_bot);
+            if (dbg_merge_log) {
+                *dbg_merge_log << "  J el=" << dbg_element_id << " i=" << i
+                               << " jid=" << joint_id << " mf=" << (male_or_female?'M':'F')
+                               << " jt=" << jt.joint_type
+                               << " ep_top0=(" << ep_top0[0] << "," << ep_top0[1] << "," << ep_top0[2]
+                               << ") ep_bot0=(" << ep_bot0[0] << "," << ep_bot0[1] << "," << ep_bot0[2]
+                               << ") d_top=" << d_top << " d_bot=" << d_bot
+                               << " reversed=" << (is_geo_reversed?1:0);
+            }
             if (is_geo_reversed) std::swap(jm[0], jm[1]);
 
             // Switch on the endpoint marker's point count, mirroring
@@ -2432,18 +2734,18 @@ static std::vector<Polyline> merge_joints_for_element(
             last_id = (int)i;
 
             // is_geo_flipped: reverse the joint outline if the data orientation
-            // doesn't match the polygon walk direction. Wood reads
-            // `(male, !is_geo_reversed)[0]` as the reference. After our swap,
-            // that slot is jm[is_geo_reversed ? 1 : 0][0].
-            // wood_element.cpp:343-356.
+            // doesn't match the polygon walk direction. Wood's reference is
+            // `(male_or_female, !is_geo_reversed)[0]`. After our swap above,
+            // post-swap jm[0] already corresponds to that slot in BOTH cases
+            // (is_geo_reversed=false → jm[0] is structural top = (male,true);
+            //  is_geo_reversed=true  → swap put structural bottom into jm[0]
+            //                          = (male,false) = (male,!true)).
+            // So we select jm[0][0] directly. wood_element.cpp:1008-1015.
             //
-            // Wood compares against `polyline0[i]` where wood's `i` is the
-            // edge index (= session's `id`). Wood reverses when front is NOT
-            // closer (i.e. back is closer) to that vertex. Session mirrors:
-            //   flip = dist(front, pline0[id]) < dist(back, pline0[id])
-            //   if (!flip) reverse
-            // which is equivalent to `d_front_sq >= d_back_sq` → reverse.
-            Polyline& flip_ref = jm[is_geo_reversed ? 1 : 0][0];
+            // Reverse when front is closer to pline0[id+1] than back is,
+            // matching CGAL::has_smaller_distance_to_point(pline0[id+1],
+            // front, back) → d_front_sq < d_back_sq.
+            Polyline& flip_ref = jm[0][0];
             if (flip_ref.point_count() >= 1) {
                 Point fr_front = flip_ref.get_point(0);
                 Point fr_back  = flip_ref.get_point(flip_ref.point_count() - 1);
@@ -2452,10 +2754,23 @@ static std::vector<Polyline> merge_joints_for_element(
                 double dx_b = fr_back[0]-ref_pt[0],  dy_b = fr_back[1]-ref_pt[1],  dz_b = fr_back[2]-ref_pt[2];
                 double d_front_sq = dx_f*dx_f + dy_f*dy_f + dz_f*dz_f;
                 double d_back_sq  = dx_b*dx_b + dy_b*dy_b + dz_b*dz_b;
-                if (d_front_sq < d_back_sq) {
+                bool dbg_flipped = (d_front_sq < d_back_sq);
+                if (dbg_merge_log) {
+                    *dbg_merge_log << " fr_front=(" << fr_front[0] << "," << fr_front[1] << "," << fr_front[2]
+                                   << ") fr_back=(" << fr_back[0] << "," << fr_back[1] << "," << fr_back[2]
+                                   << ") ref=(" << ref_pt[0] << "," << ref_pt[1] << "," << ref_pt[2]
+                                   << ") d_f=" << d_front_sq << " d_b=" << d_back_sq
+                                   << " flipped=" << (dbg_flipped?1:0)
+                                   << " jm0[0].first=(" << jm[0][0].get_point(0)[0] << "," << jm[0][0].get_point(0)[1] << "," << jm[0][0].get_point(0)[2] << ")"
+                                   << " jm1[0].first=(" << jm[1][0].get_point(0)[0] << "," << jm[1][0].get_point(0)[1] << "," << jm[1][0].get_point(0)[2] << ")"
+                                   << "\n";
+                }
+                if (dbg_flipped) {
                     jm[0][0].reverse();
                     jm[1][0].reverse();
                 }
+            } else if (dbg_merge_log) {
+                *dbg_merge_log << " (flip_ref empty)\n";
             }
 
             // Insert the joint outlines into the sorted maps using a key
@@ -2755,6 +3070,28 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
         wood_elems.push_back(build_wood_element(
             polylines[a].get_points(), polylines[b].get_points()));
 
+    // ── WOOD_EL_DUMP=<path> dump element polylines for comparison with wood ──
+    if (const char* ep = std::getenv("WOOD_EL_DUMP")) {
+        const char* df = std::getenv("DIAG_TEST");
+        if (!df || wood_session::globals::DATA_SET_INPUT_NAME == df) {
+            std::ofstream el_log(ep);
+            for (size_t ei = 0; ei < wood_elems.size(); ei++) {
+                const auto& we = wood_elems[ei];
+                el_log << "ELEMENT " << ei << " reversed=" << (we.reversed ? 1 : 0)
+                       << " thickness=" << we.thickness
+                       << " n_polylines=" << we.polylines.size() << "\n";
+                for (size_t pi = 0; pi < we.polylines.size(); pi++) {
+                    el_log << "  poly[" << pi << "] pts=" << we.polylines[pi].point_count() << ":";
+                    for (size_t k = 0; k < we.polylines[pi].point_count(); k++) {
+                        Point p = we.polylines[pi].get_point(k);
+                        el_log << " (" << p[0] << "," << p[1] << "," << p[2] << ")";
+                    }
+                    el_log << "\n";
+                }
+            }
+        }
+    }
+
     // ElementPlates for session storage + OBB adjacency.
     Session session("WoodF2F");
     auto g = session.add_group("Elements");
@@ -2927,15 +3264,8 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
             /*out_joint*/                joint,
             /*out_swap_planes_1*/        swap_planes_b);
         if (swap_planes_b) {
-            // Mirror wood's in-place `std::swap(Plane1[0], Plane1[1])`
-            // (wood_main.cpp:986-987). Swap ONLY planes — NOT polylines.
-            // Downstream merge_joints reads pline0 = polylines[0] (still top
-            // by convention) but uses planes[0] for the `is_intersected_*`
-            // 3-plane intersections; with planes swapped, those intersections
-            // now land on what WAS planes[1] (the bottom plane). The result
-            // is wood's mixed-z plate outline (top corners stay at top z,
-            // joint-adjacent corners snap to bottom z).
             std::swap(wood_elems[ib].planes[0], wood_elems[ib].planes[1]);
+            std::swap(wood_elems[ib].polylines[0], wood_elems[ib].polylines[1]);
         }
         if (!ok) {
             fmt::print("  FAIL pair ({},{}) coplanar={} boolean={} reason={}\n",
@@ -2957,12 +3287,12 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
     }
     auto t3 = Clock::now();
 
-    // Sort joints by element pair for deterministic comparison with wood.
-    std::sort(all_joints.begin(), all_joints.end(), [](const WoodJoint& a, const WoodJoint& b) {
-        int a1=std::min(a.el_ids.first,a.el_ids.second), a2=std::max(a.el_ids.first,a.el_ids.second);
-        int b1=std::min(b.el_ids.first,b.el_ids.second), b2=std::max(b.el_ids.first,b.el_ids.second);
-        return a1 < b1 || (a1 == b1 && a2 < b2);
-    });
+    // NO sort here: wood's construct_joint_by_index iterates joints in the
+    // order they were generated (adjacency-pair order). The unique_joints
+    // cache depends on iteration order — the FIRST joint with a given
+    // (name, shift, divisions) key determines the edge_length used by all
+    // subsequent joints with matching key. Sorting here would change which
+    // joint gets cached first and make session diverge from wood.
 
 
     // Three-valence joint alignment (Annen method).
@@ -3049,6 +3379,23 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
     // Per-type div_dist + shift, mirroring wood's
     // GLOBALS::JOINTS_PARAMETERS_AND_TYPES table for the annen test
     // (wood_test.cpp:2720-2730 + wood_globals.cpp:49-54).
+    //
+    // Wood caches unit-cube joint geometry by key (name, shift, divisions)
+    // — NOT including edge_length. Subsequent joints with matching key COPY
+    // the cached geometry instead of recomputing. This means all joints with
+    // the same key end up sharing the FIRST joint's edge_length-dependent
+    // tooth positions. See wood_joint_lib.cpp:6262-6294 + wood_joint.cpp:86
+    // (get_key formatting).
+    struct CachedJointGeom {
+        std::string name;
+        std::array<std::vector<Polyline>, 2> m_outlines;
+        std::array<std::vector<Polyline>, 2> f_outlines;
+        std::array<std::vector<int>, 2> m_cut_types;
+        std::array<std::vector<int>, 2> f_cut_types;
+        bool unit_scale;
+        double unit_scale_distance;
+    };
+    std::map<std::string, CachedJointGeom> unique_joints_cache;
     int n_filtered = 0;
     for (auto& j : all_joints) {
         // Wood-style id_representing_joint_name (`wood_joint_lib.cpp:6075-6079`).
@@ -3142,7 +3489,60 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
             if (ei >= 0 && ei < (int)wood_elems.size())
                 j.unit_scale_distance = wood_elems[ei].thickness;
         }
-        joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name, &all_joints, &wood_elems);
+
+        // Compute divisions first so the cache key matches wood's get_key().
+        joint_get_divisions(j, div_dist);
+        j.shift = shift_val;
+
+        // Cache key: use the id as a proxy for `name` (id→constructor is
+        // deterministic). Wood formats shift/divisions with `std::to_string`
+        // truncated at 2 decimals; we mirror that exactly.
+        auto fmt_key_num = [](double v) -> std::string {
+            v += 1e-9;
+            std::string s = std::to_string(v);
+            auto dot = s.find('.');
+            if (dot != std::string::npos && dot + 3 <= s.size())
+                return s.substr(0, dot + 3);
+            return s;
+        };
+        std::string cache_key = std::to_string(id_representing_joint_name)
+                              + ";" + fmt_key_num(j.shift)
+                              + ";" + fmt_key_num((double)j.divisions);
+
+        // Only apply caching for type-12 (ss_e_ip, butterflies) — wood caches
+        // all joint types, but session's implementation diverges enough in
+        // downstream handling (Phase B/C hole extraction, orient quirks) that
+        // enabling cache for other types causes regressions in datasets like
+        // top_to_side_box and vda_floor_0.
+        bool use_cache = (j.joint_type == 12) && j.linked_joints.empty();
+
+        auto cache_it = use_cache ? unique_joints_cache.find(cache_key)
+                                   : unique_joints_cache.end();
+        if (!use_cache) {
+            joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name, &all_joints, &wood_elems);
+        } else if (cache_it != unique_joints_cache.end()) {
+            // Cache hit: transfer unit-cube geometry, skip recompute.
+            const auto& u = cache_it->second;
+            j.name = u.name;
+            j.m_outlines = u.m_outlines;
+            j.f_outlines = u.f_outlines;
+            j.m_cut_types = u.m_cut_types;
+            j.f_cut_types = u.f_cut_types;
+            j.unit_scale = u.unit_scale;
+            j.unit_scale_distance = u.unit_scale_distance;
+        } else {
+            // Cache miss: compute geometry and store pre-orient state.
+            joint_create_geometry(j, div_dist, shift_val, id_representing_joint_name, &all_joints, &wood_elems);
+            CachedJointGeom u;
+            u.name = j.name;
+            u.m_outlines = j.m_outlines;
+            u.f_outlines = j.f_outlines;
+            u.m_cut_types = j.m_cut_types;
+            u.f_cut_types = j.f_cut_types;
+            u.unit_scale = j.unit_scale;
+            u.unit_scale_distance = j.unit_scale_distance;
+            unique_joints_cache.emplace(cache_key, std::move(u));
+        }
         if (!j.no_orient)
             joint_orient_to_connection_area(j);
         // wood_joint_lib.cpp:6621-6626: orient shadows then interleave geometry into primary
@@ -3235,7 +3635,7 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
     std::ofstream meta_out((base / (std::string(pb_name) + "_meta.txt")).string());
     std::ofstream coord_out((base / (std::string(pb_name) + "_coords.txt")).string());
     for (size_t ei = 0; ei < n_elems; ei++) {
-        auto merged = merge_joints_for_element(wood_elems[ei], j_mf[ei], all_joints);
+        auto merged = merge_joints_for_element(wood_elems[ei], j_mf[ei], all_joints, (int)ei);
         auto g_el = session.add_group(fmt::format("element_{}", ei));
         g_el->color = col_merged;
         for (size_t mi = 0; mi < merged.size(); mi++) {
@@ -3243,6 +3643,37 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
             mpl->name = fmt::format("merged_{}_{}", ei, mi);
             mpl->linecolor = col_merged;
             session.add_polyline(mpl, g_el);
+        }
+        // Wood output_type=3: per-element joint outlines ("cuts"). Wood
+        // convention (see wood_joint.cpp:32-43 `operator()`):
+        //   male_or_female = (v0 == this_element_id) ? 0 : 1
+        //   male_or_female == 0 → return f_outlines (this element is v0 →
+        //                          cuts FEMALE shape into itself)
+        //   male_or_female == 1 → return m_outlines (this element is v1 →
+        //                          cuts MALE shape)
+        // This means v0 is the FEMALE-cut side, v1 is the MALE-cut side.
+        // Skips joints already integrated into the plate polyline by the
+        // merge (2- or 5-point endpoint markers handled by case 2/5).
+        for (size_t fi = 0; fi < j_mf[ei].size(); fi++) {
+            for (size_t k = 0; k < j_mf[ei][fi].size(); k++) {
+                int joint_id = j_mf[ei][fi][k].first;
+                if (joint_id < 0 || joint_id >= (int)all_joints.size()) continue;
+                auto& jt = all_joints[joint_id];
+                size_t male_or_female = (jt.el_ids.first == (int)ei) ? 0 : 1;
+                auto& outlines_cut = male_or_female ? jt.m_outlines : jt.f_outlines;
+                // Skip if the merge already handled this joint.
+                if (outlines_cut[0].size() < 2) continue;
+                size_t marker_sz = outlines_cut[0][1].point_count();
+                if (marker_sz == 2 || marker_sz == 5) continue;
+                for (int face = 0; face < 2; face++) {
+                    if (face < (int)outlines_cut.size() && !outlines_cut[face].empty()) {
+                        auto pl = std::make_shared<Polyline>(outlines_cut[face][0]);
+                        pl->name = fmt::format("jcut_{}_{}", ei, joint_id);
+                        pl->linecolor = col_merged;
+                        session.add_polyline(pl, g_el);
+                    }
+                }
+            }
         }
         // Meta line matches wood: "<n_polylines> <pt_count_1> <pt_count_2> ..."
         meta_out << merged.size();
@@ -3282,6 +3713,8 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
                 session.add_polyline(jvol, gv);
             }
         }
+        // (Per-element cut outlines are emitted above in the element loop,
+        // mirroring wood's output_type=3 semantics; no longer duplicated here.)
     }
 
     // 6. Save protobuf.
@@ -3297,5 +3730,341 @@ void get_connection_zones(int search_type, const std::vector<double>& scale) {
     fmt::print("  by type: 11={} 12={} 13={} 20={} 30={} 40={}\n",
                counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
     fmt::print("  time: {:.0f}ms\n", ms(t0, t4));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// beam_volumes_pipeline — wood-equivalent of `wood::main::beam_volumes`.
+// Entry for beam (axis+radius) datasets like phanomema_node.
+//
+// Signature mirrors the original: input axes as polylines + per-segment
+// radii (+ optional per-segment direction vectors). Produces 4 cut
+// rectangles per beam-pair intersection and runs the existing
+// `face_to_face_wood` detector on each rectangle pair so the joint type
+// is classified by the same in-plane / out-of-plane / rotated logic used
+// by the plate pipeline.
+//
+// Output serialized to `<DATA_SET_OUTPUT_FILE>`. For now the .pb contains
+// the beam cross-section rectangles and joint areas/lines; finger-joint
+// geometry (construct_joint_by_index dispatch) can be layered on top
+// later by re-using the same post-processing as get_connection_zones.
+// ═══════════════════════════════════════════════════════════════════════════
+void beam_volumes_pipeline(
+    const std::vector<Polyline>& axes,
+    const std::vector<std::vector<double>>& segment_radii,
+    const std::vector<std::vector<Vector>>& segment_direction,
+    const std::vector<int>& allowed_types_per_polyline,
+    double min_distance,
+    double volume_length,
+    double cross_or_side_to_end,
+    int    flip_male)
+{
+    using namespace wood_session::globals;
+
+    const std::string pb_name = DATA_SET_OUTPUT_FILE;
+    auto base = internal::session_data_dir();
+
+    Session session("WoodF2F");
+    auto g_axes   = session.add_group("BeamAxes");
+    auto g_vols   = session.add_group("JointVolumes");
+    auto g_areas  = session.add_group("JointAreas");
+    auto g_lines  = session.add_group("JointLines");
+    g_axes->color  = Color(180,180,180,255,"grey");
+    g_vols->color  = Color(220, 80,180,255,"magenta");
+    g_areas->color = Color(220, 60, 60,255,"red");
+    g_lines->color = Color( 60,220, 60,255,"green");
+
+    // Add axes as lines for viz.
+    for (const auto& pl : axes) {
+        auto pts = pl.get_points();
+        for (size_t k = 0; k + 1 < pts.size(); k++) {
+            auto ln = std::make_shared<Line>(Line::from_points(pts[k], pts[k+1]));
+            session.add_line(ln, g_axes);
+        }
+    }
+
+    // ── Pass 1: collect closest per-element-pair contact ──────────────────
+    // Wood uses CGAL::box_self_intersection_d on inflated AABBs. For the
+    // small beam-count datasets (phanomema has 6 axes) a plain O(N²) scan
+    // is adequate and keeps the port self-contained.
+    struct Contact {
+        double dist_sq;
+        int pid0, sid0, pid1, sid1;
+    };
+    std::map<uint64_t, Contact> contacts;
+    for (size_t a = 0; a < axes.size(); a++) {
+        auto pa = axes[a].get_points();
+        for (size_t sa = 0; sa + 1 < pa.size(); sa++) {
+            Line la = Line::from_points(pa[sa], pa[sa+1]);
+            for (size_t b = a + 1; b < axes.size(); b++) {
+                auto pb = axes[b].get_points();
+                for (size_t sb = 0; sb + 1 < pb.size(); sb++) {
+                    Line lb = Line::from_points(pb[sb], pb[sb+1]);
+                    double t0, t1;
+                    (void)Intersection::line_line_parameters(
+                        la, lb, t0, t1, /*tolerance*/ 0.0,
+                        /*intersect_segments*/ true,
+                        /*near_parallel_as_closest*/ true);
+                    Point q0 = la.point_at(t0);
+                    Point q1 = lb.point_at(t1);
+                    double dx=q0[0]-q1[0], dy=q0[1]-q1[1], dz=q0[2]-q1[2];
+                    double d2 = dx*dx + dy*dy + dz*dz;
+                    if (d2 > min_distance*min_distance) continue;
+                    uint64_t id = ((uint64_t)b << 32) | (uint64_t)a;
+                    Contact c{d2, (int)a,(int)sa,(int)b,(int)sb};
+                    auto it = contacts.find(id);
+                    if (it == contacts.end() || d2 < it->second.dist_sq)
+                        contacts[id] = c;
+                }
+            }
+        }
+    }
+
+    int n_pairs = 0, n_success = 0, n_failed = 0;
+    int counts[6] = {0,0,0,0,0,0};
+
+    // Collected rectangles per successful contact, in the same order as wood's
+    // `output_plines` (wood_test.cpp:3749-3752 → 4 rects per joint, each its
+    // own `polyline_group`). Written to `_meta.txt`/`_coords.txt` after the
+    // loop so the compare script can diff against wood's ref XML.
+    std::vector<std::array<Polyline, 4>> joint_rects;
+    joint_rects.reserve(contacts.size());
+
+    // ── Pass 2: per-contact rectangle generation + joint detection ────────
+    for (auto& [id, c] : contacts) {
+        (void)id;
+        n_pairs++;
+        auto pa_pts = axes[c.pid0].get_points();
+        auto pb_pts = axes[c.pid1].get_points();
+        Line s0 = Line::from_points(pa_pts[c.sid0], pa_pts[c.sid0+1]);
+        Line s1 = Line::from_points(pb_pts[c.sid1], pb_pts[c.sid1+1]);
+
+        Point p0, p1;
+        Vector v0, v1, normal;
+        bool type0=false, type1=false, is_parallel=false;
+        bool ok = line_line_intersection_with_properties(
+            s0, s1,
+            (int)(pa_pts.size() - 1), (int)(pb_pts.size() - 1),
+            c.sid0, c.sid1,
+            cross_or_side_to_end,
+            p0, p1, v0, v1, normal,
+            type0, type1, is_parallel);
+        if (!ok) { n_failed++; continue; }
+
+        // allowed_types filter: 0 = end-only (sum=0); 1 = cross/side-to-end
+        // (sum=1 or 2); -1 = all. Same as wood_main.cpp:2392-2404.
+        auto is_valid = [](int sum, int allowed) {
+            switch (allowed) {
+                case 0:  return sum == 0;
+                case 1:  return sum == 1 || sum == 2;
+                case -1: return true;
+                default: return false;
+            }
+        };
+        int sum = (int)type0 + (int)type1;
+        if (!allowed_types_per_polyline.empty()) {
+            if (allowed_types_per_polyline.size() == 1) {
+                if (!is_valid(sum, allowed_types_per_polyline[0])) continue;
+            } else if (allowed_types_per_polyline.size() == axes.size()) {
+                if (!is_valid(sum, allowed_types_per_polyline[c.pid0]) ||
+                    !is_valid(sum, allowed_types_per_polyline[c.pid1])) continue;
+            }
+        }
+
+        // Rectangle generation. The prism reference z-axis is the caller-
+        // supplied segment direction when present, else the contact normal.
+        Vector sn0 = segment_direction.empty() ? normal : segment_direction[c.pid0][c.sid0];
+        Vector sn1 = segment_direction.empty() ? normal : segment_direction[c.pid1][c.sid1];
+        double r0 = segment_radii[c.pid0][c.sid0];
+        double r1 = segment_radii[c.pid1][c.sid1];
+
+        std::array<Polyline, 4> beam_vol;
+        two_rect_from_point_vector_and_zaxis(
+            p0, v0, sn0, type0 == 1, r0, volume_length, flip_male,
+            beam_vol[0], beam_vol[1]);
+        two_rect_from_point_vector_and_zaxis(
+            p1, v1, sn1, type1 == 1, r1, volume_length, flip_male,
+            beam_vol[2], beam_vol[3]);
+
+        // Trim rectangles by bisecting planes (wood_main.cpp:2445-2555).
+        std::array<Point, 4> ip;
+        auto seg_plane = [](const Point& a, const Point& b, const Plane& pl, Point& out) {
+            Line ln = Line::from_points(a, b);
+            Intersection::line_plane(ln, pl, out, /*is_finite*/ false);
+        };
+
+        if (sum == 0) {
+            Point pm((p0[0]+p1[0])*0.5, (p0[1]+p1[1])*0.5, (p0[2]+p1[2])*0.5);
+            Point pm_plus_v0(pm[0]+v0[0], pm[1]+v0[1], pm[2]+v0[2]);
+            Vector bisector = is_parallel ? v0 : Vector(v0[0]-v1[0], v0[1]-v1[1], v0[2]-v1[2]);
+            Point  pm_cp = pm;
+            Vector bis   = bisector;
+            Plane  cp    = Plane::from_point_normal(pm_cp, bis);
+            bool toward_v0 = !cp.has_on_negative_side(pm_plus_v0);
+            Vector npos = cp.z_axis();
+            Vector nneg(-npos[0], -npos[1], -npos[2]);
+            Point pa_cp = pm;  Vector npa = toward_v0 ? npos : nneg;
+            Point pb_cp = pm;  Vector npb = toward_v0 ? nneg : npos;
+            Plane cut_plane0 = Plane::from_point_normal(pa_cp, npa);
+            Plane cut_plane1 = Plane::from_point_normal(pb_cp, npb);
+            for (int lid = 0; lid < 2; lid++) {
+                int shift = lid == 0 ? 0 : 2;
+                const Plane& cutpl = lid == 0 ? cut_plane0 : cut_plane1;
+                auto p00 = beam_vol[0+shift].get_points();
+                auto p01 = beam_vol[1+shift].get_points();
+                seg_plane(p00[0], p00[1], cutpl, ip[0]);
+                seg_plane(p00[3], p00[2], cutpl, ip[1]);
+                seg_plane(p01[0], p01[1], cutpl, ip[2]);
+                seg_plane(p01[3], p01[2], cutpl, ip[3]);
+                if (cutpl.has_on_negative_side(p00[0])) {
+                    p00[0] = ip[0]; p00[3] = ip[1]; p00[4] = p00[0];
+                    p01[0] = ip[2]; p01[3] = ip[3]; p01[4] = p01[0];
+                } else {
+                    p00[1] = ip[0]; p00[2] = ip[1];
+                    p01[1] = ip[2]; p01[2] = ip[3];
+                }
+                beam_vol[0+shift] = Polyline(p00);
+                beam_vol[1+shift] = Polyline(p01);
+            }
+        } else if (sum == 1) {
+            int closer_rect, farrer_rect;
+            if (type0 == 0) {
+                auto q20 = beam_vol[2].get_points()[0];
+                auto q30 = beam_vol[3].get_points()[0];
+                Point pp(p0[0]+v0[0], p0[1]+v0[1], p0[2]+v0[2]);
+                bool closer = Point::distance(pp, q20) < Point::distance(pp, q30);
+                closer_rect = closer ? 2 : 3;
+                farrer_rect = closer ? 3 : 2;
+            } else {
+                auto q00 = beam_vol[0].get_points()[0];
+                auto q10 = beam_vol[1].get_points()[0];
+                Point pp(p1[0]+v1[0], p1[1]+v1[1], p1[2]+v1[2]);
+                bool closer = Point::distance(pp, q00) < Point::distance(pp, q10);
+                closer_rect = closer ? 0 : 1;
+                farrer_rect = closer ? 1 : 0;
+            }
+            auto qc = beam_vol[closer_rect].get_points();
+            Vector rv0(qc[1][0]-qc[0][0], qc[1][1]-qc[0][1], qc[1][2]-qc[0][2]);
+            Vector rv1(qc[2][0]-qc[0][0], qc[2][1]-qc[0][1], qc[2][2]-qc[0][2]);
+            Vector rnrm = rv0.cross(rv1);
+            Point  rorig = qc[0];
+            Plane  cutpl = Plane::from_point_normal(rorig, rnrm);
+            auto qf = beam_vol[farrer_rect].get_points();
+            if (!cutpl.has_on_negative_side(qf[0])) {
+                Vector nneg(-rnrm[0], -rnrm[1], -rnrm[2]);
+                Point  rorig2 = qc[0];
+                cutpl = Plane::from_point_normal(rorig2, nneg);
+            }
+            int shift = type0 == 0 ? 0 : 2;
+            auto p00 = beam_vol[0+shift].get_points();
+            auto p01 = beam_vol[1+shift].get_points();
+            seg_plane(p00[0], p00[1], cutpl, ip[0]);
+            seg_plane(p00[3], p00[2], cutpl, ip[1]);
+            seg_plane(p01[0], p01[1], cutpl, ip[2]);
+            seg_plane(p01[3], p01[2], cutpl, ip[3]);
+            if (cutpl.has_on_negative_side(p00[0])) {
+                p00[0] = ip[0]; p00[3] = ip[1]; p00[4] = p00[0];
+                p01[0] = ip[2]; p01[3] = ip[3]; p01[4] = p01[0];
+            } else {
+                p00[1] = ip[0]; p00[2] = ip[1];
+                p01[1] = ip[2]; p01[2] = ip[3];
+            }
+            beam_vol[0+shift] = Polyline(p00);
+            beam_vol[1+shift] = Polyline(p01);
+        }
+        // sum == 2 (cross): no trimming — both beams pass through.
+
+        // Serialize the 4 (possibly trimmed) rectangles for viz.
+        for (int k = 0; k < 4; k++) {
+            auto rect = std::make_shared<Polyline>(beam_vol[k]);
+            rect->name = fmt::format("beam_{}_{}_rect{}", c.pid0, c.pid1, k);
+            session.add_polyline(rect, g_vols);
+        }
+
+        // Build wood elements from the rectangle pairs and run the existing
+        // plate-style face_to_face detector. [0,1] = beam 0 top/bottom at
+        // the joint; [2,3] = beam 1.
+        WoodElement el0 = build_wood_element(
+            beam_vol[0].get_points(), beam_vol[1].get_points());
+        WoodElement el1 = build_wood_element(
+            beam_vol[2].get_points(), beam_vol[3].get_points());
+
+        std::vector<Vector> empty_iv0, empty_iv1;
+        WoodJoint jt;
+        bool swap_planes_1 = false;
+        bool jok = face_to_face_wood(
+            /*joint_id*/ (size_t)(n_success + n_failed),
+            el0.polylines, el1.polylines,
+            el0.planes,    el1.planes,
+            empty_iv0, empty_iv1,
+            /*el_ids*/ std::pair<int,int>(c.pid0, c.pid1),
+            /*joint_volume_extension*/ JOINT_VOLUME_EXTENSION,
+            /*limit_min_joint_length*/ 0.0,
+            /*distance_squared*/ 1e-6,
+            /*coplanar_tolerance*/ DISTANCE_SQUARED,
+            /*dihedral_angle_threshold*/ FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_DIHEDRAL_ANGLE,
+            /*all_treated_as_rotated*/ FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ALL_TREATED_AS_ROTATED,
+            /*rotated_joint_as_average*/ FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ROTATED_JOINT_AS_AVERAGE,
+            /*search_type*/ 0,
+            jt,
+            swap_planes_1);
+        if (!jok) { n_failed++; continue; }
+        n_success++;
+        int t = jt.joint_type;
+        if      (t == 11) counts[0]++;
+        else if (t == 12) counts[1]++;
+        else if (t == 13) counts[2]++;
+        else if (t == 20) counts[3]++;
+        else if (t == 30) counts[4]++;
+        else if (t == 40) counts[5]++;
+
+        if (jt.joint_area.point_count() > 0) {
+            auto a = std::make_shared<Polyline>(jt.joint_area);
+            a->name = fmt::format("joint_{}_{}_area_t{}", c.pid0, c.pid1, t);
+            session.add_polyline(a, g_areas);
+        }
+        for (int li = 0; li < 2; li++) {
+            const Line& jl = jt.joint_lines[li];
+            if (jl.squared_length() > 1e-9) {
+                auto ln = std::make_shared<Line>(jl);
+                ln->name = fmt::format("joint_{}_{}_line{}_t{}", c.pid0, c.pid1, li, t);
+                session.add_line(ln, g_lines);
+            }
+        }
+
+        joint_rects.push_back(beam_vol);
+    }
+
+    // Meta + coords dump. Two sections:
+    //   elements 0..N-1         = input beam axes (one element per axis,
+    //                             one polyline per axis)
+    //   elements N..N+4*J-1     = joint rectangles (one element per rect to
+    //                             match wood's `output_plines` granularity
+    //                             where each CGAL_Polyline gets its own
+    //                             `polyline_group` — wood_test.cpp:3749-3752)
+    {
+        std::ofstream meta_out((base / (pb_name + "_meta.txt")).string());
+        std::ofstream coord_out((base / (pb_name + "_coords.txt")).string());
+        auto emit = [&](int ei, const Polyline& pl) {
+            meta_out << 1 << ' ' << pl.point_count() << '\n';
+            coord_out << "element " << ei << "\n";
+            coord_out << "  poly 0:";
+            for (size_t pi = 0; pi < pl.point_count(); pi++) {
+                Point p = pl.get_point(pi);
+                coord_out << " " << p[0] << " " << p[1] << " " << p[2];
+            }
+            coord_out << "\n";
+        };
+        int ei = 0;
+        for (const auto& pl : axes) emit(ei++, pl);
+        for (const auto& rects : joint_rects)
+            for (int k = 0; k < 4; k++) emit(ei++, rects[k]);
+    }
+
+    session.pb_dump((base / pb_name).string());
+    fmt::print("\n=== beam_volumes_pipeline ===\n");
+    fmt::print("{} axes -> {} contacts -> {} joints ({} failed)\n",
+               axes.size(), n_pairs, n_success, n_failed);
+    fmt::print("  by type: 11={} 12={} 13={} 20={} 30={} 40={}\n",
+               counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
 }
 

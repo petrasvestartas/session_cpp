@@ -1,0 +1,25 @@
+{
+  "type": "Objects",
+  "guid": "574f579e-9e8d-409b-af16-9c317d4cb9ec",
+  "name": "my_objects",
+  "bboxes": [],
+  "breps": [],
+  "elements": [],
+  "lines": [],
+  "meshes": [],
+  "nurbscurves": [],
+  "nurbssurfaces": [],
+  "planes": [],
+  "points": [],
+  "pointclouds": [],
+  "polylines": [],
+  "components": [
+    {
+      "size": 3000,
+      "height": 650,
+      "type": "FloorBuilder",
+      "guid": "cbbd83d3-4b26-47ca-949f-717c98bb9bff",
+      "name": "floor_builder"
+    }
+  ]
+}

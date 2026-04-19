@@ -10,6 +10,22 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
+MINI_TEST("KDTree", "Constructor") {
+    // uncomment #include "kdtree.h"
+    // uncomment #include "point.h"
+    // KDTree: O(n log n) build, O(log n) nearest — static point set closest search
+    std::vector<Point> pts = {
+        Point(0.0, 0.0, 0.0),
+        Point(3.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+    };
+    KDTree tree(pts);
+    auto [idx, dist] = tree.nearest(Point(2.0, 0.0, 0.0));
+
+    MINI_CHECK(idx == 1);
+    MINI_CHECK(TOLERANCE.is_close(dist, 1.0));
+}
+
 MINI_TEST("KDTree", "Nearest") {
     // uncomment #include "kdtree.h"
     // uncomment #include "point.h"

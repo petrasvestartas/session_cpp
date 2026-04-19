@@ -253,7 +253,15 @@ foreach(MAIN_ID 1 2 3 4)
     endif()
 endforeach()
 # main_5 (wood face_to_face port — uses native session boolean, no Clipper2)
-add_executable(main_5 main_5.cpp)
+# Split into wood/ subdirectory mirroring wood's cmake/src/wood/include/ tree.
+add_executable(main_5
+    main_5.cpp
+    wood/wood_globals.cpp
+    wood/wood_internal.cpp
+    wood/wood_main.cpp
+    wood/wood_test.cpp
+)
+target_include_directories(main_5 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(main_5 PRIVATE session_core)
 LINK_PROTOBUF(main_5)
 if(ENABLE_PCH)

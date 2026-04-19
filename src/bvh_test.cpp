@@ -8,6 +8,24 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
+MINI_TEST("BVH", "Constructor") {
+    // uncomment #include "bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    // BVH: Morton-ordered static hierarchy — O(log n) nearest-neighbour for OBBs
+    std::vector<OBB> boxes = {
+        OBB(Point(0, 0, 0),  Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        OBB(Point(2, 0, 0),  Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+        OBB(Point(20, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
+    };
+    BVH bvh = BVH::from_boxes(boxes, 100.0);
+    std::vector<int> n = bvh.nearest_neighbors(0, boxes, 1.5);
+
+    MINI_CHECK(n.size() == 1);
+    MINI_CHECK(n[0] == 1);
+}
+
 MINI_TEST("BVH", "Expand Bits") {
     // uncomment #include "bvh.h"
     MINI_CHECK(expand_bits(0) == 0);

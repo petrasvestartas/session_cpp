@@ -52,6 +52,12 @@ nlohmann::ordered_json Objects::jsondump() const {
     elements_json.push_back(e->jsondump());
   }
 
+  std::vector<nlohmann::ordered_json> components_json;
+  components_json.reserve(components->size());
+  for (const auto &c : *components) {
+    components_json.push_back(c.jsondump());
+  }
+
   std::vector<nlohmann::ordered_json> planes_json;
   planes_json.reserve(planes->size());
   for (const auto &p : *planes) {
@@ -89,7 +95,8 @@ nlohmann::ordered_json Objects::jsondump() const {
                                 {"planes", planes_json},
                                 {"points", points_json},
                                 {"pointclouds", pointclouds_json},
-                                {"polylines", polylines_json}};
+                                {"polylines", polylines_json},
+                                {"components", components_json}};
 }
 
 Objects Objects::jsonload(const nlohmann::json &data) {
@@ -195,6 +202,12 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     *objects.polylines = std::move(polylines);
   }
 
+  // Load components
+  if (data.contains("components")) {
+    for (const auto &c_data : data["components"])
+      objects.components->push_back(Component::jsonload(c_data));
+  }
+
   // Set guid() if provided, otherwise generate a new one
   objects.guid() =
       data.contains("guid") ? data["guid"].get<std::string>() : ::guid();
@@ -236,6 +249,13 @@ std::string Objects::pb_dumps() const {
   for (const auto& ns : *nurbssurfaces) proto.add_nurbssurfaces()->ParseFromString(ns->pb_dumps());
   for (const auto& b : *breps) proto.add_breps()->ParseFromString(b->pb_dumps());
   for (const auto& e : *elements) proto.add_elements()->ParseFromString(e->pb_dumps());
+  for (const auto& c : *components) {
+    auto* pc = proto.add_components();
+    pc->set_type_name(c.type_name);
+    pc->set_guid(c.guid());
+    pc->set_name(c.name);
+    pc->set_json_data(c.extra.dump());
+  }
   return proto.SerializeAsString();
 }
 
@@ -266,6 +286,14 @@ Objects Objects::pb_loads(const std::string& data) {
     objects.breps->push_back(std::make_shared<BRep>(BRep::pb_loads(b.SerializeAsString())));
   for (const auto& e : proto.elements())
     objects.elements->push_back(std::make_shared<Element>(Element::pb_loads(e.SerializeAsString())));
+  for (const auto& pc : proto.components()) {
+    Component c;
+    c.type_name = pc.type_name();
+    c.guid()    = pc.guid();
+    c.name      = pc.name();
+    c.extra     = nlohmann::ordered_json::parse(pc.json_data(), nullptr, false);
+    objects.components->push_back(c);
+  }
   return objects;
 }
 

@@ -9,13 +9,13 @@ namespace session_cpp {
 // Element
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-Element::Element(const std::string& name) : name(name) {}
+Element::Element(const std::string& name, const Xform& transformation) : name(name), session_transformation(transformation) {}
 
-Element::Element(const Mesh& geometry, const std::string& name)
-    : name(name), _geometry(geometry) {}
+Element::Element(const Mesh& geometry, const std::string& name, const Xform& transformation)
+    : name(name), session_transformation(transformation), _geometry(geometry) {}
 
-Element::Element(const BRep& geometry, const std::string& name)
-    : name(name), _geometry(geometry) {}
+Element::Element(const BRep& geometry, const std::string& name, const Xform& transformation)
+    : name(name), session_transformation(transformation), _geometry(geometry) {}
 
 Element::Element(const Element& other)
     : name(other.name),
@@ -356,8 +356,8 @@ std::ostream& operator<<(std::ostream& os, const Element& e) { return os << e.st
 // ElementColumn
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-ElementColumn::ElementColumn(double width, double depth, double height, const std::string& name)
-    : Element(name), _width(width), _depth(depth), _height(height) {
+ElementColumn::ElementColumn(double width, double depth, double height, const std::string& name, const Xform& transformation)
+    : Element(name, transformation), _width(width), _depth(depth), _height(height) {
     _geometry = compute_element_geometry();
 }
 
@@ -560,8 +560,8 @@ ElementColumn ElementColumn::pb_load(const std::string& path) {
 // ElementBeam
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-ElementBeam::ElementBeam(double width, double depth, double length, const std::string& name)
-    : Element(name), _width(width), _depth(depth), _length(length) {
+ElementBeam::ElementBeam(double width, double depth, double length, const std::string& name, const Xform& transformation)
+    : Element(name, transformation), _width(width), _depth(depth), _length(length) {
     _geometry = compute_element_geometry();
 }
 
@@ -765,8 +765,8 @@ ElementBeam ElementBeam::pb_load(const std::string& path) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 ElementPlate::ElementPlate(const std::vector<Point>& polygon, double thickness,
-                           const std::string& name)
-    : Element(name), _thickness(thickness) {
+                           const std::string& name, const Xform& transformation)
+    : Element(name, transformation), _thickness(thickness) {
     if (polygon.empty()) {
         _polygon = {Point(-0.5,-0.5,0), Point(0.5,-0.5,0), Point(0.5,0.5,0), Point(-0.5,0.5,0)};
     } else {
@@ -791,12 +791,12 @@ static std::vector<Point> strip_closing(const std::vector<Point>& pts) {
     return pts;
 }
 
-ElementPlate::ElementPlate(const Polyline& bottom, const Polyline& top, const std::string& name)
-    : ElementPlate(bottom.get_points(), top.get_points(), name) {}
+ElementPlate::ElementPlate(const Polyline& bottom, const Polyline& top, const std::string& name, const Xform& transformation)
+    : ElementPlate(bottom.get_points(), top.get_points(), name, transformation) {}
 
 ElementPlate::ElementPlate(const std::vector<Point>& bottom, const std::vector<Point>& top,
-                           const std::string& name)
-    : Element(name) {
+                           const std::string& name, const Xform& transformation)
+    : Element(name, transformation) {
     auto bot = strip_closing(bottom);
     auto tp = strip_closing(top);
     _polygon.reserve(bot.size());
