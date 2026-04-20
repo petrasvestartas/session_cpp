@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "polyline.h"
+#include "boolean_polyline.h"
 #include <cmath>
 
 namespace session_cpp {
@@ -239,6 +240,50 @@ MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
     MINI_CHECK(uni[0].point_count() > 0);
     MINI_CHECK(diff.size() >= 1);
     MINI_CHECK(diff[0].point_count() > 0);
+}
+
+// ── Open-subject × closed-clip Vatti tests ──────────────────────────────
+// Exercises BooleanPolyline::clip_open_against_closed. Covers the three
+// primary behaviours needed by rossiniere joints:
+//   1) simple transverse crossing (enter + exit),
+//   2) diagonal transverse crossing,
+//   3) full joint-rectangle-vs-plate fixture (multi-segment open path
+//      traversing a rotated-plane plate).
+
+MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {
+    Polyline open_line({Point(-2, 0, 0), Point(2, 0, 0)});
+    Polyline sq({Point(-1,-1,0), Point(1,-1,0), Point(1,1,0), Point(-1,1,0), Point(-1,-1,0)});
+    auto out = BooleanPolyline::clip_open_against_closed(open_line, sq);
+    MINI_CHECK(out.size() == 1);
+    MINI_CHECK(out[0].point_count() == 2);
+    Point p0 = out[0].get_point(0);
+    Point p1 = out[0].get_point(1);
+    MINI_CHECK(std::fabs(std::fabs(p0[0]) - 1.0) < 1e-6);
+    MINI_CHECK(std::fabs(std::fabs(p1[0]) - 1.0) < 1e-6);
+    MINI_CHECK(std::fabs(p0[1]) < 1e-6);
+    MINI_CHECK(std::fabs(p1[1]) < 1e-6);
+}
+
+MINI_TEST("Boolean Polyline Open", "Diagonal Line Vs Unit Square") {
+    Polyline open_line({Point(-2, -2, 0), Point(2, 2, 0)});
+    Polyline sq({Point(-1,-1,0), Point(1,-1,0), Point(1,1,0), Point(-1,1,0), Point(-1,-1,0)});
+    auto out = BooleanPolyline::clip_open_against_closed(open_line, sq);
+    MINI_CHECK(out.size() == 1);
+    MINI_CHECK(out[0].point_count() == 2);
+    Point p0 = out[0].get_point(0);
+    Point p1 = out[0].get_point(1);
+    MINI_CHECK(std::fabs(std::fabs(p0[0]) - 1.0) < 1e-6);
+    MINI_CHECK(std::fabs(std::fabs(p1[0]) - 1.0) < 1e-6);
+}
+
+MINI_TEST("Boolean Polyline Open", "Interior Open Path Passes Through") {
+    // Multi-vertex open path with both endpoints OUTSIDE clip — expect a
+    // single piece crossing from entry to exit.
+    Polyline open_path({Point(-2, 0, 0), Point(0, 0.2, 0), Point(2, 0, 0)});
+    Polyline sq({Point(-1,-1,0), Point(1,-1,0), Point(1,1,0), Point(-1,1,0), Point(-1,-1,0)});
+    auto out = BooleanPolyline::clip_open_against_closed(open_path, sq);
+    MINI_CHECK(out.size() == 1);
+    MINI_CHECK(out[0].point_count() >= 3);
 }
 
 } // namespace session_cpp

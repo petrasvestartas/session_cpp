@@ -52,7 +52,6 @@ set(UNITY_BUILD_EXCLUDE
     src/knot.cpp
     src/mesh.cpp
     src/brep.cpp
-    src/mesh_iso.cpp
     src/graph.cpp
     src/tree.cpp
     src/treenode.cpp
@@ -297,7 +296,6 @@ set(MINITEST_SOURCES
     src/tree_test.cpp
     src/treenode_test.cpp
     src/brep_test.cpp
-    src/mesh_iso_test.cpp
     src/element_test.cpp
     src/element_beam_test.cpp
     src/element_column_test.cpp
@@ -305,7 +303,6 @@ set(MINITEST_SOURCES
     src/matrix_test.cpp
     src/convex_hull_test.cpp
     src/kdtree_test.cpp
-    src/marching_squares_test.cpp
     src/boolean_polyline_test.cpp
     src/feature_test.cpp
 )

@@ -698,11 +698,15 @@ public:
   /// `clipper_util.cpp:707-790`.
   static bool offset_in_3d(Polyline& polyline, const Plane& plane, double offset);
 
-  /// 2D boolean between two closed planar polylines using Clipper2.
+  /// 2D boolean between two closed planar polylines, projected into the
+  /// plane's canonical 2D frame (base1/base2).
   /// `intersection_type`: 0=Intersect, 1=Union, 2=Difference, 3=Xor.
   /// `include_triangles`: when false, 3-vertex results are rejected.
+  /// `collapse_eps`: when > 0, consecutive output vertices closer than this
+  /// distance (in 2D) are merged. Removes Vatti FP-noise on near-coincident
+  /// edges — needed by wood hexbox-family datasets.
   /// Writes result back to `intersection_result`; returns false on empty,
-  /// degenerate (<3 vertices), triangle-reject, or area below `CLIPPER_AREA`.
+  /// degenerate (<3 vertices), triangle-reject, or area <= `min_area`.
   /// Verbatim port of wood's `get_intersection_between_two_polylines` at
   /// `clipper_util.cpp:524-620`.
   static bool polyline_boolean_2d_in_plane(
@@ -712,7 +716,8 @@ public:
       Polyline& intersection_result,
       int intersection_type,
       bool include_triangles = false,
-      double min_area = 0.01);
+      double min_area = 0.01,
+      double collapse_eps = 0.0);
 
   /// Face-to-face joint detection between elements via coplanar boolean intersection.
   /// adjacency: flat array [a0,b0,?,?, a1,b1,?,?, ...] processed in groups of 4.

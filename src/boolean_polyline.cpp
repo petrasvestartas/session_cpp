@@ -912,7 +912,25 @@ inline VOutPt* v_get_last_op(const VActive& e) {
 }
 
 inline void v_update_edge_into_ael(VattiScratch& sc, VActive* e, int cliptype) {
-    e->bot = e->top; e->vertex_top = v_next_vertex(*e); e->top = e->vertex_top->pt;
+    // Open-path endpoint: v_next_vertex returns nullptr (prev/next is null on
+    // VF_OpenStart / VF_OpenEnd vertex). Emit final point if hot, remove from
+    // AEL, and return without advancing. Caller must not re-use `e` after.
+    VVertex* nv = v_next_vertex(*e);
+    if (!nv) {
+        if (v_polytype(*e) == 2) {
+            if (v_is_hot(*e)) {
+                v_add_outpt(*e, e->top, sc);
+                if (e->outrec) {
+                    if (v_is_front(*e)) e->outrec->front_edge = nullptr;
+                    else                e->outrec->back_edge  = nullptr;
+                    e->outrec = nullptr;
+                }
+            }
+            v_delete_from_ael(sc, *e);
+        }
+        return;
+    }
+    e->bot = e->top; e->vertex_top = nv; e->top = e->vertex_top->pt;
     e->curr_x = e->bot.x; v_set_dx(*e);
     if (v_is_joined(*e)) v_split(*e, e->bot, sc);
     if (v_is_horizontal(*e)) {
@@ -1148,15 +1166,56 @@ static void v_process_intersect_list(VattiScratch& sc, int cliptype) {
 static void v_insert_local_minima_into_ael(VattiScratch& sc, int64_t bot_y, int cliptype) {
     VLocalMinima* lm;
     while (v_pop_locmin(sc, bot_y, lm)) {
-        VActive* lb = sc.new_active();
-        lb->bot = lm->vertex->pt; lb->curr_x = lb->bot.x; lb->wind_dx = -1;
-        lb->vertex_top = lm->vertex->prev; lb->top = lb->vertex_top->pt;
-        lb->local_min = lm; v_set_dx(*lb);
+        // Open-path endpoints have nullptr on one side (VF_OpenStart → prev is
+        // null, VF_OpenEnd → next is null). Clipper2 handles these as
+        // "single-bound" minima: only the side with a valid neighbour becomes
+        // an active edge. Mirrors InsertLocalMinimaIntoAEL null-bound branch.
+        bool skip_lb = (lm->vertex->flags & VF_OpenStart) != 0;
+        bool skip_rb = (lm->vertex->flags & VF_OpenEnd)   != 0;
 
-        VActive* rb = sc.new_active();
-        rb->bot = lm->vertex->pt; rb->curr_x = rb->bot.x; rb->wind_dx = 1;
-        rb->vertex_top = lm->vertex->next; rb->top = rb->vertex_top->pt;
-        rb->local_min = lm; v_set_dx(*rb);
+        VActive* lb = nullptr;
+        VActive* rb = nullptr;
+        if (!skip_lb) {
+            lb = sc.new_active();
+            lb->bot = lm->vertex->pt; lb->curr_x = lb->bot.x; lb->wind_dx = -1;
+            lb->vertex_top = lm->vertex->prev; lb->top = lb->vertex_top->pt;
+            lb->local_min = lm; v_set_dx(*lb);
+        }
+        if (!skip_rb) {
+            rb = sc.new_active();
+            rb->bot = lm->vertex->pt; rb->curr_x = rb->bot.x; rb->wind_dx = 1;
+            rb->vertex_top = lm->vertex->next; rb->top = rb->vertex_top->pt;
+            rb->local_min = lm; v_set_dx(*rb);
+        }
+
+        // If only one bound exists, treat it as the right bound (the edge
+        // that moves through the sweep); no paired left bound, no local-min
+        // polygon start event.
+        if (!lb && rb) {
+            // Single right bound — insert as a standalone active edge.
+            rb->is_left_bound = false;
+            v_insert_left_edge(sc, *rb);  // insert by x; left/right distinction irrelevant for open
+            v_set_wind_count(sc, *rb);
+            if (v_is_contributing(*rb, cliptype)) {
+                // Open-subject: start a new OutRec at this vertex.
+                v_start_open_path(*rb, rb->bot, sc);
+            }
+            if (v_is_horizontal(*rb)) v_push_horz(sc, *rb);
+            else v_insert_scanline(sc, rb->top.y);
+            continue;
+        }
+        if (lb && !rb) {
+            lb->is_left_bound = true;
+            v_insert_left_edge(sc, *lb);
+            v_set_wind_count(sc, *lb);
+            if (v_is_contributing(*lb, cliptype)) {
+                v_start_open_path(*lb, lb->bot, sc);
+            }
+            if (v_is_horizontal(*lb)) v_push_horz(sc, *lb);
+            else v_insert_scanline(sc, lb->top.y);
+            continue;
+        }
+        if (!lb && !rb) continue;
 
         if (v_is_horizontal(*lb)) {
             if (lb->dx == -std::numeric_limits<double>::max()) std::swap(lb, rb);
@@ -1193,7 +1252,21 @@ static VActive* v_do_maxima(VActive& e, VattiScratch& sc, int cliptype) {
     VActive* prev_e = e.prev_in_ael;
     VActive* next_e = e.next_in_ael;
     VActive* max_pair = v_get_maxima_pair(e);
-    if (!max_pair) return next_e;
+    if (!max_pair) {
+        // Open-subject edges have no maxima pair (the path terminates at
+        // this vertex). Emit the terminal point if hot and remove from AEL.
+        if (v_polytype(e) == 2) {
+            if (v_is_hot(e)) {
+                v_add_outpt(e, e.top, sc);
+                // Disconnect from outrec — open path terminates here.
+                if (v_is_front(e)) e.outrec->front_edge = nullptr;
+                else                e.outrec->back_edge  = nullptr;
+                e.outrec = nullptr;
+            }
+            v_delete_from_ael(sc, e);
+        }
+        return next_e;
+    }
     if (v_is_joined(e)) v_split(e, e.top, sc);
     if (v_is_joined(*max_pair)) v_split(*max_pair, max_pair->top, sc);
     while (next_e != max_pair) {
@@ -1546,18 +1619,12 @@ int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polylin
 
 // ── Public entry: open-subject × closed-clip Intersection ────────────────
 //
-// Sets up a VattiScratch, feeds the open subject as polytype=2
-// (is_open=true) and the closed clip as polytype=1 (is_open=false), runs
-// the sweep with cliptype=0 (Intersection), then extracts VOutRec chains
-// flagged `is_open` as a vector of open polylines.
-//
-// Output extraction differs from compute() (closed-polygon case):
-//   - No collinear-point cleanup (open paths are polylines; removing
-//     collinear points would shorten them incorrectly)
-//   - No triangle rejection (open paths with 2-3 points are valid)
-//   - Linear traversal (not circular) — start at outrec->pts, walk via
-//     ->next until we return to start or hit nullptr
-//   - Produces ≥2 point polylines; <2 pt results are skipped
+// Direct segment-vs-polygon clipper (O(n·m)). For each segment of the open
+// subject, compute its intersection parameters with every clip edge, plus
+// endpoint insideness, then emit contiguous in-clip pieces. Uses 2D (x,y)
+// only — caller projects to a plane first if needed. This bypasses the
+// Vatti open-subject branch (which the wider sweep engine does not yet
+// support cleanly).
 std::vector<Polyline> session_cpp::BooleanPolyline::clip_open_against_closed(
     const Polyline& open_subject, const Polyline& closed_clip)
 {
@@ -1567,80 +1634,99 @@ std::vector<Polyline> session_cpp::BooleanPolyline::clip_open_against_closed(
     int ns = (int)(open_subject._coords.size() / 3);
     int nc = (int)(closed_clip._coords.size() / 3);
 
-    // Strip closing-duplicate from CLIP only — open subject may legitimately
-    // have first == last (a closed-shape polyline fed as open).
     if (nc >= 2) {
         double dx = cc[(nc-1)*3] - cc[0], dy = cc[(nc-1)*3+1] - cc[1];
         if (dx*dx + dy*dy < 1e-20) --nc;
     }
     if (ns < 2 || nc < 3) return result;
 
-    // Compute integer scale (same formula as compute()).
-    double max_coord = 0;
-    for (int i = 0; i < ns; i++) {
-        max_coord = std::max(max_coord, std::max(std::fabs(cs[i*3]), std::fabs(cs[i*3+1])));
-    }
-    for (int i = 0; i < nc; i++) {
-        max_coord = std::max(max_coord, std::max(std::fabs(cc[i*3]), std::fabs(cc[i*3+1])));
-    }
-    if (max_coord < 1e-12) max_coord = 1.0;
-    const double BOOL_SCALE = std::floor(
-        std::sqrt(static_cast<double>(std::numeric_limits<int64_t>::max())) / (2.0 * max_coord));
-    const double BOOL_INV_SCALE = 1.0 / BOOL_SCALE;
+    auto point_in_poly = [&](double px, double py) -> bool {
+        // Ray-cast even-odd test (2D).
+        bool inside = false;
+        for (int i = 0, j = nc-1; i < nc; j = i++) {
+            double xi = cc[i*3], yi = cc[i*3+1];
+            double xj = cc[j*3], yj = cc[j*3+1];
+            bool crosses = ((yi > py) != (yj > py));
+            if (!crosses) continue;
+            double xint = xj + (py - yj) * (xi - xj) / (yi - yj);
+            if (px < xint) inside = !inside;
+        }
+        return inside;
+    };
 
-    VattiScratch& sc = vtls;
-    sc.reset();
-    int total = ns + nc;
-    sc.vtx_pool.ensure(total + 4);
-    sc.act_pool.ensure(total * 2 + 4);
-    sc.opt_pool.ensure(total * 4);
-    sc.orc_pool.ensure(total);
-    sc.locmin_list.reserve(total);
-    sc.outrec_list.reserve(total);
-    sc.scanline_list.buf.reserve(total * 2);
-
-#if VATTI_HAS_SSE2
-    const __m128d sv = _mm_set1_pd(BOOL_SCALE);
-#else
-    const double sv = BOOL_SCALE;
-#endif
-    int64_t sMinX, sMaxX, sMinY, sMaxY, cMinX, cMaxX, cMinY, cMaxY;
-    // Open subject: polytype=2, is_open=true.
-    v_add_path_from_doubles(cs, ns, /*polytype=*/2, sv, sc,
-                             sMinX, sMaxX, sMinY, sMaxY, /*is_open=*/true);
-    // Closed clip: polytype=1, is_open=false.
-    v_add_path_from_doubles(cc, nc, /*polytype=*/1, sv, sc,
-                             cMinX, cMaxX, cMinY, cMaxY, /*is_open=*/false);
-
-    if (!v_execute_internal(sc, /*cliptype=*/0)) return result;
-
-    // Extract open-path OutRecs. Linear traversal, no cleanup/filtering.
-    for (size_t i = 0; i < sc.outrec_list.size(); i++) {
-        VOutRec* outrec = sc.outrec_list[i];
-        if (!outrec || !outrec->is_open || !outrec->pts) continue;
-        std::vector<double> coords;
-        coords.reserve(32 * 3);
-        VOutPt* head = outrec->pts;
-        VOutPt* o = head;
-        BIVec2 last{INT64_MAX, INT64_MAX};
-        // Walk forward; circular list for OutPts is reused for open paths
-        // too (StartOpenPath initializes op->next = op->prev = op). Each
-        // v_add_outpt call inserts the new VOutPt into the chain. Stop
-        // when we return to `head` OR encounter a nullptr.
-        do {
-            if (o->pt != last) {
-                coords.push_back(o->pt.x * BOOL_INV_SCALE);
-                coords.push_back(o->pt.y * BOOL_INV_SCALE);
-                coords.push_back(0.0);
-                last = o->pt;
-            }
-            o = o->next;
-        } while (o && o != head);
-        size_t n_pts = coords.size() / 3;
-        if (n_pts < 2) continue;
+    std::vector<double> cur;  // accumulates current in-clip piece
+    auto flush = [&](){
+        if (cur.size() < 6) { cur.clear(); return; }
         Polyline p;
-        p._coords = std::move(coords);
+        p._coords = std::move(cur);
         result.emplace_back(std::move(p));
+        cur.clear();
+    };
+    auto push_xy = [&](double x, double y){
+        size_t n = cur.size();
+        if (n >= 3) {
+            double lx = cur[n-3], ly = cur[n-2];
+            if (std::fabs(lx-x) < 1e-9 && std::fabs(ly-y) < 1e-9) return;
+        }
+        cur.push_back(x); cur.push_back(y); cur.push_back(0.0);
+    };
+
+    // Per-segment clipping: for segment (a,b), find all intersection params
+    // with the clip polygon's edges, sort, then walk and emit the portions
+    // where the midpoint lies inside the polygon.
+    bool a_inside = point_in_poly(cs[0], cs[1]);
+    if (a_inside) push_xy(cs[0], cs[1]);
+
+    for (int si = 0; si + 1 < ns; ++si) {
+        double ax = cs[si*3],     ay = cs[si*3+1];
+        double bx = cs[(si+1)*3], by = cs[(si+1)*3+1];
+        double dx = bx - ax,      dy = by - ay;
+        // Collect intersection parameters t in (0,1] on (a,b).
+        std::vector<double> ts;
+        ts.reserve(8);
+        for (int ei = 0, ej = nc-1; ei < nc; ej = ei++) {
+            double ex = cc[ei*3] - cc[ej*3], ey = cc[ei*3+1] - cc[ej*3+1];
+            double denom = dx * (-ey) - dy * (-ex);
+            if (std::fabs(denom) < 1e-18) continue;
+            double rx = cc[ej*3] - ax, ry = cc[ej*3+1] - ay;
+            double t = (rx * (-ey) - ry * (-ex)) / denom;
+            double u = (rx * (-dy) - ry * (-dx)) / denom;
+            if (t > 1e-12 && t <= 1.0 + 1e-12 && u >= -1e-9 && u <= 1.0 + 1e-9) {
+                ts.push_back(t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t));
+            }
+        }
+        std::sort(ts.begin(), ts.end());
+        // Walk the parameters from 0 → 1, toggling inside/outside as we
+        // cross boundary events (each crossing flips inside). Track the
+        // current state using the midpoint test between consecutive events.
+        double prev_t = 0.0;
+        for (double t : ts) {
+            if (t - prev_t < 1e-12) { prev_t = t; continue; }
+            double mid_t = 0.5 * (prev_t + t);
+            double mx = ax + dx * mid_t, my = ay + dy * mid_t;
+            bool mid_in = point_in_poly(mx, my);
+            double ix = ax + dx * t, iy = ay + dy * t;
+            if (mid_in) {
+                // The piece (prev_t → t) was inside. Include t as exit point.
+                push_xy(ix, iy);
+                flush();
+            } else {
+                // Entering the clip at t.
+                push_xy(ix, iy);
+            }
+            prev_t = t;
+        }
+        // Tail from prev_t → 1.0 — is midpoint inside?
+        if (prev_t < 1.0 - 1e-12) {
+            double mid_t = 0.5 * (prev_t + 1.0);
+            double mx = ax + dx * mid_t, my = ay + dy * mid_t;
+            if (point_in_poly(mx, my)) {
+                push_xy(bx, by);
+            }
+        } else {
+            // Segment ended exactly at the last event; nothing to append.
+        }
     }
+    flush();
     return result;
 }

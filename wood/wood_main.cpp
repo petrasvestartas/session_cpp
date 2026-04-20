@@ -116,111 +116,6 @@ struct WoodJoint {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
-// 2D plate-vs-plate polygon intersection in the plate plane frame. Mirrors
-// wood's `collider::clipper_util::get_intersection_between_two_polylines`.
-// Session uses the native Vatti boolean (`Intersection::polyline_boolean`)
-// in place of wood's Clipper2 dependency; numerical results agree within
-// Vatti scale precision.
-// ───────────────────────────────────────────────────────────────────────────
-static bool polygon_intersect_2d(const Polyline& poly_a, const Polyline& poly_b,
-                                 const Plane& plane, Polyline& result) {
-    // Project to 2D using poly_a[0] as origin and the plane's canonical
-    // in-plane axes derived from its normal (smallest-|coef| pivot rule).
-    // Using base1/base2 — which depend ONLY on the normal — keeps the 2D
-    // projection deterministic and independent of how the plane was
-    // constructed. Session's x_axis/y_axis can differ based on construction
-    // hint, producing a rotated 2D frame that perturbs downstream
-    // boolean-output vertex ordering and offset-polygon rotate-to-start.
-    Point origin = poly_a.get_point(0);
-    Vector xax = plane.base1();
-    Vector yax = plane.base2();
-
-    auto project_2d = [&](const Polyline& pl) -> Polyline {
-        size_t n = pl.point_count();
-        if (n > 3) {
-            auto f = pl.get_point(0); auto l = pl.get_point(n-1);
-            if (std::abs(f[0]-l[0])<1e-6 && std::abs(f[1]-l[1])<1e-6 && std::abs(f[2]-l[2])<1e-6)
-                n--;
-        }
-        std::vector<Point> pts2d;
-        pts2d.reserve(n + 1);
-        for (size_t k = 0; k < n; k++) {
-            auto p = pl.get_point(k);
-            double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
-            double u = dx*xax[0]+dy*xax[1]+dz*xax[2];
-            double v = dx*yax[0]+dy*yax[1]+dz*yax[2];
-            pts2d.emplace_back(u, v, 0.0);
-        }
-        // BooleanPolyline expects a closing-duplicate vertex.
-        pts2d.push_back(pts2d.front());
-        return Polyline(pts2d);
-    };
-
-    Polyline pa = project_2d(poly_a);
-    Polyline pb = project_2d(poly_b);
-
-    // clip_type: 0 = intersection (matches BooleanPolyline::compute).
-    std::vector<Polyline> result_2d = Intersection::polyline_boolean(pa, pb, 0);
-    if (result_2d.empty() || result_2d[0].point_count() < 3) return false;
-
-    const Polyline& C = result_2d[0];
-    size_t n_raw = C.point_count();
-    // Strip closing duplicate before collapse.
-    {
-        auto f = C.get_point(0); auto l = C.get_point(n_raw-1);
-        if (n_raw > 1 && std::abs(f[0]-l[0])<1e-9 && std::abs(f[1]-l[1])<1e-9) n_raw--;
-    }
-
-    // Collapse near-coincident consecutive vertices: if ||p[i+1]-p[i]|| <
-    // 1/1024 mm, drop p[i+1]. This eliminates FP noise at near-coincident
-    // edges produced by the Vatti boolean when input polygons nearly share
-    // edges (common at loose DISTANCE_SQUARED tolerance like hexboxes).
-    const double COLLAPSE_EPS_SQ = (1.0/1024.0) * (1.0/1024.0);
-    std::vector<Point> collapsed;
-    collapsed.reserve(n_raw);
-    for (size_t i = 0; i < n_raw; i++) {
-        auto p = C.get_point(i);
-        if (collapsed.empty()) {
-            collapsed.push_back(p);
-            continue;
-        }
-        double dx = p[0] - collapsed.back()[0];
-        double dy = p[1] - collapsed.back()[1];
-        if (dx*dx + dy*dy >= COLLAPSE_EPS_SQ) collapsed.push_back(p);
-    }
-    // Wrap-around: drop last if identical to first.
-    if (collapsed.size() >= 2) {
-        double dx = collapsed.back()[0] - collapsed.front()[0];
-        double dy = collapsed.back()[1] - collapsed.front()[1];
-        if (dx*dx + dy*dy < COLLAPSE_EPS_SQ) collapsed.pop_back();
-    }
-    size_t n = collapsed.size();
-    if (n < 3) return false;
-
-    // Shoelace area in the projected (u,v) plane.
-    double area = 0.0;
-    for (size_t i = 0; i < n; i++) {
-        const Point& p0 = collapsed[i];
-        const Point& p1 = collapsed[(i+1) % n];
-        area += p0[0]*p1[1] - p1[0]*p0[1];
-    }
-    area = std::abs(area) * 0.5;
-    if (area < 0.01) return false;
-
-    // Transform back to 3D in the plate plane.
-    std::vector<Point> pts(n + 1);
-    for (size_t k = 0; k < n; k++) {
-        double u = collapsed[k][0], v = collapsed[k][1];
-        pts[k] = Point(origin[0] + u*xax[0] + v*yax[0],
-                        origin[1] + u*xax[1] + v*yax[1],
-                        origin[2] + u*xax[2] + v*yax[2]);
-    }
-    pts[n] = pts[0]; // close
-    result = Polyline(pts);
-    return true;
-}
-
-// ───────────────────────────────────────────────────────────────────────────
 // Joint library: all joint geometry constructors live in `wood_joint_lib.h`
 // (the session equivalent of wood's `wood_joint_lib.cpp`). Adding a new
 // joint variant means editing that header AND wiring it into the dispatcher
@@ -1367,23 +1262,17 @@ static bool face_to_face_wood(
             if (!coplanar) continue;
             dbg_coplanar++;
 
-            // 2. 2D Boolean intersection using Clipper2 (matches wood exactly).
+            // 2. 2D Boolean intersection using the kernel's plane-frame
+            //    Vatti wrapper. Wood accepts 3-vertex triangles only for
+            //    top/bottom face pairs (i<2 && j<2); side-face pairs reject
+            //    them. collapse_eps=1/1024mm removes Vatti FP duplicates on
+            //    near-coincident edges (hexbox-family datasets).
             Polyline joint_area(std::vector<Point>{});
-            if (!polygon_intersect_2d(polylines_0[i], polylines_1[j], planes_0[i], joint_area)) {
-                dbg_fail_reason = fmt::format("bool_empty f({},{})", i, j);
-                continue;
-            }
-            // Wood's get_intersection_between_two_polylines rejects 3-vertex
-            // (triangular) intersections when include_triangles=false. Wood
-            // passes include_triangles = (i < 2 && j < 2) — triangles accepted
-            // only for top/bottom face pairs, rejected for side-face pairs.
             bool include_triangles = (i < 2 && j < 2);
-            if (joint_area.point_count() < 4) { // 3 unique + closing
-                dbg_fail_reason = fmt::format("bool_<3pts f({},{})", i, j);
-                continue;
-            }
-            if (!include_triangles && joint_area.point_count() == 4) {
-                dbg_fail_reason = fmt::format("bool_tri f({},{})", i, j);
+            if (!Intersection::polyline_boolean_2d_in_plane(
+                    polylines_0[i], polylines_1[j], planes_0[i],
+                    joint_area, 0, include_triangles, 0.01, 1.0/1024.0)) {
+                dbg_fail_reason = fmt::format("bool_empty f({},{})", i, j);
                 continue;
             }
             dbg_boolean++;
@@ -1605,7 +1494,7 @@ static bool face_to_face_wood(
                     // aligns with a basis axis (the hilti failure mode).
                     Xform world_to_local = Xform::world_to_frame(o, x, y, z);
                     std::vector<Point> proj_pts = joint_area.get_points();
-                    transform(proj_pts, world_to_local);
+                    for (auto& p : proj_pts) { p.xform = world_to_local; p.transform(); }
                     if (proj_pts.empty()) { dbg_fail_reason = fmt::format("proj_empty f({},{})", i, j); continue; }
                     double xmin = proj_pts[0][0], xmax = xmin;
                     double ymin = proj_pts[0][1], ymax = ymin;
@@ -1626,7 +1515,7 @@ static bool face_to_face_wood(
                     };
                     // Inverse projection (local→world) using the same basis.
                     Xform local_to_world = Xform::frame_to_world(o, x, y, z);
-                    transform(rect_local, local_to_world);
+                    for (auto& p : rect_local) { p.xform = local_to_world; p.transform(); }
 
                     // Offset by element thickness along z (or insertion dir).
                     Vector offset_vector = dir_set ? dir : z;
@@ -3808,6 +3697,18 @@ void beam_volumes_pipeline(
     std::vector<std::array<Polyline, 4>> joint_rects;
     joint_rects.reserve(contacts.size());
 
+    // Detected joints + their axis-space contact points (p0, p1). Wood's
+    // post-detection eccentricity-scaling step (`wood_main.cpp:2591-2630`)
+    // uses distance(p0, p1) vs. beam radii to pre-scale joint.scale so the
+    // unit-cube → world transform doesn't stretch teeth when the two beam
+    // axes don't intersect exactly.
+    std::vector<WoodJoint> all_joints;
+    std::vector<std::array<Point, 2>> point_pairs;
+    std::vector<std::array<int, 2>> axis_ids;  // (pid0, pid1) per joint
+    all_joints.reserve(contacts.size());
+    point_pairs.reserve(contacts.size());
+    axis_ids.reserve(contacts.size());
+
     // ── Pass 2: per-contact rectangle generation + joint detection ────────
     for (auto& [id, c] : contacts) {
         (void)id;
@@ -3983,7 +3884,9 @@ void beam_volumes_pipeline(
             /*dihedral_angle_threshold*/ FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_DIHEDRAL_ANGLE,
             /*all_treated_as_rotated*/ FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ALL_TREATED_AS_ROTATED,
             /*rotated_joint_as_average*/ FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ROTATED_JOINT_AS_AVERAGE,
-            /*search_type*/ 0,
+            // Wood: search_type = (type0+type1 == 2) → 1 for cross joints
+            // (plane_to_face / type-30), 0 otherwise (face_to_face).
+            /*search_type*/ (sum == 2 ? 1 : 0),
             jt,
             swap_planes_1);
         if (!jok) { n_failed++; continue; }
@@ -3997,6 +3900,39 @@ void beam_volumes_pipeline(
         else if (t == 40) counts[5]++;
 
         joint_rects.push_back(beam_vol);
+        all_joints.push_back(std::move(jt));
+        point_pairs.push_back({p0, p1});
+        axis_ids.push_back({c.pid0, c.pid1});
+    }
+
+    // ── Eccentricity-scale joints. Ports wood_main.cpp:2591-2630.
+    //   L = 0.5·|p0 - p1|  (half axis-to-axis distance at contact)
+    //   r_max = 0.5·(r0 + r1)
+    //   scale_value = cos(asin(1 - min((r_max - L)/r_max, 1)))  if L > 0.01
+    //                else 1
+    //   joint.scale = {scale_value, scale_value, 1}
+    // Scale is consumed by joint_create_geometry's unit-cube transform; when
+    // joints aren't dispatched it's still set for algorithm parity with wood.
+    for (size_t i = 0; i < all_joints.size(); i++) {
+        double dx = point_pairs[i][0][0] - point_pairs[i][1][0];
+        double dy = point_pairs[i][0][1] - point_pairs[i][1][1];
+        double dz = point_pairs[i][0][2] - point_pairs[i][1][2];
+        double L = 0.5 * std::sqrt(dx*dx + dy*dy + dz*dz);
+        double scale_value = 1.0;
+        if (L > 0.01) {
+            int p0_id = axis_ids[i][0];
+            int p1_id = axis_ids[i][1];
+            double r0 = segment_radii[p0_id].empty() ? 0.0 : segment_radii[p0_id][0];
+            double r1 = segment_radii[p1_id].empty() ? 0.0 : segment_radii[p1_id][0];
+            double max_r = 0.5 * (r0 + r1);
+            if (max_r > 0.0) {
+                double v = (max_r - L) / max_r;
+                scale_value = std::cos(std::asin(1.0 - std::min(v, 1.0)));
+            }
+        }
+        all_joints[i].scale[0] = scale_value;
+        all_joints[i].scale[1] = scale_value;
+        all_joints[i].scale[2] = 1.0;
     }
 
     // Meta + coords dump. Two sections:

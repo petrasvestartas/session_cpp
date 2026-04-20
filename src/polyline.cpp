@@ -8,6 +8,7 @@
 #include <limits>
 #include <queue>
 #include <algorithm>
+#include <numeric>
 
 #include "polyline.pb.h"
 #include "point.pb.h"
@@ -1259,7 +1260,6 @@ std::optional<Polyline> Polyline::bounding_rectangle(const Polyline& polygon) {
 std::vector<Point> Polyline::grid_of_points_in_polygon(const Polyline& polygon,
                                                        double offset_dist, double div_dist,
                                                        size_t max_pts) {
-    (void)offset_dist;
     if (div_dist < 1e-12) return {};
     Point origin;
     Vector xa, ya, za;
@@ -1282,6 +1282,63 @@ std::vector<Point> Polyline::grid_of_points_in_polygon(const Polyline& polygon,
         poly2d.push_back({dx*xa[0]+dy*xa[1]+dz*xa[2], dx*ya[0]+dy*ya[1]+dz*ya[2]});
     }
     if (poly2d.empty()) return {};
+
+    // Miter offset in 2D (negative = inward, positive = outward). Reuses the
+    // same algorithm as Intersection::offset_in_3d. Falls back to the
+    // un-offset polygon if the result degenerates.
+    if (offset_dist != 0.0 && poly2d.size() >= 3) {
+        size_t n = poly2d.size();
+        double signed_area = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            const auto& a = poly2d[i];
+            const auto& b = poly2d[(i+1) % n];
+            signed_area += a[0]*b[1] - b[0]*a[1];
+        }
+        double delta = offset_dist;
+        if (signed_area < 0.0) delta = -delta;
+
+        std::vector<std::array<double,2>> normals;
+        normals.reserve(n);
+        for (size_t i = 0; i < n; ++i) {
+            const auto& a = poly2d[i];
+            const auto& b = poly2d[(i+1) % n];
+            double ex = b[0]-a[0], ey = b[1]-a[1];
+            double len = std::sqrt(ex*ex + ey*ey);
+            if (len < 1e-12) normals.push_back({0.0, 0.0});
+            else normals.push_back({ey/len, -ex/len});
+        }
+
+        std::vector<std::array<double,2>> out;
+        out.reserve(n * 3);
+        for (size_t i = 0; i < n; ++i) {
+            const auto& np = normals[(i + n - 1) % n];
+            const auto& nn = normals[i];
+            double cos_a = np[0]*nn[0] + np[1]*nn[1];
+            double sin_a = np[0]*nn[1] - np[1]*nn[0];
+            double denom = 1.0 + cos_a;
+            bool concave = (cos_a > -0.999) && (sin_a * delta < 0.0) && (offset_dist > 0.0);
+            if (concave) {
+                out.push_back({poly2d[i][0] + np[0]*delta, poly2d[i][1] + np[1]*delta});
+                out.push_back({poly2d[i][0], poly2d[i][1]});
+                out.push_back({poly2d[i][0] + nn[0]*delta, poly2d[i][1] + nn[1]*delta});
+            } else if (std::abs(denom) < 1e-9) {
+                double mx = (np[0]+nn[0])*0.5, my = (np[1]+nn[1])*0.5;
+                out.push_back({poly2d[i][0] + mx*delta, poly2d[i][1] + my*delta});
+            } else {
+                double bx = (np[0]+nn[0])/denom, by = (np[1]+nn[1])/denom;
+                out.push_back({poly2d[i][0] + bx*delta, poly2d[i][1] + by*delta});
+            }
+        }
+
+        // Reject if offset collapsed the polygon (area near zero).
+        double out_area = 0.0;
+        for (size_t i = 0; i < out.size(); ++i) {
+            const auto& a = out[i];
+            const auto& b = out[(i+1) % out.size()];
+            out_area += a[0]*b[1] - b[0]*a[1];
+        }
+        if (out.size() >= 3 && std::abs(out_area) > 1e-4) poly2d = std::move(out);
+    }
 
     double x_min = std::numeric_limits<double>::max(), x_max = -std::numeric_limits<double>::max();
     double y_min = std::numeric_limits<double>::max(), y_max = -std::numeric_limits<double>::max();
@@ -1319,193 +1376,262 @@ std::vector<Point> Polyline::grid_of_points_in_polygon(const Polyline& polygon,
     return result;
 }
 
+namespace {
+// Mapbox polylabel (quadtree+PQ). Polygon = rings of (u,v); ring 0 outer, rest holes.
+using Ring2 = std::vector<std::array<double,2>>;
+
+static double seg_dist_sq(double px, double py, double ax, double ay, double bx, double by) {
+    double x = ax, y = ay;
+    double dx = bx - x, dy = by - y;
+    if (dx != 0.0 || dy != 0.0) {
+        double t = ((px - x) * dx + (py - y) * dy) / (dx*dx + dy*dy);
+        if (t > 1.0) { x = bx; y = by; }
+        else if (t > 0.0) { x += dx * t; y += dy * t; }
+    }
+    dx = px - x; dy = py - y;
+    return dx*dx + dy*dy;
+}
+
+static double point_to_polygon_dist(double px, double py, const std::vector<Ring2>& polygon) {
+    bool inside = false;
+    double min_dist_sq = std::numeric_limits<double>::infinity();
+    for (const auto& ring : polygon) {
+        size_t len = ring.size();
+        for (size_t i = 0, j = len - 1; i < len; j = i++) {
+            double ax = ring[i][0], ay = ring[i][1];
+            double bx = ring[j][0], by = ring[j][1];
+            if ((ay > py) != (by > py) && (px < (bx - ax) * (py - ay) / (by - ay) + ax))
+                inside = !inside;
+            min_dist_sq = std::min(min_dist_sq, seg_dist_sq(px, py, ax, ay, bx, by));
+        }
+    }
+    return (inside ? 1.0 : -1.0) * std::sqrt(min_dist_sq);
+}
+
+struct PCell {
+    double cx;
+    double cy;
+    double h;
+    double d;
+    double mx;
+    PCell(double cx_, double cy_, double h_, const std::vector<Ring2>& polygon)
+        : cx(cx_), cy(cy_), h(h_),
+          d(point_to_polygon_dist(cx_, cy_, polygon)),
+          mx(d + h_ * std::sqrt(2.0)) {}
+};
+
+static PCell centroid_cell(const std::vector<Ring2>& polygon) {
+    double area = 0.0;
+    double cx = 0.0;
+    double cy = 0.0;
+    const auto& ring = polygon.at(0);
+    size_t len = ring.size();
+    for (size_t i = 0, j = len - 1; i < len; j = i++) {
+        double ax = ring[i][0], ay = ring[i][1];
+        double bx = ring[j][0], by = ring[j][1];
+        double f = ax * by - bx * ay;
+        cx += (ax + bx) * f;
+        cy += (ay + by) * f;
+        area += f * 3.0;
+    }
+    if (area == 0.0) {
+        return PCell(ring.at(0)[0], ring.at(0)[1], 0.0, polygon);
+    }
+    return PCell(cx / area, cy / area, 0.0, polygon);
+}
+
+static std::array<double,3> mapbox_polylabel(const std::vector<Ring2>& polygon, double precision) {
+    // envelope of outer ring
+    const auto& outer = polygon.at(0);
+    double min_x =  std::numeric_limits<double>::infinity();
+    double min_y =  std::numeric_limits<double>::infinity();
+    double max_x = -std::numeric_limits<double>::infinity();
+    double max_y = -std::numeric_limits<double>::infinity();
+    for (const auto& p : outer) {
+        min_x = std::min(min_x, p[0]); max_x = std::max(max_x, p[0]);
+        min_y = std::min(min_y, p[1]); max_y = std::max(max_y, p[1]);
+    }
+    double size_x = max_x - min_x;
+    double size_y = max_y - min_y;
+    double cell_size = std::min(size_x, size_y);
+    double h = cell_size / 2.0;
+    if (cell_size == 0.0) return { min_x, min_y, 0.0 };
+
+    auto cmp = [](const PCell& a, const PCell& b) { return a.mx < b.mx; };
+    std::priority_queue<PCell, std::vector<PCell>, decltype(cmp)> queue(cmp);
+
+    for (double x = min_x; x < max_x; x += cell_size) {
+        for (double y = min_y; y < max_y; y += cell_size) {
+            queue.emplace(x + h, y + h, h, polygon);
+        }
+    }
+
+    PCell best = centroid_cell(polygon);
+    PCell bbox_c(min_x + size_x / 2.0, min_y + size_y / 2.0, 0.0, polygon);
+    if (bbox_c.d > best.d) best = bbox_c;
+
+    while (!queue.empty()) {
+        PCell cell = queue.top();
+        queue.pop();
+        if (cell.d > best.d) best = cell;
+        if (cell.mx - best.d <= precision) continue;
+        double nh = cell.h / 2.0;
+        queue.emplace(cell.cx - nh, cell.cy - nh, nh, polygon);
+        queue.emplace(cell.cx + nh, cell.cy - nh, nh, polygon);
+        queue.emplace(cell.cx - nh, cell.cy + nh, nh, polygon);
+        queue.emplace(cell.cx + nh, cell.cy + nh, nh, polygon);
+    }
+    return { best.cx, best.cy, best.d };
+}
+} // anonymous namespace
+
+std::tuple<Point, Plane, double> Polyline::polylabel(const std::vector<Polyline>& polylines,
+                                                     double precision) {
+    if (polylines.empty()) return { Point(0,0,0), Plane(), 0.0 };
+
+    // Local frame from outer polyline
+    Point origin;
+    Vector xa, ya, za;
+    polylines[0].get_average_plane(origin, xa, ya, za);
+
+    auto to2d = [&](const Point& p) -> std::array<double,2> {
+        double dx = p[0]-origin[0], dy = p[1]-origin[1], dz = p[2]-origin[2];
+        return { dx*xa[0]+dy*xa[1]+dz*xa[2], dx*ya[0]+dy*ya[1]+dz*ya[2] };
+    };
+
+    // Sort rings by bbox diagonal (outer first), wood behavior
+    std::vector<std::vector<std::array<double,2>>> rings2d(polylines.size());
+    std::vector<double> sizes(polylines.size(), 0.0);
+    for (size_t i = 0; i < polylines.size(); i++) {
+        const auto& pts = polylines[i].get_points();
+        size_t last = pts.size();
+        if (last > 1) {
+            const Point& a = pts.front();
+            const Point& b = pts.back();
+            if (std::abs(a[0]-b[0])<1e-10 && std::abs(a[1]-b[1])<1e-10 && std::abs(a[2]-b[2])<1e-10)
+                last--;
+        }
+        rings2d[i].reserve(last);
+        double mnx = std::numeric_limits<double>::infinity(), mny = mnx;
+        double mxx = -mnx, mxy = mxx;
+        for (size_t j = 0; j < last; j++) {
+            auto uv = to2d(pts[j]);
+            rings2d[i].push_back(uv);
+            mnx = std::min(mnx, uv[0]); mxx = std::max(mxx, uv[0]);
+            mny = std::min(mny, uv[1]); mxy = std::max(mxy, uv[1]);
+        }
+        double dx = mxx - mnx, dy = mxy - mny;
+        sizes[i] = dx*dx + dy*dy;
+    }
+    std::vector<int> ids(rings2d.size());
+    std::iota(ids.begin(), ids.end(), 0);
+    std::sort(ids.begin(), ids.end(), [&](int a, int b) { return sizes[a] > sizes[b]; });
+
+    std::vector<Ring2> polygon;
+    polygon.reserve(rings2d.size());
+    for (int id : ids) polygon.push_back(std::move(rings2d[id]));
+
+    std::array<double,3> cr = mapbox_polylabel(polygon, precision);
+
+    // Back to 3D
+    Point center(origin[0] + cr[0]*xa[0] + cr[1]*ya[0],
+                 origin[1] + cr[0]*xa[1] + cr[1]*ya[1],
+                 origin[2] + cr[0]*xa[2] + cr[1]*ya[2]);
+    Plane plane(origin, xa, ya, za);
+    return std::make_tuple(center, plane, cr[2]);
+}
+
+std::vector<Point> Polyline::polylabel_circle_division_points(
+    const Vector& division_direction_in_3d,
+    const std::vector<Polyline>& polylines,
+    int division, double scale, double precision, bool orient_to_closest_edge) {
+
+    std::tuple<Point, Plane, double> circle = polylabel(polylines, precision);
+    const Point& center = std::get<0>(circle);
+    const Plane& plane  = std::get<1>(circle);
+    double radius       = std::get<2>(circle) * scale;
+
+    bool is_direction_valid =
+        division_direction_in_3d[0] != 0.0 ||
+        division_direction_in_3d[1] != 0.0 ||
+        division_direction_in_3d[2] != 0.0;
+
+    // closest edge search
+    size_t edge_i = 0;
+    size_t edge_j = 0;
+    double best_sq = std::numeric_limits<double>::infinity();
+    if (orient_to_closest_edge) {
+        for (size_t i = 0; i < polylines.size(); i++) {
+            const auto& pts = polylines[i].get_points();
+            if (pts.size() < 2) continue;
+            for (size_t j = 0; j + 1 < pts.size(); j++) {
+                const Point& a = pts[j];
+                const Point& b = pts[j+1];
+                double ex = b[0]-a[0], ey = b[1]-a[1], ez = b[2]-a[2];
+                double len2 = ex*ex + ey*ey + ez*ez;
+                if (len2 <= 0.0) continue;
+                double px = center[0]-a[0], py = center[1]-a[1], pz = center[2]-a[2];
+                double t = (px*ex + py*ey + pz*ez) / len2;
+                if (t < 0.0 || t > 1.0) continue;
+                double cx = a[0]+t*ex, cy = a[1]+t*ey, cz = a[2]+t*ez;
+                double dx = center[0]-cx, dy = center[1]-cy, dz = center[2]-cz;
+                double d2 = dx*dx + dy*dy + dz*dz;
+                if (d2 < best_sq) { best_sq = d2; edge_i = i; edge_j = j; }
+            }
+        }
+    }
+
+    Vector x_axis;
+    Vector y_axis;
+    Vector z_axis = plane.z_axis();
+    if (is_direction_valid || orient_to_closest_edge) {
+        Vector dir;
+        if (orient_to_closest_edge && best_sq < std::numeric_limits<double>::infinity()) {
+            const auto& pts = polylines[edge_i].get_points();
+            dir = Vector(pts[edge_j+1][0]-pts[edge_j][0],
+                         pts[edge_j+1][1]-pts[edge_j][1],
+                         pts[edge_j+1][2]-pts[edge_j][2]);
+        } else {
+            dir = division_direction_in_3d;
+        }
+        x_axis = dir;
+        y_axis = Vector(dir[1]*z_axis[2] - dir[2]*z_axis[1],
+                        dir[2]*z_axis[0] - dir[0]*z_axis[2],
+                        dir[0]*z_axis[1] - dir[1]*z_axis[0]);
+    } else {
+        x_axis = plane.x_axis();
+        y_axis = plane.y_axis();
+    }
+
+    // unitize
+    auto unit = [](Vector& v) {
+        double L = std::sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+        if (L > 0.0) v = Vector(v[0]/L, v[1]/L, v[2]/L);
+    };
+    unit(x_axis); unit(y_axis); unit(z_axis);
+
+    std::vector<Point> points;
+    points.reserve(division);
+    const double pi_rad = 3.14159265358979323846 / 180.0;
+    double chunk = 360.0 / division;
+    for (int i = 0; i < division; i++) {
+        double deg = i * chunk;
+        double r = (45.0 + deg) * pi_rad;
+        double u = radius * std::cos(r);
+        double v = radius * std::sin(r);
+        points.emplace_back(center[0] + u*x_axis[0] + v*y_axis[0],
+                            center[1] + u*x_axis[1] + v*y_axis[1],
+                            center[2] + u*x_axis[2] + v*y_axis[2]);
+    }
+    return points;
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Stream operator
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream& operator<<(std::ostream& os, const Polyline& polyline) {
     return os << polyline.repr();
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////
-// Free functions on raw std::vector<Point> polylines (CGAL_Polyline compat)
-///////////////////////////////////////////////////////////////////////////////////////////
-
-void shift(std::vector<Point>& pline, int times) {
-    Polyline tmp(pline);
-    tmp.shift(times);
-    pline = tmp.get_points();
-}
-
-double polyline_length(const std::vector<Point>& pline) {
-    double len = 0;
-    for (size_t i = 0; i + 1 < pline.size(); i++) {
-        double dx = pline[i+1][0]-pline[i][0], dy = pline[i+1][1]-pline[i][1], dz = pline[i+1][2]-pline[i][2];
-        len += std::sqrt(dx*dx + dy*dy + dz*dz);
-    }
-    return len;
-}
-
-double polyline_length_squared(const std::vector<Point>& pline) {
-    double len = 0;
-    for (size_t i = 0; i + 1 < pline.size(); i++) {
-        double dx = pline[i+1][0]-pline[i][0], dy = pline[i+1][1]-pline[i][1], dz = pline[i+1][2]-pline[i][2];
-        len += dx*dx + dy*dy + dz*dz;
-    }
-    return len;
-}
-
-bool is_closed(const std::vector<Point>& pline) {
-    if (pline.size() < 2) return false;
-    return pline.front().distance(pline.back()) < static_cast<double>(Tolerance::ZERO_TOLERANCE);
-}
-
-Point center(const std::vector<Point>& pline) {
-    size_t n = (is_closed(pline) && pline.size() > 1) ? pline.size()-1 : pline.size();
-    double x=0, y=0, z=0;
-    for (size_t i=0; i<n; i++) { x+=pline[i][0]; y+=pline[i][1]; z+=pline[i][2]; }
-    return Point(x/n, y/n, z/n);
-}
-
-Vector center_vec(const std::vector<Point>& pline) {
-    Point c = center(pline);
-    return Vector(c[0], c[1], c[2]);
-}
-
-void get_average_plane(const std::vector<Point>& pline, Vector (&axes)[4]) {
-    Point o = center(pline);
-    axes[0] = Vector(o[0], o[1], o[2]);
-
-    size_t len = (is_closed(pline) && pline.size() > 1) ? pline.size()-1 : pline.size();
-    Vector normal(0, 0, 0);
-    for (size_t i = 0; i < len; i++) {
-        size_t prev = (i == 0) ? len-1 : i-1;
-        size_t next = (i+1 == len) ? 0 : i+1;
-        double ax = pline[i][0]-pline[prev][0], ay = pline[i][1]-pline[prev][1], az = pline[i][2]-pline[prev][2];
-        double bx = pline[next][0]-pline[i][0],  by = pline[next][1]-pline[i][1],  bz = pline[next][2]-pline[i][2];
-        normal[0] += ay*bz - az*by;
-        normal[1] += az*bx - ax*bz;
-        normal[2] += ax*by - ay*bx;
-    }
-    normal.normalize_self();
-
-    double xdx = pline[1][0]-pline[0][0], xdy = pline[1][1]-pline[0][1], xdz = pline[1][2]-pline[0][2];
-    Vector x_axis(xdx, xdy, xdz);
-    x_axis.normalize_self();
-    Vector y_axis = normal.cross(x_axis);
-    axes[1] = x_axis;
-    axes[2] = y_axis;
-    axes[3] = normal;
-}
-
-void get_fast_plane(const std::vector<Point>& pline, Point& origin, Plane& pln) {
-    Polyline(pline).get_fast_plane(origin, pln);
-}
-
-void transform(std::vector<Point>& pline, const Xform& xf) {
-    for (auto& p : pline) { p.xform = xf; p.transform(); }
-}
-
-void move(std::vector<Point>& pline, const Vector& dir) {
-    for (auto& p : pline) { p[0]+=dir[0]; p[1]+=dir[1]; p[2]+=dir[2]; }
-}
-
-bool is_clockwise(std::vector<Point>& pline, const Plane& pln) {
-    return Polyline(pline).is_clockwise(pln);
-}
-
-void flip(std::vector<Point>& pline) {
-    std::reverse(pline.begin(), pline.end());
-}
-
-void get_convex_corners(const std::vector<Point>& pline, std::vector<bool>& flags) {
-    Polyline(pline).get_convex_corners(flags);
-}
-
-std::vector<Point> tween_two_polylines(const std::vector<Point>& p0, const std::vector<Point>& p1, double w) {
-    std::vector<Point> result;
-    result.reserve(p0.size());
-    for (size_t i = 0; i < p0.size(); i++)
-        result.push_back(Point(p0[i][0]+(p1[i][0]-p0[i][0])*w, p0[i][1]+(p1[i][1]-p0[i][1])*w, p0[i][2]+(p1[i][2]-p0[i][2])*w));
-    return result;
-}
-
-void line_line_average(const Line& l0, const Line& l1, Line& out) {
-    Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
-    out = Line::from_points(Point((s0[0]+s1[0])*0.5, (s0[1]+s1[1])*0.5, (s0[2]+s1[2])*0.5),
-                            Point((e0[0]+e1[0])*0.5, (e0[1]+e1[1])*0.5, (e0[2]+e1[2])*0.5));
-}
-
-bool line_line_overlap(const Line& l0, const Line& l1, Line& out) {
-    Point os, oe;
-    bool r = Polyline::line_line_overlap(l0.start(), l0.end(), l1.start(), l1.end(), os, oe);
-    out = Line::from_points(os, oe);
-    return r;
-}
-
-void line_line_overlap_average(const Line& l0, const Line& l1, Line& out) {
-    Line lineA, lineB;
-    line_line_overlap(l0, l1, lineA);
-    line_line_overlap(l1, l0, lineB);
-    Point a0=lineA.start(), a1=lineA.end(), b0=lineB.start(), b1=lineB.end();
-    Point m0s((a0[0]+b0[0])*0.5, (a0[1]+b0[1])*0.5, (a0[2]+b0[2])*0.5);
-    Point m0e((a1[0]+b1[0])*0.5, (a1[1]+b1[1])*0.5, (a1[2]+b1[2])*0.5);
-    Point m1s((a0[0]+b1[0])*0.5, (a0[1]+b1[1])*0.5, (a0[2]+b1[2])*0.5);
-    Point m1e((a1[0]+b0[0])*0.5, (a1[1]+b0[1])*0.5, (a1[2]+b0[2])*0.5);
-    double dx0=m0e[0]-m0s[0], dy0=m0e[1]-m0s[1], dz0=m0e[2]-m0s[2];
-    double dx1=m1e[0]-m1s[0], dy1=m1e[1]-m1s[1], dz1=m1e[2]-m1s[2];
-    out = (dx0*dx0+dy0*dy0+dz0*dz0 >= dx1*dx1+dy1*dy1+dz1*dz1)
-          ? Line::from_points(m0s, m0e) : Line::from_points(m1s, m1e);
-}
-
-void line_line_overlap_average(const std::vector<Point>& l0, const std::vector<Point>& l1, Line& out) {
-    line_line_overlap_average(Line::from_points(l0[0], l0[1]), Line::from_points(l1[0], l1[1]), out);
-}
-
-bool line_from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out) {
-    Point os, oe;
-    bool r = Polyline::line_from_projected_points(line.start(), line.end(), pts, os, oe);
-    out = Line::from_points(os, oe);
-    return r;
-}
-
-void extend_line(Line& line, double d0, double d1) {
-    Point s = line.start(), e = line.end();
-    Polyline::extend_line_segment(s, e, d0, d1);
-    line = Line::from_points(s, e);
-}
-
-void extend_equally(Line& line, double dist, double proportion) {
-    if (dist == 0 && proportion == 0) return;
-    Point s = line.start(), e = line.end();
-    Polyline::extend_segment_equally(s, e, dist, proportion);
-    line = Line::from_points(s, e);
-}
-
-void scale_line(Line& line, double dist) {
-    Point s = line.start(), e = line.end();
-    Vector v(e[0]-s[0], e[1]-s[1], e[2]-s[2]);
-    s[0]+=v[0]*dist; s[1]+=v[1]*dist; s[2]+=v[2]*dist;
-    e[0]-=v[0]*dist; e[1]-=v[1]*dist; e[2]-=v[2]*dist;
-    line = Line::from_points(s, e);
-}
-
-void extend(std::vector<Point>& pline, int sID, double d0, double d1, double proportion0, double proportion1) {
-    if (d0==0 && d1==0 && proportion0==0 && proportion1==0) return;
-    Polyline tmp(pline);
-    tmp.extend_segment(sID, d0, d1, proportion0, proportion1);
-    pline = tmp.get_points();
-}
-
-double closest_distance_and_point(const Point& pt, const std::vector<Point>& poly, size_t& edge_id, Point& closest_point) {
-    return Polyline(poly).closest_distance_and_point(pt, edge_id, closest_point);
-}
-
-void get_middle_line(const Line& l0, const Line& l1, Line& out) {
-    Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
-    Point os, oe;
-    Line::get_middle_line(s0, e0, s1, e1, os, oe);
-    out = Line::from_points(os, oe);
 }
 
 std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, int clip_type) {

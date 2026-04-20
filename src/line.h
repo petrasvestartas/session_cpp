@@ -233,6 +233,26 @@ public:
 /// Output stream operator for Line.
 std::ostream& operator<<(std::ostream& os, const Line& line);
 
+// ── Free functions on Line (moved from polyline.h; CGAL_Polyline compat) ────
+
+/// Average of two line segments
+void line_line_average(const Line& l0, const Line& l1, Line& out);
+/// Overlap segment of two co-linear lines; returns false if disjoint
+bool line_line_overlap(const Line& l0, const Line& l1, Line& out);
+/// Overlap-average of two line segments
+void line_line_overlap_average(const Line& l0, const Line& l1, Line& out);
+/// Project points onto line, return extreme sub-segment
+bool line_from_projected_points(const Line& line, const std::vector<Point>& pts,
+                                Line& out);
+/// Extend line segment: grow start by d0, grow end by d1 (in-place)
+void extend_line(Line& line, double d0, double d1);
+/// Extend equally: absolute dist or fraction proportion
+void extend_equally(Line& line, double dist = 0, double proportion = 0);
+/// Scale line to given length (shrink symmetrically from both ends)
+void scale_line(Line& line, double dist);
+/// Midpoint segment between two parallel line segments
+void get_middle_line(const Line& l0, const Line& l1, Line& out);
+
 }  // namespace session_cpp
 
 // fmt formatter specialization for Line

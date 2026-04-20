@@ -1,5 +1,5 @@
 #include "line.h"
-#include "polyline.h"  // free fns line_line_overlap, line_line_overlap_average, extend_line
+#include "polyline.h"  // Polyline static helpers (line_line_overlap, extend_line_segment, ...)
 #include "tolerance.h"
 #include <algorithm>
 #include <cmath>
@@ -523,6 +523,71 @@ void Line::extend(double ext_start, double ext_end) {
 
 std::ostream& operator<<(std::ostream& os, const Line& line) {
     return os << line.str();
+}
+
+// ── Free functions on Line (moved from polyline.cpp; CGAL_Polyline compat) ──
+
+void line_line_average(const Line& l0, const Line& l1, Line& out) {
+    Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
+    out = Line::from_points(Point((s0[0]+s1[0])*0.5, (s0[1]+s1[1])*0.5, (s0[2]+s1[2])*0.5),
+                            Point((e0[0]+e1[0])*0.5, (e0[1]+e1[1])*0.5, (e0[2]+e1[2])*0.5));
+}
+
+bool line_line_overlap(const Line& l0, const Line& l1, Line& out) {
+    Point os, oe;
+    bool r = Polyline::line_line_overlap(l0.start(), l0.end(), l1.start(), l1.end(), os, oe);
+    out = Line::from_points(os, oe);
+    return r;
+}
+
+void line_line_overlap_average(const Line& l0, const Line& l1, Line& out) {
+    Line lineA, lineB;
+    line_line_overlap(l0, l1, lineA);
+    line_line_overlap(l1, l0, lineB);
+    Point a0=lineA.start(), a1=lineA.end(), b0=lineB.start(), b1=lineB.end();
+    Point m0s((a0[0]+b0[0])*0.5, (a0[1]+b0[1])*0.5, (a0[2]+b0[2])*0.5);
+    Point m0e((a1[0]+b1[0])*0.5, (a1[1]+b1[1])*0.5, (a1[2]+b1[2])*0.5);
+    Point m1s((a0[0]+b1[0])*0.5, (a0[1]+b1[1])*0.5, (a0[2]+b1[2])*0.5);
+    Point m1e((a1[0]+b0[0])*0.5, (a1[1]+b0[1])*0.5, (a1[2]+b0[2])*0.5);
+    double dx0=m0e[0]-m0s[0], dy0=m0e[1]-m0s[1], dz0=m0e[2]-m0s[2];
+    double dx1=m1e[0]-m1s[0], dy1=m1e[1]-m1s[1], dz1=m1e[2]-m1s[2];
+    out = (dx0*dx0+dy0*dy0+dz0*dz0 >= dx1*dx1+dy1*dy1+dz1*dz1)
+          ? Line::from_points(m0s, m0e) : Line::from_points(m1s, m1e);
+}
+
+bool line_from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out) {
+    Point os, oe;
+    bool r = Polyline::line_from_projected_points(line.start(), line.end(), pts, os, oe);
+    out = Line::from_points(os, oe);
+    return r;
+}
+
+void extend_line(Line& line, double d0, double d1) {
+    Point s = line.start(), e = line.end();
+    Polyline::extend_line_segment(s, e, d0, d1);
+    line = Line::from_points(s, e);
+}
+
+void extend_equally(Line& line, double dist, double proportion) {
+    if (dist == 0 && proportion == 0) return;
+    Point s = line.start(), e = line.end();
+    Polyline::extend_segment_equally(s, e, dist, proportion);
+    line = Line::from_points(s, e);
+}
+
+void scale_line(Line& line, double dist) {
+    Point s = line.start(), e = line.end();
+    Vector v(e[0]-s[0], e[1]-s[1], e[2]-s[2]);
+    s[0]+=v[0]*dist; s[1]+=v[1]*dist; s[2]+=v[2]*dist;
+    e[0]-=v[0]*dist; e[1]-=v[1]*dist; e[2]-=v[2]*dist;
+    line = Line::from_points(s, e);
+}
+
+void get_middle_line(const Line& l0, const Line& l1, Line& out) {
+    Point s0=l0.start(), e0=l0.end(), s1=l1.start(), e1=l1.end();
+    Point os, oe;
+    Line::get_middle_line(s0, e0, s1, e1, os, oe);
+    out = Line::from_points(os, oe);
 }
 
 }  // namespace session_cpp

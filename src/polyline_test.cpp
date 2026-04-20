@@ -685,6 +685,40 @@ MINI_TEST("Polyline", "Grid Of Points In Polygon") {
     }
 }
 
+MINI_TEST("Polyline", "Polylabel") {
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+        Point(10.0, 10.0, 0.0),
+        Point(0.0, 10.0, 0.0),
+    });
+    std::vector<Polyline> polys = { poly };
+    std::tuple<Point, Plane, double> res = Polyline::polylabel(polys, 0.5);
+    const Point& c = std::get<0>(res);
+    double r = std::get<2>(res);
+
+    MINI_CHECK(std::abs(c[0] - 5.0) < 0.6);
+    MINI_CHECK(std::abs(c[1] - 5.0) < 0.6);
+    MINI_CHECK(std::abs(r - 5.0) < 0.6);
+}
+
+MINI_TEST("Polyline", "Polylabel Circle Division Points") {
+    Polyline poly({
+        Point(0.0, 0.0, 0.0),
+        Point(10.0, 0.0, 0.0),
+        Point(10.0, 10.0, 0.0),
+        Point(0.0, 10.0, 0.0),
+    });
+    std::vector<Polyline> polys = { poly };
+    Vector dir(0.0, 0.0, 0.0);
+    std::vector<Point> pts = Polyline::polylabel_circle_division_points(dir, polys, 4, 0.5, 1.0, true);
+
+    MINI_CHECK(pts.size() == 4);
+    for (const auto& p : pts) {
+        MINI_CHECK(std::abs(p[2]) < 1e-6);
+    }
+}
+
 MINI_TEST("Polyline", "Boolean Op") {
     using P = Point;
     Polyline sq_a({

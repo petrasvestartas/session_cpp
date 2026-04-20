@@ -189,6 +189,19 @@ MINI_TEST("Plane", "Translate By Normal") {
     MINI_CHECK(TOLERANCE.is_close(pl.origin()[2], 0.0));
 }
 
+MINI_TEST("Plane", "Base1 Base2") {
+    // uncomment #include "plane.h"
+
+    Plane xy = Plane::xy_plane();
+    Vector b1 = xy.base1();
+    Vector b2 = xy.base2();
+    MINI_CHECK(TOLERANCE.is_close(std::abs(b1.dot(xy.z_axis())), 0.0));
+    MINI_CHECK(TOLERANCE.is_close(std::abs(b2.dot(xy.z_axis())), 0.0));
+    MINI_CHECK(TOLERANCE.is_close(b1.dot(b2), 0.0));
+    MINI_CHECK(TOLERANCE.is_close(b1.magnitude(), 1.0));
+    MINI_CHECK(TOLERANCE.is_close(b2.magnitude(), 1.0));
+}
+
 MINI_TEST("Plane", "Transform") {
     // uncomment #include "plane.h"
     // uncomment #include "xform.h"

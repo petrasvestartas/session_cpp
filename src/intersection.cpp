@@ -2485,7 +2485,8 @@ bool Intersection::polyline_boolean_2d_in_plane(
     Polyline& intersection_result,
     int intersection_type,
     bool include_triangles,
-    double min_area)
+    double min_area,
+    double collapse_eps)
 {
     size_t n0 = polyline0.point_count();
     size_t n1 = polyline1.point_count();
@@ -2547,13 +2548,42 @@ bool Intersection::polyline_boolean_2d_in_plane(
         if (dx*dx+dy*dy < 1e-12) --nc;
     }
     if (nc < 3) return false;
+
+    // Collapse near-coincident consecutive vertices when requested. Vatti
+    // output can contain sub-epsilon duplicates at near-coincident input
+    // edges; wood hexbox-family datasets need this merged out before the
+    // triangle/area gate.
+    std::vector<Point> src2d;
+    src2d.reserve(nc);
+    for (size_t i = 0; i < nc; ++i) src2d.push_back(C.get_point(i));
+    if (collapse_eps > 0.0) {
+        const double eps_sq = collapse_eps * collapse_eps;
+        std::vector<Point> collapsed;
+        collapsed.reserve(src2d.size());
+        for (const Point& p : src2d) {
+            if (!collapsed.empty()) {
+                double dx = p[0] - collapsed.back()[0];
+                double dy = p[1] - collapsed.back()[1];
+                if (dx*dx + dy*dy < eps_sq) continue;
+            }
+            collapsed.push_back(p);
+        }
+        if (collapsed.size() >= 2) {
+            double dx = collapsed.back()[0] - collapsed.front()[0];
+            double dy = collapsed.back()[1] - collapsed.front()[1];
+            if (dx*dx + dy*dy < eps_sq) collapsed.pop_back();
+        }
+        src2d.swap(collapsed);
+        nc = src2d.size();
+        if (nc < 3) return false;
+    }
     if (nc == 3 && !include_triangles) return false;
 
     // Shoelace area in the projected (u,v) plane.
     double area = 0.0;
     for (size_t i = 0; i < nc; ++i) {
-        Point p0 = C.get_point(i);
-        Point p1 = C.get_point((i+1) % nc);
+        const Point& p0 = src2d[i];
+        const Point& p1 = src2d[(i+1) % nc];
         area += p0[0]*p1[1] - p1[0]*p0[1];
     }
     if (std::abs(area) * 0.5 <= min_area) return false;
@@ -2562,8 +2592,7 @@ bool Intersection::polyline_boolean_2d_in_plane(
     std::vector<Point> pts;
     pts.reserve(nc + 1);
     for (size_t i = 0; i < nc; ++i) {
-        Point p2 = C.get_point(i);
-        double u = p2[0], v = p2[1];
+        double u = src2d[i][0], v = src2d[i][1];
         pts.emplace_back(origin[0] + u*xax[0] + v*yax[0],
                           origin[1] + u*xax[1] + v*yax[1],
                           origin[2] + u*xax[2] + v*yax[2]);
@@ -3579,22 +3608,17 @@ bool Intersection::plane_to_face(
     result.joint_volumes[0] = translate_quad(result.joint_area, v);
     result.joint_volumes[1] = translate_quad(result.joint_area, Vector(-v[0], -v[1], -v[2]));
 
-    // 11. Optional in-plane edge extensions. Both `extend(pts, sID, d, d, 0, 0)`
-    // calls must hit the closing-point sync path in `Polyline::extend_segment`
-    // for segments 0 and 3 (which touch the closing-duplicate vertex). Wood
-    // mutates the pline in place across all four calls; session's
-    // `extend(std::vector<Point>&, ...)` constructs a fresh `Polyline tmp(pline)`
-    // every call, so the per-call sync sees the freshly-constructed state.
-    // The free function still writes back after each call, so the overall
-    // effect is identical to wood's in-place mutation.
+    // 11. Optional in-plane edge extensions. Each `extend_segment` call
+    // must hit the closing-point sync path for segments 0 and 3 (which
+    // touch the closing-duplicate vertex); Polyline::extend_segment caches
+    // was_closed BEFORE mutation so repeated in-place calls stay correct.
     if (extension[0] + extension[1] > 0.0) {
         for (int k = 0; k < 2; k++) {
-            auto pts = result.joint_volumes[k].get_points();
-            extend(pts, 0, extension[0], extension[0], 0.0, 0.0);
-            extend(pts, 2, extension[0], extension[0], 0.0, 0.0);
-            extend(pts, 1, extension[1], extension[1], 0.0, 0.0);
-            extend(pts, 3, extension[1], extension[1], 0.0, 0.0);
-            result.joint_volumes[k] = Polyline(pts);
+            auto& pl = result.joint_volumes[k];
+            pl.extend_segment(0, extension[0], extension[0], 0.0, 0.0);
+            pl.extend_segment(2, extension[0], extension[0], 0.0, 0.0);
+            pl.extend_segment(1, extension[1], extension[1], 0.0, 0.0);
+            pl.extend_segment(3, extension[1], extension[1], 0.0, 0.0);
         }
     }
 
