@@ -91,13 +91,27 @@ include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 set(PROTOC_VERSION "33.2")
 
-# Protobuf build options (simplified from examples)
+# Option C: generated .pb.cc/.pb.h are committed under generated/. The runtime
+# (libprotobuf) is still required to link against them, but protoc + libprotoc
+# are NOT built — saves substantial CMake configure + compile time.
+#
+# To regenerate after editing ../session_proto/*.proto, run:
+#   cmake --build build --target regen_proto
+# (the target is defined only when SESSION_REGEN_PROTO=ON, which also
+#  re-enables protoc compilation).
+option(SESSION_REGEN_PROTO "Build protoc and add a regen_proto target" OFF)
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
 set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-set(protobuf_BUILD_PROTOC_BINARIES ON CACHE BOOL "" FORCE)
-set(protobuf_BUILD_LIBPROTOC ON CACHE BOOL "" FORCE)
+if(SESSION_REGEN_PROTO)
+    set(protobuf_BUILD_PROTOC_BINARIES ON CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_LIBPROTOC ON CACHE BOOL "" FORCE)
+else()
+    set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_LIBPROTOC OFF CACHE BOOL "" FORCE)
+endif()
 set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(protobuf
@@ -159,28 +173,35 @@ if(NOT EXISTS "${SESSION_PROTO_DIR}")
     set(SESSION_PROTO_DIR "${session_proto_files_SOURCE_DIR}")
 endif()
 
-# Generate proto files
-set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY ${GENERATED_DIR})
+# Option C: consume committed .pb.cc/.pb.h from session_cpp/generated/.
+# No protoc invocation at build time.
+set(GENERATED_DIR "${CMAKE_SOURCE_DIR}/generated")
 
-if(TARGET protoc)
-    set(PROTOC_BIN $<TARGET_FILE:protoc>)
-else()
-    find_program(PROTOC_BIN protoc)
+file(GLOB PROTO_SOURCES "${GENERATED_DIR}/*.pb.cc")
+file(GLOB PROTO_HEADERS "${GENERATED_DIR}/*.pb.h")
+
+if(NOT PROTO_SOURCES)
+    message(FATAL_ERROR
+        "No generated protobuf files found in ${GENERATED_DIR}. "
+        "Run `cmake -B build -DSESSION_REGEN_PROTO=ON && cmake --build build --target regen_proto` "
+        "to regenerate from ${SESSION_PROTO_DIR}.")
 endif()
 
-file(GLOB PROTO_FILES "${SESSION_PROTO_DIR}/*.proto")
-foreach(PROTO_FILE ${PROTO_FILES})
-    get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
-    list(APPEND PROTO_SOURCES "${GENERATED_DIR}/${PROTO_NAME}.pb.cc")
-    list(APPEND PROTO_HEADERS "${GENERATED_DIR}/${PROTO_NAME}.pb.h")
-    add_custom_command(
-        OUTPUT "${GENERATED_DIR}/${PROTO_NAME}.pb.cc" "${GENERATED_DIR}/${PROTO_NAME}.pb.h"
-        COMMAND ${PROTOC_BIN} --cpp_out=${GENERATED_DIR} --proto_path=${SESSION_PROTO_DIR} ${PROTO_FILE}
-        DEPENDS ${PROTO_FILE}
-        COMMENT "Generating ${PROTO_NAME}.pb.cc/h"
+# Optional regen target — only wired when protoc was actually built.
+if(SESSION_REGEN_PROTO AND TARGET protoc)
+    file(GLOB PROTO_FILES "${SESSION_PROTO_DIR}/*.proto")
+    add_custom_target(regen_proto
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:protoc>
+                --cpp_out=${GENERATED_DIR}
+                --proto_path=${SESSION_PROTO_DIR}
+                ${PROTO_FILES}
+        DEPENDS protoc ${PROTO_FILES}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Regenerating committed .pb.cc/.pb.h into generated/"
+        VERBATIM
     )
-endforeach()
+endif()
 
 # Proto library with suppressed warnings
 add_library(proto_objects OBJECT ${PROTO_SOURCES})
