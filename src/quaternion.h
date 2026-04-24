@@ -248,16 +248,16 @@ public:
     static Quaternion jsonload(const nlohmann::json& data);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static Quaternion json_loads(const std::string& json_string);
+    static Quaternion file_json_loads(const std::string& json_string);
 
     /// Write JSON to file
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read JSON from file
-    static Quaternion json_load(const std::string& filename);
+    static Quaternion file_json_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf

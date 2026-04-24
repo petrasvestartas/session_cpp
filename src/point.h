@@ -98,16 +98,16 @@ public:
   static Point jsonload(const nlohmann::json &data);
 
   /// Write JSON to file
-  void json_dump(const std::string& filename) const;
+  void file_json_dump(const std::string& filename) const;
 
   /// Read JSON from file
-  static Point json_load(const std::string& filename);
+  static Point file_json_load(const std::string& filename);
 
   /// Convert to JSON string
-  std::string json_dumps() const;
+  std::string file_json_dumps() const;
 
   /// Load from JSON string
-  static Point json_loads(const std::string& json_string);
+  static Point file_json_loads(const std::string& json_string);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf
@@ -201,6 +201,13 @@ public:
   double squared_distance(const Point& p, double float_min = 1e-12) const;
 
   static double squared_distance(const Point& a, const Point& b, double float_min = 1e-12);
+
+  /// Linear interpolation between two points.
+  /// kind: 0=no endpoints (default), 1=both endpoints, 2=start only
+  static std::vector<Point> interpolate(const Point& from, const Point& to, int steps, int kind = 0);
+
+  /// Lerp: single point at parameter t in [0, 1].
+  static Point lerp(const Point& a, const Point& b, double t);
 
   /**
    * @brief Calculate the area of a polygon.

@@ -2,7 +2,7 @@
 #include "quaternion.h"
 #include "plane.h"
 #include "point.h"
-#include "encoders.h"
+#include "file_encoders.h"
 #include "tolerance.h"
 #include <filesystem>
 #include <cmath>
@@ -398,7 +398,7 @@ MINI_TEST("Quaternion", "Nlerp") {
 MINI_TEST("Quaternion", "Json Roundtrip") {
     // uncomment #include "quaternion.h"
 
-    // FUNCTION: q.json_dump / Quaternion::json_load
+    // FUNCTION: q.file_json_dump / Quaternion::file_json_load
     // WHAT: Write a quaternion to a JSON file, read it back.
     // WHEN TO USE: Human-readable persistence and debugging, or when sharing
     //       data with tools that consume JSON.
@@ -408,14 +408,14 @@ MINI_TEST("Quaternion", "Json Roundtrip") {
 
     //   jsondump()      │ ordered_json │ to JSON object (internal use)
     //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   json_dumps()    │ std::string  │ to JSON string
-    //   json_loads(s)   │ std::string  │ from JSON string
-    //   json_dump(path) │ file         │ write to file
-    //   json_load(path) │ file         │ read from file
+    //   file_json_dumps()    │ std::string  │ to JSON string
+    //   file_json_loads(s)   │ std::string  │ from JSON string
+    //   file_json_dump(path) │ file         │ write to file
+    //   file_json_load(path) │ file         │ read from file
 
     std::string filename = "serialization/test_quaternion.json";
-    q.json_dump(filename);
-    Quaternion loaded = Quaternion::json_load(filename);
+    q.file_json_dump(filename);
+    Quaternion loaded = Quaternion::file_json_load(filename);
 
     MINI_CHECK(loaded.name == "serialization/test_quaternion");
     MINI_CHECK(TOLERANCE.is_close(loaded.scalar, q.scalar));

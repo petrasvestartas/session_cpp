@@ -52,14 +52,14 @@ namespace session_cpp {
 
       //   jsondump()      │ ordered_json │ to JSON object (internal use)
       //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-      //   json_dumps()    │ std::string  │ to JSON string
-      //   json_loads(s)   │ std::string  │ from JSON string
-      //   json_dump(path) │ file         │ write to file
-      //   json_load(path) │ file         │ read from file
+      //   file_json_dumps()    │ std::string  │ to JSON string
+      //   file_json_loads(s)   │ std::string  │ from JSON string
+      //   file_json_dump(path) │ file         │ write to file
+      //   file_json_load(path) │ file         │ read from file
 
       std::string filename = "serialization/test_color.json";
-      c.json_dump(filename);
-      Color loaded = Color::json_load(filename);
+      c.file_json_dump(filename);
+      Color loaded = Color::file_json_load(filename);
 
       MINI_CHECK(loaded.name == "serialization/test_color");
       MINI_CHECK(loaded[0] == 255);

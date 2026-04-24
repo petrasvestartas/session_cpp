@@ -124,16 +124,16 @@ namespace session_cpp {
   static Plane jsonload(const nlohmann::json &data);
 
   /// Serialize to JSON file
-  void json_dump(const std::string& filename) const;
+  void file_json_dump(const std::string& filename) const;
 
   /// Deserialize from JSON file
-  static Plane json_load(const std::string& filename);
+  static Plane file_json_load(const std::string& filename);
 
   /// Convert to JSON string
-  std::string json_dumps() const;
+  std::string file_json_dumps() const;
 
   /// Load from JSON string
-  static Plane json_loads(const std::string& json_string);
+  static Plane file_json_loads(const std::string& json_string);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf

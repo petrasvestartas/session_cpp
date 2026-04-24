@@ -1,6 +1,6 @@
 #include "mini_test.h"
 #include "objects.h"
-#include "encoders.h"
+#include "file_encoders.h"
 #include "tolerance.h"
 #include <filesystem>
 
@@ -20,7 +20,7 @@ MINI_TEST("Objects", "Constructor") {
 
 MINI_TEST("Objects", "Json Roundtrip") {
     // uncomment #include "objects.h"
-    // uncomment #include "encoders.h"
+    // uncomment #include "file_encoders.h"
     // uncomment #include "point.h"
     Objects original;
     auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -29,8 +29,8 @@ MINI_TEST("Objects", "Json Roundtrip") {
     original.points->push_back(point2);
 
     std::string filename = "serialization/test_objects.json";
-    encoders::json_dump(original, filename);
-    Objects loaded = encoders::json_load<Objects>(filename);
+    file_encoders::file_json_dump(original, filename);
+    Objects loaded = file_encoders::file_json_load<Objects>(filename);
 
     MINI_CHECK(loaded.points->size() == original.points->size());
 }
@@ -103,8 +103,8 @@ MINI_TEST("Objects", "Objects Component Json Roundtrip") {
     original.components->push_back(c);
 
     std::string filename = "serialization/test_objects_component.json";
-    encoders::json_dump(original, filename);
-    Objects loaded = encoders::json_load<Objects>(filename);
+    file_encoders::file_json_dump(original, filename);
+    Objects loaded = file_encoders::file_json_load<Objects>(filename);
 
     MINI_CHECK(loaded.components->size() == 1);
     MINI_CHECK(loaded.components->at(0).type_name        == "FloorBuilder");

@@ -92,10 +92,10 @@ public:
     void to_json_file(const std::string& filepath) const;
     static OBB from_json_file(const std::string& filepath);
 
-    std::string json_dumps() const;
-    static OBB json_loads(const std::string& json_string);
-    void json_dump(const std::string& filename) const;
-    static OBB json_load(const std::string& filename);
+    std::string file_json_dumps() const;
+    static OBB file_json_loads(const std::string& json_string);
+    void file_json_dump(const std::string& filename) const;
+    static OBB file_json_load(const std::string& filename);
     std::string pb_dumps() const;
     static OBB pb_loads(const std::string& data);
     void pb_dump(const std::string& filename) const;

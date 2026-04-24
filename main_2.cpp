@@ -2,9 +2,10 @@
 #include <chrono>
 #include "session.h"
 #include "element.h"
-#include "feature.h"
-#include "obj.h"
+#include "elementfeature.h"
+#include "file_obj.h"
 #include "intersection.h"
+#include "wood/wood_session.h"
 using namespace session_cpp;
 
 int main() {
@@ -13,8 +14,8 @@ int main() {
     auto t0 = Clock::now();
 
     // 1. Import cross polylines (top/bottom pairs of crossed plate elements)
-    auto polylines = obj::read_obj_polylines((base / "session_data" / "cross_polylines.obj").string());
-    auto pairs = obj::pair_polylines(polylines);
+    auto polylines = file_obj::read_file_obj_polylines((base / "session_data" / "cross_polylines.obj").string());
+    auto pairs = file_obj::pair_polylines(polylines);
     auto t1 = Clock::now();
 
     // 2. Build session + plate elements + input polylines
@@ -41,8 +42,8 @@ int main() {
     int joint_count = 0;
     for (size_t i = 0; i < plates.size(); i++) {
         for (size_t j = i + 1; j < plates.size(); j++) {
-            Intersection::CrossJoint cj;
-            if (!Intersection::plane_to_face(plates[i].get(), plates[j].get(), cj)) continue;
+            wood_session::CrossJoint cj;
+            if (!wood_session::plane_to_face(plates[i].get(), plates[j].get(), cj)) continue;
 
             auto area = std::make_shared<Polyline>(std::move(cj.joint_area));
             area->name = "joint_area_" + std::to_string(joint_count);
@@ -66,7 +67,7 @@ int main() {
                 line_guids.push_back(ln->guid());
             }
 
-            CrossFeature cf;
+            CrossElementFeature cf;
             cf.face_ids_a = cj.face_ids_a;
             cf.face_ids_b = cj.face_ids_b;
             cf.joint_area_guid = area->guid();
@@ -75,7 +76,7 @@ int main() {
             cf.joint_line_guids[0] = line_guids[0];
             cf.joint_line_guids[1] = line_guids[1];
 
-            session.add_feature(plates[i]->guid(), plates[j]->guid(), std::move(cf));
+            session.add_elementfeature(plates[i]->guid(), plates[j]->guid(), std::move(cf));
             joint_count++;
         }
     }

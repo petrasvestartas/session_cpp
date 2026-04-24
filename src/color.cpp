@@ -87,20 +87,20 @@ Color Color::jsonload(const nlohmann::json &data) {
   return color;
 }
 
-std::string Color::json_dumps() const {
+std::string Color::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Color Color::json_loads(const std::string& json_string) {
+Color Color::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Color::json_dump(const std::string& filename) const {
+void Color::file_json_dump(const std::string& filename) const {
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
 
-Color Color::json_load(const std::string& filename) {
+Color Color::file_json_load(const std::string& filename) {
   std::ifstream file(filename);
   nlohmann::json data = nlohmann::json::parse(file);
   return jsonload(data);

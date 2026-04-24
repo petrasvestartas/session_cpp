@@ -3,7 +3,7 @@
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "closest.h"
-#include "bvh.h"
+#include "spatial_bvh.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -796,7 +796,7 @@ bool Intersection::ray_mesh_bvh(
     
     hits.clear();
     
-    // Use Mesh's cached per-triangle BVH
+    // Use Mesh's cached per-triangle SpatialBVH
     std::vector<int> candidates_list;
     if (!mesh.triangle_bvh_ray_cast(origin, direction, candidates_list, find_all)) {
         return false;
@@ -1841,8 +1841,8 @@ std::vector<NurbsCurve> Intersection::surface_plane(
                     double cy_[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
                     double wts[] = {1, w, 1, w, 1, w, 1, w, 1};
                     crv = NurbsCurve(3, true, 3, 9);
-                    double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-                    for (int i = 0; i < 10; i++) crv.set_knot(i, knots[i]);
+                    double nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+                    for (int i = 0; i < 10; i++) crv.set_nurbsknot(i, nurbsknots[i]);
                     for (int i = 0; i < 9; i++) {
                         double px = cx3d + radius * (cx_[i] * ax[0] + cy_[i] * ay[0]);
                         double py = cy3d + radius * (cx_[i] * ax[1] + cy_[i] * ay[1]);
@@ -1957,8 +1957,8 @@ std::vector<NurbsCurve> Intersection::surface_plane(
                         double cy_[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
                         double wts[] = {1, w, 1, w, 1, w, 1, w, 1};
                         crv = NurbsCurve(3, true, 3, 9);
-                        double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-                        for (int i = 0; i < 10; i++) crv.set_knot(i, knots[i]);
+                        double nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+                        for (int i = 0; i < 10; i++) crv.set_nurbsknot(i, nurbsknots[i]);
                         for (int i = 0; i < 9; i++) {
                             double px = cx3d + semi_a * cx_[i] * ea[0] + semi_b * cy_[i] * eb[0];
                             double py = cy3d + semi_a * cx_[i] * ea[1] + semi_b * cy_[i] * eb[1];
@@ -2047,7 +2047,7 @@ std::vector<NurbsCurve> Intersection::surface_plane(
             }
             if (!crv_2d.is_valid())
                 crv_2d = is_loop
-                    ? NurbsCurve::create_interpolated(pts_2d, CurveKnotStyle::ChordPeriodic)
+                    ? NurbsCurve::create_interpolated(pts_2d, CurveNurbsKnotStyle::ChordPeriodic)
                     : NurbsCurve::create_interpolated(pts_2d);
 
             // Lift 2D CVs back to 3D (exactly on plane)
@@ -2237,48 +2237,9 @@ bool Intersection::polyline_plane(const Polyline& polyline, const Plane& plane, 
     return !points.empty();
 }
 
-// Wood's private variant — rejects the entire polyline if ANY segment
-// endpoint is within `distance_squared` of the plane. Used ONLY from
-// polyline_plane_cross_joint (cgal_intersection_util.cpp:771-803); wood's
-// polyline_plane_to_line does NOT use this check.
-// The threshold is a tunable: wood reads from wood::GLOBALS::DISTANCE_SQUARED
-// which hexboxes multiplies by 100. Caller passes current value.
-namespace {
-    double g_cross_distance_squared = 0.01; // default DISTANCE_SQUARED
-}
-
-static bool polyline_plane_cross(const Polyline& polyline, const Plane& plane,
-                                 std::vector<Point>& points, std::vector<int>& edge_ids) {
-    size_t n = polyline.point_count();
-    if (n < 2) return false;
-    const double DISTANCE_SQUARED = g_cross_distance_squared;
-    Vector n_plane = plane.z_axis();
-    double n_mag_sq = n_plane[0]*n_plane[0] + n_plane[1]*n_plane[1] + n_plane[2]*n_plane[2];
-    Point o = plane.origin();
-    auto sq_dist_to_plane = [&](const Point& p) -> double {
-        double dx = p[0]-o[0], dy = p[1]-o[1], dz = p[2]-o[2];
-        double num = dx*n_plane[0] + dy*n_plane[1] + dz*n_plane[2];
-        return (n_mag_sq > 0.0) ? (num * num / n_mag_sq) : 0.0;
-    };
-    for (size_t i = 0; i < n - 1; i++) {
-        Point a = polyline.get_point(i);
-        Point b = polyline.get_point(i + 1);
-        if (sq_dist_to_plane(a) < DISTANCE_SQUARED) { points.clear(); edge_ids.clear(); return false; }
-        if (sq_dist_to_plane(b) < DISTANCE_SQUARED) { points.clear(); edge_ids.clear(); return false; }
-        Line seg(a[0], a[1], a[2], b[0], b[1], b[2]);
-        Point hit;
-        if (Intersection::line_plane(seg, plane, hit, true)) {
-            points.push_back(hit);
-            edge_ids.push_back(static_cast<int>(i));
-        }
-    }
-    // Wood requires EXACTLY 2 intersections (`return points.size () == 2`).
-    return points.size() == 2;
-}
-
-void Intersection::set_cross_joint_distance_squared(double dist_sq) {
-    g_cross_distance_squared = dist_sq;
-}
+// Note: polyline_plane_cross (static), g_cross_distance_squared, and
+// Intersection::set_cross_joint_distance_squared moved to
+// wood/wood_joint_detection.cpp (wood-domain cross-joint detection).
 
 bool Intersection::line_line_3d(const Line& cutter, const Line& seg, Point& output) {
     double t0, t1;
@@ -3145,7 +3106,7 @@ std::vector<int> Intersection::adjacency_search(
         ws = std::max(ws, std::abs(a.cz+a.hz)); ws = std::max(ws, std::abs(a.cx-a.hx));
         ws = std::max(ws, std::abs(a.cy-a.hy)); ws = std::max(ws, std::abs(a.cz-a.hz));
     }
-    BVH bvh;
+    SpatialBVH bvh;
     bvh.build_from_aabbs(aabbs.data(), N, ws * 2);
     std::vector<int> adjacency;
     for (size_t i = 0; i < N; i++) {
@@ -3177,474 +3138,137 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
     return face_to_face(adjacency, all_polys, all_planes, coplanar_tolerance);
 }
 
-//==========================================================================================
-// plane_to_face: side-to-side cross/lap joint between two plate elements
-//==========================================================================================
 
-int Intersection::are_points_inside(
-    const Polyline& polygon,
-    const Plane& plane,
-    const std::vector<Point>& test_points,
-    std::vector<int>& inside_indices_out) {
+// Port of cgal_box_search.h:252-496 line_line_intersection_with_properties.
+bool Intersection::line_line_classified(
+    const Line& s0,
+    const Line& s1,
+    int  n_segs_0,
+    int  n_segs_1,
+    int  cur_seg_0,
+    int  cur_seg_1,
+    double above_closer_to_edge,
+    Point& p0,
+    Point& p1,
+    Vector& v0,
+    Vector& v1,
+    Vector& normal,
+    bool& type0,
+    bool& type1,
+    bool& is_parallel)
+{
+    constexpr double DIST_SQ  = 1e-6;
+    constexpr double EPS_PAR  = 1.0;   // degrees
 
-    // Project polygon + test points to 2D in the plane's canonical
-    // (base1/base2) frame so the classification depends only on the normal.
-    const Point& o = plane.origin();
-    Vector xa = plane.base1();
-    Vector ya = plane.base2();
-
-    auto poly_pts = polygon.get_points();
-    size_t np_raw = poly_pts.size();
-    // Strip closing duplicate if present.
-    if (np_raw > 1) {
-        const Point& f = poly_pts.front();
-        const Point& l = poly_pts.back();
-        if (std::fabs(f[0]-l[0])<1e-12 && std::fabs(f[1]-l[1])<1e-12 && std::fabs(f[2]-l[2])<1e-12)
-            np_raw--;
+    v0 = s0.to_vector();
+    v1 = s1.to_vector();
+    normal = v0.cross(v1);
+    double nmag2 = normal[0]*normal[0] + normal[1]*normal[1] + normal[2]*normal[2];
+    double ang = v0.angle(v1, false, true);
+    is_parallel = (nmag2 < 1e-24) || ((90.0 - std::abs(ang - 90.0)) < EPS_PAR);
+    if (is_parallel) {
+        Point  tmp_origin = s0.start();
+        Vector tmp_normal = v0;
+        Plane  pl_tmp = Plane::from_point_normal(tmp_origin, tmp_normal);
+        normal = pl_tmp.base1();
     }
+    normal.normalize_self();
 
-    // Project polygon once; cache flat (x,y) pairs.
-    std::vector<double> px, py;
-    px.reserve(np_raw);
-    py.reserve(np_raw);
-    for (size_t i = 0; i < np_raw; i++) {
-        const Point& p = poly_pts[i];
-        double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
-        px.push_back(dx*xa[0]+dy*xa[1]+dz*xa[2]);
-        py.push_back(dx*ya[0]+dy*ya[1]+dz*ya[2]);
-    }
-    size_t np = px.size();
-    if (np < 3) return 0;
-
-    // Boundary-inclusive ray-cast PIP (horizontal ray to +x). A test point
-    // is classified as:
-    //   - on-boundary (exact vertex match, on horizontal edge between
-    //     vertices, or collinear with a crossed edge): inside
-    //   - ray crosses an odd number of edges: inside
-    //   - otherwise: outside
-    // Mirrors the boundary convention of the cross-joint detector: any
-    // point sitting on a polygon edge counts as inside.
-    auto cross_sign = [](double ax, double ay, double bx, double by,
-                          double cx, double cy) -> int {
-        double v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-        if (v > 0.0) return 1;
-        if (v < 0.0) return -1;
-        return 0;
+    auto eq = [&](const Point& a, const Point& b) {
+        double dx=a[0]-b[0], dy=a[1]-b[1], dz=a[2]-b[2];
+        return dx*dx+dy*dy+dz*dz < DIST_SQ;
     };
-
-    auto pip = [&](double tx, double ty) -> int {
-        // Returns 2 = on-boundary, 1 = inside, 0 = outside.
-        // Skip leading vertices with y == ty so the first compared vertex
-        // is strictly above or below the test y.
-        size_t first = 0;
-        while (first < np && py[first] == ty) first++;
-        if (first == np) {
-            // All vertices on the horizontal test-line; treat collinearly.
-            for (size_t i = 0; i < np; i++) {
-                size_t j = (i + 1) % np;
-                if ((std::min(px[i], px[j]) <= tx) && (tx <= std::max(px[i], px[j])))
-                    return 2;
-            }
-            return 0;
-        }
-
-        bool is_above = py[first] < ty;
-        bool starting_above = is_above;
-        int val = 0;
-        size_t curr = first + 1;
-        size_t cend = np;
-        while (true) {
-            if (curr == cend) {
-                if (cend == first || first == 0) break;
-                cend = first;
-                curr = 0;
-            }
-
-            if (is_above) {
-                while (curr != cend && py[curr] < ty) curr++;
-                if (curr == cend) continue;
-            } else {
-                while (curr != cend && py[curr] > ty) curr++;
-                if (curr == cend) continue;
-            }
-
-            size_t prev = (curr == 0) ? (np - 1) : (curr - 1);
-
-            if (py[curr] == ty) {
-                if (px[curr] == tx ||
-                    (py[curr] == py[prev] &&
-                     ((tx < px[prev]) != (tx < px[curr]))))
-                    return 2;
-                curr++;
-                if (curr == first) break;
-                continue;
-            }
-
-            if (tx < px[curr] && tx < px[prev]) {
-                // ray's left of both endpoints — no crossing on the right.
-            } else if (tx > px[prev] && tx > px[curr]) {
-                val = 1 - val;
-            } else {
-                int d = cross_sign(px[prev], py[prev], px[curr], py[curr], tx, ty);
-                if (d == 0) return 2;
-                if ((d < 0) == is_above) val = 1 - val;
-            }
-            is_above = !is_above;
-            curr++;
-        }
-
-        if (is_above != starting_above) {
-            if (curr == np) curr = 0;
-            size_t prev = (curr == 0) ? (np - 1) : (curr - 1);
-            int d = cross_sign(px[prev], py[prev], px[curr], py[curr], tx, ty);
-            if (d == 0) return 2;
-            if ((d < 0) == is_above) val = 1 - val;
-        }
-
-        return val;
+    auto endcase = [&](const Point& pp, const Vector& dv0, const Vector& dv1) {
+        p0 = pp; p1 = pp;
+        v0 = dv0; v0.normalize_self();
+        v1 = dv1; v1.normalize_self();
+        type0 = 0; type1 = 0;
     };
+    if (eq(s0.start(), s1.start())) { endcase(s0.start(), s0.end()-s0.start(), s1.end()-s1.start()); return true; }
+    if (eq(s0.start(), s1.end()  )) { endcase(s0.start(), s0.end()-s0.start(), s1.start()-s1.end()); return true; }
+    if (eq(s0.end(),   s1.start())) { endcase(s0.end(),   s0.start()-s0.end(), s1.end()-s1.start()); return true; }
+    if (eq(s0.end(),   s1.end()  )) { endcase(s0.end(),   s0.start()-s0.end(), s1.start()-s1.end()); return true; }
 
-    int count = 0;
-    for (size_t i = 0; i < test_points.size(); i++) {
-        const Point& p = test_points[i];
-        double dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2];
-        double tx = dx*xa[0]+dy*xa[1]+dz*xa[2];
-        double ty = dx*ya[0]+dy*ya[1]+dz*ya[2];
-        int r = pip(tx, ty);
-        if (r != 0) {
-            inside_indices_out.push_back(static_cast<int>(i));
-            count++;
-        }
-    }
-    return count;
-}
-
-bool Intersection::polyline_plane_cross_joint(
-    const Polyline& c0,
-    const Polyline& c1,
-    const Plane& p0,
-    const Plane& p1,
-    Line& contact_out,
-    std::pair<int,int>& edge_pair_out) {
-
-    // c0 vs p1 — uses wood's near-coplanar rejection (DISTANCE_SQUARED=0.01).
-    std::vector<Point> pts0;
-    std::vector<int> edge_ids_0;
-    if (!polyline_plane_cross(c0, p1, pts0, edge_ids_0)) return false;
-
-    // c1 vs p0
-    std::vector<Point> pts1;
-    std::vector<int> edge_ids_1;
-    if (!polyline_plane_cross(c1, p0, pts1, edge_ids_1)) return false;
-
-    if (pts0.size() < 2 || pts1.size() < 2) return false;
-
-    // Filter to points actually inside the other polygon (using its plane).
-    std::vector<int> ID1;
-    int count0 = are_points_inside(c0, p0, pts1, ID1);
-
-    std::vector<int> ID0;
-    int count1 = are_points_inside(c1, p1, pts0, ID0);
-
-    if (count0 == 0 && count1 == 0) return false;
-
-    if (std::abs(count0 - count1) == 2) {
-        // Rectangle curve fully inside the other rectangle curve.
-        if (count0 == 2) {
-            contact_out = Line::from_points(pts0[0], pts0[1]);
-            edge_pair_out = std::pair<int,int>(edge_ids_0[0], edge_ids_0[1]);
-        } else {
-            contact_out = Line::from_points(pts1[0], pts1[1]);
-            edge_pair_out = std::pair<int,int>(edge_ids_1[0], edge_ids_1[1]);
-        }
-        return true;
-    }
-
-    if (count0 == 1 && count1 == 1) {
-        contact_out = Line::from_points(pts0[ID0[0]], pts1[ID1[0]]);
-        edge_pair_out = std::pair<int,int>(edge_ids_0[ID0[0]], edge_ids_1[ID1[0]]);
-        return true;
-    }
-
-    if (count0 > 1 || count1 > 1) {
-        // AABB of all inside points; pick the diagonal endpoints as contact.
-        std::vector<Point> pts;
-        pts.reserve(ID0.size() + ID1.size());
-        for (int i : ID0) pts.push_back(pts0[i]);
-        for (int i : ID1) pts.push_back(pts1[i]);
-
-        double xmin = pts[0][0], ymin = pts[0][1], zmin = pts[0][2];
-        double xmax = xmin, ymax = ymin, zmax = zmin;
-        for (const auto& q : pts) {
-            xmin = std::min(xmin, q[0]); ymin = std::min(ymin, q[1]); zmin = std::min(zmin, q[2]);
-            xmax = std::max(xmax, q[0]); ymax = std::max(ymax, q[1]); zmax = std::max(zmax, q[2]);
-        }
-        Point lo(xmin, ymin, zmin);
-        Point hi(xmax, ymax, zmax);
-        contact_out = Line::from_points(lo, hi);
-
-        int e0 = -1, e1 = -1;
-        for (size_t i = 0; i < ID0.size(); i++) {
-            const Point& q = pts0[ID0[i]];
-            double d_lo = (q-lo).magnitude_squared();
-            double d_hi = (q-hi).magnitude_squared();
-            if (d_lo < 0.001 || d_hi < 0.001) { e0 = edge_ids_0[ID0[i]]; break; }
-        }
-        for (size_t i = 0; i < ID1.size(); i++) {
-            const Point& q = pts1[ID1[i]];
-            double d_lo = (q-lo).magnitude_squared();
-            double d_hi = (q-hi).magnitude_squared();
-            if (d_lo < 0.001 || d_hi < 0.001) { e1 = edge_ids_1[ID1[i]]; break; }
-        }
-        edge_pair_out = std::pair<int,int>(e0, e1);
-        return true;
-    }
-
-    return false;
-}
-
-namespace {
-// Angle in degrees between two vectors, in [0, 180].
-double approximate_angle_deg(const Vector& a, const Vector& b) {
-    double la = a.magnitude(), lb = b.magnitude();
-    if (la < Tolerance::ZERO_TOLERANCE || lb < Tolerance::ZERO_TOLERANCE) return 0.0;
-    double c = a.dot(b) / (la * lb);
-    if (c > 1.0) c = 1.0;
-    if (c < -1.0) c = -1.0;
-    return std::acos(c) * 180.0 / 3.14159265358979323846;
-}
-
-Vector segment_to_vector(const Line& l) {
-    return Vector(l[3]-l[0], l[4]-l[1], l[5]-l[2]);
-}
-
-Line opposite_segment(const Line& l) {
-    return Line(l[3], l[4], l[5], l[0], l[1], l[2]);
-}
-
-Polyline translate_quad(const Polyline& poly, const Vector& v) {
-    auto pts = poly.get_points();
-    for (auto& p : pts) {
-        p[0] += v[0]; p[1] += v[1]; p[2] += v[2];
-    }
-    return Polyline(pts);
-}
-} // anonymous namespace
-
-bool Intersection::plane_to_face(
-    const std::array<Polyline,2>& polylines_a,
-    const std::array<Polyline,2>& polylines_b,
-    const std::array<Plane,2>& planes_a,
-    const std::array<Plane,2>& planes_b,
-    CrossJoint& result,
-    double angle_tol,
-    const std::array<double,3>& extension) {
-
-    result.face_ids_a = {-1, -1};
-    result.face_ids_b = {-1, -1};
-    result.type = 30;
-
-    // 1. Parallelism guard.
-    double raw_angle = approximate_angle_deg(planes_a[0].z_axis(), planes_b[0].z_axis());
-    double angle = 90.0 - std::fabs(raw_angle - 90.0);
-    if (angle < angle_tol) return false;
-
-    // 2. Four cross-joint contact segments.
-    const Polyline& cx0 = polylines_a[0];
-    const Polyline& cx1 = polylines_a[1];
-    const Polyline& cy0 = polylines_b[0];
-    const Polyline& cy1 = polylines_b[1];
-    const Plane& px0 = planes_a[0];
-    const Plane& px1 = planes_a[1];
-    const Plane& py0 = planes_b[0];
-    const Plane& py1 = planes_b[1];
-
-    Line cx0_py0__cy0_px0;
-    std::pair<int,int> e0_0__e1_0;
-    if (!polyline_plane_cross_joint(cx0, cy0, px0, py0, cx0_py0__cy0_px0, e0_0__e1_0)) return false;
-
-    Line cx0_py1__cy1_px0;
-    std::pair<int,int> e0_0__e1_1;
-    if (!polyline_plane_cross_joint(cx0, cy1, px0, py1, cx0_py1__cy1_px0, e0_0__e1_1)) return false;
-
-    Line cx1_py0__cy0_px1;
-    std::pair<int,int> e0_1__e1_0;
-    if (!polyline_plane_cross_joint(cx1, cy0, px1, py0, cx1_py0__cy0_px1, e0_1__e1_0)) return false;
-
-    Line cx1_py1__cy1_px1;
-    std::pair<int,int> e0_1__e1_1;
-    if (!polyline_plane_cross_joint(cx1, cy1, px1, py1, cx1_py1__cy1_px1, e0_1__e1_1)) return false;
-
-    // 3. Record side-face IDs (+2 because indices 0,1 are top/bottom).
-    result.face_ids_a.first  = e0_0__e1_0.first + 2;
-    result.face_ids_b.first  = e0_0__e1_0.second + 2;
-    result.face_ids_a.second = e0_1__e1_1.first + 2;
-    result.face_ids_b.second = e0_1__e1_1.second + 2;
-
-    // 4. Sort segments to a common orientation (flip when angle to reference > 90°).
-    Vector ref_v = segment_to_vector(cx0_py0__cy0_px0);
-    {
-        Vector v = segment_to_vector(cx0_py1__cy1_px0);
-        if (approximate_angle_deg(ref_v, v) > approximate_angle_deg(ref_v, Vector(-v[0], -v[1], -v[2])))
-            cx0_py1__cy1_px0 = opposite_segment(cx0_py1__cy1_px0);
-    }
-    {
-        Vector v = segment_to_vector(cx1_py0__cy0_px1);
-        if (approximate_angle_deg(ref_v, v) > approximate_angle_deg(ref_v, Vector(-v[0], -v[1], -v[2])))
-            cx1_py0__cy0_px1 = opposite_segment(cx1_py0__cy0_px1);
-    }
-    {
-        Vector v = segment_to_vector(cx1_py1__cy1_px1);
-        if (approximate_angle_deg(ref_v, v) > approximate_angle_deg(ref_v, Vector(-v[0], -v[1], -v[2])))
-            cx1_py1__cy1_px1 = opposite_segment(cx1_py1__cy1_px1);
-    }
-
-    // 5. Reference axis: midline of two contact segments, scaled ×10 about
-    // its midpoint. **Important**: wood uses `scale_line(c, 10)` whose
-    // implementation at `cgal_polyline_util.cpp:395-403` does
-    //     p0 += v*distance;  p1 -= v*distance;
-    // where `v = p1 - p0`. For `distance >= 1` this FLIPS the direction of
-    // the segment as well as extending it. The downstream `closest_point_to`
-    // parameters rely on this flipped frame — using a plain symmetric extend
-    // here produces a correctly-long-but-reverse-oriented c, which makes
-    // `maxID` pick the wrong end and the final `v` point the wrong way, so
-    // the cross-joint notch ends up on the opposite plate edge. Session's
-    // `scale_line` at `polyline.cpp:1474` matches wood's semantics exactly.
-    Line c;
-    get_middle_line(cx0_py1__cy1_px0, cx1_py0__cy0_px1, c);
-    {
-        double len = c.length();
-        if (len < Tolerance::ZERO_TOLERANCE) return false;
-        scale_line(c, 10.0);
-    }
-
-    Point c_start = c.start();
-    Point c_end = c.end();
-
-    // 6. Project all 8 segment endpoints onto c, sorted parameters give lMin (gap) and lMax (extent).
-    auto project_t = [&](const Point& p) -> double {
-        double t;
-        Polyline::closest_point_to_line(p, c_start, c_end, t);
-        return t;
-    };
-
-    double cpt0[4] = {
-        project_t(cx0_py0__cy0_px0.start()),
-        project_t(cx0_py1__cy1_px0.start()),
-        project_t(cx1_py0__cy0_px1.start()),
-        project_t(cx1_py1__cy1_px1.start())
-    };
-    std::sort(cpt0, cpt0 + 4);
-
-    double cpt1[4] = {
-        project_t(cx0_py0__cy0_px0.end()),
-        project_t(cx0_py1__cy1_px0.end()),
-        project_t(cx1_py0__cy0_px1.end()),
-        project_t(cx1_py1__cy1_px1.end())
-    };
-    std::sort(cpt1, cpt1 + 4);
-
-    double cpt[8] = { cpt0[0], cpt0[1], cpt0[2], cpt0[3], cpt1[0], cpt1[1], cpt1[2], cpt1[3] };
-    std::sort(cpt, cpt + 8);
-
-    Line lMin = Line::from_points(c.point_at(cpt0[3]), c.point_at(cpt1[0]));
-    Line lMax = Line::from_points(c.point_at(cpt[0]),  c.point_at(cpt[7]));
-
-    // 7. Mid plane through midpoint of lMin perpendicular to lMin.
-    Point lMin_mid = lMin.center();
-    Vector lMin_dir = lMin.to_vector();
-    if (lMin_dir.magnitude() < Tolerance::ZERO_TOLERANCE) return false;
-    Vector lMin_z = lMin_dir; lMin_z.normalize_self();
-    // Build an orthonormal basis around lMin_z.
-    Vector helper = (std::fabs(lMin_z[0]) < 0.9) ? Vector(1, 0, 0) : Vector(0, 1, 0);
-    Vector mid_x = helper.cross(lMin_z); mid_x.normalize_self();
-    Vector mid_y = lMin_z.cross(mid_x);  mid_y.normalize_self();
-    Plane midPlane(lMin_mid, mid_x, mid_y, lMin_z);
-
-    // 8. Extension vector v.
-    Point midPlane_lMax;
-    if (!line_plane(lMax, midPlane, midPlane_lMax, false)) return false;
-    Point lMax_a = lMax.start();
-    Point lMax_b = lMax.end();
-    int maxID = ((lMax_b - midPlane_lMax).magnitude_squared() > (lMax_a - midPlane_lMax).magnitude_squared()) ? 1 : 0;
-    Vector v = (maxID == 1)
-        ? (lMax_b - midPlane_lMax)
-        : Vector(-(lMax_a[0]-midPlane_lMax[0]), -(lMax_a[1]-midPlane_lMax[1]), -(lMax_a[2]-midPlane_lMax[2]));
-
-    if (extension[2] > 0.0) {
-        double length = v.magnitude();
-        if (length > Tolerance::ZERO_TOLERANCE) {
-            double target = length + extension[2];
-            v = Vector(v[0]*target/length, v[1]*target/length, v[2]*target/length);
-        }
-    }
-
-    // 9. joint_area = plane_4lines(midPlane, four sorted segments as infinite lines).
-    if (!plane_4lines(midPlane,
-                      cx0_py0__cy0_px0,
-                      cx0_py1__cy1_px0,
-                      cx1_py1__cy1_px1,
-                      cx1_py0__cy0_px1,
-                      result.joint_area)) return false;
-
-    // 9b. Joint lines: two perpendicular centerlines of the joint area quad,
-    //     crossing at its centroid. Semantically: "line on A through the joint"
-    //     and "line on B through the joint".
-    {
-        const auto& jpts = result.joint_area.get_points(); // 5 pts: 4 corners + closure
-        auto mid = [](const Point& p, const Point& q) {
-            return Point((p[0]+q[0])*0.5, (p[1]+q[1])*0.5, (p[2]+q[2])*0.5);
+    if (is_parallel) {
+        v0.normalize_self();
+        v1.normalize_self();
+        auto signed_t = [](const Point& src, const Vector& unit, const Point& q) {
+            return (q[0]-src[0])*unit[0] + (q[1]-src[1])*unit[1] + (q[2]-src[2])*unit[2];
         };
-        Point m01 = mid(jpts[0], jpts[1]);
-        Point m23 = mid(jpts[2], jpts[3]);
-        Point m12 = mid(jpts[1], jpts[2]);
-        Point m30 = mid(jpts[3], jpts[0]);
-        result.joint_lines[0] = Polyline(std::vector<Point>{m01, m23});
-        result.joint_lines[1] = Polyline(std::vector<Point>{m12, m30});
+        auto proj_onto_line = [](const Line& L, const Point& q) {
+            return L.closest_point(q, false).second;
+        };
+        std::vector<std::pair<double,double>> pts;
+        auto push = [&](const Point& q) {
+            Point q0 = proj_onto_line(s0, q);
+            Point q1 = proj_onto_line(s1, q);
+            pts.emplace_back(signed_t(s0.start(), v0, q0),
+                             signed_t(s1.start(), v1, q1));
+        };
+        push(s0.start()); push(s0.end());
+        push(s1.start()); push(s1.end());
+        std::sort(pts.begin(), pts.end(),
+                  [](const auto& a, const auto& b){ return a.first < b.first; });
+        Point seg0_a(s0.start()[0]+pts[1].first*v0[0],
+                     s0.start()[1]+pts[1].first*v0[1],
+                     s0.start()[2]+pts[1].first*v0[2]);
+        Point seg0_b(s0.start()[0]+pts[2].first*v0[0],
+                     s0.start()[1]+pts[2].first*v0[1],
+                     s0.start()[2]+pts[2].first*v0[2]);
+        Point seg1_a(s1.start()[0]+pts[1].second*v1[0],
+                     s1.start()[1]+pts[1].second*v1[1],
+                     s1.start()[2]+pts[1].second*v1[2]);
+        Point seg1_b(s1.start()[0]+pts[2].second*v1[0],
+                     s1.start()[1]+pts[2].second*v1[1],
+                     s1.start()[2]+pts[2].second*v1[2]);
+        Point m0((seg0_a[0]+seg0_b[0])*0.5, (seg0_a[1]+seg0_b[1])*0.5, (seg0_a[2]+seg0_b[2])*0.5);
+        Point m1((seg1_a[0]+seg1_b[0])*0.5, (seg1_a[1]+seg1_b[1])*0.5, (seg1_a[2]+seg1_b[2])*0.5);
+        Point avg((m0[0]+m1[0])*0.5, (m0[1]+m1[1])*0.5, (m0[2]+m1[2])*0.5);
+        p0 = proj_onto_line(s0, avg);
+        p1 = proj_onto_line(s1, avg);
+        auto t_of = [](const Line& L, const Point& q) {
+            return L.closest_point(q, false).first;
+        };
+        double t0_v = t_of(s0, p0);
+        double t1_v = t_of(s1, p1);
+        if (t0_v > 0.5) v0 = Vector(-v0[0], -v0[1], -v0[2]);
+        if (t1_v > 0.5) v1 = Vector(-v1[0], -v1[1], -v1[2]);
+        type0 = 0; type1 = 0;
+        return true;
     }
 
-    // 10. Joint volume faces = joint_area ± v. Wood assigns [0]=area+v,
-    // [1]=area-v (wood_main.cpp:436-437). Match that convention exactly.
-    result.joint_volumes[0] = translate_quad(result.joint_area, v);
-    result.joint_volumes[1] = translate_quad(result.joint_area, Vector(-v[0], -v[1], -v[2]));
+    v0.normalize_self();
+    v1.normalize_self();
+    double t0_v, t1_v;
+    if (!Intersection::line_line_parameters(s0, s1, t0_v, t1_v,
+            0.0, false, true)) {
+        return false;
+    }
+    double t0c = std::max(0.0, std::min(1.0, t0_v));
+    double t1c = std::max(0.0, std::min(1.0, t1_v));
+    p0 = s0.point_at(t0c);
+    p1 = s1.point_at(t1c);
 
-    // 11. Optional in-plane edge extensions. Each `extend_segment` call
-    // must hit the closing-point sync path for segments 0 and 3 (which
-    // touch the closing-duplicate vertex); Polyline::extend_segment caches
-    // was_closed BEFORE mutation so repeated in-place calls stay correct.
-    if (extension[0] + extension[1] > 0.0) {
-        for (int k = 0; k < 2; k++) {
-            auto& pl = result.joint_volumes[k];
-            pl.extend_segment(0, extension[0], extension[0], 0.0, 0.0);
-            pl.extend_segment(2, extension[0], extension[0], 0.0, 0.0);
-            pl.extend_segment(1, extension[1], extension[1], 0.0, 0.0);
-            pl.extend_segment(3, extension[1], extension[1], 0.0, 0.0);
-        }
+    double tt0 = (t0c + (double)cur_seg_0) / (double)n_segs_0;
+    double tt1 = (t1c + (double)cur_seg_1) / (double)n_segs_1;
+    double close0 = 2.0 * std::abs(0.5 - tt0);
+    double close1 = 2.0 * std::abs(0.5 - tt1);
+
+    if (above_closer_to_edge < 0.0) {
+        type0 = 1; type1 = 1;
+    } else if (above_closer_to_edge > 1.0) {
+        type0 = tt0 < tt1 ? 0 : 1;
+        type1 = tt0 < tt1 ? 1 : 0;
+    } else {
+        type0 = close0 > above_closer_to_edge ? 0 : 1;
+        type1 = close1 > above_closer_to_edge ? 0 : 1;
+        if (close0 > close1 && type0 == 0 && type1 == 0) { type0 = 0; type1 = 1; }
+        else if (close0 < close1 && type0 == 0 && type1 == 0) { type0 = 1; type1 = 0; }
     }
 
+    if (tt0 > 0.5 && type0 == 0) v0 = Vector(-v0[0], -v0[1], -v0[2]);
+    if (tt1 > 0.5 && type1 == 0) v1 = Vector(-v1[0], -v1[1], -v1[2]);
     return true;
-}
-
-bool Intersection::plane_to_face(
-    ElementPlate* a,
-    ElementPlate* b,
-    CrossJoint& result,
-    double angle_tol,
-    const std::array<double,3>& extension) {
-
-    if (!a || !b) return false;
-    auto polys_a = a->polylines();
-    auto polys_b = b->polylines();
-    auto planes_a = a->planes();
-    auto planes_b = b->planes();
-    if (polys_a.size() < 2 || polys_b.size() < 2) return false;
-    if (planes_a.size() < 2 || planes_b.size() < 2) return false;
-
-    std::array<Polyline,2> pa{ polys_a[0], polys_a[1] };
-    std::array<Polyline,2> pb{ polys_b[0], polys_b[1] };
-    std::array<Plane,2> npa{ planes_a[0], planes_a[1] };
-    std::array<Plane,2> npb{ planes_b[0], planes_b[1] };
-    return plane_to_face(pa, pb, npa, npb, result, angle_tol, extension);
 }
 
 } // namespace session_cpp

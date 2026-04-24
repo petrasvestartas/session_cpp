@@ -2,7 +2,7 @@
 #include <chrono>
 #include "session.h"
 #include "element.h"
-#include "obj.h"
+#include "file_obj.h"
 using namespace session_cpp;
 
 int main() {
@@ -11,8 +11,8 @@ int main() {
     auto t0 = Clock::now();
 
     // 1. Import + pair polylines
-    auto polylines = obj::read_obj_polylines((base / "session_data" / "annen_polylines.obj").string());
-    auto pairs = obj::pair_polylines(polylines);
+    auto polylines = file_obj::read_file_obj_polylines((base / "session_data" / "annen_polylines.obj").string());
+    auto pairs = file_obj::pair_polylines(polylines);
     auto t1 = Clock::now();
 
     // 2. Create session with elements

@@ -185,13 +185,13 @@ namespace session_cpp {
         BRep loaded_json = BRep::jsonload(json);
 
         // String
-        std::string json_string = box.json_dumps();
-        BRep loaded_json_string = BRep::json_loads(json_string);
+        std::string json_string = box.file_json_dumps();
+        BRep loaded_json_string = BRep::file_json_loads(json_string);
 
         // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.json").string();
-        box.json_dump(filename);
-        BRep loaded_from_file = BRep::json_load(filename);
+        box.file_json_dump(filename);
+        BRep loaded_from_file = BRep::file_json_load(filename);
 
         MINI_CHECK(loaded_json == box);
         MINI_CHECK(loaded_json_string == box);

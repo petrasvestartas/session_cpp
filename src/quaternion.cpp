@@ -287,20 +287,20 @@ Quaternion Quaternion::jsonload(const nlohmann::json& data) {
     return q;
 }
 
-std::string Quaternion::json_dumps() const {
+std::string Quaternion::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Quaternion Quaternion::json_loads(const std::string& json_string) {
+Quaternion Quaternion::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Quaternion::json_dump(const std::string& filename) const {
+void Quaternion::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
-Quaternion Quaternion::json_load(const std::string& filename) {
+Quaternion Quaternion::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data = nlohmann::json::parse(file);
     return jsonload(data);

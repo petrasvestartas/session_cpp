@@ -182,9 +182,19 @@ bool Mesh::is_valid() const {
 }
 
 bool Mesh::is_closed() const {
+    std::set<std::pair<size_t,size_t>> hole_edges;
+    for (const auto& [fk, rings] : face_holes)
+        for (const auto& ring : rings) {
+            size_t n = ring.size();
+            for (size_t i = 0; i < n; ++i) {
+                size_t a = ring[i], b = ring[(i + 1) % n];
+                hole_edges.emplace(a, b);
+                hole_edges.emplace(b, a);
+            }
+        }
     for (const auto& [u, nbrs] : halfedge)
         for (const auto& [v, fkey] : nbrs)
-            if (!fkey.has_value()) return false;
+            if (!fkey.has_value() && hole_edges.find({u, v}) == hole_edges.end()) return false;
     return !halfedge.empty();
 }
 
@@ -294,8 +304,8 @@ Mesh Mesh::weld(double tolerance) const {
         boxes.reserve(n);
         for (const auto& p : positions)
             boxes.push_back(OBB::from_point(p, tolerance));
-        double ws = BVH::compute_world_size(boxes);
-        BVH bvh = BVH::from_boxes(boxes, ws);
+        double ws = SpatialBVH::compute_world_size(boxes);
+        SpatialBVH bvh = SpatialBVH::from_boxes(boxes, ws);
         auto [pairs, ignore1, ignore2] = bvh.check_all_collisions(boxes);
         for (const auto& [i, j] : pairs) {
             if (positions[i].distance(positions[j]) <= tolerance) {
@@ -1563,6 +1573,40 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
     std::vector<Point> all_bot_pts;
     std::vector<Point> all_top_pts;
 
+    // Drop index i from paired polylines when bot[i] AND top[i] are both collinear
+    // with their kept neighbors (in the loft's 2D projection frame, using the
+    // SAME int64 quantization the CDT uses internally). This keeps cap-CDT
+    // input and side-wall segments in sync: any vertex the CDT would skip as
+    // collinear is also dropped from the side-wall chain.
+    auto strip_shared_collinear = [&](std::vector<Point>& bot, std::vector<Point>& top) {
+        const double cdt_scale = 1e6;
+        auto cross_q = [&](const Point& a, const Point& b, const Point& c) -> int64_t {
+            auto [ax, ay] = project_2d(a);
+            auto [bx, by] = project_2d(b);
+            auto [cx, cy] = project_2d(c);
+            int64_t iax = (int64_t)std::llround(ax * cdt_scale), iay = (int64_t)std::llround(ay * cdt_scale);
+            int64_t ibx = (int64_t)std::llround(bx * cdt_scale), iby = (int64_t)std::llround(by * cdt_scale);
+            int64_t icx = (int64_t)std::llround(cx * cdt_scale), icy = (int64_t)std::llround(cy * cdt_scale);
+            return (ibx - iax) * (icy - iay) - (iby - iay) * (icx - iax);
+        };
+        bool changed = true;
+        while (changed && bot.size() > 3) {
+            changed = false;
+            size_t n = bot.size();
+            for (size_t i = 0; i < n; ++i) {
+                size_t prev = (i + n - 1) % n;
+                size_t next = (i + 1) % n;
+                if (cross_q(bot[prev], bot[i], bot[next]) == 0 &&
+                    cross_q(top[prev], top[i], top[next]) == 0) {
+                    bot.erase(bot.begin() + i);
+                    top.erase(top.begin() + i);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    };
+
     for (size_t oi = 0; oi < order.size(); ++oi) {
         int idx = order[oi];
         auto bot = get_open_points(polylines0[idx]);
@@ -1574,6 +1618,8 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
             std::reverse(bot.begin(), bot.end());
             std::reverse(top.begin(), top.end());
         }
+
+        if (bot.size() == top.size()) strip_shared_collinear(bot, top);
 
         poly_infos.push_back({all_bot_pts.size(), bot.size(), all_top_pts.size(), top.size()});
         for (const auto& p : bot) all_bot_pts.push_back(p);
@@ -1652,16 +1698,6 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
             std::vector<std::array<size_t,3>> tri_list;
             for (const auto& f : t_tris) tri_list.push_back({top_vkeys[f[0]], top_vkeys[f[1]], top_vkeys[f[2]]});
             mesh.triangulation[fk_top.value()] = tri_list;
-        }
-        for (size_t h = 1; h < poly_infos.size(); ++h) {
-            size_t bn = poly_infos[h].bot_n, bo = poly_infos[h].bot_off;
-            size_t tn = poly_infos[h].top_n, t_off = poly_infos[h].top_off;
-            std::vector<size_t> bh(bn);
-            for (size_t j = 0; j < bn; ++j) bh[j] = bot_vkeys[bo + bn - 1 - j];
-            mesh.add_face(bh);
-            std::vector<size_t> th(tn);
-            for (size_t j = 0; j < tn; ++j) th[j] = top_vkeys[t_off + j];
-            mesh.add_face(th);
         }
     }
 
@@ -2198,7 +2234,7 @@ void Mesh::build_triangle_bvh(bool force) const {
     double max_extent = std::max({extent_x, extent_y, extent_z});
     double world_size = std::max(2.2 * max_extent, 10.0);
 
-    triangle_bvh = std::make_shared<BVH>();
+    triangle_bvh = std::make_shared<SpatialBVH>();
     triangle_bvh->build_from_aabbs(triangle_aabbs_cache.data(), triangle_aabbs_cache.size(), world_size);
     triangle_bvh_built = true;
 }
@@ -2238,25 +2274,25 @@ void Mesh::clear_triangle_bvh() const {
 void Mesh::build_triangle_aabb_tree(bool force) const {
     build_triangle_bvh(false);
     if (triangle_aabb_tree && !force) return;
-    triangle_aabb_tree = std::make_shared<AABBTree>();
+    triangle_aabb_tree = std::make_shared<SpatialAABBTree>();
     triangle_aabb_tree->build(triangle_aabbs_cache.data(), triangle_aabbs_cache.size());
 }
 
-std::string Mesh::json_dumps() const {
+std::string Mesh::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Mesh Mesh::json_loads(const std::string& json_string) {
+Mesh Mesh::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Mesh::json_dump(const std::string& filename) const {
+void Mesh::file_json_dump(const std::string& filename) const {
     nlohmann::ordered_json j = jsondump();
     std::ofstream f(filename);
     f << j.dump(2);
 }
 
-Mesh Mesh::json_load(const std::string& filename) {
+Mesh Mesh::file_json_load(const std::string& filename) {
     std::ifstream f(filename);
     nlohmann::json j;
     f >> j;

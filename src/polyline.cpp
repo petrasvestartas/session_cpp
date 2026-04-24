@@ -362,6 +362,12 @@ void Polyline::translate(const Vector& v) {
     *this = Polyline(pts);
 }
 
+Polyline Polyline::translated(const Vector& v) const {
+    Polyline result(*this);
+    result.translate(v);
+    return result;
+}
+
 void Polyline::extend_edge_equally(size_t edge_idx, double distance) {
     // Verbatim of `extend_polyline_edge_equally()` from main_5.cpp:803.
     size_t n = point_count();
@@ -436,20 +442,20 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
     return polyline;
 }
 
-std::string Polyline::json_dumps() const {
+std::string Polyline::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Polyline Polyline::json_loads(const std::string& json_string) {
+Polyline Polyline::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Polyline::json_dump(const std::string& filename) const {
+void Polyline::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(2);
 }
 
-Polyline Polyline::json_load(const std::string& filename) {
+Polyline Polyline::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data;
     file >> data;
@@ -831,6 +837,21 @@ void Polyline::merge_collinear(double tol) {
     recompute_plane_if_needed();
 }
 
+void Polyline::remove_consecutive_duplicates(double tol) {
+    auto pts = get_points();
+    std::vector<Point> cleaned;
+    cleaned.reserve(pts.size());
+    const double tol_sq = tol * tol;
+    for (auto& p : pts) {
+        if (cleaned.empty()) { cleaned.push_back(p); continue; }
+        double dx = p[0] - cleaned.back()[0];
+        double dy = p[1] - cleaned.back()[1];
+        double dz = p[2] - cleaned.back()[2];
+        if (dx*dx + dy*dy + dz*dz >= tol_sq) cleaned.push_back(p);
+    }
+    *this = Polyline(cleaned);
+}
+
 Point Polyline::center() const {
     if (_coords.empty()) return Point(0, 0, 0);
 
@@ -1100,22 +1121,7 @@ void Polyline::average_normal(Vector& avg_normal) const {
 }
 
 std::vector<Point> Polyline::interpolate_points(const Point& from, const Point& to, int steps, int kind) {
-    std::vector<Point> pts;
-    if (kind == 1 || kind == 2) {
-        pts.push_back(from);
-    }
-    for (int i = 1; i <= steps; ++i) {
-        double t = static_cast<double>(i) / static_cast<double>(steps + 1);
-        pts.push_back(Point(
-            from[0] + t * (to[0] - from[0]),
-            from[1] + t * (to[1] - from[1]),
-            from[2] + t * (to[2] - from[2])
-        ));
-    }
-    if (kind == 1) {
-        pts.push_back(to);
-    }
-    return pts;
+    return Point::interpolate(from, to, steps, kind);
 }
 
 Polyline Polyline::quick_hull(const Polyline& polygon) {
@@ -1646,7 +1652,7 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
     // Project to 2D as raw stride-3 coords (z=0) — no Polyline construction
     auto project = [&](const Polyline& pl) -> Polyline {
         Polyline p2d;
-        int n = pl.point_count();
+        int n = (int)pl.point_count();
         p2d._coords.resize(n * 3);
         for (int i = 0; i < n; i++) {
             double dx = pl._coords[i*3] - ox, dy = pl._coords[i*3+1] - oy, dz = pl._coords[i*3+2] - oz;
@@ -1671,7 +1677,7 @@ std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b,
 
     // Ensure CCW winding in 2D (Vatti containment check requires CCW)
     auto ensure_ccw = [](Polyline& p2d) {
-        int n = p2d.point_count();
+        int n = (int)p2d.point_count();
         // Strip closing point for area calc
         int m = n;
         if (m >= 4) {
@@ -1771,6 +1777,49 @@ Polyline Polyline::simplify(double tolerance) const {
     std::vector<Point> pts = get_points();
     std::vector<Point> simplified = simplify_points(pts, tolerance);
     return Polyline(simplified);
+}
+
+void polyline_two_rects_from_frame(
+    const Point&  p,
+    const Vector& segment_vector,
+    const Vector& zaxis,
+    bool          middle,
+    double        radius,
+    double        length,
+    int           flip_male,
+    Polyline&     rect0,
+    Polyline&     rect1)
+{
+    Vector y_axis = zaxis.cross(segment_vector);
+    Vector x_axis = y_axis.cross(segment_vector);
+    x_axis.normalize_self();
+    y_axis.normalize_self();
+    x_axis = x_axis * radius;
+    y_axis = y_axis * radius;
+
+    Vector sv0 = segment_vector * (length * -0.5);
+    Vector sv1 = segment_vector * ( length *  0.5);
+
+    std::array<Vector, 4> v = {
+        Vector(-x_axis[0] - y_axis[0], -x_axis[1] - y_axis[1], -x_axis[2] - y_axis[2]),
+        Vector( x_axis[0] - y_axis[0],  x_axis[1] - y_axis[1],  x_axis[2] - y_axis[2]),
+        Vector( x_axis[0] + y_axis[0],  x_axis[1] + y_axis[1],  x_axis[2] + y_axis[2]),
+        Vector(-x_axis[0] + y_axis[0], -x_axis[1] + y_axis[1], -x_axis[2] + y_axis[2]),
+    };
+    if (!middle) {
+        if      (flip_male ==  1) std::rotate(v.begin(),  v.begin()  + 1, v.end());
+        else if (flip_male == -1) std::rotate(v.rbegin(), v.rbegin() + 1, v.rend());
+    }
+
+    auto pt = [&](const Vector& sv, const Vector& uv) {
+        return Point(p[0]+sv[0]+uv[0], p[1]+sv[1]+uv[1], p[2]+sv[2]+uv[2]);
+    };
+    rect0 = Polyline(std::vector<Point>{
+        pt(sv0, v[1]), pt(sv1, v[1]), pt(sv1, v[0]), pt(sv0, v[0]), pt(sv0, v[1])
+    });
+    rect1 = Polyline(std::vector<Point>{
+        pt(sv0, v[2]), pt(sv1, v[2]), pt(sv1, v[3]), pt(sv0, v[3]), pt(sv0, v[2])
+    });
 }
 
 } // namespace session_cpp

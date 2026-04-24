@@ -197,16 +197,16 @@ public:
     static Xform jsonload(const nlohmann::json& data);
 
     /// Write JSON to file
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read JSON from file
-    static Xform json_load(const std::string& filename);
+    static Xform file_json_load(const std::string& filename);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static Xform json_loads(const std::string& json_string);
+    static Xform file_json_loads(const std::string& json_string);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf

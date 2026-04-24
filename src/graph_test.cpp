@@ -1,6 +1,6 @@
 #include "mini_test.h"
 #include "graph.h"
-#include "encoders.h"
+#include "file_encoders.h"
 
 namespace session_cpp {
 using namespace session_cpp::mini_test;
@@ -27,8 +27,8 @@ MINI_TEST("Vertex", "Json Roundtrip") {
     Vertex original("v0", "test_attribute");
 
     std::string fname = "serialization/test_vertex.json";
-    encoders::json_dump(original, fname);
-    Vertex loaded = encoders::json_load<Vertex>(fname);
+    file_encoders::file_json_dump(original, fname);
+    Vertex loaded = file_encoders::file_json_load<Vertex>(fname);
 
     MINI_CHECK(loaded.name == original.name);
     MINI_CHECK(loaded.attribute == original.attribute);
@@ -52,8 +52,8 @@ MINI_TEST("Edge", "Json Roundtrip") {
     Edge original("v0", "v1", "test_edge_attr");
 
     std::string fname = "serialization/test_edge.json";
-    encoders::json_dump(original, fname);
-    Edge loaded = encoders::json_load<Edge>(fname);
+    file_encoders::file_json_dump(original, fname);
+    Edge loaded = file_encoders::file_json_load<Edge>(fname);
 
     MINI_CHECK(loaded.name == original.name);
     MINI_CHECK(loaded.v0 == original.v0);
@@ -112,14 +112,14 @@ MINI_TEST("Graph", "Json Roundtrip") {
 
     //   jsondump()      │ ordered_json │ to JSON object (internal use)
     //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   json_dumps()    │ std::string  │ to JSON string
-    //   json_loads(s)   │ std::string  │ from JSON string
-    //   json_dump(path) │ file         │ write to file
-    //   json_load(path) │ file         │ read from file
+    //   file_json_dumps()    │ std::string  │ to JSON string
+    //   file_json_loads(s)   │ std::string  │ from JSON string
+    //   file_json_dump(path) │ file         │ write to file
+    //   file_json_load(path) │ file         │ read from file
 
     std::string fname = "serialization/test_graph.json";
-    original.json_dump(fname);
-    Graph loaded = Graph::json_load(fname);
+    original.file_json_dump(fname);
+    Graph loaded = Graph::file_json_load(fname);
 
     MINI_CHECK(loaded.number_of_vertices() == 2);
     MINI_CHECK(loaded.number_of_edges() == 1);

@@ -175,11 +175,11 @@ MINI_TEST("Closest", "Pointcloud Point") {
     MINI_CHECK(i2 == 3);
 }
 
-MINI_TEST("Closest", "Pointcloud Point KDTree") {
+MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
     // uncomment #include "closest.h"
     // uncomment #include "point.h"
     // uncomment #include "pointcloud.h"
-    // KDTree variant: same result as linear scan, O(log n) query
+    // SpatialKDTree variant: same result as linear scan, O(log n) query
     PointCloud pc({
         Point(0.0, 0.0, 0.0),
         Point(5.0, 0.0, 0.0),

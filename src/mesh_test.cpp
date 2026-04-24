@@ -7,7 +7,7 @@
 #include "polyline.h"
 #include "xform.h"
 #include "tolerance.h"
-#include "encoders.h"
+#include "file_encoders.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1040,8 +1040,6 @@ namespace session_cpp {
         auto [angles, arcs, points] = mesh.dihedral_angles(0.3);
 
         for (const auto& [edge, angle] : angles) {
-            size_t u = edge.first;
-            size_t v = edge.second;
             double angle_in_degrees = angle;
             MINI_CHECK(TOLERANCE.is_close(angle_in_degrees, 116.565051177078));
         }
@@ -1222,13 +1220,13 @@ namespace session_cpp {
         Mesh loaded_json = Mesh::jsonload(json);
 
         // String
-        std::string json_string = mesh.json_dumps();
-        Mesh loaded_string = Mesh::json_loads(json_string);
+        std::string json_string = mesh.file_json_dumps();
+        Mesh loaded_string = Mesh::file_json_loads(json_string);
 
         // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_mesh.json").string();
-        mesh.json_dump(filename);
-        Mesh loaded_file = Mesh::json_load(filename);
+        mesh.file_json_dump(filename);
+        Mesh loaded_file = Mesh::file_json_load(filename);
 
         MINI_CHECK(loaded_json == mesh);
         MINI_CHECK(loaded_string == mesh);

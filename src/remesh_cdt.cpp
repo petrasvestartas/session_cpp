@@ -434,9 +434,11 @@ void Delaunay::MergeDupOrCollinearVertices()
         std::copy(v2->edges.begin(), v2->edges.end(), back_inserter(v1->edges));
         v2->edges.resize(0);
 
-        for (auto itE = v1->edges.begin(); itE != v1->edges.end(); ++itE) {
+        auto edges_snapshot = v1->edges;
+        for (auto itE = edges_snapshot.begin(); itE != edges_snapshot.end(); ++itE) {
             if (IsHorizontal(*(*itE)) || (*itE)->vB != v1) continue;
-            for (auto itE2 = itE + 1; itE2 != v1->edges.end(); ++itE2) {
+            for (auto itE2 = edges_snapshot.begin(); itE2 != edges_snapshot.end(); ++itE2) {
+                if (itE2 == itE) continue;
                 auto e1 = *itE, e2 = *itE2;
                 if (e2->vB != v1 || e1->vT->pt.y == e2->vT->pt.y ||
                     (CrossProductSign(e1->vT->pt, v1->pt, e2->vT->pt) != 0)) continue;
@@ -458,30 +460,18 @@ Edge* Delaunay::CreateInnerLocMinLooseEdge(Vertex2* vAbove)
     int64_t yAbove = vAbove->pt.y;
     sweepY_ = yAbove;
 
-    // Binary-search the BST (ordered by x-intercept at sweepY_) for the edge
-    // directly below vAbove.  Qualifying edges have x-intercept <= xAbove, so
-    // they lie to the left of the lower_bound of a sentinel at xAbove.
-    // Non-crossing invariant guarantees BST ordering is consistent at any y.
-    Vertex2 sv({xAbove, yAbove});
-    Edge    sentEdge;
-    sentEdge.vT = &sv; sentEdge.vB = &sv; sentEdge.vL = &sv; sentEdge.vR = &sv;
-
     Edge* eBelow = nullptr;
     double bestD = -1.0;
-    auto tryE = [&](Edge* e) {
-        if (e->vL->pt.x > xAbove || e->vR->pt.x < xAbove) return;
-        if (e->vB->pt.y < yAbove || e->vB == vAbove || e->vT == vAbove) return;
-        if (LeftTurning(e->vL->pt, vAbove->pt, e->vR->pt)) return;
-        double d = ShortestDistFromSegment(vAbove->pt, e->vL->pt, e->vR->pt);
-        if (!eBelow || d < bestD) { eBelow = e; bestD = d; }
-    };
-
-    auto it = activeSet_.lower_bound(&sentEdge);
-    // Scan up to 4 candidates to the left (qualifying edges have x-intercept < xAbove).
-    auto rit = it;
-    for (int i = 0; i < 4 && rit != activeSet_.begin(); ++i) { --rit; tryE(*rit); }
-    // Also check the element at lower_bound itself (x-intercept == xAbove edge case).
-    if (it != activeSet_.end()) tryE(*it);
+    Edge* e = firstActive;
+    while (e) {
+        if (e->vL->pt.x <= xAbove && e->vR->pt.x >= xAbove &&
+            e->vB->pt.y >= yAbove && e->vB != vAbove && e->vT != vAbove &&
+            !LeftTurning(e->vL->pt, vAbove->pt, e->vR->pt)) {
+            double d = ShortestDistFromSegment(vAbove->pt, e->vL->pt, e->vR->pt);
+            if (!eBelow || d < bestD) { eBelow = e; bestD = d; }
+        }
+        e = e->nextE;
+    }
 
     if (!eBelow) return nullptr;
 
@@ -490,7 +480,7 @@ Edge* Delaunay::CreateInnerLocMinLooseEdge(Vertex2* vAbove)
     int64_t yBest = vBest->pt.y;
 
     // Refine: if any active edge crosses the tentative connection, prefer its endpoint.
-    Edge* e = firstActive;
+    e = firstActive;
     if (xBest < xAbove) {
         while (e) {
             if (e->vR->pt.x > xBest && e->vL->pt.x < xAbove &&

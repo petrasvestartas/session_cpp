@@ -311,21 +311,21 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
     return pc;
 }
 
-std::string PointCloud::json_dumps() const {
+std::string PointCloud::file_json_dumps() const {
     return jsondump().dump();
 }
 
-PointCloud PointCloud::json_loads(const std::string& json_string) {
+PointCloud PointCloud::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void PointCloud::json_dump(const std::string& filename) const {
+void PointCloud::file_json_dump(const std::string& filename) const {
     std::ofstream ofs(filename);
     ofs << jsondump().dump(2);
     ofs.close();
 }
 
-PointCloud PointCloud::json_load(const std::string& filename) {
+PointCloud PointCloud::file_json_load(const std::string& filename) {
     std::ifstream ifs(filename);
     nlohmann::json data;
     ifs >> data;

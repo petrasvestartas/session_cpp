@@ -1,7 +1,7 @@
 #include "nurbssurface.h"
 #include "remesh_nurbssurface_grid.h"
 #include "remesh_nurbssurface_adaptive.h"
-#include "knot.h"
+#include "nurbsknot.h"
 #include "fmt/core.h"
 #include <cstring>
 #include <fstream>
@@ -18,41 +18,41 @@ namespace session_cpp {
 
 namespace {
 
-// Check if knot vector is clamped
-bool is_knot_vector_clamped(int order, int cv_count, const std::vector<double>& knot) {
+// Check if nurbsknot vector is clamped
+bool is_nurbsknot_vector_clamped(int order, int cv_count, const std::vector<double>& nurbsknot) {
     if (order < 2 || cv_count < order) return false;
-    if (static_cast<int>(knot.size()) != order + cv_count - 2) return false;
+    if (static_cast<int>(nurbsknot.size()) != order + cv_count - 2) return false;
 
     int degree = order - 1;
 
-    // OpenNURBS convention: first (order-1) knots equal, last (order-1) knots equal
-    // Check start: knot[0] == knot[1] == ... == knot[degree-1]
+    // OpenNURBS convention: first (order-1) nurbsknots equal, last (order-1) nurbsknots equal
+    // Check start: nurbsknot[0] == nurbsknot[1] == ... == nurbsknot[degree-1]
     for (int i = 1; i < degree; i++) {
-        if (std::abs(knot[i] - knot[0]) > 1e-10) return false;
+        if (std::abs(nurbsknot[i] - nurbsknot[0]) > 1e-10) return false;
     }
 
-    // Check end: knot[last] == knot[last-1] == ... == knot[last-degree+1]
-    int last = static_cast<int>(knot.size()) - 1;
+    // Check end: nurbsknot[last] == nurbsknot[last-1] == ... == nurbsknot[last-degree+1]
+    int last = static_cast<int>(nurbsknot.size()) - 1;
     for (int i = last - 1; i > last - degree; i--) {
-        if (std::abs(knot[i] - knot[last]) > 1e-10) return false;
+        if (std::abs(nurbsknot[i] - nurbsknot[last]) > 1e-10) return false;
     }
 
     return true;
 }
 
-// Check if knot vector is periodic
-bool is_knot_vector_periodic(int order, int cv_count, const std::vector<double>& knot) {
+// Check if nurbsknot vector is periodic
+bool is_nurbsknot_vector_periodic(int order, int cv_count, const std::vector<double>& nurbsknot) {
     if (order < 2 || cv_count < order) return false;
-    if (static_cast<int>(knot.size()) != order + cv_count - 2) return false;
+    if (static_cast<int>(nurbsknot.size()) != order + cv_count - 2) return false;
 
     int degree = order - 1;
-    double delta = knot[cv_count - 1] - knot[degree];
+    double delta = nurbsknot[cv_count - 1] - nurbsknot[degree];
 
     if (delta <= 0.0) return false;
 
     for (int i = 0; i < cv_count - 1; i++) {
-        double expected = knot[i + degree] + delta;
-        if (std::abs(knot[i + order - 1] - expected) > 1e-10 * (1.0 + std::abs(expected))) {
+        double expected = nurbsknot[i + degree] + delta;
+        if (std::abs(nurbsknot[i + order - 1] - expected) > 1e-10 * (1.0 + std::abs(expected))) {
             return false;
         }
     }
@@ -156,9 +156,9 @@ NurbsCurve* to_curve_internal(const NurbsSurface& srf, int dir, NurbsCurve* crv)
         }
     }
 
-    // Copy knot vector
-    for (int i = 0; i < crv->knot_count(); i++) {
-        crv->set_knot(i, srf.knot(dir, i));
+    // Copy nurbsknot vector
+    for (int i = 0; i < crv->nurbsknot_count(); i++) {
+        crv->set_nurbsknot(i, srf.nurbsknot(dir, i));
     }
 
     return crv;
@@ -178,8 +178,8 @@ bool from_curve_internal(NurbsCurve& crv, NurbsSurface& srf, int dir) {
     // Transfer CV array from curve to surface
     srf.m_cv = std::move(crv.m_cv);
 
-    // Transfer knot vector from curve to surface
-    srf.m_knot[dir] = std::move(crv.m_knot);
+    // Transfer nurbsknot vector from curve to surface
+    srf.m_nurbsknot[dir] = std::move(crv.m_nurbsknot);
 
     // Update surface parameters
     srf.m_order[dir] = crv.m_order;
@@ -280,9 +280,9 @@ bool NurbsSurface::operator==(const NurbsSurface& other) const {
     if (m_cv_stride[0] != other.m_cv_stride[0]) return false;
     if (m_cv_stride[1] != other.m_cv_stride[1]) return false;
 
-    // Compare knot vectors
-    if (m_knot[0] != other.m_knot[0]) return false;
-    if (m_knot[1] != other.m_knot[1]) return false;
+    // Compare nurbsknot vectors
+    if (m_nurbsknot[0] != other.m_nurbsknot[0]) return false;
+    if (m_nurbsknot[1] != other.m_nurbsknot[1]) return false;
 
     // Compare control vertices
     if (m_cv != other.m_cv) return false;
@@ -320,8 +320,8 @@ void NurbsSurface::initialize() {
     m_cv_stride[0] = 0;
     m_cv_stride[1] = 0;
 
-    m_knot[0].clear();
-    m_knot[1].clear();
+    m_nurbsknot[0].clear();
+    m_nurbsknot[1].clear();
     m_cv.clear();
 }
 
@@ -329,7 +329,7 @@ bool NurbsSurface::create_raw(int dimension, bool is_rational,
                          int order0, int order1,
                          int cv_count0, int cv_count1,
                          bool is_periodic_u, bool is_periodic_v,
-                         double knot_delta_u, double knot_delta_v) {
+                         double nurbsknot_delta_u, double nurbsknot_delta_v) {
     if (dimension < 1 || order0 < 2 || order1 < 2 ||
         cv_count0 < order0 || cv_count1 < order1) {
         return false;
@@ -349,12 +349,12 @@ bool NurbsSurface::create_raw(int dimension, bool is_rational,
     m_cv_stride[1] = cv_size_val;
     m_cv_stride[0] = cv_size_val * m_cv_count[1];
 
-    // Allocate knot vectors
-    int knot_count0 = order0 + cv_count0 - 2;
-    int knot_count1 = order1 + cv_count1 - 2;
+    // Allocate nurbsknot vectors
+    int nurbsknot_count0 = order0 + cv_count0 - 2;
+    int nurbsknot_count1 = order1 + cv_count1 - 2;
 
-    m_knot[0].resize(knot_count0, 0.0);
-    m_knot[1].resize(knot_count1, 0.0);
+    m_nurbsknot[0].resize(nurbsknot_count0, 0.0);
+    m_nurbsknot[1].resize(nurbsknot_count1, 0.0);
 
     // Allocate CV array
     int total_cvs = cv_count0 * cv_count1;
@@ -370,17 +370,17 @@ bool NurbsSurface::create_raw(int dimension, bool is_rational,
         }
     }
 
-    // Initialize knot vectors
+    // Initialize nurbsknot vectors
     if (is_periodic_u) {
-        make_periodic_uniform_knot_vector(0, knot_delta_u);
+        make_periodic_uniform_nurbsknot_vector(0, nurbsknot_delta_u);
     } else {
-        make_clamped_uniform_knot_vector(0, knot_delta_u);
+        make_clamped_uniform_nurbsknot_vector(0, nurbsknot_delta_u);
     }
 
     if (is_periodic_v) {
-        make_periodic_uniform_knot_vector(1, knot_delta_v);
+        make_periodic_uniform_nurbsknot_vector(1, nurbsknot_delta_v);
     } else {
-        make_clamped_uniform_knot_vector(1, knot_delta_v);
+        make_clamped_uniform_nurbsknot_vector(1, nurbsknot_delta_v);
     }
 
     return true;
@@ -389,21 +389,21 @@ bool NurbsSurface::create_raw(int dimension, bool is_rational,
 bool NurbsSurface::create_clamped_uniform(int dimension,
                                          int order0, int order1,
                                          int cv_count0, int cv_count1,
-                                         double knot_delta0,
-                                         double knot_delta1) {
+                                         double nurbsknot_delta0,
+                                         double nurbsknot_delta1) {
     if (!create_raw(dimension, false, order0, order1, cv_count0, cv_count1)) {
         return false;
     }
 
-    make_clamped_uniform_knot_vector(0, knot_delta0);
-    make_clamped_uniform_knot_vector(1, knot_delta1);
+    make_clamped_uniform_nurbsknot_vector(0, nurbsknot_delta0);
+    make_clamped_uniform_nurbsknot_vector(1, nurbsknot_delta1);
 
     return true;
 }
 
 void NurbsSurface::destroy() {
-    m_knot[0].clear();
-    m_knot[1].clear();
+    m_nurbsknot[0].clear();
+    m_nurbsknot[1].clear();
     m_cv.clear();
     initialize();
 }
@@ -417,13 +417,13 @@ bool NurbsSurface::is_valid() const {
     if (m_order[0] < 2 || m_order[1] < 2) return false;
     if (m_cv_count[0] < m_order[0] || m_cv_count[1] < m_order[1]) return false;
 
-    int knot_count0 = m_order[0] + m_cv_count[0] - 2;
-    int knot_count1 = m_order[1] + m_cv_count[1] - 2;
+    int nurbsknot_count0 = m_order[0] + m_cv_count[0] - 2;
+    int nurbsknot_count1 = m_order[1] + m_cv_count[1] - 2;
 
-    if (static_cast<int>(m_knot[0].size()) != knot_count0) return false;
-    if (static_cast<int>(m_knot[1].size()) != knot_count1) return false;
+    if (static_cast<int>(m_nurbsknot[0].size()) != nurbsknot_count0) return false;
+    if (static_cast<int>(m_nurbsknot[1].size()) != nurbsknot_count1) return false;
 
-    if (!is_valid_knot_vector(0) || !is_valid_knot_vector(1)) return false;
+    if (!is_valid_nurbsknot_vector(0) || !is_valid_nurbsknot_vector(1)) return false;
 
     int cv_size_val = m_is_rat ? (m_dim + 1) : m_dim;
     int expected_cv_size = m_cv_count[0] * m_cv_count[1] * cv_size_val;
@@ -432,13 +432,13 @@ bool NurbsSurface::is_valid() const {
     return true;
 }
 
-bool NurbsSurface::is_valid_knot_vector(int dir) const {
+bool NurbsSurface::is_valid_nurbsknot_vector(int dir) const {
     if (dir < 0 || dir >= 2) return false;
-    int kc = knot_count(dir);
-    if (static_cast<int>(m_knot[dir].size()) != kc) return false;
+    int kc = nurbsknot_count(dir);
+    if (static_cast<int>(m_nurbsknot[dir].size()) != kc) return false;
 
     for (int i = 1; i < kc; i++) {
-        if (m_knot[dir][i] < m_knot[dir][i-1]) return false;
+        if (m_nurbsknot[dir][i] < m_nurbsknot[dir][i-1]) return false;
     }
     return true;
 }
@@ -446,7 +446,7 @@ bool NurbsSurface::is_valid_knot_vector(int dir) const {
 bool NurbsSurface::is_closed(int dir) const {
     bool bIsClosed = false;
     if (dir >= 0 && dir <= 1 && m_dim > 0) {
-        if (is_knot_vector_clamped(m_order[dir], m_cv_count[dir], m_knot[dir])) {
+        if (is_nurbsknot_vector_clamped(m_order[dir], m_cv_count[dir], m_nurbsknot[dir])) {
             const double* corners[4];
             corners[0] = cv(0, 0);
             corners[(dir == 0) ? 1 : 2] = cv(m_cv_count[0] - 1, 0);
@@ -469,7 +469,7 @@ bool NurbsSurface::is_closed(int dir) const {
 bool NurbsSurface::is_periodic(int dir) const {
     bool bIsPeriodic = false;
     if (dir >= 0 && dir <= 1) {
-        bIsPeriodic = is_knot_vector_periodic(m_order[dir], m_cv_count[dir], m_knot[dir]);
+        bIsPeriodic = is_nurbsknot_vector_periodic(m_order[dir], m_cv_count[dir], m_nurbsknot[dir]);
         if (bIsPeriodic) {
             const double* cv0;
             const double* cv1;
@@ -600,10 +600,10 @@ bool NurbsSurface::is_singular(int side) const {
 
 bool NurbsSurface::is_clamped(int dir, int end) const {
     if (dir < 0 || dir >= 2) return false;
-    if (m_knot[dir].empty()) return false;
+    if (m_nurbsknot[dir].empty()) return false;
 
-    // Use knot module function
-    return knot::is_clamped(m_order[dir], m_cv_count[dir], m_knot[dir], end);
+    // Use nurbsknot module function
+    return nurbsknot::is_clamped(m_order[dir], m_cv_count[dir], m_nurbsknot[dir], end);
 }
 
 bool NurbsSurface::is_duplicate(const NurbsSurface& other,
@@ -628,8 +628,8 @@ bool NurbsSurface::is_duplicate(const NurbsSurface& other,
 
     if (!ignore_parameterization) {
         for (int dir = 0; dir < 2; dir++) {
-            for (int i = 0; i < knot_count(dir); i++) {
-                if (std::abs(knot(dir, i) - other.knot(dir, i)) > tolerance) return false;
+            for (int i = 0; i < nurbsknot_count(dir); i++) {
+                if (std::abs(nurbsknot(dir, i) - other.nurbsknot(dir, i)) > tolerance) return false;
             }
         }
     }
@@ -661,9 +661,9 @@ int NurbsSurface::cv_size() const {
     return m_is_rat ? (m_dim + 1) : m_dim;
 }
 
-int NurbsSurface::knot_count(int dir) const {
+int NurbsSurface::nurbsknot_count(int dir) const {
     if (dir < 0 || dir >= 2) return 0;
-    // OpenNURBS formula: knot_count = order + cv_count - 2
+    // OpenNURBS formula: nurbsknot_count = order + cv_count - 2
     return m_order[dir] + m_cv_count[dir] - 2;
 }
 
@@ -774,38 +774,38 @@ bool NurbsSurface::set_weight(int i, int j, double w) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// Knot Access
+// NurbsKnot Access
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-double NurbsSurface::knot(int dir, int knot_index) const {
-    if (dir < 0 || dir >= 2 || knot_index < 0 ||
-        knot_index >= static_cast<int>(m_knot[dir].size())) {
+double NurbsSurface::nurbsknot(int dir, int nurbsknot_index) const {
+    if (dir < 0 || dir >= 2 || nurbsknot_index < 0 ||
+        nurbsknot_index >= static_cast<int>(m_nurbsknot[dir].size())) {
         return 0.0;
     }
-    return m_knot[dir][knot_index];
+    return m_nurbsknot[dir][nurbsknot_index];
 }
 
-bool NurbsSurface::set_knot(int dir, int knot_index, double knot_value) {
-    if (dir < 0 || dir >= 2 || knot_index < 0 ||
-        knot_index >= static_cast<int>(m_knot[dir].size())) {
+bool NurbsSurface::set_nurbsknot(int dir, int nurbsknot_index, double nurbsknot_value) {
+    if (dir < 0 || dir >= 2 || nurbsknot_index < 0 ||
+        nurbsknot_index >= static_cast<int>(m_nurbsknot[dir].size())) {
         return false;
     }
-    m_knot[dir][knot_index] = knot_value;
+    m_nurbsknot[dir][nurbsknot_index] = nurbsknot_value;
     return true;
 }
 
-int NurbsSurface::knot_multiplicity(int dir, int knot_index) const {
-    if (dir < 0 || dir >= 2 || knot_index < 0 ||
-        knot_index >= static_cast<int>(m_knot[dir].size())) {
+int NurbsSurface::nurbsknot_multiplicity(int dir, int nurbsknot_index) const {
+    if (dir < 0 || dir >= 2 || nurbsknot_index < 0 ||
+        nurbsknot_index >= static_cast<int>(m_nurbsknot[dir].size())) {
         return 0;
     }
 
     int mult = 1;
-    double kv = m_knot[dir][knot_index];
+    double kv = m_nurbsknot[dir][nurbsknot_index];
 
     // Count backward
-    for (int i = knot_index - 1; i >= 0; i--) {
-        if (std::abs(m_knot[dir][i] - kv) < 1e-10) {
+    for (int i = nurbsknot_index - 1; i >= 0; i--) {
+        if (std::abs(m_nurbsknot[dir][i] - kv) < 1e-10) {
             mult++;
         } else {
             break;
@@ -813,8 +813,8 @@ int NurbsSurface::knot_multiplicity(int dir, int knot_index) const {
     }
 
     // Count forward
-    for (int i = knot_index + 1; i < static_cast<int>(m_knot[dir].size()); i++) {
-        if (std::abs(m_knot[dir][i] - kv) < 1e-10) {
+    for (int i = nurbsknot_index + 1; i < static_cast<int>(m_nurbsknot[dir].size()); i++) {
+        if (std::abs(m_nurbsknot[dir][i] - kv) < 1e-10) {
             mult++;
         } else {
             break;
@@ -823,26 +823,26 @@ int NurbsSurface::knot_multiplicity(int dir, int knot_index) const {
     return mult;
 }
 
-std::vector<double> NurbsSurface::get_knots(int dir) const {
+std::vector<double> NurbsSurface::get_nurbsknots(int dir) const {
     if (dir >= 0 && dir < 2) {
-        return m_knot[dir];
+        return m_nurbsknot[dir];
     }
     return std::vector<double>();
 }
 
-bool NurbsSurface::insert_knot(int dir, double knot_value, int knot_mult) {
-    if ((dir != 0 && dir != 1) || !is_valid() || knot_mult <= 0) {
+bool NurbsSurface::insert_nurbsknot(int dir, double nurbsknot_value, int nurbsknot_mult) {
+    if ((dir != 0 && dir != 1) || !is_valid() || nurbsknot_mult <= 0) {
         return false;
     }
 
-    if (knot_mult >= m_order[dir]) {
+    if (nurbsknot_mult >= m_order[dir]) {
         return false; // Multiplicity must be less than order
     }
 
-    // Check that knot_value is inside domain
+    // Check that nurbsknot_value is inside domain
     auto [t0, t1] = domain(dir);
-    if (knot_value < t0 || knot_value > t1) {
-        return false; // Knot value must be inside domain
+    if (nurbsknot_value < t0 || nurbsknot_value > t1) {
+        return false; // NurbsKnot value must be inside domain
     }
 
     // Convert surface to high-dimensional curve
@@ -851,8 +851,8 @@ bool NurbsSurface::insert_knot(int dir, double knot_value, int knot_mult) {
         return false;
     }
 
-    // Insert knots into the curve using Boehm's algorithm
-    bool success = crv->insert_knot(knot_value, knot_mult);
+    // Insert nurbsknots into the curve using Boehm's algorithm
+    bool success = crv->insert_nurbsknot(nurbsknot_value, nurbsknot_mult);
 
     if (success) {
         // Convert curve back to surface
@@ -871,8 +871,8 @@ std::pair<double, double> NurbsSurface::domain(int dir) const {
     if (!is_valid() || dir < 0 || dir >= 2) {
         return {0.0, 0.0};
     }
-    return {m_knot[dir][m_order[dir] - 2],
-            m_knot[dir][m_cv_count[dir] - 1]};
+    return {m_nurbsknot[dir][m_order[dir] - 2],
+            m_nurbsknot[dir][m_cv_count[dir] - 1]};
 }
 
 bool NurbsSurface::set_domain(int dir, double t0, double t1) {
@@ -882,8 +882,8 @@ bool NurbsSurface::set_domain(int dir, double t0, double t1) {
     if (std::abs(d1 - d0) < 1e-14) return false;
 
     double scale = (t1 - t0) / (d1 - d0);
-    for (size_t i = 0; i < m_knot[dir].size(); i++) {
-        m_knot[dir][i] = t0 + (m_knot[dir][i] - d0) * scale;
+    for (size_t i = 0; i < m_nurbsknot[dir].size(); i++) {
+        m_nurbsknot[dir][i] = t0 + (m_nurbsknot[dir][i] - d0) * scale;
     }
     return true;
 }
@@ -892,10 +892,10 @@ std::vector<double> NurbsSurface::get_span_vector(int dir) const {
     std::vector<double> spans;
     if (!is_valid() || dir < 0 || dir >= 2) return spans;
 
-    spans.push_back(m_knot[dir][m_order[dir] - 2]);
-    for (size_t i = m_order[dir] - 1; i < m_knot[dir].size() - m_order[dir] + 2; i++) {
-        if (m_knot[dir][i] > spans.back()) {
-            spans.push_back(m_knot[dir][i]);
+    spans.push_back(m_nurbsknot[dir][m_order[dir] - 2]);
+    for (size_t i = m_order[dir] - 1; i < m_nurbsknot[dir].size() - m_order[dir] + 2; i++) {
+        if (m_nurbsknot[dir][i] > spans.back()) {
+            spans.push_back(m_nurbsknot[dir][i]);
         }
     }
     return spans;
@@ -1181,8 +1181,8 @@ Point NurbsSurface::point_at_corner(int u_end, int v_end) const {
 bool NurbsSurface::reverse(int dir) {
     if (dir < 0 || dir >= 2) return false;
 
-    // Reverse knot vector using knot module function
-    knot::reverse(m_order[dir], m_cv_count[dir], m_knot[dir]);
+    // Reverse nurbsknot vector using nurbsknot module function
+    nurbsknot::reverse(m_order[dir], m_cv_count[dir], m_nurbsknot[dir]);
 
     // Reverse CVs in direction
     if (dir == 0) {
@@ -1213,8 +1213,8 @@ bool NurbsSurface::transpose() {
     std::swap(m_cv_count[0], m_cv_count[1]);
     std::swap(m_cv_stride[0], m_cv_stride[1]);
 
-    // Swap knot vectors
-    std::swap(m_knot[0], m_knot[1]);
+    // Swap nurbsknot vectors
+    std::swap(m_nurbsknot[0], m_nurbsknot[1]);
 
     return true;
 }
@@ -1377,9 +1377,9 @@ NurbsCurve NurbsSurface::iso_curve(int dir, double c) const {
 
     NurbsCurve nurbs_crv(m_dim, m_is_rat != 0, m_order[dir], m_cv_count[dir]);
 
-    // Copy knot vector for the varying direction
-    for (int i = 0; i < nurbs_crv.knot_count(); i++) {
-        nurbs_crv.set_knot(i, knot(dir, i));
+    // Copy nurbsknot vector for the varying direction
+    for (int i = 0; i < nurbs_crv.nurbsknot_count(); i++) {
+        nurbs_crv.set_nurbsknot(i, nurbsknot(dir, i));
     }
 
     // Find span index in the constant direction
@@ -1394,8 +1394,8 @@ NurbsCurve NurbsSurface::iso_curve(int dir, double c) const {
     for (int cv_idx = 0; cv_idx < nurbs_crv.m_cv_count; cv_idx++) {
         NurbsCurve N(m_dim, m_is_rat != 0, m_order[1 - dir], m_cv_count[1 - dir]);
 
-        for (int i = 0; i < N.knot_count(); i++) {
-            N.set_knot(i, knot(1 - dir, i));
+        for (int i = 0; i < N.nurbsknot_count(); i++) {
+            N.set_nurbsknot(i, nurbsknot(1 - dir, i));
         }
 
         for (int i = 0; i < m_cv_count[1 - dir]; i++) {
@@ -1523,8 +1523,8 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
 
     j["guid"] = guid();
     j["is_rational"] = m_is_rat != 0;
-    j["knots_u"] = m_knot[0];
-    j["knots_v"] = m_knot[1];
+    j["nurbsknots_u"] = m_nurbsknot[0];
+    j["nurbsknots_v"] = m_nurbsknot[1];
 
     nlohmann::ordered_json linecolors_arr = nlohmann::ordered_json::array();
     for (const auto& c : linecolors) {
@@ -1567,11 +1567,11 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
 
         surface.create_raw(dim, is_rat, order_u, order_v, cv_count_u, cv_count_v);
 
-        if (data.contains("knots_u")) {
-            surface.m_knot[0] = data["knots_u"].get<std::vector<double>>();
+        if (data.contains("nurbsknots_u")) {
+            surface.m_nurbsknot[0] = data["nurbsknots_u"].get<std::vector<double>>();
         }
-        if (data.contains("knots_v")) {
-            surface.m_knot[1] = data["knots_v"].get<std::vector<double>>();
+        if (data.contains("nurbsknots_v")) {
+            surface.m_nurbsknot[1] = data["nurbsknots_v"].get<std::vector<double>>();
         }
         if (data.contains("control_points")) {
             surface.m_cv = data["control_points"].get<std::vector<double>>();
@@ -1613,23 +1613,23 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
     return surface;
 }
 
-void NurbsSurface::json_dump(const std::string& filename) const {
+void NurbsSurface::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
-NurbsSurface NurbsSurface::json_load(const std::string& filename) {
+NurbsSurface NurbsSurface::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data;
     file >> data;
     return jsonload(data);
 }
 
-std::string NurbsSurface::json_dumps() const {
+std::string NurbsSurface::file_json_dumps() const {
     return jsondump().dump();
 }
 
-NurbsSurface NurbsSurface::json_loads(const std::string& json_string) {
+NurbsSurface NurbsSurface::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
@@ -1648,12 +1648,12 @@ std::string NurbsSurface::pb_dumps() const {
     proto.set_cv_stride_u(m_cv_stride[0]);
     proto.set_cv_stride_v(m_cv_stride[1]);
 
-    // Knot vectors
-    for (size_t i = 0; i < m_knot[0].size(); i++) {
-        proto.add_knots_u(m_knot[0][i]);
+    // NurbsKnot vectors
+    for (size_t i = 0; i < m_nurbsknot[0].size(); i++) {
+        proto.add_nurbsknots_u(m_nurbsknot[0][i]);
     }
-    for (size_t i = 0; i < m_knot[1].size(); i++) {
-        proto.add_knots_v(m_knot[1][i]);
+    for (size_t i = 0; i < m_nurbsknot[1].size(); i++) {
+        proto.add_nurbsknots_v(m_nurbsknot[1][i]);
     }
 
     // Control vertices (always row-major: stride[0]=cv_size*cv_count[1], stride[1]=cv_size)
@@ -1712,15 +1712,15 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
     surface.guid() = proto.guid();
     surface.name = proto.name();
 
-    // Load knot vectors
-    for (int i = 0; i < proto.knots_u_size(); i++) {
-        if (i < (int)surface.m_knot[0].size()) {
-            surface.m_knot[0][i] = proto.knots_u(i);
+    // Load nurbsknot vectors
+    for (int i = 0; i < proto.nurbsknots_u_size(); i++) {
+        if (i < (int)surface.m_nurbsknot[0].size()) {
+            surface.m_nurbsknot[0][i] = proto.nurbsknots_u(i);
         }
     }
-    for (int i = 0; i < proto.knots_v_size(); i++) {
-        if (i < (int)surface.m_knot[1].size()) {
-            surface.m_knot[1][i] = proto.knots_v(i);
+    for (int i = 0; i < proto.nurbsknots_v_size(); i++) {
+        if (i < (int)surface.m_nurbsknot[1].size()) {
+            surface.m_nurbsknot[1][i] = proto.nurbsknots_v(i);
         }
     }
 
@@ -1820,24 +1820,24 @@ bool NurbsSurface::zero_cvs() {
     return true;
 }
 
-bool NurbsSurface::make_clamped_uniform_knot_vector(int dir, double delta) {
+bool NurbsSurface::make_clamped_uniform_nurbsknot_vector(int dir, double delta) {
     if (dir < 0 || dir >= 2 || delta <= 0.0) return false;
 
-    // Use knot module function
-    m_knot[dir] = knot::make_clamped_uniform(m_order[dir], m_cv_count[dir], delta);
-    return !m_knot[dir].empty();
+    // Use nurbsknot module function
+    m_nurbsknot[dir] = nurbsknot::make_clamped_uniform(m_order[dir], m_cv_count[dir], delta);
+    return !m_nurbsknot[dir].empty();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Private
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-bool NurbsSurface::make_periodic_uniform_knot_vector(int dir, double delta) {
+bool NurbsSurface::make_periodic_uniform_nurbsknot_vector(int dir, double delta) {
     if (dir < 0 || dir >= 2 || delta <= 0.0) return false;
 
-    // Use knot module function
-    m_knot[dir] = knot::make_periodic_uniform(m_order[dir], m_cv_count[dir], delta);
-    return !m_knot[dir].empty();
+    // Use nurbsknot module function
+    m_nurbsknot[dir] = nurbsknot::make_periodic_uniform(m_order[dir], m_cv_count[dir], delta);
+    return !m_nurbsknot[dir].empty();
 }
 
 void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
@@ -1858,8 +1858,8 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     m_cv_stride[0] = src.m_cv_stride[0];
     m_cv_stride[1] = src.m_cv_stride[1];
 
-    m_knot[0] = src.m_knot[0];
-    m_knot[1] = src.m_knot[1];
+    m_nurbsknot[0] = src.m_nurbsknot[0];
+    m_nurbsknot[1] = src.m_nurbsknot[1];
     m_cv = src.m_cv;
     m_mesh = src.m_mesh;
 }
@@ -1870,15 +1870,15 @@ int NurbsSurface::find_span(int dir, double t) const {
     // Implements ON_NurbsSpanIndex from OpenNURBS
     int order = m_order[dir];
     int cv_count = m_cv_count[dir];
-    const std::vector<double>& knot = m_knot[dir];
+    const std::vector<double>& nurbsknot = m_nurbsknot[dir];
 
-    // Shift knot pointer by (order-2) - OpenNURBS line 227
-    int knot_offset = order - 2;
+    // Shift nurbsknot pointer by (order-2) - OpenNURBS line 227
+    int nurbsknot_offset = order - 2;
     int span_len = cv_count - order + 2;
 
     // Binary search in shifted range
-    if (t <= knot[knot_offset]) return 0;
-    if (t >= knot[knot_offset + span_len - 1]) return span_len - 2;
+    if (t <= nurbsknot[nurbsknot_offset]) return 0;
+    if (t >= nurbsknot[nurbsknot_offset + span_len - 1]) return span_len - 2;
 
     // Binary search
     int low = 0;
@@ -1886,7 +1886,7 @@ int NurbsSurface::find_span(int dir, double t) const {
 
     while (high > low + 1) {
         int mid = (low + high) / 2;
-        if (t < knot[knot_offset + mid]) {
+        if (t < nurbsknot[nurbsknot_offset + mid]) {
             high = mid;
         } else {
             low = mid;
@@ -1904,12 +1904,12 @@ void NurbsSurface::basis_functions(int dir, int span, double t,
     int order = m_order[dir];
     int d = order - 1;  // degree
 
-    // OpenNURBS shifts knot by (order-2) + span, then by d inside basis
-    int knot_base = span + d;
-    const std::vector<double>& knot = m_knot[dir];
+    // OpenNURBS shifts nurbsknot by (order-2) + span, then by d inside basis
+    int nurbsknot_base = span + d;
+    const std::vector<double>& nurbsknot = m_nurbsknot[dir];
 
     // Check for degenerate span
-    if (knot[knot_base - 1] == knot[knot_base]) {
+    if (nurbsknot[nurbsknot_base - 1] == nurbsknot[nurbsknot_base]) {
         basis.resize(order);
         std::fill(basis.begin(), basis.end(), 0.0);
         return;
@@ -1923,14 +1923,14 @@ void NurbsSurface::basis_functions(int dir, int span, double t,
 
     // Cox-de Boor recursion - OpenNURBS lines 702-718
     int N_idx = order * order - 1;
-    int k_right = knot_base;
-    int k_left = knot_base - 1;
+    int k_right = nurbsknot_base;
+    int k_left = nurbsknot_base - 1;
 
     for (int j = 0; j < d; j++) {
         int N0_idx = N_idx;
         N_idx -= (order + 1);
-        left[j] = t - knot[k_left];
-        right[j] = knot[k_right] - t;
+        left[j] = t - nurbsknot[k_left];
+        right[j] = nurbsknot[k_right] - t;
         k_left--;
         k_right++;
 
@@ -1958,10 +1958,10 @@ void NurbsSurface::basis_functions_derivatives(int dir, int span, double t, int 
 
     int order = m_order[dir];
     int degree = order - 1;
-    const std::vector<double>& knot = m_knot[dir];
+    const std::vector<double>& nurbsknot = m_nurbsknot[dir];
 
-    // Knot base index (shifted by degree like in basis_functions)
-    int knot_base = span + degree;
+    // NurbsKnot base index (shifted by degree like in basis_functions)
+    int nurbsknot_base = span + degree;
 
     // Initialize derivatives matrix: ders[k][j] = k-th derivative of N_{span-degree+j,degree}
     ders.resize(deriv_order + 1);
@@ -1970,7 +1970,7 @@ void NurbsSurface::basis_functions_derivatives(int dir, int span, double t, int 
     }
 
     // Check for degenerate span
-    if (knot[knot_base - 1] == knot[knot_base]) {
+    if (nurbsknot[nurbsknot_base - 1] == nurbsknot[nurbsknot_base]) {
         return; // All derivatives are zero
     }
 
@@ -1984,12 +1984,12 @@ void NurbsSurface::basis_functions_derivatives(int dir, int span, double t, int 
 
     // Compute basis functions (0-th derivatives)
     for (int j = 1; j <= degree; j++) {
-        left[j] = t - knot[knot_base - j];
-        right[j] = knot[knot_base + j - 1] - t;
+        left[j] = t - nurbsknot[nurbsknot_base - j];
+        right[j] = nurbsknot[nurbsknot_base + j - 1] - t;
         double saved = 0.0;
 
         for (int r = 0; r < j; r++) {
-            // Lower triangle (knot differences)
+            // Lower triangle (nurbsknot differences)
             ndu[j][r] = right[r + 1] + left[j - r];
             double temp = ndu[r][j - 1] / ndu[j][r];
 
@@ -2045,7 +2045,7 @@ void NurbsSurface::basis_functions_derivatives(int dir, int span, double t, int 
         }
     }
 
-    // Multiply by factorial of derivative order / knot differences
+    // Multiply by factorial of derivative order / nurbsknot differences
     int factorial = degree;
     for (int k = 1; k <= deriv_order; k++) {
         for (int j = 0; j <= degree; j++) {

@@ -258,8 +258,8 @@ MINI_TEST("Matrix", "Json Roundtrip") {
     // uncomment #include "matrix.h"
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix";
-    a.json_dump("serialization/test_matrix.json");
-    Matrix loaded = Matrix::json_load("serialization/test_matrix.json");
+    a.file_json_dump("serialization/test_matrix.json");
+    Matrix loaded = Matrix::file_json_load("serialization/test_matrix.json");
 
     MINI_CHECK(loaded.name == "test_matrix");
     MINI_CHECK(loaded.rows == 2 && loaded.cols == 3);

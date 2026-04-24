@@ -69,7 +69,7 @@ MINI_TEST("ElementBeam", "Extend") {
     MINI_CHECK(TOLERANCE.is_close(b.length(), 4.0));
 }
 
-MINI_TEST("ElementBeam", "Aabb") {
+MINI_TEST("ElementBeam", "AABB") {
     // uncomment #include "element_beam.h"
     // uncomment #include "obb.h"
     ElementBeam b(0.1, 0.2, 3.0);
@@ -113,8 +113,8 @@ MINI_TEST("ElementBeam", "Json Roundtrip") {
     b.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_beam_element.json";
-    b.json_dump(fname);
-    ElementBeam loaded = ElementBeam::json_load(fname);
+    b.file_json_dump(fname);
+    ElementBeam loaded = ElementBeam::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "json_beam");
     MINI_CHECK(TOLERANCE.is_close(loaded.width(), 0.15));

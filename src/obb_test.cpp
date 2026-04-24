@@ -142,16 +142,16 @@ MINI_TEST("OBB", "Json Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded_j.center[0], 1.0));
 
     // String
-    std::string s = bb.json_dumps();
-    OBB loaded_s = OBB::json_loads(s);
+    std::string s = bb.file_json_dumps();
+    OBB loaded_s = OBB::file_json_loads(s);
 
     MINI_CHECK(loaded_s.name == "test_bbox");
     MINI_CHECK(TOLERANCE.is_close(loaded_s.half_size[0], 5.0));
 
     // File
     std::string fname = "serialization/test_obb.json";
-    bb.json_dump(fname);
-    OBB loaded = OBB::json_load(fname);
+    bb.file_json_dump(fname);
+    OBB loaded = OBB::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "test_bbox");
     MINI_CHECK(TOLERANCE.is_close(loaded.center[0], 1.0));

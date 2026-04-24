@@ -565,20 +565,20 @@ OBB OBB::from_json_file(const std::string& filepath) {
     return jsonload(data);
 }
 
-std::string OBB::json_dumps() const {
+std::string OBB::file_json_dumps() const {
     return jsondump().dump();
 }
 
-OBB OBB::json_loads(const std::string& json_string) {
+OBB OBB::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::json::parse(json_string));
 }
 
-void OBB::json_dump(const std::string& filename) const {
+void OBB::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
-OBB OBB::json_load(const std::string& filename) {
+OBB OBB::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data;
     file >> data;

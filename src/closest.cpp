@@ -3,9 +3,10 @@
 #include "nurbssurface.h"
 #include "mesh.h"
 #include "pointcloud.h"
-#include "kdtree.h"
-#include "bvh.h"
+#include "spatial_kdtree.h"
+#include "spatial_bvh.h"
 #include "aabb.h"
+#include "spatial_aabbtree.h"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -337,7 +338,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point(
     }
 
     mesh.build_triangle_bvh();
-    const BVH* bvh = mesh.get_cached_bvh();
+    const SpatialBVH* bvh = mesh.get_cached_bvh();
 
     std::vector<size_t> face_keys;
     face_keys.reserve(mesh.face.size());
@@ -351,7 +352,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point(
         return {best_point, best_face_key, best_dist};
     }
 
-    using PQEntry = std::pair<double, const BVHNode*>;
+    using PQEntry = std::pair<double, const SpatialBVHNode*>;
     std::priority_queue<PQEntry, std::vector<PQEntry>, std::greater<PQEntry>> pq;
     pq.push({aabb_min_distance(bvh->root->aabb, test_point), bvh->root});
 
@@ -388,7 +389,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point(
 }
 
 static void aabb_dfs_closest(
-    const AABBTree& tree, int ni, const Point& tp,
+    const SpatialAABBTree& tree, int ni, const Point& tp,
     const Mesh& mesh, const std::vector<size_t>& fkeys,
     Point& bp, size_t& bk, double& bd
 ) {
@@ -429,7 +430,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point_aabb(
     }
 
     mesh.build_triangle_aabb_tree();
-    const AABBTree* tree = mesh.get_cached_aabb_tree();
+    const SpatialAABBTree* tree = mesh.get_cached_aabb_tree();
 
     std::vector<size_t> face_keys;
     face_keys.reserve(mesh.face.size());
@@ -481,7 +482,7 @@ static double aabb_to_aabb_min_dist(const AABB& a, const AABB& b) {
 }
 
 static void collection_aabb_dfs(
-    const AABBTree& tree, int ni, const AABB& query_aabb,
+    const SpatialAABBTree& tree, int ni, const AABB& query_aabb,
     std::vector<int>& result
 ) {
     const auto& n = tree.nodes[ni];
@@ -504,7 +505,7 @@ std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(
     std::vector<Point> pts;
     pts.reserve(cloud.point_count());
     for (size_t i = 0; i < cloud.point_count(); i++) pts.push_back(cloud.get_point(i));
-    KDTree kd(std::move(pts));
+    SpatialKDTree kd(std::move(pts));
     auto [idx, dist] = kd.nearest(test_point);
     return {cloud.get_point(idx), static_cast<size_t>(idx), dist};
 }
@@ -520,7 +521,7 @@ std::vector<std::pair<size_t, size_t>> Closest::lines_closest(
     aabbs.reserve(lines.size());
     for (const auto& ln : lines) aabbs.push_back(AABB::from_line(ln, threshold));
 
-    AABBTree tree;
+    SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
 
     for (size_t i = 0; i < lines.size(); i++) {
@@ -551,7 +552,7 @@ std::vector<std::pair<size_t, size_t>> Closest::polylines_closest(
     aabbs.reserve(polylines.size());
     for (const auto& pl : polylines) aabbs.push_back(AABB::from_polyline(pl, threshold));
 
-    AABBTree tree;
+    SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
 
     for (size_t i = 0; i < polylines.size(); i++) {
@@ -583,7 +584,7 @@ std::vector<std::pair<size_t, size_t>> Closest::nurbscurves_closest(
     aabbs.reserve(curves.size());
     for (const auto& crv : curves) aabbs.push_back(AABB::from_nurbscurve(crv, threshold, false));
 
-    AABBTree tree;
+    SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
 
     for (size_t i = 0; i < curves.size(); i++) {
@@ -619,7 +620,7 @@ std::vector<std::pair<size_t, size_t>> Closest::boxes_closest(
         inflated.push_back(inf);
     }
 
-    AABBTree tree;
+    SpatialAABBTree tree;
     tree.build(inflated.data(), inflated.size());
 
     for (size_t i = 0; i < boxes.size(); i++) {

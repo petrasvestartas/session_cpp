@@ -5,7 +5,8 @@
 #include "xform.h"
 #include "xform.h"
 #include "obb.h"
-#include "bvh.h"
+#include "spatial_bvh.h"
+#include "spatial_aabbtree.h"
 #include "aabb.h"
 #include "tolerance.h"
 #include "json.h"
@@ -160,14 +161,14 @@ private:
 
     // Cached per-triangle data for BVH ray casting
     mutable bool triangle_bvh_built = false;
-    mutable std::shared_ptr<BVH> triangle_bvh;  ///< BVH over cached triangle AABBs
+    mutable std::shared_ptr<SpatialBVH> triangle_bvh;  ///< BVH over cached triangle AABBs
     mutable std::vector<OBB> triangle_boxes_cache;  ///< Per-triangle AABBs (legacy, may be empty)
     mutable std::vector<AABB> triangle_aabbs_cache;      ///< Lightweight AABBs for fast BVH build
     struct TriangleIndex { uint32_t i0, i1, i2; };
     mutable std::vector<TriangleIndex> triangle_indices_cache; ///< Triangle vertex indices
     mutable std::vector<std::pair<size_t, size_t>> triangle_face_subidx_cache; ///< (face_idx, sub_idx)
     mutable std::vector<Point> vertices_cache; ///< Cached vertices for fast lookup
-    mutable std::shared_ptr<AABBTree> triangle_aabb_tree;
+    mutable std::shared_ptr<SpatialAABBTree> triangle_aabb_tree;
 
 public:
 
@@ -474,16 +475,16 @@ public:
     static Mesh jsonload(const nlohmann::json& data);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static Mesh json_loads(const std::string& json_string);
+    static Mesh file_json_loads(const std::string& json_string);
 
     /// Write JSON to file
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read JSON from file
-    static Mesh json_load(const std::string& filename);
+    static Mesh file_json_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf
@@ -517,8 +518,8 @@ public:
     bool get_triangle_by_id(int tri_id, size_t& face_idx, size_t& sub_idx, Point& v0, Point& v1, Point& v2) const;
     void clear_triangle_bvh() const;
     void build_triangle_aabb_tree(bool force = false) const;
-    const BVH* get_cached_bvh() const { return triangle_bvh.get(); }
-    const AABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
+    const SpatialBVH* get_cached_bvh() const { return triangle_bvh.get(); }
+    const SpatialAABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////////

@@ -202,16 +202,16 @@ public:
     static Line jsonload(const nlohmann::json& data);
 
     /// Serialize to JSON file.
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Deserialize from JSON file.
-    static Line json_load(const std::string& filename);
+    static Line file_json_load(const std::string& filename);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static Line json_loads(const std::string& json_string);
+    static Line file_json_loads(const std::string& json_string);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf Serialization

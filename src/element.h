@@ -69,10 +69,10 @@ public:
 
     virtual nlohmann::ordered_json jsondump() const;
     static Element jsonload(const nlohmann::json& data);
-    std::string json_dumps() const;
-    static Element json_loads(const std::string& s);
-    void json_dump(const std::string& path) const;
-    static Element json_load(const std::string& path);
+    std::string file_json_dumps() const;
+    static Element file_json_loads(const std::string& s);
+    void file_json_dump(const std::string& path) const;
+    static Element file_json_load(const std::string& path);
 
     virtual std::string pb_dumps() const;
     static Element pb_loads(const std::string& data);
@@ -136,8 +136,8 @@ public:
     std::string pb_dumps() const override;
 
     static ElementColumn jsonload(const nlohmann::json& data);
-    static ElementColumn json_loads(const std::string& s);
-    static ElementColumn json_load(const std::string& path);
+    static ElementColumn file_json_loads(const std::string& s);
+    static ElementColumn file_json_load(const std::string& path);
     static ElementColumn pb_loads(const std::string& data);
     static ElementColumn pb_load(const std::string& path);
 
@@ -174,8 +174,8 @@ public:
     std::string pb_dumps() const override;
 
     static ElementBeam jsonload(const nlohmann::json& data);
-    static ElementBeam json_loads(const std::string& s);
-    static ElementBeam json_load(const std::string& path);
+    static ElementBeam file_json_loads(const std::string& s);
+    static ElementBeam file_json_load(const std::string& path);
     static ElementBeam pb_loads(const std::string& data);
     static ElementBeam pb_load(const std::string& path);
 
@@ -232,8 +232,8 @@ public:
     std::string pb_dumps() const override;
 
     static ElementPlate jsonload(const nlohmann::json& data);
-    static ElementPlate json_loads(const std::string& s);
-    static ElementPlate json_load(const std::string& path);
+    static ElementPlate file_json_loads(const std::string& s);
+    static ElementPlate file_json_load(const std::string& path);
     static ElementPlate pb_loads(const std::string& data);
     static ElementPlate pb_load(const std::string& path);
 

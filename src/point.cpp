@@ -86,22 +86,22 @@ Point Point::jsonload(const nlohmann::json &data) {
   return point;
 }
 
-std::string Point::json_dumps() const {
+std::string Point::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Point Point::json_loads(const std::string& json_string) {
+Point Point::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
 /// Write JSON to file
-void Point::json_dump(const std::string& filename) const {
+void Point::file_json_dump(const std::string& filename) const {
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
 
 /// Read JSON from file
-Point Point::json_load(const std::string& filename) {
+Point Point::file_json_load(const std::string& filename) {
   std::ifstream file(filename);
   nlohmann::json data = nlohmann::json::parse(file);
   return jsonload(data);
@@ -383,6 +383,28 @@ double Point::distance(const Point& a, const Point& b, double float_min) {
 
 double Point::squared_distance(const Point& a, const Point& b, double float_min) {
     return a.squared_distance(b, float_min);
+}
+
+Point Point::lerp(const Point& a, const Point& b, double t) {
+    return Point(a[0] + t * (b[0] - a[0]),
+                 a[1] + t * (b[1] - a[1]),
+                 a[2] + t * (b[2] - a[2]));
+}
+
+std::vector<Point> Point::interpolate(const Point& from, const Point& to, int steps, int kind) {
+    std::vector<Point> pts;
+    if (kind == 1 || kind == 2)
+        pts.push_back(from);
+    for (int i = 1; i <= steps; ++i) {
+        double t = static_cast<double>(i) / static_cast<double>(steps + 1);
+        pts.emplace_back(
+            from[0] + t * (to[0] - from[0]),
+            from[1] + t * (to[1] - from[1]),
+            from[2] + t * (to[2] - from[2]));
+    }
+    if (kind == 1)
+        pts.push_back(to);
+    return pts;
 }
 
 double Point::area(const std::vector<Point>& points) {

@@ -655,20 +655,20 @@ Xform Xform::jsonload(const nlohmann::json& data) {
     return xform;
 }
 
-std::string Xform::json_dumps() const {
+std::string Xform::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Xform Xform::json_loads(const std::string& json_string) {
+Xform Xform::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Xform::json_dump(const std::string& filename) const {
+void Xform::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
-Xform Xform::json_load(const std::string& filename) {
+Xform Xform::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data = nlohmann::json::parse(file);
     return jsonload(data);

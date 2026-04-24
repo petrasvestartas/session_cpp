@@ -17,8 +17,8 @@
 #include "nurbssurface.h"
 #include "brep.h"
 #include "tree.h"
-#include "bvh.h"
-#include "feature.h"
+#include "spatial_bvh.h"
+#include "elementfeature.h"
 #include "tolerance.h"
 #include <fstream>
 #include <iostream>
@@ -68,17 +68,17 @@ public:
       lookup; ///< Fast lookup table for objects by GUID
   Tree tree;  ///< Tree structure for hierarchy
   Graph graph; ///< Graph structure for relationships
-  std::unordered_map<std::string, EdgeFeature>
-      edge_features; ///< Typed edge features keyed by feature GUID
+  std::unordered_map<std::string, EdgeElementFeature>
+      edge_elementfeatures; ///< Typed edge element features keyed by element feature GUID
   std::unordered_map<std::string, Component>
       component_lookup; ///< Fast lookup for custom components by GUID
-  BVH bvh;    ///< Bounding volume hierarchy for collision detection
+  SpatialBVH bvh;    ///< Bounding volume hierarchy for collision detection
   
-  // BVH caching for ray casting performance
-  BVH cached_ray_bvh;                           ///< Cached BVH for ray casting
-  std::vector<std::string> cached_guids;        ///< GUID mapping for cached BVH
+  // SpatialBVH caching for ray casting performance
+  SpatialBVH cached_ray_bvh;                           ///< Cached SpatialBVH for ray casting
+  std::vector<std::string> cached_guids;        ///< GUID mapping for cached SpatialBVH
   std::vector<OBB> cached_boxes;        ///< Cached AABBs (avoid recomputing)
-  bool bvh_cache_dirty = true;                  ///< Flag to rebuild BVH cache
+  bool bvh_cache_dirty = true;                  ///< Flag to rebuild SpatialBVH cache
 
   /**
    * @brief Constructor.
@@ -211,16 +211,16 @@ public:
                 const std::string &attribute = "");
 
   /**
-   * @brief Store a typed edge feature and create a graph edge referencing it.
-   * The feature is stored in `edge_features` keyed by its GUID, and a graph
+   * @brief Store a typed edge element feature and create a graph edge referencing it.
+   * The element feature is stored in `edge_elementfeatures` keyed by its GUID, and a graph
    * edge between `guid_a` and `guid_b` is created with `attribute` set to the
-   * feature GUID. Returns the feature GUID.
+   * element feature GUID. Returns the element feature GUID.
    */
-  std::string add_feature(const std::string &guid_a, const std::string &guid_b,
-                          EdgeFeature feature);
+  std::string add_elementfeature(const std::string &guid_a, const std::string &guid_b,
+                                 EdgeElementFeature feature);
 
   /// Compute face-to-face contacts between all elements.
-  /// Uses BVH + OBB for adjacency, then boolean intersection for contact areas.
+  /// Uses SpatialBVH + OBB for adjacency, then boolean intersection for contact areas.
   /// Results stored as polylines + graph edges between elements.
   void compute_face_to_face(double inflate = 5.0, double coplanar_tolerance = 50.0);
 
@@ -273,7 +273,7 @@ public:
   std::vector<std::string> get_neighbours(const std::string &obj_guid);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
-  // BVH Collision Detection
+  // SpatialBVH Collision Detection
   ///////////////////////////////////////////////////////////////////////////////////////////
 
   /**
@@ -284,11 +284,11 @@ public:
   static OBB compute_bounding_box(const Geometry& geometry);
 
   /**
-   * @brief Get all collision pairs using BVH and add them as graph edges.
+   * @brief Get all collision pairs using SpatialBVH and add them as graph edges.
    * 
    * Automatically:
    * - Computes bounding boxes for all objects with tolerance inflation
-   * - Builds/rebuilds the BVH with auto-computed world size
+   * - Builds/rebuilds the SpatialBVH with auto-computed world size
    * - Detects all collision pairs
    * - Adds collision edges to the graph
    * 
@@ -312,8 +312,8 @@ public:
   /**
    * @brief Cast a ray through the scene and find the closest intersecting geometry.
    * 
-   * Uses BVH for acceleration:
-   * - Phase 1: BVH ray traversal to get candidate objects (fast, conservative)
+   * Uses SpatialBVH for acceleration:
+   * - Phase 1: SpatialBVH ray traversal to get candidate objects (fast, conservative)
    * - Phase 2: Precise geometry intersection tests (slower, exact)
    * - Optimization: Tracks closest hit distance and only keeps nearest hits
    * 
@@ -355,10 +355,10 @@ public:
    * @return Session instance created from the data.
    */
   static Session jsonload(const nlohmann::json &data);
-  std::string json_dumps() const;
-  static Session json_loads(const std::string& json_string);
-  void json_dump(const std::string& filename) const;
-  static Session json_load(const std::string& filename);
+  std::string file_json_dumps() const;
+  static Session file_json_loads(const std::string& json_string);
+  void file_json_dump(const std::string& filename) const;
+  static Session file_json_load(const std::string& filename);
   std::string pb_dumps() const;
   static Session pb_loads(const std::string& data);
   void pb_dump(const std::string& filename) const;
@@ -377,13 +377,13 @@ private:
   std::optional<Point> ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance);
   
   /**
-   * @brief Rebuild the cached BVH for ray casting.
-   * Called automatically when BVH cache is dirty.
+   * @brief Rebuild the cached SpatialBVH for ray casting.
+   * Called automatically when SpatialBVH cache is dirty.
    */
   void rebuild_ray_bvh_cache();
   
   /**
-   * @brief Invalidate the BVH cache (call when geometry is added/removed).
+   * @brief Invalidate the SpatialBVH cache (call when geometry is added/removed).
    */
   void invalidate_bvh_cache() { bvh_cache_dirty = true; }
   

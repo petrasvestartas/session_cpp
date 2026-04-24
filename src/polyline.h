@@ -187,6 +187,9 @@ public:
      */
     void translate(const Vector& v);
 
+    /// Non-mutating translate: returns a new Polyline offset by v.
+    Polyline translated(const Vector& v) const;
+
     /**
      * @brief Slide both endpoints of edge `edge_idx` outward (or inward
      *        for negative `distance`) along the edge tangent.
@@ -213,16 +216,16 @@ public:
     static Polyline jsonload(const nlohmann::json& data);
 
     /// Serialize to JSON file
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Deserialize from JSON file
-    static Polyline json_load(const std::string& filename);
+    static Polyline file_json_load(const std::string& filename);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static Polyline json_loads(const std::string& json_string);
+    static Polyline file_json_loads(const std::string& json_string);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf Serialization
@@ -374,6 +377,9 @@ public:
     /// Simplify this polyline using Ramer-Douglas-Peucker
     Polyline simplify(double tolerance) const;
 
+    /// Remove consecutive near-duplicate points in place
+    void remove_consecutive_duplicates(double tol = Tolerance::APPROXIMATION);
+
 private:
     mutable std::string _guid; ///< Lazily generated unique identifier
 
@@ -392,6 +398,22 @@ private:
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream& operator<<(std::ostream& os, const Polyline& polyline);
+
+// Build two oriented rectangular cross-section polylines (male rect0, female rect1)
+// from a local frame: center point p, tangent direction segment_vector, and zaxis.
+// radius controls the half-width in the x/y plane; length is the extent along segment_vector.
+// middle=true: symmetric about p; false: flip the corner order by flip_male (+1/-1/0).
+// Used for joint volume cross-sections in the wood pipeline and beam pipeline.
+void polyline_two_rects_from_frame(
+    const Point&  p,
+    const Vector& segment_vector,
+    const Vector& zaxis,
+    bool          middle,
+    double        radius,
+    double        length,
+    int           flip_male,
+    Polyline&     rect0,
+    Polyline&     rect1);
 
 } // namespace session_cpp
 

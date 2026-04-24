@@ -211,6 +211,10 @@ int run_all(const std::string &language) {
   int total_tests = 0;
   std::vector<std::tuple<std::string, std::string, std::string, int, nlohmann::ordered_json>> failed_tests;
 
+  // Accumulate results by source-file stem so groups sharing a file
+  // (e.g. "Tree" + "TreeNode" in tree_test.cpp) land in the same output file.
+  std::map<std::string, nlohmann::ordered_json> results_by_file;
+
   for (const auto &[group, group_tests] : tests_by_group) {
     nlohmann::ordered_json results = nlohmann::json::array();
     fs::path test_file_path;
@@ -277,12 +281,19 @@ int run_all(const std::string &language) {
     }
 
     if (!test_file_path.empty()) {
-      fs::path out_path = subdir / (test_file_path.stem().string() + ".json");
-      fs::create_directories(out_path.parent_path());
-      std::ofstream ofs(out_path);
-      if (ofs.is_open()) {
-        ofs << results.dump(2);
-      }
+      std::string stem = test_file_path.stem().string();
+      auto &bucket = results_by_file[stem];
+      if (bucket.is_null()) bucket = nlohmann::json::array();
+      for (auto &r : results) bucket.push_back(std::move(r));
+    }
+  }
+
+  for (const auto &[stem, results] : results_by_file) {
+    fs::path out_path = subdir / (stem + ".json");
+    fs::create_directories(out_path.parent_path());
+    std::ofstream ofs(out_path);
+    if (ofs.is_open()) {
+      ofs << results.dump(2);
     }
   }
 

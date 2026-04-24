@@ -215,20 +215,20 @@ Objects Objects::jsonload(const nlohmann::json &data) {
   return objects;
 }
 
-std::string Objects::json_dumps() const {
+std::string Objects::file_json_dumps() const {
   return jsondump().dump();
 }
 
-Objects Objects::json_loads(const std::string& json_string) {
+Objects Objects::file_json_loads(const std::string& json_string) {
   return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Objects::json_dump(const std::string& filename) const {
+void Objects::file_json_dump(const std::string& filename) const {
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
 
-Objects Objects::json_load(const std::string& filename) {
+Objects Objects::file_json_load(const std::string& filename) {
   std::ifstream file(filename);
   nlohmann::json data = nlohmann::json::parse(file);
   return jsonload(data);

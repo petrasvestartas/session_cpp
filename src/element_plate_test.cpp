@@ -88,7 +88,7 @@ MINI_TEST("ElementPlate", "Mesh Topology") {
     MINI_CHECK(geo.face.size() == 6);
 }
 
-MINI_TEST("ElementPlate", "Aabb") {
+MINI_TEST("ElementPlate", "AABB") {
     // uncomment #include "element_plate.h"
     // uncomment #include "obb.h"
     // uncomment #include "point.h"
@@ -153,8 +153,8 @@ MINI_TEST("ElementPlate", "Json Roundtrip") {
     p.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_plate_element.json";
-    p.json_dump(fname);
-    ElementPlate loaded = ElementPlate::json_load(fname);
+    p.file_json_dump(fname);
+    ElementPlate loaded = ElementPlate::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "json_plate");
     MINI_CHECK(TOLERANCE.is_close(loaded.thickness(), 0.3));
@@ -296,8 +296,8 @@ MINI_TEST("ElementPlate", "Json Roundtrip Joinery") {
     p.set_component_plane(Plane(Point(1, 2, 3), Vector(1, 0, 0), Vector(0, 1, 0)));
 
     std::string fname = "serialization/test_plate_element_joinery.json";
-    p.json_dump(fname);
-    ElementPlate loaded = ElementPlate::json_load(fname);
+    p.file_json_dump(fname);
+    ElementPlate loaded = ElementPlate::file_json_load(fname);
 
     MINI_CHECK(loaded.joint_types().size() == 4);
     MINI_CHECK(loaded.j_mf().size() == 3);

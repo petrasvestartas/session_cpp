@@ -235,7 +235,7 @@ BRep BRep::create_cylinder(double radius, double height) {
     double cwt[] = {1,cw,1,cw,1,cw,1,cw,1}, ckn[] = {0,0,1,1,2,2,3,3,4,4};
     auto make_cap_circle = [&]() {
         NurbsCurve c(3, true, 3, 9);
-        for (int i = 0; i < 10; i++) c.set_knot(i, ckn[i]);
+        for (int i = 0; i < 10; i++) c.set_nurbsknot(i, ckn[i]);
         for (int i = 0; i < 9; i++)
             c.set_cv_4d(i, (0.5+0.5*ccx[i])*cwt[i], (0.5+0.5*ccy[i])*cwt[i], 0.0, cwt[i]);
         return c;
@@ -473,7 +473,7 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
         double ccx[] = {1,1,0,-1,-1,-1,0,1,1}, ccy[] = {0,1,1,1,0,-1,-1,-1,0};
         double cwt[] = {1,cw,1,cw,1,cw,1,cw,1}, ckn[] = {0,0,1,1,2,2,3,3,4,4};
         NurbsCurve hole_crv(3, true, 3, 9);
-        for (int i = 0; i < 10; ++i) hole_crv.set_knot(i, ckn[i]);
+        for (int i = 0; i < 10; ++i) hole_crv.set_nurbsknot(i, ckn[i]);
         double cr = hole_radius / (2.0 * r); // radius in UV
         double cx_uv = 0.5, cy_uv = 0.5;     // center in UV
         for (int i = 0; i < 9; ++i)
@@ -615,7 +615,7 @@ BRep BRep::from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::ve
                                     const Vector& xa, const Vector& ya,
                                     double umin, double vmin, double du, double dv) -> NurbsCurve {
         NurbsCurve crv2d(3, crv.is_rational(), crv.order(), crv.cv_count());
-        for (int i = 0; i < crv.knot_count(); ++i) crv2d.set_knot(i, crv.knot(i));
+        for (int i = 0; i < crv.nurbsknot_count(); ++i) crv2d.set_nurbsknot(i, crv.nurbsknot(i));
         for (int i = 0; i < crv.cv_count(); ++i) {
             if (crv.is_rational()) {
                 auto [wx, wy, wz, w] = crv.get_cv_4d(i);
@@ -964,7 +964,7 @@ Mesh BRep::mesh() const {
         double eu2 = eux*eux+euy*euy+euz*euz, ev2 = evx*evx+evy*evy+evz*evz;
         bool can_project = (srf.degree(0) == 1 && srf.degree(1) == 1 && eu2 > 1e-28 && ev2 > 1e-28);
 
-        TrimmedSurface ts;
+        NurbsSurfaceTrimmed ts;
         ts.m_surface = srf;
         for (int li : face.loop_indices) {
             if (li < 0 || li >= (int)m_loops.size()) continue;
@@ -1230,17 +1230,17 @@ BRep BRep::jsonload(const nlohmann::json& data) {
     return b;
 }
 
-std::string BRep::json_dumps() const { return jsondump().dump(); }
-BRep BRep::json_loads(const std::string& json_string) {
+std::string BRep::file_json_dumps() const { return jsondump().dump(); }
+BRep BRep::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void BRep::json_dump(const std::string& filename) const {
+void BRep::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
-BRep BRep::json_load(const std::string& filename) {
+BRep BRep::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data;
     file >> data;

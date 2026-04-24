@@ -37,7 +37,7 @@ public:
     int m_cv_count[2];
     int m_cv_stride[2];
 
-    std::vector<double> m_knot[2];
+    std::vector<double> m_nurbsknot[2];
     std::vector<double> m_cv;
     mutable Mesh m_mesh;
 
@@ -47,9 +47,9 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Build surface from a flat list of 3D control points in row-major order
-    /// (u varies slowest, v varies fastest). Allocates knot vectors as clamped
+    /// (u varies slowest, v varies fastest). Allocates nurbsknot vectors as clamped
     /// uniform if not periodic. points.size() must equal cv_count_u * cv_count_v.
-    /// Periodic flags wrap the knot structure in the respective direction.
+    /// Periodic flags wrap the nurbsknot structure in the respective direction.
     static NurbsSurface create(bool periodic_u, bool periodic_v,
                               int degree_u, int degree_v,
                               int cv_count_u, int cv_count_v,
@@ -60,18 +60,18 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Default constructor. Creates an empty invalid surface with m_dim=0,
-    /// zero orders, zero CV counts, and no knot/CV storage allocated.
+    /// zero orders, zero CV counts, and no nurbsknot/CV storage allocated.
     /// is_valid() returns false. Use create() or create_raw() to populate.
     NurbsSurface();
 
-    /// Parametric constructor. Allocates CV array and knot vectors sized for
-    /// the given orders and CV counts. Fills knots as clamped uniform [0..n].
+    /// Parametric constructor. Allocates CV array and nurbsknot vectors sized for
+    /// the given orders and CV counts. Fills nurbsknots as clamped uniform [0..n].
     /// CVs are zeroed. Stride is set to dim (or dim+1 if rational).
     NurbsSurface(int dimension, bool is_rational,
                 int order0, int order1,
                 int cv_count0, int cv_count1);
 
-    /// Deep copy. Copies all CV data, knots, metadata (guid, name,
+    /// Deep copy. Copies all CV data, nurbsknots, metadata (guid, name,
     /// color, xform). The copy gets a new guid.
     NurbsSurface(const NurbsSurface& other);
 
@@ -79,7 +79,7 @@ public:
     /// copies all data, generates new guid for the target.
     NurbsSurface& operator=(const NurbsSurface& other);
 
-    /// Compares dimension, rationality, orders, CV counts, all knot values,
+    /// Compares dimension, rationality, orders, CV counts, all nurbsknot values,
     /// and all CV coordinates within machine epsilon. Does NOT compare guid,
     /// name, color, or xform.
     bool operator==(const NurbsSurface& other) const;
@@ -92,10 +92,10 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Zero all member fields: m_dim=0, orders=0, CV counts=0.
-    /// Clears knot and CV vectors. Does not free — vectors handle own memory.
+    /// Clears nurbsknot and CV vectors. Does not free — vectors handle own memory.
     void initialize();
 
-    /// Low-level allocation. Sets up knot vectors (periodic or clamped uniform)
+    /// Low-level allocation. Sets up nurbsknot vectors (periodic or clamped uniform)
     /// and CV array for the given dimensions. Returns false if params invalid
     /// (order < 2, cv_count < order). Prefer the parametric constructor or
     /// create() for normal use.
@@ -103,16 +103,16 @@ public:
                int order0, int order1,
                int cv_count0, int cv_count1,
                bool is_periodic_u = false, bool is_periodic_v = false,
-               double knot_delta_u = 1.0, double knot_delta_v = 1.0);
+               double nurbsknot_delta_u = 1.0, double nurbsknot_delta_v = 1.0);
 
     /// Convenience wrapper around create_raw that always produces clamped
-    /// uniform knots with the given delta spacing. Equivalent to
+    /// uniform nurbsknots with the given delta spacing. Equivalent to
     /// create_raw(..., false, false, delta0, delta1).
     bool create_clamped_uniform(int dimension,
                                int order0, int order1,
                                int cv_count0, int cv_count1,
-                               double knot_delta0 = 1.0,
-                               double knot_delta1 = 1.0);
+                               double nurbsknot_delta0 = 1.0,
+                               double nurbsknot_delta1 = 1.0);
 
     /// Clear all data and reset to empty invalid state.
     /// After this call, is_valid() returns false.
@@ -123,14 +123,14 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Checks structural consistency: orders >= 2, cv_count >= order in both
-    /// dirs, knot vectors have correct length (cv_count + order - 2), knots
+    /// dirs, nurbsknot vectors have correct length (cv_count + order - 2), nurbsknots
     /// are non-decreasing, CV array has correct total size, and strides are
     /// consistent with dimension and rationality.
     bool is_valid() const;
 
-    /// Validate the knot vector: must be non-decreasing, no multiplicity
+    /// Validate the nurbsknot vector: must be non-decreasing, no multiplicity
     /// exceeding order, and correct length relative to cv_count and order.
-    bool is_valid_knot_vector(int dir) const;
+    bool is_valid_nurbsknot_vector(int dir) const;
 
     /// True if surface carries per-CV weights (NURBS). False for polynomial
     /// B-spline surfaces where all weights are implicitly 1.0.
@@ -138,11 +138,11 @@ public:
 
     /// True if the surface wraps in the given direction: the first and last
     /// rows (dir=0) or columns (dir=1) of CVs coincide within tolerance.
-    /// Does not check knot periodicity — use is_periodic() for that.
+    /// Does not check nurbsknot periodicity — use is_periodic() for that.
     bool is_closed(int dir) const;
 
-    /// True if the knot vector in dir has periodic structure: the first
-    /// and last degree-many knot intervals are equal. A periodic surface
+    /// True if the nurbsknot vector in dir has periodic structure: the first
+    /// and last degree-many nurbsknot intervals are equal. A periodic surface
     /// is always closed but a closed surface may not be periodic.
     bool is_periodic(int dir) const;
 
@@ -156,13 +156,13 @@ public:
     /// side: 0=south (v=0), 1=east (u=1), 2=north (v=1), 3=west (u=0).
     bool is_singular(int side) const;
 
-    /// True if end knots have full multiplicity (equal to order) in dir.
+    /// True if end nurbsknots have full multiplicity (equal to order) in dir.
     /// end: 0=start only, 1=end only, 2=both ends.
-    /// Clamped knots force the surface to interpolate the boundary CVs.
+    /// Clamped nurbsknots force the surface to interpolate the boundary CVs.
     bool is_clamped(int dir, int end = 2) const;
 
     /// True if surfaces have identical structure (dim, order, cv_count, CVs,
-    /// weights). When ignore_parameterization is false, knot vectors must also
+    /// weights). When ignore_parameterization is false, nurbsknot vectors must also
     /// match within tolerance.
     bool is_duplicate(const NurbsSurface& other,
                       bool ignore_parameterization,
@@ -196,14 +196,14 @@ public:
     /// Returns dim+1 if rational (homogeneous coords), dim otherwise.
     int cv_size() const;
 
-    /// Number of knots in the given direction = cv_count + order - 2.
+    /// Number of nurbsknots in the given direction = cv_count + order - 2.
     /// Follows the OpenNURBS convention (no endpoint duplication beyond
     /// what the multiplicity requires).
-    int knot_count(int dir) const;
+    int nurbsknot_count(int dir) const;
 
-    /// Number of non-degenerate knot spans (intervals where the basis is
+    /// Number of non-degenerate nurbsknot spans (intervals where the basis is
     /// non-zero) in the given direction. Equals the number of distinct
-    /// interior knot intervals.
+    /// interior nurbsknot intervals.
     int span_count(int dir) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -246,46 +246,46 @@ public:
     bool set_weight(int i, int j, double weight);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Knot Access
+    // NurbsKnot Access
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Get the knot value at the given index in direction dir.
-    /// Index must be in [0, knot_count(dir)-1].
-    double knot(int dir, int knot_index) const;
+    /// Get the nurbsknot value at the given index in direction dir.
+    /// Index must be in [0, nurbsknot_count(dir)-1].
+    double nurbsknot(int dir, int nurbsknot_index) const;
 
-    /// Set the knot value at the given index. Does not enforce ordering —
-    /// caller must ensure the knot vector remains non-decreasing.
-    bool set_knot(int dir, int knot_index, double knot_value);
+    /// Set the nurbsknot value at the given index. Does not enforce ordering —
+    /// caller must ensure the nurbsknot vector remains non-decreasing.
+    bool set_nurbsknot(int dir, int nurbsknot_index, double nurbsknot_value);
 
-    /// Count how many consecutive knots equal the value at knot_index.
+    /// Count how many consecutive nurbsknots equal the value at nurbsknot_index.
     /// Multiplicity determines continuity: mult=order means C^-1 (discontinuous),
     /// mult=1 means C^(degree-1) (maximum smoothness).
-    int knot_multiplicity(int dir, int knot_index) const;
+    int nurbsknot_multiplicity(int dir, int nurbsknot_index) const;
 
-    /// Return a copy of the full knot vector for the given direction.
-    /// Length is knot_count(dir).
-    std::vector<double> get_knots(int dir) const;
+    /// Return a copy of the full nurbsknot vector for the given direction.
+    /// Length is nurbsknot_count(dir).
+    std::vector<double> get_nurbsknots(int dir) const;
 
-    /// Insert a knot at the given value in direction dir using Oslo algorithm.
-    /// Adds knot_multiplicity copies. Refines the knot vector without changing
+    /// Insert a nurbsknot at the given value in direction dir using Oslo algorithm.
+    /// Adds nurbsknot_multiplicity copies. Refines the nurbsknot vector without changing
     /// surface shape — new CVs are computed to maintain geometry.
-    /// Increases cv_count(dir) by knot_multiplicity.
-    bool insert_knot(int dir, double knot_value, int knot_multiplicity = 1);
+    /// Increases cv_count(dir) by nurbsknot_multiplicity.
+    bool insert_nurbsknot(int dir, double nurbsknot_value, int nurbsknot_multiplicity = 1);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Domain
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Returns the parameter interval [t0, t1] where the surface is defined
-    /// in the given direction. Determined by the first/last "active" knots:
-    /// knot[degree] and knot[cv_count-1].
+    /// in the given direction. Determined by the first/last "active" nurbsknots:
+    /// nurbsknot[degree] and nurbsknot[cv_count-1].
     std::pair<double, double> domain(int dir) const;
 
     /// Reparametrize the surface so domain(dir) becomes [t0, t1].
-    /// Linearly remaps all knot values. Returns false if t0 >= t1.
+    /// Linearly remaps all nurbsknot values. Returns false if t0 >= t1.
     bool set_domain(int dir, double t0, double t1);
 
-    /// Returns the sorted list of distinct knot values within the active
+    /// Returns the sorted list of distinct nurbsknot values within the active
     /// domain. These are the span boundaries — parameter values where
     /// the polynomial pieces join.
     std::vector<double> get_span_vector(int dir) const;
@@ -313,7 +313,7 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Evaluate surface point at parameters (u,v) using de Boor's algorithm.
-    /// Finds knot span in each direction, computes basis functions, and sums
+    /// Finds nurbsknot span in each direction, computes basis functions, and sums
     /// the weighted CVs. For rational surfaces, divides by the sum of
     /// weights (perspective division).
     Point point_at(double u, double v) const;
@@ -349,12 +349,12 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Reverse parameterization in dir. Flips the order of CVs and mirrors
-    /// the knot vector. Surface shape is unchanged but parameter direction
+    /// the nurbsknot vector. Surface shape is unchanged but parameter direction
     /// is reversed: point_at(u) becomes point_at(1-u).
     bool reverse(int dir);
 
     /// Swap u and v directions. Transposes the CV grid and exchanges the
-    /// two knot vectors. After transpose, what was an iso-u curve becomes
+    /// two nurbsknot vectors. After transpose, what was an iso-u curve becomes
     /// an iso-v curve and vice versa.
     bool transpose();
 
@@ -362,8 +362,8 @@ public:
     /// in every control vertex. Used for coordinate system conversions.
     bool swap_coordinates(int axis_i, int axis_j);
 
-    /// Restrict the surface to sub-domain [t0,t1] in dir. Inserts knots at
-    /// trim boundaries (if needed) and discards CVs and knots outside the
+    /// Restrict the surface to sub-domain [t0,t1] in dir. Inserts nurbsknots at
+    /// trim boundaries (if needed) and discards CVs and nurbsknots outside the
     /// interval. The resulting surface is geometrically identical within
     /// the sub-domain.
     bool trim(int dir, const std::pair<double, double>& domain);
@@ -382,7 +382,7 @@ public:
     bool make_non_rational();
 
     /// Elevate polynomial degree in dir to desired_degree by inserting new
-    /// knots and recomputing CVs. Surface shape is preserved exactly.
+    /// nurbsknots and recomputing CVs. Surface shape is preserved exactly.
     /// No-op if current degree >= desired_degree.
     bool increase_degree(int dir, int desired_degree);
 
@@ -425,7 +425,7 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// Serialize to JSON with alphabetically ordered keys. Includes all NURBS
-    /// data (dimension, orders, knots, CVs, rationality) plus metadata
+    /// data (dimension, orders, nurbsknots, CVs, rationality) plus metadata
     /// (guid, name, color arrays, xform, width).
     nlohmann::ordered_json jsondump() const;
 
@@ -434,16 +434,16 @@ public:
     static NurbsSurface jsonload(const nlohmann::json& data);
 
     /// Write JSON to file (calls jsondump internally).
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read JSON from file (calls jsonload internally).
-    static NurbsSurface json_load(const std::string& filename);
+    static NurbsSurface file_json_load(const std::string& filename);
 
     /// Serialize to JSON string.
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Deserialize from JSON string.
-    static NurbsSurface json_loads(const std::string& json_string);
+    static NurbsSurface file_json_loads(const std::string& json_string);
 
     /// Serialize to protobuf binary format using the NurbsSurface message
     /// from session.proto. Includes all NURBS data and metadata.
@@ -467,7 +467,7 @@ public:
     std::string str() const;
 
     /// Detailed multi-line representation including rational flag,
-    /// knot counts, domain ranges, and trim loop info.
+    /// nurbsknot counts, domain ranges, and trim loop info.
     std::string repr() const;
 
     /// Stream output operator (calls str())
@@ -484,21 +484,21 @@ private:
     Mesh mesh_grid() const;
 
     bool zero_cvs();
-    bool make_clamped_uniform_knot_vector(int dir, double delta = 1.0);
+    bool make_clamped_uniform_nurbsknot_vector(int dir, double delta = 1.0);
 
-    /// Replace the knot vector in dir with periodic uniform sequence:
+    /// Replace the nurbsknot vector in dir with periodic uniform sequence:
     /// evenly spaced without end-clamping. The surface wraps smoothly
     /// if CVs are also set up periodically.
-    bool make_periodic_uniform_knot_vector(int dir, double delta = 1.0);
+    bool make_periodic_uniform_nurbsknot_vector(int dir, double delta = 1.0);
 
     /// Deep copy all data from src: dimension, orders, CV counts, strides,
-    /// knot vectors, CV array, trim loops, and visual metadata.
+    /// nurbsknot vectors, CV array, trim loops, and visual metadata.
     /// Called by copy constructor and assignment operator.
     void deep_copy_from(const NurbsSurface& src);
 
-    /// Binary search for the knot span index containing parameter t in dir.
-    /// Returns i such that knot[i] <= t < knot[i+1], clamped to the valid
-    /// range [degree, cv_count-1]. Handles repeated knots correctly.
+    /// Binary search for the nurbsknot span index containing parameter t in dir.
+    /// Returns i such that nurbsknot[i] <= t < nurbsknot[i+1], clamped to the valid
+    /// range [degree, cv_count-1]. Handles repeated nurbsknots correctly.
     int find_span(int dir, double t) const;
 
     /// Compute the non-zero B-spline basis functions N_{span-deg,p}(t)

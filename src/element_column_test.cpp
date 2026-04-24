@@ -69,7 +69,7 @@ MINI_TEST("ElementColumn", "Extend") {
     MINI_CHECK(TOLERANCE.is_close(c.height(), 4.0));
 }
 
-MINI_TEST("ElementColumn", "Aabb") {
+MINI_TEST("ElementColumn", "AABB") {
     // uncomment #include "element_column.h"
     // uncomment #include "obb.h"
     ElementColumn c(0.4, 0.4, 3.0);
@@ -113,8 +113,8 @@ MINI_TEST("ElementColumn", "Json Roundtrip") {
     c.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_column_element.json";
-    c.json_dump(fname);
-    ElementColumn loaded = ElementColumn::json_load(fname);
+    c.file_json_dump(fname);
+    ElementColumn loaded = ElementColumn::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "json_col");
     MINI_CHECK(TOLERANCE.is_close(loaded.width(), 0.5));

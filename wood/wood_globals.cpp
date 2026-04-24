@@ -20,7 +20,7 @@ bool   FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ROTATED_JOINT_AS_AVERAGE = false;
 double DISTANCE_SQUARED                                  = 0.01;
 std::string DATA_SET_OUTPUT_FILE;
 std::string DATA_SET_INPUT_NAME;
-bool   REMOVE_DUPLICATE_PTS                              = false;
+double DUPLICATE_PTS_TOL                                 = 0.0;
 
 // Defaults copied verbatim from wood_globals.cpp:25-67.
 //
@@ -52,7 +52,7 @@ void reset_defaults() {
     DISTANCE_SQUARED                                  = 0.01;
     DATA_SET_OUTPUT_FILE.clear();
     DATA_SET_INPUT_NAME.clear();
-    REMOVE_DUPLICATE_PTS                              = false;
+    DUPLICATE_PTS_TOL                                 = 0.0;
 }
 
 } // namespace globals

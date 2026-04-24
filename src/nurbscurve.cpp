@@ -1,6 +1,6 @@
 #include "nurbscurve.h"
 #include "intersection.h"
-#include "knot.h"
+#include "nurbsknot.h"
 #include <cstring>
 #include <sstream>
 #include <limits>
@@ -15,20 +15,28 @@ namespace session_cpp {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point>& points,
-                              int dimension, double knot_delta) {
+                              int dimension, double nurbsknot_delta) {
     NurbsCurve curve;
     int order = degree + 1;
 
     if (periodic) {
-        curve.create_periodic_uniform(dimension, order, points, knot_delta);
+        curve.create_periodic_uniform(dimension, order, points, nurbsknot_delta);
     } else {
-        curve.create_clamped_uniform(dimension, order, points, knot_delta);
+        curve.create_clamped_uniform(dimension, order, points, nurbsknot_delta);
     }
 
     // Arc-length parameterization: rescale domain to [0, arc_length]
     // Matches Rhino's CreateControlPointCurve behavior
     if (curve.is_valid()) {
-        double L = curve.length();
+        double L;
+        if (degree == 1 && points.size() == 2) {
+            double dx = points[1][0] - points[0][0];
+            double dy = points[1][1] - points[0][1];
+            double dz = points[1][2] - points[0][2];
+            L = std::sqrt(dx*dx + dy*dy + dz*dz);
+        } else {
+            L = curve.length();
+        }
         if (L > 0.0) {
             curve.set_domain(0.0, L);
         }
@@ -38,16 +46,16 @@ NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point
 }
 
 NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
-                                           CurveKnotStyle parameterization) {
+                                           CurveNurbsKnotStyle parameterization) {
     int n = static_cast<int>(points.size());
     if (n < 2) return NurbsCurve();
     int dim = 3;
     int degree = 3;
     int order = degree + 1;
 
-    bool periodic = (parameterization == CurveKnotStyle::UniformPeriodic ||
-                     parameterization == CurveKnotStyle::ChordPeriodic ||
-                     parameterization == CurveKnotStyle::ChordSquareRootPeriodic);
+    bool periodic = (parameterization == CurveNurbsKnotStyle::UniformPeriodic ||
+                     parameterization == CurveNurbsKnotStyle::ChordPeriodic ||
+                     parameterization == CurveNurbsKnotStyle::ChordSquareRootPeriodic);
 
     if (periodic && n < 3) return NurbsCurve();
 
@@ -60,21 +68,21 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         int cv_count = n + 3;
         int kc = cv_count + order - 2;
 
-        CurveKnotStyle base_style = CurveKnotStyle::Chord;
-        if (parameterization == CurveKnotStyle::UniformPeriodic) base_style = CurveKnotStyle::Uniform;
-        if (parameterization == CurveKnotStyle::ChordSquareRootPeriodic) base_style = CurveKnotStyle::ChordSquareRoot;
+        CurveNurbsKnotStyle base_style = CurveNurbsKnotStyle::Chord;
+        if (parameterization == CurveNurbsKnotStyle::UniformPeriodic) base_style = CurveNurbsKnotStyle::Uniform;
+        if (parameterization == CurveNurbsKnotStyle::ChordSquareRootPeriodic) base_style = CurveNurbsKnotStyle::ChordSquareRoot;
 
         std::vector<double> params(n + 1, 0.0);
-        if (base_style == CurveKnotStyle::Uniform) {
+        if (base_style == CurveNurbsKnotStyle::Uniform) {
             for (int i = 1; i <= n; i++) params[i] = (double)i;
         } else {
             for (int i = 1; i < n; i++) {
                 double d = pdist(points[i-1], points[i]);
-                if (base_style == CurveKnotStyle::ChordSquareRoot) d = std::sqrt(d);
+                if (base_style == CurveNurbsKnotStyle::ChordSquareRoot) d = std::sqrt(d);
                 params[i] = params[i-1] + d;
             }
             double d_close = pdist(points[n-1], points[0]);
-            if (base_style == CurveKnotStyle::ChordSquareRoot) d_close = std::sqrt(d_close);
+            if (base_style == CurveNurbsKnotStyle::ChordSquareRoot) d_close = std::sqrt(d_close);
             params[n] = params[n-1] + d_close;
         }
 
@@ -87,18 +95,18 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         if (dmax <= 0.0 || dmax * 1.490116119385e-8 >= dmin)
             return NurbsCurve();
 
-        std::vector<double> knots(kc);
-        for (int i = 0; i <= n; i++) knots[i + 2] = params[i];
-        knots[cv_count]     = knots[3] - knots[2] + knots[cv_count - 1];
-        knots[1]            = knots[cv_count - 2] - knots[cv_count - 1] + knots[2];
-        knots[cv_count + 1] = knots[4] - knots[3] + knots[cv_count];
-        knots[0]            = knots[cv_count - 3] - knots[cv_count - 2] + knots[1];
+        std::vector<double> nurbsknots(kc);
+        for (int i = 0; i <= n; i++) nurbsknots[i + 2] = params[i];
+        nurbsknots[cv_count]     = nurbsknots[3] - nurbsknots[2] + nurbsknots[cv_count - 1];
+        nurbsknots[1]            = nurbsknots[cv_count - 2] - nurbsknots[cv_count - 1] + nurbsknots[2];
+        nurbsknots[cv_count + 1] = nurbsknots[4] - nurbsknots[3] + nurbsknots[cv_count];
+        nurbsknots[0]            = nurbsknots[cv_count - 3] - nurbsknots[cv_count - 2] + nurbsknots[1];
 
         std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
         std::vector<double> rhs(n * dim);
 
         for (int i = 0; i < n; i++) {
-            auto basis = knot::eval_basis(order, knots, i, params[i]);
+            auto basis = nurbsknot::eval_basis(order, nurbsknots, i, params[i]);
             int c0 = i % n;
             int c1 = (i + 1) % n;
             int c2 = (i + 2) % n;
@@ -140,7 +148,7 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         }
 
         NurbsCurve curve(dim, false, order, cv_count);
-        for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+        for (int i = 0; i < kc; i++) curve.set_nurbsknot(i, nurbsknots[i]);
         for (int i = 0; i < n; i++)
             curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
         curve.set_cv(n, curve.get_cv(0));
@@ -159,9 +167,9 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         pts[i*3+2] = points[i][2];
     }
 
-    auto params = knot::compute_parameters(pts.data(), n, dim, parameterization);
-    auto knots = knot::build_interp_knots(params, degree);
-    int kc = static_cast<int>(knots.size());
+    auto params = nurbsknot::compute_parameters(pts.data(), n, dim, parameterization);
+    auto nurbsknots = nurbsknot::build_interp_nurbsknots(params, degree);
+    int kc = static_cast<int>(nurbsknots.size());
 
     auto estimate_tangent = [&](int i0, int i1, int i2) -> Vector {
         double d01 = pdist(points[i0], points[i1]);
@@ -224,7 +232,7 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
     for (int d = 0; d < dim; d++) rhs[d] = cv[dim + d];
 
     for (int i = 1; i <= n-2; i++) {
-        auto basis = knot::eval_basis(order, knots, i, params[i]);
+        auto basis = nurbsknot::eval_basis(order, nurbsknots, i, params[i]);
         lower[i] = basis[0];
         diag[i] = basis[1];
         upper[i] = basis[2];
@@ -236,14 +244,14 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
     for (int d = 0; d < dim; d++) rhs[(n-1) * dim + d] = cv[n * dim + d];
 
     std::vector<double> solution;
-    knot::solve_tridiagonal(dim, sys_n, lower, diag, upper, rhs, solution);
+    nurbsknot::solve_tridiagonal(dim, sys_n, lower, diag, upper, rhs, solution);
 
     for (int i = 0; i < sys_n; i++)
         for (int d = 0; d < dim; d++)
             cv[(i+1) * dim + d] = solution[i * dim + d];
 
     NurbsCurve curve(dim, false, order, cv_count);
-    for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+    for (int i = 0; i < kc; i++) curve.set_nurbsknot(i, nurbsknots[i]);
     for (int i = 0; i < cv_count; i++)
         curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
 
@@ -268,7 +276,7 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
         if (n <= num_cvs || num_cvs < order)
             return n < 3 ? NurbsCurve() :
                 create_interpolated(std::vector<Point>(points.begin(), points.begin() + n),
-                                    CurveKnotStyle::ChordPeriodic);
+                                    CurveNurbsKnotStyle::ChordPeriodic);
 
         int cv_count = num_cvs + degree;
         int kc = cv_count + order - 2;
@@ -284,14 +292,14 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
         for (int i = 0; i < n; i++) {
             ppts[i*3] = points[i][0]; ppts[i*3+1] = points[i][1]; ppts[i*3+2] = points[i][2];
         }
-        auto knots = knot::build_fitted_knots_periodic_adaptive(params, ppts.data(), n, dim, num_cvs, degree);
+        auto nurbsknots = nurbsknot::build_fitted_nurbsknots_periodic_adaptive(params, ppts.data(), n, dim, num_cvs, degree);
 
         std::vector<std::vector<double>> NtN(num_cvs, std::vector<double>(num_cvs, 0.0));
         std::vector<double> NtQ(num_cvs * dim, 0.0);
 
         for (int k = 0; k < n; k++) {
-            int span = knot::find_span(order, cv_count, knots, params[k]);
-            auto basis = knot::eval_basis(order, knots, span, params[k]);
+            int span = nurbsknot::find_span(order, cv_count, nurbsknots, params[k]);
+            auto basis = nurbsknot::eval_basis(order, nurbsknots, span, params[k]);
             for (int a = 0; a < order; a++) {
                 int ci = (span + a) % num_cvs;
                 for (int d = 0; d < dim; d++)
@@ -332,7 +340,7 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
         }
 
         NurbsCurve curve(dim, false, order, cv_count);
-        for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+        for (int i = 0; i < kc; i++) curve.set_nurbsknot(i, nurbsknots[i]);
         for (int i = 0; i < num_cvs; i++)
             curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
         for (int i = 0; i < degree; i++)
@@ -349,8 +357,8 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
         pts[i*3] = points[i][0]; pts[i*3+1] = points[i][1]; pts[i*3+2] = points[i][2];
     }
 
-    auto params = knot::compute_parameters(pts.data(), m, dim, CurveKnotStyle::Chord);
-    auto knots = knot::build_fitted_knots_adaptive(params, pts.data(), m, dim, num_cvs, degree);
+    auto params = nurbsknot::compute_parameters(pts.data(), m, dim, CurveNurbsKnotStyle::Chord);
+    auto nurbsknots = nurbsknot::build_fitted_nurbsknots_adaptive(params, pts.data(), m, dim, num_cvs, degree);
     int n = num_cvs - 1;
     int sys_n = num_cvs - 2;
     int bw = degree;
@@ -360,8 +368,8 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
     std::vector<double> rhs(sys_n * dim, 0.0);
 
     for (int k = 1; k < m - 1; k++) {
-        int span = knot::find_span(order, num_cvs, knots, params[k]);
-        auto basis = knot::eval_basis(order, knots, span, params[k]);
+        int span = nurbsknot::find_span(order, num_cvs, nurbsknots, params[k]);
+        auto basis = nurbsknot::eval_basis(order, nurbsknots, span, params[k]);
 
         double rk[3];
         for (int d = 0; d < dim; d++) rk[d] = points[k][d];
@@ -388,12 +396,12 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
         }
     }
 
-    if (!knot::solve_banded_spd(dim, sys_n, bw, band, rhs))
+    if (!nurbsknot::solve_banded_spd(dim, sys_n, bw, band, rhs))
         return create_interpolated(points);
 
-    int kc = static_cast<int>(knots.size());
+    int kc = static_cast<int>(nurbsknots.size());
     NurbsCurve curve(dim, false, order, num_cvs);
-    for (int i = 0; i < kc; i++) curve.set_knot(i, knots[i]);
+    for (int i = 0; i < kc; i++) curve.set_nurbsknot(i, nurbsknots[i]);
     curve.set_cv(0, points[0]);
     for (int i = 0; i < sys_n; i++)
         curve.set_cv(i + 1, Point(rhs[i*3], rhs[i*3+1], rhs[i*3+2]));
@@ -434,9 +442,9 @@ bool NurbsCurve::operator==(const NurbsCurve& other) const {
     if (std::abs(width - other.width) > Tolerance::ZERO_TOLERANCE) return false;
     if (pointcolors != other.pointcolors) return false;
     if (linecolors != other.linecolors) return false;
-    if (m_knot.size() != other.m_knot.size()) return false;
-    for (size_t i = 0; i < m_knot.size(); i++) {
-        if (std::abs(m_knot[i] - other.m_knot[i]) > Tolerance::ZERO_TOLERANCE) return false;
+    if (m_nurbsknot.size() != other.m_nurbsknot.size()) return false;
+    for (size_t i = 0; i < m_nurbsknot.size(); i++) {
+        if (std::abs(m_nurbsknot[i] - other.m_nurbsknot[i]) > Tolerance::ZERO_TOLERANCE) return false;
     }
     if (m_cv.size() != other.m_cv.size()) return false;
     for (size_t i = 0; i < m_cv.size(); i++) {
@@ -464,7 +472,7 @@ void NurbsCurve::initialize() {
     m_cv_count = 0;
     m_cv_stride = 0;
     m_cv_capacity = 0;
-    m_knot.clear();
+    m_nurbsknot.clear();
     m_cv.clear();
 }
 bool NurbsCurve::create(int dimension, bool is_rational, int order, int cv_count) {
@@ -480,8 +488,8 @@ bool NurbsCurve::create(int dimension, bool is_rational, int order, int cv_count
     m_cv_count = cv_count;
     m_cv_stride = is_rational ? (dimension + 1) : dimension;
     
-    int knot_count = m_order + m_cv_count - 2;
-    m_knot.resize(knot_count, 0.0);
+    int nurbsknot_count = m_order + m_cv_count - 2;
+    m_nurbsknot.resize(nurbsknot_count, 0.0);
     
     m_cv_capacity = m_cv_count * m_cv_stride;
     m_cv.resize(m_cv_capacity, 0.0);
@@ -491,7 +499,7 @@ bool NurbsCurve::create(int dimension, bool is_rational, int order, int cv_count
 
 bool NurbsCurve::create_clamped_uniform(int dimension, int order, 
                                         const std::vector<Point>& points,
-                                        double knot_delta) {
+                                        double nurbsknot_delta) {
     int point_count = static_cast<int>(points.size());
     if (!create(dimension, false, order, point_count)) {
         return false;
@@ -502,28 +510,28 @@ bool NurbsCurve::create_clamped_uniform(int dimension, int order,
         set_cv(i, points[i]);
     }
     
-    // Create clamped uniform knot vector
-    // Implementation matches OpenNURBS ON_MakeClampedUniformKnotVector
-    int knot_count = m_order + m_cv_count - 2;
+    // Create clamped uniform nurbsknot vector
+    // Implementation matches OpenNURBS ON_MakeClampedUniformNurbsKnotVector
+    int nurbsknot_count = m_order + m_cv_count - 2;
     
-    // Fill interior knots with uniform spacing
+    // Fill interior nurbsknots with uniform spacing
     // Start from index (order-2) up to (cv_count-1)
     double k = 0.0;
-    for (int i = m_order - 2; i < m_cv_count; i++, k += knot_delta) {
-        m_knot[i] = k;
+    for (int i = m_order - 2; i < m_cv_count; i++, k += nurbsknot_delta) {
+        m_nurbsknot[i] = k;
     }
     
-    // Clamp both ends: sets first (order-2) and last (order-2) knots
-    // Left clamp: knot[0..order-3] = knot[order-2]
+    // Clamp both ends: sets first (order-2) and last (order-2) nurbsknots
+    // Left clamp: nurbsknot[0..order-3] = nurbsknot[order-2]
     int i0 = m_order - 2;
     for (int i = 0; i < i0; i++) {
-        m_knot[i] = m_knot[i0];
+        m_nurbsknot[i] = m_nurbsknot[i0];
     }
     
-    // Right clamp: knot[cv_count..knot_count-1] = knot[cv_count-1]
+    // Right clamp: nurbsknot[cv_count..nurbsknot_count-1] = nurbsknot[cv_count-1]
     i0 = m_cv_count - 1;
-    for (int i = i0 + 1; i < knot_count; i++) {
-        m_knot[i] = m_knot[i0];
+    for (int i = i0 + 1; i < nurbsknot_count; i++) {
+        m_nurbsknot[i] = m_nurbsknot[i0];
     }
     
     return true;
@@ -531,7 +539,7 @@ bool NurbsCurve::create_clamped_uniform(int dimension, int order,
 
 bool NurbsCurve::create_periodic_uniform(int dimension, int order,
                                         const std::vector<Point>& points,
-                                        double knot_delta) {
+                                        double nurbsknot_delta) {
     int point_count = static_cast<int>(points.size());
     if (!create(dimension, false, order, point_count + order - 1)) {
         return false;
@@ -545,17 +553,17 @@ bool NurbsCurve::create_periodic_uniform(int dimension, int order,
         set_cv(point_count + i, points[i]);
     }
     
-    // Create periodic uniform knot vector
-    int knot_count = m_order + m_cv_count - 2;
-    for (int i = 0; i < knot_count; i++) {
-        m_knot[i] = (i - m_order + 1) * knot_delta;
+    // Create periodic uniform nurbsknot vector
+    int nurbsknot_count = m_order + m_cv_count - 2;
+    for (int i = 0; i < nurbsknot_count; i++) {
+        m_nurbsknot[i] = (i - m_order + 1) * nurbsknot_delta;
     }
     
     return true;
 }
 
 void NurbsCurve::destroy() {
-    m_knot.clear();
+    m_nurbsknot.clear();
     m_cv.clear();
     initialize();
 }
@@ -569,8 +577,8 @@ bool NurbsCurve::is_valid() const {
     if (m_order < 2) return false;
     if (m_cv_count < m_order) return false;
     if (m_cv_stride < cv_size()) return false;
-    if (m_cv.empty() || m_knot.empty()) return false;
-    if (!is_valid_knot_vector()) return false;
+    if (m_cv.empty() || m_nurbsknot.empty()) return false;
+    if (!is_valid_nurbsknot_vector()) return false;
     
     // Check CVs for valid values
     for (size_t i = 0; i < m_cv.size(); i++) {
@@ -580,17 +588,17 @@ bool NurbsCurve::is_valid() const {
     return true;
 }
 
-bool NurbsCurve::is_valid_knot_vector() const {
-    int kc = knot_count();
-    if (static_cast<int>(m_knot.size()) != kc) return false;
+bool NurbsCurve::is_valid_nurbsknot_vector() const {
+    int kc = nurbsknot_count();
+    if (static_cast<int>(m_nurbsknot.size()) != kc) return false;
     
-    // Check for non-decreasing knot values
+    // Check for non-decreasing nurbsknot values
     for (int i = 1; i < kc; i++) {
-        if (m_knot[i] < m_knot[i-1]) return false;
+        if (m_nurbsknot[i] < m_nurbsknot[i-1]) return false;
     }
     
-    // Check for sufficient distinct knots
-    if (m_knot[m_order-2] >= m_knot[m_cv_count-1]) return false;
+    // Check for sufficient distinct nurbsknots
+    if (m_nurbsknot[m_order-2] >= m_nurbsknot[m_cv_count-1]) return false;
     
     return true;
 }
@@ -603,15 +611,15 @@ int NurbsCurve::cv_size() const {
     return (m_dim > 0) ? (m_is_rat ? (m_dim + 1) : m_dim) : 0;
 }
 
-int NurbsCurve::knot_count() const {
+int NurbsCurve::nurbsknot_count() const {
     return m_order + m_cv_count - 2;
 }
 
 int NurbsCurve::span_count() const {
     int count = 0;
-    int kc = knot_count();
+    int kc = nurbsknot_count();
     for (int i = m_order - 2; i < m_cv_count - 1; i++) {
-        if (i >= 0 && i + 1 < kc && m_knot[i] < m_knot[i + 1]) {
+        if (i >= 0 && i + 1 < kc && m_nurbsknot[i] < m_nurbsknot[i + 1]) {
             count++;
         }
     }
@@ -709,43 +717,43 @@ bool NurbsCurve::set_weight(int cv_index, double w) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// Knot Access
+// NurbsKnot Access
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-double NurbsCurve::knot(int knot_index) const {
-    if (knot_index < 0 || knot_index >= static_cast<int>(m_knot.size())) {
+double NurbsCurve::nurbsknot(int nurbsknot_index) const {
+    if (nurbsknot_index < 0 || nurbsknot_index >= static_cast<int>(m_nurbsknot.size())) {
         return 0.0;
     }
-    return m_knot[knot_index];
+    return m_nurbsknot[nurbsknot_index];
 }
 
-bool NurbsCurve::set_knot(int knot_index, double knot_value) {
-    if (knot_index < 0 || knot_index >= static_cast<int>(m_knot.size())) {
+bool NurbsCurve::set_nurbsknot(int nurbsknot_index, double nurbsknot_value) {
+    if (nurbsknot_index < 0 || nurbsknot_index >= static_cast<int>(m_nurbsknot.size())) {
         return false;
     }
-    m_knot[knot_index] = knot_value;
+    m_nurbsknot[nurbsknot_index] = nurbsknot_value;
     invalidate_rmf_cache();
     return true;
 }
-// Get knot multiplicity
-int NurbsCurve::knot_multiplicity(int knot_index) const {
-    if (knot_index < 0 || knot_index >= knot_count()) return 0;
+// Get nurbsknot multiplicity
+int NurbsCurve::nurbsknot_multiplicity(int nurbsknot_index) const {
+    if (nurbsknot_index < 0 || nurbsknot_index >= nurbsknot_count()) return 0;
     
-    double knot_value = m_knot[knot_index];
+    double nurbsknot_value = m_nurbsknot[nurbsknot_index];
     int mult = 1;
     
-    // Count knots equal to this value after current index
-    for (int i = knot_index + 1; i < knot_count(); i++) {
-        if (std::abs(m_knot[i] - knot_value) < Tolerance::ZERO_TOLERANCE) {
+    // Count nurbsknots equal to this value after current index
+    for (int i = nurbsknot_index + 1; i < nurbsknot_count(); i++) {
+        if (std::abs(m_nurbsknot[i] - nurbsknot_value) < Tolerance::ZERO_TOLERANCE) {
             mult++;
         } else {
             break;
         }
     }
     
-    // Count knots equal to this value before current index
-    for (int i = knot_index - 1; i >= 0; i--) {
-        if (std::abs(m_knot[i] - knot_value) < Tolerance::ZERO_TOLERANCE) {
+    // Count nurbsknots equal to this value before current index
+    for (int i = nurbsknot_index - 1; i >= 0; i--) {
+        if (std::abs(m_nurbsknot[i] - nurbsknot_value) < Tolerance::ZERO_TOLERANCE) {
             mult++;
         } else {
             break;
@@ -754,50 +762,50 @@ int NurbsCurve::knot_multiplicity(int knot_index) const {
     
     return mult;
 }
-// Get superfluous knot (matches OpenNURBS ON_SuperfluousKnot)
-double NurbsCurve::superfluous_knot(int end) const {
+// Get superfluous nurbsknot (matches OpenNURBS ON_SuperfluousNurbsKnot)
+double NurbsCurve::superfluous_nurbsknot(int end) const {
     if (!is_valid()) return 0.0;
 
-    int kc = knot_count();
+    int kc = nurbsknot_count();
     if (end == 0) {
-        // First superfluous knot: reflect first knot across knot[order-2]
-        return 2.0 * m_knot[0] - m_knot[m_order - 2];
+        // First superfluous nurbsknot: reflect first nurbsknot across nurbsknot[order-2]
+        return 2.0 * m_nurbsknot[0] - m_nurbsknot[m_order - 2];
     } else {
-        // Last superfluous knot: reflect last knot across knot[cv_count-order]
-        return 2.0 * m_knot[kc - 1] - m_knot[m_cv_count - m_order];
+        // Last superfluous nurbsknot: reflect last nurbsknot across nurbsknot[cv_count-order]
+        return 2.0 * m_nurbsknot[kc - 1] - m_nurbsknot[m_cv_count - m_order];
     }
 }
-// Check if knot vector is clamped
+// Check if nurbsknot vector is clamped
 bool NurbsCurve::is_clamped(int end) const {
     if (!is_valid()) return false;
     
-    // Use knot module function
-    return knot::is_clamped(m_order, m_cv_count, m_knot, end);
+    // Use nurbsknot module function
+    return nurbsknot::is_clamped(m_order, m_cv_count, m_nurbsknot, end);
 }
 // Get Greville abcissa for a control point (aligned with opennurbs ON_GrevilleAbcissa)
 double NurbsCurve::greville_abcissa(int cv_index) const {
     if (cv_index < 0 || cv_index >= m_cv_count) return 0.0;
 
-    const double* knot = m_knot.data() + cv_index;
+    const double* nurbsknot = m_nurbsknot.data() + cv_index;
     int order = m_order;
 
-    if (order <= 2 || knot[0] == knot[order - 2]) {
-        return knot[0];
+    if (order <= 2 || nurbsknot[0] == nurbsknot[order - 2]) {
+        return nurbsknot[0];
     }
 
     int p = order - 1;
-    const double k0 = knot[0];
-    const double k = knot[p / 2];
-    const double k1 = knot[p - 1];
+    const double k0 = nurbsknot[0];
+    const double k = nurbsknot[p / 2];
+    const double k1 = nurbsknot[p - 1];
     const double tol = (k1 - k0) * 1.490116119385e-8; // ON_SQRT_EPSILON
     const double dp = static_cast<double>(p);
 
     double g = 0.0;
     for (int i = 0; i < p; i++)
-        g += knot[i];
+        g += nurbsknot[i];
     g /= dp;
 
-    // Snap to exact middle knot for uniform knot vectors
+    // Snap to exact middle nurbsknot for uniform nurbsknot vectors
     if (std::fabs(2.0 * k - (k0 + k1)) <= tol &&
         std::fabs(g - k) <= (std::fabs(g) * 1.490116119385e-8 + tol))
         g = k;
@@ -815,86 +823,86 @@ bool NurbsCurve::get_greville_abcissae(std::vector<double>& abcissae) const {
     }
     return true;
 }
-bool NurbsCurve::insert_knot(double knot_value, int knot_multiplicity) {
+bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multiplicity) {
     if (!is_valid()) return false;
 
     int p = degree();
-    if (knot_multiplicity < 1 || knot_multiplicity > p) {
+    if (nurbsknot_multiplicity < 1 || nurbsknot_multiplicity > p) {
         return false;
     }
 
     auto [d0, d1] = domain();
-    if (knot_value < d0 || knot_value > d1) {
+    if (nurbsknot_value < d0 || nurbsknot_value > d1) {
         return false;
     }
 
-    // Handle end knots similar to OpenNURBS: clamp or no-op
-    if (knot_value == d0) {
-        if (knot_multiplicity == p) {
+    // Handle end nurbsknots similar to OpenNURBS: clamp or no-op
+    if (nurbsknot_value == d0) {
+        if (nurbsknot_multiplicity == p) {
             return clamp_end(0);
         }
-        if (knot_multiplicity == 1) {
+        if (nurbsknot_multiplicity == 1) {
             return true; // nothing to do
         }
         return false;
     }
-    if (knot_value == d1) {
-        if (knot_multiplicity == p) {
+    if (nurbsknot_value == d1) {
+        if (nurbsknot_multiplicity == p) {
             return clamp_end(1);
         }
-        if (knot_multiplicity == 1) {
+        if (nurbsknot_multiplicity == 1) {
             return true; // nothing to do
         }
         return false;
     }
 
-    // Reconstruct full knot vector U from compressed m_knot.
+    // Reconstruct full nurbsknot vector U from compressed m_nurbsknot.
     // Full size = m_cv_count + m_order.
     int n = m_cv_count - 1;
-    int full_knot_count = m_cv_count + m_order;
+    int full_nurbsknot_count = m_cv_count + m_order;
 
-    for (int insert_iter = 0; insert_iter < knot_multiplicity; ++insert_iter) {
-        // Build full knot vector
-        std::vector<double> U(full_knot_count);
-        U[0] = m_knot.front();
-        for (int i = 0; i < static_cast<int>(m_knot.size()); ++i) {
-            U[i + 1] = m_knot[i];
+    for (int insert_iter = 0; insert_iter < nurbsknot_multiplicity; ++insert_iter) {
+        // Build full nurbsknot vector
+        std::vector<double> U(full_nurbsknot_count);
+        U[0] = m_nurbsknot.front();
+        for (int i = 0; i < static_cast<int>(m_nurbsknot.size()); ++i) {
+            U[i + 1] = m_nurbsknot[i];
         }
-        U[full_knot_count - 1] = m_knot.back();
+        U[full_nurbsknot_count - 1] = m_nurbsknot.back();
 
-        // Count current multiplicity of knot_value in full vector (interior knots)
+        // Count current multiplicity of nurbsknot_value in full vector (interior nurbsknots)
         int mult = 0;
         const double tol = (std::abs(d0) + std::abs(d1) + std::abs(d1 - d0)) * std::sqrt(std::numeric_limits<double>::epsilon());
-        for (int i = 0; i < full_knot_count; ++i) {
-            if (std::abs(U[i] - knot_value) <= tol) {
+        for (int i = 0; i < full_nurbsknot_count; ++i) {
+            if (std::abs(U[i] - nurbsknot_value) <= tol) {
                 ++mult;
             }
         }
         if (mult >= p) {
-            // Cannot increase multiplicity beyond degree for interior knots
+            // Cannot increase multiplicity beyond degree for interior nurbsknots
             return false;
         }
 
-        // Find B-spline span index k in full knot vector
-        // find_span returns index relative to m_knot[order-2], map to full: k = span + order - 1
-        int span = find_span(knot_value);
+        // Find B-spline span index k in full nurbsknot vector
+        // find_span returns index relative to m_nurbsknot[order-2], map to full: k = span + order - 1
+        int span = find_span(nurbsknot_value);
         int k = span + m_order - 1;
 
-        // Single-knot insertion (Algorithm A5.1 specialized to r = 1)
-        int m_full = full_knot_count - 1; // last index in U
-        int new_full_knot_count = full_knot_count + 1;
+        // Single-nurbsknot insertion (Algorithm A5.1 specialized to r = 1)
+        int m_full = full_nurbsknot_count - 1; // last index in U
+        int new_full_nurbsknot_count = full_nurbsknot_count + 1;
         int new_cv_count = m_cv_count + 1;
 
-        std::vector<double> U_new(new_full_knot_count);
+        std::vector<double> U_new(new_full_nurbsknot_count);
         std::vector<double> cv_new(new_cv_count * m_cv_stride);
 
-        // Copy unaffected knots before insertion position
+        // Copy unaffected nurbsknots before insertion position
         for (int i = 0; i <= k; ++i) {
             U_new[i] = U[i];
         }
-        // Insert new knot
-        U_new[k + 1] = knot_value;
-        // Copy remaining knots
+        // Insert new nurbsknot
+        U_new[k + 1] = nurbsknot_value;
+        // Copy remaining nurbsknots
         for (int i = k + 1; i <= m_full; ++i) {
             U_new[i + 1] = U[i];
         }
@@ -920,7 +928,7 @@ bool NurbsCurve::insert_knot(double knot_value, int knot_multiplicity) {
             double alpha = 0.0;
             double denom = U[i + p] - U[i];
             if (denom != 0.0) {
-                alpha = (knot_value - U[i]) / denom;
+                alpha = (nurbsknot_value - U[i]) / denom;
             }
 
             const double* Pi_1 = &m_cv[(i - 1) * m_cv_stride];
@@ -936,16 +944,16 @@ bool NurbsCurve::insert_knot(double knot_value, int knot_multiplicity) {
         m_cv_count = new_cv_count;
         m_cv = std::move(cv_new);
 
-        // Compress U_new back into m_knot: drop first and last entries
-        int new_compressed_knot_count = m_order + m_cv_count - 2;
-        std::vector<double> knot_new(new_compressed_knot_count);
-        for (int i = 0; i < new_compressed_knot_count; ++i) {
-            knot_new[i] = U_new[i + 1];
+        // Compress U_new back into m_nurbsknot: drop first and last entries
+        int new_compressed_nurbsknot_count = m_order + m_cv_count - 2;
+        std::vector<double> nurbsknot_new(new_compressed_nurbsknot_count);
+        for (int i = 0; i < new_compressed_nurbsknot_count; ++i) {
+            nurbsknot_new[i] = U_new[i + 1];
         }
-        m_knot = std::move(knot_new);
+        m_nurbsknot = std::move(nurbsknot_new);
 
         // Prepare for potential subsequent insertion
-        full_knot_count = new_full_knot_count;
+        full_nurbsknot_count = new_full_nurbsknot_count;
         n = m_cv_count - 1;
     }
 
@@ -958,23 +966,23 @@ bool NurbsCurve::insert_knot(double knot_value, int knot_multiplicity) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::pair<double, double> NurbsCurve::domain() const {
-    if (m_knot.empty()) return {0.0, 0.0};
-    return {m_knot[m_order-2], m_knot[m_cv_count-1]};
+    if (m_nurbsknot.empty()) return {0.0, 0.0};
+    return {m_nurbsknot[m_order-2], m_nurbsknot[m_cv_count-1]};
 }
 
 double NurbsCurve::domain_start() const {
-    if (m_knot.empty()) return 0.0;
-    return m_knot[m_order-2];
+    if (m_nurbsknot.empty()) return 0.0;
+    return m_nurbsknot[m_order-2];
 }
 
 double NurbsCurve::domain_middle() const{
-    if (m_knot.empty()) return 0.0;
-    return (m_knot[m_order-2]+m_knot[m_cv_count-1])*0.5;
+    if (m_nurbsknot.empty()) return 0.0;
+    return (m_nurbsknot[m_order-2]+m_nurbsknot[m_cv_count-1])*0.5;
 }
 
 double NurbsCurve::domain_end() const {
-    if (m_knot.empty()) return 0.0;
-    return m_knot[m_cv_count-1];
+    if (m_nurbsknot.empty()) return 0.0;
+    return m_nurbsknot[m_cv_count-1];
 }
 
 bool NurbsCurve::set_domain(double t0, double t1) {
@@ -985,21 +993,21 @@ bool NurbsCurve::set_domain(double t0, double t1) {
 
     // Check if ends are clamped before rescaling
     bool clamped_start = (m_order >= 2 &&
-        std::abs(m_knot[0] - m_knot[m_order - 2]) < Tolerance::ZERO_TOLERANCE);
-    bool clamped_end = (m_cv_count < (int)m_knot.size() &&
-        std::abs(m_knot.back() - m_knot[m_cv_count - 1]) < Tolerance::ZERO_TOLERANCE);
+        std::abs(m_nurbsknot[0] - m_nurbsknot[m_order - 2]) < Tolerance::ZERO_TOLERANCE);
+    bool clamped_end = (m_cv_count < (int)m_nurbsknot.size() &&
+        std::abs(m_nurbsknot.back() - m_nurbsknot[m_cv_count - 1]) < Tolerance::ZERO_TOLERANCE);
 
     double scale = (t1 - t0) / (d1 - d0);
 
-    for (auto& k : m_knot) {
+    for (auto& k : m_nurbsknot) {
         k = t0 + (k - d0) * scale;
     }
 
     if (clamped_start) {
-        for (int i = 0; i < m_order - 1; i++) m_knot[i] = t0;
+        for (int i = 0; i < m_order - 1; i++) m_nurbsknot[i] = t0;
     }
     if (clamped_end) {
-        for (int i = m_cv_count - 1; i < (int)m_knot.size(); i++) m_knot[i] = t1;
+        for (int i = m_cv_count - 1; i < (int)m_nurbsknot.size(); i++) m_nurbsknot[i] = t1;
     }
 
     invalidate_rmf_cache();
@@ -1008,11 +1016,11 @@ bool NurbsCurve::set_domain(double t0, double t1) {
 
 std::vector<double> NurbsCurve::get_span_vector() const {
     std::vector<double> spans;
-    spans.push_back(m_knot[m_order-2]);
+    spans.push_back(m_nurbsknot[m_order-2]);
     
     for (int i = m_order - 1; i < m_cv_count; i++) {
-        if (m_knot[i] > spans.back()) {
-            spans.push_back(m_knot[i]);
+        if (m_nurbsknot[i] > spans.back()) {
+            spans.push_back(m_nurbsknot[i]);
         }
     }
     
@@ -1038,13 +1046,13 @@ bool NurbsCurve::get_next_discontinuity(int continuity_type,
     if (t1 > d1) t1 = d1;
     if (t0 >= t1) return false;
     
-    // Check each interior knot
+    // Check each interior nurbsknot
     for (int i = m_order - 1; i < m_cv_count - 1; i++) {
-        double t = m_knot[i];
+        double t = m_nurbsknot[i];
         if (t <= t0 || t >= t1) continue;
         
-        // Check if there's a discontinuity at this knot
-        int mult = knot_multiplicity(i);
+        // Check if there's a discontinuity at this nurbsknot
+        int mult = nurbsknot_multiplicity(i);
         
         // C0: check if multiplicity >= order
         if (continuity_type == 0 && mult >= m_order) {
@@ -1102,13 +1110,13 @@ bool NurbsCurve::is_periodic() const {
         }
     }
 
-    // Check knot spacing is uniform across ALL knots (not just interior)
-    int kc = knot_count();
+    // Check nurbsknot spacing is uniform across ALL nurbsknots (not just interior)
+    int kc = nurbsknot_count();
     if (kc < 2) return false;
-    double delta = m_knot[m_order-1] - m_knot[m_order-2];
+    double delta = m_nurbsknot[m_order-1] - m_nurbsknot[m_order-2];
     if (delta < Tolerance::ZERO_TOLERANCE) return false;
     for (int i = 1; i < kc; i++) {
-        if (std::abs((m_knot[i] - m_knot[i-1]) - delta) > Tolerance::ZERO_TOLERANCE) {
+        if (std::abs((m_nurbsknot[i] - m_nurbsknot[i-1]) - delta) > Tolerance::ZERO_TOLERANCE) {
             return false;
         }
     }
@@ -1291,7 +1299,7 @@ int NurbsCurve::is_polyline(std::vector<Point>* points,
             params->clear();
             params->reserve(m_cv_count);
             for (int i = 0; i < m_cv_count; i++) {
-                params->push_back(m_knot[i]);
+                params->push_back(m_nurbsknot[i]);
             }
         }
         return m_cv_count;
@@ -1369,10 +1377,10 @@ bool NurbsCurve::is_duplicate(const NurbsCurve& other,
         }
     }
 
-    // Check knots if not ignoring parameterization
+    // Check nurbsknots if not ignoring parameterization
     if (!ignore_parameterization) {
-        for (int i = 0; i < knot_count(); i++) {
-            if (std::abs(m_knot[i] - other.m_knot[i]) > tolerance) {
+        for (int i = 0; i < nurbsknot_count(); i++) {
+            if (std::abs(m_nurbsknot[i] - other.m_nurbsknot[i]) > tolerance) {
                 return false;
             }
         }
@@ -1394,28 +1402,28 @@ bool NurbsCurve::is_continuous(int continuity_type,
     auto [d0, d1] = domain();
     if (t < d0 || t > d1) return false;
     
-    // Find knot span
+    // Find nurbsknot span
     int span = find_span(t);
     
-    // Check if t is at a knot
-    bool at_knot = false;
-    int knot_idx = -1;
-    for (int i = 0; i < knot_count(); i++) {
-        if (std::abs(m_knot[i] - t) < Tolerance::ZERO_TOLERANCE) {
-            at_knot = true;
-            knot_idx = i;
+    // Check if t is at a nurbsknot
+    bool at_nurbsknot = false;
+    int nurbsknot_idx = -1;
+    for (int i = 0; i < nurbsknot_count(); i++) {
+        if (std::abs(m_nurbsknot[i] - t) < Tolerance::ZERO_TOLERANCE) {
+            at_nurbsknot = true;
+            nurbsknot_idx = i;
             break;
         }
     }
     
-    if (!at_knot) {
+    if (!at_nurbsknot) {
         // Interior of span - always continuous
         if (hint) *hint = span;
         return true;
     }
     
-    // At knot - check multiplicity
-    int mult = knot_multiplicity(knot_idx);
+    // At nurbsknot - check multiplicity
+    int mult = nurbsknot_multiplicity(nurbsknot_idx);
     
     // C0: continuous if mult < order
     if (continuity_type == 0) {
@@ -1475,8 +1483,8 @@ double NurbsCurve::length(double /*tolerance*/) const {
     const int SUBDIVISIONS = 4;
 
     for (int span = 0; span < n_spans; span++) {
-        double span_a = m_knot[m_order - 2 + span];
-        double span_b = m_knot[m_order - 1 + span];
+        double span_a = m_nurbsknot[m_order - 2 + span];
+        double span_b = m_nurbsknot[m_order - 1 + span];
         if (span_b <= span_a) continue;
 
         double span_width = (span_b - span_a) / SUBDIVISIONS;
@@ -1839,7 +1847,7 @@ bool NurbsCurve::divide_by_length(double segment_length, std::vector<Point>& poi
 Point NurbsCurve::point_at(double t) const {
     if (!is_valid()) return Point(0, 0, 0);
     
-    // find_span returns index relative to shifted knot array
+    // find_span returns index relative to shifted nurbsknot array
     int span = find_span(t);
     std::vector<double> basis;
     basis_functions(span, t, basis);
@@ -2301,12 +2309,12 @@ bool NurbsCurve::set_end_point(const Point& end_point) {
 bool NurbsCurve::reverse() {
     if (!is_valid()) return false;
 
-    // Reverse knots
+    // Reverse nurbsknots
     auto [d0, d1] = domain();
-    for (auto& k : m_knot) {
+    for (auto& k : m_nurbsknot) {
         k = d0 + d1 - k;
     }
-    std::reverse(m_knot.begin(), m_knot.end());
+    std::reverse(m_nurbsknot.begin(), m_nurbsknot.end());
 
     // Reverse CVs
     for (int i = 0; i < m_cv_count / 2; i++) {
@@ -2350,39 +2358,39 @@ bool NurbsCurve::trim(double t0, double t1) {
     bool trim_start = (t0 > d0 + Tolerance::ZERO_TOLERANCE);
     bool trim_end = (t1 < d1 - Tolerance::ZERO_TOLERANCE);
 
-    // Insert knots at trim boundaries to multiplicity = degree
+    // Insert nurbsknots at trim boundaries to multiplicity = degree
     if (trim_start) {
-        if (!insert_knot(t0, p)) return false;
+        if (!insert_nurbsknot(t0, p)) return false;
     }
     if (trim_end) {
-        if (!insert_knot(t1, p)) return false;
+        if (!insert_nurbsknot(t1, p)) return false;
     }
 
-    // Build full knot vector
-    int full_knot_count = m_cv_count + m_order;
-    std::vector<double> U(full_knot_count);
-    U[0] = m_knot.front();
-    for (int i = 0; i < static_cast<int>(m_knot.size()); ++i) {
-        U[i + 1] = m_knot[i];
+    // Build full nurbsknot vector
+    int full_nurbsknot_count = m_cv_count + m_order;
+    std::vector<double> U(full_nurbsknot_count);
+    U[0] = m_nurbsknot.front();
+    for (int i = 0; i < static_cast<int>(m_nurbsknot.size()); ++i) {
+        U[i + 1] = m_nurbsknot[i];
     }
-    U[full_knot_count - 1] = m_knot.back();
+    U[full_nurbsknot_count - 1] = m_nurbsknot.back();
 
     // Find span indices for t0 and t1
-    // After knot insertion, t0 and t1 have multiplicity p at interior points
+    // After nurbsknot insertion, t0 and t1 have multiplicity p at interior points
     const double tol = Tolerance::ZERO_TOLERANCE;
 
-    // Find the LAST knot equal to t0 (this is where the curve "enters" the trimmed domain)
+    // Find the LAST nurbsknot equal to t0 (this is where the curve "enters" the trimmed domain)
     int start_span = -1;
-    for (int i = full_knot_count - 1; i >= 0; --i) {
+    for (int i = full_nurbsknot_count - 1; i >= 0; --i) {
         if (std::abs(U[i] - t0) < tol) {
             start_span = i;
             break;
         }
     }
 
-    // Find the FIRST knot equal to t1 (this is where the curve "exits" the trimmed domain)
+    // Find the FIRST nurbsknot equal to t1 (this is where the curve "exits" the trimmed domain)
     int end_span = -1;
-    for (int i = 0; i < full_knot_count; ++i) {
+    for (int i = 0; i < full_nurbsknot_count; ++i) {
         if (std::abs(U[i] - t1) < tol) {
             end_span = i;
             break;
@@ -2413,35 +2421,35 @@ bool NurbsCurve::trim(double t0, double t1) {
         }
     }
 
-    // Extract knot vector - we need new_cv_count + m_order - 2 knots (compressed form)
-    int new_knot_count = new_cv_count + m_order - 2;
+    // Extract nurbsknot vector - we need new_cv_count + m_order - 2 nurbsknots (compressed form)
+    int new_nurbsknot_count = new_cv_count + m_order - 2;
 
-    // Build the new knot vector ensuring proper clamping at both ends
-    std::vector<double> new_knot(new_knot_count);
+    // Build the new nurbsknot vector ensuring proper clamping at both ends
+    std::vector<double> new_nurbsknot(new_nurbsknot_count);
 
-    // For start: first p-1 knots should all be t0
-    // For end: last p-1 knots should all be t1
+    // For start: first p-1 nurbsknots should all be t0
+    // For end: last p-1 nurbsknots should all be t1
     // In between: copy from the original
     for (int i = 0; i < p - 1; ++i) {
-        new_knot[i] = t0;
+        new_nurbsknot[i] = t0;
     }
 
-    // Middle knots: copy from position start_span to end_span - p
-    int mid_count = new_knot_count - 2 * (p - 1);
+    // Middle nurbsknots: copy from position start_span to end_span - p
+    int mid_count = new_nurbsknot_count - 2 * (p - 1);
     if (mid_count > 0) {
         int src_start = start_span;
         for (int i = 0; i < mid_count; ++i) {
             int src_idx = src_start + i;
-            if (src_idx < full_knot_count) {
-                new_knot[p - 1 + i] = U[src_idx];
+            if (src_idx < full_nurbsknot_count) {
+                new_nurbsknot[p - 1 + i] = U[src_idx];
             } else {
-                new_knot[p - 1 + i] = t1;
+                new_nurbsknot[p - 1 + i] = t1;
             }
         }
     }
 
     for (int i = 0; i < p - 1; ++i) {
-        new_knot[new_knot_count - p + 1 + i] = t1;
+        new_nurbsknot[new_nurbsknot_count - p + 1 + i] = t1;
     }
 
     // Extract control points
@@ -2455,7 +2463,7 @@ bool NurbsCurve::trim(double t0, double t1) {
     m_cv_count = new_cv_count;
     m_cv_capacity = new_cv_count;
     m_cv = std::move(new_cv);
-    m_knot = std::move(new_knot);
+    m_nurbsknot = std::move(new_nurbsknot);
 
     invalidate_rmf_cache();
     return true;
@@ -2487,9 +2495,9 @@ bool NurbsCurve::extend(double t0, double t1) {
     // Extend start (t0 < current domain start)
     if (t0 < d0) {
         clamp_end(0);
-        evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[0], &m_knot[0], 1, t0);
+        evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[0], &m_nurbsknot[0], 1, t0);
         for (int i = 0; i < m_order - 1; i++) {
-            m_knot[i] = t0;
+            m_nurbsknot[i] = t0;
         }
         changed = true;
     }
@@ -2498,10 +2506,10 @@ bool NurbsCurve::extend(double t0, double t1) {
     if (t1 > d1) {
         clamp_end(1);
         int i0 = m_cv_count - m_order;
-        evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_knot[i0], -1, t1);
-        int kc = knot_count();
+        evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_nurbsknot[i0], -1, t1);
+        int kc = nurbsknot_count();
         for (int i = m_cv_count - 1; i < kc; i++) {
-            m_knot[i] = t1;
+            m_nurbsknot[i] = t1;
         }
         changed = true;
     }
@@ -2566,7 +2574,7 @@ bool NurbsCurve::make_non_rational(bool force) {
     
     return true;
 }
-// Clamp end knots with proper CV adjustment using De Boor algorithm
+// Clamp end nurbsknots with proper CV adjustment using De Boor algorithm
 bool NurbsCurve::clamp_end(int end) {
     if (!is_valid()) return false;
     if (end < 0 || end > 2) return false;
@@ -2576,10 +2584,10 @@ bool NurbsCurve::clamp_end(int end) {
 
     // Clamp start
     if (end == 0 || end == 2) {
-        double t = m_knot[m_order - 2];
-        if (evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[0], &m_knot[0], 1, t)) {
+        double t = m_nurbsknot[m_order - 2];
+        if (evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[0], &m_nurbsknot[0], 1, t)) {
             for (int i = 0; i < m_order - 2; i++) {
-                m_knot[i] = t;
+                m_nurbsknot[i] = t;
             }
         } else {
             rc = false;
@@ -2589,11 +2597,11 @@ bool NurbsCurve::clamp_end(int end) {
     // Clamp end
     if (end == 1 || end == 2) {
         int i0 = m_cv_count - m_order;
-        double t = m_knot[m_cv_count - 1];
-        if (evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_knot[i0], -1, t)) {
-            int kc = knot_count();
+        double t = m_nurbsknot[m_cv_count - 1];
+        if (evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_nurbsknot[i0], -1, t)) {
+            int kc = nurbsknot_count();
             for (int i = m_cv_count; i < kc; i++) {
-                m_knot[i] = t;
+                m_nurbsknot[i] = t;
             }
         } else {
             rc = false;
@@ -2605,14 +2613,14 @@ bool NurbsCurve::clamp_end(int end) {
 
 // Evaluate NURBS blossom at order-1 parameter values using de Boor-like recurrence
 static bool evaluate_nurbs_blossom(int cvdim, int order, int cv_stride,
-    const double* CV, const double* knot, const double* t, double* P) {
-    if (!CV || !t || !knot) return false;
+    const double* CV, const double* nurbsknot, const double* t, double* P) {
+    if (!CV || !t || !nurbsknot) return false;
     if (cv_stride < cvdim) return false;
     int degree = order - 1;
     for (int i = 1; i < 2 * degree; i++) {
-        if (knot[i] - knot[i - 1] < 0.0) return false;
+        if (nurbsknot[i] - nurbsknot[i - 1] < 0.0) return false;
     }
-    if (knot[degree] - knot[degree - 1] < Tolerance::ZERO_TOLERANCE) return false;
+    if (nurbsknot[degree] - nurbsknot[degree - 1] < Tolerance::ZERO_TOLERANCE) return false;
     std::vector<double> space(order);
     for (int i = 0; i < cvdim; i++) {
         const double* cv = CV + i;
@@ -2622,9 +2630,9 @@ static bool evaluate_nurbs_blossom(int cvdim, int order, int cv_stride,
         }
         for (int j = 1; j < order; j++) {
             for (int k = j; k < order; k++) {
-                double denom = knot[degree + k - j] - knot[k - 1];
-                space[k - j] = (knot[degree + k - j] - t[j - 1]) / denom * space[k - j] +
-                    (t[j - 1] - knot[k - 1]) / denom * space[k - j + 1];
+                double denom = nurbsknot[degree + k - j] - nurbsknot[k - 1];
+                space[k - j] = (nurbsknot[degree + k - j] - t[j - 1]) / denom * space[k - j] +
+                    (t[j - 1] - nurbsknot[k - 1]) / denom * space[k - j + 1];
             }
         }
         P[i] = space[0];
@@ -2659,13 +2667,13 @@ static bool get_raised_degree_cv(int old_order, int cvdim, int old_cv_stride,
 }
 
 // Advance span index past degenerate spans
-static int next_span_index(int order, int cv_count, const double* knot, int span_index) {
-    if (span_index < 0 || span_index > cv_count - order || !knot)
+static int next_span_index(int order, int cv_count, const double* nurbsknot, int span_index) {
+    if (span_index < 0 || span_index > cv_count - order || !nurbsknot)
         return -1;
     if (span_index < cv_count - order) {
         do { span_index++; }
         while (span_index < cv_count - order &&
-               knot[span_index + order - 2] == knot[span_index + order - 1]);
+               nurbsknot[span_index + order - 2] == nurbsknot[span_index + order - 1]);
     }
     return span_index;
 }
@@ -2674,26 +2682,26 @@ static int next_span_index(int order, int cv_count, const double* knot, int span
 static bool increment_nurbs_degree(NurbsCurve& N) {
     NurbsCurve M = N;
     int sc = M.span_count();
-    int new_kcount = M.knot_count() + sc + 1;
+    int new_kcount = M.nurbsknot_count() + sc + 1;
     int new_order = M.order() + 1;
     int new_cv_count = new_kcount - new_order + 2;
     int cvdim = M.cv_size();
 
     N.m_order = new_order;
     N.m_cv_count = new_cv_count;
-    N.m_knot.resize(new_order + new_cv_count - 2);
+    N.m_nurbsknot.resize(new_order + new_cv_count - 2);
     N.m_cv.resize(new_cv_count * N.m_cv_stride, 0.0);
 
-    // Build new knot vector: each distinct knot gets mult+1 copies
+    // Build new nurbsknot vector: each distinct nurbsknot gets mult+1 copies
     int ki = 0, ko = 0;
-    int mkc = M.knot_count();
+    int mkc = M.nurbsknot_count();
     while (ki < mkc) {
-        double kn = M.m_knot[ki];
+        double kn = M.m_nurbsknot[ki];
         int mult = 1;
-        while (ki + mult < mkc && std::abs(M.m_knot[ki + mult] - kn) < Tolerance::ZERO_TOLERANCE)
+        while (ki + mult < mkc && std::abs(M.m_nurbsknot[ki + mult] - kn) < Tolerance::ZERO_TOLERANCE)
             mult++;
         for (int j = 0; j <= mult; j++) {
-            N.m_knot[ko++] = kn;
+            N.m_nurbsknot[ko++] = kn;
         }
         ki += mult;
     }
@@ -2704,18 +2712,18 @@ static bool increment_nurbs_degree(NurbsCurve& N) {
     // Compute new CVs per span using blossom
     int siN = 0, siM = 0;
     for (int i = 0; i < sc; i++) {
-        const double* knotN = &N.m_knot[siN];
-        const double* knotM = &M.m_knot[siM];
+        const double* nurbsknotN = &N.m_nurbsknot[siN];
+        const double* nurbsknotM = &M.m_nurbsknot[siM];
         const double* cvM = &M.m_cv[siM * M.m_cv_stride];
-        int span_mult = N.knot_multiplicity(siN + N.degree() - 1);
+        int span_mult = N.nurbsknot_multiplicity(siN + N.degree() - 1);
         int skip = N.order() - span_mult;
         for (int j = skip; j < N.order(); j++) {
             double* cvN = &N.m_cv[(siN + j) * N.m_cv_stride];
             get_raised_degree_cv(M.order(), cvdim, M.m_cv_stride,
-                cvM, knotM, knotN, j, cvN);
+                cvM, nurbsknotM, nurbsknotN, j, cvN);
         }
-        siN = next_span_index(N.order(), N.cv_count(), N.m_knot.data(), siN);
-        siM = next_span_index(M.order(), M.cv_count(), M.m_knot.data(), siM);
+        siN = next_span_index(N.order(), N.cv_count(), N.m_nurbsknot.data(), siN);
+        siM = next_span_index(M.order(), M.cv_count(), M.m_nurbsknot.data(), siM);
     }
 
     // Copy first and last CVs from original
@@ -2737,10 +2745,10 @@ bool NurbsCurve::increase_degree(int desired_degree) {
     int del = desired_degree - degree();
     int sc = span_count();
     int new_order = m_order + del;
-    int new_kcount = knot_count() + (sc + 1) * del;
+    int new_kcount = nurbsknot_count() + (sc + 1) * del;
     int new_cv_count = new_kcount - new_order + 2;
 
-    m_knot.reserve(new_order + new_cv_count - 2);
+    m_nurbsknot.reserve(new_order + new_cv_count - 2);
     m_cv.reserve(new_cv_count * m_cv_stride);
 
     for (int i = 0; i < del; i++) {
@@ -2774,21 +2782,21 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
 
     if (is_periodic()) {
         int sc = span_count();
-        int kc = knot_count();
+        int kc = nurbsknot_count();
         if (sc >= kc - 2 * p + 1) {
-            int knot_index = -1;
+            int nurbsknot_index = -1;
             for (int i = 0; i < kc; i++) {
-                if (m_knot[i] > t) { knot_index = i; break; }
+                if (m_nurbsknot[i] > t) { nurbsknot_index = i; break; }
             }
-            if (knot_index >= p && knot_index <= kc - p) {
-                double k0 = m_knot[knot_index - 1];
-                double k1 = m_knot[knot_index];
+            if (nurbsknot_index >= p && nurbsknot_index <= kc - p) {
+                double k0 = m_nurbsknot[nurbsknot_index - 1];
+                double k1 = m_nurbsknot[nurbsknot_index];
                 double d0 = t - k0;
                 double d1 = k1 - t;
                 bool need_insert = true;
                 if (d0 <= d1) {
                     if (d0 < Tolerance::ZERO_TOLERANCE) {
-                        knot_index--;
+                        nurbsknot_index--;
                         need_insert = false;
                     }
                 } else {
@@ -2796,39 +2804,39 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
                         need_insert = false;
                 }
                 if (need_insert) {
-                    if (!insert_knot(t, 1)) return false;
-                    kc = knot_count();
+                    if (!insert_nurbsknot(t, 1)) return false;
+                    kc = nurbsknot_count();
                     sc = span_count();
-                    knot_index = -1;
+                    nurbsknot_index = -1;
                     for (int i = 0; i < kc; i++) {
-                        if (m_knot[i] > t + Tolerance::ZERO_TOLERANCE) {
-                            knot_index = i; break;
+                        if (m_nurbsknot[i] > t + Tolerance::ZERO_TOLERANCE) {
+                            nurbsknot_index = i; break;
                         }
                     }
-                    if (knot_index < 0) return false;
+                    if (nurbsknot_index < 0) return false;
                 }
-                if (knot_index >= p && knot_index < kc - p) {
+                if (nurbsknot_index >= p && nurbsknot_index < kc - p) {
                     int cvc = m_cv_count;
                     int distinct_cvc = cvc - p;
                     int cvdim = cv_size();
-                    std::vector<double> old_knots = m_knot;
+                    std::vector<double> old_nurbsknots = m_nurbsknot;
                     std::vector<double> old_cv = m_cv;
 
                     int curr = p - 1;
-                    for (int i = knot_index; i < sc + p - 1; i++) {
-                        m_knot[curr] = old_knots[i];
+                    for (int i = nurbsknot_index; i < sc + p - 1; i++) {
+                        m_nurbsknot[curr] = old_nurbsknots[i];
                         curr++;
                     }
-                    for (int i = 0; i <= knot_index - p + 1; i++) {
-                        m_knot[curr] = old_knots[p - 1 + i] + dom_len;
+                    for (int i = 0; i <= nurbsknot_index - p + 1; i++) {
+                        m_nurbsknot[curr] = old_nurbsknots[p - 1 + i] + dom_len;
                         curr++;
                     }
                     for (int i = 0; i < p - 1; i++) {
-                        m_knot[curr + i] = m_knot[curr + i - 1] + m_knot[p + i] - m_knot[p + i - 1];
-                        m_knot[p - 2 - i] = m_knot[p - i - 1] - m_knot[curr - 1 - i] + m_knot[curr - 2 - i];
+                        m_nurbsknot[curr + i] = m_nurbsknot[curr + i - 1] + m_nurbsknot[p + i] - m_nurbsknot[p + i - 1];
+                        m_nurbsknot[p - 2 - i] = m_nurbsknot[p - i - 1] - m_nurbsknot[curr - 1 - i] + m_nurbsknot[curr - 2 - i];
                     }
 
-                    int cv_id = knot_index - p + 1;
+                    int cv_id = nurbsknot_index - p + 1;
                     for (int i = 0; i < cvc; i++) {
                         int src = cv_id % distinct_cvc;
                         if (src < 0) src += distinct_cvc;
@@ -2855,7 +2863,7 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
     int new_kc = order + new_cv_count - 2;
 
     std::vector<double> new_cv(new_cv_count * m_cv_stride);
-    std::vector<double> new_knots(new_kc);
+    std::vector<double> new_nurbsknots(new_kc);
 
     for (int i = 0; i < right_crv.m_cv_count; i++)
         for (int j = 0; j < cvdim; j++)
@@ -2867,18 +2875,18 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
             new_cv[dst * m_cv_stride + j] = left_crv.m_cv[i * left_crv.m_cv_stride + j];
     }
 
-    int rkc = right_crv.knot_count();
+    int rkc = right_crv.nurbsknot_count();
     for (int i = 0; i < rkc; i++)
-        new_knots[i] = right_crv.m_knot[i];
+        new_nurbsknots[i] = right_crv.m_nurbsknot[i];
 
-    int lkc = left_crv.knot_count();
+    int lkc = left_crv.nurbsknot_count();
     for (int i = order - 1; i < lkc; i++)
-        new_knots[rkc + i - (order - 1)] = left_crv.m_knot[i] + shift;
+        new_nurbsknots[rkc + i - (order - 1)] = left_crv.m_nurbsknot[i] + shift;
 
     m_cv_count = new_cv_count;
     m_cv_capacity = new_cv_count * m_cv_stride;
     m_cv = std::move(new_cv);
-    m_knot = std::move(new_knots);
+    m_nurbsknot = std::move(new_nurbsknots);
 
     set_domain(t, t + dom_len);
     invalidate_rmf_cache();
@@ -2948,7 +2956,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     j["dimension"] = m_dim;
     j["guid"] = guid();
     j["is_rational"] = m_is_rat != 0;
-    j["knots"] = m_knot;
+    j["nurbsknots"] = m_nurbsknot;
 
     nlohmann::ordered_json linecolors_arr = nlohmann::ordered_json::array();
     for (const auto& c : linecolors) {
@@ -2985,8 +2993,8 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
 
         curve.create(dim, is_rat, order, cv_count);
 
-        if (data.contains("knots")) {
-            curve.m_knot = data["knots"].get<std::vector<double>>();
+        if (data.contains("nurbsknots")) {
+            curve.m_nurbsknot = data["nurbsknots"].get<std::vector<double>>();
         }
 
         if (data.contains("control_points")) {
@@ -3030,20 +3038,20 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     return curve;
 }
 
-std::string NurbsCurve::json_dumps() const {
+std::string NurbsCurve::file_json_dumps() const {
     return jsondump().dump();
 }
 
-NurbsCurve NurbsCurve::json_loads(const std::string& json_string) {
+NurbsCurve NurbsCurve::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void NurbsCurve::json_dump(const std::string& filename) const {
+void NurbsCurve::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
-NurbsCurve NurbsCurve::json_load(const std::string& filename) {
+NurbsCurve NurbsCurve::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json data;
     file >> data;
@@ -3071,8 +3079,8 @@ std::string NurbsCurve::pb_dumps() const {
     proto.set_order(m_order);
     proto.set_cv_count(m_cv_count);
     proto.set_cv_stride(m_cv_stride);
-    for (double k : m_knot) {
-        proto.add_knots(k);
+    for (double k : m_nurbsknot) {
+        proto.add_nurbsknots(k);
     }
     for (double c : m_cv) {
         proto.add_cvs(c);
@@ -3107,9 +3115,9 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
     curve.name = proto.name();
     curve.width = proto.width() != 0.0 ? proto.width() : 1.0;
 
-    curve.m_knot.clear();
-    for (int i = 0; i < proto.knots_size(); ++i) {
-        curve.m_knot.push_back(proto.knots(i));
+    curve.m_nurbsknot.clear();
+    for (int i = 0; i < proto.nurbsknots_size(); ++i) {
+        curve.m_nurbsknot.push_back(proto.nurbsknots(i));
     }
 
     curve.m_cv.clear();
@@ -3169,30 +3177,30 @@ bool NurbsCurve::reserve_cv_capacity(int capacity) {
     return true;
 }
 
-bool NurbsCurve::reserve_knot_capacity(int capacity) {
-    if (capacity > static_cast<int>(m_knot.size())) {
-        m_knot.resize(capacity);
+bool NurbsCurve::reserve_nurbsknot_capacity(int capacity) {
+    if (capacity > static_cast<int>(m_nurbsknot.size())) {
+        m_nurbsknot.resize(capacity);
     }
     return true;
 }
-// Clean up knots
-bool NurbsCurve::clean_knots(double knot_tolerance) {
+// Clean up nurbsknots
+bool NurbsCurve::clean_nurbsknots(double nurbsknot_tolerance) {
     if (!is_valid()) return false;
-    if (knot_tolerance < 0.0) knot_tolerance = Tolerance::ZERO_TOLERANCE;
+    if (nurbsknot_tolerance < 0.0) nurbsknot_tolerance = Tolerance::ZERO_TOLERANCE;
     
-    // Remove duplicate knots within tolerance
-    std::vector<double> cleaned_knots;
-    cleaned_knots.push_back(m_knot[0]);
+    // Remove duplicate nurbsknots within tolerance
+    std::vector<double> cleaned_nurbsknots;
+    cleaned_nurbsknots.push_back(m_nurbsknot[0]);
     
-    for (size_t i = 1; i < m_knot.size(); i++) {
-        if (std::abs(m_knot[i] - cleaned_knots.back()) > knot_tolerance) {
-            cleaned_knots.push_back(m_knot[i]);
+    for (size_t i = 1; i < m_nurbsknot.size(); i++) {
+        if (std::abs(m_nurbsknot[i] - cleaned_nurbsknots.back()) > nurbsknot_tolerance) {
+            cleaned_nurbsknots.push_back(m_nurbsknot[i]);
         }
     }
     
     // Only update if we actually cleaned something
-    if (cleaned_knots.size() < m_knot.size()) {
-        m_knot = cleaned_knots;
+    if (cleaned_nurbsknots.size() < m_nurbsknot.size()) {
+        m_nurbsknot = cleaned_nurbsknots;
         return true;
     }
     
@@ -3204,20 +3212,20 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
     if (span_index < 0 || span_index >= m_cv_count - m_order) return false;
     if (m_dim < 2 || m_dim > 3) return false;
     
-    // Check if knots at span ends have full multiplicity
+    // Check if nurbsknots at span ends have full multiplicity
     int ki = span_index + m_order - 2;
-    if (m_knot[ki] >= m_knot[ki + 1]) return false;
+    if (m_nurbsknot[ki] >= m_nurbsknot[ki + 1]) return false;
     
     // Check multiplicity at start
     int mult_start = 1;
-    for (int i = ki - 1; i >= 0 && m_knot[i] == m_knot[ki]; i--) {
+    for (int i = ki - 1; i >= 0 && m_nurbsknot[i] == m_nurbsknot[ki]; i--) {
         mult_start++;
     }
     
     // Check multiplicity at end
     int mult_end = 1;
-    int kc = knot_count();
-    for (int i = ki + 2; i < kc && m_knot[i] == m_knot[ki + 1]; i++) {
+    int kc = nurbsknot_count();
+    for (int i = ki + 2; i < kc && m_nurbsknot[i] == m_nurbsknot[ki + 1]; i++) {
         mult_end++;
     }
     
@@ -3271,7 +3279,7 @@ bool NurbsCurve::span_is_singular(int span_index) const {
     
     // Check if span is non-empty
     int ki = span_index + m_order - 2;
-    if (m_knot[ki] >= m_knot[ki + 1]) return true; // Empty span
+    if (m_nurbsknot[ki] >= m_nurbsknot[ki + 1]) return true; // Empty span
     
     // Check if all CVs in span are coincident
     Point p0 = get_cv(span_index);
@@ -3284,59 +3292,59 @@ bool NurbsCurve::span_is_singular(int span_index) const {
     
     return true;
 }
-// Repair bad knots
-bool NurbsCurve::repair_bad_knots(double knot_tolerance, bool repair) {
+// Repair bad nurbsknots
+bool NurbsCurve::repair_bad_nurbsknots(double nurbsknot_tolerance, bool repair) {
     if (!is_valid()) return false;
-    if (knot_tolerance < 0.0) knot_tolerance = 0.0;
+    if (nurbsknot_tolerance < 0.0) nurbsknot_tolerance = 0.0;
     
-    bool found_bad_knots = false;
-    int kc = knot_count();
+    bool found_bad_nurbsknots = false;
+    int kc = nurbsknot_count();
     
-    // Check for knots that are too close together
+    // Check for nurbsknots that are too close together
     for (int i = 1; i < kc; i++) {
-        double delta = m_knot[i] - m_knot[i-1];
+        double delta = m_nurbsknot[i] - m_nurbsknot[i-1];
         if (delta < 0.0) {
-            found_bad_knots = true;
+            found_bad_nurbsknots = true;
             break;
         }
-        if (delta > 0.0 && delta < knot_tolerance) {
-            found_bad_knots = true;
+        if (delta > 0.0 && delta < nurbsknot_tolerance) {
+            found_bad_nurbsknots = true;
             break;
         }
     }
     
     // Check for excessive multiplicity
     for (int i = 0; i < kc; i++) {
-        int mult = knot_multiplicity(i);
+        int mult = nurbsknot_multiplicity(i);
         if (mult >= m_order) {
-            found_bad_knots = true;
+            found_bad_nurbsknots = true;
             break;
         }
     }
     
-    if (!found_bad_knots) return false;
+    if (!found_bad_nurbsknots) return false;
     
     if (repair) {
-        // Simple repair: remove knots that are too close
-        std::vector<double> clean_knots;
-        clean_knots.push_back(m_knot[0]);
+        // Simple repair: remove nurbsknots that are too close
+        std::vector<double> clean_nurbsknots;
+        clean_nurbsknots.push_back(m_nurbsknot[0]);
         
         for (int i = 1; i < kc; i++) {
-            double delta = m_knot[i] - clean_knots.back();
-            if (delta >= knot_tolerance || i == kc - 1) {
-                clean_knots.push_back(m_knot[i]);
+            double delta = m_nurbsknot[i] - clean_nurbsknots.back();
+            if (delta >= nurbsknot_tolerance || i == kc - 1) {
+                clean_nurbsknots.push_back(m_nurbsknot[i]);
             }
         }
         
-        // Only update if we have valid knot count
+        // Only update if we have valid nurbsknot count
         int expected_kc = m_order + m_cv_count - 2;
-        if (static_cast<int>(clean_knots.size()) == expected_kc) {
-            m_knot = clean_knots;
+        if (static_cast<int>(clean_nurbsknots.size()) == expected_kc) {
+            m_nurbsknot = clean_nurbsknots;
             return true;
         }
     }
     
-    return found_bad_knots;
+    return found_bad_nurbsknots;
 }
 // Get parameter tolerance
 bool NurbsCurve::get_parameter_tolerance(double t, double* tminus, double* tplus) const {
@@ -3345,7 +3353,7 @@ bool NurbsCurve::get_parameter_tolerance(double t, double* tminus, double* tplus
     auto [t0, t1] = domain();
     if (t < t0 || t > t1) return false;
     
-    // Simple implementation: use knot spacing as tolerance
+    // Simple implementation: use nurbsknot spacing as tolerance
     double delta = (t1 - t0) * std::sqrt(std::numeric_limits<double>::epsilon());
     
     *tminus = t - delta;
@@ -3359,19 +3367,19 @@ bool NurbsCurve::get_parameter_tolerance(double t, double* tminus, double* tplus
 }
 // Find span using binary search
 int NurbsCurve::find_span(double t) const {
-    // Domain is knot[order-2] to knot[cv_count-1]
-    const double* knot = m_knot.data() + (m_order - 2);
+    // Domain is nurbsknot[order-2] to nurbsknot[cv_count-1]
+    const double* nurbsknot = m_nurbsknot.data() + (m_order - 2);
     int len = m_cv_count - m_order + 2;
 
-    if (t <= knot[0]) return 0;
-    if (t >= knot[len - 1]) return len - 2;
+    if (t <= nurbsknot[0]) return 0;
+    if (t >= nurbsknot[len - 1]) return len - 2;
 
     // Binary search
     int low = 0;
     int high = len - 1;
     while (high > low + 1) {
         int mid = (low + high) / 2;
-        if (t < knot[mid]) {
+        if (t < nurbsknot[mid]) {
             high = mid;
         } else {
             low = mid;
@@ -3387,13 +3395,13 @@ void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis)
     std::vector<double> left(m_order);
     std::vector<double> right(m_order);
 
-    const double* knot = m_knot.data() + (m_order - 2) + span;
+    const double* nurbsknot = m_nurbsknot.data() + (m_order - 2) + span;
 
     basis[0] = 1.0;
 
     for (int j = 1; j < m_order; j++) {
-        left[j] = t - knot[1 - j];
-        right[j] = knot[j] - t;
+        left[j] = t - nurbsknot[1 - j];
+        right[j] = nurbsknot[j] - t;
         double saved = 0.0;
 
         for (int r = 0; r < j; r++) {
@@ -3417,16 +3425,16 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
     std::vector<double> right(p + 1);
     std::vector<std::vector<double>> ndu(p + 1, std::vector<double>(p + 1, 0.0));
 
-    // Use same knot offset as basis_functions
-    const double* knot = m_knot.data() + (m_order - 2) + span;
+    // Use same nurbsknot offset as basis_functions
+    const double* nurbsknot = m_nurbsknot.data() + (m_order - 2) + span;
 
     ndu[0][0] = 1.0;
     for (int j = 1; j <= p; ++j) {
-        left[j] = t - knot[1 - j];
-        right[j] = knot[j] - t;
+        left[j] = t - nurbsknot[1 - j];
+        right[j] = nurbsknot[j] - t;
         double saved = 0.0;
         for (int r = 0; r < j; ++r) {
-            ndu[j][r] = right[r + 1] + left[j - r];  // Store knot differences
+            ndu[j][r] = right[r + 1] + left[j - r];  // Store nurbsknot differences
             double temp = ndu[r][j - 1] / ndu[j][r];
             ndu[r][j] = saved + right[r + 1] * temp;
             saved = left[j - r] * temp;
@@ -3489,7 +3497,7 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     m_cv_count = src.m_cv_count;
     m_cv_stride = src.m_cv_stride;
     m_cv_capacity = src.m_cv_capacity;
-    m_knot = src.m_knot;
+    m_nurbsknot = src.m_nurbsknot;
     m_cv = src.m_cv;
     _guid.clear();
     name = src.name;
@@ -3502,11 +3510,11 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
 // De Boor algorithm for trimming/extending B-spline spans
 // Based on OpenNURBS ON_EvaluateNurbsDeBoor
 bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
-                                        double* cv, const double* knots,
+                                        double* cv, const double* nurbsknots,
                                         int side, double t) {
     int degree = order - 1;
-    double t0 = knots[degree - 1];
-    double t1 = knots[degree];
+    double t0 = nurbsknots[degree - 1];
+    double t1 = nurbsknots[degree];
 
     if (t0 == t1) return false;
 
@@ -3514,13 +3522,13 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
 
     if (side < 0) {
         // Return left side of span (for extending right or clamping end)
-        if (t == t1 && t1 == knots[2 * degree - 1]) return true;
+        if (t == t1 && t1 == nurbsknots[2 * degree - 1]) return true;
 
         // Check if left end is fully multiple
-        bool fully_multiple = (t0 == knots[0]);
+        bool fully_multiple = (t0 == nurbsknots[0]);
 
-        // Advance knots pointer by degree-1
-        knots += degree - 1;
+        // Advance nurbsknots pointer by degree-1
+        nurbsknots += degree - 1;
 
         if (fully_multiple) {
             double dt = t - t0;
@@ -3529,7 +3537,7 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
             while (--k) {
                 double* cv1 = cv;
                 double* cv0 = cv1 - cv_stride;
-                const double* k1 = knots + k;
+                const double* k1 = nurbsknots + k;
                 int i = k;
                 while (i--) {
                     double alpha1 = dt / (*k1-- - t0);
@@ -3545,9 +3553,9 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
                 }
             }
         } else {
-            // Variable left end knots: delta_t = {t - knots[d-1], t - knots[d-2], ..., t - knots[0]}
+            // Variable left end nurbsknots: delta_t = {t - nurbsknots[d-1], t - nurbsknots[d-2], ..., t - nurbsknots[0]}
             std::vector<double> delta_t(degree);
-            const double* k0 = knots;
+            const double* k0 = nurbsknots;
             for (int idx = 0; idx < degree; idx++) {
                 delta_t[idx] = t - *k0--;
             }
@@ -3557,7 +3565,7 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
             while (--k) {
                 double* cv1 = cv;
                 double* cv0 = cv1 - cv_stride;
-                k0 = knots;
+                k0 = nurbsknots;
                 const double* k1 = k0 + k;
                 int di = 0;
                 int i = k;
@@ -3577,13 +3585,13 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
         }
     } else {
         // Return right side of span (for extending left or clamping start)
-        if (t == t0 && t0 == knots[0]) return true;
+        if (t == t0 && t0 == nurbsknots[0]) return true;
 
         // Check if right end is fully multiple
-        bool fully_multiple = (t1 == knots[2 * degree - 1]);
+        bool fully_multiple = (t1 == nurbsknots[2 * degree - 1]);
 
-        // Advance knots pointer by degree
-        knots += degree;
+        // Advance nurbsknots pointer by degree
+        nurbsknots += degree;
 
         if (fully_multiple) {
             double dt = t1 - t;
@@ -3591,7 +3599,7 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
             while (--k) {
                 double* cv0 = cv;
                 double* cv1 = cv0 + cv_stride;
-                const double* k0 = knots - k;
+                const double* k0 = nurbsknots - k;
                 int i = k;
                 while (i--) {
                     double alpha0 = dt / (t1 - *k0++);
@@ -3607,9 +3615,9 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
                 }
             }
         } else {
-            // Variable right end knots: delta_t = {knots[d] - t, knots[d+1] - t, ...}
+            // Variable right end nurbsknots: delta_t = {nurbsknots[d] - t, nurbsknots[d+1] - t, ...}
             std::vector<double> delta_t(degree);
-            const double* k1 = knots;
+            const double* k1 = nurbsknots;
             for (int idx = 0; idx < degree; idx++) {
                 delta_t[idx] = *k1++ - t;
             }
@@ -3618,7 +3626,7 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
             while (--k) {
                 double* cv0 = cv;
                 double* cv1 = cv0 + cv_stride;
-                k1 = knots;
+                k1 = nurbsknots;
                 const double* k0 = k1 - k;
                 int di = 0;
                 int i = k;

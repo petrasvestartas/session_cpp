@@ -9,7 +9,7 @@
 #include "vector.h"
 #include "plane.h"
 #include "xform.h"
-#include "knot.h"
+#include "nurbsknot.h"
 #include "tolerance.h"
 #include <map>
 #include <array>
@@ -76,7 +76,7 @@ public:
 
     /// Create an interpolated cubic NURBS curve through points (Bessel end tangents).
     static NurbsCurve create_interpolated(const std::vector<Point>& points,
-                                           CurveKnotStyle parameterization = CurveKnotStyle::Chord);
+                                           CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Surface primitives

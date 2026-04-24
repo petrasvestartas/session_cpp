@@ -8,7 +8,7 @@
 #include "tolerance.h"
 #include "guid.h"
 #include "json.h"
-#include "knot.h"
+#include "nurbsknot.h"
 #include <vector>
 #include <string>
 #include <cmath>
@@ -25,7 +25,7 @@ namespace session_cpp {
  * 
  * A NURBS curve is defined by:
  * - Control points (CVs)
- * - Knot vector
+ * - NurbsKnot vector
  * - Degree (order = degree + 1)
  * - Optional weights for rational curves
  * 
@@ -49,7 +49,7 @@ public:
     int m_cv_stride;        // Stride between control vertices in m_cv array
     int m_cv_capacity;      // Capacity of m_cv array
     
-    std::vector<double> m_knot;  // Knot vector (length = m_order + m_cv_count - 2)
+    std::vector<double> m_nurbsknot;  // NurbsKnot vector (length = m_order + m_cv_count - 2)
     std::vector<double> m_cv;    // Control vertex data (homogeneous if rational)
 
 public:
@@ -60,11 +60,11 @@ public:
     /// Create NURBS curve from points (RhinoCommon-style unified API)
     /// Equivalent to: NurbsCurve.Create(bool periodic, int degree, IEnumerable<Point3d> points)
     static NurbsCurve create(bool periodic, int degree, const std::vector<Point>& points,
-                           int dimension = 3, double knot_delta = 1.0);
+                           int dimension = 3, double nurbsknot_delta = 1.0);
 
     /// Create an interpolated cubic NURBS curve through points (Bessel end tangents).
     static NurbsCurve create_interpolated(const std::vector<Point>& points,
-                                          CurveKnotStyle parameterization = CurveKnotStyle::Chord);
+                                          CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord);
 
     /// Create a least-squares fitted NURBS curve (Piegl & Tiller §9.4).
     static NurbsCurve create_fitted(const std::vector<Point>& points,
@@ -107,12 +107,12 @@ public:
     /// Create clamped uniform NURBS curve from control points
     bool create_clamped_uniform(int dimension, int order,
                                const std::vector<Point>& points,
-                               double knot_delta = 1.0);
+                               double nurbsknot_delta = 1.0);
 
     /// Create periodic uniform NURBS curve from control points
     bool create_periodic_uniform(int dimension, int order,
                                 const std::vector<Point>& points,
-                                double knot_delta = 1.0);
+                                double nurbsknot_delta = 1.0);
 
     /// Deallocate all memory and reset to empty state
     void destroy();
@@ -170,10 +170,10 @@ public:
                       double cos_angle_tolerance = 0.99984769515639123,
                       double curvature_tolerance = 1e-8) const;
 
-    /// Check if knot vector is valid
-    bool is_valid_knot_vector() const;
+    /// Check if nurbsknot vector is valid
+    bool is_valid_nurbsknot_vector() const;
 
-    /// Check if knot vector is clamped at ends
+    /// Check if nurbsknot vector is clamped at ends
     bool is_clamped(int end = 2) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -195,8 +195,8 @@ public:
     /// Get size of each control vertex (dimension + 1 if rational, else dimension)
     int cv_size() const;
     
-    /// Get knot count (order + cv_count - 2)
-    int knot_count() const;
+    /// Get nurbsknot count (order + cv_count - 2)
+    int nurbsknot_count() const;
     
     /// Get number of spans
     int span_count() const;
@@ -204,8 +204,8 @@ public:
     /// Get CV capacity (allocated space)
     int cv_capacity() const { return m_cv_capacity; }
     
-    /// Get knot capacity (from vector capacity)
-    int knot_capacity() const { return static_cast<int>(m_knot.capacity()); }
+    /// Get nurbsknot capacity (from vector capacity)
+    int nurbsknot_capacity() const { return static_cast<int>(m_nurbsknot.capacity()); }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Control Vertex Access
@@ -235,33 +235,33 @@ public:
     bool set_weight(int cv_index, double weight);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
-    // Knot Access
+    // NurbsKnot Access
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Get knot value at index
-    double knot(int knot_index) const;
+    /// Get nurbsknot value at index
+    double nurbsknot(int nurbsknot_index) const;
 
-    /// Set knot value at index
-    bool set_knot(int knot_index, double knot_value);
+    /// Set nurbsknot value at index
+    bool set_nurbsknot(int nurbsknot_index, double nurbsknot_value);
 
-    /// Get knot multiplicity at index
-    int knot_multiplicity(int knot_index) const;
+    /// Get nurbsknot multiplicity at index
+    int nurbsknot_multiplicity(int nurbsknot_index) const;
 
-    /// Get superfluous knot value at end
-    double superfluous_knot(int end) const;
+    /// Get superfluous nurbsknot value at end
+    double superfluous_nurbsknot(int end) const;
 
-    /// Get pointer to knot array
-    const double* knot_array() const { return m_knot.data(); }
+    /// Get pointer to nurbsknot array
+    const double* nurbsknot_array() const { return m_nurbsknot.data(); }
 
     /// Get pointer to CV array (expert use)
     double* cv_array() { return m_cv.data(); }
     const double* cv_array() const { return m_cv.data(); }
 
-    /// Get all knot values
-    std::vector<double> get_knots() const { return m_knot; }
+    /// Get all nurbsknot values
+    std::vector<double> get_nurbsknots() const { return m_nurbsknot; }
 
-    /// Insert knot into curve (Boehm's algorithm)
-    bool insert_knot(double knot_value, int knot_multiplicity = 1);
+    /// Insert nurbsknot into curve (Boehm's algorithm)
+    bool insert_nurbsknot(double nurbsknot_value, int nurbsknot_multiplicity = 1);
 
     /// Get Greville abcissa for a control point
     double greville_abcissa(int cv_index) const;
@@ -289,7 +289,7 @@ public:
     /// Set curve domain
     bool set_domain(double t0, double t1);
     
-    /// Get span (distinct knot intervals) values
+    /// Get span (distinct nurbsknot intervals) values
     std::vector<double> get_span_vector() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -382,7 +382,7 @@ public:
     // Modification Operations
     ///////////////////////////////////////////////////////////////////////////////////////////
     
-    /// Reverse curve direction (negates knots, reverses CVs)
+    /// Reverse curve direction (negates nurbsknots, reverses CVs)
     bool reverse();
     
     /// Swap two coordinate axes (e.g., swap X and Y)
@@ -405,7 +405,7 @@ public:
     /// If force=true, sets all weights to 1.0 (changes geometry!)
     bool make_non_rational(bool force = false);
     
-    /// Clamp ends (add multiplicity to end knots)
+    /// Clamp ends (add multiplicity to end nurbsknots)
     bool clamp_end(int end); // 0 = start, 1 = end, 2 = both
 
     /// Increase degree of curve
@@ -441,16 +441,16 @@ public:
     static NurbsCurve jsonload(const nlohmann::json& data);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static NurbsCurve json_loads(const std::string& json_string);
+    static NurbsCurve file_json_loads(const std::string& json_string);
 
     /// Write JSON to file
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read JSON from file
-    static NurbsCurve json_load(const std::string& filename);
+    static NurbsCurve file_json_load(const std::string& filename);
 
     /// Convert to protobuf binary string
     std::string pb_dumps() const;
@@ -487,11 +487,11 @@ private:
     /// Reserve capacity for control vertices
     bool reserve_cv_capacity(int capacity);
 
-    /// Reserve capacity for knots
-    bool reserve_knot_capacity(int capacity);
+    /// Reserve capacity for nurbsknots
+    bool reserve_nurbsknot_capacity(int capacity);
 
-    /// Clean up invalid knots (remove duplicates, fix spacing issues)
-    bool clean_knots(double knot_tolerance = 0.0);
+    /// Clean up invalid nurbsknots (remove duplicates, fix spacing issues)
+    bool clean_nurbsknots(double nurbsknot_tolerance = 0.0);
 
     /// Check if span is linear within tolerance
     bool span_is_linear(int span_index, double min_length, double tolerance) const;
@@ -503,13 +503,13 @@ private:
     /// Check if span is singular (collapsed to a point)
     bool span_is_singular(int span_index) const;
 
-    /// Repair bad knots (too close, high multiplicity)
-    bool repair_bad_knots(double knot_tolerance = 0.0, bool repair = true);
+    /// Repair bad nurbsknots (too close, high multiplicity)
+    bool repair_bad_nurbsknots(double nurbsknot_tolerance = 0.0, bool repair = true);
 
     /// Get parameter tolerance at point
     bool get_parameter_tolerance(double t, double* tminus, double* tplus) const;
 
-    /// Find knot span index for parameter t (binary search)
+    /// Find nurbsknot span index for parameter t (binary search)
     int find_span(double t) const;
 
     /// Compute basis functions at parameter t
@@ -525,9 +525,9 @@ private:
     /// De Boor algorithm for trimming/extending B-spline spans
     /// Based on OpenNURBS ON_EvaluateNurbsDeBoor
     /// side: -1 = left side, +1 = right side
-    /// Returns false if knot[order-2] == knot[order-1]
+    /// Returns false if nurbsknot[order-2] == nurbsknot[order-1]
     static bool evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride,
-                                       double* cv, const double* knot,
+                                       double* cv, const double* nurbsknot,
                                        int side, double t);
 
     ///////////////////////////////////////////////////////////////////////////////////////////

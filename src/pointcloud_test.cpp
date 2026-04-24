@@ -311,14 +311,14 @@ MINI_TEST("PointCloud", "Json Roundtrip") {
 
     //   jsondump()      │ ordered_json │ to JSON object (internal use)
     //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   json_dumps()    │ std::string  │ to JSON string
-    //   json_loads(s)   │ std::string  │ from JSON string
-    //   json_dump(path) │ file         │ write to file
-    //   json_load(path) │ file         │ read from file
+    //   file_json_dumps()    │ std::string  │ to JSON string
+    //   file_json_loads(s)   │ std::string  │ from JSON string
+    //   file_json_dump(path) │ file         │ write to file
+    //   file_json_load(path) │ file         │ read from file
 
     std::string fname = "serialization/test_pointcloud.json";
-    pc.json_dump(fname);
-    PointCloud loaded = PointCloud::json_load(fname);
+    pc.file_json_dump(fname);
+    PointCloud loaded = PointCloud::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "test_pointcloud");
     MINI_CHECK(loaded.len() == 2);

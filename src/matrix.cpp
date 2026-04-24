@@ -440,18 +440,18 @@ Matrix Matrix::jsonload(const nlohmann::json& d) {
     return m;
 }
 
-std::string Matrix::json_dumps() const { return jsondump().dump(); }
+std::string Matrix::file_json_dumps() const { return jsondump().dump(); }
 
-Matrix Matrix::json_loads(const std::string& json_string) {
+Matrix Matrix::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Matrix::json_dump(const std::string& filename) const {
+void Matrix::file_json_dump(const std::string& filename) const {
     std::ofstream file(filename);
     file << jsondump().dump(2);
 }
 
-Matrix Matrix::json_load(const std::string& filename) {
+Matrix Matrix::file_json_load(const std::string& filename) {
     std::ifstream file(filename);
     nlohmann::json d = nlohmann::json::parse(file);
     return jsonload(d);

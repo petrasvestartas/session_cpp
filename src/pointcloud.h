@@ -183,16 +183,16 @@ public:
     static PointCloud jsonload(const nlohmann::json& data);
 
     /// Convert to JSON string
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Load from JSON string
-    static PointCloud json_loads(const std::string& json_string);
+    static PointCloud file_json_loads(const std::string& json_string);
 
     /// Write JSON to file
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read JSON from file
-    static PointCloud json_load(const std::string& filename);
+    static PointCloud file_json_load(const std::string& filename);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf Serialization

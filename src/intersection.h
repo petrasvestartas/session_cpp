@@ -6,7 +6,7 @@
 #include "polyline.h"
 #include "mesh.h"
 #include "obb.h"
-#include "bvh.h"
+#include "spatial_bvh.h"
 #include "element.h"
 #include "tolerance.h"
 #include <array>
@@ -302,7 +302,7 @@ public:
   );
 
   /**
-   * @brief Find intersection of ray with mesh using BVH acceleration
+   * @brief Find intersection of ray with mesh using SpatialBVH acceleration
    * @param origin Ray origin point
    * @param direction Ray direction vector (not necessarily normalized)
    * @param mesh Mesh to intersect
@@ -335,7 +335,7 @@ public:
   );
 
   /**
-   * @brief Find intersection(s) of line with mesh using BVH (simplified API)
+   * @brief Find intersection(s) of line with mesh using SpatialBVH (simplified API)
    * @param line Line to intersect with mesh
    * @param mesh Mesh to intersect
    * @param epsilon Tolerance for intersection detection
@@ -730,7 +730,7 @@ public:
     double coplanar_tolerance = 5.0
   );
 
-  /// Adjacency search: BVH broad phase + OBB SAT narrow phase.
+  /// Adjacency search: SpatialBVH broad phase + OBB SAT narrow phase.
   static std::vector<int> adjacency_search(
     std::vector<Element*>& elements, double inflate = 5.0);
 
@@ -741,54 +741,38 @@ public:
     double coplanar_tolerance = 5.0
   );
 
-  /**
-   * @brief Result of a side-to-side cross/lap joint between two plate elements.
-   */
-  struct CrossJoint {
-    int type = 30;                        ///< Joint type code (30 = side-to-side cross)
-    std::pair<int,int> face_ids_a{-1,-1}; ///< Two side-face indices of element A involved
-    std::pair<int,int> face_ids_b{-1,-1}; ///< Two side-face indices of element B involved
-    Polyline joint_area;                  ///< Closed quad on the mid-plane (5 pts)
-    std::array<Polyline,2> joint_lines;   ///< Two perpendicular centerlines of joint_area (2 pts each)
-    std::array<Polyline,2> joint_volumes; ///< Two parallel quads bounding the joint volume
-  };
+  // Note: CrossJoint struct + plane_to_face overloads + set_cross_joint_distance_squared
+  // were wood-domain API and have been relocated to wood/wood_session.h +
+  // wood/wood_joint_detection.cpp. Callers should use `wood_session::CrossJoint`
+  // and `wood_session::plane_to_face(...)` from `wood/wood_session.h`.
 
-  /**
-   * @brief Cross/lap joint detection between two plate elements (side-to-side).
-   * @param polylines_a Top + bottom polylines of plate A (size 2)
-   * @param polylines_b Top + bottom polylines of plate B (size 2)
-   * @param planes_a    Top + bottom planes of plate A (size 2)
-   * @param planes_b    Top + bottom planes of plate B (size 2)
-   * @param result      Output joint geometry (only valid if return is true)
-   * @param angle_tol   Reject if planes are within this angle (degrees) of parallel
-   * @param extension   Optional joint volume extension {edge_d0, edge_d1, depth}
-   * @return true if a cross joint was found
-   */
-  static bool plane_to_face(
-    const std::array<Polyline,2>& polylines_a,
-    const std::array<Polyline,2>& polylines_b,
-    const std::array<Plane,2>& planes_a,
-    const std::array<Plane,2>& planes_b,
-    CrossJoint& result,
-    double angle_tol = 5.0,
-    const std::array<double,3>& extension = {0.0, 0.0, 0.0}
+  // Port of cgal_box_search.h:252-496. Classifies two finite segments s0/s1
+  // as end-to-end, side-to-end, or cross based on above_closer_to_edge ∈ [0,1].
+  // n_segs_*/cur_seg_* give the segment's position within its parent polyline
+  // (used for full-polyline parameter remapping that determines type0/type1).
+  // Outputs: p0/p1 = closest approach points (clamped to [0,1] on each segment);
+  //          v0/v1 = unit directions, flipped away from the far end when type=0;
+  //          normal = unit perpendicular to both segments (Plane::base1 if parallel);
+  //          type0/type1 = 0 means segment-end, 1 means segment-interior;
+  //          is_parallel = true when v0 × v1 is near-zero.
+  // Returns false for degenerate cases.
+  static bool line_line_classified(
+    const Line& s0,
+    const Line& s1,
+    int  n_segs_0,
+    int  n_segs_1,
+    int  cur_seg_0,
+    int  cur_seg_1,
+    double above_closer_to_edge,
+    Point& p0,
+    Point& p1,
+    Vector& v0,
+    Vector& v1,
+    Vector& normal,
+    bool& type0,
+    bool& type1,
+    bool& is_parallel
   );
-
-  /// Convenience overload taking ElementPlate pointers (extracts polylines/planes).
-  static bool plane_to_face(
-    ElementPlate* a,
-    ElementPlate* b,
-    CrossJoint& result,
-    double angle_tol = 5.0,
-    const std::array<double,3>& extension = {0.0, 0.0, 0.0}
-  );
-
-public:
-  /// Set the near-coplanar rejection threshold used by
-  /// polyline_plane_cross_joint. Wood reads from
-  /// wood::GLOBALS::DISTANCE_SQUARED which some tests (hexboxes) mutate.
-  /// Caller syncs this before face_to_face iteration.
-  static void set_cross_joint_distance_squared(double dist_sq);
 
 private:
   static int solve_3x3(
@@ -800,25 +784,6 @@ private:
     double& pivot_ratio
   );
   static double plane_value_at(const Plane& plane, const Point& point);
-
-  /// Project polygon + test points to plane local 2D, run point-in-polygon, fill inside indices.
-  static int are_points_inside(
-    const Polyline& polygon,
-    const Plane& plane,
-    const std::vector<Point>& test_points,
-    std::vector<int>& inside_indices_out
-  );
-
-  /// Cross-joint chord between two polylines via reciprocal polyline-plane intersections.
-  /// Returns the contact segment + the (edge_in_c0, edge_in_c1) pair.
-  static bool polyline_plane_cross_joint(
-    const Polyline& c0,
-    const Polyline& c1,
-    const Plane& p0,
-    const Plane& p1,
-    Line& contact_out,
-    std::pair<int,int>& edge_pair_out
-  );
 };
 
 } // namespace session_cpp

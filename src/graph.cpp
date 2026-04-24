@@ -127,20 +127,20 @@ Graph Graph::jsonload(const nlohmann::json &data) {
   return graph;
 }
 
-std::string Graph::json_dumps() const {
+std::string Graph::file_json_dumps() const {
   return jsondump().dump();
 }
 
-Graph Graph::json_loads(const std::string &json_string) {
+Graph Graph::file_json_loads(const std::string &json_string) {
   return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Graph::json_dump(const std::string &filename) const {
+void Graph::file_json_dump(const std::string &filename) const {
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
 
-Graph Graph::json_load(const std::string &filename) {
+Graph Graph::file_json_load(const std::string &filename) {
   std::ifstream file(filename);
   nlohmann::json data = nlohmann::json::parse(file);
   return jsonload(data);

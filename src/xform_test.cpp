@@ -518,8 +518,8 @@ MINI_TEST("Xform", "Json Roundtrip") {
     xform.name = "test_xform";
 
     std::string filename = "serialization/test_xform.json";
-    xform.json_dump(filename);
-    Xform loaded = Xform::json_load(filename);
+    xform.file_json_dump(filename);
+    Xform loaded = Xform::file_json_load(filename);
 
     MINI_CHECK(loaded.name == "test_xform");
     MINI_CHECK(loaded.guid() == xform.guid());

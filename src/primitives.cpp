@@ -2,7 +2,7 @@
 #include "nurbssurface.h"
 #include "intersection.h"
 #include "tolerance.h"
-#include "knot.h"
+#include "nurbsknot.h"
 #include <cmath>
 #include <filesystem>
 
@@ -17,8 +17,8 @@ NurbsCurve Primitives::circle(double cx, double cy, double cz, double radius) {
     double weights[] = {1, w, 1, w, 1, w, 1, w, 1};
 
     NurbsCurve curve(3, true, 3, 9);
-    double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-    for (int i = 0; i < 10; i++) curve.set_knot(i, knots[i]);
+    double nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    for (int i = 0; i < 10; i++) curve.set_nurbsknot(i, nurbsknots[i]);
 
     for (int i = 0; i < 9; i++) {
         double px = cx + radius * circle_x[i];
@@ -35,8 +35,8 @@ NurbsCurve Primitives::ellipse(double cx, double cy, double cz, double major_rad
     double weights[] = {1, w, 1, w, 1, w, 1, w, 1};
 
     NurbsCurve curve(3, true, 3, 9);
-    double knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-    for (int i = 0; i < 10; i++) curve.set_knot(i, knots[i]);
+    double nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    for (int i = 0; i < 10; i++) curve.set_nurbsknot(i, nurbsknots[i]);
 
     for (int i = 0; i < 9; i++) {
         double px = cx + major_radius * ex[i];
@@ -131,10 +131,10 @@ NurbsCurve Primitives::arc(const Point& start, const Point& mid, const Point& en
     curve.set_cv_4d(1, shoulder[0] * w, shoulder[1] * w, shoulder[2] * w, w);
     curve.set_cv_4d(2, end[0], end[1], end[2], 1.0);
 
-    curve.set_knot(0, 0);
-    curve.set_knot(1, 0);
-    curve.set_knot(2, 1);
-    curve.set_knot(3, 1);
+    curve.set_nurbsknot(0, 0);
+    curve.set_nurbsknot(1, 0);
+    curve.set_nurbsknot(2, 1);
+    curve.set_nurbsknot(3, 1);
 
     return curve;
 }
@@ -155,10 +155,10 @@ NurbsCurve Primitives::parabola(const Point& p0, const Point& p1, const Point& p
     curve.set_cv(1, cv1);
     curve.set_cv(2, p2);
 
-    curve.set_knot(0, 0);
-    curve.set_knot(1, 0);
-    curve.set_knot(2, 1);
-    curve.set_knot(3, 1);
+    curve.set_nurbsknot(0, 0);
+    curve.set_nurbsknot(1, 0);
+    curve.set_nurbsknot(2, 1);
+    curve.set_nurbsknot(3, 1);
 
     return curve;
 }
@@ -180,15 +180,15 @@ NurbsCurve Primitives::hyperbola(const Point& center, double a, double b, double
         curve.set_cv(i, Point(x, y, z));
     }
 
-    // Create clamped uniform knot vector
-    int knot_count = cv_count + 4 - 2;
-    for (int i = 0; i < knot_count; i++) {
+    // Create clamped uniform nurbsknot vector
+    int nurbsknot_count = cv_count + 4 - 2;
+    for (int i = 0; i < nurbsknot_count; i++) {
         if (i < 3) {
-            curve.set_knot(i, 0);
-        } else if (i >= knot_count - 3) {
-            curve.set_knot(i, num_segments - 2);
+            curve.set_nurbsknot(i, 0);
+        } else if (i >= nurbsknot_count - 3) {
+            curve.set_nurbsknot(i, num_segments - 2);
         } else {
-            curve.set_knot(i, i - 2);
+            curve.set_nurbsknot(i, i - 2);
         }
     }
 
@@ -219,7 +219,7 @@ NurbsCurve Primitives::spiral(double start_radius, double end_radius, double pit
         curve.set_cv(i, Point(x, y, z));
     }
 
-    curve.m_knot = knot::make_clamped_uniform(curve.m_order, curve.m_cv_count, 1.0);
+    curve.m_nurbsknot = nurbsknot::make_clamped_uniform(curve.m_order, curve.m_cv_count, 1.0);
 
     return curve;
 }
@@ -229,13 +229,13 @@ NurbsSurface Primitives::cylinder_surface(double cx, double cy, double cz, doubl
     double circle_weights[] = {1, w, 1, w, 1, w, 1, w, 1};
     double circle_x[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     double circle_y[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
-    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-    double v_knots[] = {0, 1};
+    double u_nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    double v_nurbsknots[] = {0, 1};
 
     NurbsSurface srf(3, true, 3, 2, 9, 2);
 
-    for (int i = 0; i < 10; i++) srf.set_knot(0, i, u_knots[i]);
-    for (int i = 0; i < 2; i++) srf.set_knot(1, i, v_knots[i]);
+    for (int i = 0; i < 10; i++) srf.set_nurbsknot(0, i, u_nurbsknots[i]);
+    for (int i = 0; i < 2; i++) srf.set_nurbsknot(1, i, v_nurbsknots[i]);
 
     for (int i = 0; i < 9; i++) {
         double wi = circle_weights[i];
@@ -253,13 +253,13 @@ NurbsSurface Primitives::cone_surface(double cx, double cy, double cz, double ra
     double circle_weights[] = {1, w, 1, w, 1, w, 1, w, 1};
     double circle_x[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     double circle_y[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
-    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-    double v_knots[] = {0, 1};
+    double u_nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    double v_nurbsknots[] = {0, 1};
 
     NurbsSurface srf(3, true, 3, 2, 9, 2);
 
-    for (int i = 0; i < 10; i++) srf.set_knot(0, i, u_knots[i]);
-    for (int i = 0; i < 2; i++) srf.set_knot(1, i, v_knots[i]);
+    for (int i = 0; i < 10; i++) srf.set_nurbsknot(0, i, u_nurbsknots[i]);
+    for (int i = 0; i < 2; i++) srf.set_nurbsknot(1, i, v_nurbsknots[i]);
 
     double apex_z = cz + height;
     for (int i = 0; i < 9; i++) {
@@ -278,13 +278,13 @@ NurbsSurface Primitives::torus_surface(double cx, double cy, double cz, double m
     double cw[] = {1, w, 1, w, 1, w, 1, w, 1};
     double cos_a[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     double sin_a[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
-    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    double u_nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
 
     NurbsSurface srf(3, true, 3, 3, 9, 9);
 
     for (int d = 0; d < 2; d++)
         for (int i = 0; i < 10; i++)
-            srf.set_knot(d, i, u_knots[i]);
+            srf.set_nurbsknot(d, i, u_nurbsknots[i]);
 
     for (int i = 0; i < 9; i++) {
         double ca = cos_a[i];
@@ -309,16 +309,16 @@ NurbsSurface Primitives::sphere_surface(double cx, double cy, double cz, double 
     double cw[] = {1, w, 1, w, 1, w, 1, w, 1};
     double cos_a[] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     double sin_a[] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
-    double u_knots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
-    double v_knots[] = {0, 0, 1, 1, 2, 2};
+    double u_nurbsknots[] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    double v_nurbsknots[] = {0, 0, 1, 1, 2, 2};
     double lat_r[] = {0, 1, 1, 1, 0};
     double lat_z[] = {-1, -1, 0, 1, 1};
     double lat_w[] = {1, w, 1, w, 1};
 
     NurbsSurface srf(3, true, 3, 3, 9, 5);
 
-    for (int i = 0; i < 10; i++) srf.set_knot(0, i, u_knots[i]);
-    for (int i = 0; i < 6; i++) srf.set_knot(1, i, v_knots[i]);
+    for (int i = 0; i < 10; i++) srf.set_nurbsknot(0, i, u_nurbsknots[i]);
+    for (int i = 0; i < 6; i++) srf.set_nurbsknot(1, i, v_nurbsknots[i]);
 
     for (int j = 0; j < 5; j++) {
         double r = radius * lat_r[j];
@@ -776,7 +776,7 @@ Mesh Primitives::arrow_mesh(const Line& line, double radius) {
 
 namespace {
 
-std::vector<double> merge_knot_vectors(const std::vector<double>& a, const std::vector<double>& b, double tol = 1e-10) {
+std::vector<double> merge_nurbsknot_vectors(const std::vector<double>& a, const std::vector<double>& b, double tol = 1e-10) {
     std::vector<double> merged;
     size_t i = 0, j = 0;
     while (i < a.size() && j < b.size()) {
@@ -796,7 +796,7 @@ std::vector<double> merge_knot_vectors(const std::vector<double>& a, const std::
     return merged;
 }
 
-bool knot_vectors_equal(const std::vector<double>& a, const std::vector<double>& b, double tol = 1e-10) {
+bool nurbsknot_vectors_equal(const std::vector<double>& a, const std::vector<double>& b, double tol = 1e-10) {
     if (a.size() != b.size()) return false;
     for (size_t i = 0; i < a.size(); i++) {
         if (std::abs(a[i] - b[i]) > tol) return false;
@@ -827,7 +827,7 @@ void make_curves_compatible(std::vector<NurbsCurve>& curves) {
     bool already_compatible = true;
     for (size_t i = 1; i < curves.size(); i++) {
         if (curves[i].cv_count() != curves[0].cv_count() ||
-            !knot_vectors_equal(curves[i].get_knots(), curves[0].get_knots())) {
+            !nurbsknot_vectors_equal(curves[i].get_nurbsknots(), curves[0].get_nurbsknots())) {
             already_compatible = false;
             break;
         }
@@ -838,20 +838,20 @@ void make_curves_compatible(std::vector<NurbsCurve>& curves) {
         c.set_domain(0.0, 1.0);
     }
 
-    std::vector<double> unified = curves[0].get_knots();
+    std::vector<double> unified = curves[0].get_nurbsknots();
     for (size_t i = 1; i < curves.size(); i++) {
-        unified = merge_knot_vectors(unified, curves[i].get_knots());
+        unified = merge_nurbsknot_vectors(unified, curves[i].get_nurbsknots());
     }
 
     const double tol = 1e-10;
     for (auto& c : curves) {
-        std::vector<double> cur_knots = c.get_knots();
+        std::vector<double> cur_nurbsknots = c.get_nurbsknots();
         size_t ci = 0;
         for (size_t ui = 0; ui < unified.size(); ui++) {
-            if (ci < cur_knots.size() && std::abs(cur_knots[ci] - unified[ui]) < tol) {
+            if (ci < cur_nurbsknots.size() && std::abs(cur_nurbsknots[ci] - unified[ui]) < tol) {
                 ci++;
             } else {
-                c.insert_knot(unified[ui], 1);
+                c.insert_nurbsknot(unified[ui], 1);
             }
         }
     }
@@ -886,25 +886,25 @@ NurbsSurface Primitives::create_ruled(const NurbsCurve& curveA, const NurbsCurve
     }
 
     {
-        std::vector<double> knotsA = cA.get_knots();
-        std::vector<double> knotsB = cB.get_knots();
+        std::vector<double> nurbsknotsA = cA.get_nurbsknots();
+        std::vector<double> nurbsknotsB = cB.get_nurbsknots();
         const double tol = 1e-10;
 
-        for (double k : knotsB) {
+        for (double k : nurbsknotsB) {
             bool found = false;
-            for (double ka : knotsA) {
+            for (double ka : nurbsknotsA) {
                 if (std::abs(ka - k) < tol) { found = true; break; }
             }
-            if (!found) cA.insert_knot(k, 1);
+            if (!found) cA.insert_nurbsknot(k, 1);
         }
 
-        knotsA = cA.get_knots();
-        for (double k : knotsA) {
+        nurbsknotsA = cA.get_nurbsknots();
+        for (double k : nurbsknotsA) {
             bool found = false;
-            for (double kb : knotsB) {
+            for (double kb : nurbsknotsB) {
                 if (std::abs(kb - k) < tol) { found = true; break; }
             }
-            if (!found) cB.insert_knot(k, 1);
+            if (!found) cB.insert_nurbsknot(k, 1);
         }
     }
 
@@ -916,12 +916,12 @@ NurbsSurface Primitives::create_ruled(const NurbsCurve& curveA, const NurbsCurve
 
     surface.create_raw(3, is_rat, order_u, order_v, cv_count_u, cv_count_v);
 
-    for (int i = 0; i < cA.knot_count(); i++) {
-        surface.set_knot(0, i, cA.knot(i));
+    for (int i = 0; i < cA.nurbsknot_count(); i++) {
+        surface.set_nurbsknot(0, i, cA.nurbsknot(i));
     }
 
-    surface.set_knot(1, 0, 0.0);
-    surface.set_knot(1, 1, 1.0);
+    surface.set_nurbsknot(1, 0, 0.0);
+    surface.set_nurbsknot(1, 1, 1.0);
 
     if (is_rat) {
         for (int i = 0; i < cv_count_u; i++) {
@@ -962,8 +962,8 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
     auto make_bilinear = [&](const Point& orig, const Vector& xax, const Vector& yax,
                              double min_u, double max_u, double min_v, double max_v) {
         surface.create_raw(3, false, 2, 2, 2, 2);
-        surface.set_knot(0, 0, 0.0); surface.set_knot(0, 1, 1.0);
-        surface.set_knot(1, 0, 0.0); surface.set_knot(1, 1, 1.0);
+        surface.set_nurbsknot(0, 0, 0.0); surface.set_nurbsknot(0, 1, 1.0);
+        surface.set_nurbsknot(1, 0, 0.0); surface.set_nurbsknot(1, 1, 1.0);
         auto pt = [&](double u, double v) -> Point {
             return Point(orig[0] + u*xax[0] + v*yax[0],
                          orig[1] + u*xax[1] + v*yax[1],
@@ -994,8 +994,8 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
 
     if (unique_pts.size() == 3 && boundary.degree() <= 1) {
         surface.create_raw(3, false, 2, 2, 2, 2);
-        surface.set_knot(0, 0, 0.0); surface.set_knot(0, 1, 1.0);
-        surface.set_knot(1, 0, 0.0); surface.set_knot(1, 1, 1.0);
+        surface.set_nurbsknot(0, 0, 0.0); surface.set_nurbsknot(0, 1, 1.0);
+        surface.set_nurbsknot(1, 0, 0.0); surface.set_nurbsknot(1, 1, 1.0);
         surface.set_cv(0, 0, unique_pts[0]);
         surface.set_cv(1, 0, unique_pts[1]);
         surface.set_cv(1, 1, unique_pts[2]);
@@ -1005,8 +1005,8 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
 
     if (unique_pts.size() == 4 && boundary.degree() <= 1) {
         surface.create_raw(3, false, 2, 2, 2, 2);
-        surface.set_knot(0, 0, 0.0); surface.set_knot(0, 1, 1.0);
-        surface.set_knot(1, 0, 0.0); surface.set_knot(1, 1, 1.0);
+        surface.set_nurbsknot(0, 0, 0.0); surface.set_nurbsknot(0, 1, 1.0);
+        surface.set_nurbsknot(1, 0, 0.0); surface.set_nurbsknot(1, 1, 1.0);
         surface.set_cv(0, 0, unique_pts[0]);
         surface.set_cv(1, 0, unique_pts[1]);
         surface.set_cv(1, 1, unique_pts[2]);
@@ -1112,31 +1112,31 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
     }
 
     int cv_count_v = n_sections;
-    int knot_count_v = order_v + cv_count_v - 2;
-    std::vector<double> knots_v(knot_count_v);
+    int nurbsknot_count_v = order_v + cv_count_v - 2;
+    std::vector<double> nurbsknots_v(nurbsknot_count_v);
 
     if (degree_v >= n_sections - 1) {
         int d = degree_v;
-        for (int i = 0; i < d; i++) knots_v[i] = 0.0;
-        for (int i = d; i < knot_count_v; i++) knots_v[i] = 1.0;
+        for (int i = 0; i < d; i++) nurbsknots_v[i] = 0.0;
+        for (int i = d; i < nurbsknot_count_v; i++) nurbsknots_v[i] = 1.0;
     } else {
-        for (int i = 0; i < order_v - 1; i++) knots_v[i] = v_params[0];
+        for (int i = 0; i < order_v - 1; i++) nurbsknots_v[i] = v_params[0];
         for (int j = 1; j <= n_sections - order_v; j++) {
             double sum = 0.0;
             for (int i = j; i < j + degree_v; i++) sum += v_params[i];
-            knots_v[order_v - 2 + j] = sum / degree_v;
+            nurbsknots_v[order_v - 2 + j] = sum / degree_v;
         }
-        for (int i = knot_count_v - order_v + 1; i < knot_count_v; i++) knots_v[i] = v_params[n_sections - 1];
+        for (int i = nurbsknot_count_v - order_v + 1; i < nurbsknot_count_v; i++) nurbsknots_v[i] = v_params[n_sections - 1];
     }
 
     surface.create_raw(3, is_rat, order_u, order_v, cv_count_u, cv_count_v);
 
-    for (int i = 0; i < surface.knot_count(0); i++) {
-        surface.set_knot(0, i, curves[0].knot(i));
+    for (int i = 0; i < surface.nurbsknot_count(0); i++) {
+        surface.set_nurbsknot(0, i, curves[0].nurbsknot(i));
     }
 
-    for (int i = 0; i < static_cast<int>(knots_v.size()) && i < surface.knot_count(1); i++) {
-        surface.set_knot(1, i, knots_v[i]);
+    for (int i = 0; i < static_cast<int>(nurbsknots_v.size()) && i < surface.nurbsknot_count(1); i++) {
+        surface.set_nurbsknot(1, i, nurbsknots_v[i]);
     }
 
     {
@@ -1144,8 +1144,8 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
         std::vector<std::vector<double>> N_matrix(n, std::vector<double>(n, 0.0));
 
         NurbsCurve temp_crv(1, false, order_v, cv_count_v);
-        for (int i = 0; i < static_cast<int>(knots_v.size()); i++) {
-            temp_crv.set_knot(i, knots_v[i]);
+        for (int i = 0; i < static_cast<int>(nurbsknots_v.size()); i++) {
+            temp_crv.set_nurbsknot(i, nurbsknots_v[i]);
         }
 
         for (int k = 0; k < n; k++) {
@@ -1154,12 +1154,12 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
             if (t < t0) t = t0;
             if (t > t1) t = t1;
 
-            int span = knot::find_span(order_v, cv_count_v, knots_v, t);
+            int span = nurbsknot::find_span(order_v, cv_count_v, nurbsknots_v, t);
             int d = order_v - 1;
-            int knot_base = span + d;
+            int nurbsknot_base = span + d;
 
-            if (knots_v[knot_base - 1] == knots_v[knot_base]) {
-                if (t <= knots_v[knot_base]) {
+            if (nurbsknots_v[nurbsknot_base - 1] == nurbsknots_v[nurbsknot_base]) {
+                if (t <= nurbsknots_v[nurbsknot_base]) {
                     N_matrix[k][span] = 1.0;
                 } else {
                     N_matrix[k][span + order_v - 1] = 1.0;
@@ -1171,14 +1171,14 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
             Nvals[order_v * order_v - 1] = 1.0;
             std::vector<double> left(d), right(d);
             int N_idx = order_v * order_v - 1;
-            int k_right = knot_base;
-            int k_left = knot_base - 1;
+            int k_right = nurbsknot_base;
+            int k_left = nurbsknot_base - 1;
 
             for (int j = 0; j < d; j++) {
                 int N0_idx = N_idx;
                 N_idx -= (order_v + 1);
-                left[j] = t - knots_v[k_left];
-                right[j] = knots_v[k_right] - t;
+                left[j] = t - nurbsknots_v[k_left];
+                right[j] = nurbsknots_v[k_right] - t;
                 k_left--;
                 k_right++;
 
@@ -1294,19 +1294,19 @@ NurbsSurface Primitives::create_revolve(const NurbsCurve& profile, const Point& 
     double w_mid = std::cos(d_theta / 2.0);
     int n_u = 2 * n_arcs + 1;
 
-    std::vector<double> knots_u;
-    knots_u.clear();
-    int knot_count_u = n_u + 1;
-    knots_u.resize(knot_count_u);
-    knots_u[0] = 0.0;
-    knots_u[1] = 0.0;
+    std::vector<double> nurbsknots_u;
+    nurbsknots_u.clear();
+    int nurbsknot_count_u = n_u + 1;
+    nurbsknots_u.resize(nurbsknot_count_u);
+    nurbsknots_u[0] = 0.0;
+    nurbsknots_u[1] = 0.0;
     for (int i = 1; i <= n_arcs; i++) {
         double kv = i * d_theta;
-        knots_u[2 * i] = kv;
-        knots_u[2 * i + 1] = kv;
+        nurbsknots_u[2 * i] = kv;
+        nurbsknots_u[2 * i + 1] = kv;
     }
-    knots_u[knot_count_u - 1] = angle;
-    knots_u[knot_count_u - 2] = angle;
+    nurbsknots_u[nurbsknot_count_u - 1] = angle;
+    nurbsknots_u[nurbsknot_count_u - 2] = angle;
 
     int cv_count_v = profile.cv_count();
     int order_v = profile.order();
@@ -1314,12 +1314,12 @@ NurbsSurface Primitives::create_revolve(const NurbsCurve& profile, const Point& 
 
     surface.create_raw(3, true, 3, order_v, n_u, cv_count_v);
 
-    for (int i = 0; i < knot_count_u && i < surface.knot_count(0); i++) {
-        surface.set_knot(0, i, knots_u[i]);
+    for (int i = 0; i < nurbsknot_count_u && i < surface.nurbsknot_count(0); i++) {
+        surface.set_nurbsknot(0, i, nurbsknots_u[i]);
     }
 
-    for (int i = 0; i < profile.knot_count() && i < surface.knot_count(1); i++) {
-        surface.set_knot(1, i, profile.knot(i));
+    for (int i = 0; i < profile.nurbsknot_count() && i < surface.nurbsknot_count(1); i++) {
+        surface.set_nurbsknot(1, i, profile.nurbsknot(i));
     }
 
     std::vector<double> u_angles(n_u);
@@ -1693,11 +1693,11 @@ NurbsSurface Primitives::create_edge(
 
     surface.create_raw(3, is_rat, order_u, order_v, cv_count_u, cv_count_v);
 
-    for (int i = 0; i < surface.knot_count(0); i++)
-        surface.set_knot(0, i, west.knot(i));
+    for (int i = 0; i < surface.nurbsknot_count(0); i++)
+        surface.set_nurbsknot(0, i, west.nurbsknot(i));
 
-    for (int i = 0; i < surface.knot_count(1); i++)
-        surface.set_knot(1, i, south.knot(i));
+    for (int i = 0; i < surface.nurbsknot_count(1); i++)
+        surface.set_nurbsknot(1, i, south.nurbsknot(i));
 
     std::vector<double> u_grev = west.get_greville_abcissae();
     std::vector<double> v_grev = south.get_greville_abcissae();
@@ -1739,7 +1739,7 @@ NurbsSurface Primitives::create_edge(
 }
 
 NurbsCurve Primitives::create_interpolated(const std::vector<Point>& points,
-                                            CurveKnotStyle parameterization) {
+                                            CurveNurbsKnotStyle parameterization) {
     return NurbsCurve::create_interpolated(points, parameterization);
 }
 

@@ -1,6 +1,6 @@
 #include "mini_test.h"
 #include "session.h"
-#include "encoders.h"
+#include "file_encoders.h"
 #include "tolerance.h"
 #include <filesystem>
 #include <fstream>
@@ -195,9 +195,9 @@ MINI_TEST("Session", "Add Edge") {
     MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
 }
 
-MINI_TEST("Session", "Add Feature") {
+MINI_TEST("Session", "Add ElementFeature") {
     // uncomment #include "session.h"
-    // uncomment #include "feature.h"
+    // uncomment #include "elementfeature.h"
     // uncomment #include "point.h"
 
     Session session;
@@ -205,13 +205,13 @@ MINI_TEST("Session", "Add Feature") {
     auto p2 = std::make_shared<Point>(1.0, 0.0, 0.0);
     session.add_point(p1);
     session.add_point(p2);
-    FaceFeature f;
+    FaceElementFeature f;
     f.face_id_a = 0;
     f.face_id_b = 0;
-    std::string fguid = session.add_feature(p1->guid(), p2->guid(), EdgeFeature{f});
+    std::string fguid = session.add_elementfeature(p1->guid(), p2->guid(), EdgeElementFeature{f});
 
     MINI_CHECK(!fguid.empty());
-    MINI_CHECK(session.edge_features.count(fguid) == 1);
+    MINI_CHECK(session.edge_elementfeatures.count(fguid) == 1);
     MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
 }
 
@@ -391,14 +391,14 @@ MINI_TEST("Session", "Json Roundtrip") {
 
     //   jsondump()      │ ordered_json │ to JSON object (internal use)
     //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   json_dumps()    │ std::string  │ to JSON string
-    //   json_loads(s)   │ std::string  │ from JSON string
-    //   json_dump(path) │ file         │ write to file
-    //   json_load(path) │ file         │ read from file
+    //   file_json_dumps()    │ std::string  │ to JSON string
+    //   file_json_loads(s)   │ std::string  │ from JSON string
+    //   file_json_dump(path) │ file         │ write to file
+    //   file_json_load(path) │ file         │ read from file
 
     std::string fname = "serialization/test_session.json";
-    session.json_dump(fname);
-    Session loaded = Session::json_load(fname);
+    session.file_json_dump(fname);
+    Session loaded = Session::file_json_load(fname);
 
     MINI_CHECK(loaded.name == session.name);
     MINI_CHECK(loaded.lookup.size() == session.lookup.size());
@@ -507,7 +507,7 @@ MINI_TEST("Session", "Component Json Roundtrip") {
     // A session with a component round-trips through JSON:
     // the component survives with all custom fields intact.
     // uncomment #include "session.h"
-    // uncomment #include "encoders.h"
+    // uncomment #include "file_encoders.h"
 
     Session original;
     Component c;
@@ -518,8 +518,8 @@ MINI_TEST("Session", "Component Json Roundtrip") {
     original.add_component(c);
 
     std::string filename = "serialization/test_session_component.json";
-    encoders::json_dump(original, filename);
-    Session loaded = encoders::json_load<Session>(filename);
+    file_encoders::file_json_dump(original, filename);
+    Session loaded = file_encoders::file_json_load<Session>(filename);
 
     MINI_CHECK(loaded.objects.components->size() == 1);
     MINI_CHECK(loaded.objects.components->at(0).type_name     == "FloorBuilder");

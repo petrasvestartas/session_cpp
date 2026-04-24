@@ -94,7 +94,7 @@ MINI_TEST("Element", "Add Feature") {
     MINI_CHECK(e.features_count() == 1);
 }
 
-MINI_TEST("Element", "Aabb") {
+MINI_TEST("Element", "AABB") {
     // uncomment #include "element.h"
     // uncomment #include "mesh.h"
     // uncomment #include "obb.h"
@@ -246,8 +246,8 @@ MINI_TEST("Element", "Json Roundtrip") {
     e.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_element.json";
-    e.json_dump(fname);
-    Element loaded = Element::json_load(fname);
+    e.file_json_dump(fname);
+    Element loaded = Element::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "json_test");
     MINI_CHECK(std::holds_alternative<Mesh>(loaded.geometry()));

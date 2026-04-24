@@ -213,11 +213,11 @@ int main() {
         Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), PI / 2.0);
         q.name = "serialization/test_quaternion";
         std::string fn = (base / "session_data" / "QuaternionViz_q.json").string();
-        q.json_dump(fn);
-        Quaternion loaded = Quaternion::json_load(fn);
+        q.file_json_dump(fn);
+        Quaternion loaded = Quaternion::file_json_load(fn);
         session.add_plane(identity_plane("identity"), g);
         session.add_plane(make_plane(q.get_rotation(), "q", Color::blue()), g);
-        session.add_plane(make_plane(loaded.get_rotation(), "json_load", Color::red()), g);
+        session.add_plane(make_plane(loaded.get_rotation(), "file_json_load", Color::red()), g);
         gi++;
     }
 

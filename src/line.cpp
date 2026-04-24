@@ -189,21 +189,21 @@ Line Line::jsonload(const nlohmann::json& data) {
     return line;
 }
 
-std::string Line::json_dumps() const {
+std::string Line::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Line Line::json_loads(const std::string& json_string) {
+Line Line::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Line::json_dump(const std::string& filename) const {
+void Line::file_json_dump(const std::string& filename) const {
     std::ofstream ofs(filename);
     ofs << jsondump().dump(4);
     ofs.close();
 }
 
-Line Line::json_load(const std::string& filename) {
+Line Line::file_json_load(const std::string& filename) {
     std::ifstream ifs(filename);
     nlohmann::json data = nlohmann::json::parse(ifs);
     ifs.close();

@@ -2,7 +2,7 @@
 
 #include "nurbssurface.h"
 #include "nurbscurve.h"
-#include "trimmedsurface.h"
+#include "nurbssurface_trimmed.h"
 #include "polyline.h"
 #include "mesh.h"
 #include "point.h"
@@ -200,16 +200,16 @@ public:
     static BRep jsonload(const nlohmann::json& data);
 
     /// Write JSON to a file.
-    void json_dump(const std::string& filename) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read from a JSON file.
-    static BRep json_load(const std::string& filename);
+    static BRep file_json_load(const std::string& filename);
 
     /// Serialize to a JSON string.
-    std::string json_dumps() const;
+    std::string file_json_dumps() const;
 
     /// Deserialize from a JSON string.
-    static BRep json_loads(const std::string& json_string);
+    static BRep file_json_loads(const std::string& json_string);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Protobuf Serialization

@@ -179,18 +179,18 @@ void Session::compute_face_to_face(double inflate, double coplanar_tolerance) {
         else aabbs[i] = AABB::from_points({}, inflate); // fallback
     }
 
-    // Step B: BVH broad phase
+    // Step B: SpatialBVH broad phase
     double ws = 0;
     for (auto& a : aabbs) {
         ws = std::max(ws, std::abs(a.cx+a.hx)); ws = std::max(ws, std::abs(a.cy+a.hy));
         ws = std::max(ws, std::abs(a.cz+a.hz)); ws = std::max(ws, std::abs(a.cx-a.hx));
         ws = std::max(ws, std::abs(a.cy-a.hy)); ws = std::max(ws, std::abs(a.cz-a.hz));
     }
-    BVH bvh;
-    bvh.build_from_aabbs(aabbs.data(), N, ws * 2);
+    SpatialBVH local_bvh;
+    local_bvh.build_from_aabbs(aabbs.data(), N, ws * 2);
     std::vector<int> adjacency;
     for (size_t i = 0; i < N; i++) {
-        auto hits = bvh.query_aabb(aabbs[i]);
+        auto hits = local_bvh.query_aabb(aabbs[i]);
         for (int j : hits) {
             if ((int)i < j) {
                 adjacency.push_back(static_cast<int>(i));
@@ -254,12 +254,12 @@ void Session::add_edge(const std::string &guid1, const std::string &guid2,
   graph.add_edge(guid1, guid2, attribute);
 }
 
-std::string Session::add_feature(const std::string &guid_a,
-                                 const std::string &guid_b,
-                                 EdgeFeature feature) {
-  std::string key = edge_feature_guid(feature);
+std::string Session::add_elementfeature(const std::string &guid_a,
+                                        const std::string &guid_b,
+                                        EdgeElementFeature feature) {
+  std::string key = edge_elementfeature_guid(feature);
   if (key.empty()) key = ::guid();
-  edge_features[key] = std::move(feature);
+  edge_elementfeatures[key] = std::move(feature);
   graph.add_edge(guid_a, guid_b, key);
   return key;
 }
@@ -327,7 +327,7 @@ std::vector<std::string> Session::get_neighbours(const std::string &obj_guid) {
   return graph.neighbors(obj_guid);
 }
 
-// BVH Collision Detection
+// SpatialBVH Collision Detection
 
 // ADD NEW GEOMETRY TYPES HERE: Add bounding box computation for collision detection
 OBB Session::compute_bounding_box(const Geometry& geometry) {
@@ -416,9 +416,9 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
     return {};
   }
   
-  // Build BVH and check collisions
-  double world_size = BVH::compute_world_size(boxes);
-  bvh = BVH::from_boxes(boxes, world_size);
+  // Build SpatialBVH and check collisions
+  double world_size = SpatialBVH::compute_world_size(boxes);
+  bvh = SpatialBVH::from_boxes(boxes, world_size);
   auto [collision_pairs, colliding_indices, checks] = bvh.check_all_collisions(boxes);
   (void)colliding_indices;
   (void)checks;
@@ -537,10 +537,10 @@ nlohmann::ordered_json Session::jsondump() const {
   data["tree"] = tree.jsondump();
   data["graph"] = graph.jsondump();
   nlohmann::ordered_json feats = nlohmann::ordered_json::object();
-  for (const auto &[key, feat] : edge_features) {
-    feats[key] = edge_feature_jsondump(feat);
+  for (const auto &[key, feat] : edge_elementfeatures) {
+    feats[key] = edge_elementfeature_jsondump(feat);
   }
-  data["edge_features"] = feats;
+  data["edge_elementfeatures"] = feats;
   return data;
 }
 
@@ -597,30 +597,30 @@ Session Session::jsonload(const nlohmann::json &data) {
     session.graph = Graph::jsonload(data["graph"]);
   }
 
-  // Load edge features
-  if (data.contains("edge_features")) {
-    for (auto it = data["edge_features"].begin(); it != data["edge_features"].end(); ++it) {
-      session.edge_features[it.key()] = edge_feature_jsonload(it.value());
+  // Load edge element features
+  if (data.contains("edge_elementfeatures")) {
+    for (auto it = data["edge_elementfeatures"].begin(); it != data["edge_elementfeatures"].end(); ++it) {
+      session.edge_elementfeatures[it.key()] = edge_elementfeature_jsonload(it.value());
     }
   }
 
   return session;
 }
 
-std::string Session::json_dumps() const {
+std::string Session::file_json_dumps() const {
   return jsondump().dump();
 }
 
-Session Session::json_loads(const std::string& json_string) {
+Session Session::file_json_loads(const std::string& json_string) {
   return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Session::json_dump(const std::string& filename) const {
+void Session::file_json_dump(const std::string& filename) const {
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
 
-Session Session::json_load(const std::string& filename) {
+Session Session::file_json_load(const std::string& filename) {
   std::ifstream file(filename);
   nlohmann::json data = nlohmann::json::parse(file);
   return jsonload(data);
@@ -633,8 +633,8 @@ std::string Session::pb_dumps() const {
   proto.mutable_objects()->ParseFromString(objects.pb_dumps());
   proto.mutable_tree()->ParseFromString(tree.pb_dumps());
   proto.mutable_graph()->ParseFromString(graph.pb_dumps());
-  for (const auto &[key, feat] : edge_features) {
-    (*proto.mutable_edge_features())[key].ParseFromString(edge_feature_pb_dumps(feat));
+  for (const auto &[key, feat] : edge_elementfeatures) {
+    (*proto.mutable_edge_elementfeatures())[key].ParseFromString(edge_elementfeature_pb_dumps(feat));
   }
   return proto.SerializeAsString();
 }
@@ -656,8 +656,8 @@ Session Session::pb_loads(const std::string& data) {
     session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
   }
 
-  for (const auto &[key, feat_proto] : proto.edge_features()) {
-    session.edge_features[key] = edge_feature_pb_loads(feat_proto.SerializeAsString());
+  for (const auto &[key, feat_proto] : proto.edge_elementfeatures()) {
+    session.edge_elementfeatures[key] = edge_elementfeature_pb_loads(feat_proto.SerializeAsString());
   }
 
   for (const auto& p : *session.objects.points) session.lookup[p->guid()] = p;
@@ -694,11 +694,11 @@ void Session::cache_geometry_aabb(const std::string& obj_guid, const Geometry& g
   // Compute and cache bounding box incrementally
   cached_boxes.push_back(compute_bounding_box(geometry));
   cached_guids.push_back(obj_guid);
-  bvh_cache_dirty = true;  // Mark BVH as needing rebuild
+  bvh_cache_dirty = true;  // Mark SpatialBVH as needing rebuild
 }
 
 void Session::rebuild_ray_bvh_cache() {
-  // Fast rebuild: just reconstruct BVH from already-cached boxes
+  // Fast rebuild: just reconstruct SpatialBVH from already-cached boxes
   // (AABBs were computed incrementally when geometry was added)
   
   if (cached_boxes.size() != lookup.size()) {
@@ -715,15 +715,15 @@ void Session::rebuild_ray_bvh_cache() {
     }
   }
   
-  // Build BVH from cached boxes (FAST: ~1ms for 10k boxes)
+  // Build SpatialBVH from cached boxes (FAST: ~1ms for 10k boxes)
   if (!cached_boxes.empty()) {
-    double world_size = BVH::compute_world_size(cached_boxes);
-    cached_ray_bvh = BVH::from_boxes(cached_boxes, world_size);
+    double world_size = SpatialBVH::compute_world_size(cached_boxes);
+    cached_ray_bvh = SpatialBVH::from_boxes(cached_boxes, world_size);
   }
 }
 
 std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector& direction, double tolerance) {
-  // Rebuild BVH cache if dirty (geometry added/removed)
+  // Rebuild SpatialBVH cache if dirty (geometry added/removed)
   if (bvh_cache_dirty) {
     rebuild_ray_bvh_cache();
     bvh_cache_dirty = false;
@@ -731,7 +731,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
   
   if (cached_guids.empty()) return {};
   
-  // BVH OPTIMIZATION: Get candidate indices from CACHED BVH ray traversal
+  // SpatialBVH OPTIMIZATION: Get candidate indices from CACHED SpatialBVH ray traversal
   // This prunes objects whose AABBs don't intersect the ray, providing
   // acceleration for ALL geometry types (Point, Line, Mesh, etc.)
   std::vector<int> candidate_ids;
@@ -837,7 +837,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       return closest_hit;
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
-      // Ray-mesh: use triangle BVH
+      // Ray-mesh: use triangle SpatialBVH
       std::vector<Point> hits = Intersection::ray_mesh_bvh(ray, *geom_ptr, tolerance, true);
       if (!hits.empty()) {
         return hits[0];  // Return closest

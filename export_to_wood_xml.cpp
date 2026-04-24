@@ -1,4 +1,4 @@
-#include "obj.h"
+#include "file_obj.h"
 #include "polyline.h"
 #include <fstream>
 #include <filesystem>
@@ -7,9 +7,9 @@ using namespace session_cpp;
 
 int main() {
     auto base = std::filesystem::path(__FILE__).parent_path().parent_path();
-    auto polylines = obj::read_obj_polylines(
+    auto polylines = file_obj::read_file_obj_polylines(
         (base / "session_data" / "annen_polylines.obj").string());
-    auto pairs = obj::pair_polylines(polylines);
+    auto pairs = file_obj::pair_polylines(polylines);
 
     fmt::print("{} polylines, {} pairs\n", polylines.size(), pairs.size());
 

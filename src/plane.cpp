@@ -439,21 +439,21 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     return plane;
 }
 
-std::string Plane::json_dumps() const {
+std::string Plane::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Plane Plane::json_loads(const std::string& json_string) {
+Plane Plane::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Plane::json_dump(const std::string& filename) const {
+void Plane::file_json_dump(const std::string& filename) const {
     std::ofstream ofs(filename);
     ofs << jsondump().dump(2);
     ofs.close();
 }
 
-Plane Plane::json_load(const std::string& filename) {
+Plane Plane::file_json_load(const std::string& filename) {
     std::ifstream ifs(filename);
     nlohmann::json data;
     ifs >> data;

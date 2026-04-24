@@ -148,7 +148,7 @@ public:
   /// ----------
   /// filename : const std::string&
   ///     Path to the output file.
-  void json_dump(const std::string& filename) const;
+  void file_json_dump(const std::string& filename) const;
 
   /// Deserialize from JSON file.
   ///
@@ -161,13 +161,13 @@ public:
   /// -------
   /// Vector
   ///     The deserialized Vector.
-  static Vector json_load(const std::string& filename);
+  static Vector file_json_load(const std::string& filename);
 
   /// Convert to JSON string
-  std::string json_dumps() const;
+  std::string file_json_dumps() const;
 
   /// Load from JSON string
-  static Vector json_loads(const std::string& json_string);
+  static Vector file_json_loads(const std::string& json_string);
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Protobuf Serialization

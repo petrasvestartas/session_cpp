@@ -278,18 +278,18 @@ Element Element::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-std::string Element::json_dumps() const { return jsondump().dump(); }
+std::string Element::file_json_dumps() const { return jsondump().dump(); }
 
-Element Element::json_loads(const std::string& s) {
+Element Element::file_json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-void Element::json_dump(const std::string& path) const {
+void Element::file_json_dump(const std::string& path) const {
     std::ofstream file(path);
     file << jsondump().dump(2);
 }
 
-Element Element::json_load(const std::string& path) {
+Element Element::file_json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }
@@ -511,11 +511,11 @@ ElementColumn ElementColumn::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-ElementColumn ElementColumn::json_loads(const std::string& s) {
+ElementColumn ElementColumn::file_json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-ElementColumn ElementColumn::json_load(const std::string& path) {
+ElementColumn ElementColumn::file_json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }
@@ -715,11 +715,11 @@ ElementBeam ElementBeam::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-ElementBeam ElementBeam::json_loads(const std::string& s) {
+ElementBeam ElementBeam::file_json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-ElementBeam ElementBeam::json_load(const std::string& path) {
+ElementBeam ElementBeam::file_json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }
@@ -1101,11 +1101,11 @@ ElementPlate ElementPlate::jsonload(const nlohmann::json& data) {
     return elem;
 }
 
-ElementPlate ElementPlate::json_loads(const std::string& s) {
+ElementPlate ElementPlate::file_json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-ElementPlate ElementPlate::json_load(const std::string& path) {
+ElementPlate ElementPlate::file_json_load(const std::string& path) {
     std::ifstream file(path);
     return jsonload(nlohmann::json::parse(file));
 }

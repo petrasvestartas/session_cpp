@@ -11,9 +11,8 @@
 // Implementations are split across the translation units listed above.
 // `main_5.cpp` is a near-empty entry point that only contains `int main()`.
 //
-// Further split candidates (deferred): wood/wood_joint.{h,cpp} (WoodJoint +
-// orient helpers) and wood/wood_element.{h,cpp} (WoodElement + merge).
-// Currently those pieces live inline in wood_main.cpp's anonymous namespace.
+// Structs: wood/wood_joint.h (WoodJoint) and wood/wood_element.h (WoodElement).
+// Pipeline helpers (orient, merge) remain in wood_main.cpp's anonymous namespace.
 // ═══════════════════════════════════════════════════════════════════════════
 #pragma once
 
@@ -23,8 +22,55 @@
 #include <utility>
 #include <vector>
 
-// Forward-declare session types so this header stays lightweight.
-namespace session_cpp { class Polyline; class Vector; }
+// Polyline is held by value inside CrossJoint → need the full type here.
+#include "../src/polyline.h"
+// ElementPlate is returned by value from load_plates and passed to get_connection_zones.
+#include "../src/element.h"
+
+namespace session_cpp { class Vector; class Plane; class Line; class Session; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// wood_session::CrossJoint + plane_to_face — side-to-side cross/lap joint
+// detection between two plate elements. Wood-domain geometry (joint area /
+// volumes / lines + plate face indices + type-30 code), so it lives here
+// rather than in the general session_cpp::Intersection kernel.
+// Implementations in wood_joint_detection.cpp.
+// ═══════════════════════════════════════════════════════════════════════════
+namespace wood_session {
+
+struct CrossJoint {
+    int type = 30;                                          ///< Joint type code (30 = side-to-side cross)
+    std::pair<int,int> face_ids_a{-1,-1};                   ///< Two side-face indices of element A involved
+    std::pair<int,int> face_ids_b{-1,-1};                   ///< Two side-face indices of element B involved
+    session_cpp::Polyline joint_area;                       ///< Closed quad on the mid-plane (5 pts)
+    std::array<session_cpp::Polyline,2> joint_lines;        ///< Two perpendicular centerlines of joint_area
+    std::array<session_cpp::Polyline,2> joint_volumes;      ///< Two parallel quads bounding the joint volume
+};
+
+/// Cross/lap joint detection between two plate elements (side-to-side).
+bool plane_to_face(
+    const std::array<session_cpp::Polyline,2>& polylines_a,
+    const std::array<session_cpp::Polyline,2>& polylines_b,
+    const std::array<session_cpp::Plane,2>& planes_a,
+    const std::array<session_cpp::Plane,2>& planes_b,
+    CrossJoint& result,
+    double angle_tol = 5.0,
+    const std::array<double,3>& extension = {0.0, 0.0, 0.0});
+
+/// Convenience overload taking ElementPlate pointers (extracts polylines/planes).
+bool plane_to_face(
+    session_cpp::ElementPlate* a,
+    session_cpp::ElementPlate* b,
+    CrossJoint& result,
+    double angle_tol = 5.0,
+    const std::array<double,3>& extension = {0.0, 0.0, 0.0});
+
+/// Set the near-coplanar rejection threshold used internally by plane_to_face.
+/// Wood reads from wood_session::globals::DISTANCE_SQUARED which some tests
+/// (hexboxes) mutate. Caller syncs this before face_to_face iteration.
+void set_cross_joint_distance_squared(double dist_sq);
+
+} // namespace wood_session
 
 // ═══════════════════════════════════════════════════════════════════════════
 // wood_session::globals — mirror of wood's `wood::GLOBALS`. Definitions +
@@ -43,7 +89,7 @@ namespace globals {
     extern double DISTANCE_SQUARED;
     extern std::string DATA_SET_OUTPUT_FILE;
     extern std::string DATA_SET_INPUT_NAME;
-    extern bool   REMOVE_DUPLICATE_PTS;
+    extern double DUPLICATE_PTS_TOL;
 
     void reset_defaults();
 }} // namespace wood_session::globals
@@ -58,30 +104,71 @@ namespace internal {
 // .pb, .txt reads and writes resolve against this single anchor.
 std::filesystem::path session_data_dir();
 
-// Returns true iff `<short_name>.obj` exists in session_data/ for the given
-// wood test function name. Used by the test wrappers to early-skip datasets
-// whose OBJ hasn't been extracted yet.
-bool obj_exists(const std::string& wood_name);
+// Returns true iff the dataset for the given wood test function name exists
+// in session_data/ (checks the underlying .obj file).
+bool plates_exist(const std::string& wood_name);
 
-// Wood-parity helper: populates `polylines_out` from the dataset's OBJ,
-// fills `pairs_out` as consecutive (top, bottom) index pairs, and wires
-// `wood_session::globals::DATA_SET_INPUT_NAME` + `DATA_SET_OUTPUT_FILE`.
-// Set `remove_duplicate_pts = true` to mirror wood_xml.cpp's consecutive-
-// duplicate trim (wood does this only for vidychapel_one_layer).
-void set_file_path_for_input_xml_and_screenshot(
-        std::vector<std::pair<int,int>>& pairs_out,
-        std::vector<session_cpp::Polyline>& polylines_out,
-        const std::string& name,
-        bool remove_duplicate_pts = false);
+// Load a named wood dataset from session_data/ and return one ElementPlate per timber plate.
+// Consecutive polylines (even index = bottom, odd = top) are paired into plates.
+// Also sets globals DATA_SET_INPUT_NAME and DATA_SET_OUTPUT_FILE as side effects.
+// dataset_name — full wood test function name, e.g. "type_plates_name_hexbox_and_corner"
+// duplicate_pts_tol — if > 0, removes consecutive duplicate points (vidychapel datasets)
+std::vector<session_cpp::ElementPlate> load_plates(
+        const std::string& dataset_name,
+        double duplicate_pts_tol = 0.0);
+
+// Load raw polylines from a named dataset (no top/bottom pairing).
+// Used by beam datasets where each polyline is a beam axis.
+// Also sets globals DATA_SET_INPUT_NAME and DATA_SET_OUTPUT_FILE as side effects.
+std::vector<session_cpp::Polyline> load_polylines(
+        const std::string& dataset_name,
+        double duplicate_pts_tol = 0.0);
 
 } // namespace internal
 
 // ═══════════════════════════════════════════════════════════════════════════
-// get_connection_zones — wood-style pipeline entry (wood_main.h equivalent).
+// SearchType — controls which joint detection pass get_connection_zones runs.
 // ═══════════════════════════════════════════════════════════════════════════
-void get_connection_zones(
-        int search_type = 0,
-        const std::vector<double>& scale = {1.0, 1.0, 1.0});
+enum SearchType : int {
+    face_to_face            = 0,  // coplanar face detection: ss_e_ip/op/r, ts_e_p
+    cross_joint             = 1,  // crossing elements: plane_to_face (type-30)
+    face_to_face_then_cross = 2,  // face-to-face first, then cross-joint fallback
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// get_connection_zones — 9-stage wood joint detection pipeline.
+//
+// Stages: build WoodElements → BVH adjacency → face_to_face_wood detection
+//         → three-valence linking → joint geometry creation → orientation
+//         → merge into plate outlines → fill session.
+//
+// elements    — timber plates (bottom polygon + top polygon per plate).
+//               Load from a dataset with internal::load_plates(name), or
+//               construct directly for custom geometry.
+// session     — caller-owned; plates, joint volumes, merged outlines, and
+//               loft meshes are appended. Caller calls session.pb_dump(path)
+//               to persist the result.
+// search_type — face_to_face (default), cross_joint, or face_to_face_then_cross.
+// Returns: merged plate outline polylines per element
+//          [element_id][outline_id]: [hole0_top, hole0_bot, ..., outer_top, outer_bot]
+//          Use for lofting each element after this call.
+// ═══════════════════════════════════════════════════════════════════════════
+std::vector<std::vector<session_cpp::Polyline>> get_connection_zones(
+        const std::vector<session_cpp::ElementPlate>& elements,
+        session_cpp::Session& session,
+        SearchType search_type = face_to_face);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// loft_merged_elements — build a loft Mesh per element from the merged-outline
+// result of get_connection_zones() and append them as a "MergedMeshes" group
+// to the session. merged layout per element:
+//   [hole0_top, hole0_bot, ..., outer_top, outer_bot]
+// Callers decide when (or whether) to produce loft meshes; get_connection_zones
+// no longer does this implicitly.
+// ═══════════════════════════════════════════════════════════════════════════
+void loft_merged_elements(
+        session_cpp::Session& session,
+        const std::vector<std::vector<session_cpp::Polyline>>& mc);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // beam_volumes_pipeline — beam (axis+radius) entry point. Equivalent of

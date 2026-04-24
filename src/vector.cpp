@@ -145,23 +145,23 @@ Vector Vector::jsonload(const nlohmann::json &data) {
   return vector;
 }
 
-std::string Vector::json_dumps() const {
+std::string Vector::file_json_dumps() const {
     return jsondump().dump();
 }
 
-Vector Vector::json_loads(const std::string& json_string) {
+Vector Vector::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
 /// Serialize to JSON file
-void Vector::json_dump(const std::string& filename) const {
+void Vector::file_json_dump(const std::string& filename) const {
   std::ofstream ofs(filename);
   ofs << jsondump().dump(4);
   ofs.close();
 }
 
 /// Deserialize from JSON file
-Vector Vector::json_load(const std::string& filename) {
+Vector Vector::file_json_load(const std::string& filename) {
   std::ifstream ifs(filename);
   nlohmann::json data = nlohmann::json::parse(ifs);
   ifs.close();

@@ -1,15 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// wood/wood_internal.cpp — implementation of the `internal::` helpers from
-// wood_test.cpp: OBJ path resolution, duplicate-point removal, and the
-// `type_plates_name_*` → short-name alias table.
-//
-// Mirrors wood_test.cpp's anonymous `internal` namespace plus `wood_xml.cpp`
-// bits that we inlined. Declarations in `wood_session.h`.
+// wood/wood_internal.cpp — internal helpers for the wood pipeline.
+// Declarations in wood_session.h.
 // ═══════════════════════════════════════════════════════════════════════════
 #include "wood_session.h"
-#include "../src/obj.h"
+#include "../src/file_obj.h"
 #include "../src/polyline.h"
 #include "../src/point.h"
+#include "../src/element.h"
 
 #include <filesystem>
 #include <string>
@@ -32,11 +29,6 @@ std::filesystem::path session_data_dir() {
 }
 
 // Map wood test function name → session OBJ basename.
-// Where session uses the same short name as wood, stripping the wood prefix
-// (`type_plates_name_` / `type_beams_name_`) is sufficient; the explicit
-// entries are only for datasets that were renamed on the session side (e.g.
-// wood's vidychapel → session's vidy, wood's side_to_side_edge_inplane_2 →
-// session's inplane_butterflies).
 static std::string wood_name_to_obj_short(const std::string& name) {
     static const std::unordered_map<std::string, std::string> alias = {
         {"type_plates_name_joint_linking_vidychapel_corner",                 "vidy_corner"},
@@ -66,8 +58,6 @@ static std::string wood_name_to_obj_short(const std::string& name) {
     auto it = alias.find(name);
     if (it != alias.end()) return it->second;
 
-    // Fall back to prefix stripping for datasets whose session name is just
-    // the wood name without the wood prefix.
     static const std::string plate_prefix = "type_plates_name_";
     static const std::string beam_prefix  = "type_beams_name_";
     if (name.rfind(plate_prefix, 0) == 0) return name.substr(plate_prefix.size());
@@ -75,50 +65,46 @@ static std::string wood_name_to_obj_short(const std::string& name) {
     return name;
 }
 
-bool obj_exists(const std::string& wood_name) {
+bool plates_exist(const std::string& wood_name) {
     auto path = session_data_dir() / (wood_name_to_obj_short(wood_name) + ".obj");
     return std::filesystem::exists(path);
 }
 
-// Remove consecutive duplicate points from each polyline — wood runs the
-// same cleanup inside wood_xml.cpp:135-138 when the caller requests it
-// (currently only vidychapel_one_layer).
-static void trim_consecutive_duplicates(std::vector<Polyline>& polys) {
-    const double DIST_SQ = 0.01;
-    for (auto& pl : polys) {
-        auto pts = pl.get_points();
-        std::vector<Point> cleaned;
-        cleaned.reserve(pts.size());
-        for (auto& p : pts) {
-            if (cleaned.empty()) { cleaned.push_back(p); continue; }
-            double dx = p[0] - cleaned.back()[0];
-            double dy = p[1] - cleaned.back()[1];
-            double dz = p[2] - cleaned.back()[2];
-            if (dx*dx + dy*dy + dz*dz >= DIST_SQ) cleaned.push_back(p);
-        }
-        pl = Polyline(cleaned);
-    }
-}
+// Load dataset → ElementPlates. Sets DATA_SET_INPUT_NAME + DATA_SET_OUTPUT_FILE globals.
+std::vector<ElementPlate> load_plates(const std::string& dataset_name, double duplicate_pts_tol) {
+    wood_session::globals::DUPLICATE_PTS_TOL = duplicate_pts_tol;
 
-void set_file_path_for_input_xml_and_screenshot(
-        std::vector<std::pair<int,int>>& pairs_out,
-        std::vector<Polyline>&           polylines_out,
-        const std::string& name,
-        bool remove_duplicate_pts) {
-    wood_session::globals::REMOVE_DUPLICATE_PTS = remove_duplicate_pts;
-
-    const std::string obj_short = wood_name_to_obj_short(name);
+    const std::string obj_short = wood_name_to_obj_short(dataset_name);
     const std::string obj_path  = (session_data_dir() / (obj_short + ".obj")).string();
-    polylines_out = obj::read_obj_polylines(obj_path);
+    auto polylines = file_obj::read_file_obj_polylines(obj_path);
 
-    if (remove_duplicate_pts) trim_consecutive_duplicates(polylines_out);
-
-    pairs_out.clear();
-    for (size_t i = 0; i + 1 < polylines_out.size(); i += 2)
-        pairs_out.emplace_back((int)i, (int)(i + 1));
+    if (duplicate_pts_tol > 0.0)
+        for (auto& pl : polylines) pl.remove_consecutive_duplicates(duplicate_pts_tol);
 
     wood_session::globals::DATA_SET_INPUT_NAME  = obj_short;
     wood_session::globals::DATA_SET_OUTPUT_FILE = "WoodF2F_" + obj_short + ".pb";
+
+    std::vector<ElementPlate> plates;
+    plates.reserve(polylines.size() / 2);
+    for (size_t i = 0; i + 1 < polylines.size(); i += 2)
+        plates.emplace_back(polylines[i], polylines[i + 1], "plate_" + std::to_string(i / 2));
+    return plates;
+}
+
+// Load raw polylines without pairing — for beam datasets where each polyline is an axis.
+std::vector<Polyline> load_polylines(const std::string& dataset_name, double duplicate_pts_tol) {
+    wood_session::globals::DUPLICATE_PTS_TOL = duplicate_pts_tol;
+
+    const std::string obj_short = wood_name_to_obj_short(dataset_name);
+    const std::string obj_path  = (session_data_dir() / (obj_short + ".obj")).string();
+    auto polylines = file_obj::read_file_obj_polylines(obj_path);
+
+    if (duplicate_pts_tol > 0.0)
+        for (auto& pl : polylines) pl.remove_consecutive_duplicates(duplicate_pts_tol);
+
+    wood_session::globals::DATA_SET_INPUT_NAME  = obj_short;
+    wood_session::globals::DATA_SET_OUTPUT_FILE = "WoodF2F_" + obj_short + ".pb";
+    return polylines;
 }
 
 } // namespace internal

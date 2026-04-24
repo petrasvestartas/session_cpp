@@ -146,10 +146,10 @@ MINI_TEST("Line", "Json Roundtrip") {
 
     //   jsondump()      | ordered_json | to JSON object
     //   jsonload(j)     | ordered_json | from JSON object
-    //   json_dumps()    | string       | to JSON string
-    //   json_loads(s)   | string       | from JSON string
-    //   json_dump(path) | file         | write to file
-    //   json_load(path) | file         | read from file
+    //   file_json_dumps()    | string       | to JSON string
+    //   file_json_loads(s)   | string       | from JSON string
+    //   file_json_dump(path) | file         | write to file
+    //   file_json_load(path) | file         | read from file
 
     // JSON object
     nlohmann::ordered_json j = l.jsondump();
@@ -159,15 +159,15 @@ MINI_TEST("Line", "Json Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded_j[0], 42.1));
 
     // String
-    std::string s = l.json_dumps();
-    Line loaded_s = Line::json_loads(s);
+    std::string s = l.file_json_dumps();
+    Line loaded_s = Line::file_json_loads(s);
     MINI_CHECK(loaded_s.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
 
     // File
     std::string fname = "serialization/test_line.json";
-    l.json_dump(fname);
-    Line loaded = Line::json_load(fname);
+    l.file_json_dump(fname);
+    Line loaded = Line::file_json_load(fname);
     MINI_CHECK(loaded.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded[0], 42.1));
     MINI_CHECK(TOLERANCE.is_close(loaded[1], 84.2));

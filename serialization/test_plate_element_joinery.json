@@ -4,7 +4,7 @@
       "a": 255,
       "b": 255,
       "g": 0,
-      "guid": "1c5bec55-f62e-4cac-965e-03aaf8fcee10",
+      "guid": "d8df2309-bba1-46ab-b492-1380b3404ab7",
       "name": "blue",
       "r": 0,
       "type": "Color"
@@ -23,12 +23,12 @@
       0.0,
       1.0
     ],
-    "guid": "f800fd24-c0ed-40ab-8338-e6004f92b8e2",
+    "guid": "f5973c62-e615-4bdc-b629-35cae1aeff64",
     "name": "my_plane",
     "type": "Plane",
     "width": 1.0,
     "xform": {
-      "guid": "48ea77b6-5248-4b26-ae4a-14ea6552eb64",
+      "guid": "b8521608-49b3-4271-90f0-ae46e0d4e1f1",
       "m": [
         1.0,
         0.0,
@@ -127,7 +127,7 @@
       255
     ],
     "facedata": {},
-    "guid": "ea1b765f-0ffa-4dcf-ace2-4b797a13626a",
+    "guid": "3c18891f-63a8-49a1-bdd1-73fc560cf408",
     "halfedge": {
       "0": {
         "1": 2,
@@ -227,7 +227,7 @@
       "a": 255,
       "b": 255,
       "g": 255,
-      "guid": "47802721-f3d7-4a61-b5ef-6bbeb17549b4",
+      "guid": "168db268-a578-4262-b1ea-745982f5162b",
       "name": "white",
       "r": 255,
       "type": "Color"
@@ -406,7 +406,7 @@
       1.0
     ],
     "xform": {
-      "guid": "7106f9cf-0b20-44c2-8445-1302a451588f",
+      "guid": "dfdd1922-3512-4869-becc-e82db1e47c3c",
       "m": [
         1.0,
         0.0,
@@ -430,7 +430,7 @@
     }
   },
   "geometry_type": "Mesh",
-  "guid": "c1836953-9461-4315-a87a-35a947acfe4f",
+  "guid": "ec6aabfe-9105-492b-8854-4448efe83851",
   "j_mf": [
     [
       [
@@ -501,7 +501,7 @@
     ]
   ],
   "session_transformation": {
-    "guid": "203ed78d-3c4c-49b2-88c5-53940e64f3a1",
+    "guid": "15d6ee79-f1b3-47d0-a270-9a973f096aa6",
     "m": [
       1.0,
       0.0,

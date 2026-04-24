@@ -911,7 +911,7 @@ inline VOutPt* v_get_last_op(const VActive& e) {
     return r;
 }
 
-inline void v_update_edge_into_ael(VattiScratch& sc, VActive* e, int cliptype) {
+inline void v_update_edge_into_ael(VattiScratch& sc, VActive* e, int /*cliptype*/) {
     // Open-path endpoint: v_next_vertex returns nullptr (prev/next is null on
     // VF_OpenStart / VF_OpenEnd vertex). Emit final point if hot, remove from
     // AEL, and return without advancing. Caller must not re-use `e` after.
@@ -1387,18 +1387,6 @@ static bool v_execute_internal(VattiScratch& sc, int cliptype) {
     return sc.succeeded;
 }
 
-// ── Build output paths from OutRec list ──────────────────────────────────
-
-static bool v_build_path(VOutPt* op, std::vector<BIVec2>& path) {
-    if (!op || op->next==op || op->next==op->prev) return false;
-    path.clear();
-    BIVec2 last = op->next->pt;
-    VOutPt* op2 = op->next->next;
-    path.push_back(last);
-    while (op2 != op->next) { if (op2->pt != last) { last=op2->pt; path.push_back(last); } op2=op2->next; }
-    return path.size() >= 3 && !v_very_small_tri(*op);
-}
-
 } // anonymous namespace
 
 std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, const Polyline& b, int clip_type) {
@@ -1514,7 +1502,6 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
             if(a_in_b)return{};if(b_in_a)return{a};return{a};
         }
     }
-    double scale = BOOL_SCALE;
     if (!v_execute_internal(sc, clip_type)) return {};
 
     // Extract: OutPt → Polyline._coords

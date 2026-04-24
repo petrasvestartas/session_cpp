@@ -1,9 +1,5 @@
-// AABBTree — flat contiguous BVH over axis-aligned boxes (SAH median split).
-// Use for: closest-point on static mesh faces, ray-mesh intersection.
-//   Build once, query many times. Cache-friendly 56-byte nodes.
-// Prefer over BVH  when geometry is static and all volumes are world-aligned.
-// Prefer over RTree when no dynamic insert/delete is needed.
-// Prefer over KDTree when querying faces/volumes, not bare point clouds.
+// AABB — axis-aligned bounding box primitive (center + half-size).
+// Use for: containment tests, intersection tests, tight bounds of geometry.
 #pragma once
 
 #include "point.h"
@@ -55,27 +51,6 @@ struct AABB {
     bool intersects(const AABB& other) const;
     void union_with(const AABB& other);
     static AABB merge(const AABB& a, const AABB& b);
-};
-
-class AABBTree {
-public:
-    struct Node {
-        AABB aabb;
-        int right;      // right child index; left child = this_index + 1
-        int object_id;  // leaf: primitive id (>=0), internal: -1
-    };
-
-    std::vector<Node> nodes;
-
-    AABBTree() = default;
-    void build(const AABB* aabbs, size_t count);
-    bool empty() const { return nodes.empty(); }
-    size_t size() const { return nodes.size(); }
-
-    std::vector<int> query_aabb(const AABB& query) const;
-
-private:
-    void build_node(int* ids, int count, const AABB* aabbs);
 };
 
 }

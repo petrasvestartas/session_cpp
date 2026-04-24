@@ -48,13 +48,12 @@ option(ENABLE_PCH "Enable precompiled headers" ON)
 set(UNITY_BUILD_EXCLUDE
     src/nurbscurve.cpp
     src/nurbssurface.cpp
-    src/trimmedsurface.cpp
-    src/knot.cpp
+    src/nurbssurface_trimmed.cpp
+    src/nurbsknot.cpp
     src/mesh.cpp
     src/brep.cpp
     src/graph.cpp
     src/tree.cpp
-    src/treenode.cpp
     src/session.cpp
     src/element.cpp
 )
@@ -243,7 +242,7 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-foreach(MAIN_ID 1 2 3 4)
+foreach(MAIN_ID 1 3 4 6)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
@@ -251,13 +250,28 @@ foreach(MAIN_ID 1 2 3 4)
         target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endforeach()
+# main_2 uses wood_session::plane_to_face for cross-joint detection,
+# so it needs wood_joint_detection.cpp (defines wood_session::CrossJoint + plane_to_face).
+add_executable(main_2 main_2.cpp wood/wood_joint_detection.cpp)
+target_include_directories(main_2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(main_2 PRIVATE session_core)
+LINK_PROTOBUF(main_2)
+if(ENABLE_PCH)
+    target_precompile_headers(main_2 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
 # main_5 (wood face_to_face port — uses native session boolean, no Clipper2)
 # Split into wood/ subdirectory mirroring wood's cmake/src/wood/include/ tree.
 add_executable(main_5
     main_5.cpp
+    wood/wood_beams.cpp
+    wood/wood_element.cpp
+    wood/wood_face_to_face.cpp
     wood/wood_globals.cpp
     wood/wood_internal.cpp
+    wood/wood_joint.cpp
+    wood/wood_joint_detection.cpp
     wood/wood_main.cpp
+    wood/wood_merge.cpp
     wood/wood_test.cpp
 )
 target_include_directories(main_5 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -267,34 +281,60 @@ if(ENABLE_PCH)
     target_precompile_headers(main_5 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
 endif()
 
+# main_wood_* tutorial files (see wood/README.md for the concepts)
+set(WOOD_SOURCES
+    wood/wood_beams.cpp
+    wood/wood_element.cpp
+    wood/wood_face_to_face.cpp
+    wood/wood_globals.cpp
+    wood/wood_internal.cpp
+    wood/wood_joint.cpp
+    wood/wood_joint_detection.cpp
+    wood/wood_main.cpp
+    wood/wood_merge.cpp
+)
+function(ADD_WOOD_EXAMPLE NAME)
+    add_executable(${NAME} wood/${NAME}.cpp ${WOOD_SOURCES} ${ARGN})
+    target_include_directories(${NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${NAME} PRIVATE session_core)
+    LINK_PROTOBUF(${NAME})
+    if(ENABLE_PCH)
+        target_precompile_headers(${NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+    endif()
+endfunction()
+ADD_WOOD_EXAMPLE(main_wood_00_hello)
+ADD_WOOD_EXAMPLE(main_wood_01_new_geometry)
+ADD_WOOD_EXAMPLE(main_wood_02_joint_types)
+ADD_WOOD_EXAMPLE(main_wood_03_new_joint)
+ADD_WOOD_EXAMPLE(main_wood_04_all_datasets wood/wood_test.cpp)
+
 #############################################################################################
 # TESTS
 #############################################################################################
 set(MINITEST_SOURCES
     src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp src/session_config_test.cpp
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
-    src/xform_test.cpp src/mesh_test.cpp src/knot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
+    src/xform_test.cpp src/mesh_test.cpp src/nurbsknot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/closest_test.cpp
     src/primitives_test.cpp
-    src/trimmedsurface_test.cpp
+    src/nurbssurface_trimmed_test.cpp
     src/remesh_cdt_test.cpp
     src/remesh_nurbssurface_adaptive_test.cpp
     src/remesh_nurbssurface_grid_test.cpp
     src/obb_test.cpp
-    src/bvh_test.cpp
-    src/rtree_test.cpp
+    src/spatial_bvh_test.cpp
+    src/spatial_rtree_test.cpp
     src/aabb_test.cpp
-    src/encoders_test.cpp
-    src/vertex_test.cpp
-    src/edge_test.cpp
+    src/spatial_aabbtree_test.cpp
+    src/file_encoders_test.cpp
     src/graph_test.cpp
     src/intersection_test.cpp
-    src/obj_test.cpp
+    src/file_obj_test.cpp
+    src/file_step_test.cpp
     src/objects_test.cpp
     src/quaternion_test.cpp
     src/session_test.cpp
     src/tree_test.cpp
-    src/treenode_test.cpp
     src/brep_test.cpp
     src/element_test.cpp
     src/element_beam_test.cpp
@@ -302,9 +342,9 @@ set(MINITEST_SOURCES
     src/element_plate_test.cpp
     src/matrix_test.cpp
     src/convex_hull_test.cpp
-    src/kdtree_test.cpp
+    src/spatial_kdtree_test.cpp
     src/boolean_polyline_test.cpp
-    src/feature_test.cpp
+    src/elementfeature_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

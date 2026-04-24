@@ -77,10 +77,10 @@ public:
 
     nlohmann::ordered_json jsondump() const;
     static Matrix jsonload(const nlohmann::json& data);
-    std::string json_dumps() const;
-    static Matrix json_loads(const std::string& json_string);
-    void json_dump(const std::string& filename) const;
-    static Matrix json_load(const std::string& filename);
+    std::string file_json_dumps() const;
+    static Matrix file_json_loads(const std::string& json_string);
+    void file_json_dump(const std::string& filename) const;
+    static Matrix file_json_load(const std::string& filename);
 
     std::string pb_dumps() const;
     static Matrix pb_loads(const std::string& data);

@@ -69,8 +69,8 @@ namespace session_cpp {
         MINI_CHECK(s.order(1) == 4);
         MINI_CHECK(s.dimension() == 3);
         MINI_CHECK(!s.is_rational());
-        MINI_CHECK(s.knot_count(0) == 6);
-        MINI_CHECK(s.knot_count(1) == 6);
+        MINI_CHECK(s.nurbsknot_count(0) == 6);
+        MINI_CHECK(s.nurbsknot_count(1) == 6);
         MINI_CHECK(s.name == "my_nurbssurface");
         MINI_CHECK(!s.guid().empty());
         MINI_CHECK(sstr == "NurbsSurface(name=my_nurbssurface, degree=(3,3), cvs=(4,4))");
@@ -119,9 +119,9 @@ namespace session_cpp {
 
         NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 5.0);
 
-        // Validity surface and knots
+        // Validity surface and nurbsknots
         bool is_valid = s.is_valid();
-        bool are_knots_valid = s.is_valid_knot_vector(0) && s.is_valid_knot_vector(1);
+        bool are_nurbsknots_valid = s.is_valid_nurbsknot_vector(0) && s.is_valid_nurbsknot_vector(1);
 
         // Are control points weights enabled?
         bool is_rational = s.is_rational();
@@ -143,7 +143,7 @@ namespace session_cpp {
         bool is_clamped = s.is_clamped(0, 2) && s.is_clamped(1, 2);
 
         MINI_CHECK(is_valid);
-        MINI_CHECK(are_knots_valid);
+        MINI_CHECK(are_nurbsknots_valid);
         MINI_CHECK(is_rational);
         MINI_CHECK(is_closed);
         MINI_CHECK(!is_periodic);
@@ -197,9 +197,9 @@ namespace session_cpp {
         int cv_count = s.cv_count();
         int cv_size = s.cv_size();
 
-        // Number of knots
-        int k_count_0 = s.knot_count(0);
-        int k_count_1 = s.knot_count(1);
+        // Number of nurbsknots
+        int k_count_0 = s.nurbsknot_count(0);
+        int k_count_1 = s.nurbsknot_count(1);
 
         // Span count
         int s_count_0 = s.span_count(0);
@@ -277,7 +277,7 @@ namespace session_cpp {
         MINI_CHECK( s.weight(0,0) == 1); 
     }
 
-    MINI_TEST("NurbsSurface", "Knot Access") {
+    MINI_TEST("NurbsSurface", "NurbsKnot Access") {
         // uncomment #include "nurbssurface.h"
 
         std::vector<Point> points = {
@@ -305,34 +305,34 @@ namespace session_cpp {
 
         NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-        // Get knot vectors and individual knot
-        std::vector<double> knots_u = s.get_knots(0);
-        for (int i = 0; i < s.knot_count(0); i++){
-            double knot = s.knot(0, i);
-            MINI_CHECK(knot == knots_u[i]);
+        // Get nurbsknot vectors and individual nurbsknot
+        std::vector<double> nurbsknots_u = s.get_nurbsknots(0);
+        for (int i = 0; i < s.nurbsknot_count(0); i++){
+            double nurbsknot = s.nurbsknot(0, i);
+            MINI_CHECK(nurbsknot == nurbsknots_u[i]);
         }
 
-        std::vector<double> knots_v = s.get_knots(1);
-        for (int i = 0; i < s.knot_count(1); i++){
-            double knot = s.knot(1, i);
-            MINI_CHECK(knot == knots_v[i]);
+        std::vector<double> nurbsknots_v = s.get_nurbsknots(1);
+        for (int i = 0; i < s.nurbsknot_count(1); i++){
+            double nurbsknot = s.nurbsknot(1, i);
+            MINI_CHECK(nurbsknot == nurbsknots_v[i]);
         }
 
-        // Set knots
-        bool is_set = s.set_knot(0, 2, 0.5);
-        MINI_CHECK(s.knot(0, 2) == 0.5);
-        is_set = s.set_knot(0, 2, 0.0); // reset
+        // Set nurbsknots
+        bool is_set = s.set_nurbsknot(0, 2, 0.5);
+        MINI_CHECK(s.nurbsknot(0, 2) == 0.5);
+        is_set = s.set_nurbsknot(0, 2, 0.0); // reset
 
         // Verify start multiplicity
-        int mult_u_start = s.knot_multiplicity(0, 0);
-        int mult_v_start = s.knot_multiplicity(1, 0);
+        int mult_u_start = s.nurbsknot_multiplicity(0, 0);
+        int mult_v_start = s.nurbsknot_multiplicity(1, 0);
         MINI_CHECK(mult_u_start == 3);
         MINI_CHECK(mult_v_start == 3);
 
-        s.insert_knot(0, 0.1, 2);
-        MINI_CHECK(s.knot_count(0) == 8);
-        MINI_CHECK(s.knot(0, 3) == 0.1);
-        MINI_CHECK(s.knot_multiplicity(0, 3) == 2);
+        s.insert_nurbsknot(0, 0.1, 2);
+        MINI_CHECK(s.nurbsknot_count(0) == 8);
+        MINI_CHECK(s.nurbsknot(0, 3) == 0.1);
+        MINI_CHECK(s.nurbsknot_multiplicity(0, 3) == 2);
     }
 
     MINI_TEST("NurbsSurface", "Domain") {
@@ -376,7 +376,7 @@ namespace session_cpp {
         MINI_CHECK(is_set_u && TOLERANCE.is_close(s.domain(1).first, -5.1));
         MINI_CHECK(is_set_v && TOLERANCE.is_close(s.domain(1).second, 1.3));
 
-        // Get sorted list of distinct knot values
+        // Get sorted list of distinct nurbsknot values
         std::vector<double> span_vector = s.get_span_vector(0);
         double first_item = span_vector.front();
         double last_item = span_vector.back();
@@ -889,13 +889,13 @@ namespace session_cpp {
         NurbsSurface loaded_json = NurbsSurface::jsonload(json);
 
         // String
-        std::string json_string = surface.json_dumps();
-        NurbsSurface loaded_json_string = NurbsSurface::json_loads(json_string);
+        std::string json_string = surface.file_json_dumps();
+        NurbsSurface loaded_json_string = NurbsSurface::file_json_loads(json_string);
 
         // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbssurface.json").string();
-        surface.json_dump(filename);
-        NurbsSurface loaded_from_file = NurbsSurface::json_load(filename);
+        surface.file_json_dump(filename);
+        NurbsSurface loaded_from_file = NurbsSurface::file_json_load(filename);
 
         MINI_CHECK(loaded_json == surface);
         MINI_CHECK(loaded_json_string == surface);
