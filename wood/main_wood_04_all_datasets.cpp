@@ -21,10 +21,6 @@
 //
 // ─────────────────────────────────────────────────────────────────────────
 #include "wood/wood_session.h"
-#include "../src/session.h"
-using namespace session_cpp;
-
-[[maybe_unused]] static void run_dataset(bool (*fn)()) { fn(); }
 
 int main() {
     type_plates_name_hexbox_and_corner();

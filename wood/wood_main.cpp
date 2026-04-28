@@ -1,20 +1,22 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // wood/wood_main.cpp — wood joint detection pipeline orchestration.
 //
-// Public entry: get_connection_zones(ElementPlate[], Session&, SearchType)
-//   Caller loads plates via internal::load_plates(name), then calls this
-//   function, then calls session.pb_dump(path) to persist.
+// Public entries:
+//   get_connection_zones(vector<WoodElement>&, SearchType) -> vector<WoodJoint>
+//     Mutates each element's `features` (top/bottom merged outlines).
+//     Returns every detected joint with full geometry.
+//   fill_session(Session&, elements, joints, include_loft = true)
+//     Splats the result into a Session for .pb persistence / visualization.
 //
-// Internal pipeline (run_connection_zones_pipeline):
-//   1. Convert ElementPlates → WoodElements (build face planes, thickness).
-//   2. BVH broad-phase to find candidate adjacent element pairs.
-//   3. For every adjacent pair, call face_to_face_wood to classify the
+// Pipeline stages:
+//   1. BVH broad-phase to find candidate adjacent element pairs.
+//   2. For every adjacent pair, call face_to_face_wood to classify the
 //      joint (type 11/12/13/20/30/40) and compute area / lines / volumes.
-//   4. Three-valence alignment or shadow-joint insertion (if tv file exists).
-//   5. joint_create_geometry dispatch → unit-cube outlines from joint library.
-//   6. joint_orient_to_connection_area → world-frame outlines.
-//   7. merge_joints_for_element → cut outlines into plate polylines.
-//   8. Add all geometry (plates, joints, merged cuts, meshes) to session.
+//   3. Three-valence alignment or shadow-joint insertion (if tv file exists).
+//   4. joint_create_geometry dispatch → unit-cube outlines from joint library.
+//   5. joint_orient_to_connection_area → world-frame outlines.
+//   6. merge_joints_for_element → cut outlines into plate polylines, then
+//      de-interleaved into each element's `features`.
 //
 // Globals (wood_globals.cpp / wood_session.h): tuning parameters read by the
 // pipeline. Tests call reset_defaults() then override specific entries before
@@ -183,9 +185,9 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 3: ss_e_ip_2(joint); break;
                 case 4: ss_e_ip_3(joint); break;
                 case 5: ss_e_ip_4(joint); break;
+                case 9: ss_e_ip_custom(joint); break;
                 // Not ported: 6 (ss_e_ip_5, elements catalog),
-                //             8 (side_removal, pre-detection face removal),
-                //             9 (ss_e_ip_custom, XML loader).
+                //             8 (side_removal, pre-detection face removal).
                 default: warn_unimpl("ss_e_ip"); ss_e_ip_1(joint); break;
             }
             break;
@@ -343,7 +345,7 @@ static void three_valence_joint_addition_vidy(
             auto is_parallel_wood = [](const Vector& a, const Vector& b) -> bool {
                 double ll = a.magnitude() * b.magnitude();
                 if (ll <= 0.0) return false;
-                return std::abs(a.dot(b) / ll) >= std::cos(0.11);
+                return std::abs(a.dot(b) / ll) >= std::cos(wood_session::globals::ANGLE);
             };
             Vector n_s0 = elements[s0].planes[0].z_axis();
             Vector n_e31 = elements[e31].planes[0].z_axis();
@@ -645,18 +647,20 @@ using JMF = std::vector<std::vector<std::vector<std::pair<int,bool>>>>;
 //  helpers (session_data_dir, load_plates, plates_exist) live in
 // wood_internal.cpp. Declarations for both live in wood_session.h.
 
-// Internal pipeline — takes pre-loaded polylines (bottom at even, top at odd index).
-// Adds plates, joints, merged outlines, and loft meshes to `session`.
+// Public pipeline — takes pre-built WoodElements (use internal::load_plates or
+// build_wood_element directly). Mutates each element's `features` with the
+// merged top/bottom outlines. Returns every detected WoodJoint with full
+// geometry (area, lines, volumes, male/female cut outlines).
+//
 // Reads dataset auxiliary files (adjacency, tv, iv, jt) via DATA_SET_INPUT_NAME global.
-// Returns merged plate outline polylines per element for lofting by the caller.
-static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
-    const std::vector<Polyline>& polylines,
-    Session& session,
+//
+// To visualize the result, call fill_session(session, elements, joints, true).
+std::vector<WoodJoint> get_connection_zones(
+    std::vector<WoodElement>& wood_elems,
     SearchType search_type) {
 
     using namespace wood_session::globals;
     const std::string short_name      = DATA_SET_INPUT_NAME;
-    const std::string pb_name         = DATA_SET_OUTPUT_FILE;
     const double      dihedral_threshold = FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_DIHEDRAL_ANGLE;
 
     using Clock = std::chrono::high_resolution_clock;
@@ -674,17 +678,6 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
     const bool verbose = std::getenv("WOOD_VERBOSE") != nullptr;
 
     if (verbose) fmt::print("\n=== {}.obj ===\n", short_name);
-
-    std::vector<std::pair<int,int>> pairs;
-    for (size_t i = 0; i + 1 < polylines.size(); i += 2)
-        pairs.emplace_back(static_cast<int>(i), static_cast<int>(i + 1));
-
-    // 2. Build wood-compatible elements.
-    std::vector<WoodElement> wood_elems;
-    wood_elems.reserve(pairs.size());
-    for (auto [a, b] : pairs)
-        wood_elems.push_back(build_wood_element(
-            polylines[a].get_points(), polylines[b].get_points()));
 
     // ── WOOD_EL_DUMP=<path> dump element polylines for comparison with wood ──
     if (const char* ep = std::getenv("WOOD_EL_DUMP")) {
@@ -707,24 +700,12 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
             }
         }
     }
-
-    // ElementPlates for session storage + OBB adjacency.
-    auto g = session.add_group("Elements");
-    std::vector<std::shared_ptr<ElementPlate>> plates;
-    plates.reserve(pairs.size());
-    for (auto [a, b] : pairs) {
-        auto plate = std::make_shared<ElementPlate>(
-            polylines[a], polylines[b], "plate_" + std::to_string(a));
-        session.add_element(plate, g);
-        plates.push_back(plate);
-    }
-    // (Raw input-plate boxes were previously added as a "PlateMeshes" group
-    // for early debugging. They overlap the merged loft output visually and
-    // have the same "plate_N" names, so they're dropped here. The authoritative
-    // plate geometry is the merged loft emitted by loft_merged_elements.)
     auto t1 = Clock::now();
 
     // 3. Adjacency: load from file if provided, otherwise OBB+BVH search.
+    //    OBB+BVH path constructs ephemeral ElementPlates from each WoodElement's
+    //    top/bottom polylines (we.polylines[0]/[1]) — used only for AABB
+    //    geometry, discarded immediately.
     std::vector<std::pair<int, int>> adjacency_pairs;
     if (!adj_name.empty()) {
         std::ifstream adj_in((base / adj_name).string());
@@ -733,11 +714,20 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
         if (verbose) fmt::print("adjacency: {} pairs from {}\n", adjacency_pairs.size(), adj_name);
     }
     if (adjacency_pairs.empty()) {
-        std::vector<Element*> elem_ptrs(plates.size());
-        for (size_t k = 0; k < plates.size(); k++) elem_ptrs[k] = plates[k].get();
+        std::vector<std::shared_ptr<ElementPlate>> tmp_plates;
+        tmp_plates.reserve(wood_elems.size());
+        for (size_t i = 0; i < wood_elems.size(); i++) {
+            // wood_elems[i].polylines[0] = top, [1] = bottom (set by build_wood_element)
+            tmp_plates.push_back(std::make_shared<ElementPlate>(
+                wood_elems[i].polylines[1],   // bottom
+                wood_elems[i].polylines[0],   // top
+                "plate_" + std::to_string(i * 2)));
+        }
+        std::vector<Element*> elem_ptrs(tmp_plates.size());
+        for (size_t k = 0; k < tmp_plates.size(); k++) elem_ptrs[k] = tmp_plates[k].get();
         // Inflation matches wood's AABB expansion at wood_main.cpp:58-63:
-        // DISTANCE = 0.1 mm per side.
-        auto adj_flat = Intersection::adjacency_search(elem_ptrs, 0.1);
+        // wood::GLOBALS::DISTANCE — defaults to 0.1 mm, tunable from YAML.
+        auto adj_flat = Intersection::adjacency_search(elem_ptrs, DISTANCE);
         for (size_t i = 0; i + 3 < adj_flat.size(); i += 4)
             adjacency_pairs.emplace_back(adj_flat[i], adj_flat[i + 1]);
         if (verbose) fmt::print("adjacency: {} pairs from OBB+BVH\n", adjacency_pairs.size());
@@ -749,7 +739,7 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
     //    caller can see what knobs the algorithm exposes. The names match
     //    the original wood::GLOBALS::* fields one-for-one.
     const std::vector<double>& joint_volume_extension = ext_vec;
-    const double limit_min_joint_length   = 0.0;              // wood GLOBALS::LIMIT_MIN_JOINT_LENGTH
+    const double limit_min_joint_length   = LIMIT_MIN_JOINT_LENGTH; // YAML-tunable
     const double distance_squared         = 1e-6;             // minimum joint-line squared length
     const double coplanar_tolerance       = DISTANCE_SQUARED; // squared-distance coplanar test
     const double dihedral_angle_threshold = dihedral_threshold;
@@ -762,20 +752,7 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
     wood_session::set_cross_joint_distance_squared(DISTANCE_SQUARED);
 
     // 5. Iterate every adjacent pair and run the wood joint detector.
-    //    Per-type groups with colors for visualization.
-    Color col_ss(220, 50, 50, 255, "ss_red");
-    Color col_ts(50, 100, 220, 255, "ts_blue");
-    Color col_tt(50, 200, 50, 255, "tt_green");
-    auto g_area_11  = session.add_group("JointAreas_SS_11");   g_area_11->color  = col_ss;
-    auto g_area_20  = session.add_group("JointAreas_TS_20");   g_area_20->color  = col_ts;
-    auto g_area_oth = session.add_group("JointAreas_Other");   g_area_oth->color = col_tt;
-    auto g_line_11  = session.add_group("JointLines_SS_11");   g_line_11->color  = col_ss;
-    auto g_line_20  = session.add_group("JointLines_TS_20");   g_line_20->color  = col_ts;
-    auto g_line_oth = session.add_group("JointLines_Other");   g_line_oth->color = col_tt;
-    auto g_vol_11   = session.add_group("JointVols_SS_11");    g_vol_11->color   = col_ss;
-    auto g_vol_20   = session.add_group("JointVols_TS_20");    g_vol_20->color   = col_ts;
-    auto g_vol_oth  = session.add_group("JointVols_Other");    g_vol_oth->color  = col_tt;
-    // Per-element insertion vectors. Wood's annen XML stores one
+    //    Per-element insertion vectors. Wood's annen XML stores one
     // <insertion_vectors> block per element, each with `n_faces` <vector>
     // entries (faces 0/1 = top/bottom = (0,0,0); faces 2..N = side faces
     // with the assembly direction the carpenter slides the joint along).
@@ -1055,6 +1032,14 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
 
         if (j.link) continue; // shadow joints: geometry set by ss_e_op_5, orient+merge below
 
+        // Multiplicative scale (sx, sy, sz) used by ss_e_ip_2 (edge_length *= scale[2]),
+        // ss_e_r_0/impl, ts_e_p_5. Mirrors wood_joint_lib.cpp:6181 — but as a SEPARATE
+        // YAML knob (joint_scale) so additive extension and multiplicative scale don't
+        // share one field.
+        j.scale = { wood_session::globals::JOINT_SCALE[0],
+                    wood_session::globals::JOINT_SCALE[1],
+                    wood_session::globals::JOINT_SCALE[2] };
+
         double div_dist  = JPT[row*3 + 0];
         double shift_val = JPT[row*3 + 1];
         if (j.joint_type == 13 || j.joint_type == 12) {
@@ -1207,16 +1192,136 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
         }
     }
 
-    // Merge joints with plate polylines (polylines only, no meshes).
-    // Each element gets its own group so merged plates are selectable per element.
-    Color col_merged(50, 50, 50, 255, "merged_dark");
-    // Per-element summary (meta) + coordinate dump for byte-by-byte comparison with wood.
-    std::ofstream meta_out((base / (std::string(pb_name) + "_meta.txt")).string());
-    std::ofstream coord_out((base / (std::string(pb_name) + "_coords.txt")).string());
-    std::vector<std::vector<Polyline>> merged_cache(n_elems);
+    // Merge joints with plate polylines, then de-interleave into each
+    // WoodElement's `features` (top + bottom lists, outer first then holes).
+    // Layout that merge_joints_for_element returns per element:
+    //   [hole0_top, hole0_bot, hole1_top, hole1_bot, ..., outer_top, outer_bot]
     for (size_t ei = 0; ei < n_elems; ei++) {
         auto merged = merge_joints_for_element(wood_elems[ei], j_mf[ei], all_joints, (int)ei);
-        merged_cache[ei] = merged;
+        auto& feat = wood_elems[ei].features;
+        feat.top.clear();
+        feat.bottom.clear();
+        if (merged.size() >= 2) {
+            feat.top.push_back(merged[merged.size() - 2]);     // outer top
+            feat.bottom.push_back(merged[merged.size() - 1]);  // outer bot
+            for (size_t hi = 0; hi + 2 <= merged.size() - 2; hi += 2) {
+                feat.top.push_back(merged[hi]);
+                feat.bottom.push_back(merged[hi + 1]);
+            }
+        }
+    }
+
+    auto t4 = Clock::now();
+
+    auto ms = [](auto a, auto b) {
+        return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    if (verbose) {
+        fmt::print("{} elements -> {} adjacency pairs\n",
+                   wood_elems.size(), adjacency_pairs.size());
+        fmt::print("  joints: {} success / {} failed\n", n_success, n_failed);
+        fmt::print("  by type: 11={} 12={} 13={} 20={} 30={} 40={}\n",
+                   counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
+        fmt::print("  time: {:.0f}ms\n", ms(t0, t4));
+    }
+    return all_joints;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// fill_session — splat get_connection_zones output into a Session for
+// visualization / .pb persistence. Recreates the legacy group layout that
+// the Vue/Rhino viewers expect, plus optional loft meshes.
+//
+// Also writes the wood-parity debug artifacts:
+//   <DATA_SET_OUTPUT_FILE>_meta.txt   — per-element merged outline summary
+//   <DATA_SET_OUTPUT_FILE>_coords.txt — per-element merged polyline coords
+// ═══════════════════════════════════════════════════════════════════════════
+void fill_session(
+    Session& session,
+    const std::vector<WoodElement>& elements,
+    const std::vector<WoodJoint>&   joints,
+    bool include_loft)
+{
+    // Plates as ElementPlates in an "Elements" group.
+    auto g_elem = session.add_group("Elements");
+    for (size_t i = 0; i < elements.size(); i++) {
+        // wood_elems polylines: [0]=top, [1]=bottom (build_wood_element convention).
+        auto plate = std::make_shared<ElementPlate>(
+            elements[i].polylines[1],   // bottom
+            elements[i].polylines[0],   // top
+            "plate_" + std::to_string(i * 2));
+        session.add_element(plate, g_elem);
+    }
+
+    // Per-type joint area/line/volume groups with colors.
+    Color col_ss(220, 50, 50, 255, "ss_red");
+    Color col_ts(50, 100, 220, 255, "ts_blue");
+    Color col_tt(50, 200, 50, 255, "tt_green");
+    auto g_area_11  = session.add_group("JointAreas_SS_11");   g_area_11->color  = col_ss;
+    auto g_area_20  = session.add_group("JointAreas_TS_20");   g_area_20->color  = col_ts;
+    auto g_area_oth = session.add_group("JointAreas_Other");   g_area_oth->color = col_tt;
+    auto g_line_11  = session.add_group("JointLines_SS_11");   g_line_11->color  = col_ss;
+    auto g_line_20  = session.add_group("JointLines_TS_20");   g_line_20->color  = col_ts;
+    auto g_line_oth = session.add_group("JointLines_Other");   g_line_oth->color = col_tt;
+    auto g_vol_11   = session.add_group("JointVols_SS_11");    g_vol_11->color   = col_ss;
+    auto g_vol_20   = session.add_group("JointVols_TS_20");    g_vol_20->color   = col_ts;
+    auto g_vol_oth  = session.add_group("JointVols_Other");    g_vol_oth->color  = col_tt;
+
+    // Per-element merged outlines + cut polylines.
+    Color col_merged(50, 50, 50, 255, "merged_dark");
+
+    // Wood-parity debug dumps next to the .pb (only if DATA_SET_OUTPUT_FILE is set).
+    const std::string& pb_name = wood_session::globals::DATA_SET_OUTPUT_FILE;
+    auto base = internal::session_data_dir();
+    std::ofstream meta_out;
+    std::ofstream coord_out;
+    if (!pb_name.empty()) {
+        meta_out.open((base / (pb_name + "_meta.txt")).string());
+        coord_out.open((base / (pb_name + "_coords.txt")).string());
+    }
+
+    // Re-derive the original interleaved merged layout per element from features
+    // for the per-element session group + meta/coord dumps. features layout:
+    //   top[0]/bottom[0]   = outer
+    //   top[i]/bottom[i]   = hole i-1   (i >= 1)
+    // Original merged layout (back-compat for viewer + parity dumps):
+    //   [hole0_top, hole0_bot, ..., outer_top, outer_bot]
+    auto features_to_merged = [](const wood_session::Features& f) {
+        std::vector<Polyline> merged;
+        if (f.top.empty()) return merged;
+        merged.reserve(f.top.size() * 2);
+        for (size_t i = 1; i < f.top.size(); i++) {  // holes first
+            merged.push_back(f.top[i]);
+            merged.push_back(f.bottom[i]);
+        }
+        merged.push_back(f.top[0]);                  // outer last
+        merged.push_back(f.bottom[0]);
+        return merged;
+    };
+
+    // Build per-element joint membership for emitting jcut polylines.
+    // j_mf[ei][fi] = [(joint_idx, is_male)] — same shape as the pipeline uses.
+    size_t n_elems = elements.size();
+    std::vector<std::vector<std::vector<std::pair<int,bool>>>> j_mf(n_elems);
+    for (size_t ei = 0; ei < n_elems; ei++)
+        j_mf[ei].resize(elements[ei].planes.size() + 1);
+    for (size_t ji = 0; ji < joints.size(); ji++) {
+        const auto& j = joints[ji];
+        int e0 = j.el_ids.first, e1 = j.el_ids.second;
+        if (j.link) {
+            if (e0 >= 0 && e0 < (int)n_elems) j_mf[e0].back().push_back({(int)ji, true});
+            if (e1 >= 0 && e1 < (int)n_elems) j_mf[e1].back().push_back({(int)ji, false});
+        } else {
+            int f0 = j.face_ids.first[0], f1 = j.face_ids.second[0];
+            if (e0 >= 0 && e0 < (int)n_elems && f0 >= 0 && f0 < (int)j_mf[e0].size())
+                j_mf[e0][f0].push_back({(int)ji, true});
+            if (e1 >= 0 && e1 < (int)n_elems && f1 >= 0 && f1 < (int)j_mf[e1].size())
+                j_mf[e1][f1].push_back({(int)ji, false});
+        }
+    }
+
+    for (size_t ei = 0; ei < n_elems; ei++) {
+        auto merged = features_to_merged(elements[ei].features);
         auto g_el = session.add_group(fmt::format("element_{}", ei));
         g_el->color = col_merged;
         for (size_t mi = 0; mi < merged.size(); mi++) {
@@ -1225,24 +1330,16 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
             mpl->linecolor = col_merged;
             session.add_polyline(mpl, g_el);
         }
-        // Wood output_type=3: per-element joint outlines ("cuts"). Wood
-        // convention (see wood_joint.cpp:32-43 `operator()`):
-        //   male_or_female = (v0 == this_element_id) ? 0 : 1
-        //   male_or_female == 0 → return f_outlines (this element is v0 →
-        //                          cuts FEMALE shape into itself)
-        //   male_or_female == 1 → return m_outlines (this element is v1 →
-        //                          cuts MALE shape)
-        // This means v0 is the FEMALE-cut side, v1 is the MALE-cut side.
-        // Skips joints already integrated into the plate polyline by the
-        // merge (2- or 5-point endpoint markers handled by case 2/5).
+        // Wood output_type=3: per-element joint outlines ("cuts"). v0 is the
+        // FEMALE-cut side, v1 is the MALE-cut side. Skips joints already
+        // integrated into the plate polyline by the merge (2- or 5-point markers).
         for (size_t fi = 0; fi < j_mf[ei].size(); fi++) {
             for (size_t k = 0; k < j_mf[ei][fi].size(); k++) {
                 int joint_id = j_mf[ei][fi][k].first;
-                if (joint_id < 0 || joint_id >= (int)all_joints.size()) continue;
-                auto& jt = all_joints[joint_id];
+                if (joint_id < 0 || joint_id >= (int)joints.size()) continue;
+                const auto& jt = joints[joint_id];
                 size_t male_or_female = (jt.el_ids.first == (int)ei) ? 0 : 1;
-                auto& outlines_cut = male_or_female ? jt.m_outlines : jt.f_outlines;
-                // Skip if the merge already handled this joint.
+                const auto& outlines_cut = male_or_female ? jt.m_outlines : jt.f_outlines;
                 if (outlines_cut[0].size() < 2) continue;
                 size_t marker_sz = outlines_cut[0][1].point_count();
                 if (marker_sz == 2 || marker_sz == 5) continue;
@@ -1256,28 +1353,28 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
                 }
             }
         }
-        // Meta line matches wood: "<n_polylines> <pt_count_1> <pt_count_2> ..."
-        meta_out << merged.size();
-        for (size_t mi = 0; mi < merged.size(); mi++)
-            meta_out << ' ' << merged[mi].point_count();
-        meta_out << '\n';
-        // Coordinate dump: matches wood's out.xml polyline_group[ei] structure
-        coord_out << "element " << ei << "\n";
-        for (size_t mi = 0; mi < merged.size(); mi++) {
-            coord_out << "  poly " << mi << ":";
-            for (size_t pi = 0; pi < merged[mi].point_count(); pi++) {
-                Point p = merged[mi].get_point(pi);
-                coord_out << " " << p[0] << " " << p[1] << " " << p[2];
+        if (meta_out.is_open()) {
+            meta_out << merged.size();
+            for (size_t mi = 0; mi < merged.size(); mi++)
+                meta_out << ' ' << merged[mi].point_count();
+            meta_out << '\n';
+        }
+        if (coord_out.is_open()) {
+            coord_out << "element " << ei << "\n";
+            for (size_t mi = 0; mi < merged.size(); mi++) {
+                coord_out << "  poly " << mi << ":";
+                for (size_t pi = 0; pi < merged[mi].point_count(); pi++) {
+                    Point p = merged[mi].get_point(pi);
+                    coord_out << " " << p[0] << " " << p[1] << " " << p[2];
+                }
+                coord_out << "\n";
             }
-            coord_out << "\n";
         }
     }
-    meta_out.close();
-    coord_out.close();
 
-    // Store joint detection results (areas, lines, volumes) in typed/colored groups.
-    for (size_t ji = 0; ji < all_joints.size(); ji++) {
-        auto& j = all_joints[ji];
+    // Joint area / volume polygons, grouped by type.
+    for (size_t ji = 0; ji < joints.size(); ji++) {
+        const auto& j = joints[ji];
         int jt = j.joint_type;
         Color& col = (jt == 11) ? col_ss : (jt == 20) ? col_ts : col_tt;
         auto& ga = (jt == 11) ? g_area_11 : (jt == 20) ? g_area_20 : g_area_oth;
@@ -1294,71 +1391,18 @@ static std::vector<std::vector<Polyline>> run_connection_zones_pipeline(
                 session.add_polyline(jvol, gv);
             }
         }
-        // (Per-element cut outlines are emitted above in the element loop,
-        // mirroring wood's output_type=3 semantics; no longer duplicated here.)
     }
 
-    auto t4 = Clock::now();
-
-    auto ms = [](auto a, auto b) {
-        return std::chrono::duration<double, std::milli>(b - a).count();
-    };
-    if (verbose) {
-        fmt::print("{} polylines -> {} elements -> {} adjacency pairs\n",
-                   polylines.size(), pairs.size(), adjacency_pairs.size());
-        fmt::print("  joints: {} success / {} failed\n", n_success, n_failed);
-        fmt::print("  by type: 11={} 12={} 13={} 20={} 30={} 40={}\n",
-                   counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
-        fmt::print("  time: {:.0f}ms\n", ms(t0, t4));
-    }
-    return merged_cache;
-}
-
-// merged layout per element: [hole0_top, hole0_bot, ..., outer_top, outer_bot]
-void loft_merged_elements(
-    Session& session,
-    const std::vector<std::vector<Polyline>>& mc)
-{
-    auto g = session.add_group("MergedMeshes");
-    for (size_t ei = 0; ei < mc.size(); ei++) {
-        const auto& merged = mc[ei];
-        if (merged.size() < 2) continue;
-        std::vector<Polyline> tops;
-        std::vector<Polyline> bots;
-        tops.push_back(merged[merged.size() - 2]);
-        bots.push_back(merged[merged.size() - 1]);
-        for (size_t hi = 0; hi + 2 <= merged.size() - 2; hi += 2) {
-            tops.push_back(merged[hi]);
-            bots.push_back(merged[hi + 1]);
+    // Optional loft meshes from features.
+    if (include_loft) {
+        auto g = session.add_group("MergedMeshes");
+        for (size_t ei = 0; ei < elements.size(); ei++) {
+            const auto& f = elements[ei].features;
+            if (f.top.empty()) continue;
+            auto plate = std::make_shared<Mesh>(Mesh::loft(f.top, f.bottom));
+            plate->name = fmt::format("plate_{}", ei);
+            session.add_mesh(plate, g);
         }
-        auto plate = std::make_shared<Mesh>(Mesh::loft(tops, bots));
-        plate->name = fmt::format("plate_{}", ei);
-        session.add_mesh(plate, g);
     }
-}
-
-// Pipeline entry: run full 9-stage joint detection on a set of timber plates.
-// elements    — input plates (ElementPlate from session kernel); loaded from a
-//               named dataset via internal::load_plates() or constructed directly.
-// session     — caller-owned; plates, joint volumes, merged outlines, and loft
-//               meshes are appended. Caller calls session.pb_dump(path) to persist.
-// search_type — face_to_face | cross_joint | face_to_face_then_cross
-// Returns: merged plate outline polylines per element
-//          [element_id][outline_id]: [hole0_top, hole0_bot, ..., outer_top, outer_bot]
-std::vector<std::vector<Polyline>> get_connection_zones(
-    const std::vector<ElementPlate>& elements,
-    Session& session,
-    SearchType search_type)
-{
-    // Convert ElementPlate array to flat polyline list expected by the internal
-    // pipeline (bottom polyline at even index, top polyline at odd index per element).
-    std::vector<Polyline> polylines;
-    polylines.reserve(elements.size() * 2);
-    for (const auto& e : elements) {
-        polylines.emplace_back(e.polygon());
-        polylines.emplace_back(e.polygon_top());
-    }
-    auto mc = run_connection_zones_pipeline(polylines, session, search_type);
-    return mc;
 }
 

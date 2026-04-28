@@ -22,13 +22,19 @@
 // ─────────────────────────────────────────────────────────────────────────
 #include "wood/wood_session.h"
 #include "../src/session.h"
+
 using namespace session_cpp;
+using namespace wood_session;
 
 int main() {
-    using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[1] = 2;
 
+    // Load global wood parameters.
+    globals::reset_defaults();
+    globals::JOINT_VOLUME_EXTENSION[1] = 2;
+    globals::DATA_SET_INPUT_NAME  = "cross_corners_custom";
+    globals::DATA_SET_OUTPUT_FILE = "WoodF2F_cross_corners_custom.pb";
+
+    // Main Input - Polylines
     std::vector<Polyline> polylines = {
         Polyline({ {-487.707780261317,-262.545668944569,-45.2995080427285}, {-487.707780261317,-131.041055779523,-45.2995080427285}, {-664.561369343444,-131.041055779523,-45.2995080427285}, {-664.561369343444,-262.545668944569,-45.2995080427285}, {-487.707780261317,-262.545668944569,-45.2995080427285} }),
         Polyline({ {-487.707780261317,-262.545668944569,-30.2995080427318}, {-487.707780261317,-131.041055779523,-30.2995080427318}, {-664.561369343444,-131.041055779523,-30.2995080427318}, {-664.561369343444,-262.545668944569,-30.2995080427318}, {-487.707780261317,-262.545668944569,-30.2995080427318} }),
@@ -72,24 +78,24 @@ int main() {
         Polyline({ {600.101952383697,109.718869550992,-38.6720517701402}, {601.649075095825,289.340502610428,124.815687950251}, {592.531643591835,297.821548773065,111.535210145529}, {591.012273988904,121.422064000418,-49.0197996387254}, {600.101952383697,109.718869550992,-38.6720517701402} }),
     };
 
-    Session session("WoodF2F");
+    // Build WoodElements from the flat polyline list (even=bottom, odd=top).
+    std::vector<WoodElement> elements;
+    for (size_t i = 0; i + 1 < polylines.size(); i += 2)
+        elements.emplace_back(polylines[i], polylines[i+1]);
 
-    auto g_input = session.add_group("InputPlates");
+    // Run the joint-detection algorithm.
+    std::vector<WoodJoint> joints = get_connection_zones(elements, cross_joint);
+
+    // Session for visualization and export.
+    Session session(globals::DATA_SET_INPUT_NAME);
+    std::shared_ptr<TreeNode> g_input = session.add_group("InputPlates");
     for (size_t i = 0; i < polylines.size(); i++) {
-        auto pl = std::make_shared<Polyline>(polylines[i]);
+        std::shared_ptr<Polyline> pl = std::make_shared<Polyline>(polylines[i]);
         pl->name = "plate_" + std::to_string(i);
         session.add_polyline(pl, g_input);
     }
+    fill_session(session, elements, joints);
 
-    std::vector<ElementPlate> plates;
-    for (size_t i = 0; i + 1 < polylines.size(); i += 2)
-        plates.emplace_back(polylines[i], polylines[i+1], "plate_" + std::to_string(i/2));
-    DATA_SET_INPUT_NAME  = "cross_corners_custom";
-    DATA_SET_OUTPUT_FILE = "WoodF2F_cross_corners_custom.pb";
-    auto merged = get_connection_zones(plates, session, cross_joint);
-    loft_merged_elements(session, merged);
-
-    auto pb = (internal::session_data_dir() / "WoodF2F_cross_corners_custom.pb").string();
-    session.pb_dump(pb);
+    session.pb_dump((internal::session_data_dir() / globals::DATA_SET_OUTPUT_FILE).string());
     return 0;
 }

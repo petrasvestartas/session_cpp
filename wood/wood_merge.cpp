@@ -149,8 +149,8 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
                 // ── case (5): rectangle joint ──────────────────────────────
                 // wood_element.cpp:1049-1105. The first outline polyline of
                 // each side (`jm[0][0]` and `jm[1][0]`) is the rectangle that
-                // gets clipped against the plate polygon via Clipper2 open-
-                // path intersection. The result is a clipped joint polyline +
+                // gets clipped against the plate polygon via open-path
+                // intersection. The result is a clipped joint polyline +
                 // a parametric `(t0, t1)` pair on the plate edges.
                 Polyline joint_pline_0;
                 std::pair<double, double> cp_pair_0;

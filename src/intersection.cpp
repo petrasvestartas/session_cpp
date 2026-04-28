@@ -2273,9 +2273,9 @@ std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Po
     return BooleanPolyline::compute(a, b, clip_type);
 }
 
-// Native miter-join polygon offset in plane-space 2D. Replaces Clipper2's
-// InflatePaths for wood's `clipper_util::offset_in_3d`. For each vertex of
-// the CCW-oriented input polygon, compute the bisector of the two adjacent
+// Miter-join polygon offset in plane-space 2D, used by wood's
+// `clipper_util::offset_in_3d`. For each vertex of the CCW-oriented input
+// polygon, compute the bisector of the two adjacent
 // edge outward normals and translate the vertex by `delta` along the
 // bisector — giving a parallel offset curve with mitered corners.
 //
@@ -2366,12 +2366,9 @@ bool Intersection::offset_in_3d(Polyline& polyline, const Plane& plane, double o
         double sin_a = np.x*nn.y - np.y*nn.x;
         double denom = 1.0 + cos_a;
         // 3-vertex concave emission is only correct for OUTER offsets
-        // (user `offset > 0`). For inner offsets, Clipper2 also emits 3
-        // vertices but then runs a finishing Vatti union with
-        // fill-rule-Negative to cancel the inward tabs. Session does not
-        // replicate that cleanup, so we must use the single miter bisector
-        // for inner offsets — which equals Clipper2's post-cleanup output
-        // at convex corners.
+        // (user `offset > 0`). For inner offsets, use the single miter
+        // bisector (equivalent to a Vatti-Negative cleanup of the 3-vertex
+        // form at convex corners, without the post-union pass).
         bool concave = (cos_a > -0.999) && (sin_a * delta < 0.0) && (offset > 0.0);
         if (concave) {
             // 3-vertex emission at reflex corner.
@@ -2436,9 +2433,9 @@ bool Intersection::offset_in_3d(Polyline& polyline, const Plane& plane, double o
 }
 
 // Verbatim port of wood's cgal::collider::clipper_util::get_intersection_between_two_polylines
-// (clipper_util.cpp:524-620). Plane-space 2D boolean. Uses session's native
-// BooleanPolyline (Vatti implementation — no Clipper2 dependency), matching
-// the pattern session already uses for `polyline_boolean`.
+// (clipper_util.cpp:524-620). Plane-space 2D boolean via session's native
+// BooleanPolyline (Vatti), matching the pattern session already uses for
+// `polyline_boolean`.
 bool Intersection::polyline_boolean_2d_in_plane(
     const Polyline& polyline0,
     const Polyline& polyline1,
@@ -2649,10 +2646,9 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
                                               const Plane& plane,
                                               Polyline& out,
                                               std::pair<double, double>& cp_pair) {
-    // Native (no Clipper2) port of wood `wood_element.cpp:438-651`. Clips an
-    // OPEN-path joint outline against a CLOSED plate polygon in 2D and
-    // returns the clipped 3D segment + parametric positions on the plate
-    // edges.
+    // Port of wood `wood_element.cpp:438-651`. Clips an OPEN-path joint
+    // outline against a CLOSED plate polygon in 2D and returns the clipped
+    // 3D segment + parametric positions on the plate edges.
     //
     // Algorithm: project plate + joint into the plate-frame 2D, then for
     // each joint segment compute its intersection parameters against every
@@ -2830,10 +2826,9 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
     // the parametric range of overlap on the joint segment.
     //
     // Returns true if overlap exists; outputs t_enter, t_exit (on joint
-    // segment). This is the proper algorithm for handling rectangle-edge
-    // coincident with plate-edge — what Clipper2's Vatti sweep handles via
-    // integer-grid quantization, here handled via direct angle+distance
-    // test. No grid snapping; thresholds are true FP-noise tolerances.
+    // segment). Handles rectangle-edge coincident with plate-edge via
+    // direct angle+distance test (no grid snapping; thresholds are true
+    // FP-noise tolerances).
     auto collinear_overlap = [](const P2& s0, const P2& s1, const P2& e0, const P2& e1,
                                  double& t_enter, double& t_exit) -> bool {
         double sx = s1.x-s0.x, sy = s1.y-s0.y;
@@ -2954,8 +2949,8 @@ bool Intersection::closed_and_open_paths_2d(const Polyline& plate,
         }
     }
 
-    // Concatenate pieces into a single polyline using the same
-    // distance-based reorientation rule as the Clipper2 version.
+    // Concatenate pieces into a single polyline using a distance-based
+    // reorientation rule.
     std::vector<P2> c2d;
     int count = 0;
     auto sq2 = [](const P2& a, const P2& b) {

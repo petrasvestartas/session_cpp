@@ -24,30 +24,29 @@ static void ss_e_ip_2(WoodJoint& joint) {
     double mv_step = -move_length_scaled;
 
     // Base butterfly teeth (4 pts each, + 2-pt markers).
-    auto P = [](double x, double y, double z) { return Point(x, y, z); };
     std::vector<Point> base_m0 = {
-        P(0.0, -0.5, 0.1166666667),
-        P(-0.5, -0.5, 0.4),
-        P(-0.5, -0.5, -0.4),
-        P(0.0, -0.5, -0.1166666667),
+        Point( 0.0, -0.5,  0.1166666667),
+        Point(-0.5, -0.5,  0.4),
+        Point(-0.5, -0.5, -0.4),
+        Point( 0.0, -0.5, -0.1166666667),
     };
     std::vector<Point> base_m1 = {
-        P(0.0, 0.5, 0.1166666667),
-        P(-0.5, 0.5, 0.4),
-        P(-0.5, 0.5, -0.4),
-        P(0.0, 0.5, -0.1166666667),
+        Point( 0.0,  0.5,  0.1166666667),
+        Point(-0.5,  0.5,  0.4),
+        Point(-0.5,  0.5, -0.4),
+        Point( 0.0,  0.5, -0.1166666667),
     };
     std::vector<Point> base_f0 = {
-        P(0.0, -0.5, 0.1166666667),
-        P(0.5, -0.5, 0.4),
-        P(0.5, -0.5, -0.4),
-        P(0.0, -0.5, -0.1166666667),
+        Point( 0.0, -0.5,  0.1166666667),
+        Point( 0.5, -0.5,  0.4),
+        Point( 0.5, -0.5, -0.4),
+        Point( 0.0, -0.5, -0.1166666667),
     };
     std::vector<Point> base_f1 = {
-        P(0.0, 0.5, 0.1166666667),
-        P(0.5, 0.5, 0.4),
-        P(0.5, 0.5, -0.4),
-        P(0.0, 0.5, -0.1166666667),
+        Point( 0.0,  0.5,  0.1166666667),
+        Point( 0.5,  0.5,  0.4),
+        Point( 0.5,  0.5, -0.4),
+        Point( 0.0,  0.5, -0.1166666667),
     };
 
     auto build = [&](const std::vector<Point>& base) -> std::vector<Point> {

@@ -268,10 +268,8 @@ void beam_volumes_pipeline(
         // Build wood elements from the rectangle pairs and run the existing
         // plate-style face_to_face detector. [0,1] = beam 0 top/bottom at
         // the joint; [2,3] = beam 1.
-        WoodElement el0 = build_wood_element(
-            beam_vol[0].get_points(), beam_vol[1].get_points());
-        WoodElement el1 = build_wood_element(
-            beam_vol[2].get_points(), beam_vol[3].get_points());
+        WoodElement el0(beam_vol[0], beam_vol[1]);
+        WoodElement el1(beam_vol[2], beam_vol[3]);
 
         WoodJoint jt;
         bool swap_planes_1 = false;

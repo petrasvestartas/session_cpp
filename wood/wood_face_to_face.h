@@ -1,12 +1,11 @@
 // wood/wood_face_to_face.h — plate face-to-face joint detection.
 //
-// Stage 1 of 9 (build_wood_element): builds a WoodElement (planes, sides,
-//   thickness) from a top/bottom polyline pair. Called once per plate before
-//   adjacency search.
-//
 // Stage 4 of 9 (face_to_face_wood): core joint topology detector. Classifies
 //   one face-pair from two WoodElements as joint type 11/12/13/20/30/40 and
 //   computes joint area, alignment lines, and volume rectangles.
+//
+// (Stage 1 — building a WoodElement from a bottom/top polyline pair — is now
+//  a WoodElement constructor in wood_element.h.)
 //
 // Geometry helpers that moved to the session kernel:
 //   polyline_two_rects_from_frame   → src/polyline.h
@@ -21,13 +20,6 @@
 
 #include <utility>
 #include <vector>
-
-// Stage 1 of 9: Convert top/bottom point arrays to a WoodElement.
-// pp0 = bottom polygon points, pp1 = top polygon points (order auto-detected).
-// Result: polylines[0]=top, [1]=bot, [2..N]=sides; planes; thickness.
-wood_session::WoodElement build_wood_element(
-    std::vector<session_cpp::Point> pp0,
-    std::vector<session_cpp::Point> pp1);
 
 // Stage 4 of 9: Classify one face-pair from two elements as a wood joint.
 // Returns true if a valid joint was found; populates out_joint and out_swap_planes_1.

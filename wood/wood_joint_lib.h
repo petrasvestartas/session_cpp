@@ -20,6 +20,11 @@
 #pragma once
 
 #include "wood_cut.h"
+// NOTE: Joints reference `wood_session::globals::*` (e.g. CUSTOM_JOINTS_*).
+// Do NOT include wood_session.h here — this aggregator is dropped into an
+// anonymous namespace inside wood_joint.cpp, which would put the extern
+// declarations in the wrong scope. Each consumer (wood_joint.cpp,
+// wood_main.cpp) must include wood_session.h itself, before this file.
 
 // joints/helpers.h was a thin wrapper around Point::interpolate(a, b, n, 0).
 // Call sites now use Point::interpolate directly (no wrapper needed).
@@ -36,6 +41,7 @@
 #include "joints/ss_e_ip_2.h"
 #include "joints/ss_e_ip_3.h"
 #include "joints/ss_e_ip_4.h"
+#include "joints/ss_e_ip_custom.h"
 
 // group 1 — ss_e_op (side-side out-of-plane, type 11)
 // ss_e_op_4 must be included before ss_e_op_5 (5 calls 4).

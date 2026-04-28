@@ -56,6 +56,7 @@ set(UNITY_BUILD_EXCLUDE
     src/tree.cpp
     src/session.cpp
     src/element.cpp
+    src/yaml/yaml.cpp
 )
 
 #############################################################################################
@@ -120,23 +121,6 @@ FetchContent_Declare(protobuf
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(protobuf)
-
-#############################################################################################
-# CLIPPER2
-#############################################################################################
-FetchContent_Declare(Clipper2
-    GIT_REPOSITORY https://github.com/AngusJohnson/Clipper2.git
-    GIT_TAG Clipper2_1.4.0
-    GIT_SHALLOW TRUE
-    SOURCE_SUBDIR CPP
-)
-set(CLIPPER2_UTILS OFF CACHE BOOL "" FORCE)
-set(CLIPPER2_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(CLIPPER2_TESTS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(Clipper2)
-if(MSVC)
-    target_compile_options(Clipper2 PRIVATE /w)
-endif()
 
 # Suppress warnings from protobuf and absl third-party libraries
 if(MSVC)
@@ -232,6 +216,8 @@ endfunction()
 file(GLOB PROJECT_SOURCES "src/*.cpp")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_minitest\\.cpp$")
+# tiny-yaml lives in src/yaml/ — non-recursive glob misses it.
+list(APPEND PROJECT_SOURCES "${PROJECT_SOURCE_DIR}/src/yaml/yaml.cpp")
 
 add_library(session_core OBJECT ${PROJECT_SOURCES})
 target_include_directories(session_core PUBLIC
@@ -239,6 +225,7 @@ target_include_directories(session_core PUBLIC
     ${PROJECT_SOURCE_DIR}/src/fmt/include
     ${PROJECT_SOURCE_DIR}/src/json/include
     ${PROJECT_SOURCE_DIR}/src/guid/include
+    ${PROJECT_SOURCE_DIR}/src/yaml
 )
 
 # Unity Build - applied only to session_core (not dependencies)
@@ -271,6 +258,10 @@ foreach(MAIN_ID 1 3 4 6)
         target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endforeach()
+
+add_executable(example_loft_holes example_loft_holes.cpp)
+target_link_libraries(example_loft_holes PRIVATE session_core)
+LINK_PROTOBUF(example_loft_holes)
 # main_2 uses wood_session::plane_to_face for cross-joint detection,
 # so it needs wood_joint_detection.cpp (defines wood_session::CrossJoint + plane_to_face).
 add_executable(main_2 main_2.cpp wood/wood_joint_detection.cpp)
@@ -280,7 +271,7 @@ LINK_PROTOBUF(main_2)
 if(ENABLE_PCH)
     target_precompile_headers(main_2 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
 endif()
-# main_5 (wood face_to_face port — uses native session boolean, no Clipper2)
+# main_5 (wood face_to_face port — uses native session boolean).
 # Split into wood/ subdirectory mirroring wood's cmake/src/wood/include/ tree.
 add_executable(main_5
     main_5.cpp

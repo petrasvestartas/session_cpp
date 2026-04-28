@@ -83,17 +83,36 @@ struct WoodJoint {
 };
 
 // ───────────────────────────────────────────────────────────────────────────
+// Features — wood-specific per-element output of the merge_joints pass.
+// Currently holds only the merged plate outlines (outer + holes), split
+// into top-face and bottom-face lists. Indexed 1:1 (top[i] pairs with
+// bottom[i]); the LAST entry is the outer outline, earlier entries are
+// hole outlines from internal cuts. Future: grooves, drillings, etc.
+// ───────────────────────────────────────────────────────────────────────────
+struct Features {
+    std::vector<session_cpp::Polyline> top;
+    std::vector<session_cpp::Polyline> bottom;
+};
+
+// ───────────────────────────────────────────────────────────────────────────
 // WoodElement — plate element: polylines and planes built exactly as
 // wood::main::get_elements (wood_main.cpp:14-201) does it.
 // ───────────────────────────────────────────────────────────────────────────
 struct WoodElement {
     WoodElement();
 
+    // Build a plate from its bottom/top face polylines (order auto-detected
+    // via average-normal flip). Computes face planes, side polylines, and
+    // thickness exactly as wood::main::get_elements does.
+    // Result: polylines[0]=bot, [1]=top, [2..N]=sides; planes match.
+    WoodElement(const session_cpp::Polyline& bot, const session_cpp::Polyline& top);
+
     std::vector<session_cpp::Polyline> polylines;
     std::vector<session_cpp::Plane>    planes;
     std::vector<session_cpp::Vector>   insertion_vectors; // optional per-face assembly directions
-    bool reversed;  // true if build_wood_element reversed the winding
+    bool reversed;  // true if the bot/top ctor reversed the winding
     double thickness; // perpendicular distance between face planes 0 and 1
+    Features features;  // populated by get_connection_zones merge pass; empty before
 };
 
 } // namespace wood_session

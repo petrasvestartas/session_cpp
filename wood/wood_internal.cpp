@@ -6,7 +6,6 @@
 #include "../src/file_obj.h"
 #include "../src/polyline.h"
 #include "../src/point.h"
-#include "../src/element.h"
 
 #include <filesystem>
 #include <string>
@@ -70,8 +69,9 @@ bool plates_exist(const std::string& wood_name) {
     return std::filesystem::exists(path);
 }
 
-// Load dataset → ElementPlates. Sets DATA_SET_INPUT_NAME + DATA_SET_OUTPUT_FILE globals.
-std::vector<ElementPlate> load_plates(const std::string& dataset_name, double duplicate_pts_tol) {
+// Load dataset → WoodElements.
+// Sets DATA_SET_INPUT_NAME + DATA_SET_OUTPUT_FILE globals.
+std::vector<wood_session::WoodElement> load_plates(const std::string& dataset_name, double duplicate_pts_tol) {
     wood_session::globals::DUPLICATE_PTS_TOL = duplicate_pts_tol;
 
     const std::string obj_short = wood_name_to_obj_short(dataset_name);
@@ -84,11 +84,11 @@ std::vector<ElementPlate> load_plates(const std::string& dataset_name, double du
     wood_session::globals::DATA_SET_INPUT_NAME  = obj_short;
     wood_session::globals::DATA_SET_OUTPUT_FILE = "WoodF2F_" + obj_short + ".pb";
 
-    std::vector<ElementPlate> plates;
-    plates.reserve(polylines.size() / 2);
+    std::vector<wood_session::WoodElement> elements;
+    elements.reserve(polylines.size() / 2);
     for (size_t i = 0; i + 1 < polylines.size(); i += 2)
-        plates.emplace_back(polylines[i], polylines[i + 1], "plate_" + std::to_string(i / 2));
-    return plates;
+        elements.emplace_back(polylines[i], polylines[i + 1]);
+    return elements;
 }
 
 // Load raw polylines without pairing — for beam datasets where each polyline is an axis.
