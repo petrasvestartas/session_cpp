@@ -22,14 +22,20 @@
 // ─────────────────────────────────────────────────────────────────────────
 #include "wood/wood_session.h"
 #include "../src/session.h"
+
 using namespace session_cpp;
+using namespace wood_session;
 
 int main() {
-    using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
 
+    // Load global wood parameters.
+    globals::reset_defaults();
+    globals::JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
+    globals::JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
+    globals::DATA_SET_INPUT_NAME  = "annen_corner_custom";
+    globals::DATA_SET_OUTPUT_FILE = "WoodF2F_annen_corner_custom.pb";
+
+    // Main Input - Polylines
     std::vector<Polyline> polylines = {
         // pair 0 — vertical plate at X≈2142 (top)
         Polyline({
@@ -129,45 +135,24 @@ int main() {
         }),
     };
 
-    Session session("WoodF2F");
+    // Build WoodElements from the flat polyline list (even=bottom, odd=top).
+    std::vector<WoodElement> elements;
+    for (size_t i = 0; i + 1 < polylines.size(); i += 2)
+        elements.emplace_back(polylines[i], polylines[i+1]);
 
-    auto g_input = session.add_group("InputPlates");
+    // Run the joint-detection algorithm.
+    std::vector<WoodJoint> joints = get_connection_zones(elements, face_to_face);
+
+    // Session for visualization and export.
+    Session session(globals::DATA_SET_INPUT_NAME);
+    std::shared_ptr<TreeNode> g_input = session.add_group("InputPlates");
     for (size_t i = 0; i < polylines.size(); i++) {
-        auto pl = std::make_shared<Polyline>(polylines[i]);
+        std::shared_ptr<Polyline> pl = std::make_shared<Polyline>(polylines[i]);
         pl->name = "plate_" + std::to_string(i);
         session.add_polyline(pl, g_input);
     }
+    fill_session(session, elements, joints);
 
-    std::vector<ElementPlate> plates;
-    for (size_t i = 0; i + 1 < polylines.size(); i += 2)
-        plates.emplace_back(polylines[i], polylines[i+1], "plate_" + std::to_string(i/2));
-    using namespace wood_session::globals;
-    DATA_SET_INPUT_NAME  = "annen_corner_custom";
-    DATA_SET_OUTPUT_FILE = "WoodF2F_annen_corner_custom.pb";
-    auto merged = get_connection_zones(plates, session, face_to_face);
-
-    // Loft every merged plate as a closed solid and add as MergedMeshes group.
-    loft_merged_elements(session, merged);
-
-    std::cout << "DEBUG: " << merged.size() << " elements total." << std::endl;
-    for (size_t ei = 0; ei < merged.size(); ++ei) {
-        const auto& m = merged[ei];
-        if (m.size() < 2) continue;
-        std::vector<Polyline> tops = { m[m.size() - 2] };
-        std::vector<Polyline> bots = { m[m.size() - 1] };
-        for (size_t hi = 0; hi + 2 <= m.size() - 2; hi += 2) {
-            tops.push_back(m[hi]);
-            bots.push_back(m[hi + 1]);
-        }
-        Mesh mm = Mesh::loft(tops, bots);
-        std::cout << "  plate " << ei
-                  << " holes=" << (tops.size() - 1)
-                  << " is_closed=" << mm.is_closed()
-                  << " faces=" << mm.face.size()
-                  << " verts=" << mm.vertex.size() << std::endl;
-    }
-
-    auto pb = (internal::session_data_dir() / "WoodF2F_annen_corner_custom.pb").string();
-    session.pb_dump(pb);
+    session.pb_dump((internal::session_data_dir() / globals::DATA_SET_OUTPUT_FILE).string());
     return 0;
 }

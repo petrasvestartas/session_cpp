@@ -24,27 +24,33 @@
 // ─────────────────────────────────────────────────────────────────────────
 #include "wood/wood_session.h"
 #include "../src/session.h"
+
 using namespace session_cpp;
+using namespace wood_session;
 
 static void run_annen(const std::string& name, double div_len) {
-    using namespace wood_session::globals;
-    reset_defaults();
+
+    // Load global wood parameters.
+    globals::reset_defaults();
     if (!internal::plates_exist(name)) {
         fmt::print("\n=== {}: dataset missing, skipping ===\n", name);
         return;
     }
     if (div_len > 0)
-        JOINTS_PARAMETERS_AND_TYPES[1*3+0] = div_len;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
-    auto plates = internal::load_plates(name);
+        globals::JOINTS_PARAMETERS_AND_TYPES[1*3+0] = div_len;
+    globals::JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
+    globals::JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
 
-    Session session("WoodF2F");
-    auto merged = get_connection_zones(plates, session, face_to_face);
-    loft_merged_elements(session, merged);
+    // Build WoodElements from the named OBJ dataset.
+    std::vector<WoodElement> elements = internal::load_plates(name);
 
-    auto pb = (internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string();
-    session.pb_dump(pb);
+    // Run the joint-detection algorithm.
+    std::vector<WoodJoint> joints = get_connection_zones(elements, face_to_face);
+
+    // Session for visualization and export.
+    Session session(globals::DATA_SET_INPUT_NAME);
+    fill_session(session, elements, joints);
+    session.pb_dump((internal::session_data_dir() / globals::DATA_SET_OUTPUT_FILE).string());
 }
 
 int main() {

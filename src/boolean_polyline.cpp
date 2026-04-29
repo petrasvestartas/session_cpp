@@ -1,5 +1,4 @@
-// Vatti scanline polygon clipping — ported from Clipper2 (Angus Johnson,
-// Boost licence) into session_cpp types. Closed-path NonZero fill only.
+// Vatti scanline polygon clipping in session_cpp types. Closed-path NonZero fill only.
 #include "boolean_polyline.h"
 #include <cmath>
 #include <algorithm>
@@ -380,8 +379,7 @@ static VVertex* v_add_path_from_doubles(const double* coords, int n, int8_t poly
     // Open-subject path. Linear list (next/prev pointers terminate at
     // endpoints — base[0].prev stays nullptr, last vertex's next stays
     // nullptr as set by VVertex{} default). Mark endpoints with
-    // VF_OpenStart / VF_OpenEnd. Rules mirror Clipper2
-    // AddPaths_(is_open=true) at clipper.engine.cpp:654-703:
+    // VF_OpenStart / VF_OpenEnd. Open-path Vatti rules:
     //   - First vertex is ALWAYS a local minimum (added to locmin_list).
     //     If the y-trajectory starts ascending, first vertex marked
     //     VF_LocalMin. If descending, first vertex marked VF_LocalMax
@@ -623,7 +621,6 @@ static void v_set_wind_count(VattiScratch& sc, VActive& e) {
     // Open-subject edges: wind_cnt is undefined (open polylines don't create
     // a consistent winding direction). Count only clip-edge wind_dx to get
     // wind_cnt2 = clip winding at this edge's x at the sweepline y.
-    // Mirrors Clipper2 SetWindCountForOpenPathEdge (clipper.engine.cpp:1089-1117).
     if (pt == 2) {
         e.wind_cnt = 0;                                 // sentinel; unread for polytype=2
         e.wind_cnt2 = 0;
@@ -660,7 +657,6 @@ static bool v_is_contributing(const VActive& e, int cliptype) {
     // Open-subject edges (polytype=2) have no inherent winding — they're
     // just polylines, not polygon boundaries. For Intersection mode, they
     // contribute wherever they're inside the clip polygon (|wind_cnt2| != 0).
-    // Matches Clipper2 IsContributingOpen (clipper.engine.cpp:984-1008).
     if (v_polytype(e) == 2) {
         if (cliptype != 0) return false;              // open: intersection only
         return std::abs(e.wind_cnt2) != 0;             // inside clip polygon
@@ -800,8 +796,7 @@ static void v_check_join_right(VActive& e, BIVec2 pt, VattiScratch& sc, bool che
 // Helper: start (or re-start) an open-subject output region at `pt`.
 // Called when an open-subject edge first enters the clip polygon, or when
 // it re-enters after exiting. Produces a new VOutRec with is_open=true and
-// one VOutPt holding `pt`. Mirrors Clipper2 StartOpenPath
-// (clipper.engine.cpp:1685-1706).
+// one VOutPt holding `pt`.
 static VOutPt* v_start_open_path(VActive& e, BIVec2 pt, VattiScratch& sc) {
     VOutRec* outrec = sc.new_outrec();
     outrec->is_open = true;
@@ -820,10 +815,9 @@ static inline bool v_is_open_end(const VVertex& v) {
 
 static void v_intersect_edges(VActive& e1, VActive& e2, BIVec2 pt, VattiScratch& sc, int cliptype) {
     // Open-subject × clip intersection — special handling before the
-    // closed-path logic. Mirrors Clipper2 IntersectEdges open-path branch
-    // (clipper.engine.cpp:1772-1851). Semantics: only Intersection
-    // cliptype supported; open edge toggles output as it crosses clip
-    // boundary (enter → start OutRec; exit → close OutRec).
+    // closed-path logic. Semantics: only Intersection cliptype supported;
+    // open edge toggles output as it crosses clip boundary (enter → start
+    // OutRec; exit → close OutRec).
     if (sc.has_open_subj && (v_polytype(e1) == 2 || v_polytype(e2) == 2)) {
         // Two open-subject edges intersecting: no-op (degenerate input).
         if (v_polytype(e1) == 2 && v_polytype(e2) == 2) return;
@@ -1167,9 +1161,8 @@ static void v_insert_local_minima_into_ael(VattiScratch& sc, int64_t bot_y, int 
     VLocalMinima* lm;
     while (v_pop_locmin(sc, bot_y, lm)) {
         // Open-path endpoints have nullptr on one side (VF_OpenStart → prev is
-        // null, VF_OpenEnd → next is null). Clipper2 handles these as
-        // "single-bound" minima: only the side with a valid neighbour becomes
-        // an active edge. Mirrors InsertLocalMinimaIntoAEL null-bound branch.
+        // null, VF_OpenEnd → next is null). Treated as "single-bound" minima:
+        // only the side with a valid neighbour becomes an active edge.
         bool skip_lb = (lm->vertex->flags & VF_OpenStart) != 0;
         bool skip_rb = (lm->vertex->flags & VF_OpenEnd)   != 0;
 

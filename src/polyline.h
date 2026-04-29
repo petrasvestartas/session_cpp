@@ -361,7 +361,7 @@ public:
 
     /// Boolean operation on two closed planar polylines (2D, uses x,y only).
     /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
-    /// Returns 0+ result polygons. Uses Vatti scanline algorithm (ported from Clipper2).
+    /// Returns 0+ result polygons. Uses Vatti scanline algorithm.
     static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, int clip_type);
 
     /// Boolean operation on two 3D coplanar polylines.

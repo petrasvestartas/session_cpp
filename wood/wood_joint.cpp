@@ -1,6 +1,7 @@
 // wood/wood_joint.cpp — joint orientation, linking, and element-aware constructors.
 // Implementations of the functions declared in wood_joint.h.
 #include "wood_joint.h"
+#include "wood_session.h"  // CUSTOM_JOINTS_* externs read by ss_e_ip_2 inside the anon-namespaced wood_joint_lib.h
 #include "wood_cut.h"
 #include "../src/intersection.h"
 #include "../src/polyline.h"

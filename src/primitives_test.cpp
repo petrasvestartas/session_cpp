@@ -431,6 +431,13 @@ MINI_TEST("Primitives", "Nurbssurface Ruled") {
 
 MINI_TEST("Primitives", "Nurbssurface Planar"){
     // uncomment #include "nurbssurface.h"
+    // Hardcoded expected CVs include create_planar's least-squares
+    // fitting noise; libm cos/sin precision varies by platform (esp.
+    // Apple Silicon vs x86). Loosen TOLERANCE for parity with the
+    // Python/Rust mirrors of this test.
+    double _saved_abs = TOLERANCE.absolute();
+    TOLERANCE.set_absolute(1e-6);
+
     double c1=std::cos(0.7), s1=std::sin(0.7);
     double c2=std::cos(0.96), s2=std::sin(0.96);
     double c3=std::cos(0.52), s3=std::sin(0.52);
@@ -522,6 +529,8 @@ MINI_TEST("Primitives", "Nurbssurface Planar"){
     MINI_CHECK(TOLERANCE.is_point_close(s_nurbs.get_cv(0,1), Point(24.347485651711366, 0.916607409071279, 1.942978687541882)));
     MINI_CHECK(TOLERANCE.is_point_close(s_nurbs.get_cv(1,0), Point(32.606791655643732, 0.791738725121784, 1.678288276735475)));
     MINI_CHECK(TOLERANCE.is_point_close(s_nurbs.get_cv(1,1), Point(30.301430747422629, 2.436120711686657, 5.163967229855166)));
+
+    TOLERANCE.set_absolute(_saved_abs);
 }
 
 MINI_TEST("Primitives", "Nurbssurface Extrusion") {

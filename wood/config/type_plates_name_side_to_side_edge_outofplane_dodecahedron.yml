@@ -1,0 +1,112 @@
+# wood face_to_face globals snapshot. Mirrors every wood::GLOBALS::* field
+# from the upstream wood project. Each value is annotated below.
+
+# ── Joint algorithm tunables ───────────────────────────────────────────────
+# 7 rows x 3 cols: (division_length, shift, joint_type_id) per joint family
+joints_parameters_and_types:
+  - 300      # row 0 ss_e_ip [0]: division_length (mm)
+  - 0.5      # row 0 ss_e_ip [1]: shift (0..1)
+  - 3        # row 0 ss_e_ip [2]: joint_type_id  (default 3)
+  - 1000     # row 1 ss_e_op [0]: division_length (mm)
+  - 0.5      # row 1 ss_e_op [1]: shift (0..1)
+  - 14       # row 1 ss_e_op [2]: joint_type_id  (default 15)
+  - 450      # row 2 ts_e_p  [0]: division_length (mm)
+  - 0.5      # row 2 ts_e_p  [1]: shift (0..1)
+  - 20       # row 2 ts_e_p  [2]: joint_type_id  (default 20)
+  - 300      # row 3 cr_c_ip [0]: division_length (mm)
+  - 0.5      # row 3 cr_c_ip [1]: shift (0..1)
+  - 30       # row 3 cr_c_ip [2]: joint_type_id  (default 30)
+  - 6        # row 4 tt_e_p  [0]: division_length (mm)
+  - 0.95     # row 4 tt_e_p  [1]: shift (0..1)
+  - 40       # row 4 tt_e_p  [2]: joint_type_id  (default 40)
+  - 300      # row 5 ss_e_r  [0]: division_length (mm)
+  - 0.5      # row 5 ss_e_r  [1]: shift (0..1)
+  - 58       # row 5 ss_e_r  [2]: joint_type_id  (default 58)
+  - 300      # row 6 b       [0]: division_length (mm)
+  - 1.0      # row 6 b       [1]: shift (0..1)
+  - 60       # row 6 b       [2]: joint_type_id  (default 60)
+# (width, height, length) extension applied to each joint volume + 2 dead pad slots
+joint_volume_extension:
+  - 0.0      # [0] WIDTH  - extends volume edges 0,2 (in-plane axis A) by +/-value mm
+  - 0.0      # [1] HEIGHT - extends volume edges 1,3 (in-plane axis B) by +/-value mm
+  - -250     # [2] LENGTH - extends joint CENTERLINES (not the volume) by +/-value mm
+  - 0.0      # [3] padding (dead in 5-entry layout; live only when >=6 entries)
+  - 0.0      # [4] padding (dead in 5-entry layout; live only when >=6 entries)
+# 4 = merged outlines + lofts (other values dump intermediates)
+output_geometry_type: 4
+# degrees; rotated-joint threshold above this dihedral
+face_to_face_side_to_side_joints_dihedral_angle: 150.0
+# force every ss joint into the rotated geometry path
+face_to_face_side_to_side_joints_all_treated_as_rotated: false
+# averaged plane for rotated joints (vs either input plane)
+face_to_face_side_to_side_joints_rotated_joint_as_average: false
+
+# ── Tolerances ─────────────────────────────────────────────────────────────
+# mm; AABB inflation + point-merge tolerance (wood DISTANCE)
+distance: 0.1
+# mm**2; squared coplanarity tolerance (wood DISTANCE_SQUARED)
+distance_squared: 0.01
+# RADIANS; angular tolerance, used as cos(angle) (wood ANGLE)
+angle: 0.11
+# consecutive-duplicate-points removal in load_plates
+duplicate_pts_tol: 0.0
+# mm; filters out joints shorter than this (wood LIMIT_MIN_JOINT_LENGTH)
+limit_min_joint_length: 0.0
+
+# ── Clipper2 layer (informational; Clipper2 not linked) ────────────────────
+# upstream Clipper2 integer scale (wood CLIPPER_SCALE)
+clipper_scale: 1000000
+# upstream Clipper2 minimum polygon area (wood CLIPPER_AREA)
+clipper_area: 0.01
+
+# ── Filesystem strings ─────────────────────────────────────────────────────
+# short obj basename (load_plates() overwrites in dataset wrappers)
+data_set_input_name: outofplane_dodecahedron
+# output .pb filename written into session_data/
+data_set_output_file: WoodF2F_outofplane_dodecahedron.pb
+# upstream sqlite output path (informational, unused)
+data_set_output_database: none
+# upstream wood custom-joint-config path (informational, unused)
+path_and_file_for_joints: none
+
+# ── Misc upstream-parity globals ───────────────────────────────────────────
+# upstream IMGUI loop counter (informational)
+run_count: 0
+# Display table of joint variant names (wood EXISTING_TYPES)
+existing_types:
+  - ss_e_ip_0               # JOINT_NAMES 1   ss_e_ip variant 0
+  - ss_e_ip_1               # JOINT_NAMES 2   ss_e_ip variant 1
+  - ss_e_ip_2               # JOINT_NAMES 3   ss_e_ip variant 2
+  - side_removal_ip         # JOINT_NAMES 8   ss_e_ip side-removal stub
+  - ss_e_ip_9               # JOINT_NAMES 9   ss_e_ip skip-marker
+  - ss_e_op_0               # JOINT_NAMES 10  ss_e_op variant 0
+  - ss_e_op_1               # JOINT_NAMES 11  ss_e_op variant 1
+  - ss_e_op_2               # JOINT_NAMES 12  ss_e_op variant 2
+  - ss_e_op_3               # JOINT_NAMES 13  ss_e_op variant 3
+  - ss_e_op_4               # JOINT_NAMES 14  ss_e_op variant 4
+  - ss_e_op_5               # JOINT_NAMES 15  ss_e_op variant 5
+  - side_removal_op         # JOINT_NAMES 18  ss_e_op side-removal stub
+  - ss_e_op_9               # JOINT_NAMES 19  ss_e_op skip-marker
+  - ts_e_p_0                # JOINT_NAMES 20  ts_e_p variant 0
+  - ts_e_p_1                # JOINT_NAMES 21  ts_e_p variant 1
+  - ts_e_p_2                # JOINT_NAMES 22  ts_e_p variant 2
+  - ts_e_p_3                # JOINT_NAMES 23  ts_e_p variant 3
+  - ts_e_p_4                # JOINT_NAMES 24  ts_e_p variant 4
+  - ts_e_p_5                # JOINT_NAMES 25  ts_e_p variant 5
+  - side_removal_tsp        # JOINT_NAMES 28  ts_e_p side-removal stub
+  - ts_e_p_9                # JOINT_NAMES 29  ts_e_p skip-marker
+  - cr_c_ip_0               # JOINT_NAMES 30  cr_c_ip variant 0
+  - cr_c_ip_1               # JOINT_NAMES 31  cr_c_ip variant 1
+  - cr_c_ip_2               # JOINT_NAMES 32  cr_c_ip variant 2
+  - side_removal_crc        # JOINT_NAMES 38  cr_c_ip side-removal stub
+  - cr_c_ip_9               # JOINT_NAMES 39  cr_c_ip skip-marker
+  - side_removal_tt         # JOINT_NAMES 48  tt_e_p side-removal stub
+  - side_removal_ss_e_r_1   # JOINT_NAMES 58  ss_e_r side-removal stub
+  - ss_e_r_9                # JOINT_NAMES 59  ss_e_r skip-marker
+  - b_0                     # JOINT_NAMES 60  boundary variant 0
+
+# ── Custom joint polylines (runtime-only; YAML loader skips) ───────────────
+# Populate wood_session::globals::CUSTOM_JOINTS_*_{MALE,FEMALE} directly
+# in C++ to override per-family unit-cube geometry. Pairs (i, i+1) =
+# (male, female) for one variant. Empty by default. Nested polyline
+# lists are beyond tiny-yaml's flat schema.

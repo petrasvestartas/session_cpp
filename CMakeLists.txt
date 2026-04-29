@@ -56,6 +56,7 @@ set(UNITY_BUILD_EXCLUDE
     src/tree.cpp
     src/session.cpp
     src/element.cpp
+    src/yaml/yaml.cpp
 )
 
 #############################################################################################
@@ -91,13 +92,27 @@ include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 set(PROTOC_VERSION "33.2")
 
-# Protobuf build options (simplified from examples)
+# Option C: generated .pb.cc/.pb.h are committed under generated/. The runtime
+# (libprotobuf) is still required to link against them, but protoc + libprotoc
+# are NOT built — saves substantial CMake configure + compile time.
+#
+# To regenerate after editing ../session_proto/*.proto, run:
+#   cmake --build build --target regen_proto
+# (the target is defined only when SESSION_REGEN_PROTO=ON, which also
+#  re-enables protoc compilation).
+option(SESSION_REGEN_PROTO "Build protoc and add a regen_proto target" OFF)
+
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
 set(protobuf_WITH_ZLIB OFF CACHE BOOL "" FORCE)
-set(protobuf_BUILD_PROTOC_BINARIES ON CACHE BOOL "" FORCE)
-set(protobuf_BUILD_LIBPROTOC ON CACHE BOOL "" FORCE)
+if(SESSION_REGEN_PROTO)
+    set(protobuf_BUILD_PROTOC_BINARIES ON CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_LIBPROTOC ON CACHE BOOL "" FORCE)
+else()
+    set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "" FORCE)
+    set(protobuf_BUILD_LIBPROTOC OFF CACHE BOOL "" FORCE)
+endif()
 set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(protobuf
@@ -106,23 +121,6 @@ FetchContent_Declare(protobuf
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(protobuf)
-
-#############################################################################################
-# CLIPPER2
-#############################################################################################
-FetchContent_Declare(Clipper2
-    GIT_REPOSITORY https://github.com/AngusJohnson/Clipper2.git
-    GIT_TAG Clipper2_1.4.0
-    GIT_SHALLOW TRUE
-    SOURCE_SUBDIR CPP
-)
-set(CLIPPER2_UTILS OFF CACHE BOOL "" FORCE)
-set(CLIPPER2_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(CLIPPER2_TESTS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(Clipper2)
-if(MSVC)
-    target_compile_options(Clipper2 PRIVATE /w)
-endif()
 
 # Suppress warnings from protobuf and absl third-party libraries
 if(MSVC)
@@ -159,28 +157,35 @@ if(NOT EXISTS "${SESSION_PROTO_DIR}")
     set(SESSION_PROTO_DIR "${session_proto_files_SOURCE_DIR}")
 endif()
 
-# Generate proto files
-set(GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY ${GENERATED_DIR})
+# Option C: consume committed .pb.cc/.pb.h from session_cpp/generated/.
+# No protoc invocation at build time.
+set(GENERATED_DIR "${CMAKE_SOURCE_DIR}/generated")
 
-if(TARGET protoc)
-    set(PROTOC_BIN $<TARGET_FILE:protoc>)
-else()
-    find_program(PROTOC_BIN protoc)
+file(GLOB PROTO_SOURCES "${GENERATED_DIR}/*.pb.cc")
+file(GLOB PROTO_HEADERS "${GENERATED_DIR}/*.pb.h")
+
+if(NOT PROTO_SOURCES)
+    message(FATAL_ERROR
+        "No generated protobuf files found in ${GENERATED_DIR}. "
+        "Run `cmake -B build -DSESSION_REGEN_PROTO=ON && cmake --build build --target regen_proto` "
+        "to regenerate from ${SESSION_PROTO_DIR}.")
 endif()
 
-file(GLOB PROTO_FILES "${SESSION_PROTO_DIR}/*.proto")
-foreach(PROTO_FILE ${PROTO_FILES})
-    get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
-    list(APPEND PROTO_SOURCES "${GENERATED_DIR}/${PROTO_NAME}.pb.cc")
-    list(APPEND PROTO_HEADERS "${GENERATED_DIR}/${PROTO_NAME}.pb.h")
-    add_custom_command(
-        OUTPUT "${GENERATED_DIR}/${PROTO_NAME}.pb.cc" "${GENERATED_DIR}/${PROTO_NAME}.pb.h"
-        COMMAND ${PROTOC_BIN} --cpp_out=${GENERATED_DIR} --proto_path=${SESSION_PROTO_DIR} ${PROTO_FILE}
-        DEPENDS ${PROTO_FILE}
-        COMMENT "Generating ${PROTO_NAME}.pb.cc/h"
+# Optional regen target — only wired when protoc was actually built.
+if(SESSION_REGEN_PROTO AND TARGET protoc)
+    file(GLOB PROTO_FILES "${SESSION_PROTO_DIR}/*.proto")
+    add_custom_target(regen_proto
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${GENERATED_DIR}"
+        COMMAND $<TARGET_FILE:protoc>
+                --cpp_out=${GENERATED_DIR}
+                --proto_path=${SESSION_PROTO_DIR}
+                ${PROTO_FILES}
+        DEPENDS protoc ${PROTO_FILES}
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Regenerating committed .pb.cc/.pb.h into generated/"
+        VERBATIM
     )
-endforeach()
+endif()
 
 # Proto library with suppressed warnings
 add_library(proto_objects OBJECT ${PROTO_SOURCES})
@@ -211,6 +216,8 @@ endfunction()
 file(GLOB PROJECT_SOURCES "src/*.cpp")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_minitest\\.cpp$")
+# tiny-yaml lives in src/yaml/ — non-recursive glob misses it.
+list(APPEND PROJECT_SOURCES "${PROJECT_SOURCE_DIR}/src/yaml/yaml.cpp")
 
 add_library(session_core OBJECT ${PROJECT_SOURCES})
 target_include_directories(session_core PUBLIC
@@ -218,6 +225,7 @@ target_include_directories(session_core PUBLIC
     ${PROJECT_SOURCE_DIR}/src/fmt/include
     ${PROJECT_SOURCE_DIR}/src/json/include
     ${PROJECT_SOURCE_DIR}/src/guid/include
+    ${PROJECT_SOURCE_DIR}/src/yaml
 )
 
 # Unity Build - applied only to session_core (not dependencies)
@@ -250,6 +258,10 @@ foreach(MAIN_ID 1 3 4 6)
         target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endforeach()
+
+add_executable(example_loft_holes example_loft_holes.cpp)
+target_link_libraries(example_loft_holes PRIVATE session_core)
+LINK_PROTOBUF(example_loft_holes)
 # main_2 uses wood_session::plane_to_face for cross-joint detection,
 # so it needs wood_joint_detection.cpp (defines wood_session::CrossJoint + plane_to_face).
 add_executable(main_2 main_2.cpp wood/wood_joint_detection.cpp)
@@ -259,7 +271,7 @@ LINK_PROTOBUF(main_2)
 if(ENABLE_PCH)
     target_precompile_headers(main_2 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
 endif()
-# main_5 (wood face_to_face port — uses native session boolean, no Clipper2)
+# main_5 (wood face_to_face port — uses native session boolean).
 # Split into wood/ subdirectory mirroring wood's cmake/src/wood/include/ tree.
 add_executable(main_5
     main_5.cpp

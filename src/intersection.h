@@ -663,10 +663,9 @@ public:
    *        polygon in 2D and return the clipped 3D segment plus
    *        parametric positions on the plate edges where it touches.
    *
-   * Uses Clipper2's `AddOpenSubject` for the joint outline and
-   * `AddClip` for the plate polygon. Mirrors wood's
-   * `intersection_closed_and_open_paths_2D` (`wood_element.cpp:438-651`).
-   * Used by `merge_joints` for the case-5 rectangle joint branch.
+   * Mirrors wood's `intersection_closed_and_open_paths_2D`
+   * (`wood_element.cpp:438-651`). Used by `merge_joints` for the case-5
+   * rectangle joint branch.
    *
    * @param plate The plate polygon (closed; first point may equal last).
    * @param joint The joint outline (treated as an open path).
@@ -688,11 +687,11 @@ public:
   /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
   static std::vector<Polyline> polyline_boolean(const Polyline& a, const Polyline& b, int clip_type);
 
-  /// 2D polygon offset in plane space using Clipper2 InflatePaths (Miter,
-  /// Polygon end). Transforms `polyline` to the 2D frame of `plane`, offsets
-  /// by `offset` (positive = outward), rotates result to best-align with the
-  /// original first vertex, and transforms back to 3D. Mutates `polyline` to
-  /// the offset result. Returns false if Clipper2 returns no paths or the
+  /// 2D polygon offset in plane space (miter joins, polygon end).
+  /// Transforms `polyline` to the 2D frame of `plane`, offsets by `offset`
+  /// (positive = outward), rotates result to best-align with the original
+  /// first vertex, and transforms back to 3D. Mutates `polyline` to the
+  /// offset result. Returns false if the offset produces no paths or the
   /// result is degenerate (area < 0.0001). Verbatim port of wood's
   /// `cgal::collider::clipper_util::offset_in_3d` at
   /// `clipper_util.cpp:707-790`.

@@ -3,14 +3,15 @@
 // `wood/cmake/src/wood/include/wood_test.cpp`.
 //
 // Each function:
-//   1. Resets globals to wood defaults.
-//   2. Overrides dataset-specific globals (JOINTS_PARAMETERS_AND_TYPES, etc.).
-//   3. Loads the dataset as ElementPlates via internal::load_plates().
-//   4. Calls get_connection_zones(plates, session, search_type).
-//   5. Persists the result with session.pb_dump().
+//   1. Loads dataset-specific globals from `wood/config/<name>.yml`.
+//   2. Loads the dataset as ElementPlates via internal::load_plates().
+//   3. Calls get_connection_zones(plates, search_type) → vector<WoodJoint>.
+//   4. Splats result into Session via fill_session(session, plates, joints).
+//   4. Persists the result with session.pb_dump().
 //
-// Functions are ordered by wood line number to make cross-file diffing
-// straightforward.
+// Per-dataset parameter overrides (JOINTS_PARAMETERS_AND_TYPES, JVE,
+// dihedral angle, etc.) live in YAML alongside this file and are loaded
+// at runtime — edit them to retune a dataset without rebuilding.
 // ─────────────────────────────────────────────────────────────────────────────
 #include "wood_session.h"
 #include "../src/session.h"
@@ -22,18 +23,12 @@ using namespace session_cpp;
 // ── wood line 204 ──────────────────────────────────────────────────────────
 bool type_plates_name_hexbox_and_corner() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[3*1+0] = 450;
-    JOINTS_PARAMETERS_AND_TYPES[3*1+1] = 0.64;
-    JOINTS_PARAMETERS_AND_TYPES[3*1+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[3*2+0] = 450;
-    JOINTS_PARAMETERS_AND_TYPES[3*2+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[3*2+2] = 20;
+    globals_yaml("type_plates_name_hexbox_and_corner");
     auto plates = internal::load_plates("type_plates_name_hexbox_and_corner");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -45,14 +40,12 @@ bool type_plates_name_hexbox_and_corner() {
 // ── wood line 265 ──────────────────────────────────────────────────────────
 bool type_plates_name_joint_linking_vidychapel_corner() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 150;
-    JOINT_VOLUME_EXTENSION[2] = -10;
+    globals_yaml("type_plates_name_joint_linking_vidychapel_corner");
     auto plates = internal::load_plates("type_plates_name_joint_linking_vidychapel_corner");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -64,14 +57,12 @@ bool type_plates_name_joint_linking_vidychapel_corner() {
 // ── wood line 428 ──────────────────────────────────────────────────────────
 bool type_plates_name_joint_linking_vidychapel_one_layer() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 50;
-    JOINT_VOLUME_EXTENSION[2] = -15;
+    globals_yaml("type_plates_name_joint_linking_vidychapel_one_layer");
     auto plates = internal::load_plates("type_plates_name_joint_linking_vidychapel_one_layer", 0.1);
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -83,14 +74,12 @@ bool type_plates_name_joint_linking_vidychapel_one_layer() {
 // ── wood line 488 ──────────────────────────────────────────────────────────
 bool type_plates_name_joint_linking_vidychapel_one_axis_two_layers() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 50;
-    JOINT_VOLUME_EXTENSION = { 0,0,-200, 0,0,-200, 0,0,-20, 0,0,-20 };
+    globals_yaml("type_plates_name_joint_linking_vidychapel_one_axis_two_layers");
     auto plates = internal::load_plates("type_plates_name_joint_linking_vidychapel_one_axis_two_layers");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -102,14 +91,12 @@ bool type_plates_name_joint_linking_vidychapel_one_axis_two_layers() {
 // ── wood line 611 ──────────────────────────────────────────────────────────
 bool type_plates_name_joint_linking_vidychapel_full() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 50;
-    JOINT_VOLUME_EXTENSION[2] = -10;
+    globals_yaml("type_plates_name_joint_linking_vidychapel_full");
     auto plates = internal::load_plates("type_plates_name_joint_linking_vidychapel_full");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -121,12 +108,12 @@ bool type_plates_name_joint_linking_vidychapel_full() {
 // ── wood line 888 ──────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_2_butterflies() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_2_butterflies");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_2_butterflies");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -138,20 +125,16 @@ bool type_plates_name_side_to_side_edge_inplane_2_butterflies() {
 // ── wood line 940 ──────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_hexshell() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_side_to_side_edge_inplane_hexshell")) {
         fmt::print("\n=== inplane_hexshell: dataset missing, skipping ===\n");
         return false;
     }
-    JOINT_VOLUME_EXTENSION[0] = -20;
-    JOINT_VOLUME_EXTENSION[2] = -10;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+0] = 40;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 1;
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_hexshell");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_hexshell");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -163,20 +146,16 @@ bool type_plates_name_side_to_side_edge_inplane_hexshell() {
 // ── wood line 998 ──────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_differentdirections() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_side_to_side_edge_inplane_differentdirections")) {
         fmt::print("\n=== inplane_differentdirections: dataset missing, skipping ===\n");
         return false;
     }
-    JOINT_VOLUME_EXTENSION[0] = -10;
-    JOINT_VOLUME_EXTENSION[2] = -75;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+0] = 40;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 1;
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_differentdirections");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_differentdirections");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -188,13 +167,12 @@ bool type_plates_name_side_to_side_edge_inplane_differentdirections() {
 // ── wood line 1129 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_folding() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -20;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_folding");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_folding");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -206,14 +184,12 @@ bool type_plates_name_side_to_side_edge_outofplane_folding() {
 // ── wood line 1384 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_box() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -100;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 17;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_box");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_box");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -225,15 +201,12 @@ bool type_plates_name_side_to_side_edge_outofplane_box() {
 // ── wood line 1440 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_tetra() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -100;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 17;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_tetra");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_tetra");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -245,16 +218,12 @@ bool type_plates_name_side_to_side_edge_outofplane_tetra() {
 // ── wood line 1497 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_dodecahedron() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -250;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 1000;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 14;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_dodecahedron");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_dodecahedron");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -266,16 +235,12 @@ bool type_plates_name_side_to_side_edge_outofplane_dodecahedron() {
 // ── wood line 1555 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_icosahedron() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -250;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 1000;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 14;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_icosahedron");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_icosahedron");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -287,16 +252,12 @@ bool type_plates_name_side_to_side_edge_outofplane_icosahedron() {
 // ── wood line 1613 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_octahedron() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -250;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 1000;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 14;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_octahedron");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_octahedron");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -308,15 +269,12 @@ bool type_plates_name_side_to_side_edge_outofplane_octahedron() {
 // ── wood line 1671 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -20;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 2;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 12;
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -328,15 +286,12 @@ bool type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners() {
 // ── wood line 1729 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_combined() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -20;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 2;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 12;
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_combined");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_combined");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -348,19 +303,12 @@ bool type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_combin
 // ── wood line 1787 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_different_lengths() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -20;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+0] = 140;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 1;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 140;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_different_lengths");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_different_lengths");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -372,21 +320,16 @@ bool type_plates_name_side_to_side_edge_inplane_outofplane_simple_corners_differ
 // ── wood line 1849 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_inplane_hilti() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_side_to_side_edge_inplane_hilti")) {
         fmt::print("\n=== inplane_hilti: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[5*3+0] = 500;
-    JOINTS_PARAMETERS_AND_TYPES[5*3+1] = 1.0;
-    JOINTS_PARAMETERS_AND_TYPES[5*3+2] = 55;
-    FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ALL_TREATED_AS_ROTATED  = true;
-    FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ROTATED_JOINT_AS_AVERAGE = true;
+    globals_yaml("type_plates_name_side_to_side_edge_inplane_hilti");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_inplane_hilti");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -398,13 +341,12 @@ bool type_plates_name_side_to_side_edge_inplane_hilti() {
 // ── wood line 1912 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_top_pairs() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[2] = -10;
+    globals_yaml("type_plates_name_top_to_top_pairs");
     auto plates = internal::load_plates("type_plates_name_top_to_top_pairs");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -416,28 +358,16 @@ bool type_plates_name_top_to_top_pairs() {
 // ── wood line 1965 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_inplane_and_top_to_top_hexboxes() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_side_to_side_edge_outofplane_inplane_and_top_to_top_hexboxes")) {
         fmt::print("\n=== hexboxes: dataset missing, skipping ===\n");
         return false;
     }
-    JOINT_VOLUME_EXTENSION[2] = -50;
-    DISTANCE_SQUARED *= 100;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+0] = 140;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 1;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 140;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 21;
-    JOINTS_PARAMETERS_AND_TYPES[4*3+0] = 100;
-    JOINTS_PARAMETERS_AND_TYPES[4*3+1] = 150;
-    JOINTS_PARAMETERS_AND_TYPES[4*3+2] = 43;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_inplane_and_top_to_top_hexboxes");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_inplane_and_top_to_top_hexboxes");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -449,24 +379,16 @@ bool type_plates_name_side_to_side_edge_outofplane_inplane_and_top_to_top_hexbox
 // ── wood line 2037 ─────────────────────────────────────────────────────────
 bool type_plates_name_hex_block_rossiniere() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_hex_block_rossiniere")) {
         fmt::print("\n=== hex_block_rossiniere: dataset missing, skipping ===\n");
         return false;
     }
-    FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ALL_TREATED_AS_ROTATED = true;
-    JOINT_VOLUME_EXTENSION[2] = -20;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+0] = 140;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 1;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 140;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
+    globals_yaml("type_plates_name_hex_block_rossiniere");
     auto plates = internal::load_plates("type_plates_name_hex_block_rossiniere");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -478,19 +400,16 @@ bool type_plates_name_hex_block_rossiniere() {
 // ── wood line 2104 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_snap_fit() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_top_to_side_snap_fit")) {
         fmt::print("\n=== top_to_side_snap_fit: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[2*3+0] = 300;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 25;
+    globals_yaml("type_plates_name_top_to_side_snap_fit");
     auto plates = internal::load_plates("type_plates_name_top_to_side_snap_fit");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -502,19 +421,16 @@ bool type_plates_name_top_to_side_snap_fit() {
 // ── wood line 2163 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_box() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_top_to_side_box")) {
         fmt::print("\n=== top_to_side_box: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[2*3+0] = 300;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 25;
+    globals_yaml("type_plates_name_top_to_side_box");
     auto plates = internal::load_plates("type_plates_name_top_to_side_box");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -526,21 +442,16 @@ bool type_plates_name_top_to_side_box() {
 // ── wood line 2220 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_corners() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_top_to_side_corners")) {
         fmt::print("\n=== top_to_side_corners: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.66;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+0] = 300;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
+    globals_yaml("type_plates_name_top_to_side_corners");
     auto plates = internal::load_plates("type_plates_name_top_to_side_corners");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -552,18 +463,16 @@ bool type_plates_name_top_to_side_corners() {
 // ── wood line 2279 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_corner() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_corner")) {
         fmt::print("\n=== annen_corner: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
+    globals_yaml("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_corner");
     auto plates = internal::load_plates("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_corner");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -575,19 +484,16 @@ bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_corner() {
 // ── wood line 2391 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box")) {
         fmt::print("\n=== annen_box: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 200;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
+    globals_yaml("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box");
     auto plates = internal::load_plates("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -599,15 +505,12 @@ bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box() {
 // ── wood line 2488 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box_pair() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 200;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
+    globals_yaml("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box_pair");
     auto plates = internal::load_plates("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box_pair");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -620,16 +523,13 @@ bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_box_pair() {
 // Special: keeps pb output file as "WoodF2F_annen.pb" for existing meta diff.
 bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_small() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 200;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 20;
+    globals_yaml("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_small");
     auto plates = internal::load_plates("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_small");
     DATA_SET_OUTPUT_FILE = "WoodF2F_annen.pb";  // keep legacy name for existing ref
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -641,16 +541,16 @@ bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_small()
 // ── wood line 2763 ─────────────────────────────────────────────────────────
 bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_full_arch() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_full_arch")) {
         fmt::print("\n=== annen_grid_full_arch: dataset missing, skipping ===\n");
         return false;
     }
+    globals_yaml("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_full_arch");
     auto plates = internal::load_plates("type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_full_arch");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -662,22 +562,16 @@ bool type_plates_name_top_to_side_and_side_to_side_outofplane_annen_grid_full_ar
 // ── wood line 2829 ─────────────────────────────────────────────────────────
 bool type_plates_name_vda_floor_0() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_vda_floor_0")) {
         fmt::print("\n=== vda_floor_0: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 8000;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.66;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[4*3+0] = 100;
-    JOINTS_PARAMETERS_AND_TYPES[4*3+1] = 45;
-    JOINTS_PARAMETERS_AND_TYPES[4*3+2] = 43;
+    globals_yaml("type_plates_name_vda_floor_0");
     auto plates = internal::load_plates("type_plates_name_vda_floor_0");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -689,22 +583,16 @@ bool type_plates_name_vda_floor_0() {
 // ── wood line 2888 ─────────────────────────────────────────────────────────
 bool type_plates_name_vda_floor_2() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_vda_floor_2")) {
         fmt::print("\n=== vda_floor_2: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 200;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.66;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 10;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+0] = 50;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 21;
-    JOINT_VOLUME_EXTENSION[2] = -10;
+    globals_yaml("type_plates_name_vda_floor_2");
     auto plates = internal::load_plates("type_plates_name_vda_floor_2");
+    auto joints = get_connection_zones(plates, face_to_face);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -716,22 +604,16 @@ bool type_plates_name_vda_floor_2() {
 // ── wood line 2955 ─────────────────────────────────────────────────────────
 bool type_plates_name_cross_and_sides_corner() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_cross_and_sides_corner")) {
         fmt::print("\n=== cross_and_sides_corner: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[0*3+2] = 3;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+1] = 0.66;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+2] = 12;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+0] = 500;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+1] = 0.5;
-    JOINTS_PARAMETERS_AND_TYPES[2*3+2] = 25;
+    globals_yaml("type_plates_name_cross_and_sides_corner");
     auto plates = internal::load_plates("type_plates_name_cross_and_sides_corner");
+    auto joints = get_connection_zones(plates, face_to_face_then_cross);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face_then_cross));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -743,13 +625,12 @@ bool type_plates_name_cross_and_sides_corner() {
 // ── wood line 3016 ─────────────────────────────────────────────────────────
 bool type_plates_name_cross_corners() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[1] = 2;
+    globals_yaml("type_plates_name_cross_corners");
     auto plates = internal::load_plates("type_plates_name_cross_corners");
+    auto joints = get_connection_zones(plates, cross_joint);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, cross_joint));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -761,13 +642,12 @@ bool type_plates_name_cross_corners() {
 // ── wood line 3080 ─────────────────────────────────────────────────────────
 bool type_plates_name_cross_vda_corner() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
-    JOINT_VOLUME_EXTENSION[1] = 2;
+    globals_yaml("type_plates_name_cross_vda_corner");
     auto plates = internal::load_plates("type_plates_name_cross_vda_corner");
+    auto joints = get_connection_zones(plates, cross_joint);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, cross_joint));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -782,14 +662,15 @@ bool type_plates_name_cross_vda_corner() {
     bool FN() {                                                               \
         try {                                                                 \
         using namespace wood_session::globals;                                \
-        reset_defaults();                                                     \
         if (!internal::plates_exist(NAME)) {                                  \
             fmt::print("\n=== " NAME ": dataset missing, skipping ===\n");    \
             return false;                                                     \
         }                                                                     \
+        globals_yaml(NAME);                                                   \
         auto plates = internal::load_plates(NAME);                            \
+        auto joints = get_connection_zones(plates, cross_joint);              \
         Session session("WoodF2F");                                           \
-        loft_merged_elements(session, get_connection_zones(plates, session, cross_joint)); \
+        fill_session(session, plates, joints);                                \
         session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string()); \
         return true;                                                          \
         } catch (const std::exception& e) {                                   \
@@ -807,20 +688,18 @@ SESSION_CROSS_STUB(type_plates_name_cross_square_reciprocal_iseya,  "type_plates
 #undef SESSION_CROSS_STUB
 
 // ── wood line 3522 ─────────────────────────────────────────────────────────
-// cross_ibois_pavilion: search_type=face_to_face_then_cross, JVE[2]=-20.
 bool type_plates_name_cross_ibois_pavilion() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_cross_ibois_pavilion")) {
         fmt::print("\n=== cross_ibois_pavilion: dataset missing, skipping ===\n");
         return false;
     }
-    JOINT_VOLUME_EXTENSION[2] = -20;
+    globals_yaml("type_plates_name_cross_ibois_pavilion");
     auto plates = internal::load_plates("type_plates_name_cross_ibois_pavilion");
+    auto joints = get_connection_zones(plates, face_to_face_then_cross);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, face_to_face_then_cross));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -832,19 +711,16 @@ bool type_plates_name_cross_ibois_pavilion() {
 // ── wood line 3588 ─────────────────────────────────────────────────────────
 bool type_plates_name_cross_brussels_sports_tower() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_plates_name_cross_brussels_sports_tower")) {
         fmt::print("\n=== cross_brussels_sports_tower: dataset missing, skipping ===\n");
         return false;
     }
-    JOINTS_PARAMETERS_AND_TYPES[3*3+2] = 35;
-    OUTPUT_GEOMETRY_TYPE = 4;
-    JOINT_VOLUME_EXTENSION[2] = 0;
+    globals_yaml("type_plates_name_cross_brussels_sports_tower");
     auto plates = internal::load_plates("type_plates_name_cross_brussels_sports_tower");
+    auto joints = get_connection_zones(plates, cross_joint);
     Session session("WoodF2F");
-    loft_merged_elements(session, get_connection_zones(plates, session, cross_joint));
+    fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
@@ -858,15 +734,12 @@ bool type_plates_name_cross_brussels_sports_tower() {
 // Calls beam_volumes_pipeline instead of get_connection_zones.
 bool type_beams_name_phanomema_node() {
     try {
-
     using namespace wood_session::globals;
-    reset_defaults();
     if (!internal::plates_exist("type_beams_name_phanomema_node")) {
         fmt::print("\n=== phanomema_node: dataset missing, skipping ===\n");
         return false;
     }
-    JOINT_VOLUME_EXTENSION[2] = 0;
-    JOINTS_PARAMETERS_AND_TYPES[1*3+0] = 150;
+    globals_yaml("type_beams_name_phanomema_node");
     auto axes = internal::load_polylines("type_beams_name_phanomema_node");
 
     std::vector<std::vector<double>> segment_radii;
