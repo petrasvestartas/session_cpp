@@ -1435,4 +1435,243 @@ namespace session_cpp {
         MINI_CHECK(edges[0] == std::make_pair(v0, v1));
     }
 
+    MINI_TEST("Mesh", "Vertex Neighbors") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto n0 = *mesh.vertex_neighbors(0);
+        auto n0v = *mesh.vertex_vertices(0);
+        std::sort(n0.begin(), n0.end());
+        std::sort(n0v.begin(), n0v.end());
+        MINI_CHECK(n0 == n0v);
+        MINI_CHECK(n0.size() == 3);
+    }
+
+    MINI_TEST("Mesh", "Vertices On Boundary") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        MINI_CHECK(mesh.vertices_on_boundary().size() == 0);
+        mesh.remove_face(mesh.faces()[0]);
+        MINI_CHECK(mesh.vertices_on_boundary().size() == 4);
+    }
+
+    MINI_TEST("Mesh", "Edges On Boundary") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        MINI_CHECK(mesh.edges_on_boundary().size() == 0);
+        mesh.remove_face(mesh.faces()[0]);
+        MINI_CHECK(mesh.edges_on_boundary().size() == 4);
+    }
+
+    MINI_TEST("Mesh", "Faces On Boundary") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        MINI_CHECK(mesh.faces_on_boundary().size() == 0);
+        mesh.remove_face(mesh.faces()[0]);
+        MINI_CHECK(mesh.faces_on_boundary().size() == 4);
+    }
+
+    MINI_TEST("Mesh", "Halfedge Face") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto f = mesh.halfedge_face({0, 3});
+        MINI_CHECK(f.has_value());
+        MINI_CHECK(*f == 0);
+        mesh.remove_face(0);
+        MINI_CHECK(!mesh.halfedge_face({0, 3}).has_value());
+    }
+
+    MINI_TEST("Mesh", "Halfedge After Before") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto after = mesh.halfedge_after({0, 3});
+        auto before = mesh.halfedge_before({0, 3});
+        MINI_CHECK(after.has_value());
+        MINI_CHECK((*after == std::make_pair<size_t, size_t>(3, 2)));
+        MINI_CHECK(before.has_value());
+        MINI_CHECK((*before == std::make_pair<size_t, size_t>(1, 0)));
+    }
+
+    MINI_TEST("Mesh", "Halfedge Loop") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto loop = mesh.halfedge_loop({0, 3});
+        MINI_CHECK(loop.size() == 1);
+        MINI_CHECK((loop[0] == std::make_pair<size_t, size_t>(0, 3)));
+    }
+
+    MINI_TEST("Mesh", "Halfedge Strip") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto strip = mesh.halfedge_strip({0, 3});
+        MINI_CHECK(strip.size() == 5);
+        MINI_CHECK((strip[0] == std::make_pair<size_t, size_t>(0, 3)));
+        MINI_CHECK((strip[strip.size() - 1] == std::make_pair<size_t, size_t>(0, 3)));
+    }
+
+    MINI_TEST("Mesh", "Vertex Sample") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto s = mesh.vertex_sample(3, 42);
+        MINI_CHECK(s.size() == 3);
+        std::set<size_t> uniq(s.begin(), s.end());
+        MINI_CHECK(uniq.size() == 3);
+        auto s2 = mesh.vertex_sample(3, 42);
+        MINI_CHECK(s == s2);
+    }
+
+    MINI_TEST("Mesh", "Edge Sample") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto s = mesh.edge_sample(2, 7);
+        MINI_CHECK(s.size() == 2);
+        auto s2 = mesh.edge_sample(2, 7);
+        MINI_CHECK(s == s2);
+    }
+
+    MINI_TEST("Mesh", "Face Sample") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto s = mesh.face_sample(2, 11);
+        MINI_CHECK(s.size() == 2);
+        auto s2 = mesh.face_sample(2, 11);
+        MINI_CHECK(s == s2);
+    }
+
+    MINI_TEST("Mesh", "Face Center") {
+        Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
+        auto c = *mesh.face_center(0);
+        auto cc = *mesh.face_centroid(0);
+        MINI_CHECK(c == cc);
+    }
+
+    MINI_TEST("Mesh", "Face Polygon") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto poly = *mesh.face_polygon(0);
+        auto pts = poly.get_points();
+        MINI_CHECK(pts.size() == 5);
+        MINI_CHECK(pts.front() == pts.back());
+    }
+
+    MINI_TEST("Mesh", "Flip Cycles") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        auto n0 = *mesh.face_normal(0);
+        mesh.flip_cycles();
+        auto n0b = *mesh.face_normal(0);
+        MINI_CHECK(std::abs(n0[0] + n0b[0]) < Tolerance::ZERO_TOLERANCE);
+        MINI_CHECK(std::abs(n0[1] + n0b[1]) < Tolerance::ZERO_TOLERANCE);
+        MINI_CHECK(std::abs(n0[2] + n0b[2]) < Tolerance::ZERO_TOLERANCE);
+    }
+
+    MINI_TEST("Mesh", "Face Normal Unitized") {
+        Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
+        auto nu = *mesh.face_normal_unitized(0, true);
+        auto nn = *mesh.face_normal_unitized(0, false);
+        MINI_CHECK(std::abs(nu.magnitude() - 1.0) < Tolerance::ZERO_TOLERANCE);
+        MINI_CHECK(nn.magnitude() > 1.0);
+    }
+
+    MINI_TEST("Mesh", "Default Attributes") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_vertex_attributes({{"is_support", 0.0}, {"load_z", 0.0}});
+        mesh.update_default_face_attributes({{"stress", 0.0}});
+        mesh.update_default_edge_attributes({{"weight", 1.0}});
+        MINI_CHECK(mesh.default_vertex_attributes["is_support"] == 0.0);
+        MINI_CHECK(mesh.default_vertex_attributes["load_z"] == 0.0);
+        MINI_CHECK(mesh.default_face_attributes["stress"] == 0.0);
+        MINI_CHECK(mesh.default_edge_attributes["weight"] == 1.0);
+    }
+
+    MINI_TEST("Mesh", "Vertex Attribute") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_vertex_attributes({{"is_support", 0.0}});
+        mesh.set_vertex_attribute(0, "is_support", 1.0);
+        MINI_CHECK(*mesh.vertex_attribute(0, "is_support") == 1.0);
+        MINI_CHECK(*mesh.vertex_attribute(1, "is_support") == 0.0);
+    }
+
+    MINI_TEST("Mesh", "Face Attribute") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_face_attributes({{"stress", 0.0}});
+        mesh.set_face_attribute(0, "stress", 2.5);
+        MINI_CHECK(*mesh.face_attribute(0, "stress") == 2.5);
+        MINI_CHECK(*mesh.face_attribute(1, "stress") == 0.0);
+    }
+
+    MINI_TEST("Mesh", "Edge Attribute") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_edge_attributes({{"weight", 1.0}});
+        mesh.set_edge_attribute({0, 1}, "weight", 5.0);
+        MINI_CHECK(*mesh.edge_attribute({0, 1}, "weight") == 5.0);
+        MINI_CHECK(*mesh.edge_attribute({0, 3}, "weight") == 1.0);
+    }
+
+    MINI_TEST("Mesh", "Vertices Attribute Bulk") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_vertex_attributes({{"is_support", 0.0}});
+        std::vector<size_t> keys = {0, 1, 2};
+        mesh.set_vertices_attribute("is_support", 1.0, &keys);
+        auto vals = mesh.vertices_attribute("is_support");
+        MINI_CHECK(*vals[0] == 1.0);
+        MINI_CHECK(*vals[1] == 1.0);
+        MINI_CHECK(*vals[2] == 1.0);
+        MINI_CHECK(*vals[3] == 0.0);
+    }
+
+    MINI_TEST("Mesh", "Vertices Where") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_vertex_attributes({{"is_support", 0.0}});
+        std::vector<size_t> keys = {0, 2, 4};
+        mesh.set_vertices_attribute("is_support", 1.0, &keys);
+        auto sup = mesh.vertices_where({{"is_support", 1.0}});
+        std::sort(sup.begin(), sup.end());
+        MINI_CHECK(sup.size() == 3);
+        MINI_CHECK((sup == std::vector<size_t>{0, 2, 4}));
+    }
+
+    MINI_TEST("Mesh", "Faces Where") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_face_attributes({{"tag", 0.0}});
+        mesh.set_face_attribute(2, "tag", 7.0);
+        mesh.set_face_attribute(4, "tag", 7.0);
+        auto out = mesh.faces_where({{"tag", 7.0}});
+        std::sort(out.begin(), out.end());
+        MINI_CHECK((out == std::vector<size_t>{2, 4}));
+    }
+
+    MINI_TEST("Mesh", "Edges Where") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_edge_attributes({{"weight", 0.0}});
+        mesh.set_edge_attribute({0, 1}, "weight", 3.0);
+        auto out = mesh.edges_where({{"weight", 3.0}});
+        MINI_CHECK(out.size() == 1);
+        MINI_CHECK((out[0] == std::make_pair<size_t, size_t>(0, 1)));
+    }
+
+    MINI_TEST("Mesh", "Vertices Where Predicate") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_vertex_attributes({{"load", 0.0}});
+        mesh.set_vertex_attribute(0, "load", 5.0);
+        mesh.set_vertex_attribute(1, "load", 10.0);
+        auto big = mesh.vertices_where_predicate([](size_t, const std::map<std::string, double>& a) {
+            auto it = a.find("load");
+            return it != a.end() && it->second > 4.0;
+        });
+        std::sort(big.begin(), big.end());
+        MINI_CHECK((big == std::vector<size_t>{0, 1}));
+    }
+
+    MINI_TEST("Mesh", "Faces Where Predicate") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_face_attributes({{"area", 0.0}});
+        mesh.set_face_attribute(0, "area", 2.0);
+        mesh.set_face_attribute(3, "area", 4.0);
+        auto big = mesh.faces_where_predicate([](size_t, const std::map<std::string, double>& a) {
+            auto it = a.find("area");
+            return it != a.end() && it->second > 1.0;
+        });
+        std::sort(big.begin(), big.end());
+        MINI_CHECK((big == std::vector<size_t>{0, 3}));
+    }
+
+    MINI_TEST("Mesh", "Edges Where Predicate") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        mesh.update_default_edge_attributes({{"weight", 0.0}});
+        mesh.set_edge_attribute({0, 1}, "weight", 5.0);
+        auto big = mesh.edges_where_predicate([](std::pair<size_t, size_t>, const std::map<std::string, double>& a) {
+            auto it = a.find("weight");
+            return it != a.end() && it->second > 1.0;
+        });
+        MINI_CHECK(big.size() == 1);
+        MINI_CHECK((big[0] == std::make_pair<size_t, size_t>(0, 1)));
+    }
+
 } // namespace session_cpp
