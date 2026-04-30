@@ -19,6 +19,8 @@
 #include <optional>
 #include <cmath>
 #include <tuple>
+#include <functional>
+#include <cstdint>
 
 namespace session_cpp {
 
@@ -404,6 +406,78 @@ public:
     /// Get neighboring vertices of a vertex
     std::optional<std::vector<size_t>> vertex_vertices(size_t vertex_key) const;
 
+    /// Alias of vertex_vertices. With ordered=true returns neighbors in face-cycle order
+    /// around the vertex (boundary vertex starts/ends at boundary halfedges).
+    std::optional<std::vector<size_t>> vertex_neighbors(size_t vertex_key, bool ordered = false) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Boundary
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    std::vector<size_t> vertices_on_boundary() const;
+    std::vector<std::pair<size_t, size_t>> edges_on_boundary() const;
+    std::vector<size_t> faces_on_boundary() const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Halfedge Navigation
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    std::optional<size_t> halfedge_face(std::pair<size_t, size_t> edge) const;
+    std::optional<std::pair<size_t, size_t>> halfedge_after(std::pair<size_t, size_t> edge) const;
+    std::optional<std::pair<size_t, size_t>> halfedge_before(std::pair<size_t, size_t> edge) const;
+    std::vector<std::pair<size_t, size_t>> halfedge_loop(std::pair<size_t, size_t> edge) const;
+    std::vector<std::pair<size_t, size_t>> halfedge_strip(std::pair<size_t, size_t> edge) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Sampling (deterministic LCG when seed given, for cross-language parity)
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// seed=0 means "use truly random". For deterministic sampling pass any non-zero seed.
+    std::vector<size_t> vertex_sample(size_t size, uint32_t seed = 0) const;
+    std::vector<std::pair<size_t, size_t>> edge_sample(size_t size, uint32_t seed = 0) const;
+    std::vector<size_t> face_sample(size_t size, uint32_t seed = 0) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Compas-style Aliases
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    std::optional<Point> face_center(size_t face_key) const;
+    std::optional<Polyline> face_polygon(size_t face_key) const;
+    void flip_cycles();
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Attribute API (typed double across C++/Python/Rust)
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    void update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs);
+    void update_default_face_attributes(const std::vector<std::pair<std::string, double>>& attrs);
+    void update_default_edge_attributes(const std::vector<std::pair<std::string, double>>& attrs);
+
+    std::optional<double> vertex_attribute(size_t key, const std::string& name) const;
+    void set_vertex_attribute(size_t key, const std::string& name, double value);
+    std::optional<double> face_attribute(size_t fkey, const std::string& name) const;
+    void set_face_attribute(size_t fkey, const std::string& name, double value);
+    std::optional<double> edge_attribute(std::pair<size_t, size_t> edge, const std::string& name) const;
+    void set_edge_attribute(std::pair<size_t, size_t> edge, const std::string& name, double value);
+
+    /// keys=nullptr means "all". Returned vector contains nullopt for missing.
+    std::vector<std::optional<double>> vertices_attribute(const std::string& name, const std::vector<size_t>* keys = nullptr) const;
+    void set_vertices_attribute(const std::string& name, double value, const std::vector<size_t>* keys = nullptr);
+    std::vector<std::optional<double>> faces_attribute(const std::string& name, const std::vector<size_t>* keys = nullptr) const;
+    void set_faces_attribute(const std::string& name, double value, const std::vector<size_t>* keys = nullptr);
+    std::vector<std::optional<double>> edges_attribute(const std::string& name, const std::vector<std::pair<size_t, size_t>>* keys = nullptr) const;
+    void set_edges_attribute(const std::string& name, double value, const std::vector<std::pair<size_t, size_t>>* keys = nullptr);
+
+    std::vector<size_t> vertices_where(const std::vector<std::pair<std::string, double>>& conditions) const;
+    std::vector<size_t> faces_where(const std::vector<std::pair<std::string, double>>& conditions) const;
+    std::vector<std::pair<size_t, size_t>> edges_where(const std::vector<std::pair<std::string, double>>& conditions) const;
+
+    std::vector<size_t> vertices_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const;
+    std::vector<size_t> faces_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const;
+    std::vector<std::pair<size_t, size_t>> edges_where_predicate(const std::function<bool(std::pair<size_t, size_t>, const std::map<std::string, double>&)>& pred) const;
+
+    /// face_normal with unitized=false returns 2x first-triangle area in the normal length.
+    std::optional<Vector> face_normal_unitized(size_t face_key, bool unitized) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometric Properties
