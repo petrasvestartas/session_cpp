@@ -261,13 +261,6 @@ foreach(MAIN_ID 1 3 4 6)
     endif()
 endforeach()
 
-add_executable(main_mesh_offset main_mesh_offset.cpp)
-target_link_libraries(main_mesh_offset PRIVATE session_core)
-LINK_PROTOBUF(main_mesh_offset)
-
-add_executable(main_reciprocal main_reciprocal.cpp)
-target_link_libraries(main_reciprocal PRIVATE session_core)
-LINK_PROTOBUF(main_reciprocal)
 
 add_executable(example_loft_holes example_loft_holes.cpp)
 target_link_libraries(example_loft_holes PRIVATE session_core)
