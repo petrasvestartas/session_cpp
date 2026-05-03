@@ -252,7 +252,7 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-foreach(MAIN_ID 1 3 4 6)
+foreach(MAIN_ID 3 6)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
@@ -260,11 +260,6 @@ foreach(MAIN_ID 1 3 4 6)
         target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endforeach()
-
-
-add_executable(example_loft_holes example_loft_holes.cpp)
-target_link_libraries(example_loft_holes PRIVATE session_core)
-LINK_PROTOBUF(example_loft_holes)
 
 #############################################################################################
 # TESTS
