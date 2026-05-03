@@ -498,6 +498,310 @@ void tt_e_p_3(WoodJoint& joint,
     }
 }
 
+// side_removal: general side-removal joint (cases 8, 28, 38, 57).
+// Port of wood_joint_lib.cpp:432-631. Wraps side_removal_ss_e_r_1_port with
+// an explicit merge_with_joint flag. When merge_with_joint=false the merge
+// branch is suppressed regardless of joint.shift.
+void side_removal(WoodJoint& joint,
+                  const std::vector<WoodElement>& elements,
+                  bool merge_with_joint) {
+    double saved_shift = joint.shift;
+    if (!merge_with_joint) joint.shift = 0.0; // force simple 2-outline branch
+    side_removal_ss_e_r_1_port(joint, elements);
+    if (!merge_with_joint) joint.shift = saved_shift;
+}
+
+// ── tt_e_p_0: single centroid drill ──────────────────────────────────────────
+// Port of wood_joint_lib.cpp:5513-5548. Uses the centroid of joint_area as
+// the drill point. dir0 = unit(jv[1]-jv[2]) * thickness_v0,
+// dir1 = -dir0_unit * thickness_v1. Emits 2 outlines per face (doubled).
+void tt_e_p_0(WoodJoint& joint, const std::vector<WoodElement>& elements) {
+    joint.name = "tt_e_p_0";
+    joint.no_orient = true;
+    int v0 = joint.el_ids.first, v1 = joint.el_ids.second;
+    if (v0 < 0 || v0 >= (int)elements.size() ||
+        v1 < 0 || v1 >= (int)elements.size()) return;
+    if (!joint.joint_volumes_pair_a_pair_b[0]) return;
+    const Polyline& jv0 = *joint.joint_volumes_pair_a_pair_b[0];
+    if (jv0.point_count() < 3) return;
+    if (joint.joint_area.point_count() < 3) return;
+
+    // centroid of joint_area
+    Point center;
+    {
+        auto pts = joint.joint_area.get_points();
+        double sx=0, sy=0, sz=0;
+        for (const auto& p : pts) { sx+=p[0]; sy+=p[1]; sz+=p[2]; }
+        double n = static_cast<double>(pts.size()); center = Point(sx/n, sy/n, sz/n);
+    }
+
+    Point jv1 = jv0.get_point(1), jv2 = jv0.get_point(2);
+    Vector dir0(jv1[0]-jv2[0], jv1[1]-jv2[1], jv1[2]-jv2[2]);
+    dir0.normalize_self();
+    Vector dir1(-dir0[0], -dir0[1], -dir0[2]);
+    double t0 = elements[v0].thickness, t1 = elements[v1].thickness;
+    dir0 = Vector(dir0[0]*t0, dir0[1]*t0, dir0[2]*t0);
+    dir1 = Vector(dir1[0]*t1, dir1[1]*t1, dir1[2]*t1);
+
+    Polyline line0(std::vector<Point>{center, Point(center[0]+dir0[0], center[1]+dir0[1], center[2]+dir0[2])});
+    Polyline line1(std::vector<Point>{center, Point(center[0]+dir1[0], center[1]+dir1[1], center[2]+dir1[2])});
+
+    joint.f_outlines[0] = { line0, line0 };
+    joint.f_outlines[1] = { line0, line0 };
+    joint.m_outlines[0] = { line1, line1 };
+    joint.m_outlines[1] = { line1, line1 };
+    joint.m_cut_types[0] = { wood_cut::drill, wood_cut::drill };
+    joint.m_cut_types[1] = { wood_cut::drill, wood_cut::drill };
+    joint.f_cut_types[0] = { wood_cut::drill, wood_cut::drill };
+    joint.f_cut_types[1] = { wood_cut::drill, wood_cut::drill };
+}
+
+// ── tt_e_p_1: polylabel-approximated centroid drill ──────────────────────────
+// Port of wood_joint_lib.cpp:5551-5589. Original uses polylabel (inscribed
+// circle center) to find the visually centered drill point. For convex/regular
+// joint areas (typical plate overlap zones), polylabel ≈ centroid. Same
+// drill-line structure as tt_e_p_0.
+void tt_e_p_1(WoodJoint& joint, const std::vector<WoodElement>& elements) {
+    joint.name = "tt_e_p_1";
+    joint.no_orient = true;
+    int v0 = joint.el_ids.first, v1 = joint.el_ids.second;
+    if (v0 < 0 || v0 >= (int)elements.size() ||
+        v1 < 0 || v1 >= (int)elements.size()) return;
+    if (!joint.joint_volumes_pair_a_pair_b[0]) return;
+    const Polyline& jv0 = *joint.joint_volumes_pair_a_pair_b[0];
+    if (jv0.point_count() < 3) return;
+    if (joint.joint_area.point_count() < 3) return;
+
+    // Approximate polylabel with centroid (exact for convex regular polygons).
+    Point center;
+    {
+        auto pts = joint.joint_area.get_points();
+        double sx=0, sy=0, sz=0;
+        for (const auto& p : pts) { sx+=p[0]; sy+=p[1]; sz+=p[2]; }
+        double n = static_cast<double>(pts.size()); center = Point(sx/n, sy/n, sz/n);
+    }
+
+    Point jv1 = jv0.get_point(1), jv2 = jv0.get_point(2);
+    Vector dir0(jv1[0]-jv2[0], jv1[1]-jv2[1], jv1[2]-jv2[2]);
+    dir0.normalize_self();
+    Vector dir1(-dir0[0], -dir0[1], -dir0[2]);
+    double t0 = elements[v0].thickness, t1 = elements[v1].thickness;
+    dir0 = Vector(dir0[0]*t0, dir0[1]*t0, dir0[2]*t0);
+    dir1 = Vector(dir1[0]*t1, dir1[1]*t1, dir1[2]*t1);
+
+    Polyline line0(std::vector<Point>{center, Point(center[0]+dir0[0], center[1]+dir0[1], center[2]+dir0[2])});
+    Polyline line1(std::vector<Point>{center, Point(center[0]+dir1[0], center[1]+dir1[1], center[2]+dir1[2])});
+
+    joint.f_outlines[0] = { line0, line0 };
+    joint.f_outlines[1] = { line0, line0 };
+    joint.m_outlines[0] = { line1, line1 };
+    joint.m_outlines[1] = { line1, line1 };
+    joint.m_cut_types[0] = { wood_cut::drill, wood_cut::drill };
+    joint.m_cut_types[1] = { wood_cut::drill, wood_cut::drill };
+    joint.f_cut_types[0] = { wood_cut::drill, wood_cut::drill };
+    joint.f_cut_types[1] = { wood_cut::drill, wood_cut::drill };
+}
+
+// ── tt_e_p_2: circle-division drill points around centroid ───────────────────
+// Port of wood_joint_lib.cpp:5592-5648. Original uses polylabel + circular
+// division to generate N points on a circle of radius `shift` around the
+// inscribed center. Approximation: places N points on a circle of radius
+// `shift` around the joint_area centroid in the joint_area plane.
+void tt_e_p_2(WoodJoint& joint, const std::vector<WoodElement>& elements) {
+    joint.name = "tt_e_p_2";
+    joint.no_orient = true;
+    int v0 = joint.el_ids.first, v1 = joint.el_ids.second;
+    if (v0 < 0 || v0 >= (int)elements.size() ||
+        v1 < 0 || v1 >= (int)elements.size()) return;
+    if (!joint.joint_volumes_pair_a_pair_b[0]) return;
+    const Polyline& jv0 = *joint.joint_volumes_pair_a_pair_b[0];
+    if (jv0.point_count() < 3) return;
+    if (joint.joint_area.point_count() < 3) return;
+
+    double radius = joint.shift;
+    int n_pts = std::max(1, std::min(100, (int)joint.division_length));
+
+    // Centroid + plane of joint_area
+    Point center;
+    {
+        auto pts = joint.joint_area.get_points();
+        double sx=0, sy=0, sz=0;
+        for (const auto& p : pts) { sx+=p[0]; sy+=p[1]; sz+=p[2]; }
+        double n = static_cast<double>(pts.size()); center = Point(sx/n, sy/n, sz/n);
+    }
+    Point fo, dummy;
+    Plane fast_plane;
+    Polyline area_copy = joint.joint_area;
+    area_copy.get_fast_plane(fo, fast_plane);
+    Vector zp = fast_plane.z_axis(); zp.normalize_self();
+    Vector xp = fast_plane.x_axis(); xp.normalize_self();
+    Vector yp = zp.cross(xp); yp.normalize_self();
+
+    std::vector<Point> points;
+    if (radius < 1e-9 || n_pts <= 1) {
+        points.push_back(center);
+    } else {
+        for (int i = 0; i < n_pts; ++i) {
+            double angle = 2.0 * Tolerance::PI * i / n_pts;
+            double cx = std::cos(angle) * radius, cy = std::sin(angle) * radius;
+            points.emplace_back(center[0] + xp[0]*cx + yp[0]*cy,
+                                center[1] + xp[1]*cx + yp[1]*cy,
+                                center[2] + xp[2]*cx + yp[2]*cy);
+        }
+    }
+
+    Point jv1 = jv0.get_point(1), jv2 = jv0.get_point(2);
+    Vector dir0(jv1[0]-jv2[0], jv1[1]-jv2[1], jv1[2]-jv2[2]);
+    dir0.normalize_self();
+    Vector dir1(-dir0[0], -dir0[1], -dir0[2]);
+    double t0 = elements[v0].thickness, t1 = elements[v1].thickness;
+    dir0 = Vector(dir0[0]*t0, dir0[1]*t0, dir0[2]*t0);
+    dir1 = Vector(dir1[0]*t1, dir1[1]*t1, dir1[2]*t1);
+
+    joint.m_outlines[0].clear(); joint.m_outlines[1].clear();
+    joint.f_outlines[0].clear(); joint.f_outlines[1].clear();
+    joint.m_cut_types[0].clear(); joint.m_cut_types[1].clear();
+    joint.f_cut_types[0].clear(); joint.f_cut_types[1].clear();
+    for (const Point& pt : points) {
+        Polyline l0(std::vector<Point>{pt, Point(pt[0]+dir0[0], pt[1]+dir0[1], pt[2]+dir0[2])});
+        Polyline l1(std::vector<Point>{pt, Point(pt[0]+dir1[0], pt[1]+dir1[1], pt[2]+dir1[2])});
+        joint.f_outlines[0].push_back(l0); joint.f_outlines[0].push_back(l0);
+        joint.f_outlines[1].push_back(l0); joint.f_outlines[1].push_back(l0);
+        joint.m_outlines[0].push_back(l1); joint.m_outlines[0].push_back(l1);
+        joint.m_outlines[1].push_back(l1); joint.m_outlines[1].push_back(l1);
+        joint.m_cut_types[0].push_back(wood_cut::drill); joint.m_cut_types[0].push_back(wood_cut::drill);
+        joint.m_cut_types[1].push_back(wood_cut::drill); joint.m_cut_types[1].push_back(wood_cut::drill);
+        joint.f_cut_types[0].push_back(wood_cut::drill); joint.f_cut_types[0].push_back(wood_cut::drill);
+        joint.f_cut_types[1].push_back(wood_cut::drill); joint.f_cut_types[1].push_back(wood_cut::drill);
+    }
+}
+
+// ── tt_e_p_4: boundary-offset drill grid ────────────────────────────────────
+// Port of wood_joint_lib.cpp:5713-5765. Original uses grid_of_points_in_a_polygon
+// (2D grid within offset polygon). Approximation: offset boundary + edge
+// subdivision (same as tt_e_p_3 but with different parameter mapping).
+void tt_e_p_4(WoodJoint& joint, const std::vector<WoodElement>& elements) {
+    joint.name = "tt_e_p_4";
+    joint.no_orient = true;
+    int v0 = joint.el_ids.first, v1 = joint.el_ids.second;
+    if (v0 < 0 || v0 >= (int)elements.size() ||
+        v1 < 0 || v1 >= (int)elements.size()) return;
+    if (!joint.joint_volumes_pair_a_pair_b[0]) return;
+    const Polyline& jv0 = *joint.joint_volumes_pair_a_pair_b[0];
+    if (jv0.point_count() < 3) return;
+    if (joint.joint_area.point_count() < 4) return;
+
+    double division_distance = joint.division_length;
+    if (division_distance <= 0.0) return;
+
+    Polyline poly_copy = joint.joint_area;
+    Point fast_origin; Plane fast_plane;
+    poly_copy.get_fast_plane(fast_origin, fast_plane);
+    double offset_distance = -joint.shift;
+    Intersection::offset_in_3d(poly_copy, fast_plane, offset_distance);
+
+    std::vector<Point> points;
+    auto op_pts = poly_copy.get_points();
+    for (size_t i = 0; i + 1 < op_pts.size(); i++) {
+        double seg_len = Point::distance(op_pts[i], op_pts[i+1]);
+        int divs = (int)std::min(100.0, seg_len / division_distance);
+        auto dp = Polyline::interpolate_points(op_pts[i], op_pts[i+1], divs, 2);
+        points.insert(points.end(), dp.begin(), dp.end());
+    }
+    if (!op_pts.empty()) {
+        double dx=op_pts.front()[0]-op_pts.back()[0], dy=op_pts.front()[1]-op_pts.back()[1], dz=op_pts.front()[2]-op_pts.back()[2];
+        if (dx*dx+dy*dy+dz*dz > 0.01) points.push_back(op_pts.back());
+    }
+
+    Point jv1 = jv0.get_point(1), jv2 = jv0.get_point(2);
+    Vector dir0(jv1[0]-jv2[0], jv1[1]-jv2[1], jv1[2]-jv2[2]);
+    dir0.normalize_self();
+    Vector dir1(-dir0[0], -dir0[1], -dir0[2]);
+    double t0 = elements[v0].thickness, t1 = elements[v1].thickness;
+    dir0 = Vector(dir0[0]*t0, dir0[1]*t0, dir0[2]*t0);
+    dir1 = Vector(dir1[0]*t1, dir1[1]*t1, dir1[2]*t1);
+
+    joint.m_outlines[0].clear(); joint.m_outlines[1].clear();
+    joint.f_outlines[0].clear(); joint.f_outlines[1].clear();
+    joint.m_cut_types[0].clear(); joint.m_cut_types[1].clear();
+    joint.f_cut_types[0].clear(); joint.f_cut_types[1].clear();
+    for (const Point& pt : points) {
+        Polyline l0(std::vector<Point>{pt, Point(pt[0]+dir0[0], pt[1]+dir0[1], pt[2]+dir0[2])});
+        Polyline l1(std::vector<Point>{pt, Point(pt[0]+dir1[0], pt[1]+dir1[1], pt[2]+dir1[2])});
+        joint.f_outlines[0].push_back(l0); joint.f_outlines[0].push_back(l0);
+        joint.f_outlines[1].push_back(l0); joint.f_outlines[1].push_back(l0);
+        joint.m_outlines[0].push_back(l1); joint.m_outlines[0].push_back(l1);
+        joint.m_outlines[1].push_back(l1); joint.m_outlines[1].push_back(l1);
+        joint.m_cut_types[0].push_back(wood_cut::drill); joint.m_cut_types[0].push_back(wood_cut::drill);
+        joint.m_cut_types[1].push_back(wood_cut::drill); joint.m_cut_types[1].push_back(wood_cut::drill);
+        joint.f_cut_types[0].push_back(wood_cut::drill); joint.f_cut_types[0].push_back(wood_cut::drill);
+        joint.f_cut_types[1].push_back(wood_cut::drill); joint.f_cut_types[1].push_back(wood_cut::drill);
+    }
+}
+
+// ── tt_e_p_5: inscribed-rectangle-approximated boundary drill ─────────────────
+// Port of wood_joint_lib.cpp:5768-5834. Original uses inscribe_rectangle_in_
+// convex_polygon + edge/grid subdivision. Approximation: offset boundary +
+// edge subdivision (same approach as tt_e_p_4).
+void tt_e_p_5(WoodJoint& joint, const std::vector<WoodElement>& elements) {
+    joint.name = "tt_e_p_5";
+    joint.no_orient = true;
+    int v0 = joint.el_ids.first, v1 = joint.el_ids.second;
+    if (v0 < 0 || v0 >= (int)elements.size() ||
+        v1 < 0 || v1 >= (int)elements.size()) return;
+    if (!joint.joint_volumes_pair_a_pair_b[0]) return;
+    const Polyline& jv0 = *joint.joint_volumes_pair_a_pair_b[0];
+    if (jv0.point_count() < 3) return;
+    if (joint.joint_area.point_count() < 4) return;
+
+    double division_distance = std::abs(joint.division_length);
+    if (division_distance <= 0.0) return;
+
+    Polyline poly_copy = joint.joint_area;
+    Point fast_origin; Plane fast_plane;
+    poly_copy.get_fast_plane(fast_origin, fast_plane);
+    double offset_distance = -joint.shift;
+    Intersection::offset_in_3d(poly_copy, fast_plane, offset_distance);
+
+    std::vector<Point> points;
+    auto op_pts = poly_copy.get_points();
+    for (size_t i = 0; i + 1 < op_pts.size(); i++) {
+        double seg_len = Point::distance(op_pts[i], op_pts[i+1]);
+        int divs = (int)std::min(100.0, seg_len / division_distance);
+        auto dp = Polyline::interpolate_points(op_pts[i], op_pts[i+1], divs, 2);
+        points.insert(points.end(), dp.begin(), dp.end());
+    }
+    if (!op_pts.empty()) {
+        double dx=op_pts.front()[0]-op_pts.back()[0], dy=op_pts.front()[1]-op_pts.back()[1], dz=op_pts.front()[2]-op_pts.back()[2];
+        if (dx*dx+dy*dy+dz*dz > 0.01) points.push_back(op_pts.back());
+    }
+
+    Point jv1 = jv0.get_point(1), jv2 = jv0.get_point(2);
+    Vector dir0(jv1[0]-jv2[0], jv1[1]-jv2[1], jv1[2]-jv2[2]);
+    dir0.normalize_self();
+    Vector dir1(-dir0[0], -dir0[1], -dir0[2]);
+    double t0 = elements[v0].thickness, t1 = elements[v1].thickness;
+    dir0 = Vector(dir0[0]*t0, dir0[1]*t0, dir0[2]*t0);
+    dir1 = Vector(dir1[0]*t1, dir1[1]*t1, dir1[2]*t1);
+
+    joint.m_outlines[0].clear(); joint.m_outlines[1].clear();
+    joint.f_outlines[0].clear(); joint.f_outlines[1].clear();
+    joint.m_cut_types[0].clear(); joint.m_cut_types[1].clear();
+    joint.f_cut_types[0].clear(); joint.f_cut_types[1].clear();
+    for (const Point& pt : points) {
+        Polyline l0(std::vector<Point>{pt, Point(pt[0]+dir0[0], pt[1]+dir0[1], pt[2]+dir0[2])});
+        Polyline l1(std::vector<Point>{pt, Point(pt[0]+dir1[0], pt[1]+dir1[1], pt[2]+dir1[2])});
+        joint.f_outlines[0].push_back(l0); joint.f_outlines[0].push_back(l0);
+        joint.f_outlines[1].push_back(l0); joint.f_outlines[1].push_back(l0);
+        joint.m_outlines[0].push_back(l1); joint.m_outlines[0].push_back(l1);
+        joint.m_outlines[1].push_back(l1); joint.m_outlines[1].push_back(l1);
+        joint.m_cut_types[0].push_back(wood_cut::drill); joint.m_cut_types[0].push_back(wood_cut::drill);
+        joint.m_cut_types[1].push_back(wood_cut::drill); joint.m_cut_types[1].push_back(wood_cut::drill);
+        joint.f_cut_types[0].push_back(wood_cut::drill); joint.f_cut_types[0].push_back(wood_cut::drill);
+        joint.f_cut_types[1].push_back(wood_cut::drill); joint.f_cut_types[1].push_back(wood_cut::drill);
+    }
+}
+
 // Build wood-compatible element from a polyline pair.
 // Matches wood_main.cpp get_elements: orientation check, side planes from
 // 3 raw points, side polylines from 4 corners.

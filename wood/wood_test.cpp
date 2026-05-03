@@ -181,6 +181,37 @@ bool type_plates_name_side_to_side_edge_outofplane_folding() {
     }
 }
 
+// Measure whether the merged plate outlines preserve the original plate
+// polygon corners. Every corner of the original face polyline must appear
+// unchanged in the merged outer outline after joint cutting. Max nearest-
+// neighbour distance over all corners tells us if plate corners survived.
+static void measure_corner_preservation(const std::vector<wood_session::WoodElement>& elements) {
+    using session_cpp::Point;
+    auto dist = [](const Point& a, const Point& b) {
+        double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
+        return std::sqrt(dx*dx + dy*dy + dz*dz);
+    };
+    double max_gap = 0.0;
+    int n_checked = 0;
+    for (const auto& el : elements) {
+        if (el.polylines.size() < 2 || el.features.top.empty()) continue;
+        const auto& orig   = el.polylines[0];        // pline0 (= merged_top input)
+        const auto& merged = el.features.top[0];    // outer merged outline (= merged_top)
+        int nc = static_cast<int>(orig.point_count());
+        int nm = static_cast<int>(merged.point_count());
+        for (int i = 0; i < nc; i++) {
+            Point co = orig.get_point(i);
+            double best = 1e18;
+            for (int j = 0; j < nm; j++)
+                best = std::min(best, dist(co, merged.get_point(j)));
+            max_gap = std::max(max_gap, best);
+            ++n_checked;
+        }
+    }
+    fmt::print("  plate corner preservation: max_gap={:.6f} mm  ({} corners, {} elements)\n",
+               max_gap, n_checked, elements.size());
+}
+
 // ── wood line 1384 ─────────────────────────────────────────────────────────
 bool type_plates_name_side_to_side_edge_outofplane_box() {
     try {
@@ -188,12 +219,32 @@ bool type_plates_name_side_to_side_edge_outofplane_box() {
     globals_yaml("type_plates_name_side_to_side_edge_outofplane_box");
     auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_box");
     auto joints = get_connection_zones(plates, face_to_face);
+    measure_corner_preservation(plates);
     Session session("WoodF2F");
     fill_session(session, plates, joints);
     session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
     return true;
     } catch (const std::exception& e) {
         fmt::print("  ERROR [type_plates_name_side_to_side_edge_outofplane_box]: {}\n", e.what());
+        return false;
+    }
+}
+
+bool type_plates_name_side_to_side_edge_outofplane_box_miter() {
+    try {
+    using namespace wood_session::globals;
+    globals_yaml("type_plates_name_side_to_side_edge_outofplane_box_miter");
+    const std::string output_file = DATA_SET_OUTPUT_FILE;
+    auto plates = internal::load_plates("type_plates_name_side_to_side_edge_outofplane_box");
+    DATA_SET_OUTPUT_FILE = output_file;
+    auto joints = get_connection_zones(plates, face_to_face);
+    measure_corner_preservation(plates);
+    Session session("WoodF2F");
+    fill_session(session, plates, joints);
+    session.pb_dump((internal::session_data_dir() / DATA_SET_OUTPUT_FILE).string());
+    return true;
+    } catch (const std::exception& e) {
+        fmt::print("  ERROR [type_plates_name_side_to_side_edge_outofplane_box_miter]: {}\n", e.what());
         return false;
     }
 }

@@ -115,7 +115,7 @@ namespace TINY_YAML {
 		/// </summary>
 		/// <returns></returns>
 		unsigned int getSize() {
-			return this->m_children.size();
+			return static_cast<unsigned int>(this->m_children.size());
 		}
 
 		/// <summary>

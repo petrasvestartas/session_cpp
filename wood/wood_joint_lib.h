@@ -11,11 +11,12 @@
 // The `joint_create_geometry` dispatcher lives in wood_main.cpp.
 //
 // Joint families:
-//   group 0 (ss_e_ip, type 12): ss_e_ip_0..4
-//   group 1 (ss_e_op, type 11): ss_e_op_0..5, ss_e_op_tutorial
-//   group 2 (ts_e_p,  type 20): ts_e_p_0..3, ts_e_p_5
-//   group 3 (cr_c_ip, type 30): cr_c_ip_0..5
-//   group 5 (ss_e_r,  type 13): ss_e_r_0..3
+//   group 0 (ss_e_ip, type 12): ss_e_ip_0..4, ss_e_ip_custom
+//   group 1 (ss_e_op, type 11): ss_e_op_0..5, ss_e_op_custom, ss_e_op_tutorial
+//   group 2 (ts_e_p,  type 20): ts_e_p_0..3, ts_e_p_5, ts_e_p_custom
+//   group 3 (cr_c_ip, type 30): cr_c_ip_0..5, cr_c_ip_custom
+//   group 5 (ss_e_r,  type 13): ss_e_r_0..3, ss_e_r_custom
+//   group 6 (b,        type 60): b_0, b_custom
 // ═══════════════════════════════════════════════════════════════════════════
 #pragma once
 
@@ -41,6 +42,7 @@
 #include "joints/ss_e_ip_2.h"
 #include "joints/ss_e_ip_3.h"
 #include "joints/ss_e_ip_4.h"
+#include "joints/ss_e_ip_5.h"
 #include "joints/ss_e_ip_custom.h"
 
 // group 1 — ss_e_op (side-side out-of-plane, type 11)
@@ -51,6 +53,8 @@
 #include "joints/ss_e_op_3.h"
 #include "joints/ss_e_op_4.h"
 #include "joints/ss_e_op_5.h"
+#include "joints/ss_e_op_17.h"
+#include "joints/ss_e_op_custom.h"
 #include "joints/ss_e_op_tutorial.h"
 
 // group 2 — ts_e_p (top-side, type 20)
@@ -59,6 +63,7 @@
 #include "joints/ts_e_p_2.h"
 #include "joints/ts_e_p_3.h"
 #include "joints/ts_e_p_5.h"
+#include "joints/ts_e_p_custom.h"
 
 // group 3 — cr_c_ip (cross in-plane, type 30)
 #include "joints/cr_c_ip_0.h"
@@ -68,12 +73,19 @@
 #include "joints/cr_c_ip_3.h"
 #include "joints/cr_c_ip_4.h"
 #include "joints/cr_c_ip_5.h"
+#include "joints/cr_c_ip_custom.h"
 
 // group 5 — ss_e_r (side-side relief, type 13)
 #include "joints/ss_e_r_0.h"
 #include "joints/ss_e_r_impl.h"
 #include "joints/ss_e_r_2.h"
 #include "joints/ss_e_r_3.h"
+#include "joints/ss_e_r_custom.h"
+
+// group 6 — b (beam, type 60)
+// b_0.h must come before b_custom.h (no dependency, but keeps ordering).
+#include "joints/b_0.h"
+#include "joints/b_custom.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)

@@ -242,12 +242,15 @@ bool face_to_face_wood(
             //    i.e. when extending the line by ext_l on each end would
             //    shrink the original line below the configured minimum.
             if (joint_type < 2) {
-                double limit = (ext_l * 2.0) * (ext_l * 2.0);
-                double minsq = limit_min_joint_length * limit_min_joint_length;
-                if (i > 1 && limit > joint_line0.squared_length() - minsq) { dbg_fail_reason = fmt::format("jl0_ext f({},{})", i, j); continue; }
-                if (j > 1 && limit > joint_line1.squared_length() - minsq) { dbg_fail_reason = fmt::format("jl1_ext f({},{})", i, j); continue; }
-                extend_equally(joint_line0, ext_l);
-                extend_equally(joint_line1, ext_l);
+                double ext_sq = (ext_l * 2.0) * (ext_l * 2.0);
+                if (i > 1 && ext_sq >= joint_line0.squared_length()) { dbg_fail_reason = fmt::format("jl0_ext f({},{})", i, j); continue; }
+                if (j > 1 && ext_sq >= joint_line1.squared_length()) { dbg_fail_reason = fmt::format("jl1_ext f({},{})", i, j); continue; }
+                if (limit_min_joint_length > 0.0) {
+                    if (i > 1 && joint_line0.length() < limit_min_joint_length) { dbg_fail_reason = fmt::format("jl0_min f({},{})", i, j); continue; }
+                    if (j > 1 && joint_line1.length() < limit_min_joint_length) { dbg_fail_reason = fmt::format("jl1_min f({},{})", i, j); continue; }
+                }
+                joint_line0.extend_equally(ext_l);
+                joint_line1.extend_equally(ext_l);
             }
 
             // 8. Optional insertion direction (the male takes priority).
@@ -468,7 +471,7 @@ bool face_to_face_wood(
                     // Parallel elements: split on dihedral angle
                     // ────────────────────────────────────────────────────────
                     Line lj;
-                    line_line_overlap_average(joint_line0, joint_line1, lj);
+                    joint_line0.overlap_average(joint_line1, lj);
                     joint_lines[0] = lj;
                     joint_lines[1] = lj;
 

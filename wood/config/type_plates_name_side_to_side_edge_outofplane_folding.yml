@@ -27,9 +27,9 @@ joints_parameters_and_types:
   - 60       # row 6 b       [2]: joint_type_id  (default 60)
 # (width, height, length) extension applied to each joint volume + 2 dead pad slots
 joint_volume_extension:
-  - 0.0      # [0] WIDTH  - extends volume edges 0,2 (in-plane axis A) by +/-value mm
+  - -100.0      # [0] WIDTH  - extends volume edges 0,2 (in-plane axis A) by +/-value mm
   - 0.0      # [1] HEIGHT - extends volume edges 1,3 (in-plane axis B) by +/-value mm
-  - -20      # [2] LENGTH - extends joint CENTERLINES (not the volume) by +/-value mm
+  - -100      # [2] LENGTH - extends joint CENTERLINES (not the volume) by +/-value mm
   - 0.0      # [3] padding (dead in 5-entry layout; live only when >=6 entries)
   - 0.0      # [4] padding (dead in 5-entry layout; live only when >=6 entries)
 # 4 = merged outlines + lofts (other values dump intermediates)

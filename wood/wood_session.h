@@ -83,9 +83,27 @@ void set_cross_joint_distance_squared(double dist_sq);
 namespace wood_session {
 namespace globals {
     // ── Joint algorithm tunables (pipeline reads these every run) ─────────
-    extern std::vector<double> JOINTS_PARAMETERS_AND_TYPES;  ///< 7×3 family table: (division_length, shift, joint_type_id)
-    extern std::vector<double> JOINT_VOLUME_EXTENSION;       ///< (width, height, length) ADDITIVE extension in mm, 5-entry default; +/- on volume edges
-    extern std::array<double, 3> JOINT_SCALE;                ///< (sx, sy, sz) MULTIPLICATIVE scale fed into WoodJoint::scale; 1.0 = no change. Used by ss_e_ip_2, ss_e_r_*, ts_e_p_5.
+    /// Flat array of joint-family parameters; read as consecutive triples (i*3+0, i*3+1, i*3+2):
+    ///   [i*3+0] division_length — spacing between fingers/notches along the joint line (mm)
+    ///   [i*3+1] shift           — lateral offset of the joint pattern (mm); 0 = centred
+    ///   [i*3+2] joint_type_id   — selects the joint geometry variant (e.g. 1=zigzag, 12=ss_e_op_0)
+    /// Family indices: 0 = ss_e_ip (in-plane), 1 = ss_e_op (out-of-plane), 2–6 = ts/cr/tt/b/ss_e_r families.
+    extern std::vector<double> JOINTS_PARAMETERS_AND_TYPES;
+
+    /// Additive extension of joint cut volumes (mm); positive = grow, negative = shrink.
+    /// Read as consecutive triples per joint-type override; default is one shared triple (indices 0–2):
+    ///   [0] width  — extends/shrinks edges 0 and 2 of the volume quad (across the plate face)
+    ///   [1] height — extends/shrinks edges 1 and 3 of the volume quad (through the plate thickness)
+    ///   [2] length — extends/shrinks the joint centerline (along the shared edge / fold line)
+    /// To reduce the volume along the fold edge, set index [2] to a negative value, e.g. {0, 0, -5}.
+    extern std::vector<double> JOINT_VOLUME_EXTENSION;
+
+    /// Multiplicative scale applied to joint geometry before insertion; 1.0 = no change.
+    ///   [0] sx — scale along joint local X (width direction)
+    ///   [1] sy — scale along joint local Y (height / thickness direction)
+    ///   [2] sz — scale along joint local Z (length / edge direction)
+    /// Used by joint types: ss_e_ip_2, ss_e_r_*, ts_e_p_5.
+    extern std::array<double, 3> JOINT_SCALE;
     extern int    OUTPUT_GEOMETRY_TYPE;                      ///< 4 = merged outlines + lofts
     extern double FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_DIHEDRAL_ANGLE;       ///< degrees; rotated-joint threshold
     extern bool   FACE_TO_FACE_SIDE_TO_SIDE_JOINTS_ALL_TREATED_AS_ROTATED;///< force rotated geometry path
@@ -252,6 +270,7 @@ bool type_plates_name_side_to_side_edge_inplane_hexshell();                     
 bool type_plates_name_side_to_side_edge_inplane_differentdirections();                // 998
 bool type_plates_name_side_to_side_edge_outofplane_folding();                         // 1129
 bool type_plates_name_side_to_side_edge_outofplane_box();                             // 1384
+bool type_plates_name_side_to_side_edge_outofplane_box_miter();
 bool type_plates_name_side_to_side_edge_outofplane_tetra();                           // 1440
 bool type_plates_name_side_to_side_edge_outofplane_dodecahedron();                    // 1497
 bool type_plates_name_side_to_side_edge_outofplane_icosahedron();                     // 1555

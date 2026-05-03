@@ -380,6 +380,21 @@ public:
     /// Remove consecutive near-duplicate points in place
     void remove_consecutive_duplicates(double tol = Tolerance::APPROXIMATION);
 
+    /// Build two oriented rectangular cross-section polylines (male rect0, female rect1)
+    /// from a local frame: center point p, tangent direction segment_vector, and zaxis.
+    /// radius controls the half-width; length is the extent along segment_vector.
+    /// middle=true: symmetric about p; flip_male: +1/-1/0 for corner order.
+    static void two_rects_from_frame(
+        const Point&  p,
+        const Vector& segment_vector,
+        const Vector& zaxis,
+        bool          middle,
+        double        radius,
+        double        length,
+        int           flip_male,
+        Polyline&     rect0,
+        Polyline&     rect1);
+
 private:
     mutable std::string _guid; ///< Lazily generated unique identifier
 
@@ -398,22 +413,6 @@ private:
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream& operator<<(std::ostream& os, const Polyline& polyline);
-
-// Build two oriented rectangular cross-section polylines (male rect0, female rect1)
-// from a local frame: center point p, tangent direction segment_vector, and zaxis.
-// radius controls the half-width in the x/y plane; length is the extent along segment_vector.
-// middle=true: symmetric about p; false: flip the corner order by flip_male (+1/-1/0).
-// Used for joint volume cross-sections in the wood pipeline and beam pipeline.
-void polyline_two_rects_from_frame(
-    const Point&  p,
-    const Vector& segment_vector,
-    const Vector& zaxis,
-    bool          middle,
-    double        radius,
-    double        length,
-    int           flip_male,
-    Polyline&     rect0,
-    Polyline&     rect1);
 
 } // namespace session_cpp
 

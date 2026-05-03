@@ -443,24 +443,6 @@ MINI_TEST("Vector", "Average Normal") {
     MINI_CHECK(TOLERANCE.is_close(n[0], 0.0) && TOLERANCE.is_close(n[1], 0.0));
 }
 
-MINI_TEST("Vector", "Interpolate Points") {
-    // uncomment #include "vector.h"
-    // uncomment #include "point.h"
-
-    Point from(0.0, 0.0, 0.0);
-    Point to(1.0, 0.0, 0.0);
-    std::vector<Point> pts0;
-    interpolate_points(from, to, 2, pts0, 0);
-    std::vector<Point> pts1;
-    interpolate_points(from, to, 1, pts1, 1);
-
-    MINI_CHECK((int)pts0.size() == 2);
-    MINI_CHECK(TOLERANCE.is_close(pts0[0][0], 1.0 / 3.0));
-    MINI_CHECK(TOLERANCE.is_close(pts0[1][0], 2.0 / 3.0));
-    MINI_CHECK((int)pts1.size() == 3);
-    MINI_CHECK(TOLERANCE.is_close(pts1[0][0], 0.0) && TOLERANCE.is_close(pts1[2][0], 1.0));
-}
-
 MINI_TEST("Vector", "Json Roundtrip") {
     // uncomment #include "vector.h"
 

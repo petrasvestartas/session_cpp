@@ -33,6 +33,7 @@ int main() {
     type_plates_name_side_to_side_edge_inplane_differentdirections();
     type_plates_name_side_to_side_edge_outofplane_folding();
     type_plates_name_side_to_side_edge_outofplane_box();
+    type_plates_name_side_to_side_edge_outofplane_box_miter();
     type_plates_name_side_to_side_edge_outofplane_tetra();
     type_plates_name_side_to_side_edge_outofplane_dodecahedron();
     type_plates_name_side_to_side_edge_outofplane_icosahedron();

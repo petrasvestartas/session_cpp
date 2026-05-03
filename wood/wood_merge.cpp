@@ -69,6 +69,13 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
     auto pline1 = el.polylines[1].get_points();
     auto joint_planes = el.planes;     // mutable copy of side planes
 
+    // Save original first points BEFORE relocation. pline[last] (closing duplicate)
+    // is never a relocation target (indices only reach 0..n-1 where n=size-1), so
+    // after relocation pline[0] may differ from pline[last] even though structurally
+    // they are the same corner. build_merged uses these to correctly detect closures.
+    Point pline0_orig_front = pline0.empty() ? Point(0,0,0) : pline0.front();
+    Point pline1_orig_front = pline1.empty() ? Point(0,0,0) : pline1.front();
+
     // Sort keys for the merge combine the integer edge id (scaled by 1e6)
     // with the sub-edge parametric fraction (scaled by 1e3). Wood uses the
     // same double-packed key scheme in wood_element.cpp:1015.
@@ -314,6 +321,15 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
             std::pair<double, double> cp_pair(id + 0.1, id + 0.9);
             size_t key = (size_t)(scale_0 * std::floor(cp_pair.first))
                        + (size_t)(scale_1 * std::fmod(cp_pair.first, 1.0));
+            if (dbg_merge_log) {
+                *dbg_merge_log << "  INSERT el=" << dbg_element_id << " i=" << i
+                               << " jid=" << joint_id << " jt=" << jt.joint_type
+                               << " mf=" << (male_or_female?'M':'F')
+                               << " jm0[0].n=" << jm[0][0].point_count()
+                               << " jm1[0].n=" << jm[1][0].point_count()
+                               << (jm[0][0].point_count() != jm[1][0].point_count() ? " COUNT_DIFF" : "")
+                               << "\n";
+            }
             sorted_by_id_plines_0.insert({key, {cp_pair, jm[0][0]}});
             sorted_by_id_plines_1.insert({key, {cp_pair, jm[1][0]}});
         }
@@ -322,7 +338,8 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
     // ── Build merged polylines from sorted maps ────────────────────────────
     // wood_element.cpp:1129-1253
     auto build_merged = [&](std::vector<Point>& pline,
-                            std::multimap<size_t, std::pair<std::pair<double,double>, Polyline>>& sorted)
+                            std::multimap<size_t, std::pair<std::pair<double,double>, Polyline>>& sorted,
+                            const Point& orig_front)
         -> Polyline
     {
         // pline is CLOSED (size = open + 1). Flag every vertex as kept,
@@ -337,13 +354,15 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
                 point_flags[k] = false;
             }
         }
-        // Only unflag the last point if it IS a closing duplicate (front==back).
-        // The pipeline sometimes passes already-open polylines (front!=back), in
-        // which case the last point is a real corner that must be kept.
+        // Unset the closing duplicate (last point). Compare against the ORIGINAL
+        // first point (before vertex relocation) because pline[0] may have been
+        // relocated while pline[last] (closing copy) retains the original coords.
+        // The pipeline sometimes passes already-open polylines; treat as closed
+        // only when the back matches the PRE-RELOCATION front within tolerance.
         if (pline.size() > 1 &&
-            std::abs(pline.front()[0] - pline.back()[0]) < 1e-9 &&
-            std::abs(pline.front()[1] - pline.back()[1]) < 1e-9 &&
-            std::abs(pline.front()[2] - pline.back()[2]) < 1e-9) {
+            std::abs(pline.back()[0] - orig_front[0]) < 1e-6 &&
+            std::abs(pline.back()[1] - orig_front[1]) < 1e-6 &&
+            std::abs(pline.back()[2] - orig_front[2]) < 1e-6) {
             point_flags.back() = false;
         }
 
@@ -378,8 +397,8 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
         return Polyline(merged);
     };
 
-    Polyline merged_top = build_merged(pline0, sorted_by_id_plines_0);
-    Polyline merged_bot = build_merged(pline1, sorted_by_id_plines_1);
+    Polyline merged_top = build_merged(pline0, sorted_by_id_plines_0, pline0_orig_front);
+    Polyline merged_bot = build_merged(pline1, sorted_by_id_plines_1, pline1_orig_front);
 
     // Closing-corner fix. wood_element.cpp:1242-1250. When the first AND
     // last side edges both had a joint (i.e. the loop wrapped around to the
@@ -515,6 +534,25 @@ std::vector<session_cpp::Polyline> merge_joints_for_element(
     // wood_element.cpp:1421-1422
     result.push_back(merged_top);
     result.push_back(merged_bot);
+
+    if (dbg_merge_log) {
+        *dbg_merge_log << "  MERGED el=" << dbg_element_id
+                       << " top.n=" << merged_top.point_count()
+                       << " bot.n=" << merged_bot.point_count()
+                       << (merged_top.point_count() != merged_bot.point_count() ? " COUNT_MISMATCH" : "")
+                       << "\n";
+        *dbg_merge_log << "  merged_top:";
+        for (size_t k = 0; k < merged_top.point_count(); k++) {
+            Point p = merged_top.get_point(k);
+            *dbg_merge_log << " (" << p[0] << "," << p[1] << "," << p[2] << ")";
+        }
+        *dbg_merge_log << "\n  merged_bot:";
+        for (size_t k = 0; k < merged_bot.point_count(); k++) {
+            Point p = merged_bot.get_point(k);
+            *dbg_merge_log << " (" << p[0] << "," << p[1] << "," << p[2] << ")";
+        }
+        *dbg_merge_log << "\n";
+    }
 
     return result;
 }

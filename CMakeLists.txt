@@ -57,6 +57,8 @@ set(UNITY_BUILD_EXCLUDE
     src/session.cpp
     src/element.cpp
     src/yaml/yaml.cpp
+    src/mesh_offset.cpp
+    src/reciprocal.cpp
 )
 
 #############################################################################################
@@ -259,6 +261,14 @@ foreach(MAIN_ID 1 3 4 6)
     endif()
 endforeach()
 
+add_executable(main_mesh_offset main_mesh_offset.cpp)
+target_link_libraries(main_mesh_offset PRIVATE session_core)
+LINK_PROTOBUF(main_mesh_offset)
+
+add_executable(main_reciprocal main_reciprocal.cpp)
+target_link_libraries(main_reciprocal PRIVATE session_core)
+LINK_PROTOBUF(main_reciprocal)
+
 add_executable(example_loft_holes example_loft_holes.cpp)
 target_link_libraries(example_loft_holes PRIVATE session_core)
 LINK_PROTOBUF(example_loft_holes)
@@ -320,6 +330,24 @@ ADD_WOOD_EXAMPLE(main_wood_02_joint_types)
 ADD_WOOD_EXAMPLE(main_wood_03_new_joint)
 ADD_WOOD_EXAMPLE(main_wood_04_all_datasets wood/wood_test.cpp)
 
+# main_wood_fold_1: ReflexFold surface + miter plates + in-plane wood joints
+add_executable(main_wood_fold_1 main_wood_fold_1.cpp ${WOOD_SOURCES} wood/wood_test.cpp)
+target_include_directories(main_wood_fold_1 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(main_wood_fold_1 PRIVATE session_core)
+LINK_PROTOBUF(main_wood_fold_1)
+if(ENABLE_PCH)
+    target_precompile_headers(main_wood_fold_1 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
+
+# main_wood_fold_2: TranslationShell surface + miter plates + out-of-plane wood joints
+add_executable(main_wood_fold_2 main_wood_fold_2.cpp ${WOOD_SOURCES} wood/wood_test.cpp)
+target_include_directories(main_wood_fold_2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(main_wood_fold_2 PRIVATE session_core)
+LINK_PROTOBUF(main_wood_fold_2)
+if(ENABLE_PCH)
+    target_precompile_headers(main_wood_fold_2 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
+
 #############################################################################################
 # TESTS
 #############################################################################################
@@ -357,6 +385,8 @@ set(MINITEST_SOURCES
     src/spatial_kdtree_test.cpp
     src/boolean_polyline_test.cpp
     src/elementfeature_test.cpp
+    src/mesh_offset_test.cpp
+    src/reciprocal_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

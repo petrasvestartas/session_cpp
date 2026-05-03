@@ -372,8 +372,8 @@ namespace session_cpp {
         Mesh colmesh = Mesh::loft(col_bot, col_top, true);
         MINI_CHECK(colmesh.is_valid());
         MINI_CHECK(colmesh.is_closed());
-        MINI_CHECK(colmesh.vertex.size() == 8);
-        MINI_CHECK(colmesh.face.size() == 6);
+        MINI_CHECK(colmesh.vertex.size() == 12);
+        MINI_CHECK(colmesh.face.size() == 8);
     }
 
     MINI_TEST("Mesh", "From Polygon With Holes Many") {

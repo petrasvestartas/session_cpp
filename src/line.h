@@ -108,50 +108,31 @@ public:
     /// Create a line from a point, direction, and length.
     static Line from_point_direction_length(const Point& point, const Vector& direction, double length);
 
-    /// Calculate middle line between two line segments.
+    /// Calculate middle line between two line segments (raw-point overload).
     static void get_middle_line(const Point& line0_start, const Point& line0_end,
                                const Point& line1_start, const Point& line1_end,
                                Point& output_start, Point& output_end);
 
-    /**
-     * @brief Co-linear / overlapping segment between this line and `other`.
-     *
-     * Projects `other`'s endpoints onto this line and returns the
-     * portion of this line covered by the projected interval.
-     * Mirrors `polyline_util::line_line_overlap` (free function in polyline.h).
-     *
-     * @param other The other line to overlap with.
-     * @param out On success, the overlap segment on this line.
-     * @return true if a non-empty overlap was found.
-     */
+    /// Calculate middle line between two Line objects.
+    static void get_middle_line(const Line& l0, const Line& l1, Line& out);
+
+    /// Project points onto line, return extreme sub-segment.
+    static bool from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out);
+
+    /// Co-linear / overlapping segment between this line and `other`.
     bool overlap(const Line& other, Line& out) const;
 
-    /**
-     * @brief Average of `this->overlap(other)` and `other.overlap(this)`,
-     *        computing the longer of the two midpoint segments.
-     *
-     * Mirrors `polyline_util::line_line_overlap_average` (free function).
-     *
-     * @param other The other line to overlap with.
-     * @param out On success, the averaged overlap segment.
-     * @return true if a non-empty overlap was found.
-     */
+    /// Average of this->overlap(other) and other.overlap(this), picking the longer.
     bool overlap_average(const Line& other, Line& out) const;
 
-    /**
-     * @brief Extend this line in place by `ext_start` at the start and
-     *        `ext_end` at the end, both along the line's direction.
-     *
-     * Mirrors `polyline_util::extend_line` (free function in polyline.h)
-     * and the wood `tv_extend_line` helper used in
-     * `three_valence_joint_alignment_annen`.
-     *
-     * @param ext_start Distance to extend from the start point (negative
-     *                  shrinks).
-     * @param ext_end Distance to extend from the end point (negative
-     *                shrinks).
-     */
+    /// Extend this line in place: grow start by ext_start, grow end by ext_end.
     void extend(double ext_start, double ext_end);
+
+    /// Extend equally: absolute dist or fraction proportion.
+    void extend_equally(double dist = 0, double proportion = 0);
+
+    /// Scale line to given length (shrink symmetrically from both ends).
+    void scale(double dist);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Operators
@@ -232,26 +213,6 @@ public:
 
 /// Output stream operator for Line.
 std::ostream& operator<<(std::ostream& os, const Line& line);
-
-// ── Free functions on Line (moved from polyline.h; CGAL_Polyline compat) ────
-
-/// Average of two line segments
-void line_line_average(const Line& l0, const Line& l1, Line& out);
-/// Overlap segment of two co-linear lines; returns false if disjoint
-bool line_line_overlap(const Line& l0, const Line& l1, Line& out);
-/// Overlap-average of two line segments
-void line_line_overlap_average(const Line& l0, const Line& l1, Line& out);
-/// Project points onto line, return extreme sub-segment
-bool line_from_projected_points(const Line& line, const std::vector<Point>& pts,
-                                Line& out);
-/// Extend line segment: grow start by d0, grow end by d1 (in-place)
-void extend_line(Line& line, double d0, double d1);
-/// Extend equally: absolute dist or fraction proportion
-void extend_equally(Line& line, double dist = 0, double proportion = 0);
-/// Scale line to given length (shrink symmetrically from both ends)
-void scale_line(Line& line, double dist);
-/// Midpoint segment between two parallel line segments
-void get_middle_line(const Line& l0, const Line& l1, Line& out);
 
 }  // namespace session_cpp
 

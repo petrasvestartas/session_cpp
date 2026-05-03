@@ -592,67 +592,32 @@ Vector Vector::reflect(const Vector& plane_normal) const {
 }
 
 Vector Vector::average_normal(const std::vector<Point>& points) {
-    Vector out;
-    ::session_cpp::average_normal(points, out);
+    constexpr double DISTANCE_SQUARED = 1e-10;
+    double dx = points.back()[0] - points.front()[0];
+    double dy = points.back()[1] - points.front()[1];
+    double dz = points.back()[2] - points.front()[2];
+    size_t len = (dx*dx + dy*dy + dz*dz) < DISTANCE_SQUARED ? points.size()-1 : points.size();
+    Vector out(0, 0, 0);
+    for (size_t i = 0; i < len; i++) {
+        size_t prev = ((int)i - 1 + len) % len;
+        size_t next = (i + 1) % len;
+        double ax = points[i][0]-points[prev][0], ay = points[i][1]-points[prev][1], az = points[i][2]-points[prev][2];
+        double bx = points[next][0]-points[i][0],  by = points[next][1]-points[i][1],  bz = points[next][2]-points[i][2];
+        out[0] += ay*bz - az*by;
+        out[1] += az*bx - ax*bz;
+        out[2] += ax*by - ay*bx;
+    }
+    out.normalize_self();
     return out;
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////
-// Not class methods
+// Stream operator
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::ostream &operator<<(std::ostream &os, const Vector &point) {
   return os << point.str();
-}
-
-void average_normal(const std::vector<Point>& pts, Vector& avg_normal) {
-    constexpr double DISTANCE_SQUARED = 1e-10;
-    double dx = pts.back()[0] - pts.front()[0];
-    double dy = pts.back()[1] - pts.front()[1];
-    double dz = pts.back()[2] - pts.front()[2];
-    size_t len = (dx*dx + dy*dy + dz*dz) < DISTANCE_SQUARED ? pts.size()-1 : pts.size();
-    avg_normal = Vector(0, 0, 0);
-    for (size_t i = 0; i < len; i++) {
-        size_t prev = ((int)i - 1 + len) % len;
-        size_t next = (i + 1) % len;
-        double ax = pts[i][0]-pts[prev][0], ay = pts[i][1]-pts[prev][1], az = pts[i][2]-pts[prev][2];
-        double bx = pts[next][0]-pts[i][0],  by = pts[next][1]-pts[i][1],  bz = pts[next][2]-pts[i][2];
-        avg_normal[0] += ay*bz - az*by;
-        avg_normal[1] += az*bx - ax*bz;
-        avg_normal[2] += ax*by - ay*bx;
-    }
-    avg_normal.normalize_self();
-}
-
-void interpolate_points(const Point& from, const Point& to, int steps,
-                        std::vector<Point>& points, int type) {
-    switch (type) {
-        case 0: {
-            points.reserve(steps);
-            for (int i = 1; i < steps+1; i++) {
-                double t = i / (double)(1+steps);
-                points.emplace_back(from[0]+t*(to[0]-from[0]), from[1]+t*(to[1]-from[1]), from[2]+t*(to[2]-from[2]));
-            }
-        } break;
-        case 1: {
-            points.reserve(steps+2);
-            points.push_back(from);
-            for (int i = 1; i < steps+1; i++) {
-                double t = i / (double)(1+steps);
-                points.emplace_back(from[0]+t*(to[0]-from[0]), from[1]+t*(to[1]-from[1]), from[2]+t*(to[2]-from[2]));
-            }
-            points.push_back(to);
-        } break;
-        case 2: {
-            points.reserve(steps+1);
-            points.push_back(from);
-            for (int i = 1; i < steps+1; i++) {
-                double t = i / (double)(1+steps);
-                points.emplace_back(from[0]+t*(to[0]-from[0]), from[1]+t*(to[1]-from[1]), from[2]+t*(to[2]-from[2]));
-            }
-        } break;
-    }
 }
 
 } // namespace session_cpp

@@ -201,7 +201,7 @@ public:
 
     /// Loft between two sets of polylines to create a mesh volume.
     /// cap: if true, adds bottom and top cap faces.
-    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap = true);
+    static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap = true, bool fix_collinear = true);
 
     /// Batch version of from_polygon_with_holes, with optional parallel execution.
     static std::vector<Mesh> from_polygon_with_holes_many(
@@ -211,7 +211,7 @@ public:
     /// Batch version of loft, with optional parallel execution.
     static std::vector<Mesh> loft_many(
         const std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>>& pairs,
-        bool cap = true, bool parallel = true);
+        bool cap = true, bool parallel = true, bool fix_collinear = true);
 
     /// Loft between matched pairs of top/bottom polygons, producing one panel per pair.
     /// Each panel has a top cap, optional bottom cap, matched quad walls, and triangle fill.
@@ -252,6 +252,22 @@ public:
         std::vector<double>& out_normals,
         std::vector<int>& out_triangles,
         double scale = 1.0);
+
+    /// Ruled quad mesh by projecting `profile` onto planes perpendicular to `cross_section`.
+    static Mesh reflex_fold(const Polyline& cross_section, const Polyline& profile);
+
+    /// Translation shell: sweep `C` by the displacement steps of path `P`.
+    static Mesh translation_shell(const Polyline& C, const Polyline& P);
+
+    /// Per-face miter plate geometry from a shell mesh.
+    /// Returns tuples of (top_chamfered, bot_chamfered, top_raw, bot_raw, face_normal).
+    static std::vector<std::tuple<
+        std::vector<Point>, std::vector<Point>,
+        std::vector<Point>, std::vector<Point>,
+        Vector>>
+    miter_contours(const Mesh& shell, double thickness,
+                   double chamfer_bot, double chamfer_top, bool flatter,
+                   double chamfer_angle_deg = 90.0);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Boolean Queries

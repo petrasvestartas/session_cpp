@@ -68,7 +68,13 @@ using wood_session::joint_orient_to_connection_area;
 using wood_session::merge_linked_joints;
 using wood_session::joint_get_divisions;
 using wood_session::side_removal_ss_e_r_1_port;
+using wood_session::side_removal;
+using wood_session::tt_e_p_0;
+using wood_session::tt_e_p_1;
+using wood_session::tt_e_p_2;
 using wood_session::tt_e_p_3;
+using wood_session::tt_e_p_4;
+using wood_session::tt_e_p_5;
 
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -185,9 +191,9 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 3: ss_e_ip_2(joint); break;
                 case 4: ss_e_ip_3(joint); break;
                 case 5: ss_e_ip_4(joint); break;
+                case 6: if (elements) ss_e_ip_5(joint, *elements); break;
+                case 8: if (elements) side_removal(joint, *elements); break;
                 case 9: ss_e_ip_custom(joint); break;
-                // Not ported: 6 (ss_e_ip_5, elements catalog),
-                //             8 (side_removal, pre-detection face removal).
                 default: warn_unimpl("ss_e_ip"); ss_e_ip_1(joint); break;
             }
             break;
@@ -208,7 +214,9 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                     if (all_joints) ss_e_op_5(joint, *all_joints, true);
                     else            ss_e_op_4(joint);
                     break;
+                case 17: ss_e_op_17(joint); break;
                 case 18: ss_e_op_tutorial(joint); break;
+                case 19: ss_e_op_custom(joint); break;
                 default:
                     // Wood falls to ss_e_op_1 by default (wood_joint_lib.cpp:6387).
                     // Session's legacy sentinel `id=-1` (no JOINTS_TYPES file,
@@ -232,6 +240,8 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 22: ts_e_p_3(joint); break;   // wood also routes 22 → ts_e_p_3
                 case 23: ts_e_p_0(joint); break;
                 case 25: ts_e_p_5(joint); break;
+                case 28: if (elements) side_removal(joint, *elements); break;
+                case 29: ts_e_p_custom(joint); break;
                 // Not ported: 24 (ts_e_p_4, 458-line chamfer/extension).
                 default: warn_unimpl("ts_e_p"); ts_e_p_3(joint); break;
             }
@@ -246,6 +256,8 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 33: cr_c_ip_3(joint); break;
                 case 34: cr_c_ip_4(joint); break;
                 case 35: cr_c_ip_5(joint); break;
+                case 38: if (elements) side_removal(joint, *elements); break;
+                case 39: cr_c_ip_custom(joint); break;
                 default: warn_unimpl("cr_c_ip"); cr_c_ip_0(joint); break;
             }
             break;
@@ -253,11 +265,12 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
         // ── tt_e_p (top-top, type 40) ─ wood_joint_lib.cpp:6490-6523
         case 4:
             switch (id) {
-                case 43:
-                    if (elements) tt_e_p_3(joint, *elements);
-                    break;
-                // Not ported: 40-42, 44-48. Falls through to unwired-group
-                // default (empty geometry, joint drops from merge).
+                case 40: if (elements) tt_e_p_0(joint, *elements); break;
+                case 41: if (elements) tt_e_p_1(joint, *elements); break;
+                case 42: if (elements) tt_e_p_2(joint, *elements); break;
+                case 43: if (elements) tt_e_p_3(joint, *elements); break;
+                case 44: if (elements) tt_e_p_4(joint, *elements); break;
+                case 45: if (elements) tt_e_p_5(joint, *elements); break;
                 default: warn_unimpl("tt_e_p"); break;
             }
             break;
@@ -268,18 +281,25 @@ static void joint_create_geometry(WoodJoint& joint, double division_distance,
                 case 54: ss_e_r_3(joint); break;
                 case 55: ss_e_r_2(joint); break;
                 case 56: ss_e_r_0(joint); break;
+                case 57: if (elements) side_removal(joint, *elements); break;
                 case 58:
                     if (elements) side_removal_ss_e_r_1_port(joint, *elements);
                     else          ss_e_r_0(joint);
                     break;
+                case 59: ss_e_r_custom(joint); break;
                 default: warn_unimpl("ss_e_r"); ss_e_r_0(joint); break;
             }
             break;
 
-        // Group 6 (b, needs joint.scale field + slice cut type) is not yet
-        // wired. Falling back to topology-based default keeps the joint
-        // available to the merge — constructors that emit no outlines
-        // simply drop out.
+        // ── b (beam, type 60) ─ wood_joint_lib.cpp:6557-6583
+        case 6:
+            switch (id) {
+                case 60: b_0(joint); break;
+                case 69: b_custom(joint); break;
+                default: warn_unimpl("b"); b_0(joint); break;
+            }
+            break;
+
         default:
             warn_unimpl("unwired-group");
             switch (joint.joint_type) {

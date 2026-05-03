@@ -1779,7 +1779,7 @@ Polyline Polyline::simplify(double tolerance) const {
     return Polyline(simplified);
 }
 
-void polyline_two_rects_from_frame(
+void Polyline::two_rects_from_frame(
     const Point&  p,
     const Vector& segment_vector,
     const Vector& zaxis,

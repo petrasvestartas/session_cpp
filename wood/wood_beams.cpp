@@ -163,10 +163,10 @@ void beam_volumes_pipeline(
         double r1 = segment_radii[c.pid1][c.sid1];
 
         std::array<Polyline, 4> beam_vol;
-        polyline_two_rects_from_frame(
+        Polyline::two_rects_from_frame(
             p0, v0, sn0, type0 == 1, r0, volume_length, flip_male,
             beam_vol[0], beam_vol[1]);
-        polyline_two_rects_from_frame(
+        Polyline::two_rects_from_frame(
             p1, v1, sn1, type1 == 1, r1, volume_length, flip_male,
             beam_vol[2], beam_vol[3]);
 

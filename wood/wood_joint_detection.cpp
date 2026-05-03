@@ -376,13 +376,13 @@ bool plane_to_face(
     }
 
     // 5. Reference axis: midline of two contact segments, scaled ×10 about its midpoint.
-    // Uses scale_line (extend-and-flip semantics) matching wood's cgal_polyline_util.cpp:395-403.
+    // Uses Line::scale (extend-and-flip semantics) matching wood's cgal_polyline_util.cpp:395-403.
     Line c;
-    get_middle_line(cx0_py1__cy1_px0, cx1_py0__cy0_px1, c);
+    Line::get_middle_line(cx0_py1__cy1_px0, cx1_py0__cy0_px1, c);
     {
         double len = c.length();
         if (len < Tolerance::ZERO_TOLERANCE) return false;
-        scale_line(c, 10.0);
+        c.scale(10.0);
     }
 
     Point c_start = c.start();
