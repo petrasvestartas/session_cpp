@@ -3439,35 +3439,5 @@ Mesh Mesh::reflex_fold(const Polyline& cross_section, const Polyline& profile) {
     return Mesh::from_vertices_and_faces(all_pts, faces);
 }
 
-Mesh Mesh::translation_shell(const Polyline& C, const Polyline& P) {
-    size_t nC = C.point_count();
-    size_t nP = P.point_count();
-
-    std::vector<Point> all_pts;
-    all_pts.reserve(nC * nP);
-    for (size_t j = 0; j < nC; ++j)
-        all_pts.push_back(C[j]);
-
-    std::vector<std::vector<size_t>> faces;
-    for (size_t i = 1; i < nP; ++i) {
-        Point pi  = P[i];
-        Point pip = P[i - 1];
-        Vector step(pi[0]-pip[0], pi[1]-pip[1], pi[2]-pip[2]);
-
-        size_t row_start = all_pts.size();
-        for (size_t j = 0; j < nC; ++j) {
-            const Point& prev = all_pts[row_start - nC + j];
-            all_pts.push_back(Point(prev[0]+step[0], prev[1]+step[1], prev[2]+step[2]));
-        }
-        for (size_t j = 0; j + 1 < nC; ++j) {
-            size_t new_j  = row_start + j;
-            size_t old_j  = row_start - nC + j;
-            size_t new_j1 = row_start + j + 1;
-            size_t old_j1 = row_start - nC + j + 1;
-            faces.push_back({new_j, old_j, old_j1, new_j1});
-        }
-    }
-    return Mesh::from_vertices_and_faces(all_pts, faces);
-}
 
 } // namespace session_cpp

@@ -256,8 +256,6 @@ public:
     /// Ruled quad mesh by projecting `profile` onto planes perpendicular to `cross_section`.
     static Mesh reflex_fold(const Polyline& cross_section, const Polyline& profile);
 
-    /// Translation shell: sweep `C` by the displacement steps of path `P`.
-    static Mesh translation_shell(const Polyline& C, const Polyline& P);
 
     /// Per-face miter plate geometry from a shell mesh.
     /// Returns tuples of (top_chamfered, bot_chamfered, top_raw, bot_raw, face_normal).
