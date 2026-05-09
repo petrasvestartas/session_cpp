@@ -248,7 +248,7 @@ static double ShortestDistFromSegment(const Point64& pt,
 static IntersectKind SegsIntersect(const Point64 s1a, const Point64 s1b,
     const Point64 s2a, const Point64 s2b)
 {
-    if (s1a == s2a || s1b == s2a || s1b == s2b) return IntersectKind::none;
+    if (s1a == s2a || s1b == s2a || s1b == s2b || s1a == s2b) return IntersectKind::none;
     double dy1 = static_cast<double>(s1b.y - s1a.y);
     double dx1 = static_cast<double>(s1b.x - s1a.x);
     double dy2 = static_cast<double>(s2b.y - s2a.y);

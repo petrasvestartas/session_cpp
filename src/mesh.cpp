@@ -1728,7 +1728,7 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
                 }
                 } // fix_collinear
                 mesh.triangulation[fk.value()] = tri_list;
-                if (!b_hole_rings.empty())
+                if (!b_hole_rings.empty() && !tri_list.empty())
                     mesh.face_holes[fk.value()] = b_hole_rings;
             }
         }
@@ -1821,7 +1821,7 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
                 }
                 } // fix_collinear
                 mesh.triangulation[fk.value()] = tri_list;
-                if (!t_hole_rings.empty())
+                if (!t_hole_rings.empty() && !tri_list.empty())
                     mesh.face_holes[fk.value()] = t_hole_rings;
             }
         }
