@@ -930,6 +930,39 @@ std::vector<std::array<int,3>> cdt_triangulate(
     Delaunay d(true);
     Paths64 tris = d.Execute(input, result);
 
+    // Post-process: remove any triangles whose centroid falls inside a hole.
+    // The CDT sweep may occasionally triangulate regions that should be empty
+    // (e.g. when the hole bridge is imperfect). Ray-cast from the centroid.
+    if (!holes_2d.empty() && result == TriangulateResult::success) {
+        auto pt_in_poly64 = [](int64_t px, int64_t py, const Path64& poly) -> bool {
+            bool inside = false;
+            size_t n = poly.size();
+            for (size_t i = 0, j = n - 1; i < n; j = i++) {
+                if ((poly[i].y > py) != (poly[j].y > py)) {
+                    double xi = static_cast<double>(poly[i].x) +
+                                static_cast<double>(py - poly[i].y) *
+                                static_cast<double>(poly[j].x - poly[i].x) /
+                                static_cast<double>(poly[j].y - poly[i].y);
+                    if (static_cast<double>(px) < xi) inside = !inside;
+                }
+            }
+            return inside;
+        };
+        tris.erase(
+            std::remove_if(tris.begin(), tris.end(),
+                [&](const Path64& tri) -> bool {
+                    if (tri.size() != 3) return true;
+                    // use the average of the three vertices as centroid
+                    int64_t cx = (tri[0].x + tri[1].x + tri[2].x) / 3;
+                    int64_t cy = (tri[0].y + tri[1].y + tri[2].y) / 3;
+                    for (size_t h = 1; h < input.size(); ++h) {
+                        if (pt_in_poly64(cx, cy, input[h])) return true;
+                    }
+                    return false;
+                }),
+            tris.end());
+    }
+
     std::vector<std::array<int,3>> out;
     for (auto& tri : tris) {
         if (tri.size() != 3) continue;
