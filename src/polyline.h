@@ -256,6 +256,19 @@ public:
     /// Get point at parameter t along a line segment (t=0 is start, t=1 is end)
     static Point point_at(const Point& start, const Point& end, double t);
 
+    /// Generate a polyline along a quadratic Bezier curve defined by three points.
+    ///
+    /// Evaluates B(t) = (1-t)²·p0 + 2(1-t)t·p1 + t²·p2 for ``divisions``
+    /// uniformly-spaced values of t in [0, 1].
+    ///
+    /// @param p0        Start point.
+    /// @param p1        Control point (the parabola apex direction).
+    /// @param p2        End point.
+    /// @param divisions Number of points along the curve (minimum 2).
+    /// @return          Polyline of ``divisions`` sampled points.
+    static Polyline quadratic_points(const Point& p0, const Point& p1, const Point& p2,
+                                     int divisions = 7);
+
     /// Find closest point on line segment to given point, returns parameter t
     static void closest_point_to_line(const Point& point, const Point& line_start, 
                                      const Point& line_end, double& t);
@@ -286,6 +299,17 @@ public:
     /// Check if polyline is closed (first and last points are the same)
     bool is_closed() const;
     Polyline closed() const;
+
+    /// Cut polyline by plane, returning the portion on one side.
+    ///
+    /// By default (flip has no value) the side containing the arc-length
+    /// midpoint is kept.  Pass flip=false to keep the side opposite to the
+    /// plane normal, or flip=true to keep the side aligned with the normal.
+    ///
+    /// Segment-plane intersections are inserted as new vertices.
+    /// Consecutive near-duplicate points (within 1e-6) are removed.
+    Polyline cut_by_plane(const Plane& plane,
+                          std::optional<bool> flip = std::nullopt) const;
 
     /// Calculate center point of polyline
     Point center() const;

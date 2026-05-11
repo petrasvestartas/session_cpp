@@ -1587,15 +1587,19 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
 
         bool is_border = (oi == 0);
         double area = signed_area_2d(bot);
-        if ((is_border && area < 0) || (!is_border && area > 0)) {
+        // Outer boundary: enforce CCW (positive area) for CDT.
+        // Holes: enforce CW (negative area) so Delaunay treats them as inner local minima.
+        bool reversed = false;
+        if (is_border ? (area < 0) : (area > 0)) {
             std::reverse(bot.begin(), bot.end());
             std::reverse(top.begin(), top.end());
+            reversed = true;
         }
 
         if (loft_dbg) {
             fprintf(stderr, "LOFT poly[%zu] is_border=%d area=%.4g reversed=%d bot=%zu top=%zu%s\n",
                 oi, (int)is_border, area,
-                ((is_border && area < 0) || (!is_border && area > 0)) ? 1 : 0,
+                reversed ? 1 : 0,
                 bot.size(), top.size(),
                 (bot.size() != top.size() ? " COUNT_MISMATCH" : ""));
         }

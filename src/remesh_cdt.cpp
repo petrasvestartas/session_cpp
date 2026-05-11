@@ -904,9 +904,28 @@ std::vector<std::array<int,3>> cdt_triangulate(
         return { int64_t(std::round(x * scale)), int64_t(std::round(y * scale)) };
     };
 
+    // Break y-collinearity between hole vertices and border vertices.
+    // Clipper2's sweep-line CDT fails to generate triangles adjacent to a hole
+    // when any hole vertex shares the same int64 y-coordinate as a border vertex
+    // (constraint edges become collinear at that y level).
+    // Fix: shift each conflicting hole vertex by -1 int64 unit in y (≈ 1 nm).
+    // This is done consistently in both flat/pt_map and CDT input so all indices remain valid.
+    std::unordered_set<int64_t> border_ys;
+    for (const auto& p : border_2d)
+        border_ys.insert(int64_t(std::round(p.second * scale)));
+
+    std::vector<std::vector<std::pair<double,double>>> holes_adj = holes_2d;
+    for (auto& hole : holes_adj) {
+        for (auto& pt : hole) {
+            int64_t iy = int64_t(std::round(pt.second * scale));
+            if (border_ys.count(iy))
+                pt.second = double(iy - 1) / scale;  // shift down 1 int64 unit
+        }
+    }
+
     std::vector<std::pair<double,double>> flat;
     for (auto& p : border_2d) flat.push_back(p);
-    for (auto& h : holes_2d) for (auto& p : h) flat.push_back(p);
+    for (auto& h : holes_adj) for (auto& p : h) flat.push_back(p);
 
     std::unordered_map<std::pair<int64_t,int64_t>, int, P64Hash> pt_map;
     pt_map.reserve(flat.size());
@@ -924,16 +943,32 @@ std::vector<std::array<int,3>> cdt_triangulate(
 
     Paths64 input;
     input.push_back(make_path(border_2d));
-    for (auto& h : holes_2d) input.push_back(make_path(h));
+    for (auto& h : holes_adj) input.push_back(make_path(h));
 
     TriangulateResult result;
     Delaunay d(true);
     Paths64 tris = d.Execute(input, result);
 
-    // Post-process: remove any triangles whose centroid falls inside a hole.
-    // The CDT sweep may occasionally triangulate regions that should be empty
-    // (e.g. when the hole bridge is imperfect). Ray-cast from the centroid.
+    // Post-process: remove triangles that fall inside a hole.
+    // Three complementary tests are applied:
+    //   1. Vertex-set test: all 3 triangle vertices belong to the same hole's vertex set →
+    //      triangle is entirely inside that hole.
+    //   2. Sample-point test: centroid only — if it lies inside a hole or outside the outer
+    //      boundary the triangle is invalid. Edge midpoints are intentionally excluded:
+    //      valid triangles adjacent to a hole share an edge with the hole boundary, so
+    //      their edge midpoints land exactly on the hole boundary in int64 space and
+    //      pt_in_poly64 classifies those as "inside", causing false-positive removal.
     if (!holes_2d.empty() && result == TriangulateResult::success) {
+        // Build a set of scaled (x,y) coords for each hole polygon.
+        using P64 = std::pair<int64_t,int64_t>;
+        std::vector<std::unordered_set<P64, P64Hash>> hole_vsets;
+        hole_vsets.reserve(input.size() - 1);
+        for (size_t h = 1; h < input.size(); ++h) {
+            std::unordered_set<P64, P64Hash> vs;
+            for (const auto& pt : input[h]) vs.insert({pt.x, pt.y});
+            hole_vsets.push_back(std::move(vs));
+        }
+
         auto pt_in_poly64 = [](int64_t px, int64_t py, const Path64& poly) -> bool {
             bool inside = false;
             size_t n = poly.size();
@@ -948,16 +983,36 @@ std::vector<std::array<int,3>> cdt_triangulate(
             }
             return inside;
         };
+
+        // Returns true if (px,py) is invalid: inside any hole OR outside outer boundary.
+        auto pt_invalid = [&](int64_t px, int64_t py) -> bool {
+            if (!pt_in_poly64(px, py, input[0])) return true;   // outside outer boundary
+            for (size_t h = 1; h < input.size(); ++h)
+                if (pt_in_poly64(px, py, input[h])) return true; // inside a hole
+            return false;
+        };
+
         tris.erase(
             std::remove_if(tris.begin(), tris.end(),
                 [&](const Path64& tri) -> bool {
                     if (tri.size() != 3) return true;
-                    // use the average of the three vertices as centroid
-                    int64_t cx = (tri[0].x + tri[1].x + tri[2].x) / 3;
-                    int64_t cy = (tri[0].y + tri[1].y + tri[2].y) / 3;
-                    for (size_t h = 1; h < input.size(); ++h) {
-                        if (pt_in_poly64(cx, cy, input[h])) return true;
+
+                    // Test 1: all 3 vertices in the same hole's vertex set.
+                    for (size_t hi = 0; hi < hole_vsets.size(); ++hi) {
+                        const auto& vs = hole_vsets[hi];
+                        if (vs.count({tri[0].x, tri[0].y}) &&
+                            vs.count({tri[1].x, tri[1].y}) &&
+                            vs.count({tri[2].x, tri[2].y}))
+                            return true;
                     }
+
+                    // Test 2: centroid inside hole or outside outer boundary → remove.
+                    {
+                        int64_t cx = (tri[0].x + tri[1].x + tri[2].x) / 3;
+                        int64_t cy = (tri[0].y + tri[1].y + tri[2].y) / 3;
+                        if (pt_invalid(cx, cy)) return true;
+                    }
+
                     return false;
                 }),
             tris.end());

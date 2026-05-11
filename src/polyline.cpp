@@ -1822,4 +1822,106 @@ void Polyline::two_rects_from_frame(
     });
 }
 
+Polyline Polyline::quadratic_points(const Point& p0, const Point& p1, const Point& p2,
+                                    int divisions)
+{
+    if (divisions < 2) divisions = 2;
+    std::vector<Point> pts;
+    pts.reserve(divisions);
+    double d = static_cast<double>(divisions - 1);
+    for (int k = 0; k < divisions; k++) {
+        double t  = k / d;
+        double s  = 1.0 - t;
+        double s2 = s * s;
+        double ts = 2.0 * s * t;
+        double t2 = t * t;
+        pts.emplace_back(s2*p0[0] + ts*p1[0] + t2*p2[0],
+                         s2*p0[1] + ts*p1[1] + t2*p2[1],
+                         s2*p0[2] + ts*p1[2] + t2*p2[2]);
+    }
+    return Polyline(pts);
+}
+
+Polyline Polyline::cut_by_plane(const Plane& plane,
+                                std::optional<bool> flip) const
+{
+    if (point_count() < 2)
+        return *this;
+
+    const Vector& n  = plane.z_axis();
+    const Point&  o  = plane.origin();
+
+    // Signed distance of a point from the plane: dot(n, p - o)
+    auto signed_dist = [&](const Point& p) -> double {
+        return n.dot(p - o);
+    };
+
+    // Determine which side to keep
+    double keep_sign;
+    if (!flip.has_value()) {
+        // Find arc-length midpoint and keep its side
+        double half_len  = length() * 0.5;
+        double acc       = 0.0;
+        Point  mid       = get_point(0);
+        size_t n_pts     = point_count();
+        for (size_t i = 0; i + 1 < n_pts; i++) {
+            Point a = get_point(i);
+            Point b = get_point(i + 1);
+            Vector d(b[0]-a[0], b[1]-a[1], b[2]-a[2]);
+            double seg_len = d.magnitude();
+            if (acc + seg_len >= half_len) {
+                double t = (seg_len > 1e-14) ? (half_len - acc) / seg_len : 0.0;
+                mid = Point(a[0] + t*d[0], a[1] + t*d[1], a[2] + t*d[2]);
+                break;
+            }
+            acc += seg_len;
+        }
+        keep_sign = (signed_dist(mid) >= 0.0) ? 1.0 : -1.0;
+    } else {
+        keep_sign = flip.value() ? 1.0 : -1.0;
+    }
+
+    auto on_keep_side = [&](const Point& p) -> bool {
+        return signed_dist(p) * keep_sign >= 0.0;
+    };
+
+    std::vector<Point> result;
+    size_t n_pts = point_count();
+    for (size_t i = 0; i + 1 < n_pts; i++) {
+        Point a = get_point(i);
+        Point b = get_point(i + 1);
+        if (on_keep_side(a))
+            result.push_back(a);
+        double dA = signed_dist(a);
+        double dB = signed_dist(b);
+        // Crosses the plane when signs differ (exclude exact-on-plane cases to
+        // avoid double-adding a vertex that is on the plane).
+        if ((dA > 0.0) != (dB > 0.0)) {
+            double t   = dA / (dA - dB);
+            result.push_back(Point(a[0] + t*(b[0]-a[0]),
+                                   a[1] + t*(b[1]-a[1]),
+                                   a[2] + t*(b[2]-a[2])));
+        }
+    }
+    if (on_keep_side(get_point(n_pts - 1)))
+        result.push_back(get_point(n_pts - 1));
+
+    // Remove consecutive near-duplicate points
+    const double tol = 1e-6;
+    std::vector<Point> deduped;
+    for (const auto& p : result) {
+        if (deduped.empty()) {
+            deduped.push_back(p);
+        } else {
+            Vector d(p[0]-deduped.back()[0],
+                     p[1]-deduped.back()[1],
+                     p[2]-deduped.back()[2]);
+            if (d.magnitude() > tol)
+                deduped.push_back(p);
+        }
+    }
+
+    return Polyline(deduped);
+}
+
 } // namespace session_cpp
