@@ -1,11 +1,11 @@
 {
-    "guid": "b054dc0e-67a1-4b96-8558-a2c60e5396ba",
+    "guid": "cc2670e8-110d-4330-bbfe-92d55cee5515",
     "name": "test_point",
     "pointcolor": {
         "a": 255,
         "b": 64,
         "g": 128,
-        "guid": "c07c60f8-81ce-4ba5-8944-85e158996105",
+        "guid": "1aac5968-bdfe-4f28-9acc-fd82f420ad33",
         "name": "my_color",
         "r": 255,
         "type": "Color"
@@ -14,7 +14,7 @@
     "width": 2.0,
     "x": 1.5,
     "xform": {
-        "guid": "ac75bd63-fc75-4312-b9c6-17c2cdca8a7e",
+        "guid": "4d045563-e8f0-4c4f-89e7-86130fc53566",
         "m": [
             1.0,
             0.0,
