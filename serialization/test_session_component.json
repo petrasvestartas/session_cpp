@@ -1,10 +1,10 @@
 {
   "type": "Session",
   "name": "my_session",
-  "guid": "6f78def0-ce98-4cdb-bac1-cd5f0e275840",
+  "guid": "2dbe855e-01ac-499e-9fef-7919542c22d9",
   "objects": {
     "type": "Objects",
-    "guid": "f626c31e-387b-4ea5-a6ff-2524c3ccaa12",
+    "guid": "b9c280bf-3b60-4bb2-a114-c4f923c1ba06",
     "name": "my_objects",
     "bboxes": [],
     "breps": [],
@@ -23,18 +23,18 @@
         "height": 650,
         "rise": 453,
         "type": "FloorBuilder",
-        "guid": "e7ca4cb7-e0d6-4679-9de2-20fe3aabaff2",
+        "guid": "d543868a-7309-4fe1-8a78-44ea4de76faf",
         "name": "floor_builder"
       }
     ]
   },
   "tree": {
     "type": "Tree",
-    "guid": "0f2972ea-27bb-47bc-8f85-545a830a6966",
+    "guid": "d47a956d-1c0e-4dff-9430-5a104684b394",
     "name": "my_session_tree",
     "root": {
       "type": "TreeNode",
-      "guid": "3bd6228b-cd50-4e94-a9f6-4833f40e69d7",
+      "guid": "d1d7e0a8-a85d-47f5-aab5-7b76829b6086",
       "name": "my_session",
       "children": []
     }
@@ -42,12 +42,12 @@
   "graph": {
     "type": "Graph",
     "name": "my_session_graph",
-    "guid": "066f65fb-16ce-487d-bf3c-b758cd2172f6",
+    "guid": "58534dc0-4afd-41dd-9719-1f9cb7c1ccb4",
     "vertices": [
       {
         "type": "Vertex",
-        "name": "e7ca4cb7-e0d6-4679-9de2-20fe3aabaff2",
-        "guid": "f135de56-ecba-461f-b66e-1964cfc7c256",
+        "name": "d543868a-7309-4fe1-8a78-44ea4de76faf",
+        "guid": "19c417d5-b73d-4c9e-b2aa-daead9d26295",
         "attribute": "component_floor_builder",
         "index": 0
       }
