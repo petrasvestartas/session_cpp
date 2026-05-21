@@ -780,6 +780,472 @@ std::optional<std::vector<size_t>> Mesh::vertex_vertices(size_t vertex_key) cons
     return neighbors;
 }
 
+std::optional<std::vector<size_t>> Mesh::vertex_neighbors(size_t vertex_key, bool ordered) const {
+    auto it = halfedge.find(vertex_key);
+    if (it == halfedge.end()) return std::nullopt;
+    std::vector<size_t> nbrs;
+    for (const auto& [v, _] : it->second) nbrs.push_back(v);
+    if (!ordered || nbrs.size() <= 1) return nbrs;
+    size_t start = nbrs[0];
+    for (auto n : nbrs) {
+        auto fit = it->second.find(n);
+        if (fit != it->second.end() && !fit->second.has_value()) { start = n; break; }
+    }
+    auto cur_face_at = [&](size_t a, size_t b) -> std::optional<size_t> {
+        auto ait = halfedge.find(a);
+        if (ait == halfedge.end()) return std::nullopt;
+        auto bit = ait->second.find(b);
+        if (bit == ait->second.end()) return std::nullopt;
+        return bit->second;
+    };
+    auto fkey = cur_face_at(start, vertex_key);
+    std::vector<size_t> out{ start };
+    int guard = 0;
+    while (fkey.has_value() && guard < 10000) {
+        ++guard;
+        auto vit = face.find(*fkey);
+        if (vit == face.end()) break;
+        const auto& verts = vit->second;
+        size_t i = 0;
+        bool found = false;
+        for (; i < verts.size(); ++i) if (verts[i] == vertex_key) { found = true; break; }
+        if (!found) break;
+        size_t nbr = verts[(i + 1) % verts.size()];
+        if (nbr == start) break;
+        out.push_back(nbr);
+        fkey = cur_face_at(nbr, vertex_key);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::vertices_on_boundary() const {
+    std::vector<size_t> out;
+    for (const auto& [v, _] : vertex) {
+        if (is_vertex_on_boundary(v)) out.push_back(v);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges_on_boundary() const {
+    std::vector<std::pair<size_t, size_t>> out;
+    for (const auto& [u, nbrs] : halfedge) {
+        for (const auto& [v, f] : nbrs) {
+            if (!f.has_value()) out.emplace_back(u, v);
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::vector<size_t> Mesh::faces_on_boundary() const {
+    std::vector<size_t> out;
+    for (const auto& [f, _] : face) {
+        if (is_face_on_boundary(f)) out.push_back(f);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::optional<size_t> Mesh::halfedge_face(std::pair<size_t, size_t> edge) const {
+    auto it = halfedge.find(edge.first);
+    if (it == halfedge.end()) return std::nullopt;
+    auto jt = it->second.find(edge.second);
+    if (jt == it->second.end()) return std::nullopt;
+    return jt->second;
+}
+
+std::optional<std::pair<size_t, size_t>> Mesh::halfedge_after(std::pair<size_t, size_t> edge) const {
+    auto [u, v] = edge;
+    auto f = halfedge_face(edge);
+    if (f.has_value()) {
+        auto vit = face.find(*f);
+        if (vit == face.end()) return std::nullopt;
+        const auto& verts = vit->second;
+        for (size_t i = 0; i < verts.size(); ++i) {
+            if (verts[i] == v) {
+                return std::make_pair(v, verts[(i + 1) % verts.size()]);
+            }
+        }
+        return std::nullopt;
+    }
+    auto it = halfedge.find(v);
+    if (it == halfedge.end()) return std::nullopt;
+    for (const auto& [w, fw] : it->second) {
+        if (w != u && !fw.has_value()) {
+            return std::make_pair(v, w);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::pair<size_t, size_t>> Mesh::halfedge_before(std::pair<size_t, size_t> edge) const {
+    auto [u, v] = edge;
+    auto f = halfedge_face(edge);
+    if (f.has_value()) {
+        auto vit = face.find(*f);
+        if (vit == face.end()) return std::nullopt;
+        const auto& verts = vit->second;
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            if (verts[i] == u) {
+                return std::make_pair(verts[(i + n - 1) % n], u);
+            }
+        }
+        return std::nullopt;
+    }
+    auto it = halfedge.find(u);
+    if (it == halfedge.end()) return std::nullopt;
+    for (const auto& [w, _] : it->second) {
+        if (w == v) continue;
+        auto wit = halfedge.find(w);
+        if (wit == halfedge.end()) continue;
+        auto wjt = wit->second.find(u);
+        if (wjt != wit->second.end() && !wjt->second.has_value()) {
+            return std::make_pair(w, u);
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::halfedge_loop(std::pair<size_t, size_t> edge) const {
+    if (is_edge_on_boundary(edge.first, edge.second)) {
+        std::vector<std::pair<size_t, size_t>> edges{ edge };
+        size_t u = edge.first, v = edge.second;
+        int guard = 0;
+        while (guard < 10000) {
+            ++guard;
+            auto nbrs_opt = vertex_neighbors(v, false);
+            if (!nbrs_opt.has_value() || nbrs_opt->size() == 2) break;
+            std::optional<size_t> nbr;
+            for (auto temp : *nbrs_opt) {
+                if (temp == u) continue;
+                if (is_edge_on_boundary(v, temp)) { nbr = temp; break; }
+            }
+            if (!nbr.has_value()) break;
+            u = v; v = *nbr;
+            edges.emplace_back(u, v);
+            if (v == edges.front().first) break;
+        }
+        return edges;
+    }
+    std::vector<std::pair<size_t, size_t>> edges{ edge };
+    size_t u = edge.first, v = edge.second;
+    int guard = 0;
+    while (guard < 10000) {
+        ++guard;
+        auto nbrs_opt = vertex_neighbors(v, true);
+        if (!nbrs_opt.has_value() || nbrs_opt->size() != 4) break;
+        const auto& nbrs = *nbrs_opt;
+        size_t i = 0;
+        bool found = false;
+        for (; i < nbrs.size(); ++i) if (nbrs[i] == u) { found = true; break; }
+        if (!found) break;
+        u = v;
+        size_t n = nbrs.size();
+        v = nbrs[(i + n - 2) % n];
+        edges.emplace_back(u, v);
+        if (v == edges.front().first) break;
+    }
+    return edges;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::halfedge_strip(std::pair<size_t, size_t> edge) const {
+    size_t u = edge.first, v = edge.second;
+    std::vector<std::pair<size_t, size_t>> edges{ edge };
+    int guard = 0;
+    while (guard < 10000) {
+        ++guard;
+        auto fopt = halfedge_face({ u, v });
+        if (!fopt.has_value()) break;
+        auto vit = face.find(*fopt);
+        if (vit == face.end()) break;
+        const auto& verts = vit->second;
+        if (verts.size() != 4) break;
+        size_t i = 0;
+        bool found = false;
+        for (; i < verts.size(); ++i) if (verts[i] == u) { found = true; break; }
+        if (!found) break;
+        size_t n = verts.size();
+        u = verts[(i + n - 1) % n];
+        v = verts[(i + n - 2) % n];
+        edges.emplace_back(u, v);
+        if (std::make_pair(u, v) == edge) break;
+    }
+    return edges;
+}
+
+namespace {
+template <typename T>
+std::vector<T> lcg_sample_impl(const std::vector<T>& keys, size_t size, uint32_t seed) {
+    if (keys.empty() || size == 0) return {};
+    size_t n = keys.size();
+    size_t take = std::min(size, n);
+    if (seed == 0) {
+        std::vector<T> out(keys.begin(), keys.begin() + take);
+        return out;
+    }
+    uint32_t s = seed & 0x7FFFFFFFu;
+    if (s == 0) s = 1;
+    std::set<size_t> used;
+    std::vector<T> out;
+    out.reserve(take);
+    while (out.size() < take) {
+        s = (s * 1103515245u + 12345u) & 0x7FFFFFFFu;
+        size_t i = static_cast<size_t>(s) % n;
+        if (used.insert(i).second) out.push_back(keys[i]);
+    }
+    return out;
+}
+}
+
+std::vector<size_t> Mesh::vertex_sample(size_t size, uint32_t seed) const {
+    std::vector<size_t> keys;
+    for (const auto& [k, _] : vertex) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+    return lcg_sample_impl(keys, size, seed);
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edge_sample(size_t size, uint32_t seed) const {
+    auto e = edges();
+    return lcg_sample_impl(e, size, seed);
+}
+
+std::vector<size_t> Mesh::face_sample(size_t size, uint32_t seed) const {
+    std::vector<size_t> keys;
+    for (const auto& [k, _] : face) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+    return lcg_sample_impl(keys, size, seed);
+}
+
+std::optional<Point> Mesh::face_center(size_t face_key) const { return face_centroid(face_key); }
+
+std::optional<Polyline> Mesh::face_polygon(size_t face_key) const {
+    auto pts_opt = face_points(face_key);
+    if (!pts_opt.has_value()) return std::nullopt;
+    auto pts = *pts_opt;
+    if (!pts.empty()) {
+        if (!(pts.front() == pts.back())) pts.push_back(pts.front());
+    }
+    return Polyline{ pts };
+}
+
+void Mesh::flip_cycles() { flip(); }
+
+void Mesh::update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
+    for (const auto& [k, v] : attrs) default_vertex_attributes[k] = v;
+}
+void Mesh::update_default_face_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
+    for (const auto& [k, v] : attrs) default_face_attributes[k] = v;
+}
+void Mesh::update_default_edge_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
+    for (const auto& [k, v] : attrs) default_edge_attributes[k] = v;
+}
+
+std::optional<double> Mesh::vertex_attribute(size_t key, const std::string& name) const {
+    auto it = vertex.find(key);
+    if (it == vertex.end()) return std::nullopt;
+    auto ait = it->second.attributes.find(name);
+    if (ait != it->second.attributes.end()) return ait->second;
+    auto dit = default_vertex_attributes.find(name);
+    if (dit != default_vertex_attributes.end()) return dit->second;
+    return std::nullopt;
+}
+
+void Mesh::set_vertex_attribute(size_t key, const std::string& name, double value) {
+    auto it = vertex.find(key);
+    if (it == vertex.end()) return;
+    it->second.attributes[name] = value;
+}
+
+std::optional<double> Mesh::face_attribute(size_t fkey, const std::string& name) const {
+    if (face.find(fkey) == face.end()) return std::nullopt;
+    auto fit = facedata.find(fkey);
+    if (fit != facedata.end()) {
+        auto ait = fit->second.find(name);
+        if (ait != fit->second.end()) return ait->second;
+    }
+    auto dit = default_face_attributes.find(name);
+    if (dit != default_face_attributes.end()) return dit->second;
+    return std::nullopt;
+}
+
+void Mesh::set_face_attribute(size_t fkey, const std::string& name, double value) {
+    if (face.find(fkey) == face.end()) return;
+    facedata[fkey][name] = value;
+}
+
+std::optional<double> Mesh::edge_attribute(std::pair<size_t, size_t> edge, const std::string& name) const {
+    auto [u, v] = edge;
+    bool exists = false;
+    auto uit = halfedge.find(u);
+    if (uit != halfedge.end() && uit->second.find(v) != uit->second.end()) exists = true;
+    auto vit = halfedge.find(v);
+    if (vit != halfedge.end() && vit->second.find(u) != vit->second.end()) exists = true;
+    if (!exists) return std::nullopt;
+    auto eit = edgedata.find({ u, v });
+    if (eit == edgedata.end()) eit = edgedata.find({ v, u });
+    if (eit != edgedata.end()) {
+        auto ait = eit->second.find(name);
+        if (ait != eit->second.end()) return ait->second;
+    }
+    auto dit = default_edge_attributes.find(name);
+    if (dit != default_edge_attributes.end()) return dit->second;
+    return std::nullopt;
+}
+
+void Mesh::set_edge_attribute(std::pair<size_t, size_t> edge, const std::string& name, double value) {
+    auto [u, v] = edge;
+    auto key = (edgedata.find({ v, u }) != edgedata.end()) ? std::make_pair(v, u) : std::make_pair(u, v);
+    edgedata[key][name] = value;
+}
+
+std::vector<std::optional<double>> Mesh::vertices_attribute(const std::string& name, const std::vector<size_t>* keys) const {
+    std::vector<size_t> all;
+    if (!keys) {
+        for (const auto& [k, _] : vertex) all.push_back(k);
+        std::sort(all.begin(), all.end());
+        keys = &all;
+    }
+    std::vector<std::optional<double>> out;
+    out.reserve(keys->size());
+    for (auto k : *keys) out.push_back(vertex_attribute(k, name));
+    return out;
+}
+
+void Mesh::set_vertices_attribute(const std::string& name, double value, const std::vector<size_t>* keys) {
+    std::vector<size_t> all;
+    if (!keys) {
+        for (const auto& [k, _] : vertex) all.push_back(k);
+        std::sort(all.begin(), all.end());
+        keys = &all;
+    }
+    for (auto k : *keys) set_vertex_attribute(k, name, value);
+}
+
+std::vector<std::optional<double>> Mesh::faces_attribute(const std::string& name, const std::vector<size_t>* keys) const {
+    std::vector<size_t> all;
+    if (!keys) {
+        for (const auto& [k, _] : face) all.push_back(k);
+        std::sort(all.begin(), all.end());
+        keys = &all;
+    }
+    std::vector<std::optional<double>> out;
+    out.reserve(keys->size());
+    for (auto k : *keys) out.push_back(face_attribute(k, name));
+    return out;
+}
+
+void Mesh::set_faces_attribute(const std::string& name, double value, const std::vector<size_t>* keys) {
+    std::vector<size_t> all;
+    if (!keys) {
+        for (const auto& [k, _] : face) all.push_back(k);
+        std::sort(all.begin(), all.end());
+        keys = &all;
+    }
+    for (auto k : *keys) set_face_attribute(k, name, value);
+}
+
+std::vector<std::optional<double>> Mesh::edges_attribute(const std::string& name, const std::vector<std::pair<size_t, size_t>>* keys) const {
+    std::vector<std::pair<size_t, size_t>> all;
+    if (!keys) { all = edges(); keys = &all; }
+    std::vector<std::optional<double>> out;
+    out.reserve(keys->size());
+    for (auto e : *keys) out.push_back(edge_attribute(e, name));
+    return out;
+}
+
+void Mesh::set_edges_attribute(const std::string& name, double value, const std::vector<std::pair<size_t, size_t>>* keys) {
+    std::vector<std::pair<size_t, size_t>> all;
+    if (!keys) { all = edges(); keys = &all; }
+    for (auto e : *keys) set_edge_attribute(e, name, value);
+}
+
+std::vector<size_t> Mesh::vertices_where(const std::vector<std::pair<std::string, double>>& conditions) const {
+    std::vector<size_t> out;
+    std::vector<size_t> keys;
+    for (const auto& [k, _] : vertex) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+    for (auto k : keys) {
+        bool ok = true;
+        for (const auto& [n, v] : conditions) {
+            auto val = vertex_attribute(k, n);
+            if (!val.has_value() || *val != v) { ok = false; break; }
+        }
+        if (ok) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::faces_where(const std::vector<std::pair<std::string, double>>& conditions) const {
+    std::vector<size_t> out;
+    std::vector<size_t> keys;
+    for (const auto& [k, _] : face) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+    for (auto k : keys) {
+        bool ok = true;
+        for (const auto& [n, v] : conditions) {
+            auto val = face_attribute(k, n);
+            if (!val.has_value() || *val != v) { ok = false; break; }
+        }
+        if (ok) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges_where(const std::vector<std::pair<std::string, double>>& conditions) const {
+    std::vector<std::pair<size_t, size_t>> out;
+    for (auto e : edges()) {
+        bool ok = true;
+        for (const auto& [n, v] : conditions) {
+            auto val = edge_attribute(e, n);
+            if (!val.has_value() || *val != v) { ok = false; break; }
+        }
+        if (ok) out.push_back(e);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::vertices_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const {
+    std::vector<size_t> out;
+    std::vector<size_t> keys;
+    for (const auto& [k, _] : vertex) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+    for (auto k : keys) {
+        std::map<std::string, double> attrs = default_vertex_attributes;
+        auto vit = vertex.find(k);
+        if (vit != vertex.end()) for (const auto& [kk, vv] : vit->second.attributes) attrs[kk] = vv;
+        if (pred(k, attrs)) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::faces_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const {
+    std::vector<size_t> out;
+    std::vector<size_t> keys;
+    for (const auto& [k, _] : face) keys.push_back(k);
+    std::sort(keys.begin(), keys.end());
+    for (auto k : keys) {
+        std::map<std::string, double> attrs = default_face_attributes;
+        auto fit = facedata.find(k);
+        if (fit != facedata.end()) for (const auto& [kk, vv] : fit->second) attrs[kk] = vv;
+        if (pred(k, attrs)) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges_where_predicate(const std::function<bool(std::pair<size_t, size_t>, const std::map<std::string, double>&)>& pred) const {
+    std::vector<std::pair<size_t, size_t>> out;
+    for (auto e : edges()) {
+        std::map<std::string, double> attrs = default_edge_attributes;
+        auto eit = edgedata.find(e);
+        if (eit == edgedata.end()) eit = edgedata.find({ e.second, e.first });
+        if (eit != edgedata.end()) for (const auto& [kk, vv] : eit->second) attrs[kk] = vv;
+        if (pred(e, attrs)) out.push_back(e);
+    }
+    return out;
+}
+
 bool Mesh::is_edge_on_boundary(size_t u, size_t v) const {
     auto check = [&](size_t a, size_t b) {
         auto it = halfedge.find(a);
@@ -964,6 +1430,10 @@ std::optional<Point> Mesh::face_centroid(size_t face_key) const {
 }
 
 std::optional<Vector> Mesh::face_normal(size_t face_key) const {
+    return face_normal_unitized(face_key, true);
+}
+
+std::optional<Vector> Mesh::face_normal_unitized(size_t face_key, bool unitized) const {
     auto vertices_opt = face_vertices(face_key);
     if (!vertices_opt.has_value() || vertices_opt->size() < 3) {
         return std::nullopt;
@@ -986,6 +1456,9 @@ std::optional<Vector> Mesh::face_normal(size_t face_key) const {
     Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
 
     Vector normal = u.cross(v);
+    if (!unitized) {
+        return Vector(normal[0], normal[1], normal[2]);
+    }
     double len = normal.magnitude();
 
     if (len > Tolerance::ZERO_TOLERANCE) {
