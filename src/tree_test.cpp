@@ -15,7 +15,7 @@ MINI_TEST("TreeNode", "Constructor") {
 
     // Constructor with name
     auto n = std::make_shared<TreeNode>("my_named_node");
-    n->color = Color(255, 0, 0, 255);
+    n->color = Color(1.0f, 0.0f, 0.0f, 1.0f);
 
     // Minimal string representation
     std::string nstr = n->str();
@@ -26,7 +26,7 @@ MINI_TEST("TreeNode", "Constructor") {
     MINI_CHECK(n0->name == "my_node");
     MINI_CHECK(!n0->guid().empty());
     MINI_CHECK(n->name == "my_named_node");
-    MINI_CHECK(n->color.has_value() && n->color->r == 255);
+    MINI_CHECK(n->color.has_value() && n->color->r == 1.0f);
     MINI_CHECK(nstr.find("TreeNode(my_named_node") != std::string::npos);
     MINI_CHECK(*n == *n);
     MINI_CHECK(*n != *nother);

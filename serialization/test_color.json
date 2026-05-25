@@ -1,9 +1,9 @@
 {
-    "a": 255,
-    "b": 64,
-    "g": 128,
-    "guid": "1f402dde-be9e-42ff-82ac-89053c2d2508",
+    "a": 1.0,
+    "b": 0.25,
+    "g": 0.5,
+    "guid": "27d07cf9-b434-4c3b-ac52-c13cc1949ebd",
     "name": "serialization/test_color",
-    "r": 255,
+    "r": 1.0,
     "type": "Color"
 }

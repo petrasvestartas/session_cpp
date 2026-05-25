@@ -94,8 +94,8 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 const char descriptor_table_protodef_color_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\013color.proto\022\rsession_proto\"O\n\005Color\022\014\n"
-    "\004guid\030\001 \001(\t\022\t\n\001r\030\002 \001(\005\022\t\n\001g\030\003 \001(\005\022\t\n\001b\030\004"
-    " \001(\005\022\t\n\001a\030\005 \001(\005\022\014\n\004name\030\006 \001(\tb\006proto3"
+    "\004guid\030\001 \001(\t\022\t\n\001r\030\002 \001(\002\022\t\n\001g\030\003 \001(\002\022\t\n\001b\030\004"
+    " \001(\002\022\t\n\001a\030\005 \001(\002\022\014\n\004name\030\006 \001(\tb\006proto3"
 };
 static ::absl::once_flag descriptor_table_color_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_color_2eproto = {
@@ -265,21 +265,21 @@ Color::_table_ = {
     {::_pbi::TcParser::FastUS1,
      {10, 0, 0,
       PROTOBUF_FIELD_OFFSET(Color, _impl_.guid_)}},
-    // int32 r = 2;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Color, _impl_.r_), 2>(),
-     {16, 2, 0,
+    // float r = 2;
+    {::_pbi::TcParser::FastF32S1,
+     {21, 2, 0,
       PROTOBUF_FIELD_OFFSET(Color, _impl_.r_)}},
-    // int32 g = 3;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Color, _impl_.g_), 3>(),
-     {24, 3, 0,
+    // float g = 3;
+    {::_pbi::TcParser::FastF32S1,
+     {29, 3, 0,
       PROTOBUF_FIELD_OFFSET(Color, _impl_.g_)}},
-    // int32 b = 4;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Color, _impl_.b_), 4>(),
-     {32, 4, 0,
+    // float b = 4;
+    {::_pbi::TcParser::FastF32S1,
+     {37, 4, 0,
       PROTOBUF_FIELD_OFFSET(Color, _impl_.b_)}},
-    // int32 a = 5;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Color, _impl_.a_), 5>(),
-     {40, 5, 0,
+    // float a = 5;
+    {::_pbi::TcParser::FastF32S1,
+     {45, 5, 0,
       PROTOBUF_FIELD_OFFSET(Color, _impl_.a_)}},
     // string name = 6;
     {::_pbi::TcParser::FastUS1,
@@ -291,14 +291,14 @@ Color::_table_ = {
   }}, {{
     // string guid = 1;
     {PROTOBUF_FIELD_OFFSET(Color, _impl_.guid_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
-    // int32 r = 2;
-    {PROTOBUF_FIELD_OFFSET(Color, _impl_.r_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
-    // int32 g = 3;
-    {PROTOBUF_FIELD_OFFSET(Color, _impl_.g_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
-    // int32 b = 4;
-    {PROTOBUF_FIELD_OFFSET(Color, _impl_.b_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
-    // int32 a = 5;
-    {PROTOBUF_FIELD_OFFSET(Color, _impl_.a_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+    // float r = 2;
+    {PROTOBUF_FIELD_OFFSET(Color, _impl_.r_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+    // float g = 3;
+    {PROTOBUF_FIELD_OFFSET(Color, _impl_.g_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+    // float b = 4;
+    {PROTOBUF_FIELD_OFFSET(Color, _impl_.b_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
+    // float a = 5;
+    {PROTOBUF_FIELD_OFFSET(Color, _impl_.a_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kFloat)},
     // string name = 6;
     {PROTOBUF_FIELD_OFFSET(Color, _impl_.name_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
   }},
@@ -364,39 +364,39 @@ PROTOBUF_NOINLINE void Color::Clear() {
     }
   }
 
-  // int32 r = 2;
+  // float r = 2;
   if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-    if (this_._internal_r() != 0) {
-      target =
-          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<2>(
-              stream, this_._internal_r(), target);
+    if (::absl::bit_cast<::uint32_t>(this_._internal_r()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteFloatToArray(
+          2, this_._internal_r(), target);
     }
   }
 
-  // int32 g = 3;
+  // float g = 3;
   if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-    if (this_._internal_g() != 0) {
-      target =
-          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<3>(
-              stream, this_._internal_g(), target);
+    if (::absl::bit_cast<::uint32_t>(this_._internal_g()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteFloatToArray(
+          3, this_._internal_g(), target);
     }
   }
 
-  // int32 b = 4;
+  // float b = 4;
   if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-    if (this_._internal_b() != 0) {
-      target =
-          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<4>(
-              stream, this_._internal_b(), target);
+    if (::absl::bit_cast<::uint32_t>(this_._internal_b()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteFloatToArray(
+          4, this_._internal_b(), target);
     }
   }
 
-  // int32 a = 5;
+  // float a = 5;
   if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-    if (this_._internal_a() != 0) {
-      target =
-          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<5>(
-              stream, this_._internal_a(), target);
+    if (::absl::bit_cast<::uint32_t>(this_._internal_a()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteFloatToArray(
+          5, this_._internal_a(), target);
     }
   }
 
@@ -450,32 +450,28 @@ PROTOBUF_NOINLINE void Color::Clear() {
                                         this_._internal_name());
       }
     }
-    // int32 r = 2;
+    // float r = 2;
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      if (this_._internal_r() != 0) {
-        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
-            this_._internal_r());
+      if (::absl::bit_cast<::uint32_t>(this_._internal_r()) != 0) {
+        total_size += 5;
       }
     }
-    // int32 g = 3;
+    // float g = 3;
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      if (this_._internal_g() != 0) {
-        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
-            this_._internal_g());
+      if (::absl::bit_cast<::uint32_t>(this_._internal_g()) != 0) {
+        total_size += 5;
       }
     }
-    // int32 b = 4;
+    // float b = 4;
     if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-      if (this_._internal_b() != 0) {
-        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
-            this_._internal_b());
+      if (::absl::bit_cast<::uint32_t>(this_._internal_b()) != 0) {
+        total_size += 5;
       }
     }
-    // int32 a = 5;
+    // float a = 5;
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      if (this_._internal_a() != 0) {
-        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
-            this_._internal_a());
+      if (::absl::bit_cast<::uint32_t>(this_._internal_a()) != 0) {
+        total_size += 5;
       }
     }
   }
@@ -517,22 +513,22 @@ void Color::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      if (from._internal_r() != 0) {
+      if (::absl::bit_cast<::uint32_t>(from._internal_r()) != 0) {
         _this->_impl_.r_ = from._impl_.r_;
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      if (from._internal_g() != 0) {
+      if (::absl::bit_cast<::uint32_t>(from._internal_g()) != 0) {
         _this->_impl_.g_ = from._impl_.g_;
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-      if (from._internal_b() != 0) {
+      if (::absl::bit_cast<::uint32_t>(from._internal_b()) != 0) {
         _this->_impl_.b_ = from._impl_.b_;
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      if (from._internal_a() != 0) {
+      if (::absl::bit_cast<::uint32_t>(from._internal_a()) != 0) {
         _this->_impl_.a_ = from._impl_.a_;
       }
     }

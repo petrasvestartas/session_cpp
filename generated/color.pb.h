@@ -249,44 +249,44 @@ class Color final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_name();
 
   public:
-  // int32 r = 2;
+  // float r = 2;
   void clear_r() ;
-  ::int32_t r() const;
-  void set_r(::int32_t value);
+  float r() const;
+  void set_r(float value);
 
   private:
-  ::int32_t _internal_r() const;
-  void _internal_set_r(::int32_t value);
+  float _internal_r() const;
+  void _internal_set_r(float value);
 
   public:
-  // int32 g = 3;
+  // float g = 3;
   void clear_g() ;
-  ::int32_t g() const;
-  void set_g(::int32_t value);
+  float g() const;
+  void set_g(float value);
 
   private:
-  ::int32_t _internal_g() const;
-  void _internal_set_g(::int32_t value);
+  float _internal_g() const;
+  void _internal_set_g(float value);
 
   public:
-  // int32 b = 4;
+  // float b = 4;
   void clear_b() ;
-  ::int32_t b() const;
-  void set_b(::int32_t value);
+  float b() const;
+  void set_b(float value);
 
   private:
-  ::int32_t _internal_b() const;
-  void _internal_set_b(::int32_t value);
+  float _internal_b() const;
+  void _internal_set_b(float value);
 
   public:
-  // int32 a = 5;
+  // float a = 5;
   void clear_a() ;
-  ::int32_t a() const;
-  void set_a(::int32_t value);
+  float a() const;
+  void set_a(float value);
 
   private:
-  ::int32_t _internal_a() const;
-  void _internal_set_a(::int32_t value);
+  float _internal_a() const;
+  void _internal_set_a(float value);
 
   public:
   // @@protoc_insertion_point(class_scope:session_proto.Color)
@@ -317,10 +317,10 @@ class Color final : public ::google::protobuf::Message
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
-    ::int32_t r_;
-    ::int32_t g_;
-    ::int32_t b_;
-    ::int32_t a_;
+    float r_;
+    float g_;
+    float b_;
+    float a_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -410,102 +410,102 @@ inline void Color::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   // @@protoc_insertion_point(field_set_allocated:session_proto.Color.guid)
 }
 
-// int32 r = 2;
+// float r = 2;
 inline void Color::clear_r() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.r_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000004U);
 }
-inline ::int32_t Color::r() const {
+inline float Color::r() const {
   // @@protoc_insertion_point(field_get:session_proto.Color.r)
   return _internal_r();
 }
-inline void Color::set_r(::int32_t value) {
+inline void Color::set_r(float value) {
   _internal_set_r(value);
   SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   // @@protoc_insertion_point(field_set:session_proto.Color.r)
 }
-inline ::int32_t Color::_internal_r() const {
+inline float Color::_internal_r() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.r_;
 }
-inline void Color::_internal_set_r(::int32_t value) {
+inline void Color::_internal_set_r(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.r_ = value;
 }
 
-// int32 g = 3;
+// float g = 3;
 inline void Color::clear_g() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.g_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000008U);
 }
-inline ::int32_t Color::g() const {
+inline float Color::g() const {
   // @@protoc_insertion_point(field_get:session_proto.Color.g)
   return _internal_g();
 }
-inline void Color::set_g(::int32_t value) {
+inline void Color::set_g(float value) {
   _internal_set_g(value);
   SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_set:session_proto.Color.g)
 }
-inline ::int32_t Color::_internal_g() const {
+inline float Color::_internal_g() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.g_;
 }
-inline void Color::_internal_set_g(::int32_t value) {
+inline void Color::_internal_set_g(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.g_ = value;
 }
 
-// int32 b = 4;
+// float b = 4;
 inline void Color::clear_b() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.b_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000010U);
 }
-inline ::int32_t Color::b() const {
+inline float Color::b() const {
   // @@protoc_insertion_point(field_get:session_proto.Color.b)
   return _internal_b();
 }
-inline void Color::set_b(::int32_t value) {
+inline void Color::set_b(float value) {
   _internal_set_b(value);
   SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   // @@protoc_insertion_point(field_set:session_proto.Color.b)
 }
-inline ::int32_t Color::_internal_b() const {
+inline float Color::_internal_b() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.b_;
 }
-inline void Color::_internal_set_b(::int32_t value) {
+inline void Color::_internal_set_b(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.b_ = value;
 }
 
-// int32 a = 5;
+// float a = 5;
 inline void Color::clear_a() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.a_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000020U);
 }
-inline ::int32_t Color::a() const {
+inline float Color::a() const {
   // @@protoc_insertion_point(field_get:session_proto.Color.a)
   return _internal_a();
 }
-inline void Color::set_a(::int32_t value) {
+inline void Color::set_a(float value) {
   _internal_set_a(value);
   SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   // @@protoc_insertion_point(field_set:session_proto.Color.a)
 }
-inline ::int32_t Color::_internal_a() const {
+inline float Color::_internal_a() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.a_;
 }
-inline void Color::_internal_set_a(::int32_t value) {
+inline void Color::_internal_set_a(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.a_ = value;
 }

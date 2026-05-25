@@ -85,7 +85,7 @@ MINI_TEST("Polyline", "Constructor") {
         Point(1.0, 1.0, 0.0),
         Point(0.0, 1.0, 0.0),
     });
-    plc.linecolor = Color(255, 0, 0, 255, "red");
+    plc.linecolor = Color(1.0f, 0.0f, 0.0f, 1.0f, "red");
     plc.width = 2.5;
 
     MINI_CHECK(pl.name == "my_polyline" && !pl.guid().empty() && point_count == 4);
@@ -106,7 +106,7 @@ MINI_TEST("Polyline", "Constructor") {
     MINI_CHECK(radd.get_point(0)[0] == 1.0 && radd.get_point(0)[1] == 1.0);
     MINI_CHECK(rdif.get_point(0)[0] == -1.0 && rdif.get_point(0)[1] == -1.0);
     MINI_CHECK(neg.get_point(0)[0] == 3.0 && neg.get_point(3)[0] == 0.0);
-    MINI_CHECK(plc.linecolor[0] == 255 && plc.linecolor[1] == 0 && plc.width == 2.5);
+    MINI_CHECK(plc.linecolor[0] == 1.0f && plc.linecolor[1] == 0.0f && plc.width == 2.5);
 
 
 }

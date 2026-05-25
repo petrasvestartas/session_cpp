@@ -68,7 +68,7 @@ namespace session_cpp {
         MINI_CHECK(!p.guid().empty());
         MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
         MINI_CHECK(pstr == "10.000000, 20.000000, 30.000000");
-        MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 255, 255), 1.000000)");
+        MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 1, 1), 1.000000)");
         MINI_CHECK(pcopy == p && pcopy.guid() != p.guid());
         MINI_CHECK(pother != p);
         MINI_CHECK(pmult[0] == 20.0 && pmult[1] == 40.0 && pmult[2] == 60.0);
@@ -104,7 +104,7 @@ namespace session_cpp {
         Point p(1.5, 2.5, 3.5);
         p.name = "test_point";
         p.width = 2.0;
-        p.pointcolor = Color(255, 128, 64, 255);
+        p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
 
         //   jsondump()      │ ordered_json │ to JSON object (internal use)
         //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
@@ -122,10 +122,10 @@ namespace session_cpp {
         MINI_CHECK(loaded[1] == p[1]);
         MINI_CHECK(loaded[2] == p[2]);
         MINI_CHECK(loaded.width == p.width);
-        MINI_CHECK(loaded.pointcolor.r == 255);
-        MINI_CHECK(loaded.pointcolor.g == 128);
-        MINI_CHECK(loaded.pointcolor.b == 64);
-        MINI_CHECK(loaded.pointcolor.a == 255);
+        MINI_CHECK(loaded.pointcolor.r == 1.0f);
+        MINI_CHECK(loaded.pointcolor.g == 0.5f);
+        MINI_CHECK(loaded.pointcolor.b == 0.25f);
+        MINI_CHECK(loaded.pointcolor.a == 1.0f);
 
     }
 
@@ -136,7 +136,7 @@ namespace session_cpp {
         Point p(1.5, 2.5, 3.5);
         p.name = "test_point";
         p.width = 2.0;
-        p.pointcolor = Color(255, 128, 64, 255);
+        p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
 
         std::string filename = "serialization/test_point.bin";
         p.pb_dump(filename);
@@ -147,10 +147,10 @@ namespace session_cpp {
         MINI_CHECK(loaded[1] == p[1]);
         MINI_CHECK(loaded[2] == p[2]);
         MINI_CHECK(loaded.width == p.width);
-        MINI_CHECK(loaded.pointcolor.r == 255);
-        MINI_CHECK(loaded.pointcolor.g == 128);
-        MINI_CHECK(loaded.pointcolor.b == 64);
-        MINI_CHECK(loaded.pointcolor.a == 255);
+        MINI_CHECK(loaded.pointcolor.r == 1.0f);
+        MINI_CHECK(loaded.pointcolor.g == 0.5f);
+        MINI_CHECK(loaded.pointcolor.b == 0.25f);
+        MINI_CHECK(loaded.pointcolor.a == 1.0f);
     }
 
     MINI_TEST("Point", "Is Ccw") {

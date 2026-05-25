@@ -29,9 +29,9 @@ MINI_TEST("PointCloud", "Constructor") {
     Vector n0(0.0, 0.0, 1.0);
     Vector n1(0.0, 0.0, 1.0);
     Vector n2(0.0, 0.0, 1.0);
-    Color c0(255, 0, 0, 255);
-    Color c1(0, 255, 0, 255);
-    Color c2(0, 0, 255, 255);
+    Color c0(1.0f, 0.0f, 0.0f, 1.0f);
+    Color c1(0.0f, 1.0f, 0.0f, 1.0f);
+    Color c2(0.0f, 0.0f, 1.0f, 1.0f);
     PointCloud pc({p0, p1, p2}, {n0, n1, n2}, {c0, c1, c2});
 
     // Minimal and Full String Representation
@@ -77,7 +77,7 @@ MINI_TEST("PointCloud", "From Coords") {
 
     MINI_CHECK(pc.len() == 3 && pc.color_count() == 3 && pc.normal_count() == 3);
     MINI_CHECK(TOLERANCE.is_close(pc.get_point(1)[0], 1.0));
-    MINI_CHECK(pc.get_color(1).g == 255);
+    MINI_CHECK(pc.get_color(1).g == 1.0f);
     MINI_CHECK(TOLERANCE.is_close(pc.get_normal(1)[2], 1.0));
 }
 
@@ -163,7 +163,7 @@ MINI_TEST("PointCloud", "Color Count") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "color.h"
 
-    PointCloud pc({}, {}, {Color(255, 0, 0, 255), Color(0, 255, 0, 255)});
+    PointCloud pc({}, {}, {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 1.0f, 0.0f, 1.0f)});
 
     MINI_CHECK(pc.color_count() == 2);
 }
@@ -172,20 +172,20 @@ MINI_TEST("PointCloud", "Get Color") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "color.h"
 
-    PointCloud pc({}, {}, {Color(255, 0, 0, 255), Color(0, 255, 0, 255)});
+    PointCloud pc({}, {}, {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 1.0f, 0.0f, 1.0f)});
     Color c = pc.get_color(1);
 
-    MINI_CHECK(c.r == 0 && c.g == 255 && c.b == 0 && c.a == 255);
+    MINI_CHECK(c.r == 0.0f && c.g == 1.0f && c.b == 0.0f && c.a == 1.0f);
 }
 
 MINI_TEST("PointCloud", "Set Color") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "color.h"
 
-    PointCloud pc({}, {}, {Color(0, 0, 0, 0)});
-    pc.set_color(0, Color(200, 100, 50, 255));
+    PointCloud pc({}, {}, {Color(0.0f, 0.0f, 0.0f, 0.0f)});
+    pc.set_color(0, Color(1.0f, 0.0f, 0.0f, 1.0f));
 
-    MINI_CHECK(pc.get_color(0).r == 200 && pc.get_color(0).g == 100 && pc.get_color(0).b == 50 && pc.get_color(0).a == 255);
+    MINI_CHECK(pc.get_color(0).r == 1.0f && pc.get_color(0).g == 0.0f && pc.get_color(0).b == 0.0f && pc.get_color(0).a == 1.0f);
 }
 
 MINI_TEST("PointCloud", "Add Color") {
@@ -193,22 +193,22 @@ MINI_TEST("PointCloud", "Add Color") {
     // uncomment #include "color.h"
 
     PointCloud pc;
-    pc.add_color(Color(128, 64, 32, 255));
+    pc.add_color(Color(1.0f, 0.0f, 1.0f, 1.0f));
 
     MINI_CHECK(pc.color_count() == 1);
-    MINI_CHECK(pc.get_color(0).r == 128 && pc.get_color(0).g == 64 && pc.get_color(0).b == 32);
+    MINI_CHECK(pc.get_color(0).r == 1.0f && pc.get_color(0).g == 0.0f && pc.get_color(0).b == 1.0f);
 }
 
 MINI_TEST("PointCloud", "Get Colors") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "color.h"
 
-    PointCloud pc({}, {}, {Color(255, 0, 0, 255), Color(0, 255, 0, 255)});
+    PointCloud pc({}, {}, {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 1.0f, 0.0f, 1.0f)});
     std::vector<Color> colors = pc.get_colors();
 
     MINI_CHECK(colors.size() == 2);
-    MINI_CHECK(colors[0].r == 255);
-    MINI_CHECK(colors[1].g == 255);
+    MINI_CHECK(colors[0].r == 1.0f);
+    MINI_CHECK(colors[1].g == 1.0f);
 }
 
 MINI_TEST("PointCloud", "Normal Count") {
@@ -305,7 +305,7 @@ MINI_TEST("PointCloud", "Json Roundtrip") {
     PointCloud pc(
         {Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)},
         {Vector(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)},
-        {Color(255, 0, 0, 255), Color(0, 255, 0, 255)}
+        {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 1.0f, 0.0f, 1.0f)}
     );
     pc.name = "test_pointcloud";
 
@@ -323,7 +323,7 @@ MINI_TEST("PointCloud", "Json Roundtrip") {
     MINI_CHECK(loaded.name == "test_pointcloud");
     MINI_CHECK(loaded.len() == 2);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0));
-    MINI_CHECK(loaded.get_color(0).r == 255);
+    MINI_CHECK(loaded.get_color(0).r == 1.0f);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
 
@@ -336,7 +336,7 @@ MINI_TEST("PointCloud", "Protobuf Roundtrip") {
     PointCloud pc(
         {Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)},
         {Vector(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)},
-        {Color(255, 0, 0, 255), Color(0, 255, 0, 255)}
+        {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 1.0f, 0.0f, 1.0f)}
     );
     pc.name = "test_pointcloud";
 
@@ -347,7 +347,7 @@ MINI_TEST("PointCloud", "Protobuf Roundtrip") {
     MINI_CHECK(loaded.name == "test_pointcloud");
     MINI_CHECK(loaded.len() == 2);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0));
-    MINI_CHECK(loaded.get_color(0).r == 255);
+    MINI_CHECK(loaded.get_color(0).r == 1.0f);
     MINI_CHECK(TOLERANCE.is_close(loaded.get_normal(0)[2], 1.0));
 }
 

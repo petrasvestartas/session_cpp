@@ -13,33 +13,33 @@ namespace session_cpp {
 
 /**
  * @class Color
- * @brief A color is defined by RGBA coordinates from 0 to 255.
+ * @brief A color is defined by RGBA coordinates from 0.0 to 1.0.
  */
 class Color {
 public:
   std::string name = "my_color"; ///< Name of the color
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  unsigned int r;                ///< Red component (0-255)
-  unsigned int g;                ///< Green component (0-255)
-  unsigned int b;                ///< Blue component (0-255)
-  unsigned int a;                ///< Alpha component (0-255)
+  float r;                ///< Red component (0.0-1.0)
+  float g;                ///< Green component (0.0-1.0)
+  float b;                ///< Blue component (0.0-1.0)
+  float a;                ///< Alpha component (0.0-1.0)
 
   /**
    * @brief Constructor with RGBA values.
-   * @param r Red component (0-255). Default: 255.
-   * @param g Green component (0-255). Default: 255.
-   * @param b Blue component (0-255). Default: 255.
-   * @param a Alpha component (0-255). Default: 255.
+   * @param r Red component (0.0-1.0). Default: 1.0.
+   * @param g Green component (0.0-1.0). Default: 1.0.
+   * @param b Blue component (0.0-1.0). Default: 1.0.
+   * @param a Alpha component (0.0-1.0). Default: 1.0.
    * @param name Name for the color. Default: "my_color".
    */
-  Color(int r = 255, int g = 255, int b = 255,
-        int a = 255, std::string name = "my_color")
+  Color(float r = 1.0f, float g = 1.0f, float b = 1.0f,
+        float a = 1.0f, std::string name = "my_color")
       : name(name),
-        r(static_cast<unsigned int>(std::clamp(r, 0, 255))),
-        g(static_cast<unsigned int>(std::clamp(g, 0, 255))),
-        b(static_cast<unsigned int>(std::clamp(b, 0, 255))),
-        a(static_cast<unsigned int>(std::clamp(a, 0, 255))) {}
+        r(std::clamp(r, 0.0f, 1.0f)),
+        g(std::clamp(g, 0.0f, 1.0f)),
+        b(std::clamp(b, 0.0f, 1.0f)),
+        a(std::clamp(a, 0.0f, 1.0f)) {}
 
   /// Copy constructor (creates a new guid while copying data)
   Color(const Color &other);
@@ -68,10 +68,10 @@ public:
   ///////////////////////////////////////////////////////////////////////////////////////////
 
   /// Get/set color component by index (0=r, 1=g, 2=b, 3=a)
-  unsigned int &operator[](int index);
+  float &operator[](int index);
 
   /// Get color component by index (const version)
-  const unsigned int &operator[](int index) const;
+  const float &operator[](int index) const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON
@@ -188,14 +188,14 @@ public:
    * @brief Convert to normalized float array [0-1].
    * @return Array [r, g, b, a] with values normalized to [0.0, 1.0].
    */
-  std::array<double, 4> to_unified_array() const;
+  std::array<float, 4> to_unified_array() const;
 
   /**
    * @brief Create color from normalized float values [0-1].
    * @param arr Array [r, g, b, a] with values in [0.0, 1.0] range.
-   * @return A new Color with values converted to 0-255 range.
+   * @return A new Color with values in [0.0, 1.0] range.
    */
-  static Color from_unified_array(std::array<double, 4> arr);
+  static Color from_unified_array(std::array<float, 4> arr);
 
 private:
   mutable std::string _guid; ///< Lazily generated unique identifier
