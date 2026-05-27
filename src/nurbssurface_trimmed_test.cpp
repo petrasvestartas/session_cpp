@@ -345,6 +345,28 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() > 0);
         MINI_CHECK(m.number_of_faces() > 0);
         MINI_CHECK(m_hole.number_of_faces() > 0);
+
+        // Planar circle (rational NURBS outer loop)
+        double cw = std::sqrt(2.0) / 2.0;
+        double ccx[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
+        double ccy[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
+        double cwt[9] = {1, cw, 1, cw, 1, cw, 1, cw, 1};
+        NurbsCurve circle_loop(3, true, 3, 9);
+        circle_loop.m_nurbsknot = {0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0};
+        for (int i = 0; i < 9; ++i)
+            circle_loop.set_cv_4d(i, (0.5 + 0.5*ccx[i])*cwt[i], (0.5 + 0.5*ccy[i])*cwt[i], 0.0, cwt[i]);
+        NurbsSurfaceTrimmed ts_circ = NurbsSurfaceTrimmed::create(srf, circle_loop);
+        Mesh mc = ts_circ.mesh();
+        MINI_CHECK(!mc.is_empty());
+        MINI_CHECK(mc.number_of_vertices() >= 30);
+        MINI_CHECK(mc.number_of_faces() >= 30);
+        for (const auto& [vk, vd] : mc.vertex) {
+            double nx = 0, ny = 0, nz = 0;
+            auto it = vd.attributes.find("nx"); if (it != vd.attributes.end()) nx = it->second;
+            it = vd.attributes.find("ny"); if (it != vd.attributes.end()) ny = it->second;
+            it = vd.attributes.find("nz"); if (it != vd.attributes.end()) nz = it->second;
+            MINI_CHECK(std::sqrt(nx*nx + ny*ny + nz*nz) > 0.5);
+        }
     }
 
     MINI_TEST("NurbsSurfaceTrimmed", "Transformation") {
