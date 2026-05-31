@@ -1,19 +1,19 @@
 {
     "type": "Graph",
     "name": "test_graph",
-    "guid": "1db66ad8-23a4-49ee-89e4-af4fb127fe09",
+    "guid": "9e39139d-e3ce-408b-ad3e-4a380070670a",
     "vertices": [
         {
             "type": "Vertex",
             "name": "node1",
-            "guid": "998ff334-bd13-4996-9a5f-c27850cfba76",
+            "guid": "7aeb8a30-332a-4764-97e1-a9ec62f84d37",
             "attribute": "Node 1",
             "index": 0
         },
         {
             "type": "Vertex",
             "name": "node2",
-            "guid": "595f6201-a162-401f-88ac-8ab12c922f2f",
+            "guid": "baec796f-8569-47f9-8b53-f1e076c704d2",
             "attribute": "Node 2",
             "index": 1
         }
@@ -22,7 +22,7 @@
         {
             "type": "Edge",
             "name": "my_edge",
-            "guid": "8825ee7d-8244-47ae-b048-921842b96f35",
+            "guid": "acccce5c-789a-4a3a-9b88-b31aed5ea65f",
             "v0": "node1",
             "v1": "node2",
             "attribute": "edge1",

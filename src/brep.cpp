@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cmath>
 #include <map>
+#include <algorithm>
 #include "brep.pb.h"
 
 namespace session_cpp {
@@ -1015,16 +1016,15 @@ Mesh BRep::mesh() const {
         Mesh& fm = fmesh[fi];
         if (fm.is_empty()) continue;
         const auto& face = m_faces[fi];
-        if (face.reversed) {
-            for (auto& [vk, vd] : fm.vertex) {
-                auto n = vd.normal();
-                if (n) vd.set_normal(-(*n)[0], -(*n)[1], -(*n)[2]);
-            }
-        }
+        // Reversed faces must have their triangle winding flipped so the facet
+        // orientation matches the face's outward normal (from_polylines rebuilds
+        // vertices from positions, so flipping per-vertex normals here has no effect).
         for (auto& [fk, fverts] : fm.face) {
             std::vector<Point> poly;
             for (auto vi : fverts)
                 poly.push_back(fm.vertex.at(vi).position());
+            if (face.reversed)
+                std::reverse(poly.begin(), poly.end());
             all_polygons.push_back(poly);
         }
     }
@@ -1046,7 +1046,9 @@ Vector BRep::normal_at(int face_idx, double u, double v) const {
     if (face_idx < 0 || face_idx >= (int)m_faces.size()) return Vector();
     int si = m_faces[face_idx].surface_index;
     if (si < 0 || si >= (int)m_surfaces.size()) return Vector();
-    return m_surfaces[si].normal_at(u, v);
+    Vector n = m_surfaces[si].normal_at(u, v);
+    if (m_faces[face_idx].reversed) return Vector(-n[0], -n[1], -n[2]);
+    return n;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

@@ -1097,12 +1097,18 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
 
     std::vector<double> v_params(n_sections, 0.0);
     for (int k = 1; k < n_sections; k++) {
-        Point pk_prev = curves[k - 1].point_at_middle();
-        Point pk_curr = curves[k].point_at_middle();
-        double dx = pk_curr[0] - pk_prev[0];
-        double dy = pk_curr[1] - pk_prev[1];
-        double dz = pk_curr[2] - pk_prev[2];
-        v_params[k] = v_params[k - 1] + std::sqrt(dx * dx + dy * dy + dz * dz);
+        // Average chord length over corresponding control points (robust section
+        // spacing, vs a single midpoint sample which mis-spaces rotated/reshaped sections).
+        double sum = 0.0;
+        for (int i = 0; i < cv_count_u; i++) {
+            Point a = curves[k - 1].get_cv(i);
+            Point b = curves[k].get_cv(i);
+            double dx = b[0] - a[0];
+            double dy = b[1] - a[1];
+            double dz = b[2] - a[2];
+            sum += std::sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        v_params[k] = v_params[k - 1] + sum / cv_count_u;
     }
     double total_len = v_params.back();
     if (total_len > 1e-14) {
@@ -1394,7 +1400,7 @@ NurbsSurface Primitives::create_sweep1(const NurbsCurve& rail, const NurbsCurve&
 
     NurbsCurve working_profile = profile;
 
-    int N = std::min(std::max(rail.span_count() * 2 + 1, 5), 20);
+    int N = std::min(std::max(rail.span_count() * 2 + 1, 5), 200);
     std::vector<Plane> frames = rail.get_perpendicular_planes(N);
     if (frames.empty()) return surface;
 
@@ -1481,7 +1487,7 @@ NurbsSurface Primitives::create_sweep2(const NurbsCurve& rail1, const NurbsCurve
     for (int k = 0; k < n_shapes; k++)
         shape_params[k] = (n_shapes == 1) ? 0.0 : (double)k / (n_shapes - 1);
 
-    int N = std::min(std::max(std::max(rail1.span_count(), rail2.span_count()) * 2 + 1, 5), 20);
+    int N = std::min(std::max(std::max(rail1.span_count(), rail2.span_count()) * 2 + 1, 5), 200);
 
     std::vector<Point> pts1, pts2;
     std::vector<double> params1, params2;

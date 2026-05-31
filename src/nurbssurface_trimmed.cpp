@@ -6,6 +6,10 @@
 #include "fmt/core.h"
 #include <fstream>
 #include <set>
+#include <map>
+#include <tuple>
+#include <array>
+#include <functional>
 #include "nurbssurface_trimmed.pb.h"
 
 namespace session_cpp {
@@ -581,29 +585,86 @@ Vector NurbsSurfaceTrimmed::normal_at(double u, double v) const { return m_surfa
 // Meshing
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-Mesh NurbsSurfaceTrimmed::mesh() const {
+Mesh NurbsSurfaceTrimmed::mesh() const { return mesh_q(20.0, 0.005); }
+
+// Unified trimmed-surface tessellation (BRepMesh / OpenNURBS model):
+//   1. Discretize each UV trim loop into a polygon, adaptively refining segments whose
+//      lifted 3D midpoint deviates from the chord — so the boundary follows the surface.
+//   2. Constrained Delaunay of the UV domain with the trim loops as boundary constraints.
+//   3. Refine the interior by surface DEFLECTION: repeatedly split any triangle whose surface
+//      point at its UV centroid lies farther than the deflection tolerance from the triangle's
+//      3D plane (or whose corner normals turn more than max_angle_deg). New points go in at the
+//      centroid only when it is inside the trim region, keeping the CDT boundary-conforming and
+//      producing graded, well-shaped triangles — dense where curved, coarse where flat.
+//   4. Delete exterior triangles, lift to 3D, set per-vertex analytic normals.
+// Planar surfaces need no interior refinement (deflection is ~0), so step 3 exits immediately
+// and the same code path yields the minimal boundary triangulation.
+Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) const {
     if (!is_trimmed()) return m_surface.mesh();
 
-    bool planar = m_surface.is_planar();
+    // 3D bbox diagonal from surface control points -> deflection tolerance.
+    double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
+    for (int i = 0; i < m_surface.cv_count(0); ++i)
+        for (int j = 0; j < m_surface.cv_count(1); ++j) {
+            Point p = m_surface.get_cv(i, j);
+            for (int k = 0; k < 3; ++k) {
+                if (p[k] < bmin[k]) bmin[k] = p[k];
+                if (p[k] > bmax[k]) bmax[k] = p[k];
+            }
+        }
+    double bbox_diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+
+        (bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
+    if (bbox_diag < 1e-12) bbox_diag = 1.0;
+    double deflection = bbox_diag * chord_factor;
+    double cos_max_angle = std::cos(std::min(std::max(max_angle_deg, 0.1), 179.0) * Tolerance::PI / 180.0);
 
-    // Planar: control points only (no subdivision) — minimal CDT triangulation
-    // Non-planar: curvature-adaptive sampling to capture boundary shape
+    auto eval3 = [&](double u, double v) -> std::array<double,3> {
+        Point p = m_surface.point_at(u, v);
+        return {p[0], p[1], p[2]};
+    };
+
+    // ---- 1. Adaptive trim-wire discretization in UV ----
     auto disc_loop = [&](const NurbsCurve& crv) -> std::vector<Point> {
-        std::vector<Point> pts;
+        std::vector<Point> raw;
         if (crv.degree() <= 1 && !crv.is_rational()) {
-            for (int i = 0; i < crv.cv_count(); ++i) pts.push_back(crv.get_cv(i));
+            for (int i = 0; i < crv.cv_count(); ++i) raw.push_back(crv.get_cv(i));
         } else {
             int n = std::max(crv.cv_count() * 4, 16);
             auto [sampled, params] = crv.divide_by_count(n);
-            pts = sampled;
+            raw = sampled;
         }
-        while (pts.size() > 1) {
-            double dx = pts.front()[0] - pts.back()[0];
-            double dy = pts.front()[1] - pts.back()[1];
-            if (dx*dx + dy*dy < 1e-20) pts.pop_back();
+        while (raw.size() > 1) {
+            double dx = raw.front()[0] - raw.back()[0];
+            double dy = raw.front()[1] - raw.back()[1];
+            if (dx*dx + dy*dy < 1e-20) raw.pop_back();
             else break;
         }
-        return pts;
+        if (raw.size() < 2) return raw;
+        // Recursively split each segment while its lifted 3D midpoint deviates from the chord.
+        std::vector<Point> out;
+        out.reserve(raw.size() * 2);
+        std::function<void(const Point&, const Point&, int)> rec =
+            [&](const Point& a, const Point& b, int depth) {
+                double mu = (a[0]+b[0])*0.5, mv = (a[1]+b[1])*0.5;
+                auto pa = eval3(a[0], a[1]), pb = eval3(b[0], b[1]), pm = eval3(mu, mv);
+                double ex = pb[0]-pa[0], ey = pb[1]-pa[1], ez = pb[2]-pa[2];
+                double L2 = ex*ex + ey*ey + ez*ez;
+                double dev = 0.0;
+                if (L2 > 1e-30) {
+                    double t = ((pm[0]-pa[0])*ex+(pm[1]-pa[1])*ey+(pm[2]-pa[2])*ez)/L2;
+                    double cx = pa[0]+t*ex, cy = pa[1]+t*ey, cz = pa[2]+t*ez;
+                    dev = std::sqrt((pm[0]-cx)*(pm[0]-cx)+(pm[1]-cy)*(pm[1]-cy)+(pm[2]-cz)*(pm[2]-cz));
+                }
+                if (dev > deflection && depth < 6) {
+                    rec(a, Point(mu, mv, 0.0), depth+1);
+                    rec(Point(mu, mv, 0.0), b, depth+1);
+                } else {
+                    out.push_back(a);
+                }
+            };
+        for (size_t i = 0; i < raw.size(); ++i)
+            rec(raw[i], raw[(i+1)%raw.size()], 0);
+        return out;
     };
 
     auto outer_uv = disc_loop(m_outer_loop);
@@ -612,7 +673,6 @@ Mesh NurbsSurfaceTrimmed::mesh() const {
         hole_uvs.push_back(disc_loop(inner));
     if (outer_uv.size() < 3) return m_surface.mesh();
 
-    // UV bounding box from outer loop
     double bb_umin = 1e30, bb_vmin = 1e30, bb_umax = -1e30, bb_vmax = -1e30;
     for (const auto& p : outer_uv) {
         if (p[0] < bb_umin) bb_umin = p[0];
@@ -621,7 +681,6 @@ Mesh NurbsSurfaceTrimmed::mesh() const {
         if (p[1] > bb_vmax) bb_vmax = p[1];
     }
 
-    // Flat coords for point_in_polygon_2d
     auto to_flat = [](const std::vector<Point>& pts) -> std::vector<double> {
         std::vector<double> c;
         c.reserve(pts.size() * 2);
@@ -639,10 +698,8 @@ Mesh NurbsSurfaceTrimmed::mesh() const {
         return true;
     };
 
-    // Create CDT
+    // ---- 2. Constrained Delaunay of the trim wire ----
     Delaunay2D dt(bb_umin, bb_vmin, bb_umax, bb_vmax);
-
-    // Insert boundary vertices + constrain edges
     auto insert_loop = [&](const std::vector<Point>& pts) {
         std::vector<int> vis;
         vis.reserve(pts.size());
@@ -656,144 +713,48 @@ Mesh NurbsSurfaceTrimmed::mesh() const {
     insert_loop(outer_uv);
     for (const auto& hp : hole_uvs) insert_loop(hp);
 
-    // Interior Steiner points — non-planar only (span-adaptive grid filtered by trim)
-    // Planar uses control-point boundary only: CDT produces minimal triangulation directly
-    if (!planar) {
-        // Curvature-adaptive span subdivision
-        auto usp = m_surface.get_span_vector(0);
-        auto vsp = m_surface.get_span_vector(1);
-        int deg_u = m_surface.degree(0), deg_v = m_surface.degree(1);
-        int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
-
-        // 3D bbox diagonal for chord tolerance
-        double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
-        for (int i = 0; i < m_surface.cv_count(0); ++i)
-            for (int j = 0; j < m_surface.cv_count(1); ++j) {
-                Point p = m_surface.get_cv(i, j);
-                for (int k = 0; k < 3; ++k) {
-                    if (p[k] < bmin[k]) bmin[k] = p[k];
-                    if (p[k] > bmax[k]) bmax[k] = p[k];
-                }
+    // ---- 3. Interior refinement by surface deflection ----
+    const int MAX_ITERS = 8;
+    const size_t MAX_VERTS = 200000;
+    for (int iter = 0; iter < MAX_ITERS; ++iter) {
+        std::vector<std::array<double,2>> to_insert;
+        for (const auto& tri : dt.triangles) {
+            if (!tri.alive) continue;
+            const Vertex2D& A = dt.vertices[tri.v[0]];
+            const Vertex2D& B = dt.vertices[tri.v[1]];
+            const Vertex2D& C = dt.vertices[tri.v[2]];
+            double cu = (A.x + B.x + C.x) / 3.0, cv = (A.y + B.y + C.y) / 3.0;
+            if (!inside_trim(cu, cv)) continue;
+            auto pa = eval3(A.x, A.y), pb = eval3(B.x, B.y), pc = eval3(C.x, C.y), pm = eval3(cu, cv);
+            double ux = pb[0]-pa[0], uy = pb[1]-pa[1], uz = pb[2]-pa[2];
+            double vx = pc[0]-pa[0], vy = pc[1]-pa[1], vz = pc[2]-pa[2];
+            double nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx;
+            double nl = std::sqrt(nx*nx+ny*ny+nz*nz);
+            if (nl < 1e-30) continue;
+            double dev = std::abs(((pm[0]-pa[0])*nx+(pm[1]-pa[1])*ny+(pm[2]-pa[2])*nz)/nl);
+            bool refine = dev > deflection;
+            if (!refine) {
+                Vector na = m_surface.normal_at(A.x, A.y);
+                Vector nb = m_surface.normal_at(B.x, B.y);
+                Vector nc2 = m_surface.normal_at(C.x, C.y);
+                double d1 = na[0]*nb[0]+na[1]*nb[1]+na[2]*nb[2];
+                double d2 = nb[0]*nc2[0]+nb[1]*nc2[1]+nb[2]*nc2[2];
+                double d3 = na[0]*nc2[0]+na[1]*nc2[1]+na[2]*nc2[2];
+                double mind = std::min(d1, std::min(d2, d3));
+                if (mind < cos_max_angle) refine = true;
             }
-        double bbox_diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+
-            (bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
-        double max_angle_deg = 20.0;
-
-        // Edge length limit
-        Point pe00 = m_surface.point_at(usp.front(), vsp.front());
-        Point pe10 = m_surface.point_at(usp.back(), vsp.front());
-        Point pe01 = m_surface.point_at(usp.front(), vsp.back());
-        double edx1 = pe10[0]-pe00[0], edy1 = pe10[1]-pe00[1], edz1 = pe10[2]-pe00[2];
-        double edx2 = pe01[0]-pe00[0], edy2 = pe01[1]-pe00[1], edz2 = pe01[2]-pe00[2];
-        double max_dim = std::max(std::sqrt(edx1*edx1+edy1*edy1+edz1*edz1),
-                                  std::sqrt(edx2*edx2+edy2*edy2+edz2*edz2));
-        double max_edge_len = (max_dim > 1e-10) ? max_dim / 10.0 : 0.0;
-
-        auto span_subs_fn = [&](int dir, const std::vector<double>& sp,
-                                const std::vector<double>& osp) -> std::vector<int> {
-            int n = (int)sp.size() - 1;
-            std::vector<int> subs(n, 1);
-            int n_other = (int)osp.size() - 1;
-            std::vector<double> s_pos(n_other);
-            for (int k = 0; k < n_other; ++k)
-                s_pos[k] = (osp[k] + osp[k + 1]) * 0.5;
-            int degree_dir = (dir == 0) ? deg_u : deg_v;
-            for (int i = 0; i < n; ++i) {
-                double t0 = sp[i], t1 = sp[i + 1];
-                if (degree_dir > 1) {
-                    double ma = 0.0;
-                    for (int si = 0; si < n_other; ++si) {
-                        double s = s_pos[si];
-                        double pnx = 0, pny = 0, pnz = 0, ta = 0.0;
-                        for (int k = 0; k <= 4; ++k) {
-                            double t = t0 + k * (t1 - t0) / 4.0;
-                            Vector nrm = (dir == 0) ? m_surface.normal_at(t, s)
-                                                    : m_surface.normal_at(s, t);
-                            if (k > 0) {
-                                double d = pnx*nrm[0]+pny*nrm[1]+pnz*nrm[2];
-                                d = std::max(-1.0, std::min(1.0, d));
-                                ta += std::acos(d) * 180.0 / Tolerance::PI;
-                            }
-                            pnx = nrm[0]; pny = nrm[1]; pnz = nrm[2];
-                        }
-                        if (ta > ma) ma = ta;
-                    }
-                    subs[i] = std::max(1, std::min((int)std::ceil(ma / max_angle_deg), 24));
-                }
-                {
-                    double chord_tol = bbox_diag * 0.005;
-                    double max_dev = 0.0;
-                    int nc = std::min(n_other, 3);
-                    for (int ci = 0; ci <= nc; ++ci) {
-                        double s = osp.front() + ci * (osp.back() - osp.front()) / std::max(nc, 1);
-                        double px0, py0, pz0, px1, py1, pz1;
-                        if (dir == 0) {
-                            m_surface.point_at(t0, s, px0, py0, pz0);
-                            m_surface.point_at(t1, s, px1, py1, pz1);
-                        } else {
-                            m_surface.point_at(s, t0, px0, py0, pz0);
-                            m_surface.point_at(s, t1, px1, py1, pz1);
-                        }
-                        for (int k = 1; k <= 3; ++k) {
-                            double frac = k / 4.0;
-                            double tm = t0 + frac * (t1 - t0);
-                            double pmx, pmy, pmz;
-                            if (dir == 0) m_surface.point_at(tm, s, pmx, pmy, pmz);
-                            else          m_surface.point_at(s, tm, pmx, pmy, pmz);
-                            double lx = px0+frac*(px1-px0), ly = py0+frac*(py1-py0), lz = pz0+frac*(pz1-pz0);
-                            double ddx = pmx-lx, ddy = pmy-ly, ddz = pmz-lz;
-                            double dev = std::sqrt(ddx*ddx+ddy*ddy+ddz*ddz);
-                            if (dev > max_dev) max_dev = dev;
-                        }
-                    }
-                    if (max_dev > chord_tol) {
-                        int cs = std::max(2, (int)std::ceil(std::sqrt(max_dev / chord_tol)));
-                        subs[i] = std::max(subs[i], std::min(cs, 24));
-                    }
-                }
-                if (max_edge_len > 0) {
-                    double s_mid = (osp.front() + osp.back()) * 0.5;
-                    double px0, py0, pz0, px1, py1, pz1;
-                    if (dir == 0) {
-                        m_surface.point_at(t0, s_mid, px0, py0, pz0);
-                        m_surface.point_at(t1, s_mid, px1, py1, pz1);
-                    } else {
-                        m_surface.point_at(s_mid, t0, px0, py0, pz0);
-                        m_surface.point_at(s_mid, t1, px1, py1, pz1);
-                    }
-                    double sl = std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
-                    int es = std::max(1, (int)std::ceil(sl / max_edge_len));
-                    subs[i] = std::max(subs[i], std::min(es, 64));
-                }
-                if (degree_dir > 1) subs[i] = std::max(subs[i], 2);
-            }
-            return subs;
-        };
-
-        auto u_subs = span_subs_fn(0, usp, vsp);
-        auto v_subs = span_subs_fn(1, vsp, usp);
-
-        // Build parameter arrays
-        std::vector<double> us, vs;
-        for (int i = 0; i < ns_u; ++i)
-            for (int s = 0; s < u_subs[i]; ++s)
-                us.push_back(usp[i] + s * (usp[i+1] - usp[i]) / u_subs[i]);
-        us.push_back(usp.back());
-        for (int i = 0; i < ns_v; ++i)
-            for (int s = 0; s < v_subs[i]; ++s)
-                vs.push_back(vsp[i] + s * (vsp[i+1] - vsp[i]) / v_subs[i]);
-        vs.push_back(vsp.back());
-
-        // Insert grid points inside trim region
-        for (size_t i = 0; i < us.size(); ++i)
-            for (size_t j = 0; j < vs.size(); ++j)
-                if (inside_trim(us[i], vs[j])) dt.insert(us[i], vs[j]);
+            if (refine) to_insert.push_back({cu, cv});
+        }
+        if (to_insert.empty()) break;
+        for (const auto& uv : to_insert) {
+            if (dt.vertices.size() >= MAX_VERTS) break;
+            dt.insert(uv[0], uv[1]);
+        }
+        if (dt.vertices.size() >= MAX_VERTS) break;
     }
 
-    // Cleanup super-triangle
+    // ---- 4. Trim, lift, normals ----
     dt.cleanup();
-
-    // Remove exterior triangles
     for (auto& tri : dt.triangles) {
         if (!tri.alive) continue;
         double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
@@ -801,36 +762,197 @@ Mesh NurbsSurfaceTrimmed::mesh() const {
         if (!inside_trim(cu, cv)) tri.alive = false;
     }
 
-    // Build output mesh
     auto tris = dt.get_triangles();
     if (tris.empty()) return m_surface.mesh();
 
     Mesh result;
     std::vector<size_t> vert_map(dt.vertices.size(), SIZE_MAX);
+
+    // Lift to 3D, welding coincident vertices so a closed/periodic surface (cylinder, cone,
+    // torus, sphere) stitches at its seam: distinct UV columns u0 and u1 (or rows v0/v1)
+    // evaluate to the SAME 3D point, so they must share one mesh vertex. Spatial hash on a
+    // weld-tolerance grid; new points scan the 3x3x3 neighbour cells.
+    double weld_tol = bbox_diag * 1e-5;
+    double cell = (weld_tol > 0.0) ? weld_tol : 1.0;
+    std::map<std::tuple<long long,long long,long long>,
+             std::vector<std::pair<std::array<double,3>, size_t>>> cell_map;
+    auto weld_vertex = [&](double x, double y, double z) -> size_t {
+        long long ci = (long long)std::floor(x/cell);
+        long long cj = (long long)std::floor(y/cell);
+        long long ck = (long long)std::floor(z/cell);
+        for (long long di = -1; di <= 1; ++di)
+            for (long long dj = -1; dj <= 1; ++dj)
+                for (long long dk = -1; dk <= 1; ++dk) {
+                    auto it = cell_map.find(std::make_tuple(ci+di, cj+dj, ck+dk));
+                    if (it == cell_map.end()) continue;
+                    for (const auto& [p, vk] : it->second) {
+                        double dx = p[0]-x, dy = p[1]-y, dz = p[2]-z;
+                        if (dx*dx + dy*dy + dz*dz <= weld_tol*weld_tol) return vk;
+                    }
+                }
+        size_t vk = result.add_vertex(Point(x, y, z));
+        cell_map[std::make_tuple(ci, cj, ck)].push_back({{x, y, z}, vk});
+        return vk;
+    };
+
     for (const auto& tri : tris)
         for (int k = 0; k < 3; ++k) {
             int vi = tri[k];
             if (vert_map[vi] != SIZE_MAX) continue;
-            vert_map[vi] = result.add_vertex(m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y));
+            Point p = m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
+            vert_map[vi] = weld_vertex(p[0], p[1], p[2]);
         }
     for (const auto& tri : tris) {
         size_t v0 = vert_map[tri[0]], v1 = vert_map[tri[1]], v2 = vert_map[tri[2]];
         if (v0 == v1 || v1 == v2 || v2 == v0) continue;
         result.add_face({v0, v1, v2});
     }
+    for (size_t vi = 0; vi < vert_map.size(); ++vi) {
+        if (vert_map[vi] == SIZE_MAX) continue;
+        Vector nrm = m_surface.normal_at(dt.vertices[vi].x, dt.vertices[vi].y);
+        result.vertex[vert_map[vi]].set_normal(nrm[0], nrm[1], nrm[2]);
+    }
+    return result;
+}
 
-    // Normals
-    if (planar) {
-        auto du = m_surface.domain(0), dv = m_surface.domain(1);
-        Vector nrm = m_surface.normal_at((du.first+du.second)/2, (dv.first+dv.second)/2);
-        for (auto& [vk, vd] : result.vertex) vd.set_normal(nrm[0], nrm[1], nrm[2]);
-    } else {
-        for (size_t vi = 0; vi < vert_map.size(); ++vi) {
-            if (vert_map[vi] == SIZE_MAX) continue;
-            Vector nrm = m_surface.normal_at(dt.vertices[vi].x, dt.vertices[vi].y);
-            result.vertex[vert_map[vi]].set_normal(nrm[0], nrm[1], nrm[2]);
+Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
+                                        double max_angle_deg, double chord_factor) const {
+    const NurbsSurface& srf = m_surface;
+    double nx = normal[0], ny = normal[1], nz = normal[2];
+    double nl = std::sqrt(nx*nx + ny*ny + nz*nz);
+    if (nl < 1e-12) return srf.mesh();
+    nx /= nl; ny /= nl; nz /= nl;
+
+    auto eval3 = [&](double u, double v) -> std::array<double,3> {
+        Point p = srf.point_at(u, v); return {p[0], p[1], p[2]};
+    };
+    auto field = [&](double u, double v) -> double {
+        auto p = eval3(u, v);
+        return (p[0]-q0[0])*nx + (p[1]-q0[1])*ny + (p[2]-q0[2])*nz;
+    };
+    // Newton: move (u,v) so f(u,v)->0, stepping along the UV gradient of f. Lands the point
+    // exactly on the cut plane (the verified fix vs the old column-scan's off-plane strays).
+    auto refine = [&](double& u, double& v) {
+        for (int it = 0; it < 12; ++it) {
+            double fv = field(u, v);
+            if (std::abs(fv) < 1e-9) break;
+            double h = 1e-4;
+            auto a = eval3(u+h, v), b = eval3(u-h, v), c = eval3(u, v+h), d = eval3(u, v-h);
+            double gu = ((a[0]-b[0])*nx + (a[1]-b[1])*ny + (a[2]-b[2])*nz) / (2*h);
+            double gv = ((c[0]-d[0])*nx + (c[1]-d[1])*ny + (c[2]-d[2])*nz) / (2*h);
+            double g2 = gu*gu + gv*gv;
+            if (g2 < 1e-20) break;
+            u -= fv*gu/g2; v -= fv*gv/g2;
+        }
+    };
+
+    // ---- span-adaptive UV grid (curvature: normal-angle + chord deflection) ----
+    auto usp = srf.get_span_vector(0);
+    auto vsp = srf.get_span_vector(1);
+    if (usp.size() < 2 || vsp.size() < 2) return srf.mesh();
+    int deg_u = srf.degree(0), deg_v = srf.degree(1);
+    double bmin[3] = {1e30,1e30,1e30}, bmax[3] = {-1e30,-1e30,-1e30};
+    for (int i = 0; i < srf.cv_count(0); ++i)
+        for (int j = 0; j < srf.cv_count(1); ++j) {
+            Point p = srf.get_cv(i, j);
+            for (int k = 0; k < 3; ++k) { if (p[k]<bmin[k]) bmin[k]=p[k]; if (p[k]>bmax[k]) bmax[k]=p[k]; }
+        }
+    double bbox_diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+(bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
+    if (bbox_diag < 1e-12) bbox_diag = 1.0;
+    double chord_tol = bbox_diag * chord_factor;
+
+    auto span_subs = [&](int dir, const std::vector<double>& sp, const std::vector<double>& osp, int deg) -> std::vector<int> {
+        int n = (int)sp.size()-1; std::vector<int> subs(n, deg>1?2:1);
+        double s_mid = (osp.front()+osp.back())*0.5;
+        for (int i = 0; i < n; ++i) {
+            double t0 = sp[i], t1 = sp[i+1];
+            // angle across the span at mid-other-param
+            if (deg > 1) {
+                double ma = 0.0; std::array<double,3> pn{};
+                for (int k = 0; k <= 4; ++k) {
+                    double t = t0 + k*(t1-t0)/4.0;
+                    Vector nm = (dir==0) ? srf.normal_at(t, s_mid) : srf.normal_at(s_mid, t);
+                    if (k>0) { double dpd = pn[0]*nm[0]+pn[1]*nm[1]+pn[2]*nm[2]; dpd=std::max(-1.0,std::min(1.0,dpd)); ma += std::acos(dpd)*180.0/Tolerance::PI; }
+                    pn = {nm[0], nm[1], nm[2]};
+                }
+                subs[i] = std::max(subs[i], std::max(1, std::min((int)std::ceil(ma/max_angle_deg), 64)));
+            }
+            // chord deflection across the span
+            std::array<double,3> p0 = (dir==0)?eval3(t0,s_mid):eval3(s_mid,t0);
+            std::array<double,3> p1 = (dir==0)?eval3(t1,s_mid):eval3(s_mid,t1);
+            double dev = 0.0;
+            for (int k = 1; k <= 3; ++k) {
+                double fr = k/4.0, tm = t0+fr*(t1-t0);
+                std::array<double,3> pm = (dir==0)?eval3(tm,s_mid):eval3(s_mid,tm);
+                double lx=p0[0]+fr*(p1[0]-p0[0]), ly=p0[1]+fr*(p1[1]-p0[1]), lz=p0[2]+fr*(p1[2]-p0[2]);
+                double dd = std::sqrt((pm[0]-lx)*(pm[0]-lx)+(pm[1]-ly)*(pm[1]-ly)+(pm[2]-lz)*(pm[2]-lz));
+                if (dd>dev) dev=dd;
+            }
+            if (dev > chord_tol) subs[i] = std::max(subs[i], std::min((int)std::ceil(std::sqrt(dev/chord_tol)), 64));
+        }
+        return subs;
+    };
+    auto u_subs = span_subs(0, usp, vsp, deg_u);
+    auto v_subs = span_subs(1, vsp, usp, deg_v);
+    std::vector<double> us, vs;
+    for (int i = 0; i+1 < (int)usp.size(); ++i) for (int s = 0; s < u_subs[i]; ++s) us.push_back(usp[i] + s*(usp[i+1]-usp[i])/u_subs[i]);
+    us.push_back(usp.back());
+    for (int i = 0; i+1 < (int)vsp.size(); ++i) for (int s = 0; s < v_subs[i]; ++s) vs.push_back(vsp[i] + s*(vsp[i+1]-vsp[i])/v_subs[i]);
+    vs.push_back(vsp.back());
+    int nu = (int)us.size(), nv = (int)vs.size();
+    if (nu < 2 || nv < 2) return srf.mesh();
+
+    std::vector<std::vector<double>> F(nu, std::vector<double>(nv));
+    for (int i = 0; i < nu; ++i) for (int j = 0; j < nv; ++j) F[i][j] = field(us[i], vs[j]);
+
+    // ---- build mesh: weld coincident 3D vertices (closes periodic seams) ----
+    Mesh result;
+    double weld_tol = bbox_diag * 1e-5, cell = weld_tol > 0 ? weld_tol : 1.0;
+    std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<std::array<double,3>, size_t>>> cmap;
+    auto weld = [&](double u, double v) -> size_t {
+        Point P = srf.point_at(u, v); double x=P[0],y=P[1],z=P[2];
+        long long ci=(long long)std::floor(x/cell), cj=(long long)std::floor(y/cell), ck=(long long)std::floor(z/cell);
+        for (long long di=-1; di<=1; ++di) for (long long dj=-1; dj<=1; ++dj) for (long long dk=-1; dk<=1; ++dk) {
+            auto it = cmap.find(std::make_tuple(ci+di,cj+dj,ck+dk)); if (it==cmap.end()) continue;
+            for (auto& [pp, vk] : it->second) { double ddx=pp[0]-x,ddy=pp[1]-y,ddz=pp[2]-z; if (ddx*ddx+ddy*ddy+ddz*ddz<=weld_tol*weld_tol) return vk; }
+        }
+        size_t vk = result.add_vertex(P);
+        Vector nm = srf.normal_at(u, v);
+        result.vertex[vk].set_normal(nm[0], nm[1], nm[2]);
+        cmap[std::make_tuple(ci,cj,ck)].push_back({{x,y,z}, vk});
+        return vk;
+    };
+    // crossing on a cell edge between an inside (f<=0) and outside corner, refined onto plane.
+    auto cross = [&](double ua, double va, double ub, double vb) -> size_t {
+        double fa = field(ua,va), fb = field(ub,vb);
+        double t = (std::abs(fa-fb) > 1e-30) ? fa/(fa-fb) : 0.5;
+        double u = ua + (ub-ua)*t, v = va + (vb-va)*t;
+        refine(u, v);
+        return weld(u, v);
+    };
+
+    for (int i = 0; i+1 < nu; ++i) {
+        for (int j = 0; j+1 < nv; ++j) {
+            double cu[4] = {us[i], us[i+1], us[i+1], us[i]};
+            double cv[4] = {vs[j], vs[j], vs[j+1], vs[j+1]};
+            bool in[4] = {F[i][j]<=0, F[i+1][j]<=0, F[i+1][j+1]<=0, F[i][j+1]<=0};
+            int cnt = (in[0]?1:0)+(in[1]?1:0)+(in[2]?1:0)+(in[3]?1:0);
+            if (cnt == 0) continue;
+            // assemble the clipped cell polygon (corners that are inside + edge crossings, in order)
+            std::vector<size_t> poly;
+            for (int k = 0; k < 4; ++k) {
+                int kn = (k+1)%4;
+                if (in[k]) poly.push_back(weld(cu[k], cv[k]));
+                if (in[k] != in[kn]) poly.push_back(cross(cu[k],cv[k], cu[kn],cv[kn]));
+            }
+            for (size_t t = 1; t+1 < poly.size(); ++t) {
+                size_t a = poly[0], b = poly[t], c = poly[t+1];
+                if (a==b||b==c||c==a) continue;
+                result.add_face({a, b, c});
+            }
         }
     }
+    if (result.face.empty()) return srf.mesh();
     return result;
 }
 

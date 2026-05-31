@@ -116,6 +116,18 @@ public:
     /// Uses adaptive subdivision based on surface curvature and chord-height tolerance.
     Mesh mesh() const;
 
+    /// Mesh at a chosen tessellation quality: angular bound (degrees, normal turn across a
+    /// triangle) and chord factor (deflection tolerance as a fraction of the 3D bbox diagonal).
+    /// Unified deflection-refined constrained-Delaunay pipeline (BRepMesh / OpenNURBS style).
+    Mesh mesh_q(double max_angle_deg, double chord_factor) const;
+
+    /// Mesh the surface trimmed by a plane (q0, normal), keeping the half where (S-q0).n <= 0.
+    /// OCCT path-A algorithm: span-adaptive UV grid + marching-squares clip where the signed
+    /// distance field f(u,v)=(S(u,v)-q0).n changes sign, with every boundary crossing
+    /// Newton-refined onto the plane (so the cut curve lies exactly on it), then coincident-3D
+    /// vertices welded so periodic seams (cylinder/torus/sphere) close watertight.
+    Mesh mesh_by_plane(const Point& q0, const Vector& normal, double max_angle_deg, double chord_factor) const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////

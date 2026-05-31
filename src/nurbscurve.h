@@ -63,6 +63,10 @@ public:
                            int dimension = 3, double nurbsknot_delta = 1.0);
 
     /// Create an interpolated cubic NURBS curve through points (Bessel end tangents).
+    /// parameterization maps to Rhino's CurveKnotStyle: Uniform/Chord/ChordSquareRoot
+    /// (centripetal). Rhino's CreateInterpolatedCurve(points, degree) API defaults to Uniform;
+    /// the InterpCrv command commonly uses Chord. We default to Chord; pass the style explicitly
+    /// to match a specific Rhino result.
     static NurbsCurve create_interpolated(const std::vector<Point>& points,
                                           CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord);
 
