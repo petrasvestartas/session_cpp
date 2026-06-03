@@ -58,7 +58,6 @@ set(UNITY_BUILD_EXCLUDE
     src/element.cpp
     src/yaml/yaml.cpp
     src/mesh_offset.cpp
-    src/reciprocal.cpp
 )
 
 #############################################################################################
@@ -299,7 +298,6 @@ set(MINITEST_SOURCES
     src/boolean_polyline_test.cpp
     src/elementfeature_test.cpp
     src/mesh_offset_test.cpp
-    src/reciprocal_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)
