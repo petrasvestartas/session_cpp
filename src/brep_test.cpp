@@ -10,6 +10,8 @@
 #include "mesh.h"
 #include "color.h"
 #include "primitives.h"
+#include "plane.h"
+#include "line.h"
 
 #include <cmath>
 #include <filesystem>
@@ -444,6 +446,96 @@ namespace session_cpp {
 
         MINI_CHECK(loaded_proto_string == box);
         MINI_CHECK(loaded == box);
+    }
+
+    MINI_TEST("BRep", "Split By Plane") {
+        // uncomment #include "brep.h"
+        // uncomment #include "plane.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+
+        BRep box = BRep::create_box(2.0, 2.0, 2.0);
+        Point origin(0.0, 0.0, 0.0);
+        Vector normal(0.0, 0.0, 1.0);
+        Plane plane = Plane::from_point_normal(origin, normal);
+        BRep split = box.split_by_plane(plane);
+        double box_area = box.mesh().area();
+        double split_area = split.mesh().area();
+        int inner = 0;
+        for (const auto& face : split.m_faces)
+            for (int li : face.loop_indices)
+                if (split.m_loops[li].type == BRepLoopType::Inner)
+                    inner += 1;
+
+        MINI_CHECK(split.face_count() == 10);
+        MINI_CHECK(std::abs(split_area - box_area) < box_area * 0.01);
+        MINI_CHECK(!split.mesh().is_empty());
+        MINI_CHECK(inner == 0);
+
+        BRep cylinder = BRep::create_cylinder(1.0, 4.0);
+        Point mid_origin(0.0, 0.0, 1.0);
+        Vector mid_normal(0.0, 0.0, 1.0);
+        Plane mid = Plane::from_point_normal(mid_origin, mid_normal);
+        BRep cut = cylinder.split_by_plane(mid);
+
+        MINI_CHECK(cut.face_count() == 4);
+        MINI_CHECK(std::abs(cut.mesh().area() - cylinder.mesh().area()) < cylinder.mesh().area() * 0.02);
+    }
+
+    MINI_TEST("BRep", "Split By Plane Pieces") {
+        // uncomment #include "brep.h"
+        // uncomment #include "plane.h"
+
+        BRep box = BRep::create_box(2.0, 2.0, 2.0);
+        Point origin(0.0, 0.0, 0.0);
+        Vector normal(0.0, 0.0, 1.0);
+        Plane plane = Plane::from_point_normal(origin, normal);
+        std::vector<BRep> pieces = box.split_by_plane_pieces(plane);
+        double total = 0.0;
+        for (const auto& piece : pieces) total += piece.mesh().area();
+
+        MINI_CHECK(pieces.size() == 2);
+        MINI_CHECK(pieces[0].face_count() == 5);
+        MINI_CHECK(pieces[1].face_count() == 5);
+        MINI_CHECK(std::abs(total - box.mesh().area()) < box.mesh().area() * 0.01);
+
+        Point far_o(0.0, 0.0, 5.0);
+        Vector far_n(0.0, 0.0, 1.0);
+        Plane far = Plane::from_point_normal(far_o, far_n);
+        std::vector<BRep> whole = box.split_by_plane_pieces(far);
+
+        MINI_CHECK(whole.size() == 1);
+        MINI_CHECK(whole[0].face_count() == 6);
+    }
+
+    MINI_TEST("BRep", "Split By Line") {
+        // uncomment #include "brep.h"
+        // uncomment #include "line.h"
+        // uncomment #include "point.h"
+
+        BRep box = BRep::create_box(2.0, 2.0, 2.0);
+        Line line = Line::from_points(Point(0.0, -2.0, 1.0), Point(0.0, 2.0, 1.0));
+        BRep split = box.split_by_line(line);
+        double box_area = box.mesh().area();
+        double split_area = split.mesh().area();
+
+        MINI_CHECK(split.face_count() == 7);
+        MINI_CHECK(std::abs(split_area - box_area) < box_area * 0.01);
+        MINI_CHECK(!split.mesh().is_empty());
+    }
+
+    MINI_TEST("BRep", "Split By Brep") {
+        // uncomment #include "brep.h"
+
+        BRep target = BRep::create_box(4.0, 4.0, 2.0);
+        BRep cutter = BRep::create_box(2.0, 2.0, 6.0);
+        BRep split = target.split_by_brep(cutter);
+        double target_area = target.mesh().area();
+        double split_area = split.mesh().area();
+
+        MINI_CHECK(split.face_count() == 8);
+        MINI_CHECK(std::abs(split_area - target_area) < target_area * 0.01);
+        MINI_CHECK(!split.mesh().is_empty());
     }
 
 } // namespace session_cpp

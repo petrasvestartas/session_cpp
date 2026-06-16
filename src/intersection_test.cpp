@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "intersection.h"
 #include "nurbssurface.h"
+#include "primitives.h"
 #include "tolerance.h"
 #include <cmath>
 
@@ -775,6 +776,188 @@ MINI_TEST("Intersection", "Surface Plane Miss") {
     auto curves = Intersection::surface_plane(srf, plane);
 
     MINI_CHECK(curves.size() == 0);
+}
+
+MINI_TEST("Intersection", "Surface Plane UV") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "plane.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    // uncomment #include "primitives.h"
+    NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
+    Point pp(0.0, 0.0, 2.0);
+    Vector pnv(0.3, 0.0, 1.0);
+    Plane plane = Plane::from_point_normal(pp, pnv);
+    auto pairs = Intersection::surface_plane_uv(cyl, plane);
+
+    MINI_CHECK(pairs.size() == 1);
+    NurbsCurve curve3 = pairs[0].first;
+    NurbsCurve pcurve = pairs[0].second;
+    MINI_CHECK(curve3.is_valid());
+    MINI_CHECK(pcurve.is_valid());
+    MINI_CHECK(curve3.is_closed());
+    auto [u0, u1] = cyl.domain(0);
+    MINI_CHECK(std::fabs(pcurve.point_at(0.0)[0] - u1) < 1e-9 || std::fabs(pcurve.point_at(0.0)[0] - u0) < 1e-9);
+    MINI_CHECK(std::fabs(pcurve.point_at(1.0)[0] - u1) < 1e-9 || std::fabs(pcurve.point_at(1.0)[0] - u0) < 1e-9);
+    Vector pn = plane.z_axis();
+    Point po = plane.origin();
+    double max_off = 0.0;
+    for (int i = 0; i < 17; i++) {
+        Point p2 = pcurve.point_at(i / 16.0);
+        Point s = cyl.point_at(p2[0], p2[1]);
+        double off = std::fabs((s[0]-po[0])*pn[0] + (s[1]-po[1])*pn[1] + (s[2]-po[2])*pn[2]);
+        max_off = std::max(max_off, off);
+    }
+    MINI_CHECK(max_off < 0.05);
+
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
+    Point pp2(0.0, 0.0, 0.0);
+    Vector pnv2(0.0, 0.0, 1.0);
+    Plane plane2 = Plane::from_point_normal(pp2, pnv2);
+    auto pairs2 = Intersection::surface_plane_uv(torus, plane2);
+
+    MINI_CHECK(pairs2.size() == 2);
+    auto [tu0, tu1] = torus.domain(0);
+    auto [tv0, tv1] = torus.domain(1);
+    bool inside = true;
+    for (auto& pair : pairs2) {
+        for (int i = 0; i < 17; i++) {
+            Point p2 = pair.second.point_at(i / 16.0);
+            if (p2[0] < tu0 - 1e-6 || p2[0] > tu1 + 1e-6 || p2[1] < tv0 - 1e-6 || p2[1] > tv1 + 1e-6)
+                inside = false;
+        }
+    }
+    MINI_CHECK(inside);
+}
+
+MINI_TEST("Intersection", "Surface Surface") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "point.h"
+    // uncomment #include "primitives.h"
+    auto lies_on_curve = [](const NurbsCurve& curve3d, const NurbsCurve& pcurve, const NurbsSurface& surface) -> double {
+        auto [u0, u1] = surface.domain(0);
+        auto [v0, v1] = surface.domain(1);
+        std::vector<Point> dense;
+        for (int j = 0; j < 129; j++) dense.push_back(curve3d.point_at(j / 128.0));
+        double worst = 0.0;
+        for (int i = 0; i < 33; i++) {
+            Point q = pcurve.point_at(i / 32.0);
+            Point s = surface.point_at(std::min(std::max(q[0], u0), u1), std::min(std::max(q[1], v0), v1));
+            double best = dense[0].distance(s);
+            for (const Point& p : dense) {
+                double d = p.distance(s);
+                if (d < best) best = d;
+            }
+            if (best > worst) worst = best;
+        }
+        return worst;
+    };
+
+    NurbsSurface flat = NurbsSurface::create(false, false, 1, 1, 2, 2, {
+        Point(-3.0, -3.0, 0.5),
+        Point(-3.0, 3.0, 0.5),
+        Point(3.0, -3.0, 0.5),
+        Point(3.0, 3.0, 0.5),
+    });
+    NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
+    auto flat_triples = Intersection::surface_surface(flat, cyl);
+
+    MINI_CHECK(flat_triples.size() == 1);
+    NurbsCurve c3 = std::get<0>(flat_triples[0]);
+    NurbsCurve pa = std::get<1>(flat_triples[0]);
+    NurbsCurve pb = std::get<2>(flat_triples[0]);
+    MINI_CHECK(c3.is_valid() && pa.is_valid() && pb.is_valid());
+    MINI_CHECK(c3.is_closed());
+    MINI_CHECK(lies_on_curve(c3, pa, flat) < 0.05);
+    MINI_CHECK(lies_on_curve(c3, pb, cyl) < 0.05);
+
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface cyl2 = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
+    auto triples = Intersection::surface_surface(sphere, cyl2);
+
+    MINI_CHECK(triples.size() >= 2);
+    int clean = 0;
+    for (const auto& triple : triples) {
+        NurbsCurve tc3 = std::get<0>(triple);
+        NurbsCurve tpa = std::get<1>(triple);
+        NurbsCurve tpb = std::get<2>(triple);
+        MINI_CHECK(tc3.is_valid() && tpa.is_valid() && tpb.is_valid());
+        if (lies_on_curve(tc3, tpa, sphere) < 0.05 && lies_on_curve(tc3, tpb, cyl2) < 0.05) clean++;
+    }
+    MINI_CHECK(clean >= 2);
+
+    // Exactness check: sphere(r=2) x flat plane patch at z=0.4 -> circle of
+    // radius sqrt(2^2 - 0.4^2) = sqrt(3.84). The analytic path is geometrically
+    // exact, so the deviation from the true radius must be ~machine epsilon.
+    NurbsSurface sphere2 = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface flat04 = NurbsSurface::create(false, false, 1, 1, 2, 2, {
+        Point(-3.0, -3.0, 0.4),
+        Point(-3.0, 3.0, 0.4),
+        Point(3.0, -3.0, 0.4),
+        Point(3.0, 3.0, 0.4),
+    });
+    auto ex_triples = Intersection::surface_surface(sphere2, flat04);
+    MINI_CHECK(ex_triples.size() == 1);
+    NurbsCurve ex_c3 = std::get<0>(ex_triples[0]);
+    double expected_r = std::sqrt(3.84);
+    double max_dev = 0.0;
+    for (int j = 0; j <= 256; j++) {
+        Point p = ex_c3.point_at(j / 256.0);
+        double rr = std::sqrt(p[0]*p[0] + p[1]*p[1]);  // distance from z-axis
+        max_dev = std::max(max_dev, std::abs(rr - expected_r));
+        max_dev = std::max(max_dev, std::abs(p[2] - 0.4));
+    }
+    MINI_CHECK(max_dev < 1e-9);
+}
+
+MINI_TEST("Intersection", "Surface Surface Accuracy") {
+    // uncomment #include "intersection.h"
+    // uncomment #include "nurbssurface.h"
+    // uncomment #include "primitives.h"
+    // Every intersection point must lie on BOTH analytic surfaces to ~1e-6,
+    // measured by closed-form distance (independent of OCCT/parameterization).
+    auto on_both = [](const NurbsCurve& c3,
+                      const std::function<double(const Point&)>& da,
+                      const std::function<double(const Point&)>& db) -> double {
+        double worst = 0.0;
+        for (int i = 0; i <= 64; i++) {
+            Point p = c3.point_at(i / 64.0);
+            worst = std::max(worst, std::max(da(p), db(p)));
+        }
+        return worst;
+    };
+
+    // Quartic: sphere x cylinder (axis Z at x=1.3) -> 1e-6.
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface cyl = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
+    std::function<double(const Point&)> d_sph = [](const Point& p) {
+        return std::abs(std::sqrt(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]) - 2.0); };
+    std::function<double(const Point&)> d_cyl = [](const Point& p) {
+        return std::abs(std::sqrt((p[0]-1.3)*(p[0]-1.3) + p[1]*p[1]) - 0.3); };
+    auto tr = Intersection::surface_surface(sphere, cyl);
+    MINI_CHECK(tr.size() >= 2);
+    for (auto& t : tr) MINI_CHECK(on_both(std::get<0>(t), d_sph, d_cyl) < 1e-5);
+
+    // Conic: sphere x sphere -> exact circle.
+    NurbsSurface sphere2 = Primitives::sphere_surface(2.0, 0.0, 0.0, 2.0);
+    std::function<double(const Point&)> d_sph2 = [](const Point& p) {
+        return std::abs(std::sqrt((p[0]-2.0)*(p[0]-2.0) + p[1]*p[1] + p[2]*p[2]) - 2.0); };
+    auto tr2 = Intersection::surface_surface(sphere, sphere2);
+    MINI_CHECK(tr2.size() >= 1);
+    for (auto& t : tr2) MINI_CHECK(on_both(std::get<0>(t), d_sph, d_sph2) < 1e-6);
+
+    // Torus x perpendicular plane -> two exact circles.
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
+    NurbsSurface flat = NurbsSurface::create(false, false, 1, 1, 2, 2, {
+        Point(-9.0, -9.0, 0.0), Point(-9.0, 9.0, 0.0),
+        Point(9.0, -9.0, 0.0), Point(9.0, 9.0, 0.0)});
+    std::function<double(const Point&)> d_tor = [](const Point& p) {
+        return std::abs(std::sqrt((std::sqrt(p[0]*p[0]+p[1]*p[1]) - 2.0)*(std::sqrt(p[0]*p[0]+p[1]*p[1]) - 2.0) + p[2]*p[2]) - 0.5); };
+    std::function<double(const Point&)> d_flat = [](const Point& p) { return std::abs(p[2]); };
+    auto tr3 = Intersection::surface_surface(torus, flat);
+    MINI_CHECK(tr3.size() == 2);
+    for (auto& t : tr3) MINI_CHECK(on_both(std::get<0>(t), d_tor, d_flat) < 1e-6);
 }
 
 MINI_TEST("Intersection", "Remap") {

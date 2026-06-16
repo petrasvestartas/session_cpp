@@ -46,6 +46,14 @@ public:
     /// Fits a plane to the curve, projects it to 2D, and builds the trim loop automatically.
     static NurbsSurfaceTrimmed create_planar(const NurbsCurve& boundary);
 
+    /// Split a surface into trimmed faces by UV pcurves.
+    /// Builds a planar arrangement of the UV domain rectangle and the given
+    /// pcurves (NurbsCurves with x=u, y=v, z=0), extracts faces, and emits one
+    /// NurbsSurfaceTrimmed per face. Loops are exact trims of the input
+    /// pcurves joined with straight border segments. Dangling open cutters
+    /// that do not reach the border or another cutter are discarded.
+    static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0, bool use_domain_border = true, int n_boundary = 0);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
     ///////////////////////////////////////////////////////////////////////////////////////////

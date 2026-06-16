@@ -44,6 +44,14 @@ public:
     double v1 = 0.0
   );
 
+  static std::vector<NurbsCurve> surface_curve(
+    const NurbsSurface& surface,
+    const NurbsCurve& curve,
+    double t0 = 0.0,
+    double t1 = 0.0,
+    double tolerance = 0.0
+  );
+
   static std::tuple<Point, size_t, double> mesh_point(
     const Mesh& mesh,
     const Point& test_point

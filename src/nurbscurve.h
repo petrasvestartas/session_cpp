@@ -75,6 +75,13 @@ public:
                                     int num_cvs, int degree = 3,
                                     bool is_periodic = false);
 
+    /// Join curve segments into chains by endpoint matching.
+    /// Segments are greedily chained (reversed as needed), made compatible
+    /// (common degree, common rationality), and concatenated with C0
+    /// continuity (junction nurbsknot at multiplicity = degree).
+    static std::vector<NurbsCurve> join(const std::vector<NurbsCurve>& curves,
+                                        double tolerance = Tolerance::ZERO_TOLERANCE);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
     ///////////////////////////////////////////////////////////////////////////////////////////

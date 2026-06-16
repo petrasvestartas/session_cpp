@@ -10,6 +10,7 @@
 #include <tuple>
 #include <array>
 #include <functional>
+#include <limits>
 #include "nurbssurface_trimmed.pb.h"
 
 namespace session_cpp {
@@ -526,6 +527,554 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create_planar(const NurbsCurve& boundar
     if (uv_pts.size() >= 3)
         ts.m_outer_loop = NurbsCurve::create(false, 1, uv_pts);
     return ts;
+}
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary) {
+    if (!srf.is_valid()) return {};
+
+    auto is_boundary = [&](int cidx) -> bool {
+        return cidx < 0 || (!use_domain_border && cidx >= 0 && cidx < n_boundary);
+    };
+
+    auto dom_u = srf.domain(0);
+    auto dom_v = srf.domain(1);
+    double u0 = dom_u.first, u1 = dom_u.second;
+    double v0 = dom_v.first, v1 = dom_v.second;
+    double range_u = u1 - u0;
+    double range_v = v1 - v0;
+
+    auto spans_u = srf.get_span_vector(0);
+    auto spans_v = srf.get_span_vector(1);
+    int nu = std::max((int)spans_u.size() - 1, 1) * 4;
+    int nv = std::max((int)spans_v.size() - 1, 1) * 4;
+    double du = range_u / nu;
+    double dv = range_v / nv;
+    double mu = (u0 + u1) * 0.5;
+    double mv = (v0 + v1) * 0.5;
+    Point pmid = srf.point_at(mu, mv);
+    double uv_to_3d_u = pmid.distance(srf.point_at(std::min(mu + du, u1), mv)) / du;
+    double uv_to_3d_v = pmid.distance(srf.point_at(mu, std::min(mv + dv, v1))) / dv;
+    double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
+    if (uv_to_3d < 1e-10)
+        uv_to_3d = 1.0;
+
+    double snap_uv;
+    if (tolerance > 0.0)
+        snap_uv = std::max(1e-9, tolerance / uv_to_3d);
+    else
+        snap_uv = std::min(range_u, range_v) * 1e-7;
+
+    // ---- 1. Sample cutters into tagged UV polylines ----
+    double samp_tol = std::max(range_u, range_v) * 1e-3;
+    struct UVPoly { int cidx; std::vector<std::array<double, 2>> pts; std::vector<double> ts; };
+    std::vector<UVPoly> polylines;
+
+    auto snap_border = [&](std::array<double, 2>& p) {
+        if (std::abs(p[0] - u0) < snap_uv)
+            p[0] = u0;
+        if (std::abs(p[0] - u1) < snap_uv)
+            p[0] = u1;
+        if (std::abs(p[1] - v0) < snap_uv)
+            p[1] = v0;
+        if (std::abs(p[1] - v1) < snap_uv)
+            p[1] = v1;
+    };
+
+    for (int cidx = 0; cidx < (int)pcurves.size(); ++cidx) {
+        const NurbsCurve& crv = pcurves[cidx];
+        if (!crv.is_valid())
+            continue;
+        auto cdom = crv.domain();
+        double ct0 = cdom.first, ct1 = cdom.second;
+        std::vector<std::array<double, 3>> entries;
+        int n = std::max(crv.cv_count() * 4, 16);
+        for (int i = 0; i <= n; ++i) {
+            double t = ct0 + (ct1 - ct0) * i / n;
+            Point p = crv.point_at(t);
+            entries.push_back({t, p[0], p[1]});
+        }
+        int depth = 0;
+        while (depth < 6) {
+            int inserted = 0;
+            size_t i = 0;
+            while (i + 1 < entries.size()) {
+                std::array<double, 3> a = entries[i];
+                std::array<double, 3> b = entries[i + 1];
+                double tm = (a[0] + b[0]) * 0.5;
+                Point pm = crv.point_at(tm);
+                double exu = b[1] - a[1];
+                double exv = b[2] - a[2];
+                double l2 = exu*exu + exv*exv;
+                double dev;
+                if (l2 > 1e-30) {
+                    double s = ((pm[0]-a[1])*exu + (pm[1]-a[2])*exv) / l2;
+                    double cx = a[1] + s*exu;
+                    double cy = a[2] + s*exv;
+                    dev = std::hypot(pm[0]-cx, pm[1]-cy);
+                } else {
+                    dev = 0.0;
+                }
+                if (dev > samp_tol && entries.size() < 4096) {
+                    entries.insert(entries.begin() + i + 1, {tm, pm[0], pm[1]});
+                    inserted += 1;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            if (inserted == 0)
+                break;
+            depth += 1;
+        }
+        std::vector<std::array<double, 2>> pts;
+        std::vector<double> ts;
+        for (const auto& e : entries) {
+            std::array<double, 2> p = {std::min(std::max(e[1], u0), u1), std::min(std::max(e[2], v0), v1)};
+            snap_border(p);
+            if (!pts.empty() && std::abs(p[0]-pts.back()[0]) < 1e-15 && std::abs(p[1]-pts.back()[1]) < 1e-15)
+                continue;
+            pts.push_back(p);
+            ts.push_back(e[0]);
+        }
+        if (pts.size() < 2)
+            continue;
+        // A cutter lying entirely on one border line coincides with the
+        // domain edge (e.g. a cut circle on the seam) and splits nothing
+        bool on_u0 = true, on_u1 = true, on_v0 = true, on_v1 = true;
+        for (const auto& p : pts) {
+            if (std::abs(p[0] - u0) >= snap_uv) on_u0 = false;
+            if (std::abs(p[0] - u1) >= snap_uv) on_u1 = false;
+            if (std::abs(p[1] - v0) >= snap_uv) on_v0 = false;
+            if (std::abs(p[1] - v1) >= snap_uv) on_v1 = false;
+        }
+        // When the caller supplies its own boundary loops (no domain border),
+        // those loops legitimately run along the domain edges.
+        if (use_domain_border && (on_u0 || on_u1 || on_v0 || on_v1))
+            continue;
+        polylines.push_back({cidx, pts, ts});
+    }
+
+    // Border sides as polylines: cidx -1 bottom, -2 right, -3 top, -4 left
+    if (use_domain_border) {
+        polylines.push_back({-1, {{u0, v0}, {u1, v0}}, {u0, u1}});
+        polylines.push_back({-2, {{u1, v0}, {u1, v1}}, {v0, v1}});
+        polylines.push_back({-3, {{u1, v1}, {u0, v1}}, {u1, u0}});
+        polylines.push_back({-4, {{u0, v1}, {u0, v0}}, {v1, v0}});
+    }
+
+    // ---- 2. Segment-segment intersections (Newton-refined on real curves) ----
+    auto seg_seg = [](const std::array<double, 2>& p1, const std::array<double, 2>& p2,
+                      const std::array<double, 2>& p3, const std::array<double, 2>& p4,
+                      double& s_out, double& t_out) -> bool {
+        double d1u = p2[0] - p1[0];
+        double d1v = p2[1] - p1[1];
+        double d2u = p4[0] - p3[0];
+        double d2v = p4[1] - p3[1];
+        double den = d1u * d2v - d1v * d2u;
+        if (std::abs(den) < 1e-20)
+            return false;
+        double s = ((p3[0]-p1[0]) * d2v - (p3[1]-p1[1]) * d2u) / den;
+        double t = ((p3[0]-p1[0]) * d1v - (p3[1]-p1[1]) * d1u) / den;
+        if (-1e-12 <= s && s <= 1.0 + 1e-12 && -1e-12 <= t && t <= 1.0 + 1e-12) {
+            s_out = s;
+            t_out = t;
+            return true;
+        }
+        return false;
+    };
+
+    auto newton_cc = [&](const NurbsCurve& ca, double& ta, const NurbsCurve& cb, double& tb) {
+        for (int it = 0; it < 8; ++it) {
+            auto da = ca.evaluate(ta, 1);
+            auto db = cb.evaluate(tb, 1);
+            double fu = da[0][0] - db[0][0];
+            double fv = da[0][1] - db[0][1];
+            if (std::hypot(fu, fv) < snap_uv * 0.01)
+                break;
+            double j00 = da[1][0];
+            double j01 = -db[1][0];
+            double j10 = da[1][1];
+            double j11 = -db[1][1];
+            double den = j00 * j11 - j01 * j10;
+            if (std::abs(den) < 1e-20)
+                break;
+            ta -= (fu * j11 - j01 * fv) / den;
+            tb -= (j00 * fv - fu * j10) / den;
+            auto adom = ca.domain();
+            auto bdom = cb.domain();
+            ta = std::min(std::max(ta, adom.first), adom.second);
+            tb = std::min(std::max(tb, bdom.first), bdom.second);
+        }
+    };
+
+    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;  // (poly_index, seg_index) -> list of (frac, u, v, t_on_curve)
+    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
+        for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
+            const UVPoly& A = polylines[pi];
+            const UVPoly& B = polylines[pj];
+            if (is_boundary(A.cidx) && is_boundary(B.cidx))
+                continue;
+            double aminu = A.pts[0][0], amaxu = A.pts[0][0], aminv = A.pts[0][1], amaxv = A.pts[0][1];
+            for (const auto& p : A.pts) {
+                aminu = std::min(aminu, p[0]);
+                amaxu = std::max(amaxu, p[0]);
+                aminv = std::min(aminv, p[1]);
+                amaxv = std::max(amaxv, p[1]);
+            }
+            aminu -= snap_uv;
+            amaxu += snap_uv;
+            aminv -= snap_uv;
+            amaxv += snap_uv;
+            double bminu = B.pts[0][0], bmaxu = B.pts[0][0], bminv = B.pts[0][1], bmaxv = B.pts[0][1];
+            for (const auto& p : B.pts) {
+                bminu = std::min(bminu, p[0]);
+                bmaxu = std::max(bmaxu, p[0]);
+                bminv = std::min(bminv, p[1]);
+                bmaxv = std::max(bmaxv, p[1]);
+            }
+            if (bminu > amaxu || bmaxu < aminu || bminv > amaxv || bmaxv < aminv)
+                continue;
+            for (int ia = 0; ia + 1 < (int)A.pts.size(); ++ia) {
+                for (int ib = 0; ib + 1 < (int)B.pts.size(); ++ib) {
+                    double s, t;
+                    if (!seg_seg(A.pts[ia], A.pts[ia+1], B.pts[ib], B.pts[ib+1], s, t))
+                        continue;
+                    double ta = A.ts[ia] + (A.ts[ia+1] - A.ts[ia]) * s;
+                    double tb = B.ts[ib] + (B.ts[ib+1] - B.ts[ib]) * t;
+                    double hu = A.pts[ia][0] + (A.pts[ia+1][0] - A.pts[ia][0]) * s;
+                    double hv = A.pts[ia][1] + (A.pts[ia+1][1] - A.pts[ia][1]) * s;
+                    if (A.cidx >= 0 && B.cidx >= 0) {
+                        newton_cc(pcurves[A.cidx], ta, pcurves[B.cidx], tb);
+                        Point pa = pcurves[A.cidx].point_at(ta);
+                        hu = pa[0];
+                        hv = pa[1];
+                    } else if (A.cidx >= 0) {
+                        Point pa = pcurves[A.cidx].point_at(ta);
+                        hu = pa[0];
+                        hv = pa[1];
+                    } else if (B.cidx >= 0) {
+                        Point pb = pcurves[B.cidx].point_at(tb);
+                        hu = pb[0];
+                        hv = pb[1];
+                    }
+                    std::array<double, 2> hp = {hu, hv};
+                    snap_border(hp);
+                    if (B.cidx < 0) {
+                        if (B.cidx == -1 || B.cidx == -3)
+                            tb = hp[0];
+                        else
+                            tb = hp[1];
+                    }
+                    if (A.cidx < 0) {
+                        if (A.cidx == -1 || A.cidx == -3)
+                            ta = hp[0];
+                        else
+                            ta = hp[1];
+                    }
+                    splits[{pi, ia}].push_back({s, hp[0], hp[1], ta});
+                    splits[{pj, ib}].push_back({t, hp[0], hp[1], tb});
+                }
+            }
+        }
+    }
+
+    // ---- 3. Rebuild polylines with split vertices; build the vertex pool ----
+    std::map<std::pair<long long, long long>, std::vector<int>> cell_map;
+    std::vector<std::array<double, 2>> verts;
+
+    auto vert_id = [&](const std::array<double, 2>& p) -> int {
+        long long ci = (long long)std::floor(p[0] / snap_uv);
+        long long cj = (long long)std::floor(p[1] / snap_uv);
+        for (int di = -1; di <= 1; ++di) {
+            for (int dj = -1; dj <= 1; ++dj) {
+                auto bucket = cell_map.find({ci+di, cj+dj});
+                if (bucket == cell_map.end())
+                    continue;
+                for (int vk : bucket->second) {
+                    const auto& q = verts[vk];
+                    if (std::hypot(q[0]-p[0], q[1]-p[1]) <= snap_uv)
+                        return vk;
+                }
+            }
+        }
+        int vk = (int)verts.size();
+        verts.push_back({p[0], p[1]});
+        cell_map[{ci, cj}].push_back(vk);
+        return vk;
+    };
+
+    struct SplitEdge { int a, b, cidx; double ta, tb; };
+    std::vector<SplitEdge> edges;
+
+    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
+        const UVPoly& poly = polylines[pi];
+        std::vector<std::pair<int, double>> chain;  // (vid, t_on_curve)
+        for (int i = 0; i < (int)poly.pts.size(); ++i) {
+            chain.push_back({vert_id(poly.pts[i]), poly.ts[i]});
+            auto sit = splits.find({pi, i});
+            if (i + 1 < (int)poly.pts.size() && sit != splits.end()) {
+                std::vector<std::array<double, 4>> evs = sit->second;
+                std::sort(evs.begin(), evs.end());
+                for (const auto& ev : evs)
+                    chain.push_back({vert_id({ev[1], ev[2]}), ev[3]});
+            }
+        }
+        for (int i = 0; i + 1 < (int)chain.size(); ++i) {
+            int a = chain[i].first;
+            int b = chain[i + 1].first;
+            if (a == b)
+                continue;
+            edges.push_back({a, b, poly.cidx, chain[i].second, chain[i + 1].second});
+        }
+    }
+
+    // ---- 4. Prune dangling edges (valence-1 chains) ----
+    std::vector<bool> alive(edges.size(), true);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        std::map<int, int> degree;
+        for (size_t ei = 0; ei < edges.size(); ++ei) {
+            if (!alive[ei])
+                continue;
+            degree[edges[ei].a] += 1;
+            degree[edges[ei].b] += 1;
+        }
+        for (size_t ei = 0; ei < edges.size(); ++ei) {
+            if (!alive[ei])
+                continue;
+            if (degree[edges[ei].a] == 1 || degree[edges[ei].b] == 1) {
+                alive[ei] = false;
+                changed = true;
+            }
+        }
+    }
+
+    std::vector<SplitEdge> live_edges;
+    for (size_t ei = 0; ei < edges.size(); ++ei)
+        if (alive[ei])
+            live_edges.push_back(edges[ei]);
+    if (live_edges.empty())
+        return {};
+
+    // ---- 5. Half-edge face extraction (leftmost-turn walk) ----
+    struct HalfEdge { int tail, head, eidx, fwd; };
+    std::vector<HalfEdge> hes;
+    for (int ei = 0; ei < (int)live_edges.size(); ++ei) {
+        hes.push_back({live_edges[ei].a, live_edges[ei].b, ei, 1});
+        hes.push_back({live_edges[ei].b, live_edges[ei].a, ei, 0});
+    }
+    std::vector<std::vector<int>> out_map(verts.size());
+    for (int hi = 0; hi < (int)hes.size(); ++hi)
+        out_map[hes[hi].tail].push_back(hi);
+    for (size_t vid = 0; vid < out_map.size(); ++vid) {
+        std::stable_sort(out_map[vid].begin(), out_map[vid].end(), [&](int ha, int hb) {
+            double aa = std::atan2(verts[hes[ha].head][1] - verts[vid][1], verts[hes[ha].head][0] - verts[vid][0]);
+            double ab = std::atan2(verts[hes[hb].head][1] - verts[vid][1], verts[hes[hb].head][0] - verts[vid][0]);
+            return aa < ab;
+        });
+    }
+
+    std::vector<int> next_he(hes.size(), -1);
+    for (size_t vid = 0; vid < out_map.size(); ++vid) {
+        const auto& outs = out_map[vid];
+        for (size_t pos = 0; pos < outs.size(); ++pos) {
+            int hi = outs[pos];
+            int tw = hi ^ 1;
+            // at vertex vid, incoming tw arrives; next outgoing is the one
+            // clockwise from the reversed incoming (leftmost turn)
+            int nxt = outs[(pos + outs.size() - 1) % outs.size()];
+            next_he[tw] = nxt;
+        }
+    }
+
+    std::vector<bool> visited(hes.size(), false);
+    std::vector<std::vector<int>> faces;  // list of list of he indices
+    for (int hi = 0; hi < (int)hes.size(); ++hi) {
+        if (visited[hi])
+            continue;
+        std::vector<int> cycle;
+        int cur = hi;
+        while (!visited[cur]) {
+            visited[cur] = true;
+            cycle.push_back(cur);
+            cur = next_he[cur];
+        }
+        if (cycle.size() >= 2)
+            faces.push_back(cycle);
+    }
+
+    auto face_area = [&](const std::vector<int>& cycle) -> double {
+        double s = 0.0;
+        for (int hi : cycle) {
+            const auto& a = verts[hes[hi].tail];
+            const auto& b = verts[hes[hi].head];
+            s += a[0]*b[1] - b[0]*a[1];
+        }
+        return s * 0.5;
+    };
+
+    std::set<int> border_vids;
+    for (const auto& e : live_edges) {
+        if (is_boundary(e.cidx)) {
+            border_vids.insert(e.a);
+            border_vids.insert(e.b);
+        }
+    }
+
+    auto point_in_cycle = [&](const std::array<double, 2>& p, const std::vector<int>& cycle) -> bool {
+        bool inside = false;
+        for (int hi : cycle) {
+            const auto& a = verts[hes[hi].tail];
+            const auto& b = verts[hes[hi].head];
+            if ((a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])
+                inside = !inside;
+        }
+        return inside;
+    };
+
+    std::vector<std::pair<std::vector<int>, double>> pos_faces;
+    std::vector<std::vector<int>> neg_faces;
+    for (const auto& cycle : faces) {
+        double area = face_area(cycle);
+        if (area > snap_uv * snap_uv) {
+            pos_faces.push_back({cycle, area});
+        } else if (area < -snap_uv * snap_uv) {
+            bool touches_border = false;
+            for (int hi : cycle) {
+                if (border_vids.count(hes[hi].tail)) {
+                    touches_border = true;
+                    break;
+                }
+            }
+            if (!touches_border)
+                neg_faces.push_back(cycle);
+        }
+    }
+
+    // ---- 6. Assign floating hole loops to their containing faces ----
+    std::vector<std::vector<std::vector<int>>> holes_of(pos_faces.size());
+    for (const auto& cycle : neg_faces) {
+        const auto& sample = verts[hes[cycle[0]].tail];
+        int best = -1;
+        double best_area = std::numeric_limits<double>::infinity();
+        for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
+            const auto& fc = pos_faces[fi].first;
+            double area = pos_faces[fi].second;
+            if (area < best_area && point_in_cycle(sample, fc)) {
+                // the hole vertex lies ON the cycle of its own disk face;
+                // skip faces sharing vertices with the hole cycle
+                std::set<int> hole_vids;
+                std::set<int> face_vids;
+                for (int hi : cycle)
+                    hole_vids.insert(hes[hi].tail);
+                for (int hi : fc)
+                    face_vids.insert(hes[hi].tail);
+                if (hole_vids == face_vids)
+                    continue;
+                best = fi;
+                best_area = area;
+            }
+        }
+        if (best >= 0)
+            holes_of[best].push_back(cycle);
+    }
+
+    // ---- 7. Emit one trimmed surface per face ----
+    auto cycle_to_loop = [&](const std::vector<int>& cycle) -> NurbsCurve {
+        // Collapse consecutive same-curve half-edges into exact trims,
+        // border runs into straight segments, then join into one loop
+        struct Run { int cidx, va, vb; double ta, tb; };
+        std::vector<Run> runs;
+        for (int hi : cycle) {
+            const HalfEdge& he = hes[hi];
+            const SplitEdge& e = live_edges[he.eidx];
+            double ta = he.fwd ? e.ta : e.tb;
+            double tb = he.fwd ? e.tb : e.ta;
+            if (!runs.empty() && runs.back().cidx == e.cidx && runs.back().vb == he.tail) {
+                runs.back().vb = he.head;
+                runs.back().tb = tb;
+            } else {
+                runs.push_back({e.cidx, he.tail, he.head, ta, tb});
+            }
+        }
+        std::vector<NurbsCurve> pieces;
+        for (const auto& run : runs) {
+            if (run.cidx >= 0) {
+                const NurbsCurve& crv = pcurves[run.cidx];
+                auto cdom = crv.domain();
+                double c0 = cdom.first, c1 = cdom.second;
+                double lo = std::min(run.ta, run.tb);
+                double hi_ = std::max(run.ta, run.tb);
+                NurbsCurve piece = crv;
+                bool piece_ok = true;
+                if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
+                    if (!piece.trim(lo, hi_))
+                        piece_ok = false;
+                }
+                if (piece_ok && piece.is_valid()) {
+                    pieces.push_back(piece);
+                    continue;
+                }
+            }
+            const auto& pa = verts[run.va];
+            const auto& pb = verts[run.vb];
+            if (std::hypot(pb[0]-pa[0], pb[1]-pa[1]) > 1e-14) {
+                std::vector<Point> seg_pts = {
+                    Point(pa[0], pa[1], 0.0),
+                    Point(pb[0], pb[1], 0.0)
+                };
+                pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
+            }
+        }
+        if (pieces.empty())
+            return NurbsCurve();
+        std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
+        if (joined.size() == 1 && joined[0].is_closed())
+            return joined[0];
+        // Fallback: polyline loop from the face walk
+        std::vector<Point> loop_pts;
+        for (int hi : cycle) {
+            const auto& a = verts[hes[hi].tail];
+            loop_pts.push_back(Point(a[0], a[1], 0.0));
+        }
+        loop_pts.push_back(Point(loop_pts[0][0], loop_pts[0][1], 0.0));
+        return NurbsCurve::create(false, 1, loop_pts);
+    };
+
+    auto loop_signed_area = [&](const NurbsCurve& loop) -> double {
+        int n = 64;
+        auto ldom = loop.domain();
+        double l0 = ldom.first, l1 = ldom.second;
+        double s = 0.0;
+        Point prev = loop.point_at(l0);
+        for (int i = 1; i <= n; ++i) {
+            Point p = loop.point_at(l0 + (l1 - l0) * i / n);
+            s += prev[0]*p[1] - p[0]*prev[1];
+            prev = p;
+        }
+        return s * 0.5;
+    };
+
+    std::vector<NurbsSurfaceTrimmed> result;
+    for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
+        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first);
+        if (!outer.is_valid())
+            continue;
+        if (loop_signed_area(outer) < 0.0)
+            outer.reverse();
+        NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
+        for (const auto& hole_cycle : holes_of[fi]) {
+            NurbsCurve hole = cycle_to_loop(hole_cycle);
+            if (hole.is_valid()) {
+                if (loop_signed_area(hole) > 0.0)
+                    hole.reverse();
+                ts.add_inner_loop(hole);
+            }
+        }
+        result.push_back(ts);
+    }
+    return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

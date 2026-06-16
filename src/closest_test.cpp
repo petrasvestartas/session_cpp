@@ -121,6 +121,48 @@ MINI_TEST("Closest", "Surface Point") {
     MINI_CHECK(dist2 < 0.01);
 }
 
+MINI_TEST("Closest", "Surface Curve") {
+    // uncomment #include "closest.h"
+    // uncomment #include "nurbscurve.h"
+    // uncomment #include "point.h"
+    // uncomment #include "primitives.h"
+    NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
+    auto [u0, u1] = cyl.domain(0);
+    auto [v0, v1] = cyl.domain(1);
+    Point ps = cyl.point_at(u0, 0.5);
+    double seam_ang = std::atan2(ps[1], ps[0]);
+    std::vector<Point> crv_pts;
+    for (int i = 0; i < 21; i++) {
+        double a = seam_ang - 0.8 + 1.6 * i / 20.0;
+        double z = 1.0 + 2.0 * i / 20.0;
+        crv_pts.push_back(Point(std::cos(a), std::sin(a), z));
+    }
+    NurbsCurve crv = NurbsCurve::create_interpolated(crv_pts);
+
+    auto pcurves = Closest::surface_curve(cyl, crv);
+
+    MINI_CHECK(pcurves.size() == 2);
+    int on_border = 0;
+    bool inside = true;
+    for (auto& pcurve : pcurves) {
+        MINI_CHECK(pcurve.is_valid());
+        for (double e : {0.0, 1.0}) {
+            Point p2 = pcurve.point_at(e);
+            if (std::abs(p2[0] - u0) < 1e-9 || std::abs(p2[0] - u1) < 1e-9) on_border += 1;
+        }
+        for (int i = 0; i < 17; i++) {
+            Point p2 = pcurve.point_at(i / 16.0);
+            if (p2[0] < u0 - 1e-6 || p2[0] > u1 + 1e-6 || p2[1] < v0 - 1e-6 || p2[1] > v1 + 1e-6) inside = false;
+        }
+    }
+    MINI_CHECK(on_border == 2);
+    MINI_CHECK(inside);
+
+    NurbsCurve off = NurbsCurve::create(false, 1, {Point(20.0, 20.0, 20.0), Point(30.0, 30.0, 30.0)});
+
+    MINI_CHECK(Closest::surface_curve(cyl, off).size() == 0);
+}
+
 MINI_TEST("Closest", "Mesh Point") {
     // uncomment #include "closest.h"
     // uncomment #include "mesh.h"

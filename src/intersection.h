@@ -11,6 +11,7 @@
 #include "tolerance.h"
 #include <array>
 #include <tuple>
+#include <utility>
 #include <vector>
 #include <optional>
 
@@ -452,6 +453,53 @@ public:
   static std::vector<NurbsCurve> surface_plane(
     const NurbsSurface& surface,
     const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Find surface/plane intersection curves with their UV pcurves
+   * @param surface NURBS surface to intersect
+   * @param plane Plane to intersect with
+   * @param tolerance Intersection tolerance
+   * @return Vector of (curve_3d, pcurve) pairs. Pcurves are NurbsCurves in
+   *         parameter space (x=u, y=v, z=0), seam-split so each pcurve is
+   *         continuous inside the surface domain. Both curves are
+   *         reparameterized to [0, 1] by chord length; the pcurve is a
+   *         tolerance companion of the 3D curve, not an exact
+   *         reparameterization.
+   */
+  static std::vector<std::pair<NurbsCurve, NurbsCurve>> surface_plane_uv(
+    const NurbsSurface& surface,
+    const Plane& plane,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Find surface/surface intersection curves with UV pcurves on both
+   * @param a First NURBS surface
+   * @param b Second NURBS surface
+   * @param tolerance Intersection tolerance
+   * @return Vector of (curve_3d, pcurve_a, pcurve_b) triples. Pcurves are
+   *         NurbsCurves in each surface's parameter space (x=u, y=v, z=0),
+   *         seam-split on BOTH surfaces. All three curves are reparameterized
+   *         to [0, 1]; the pcurves are tolerance companions, not exact
+   *         reparameterizations. Marching terminates at tangencies
+   *         (n_a parallel n_b); tangential intersections are unsupported.
+   */
+  static std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> surface_surface(
+    const NurbsSurface& a,
+    const NurbsSurface& b,
+    double tolerance = Tolerance::ZERO_TOLERANCE
+  );
+
+  /**
+   * @brief Return the cutter surface's UV pcurves on the target surface.
+   * @details Planar cutters use the fast plane path (infinite plane, not
+   * clipped to the cutter footprint); non-planar cutters use surface/surface.
+   */
+  static std::vector<NurbsCurve> cut_curves_on_surface(
+    const NurbsSurface& target,
+    const NurbsSurface& cutter,
     double tolerance = Tolerance::ZERO_TOLERANCE
   );
 

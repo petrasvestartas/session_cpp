@@ -1,10 +1,16 @@
 #include "brep.h"
 #include "remesh_nurbssurface_grid.h"
 #include "primitives.h"
+#include "intersection.h"
+#include "closest.h"
+#include "plane.h"
+#include "line.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <cmath>
 #include <map>
+#include <array>
+#include <functional>
 #include <algorithm>
 #include "brep.pb.h"
 
@@ -833,6 +839,359 @@ int BRep::add_face(int surface_idx, bool reversed) {
     f.reversed = reversed;
     m_faces.push_back(f);
     return (int)m_faces.size() - 1;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Splitting
+///////////////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+inline long long q6(double x) { return (long long)std::llround(x * 1000000.0); }
+
+std::pair<std::array<double, 3>, std::array<double, 3>> aabb_from_surface(const NurbsSurface& srf) {
+    const int n = 6;
+    auto du = srf.domain(0);
+    auto dv = srf.domain(1);
+    std::array<double, 3> lo = {1e30, 1e30, 1e30};
+    std::array<double, 3> hi = {-1e30, -1e30, -1e30};
+    for (int i = 0; i <= n; ++i) {
+        for (int j = 0; j <= n; ++j) {
+            double u = du.first + (du.second - du.first) * i / n;
+            double v = dv.first + (dv.second - dv.first) * j / n;
+            Point p = srf.point_at(u, v);
+            for (int k = 0; k < 3; ++k) {
+                if (p[k] < lo[k]) lo[k] = p[k];
+                if (p[k] > hi[k]) hi[k] = p[k];
+            }
+        }
+    }
+    return {lo, hi};
+}
+
+std::pair<std::array<double, 3>, std::array<double, 3>> aabb_from_curve(const NurbsCurve& crv) {
+    const int n = 16;
+    auto dc = crv.domain();
+    std::array<double, 3> lo = {1e30, 1e30, 1e30};
+    std::array<double, 3> hi = {-1e30, -1e30, -1e30};
+    for (int i = 0; i <= n; ++i) {
+        Point p = crv.point_at(dc.first + (dc.second - dc.first) * i / n);
+        for (int k = 0; k < 3; ++k) {
+            if (p[k] < lo[k]) lo[k] = p[k];
+            if (p[k] > hi[k]) hi[k] = p[k];
+        }
+    }
+    return {lo, hi};
+}
+
+bool aabb_overlap(const std::pair<std::array<double, 3>, std::array<double, 3>>& a,
+                  const std::pair<std::array<double, 3>, std::array<double, 3>>& b, double m) {
+    for (int k = 0; k < 3; ++k) {
+        if (a.first[k] - m > b.second[k] || b.first[k] - m > a.second[k]) return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+BRep BRep::split_by_plane(const Plane& plane, double tolerance) const {
+    return split_with(tolerance, [&](const NurbsSurface& srf) {
+        std::vector<NurbsCurve> out;
+        for (auto& pr : Intersection::surface_plane_uv(srf, plane, tolerance)) out.push_back(pr.second);
+        return out;
+    });
+}
+
+BRep BRep::split_by_surface(const NurbsSurface& cutter, double tolerance) const {
+    auto cutter_bb = aabb_from_surface(cutter);
+    return split_with(tolerance, [&](const NurbsSurface& srf) {
+        std::vector<NurbsCurve> out;
+        auto srf_bb = aabb_from_surface(srf);
+        double margin = std::max({srf_bb.second[0] - srf_bb.first[0],
+                                  srf_bb.second[1] - srf_bb.first[1],
+                                  srf_bb.second[2] - srf_bb.first[2]}) * 1e-3;
+        if (!aabb_overlap(srf_bb, cutter_bb, margin)) return out;
+        for (auto& tr : Intersection::surface_surface(srf, cutter, tolerance)) out.push_back(std::get<1>(tr));
+        return out;
+    });
+}
+
+BRep BRep::split_by_curves(const std::vector<NurbsCurve>& curves, double tolerance) const {
+    std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> curve_bbs;
+    for (auto& c : curves) curve_bbs.push_back(aabb_from_curve(c));
+    return split_with(tolerance, [&](const NurbsSurface& srf) {
+        std::vector<NurbsCurve> out;
+        auto srf_bb = aabb_from_surface(srf);
+        double margin = std::max({srf_bb.second[0] - srf_bb.first[0],
+                                  srf_bb.second[1] - srf_bb.first[1],
+                                  srf_bb.second[2] - srf_bb.first[2]}) * 1e-3;
+        for (size_t ci = 0; ci < curves.size(); ++ci) {
+            if (!aabb_overlap(srf_bb, curve_bbs[ci], margin)) continue;
+            for (auto& pc : Closest::surface_curve(srf, curves[ci], 0.0, 0.0, tolerance)) out.push_back(pc);
+        }
+        return out;
+    });
+}
+
+BRep BRep::split_by_line(const Line& line, double tolerance) const {
+    std::vector<Point> pts = {line.start(), line.end()};
+    NurbsCurve crv = NurbsCurve::create(false, 1, pts);
+    return split_by_curves({crv}, tolerance);
+}
+
+BRep BRep::subset(const std::vector<int>& face_indices) const {
+    BRep sub;
+    sub.name = name;
+    std::map<int, int> s_map, c2_map, c3_map, v_map, e_map;
+
+    auto map_surface = [&](int i) -> int {
+        auto it = s_map.find(i);
+        if (it != s_map.end()) return it->second;
+        int x = sub.add_surface(m_surfaces[i]);
+        s_map[i] = x;
+        return x;
+    };
+    auto map_c2 = [&](int i) -> int {
+        if (i < 0 || i >= (int)m_curves_2d.size()) return -1;
+        auto it = c2_map.find(i);
+        if (it != c2_map.end()) return it->second;
+        int x = sub.add_curve_2d(m_curves_2d[i]);
+        c2_map[i] = x;
+        return x;
+    };
+    auto map_vertex = [&](int i) -> int {
+        if (i < 0 || i >= (int)m_topology_vertices.size()) return -1;
+        auto it = v_map.find(i);
+        if (it != v_map.end()) return it->second;
+        int idx = sub.add_vertex(m_vertices[m_topology_vertices[i].point_index]);
+        BRepVertex tv;
+        tv.point_index = idx;
+        sub.m_topology_vertices.push_back(tv);
+        int nv = (int)sub.m_topology_vertices.size() - 1;
+        v_map[i] = nv;
+        return nv;
+    };
+    auto map_edge = [&](int i) -> int {
+        if (i < 0 || i >= (int)m_topology_edges.size()) return -1;
+        auto it = e_map.find(i);
+        if (it != e_map.end()) return it->second;
+        const BRepEdge& e = m_topology_edges[i];
+        int ci3 = -1;
+        if (e.curve_3d_index >= 0 && e.curve_3d_index < (int)m_curves_3d.size()) {
+            auto c3 = c3_map.find(e.curve_3d_index);
+            if (c3 != c3_map.end()) ci3 = c3->second;
+            else { ci3 = sub.add_curve_3d(m_curves_3d[e.curve_3d_index]); c3_map[e.curve_3d_index] = ci3; }
+        }
+        int sv = map_vertex(e.start_vertex);
+        int ev = map_vertex(e.end_vertex);
+        int ne = sub.add_edge(ci3, sv, ev);
+        e_map[i] = ne;
+        return ne;
+    };
+
+    for (int fi : face_indices) {
+        const BRepFace& face = m_faces[fi];
+        int si = map_surface(face.surface_index);
+        int new_fi = sub.add_face(si, face.reversed);
+        for (int li : face.loop_indices) {
+            const BRepLoop& lp = m_loops[li];
+            int new_li = sub.add_loop(new_fi, lp.type);
+            for (int ti : lp.trim_indices) {
+                const BRepTrim& trim = m_trims[ti];
+                int ci2 = map_c2(trim.curve_2d_index);
+                int ei = map_edge(trim.edge_index);
+                sub.add_trim(ci2, ei, new_li, trim.reversed, trim.type);
+            }
+        }
+    }
+    for (int ei = 0; ei < (int)sub.m_topology_edges.size(); ++ei) {
+        int sv = sub.m_topology_edges[ei].start_vertex;
+        int ev = sub.m_topology_edges[ei].end_vertex;
+        if (sv >= 0 && sv < (int)sub.m_topology_vertices.size())
+            sub.m_topology_vertices[sv].edge_indices.push_back(ei);
+        if (ev != sv && ev >= 0 && ev < (int)sub.m_topology_vertices.size())
+            sub.m_topology_vertices[ev].edge_indices.push_back(ei);
+    }
+    return sub;
+}
+
+std::vector<BRep> BRep::split_by_plane_pieces(const Plane& plane, double tolerance) const {
+    BRep whole = split_by_plane(plane, tolerance);
+    const Point& o = plane.origin();
+    const Vector& n = plane.z_axis();
+    std::vector<int> pos, neg;
+    for (int fi = 0; fi < (int)whole.m_faces.size(); ++fi) {
+        const BRepFace& face = whole.m_faces[fi];
+        const NurbsSurface& srf = whole.m_surfaces[face.surface_index];
+        double sx = 0.0, sy = 0.0, sz = 0.0;
+        int cnt = 0;
+        for (int li : face.loop_indices) {
+            const BRepLoop& lp = whole.m_loops[li];
+            if (lp.type != BRepLoopType::Outer) continue;
+            for (int ti : lp.trim_indices) {
+                const NurbsCurve& pc = whole.m_curves_2d[whole.m_trims[ti].curve_2d_index];
+                auto dc = pc.domain();
+                for (int k = 0; k < 8; ++k) {
+                    Point uv = pc.point_at(dc.first + (dc.second - dc.first) * k / 8.0);
+                    Point p = srf.point_at(uv[0], uv[1]);
+                    sx += p[0]; sy += p[1]; sz += p[2]; cnt += 1;
+                }
+            }
+        }
+        if (cnt == 0) continue;
+        double cx = sx / cnt, cy = sy / cnt, cz = sz / cnt;
+        double d = (cx - o[0]) * n[0] + (cy - o[1]) * n[1] + (cz - o[2]) * n[2];
+        if (d >= 0.0) pos.push_back(fi); else neg.push_back(fi);
+    }
+    std::vector<BRep> pieces;
+    if (!pos.empty()) pieces.push_back(whole.subset(pos));
+    if (!neg.empty()) pieces.push_back(whole.subset(neg));
+    return pieces;
+}
+
+BRep BRep::split_by_brep(const BRep& cutter, double tolerance) const {
+    std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> cutter_bbs;
+    for (const auto& cs : cutter.m_surfaces) cutter_bbs.push_back(aabb_from_surface(cs));
+    return split_with(tolerance, [&](const NurbsSurface& srf) {
+        std::vector<NurbsCurve> out;
+        auto srf_bb = aabb_from_surface(srf);
+        double margin = std::max({srf_bb.second[0] - srf_bb.first[0],
+                                  srf_bb.second[1] - srf_bb.first[1],
+                                  srf_bb.second[2] - srf_bb.first[2]}) * 1e-3;
+        for (size_t ci = 0; ci < cutter.m_surfaces.size(); ++ci) {
+            if (!aabb_overlap(srf_bb, cutter_bbs[ci], margin)) continue;
+            for (auto& pc : Intersection::cut_curves_on_surface(srf, cutter.m_surfaces[ci], tolerance)) out.push_back(pc);
+        }
+        return out;
+    });
+}
+
+BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for) const {
+    BRep result;
+    result.name = name;
+    std::map<std::tuple<long long, long long, long long>, int> vmap;
+    std::map<std::tuple<int, int, long long, long long, long long>, int> emap;
+
+    auto lift_loop = [](const NurbsSurface& srf, const NurbsCurve& pc,
+                        NurbsCurve& c3d, Point& p0, Point& p1, Point& pm) {
+        int n = std::max(pc.cv_count() * 4, 8);
+        auto dc = pc.domain();
+        std::vector<Point> pts3;
+        pts3.reserve(n + 1);
+        for (int i = 0; i <= n; ++i) {
+            Point uv = pc.point_at(dc.first + (dc.second - dc.first) * i / n);
+            pts3.push_back(srf.point_at(uv[0], uv[1]));
+        }
+        c3d = NurbsCurve::create(false, 1, pts3);
+        p0 = pts3[0];
+        p1 = pts3[n];
+        pm = pts3[n / 2];
+    };
+
+    auto find_or_add_vertex = [&](const Point& p) -> int {
+        auto key = std::make_tuple(q6(p[0]), q6(p[1]), q6(p[2]));
+        auto it = vmap.find(key);
+        if (it != vmap.end()) return it->second;
+        int idx = result.add_vertex(p);
+        BRepVertex tv;
+        tv.point_index = idx;
+        result.m_topology_vertices.push_back(tv);
+        vmap[key] = idx;
+        return idx;
+    };
+
+    auto append_face = [&](const NurbsSurface& srf,
+                           const std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>>& loops) {
+        int si = result.add_surface(srf);
+        int fi = result.add_face(si, false);
+        for (const auto& lp : loops) {
+            int li = result.add_loop(fi, lp.first);
+            for (const auto& pc : lp.second) {
+                if (!pc.is_valid()) continue;
+                NurbsCurve c3d;
+                Point p0, p1, pm;
+                lift_loop(srf, pc, c3d, p0, p1, pm);
+                int ci3d = result.add_curve_3d(c3d);
+                int va = find_or_add_vertex(p0);
+                int vb = find_or_add_vertex(p1);
+                int lo = std::min(va, vb), hi = std::max(va, vb);
+                auto ekey = std::make_tuple(lo, hi, q6(pm[0]), q6(pm[1]), q6(pm[2]));
+                int ei;
+                BRepTrimType ttype;
+                auto it = emap.find(ekey);
+                if (it != emap.end()) {
+                    ei = it->second;
+                    ttype = BRepTrimType::Mated;
+                } else {
+                    ei = result.add_edge(ci3d, lo, hi);
+                    emap[ekey] = ei;
+                    ttype = BRepTrimType::Boundary;
+                }
+                int ci2d = result.add_curve_2d(pc);
+                result.add_trim(ci2d, ei, li, false, ttype);
+            }
+        }
+    };
+
+    for (const auto& face : m_faces) {
+        if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;
+        const NurbsSurface& srf = m_surfaces[face.surface_index];
+        std::vector<NurbsCurve> outer_pcs;
+        std::vector<std::vector<NurbsCurve>> inner_loops;
+        bool has_inner = false;
+        for (int li : face.loop_indices) {
+            if (li < 0 || li >= (int)m_loops.size()) continue;
+            const BRepLoop& bloop = m_loops[li];
+            std::vector<NurbsCurve> pcs;
+            for (int ti : bloop.trim_indices) {
+                if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                int c2 = m_trims[ti].curve_2d_index;
+                if (c2 >= 0 && c2 < (int)m_curves_2d.size()) pcs.push_back(m_curves_2d[c2]);
+            }
+            if (bloop.type == BRepLoopType::Inner) {
+                has_inner = true;
+                inner_loops.push_back(pcs);
+            } else {
+                outer_pcs = pcs;
+            }
+        }
+
+        std::vector<NurbsCurve> cut_pcs = cut_for(srf);
+        if (cut_pcs.empty() || has_inner) {
+            std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>> loops;
+            loops.push_back({BRepLoopType::Outer, outer_pcs});
+            for (auto& il : inner_loops) loops.push_back({BRepLoopType::Inner, il});
+            append_face(srf, loops);
+            continue;
+        }
+
+        int n_boundary = (int)outer_pcs.size();
+        std::vector<NurbsCurve> all_pcs = outer_pcs;
+        all_pcs.insert(all_pcs.end(), cut_pcs.begin(), cut_pcs.end());
+        auto parts = NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary);
+        if (parts.size() <= 1) {
+            std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>> loops;
+            loops.push_back({BRepLoopType::Outer, outer_pcs});
+            append_face(srf, loops);
+            continue;
+        }
+        for (const auto& part : parts) {
+            std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>> loops;
+            loops.push_back({BRepLoopType::Outer, {part.m_outer_loop}});
+            for (const auto& il : part.m_inner_loops) loops.push_back({BRepLoopType::Inner, {il}});
+            append_face(part.m_surface, loops);
+        }
+    }
+
+    for (int ei = 0; ei < (int)result.m_topology_edges.size(); ++ei) {
+        int sv = result.m_topology_edges[ei].start_vertex;
+        int ev = result.m_topology_edges[ei].end_vertex;
+        if (sv >= 0 && sv < (int)result.m_topology_vertices.size())
+            result.m_topology_vertices[sv].edge_indices.push_back(ei);
+        if (ev != sv && ev >= 0 && ev < (int)result.m_topology_vertices.size())
+            result.m_topology_vertices[ev].edge_indices.push_back(ei);
+    }
+    return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

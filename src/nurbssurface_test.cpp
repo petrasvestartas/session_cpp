@@ -1,13 +1,18 @@
 #include "mini_test.h"
 #include "nurbssurface.h"
+#include "nurbssurface_trimmed.h"
 #include "nurbscurve.h"
 #include "mesh.h"
 #include "color.h"
 #include "point.h"
 #include "vector.h"
+#include "plane.h"
+#include "line.h"
+#include "closest.h"
 #include "xform.h"
 #include "tolerance.h"
 #include "primitives.h"
+#include "brep.h"
 
 #include <cmath>
 #include <filesystem>
@@ -854,7 +859,128 @@ namespace session_cpp {
         MINI_CHECK(mesh_planar_adaptive.is_valid());
 
     }
-   
+
+    MINI_TEST("NurbsSurface", "Split By Plane") {
+        // uncomment #include "nurbssurface_trimmed.h"
+        // uncomment #include "plane.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+        // uncomment #include "primitives.h"
+
+        NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
+        Point plane_origin(0.0, 0.0, 2.0);
+        Vector plane_normal(0.3, 0.0, 1.0);
+        Plane plane = Plane::from_point_normal(plane_origin, plane_normal);
+
+        std::vector<NurbsSurfaceTrimmed> parts = cyl.split_by_plane(plane);
+
+        MINI_CHECK(parts.size() == 2);
+        for (const auto& ts : parts) {
+            MINI_CHECK(ts.is_trimmed());
+            Mesh m = ts.mesh_q(20.0, 0.005);
+            MINI_CHECK(m.number_of_faces() > 0);
+        }
+
+        NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 1.0);
+        Point plane2_origin(0.0, 0.0, 0.3);
+        Vector plane2_normal(0.0, 0.0, 1.0);
+        Plane plane2 = Plane::from_point_normal(plane2_origin, plane2_normal);
+
+        std::vector<NurbsSurfaceTrimmed> caps = sphere.split_by_plane(plane2);
+
+        MINI_CHECK(caps.size() == 2);
+    }
+
+    MINI_TEST("NurbsSurface", "Split By Curves") {
+        // uncomment #include "nurbssurface_trimmed.h"
+        // uncomment #include "closest.h"
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "primitives.h"
+
+        NurbsSurface wave = Primitives::wave_surface(10.0, 1.0);
+        std::vector<Point> lift_pts;
+        for (int i = 0; i < 21; ++i) {
+            double x = 10.0 * i / 20.0;
+            double y = 5.0 + 2.0 * std::sin(x);
+            auto [u, v, d] = Closest::surface_point(wave, Point(x, y, 0.0));
+            lift_pts.push_back(wave.point_at(u, v));
+        }
+        NurbsCurve crv = NurbsCurve::create_interpolated(lift_pts);
+
+        std::vector<NurbsSurfaceTrimmed> parts = wave.split_by_curves({crv});
+
+        MINI_CHECK(parts.size() == 2);
+        MINI_CHECK(parts[0].is_trimmed());
+        MINI_CHECK(parts[1].is_trimmed());
+
+        NurbsCurve off = NurbsCurve::create(false, 1, {Point(50.0, 50.0, 50.0), Point(60.0, 60.0, 60.0)});
+
+        std::vector<NurbsSurfaceTrimmed> whole = wave.split_by_curves({off});
+
+        MINI_CHECK(whole.size() == 1);
+    }
+
+    MINI_TEST("NurbsSurface", "Split By Line") {
+        // uncomment #include "nurbssurface_trimmed.h"
+        // uncomment #include "line.h"
+        // uncomment #include "point.h"
+        // uncomment #include "primitives.h"
+
+        NurbsSurface wave = Primitives::wave_surface(10.0, 1.0);
+        Line line = Line::from_points(Point(-1.0, 5.0, 0.0), Point(11.0, 5.0, 0.0));
+
+        std::vector<NurbsSurfaceTrimmed> parts = wave.split_by_line(line);
+
+        MINI_CHECK(parts.size() == 2);
+        MINI_CHECK(parts[0].is_trimmed());
+        MINI_CHECK(parts[1].is_trimmed());
+    }
+
+    MINI_TEST("NurbsSurface", "Split By Surface") {
+        // uncomment #include "nurbssurface_trimmed.h"
+        // uncomment #include "primitives.h"
+
+        NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
+        NurbsSurface flat = NurbsSurface::create(false, false, 1, 1, 2, 2, {
+            Point(-3.0, -3.0, 0.0),
+            Point(-3.0, 3.0, 0.0),
+            Point(3.0, -3.0, 0.0),
+            Point(3.0, 3.0, 0.0),
+        });
+
+        std::vector<NurbsSurfaceTrimmed> parts = cyl.split_by_surface(flat);
+
+        MINI_CHECK(parts.size() == 2);
+        for (const auto& ts : parts) {
+            MINI_CHECK(ts.is_trimmed());
+            Mesh m = ts.mesh_q(20.0, 0.005);
+            MINI_CHECK(m.number_of_faces() > 0);
+        }
+    }
+
+    MINI_TEST("NurbsSurface", "Split By Brep") {
+        // uncomment #include "nurbssurface_trimmed.h"
+        // uncomment #include "brep.h"
+
+        NurbsSurface flat = NurbsSurface::create(false, false, 1, 1, 2, 2, {
+            Point(-3.0, -3.0, 0.0),
+            Point(-3.0, 3.0, 0.0),
+            Point(3.0, -3.0, 0.0),
+            Point(3.0, 3.0, 0.0),
+        });
+        BRep cutter = BRep::create_box(2.0, 2.0, 2.0);
+
+        std::vector<NurbsSurfaceTrimmed> parts = flat.split_by_brep(cutter);
+
+        MINI_CHECK(parts.size() == 2);
+        for (const auto& ts : parts) {
+            MINI_CHECK(ts.is_trimmed());
+            Mesh m = ts.mesh_q(20.0, 0.005);
+            MINI_CHECK(m.number_of_faces() > 0);
+        }
+    }
+
     MINI_TEST("NurbsSurface", "Json Roundtrip") {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "point.h"

@@ -279,6 +279,383 @@ std::tuple<double, double, double> Closest::surface_point(
     return {u, v, final_dist};
 }
 
+std::vector<NurbsCurve> Closest::surface_curve(
+    const NurbsSurface& surface,
+    const NurbsCurve& curve,
+    double t0,
+    double t1,
+    double tolerance
+) {
+    if (!surface.is_valid() || !curve.is_valid()) return {};
+
+    auto [u0, u1] = surface.domain(0);
+    auto [v0, v1] = surface.domain(1);
+    double range_u = u1 - u0;
+    double range_v = v1 - v0;
+    bool closed_u = surface.is_closed(0);
+    bool closed_v = surface.is_closed(1);
+
+    auto [ct0, ct1] = curve.domain();
+    if (t0 <= 0.0) t0 = ct0;
+    if (t1 <= 0.0) t1 = ct1;
+    t0 = std::max(t0, ct0);
+    t1 = std::min(t1, ct1);
+    if (t1 - t0 < 1e-14) return {};
+
+    std::vector<double> spans_u = surface.get_span_vector(0);
+    std::vector<double> spans_v = surface.get_span_vector(1);
+    int nu = std::max((int)spans_u.size() - 1, 1) * 4;
+    int nv = std::max((int)spans_v.size() - 1, 1) * 4;
+    double du = range_u / nu;
+    double dv = range_v / nv;
+
+    double mu = (u0 + u1) * 0.5;
+    double mv = (v0 + v1) * 0.5;
+    Point pmid = surface.point_at(mu, mv);
+    double wu_probe = std::min(mu + du, u1);
+    double wv_probe = std::min(mv + dv, v1);
+    double uv_to_3d_u = pmid.distance(surface.point_at(wu_probe, mv)) / du;
+    double uv_to_3d_v = pmid.distance(surface.point_at(mu, wv_probe)) / dv;
+    double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
+    double uv_to_3d_min = std::min(uv_to_3d_u, uv_to_3d_v);
+    if (uv_to_3d < 1e-10) uv_to_3d = 1.0;
+    if (uv_to_3d_min < 1e-10) uv_to_3d_min = 1.0;
+
+    double step = std::min(du, dv) * 0.25;
+    double fit_tol = tolerance > 0.0 ? tolerance : step * (uv_to_3d + uv_to_3d_min) * 0.5;
+    double reject_tol = fit_tol * 100.0;
+    // Absolute "lies on the surface" gate (fraction of the surface size).
+    // Used to (a) reject a curve that nowhere touches the surface and (b) stop
+    // bisecting stick-out portions of a curve that extends past the face, both
+    // of which otherwise burn a full 4096-sample bisection.
+    double corner_diag = surface.point_at(u0, v0).distance(surface.point_at(u1, v1));
+    if (corner_diag < 1e-12) corner_diag = std::max(range_u, range_v);
+    double on_surf_tol = corner_diag * 0.05;
+
+    auto wrap_u = [&](double u) -> double {
+        if (closed_u) {
+            double t = std::fmod(u - u0, range_u);
+            if (t < 0) t += range_u;
+            return u0 + t;
+        }
+        return std::max(u0, std::min(u, u1));
+    };
+    auto wrap_v = [&](double v) -> double {
+        if (closed_v) {
+            double t = std::fmod(v - v0, range_v);
+            if (t < 0) t += range_v;
+            return v0 + t;
+        }
+        return std::max(v0, std::min(v, v1));
+    };
+
+    // Windowed inversion with seam-aware candidate windows
+    auto invert_near = [&](const Point& pt, double up, double vp, double wu, double wv) -> std::tuple<double, double, double> {
+        std::vector<double> u_centers = {up};
+        if (closed_u) {
+            if (up - wu < u0) u_centers.push_back(up + range_u);
+            if (up + wu > u1) u_centers.push_back(up - range_u);
+        }
+        std::vector<double> v_centers = {vp};
+        if (closed_v) {
+            if (vp - wv < v0) v_centers.push_back(vp + range_v);
+            if (vp + wv > v1) v_centers.push_back(vp - range_v);
+        }
+        std::tuple<double, double, double> best = {up, vp, std::numeric_limits<double>::infinity()};
+        for (double uc : u_centers) {
+            for (double vc : v_centers) {
+                double wu0 = std::max(uc - wu, u0);
+                double wu1 = std::min(uc + wu, u1);
+                double wv0 = std::max(vc - wv, v0);
+                double wv1 = std::min(vc + wv, v1);
+                if (wu1 - wu0 < 1e-14 || wv1 - wv0 < 1e-14) continue;
+                auto res = surface_point(surface, pt, wu0, wu1, wv0, wv1);
+                if (std::get<2>(res) < std::get<2>(best)) best = res;
+                if (std::get<2>(best) < fit_tol * 0.01) break;
+            }
+        }
+        return best;
+    };
+
+    auto unwrap_to = [&](double prev_u, double prev_v, double u, double v) -> std::pair<double, double> {
+        if (closed_u) {
+            while (u - prev_u > range_u * 0.5) u -= range_u;
+            while (u - prev_u < -range_u * 0.5) u += range_u;
+        }
+        if (closed_v) {
+            while (v - prev_v > range_v * 0.5) v -= range_v;
+            while (v - prev_v < -range_v * 0.5) v += range_v;
+        }
+        return {u, v};
+    };
+
+    // 1. Initial samples with warm-started inversion
+    int n0 = std::max(16, 4 * curve.span_count());
+    std::vector<std::array<double, 4>> samples;  // [t, u_unwrapped, v_unwrapped, residual]
+    double max_residual = 0.0;
+    double min_residual = std::numeric_limits<double>::infinity();
+    for (int i = 0; i <= n0; i++) {
+        double t = t0 + (t1 - t0) * i / n0;
+        Point pt = curve.point_at(t);
+        double uu, vv, rd;
+        if (i == 0) {
+            double ru, rv;
+            std::tie(ru, rv, rd) = surface_point(surface, pt, 0.0, 0.0, 0.0, 0.0);
+            uu = ru;
+            vv = rv;
+        } else {
+            std::array<double, 4> prev = samples.back();
+            std::array<double, 4> prev2 = samples[std::max(0, (int)samples.size() - 2)];
+            double wu = std::max(du, dv) * 2.0 + std::abs(prev[1] - prev2[1]);
+            double wv = std::max(du, dv) * 2.0 + std::abs(prev[2] - prev2[2]);
+            double ru, rv;
+            std::tie(ru, rv, rd) = invert_near(pt, wrap_u(prev[1]), wrap_v(prev[2]), wu, wv);
+            if (rd > reject_tol) {
+                std::tie(ru, rv, rd) = surface_point(surface, pt, 0.0, 0.0, 0.0, 0.0);
+            }
+            std::tie(uu, vv) = unwrap_to(prev[1], prev[2], ru, rv);
+        }
+        samples.push_back(std::array<double, 4>{t, uu, vv, rd});
+        max_residual = std::max(max_residual, rd);
+        min_residual = std::min(min_residual, rd);
+    }
+
+    // Reject a curve that nowhere lies on the surface (no sample touches it).
+    if (max_residual > reject_tol || min_residual > on_surf_tol) return {};
+
+    // 2. Adaptive bisection where the lifted UV midpoint strays from the curve
+    int depth = 0;
+    while (depth < 8) {
+        int inserted = 0;
+        size_t i = 0;
+        while (i + 1 < samples.size()) {
+            std::array<double, 4> a = samples[i];
+            std::array<double, 4> b = samples[i + 1];
+            double tm = (a[0] + b[0]) * 0.5;
+            double um = (a[1] + b[1]) * 0.5;
+            double vm = (a[2] + b[2]) * 0.5;
+            Point pm = curve.point_at(tm);
+            Point lift = surface.point_at(wrap_u(um), wrap_v(vm));
+            if (lift.distance(pm) > fit_tol && samples.size() < 4096) {
+                double wu = std::max(std::abs(b[1] - a[1]), du) * 1.0;
+                double wv = std::max(std::abs(b[2] - a[2]), dv) * 1.0;
+                double ru, rv, rd;
+                std::tie(ru, rv, rd) = invert_near(pm, wrap_u(um), wrap_v(vm), wu, wv);
+                if (rd > on_surf_tol) {
+                    // Midpoint is off the surface: stick-out portion of a curve
+                    // that extends past the face, not a curvature stray. Do not
+                    // refine it (avoids unbounded bisection).
+                    i += 1;
+                    continue;
+                }
+                auto [uu, vv] = unwrap_to(a[1], a[2], ru, rv);
+                samples.insert(samples.begin() + i + 1, std::array<double, 4>{tm, uu, vv, rd});
+                inserted += 1;
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+        if (inserted == 0) break;
+        depth += 1;
+    }
+
+    std::vector<std::pair<double, double>> pts;
+    pts.reserve(samples.size());
+    for (const auto& s : samples) pts.push_back({s[1], s[2]});
+
+    // 3. Closed-loop closure and seam-crossing split (same scheme as surface_plane_uv)
+    Point p_first = curve.point_at(samples[0][0]);
+    Point p_last = curve.point_at(samples.back()[0]);
+    bool is_loop = p_first.distance(p_last) < fit_tol * 4.0 && pts.size() >= 6;
+
+    double closure_du = 0.0;
+    double closure_dv = 0.0;
+    if (is_loop) {
+        pts.pop_back();
+        double du_j = pts[0].first - pts.back().first;
+        double dv_j = pts[0].second - pts.back().second;
+        if (closed_u) {
+            while (du_j > range_u * 0.5) du_j -= range_u;
+            while (du_j < -range_u * 0.5) du_j += range_u;
+        }
+        if (closed_v) {
+            while (dv_j > range_v * 0.5) dv_j -= range_v;
+            while (dv_j < -range_v * 0.5) dv_j += range_v;
+        }
+        closure_du = (pts.back().first + du_j) - pts[0].first;
+        closure_dv = (pts.back().second + dv_j) - pts[0].second;
+        pts.push_back({pts[0].first + closure_du, pts[0].second + closure_dv});
+    }
+
+    std::vector<std::pair<double, double>> out_pts;
+    out_pts.push_back(pts[0]);
+    std::vector<int> cross_idx;
+    for (size_t i = 1; i < pts.size(); i++) {
+        std::pair<double, double> pa = pts[i - 1];
+        std::pair<double, double> pb = pts[i];
+        std::vector<std::tuple<double, int, double>> crossings;
+        if (closed_u && std::abs(pb.first - pa.first) > 1e-15) {
+            int k0 = (int)std::floor((pa.first - u0) / range_u);
+            int k1 = (int)std::floor((pb.first - u0) / range_u);
+            for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
+                double L = u0 + k * range_u;
+                double t = (L - pa.first) / (pb.first - pa.first);
+                if (0.0 < t && t < 1.0) crossings.push_back({t, 0, L});
+            }
+        }
+        if (closed_v && std::abs(pb.second - pa.second) > 1e-15) {
+            int k0 = (int)std::floor((pa.second - v0) / range_v);
+            int k1 = (int)std::floor((pb.second - v0) / range_v);
+            for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
+                double L = v0 + k * range_v;
+                double t = (L - pa.second) / (pb.second - pa.second);
+                if (0.0 < t && t < 1.0) crossings.push_back({t, 1, L});
+            }
+        }
+        std::sort(crossings.begin(), crossings.end());
+        for (const auto& [t, axis, L] : crossings) {
+            double cu = pa.first + (pb.first - pa.first) * t;
+            double cv_ = pa.second + (pb.second - pa.second) * t;
+            if (axis == 0) {
+                cu = L;
+            } else {
+                cv_ = L;
+            }
+            out_pts.push_back({cu, cv_});
+            cross_idx.push_back((int)out_pts.size() - 1);
+        }
+        out_pts.push_back({pb.first, pb.second});
+        // An interior sample sitting exactly on a seam level is a crossing
+        if (i < pts.size() - 1) {
+            bool on_seam = false;
+            if (closed_u) {
+                double k = std::round((pb.first - u0) / range_u);
+                double L = u0 + k * range_u;
+                if (std::abs(pb.first - L) < range_u * 1e-9 && std::abs(pb.first - pa.first) > range_u * 1e-9) {
+                    out_pts.back().first = L;
+                    on_seam = true;
+                }
+            }
+            if (closed_v) {
+                double k = std::round((pb.second - v0) / range_v);
+                double L = v0 + k * range_v;
+                if (std::abs(pb.second - L) < range_v * 1e-9 && std::abs(pb.second - pa.second) > range_v * 1e-9) {
+                    out_pts.back().second = L;
+                    on_seam = true;
+                }
+            }
+            if (on_seam) cross_idx.push_back((int)out_pts.size() - 1);
+        }
+    }
+
+    bool wrap_drift = std::abs(closure_du) > range_u * 0.5 || std::abs(closure_dv) > range_v * 0.5;
+    std::vector<std::pair<std::vector<std::pair<double, double>>, bool>> pieces;
+    if (cross_idx.size() == 0) {
+        pieces.push_back({out_pts, is_loop && !wrap_drift});
+    } else if (is_loop) {
+        for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++) {
+            int a = cross_idx[ci];
+            int b = cross_idx[ci + 1];
+            pieces.push_back({std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false});
+        }
+        std::vector<std::pair<double, double>> wrap_piece(out_pts.begin() + cross_idx.back(), out_pts.end());
+        for (int pi = 1; pi <= cross_idx[0]; pi++)
+            wrap_piece.push_back({out_pts[pi].first + closure_du, out_pts[pi].second + closure_dv});
+        pieces.push_back({wrap_piece, false});
+    } else {
+        std::vector<int> bounds;
+        bounds.push_back(0);
+        for (int ci : cross_idx) bounds.push_back(ci);
+        bounds.push_back((int)out_pts.size() - 1);
+        for (size_t bi = 0; bi + 1 < bounds.size(); bi++) {
+            int a = bounds[bi];
+            int b = bounds[bi + 1];
+            if (b > a)
+                pieces.push_back({std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false});
+        }
+    }
+
+    // 4. Refit each piece as a UV pcurve
+    std::vector<NurbsCurve> result;
+    for (auto& [piece_pts, piece_loop] : pieces) {
+        if (piece_pts.size() < 2) continue;
+        std::pair<double, double> mid = piece_pts[piece_pts.size() / 2];
+        if (closed_u) {
+            int k_u = (int)std::floor((mid.first - u0) / range_u);
+            if (k_u != 0)
+                for (auto& p : piece_pts) p.first -= k_u * range_u;
+        }
+        if (closed_v) {
+            int k_v = (int)std::floor((mid.second - v0) / range_v);
+            if (k_v != 0)
+                for (auto& p : piece_pts) p.second -= k_v * range_v;
+        }
+
+        std::vector<Point> pts_uv(piece_pts.size());
+        for (size_t i = 0; i < piece_pts.size(); i++)
+            pts_uv[i] = Point(piece_pts[i].first, piece_pts[i].second, 0.0);
+        int mp = (int)pts_uv.size();
+        double fit_tol_uv = step;
+        double total_turning = 0.0;
+        for (int i = 1; i < mp - 1; i++) {
+            double dx1 = pts_uv[i][0] - pts_uv[i-1][0];
+            double dy1 = pts_uv[i][1] - pts_uv[i-1][1];
+            double dx2 = pts_uv[i+1][0] - pts_uv[i][0];
+            double dy2 = pts_uv[i+1][1] - pts_uv[i][1];
+            double l1 = std::hypot(dx1, dy1);
+            double l2 = std::hypot(dx2, dy2);
+            if (l1 > 1e-14 && l2 > 1e-14) {
+                double c = (dx1*dx2 + dy1*dy2) / (l1*l2);
+                c = std::max(-1.0, std::min(1.0, c));
+                total_turning += std::acos(c);
+            }
+        }
+
+        std::vector<double> chords(mp, 0.0);
+        double total_len = 0.0;
+        for (int i = 1; i < mp; i++) {
+            total_len += pts_uv[i].distance(pts_uv[i-1]);
+            chords[i] = total_len;
+        }
+        if (piece_loop && mp > 1) total_len += pts_uv[0].distance(pts_uv[mp-1]);
+        if (total_len > 1e-14)
+            for (int i = 1; i < mp; i++) chords[i] /= total_len;
+
+        int target_cvs = std::max(8, (int)(total_turning / 0.5) + 6);
+        int max_cvs = mp - 1;
+        NurbsCurve pcurve;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            if (target_cvs > max_cvs) break;
+            pcurve = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
+            if (!pcurve.is_valid()) break;
+            auto [ft0, ft1] = pcurve.domain();
+            double max_dev = 0.0;
+            for (int i = 0; i < mp; i++) {
+                double t = ft0 + (ft1 - ft0) * chords[i];
+                max_dev = std::max(max_dev, pcurve.point_at(t).distance(pts_uv[i]));
+            }
+            if (max_dev < fit_tol_uv) break;
+            target_cvs = std::min(target_cvs * 2, max_cvs);
+        }
+
+        if (!pcurve.is_valid())
+            pcurve = piece_loop
+                ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
+                : NurbsCurve::create_interpolated(pts_uv);
+        if (!pcurve.is_valid() && pts_uv.size() >= 2)
+            // Last resort: a degree-1 polyline through the inverted UV samples
+            // (always valid; lies on the surface piecewise-linearly in UV).
+            pcurve = NurbsCurve::create(false, 1, pts_uv);
+        if (!pcurve.is_valid()) continue;
+
+        pcurve.set_domain(0.0, 1.0);
+        result.push_back(pcurve);
+    }
+
+    return result;
+}
+
 static Point closest_point_on_triangle(const Point& p, const Point& a, const Point& b, const Point& c) {
     double abx = b[0]-a[0], aby = b[1]-a[1], abz = b[2]-a[2];
     double acx = c[0]-a[0], acy = c[1]-a[1], acz = c[2]-a[2];

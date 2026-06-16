@@ -59,6 +59,9 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
 
     if (periodic && n < 3) return NurbsCurve();
 
+    // Two points: Rhino emits a degree-1 line (2 CVs), not a cubic.
+    if (n == 2 && !periodic) return NurbsCurve::create(false, 1, points);
+
     auto pdist = [](const Point& a, const Point& b) {
         double dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
         return std::sqrt(dx*dx + dy*dy + dz*dz);
@@ -244,7 +247,8 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
     for (int d = 0; d < dim; d++) rhs[(n-1) * dim + d] = cv[n * dim + d];
 
     std::vector<double> solution;
-    nurbsknot::solve_tridiagonal(dim, sys_n, lower, diag, upper, rhs, solution);
+    if (!nurbsknot::solve_tridiagonal(dim, sys_n, lower, diag, upper, rhs, solution))
+        return NurbsCurve();
 
     for (int i = 0; i < sys_n; i++)
         for (int d = 0; d < dim; d++)
@@ -407,6 +411,114 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
         curve.set_cv(i + 1, Point(rhs[i*3], rhs[i*3+1], rhs[i*3+2]));
     curve.set_cv(n, points[m-1]);
     return curve;
+}
+
+std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, double tolerance) {
+    double tol = tolerance;
+    std::vector<NurbsCurve> segs;
+    for (const NurbsCurve& c : curves) {
+        if (c.is_valid()) {
+            segs.push_back(c);
+        }
+    }
+    std::vector<std::vector<NurbsCurve>> chains;
+    std::vector<bool> used(segs.size(), false);
+    for (size_t i = 0; i < segs.size(); i++) {
+        if (used[i]) {
+            continue;
+        }
+        used[i] = true;
+        std::vector<NurbsCurve> chain;
+        chain.push_back(segs[i]);
+        if (!segs[i].is_closed()) {
+            bool grown = true;
+            while (grown) {
+                grown = false;
+                Point start = chain.front().point_at_start();
+                Point end = chain.back().point_at_end();
+                for (size_t j = 0; j < segs.size(); j++) {
+                    if (used[j] || segs[j].is_closed()) {
+                        continue;
+                    }
+                    Point s = segs[j].point_at_start();
+                    Point e = segs[j].point_at_end();
+                    if (s.distance(end) <= tol) {
+                        chain.push_back(segs[j]);
+                    } else if (e.distance(end) <= tol) {
+                        NurbsCurve r = segs[j];
+                        r.reverse();
+                        chain.push_back(r);
+                    } else if (e.distance(start) <= tol) {
+                        chain.insert(chain.begin(), segs[j]);
+                    } else if (s.distance(start) <= tol) {
+                        NurbsCurve r = segs[j];
+                        r.reverse();
+                        chain.insert(chain.begin(), r);
+                    } else {
+                        continue;
+                    }
+                    used[j] = true;
+                    grown = true;
+                    break;
+                }
+            }
+        }
+        chains.push_back(chain);
+    }
+    std::vector<NurbsCurve> result;
+    for (std::vector<NurbsCurve>& chain : chains) {
+        if (chain.size() == 1) {
+            result.push_back(chain[0]);
+            continue;
+        }
+        bool rational = false;
+        int max_degree = 1;
+        for (const NurbsCurve& c : chain) {
+            if (c.is_rational()) {
+                rational = true;
+            }
+            if (c.degree() > max_degree) {
+                max_degree = c.degree();
+            }
+        }
+        for (NurbsCurve& c : chain) {
+            if (rational) {
+                c.make_rational();
+            }
+            c.clamp_end(2);
+            c.increase_degree(max_degree);
+        }
+        NurbsCurve joined = chain[0];
+        for (size_t ci = 1; ci < chain.size(); ci++) {
+            NurbsCurve& c = chain[ci];
+            int stride = joined.m_cv_stride;
+            int cvdim = joined.cv_size();
+            auto [a0, a1] = joined.domain();
+            auto [s0, s1] = c.domain();
+            (void)a0;
+            (void)s0;
+            c.set_domain(a1, a1 + (s1 - s0));
+            if (rational) {
+                double w_end = joined.weight(joined.m_cv_count - 1);
+                double w_start = c.weight(0);
+                if (std::fabs(w_start) > Tolerance::ZERO_TOLERANCE) {
+                    double scale = w_end / w_start;
+                    for (size_t k = 0; k < c.m_cv.size(); k++) {
+                        c.m_cv[k] = c.m_cv[k] * scale;
+                    }
+                }
+            }
+            int last = (joined.m_cv_count - 1) * stride;
+            for (int k = 0; k < cvdim; k++) {
+                joined.m_cv[last + k] = 0.5 * (joined.m_cv[last + k] + c.m_cv[k]);
+            }
+            joined.m_nurbsknot.insert(joined.m_nurbsknot.end(), c.m_nurbsknot.begin() + (joined.m_order - 1), c.m_nurbsknot.end());
+            joined.m_cv.insert(joined.m_cv.end(), c.m_cv.begin() + stride, c.m_cv.end());
+            joined.m_cv_count = joined.m_cv_count + c.m_cv_count - 1;
+        }
+        result.push_back(joined);
+    }
+    return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

@@ -6,6 +6,7 @@
 #include "xform.h"
 #include "tolerance.h"
 #include "intersection.h"
+#include "primitives.h"
 #include <cmath>
 
 using namespace session_cpp::mini_test;
@@ -79,6 +80,12 @@ namespace session_cpp {
             MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(0), points[0]));
             MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(6), points[4]));
 
+            // Rhino parity: interior CVs match Rhino CreateInterpolatedCurve (Chord)
+            // bit-for-bit (validated by the OCCT/Rhino harness in validation/).
+            MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(1), Point(15.342776949, 13.734888836, 0.0)));
+            MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(3), Point(24.678472471, 0.354555126, 0.0)));
+            MINI_CHECK(TOLERANCE.is_point_close(c.get_cv(5), Point(39.626394361, 15.472490151, 0.0)));
+
             // Periodic closed curve
             std::vector<Point> closed_pts = {
                 Point(4, 20, 0),
@@ -133,6 +140,36 @@ namespace session_cpp {
             MINI_CHECK(cp.is_valid());
             MINI_CHECK(cp.is_closed());
             MINI_CHECK(cp.cv_count() == 13);
+    }
+
+    MINI_TEST("NurbsCurve", "Join") {
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "primitives.h"
+
+        NurbsCurve arc1 = Primitives::arc(Point(-1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0), Point(1.0, 0.0, 0.0));
+        NurbsCurve arc2 = Primitives::arc(Point(1.0, 0.0, 0.0), Point(1.5, -1.0, 0.0), Point(1.0, -2.0, 0.0));
+        std::vector<Point> pts = {Point(1.0, -2.0, 0.0), Point(-1.0, 0.0, 0.0)};
+        NurbsCurve line = NurbsCurve::create(false, 1, pts);
+        arc2.reverse();
+
+        std::vector<NurbsCurve> joined = NurbsCurve::join({line, arc1, arc2});
+
+        MINI_CHECK(joined.size() == 1);
+        MINI_CHECK(joined[0].is_valid());
+        MINI_CHECK(joined[0].is_closed());
+        MINI_CHECK(joined[0].degree() == 2);
+        MINI_CHECK(joined[0].cv_count() == 7);
+
+        NurbsCurve l1 = NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0)});
+        NurbsCurve l2 = NurbsCurve::create(false, 1, {Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
+        NurbsCurve l3 = NurbsCurve::create(false, 1, {Point(9.0, 9.0, 0.0), Point(8.0, 8.0, 0.0)});
+
+        std::vector<NurbsCurve> separate = NurbsCurve::join({l1, l3, l2});
+
+        MINI_CHECK(separate.size() == 2);
+        MINI_CHECK(separate[0].cv_count() == 3);
+        MINI_CHECK(std::fabs(separate[0].length() - 2.0) < 1e-9);
     }
 
     MINI_TEST("NurbsCurve", "Attributes") {

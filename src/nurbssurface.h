@@ -20,6 +20,10 @@
 
 namespace session_cpp {
 
+class Line;
+class BRep;
+class NurbsSurfaceTrimmed;
+
 class NurbsSurface {
 public:
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
@@ -407,6 +411,34 @@ public:
     /// Return a new surface with the given xform applied to CVs.
     /// The original surface is not modified. Copy gets new guid.
     NurbsSurface transformed(const Xform& xform) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Geometric Operations (Additional)
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Split this surface by a plane into trimmed faces. Computes the
+    /// surface/plane intersection with UV pcurves and splits the UV domain
+    /// along them.
+    std::vector<NurbsSurfaceTrimmed> split_by_plane(const Plane& plane, double tolerance = 0.0) const;
+
+    /// Split this surface by 3D curves lying on (or near) it. Each curve is
+    /// pulled back to UV via closest-point projection; curves whose pullback
+    /// fails (off-surface) are skipped.
+    std::vector<NurbsSurfaceTrimmed> split_by_curves(const std::vector<NurbsCurve>& curves, double tolerance = 0.0) const;
+
+    /// Split this surface by a line pulled onto it (Rhino "pull then split").
+    /// The line is converted to a degree-1 curve and projected onto the
+    /// surface by closest points; the surface is split along the pulled
+    /// curve. A pulled curve that does not reach the boundary or another
+    /// cutter is discarded. For a planar cut, use split_by_plane.
+    std::vector<NurbsSurfaceTrimmed> split_by_line(const Line& line, double tolerance = 0.0) const;
+
+    /// Split this surface by another surface. Computes the surface/surface
+    /// intersection and splits the UV domain along the pcurves on this surface.
+    std::vector<NurbsSurfaceTrimmed> split_by_surface(const NurbsSurface& cutter, double tolerance = 0.0) const;
+
+    /// Split this surface by every face of a BRep (planar faces via fast plane path).
+    std::vector<NurbsSurfaceTrimmed> split_by_brep(const BRep& brep, double tolerance = 0.0) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Meshing

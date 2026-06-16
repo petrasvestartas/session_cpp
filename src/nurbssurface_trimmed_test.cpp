@@ -369,6 +369,38 @@ namespace session_cpp {
         }
     }
 
+    MINI_TEST("NurbsSurfaceTrimmed", "Split By UV Curves") {
+        // uncomment #include "nurbssurface_trimmed.h"
+        // uncomment #include "nurbscurve.h"
+        // uncomment #include "point.h"
+        // uncomment #include "primitives.h"
+
+        NurbsSurface srf = Primitives::wave_surface(10.0, 1.0);
+        auto [u0, u1] = srf.domain(0);
+        auto [v0, v1] = srf.domain(1);
+        std::vector<Point> pts = {Point(u0 + (u1-u0)*0.4, v0, 0.0), Point(u0 + (u1-u0)*0.6, v1, 0.0)};
+        NurbsCurve line = NurbsCurve::create(false, 1, pts);
+
+        std::vector<NurbsSurfaceTrimmed> parts = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {line});
+
+        MINI_CHECK(parts.size() == 2);
+        MINI_CHECK(parts[0].is_trimmed());
+        MINI_CHECK(parts[1].is_trimmed());
+
+        NurbsCurve circle = Primitives::circle((u0+u1)*0.5, (v0+v1)*0.5, 0.0, (u1-u0)*0.2);
+
+        std::vector<NurbsSurfaceTrimmed> ring = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {circle});
+
+        MINI_CHECK(ring.size() == 2);
+        MINI_CHECK(ring[0].inner_loop_count() + ring[1].inner_loop_count() == 1);
+
+        NurbsCurve dangling = NurbsCurve::create(false, 1, {Point(3.0, 3.0, 0.0), Point(5.0, 5.0, 0.0)});
+
+        std::vector<NurbsSurfaceTrimmed> whole = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {dangling});
+
+        MINI_CHECK(whole.size() == 1);
+    }
+
     MINI_TEST("NurbsSurfaceTrimmed", "Transformation") {
         // uncomment #include "nurbssurface_trimmed.h"
         // uncomment #include "nurbssurface.h"

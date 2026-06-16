@@ -12,8 +12,12 @@
 #include "json.h"
 #include <vector>
 #include <string>
+#include <functional>
 
 namespace session_cpp {
+
+class Plane;
+class Line;
 
 enum class BRepTrimType { Boundary = 0, Mated = 1, Seam = 2, Singular = 3 };
 enum class BRepLoopType { Outer = 0, Inner = 1 };
@@ -163,6 +167,31 @@ public:
     int add_face(int surface_idx, bool reversed);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
+    // Splitting
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Split this BRep by a plane. Returns a new subdivided BRep.
+    BRep split_by_plane(const Plane& plane, double tolerance = 0.0) const;
+
+    /// Split this BRep by another surface. Returns a new subdivided BRep.
+    BRep split_by_surface(const NurbsSurface& cutter, double tolerance = 0.0) const;
+
+    /// Split this BRep by 3D curves pulled onto each face. New BRep.
+    BRep split_by_curves(const std::vector<NurbsCurve>& curves, double tolerance = 0.0) const;
+
+    /// Split this BRep by a line pulled onto each face. New BRep.
+    BRep split_by_line(const Line& line, double tolerance = 0.0) const;
+
+    /// Split this BRep by every face of another BRep. New BRep.
+    BRep split_by_brep(const BRep& cutter, double tolerance = 0.0) const;
+
+    /// Build a standalone BRep from a subset of this BRep's faces.
+    BRep subset(const std::vector<int>& face_indices) const;
+
+    /// Split by a plane and separate into the pieces on each side. One BRep per side.
+    std::vector<BRep> split_by_plane_pieces(const Plane& plane, double tolerance = 0.0) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
     // Meshing
     ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -248,6 +277,9 @@ private:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     void deep_copy_from(const BRep& src);
+
+    /// Shared splitter: subdivide each face by per-face cut pcurves, rebuild a new BRep.
+    BRep split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for) const;
 };
 
 } // namespace session_cpp

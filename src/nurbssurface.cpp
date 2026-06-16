@@ -1,4 +1,10 @@
 #include "nurbssurface.h"
+#include "nurbssurface_trimmed.h"
+#include "intersection.h"
+#include "closest.h"
+#include "line.h"
+#include "brep.h"
+#include <array>
 #include "remesh_nurbssurface_grid.h"
 #include "remesh_nurbssurface_adaptive.h"
 #include "nurbsknot.h"
@@ -1364,6 +1370,78 @@ NurbsSurface NurbsSurface::transformed(const Xform& xf) const {
     NurbsSurface result = *this;
     result.transform(xf);
     return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Geometric Operations (Additional)
+///////////////////////////////////////////////////////////////////////////////////////////
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_plane(const Plane& plane, double tolerance) const {
+    auto pairs = Intersection::surface_plane_uv(*this, plane, tolerance);
+    std::vector<NurbsCurve> pcurves;
+    for (const auto& pair : pairs)
+        pcurves.push_back(pair.second);
+    return NurbsSurfaceTrimmed::split_by_uv_curves(*this, pcurves, tolerance);
+}
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_curves(const std::vector<NurbsCurve>& curves, double tolerance) const {
+    std::vector<NurbsCurve> pcurves;
+    for (const auto& crv : curves) {
+        for (const auto& pcurve : Closest::surface_curve(*this, crv, 0.0, 0.0, tolerance))
+            pcurves.push_back(pcurve);
+    }
+    return NurbsSurfaceTrimmed::split_by_uv_curves(*this, pcurves, tolerance);
+}
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_line(const Line& line, double tolerance) const {
+    std::vector<Point> pts = {line.start(), line.end()};
+    NurbsCurve crv = NurbsCurve::create(false, 1, pts);
+    return split_by_curves({crv}, tolerance);
+}
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_surface(const NurbsSurface& cutter, double tolerance) const {
+    auto triples = Intersection::surface_surface(*this, cutter, tolerance);
+    std::vector<NurbsCurve> pcurves;
+    for (const auto& triple : triples)
+        pcurves.push_back(std::get<1>(triple));
+    return NurbsSurfaceTrimmed::split_by_uv_curves(*this, pcurves, tolerance);
+}
+
+namespace {
+std::pair<std::array<double, 3>, std::array<double, 3>> ns_surface_aabb(const NurbsSurface& srf) {
+    const int n = 6;
+    auto du = srf.domain(0);
+    auto dv = srf.domain(1);
+    std::array<double, 3> lo = {1e30, 1e30, 1e30};
+    std::array<double, 3> hi = {-1e30, -1e30, -1e30};
+    for (int i = 0; i <= n; ++i)
+        for (int j = 0; j <= n; ++j) {
+            Point p = srf.point_at(du.first + (du.second - du.first) * i / n,
+                                   dv.first + (dv.second - dv.first) * j / n);
+            for (int k = 0; k < 3; ++k) {
+                if (p[k] < lo[k]) lo[k] = p[k];
+                if (p[k] > hi[k]) hi[k] = p[k];
+            }
+        }
+    return {lo, hi};
+}
+bool ns_aabb_overlap_pad(const std::pair<std::array<double, 3>, std::array<double, 3>>& a,
+                         const std::pair<std::array<double, 3>, std::array<double, 3>>& b) {
+    double m = std::max({a.second[0] - a.first[0], a.second[1] - a.first[1], a.second[2] - a.first[2]}) * 1e-3;
+    for (int k = 0; k < 3; ++k)
+        if (a.first[k] - m > b.second[k] || b.first[k] - m > a.second[k]) return false;
+    return true;
+}
+}  // namespace
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_brep(const BRep& brep, double tolerance) const {
+    auto target_bb = ns_surface_aabb(*this);
+    std::vector<NurbsCurve> pcurves;
+    for (const auto& cutter : brep.m_surfaces) {
+        if (!ns_aabb_overlap_pad(target_bb, ns_surface_aabb(cutter))) continue;
+        for (auto& pc : Intersection::cut_curves_on_surface(*this, cutter, tolerance)) pcurves.push_back(pc);
+    }
+    return NurbsSurfaceTrimmed::split_by_uv_curves(*this, pcurves, tolerance);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
