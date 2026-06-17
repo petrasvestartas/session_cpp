@@ -91,7 +91,7 @@ message(STATUS "Protocol Buffers: ENABLED (building from source)")
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
-set(PROTOC_VERSION "33.2")
+set(PROTOC_VERSION "33.6")
 
 # Option C: generated .pb.cc/.pb.h are committed under generated/. The runtime
 # (libprotobuf) is still required to link against them, but protoc + libprotoc

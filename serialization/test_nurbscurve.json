@@ -29,7 +29,7 @@
     "cv_count": 5,
     "cv_stride": 3,
     "dimension": 3,
-    "guid": "44fd60cc-d082-43a8-9599-9f2b681b2c64",
+    "guid": "266077a3-a487-4f24-a73b-29645652c367",
     "is_rational": false,
     "nurbsknots": [
         0.0,
@@ -46,7 +46,7 @@
     "type": "NurbsCurve",
     "width": 1.0,
     "xform": {
-        "guid": "18c1777d-cfa5-4500-8fb7-17026ad604c3",
+        "guid": "4d2e3c1c-e384-44a2-8883-6b4dcdf6b65d",
         "m": [
             1.0,
             0.0,

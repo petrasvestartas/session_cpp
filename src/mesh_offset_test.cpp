@@ -77,15 +77,17 @@ namespace session_cpp {
         };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0, 1, 2, 3}});
         Mesh result = MeshOffset::from_mesh(mesh, 1.0);
-        result.file_json_dump("mesh_offset_test_dump.json");
-        Mesh loaded = Mesh::file_json_load("mesh_offset_test_dump.json");
+        std::string filename = "serialization/test_mesh_offset.json";
+        result.file_json_dump(filename);
+        Mesh loaded = Mesh::file_json_load(filename);
         MINI_CHECK(loaded.is_valid());
         MINI_CHECK(loaded.number_of_vertices() == result.number_of_vertices());
         MINI_CHECK(loaded.number_of_faces() == result.number_of_faces());
     }
 
     MINI_TEST("MeshOffset", "file_json_load") {
-        Mesh loaded = Mesh::file_json_load("mesh_offset_test_dump.json");
+        std::string filename = "serialization/test_mesh_offset.json";
+        Mesh loaded = Mesh::file_json_load(filename);
         MINI_CHECK(loaded.is_valid());
         MINI_CHECK(loaded.number_of_vertices() == 8);
         MINI_CHECK(loaded.number_of_faces() == 6);
@@ -100,15 +102,17 @@ namespace session_cpp {
         };
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0, 1, 2, 3}});
         Mesh result = MeshOffset::from_mesh(mesh, 1.0);
-        result.pb_dump("mesh_offset_test.pb");
-        Mesh loaded = Mesh::pb_load("mesh_offset_test.pb");
+        std::string filename = "serialization/test_mesh_offset.bin";
+        result.pb_dump(filename);
+        Mesh loaded = Mesh::pb_load(filename);
         MINI_CHECK(loaded.is_valid());
         MINI_CHECK(loaded.number_of_vertices() == result.number_of_vertices());
         MINI_CHECK(loaded.number_of_faces() == result.number_of_faces());
     }
 
     MINI_TEST("MeshOffset", "from_proto") {
-        Mesh loaded = Mesh::pb_load("mesh_offset_test.pb");
+        std::string filename = "serialization/test_mesh_offset.bin";
+        Mesh loaded = Mesh::pb_load(filename);
         MINI_CHECK(loaded.is_valid());
         MINI_CHECK(loaded.number_of_vertices() == 8);
         MINI_CHECK(loaded.number_of_faces() == 6);
