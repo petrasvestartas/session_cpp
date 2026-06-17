@@ -9,6 +9,7 @@
 #include "json.h"
 #include <vector>
 #include <string>
+#include <utility>
 
 namespace session_cpp {
 
@@ -135,6 +136,15 @@ public:
     /// Newton-refined onto the plane (so the cut curve lies exactly on it), then coincident-3D
     /// vertices welded so periodic seams (cylinder/torus/sphere) close watertight.
     Mesh mesh_by_plane(const Point& q0, const Vector& normal, double max_angle_deg, double chord_factor) const;
+
+    /// Multi-plane half-space clip: keep the region inside ALL half-spaces { (S-q).n <= 0 }.
+    /// Planes are passed in (no persisted cut state). Same span-adaptive UV grid + per-plane
+    /// Sutherland-Hodgman clip + Newton-onto-plane + 3D weld as mesh_by_plane, generalised to K planes.
+    Mesh mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes, double max_angle_deg, double chord_factor) const;
+
+    /// Split a surface into every non-empty region carved by `planes` (all 2^K sign
+    /// combinations). Each region comes back as a first-class multi-plane trimmed surface.
+    static std::vector<NurbsSurfaceTrimmed> split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation

@@ -1504,6 +1504,196 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
     if (result.face.empty()) return srf.mesh();
     return result;
 }
+// Multi-plane SPLIT clip: keep the region inside ALL half-spaces { (S-q).n <= 0 }. Tessellates
+// the surface into a triangle soup (UV) on a span-adaptive grid, then clips that soup
+// sequentially by each plane (Sutherland-Hodgman per triangle, crossings Newton-refined onto the
+// crossing plane), so K planes carve a clean region without per-cell CSG. Coincident 3D verts are
+// welded so periodic seams (cylinder/torus/sphere) close watertight.
+// REQUIRES header declaration in nurbssurface_trimmed.h (next to mesh_by_plane):
+//   Mesh mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes, double max_angle_deg, double chord_factor) const;
+Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes,
+                                         double max_angle_deg, double chord_factor) const {
+    const NurbsSurface& srf = m_surface;
+    std::vector<std::pair<std::array<double,3>, std::array<double,3>>> pl;
+    for (const auto& qn : planes) {
+        const Point& q = qn.first; const Vector& n = qn.second;
+        double nx = n[0], ny = n[1], nz = n[2];
+        double l = std::sqrt(nx*nx + ny*ny + nz*nz);
+        if (l < 1e-12) continue;
+        pl.push_back({{q[0], q[1], q[2]}, {nx/l, ny/l, nz/l}});
+    }
+    if (pl.empty()) return srf.mesh();
+
+    auto e3 = [&](double u, double v) -> std::array<double,3> {
+        Point p = srf.point_at(u, v); return {p[0], p[1], p[2]};
+    };
+    auto field_k = [&](int k, double u, double v) -> double {
+        auto p = e3(u, v); const auto& q = pl[k].first; const auto& n = pl[k].second;
+        return (p[0]-q[0])*n[0] + (p[1]-q[1])*n[1] + (p[2]-q[2])*n[2];
+    };
+    // Newton: move (u,v) so f_k(u,v)->0, stepping along the UV gradient. Lands the point exactly
+    // on the k-th cut plane (so the carved boundary lies on it).
+    auto refine_k = [&](int k, double& u, double& v) {
+        const auto& n = pl[k].second;
+        for (int it = 0; it < 12; ++it) {
+            double fv = field_k(k, u, v);
+            if (std::abs(fv) < 1e-9) break;
+            double h = 1e-4;
+            auto a = e3(u+h, v), b = e3(u-h, v), c = e3(u, v+h), d = e3(u, v-h);
+            double gu = ((a[0]-b[0])*n[0] + (a[1]-b[1])*n[1] + (a[2]-b[2])*n[2]) / (2*h);
+            double gv = ((c[0]-d[0])*n[0] + (c[1]-d[1])*n[1] + (c[2]-d[2])*n[2]) / (2*h);
+            double g2 = gu*gu + gv*gv;
+            if (g2 < 1e-20) break;
+            u -= fv*gu/g2; v -= fv*gv/g2;
+        }
+    };
+
+    // ---- span-adaptive UV grid (curvature: normal-angle + chord deflection) ----
+    auto usp = srf.get_span_vector(0);
+    auto vsp = srf.get_span_vector(1);
+    if (usp.size() < 2 || vsp.size() < 2) return srf.mesh();
+    int deg_u = srf.degree(0), deg_v = srf.degree(1);
+    double bmin[3] = {1e30,1e30,1e30}, bmax[3] = {-1e30,-1e30,-1e30};
+    for (int i = 0; i < srf.cv_count(0); ++i)
+        for (int j = 0; j < srf.cv_count(1); ++j) {
+            Point p = srf.get_cv(i, j);
+            for (int k = 0; k < 3; ++k) { if (p[k]<bmin[k]) bmin[k]=p[k]; if (p[k]>bmax[k]) bmax[k]=p[k]; }
+        }
+    double diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+(bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
+    if (diag < 1e-12) diag = 1.0;
+    double ctol = diag * chord_factor;
+
+    auto span_subs = [&](int dr, const std::vector<double>& sp, const std::vector<double>& osp, int deg) -> std::vector<int> {
+        int n = (int)sp.size()-1; std::vector<int> out(n, deg>1?2:1);
+        double smid = (osp.front()+osp.back())*0.5;
+        for (int i = 0; i < n; ++i) {
+            double t0 = sp[i], t1 = sp[i+1];
+            if (deg > 1) {
+                double ma = 0.0; std::array<double,3> pn{};
+                for (int k = 0; k <= 4; ++k) {
+                    double t = t0 + k*(t1-t0)/4.0;
+                    Vector nm = (dr==0) ? srf.normal_at(t, smid) : srf.normal_at(smid, t);
+                    if (k>0) { double d = pn[0]*nm[0]+pn[1]*nm[1]+pn[2]*nm[2]; d=std::max(-1.0,std::min(1.0,d)); ma += std::acos(d)*180.0/Tolerance::PI; }
+                    pn = {nm[0], nm[1], nm[2]};
+                }
+                out[i] = std::max(out[i], std::max(1, std::min((int)std::ceil(ma/max_angle_deg), 64)));
+            }
+            std::array<double,3> p0 = (dr==0)?e3(t0,smid):e3(smid,t0);
+            std::array<double,3> p1 = (dr==0)?e3(t1,smid):e3(smid,t1);
+            double dev = 0.0;
+            for (int k = 1; k <= 3; ++k) {
+                double fr = k/4.0, tm = t0+fr*(t1-t0);
+                std::array<double,3> pm = (dr==0)?e3(tm,smid):e3(smid,tm);
+                double lx=p0[0]+fr*(p1[0]-p0[0]), ly=p0[1]+fr*(p1[1]-p0[1]), lz=p0[2]+fr*(p1[2]-p0[2]);
+                double dd = std::sqrt((pm[0]-lx)*(pm[0]-lx)+(pm[1]-ly)*(pm[1]-ly)+(pm[2]-lz)*(pm[2]-lz));
+                if (dd>dev) dev=dd;
+            }
+            if (dev > ctol) out[i] = std::max(out[i], std::min((int)std::ceil(std::sqrt(dev/ctol)), 64));
+        }
+        return out;
+    };
+    auto us_subs = span_subs(0, usp, vsp, deg_u);
+    auto vs_subs = span_subs(1, vsp, usp, deg_v);
+    std::vector<double> us, vs;
+    for (int i = 0; i+1 < (int)usp.size(); ++i) for (int s = 0; s < us_subs[i]; ++s) us.push_back(usp[i] + s*(usp[i+1]-usp[i])/us_subs[i]);
+    us.push_back(usp.back());
+    for (int i = 0; i+1 < (int)vsp.size(); ++i) for (int s = 0; s < vs_subs[i]; ++s) vs.push_back(vsp[i] + s*(vsp[i+1]-vsp[i])/vs_subs[i]);
+    vs.push_back(vsp.back());
+    int nu = (int)us.size(), nv = (int)vs.size();
+    if (nu < 2 || nv < 2) return srf.mesh();
+
+    // ---- triangle soup over the UV grid (two tris per cell) ----
+    typedef std::array<std::array<double,2>,3> UVTri;
+    std::vector<UVTri> tris;
+    tris.reserve((size_t)(nu-1)*(nv-1)*2);
+    for (int i = 0; i+1 < nu; ++i) {
+        for (int j = 0; j+1 < nv; ++j) {
+            std::array<double,2> a = {us[i], vs[j]};
+            std::array<double,2> b = {us[i+1], vs[j]};
+            std::array<double,2> c = {us[i+1], vs[j+1]};
+            std::array<double,2> d = {us[i], vs[j+1]};
+            tris.push_back({a, b, c});
+            tris.push_back({a, c, d});
+        }
+    }
+
+    // ---- sequentially clip the soup by each half-space (Sutherland-Hodgman per triangle) ----
+    double eps = 1e-9;
+    for (int k = 0; k < (int)pl.size(); ++k) {
+        std::vector<UVTri> next;
+        for (const auto& t : tris) {
+            std::vector<std::array<double,2>> poly;
+            for (int e = 0; e < 3; ++e) {
+                const auto& p = t[e]; const auto& q = t[(e+1)%3];
+                double fp = field_k(k, p[0], p[1]);
+                double fq = field_k(k, q[0], q[1]);
+                bool pin = fp <= eps, qin = fq <= eps;
+                if (pin) poly.push_back(p);
+                if (pin != qin) {
+                    double tt = (std::abs(fp-fq) > 1e-30) ? fp/(fp-fq) : 0.5;
+                    double cu = p[0]+(q[0]-p[0])*tt, cv = p[1]+(q[1]-p[1])*tt;
+                    refine_k(k, cu, cv);
+                    poly.push_back({cu, cv});
+                }
+            }
+            for (size_t w = 1; w + 1 < poly.size(); ++w) next.push_back({poly[0], poly[w], poly[w+1]});
+        }
+        tris = std::move(next);
+        if (tris.empty()) break;
+    }
+    if (tris.empty()) return Mesh();
+
+    // ---- build mesh: weld coincident 3D vertices (closes periodic seams) ----
+    Mesh result;
+    double weld_tol = diag * 1e-5, cell = weld_tol > 0 ? weld_tol : 1.0;
+    std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<std::array<double,3>, size_t>>> cmap;
+    auto weld = [&](double u, double v) -> size_t {
+        Point P = srf.point_at(u, v); double x=P[0],y=P[1],z=P[2];
+        long long ci=(long long)std::floor(x/cell), cj=(long long)std::floor(y/cell), ck=(long long)std::floor(z/cell);
+        for (long long di=-1; di<=1; ++di) for (long long dj=-1; dj<=1; ++dj) for (long long dk=-1; dk<=1; ++dk) {
+            auto it = cmap.find(std::make_tuple(ci+di,cj+dj,ck+dk)); if (it==cmap.end()) continue;
+            for (auto& [pp, vk] : it->second) { double ddx=pp[0]-x,ddy=pp[1]-y,ddz=pp[2]-z; if (ddx*ddx+ddy*ddy+ddz*ddz<=weld_tol*weld_tol) return vk; }
+        }
+        size_t vk = result.add_vertex(P);
+        Vector nm = srf.normal_at(u, v);
+        result.vertex[vk].set_normal(nm[0], nm[1], nm[2]);
+        cmap[std::make_tuple(ci,cj,ck)].push_back({{x,y,z}, vk});
+        return vk;
+    };
+
+    for (const auto& t : tris) {
+        size_t a = weld(t[0][0], t[0][1]);
+        size_t b = weld(t[1][0], t[1][1]);
+        size_t c = weld(t[2][0], t[2][1]);
+        if (a==b||b==c||c==a) continue;
+        result.add_face({a, b, c});
+    }
+    if (result.face.empty()) return Mesh();
+    return result;
+}
+
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes) {
+    std::vector<NurbsSurfaceTrimmed> out;
+    int k = (int)planes.size();
+    if (k == 0 || k > 16) return out;
+    for (int mask = 0; mask < (1 << k); ++mask) {
+        std::vector<std::pair<Point, Vector>> cp;
+        for (int i = 0; i < k; ++i) {
+            const Point& q = planes[i].first;
+            const Vector& n = planes[i].second;
+            bool flip = ((mask >> i) & 1) == 1;
+            Vector nn = flip ? Vector(-n[0], -n[1], -n[2]) : Vector(n[0], n[1], n[2]);
+            cp.push_back({q, nn});
+        }
+        NurbsSurfaceTrimmed ts;
+        ts.m_surface = srf;
+        Mesh m = ts.mesh_by_planes(cp, 20.0, 0.01);
+        if (m.number_of_faces() > 0) {
+            out.push_back(ts);
+        }
+    }
+    return out;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Transformation

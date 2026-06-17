@@ -1333,6 +1333,7 @@ Mesh BRep::mesh() const {
             for (int ti : loop.trim_indices) {
                 if (ti < 0 || ti >= (int)m_trims.size()) continue;
                 const auto& trim = m_trims[ti];
+                if (trim.type == BRepTrimType::Singular) continue;
                 int eidx = trim.edge_index;
 
                 if (can_project && eidx >= 0 && edge_bnd.count(eidx)) {
