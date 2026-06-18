@@ -197,6 +197,8 @@ public:
 
     /// Generate a combined triangle mesh from all faces, respecting trim loops.
     Mesh mesh() const;
+    std::vector<Mesh> face_meshes() const;
+    std::vector<Mesh> face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Evaluation

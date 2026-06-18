@@ -6,7 +6,11 @@
 namespace session_cpp {
 
 Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
-    constexpr double MAX_ANGLE = 20.0;
+    return from_u_v_q(s, max_u, max_v, 20.0, 0.005);
+}
+
+Mesh RemeshNurbsSurfaceGrid::from_u_v_q(const NurbsSurface& s, int max_u, int max_v, double max_angle_deg, double chord_factor) {
+    const double MAX_ANGLE = max_angle_deg;
     std::vector<double> usp = s.get_span_vector(0);
     std::vector<double> vsp = s.get_span_vector(1);
     int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
@@ -68,7 +72,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_
 
             // Direct chord-height deviation check
             {
-                double chord_tol = bbox_diag * 0.005;
+                double chord_tol = bbox_diag * chord_factor;
                 double max_dev = 0.0;
                 int nc = std::min(n_other, 3);
                 for (int ci = 0; ci <= nc; ++ci) {
@@ -158,7 +162,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_
 
     // Bilinear twist check (skip for singular surfaces — fan triangulation handles those)
     if (deg_u == 1 && deg_v == 1 && !s.is_singular(0) && !s.is_singular(2)) {
-        double chord_tol = (bbox_diag > 0) ? bbox_diag * 0.005 : 1e-6;
+        double chord_tol = (bbox_diag > 0) ? bbox_diag * chord_factor : 1e-6;
         double max_twist = 0.0;
         for (int i = 0; i < ns_u; ++i)
             for (int j = 0; j < ns_v; ++j) {

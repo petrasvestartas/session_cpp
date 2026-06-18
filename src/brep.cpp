@@ -1389,6 +1389,195 @@ Mesh BRep::mesh() const {
         }
     }
     return Mesh::from_polylines(all_polygons, 1e-6);
+}// Returns one tessellated Mesh per BRep face, in face order. Vertices are NOT
+// shared across faces so face boundaries are hard edges.
+std::vector<Mesh> BRep::face_meshes() const {
+    return face_meshes_q(false, 0.0, 0.0);
+}
+
+// Per-face meshes with an optional tessellation-quality override applied to the
+// grid-meshed (direct) faces: when has_quality is true, (max_angle_deg, chord_factor)
+// densifies them (and, via the shared-edge coordination, the CDT faces follow).
+// When has_quality is false, the default NurbsSurface::mesh() density is used.
+std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const {
+    int nf = (int)m_faces.size();
+
+    // Phase 1: classify faces as direct (RemeshNurbsSurfaceGrid) or CDT
+    std::vector<bool> face_direct(nf, false);
+    for (int fi = 0; fi < nf; ++fi) {
+        const auto& face = m_faces[fi];
+        if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;
+        const NurbsSurface& srf = m_surfaces[face.surface_index];
+        bool has_inner = false, all_linear = true;
+        std::vector<Point> outer_pts;
+        for (int li : face.loop_indices) {
+            if (li < 0 || li >= (int)m_loops.size()) continue;
+            const auto& loop = m_loops[li];
+            if (loop.type == BRepLoopType::Inner) has_inner = true;
+            for (int ti : loop.trim_indices) {
+                if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                const auto& trim = m_trims[ti];
+                if (trim.curve_2d_index < 0 || trim.curve_2d_index >= (int)m_curves_2d.size()) continue;
+                const NurbsCurve& crv = m_curves_2d[trim.curve_2d_index];
+                if (crv.degree() > 1 || crv.is_rational()) all_linear = false;
+                if (loop.type == BRepLoopType::Outer) {
+                    if (crv.degree() <= 1 && !crv.is_rational())
+                        for (int k = 0; k < crv.cv_count() - 1; ++k) outer_pts.push_back(crv.get_cv(k));
+                }
+            }
+        }
+        bool direct = !has_inner && all_linear;
+        if (direct && !outer_pts.empty()) {
+            auto [u0, u1] = srf.domain(0);
+            auto [v0, v1] = srf.domain(1);
+            double tol = std::max(u1 - u0, v1 - v0) * 0.01;
+            double bb_umin = 1e30, bb_umax = -1e30, bb_vmin = 1e30, bb_vmax = -1e30;
+            for (const auto& p : outer_pts) {
+                bb_umin = std::min(bb_umin, p[0]); bb_umax = std::max(bb_umax, p[0]);
+                bb_vmin = std::min(bb_vmin, p[1]); bb_vmax = std::max(bb_vmax, p[1]);
+            }
+            if (std::abs(bb_umin - u0) > tol || std::abs(bb_umax - u1) > tol ||
+                std::abs(bb_vmin - v0) > tol || std::abs(bb_vmax - v1) > tol)
+                direct = false;
+        }
+        face_direct[fi] = direct;
+    }
+
+    // Phase 2: direct faces. Mesh each via the grid mesher, then record the 3D
+    // boundary discretisation along every edge shared with a CDT face.
+    std::vector<Mesh> fmesh(nf);
+    std::map<int, std::vector<Point>> edge_bnd;
+    for (int fi = 0; fi < nf; ++fi) {
+        if (!face_direct[fi]) continue;
+        const auto& face = m_faces[fi];
+        const NurbsSurface& srf = m_surfaces[face.surface_index];
+        fmesh[fi] = has_quality
+            ? RemeshNurbsSurfaceGrid::from_u_v_q(srf, 0, 0, max_angle_deg, chord_factor)
+            : srf.mesh();
+
+        auto [u0, u1] = srf.domain(0);
+        auto [v0, v1] = srf.domain(1);
+        double utol = (u1 - u0) * 0.001, vtol = (v1 - v0) * 0.001;
+        for (int li : face.loop_indices) {
+            if (li < 0 || li >= (int)m_loops.size()) continue;
+            for (int ti : m_loops[li].trim_indices) {
+                if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                int eidx = m_trims[ti].edge_index;
+                if (eidx < 0 || eidx >= (int)m_topology_edges.size()) continue;
+                if (edge_bnd.count(eidx)) continue;
+                // Only extract if this edge is shared with a CDT (non-direct) face.
+                bool shared = false;
+                for (int oti : m_topology_edges[eidx].trim_indices) {
+                    if (oti == ti || oti < 0 || oti >= (int)m_trims.size()) continue;
+                    int oli = m_trims[oti].loop_index;
+                    if (oli < 0 || oli >= (int)m_loops.size()) continue;
+                    int ofi = m_loops[oli].face_index;
+                    if (ofi >= 0 && ofi < nf && !face_direct[ofi]) { shared = true; break; }
+                }
+                if (!shared) continue;
+                int c2di = m_trims[ti].curve_2d_index;
+                if (c2di < 0 || c2di >= (int)m_curves_2d.size()) continue;
+                const NurbsCurve& c2d = m_curves_2d[c2di];
+                Point sp = c2d.get_cv(0), ep = c2d.get_cv(c2d.cv_count() - 1);
+                bool at_v0 = std::abs(sp[1] - v0) < vtol && std::abs(ep[1] - v0) < vtol;
+                bool at_v1 = std::abs(sp[1] - v1) < vtol && std::abs(ep[1] - v1) < vtol;
+                bool at_u0 = std::abs(sp[0] - u0) < utol && std::abs(ep[0] - u0) < utol;
+                bool at_u1 = std::abs(sp[0] - u1) < utol && std::abs(ep[0] - u1) < utol;
+                if (!at_v0 && !at_v1 && !at_u0 && !at_u1) continue;
+                std::vector<std::pair<double, Point>> pts;
+                for (auto& [vk, vd] : fmesh[fi].vertex) {
+                    auto iu = vd.attributes.find("u"), iv = vd.attributes.find("v");
+                    if (iu == vd.attributes.end() || iv == vd.attributes.end()) continue;
+                    if (at_v0 && std::abs(iv->second - v0) < vtol * 0.1)
+                        pts.push_back({iu->second, vd.position()});
+                    else if (at_v1 && std::abs(iv->second - v1) < vtol * 0.1)
+                        pts.push_back({iu->second, vd.position()});
+                    else if (at_u0 && std::abs(iu->second - u0) < utol * 0.1)
+                        pts.push_back({iv->second, vd.position()});
+                    else if (at_u1 && std::abs(iu->second - u1) < utol * 0.1)
+                        pts.push_back({iv->second, vd.position()});
+                }
+                std::sort(pts.begin(), pts.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                if (pts.size() >= 2) {
+                    std::vector<Point> bnd;
+                    for (auto& [p, pt] : pts) bnd.push_back(pt);
+                    edge_bnd[eidx] = bnd;
+                }
+            }
+        }
+    }
+
+    // Phase 3: Mesh CDT faces via NurbsSurfaceTrimmed. For edges shared with a direct
+    // face, reuse that face's boundary points (projected into this bilinear face's UV).
+    for (int fi = 0; fi < nf; ++fi) {
+        if (face_direct[fi]) continue;
+        const auto& face = m_faces[fi];
+        if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;
+        const NurbsSurface& srf = m_surfaces[face.surface_index];
+        // Bilinear 3D->UV projection frame (valid for the planar cap surfaces).
+        Point p00 = srf.get_cv(0, 0), p10 = srf.get_cv(1, 0), p01 = srf.get_cv(0, 1);
+        double eux = p10[0]-p00[0], euy = p10[1]-p00[1], euz = p10[2]-p00[2];
+        double evx = p01[0]-p00[0], evy = p01[1]-p00[1], evz = p01[2]-p00[2];
+        double eu2 = eux*eux+euy*euy+euz*euz, ev2 = evx*evx+evy*evy+evz*evz;
+        bool can_project = (srf.degree(0) == 1 && srf.degree(1) == 1 && eu2 > 1e-28 && ev2 > 1e-28);
+
+        NurbsSurfaceTrimmed ts;
+        ts.m_surface = srf;
+        for (int li : face.loop_indices) {
+            if (li < 0 || li >= (int)m_loops.size()) continue;
+            const auto& loop = m_loops[li];
+            std::vector<Point> loop_pts;
+            for (int ti : loop.trim_indices) {
+                if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                const auto& trim = m_trims[ti];
+                if (trim.type == BRepTrimType::Singular) continue;
+                int eidx = trim.edge_index;
+                if (can_project && eidx >= 0 && edge_bnd.count(eidx)) {
+                    const auto& bnd = edge_bnd[eidx];
+                    for (const auto& pt : bnd) {
+                        double dx = pt[0]-p00[0], dy = pt[1]-p00[1], dz = pt[2]-p00[2];
+                        double u = (dx*eux+dy*euy+dz*euz) / eu2;
+                        double v = (dx*evx+dy*evy+dz*evz) / ev2;
+                        loop_pts.push_back(Point(u, v, 0));
+                    }
+                } else {
+                    if (trim.curve_2d_index < 0 || trim.curve_2d_index >= (int)m_curves_2d.size()) continue;
+                    const NurbsCurve& crv = m_curves_2d[trim.curve_2d_index];
+                    if (crv.degree() <= 1 && !crv.is_rational()) {
+                        for (int k = 0; k < crv.cv_count() - 1; ++k)
+                            loop_pts.push_back(crv.get_cv(k));
+                    } else {
+                        int n = std::max(crv.cv_count() * 4, 16);
+                        auto [pts, params] = crv.divide_by_count(n, true);
+                        for (int k = 0; k < (int)pts.size() - 1; ++k)
+                            loop_pts.push_back(pts[k]);
+                    }
+                }
+            }
+            if (loop_pts.size() >= 3) {
+                NurbsCurve loop_crv = NurbsCurve::create(true, 1, loop_pts);
+                if (loop.type == BRepLoopType::Outer)
+                    ts.m_outer_loop = loop_crv;
+                else
+                    ts.m_inner_loops.push_back(loop_crv);
+            }
+        }
+        fmesh[fi] = ts.mesh();
+    }
+
+    // Apply reversed flag: flip BOTH winding and normals so the shader's gl_FrontFacing
+    // derivation agrees with the stored vertex normals.
+    for (int fi = 0; fi < nf; ++fi) {
+        if (m_faces[fi].reversed) {
+            fmesh[fi].flip();
+            for (auto& [vk, vd] : fmesh[fi].vertex) {
+                auto n = vd.normal();
+                if (n) vd.set_normal(-(*n)[0], -(*n)[1], -(*n)[2]);
+            }
+        }
+    }
+
+    return fmesh;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
