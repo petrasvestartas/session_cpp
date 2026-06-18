@@ -1,6 +1,6 @@
 {
   "type": "Objects",
-  "guid": "a0080cc9-58f1-46ba-a447-9f446817d736",
+  "guid": "eacc573a-3dca-4fe3-9d27-6cfefb0d3087",
   "name": "my_objects",
   "bboxes": [],
   "breps": [],
@@ -18,7 +18,7 @@
       "size": 3000,
       "height": 650,
       "type": "FloorBuilder",
-      "guid": "41343a26-d319-47cd-8661-9095ab5c5b09",
+      "guid": "85a51993-a8be-4131-a069-137fa548ebd5",
       "name": "floor_builder"
     }
   ]
