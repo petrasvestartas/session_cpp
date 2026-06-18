@@ -195,26 +195,6 @@ MINI_TEST("Session", "Add Edge") {
     MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
 }
 
-MINI_TEST("Session", "Add ElementFeature") {
-    // uncomment #include "session.h"
-    // uncomment #include "elementfeature.h"
-    // uncomment #include "point.h"
-
-    Session session;
-    auto p1 = std::make_shared<Point>(0.0, 0.0, 0.0);
-    auto p2 = std::make_shared<Point>(1.0, 0.0, 0.0);
-    session.add_point(p1);
-    session.add_point(p2);
-    FaceElementFeature f;
-    f.face_id_a = 0;
-    f.face_id_b = 0;
-    std::string fguid = session.add_elementfeature(p1->guid(), p2->guid(), EdgeElementFeature{f});
-
-    MINI_CHECK(!fguid.empty());
-    MINI_CHECK(session.edge_elementfeatures.count(fguid) == 1);
-    MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
-}
-
 MINI_TEST("Session", "Add Hierarchy") {
     // uncomment #include "session.h"
     // uncomment #include "point.h"

@@ -28,16 +28,11 @@
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/repeated_field.h"  // IWYU pragma: export
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
-#include "google/protobuf/map.h"  // IWYU pragma: export
-#include "google/protobuf/map_type_handler.h"  // IWYU pragma: export
-#include "google/protobuf/map_entry.h"
-#include "google/protobuf/map_field.h"
 #include "google/protobuf/unknown_field_set.h"
 #include "objects.pb.h"
 #include "tree.pb.h"
 #include "graph.pb.h"
 #include "boundingbox.pb.h"
-#include "elementfeature.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -66,10 +61,6 @@ class Session;
 struct SessionDefaultTypeInternal;
 extern SessionDefaultTypeInternal _Session_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull Session_class_data_;
-class Session_EdgeElementfeaturesEntry_DoNotUse;
-struct Session_EdgeElementfeaturesEntry_DoNotUseDefaultTypeInternal;
-extern Session_EdgeElementfeaturesEntry_DoNotUseDefaultTypeInternal _Session_EdgeElementfeaturesEntry_DoNotUse_default_instance_;
-extern const ::google::protobuf::internal::ClassDataFull Session_EdgeElementfeaturesEntry_DoNotUse_class_data_;
 }  // namespace session_proto
 namespace google {
 namespace protobuf {
@@ -81,45 +72,6 @@ namespace session_proto {
 // ===================================================================
 
 
-// -------------------------------------------------------------------
-
-class Session_EdgeElementfeaturesEntry_DoNotUse final
-    : public ::google::protobuf::internal::MapEntry<::std::string, ::google::protobuf::Message,
-                             ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
-                             ::google::protobuf::internal::WireFormatLite::TYPE_MESSAGE> {
- public:
-  using SuperType =
-      ::google::protobuf::internal::MapEntry<::std::string, ::google::protobuf::Message,
-                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
-                      ::google::protobuf::internal::WireFormatLite::TYPE_MESSAGE>;
-  Session_EdgeElementfeaturesEntry_DoNotUse();
-  template <typename = void>
-  explicit PROTOBUF_CONSTEXPR Session_EdgeElementfeaturesEntry_DoNotUse(::google::protobuf::internal::ConstantInitialized);
-  explicit Session_EdgeElementfeaturesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  static constexpr const void* PROTOBUF_NONNULL internal_default_instance() {
-    return &_Session_EdgeElementfeaturesEntry_DoNotUse_default_instance_;
-  }
-
-
-  static constexpr auto InternalGenerateClassData_();
-
- private:
-  friend class ::google::protobuf::MessageLite;
-  friend struct ::TableStruct_session_2eproto;
-
-  friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<1, 2,
-                                   1, 58,
-                                   2>
-      _table_;
-
-  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
-  static void* PROTOBUF_NONNULL PlacementNew_(
-      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  static constexpr auto InternalNewImpl_();
-};
-extern const ::google::protobuf::internal::ClassDataFull Session_EdgeElementfeaturesEntry_DoNotUse_class_data_;
 // -------------------------------------------------------------------
 
 class Session final : public ::google::protobuf::Message
@@ -177,7 +129,7 @@ class Session final : public ::google::protobuf::Message
     return *reinterpret_cast<const Session*>(
         &_Session_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 1;
+  static constexpr int kIndexInFileMessages = 0;
   friend void swap(Session& a, Session& b) { a.Swap(&b); }
   inline void Swap(Session* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -270,7 +222,6 @@ class Session final : public ::google::protobuf::Message
     kObjectsFieldNumber = 3,
     kTreeFieldNumber = 4,
     kGraphFieldNumber = 5,
-    kEdgeElementfeaturesFieldNumber = 7,
   };
   // repeated .session_proto.BoundingBox bvh_boxes = 6;
   int bvh_boxes_size() const;
@@ -364,27 +315,12 @@ class Session final : public ::google::protobuf::Message
   ::session_proto::Graph* PROTOBUF_NONNULL _internal_mutable_graph();
 
   public:
-  // map<string, .session_proto.EdgeElementFeature> edge_elementfeatures = 7;
-  int edge_elementfeatures_size() const;
-  private:
-  int _internal_edge_elementfeatures_size() const;
-
-  public:
-  void clear_edge_elementfeatures() ;
-  const ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>& edge_elementfeatures() const;
-  ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>* PROTOBUF_NONNULL mutable_edge_elementfeatures();
-
-  private:
-  const ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>& _internal_edge_elementfeatures() const;
-  ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>* PROTOBUF_NONNULL _internal_mutable_edge_elementfeatures();
-
-  public:
   // @@protoc_insertion_point(class_scope:session_proto.Session)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 7,
-                                   6, 58,
+  static const ::google::protobuf::internal::TcParseTable<3, 6,
+                                   4, 38,
                                    2>
       _table_;
 
@@ -411,10 +347,6 @@ class Session final : public ::google::protobuf::Message
     ::session_proto::Objects* PROTOBUF_NULLABLE objects_;
     ::session_proto::Tree* PROTOBUF_NULLABLE tree_;
     ::session_proto::Graph* PROTOBUF_NULLABLE graph_;
-    ::google::protobuf::internal::MapField<Session_EdgeElementfeaturesEntry_DoNotUse, ::std::string, ::session_proto::EdgeElementFeature,
-                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
-                      ::google::protobuf::internal::WireFormatLite::TYPE_MESSAGE>
-        edge_elementfeatures_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -435,8 +367,6 @@ extern const ::google::protobuf::internal::ClassDataFull Session_class_data_;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
-// -------------------------------------------------------------------
-
 // -------------------------------------------------------------------
 
 // Session
@@ -898,32 +828,6 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::BoundingBox>* PROTO
 Session::_internal_mutable_bvh_boxes() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.bvh_boxes_;
-}
-
-// map<string, .session_proto.EdgeElementFeature> edge_elementfeatures = 7;
-inline int Session::_internal_edge_elementfeatures_size() const {
-  return _internal_edge_elementfeatures().size();
-}
-inline int Session::edge_elementfeatures_size() const {
-  return _internal_edge_elementfeatures_size();
-}
-inline const ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>& Session::_internal_edge_elementfeatures() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.edge_elementfeatures_.GetMap();
-}
-inline const ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>& Session::edge_elementfeatures() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_map:session_proto.Session.edge_elementfeatures)
-  return _internal_edge_elementfeatures();
-}
-inline ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>* PROTOBUF_NONNULL Session::_internal_mutable_edge_elementfeatures() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _impl_.edge_elementfeatures_.MutableMap();
-}
-inline ::google::protobuf::Map<::std::string, ::session_proto::EdgeElementFeature>* PROTOBUF_NONNULL Session::mutable_edge_elementfeatures()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
-  // @@protoc_insertion_point(field_mutable_map:session_proto.Session.edge_elementfeatures)
-  return _internal_mutable_edge_elementfeatures();
 }
 
 #ifdef __GNUC__

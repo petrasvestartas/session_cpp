@@ -254,16 +254,6 @@ void Session::add_edge(const std::string &guid1, const std::string &guid2,
   graph.add_edge(guid1, guid2, attribute);
 }
 
-std::string Session::add_elementfeature(const std::string &guid_a,
-                                        const std::string &guid_b,
-                                        EdgeElementFeature feature) {
-  std::string key = edge_elementfeature_guid(feature);
-  if (key.empty()) key = ::guid();
-  edge_elementfeatures[key] = std::move(feature);
-  graph.add_edge(guid_a, guid_b, key);
-  return key;
-}
-
 bool Session::remove_object(const std::string &obj_guid) {
   auto it = lookup.find(obj_guid);
   if (it == lookup.end()) {
@@ -536,11 +526,6 @@ nlohmann::ordered_json Session::jsondump() const {
   data["objects"] = objects.jsondump();
   data["tree"] = tree.jsondump();
   data["graph"] = graph.jsondump();
-  nlohmann::ordered_json feats = nlohmann::ordered_json::object();
-  for (const auto &[key, feat] : edge_elementfeatures) {
-    feats[key] = edge_elementfeature_jsondump(feat);
-  }
-  data["edge_elementfeatures"] = feats;
   return data;
 }
 
@@ -597,12 +582,6 @@ Session Session::jsonload(const nlohmann::json &data) {
     session.graph = Graph::jsonload(data["graph"]);
   }
 
-  // Load edge element features
-  if (data.contains("edge_elementfeatures")) {
-    for (auto it = data["edge_elementfeatures"].begin(); it != data["edge_elementfeatures"].end(); ++it) {
-      session.edge_elementfeatures[it.key()] = edge_elementfeature_jsonload(it.value());
-    }
-  }
 
   return session;
 }
@@ -633,9 +612,6 @@ std::string Session::pb_dumps() const {
   proto.mutable_objects()->ParseFromString(objects.pb_dumps());
   proto.mutable_tree()->ParseFromString(tree.pb_dumps());
   proto.mutable_graph()->ParseFromString(graph.pb_dumps());
-  for (const auto &[key, feat] : edge_elementfeatures) {
-    (*proto.mutable_edge_elementfeatures())[key].ParseFromString(edge_elementfeature_pb_dumps(feat));
-  }
   return proto.SerializeAsString();
 }
 
@@ -656,9 +632,6 @@ Session Session::pb_loads(const std::string& data) {
     session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
   }
 
-  for (const auto &[key, feat_proto] : proto.edge_elementfeatures()) {
-    session.edge_elementfeatures[key] = edge_elementfeature_pb_loads(feat_proto.SerializeAsString());
-  }
 
   for (const auto& p : *session.objects.points) session.lookup[p->guid()] = p;
   for (const auto& l : *session.objects.lines) session.lookup[l->guid()] = l;

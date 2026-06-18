@@ -19,7 +19,6 @@
 #include "brep.h"
 #include "tree.h"
 #include "spatial_bvh.h"
-#include "elementfeature.h"
 #include "tolerance.h"
 #include <fstream>
 #include <iostream>
@@ -69,8 +68,6 @@ public:
       lookup; ///< Fast lookup table for objects by GUID
   Tree tree;  ///< Tree structure for hierarchy
   Graph graph; ///< Graph structure for relationships
-  std::unordered_map<std::string, EdgeElementFeature>
-      edge_elementfeatures; ///< Typed edge element features keyed by element feature GUID
   std::unordered_map<std::string, Component>
       component_lookup; ///< Fast lookup for custom components by GUID
   SpatialBVH bvh;    ///< Bounding volume hierarchy for collision detection
@@ -210,15 +207,6 @@ public:
    */
   void add_edge(const std::string &guid1, const std::string &guid2,
                 const std::string &attribute = "");
-
-  /**
-   * @brief Store a typed edge element feature and create a graph edge referencing it.
-   * The element feature is stored in `edge_elementfeatures` keyed by its GUID, and a graph
-   * edge between `guid_a` and `guid_b` is created with `attribute` set to the
-   * element feature GUID. Returns the element feature GUID.
-   */
-  std::string add_elementfeature(const std::string &guid_a, const std::string &guid_b,
-                                 EdgeElementFeature feature);
 
   /// Compute face-to-face contacts between all elements.
   /// Uses SpatialBVH + OBB for adjacency, then boolean intersection for contact areas.
