@@ -1190,13 +1190,15 @@ double BRep::volume() const {
             // point is inside, so the quadrature is exact. A NON-rectangular trim (sphere caps,
             // a band with circular holes) has a curved mask boundary whose staircase error scales
             // ~1/NU, so use a finer grid there. (Sphere cap-cut faces are handled exactly below by
-            // the analytic boundary-integral flux; this Gauss is the fallback for other curved faces.)
+            // the analytic boundary-integral flux; this Gauss is the fallback for other curved faces
+            // -- e.g. torus patches trimmed by a section curve, where NU=384 brings the residual
+            // staircase under the section-pcurve fit floor (sphere-x-torus common: 1.19e-6 -> 8.6e-7).)
             auto [_du0,_du1] = srf.domain(0); auto [_dv0,_dv1] = srf.domain(1);
             bool rect_trim = inner_polys.empty()
                 && std::abs(umin-_du0) < (_du1-_du0)*1e-3 && std::abs(umax-_du1) < (_du1-_du0)*1e-3
                 && std::abs(vmin-_dv0) < (_dv1-_dv0)*1e-3 && std::abs(vmax-_dv1) < (_dv1-_dv0)*1e-3;
             curved_rect = rect_trim;
-            int NU = rect_trim ? 24 : 96; int NV = NU;
+            int NU = rect_trim ? 24 : 384; int NV = NU;
             for (int iu = 0; iu < NU; iu++) {
                 double ua=umin+(umax-umin)*iu/NU, ub=umin+(umax-umin)*(iu+1)/NU;
                 double um=0.5*(ua+ub), uh=0.5*(ub-ua);
