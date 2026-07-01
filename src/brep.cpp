@@ -1290,14 +1290,40 @@ double BRep::volume() const {
                         std::vector<std::array<double,2>> uvpts;
                         std::vector<Point> p3s;
                         auto d2p=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
-                        for(auto&od:order){const Seg&sg=segs[od.first];int n=200; bool fwd=od.second;
-                            bool use_c3=false;
+                        for(auto&od:order){const Seg&sg=segs[od.first]; bool fwd=od.second;
+                            bool use_c3=false, c3_rev=false;
+                            // Start-point guard tol 1e-6 (squared; ~1e-3 dist): the co_refine snap
+                            // moves shared section vertices up to the pullback's seam-interpolation
+                            // error off the pcurve endpoint, still orders below a WRONG curve (O(diag)).
+                            // Orientation CANNOT come from the start point on a CLOSED loop (start ==
+                            // end whichever way the curve runs, e.g. a reversed fuse cap trim), so it
+                            // is decided at the quarter point: co- and anti-oriented hypotheses land
+                            // diametrically apart there, and tracing c3 against the pcurve direction
+                            // flips the loop's ∮h dθ sign against its uvArea sign.
                             if(sg.c3){ Point uvS=srf.point_at((fwd?sg.ps:sg.pe)[0],(fwd?sg.ps:sg.pe)[1]);
-                                use_c3 = d2p(uvS, sg.c3->point_at(fwd?sg.c3a:sg.c3b)) < 1e-8; }
+                                double dsF=d2p(uvS, sg.c3->point_at(fwd?sg.c3a:sg.c3b));
+                                double dsR=d2p(uvS, sg.c3->point_at(fwd?sg.c3b:sg.c3a));
+                                // gate on EITHER endpoint: an anti-oriented OPEN arc trim puts the
+                                // pcurve start at the c3 END (dsF = the full chord) and must still
+                                // qualify - the quarter test below decides the actual direction.
+                                if(std::min(dsF,dsR) < 1e-6){
+                                    double tq=fwd?sg.t0+(sg.t1-sg.t0)*0.25:sg.t1-(sg.t1-sg.t0)*0.25;
+                                    Point uvq=sg.pc->point_at(tq);
+                                    Point uvQ=srf.point_at(uvq[0],uvq[1]);
+                                    double qf=d2p(uvQ, sg.c3->point_at(fwd?sg.c3a+(sg.c3b-sg.c3a)*0.25:sg.c3b-(sg.c3b-sg.c3a)*0.25));
+                                    double qr=d2p(uvQ, sg.c3->point_at(fwd?sg.c3b-(sg.c3b-sg.c3a)*0.25:sg.c3a+(sg.c3b-sg.c3a)*0.25));
+                                    use_c3=true; c3_rev = qr < qf;
+                                } }
+                            // An exact rational section arc costs nothing to sample densely; the open
+                            // arcs meet meridians at CORNERS, where the trapezoid ∮h dθ error is
+                            // O(dθ^2)*|jump| - n=200 floors box-x-sphere cut at ~5e-5 rel, n=4000
+                            // puts corner+arc error ~2e-7, comfortably under the 1e-6 gate.
+                            int n = (use_c3 && sg.c3->is_rational()) ? 4000 : 200;
                             for(int s=0;s<n;++s){double f=(double)s/n;
                                 double tt=fwd?sg.t0+(sg.t1-sg.t0)*f:sg.t1-(sg.t1-sg.t0)*f;
                                 Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});
-                                if(use_c3){ double t3=fwd?sg.c3a+(sg.c3b-sg.c3a)*f:sg.c3b-(sg.c3b-sg.c3a)*f;
+                                if(use_c3){ bool cf=(fwd!=c3_rev);
+                                    double t3=cf?sg.c3a+(sg.c3b-sg.c3a)*f:sg.c3b-(sg.c3b-sg.c3a)*f;
                                     p3s.push_back(sg.c3->point_at(t3)); }
                                 else p3s.push_back(srf.point_at(uv[0],uv[1])); }}
                         if(uvpts.size()<3)continue;
@@ -2004,6 +2030,80 @@ void BRep::imprint_edges(double tol) {
     }
 }
 
+namespace {
+// Exact rational-quadratic arc on the circle (Cc, e1, e2, r): starts at angle a0, sweeps `swept`
+// radians (signed), split into <=90-deg Bezier segments with the standard w = cos(phi/2) mid-CV
+// (same construction as intersection.cpp exact_circle). Endpoints reproduce on-circle points
+// exactly, so arcs built from shared snapped vertices are bit-identical on both operands.
+NurbsCurve exact_arc_3d(const Point& Cc, const Vector& e1, const Vector& e2, double r,
+                        double a0, double swept) {
+    const double PI = 3.14159265358979323846;
+    int nseg = (int)std::ceil(std::abs(swept) / (PI / 2.0) - 1e-12);
+    if (nseg < 1) nseg = 1;
+    double phi = swept / nseg;
+    double w = std::cos(0.5 * phi);
+    int ncv = 2 * nseg + 1;
+    NurbsCurve crv(3, true, 3, ncv);
+    for (int i = 0; i < ncv + 1; ++i) crv.set_nurbsknot(i, (double)(i / 2));
+    auto onc = [&](double a, double rr) {
+        return Point(Cc[0] + rr * (std::cos(a) * e1[0] + std::sin(a) * e2[0]),
+                     Cc[1] + rr * (std::cos(a) * e1[1] + std::sin(a) * e2[1]),
+                     Cc[2] + rr * (std::cos(a) * e1[2] + std::sin(a) * e2[2]));
+    };
+    Point P0 = onc(a0, r);
+    crv.set_cv_4d(0, P0[0], P0[1], P0[2], 1.0);
+    for (int s = 0; s < nseg; ++s) {
+        double aa = a0 + phi * s, ab = aa + phi, am = 0.5 * (aa + ab);
+        Point M = onc(am, r / std::cos(0.5 * phi));
+        Point P1 = onc(ab, r);
+        crv.set_cv_4d(2 * s + 1, M[0] * w, M[1] * w, M[2] * w, w);
+        crv.set_cv_4d(2 * s + 2, P1[0], P1[1], P1[2], 1.0);
+    }
+    crv.set_domain(0.0, 1.0);
+    return crv;
+}
+
+// Circle through 3D points: circumcenter from three spread samples, then EVERY point must lie on
+// that circle (planarity AND radius) within a tight relative tolerance. The lift polylines'
+// vertices are exact on-circle surface evaluations, so genuine section circles pass with ~1e-15
+// residual while lines/ellipses/cone conics/freeform sections fail immediately.
+bool circle_through_points(const std::vector<Point>& pts, Point& Cc, Vector& nrm,
+                           Vector& e1, Vector& e2, double& r) {
+    int m = (int)pts.size();
+    if (m < 4) return false;
+    const Point& p0 = pts[0];
+    const Point& p1 = pts[m / 3];
+    const Point& p2 = pts[(2 * m) / 3];
+    double ax = p1[0]-p0[0], ay = p1[1]-p0[1], az = p1[2]-p0[2];
+    double bx = p2[0]-p0[0], by = p2[1]-p0[1], bz = p2[2]-p0[2];
+    double nx = ay*bz - az*by, ny = az*bx - ax*bz, nz = ax*by - ay*bx;
+    double n2 = nx*nx + ny*ny + nz*nz;
+    if (n2 < 1e-20) return false;
+    // circumcenter = p0 + (|b|^2 ((a x b) x a) + |a|^2 (b x (a x b))) / (2 |a x b|^2)
+    double a2 = ax*ax + ay*ay + az*az, b2 = bx*bx + by*by + bz*bz;
+    double c1x = ny*az - nz*ay, c1y = nz*ax - nx*az, c1z = nx*ay - ny*ax;   // (a x b) x a
+    double c2x = by*nz - bz*ny, c2y = bz*nx - bx*nz, c2z = bx*ny - by*nx;   // b x (a x b)
+    Cc = Point(p0[0] + (b2*c1x + a2*c2x) / (2.0*n2),
+               p0[1] + (b2*c1y + a2*c2y) / (2.0*n2),
+               p0[2] + (b2*c1z + a2*c2z) / (2.0*n2));
+    r = Cc.distance(p0);
+    if (r < 1e-12) return false;
+    double nl = std::sqrt(n2);
+    nrm = Vector(nx/nl, ny/nl, nz/nl);
+    e1 = Vector((p0[0]-Cc[0])/r, (p0[1]-Cc[1])/r, (p0[2]-Cc[2])/r);
+    e2 = Vector(nrm[1]*e1[2]-nrm[2]*e1[1], nrm[2]*e1[0]-nrm[0]*e1[2], nrm[0]*e1[1]-nrm[1]*e1[0]);
+    double rtol = std::max(1e-7 * r, 1e-9);
+    for (const auto& p : pts) {
+        double wx = p[0]-Cc[0], wy = p[1]-Cc[1], wz = p[2]-Cc[2];
+        double h = wx*nrm[0] + wy*nrm[1] + wz*nrm[2];
+        if (std::abs(h) > rtol) return false;
+        double rad = std::sqrt(wx*wx + wy*wy + wz*wz);
+        if (std::abs(rad - r) > rtol) return false;
+    }
+    return true;
+}
+} // namespace
+
 void BRep::co_refine_coincident_edges(double tol) {
     double diag;
     {
@@ -2084,6 +2184,26 @@ void BRep::co_refine_coincident_edges(double tol) {
             }
         }
         if (sp.empty()) continue;
+        // EXACT SECTION-CIRCLE REBUILD (P0): the lift stores every 3D edge as a chord polyline
+        // (devtol ~2e-3 of the face size), so a split section CIRCLE - and every pcurve rebuilt
+        // from its pieces - INSCRIBES the true circle: O(1/N^2) area/volume deficit (box x sphere
+        // ~1.5e-3). The polyline vertices are exact on-circle points, so recover the true circle,
+        // snap the split points onto it, and below rebuild each piece as the EXACT rational arc
+        // between its snapped vertices. Non-circles fail the fit and keep the polyline path.
+        Point fitC; Vector fitN, fitE1, fitE2; double fitR = 0;
+        bool fit_ok = false;
+        if (C.degree() == 1 && !C.is_rational()) {
+            std::vector<Point> cpts;
+            for (int i = 0; i < C.cv_count(); ++i) cpts.push_back(C.get_cv(i));
+            fit_ok = circle_through_points(cpts, fitC, fitN, fitE1, fitE2, fitR);
+        }
+        if (fit_ok) for (auto& s : sp) {
+            double wx=s.second[0]-fitC[0], wy=s.second[1]-fitC[1], wz=s.second[2]-fitC[2];
+            double h = wx*fitN[0] + wy*fitN[1] + wz*fitN[2];
+            double px = wx-h*fitN[0], py = wy-h*fitN[1], pz = wz-h*fitN[2];
+            double pl = std::sqrt(px*px + py*py + pz*pz);
+            if (pl > 1e-12) s.second = Point(fitC[0]+fitR*px/pl, fitC[1]+fitR*py/pl, fitC[2]+fitR*pz/pl);
+        }
         std::sort(sp.begin(), sp.end(), [](auto&a,auto&b){return a.first<b.first;});
         std::vector<double> iparams; std::vector<Point> ipts;
         for(auto&s:sp){ iparams.push_back(s.first); ipts.push_back(s.second); }
@@ -2114,6 +2234,65 @@ void BRep::co_refine_coincident_edges(double tol) {
             std::vector<int> vids; vids.push_back(m_topology_edges[ei].start_vertex);
             for(int v:svids) vids.push_back(v); vids.push_back(m_topology_edges[ei].end_vertex);
             for (size_t k=0;k<c3pieces.size();++k){ arcs.push_back(c3pieces[k]); arc_v.push_back({vids[k],vids[k+1]}); }
+        }
+
+        if (fit_ok) {
+            const double PI = 3.14159265358979323846;
+            double rtol = std::max(1e-7 * fitR, 1e-9);
+            auto vpos = [&](int vid) -> Point {
+                int pi = (vid>=0 && vid<(int)m_topology_vertices.size()) ? m_topology_vertices[vid].point_index : -1;
+                return (pi>=0 && pi<(int)m_vertices.size()) ? m_vertices[pi] : Point(0,0,0);
+            };
+            auto ang_of = [&](const Point& P) {
+                double wx=P[0]-fitC[0], wy=P[1]-fitC[1], wz=P[2]-fitC[2];
+                return std::atan2(wx*fitE2[0]+wy*fitE2[1]+wz*fitE2[2],
+                                  wx*fitE1[0]+wy*fitE1[1]+wz*fitE1[2]);
+            };
+            auto off_circle = [&](const Point& P) {
+                double wx=P[0]-fitC[0], wy=P[1]-fitC[1], wz=P[2]-fitC[2];
+                double h = wx*fitN[0]+wy*fitN[1]+wz*fitN[2];
+                return std::max(std::abs(h), std::abs(std::sqrt(wx*wx+wy*wy+wz*wz) - fitR));
+            };
+            // Rebuild `poly`'s span as the exact arc from A to B; the polyline supplies the winding
+            // (which way round, how many quarters) - its endpoint gap only fixes swept mod 2*pi.
+            auto rebuild = [&](const NurbsCurve& poly, const Point& A, const Point& B, NurbsCurve& out) {
+                if (off_circle(A) > rtol || off_circle(B) > rtol) return false;
+                double sw_poly = 0.0, prev = 0.0; bool first = true;
+                for (int i = 0; i < poly.cv_count(); ++i) {
+                    double a = ang_of(poly.get_cv(i));
+                    if (!first) { double d = a - prev;
+                        while (d >  PI) d -= 2*PI; while (d < -PI) d += 2*PI; sw_poly += d; }
+                    prev = a; first = false;
+                }
+                double a0 = ang_of(A), a1 = ang_of(B);
+                double sw = (a1 - a0) + 2*PI*std::round((sw_poly - (a1 - a0)) / (2*PI));
+                if (std::abs(sw) < 1e-9 || std::abs(sw) > 2*PI + 1e-9) return false;
+                out = exact_arc_3d(fitC, fitE1, fitE2, fitR, a0, sw);
+                return out.is_valid();
+            };
+            for (size_t k = 0; k < arcs.size(); ++k) {
+                NurbsCurve na;
+                if (rebuild(arcs[k], vpos(arc_v[k][0]), vpos(arc_v[k][1]), na)) arcs[k] = na;
+            }
+            // Propagate to the coincident opposite-operand arcs (co-oriented, same snapped
+            // endpoints -> identical geometry on both sides): sew keeps the earliest edge as
+            // representative, so BOTH candidates must carry the exact arc for it to survive.
+            for (int ej = 0; ej < ne0; ++ej) {
+                if (ej == ei || !cand(ej) || bbox_far(ei,ej) || !subset_of(ej,ei)) continue;
+                int cj = m_topology_edges[ej].curve_3d_index;
+                const NurbsCurve& Cj = m_curves_3d[cj];
+                Point ja = Cj.point_at_start(), jb = Cj.point_at_end();
+                if (ja.distance(jb) < tol) continue;
+                for (size_t k = 0; k < arcs.size(); ++k) {
+                    Point A = vpos(arc_v[k][0]), B = vpos(arc_v[k][1]);
+                    bool fw = ja.distance(A) < tol && jb.distance(B) < tol;
+                    bool bw = ja.distance(B) < tol && jb.distance(A) < tol;
+                    if (!fw && !bw) continue;
+                    NurbsCurve na;
+                    if (rebuild(Cj, fw ? A : B, fw ? B : A, na)) m_curves_3d[cj] = na;
+                    break;
+                }
+            }
         }
 
         // create the piece edges (piece 0 reuses ei + its 3D-curve slot)
@@ -2147,18 +2326,37 @@ void BRep::co_refine_coincident_edges(double tol) {
             if (si>=0 && si<(int)m_surfaces.size()) {
                 const NurbsSurface& S=m_surfaces[si];
                 if (S.is_planar(nullptr, 1e-6)) {
+                    // Planar face: for a parallelogram-CV degree-1x1 patch (every box/plane face)
+                    // the UV<->3D map is AFFINE, which preserves a rational NURBS with its control
+                    // points mapped and weights unchanged -> an EXACT rational-arc pcurve. The mid
+                    // CVs of >=90-deg arcs lie OUTSIDE the patch, where Closest::surface_point would
+                    // clamp to the domain and corrupt the arc, so invert the affine frame directly;
+                    // Closest remains the per-CV fallback for non-affine planar patches.
+                    auto [su0,su1] = S.domain(0); auto [sv0,sv1] = S.domain(1);
+                    Point O3 = S.point_at(su0, sv0);
+                    Point PU = S.point_at(su1, sv0), PV = S.point_at(su0, sv1), PW = S.point_at(su1, sv1);
+                    double dux=(PU[0]-O3[0])/(su1-su0), duy=(PU[1]-O3[1])/(su1-su0), duz=(PU[2]-O3[2])/(su1-su0);
+                    double dvx=(PV[0]-O3[0])/(sv1-sv0), dvy=(PV[1]-O3[1])/(sv1-sv0), dvz=(PV[2]-O3[2])/(sv1-sv0);
+                    double guu=dux*dux+duy*duy+duz*duz, guv=dux*dvx+duy*dvy+duz*dvz, gvv=dvx*dvx+dvy*dvy+dvz*dvz;
+                    double gdet = guu*gvv - guv*guv;
+                    double psz = O3.distance(PW);
+                    bool affine = S.degree(0)==1 && S.degree(1)==1 && gdet > 1e-20
+                        && std::abs(PW[0]-PU[0]-PV[0]+O3[0]) + std::abs(PW[1]-PU[1]-PV[1]+O3[1])
+                         + std::abs(PW[2]-PU[2]-PV[2]+O3[2]) < psz*1e-9 + 1e-12;
+                    auto to_uv = [&](const Point& P, double& u, double& v) {
+                        double wx=P[0]-O3[0], wy=P[1]-O3[1], wz=P[2]-O3[2];
+                        double bu=wx*dux+wy*duy+wz*duz, bv=wx*dvx+wy*dvy+wz*dvz;
+                        u = su0 + (bu*gvv - bv*guv)/gdet;
+                        v = sv0 + (guu*bv - guv*bu)/gdet;
+                    };
                     for (const NurbsCurve& arc3 : arcs) {
-                        // Planar face: the UV<-3D map is AFFINE, which preserves a rational NURBS with
-                        // its control points mapped and weights unchanged. So map the (exact, already-
-                        // split) 3D arc's CVs to plane UV and copy degree/knots/weights -> an EXACT
-                        // rational-arc pcurve. (The old path sampled the arc into a degree-1 polyline,
-                        // which INSCRIBES a circle -> ~0.8% area/flux deficit on the seam-crossing face,
-                        // e.g. box-x-sphere. Sampling is kept only as the fallback if reconstruction fails.)
                         NurbsCurve pc; int ord=arc3.order(), nc=arc3.cv_count();
                         bool ok2 = nc>=2 && pc.create(3, arc3.is_rational(), ord, nc)
                                           && pc.nurbsknot_count()==arc3.nurbsknot_count();
                         for (int i=0;i<nc && ok2;++i){ Point Pe=arc3.get_cv(i); double w=arc3.weight(i);
-                            auto [uu,vv,dd]=Closest::surface_point(S,Pe); (void)dd;
+                            double uu, vv;
+                            if (affine) to_uv(Pe, uu, vv);
+                            else { auto [au,av,dd]=Closest::surface_point(S,Pe); (void)dd; uu=au; vv=av; }
                             ok2 = pc.set_cv_4d(i, uu*w, vv*w, 0.0, w); }
                         for (int k=0;k<arc3.nurbsknot_count() && ok2;++k) ok2 = pc.set_nurbsknot(k, arc3.nurbsknot(k));
                         if (ok2 && pc.is_valid()) { p2.push_back(pc); continue; }
@@ -2194,6 +2392,37 @@ void BRep::co_refine_coincident_edges(double tol) {
             if (li>=0 && li<(int)m_loops.size()){ auto& tl=m_loops[li].trim_indices;
                 auto it=std::find(tl.begin(),tl.end(),ti);
                 if(it!=tl.end()){ int pos=(int)(it-tl.begin()); tl.erase(it); tl.insert(tl.begin()+pos,newtrims.begin(),newtrims.end()); } }
+        }
+    }
+    // FINAL PASS: upgrade every UNSPLIT closed section circle (a densely-lifted degree-1 polyline
+    // whose vertices verifiably lie on one circle) to the exact rational circle, phase-anchored at
+    // its start CV and co-wound with the polyline so trim pcurve<->c3d endpoint correspondence is
+    // preserved. The polyline inscribes the circle, so the sphere/torus boundary-integral flux was
+    // ~0.6% short per cap loop (box x sphere: the three unsplit cap circles were the whole residual);
+    // denser sampling cannot fix wrong geometry. Split circles are handled arc-by-arc above.
+    {
+        const double PI = 3.14159265358979323846;
+        for (auto& e : m_topology_edges) {
+            int ci = e.curve_3d_index;
+            if (ci < 0 || ci >= (int)m_curves_3d.size()) continue;
+            const NurbsCurve& pl = m_curves_3d[ci];
+            if (!pl.is_valid() || pl.degree() != 1 || pl.is_rational() || pl.cv_count() < 12) continue;
+            if (pl.point_at_start().distance(pl.point_at_end()) > 1e-9) continue;
+            std::vector<Point> cpts;
+            for (int i = 0; i < pl.cv_count(); ++i) cpts.push_back(pl.get_cv(i));
+            Point fc; Vector fn, f1, f2; double fr = 0;
+            if (!circle_through_points(cpts, fc, fn, f1, f2, fr)) continue;
+            double sw = 0.0, prev = 0.0; bool first = true;
+            for (const auto& p : cpts) {
+                double a = std::atan2((p[0]-fc[0])*f2[0]+(p[1]-fc[1])*f2[1]+(p[2]-fc[2])*f2[2],
+                                      (p[0]-fc[0])*f1[0]+(p[1]-fc[1])*f1[1]+(p[2]-fc[2])*f1[2]);
+                if (!first) { double d = a - prev;
+                    while (d >  PI) d -= 2*PI; while (d < -PI) d += 2*PI; sw += d; }
+                prev = a; first = false;
+            }
+            if (std::abs(std::abs(sw) - 2*PI) > 1e-6) continue;
+            NurbsCurve ex = exact_arc_3d(fc, f1, f2, fr, 0.0, sw > 0 ? 2*PI : -2*PI);
+            if (ex.is_valid()) m_curves_3d[ci] = ex;
         }
     }
     // rebuild vertex->edge adjacency
