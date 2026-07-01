@@ -1257,13 +1257,19 @@ double BRep::volume() const {
                     have_analytic=true;
                     for (int li : face.loop_indices) {
                         if (li<0||li>=(int)m_loops.size()) continue;
-                        // chained, ordered 3D polyline of the loop (greedy walk like loop_vector_area)
-                        struct Seg{const NurbsCurve* pc;double t0,t1;Point ps,pe;};
+                        // chained, ordered 3D polyline of the loop (greedy walk like loop_vector_area).
+                        // Each seg also carries its trim's EXACT 3D edge curve (the shared section circle),
+                        // co-oriented with the pcurve (pcurve.t0 <-> c3.c3a: the pullback builds the pcurve
+                        // by sampling c3 in increasing param, and co_refine splits both in lockstep).
+                        struct Seg{const NurbsCurve* pc;double t0,t1;Point ps,pe; const NurbsCurve* c3; double c3a,c3b;};
                         std::vector<Seg> segs;
                         for(int ti:m_loops[li].trim_indices){ if(ti<0||ti>=(int)m_trims.size())continue;
                             int c2=m_trims[ti].curve_2d_index; if(c2<0||c2>=(int)m_curves_2d.size())continue;
                             const NurbsCurve&pc=m_curves_2d[c2];auto dc=pc.domain();
-                            segs.push_back({&pc,dc.first,dc.second,pc.point_at(dc.first),pc.point_at(dc.second)});}
+                            const NurbsCurve* c3=nullptr; double c3a=0,c3b=0; int e=m_trims[ti].edge_index;
+                            if(e>=0&&e<(int)m_topology_edges.size()){ int c3i=m_topology_edges[e].curve_3d_index;
+                                if(c3i>=0&&c3i<(int)m_curves_3d.size()){ c3=&m_curves_3d[c3i]; auto d3=c3->domain(); c3a=d3.first; c3b=d3.second; } }
+                            segs.push_back({&pc,dc.first,dc.second,pc.point_at(dc.first),pc.point_at(dc.second),c3,c3a,c3b});}
                         if(segs.empty())continue;
                         std::vector<std::pair<int,bool>> order; std::vector<bool> used(segs.size(),false);
                         order.push_back({0,true}); used[0]=true; Point tail=segs[0].pe;
@@ -1274,21 +1280,35 @@ double BRep::volume() const {
                                 if(ds<bd){bd=ds;best=(int)j;fwd=true;} if(de<bd){bd=de;best=(int)j;fwd=false;}}
                             if(best<0)break; used[best]=true; order.push_back({best,fwd});
                             tail=fwd?segs[best].pe:segs[best].ps;}
-                        // sample ordered UV polyline (dense -> boundary integral converges to the
-                        // pcurve's enclosed flux; residual is the pullback pcurve's own CV density).
+                        // Sample the ordered boundary. p3s = the EXACT 3D point of each sample (from the
+                        // trim's shared 3D section curve when present); uvpts = the pullback UV point (kept
+                        // ONLY for the loop's area SIGN). Reconstructing 3D via srf.point_at along the
+                        // pullback's degree-1 UV chords puts intermediate points OFF the true circle -> an
+                        // O(1/N^2) flux deficit (box-x-sphere ~1.5e-3); the 3D curve is exact, so the
+                        // smooth-periodic ∮h dθ converges spectrally. Per-seg guard: if the c3 endpoint does
+                        // not match the pcurve endpoint (bad/absent mapping) fall back to srf.point_at.
                         std::vector<std::array<double,2>> uvpts;
-                        for(auto&od:order){const Seg&sg=segs[od.first];int n=200;
-                            for(int s=0;s<n;++s){double tt=od.second?sg.t0+(sg.t1-sg.t0)*s/n:sg.t1-(sg.t1-sg.t0)*s/n;
-                                Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});}}
+                        std::vector<Point> p3s;
+                        auto d2p=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
+                        for(auto&od:order){const Seg&sg=segs[od.first];int n=200; bool fwd=od.second;
+                            bool use_c3=false;
+                            if(sg.c3){ Point uvS=srf.point_at((fwd?sg.ps:sg.pe)[0],(fwd?sg.ps:sg.pe)[1]);
+                                use_c3 = d2p(uvS, sg.c3->point_at(fwd?sg.c3a:sg.c3b)) < 1e-8; }
+                            for(int s=0;s<n;++s){double f=(double)s/n;
+                                double tt=fwd?sg.t0+(sg.t1-sg.t0)*f:sg.t1-(sg.t1-sg.t0)*f;
+                                Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});
+                                if(use_c3){ double t3=fwd?sg.c3a+(sg.c3b-sg.c3a)*f:sg.c3b-(sg.c3b-sg.c3a)*f;
+                                    p3s.push_back(sg.c3->point_at(t3)); }
+                                else p3s.push_back(srf.point_at(uv[0],uv[1])); }}
                         if(uvpts.size()<3)continue;
                         // close it
-                        uvpts.push_back(uvpts.front());
+                        uvpts.push_back(uvpts.front()); p3s.push_back(p3s.front());
                         double uvArea=0.0; for(size_t i=0;i+1<uvpts.size();++i)
                             uvArea+=uvpts[i][0]*uvpts[i+1][1]-uvpts[i+1][0]*uvpts[i][1]; uvArea*=0.5;
                         // 3D points + integrals
                         Vector Acc(0,0,0); double H=0.0; double prevTheta=0.0; Point prevP(0,0,0); double prevH=0.0; double wind=0.0;
-                        for(size_t i=0;i<uvpts.size();++i){
-                            Point P=srf.point_at(uvpts[i][0],uvpts[i][1]);
+                        for(size_t i=0;i<p3s.size();++i){
+                            Point P=p3s[i];
                             Vector d(P[0]-C[0],P[1]-C[1],P[2]-C[2]);
                             double theta=std::atan2(dot3(d,Ys),dot3(d,Xs));
                             double h=dot3(d,Zs);
@@ -2128,6 +2148,20 @@ void BRep::co_refine_coincident_edges(double tol) {
                 const NurbsSurface& S=m_surfaces[si];
                 if (S.is_planar(nullptr, 1e-6)) {
                     for (const NurbsCurve& arc3 : arcs) {
+                        // Planar face: the UV<-3D map is AFFINE, which preserves a rational NURBS with
+                        // its control points mapped and weights unchanged. So map the (exact, already-
+                        // split) 3D arc's CVs to plane UV and copy degree/knots/weights -> an EXACT
+                        // rational-arc pcurve. (The old path sampled the arc into a degree-1 polyline,
+                        // which INSCRIBES a circle -> ~0.8% area/flux deficit on the seam-crossing face,
+                        // e.g. box-x-sphere. Sampling is kept only as the fallback if reconstruction fails.)
+                        NurbsCurve pc; int ord=arc3.order(), nc=arc3.cv_count();
+                        bool ok2 = nc>=2 && pc.create(3, arc3.is_rational(), ord, nc)
+                                          && pc.nurbsknot_count()==arc3.nurbsknot_count();
+                        for (int i=0;i<nc && ok2;++i){ Point Pe=arc3.get_cv(i); double w=arc3.weight(i);
+                            auto [uu,vv,dd]=Closest::surface_point(S,Pe); (void)dd;
+                            ok2 = pc.set_cv_4d(i, uu*w, vv*w, 0.0, w); }
+                        for (int k=0;k<arc3.nurbsknot_count() && ok2;++k) ok2 = pc.set_nurbsknot(k, arc3.nurbsknot(k));
+                        if (ok2 && pc.is_valid()) { p2.push_back(pc); continue; }
                         auto ad = arc3.domain(); int n = std::max(arc3.cv_count()*2, 12);
                         std::vector<Point> uvs;
                         for (int s=0;s<=n;++s){ Point P3=arc3.point_at(ad.first+(ad.second-ad.first)*s/n);

@@ -1,9 +1,14 @@
 // main_7 — fast boolean dev loop. Builds the 15-pair x 3-op primitive matrix, runs our BRep
-// boolean, shells out to the OCCT oracle, and prints a scorecard with per-cell timing. Seconds
-// to run (no 700-test minitest suite). This is the C++ oracle gate for the boolean effort.
+// boolean, compares against the OCCT oracle, and prints a scorecard with per-cell timing.
 //
 //   cmake --build build --config Release --target main_7 --parallel 8
+//   ./build/Release/main_7.exe ["substr filter"] [--refresh]
 //   SESSION_BOOL_SHARED_EDGES=1 ./build/Release/main_7.exe        # exercise the shared-edge path
+//
+// OCCT reference values are DETERMINISTIC for these fixed placements, so they are cached full-
+// precision in validation/occt_cache.txt. The first run (or --refresh) shells oracle.exe to fill
+// the cache (~20 min, oracle-subprocess-bound); every run after reads the cache (~30s, our booleans
+// only). Pass --refresh to regenerate. Delete the cache file to force a rebuild.
 //
 #include <filesystem>
 #include <fstream>
@@ -16,6 +21,7 @@
 #include <array>
 #include <map>
 #include <cmath>
+#include <iomanip>
 #include "brep.h"
 #include "xform.h"
 #include "tolerance.h"
@@ -24,6 +30,7 @@ using namespace session_cpp;
 namespace {
 
 struct Place { std::string kind; std::vector<double> p; std::array<double,7> xf; };  // xf: tx ty tz ax ay az deg
+struct Ref { double vol; int nf; };
 
 // Mirrors brep_test.cpp:783-792 and validation/compare_boolean.py.
 static const std::array<double,7> ID = {0,0,0, 0,0,1, 0};
@@ -83,32 +90,65 @@ std::string shape_str(const Place& pl) {
     return s.str();
 }
 
-// returns {volume, nfaces, ok}
-std::array<double,3> occt(const std::string& mode, const Place& a, const Place& b,
-                          const std::string& oracle, const std::string& req, const std::string& res) {
+std::map<std::string, Ref> load_cache(const std::string& path) {
+    std::map<std::string, Ref> m;
+    std::ifstream f(path);
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        auto t1 = line.find('\t'); if (t1 == std::string::npos) continue;
+        auto t2 = line.find('\t', t1 + 1); if (t2 == std::string::npos) continue;
+        Ref r; r.vol = std::strtod(line.substr(t1 + 1, t2 - t1 - 1).c_str(), nullptr);
+        r.nf = std::atoi(line.substr(t2 + 1).c_str());
+        m[line.substr(0, t1)] = r;
+    }
+    return m;
+}
+
+void save_cache(const std::string& path, const std::map<std::string, Ref>& m) {
+    std::ofstream f(path);
+    f << "# OCCT boolean reference cache: key<TAB>volume<TAB>nfaces. Pass --refresh (or delete) to regenerate.\n";
+    for (auto& kv : m)
+        f << kv.first << "\t" << std::setprecision(17) << kv.second.vol << "\t" << kv.second.nf << "\n";
+}
+
+// returns {volume, nfaces, ok}. Uses the cache unless refresh; on a miss, shells the oracle and
+// records the full-precision result so the next run is fast.
+std::array<double,3> occt(const std::string& key, const std::string& mode, const Place& a, const Place& b,
+                          bool have_oracle, const std::string& oracle, const std::string& req, const std::string& res,
+                          std::map<std::string, Ref>& cache, bool refresh, bool& dirty) {
+    if (!refresh) { auto it = cache.find(key); if (it != cache.end()) return {it->second.vol, (double)it->second.nf, 1.0}; }
+    if (!have_oracle) return {0, 0, 0};
     { std::ofstream f(req); f << "OP boolean\nMODE " << mode << "\n" << shape_str(a) << "\n" << shape_str(b) << "\n"; }
     std::string cmd = oracle + " " + req + " " + res;
-    if (std::system(cmd.c_str()) != 0) return {0,0,0};
-    std::ifstream f(res); std::string tok; double vol=0; int nf=0; bool okv=false, okf=false;
-    while (f >> tok) {
-        if (tok == "VOLUME") { f >> vol; okv = true; }
-        else if (tok == "NFACES") { f >> nf; okf = true; }
-    }
-    return {vol, (double)nf, (okv && okf) ? 1.0 : 0.0};
+    if (std::system(cmd.c_str()) != 0) return {0, 0, 0};
+    std::ifstream f(res); std::string tok; double vol = 0; int nf = 0; bool okv = false, okf = false;
+    while (f >> tok) { if (tok == "VOLUME") { f >> vol; okv = true; } else if (tok == "NFACES") { f >> nf; okf = true; } }
+    if (okv && okf) { cache[key] = {vol, nf}; dirty = true; return {vol, (double)nf, 1.0}; }
+    return {vol, (double)nf, 0.0};
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);  // unbuffered: stream each row, survive a hang
-    // Optional substring filter: `main_7 "box  x sph"` runs only matching pairs (skip hanging cells).
-    std::string filter = argc > 1 ? argv[1] : "";
+    std::string filter; bool refresh = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--refresh") refresh = true;
+        else if (filter.empty()) filter = a;   // substring pair-label filter (skip other/hanging cells)
+    }
     auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
     std::string oracle = (root / "validation" / "occt_oracle" / "build" / "Release" / "oracle.exe").string();
     std::string req = (root / "validation" / "_m7_req.txt").string();
     std::string res = (root / "validation" / "_m7_out.txt").string();
+    std::string cachePath = (root / "validation" / "occt_cache.txt").string();
     bool have_oracle = std::filesystem::exists(oracle);
-    if (!have_oracle) std::fprintf(stderr, "(oracle.exe not found -> printing our numbers only)\n");
+    auto cache = load_cache(cachePath);
+    bool dirty = false;
+    if (!have_oracle && cache.empty())
+        std::fprintf(stderr, "(no oracle.exe and empty cache -> printing our numbers only)\n");
+    if (refresh) std::fprintf(stderr, "(--refresh: re-shelling oracle for every cell)\n");
 
     auto PL = placements();
     std::printf("%-13s %-4s | %11s %11s %9s | %4s %5s | s | %8s | verdict\n",
@@ -133,14 +173,14 @@ int main(int argc, char** argv) {
                 std::printf("%-13s %-4s | THREW: %s\n", pr[0].c_str(), mode, e.what()); ++fails; continue;
             } catch (...) { std::printf("%-13s %-4s | THREW\n", pr[0].c_str(), mode); ++fails; continue; }
 
-            if (!have_oracle) {
-                std::printf("%-13s %-4s | %11.4f %11s %9s | %4d %5s | %d | %8ld |\n",
-                            pr[0].c_str(), mode, v, "-", "-", nf, "-", solid, us);
-                continue;
+            std::string key = pr[0] + "|" + mode;
+            auto k = occt(key, mode, A, B, have_oracle, oracle, req, res, cache, refresh, dirty);
+            if (k[2] == 0.0) {
+                std::printf("%-13s %-4s | %11.4f %11s %9s | %4d %5s | %d | %8ld | %s\n",
+                            pr[0].c_str(), mode, v, "-", "-", nf, "-", solid, us,
+                            have_oracle ? "OCCT-FAIL" : "no-ref");
+                ++fails; continue;
             }
-            auto k = occt(mode, A, B, oracle, req, res);
-            if (k[2] == 0.0) { std::printf("%-13s %-4s | %11.4f  OCCT-FAIL | %4d       | %d | %8ld |\n",
-                                           pr[0].c_str(), mode, v, nf, solid, us); ++fails; continue; }
             double rel = k[0] != 0 ? std::abs(v - k[0]) / std::abs(k[0]) : std::abs(v - k[0]);
             bool ok = rel < 1e-6 && nf == (int)k[1] && solid;
             if (!ok) ++fails;
@@ -148,6 +188,7 @@ int main(int argc, char** argv) {
                         pr[0].c_str(), mode, v, k[0], rel, nf, (int)k[1], solid, us, ok ? "OK" : "FAIL");
         }
     }
+    if (dirty) save_cache(cachePath, cache);
     std::printf("\n%d/%d cells OK (vol rel<1e-6 AND exact faces AND is_solid)\n", total - fails, total);
     return 0;
 }
