@@ -25,6 +25,13 @@ public:
     double t1 = 0.0
   );
 
+  /// Closest approach between two curves: minimize |C0(u) - C1(v)|^2.
+  /// Returns (u, v, distance). Matches OCCT GeomAPI_ExtremaCurveCurve.
+  static std::tuple<double, double, double> curve_curve(
+    const NurbsCurve& curve0,
+    const NurbsCurve& curve1
+  );
+
   static std::tuple<Point, double, double> line_point(
     const Line& line,
     const Point& test_point

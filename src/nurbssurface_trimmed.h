@@ -34,6 +34,15 @@ public:
     NurbsCurve m_outer_loop;
     std::vector<NurbsCurve> m_inner_loops;
 
+    // Transient build-time hint (NOT serialized, NOT compared): the outer/inner loops as
+    // their natural arrangement-run segments, head-to-tail oriented consistently with the
+    // joined m_outer_loop / m_inner_loops. Populated by split_by_uv_curves; consumed by
+    // BRep::split_with so each boundary run becomes a separate edge that mates with the
+    // matching segment edge of an adjacent face (watertight imprint). Empty => use the
+    // single joined loop instead.
+    std::vector<NurbsCurve> m_outer_segments;
+    std::vector<std::vector<NurbsCurve>> m_inner_segments;
+
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Static Factory Methods
@@ -54,6 +63,17 @@ public:
     /// pcurves joined with straight border segments. Dangling open cutters
     /// that do not reach the border or another cutter are discarded.
     static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0, bool use_domain_border = true, int n_boundary = 0);
+
+    /// Seam-aware UV face arrangement (port of OCCT BOPAlgo_WireSplitter leftmost-angle walk +
+    /// BuilderFace::PerformAreas + DoSplitSEAMOnFace two-pcurve seam). Drop-in for split_by_uv_curves
+    /// used by BRep::split_with when SESSION_WIRESPLIT is set: vertices keyed by 3D position so
+    /// periodic seams/poles merge, minimal directed loops walked by the min-clockwise PCURVE-TANGENT
+    /// turn, then outer/hole classified by signed UV area and nested. Same NurbsSurfaceTrimmed output.
+    static std::vector<NurbsSurfaceTrimmed> split_face_by_wires(
+        const NurbsSurface& srf,
+        const std::vector<NurbsCurve>& section_pcurves,
+        const std::vector<NurbsCurve>& boundary_pcurves,
+        double tolerance = 0.0);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor

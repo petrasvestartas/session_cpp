@@ -99,6 +99,12 @@ public:
     /// Create a sphere centered at the origin with the given radius.
     static BRep create_sphere(double radius);
 
+    /// Create a cone along +Z: base circle (radius) at z=0, apex at z=height.
+    static BRep create_cone(double radius, double height);
+
+    /// Create a torus centered at the origin in the XY plane (axis +Z).
+    static BRep create_torus(double major_radius, double minor_radius);
+
     /// Create an axis-aligned box with a cylindrical hole through its center.
     static BRep create_block_with_hole(double sx, double sy, double sz, double hole_radius);
 
@@ -137,6 +143,20 @@ public:
 
     /// Return true if the BRep forms a closed (watertight) solid.
     bool is_solid() const;
+
+    /// Volume enclosed by the (closed) BRep via the divergence theorem over the
+    /// tessellated boundary (signed tetrahedra). Exact for planar-faced solids;
+    /// converges with mesh resolution for curved faces.
+    double volume() const;
+
+    /// True if `p` is strictly inside the (closed) solid, by ray-cast parity against the
+    /// tessellated boundary. Robust for interior points (boolean fragment classification);
+    /// matches OCCT BRepClass3d_SolidClassifier for IN/OUT.
+    bool contains_point(const Point& p) const;
+
+    /// As contains_point but reusing a precomputed boundary mesh (avoids re-tessellation
+    /// when classifying many points against the same solid).
+    bool contains_point(const Mesh& boundary, const Point& p) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Building
@@ -190,6 +210,66 @@ public:
 
     /// Split by a plane and separate into the pieces on each side. One BRep per side.
     std::vector<BRep> split_by_plane_pieces(const Plane& plane, double tolerance = 0.0) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Booleans
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Boolean operation kind.
+    enum class BooleanOp { Union, Difference, Intersection };
+
+    /// Boolean of two solids via imprint -> classify -> select -> sew.
+    /// Imprints both solids against each other (split_by_brep), classifies each face
+    /// fragment as inside/outside the other solid (ray-cast parity), selects the fragments
+    /// for the requested operation, and sews them (shared imprint edges merged by position).
+    /// Scoped to the kernel's planar + quadric solids; matches OCCT BRepAlgoAPI_* on
+    /// volume/face-count for those cases.
+    BRep boolean(const BRep& other, BooleanOp op, double tolerance = 0.0) const;
+
+    /// Imprint T-junctions: split any under-mated edge at interior points that coincide with
+    /// another edge's endpoint vertex, so a long edge that spans several shorter coincident
+    /// edges is broken to match them. Splits the edge's 3D curve and each trim's 2D pcurve,
+    /// updating the owning loops. Run before sew_coincident_edges to resolve mismatched
+    /// boundary segmentation between adjacent faces. Modifies in place.
+    void imprint_edges(double tol = 0.0);
+
+    /// Merge edges whose 3D curves coincide (Hausdorff < tol) into single mated edges, and
+    /// weld vertices within tol. Repairs a non-watertight BRep (e.g. after split/boolean) so
+    /// that shared edges carry two trims. Modifies in place.
+    void sew_coincident_edges(double tol = 0.0);
+
+    /// Co-refine coincident section edges so they mate 1:1 before sewing. The A∩B section curve
+    /// is imprinted independently on each operand, so one side may be a single CLOSED circle while
+    /// the other is 2+ arcs (a periodic seam straddle), or two partially-overlapping arcs. This
+    /// splits each under-mated edge at the endpoints of any DISTINCT under-mated edge that is
+    /// coincident with (an arc of) it -- gated strictly on coincidence so non-shared edges are
+    /// never spuriously split. Splits the 3D curve and each trim's 2D pcurve (exact, no refit),
+    /// updates the owning loops. Run before sew_coincident_edges. Modifies in place.
+    void co_refine_coincident_edges(double tol = 0.0);
+
+    /// BUILDSPEC P0 — shared section-edge backbone. The A&B section curve is computed ONCE
+    /// (Intersection::surface_surface on the ORIGINAL operand surfaces A and B), and each
+    /// under-mated section edge in this (already-combined) BRep is re-fitted to the EXACT
+    /// sub-arc of that single section curve over its own endpoint span -- so the box-side and
+    /// sphere-side arcs of a section reference identical exact geometry. The matching split
+    /// vertices come from a single co-refine pass so the two operands agree on segment count;
+    /// the trivially-coincident exact arcs are then merged into one shared edge (two trims,
+    /// one per operand). Replaces co_refine_coincident_edges + the A&B branch of
+    /// sew_coincident_edges when gated by SESSION_BOOL_SHARED_EDGES. Modifies in place.
+    void make_shared_section_edges(const BRep& A, const BRep& B, double tol = 0.0);
+
+    /// A | B (fuse).
+    BRep boolean_union(const BRep& other, double tolerance = 0.0) const {
+        return boolean(other, BooleanOp::Union, tolerance);
+    }
+    /// A - B (cut).
+    BRep boolean_difference(const BRep& other, double tolerance = 0.0) const {
+        return boolean(other, BooleanOp::Difference, tolerance);
+    }
+    /// A & B (common).
+    BRep boolean_intersection(const BRep& other, double tolerance = 0.0) const {
+        return boolean(other, BooleanOp::Intersection, tolerance);
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Meshing

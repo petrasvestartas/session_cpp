@@ -119,6 +119,48 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(p[4][6], Point(5.000000000000000, 5.000000000000000, 0.000000000000000)));
     }
 
+    MINI_TEST("NurbsSurface", "Create From Parameters") {
+        // Mirrors compas_occt OCCNurbsSurface.from_parameters / from_points (surface_from_points.py).
+        // Validated pointwise against OCCT (validation/compare_surface_eval.py).
+        std::vector<std::vector<Point>> grid = {
+            {Point(0,0,0), Point(1,0,0), Point(2,0,0), Point(3,0,0)},
+            {Point(0,1,0), Point(1,1,2), Point(2,1,2), Point(3,1,0)},
+            {Point(0,2,0), Point(1,2,2), Point(2,2,2), Point(3,2,0)},
+            {Point(0,3,0), Point(1,3,0), Point(2,3,0), Point(3,3,0)},
+        };
+        std::vector<std::vector<double>> w(4, std::vector<double>(4, 1.0));
+        NurbsSurface s = NurbsSurface::create_from_parameters(
+            grid, w, {0.0,1.0}, {0.0,1.0}, {4,4}, {4,4}, 3, 3);
+        MINI_CHECK(s.is_valid());
+        MINI_CHECK(s.degree(0) == 3 && s.degree(1) == 3);
+        MINI_CHECK(s.cv_count(0) == 4 && s.cv_count(1) == 4);
+        MINI_CHECK(!s.is_rational());
+        auto [u0, u1] = s.domain(0);
+        auto [v0, v1] = s.domain(1);
+        MINI_CHECK(std::abs(u0) < 1e-12 && std::abs(u1 - 1.0) < 1e-12);
+        MINI_CHECK(std::abs(v0) < 1e-12 && std::abs(v1 - 1.0) < 1e-12);
+        MINI_CHECK(TOLERANCE.is_point_close(s.point_at(0.0, 0.0), Point(0, 0, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(s.point_at(1.0, 1.0), Point(3, 3, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(s.point_at(0.5, 0.5), Point(1.5, 1.5, 1.125)));
+        MINI_CHECK(TOLERANCE.is_point_close(s.point_at(0.37, 0.41), Point(1.11, 1.23, 1.01496402)));
+
+        // frame_at (surface_frames.py): origin == point_at, z-axis == normal_at.
+        // Normal validated vs OCCT D1uxD1v (validation/compare_surface_eval.py).
+        Plane fr = s.frame_at(0.3, 0.4);
+        MINI_CHECK(TOLERANCE.is_point_close(fr.origin(), s.point_at(0.3, 0.4)));
+        Vector n = s.normal_at(0.3, 0.4);
+        MINI_CHECK(std::abs(fr.z_axis()[0] - n[0]) < 1e-9 &&
+                   std::abs(fr.z_axis()[1] - n[1]) < 1e-9 &&
+                   std::abs(fr.z_axis()[2] - n[2]) < 1e-9);
+
+        // intersections_with_line (surface_intersections_with_line.py): a vertical line
+        // through (1.5, 1.5) hits the surface once at (1.5, 1.5, 1.125). Validated vs
+        // OCCT GeomAPI_IntCS (validation harness, dev <= 1.6e-16).
+        std::vector<Point> hits = s.intersections_with_line(Line(1.5, 1.5, -5, 1.5, 1.5, 5));
+        MINI_CHECK(hits.size() == 1);
+        MINI_CHECK(TOLERANCE.is_point_close(hits[0], Point(1.5, 1.5, 1.125)));
+    }
+
     MINI_TEST("NurbsSurface", "Booleans Queries"){
         // uncomment #include "nurbssurface.h"
 
@@ -1068,6 +1110,24 @@ namespace session_cpp {
 
         MINI_CHECK(loaded_proto_string == surface);
         MINI_CHECK(loaded == surface);
+    }
+
+    MINI_TEST("NurbsSurface", "ClosestPoint") {
+        // Sphere radius 2 at origin: closest surface point to an outside point is radial.
+        NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 2.0);
+        Point cp = sphere.closest_point(Point(5, 0, 0));
+        MINI_CHECK(std::abs(cp[0] - 2.0) < 1e-4 && std::abs(cp[1]) < 1e-4 && std::abs(cp[2]) < 1e-4);
+    }
+
+    MINI_TEST("NurbsSurface", "Curvature") {
+        // Sphere radius R: Gaussian K = 1/R^2, |mean| = 1/R at any regular point.
+        const double R = 2.0;
+        NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, R);
+        auto [u0, u1] = sphere.domain(0);
+        auto [v0, v1] = sphere.domain(1);
+        double um = u0 + 0.37 * (u1 - u0), vm = v0 + 0.41 * (v1 - v0);
+        MINI_CHECK(std::abs(sphere.gaussian_curvature(um, vm) - 1.0 / (R * R)) < 1e-3);
+        MINI_CHECK(std::abs(std::abs(sphere.mean_curvature(um, vm)) - 1.0 / R) < 1e-3);
     }
 
 }

@@ -29,7 +29,10 @@ std::pair<double, double> Closest::curve_point(
     t0 = std::max(t0, domain_start);
     t1 = std::min(t1, domain_end);
 
-    const int num_samples = std::max(10, curve.degree() * 2);
+    // Dense seed grid: sample every knot span several times so the global minimum's
+    // basin is captured before Newton refines (matches OCCT's robust initial sampling
+    // in GeomAPI_ProjectPointOnCurve).
+    const int num_samples = std::max(50, curve.cv_count() * 10);
     double dt = (t1 - t0) / num_samples;
 
     double best_t = t0;
@@ -44,33 +47,34 @@ std::pair<double, double> Closest::curve_point(
         }
     }
 
-    const int max_iterations = 20;
-    const double step_tolerance = (t1 - t0) * 1e-10;
+    const int max_iterations = 32;
+    const double step_tolerance = (t1 - t0) * 1e-12;
 
     double t = best_t;
 
+    // Newton on h(t) = (C(t) - P) . C'(t)  (= 0 at a foot of perpendicular).
+    // h'(t) = |C'(t)|^2 + (C(t) - P) . C''(t).  Use the RAW derivatives C', C''.
     for (int iter = 0; iter < max_iterations; iter++) {
-        Point pt = curve.point_at(t);
-        Vector tangent = curve.tangent_at(t);
+        auto derivs = curve.evaluate(t, 2);
+        if (derivs.size() < 3) break;
+        const Vector& pt = derivs[0];
+        const Vector& d1 = derivs[1];
+        const Vector& d2 = derivs[2];
 
-        Vector delta(test_point[0] - pt[0],
-                    test_point[1] - pt[1],
-                    test_point[2] - pt[2]);
+        double rx = pt[0] - test_point[0];
+        double ry = pt[1] - test_point[1];
+        double rz = pt[2] - test_point[2];
 
-        double f = -delta.dot(tangent);
+        double f = rx * d1[0] + ry * d1[1] + rz * d1[2];
 
         if (std::abs(f) < step_tolerance) break;
 
-        auto derivs = curve.evaluate(t, 2);
-        if (derivs.size() < 3) break;
+        double df = d1[0] * d1[0] + d1[1] * d1[1] + d1[2] * d1[2]
+                  + rx * d2[0] + ry * d2[1] + rz * d2[2];
 
-        Vector d2(derivs[2][0], derivs[2][1], derivs[2][2]);
-        double tangent_mag = tangent.magnitude();
-        double df = delta.dot(d2) - tangent_mag * tangent_mag;
+        if (std::abs(df) < 1e-14) break;
 
-        if (std::abs(df) < 1e-12) break;
-
-        double dt_step = f / df;
+        double dt_step = -f / df;
 
         if (std::abs(dt_step) > (t1 - t0) * 0.5) {
             dt_step = std::copysign((t1 - t0) * 0.5, dt_step);
@@ -99,6 +103,68 @@ std::pair<double, double> Closest::curve_point(
     }
 
     return {t, final_dist};
+}
+
+std::tuple<double, double, double> Closest::curve_curve(
+    const NurbsCurve& curve0,
+    const NurbsCurve& curve1
+) {
+    if (!curve0.is_valid() || !curve1.is_valid())
+        return {0.0, 0.0, std::numeric_limits<double>::infinity()};
+
+    auto [u0, u1] = curve0.domain();
+    auto [v0, v1] = curve1.domain();
+    int n0 = std::max(40, curve0.cv_count() * 8);
+    int n1 = std::max(40, curve1.cv_count() * 8);
+
+    // Dense grid seed.
+    std::vector<Point> p0(n0 + 1), p1(n1 + 1);
+    for (int i = 0; i <= n0; i++) p0[i] = curve0.point_at(u0 + (u1 - u0) * i / n0);
+    for (int j = 0; j <= n1; j++) p1[j] = curve1.point_at(v0 + (v1 - v0) * j / n1);
+
+    double best = std::numeric_limits<double>::infinity();
+    double u = u0, v = v0;
+    for (int i = 0; i <= n0; i++) {
+        for (int j = 0; j <= n1; j++) {
+            double dx = p0[i][0] - p1[j][0], dy = p0[i][1] - p1[j][1], dz = p0[i][2] - p1[j][2];
+            double d2 = dx*dx + dy*dy + dz*dz;
+            if (d2 < best) { best = d2; u = u0 + (u1-u0)*i/n0; v = v0 + (v1-v0)*j/n1; }
+        }
+    }
+
+    // 2D Newton on f(u,v) = |C0(u) - C1(v)|^2.
+    for (int iter = 0; iter < 64; iter++) {
+        auto e0 = curve0.evaluate(u, 2);
+        auto e1 = curve1.evaluate(v, 2);
+        if (e0.size() < 3 || e1.size() < 3) break;
+        const Vector& c0 = e0[0]; const Vector& c0p = e0[1]; const Vector& c0pp = e0[2];
+        const Vector& c1 = e1[0]; const Vector& c1p = e1[1]; const Vector& c1pp = e1[2];
+        double rx = c0[0]-c1[0], ry = c0[1]-c1[1], rz = c0[2]-c1[2];
+
+        double gu =  rx*c0p[0] + ry*c0p[1] + rz*c0p[2];          // 0.5 df/du
+        double gv = -(rx*c1p[0] + ry*c1p[1] + rz*c1p[2]);        // 0.5 df/dv
+
+        double huu = c0p[0]*c0p[0] + c0p[1]*c0p[1] + c0p[2]*c0p[2]
+                   + rx*c0pp[0] + ry*c0pp[1] + rz*c0pp[2];
+        double huv = -(c0p[0]*c1p[0] + c0p[1]*c1p[1] + c0p[2]*c1p[2]);
+        double hvv = c1p[0]*c1p[0] + c1p[1]*c1p[1] + c1p[2]*c1p[2]
+                   - (rx*c1pp[0] + ry*c1pp[1] + rz*c1pp[2]);
+
+        double det = huu*hvv - huv*huv;
+        if (std::abs(det) < 1e-14) break;
+        double du = -(hvv*gu - huv*gv) / det;
+        double dv = -(-huv*gu + huu*gv) / det;
+
+        if (std::abs(du) > (u1-u0)*0.5) du = std::copysign((u1-u0)*0.5, du);
+        if (std::abs(dv) > (v1-v0)*0.5) dv = std::copysign((v1-v0)*0.5, dv);
+
+        u = std::min(std::max(u + du, u0), u1);
+        v = std::min(std::max(v + dv, v0), v1);
+        if (std::max(std::abs(du), std::abs(dv)) < 1e-13) break;
+    }
+
+    double dist = curve0.point_at(u).distance(curve1.point_at(v));
+    return {u, v, dist};
 }
 
 std::tuple<Point, double, double> Closest::line_point(
@@ -204,8 +270,16 @@ std::tuple<double, double, double> Closest::surface_point(
     v0 = std::max(v0, domain_v0);
     v1 = std::min(v1, domain_v1);
 
-    const int u_samples = std::max(10, surface.order(0));
-    const int v_samples = std::max(10, surface.order(1));
+    // Seed-grid resolution scales with the search-window size relative to the full domain.
+    // A full-domain call keeps a dense grid; a small warm-start window (used when projecting
+    // successive points of a continuous curve) needs only a few seeds before Newton — this
+    // turns surface_curve's per-sample 100-point grid into ~3x3, the boolean SSI hot path.
+    const int full_u = std::max(10, surface.order(0));
+    const int full_v = std::max(10, surface.order(1));
+    double u_frac = (u1 - u0) / std::max(domain_u1 - domain_u0, 1e-12);
+    double v_frac = (v1 - v0) / std::max(domain_v1 - domain_v0, 1e-12);
+    const int u_samples = std::max(3, (int)std::ceil(full_u * std::min(1.0, u_frac)));
+    const int v_samples = std::max(3, (int)std::ceil(full_v * std::min(1.0, v_frac)));
 
     double du_param = (u1 - u0) / u_samples;
     double dv_param = (v1 - v0) / v_samples;
@@ -464,115 +538,102 @@ std::vector<NurbsCurve> Closest::surface_curve(
     pts.reserve(samples.size());
     for (const auto& s : samples) pts.push_back({s[1], s[2]});
 
-    // 3. Closed-loop closure and seam-crossing split (same scheme as surface_plane_uv)
+    // 3. Convert the continuous unwrapped UV polyline into in-domain pieces, split at periodic
+    //    seam lines (u = u0 + k*range_u, v = v0 + k*range_v). Each emitted piece lies within
+    //    [u0,u1]x[v0,v1]; a piece is marked closed only if it is a true interior loop (no seam
+    //    crossing and not spanning a full period). A loop that starts off a seam is rotated to
+    //    begin at its first seam crossing so its arcs split cleanly. This replaces the previous
+    //    wrap-piece scheme, which produced spurious degenerate slivers on the sphere/cylinder.
     Point p_first = curve.point_at(samples[0][0]);
     Point p_last = curve.point_at(samples.back()[0]);
     bool is_loop = p_first.distance(p_last) < fit_tol * 4.0 && pts.size() >= 6;
+    if (is_loop && pts.size() >= 2) pts.pop_back();  // drop duplicate closing sample
 
-    double closure_du = 0.0;
-    double closure_dv = 0.0;
-    if (is_loop) {
-        pts.pop_back();
-        double du_j = pts[0].first - pts.back().first;
-        double dv_j = pts[0].second - pts.back().second;
-        if (closed_u) {
-            while (du_j > range_u * 0.5) du_j -= range_u;
-            while (du_j < -range_u * 0.5) du_j += range_u;
-        }
-        if (closed_v) {
-            while (dv_j > range_v * 0.5) dv_j -= range_v;
-            while (dv_j < -range_v * 0.5) dv_j += range_v;
-        }
-        closure_du = (pts.back().first + du_j) - pts[0].first;
-        closure_dv = (pts.back().second + dv_j) - pts[0].second;
-        pts.push_back({pts[0].first + closure_du, pts[0].second + closure_dv});
-    }
+    // Net unwrapped winding over a loop: ~0 = the loop straddles the seam (its arbitrary start
+    // splits one arc), ~+/-range = the loop encircles the surface (the closure itself crosses a
+    // seam, so the first and last arcs are genuinely separate).
+    double wind_u = closed_u ? (samples.back()[1] - samples.front()[1]) : 0.0;
+    double wind_v = closed_v ? (samples.back()[2] - samples.front()[2]) : 0.0;
+    bool closure_crosses_seam = std::abs(wind_u) > range_u * 0.5 || std::abs(wind_v) > range_v * 0.5;
 
-    std::vector<std::pair<double, double>> out_pts;
-    out_pts.push_back(pts[0]);
-    std::vector<int> cross_idx;
-    for (size_t i = 1; i < pts.size(); i++) {
-        std::pair<double, double> pa = pts[i - 1];
-        std::pair<double, double> pb = pts[i];
-        std::vector<std::tuple<double, int, double>> crossings;
-        if (closed_u && std::abs(pb.first - pa.first) > 1e-15) {
-            int k0 = (int)std::floor((pa.first - u0) / range_u);
-            int k1 = (int)std::floor((pb.first - u0) / range_u);
-            for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
-                double L = u0 + k * range_u;
-                double t = (L - pa.first) / (pb.first - pa.first);
-                if (0.0 < t && t < 1.0) crossings.push_back({t, 0, L});
+    // First seam crossing in segment (a -> b): the smallest t in (0,1) where u or v hits a seam.
+    auto first_seam = [&](const std::pair<double,double>& a, const std::pair<double,double>& b,
+                          double& cu, double& cv) -> bool {
+        double bestt = 2.0; bool found = false;
+        if (closed_u && std::abs(b.first - a.first) > 1e-15) {
+            int k0 = (int)std::floor((a.first - u0)/range_u), k1 = (int)std::floor((b.first - u0)/range_u);
+            for (int k = std::min(k0,k1)+1; k <= std::max(k0,k1); ++k) {
+                double L = u0 + k*range_u, t = (L - a.first)/(b.first - a.first);
+                if (t > 1e-9 && t < 1.0 - 1e-9 && t < bestt) { bestt = t; found = true; cu = L; cv = a.second + (b.second-a.second)*t; }
             }
         }
-        if (closed_v && std::abs(pb.second - pa.second) > 1e-15) {
-            int k0 = (int)std::floor((pa.second - v0) / range_v);
-            int k1 = (int)std::floor((pb.second - v0) / range_v);
-            for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
-                double L = v0 + k * range_v;
-                double t = (L - pa.second) / (pb.second - pa.second);
-                if (0.0 < t && t < 1.0) crossings.push_back({t, 1, L});
+        if (closed_v && std::abs(b.second - a.second) > 1e-15) {
+            int k0 = (int)std::floor((a.second - v0)/range_v), k1 = (int)std::floor((b.second - v0)/range_v);
+            for (int k = std::min(k0,k1)+1; k <= std::max(k0,k1); ++k) {
+                double L = v0 + k*range_v, t = (L - a.second)/(b.second - a.second);
+                if (t > 1e-9 && t < 1.0 - 1e-9 && t < bestt) { bestt = t; found = true; cv = L; cu = a.first + (b.first-a.first)*t; }
             }
         }
-        std::sort(crossings.begin(), crossings.end());
-        for (const auto& [t, axis, L] : crossings) {
-            double cu = pa.first + (pb.first - pa.first) * t;
-            double cv_ = pa.second + (pb.second - pa.second) * t;
-            if (axis == 0) {
-                cu = L;
-            } else {
-                cv_ = L;
-            }
-            out_pts.push_back({cu, cv_});
-            cross_idx.push_back((int)out_pts.size() - 1);
-        }
-        out_pts.push_back({pb.first, pb.second});
-        // An interior sample sitting exactly on a seam level is a crossing
-        if (i < pts.size() - 1) {
-            bool on_seam = false;
-            if (closed_u) {
-                double k = std::round((pb.first - u0) / range_u);
-                double L = u0 + k * range_u;
-                if (std::abs(pb.first - L) < range_u * 1e-9 && std::abs(pb.first - pa.first) > range_u * 1e-9) {
-                    out_pts.back().first = L;
-                    on_seam = true;
-                }
-            }
-            if (closed_v) {
-                double k = std::round((pb.second - v0) / range_v);
-                double L = v0 + k * range_v;
-                if (std::abs(pb.second - L) < range_v * 1e-9 && std::abs(pb.second - pa.second) > range_v * 1e-9) {
-                    out_pts.back().second = L;
-                    on_seam = true;
-                }
-            }
-            if (on_seam) cross_idx.push_back((int)out_pts.size() - 1);
-        }
-    }
+        return found;
+    };
 
-    bool wrap_drift = std::abs(closure_du) > range_u * 0.5 || std::abs(closure_dv) > range_v * 0.5;
+    // Walk the continuous polyline, split at every interior seam crossing.
     std::vector<std::pair<std::vector<std::pair<double, double>>, bool>> pieces;
-    if (cross_idx.size() == 0) {
-        pieces.push_back({out_pts, is_loop && !wrap_drift});
-    } else if (is_loop) {
-        for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++) {
-            int a = cross_idx[ci];
-            int b = cross_idx[ci + 1];
-            pieces.push_back({std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false});
+    {
+        std::vector<std::vector<std::pair<double, double>>> raw;
+        std::vector<std::pair<double, double>> cur;
+        cur.push_back(pts[0]);
+        bool any_cross = false;
+        auto on_seam = [&](const std::pair<double,double>& p) -> bool {
+            if (closed_u) { double L = u0 + std::round((p.first - u0)/range_u)*range_u;
+                            if (std::abs(p.first - L) < range_u*1e-6) return true; }
+            if (closed_v) { double L = v0 + std::round((p.second - v0)/range_v)*range_v;
+                            if (std::abs(p.second - L) < range_v*1e-6) return true; }
+            return false;
+        };
+        for (size_t i = 1; i < pts.size(); ++i) {
+            std::pair<double,double> a = pts[i-1], b = pts[i];
+            while (true) {
+                double cu, cv;
+                if (!first_seam(a, b, cu, cv)) break;
+                cur.push_back({cu, cv});
+                raw.push_back(cur);
+                cur.clear();
+                cur.push_back({cu, cv});
+                any_cross = true;
+                a = {cu, cv};  // continue scanning the remainder for further seams
+            }
+            cur.push_back(b);
+            // An interior sample landing exactly on a seam line is itself a crossing.
+            if (i + 1 < pts.size() && on_seam(b)) {
+                raw.push_back(cur);
+                cur.clear();
+                cur.push_back(b);
+                any_cross = true;
+            }
         }
-        std::vector<std::pair<double, double>> wrap_piece(out_pts.begin() + cross_idx.back(), out_pts.end());
-        for (int pi = 1; pi <= cross_idx[0]; pi++)
-            wrap_piece.push_back({out_pts[pi].first + closure_du, out_pts[pi].second + closure_dv});
-        pieces.push_back({wrap_piece, false});
-    } else {
-        std::vector<int> bounds;
-        bounds.push_back(0);
-        for (int ci : cross_idx) bounds.push_back(ci);
-        bounds.push_back((int)out_pts.size() - 1);
-        for (size_t bi = 0; bi + 1 < bounds.size(); bi++) {
-            int a = bounds[bi];
-            int b = bounds[bi + 1];
-            if (b > a)
-                pieces.push_back({std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false});
+        raw.push_back(cur);
+        // A straddling loop's first and last raw segments are the two halves of one arc split by
+        // the arbitrary loop start; rejoin them (last + first) into a single continuous arc.
+        // Only when the start is genuinely mid-arc -- if it already sits on a seam, the first and
+        // last segments are distinct arcs meeting there and must stay separate.
+        if (is_loop && !closure_crosses_seam && raw.size() > 1 && !on_seam(pts[0])) {
+            std::vector<std::pair<double,double>> merged = raw.back();
+            for (size_t k = 1; k < raw.front().size(); ++k) merged.push_back(raw.front()[k]);
+            raw.erase(raw.begin());
+            raw.back() = merged;
+        }
+        for (auto& seg : raw) {
+            if (seg.size() < 2) continue;
+            std::pair<double,double> mid = seg[seg.size()/2];
+            if (closed_u) { int k = (int)std::floor((mid.first - u0)/range_u); if (k) for (auto& p : seg) p.first -= k*range_u; }
+            if (closed_v) { int k = (int)std::floor((mid.second - v0)/range_v); if (k) for (auto& p : seg) p.second -= k*range_v; }
+            double umin=1e300,umax=-1e300,vmin=1e300,vmax=-1e300,len=0;
+            for (auto& p : seg) { umin=std::min(umin,p.first); umax=std::max(umax,p.first); vmin=std::min(vmin,p.second); vmax=std::max(vmax,p.second); }
+            for (size_t i = 1; i < seg.size(); ++i) len += std::hypot(seg[i].first-seg[i-1].first, seg[i].second-seg[i-1].second);
+            if (len < std::min(range_u, range_v) * 1e-4) continue;  // degenerate sliver
+            bool seg_loop = is_loop && !any_cross && (umax-umin < range_u*0.9) && (vmax-vmin < range_v*0.9);
+            pieces.push_back({seg, seg_loop});
         }
     }
 

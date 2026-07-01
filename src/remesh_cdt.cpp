@@ -700,7 +700,14 @@ void Delaunay::AddPath(const Path64& path)
     Vertex2* vPrev = v0;
     i = iNext;
 
+    // Degeneracy guard: a valid simple path is walked in O(len) advances. A degenerate or
+    // self-intersecting path (e.g. an inexact conic pcurve that collapses to a collinear/looping
+    // run after integer quantization) can spin these sweep loops forever -> bound the total work
+    // and discard the path if the budget is blown, so the CDT can never hang the kernel.
+    size_t steps = 0;
+    const size_t budget = 16 * len + 256;
     for (;;) {
+        if (++steps > budget) goto degen_bail;
         locMinStack.push(vPrev);
         if (!lowermostVertex ||
             vPrev->pt.y > lowermostVertex->pt.y ||
@@ -713,18 +720,21 @@ void Delaunay::AddPath(const Path64& path)
         }
 
         while (path[i].y <= vPrev->pt.y) {
+            if (++steps > budget) goto degen_bail;
             Vertex2* v = allVertices.emplace_back(new Vertex2(path[i]));
             CreateEdge(vPrev, v, EdgeKind::ascend);
             vPrev = v;
             i = iNext;
             iNext = Next(i, len);
             while (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0) {
+                if (++steps > budget) goto degen_bail;
                 i = iNext; iNext = Next(i, len);
             }
         }
 
         Vertex2* vPrevPrev = vPrev;
         while (i != i0 && path[i].y >= vPrev->pt.y) {
+            if (++steps > budget) goto degen_bail;
             Vertex2* v = allVertices.emplace_back(new Vertex2(path[i]));
             CreateEdge(v, vPrev, EdgeKind::descend);
             vPrevPrev = vPrev;
@@ -732,6 +742,7 @@ void Delaunay::AddPath(const Path64& path)
             i = iNext;
             iNext = Next(i, len);
             while (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0) {
+                if (++steps > budget) goto degen_bail;
                 i = iNext; iNext = Next(i, len);
             }
         }
@@ -752,6 +763,11 @@ void Delaunay::AddPath(const Path64& path)
         for (size_t j = vert_cnt; j < allVertices.size(); ++j)
             allVertices[j]->edges.clear();
     }
+    return;
+degen_bail:
+    // Sweep budget blown -> degenerate/self-intersecting path; discard its partial edges.
+    for (size_t j = vert_cnt; j < allVertices.size(); ++j)
+        allVertices[j]->edges.clear();
 }
 
 bool Delaunay::AddPaths(const Paths64& paths)
@@ -863,9 +879,15 @@ Paths64 Delaunay::Execute(const Paths64& paths, TriangulateResult& triResult)
             DoTriangulateLeft(e, e->vB, currY);
     }
 
-    // Legalize all interior diagonal edges.
+    // Legalize all interior diagonal edges. ForceLegal re-pushes up to 4 neighbours per flip, so
+    // on degenerate / near-cocircular integer points the InCircle vs turn signs can disagree and two
+    // edges flip-flop forever. Bound the total flips: a valid triangulation legalizes in O(n) flips,
+    // far under this budget; a degenerate one stops early with a still-valid (non-optimal) mesh.
     if (useDelaunay) {
+        size_t flips = 0;
+        const size_t flip_budget = 64 * allVertices.size() + 4096;
         while (!pendingDelaunayStack.empty()) {
+            if (++flips > flip_budget) break;
             Edge* e = pendingDelaunayStack.top();
             pendingDelaunayStack.pop();
             ForceLegal(e);

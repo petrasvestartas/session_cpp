@@ -52,6 +52,7 @@ set(UNITY_BUILD_EXCLUDE
     src/nurbsknot.cpp
     src/mesh.cpp
     src/brep.cpp
+    src/intersection.cpp
     src/graph.cpp
     src/tree.cpp
     src/session.cpp
@@ -251,7 +252,7 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-foreach(MAIN_ID 3 6)
+foreach(MAIN_ID 3 6 7)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
@@ -296,7 +297,7 @@ set(MINITEST_SOURCES
     src/convex_hull_test.cpp
     src/spatial_kdtree_test.cpp
     src/boolean_polyline_test.cpp
-    src/elementfeature_test.cpp
+    # src/elementfeature_test.cpp  # removed: source file does not exist (stale reference)
     src/mesh_offset_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})

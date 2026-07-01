@@ -1745,8 +1745,9 @@ NurbsSurface Primitives::create_edge(
 }
 
 NurbsCurve Primitives::create_interpolated(const std::vector<Point>& points,
-                                            CurveNurbsKnotStyle parameterization) {
-    return NurbsCurve::create_interpolated(points, parameterization);
+                                            CurveNurbsKnotStyle parameterization,
+                                            CurveInterpStyle end_condition) {
+    return NurbsCurve::create_interpolated(points, parameterization, end_condition);
 }
 
 Mesh Primitives::quad_mesh(const NurbsSurface& surface, int u_count, int v_count) {

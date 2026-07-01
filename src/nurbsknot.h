@@ -32,6 +32,21 @@ enum class CurveNurbsKnotStyle {
 };
 
 /**
+ * @brief End-tangent (boundary) condition for cubic interpolation.
+ *
+ * Both styles share chord-length parameters and clamped knots; they differ only
+ * in how the start/end tangents (and hence the 2nd/penultimate control points)
+ * are estimated:
+ *  - Rhino: normalized Bessel tangents (matches Rhino / OpenNURBS).
+ *  - Occt:  un-normalized derivative of the cubic Lagrange polynomial through the
+ *           first/last 4 points (matches OCCT GeomAPI_Interpolate::BuildTangents).
+ */
+enum class CurveInterpStyle {
+    Rhino = 0,
+    Occt = 1
+};
+
+/**
  * @brief NurbsKnot vector utility functions.
  *
  * All functions are static and operate on nurbsknot vector arrays.

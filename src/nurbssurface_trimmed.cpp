@@ -471,6 +471,8 @@ void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
     m_surface = src.m_surface;
     m_outer_loop = src.m_outer_loop;
     m_inner_loops = src.m_inner_loops;
+    m_outer_segments = src.m_outer_segments;
+    m_inner_segments = src.m_inner_segments;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -895,7 +897,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             continue;
         std::vector<int> cycle;
         int cur = hi;
-        while (!visited[cur]) {
+        while (cur >= 0 && !visited[cur]) {  // cur>=0 guards an unlinked half-edge
             visited[cur] = true;
             cycle.push_back(cur);
             cur = next_he[cur];
@@ -981,9 +983,11 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     }
 
     // ---- 7. Emit one trimmed surface per face ----
-    auto cycle_to_loop = [&](const std::vector<int>& cycle) -> NurbsCurve {
-        // Collapse consecutive same-curve half-edges into exact trims,
-        // border runs into straight segments, then join into one loop
+    // Collapse consecutive same-curve half-edges into exact trims (border runs become
+    // straight segments), each oriented tail->head along the face walk. Returns the run
+    // pieces in connected order (head-to-tail); the caller joins them into a single loop
+    // and/or keeps them as the segmentation for watertight edge imprinting.
+    auto cycle_to_segments = [&](const std::vector<int>& cycle) -> std::vector<NurbsCurve> {
         struct Run { int cidx, va, vb; double ta, tb; };
         std::vector<Run> runs;
         for (int hi : cycle) {
@@ -1000,6 +1004,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
         std::vector<NurbsCurve> pieces;
         for (const auto& run : runs) {
+            bool made = false;
             if (run.cidx >= 0) {
                 const NurbsCurve& crv = pcurves[run.cidx];
                 auto cdom = crv.domain();
@@ -1013,25 +1018,41 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                         piece_ok = false;
                 }
                 if (piece_ok && piece.is_valid()) {
+                    if (run.ta > run.tb) piece.reverse();  // orient tail->head
                     pieces.push_back(piece);
-                    continue;
+                    made = true;
                 }
             }
-            const auto& pa = verts[run.va];
-            const auto& pb = verts[run.vb];
-            if (std::hypot(pb[0]-pa[0], pb[1]-pa[1]) > 1e-14) {
-                std::vector<Point> seg_pts = {
-                    Point(pa[0], pa[1], 0.0),
-                    Point(pb[0], pb[1], 0.0)
-                };
-                pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
+            if (!made) {
+                const auto& pa = verts[run.va];
+                const auto& pb = verts[run.vb];
+                if (std::hypot(pb[0]-pa[0], pb[1]-pa[1]) > 1e-14) {
+                    std::vector<Point> seg_pts = {
+                        Point(pa[0], pa[1], 0.0),
+                        Point(pb[0], pb[1], 0.0)
+                    };
+                    pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
+                }
             }
         }
+        return pieces;
+    };
+
+    // Join the run pieces into one closed loop. On success, seg_valid is set and `segments`
+    // returns the pieces (which reconstruct the loop exactly); otherwise a polyline fallback
+    // loop is produced and seg_valid stays false.
+    auto cycle_to_loop = [&](const std::vector<int>& cycle,
+                             std::vector<NurbsCurve>* segments, bool* seg_valid) -> NurbsCurve {
+        if (seg_valid) *seg_valid = false;
+        std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
         if (pieces.empty())
             return NurbsCurve();
         std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
-        if (joined.size() == 1 && joined[0].is_closed())
+        if (joined.size() == 1 && joined[0].is_closed()) {
+            if (segments) *segments = pieces;
+            if (seg_valid) *seg_valid = true;
             return joined[0];
+        }
         // Fallback: polyline loop from the face walk
         std::vector<Point> loop_pts;
         for (int hi : cycle) {
@@ -1056,20 +1077,608 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         return s * 0.5;
     };
 
+    // Reverse a head-to-tail segment list in place so it still traces the loop head-to-tail
+    // after the joined loop was reversed (reverse the order AND each segment).
+    auto reverse_segments = [](std::vector<NurbsCurve>& segs) {
+        std::reverse(segs.begin(), segs.end());
+        for (auto& s : segs) s.reverse();
+    };
+
     std::vector<NurbsSurfaceTrimmed> result;
     for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
-        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first);
+        std::vector<NurbsCurve> outer_segs;
+        bool outer_seg_valid = false;
+        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, &outer_segs, &outer_seg_valid);
         if (!outer.is_valid())
             continue;
-        if (loop_signed_area(outer) < 0.0)
+        if (loop_signed_area(outer) < 0.0) {
             outer.reverse();
+            if (outer_seg_valid) reverse_segments(outer_segs);
+        }
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
+        if (outer_seg_valid) ts.m_outer_segments = outer_segs;
         for (const auto& hole_cycle : holes_of[fi]) {
-            NurbsCurve hole = cycle_to_loop(hole_cycle);
+            std::vector<NurbsCurve> hole_segs;
+            bool hole_seg_valid = false;
+            NurbsCurve hole = cycle_to_loop(hole_cycle, &hole_segs, &hole_seg_valid);
             if (hole.is_valid()) {
-                if (loop_signed_area(hole) > 0.0)
+                if (loop_signed_area(hole) > 0.0) {
                     hole.reverse();
+                    if (hole_seg_valid) reverse_segments(hole_segs);
+                }
                 ts.add_inner_loop(hole);
+                ts.m_inner_segments.push_back(hole_seg_valid ? hole_segs : std::vector<NurbsCurve>{});
+            }
+        }
+        result.push_back(ts);
+    }
+    return result;
+}
+
+// ===========================================================================================
+// split_face_by_wires : seam-aware UV face arrangement.
+//
+// Faithful port of OCCT BOPAlgo_WireSplitter (leftmost min-clockwise-turn wire walk, using
+// PCURVE-TANGENT angles) + BuilderFace::PerformAreas (outer/hole by signed UV area + nesting),
+// with the DoSplitSEAMOnFace seam handled by keying graph VERTICES on 3D position so that a
+// periodic seam (u=u0 == u=u1) and surface poles collapse to one vertex. This lets the walk
+// cross the seam, which the planar split_by_uv_curves (UV-keyed) cannot.
+//
+// Reuses the proven sampling / segment-intersection / segment-emission machinery of
+// split_by_uv_curves; the differences are (1) 3D-keyed vertices, (2) per-edge-end tangent
+// angles with a seam guard, (3) section pcurves carry an is_section flag. Output is the same
+// vector<NurbsSurfaceTrimmed> with m_outer_segments / m_inner_segments populated identically,
+// so BRep::split_with mates edges 1:1 (watertight by construction).
+// ===========================================================================================
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_face_by_wires(
+    const NurbsSurface& srf,
+    const std::vector<NurbsCurve>& section_pcurves,
+    const std::vector<NurbsCurve>& boundary_pcurves,
+    double tolerance)
+{
+    // MSVC has no M_PI.
+    const double PI = 3.14159265358979323846;
+    const double TWO_PI = 2.0 * PI;
+    if (!srf.is_valid()) return {};
+
+    // Combined pcurve list: boundary first [0, n_bnd), then sections [n_bnd, end).
+    std::vector<NurbsCurve> allpc;
+    allpc.reserve(boundary_pcurves.size() + section_pcurves.size());
+    for (const auto& c : boundary_pcurves) allpc.push_back(c);
+    for (const auto& c : section_pcurves)  allpc.push_back(c);
+    int n_bnd = (int)boundary_pcurves.size();
+    auto is_section_cidx = [&](int cidx) { return cidx >= n_bnd; };
+
+    auto dom_u = srf.domain(0);
+    auto dom_v = srf.domain(1);
+    double u0 = dom_u.first, u1 = dom_u.second;
+    double v0 = dom_v.first, v1 = dom_v.second;
+    double range_u = u1 - u0;
+    double range_v = v1 - v0;
+
+    auto spans_u = srf.get_span_vector(0);
+    auto spans_v = srf.get_span_vector(1);
+    int nu = std::max((int)spans_u.size() - 1, 1) * 4;
+    int nv = std::max((int)spans_v.size() - 1, 1) * 4;
+    double du = range_u / nu;
+    double dv = range_v / nv;
+    double mu = (u0 + u1) * 0.5;
+    double mv = (v0 + v1) * 0.5;
+    Point pmid = srf.point_at(mu, mv);
+    double uv_to_3d_u = pmid.distance(srf.point_at(std::min(mu + du, u1), mv)) / du;
+    double uv_to_3d_v = pmid.distance(srf.point_at(mu, std::min(mv + dv, v1))) / dv;
+    double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
+    if (uv_to_3d < 1e-10) uv_to_3d = 1.0;
+
+    double snap_uv;
+    if (tolerance > 0.0) snap_uv = std::max(1e-9, tolerance / uv_to_3d);
+    else                 snap_uv = std::min(range_u, range_v) * 1e-7;
+    // 3D position merge tolerance (collapses seam/pole-coincident UV points to one vertex).
+    double snap3 = std::max(uv_to_3d * snap_uv, 1e-9);
+    // seam-guard tolerance in UV: distinct seam sides differ by ~period, so any multiple of
+    // snap_uv separates them while staying well below the period.
+    double seam_tol = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-6);
+
+    // ---- 1. Sample each pcurve into a tagged UV polyline (no synthetic domain border) ----
+    double samp_tol = std::max(range_u, range_v) * 1e-3;
+    struct UVPoly { int cidx; std::vector<std::array<double, 2>> pts; std::vector<double> ts; };
+    std::vector<UVPoly> polylines;
+
+    auto snap_border = [&](std::array<double, 2>& p) {
+        if (std::abs(p[0] - u0) < snap_uv) p[0] = u0;
+        if (std::abs(p[0] - u1) < snap_uv) p[0] = u1;
+        if (std::abs(p[1] - v0) < snap_uv) p[1] = v0;
+        if (std::abs(p[1] - v1) < snap_uv) p[1] = v1;
+    };
+
+    for (int cidx = 0; cidx < (int)allpc.size(); ++cidx) {
+        const NurbsCurve& crv = allpc[cidx];
+        if (!crv.is_valid()) continue;
+        auto cdom = crv.domain();
+        double ct0 = cdom.first, ct1 = cdom.second;
+        std::vector<std::array<double, 3>> entries;
+        int n = std::max(crv.cv_count() * 4, 16);
+        for (int i = 0; i <= n; ++i) {
+            double t = ct0 + (ct1 - ct0) * i / n;
+            Point p = crv.point_at(t);
+            entries.push_back({t, p[0], p[1]});
+        }
+        int depth = 0;
+        while (depth < 6) {
+            int inserted = 0;
+            size_t i = 0;
+            while (i + 1 < entries.size()) {
+                std::array<double, 3> a = entries[i];
+                std::array<double, 3> b = entries[i + 1];
+                double tm = (a[0] + b[0]) * 0.5;
+                Point pm = crv.point_at(tm);
+                double exu = b[1] - a[1];
+                double exv = b[2] - a[2];
+                double l2 = exu * exu + exv * exv;
+                double dev;
+                if (l2 > 1e-30) {
+                    double s = ((pm[0] - a[1]) * exu + (pm[1] - a[2]) * exv) / l2;
+                    double cx = a[1] + s * exu;
+                    double cy = a[2] + s * exv;
+                    dev = std::hypot(pm[0] - cx, pm[1] - cy);
+                } else {
+                    dev = 0.0;
+                }
+                if (dev > samp_tol && entries.size() < 4096) {
+                    entries.insert(entries.begin() + i + 1, {tm, pm[0], pm[1]});
+                    inserted += 1;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            if (inserted == 0) break;
+            depth += 1;
+        }
+        std::vector<std::array<double, 2>> pts;
+        std::vector<double> ts;
+        for (const auto& e : entries) {
+            std::array<double, 2> p = {std::min(std::max(e[1], u0), u1), std::min(std::max(e[2], v0), v1)};
+            snap_border(p);
+            if (!pts.empty() && std::abs(p[0] - pts.back()[0]) < 1e-15 && std::abs(p[1] - pts.back()[1]) < 1e-15)
+                continue;
+            pts.push_back(p);
+            ts.push_back(e[0]);
+        }
+        if (pts.size() < 2) continue;
+        polylines.push_back({cidx, pts, ts});
+    }
+
+    // ---- 2. Segment-segment intersections (Newton-refined on the real pcurves) ----
+    auto seg_seg = [](const std::array<double, 2>& p1, const std::array<double, 2>& p2,
+                      const std::array<double, 2>& p3, const std::array<double, 2>& p4,
+                      double& s_out, double& t_out) -> bool {
+        double d1u = p2[0] - p1[0];
+        double d1v = p2[1] - p1[1];
+        double d2u = p4[0] - p3[0];
+        double d2v = p4[1] - p3[1];
+        double den = d1u * d2v - d1v * d2u;
+        if (std::abs(den) < 1e-20) return false;
+        double s = ((p3[0] - p1[0]) * d2v - (p3[1] - p1[1]) * d2u) / den;
+        double t = ((p3[0] - p1[0]) * d1v - (p3[1] - p1[1]) * d1u) / den;
+        if (-1e-12 <= s && s <= 1.0 + 1e-12 && -1e-12 <= t && t <= 1.0 + 1e-12) {
+            s_out = s; t_out = t; return true;
+        }
+        return false;
+    };
+    auto newton_cc = [&](const NurbsCurve& ca, double& ta, const NurbsCurve& cb, double& tb) {
+        for (int it = 0; it < 8; ++it) {
+            auto da = ca.evaluate(ta, 1);
+            auto db = cb.evaluate(tb, 1);
+            double fu = da[0][0] - db[0][0];
+            double fv = da[0][1] - db[0][1];
+            if (std::hypot(fu, fv) < snap_uv * 0.01) break;
+            double j00 = da[1][0], j01 = -db[1][0], j10 = da[1][1], j11 = -db[1][1];
+            double den = j00 * j11 - j01 * j10;
+            if (std::abs(den) < 1e-20) break;
+            ta -= (fu * j11 - j01 * fv) / den;
+            tb -= (j00 * fv - fu * j10) / den;
+            auto adom = ca.domain();
+            auto bdom = cb.domain();
+            ta = std::min(std::max(ta, adom.first), adom.second);
+            tb = std::min(std::max(tb, bdom.first), bdom.second);
+        }
+    };
+
+    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;  // (poly,seg) -> (frac,u,v,t)
+    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
+        for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
+            const UVPoly& A = polylines[pi];
+            const UVPoly& B = polylines[pj];
+            // Boundary edges meet only at shared corners (endpoints); skip boundary-boundary.
+            if (!is_section_cidx(A.cidx) && !is_section_cidx(B.cidx)) continue;
+            double aminu = A.pts[0][0], amaxu = A.pts[0][0], aminv = A.pts[0][1], amaxv = A.pts[0][1];
+            for (const auto& p : A.pts) { aminu = std::min(aminu, p[0]); amaxu = std::max(amaxu, p[0]); aminv = std::min(aminv, p[1]); amaxv = std::max(amaxv, p[1]); }
+            aminu -= snap_uv; amaxu += snap_uv; aminv -= snap_uv; amaxv += snap_uv;
+            double bminu = B.pts[0][0], bmaxu = B.pts[0][0], bminv = B.pts[0][1], bmaxv = B.pts[0][1];
+            for (const auto& p : B.pts) { bminu = std::min(bminu, p[0]); bmaxu = std::max(bmaxu, p[0]); bminv = std::min(bminv, p[1]); bmaxv = std::max(bmaxv, p[1]); }
+            if (bminu > amaxu || bmaxu < aminu || bminv > amaxv || bmaxv < aminv) continue;
+            for (int ia = 0; ia + 1 < (int)A.pts.size(); ++ia) {
+                for (int ib = 0; ib + 1 < (int)B.pts.size(); ++ib) {
+                    double s, t;
+                    if (!seg_seg(A.pts[ia], A.pts[ia + 1], B.pts[ib], B.pts[ib + 1], s, t)) continue;
+                    double ta = A.ts[ia] + (A.ts[ia + 1] - A.ts[ia]) * s;
+                    double tb = B.ts[ib] + (B.ts[ib + 1] - B.ts[ib]) * t;
+                    newton_cc(allpc[A.cidx], ta, allpc[B.cidx], tb);
+                    Point pa = allpc[A.cidx].point_at(ta);
+                    std::array<double, 2> hp = {pa[0], pa[1]};
+                    snap_border(hp);
+                    splits[{pi, ia}].push_back({s, hp[0], hp[1], ta});
+                    splits[{pj, ib}].push_back({t, hp[0], hp[1], tb});
+                }
+            }
+        }
+    }
+
+    // ---- 3. Vertex pool keyed by 3D position (merges seam & poles) ----
+    std::map<std::tuple<long long, long long, long long>, std::vector<int>> cell3;
+    std::vector<std::array<double, 2>> verts;  // representative UV per vertex
+    std::vector<Point> verts3;                 // 3D position per vertex
+    auto vert_id = [&](const std::array<double, 2>& p) -> int {
+        Point P = srf.point_at(p[0], p[1]);
+        long long ci = (long long)std::floor(P[0] / snap3);
+        long long cj = (long long)std::floor(P[1] / snap3);
+        long long ck = (long long)std::floor(P[2] / snap3);
+        for (int di = -1; di <= 1; ++di)
+            for (int dj = -1; dj <= 1; ++dj)
+                for (int dk = -1; dk <= 1; ++dk) {
+                    auto bucket = cell3.find({ci + di, cj + dj, ck + dk});
+                    if (bucket == cell3.end()) continue;
+                    for (int vk : bucket->second)
+                        if (verts3[vk].distance(P) <= snap3) return vk;
+                }
+        int vk = (int)verts.size();
+        verts.push_back(p);
+        verts3.push_back(P);
+        cell3[{ci, cj, ck}].push_back(vk);
+        return vk;
+    };
+
+    struct SplitEdge { int a, b, cidx; double ta, tb; bool is_section; std::array<double, 2> uva, uvb; };
+    std::vector<SplitEdge> edges;
+    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
+        const UVPoly& poly = polylines[pi];
+        struct Node { int vid; double t; std::array<double, 2> uv; };
+        std::vector<Node> chain;
+        for (int i = 0; i < (int)poly.pts.size(); ++i) {
+            chain.push_back({vert_id(poly.pts[i]), poly.ts[i], poly.pts[i]});
+            auto sit = splits.find({pi, i});
+            if (i + 1 < (int)poly.pts.size() && sit != splits.end()) {
+                std::vector<std::array<double, 4>> evs = sit->second;
+                std::sort(evs.begin(), evs.end());
+                for (const auto& ev : evs)
+                    chain.push_back({vert_id({ev[1], ev[2]}), ev[3], {ev[1], ev[2]}});
+            }
+        }
+        // A fully 3D-degenerate polyline (e.g. a sphere/cone pole row: every sample collapses to
+        // one vertex) must NOT be dropped: keep it as ONE connecting edge spanning the UV range so
+        // the walk can cross the pole (matching how the seam is crossed). Without it the seam guard
+        // strands the walk at the pole (only a U-turn is reachable) and the polar caps never split.
+        bool all_same = chain.size() >= 2;
+        for (size_t k = 1; k < chain.size() && all_same; ++k)
+            if (chain[k].vid != chain[0].vid) all_same = false;
+        if (all_same) {
+            const auto& f = chain.front();
+            const auto& b = chain.back();
+            if (std::hypot(f.uv[0] - b.uv[0], f.uv[1] - b.uv[1]) > seam_tol)
+                edges.push_back({f.vid, b.vid, poly.cidx, f.t, b.t,
+                                 is_section_cidx(poly.cidx), f.uv, b.uv});
+            continue;
+        }
+        for (int i = 0; i + 1 < (int)chain.size(); ++i) {
+            if (chain[i].vid == chain[i + 1].vid) continue;
+            edges.push_back({chain[i].vid, chain[i + 1].vid, poly.cidx, chain[i].t, chain[i + 1].t,
+                             is_section_cidx(poly.cidx), chain[i].uv, chain[i + 1].uv});
+        }
+    }
+
+    // ---- 4. Prune dangling (valence-1) edges to a fixpoint ----
+    std::vector<bool> alive(edges.size(), true);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        std::map<int, int> degree;
+        for (size_t ei = 0; ei < edges.size(); ++ei) {
+            if (!alive[ei]) continue;
+            degree[edges[ei].a] += 1;
+            degree[edges[ei].b] += 1;
+        }
+        for (size_t ei = 0; ei < edges.size(); ++ei) {
+            if (!alive[ei]) continue;
+            if (degree[edges[ei].a] == 1 || degree[edges[ei].b] == 1) { alive[ei] = false; changed = true; }
+        }
+    }
+    std::vector<SplitEdge> live_edges;
+    for (size_t ei = 0; ei < edges.size(); ++ei)
+        if (alive[ei]) live_edges.push_back(edges[ei]);
+    if (live_edges.empty()) return {};
+
+    // ---- 5. Directed half-edges with PCURVE-TANGENT edge-end angles ----
+    // Angle2D (curvature-aware step into the curve), folded to [0, 2pi).
+    auto end_angle = [&](int cidx, double t_vertex, double t_other, bool bIsIn) -> double {
+        const NurbsCurve& C = allpc[cidx];
+        auto cd = C.domain();
+        double t0 = cd.first, t1 = cd.second;
+        double speed = 1.0, kappa = 0.0;
+        auto d = C.evaluate(t_vertex, 2);
+        if (d.size() >= 2) {
+            double sx = d[1][0], sy = d[1][1];
+            speed = std::hypot(sx, sy);
+            if (d.size() >= 3) {
+                double sp3 = speed * speed * speed;
+                if (sp3 > 1e-30) kappa = std::abs(sx * d[2][1] - sy * d[2][0]) / sp3;
+            }
+        }
+        double dt = std::max(snap_uv / std::max(speed, 1e-12), 1e-12);
+        if (kappa > 1e-12) {
+            double R = 1.0 / kappa;
+            double cosphi = R / (R + snap_uv);
+            if (cosphi < 1.0) dt = std::max(dt, std::acos(std::max(-1.0, std::min(1.0, cosphi))));
+        }
+        double aTX = 0.05 * (t1 - t0);
+        if (aTX < 5e-5) aTX = std::min(5e-5, (t1 - t0) / 2.0);
+        if (dt > aTX) dt = aTX;
+        double step = (t_other >= t_vertex) ? dt : -dt;
+        double tv1 = t_vertex + step;
+        if (tv1 < t0) tv1 = t0;
+        if (tv1 > t1) tv1 = t1;
+        Point pv = C.point_at(t_vertex);
+        Point pv1 = C.point_at(tv1);
+        double vx = bIsIn ? (pv[0] - pv1[0]) : (pv1[0] - pv[0]);
+        double vy = bIsIn ? (pv[1] - pv1[1]) : (pv1[1] - pv[1]);
+        double a = std::atan2(vy, vx);
+        if (a < 0.0) a += TWO_PI;
+        return a;
+    };
+
+    struct HE { int tail, head, eidx; bool fwd; bool is_section;
+                std::array<double, 2> tail_uv, head_uv; double out_ang, in_ang; };
+    std::vector<HE> hes;
+    hes.reserve(live_edges.size() * 2);
+    for (int ei = 0; ei < (int)live_edges.size(); ++ei) {
+        const SplitEdge& e = live_edges[ei];
+        HE f; f.tail = e.a; f.head = e.b; f.eidx = ei; f.fwd = true; f.is_section = e.is_section;
+        f.tail_uv = e.uva; f.head_uv = e.uvb;
+        f.out_ang = end_angle(e.cidx, e.ta, e.tb, false);
+        f.in_ang  = end_angle(e.cidx, e.tb, e.ta, true);
+        hes.push_back(f);
+        HE r; r.tail = e.b; r.head = e.a; r.eidx = ei; r.fwd = false; r.is_section = e.is_section;
+        r.tail_uv = e.uvb; r.head_uv = e.uva;
+        r.out_ang = end_angle(e.cidx, e.tb, e.ta, false);
+        r.in_ang  = end_angle(e.cidx, e.ta, e.tb, true);
+        hes.push_back(r);
+    }
+
+    std::vector<std::vector<int>> out_list(verts.size());
+    for (int hi = 0; hi < (int)hes.size(); ++hi) out_list[hes[hi].tail].push_back(hi);
+
+    // A vertex is a "seam" vertex when its incident edge-ends sit at different UV positions
+    // (3D-merge collapsed two distinct UV points, e.g. u=u0 and u=u1 on a periodic seam).
+    std::vector<bool> seam_v(verts.size(), false);
+    {
+        std::vector<std::array<double, 2>> first_uv(verts.size());
+        std::vector<char> have(verts.size(), 0);
+        auto note = [&](int v, const std::array<double, 2>& uv) {
+            if (!have[v]) { first_uv[v] = uv; have[v] = 1; }
+            else if (std::hypot(uv[0] - first_uv[v][0], uv[1] - first_uv[v][1]) > seam_tol) seam_v[v] = true;
+        };
+        for (const auto& h : hes) { note(h.tail, h.tail_uv); note(h.head, h.head_uv); }
+    }
+
+    auto clockwise_angle = [&](double aIn, double aOut) -> double {
+        double A1 = std::fmod(aIn + PI, TWO_PI);
+        if (A1 < 0.0) A1 += TWO_PI;
+        double dA = A1 - aOut;
+        if (dA <= 0.0) dA += TWO_PI;
+        else if (dA <= 1e-14) dA = TWO_PI;
+        return dA;
+    };
+
+    // Face-tracing permutation: next half-edge after arriving via h = the unused outgoing at the
+    // arrival vertex with MINIMUM clockwise turn (leftmost rule). On seam vertices only consider
+    // candidates whose start UV coincides with the arrival UV (keeps the walk on the right side).
+    std::vector<int> next_he(hes.size(), -1);
+    for (int h = 0; h < (int)hes.size(); ++h) {
+        int V = hes[h].head;
+        double aIn = hes[h].in_ang;
+        const auto& Pb = hes[h].head_uv;
+        int best = -1;
+        double bestA = 1e300;
+        for (int g : out_list[V]) {
+            if (seam_v[V]) {
+                double duv = std::hypot(hes[g].tail_uv[0] - Pb[0], hes[g].tail_uv[1] - Pb[1]);
+                if (duv > seam_tol) continue;
+            }
+            double a = (hes[g].eidx == hes[h].eidx) ? TWO_PI : clockwise_angle(aIn, hes[g].out_ang);
+            if (a < bestA) { bestA = a; best = g; }
+        }
+        next_he[h] = best;
+    }
+
+    // ---- 6. Extract minimal directed loops (orbits of the permutation) ----
+    std::vector<bool> visited(hes.size(), false);
+    std::vector<std::vector<int>> faces;
+    for (int h = 0; h < (int)hes.size(); ++h) {
+        if (visited[h]) continue;
+        std::vector<int> cyc;
+        int cur = h;
+        int guard = 0;
+        while (cur >= 0 && !visited[cur] && guard++ < (int)hes.size() + 5) {
+            visited[cur] = true;
+            cyc.push_back(cur);
+            cur = next_he[cur];
+        }
+        if (cyc.size() >= 2 && cur == h) faces.push_back(cyc);
+    }
+
+    auto face_area = [&](const std::vector<int>& cycle) -> double {
+        double s = 0.0;
+        for (int hi : cycle) {
+            const auto& a = hes[hi].tail_uv;
+            const auto& b = hes[hi].head_uv;
+            s += a[0] * b[1] - b[0] * a[1];
+        }
+        return s * 0.5;
+    };
+    auto point_in_cycle = [&](const std::array<double, 2>& p, const std::vector<int>& cycle) -> bool {
+        bool inside = false;
+        for (int hi : cycle) {
+            const auto& a = hes[hi].tail_uv;
+            const auto& b = hes[hi].head_uv;
+            if ((a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])
+                inside = !inside;
+        }
+        return inside;
+    };
+
+    std::vector<std::pair<std::vector<int>, double>> pos_faces;
+    std::vector<std::vector<int>> neg_faces;
+    for (const auto& cycle : faces) {
+        double area = face_area(cycle);
+        if (area > snap_uv * snap_uv) {
+            pos_faces.push_back({cycle, area});
+        } else if (area < -snap_uv * snap_uv) {
+            bool touches_boundary = false;
+            for (int hi : cycle)
+                if (!hes[hi].is_section) { touches_boundary = true; break; }
+            if (!touches_boundary) neg_faces.push_back(cycle);  // interior hole loop
+            // else: the exterior (complement) loop -> discard
+        }
+    }
+
+    // ---- 7. Assign hole loops to their tightest containing positive face ----
+    std::vector<std::vector<std::vector<int>>> holes_of(pos_faces.size());
+    for (const auto& cycle : neg_faces) {
+        const auto& sample = hes[cycle[0]].tail_uv;
+        int best = -1;
+        double best_area = std::numeric_limits<double>::infinity();
+        for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
+            const auto& fc = pos_faces[fi].first;
+            double area = pos_faces[fi].second;
+            if (area < best_area && point_in_cycle(sample, fc)) {
+                std::set<int> hole_vids, face_vids;
+                for (int hi : cycle) hole_vids.insert(hes[hi].tail);
+                for (int hi : fc) face_vids.insert(hes[hi].tail);
+                if (hole_vids == face_vids) continue;
+                best = fi;
+                best_area = area;
+            }
+        }
+        if (best >= 0) holes_of[best].push_back(cycle);
+    }
+
+    // ---- 8. Emit one trimmed surface per positive face (segments preserved for watertight imprint) ----
+    auto cycle_to_segments = [&](const std::vector<int>& cycle) -> std::vector<NurbsCurve> {
+        struct Run { int cidx, va, vb; double ta, tb; };
+        std::vector<Run> runs;
+        for (int hi : cycle) {
+            const HE& he = hes[hi];
+            const SplitEdge& e = live_edges[he.eidx];
+            double ta = he.fwd ? e.ta : e.tb;
+            double tb = he.fwd ? e.tb : e.ta;
+            if (!runs.empty() && runs.back().cidx == e.cidx && runs.back().vb == he.tail) {
+                runs.back().vb = he.head;
+                runs.back().tb = tb;
+            } else {
+                runs.push_back({e.cidx, he.tail, he.head, ta, tb});
+            }
+        }
+        std::vector<NurbsCurve> pieces;
+        for (const auto& run : runs) {
+            bool made = false;
+            if (run.cidx >= 0) {
+                const NurbsCurve& crv = allpc[run.cidx];
+                auto cd = crv.domain();
+                double c0 = cd.first, c1 = cd.second;
+                double lo = std::min(run.ta, run.tb);
+                double hi_ = std::max(run.ta, run.tb);
+                NurbsCurve piece = crv;
+                bool piece_ok = true;
+                if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
+                    if (!piece.trim(lo, hi_)) piece_ok = false;
+                }
+                if (piece_ok && piece.is_valid()) {
+                    if (run.ta > run.tb) piece.reverse();
+                    pieces.push_back(piece);
+                    made = true;
+                }
+            }
+            if (!made) {
+                const auto& pa = verts[run.va];
+                const auto& pb = verts[run.vb];
+                if (std::hypot(pb[0] - pa[0], pb[1] - pa[1]) > 1e-14) {
+                    std::vector<Point> seg_pts = {Point(pa[0], pa[1], 0.0), Point(pb[0], pb[1], 0.0)};
+                    pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
+                }
+            }
+        }
+        return pieces;
+    };
+    auto cycle_to_loop = [&](const std::vector<int>& cycle,
+                             std::vector<NurbsCurve>* segments, bool* seg_valid) -> NurbsCurve {
+        if (seg_valid) *seg_valid = false;
+        std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
+        if (pieces.empty()) return NurbsCurve();
+        std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
+        if (joined.size() == 1 && joined[0].is_closed()) {
+            if (segments) *segments = pieces;
+            if (seg_valid) *seg_valid = true;
+            return joined[0];
+        }
+        std::vector<Point> loop_pts;
+        for (int hi : cycle) {
+            const auto& a = hes[hi].tail_uv;
+            loop_pts.push_back(Point(a[0], a[1], 0.0));
+        }
+        loop_pts.push_back(Point(loop_pts[0][0], loop_pts[0][1], 0.0));
+        return NurbsCurve::create(false, 1, loop_pts);
+    };
+    auto loop_signed_area = [&](const NurbsCurve& loop) -> double {
+        int n = 64;
+        auto ld = loop.domain();
+        double l0 = ld.first, l1 = ld.second;
+        double s = 0.0;
+        Point prev = loop.point_at(l0);
+        for (int i = 1; i <= n; ++i) {
+            Point p = loop.point_at(l0 + (l1 - l0) * i / n);
+            s += prev[0] * p[1] - p[0] * prev[1];
+            prev = p;
+        }
+        return s * 0.5;
+    };
+    auto reverse_segments = [](std::vector<NurbsCurve>& segs) {
+        std::reverse(segs.begin(), segs.end());
+        for (auto& s : segs) s.reverse();
+    };
+
+    std::vector<NurbsSurfaceTrimmed> result;
+    for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
+        std::vector<NurbsCurve> outer_segs;
+        bool outer_seg_valid = false;
+        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, &outer_segs, &outer_seg_valid);
+        if (!outer.is_valid()) continue;
+        if (loop_signed_area(outer) < 0.0) {
+            outer.reverse();
+            if (outer_seg_valid) reverse_segments(outer_segs);
+        }
+        NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
+        if (outer_seg_valid) ts.m_outer_segments = outer_segs;
+        for (const auto& hole_cycle : holes_of[fi]) {
+            std::vector<NurbsCurve> hole_segs;
+            bool hole_seg_valid = false;
+            NurbsCurve hole = cycle_to_loop(hole_cycle, &hole_segs, &hole_seg_valid);
+            if (hole.is_valid()) {
+                if (loop_signed_area(hole) > 0.0) {
+                    hole.reverse();
+                    if (hole_seg_valid) reverse_segments(hole_segs);
+                }
+                ts.add_inner_loop(hole);
+                ts.m_inner_segments.push_back(hole_seg_valid ? hole_segs : std::vector<NurbsCurve>{});
             }
         }
         result.push_back(ts);
@@ -1203,6 +1812,14 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
                     double t = ((pm[0]-pa[0])*ex+(pm[1]-pa[1])*ey+(pm[2]-pa[2])*ez)/L2;
                     double cx = pa[0]+t*ex, cy = pa[1]+t*ey, cz = pa[2]+t*ez;
                     dev = std::sqrt((pm[0]-cx)*(pm[0]-cx)+(pm[1]-cy)*(pm[1]-cy)+(pm[2]-cz)*(pm[2]-cz));
+                } else {
+                    // Degenerate 3D chord: the two endpoints coincide in 3D. This is either a
+                    // true singular edge (the whole segment collapses to a point -> pm == pa,
+                    // dev stays ~0, no refinement) or a seam-wrap edge (a single UV segment that
+                    // wraps a periodic surface, e.g. a cylinder/sphere rim u:0->2pi -> pm lies on
+                    // the far side). Measure deviation as the midpoint-to-endpoint 3D distance so
+                    // seam-wrap edges get subdivided into the underlying circle instead of a chord.
+                    dev = std::sqrt((pm[0]-pa[0])*(pm[0]-pa[0])+(pm[1]-pa[1])*(pm[1]-pa[1])+(pm[2]-pa[2])*(pm[2]-pa[2]));
                 }
                 if (dev > deflection && depth < 6) {
                     rec(a, Point(mu, mv, 0.0), depth+1);

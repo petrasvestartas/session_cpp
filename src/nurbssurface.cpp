@@ -240,6 +240,61 @@ NurbsSurface NurbsSurface::create(bool periodic_u, bool periodic_v,
     return surface;
 }
 
+NurbsSurface NurbsSurface::create_from_parameters(
+    const std::vector<std::vector<Point>>& points,
+    const std::vector<std::vector<double>>& weights,
+    const std::vector<double>& knots_u, const std::vector<double>& knots_v,
+    const std::vector<int>& mults_u, const std::vector<int>& mults_v,
+    int degree_u, int degree_v,
+    bool periodic_u, bool periodic_v) {
+
+    int nv = static_cast<int>(points.size());
+    int nu = nv > 0 ? static_cast<int>(points[0].size()) : 0;
+    int order_u = degree_u + 1;
+    int order_v = degree_v + 1;
+    if (nu < order_u || nv < order_v) return NurbsSurface();
+    if (periodic_u || periodic_v) return NurbsSurface();  // not yet supported
+    if (knots_u.size() != mults_u.size() || knots_v.size() != mults_v.size()) return NurbsSurface();
+
+    bool rational = false;
+    for (const auto& row : weights)
+        for (double w : row)
+            if (std::abs(w - 1.0) > Tolerance::ZERO_TOLERANCE) { rational = true; break; }
+
+    auto expand = [](const std::vector<double>& knots, const std::vector<int>& mults) {
+        std::vector<double> full;
+        for (size_t i = 0; i < knots.size(); i++)
+            for (int m = 0; m < mults[i]; m++) full.push_back(knots[i]);
+        return full;
+    };
+    std::vector<double> full_u = expand(knots_u, mults_u);
+    std::vector<double> full_v = expand(knots_v, mults_v);
+    int kc_u = order_u + nu - 2;
+    int kc_v = order_v + nv - 2;
+    if (static_cast<int>(full_u.size()) != kc_u + 2) return NurbsSurface();
+    if (static_cast<int>(full_v.size()) != kc_v + 2) return NurbsSurface();
+
+    NurbsSurface surface;
+    if (!surface.create_raw(3, rational, order_u, order_v, nu, nv)) return NurbsSurface();
+
+    for (int i = 0; i < kc_u; i++) surface.set_nurbsknot(0, i, full_u[i + 1]);
+    for (int i = 0; i < kc_v; i++) surface.set_nurbsknot(1, i, full_v[i + 1]);
+
+    // i in u (0..nu-1), j in v (0..nv-1); compas grid is points[v][u].
+    for (int i = 0; i < nu; i++) {
+        for (int j = 0; j < nv; j++) {
+            const Point& p = points[j][i];
+            if (rational) {
+                double w = weights[j][i];
+                surface.set_cv_4d(i, j, p[0] * w, p[1] * w, p[2] * w, w);
+            } else {
+                surface.set_cv(i, j, p);
+            }
+        }
+    }
+    return surface;
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Constructors & Destructor
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1046,6 +1101,53 @@ Point NurbsSurface::point_at(double u, double v) const {
                 m_dim > 2 ? point[2] : 0);
 }
 
+std::pair<double, double> NurbsSurface::closest_parameters(const Point& test_point) const {
+    auto [u, v, dist] = Closest::surface_point(*this, test_point);
+    (void)dist;
+    return {u, v};
+}
+
+Point NurbsSurface::closest_point(const Point& test_point) const {
+    auto [u, v] = closest_parameters(test_point);
+    return point_at(u, v);
+}
+
+// Fundamental forms E,F,G (first) and L,M,N (second) at (u,v); returns false if degenerate.
+static bool surface_fundamental_forms(const NurbsSurface& s, double u, double v,
+                                      double& E, double& F, double& G,
+                                      double& L, double& M, double& N) {
+    std::vector<Vector> d = s.evaluate(u, v, 2);
+    if (d.size() < 6) return false;
+    // evaluate() result order is [S, Sv, Svv, Su, Suv, Suu] (the (k,l) loop order).
+    const Vector& Sv = d[1];
+    const Vector& Svv = d[2];
+    const Vector& Su = d[3];
+    const Vector& Suv = d[4];
+    const Vector& Suu = d[5];
+    Vector cr = Su.cross(Sv);
+    if (cr.magnitude() < Tolerance::ZERO_TOLERANCE) return false;
+    Vector n = cr.normalized();
+    E = Su.dot(Su); F = Su.dot(Sv); G = Sv.dot(Sv);
+    L = Suu.dot(n); M = Suv.dot(n); N = Svv.dot(n);
+    return true;
+}
+
+double NurbsSurface::gaussian_curvature(double u, double v) const {
+    double E, F, G, L, M, N;
+    if (!surface_fundamental_forms(*this, u, v, E, F, G, L, M, N)) return 0.0;
+    double denom = E * G - F * F;
+    if (std::abs(denom) < Tolerance::ZERO_TOLERANCE) return 0.0;
+    return (L * N - M * M) / denom;
+}
+
+double NurbsSurface::mean_curvature(double u, double v) const {
+    double E, F, G, L, M, N;
+    if (!surface_fundamental_forms(*this, u, v, E, F, G, L, M, N)) return 0.0;
+    double denom = E * G - F * F;
+    if (std::abs(denom) < Tolerance::ZERO_TOLERANCE) return 0.0;
+    return (E * N - 2.0 * F * M + G * L) / (2.0 * denom);
+}
+
 Vector NurbsSurface::normal_at(double u, double v) const {
     auto derivs = evaluate(u, v, 1);
     if (derivs.size() < 3) return Vector(0, 0, 1);
@@ -1058,6 +1160,75 @@ Vector NurbsSurface::normal_at(double u, double v) const {
     if (len < 1e-14) return Vector(0, 0, 1);
 
     return normal / len;
+}
+
+Plane NurbsSurface::frame_at(double u, double v) const {
+    auto d = evaluate(u, v, 1);
+    if (d.size() < 3) return Plane(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
+    Point origin(d[0][0], d[0][1], d[0][2]);
+    Vector su = d[2];  // dS/du
+    Vector sv = d[1];  // dS/dv
+    return Plane(origin, su, sv);
+}
+
+std::vector<Point> NurbsSurface::intersections_with_line(const Line& line) const {
+    std::vector<Point> results;
+    if (!is_valid()) return results;
+    Point p0 = line.start();
+    Point pe = line.end();
+    Vector d(pe[0] - p0[0], pe[1] - p0[1], pe[2] - p0[2]);
+    double dl = d.magnitude();
+    if (dl < 1e-14) return results;
+    d = d / dl;
+    Vector helper = (std::abs(d[0]) < 0.9) ? Vector(1, 0, 0) : Vector(0, 1, 0);
+    Vector n1 = d.cross(helper); n1 = n1 / n1.magnitude();
+    Vector n2 = d.cross(n1);    n2 = n2 / n2.magnitude();
+
+    auto [u0, u1] = domain(0);
+    auto [v0, v1] = domain(1);
+    int nu = std::max(12, cv_count(0) * 4);
+    int nv = std::max(12, cv_count(1) * 4);
+
+    std::vector<Point> seen;
+    for (int a = 0; a <= nu; a++) {
+        for (int b = 0; b <= nv; b++) {
+            double u = u0 + (u1 - u0) * a / nu;
+            double v = v0 + (v1 - v0) * b / nv;
+            bool ok = true;
+            for (int it = 0; it < 40; it++) {
+                auto der = evaluate(u, v, 1);
+                if (der.size() < 3) { ok = false; break; }
+                const Vector& p = der[0]; const Vector& sv = der[1]; const Vector& su = der[2];
+                double rx = p[0] - p0[0], ry = p[1] - p0[1], rz = p[2] - p0[2];
+                double f1 = n1[0]*rx + n1[1]*ry + n1[2]*rz;
+                double f2 = n2[0]*rx + n2[1]*ry + n2[2]*rz;
+                if (std::abs(f1) < 1e-12 && std::abs(f2) < 1e-12) break;
+                double j11 = n1[0]*su[0] + n1[1]*su[1] + n1[2]*su[2];
+                double j12 = n1[0]*sv[0] + n1[1]*sv[1] + n1[2]*sv[2];
+                double j21 = n2[0]*su[0] + n2[1]*su[1] + n2[2]*su[2];
+                double j22 = n2[0]*sv[0] + n2[1]*sv[1] + n2[2]*sv[2];
+                double det = j11*j22 - j12*j21;
+                if (std::abs(det) < 1e-14) { ok = false; break; }
+                double du = -(j22*f1 - j12*f2) / det;
+                double dv = -(-j21*f1 + j11*f2) / det;
+                u += du; v += dv;
+                if (u < u0 || u > u1 || v < v0 || v > v1) { ok = false; break; }
+                if (std::abs(du) < 1e-13 && std::abs(dv) < 1e-13) break;
+            }
+            if (!ok) continue;
+            Point p = point_at(u, v);
+            double rx = p[0] - p0[0], ry = p[1] - p0[1], rz = p[2] - p0[2];
+            double f1 = n1[0]*rx + n1[1]*ry + n1[2]*rz;
+            double f2 = n2[0]*rx + n2[1]*ry + n2[2]*rz;
+            if (std::abs(f1) > 1e-7 || std::abs(f2) > 1e-7) continue;
+            bool dup = false;
+            for (const Point& q : seen) if (p.distance(q) < 1e-6) { dup = true; break; }
+            if (dup) continue;
+            seen.push_back(p);
+            results.push_back(p);
+        }
+    }
+    return results;
 }
 
 std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) const {
@@ -1079,8 +1250,9 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
     basis_functions_derivatives(0, span_u, u, max_derivs, ders_u);
     basis_functions_derivatives(1, span_v, v, max_derivs, ders_v);
 
-    // Tensor product evaluation of derivatives
-    // Result order: [S(u,v), Sv, Su, Svv, Suv, Suu]
+    // Tensor product evaluation of derivatives.
+    // Result order follows the (k,l) loop below: [S, Sv, Svv, Su, Suv, Suu]
+    // (k = u-derivative order, l = v-derivative order).
     int cv_size_val = m_is_rat ? (m_dim + 1) : m_dim;
 
     // Compute all homogeneous derivatives
@@ -1164,6 +1336,19 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
                 a0 -= c * it->second[0];
                 a1 -= c * it->second[1];
                 a2 -= c * it->second[2];
+            }
+        }
+        // Mixed terms (NURBS Book A4.4): -sum_{i=1}^{k} sum_{j=1}^{l} C(k,i) C(l,j) w[i][j] SKL[k-i][l-j].
+        // Previously omitted -> rational mixed derivatives (e.g. Suv) were wrong.
+        for (int i = 1; i <= k; i++) {
+            for (int j = 1; j <= l; j++) {
+                auto it = aders.find({k - i, l - j});
+                if (it != aders.end()) {
+                    double c = binom(k, i) * binom(l, j) * wders[{i, j}];
+                    a0 -= c * it->second[0];
+                    a1 -= c * it->second[1];
+                    a2 -= c * it->second[2];
+                }
             }
         }
         Vector dv(a0 / w00, a1 / w00, a2 / w00);

@@ -67,8 +67,23 @@ public:
     /// (centripetal). Rhino's CreateInterpolatedCurve(points, degree) API defaults to Uniform;
     /// the InterpCrv command commonly uses Chord. We default to Chord; pass the style explicitly
     /// to match a specific Rhino result.
+    /// end_condition selects the boundary tangent rule: Rhino (Bessel, default) or
+    /// Occt (cubic Lagrange derivative, reproduces OCCT GeomAPI_Interpolate exactly).
     static NurbsCurve create_interpolated(const std::vector<Point>& points,
-                                          CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord);
+                                          CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord,
+                                          CurveInterpStyle end_condition = CurveInterpStyle::Rhino);
+
+    /// Create a NURBS curve from explicit parameters (OCCT / compas_occt convention:
+    /// distinct knots + per-knot multiplicities). Mirrors OCCNurbsCurve.from_parameters,
+    /// and underlies from_points / from_line / from_circle / from_ellipse. The internal
+    /// (OpenNURBS) knot vector is the expanded full knot vector with the first and last
+    /// entries dropped; the domain becomes [knots.front(), knots.back()].
+    static NurbsCurve create_from_parameters(const std::vector<Point>& points,
+                                             const std::vector<double>& weights,
+                                             const std::vector<double>& knots,
+                                             const std::vector<int>& mults,
+                                             int degree,
+                                             bool periodic = false);
 
     /// Create a least-squares fitted NURBS curve (Piegl & Tiller §9.4).
     static NurbsCurve create_fitted(const std::vector<Point>& points,
@@ -362,6 +377,24 @@ public:
     
     /// Get tangent vector at parameter t
     Vector tangent_at(double t) const;
+
+    /// Curvature magnitude (1/radius) at parameter t, from analytic 1st/2nd derivatives:
+    /// kappa = |C' x C''| / |C'|^3. Matches OCCT GeomLProp_CLProps::Curvature.
+    double curvature_at(double t) const;
+
+    /// Parameter of the closest point on the curve to test_point (grid seed + Newton).
+    /// Matches OCCT GeomAPI_ProjectPointOnCurve.
+    double closest_parameter(const Point& test_point) const;
+
+    /// Closest point on the curve to test_point.
+    Point closest_point(const Point& test_point) const;
+
+    /// Parameters (u, v) where this curve is closest to another curve.
+    /// Matches OCCT GeomAPI_ExtremaCurveCurve.
+    std::pair<double, double> closest_parameters_curve(const NurbsCurve& other) const;
+
+    /// Points (this(u), other(v)) where this curve is closest to another curve.
+    std::pair<Point, Point> closest_points_curve(const NurbsCurve& other) const;
 
     /// Get Frenet frame at parameter t (tangent, normal, binormal)
     Plane plane_at(double t, bool normalized) const;

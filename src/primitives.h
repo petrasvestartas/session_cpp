@@ -76,7 +76,8 @@ public:
 
     /// Create an interpolated cubic NURBS curve through points (Bessel end tangents).
     static NurbsCurve create_interpolated(const std::vector<Point>& points,
-                                           CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord);
+                                           CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord,
+                                           CurveInterpStyle end_condition = CurveInterpStyle::Rhino);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Surface primitives

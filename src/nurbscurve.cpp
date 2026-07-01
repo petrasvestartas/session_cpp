@@ -1,5 +1,6 @@
 #include "nurbscurve.h"
 #include "intersection.h"
+#include "closest.h"
 #include "nurbsknot.h"
 #include <cstring>
 #include <sstream>
@@ -29,11 +30,20 @@ NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point
     // Matches Rhino's CreateControlPointCurve behavior
     if (curve.is_valid()) {
         double L;
-        if (degree == 1 && points.size() == 2) {
-            double dx = points[1][0] - points[0][0];
-            double dy = points[1][1] - points[0][1];
-            double dz = points[1][2] - points[0][2];
-            L = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (degree == 1) {
+            // A degree-1 curve is a polyline through `points`; its arc length is exactly the sum
+            // of segment lengths (plus the closing segment when periodic). Compute it directly --
+            // routing through the general quadrature length() is O(quadrature) per segment and was
+            // ~3.5 ms for a 40-point polyline, dominating every polyline construction (lift, mesh,
+            // split). The closed-form sum is exact for a polyline and ~free.
+            L = 0.0;
+            int np = static_cast<int>(points.size());
+            auto seg = [&](int a, int b) {
+                double dx = points[b][0]-points[a][0], dy = points[b][1]-points[a][1], dz = points[b][2]-points[a][2];
+                return std::sqrt(dx*dx + dy*dy + dz*dz);
+            };
+            for (int i = 1; i < np; ++i) L += seg(i - 1, i);
+            if (periodic && np > 1) L += seg(np - 1, 0);
         } else {
             L = curve.length();
         }
@@ -46,7 +56,8 @@ NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point
 }
 
 NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
-                                           CurveNurbsKnotStyle parameterization) {
+                                           CurveNurbsKnotStyle parameterization,
+                                           CurveInterpStyle end_condition) {
     int n = static_cast<int>(points.size());
     if (n < 2) return NurbsCurve();
     int dim = 3;
@@ -198,31 +209,65 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         return len > 0 ? Vector(dx/len, dy/len, dz/len) : Vector(0, 0, 0);
     };
 
+    // Un-normalized derivative of the cubic (or quadratic, when n==3) Lagrange
+    // polynomial through `m` consecutive points, evaluated at parameter t.
+    // Reproduces OCCT GeomAPI_Interpolate::BuildTangents (PLib::EvalLagrange).
+    auto lagrange_tangent = [&](int i0, int m, double t) -> Vector {
+        Vector result(0, 0, 0);
+        for (int j = 0; j < m; j++) {
+            double uj = params[i0 + j];
+            double dsum = 0.0;
+            for (int i = 0; i < m; i++) {
+                if (i == j) continue;
+                double term = 1.0 / (uj - params[i0 + i]);
+                for (int k = 0; k < m; k++) {
+                    if (k == j || k == i) continue;
+                    term *= (t - params[i0 + k]) / (uj - params[i0 + k]);
+                }
+                dsum += term;
+            }
+            const Point& Pj = points[i0 + j];
+            result = Vector(result[0] + Pj[0] * dsum,
+                            result[1] + Pj[1] * dsum,
+                            result[2] + Pj[2] * dsum);
+        }
+        return result;
+    };
+
     Vector tan_start, tan_end;
-    if (n >= 3) {
+    double s0, s1;
+    if (end_condition == CurveInterpStyle::Occt && n >= 3) {
+        // OCCT mode: un-normalized Lagrange derivative at the endpoints. The
+        // derivative-constraint poles satisfy C'(u0) = 3/(params[1]-params[0])*(P1-P0),
+        // so P1 = P0 + (params[1]-params[0])/3 * tan_start (and symmetrically at the end).
+        int deg_t = (n == 3) ? 2 : 3;       // Lagrange degree (BuildTangents uses 3, or 2 for 3 pts)
+        tan_start = lagrange_tangent(0, deg_t + 1, params[0]);
+        tan_end   = lagrange_tangent(n - 1 - deg_t, deg_t + 1, params[n - 1]);
+        s0 =  (params[1] - params[0]) / 3.0;
+        s1 = -(params[n-1] - params[n-2]) / 3.0;
+    } else if (n >= 3) {
         tan_start = estimate_tangent(0, 1, 2);
         Vector end_raw = estimate_tangent(n-1, n-2, n-3);
         tan_end = Vector(-end_raw[0], -end_raw[1], -end_raw[2]);
+        s0 =  pdist(points[0], points[1]) / 3.0;
+        s1 = -pdist(points[n-1], points[n-2]) / 3.0;
     } else {
         double dx = points[1][0]-points[0][0];
         double dy = points[1][1]-points[0][1];
         double dz = points[1][2]-points[0][2];
         double len = std::sqrt(dx*dx+dy*dy+dz*dz);
         if (len > 0) { tan_start = Vector(dx/len, dy/len, dz/len); tan_end = tan_start; }
+        s0 =  pdist(points[0], points[1]) / 3.0;
+        s1 = -pdist(points[n-1], points[n-2]) / 3.0;
     }
-
-    double d_start = pdist(points[0], points[1]);
-    double d_end = pdist(points[n-1], points[n-2]);
 
     std::vector<double> cv(cv_count * dim);
     for (int d = 0; d < dim; d++) cv[d] = points[0][d];
-    double s0 = d_start / 3.0;
     for (int d = 0; d < dim; d++)
         cv[dim + d] = points[0][d] + s0 * tan_start[d];
     for (int i = 1; i <= n-2; i++)
         for (int d = 0; d < dim; d++)
             cv[(i+1) * dim + d] = points[i][d];
-    double s1 = -d_end / 3.0;
     for (int d = 0; d < dim; d++)
         cv[n * dim + d] = points[n-1][d] + s1 * tan_end[d];
     for (int d = 0; d < dim; d++) cv[(n+1) * dim + d] = points[n-1][d];
@@ -260,6 +305,49 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points,
         curve.set_cv(i, Point(cv[i*3], cv[i*3+1], cv[i*3+2]));
 
     return curve;
+}
+
+NurbsCurve NurbsCurve::create_from_parameters(const std::vector<Point>& points,
+                                              const std::vector<double>& weights,
+                                              const std::vector<double>& knots,
+                                              const std::vector<int>& mults,
+                                              int degree,
+                                              bool periodic) {
+    int n = static_cast<int>(points.size());
+    int order = degree + 1;
+    if (n < order) return NurbsCurve();
+    if (static_cast<int>(weights.size()) != n) return NurbsCurve();
+    if (knots.size() != mults.size() || knots.empty()) return NurbsCurve();
+    if (periodic) return NurbsCurve();  // periodic from_parameters not yet supported
+
+    bool rational = false;
+    for (double w : weights) {
+        if (std::abs(w - 1.0) > Tolerance::ZERO_TOLERANCE) { rational = true; break; }
+    }
+
+    // Expand distinct knots by multiplicity into the full (OCCT-style) knot vector.
+    std::vector<double> full;
+    for (size_t i = 0; i < knots.size(); i++)
+        for (int m = 0; m < mults[i]; m++) full.push_back(knots[i]);
+
+    int kc = order + n - 2;  // OpenNURBS knot count
+    if (static_cast<int>(full.size()) != kc + 2) return NurbsCurve();  // must equal n + order
+
+    NurbsCurve c;
+    if (!c.create(3, rational, order, n)) return NurbsCurve();
+
+    // OpenNURBS knot vector = full vector without the first and last entries.
+    for (int i = 0; i < kc; i++) c.set_nurbsknot(i, full[i + 1]);
+
+    for (int i = 0; i < n; i++) {
+        if (rational) {
+            double w = weights[i];
+            c.set_cv_4d(i, points[i][0] * w, points[i][1] * w, points[i][2] * w, w);
+        } else {
+            c.set_cv(i, points[i]);
+        }
+    }
+    return c;
 }
 
 NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points,
@@ -2079,6 +2167,37 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
     return result;
 }
 
+double NurbsCurve::curvature_at(double t) const {
+    // kappa = |C'(t) x C''(t)| / |C'(t)|^3 using analytic NURBS derivatives.
+    std::vector<Vector> d = evaluate(t, 2);
+    if (d.size() < 3) return 0.0;
+    const Vector& d1 = d[1];
+    const Vector& d2 = d[2];
+    double s = d1.magnitude();
+    if (s < Tolerance::ZERO_TOLERANCE) return 0.0;
+    return d1.cross(d2).magnitude() / (s * s * s);
+}
+
+double NurbsCurve::closest_parameter(const Point& test_point) const {
+    return Closest::curve_point(*this, test_point).first;
+}
+
+Point NurbsCurve::closest_point(const Point& test_point) const {
+    return point_at(closest_parameter(test_point));
+}
+
+std::pair<double, double> NurbsCurve::closest_parameters_curve(const NurbsCurve& other) const {
+    auto [u, v, dist] = Closest::curve_curve(*this, other);
+    (void)dist;
+    return {u, v};
+}
+
+std::pair<Point, Point> NurbsCurve::closest_points_curve(const NurbsCurve& other) const {
+    auto [u, v, dist] = Closest::curve_curve(*this, other);
+    (void)dist;
+    return {point_at(u), other.point_at(v)};
+}
+
 Vector NurbsCurve::tangent_at(double t) const {
     if (!is_valid()) return Vector(0, 0, 0);
 
@@ -2428,13 +2547,16 @@ bool NurbsCurve::reverse() {
     }
     std::reverse(m_nurbsknot.begin(), m_nurbsknot.end());
 
-    // Reverse CVs
+    // Reverse CVs. Use the homogeneous (weighted) coordinates so rational weights are
+    // preserved -- get_cv/set_cv work in euclidean space and set_cv resets the weight to 1,
+    // which would silently turn a rational circle/ellipse into a unit-weight (bulging) curve.
     for (int i = 0; i < m_cv_count / 2; i++) {
         int j = m_cv_count - 1 - i;
-        Point pi = get_cv(i);
-        Point pj = get_cv(j);
-        set_cv(i, pj);
-        set_cv(j, pi);
+        double xi, yi, zi, wi, xj, yj, zj, wj;
+        get_cv_4d(i, xi, yi, zi, wi);
+        get_cv_4d(j, xj, yj, zj, wj);
+        set_cv_4d(i, xj, yj, zj, wj);
+        set_cv_4d(j, xi, yi, zi, wi);
     }
 
     invalidate_rmf_cache();

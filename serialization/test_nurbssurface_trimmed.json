@@ -1,5 +1,5 @@
 {
-    "guid": "b6149b13-d28e-4596-9e85-6c8565a61823",
+    "guid": "c36eda51-c865-4ff0-b679-10ccfce5d232",
     "inner_loops": [],
     "name": "test_nurbssurface_trimmed",
     "outer_loop": {
@@ -33,14 +33,14 @@
         "cv_count": 5,
         "cv_stride": 3,
         "dimension": 3,
-        "guid": "1b0120f6-f9dd-4812-a0d4-accbd82696c6",
+        "guid": "afc42d9b-d259-4fa5-b2fe-d2da66698a57",
         "is_rational": false,
         "nurbsknots": [
             0.0,
-            0.8000000000000002,
-            1.6000000000000003,
+            0.8,
+            1.6,
             2.4000000000000004,
-            3.2000000000000006
+            3.2
         ],
         "linecolors": [],
         "name": "my_nurbscurve",
@@ -49,7 +49,7 @@
         "type": "NurbsCurve",
         "width": 1.0,
         "xform": {
-            "guid": "3fca6a82-d972-4ffe-944b-26ab3f2b4054",
+            "guid": "0cb19fb5-652a-4ba1-af95-8ea75d50566e",
             "m": [
                 1.0,
                 0.0,
@@ -91,7 +91,7 @@
         "cv_count_v": 2,
         "dimension": 3,
         "facecolors": [],
-        "guid": "1c9710f2-f2aa-41d0-8c9a-41ca585f03ed",
+        "guid": "8ef07409-cd21-4779-9273-0a933600f78d",
         "is_rational": false,
         "nurbsknots_u": [
             0.0,
@@ -109,7 +109,7 @@
         "type": "NurbsSurface",
         "width": 1.0,
         "xform": {
-            "guid": "9223f21e-cb6e-4558-87f2-74ffee38a5e2",
+            "guid": "b91bfd28-b411-44bd-9524-25b6ac55643d",
             "m": [
                 1.0,
                 0.0,
@@ -136,7 +136,7 @@
         "a": 1.0,
         "b": 1.0,
         "g": 1.0,
-        "guid": "a0062038-1c97-4706-835a-b023fd2e0e95",
+        "guid": "4b0f4198-f8d8-4713-b6bf-24a3a377d77d",
         "name": "my_color",
         "r": 1.0,
         "type": "Color"
@@ -144,7 +144,7 @@
     "type": "NurbsSurfaceTrimmed",
     "width": 2.0,
     "xform": {
-        "guid": "f753475f-1051-4806-aebd-48286b2a793e",
+        "guid": "d841bc15-8eb2-4738-8214-d699ba8bb5d2",
         "m": [
             1.0,
             0.0,

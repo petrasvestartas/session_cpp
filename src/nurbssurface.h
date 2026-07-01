@@ -59,6 +59,21 @@ public:
                               int cv_count_u, int cv_count_v,
                               const std::vector<Point>& points);
 
+    /// Create a NURBS surface from explicit parameters (OCCT / compas_occt convention:
+    /// distinct knots + per-knot multiplicities, per direction). Mirrors
+    /// OCCNurbsSurface.from_parameters and underlies from_points / from_meshgrid.
+    /// `points`/`weights` follow the compas grid convention: a list of v-rows, each with
+    /// u columns (points[iv][iu]). Internal (OpenNURBS) knot vectors are the expanded full
+    /// knot vectors with first and last entries dropped; domains become
+    /// [knots_u.front(), knots_u.back()] x [knots_v.front(), knots_v.back()].
+    static NurbsSurface create_from_parameters(
+        const std::vector<std::vector<Point>>& points,
+        const std::vector<std::vector<double>>& weights,
+        const std::vector<double>& knots_u, const std::vector<double>& knots_v,
+        const std::vector<int>& mults_u, const std::vector<int>& mults_v,
+        int degree_u, int degree_v,
+        bool periodic_u = false, bool periodic_v = false);
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -328,13 +343,38 @@ public:
         px = p[0]; py = p[1]; pz = p[2];
     }
 
+    /// Parameters (u,v) of the closest point on the surface to test_point (grid seed + Newton).
+    /// Matches OCCT GeomAPI_ProjectPointOnSurface.
+    std::pair<double, double> closest_parameters(const Point& test_point) const;
+
+    /// Closest point on the surface to test_point.
+    Point closest_point(const Point& test_point) const;
+
+    /// Gaussian curvature K = (LN - M^2)/(EG - F^2) at (u,v) from the first/second
+    /// fundamental forms. Matches OCCT GeomLProp_SLProps::GaussianCurvature.
+    double gaussian_curvature(double u, double v) const;
+
+    /// Mean curvature H = (EN - 2FM + GL)/(2(EG - F^2)) at (u,v).
+    /// Matches OCCT GeomLProp_SLProps::MeanCurvature (magnitude; sign follows the
+    /// Su x Sv normal orientation).
+    double mean_curvature(double u, double v) const;
+
     /// Compute unit surface normal at (u,v) as the cross product of the first
     /// partial derivatives: N = normalize(dS/du x dS/dv). Returns zero vector
     /// at singular points where partials are parallel.
     Vector normal_at(double u, double v) const;
 
+    /// Local frame at (u, v): origin = S(u,v), x-axis = dS/du, y-axis = dS/dv.
+    /// Mirrors OCCNurbsSurface.frame_at. The Plane orthonormalizes the axes; its
+    /// z-axis equals normal_at(u, v).
+    Plane frame_at(double u, double v) const;
+
+    /// Intersection points of an (infinite) line with the surface.
+    /// Mirrors OCCNurbsSurface.intersections_with_line (OCCT GeomAPI_IntCS).
+    std::vector<Point> intersections_with_line(const Line& line) const;
+
     /// Evaluate point and partial derivatives up to num_derivs order at (u,v).
-    /// Returns flat array: [S, Su, Sv, Suu, Suv, Svv, ...].
+    /// Returns flat array in (k,l)-loop order: [S, Sv, Svv, Su, Suv, Suu] for num_derivs=2.
     /// num_derivs=0 returns just the point. Uses basis_functions_derivatives.
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
 

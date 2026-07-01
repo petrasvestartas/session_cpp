@@ -12,6 +12,9 @@
 #include <functional>
 #include <array>
 #include <optional>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <tuple>
 
 namespace session_cpp {
@@ -2565,19 +2568,43 @@ static bool ssi_plane_cylinder(const RecogSurface& plane, const RecogSurface& cy
     return true;
 }
 
-static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone, NurbsCurve& c3) {
-    V3 o = plane.p1, nu = ssi_unit(plane.p2);
-    V3 V = cone.p1, w = ssi_unit(cone.p2); double alpha = cone.r;
-    double wn = w[0]*nu[0] + w[1]*nu[1] + w[2]*nu[2];
-    if (std::abs(std::abs(wn) - 1.0) < 1e-9) {
-        double dax = (o[0]-V[0])*w[0] + (o[1]-V[1])*w[1] + (o[2]-V[2])*w[2];
-        double rr = std::abs(dax) * std::tan(alpha);
-        V3 cc{V[0]+dax*w[0], V[1]+dax*w[1], V[2]+dax*w[2]};
-        if (rr < 1e-12) return false;
-        auto [xa, ya] = ortho_basis(nu);
-        c3 = exact_circle(cc[0], cc[1], cc[2], xa, ya, rr);
-        return true;
+static double cone_axial_extent(const NurbsSurface& srf, const V3& apex, const V3& axis) {
+    V3 w = ssi_unit(axis);
+    auto [u0, u1] = srf.domain(0);
+    auto [v0, v1] = srf.domain(1);
+    double um = 0.5 * (u0 + u1);
+    double H = 0.0;
+    for (double vv : {v0, v1}) {
+        Point p = srf.point_at(um, vv);
+        double s = (p[0]-apex[0])*w[0] + (p[1]-apex[1])*w[1] + (p[2]-apex[2])*w[2];
+        H = std::max(H, s);
     }
+    return H;
+}
+static bool conic_within_cone(const NurbsCurve& c, const V3& apex, const V3& w, double H) {
+    auto [t0, t1] = c.domain();
+    double pad = 1e-7 * std::max(1.0, H);
+    for (int i = 0; i <= 64; ++i) {
+        Point p = c.point_at(t0 + (t1-t0)*i/64);
+        double s = (p[0]-apex[0])*w[0] + (p[1]-apex[1])*w[1] + (p[2]-apex[2])*w[2];
+        if (s < -pad || s > H + pad) return false;
+    }
+    return true;
+}
+static NurbsCurve fit_conic_arc(const std::vector<Point>& pts) {
+    int m = (int)pts.size();
+    if (m < 2) return NurbsCurve();
+    if (m == 2) return NurbsCurve::create(false, 1, pts);
+    if (m <= 4) return NurbsCurve::create_interpolated(pts, CurveNurbsKnotStyle::Chord);
+    int num_cvs = std::min(std::max(m / 6, 8), 64);
+    if (num_cvs >= m) num_cvs = m - 1;
+    NurbsCurve c = NurbsCurve::create_fitted(pts, num_cvs, 3);
+    if (!c.is_valid()) c = NurbsCurve::create_interpolated(pts, CurveNurbsKnotStyle::Chord);
+    return c;
+}
+static bool build_exact_plane_cone_ellipse(const V3& o, const V3& nu, const V3& V, const V3& w,
+                                           double alpha, NurbsCurve& c3) {
+    double wn = w[0]*nu[0] + w[1]*nu[1] + w[2]*nu[2];
     V3 m = ssi_cross(w, nu);
     double ml = std::sqrt(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]);
     if (ml < 1e-12) return false;
@@ -2597,6 +2624,133 @@ static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone, 
     double semi_minor = 0.5*std::abs(tm[1]-tm[0]);
     if (semi_major < 1e-12 || semi_minor < 1e-12) return false;
     c3 = exact_ellipse(cc[0], cc[1], cc[2], major, m, semi_major, semi_minor);
+    return true;
+}
+static void sample_plane_cone_arcs(const V3& apex, const V3& w, const V3& e1, const V3& e2,
+                                   double na, double pP, double qP, double D0, double ta, double H,
+                                   std::vector<std::vector<Point>>& runs, bool& closed) {
+    runs.clear(); closed = false;
+    const int N = 720;
+    const double TWO_PI = 2.0 * 3.14159265358979323846;
+    auto denom = [&](double phi) { return na + ta*(pP*std::cos(phi) + qP*std::sin(phi)); };
+    auto s_of  = [&](double phi) { double d = denom(phi); return (std::abs(d) < 1e-300) ? 1e308 : -D0/d; };
+    auto pt = [&](double phi) {
+        double s = s_of(phi), rr = s*ta, c = std::cos(phi), sn = std::sin(phi);
+        return Point(apex[0] + s*w[0] + rr*(c*e1[0] + sn*e2[0]),
+                     apex[1] + s*w[1] + rr*(c*e1[1] + sn*e2[1]),
+                     apex[2] + s*w[2] + rr*(c*e1[2] + sn*e2[2]));
+    };
+    const double eps = 1e-9 * std::max(1.0, H);
+    std::vector<char> ok(N);
+    int cnt = 0;
+    for (int k = 0; k < N; ++k) {
+        double s = s_of(TWO_PI*k/N);
+        ok[k] = (s > eps && s < H + eps) ? 1 : 0;
+        cnt += ok[k];
+    }
+    if (cnt == 0) return;
+    if (cnt == N) {
+        std::vector<Point> loop;
+        for (int k = 0; k <= N; ++k) loop.push_back(pt(TWO_PI*(k % N)/N));
+        runs.push_back(loop); closed = true; return;
+    }
+    int start = 0; while (start < N && ok[start]) ++start;
+    double dtarget = (H > 1e-300) ? (-D0 / H) : 0.0;
+    auto refine_base = [&](double pa, double pb) -> double {
+        double fa = denom(pa) - dtarget;
+        for (int it = 0; it < 60; ++it) {
+            double pm = 0.5*(pa+pb), fm = denom(pm) - dtarget;
+            if ((fm < 0) == (fa < 0)) { pa = pm; fa = fm; } else pb = pm;
+        }
+        return 0.5*(pa+pb);
+    };
+    std::vector<Point> cur; bool in = false;
+    for (int i = 0; i <= N; ++i) {
+        int k = (start + i) % N;
+        double uphi = TWO_PI*start/N + TWO_PI*i/N;
+        bool v = ok[k] != 0;
+        if (v && !in) {
+            if (i > 0) cur.push_back(pt(refine_base(uphi - TWO_PI/N, uphi)));
+            cur.push_back(pt(uphi)); in = true;
+        } else if (v && in) {
+            cur.push_back(pt(uphi));
+        } else if (!v && in) {
+            cur.push_back(pt(refine_base(uphi - TWO_PI/N, uphi)));
+            if (cur.size() >= 2) runs.push_back(cur);
+            cur.clear(); in = false;
+        }
+    }
+    if (in && cur.size() >= 2) runs.push_back(cur);
+}
+static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone,
+                           const NurbsSurface& cone_srf, std::vector<NurbsCurve>& out) {
+    V3 o = plane.p1, nu = ssi_unit(plane.p2);
+    V3 V = cone.p1, w = ssi_unit(cone.p2);
+    double alpha = cone.r;
+    if (alpha < 1e-7 || alpha > Tolerance::PI/2 - 1e-7) return false;
+    double ta = std::tan(alpha), cosa = std::cos(alpha), sina = std::sin(alpha);
+    double H = cone_axial_extent(cone_srf, V, w);
+    if (H < 1e-12) return false;
+    auto [e1, e2] = ortho_basis(w);
+    double na = nu[0]*w[0]  + nu[1]*w[1]  + nu[2]*w[2];
+    double pP = nu[0]*e1[0] + nu[1]*e1[1] + nu[2]*e1[2];
+    double qP = nu[0]*e2[0] + nu[1]*e2[1] + nu[2]*e2[2];
+    double cost  = std::abs(na);
+    double sint  = std::sqrt(std::max(0.0, pP*pP + qP*qP));
+    double costa = cost*cosa - sint*sina;
+    double D0    = (V[0]-o[0])*nu[0] + (V[1]-o[1])*nu[1] + (V[2]-o[2])*nu[2];
+    const double ang     = 1e-6;
+    const double distTol = 1e-6 * std::max(1.0, H);
+    if (std::abs(D0) < distTol) {
+        if (std::abs(costa) < ang) {
+            V3 g = ssi_unit(V3{w[0]-na*nu[0], w[1]-na*nu[1], w[2]-na*nu[2]});
+            double gw = g[0]*w[0] + g[1]*w[1] + g[2]*w[2];
+            if (gw > 1e-9) { double L = H / gw;
+                out.push_back(NurbsCurve::create(false, 1,
+                    {Point(V[0],V[1],V[2]), Point(V[0]+L*g[0], V[1]+L*g[1], V[2]+L*g[2])})); }
+            return true;
+        }
+        if (cost < sina) {
+            V3 axey = ssi_cross(nu, w);
+            V3 axex = ssi_cross(axey, nu);
+            double dh = std::sqrt(std::max(0.0, sina*sina - cost*cost)) / cosa;
+            for (int sgn : {+1, -1}) {
+                V3 d{axex[0]+sgn*dh*axey[0], axex[1]+sgn*dh*axey[1], axex[2]+sgn*dh*axey[2]};
+                double dw = d[0]*w[0] + d[1]*w[1] + d[2]*w[2];
+                if (dw < 1e-12) continue;
+                double L = H / dw;
+                out.push_back(NurbsCurve::create(false, 1,
+                    {Point(V[0],V[1],V[2]), Point(V[0]+L*d[0], V[1]+L*d[1], V[2]+L*d[2])}));
+            }
+            return true;
+        }
+        return true;
+    }
+    bool is_circle=false, is_parabola=false, is_hyperbola=false, is_ellipse=false;
+    if      (cost < ang)            is_hyperbola = true;
+    else if (std::abs(costa) < ang) is_parabola  = true;
+    else if (sint < ang)            is_circle     = true;
+    else if (cost < sina)           is_hyperbola  = true;
+    else                            is_ellipse    = true;
+    if (is_circle) {
+        double dax = (o[0]-V[0])*w[0] + (o[1]-V[1])*w[1] + (o[2]-V[2])*w[2];
+        double rr = std::abs(dax) * ta;
+        if (rr > 1e-12) {
+            V3 cc{V[0]+dax*w[0], V[1]+dax*w[1], V[2]+dax*w[2]};
+            NurbsCurve circ = exact_circle(cc[0], cc[1], cc[2], e1, e2, rr);
+            if (conic_within_cone(circ, V, w, H)) { out.push_back(circ); return true; }
+        }
+        return true;
+    }
+    if (is_ellipse) {
+        NurbsCurve ell;
+        if (build_exact_plane_cone_ellipse(o, nu, V, w, alpha, ell) &&
+            conic_within_cone(ell, V, w, H)) { out.push_back(ell); return true; }
+    }
+    std::vector<std::vector<Point>> runs; bool closed = false;
+    sample_plane_cone_arcs(V, w, e1, e2, na, pP, qP, D0, ta, H, runs, closed);
+    for (auto& r : runs) { NurbsCurve c = fit_conic_arc(r); if (c.is_valid()) out.push_back(c); }
+    (void)is_parabola; (void)is_hyperbola;
     return true;
 }
 
@@ -2620,6 +2774,67 @@ static bool ssi_plane_torus(const RecogSurface& plane, const RecogSurface& tor, 
     return true;
 }
 
+// Exact intersection of two finite planar faces: the infinite plane/plane line clipped to
+// BOTH surfaces' UV domains (so the segment lies inside both faces). Returns an exact 2-CV
+// degree-1 line. `empty` is set when the planes are recognized but their finite extents do
+// not overlap (recognized -> no intersection). Returns false (without empty) only for the
+// parallel/degenerate case, which the caller leaves to the marcher.
+static bool ssi_plane_plane(const NurbsSurface& sa, const RecogSurface& pa,
+                            const NurbsSurface& sb, const RecogSurface& pb,
+                            NurbsCurve& c3, bool& empty) {
+    empty = false;
+    V3 na = ssi_unit(pa.p2), nb = ssi_unit(pb.p2);
+    V3 v = ssi_cross(na, nb);
+    double vl = std::sqrt(ssi_dot(v, v));
+    if (vl < 1e-9) return false;  // parallel/coincident -> marcher
+    // Anchor: the point of the intersection line closest to the origin (two-plane closed form).
+    double dA = ssi_dot(na, pa.p1), dB = ssi_dot(nb, pb.p1);
+    V3 nb_x_v = ssi_cross(nb, v), v_x_na = ssi_cross(v, na);
+    double inv = 1.0 / (vl * vl);
+    V3 anchor{(dA*nb_x_v[0] + dB*v_x_na[0]) * inv,
+              (dA*nb_x_v[1] + dB*v_x_na[1]) * inv,
+              (dA*nb_x_v[2] + dB*v_x_na[2]) * inv};
+    V3 dir{v[0]/vl, v[1]/vl, v[2]/vl};
+
+    // Clip the parametric line anchor + t*dir to each face's UV rectangle (in [0,1]^2 frame).
+    double tmin = -1e300, tmax = 1e300;
+    for (const NurbsSurface* s : {&sa, &sb}) {
+        auto [u0, u1] = s->domain(0);
+        auto [v0, v1] = s->domain(1);
+        Point O = s->point_at(u0, v0), Pu = s->point_at(u1, v0), Pv = s->point_at(u0, v1);
+        V3 o{O[0],O[1],O[2]};
+        V3 eu{Pu[0]-O[0], Pu[1]-O[1], Pu[2]-O[2]};
+        V3 ev{Pv[0]-O[0], Pv[1]-O[1], Pv[2]-O[2]};
+        double exx = ssi_dot(eu,eu), eyy = ssi_dot(ev,ev), exy = ssi_dot(eu,ev);
+        double det = exx*eyy - exy*exy;
+        if (std::abs(det) < 1e-18) return false;
+        auto frac = [&](const V3& r, double& al, double& be) {
+            double rx = ssi_dot(r, eu), ry = ssi_dot(r, ev);
+            al = (eyy*rx - exy*ry) / det;
+            be = (exx*ry - exy*rx) / det;
+        };
+        double a0, b0, da, db;
+        frac(V3{anchor[0]-o[0], anchor[1]-o[1], anchor[2]-o[2]}, a0, b0);
+        frac(dir, da, db);
+        double t0 = -1e300, t1 = 1e300;
+        auto axis_clip = [&](double c, double d) -> bool {
+            if (std::abs(d) < 1e-15) return (c >= -1e-9 && c <= 1.0 + 1e-9);
+            double ta = (0.0 - c) / d, tb = (1.0 - c) / d;
+            if (ta > tb) std::swap(ta, tb);
+            t0 = std::max(t0, ta); t1 = std::min(t1, tb);
+            return true;
+        };
+        if (!axis_clip(a0, da) || !axis_clip(b0, db) || t0 > t1) { empty = true; return false; }
+        tmin = std::max(tmin, t0); tmax = std::min(tmax, t1);
+    }
+    if (tmax - tmin <= 1e-9) { empty = true; return false; }
+    Point A(anchor[0]+tmin*dir[0], anchor[1]+tmin*dir[1], anchor[2]+tmin*dir[2]);
+    Point B(anchor[0]+tmax*dir[0], anchor[1]+tmax*dir[1], anchor[2]+tmax*dir[2]);
+    c3 = NurbsCurve::create(false, 1, {A, B});
+    c3.set_domain(0.0, 1.0);
+    return true;
+}
+
 // Result wraps Python's None/[]/[triples...] tri-state:
 //   status == NOT_ANALYTIC -> Python None (caller marches)
 //   status == NO_HIT       -> Python [] (recognized, no intersection)
@@ -2628,6 +2843,672 @@ struct AnalyticResult {
     enum { NOT_ANALYTIC, NO_HIT, HIT } status = NOT_ANALYTIC;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> triples;
 };
+
+
+// Analytic pcurve of an exact 3D intersection conic onto a recognized quadric surface,
+// reproducing OCCT's ProjLib closed-form projection (no sampling/fitting):
+//  - PLANE: the surface (u,v)->3D map is affine (bilinear over a rectangle), so invert it
+//    linearly and remap the conic's control points to UV -- preserves the exact rational
+//    circle/ellipse.
+//  - CYLINDER, circle in a plane perpendicular to the axis: the pcurve is a horizontal line
+//    v = const in (u=theta, v=height) space, spanning the full u range.
+// Returns an invalid curve when not analytically handled (caller falls back to projection).
+static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3d) {
+    auto [u0, u1] = srf.domain(0);
+    auto [v0, v1] = srf.domain(1);
+    auto dot = [](const double a[3], const double b[3]) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; };
+
+    if (recog.kind == RecogSurface::PLANE) {
+        Point o = srf.point_at(u0, v0);
+        Point pu = srf.point_at(u1, v0);
+        Point pv = srf.point_at(u0, v1);
+        double ex[3] = {pu[0]-o[0], pu[1]-o[1], pu[2]-o[2]};
+        double ey[3] = {pv[0]-o[0], pv[1]-o[1], pv[2]-o[2]};
+        double exx = dot(ex,ex), eyy = dot(ey,ey), exy = dot(ex,ey);
+        double det = exx*eyy - exy*exy;
+        if (std::abs(det) < 1e-18) return NurbsCurve();
+        NurbsCurve pc = c3d;  // same degree / knots / weights
+        int nc = c3d.cv_count();
+        for (int i = 0; i < nc; ++i) {
+            Point P = c3d.get_cv(i);
+            double r[3] = {P[0]-o[0], P[1]-o[1], P[2]-o[2]};
+            double rx = dot(r,ex), ry = dot(r,ey);
+            double a = (eyy*rx - exy*ry) / det;
+            double b = (exx*ry - exy*rx) / det;
+            double u = u0 + a*(u1-u0), v = v0 + b*(v1-v0);
+            if (c3d.is_rational()) {
+                double w = c3d.weight(i);
+                pc.set_cv_4d(i, u*w, v*w, 0.0, w);
+            } else {
+                pc.set_cv(i, Point(u, v, 0.0));
+            }
+        }
+        return pc;
+    }
+
+    // CYLINDER analytic pcurve (circle -> v=const line) is geometrically correct but does not
+    // yet satisfy split_by_uv_curves' seam/boundary expectations for the cylinder face; falls
+    // back to projection until the seam-aware endpoints are handled. (next B4 iteration)
+    if (recog.kind == RecogSurface::CYLINDER) {
+        double ap[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
+        double ax[3] = {recog.p2[0], recog.p2[1], recog.p2[2]};
+        double an = std::sqrt(dot(ax,ax));
+        if (an < 1e-12) return NurbsCurve();
+        ax[0]/=an; ax[1]/=an; ax[2]/=an;
+        auto height = [&](const Point& p) { double r[3]={p[0]-ap[0],p[1]-ap[1],p[2]-ap[2]}; return dot(r,ax); };
+        double um = 0.5*(u0+u1);
+        double h0 = height(srf.point_at(um, v0)), h1 = height(srf.point_at(um, v1));
+        if (std::abs(h1 - h0) < 1e-12) return NurbsCurve();
+        // Conic must lie in a plane perpendicular to the axis (constant height) AND span the
+        // full angular range of the cylinder face (otherwise it's a partial/clipped arc that
+        // the generic projector handles). Both conditions fall back to projection if unmet.
+        double hmin = 1e300, hmax = -1e300, hsum = 0; int ns = 0;
+        auto [t0,t1] = c3d.domain();
+        for (int i = 0; i <= 32; ++i) {
+            double h = height(c3d.point_at(t0 + (t1-t0)*i/32));
+            hmin = std::min(hmin, h); hmax = std::max(hmax, h); hsum += h; ns++;
+        }
+        if (hmax - hmin > 1e-5 * std::abs(h1 - h0)) return NurbsCurve();  // oblique -> fallback
+        // Confirm the conic is a closed loop wrapping the full cylinder (start ~ end in 3D).
+        if (c3d.point_at(t0).distance(c3d.point_at(t1)) > 1e-6 * (std::abs(h1 - h0) + 1.0))
+            return NurbsCurve();
+        double hc = hsum / ns;
+        double vc = v0 + (hc - h0) / (h1 - h0) * (v1 - v0);
+        if (vc < std::min(v0,v1) - 1e-9 || vc > std::max(v0,v1) + 1e-9) return NurbsCurve();
+        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+    }
+
+    // SPHERE, circle in a plane perpendicular to the polar axis -> a parallel: an exact v=const
+    // line spanning the full u range. (Oblique planes give a non-v-const small circle; those fall
+    // back to projection.) The v<->height map is the rational meridian (nonlinear), so bisect.
+    if (recog.kind == RecogSurface::SPHERE) {
+        double um = 0.5 * (u0 + u1);
+        Point sp = srf.point_at(um, v0), np = srf.point_at(um, v1);
+        double ax[3] = {np[0]-sp[0], np[1]-sp[1], np[2]-sp[2]};
+        double an = std::sqrt(dot(ax,ax));
+        if (an < 1e-12) return NurbsCurve();
+        ax[0]/=an; ax[1]/=an; ax[2]/=an;
+        double C[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
+        auto height = [&](const Point& p) { double r[3]={p[0]-C[0],p[1]-C[1],p[2]-C[2]}; return dot(r,ax); };
+        auto [t0,t1] = c3d.domain();
+        double hmin = 1e300, hmax = -1e300, hsum = 0; int ns = 0;
+        for (int i = 0; i <= 32; ++i) {
+            double h = height(c3d.point_at(t0 + (t1-t0)*i/32));
+            hmin = std::min(hmin, h); hmax = std::max(hmax, h); hsum += h; ns++;
+        }
+        if (hmax - hmin > recog.r * 1e-4) return NurbsCurve();   // oblique small circle -> projection
+        if (c3d.point_at(t0).distance(c3d.point_at(t1)) > recog.r * 1e-3) return NurbsCurve();  // not a full wrap
+        double hc = hsum / ns;
+        // Bisect v: height(point_at(um, v)) is monotone in v (z runs pole-to-pole).
+        double va = v0, vb = v1, ha = height(srf.point_at(um, va)), hb = height(srf.point_at(um, vb));
+        if ((hc - ha) * (hc - hb) > 0) return NurbsCurve();  // height out of range
+        for (int it = 0; it < 60; ++it) {
+            double vm = 0.5*(va + vb), hm = height(srf.point_at(um, vm));
+            if ((hm - hc) * (ha - hc) <= 0) vb = vm; else { va = vm; ha = hm; }
+        }
+        double vc = 0.5 * (va + vb);
+        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+    }
+
+    if (recog.kind == RecogSurface::CONE) {
+        // A circle perpendicular to the cone axis (a coaxial "parallel") -> exact v=const line.
+        // (recog.r is the cone HALF-ANGLE, not a length, so use a curve-length scale for tolerances.)
+        double ax[3] = {recog.p2[0], recog.p2[1], recog.p2[2]};
+        double an = std::sqrt(dot(ax,ax)); if (an < 1e-12) return NurbsCurve();
+        ax[0]/=an; ax[1]/=an; ax[2]/=an;
+        double A[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};   // apex
+        auto height = [&](const Point& p){ double r[3]={p[0]-A[0],p[1]-A[1],p[2]-A[2]}; return dot(r,ax); };
+        auto [t0,t1] = c3d.domain();
+        double clen = c3d.point_at(t0).distance(c3d.point_at(0.5*(t0+t1)));
+        double hscale = std::max(clen, 1e-9);
+        double hmin=1e300,hmax=-1e300,hsum=0; int ns=0;
+        for (int i=0;i<=32;++i){ double h=height(c3d.point_at(t0+(t1-t0)*i/32));
+            hmin=std::min(hmin,h); hmax=std::max(hmax,h); hsum+=h; ++ns; }
+        if (hmax - hmin > hscale * 1e-4) return NurbsCurve();   // oblique conic -> projection
+        if (c3d.point_at(t0).distance(c3d.point_at(t1)) > hscale * 1e-3) return NurbsCurve();  // not a full wrap
+        double hc = hsum/ns;
+        double um2 = 0.5*(u0+u1);
+        double va=v0, vb=v1, ha=height(srf.point_at(um2,va)), hb=height(srf.point_at(um2,vb));
+        if ((hc-ha)*(hc-hb) > 0) return NurbsCurve();   // height out of v-range
+        for (int it=0; it<60; ++it){ double vmid=0.5*(va+vb), hm=height(srf.point_at(um2,vmid));
+            if ((hm-hc)*(ha-hc) <= 0) vb=vmid; else { va=vmid; ha=hm; } }
+        double vc=0.5*(va+vb);
+        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+    }
+
+    // TORUS: a coaxial intersection circle (perpendicular to the torus axis, at constant horizontal
+    // radius rho and constant axial z) is a v=const u-circle. theta_v = atan2(z, rho-R) is NOT
+    // monotone in z but IS monotone in the surface v param, so tabulate (v -> theta_v) and invert by
+    // bracketed interpolation (atan2 inverse, unwrapped) -- NOT a z-bisection. (A u=const minor
+    // circle from a plane through the axis fails the spread check -> projector fallback.)
+    if (recog.kind == RecogSurface::TORUS) {
+        const double PI = 3.14159265358979323846, TWO_PI = 2.0 * PI;
+        double C[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
+        double w[3] = {recog.p2[0], recog.p2[1], recog.p2[2]};
+        double wn = std::sqrt(dot(w, w)); if (wn < 1e-12) return NurbsCurve();
+        w[0]/=wn; w[1]/=wn; w[2]/=wn;
+        double R = recog.r, rmin = recog.r2;
+        if (rmin < 1e-12 || R <= rmin) return NurbsCurve();
+        auto minor_angle = [&](const Point& p) {
+            double d[3] = {p[0]-C[0], p[1]-C[1], p[2]-C[2]};
+            double z = dot(d, w);
+            double hx = d[0]-z*w[0], hy = d[1]-z*w[1], hz = d[2]-z*w[2];
+            double rho = std::sqrt(hx*hx + hy*hy + hz*hz);
+            return std::atan2(z, rho - R);
+        };
+        auto [t0, t1] = c3d.domain();
+        double aprev = 0.0, asum = 0.0, amin = 1e300, amax = -1e300; int ns = 0;
+        for (int i = 0; i <= 32; ++i) {
+            double a = minor_angle(c3d.point_at(t0 + (t1-t0)*i/32));
+            if (i > 0) { while (a - aprev >  PI) a -= TWO_PI; while (a - aprev < -PI) a += TWO_PI; }
+            aprev = a; amin = std::min(amin, a); amax = std::max(amax, a); asum += a; ++ns;
+        }
+        if (amax - amin > 1e-4) return NurbsCurve();
+        if (c3d.point_at(t0).distance(c3d.point_at(t1)) > rmin * 1e-3) return NurbsCurve();
+        double a_target = asum / ns;
+        double um = 0.5 * (u0 + u1);
+        const int NV = 256;
+        std::vector<double> tv(NV+1), ta(NV+1);
+        double ap = 0.0;
+        for (int k = 0; k <= NV; ++k) {
+            double v = v0 + (v1-v0)*k/NV;
+            double a = minor_angle(srf.point_at(um, v));
+            if (k > 0) { while (a - ap >  PI) a -= TWO_PI; while (a - ap < -PI) a += TWO_PI; }
+            ap = a; tv[k] = v; ta[k] = a;
+        }
+        double alo = std::min(ta[0], ta[NV]), ahi = std::max(ta[0], ta[NV]);
+        while (a_target < alo - 1e-9) a_target += TWO_PI;
+        while (a_target > ahi + 1e-9) a_target -= TWO_PI;
+        if (a_target < alo - 1e-9 || a_target > ahi + 1e-9) return NurbsCurve();
+        bool incr = ta[NV] >= ta[0];
+        int lo = 0, hi = NV;
+        while (hi - lo > 1) {
+            int mid = (lo + hi) / 2;
+            bool above = incr ? (ta[mid] < a_target) : (ta[mid] > a_target);
+            if (above) lo = mid; else hi = mid;
+        }
+        double denom = ta[hi] - ta[lo];
+        double f = (std::abs(denom) > 1e-15) ? (a_target - ta[lo]) / denom : 0.0;
+        double vc = tv[lo] + (tv[hi] - tv[lo]) * f;
+        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+    }
+
+    return NurbsCurve();
+}
+
+// Analytic pull-back of a 3D curve onto a recognized SPHERE, replicating OCCT ProjLib_Sphere's
+// per-point inverse (EvalPnt2d): in the sphere's local frame, longitude = atan2(y,x) is EXACT
+// (so a seam-straddling circle's crossing of the u-seam lands EXACTLY on u=u0/u=u1 -- the thing
+// the iterative projector got ~0.18 wrong), and the nonlinear meridian v is found by bisection.
+// Returns the seam-split arcs (a circle straddling the seam -> 2 arcs, each anchored on the seam),
+// as exact-endpoint degree-1 polylines. Empty if not a usable sphere/circle.
+static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
+                                                        const RecogSurface& recog,
+                                                        const NurbsCurve& c3d) {
+    if (recog.kind != RecogSurface::SPHERE) return {};
+    auto [u0, u1] = srf.domain(0);
+    auto [v0, v1] = srf.domain(1);
+    double range_u = u1 - u0;
+    if (range_u < 1e-9) return {};
+    auto dot = [](const double a[3], const double b[3]) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; };
+    double C[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
+    double um = 0.5 * (u0 + u1), vm = 0.5 * (v0 + v1);
+    // Polar axis Zs (south->north pole), and the equatorial frame Xs (u=u0 meridian dir), Ys.
+    Point sp = srf.point_at(um, v0), np = srf.point_at(um, v1);
+    double Zs[3] = {np[0]-sp[0], np[1]-sp[1], np[2]-sp[2]};
+    double zn = std::sqrt(dot(Zs,Zs)); if (zn < 1e-12) return {};
+    Zs[0]/=zn; Zs[1]/=zn; Zs[2]/=zn;
+    Point P0 = srf.point_at(u0, vm);
+    double x0[3] = {P0[0]-C[0], P0[1]-C[1], P0[2]-C[2]};
+    double h0 = dot(x0, Zs);
+    double Xs[3] = {x0[0]-h0*Zs[0], x0[1]-h0*Zs[1], x0[2]-h0*Zs[2]};
+    double xn = std::sqrt(dot(Xs,Xs)); if (xn < 1e-12) return {};
+    Xs[0]/=xn; Xs[1]/=xn; Xs[2]/=xn;
+    double Ys[3] = {Zs[1]*Xs[2]-Zs[2]*Xs[1], Zs[2]*Xs[0]-Zs[0]*Xs[2], Zs[0]*Xs[1]-Zs[1]*Xs[0]};
+    const double PI = 3.14159265358979323846, TWO_PI = 2.0 * PI;
+    // (u -> longitude) table along the equator. The NURBS sphere's u is the RATIONAL-quadratic
+    // circle parameter, which is NOT linear in longitude (only correct at 45-deg multiples) -- a
+    // linear u = u0 + (lon/2pi)*range_u approximation distorts the pulled-back circle so it bounds
+    // ~2% too little flux (wrong volume). Invert the true parametrization: tabulate longitude(u)
+    // on the equator (v-independent for a surface of revolution), then binary-search per point.
+    const int NT = 128;
+    std::vector<double> tu(NT+1), tlon(NT+1);
+    for (int k = 0; k <= NT; ++k) {
+        double u = u0 + range_u*k/NT;
+        Point p = srf.point_at(u, vm); double r[3]={p[0]-C[0],p[1]-C[1],p[2]-C[2]};
+        double lon = std::atan2(dot(r,Ys), dot(r,Xs));
+        if (k > 0) { while (lon - tlon[k-1] >  PI) lon -= TWO_PI;
+                     while (lon - tlon[k-1] < -PI) lon += TWO_PI; }
+        tu[k] = u; tlon[k] = lon;
+    }
+    bool lon_incr = tlon[NT] >= tlon[0];
+    double lon_lo = std::min(tlon[0], tlon[NT]), lon_hi = std::max(tlon[0], tlon[NT]);
+    auto u_from_lon = [&](double lon) -> double {
+        while (lon < lon_lo - 1e-9) lon += TWO_PI;
+        while (lon > lon_hi + 1e-9) lon -= TWO_PI;
+        int lo = 0, hi = NT;
+        while (hi - lo > 1) {
+            int mid = (lo + hi) / 2;
+            bool above = lon_incr ? (tlon[mid] < lon) : (tlon[mid] > lon);
+            if (above) lo = mid; else hi = mid;
+        }
+        double denom = tlon[hi] - tlon[lo];
+        double f = (std::abs(denom) > 1e-15) ? (lon - tlon[lo]) / denom : 0.0;
+        return tu[lo] + (tu[hi] - tu[lo]) * f;
+    };
+    // height(v) along a meridian (independent of u by sphere symmetry) is MONOTONE pole-to-pole.
+    // Precompute a (v, height) table ONCE, then invert by binary-search + linear interp per point
+    // -- O(log N) with no per-point surface eval (a per-point bisection here dominated the cost).
+    std::vector<double> tv(NT+1), th(NT+1);
+    for (int k = 0; k <= NT; ++k) {
+        double v = v0 + (v1-v0)*k/NT;
+        Point p = srf.point_at(um, v); double r[3]={p[0]-C[0],p[1]-C[1],p[2]-C[2]};
+        tv[k] = v; th[k] = dot(r, Zs);
+    }
+    bool incr = th[NT] >= th[0];
+    if (std::abs(th[NT] - th[0]) < 1e-12) return {};
+    auto v_from_height = [&](double h) -> double {
+        if (incr) { if (h <= th[0]) return tv[0]; if (h >= th[NT]) return tv[NT]; }
+        else      { if (h >= th[0]) return tv[0]; if (h <= th[NT]) return tv[NT]; }
+        int lo = 0, hi = NT;
+        while (hi - lo > 1) {
+            int mid = (lo + hi) / 2;
+            bool above = incr ? (th[mid] < h) : (th[mid] > h);
+            if (above) lo = mid; else hi = mid;
+        }
+        double denom = th[hi] - th[lo];
+        double f = (std::abs(denom) > 1e-15) ? (h - th[lo]) / denom : 0.0;
+        return tv[lo] + (tv[hi] - tv[lo]) * f;
+    };
+    // Sample the 3D curve; project each point analytically -> (u_unwrapped, v).
+    auto [t0, t1] = c3d.domain();
+    int n = std::max(c3d.cv_count() * 8, 120);
+    std::vector<std::array<double,2>> uv;  // u_unwrapped (may go outside [u0,u1]), v
+    double prev_u = 0.0;
+    for (int i = 0; i <= n; ++i) {
+        Point p = c3d.point_at(t0 + (t1-t0)*i/n);
+        double r[3] = {p[0]-C[0], p[1]-C[1], p[2]-C[2]};
+        double lon = std::atan2(dot(r,Ys), dot(r,Xs));   // (-pi, pi], exact
+        double h = dot(r, Zs);
+        double u = u_from_lon(lon);                       // exact NURBS u (not the linear approx)
+        if (i > 0) { while (u - prev_u >  range_u*0.5) u -= range_u;
+                     while (u - prev_u < -range_u*0.5) u += range_u; }
+        prev_u = u;
+        uv.push_back({u, v_from_height(h)});
+    }
+    if (uv.size() < 2) return {};
+    // Split the continuous (u,v) polyline into arcs by "domain copy" index k = floor((u-u0)/range).
+    // When k changes between consecutive samples the curve crosses a seam: end the current arc
+    // EXACTLY on the seam (u0 or u1) and start the next on the opposite seam, each shifted into
+    // [u0,u1]. So a circle straddling the seam -> two arcs anchored exactly on u0 and u1.
+    std::vector<NurbsCurve> out;
+    std::vector<Point> seg;
+    auto kof = [&](double u) -> int { return (int)std::floor((u - u0) / range_u + 1e-9); };
+    int cur_k = kof(uv[0][0]);
+    seg.push_back(Point(uv[0][0] - cur_k*range_u, uv[0][1], 0.0));
+    for (size_t i = 1; i < uv.size(); ++i) {
+        int ki = kof(uv[i][0]);
+        while (ki != cur_k) {
+            int step = (ki > cur_k) ? 1 : -1;
+            int nk = cur_k + step;
+            double seam_cont = u0 + (step > 0 ? nk : cur_k) * range_u;  // the boundary being crossed
+            double denom = uv[i][0] - uv[i-1][0];
+            double f = (std::abs(denom) > 1e-15) ? (seam_cont - uv[i-1][0]) / denom : 0.0;
+            f = std::min(std::max(f, 0.0), 1.0);
+            double vc = uv[i-1][1] + (uv[i][1] - uv[i-1][1]) * f;
+            seg.push_back(Point(seam_cont - cur_k*range_u, vc, 0.0));  // end at u1 (step>0) or u0
+            if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+            seg.clear();
+            seg.push_back(Point(seam_cont - nk*range_u, vc, 0.0));     // start at u0 (step>0) or u1
+            cur_k = nk;
+        }
+        seg.push_back(Point(uv[i][0] - cur_k*range_u, uv[i][1], 0.0));
+    }
+    if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+    return out;
+}
+
+// Analytic pull-back of a 3D curve onto a recognized CONE, mirroring analytic_sphere_pullback:
+// longitude (atan2 about the axis) is inverted via a u->longitude table (NURBS u is nonlinear in
+// angle); axial height is LINEAR in v so v is a closed-form inverse. Handles a non-v-const conic
+// (ellipse/hyperbola/parabola) and seam-splits on the u-seam. Empty if not a usable cone.
+static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
+                                                      const RecogSurface& recog,
+                                                      const NurbsCurve& c3d) {
+    if (recog.kind != RecogSurface::CONE) return {};
+    auto [u0, u1] = srf.domain(0);
+    auto [v0, v1] = srf.domain(1);
+    double range_u = u1 - u0;
+    if (range_u < 1e-9) return {};
+    auto dot = [](const double a[3], const double b[3]) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; };
+    double A[3]  = {recog.p1[0], recog.p1[1], recog.p1[2]};
+    double Zc[3] = {recog.p2[0], recog.p2[1], recog.p2[2]};
+    double zn = std::sqrt(dot(Zc, Zc)); if (zn < 1e-12) return {};
+    Zc[0]/=zn; Zc[1]/=zn; Zc[2]/=zn;
+    auto height = [&](const Point& p) { double r[3]={p[0]-A[0],p[1]-A[1],p[2]-A[2]}; return dot(r, Zc); };
+    double um = 0.5*(u0+u1);
+    double h0 = height(srf.point_at(um, v0)), h1 = height(srf.point_at(um, v1));
+    if (std::abs(h1 - h0) < 1e-12) return {};
+    auto v_from_height = [&](double h) { return v0 + (h - h0)/(h1 - h0)*(v1 - v0); };
+    double v_ref = (std::abs(h0) >= std::abs(h1)) ? v0 : v1;
+    Point P0 = srf.point_at(u0, v_ref);
+    double x0[3] = {P0[0]-A[0], P0[1]-A[1], P0[2]-A[2]};
+    double hp = dot(x0, Zc);
+    double Xc[3] = {x0[0]-hp*Zc[0], x0[1]-hp*Zc[1], x0[2]-hp*Zc[2]};
+    double xn = std::sqrt(dot(Xc, Xc)); if (xn < 1e-12) return {};
+    Xc[0]/=xn; Xc[1]/=xn; Xc[2]/=xn;
+    double Yc[3] = {Zc[1]*Xc[2]-Zc[2]*Xc[1], Zc[2]*Xc[0]-Zc[0]*Xc[2], Zc[0]*Xc[1]-Zc[1]*Xc[0]};
+    const double PI = 3.14159265358979323846, TWO_PI = 2.0*PI;
+    const int NT = 128;
+    std::vector<double> tu(NT+1), tlon(NT+1);
+    for (int k = 0; k <= NT; ++k) {
+        double u = u0 + range_u*k/NT;
+        Point p = srf.point_at(u, v_ref); double r[3]={p[0]-A[0],p[1]-A[1],p[2]-A[2]};
+        double lon = std::atan2(dot(r,Yc), dot(r,Xc));
+        if (k > 0) { while (lon - tlon[k-1] >  PI) lon -= TWO_PI;
+                     while (lon - tlon[k-1] < -PI) lon += TWO_PI; }
+        tu[k] = u; tlon[k] = lon;
+    }
+    bool lon_incr = tlon[NT] >= tlon[0];
+    double lon_lo = std::min(tlon[0], tlon[NT]), lon_hi = std::max(tlon[0], tlon[NT]);
+    auto u_from_lon = [&](double lon) -> double {
+        while (lon < lon_lo - 1e-9) lon += TWO_PI;
+        while (lon > lon_hi + 1e-9) lon -= TWO_PI;
+        int lo = 0, hi = NT;
+        while (hi - lo > 1) { int mid = (lo+hi)/2;
+            bool above = lon_incr ? (tlon[mid] < lon) : (tlon[mid] > lon);
+            if (above) lo = mid; else hi = mid; }
+        double denom = tlon[hi] - tlon[lo];
+        double f = (std::abs(denom) > 1e-15) ? (lon - tlon[lo]) / denom : 0.0;
+        return tu[lo] + (tu[hi] - tu[lo]) * f;
+    };
+    auto [t0, t1] = c3d.domain();
+    int n = std::max(c3d.cv_count() * 8, 120);
+    std::vector<std::array<double,2>> uv;
+    double prev_u = 0.0, prev_lon = 0.0;
+    for (int i = 0; i <= n; ++i) {
+        Point p = c3d.point_at(t0 + (t1-t0)*i/n);
+        double r[3] = {p[0]-A[0], p[1]-A[1], p[2]-A[2]};
+        double rad = std::sqrt(std::max(0.0, dot(r,Xc)*dot(r,Xc) + dot(r,Yc)*dot(r,Yc)));
+        double lon = (rad > 1e-12) ? std::atan2(dot(r,Yc), dot(r,Xc)) : prev_lon;
+        prev_lon = lon;
+        double u = u_from_lon(lon);
+        if (i > 0) { while (u - prev_u >  range_u*0.5) u -= range_u;
+                     while (u - prev_u < -range_u*0.5) u += range_u; }
+        prev_u = u;
+        uv.push_back({u, v_from_height(dot(r, Zc))});
+    }
+    if (uv.size() < 2) return {};
+    std::vector<NurbsCurve> out;
+    std::vector<Point> seg;
+    auto kof = [&](double u) -> int { return (int)std::floor((u - u0) / range_u + 1e-9); };
+    int cur_k = kof(uv[0][0]);
+    seg.push_back(Point(uv[0][0] - cur_k*range_u, uv[0][1], 0.0));
+    for (size_t i = 1; i < uv.size(); ++i) {
+        int ki = kof(uv[i][0]);
+        while (ki != cur_k) {
+            int step = (ki > cur_k) ? 1 : -1;
+            int nk = cur_k + step;
+            double seam_cont = u0 + (step > 0 ? nk : cur_k) * range_u;
+            double denom = uv[i][0] - uv[i-1][0];
+            double f = (std::abs(denom) > 1e-15) ? (seam_cont - uv[i-1][0]) / denom : 0.0;
+            f = std::min(std::max(f, 0.0), 1.0);
+            double vc = uv[i-1][1] + (uv[i][1] - uv[i-1][1]) * f;
+            seg.push_back(Point(seam_cont - cur_k*range_u, vc, 0.0));
+            if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+            seg.clear();
+            seg.push_back(Point(seam_cont - nk*range_u, vc, 0.0));
+            cur_k = nk;
+        }
+        seg.push_back(Point(uv[i][0] - cur_k*range_u, uv[i][1], 0.0));
+    }
+    if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+    return out;
+}
+
+// ===========================================================================
+// Analytic SSI for COAXIAL / canonical quadric pairs (exact conics), ported
+// from OCCT IntAna_QuadQuadGeo. Each pushes the exact 3D circle(s)/line(s)/
+// ellipse(s) into `out` and returns "handled": true = recognised & handled
+// (out may be empty => recognised no-intersection); false = caller marches.
+// ===========================================================================
+static double point_axis_dist(const V3& apt, const V3& adir, const V3& P) {
+    V3 u = ssi_unit(adir);
+    V3 dp{P[0]-apt[0], P[1]-apt[1], P[2]-apt[2]};
+    double t = ssi_dot(dp, u);
+    V3 perp{dp[0]-t*u[0], dp[1]-t*u[1], dp[2]-t*u[2]};
+    return std::sqrt(ssi_dot(perp, perp));
+}
+static double axial_coord(const V3& apt, const V3& adir, const V3& P) {
+    V3 u = ssi_unit(adir);
+    return (P[0]-apt[0])*u[0] + (P[1]-apt[1])*u[1] + (P[2]-apt[2])*u[2];
+}
+static bool axes_coaxial(const V3& p1, const V3& d1, const V3& p2, const V3& d2, double tol) {
+    V3 u1 = ssi_unit(d1), u2 = ssi_unit(d2);
+    V3 cx = ssi_cross(u1, u2);
+    if (std::sqrt(ssi_dot(cx, cx)) > tol) return false;
+    return point_axis_dist(p1, u1, p2) <= tol;
+}
+static void cyl_span(const NurbsSurface& srf, const V3& apt, const V3& adir, double& smin, double& smax) {
+    V3 u = ssi_unit(adir);
+    auto [u0, u1] = srf.domain(0); auto [v0, v1] = srf.domain(1);
+    double um = 0.5 * (u0 + u1);
+    smin = 1e300; smax = -1e300;
+    for (double vv : {v0, v1}) {
+        Point p = srf.point_at(um, vv);
+        double s = (p[0]-apt[0])*u[0] + (p[1]-apt[1])*u[1] + (p[2]-apt[2])*u[2];
+        smin = std::min(smin, s); smax = std::max(smax, s);
+    }
+}
+static bool lines_closest_point(const V3& p1, const V3& d1, const V3& p2, const V3& d2, double tol, V3& Pout) {
+    V3 u = ssi_unit(d1), v = ssi_unit(d2);
+    V3 w0{p1[0]-p2[0], p1[1]-p2[1], p1[2]-p2[2]};
+    double a = ssi_dot(u,u), b = ssi_dot(u,v), c = ssi_dot(v,v);
+    double d = ssi_dot(u,w0), e = ssi_dot(v,w0);
+    double den = a*c - b*b;
+    if (std::abs(den) < 1e-12) return false;
+    double sc = (b*e - c*d) / den, tc = (a*e - b*d) / den;
+    V3 q1{p1[0]+sc*u[0], p1[1]+sc*u[1], p1[2]+sc*u[2]};
+    V3 q2{p2[0]+tc*v[0], p2[1]+tc*v[1], p2[2]+tc*v[2]};
+    V3 diff{q1[0]-q2[0], q1[1]-q2[1], q1[2]-q2[2]};
+    if (std::sqrt(ssi_dot(diff,diff)) > tol) return false;
+    Pout = V3{0.5*(q1[0]+q2[0]), 0.5*(q1[1]+q2[1]), 0.5*(q1[2]+q2[2])};
+    return true;
+}
+static bool ssi_cylinder_sphere(const RecogSurface& cyl, const RecogSurface& sph, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 P = cyl.p1, w = ssi_unit(cyl.p2); double rc = cyl.r;
+    V3 C = sph.p1; double R = sph.r;
+    if (point_axis_dist(P, w, C) > kTol) return false;
+    if (R < rc - kTol) return true;
+    double dist = std::sqrt(std::max(0.0, R*R - rc*rc));
+    auto [xa, ya] = ortho_basis(w);
+    if (dist <= kTol) { out.push_back(exact_circle(C[0], C[1], C[2], xa, ya, rc)); return true; }
+    for (double s : {dist, -dist}) {
+        V3 cc{C[0]+s*w[0], C[1]+s*w[1], C[2]+s*w[2]};
+        out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rc));
+    }
+    return true;
+}
+static bool ssi_cylinder_cone(const RecogSurface& cyl, const RecogSurface& cone, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 Pc = cyl.p1, w = ssi_unit(cyl.p2); double rc = cyl.r;
+    V3 apex = cone.p1, a = ssi_unit(cone.p2); double alpha = cone.r;
+    if (!axes_coaxial(Pc, w, apex, a, kTol)) return false;
+    double ta = std::tan(alpha);
+    if (ta < 1e-9) return false;
+    double s = rc / ta;
+    if (s < kTol) return true;
+    V3 cc{apex[0]+s*a[0], apex[1]+s*a[1], apex[2]+s*a[2]};
+    auto [xa, ya] = ortho_basis(a);
+    out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rc));
+    return true;
+}
+static bool ssi_cone_sphere(const RecogSurface& cone, const RecogSurface& sph, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 apex = cone.p1, a = ssi_unit(cone.p2); double alpha = cone.r;
+    V3 C = sph.p1; double R = sph.r;
+    if (point_axis_dist(apex, a, C) > kTol) return false;
+    double dsign = axial_coord(apex, a, C);
+    double d = std::abs(dsign);
+    V3 dir = (d > kTol && dsign < 0.0) ? V3{-a[0],-a[1],-a[2]} : a;
+    double t = std::tan(alpha), t2 = t*t;
+    double A = 1.0 + t2, B = 2.0*t2*d, Cq = t2*d*d - R*R;
+    double disc = B*B - 4.0*A*Cq;
+    if (disc < -kTol) return true;
+    double sq = std::sqrt(std::max(0.0, disc));
+    std::vector<double> xs;
+    if (sq <= kTol) xs = { -B/(2.0*A) };
+    else            xs = { (-B - sq)/(2.0*A), (-B + sq)/(2.0*A) };
+    auto [xa, ya] = ortho_basis(a);
+    for (double x : xs) {
+        double sAx = d + x;
+        if (sAx < kTol) continue;
+        double rr = t * sAx;
+        if (rr < kTol) continue;
+        V3 cc{apex[0]+sAx*dir[0], apex[1]+sAx*dir[1], apex[2]+sAx*dir[2]};
+        out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rr));
+    }
+    return true;
+}
+static bool ssi_cylinder_cylinder(const NurbsSurface& sa, const RecogSurface& A,
+                                  const NurbsSurface& sb, const RecogSurface& B, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 P1 = A.p1, w1 = ssi_unit(A.p2); double R1 = A.r;
+    V3 P2 = B.p1, w2 = ssi_unit(B.p2); double R2 = B.r;
+    V3 cx = ssi_cross(w1, w2);
+    double sinmag = std::sqrt(ssi_dot(cx, cx));
+    if (sinmag <= kTol) {
+        double dline = point_axis_dist(P1, w1, P2);
+        if (dline <= kTol) { if (std::abs(R1 - R2) <= kTol) return false; return true; }
+        double off = ssi_dot(V3{P2[0]-P1[0],P2[1]-P1[1],P2[2]-P1[2]}, w1);
+        V3 P2p{P2[0]-off*w1[0], P2[1]-off*w1[1], P2[2]-off*w1[2]};
+        double d = dline;
+        if (d > R1 + R2 + kTol) return true;
+        if (d < std::abs(R1 - R2) - kTol) return true;
+        V3 xdir = ssi_unit(V3{P2p[0]-P1[0], P2p[1]-P1[1], P2p[2]-P1[2]});
+        V3 ydir = ssi_unit(ssi_cross(w1, xdir));
+        double aa = (R1*R1 - R2*R2 + d*d) / (2.0*d);
+        double h  = std::sqrt(std::max(0.0, R1*R1 - aa*aa));
+        V3 foot{P1[0]+aa*xdir[0], P1[1]+aa*xdir[1], P1[2]+aa*xdir[2]};
+        double s0a, s1a, s0b, s1b;
+        cyl_span(sa, P1, w1, s0a, s1a); cyl_span(sb, P1, w1, s0b, s1b);
+        double slo = std::max(s0a, s0b), shi = std::min(s1a, s1b);
+        if (shi - slo <= kTol) return true;
+        auto emit = [&](const V3& bp) {
+            V3 e0{bp[0]+slo*w1[0], bp[1]+slo*w1[1], bp[2]+slo*w1[2]};
+            V3 e1{bp[0]+shi*w1[0], bp[1]+shi*w1[1], bp[2]+shi*w1[2]};
+            NurbsCurve ln = NurbsCurve::create(false, 1, {Point(e0[0],e0[1],e0[2]), Point(e1[0],e1[1],e1[2])});
+            ln.set_domain(0.0, 1.0); out.push_back(ln);
+        };
+        if (h <= kTol) emit(foot);
+        else { emit(V3{foot[0]+h*ydir[0], foot[1]+h*ydir[1], foot[2]+h*ydir[2]});
+               emit(V3{foot[0]-h*ydir[0], foot[1]-h*ydir[1], foot[2]-h*ydir[2]}); }
+        return true;
+    }
+    double Rmax = std::max(R1, R2);
+    if (Rmax < 1e-12 || std::abs(R1 - R2) / Rmax > 1e-6) return false;
+    V3 Pint;
+    if (!lines_closest_point(P1, w1, P2, w2, kTol, Pint)) return false;
+    double R = 0.5 * (R1 + R2);
+    double ang = std::acos(std::max(-1.0, std::min(1.0, ssi_dot(w1, w2))));
+    double sh = std::sin(0.5*ang), ch = std::cos(0.5*ang);
+    if (sh < 1e-9 || ch < 1e-9) return false;
+    V3 minor = ssi_unit(cx);
+    V3 maj1  = ssi_unit(V3{w1[0]+w2[0], w1[1]+w2[1], w1[2]+w2[2]});
+    V3 maj2  = ssi_unit(V3{w1[0]-w2[0], w1[1]-w2[1], w1[2]-w2[2]});
+    out.push_back(exact_ellipse(Pint[0], Pint[1], Pint[2], maj1, minor, R/sh, R));
+    out.push_back(exact_ellipse(Pint[0], Pint[1], Pint[2], maj2, minor, R/ch, R));
+    return true;
+}
+
+// --- COAXIAL TORUS pairs (exact circles, ported from IntAna_QuadQuadGeo). Each circle is a
+// v=const u-circle: center on the torus axis at C+z*w, radius=horizontal radius, normal=w. Gate on
+// coaxiality + ring torus (minor r2 < major r). true+[] = recognised no-hit; false = marcher. ----
+static bool ssi_cylinder_torus(const RecogSurface& cyl, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 P = cyl.p1, wc = ssi_unit(cyl.p2); double rc = cyl.r;
+    V3 C = tor.p1, w = ssi_unit(tor.p2); double R = tor.r, r = tor.r2;
+    if (r >= R - kTol) return false;
+    if (!axes_coaxial(P, wc, C, w, kTol)) return false;
+    double dr = rc - R, h2 = r*r - dr*dr;
+    if (h2 < -kTol) return true;
+    double h = std::sqrt(std::max(0.0, h2));
+    auto [xa, ya] = ortho_basis(w);
+    std::vector<double> zs = (h <= kTol) ? std::vector<double>{0.0} : std::vector<double>{h, -h};
+    for (double z : zs) { V3 cc{C[0]+z*w[0], C[1]+z*w[1], C[2]+z*w[2]};
+        out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rc)); }
+    return true;
+}
+static bool ssi_cone_torus(const RecogSurface& cone, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 apex = cone.p1, a = ssi_unit(cone.p2); double alpha = cone.r;
+    V3 C = tor.p1, w = ssi_unit(tor.p2); double R = tor.r, r = tor.r2;
+    if (r >= R - kTol) return false;
+    if (!axes_coaxial(apex, a, C, w, kTol)) return false;
+    double t = std::tan(alpha); if (t < 1e-9) return false;
+    double za = axial_coord(C, w, apex);
+    double A = t*t + 1.0;
+    auto [xa, ya] = ortho_basis(w);
+    auto solve_emit = [&](double Rsign) {
+        double B  = -2.0 * t * (t*za + Rsign);
+        double Cc = (t*za + Rsign)*(t*za + Rsign) - r*r;
+        double disc = B*B - 4.0*A*Cc;
+        if (disc < -kTol) return;
+        double sq = std::sqrt(std::max(0.0, disc));
+        std::vector<double> zs = (sq <= kTol) ? std::vector<double>{ -B/(2.0*A) }
+                                              : std::vector<double>{ (-B-sq)/(2.0*A), (-B+sq)/(2.0*A) };
+        for (double z : zs) { double rad = t * std::abs(z - za); if (rad < kTol) continue;
+            V3 cc{C[0]+z*w[0], C[1]+z*w[1], C[2]+z*w[2]};
+            out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad)); }
+    };
+    solve_emit(+R); solve_emit(-R);
+    return true;
+}
+static bool ssi_sphere_torus(const RecogSurface& sph, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 S = sph.p1; double rsph = sph.r;
+    V3 C = tor.p1, w = ssi_unit(tor.p2); double R = tor.r, r = tor.r2;
+    if (r >= R - kTol) return false;
+    if (point_axis_dist(C, w, S) > kTol) return false;
+    double zs = axial_coord(C, w, S);
+    double d = std::sqrt(R*R + zs*zs);
+    if (d < kTol) return true;
+    if (d - kTol > r + rsph || d + kTol < std::abs(r - rsph)) return true;
+    double aa = 0.5*(r*r - rsph*rsph + d*d)/d;
+    double h  = std::sqrt(std::max(0.0, r*r - aa*aa));
+    double dirx = (0.0 - R)/d, dirz = (zs - 0.0)/d;
+    double phx = R + aa*dirx, phz = aa*dirz;
+    double perpx = -dirz, perpz = dirx;
+    auto [xa, ya] = ortho_basis(w);
+    std::vector<int> signs = (h <= kTol) ? std::vector<int>{0} : std::vector<int>{+1, -1};
+    for (int s : signs) { double xi = phx + s*h*perpx, z = phz + s*h*perpz, rad = std::abs(xi);
+        if (rad < kTol) continue; V3 cc{C[0]+z*w[0], C[1]+z*w[1], C[2]+z*w[2]};
+        out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad)); }
+    return true;
+}
+static bool ssi_torus_torus(const RecogSurface& ta, const RecogSurface& tb, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    V3 C1 = ta.p1, w  = ssi_unit(ta.p2); double R1 = ta.r, r1 = ta.r2;
+    V3 C2 = tb.p1, w2 = ssi_unit(tb.p2); double R2 = tb.r, r2 = tb.r2;
+    if (r1 >= R1 - kTol || r2 >= R2 - kTol) return false;
+    if (!axes_coaxial(C1, w, C2, w2, kTol)) return false;
+    double z2 = axial_coord(C1, w, C2);
+    double dxR = R2 - R1, d = std::sqrt(dxR*dxR + z2*z2);
+    if (d < kTol) return false;
+    if (d - kTol > r1 + r2 || d + kTol < std::abs(r1 - r2)) return true;
+    double aa = 0.5*(r1*r1 - r2*r2 + d*d)/d;
+    double h  = std::sqrt(std::max(0.0, r1*r1 - aa*aa));
+    double dirx = dxR/d, dirz = z2/d;
+    double phx = R1 + aa*dirx, phz = aa*dirz;
+    double perpx = -dirz, perpz = dirx;
+    auto [xa, ya] = ortho_basis(w);
+    std::vector<int> signs = (h <= kTol) ? std::vector<int>{0} : std::vector<int>{+1, -1};
+    for (int s : signs) { double xi = phx + s*h*perpx, z = phz + s*h*perpz, rad = std::abs(xi);
+        if (rad < kTol) continue; V3 cc{C1[0]+z*w[0], C1[1]+z*w[1], C1[2]+z*w[2]};
+        out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad)); }
+    return true;
+}
 
 static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b, double tolerance) {
     AnalyticResult res;
@@ -2645,12 +3526,18 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
     auto single = [&](bool ok, NurbsCurve& c3) { if (ok) c3_list.push_back(c3); };
 
     NurbsCurve c3;
-    if (ra.kind == K::PLANE && rb.kind == K::SPHERE)        single(ssi_plane_sphere(ra, rb, c3), c3);
+    if (ra.kind == K::PLANE && rb.kind == K::PLANE) {
+        bool empty = false;
+        if (ssi_plane_plane(a, ra, b, rb, c3, empty)) c3_list.push_back(c3);
+        else if (!empty) return res;  // parallel/coincident -> marcher (NOT_ANALYTIC)
+        // empty -> recognized, finite faces disjoint -> HIT with [] (no curves)
+    }
+    else if (ra.kind == K::PLANE && rb.kind == K::SPHERE)        single(ssi_plane_sphere(ra, rb, c3), c3);
     else if (ra.kind == K::SPHERE && rb.kind == K::PLANE)   single(ssi_plane_sphere(rb, ra, c3), c3);
     else if (ra.kind == K::PLANE && rb.kind == K::CYLINDER) single(ssi_plane_cylinder(ra, rb, c3), c3);
     else if (ra.kind == K::CYLINDER && rb.kind == K::PLANE) single(ssi_plane_cylinder(rb, ra, c3), c3);
-    else if (ra.kind == K::PLANE && rb.kind == K::CONE)     single(ssi_plane_cone(ra, rb, c3), c3);
-    else if (ra.kind == K::CONE && rb.kind == K::PLANE)     single(ssi_plane_cone(rb, ra, c3), c3);
+    else if (ra.kind == K::PLANE && rb.kind == K::CONE)     handled = ssi_plane_cone(ra, rb, b, c3_list);
+    else if (ra.kind == K::CONE && rb.kind == K::PLANE)     handled = ssi_plane_cone(rb, ra, a, c3_list);
     else if (ra.kind == K::PLANE && rb.kind == K::TORUS)    handled = ssi_plane_torus(ra, rb, c3_list);
     else if (ra.kind == K::TORUS && rb.kind == K::PLANE)    handled = ssi_plane_torus(rb, ra, c3_list);
     else if (ra.kind == K::SPHERE && rb.kind == K::SPHERE) {
@@ -2669,19 +3556,37 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
                 c3_list.push_back(c3);
             }
         }
-    } else {
+    }
+    // Coaxial / canonical quadric pairs (exact conics from IntAna_QuadQuadGeo).
+    else if (ra.kind == K::CYLINDER && rb.kind == K::SPHERE)   handled = ssi_cylinder_sphere(ra, rb, c3_list);
+    else if (ra.kind == K::SPHERE   && rb.kind == K::CYLINDER) handled = ssi_cylinder_sphere(rb, ra, c3_list);
+    else if (ra.kind == K::CYLINDER && rb.kind == K::CONE)     handled = ssi_cylinder_cone(ra, rb, c3_list);
+    else if (ra.kind == K::CONE     && rb.kind == K::CYLINDER) handled = ssi_cylinder_cone(rb, ra, c3_list);
+    else if (ra.kind == K::CONE     && rb.kind == K::SPHERE)   handled = ssi_cone_sphere(ra, rb, c3_list);
+    else if (ra.kind == K::SPHERE   && rb.kind == K::CONE)     handled = ssi_cone_sphere(rb, ra, c3_list);
+    else if (ra.kind == K::CYLINDER && rb.kind == K::CYLINDER) handled = ssi_cylinder_cylinder(a, ra, b, rb, c3_list);
+    else if (ra.kind == K::CYLINDER && rb.kind == K::TORUS)    handled = ssi_cylinder_torus(ra, rb, c3_list);
+    else if (ra.kind == K::TORUS    && rb.kind == K::CYLINDER) handled = ssi_cylinder_torus(rb, ra, c3_list);
+    else if (ra.kind == K::CONE     && rb.kind == K::TORUS)    handled = ssi_cone_torus(ra, rb, c3_list);
+    else if (ra.kind == K::TORUS    && rb.kind == K::CONE)     handled = ssi_cone_torus(rb, ra, c3_list);
+    else if (ra.kind == K::SPHERE   && rb.kind == K::TORUS)    handled = ssi_sphere_torus(ra, rb, c3_list);
+    else if (ra.kind == K::TORUS    && rb.kind == K::SPHERE)   handled = ssi_sphere_torus(rb, ra, c3_list);
+    else if (ra.kind == K::TORUS    && rb.kind == K::TORUS)    handled = ssi_torus_torus(ra, rb, c3_list);
+    else {
         return res;  // not an analytically-exact pair -> marcher (None)
     }
 
     if (!handled) return res;  // recognized but not analytically handled -> marcher (None)
 
-    // The 3D curves are exact; pull back onto each surface and collect triples.
-    // Torus x plane can return two circles -> two triples.
+    // The 3D curves are exact; pull back onto each surface. Try the closed-form analytic
+    // pcurve first (OCCT ProjLib-style, no sampling); fall back to projection otherwise.
     for (const NurbsCurve& cc3 : c3_list) {
-        std::vector<NurbsCurve> pas = Closest::surface_curve(a, cc3);
-        std::vector<NurbsCurve> pbs = Closest::surface_curve(b, cc3);
-        if (!pas.empty() && !pbs.empty())
-            res.triples.push_back(std::make_tuple(cc3, pas[0], pbs[0]));
+        NurbsCurve pa = analytic_pcurve(a, ra, cc3);
+        NurbsCurve pb = analytic_pcurve(b, rb, cc3);
+        if (!pa.is_valid()) { auto v = Closest::surface_curve(a, cc3); if (!v.empty()) pa = v[0]; }
+        if (!pb.is_valid()) { auto v = Closest::surface_curve(b, cc3); if (!v.empty()) pb = v[0]; }
+        if (pa.is_valid() && pb.is_valid())
+            res.triples.push_back(std::make_tuple(cc3, pa, pb));
     }
     res.status = AnalyticResult::HIT;  // [] or [triples...]; either way analytic
     return res;
@@ -3452,14 +4357,19 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         int m = (int)quad.size();
         std::vector<std::array<double, 3>> trace_pts3(m);
         for (int i = 0; i < m; i++) trace_pts3[i] = eval3_q(quad[i]);
-        double dup_tol = h_init * 6.0;
+        // A trace duplicates a kept one only if it CLOSELY FOLLOWS it. The tolerance must be tight
+        // relative to the spacing between DISTINCT intersection branches: e.g. two perpendicular
+        // cylinders (Steinmetz) have 4 arcs only ~1.4 apart at the 0.25/0.75 samples, so the old
+        // h_init*6 (~2.3) wrongly merged 3 of the 4 arcs into one. Use h_init*2 and scan EVERY kept
+        // point (a true duplicate lies within ~1 marching step everywhere; distinct branches do not).
+        double dup_tol = h_init * 2.0;
         bool dup = false;
         for (auto& other : kept_pts3) {
             bool all_close = true;
             for (double f : {0.25, 0.5, 0.75}) {
                 std::array<double, 3> cp = trace_pts3[(int)((m - 1) * f)];
                 double dmin = dup_tol + 1.0;
-                for (size_t k = 0; k < other.size(); k += 5) {
+                for (size_t k = 0; k < other.size(); k += 1) {
                     const std::array<double, 3>& op = other[k];
                     dmin = std::min(dmin, std::sqrt((cp[0]-op[0])*(cp[0]-op[0]) + (cp[1]-op[1])*(cp[1]-op[1]) + (cp[2]-op[2])*(cp[2]-op[2])));
                 }
@@ -3746,11 +4656,38 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
     auto cu = cutter.domain(0);
     auto cv = cutter.domain(1);
     double corner_diag = cutter.point_at(cu.first, cv.first).distance(cutter.point_at(cu.second, cv.second));
-    double on_tol = std::max(1e-7, corner_diag * 1e-4);
+    // Tolerance for "this pcurve point lifts onto the (finite) cutter". It must exceed the
+    // pull-back fit error of a sampled pcurve on a curved target (e.g. a projected sphere/cone
+    // circle deviates ~1e-3 of the surface size from the cutter plane), otherwise a curve that
+    // lies entirely on the cutter gets spuriously chopped into many tiny arcs. Parts genuinely
+    // off a finite cutter are O(size) away, so a generous relative tolerance still rejects them.
+    double on_tol = std::max(1e-6, corner_diag * 2e-2);
 
+    // clip_pcurve_to_cutter is only ever called for a PLANAR cutter (the caller guards on
+    // cutter_planar), so the closest-point gap to the finite cutter face is the analytic
+    // point-to-rectangle distance: project p3 into the face's (eu,ev) frame, clamp the
+    // parameters to the face rect, measure the 3D residual. This replaces a per-sample grid
+    // search (Closest::surface_point) that dominated SSI time (~66%), with an O(1) projection.
+    Point q00 = cutter.point_at(cu.first, cv.first);
+    Point q10 = cutter.point_at(cu.second, cv.first);
+    Point q01 = cutter.point_at(cu.first, cv.second);
+    Vector eu(q10[0]-q00[0], q10[1]-q00[1], q10[2]-q00[2]);
+    Vector ev(q01[0]-q00[0], q01[1]-q00[1], q01[2]-q00[2]);
+    double eu2 = eu[0]*eu[0]+eu[1]*eu[1]+eu[2]*eu[2];
+    double ev2 = ev[0]*ev[0]+ev[1]*ev[1]+ev[2]*ev[2];
+    bool fast_planar = (eu2 > 1e-28 && ev2 > 1e-28);
     auto gap = [&](double t) -> double {
         Point uv = pc.point_at(t);
         Point p3 = target.point_at(uv[0], uv[1]);
+        if (fast_planar) {
+            double dx = p3[0]-q00[0], dy = p3[1]-q00[1], dz = p3[2]-q00[2];
+            double a = (dx*eu[0]+dy*eu[1]+dz*eu[2]) / eu2;
+            double b = (dx*ev[0]+dy*ev[1]+dz*ev[2]) / ev2;
+            a = std::min(std::max(a, 0.0), 1.0);
+            b = std::min(std::max(b, 0.0), 1.0);
+            double cx = q00[0]+a*eu[0]+b*ev[0], cy = q00[1]+a*eu[1]+b*ev[1], cz = q00[2]+a*eu[2]+b*ev[2];
+            return std::sqrt((p3[0]-cx)*(p3[0]-cx)+(p3[1]-cy)*(p3[1]-cy)+(p3[2]-cz)*(p3[2]-cz));
+        }
         return std::get<2>(Closest::surface_point(cutter, p3, 0.0, 0.0, 0.0, 0.0));
     };
     auto refine = [&](double t_in, double t_out) -> double {
@@ -3791,21 +4728,46 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
 
 std::vector<NurbsCurve> Intersection::cut_curves_on_surface(const NurbsSurface& target, const NurbsSurface& cutter, double tolerance) {
     std::vector<NurbsCurve> out;
-    if (cutter.is_planar(nullptr, 1e-6)) {
-        auto cu = cutter.domain(0);
-        auto cv = cutter.domain(1);
-        double mu = (cu.first + cu.second) * 0.5;
-        double mv = (cv.first + cv.second) * 0.5;
-        Point origin = cutter.point_at(mu, mv);
-        Vector normal = cutter.normal_at(mu, mv);
-        Plane plane = Plane::from_point_normal(origin, normal);
-        for (auto& pr : surface_plane_uv(target, plane, tolerance)) {
-            auto clipped = clip_pcurve_to_cutter(target, pr.second, cutter);
-            out.insert(out.end(), clipped.begin(), clipped.end());
+    // Route through surface_surface so the closed-form analytic dispatch (plane/cylinder/
+    // sphere/cone/torus) is used when the pair is recognized -- exact AND fast. Marching is
+    // the fallback only for unrecognized freeform pairs. The intersection pcurve on `target`
+    // is then clipped to the (finite) cutter's extent, matching the previous behaviour.
+    bool cutter_planar = cutter.is_planar(nullptr, 1e-6);
+    // Pull the exact 3D intersection back onto the TARGET, keeping ALL pieces. surface_surface
+    // bundles only one pcurve per 3D curve (pas[0]); on a periodic target (sphere/cone/torus) a
+    // circle pulls back to SEVERAL seam arcs and the others would be lost. Use the analytic pcurve
+    // when the target is a plane/cylinder (exact, single piece), else project for every seam arc.
+    double rtol = std::max(tolerance, 1e-7) * 1e4;
+    RecogSurface rt = recognize_surface(target, rtol);
+    for (auto& tr : surface_surface(target, cutter, tolerance)) {
+        const NurbsCurve& c3d = std::get<0>(tr);
+        std::vector<NurbsCurve> pcs;
+        NurbsCurve pa_an = analytic_pcurve(target, rt, c3d);
+        if (pa_an.is_valid()) {
+            pcs.push_back(pa_an);
+        } else if (rt.kind == RecogSurface::SPHERE) {
+            // OCCT-style analytic per-point inverse (atan2 longitude) -> exact seam crossings.
+            pcs = analytic_sphere_pullback(target, rt, c3d);
+            if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
+            if (pcs.empty()) pcs.push_back(std::get<1>(tr));
+        } else if (rt.kind == RecogSurface::CONE) {
+            // Cone is a surface of revolution: longitude via atan2 (exact seam), v linear in height.
+            pcs = analytic_cone_pullback(target, rt, c3d);
+            if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
+            if (pcs.empty()) pcs.push_back(std::get<1>(tr));
+        } else {
+            pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
+            if (pcs.empty()) pcs.push_back(std::get<1>(tr));
         }
-        return out;
+        for (const auto& pc : pcs) {
+            if (cutter_planar) {
+                auto clipped = clip_pcurve_to_cutter(target, pc, cutter);
+                out.insert(out.end(), clipped.begin(), clipped.end());
+            } else {
+                out.push_back(pc);
+            }
+        }
     }
-    for (auto& tr : surface_surface(target, cutter, tolerance)) out.push_back(std::get<1>(tr));
     return out;
 }
 
