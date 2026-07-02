@@ -182,7 +182,10 @@ int main(int argc, char** argv) {
                 ++fails; continue;
             }
             double rel = k[0] != 0 ? std::abs(v - k[0]) / std::abs(k[0]) : std::abs(v - k[0]);
-            bool ok = rel < 1e-6 && nf == (int)k[1] && solid;
+            // A genuinely EMPTY result matching OCCT's empty result is correct (e.g. cone x torus
+            // common: the cone solid never reaches the tube); is_solid() on an empty BRep is false.
+            bool both_empty = std::abs(k[0]) < 1e-12 && (int)k[1] == 0 && std::abs(v) < 1e-12 && nf == 0;
+            bool ok = both_empty || (rel < 1e-6 && nf == (int)k[1] && solid);
             if (!ok) ++fails;
             std::printf("%-13s %-4s | %11.4f %11.4f %9.2e | %4d %5d | %d | %8ld | %s\n",
                         pr[0].c_str(), mode, v, k[0], rel, nf, (int)k[1], solid, us, ok ? "OK" : "FAIL");
