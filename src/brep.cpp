@@ -1030,7 +1030,8 @@ double BRep::volume() const {
         return Vector(0.5*acc[0], 0.5*acc[1], 0.5*acc[2]);
     };
     // Interior UV point of a face (CDT centroid), plus its natural unit normal.
-    auto face_interior = [&](const BRepFace& face, const NurbsSurface& srf, Point& P3, Vector& Nnat) {
+    auto face_interior = [&](const BRepFace& face, const NurbsSurface& srf, Point& P3, Vector& Nnat,
+                             double& ocu, double& ocv) {
         std::vector<Polyline> outers, inners;
         for (int li : face.loop_indices) {
             if (li < 0 || li >= (int)m_loops.size()) continue;
@@ -1104,6 +1105,7 @@ double BRep::volume() const {
         }
         P3 = srf.point_at(cu, cv);
         Nnat = srf.normal_at(cu, cv);  // unit; natural orientation = Su x Sv direction
+        ocu = cu; ocv = cv;
     };
 
     Mesh bmesh = mesh();
@@ -1121,8 +1123,8 @@ double BRep::volume() const {
         if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;
         const NurbsSurface& srf = m_surfaces[face.surface_index];
 
-        Point P3; Vector Nnat;
-        face_interior(face, srf, P3, Nnat);
+        Point P3; Vector Nnat; double fcu = 0, fcv = 0;
+        face_interior(face, srf, P3, Nnat, fcu, fcv);
         if (Nnat.magnitude() < 1e-12) continue;
         // Outward sign: stepping a little along +Nnat should leave the solid.
         Point probe(P3[0]+eps*Nnat[0], P3[1]+eps*Nnat[1], P3[2]+eps*Nnat[2]);
@@ -1197,6 +1199,19 @@ double BRep::volume() const {
             bool rect_trim = inner_polys.empty()
                 && std::abs(umin-_du0) < (_du1-_du0)*1e-3 && std::abs(umax-_du1) < (_du1-_du0)*1e-3
                 && std::abs(vmin-_dv0) < (_dv1-_dv0)*1e-3 && std::abs(vmax-_dv1) < (_dv1-_dv0)*1e-3;
+            if (rect_trim) {
+                // NU=24 is exact only when EVERY Gauss point is in-mask. A full-bbox loop that
+                // excludes a region (a sphere remainder whose one outer loop spans pole-to-pole
+                // around a cap bite) needs the fine masked grid like any curved mask boundary.
+                double oa = 0.0;
+                for (auto& op2 : outer_polys) {
+                    double a2 = 0.0;
+                    for (size_t i = 0, j = op2.size()-1; i < op2.size(); j = i++)
+                        a2 += op2[j][0]*op2[i][1] - op2[i][0]*op2[j][1];
+                    oa += std::abs(0.5*a2);
+                }
+                if (oa < 0.999*(_du1-_du0)*(_dv1-_dv0)) rect_trim = false;
+            }
             curved_rect = rect_trim;
             int NU = rect_trim ? 24 : 384; int NV = NU;
             for (int iu = 0; iu < NU; iu++) {
@@ -1255,6 +1270,22 @@ double BRep::volume() const {
                     Vector Ys=cross(Zs,Xs);
                     auto dot3=[](const Vector&a,const Vector&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
                     have_analytic=true;
+                    // Full-sphere natural flux (+-4piR^3, sign = whether Su x Sv points outward).
+                    // A loop's boundary integral gives the flux of its ENCLOSED region only; a face
+                    // keeping the COMPLEMENT (sphere minus cap, e.g. a fuse remainder) is
+                    // F_full - F_enclosed -- the (theta,phi)-chart poles live in the complement, so
+                    // no boundary formula alone can represent it.
+                    bool any_contains = false;
+                    Vector nm = srf.normal_at(um, 0.5*(sv0+sv1));
+                    double outward = dot3(dm, nm);
+                    double full_flux = (outward >= 0 ? 1.0 : -1.0) * 4.0*3.14159265358979323846*R*R*R;
+                    // u -> theta direction of the parameterization in the (Xs,Ys) frame (theta(Pm)=0).
+                    double u2th; {
+                        Point q = srf.point_at(um + 0.02*(su1-su0), 0.5*(sv0+sv1));
+                        double qx=(q[0]-C[0])*Xs[0]+(q[1]-C[1])*Xs[1]+(q[2]-C[2])*Xs[2];
+                        double qy=(q[0]-C[0])*Ys[0]+(q[1]-C[1])*Ys[1]+(q[2]-C[2])*Ys[2];
+                        u2th = std::atan2(qy, qx) >= 0 ? 1.0 : -1.0;
+                    }
                     for (int li : face.loop_indices) {
                         if (li<0||li>=(int)m_loops.size()) continue;
                         // chained, ordered 3D polyline of the loop (greedy walk like loop_vector_area).
@@ -1289,8 +1320,33 @@ double BRep::volume() const {
                         // not match the pcurve endpoint (bad/absent mapping) fall back to srf.point_at.
                         std::vector<std::array<double,2>> uvpts;
                         std::vector<Point> p3s;
+                        double Hcorr = 0.0;
                         auto d2p=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
                         for(auto&od:order){const Seg&sg=segs[od.first]; bool fwd=od.second;
+                            // POLE RUN: a degenerate 3D seg spanning the FULL u-range is the chart's
+                            // pole line. theta collapses at the pole, so sampling loses the run's
+                            // true h*(+-2pi) term of the h-integral (a sphere-remainder boundary) --
+                            // add it in closed form and pin the 3D samples to the pole point so
+                            // their dtheta telescopes to ~0 instead of contributing atan2 noise at
+                            // |h|=R. Partial (seam-split) pole runs are left as-is: those faces are
+                            // already integrated correctly by the sampled formula.
+                            {
+                                Point pa3=srf.point_at(sg.ps[0],sg.ps[1]), pb3=srf.point_at(sg.pe[0],sg.pe[1]);
+                                double tmc=0.5*(sg.t0+sg.t1); Point uvm=sg.pc->point_at(tmc);
+                                Point pm3=srf.point_at(uvm[0],uvm[1]);
+                                double ext=std::max(pa3.distance(pb3), pa3.distance(pm3));
+                                double ufirst=(fwd?sg.ps:sg.pe)[0], ulast=(fwd?sg.pe:sg.ps)[0];
+                                if (ext < R*1e-7 && std::abs(ulast-ufirst) > 0.9*(su1-su0)) {
+                                    double hp=(pa3[0]-C[0])*Zs[0]+(pa3[1]-C[1])*Zs[1]+(pa3[2]-C[2])*Zs[2];
+                                    double dir=(ulast>ufirst?1.0:-1.0)*u2th;
+                                    Hcorr += hp*dir*2.0*3.14159265358979323846;
+                                    for(int s=0;s<200;++s){double f=(double)s/200.0;
+                                        double tt=fwd?sg.t0+(sg.t1-sg.t0)*f:sg.t1-(sg.t1-sg.t0)*f;
+                                        Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});
+                                        p3s.push_back(pa3); }
+                                    continue;
+                                }
+                            }
                             bool use_c3=false, c3_rev=false;
                             // Start-point guard tol 1e-6 (squared; ~1e-3 dist): the co_refine snap
                             // moves shared section vertices up to the pullback's seam-interpolation
@@ -1355,10 +1411,24 @@ double BRep::volume() const {
                         // gains a spurious 2*pi*R^2 pole residue and is invalid for this face.
                         if (std::abs(wind) > 3.14159265358979323846) pole_face = true;
                         Vector A(0.5*Acc[0],0.5*Acc[1],0.5*Acc[2]);
-                        double loopflux = (C[0]*A[0]+C[1]*A[1]+C[2]*A[2]) - R*R*H;
-                        double osign = (m_loops[li].type==BRepLoopType::Outer?1.0:-1.0) * (uvArea>=0?1.0:-1.0);
-                        flux_analytic += osign*loopflux;
+                        double loopflux = (C[0]*A[0]+C[1]*A[1]+C[2]*A[2]) - R*R*(H + Hcorr);
+                        // Flux of the loop's ENCLOSED region, traversal-normalized (both loopflux
+                        // and uvArea flip together under reversal). Material side by containment of
+                        // the face's interior UV point: enclosed -> +enc, complement -> -enc (the
+                        // full-sphere term below completes the complement). Replaces the old
+                        // Outer/Inner x sign(uvArea) rule, which strips orientation and cannot
+                        // represent complement faces.
+                        double enc = (uvArea>=0?1.0:-1.0) * loopflux;
+                        bool inm = false;
+                        for(size_t i=0,j=uvpts.size()-1;i<uvpts.size();j=i++){
+                            if((uvpts[i][1]>fcv)!=(uvpts[j][1]>fcv) &&
+                               fcu < (uvpts[j][0]-uvpts[i][0])*(fcv-uvpts[i][1])/(uvpts[j][1]-uvpts[i][1])+uvpts[i][0])
+                                inm=!inm;
+                        }
+                        if (inm) any_contains = true;
+                        flux_analytic += inm ? enc : -enc;
                     }
+                    if (!any_contains) flux_analytic += full_flux;
                 }
             }
         }
@@ -2067,6 +2137,23 @@ NurbsCurve exact_arc_3d(const Point& Cc, const Vector& e1, const Vector& e2, dou
 // that circle (planarity AND radius) within a tight relative tolerance. The lift polylines'
 // vertices are exact on-circle surface evaluations, so genuine section circles pass with ~1e-15
 // residual while lines/ellipses/cone conics/freeform sections fail immediately.
+// Exact sphere recognition from the surface itself (poles -> center/radius, verified on a
+// sample grid). Our sphere NURBS are exact rational surfaces, so this is machine precision --
+// unlike the pullback-interpolated lift vertices, which sit ~1e-4 off the section circle.
+bool sphere_of_surface(const NurbsSurface& s, Point& C, double& R) {
+    auto du = s.domain(0); auto dv = s.domain(1);
+    double um = 0.5*(du.first + du.second);
+    Point ps = s.point_at(um, dv.first), pn = s.point_at(um, dv.second);
+    C = Point(0.5*(ps[0]+pn[0]), 0.5*(ps[1]+pn[1]), 0.5*(ps[2]+pn[2]));
+    R = 0.5*ps.distance(pn);
+    if (R < 1e-9) return false;
+    for (int i = 0; i <= 3; ++i) for (int j = 1; j < 3; ++j) {
+        Point p = s.point_at(du.first+(du.second-du.first)*i/3.0, dv.first+(dv.second-dv.first)*j/3.0);
+        if (std::abs(p.distance(C) - R) > R*1e-7 + 1e-9) return false;
+    }
+    return true;
+}
+
 bool circle_through_points(const std::vector<Point>& pts, Point& Cc, Vector& nrm,
                            Vector& e1, Vector& e2, double& r) {
     int m = (int)pts.size();
@@ -2196,6 +2283,66 @@ void BRep::co_refine_coincident_edges(double tol) {
             std::vector<Point> cpts;
             for (int i = 0; i < C.cv_count(); ++i) cpts.push_back(C.get_cv(i));
             fit_ok = circle_through_points(cpts, fitC, fitN, fitE1, fitE2, fitR);
+        }
+        if (!fit_ok && C.degree() == 1 && !C.is_rational()) {
+            // The vertex fit fails when BOTH operands' lifts are pullback-interpolated (~1e-4
+            // noise, e.g. sphere x sphere -- no exact planar side to trust). The operand SURFACES
+            // are exact: derive the section circle from the two adjacent spheres' radical plane,
+            // then verify the vertices LOOSELY (rejects edges that are not this circle at all).
+            auto srf_of_edge = [&](int e) -> int {
+                if (e < 0 || e >= (int)m_topology_edges.size()) return -1;
+                for (int t : m_topology_edges[e].trim_indices) {
+                    if (t < 0 || t >= (int)m_trims.size()) continue;
+                    int l = m_trims[t].loop_index; if (l < 0 || l >= (int)m_loops.size()) continue;
+                    int f = m_loops[l].face_index; if (f < 0 || f >= (int)m_faces.size()) continue;
+                    return m_faces[f].surface_index;
+                }
+                return -1;
+            };
+            int s1 = srf_of_edge(ei), s2 = -1;
+            for (int ej = 0; ej < ne0 && s2 < 0; ++ej) {
+                if (ej == ei || !cand(ej) || bbox_far(ei,ej) || !subset_of(ej,ei)) continue;
+                int sj = srf_of_edge(ej);
+                if (sj >= 0 && sj != s1) s2 = sj;
+            }
+            if (s1 >= 0 && s2 >= 0 && s1 < (int)m_surfaces.size() && s2 < (int)m_surfaces.size()) {
+                Point C1, C2; double R1 = 0, R2 = 0;
+                if (sphere_of_surface(m_surfaces[s1], C1, R1) && sphere_of_surface(m_surfaces[s2], C2, R2)) {
+                    double dx=C2[0]-C1[0], dy=C2[1]-C1[1], dz=C2[2]-C1[2];
+                    double d = std::sqrt(dx*dx+dy*dy+dz*dz);
+                    if (d > 1e-9 && d < R1+R2) {
+                        double a = (d*d + R1*R1 - R2*R2) / (2.0*d);
+                        double rr2 = R1*R1 - a*a;
+                        if (rr2 > 1e-18) {
+                            fitN = Vector(dx/d, dy/d, dz/d);
+                            fitC = Point(C1[0]+a*fitN[0], C1[1]+a*fitN[1], C1[2]+a*fitN[2]);
+                            fitR = std::sqrt(rr2);
+                            Point P0 = C.point_at_start();
+                            double wx=P0[0]-fitC[0], wy=P0[1]-fitC[1], wz=P0[2]-fitC[2];
+                            double h = wx*fitN[0]+wy*fitN[1]+wz*fitN[2];
+                            double px=wx-h*fitN[0], py=wy-h*fitN[1], pz=wz-h*fitN[2];
+                            double pl = std::sqrt(px*px+py*py+pz*pz);
+                            if (pl > 1e-12) {
+                                fitE1 = Vector(px/pl, py/pl, pz/pl);
+                                fitE2 = Vector(fitN[1]*fitE1[2]-fitN[2]*fitE1[1],
+                                               fitN[2]*fitE1[0]-fitN[0]*fitE1[2],
+                                               fitN[0]*fitE1[1]-fitN[1]*fitE1[0]);
+                                double vtol = std::max(5e-3*fitR, 1e-6);
+                                bool okv = true;
+                                for (int i = 0; i < C.cv_count() && okv; ++i) {
+                                    Point p = C.get_cv(i);
+                                    double ax=p[0]-fitC[0], ay=p[1]-fitC[1], az=p[2]-fitC[2];
+                                    double hh = ax*fitN[0]+ay*fitN[1]+az*fitN[2];
+                                    double rd2 = ax*ax+ay*ay+az*az - hh*hh;
+                                    double rad = rd2 > 0 ? std::sqrt(rd2) : 0.0;
+                                    if (std::abs(hh) > vtol || std::abs(rad-fitR) > vtol) okv = false;
+                                }
+                                fit_ok = okv;
+                            }
+                        }
+                    }
+                }
+            }
         }
         if (fit_ok) for (auto& s : sp) {
             double wx=s.second[0]-fitC[0], wy=s.second[1]-fitC[1], wz=s.second[2]-fitC[2];
@@ -2378,15 +2525,51 @@ void BRep::co_refine_coincident_edges(double tol) {
                 }
             }
             bool ok = ((int)p2.size()==(int)edge_ids.size());
+            // A MATE-oriented trim's pcurve runs opposite the shared 3D curve (the edge was lifted
+            // from the OTHER face's pcurve), so pieces in pcurve-param order do not line up
+            // index-for-index with the 3D arcs -- index pairing hands each trim a DIFFERENT arc of
+            // the circle. Keep the pieces in pcurve/loop order (meshing chains them in sequence)
+            // and instead match each piece to ITS edge geometrically (endpoint-compatible,
+            // midpoint tie-break across same-endpoint halves).
+            std::vector<int> edge_for(edge_ids.begin(), edge_ids.end());
+            if (ok && si>=0 && si<(int)m_surfaces.size()) {
+                const NurbsSurface& S2 = m_surfaces[si];
+                std::vector<int> ef(p2.size(), -1);
+                std::vector<bool> taken(arcs.size(), false);
+                bool allm = true;
+                for (size_t j = 0; j < p2.size() && allm; ++j) {
+                    if (!p2[j].is_valid()) { allm = false; break; }
+                    auto pd = p2[j].domain();
+                    Point a2u = p2[j].point_at(pd.first), b2u = p2[j].point_at(pd.second);
+                    Point m2u = p2[j].point_at(0.5*(pd.first+pd.second));
+                    Point a3 = S2.point_at(a2u[0],a2u[1]), b3 = S2.point_at(b2u[0],b2u[1]);
+                    Point m3 = S2.point_at(m2u[0],m2u[1]);
+                    int hit = -1; double bestm = 1e300;
+                    for (size_t k = 0; k < arcs.size(); ++k) {
+                        if (taken[k]) continue;
+                        Point ea = arcs[k].point_at_start(), eb = arcs[k].point_at_end();
+                        bool epok = (a3.distance(ea) < tol && b3.distance(eb) < tol)
+                                 || (a3.distance(eb) < tol && b3.distance(ea) < tol);
+                        if (!epok) continue;
+                        auto ad2 = arcs[k].domain();
+                        Point em = arcs[k].point_at(0.5*(ad2.first+ad2.second));
+                        double dm = m3.distance(em);
+                        if (dm < bestm) { bestm = dm; hit = (int)k; }
+                    }
+                    if (hit < 0) { allm = false; break; }
+                    taken[hit] = true; ef[j] = edge_ids[hit];
+                }
+                if (allm) edge_for.assign(ef.begin(), ef.end());
+            }
             std::vector<int> newtrims;
             for (size_t k=0;k<edge_ids.size();++k){
                 int c2idx,tidx;
                 NurbsCurve pc = ok ? p2[k] : (k==0 ? m_curves_2d[std::max(c2,0)] : NurbsCurve());
                 if(k==0){ c2idx=(c2>=0?c2:add_curve_2d(pc)); if(c2>=0)m_curves_2d[c2]=pc; tidx=ti; }
                 else { c2idx=add_curve_2d(pc); tidx=(int)m_trims.size(); m_trims.push_back(BRepTrim()); }
-                m_trims[tidx].curve_2d_index=c2idx; m_trims[tidx].edge_index=edge_ids[k];
+                m_trims[tidx].curve_2d_index=c2idx; m_trims[tidx].edge_index=edge_for[k];
                 m_trims[tidx].loop_index=li; m_trims[tidx].reversed=T.reversed; m_trims[tidx].type=T.type;
-                newtrims.push_back(tidx); m_topology_edges[edge_ids[k]].trim_indices.push_back(tidx);
+                newtrims.push_back(tidx); m_topology_edges[edge_for[k]].trim_indices.push_back(tidx);
             }
             if (T.reversed) std::reverse(newtrims.begin(), newtrims.end());
             if (li>=0 && li<(int)m_loops.size()){ auto& tl=m_loops[li].trim_indices;

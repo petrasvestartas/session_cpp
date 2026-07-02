@@ -1078,6 +1078,11 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
                 ++mult;
             }
         }
+        if (mult >= nurbsknot_multiplicity) {
+            // Already at the requested multiplicity (e.g. splitting a degree-1 polyline
+            // exactly at a vertex nurbsknot) -- nothing to insert, and that is success.
+            return true;
+        }
         if (mult >= p) {
             // Cannot increase multiplicity beyond degree for interior nurbsknots
             return false;
@@ -2592,6 +2597,18 @@ bool NurbsCurve::trim(double t0, double t1) {
     bool trim_start = (t0 > d0 + Tolerance::ZERO_TOLERANCE);
     bool trim_end = (t1 < d1 - Tolerance::ZERO_TOLERANCE);
 
+    // Snap the trim parameters to an existing nurbsknot within the insertion tolerance:
+    // inserting at an already-present value is a no-op, and the strict span search below
+    // would miss a near-hit (a boundary landing on a polyline vertex nurbsknot).
+    {
+        double stol = (std::abs(d0) + std::abs(d1) + std::abs(d1 - d0)) * std::sqrt(std::numeric_limits<double>::epsilon());
+        for (double k : m_nurbsknot) {
+            if (trim_start && std::abs(k - t0) <= stol && std::abs(k - t0) > 0.0) t0 = k;
+            if (trim_end && std::abs(k - t1) <= stol && std::abs(k - t1) > 0.0) t1 = k;
+        }
+        if (t0 >= t1) return false;
+    }
+
     // Insert nurbsknots at trim boundaries to multiplicity = degree
     if (trim_start) {
         if (!insert_nurbsknot(t0, p)) return false;
@@ -2709,13 +2726,15 @@ bool NurbsCurve::split(double t, NurbsCurve& left, NurbsCurve& right) const {
     auto [t0, t1] = domain();
     if (t <= t0 || t >= t1) return false;
     
-    // Simplified split - copy curve and trim each half
+    // Simplified split - copy curve and trim each half. A failed trim MUST fail the
+    // split: ignoring it returns the WHOLE curve as a piece (silent overlap corruption,
+    // e.g. splitting a section-circle polyline exactly at one of its vertices).
     left = *this;
     right = *this;
-    
-    left.trim(t0, t);
-    right.trim(t, t1);
-    
+
+    if (!left.trim(t0, t)) return false;
+    if (!right.trim(t, t1)) return false;
+
     return true;
 }
 // Extend curve domain using natural NURBS extrapolation (De Boor algorithm)
