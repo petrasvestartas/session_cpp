@@ -3168,14 +3168,16 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
     return out;
 }
 
-// Analytic pull-back of a 3D curve onto a recognized CONE, mirroring analytic_sphere_pullback:
-// longitude (atan2 about the axis) is inverted via a u->longitude table (NURBS u is nonlinear in
-// angle); axial height is LINEAR in v so v is a closed-form inverse. Handles a non-v-const conic
-// (ellipse/hyperbola/parabola) and seam-splits on the u-seam. Empty if not a usable cone.
+// Analytic pull-back of a 3D curve onto a recognized CONE or CYLINDER (both surfaces of
+// revolution with p1=axis point, p2=axis dir), mirroring analytic_sphere_pullback: longitude
+// (atan2 about the axis) is inverted via a u->longitude table (NURBS u is nonlinear in angle);
+// axial height is LINEAR in v so v is a closed-form inverse. Handles a non-v-const conic
+// (ellipse/hyperbola/parabola, e.g. a tilted Steinmetz ellipse crossing the cylinder seam)
+// and seam-splits on the u-seam. Empty if not usable.
 static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
                                                       const RecogSurface& recog,
                                                       const NurbsCurve& c3d) {
-    if (recog.kind != RecogSurface::CONE) return {};
+    if (recog.kind != RecogSurface::CONE && recog.kind != RecogSurface::CYLINDER) return {};
     auto [u0, u1] = srf.domain(0);
     auto [v0, v1] = srf.domain(1);
     double range_u = u1 - u0;
@@ -4750,8 +4752,10 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(const NurbsSurface& 
             pcs = analytic_sphere_pullback(target, rt, c3d);
             if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
             if (pcs.empty()) pcs.push_back(std::get<1>(tr));
-        } else if (rt.kind == RecogSurface::CONE) {
-            // Cone is a surface of revolution: longitude via atan2 (exact seam), v linear in height.
+        } else if (rt.kind == RecogSurface::CONE || rt.kind == RecogSurface::CYLINDER) {
+            // Surfaces of revolution: longitude via atan2 (exact seam), v linear in height.
+            // (Cylinder reaches here only when analytic_pcurve declined: a tilted section,
+            // e.g. a Steinmetz ellipse, which needs the seam-splitting pullback.)
             pcs = analytic_cone_pullback(target, rt, c3d);
             if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
             if (pcs.empty()) pcs.push_back(std::get<1>(tr));

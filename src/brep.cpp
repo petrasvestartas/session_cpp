@@ -2154,6 +2154,30 @@ bool sphere_of_surface(const NurbsSurface& s, Point& C, double& R) {
     return true;
 }
 
+// Exact cylinder recognition: the v-boundary circles' centers give the axis (the rational-
+// quadratic circle's antipode sits exactly at mid-u), verified on a sample grid.
+bool cylinder_of_surface(const NurbsSurface& s, Point& A, Vector& W, double& R) {
+    auto du = s.domain(0); auto dv = s.domain(1);
+    double um2 = 0.5*(du.first + du.second);
+    Point a0 = s.point_at(du.first, dv.first), a1 = s.point_at(um2, dv.first);
+    Point b0 = s.point_at(du.first, dv.second), b1 = s.point_at(um2, dv.second);
+    A = Point(0.5*(a0[0]+a1[0]), 0.5*(a0[1]+a1[1]), 0.5*(a0[2]+a1[2]));
+    Point C1(0.5*(b0[0]+b1[0]), 0.5*(b0[1]+b1[1]), 0.5*(b0[2]+b1[2]));
+    double wl = A.distance(C1);
+    if (wl < 1e-9) return false;
+    W = Vector((C1[0]-A[0])/wl, (C1[1]-A[1])/wl, (C1[2]-A[2])/wl);
+    R = 0.5*a0.distance(a1);
+    if (R < 1e-9) return false;
+    for (int i = 0; i <= 3; ++i) for (int j = 0; j <= 2; ++j) {
+        Point p = s.point_at(du.first+(du.second-du.first)*i/3.0, dv.first+(dv.second-dv.first)*j/2.0);
+        double wx=p[0]-A[0], wy=p[1]-A[1], wz=p[2]-A[2];
+        double t = wx*W[0]+wy*W[1]+wz*W[2];
+        double dx=wx-t*W[0], dy=wy-t*W[1], dz=wz-t*W[2];
+        if (std::abs(std::sqrt(dx*dx+dy*dy+dz*dz) - R) > R*1e-7 + 1e-9) return false;
+    }
+    return true;
+}
+
 bool circle_through_points(const std::vector<Point>& pts, Point& Cc, Vector& nrm,
                            Vector& e1, Vector& e2, double& r) {
     int m = (int)pts.size();
@@ -2277,7 +2301,11 @@ void BRep::co_refine_coincident_edges(double tol) {
         // ~1.5e-3). The polyline vertices are exact on-circle points, so recover the true circle,
         // snap the split points onto it, and below rebuild each piece as the EXACT rational arc
         // between its snapped vertices. Non-circles fail the fit and keep the polyline path.
-        Point fitC; Vector fitN, fitE1, fitE2; double fitR = 0;
+        // Recognized section conic: center fitC, unit axes fitE1/fitE2 with semi-axes fitA/fitB
+        // (circle: fitA == fitB). All arc math below runs in the SCALED frame (sx,sy) where the
+        // conic is the unit circle -- a rational-quadratic arc is exact under the linear map, so
+        // exact_arc_3d with basis (fitE1*fitA, fitE2*fitB, r=1) emits exact ELLIPSE arcs too.
+        Point fitC; Vector fitN, fitE1, fitE2; double fitR = 0, fitA = 0, fitB = 0;
         bool fit_ok = false;
         if (C.degree() == 1 && !C.is_rational()) {
             std::vector<Point> cpts;
@@ -2342,14 +2370,73 @@ void BRep::co_refine_coincident_edges(double tol) {
                         }
                     }
                 }
+                if (!fit_ok && std::getenv("SESSION_BOOL_ELLIPSE")) {
+                    // CYLINDER x CYLINDER, equal radii, intersecting axes: the section is TWO
+                    // exact ellipses in the (w1 +- w2) planes (Steinmetz); pick the one whose
+                    // ellipse the edge's vertices actually lie on. GATED OFF pending P8: the
+                    // cylinder faces' masked-Gauss flux dominates the cyl x cyl error anyway,
+                    // and enabling this flipped one fuse edge to non-solid (mate mismatch TBD).
+                    Point A1, A2; Vector W1, W2; double Rc1 = 0, Rc2 = 0;
+                    if (cylinder_of_surface(m_surfaces[s1], A1, W1, Rc1)
+                     && cylinder_of_surface(m_surfaces[s2], A2, W2, Rc2)
+                     && std::abs(Rc1-Rc2) < 1e-6*std::max(Rc1,Rc2)) {
+                        double b = W1[0]*W2[0]+W1[1]*W2[1]+W1[2]*W2[2];
+                        double den = 1.0 - b*b;
+                        if (den > 1e-12) {
+                            double d0x=A2[0]-A1[0], d0y=A2[1]-A1[1], d0z=A2[2]-A1[2];
+                            double dw1 = d0x*W1[0]+d0y*W1[1]+d0z*W1[2];
+                            double dw2 = d0x*W2[0]+d0y*W2[1]+d0z*W2[2];
+                            double t1 = (dw1 - b*dw2)/den, t2 = (b*dw1 - dw2)/den;
+                            Point q1(A1[0]+t1*W1[0], A1[1]+t1*W1[1], A1[2]+t1*W1[2]);
+                            Point q2(A2[0]+t2*W2[0], A2[1]+t2*W2[1], A2[2]+t2*W2[2]);
+                            if (q1.distance(q2) < 1e-6) {
+                                double Rr = 0.5*(Rc1+Rc2);
+                                double cx=W1[1]*W2[2]-W1[2]*W2[1], cy=W1[2]*W2[0]-W1[0]*W2[2], cz=W1[0]*W2[1]-W1[1]*W2[0];
+                                double cl = std::sqrt(cx*cx+cy*cy+cz*cz);
+                                double ang = std::atan2(cl, b);
+                                double sh = std::sin(0.5*ang), ch = std::cos(0.5*ang);
+                                if (cl > 1e-9 && sh > 1e-9 && ch > 1e-9) {
+                                    Vector mnr(cx/cl, cy/cl, cz/cl);
+                                    Point Pc(0.5*(q1[0]+q2[0]), 0.5*(q1[1]+q2[1]), 0.5*(q1[2]+q2[2]));
+                                    for (int cand = 0; cand < 2 && !fit_ok; ++cand) {
+                                        double sx = cand==0 ? 1.0 : -1.0;
+                                        double mx=W1[0]+sx*W2[0], my=W1[1]+sx*W2[1], mz=W1[2]+sx*W2[2];
+                                        double ml = std::sqrt(mx*mx+my*my+mz*mz);
+                                        if (ml < 1e-9) continue;
+                                        Vector maj(mx/ml, my/ml, mz/ml);
+                                        double semiA = cand==0 ? Rr/sh : Rr/ch;
+                                        Vector n2(maj[1]*mnr[2]-maj[2]*mnr[1], maj[2]*mnr[0]-maj[0]*mnr[2], maj[0]*mnr[1]-maj[1]*mnr[0]);
+                                        double vtol = std::max(5e-3*Rr, 1e-6);
+                                        bool okv = true;
+                                        for (int i = 0; i < C.cv_count() && okv; ++i) {
+                                            Point p = C.get_cv(i);
+                                            double ax=p[0]-Pc[0], ay=p[1]-Pc[1], az=p[2]-Pc[2];
+                                            double hh = ax*n2[0]+ay*n2[1]+az*n2[2];
+                                            double su = (ax*maj[0]+ay*maj[1]+az*maj[2])/semiA;
+                                            double sv = (ax*mnr[0]+ay*mnr[1]+az*mnr[2])/Rr;
+                                            if (std::abs(hh) > vtol || std::abs(std::sqrt(su*su+sv*sv)-1.0)*Rr > vtol) okv = false;
+                                        }
+                                        if (okv) {
+                                            fitC = Pc; fitE1 = maj; fitE2 = mnr; fitN = n2;
+                                            fitA = semiA; fitB = Rr; fit_ok = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+        if (fit_ok && fitA == 0) { fitA = fitR; fitB = fitR; }
         if (fit_ok) for (auto& s : sp) {
             double wx=s.second[0]-fitC[0], wy=s.second[1]-fitC[1], wz=s.second[2]-fitC[2];
-            double h = wx*fitN[0] + wy*fitN[1] + wz*fitN[2];
-            double px = wx-h*fitN[0], py = wy-h*fitN[1], pz = wz-h*fitN[2];
-            double pl = std::sqrt(px*px + py*py + pz*pz);
-            if (pl > 1e-12) s.second = Point(fitC[0]+fitR*px/pl, fitC[1]+fitR*py/pl, fitC[2]+fitR*pz/pl);
+            double su = (wx*fitE1[0]+wy*fitE1[1]+wz*fitE1[2])/fitA;
+            double sv = (wx*fitE2[0]+wy*fitE2[1]+wz*fitE2[2])/fitB;
+            double rad = std::sqrt(su*su + sv*sv);
+            if (rad > 1e-12) s.second = Point(fitC[0]+(su/rad)*fitA*fitE1[0]+(sv/rad)*fitB*fitE2[0],
+                                              fitC[1]+(su/rad)*fitA*fitE1[1]+(sv/rad)*fitB*fitE2[1],
+                                              fitC[2]+(su/rad)*fitA*fitE1[2]+(sv/rad)*fitB*fitE2[2]);
         }
         std::sort(sp.begin(), sp.end(), [](auto&a,auto&b){return a.first<b.first;});
         std::vector<double> iparams; std::vector<Point> ipts;
@@ -2385,20 +2472,25 @@ void BRep::co_refine_coincident_edges(double tol) {
 
         if (fit_ok) {
             const double PI = 3.14159265358979323846;
-            double rtol = std::max(1e-7 * fitR, 1e-9);
+            double fmin = std::min(fitA, fitB);
+            double rtol = std::max(1e-7 * fmin, 1e-9);
+            Vector sE1(fitE1[0]*fitA, fitE1[1]*fitA, fitE1[2]*fitA);
+            Vector sE2(fitE2[0]*fitB, fitE2[1]*fitB, fitE2[2]*fitB);
             auto vpos = [&](int vid) -> Point {
                 int pi = (vid>=0 && vid<(int)m_topology_vertices.size()) ? m_topology_vertices[vid].point_index : -1;
                 return (pi>=0 && pi<(int)m_vertices.size()) ? m_vertices[pi] : Point(0,0,0);
             };
             auto ang_of = [&](const Point& P) {
                 double wx=P[0]-fitC[0], wy=P[1]-fitC[1], wz=P[2]-fitC[2];
-                return std::atan2(wx*fitE2[0]+wy*fitE2[1]+wz*fitE2[2],
-                                  wx*fitE1[0]+wy*fitE1[1]+wz*fitE1[2]);
+                return std::atan2((wx*fitE2[0]+wy*fitE2[1]+wz*fitE2[2])/fitB,
+                                  (wx*fitE1[0]+wy*fitE1[1]+wz*fitE1[2])/fitA);
             };
             auto off_circle = [&](const Point& P) {
                 double wx=P[0]-fitC[0], wy=P[1]-fitC[1], wz=P[2]-fitC[2];
                 double h = wx*fitN[0]+wy*fitN[1]+wz*fitN[2];
-                return std::max(std::abs(h), std::abs(std::sqrt(wx*wx+wy*wy+wz*wz) - fitR));
+                double su = (wx*fitE1[0]+wy*fitE1[1]+wz*fitE1[2])/fitA;
+                double sv = (wx*fitE2[0]+wy*fitE2[1]+wz*fitE2[2])/fitB;
+                return std::max(std::abs(h), std::abs(std::sqrt(su*su+sv*sv) - 1.0)*fmin);
             };
             // Rebuild `poly`'s span as the exact arc from A to B; the polyline supplies the winding
             // (which way round, how many quarters) - its endpoint gap only fixes swept mod 2*pi.
@@ -2414,7 +2506,7 @@ void BRep::co_refine_coincident_edges(double tol) {
                 double a0 = ang_of(A), a1 = ang_of(B);
                 double sw = (a1 - a0) + 2*PI*std::round((sw_poly - (a1 - a0)) / (2*PI));
                 if (std::abs(sw) < 1e-9 || std::abs(sw) > 2*PI + 1e-9) return false;
-                out = exact_arc_3d(fitC, fitE1, fitE2, fitR, a0, sw);
+                out = exact_arc_3d(fitC, sE1, sE2, 1.0, a0, sw);
                 return out.is_valid();
             };
             for (size_t k = 0; k < arcs.size(); ++k) {
