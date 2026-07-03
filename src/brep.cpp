@@ -1204,7 +1204,22 @@ double BRep::volume() const {
         if (Nnat.magnitude() < 1e-12) continue;
         // Outward sign: stepping a little along +Nnat should leave the solid.
         Point probe(P3[0]+eps*Nnat[0], P3[1]+eps*Nnat[1], P3[2]+eps*Nnat[2]);
-        double sign = contains_point(bmesh, probe) ? -1.0 : 1.0;
+        // 3-ray majority vote: a single fixed-direction parity ray can graze a shared edge or a
+        // near-tangent triangle of the tessellated boundary and silently flip the face sign.
+        int inside_votes = 0;
+        {
+            const double dirs[3][3] = {{0.5773502691, 0.6539124, 0.5023147},
+                                       {-0.6172133998, 0.5330976, 0.5788126},
+                                       {0.4419417382, -0.5303300859, 0.7237468644}};
+            const double big = 1e6;
+            for (int d = 0; d < 3; ++d) {
+                Line ray(probe[0], probe[1], probe[2],
+                         probe[0]+dirs[d][0]*big, probe[1]+dirs[d][1]*big, probe[2]+dirs[d][2]*big);
+                auto hits = Intersection::ray_mesh(ray, bmesh, 1e-9, true);
+                if ((hits.size() % 2) == 1) ++inside_votes;
+            }
+        }
+        double sign = (inside_votes >= 2) ? -1.0 : 1.0;
 
         double flux_nat = 0.0;
         bool curved_rect = false;
@@ -1529,15 +1544,9 @@ double BRep::volume() const {
                                     }
                                 }
                             } }
-                        int n = (use_c3 && c3->is_rational()) ? 4000 : 200;
-                        if (std::getenv("SESSION_VOL_DBG2")) {
-                            double tmq=0.5*(dc.first+dc.second); Point uvq2=pc.point_at(tmq);
-                            Point pm2=srf.point_at(uvq2[0],uvq2[1]);
-                            Point cm2 = c3 ? c3->point_at(0.5*(c3a+c3b)) : Point(0,0,0);
-                            std::fprintf(stderr,"      [KSEG] ti=%d fwd=%d use=%d rev=%d rat=%d pcm(%.3f,%.3f,%.3f) c3m(%.3f,%.3f,%.3f) d=%.3e\n",
-                                ti, fwd?1:0, use_c3?1:0, c3_rev?1:0, (c3&&c3->is_rational())?1:0,
-                                pm2[0],pm2[1],pm2[2], cm2[0],cm2[1],cm2[2], c3?pm2.distance(cm2):-1.0);
-                        }
+                        // corner error of the boundary trapezoid is O((span/n)^2 * |dG'|): 200
+                        // floors sphere fuse remainders at ~9e-6 rel; 2000 puts corners ~1e-8.
+                        int n = (use_c3 && c3->is_rational()) ? 4000 : 2000;
                         for(int s=0;s<n;++s){double f=(double)s/n;
                             if(use_c3){ bool cf=(fwd!=c3_rev);
                                 double t3=cf?c3a+(c3b-c3a)*f:c3b-(c3b-c3a)*f;
@@ -1547,6 +1556,24 @@ double BRep::volume() const {
                             vlock.push_back(lock_v ? (s==0 ? 2 : 1) : 0); pu.push_back(0.0); }
                     }
                     if(p3s.size()<3) continue;
+                    // Never START the traversal on a pole run: the pole has no longitude, so a
+                    // loop anchored there takes an arbitrary theta and lands the pole-exit half a
+                    // turn off the seam it must meet; rotating to a normal seg gives every pole a
+                    // proper incoming theta to carry from.
+                    {
+                        size_t s0 = 0;
+                        auto at_pole = [&](size_t i){
+                            if (kind != 1) return false;
+                            double zz=(p3s[i][0]-C[0])*Zs[0]+(p3s[i][1]-C[1])*Zs[1]+(p3s[i][2]-C[2])*Zs[2];
+                            return std::abs(zz) >= R*(1.0-1e-8);
+                        };
+                        while (s0 < vlock.size() && (vlock[s0] == 3 || at_pole(s0))) ++s0;
+                        if (s0 > 0 && s0 < vlock.size()) {
+                            std::rotate(p3s.begin(), p3s.begin()+s0, p3s.end());
+                            std::rotate(vlock.begin(), vlock.begin()+s0, vlock.end());
+                            std::rotate(pu.begin(), pu.begin()+s0, pu.end());
+                        }
+                    }
                     p3s.push_back(p3s.front()); vlock.push_back(vlock.front()); pu.push_back(pu.front());
                     // accumulate the per-kind Green boundary integral over the ordered samples
                     double I=0.0, wind=0.0;
@@ -1563,6 +1590,12 @@ double BRep::volume() const {
                                             : prevTh);
                             if(!first) wind += th - prevTh;
                             prev_pu = pu[i]; prev_pole = true;
+                        } else if (kind == 1 && std::abs(z) >= R*(1.0-1e-8)) {
+                            // sample sits ON the pole (a seam run's pole-side endpoint): longitude
+                            // is undefined and G vanishes there (cos phi factor); hold theta so the
+                            // unwrap continuity survives.
+                            th = first ? 0.0 : prevTh;
+                            prev_pole = false;
                         } else {
                             th = std::atan2(dot3(w,Ys), dot3(w,Xs));
                             if(!first){ double dth=th-prevTh;
@@ -1606,17 +1639,15 @@ double BRep::volume() const {
                         }
                         prevTh=th; first=false;
                     }
-                    if (std::getenv("SESSION_VOL_DBG2"))
-                        std::fprintf(stderr,"   [LW] li=%d kind=%d npts=%zu wind=%.4f I=%.6f\n",
-                            li, kind, p3s.size(), wind, I);
                     flux_analytic += S * I;
                 }
             }
         }
-        // Chart integrals are exact for recognized quadrics including rectangular trims;
-        // the masked Gauss remains for pole-winding sphere loops and unrecognized surfaces.
+        // Chart integrals are exact for recognized quadrics with REAL boundary loops; a
+        // full-domain rect face's seam boundaries cancel pairwise (I = 0), so the rect Gauss
+        // stays authoritative there (rect_trim is coverage-gated: masked faces never qualify).
         double gauss_val = flux_nat;
-        if (have_analytic && !pole_face) flux_nat = flux_analytic;
+        if (have_analytic && !curved_rect && !pole_face) flux_nat = flux_analytic;
         if (std::getenv("SESSION_VOL_DBG"))
             std::fprintf(stderr,"[VOLDBG] f=%ld planar=%d haveA=%d rect=%d pole=%d sign=%.0f gauss=%.6f an=%.6f\n",
                 (long)(&face-&m_faces[0]), is_planar(srf)?1:0, have_analytic?1:0, curved_rect?1:0, pole_face?1:0, sign, gauss_val, flux_analytic);
@@ -2249,6 +2280,42 @@ void BRep::imprint_edges(double tol) {
                 p2pieces = split_multi(P, tps);
             }
             bool ok = ((int)p2pieces.size() == (int)edge_ids.size());
+            // A MATE-oriented trim's pcurve runs opposite the shared 3D curve (the edge was
+            // lifted from the OTHER face's pcurve), so pieces in pcurve-param order do NOT line
+            // up index-for-index with the 3D pieces -- index pairing hands each trim a WRONG edge
+            // (the cross-assigned-edge corruption). Match each piece to ITS edge geometrically,
+            // endpoint-compatible with a midpoint tie-break (same fix as co_refine's splice).
+            std::vector<int> edge_for(edge_ids.begin(), edge_ids.end());
+            if (ok && si >= 0 && si < (int)m_surfaces.size()) {
+                const NurbsSurface& S2 = m_surfaces[si];
+                double mtol = tol * 1e3;
+                std::vector<int> ef(p2pieces.size(), -1);
+                std::vector<bool> taken(c3pieces.size(), false);
+                bool allm = true;
+                for (size_t j = 0; j < p2pieces.size() && allm; ++j) {
+                    if (!p2pieces[j].is_valid()) { allm = false; break; }
+                    auto pd = p2pieces[j].domain();
+                    Point a2u = p2pieces[j].point_at(pd.first), b2u = p2pieces[j].point_at(pd.second);
+                    Point m2u = p2pieces[j].point_at(0.5*(pd.first+pd.second));
+                    Point a3 = S2.point_at(a2u[0],a2u[1]), b3 = S2.point_at(b2u[0],b2u[1]);
+                    Point m3 = S2.point_at(m2u[0],m2u[1]);
+                    int hit = -1; double bestm = 1e300;
+                    for (size_t k = 0; k < c3pieces.size(); ++k) {
+                        if (taken[k]) continue;
+                        Point ea = c3pieces[k].point_at_start(), eb = c3pieces[k].point_at_end();
+                        bool epok = (a3.distance(ea) < mtol && b3.distance(eb) < mtol)
+                                 || (a3.distance(eb) < mtol && b3.distance(ea) < mtol);
+                        if (!epok) continue;
+                        auto ad2 = c3pieces[k].domain();
+                        Point em = c3pieces[k].point_at(0.5*(ad2.first+ad2.second));
+                        double dm = m3.distance(em);
+                        if (dm < bestm) { bestm = dm; hit = (int)k; }
+                    }
+                    if (hit < 0) { allm = false; break; }
+                    taken[hit] = true; ef[j] = edge_ids[hit];
+                }
+                if (allm) edge_for.assign(ef.begin(), ef.end());
+            }
             // Build the per-piece trims (forward order; boolean trims are not reversed).
             std::vector<int> newtrims;
             for (size_t j = 0; j < edge_ids.size(); ++j) {
@@ -2257,12 +2324,12 @@ void BRep::imprint_edges(double tol) {
                 if (j == 0) { c2idx = (c2 >= 0 ? c2 : add_curve_2d(pc)); if (c2 >= 0) m_curves_2d[c2] = pc; tidx = ti; }
                 else { c2idx = add_curve_2d(pc); tidx = (int)m_trims.size(); m_trims.push_back(BRepTrim()); }
                 m_trims[tidx].curve_2d_index = c2idx;
-                m_trims[tidx].edge_index = edge_ids[j];
+                m_trims[tidx].edge_index = edge_for[j];
                 m_trims[tidx].loop_index = li;
                 m_trims[tidx].reversed = T.reversed;
                 m_trims[tidx].type = T.type;
                 newtrims.push_back(tidx);
-                m_topology_edges[edge_ids[j]].trim_indices.push_back(tidx);
+                m_topology_edges[edge_for[j]].trim_indices.push_back(tidx);
             }
             if (T.reversed) std::reverse(newtrims.begin(), newtrims.end());
             // Replace ti in the loop's trim list with the piece trims.
