@@ -168,6 +168,11 @@ int main(int argc, char** argv) {
                                                         : ba.boolean_union(bb);
                 us = (long)std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - t0).count();
+                if (std::getenv("SESSION_ORIENT_DBG")) {
+                    std::fprintf(stderr, "== %s %s ==\n", pr[0].c_str(), mode);
+                    int nviol = r.check_trim_orientation(true);
+                    std::fprintf(stderr, "== orient violations: %d ==\n", nviol);
+                }
                 v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
             } catch (const std::exception& e) {
                 std::printf("%-13s %-4s | THREW: %s\n", pr[0].c_str(), mode, e.what()); ++fails; continue;

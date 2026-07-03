@@ -944,6 +944,80 @@ bool BRep::contains_point(const Point& p) const {
 
 namespace { bool cylinder_of_surface(const NurbsSurface& s, Point& A, Vector& W, double& R); }
 
+int BRep::check_trim_orientation(bool verbose) const {
+    int violations = 0;
+    for (int fi = 0; fi < (int)m_faces.size(); ++fi) {
+        const BRepFace& face = m_faces[fi];
+        if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;
+        const NurbsSurface& srf = m_surfaces[face.surface_index];
+        auto du = srf.domain(0); auto dv = srf.domain(1);
+        double ru = du.second - du.first, rv = dv.second - dv.first;
+        double tol_uv = 1e-6 * std::max(ru, rv);
+        double jump_uv = 0.1 * std::max(ru, rv);
+        for (int li : face.loop_indices) {
+            if (li < 0 || li >= (int)m_loops.size()) continue;
+            const BRepLoop& loop = m_loops[li];
+            bool have_prev = false, jumpy = false;
+            Point first_pt(0,0,0), prev_pt(0,0,0);
+            double area2 = 0.0;   // 2*signed area, shoelace over trim endpoints + samples
+            Point area_prev(0,0,0); bool area_first = true;
+            int ntrim = 0;
+            for (int ti : loop.trim_indices) {
+                if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                int c2 = m_trims[ti].curve_2d_index;
+                if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
+                const NurbsCurve& pc = m_curves_2d[c2];
+                if (!pc.is_valid()) continue;
+                auto dc = pc.domain();
+                bool rev = m_trims[ti].reversed;
+                Point s = pc.point_at(rev ? dc.second : dc.first);
+                Point e = pc.point_at(rev ? dc.first : dc.second);
+                if (have_prev) {
+                    double gap = std::hypot(s[0]-prev_pt[0], s[1]-prev_pt[1]);
+                    if (gap > jump_uv) jumpy = true;
+                    else if (gap > tol_uv) {
+                        ++violations;
+                        if (verbose) std::fprintf(stderr,
+                            "[ORIENT] f=%d loop=%d trim=%d chain gap %.3e at uv(%.4f,%.4f)\n",
+                            fi, li, ti, gap, s[0], s[1]);
+                    }
+                } else { first_pt = s; }
+                const int NS = 8;
+                for (int k = 0; k <= NS; ++k) {
+                    double f = (double)k / NS;
+                    double t = rev ? dc.second - (dc.second-dc.first)*f
+                                   : dc.first + (dc.second-dc.first)*f;
+                    Point p = pc.point_at(t);
+                    if (!area_first) area2 += area_prev[0]*p[1] - p[0]*area_prev[1];
+                    area_prev = p; area_first = false;
+                }
+                prev_pt = e; have_prev = true; ++ntrim;
+            }
+            if (!have_prev || ntrim == 0) continue;
+            double close_gap = std::hypot(first_pt[0]-prev_pt[0], first_pt[1]-prev_pt[1]);
+            if (close_gap > jump_uv) jumpy = true;
+            else if (close_gap > tol_uv) {
+                ++violations;
+                if (verbose) std::fprintf(stderr, "[ORIENT] f=%d loop=%d closure gap %.3e\n", fi, li, close_gap);
+            }
+            area2 += area_prev[0]*first_pt[1] - first_pt[0]*area_prev[1];
+            if (!jumpy && std::abs(area2) > tol_uv * std::max(ru, rv)) {
+                bool ccw = area2 > 0.0;
+                bool want_ccw = (loop.type == BRepLoopType::Outer);
+                if (ccw != want_ccw) {
+                    ++violations;
+                    if (verbose) std::fprintf(stderr,
+                        "[ORIENT] f=%d loop=%d type=%d area2=%.3e wrong sense (ntrim=%d)\n",
+                        fi, li, (int)loop.type, area2, ntrim);
+                }
+            } else if (jumpy && verbose) {
+                std::fprintf(stderr, "[ORIENT] f=%d loop=%d SEAM-JUMP loop (ntrim=%d) - sense unchecked\n", fi, li, ntrim);
+            }
+        }
+    }
+    return violations;
+}
+
 double BRep::volume() const {
     // Divergence theorem: V = (1/3) sum_faces flux_outward, flux = integral of S . n_out dA.
     // This is made independent of stored orientation flags (which differ between primitive
@@ -1249,342 +1323,300 @@ double BRep::volume() const {
         // 3D geometry, sidestepping the masked-Gauss region/staircase error.
         double flux_analytic = 0.0; bool have_analytic = false; bool pole_face = false;
         if (!is_planar(srf)) {
+            // FLAG-DRIVEN quadric boundary flux (OCCT BRepGProp contract): trims are traversed in
+            // stored loop order with their `reversed` flags applied (validated invariant: material
+            // LEFT in UV, outer CCW / holes CW). No chaining, no point-in-polygon, no containment:
+            // holes subtract via orientation, seam mates cancel pairwise, degenerate edges vanish.
+            // Per quadric the UV integral Green-reduces to a closed-form antiderivative carried
+            // along the boundary; the trim's exact rational 3D section arc is sampled when the
+            // edge carries one (co-orientation resolved at the quarter point).
             auto [su0,su1]=srf.domain(0); auto [sv0,sv1]=srf.domain(1);
-            double um=0.5*(su0+su1);
-            Point Ps=srf.point_at(um,sv0), Pn=srf.point_at(um,sv1), Pm=srf.point_at(um,0.5*(sv0+sv1));
-            Vector axis(Pn[0]-Ps[0],Pn[1]-Ps[1],Pn[2]-Ps[2]);
-            double R = 0.5*axis.magnitude();
-            if (R > 1e-9) {
-                Point C(0.5*(Ps[0]+Pn[0]),0.5*(Ps[1]+Pn[1]),0.5*(Ps[2]+Pn[2]));
-                Vector Zs(axis[0]/(2*R),axis[1]/(2*R),axis[2]/(2*R));
-                // verify sphere: sample grid, |P-C| ~ R
-                bool is_sphere=true;
-                for(int i=0;i<=3&&is_sphere;++i)for(int j=0;j<=3&&is_sphere;++j){
-                    Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/3.0);
-                    double rr=std::sqrt((p[0]-C[0])*(p[0]-C[0])+(p[1]-C[1])*(p[1]-C[1])+(p[2]-C[2])*(p[2]-C[2]));
-                    if (std::abs(rr-R) > R*1e-4 + 1e-6) is_sphere=false;
+            auto dot3=[](const Vector&a,const Vector&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
+            const double PI = 3.14159265358979323846;
+
+            int kind = 0;                       // 1=sphere, 2=cylinder, 3=torus
+            Point C(0,0,0); Vector Zs(0,0,1), Xs(1,0,0), Ys(0,1,0);
+            double R = 0, r2 = 0;               // sphere/cyl radius R; torus major R minor r2
+            {
+                double um=0.5*(su0+su1);
+                Point Ps=srf.point_at(um,sv0), Pn=srf.point_at(um,sv1), Pm=srf.point_at(um,0.5*(sv0+sv1));
+                Vector axis(Pn[0]-Ps[0],Pn[1]-Ps[1],Pn[2]-Ps[2]);
+                double Rt = 0.5*axis.magnitude();
+                if (Rt > 1e-9) {
+                    Point Ct(0.5*(Ps[0]+Pn[0]),0.5*(Ps[1]+Pn[1]),0.5*(Ps[2]+Pn[2]));
+                    Vector Zt(axis[0]/(2*Rt),axis[1]/(2*Rt),axis[2]/(2*Rt));
+                    bool is_sphere=true;
+                    for(int i=0;i<=3&&is_sphere;++i)for(int j=0;j<=3&&is_sphere;++j){
+                        Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/3.0);
+                        if (std::abs(p.distance(Ct)-Rt) > Rt*1e-4 + 1e-6) is_sphere=false;
+                    }
+                    if (is_sphere) {
+                        Vector dm(Pm[0]-Ct[0],Pm[1]-Ct[1],Pm[2]-Ct[2]);
+                        double dz=dm[0]*Zt[0]+dm[1]*Zt[1]+dm[2]*Zt[2];
+                        Vector Xt(dm[0]-dz*Zt[0],dm[1]-dz*Zt[1],dm[2]-dz*Zt[2]);
+                        double xn=Xt.magnitude();
+                        if (xn > 1e-12) {
+                            kind=1; C=Ct; Zs=Zt; R=Rt;
+                            Xs=Vector(Xt[0]/xn,Xt[1]/xn,Xt[2]/xn); Ys=cross(Zs,Xs);
+                        }
+                    }
                 }
-                if (is_sphere) {
-                    Vector dm(Pm[0]-C[0],Pm[1]-C[1],Pm[2]-C[2]);
-                    double dz=dm[0]*Zs[0]+dm[1]*Zs[1]+dm[2]*Zs[2];
-                    Vector Xs(dm[0]-dz*Zs[0],dm[1]-dz*Zs[1],dm[2]-dz*Zs[2]);
-                    double xn=Xs.magnitude(); Xs=Vector(Xs[0]/xn,Xs[1]/xn,Xs[2]/xn);
-                    Vector Ys=cross(Zs,Xs);
-                    auto dot3=[](const Vector&a,const Vector&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
-                    have_analytic=true;
-                    // Full-sphere natural flux (+-4piR^3, sign = whether Su x Sv points outward).
-                    // A loop's boundary integral gives the flux of its ENCLOSED region only; a face
-                    // keeping the COMPLEMENT (sphere minus cap, e.g. a fuse remainder) is
-                    // F_full - F_enclosed -- the (theta,phi)-chart poles live in the complement, so
-                    // no boundary formula alone can represent it.
-                    bool any_contains = false;
-                    Vector nm = srf.normal_at(um, 0.5*(sv0+sv1));
-                    double outward = dot3(dm, nm);
-                    double full_flux = (outward >= 0 ? 1.0 : -1.0) * 4.0*3.14159265358979323846*R*R*R;
-                    // u -> theta direction of the parameterization in the (Xs,Ys) frame (theta(Pm)=0).
-                    double u2th; {
-                        Point q = srf.point_at(um + 0.02*(su1-su0), 0.5*(sv0+sv1));
-                        double qx=(q[0]-C[0])*Xs[0]+(q[1]-C[1])*Xs[1]+(q[2]-C[2])*Xs[2];
-                        double qy=(q[0]-C[0])*Ys[0]+(q[1]-C[1])*Ys[1]+(q[2]-C[2])*Ys[2];
-                        u2th = std::atan2(qy, qx) >= 0 ? 1.0 : -1.0;
-                    }
-                    for (int li : face.loop_indices) {
-                        if (li<0||li>=(int)m_loops.size()) continue;
-                        // chained, ordered 3D polyline of the loop (greedy walk like loop_vector_area).
-                        // Each seg also carries its trim's EXACT 3D edge curve (the shared section circle),
-                        // co-oriented with the pcurve (pcurve.t0 <-> c3.c3a: the pullback builds the pcurve
-                        // by sampling c3 in increasing param, and co_refine splits both in lockstep).
-                        struct Seg{const NurbsCurve* pc;double t0,t1;Point ps,pe; const NurbsCurve* c3; double c3a,c3b;};
-                        std::vector<Seg> segs;
-                        for(int ti:m_loops[li].trim_indices){ if(ti<0||ti>=(int)m_trims.size())continue;
-                            int c2=m_trims[ti].curve_2d_index; if(c2<0||c2>=(int)m_curves_2d.size())continue;
-                            const NurbsCurve&pc=m_curves_2d[c2];auto dc=pc.domain();
-                            const NurbsCurve* c3=nullptr; double c3a=0,c3b=0; int e=m_trims[ti].edge_index;
-                            if(e>=0&&e<(int)m_topology_edges.size()){ int c3i=m_topology_edges[e].curve_3d_index;
-                                if(c3i>=0&&c3i<(int)m_curves_3d.size()){ c3=&m_curves_3d[c3i]; auto d3=c3->domain(); c3a=d3.first; c3b=d3.second; } }
-                            segs.push_back({&pc,dc.first,dc.second,pc.point_at(dc.first),pc.point_at(dc.second),c3,c3a,c3b});}
-                        if(segs.empty())continue;
-                        std::vector<std::pair<int,bool>> order; std::vector<bool> used(segs.size(),false);
-                        order.push_back({0,true}); used[0]=true; Point tail=segs[0].pe;
-                        auto d2=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1];return dx*dx+dy*dy;};
-                        for(size_t k=1;k<segs.size();++k){int best=-1;bool fwd=true;double bd=1e300;
-                            for(size_t j=0;j<segs.size();++j){if(used[j])continue;
-                                double ds=d2(segs[j].ps,tail),de=d2(segs[j].pe,tail);
-                                if(ds<bd){bd=ds;best=(int)j;fwd=true;} if(de<bd){bd=de;best=(int)j;fwd=false;}}
-                            if(best<0)break; used[best]=true; order.push_back({best,fwd});
-                            tail=fwd?segs[best].pe:segs[best].ps;}
-                        // Sample the ordered boundary. p3s = the EXACT 3D point of each sample (from the
-                        // trim's shared 3D section curve when present); uvpts = the pullback UV point (kept
-                        // ONLY for the loop's area SIGN). Reconstructing 3D via srf.point_at along the
-                        // pullback's degree-1 UV chords puts intermediate points OFF the true circle -> an
-                        // O(1/N^2) flux deficit (box-x-sphere ~1.5e-3); the 3D curve is exact, so the
-                        // smooth-periodic ∮h dθ converges spectrally. Per-seg guard: if the c3 endpoint does
-                        // not match the pcurve endpoint (bad/absent mapping) fall back to srf.point_at.
-                        std::vector<std::array<double,2>> uvpts;
-                        std::vector<Point> p3s;
-                        double Hcorr = 0.0;
-                        auto d2p=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
-                        for(auto&od:order){const Seg&sg=segs[od.first]; bool fwd=od.second;
-                            // POLE RUN: a degenerate 3D seg spanning the FULL u-range is the chart's
-                            // pole line. theta collapses at the pole, so sampling loses the run's
-                            // true h*(+-2pi) term of the h-integral (a sphere-remainder boundary) --
-                            // add it in closed form and pin the 3D samples to the pole point so
-                            // their dtheta telescopes to ~0 instead of contributing atan2 noise at
-                            // |h|=R. Partial (seam-split) pole runs are left as-is: those faces are
-                            // already integrated correctly by the sampled formula.
-                            {
-                                Point pa3=srf.point_at(sg.ps[0],sg.ps[1]), pb3=srf.point_at(sg.pe[0],sg.pe[1]);
-                                double tmc=0.5*(sg.t0+sg.t1); Point uvm=sg.pc->point_at(tmc);
-                                Point pm3=srf.point_at(uvm[0],uvm[1]);
-                                double ext=std::max(pa3.distance(pb3), pa3.distance(pm3));
-                                double ufirst=(fwd?sg.ps:sg.pe)[0], ulast=(fwd?sg.pe:sg.ps)[0];
-                                if (ext < R*1e-7 && std::abs(ulast-ufirst) > 0.9*(su1-su0)) {
-                                    double hp=(pa3[0]-C[0])*Zs[0]+(pa3[1]-C[1])*Zs[1]+(pa3[2]-C[2])*Zs[2];
-                                    double dir=(ulast>ufirst?1.0:-1.0)*u2th;
-                                    Hcorr += hp*dir*2.0*3.14159265358979323846;
-                                    for(int s=0;s<200;++s){double f=(double)s/200.0;
-                                        double tt=fwd?sg.t0+(sg.t1-sg.t0)*f:sg.t1-(sg.t1-sg.t0)*f;
-                                        Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});
-                                        p3s.push_back(pa3); }
-                                    continue;
-                                }
-                            }
-                            bool use_c3=false, c3_rev=false;
-                            // Start-point guard tol 1e-6 (squared; ~1e-3 dist): the co_refine snap
-                            // moves shared section vertices up to the pullback's seam-interpolation
-                            // error off the pcurve endpoint, still orders below a WRONG curve (O(diag)).
-                            // Orientation CANNOT come from the start point on a CLOSED loop (start ==
-                            // end whichever way the curve runs, e.g. a reversed fuse cap trim), so it
-                            // is decided at the quarter point: co- and anti-oriented hypotheses land
-                            // diametrically apart there, and tracing c3 against the pcurve direction
-                            // flips the loop's ∮h dθ sign against its uvArea sign.
-                            if(sg.c3){ Point uvS=srf.point_at((fwd?sg.ps:sg.pe)[0],(fwd?sg.ps:sg.pe)[1]);
-                                double dsF=d2p(uvS, sg.c3->point_at(fwd?sg.c3a:sg.c3b));
-                                double dsR=d2p(uvS, sg.c3->point_at(fwd?sg.c3b:sg.c3a));
-                                // gate on EITHER endpoint: an anti-oriented OPEN arc trim puts the
-                                // pcurve start at the c3 END (dsF = the full chord) and must still
-                                // qualify - the quarter test below decides the actual direction.
-                                if(std::min(dsF,dsR) < 1e-6){
-                                    double tq=fwd?sg.t0+(sg.t1-sg.t0)*0.25:sg.t1-(sg.t1-sg.t0)*0.25;
-                                    Point uvq=sg.pc->point_at(tq);
-                                    Point uvQ=srf.point_at(uvq[0],uvq[1]);
-                                    double qf=d2p(uvQ, sg.c3->point_at(fwd?sg.c3a+(sg.c3b-sg.c3a)*0.25:sg.c3b-(sg.c3b-sg.c3a)*0.25));
-                                    double qr=d2p(uvQ, sg.c3->point_at(fwd?sg.c3b-(sg.c3b-sg.c3a)*0.25:sg.c3a+(sg.c3b-sg.c3a)*0.25));
-                                    use_c3=true; c3_rev = qr < qf;
-                                } }
-                            // An exact rational section arc costs nothing to sample densely; the open
-                            // arcs meet meridians at CORNERS, where the trapezoid ∮h dθ error is
-                            // O(dθ^2)*|jump| - n=200 floors box-x-sphere cut at ~5e-5 rel, n=4000
-                            // puts corner+arc error ~2e-7, comfortably under the 1e-6 gate.
-                            int n = (use_c3 && sg.c3->is_rational()) ? 4000 : 200;
-                            for(int s=0;s<n;++s){double f=(double)s/n;
-                                double tt=fwd?sg.t0+(sg.t1-sg.t0)*f:sg.t1-(sg.t1-sg.t0)*f;
-                                Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});
-                                if(use_c3){ bool cf=(fwd!=c3_rev);
-                                    double t3=cf?sg.c3a+(sg.c3b-sg.c3a)*f:sg.c3b-(sg.c3b-sg.c3a)*f;
-                                    p3s.push_back(sg.c3->point_at(t3)); }
-                                else p3s.push_back(srf.point_at(uv[0],uv[1])); }}
-                        if(uvpts.size()<3)continue;
-                        // close it
-                        uvpts.push_back(uvpts.front()); p3s.push_back(p3s.front());
-                        double uvArea=0.0; for(size_t i=0;i+1<uvpts.size();++i)
-                            uvArea+=uvpts[i][0]*uvpts[i+1][1]-uvpts[i+1][0]*uvpts[i][1]; uvArea*=0.5;
-                        // 3D points + integrals
-                        Vector Acc(0,0,0); double H=0.0; double prevTheta=0.0; Point prevP(0,0,0); double prevH=0.0; double wind=0.0;
-                        for(size_t i=0;i<p3s.size();++i){
-                            Point P=p3s[i];
-                            Vector d(P[0]-C[0],P[1]-C[1],P[2]-C[2]);
-                            double theta=std::atan2(dot3(d,Ys),dot3(d,Xs));
-                            double h=dot3(d,Zs);
-                            if(i>0){
-                                // vector area: 0.5 * sum P_i x P_{i+1}
-                                Acc=Vector(Acc[0]+prevP[1]*P[2]-prevP[2]*P[1],
-                                           Acc[1]+prevP[2]*P[0]-prevP[0]*P[2],
-                                           Acc[2]+prevP[0]*P[1]-prevP[1]*P[0]);
-                                const double PI=3.14159265358979323846;
-                                double dth=theta-prevTheta;
-                                while(dth> PI)dth-=2*PI; while(dth<-PI)dth+=2*PI;
-                                H += 0.5*(h+prevH)*dth; wind += dth;
-                            }
-                            prevP=P; prevTheta=theta; prevH=h;
+                if (!kind) {
+                    Point Ax; Vector Wc; double Rc = 0;
+                    if (cylinder_of_surface(srf, Ax, Wc, Rc)) {
+                        Point Q0 = srf.point_at(su0, 0.5*(sv0+sv1));
+                        Vector d0(Q0[0]-Ax[0], Q0[1]-Ax[1], Q0[2]-Ax[2]);
+                        double dz0 = dot3(d0, Wc);
+                        Vector Xc(d0[0]-dz0*Wc[0], d0[1]-dz0*Wc[1], d0[2]-dz0*Wc[2]);
+                        double xl = Xc.magnitude();
+                        if (xl > 1e-12) {
+                            kind=2; C=Ax; Zs=Wc; R=Rc;
+                            Xs=Vector(Xc[0]/xl,Xc[1]/xl,Xc[2]/xl); Ys=cross(Zs,Xs);
                         }
-                        // A loop netting a full +/-2*pi turn in longitude ENCIRCLES a sphere pole;
-                        // the Green's reduction (flux = C.A - R^2 * closed-integral h dtheta) then
-                        // gains a spurious 2*pi*R^2 pole residue and is invalid for this face.
-                        if (std::abs(wind) > 3.14159265358979323846) pole_face = true;
-                        Vector A(0.5*Acc[0],0.5*Acc[1],0.5*Acc[2]);
-                        double loopflux = (C[0]*A[0]+C[1]*A[1]+C[2]*A[2]) - R*R*(H + Hcorr);
-                        // Flux of the loop's ENCLOSED region, traversal-normalized (both loopflux
-                        // and uvArea flip together under reversal). Material side by containment of
-                        // the face's interior UV point: enclosed -> +enc, complement -> -enc (the
-                        // full-sphere term below completes the complement). Replaces the old
-                        // Outer/Inner x sign(uvArea) rule, which strips orientation and cannot
-                        // represent complement faces.
-                        double enc = (uvArea>=0?1.0:-1.0) * loopflux;
-                        bool inm = false;
-                        for(size_t i=0,j=uvpts.size()-1;i<uvpts.size();j=i++){
-                            if((uvpts[i][1]>fcv)!=(uvpts[j][1]>fcv) &&
-                               fcu < (uvpts[j][0]-uvpts[i][0])*(fcv-uvpts[i][1])/(uvpts[j][1]-uvpts[i][1])+uvpts[i][0])
-                                inm=!inm;
-                        }
-                        if (inm) any_contains = true;
-                        flux_analytic += inm ? enc : -enc;
                     }
-                    if (!any_contains) flux_analytic += full_flux;
+                }
+                if (!kind) {
+                    // torus: tube-circle centres at u0 and its antipode give the centre; a third
+                    // centre fixes the axis; verified on a grid against (rho-R, z) tube distance.
+                    double vm2 = 0.5*(sv0+sv1);
+                    auto tube_c = [&](double u){ Point a=srf.point_at(u,sv0), b=srf.point_at(u,vm2);
+                        return Point(0.5*(a[0]+b[0]),0.5*(a[1]+b[1]),0.5*(a[2]+b[2])); };
+                    Point c1=tube_c(su0), c2=tube_c(0.5*(su0+su1)), c3p=tube_c(su0+0.25*(su1-su0));
+                    Point Ct(0.5*(c1[0]+c2[0]),0.5*(c1[1]+c2[1]),0.5*(c1[2]+c2[2]));
+                    Vector a1(c1[0]-Ct[0],c1[1]-Ct[1],c1[2]-Ct[2]);
+                    Vector a3(c3p[0]-Ct[0],c3p[1]-Ct[1],c3p[2]-Ct[2]);
+                    Vector Zt = cross(a1, a3);
+                    double zl = Zt.magnitude(), Rmaj = a1.magnitude();
+                    if (zl > 1e-12 && Rmaj > 1e-9) {
+                        Zt = Vector(Zt[0]/zl, Zt[1]/zl, Zt[2]/zl);
+                        double rmin = srf.point_at(su0,sv0).distance(c1);
+                        bool is_torus = rmin > 1e-9 && rmin < Rmaj*(1.0-1e-6);
+                        for(int i=0;i<=3&&is_torus;++i)for(int j=0;j<=2&&is_torus;++j){
+                            Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/2.0);
+                            Vector w(p[0]-Ct[0],p[1]-Ct[1],p[2]-Ct[2]);
+                            double z=dot3(w,Zt);
+                            double rho=std::sqrt(std::max(0.0, dot3(w,w)-z*z));
+                            if (std::abs(std::hypot(rho-Rmaj, z)-rmin) > rmin*1e-4 + 1e-6) is_torus=false;
+                        }
+                        if (is_torus) {
+                            kind=3; C=Ct; Zs=Zt; R=Rmaj; r2=rmin;
+                            Xs=Vector(a1[0]/Rmaj,a1[1]/Rmaj,a1[2]/Rmaj); Ys=cross(Zs,Xs);
+                        }
+                    }
                 }
             }
-            // CYLINDER boundary-integral flux (exact like the sphere path). With P on the
-            // cylinder (axis point Ax, unit axis Wc, radius r): P.n dA per unit (theta,h) is
-            // (Ax.er + r)*r, a function of theta only, so Green's in the (theta,h) chart gives
-            //   flux_nat = +- closed-integral [ r^2*theta + r*((Ax.X)sin(theta) - (Ax.Y)cos(theta)) ] dh
-            // with theta UNWRAPPED along the boundary (seam runs carry the winding term; v=const
-            // circles contribute exactly 0 since dh=0 -- polyline noise there is irrelevant).
-            // EXPERIMENTAL (SESSION_CYL_FLUX): correct for simple loops but the loop TRAVERSAL is
-            // not yet robust -- at Steinmetz ellipse-crossing junctions greedy 3D chaining takes
-            // the wrong branch (half-area bowtie), and stored trim order is not loop-ordered after
-            // co_refine splices. Needs OCCT BRepGProp-style traversal driven by trim `reversed`
-            // flags. Until then the masked Gauss (NU=384) path stands for cylinders.
-            if (!have_analytic && std::getenv("SESSION_CYL_FLUX")) {
-                Point Ax; Vector Wc; double Rc = 0;
-                if (cylinder_of_surface(srf, Ax, Wc, Rc)) {
-                    auto dot3=[](const Vector&a,const Vector&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
-                    Point Q0 = srf.point_at(su0, 0.5*(sv0+sv1));
-                    Vector d0(Q0[0]-Ax[0], Q0[1]-Ax[1], Q0[2]-Ax[2]);
-                    double dz0 = dot3(d0, Wc);
-                    Vector Xc(d0[0]-dz0*Wc[0], d0[1]-dz0*Wc[1], d0[2]-dz0*Wc[2]);
-                    double xl = Xc.magnitude();
-                    if (xl > 1e-12) {
-                        Xc = Vector(Xc[0]/xl, Xc[1]/xl, Xc[2]/xl);
-                        Vector Yc = cross(Wc, Xc);
-                        double axX = Ax[0]*Xc[0]+Ax[1]*Xc[1]+Ax[2]*Xc[2];
-                        double axY = Ax[0]*Yc[0]+Ax[1]*Yc[1]+Ax[2]*Yc[2];
-                        have_analytic = true;
-                        Vector nmid = srf.normal_at(0.5*(su0+su1), 0.5*(sv0+sv1));
-                        Point pmid3 = srf.point_at(0.5*(su0+su1), 0.5*(sv0+sv1));
-                        Vector emid(pmid3[0]-Ax[0], pmid3[1]-Ax[1], pmid3[2]-Ax[2]);
-                        double ez = dot3(emid, Wc);
-                        Vector erad(emid[0]-ez*Wc[0], emid[1]-ez*Wc[1], emid[2]-ez*Wc[2]);
-                        double natout = dot3(nmid, erad);
-                        double hb0 = dot3(Vector(srf.point_at(su0,sv0)[0]-Ax[0],srf.point_at(su0,sv0)[1]-Ax[1],srf.point_at(su0,sv0)[2]-Ax[2]), Wc);
-                        double hb1 = dot3(Vector(srf.point_at(su0,sv1)[0]-Ax[0],srf.point_at(su0,sv1)[1]-Ax[1],srf.point_at(su0,sv1)[2]-Ax[2]), Wc);
-                        const double PI2 = 3.14159265358979323846;
-                        double full_flux = (natout >= 0 ? 1.0 : -1.0) * 2.0*PI2*Rc*Rc*std::abs(hb1-hb0);
-                        // chart handedness: CCW-in-UV == CCW-in-(theta,h) iff (du->dtheta)*(dv->dh) > 0
-                        double u2c; {
-                            Point q = srf.point_at(su0 + 0.05*(su1-su0), 0.5*(sv0+sv1));
-                            Vector dq(q[0]-Ax[0], q[1]-Ax[1], q[2]-Ax[2]);
-                            u2c = std::atan2(dot3(dq,Yc), dot3(dq,Xc)) >= 0 ? 1.0 : -1.0;
-                        }
-                        double chart = u2c * (hb1 >= hb0 ? 1.0 : -1.0);
-                        bool any_contains = false;
-                        for (int li : face.loop_indices) {
-                            if (li<0||li>=(int)m_loops.size()) continue;
-                            struct Seg{const NurbsCurve* pc;double t0,t1;Point ps,pe; const NurbsCurve* c3; double c3a,c3b;};
-                            std::vector<Seg> segs;
-                            for(int ti:m_loops[li].trim_indices){ if(ti<0||ti>=(int)m_trims.size())continue;
-                                int c2=m_trims[ti].curve_2d_index; if(c2<0||c2>=(int)m_curves_2d.size())continue;
-                                const NurbsCurve&pc=m_curves_2d[c2];auto dc=pc.domain();
-                                const NurbsCurve* c3=nullptr; double c3a=0,c3b=0; int e=m_trims[ti].edge_index;
-                                if(e>=0&&e<(int)m_topology_edges.size()){ int c3i=m_topology_edges[e].curve_3d_index;
-                                    if(c3i>=0&&c3i<(int)m_curves_3d.size()){ c3=&m_curves_3d[c3i]; auto d3=c3->domain(); c3a=d3.first; c3b=d3.second; } }
-                                segs.push_back({&pc,dc.first,dc.second,pc.point_at(dc.first),pc.point_at(dc.second),c3,c3a,c3b});}
-                            if(segs.empty())continue;
-                            // Traverse in STORED loop-trim order (the splitter emits boundary runs
-                            // sequentially), resolving only each seg's direction chain-wise in 3D.
-                            // Greedy re-ordering fails twice here: seam-identified ends are far
-                            // apart in UV, and at an ellipse-crossing junction (Steinmetz tangent
-                            // points) several candidates sit at distance ZERO -- greedy can take
-                            // the wrong branch and trace a half-area bowtie.
-                            std::vector<Point> s3a(segs.size()), s3b(segs.size());
-                            for(size_t j=0;j<segs.size();++j){
-                                s3a[j]=srf.point_at(segs[j].ps[0],segs[j].ps[1]);
-                                s3b[j]=srf.point_at(segs[j].pe[0],segs[j].pe[1]); }
-                            auto chain_score=[&](bool f0, std::vector<std::pair<int,bool>>& ord)->double{
-                                ord.clear(); double score=0.0; Point tail = f0 ? s3b[0] : s3a[0];
-                                ord.push_back({0,f0});
-                                for(size_t k=1;k<segs.size();++k){
-                                    double ds=tail.distance(s3a[k]), de=tail.distance(s3b[k]);
-                                    bool f = ds<=de; score += f?ds:de;
-                                    ord.push_back({(int)k,f}); tail = f ? s3b[k] : s3a[k];
-                                }
-                                score += tail.distance(f0 ? s3a[0] : s3b[0]);
-                                return score;
-                            };
-                            std::vector<std::pair<int,bool>> o1, o2, order;
-                            double sc1=chain_score(true,o1), sc2=chain_score(false,o2);
-                            order = (sc1<=sc2) ? o1 : o2;
-                            std::vector<std::array<double,2>> uvpts; std::vector<Point> p3s;
-                            auto d2p=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
-                            for(auto&od:order){const Seg&sg=segs[od.first]; bool fwd=od.second;
-                                bool use_c3=false, c3_rev=false;
-                                if(sg.c3){ Point uvS=srf.point_at((fwd?sg.ps:sg.pe)[0],(fwd?sg.ps:sg.pe)[1]);
-                                    double dsF=d2p(uvS, sg.c3->point_at(fwd?sg.c3a:sg.c3b));
-                                    double dsR=d2p(uvS, sg.c3->point_at(fwd?sg.c3b:sg.c3a));
-                                    if(std::min(dsF,dsR) < 1e-6){
-                                        double tq=fwd?sg.t0+(sg.t1-sg.t0)*0.25:sg.t1-(sg.t1-sg.t0)*0.25;
-                                        Point uvq=sg.pc->point_at(tq);
-                                        Point uvQ=srf.point_at(uvq[0],uvq[1]);
-                                        double qf=d2p(uvQ, sg.c3->point_at(fwd?sg.c3a+(sg.c3b-sg.c3a)*0.25:sg.c3b-(sg.c3b-sg.c3a)*0.25));
-                                        double qr=d2p(uvQ, sg.c3->point_at(fwd?sg.c3b-(sg.c3b-sg.c3a)*0.25:sg.c3a+(sg.c3b-sg.c3a)*0.25));
-                                        use_c3=true; c3_rev = qr < qf;
-                                    } }
-                                int n = (use_c3 && sg.c3->is_rational()) ? 4000 : 200;
-                                for(int s=0;s<n;++s){double f=(double)s/n;
-                                    double tt=fwd?sg.t0+(sg.t1-sg.t0)*f:sg.t1-(sg.t1-sg.t0)*f;
-                                    Point uv=sg.pc->point_at(tt); uvpts.push_back({uv[0],uv[1]});
-                                    if(use_c3){ bool cf=(fwd!=c3_rev);
-                                        double t3=cf?sg.c3a+(sg.c3b-sg.c3a)*f:sg.c3b-(sg.c3b-sg.c3a)*f;
-                                        p3s.push_back(sg.c3->point_at(t3)); }
-                                    else p3s.push_back(srf.point_at(uv[0],uv[1])); }}
-                            if(uvpts.size()<3)continue;
-                            p3s.push_back(p3s.front());
-                            // Everything below runs in the (theta,h) CHART, where a seam-wrapping
-                            // region is a proper closed polygon (theta unwrapped along the chain):
-                            // signed area for orientation, point-in-polygon for the material side.
-                            std::vector<std::array<double,2>> thpts;
-                            double I=0.0, prevF=0.0, prevH=0.0, prevTh=0.0; bool first=true;
-                            for(size_t i=0;i<p3s.size();++i){
-                                const Point& P=p3s[i];
-                                Vector dpt(P[0]-Ax[0], P[1]-Ax[1], P[2]-Ax[2]);
-                                double hh = dot3(dpt, Wc);
-                                double th = std::atan2(dot3(dpt,Yc), dot3(dpt,Xc));
-                                if(!first){ double dth=th-prevTh;
-                                    while(dth> PI2)dth-=2*PI2; while(dth<-PI2)dth+=2*PI2; th=prevTh+dth; }
-                                double F = Rc*Rc*th + Rc*(axX*std::sin(th) - axY*std::cos(th));
-                                if(!first) I += 0.5*(F+prevF)*(hh-prevH);
-                                thpts.push_back({th, hh});
-                                prevF=F; prevH=hh; prevTh=th; first=false;
-                            }
-                            double thArea=0.0; for(size_t i=0;i+1<thpts.size();++i)
-                                thArea+=thpts[i][0]*thpts[i+1][1]-thpts[i+1][0]*thpts[i][1]; thArea*=0.5;
-                            double enc = (thArea>=0?1.0:-1.0) * (natout>=0?1.0:-1.0) * I;
-                            Vector dm3(P3[0]-Ax[0], P3[1]-Ax[1], P3[2]-Ax[2]);
-                            double hm = dot3(dm3, Wc);
-                            double thm0 = std::atan2(dot3(dm3,Yc), dot3(dm3,Xc));
-                            bool inm=false;
-                            for(int kw=-1; kw<=1 && !inm; ++kw){
-                                double thm = thm0 + kw*2.0*PI2;
-                                bool in=false;
-                                for(size_t i=0,j=thpts.size()-1;i<thpts.size();j=i++){
-                                    if((thpts[i][1]>hm)!=(thpts[j][1]>hm) &&
-                                       thm < (thpts[j][0]-thpts[i][0])*(hm-thpts[i][1])/(thpts[j][1]-thpts[i][1])+thpts[i][0])
-                                        in=!in;
-                                }
-                                inm = in;
-                            }
-                            if (inm) any_contains = true;
-                            flux_analytic += inm ? enc : -enc;
-                        }
-                        if (!any_contains) flux_analytic += full_flux;
+            if (kind) {
+                have_analytic = true;
+                // chart handedness (u->angle, v->second coordinate) and natural-normal sign,
+                // computed once per face so transformed/mirrored primitives stay correct.
+                auto theta_of = [&](const Point& P){ Vector w(P[0]-C[0],P[1]-C[1],P[2]-C[2]);
+                    return std::atan2(dot3(w,Ys), dot3(w,Xs)); };
+                double uda = theta_of(srf.point_at(su0+0.02*(su1-su0), 0.5*(sv0+sv1)));
+                double udb = theta_of(srf.point_at(su0, 0.5*(sv0+sv1)));
+                double dth0 = uda-udb; while(dth0> PI)dth0-=2*PI; while(dth0<-PI)dth0+=2*PI;
+                double u2th = dth0 >= 0 ? 1.0 : -1.0;
+                double CX = C[0]*Xs[0]+C[1]*Xs[1]+C[2]*Xs[2];
+                double CY = C[0]*Ys[0]+C[1]*Ys[1]+C[2]*Ys[2];
+                double CZ = C[0]*Zs[0]+C[1]*Zs[1]+C[2]*Zs[2];
+                double v2h, natout;
+                {
+                    Point pa = srf.point_at(su0, sv0), pb = srf.point_at(su0, sv1);
+                    if (kind == 3) {
+                        auto vhat_of = [&](const Point& P){ Vector w(P[0]-C[0],P[1]-C[1],P[2]-C[2]);
+                            double z=dot3(w,Zs); double rho=std::sqrt(std::max(0.0,dot3(w,w)-z*z));
+                            return std::atan2(z/r2, (rho-R)/r2); };
+                        double va = vhat_of(srf.point_at(su0, sv0+0.02*(sv1-sv0)));
+                        double vb = vhat_of(pa);
+                        double dv0 = va-vb; while(dv0> PI)dv0-=2*PI; while(dv0<-PI)dv0+=2*PI;
+                        v2h = dv0 >= 0 ? 1.0 : -1.0;
+                    } else {
+                        double ha = dot3(Vector(pb[0]-C[0],pb[1]-C[1],pb[2]-C[2]), Zs);
+                        double hb = dot3(Vector(pa[0]-C[0],pa[1]-C[1],pa[2]-C[2]), Zs);
+                        v2h = (ha - hb) >= 0 ? 1.0 : -1.0;
                     }
+                    Point pm2 = srf.point_at(0.5*(su0+su1), 0.5*(sv0+sv1));
+                    Vector nm = srf.normal_at(0.5*(su0+su1), 0.5*(sv0+sv1));
+                    Vector w(pm2[0]-C[0], pm2[1]-C[1], pm2[2]-C[2]);
+                    Vector nref;
+                    if (kind == 1) nref = w;                                  // radial
+                    else if (kind == 2) { double z=dot3(w,Zs); nref = Vector(w[0]-z*Zs[0],w[1]-z*Zs[1],w[2]-z*Zs[2]); }
+                    else { double z=dot3(w,Zs); double rho=std::sqrt(std::max(1e-30,dot3(w,w)-z*z));
+                        double px=dot3(w,Xs), py=dot3(w,Ys);
+                        Vector er(( px*Xs[0]+py*Ys[0])/rho, (px*Xs[1]+py*Ys[1])/rho, (px*Xs[2]+py*Ys[2])/rho);
+                        double cvv=(rho-R)/r2, svv=z/r2;
+                        nref = Vector(cvv*er[0]+svv*Zs[0], cvv*er[1]+svv*Zs[1], cvv*er[2]+svv*Zs[2]); }
+                    natout = dot3(nm, nref) >= 0 ? 1.0 : -1.0;
+                }
+                double S = u2th * v2h * natout;   // material-left UV traversal -> natural flux sign
+
+                for (int li : face.loop_indices) {
+                    if (li<0||li>=(int)m_loops.size()) continue;
+                    // flag-ordered sample stream of the loop boundary
+                    std::vector<Point> p3s;
+                    std::vector<char> vlock;    // per-sample: 0 free, 1/2 v-locked, 3 pole run
+                    std::vector<double> pu;     // pcurve u per sample (theta source on pole runs)
+                    auto d2p=[](const Point&a,const Point&b){double dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
+                    for (int ti : m_loops[li].trim_indices) {
+                        if (ti<0||ti>=(int)m_trims.size()) continue;
+                        int c2=m_trims[ti].curve_2d_index; if(c2<0||c2>=(int)m_curves_2d.size()) continue;
+                        const NurbsCurve& pc=m_curves_2d[c2]; if(!pc.is_valid()) continue;
+                        auto dc=pc.domain();
+                        bool fwd = !m_trims[ti].reversed;
+                        Point uvS2=pc.point_at(fwd?dc.first:dc.second), uvE2=pc.point_at(fwd?dc.second:dc.first);
+                        const NurbsCurve* c3=nullptr; double c3a=0,c3b=0; int e=m_trims[ti].edge_index;
+                        if(e>=0&&e<(int)m_topology_edges.size()){ int c3i=m_topology_edges[e].curve_3d_index;
+                            if(c3i>=0&&c3i<(int)m_curves_3d.size()){ c3=&m_curves_3d[c3i]; auto d3=c3->domain(); c3a=d3.first; c3b=d3.second; } }
+                        // A v=const seg's OUTER coordinate is constant (phi/h/vhat all map from v):
+                        // LOCK it to the seg-start value so off-surface sampling jitter cannot
+                        // couple to the big theta-linear antiderivative, while theta samples still
+                        // carry the unwrap/winding through the seg.
+                        bool lock_v = false;
+                        if (std::abs(uvS2[1]-uvE2[1]) < 1e-9*(sv1-sv0)) {
+                            double tmc=0.5*(dc.first+dc.second);
+                            if (std::abs(pc.point_at(tmc)[1]-uvS2[1]) < 1e-9*(sv1-sv0)) lock_v = true;
+                        }
+                        // POLE RUN (sphere): a 3D-degenerate seg is the chart's pole line; theta
+                        // is undefined there geometrically, but the chart boundary's theta ALONG the
+                        // pole line is the pcurve's u -- carry it so the two seam runs it connects
+                        // keep their 2*pi offset (the winding term of every pole-adjacent face).
+                        if (kind == 1) {
+                            Point pa3=srf.point_at(uvS2[0],uvS2[1]), pb3=srf.point_at(uvE2[0],uvE2[1]);
+                            double tmc0=0.5*(dc.first+dc.second); Point uvm0=pc.point_at(tmc0);
+                            Point pm30=srf.point_at(uvm0[0],uvm0[1]);
+                            double ext=std::max(pa3.distance(pb3), pa3.distance(pm30));
+                            if (ext < R*1e-7) {
+                                for(int s=0;s<200;++s){ double f=(double)s/200.0;
+                                    double tt=fwd?dc.first+(dc.second-dc.first)*f:dc.second-(dc.second-dc.first)*f;
+                                    Point uv=pc.point_at(tt);
+                                    p3s.push_back(pa3); vlock.push_back(3); pu.push_back(uv[0]); }
+                                continue;
+                            }
+                        }
+                        bool use_c3=false, c3_rev=false;
+                        // Only an exact RATIONAL section arc is worth sampling directly: polyline
+                        // 3D curves lie off the surface (chord sag), and on a torus that off-surface
+                        // jitter couples to the large theta-linear antiderivative term as a random
+                        // walk (~0.5 flux on a band). Surface-evaluated pcurve samples are always
+                        // exactly on-surface. Gate on BOTH endpoints plus a midpoint sanity check:
+                        // neighbouring quarters share an endpoint and full halves share both, so a
+                        // cross-assigned edge (its curve is the OTHER arc) passes a one-endpoint
+                        // gate but sits an arc-diameter away at the middle; the pcurve fallback is
+                        // geometrically correct there.
+                        if(c3 && c3->is_rational()){
+                            Point q0=srf.point_at(uvS2[0],uvS2[1]);
+                            Point q1=srf.point_at(uvE2[0],uvE2[1]);
+                            Point ca=c3->point_at(c3a), cb=c3->point_at(c3b);
+                            bool fw_ok = d2p(q0,ca)<1e-6 && d2p(q1,cb)<1e-6;
+                            bool bw_ok = d2p(q0,cb)<1e-6 && d2p(q1,ca)<1e-6;
+                            if (fw_ok || bw_ok) {
+                                double tmq=0.5*(dc.first+dc.second); Point uvq=pc.point_at(tmq);
+                                Point pmq=srf.point_at(uvq[0],uvq[1]);
+                                Point cmq=c3->point_at(0.5*(c3a+c3b));
+                                double chord = std::max(ca.distance(cb), ca.distance(cmq)) + 1e-12;
+                                if (pmq.distance(cmq) < 0.35*chord + 1e-6) {
+                                    use_c3=true;
+                                    if (fw_ok && bw_ok) {
+                                        // closed loop: endpoints carry no direction, quarter decides
+                                        double tq=fwd?dc.first+(dc.second-dc.first)*0.25:dc.second-(dc.second-dc.first)*0.25;
+                                        Point uvq4=pc.point_at(tq);
+                                        Point uvQ=srf.point_at(uvq4[0],uvq4[1]);
+                                        double qf=d2p(uvQ, c3->point_at(fwd?c3a+(c3b-c3a)*0.25:c3b-(c3b-c3a)*0.25));
+                                        double qr=d2p(uvQ, c3->point_at(fwd?c3b-(c3b-c3a)*0.25:c3a+(c3b-c3a)*0.25));
+                                        c3_rev = qr < qf;
+                                    } else {
+                                        // open arc: cf=(fwd!=c3_rev) must walk c3a->c3b iff fw_ok
+                                        c3_rev = fw_ok ? !fwd : fwd;
+                                    }
+                                }
+                            } }
+                        int n = (use_c3 && c3->is_rational()) ? 4000 : 200;
+                        if (std::getenv("SESSION_VOL_DBG2")) {
+                            double tmq=0.5*(dc.first+dc.second); Point uvq2=pc.point_at(tmq);
+                            Point pm2=srf.point_at(uvq2[0],uvq2[1]);
+                            Point cm2 = c3 ? c3->point_at(0.5*(c3a+c3b)) : Point(0,0,0);
+                            std::fprintf(stderr,"      [KSEG] ti=%d fwd=%d use=%d rev=%d rat=%d pcm(%.3f,%.3f,%.3f) c3m(%.3f,%.3f,%.3f) d=%.3e\n",
+                                ti, fwd?1:0, use_c3?1:0, c3_rev?1:0, (c3&&c3->is_rational())?1:0,
+                                pm2[0],pm2[1],pm2[2], cm2[0],cm2[1],cm2[2], c3?pm2.distance(cm2):-1.0);
+                        }
+                        for(int s=0;s<n;++s){double f=(double)s/n;
+                            if(use_c3){ bool cf=(fwd!=c3_rev);
+                                double t3=cf?c3a+(c3b-c3a)*f:c3b-(c3b-c3a)*f;
+                                p3s.push_back(c3->point_at(t3)); }
+                            else { double tt=fwd?dc.first+(dc.second-dc.first)*f:dc.second-(dc.second-dc.first)*f;
+                                Point uv=pc.point_at(tt); p3s.push_back(srf.point_at(uv[0],uv[1])); }
+                            vlock.push_back(lock_v ? (s==0 ? 2 : 1) : 0); pu.push_back(0.0); }
+                    }
+                    if(p3s.size()<3) continue;
+                    p3s.push_back(p3s.front()); vlock.push_back(vlock.front()); pu.push_back(pu.front());
+                    // accumulate the per-kind Green boundary integral over the ordered samples
+                    double I=0.0, wind=0.0;
+                    double prevTh=0.0, prevH=0.0, prevG=0.0, lockval=0.0; bool first=true;
+                    double prev_pu = 0.0; bool prev_pole = false;
+                    for(size_t i=0;i<p3s.size();++i){
+                        const Point& P=p3s[i];
+                        Vector w(P[0]-C[0], P[1]-C[1], P[2]-C[2]);
+                        double z = dot3(w,Zs);
+                        double th;
+                        if (vlock[i] == 3) {
+                            th = first ? 0.0
+                               : (prev_pole ? prevTh + u2th*(pu[i]-prev_pu)*2.0*PI/(su1-su0)
+                                            : prevTh);
+                            if(!first) wind += th - prevTh;
+                            prev_pu = pu[i]; prev_pole = true;
+                        } else {
+                            th = std::atan2(dot3(w,Ys), dot3(w,Xs));
+                            if(!first){ double dth=th-prevTh;
+                                while(dth> PI)dth-=2*PI; while(dth<-PI)dth+=2*PI;
+                                th=prevTh+dth; wind+=dth; }
+                            prev_pole = false;
+                        }
+                        if (kind == 1) {
+                            // latitude-direction Green: G = int f dtheta with
+                            // f = (C.n + R) R^2 cos(phi); pole runs have dphi = 0 by construction,
+                            // seam runs carry the theta-winding term -- no pole special-casing.
+                            double phi = std::asin(std::max(-1.0, std::min(1.0, z / R)));
+                            if(vlock[i] == 2) lockval = phi;
+                            else if(vlock[i] == 1) phi = lockval;
+                            double cph = std::cos(phi);
+                            double G = R*R*cph*( CX*cph*std::sin(th) - CY*cph*std::cos(th)
+                                               + (CZ*std::sin(phi) + R)*th );
+                            if(!first) I += 0.5*(G+prevG)*(phi-prevH);
+                            prevG=G; prevH=phi;
+                        } else if (kind == 2) {
+                            // v=const seg: the seg's first sample sets the level (the corner step
+                            // from the previous seg is real); the rest lock to it so jitter -> 0.
+                            if(vlock[i] == 2) lockval = z;
+                            else if(vlock[i] == 1) z = lockval;
+                            double G = R*R*th + R*(CX*std::sin(th) - CY*std::cos(th));
+                            if(!first) I += 0.5*(G+prevG)*(z-prevH);
+                            prevG=G; prevH=z;
+                        } else {
+                            double rho=std::sqrt(std::max(0.0, dot3(w,w)-z*z));
+                            double cvv=(rho-R)/r2, svv=z/r2;
+                            double vh=std::atan2(svv,cvv);
+                            if(!first){ double dvh=vh-prevH;
+                                while(dvh> PI)dvh-=2*PI; while(dvh<-PI)dvh+=2*PI; vh=prevH+dvh; }
+                            if(vlock[i] == 2) lockval = vh;
+                            else if(vlock[i] == 1) vh = lockval;
+                            double ring = r2*(R + r2*cvv);
+                            double G = ring*( cvv*(CX*std::sin(th) - CY*std::cos(th))
+                                            + (CZ*svv + (R + r2*cvv)*cvv + r2*svv*svv)*th );
+                            if(!first) I += 0.5*(G+prevG)*(vh-prevH);
+                            prevG=G; prevH=vh;
+                        }
+                        prevTh=th; first=false;
+                    }
+                    if (std::getenv("SESSION_VOL_DBG2"))
+                        std::fprintf(stderr,"   [LW] li=%d kind=%d npts=%zu wind=%.4f I=%.6f\n",
+                            li, kind, p3s.size(), wind, I);
+                    flux_analytic += S * I;
                 }
             }
         }
-        // For a sphere cap-cut face (non-rectangular trim) the analytic boundary integral is exact;
-        // the masked Gauss has a ~1% region error there. Keep Gauss for rectangular trims (full
-        // sphere / equatorial band, where it is already exact) and for non-sphere curved faces.
+        // Chart integrals are exact for recognized quadrics including rectangular trims;
+        // the masked Gauss remains for pole-winding sphere loops and unrecognized surfaces.
         double gauss_val = flux_nat;
-        if (have_analytic && !curved_rect && !pole_face) flux_nat = flux_analytic;
+        if (have_analytic && !pole_face) flux_nat = flux_analytic;
         if (std::getenv("SESSION_VOL_DBG"))
             std::fprintf(stderr,"[VOLDBG] f=%ld planar=%d haveA=%d rect=%d pole=%d sign=%.0f gauss=%.6f an=%.6f\n",
                 (long)(&face-&m_faces[0]), is_planar(srf)?1:0, have_analytic?1:0, curved_rect?1:0, pole_face?1:0, sign, gauss_val, flux_analytic);

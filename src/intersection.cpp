@@ -3130,11 +3130,40 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
         double r[3] = {p[0]-C[0], p[1]-C[1], p[2]-C[2]};
         double lon = std::atan2(dot(r,Ys), dot(r,Xs));   // (-pi, pi], exact
         double h = dot(r, Zs);
-        double u = u_from_lon(lon);                       // exact NURBS u (not the linear approx)
+        double u = u_from_lon(lon);                       // table seed (linear-interp ~1e-4)
+        // Newton-polish: the interp error displaces the boundary ALONG the surface, which the
+        // boundary-integral volume feels directly; two steps reach machine precision.
+        for (int np = 0; np < 2; ++np) {
+            double du_ = range_u * 1e-7;
+            double uc = std::min(std::max(u, u0), u1);
+            Point pc0 = srf.point_at(uc, vm);
+            double rc0[3]={pc0[0]-C[0],pc0[1]-C[1],pc0[2]-C[2]};
+            double g0 = std::atan2(dot(rc0,Ys), dot(rc0,Xs)) - lon;
+            while (g0 >  PI) g0 -= TWO_PI; while (g0 < -PI) g0 += TWO_PI;
+            Point pc1 = srf.point_at(std::min(uc+du_, u1), vm);
+            double rc1[3]={pc1[0]-C[0],pc1[1]-C[1],pc1[2]-C[2]};
+            double g1 = std::atan2(dot(rc1,Ys), dot(rc1,Xs)) - lon;
+            while (g1 >  PI) g1 -= TWO_PI; while (g1 < -PI) g1 += TWO_PI;
+            double dg = (g1 - g0) / du_;
+            if (std::abs(dg) < 1e-12) break;
+            u = std::min(std::max(uc - g0/dg, u0), u1);
+        }
+        double v = v_from_height(h);
+        for (int np = 0; np < 2; ++np) {
+            double dv_ = (v1 - v0) * 1e-7;
+            double vc2 = std::min(std::max(v, std::min(v0,v1)), std::max(v0,v1));
+            Point qc0 = srf.point_at(um, vc2);
+            double g0 = (qc0[0]-C[0])*Zs[0]+(qc0[1]-C[1])*Zs[1]+(qc0[2]-C[2])*Zs[2] - h;
+            Point qc1 = srf.point_at(um, std::min(vc2+dv_, std::max(v0,v1)));
+            double g1 = (qc1[0]-C[0])*Zs[0]+(qc1[1]-C[1])*Zs[1]+(qc1[2]-C[2])*Zs[2] - h;
+            double dg = (g1 - g0) / dv_;
+            if (std::abs(dg) < 1e-12) break;
+            v = std::min(std::max(vc2 - g0/dg, std::min(v0,v1)), std::max(v0,v1));
+        }
         if (i > 0) { while (u - prev_u >  range_u*0.5) u -= range_u;
                      while (u - prev_u < -range_u*0.5) u += range_u; }
         prev_u = u;
-        uv.push_back({u, v_from_height(h)});
+        uv.push_back({u, v});
     }
     if (uv.size() < 2) return {};
     // Split the continuous (u,v) polyline into arcs by "domain copy" index k = floor((u-u0)/range).
@@ -3235,6 +3264,22 @@ static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
         double lon = (rad > 1e-12) ? std::atan2(dot(r,Yc), dot(r,Xc)) : prev_lon;
         prev_lon = lon;
         double u = u_from_lon(lon);
+        // Newton-polish the table inversion (see sphere pullback).
+        if (rad > 1e-12) for (int np = 0; np < 2; ++np) {
+            double du_ = range_u * 1e-7;
+            double uc = std::min(std::max(u, u0), u1);
+            Point pc0 = srf.point_at(uc, v_ref);
+            double rc0[3]={pc0[0]-A[0],pc0[1]-A[1],pc0[2]-A[2]};
+            double g0 = std::atan2(dot(rc0,Yc), dot(rc0,Xc)) - lon;
+            while (g0 >  PI) g0 -= TWO_PI; while (g0 < -PI) g0 += TWO_PI;
+            Point pc1 = srf.point_at(std::min(uc+du_, u1), v_ref);
+            double rc1[3]={pc1[0]-A[0],pc1[1]-A[1],pc1[2]-A[2]};
+            double g1 = std::atan2(dot(rc1,Yc), dot(rc1,Xc)) - lon;
+            while (g1 >  PI) g1 -= TWO_PI; while (g1 < -PI) g1 += TWO_PI;
+            double dg = (g1 - g0) / du_;
+            if (std::abs(dg) < 1e-12) break;
+            u = std::min(std::max(uc - g0/dg, u0), u1);
+        }
         if (i > 0) { while (u - prev_u >  range_u*0.5) u -= range_u;
                      while (u - prev_u < -range_u*0.5) u += range_u; }
         prev_u = u;

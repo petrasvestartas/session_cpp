@@ -144,6 +144,12 @@ public:
     /// Return true if the BRep forms a closed (watertight) solid.
     bool is_solid() const;
 
+    /// Validate the trim-orientation invariant (OCCT contract): within each loop the trims,
+    /// traversed with their `reversed` flags applied, chain head-to-tail and close; where the
+    /// loop does not jump a periodic seam, its signed UV area matches its type (outer CCW,
+    /// inner CW). Returns the number of violations; prints them when `verbose`.
+    int check_trim_orientation(bool verbose = false) const;
+
     /// Volume enclosed by the (closed) BRep via the divergence theorem over the
     /// tessellated boundary (signed tetrahedra). Exact for planar-faced solids;
     /// converges with mesh resolution for curved faces.
