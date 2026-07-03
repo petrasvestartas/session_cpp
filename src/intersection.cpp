@@ -2626,6 +2626,111 @@ static bool build_exact_plane_cone_ellipse(const V3& o, const V3& nu, const V3& 
     c3 = exact_ellipse(cc[0], cc[1], cc[2], major, m, semi_major, semi_minor);
     return true;
 }
+// Single-Bezier exact conic arc: rational quadratic through endpoints A,B with the
+// tangent-intersection mid CV T and weight wmid (circle/ellipse w<1, parabola w=1,
+// hyperbola w>1).
+static NurbsCurve conic_bezier(const V3& A, const V3& T, const V3& B, double wmid) {
+    NurbsCurve crv(3, true, 3, 3);
+    double knots[4] = {0, 0, 1, 1};
+    for (int i = 0; i < 4; i++) crv.set_nurbsknot(i, knots[i]);
+    crv.set_cv_4d(0, A[0], A[1], A[2], 1.0);
+    crv.set_cv_4d(1, T[0]*wmid, T[1]*wmid, T[2]*wmid, wmid);
+    crv.set_cv_4d(2, B[0], B[1], B[2], 1.0);
+    crv.set_domain(0.0, 1.0);
+    return crv;
+}
+
+// Exact plane-cone HYPERBOLA / PARABOLA arc (IntAna_QuadQuadGeo.cxx:752-953 port).
+// axey = nu x w is perpendicular to the axis, so the axial coordinate along the conic
+// is even in the curve parameter: the piece inside the cone's axial extent [0,H] is a
+// SYMMETRIC arc, its tangent intersection lies on the axex line, and the exact weight
+// is cosh(t1) for the hyperbola (conic analogue of the circular arc's cos(theta/2))
+// and 1 for the parabola. Candidate center/branch signs are enumerated and the arc
+// verified on BOTH surfaces, so a sign convention mismatch cannot corrupt the result.
+static bool build_exact_plane_cone_open(const V3& o, const V3& nu, const V3& V, const V3& w,
+                                        double alpha, double H, bool parabola, NurbsCurve& c3) {
+    double cosa = std::cos(alpha), sina = std::sin(alpha), ta = std::tan(alpha);
+    double na = nu[0]*w[0] + nu[1]*w[1] + nu[2]*w[2];
+    double cost = std::abs(na);
+    V3 axey = ssi_cross(nu, w);
+    double sint = std::sqrt(axey[0]*axey[0] + axey[1]*axey[1] + axey[2]*axey[2]);
+    if (sint < 1e-12) return false;
+    axey = V3{axey[0]/sint, axey[1]/sint, axey[2]/sint};
+    V3 axex = ssi_cross(axey, nu);
+    double axw = axex[0]*w[0] + axex[1]*w[1] + axex[2]*w[2];
+    if (axw < 0) { axex = V3{-axex[0], -axex[1], -axex[2]}; axw = -axw; }
+    if (axw < 1e-12) return false;
+    double D0 = (V[0]-o[0])*nu[0] + (V[1]-o[1])*nu[1] + (V[2]-o[2])*nu[2];
+    double tol = 1e-6 * std::max(1.0, H);
+    auto on_both = [&](const NurbsCurve& c) {
+        for (int i = 0; i <= 16; ++i) {
+            Point q = c.point_at(i/16.0);
+            double dp = std::abs((q[0]-o[0])*nu[0] + (q[1]-o[1])*nu[1] + (q[2]-o[2])*nu[2]);
+            double zz = (q[0]-V[0])*w[0] + (q[1]-V[1])*w[1] + (q[2]-V[2])*w[2];
+            double wx = q[0]-V[0]-zz*w[0], wy = q[1]-V[1]-zz*w[1], wz = q[2]-V[2]-zz*w[2];
+            double rho = std::sqrt(wx*wx + wy*wy + wz*wz);
+            if (dp > tol || std::abs(rho - ta*zz) > tol*(1.0+ta)) return false;
+            if (zz < -tol || zz > H + tol) return false;
+        }
+        return true;
+    };
+    if (parabola) {
+        if (cost < 1e-12) return false;
+        double sax = -D0/na;
+        V3 cen{V[0]+sax*w[0], V[1]+sax*w[1], V[2]+sax*w[2]};
+        double distance = std::abs(sax);
+        double dc = 0.5*distance/cosa;
+        double pf = dc*sina*sina;
+        if (pf < 1e-15) return false;
+        for (int cs : {-1, +1}) {
+            V3 C2{cen[0]+cs*dc*axex[0], cen[1]+cs*dc*axex[1], cen[2]+cs*dc*axex[2]};
+            double zc = (C2[0]-V[0])*w[0] + (C2[1]-V[1])*w[1] + (C2[2]-V[2])*w[2];
+            double t1s = 2.0*pf*(H - zc)/axw;
+            if (t1s <= 0) continue;
+            double t1 = std::sqrt(t1s), xi = t1s/(2.0*pf);
+            V3 A{C2[0]+xi*axex[0]-t1*axey[0], C2[1]+xi*axex[1]-t1*axey[1], C2[2]+xi*axex[2]-t1*axey[2]};
+            V3 B{C2[0]+xi*axex[0]+t1*axey[0], C2[1]+xi*axex[1]+t1*axey[1], C2[2]+xi*axex[2]+t1*axey[2]};
+            V3 T{C2[0]-xi*axex[0], C2[1]-xi*axex[1], C2[2]-xi*axex[2]};
+            NurbsCurve arc = conic_bezier(A, T, B, 1.0);
+            if (arc.is_valid() && on_both(arc)) { c3 = arc; return true; }
+        }
+        return false;
+    }
+    double a = 0, b = 0;
+    std::vector<V3> centers;
+    if (cost < 1e-6) {
+        a = std::abs(D0)/ta; b = std::abs(D0);
+        centers.push_back(V3{V[0]-D0*nu[0], V[1]-D0*nu[1], V[2]-D0*nu[2]});
+    } else {
+        double dd = sina*sina - cost*cost;
+        if (dd < 1e-12) return false;
+        double sax = -D0/na;
+        V3 cen{V[0]+sax*w[0], V[1]+sax*w[1], V[2]+sax*w[2]};
+        double distance = std::abs(sax);
+        double dc = sint*sina*sina*distance/dd;
+        a = cost*sina*cosa*distance/dd;
+        b = cost*sina*distance/std::sqrt(dd);
+        centers.push_back(V3{cen[0]-dc*axex[0], cen[1]-dc*axex[1], cen[2]-dc*axex[2]});
+        centers.push_back(V3{cen[0]+dc*axex[0], cen[1]+dc*axex[1], cen[2]+dc*axex[2]});
+    }
+    if (a < 1e-15 || b < 1e-15) return false;
+    for (const V3& C2 : centers) {
+        double zc = (C2[0]-V[0])*w[0] + (C2[1]-V[1])*w[1] + (C2[2]-V[2])*w[2];
+        for (int sg : {+1, -1}) {
+            double ch = (H - zc)/(sg*a*axw);
+            if (ch <= 1.0 + 1e-12) continue;
+            double sh = std::sqrt(ch*ch - 1.0);
+            double xi = sg*a*ch, xt = sg*a/ch;
+            V3 A{C2[0]+xi*axex[0]-b*sh*axey[0], C2[1]+xi*axex[1]-b*sh*axey[1], C2[2]+xi*axex[2]-b*sh*axey[2]};
+            V3 B{C2[0]+xi*axex[0]+b*sh*axey[0], C2[1]+xi*axex[1]+b*sh*axey[1], C2[2]+xi*axex[2]+b*sh*axey[2]};
+            V3 T{C2[0]+xt*axex[0], C2[1]+xt*axex[1], C2[2]+xt*axex[2]};
+            NurbsCurve arc = conic_bezier(A, T, B, ch);
+            if (arc.is_valid() && on_both(arc)) { c3 = arc; return true; }
+        }
+    }
+    return false;
+}
+
 static void sample_plane_cone_arcs(const V3& apex, const V3& w, const V3& e1, const V3& e2,
                                    double na, double pP, double qP, double D0, double ta, double H,
                                    std::vector<std::vector<Point>>& runs, bool& closed) {
@@ -2747,10 +2852,16 @@ static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone,
         if (build_exact_plane_cone_ellipse(o, nu, V, w, alpha, ell) &&
             conic_within_cone(ell, V, w, H)) { out.push_back(ell); return true; }
     }
+    if (is_parabola || is_hyperbola) {
+        NurbsCurve arc;
+        bool okx = build_exact_plane_cone_open(o, nu, V, w, alpha, H, is_parabola, arc);
+        if (std::getenv("SESSION_PCONE_DBG"))
+            std::fprintf(stderr, "[PCONE] parab=%d hyp=%d cost=%.3e ok=%d\n", is_parabola?1:0, is_hyperbola?1:0, std::abs(na), okx?1:0);
+        if (okx) { out.push_back(arc); return true; }
+    }
     std::vector<std::vector<Point>> runs; bool closed = false;
     sample_plane_cone_arcs(V, w, e1, e2, na, pP, qP, D0, ta, H, runs, closed);
     for (auto& r : runs) { NurbsCurve c = fit_conic_arc(r); if (c.is_valid()) out.push_back(c); }
-    (void)is_parabola; (void)is_hyperbola;
     return true;
 }
 

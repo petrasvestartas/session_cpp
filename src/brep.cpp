@@ -1018,6 +1018,7 @@ int BRep::check_trim_orientation(bool verbose) const {
     return violations;
 }
 
+
 double BRep::volume() const {
     // Divergence theorem: V = (1/3) sum_faces flux_outward, flux = integral of S . n_out dA.
     // This is made independent of stored orientation flags (which differ between primitive
@@ -1233,6 +1234,19 @@ double BRep::volume() const {
             // flux_nat = integral S . N_nat dA = (Q . N_nat) * area
             double qn = P3[0]*Nnat[0] + P3[1]*Nnat[1] + P3[2]*Nnat[2];
             flux_nat = qn * area;
+            // Supporting-plane outward sign: when the whole solid lies on one side of this
+            // face's plane (box/cylinder caps, coplanar boolean fragments), the outward
+            // normal is the empty side -- exact and ray-free. The 3-ray vote stays as the
+            // fallback for interior walls, where its rays cannot graze a tangent surface
+            // beyond the plane.
+            double dmax = -1e300, dmin = 1e300;
+            for (const auto& vq : m_vertices) {
+                double d = (vq[0]-P3[0])*Nnat[0] + (vq[1]-P3[1])*Nnat[1] + (vq[2]-P3[2])*Nnat[2];
+                dmax = std::max(dmax, d); dmin = std::min(dmin, d);
+            }
+            double tol_sup = (diag > 0 ? diag : 1.0) * 1e-7;
+            if (dmax <= tol_sup) sign = 1.0;        // material on -Nnat side: natural is outward
+            else if (dmin >= -tol_sup) sign = -1.0; // material on +Nnat side: natural is inward
         } else {
             // Trim UV bounding box AND the trim loops as UV polygons (so a non-rectangular trim --
             // a circular sphere cap, or a band with circular holes -- integrates over the actual
@@ -3920,7 +3934,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     result.name = "boolean";
 
     // A 3D point strictly inside face fi of X (CDT the UV trim region, centroid of a triangle).
-    auto face_sample = [&](const BRep& X, int fi) -> Point {
+    auto face_sample = [&](const BRep& X, int fi, double* ou = nullptr, double* ov = nullptr) -> Point {
         const auto& face = X.m_faces[fi];
         const NurbsSurface& srf = X.m_surfaces[face.surface_index];
         std::vector<Polyline> outers, inners;
@@ -3945,6 +3959,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         }
         auto fallback = [&]() {
             auto [u0,u1] = srf.domain(0); auto [v0,v1] = srf.domain(1);
+            if (ou) *ou = 0.5*(u0+u1); if (ov) *ov = 0.5*(v0+v1);
             return srf.point_at(0.5*(u0+u1), 0.5*(v0+v1));
         };
         if (outers.empty()) return fallback();
@@ -3970,28 +3985,66 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         const auto& t = tris[best];
         double cu = (flat[t[0]][0] + flat[t[1]][0] + flat[t[2]][0]) / 3.0;
         double cv = (flat[t[0]][1] + flat[t[1]][1] + flat[t[2]][1]) / 3.0;
+        if (ou) *ou = cu; if (ov) *ov = cv;
         return srf.point_at(cu, cv);
     };
 
     // Classify each imprinted fragment inside/outside the other solid, select per op.
+    // Same-domain (ON) pieces -- a fragment lying ON the other solid's boundary, e.g. a
+    // coplanar cone base on a box face -- follow OCCT's BOPAlgo_BOP rules: the pair decision
+    // is made once on the A side (FUSE/COMMON keep A's copy iff the outward normals agree,
+    // CUT keeps A's copy iff they oppose) and the B copy is always dropped. Detection is by
+    // probing containment a step along the face normal to BOTH sides: a regular fragment
+    // answers the same on both sides, an ON fragment straddles.
+    double on_eps;
+    {
+        double xmn=1e300,ymn=1e300,zmn=1e300,xmx=-1e300,ymx=-1e300,zmx=-1e300;
+        for (const auto& q : m_vertices) { xmn=std::min(xmn,q[0]); ymn=std::min(ymn,q[1]); zmn=std::min(zmn,q[2]);
+            xmx=std::max(xmx,q[0]); ymx=std::max(ymx,q[1]); zmx=std::max(zmx,q[2]); }
+        double dg = std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
+        on_eps = (dg > 0 ? dg : 1.0) * 2e-3;
+    }
     std::vector<int> keptA, keptB; std::vector<bool> revB;
     auto classify = [&](const BRep& X2, const BRep& solid, const Mesh& solid_mesh,
-                        const PrimSolid& prim, bool is_first,
+                        const PrimSolid& prim, const BRep& own, const Mesh& own_mesh,
+                        const PrimSolid& own_prim, bool is_first,
                         std::vector<int>& kept, std::vector<bool>* rev) {
+        auto in_other = [&](const Point& q) {
+            return prim.kind ? inside_prim(prim, q, prim.tol) : solid.contains_point(solid_mesh, q);
+        };
+        auto in_own = [&](const Point& q) {
+            return own_prim.kind ? inside_prim(own_prim, q, own_prim.tol) : own.contains_point(own_mesh, q);
+        };
         for (int fi = 0; fi < (int)X2.m_faces.size(); ++fi) {
             if (X2.m_faces[fi].surface_index < 0) continue;
-            Point sp = face_sample(X2, fi);
-            bool inside = prim.kind ? inside_prim(prim, sp, prim.tol)
-                                    : solid.contains_point(solid_mesh, sp);
+            double cu = 0, cv2 = 0;
+            Point sp = face_sample(X2, fi, &cu, &cv2);
+            Vector nr = X2.m_surfaces[X2.m_faces[fi].surface_index].normal_at(cu, cv2);
+            double nl = nr.magnitude();
+            Point pp2(sp[0]+on_eps*nr[0]/(nl>1e-12?nl:1.0), sp[1]+on_eps*nr[1]/(nl>1e-12?nl:1.0), sp[2]+on_eps*nr[2]/(nl>1e-12?nl:1.0));
+            Point pm2(sp[0]-on_eps*nr[0]/(nl>1e-12?nl:1.0), sp[1]-on_eps*nr[1]/(nl>1e-12?nl:1.0), sp[2]-on_eps*nr[2]/(nl>1e-12?nl:1.0));
+            bool in_p = nl > 1e-12 && in_other(pp2);
+            bool in_m = nl > 1e-12 && in_other(pm2);
             bool keep = false, r = false;
-            if (op == BooleanOp::Union) keep = !inside;
-            else if (op == BooleanOp::Intersection) keep = inside;
-            else { if (is_first) keep = !inside; else { keep = inside; r = true; } }
+            if (nl > 1e-12 && in_p != in_m) {
+                // ON piece: orient nr outward via the OWN solid, then compare with the side
+                // the other solid occupies.
+                bool own_p = in_own(pp2);
+                bool same_orient = own_p ? in_p : in_m;   // other occupies this face's inner side
+                if (op == BooleanOp::Union)             keep = is_first && same_orient;
+                else if (op == BooleanOp::Intersection) keep = is_first && same_orient;
+                else                                    keep = is_first && !same_orient;
+            } else {
+                bool inside = in_other(sp);
+                if (op == BooleanOp::Union) keep = !inside;
+                else if (op == BooleanOp::Intersection) keep = inside;
+                else { if (is_first) keep = !inside; else { keep = inside; r = true; } }
+            }
             if (keep) { kept.push_back(fi); if (rev) rev->push_back(r); }
         }
     };
-    classify(A2, other, meshB, primB, true, keptA, nullptr);
-    classify(B2, *this, meshA, primA, false, keptB, &revB);   lap("classify");
+    classify(A2, other, meshB, primB, *this, meshA, primA, true, keptA, nullptr);
+    classify(B2, *this, meshA, primA, other, meshB, primB, false, keptB, &revB);   lap("classify");
 
     // Select faces WITH their already-mated topology (subset preserves shared edges), then
     // combine the two sides and sew only the A<->B intersection edges. This keeps each
