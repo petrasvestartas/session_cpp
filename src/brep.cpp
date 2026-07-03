@@ -2271,12 +2271,37 @@ void BRep::imprint_edges(double tol) {
             if (si >= 0 && si < (int)m_surfaces.size() && c2 >= 0 && c2 < (int)m_curves_2d.size()) {
                 const NurbsSurface& S = m_surfaces[si];
                 NurbsCurve P = m_curves_2d[c2];
+                // branch-free split param (see co_refine splice): project the 3D split point
+                // onto the pcurve's surface image, never through Closest's principal branch.
+                auto param_near_3d = [&](const NurbsCurve& P2, const NurbsSurface& S2, const Point& V) -> double {
+                    auto pd = P2.domain(); int M = std::max(64, P2.cv_count()*4);
+                    double bt = pd.first, bd = 1e300; Point prev3(0,0,0); double prevt = pd.first;
+                    for (int i2 = 0; i2 <= M; ++i2) {
+                        double t = pd.first + (pd.second - pd.first)*i2/M;
+                        Point uv = P2.point_at(t); Point q = S2.point_at(uv[0], uv[1]);
+                        if (i2 > 0) {
+                            double ex=q[0]-prev3[0], ey=q[1]-prev3[1], ez=q[2]-prev3[2];
+                            double L2=ex*ex+ey*ey+ez*ez;
+                            double lam=(L2>1e-30)?((V[0]-prev3[0])*ex+(V[1]-prev3[1])*ey+(V[2]-prev3[2])*ez)/L2:0.0;
+                            lam=std::min(std::max(lam,0.0),1.0);
+                            double cx=prev3[0]+lam*ex, cy=prev3[1]+lam*ey, cz=prev3[2]+lam*ez;
+                            double d=(V[0]-cx)*(V[0]-cx)+(V[1]-cy)*(V[1]-cy)+(V[2]-cz)*(V[2]-cz);
+                            if (d<bd){ bd=d; bt=prevt+lam*(t-prevt); }
+                        }
+                        prev3=q; prevt=t;
+                    }
+                    auto d3at = [&](double t){ Point uv=P2.point_at(t); Point q=S2.point_at(uv[0],uv[1]);
+                        double dx=q[0]-V[0], dy=q[1]-V[1], dz=q[2]-V[2]; return dx*dx+dy*dy+dz*dz; };
+                    double lo = std::max(pd.first,  bt - (pd.second-pd.first)/M);
+                    double hi = std::min(pd.second, bt + (pd.second-pd.first)/M);
+                    for (int it = 0; it < 80 && hi-lo > 1e-14*(pd.second-pd.first); ++it) {
+                        double m1 = lo + (hi-lo)/3, m2 = hi - (hi-lo)/3;
+                        if (d3at(m1) < d3at(m2)) hi = m2; else lo = m1;
+                    }
+                    return 0.5*(lo+hi);
+                };
                 std::vector<double> tps;
-                for (auto& s : splits) {
-                    auto [uu, vv, dd] = Closest::surface_point(S, s.V);
-                    double tp = P.closest_parameter(Point(uu, vv, 0.0));
-                    tps.push_back(tp);
-                }
+                for (auto& s : splits) tps.push_back(param_near_3d(P, S, s.V));
                 p2pieces = split_multi(P, tps);
             }
             bool ok = ((int)p2pieces.size() == (int)edge_ids.size());
@@ -2858,9 +2883,41 @@ void BRep::co_refine_coincident_edges(double tol) {
                     }
                 } else if (c2>=0 && c2<(int)m_curves_2d.size()) {
                     NurbsCurve P=m_curves_2d[c2];
+                    // Split param via the SURFACE-MAPPED pcurve, not Closest::surface_point:
+                    // near a periodic seam Closest clamps u to the principal branch boundary,
+                    // closest_parameter then lands at a domain end, the split fails or lands
+                    // 1e-2 off, and the ok=false path below binds the WHOLE pcurve to piece 0
+                    // (the cross-assigned-edge corruption). Projecting the 3D split point onto
+                    // the pcurve's own 3D image is branch-free and exact for polyline pcurves.
+                    auto param_near_3d = [&](const NurbsCurve& P2, const NurbsSurface& S2, const Point& V) -> double {
+                        auto pd = P2.domain(); int M = std::max(64, P2.cv_count()*4);
+                        double bt = pd.first, bd = 1e300; Point prev3(0,0,0); double prevt = pd.first;
+                        for (int i2 = 0; i2 <= M; ++i2) {
+                            double t = pd.first + (pd.second - pd.first)*i2/M;
+                            Point uv = P2.point_at(t); Point q = S2.point_at(uv[0], uv[1]);
+                            if (i2 > 0) {
+                                double ex=q[0]-prev3[0], ey=q[1]-prev3[1], ez=q[2]-prev3[2];
+                                double L2=ex*ex+ey*ey+ez*ez;
+                                double lam=(L2>1e-30)?((V[0]-prev3[0])*ex+(V[1]-prev3[1])*ey+(V[2]-prev3[2])*ez)/L2:0.0;
+                                lam=std::min(std::max(lam,0.0),1.0);
+                                double cx=prev3[0]+lam*ex, cy=prev3[1]+lam*ey, cz=prev3[2]+lam*ez;
+                                double d=(V[0]-cx)*(V[0]-cx)+(V[1]-cy)*(V[1]-cy)+(V[2]-cz)*(V[2]-cz);
+                                if (d<bd){ bd=d; bt=prevt+lam*(t-prevt); }
+                            }
+                            prev3=q; prevt=t;
+                        }
+                        auto d3at = [&](double t){ Point uv=P2.point_at(t); Point q=S2.point_at(uv[0],uv[1]);
+                            double dx=q[0]-V[0], dy=q[1]-V[1], dz=q[2]-V[2]; return dx*dx+dy*dy+dz*dz; };
+                        double lo = std::max(pd.first,  bt - (pd.second-pd.first)/M);
+                        double hi = std::min(pd.second, bt + (pd.second-pd.first)/M);
+                        for (int it = 0; it < 80 && hi-lo > 1e-14*(pd.second-pd.first); ++it) {
+                            double m1 = lo + (hi-lo)/3, m2 = hi - (hi-lo)/3;
+                            if (d3at(m1) < d3at(m2)) hi = m2; else lo = m1;
+                        }
+                        return 0.5*(lo+hi);
+                    };
                     std::vector<double> tps;
-                    for (const Point& V : ipts){ auto [uu,vv,dd]=Closest::surface_point(S,V); (void)dd;
-                        tps.push_back(P.closest_parameter(Point(uu,vv,0.0))); }
+                    for (const Point& V : ipts) tps.push_back(param_near_3d(P, S, V));
                     p2 = split_multi(P, tps);
                     if (do_wrap && (int)p2.size()>=2){ auto w2=NurbsCurve::join({p2.back(),p2.front()}, tol);
                         if(w2.size()==1 && w2[0].is_valid()){ std::vector<NurbsCurve> a2(p2.begin()+1,p2.end()-1);
@@ -2999,7 +3056,151 @@ void BRep::co_refine_coincident_edges(double tol) {
             }
         };
         int ne2 = (int)m_topology_edges.size();
-        int n_pair = 0, n_solo = 0, n_arc1 = 0, n_arc2 = 0;
+        // SameParameter guard (OCCT invariant): an edge whose 3D curve does not geometrically
+        // span what its trims' pcurves span (a cross-assigned or stale curve, e.g. a sub-tol
+        // sliver left at a near-duplicate split event) poisons every consumer -- the volume
+        // c3 gate falls back to the sagging pcurve lift, sew mismatches, meshing tears.
+        // Detect by endpoint+midpoint mismatch against the first trim's surface-mapped pcurve
+        // and re-lift the 3D curve from that pcurve; the conic sweep below then upgrades the
+        // re-lift to the exact arc whenever it inscribes a registered conic.
+        int n_relift = 0;
+        for (int e2 = 0; e2 < ne2; ++e2) {
+            if (m_topology_edges[e2].trim_indices.empty()) continue;
+            int c = m_topology_edges[e2].curve_3d_index;
+            if (c < 0 || c >= (int)m_curves_3d.size()) continue;
+            const NurbsCurve& cv = m_curves_3d[c];
+            if (!cv.is_valid()) continue;
+            int ti = m_topology_edges[e2].trim_indices[0];
+            if (ti < 0 || ti >= (int)m_trims.size()) continue;
+            int pci = m_trims[ti].curve_2d_index;
+            int l = m_trims[ti].loop_index; if (l < 0 || l >= (int)m_loops.size()) continue;
+            int f = m_loops[l].face_index; if (f < 0 || f >= (int)m_faces.size()) continue;
+            int si = m_faces[f].surface_index;
+            if (pci < 0 || pci >= (int)m_curves_2d.size() || si < 0 || si >= (int)m_surfaces.size()) continue;
+            const NurbsCurve& pc = m_curves_2d[pci];
+            const NurbsSurface& srf = m_surfaces[si];
+            auto dc = pc.domain();
+            Point uv0 = pc.point_at(dc.first), uv1 = pc.point_at(dc.second), uvm = pc.point_at(0.5*(dc.first+dc.second));
+            Point q0 = srf.point_at(uv0[0], uv0[1]), q1 = srf.point_at(uv1[0], uv1[1]), qm = srf.point_at(uvm[0], uvm[1]);
+            auto d3 = cv.domain();
+            Point ca = cv.point_at(d3.first), cb = cv.point_at(d3.second);
+            double dfw = std::max(q0.distance(ca), q1.distance(cb));
+            double dbw = std::max(q0.distance(cb), q1.distance(ca));
+            double dm = 1e300, dmt = d3.first;
+            const int MK = 128;
+            for (int k = 0; k <= MK; ++k) {
+                double t = d3.first + (d3.second-d3.first)*k/MK;
+                double d = qm.distance(cv.point_at(t));
+                if (d < dm) { dm = d; dmt = t; }
+            }
+            {   // refine: coarse samples on a long curve overestimate by half the spacing,
+                // which false-flags exact circles as mismatched
+                double lo = std::max(d3.first,  dmt - (d3.second-d3.first)/MK);
+                double hi = std::min(d3.second, dmt + (d3.second-d3.first)/MK);
+                for (int it = 0; it < 60 && hi-lo > 1e-14*(d3.second-d3.first); ++it) {
+                    double m1 = lo + (hi-lo)/3, m2 = hi - (hi-lo)/3;
+                    if (qm.distance(cv.point_at(m1)) < qm.distance(cv.point_at(m2))) hi = m2; else lo = m1;
+                }
+                dm = std::min(dm, qm.distance(cv.point_at(0.5*(lo+hi))));
+            }
+            if (std::min(dfw, dbw) < ptol && dm < ptol) continue;   // curve spans the trim: OK
+            int NL = 64;
+            std::vector<Point> lp; lp.reserve(NL+1);
+            for (int k = 0; k <= NL; ++k) {
+                Point uv = pc.point_at(dc.first + (dc.second-dc.first)*k/NL);
+                lp.push_back(srf.point_at(uv[0], uv[1]));
+            }
+            NurbsCurve nl = NurbsCurve::create(false, 1, lp);
+            if (!nl.is_valid()) continue;
+            m_curves_3d.push_back(nl);
+            m_topology_edges[e2].curve_3d_index = (int)m_curves_3d.size() - 1;
+            ++n_relift;
+        }
+        // Conic registry: derive each surface-pair section conic ONCE (from any coincident arc
+        // pair or any 2-trim arc), then upgrade EVERY inscribed polyline arc through its OWN
+        // snapped endpoints. Forcing a pair onto shared endpoints is wrong when the two sides
+        // were split at different events (A's seam vs B's seam, ~1e-2 apart): each face's
+        // boundary must pass through ITS OWN junctions; the pave engine mates the sides later.
+        struct ConicRec { Point C; Vector E1, E2, N; double A, B; };
+        std::vector<ConicRec> conics;
+        auto reg_conic = [&](const Point& C2, const Vector& E1, const Vector& E2, const Vector& N2, double A2, double B2) {
+            for (const auto& g : conics)
+                if (g.C.distance(C2) < 1e-9 && std::abs(g.A-A2) < 1e-9 && std::abs(g.B-B2) < 1e-9
+                    && std::abs(g.N[0]*N2[0]+g.N[1]*N2[1]+g.N[2]*N2[2]) > 1.0-1e-9) return;
+            conics.push_back({C2, E1, E2, N2, A2, B2});
+        };
+        // sphere-sphere radical circle / equal-radius crossing cylinders' BOTH Steinmetz
+        // ellipses; the fit test in the sweep below assigns each arc to its conic.
+        auto derive_conics = [&](int s1, int s2) -> bool {
+            bool got = false;
+            Point C1, C2s; double R1 = 0, R2 = 0;
+            if (sphere_of_surface(m_surfaces[s1], C1, R1) && sphere_of_surface(m_surfaces[s2], C2s, R2)) {
+                double dx=C2s[0]-C1[0], dy=C2s[1]-C1[1], dz=C2s[2]-C1[2];
+                double d = std::sqrt(dx*dx+dy*dy+dz*dz);
+                if (d > 1e-9 && d < R1+R2) {
+                    double a = (d*d + R1*R1 - R2*R2) / (2.0*d);
+                    double rr2 = R1*R1 - a*a;
+                    if (rr2 > 1e-18) {
+                        Vector fN(dx/d, dy/d, dz/d);
+                        Point fC(C1[0]+a*fN[0], C1[1]+a*fN[1], C1[2]+a*fN[2]);
+                        double fR = std::sqrt(rr2);
+                        int k = std::abs(fN[0]) <= std::abs(fN[1])
+                              ? (std::abs(fN[0]) <= std::abs(fN[2]) ? 0 : 2)
+                              : (std::abs(fN[1]) <= std::abs(fN[2]) ? 1 : 2);
+                        Vector ax(k==0?1.0:0.0, k==1?1.0:0.0, k==2?1.0:0.0);
+                        double h = ax[0]*fN[0]+ax[1]*fN[1]+ax[2]*fN[2];
+                        double px=ax[0]-h*fN[0], py=ax[1]-h*fN[1], pz=ax[2]-h*fN[2];
+                        double pl = std::sqrt(px*px+py*py+pz*pz);
+                        if (pl > 1e-12) {
+                            Vector fE1(px/pl, py/pl, pz/pl);
+                            Vector fE2(fN[1]*fE1[2]-fN[2]*fE1[1], fN[2]*fE1[0]-fN[0]*fE1[2], fN[0]*fE1[1]-fN[1]*fE1[0]);
+                            reg_conic(fC, fE1, fE2, fN, fR, fR);
+                            got = true;
+                        }
+                    }
+                }
+                return got;
+            }
+            Point A1, A2; Vector W1, W2; double Rc1 = 0, Rc2 = 0;
+            if (cylinder_of_surface(m_surfaces[s1], A1, W1, Rc1)
+             && cylinder_of_surface(m_surfaces[s2], A2, W2, Rc2)
+             && std::abs(Rc1-Rc2) < 1e-6*std::max(Rc1,Rc2)) {
+                double b = W1[0]*W2[0]+W1[1]*W2[1]+W1[2]*W2[2];
+                double den = 1.0 - b*b;
+                if (den > 1e-12) {
+                    double d0x=A2[0]-A1[0], d0y=A2[1]-A1[1], d0z=A2[2]-A1[2];
+                    double dw1 = d0x*W1[0]+d0y*W1[1]+d0z*W1[2];
+                    double dw2 = d0x*W2[0]+d0y*W2[1]+d0z*W2[2];
+                    double t1 = (dw1 - b*dw2)/den, t2 = (b*dw1 - dw2)/den;
+                    Point q1(A1[0]+t1*W1[0], A1[1]+t1*W1[1], A1[2]+t1*W1[2]);
+                    Point q2(A2[0]+t2*W2[0], A2[1]+t2*W2[1], A2[2]+t2*W2[2]);
+                    if (q1.distance(q2) < 1e-6) {
+                        double Rr = 0.5*(Rc1+Rc2);
+                        double cx=W1[1]*W2[2]-W1[2]*W2[1], cy=W1[2]*W2[0]-W1[0]*W2[2], cz=W1[0]*W2[1]-W1[1]*W2[0];
+                        double cl = std::sqrt(cx*cx+cy*cy+cz*cz);
+                        double ang = std::atan2(cl, b);
+                        double sh = std::sin(0.5*ang), ch = std::cos(0.5*ang);
+                        if (cl > 1e-9 && sh > 1e-9 && ch > 1e-9) {
+                            Vector mnr(cx/cl, cy/cl, cz/cl);
+                            Point Pc(0.5*(q1[0]+q2[0]), 0.5*(q1[1]+q2[1]), 0.5*(q1[2]+q2[2]));
+                            for (int cand = 0; cand < 2; ++cand) {
+                                double sx = cand==0 ? 1.0 : -1.0;
+                                double mx=W1[0]+sx*W2[0], my=W1[1]+sx*W2[1], mz=W1[2]+sx*W2[2];
+                                double ml = std::sqrt(mx*mx+my*my+mz*mz);
+                                if (ml < 1e-9) continue;
+                                Vector maj(mx/ml, my/ml, mz/ml);
+                                double semiA = cand==0 ? Rr/sh : Rr/ch;
+                                Vector n2(maj[1]*mnr[2]-maj[2]*mnr[1], maj[2]*mnr[0]-maj[0]*mnr[2], maj[0]*mnr[1]-maj[1]*mnr[0]);
+                                reg_conic(Pc, maj, mnr, n2, semiA, Rr);
+                                got = true;
+                            }
+                        }
+                    }
+                }
+            }
+            return got;
+        };
+        int n_arc1 = 0, n_arc2 = 0, n_up = 0;
         for (int ea = 0; ea < ne2; ++ea) {
             const NurbsCurve* Ca = arcish(ea); if (!Ca) continue; ++n_arc1;
             Point a0 = Ca->point_at_start(), a1 = Ca->point_at_end();
@@ -3016,284 +3217,115 @@ void BRep::co_refine_coincident_edges(double tol) {
                 int s1 = srf_of(ea), s2 = srf_of(eb);
                 if (s1 < 0 || s2 < 0 || s1 == s2) continue;
                 if (s1 >= (int)m_surfaces.size() || s2 >= (int)m_surfaces.size()) continue;
-                // derive the exact conic from the surface pair
-                Point fC; Vector fE1, fE2, fN; double fA = 0, fB = 0; bool have = false;
-                {
-                    Point C1, C2; double R1 = 0, R2 = 0;
-                    if (sphere_of_surface(m_surfaces[s1], C1, R1) && sphere_of_surface(m_surfaces[s2], C2, R2)) {
-                        double dx=C2[0]-C1[0], dy=C2[1]-C1[1], dz=C2[2]-C1[2];
-                        double d = std::sqrt(dx*dx+dy*dy+dz*dz);
-                        if (d > 1e-9 && d < R1+R2) {
-                            double a = (d*d + R1*R1 - R2*R2) / (2.0*d);
-                            double rr2 = R1*R1 - a*a;
-                            if (rr2 > 1e-18) {
-                                fN = Vector(dx/d, dy/d, dz/d);
-                                fC = Point(C1[0]+a*fN[0], C1[1]+a*fN[1], C1[2]+a*fN[2]);
-                                fA = fB = std::sqrt(rr2);
-                                Point P0 = a0;
-                                double wx=P0[0]-fC[0], wy=P0[1]-fC[1], wz=P0[2]-fC[2];
-                                double h = wx*fN[0]+wy*fN[1]+wz*fN[2];
-                                double px=wx-h*fN[0], py=wy-h*fN[1], pz=wz-h*fN[2];
-                                double pl = std::sqrt(px*px+py*py+pz*pz);
-                                if (pl > 1e-12) {
-                                    fE1 = Vector(px/pl, py/pl, pz/pl);
-                                    fE2 = Vector(fN[1]*fE1[2]-fN[2]*fE1[1], fN[2]*fE1[0]-fN[0]*fE1[2], fN[0]*fE1[1]-fN[1]*fE1[0]);
-                                    have = true;
-                                }
-                            }
-                        }
-                    }
-                    if (!have) {
-                        Point A1, A2; Vector W1, W2; double Rc1 = 0, Rc2 = 0;
-                        if (cylinder_of_surface(m_surfaces[s1], A1, W1, Rc1)
-                         && cylinder_of_surface(m_surfaces[s2], A2, W2, Rc2)
-                         && std::abs(Rc1-Rc2) < 1e-6*std::max(Rc1,Rc2)) {
-                            double b = W1[0]*W2[0]+W1[1]*W2[1]+W1[2]*W2[2];
-                            double den = 1.0 - b*b;
-                            if (den > 1e-12) {
-                                double d0x=A2[0]-A1[0], d0y=A2[1]-A1[1], d0z=A2[2]-A1[2];
-                                double dw1 = d0x*W1[0]+d0y*W1[1]+d0z*W1[2];
-                                double dw2 = d0x*W2[0]+d0y*W2[1]+d0z*W2[2];
-                                double t1 = (dw1 - b*dw2)/den, t2 = (b*dw1 - dw2)/den;
-                                Point q1(A1[0]+t1*W1[0], A1[1]+t1*W1[1], A1[2]+t1*W1[2]);
-                                Point q2(A2[0]+t2*W2[0], A2[1]+t2*W2[1], A2[2]+t2*W2[2]);
-                                if (q1.distance(q2) < 1e-6) {
-                                    double Rr = 0.5*(Rc1+Rc2);
-                                    double cx=W1[1]*W2[2]-W1[2]*W2[1], cy=W1[2]*W2[0]-W1[0]*W2[2], cz=W1[0]*W2[1]-W1[1]*W2[0];
-                                    double cl = std::sqrt(cx*cx+cy*cy+cz*cz);
-                                    double ang = std::atan2(cl, b);
-                                    double sh = std::sin(0.5*ang), ch = std::cos(0.5*ang);
-                                    if (cl > 1e-9 && sh > 1e-9 && ch > 1e-9) {
-                                        Vector mnr(cx/cl, cy/cl, cz/cl);
-                                        Point Pc(0.5*(q1[0]+q2[0]), 0.5*(q1[1]+q2[1]), 0.5*(q1[2]+q2[2]));
-                                        for (int cand = 0; cand < 2 && !have; ++cand) {
-                                            double sx = cand==0 ? 1.0 : -1.0;
-                                            double mx=W1[0]+sx*W2[0], my=W1[1]+sx*W2[1], mz=W1[2]+sx*W2[2];
-                                            double ml = std::sqrt(mx*mx+my*my+mz*mz);
-                                            if (ml < 1e-9) continue;
-                                            Vector maj(mx/ml, my/ml, mz/ml);
-                                            double semiA = cand==0 ? Rr/sh : Rr/ch;
-                                            Vector n2(maj[1]*mnr[2]-maj[2]*mnr[1], maj[2]*mnr[0]-maj[0]*mnr[2], maj[0]*mnr[1]-maj[1]*mnr[0]);
-                                            double vtol2 = std::max(5e-3*Rr, 1e-6);
-                                            bool okv = true;
-                                            for (int ii = 0; ii < Ca->cv_count() && okv; ++ii) {
-                                                Point q = Ca->get_cv(ii);
-                                                double ax=q[0]-Pc[0], ay=q[1]-Pc[1], az=q[2]-Pc[2];
-                                                double hh = ax*n2[0]+ay*n2[1]+az*n2[2];
-                                                double su = (ax*maj[0]+ay*maj[1]+az*maj[2])/semiA;
-                                                double sv = (ax*mnr[0]+ay*mnr[1]+az*mnr[2])/Rr;
-                                                if (std::abs(hh) > vtol2 || std::abs(std::sqrt(su*su+sv*sv)-1.0)*Rr > vtol2) okv = false;
-                                            }
-                                            if (okv) { fC=Pc; fE1=maj; fE2=mnr; fN=n2; fA=semiA; fB=Rr; have=true; }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (!have) continue;
-                // Steinmetz crossings are EXACT: the two ellipse planes meet along the shared
-                // minor axis, so both curves pass through Pint +- R*unit(w1 x w2). Endpoints near
-                // a crossing snap THERE (a point on BOTH conics keeps adjacent arcs watertight);
-                // fB is the minor semi-axis (= R) and fE2 the shared minor direction.
-                Point xr1(fC[0]+fB*fE2[0], fC[1]+fB*fE2[1], fC[2]+fB*fE2[2]);
-                Point xr2(fC[0]-fB*fE2[0], fC[1]-fB*fE2[1], fC[2]-fB*fE2[2]);
-                bool have_x = (fA != fB);   // only a two-conic (ellipse) pair has true crossings
-                // verify Ca's vertices loosely on the conic (sphere pair path skipped this above)
-                {
-                    double vtol2 = std::max(5e-3*std::min(fA,fB), 1e-6);
-                    bool okv = true;
-                    for (int ii = 0; ii < Ca->cv_count() && okv; ++ii) {
-                        Point q = Ca->get_cv(ii);
-                        double ax=q[0]-fC[0], ay=q[1]-fC[1], az=q[2]-fC[2];
-                        double hh = ax*fN[0]+ay*fN[1]+az*fN[2];
-                        double su = (ax*fE1[0]+ay*fE1[1]+az*fE1[2])/fA;
-                        double sv = (ax*fE2[0]+ay*fE2[1]+az*fE2[2])/fB;
-                        if (std::abs(hh) > vtol2 || std::abs(std::sqrt(su*su+sv*sv)-1.0)*std::min(fA,fB) > vtol2) okv = false;
-                    }
-                    if (!okv) continue;
-                }
-                // snap the SHARED endpoints onto the conic (scaled-frame radial projection)
-                auto snapc = [&](const Point& P) {
-                    if (have_x && P.distance(xr1) < ptol) return xr1;
-                    if (have_x && P.distance(xr2) < ptol) return xr2;
-                    double wx=P[0]-fC[0], wy=P[1]-fC[1], wz=P[2]-fC[2];
-                    double su = (wx*fE1[0]+wy*fE1[1]+wz*fE1[2])/fA;
-                    double sv = (wx*fE2[0]+wy*fE2[1]+wz*fE2[2])/fB;
-                    double rr = std::sqrt(su*su+sv*sv);
-                    if (rr < 1e-12) return P;
-                    return Point(fC[0]+(su/rr)*fA*fE1[0]+(sv/rr)*fB*fE2[0],
-                                 fC[1]+(su/rr)*fA*fE1[1]+(sv/rr)*fB*fE2[1],
-                                 fC[2]+(su/rr)*fA*fE1[2]+(sv/rr)*fB*fE2[2]);
-                };
-                Point SA = snapc(a0), SB = snapc(a1);
-                Vector sE1(fE1[0]*fA, fE1[1]*fA, fE1[2]*fA);
-                Vector sE2(fE2[0]*fB, fE2[1]*fB, fE2[2]*fB);
-                auto ang_of2 = [&](const Point& P) {
-                    double wx=P[0]-fC[0], wy=P[1]-fC[1], wz=P[2]-fC[2];
-                    return std::atan2((wx*fE2[0]+wy*fE2[1]+wz*fE2[2])/fB,
-                                      (wx*fE1[0]+wy*fE1[1]+wz*fE1[2])/fA);
-                };
-                auto rebuild2 = [&](const NurbsCurve& poly, const Point& A2, const Point& B2, NurbsCurve& out) {
-                    double sw_poly = 0.0, prev = 0.0; bool first2 = true;
-                    for (int ii = 0; ii < poly.cv_count(); ++ii) {
-                        double a = ang_of2(poly.get_cv(ii));
-                        if (!first2) { double d = a - prev;
-                            while (d >  PI) d -= 2*PI; while (d < -PI) d += 2*PI; sw_poly += d; }
-                        prev = a; first2 = false;
-                    }
-                    double aa0 = ang_of2(A2), aa1 = ang_of2(B2);
-                    double sw = (aa1 - aa0) + 2*PI*std::round((sw_poly - (aa1 - aa0)) / (2*PI));
-                    if (std::abs(sw) < 1e-9 || std::abs(sw) > 2*PI + 1e-9) return false;
-                    out = exact_arc_3d(fC, sE1, sE2, 1.0, aa0, sw);
-                    return out.is_valid();
-                };
-                NurbsCurve na2, nb2;
-                bool oka = rebuild2(*Ca, SA, SB, na2);
-                bool okb = rebuild2(*Cb, fw2 ? SA : SB, fw2 ? SB : SA, nb2);
-                if (oka && okb) {
-                    m_curves_3d[m_topology_edges[ea].curve_3d_index] = na2;
-                    m_curves_3d[m_topology_edges[eb].curve_3d_index] = nb2;
-                    ++n_pair;
-                }
-                break;
+                if (derive_conics(s1, s2)) break;
             }
         }
-        // An arc pair whose two lifts came out emap-IDENTICAL is already one 2-trim edge: no
-        // partner exists, but its own two adjacent faces supply the surface pair -- upgrade the
-        // shared polyline in place through the same derivation.
         for (int ea = 0; ea < ne2; ++ea) {
             const NurbsCurve* Ca = arcish_n(ea, 2); if (!Ca) continue; ++n_arc2;
             int s1, s2; srfs_of(ea, s1, s2);
-            if (s1 < 0 || s2 < 0 || s1 >= (int)m_surfaces.size() || s2 >= (int)m_surfaces.size()) continue;
-            Point a0 = Ca->point_at_start(), a1 = Ca->point_at_end();
-            Point fC; Vector fE1, fE2, fN; double fA = 0, fB = 0; bool have = false;
+            if (s1 < 0 || s2 < 0 || s1 == s2) continue;
+            if (s1 >= (int)m_surfaces.size() || s2 >= (int)m_surfaces.size()) continue;
+            derive_conics(s1, s2);
+        }
+        // upgrade sweep: every open polyline arc inscribing a registered conic is rebuilt as
+        // the exact rational arc through its OWN radially-snapped endpoints (crossings exact).
+        int n_closed = 0;
+        for (int ea = 0; ea < ne2 && !conics.empty(); ++ea) {
+            const NurbsCurve* Ca = nullptr;
             {
-                Point C1, C2; double R1 = 0, R2 = 0;
-                if (sphere_of_surface(m_surfaces[s1], C1, R1) && sphere_of_surface(m_surfaces[s2], C2, R2)) {
-                    double dx=C2[0]-C1[0], dy=C2[1]-C1[1], dz=C2[2]-C1[2];
-                    double d = std::sqrt(dx*dx+dy*dy+dz*dz);
-                    if (d > 1e-9 && d < R1+R2) {
-                        double a = (d*d + R1*R1 - R2*R2) / (2.0*d);
-                        double rr2 = R1*R1 - a*a;
-                        if (rr2 > 1e-18) {
-                            fN = Vector(dx/d, dy/d, dz/d);
-                            fC = Point(C1[0]+a*fN[0], C1[1]+a*fN[1], C1[2]+a*fN[2]);
-                            fA = fB = std::sqrt(rr2);
-                            double wx=a0[0]-fC[0], wy=a0[1]-fC[1], wz=a0[2]-fC[2];
-                            double h = wx*fN[0]+wy*fN[1]+wz*fN[2];
-                            double px=wx-h*fN[0], py=wy-h*fN[1], pz=wz-h*fN[2];
-                            double pl = std::sqrt(px*px+py*py+pz*pz);
-                            if (pl > 1e-12) {
-                                fE1 = Vector(px/pl, py/pl, pz/pl);
-                                fE2 = Vector(fN[1]*fE1[2]-fN[2]*fE1[1], fN[2]*fE1[0]-fN[0]*fE1[2], fN[0]*fE1[1]-fN[1]*fE1[0]);
-                                have = true;
-                            }
-                        }
-                    }
-                }
-                if (!have) {
-                    Point A1, A2; Vector W1, W2; double Rc1 = 0, Rc2 = 0;
-                    if (cylinder_of_surface(m_surfaces[s1], A1, W1, Rc1)
-                     && cylinder_of_surface(m_surfaces[s2], A2, W2, Rc2)
-                     && std::abs(Rc1-Rc2) < 1e-6*std::max(Rc1,Rc2)) {
-                        double b = W1[0]*W2[0]+W1[1]*W2[1]+W1[2]*W2[2];
-                        double den = 1.0 - b*b;
-                        if (den > 1e-12) {
-                            double d0x=A2[0]-A1[0], d0y=A2[1]-A1[1], d0z=A2[2]-A1[2];
-                            double dw1 = d0x*W1[0]+d0y*W1[1]+d0z*W1[2];
-                            double dw2 = d0x*W2[0]+d0y*W2[1]+d0z*W2[2];
-                            double t1 = (dw1 - b*dw2)/den, t2 = (b*dw1 - dw2)/den;
-                            Point q1(A1[0]+t1*W1[0], A1[1]+t1*W1[1], A1[2]+t1*W1[2]);
-                            Point q2(A2[0]+t2*W2[0], A2[1]+t2*W2[1], A2[2]+t2*W2[2]);
-                            if (q1.distance(q2) < 1e-6) {
-                                double Rr = 0.5*(Rc1+Rc2);
-                                double cx=W1[1]*W2[2]-W1[2]*W2[1], cy=W1[2]*W2[0]-W1[0]*W2[2], cz=W1[0]*W2[1]-W1[1]*W2[0];
-                                double cl = std::sqrt(cx*cx+cy*cy+cz*cz);
-                                double ang = std::atan2(cl, b);
-                                double sh = std::sin(0.5*ang), ch = std::cos(0.5*ang);
-                                if (cl > 1e-9 && sh > 1e-9 && ch > 1e-9) {
-                                    Vector mnr(cx/cl, cy/cl, cz/cl);
-                                    Point Pc(0.5*(q1[0]+q2[0]), 0.5*(q1[1]+q2[1]), 0.5*(q1[2]+q2[2]));
-                                    for (int cand = 0; cand < 2 && !have; ++cand) {
-                                        double sx = cand==0 ? 1.0 : -1.0;
-                                        double mx=W1[0]+sx*W2[0], my=W1[1]+sx*W2[1], mz=W1[2]+sx*W2[2];
-                                        double ml = std::sqrt(mx*mx+my*my+mz*mz);
-                                        if (ml < 1e-9) continue;
-                                        Vector maj(mx/ml, my/ml, mz/ml);
-                                        double semiA = cand==0 ? Rr/sh : Rr/ch;
-                                        Vector n2(maj[1]*mnr[2]-maj[2]*mnr[1], maj[2]*mnr[0]-maj[0]*mnr[2], maj[0]*mnr[1]-maj[1]*mnr[0]);
-                                        double vtol2 = std::max(5e-3*Rr, 1e-6);
-                                        bool okv = true;
-                                        for (int ii = 0; ii < Ca->cv_count() && okv; ++ii) {
-                                            Point q = Ca->get_cv(ii);
-                                            double ax=q[0]-Pc[0], ay=q[1]-Pc[1], az=q[2]-Pc[2];
-                                            double hh = ax*n2[0]+ay*n2[1]+az*n2[2];
-                                            double su = (ax*maj[0]+ay*maj[1]+az*maj[2])/semiA;
-                                            double sv = (ax*mnr[0]+ay*mnr[1]+az*mnr[2])/Rr;
-                                            if (std::abs(hh) > vtol2 || std::abs(std::sqrt(su*su+sv*sv)-1.0)*Rr > vtol2) okv = false;
-                                        }
-                                        if (okv) { fC=Pc; fE1=maj; fE2=mnr; fN=n2; fA=semiA; fB=Rr; have=true; }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                int nt = (int)m_topology_edges[ea].trim_indices.size();
+                int c = m_topology_edges[ea].curve_3d_index;
+                if (nt >= 1 && nt <= 2 && c >= 0 && c < (int)m_curves_3d.size()) {
+                    const NurbsCurve& cv = m_curves_3d[c];
+                    if (cv.is_valid() && cv.degree() == 1 && !cv.is_rational() && cv.cv_count() >= 8)
+                        Ca = &cv;
                 }
             }
-            if (!have) continue;
-            Point xr1(fC[0]+fB*fE2[0], fC[1]+fB*fE2[1], fC[2]+fB*fE2[2]);
-            Point xr2(fC[0]-fB*fE2[0], fC[1]-fB*fE2[1], fC[2]-fB*fE2[2]);
-            bool have_x = (fA != fB);
-            {
-                double vtol2 = std::max(5e-3*std::min(fA,fB), 1e-6);
+            if (!Ca) continue;
+            bool closed = Ca->point_at_start().distance(Ca->point_at_end()) < 1e-9;
+            if (closed) ++n_closed;
+            for (const auto& g : conics) {
+                double mnAB = std::min(g.A, g.B);
+                double vtol2 = std::max(5e-3*mnAB, 1e-6);
                 bool okv = true;
                 for (int ii = 0; ii < Ca->cv_count() && okv; ++ii) {
                     Point q = Ca->get_cv(ii);
-                    double ax=q[0]-fC[0], ay=q[1]-fC[1], az=q[2]-fC[2];
-                    double hh = ax*fN[0]+ay*fN[1]+az*fN[2];
-                    double su = (ax*fE1[0]+ay*fE1[1]+az*fE1[2])/fA;
-                    double sv = (ax*fE2[0]+ay*fE2[1]+az*fE2[2])/fB;
-                    if (std::abs(hh) > vtol2 || std::abs(std::sqrt(su*su+sv*sv)-1.0)*std::min(fA,fB) > vtol2) okv = false;
+                    double ax=q[0]-g.C[0], ay=q[1]-g.C[1], az=q[2]-g.C[2];
+                    double hh = ax*g.N[0]+ay*g.N[1]+az*g.N[2];
+                    double su = (ax*g.E1[0]+ay*g.E1[1]+az*g.E1[2])/g.A;
+                    double sv = (ax*g.E2[0]+ay*g.E2[1]+az*g.E2[2])/g.B;
+                    if (std::abs(hh) > vtol2 || std::abs(std::sqrt(su*su+sv*sv)-1.0)*mnAB > vtol2) okv = false;
                 }
                 if (!okv) continue;
+                // Steinmetz crossings are EXACT: both ellipses pass through C +- B*E2 (the shared
+                // minor axis); endpoints near one snap THERE so adjacent arcs of the two conics
+                // stay watertight. fA==fB (circle) has no true crossing.
+                Point xr1(g.C[0]+g.B*g.E2[0], g.C[1]+g.B*g.E2[1], g.C[2]+g.B*g.E2[2]);
+                Point xr2(g.C[0]-g.B*g.E2[0], g.C[1]-g.B*g.E2[1], g.C[2]-g.B*g.E2[2]);
+                bool have_x = (g.A != g.B);
+                auto snapc = [&](const Point& P) {
+                    if (have_x && P.distance(xr1) < ptol) return xr1;
+                    if (have_x && P.distance(xr2) < ptol) return xr2;
+                    double wx=P[0]-g.C[0], wy=P[1]-g.C[1], wz=P[2]-g.C[2];
+                    double su = (wx*g.E1[0]+wy*g.E1[1]+wz*g.E1[2])/g.A;
+                    double sv = (wx*g.E2[0]+wy*g.E2[1]+wz*g.E2[2])/g.B;
+                    double rr = std::sqrt(su*su+sv*sv);
+                    if (rr < 1e-12) return P;
+                    return Point(g.C[0]+(su/rr)*g.A*g.E1[0]+(sv/rr)*g.B*g.E2[0],
+                                 g.C[1]+(su/rr)*g.A*g.E1[1]+(sv/rr)*g.B*g.E2[1],
+                                 g.C[2]+(su/rr)*g.A*g.E1[2]+(sv/rr)*g.B*g.E2[2]);
+                };
+                auto ang_of2 = [&](const Point& P) {
+                    double wx=P[0]-g.C[0], wy=P[1]-g.C[1], wz=P[2]-g.C[2];
+                    return std::atan2((wx*g.E2[0]+wy*g.E2[1]+wz*g.E2[2])/g.B,
+                                      (wx*g.E1[0]+wy*g.E1[1]+wz*g.E1[2])/g.A);
+                };
+                Point SA = snapc(Ca->point_at_start()), SB = snapc(Ca->point_at_end());
+                double sw_poly = 0.0, prev = 0.0; bool first2 = true;
+                for (int ii = 0; ii < Ca->cv_count(); ++ii) {
+                    double a = ang_of2(Ca->get_cv(ii));
+                    if (!first2) { double d = a - prev;
+                        while (d >  PI) d -= 2*PI; while (d < -PI) d += 2*PI; sw_poly += d; }
+                    prev = a; first2 = false;
+                }
+                double aa0 = ang_of2(SA), aa1 = ang_of2(SB);
+                double sw;
+                if (closed) {
+                    if (std::abs(std::abs(sw_poly) - 2*PI) > 0.1) break;   // not a simple loop
+                    sw = sw_poly >= 0 ? 2*PI : -2*PI;
+                } else {
+                    sw = (aa1 - aa0) + 2*PI*std::round((sw_poly - (aa1 - aa0)) / (2*PI));
+                }
+                if (std::abs(sw) < 1e-9 || std::abs(sw) > 2*PI + 1e-9) break;
+                Vector sE1(g.E1[0]*g.A, g.E1[1]*g.A, g.E1[2]*g.A);
+                Vector sE2(g.E2[0]*g.B, g.E2[1]*g.B, g.E2[2]*g.B);
+                NurbsCurve na2 = exact_arc_3d(g.C, sE1, sE2, 1.0, aa0, sw);
+                if (na2.is_valid()) { m_curves_3d[m_topology_edges[ea].curve_3d_index] = na2; ++n_up; }
+                break;
             }
-            auto snapc = [&](const Point& P) {
-                if (have_x && P.distance(xr1) < ptol) return xr1;
-                if (have_x && P.distance(xr2) < ptol) return xr2;
-                double wx=P[0]-fC[0], wy=P[1]-fC[1], wz=P[2]-fC[2];
-                double su = (wx*fE1[0]+wy*fE1[1]+wz*fE1[2])/fA;
-                double sv = (wx*fE2[0]+wy*fE2[1]+wz*fE2[2])/fB;
-                double rr = std::sqrt(su*su+sv*sv);
-                if (rr < 1e-12) return P;
-                return Point(fC[0]+(su/rr)*fA*fE1[0]+(sv/rr)*fB*fE2[0],
-                             fC[1]+(su/rr)*fA*fE1[1]+(sv/rr)*fB*fE2[1],
-                             fC[2]+(su/rr)*fA*fE1[2]+(sv/rr)*fB*fE2[2]);
-            };
-            Point SA = snapc(a0), SB = snapc(a1);
-            Vector sE1(fE1[0]*fA, fE1[1]*fA, fE1[2]*fA);
-            Vector sE2(fE2[0]*fB, fE2[1]*fB, fE2[2]*fB);
-            auto ang_of2 = [&](const Point& P) {
-                double wx=P[0]-fC[0], wy=P[1]-fC[1], wz=P[2]-fC[2];
-                return std::atan2((wx*fE2[0]+wy*fE2[1]+wz*fE2[2])/fB,
-                                  (wx*fE1[0]+wy*fE1[1]+wz*fE1[2])/fA);
-            };
-            double sw_poly = 0.0, prev = 0.0; bool first2 = true;
-            for (int ii = 0; ii < Ca->cv_count(); ++ii) {
-                double a = ang_of2(Ca->get_cv(ii));
-                if (!first2) { double d = a - prev;
-                    while (d >  PI) d -= 2*PI; while (d < -PI) d += 2*PI; sw_poly += d; }
-                prev = a; first2 = false;
-            }
-            double aa0 = ang_of2(SA), aa1 = ang_of2(SB);
-            double sw = (aa1 - aa0) + 2*PI*std::round((sw_poly - (aa1 - aa0)) / (2*PI));
-            if (std::abs(sw) < 1e-9 || std::abs(sw) > 2*PI + 1e-9) continue;
-            NurbsCurve na2 = exact_arc_3d(fC, sE1, sE2, 1.0, aa0, sw);
-            if (na2.is_valid()) { m_curves_3d[m_topology_edges[ea].curve_3d_index] = na2; ++n_solo; }
         }
-        if (std::getenv("SESSION_XCHK"))
-            std::fprintf(stderr, "[PAIRPASS] arc1=%d arc2=%d pairs=%d solo=%d\n", n_arc1, n_arc2, n_pair, n_solo);
+        if (std::getenv("SESSION_XCHK")) {
+            std::fprintf(stderr, "[PAIRPASS] arc1=%d arc2=%d conics=%d up=%d closed=%d relift=%d\n", n_arc1, n_arc2, (int)conics.size(), n_up, n_closed, n_relift);
+            for (int e = 0; e < ne2; ++e) {
+                int c = m_topology_edges[e].curve_3d_index;
+                if (c < 0 || c >= (int)m_curves_3d.size()) continue;
+                const NurbsCurve& cv = m_curves_3d[c];
+                if (!cv.is_valid() || cv.degree() != 1 || cv.is_rational()) continue;
+                Point q0 = cv.point_at_start(), q1 = cv.point_at_end();
+                Point qm = cv.point_at(0.5*(cv.domain().first+cv.domain().second));
+                double dev = 0.0;
+                { double cxx=q1[0]-q0[0], cyy=q1[1]-q0[1], czz=q1[2]-q0[2];
+                  double cl2 = cxx*cxx+cyy*cyy+czz*czz;
+                  for (int ii = 0; ii < cv.cv_count(); ++ii) { Point q = cv.get_cv(ii);
+                    double wx=q[0]-q0[0], wy=q[1]-q0[1], wz=q[2]-q0[2];
+                    double t = cl2 > 1e-24 ? (wx*cxx+wy*cyy+wz*czz)/cl2 : 0.0;
+                    double dx=wx-t*cxx, dy=wy-t*cyy, dz=wz-t*czz;
+                    dev = std::max(dev, std::sqrt(dx*dx+dy*dy+dz*dz)); } }
+                std::fprintf(stderr, "[POLY] e=%d nt=%d cvs=%d dev=%.4f s(%.3f,%.3f,%.3f) m(%.3f,%.3f,%.3f) e(%.3f,%.3f,%.3f)\n",
+                    e, (int)m_topology_edges[e].trim_indices.size(), cv.cv_count(), dev,
+                    q0[0],q0[1],q0[2], qm[0],qm[1],qm[2], q1[0],q1[1],q1[2]);
+            }
+        }
     }
     // rebuild vertex->edge adjacency
     for (auto& v : m_topology_vertices) v.edge_indices.clear();
