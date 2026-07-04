@@ -1850,7 +1850,7 @@ NurbsCurve surface_plane_fit_3d(
                 max_dev = std::max(max_dev, std::abs(std::hypot(px - ccx, py - ccy) - radius));
             }
 
-            double circle_tol = std::max(radius * 1e-4, 1e-6);
+            double circle_tol = std::max(radius * 1e-5, 1e-6);
             if (radius > 1e-10 && max_dev < circle_tol) {
                 // Convert 2D center back to 3D
                 double cx3d = po[0] + ccx * ax[0] + ccy * ay[0];
@@ -2003,7 +2003,10 @@ NurbsCurve surface_plane_fit_3d(
                         double dev = std::hypot(px2 - ex, py2 - ey);
                         max_ell_dev = std::max(max_ell_dev, dev);
                     }
-                    double ell_tol = std::max(semi_a, semi_b) * 5e-3;
+                    // marched samples are Newton-corrected to ~1e-6: a TRUE ellipse section
+                    // passes a 1e-5 gate easily, while a spiric oval (plane || torus axis)
+                    // deviates ~5e-3 relative and must fall through to the generic fit
+                    double ell_tol = std::max(std::max(semi_a, semi_b) * 1e-5, 2e-6);
                     if (max_ell_dev > ell_tol) crv = NurbsCurve(); // reject
                 }
             }
@@ -2038,7 +2041,10 @@ NurbsCurve surface_plane_fit_3d(
         if (is_loop && m > 1) total_len += pts_2d[0].distance(pts_2d[m-1]);
         if (total_len > 1e-14) for (int i = 1; i < m; i++) chords[i] /= total_len;
 
-        double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5;
+        // the marched points are Newton-corrected onto the exact section; accepting the
+        // fit at half the MARCHING step (~1e-2 3D) leaks directly into every consumer
+        // (the spiric discs undercut ~0.7% area). Target a small fraction of the step.
+        double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5 * 5e-3;
         double total_turning = 0;
         for (int i = 1; i < m - 1; i++) {
             double dx1 = pts_2d[i][0]-pts_2d[i-1][0], dy1 = pts_2d[i][1]-pts_2d[i-1][1];
@@ -2051,20 +2057,30 @@ NurbsCurve surface_plane_fit_3d(
             }
         }
         int target_cvs = std::max(8, (int)(total_turning / 0.5) + 6);
-        int max_cvs = m - 1;
-        NurbsCurve crv_2d;
-        for (int attempt = 0; attempt < 5; attempt++) {
+        int max_cvs = std::min(m - 1, 128);
+        NurbsCurve crv_2d; double best_dev = 1e300;
+        for (int attempt = 0; attempt < 6; attempt++) {
             if (target_cvs > max_cvs) break;
-            crv_2d = NurbsCurve::create_fitted(pts_2d, target_cvs, 3, is_loop);
-            if (!crv_2d.is_valid()) break;
-            auto [ft0, ft1] = crv_2d.domain();
+            NurbsCurve cand = NurbsCurve::create_fitted(pts_2d, target_cvs, 3, is_loop);
+            if (!cand.is_valid()) break;
+            auto [ft0, ft1] = cand.domain();
             double max_dev = 0;
             for (int i = 0; i < m; i++) {
+                // honest deviation: refine the chord-guess parameter locally (a
+                // least-squares fit reparametrizes; the raw guess mismeasures at
+                // curvature spikes like spiric tips)
                 double t = ft0 + (ft1 - ft0) * chords[i];
-                max_dev = std::max(max_dev, crv_2d.point_at(t).distance(pts_2d[i]));
+                double w2 = (ft1 - ft0) * 2.0 / std::max(m - 1, 1);
+                double lo = std::max(ft0, t - w2), hi = std::min(ft1, t + w2);
+                for (int it = 0; it < 20; ++it) {
+                    double m1 = lo + (hi-lo)/3, m2 = hi - (hi-lo)/3;
+                    if (cand.point_at(m1).distance(pts_2d[i]) < cand.point_at(m2).distance(pts_2d[i])) hi = m2; else lo = m1;
+                }
+                max_dev = std::max(max_dev, cand.point_at(0.5*(lo+hi)).distance(pts_2d[i]));
             }
+            if (max_dev < best_dev) { best_dev = max_dev; crv_2d = cand; }
             if (max_dev < fit_tol) break;
-            target_cvs = std::min(target_cvs * 2, max_cvs);
+            target_cvs = std::min(target_cvs * 2, max_cvs + 1);
         }
         if (!crv_2d.is_valid())
             crv_2d = is_loop
@@ -3424,6 +3440,196 @@ static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
     return out;
 }
 
+// TORUS pullback: BOTH directions are periodic angles -- longitude about the axis and the
+// tube angle vhat = atan2(z/r, (rho-R)/r). Each is inverted through a param->angle table
+// (NURBS params are nonlinear in angle) with Newton polish; the sampled curve unwraps in
+// both angles and splits into pieces on the 2D grid of period cells (u- AND v-seams).
+// Which NURBS direction is longitude is detected, not assumed. Empty if not usable.
+static std::vector<NurbsCurve> analytic_torus_pullback(const NurbsSurface& srf,
+                                                       const RecogSurface& recog,
+                                                       const NurbsCurve& c3d) {
+    if (recog.kind != RecogSurface::TORUS) return {};
+    auto [su0, su1] = srf.domain(0);
+    auto [sv0, sv1] = srf.domain(1);
+    if (su1 - su0 < 1e-9 || sv1 - sv0 < 1e-9) return {};
+    auto dot = [](const double a[3], const double b[3]) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; };
+    double C[3]  = {recog.p1[0], recog.p1[1], recog.p1[2]};
+    double Zc[3] = {recog.p2[0], recog.p2[1], recog.p2[2]};
+    double zn = std::sqrt(dot(Zc, Zc)); if (zn < 1e-12) return {};
+    Zc[0]/=zn; Zc[1]/=zn; Zc[2]/=zn;
+    double R = recog.r, rmin = recog.r2;
+    if (R < 1e-12 || rmin < 1e-12) return {};
+    const double PI = 3.14159265358979323846, TWO_PI = 2.0*PI;
+    // frame X from the farthest-from-axis point of the u0/v0 corner region
+    double Xc[3];
+    {
+        Point pf = srf.point_at(su0, sv0);
+        double best = -1.0;
+        for (int i = 0; i <= 4; ++i) for (int j = 0; j <= 4; ++j) {
+            Point q = srf.point_at(su0 + (su1-su0)*i/4.0, sv0 + (sv1-sv0)*j/4.0);
+            double rr[3] = {q[0]-C[0], q[1]-C[1], q[2]-C[2]};
+            double h = dot(rr, Zc);
+            double px = rr[0]-h*Zc[0], py = rr[1]-h*Zc[1], pz = rr[2]-h*Zc[2];
+            double d = px*px+py*py+pz*pz;
+            if (d > best) { best = d; pf = q; }
+        }
+        double rr[3] = {pf[0]-C[0], pf[1]-C[1], pf[2]-C[2]};
+        double h = dot(rr, Zc);
+        Xc[0] = rr[0]-h*Zc[0]; Xc[1] = rr[1]-h*Zc[1]; Xc[2] = rr[2]-h*Zc[2];
+        double xn = std::sqrt(dot(Xc, Xc)); if (xn < 1e-12) return {};
+        Xc[0]/=xn; Xc[1]/=xn; Xc[2]/=xn;
+    }
+    double Yc[3] = {Zc[1]*Xc[2]-Zc[2]*Xc[1], Zc[2]*Xc[0]-Zc[0]*Xc[2], Zc[0]*Xc[1]-Zc[1]*Xc[0]};
+    auto lon_of = [&](const Point& q) {
+        double rr[3] = {q[0]-C[0], q[1]-C[1], q[2]-C[2]};
+        return std::atan2(dot(rr, Yc), dot(rr, Xc));
+    };
+    auto vhat_of = [&](const Point& q) {
+        double rr[3] = {q[0]-C[0], q[1]-C[1], q[2]-C[2]};
+        double h = dot(rr, Zc);
+        double px = rr[0]-h*Zc[0], py = rr[1]-h*Zc[1], pz = rr[2]-h*Zc[2];
+        double rho = std::sqrt(px*px+py*py+pz*pz);
+        return std::atan2(h/rmin, (rho-R)/rmin);
+    };
+    // which NURBS direction carries longitude?
+    double um = 0.5*(su0+su1), vm = 0.5*(sv0+sv1);
+    auto wrapd = [&](double d) { while (d > PI) d -= TWO_PI; while (d < -PI) d += TWO_PI; return std::abs(d); };
+    double s_u = wrapd(lon_of(srf.point_at(su0 + 0.6*(su1-su0), vm)) - lon_of(srf.point_at(su0 + 0.3*(su1-su0), vm)));
+    double s_v = wrapd(lon_of(srf.point_at(um, sv0 + 0.6*(sv1-sv0))) - lon_of(srf.point_at(um, sv0 + 0.3*(sv1-sv0))));
+    bool swapped = s_v > s_u;   // true: v is longitude, u is tube
+    double a0 = swapped ? sv0 : su0, a1 = swapped ? sv1 : su1;   // a = longitude param
+    double b0 = swapped ? su0 : sv0, b1 = swapped ? su1 : sv1;   // b = tube param
+    double range_a = a1 - a0, range_b = b1 - b0;
+    auto pt_ab = [&](double a, double b) { return swapped ? srf.point_at(b, a) : srf.point_at(a, b); };
+    // longitude table over a (b at the OUTER equator for a clean atan2)
+    double b_ref = b0;
+    {
+        double best = -1.0;
+        for (int j = 0; j <= 16; ++j) {
+            double b = b0 + range_b*j/16.0;
+            Point q = pt_ab(0.5*(a0+a1), b);
+            double rr[3] = {q[0]-C[0], q[1]-C[1], q[2]-C[2]};
+            double h = dot(rr, Zc);
+            double px = rr[0]-h*Zc[0], py = rr[1]-h*Zc[1], pz = rr[2]-h*Zc[2];
+            double d = px*px+py*py+pz*pz;
+            if (d > best) { best = d; b_ref = b; }
+        }
+    }
+    const int NT = 128;
+    std::vector<double> ta(NT+1), tlon(NT+1), tb(NT+1), tvh(NT+1);
+    for (int k = 0; k <= NT; ++k) {
+        double a = a0 + range_a*k/NT;
+        double lon = lon_of(pt_ab(a, b_ref));
+        if (k > 0) { while (lon - tlon[k-1] >  PI) lon -= TWO_PI;
+                     while (lon - tlon[k-1] < -PI) lon += TWO_PI; }
+        ta[k] = a; tlon[k] = lon;
+    }
+    double a_ref = 0.5*(a0+a1);
+    for (int k = 0; k <= NT; ++k) {
+        double b = b0 + range_b*k/NT;
+        double vh = vhat_of(pt_ab(a_ref, b));
+        if (k > 0) { while (vh - tvh[k-1] >  PI) vh -= TWO_PI;
+                     while (vh - tvh[k-1] < -PI) vh += TWO_PI; }
+        tb[k] = b; tvh[k] = vh;
+    }
+    auto inv_table = [&](const std::vector<double>& xs, const std::vector<double>& ys, double y) -> double {
+        bool incr = ys[NT] >= ys[0];
+        double ylo = std::min(ys[0], ys[NT]), yhi = std::max(ys[0], ys[NT]);
+        while (y < ylo - 1e-9) y += TWO_PI;
+        while (y > yhi + 1e-9) y -= TWO_PI;
+        int lo = 0, hi = NT;
+        while (hi - lo > 1) { int mid = (lo+hi)/2;
+            bool above = incr ? (ys[mid] < y) : (ys[mid] > y);
+            if (above) lo = mid; else hi = mid; }
+        double denom = ys[hi] - ys[lo];
+        double f = (std::abs(denom) > 1e-15) ? (y - ys[lo]) / denom : 0.0;
+        return xs[lo] + (xs[hi] - xs[lo]) * f;
+    };
+    auto polish = [&](double x, double y, double xlo, double xhi, double rng,
+                      const std::function<double(double)>& yfun) -> double {
+        for (int np = 0; np < 2; ++np) {
+            double dx = rng * 1e-7;
+            double xc = std::min(std::max(x, xlo), xhi);
+            double g0 = yfun(xc) - y;
+            while (g0 >  PI) g0 -= TWO_PI; while (g0 < -PI) g0 += TWO_PI;
+            double g1 = yfun(std::min(xc+dx, xhi)) - y;
+            while (g1 >  PI) g1 -= TWO_PI; while (g1 < -PI) g1 += TWO_PI;
+            double dg = (g1 - g0) / dx;
+            if (std::abs(dg) < 1e-12) break;
+            x = std::min(std::max(xc - g0/dg, xlo), xhi);
+        }
+        return x;
+    };
+    auto [t0, t1] = c3d.domain();
+    int n = std::max(c3d.cv_count() * 8, 240);
+    std::vector<std::array<double,2>> ab;
+    double prev_a = 0.0, prev_b = 0.0;
+    for (int i = 0; i <= n; ++i) {
+        Point q = c3d.point_at(t0 + (t1-t0)*i/n);
+        double lon = lon_of(q), vh = vhat_of(q);
+        double a = inv_table(ta, tlon, lon);
+        double b = inv_table(tb, tvh, vh);
+        a = polish(a, lon, a0, a1, range_a, [&](double x){ return lon_of(pt_ab(x, b_ref)); });
+        b = polish(b, vh,  b0, b1, range_b, [&](double x){ return vhat_of(pt_ab(a_ref, x)); });
+        if (i > 0) {
+            while (a - prev_a >  range_a*0.5) a -= range_a;
+            while (a - prev_a < -range_a*0.5) a += range_a;
+            while (b - prev_b >  range_b*0.5) b -= range_b;
+            while (b - prev_b < -range_b*0.5) b += range_b;
+        }
+        prev_a = a; prev_b = b;
+        ab.push_back({a, b});
+    }
+    if (ab.size() < 2) return {};
+    // split on BOTH seams: the unwrapped (a,b) path against the period-cell grid
+    std::vector<NurbsCurve> out;
+    std::vector<Point> seg;
+    auto kof = [](double x, double x0, double rng) { return (int)std::floor((x - x0) / rng + 1e-9); };
+    auto emit = [&](double a, double b, int ka, int kb) {
+        double uu = a - ka*range_a, vv = b - kb*range_b;
+        seg.push_back(swapped ? Point(vv, uu, 0.0) : Point(uu, vv, 0.0));
+    };
+    int ka = kof(ab[0][0], a0, range_a), kb = kof(ab[0][1], b0, range_b);
+    emit(ab[0][0], ab[0][1], ka, kb);
+    for (size_t i = 1; i < ab.size(); ++i) {
+        double pa = ab[i-1][0], pb = ab[i-1][1];
+        double qa = ab[i][0],   qb = ab[i][1];
+        for (int guard = 0; guard < 8; ++guard) {
+            int kqa = kof(qa, a0, range_a), kqb = kof(qb, b0, range_b);
+            if (kqa == ka && kqb == kb) break;
+            double fa = 2.0, fb = 2.0; int sa = 0, sb = 0;
+            if (kqa != ka) { sa = kqa > ka ? 1 : -1;
+                double bound = a0 + (sa > 0 ? ka+1 : ka)*range_a;
+                double den = qa - pa; fa = std::abs(den) > 1e-15 ? (bound - pa)/den : 0.0; }
+            if (kqb != kb) { sb = kqb > kb ? 1 : -1;
+                double bound = b0 + (sb > 0 ? kb+1 : kb)*range_b;
+                double den = qb - pb; fb = std::abs(den) > 1e-15 ? (bound - pb)/den : 0.0; }
+            if (fa <= fb) {
+                double bound = a0 + (sa > 0 ? ka+1 : ka)*range_a;
+                double bv = pb + (qb - pb)*std::min(std::max(fa, 0.0), 1.0);
+                emit(bound, bv, ka, kb);
+                if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+                seg.clear();
+                ka += sa;
+                emit(bound, bv, ka, kb);
+                pa = bound; pb = bv;
+            } else {
+                double bound = b0 + (sb > 0 ? kb+1 : kb)*range_b;
+                double bu = pa + (qa - pa)*std::min(std::max(fb, 0.0), 1.0);
+                emit(bu, bound, ka, kb);
+                if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+                seg.clear();
+                kb += sb;
+                emit(bu, bound, ka, kb);
+                pa = bu; pb = bound;
+            }
+        }
+        emit(qa, qb, ka, kb);
+    }
+    if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+    return out;
+}
+
 // ===========================================================================
 // Analytic SSI for COAXIAL / canonical quadric pairs (exact conics), ported
 // from OCCT IntAna_QuadQuadGeo. Each pushes the exact 3D circle(s)/line(s)/
@@ -4028,12 +4234,51 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
                     : NurbsCurve::create_interpolated(pts3);
             if (!crv3.is_valid()) continue;
 
-            // Fit the UV pcurve
-            std::vector<Point> pts_uv(piece_pts.size());
-            for (size_t i = 0; i < piece_pts.size(); i++)
-                pts_uv[i] = Point(piece_pts[i].first, piece_pts[i].second, 0.0);
+            // Fit the UV pcurve. The pcurve is what every downstream consumer samples (volume
+            // boundary flux, meshing masks), so a step-tolerance fit leaks ~step UV deviation
+            // into the flux (~1e-3 rel on spirics). Densify: bisect each marched chord with the
+            // midpoint Newton-corrected onto the exact section, then least-squares fit against
+            // the dense section-exact samples to a small fraction of the step. CV count is
+            // capped and the best attempt kept -- never raw interpolation through hundreds of
+            // samples (endpoint ringing broke the downstream clip topology).
+            std::vector<Point> pts_uv;
+            pts_uv.reserve(piece_pts.size() * 4);
+            {
+                auto polish_uv = [&](double& uu, double& vv) -> bool {
+                    for (int iter = 0; iter < 8; iter++) {
+                        double val, gu, gv;
+                        g_and_grad(uu, vv, val, gu, gv);
+                        if (std::abs(val) < 1e-12) return true;
+                        double mag2 = gu*gu + gv*gv;
+                        if (mag2 < 1e-28) return false;
+                        uu -= val * gu / mag2;
+                        vv -= val * gv / mag2;
+                    }
+                    return true;
+                };
+                std::function<void(double,double,double,double,int)> densify =
+                    [&](double au, double av, double bu, double bv, int depth) {
+                        double mu = 0.5*(au+bu), mv = 0.5*(av+bv);
+                        double cu = mu, cv2 = mv;
+                        if (!polish_uv(cu, cv2)) return;
+                        double sag = std::hypot(cu - mu, cv2 - mv);
+                        if (sag > step*1e-4 && depth < 4) {
+                            densify(au, av, cu, cv2, depth+1);
+                            pts_uv.push_back(Point(cu, cv2, 0.0));
+                            densify(cu, cv2, bu, bv, depth+1);
+                        } else {
+                            pts_uv.push_back(Point(cu, cv2, 0.0));
+                        }
+                    };
+                for (size_t i = 1; i < piece_pts.size(); i++) {
+                    pts_uv.push_back(Point(piece_pts[i-1].first, piece_pts[i-1].second, 0.0));
+                    densify(piece_pts[i-1].first, piece_pts[i-1].second,
+                            piece_pts[i].first, piece_pts[i].second, 0);
+                }
+                pts_uv.push_back(Point(piece_pts.back().first, piece_pts.back().second, 0.0));
+            }
             int mp = (int)pts_uv.size();
-            double fit_tol_uv = step;
+            double fit_tol_uv = step * 2e-3;
             double total_turning = 0;
             for (int i = 1; i < mp - 1; i++) {
                 double dx1 = pts_uv[i][0]-pts_uv[i-1][0], dy1 = pts_uv[i][1]-pts_uv[i-1][1];
@@ -4056,20 +4301,21 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
             if (total_len > 1e-14) for (int i = 1; i < mp; i++) chords[i] /= total_len;
 
             int target_cvs = std::max(8, (int)(total_turning / 0.5) + 6);
-            int max_cvs = mp - 1;
-            NurbsCurve pcurve;
-            for (int attempt = 0; attempt < 5; attempt++) {
+            int max_cvs = std::min(mp - 1, 96);
+            NurbsCurve pcurve; double pcurve_dev = 1e300;
+            for (int attempt = 0; attempt < 6; attempt++) {
                 if (target_cvs > max_cvs) break;
-                pcurve = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
-                if (!pcurve.is_valid()) break;
-                auto [ft0, ft1] = pcurve.domain();
+                NurbsCurve cand = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
+                if (!cand.is_valid()) break;
+                auto [ft0, ft1] = cand.domain();
                 double max_dev = 0;
                 for (int i = 0; i < mp; i++) {
                     double t = ft0 + (ft1 - ft0) * chords[i];
-                    max_dev = std::max(max_dev, pcurve.point_at(t).distance(pts_uv[i]));
+                    max_dev = std::max(max_dev, cand.point_at(t).distance(pts_uv[i]));
                 }
+                if (max_dev < pcurve_dev) { pcurve_dev = max_dev; pcurve = cand; }
                 if (max_dev < fit_tol_uv) break;
-                target_cvs = std::min(target_cvs * 2, max_cvs);
+                target_cvs = std::min(target_cvs * 2, max_cvs + 1);
             }
 
             if (!pcurve.is_valid())
@@ -4768,8 +5014,18 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     auto [ft0, ft1] = crv.domain();
                     double dev = 0.0;
                     for (int i = 0; i < mp; i++) {
+                        // chord-length param is only a guess for a least-squares fit; at
+                        // curvature spikes (spiric tips) it overestimates the deviation and
+                        // at corner-cutting it can UNDER-estimate -- refine the parameter by
+                        // ternary search in the neighbouring-chord window before measuring.
                         double t = ft0 + (ft1 - ft0) * chords[i];
-                        dev = std::max(dev, crv.point_at(t).distance(pts2[i]));
+                        double w = (ft1 - ft0) * 2.0 / std::max(mp - 1, 1);
+                        double lo = std::max(ft0, t - w), hi = std::min(ft1, t + w);
+                        for (int it = 0; it < 24; ++it) {
+                            double m1 = lo + (hi-lo)/3, m2 = hi - (hi-lo)/3;
+                            if (crv.point_at(m1).distance(pts2[i]) < crv.point_at(m2).distance(pts2[i])) hi = m2; else lo = m1;
+                        }
+                        dev = std::max(dev, crv.point_at(0.5*(lo+hi)).distance(pts2[i]));
                     }
                     if (dev < best_dev) { best = crv; best_dev = dev; }
                     if (dev < fit_tol_track) break;
@@ -4913,6 +5169,12 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(const NurbsSurface& 
             // (Cylinder reaches here only when analytic_pcurve declined: a tilted section,
             // e.g. a Steinmetz ellipse, which needs the seam-splitting pullback.)
             pcs = analytic_cone_pullback(target, rt, c3d);
+            if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
+            if (pcs.empty()) pcs.push_back(std::get<1>(tr));
+        } else if (rt.kind == RecogSurface::TORUS) {
+            // Both directions periodic: table-inverted longitude AND tube angle,
+            // seam-split on the 2D period-cell grid.
+            pcs = analytic_torus_pullback(target, rt, c3d);
             if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
             if (pcs.empty()) pcs.push_back(std::get<1>(tr));
         } else {

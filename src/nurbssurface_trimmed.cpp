@@ -567,7 +567,9 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         snap_uv = std::min(range_u, range_v) * 1e-7;
 
     // ---- 1. Sample cutters into tagged UV polylines ----
-    double samp_tol = std::max(range_u, range_v) * 1e-3;
+    // the split faces' trims CARRY these polylines as pcurves: volume flux and planar
+    // loop areas read them directly, so the sampling sag is a direct volume error
+    double samp_tol = std::max(range_u, range_v) * 2e-5;
     struct UVPoly { int cidx; std::vector<std::array<double, 2>> pts; std::vector<double> ts; };
     std::vector<UVPoly> polylines;
 
