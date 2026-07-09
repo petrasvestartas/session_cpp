@@ -225,6 +225,47 @@ int main(int argc, char** argv) {
             }
         }
     }
+    // Freeform probe: a perturbed-sphere closed NURBS solid (interior CVs moved radially by
+    // +-12%; pole rows and seam columns untouched so create_sphere's topology stays valid --
+    // the seam gains a C0 tangent kink, which a BRep legitimately allows). Quadric recognition
+    // rejects it (1e-4 gate), so SSI runs the general marcher: this cell exercises exactly the
+    // freeform path. No oracle can build this shape; verification is by EXACT volume identities:
+    //   [id1] vol(box-ff) + vol(box&ff) == vol(box) = 64   (partition of the box)
+    //   [id2] vol(fuse) == 64 + vol(ff) - vol(box&ff)      (inclusion-exclusion)
+    if (std::getenv("SESSION_FREEFORM")) {
+        BRep ff = BRep::create_sphere(2.5);
+        NurbsSurface s = ff.m_surfaces[0];
+        int nu = s.cv_count(0), nv = s.cv_count(1);
+        for (int i = 1; i + 1 < nu; ++i)
+            for (int j = 1; j + 1 < nv; ++j) {
+                double x, y, z, w;
+                if (!s.get_cv_4d(i, j, x, y, z, w)) continue;
+                double f = 1.0 + 0.12 * std::sin(2.1 * i + 1.3 * j);
+                s.set_cv_4d(i, j, x * f, y * f, z * f, w);
+            }
+        ff.m_surfaces[0] = s;
+        double vff = ff.volume();
+        BRep box = BRep::create_box(4, 4, 4);
+        struct Row { const char* op; BRep r; };
+        auto t0 = std::chrono::steady_clock::now();
+        BRep cut = box.boolean_difference(ff);
+        BRep com = box.boolean_intersection(ff);
+        BRep fus = box.boolean_union(ff);
+        long us = (long)std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - t0).count();
+        double vcut = cut.volume(), vcom = com.volume(), vfus = fus.volume();
+        double id1 = std::abs(vcut + vcom - 64.0) / 64.0;
+        double id2 = std::abs(vfus - (64.0 + vff - vcom)) / std::abs(vfus);
+        std::printf("\nfreeform blob (perturbed sphere, vol %.4f)  x  box, %ld us total:\n", vff, us);
+        std::printf("  cut  vol %11.4f  faces %2d  solid %d\n", vcut, cut.face_count(), cut.is_solid()?1:0);
+        std::printf("  com  vol %11.4f  faces %2d  solid %d\n", vcom, com.face_count(), com.is_solid()?1:0);
+        std::printf("  fuse vol %11.4f  faces %2d  solid %d\n", vfus, fus.face_count(), fus.is_solid()?1:0);
+        std::printf("  [id1] cut+com-64      rel %9.2e\n", id1);
+        std::printf("  [id2] fuse-(64+ff-com) rel %9.2e\n", id2);
+        bool ok = id1 < 1e-6 && cut.is_solid() && com.is_solid() && fus.is_solid();
+        ++total; if (!ok) ++fails;
+        std::printf("  freeform verdict: %s\n", ok ? "OK" : "FAIL");
+    }
     if (dirty) save_cache(cachePath, cache);
     std::printf("\n%d/%d cells OK (vol rel<1e-6 AND exact faces AND is_solid)\n", total - fails, total);
     return 0;
