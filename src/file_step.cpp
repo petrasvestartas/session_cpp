@@ -1180,15 +1180,22 @@ public:
         int stride = nc.m_cv_stride;
         bool is_rat = nc.m_is_rat != 0;
         std::vector<double> weights;
+        // Respect the curve DIMENSION: a dim-2 UV trim curve has stride 2, and reading
+        // cv[i*stride+2] takes the NEXT control point's x -- and one past the array end on
+        // the last point (an uninitialized read that intermittently wrote "-nan" into the
+        // STEP file and broke the whole parse on read-back).
+        int cdim = nc.m_dim;
         for (int i = 0; i < nc.cv_count(); i++) {
             double x, y, z;
             if (is_rat) {
-                double w = cv[i*stride+3];
+                double w = cv[i*stride+cdim];
                 if (std::abs(w) < 1e-14) w = 1.0;
-                x = cv[i*stride+0]/w; y = cv[i*stride+1]/w; z = cv[i*stride+2]/w;
+                x = cv[i*stride+0]/w; y = cv[i*stride+1]/w;
+                z = (cdim > 2) ? cv[i*stride+2]/w : 0.0;
                 weights.push_back(w);
             } else {
-                x = cv[i*stride+0]; y = cv[i*stride+1]; z = cv[i*stride+2];
+                x = cv[i*stride+0]; y = cv[i*stride+1];
+                z = (cdim > 2) ? cv[i*stride+2] : 0.0;
             }
             pt_ids.push_back(write_point(x, y, z));
         }

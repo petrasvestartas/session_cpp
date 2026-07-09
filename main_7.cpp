@@ -23,6 +23,7 @@
 #include <cmath>
 #include <iomanip>
 #include "brep.h"
+#include "file_step.h"
 #include "xform.h"
 #include "tolerance.h"
 using namespace session_cpp;
@@ -176,6 +177,11 @@ int main(int argc, char** argv) {
                     std::fprintf(stderr, "== orient violations: %d ==\n", nviol);
                 }
                 if (const char* dp = std::getenv("SESSION_DUMP_PB")) r.pb_dump(dp);
+                if (const char* sd = std::getenv("SESSION_STEP_DIR")) {
+                    std::filesystem::create_directories(sd);
+                    file_step::write_file_step_brep(r,
+                        std::string(sd) + "/" + pr[1] + "_" + mode + "_" + pr[2] + ".step");
+                }
                 v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
             } catch (const std::exception& e) {
                 std::printf("%-13s %-4s | THREW: %s\n", pr[0].c_str(), mode, e.what()); ++fails; continue;
@@ -246,25 +252,88 @@ int main(int argc, char** argv) {
         ff.m_surfaces[0] = s;
         double vff = ff.volume();
         BRep box = BRep::create_box(4, 4, 4);
-        struct Row { const char* op; BRep r; };
-        auto t0 = std::chrono::steady_clock::now();
-        BRep cut = box.boolean_difference(ff);
-        BRep com = box.boolean_intersection(ff);
-        BRep fus = box.boolean_union(ff);
-        long us = (long)std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - t0).count();
-        double vcut = cut.volume(), vcom = com.volume(), vfus = fus.volume();
+        double vcut = 0, vcom = 0, vfus = 0;
+        int fcut = 0, fcom = 0, ffus = 0; int scut = 0, scom = 0, sfus = 0;
+        long our_us[3] = {0, 0, 0};
+        const char* modes[3] = {"cut", "common", "fuse"};
+        for (int m = 0; m < 3; ++m) {
+            auto t0 = std::chrono::steady_clock::now();
+            BRep r = m == 0 ? box.boolean_difference(ff)
+                   : m == 1 ? box.boolean_intersection(ff)
+                            : box.boolean_union(ff);
+            our_us[m] = (long)std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - t0).count();
+            if (const char* sd = std::getenv("SESSION_STEP_DIR")) {
+                std::filesystem::create_directories(sd);
+                file_step::write_file_step_brep(r,
+                    std::string(sd) + "/freeform_" + modes[m] + "_box.step");
+                if (m == 0) file_step::write_file_step_brep(ff, std::string(sd) + "/freeform_blob.step");
+            }
+            double v = r.volume();
+            if (m == 0) { vcut = v; fcut = r.face_count(); scut = r.is_solid(); }
+            if (m == 1) { vcom = v; fcom = r.face_count(); scom = r.is_solid(); }
+            if (m == 2) { vfus = v; ffus = r.face_count(); sfus = r.is_solid(); }
+        }
         double id1 = std::abs(vcut + vcom - 64.0) / 64.0;
         double id2 = std::abs(vfus - (64.0 + vff - vcom)) / std::abs(vfus);
-        std::printf("\nfreeform blob (perturbed sphere, vol %.4f)  x  box, %ld us total:\n", vff, us);
-        std::printf("  cut  vol %11.4f  faces %2d  solid %d\n", vcut, cut.face_count(), cut.is_solid()?1:0);
-        std::printf("  com  vol %11.4f  faces %2d  solid %d\n", vcom, com.face_count(), com.is_solid()?1:0);
-        std::printf("  fuse vol %11.4f  faces %2d  solid %d\n", vfus, fus.face_count(), fus.is_solid()?1:0);
-        std::printf("  [id1] cut+com-64      rel %9.2e\n", id1);
+        // OCCT reference: ship the blob surface VERBATIM (SHAPE nurbs) so the oracle builds
+        // the identical solid; compare volume/face counts and wall time per op.
+        double occ_v[3] = {0, 0, 0}; int occ_f[3] = {0, 0, 0}; long occ_us[3] = {0, 0, 0};
+        bool occ_ok = have_oracle;
+        if (have_oracle) {
+            std::ostringstream nb;
+            nb << std::setprecision(17);
+            nb << "SHAPE nurbs " << (s.m_is_rat ? 1 : 0) << " " << s.degree(0) << " " << s.degree(1)
+               << " " << s.cv_count(0) << " " << s.cv_count(1) << "\n";
+            for (double k : s.m_nurbsknot[0]) nb << k << " ";
+            nb << "\n";
+            for (double k : s.m_nurbsknot[1]) nb << k << " ";
+            nb << "\n";
+            for (int i = 0; i < s.cv_count(0); ++i)
+                for (int j = 0; j < s.cv_count(1); ++j) {
+                    Point p = s.get_cv(i, j);
+                    nb << p[0] << " " << p[1] << " " << p[2] << " " << s.weight(i, j) << "\n";
+                }
+            nb << "XF 0 0 0 0 0 1 0\n";
+            for (int m = 0; m < 3 && occ_ok; ++m) {
+                { std::ofstream f(req);
+                  f << "OP boolean\nMODE " << modes[m]
+                    << "\nSHAPE box 4 4 4 XF 0 0 0 0 0 1 0\n" << nb.str(); }
+                auto t0 = std::chrono::steady_clock::now();
+                if (std::system((oracle + " " + req + " " + res).c_str()) != 0) { occ_ok = false; break; }
+                occ_us[m] = (long)std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+                std::ifstream f(res); std::string tok; bool okv = false;
+                while (f >> tok) {
+                    if (tok == "VOLUME") { f >> occ_v[m]; okv = true; }
+                    else if (tok == "NFACES") { f >> occ_f[m]; }
+                }
+                if (!okv) occ_ok = false;
+            }
+        }
+        std::printf("\nfreeform blob (perturbed sphere, vol %.4f)  x  box  [ours vs OCCT verbatim-NURBS]:\n", vff);
+        double vv[3] = {vcut, vcom, vfus}; int fc2[3] = {fcut, fcom, ffus}; int sl[3] = {scut, scom, sfus};
+        for (int m = 0; m < 3; ++m) {
+            double rel = (occ_ok && occ_v[m] != 0) ? std::abs(vv[m]-occ_v[m])/std::abs(occ_v[m]) : -1.0;
+            std::printf("  %-6s ours %11.4f f%-3d s%d %7ld us | occt %11.4f f%-3d %7ld us | rel %9.2e\n",
+                        modes[m], vv[m], fc2[m], sl[m], our_us[m],
+                        occ_ok ? occ_v[m] : 0.0, occ_ok ? occ_f[m] : -1, occ_us[m], rel);
+        }
+        std::printf("  [id1] cut+com-64       rel %9.2e\n", id1);
         std::printf("  [id2] fuse-(64+ff-com) rel %9.2e\n", id2);
-        bool ok = id1 < 1e-6 && cut.is_solid() && com.is_solid() && fus.is_solid();
+        bool ok = id1 < 1e-6 && scut && scom && sfus;
+        if (occ_ok) for (int m = 0; m < 3; ++m)
+            if (occ_v[m] != 0 && std::abs(vv[m]-occ_v[m])/std::abs(occ_v[m]) > 1e-6) ok = false;
         ++total; if (!ok) ++fails;
         std::printf("  freeform verdict: %s\n", ok ? "OK" : "FAIL");
+    }
+    if (std::getenv("SESSION_CAVITY")) {
+        BRep bx = BRep::create_box(4, 4, 4);
+        BRep sp2 = BRep::create_sphere(1.5);
+        BRep ct = bx.boolean_difference(sp2);
+        double ref = 64.0 - (4.0/3.0)*3.14159265358979323846*1.5*1.5*1.5;
+        std::printf("cavity cut vol %.6f (ref %.6f, rel %9.2e) faces %d solid %d\n",
+                    ct.volume(), ref, std::abs(ct.volume()-ref)/ref, ct.face_count(), ct.is_solid()?1:0);
     }
     if (dirty) save_cache(cachePath, cache);
     std::printf("\n%d/%d cells OK (vol rel<1e-6 AND exact faces AND is_solid)\n", total - fails, total);

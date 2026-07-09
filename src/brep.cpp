@@ -1233,36 +1233,216 @@ double BRep::volume() const {
     double diag = std::sqrt((xmax-xmin)*(xmax-xmin)+(ymax-ymin)*(ymax-ymin)+(zmax-zmin)*(zmax-zmin));
     double eps = (diag > 0 ? diag : 1.0) * 1e-3;
 
+    // ---- PASS 0: shell-consistent face signs by ORIENTATION PROPAGATION (OCCT shell healing).
+    // Per-face parity votes are heuristics only (tessellation cracks near tangencies break ray
+    // parity; a quadric outward reference inverts on cavity shells). The boolean's validated
+    // invariant -- mated trims traverse their shared edge ANTI-PARALLEL exactly when the two
+    // faces' natural normals are in the same orientation class -- makes RELATIVE signs exact:
+    // propagate them across every 2-trim edge, then fix each connected shell's single global
+    // flip by weighted evidence (planar supporting-plane tests are exact geometry -> weight 3;
+    // double-sided parity probes that disagree between the two sides -> weight 1). A face sign
+    // can then only be wrong if the evidence outvotes the WHOLE shell, and disjoint lobes /
+    // cavity shells are seeded independently.
+    int nfc = (int)m_faces.size();
+    std::vector<Point>  fP3(nfc, Point(0,0,0));
+    std::vector<Vector> fNn(nfc, Vector(0,0,0));
+    std::vector<double> fCU(nfc, 0.0), fCVv(nfc, 0.0);
+    std::vector<double> fsign(nfc, 1.0);
+    {
+        std::vector<char> fvalid(nfc, 0);
+        for (int fi = 0; fi < nfc; ++fi) {
+            const BRepFace& fc = m_faces[fi];
+            if (fc.surface_index < 0 || fc.surface_index >= (int)m_surfaces.size()) continue;
+            face_interior(fc, m_surfaces[fc.surface_index], fP3[fi], fNn[fi], fCU[fi], fCVv[fi]);
+            if (fNn[fi].magnitude() >= 1e-12) fvalid[fi] = 1;
+        }
+        auto face_of_trim = [&](int ti) -> int {
+            if (ti < 0 || ti >= (int)m_trims.size()) return -1;
+            int li = m_trims[ti].loop_index;
+            if (li < 0 || li >= (int)m_loops.size()) return -1;
+            return m_loops[li].face_index;
+        };
+        // Per-face UV region polygons (light sampling) for geometric material-side tests.
+        std::vector<char> fpoly_built(nfc, 0);
+        std::vector<std::vector<std::vector<std::array<double,2>>>> fpoly_out(nfc), fpoly_in(nfc);
+        auto build_fpolys = [&](int fi) {
+            if (fpoly_built[fi]) return;
+            fpoly_built[fi] = 1;
+            for (int li : m_faces[fi].loop_indices) {
+                if (li < 0 || li >= (int)m_loops.size()) continue;
+                std::vector<std::array<double,2>> poly;
+                for (int ti : m_loops[li].trim_indices) {
+                    if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                    int c2 = m_trims[ti].curve_2d_index;
+                    if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
+                    const NurbsCurve& pc = m_curves_2d[c2];
+                    if (!pc.is_valid()) continue;
+                    auto dc = pc.domain();
+                    int n = std::min(std::max(pc.cv_count()*2, 8), 256);
+                    for (int k = 0; k < n; ++k) {
+                        Point uv = pc.point_at(dc.first + (dc.second-dc.first)*k/n);
+                        poly.push_back({uv[0], uv[1]});
+                    }
+                }
+                if (poly.size() < 3) continue;
+                if (m_loops[li].type == BRepLoopType::Outer) fpoly_out[fi].push_back(std::move(poly));
+                else fpoly_in[fi].push_back(std::move(poly));
+            }
+        };
+        auto in_face_uv = [&](int fi, double u, double v) -> bool {
+            build_fpolys(fi);
+            auto pip = [&](const std::vector<std::array<double,2>>& p) {
+                bool inside = false;
+                for (size_t i = 0, j = p.size()-1; i < p.size(); j = i++) {
+                    if ((p[i][1] > v) != (p[j][1] > v) &&
+                        u < (p[j][0]-p[i][0])*(v-p[i][1])/(p[j][1]-p[i][1]) + p[i][0])
+                        inside = !inside;
+                }
+                return inside;
+            };
+            bool ok = fpoly_out[fi].empty();
+            for (auto& op : fpoly_out[fi]) if (pip(op)) { ok = true; break; }
+            if (!ok) return false;
+            for (auto& ip : fpoly_in[fi]) if (pip(ip)) return false;
+            return true;
+        };
+        // 3D traversal direction of a trim near its pcurve middle, NORMALIZED to material-left:
+        // stored direction conventions are not reliable across construction paths (the box x sph
+        // seam-straddling half-caps store material-RIGHT trims), so the material side is MEASURED
+        // in UV (probe left/right of the traversal against the face's own region) and the
+        // direction flipped when material sits right. After normalization, anti-parallel mates
+        // <=> same natural-orientation class is a theorem, not a convention.
+        auto trim_dir = [&](int ti) -> Vector {
+            const BRepTrim& T = m_trims[ti];
+            int c2 = T.curve_2d_index; int fi = face_of_trim(ti);
+            if (c2 < 0 || c2 >= (int)m_curves_2d.size() || fi < 0) return Vector(0,0,0);
+            int si = m_faces[fi].surface_index;
+            if (si < 0 || si >= (int)m_surfaces.size()) return Vector(0,0,0);
+            const NurbsCurve& pc = m_curves_2d[c2];
+            if (!pc.is_valid()) return Vector(0,0,0);
+            auto dc = pc.domain();
+            double tm = 0.5*(dc.first+dc.second), dt = (dc.second-dc.first)*1e-3;
+            Point a = pc.point_at(tm - dt), b = pc.point_at(tm + dt);
+            if (T.reversed) std::swap(a, b);              // traversal order
+            Point A = m_surfaces[si].point_at(a[0], a[1]);
+            Point B = m_surfaces[si].point_at(b[0], b[1]);
+            Vector d(B[0]-A[0], B[1]-A[1], B[2]-A[2]);
+            double tx = b[0]-a[0], ty = b[1]-a[1];
+            double tn = std::sqrt(tx*tx+ty*ty);
+            if (tn < 1e-15) return Vector(0,0,0);
+            auto [su0,su1] = m_surfaces[si].domain(0);
+            auto [sv0,sv1] = m_surfaces[si].domain(1);
+            Point m = pc.point_at(tm);
+            for (double f : {2e-3, 8e-3}) {
+                double eu = (su1-su0)*f, ev = (sv1-sv0)*f;
+                double lu = m[0] - ty/tn*eu, lv = m[1] + tx/tn*ev;   // left of traversal
+                double ru = m[0] + ty/tn*eu, rv = m[1] - tx/tn*ev;   // right of traversal
+                bool left_in = in_face_uv(fi, lu, lv);
+                bool right_in = in_face_uv(fi, ru, rv);
+                if (left_in == right_in) continue;                    // probe straddles another edge
+                if (!left_in) return Vector(-d[0], -d[1], -d[2]);     // material-right: normalize
+                return d;
+            }
+            return Vector(0,0,0);                                     // ambiguous: skip this trim
+        };
+        std::vector<std::vector<std::pair<int,int>>> adj(nfc);
+        for (const auto& E : m_topology_edges) {
+            if ((int)E.trim_indices.size() != 2) continue;
+            int t1 = E.trim_indices[0], t2 = E.trim_indices[1];
+            int f1 = face_of_trim(t1), f2 = face_of_trim(t2);
+            if (f1 < 0 || f2 < 0 || f1 == f2) continue;
+            if (!fvalid[f1] || !fvalid[f2]) continue;
+            Vector d1 = trim_dir(t1), d2 = trim_dir(t2);
+            double m1 = d1.magnitude(), m2 = d2.magnitude();
+            if (m1 < 1e-12 || m2 < 1e-12) continue;
+            double dp = (d1[0]*d2[0]+d1[1]*d2[1]+d1[2]*d2[2]) / (m1*m2);
+            if (std::abs(dp) < 0.5) continue;             // ambiguous tangents: skip this edge
+            int rel = dp < 0 ? +1 : -1;                   // anti-parallel = same orientation class
+            if (std::getenv("SESSION_SIGN_DBG"))
+                std::fprintf(stderr, "[ADJ] e=%d f%d<->f%d rel=%+d dp=%+.3f t(%d,%d)\n",
+                    (int)(&E - &m_topology_edges[0]), f1, f2, rel, dp, t1, t2);
+            adj[f1].push_back({f2, rel});
+            adj[f2].push_back({f1, rel});
+        }
+        std::vector<int> comp(nfc, -1), relsgn(nfc, 1);
+        int ncomp = 0;
+        for (int s0 = 0; s0 < nfc; ++s0) {
+            if (comp[s0] >= 0 || !fvalid[s0]) continue;
+            comp[s0] = ncomp; relsgn[s0] = 1;
+            std::vector<int> stk{s0};
+            while (!stk.empty()) {
+                int f = stk.back(); stk.pop_back();
+                for (auto& [g, rel] : adj[f]) {
+                    int want = rel > 0 ? relsgn[f] : -relsgn[f];
+                    if (comp[g] < 0) { comp[g] = ncomp; relsgn[g] = want; stk.push_back(g); }
+                }
+            }
+            ++ncomp;
+        }
+        const double sdirs[3][3] = {{0.5773502691, 0.6539124, 0.5023147},
+                                    {-0.6172133998, 0.5330976, 0.5788126},
+                                    {0.4419417382, -0.5303300859, 0.7237468644}};
+        auto parity_in = [&](const Point& q) {
+            int votes = 0; const double big = 1e6;
+            for (int d = 0; d < 3; ++d) {
+                Line ray(q[0], q[1], q[2], q[0]+sdirs[d][0]*big, q[1]+sdirs[d][1]*big, q[2]+sdirs[d][2]*big);
+                auto hits = Intersection::ray_mesh(ray, bmesh, 1e-9, true);
+                if ((hits.size() % 2) == 1) ++votes;
+            }
+            return votes >= 2;
+        };
+        std::vector<double> score(std::max(ncomp, 1), 0.0);
+        for (int fi = 0; fi < nfc; ++fi) {
+            if (!fvalid[fi]) continue;
+            const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
+            double ev = 0.0, wt = 0.0;
+            if (is_planar(srf)) {
+                // Supporting-plane outward sign: when the whole solid lies on one side of this
+                // face's plane, the outward normal is the empty side -- exact and ray-free.
+                double dmax = -1e300, dmin = 1e300;
+                for (const auto& vq : m_vertices) {
+                    double d = (vq[0]-fP3[fi][0])*fNn[fi][0] + (vq[1]-fP3[fi][1])*fNn[fi][1]
+                             + (vq[2]-fP3[fi][2])*fNn[fi][2];
+                    dmax = std::max(dmax, d); dmin = std::min(dmin, d);
+                }
+                double tol_sup = (diag > 0 ? diag : 1.0) * 5e-3;
+                if (dmax <= tol_sup)       { ev = +1.0; wt = 3.0; }
+                else if (dmin >= -tol_sup) { ev = -1.0; wt = 3.0; }
+            }
+            if (wt == 0.0) {
+                Point pp(fP3[fi][0]+eps*fNn[fi][0], fP3[fi][1]+eps*fNn[fi][1], fP3[fi][2]+eps*fNn[fi][2]);
+                Point pm(fP3[fi][0]-eps*fNn[fi][0], fP3[fi][1]-eps*fNn[fi][1], fP3[fi][2]-eps*fNn[fi][2]);
+                bool in_p = parity_in(pp), in_m = parity_in(pm);
+                if (in_p != in_m) { ev = in_p ? -1.0 : +1.0; wt = 1.0; }
+                // inconsistent double probe (one side's rays graze bad triangles, e.g. the
+                // inside-cavity probe next to sphere pole fans): keep the OUTWARD-side parity
+                // as weak evidence rather than discarding the face's vote entirely -- a lone
+                // isolated shell (box-with-cavity's sphere) has no other voters.
+                else { ev = in_p ? -1.0 : +1.0; wt = 0.5; }
+            }
+            if (wt > 0.0) score[comp[fi]] += wt * ev * relsgn[fi];
+        }
+        for (int fi = 0; fi < nfc; ++fi) {
+            if (!fvalid[fi]) continue;
+            double flip = score[comp[fi]] < 0 ? -1.0 : 1.0;
+            fsign[fi] = relsgn[fi] * flip;
+            if (std::getenv("SESSION_SIGN_DBG"))
+                std::fprintf(stderr, "[SIGN0] f=%d comp=%d rel=%+d score=%+.1f sign=%+.0f P3=(%.4f,%.4f,%.4f)\n",
+                             fi, comp[fi], relsgn[fi], score[comp[fi]], fsign[fi],
+                             fP3[fi][0], fP3[fi][1], fP3[fi][2]);
+        }
+    }
+
     double total = 0.0;
     for (const auto& face : m_faces) {
         if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;
         const NurbsSurface& srf = m_surfaces[face.surface_index];
 
-        Point P3; Vector Nnat; double fcu = 0, fcv = 0;
-        face_interior(face, srf, P3, Nnat, fcu, fcv);
+        int fidx = (int)(&face - &m_faces[0]);
+        const Point& P3 = fP3[fidx];
+        const Vector& Nnat = fNn[fidx];
         if (Nnat.magnitude() < 1e-12) continue;
-        // Outward sign: stepping a little along +Nnat should leave the solid.
-        Point probe(P3[0]+eps*Nnat[0], P3[1]+eps*Nnat[1], P3[2]+eps*Nnat[2]);
-        // 3-ray majority vote: a single fixed-direction parity ray can graze a shared edge or a
-        // near-tangent triangle of the tessellated boundary and silently flip the face sign.
-        int inside_votes = 0;
-        {
-            const double dirs[3][3] = {{0.5773502691, 0.6539124, 0.5023147},
-                                       {-0.6172133998, 0.5330976, 0.5788126},
-                                       {0.4419417382, -0.5303300859, 0.7237468644}};
-            const double big = 1e6;
-            for (int d = 0; d < 3; ++d) {
-                Line ray(probe[0], probe[1], probe[2],
-                         probe[0]+dirs[d][0]*big, probe[1]+dirs[d][1]*big, probe[2]+dirs[d][2]*big);
-                auto hits = Intersection::ray_mesh(ray, bmesh, 1e-9, true);
-                if ((hits.size() % 2) == 1) ++inside_votes;
-            }
-        }
-        double sign = (inside_votes >= 2) ? -1.0 : 1.0;
-        if (std::getenv("SESSION_SIGN_DBG"))
-            std::fprintf(stderr, "[SIGN] f=%ld P3=(%.4f,%.4f,%.4f) N=(%.3f,%.3f,%.3f) uv=(%.4f,%.4f) votes=%d sign=%.0f rev=%d\n",
-                (long)(&face - &m_faces[0]), P3[0], P3[1], P3[2], Nnat[0], Nnat[1], Nnat[2],
-                fcu, fcv, inside_votes, sign, face.reversed ? 1 : 0);
+        double sign = fsign[fidx];
 
         // Quadric recognition (sphere/cylinder/torus), hoisted BEFORE the masked Gauss: when the
         // analytic boundary-integral flux below overrides the Gauss result (recognized kind and a
@@ -1341,49 +1521,6 @@ double BRep::volume() const {
             }
         }
 
-        // Double-sided probe: a boundary face has EXACTLY ONE of P3 +- eps*N inside the solid.
-        // When the two parities AGREE, the tessellated ray-parity test is provably broken at this
-        // face (mesh cracks along wavy section-edge discretizations near surface tangencies --
-        // tor x tor fuse voted 3/3 "inside" from a point verifiably OUTSIDE both tori). Fall back
-        // to the recognized quadric's outward reference: material lies tube-/radially-INWARD of a
-        // sphere/cylinder/torus face unless the boolean marked the face reversed (a cavity wall).
-        if (q_kind) {
-            Point probe2(P3[0]-eps*Nnat[0], P3[1]-eps*Nnat[1], P3[2]-eps*Nnat[2]);
-            int inside_votes2 = 0;
-            {
-                const double dirs[3][3] = {{0.5773502691, 0.6539124, 0.5023147},
-                                           {-0.6172133998, 0.5330976, 0.5788126},
-                                           {0.4419417382, -0.5303300859, 0.7237468644}};
-                const double big = 1e6;
-                for (int d = 0; d < 3; ++d) {
-                    Line ray(probe2[0], probe2[1], probe2[2],
-                             probe2[0]+dirs[d][0]*big, probe2[1]+dirs[d][1]*big, probe2[2]+dirs[d][2]*big);
-                    auto hits = Intersection::ray_mesh(ray, bmesh, 1e-9, true);
-                    if ((hits.size() % 2) == 1) ++inside_votes2;
-                }
-            }
-            bool in_p = inside_votes >= 2, in_m = inside_votes2 >= 2;
-            if (in_p == in_m) {
-                Vector w(P3[0]-q_C[0], P3[1]-q_C[1], P3[2]-q_C[2]);
-                double dz = w[0]*q_Zs[0]+w[1]*q_Zs[1]+w[2]*q_Zs[2];
-                Vector nref(0,0,0);
-                if (q_kind == 1) nref = w;
-                else if (q_kind == 2) nref = Vector(w[0]-dz*q_Zs[0], w[1]-dz*q_Zs[1], w[2]-dz*q_Zs[2]);
-                else {
-                    double rho = std::sqrt(std::max(1e-30, w[0]*w[0]+w[1]*w[1]+w[2]*w[2]-dz*dz));
-                    Vector er((w[0]-dz*q_Zs[0])/rho, (w[1]-dz*q_Zs[1])/rho, (w[2]-dz*q_Zs[2])/rho);
-                    double cvv = (rho-q_R)/q_r2, svv = dz/q_r2;
-                    nref = Vector(cvv*er[0]+svv*q_Zs[0], cvv*er[1]+svv*q_Zs[1], cvv*er[2]+svv*q_Zs[2]);
-                }
-                double na = Nnat[0]*nref[0]+Nnat[1]*nref[1]+Nnat[2]*nref[2];
-                double s_out = (na >= 0) ? 1.0 : -1.0;
-                sign = face.reversed ? -s_out : s_out;
-                if (std::getenv("SESSION_SIGN_DBG"))
-                    std::fprintf(stderr, "[SIGN2] f=%ld parity-contradiction (votes %d/%d): quadric fallback sign=%.0f\n",
-                        (long)(&face - &m_faces[0]), inside_votes, inside_votes2, sign);
-            }
-        }
-
         double flux_nat = 0.0;
         bool curved_rect = false;
         if (is_planar(srf)) {
@@ -1414,21 +1551,8 @@ double BRep::volume() const {
                     }
                 }
             }
-            // Supporting-plane outward sign: when the whole solid lies on one side of this
-            // face's plane (box/cylinder caps, coplanar boolean fragments), the outward
-            // normal is the empty side -- exact and ray-free. The 3-ray vote stays as the
-            // fallback for interior walls, where its rays cannot graze a tangent surface
-            // beyond the plane.
-            double dmax = -1e300, dmin = 1e300;
-            for (const auto& vq : m_vertices) {
-                double d = (vq[0]-P3[0])*Nnat[0] + (vq[1]-P3[1])*Nnat[1] + (vq[2]-P3[2])*Nnat[2];
-                dmax = std::max(dmax, d); dmin = std::min(dmin, d);
-            }
-            // feature-relative: marched section lifts sit ~1e-3 off their plane; a truly
-            // interior wall has material O(diag) beyond it, so 5e-3 stays unambiguous
-            double tol_sup = (diag > 0 ? diag : 1.0) * 5e-3;
-            if (dmax <= tol_sup) sign = 1.0;        // material on -Nnat side: natural is outward
-            else if (dmin >= -tol_sup) sign = -1.0; // material on +Nnat side: natural is inward
+            // (Supporting-plane outward evidence is folded into the PASS 0 shell-orientation
+            // vote above -- the propagated fsign already reflects it, weight 3.)
         } else {
             // Trim UV bounding box AND the trim loops as UV polygons (so a non-rectangular trim --
             // a circular sphere cap, or a band with circular holes -- integrates over the actual
