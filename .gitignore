@@ -81,3 +81,4 @@ dist/
 build/
 docs_output/
 build2/
+.claude/
