@@ -2044,7 +2044,7 @@ NurbsCurve surface_plane_fit_3d(
         // the marched points are Newton-corrected onto the exact section; accepting the
         // fit at half the MARCHING step (~1e-2 3D) leaks directly into every consumer
         // (the spiric discs undercut ~0.7% area). Target a small fraction of the step.
-        double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5 * 5e-3;
+        double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5 * 5e-4;
         double total_turning = 0;
         for (int i = 1; i < m - 1; i++) {
             double dx1 = pts_2d[i][0]-pts_2d[i-1][0], dy1 = pts_2d[i][1]-pts_2d[i-1][1];
@@ -3561,7 +3561,10 @@ static std::vector<NurbsCurve> analytic_torus_pullback(const NurbsSurface& srf,
         return x;
     };
     auto [t0, t1] = c3d.domain();
-    int n = std::max(c3d.cv_count() * 8, 240);
+    // the pullback polyline IS the boundary volume() integrates on a torus (spirics have
+    // no rational form): one-sided chord sag transfers ~4e-3 flux from blisters to band
+    // at n=240; sag scales n^-2
+    int n = std::max(c3d.cv_count() * 8, 4000);
     std::vector<std::array<double,2>> ab;
     double prev_a = 0.0, prev_b = 0.0;
     for (int i = 0; i <= n; ++i) {

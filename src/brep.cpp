@@ -1592,7 +1592,9 @@ double BRep::volume() const {
                             } }
                         // corner error of the boundary trapezoid is O((span/n)^2 * |dG'|): 200
                         // floors sphere fuse remainders at ~9e-6 rel; 2000 puts corners ~1e-8.
-                        int n = (use_c3 && c3->is_rational()) ? 4000 : 2000;
+                        // resampling a polyline pcurve at FEWER points than its vertex count
+                        // aliases it back to coarse secants -- track its density
+                        int n = (use_c3 && c3->is_rational()) ? 4000 : std::max(2000, pc.cv_count()*4);
                         for(int s=0;s<n;++s){double f=(double)s/n;
                             if(use_c3){ bool cf=(fwd!=c3_rev);
                                 double t3=cf?c3a+(c3b-c3a)*f:c3b-(c3b-c3a)*f;
@@ -3783,13 +3785,19 @@ void BRep::sew_coincident_edges(double tol) {
             if (t.edge_index >= 0 && t.edge_index < ne) uses[rep[t.edge_index]]++;
         double tol2 = tol * 2.5;
         for (int ei = 0; ei < ne; ++ei) {
-            if (samp[ei].empty() || rep[ei] != ei || uses[ei] != 1) continue;
+            if (samp[ei].empty() || rep[ei] != ei) continue;
+            if (std::getenv("SESSION_SEW_DBG") && uses[ei] == 1)
+                std::fprintf(stderr, "[P2] candidate ei=%d uses=%d\n", ei, uses[ei]);
+            if (uses[ei] != 1) continue;
             const Point& a0 = samp[ei].front(); const Point& a1 = samp[ei].back();
             for (int r : reps) {
                 if (r == ei || samp[r].empty() || uses[r] != 1 || rep[r] != r || bbox_far(ei, r)) continue;
                 const Point& b0 = samp[r].front(); const Point& b1 = samp[r].back();
                 bool em = (a0.distance(b0) < tol && a1.distance(b1) < tol)
                        || (a0.distance(b1) < tol && a1.distance(b0) < tol);
+                if (std::getenv("SESSION_SEW_DBG"))
+                    std::fprintf(stderr, "[P2] ei=%d r=%d em=%d d00=%.4f d11=%.4f d01=%.4f d10=%.4f\n",
+                        ei, r, em?1:0, a0.distance(b0), a1.distance(b1), a0.distance(b1), a1.distance(b0));
                 if (!em) continue;
                 bool ok2 = true;
                 if (pt_to_polyline(samp[ei][samp[ei].size()/2], samp[r]) > tol2) ok2 = false;
@@ -3807,8 +3815,28 @@ void BRep::sew_coincident_edges(double tol) {
                 double h = 0.0;
                 for (const auto& q : samp[ei]) h = std::max(h, pt_to_polyline(q, samp[r]));
                 for (const auto& q : samp[r]) h = std::max(h, pt_to_polyline(q, samp[ei]));
-                if (h < tol * 20.0)
-                    std::fprintf(stderr, "[SEWMISS] e=%d r=%d haus=%.5f tol=%.5f\n", ei, r, h, tol);
+                if (h < tol * 20.0) {
+                    int u1 = 0, u2 = 0;
+                    for (const auto& t : m_trims) {
+                        if (t.edge_index >= 0 && t.edge_index < ne && rep[t.edge_index] == ei) u1++;
+                        if (t.edge_index >= 0 && t.edge_index < ne && rep[t.edge_index] == r) u2++;
+                    }
+                    std::fprintf(stderr, "[SEWMISS] e=%d(u=%d) r=%d(u=%d) haus=%.5f tol=%.5f\n", ei, u1, r, u2, h, tol);
+                    for (int ti2 = 0; ti2 < (int)m_trims.size(); ++ti2) {
+                        int oe2 = m_trims[ti2].edge_index;
+                        if (oe2 < 0 || oe2 >= ne) continue;
+                        if (rep[oe2] != ei && rep[oe2] != r) continue;
+                        int li2 = m_trims[ti2].loop_index;
+                        int fi2 = (li2 >= 0 && li2 < (int)m_loops.size()) ? m_loops[li2].face_index : -1;
+                        int si2 = (fi2 >= 0 && fi2 < (int)m_faces.size()) ? m_faces[fi2].surface_index : -1;
+                        int pl2 = (si2 >= 0 && si2 < (int)m_surfaces.size() && m_surfaces[si2].is_planar(nullptr, 1e-6)) ? 1 : 0;
+                        std::fprintf(stderr, "  [SEWM3] rep=%d trim=%d face=%d srf=%d planar=%d\n",
+                            rep[oe2], ti2, fi2, si2, pl2);
+                    }
+                    for (int oe = 0; oe < ne; ++oe)
+                        if (oe != r && oe != ei && (rep[oe] == rep[r] || rep[oe] == ei))
+                            std::fprintf(stderr, "  [SEWM2] edge %d merged into rep %d\n", oe, rep[oe]);
+                }
             }
         }
     }
