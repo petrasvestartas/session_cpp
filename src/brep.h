@@ -282,6 +282,27 @@ public:
     BRep boolean_intersection(const BRep& other, double tolerance = 0.0) const {
         return boolean(other, BooleanOp::Intersection, tolerance);
     }
+    /// A ^ B (symmetric difference): (A - B) | (B - A). Composite of the verified primitive
+    /// ops -- the two cut results are DISJOINT except along the shared section surface, so
+    /// their union reduces to the combine+sew path with no new classification cases.
+    BRep boolean_xor(const BRep& other, double tolerance = 0.0) const {
+        BRep ab = boolean_difference(other, tolerance);
+        BRep ba = other.boolean_difference(*this, tolerance);
+        if (ab.face_count() == 0) return ba;    // A inside B -> xor = B - A
+        if (ba.face_count() == 0) return ab;    // B inside A -> xor = A - B
+        return ab.boolean_union(ba, tolerance);
+    }
+    /// Split A by B (OCCT BOPAlgo_SPLITTER analogue for two solids): all three volume
+    /// fragments {A - B, A & B, B - A}, empty fragments omitted. Their volumes partition
+    /// fuse(A, B) exactly.
+    std::vector<BRep> boolean_split(const BRep& other, double tolerance = 0.0) const {
+        std::vector<BRep> out;
+        for (BRep r : {boolean_difference(other, tolerance),
+                       boolean_intersection(other, tolerance),
+                       other.boolean_difference(*this, tolerance)})
+            if (r.face_count() > 0) out.push_back(std::move(r));
+        return out;
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Meshing

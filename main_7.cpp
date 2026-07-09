@@ -198,6 +198,32 @@ int main(int argc, char** argv) {
             std::printf("%-13s %-4s | %11.4f %11.4f %9.2e | %4d %5d | %d | %8ld | %s\n",
                         pr[0].c_str(), mode, v, k[0], rel, nf, (int)k[1], solid, us, ok ? "OK" : "FAIL");
         }
+        // Composite-op identities against the cached references:
+        //   vol(xor)  == fuse - common,   sum(split fragments) == fuse.
+        if (std::getenv("SESSION_XOR_CHECK")) {
+            auto kf = cache.find(pr[0] + "|fuse"); auto kc = cache.find(pr[0] + "|common");
+            if (kf != cache.end() && kc != cache.end()) {
+                const Place& A = PL[pr[1]]; const Place& B = PL[pr[2]];
+                BRep ba = build(A), bb = build(B);
+                double vfuse = kf->second.vol, vcom = kc->second.vol;
+                try {
+                    BRep x = ba.boolean_xor(bb);
+                    auto frags = ba.boolean_split(bb);
+                    double vx = x.volume(), vs = 0;
+                    for (auto& f : frags) vs += f.volume();
+                    double xref = vfuse - vcom;
+                    double xr = xref != 0 ? std::abs(vx - xref) / std::abs(xref) : std::abs(vx);
+                    double sr = vfuse != 0 ? std::abs(vs - vfuse) / vfuse : std::abs(vs);
+                    ++total; if (!(xr < 1e-6 && sr < 1e-6 && x.is_solid())) ++fails;
+                    std::printf("%-13s xor  | %11.4f %11.4f %9.2e | slds %d frags %d sum %11.4f %9.2e | %s\n",
+                                pr[0].c_str(), vx, xref, xr, x.is_solid()?1:0, (int)frags.size(), vs, sr,
+                                (xr < 1e-6 && sr < 1e-6 && x.is_solid()) ? "OK" : "FAIL");
+                } catch (const std::exception& e) {
+                    ++total; ++fails;
+                    std::printf("%-13s xor  | THREW: %s\n", pr[0].c_str(), e.what());
+                }
+            }
+        }
     }
     if (dirty) save_cache(cachePath, cache);
     std::printf("\n%d/%d cells OK (vol rel<1e-6 AND exact faces AND is_solid)\n", total - fails, total);
