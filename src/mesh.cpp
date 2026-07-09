@@ -493,7 +493,7 @@ std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::o
         
         if (is_new_edge) {
             halfedge[v][u] = std::nullopt;
-            linecolors.push_back(Color::white());
+            linecolors.push_back(Color::black());
             widths.push_back(1.0);
         }
     }
