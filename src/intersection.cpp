@@ -3854,12 +3854,97 @@ static bool ssi_sphere_torus(const RecogSurface& sph, const RecogSurface& tor, s
         out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad)); }
     return true;
 }
+// --- PARALLEL-AXIS tori with EQUAL major and minor radii whose centers share one
+// axis-normal plane (the tor x tor matrix cell): subtracting the two implicit torus
+// equations factors the section EXACTLY into two conic families in the base plane,
+//   (rho1 - R) = -(rho2 - R)  ->  focal ellipse  rho1 + rho2 = 2R,
+//   (rho1 - R) = +(rho2 - R)  ->  bisector line  x = d/2,
+// each lifted by z = +-sqrt(r^2 - t^2) with t = rho1 - R. Parametrised by the
+// torus-A tube angle phi (t = r cos phi, z = r sin phi) every branch is one smooth
+// CLOSED loop, and the phi = +-pi/2 nodes are EXACTLY the 4 surface tangent points
+// (rho1 = rho2 = R, z = +-r), so the downstream UV arrangement sees clean loop
+// crossings instead of the marcher's tangency-aborted open traces.
+static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& tb, std::vector<NurbsCurve>& out) {
+    const double kTol = 1e-6;
+    static const bool s_dbg = (std::getenv("SESSION_SSI_DBG") != nullptr);
+    V3 C1 = ta.p1, w = ssi_unit(ta.p2); double R1 = ta.r, r1 = ta.r2;
+    V3 C2 = tb.p1, w2 = ssi_unit(tb.p2); double R2 = tb.r, r2 = tb.r2;
+    V3 cxw = ssi_cross(w, w2);
+    if (std::sqrt(ssi_dot(cxw, cxw)) > kTol) { if (s_dbg) std::fprintf(stderr, "[SSI] spiric: axes not parallel\n"); return false; }
+    if (std::abs(r1 - r2) > kTol) { if (s_dbg) std::fprintf(stderr, "[SSI] spiric: r1!=r2\n"); return false; }
+    if (std::abs(R1 - R2) > kTol) { if (s_dbg) std::fprintf(stderr, "[SSI] spiric: R1!=R2\n"); return false; }
+    if (std::abs(axial_coord(C1, w, C2)) > kTol) { if (s_dbg) std::fprintf(stderr, "[SSI] spiric: axial offset\n"); return false; }
+    V3 dp{C2[0]-C1[0], C2[1]-C1[1], C2[2]-C1[2]};
+    double hax = ssi_dot(dp, w);
+    V3 ex{dp[0]-hax*w[0], dp[1]-hax*w[1], dp[2]-hax*w[2]};
+    double d = std::sqrt(ssi_dot(ex, ex));
+    if (d <= kTol) return false;                                  // coaxial handled by caller
+    ex = V3{ex[0]/d, ex[1]/d, ex[2]/d};
+    V3 ey = ssi_cross(w, ex);
+    double R = 0.5*(R1 + R2), r = 0.5*(r1 + r2);
+    double c = 0.5*d;                                             // focal half-distance of both conics
+    if (std::abs(R - c) <= kTol) return false;                    // degenerate ellipse -> marcher
+    const double PI_ = 3.14159265358979323846;
+    const int N = 512;
+    // xy_of_t maps t = rho1 - R to the (x, y>0) base-plane point of one family.
+    auto emit_loops = [&](const std::function<bool(double, double&, double&)>& xy_of_t) {
+        for (int sgn : {+1, -1}) {
+            std::vector<Point> pts;
+            pts.reserve(N);
+            bool ok = true;
+            for (int k = 0; k < N && ok; ++k) {
+                double phi = 2.0*PI_*k/N;
+                double t = r*std::cos(phi), z = r*std::sin(phi);
+                double x, y;
+                if (!xy_of_t(t, x, y)) { ok = false; break; }
+                double yy = sgn*y;
+                pts.push_back(Point(C1[0]+x*ex[0]+yy*ey[0]+z*w[0],
+                                    C1[1]+x*ex[1]+yy*ey[1]+z*w[1],
+                                    C1[2]+x*ex[2]+yy*ey[2]+z*w[2]));
+            }
+            if (!ok) return;
+            NurbsCurve loop = NurbsCurve::create_interpolated(pts, CurveNurbsKnotStyle::ChordPeriodic);
+            if (loop.is_valid()) { loop.set_domain(0.0, 1.0); out.push_back(loop); }
+        }
+    };
+    // Family 1: bisector line x = c. Two clean loops need the whole tube annulus to
+    // clear the line's closest approach: (R - r)^2 > c^2. A merged/tangent topology
+    // (line crosses only part of the annulus) keeps the marcher.
+    double lo2 = (R - r)*(R - r) - c*c;
+    double hi2 = (R + r)*(R + r) - c*c;
+    if (hi2 > kTol && lo2 <= kTol) return false;                  // merged single-loop topology
+    // Family 2: focal ellipse rho1 + rho2 = 2R (a_e = R, c_e = c, exists iff R > c).
+    // rho1 = R + c cos(sigma) => cos(sigma) = t/c; clean two-loop topology needs the
+    // loops to avoid the ellipse vertices: r < c.
+    if (R > c && r >= c - kTol) return false;                     // loop reaches ellipse vertex
+    if (lo2 > kTol)
+        emit_loops([&](double t, double& x, double& y) {
+            double rho = R + t;
+            double y2 = rho*rho - c*c;
+            if (y2 <= 0.0) return false;
+            x = c;
+            y = std::sqrt(y2);
+            return true;
+        });
+    if (R > c + kTol) {
+        double be = std::sqrt(R*R - c*c);
+        emit_loops([&](double t, double& x, double& y) {
+            double g = t/c;                                       // cos(sigma), |g| <= r/c < 1
+            if (std::abs(g) >= 1.0) return false;
+            x = c + R*g;
+            y = be*std::sqrt(1.0 - g*g);
+            return true;
+        });
+    }
+    if (s_dbg) std::fprintf(stderr, "[SSI] spiric HIT: %d loops emitted\n", (int)out.size());
+    return true;
+}
 static bool ssi_torus_torus(const RecogSurface& ta, const RecogSurface& tb, std::vector<NurbsCurve>& out) {
     const double kTol = 1e-6;
     V3 C1 = ta.p1, w  = ssi_unit(ta.p2); double R1 = ta.r, r1 = ta.r2;
     V3 C2 = tb.p1, w2 = ssi_unit(tb.p2); double R2 = tb.r, r2 = tb.r2;
     if (r1 >= R1 - kTol || r2 >= R2 - kTol) return false;
-    if (!axes_coaxial(C1, w, C2, w2, kTol)) return false;
+    if (!axes_coaxial(C1, w, C2, w2, kTol)) return ssi_torus_torus_spiric(ta, tb, out);
     double z2 = axial_coord(C1, w, C2);
     double dxR = R2 - R1, d = std::sqrt(dxR*dxR + z2*z2);
     if (d < kTol) return false;
@@ -3950,6 +4035,8 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
     for (const NurbsCurve& cc3 : c3_list) {
         NurbsCurve pa = analytic_pcurve(a, ra, cc3);
         NurbsCurve pb = analytic_pcurve(b, rb, cc3);
+        if (!pa.is_valid() && ra.kind == K::TORUS) { auto v = analytic_torus_pullback(a, ra, cc3); if (!v.empty()) pa = v[0]; }
+        if (!pb.is_valid() && rb.kind == K::TORUS) { auto v = analytic_torus_pullback(b, rb, cc3); if (!v.empty()) pb = v[0]; }
         if (!pa.is_valid()) { auto v = Closest::surface_curve(a, cc3); if (!v.empty()) pa = v[0]; }
         if (!pb.is_valid()) { auto v = Closest::surface_curve(b, cc3); if (!v.empty()) pb = v[0]; }
         if (pa.is_valid() && pb.is_valid())
