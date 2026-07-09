@@ -264,6 +264,12 @@ public:
     /// sew_coincident_edges when gated by SESSION_BOOL_SHARED_EDGES. Modifies in place.
     void make_shared_section_edges(const BRep& A, const BRep& B, double tol = 0.0);
 
+    /// OCCT SameParameter-lite: for every 2-trim mixed (planar/curved) section edge, rebuild the
+    /// PLANAR trim's pcurve from the edge's shared 3D curve by exact affine projection, so both
+    /// faces integrate identical boundary geometry (the volume error is first-order in any
+    /// per-face copy mismatch). Run after sew_coincident_edges. Modifies in place.
+    void sameparameter_planar_pcurves();
+
     /// A | B (fuse).
     BRep boolean_union(const BRep& other, double tolerance = 0.0) const {
         return boolean(other, BooleanOp::Union, tolerance);

@@ -157,6 +157,8 @@ int main(int argc, char** argv) {
     for (auto& pr : pairs()) {
         if (!filter.empty() && pr[0].find(filter) == std::string::npos) continue;
         for (const char* mode : {"cut", "common", "fuse"}) {
+            const char* oponly = std::getenv("SESSION_OP");   // run a single op for diagnostics
+            if (oponly && std::string(mode) != oponly) continue;
             ++total;
             const Place& A = PL[pr[1]]; const Place& B = PL[pr[2]];
             double v = 0; int nf = 0; int solid = 0; long us = 0;
@@ -173,6 +175,7 @@ int main(int argc, char** argv) {
                     int nviol = r.check_trim_orientation(true);
                     std::fprintf(stderr, "== orient violations: %d ==\n", nviol);
                 }
+                if (const char* dp = std::getenv("SESSION_DUMP_PB")) r.pb_dump(dp);
                 v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
             } catch (const std::exception& e) {
                 std::printf("%-13s %-4s | THREW: %s\n", pr[0].c_str(), mode, e.what()); ++fails; continue;

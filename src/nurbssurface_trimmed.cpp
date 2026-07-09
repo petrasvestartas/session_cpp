@@ -591,7 +591,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         auto cdom = crv.domain();
         double ct0 = cdom.first, ct1 = cdom.second;
         std::vector<std::array<double, 3>> entries;
-        int n = std::max(crv.cv_count() * 4, 16);
+        int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
         for (int i = 0; i <= n; ++i) {
             double t = ct0 + (ct1 - ct0) * i / n;
             Point p = crv.point_at(t);
@@ -1199,7 +1199,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_face_by_wires(
         auto cdom = crv.domain();
         double ct0 = cdom.first, ct1 = cdom.second;
         std::vector<std::array<double, 3>> entries;
-        int n = std::max(crv.cv_count() * 4, 16);
+        int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
         for (int i = 0; i <= n; ++i) {
             double t = ct0 + (ct1 - ct0) * i / n;
             Point p = crv.point_at(t);
@@ -1712,7 +1712,7 @@ void NurbsSurfaceTrimmed::add_hole(const NurbsCurve& curve_3d) {
     auto sdom_v = m_surface.domain(1);
     double range_u = sdom_u.second - sdom_u.first;
     double range_v = sdom_v.second - sdom_v.first;
-    int n_samples = std::max(curve_3d.cv_count() * 4, 32);
+    int n_samples = std::min(std::max(curve_3d.cv_count() * 4, 32), 2048);
     std::vector<Point> uv_pts;
     for (int i = 0; i < n_samples; ++i) {
         double t = dom.first + (dom.second - dom.first) * i / n_samples;
@@ -1789,7 +1789,7 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
         if (crv.degree() <= 1 && !crv.is_rational()) {
             for (int i = 0; i < crv.cv_count(); ++i) raw.push_back(crv.get_cv(i));
         } else {
-            int n = std::max(crv.cv_count() * 4, 16);
+            int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
             auto [sampled, params] = crv.divide_by_count(n);
             raw = sampled;
         }

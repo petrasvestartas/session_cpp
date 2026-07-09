@@ -1097,8 +1097,31 @@ double BRep::volume() const {
         for (auto& od : order) {
             const Seg& sg = segs[od.first];
             bool fwd = od.second;
-            for (int s = 0; s < NS; s++) {
-                double a = sg.t0 + (sg.t1-sg.t0)*s/NS, b = sg.t0 + (sg.t1-sg.t0)*(s+1)/NS;
+            // Integration cells ALIGNED with the pcurve's knot spans: a uniform NS split straddles
+            // knots, putting an only-C^{deg-1} integrand under a smooth Gauss rule -- aliasing
+            // error that MOVES when a trim is split (the split box x tor spiric discs shifted the
+            // volume by 2e-6). Per-span Gauss-5 is EXACT for a non-rational pcurve on an affine
+            // patch (polynomial integrand, degree <= 2*deg-1 <= 9); long smooth spans (exact
+            // rational arcs, 1-3 spans) keep >= NS cells via per-span subdivision.
+            std::vector<double> cells;
+            {
+                std::vector<double> ks;
+                ks.push_back(sg.t0);
+                for (int k = 0; k < sg.pc->nurbsknot_count(); ++k) {
+                    double t = sg.pc->nurbsknot(k);
+                    if (t > sg.t0 + 1e-14 && t < sg.t1 - 1e-14 && t - ks.back() > 1e-14)
+                        ks.push_back(t);
+                }
+                ks.push_back(sg.t1);
+                int nspan = (int)ks.size() - 1;
+                int sub = std::max(1, (NS + nspan - 1) / nspan);
+                for (int i = 0; i < nspan; ++i)
+                    for (int q = 0; q < sub; ++q)
+                        cells.push_back(ks[i] + (ks[i+1]-ks[i])*q/sub);
+                cells.push_back(sg.t1);
+            }
+            for (int s = 0; s + 1 < (int)cells.size(); s++) {
+                double a = cells[s], b = cells[s+1];
                 double mid = 0.5*(a+b), half = 0.5*(b-a);
                 for (int g = 0; g < 5; g++) {
                     double t = mid + half*GN[g];
@@ -1131,7 +1154,10 @@ double BRep::volume() const {
                 if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
                 const NurbsCurve& pc = m_curves_2d[c2];
                 auto dc = pc.domain();
-                int n = std::max(pc.cv_count()*3, 6);
+                // Cap: a dense polyline pcurve (torus pullback of a sampled section loop,
+                // cv ~ 4000) does not need cv*3 samples to seed the CDT -- the uncapped
+                // count produced ~50k-vertex polygons and a quadratic CDT.
+                int n = std::min(std::max(pc.cv_count()*3, 6), 1024);
                 for (int i = 0; i < n; ++i) {
                     Point uv = pc.point_at(dc.first + (dc.second-dc.first)*i/n);
                     pts.push_back(Point(uv[0], uv[1], 0));
@@ -1233,6 +1259,130 @@ double BRep::volume() const {
             }
         }
         double sign = (inside_votes >= 2) ? -1.0 : 1.0;
+        if (std::getenv("SESSION_SIGN_DBG"))
+            std::fprintf(stderr, "[SIGN] f=%ld P3=(%.4f,%.4f,%.4f) N=(%.3f,%.3f,%.3f) uv=(%.4f,%.4f) votes=%d sign=%.0f rev=%d\n",
+                (long)(&face - &m_faces[0]), P3[0], P3[1], P3[2], Nnat[0], Nnat[1], Nnat[2],
+                fcu, fcv, inside_votes, sign, face.reversed ? 1 : 0);
+
+        // Quadric recognition (sphere/cylinder/torus), hoisted BEFORE the masked Gauss: when the
+        // analytic boundary-integral flux below overrides the Gauss result (recognized kind and a
+        // non-rect trim), the 384^2 masked Gauss is dead weight and is skipped entirely.
+        int q_kind = 0;                     // 1=sphere, 2=cylinder, 3=torus
+        Point q_C(0,0,0); Vector q_Zs(0,0,1), q_Xs(1,0,0), q_Ys(0,1,0);
+        double q_R = 0, q_r2 = 0;           // sphere/cyl radius R; torus major R minor r2
+        if (!is_planar(srf)) {
+            auto [su0,su1]=srf.domain(0); auto [sv0,sv1]=srf.domain(1);
+            auto dot3=[](const Vector&a,const Vector&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
+            double um=0.5*(su0+su1);
+            Point Ps=srf.point_at(um,sv0), Pn=srf.point_at(um,sv1), Pm=srf.point_at(um,0.5*(sv0+sv1));
+            Vector axis(Pn[0]-Ps[0],Pn[1]-Ps[1],Pn[2]-Ps[2]);
+            double Rt = 0.5*axis.magnitude();
+            if (Rt > 1e-9) {
+                Point Ct(0.5*(Ps[0]+Pn[0]),0.5*(Ps[1]+Pn[1]),0.5*(Ps[2]+Pn[2]));
+                Vector Zt(axis[0]/(2*Rt),axis[1]/(2*Rt),axis[2]/(2*Rt));
+                bool is_sphere=true;
+                for(int i=0;i<=3&&is_sphere;++i)for(int j=0;j<=3&&is_sphere;++j){
+                    Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/3.0);
+                    if (std::abs(p.distance(Ct)-Rt) > Rt*1e-4 + 1e-6) is_sphere=false;
+                }
+                if (is_sphere) {
+                    Vector dm(Pm[0]-Ct[0],Pm[1]-Ct[1],Pm[2]-Ct[2]);
+                    double dz=dm[0]*Zt[0]+dm[1]*Zt[1]+dm[2]*Zt[2];
+                    Vector Xt(dm[0]-dz*Zt[0],dm[1]-dz*Zt[1],dm[2]-dz*Zt[2]);
+                    double xn=Xt.magnitude();
+                    if (xn > 1e-12) {
+                        q_kind=1; q_C=Ct; q_Zs=Zt; q_R=Rt;
+                        q_Xs=Vector(Xt[0]/xn,Xt[1]/xn,Xt[2]/xn); q_Ys=cross(q_Zs,q_Xs);
+                    }
+                }
+            }
+            if (!q_kind) {
+                Point Ax; Vector Wc; double Rc = 0;
+                if (cylinder_of_surface(srf, Ax, Wc, Rc)) {
+                    Point Q0 = srf.point_at(su0, 0.5*(sv0+sv1));
+                    Vector d0(Q0[0]-Ax[0], Q0[1]-Ax[1], Q0[2]-Ax[2]);
+                    double dz0 = dot3(d0, Wc);
+                    Vector Xc(d0[0]-dz0*Wc[0], d0[1]-dz0*Wc[1], d0[2]-dz0*Wc[2]);
+                    double xl = Xc.magnitude();
+                    if (xl > 1e-12) {
+                        q_kind=2; q_C=Ax; q_Zs=Wc; q_R=Rc;
+                        q_Xs=Vector(Xc[0]/xl,Xc[1]/xl,Xc[2]/xl); q_Ys=cross(q_Zs,q_Xs);
+                    }
+                }
+            }
+            if (!q_kind) {
+                // torus: tube-circle centres at u0 and its antipode give the centre; a third
+                // centre fixes the axis; verified on a grid against (rho-R, z) tube distance.
+                double vm2 = 0.5*(sv0+sv1);
+                auto tube_c = [&](double u){ Point a=srf.point_at(u,sv0), b=srf.point_at(u,vm2);
+                    return Point(0.5*(a[0]+b[0]),0.5*(a[1]+b[1]),0.5*(a[2]+b[2])); };
+                Point c1=tube_c(su0), c2=tube_c(0.5*(su0+su1)), c3p=tube_c(su0+0.25*(su1-su0));
+                Point Ct(0.5*(c1[0]+c2[0]),0.5*(c1[1]+c2[1]),0.5*(c1[2]+c2[2]));
+                Vector a1(c1[0]-Ct[0],c1[1]-Ct[1],c1[2]-Ct[2]);
+                Vector a3(c3p[0]-Ct[0],c3p[1]-Ct[1],c3p[2]-Ct[2]);
+                Vector Zt = cross(a1, a3);
+                double zl = Zt.magnitude(), Rmaj = a1.magnitude();
+                if (zl > 1e-12 && Rmaj > 1e-9) {
+                    Zt = Vector(Zt[0]/zl, Zt[1]/zl, Zt[2]/zl);
+                    double rmin = srf.point_at(su0,sv0).distance(c1);
+                    bool is_torus = rmin > 1e-9 && rmin < Rmaj*(1.0-1e-6);
+                    for(int i=0;i<=3&&is_torus;++i)for(int j=0;j<=2&&is_torus;++j){
+                        Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/2.0);
+                        Vector w(p[0]-Ct[0],p[1]-Ct[1],p[2]-Ct[2]);
+                        double z=dot3(w,Zt);
+                        double rho=std::sqrt(std::max(0.0, dot3(w,w)-z*z));
+                        if (std::abs(std::hypot(rho-Rmaj, z)-rmin) > rmin*1e-4 + 1e-6) is_torus=false;
+                    }
+                    if (is_torus) {
+                        q_kind=3; q_C=Ct; q_Zs=Zt; q_R=Rmaj; q_r2=rmin;
+                        q_Xs=Vector(a1[0]/Rmaj,a1[1]/Rmaj,a1[2]/Rmaj); q_Ys=cross(q_Zs,q_Xs);
+                    }
+                }
+            }
+        }
+
+        // Double-sided probe: a boundary face has EXACTLY ONE of P3 +- eps*N inside the solid.
+        // When the two parities AGREE, the tessellated ray-parity test is provably broken at this
+        // face (mesh cracks along wavy section-edge discretizations near surface tangencies --
+        // tor x tor fuse voted 3/3 "inside" from a point verifiably OUTSIDE both tori). Fall back
+        // to the recognized quadric's outward reference: material lies tube-/radially-INWARD of a
+        // sphere/cylinder/torus face unless the boolean marked the face reversed (a cavity wall).
+        if (q_kind) {
+            Point probe2(P3[0]-eps*Nnat[0], P3[1]-eps*Nnat[1], P3[2]-eps*Nnat[2]);
+            int inside_votes2 = 0;
+            {
+                const double dirs[3][3] = {{0.5773502691, 0.6539124, 0.5023147},
+                                           {-0.6172133998, 0.5330976, 0.5788126},
+                                           {0.4419417382, -0.5303300859, 0.7237468644}};
+                const double big = 1e6;
+                for (int d = 0; d < 3; ++d) {
+                    Line ray(probe2[0], probe2[1], probe2[2],
+                             probe2[0]+dirs[d][0]*big, probe2[1]+dirs[d][1]*big, probe2[2]+dirs[d][2]*big);
+                    auto hits = Intersection::ray_mesh(ray, bmesh, 1e-9, true);
+                    if ((hits.size() % 2) == 1) ++inside_votes2;
+                }
+            }
+            bool in_p = inside_votes >= 2, in_m = inside_votes2 >= 2;
+            if (in_p == in_m) {
+                Vector w(P3[0]-q_C[0], P3[1]-q_C[1], P3[2]-q_C[2]);
+                double dz = w[0]*q_Zs[0]+w[1]*q_Zs[1]+w[2]*q_Zs[2];
+                Vector nref(0,0,0);
+                if (q_kind == 1) nref = w;
+                else if (q_kind == 2) nref = Vector(w[0]-dz*q_Zs[0], w[1]-dz*q_Zs[1], w[2]-dz*q_Zs[2]);
+                else {
+                    double rho = std::sqrt(std::max(1e-30, w[0]*w[0]+w[1]*w[1]+w[2]*w[2]-dz*dz));
+                    Vector er((w[0]-dz*q_Zs[0])/rho, (w[1]-dz*q_Zs[1])/rho, (w[2]-dz*q_Zs[2])/rho);
+                    double cvv = (rho-q_R)/q_r2, svv = dz/q_r2;
+                    nref = Vector(cvv*er[0]+svv*q_Zs[0], cvv*er[1]+svv*q_Zs[1], cvv*er[2]+svv*q_Zs[2]);
+                }
+                double na = Nnat[0]*nref[0]+Nnat[1]*nref[1]+Nnat[2]*nref[2];
+                double s_out = (na >= 0) ? 1.0 : -1.0;
+                sign = face.reversed ? -s_out : s_out;
+                if (std::getenv("SESSION_SIGN_DBG"))
+                    std::fprintf(stderr, "[SIGN2] f=%ld parity-contradiction (votes %d/%d): quadric fallback sign=%.0f\n",
+                        (long)(&face - &m_faces[0]), inside_votes, inside_votes2, sign);
+            }
+        }
 
         double flux_nat = 0.0;
         bool curved_rect = false;
@@ -1295,7 +1445,7 @@ double BRep::volume() const {
                     if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
                     const NurbsCurve& pc = m_curves_2d[c2];
                     auto dc = pc.domain();
-                    int n = std::max(pc.cv_count()*4, 12);
+                    int n = std::min(std::max(pc.cv_count()*4, 12), 1024);
                     for (int i = 0; i < n; ++i) {
                         Point uv = pc.point_at(dc.first + (dc.second-dc.first)*i/n);
                         umin=std::min(umin,uv[0]); umax=std::max(umax,uv[0]);
@@ -1351,6 +1501,8 @@ double BRep::volume() const {
             }
             curved_rect = rect_trim;
             int NU = rect_trim ? 24 : 384; int NV = NU;
+            static const bool s_force_gauss = (std::getenv("SESSION_FORCE_GAUSS") != nullptr);
+            if (q_kind != 0 && !rect_trim && !s_force_gauss) NU = 0;  // analytic flux overrides -> skip Gauss
             for (int iu = 0; iu < NU; iu++) {
                 double ua=umin+(umax-umin)*iu/NU, ub=umin+(umax-umin)*(iu+1)/NU;
                 double um=0.5*(ua+ub), uh=0.5*(ub-ua);
@@ -1395,77 +1547,9 @@ double BRep::volume() const {
             auto dot3=[](const Vector&a,const Vector&b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
             const double PI = 3.14159265358979323846;
 
-            int kind = 0;                       // 1=sphere, 2=cylinder, 3=torus
-            Point C(0,0,0); Vector Zs(0,0,1), Xs(1,0,0), Ys(0,1,0);
-            double R = 0, r2 = 0;               // sphere/cyl radius R; torus major R minor r2
-            {
-                double um=0.5*(su0+su1);
-                Point Ps=srf.point_at(um,sv0), Pn=srf.point_at(um,sv1), Pm=srf.point_at(um,0.5*(sv0+sv1));
-                Vector axis(Pn[0]-Ps[0],Pn[1]-Ps[1],Pn[2]-Ps[2]);
-                double Rt = 0.5*axis.magnitude();
-                if (Rt > 1e-9) {
-                    Point Ct(0.5*(Ps[0]+Pn[0]),0.5*(Ps[1]+Pn[1]),0.5*(Ps[2]+Pn[2]));
-                    Vector Zt(axis[0]/(2*Rt),axis[1]/(2*Rt),axis[2]/(2*Rt));
-                    bool is_sphere=true;
-                    for(int i=0;i<=3&&is_sphere;++i)for(int j=0;j<=3&&is_sphere;++j){
-                        Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/3.0);
-                        if (std::abs(p.distance(Ct)-Rt) > Rt*1e-4 + 1e-6) is_sphere=false;
-                    }
-                    if (is_sphere) {
-                        Vector dm(Pm[0]-Ct[0],Pm[1]-Ct[1],Pm[2]-Ct[2]);
-                        double dz=dm[0]*Zt[0]+dm[1]*Zt[1]+dm[2]*Zt[2];
-                        Vector Xt(dm[0]-dz*Zt[0],dm[1]-dz*Zt[1],dm[2]-dz*Zt[2]);
-                        double xn=Xt.magnitude();
-                        if (xn > 1e-12) {
-                            kind=1; C=Ct; Zs=Zt; R=Rt;
-                            Xs=Vector(Xt[0]/xn,Xt[1]/xn,Xt[2]/xn); Ys=cross(Zs,Xs);
-                        }
-                    }
-                }
-                if (!kind) {
-                    Point Ax; Vector Wc; double Rc = 0;
-                    if (cylinder_of_surface(srf, Ax, Wc, Rc)) {
-                        Point Q0 = srf.point_at(su0, 0.5*(sv0+sv1));
-                        Vector d0(Q0[0]-Ax[0], Q0[1]-Ax[1], Q0[2]-Ax[2]);
-                        double dz0 = dot3(d0, Wc);
-                        Vector Xc(d0[0]-dz0*Wc[0], d0[1]-dz0*Wc[1], d0[2]-dz0*Wc[2]);
-                        double xl = Xc.magnitude();
-                        if (xl > 1e-12) {
-                            kind=2; C=Ax; Zs=Wc; R=Rc;
-                            Xs=Vector(Xc[0]/xl,Xc[1]/xl,Xc[2]/xl); Ys=cross(Zs,Xs);
-                        }
-                    }
-                }
-                if (!kind) {
-                    // torus: tube-circle centres at u0 and its antipode give the centre; a third
-                    // centre fixes the axis; verified on a grid against (rho-R, z) tube distance.
-                    double vm2 = 0.5*(sv0+sv1);
-                    auto tube_c = [&](double u){ Point a=srf.point_at(u,sv0), b=srf.point_at(u,vm2);
-                        return Point(0.5*(a[0]+b[0]),0.5*(a[1]+b[1]),0.5*(a[2]+b[2])); };
-                    Point c1=tube_c(su0), c2=tube_c(0.5*(su0+su1)), c3p=tube_c(su0+0.25*(su1-su0));
-                    Point Ct(0.5*(c1[0]+c2[0]),0.5*(c1[1]+c2[1]),0.5*(c1[2]+c2[2]));
-                    Vector a1(c1[0]-Ct[0],c1[1]-Ct[1],c1[2]-Ct[2]);
-                    Vector a3(c3p[0]-Ct[0],c3p[1]-Ct[1],c3p[2]-Ct[2]);
-                    Vector Zt = cross(a1, a3);
-                    double zl = Zt.magnitude(), Rmaj = a1.magnitude();
-                    if (zl > 1e-12 && Rmaj > 1e-9) {
-                        Zt = Vector(Zt[0]/zl, Zt[1]/zl, Zt[2]/zl);
-                        double rmin = srf.point_at(su0,sv0).distance(c1);
-                        bool is_torus = rmin > 1e-9 && rmin < Rmaj*(1.0-1e-6);
-                        for(int i=0;i<=3&&is_torus;++i)for(int j=0;j<=2&&is_torus;++j){
-                            Point p=srf.point_at(su0+(su1-su0)*i/3.0, sv0+(sv1-sv0)*j/2.0);
-                            Vector w(p[0]-Ct[0],p[1]-Ct[1],p[2]-Ct[2]);
-                            double z=dot3(w,Zt);
-                            double rho=std::sqrt(std::max(0.0, dot3(w,w)-z*z));
-                            if (std::abs(std::hypot(rho-Rmaj, z)-rmin) > rmin*1e-4 + 1e-6) is_torus=false;
-                        }
-                        if (is_torus) {
-                            kind=3; C=Ct; Zs=Zt; R=Rmaj; r2=rmin;
-                            Xs=Vector(a1[0]/Rmaj,a1[1]/Rmaj,a1[2]/Rmaj); Ys=cross(Zs,Xs);
-                        }
-                    }
-                }
-            }
+            int kind = q_kind;                  // 1=sphere, 2=cylinder, 3=torus (hoisted above)
+            Point C = q_C; Vector Zs = q_Zs, Xs = q_Xs, Ys = q_Ys;
+            double R = q_R, r2 = q_r2;
             if (kind) {
                 have_analytic = true;
                 // chart handedness (u->angle, v->second coordinate) and natural-normal sign,
@@ -1592,6 +1676,26 @@ double BRep::volume() const {
                             } }
                         // corner error of the boundary trapezoid is O((span/n)^2 * |dG'|): 200
                         // floors sphere fuse remainders at ~9e-6 rel; 2000 puts corners ~1e-8.
+                        if (!use_c3 && pc.degree() == 1 && !pc.is_rational() && pc.cv_count() >= 2) {
+                            // deg-1 pcurve: its vertices ARE the geometry -- walk them directly
+                            // (uniform point_at resampling at a fixed count ALIASES the polyline
+                            // back to coarse secants); subdivide segments linearly in UV to keep
+                            // the trapezoid corner-error floor (>= ~2000 samples per trim).
+                            int k = pc.cv_count();
+                            int m = std::max(1, (2000 + k - 2) / (k - 1));
+                            bool first_s = true;
+                            for (int s = 0; s < k - 1; ++s) {
+                                int i0 = fwd ? s : k - 1 - s, i1 = fwd ? s + 1 : k - 2 - s;
+                                Point a = pc.get_cv(i0), b = pc.get_cv(i1);
+                                for (int q = 0; q < m; ++q) {
+                                    double f = (double)q / m;
+                                    p3s.push_back(srf.point_at(a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f));
+                                    vlock.push_back(lock_v ? (first_s ? 2 : 1) : 0); pu.push_back(0.0);
+                                    first_s = false;
+                                }
+                            }
+                            continue;
+                        }
                         // resampling a polyline pcurve at FEWER points than its vertex count
                         // aliases it back to coarse secants -- track its density
                         int n = (use_c3 && c3->is_rational()) ? 4000 : std::max(2000, pc.cv_count()*4);
@@ -2330,7 +2434,7 @@ void BRep::imprint_edges(double tol) {
                 // branch-free split param (see co_refine splice): project the 3D split point
                 // onto the pcurve's surface image, never through Closest's principal branch.
                 auto param_near_3d = [&](const NurbsCurve& P2, const NurbsSurface& S2, const Point& V) -> double {
-                    auto pd = P2.domain(); int M = std::max(64, P2.cv_count()*4);
+                    auto pd = P2.domain(); int M = std::min(std::max(64, P2.cv_count()*4), 4096);
                     double bt = pd.first, bd = 1e300; Point prev3(0,0,0); double prevt = pd.first;
                     for (int i2 = 0; i2 <= M; ++i2) {
                         double t = pd.first + (pd.second - pd.first)*i2/M;
@@ -2582,7 +2686,13 @@ void BRep::co_refine_coincident_edges(double tol) {
     auto cand = [&](int e){ return e>=0 && e<ne0 && (int)m_topology_edges[e].trim_indices.size() < 2
                                   && m_topology_edges[e].curve_3d_index >= 0
                                   && m_topology_edges[e].curve_3d_index < (int)m_curves_3d.size(); };
-    const int NS = 24;
+    // NS=24 under-resolves an elongated closed section loop: a 25-point polyline of the box x tor
+    // spiric (3.9 x 1.1 lens) SAGS ~0.034 at the high-curvature tips while the true arc-to-arc
+    // deviation is 0.0036 -- subset_of then fails on SAMPLING error alone (tol=diag*5e-3=0.029),
+    // the closed disc edge is never split at its arcs' feet, and the result is not solid. Denser
+    // sampling only reveals true proximity (measurement-side): it can only make coincidence tests
+    // MORE accurate, never merge distinct edges.
+    const int NS = 96;
     std::vector<std::vector<Point>> samp(ne0);
     std::vector<std::array<double,6>> bbox(ne0);
     for (int e=0;e<ne0;++e){ if(!cand(e)) continue;
@@ -2939,7 +3049,7 @@ void BRep::co_refine_coincident_edges(double tol) {
                     // (the cross-assigned-edge corruption). Projecting the 3D split point onto
                     // the pcurve's own 3D image is branch-free and exact for polyline pcurves.
                     auto param_near_3d = [&](const NurbsCurve& P2, const NurbsSurface& S2, const Point& V) -> double {
-                        auto pd = P2.domain(); int M = std::max(64, P2.cv_count()*4);
+                        auto pd = P2.domain(); int M = std::min(std::max(64, P2.cv_count()*4), 4096);
                         double bt = pd.first, bd = 1e300; Point prev3(0,0,0); double prevt = pd.first;
                         for (int i2 = 0; i2 <= M; ++i2) {
                             double t = pd.first + (pd.second - pd.first)*i2/M;
@@ -2968,11 +3078,33 @@ void BRep::co_refine_coincident_edges(double tol) {
                     std::vector<double> tps;
                     for (const Point& V : ipts) tps.push_back(param_near_3d(P, S, V));
                     p2 = split_multi(P, tps);
+                    if (std::getenv("SESSION_COREF_DBG")) {
+                        std::fprintf(stderr, "[COREF] ei=%d ti=%d split-orig p2=%d want=%d dom=[%.6f,%.6f] tps0=%.9f nk=%d cv=%d\n",
+                            ei, ti, (int)p2.size(), (int)edge_ids.size(),
+                            P.domain().first, P.domain().second, tps.empty()?-1.0:tps[0],
+                            P.nurbsknot_count(), P.cv_count());
+                        if (!p2.empty() && p2[0].is_valid() && !tps.empty()) {
+                            Point pj = p2[0].get_cv(p2[0].cv_count()-1);
+                            Point pe = P.point_at(tps[0]);
+                            std::fprintf(stderr, "[COREF]   junction cv=(%.9f,%.9f) P.at(tps0)=(%.9f,%.9f)\n",
+                                pj[0], pj[1], pe[0], pe[1]);
+                            int nP = P.cv_count();
+                            for (int qq = 0; qq < nP; ++qq) {
+                                Point pc0 = P.get_cv(qq);
+                                Point pn0 = P.get_cv(std::min(qq+1, nP-1));
+                                if ((pc0[1]-0.5)*(pn0[1]-0.5) <= 0.0 && std::abs(pc0[0]) < 0.1)
+                                    std::fprintf(stderr, "[COREF]   P.cv[%d]=(%.9f,%.9f) cv[%d]=(%.9f,%.9f)\n",
+                                        qq, pc0[0], pc0[1], qq+1, pn0[0], pn0[1]);
+                            }
+                        }
+                    }
                     if (do_wrap && (int)p2.size()>=2){ auto w2=NurbsCurve::join({p2.back(),p2.front()}, tol);
                         if(w2.size()==1 && w2[0].is_valid()){ std::vector<NurbsCurve> a2(p2.begin()+1,p2.end()-1);
                             a2.push_back(w2[0]); p2=a2; } else p2.clear(); }
                 }
                 if ((int)p2.size() != (int)edge_ids.size() && S.is_planar(nullptr, 1e-6)) {
+                    if (std::getenv("SESSION_COREF_DBG"))
+                        std::fprintf(stderr, "[COREF] ei=%d ti=%d AFFINE fallback\n", ei, ti);
                     p2.clear();
                     // Planar face: for a parallelogram-CV degree-1x1 patch (every box/plane face)
                     // the UV<->3D map is AFFINE, which preserves a rational NURBS with its control
@@ -3008,7 +3140,7 @@ void BRep::co_refine_coincident_edges(double tol) {
                             ok2 = pc.set_cv_4d(i, uu*w, vv*w, 0.0, w); }
                         for (int k=0;k<arc3.nurbsknot_count() && ok2;++k) ok2 = pc.set_nurbsknot(k, arc3.nurbsknot(k));
                         if (ok2 && pc.is_valid()) { p2.push_back(pc); continue; }
-                        auto ad = arc3.domain(); int n = std::max(arc3.cv_count()*2, 12);
+                        auto ad = arc3.domain(); int n = std::min(std::max(arc3.cv_count()*2, 12), 2048);
                         std::vector<Point> uvs;
                         for (int s=0;s<=n;++s){ Point P3=arc3.point_at(ad.first+(ad.second-ad.first)*s/n);
                             auto [uu,vv,dd]=Closest::surface_point(S,P3); (void)dd; uvs.push_back(Point(uu,vv,0.0)); }
@@ -3710,7 +3842,10 @@ void BRep::sew_coincident_edges(double tol) {
     // the spacing of the kernel solids' distinct edges (O(diag) apart), avoiding false merges.
     if (tol <= 0.0) tol = diag * 5e-3;
     int ne = (int)m_topology_edges.size();
-    const int NS = 16;
+    // 16 samples sag ~0.03 at the tips of an elongated section arc (see co_refine NS note): the
+    // measured Hausdorff then exceeds tol for truly-coincident arcs. Denser sampling tightens the
+    // measurement only -- distinct edges stay O(diag) apart regardless of sample count.
+    const int NS = 64;
     std::vector<std::vector<Point>> samp(ne);
     std::vector<std::array<double,6>> bbox(ne);  // xmn,ymn,zmn,xmx,ymx,zmx per edge
     // Only UNDER-mated edges (fewer than 2 trims) are sewing candidates: a shared intersection
@@ -3766,9 +3901,59 @@ void BRep::sew_coincident_edges(double tol) {
         for (const auto& p : b) if (pt_to_polyline(p, a) > tol) return false;
         return true;
     };
+    // Micro-edge collapse (OCCT BOPTools_AlgoTools::IsMicroEdge): an UNDER-MATED edge far
+    // shorter than the sew tolerance is below the watertightness resolution -- the typical
+    // source is a surface-TANGENCY point where two osculating section polylines cross twice
+    // within sampling noise (tor x tor: 3e-4 slivers at the 4 tangent nodes), leaving a stub
+    // no mate ever reproduces. Drop the edge and its trims; the loop's resulting endpoint
+    // gap (== stub length) is far inside the tolerance every consumer already absorbs.
+    std::vector<bool> dead(ne, false);
+    {
+        double micro_tol = tol * 0.2;
+        for (int ei = 0; ei < ne; ++ei) {
+            if (samp[ei].empty()) continue;                  // not a candidate (>= 2 trims)
+            double len = 0.0;
+            for (size_t k = 1; k < samp[ei].size(); ++k) len += samp[ei][k].distance(samp[ei][k-1]);
+            if (len >= micro_tol) continue;
+            // A 3D-degenerate edge with REAL UV extent is a pole/seam run (a sphere pole line
+            // spans the full u-domain while its 3D curve is a point) -- legitimate topology,
+            // never a sliver. Protect by trim type AND by UV extent.
+            bool protected_run = false;
+            for (int ti = 0; ti < (int)m_trims.size() && !protected_run; ++ti) {
+                if (m_trims[ti].edge_index != ei) continue;
+                if (m_trims[ti].type == BRepTrimType::Singular || m_trims[ti].type == BRepTrimType::Seam)
+                    { protected_run = true; break; }
+                int c2 = m_trims[ti].curve_2d_index;
+                int li = m_trims[ti].loop_index;
+                int fi = (li >= 0 && li < (int)m_loops.size()) ? m_loops[li].face_index : -1;
+                int si = (fi >= 0 && fi < (int)m_faces.size()) ? m_faces[fi].surface_index : -1;
+                if (c2 < 0 || c2 >= (int)m_curves_2d.size() || si < 0 || si >= (int)m_surfaces.size()) continue;
+                const NurbsCurve& pc = m_curves_2d[c2];
+                if (!pc.is_valid()) continue;
+                auto pd = pc.domain();
+                Point u0 = pc.point_at(pd.first), u1 = pc.point_at(pd.second);
+                auto du = m_surfaces[si].domain(0); auto dv = m_surfaces[si].domain(1);
+                double span = std::max(du.second - du.first, dv.second - dv.first);
+                if (u0.distance(u1) > span * 1e-2) protected_run = true;
+            }
+            if (protected_run) continue;
+            dead[ei] = true;
+            for (int ti = 0; ti < (int)m_trims.size(); ++ti) {
+                if (m_trims[ti].edge_index != ei) continue;
+                int li = m_trims[ti].loop_index;
+                if (li >= 0 && li < (int)m_loops.size()) {
+                    auto& tl = m_loops[li].trim_indices;
+                    tl.erase(std::remove(tl.begin(), tl.end(), ti), tl.end());
+                }
+                m_trims[ti].edge_index = -1;
+            }
+            m_topology_edges[ei].trim_indices.clear();
+        }
+    }
     std::vector<int> rep(ne, -1);
     std::vector<int> reps;
     for (int ei = 0; ei < ne; ++ei) {
+        if (dead[ei]) continue;
         if (samp[ei].empty()) { rep[ei] = ei; reps.push_back(ei); continue; }
         for (int r : reps)
             if (!samp[r].empty() && !bbox_far(ei, r) && coincident_within(samp[ei], samp[r])) { rep[ei] = r; break; }
@@ -3840,6 +4025,34 @@ void BRep::sew_coincident_edges(double tol) {
             }
         }
     }
+    // Geometry rep upgrade: within a merged group keep the DENSEST member's 3D curve (a pullback
+    // lift at n~2000 CVs beats a devtol section fit at ~40 CVs by an order of magnitude in
+    // on-curve accuracy). Rational (exact conic) members always win over polylines. Only the
+    // curve geometry moves -- the rep edge's index, vertices and trims are untouched.
+    for (int r : reps) {
+        if (samp[r].empty()) continue;
+        int rci = m_topology_edges[r].curve_3d_index;
+        if (rci < 0 || rci >= (int)m_curves_3d.size()) continue;
+        int best_ci = rci;
+        auto better = [&](int a, int b) {   // is curve a better than curve b?
+            const NurbsCurve& A = m_curves_3d[a]; const NurbsCurve& B = m_curves_3d[b];
+            if (A.is_rational() != B.is_rational()) return A.is_rational();
+            return A.cv_count() > B.cv_count();
+        };
+        for (int e = 0; e < ne; ++e) {
+            if (rep[e] != r || e == r) continue;
+            int ci = m_topology_edges[e].curve_3d_index;
+            if (ci < 0 || ci >= (int)m_curves_3d.size() || !m_curves_3d[ci].is_valid()) continue;
+            if (better(ci, best_ci)) best_ci = ci;
+        }
+        if (best_ci != rci) {
+            NurbsCurve nc = m_curves_3d[best_ci];
+            const NurbsCurve& rc = m_curves_3d[rci];
+            if (nc.point_at_start().distance(rc.point_at_start())
+              > nc.point_at_end().distance(rc.point_at_start())) nc.reverse();
+            m_curves_3d[rci] = nc;
+        }
+    }
     std::map<int, int> old2new;
     std::vector<BRepEdge> newedges;
     for (int r : reps) {
@@ -3862,6 +4075,96 @@ void BRep::sew_coincident_edges(double tol) {
         int ev = m_topology_edges[ei].end_vertex;
         if (sv >= 0 && sv < (int)m_topology_vertices.size()) m_topology_vertices[sv].edge_indices.push_back(ei);
         if (ev != sv && ev >= 0 && ev < (int)m_topology_vertices.size()) m_topology_vertices[ev].edge_indices.push_back(ei);
+    }
+}
+
+void BRep::sameparameter_planar_pcurves() {
+    // OCCT SameParameter-lite. After sew, an A<->B section edge is ONE edge with ONE 3D curve,
+    // but its two trims still integrate their OWN pcurve copies, which differ at the section-fit
+    // tolerance (~2e-4): the volume error is FIRST order in that mismatch (each face's flux
+    // drifts independently; box x tor common failed at 1.8e-6 rel from exactly this). For the
+    // PLANAR side of a mixed planar/curved section edge the fix is exact and cheap: affine-project
+    // the shared 3D curve into the plane's UV -- both faces then read identical boundary geometry.
+    for (auto& E : m_topology_edges) {
+        if ((int)E.trim_indices.size() != 2) continue;
+        int tp = -1, tq = -1, sp = -1, sq = -1;
+        for (int ti : E.trim_indices) {
+            if (ti < 0 || ti >= (int)m_trims.size()) continue;
+            int li = m_trims[ti].loop_index; if (li < 0 || li >= (int)m_loops.size()) continue;
+            int fi = m_loops[li].face_index; if (fi < 0 || fi >= (int)m_faces.size()) continue;
+            int si = m_faces[fi].surface_index; if (si < 0 || si >= (int)m_surfaces.size()) continue;
+            if (tp < 0) { tp = ti; sp = si; } else { tq = ti; sq = si; }
+        }
+        if (tp < 0 || tq < 0 || sp == sq) continue;
+        bool p_planar = m_surfaces[sp].is_planar(nullptr, 1e-6);
+        bool q_planar = m_surfaces[sq].is_planar(nullptr, 1e-6);
+        if (p_planar == q_planar) continue;                  // need exactly one planar side
+        int ti  = p_planar ? tp : tq;                        // planar trim: pcurve to rebuild
+        int tic = p_planar ? tq : tp;                        // curved trim: geometry source
+        const NurbsSurface& S  = m_surfaces[p_planar ? sp : sq];
+        const NurbsSurface& Sc = m_surfaces[p_planar ? sq : sp];
+        int c2 = m_trims[ti].curve_2d_index;
+        int c2c = m_trims[tic].curve_2d_index;
+        if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
+        if (c2c < 0 || c2c >= (int)m_curves_2d.size()) continue;
+        const NurbsCurve& pc = m_curves_2d[c2];
+        const NurbsCurve& pcc = m_curves_2d[c2c];
+        // Geometry source = the CURVED trim's pcurve lifted through ITS surface at its own
+        // vertices -- byte-identical to what the curved face's boundary-flux integration walks.
+        // Dense deg-1 arrangement polylines only: a 2-CV uv line (cylinder cap circles) or a
+        // rational pcurve marks an exact-conic edge whose planar arc is already exact.
+        if (!pc.is_valid() || !pcc.is_valid()) continue;
+        if (pcc.degree() != 1 || pcc.is_rational() || pcc.cv_count() < 8) continue;
+        std::vector<Point> gpts;
+        gpts.reserve(pcc.cv_count());
+        for (int i = 0; i < pcc.cv_count(); ++i) {
+            Point uv = pcc.get_cv(i);
+            gpts.push_back(Sc.point_at(uv[0], uv[1]));
+        }
+        // the lift must actually lie on the planar face (sew-tol scale), else this is not a
+        // clean mixed section edge (e.g. a seam-adjacent sliver) -- leave it alone.
+        {
+            Vector pn = S.normal_at(0.5*(S.domain(0).first+S.domain(0).second),
+                                    0.5*(S.domain(1).first+S.domain(1).second));
+            Point p0 = S.point_at(S.domain(0).first, S.domain(1).first);
+            double dmax = 0.0;
+            for (const auto& g : gpts)
+                dmax = std::max(dmax, std::abs((g[0]-p0[0])*pn[0]+(g[1]-p0[1])*pn[1]+(g[2]-p0[2])*pn[2]));
+            double sscale = S.point_at(S.domain(0).first, S.domain(1).first)
+                              .distance(S.point_at(S.domain(0).second, S.domain(1).second));
+            if (dmax > std::max(sscale, 1.0) * 5e-3) continue;
+        }
+        // affine deg-1x1 patch check + inverse frame (same construction as co_refine's splice)
+        auto [su0, su1] = S.domain(0); auto [sv0, sv1] = S.domain(1);
+        Point O3 = S.point_at(su0, sv0);
+        Point PU = S.point_at(su1, sv0), PV = S.point_at(su0, sv1), PW = S.point_at(su1, sv1);
+        double dux=(PU[0]-O3[0])/(su1-su0), duy=(PU[1]-O3[1])/(su1-su0), duz=(PU[2]-O3[2])/(su1-su0);
+        double dvx=(PV[0]-O3[0])/(sv1-sv0), dvy=(PV[1]-O3[1])/(sv1-sv0), dvz=(PV[2]-O3[2])/(sv1-sv0);
+        double guu=dux*dux+duy*duy+duz*duz, guv=dux*dvx+duy*dvy+duz*dvz, gvv=dvx*dvx+dvy*dvy+dvz*dvz;
+        double gdet = guu*gvv - guv*guv;
+        double psz = O3.distance(PW);
+        bool affine = S.degree(0)==1 && S.degree(1)==1 && gdet > 1e-20
+            && std::abs(PW[0]-PU[0]-PV[0]+O3[0]) + std::abs(PW[1]-PU[1]-PV[1]+O3[1])
+             + std::abs(PW[2]-PU[2]-PV[2]+O3[2]) < psz*1e-9 + 1e-12;
+        if (!affine) continue;
+        auto to_uv = [&](const Point& P) -> Point {
+            double wx=P[0]-O3[0], wy=P[1]-O3[1], wz=P[2]-O3[2];
+            double bu=wx*dux+wy*duy+wz*duz, bv=wx*dvx+wy*dvy+wz*dvz;
+            return Point(su0 + (bu*gvv - bv*guv)/gdet, sv0 + (guu*bv - guv*bu)/gdet, 0.0);
+        };
+        std::vector<Point> uvs;
+        uvs.reserve(gpts.size());
+        for (const auto& g : gpts) uvs.push_back(to_uv(g));
+        // direction: the replacement must traverse like the OLD pcurve so trim.reversed stays valid
+        auto pd = pc.domain();
+        Point old_s = pc.point_at(pd.first), old_e = pc.point_at(pd.second);
+        double d2s = old_s.distance(uvs.front()), d2e = old_s.distance(uvs.back());
+        if (d2e < d2s) std::reverse(uvs.begin(), uvs.end());
+        // sanity: endpoints must land where the old pcurve's did (sew-tol scale in UV)
+        double span_uv = std::max(su1-su0, sv1-sv0);
+        if (uvs.front().distance(old_s) > span_uv*2e-2 || uvs.back().distance(old_e) > span_uv*2e-2) continue;
+        NurbsCurve npc = NurbsCurve::create(false, 1, uvs);
+        if (npc.is_valid()) m_curves_2d[c2] = npc;
     }
 }
 
@@ -4092,7 +4395,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                 if (c2 < 0 || c2 >= (int)X.m_curves_2d.size()) continue;
                 const NurbsCurve& pc = X.m_curves_2d[c2];
                 auto dc = pc.domain();
-                int n = std::max(pc.cv_count() * 3, 6);
+                int n = std::min(std::max(pc.cv_count() * 3, 6), 1024);
                 for (int i = 0; i < n; ++i) {
                     Point uv = pc.point_at(dc.first + (dc.second - dc.first) * i / n);
                     pts.push_back(Point(uv[0], uv[1], 0));
@@ -4266,6 +4569,11 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // trace the SAME point set (Hausdorff ~ 0), regardless of start point / discretization,
     // into one mated edge -- helps make the result a watertight solid.
     result.sew_coincident_edges();                            lap("sew");
+    // SameParameter-lite (planar pcurves rebuilt from the curved side's lifted boundary) is
+    // gated OFF: it only helps once ALL section arcs are pullback-quality on both surfaces --
+    // with mixed-quality copies (box x tor: e16-type arcs sit 5e-4 off the plane) the rebuilt
+    // disks inherit that bias and the volume moves AWAY from truth (+9e-6 vs +1.8e-6).
+    if (std::getenv("SESSION_SAMEPARAM")) { result.sameparameter_planar_pcurves(); lap("sameparam"); }
     return result;
 }
 
