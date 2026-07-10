@@ -276,7 +276,11 @@ public:
     /// measured geometrically against the face's own region)? Stored trim conventions are not
     /// uniform across construction paths; consumers that need a definite winding (the STEP
     /// writer) measure it here instead of trusting flags.
-    bool loop_material_left(int li) const;
+    /// `dirs` (optional): per-trim traversal override as (trim_index, from_first) pairs --
+    /// used by the STEP writer, whose loops are re-CHAINED head-to-tail and no longer follow
+    /// the stored directions.
+    bool loop_material_left(int li,
+                            const std::vector<std::pair<int,char>>* dirs = nullptr) const;
 
     /// OCCT SameParameter-lite: for every 2-trim mixed (planar/curved) section edge, rebuild the
     /// PLANAR trim's pcurve from the edge's shared 3D curve by exact affine projection, so both

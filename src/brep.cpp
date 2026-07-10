@@ -282,7 +282,19 @@ BRep BRep::create_sphere(double radius) {
     brep.m_topology_vertices.push_back({vi_south, {}});
     brep.m_topology_vertices.push_back({vi_north, {}});
 
-    NurbsCurve seam_crv = NurbsCurve::create(false, 1, {p_south, p_north});
+    // The seam's 3D curve must be the ON-SURFACE meridian (u = u0 iso), NOT the polar chord
+    // through the centre: exporters hand this curve to CAD importers as the seam edge's
+    // geometry, and a chord that cuts through the solid crashes strict consumers (Rhino on
+    // the perturbed-sphere blob). Sampled like create_torus's iso_curve.
+    std::vector<Point> seam_pts;
+    {
+        int n = 64;
+        for (int i = 0; i <= n; ++i) {
+            double t = (double)i / n;
+            seam_pts.push_back(srf.point_at(dom_u.first, dom_v.first + (dom_v.second-dom_v.first)*t));
+        }
+    }
+    NurbsCurve seam_crv = NurbsCurve::create(false, 3, seam_pts);
     int ci_seam = brep.add_curve_3d(seam_crv);
     int ei_seam = brep.add_edge(ci_seam, 0, 1);
 
@@ -1031,7 +1043,7 @@ int BRep::check_trim_orientation(bool verbose) const {
 }
 
 
-bool BRep::loop_material_left(int li) const {
+bool BRep::loop_material_left(int li, const std::vector<std::pair<int,char>>* dirs) const {
     if (li < 0 || li >= (int)m_loops.size()) return true;
     int fi = m_loops[li].face_index;
     if (fi < 0 || fi >= (int)m_faces.size()) return true;
@@ -1088,7 +1100,13 @@ bool BRep::loop_material_left(int li) const {
         auto dc = pc.domain();
         double tm = 0.5*(dc.first+dc.second), dt = (dc.second-dc.first)*1e-3;
         Point a = pc.point_at(tm - dt), b = pc.point_at(tm + dt);
-        if (T.reversed) std::swap(a, b);
+        bool from_first = !T.reversed;
+        if (dirs) {
+            from_first = true;   // default when the trim is absent from the override list
+            for (const auto& d : *dirs)
+                if (d.first == ti) { from_first = d.second != 0; break; }
+        }
+        if (!from_first) std::swap(a, b);
         double tx = b[0]-a[0], ty = b[1]-a[1];
         double tn = std::sqrt(tx*tx+ty*ty);
         if (tn < 1e-15) continue;

@@ -1171,7 +1171,13 @@ public:
         return id;
     }
 
-    int write_nurbs_curve(const NurbsCurve& nc) {
+    int write_point_2d(double u, double v) {
+        int id = new_id();
+        lines.push_back("#" + std::to_string(id) + "=CARTESIAN_POINT('',(" + fmt(u) + "," + fmt(v) + "));");
+        return id;
+    }
+
+    int write_nurbs_curve(const NurbsCurve& nc, bool as_2d = false) {
         if (!nc.is_valid() || nc.cv_count() < nc.order()) return -1;
 
         // Write control points
@@ -1197,7 +1203,9 @@ public:
                 x = cv[i*stride+0]; y = cv[i*stride+1];
                 z = (cdim > 2) ? cv[i*stride+2] : 0.0;
             }
-            pt_ids.push_back(write_point(x, y, z));
+            // Parameter-space (pcurve) control points are 2D per STEP; the surrounding
+            // DEFINITIONAL_REPRESENTATION context declares a 2-coordinate space.
+            pt_ids.push_back(as_2d ? write_point_2d(x, y) : write_point(x, y, z));
         }
 
         auto full = full_from_internal(nc.m_nurbsknot);
@@ -1308,6 +1316,28 @@ public:
 
     // Write NurbsSurfaceTrimmed as ADVANCED_FACE + topology
     // outer_loop is a 2D NurbsCurve in UV space; we sample it to get 3D edge via surface evaluation
+    // Shared 2D parametric representation context (one per file), for pcurve
+    // DEFINITIONAL_REPRESENTATIONs.
+    int ctx2d_cache = -1;
+    int ctx2d() {
+        if (ctx2d_cache < 0)
+            ctx2d_cache = write_raw("(GEOMETRIC_REPRESENTATION_CONTEXT(2)"
+                                    "PARAMETRIC_REPRESENTATION_CONTEXT()"
+                                    "REPRESENTATION_CONTEXT('2D SPACE',''))");
+        return ctx2d_cache;
+    }
+
+    // Parameter-space image of an edge on one surface: PCURVE -> DEFINITIONAL_REPRESENTATION
+    // -> dim-2 B-spline. Importers need these to build wires on PERIODIC surfaces (a torus
+    // face bounded only by 3D seam curves imports with its bounds dropped at 2x area).
+    int write_pcurve(int srf_id, const NurbsCurve& uv) {
+        int c2 = write_nurbs_curve(uv, /*as_2d=*/true);
+        if (c2 < 0 || srf_id < 0) return -1;
+        int dr = write_raw("DEFINITIONAL_REPRESENTATION('',(#" + std::to_string(c2) + "),#"
+                           + std::to_string(ctx2d()) + ")");
+        return write_raw("PCURVE('',#" + std::to_string(srf_id) + ",#" + std::to_string(dr) + ")");
+    }
+
     int write_trimmed_face(const NurbsSurfaceTrimmed& trimmed) {
         int srf_id = write_nurbs_surface(trimmed.m_surface);
         if (srf_id < 0) return -1;
@@ -1400,12 +1430,16 @@ public:
     // MANIFOLD_SOLID_BREP when `closed`, else one OPEN_SHELL + SHELL_BASED_SURFACE_MODEL.
     void finish_shape(const std::vector<int>& shell_face_ids, bool closed, const std::string& name,
                       double uncertainty = 1e-6) {
-        if (shell_face_ids.empty()) return;
-        int shell = write_raw(std::string(closed ? "CLOSED_SHELL" : "OPEN_SHELL")
-                              + "(''," + fmt_ref_list(shell_face_ids) + ")");
-        int body;
-        if (closed) body = write_raw("MANIFOLD_SOLID_BREP('',#" + std::to_string(shell) + ")");
-        else        body = write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))");
+        // An EMPTY result (e.g. cone x torus common: the cone threads the hole without
+        // touching) still gets the product skeleton with a bare SHAPE_REPRESENTATION --
+        // a file with a naked DATA section fails strict parsers ("Incorrect Syntax").
+        int body = -1;
+        if (!shell_face_ids.empty()) {
+            int shell = write_raw(std::string(closed ? "CLOSED_SHELL" : "OPEN_SHELL")
+                                  + "(''," + fmt_ref_list(shell_face_ids) + ")");
+            if (closed) body = write_raw("MANIFOLD_SOLID_BREP('',#" + std::to_string(shell) + ")");
+            else        body = write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))");
+        }
         int o  = write_point(0, 0, 0);
         int dz = write_raw("DIRECTION('',(0.,0.,1.))");
         int dx = write_raw("DIRECTION('',(1.,0.,0.))");
@@ -1433,10 +1467,13 @@ public:
         int dc = write_raw("PRODUCT_DEFINITION_CONTEXT('part definition',#" + std::to_string(ac) + ",'design')");
         int pd = write_raw("PRODUCT_DEFINITION('design','',#" + std::to_string(pf) + ",#" + std::to_string(dc) + ")");
         int ps = write_raw("PRODUCT_DEFINITION_SHAPE('','',#" + std::to_string(pd) + ")");
-        std::string rep_type = closed ? "ADVANCED_BREP_SHAPE_REPRESENTATION"
-                                      : "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
-        int rp = write_raw(rep_type + "('" + name + "',(#" + std::to_string(ax) + ",#" + std::to_string(body)
-                           + "),#" + std::to_string(gc) + ")");
+        std::string rep_type = body < 0 ? "SHAPE_REPRESENTATION"
+                             : closed   ? "ADVANCED_BREP_SHAPE_REPRESENTATION"
+                                        : "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
+        std::string items = "(#" + std::to_string(ax);
+        if (body >= 0) items += ",#" + std::to_string(body);
+        items += ")";
+        int rp = write_raw(rep_type + "('" + name + "'," + items + ",#" + std::to_string(gc) + ")");
         write_raw("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ps) + ",#" + std::to_string(rp) + ")");
     }
 
@@ -1653,6 +1690,54 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
     // it into the WRONG solid (box fuse sphere imported with the CUT's volume).
     std::vector<double> fsign = brep.face_outward_signs();
 
+    // Model diagonal: drives both the export fit tolerance and the declared uncertainty.
+    double diag;
+    {
+        double xmn=1e300,ymn=1e300,zmn=1e300,xmx=-1e300,ymx=-1e300,zmx=-1e300;
+        for (const auto& p2 : brep.m_vertices) {
+            xmn=std::min(xmn,p2[0]); ymn=std::min(ymn,p2[1]); zmn=std::min(zmn,p2[2]);
+            xmx=std::max(xmx,p2[0]); ymx=std::max(ymx,p2[1]); zmx=std::max(zmx,p2[2]);
+        }
+        diag = std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
+        if (!(diag > 0)) diag = 1.0;
+    }
+    double fit3d = diag * 1e-5;
+
+    // OCCT-style export compression: dense degree-1 section polylines (pullback lifts,
+    // 2000-4000 CVs -> 3 MB files and 4000-segment trim edges in Rhino) become tolerance-
+    // fitted cubic B-splines -- the form OCCT's own booleans export. Deviation is checked
+    // at (subsampled) polyline vertices and stays far inside the declared uncertainty, so
+    // import watertightness is unaffected; the kernel's internal geometry is untouched.
+    auto compress_curve = [&](const NurbsCurve& c, double tol) -> NurbsCurve {
+        if (!c.is_valid() || c.degree() != 1 || c.is_rational() || c.cv_count() <= 64) return c;
+        std::vector<Point> pts;
+        pts.reserve(c.cv_count());
+        for (int i = 0; i < c.cv_count(); ++i) pts.push_back(c.get_cv(i));
+        int step = std::max(1, (int)pts.size() / 200);
+        for (int ncv = 16; ncv <= 256 && ncv < (int)pts.size(); ncv *= 2) {
+            NurbsCurve fit = NurbsCurve::create_fitted(pts, ncv, 3);
+            if (!fit.is_valid()) continue;
+            double worst = 0.0;
+            for (size_t i = 0; i < pts.size() && worst <= tol; i += (size_t)step) {
+                double t = fit.closest_parameter(pts[i]);
+                worst = std::max(worst, fit.point_at(t).distance(pts[i]));
+            }
+            if (worst <= tol
+                && fit.point_at_start().distance(pts.front()) <= tol
+                && fit.point_at_end().distance(pts.back()) <= tol)
+                return fit;
+        }
+        return c;
+    };
+
+    // 0. Surfaces (lazy, deduped): shared by faces and by edge pcurves.
+    std::vector<int> srf_step_id(brep.m_surfaces.size(), -1);
+    auto surface_id = [&](int si) -> int {
+        if (si < 0 || si >= (int)brep.m_surfaces.size()) return -1;
+        if (srf_step_id[si] < 0) srf_step_id[si] = w.write_nurbs_surface(brep.m_surfaces[si]);
+        return srf_step_id[si];
+    };
+
     // 1. Topology vertices (lazy, deduped by topology index).
     std::vector<int> vert_step_id(brep.m_topology_vertices.size(), -1);
     auto vertex_id = [&](int tv) -> int {
@@ -1666,27 +1751,14 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         return vert_step_id[tv];
     };
 
-    // 2. Shared edges (lazy): EDGE_CURVE over the edge's actual 3D curve.
-    std::vector<int> edge_step_id(brep.m_topology_edges.size(), -1);
-    auto edge_id = [&](int ei) -> int {
-        if (ei < 0 || ei >= (int)brep.m_topology_edges.size()) return -1;
-        if (edge_step_id[ei] >= 0) return edge_step_id[ei];
-        const BRepEdge& E = brep.m_topology_edges[ei];
-        if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)brep.m_curves_3d.size()) return -1;
-        int cid = w.write_nurbs_curve(brep.m_curves_3d[E.curve_3d_index]);
-        if (cid < 0) return -1;
-        int v0 = vertex_id(E.start_vertex), v1 = vertex_id(E.end_vertex);
-        if (v0 < 0 || v1 < 0) return -1;
-        edge_step_id[ei] = w.write_raw("EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v1)
-                                       + ",#" + std::to_string(cid) + ",.T.)");
-        return edge_step_id[ei];
-    };
+    std::vector<std::vector<std::pair<int,char>>> loop_chain(brep.m_loops.size());
+    std::vector<char> trim_sense(brep.m_trims.size(), 1);
 
     // Does this trim traverse its edge's 3D curve forward? Open curves: compare the trim's
     // traversal START (surface-mapped pcurve end) with the curve ends. Closed curves carry
     // no direction in their endpoints: compare mid tangents (trim tangent vs curve tangent
     // at the curve parameter closest to the trim midpoint).
-    auto trim_forward = [&](const BRepTrim& T, const NurbsSurface& srf) -> bool {
+    auto trim_forward = [&](const BRepTrim& T, const NurbsSurface& srf, bool trav_from_first) -> bool {
         if (T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) return true;
         if (T.edge_index < 0 || T.edge_index >= (int)brep.m_topology_edges.size()) return true;
         int ci = brep.m_topology_edges[T.edge_index].curve_3d_index;
@@ -1695,14 +1767,14 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         const NurbsCurve& C = brep.m_curves_3d[ci];
         if (!pc.is_valid() || !C.is_valid()) return true;
         auto pd = pc.domain(); auto cd = C.domain();
-        Point uv_s = pc.point_at(T.reversed ? pd.second : pd.first);
+        Point uv_s = pc.point_at(trav_from_first ? pd.first : pd.second);
         Point ts = srf.point_at(uv_s[0], uv_s[1]);
         Point c0 = C.point_at(cd.first), c1 = C.point_at(cd.second);
         if (c0.distance(c1) > 1e-9)
             return ts.distance(c0) <= ts.distance(c1);
         double tm = 0.5*(pd.first+pd.second), dt = (pd.second-pd.first)*1e-3;
         Point a = pc.point_at(tm - dt), b = pc.point_at(tm + dt);
-        if (T.reversed) std::swap(a, b);
+        if (!trav_from_first) std::swap(a, b);
         Point A = srf.point_at(a[0], a[1]), B = srf.point_at(b[0], b[1]);
         double tcm = C.closest_parameter(Point(0.5*(A[0]+B[0]), 0.5*(A[1]+B[1]), 0.5*(A[2]+B[2])));
         double dc = (cd.second-cd.first)*1e-4;
@@ -1711,13 +1783,142 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         return dot >= 0;
     };
 
-    // 3. Faces: loops -> oriented shared edges -> bounds -> ADVANCED_FACE.
+    // 2. Shared edges (lazy): EDGE_CURVE whose geometry is a SURFACE_CURVE (or SEAM_CURVE
+    // when both trims lie on the SAME face) carrying the edge's 3D curve PLUS its pcurves.
+    // Importers need the pcurves to build wires on PERIODIC surfaces: without them a torus
+    // face bounded only by 3D seam curves imports with its bounds dropped at 2x area, and
+    // a cylinder wall mis-heals.
+    std::vector<int> edge_step_id(brep.m_topology_edges.size(), -1);
+    auto edge_id = [&](int ei) -> int {
+        if (ei < 0 || ei >= (int)brep.m_topology_edges.size()) return -1;
+        if (edge_step_id[ei] >= 0) return edge_step_id[ei];
+        const BRepEdge& E = brep.m_topology_edges[ei];
+        if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)brep.m_curves_3d.size()) return -1;
+        int cid = w.write_nurbs_curve(compress_curve(brep.m_curves_3d[E.curve_3d_index], fit3d));
+        if (cid < 0) return -1;
+        std::vector<int> pcs;
+        std::vector<int> pc_faces;
+        std::vector<char> pc_fwd;
+        for (int ti : E.trim_indices) {
+            if (ti < 0 || ti >= (int)brep.m_trims.size()) continue;
+            const BRepTrim& T = brep.m_trims[ti];
+            int li = T.loop_index;
+            if (li < 0 || li >= (int)brep.m_loops.size()) continue;
+            int fi2 = brep.m_loops[li].face_index;
+            if (fi2 < 0 || fi2 >= (int)brep.m_faces.size()) continue;
+            int si = brep.m_faces[fi2].surface_index;
+            int sid = surface_id(si);
+            if (sid < 0 || T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
+            const NurbsSurface& S = brep.m_surfaces[si];
+            auto du = S.domain(0); auto dv = S.domain(1);
+            double span = std::max(du.second - du.first, dv.second - dv.first);
+            NurbsCurve uvc = compress_curve(brep.m_curves_2d[T.curve_2d_index], span * 5e-5);
+            int pc = w.write_pcurve(sid, uvc);
+            if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
+        }
+        int geom = cid;
+        if (pcs.size() == 2) {
+            bool same_face = (pc_faces[0] == pc_faces[1]);
+            // SEAM_CURVE: both pcurves reference the SAME surface, so only their ORDER tells
+            // the importer which one the FORWARD-oriented edge uses (the pcurve of the
+            // sense-.T. ORIENTED_EDGE goes first -- senses precomputed by the loop chaining).
+            // Wrong order makes the wire builder close the loop through EXTRAPOLATED
+            // parameter space (torus face at 2x area over u in [-4,0]).
+            if (same_face && !pc_fwd[0] && pc_fwd[1]) {
+                std::swap(pcs[0], pcs[1]);
+                std::swap(pc_fwd[0], pc_fwd[1]);
+            }
+            const char* kind = same_face ? "SEAM_CURVE" : "SURFACE_CURVE";
+            geom = w.write_raw(std::string(kind) + "('',#" + std::to_string(cid) + ",(#"
+                               + std::to_string(pcs[0]) + ",#" + std::to_string(pcs[1]) + "),.PCURVE_S1.)");
+        } else if (pcs.size() == 1) {
+            geom = w.write_raw("SURFACE_CURVE('',#" + std::to_string(cid) + ",(#"
+                               + std::to_string(pcs[0]) + "),.PCURVE_S1.)");
+        }
+        int v0 = vertex_id(E.start_vertex), v1 = vertex_id(E.end_vertex);
+        if (v0 < 0 || v1 < 0) return -1;
+        edge_step_id[ei] = w.write_raw("EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v1)
+                                       + ",#" + std::to_string(geom) + ",.T.)");
+        return edge_step_id[ei];
+    };
+
+    // 3a. PASS A (no writing): chain every loop head-to-tail and record each trim's
+    // traversal + 3D-forward sense. Stored trim directions are EDGE-relative in this kernel,
+    // not loop-chaining (both seam runs of a cylinder/sphere store the same direction), so
+    // ORIENTED_EDGE senses derived from them leave wires unclosable and importers close them
+    // through EXTRAPOLATED parameter space (torus face at 2x area over u in [-4,0]). Chaining
+    // runs on the 3D images of the pcurve endpoints (periodic-safe; a tiny UV term breaks
+    // ties between coincident seam mates), then each chain is flipped as a whole when its
+    // MEASURED winding disagrees with the target (material-left iff same_sense). The senses
+    // feed both the ORIENTED_EDGEs and SEAM_CURVE pcurve ordering in edge_id.
+    for (int fi = 0; fi < brep.face_count(); fi++) {
+        const BRepFace& face = brep.m_faces[fi];
+        if (face.surface_index < 0 || face.surface_index >= (int)brep.m_surfaces.size()) continue;
+        const NurbsSurface& srf = brep.m_surfaces[face.surface_index];
+        bool outward = (fi < (int)fsign.size()) ? (fsign[fi] >= 0.0) : true;
+        for (int loop_idx : face.loop_indices) {
+            if (loop_idx < 0 || loop_idx >= (int)brep.m_loops.size()) continue;
+            const BRepLoop& loop = brep.m_loops[loop_idx];
+            struct Leg { int ti; char from_first; Point a, b; Point ua, ub; };
+            std::vector<Leg> legs;
+            for (int trim_idx : loop.trim_indices) {
+                if (trim_idx < 0 || trim_idx >= (int)brep.m_trims.size()) continue;
+                const BRepTrim& trim = brep.m_trims[trim_idx];
+                if (trim.curve_2d_index < 0 || trim.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
+                const NurbsCurve& pc = brep.m_curves_2d[trim.curve_2d_index];
+                if (!pc.is_valid()) continue;
+                auto pd = pc.domain();
+                Point ua = pc.point_at(pd.first), ub = pc.point_at(pd.second);
+                legs.push_back({trim_idx, 1, srf.point_at(ua[0], ua[1]), srf.point_at(ub[0], ub[1]), ua, ub});
+            }
+            std::vector<char> used(legs.size(), 0);
+            std::vector<int> order;
+            if (!legs.empty()) {
+                legs[0].from_first = 1;
+                used[0] = 1; order.push_back(0);
+                Point tail = legs[0].b;
+                Point uv_tail = legs[0].ub;
+                for (size_t k = 1; k < legs.size(); ++k) {
+                    int best = -1; char bff = 1; double bd = 1e300;
+                    for (size_t j = 0; j < legs.size(); ++j) {
+                        if (used[j]) continue;
+                        double uva = uv_tail.distance(legs[j].ua) * 1e-6;
+                        double uvb = uv_tail.distance(legs[j].ub) * 1e-6;
+                        double da = tail.distance(legs[j].a) + uva;
+                        double db = tail.distance(legs[j].b) + uvb;
+                        if (da < bd) { bd = da; best = (int)j; bff = 1; }
+                        if (db < bd) { bd = db; best = (int)j; bff = 0; }
+                    }
+                    if (best < 0) break;
+                    used[best] = 1; legs[best].from_first = bff;
+                    order.push_back(best);
+                    tail = bff ? legs[best].b : legs[best].a;
+                    uv_tail = bff ? legs[best].ub : legs[best].ua;
+                }
+            }
+            std::vector<std::pair<int,char>> chain_dirs;
+            for (int oi : order) chain_dirs.push_back({legs[oi].ti, legs[oi].from_first});
+            bool chained_ml = brep.loop_material_left(loop_idx, &chain_dirs);
+            if (chained_ml != outward) {
+                std::reverse(order.begin(), order.end());
+                for (auto& L : legs) L.from_first = L.from_first ? 0 : 1;
+            }
+            auto& chain = loop_chain[loop_idx];
+            for (int oi : order) {
+                const Leg& L = legs[oi];
+                chain.push_back({L.ti, L.from_first});
+                trim_sense[L.ti] = trim_forward(brep.m_trims[L.ti], srf, L.from_first != 0) ? 1 : 0;
+            }
+        }
+    }
+
+    // 3b. PASS B: faces -> chained oriented edges -> bounds -> ADVANCED_FACE.
     std::vector<int> face_ids;
     for (int fi = 0; fi < brep.face_count(); fi++) {
         const BRepFace& face = brep.m_faces[fi];
         if (face.surface_index < 0 || face.surface_index >= (int)brep.m_surfaces.size()) continue;
         const NurbsSurface& srf = brep.m_surfaces[face.surface_index];
-        int srf_id = w.write_nurbs_surface(srf);
+        int srf_id = surface_id(face.surface_index);
         if (srf_id < 0) continue;
         bool outward = (fi < (int)fsign.size()) ? (fsign[fi] >= 0.0) : true;
         std::string bounds = "(";
@@ -1725,24 +1926,31 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         for (int loop_idx : face.loop_indices) {
             if (loop_idx < 0 || loop_idx >= (int)brep.m_loops.size()) continue;
             const BRepLoop& loop = brep.m_loops[loop_idx];
-            // STEP semantics: with FACE_BOUND orientation .T., the loop winds CCW around the
-            // FLAG-ADJUSTED face normal (same_sense applied). Stored loops wind material-left
-            // in the NATURAL chart only by convention -- and some construction paths violate
-            // it -- so MEASURE the winding and reverse the written loop when it disagrees
-            // with the target (CCW-around-natural iff same_sense is .T.).
-            bool ml = brep.loop_material_left(loop_idx);
-            bool rev_loop = (ml != outward);
-            std::vector<int> trim_order(loop.trim_indices.begin(), loop.trim_indices.end());
-            if (rev_loop) std::reverse(trim_order.begin(), trim_order.end());
             std::vector<int> oe_ids;
-            for (int trim_idx : trim_order) {
-                if (trim_idx < 0 || trim_idx >= (int)brep.m_trims.size()) continue;
+            for (const auto& [trim_idx, from_first] : loop_chain[loop_idx]) {
                 const BRepTrim& trim = brep.m_trims[trim_idx];
-                if (trim.edge_index < 0) continue;             // singular (pole) run: no edge
+                // Pole runs (3D-degenerate, real UV span): STEP has no degenerate edges;
+                // importers re-add them (ShapeFix FixDegenerated) when the rest of the wire
+                // is consistent. Skip: primitives mark them Singular (edge -1); boolean
+                // results give them zero-length edges.
+                if (trim.edge_index < 0) continue;
+                if (trim.curve_2d_index >= 0 && trim.curve_2d_index < (int)brep.m_curves_2d.size()) {
+                    const NurbsCurve& pcq = brep.m_curves_2d[trim.curve_2d_index];
+                    auto pdq = pcq.domain();
+                    Point qa = pcq.point_at(pdq.first), qb = pcq.point_at(pdq.second);
+                    Point qm = pcq.point_at(0.5*(pdq.first+pdq.second));
+                    Point A3 = srf.point_at(qa[0], qa[1]), B3 = srf.point_at(qb[0], qb[1]);
+                    Point M3 = srf.point_at(qm[0], qm[1]);
+                    auto duq = srf.domain(0); auto dvq = srf.domain(1);
+                    double spanq = std::max(duq.second - duq.first, dvq.second - dvq.first);
+                    // pole run: the WHOLE 3D image is one point (a closed seam iso only has
+                    // coincident endpoints -- its midpoint is far)
+                    if (A3.distance(B3) < diag * 1e-7 && A3.distance(M3) < diag * 1e-7
+                        && qa.distance(qb) > spanq * 1e-3) continue;
+                }
                 int ec = edge_id(trim.edge_index);
                 if (ec < 0) continue;
-                bool fwd = trim_forward(trim, srf);
-                if (rev_loop) fwd = !fwd;
+                bool fwd = trim_sense[trim_idx] != 0;
                 oe_ids.push_back(w.write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec)
                                              + (fwd ? ",.T.)" : ",.F.)")));
             }
@@ -1766,16 +1974,6 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                                        + (outward ? ",.T.)" : ",.F.)")));
     }
 
-    double diag;
-    {
-        double xmn=1e300,ymn=1e300,zmn=1e300,xmx=-1e300,ymx=-1e300,zmx=-1e300;
-        for (const auto& p2 : brep.m_vertices) {
-            xmn=std::min(xmn,p2[0]); ymn=std::min(ymn,p2[1]); zmn=std::min(zmn,p2[2]);
-            xmx=std::max(xmx,p2[0]); ymx=std::max(ymx,p2[1]); zmx=std::max(zmx,p2[2]);
-        }
-        diag = std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
-        if (!(diag > 0)) diag = 1.0;
-    }
     w.finish_shape(face_ids, brep.is_solid(), brep.name.empty() ? "brep" : brep.name, diag * 5e-3);
     write_step_string(w.emit(), filepath);
 }
