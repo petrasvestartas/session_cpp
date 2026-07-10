@@ -1675,6 +1675,205 @@ void write_file_step_nurbssurfaces_trimmed(const std::vector<NurbsSurfaceTrimmed
     write_step_string(w.emit(), filepath);
 }
 
+// ---- Analytic quadric export -------------------------------------------------------------
+// Importers are battle-tested on ANALYTIC surface entities (OCCT/Parasolid never export
+// quadrics as B-splines); periodic rational B-splines are the least-trodden path and Rhino
+// drops their trims (every torus face then renders as a FULL torus -- "multiple tori").
+// Recognition is verification-gated: a residual over a sample grid must be ~exact, else the
+// face stays a B-spline.
+struct AnalyticSrf {
+    int kind = 0;                 // 0 bspline, 1 plane, 2 cylinder, 3 cone, 4 sphere, 5 torus
+    Point C{0,0,0};               // location (plane origin / cyl base / cone APEX / center)
+    Vector Z{0,0,1}, X{1,0,0}, Y{0,1,0};
+    double R = 0, r2 = 0;         // radius / (major,minor) / cone: r2 = semi-angle (rad)
+};
+
+static AnalyticSrf detect_analytic_srf(const NurbsSurface& S) {
+    AnalyticSrf A;
+    if (!S.is_valid()) return A;
+    auto [u0, u1] = S.domain(0);
+    auto [v0, v1] = S.domain(1);
+    auto P = [&](double fu, double fv) { return S.point_at(u0 + (u1-u0)*fu, v0 + (v1-v0)*fv); };
+    double scale = P(0,0).distance(P(0.5,0.5)) + P(0,0).distance(P(1,1)) + 1e-9;
+    double tol = scale * 1e-7 + 1e-9;
+    auto sub = [](const Point& a, const Point& b) { return Vector(a[0]-b[0], a[1]-b[1], a[2]-b[2]); };
+    auto dot = [](const Vector& a, const Vector& b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; };
+    auto crs = [](const Vector& a, const Vector& b) {
+        return Vector(a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]); };
+    auto nrm = [&](Vector v) -> Vector {
+        double m = std::sqrt(dot(v, v));
+        return m > 1e-14 ? Vector(v[0]/m, v[1]/m, v[2]/m) : Vector(0,0,0); };
+
+    // PLANE: constant normal + on-plane residual
+    {
+        Vector n = S.normal_at(0.5*(u0+u1), 0.5*(v0+v1));
+        Point O = P(0, 0);
+        bool ok = std::sqrt(dot(n, n)) > 0.5;
+        for (int i = 0; i <= 4 && ok; ++i)
+            for (int j = 0; j <= 4 && ok; ++j)
+                if (std::abs(dot(sub(P(i/4.0, j/4.0), O), n)) > tol) ok = false;
+        if (ok) {
+            A.kind = 1; A.C = O; A.Z = nrm(n);
+            Vector xr = sub(P(1, 0), O);
+            xr = Vector(xr[0]-dot(xr,A.Z)*A.Z[0], xr[1]-dot(xr,A.Z)*A.Z[1], xr[2]-dot(xr,A.Z)*A.Z[2]);
+            A.X = nrm(xr);
+            if (std::sqrt(dot(A.X, A.X)) < 0.5) { Vector yr = sub(P(0, 1), O); A.X = nrm(yr); }
+            A.Y = crs(A.Z, A.X);
+            return A;
+        }
+    }
+    // center of the u-iso ring at fv (average of 4 quarter points; exact for full circles)
+    auto ring_c = [&](double fv) {
+        Point a = P(0, fv), b = P(0.25, fv), c = P(0.5, fv), d = P(0.75, fv);
+        return Point(0.25*(a[0]+b[0]+c[0]+d[0]), 0.25*(a[1]+b[1]+c[1]+d[1]), 0.25*(a[2]+b[2]+c[2]+d[2]));
+    };
+    // SPHERE
+    {
+        Point Ps = P(0.5, 0), Pn = P(0.5, 1);
+        Point Ct(0.5*(Ps[0]+Pn[0]), 0.5*(Ps[1]+Pn[1]), 0.5*(Ps[2]+Pn[2]));
+        double Rt = 0.5*Ps.distance(Pn);
+        bool ok = Rt > tol;
+        for (int i = 0; i <= 4 && ok; ++i)
+            for (int j = 0; j <= 4 && ok; ++j)
+                if (std::abs(P(i/4.0, j/4.0).distance(Ct) - Rt) > tol) ok = false;
+        if (ok) {
+            A.kind = 4; A.C = Ct; A.R = Rt;
+            A.Z = nrm(sub(Pn, Ps));
+            Vector w = sub(P(0, 0.5), Ct);
+            double h = dot(w, A.Z);
+            A.X = nrm(Vector(w[0]-h*A.Z[0], w[1]-h*A.Z[1], w[2]-h*A.Z[2]));
+            A.Y = crs(A.Z, A.X);
+            return A;
+        }
+    }
+    // CYLINDER / CONE: rings at v0 and v1 with (near-)constant per-ring radius
+    {
+        Point c0 = ring_c(0), c1 = ring_c(1);
+        double r0 = P(0, 0).distance(c0), r1 = P(0, 1).distance(c1);
+        double h = c0.distance(c1);
+        if (h > tol) {
+            Vector ax = nrm(sub(c1, c0));
+            auto ring_ok = [&](double fv, const Point& cc, double rr) {
+                for (int i = 0; i <= 4; ++i) {
+                    Point q = P(i/4.0, fv);
+                    Vector w = sub(q, cc);
+                    double z = dot(w, ax);
+                    double rad = std::sqrt(std::max(0.0, dot(w, w) - z*z));
+                    if (std::abs(rad - rr) > tol || std::abs(z) > tol) return false;
+                }
+                return true;
+            };
+            if (ring_ok(0, c0, r0) && ring_ok(1, c1, r1)) {
+                // verify a middle ring interpolates linearly (rules out tori etc.)
+                Point cm = ring_c(0.5);
+                double rm = P(0, 0.5).distance(cm);
+                double rlin = 0.5*(r0 + r1);
+                if (std::abs(rm - rlin) < tol * 4) {
+                    if (std::abs(r0 - r1) < tol) {
+                        A.kind = 2; A.C = c0; A.Z = ax; A.R = r0;
+                        A.X = nrm(sub(P(0, 0), c0)); A.Y = crs(A.Z, A.X);
+                        if (std::sqrt((A.X[0]*A.X[0]+A.X[1]*A.X[1]+A.X[2]*A.X[2])) > 0.5) return A;
+                    } else {
+                        // cone: apex where the radius extrapolates to zero
+                        double t_apex = r0 / (r0 - r1);            // along c0->c1
+                        Point apex(c0[0] + (c1[0]-c0[0])*t_apex,
+                                   c0[1] + (c1[1]-c0[1])*t_apex,
+                                   c0[2] + (c1[2]-c0[2])*t_apex);
+                        // axis FROM apex toward the larger-radius ring
+                        Vector axc = (r0 > r1) ? nrm(sub(c0, apex)) : nrm(sub(c1, apex));
+                        double rb = std::max(r0, r1);
+                        double hb = (r0 > r1) ? apex.distance(c0) : apex.distance(c1);
+                        if (hb > tol) {
+                            A.kind = 3; A.C = apex; A.Z = axc;
+                            A.R = 0.0; A.r2 = std::atan2(rb, hb);   // semi-angle
+                            Point pb = (r0 > r1) ? P(0, 0) : P(0, 1);
+                            Vector w = sub(pb, apex);
+                            double z = dot(w, A.Z);
+                            A.X = nrm(Vector(w[0]-z*A.Z[0], w[1]-z*A.Z[1], w[2]-z*A.Z[2]));
+                            A.Y = crs(A.Z, A.X);
+                            return A;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // TORUS: tube-circle centres trace the major circle
+    {
+        auto tube_c = [&](double fu) {
+            Point a = P(fu, 0), b = P(fu, 0.5);
+            return Point(0.5*(a[0]+b[0]), 0.5*(a[1]+b[1]), 0.5*(a[2]+b[2]));
+        };
+        Point c1 = tube_c(0), c2 = tube_c(0.5), c3 = tube_c(0.25);
+        Point Ct(0.5*(c1[0]+c2[0]), 0.5*(c1[1]+c2[1]), 0.5*(c1[2]+c2[2]));
+        Vector a1 = sub(c1, Ct), a3 = sub(c3, Ct);
+        Vector Zt = nrm(crs(a1, a3));
+        double Rmaj = std::sqrt(dot(a1, a1));
+        double rmin = P(0, 0).distance(c1);
+        if (std::sqrt(dot(Zt, Zt)) > 0.5 && Rmaj > tol && rmin > tol && rmin < Rmaj) {
+            bool ok = true;
+            for (int i = 0; i <= 4 && ok; ++i)
+                for (int j = 0; j <= 4 && ok; ++j) {
+                    Vector w = sub(P(i/4.0, j/4.0), Ct);
+                    double z = dot(w, Zt);
+                    double rho = std::sqrt(std::max(0.0, dot(w, w) - z*z));
+                    if (std::abs(std::hypot(rho - Rmaj, z) - rmin) > tol) ok = false;
+                }
+            if (ok) {
+                A.kind = 5; A.C = Ct; A.Z = Zt; A.R = Rmaj; A.r2 = rmin;
+                A.X = nrm(a1); A.Y = crs(A.Z, A.X);
+                return A;
+            }
+        }
+    }
+    return A;
+}
+
+// STEP-canonical parameters of a 3D point on an analytic surface. `radial_ok` is false at
+// axis-degenerate points (poles/apex) where the angle is undefined.
+static void analytic_params_of(const AnalyticSrf& A, const Point& p,
+                               double& sv, double& tv, bool& radial_ok) {
+    double wx = p[0]-A.C[0], wy = p[1]-A.C[1], wz = p[2]-A.C[2];
+    double x = wx*A.X[0]+wy*A.X[1]+wz*A.X[2];
+    double y = wx*A.Y[0]+wy*A.Y[1]+wz*A.Y[2];
+    double z = wx*A.Z[0]+wy*A.Z[1]+wz*A.Z[2];
+    double rho = std::sqrt(x*x + y*y);
+    radial_ok = rho > 1e-9;
+    switch (A.kind) {
+        case 1: sv = x; tv = y; radial_ok = true; break;
+        case 2: sv = std::atan2(y, x); tv = z; break;
+        case 3: { sv = std::atan2(y, x);
+                  double ca = std::cos(A.r2);
+                  tv = (ca > 1e-12) ? z / ca : z; break; }      // v along the slant
+        case 4: sv = std::atan2(y, x); tv = std::atan2(z, rho); break;
+        default: sv = std::atan2(y, x); tv = std::atan2(z, rho - A.R); break;
+    }
+}
+
+static Vector analytic_normal_of(const AnalyticSrf& A, const Point& p) {
+    double wx = p[0]-A.C[0], wy = p[1]-A.C[1], wz = p[2]-A.C[2];
+    double x = wx*A.X[0]+wy*A.X[1]+wz*A.X[2];
+    double y = wx*A.Y[0]+wy*A.Y[1]+wz*A.Y[2];
+    double z = wx*A.Z[0]+wy*A.Z[1]+wz*A.Z[2];
+    double rho = std::sqrt(x*x + y*y);
+    auto mk = [&](double cx, double cy, double cz) {
+        return Vector(cx*A.X[0]+cy*A.Y[0]+cz*A.Z[0],
+                      cx*A.X[1]+cy*A.Y[1]+cz*A.Z[1],
+                      cx*A.X[2]+cy*A.Y[2]+cz*A.Z[2]);
+    };
+    if (A.kind == 1) return Vector(A.Z[0], A.Z[1], A.Z[2]);
+    if (rho < 1e-12) return Vector(0,0,0);
+    double cu = x/rho, su = y/rho;
+    if (A.kind == 2) return mk(cu, su, 0.0);
+    if (A.kind == 3) { double ca = std::cos(A.r2), sa = std::sin(A.r2);
+                       return mk(ca*cu, ca*su, -sa); }
+    if (A.kind == 4) { double m = std::sqrt(rho*rho + z*z); if (m < 1e-12) return Vector(0,0,0);
+                       return mk(x/m, y/m, z/m); }
+    double cv = (rho - A.R), m = std::hypot(cv, z);
+    if (m < 1e-12) return Vector(0,0,0);
+    return mk(cv/m*cu, cv/m*su, z/m);
+}
+
 void write_file_step_brep(const BRep& brep, const std::string& filepath) {
     // Our own STEP writer (no external kernel): the BRep's SHARED topology is written
     // faithfully -- topology vertices and edges are emitted ONCE and referenced by every
@@ -1730,12 +1929,97 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         return c;
     };
 
-    // 0. Surfaces (lazy, deduped): shared by faces and by edge pcurves.
+    // 0. Surfaces (lazy, deduped): recognized quadrics are written as ANALYTIC entities
+    // (TOROIDAL/SPHERICAL/CYLINDRICAL/CONICAL_SURFACE, PLANE) -- the dialect importers are
+    // actually tested on. Periodicity of analytic surfaces is canonical, so pcurves may
+    // legally run past 2*pi and the whole seam pathology disappears; Rhino keeps the trims
+    // instead of rendering full tori.
+    auto fnum = [](double v) -> std::string {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.15g", v);
+        std::string r(buf);
+        if (r.find('.') == std::string::npos && r.find('e') == std::string::npos
+            && r.find('E') == std::string::npos && r.find("inf") == std::string::npos
+            && r.find("nan") == std::string::npos) r += ".";
+        return r;
+    };
     std::vector<int> srf_step_id(brep.m_surfaces.size(), -1);
+    std::vector<AnalyticSrf> srf_an(brep.m_surfaces.size());
+    std::vector<char> srf_an_done(brep.m_surfaces.size(), 0);
+    auto analytic_of = [&](int si) -> const AnalyticSrf& {
+        if (!srf_an_done[si]) { srf_an[si] = detect_analytic_srf(brep.m_surfaces[si]); srf_an_done[si] = 1; }
+        return srf_an[si];
+    };
     auto surface_id = [&](int si) -> int {
         if (si < 0 || si >= (int)brep.m_surfaces.size()) return -1;
-        if (srf_step_id[si] < 0) srf_step_id[si] = w.write_nurbs_surface(brep.m_surfaces[si]);
+        if (srf_step_id[si] >= 0) return srf_step_id[si];
+        const AnalyticSrf& A = analytic_of(si);
+        if (A.kind == 0) {
+            srf_step_id[si] = w.write_nurbs_surface(brep.m_surfaces[si]);
+            return srf_step_id[si];
+        }
+        int loc = w.write_point(A.C[0], A.C[1], A.C[2]);
+        int zd = w.write_raw("DIRECTION('',(" + fnum(A.Z[0]) + "," + fnum(A.Z[1]) + "," + fnum(A.Z[2]) + "))");
+        int xd = w.write_raw("DIRECTION('',(" + fnum(A.X[0]) + "," + fnum(A.X[1]) + "," + fnum(A.X[2]) + "))");
+        int ax = w.write_raw("AXIS2_PLACEMENT_3D('',#" + std::to_string(loc) + ",#" + std::to_string(zd)
+                             + ",#" + std::to_string(xd) + ")");
+        std::string ent;
+        switch (A.kind) {
+            case 1: ent = "PLANE('',#" + std::to_string(ax) + ")"; break;
+            case 2: ent = "CYLINDRICAL_SURFACE('',#" + std::to_string(ax) + "," + fnum(A.R) + ")"; break;
+            case 3: ent = "CONICAL_SURFACE('',#" + std::to_string(ax) + "," + fnum(A.R) + "," + fnum(A.r2) + ")"; break;
+            case 4: ent = "SPHERICAL_SURFACE('',#" + std::to_string(ax) + "," + fnum(A.R) + ")"; break;
+            default: ent = "TOROIDAL_SURFACE('',#" + std::to_string(ax) + "," + fnum(A.R) + "," + fnum(A.r2) + ")"; break;
+        }
+        srf_step_id[si] = w.write_raw(ent);
         return srf_step_id[si];
+    };
+
+    // Remap a pcurve into the analytic surface's canonical parameterization: sample its 3D
+    // image, take unwrapped atan2 parameters, anchor the branch at the midpoint, compress.
+    auto remap_pcurve = [&](int si, const NurbsCurve& pc) -> NurbsCurve {
+        const AnalyticSrf& A = analytic_of(si);
+        const NurbsSurface& S = brep.m_surfaces[si];
+        auto du = S.domain(0); auto dv = S.domain(1);
+        double span = std::max(du.second - du.first, dv.second - dv.first);
+        if (A.kind == 0) return compress_curve(pc, span * 5e-5);
+        auto pd = pc.domain();
+        int n = std::min(std::max(pc.cv_count() * 2, 48), 512);
+        std::vector<Point> st;
+        st.reserve(n + 1);
+        const double PI_ = 3.14159265358979323846;
+        double prev_s = 0, prev_t = 0;
+        bool have_prev = false;
+        for (int i = 0; i <= n; ++i) {
+            Point uv = pc.point_at(pd.first + (pd.second - pd.first) * i / n);
+            Point p3 = S.point_at(uv[0], uv[1]);
+            double sv, tv; bool rok;
+            analytic_params_of(A, p3, sv, tv, rok);
+            if (!rok && have_prev) sv = prev_s;              // pole/apex: hold the angle
+            if (have_prev && A.kind >= 2) {
+                while (sv - prev_s >  PI_) sv -= 2*PI_;
+                while (sv - prev_s < -PI_) sv += 2*PI_;
+            }
+            if (have_prev && A.kind == 5) {
+                while (tv - prev_t >  PI_) tv -= 2*PI_;
+                while (tv - prev_t < -PI_) tv += 2*PI_;
+            }
+            prev_s = sv; prev_t = tv; have_prev = true;
+            st.push_back(Point(sv, tv, 0.0));
+        }
+        if (A.kind >= 2 && !st.empty()) {                    // anchor branch at the midpoint
+            double sm = st[st.size()/2][0];
+            double shift = -2*PI_ * std::floor(sm / (2*PI_));
+            if (shift != 0.0) for (auto& q : st) q = Point(q[0] + shift, q[1], q[2]);
+            if (A.kind == 5) {
+                double tm = st[st.size()/2][1];
+                double tshift = -2*PI_ * std::floor(tm / (2*PI_));
+                if (tshift != 0.0) for (auto& q : st) q = Point(q[0], q[1] + tshift, q[2]);
+            }
+        }
+        NurbsCurve out = NurbsCurve::create(false, 1, st);
+        if (!out.is_valid()) return compress_curve(pc, span * 5e-5);
+        return compress_curve(out, 2e-4 * 6.283185307179586);
     };
 
     // 1. Topology vertices (lazy, deduped by topology index).
@@ -1810,9 +2094,7 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
             int sid = surface_id(si);
             if (sid < 0 || T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
             const NurbsSurface& S = brep.m_surfaces[si];
-            auto du = S.domain(0); auto dv = S.domain(1);
-            double span = std::max(du.second - du.first, dv.second - dv.first);
-            NurbsCurve uvc = compress_curve(brep.m_curves_2d[T.curve_2d_index], span * 5e-5);
+            NurbsCurve uvc = remap_pcurve(si, brep.m_curves_2d[T.curve_2d_index]);
             int pc = w.write_pcurve(sid, uvc);
             if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
         }
@@ -1921,6 +2203,19 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         int srf_id = surface_id(face.surface_index);
         if (srf_id < 0) continue;
         bool outward = (fi < (int)fsign.size()) ? (fsign[fi] >= 0.0) : true;
+        {
+            // same_sense refers to the WRITTEN surface's natural normal: when an analytic
+            // entity replaces our B-spline chart, their naturals can oppose.
+            const AnalyticSrf& A = analytic_of(face.surface_index);
+            if (A.kind > 0) {
+                auto duA = srf.domain(0); auto dvA = srf.domain(1);
+                Point pm = srf.point_at(0.5*(duA.first+duA.second), 0.5*(dvA.first+dvA.second));
+                Vector nb = srf.normal_at(0.5*(duA.first+duA.second), 0.5*(dvA.first+dvA.second));
+                Vector na = analytic_normal_of(A, pm);
+                double dp = na[0]*nb[0] + na[1]*nb[1] + na[2]*nb[2];
+                if (dp < 0) outward = !outward;
+            }
+        }
         std::string bounds = "(";
         int nbounds = 0;
         for (int loop_idx : face.loop_indices) {
