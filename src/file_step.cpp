@@ -2303,11 +2303,18 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                         auto dk = ck.domain();
                         Point b0 = c3built.point_at(db2.first);
                         Point k0 = ck.point_at(dk.first), k1 = ck.point_at(dk.second);
-                        if (k0.distance(k1) < diag * 1e-9 || b0.distance(k0) <= b0.distance(k1)) {
-                            c3built = ck;
-                        } else {
-                            NurbsCurve rk = ck;
-                            if (rk.reverse()) c3built = rk;
+                        // CLOSED curves: keep the trim image -- the kernel curve starts at an
+                        // arbitrary point and cannot be endpoint-oriented, so adopting it
+                        // as-is destroyed the canonical direction AND the junction start
+                        // (prim_cylinder's top circle written CCW against a CW traversal;
+                        // closed iso edges become exact CIRCLEs anyway).
+                        if (k0.distance(k1) >= diag * 1e-9) {
+                            if (b0.distance(k0) <= b0.distance(k1)) {
+                                c3built = ck;
+                            } else {
+                                NurbsCurve rk = ck;
+                                if (rk.reverse()) c3built = rk;
+                            }
                         }
                     }
                 }
@@ -2580,10 +2587,32 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                 double err_rev = img(0.05).distance(W_eval(W_a + (W_b - W_a) * 0.95))
                                + img(0.95).distance(W_eval(W_a + (W_b - W_a) * 0.05));
                 if (err_rev < err_fwd) uvc.reverse();
+                // SameParameter domain alignment for the fallback (kind-0) path: without it
+                // the reader rejects the pcurve and re-projects onto the closed B-spline
+                // surface, wandering across the seam (freeform_blob imported as a sliver).
+                {
+                    int n2 = 96;
+                    std::vector<Point> up;
+                    std::vector<double> kt;
+                    auto udm = uvc.domain();
+                    for (int i2 = 0; i2 <= n2; ++i2) {
+                        double f = (double)i2 / n2;
+                        up.push_back(uvc.point_at(udm.first + (udm.second - udm.first) * f));
+                        kt.push_back(W_a + (W_b - W_a) * f);
+                    }
+                    std::vector<double> w1(up.size(), 1.0);
+                    std::vector<int> mu(up.size(), 1);
+                    mu.front() = 2; mu.back() = 2;
+                    NurbsCurve u2 = NurbsCurve::create_from_parameters(up, w1, kt, mu, 1, false);
+                    if (u2.is_valid()) uvc = u2;
+                }
             }
             if (std::getenv("SESSION_STEP_DBG")) {
                 auto ud = uvc.domain();
                 Point u0 = uvc.point_at(ud.first), u1 = uvc.point_at(ud.second);
+                double s25 = 0, t25 = 0; bool r25;
+                analytic_params_of(analytic_of(si), W_eval(W_a + (W_b - W_a) * 0.25), s25, t25, r25);
+                std::fprintf(stderr, "[EDGE25] circ=%d q(%.3f,%.3f)\n", W_circle ? 1 : 0, s25, t25);
                 std::fprintf(stderr, "[EDGE] ei=%d ti=%d canon=%d cff=%d Wdir(%.2f,%.2f,%.2f)->(%.2f,%.2f,%.2f) pc(%.2f,%.2f)->(%.2f,%.2f) valid=%d\n",
                              ei, ti, edge_canon.count(ei) ? edge_canon[ei].first : -1,
                              edge_canon.count(ei) ? (int)edge_canon[ei].second : -1,
