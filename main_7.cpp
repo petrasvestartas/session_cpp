@@ -251,6 +251,42 @@ int main(int argc, char** argv) {
             }
         ff.m_surfaces[0] = s;
         double vff = ff.volume();
+        // MULTI-FACE freeform brep (chair-cushion class): box whose 6 planar faces become
+        // bulged bicubic 6x6 patches. The bulge is sin(pi u)*sin(pi v) -- ZERO on every
+        // boundary, and boundary CVs sample the original planes, so all 12 box edges stay
+        // EXACT straight lines: the solid remains watertight with untouched topology.
+        {
+            BRep pil = BRep::create_box(4, 4, 2);
+            pil.name = "pillow";
+            const double PI_ = 3.14159265358979323846;
+            for (size_t sf = 0; sf < pil.m_surfaces.size(); ++sf) {
+                NurbsSurface& S0 = pil.m_surfaces[sf];
+                auto du = S0.domain(0); auto dv = S0.domain(1);
+                Vector nm = S0.normal_at(0.5*(du.first+du.second), 0.5*(dv.first+dv.second));
+                const int N = 6;
+                std::vector<std::vector<Point>> grid(N, std::vector<Point>(N, Point(0,0,0)));
+                std::vector<std::vector<double>> wts(N, std::vector<double>(N, 1.0));
+                for (int iv = 0; iv < N; ++iv)
+                    for (int iu = 0; iu < N; ++iu) {
+                        double fu = (double)iu / (N-1), fv = (double)iv / (N-1);
+                        Point q = S0.point_at(du.first + (du.second-du.first)*fu,
+                                              dv.first + (dv.second-dv.first)*fv);
+                        double h = 0.45 * std::sin(PI_*fu) * std::sin(PI_*fv)
+                                 * (1.0 + 0.3*std::sin(2.0*fu + 3.0*fv + (double)sf));
+                        grid[iv][iu] = Point(q[0]+nm[0]*h, q[1]+nm[1]*h, q[2]+nm[2]*h);
+                    }
+                double a = du.first, b = du.second, c = dv.first, d = dv.second;
+                std::vector<double> KU = {a, a+(b-a)/3, a+2*(b-a)/3, b};
+                std::vector<double> KV = {c, c+(d-c)/3, c+2*(d-c)/3, d};
+                std::vector<int> MU = {4, 1, 1, 4}, MV = {4, 1, 1, 4};
+                NurbsSurface S1 = NurbsSurface::create_from_parameters(grid, wts, KU, KV, MU, MV, 3, 3);
+                if (S1.is_valid()) pil.m_surfaces[sf] = S1;
+            }
+            std::printf("freeform pillow: vol %.4f solid %d faces %d\n",
+                        pil.volume(), pil.is_solid() ? 1 : 0, pil.face_count());
+            if (const char* sd = std::getenv("SESSION_STEP_DIR"))
+                file_step::write_file_step_brep(pil, std::string(sd) + "/freeform_pillow.step");
+        }
         BRep box = BRep::create_box(4, 4, 4);
         double vcut = 0, vcom = 0, vfus = 0;
         int fcut = 0, fcom = 0, ffus = 0; int scut = 0, scom = 0, sfus = 0;

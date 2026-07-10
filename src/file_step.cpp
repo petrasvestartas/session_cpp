@@ -2888,13 +2888,16 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
             if (loop_idx < 0 || loop_idx >= (int)brep.m_loops.size()) continue;
             const BRepLoop& loop = brep.m_loops[loop_idx];
             std::vector<int> oe_ids;
+            std::vector<Point> pole_pts;
+            bool only_own_seams = true;   // every REAL edge is a seam wholly owned by this face
             for (const auto& [trim_idx, from_first] : loop_chain[loop_idx]) {
                 const BRepTrim& trim = brep.m_trims[trim_idx];
                 // Pole runs (3D-degenerate, real UV span): STEP has no degenerate edges;
                 // importers re-add them (ShapeFix FixDegenerated) when the rest of the wire
                 // is consistent. Skip: primitives mark them Singular (edge -1); boolean
                 // results give them zero-length edges.
-                if (trim.edge_index < 0) continue;
+                bool degen = false;
+                Point pole(0, 0, 0);
                 if (trim.curve_2d_index >= 0 && trim.curve_2d_index < (int)brep.m_curves_2d.size()) {
                     const NurbsCurve& pcq = brep.m_curves_2d[trim.curve_2d_index];
                     auto pdq = pcq.domain();
@@ -2907,13 +2910,45 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                     // pole run: the WHOLE 3D image is one point (a closed seam iso only has
                     // coincident endpoints -- its midpoint is far)
                     if (A3.distance(B3) < diag * 1e-7 && A3.distance(M3) < diag * 1e-7
-                        && qa.distance(qb) > spanq * 1e-3) continue;
+                        && qa.distance(qb) > spanq * 1e-3) { degen = true; pole = A3; }
+                }
+                if (trim.edge_index < 0 || degen) {
+                    bool dup = false;
+                    for (auto& q : pole_pts) if (q.distance(pole) < diag * 1e-6) dup = true;
+                    if (!dup && trim.curve_2d_index >= 0) pole_pts.push_back(pole);
+                    continue;
+                }
+                {   // is this edge a seam wholly owned by this face?
+                    const BRepEdge& E2 = brep.m_topology_edges[trim.edge_index];
+                    bool own_seam = E2.trim_indices.size() == 2;
+                    for (int t2 : E2.trim_indices) {
+                        int l2 = (t2 >= 0 && t2 < (int)brep.m_trims.size()) ? brep.m_trims[t2].loop_index : -1;
+                        int f2 = (l2 >= 0 && l2 < (int)brep.m_loops.size()) ? brep.m_loops[l2].face_index : -1;
+                        if (f2 != fi) own_seam = false;
+                    }
+                    if (!own_seam) only_own_seams = false;
                 }
                 int ec = edge_id(trim.edge_index);
                 if (ec < 0) continue;
                 bool fwd = trim_sense[trim_idx] != 0;
                 oe_ids.push_back(w.write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec)
                                              + (fwd ? ",.T.)" : ",.F.)")));
+            }
+            // CLOSED B-SPLINE face whose only real boundary is its own seam: OCCT bounds such
+            // faces with VERTEX_LOOPs at the poles and NO edges (verified on its NurbsConvert
+            // sphere export) -- a clamped seam pair plus skipped poles imports as a zero-width
+            // sliver instead (freeform_blob). Emit the canonical form.
+            if (analytic_of(face.surface_index).kind == 0 && only_own_seams
+                && !pole_pts.empty() && !oe_ids.empty()) {
+                for (auto& q : pole_pts) {
+                    int vx = vertex_at_point(q);
+                    int vl = w.write_raw("VERTEX_LOOP('',#" + std::to_string(vx) + ")");
+                    int fb2 = w.write_raw("FACE_BOUND('',#" + std::to_string(vl) + ",.T.)");
+                    if (nbounds) bounds += ",";
+                    bounds += "#" + std::to_string(fb2);
+                    ++nbounds;
+                }
+                continue;
             }
             if (oe_ids.empty()) continue;
             std::string el = "EDGE_LOOP('',(";
