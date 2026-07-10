@@ -2137,7 +2137,24 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         const BRepFace& face = brep.m_faces[fi];
         if (face.surface_index < 0 || face.surface_index >= (int)brep.m_surfaces.size()) continue;
         const NurbsSurface& srf = brep.m_surfaces[face.surface_index];
-        bool outward = (fi < (int)fsign.size()) ? (fsign[fi] >= 0.0) : true;
+        // STEP/OCCT winding convention: loops are wound MATERIAL-LEFT in the WRITTEN
+        // parameterization, ALWAYS -- same_sense alone carries which side the solid is on.
+        // (Winding-follows-same_sense was wrong: cut cells imported right only by double
+        // negative -- our quadric charts are opposite-handed to the canonical analytic
+        // parameterization, so the remap flips winding -- and fuse cells inverted: every
+        // torus face of box fuse tor SUBTRACTED, tor_fuse_tor2 shattered into 4 shells.)
+        bool dpflip = false;
+        {
+            const AnalyticSrf& A = analytic_of(face.surface_index);
+            if (A.kind > 0) {
+                auto duA = srf.domain(0); auto dvA = srf.domain(1);
+                Point pm = srf.point_at(0.5*(duA.first+duA.second), 0.5*(dvA.first+dvA.second));
+                Vector nb = srf.normal_at(0.5*(duA.first+duA.second), 0.5*(dvA.first+dvA.second));
+                Vector na = analytic_normal_of(A, pm);
+                dpflip = (na[0]*nb[0] + na[1]*nb[1] + na[2]*nb[2]) < 0;
+            }
+        }
+        bool target_ml = !dpflip;   // material-left in the WRITTEN chart
         for (int loop_idx : face.loop_indices) {
             if (loop_idx < 0 || loop_idx >= (int)brep.m_loops.size()) continue;
             const BRepLoop& loop = brep.m_loops[loop_idx];
@@ -2181,7 +2198,7 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
             std::vector<std::pair<int,char>> chain_dirs;
             for (int oi : order) chain_dirs.push_back({legs[oi].ti, legs[oi].from_first});
             bool chained_ml = brep.loop_material_left(loop_idx, &chain_dirs);
-            if (chained_ml != outward) {
+            if (chained_ml != target_ml) {
                 std::reverse(order.begin(), order.end());
                 for (auto& L : legs) L.from_first = L.from_first ? 0 : 1;
             }
