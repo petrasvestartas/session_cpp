@@ -2087,6 +2087,13 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
     // edges, so the reader re-chains them by 3D proximity and wanders whole periods across
     // the torus chart no matter how perfect the pcurves are.
     std::map<std::tuple<long long, long long, long long>, int> vert_by_loc;
+    // Loop-junction anchors for CLOSED edges (filled in PASS A). A closed border circle's
+    // kernel vertex can sit anywhere on it (co_refine rebuilds curves with arbitrary starts:
+    // box_cut_cyl's bore circles start at theta=-pi/2 while the wire junctions with the seam
+    // at theta=0) -- then the written wire is vertex-DISCONNECTED (the circle is an island
+    // self-loop) and importers re-chain by proximity. Rotating the written 3D curve to start
+    // at the junction and using the junction vertex makes the wire vertex-connected.
+    std::map<int, Point> edge_anchor;
     auto vertex_id = [&](int tv) -> int {
         if (tv < 0 || tv >= (int)brep.m_topology_vertices.size()) return -1;
         if (vert_step_id[tv] >= 0) return vert_step_id[tv];
@@ -2104,6 +2111,19 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         vert_step_id[tv] = w.write_raw("VERTEX_POINT('',#" + std::to_string(pt) + ")");
         vert_by_loc[key] = vert_step_id[tv];
         return vert_step_id[tv];
+    };
+    auto vertex_at_point = [&](const Point& p) -> int {
+        double q = diag > 0 ? diag * 1e-7 : 1e-9;
+        std::tuple<long long, long long, long long> key(
+            (long long)std::llround(p[0] / q),
+            (long long)std::llround(p[1] / q),
+            (long long)std::llround(p[2] / q));
+        auto it = vert_by_loc.find(key);
+        if (it != vert_by_loc.end()) return it->second;
+        int pt = w.write_point(p[0], p[1], p[2]);
+        int vid = w.write_raw("VERTEX_POINT('',#" + std::to_string(pt) + ")");
+        vert_by_loc[key] = vid;
+        return vid;
     };
 
     std::vector<std::vector<std::pair<int,char>>> loop_chain(brep.m_loops.size());
@@ -2149,7 +2169,37 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         if (edge_step_id[ei] >= 0) return edge_step_id[ei];
         const BRepEdge& E = brep.m_topology_edges[ei];
         if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)brep.m_curves_3d.size()) return -1;
-        int cid = w.write_nurbs_curve(compress_curve(brep.m_curves_3d[E.curve_3d_index], fit3d));
+        bool rotated = false;
+        Point anchor;
+        int cid;
+        {
+            const NurbsCurve& c3o = brep.m_curves_3d[E.curve_3d_index];
+            auto d3o = c3o.domain();
+            Point A0 = c3o.point_at(d3o.first), B0 = c3o.point_at(d3o.second);
+            auto ita = edge_anchor.find(ei);
+            if (ita != edge_anchor.end() && A0.distance(B0) < diag * 1e-7
+                && A0.distance(ita->second) > diag * 1e-6) {
+                anchor = ita->second;
+                rotated = true;
+                double t0 = c3o.closest_parameter(anchor);
+                double len = d3o.second - d3o.first;
+                int n = 256;
+                std::vector<Point> ps;
+                ps.reserve(n + 1);
+                for (int i = 0; i <= n; ++i) {
+                    double t = t0 + len * i / n;
+                    if (t > d3o.second) t -= len;
+                    ps.push_back(c3o.point_at(t));
+                }
+                ps.front() = anchor;
+                ps.back() = anchor;
+                NurbsCurve rot = NurbsCurve::create(false, 1, ps);
+                cid = w.write_nurbs_curve(rot.is_valid() ? compress_curve(rot, fit3d)
+                                                         : compress_curve(c3o, fit3d));
+            } else {
+                cid = w.write_nurbs_curve(compress_curve(c3o, fit3d));
+            }
+        }
         if (cid < 0) return -1;
         std::vector<int> pcs;
         std::vector<int> pc_faces;
@@ -2183,9 +2233,22 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                 auto c3p = [&](double f) {
                     return c3.point_at(d3.first + (d3.second - d3.first) * f);
                 };
-                double err_fwd = img(0.05).distance(c3p(0.05)) + img(0.95).distance(c3p(0.95));
-                double err_rev = img(0.05).distance(c3p(0.95)) + img(0.95).distance(c3p(0.05));
-                if (err_rev < err_fwd) uvc.reverse();
+                if (rotated) {
+                    // closed rotated curve: align starts, then compare a short march
+                    double tp = c3.closest_parameter(img(0.0));
+                    double len = d3.second - d3.first;
+                    double tf = tp + len * 0.05;
+                    if (tf > d3.second) tf -= len;
+                    double tr = tp - len * 0.05;
+                    if (tr < d3.first) tr += len;
+                    Point m = img(0.05);
+                    if (m.distance(c3.point_at(tr)) < m.distance(c3.point_at(tf)))
+                        uvc.reverse();
+                } else {
+                    double err_fwd = img(0.05).distance(c3p(0.05)) + img(0.95).distance(c3p(0.95));
+                    double err_rev = img(0.05).distance(c3p(0.95)) + img(0.95).distance(c3p(0.05));
+                    if (err_rev < err_fwd) uvc.reverse();
+                }
             }
             int pc = w.write_pcurve(sid, uvc);
             if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
@@ -2194,11 +2257,13 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         if (pcs.size() == 2) {
             bool same_face = (pc_faces[0] == pc_faces[1]);
             // SEAM_CURVE: both pcurves reference the SAME surface, so only their ORDER tells
-            // the importer which one the FORWARD-oriented edge uses (the pcurve of the
-            // sense-.T. ORIENTED_EDGE goes first -- senses precomputed by the loop chaining).
-            // Wrong order makes the wire builder close the loop through EXTRAPOLATED
-            // parameter space (torus face at 2x area over u in [-4,0]).
-            if (same_face && !pc_fwd[0] && pc_fwd[1]) {
+            // the importer which side each occurrence uses. OCCT's own writer puts the
+            // REVERSED-occurrence pcurve FIRST (verified on its box_cut_tor reference file:
+            // .T. walks pc2's side, .F. walks pc1's) -- and the order only becomes load-
+            // bearing next to CLOSED border circles, where vertex connectivity (start==end,
+            // one vertex) cannot anchor the branch: with .T.-first, box_cut_cyl's bore
+            // accumulated u in [0, 3.5*pi] and failed BRepCheck.
+            if (same_face && !pc_fwd[1] && pc_fwd[0]) {
                 std::swap(pcs[0], pcs[1]);
                 std::swap(pc_fwd[0], pc_fwd[1]);
             }
@@ -2209,12 +2274,17 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
             geom = w.write_raw("SURFACE_CURVE('',#" + std::to_string(cid) + ",(#"
                                + std::to_string(pcs[0]) + "),.PCURVE_S1.)");
         }
-        int v0 = vertex_id(E.start_vertex), v1 = vertex_id(E.end_vertex);
+        int v0, v1;
+        if (rotated) {
+            v0 = v1 = vertex_at_point(anchor);
+        } else {
+            v0 = vertex_id(E.start_vertex); v1 = vertex_id(E.end_vertex);
+        }
         if (v0 < 0 || v1 < 0) return -1;
         // EDGE_CURVE '.T.' asserts the curve runs v0 -> v1; kernel edges do not guarantee
         // start/end_vertex agree with the 3D curve direction, and one swapped edge is a
         // topology break that makes the importer re-chain the whole wire by proximity.
-        {
+        if (!rotated) {
             const NurbsCurve& c3 = brep.m_curves_3d[E.curve_3d_index];
             auto d3 = c3.domain();
             Point C0 = c3.point_at(d3.first), C1 = c3.point_at(d3.second);
@@ -2338,6 +2408,25 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                 const Leg& L = legs[oi];
                 chain.push_back({L.ti, L.from_first});
                 trim_sense[L.ti] = trim_forward(brep.m_trims[L.ti], srf, L.from_first != 0) ? 1 : 0;
+            }
+            // Junction anchors for closed legs: the 3D point where the chain ENTERS a closed
+            // edge is the wire junction its written copy must start at (see edge_anchor).
+            for (size_t k = 0; k < order.size(); ++k) {
+                const Leg& L = legs[order[k]];
+                if (L.a.distance(L.b) > diag * 1e-7) continue;       // open leg
+                const BRepTrim& T = brep.m_trims[L.ti];
+                if (T.edge_index < 0 || edge_anchor.count(T.edge_index)) continue;
+                if (order.size() < 2) continue;                       // 1-edge loop: any start
+                const Leg& P = legs[order[k > 0 ? k - 1 : order.size() - 1]];
+                Point junc = P.from_first ? P.b : P.a;   // previous-in-cycle leg's end
+                // anchor iff the EDGE's own 3D curve starts elsewhere (trim endpoints already
+                // sit at the junction -- the mismatch is edge-curve vs wire, not trim vs wire)
+                int ci3 = brep.m_topology_edges[T.edge_index].curve_3d_index;
+                if (ci3 < 0 || ci3 >= (int)brep.m_curves_3d.size()) continue;
+                const NurbsCurve& c3L = brep.m_curves_3d[ci3];
+                Point E0 = c3L.point_at(c3L.domain().first);
+                if (junc.distance(E0) > diag * 1e-6)
+                    edge_anchor[T.edge_index] = junc;
             }
             if (std::getenv("SESSION_STEP_DBG"))
                 std::fprintf(stderr, "[STEPDBG] f=%d loop=%d kind=%d outward_chart=%d dpflip=%d ml=%d target=%d\n",
