@@ -1,3 +1,4 @@
+#include <map>
 #include "file_step.h"
 #include "point.h"
 #include "vector.h"
@@ -1977,12 +1978,50 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
 
     // Remap a pcurve into the analytic surface's canonical parameterization: sample its 3D
     // image, take unwrapped atan2 parameters, anchor the branch at the midpoint, compress.
-    auto remap_pcurve = [&](int si, const NurbsCurve& pc) -> NurbsCurve {
+    // Continuous chart lift: the unwrapped analytic (s,t) over the kernel chart rectangle.
+    // The chart is simply connected, so this lift is unique up to ONE constant 2*pi*K per
+    // surface -- snapping every pcurve's samples to it puts all pcurves of a surface in a
+    // single shared branch frame: seam mates land exactly one period apart and every loop
+    // closes in the written plane BY CONSTRUCTION. (All chain-order anchoring heuristics
+    // failed here: greedy euler walks through seam junctions can wander whole periods with
+    // zero junction error and zero net closure defect.)
+    struct ChartLift { int N; double u0, du, v0, dv; std::vector<double> S, T; };
+    std::map<int, ChartLift> chart_lifts;
+    auto chart_lift_of = [&](int si) -> const ChartLift& {
+        auto it = chart_lifts.find(si);
+        if (it != chart_lifts.end()) return it->second;
         const AnalyticSrf& A = analytic_of(si);
         const NurbsSurface& S = brep.m_surfaces[si];
-        auto du = S.domain(0); auto dv = S.domain(1);
-        double span = std::max(du.second - du.first, dv.second - dv.first);
-        if (A.kind == 0) return compress_curve(pc, span * 5e-5);
+        auto duL = S.domain(0); auto dvL = S.domain(1);
+        ChartLift L;
+        L.N = 33;
+        L.u0 = duL.first; L.du = (duL.second - duL.first) / (L.N - 1);
+        L.v0 = dvL.first; L.dv = (dvL.second - dvL.first) / (L.N - 1);
+        L.S.assign(L.N * L.N, 0.0); L.T.assign(L.N * L.N, 0.0);
+        const double PI_ = 3.14159265358979323846;
+        for (int j = 0; j < L.N; ++j)
+            for (int i = 0; i < L.N; ++i) {
+                double sv, tv; bool rok;
+                analytic_params_of(A, S.point_at(L.u0 + L.du * i, L.v0 + L.dv * j), sv, tv, rok);
+                double rs = 0, rt = 0; bool have = false;   // unwrap ref: left, else below
+                if (i > 0)      { rs = L.S[j*L.N + i-1];     rt = L.T[j*L.N + i-1];     have = true; }
+                else if (j > 0) { rs = L.S[(j-1)*L.N];       rt = L.T[(j-1)*L.N];       have = true; }
+                if (have) {
+                    if (!rok) sv = rs;
+                    else sv -= 2*PI_ * std::round((sv - rs) / (2*PI_));
+                    if (A.kind == 5) tv -= 2*PI_ * std::round((tv - rt) / (2*PI_));
+                } else {
+                    sv -= 2*PI_ * std::floor(sv / (2*PI_));
+                    if (A.kind == 5) tv -= 2*PI_ * std::floor(tv / (2*PI_));
+                }
+                L.S[j*L.N + i] = sv; L.T[j*L.N + i] = tv;
+            }
+        return chart_lifts.emplace(si, std::move(L)).first->second;
+    };
+    // Raw remap: unwrapped canonical (s,t) samples of the pcurve's 3D image, NO branch anchor.
+    auto remap_samples = [&](int si, const NurbsCurve& pc) -> std::vector<Point> {
+        const AnalyticSrf& A = analytic_of(si);
+        const NurbsSurface& S = brep.m_surfaces[si];
         auto pd = pc.domain();
         int n = std::min(std::max(pc.cv_count() * 2, 48), 512);
         std::vector<Point> st;
@@ -2007,31 +2046,63 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
             prev_s = sv; prev_t = tv; have_prev = true;
             st.push_back(Point(sv, tv, 0.0));
         }
-        if (A.kind >= 2 && !st.empty()) {                    // anchor branch at the midpoint
-            double sm = st[st.size()/2][0];
-            double shift = -2*PI_ * std::floor(sm / (2*PI_));
-            if (shift != 0.0) for (auto& q : st) q = Point(q[0] + shift, q[1], q[2]);
-            if (A.kind == 5) {
-                double tm = st[st.size()/2][1];
-                double tshift = -2*PI_ * std::floor(tm / (2*PI_));
-                if (tshift != 0.0) for (auto& q : st) q = Point(q[0], q[1] + tshift, q[2]);
-            }
+        if (A.kind >= 2 && st.size() >= 2) {
+            const ChartLift& CL = chart_lift_of(si);
+            size_t mid = st.size() / 2;
+            Point uvm = pc.point_at(pd.first + (pd.second - pd.first) * (double)mid / n);
+            int ii = (int)std::round((uvm[0] - CL.u0) / CL.du);
+            int jj = (int)std::round((uvm[1] - CL.v0) / CL.dv);
+            ii = std::min(std::max(ii, 0), CL.N - 1);
+            jj = std::min(std::max(jj, 0), CL.N - 1);
+            double gs = CL.S[jj*CL.N + ii], gt = CL.T[jj*CL.N + ii];
+            double sh_s = 2*PI_ * std::round((gs - st[mid][0]) / (2*PI_));
+            double sh_t = (A.kind == 5) ? 2*PI_ * std::round((gt - st[mid][1]) / (2*PI_)) : 0.0;
+            if (sh_s != 0.0 || sh_t != 0.0)
+                for (auto& q : st) q = Point(q[0] + sh_s, q[1] + sh_t, q[2]);
         }
+        return st;
+    };
+    auto fit_samples = [&](int si, std::vector<Point> st, const NurbsCurve& fallback) -> NurbsCurve {
+        const NurbsSurface& S = brep.m_surfaces[si];
+        auto du = S.domain(0); auto dv = S.domain(1);
+        double span = std::max(du.second - du.first, dv.second - dv.first);
         NurbsCurve out = NurbsCurve::create(false, 1, st);
-        if (!out.is_valid()) return compress_curve(pc, span * 5e-5);
+        if (!out.is_valid()) return compress_curve(fallback, span * 5e-5);
         return compress_curve(out, 2e-4 * 6.283185307179586);
+    };
+    auto remap_pcurve = [&](int si, const NurbsCurve& pc) -> NurbsCurve {
+        const AnalyticSrf& A = analytic_of(si);
+        const NurbsSurface& S = brep.m_surfaces[si];
+        auto du = S.domain(0); auto dv = S.domain(1);
+        double span = std::max(du.second - du.first, dv.second - dv.first);
+        if (A.kind == 0) return compress_curve(pc, span * 5e-5);
+        return fit_samples(si, remap_samples(si, pc), pc);
     };
 
     // 1. Topology vertices (lazy, deduped by topology index).
     std::vector<int> vert_step_id(brep.m_topology_vertices.size(), -1);
+    // One VERTEX_POINT per LOCATION, not per kernel vertex: boolean results carry duplicate
+    // vertices at seam/section junctions (box_cut_tor: 20 entities on 10 locations), and OCCT
+    // builds wires from SHARED VERTEX TOPOLOGY -- with duplicates the loop arrives as loose
+    // edges, so the reader re-chains them by 3D proximity and wanders whole periods across
+    // the torus chart no matter how perfect the pcurves are.
+    std::map<std::tuple<long long, long long, long long>, int> vert_by_loc;
     auto vertex_id = [&](int tv) -> int {
         if (tv < 0 || tv >= (int)brep.m_topology_vertices.size()) return -1;
         if (vert_step_id[tv] >= 0) return vert_step_id[tv];
         int pi = brep.m_topology_vertices[tv].point_index;
         if (pi < 0 || pi >= (int)brep.m_vertices.size()) return -1;
         const Point& p = brep.m_vertices[pi];
+        double q = diag > 0 ? diag * 1e-7 : 1e-9;
+        std::tuple<long long, long long, long long> key(
+            (long long)std::llround(p[0] / q),
+            (long long)std::llround(p[1] / q),
+            (long long)std::llround(p[2] / q));
+        auto it = vert_by_loc.find(key);
+        if (it != vert_by_loc.end()) { vert_step_id[tv] = it->second; return it->second; }
         int pt = w.write_point(p[0], p[1], p[2]);
         vert_step_id[tv] = w.write_raw("VERTEX_POINT('',#" + std::to_string(pt) + ")");
+        vert_by_loc[key] = vert_step_id[tv];
         return vert_step_id[tv];
     };
 
@@ -2095,6 +2166,27 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
             if (sid < 0 || T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
             const NurbsSurface& S = brep.m_surfaces[si];
             NurbsCurve uvc = remap_pcurve(si, brep.m_curves_2d[T.curve_2d_index]);
+            // STEP requires every pcurve CO-DIRECTED with the edge's 3D curve (SameParameter
+            // convention); the ORIENTED_EDGE sense alone flips traversal. A pcurve stored in
+            // loop-traversal direction gets double-reversed on its .F. occurrence, breaking
+            // the wire at every seam edge's second use (box_cut_tor imported at 21.45 of
+            // 48.52 with three-period UV wander despite geometrically perfect pcurves).
+            {
+                const NurbsCurve& c3 = brep.m_curves_3d[E.curve_3d_index];
+                auto d3 = c3.domain();
+                const NurbsCurve& pc0 = brep.m_curves_2d[T.curve_2d_index];
+                auto pd0 = pc0.domain();
+                auto img = [&](double f) {
+                    Point q = pc0.point_at(pd0.first + (pd0.second - pd0.first) * f);
+                    return S.point_at(q[0], q[1]);
+                };
+                auto c3p = [&](double f) {
+                    return c3.point_at(d3.first + (d3.second - d3.first) * f);
+                };
+                double err_fwd = img(0.05).distance(c3p(0.05)) + img(0.95).distance(c3p(0.95));
+                double err_rev = img(0.05).distance(c3p(0.95)) + img(0.95).distance(c3p(0.05));
+                if (err_rev < err_fwd) uvc.reverse();
+            }
             int pc = w.write_pcurve(sid, uvc);
             if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
         }
@@ -2119,6 +2211,22 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         }
         int v0 = vertex_id(E.start_vertex), v1 = vertex_id(E.end_vertex);
         if (v0 < 0 || v1 < 0) return -1;
+        // EDGE_CURVE '.T.' asserts the curve runs v0 -> v1; kernel edges do not guarantee
+        // start/end_vertex agree with the 3D curve direction, and one swapped edge is a
+        // topology break that makes the importer re-chain the whole wire by proximity.
+        {
+            const NurbsCurve& c3 = brep.m_curves_3d[E.curve_3d_index];
+            auto d3 = c3.domain();
+            Point C0 = c3.point_at(d3.first), C1 = c3.point_at(d3.second);
+            int p0 = brep.m_topology_vertices[E.start_vertex].point_index;
+            int p1 = brep.m_topology_vertices[E.end_vertex].point_index;
+            if (p0 >= 0 && p1 >= 0 && p0 < (int)brep.m_vertices.size() && p1 < (int)brep.m_vertices.size()) {
+                const Point& V0 = brep.m_vertices[p0];
+                const Point& V1 = brep.m_vertices[p1];
+                if (V0.distance(C0) + V1.distance(C1) > V0.distance(C1) + V1.distance(C0))
+                    std::swap(v0, v1);
+            }
+        }
         edge_step_id[ei] = w.write_raw("EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v1)
                                        + ",#" + std::to_string(geom) + ",.T.)");
         return edge_step_id[ei];
@@ -2170,29 +2278,52 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                 Point ua = pc.point_at(pd.first), ub = pc.point_at(pd.second);
                 legs.push_back({trim_idx, 1, srf.point_at(ua[0], ua[1]), srf.point_at(ub[0], ub[1]), ua, ub});
             }
+            // Chain in KERNEL UV with PERIODIC wrap distance: a boundary that CROSSES a
+            // kernel seam (box_cut_tor's bite arcs straddle both) jumps a full chart period
+            // there, so non-periodic distance breaks the walk. Wrapping brings back the
+            // seam-mate tie (3D-identical, kernel-UV one period apart) -- two deterministic
+            // tie-breaks resolve every junction: (1) prefer UNWRAPPED connections (same-cell
+            // continuation beats a wrapped jump), (2) avoid hopping straight to the SAME
+            // edge's other trim (the mate), which is a zero-area spur.
+            auto duF = srf.domain(0); auto dvF = srf.domain(1);
+            double per_u = duF.second - duF.first, per_v = dvF.second - dvF.first;
+            bool closed_u = srf.point_at(duF.first, 0.5*(dvF.first+dvF.second))
+                            .distance(srf.point_at(duF.second, 0.5*(dvF.first+dvF.second))) < diag * 1e-7;
+            bool closed_v = srf.point_at(0.5*(duF.first+duF.second), dvF.first)
+                            .distance(srf.point_at(0.5*(duF.first+duF.second), dvF.second)) < diag * 1e-7;
+            double eps_pref = 1e-7 * std::max(per_u, per_v);
+            auto uvdist = [&](const Point& a2, const Point& b2) {
+                double du2 = std::abs(a2[0] - b2[0]);
+                double dv2 = std::abs(a2[1] - b2[1]);
+                double wu = closed_u ? std::min(du2, per_u - du2) : du2;
+                double wv = closed_v ? std::min(dv2, per_v - dv2) : dv2;
+                double d = std::sqrt(wu*wu + wv*wv);
+                if (wu != du2 || wv != dv2) d += eps_pref;      // wrapped: mild penalty
+                return d;
+            };
             std::vector<char> used(legs.size(), 0);
             std::vector<int> order;
             if (!legs.empty()) {
                 legs[0].from_first = 1;
                 used[0] = 1; order.push_back(0);
-                Point tail = legs[0].b;
                 Point uv_tail = legs[0].ub;
+                int prev_edge = brep.m_trims[legs[0].ti].edge_index;
                 for (size_t k = 1; k < legs.size(); ++k) {
                     int best = -1; char bff = 1; double bd = 1e300;
                     for (size_t j = 0; j < legs.size(); ++j) {
                         if (used[j]) continue;
-                        double uva = uv_tail.distance(legs[j].ua) * 1e-6;
-                        double uvb = uv_tail.distance(legs[j].ub) * 1e-6;
-                        double da = tail.distance(legs[j].a) + uva;
-                        double db = tail.distance(legs[j].b) + uvb;
+                        double pen = (brep.m_trims[legs[j].ti].edge_index == prev_edge
+                                      && prev_edge >= 0) ? eps_pref * 0.1 : 0.0;
+                        double da = uvdist(uv_tail, legs[j].ua) + pen;
+                        double db = uvdist(uv_tail, legs[j].ub) + pen;
                         if (da < bd) { bd = da; best = (int)j; bff = 1; }
                         if (db < bd) { bd = db; best = (int)j; bff = 0; }
                     }
                     if (best < 0) break;
                     used[best] = 1; legs[best].from_first = bff;
                     order.push_back(best);
-                    tail = bff ? legs[best].b : legs[best].a;
                     uv_tail = bff ? legs[best].ub : legs[best].ua;
+                    prev_edge = brep.m_trims[legs[best].ti].edge_index;
                 }
             }
             std::vector<std::pair<int,char>> chain_dirs;
@@ -2208,6 +2339,11 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                 chain.push_back({L.ti, L.from_first});
                 trim_sense[L.ti] = trim_forward(brep.m_trims[L.ti], srf, L.from_first != 0) ? 1 : 0;
             }
+            if (std::getenv("SESSION_STEP_DBG"))
+                std::fprintf(stderr, "[STEPDBG] f=%d loop=%d kind=%d outward_chart=%d dpflip=%d ml=%d target=%d\n",
+                             fi, loop_idx, analytic_of(face.surface_index).kind,
+                             (fi < (int)fsign.size() && fsign[fi] >= 0.0) ? 1 : 0,
+                             dpflip ? 1 : 0, chained_ml ? 1 : 0, target_ml ? 1 : 0);
         }
     }
 
