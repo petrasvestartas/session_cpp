@@ -2581,6 +2581,16 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
                                + img(0.95).distance(W_eval(W_a + (W_b - W_a) * 0.05));
                 if (err_rev < err_fwd) uvc.reverse();
             }
+            if (std::getenv("SESSION_STEP_DBG")) {
+                auto ud = uvc.domain();
+                Point u0 = uvc.point_at(ud.first), u1 = uvc.point_at(ud.second);
+                std::fprintf(stderr, "[EDGE] ei=%d ti=%d canon=%d cff=%d Wdir(%.2f,%.2f,%.2f)->(%.2f,%.2f,%.2f) pc(%.2f,%.2f)->(%.2f,%.2f) valid=%d\n",
+                             ei, ti, edge_canon.count(ei) ? edge_canon[ei].first : -1,
+                             edge_canon.count(ei) ? (int)edge_canon[ei].second : -1,
+                             W_eval(W_a)[0], W_eval(W_a)[1], W_eval(W_a)[2],
+                             W_eval(W_b)[0], W_eval(W_b)[1], W_eval(W_b)[2],
+                             u0[0], u0[1], u1[0], u1[1], uvc.is_valid() ? 1 : 0);
+            }
             int pc = w.write_pcurve(sid, uvc);
             if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
         }
