@@ -327,6 +327,15 @@ int main(int argc, char** argv) {
         ++total; if (!ok) ++fails;
         std::printf("  freeform verdict: %s\n", ok ? "OK" : "FAIL");
     }
+    if (const char* sd = std::getenv("SESSION_STEP_PRIMS")) {
+        std::filesystem::create_directories(sd);
+        file_step::write_file_step_brep(BRep::create_box(4, 4, 4), std::string(sd) + "/prim_box.step");
+        file_step::write_file_step_brep(BRep::create_sphere(2.5), std::string(sd) + "/prim_sphere.step");
+        file_step::write_file_step_brep(BRep::create_cylinder(1.5, 6), std::string(sd) + "/prim_cylinder.step");
+        file_step::write_file_step_brep(BRep::create_cone(2.0, 4.0), std::string(sd) + "/prim_cone.step");
+        file_step::write_file_step_brep(BRep::create_torus(2.0, 0.8), std::string(sd) + "/prim_torus.step");
+        std::printf("primitive STEP files written to %s\n", sd);
+    }
     if (std::getenv("SESSION_CAVITY")) {
         BRep bx = BRep::create_box(4, 4, 4);
         BRep sp2 = BRep::create_sphere(1.5);

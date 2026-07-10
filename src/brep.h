@@ -264,6 +264,20 @@ public:
     /// sew_coincident_edges when gated by SESSION_BOOL_SHARED_EDGES. Modifies in place.
     void make_shared_section_edges(const BRep& A, const BRep& B, double tol = 0.0);
 
+    /// Outward-orientation sign per face: +1 when the surface's natural normal points OUT of
+    /// the solid, -1 when it points in. Shell-orientation propagation: relative parity across
+    /// every 2-trim edge (trim traversals normalized to material-left geometrically), one
+    /// weighted-evidence flip per connected shell. Consumed by volume() and the STEP writer's
+    /// ADVANCED_FACE same_sense flags. Optionally returns each face's interior point + normal.
+    std::vector<double> face_outward_signs(std::vector<Point>* P3s = nullptr,
+                                           std::vector<Vector>* Ns = nullptr) const;
+
+    /// Does loop `li` traverse with face material on its LEFT in UV (majority over its trims,
+    /// measured geometrically against the face's own region)? Stored trim conventions are not
+    /// uniform across construction paths; consumers that need a definite winding (the STEP
+    /// writer) measure it here instead of trusting flags.
+    bool loop_material_left(int li) const;
+
     /// OCCT SameParameter-lite: for every 2-trim mixed (planar/curved) section edge, rebuild the
     /// PLANAR trim's pcurve from the edge's shared 3D curve by exact affine projection, so both
     /// faces integrate identical boundary geometry (the volume error is first-order in any

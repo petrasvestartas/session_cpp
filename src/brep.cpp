@@ -1031,115 +1031,95 @@ int BRep::check_trim_orientation(bool verbose) const {
 }
 
 
-double BRep::volume() const {
-    // Divergence theorem: V = (1/3) sum_faces flux_outward, flux = integral of S . n_out dA.
-    // This is made independent of stored orientation flags (which differ between primitive
-    // constructors and the boolean rebuilder): each face's OUTWARD sign is determined
-    // geometrically (step off the face along its natural normal and test inside/outside),
-    // and trimmed areas/fluxes are computed with the surface's NATURAL orientation.
-    //  - Planar faces: flux_nat = (Q . N_nat) * area, area = |outer loop| - sum|inner loop|
-    //    (each loop area is the magnitude of the lifted boundary integral 1/2 |C x C'|).
-    //  - Curved faces: composite Gauss of S . (S_u x S_v) over the trim's UV bounding box
-    //    (exact for axis-aligned/rectangular trims, e.g. cylinder z-cuts and full domains).
-    static const double GN[5] = {-0.9061798459386640, -0.5384693101056831, 0.0,
-                                  0.5384693101056831, 0.9061798459386640};
-    static const double GW[5] = {0.2369268850561891, 0.4786286704993665, 0.5688888888888889,
-                                 0.4786286704993665, 0.2369268850561891};
+bool BRep::loop_material_left(int li) const {
+    if (li < 0 || li >= (int)m_loops.size()) return true;
+    int fi = m_loops[li].face_index;
+    if (fi < 0 || fi >= (int)m_faces.size()) return true;
+    int si = m_faces[fi].surface_index;
+    if (si < 0 || si >= (int)m_surfaces.size()) return true;
+    const NurbsSurface& S = m_surfaces[si];
+    // face UV region polys (all loops of the face)
+    std::vector<std::vector<std::array<double,2>>> outs, ins;
+    for (int lj : m_faces[fi].loop_indices) {
+        if (lj < 0 || lj >= (int)m_loops.size()) continue;
+        std::vector<std::array<double,2>> poly;
+        for (int ti : m_loops[lj].trim_indices) {
+            if (ti < 0 || ti >= (int)m_trims.size()) continue;
+            int c2 = m_trims[ti].curve_2d_index;
+            if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
+            const NurbsCurve& pc = m_curves_2d[c2];
+            if (!pc.is_valid()) continue;
+            auto dc = pc.domain();
+            int n = std::min(std::max(pc.cv_count()*2, 8), 256);
+            for (int k = 0; k < n; ++k) {
+                Point uv = pc.point_at(dc.first + (dc.second-dc.first)*k/n);
+                poly.push_back({uv[0], uv[1]});
+            }
+        }
+        if (poly.size() < 3) continue;
+        if (m_loops[lj].type == BRepLoopType::Outer) outs.push_back(std::move(poly));
+        else ins.push_back(std::move(poly));
+    }
+    auto in_face = [&](double u, double v) -> bool {
+        auto pip = [&](const std::vector<std::array<double,2>>& p) {
+            bool inside = false;
+            for (size_t i = 0, j = p.size()-1; i < p.size(); j = i++) {
+                if ((p[i][1] > v) != (p[j][1] > v) &&
+                    u < (p[j][0]-p[i][0])*(v-p[i][1])/(p[j][1]-p[i][1]) + p[i][0])
+                    inside = !inside;
+            }
+            return inside;
+        };
+        bool ok = outs.empty();
+        for (auto& op : outs) if (pip(op)) { ok = true; break; }
+        if (!ok) return false;
+        for (auto& ip : ins) if (pip(ip)) return false;
+        return true;
+    };
+    auto [su0,su1] = S.domain(0); auto [sv0,sv1] = S.domain(1);
+    int votes_left = 0, votes_right = 0;
+    for (int ti : m_loops[li].trim_indices) {
+        if (ti < 0 || ti >= (int)m_trims.size()) continue;
+        const BRepTrim& T = m_trims[ti];
+        int c2 = T.curve_2d_index;
+        if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
+        const NurbsCurve& pc = m_curves_2d[c2];
+        if (!pc.is_valid()) continue;
+        auto dc = pc.domain();
+        double tm = 0.5*(dc.first+dc.second), dt = (dc.second-dc.first)*1e-3;
+        Point a = pc.point_at(tm - dt), b = pc.point_at(tm + dt);
+        if (T.reversed) std::swap(a, b);
+        double tx = b[0]-a[0], ty = b[1]-a[1];
+        double tn = std::sqrt(tx*tx+ty*ty);
+        if (tn < 1e-15) continue;
+        Point m = pc.point_at(tm);
+        for (double f : {2e-3, 8e-3}) {
+            double eu = (su1-su0)*f, ev = (sv1-sv0)*f;
+            bool left_in = in_face(m[0] - ty/tn*eu, m[1] + tx/tn*ev);
+            bool right_in = in_face(m[0] + ty/tn*eu, m[1] - tx/tn*ev);
+            if (left_in == right_in) continue;
+            if (left_in) ++votes_left; else ++votes_right;
+            break;
+        }
+    }
+    return votes_left >= votes_right;
+}
+
+std::vector<double> BRep::face_outward_signs(std::vector<Point>* P3s, std::vector<Vector>* Ns) const {
     auto cross = [](const Vector& a, const Vector& b) {
         return Vector(a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]);
     };
+    (void)cross;
     auto is_planar = [&](const NurbsSurface& s) {
         auto [u0,u1] = s.domain(0); auto [v0,v1] = s.domain(1);
         Vector n0 = s.normal_at(u0 + (u1-u0)*0.5, v0 + (v1-v0)*0.5);
         double uu[3] = {0.25, 0.5, 0.75}, vv[3] = {0.3, 0.6, 0.8};
         for (int i = 0; i < 3; i++) {
             Vector n = s.normal_at(u0 + (u1-u0)*uu[i], v0 + (v1-v0)*vv[i]);
-            if (cross(n0, n).magnitude() > 1e-7) return false;
+            Vector c(n0[1]*n[2]-n0[2]*n[1], n0[2]*n[0]-n0[0]*n[2], n0[0]*n[1]-n0[1]*n[0]);
+            if (c.magnitude() > 1e-7) return false;
         }
         return true;
-    };
-    // Lifted boundary vector-area of one loop: 1/2 * closed integral C x C'. Convention-
-    // independent: the loop's pcurves are chained head-to-tail by matching UV endpoints
-    // (each used forward or reversed as the chain requires), so the stored trim.reversed
-    // flags are not relied upon. Exact for exact pcurves (e.g. NURBS circles).
-    auto loop_vector_area = [&](const NurbsSurface& srf, const BRepLoop& loop) {
-        struct Seg { const NurbsCurve* pc; double t0, t1; Point ps, pe; };
-        std::vector<Seg> segs;
-        for (int ti : loop.trim_indices) {
-            if (ti < 0 || ti >= (int)m_trims.size()) continue;
-            int c2 = m_trims[ti].curve_2d_index;
-            if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
-            const NurbsCurve& pc = m_curves_2d[c2];
-            auto dc = pc.domain();
-            segs.push_back({&pc, dc.first, dc.second, pc.point_at(dc.first), pc.point_at(dc.second)});
-        }
-        if (segs.empty()) return Vector(0,0,0);
-        // Chain by nearest-endpoint greedy walk; each entry is (index, forward?).
-        std::vector<std::pair<int,bool>> order;
-        std::vector<bool> used(segs.size(), false);
-        order.push_back({0, true}); used[0] = true;
-        Point tail = segs[0].pe;
-        auto d2 = [](const Point& a, const Point& b){ double dx=a[0]-b[0],dy=a[1]-b[1]; return dx*dx+dy*dy; };
-        for (size_t k = 1; k < segs.size(); ++k) {
-            int best = -1; bool fwd = true; double bd = 1e300;
-            for (size_t j = 0; j < segs.size(); ++j) {
-                if (used[j]) continue;
-                double ds = d2(segs[j].ps, tail), de = d2(segs[j].pe, tail);
-                if (ds < bd) { bd = ds; best = (int)j; fwd = true; }
-                if (de < bd) { bd = de; best = (int)j; fwd = false; }
-            }
-            if (best < 0) break;
-            used[best] = true; order.push_back({best, fwd});
-            tail = fwd ? segs[best].pe : segs[best].ps;
-        }
-        Vector acc(0,0,0);
-        const int NS = 24;
-        for (auto& od : order) {
-            const Seg& sg = segs[od.first];
-            bool fwd = od.second;
-            // Integration cells ALIGNED with the pcurve's knot spans: a uniform NS split straddles
-            // knots, putting an only-C^{deg-1} integrand under a smooth Gauss rule -- aliasing
-            // error that MOVES when a trim is split (the split box x tor spiric discs shifted the
-            // volume by 2e-6). Per-span Gauss-5 is EXACT for a non-rational pcurve on an affine
-            // patch (polynomial integrand, degree <= 2*deg-1 <= 9); long smooth spans (exact
-            // rational arcs, 1-3 spans) keep >= NS cells via per-span subdivision.
-            std::vector<double> cells;
-            {
-                std::vector<double> ks;
-                ks.push_back(sg.t0);
-                for (int k = 0; k < sg.pc->nurbsknot_count(); ++k) {
-                    double t = sg.pc->nurbsknot(k);
-                    if (t > sg.t0 + 1e-14 && t < sg.t1 - 1e-14 && t - ks.back() > 1e-14)
-                        ks.push_back(t);
-                }
-                ks.push_back(sg.t1);
-                int nspan = (int)ks.size() - 1;
-                int sub = std::max(1, (NS + nspan - 1) / nspan);
-                for (int i = 0; i < nspan; ++i)
-                    for (int q = 0; q < sub; ++q)
-                        cells.push_back(ks[i] + (ks[i+1]-ks[i])*q/sub);
-                cells.push_back(sg.t1);
-            }
-            for (int s = 0; s + 1 < (int)cells.size(); s++) {
-                double a = cells[s], b = cells[s+1];
-                double mid = 0.5*(a+b), half = 0.5*(b-a);
-                for (int g = 0; g < 5; g++) {
-                    double t = mid + half*GN[g];
-                    auto pe = sg.pc->evaluate(t, 1);
-                    if (pe.size() < 2) continue;
-                    const Vector& uv = pe[0]; Vector duv = pe[1];
-                    if (!fwd) duv = Vector(-duv[0], -duv[1], -duv[2]);
-                    auto se = srf.evaluate(uv[0], uv[1], 1);
-                    if (se.size() < 3) continue;
-                    const Vector& S = se[0]; const Vector& Sv = se[1]; const Vector& Su = se[2];
-                    Vector Cp(Su[0]*duv[0]+Sv[0]*duv[1], Su[1]*duv[0]+Sv[1]*duv[1], Su[2]*duv[0]+Sv[2]*duv[1]);
-                    Vector cr = cross(S, Cp);
-                    double w = GW[g]*half;
-                    acc = Vector(acc[0]+w*cr[0], acc[1]+w*cr[1], acc[2]+w*cr[2]);
-                }
-            }
-        }
-        return Vector(0.5*acc[0], 0.5*acc[1], 0.5*acc[2]);
     };
     // Interior UV point of a face (CDT centroid), plus its natural unit normal.
     auto face_interior = [&](const BRepFace& face, const NurbsSurface& srf, Point& P3, Vector& Nnat,
@@ -1433,6 +1413,123 @@ double BRep::volume() const {
         }
     }
 
+    if (P3s) *P3s = fP3;
+    if (Ns) *Ns = fNn;
+    return fsign;
+}
+
+double BRep::volume() const {
+    // Divergence theorem: V = (1/3) sum_faces flux_outward, flux = integral of S . n_out dA.
+    // This is made independent of stored orientation flags (which differ between primitive
+    // constructors and the boolean rebuilder): each face's OUTWARD sign is determined
+    // geometrically (step off the face along its natural normal and test inside/outside),
+    // and trimmed areas/fluxes are computed with the surface's NATURAL orientation.
+    //  - Planar faces: flux_nat = (Q . N_nat) * area, area = |outer loop| - sum|inner loop|
+    //    (each loop area is the magnitude of the lifted boundary integral 1/2 |C x C'|).
+    //  - Curved faces: composite Gauss of S . (S_u x S_v) over the trim's UV bounding box
+    //    (exact for axis-aligned/rectangular trims, e.g. cylinder z-cuts and full domains).
+    static const double GN[5] = {-0.9061798459386640, -0.5384693101056831, 0.0,
+                                  0.5384693101056831, 0.9061798459386640};
+    static const double GW[5] = {0.2369268850561891, 0.4786286704993665, 0.5688888888888889,
+                                 0.4786286704993665, 0.2369268850561891};
+    auto cross = [](const Vector& a, const Vector& b) {
+        return Vector(a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]);
+    };
+    auto is_planar = [&](const NurbsSurface& s) {
+        auto [u0,u1] = s.domain(0); auto [v0,v1] = s.domain(1);
+        Vector n0 = s.normal_at(u0 + (u1-u0)*0.5, v0 + (v1-v0)*0.5);
+        double uu[3] = {0.25, 0.5, 0.75}, vv[3] = {0.3, 0.6, 0.8};
+        for (int i = 0; i < 3; i++) {
+            Vector n = s.normal_at(u0 + (u1-u0)*uu[i], v0 + (v1-v0)*vv[i]);
+            if (cross(n0, n).magnitude() > 1e-7) return false;
+        }
+        return true;
+    };
+    // Lifted boundary vector-area of one loop: 1/2 * closed integral C x C'. Convention-
+    // independent: the loop's pcurves are chained head-to-tail by matching UV endpoints
+    // (each used forward or reversed as the chain requires), so the stored trim.reversed
+    // flags are not relied upon. Exact for exact pcurves (e.g. NURBS circles).
+    auto loop_vector_area = [&](const NurbsSurface& srf, const BRepLoop& loop) {
+        struct Seg { const NurbsCurve* pc; double t0, t1; Point ps, pe; };
+        std::vector<Seg> segs;
+        for (int ti : loop.trim_indices) {
+            if (ti < 0 || ti >= (int)m_trims.size()) continue;
+            int c2 = m_trims[ti].curve_2d_index;
+            if (c2 < 0 || c2 >= (int)m_curves_2d.size()) continue;
+            const NurbsCurve& pc = m_curves_2d[c2];
+            auto dc = pc.domain();
+            segs.push_back({&pc, dc.first, dc.second, pc.point_at(dc.first), pc.point_at(dc.second)});
+        }
+        if (segs.empty()) return Vector(0,0,0);
+        // Chain by nearest-endpoint greedy walk; each entry is (index, forward?).
+        std::vector<std::pair<int,bool>> order;
+        std::vector<bool> used(segs.size(), false);
+        order.push_back({0, true}); used[0] = true;
+        Point tail = segs[0].pe;
+        auto d2 = [](const Point& a, const Point& b){ double dx=a[0]-b[0],dy=a[1]-b[1]; return dx*dx+dy*dy; };
+        for (size_t k = 1; k < segs.size(); ++k) {
+            int best = -1; bool fwd = true; double bd = 1e300;
+            for (size_t j = 0; j < segs.size(); ++j) {
+                if (used[j]) continue;
+                double ds = d2(segs[j].ps, tail), de = d2(segs[j].pe, tail);
+                if (ds < bd) { bd = ds; best = (int)j; fwd = true; }
+                if (de < bd) { bd = de; best = (int)j; fwd = false; }
+            }
+            if (best < 0) break;
+            used[best] = true; order.push_back({best, fwd});
+            tail = fwd ? segs[best].pe : segs[best].ps;
+        }
+        Vector acc(0,0,0);
+        const int NS = 24;
+        for (auto& od : order) {
+            const Seg& sg = segs[od.first];
+            bool fwd = od.second;
+            // Integration cells ALIGNED with the pcurve's knot spans: a uniform NS split straddles
+            // knots, putting an only-C^{deg-1} integrand under a smooth Gauss rule -- aliasing
+            // error that MOVES when a trim is split (the split box x tor spiric discs shifted the
+            // volume by 2e-6). Per-span Gauss-5 is EXACT for a non-rational pcurve on an affine
+            // patch (polynomial integrand, degree <= 2*deg-1 <= 9); long smooth spans (exact
+            // rational arcs, 1-3 spans) keep >= NS cells via per-span subdivision.
+            std::vector<double> cells;
+            {
+                std::vector<double> ks;
+                ks.push_back(sg.t0);
+                for (int k = 0; k < sg.pc->nurbsknot_count(); ++k) {
+                    double t = sg.pc->nurbsknot(k);
+                    if (t > sg.t0 + 1e-14 && t < sg.t1 - 1e-14 && t - ks.back() > 1e-14)
+                        ks.push_back(t);
+                }
+                ks.push_back(sg.t1);
+                int nspan = (int)ks.size() - 1;
+                int sub = std::max(1, (NS + nspan - 1) / nspan);
+                for (int i = 0; i < nspan; ++i)
+                    for (int q = 0; q < sub; ++q)
+                        cells.push_back(ks[i] + (ks[i+1]-ks[i])*q/sub);
+                cells.push_back(sg.t1);
+            }
+            for (int s = 0; s + 1 < (int)cells.size(); s++) {
+                double a = cells[s], b = cells[s+1];
+                double mid = 0.5*(a+b), half = 0.5*(b-a);
+                for (int g = 0; g < 5; g++) {
+                    double t = mid + half*GN[g];
+                    auto pe = sg.pc->evaluate(t, 1);
+                    if (pe.size() < 2) continue;
+                    const Vector& uv = pe[0]; Vector duv = pe[1];
+                    if (!fwd) duv = Vector(-duv[0], -duv[1], -duv[2]);
+                    auto se = srf.evaluate(uv[0], uv[1], 1);
+                    if (se.size() < 3) continue;
+                    const Vector& S = se[0]; const Vector& Sv = se[1]; const Vector& Su = se[2];
+                    Vector Cp(Su[0]*duv[0]+Sv[0]*duv[1], Su[1]*duv[0]+Sv[1]*duv[1], Su[2]*duv[0]+Sv[2]*duv[1]);
+                    Vector cr = cross(S, Cp);
+                    double w = GW[g]*half;
+                    acc = Vector(acc[0]+w*cr[0], acc[1]+w*cr[1], acc[2]+w*cr[2]);
+                }
+            }
+        }
+        return Vector(0.5*acc[0], 0.5*acc[1], 0.5*acc[2]);
+    };
+    std::vector<Point> fP3; std::vector<Vector> fNn;
+    std::vector<double> fsign = face_outward_signs(&fP3, &fNn);
     double total = 0.0;
     for (const auto& face : m_faces) {
         if (face.surface_index < 0 || face.surface_index >= (int)m_surfaces.size()) continue;

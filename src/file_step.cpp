@@ -1214,11 +1214,15 @@ public:
             lines.push_back(s);
         } else {
             // Complex entity: BOUNDED_CURVE + B_SPLINE_CURVE + B_SPLINE_CURVE_WITH_KNOTS + RATIONAL_B_SPLINE_CURVE
+            // Complex instance MUST list every supertype (strict readers -- OCCT, Rhino --
+            // reject partial complexes and silently DROP the curve, which drops every face
+            // bound that references it): canonical alphabetical order per Part 21.
             std::string s = "#" + std::to_string(id) + "=(BOUNDED_CURVE()B_SPLINE_CURVE(" +
                 std::to_string(degree) + "," + fmt_ref_list(pt_ids) +
                 ",.UNSPECIFIED.,.F.,.U.)B_SPLINE_CURVE_WITH_KNOTS(" +
                 fmt_list(kmults) + "," + fmt_list(kvals) +
-                ",.UNSPECIFIED.)RATIONAL_B_SPLINE_CURVE(" + fmt_list(weights) + "));";
+                ",.UNSPECIFIED.)CURVE()GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_CURVE(" +
+                fmt_list(weights) + ")REPRESENTATION_ITEM(''));";
             lines.push_back(s);
         }
         return id;
@@ -1287,12 +1291,16 @@ public:
                 wgrid += ")";
             }
             wgrid += ")";
+            // Complete complex instance (all supertypes, canonical order) -- strict readers
+            // drop partial complexes, which silently deletes every rational surface (spheres,
+            // cylinders, tori) from the imported model.
             std::string s = "#" + std::to_string(id) + "=(BOUNDED_SURFACE()B_SPLINE_SURFACE(" +
                 std::to_string(u_deg) + "," + std::to_string(v_deg) + "," + cpts +
                 ",.UNSPECIFIED.,.F.,.F.,.U.)B_SPLINE_SURFACE_WITH_KNOTS(" +
                 fmt_list(ku_mults) + "," + fmt_list(kv_mults) + "," +
                 fmt_list(ku_vals) + "," + fmt_list(kv_vals) +
-                ",.UNSPECIFIED.)RATIONAL_B_SPLINE_SURFACE(" + wgrid + "));";
+                ",.UNSPECIFIED.)GEOMETRIC_REPRESENTATION_ITEM()RATIONAL_B_SPLINE_SURFACE(" +
+                wgrid + ")REPRESENTATION_ITEM('')SURFACE());";
             lines.push_back(s);
         }
         return id;
@@ -1377,7 +1385,62 @@ public:
         return face_id;
     }
 
-    std::string emit(const std::string& schema = "AP214_AUTO_DESIGN") const {
+    // Emit an arbitrary entity body ("TYPE(args)") with a fresh id; returns the id.
+    int write_raw(const std::string& body) {
+        int id = new_id();
+        lines.push_back("#" + std::to_string(id) + "=" + body + ";");
+        return id;
+    }
+
+    // Wrap the given shell content into the AP214 PRODUCT / SHAPE_DEFINITION_REPRESENTATION
+    // skeleton CAD importers REQUIRE to find any geometry at all: Rhino (and OCCT's strict
+    // STEPControl_Reader) locate transferable roots exclusively through
+    // SHAPE_DEFINITION_REPRESENTATION -> PRODUCT; a DATA section full of bare ADVANCED_FACEs
+    // has ZERO roots and imports as nothing. `shell_face_ids` become one CLOSED_SHELL +
+    // MANIFOLD_SOLID_BREP when `closed`, else one OPEN_SHELL + SHELL_BASED_SURFACE_MODEL.
+    void finish_shape(const std::vector<int>& shell_face_ids, bool closed, const std::string& name,
+                      double uncertainty = 1e-6) {
+        if (shell_face_ids.empty()) return;
+        int shell = write_raw(std::string(closed ? "CLOSED_SHELL" : "OPEN_SHELL")
+                              + "(''," + fmt_ref_list(shell_face_ids) + ")");
+        int body;
+        if (closed) body = write_raw("MANIFOLD_SOLID_BREP('',#" + std::to_string(shell) + ")");
+        else        body = write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))");
+        int o  = write_point(0, 0, 0);
+        int dz = write_raw("DIRECTION('',(0.,0.,1.))");
+        int dx = write_raw("DIRECTION('',(1.,0.,0.))");
+        int ax = write_raw("AXIS2_PLACEMENT_3D('',#" + std::to_string(o) + ",#" + std::to_string(dz)
+                           + ",#" + std::to_string(dx) + ")");
+        int lu = write_raw("(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))");
+        int au = write_raw("(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.))");
+        int su = write_raw("(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT())");
+        // The uncertainty IS the sewing tolerance importers use: understate it (1e-6) and a
+        // reader cannot sew section edges whose cross-operand copies agree only to the
+        // kernel's coincidence tolerance -- shells stay open and healing re-orients them
+        // arbitrarily (box fuse sphere imported as box MINUS sphere). State the honest value.
+        int un = write_raw("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(" + fmt(uncertainty)
+                           + "),#" + std::to_string(lu) + ",'distance_accuracy_value','')");
+        int gc = write_raw("(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#"
+                           + std::to_string(un) + "))GLOBAL_UNIT_ASSIGNED_CONTEXT((#" + std::to_string(lu)
+                           + ",#" + std::to_string(au) + ",#" + std::to_string(su)
+                           + "))REPRESENTATION_CONTEXT('',''))");
+        int ac = write_raw("APPLICATION_CONTEXT('core data for automotive mechanical design processes')");
+        write_raw("APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#"
+                  + std::to_string(ac) + ")");
+        int pc = write_raw("PRODUCT_CONTEXT('',#" + std::to_string(ac) + ",'mechanical')");
+        int pr = write_raw("PRODUCT('" + name + "','" + name + "','',(#" + std::to_string(pc) + "))");
+        int pf = write_raw("PRODUCT_DEFINITION_FORMATION('','',#" + std::to_string(pr) + ")");
+        int dc = write_raw("PRODUCT_DEFINITION_CONTEXT('part definition',#" + std::to_string(ac) + ",'design')");
+        int pd = write_raw("PRODUCT_DEFINITION('design','',#" + std::to_string(pf) + ",#" + std::to_string(dc) + ")");
+        int ps = write_raw("PRODUCT_DEFINITION_SHAPE('','',#" + std::to_string(pd) + ")");
+        std::string rep_type = closed ? "ADVANCED_BREP_SHAPE_REPRESENTATION"
+                                      : "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
+        int rp = write_raw(rep_type + "('" + name + "',(#" + std::to_string(ax) + ",#" + std::to_string(body)
+                           + "),#" + std::to_string(gc) + ")");
+        write_raw("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ps) + ",#" + std::to_string(rp) + ")");
+    }
+
+    std::string emit(const std::string& schema = "AUTOMOTIVE_DESIGN") const {
         std::string out = "ISO-10303-21;\nHEADER;\n";
         out += "FILE_DESCRIPTION((''),'2;1');\n";
         out += "FILE_NAME('','',(''),(''),'','','');\n";
@@ -1566,62 +1629,154 @@ void write_file_step_nurbssurfaces(const std::vector<NurbsSurface>& surfaces, co
 
 void write_file_step_nurbssurfaces_trimmed(const std::vector<NurbsSurfaceTrimmed>& trimmed, const std::string& filepath) {
     StepWriter w;
-    for (const auto& t : trimmed) w.write_trimmed_face(t);
+    std::vector<int> face_ids;
+    for (const auto& t : trimmed) {
+        int fid = w.write_trimmed_face(t);
+        if (fid >= 0) face_ids.push_back(fid);
+    }
+    w.finish_shape(face_ids, false, "trimmed");   // importers need the product skeleton
     write_step_string(w.emit(), filepath);
 }
 
 void write_file_step_brep(const BRep& brep, const std::string& filepath) {
+    // Our own STEP writer (no external kernel): the BRep's SHARED topology is written
+    // faithfully -- topology vertices and edges are emitted ONCE and referenced by every
+    // adjacent face (that shared referencing is what makes the shell sew into a solid on
+    // import), edge geometry is the REAL m_curves_3d entry (rational weights included),
+    // and the whole shell is wrapped as CLOSED_SHELL + MANIFOLD_SOLID_BREP inside the
+    // AP214 product skeleton importers use to locate roots.
     StepWriter w;
-    // Write each face as ADVANCED_FACE with its surface
+
+    // True outward orientation per face (shell-orientation propagation): STEP importers
+    // orient MANIFOLD_SOLID_BREP shells from the ADVANCED_FACE same_sense flags; writing
+    // .T. everywhere hands a mis-oriented shell to the reader's healing, which can close
+    // it into the WRONG solid (box fuse sphere imported with the CUT's volume).
+    std::vector<double> fsign = brep.face_outward_signs();
+
+    // 1. Topology vertices (lazy, deduped by topology index).
+    std::vector<int> vert_step_id(brep.m_topology_vertices.size(), -1);
+    auto vertex_id = [&](int tv) -> int {
+        if (tv < 0 || tv >= (int)brep.m_topology_vertices.size()) return -1;
+        if (vert_step_id[tv] >= 0) return vert_step_id[tv];
+        int pi = brep.m_topology_vertices[tv].point_index;
+        if (pi < 0 || pi >= (int)brep.m_vertices.size()) return -1;
+        const Point& p = brep.m_vertices[pi];
+        int pt = w.write_point(p[0], p[1], p[2]);
+        vert_step_id[tv] = w.write_raw("VERTEX_POINT('',#" + std::to_string(pt) + ")");
+        return vert_step_id[tv];
+    };
+
+    // 2. Shared edges (lazy): EDGE_CURVE over the edge's actual 3D curve.
+    std::vector<int> edge_step_id(brep.m_topology_edges.size(), -1);
+    auto edge_id = [&](int ei) -> int {
+        if (ei < 0 || ei >= (int)brep.m_topology_edges.size()) return -1;
+        if (edge_step_id[ei] >= 0) return edge_step_id[ei];
+        const BRepEdge& E = brep.m_topology_edges[ei];
+        if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)brep.m_curves_3d.size()) return -1;
+        int cid = w.write_nurbs_curve(brep.m_curves_3d[E.curve_3d_index]);
+        if (cid < 0) return -1;
+        int v0 = vertex_id(E.start_vertex), v1 = vertex_id(E.end_vertex);
+        if (v0 < 0 || v1 < 0) return -1;
+        edge_step_id[ei] = w.write_raw("EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v1)
+                                       + ",#" + std::to_string(cid) + ",.T.)");
+        return edge_step_id[ei];
+    };
+
+    // Does this trim traverse its edge's 3D curve forward? Open curves: compare the trim's
+    // traversal START (surface-mapped pcurve end) with the curve ends. Closed curves carry
+    // no direction in their endpoints: compare mid tangents (trim tangent vs curve tangent
+    // at the curve parameter closest to the trim midpoint).
+    auto trim_forward = [&](const BRepTrim& T, const NurbsSurface& srf) -> bool {
+        if (T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) return true;
+        if (T.edge_index < 0 || T.edge_index >= (int)brep.m_topology_edges.size()) return true;
+        int ci = brep.m_topology_edges[T.edge_index].curve_3d_index;
+        if (ci < 0 || ci >= (int)brep.m_curves_3d.size()) return true;
+        const NurbsCurve& pc = brep.m_curves_2d[T.curve_2d_index];
+        const NurbsCurve& C = brep.m_curves_3d[ci];
+        if (!pc.is_valid() || !C.is_valid()) return true;
+        auto pd = pc.domain(); auto cd = C.domain();
+        Point uv_s = pc.point_at(T.reversed ? pd.second : pd.first);
+        Point ts = srf.point_at(uv_s[0], uv_s[1]);
+        Point c0 = C.point_at(cd.first), c1 = C.point_at(cd.second);
+        if (c0.distance(c1) > 1e-9)
+            return ts.distance(c0) <= ts.distance(c1);
+        double tm = 0.5*(pd.first+pd.second), dt = (pd.second-pd.first)*1e-3;
+        Point a = pc.point_at(tm - dt), b = pc.point_at(tm + dt);
+        if (T.reversed) std::swap(a, b);
+        Point A = srf.point_at(a[0], a[1]), B = srf.point_at(b[0], b[1]);
+        double tcm = C.closest_parameter(Point(0.5*(A[0]+B[0]), 0.5*(A[1]+B[1]), 0.5*(A[2]+B[2])));
+        double dc = (cd.second-cd.first)*1e-4;
+        Point Ca = C.point_at(std::max(cd.first, tcm-dc)), Cb = C.point_at(std::min(cd.second, tcm+dc));
+        double dot = (B[0]-A[0])*(Cb[0]-Ca[0]) + (B[1]-A[1])*(Cb[1]-Ca[1]) + (B[2]-A[2])*(Cb[2]-Ca[2]);
+        return dot >= 0;
+    };
+
+    // 3. Faces: loops -> oriented shared edges -> bounds -> ADVANCED_FACE.
     std::vector<int> face_ids;
     for (int fi = 0; fi < brep.face_count(); fi++) {
         const BRepFace& face = brep.m_faces[fi];
         if (face.surface_index < 0 || face.surface_index >= (int)brep.m_surfaces.size()) continue;
-        NurbsSurfaceTrimmed nst;
-        nst.m_surface = brep.m_surfaces[face.surface_index];
-        // Use outer loop's 2D trim curve if available
-        bool got_outer = false;
+        const NurbsSurface& srf = brep.m_surfaces[face.surface_index];
+        int srf_id = w.write_nurbs_surface(srf);
+        if (srf_id < 0) continue;
+        bool outward = (fi < (int)fsign.size()) ? (fsign[fi] >= 0.0) : true;
+        std::string bounds = "(";
+        int nbounds = 0;
         for (int loop_idx : face.loop_indices) {
             if (loop_idx < 0 || loop_idx >= (int)brep.m_loops.size()) continue;
             const BRepLoop& loop = brep.m_loops[loop_idx];
-            if (loop.type != BRepLoopType::Outer) continue;
-            std::vector<Point> uv_pts;
-            for (int trim_idx : loop.trim_indices) {
+            // STEP semantics: with FACE_BOUND orientation .T., the loop winds CCW around the
+            // FLAG-ADJUSTED face normal (same_sense applied). Stored loops wind material-left
+            // in the NATURAL chart only by convention -- and some construction paths violate
+            // it -- so MEASURE the winding and reverse the written loop when it disagrees
+            // with the target (CCW-around-natural iff same_sense is .T.).
+            bool ml = brep.loop_material_left(loop_idx);
+            bool rev_loop = (ml != outward);
+            std::vector<int> trim_order(loop.trim_indices.begin(), loop.trim_indices.end());
+            if (rev_loop) std::reverse(trim_order.begin(), trim_order.end());
+            std::vector<int> oe_ids;
+            for (int trim_idx : trim_order) {
                 if (trim_idx < 0 || trim_idx >= (int)brep.m_trims.size()) continue;
                 const BRepTrim& trim = brep.m_trims[trim_idx];
-                if (trim.curve_2d_index < 0 || trim.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
-                const NurbsCurve& crv2d = brep.m_curves_2d[trim.curve_2d_index];
-                auto kts = crv2d.get_nurbsknots();
-                if (kts.empty() || crv2d.cv_count() < 2) continue;
-                int deg = crv2d.order() - 1;
-                double tmin = kts[deg > 0 ? deg-1 : 0];
-                double tmax = kts[kts.size() - (deg > 0 ? deg : 1)];
-                int ns = std::max(2, crv2d.cv_count());
-                for (int i = 0; i < ns; i++) {
-                    double t = (ns > 1) ? tmin + (tmax-tmin)*i/(ns-1) : tmin;
-                    Point uv = crv2d.point_at(t);
-                    if (trim.reversed) uv_pts.insert(uv_pts.begin(), uv);
-                    else uv_pts.push_back(uv);
-                }
+                if (trim.edge_index < 0) continue;             // singular (pole) run: no edge
+                int ec = edge_id(trim.edge_index);
+                if (ec < 0) continue;
+                bool fwd = trim_forward(trim, srf);
+                if (rev_loop) fwd = !fwd;
+                oe_ids.push_back(w.write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec)
+                                             + (fwd ? ",.T.)" : ",.F.)")));
             }
-            if (uv_pts.size() >= 2) {
-                nst.m_outer_loop = polyline_nurbs(uv_pts, 2);
-                got_outer = true;
+            if (oe_ids.empty()) continue;
+            std::string el = "EDGE_LOOP('',(";
+            for (size_t k = 0; k < oe_ids.size(); ++k) {
+                if (k) el += ",";
+                el += "#" + std::to_string(oe_ids[k]);
             }
-            break;
+            el += "))";
+            int el_id = w.write_raw(el);
+            const char* fb = (loop.type == BRepLoopType::Outer) ? "FACE_OUTER_BOUND" : "FACE_BOUND";
+            int fb_id = w.write_raw(std::string(fb) + "('',#" + std::to_string(el_id) + ",.T.)");
+            if (nbounds) bounds += ",";
+            bounds += "#" + std::to_string(fb_id);
+            ++nbounds;
         }
-        if (!got_outer) {
-            // Dummy outer loop spanning full UV domain
-            std::vector<Point> box = {Point(0,0,0),Point(1,0,0),Point(1,1,0),Point(0,1,0),Point(0,0,0)};
-            nst.m_outer_loop = polyline_nurbs(box, 2);
-        }
-        int fid = w.write_trimmed_face(nst);
-        if (fid >= 0) face_ids.push_back(fid);
+        bounds += ")";
+        if (nbounds == 0) continue;
+        face_ids.push_back(w.write_raw("ADVANCED_FACE(''," + bounds + ",#" + std::to_string(srf_id)
+                                       + (outward ? ",.T.)" : ",.F.)")));
     }
-    // CLOSED_SHELL + MANIFOLD_SOLID_BREP
-    // We store these in an appendix after emit; we need to add them to the writer
-    // Use a workaround: emit into a temporary, then patch
-    // For simplicity, just emit as-is without shell wrapper for now
+
+    double diag;
+    {
+        double xmn=1e300,ymn=1e300,zmn=1e300,xmx=-1e300,ymx=-1e300,zmx=-1e300;
+        for (const auto& p2 : brep.m_vertices) {
+            xmn=std::min(xmn,p2[0]); ymn=std::min(ymn,p2[1]); zmn=std::min(zmn,p2[2]);
+            xmx=std::max(xmx,p2[0]); ymx=std::max(ymx,p2[1]); zmx=std::max(zmx,p2[2]);
+        }
+        diag = std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
+        if (!(diag > 0)) diag = 1.0;
+    }
+    w.finish_shape(face_ids, brep.is_solid(), brep.name.empty() ? "brep" : brep.name, diag * 5e-3);
     write_step_string(w.emit(), filepath);
 }
 
