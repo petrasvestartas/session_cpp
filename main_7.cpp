@@ -65,6 +65,45 @@ std::vector<std::array<std::string,3>> pairs() {
     };
 }
 
+// Classic BRep-kernel edge-case configurations (OCCT bop-grid style): same-domain
+// (A op A), coincident faces (full / partial / coplanar-overlap), edge contact,
+// vertex contact, containment (void result), disjoint, tangencies (point / line /
+// inscribed), flush caps, linked-but-disjoint. SESSION_EDGE=1 runs this grid.
+std::map<std::string, Place> edge_placements() {
+    return {
+        {"ebox",   {"box",      {4,4,4},   ID}},
+        {"eboxT",  {"box",      {4,4,4},   {4,0,0, 0,0,1, 0}}},   // full-face contact at x=2
+        {"eboxP",  {"box",      {2,2,2},   {3,0,0, 0,0,1, 0}}},   // partial-face contact at x=2
+        {"eboxC",  {"box",      {4,4,4},   {2,2,0, 0,0,1, 0}}},   // overlap, z-faces coplanar
+        {"eboxE",  {"box",      {4,4,4},   {4,4,0, 0,0,1, 0}}},   // edge contact (x=2,y=2)
+        {"eboxV",  {"box",      {4,4,4},   {4,4,4, 0,0,1, 0}}},   // vertex contact (2,2,2)
+        {"eboxIN", {"box",      {2,2,2},   ID}},                  // strictly inside ebox
+        {"eboxD",  {"box",      {2,2,2},   {6,0,0, 0,0,1, 0}}},   // disjoint
+        {"esph",   {"sphere",   {2.5},     ID}},
+        {"esphX",  {"sphere",   {1.0},     {3.5,0,0, 0,0,1, 0}}}, // external tangency at (2.5,0,0)
+        {"esphY",  {"sphere",   {1.0},     {1.5,0,0, 0,0,1, 0}}}, // internal tangency at (2.5,0,0)
+        {"esphZ",  {"sphere",   {2.0},     ID}},                  // inscribed in ebox (6 tangencies)
+        {"ecyl",   {"cylinder", {1.5,6},   {0,0,-3, 0,0,1, 0}}},
+        {"ecylP",  {"cylinder", {1.5,6},   {3,0,-3, 0,0,1, 0}}},  // parallel axes, line tangency x=1.5
+        {"ecylF",  {"cylinder", {1.5,4},   {0,0,-2, 0,0,1, 0}}},  // caps flush with ebox z-faces
+        {"ecylT",  {"cylinder", {0.8,6},   {0,0,-3, 0,0,1, 0}}},  // through etor hole, no contact
+        {"etor",   {"torus",    {2.0,0.8}, ID}},
+    };
+}
+std::vector<std::array<std::string,3>> edge_pairs() {
+    return {
+        {"eq boxbox  ", "ebox", "ebox"},  {"eq sphsph  ", "esph", "esph"},
+        {"eq cylcyl  ", "ecyl", "ecyl"},  {"eq tortor  ", "etor", "etor"},
+        {"face full  ", "ebox", "eboxT"}, {"face part  ", "ebox", "eboxP"},
+        {"face copl  ", "ebox", "eboxC"}, {"edge touch ", "ebox", "eboxE"},
+        {"vert touch ", "ebox", "eboxV"}, {"contain    ", "ebox", "eboxIN"},
+        {"disjoint   ", "ebox", "eboxD"}, {"sph tanext ", "esph", "esphX"},
+        {"sph tanint ", "esph", "esphY"}, {"sph inscr  ", "ebox", "esphZ"},
+        {"cyl tanline", "ecyl", "ecylP"}, {"cyl flush  ", "ebox", "ecylF"},
+        {"tor linked ", "etor", "ecylT"},
+    };
+}
+
 Xform xf_of(const std::array<double,7>& x) {
     Xform t = Xform::translation(x[0], x[1], x[2]);
     if (x[6] == 0.0) return t;
@@ -153,10 +192,16 @@ int main(int argc, char** argv) {
     if (refresh) std::fprintf(stderr, "(--refresh: re-shelling oracle for every cell)\n");
 
     auto PL = placements();
+    auto PRS = pairs();
+    if (std::getenv("SESSION_EDGE")) {
+        auto ep = edge_placements();
+        PL.insert(ep.begin(), ep.end());
+        PRS = edge_pairs();
+    }
     std::printf("%-13s %-4s | %11s %11s %9s | %4s %5s | s | %8s | verdict\n",
                 "pair", "op", "our_vol", "occt_vol", "rel", "ourF", "occtF", "us");
     int fails = 0, total = 0;
-    for (auto& pr : pairs()) {
+    for (auto& pr : PRS) {
         if (!filter.empty() && pr[0].find(filter) == std::string::npos) continue;
         for (const char* mode : {"cut", "common", "fuse"}) {
             const char* oponly = std::getenv("SESSION_OP");   // run a single op for diagnostics
