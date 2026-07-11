@@ -17,6 +17,7 @@
 #include <memory>
 #include <limits>
 #include <algorithm>
+#include <functional>
 
 namespace session_cpp { namespace file_step {
 
@@ -1136,7 +1137,16 @@ class StepWriter {
             std::snprintf(buf, sizeof(buf), "%d.", (int)v);
         else
             std::snprintf(buf, sizeof(buf), "%.15g", v);
-        return buf;
+        std::string s = buf;
+        // ISO 10303-21 REAL needs a decimal point in the mantissa and uppercase E:
+        // %g yields "1e-06" for the clamped uncertainty of an EMPTY result, which
+        // strict parsers reject ("Incorrect Syntax").
+        size_t e = s.find('e');
+        if (e != std::string::npos) {
+            s[e] = 'E';
+            if (s.substr(0, e).find('.') == std::string::npos) { s.insert(e, "."); }
+        }
+        return s;
     }
 
     template<typename T>
@@ -1431,15 +1441,25 @@ public:
     // MANIFOLD_SOLID_BREP when `closed`, else one OPEN_SHELL + SHELL_BASED_SURFACE_MODEL.
     void finish_shape(const std::vector<int>& shell_face_ids, bool closed, const std::string& name,
                       double uncertainty = 1e-6) {
+        finish_shape(std::vector<std::vector<int>>{shell_face_ids}, closed, name, uncertainty);
+    }
+
+    // Multi-shell form: one CLOSED_SHELL + MANIFOLD_SOLID_BREP per face group. A boolean
+    // whose operands touch only along a measure-zero contact (tangent line, shared corner)
+    // is TWO watertight shells; wrapping both faces sets in ONE solid makes the reader's
+    // shell splitter orphan one of them (BRepCheck SubshapeNotInShape, volume -0).
+    void finish_shape(const std::vector<std::vector<int>>& shells, bool closed, const std::string& name,
+                      double uncertainty = 1e-6) {
         // An EMPTY result (e.g. cone x torus common: the cone threads the hole without
         // touching) still gets the product skeleton with a bare SHAPE_REPRESENTATION --
         // a file with a naked DATA section fails strict parsers ("Incorrect Syntax").
-        int body = -1;
-        if (!shell_face_ids.empty()) {
+        std::vector<int> bodies;
+        for (const auto& sf : shells) {
+            if (sf.empty()) continue;
             int shell = write_raw(std::string(closed ? "CLOSED_SHELL" : "OPEN_SHELL")
-                                  + "(''," + fmt_ref_list(shell_face_ids) + ")");
-            if (closed) body = write_raw("MANIFOLD_SOLID_BREP('',#" + std::to_string(shell) + ")");
-            else        body = write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))");
+                                  + "(''," + fmt_ref_list(sf) + ")");
+            if (closed) bodies.push_back(write_raw("MANIFOLD_SOLID_BREP('',#" + std::to_string(shell) + ")"));
+            else        bodies.push_back(write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))"));
         }
         int o  = write_point(0, 0, 0);
         int dz = write_raw("DIRECTION('',(0.,0.,1.))");
@@ -1471,11 +1491,11 @@ public:
         int dc = write_raw("PRODUCT_DEFINITION_CONTEXT('part definition',#" + std::to_string(ac) + ",'design')");
         int pd = write_raw("PRODUCT_DEFINITION('design','',#" + std::to_string(pf) + ",#" + std::to_string(dc) + ")");
         int ps = write_raw("PRODUCT_DEFINITION_SHAPE('','',#" + std::to_string(pd) + ")");
-        std::string rep_type = body < 0 ? "SHAPE_REPRESENTATION"
-                             : closed   ? "ADVANCED_BREP_SHAPE_REPRESENTATION"
-                                        : "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
+        std::string rep_type = bodies.empty() ? "SHAPE_REPRESENTATION"
+                             : closed         ? "ADVANCED_BREP_SHAPE_REPRESENTATION"
+                                              : "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
         std::string items = "(#" + std::to_string(ax);
-        if (body >= 0) items += ",#" + std::to_string(body);
+        for (int b : bodies) items += ",#" + std::to_string(b);
         items += ")";
         int rp = write_raw(rep_type + "('" + name + "'," + items + ",#" + std::to_string(gc) + ")");
         write_raw("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ps) + ",#" + std::to_string(rp) + ")");
@@ -2865,6 +2885,7 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
 
     // 3b. PASS B: faces -> chained oriented edges -> bounds -> ADVANCED_FACE.
     std::vector<int> face_ids;
+    std::vector<int> face_kfi;   // kernel face index per face_ids entry (shell grouping)
     for (int fi = 0; fi < brep.face_count(); fi++) {
         const BRepFace& face = brep.m_faces[fi];
         if (face.surface_index < 0 || face.surface_index >= (int)brep.m_surfaces.size()) continue;
@@ -2971,13 +2992,39 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         if (nbounds == 0) continue;
         face_ids.push_back(w.write_raw("ADVANCED_FACE(''," + bounds + ",#" + std::to_string(srf_id)
                                        + (outward ? ",.T.)" : ",.F.)")));
+        face_kfi.push_back(fi);
     }
+
+    // Group written faces into edge-connected components -- one shell (and one
+    // MANIFOLD_SOLID_BREP) per component. A fuse whose operands touch only along a
+    // measure-zero contact (tangent line, shared corner) is two watertight shells:
+    // wrapped in ONE solid, the reader splits the shell and orphans one half
+    // (ecyl_fuse_ecylP imported SubshapeNotInShape, volume -0).
+    std::vector<int> uf(brep.m_faces.size());
+    for (size_t k = 0; k < uf.size(); ++k) uf[k] = (int)k;
+    std::function<int(int)> uf_find = [&](int x) { while (uf[x] != x) x = uf[x] = uf[uf[x]]; return x; };
+    for (const auto& E : brep.m_topology_edges) {
+        int f0 = -1;
+        for (int ti : E.trim_indices) {
+            if (ti < 0 || ti >= (int)brep.m_trims.size()) continue;
+            int li = brep.m_trims[ti].loop_index;
+            if (li < 0 || li >= (int)brep.m_loops.size()) continue;
+            int f = brep.m_loops[li].face_index;
+            if (f < 0 || f >= (int)brep.m_faces.size()) continue;
+            if (f0 < 0) f0 = f; else uf[uf_find(f)] = uf_find(f0);
+        }
+    }
+    std::map<int, std::vector<int>> shell_groups;
+    for (size_t k = 0; k < face_ids.size(); ++k)
+        shell_groups[uf_find(face_kfi[k])].push_back(face_ids[k]);
+    std::vector<std::vector<int>> shells;
+    for (auto& kv : shell_groups) shells.push_back(kv.second);
 
     // Uncertainty: with exact wire topology (shared vertices, trim-built edge curves) the
     // only residuals are fit tolerances (~diag*1e-5). The old sew-scale diag*5e-3 made OCCT
     // treat thin tangent-cusp lens wires (tor x tor) as DEGENERATE: it dropped them and
     // restored natural bounds, importing each lens face as a FULL torus (+6 x 25.27 volume).
-    w.finish_shape(face_ids, brep.is_solid(), brep.name.empty() ? "brep" : brep.name, diag * 1e-4);
+    w.finish_shape(shells, brep.is_solid(), brep.name.empty() ? "brep" : brep.name, diag * 1e-4);
     write_step_string(w.emit(), filepath);
 }
 
