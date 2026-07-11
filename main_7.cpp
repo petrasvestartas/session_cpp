@@ -277,8 +277,8 @@ int main(int argc, char** argv) {
                     double xr = xref != 0 ? std::abs(vx - xref) / std::abs(xref) : std::abs(vx);
                     double sr = vfuse != 0 ? std::abs(vs - vfuse) / vfuse : std::abs(vs);
                     ++total; if (!(xr < 1e-6 && sr < 1e-6 && x.is_solid())) ++fails;
-                    std::printf("%-13s xor  | %11.4f %11.4f %9.2e | slds %d frags %d sum %11.4f %9.2e | %s\n",
-                                pr[0].c_str(), vx, xref, xr, x.is_solid()?1:0, (int)frags.size(), vs, sr,
+                    std::printf("%-13s xor  | %11.4f %11.4f %9.2e | slds %d xf %d frags %d sum %11.4f %9.2e | %s\n",
+                                pr[0].c_str(), vx, xref, xr, x.is_solid()?1:0, x.face_count(), (int)frags.size(), vs, sr,
                                 (xr < 1e-6 && sr < 1e-6 && x.is_solid()) ? "OK" : "FAIL");
                 } catch (const std::exception& e) {
                     ++total; ++fails;

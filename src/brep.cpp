@@ -11,6 +11,7 @@
 #include <fstream>
 #include <cmath>
 #include <map>
+#include <set>
 #include <array>
 #include <functional>
 #include <algorithm>
@@ -1389,23 +1390,104 @@ std::vector<double> BRep::face_outward_signs(std::vector<Point>* P3s, std::vecto
             }
             return votes >= 2;
         };
+        // Per-component probe clouds (own vertices + face interior samples): the GLOBAL
+        // supporting-plane test is inconclusive for a disjoint lobe (other lobes' vertices
+        // straddle any disk plane) and a cap's own vertices are ALL ON its disk plane --
+        // the interior samples supply the bulge side. (box x sph B-A = 6 disjoint caps:
+        // 2 of 6 seeded wrong by grazing parity rays -> B-A volume 3.67 vs 10.99.)
+        std::vector<std::vector<Point>> comp_pts(std::max(ncomp, 1));
+        {
+            std::vector<std::set<int>> comp_vids(std::max(ncomp, 1));
+            for (const auto& E : m_topology_edges)
+                for (int ti : E.trim_indices) {
+                    int fi2 = face_of_trim(ti);
+                    if (fi2 < 0 || comp[fi2] < 0) continue;
+                    for (int vv2 : {E.start_vertex, E.end_vertex})
+                        if (vv2 >= 0 && vv2 < (int)m_topology_vertices.size())
+                            comp_vids[comp[fi2]].insert(m_topology_vertices[vv2].point_index);
+                }
+            for (int c2 = 0; c2 < ncomp; ++c2)
+                for (int vid : comp_vids[c2])
+                    if (vid >= 0 && vid < (int)m_vertices.size()) comp_pts[c2].push_back(m_vertices[vid]);
+            for (int fi2 = 0; fi2 < nfc; ++fi2)
+                if (fvalid[fi2] && comp[fi2] >= 0) comp_pts[comp[fi2]].push_back(fP3[fi2]);
+        }
+        // Per-component CAVITY flags: a component is a cavity boundary exactly when it sits
+        // INSIDE the union of the OTHER components (contain-cut void shell). Tested with
+        // per-component meshes so the component's own shell cannot interfere, and with a
+        // per-face majority so knife-edge samples (a lobe's bite wall lies ON the neighbour
+        // solid's coplanar wall) cannot flip the verdict: xor's torus bulges were inverted
+        // by an enclosure probe that stepped through the shared wall into the neighbour.
+        std::vector<char> comp_cavity(std::max(ncomp, 1), 0);
+        if (ncomp > 1) {
+            std::vector<std::vector<int>> comp_faces(ncomp);
+            for (int fi2 = 0; fi2 < nfc; ++fi2)
+                if (fvalid[fi2] && comp[fi2] >= 0) comp_faces[comp[fi2]].push_back(fi2);
+            std::vector<Mesh> comp_mesh(ncomp);
+            for (int c2 = 0; c2 < ncomp; ++c2)
+                if (!comp_faces[c2].empty()) comp_mesh[c2] = subset(comp_faces[c2]).mesh();
+            const double big = 1e6;
+            for (int c2 = 0; c2 < ncomp; ++c2) {
+                if (comp_faces[c2].empty()) continue;
+                int in_votes = 0, n_votes = 0;
+                for (int fi2 : comp_faces[c2]) {
+                    const Point& p = fP3[fi2];
+                    int votes = 0;
+                    for (int d = 0; d < 3; ++d) {
+                        Line ray(p[0], p[1], p[2], p[0]+sdirs[d][0]*big, p[1]+sdirs[d][1]*big, p[2]+sdirs[d][2]*big);
+                        int nx = 0;
+                        for (int c3v = 0; c3v < ncomp; ++c3v) {
+                            if (c3v == c2 || comp_faces[c3v].empty()) continue;
+                            nx += (int)Intersection::ray_mesh(ray, comp_mesh[c3v], 1e-9, true).size();
+                        }
+                        if (nx % 2 == 1) ++votes;
+                    }
+                    if (votes >= 2) ++in_votes;
+                    ++n_votes;
+                }
+                comp_cavity[c2] = (n_votes > 0 && in_votes * 2 > n_votes) ? 1 : 0;
+            }
+        }
         std::vector<double> score(std::max(ncomp, 1), 0.0);
         for (int fi = 0; fi < nfc; ++fi) {
             if (!fvalid[fi]) continue;
             const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
             double ev = 0.0, wt = 0.0;
             if (is_planar(srf)) {
-                // Supporting-plane outward sign: when the whole solid lies on one side of this
-                // face's plane, the outward normal is the empty side -- exact and ray-free.
-                double dmax = -1e300, dmin = 1e300;
-                for (const auto& vq : m_vertices) {
-                    double d = (vq[0]-fP3[fi][0])*fNn[fi][0] + (vq[1]-fP3[fi][1])*fNn[fi][1]
-                             + (vq[2]-fP3[fi][2])*fNn[fi][2];
-                    dmax = std::max(dmax, d); dmin = std::min(dmin, d);
-                }
                 double tol_sup = (diag > 0 ? diag : 1.0) * 5e-3;
-                if (dmax <= tol_sup)       { ev = +1.0; wt = 3.0; }
-                else if (dmin >= -tol_sup) { ev = -1.0; wt = 3.0; }
+                // TIER 1 -- component-local supporting plane (own vertices + face interior
+                // samples), inverted for cavity components. The interior samples make it
+                // STRICT: a cap disk's vertices all lie ON its plane while the material
+                // bulges past it with no vertices there -- the vertex-only test then claims
+                // the bulge side is empty (box x sph B-A: 2 of 6 caps signed wrong,
+                // volume 3.67 vs 10.99).
+                if (comp[fi] >= 0 && comp_pts[comp[fi]].size() >= 3) {
+                    double cmax = -1e300, cmin = 1e300;
+                    for (const auto& vq : comp_pts[comp[fi]]) {
+                        double d = (vq[0]-fP3[fi][0])*fNn[fi][0] + (vq[1]-fP3[fi][1])*fNn[fi][1]
+                                 + (vq[2]-fP3[fi][2])*fNn[fi][2];
+                        cmax = std::max(cmax, d); cmin = std::min(cmin, d);
+                    }
+                    double ev0 = 0.0;
+                    if (cmax <= tol_sup)       ev0 = +1.0;
+                    else if (cmin >= -tol_sup) ev0 = -1.0;
+                    if (ev0 != 0.0) {
+                        ev = comp_cavity[comp[fi]] ? -ev0 : ev0;
+                        wt = 5.0;
+                    }
+                }
+                // TIER 2 -- global vertex-only supporting plane: when the whole solid lies on
+                // one side of this face's plane, the outward normal is the empty side.
+                if (wt == 0.0) {
+                    double dmax = -1e300, dmin = 1e300;
+                    for (const auto& vq : m_vertices) {
+                        double d = (vq[0]-fP3[fi][0])*fNn[fi][0] + (vq[1]-fP3[fi][1])*fNn[fi][1]
+                                 + (vq[2]-fP3[fi][2])*fNn[fi][2];
+                        dmax = std::max(dmax, d); dmin = std::min(dmin, d);
+                    }
+                    if (dmax <= tol_sup)       { ev = +1.0; wt = 3.0; }
+                    else if (dmin >= -tol_sup) { ev = -1.0; wt = 3.0; }
+                }
             }
             if (wt == 0.0) {
                 Point pp(fP3[fi][0]+eps*fNn[fi][0], fP3[fi][1]+eps*fNn[fi][1], fP3[fi][2]+eps*fNn[fi][2]);
@@ -2323,6 +2405,49 @@ std::vector<BRep> BRep::split_by_plane_pieces(const Plane& plane, double toleran
     return pieces;
 }
 
+void BRep::append_brep(const BRep& other) {
+    // Disjoint assembly: concatenate the other BRep's geometry pools and topology tables
+    // with index offsets. No sewing -- each side keeps its own (already mated) edges, so
+    // two solids that touch only along coincident section edges stay two watertight shells.
+    int voff=(int)m_vertices.size(), tvoff=(int)m_topology_vertices.size();
+    int soff=(int)m_surfaces.size(), c2off=(int)m_curves_2d.size();
+    int c3off=(int)m_curves_3d.size(), eoff=(int)m_topology_edges.size();
+    int loff=(int)m_loops.size(), foff=(int)m_faces.size(), toff=(int)m_trims.size();
+    for (auto& p : other.m_vertices) m_vertices.push_back(p);
+    for (auto& s : other.m_surfaces) m_surfaces.push_back(s);
+    for (auto& c : other.m_curves_2d) m_curves_2d.push_back(c);
+    for (auto& c : other.m_curves_3d) m_curves_3d.push_back(c);
+    for (auto tv : other.m_topology_vertices) { tv.point_index += voff; tv.edge_indices.clear(); m_topology_vertices.push_back(tv); }
+    for (auto e : other.m_topology_edges) {
+        if (e.curve_3d_index>=0) e.curve_3d_index += c3off;
+        if (e.start_vertex>=0) e.start_vertex += tvoff;
+        if (e.end_vertex>=0) e.end_vertex += tvoff;
+        e.trim_indices.clear();
+        m_topology_edges.push_back(e);
+    }
+    for (auto t : other.m_trims) {
+        if (t.curve_2d_index>=0) t.curve_2d_index += c2off;
+        if (t.edge_index>=0) t.edge_index += eoff;
+        if (t.loop_index>=0) t.loop_index += loff;
+        m_trims.push_back(t);
+    }
+    for (auto lp : other.m_loops) {
+        for (auto& ti : lp.trim_indices) ti += toff;
+        if (lp.face_index>=0) lp.face_index += foff;
+        m_loops.push_back(lp);
+    }
+    for (auto f : other.m_faces) {
+        if (f.surface_index>=0) f.surface_index += soff;
+        for (auto& li : f.loop_indices) li += loff;
+        m_faces.push_back(f);
+    }
+    for (auto& e : m_topology_edges) e.trim_indices.clear();
+    for (int ti=0; ti<(int)m_trims.size(); ++ti) {
+        int ei = m_trims[ti].edge_index;
+        if (ei>=0 && ei<(int)m_topology_edges.size()) m_topology_edges[ei].trim_indices.push_back(ti);
+    }
+}
+
 BRep BRep::split_by_brep(const BRep& cutter, double tolerance) const {
     std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> cutter_bbs;
     for (const auto& cs : cutter.m_surfaces) cutter_bbs.push_back(aabb_from_surface(cs));
@@ -2332,9 +2457,45 @@ BRep BRep::split_by_brep(const BRep& cutter, double tolerance) const {
         double margin = std::max({srf_bb.second[0] - srf_bb.first[0],
                                   srf_bb.second[1] - srf_bb.first[1],
                                   srf_bb.second[2] - srf_bb.first[2]}) * 1e-3;
+        // UV-space dedup across cutter faces: several cutter faces can SHARE one underlying
+        // surface (xor's B-A operand = 6 caps on ONE sphere), each contributing the SAME
+        // section pcurve; near-identical duplicate cuts shatter the arrangement into
+        // slivers (one wall face split into 62 parts).
+        auto du_r = srf.domain(0); auto dv_r = srf.domain(1);
+        double dup_tol = std::max(du_r.second - du_r.first, dv_r.second - dv_r.first) * 1e-6;
+        auto uv_pts = [](const NurbsCurve& pc, int n) {
+            std::vector<Point> ps(n + 1);
+            auto dc = pc.domain();
+            for (int i = 0; i <= n; ++i) ps[i] = pc.point_at(dc.first + (dc.second - dc.first) * i / n);
+            return ps;
+        };
+        auto pt_to_poly = [](const Point& p, const std::vector<Point>& poly) {
+            double best = 1e300;
+            for (size_t j = 0; j + 1 < poly.size(); ++j) {
+                double ex = poly[j+1][0]-poly[j][0], ey = poly[j+1][1]-poly[j][1];
+                double L2 = ex*ex + ey*ey;
+                double t = L2 > 1e-30 ? ((p[0]-poly[j][0])*ex + (p[1]-poly[j][1])*ey) / L2 : 0.0;
+                t = std::min(std::max(t, 0.0), 1.0);
+                double dx = p[0]-poly[j][0]-t*ex, dy = p[1]-poly[j][1]-t*ey;
+                best = std::min(best, dx*dx + dy*dy);
+            }
+            return std::sqrt(best);
+        };
+        std::vector<std::vector<Point>> kept_polys;
+        auto push_deduped = [&](const NurbsCurve& pc) {
+            auto cand = uv_pts(pc, 16);
+            for (auto& kp : kept_polys) {
+                bool all_on = true;
+                for (auto& q : cand) if (pt_to_poly(q, kp) > dup_tol) { all_on = false; break; }
+                if (all_on) return;
+            }
+            kept_polys.push_back(uv_pts(pc, 64));
+            out.push_back(pc);
+        };
         for (size_t ci = 0; ci < cutter.m_surfaces.size(); ++ci) {
             if (!aabb_overlap(srf_bb, cutter_bbs[ci], margin)) continue;
-            for (auto& pc : Intersection::cut_curves_on_surface(srf, cutter.m_surfaces[ci], tolerance)) out.push_back(pc);
+            for (auto& pc : Intersection::cut_curves_on_surface(srf, cutter.m_surfaces[ci], tolerance))
+                push_deduped(pc);
         }
         return out;
     });
@@ -2590,6 +2751,46 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                 if (!border) off_border.push_back(pcB);
             }
             cut_pcs = off_border;
+            // Drop cut pcurves that coincide with the face's OWN boundary loops: the cutter
+            // meets this face exactly along an existing trim edge (xor of cut results: the
+            // section circle IS the wall face's hole boundary). Re-cutting along the boundary
+            // only seeds sliver cells in the arrangement.
+            if (!cut_pcs.empty() && !outer_pcs.empty()) {
+                double on_tol = std::max(duS.second - duS.first, dvS.second - dvS.first) * 1e-5;
+                auto pt_to_poly2 = [](const Point& p, const std::vector<Point>& poly) {
+                    double best = 1e300;
+                    for (size_t j = 0; j + 1 < poly.size(); ++j) {
+                        double ex = poly[j+1][0]-poly[j][0], ey = poly[j+1][1]-poly[j][1];
+                        double L2 = ex*ex + ey*ey;
+                        double t = L2 > 1e-30 ? ((p[0]-poly[j][0])*ex + (p[1]-poly[j][1])*ey) / L2 : 0.0;
+                        t = std::min(std::max(t, 0.0), 1.0);
+                        double dx = p[0]-poly[j][0]-t*ex, dy = p[1]-poly[j][1]-t*ey;
+                        best = std::min(best, dx*dx + dy*dy);
+                    }
+                    return std::sqrt(best);
+                };
+                std::vector<std::vector<Point>> bnd_polys;
+                for (auto& bp : outer_pcs) {
+                    auto db3 = bp.domain();
+                    std::vector<Point> ps(65);
+                    for (int i = 0; i <= 64; ++i)
+                        ps[i] = bp.point_at(db3.first + (db3.second - db3.first) * i / 64.0);
+                    bnd_polys.push_back(std::move(ps));
+                }
+                std::vector<NurbsCurve> off_bnd;
+                for (auto& pcB : cut_pcs) {
+                    auto dB = pcB.domain();
+                    bool all_on = true;
+                    for (int i = 0; i <= 16 && all_on; ++i) {
+                        Point q = pcB.point_at(dB.first + (dB.second - dB.first) * i / 16.0);
+                        double best = 1e300;
+                        for (auto& bp : bnd_polys) best = std::min(best, pt_to_poly2(q, bp));
+                        if (best > on_tol) all_on = false;
+                    }
+                    if (!all_on) off_bnd.push_back(pcB);
+                }
+                cut_pcs = off_bnd;
+            }
         }
         int n_boundary = (int)outer_pcs.size();
         std::vector<NurbsCurve> all_pcs = outer_pcs;

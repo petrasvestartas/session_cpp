@@ -214,6 +214,9 @@ public:
     /// Build a standalone BRep from a subset of this BRep's faces.
     BRep subset(const std::vector<int>& face_indices) const;
 
+    /// Concatenate another BRep's faces/topology into this one (index-offset copy, no sewing).
+    void append_brep(const BRep& other);
+
     /// Split by a plane and separate into the pieces on each side. One BRep per side.
     std::vector<BRep> split_by_plane_pieces(const Plane& plane, double tolerance = 0.0) const;
 
@@ -300,15 +303,18 @@ public:
     BRep boolean_intersection(const BRep& other, double tolerance = 0.0) const {
         return boolean(other, BooleanOp::Intersection, tolerance);
     }
-    /// A ^ B (symmetric difference): (A - B) | (B - A). Composite of the verified primitive
-    /// ops -- the two cut results are DISJOINT except along the shared section surface, so
-    /// their union reduces to the combine+sew path with no new classification cases.
+    /// A ^ B (symmetric difference): (A - B) assembled with (B - A). The two cuts have
+    /// DISJOINT interiors by construction and meet only along the shared section (measure
+    /// zero), so xor is a disjoint assembly, never a second boolean: running the general
+    /// union on boolean RESULTS stressed the same-domain machinery (chart-extent phantom
+    /// cuts between result faces sharing surfaces) and shattered the output.
     BRep boolean_xor(const BRep& other, double tolerance = 0.0) const {
         BRep ab = boolean_difference(other, tolerance);
         BRep ba = other.boolean_difference(*this, tolerance);
         if (ab.face_count() == 0) return ba;    // A inside B -> xor = B - A
         if (ba.face_count() == 0) return ab;    // B inside A -> xor = A - B
-        return ab.boolean_union(ba, tolerance);
+        ab.append_brep(ba);
+        return ab;
     }
     /// Split A by B (OCCT BOPAlgo_SPLITTER analogue for two solids): all three volume
     /// fragments {A - B, A & B, B - A}, empty fragments omitted. Their volumes partition

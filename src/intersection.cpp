@@ -1601,6 +1601,18 @@ SurfacePlaneTraceResult surface_plane_traces(
             dist[i * cols + j] = d;
         }
     }
+    // COINCIDENT chart: the surface lies IN the plane. A boolean-produced planar patch
+    // tested against its parent plane differs only by evaluation noise ~1e-16 whose SIGN
+    // flickers across the grid -- seeds and garbage traces everywhere (xor's union of
+    // cut results shattered to 512 faces). A genuine transversal section reaches
+    // |g| = O(chart size) somewhere on the seed grid; same-domain overlap is the
+    // ON-face classifier's job, not a section curve.
+    {
+        double gmax = 0.0;
+        for (double d : dist) gmax = std::max(gmax, std::abs(d));
+        if (gmax < std::max(tolerance, 1e-9) * 10.0)
+            return {{}, std::min(du, dv) * 0.25, uv_to_3d, uv_to_3d_min};
+    }
 
     struct Seed { double u, v; bool used; };
     std::vector<Seed> seeds;
