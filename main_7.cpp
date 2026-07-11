@@ -23,6 +23,7 @@
 #include <cmath>
 #include <iomanip>
 #include "brep.h"
+#include "intersection.h"
 #include "file_step.h"
 #include "xform.h"
 #include "tolerance.h"
@@ -288,6 +289,25 @@ int main(int argc, char** argv) {
                 file_step::write_file_step_brep(pil, std::string(sd) + "/freeform_pillow.step");
         }
         BRep box = BRep::create_box(4, 4, 4);
+        if (std::getenv("SESSION_SSI_DBG")) {
+            const NurbsSurface& bs = ff.m_surfaces[0];
+            for (size_t k = 0; k < box.m_surfaces.size(); ++k) {
+                auto trs = Intersection::surface_surface(bs, box.m_surfaces[k], 1e-6);
+                std::printf("[SSIDBG] boxface %zu: %zu sections\n", k, trs.size());
+                for (auto& tr : trs) {
+                    NurbsCurve& c = std::get<0>(tr);
+                    auto d = c.domain();
+                    Point a = c.point_at(d.first), b2 = c.point_at(d.second);
+                    NurbsCurve& pa = std::get<1>(tr);
+                    auto dp = pa.domain();
+                    Point ua = pa.point_at(dp.first), ub = pa.point_at(dp.second);
+                    std::printf("   len=%.3f closed=%d a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f) pcA(%.3f,%.3f)->(%.3f,%.3f)\n",
+                                c.length(), a.distance(b2) < 1e-5 ? 1 : 0,
+                                a[0], a[1], a[2], b2[0], b2[1], b2[2],
+                                ua[0], ua[1], ub[0], ub[1]);
+                }
+            }
+        }
         double vcut = 0, vcom = 0, vfus = 0;
         int fcut = 0, fcom = 0, ffus = 0; int scut = 0, scom = 0, sfus = 0;
         long our_us[3] = {0, 0, 0};
@@ -304,6 +324,24 @@ int main(int argc, char** argv) {
                 file_step::write_file_step_brep(r,
                     std::string(sd) + "/freeform_" + modes[m] + "_box.step");
                 if (m == 0) file_step::write_file_step_brep(ff, std::string(sd) + "/freeform_blob.step");
+            }
+            if (std::getenv("SESSION_SOLID_DBG")) {
+                int bad = 0;
+                for (auto& e : r.m_topology_edges) {
+                    if ((int)e.trim_indices.size() == 2) continue;
+                    int ci = e.curve_3d_index;
+                    if (ci < 0 || ci >= (int)r.m_curves_3d.size()) continue;
+                    const NurbsCurve& c = r.m_curves_3d[ci];
+                    auto dc = c.domain();
+                    Point a = c.point_at(dc.first), b2 = c.point_at(dc.second);
+                    if (c.length() < 1e-6) continue;
+                    if (bad < 8)
+                        std::printf("[UNMATED] %s trims=%zu len=%.4f a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f)\n",
+                                    modes[m], e.trim_indices.size(), c.length(),
+                                    a[0], a[1], a[2], b2[0], b2[1], b2[2]);
+                    ++bad;
+                }
+                std::printf("[UNMATED] %s total=%d\n", modes[m], bad);
             }
             double v = r.volume();
             if (m == 0) { vcut = v; fcut = r.face_count(); scut = r.is_solid(); }

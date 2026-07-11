@@ -2490,6 +2490,85 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
             continue;
         }
 
+        // Clip cut pcurves to the chart rectangle in NON-PERIODIC directions: a section
+        // loop can exit the face's domain (the blob's silhouette at x=-2 reaches past the
+        // wall's edge, its pullback dips to v=-0.05) and the arrangement cannot handle
+        // out-of-domain cuts -- the wall face then never splits and loses its hole.
+        {
+            auto duS = srf.domain(0); auto dvS = srf.domain(1);
+            bool cu2 = srf.is_closed(0), cv2 = srf.is_closed(1);
+            std::vector<NurbsCurve> clipped;
+            for (auto& pcC : cut_pcs) {
+                auto dc2 = pcC.domain();
+                int nS = std::max(96, pcC.cv_count() * 4);
+                auto inside = [&](const Point& q) {
+                    if (!cu2 && (q[0] < duS.first - 1e-12 || q[0] > duS.second + 1e-12)) return false;
+                    if (!cv2 && (q[1] < dvS.first - 1e-12 || q[1] > dvS.second + 1e-12)) return false;
+                    return true;
+                };
+                std::vector<Point> samp(nS + 1);
+                bool all_in = true;
+                for (int i2 = 0; i2 <= nS; ++i2) {
+                    samp[i2] = pcC.point_at(dc2.first + (dc2.second - dc2.first) * i2 / nS);
+                    if (!inside(samp[i2])) all_in = false;
+                }
+                if (all_in) { clipped.push_back(pcC); continue; }
+                bool pc_closed = samp.front().distance(samp.back()) < 1e-9;
+                std::vector<Point> ring(samp.begin(), samp.end() - (pc_closed ? 1 : 0));
+                int N2 = (int)ring.size();
+                int start = 0;
+                if (pc_closed) {
+                    for (int i2 = 0; i2 < N2; ++i2)
+                        if (!inside(ring[i2])) { start = i2; break; }
+                }
+                auto clampB = [&](Point q) {
+                    if (!cu2) q = Point(std::max(duS.first, std::min(q[0], duS.second)), q[1], 0.0);
+                    if (!cv2) q = Point(q[0], std::max(dvS.first, std::min(q[1], dvS.second)), 0.0);
+                    return q;
+                };
+                auto cross_pt = [&](const Point& a2, const Point& b2) {
+                    // interpolate to the violated border between an inside and outside sample
+                    double tbest = 1.0;
+                    if (!cu2) {
+                        if (b2[0] < duS.first)  tbest = std::min(tbest, (duS.first  - a2[0]) / (b2[0] - a2[0]));
+                        if (b2[0] > duS.second) tbest = std::min(tbest, (duS.second - a2[0]) / (b2[0] - a2[0]));
+                    }
+                    if (!cv2) {
+                        if (b2[1] < dvS.first)  tbest = std::min(tbest, (dvS.first  - a2[1]) / (b2[1] - a2[1]));
+                        if (b2[1] > dvS.second) tbest = std::min(tbest, (dvS.second - a2[1]) / (b2[1] - a2[1]));
+                    }
+                    tbest = std::max(0.0, std::min(1.0, tbest));
+                    return clampB(Point(a2[0] + (b2[0]-a2[0]) * tbest, a2[1] + (b2[1]-a2[1]) * tbest, 0.0));
+                };
+                int total = pc_closed ? N2 : N2 - 1;
+                std::vector<Point> run;
+                auto flush = [&]() {
+                    if (run.size() >= 2) {
+                        NurbsCurve seg = NurbsCurve::create(false, 1, run);
+                        if (seg.is_valid()) clipped.push_back(seg);
+                    }
+                    run.clear();
+                };
+                for (int k2 = 0; k2 <= total; ++k2) {
+                    int i2 = pc_closed ? (start + k2) % N2 : k2;
+                    const Point& q = ring[i2];
+                    if (inside(q)) {
+                        if (run.empty() && k2 > 0) {
+                            int ip = pc_closed ? (start + k2 - 1 + N2) % N2 : k2 - 1;
+                            run.push_back(cross_pt(q, ring[ip]));
+                        }
+                        run.push_back(q);
+                    } else {
+                        if (!run.empty()) {
+                            run.push_back(cross_pt(run.back(), q));
+                            flush();
+                        }
+                    }
+                }
+                flush();
+            }
+            cut_pcs = clipped;
+        }
         int n_boundary = (int)outer_pcs.size();
         std::vector<NurbsCurve> all_pcs = outer_pcs;
         all_pcs.insert(all_pcs.end(), cut_pcs.begin(), cut_pcs.end());
@@ -2501,6 +2580,23 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
             ? NurbsSurfaceTrimmed::split_face_by_wires(srf, cut_pcs, outer_pcs, tolerance)
             : NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary);
         if (s_prof) prof_arr += pf_us(pf_t2, pf_now());
+        if (std::getenv("SESSION_SPLIT_DBG")) {
+            std::fprintf(stderr, "[SPLIT] si=%d nbnd=%d cuts=%zu parts=%zu\n",
+                         face.surface_index, n_boundary, cut_pcs.size(), parts.size());
+            for (auto& pcq : cut_pcs) {
+                auto dq = pcq.domain();
+                Point a2 = pcq.point_at(dq.first), b2 = pcq.point_at(dq.second);
+                double xmn = 1e300, xmx = -1e300, ymn = 1e300, ymx = -1e300;
+                for (int q2 = 0; q2 <= 32; ++q2) {
+                    Point pq = pcq.point_at(dq.first + (dq.second - dq.first) * q2 / 32.0);
+                    xmn = std::min(xmn, pq[0]); xmx = std::max(xmx, pq[0]);
+                    ymn = std::min(ymn, pq[1]); ymx = std::max(ymx, pq[1]);
+                }
+                std::fprintf(stderr, "   cut a(%.3f,%.3f) b(%.3f,%.3f) closed=%d bbox[%.2f,%.2f]x[%.2f,%.2f]\n",
+                             a2[0], a2[1], b2[0], b2[1],
+                             a2.distance(b2) < 1e-6 ? 1 : 0, xmn, xmx, ymn, ymx);
+            }
+        }
         if (parts.size() <= 1) {
             std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>> loops;
             loops.push_back({BRepLoopType::Outer, outer_pcs});

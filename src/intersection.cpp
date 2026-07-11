@@ -1725,7 +1725,19 @@ SurfacePlaneTraceResult surface_plane_traces(
                 un = wrap_u(un);
                 vn = wrap_v(vn);
 
-                if (!newton_correct(un, vn)) break;
+                if (!newton_correct(un, vn)) {
+                    // near-tangency: Newton diverges at full step; halve and retry before
+                    // giving up (a mid-loop break fragments the trace and loses the loop)
+                    bool ok_retry = false;
+                    double ls = local_step;
+                    for (int rh = 0; rh < 4 && !ok_retry; ++rh) {
+                        ls *= 0.5;
+                        un = wrap_u(u + ls * tu);
+                        vn = wrap_v(v + ls * tv);
+                        if (newton_correct(un, vn)) ok_retry = true;
+                    }
+                    if (!ok_retry) break;
+                }
 
                 Point p_cur = surface.point_at(un, vn);
                 dist_traveled += p_prev.distance(p_cur);
@@ -1792,6 +1804,111 @@ SurfacePlaneTraceResult surface_plane_traces(
         }
 
         traces.push_back({std::move(uv_trace), std::move(uv_unwrapped), is_loop});
+    }
+
+    // ------------------------------------------------------------------
+    // 3. Repair pass: fragments and border gaps
+    //    (a) drop open fragments fully covered by another trace (duplicate seeds retracing
+    //        a partially-marched loop);
+    //    (b) join open fragments whose 3D endpoints meet (a mid-loop Newton break splits one
+    //        loop into pieces; the pieces chain back into one closed loop);
+    //    (c) snap open endpoints to the chart border when within one grid cell (a trace that
+    //        stops 0.02 short of the seam leaves the arrangement unable to close a band).
+    // ------------------------------------------------------------------
+    double join_tol = std::max(du, dv) * uv_to_3d * 1.5;
+    auto p3 = [&](const std::pair<double,double>& q) { return surface.point_at(q.first, q.second); };
+    // (a) coverage dedup
+    for (size_t i = 0; i < traces.size(); ++i) {
+        if (traces[i].uv_trace.empty() || traces[i].is_loop) continue;
+        for (size_t j = 0; j < traces.size(); ++j) {
+            if (i == j || traces[j].uv_trace.empty()) continue;
+            if (traces[j].uv_trace.size() < traces[i].uv_trace.size()) continue;
+            bool covered = true;
+            for (size_t k = 0; k < traces[i].uv_trace.size() && covered; k += std::max<size_t>(1, traces[i].uv_trace.size() / 8)) {
+                Point q = p3(traces[i].uv_trace[k]);
+                double best = 1e300;
+                for (auto& r : traces[j].uv_trace) best = std::min(best, q.distance(p3(r)));
+                if (best > join_tol) covered = false;
+            }
+            if (covered) { traces[i].uv_trace.clear(); break; }
+        }
+    }
+    // (b) chain join
+    bool joined = true;
+    while (joined) {
+        joined = false;
+        for (size_t i = 0; i < traces.size() && !joined; ++i) {
+            if (traces[i].uv_trace.size() < 2 || traces[i].is_loop) continue;
+            Point ie = p3(traces[i].uv_trace.back());
+            for (size_t j = 0; j < traces.size() && !joined; ++j) {
+                if (i == j || traces[j].uv_trace.size() < 2 || traces[j].is_loop) continue;
+                Point ja = p3(traces[j].uv_trace.front());
+                Point jb = p3(traces[j].uv_trace.back());
+                bool fwd2 = ie.distance(ja) < join_tol;
+                bool rev2 = ie.distance(jb) < join_tol;
+                if (!fwd2 && !rev2) continue;
+                std::vector<std::pair<double,double>> add = traces[j].uv_trace;
+                if (rev2) std::reverse(add.begin(), add.end());
+                traces[i].uv_trace.insert(traces[i].uv_trace.end(), add.begin(), add.end());
+                traces[j].uv_trace.clear();
+                // closed now?
+                if (p3(traces[i].uv_trace.front()).distance(p3(traces[i].uv_trace.back())) < join_tol) {
+                    traces[i].is_loop = true;
+                    traces[i].uv_trace.pop_back();
+                }
+                // rebuild unwrapped
+                traces[i].uv_unwrapped = traces[i].uv_trace;
+                for (size_t k = 1; k < traces[i].uv_unwrapped.size(); ++k) {
+                    double dj = traces[i].uv_unwrapped[k].first - traces[i].uv_unwrapped[k-1].first;
+                    double dvj = traces[i].uv_unwrapped[k].second - traces[i].uv_unwrapped[k-1].second;
+                    if (closed_u) {
+                        if (dj > range_u * 0.5) traces[i].uv_unwrapped[k].first -= range_u;
+                        else if (dj < -range_u * 0.5) traces[i].uv_unwrapped[k].first += range_u;
+                    }
+                    if (closed_v) {
+                        if (dvj > range_v * 0.5) traces[i].uv_unwrapped[k].second -= range_v;
+                        else if (dvj < -range_v * 0.5) traces[i].uv_unwrapped[k].second += range_v;
+                    }
+                }
+                joined = true;
+            }
+        }
+    }
+    traces.erase(std::remove_if(traces.begin(), traces.end(),
+                                [](const SurfacePlaneTrace& t) { return t.uv_trace.size() < 4; }),
+                 traces.end());
+    // (b2) self-closure: an open trace whose own ends meet is a loop the closure test
+    // missed by one step (the z-cap loops ended 0.02 short of their start)
+    for (auto& t : traces) {
+        if (t.is_loop || t.uv_trace.size() < 6) continue;
+        if (p3(t.uv_trace.front()).distance(p3(t.uv_trace.back())) < join_tol) {
+            t.is_loop = true;
+            t.uv_trace.pop_back();
+            t.uv_unwrapped.pop_back();
+        }
+    }
+    // (c) border snap
+    for (auto& t : traces) {
+        if (t.is_loop || t.uv_trace.empty()) continue;
+        for (int endk = 0; endk < 2; ++endk) {
+            auto& q = endk ? t.uv_trace.back() : t.uv_trace.front();
+            auto& qu = endk ? t.uv_unwrapped.back() : t.uv_unwrapped.front();
+            if (!closed_u) {
+                if (std::abs(q.first - u0) < du) { q.first = u0; qu.first = u0; }
+                if (std::abs(q.first - u1) < du) { q.first = u1; qu.first = u1; }
+            } else {
+                // seam: snap to the NEAREST branch of the seam line
+                if (q.first - u0 < du) { q.first = u0; }
+                else if (u1 - q.first < du) { q.first = u1; }
+            }
+            if (!closed_v) {
+                if (std::abs(q.second - v0) < dv) { q.second = v0; qu.second = v0; }
+                if (std::abs(q.second - v1) < dv) { q.second = v1; qu.second = v1; }
+            } else {
+                if (q.second - v0 < dv) { q.second = v0; }
+                else if (v1 - q.second < dv) { q.second = v1; }
+            }
+        }
     }
 
     return {std::move(traces), step, uv_to_3d, uv_to_3d_min};
@@ -5165,7 +5282,7 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
     // circle deviates ~1e-3 of the surface size from the cutter plane), otherwise a curve that
     // lies entirely on the cutter gets spuriously chopped into many tiny arcs. Parts genuinely
     // off a finite cutter are O(size) away, so a generous relative tolerance still rejects them.
-    double on_tol = std::max(1e-6, corner_diag * 2e-2);
+    double on_tol = std::max(1e-6, corner_diag * 2e-3);
 
     // clip_pcurve_to_cutter is only ever called for a PLANAR cutter (the caller guards on
     // cutter_planar), so the closest-point gap to the finite cutter face is the analytic
@@ -5196,9 +5313,10 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
     };
     auto refine = [&](double t_in, double t_out) -> double {
         double a = t_in, b = t_out;
-        for (int k = 0; k < 20; ++k) {
+        double edge_tol = std::max(1e-6, corner_diag * 2e-4);
+        for (int k = 0; k < 24; ++k) {
             double tm = (a + b) * 0.5;
-            if (gap(tm) < on_tol) a = tm; else b = tm;
+            if (gap(tm) < edge_tol) a = tm; else b = tm;
         }
         return b;
     };
@@ -5210,6 +5328,7 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
         flags.emplace_back(t, gap(t) < on_tol);
     }
     std::vector<NurbsCurve> pieces;
+    std::vector<std::pair<double, double>> spans;
     int i = 0;
     while (i <= n) {
         if (flags[i].second) {
@@ -5217,14 +5336,39 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
             while (j + 1 <= n && flags[j + 1].second) ++j;
             double ta = (i == 0) ? flags[i].first : refine(flags[i].first, flags[i - 1].first);
             double tb = (j == n) ? flags[j].first : refine(flags[j].first, flags[j + 1].first);
-            if (tb - ta > (d1 - d0) * 1e-6) {
-                NurbsCurve piece = pc;
-                if (piece.trim(ta, tb) && piece.is_valid()) pieces.push_back(piece);
-            }
+            if (tb - ta > (d1 - d0) * 1e-6) spans.push_back({ta, tb});
             i = j + 1;
         } else {
             ++i;
         }
+    }
+    // wrap-join on closed pcurves: the run touching the END and the run touching the START
+    // are one contiguous arc through the closure point; two separate arcs there never mate
+    // with the other operand's single clipped arc.
+    Point pcs_ = pc.point_at(d0), pce_ = pc.point_at(d1);
+    bool pc_closed2 = pcs_.distance(pce_) < 1e-9;
+    if (pc_closed2 && spans.size() >= 2
+        && spans.front().first <= d0 + (d1 - d0) * 1e-9
+        && spans.back().second >= d1 - (d1 - d0) * 1e-9) {
+        // sample-join: [ta_last .. d1] + [d0 .. tb_first]
+        double ta = spans.back().first, tb = spans.front().second;
+        spans.front() = {ta, tb};       // marker: wrapped span (ta > tb)
+        spans.pop_back();
+        int m2 = std::max(32, n / 2);
+        std::vector<Point> pts;
+        double len1 = d1 - ta, len2 = tb - d0, tot = len1 + len2;
+        for (int k2 = 0; k2 <= m2; ++k2) {
+            double f = tot * k2 / m2;
+            double t = (f < len1) ? ta + f : d0 + (f - len1);
+            pts.push_back(pc.point_at(std::min(t, d1)));
+        }
+        NurbsCurve joined = NurbsCurve::create(false, 1, pts);
+        if (joined.is_valid()) pieces.push_back(joined);
+        spans.erase(spans.begin());
+    }
+    for (auto& sp : spans) {
+        NurbsCurve piece = pc;
+        if (piece.trim(sp.first, sp.second) && piece.is_valid()) pieces.push_back(piece);
     }
     return pieces;
 }
@@ -5268,8 +5412,16 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(const NurbsSurface& 
             if (pcs.empty()) pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
             if (pcs.empty()) pcs.push_back(std::get<1>(tr));
         } else {
-            pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
-            if (pcs.empty()) pcs.push_back(std::get<1>(tr));
+            // FREEFORM target: prefer the SSI's own pcurve -- the tracer pairs each 3D piece
+            // 1:1 with a seam-split pcurve, and its repair pass joins fragments and snaps
+            // seam endpoints. Closest::surface_curve re-projection fragments closed loops
+            // at the seam with sloppy ends (blob x box lost 3 of 8 chart parts).
+            const NurbsCurve& pa_tr = std::get<1>(tr);
+            if (pa_tr.is_valid()) {
+                pcs.push_back(pa_tr);
+            } else {
+                pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
+            }
         }
         for (const auto& pc : pcs) {
             if (cutter_planar) {
