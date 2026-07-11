@@ -301,8 +301,17 @@ int main(int argc, char** argv) {
                     NurbsCurve& pa = std::get<1>(tr);
                     auto dp = pa.domain();
                     Point ua = pa.point_at(dp.first), ub = pa.point_at(dp.second);
-                    std::printf("   len=%.3f closed=%d a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f) pcA(%.3f,%.3f)->(%.3f,%.3f)\n",
-                                c.length(), a.distance(b2) < 1e-5 ? 1 : 0,
+                    double lift_len = 0, lift_dev = 0;
+                    Point prev = bs.point_at(ua[0], ua[1]);
+                    for (int k2 = 1; k2 <= 512; ++k2) {
+                        Point uv = pa.point_at(dp.first + (dp.second - dp.first) * k2 / 512.0);
+                        Point q = bs.point_at(uv[0], uv[1]);
+                        lift_len += prev.distance(q); prev = q;
+                        Point cp = c.closest_point(q);
+                        lift_dev = std::max(lift_dev, q.distance(cp));
+                    }
+                    std::printf("   len=%.3f liftA=%.3f devA=%.4f closed=%d a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f) pcA(%.3f,%.3f)->(%.3f,%.3f)\n",
+                                c.length(), lift_len, lift_dev, a.distance(b2) < 1e-5 ? 1 : 0,
                                 a[0], a[1], a[2], b2[0], b2[1], b2[2],
                                 ua[0], ua[1], ub[0], ub[1]);
                 }
@@ -335,10 +344,20 @@ int main(int argc, char** argv) {
                     auto dc = c.domain();
                     Point a = c.point_at(dc.first), b2 = c.point_at(dc.second);
                     if (c.length() < 1e-6) continue;
-                    if (bad < 8)
-                        std::printf("[UNMATED] %s trims=%zu len=%.4f a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f)\n",
-                                    modes[m], e.trim_indices.size(), c.length(),
-                                    a[0], a[1], a[2], b2[0], b2[1], b2[2]);
+                    if (bad < 8) {
+                        std::string owners;
+                        for (int ti : e.trim_indices) {
+                            const auto& tr2 = r.m_trims[ti];
+                            int fi = r.m_loops[tr2.loop_index].face_index;
+                            int si = r.m_faces[fi].surface_index;
+                            char ob[64];
+                            std::snprintf(ob, sizeof(ob), " f%d/s%d", fi, si);
+                            owners += ob;
+                        }
+                        std::printf("[UNMATED] %s e=%d trims=%zu len=%.4f a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f)%s\n",
+                                    modes[m], (int)(&e - &r.m_topology_edges[0]), e.trim_indices.size(), c.length(),
+                                    a[0], a[1], a[2], b2[0], b2[1], b2[2], owners.c_str());
+                    }
                     ++bad;
                 }
                 std::printf("[UNMATED] %s total=%d\n", modes[m], bad);

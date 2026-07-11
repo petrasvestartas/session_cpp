@@ -4429,25 +4429,13 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
                     for (auto& p : piece_pts) p.second -= k_v * range_v;
             }
 
-            std::vector<Point> pts3(piece_pts.size());
-            for (size_t i = 0; i < piece_pts.size(); i++)
-                pts3[i] = surface.point_at(wrap_u(piece_pts[i].first), wrap_v(piece_pts[i].second));
-
-            // Fit the 3D curve (plane-constrained; circle/ellipse for full loops)
-            NurbsCurve crv3 = surface_plane_fit_3d(pts3, piece_loop, plane, step, uv_to_3d, uv_to_3d_min, false);
-            if (!crv3.is_valid())
-                crv3 = piece_loop
-                    ? NurbsCurve::create_interpolated(pts3, CurveNurbsKnotStyle::ChordPeriodic)
-                    : NurbsCurve::create_interpolated(pts3);
-            if (!crv3.is_valid()) continue;
-
-            // Fit the UV pcurve. The pcurve is what every downstream consumer samples (volume
-            // boundary flux, meshing masks), so a step-tolerance fit leaks ~step UV deviation
-            // into the flux (~1e-3 rel on spirics). Densify: bisect each marched chord with the
-            // midpoint Newton-corrected onto the exact section, then least-squares fit against
-            // the dense section-exact samples to a small fraction of the step. CV count is
-            // capped and the best attempt kept -- never raw interpolation through hundreds of
-            // samples (endpoint ringing broke the downstream clip topology).
+            // Densify FIRST -- both fits consume the dense section-exact samples. The raw
+            // marched polyline ends every closed loop with a ~4-step closure chord (the
+            // marcher's loop-closure tolerance); fitting that sparse gap rings: on blob x box
+            // the 3D fit overshot a 1.05 closure chord by 1.04, plunged past the adjacent box
+            // wall, and fabricated phantom box-edge crossings that broke all edge mating.
+            // Newton-corrected midpoints fill the gap along the exact section, and dense
+            // samples pin the least-squares fit between data points.
             std::vector<Point> pts_uv;
             pts_uv.reserve(piece_pts.size() * 4);
             {
@@ -4484,6 +4472,25 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
                 }
                 pts_uv.push_back(Point(piece_pts.back().first, piece_pts.back().second, 0.0));
             }
+
+            std::vector<Point> pts3(pts_uv.size());
+            for (size_t i = 0; i < pts_uv.size(); i++)
+                pts3[i] = surface.point_at(wrap_u(pts_uv[i][0]), wrap_v(pts_uv[i][1]));
+
+            // Fit the 3D curve (plane-constrained; circle/ellipse for full loops)
+            NurbsCurve crv3 = surface_plane_fit_3d(pts3, piece_loop, plane, step, uv_to_3d, uv_to_3d_min, false);
+            if (!crv3.is_valid())
+                crv3 = piece_loop
+                    ? NurbsCurve::create_interpolated(pts3, CurveNurbsKnotStyle::ChordPeriodic)
+                    : NurbsCurve::create_interpolated(pts3);
+            if (!crv3.is_valid()) continue;
+
+            // Fit the UV pcurve. The pcurve is what every downstream consumer samples (volume
+            // boundary flux, meshing masks), so a step-tolerance fit leaks ~step UV deviation
+            // into the flux (~1e-3 rel on spirics). Least-squares fit against the dense
+            // section-exact samples to a small fraction of the step. CV count is capped and
+            // the best attempt kept -- never raw interpolation through hundreds of samples
+            // (endpoint ringing broke the downstream clip topology).
             int mp = (int)pts_uv.size();
             double fit_tol_uv = step * 2e-3;
             double total_turning = 0;
@@ -4524,6 +4531,11 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
                 if (max_dev < fit_tol_uv) break;
                 target_cvs = std::min(target_cvs * 2, max_cvs + 1);
             }
+            if (std::getenv("SESSION_SSI_DBG"))
+                std::printf("[PCFIT] loop=%d mp=%d turn=%.2f dev=%.6g tol=%.6g cvs=%d uv0(%.3f,%.3f)\n",
+                            piece_loop ? 1 : 0, mp, total_turning, pcurve_dev, fit_tol_uv,
+                            pcurve.is_valid() ? pcurve.cv_count() : -1,
+                            pts_uv.front()[0], pts_uv.front()[1]);
 
             if (!pcurve.is_valid())
                 pcurve = piece_loop
@@ -4552,6 +4564,41 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
                 }
             }
 
+            if (std::getenv("SESSION_SSI_DBG")) {
+                double ll = 0, dv3 = 0;
+                Point prev3 = surface.point_at(wrap_u(pcurve.point_at(0.0)[0]), wrap_v(pcurve.point_at(0.0)[1]));
+                for (int i = 1; i <= 512; ++i) {
+                    Point uvp = pcurve.point_at(i / 512.0);
+                    Point q = surface.point_at(wrap_u(uvp[0]), wrap_v(uvp[1]));
+                    ll += prev3.distance(q); prev3 = q;
+                    dv3 = std::max(dv3, q.distance(crv3.closest_point(q)));
+                }
+                double pl3 = 0;
+                for (size_t i = 1; i < pts3.size(); ++i) pl3 += pts3[i].distance(pts3[i-1]);
+                std::printf("[PCPUSH] crv3len=%.4f pts3len=%.4f liftlen=%.4f dev3=%.4f\n",
+                            crv3.length(), pl3, ll, dv3);
+            }
+            if (const char* dd = std::getenv("SESSION_SSI_DUMP")) {
+                static int dump_n = 0;
+                char fn[512];
+                std::snprintf(fn, sizeof(fn), "%s/trace_%d.csv", dd, dump_n);
+                if (FILE* f = std::fopen(fn, "w")) {
+                    for (size_t i = 0; i < pts_uv.size(); ++i)
+                        std::fprintf(f, "%.9f,%.9f,%.9f,%.9f,%.9f\n",
+                                     pts_uv[i][0], pts_uv[i][1],
+                                     pts3[i][0], pts3[i][1], pts3[i][2]);
+                    std::fclose(f);
+                }
+                std::snprintf(fn, sizeof(fn), "%s/crv3_%d.csv", dd, dump_n);
+                if (FILE* f = std::fopen(fn, "w")) {
+                    for (int i = 0; i <= 2048; ++i) {
+                        Point q = crv3.point_at(i / 2048.0);
+                        std::fprintf(f, "%.9f,%.9f,%.9f\n", q[0], q[1], q[2]);
+                    }
+                    std::fclose(f);
+                }
+                ++dump_n;
+            }
             result.push_back({std::move(crv3), std::move(pcurve)});
         }
     }
@@ -5369,6 +5416,36 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
     for (auto& sp : spans) {
         NurbsCurve piece = pc;
         if (piece.trim(sp.first, sp.second) && piece.is_valid()) pieces.push_back(piece);
+    }
+    if (std::getenv("SESSION_CLIP_DBG")) {
+        int on_cnt = 0;
+        for (auto& f : flags) if (f.second) ++on_cnt;
+        Point q11 = cutter.point_at(cu.second, cv.second);
+        std::printf("[CLIP] n=%d on=%d closed=%d spans=%zu pieces=%zu on_tol=%.3g cutter(%.1f,%.1f,%.1f)-(%.1f,%.1f,%.1f)\n",
+                    n + 1, on_cnt, pc_closed2 ? 1 : 0, spans.size(), pieces.size(), on_tol,
+                    q00[0], q00[1], q00[2], q11[0], q11[1], q11[2]);
+        int i2 = 0;
+        while (i2 <= n) {
+            if (!flags[i2].second) {
+                int j2 = i2; double mg = 0;
+                while (j2 <= n && !flags[j2].second) { mg = std::max(mg, gap(flags[j2].first)); ++j2; }
+                std::printf("[CLIP]   off t(%.4f..%.4f) maxgap=%.4g\n", flags[i2].first, flags[j2 - 1].first, mg);
+                i2 = j2;
+            } else ++i2;
+        }
+        for (size_t pi = 0; pi < pieces.size(); ++pi) {
+            auto dp = pieces[pi].domain();
+            Point ua = pieces[pi].point_at(dp.first), ub = pieces[pi].point_at(dp.second);
+            Point a3 = target.point_at(ua[0], ua[1]), b3 = target.point_at(ub[0], ub[1]);
+            double len3 = 0; Point prev = a3;
+            for (int k2 = 1; k2 <= 128; ++k2) {
+                Point uv = pieces[pi].point_at(dp.first + (dp.second - dp.first) * k2 / 128.0);
+                Point q = target.point_at(uv[0], uv[1]);
+                len3 += prev.distance(q); prev = q;
+            }
+            std::printf("[CLIP]   piece %zu len3=%.4f a(%.2f,%.2f,%.2f) b(%.2f,%.2f,%.2f) uv(%.3f,%.3f)->(%.3f,%.3f)\n",
+                        pi, len3, a3[0], a3[1], a3[2], b3[0], b3[1], b3[2], ua[0], ua[1], ub[0], ub[1]);
+        }
     }
     return pieces;
 }
