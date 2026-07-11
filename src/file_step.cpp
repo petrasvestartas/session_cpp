@@ -1444,12 +1444,24 @@ public:
         finish_shape(std::vector<std::vector<int>>{shell_face_ids}, closed, name, uncertainty);
     }
 
+    // AP214 surface-color presentation chain; returns the PRESENTATION_STYLE_ASSIGNMENT
+    // to hang STYLED_ITEMs on (one per ADVANCED_FACE -- the binding readers support best).
+    int color_style(double r, double g, double b) {
+        int c  = write_raw("COLOUR_RGB(''," + fmt(r) + "," + fmt(g) + "," + fmt(b) + ")");
+        int fc = write_raw("FILL_AREA_STYLE_COLOUR('',#" + std::to_string(c) + ")");
+        int fa = write_raw("FILL_AREA_STYLE('',(#" + std::to_string(fc) + "))");
+        int sf = write_raw("SURFACE_STYLE_FILL_AREA(#" + std::to_string(fa) + ")");
+        int ss = write_raw("SURFACE_SIDE_STYLE('',(#" + std::to_string(sf) + "))");
+        int su = write_raw("SURFACE_STYLE_USAGE(.BOTH.,#" + std::to_string(ss) + ")");
+        return write_raw("PRESENTATION_STYLE_ASSIGNMENT((#" + std::to_string(su) + "))");
+    }
+
     // Multi-shell form: one CLOSED_SHELL + MANIFOLD_SOLID_BREP per face group. A boolean
     // whose operands touch only along a measure-zero contact (tangent line, shared corner)
     // is TWO watertight shells; wrapping both faces sets in ONE solid makes the reader's
     // shell splitter orphan one of them (BRepCheck SubshapeNotInShape, volume -0).
     void finish_shape(const std::vector<std::vector<int>>& shells, bool closed, const std::string& name,
-                      double uncertainty = 1e-6) {
+                      double uncertainty = 1e-6, const std::vector<int>* styled_items = nullptr) {
         // An EMPTY result (e.g. cone x torus common: the cone threads the hole without
         // touching) still gets the product skeleton with a bare SHAPE_REPRESENTATION --
         // a file with a naked DATA section fails strict parsers ("Incorrect Syntax").
@@ -1499,6 +1511,18 @@ public:
         items += ")";
         int rp = write_raw(rep_type + "('" + name + "'," + items + ",#" + std::to_string(gc) + ")");
         write_raw("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ps) + ",#" + std::to_string(rp) + ")");
+        // Face colors: styled items live in their own presentation representation bound to
+        // the SAME geometric context.
+        if (styled_items && !styled_items->empty()) {
+            std::string si = "(";
+            for (size_t k = 0; k < styled_items->size(); ++k) {
+                if (k) si += ",";
+                si += "#" + std::to_string((*styled_items)[k]);
+            }
+            si += ")";
+            write_raw("MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION(''," + si
+                      + ",#" + std::to_string(gc) + ")");
+        }
     }
 
     std::string emit(const std::string& schema = "AUTOMOTIVE_DESIGN") const {
@@ -1898,14 +1922,11 @@ static Vector analytic_normal_of(const AnalyticSrf& A, const Point& p) {
     return mk(cv/m*cu, cv/m*su, z/m);
 }
 
-void write_file_step_brep(const BRep& brep, const std::string& filepath) {
-    // Our own STEP writer (no external kernel): the BRep's SHARED topology is written
-    // faithfully -- topology vertices and edges are emitted ONCE and referenced by every
-    // adjacent face (that shared referencing is what makes the shell sew into a solid on
-    // import), edge geometry is the REAL m_curves_3d entry (rational weights included),
-    // and the whole shell is wrapped as CLOSED_SHELL + MANIFOLD_SOLID_BREP inside the
-    // AP214 product skeleton importers use to locate roots.
-    StepWriter w;
+// Emit one BRep's faces into the writer; returns the per-component shell face-id groups
+// (see write_file_step_brep for the conventions). All state is local, so several breps can
+// be emitted into ONE writer (multi-solid colored files) -- entity ids simply continue and
+// coincident vertices of different breps are deliberately NOT deduplicated across calls.
+static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep& brep, double& diag_out) {
 
     // True outward orientation per face (shell-orientation propagation): STEP importers
     // orient MANIFOLD_SOLID_BREP shells from the ADVANCED_FACE same_sense flags; writing
@@ -3019,12 +3040,53 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
         shell_groups[uf_find(face_kfi[k])].push_back(face_ids[k]);
     std::vector<std::vector<int>> shells;
     for (auto& kv : shell_groups) shells.push_back(kv.second);
+    diag_out = diag;
+    return shells;
+}
 
+void write_file_step_brep(const BRep& brep, const std::string& filepath) {
+    // Our own STEP writer (no external kernel): the BRep's SHARED topology is written
+    // faithfully -- topology vertices and edges are emitted ONCE and referenced by every
+    // adjacent face (that shared referencing is what makes the shell sew into a solid on
+    // import), edge geometry is the REAL m_curves_3d entry (rational weights included),
+    // and the whole shell is wrapped as CLOSED_SHELL + MANIFOLD_SOLID_BREP inside the
+    // AP214 product skeleton importers use to locate roots.
+    StepWriter w;
+    double diag = 1.0;
+    std::vector<std::vector<int>> shells = emit_brep_shells(w, brep, diag);
     // Uncertainty: with exact wire topology (shared vertices, trim-built edge curves) the
     // only residuals are fit tolerances (~diag*1e-5). The old sew-scale diag*5e-3 made OCCT
     // treat thin tangent-cusp lens wires (tor x tor) as DEGENERATE: it dropped them and
     // restored natural bounds, importing each lens face as a FULL torus (+6 x 25.27 volume).
     w.finish_shape(shells, brep.is_solid(), brep.name.empty() ? "brep" : brep.name, diag * 1e-4);
+    write_step_string(w.emit(), filepath);
+}
+
+void write_file_step_breps(const std::vector<const BRep*>& breps, const std::string& name,
+                           const std::string& filepath) {
+    // Several solids in ONE file, each colored from its OWN surfacecolor (AP214
+    // presentation chain: STYLED_ITEM per ADVANCED_FACE -> ... -> COLOUR_RGB). Used to
+    // ship boolean OPERANDS side by side (A red, B blue) before the operation is made.
+    StepWriter w;
+    std::vector<std::vector<int>> shells;
+    std::vector<int> styled;
+    bool closed = true;
+    double diag_all = 1.0;
+    for (const BRep* b : breps) {
+        if (!b) continue;
+        double diag = 1.0;
+        std::vector<std::vector<int>> sh = emit_brep_shells(w, *b, diag);
+        diag_all = std::max(diag_all, diag);
+        closed = closed && b->is_solid();
+        const Color& col = b->surfacecolor;
+        int psa = w.color_style(col.r, col.g, col.b);
+        for (const auto& grp : sh)
+            for (int fid : grp)
+                styled.push_back(w.write_raw("STYLED_ITEM('',(#" + std::to_string(psa)
+                                             + "),#" + std::to_string(fid) + ")"));
+        shells.insert(shells.end(), sh.begin(), sh.end());
+    }
+    w.finish_shape(shells, closed, name, diag_all * 1e-4, &styled);
     write_step_string(w.emit(), filepath);
 }
 

@@ -21,5 +21,9 @@ void write_file_step_nurbscurves(const std::vector<NurbsCurve>& curves, const st
 void write_file_step_nurbssurfaces(const std::vector<NurbsSurface>& surfaces, const std::string& filepath);
 void write_file_step_nurbssurfaces_trimmed(const std::vector<NurbsSurfaceTrimmed>& trimmed, const std::string& filepath);
 void write_file_step_brep(const BRep& brep, const std::string& filepath);
+// Several solids in one file, each colored from its own surfacecolor (AP214 STYLED_ITEM
+// chain per face). Ships boolean operands side by side before the operation is made.
+void write_file_step_breps(const std::vector<const BRep*>& breps, const std::string& name,
+                           const std::string& filepath);
 
 } } // namespace session_cpp::file_step

@@ -48,6 +48,12 @@ std::map<std::string, Place> placements() {
         {"cyl2",  {"cylinder", {1.5,6},   {-3,0,0, 0,1,0, 90}}},
         {"cone2", {"cone",     {2.0,4.0}, {0,0,2, 1,0,0, 180}}},
         {"tor2",  {"torus",    {2.0,0.8}, {2,0,0, 0,0,1, 0}}},
+        // 45-deg tilted cone piercing the box bottom + one wall: every box-plane section is
+        // an analytic ELLIPSE (45 deg > half-angle 24.2 deg; r=1.8 never reaches the y walls).
+        // Upright cones vs box walls give plane-PARALLEL-TO-AXIS hyperbolas -- a known
+        // analytic-SSI gap (IntAna_QuadQuadGeo port pending), kept out of the gate.
+        {"cone3", {"cone",     {1.8,4.0}, {0,0,-2, 0,1,0, 45}}},
+        {"tor3",  {"torus",    {2.0,0.8}, {0,0,-1, 0,0,1, 0}}},  // tube crosses the cone surface
     };
 }
 
@@ -59,7 +65,7 @@ std::vector<std::array<std::string,3>> pairs() {
         {"box  x tor ", "box",  "tor"},  {"sph  x sph ", "sph",  "sph2"},
         {"sph  x cone", "sph",  "cone"}, {"sph  x cyl ", "sph",  "cyl"},
         {"sph  x tor ", "sph",  "tor"},  {"cone x cone", "cone", "cone2"},
-        {"cone x cyl ", "cone", "cyl"},  {"cone x tor ", "cone", "tor"},
+        {"cone x cyl ", "cone", "cyl"},  {"cone x tor3", "cone", "tor3"},
         {"cyl  x cyl ", "cyl",  "cyl2"}, {"cyl  x tor ", "cyl",  "tor"},
         {"tor  x tor ", "tor",  "tor2"},
     };
@@ -87,6 +93,8 @@ std::map<std::string, Place> edge_placements() {
         {"ecylP",  {"cylinder", {1.5,6},   {3,0,-3, 0,0,1, 0}}},  // parallel axes, line tangency x=1.5
         {"ecylF",  {"cylinder", {1.5,4},   {0,0,-2, 0,0,1, 0}}},  // caps flush with ebox z-faces
         {"ecylT",  {"cylinder", {0.8,6},   {0,0,-3, 0,0,1, 0}}},  // through etor hole, no contact
+        {"ecylO",  {"cylinder", {1.5,6},   {2,0,-3, 0,0,1, 0}}},  // parallel axes, PROPER overlap
+        {"eboxC3", {"box",      {4,4,4},   {2,2,2, 0,0,1, 0}}},   // overlap shifted in ALL 3 axes
         {"etor",   {"torus",    {2.0,0.8}, ID}},
     };
 }
@@ -100,7 +108,7 @@ std::vector<std::array<std::string,3>> edge_pairs() {
         {"disjoint   ", "ebox", "eboxD"}, {"sph tanext ", "esph", "esphX"},
         {"sph tanint ", "esph", "esphY"}, {"sph inscr  ", "ebox", "esphZ"},
         {"cyl tanline", "ecyl", "ecylP"}, {"cyl flush  ", "ebox", "ecylF"},
-        {"tor linked ", "etor", "ecylT"},
+        {"tor linked ", "etor", "ecylT"}, {"face copl3d", "ebox", "eboxC3"},
     };
 }
 
@@ -235,7 +243,14 @@ int main(int argc, char** argv) {
                 if (const char* dp = std::getenv("SESSION_DUMP_PB")) r.pb_dump(dp);
                 if (const char* sd = std::getenv("SESSION_STEP_DIR")) {
                     std::filesystem::create_directories(sd);
-                    file_step::write_file_step_brep(r,
+                    // ONE file per test operation: operand A (red), operand B (blue) and
+                    // the boolean result (green) side by side in their tested positions.
+                    ba.surfacecolor = Color(0.85f, 0.25f, 0.20f);
+                    bb.surfacecolor = Color(0.20f, 0.45f, 0.85f);
+                    r.surfacecolor  = Color(0.35f, 0.75f, 0.40f);
+                    std::vector<const BRep*> parts = {&ba, &bb};
+                    if (r.face_count() > 0) parts.push_back(&r);
+                    file_step::write_file_step_breps(parts, pr[1] + "_" + mode + "_" + pr[2],
                         std::string(sd) + "/" + pr[1] + "_" + mode + "_" + pr[2] + ".step");
                 }
                 v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
@@ -385,7 +400,12 @@ int main(int argc, char** argv) {
                     std::chrono::steady_clock::now() - t0).count();
             if (const char* sd = std::getenv("SESSION_STEP_DIR")) {
                 std::filesystem::create_directories(sd);
-                file_step::write_file_step_brep(r,
+                BRep ia = box, ib = ff;
+                ia.surfacecolor = Color(0.85f, 0.25f, 0.20f);
+                ib.surfacecolor = Color(0.20f, 0.45f, 0.85f);
+                r.surfacecolor  = Color(0.35f, 0.75f, 0.40f);
+                file_step::write_file_step_breps({&ia, &ib, &r},
+                    std::string("box_") + modes[m] + "_blob",
                     std::string(sd) + "/freeform_" + modes[m] + "_box.step");
                 if (m == 0) file_step::write_file_step_brep(ff, std::string(sd) + "/freeform_blob.step");
             }
@@ -474,6 +494,30 @@ int main(int argc, char** argv) {
             if (occ_v[m] != 0 && std::abs(vv[m]-occ_v[m])/std::abs(occ_v[m]) > 1e-6) ok = false;
         ++total; if (!ok) ++fails;
         std::printf("  freeform verdict: %s\n", ok ? "OK" : "FAIL");
+    }
+    // Real-world STEP round-trip: read two chair models, cut A - B, write A/B/result colored.
+    if (const char* cd = std::getenv("SESSION_CHAIRS")) {
+        auto as = file_step::read_file_step_breps(std::string(cd) + "/chair0.stp");
+        auto bs = file_step::read_file_step_breps(std::string(cd) + "/chair1.stp");
+        std::printf("chairs: A breps %zu, B breps %zu\n", as.size(), bs.size());
+        if (!as.empty() && !bs.empty()) {
+            BRep& A = as[0]; BRep& B = bs[0];
+            std::printf("A: faces %d solid %d vol %.4f | B: faces %d solid %d vol %.4f\n",
+                        A.face_count(), A.is_solid() ? 1 : 0, A.volume(),
+                        B.face_count(), B.is_solid() ? 1 : 0, B.volume());
+            try {
+                BRep r = A.boolean_difference(B);
+                std::printf("chairs cut: faces %d solid %d vol %.4f\n",
+                            r.face_count(), r.is_solid() ? 1 : 0, r.volume());
+                A.surfacecolor = Color(0.85f, 0.25f, 0.20f);
+                B.surfacecolor = Color(0.20f, 0.45f, 0.85f);
+                r.surfacecolor = Color(0.35f, 0.75f, 0.40f);
+                std::vector<const BRep*> parts = {&A, &B};
+                if (r.face_count() > 0) parts.push_back(&r);
+                file_step::write_file_step_breps(parts, "chair0_cut_chair1",
+                    std::string(cd) + "/chair0_cut_chair1.step");
+            } catch (const std::exception& e) { std::printf("chairs cut THREW: %s\n", e.what()); }
+        }
     }
     if (const char* sd = std::getenv("SESSION_STEP_PRIMS")) {
         std::filesystem::create_directories(sd);
