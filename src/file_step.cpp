@@ -1460,11 +1460,10 @@ public:
     // whose operands touch only along a measure-zero contact (tangent line, shared corner)
     // is TWO watertight shells; wrapping both faces sets in ONE solid makes the reader's
     // shell splitter orphan one of them (BRepCheck SubshapeNotInShape, volume -0).
-    void finish_shape(const std::vector<std::vector<int>>& shells, bool closed, const std::string& name,
-                      double uncertainty = 1e-6, const std::vector<int>* styled_items = nullptr) {
-        // An EMPTY result (e.g. cone x torus common: the cone threads the hole without
-        // touching) still gets the product skeleton with a bare SHAPE_REPRESENTATION --
-        // a file with a naked DATA section fails strict parsers ("Incorrect Syntax").
+    // One body per shell group, honoring a PER-SHELL closed flag (a colored multi-part
+    // file mixes watertight operands with a possibly-open result; a global flag wrote
+    // EVERY part as OPEN_SHELL as soon as one part was open).
+    std::vector<int> make_bodies(const std::vector<std::vector<int>>& shells, bool closed) {
         std::vector<int> bodies;
         for (const auto& sf : shells) {
             if (sf.empty()) continue;
@@ -1473,6 +1472,19 @@ public:
             if (closed) bodies.push_back(write_raw("MANIFOLD_SOLID_BREP('',#" + std::to_string(shell) + ")"));
             else        bodies.push_back(write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))"));
         }
+        return bodies;
+    }
+
+    void finish_shape(const std::vector<std::vector<int>>& shells, bool closed, const std::string& name,
+                      double uncertainty = 1e-6, const std::vector<int>* styled_items = nullptr) {
+        // An EMPTY result (e.g. cone x torus common: the cone threads the hole without
+        // touching) still gets the product skeleton with a bare SHAPE_REPRESENTATION --
+        // a file with a naked DATA section fails strict parsers ("Incorrect Syntax").
+        finish_product(make_bodies(shells, closed), closed, name, uncertainty, styled_items);
+    }
+
+    void finish_product(const std::vector<int>& bodies, bool closed, const std::string& name,
+                        double uncertainty = 1e-6, const std::vector<int>* styled_items = nullptr) {
         int o  = write_point(0, 0, 0);
         int dz = write_raw("DIRECTION('',(0.,0.,1.))");
         int dx = write_raw("DIRECTION('',(1.,0.,0.))");
@@ -3068,25 +3080,29 @@ void write_file_step_breps(const std::vector<const BRep*>& breps, const std::str
     // presentation chain: STYLED_ITEM per ADVANCED_FACE -> ... -> COLOUR_RGB). Used to
     // ship boolean OPERANDS side by side (A red, B blue) before the operation is made.
     StepWriter w;
-    std::vector<std::vector<int>> shells;
+    std::vector<int> bodies;
     std::vector<int> styled;
-    bool closed = true;
+    bool any_closed = false;
     double diag_all = 1.0;
     for (const BRep* b : breps) {
         if (!b) continue;
         double diag = 1.0;
         std::vector<std::vector<int>> sh = emit_brep_shells(w, *b, diag);
         diag_all = std::max(diag_all, diag);
-        closed = closed && b->is_solid();
+        // PER-BREP closed flag: a watertight operand stays MANIFOLD_SOLID_BREP even when
+        // it shares the file with an open result shell.
+        bool closed = b->is_solid();
+        any_closed = any_closed || closed;
+        std::vector<int> bb = w.make_bodies(sh, closed);
+        bodies.insert(bodies.end(), bb.begin(), bb.end());
         const Color& col = b->surfacecolor;
         int psa = w.color_style(col.r, col.g, col.b);
         for (const auto& grp : sh)
             for (int fid : grp)
                 styled.push_back(w.write_raw("STYLED_ITEM('',(#" + std::to_string(psa)
                                              + "),#" + std::to_string(fid) + ")"));
-        shells.insert(shells.end(), sh.begin(), sh.end());
     }
-    w.finish_shape(shells, closed, name, diag_all * 1e-4, &styled);
+    w.finish_product(bodies, any_closed, name, diag_all * 1e-4, &styled);
     write_step_string(w.emit(), filepath);
 }
 
