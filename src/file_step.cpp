@@ -1453,6 +1453,9 @@ public:
         // reader cannot sew section edges whose cross-operand copies agree only to the
         // kernel's coincidence tolerance -- shells stay open and healing re-orients them
         // arbitrarily (box fuse sphere imported as box MINUS sphere). State the honest value.
+        // An empty result has no bbox: the diag-scaled uncertainty arrives as inf/NaN and
+        // "LENGTH_MEASURE(inf)" fails strict parsers ("Incorrect Syntax"). Clamp to 1e-6.
+        if (!std::isfinite(uncertainty) || uncertainty <= 0.0) uncertainty = 1e-6;
         int un = write_raw("UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(" + fmt(uncertainty)
                            + "),#" + std::to_string(lu) + ",'distance_accuracy_value','')");
         int gc = write_raw("(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#"

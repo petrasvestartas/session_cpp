@@ -2568,6 +2568,28 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                 flush();
             }
             cut_pcs = clipped;
+            // Drop cut pcurves that run ALONG a non-periodic chart border: a section with
+            // a face that merely touches this chart's edge (coplanar-face contact, e.g.
+            // overlap boxes sharing z-planes) cannot split the region -- but it derails
+            // the arrangement, losing the legitimate interior splits (walls stayed
+            // unsplit and the result lost its caps).
+            double bu = (duS.second - duS.first) * 1e-6;
+            double bv = (dvS.second - dvS.first) * 1e-6;
+            std::vector<NurbsCurve> off_border;
+            for (auto& pcB : cut_pcs) {
+                auto dB = pcB.domain();
+                bool lo_u = true, hi_u = true, lo_v = true, hi_v = true;
+                for (int i2 = 0; i2 <= 16; ++i2) {
+                    Point q = pcB.point_at(dB.first + (dB.second - dB.first) * i2 / 16.0);
+                    lo_u = lo_u && std::abs(q[0] - duS.first)  < bu;
+                    hi_u = hi_u && std::abs(q[0] - duS.second) < bu;
+                    lo_v = lo_v && std::abs(q[1] - dvS.first)  < bv;
+                    hi_v = hi_v && std::abs(q[1] - dvS.second) < bv;
+                }
+                bool border = (!cu2 && (lo_u || hi_u)) || (!cv2 && (lo_v || hi_v));
+                if (!border) off_border.push_back(pcB);
+            }
+            cut_pcs = off_border;
         }
         int n_boundary = (int)outer_pcs.size();
         std::vector<NurbsCurve> all_pcs = outer_pcs;
@@ -4285,14 +4307,21 @@ void BRep::sew_coincident_edges(double tol) {
             m_topology_edges[ei].trim_indices.clear();
         }
     }
+    // Merge is capped at 2 trims per representative: at a non-manifold contact (two boxes
+    // fused along a shared corner line) FOUR 1-trim copies coincide; merging all of them
+    // makes one 4-trim edge (not solid). Pairing them 1+1 instead yields two touching
+    // 2-trim edges -- two watertight shells, matching OCCT's two-solid compound.
     std::vector<int> rep(ne, -1);
     std::vector<int> reps;
+    std::vector<int> rep_trims(ne, 0);
     for (int ei = 0; ei < ne; ++ei) {
         if (dead[ei]) continue;
-        if (samp[ei].empty()) { rep[ei] = ei; reps.push_back(ei); continue; }
+        int own = (int)m_topology_edges[ei].trim_indices.size();
+        if (samp[ei].empty()) { rep[ei] = ei; reps.push_back(ei); rep_trims[ei] += own; continue; }
         for (int r : reps)
-            if (!samp[r].empty() && !bbox_far(ei, r) && coincident_within(samp[ei], samp[r])) { rep[ei] = r; break; }
+            if (!samp[r].empty() && rep_trims[r] + own <= 2 && !bbox_far(ei, r) && coincident_within(samp[ei], samp[r])) { rep[ei] = r; break; }
         if (rep[ei] < 0) { rep[ei] = ei; reps.push_back(ei); }
+        rep_trims[rep[ei]] += own;
     }
     // Second pass, endpoint-anchored: one operand's section copy can be fit-accurate while
     // the other's is a devtol-coarse lift, pushing their Hausdorff just past the tolerance.
@@ -4823,6 +4852,11 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                 else if (op == BooleanOp::Intersection) keep = inside;
                 else { if (is_first) keep = !inside; else { keep = inside; r = true; } }
             }
+            if (std::getenv("SESSION_CLS_DBG"))
+                std::printf("[CLS] %c f%d sp(%.3f,%.3f,%.3f) on=%d in_p=%d in_m=%d keep=%d r=%d\n",
+                            is_first ? 'A' : 'B', fi, sp[0], sp[1], sp[2],
+                            (nl > 1e-12 && in_p != in_m) ? 1 : 0, in_p ? 1 : 0, in_m ? 1 : 0,
+                            keep ? 1 : 0, r ? 1 : 0);
             if (keep) { kept.push_back(fi); if (rev) rev->push_back(r); }
         }
     };
@@ -4876,12 +4910,23 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         int ei = result.m_trims[ti].edge_index;
         if (ei>=0 && ei<(int)result.m_topology_edges.size()) result.m_topology_edges[ei].trim_indices.push_back(ti);
     }
+    auto count_nt = [&](const char* tag) {
+        if (!std::getenv("SESSION_NT_DBG")) return;
+        int c1 = 0, c4 = 0;
+        for (auto& e : result.m_topology_edges) {
+            if (e.trim_indices.size() == 1) ++c1;
+            if (e.trim_indices.size() >= 4) ++c4;
+        }
+        std::printf("[NT] %-14s edges1=%d edges4+=%d\n", tag, c1, c4);
+    };
+    count_nt("combine");
 
     // Resolve T-junctions first: a face whose boundary run was split (e.g. by an arrangement
     // artifact) leaves a long edge on the adjacent face spanning several shorter ones. Imprint
     // splits the long edge at those interior vertices so the pieces can mate.
     lap("combine");
     result.imprint_edges();                                   lap("imprint_edges");
+    count_nt("imprint_edges");
     // BUILDSPEC P0: shared section-edge backbone, gated by SESSION_BOOL_SHARED_EDGES. When set,
     // recompute the A&B section curve ONCE and make each operand's section arcs reference the
     // EXACT sub-arc of that single curve, then merge -> one shared edge per section (watertight by
@@ -4898,12 +4943,14 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // a co-refinement: after it, sew merges segments that are arc-for-arc identical.
     if (!std::getenv("SESSION_NO_COREFINE")) result.co_refine_coincident_edges();
     lap("co_refine");
+    count_nt("co_refine");
     // Geometric sewing: the intersection curve is imprinted independently on A and B (a
     // closed self-loop on one, a seam-anchored loop on the other), so their edges share no
     // endpoints and the position-keyed emap cannot mate them. Merge edges whose 3D curves
     // trace the SAME point set (Hausdorff ~ 0), regardless of start point / discretization,
     // into one mated edge -- helps make the result a watertight solid.
     result.sew_coincident_edges();                            lap("sew");
+    count_nt("sew");
     // SameParameter-lite (planar pcurves rebuilt from the curved side's lifted boundary) is
     // gated OFF: it only helps once ALL section arcs are pullback-quality on both surfaces --
     // with mixed-quality copies (box x tor: e16-type arcs sit 5e-4 off the plane) the rebuilt

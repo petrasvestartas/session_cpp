@@ -211,6 +211,16 @@ int main(int argc, char** argv) {
             double v = 0; int nf = 0; int solid = 0; long us = 0;
             try {
                 BRep ba = build(A), bb = build(B);
+                if (std::getenv("SESSION_PAIR_SSI")) {
+                    for (size_t ia = 0; ia < ba.m_surfaces.size(); ++ia)
+                        for (size_t ib = 0; ib < bb.m_surfaces.size(); ++ib) {
+                            auto trs = Intersection::surface_surface(ba.m_surfaces[ia], bb.m_surfaces[ib], 1e-6);
+                            if (trs.empty()) continue;
+                            std::printf("[PSSI] A%zu x B%zu: %zu curves:", ia, ib, trs.size());
+                            for (auto& tr : trs) std::printf(" len=%.4f", std::get<0>(tr).length());
+                            std::printf("\n");
+                        }
+                }
                 auto t0 = std::chrono::steady_clock::now();
                 BRep r = std::string(mode) == "cut"    ? ba.boolean_difference(bb)
                        : std::string(mode) == "common" ? ba.boolean_intersection(bb)

@@ -4114,7 +4114,12 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
         V3 c2 = rb.p1; double r2 = rb.r;
         V3 dv{c2[0]-c1[0], c2[1]-c1[1], c2[2]-c1[2]};
         double dist = std::sqrt(dv[0]*dv[0] + dv[1]*dv[1] + dv[2]*dv[2]);
-        if (1e-12 < dist && dist < r1 + r2 && dist > std::abs(r1 - r2)) {
+        // Tolerance-based tangency gates: at EXACT tangency (dist == r1+r2 or |r1-r2|)
+        // sqrt rounding can pass the open comparison by one ulp and rr2 comes out ~1e-16,
+        // emitting a radius ~1e-8 phantom circle that splits an operand at the tangent
+        // point (internally tangent spheres gained a face vs OCCT).
+        double tan_tol = (r1 + r2) * 1e-9;
+        if (1e-12 < dist && dist < r1 + r2 - tan_tol && dist > std::abs(r1 - r2) + tan_tol) {
             V3 nu{dv[0]/dist, dv[1]/dist, dv[2]/dist};
             double aa = (dist*dist + r1*r1 - r2*r2) / (2.0*dist);
             double rr2 = r1*r1 - aa*aa;
@@ -4606,6 +4611,17 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     return result;
 }
 
+// Drop degenerate (near-zero-length) section curves: an exact tangency can leak a
+// ~1e-8 phantom loop (analytic gate passed by one ulp, or marcher grazing) that
+// splits an operand at the tangent point without changing volume.
+static void drop_point_sections(std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& trs, double tolerance) {
+    double min_len = std::max(tolerance * 10.0, 1e-9);
+    trs.erase(std::remove_if(trs.begin(), trs.end(),
+              [&](const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t) {
+                  return std::get<0>(t).length() < min_len;
+              }), trs.end());
+}
+
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surface_surface(
     const NurbsSurface& a,
     const NurbsSurface& b,
@@ -4618,8 +4634,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     // HIT carries all analytic triples (empty = recognized but no intersection);
     // NOT_ANALYTIC falls through to marching.
     AnalyticResult _ana = analytic_ssi(a, b, tolerance);
-    if (_ana.status != AnalyticResult::NOT_ANALYTIC)
+    if (_ana.status != AnalyticResult::NOT_ANALYTIC) {
+        drop_point_sections(_ana.triples, tolerance);
         return _ana.triples;
+    }
 
     // Planar dispatch: reuse the plane tracer when either surface is planar
     auto plane_from = [](const NurbsSurface& srf) -> Plane {
@@ -4638,6 +4656,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             std::vector<NurbsCurve> pas = Closest::surface_curve(a, c3);
             if (pas.size() == 1) result.push_back({c3, pas[0], pb});
         }
+        drop_point_sections(result, tolerance);
         return result;
     }
     if (b.is_planar(nullptr, 1e-9)) {
@@ -4647,6 +4666,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             std::vector<NurbsCurve> pbs = Closest::surface_curve(b, c3);
             if (pbs.size() == 1) result.push_back({c3, pa, pbs[0]});
         }
+        drop_point_sections(result, tolerance);
         return result;
     }
 
@@ -5311,6 +5331,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         }
     }
 
+    drop_point_sections(result, tolerance);
     return result;
 }
 
