@@ -543,6 +543,15 @@ public:
     /// Calculate the enclosed volume of a closed mesh
     double volume() const;
 
+    /// Mesh CSG via a signed-distance field + marching cubes. Robust for imported/freeform
+    /// meshes whose exact surface-surface intersection is hard: samples a signed-distance
+    /// field of the combined solids on a grid (resolution cells along the longest bbox axis),
+    /// extracts a watertight isosurface (edge-welded, marching-cubes ambiguity holes filled),
+    /// and returns a closed mesh. Higher resolution trades speed for accuracy.
+    Mesh boolean_difference(const Mesh& other, int resolution = 96) const;
+    Mesh boolean_union(const Mesh& other, int resolution = 96) const;
+    Mesh boolean_intersection(const Mesh& other, int resolution = 96) const;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////

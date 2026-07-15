@@ -6,6 +6,7 @@
 #include "nurbssurface.h"
 #include "nurbssurface_trimmed.h"
 #include "brep.h"
+#include "closest.h"
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -934,11 +935,42 @@ struct BRepBuilder {
         StepReader::Proj proj;
         if (surface_ref >= 0) proj = r.get_projector(surface_ref);
 
+        // No analytic projector (B-spline surface; chairs-class files carry no pcurves
+        // at all) -> build the surface up front and project by closest point. fill_surface
+        // ignores the bounds for B-splines, the only surface kind without a projector.
+        NurbsSurface proj_srf;
+        bool have_proj_srf = false;
+        if (proj.kind == StepReader::ProjKind::None && surface_ref >= 0)
+            have_proj_srf = r.fill_surface(surface_ref, 0, 1, 0, 1, proj_srf) && proj_srf.is_valid();
+
         // Pre-scan UV extents
         auto uv_pts_of_sample = [&](const std::vector<Point>& samples) {
             std::vector<Point> uv;
             if (proj.kind == StepReader::ProjKind::None) {
-                return std::vector<Point>{{Point(0,0,0), Point(1,0,0)}};
+                if (!have_proj_srf || samples.empty())
+                    return std::vector<Point>{{Point(0,0,0), Point(1,0,0)}};
+                // Warm-start window keeps successive samples on one branch of a closed
+                // surface; a window miss (distance blows past the file's incidence error)
+                // falls back to a full-domain search.
+                auto [du0, du1] = proj_srf.domain(0);
+                auto [dv0, dv1] = proj_srf.domain(1);
+                double wu = (du1 - du0) * 0.1, wv = (dv1 - dv0) * 0.1;
+                double d_ref = 0, pu = 0, pv = 0;
+                for (size_t k = 0; k < samples.size(); ++k) {
+                    double u, v, d;
+                    if (k == 0) {
+                        std::tie(u, v, d) = Closest::surface_point(proj_srf, samples[k]);
+                        d_ref = d;
+                    } else {
+                        std::tie(u, v, d) = Closest::surface_point(proj_srf, samples[k],
+                            pu - wu, pu + wu, pv - wv, pv + wv);
+                        if (d > 10 * d_ref + 1e-9)
+                            std::tie(u, v, d) = Closest::surface_point(proj_srf, samples[k]);
+                    }
+                    uv.emplace_back(u, v, 0.0);
+                    pu = u; pv = v;
+                }
+                return uv;
             }
             for (const auto& s : samples) {
                 auto [u, v] = r.project(proj, s);
@@ -1006,7 +1038,7 @@ struct BRepBuilder {
                         for (const auto& p : ec2->params) if (p.tag == StepTag::Ref) rfs.push_back(p.ref_id);
                         return rfs.size() >= 3 ? rfs[2] : -1;
                     }(),
-                    vs, ve, 16);
+                    vs, ve, have_proj_srf ? 48 : 16);
                 if (samples.empty()) samples = {vs, ve};
                 auto uv = uv_pts_of_sample(samples);
 
@@ -1087,7 +1119,8 @@ struct BRepBuilder {
         if (umin > umax) { umin=-1; umax=1; vmin=-1; vmax=1; }
 
         NurbsSurface srf;
-        if (surface_ref >= 0) r.fill_surface(surface_ref, umin, umax, vmin, vmax, srf);
+        if (have_proj_srf) srf = proj_srf;
+        else if (surface_ref >= 0) r.fill_surface(surface_ref, umin, umax, vmin, vmax, srf);
         int srf_idx = brep.add_surface(srf);
         int face_idx = brep.add_face(srf_idx, !same_sense);
 
@@ -1095,7 +1128,13 @@ struct BRepBuilder {
             BRepLoopType lt = lp.is_outer ? BRepLoopType::Outer : BRepLoopType::Inner;
             int loop_idx = brep.add_loop(face_idx, lt);
             for (const auto& le : lp.edges) {
-                NurbsCurve crv2d = polyline_nurbs(le.uv, 2);
+                // Kernel convention: pcurve domain order == LOOP TRAVERSAL order (the region
+                // samplers in volume()/face_interior concatenate pcurve samples without looking
+                // at trim.reversed). le.uv is sampled in CURVE order -> reverse for reversed
+                // trims; the trim flag keeps its edge-relative meaning.
+                std::vector<Point> uv = le.uv;
+                if (le.reversed) std::reverse(uv.begin(), uv.end());
+                NurbsCurve crv2d = polyline_nurbs(uv, 2);
                 int c2d = brep.add_curve_2d(crv2d);
                 brep.add_trim(c2d, le.edge_idx, loop_idx, le.reversed, BRepTrimType::Boundary);
             }
@@ -1140,11 +1179,14 @@ class StepWriter {
         std::string s = buf;
         // ISO 10303-21 REAL needs a decimal point in the mantissa and uppercase E:
         // %g yields "1e-06" for the clamped uncertainty of an EMPTY result, which
-        // strict parsers reject ("Incorrect Syntax").
+        // strict parsers reject ("Incorrect Syntax"), and collapses near-integers
+        // (-1.9999999999999998) to bare "-2".
         size_t e = s.find('e');
         if (e != std::string::npos) {
             s[e] = 'E';
             if (s.substr(0, e).find('.') == std::string::npos) { s.insert(e, "."); }
+        } else if (s.find('.') == std::string::npos) {
+            s += ".";
         }
         return s;
     }
@@ -1910,6 +1952,44 @@ static void analytic_params_of(const AnalyticSrf& A, const Point& p,
     }
 }
 
+// Forward evaluation at canonical (s,t) -- the written analytic surface the reader binds
+// pcurves against (the kernel NurbsSurface chart is unrelated). Inverse of analytic_params_of.
+static Point analytic_eval(const AnalyticSrf& A, double s, double t) {
+    double cs = std::cos(s), sn = std::sin(s);
+    double rx = cs * A.X[0] + sn * A.Y[0];
+    double ry = cs * A.X[1] + sn * A.Y[1];
+    double rz = cs * A.X[2] + sn * A.Y[2];
+    switch (A.kind) {
+        case 1:
+            return Point(A.C[0] + s * A.X[0] + t * A.Y[0],
+                         A.C[1] + s * A.X[1] + t * A.Y[1],
+                         A.C[2] + s * A.X[2] + t * A.Y[2]);
+        case 2:
+            return Point(A.C[0] + A.R * rx + t * A.Z[0],
+                         A.C[1] + A.R * ry + t * A.Z[1],
+                         A.C[2] + A.R * rz + t * A.Z[2]);
+        case 3: {
+            double ca = std::cos(A.r2), sa = std::sin(A.r2);
+            return Point(A.C[0] + t * (ca * A.Z[0] + sa * rx),
+                         A.C[1] + t * (ca * A.Z[1] + sa * ry),
+                         A.C[2] + t * (ca * A.Z[2] + sa * rz));
+        }
+        case 4: {
+            double ct = std::cos(t), st = std::sin(t);
+            return Point(A.C[0] + A.R * (ct * rx + st * A.Z[0]),
+                         A.C[1] + A.R * (ct * ry + st * A.Z[1]),
+                         A.C[2] + A.R * (ct * rz + st * A.Z[2]));
+        }
+        default: {
+            double ct = std::cos(t), st = std::sin(t);
+            double rr = A.R + A.r2 * ct;
+            return Point(A.C[0] + rr * rx + A.r2 * st * A.Z[0],
+                         A.C[1] + rr * ry + A.r2 * st * A.Z[1],
+                         A.C[2] + rr * rz + A.r2 * st * A.Z[2]);
+        }
+    }
+}
+
 static Vector analytic_normal_of(const AnalyticSrf& A, const Point& p) {
     double wx = p[0]-A.C[0], wy = p[1]-A.C[1], wz = p[2]-A.C[2];
     double x = wx*A.X[0]+wy*A.X[1]+wz*A.X[2];
@@ -2204,7 +2284,7 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
     // exact curve edge_id writes. The stored kernel edge curve is UNRELIABLE here: co_refine
     // and sew leave rep-curves decoupled from trim extents (a tangent-point stub's edge can
     // carry a LONG arc from elsewhere), and senses computed against it come out scrambled.
-    auto edge_first_trim = [&](int ei, const NurbsCurve** pc_out, const NurbsSurface** srf_out) -> bool {
+    auto edge_first_trim = [&](int ei, int si_want, const NurbsCurve** pc_out, const NurbsSurface** srf_out) -> bool {
         const BRepEdge& E = brep.m_topology_edges[ei];
         for (int ti : E.trim_indices) {
             if (ti < 0 || ti >= (int)brep.m_trims.size()) continue;
@@ -2215,6 +2295,7 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
             if (fi2 < 0 || fi2 >= (int)brep.m_faces.size()) continue;
             int si = brep.m_faces[fi2].surface_index;
             if (si < 0 || si >= (int)brep.m_surfaces.size()) continue;
+            if (si_want >= 0 && si != si_want) continue;
             if (T2.curve_2d_index < 0 || T2.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
             const NurbsCurve& pc2 = brep.m_curves_2d[T2.curve_2d_index];
             if (!pc2.is_valid()) continue;
@@ -2288,12 +2369,280 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
     // Importers need the pcurves to build wires on PERIODIC surfaces: without them a torus
     // face bounded only by 3D seam curves imports with its bounds dropped at 2x area, and
     // a cylinder wall mis-heals.
-    std::vector<int> edge_step_id(brep.m_topology_edges.size(), -1);
-    auto edge_id = [&](int ei) -> int {
-        if (ei < 0 || ei >= (int)brep.m_topology_edges.size()) return -1;
-        if (edge_step_id[ei] >= 0) return edge_step_id[ei];
+    // One written arc of an edge: an exact CIRCLE (ref direction at the arc start, angular
+    // range [0, ext]) or a spline over its own domain. f0/f1 = the fraction of the FULL
+    // edge traversal this arc covers (0..1 for unsplit edges) -- it maps the stored pcurve
+    // of kind-0 fallbacks onto the arc.
+    struct ArcSpec {
+        bool circle = false;
+        Point cc{0, 0, 0};
+        Vector cref{1, 0, 0}, cax{0, 0, 1};
+        double crad = 0;
+        NurbsCurve spline;
+        double a = 0, b = 1;
+        double f0 = 0, f1 = 1;
+        int vs = -1, ve = -1;
+    };
+    // Decimate a SameParameter deg-1 pullback polyline: keep every s-th node while the
+    // surface image of the linear interpolant stays within diag*2e-6 of the dense nodes.
+    // Knots remain written-curve parameters, so the SameParameter binding is untouched.
+    // Near-straight pcurves (plane borders, chair patch edges) collapse to 2-3 points --
+    // the fixed dense resampling was 86% of the 2.7MB chair file.
+    auto decimate_pullback = [&](std::vector<Point>& uvp, std::vector<double>& kts,
+                                 auto&& fwd, const std::vector<Point>& p3) {
+        int n = (int)uvp.size();
+        if (n < 9 || (int)kts.size() != n || (int)p3.size() != n) return;
+        double tol = diag * 2e-6;
+        for (int s : {128, 96, 64, 48, 32, 16, 8, 4, 2}) {
+            if ((n - 1) % s) continue;
+            bool ok = true;
+            for (int i = 0; i < n && ok; ++i) {
+                int j = (i / s) * s;
+                if (i == j) continue;
+                double f = (double)(i - j) / (double)s;
+                double us = uvp[j][0] + (uvp[j + s][0] - uvp[j][0]) * f;
+                double vs = uvp[j][1] + (uvp[j + s][1] - uvp[j][1]) * f;
+                if (fwd(us, vs).distance(p3[i]) > tol) ok = false;
+            }
+            if (!ok) continue;
+            std::vector<Point> u2;
+            std::vector<double> k2;
+            for (int i = 0; i < n; i += s) { u2.push_back(uvp[i]); k2.push_back(kts[i]); }
+            uvp.swap(u2);
+            kts.swap(k2);
+            return;
+        }
+    };
+    auto emit_arc_edge = [&](int ei, const ArcSpec& AS) -> int {
         const BRepEdge& E = brep.m_topology_edges[ei];
-        if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)brep.m_curves_3d.size()) return -1;
+        auto fnum = [](double x) {
+            char b[64];
+            std::snprintf(b, sizeof b, "%.15g", x == 0.0 ? 0.0 : x);
+            std::string r2s(b);
+            if (r2s.find('.') == std::string::npos && r2s.find('e') == std::string::npos
+                && r2s.find('E') == std::string::npos) r2s += ".";
+            return r2s;
+        };
+        int cid;
+        if (AS.circle) {
+            int pc_ = w.write_raw("CARTESIAN_POINT('',(" + fnum(AS.cc[0]) + "," + fnum(AS.cc[1]) + "," + fnum(AS.cc[2]) + "))");
+            int dz = w.write_raw("DIRECTION('',(" + fnum(AS.cax[0]) + "," + fnum(AS.cax[1]) + "," + fnum(AS.cax[2]) + "))");
+            int dx = w.write_raw("DIRECTION('',(" + fnum(AS.cref[0]) + "," + fnum(AS.cref[1]) + "," + fnum(AS.cref[2]) + "))");
+            int ax = w.write_raw("AXIS2_PLACEMENT_3D('',#" + std::to_string(pc_) + ",#" + std::to_string(dz) + ",#" + std::to_string(dx) + ")");
+            cid = w.write_raw("CIRCLE('',#" + std::to_string(ax) + "," + fnum(AS.crad) + ")");
+        } else {
+            cid = w.write_nurbs_curve(AS.spline);
+        }
+        if (cid < 0) return -1;
+        const double W_a = AS.a, W_b = AS.b;
+        // Evaluate the WRITTEN geometry at its own parameter (SameParameter source).
+        auto W_eval = [&](double t) -> Point {
+            if (!AS.circle) return AS.spline.point_at(t);
+            Vector Yd(AS.cax[1] * AS.cref[2] - AS.cax[2] * AS.cref[1],
+                      AS.cax[2] * AS.cref[0] - AS.cax[0] * AS.cref[2],
+                      AS.cax[0] * AS.cref[1] - AS.cax[1] * AS.cref[0]);
+            double cs = std::cos(t), sn = std::sin(t);
+            return Point(AS.cc[0] + AS.crad * (cs * AS.cref[0] + sn * Yd[0]),
+                         AS.cc[1] + AS.crad * (cs * AS.cref[1] + sn * Yd[1]),
+                         AS.cc[2] + AS.crad * (cs * AS.cref[2] + sn * Yd[2]));
+        };
+        std::vector<int> pcs;
+        std::vector<int> pc_faces;
+        std::vector<char> pc_fwd;
+        for (int ti : E.trim_indices) {
+            if (ti < 0 || ti >= (int)brep.m_trims.size()) continue;
+            const BRepTrim& T = brep.m_trims[ti];
+            int li = T.loop_index;
+            if (li < 0 || li >= (int)brep.m_loops.size()) continue;
+            int fi2 = brep.m_loops[li].face_index;
+            if (fi2 < 0 || fi2 >= (int)brep.m_faces.size()) continue;
+            int si = brep.m_faces[fi2].surface_index;
+            int sid = surface_id(si);
+            if (sid < 0 || T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
+            const NurbsSurface& S = brep.m_surfaces[si];
+            // SameParameter pcurve: pull back the WRITTEN 3D geometry at its OWN parameters
+            // (t_i uniform in the written domain, uv_i = analytic inverse, deg-1 with knots
+            // = t_i). OCCT's reader binds ALL of an edge's representations to ONE parameter
+            // range; independently-fitted pcurves (own chord domains) fail its SameParameter
+            // check, so it silently RE-PROJECTED every edge from the 3D curve -- pcurves
+            // never mattered, and any face whose projection is unstable (arcs grazing the
+            // v=0 branch line, tangency cusps) imported as its full periodic surface.
+            // Planes (kind 1) take the same exact pullback -- their inverse is trivial and
+            // phase-correct for split arcs, where the stored full-loop pcurve cannot serve.
+            NurbsCurve uvc;
+            const AnalyticSrf& A_e = analytic_of(si);
+            if (A_e.kind >= 1) {
+                const double PI_ = 3.14159265358979323846;
+                const double TWOPI = 6.283185307179586;
+                int n = 128;
+                std::vector<Point> uvp;
+                std::vector<double> kts;
+                std::vector<Point> w3;
+                uvp.reserve(n + 1);
+                kts.reserve(n + 1);
+                w3.reserve(n + 1);
+                double ps = 0, pt = 0;
+                bool hp = false;
+                for (int i2 = 0; i2 <= n; ++i2) {
+                    double t = W_a + (W_b - W_a) * i2 / n;
+                    Point Pw = W_eval(t);
+                    double sv, tv; bool rok;
+                    analytic_params_of(A_e, Pw, sv, tv, rok);
+                    if (!rok && hp) sv = ps;
+                    if (hp && A_e.kind >= 2) {          // planes carry no period to unwrap
+                        while (sv - ps >  PI_) sv -= TWOPI;
+                        while (sv - ps < -PI_) sv += TWOPI;
+                        if (A_e.kind == 5) {
+                            while (tv - pt >  PI_) tv -= TWOPI;
+                            while (tv - pt < -PI_) tv += TWOPI;
+                        }
+                    }
+                    ps = sv; pt = tv; hp = true;
+                    uvp.push_back(Point(sv, tv, 0.0));
+                    kts.push_back(t);
+                    w3.push_back(Pw);
+                }
+                if (A_e.kind >= 2) {
+                    // branch anchor at the MID sample: curve STARTS often sit exactly on the
+                    // seam (junction-rotated circles), where both branch choices are 3D-identical
+                    // and the nearest-sample match picks arbitrarily -- prim_cylinder's bottom
+                    // circle anchored to u=0 and unwrapped down to [-2pi,0], one period below its
+                    // loop. The interior midpoint is 3D-unique, so its branch is unambiguous.
+                    std::vector<Point> st = remap_samples(si, brep.m_curves_2d[T.curve_2d_index]);
+                    const NurbsCurve& pcs_ = brep.m_curves_2d[T.curve_2d_index];
+                    auto pdd = pcs_.domain();
+                    size_t mid = uvp.size() / 2;
+                    Point Wm = W_eval(W_a + (W_b - W_a) * (double)mid / (double)n);
+                    double bd = 1e300; size_t bj = 0;
+                    size_t M = st.size() > 1 ? st.size() - 1 : 1;
+                    for (size_t j = 0; j < st.size(); ++j) {
+                        Point uv = pcs_.point_at(pdd.first + (pdd.second - pdd.first) * j / (double)M);
+                        double dd = Wm.distance(S.point_at(uv[0], uv[1]));
+                        if (dd < bd) { bd = dd; bj = j; }
+                    }
+                    double sh_s, sh_t = 0.0;
+                    if (!st.empty() && bd < diag * 1e-4) {
+                        sh_s = TWOPI * std::round((st[bj][0] - uvp[mid][0]) / TWOPI);
+                        if (A_e.kind == 5)
+                            sh_t = TWOPI * std::round((st[bj][1] - uvp[mid][1]) / TWOPI);
+                    } else {   // decoupled stored pcurve: fall back to mid-sample cell snap
+                        double sm = uvp[mid][0];
+                        sh_s = -TWOPI * std::floor(sm / TWOPI);
+                        if (A_e.kind == 5) {
+                            double tm = uvp[mid][1];
+                            sh_t = -TWOPI * std::floor(tm / TWOPI);
+                        }
+                    }
+                    if (sh_s != 0.0 || sh_t != 0.0)
+                        for (auto& q : uvp) q = Point(q[0] + sh_s, q[1] + sh_t, q[2]);
+                }
+                decimate_pullback(uvp, kts,
+                                  [&](double us, double vs) { return analytic_eval(A_e, us, vs); },
+                                  w3);
+                std::vector<double> w1(uvp.size(), 1.0);
+                std::vector<int> mults(uvp.size(), 1);
+                mults.front() = 2; mults.back() = 2;
+                uvc = NurbsCurve::create_from_parameters(uvp, w1, kts, mults, 1, false);
+            }
+            if (!uvc.is_valid()) {
+                uvc = remap_pcurve(si, brep.m_curves_2d[T.curve_2d_index]);
+                // co-direct fallback pcurves with the written curve; a split arc compares
+                // its OWN fraction window [f0,f1] of the stored full-edge pcurve
+                auto pd0 = brep.m_curves_2d[T.curve_2d_index].domain();
+                const NurbsCurve& pc0 = brep.m_curves_2d[T.curve_2d_index];
+                auto img = [&](double f) {
+                    Point q = pc0.point_at(pd0.first + (pd0.second - pd0.first) * f);
+                    return S.point_at(q[0], q[1]);
+                };
+                double g0 = AS.f0 + (AS.f1 - AS.f0) * 0.05;
+                double g1 = AS.f0 + (AS.f1 - AS.f0) * 0.95;
+                double err_fwd = img(g0).distance(W_eval(W_a + (W_b - W_a) * 0.05))
+                               + img(g1).distance(W_eval(W_a + (W_b - W_a) * 0.95));
+                double err_rev = img(1.0 - g0).distance(W_eval(W_a + (W_b - W_a) * 0.05))
+                               + img(1.0 - g1).distance(W_eval(W_a + (W_b - W_a) * 0.95));
+                if (err_rev < err_fwd) uvc.reverse();
+                // SameParameter domain alignment for the fallback (kind-0) path: without it
+                // the reader rejects the pcurve and re-projects onto the closed B-spline
+                // surface, wandering across the seam (freeform_blob imported as a sliver).
+                {
+                    int n2 = 96;
+                    std::vector<Point> up;
+                    std::vector<double> kt;
+                    auto udm = uvc.domain();
+                    for (int i2 = 0; i2 <= n2; ++i2) {
+                        double f = AS.f0 + (AS.f1 - AS.f0) * (double)i2 / n2;
+                        up.push_back(uvc.point_at(udm.first + (udm.second - udm.first) * f));
+                        kt.push_back(W_a + (W_b - W_a) * (double)i2 / n2);
+                    }
+                    std::vector<Point> p3b(up.size());
+                    for (size_t i3 = 0; i3 < up.size(); ++i3)
+                        p3b[i3] = S.point_at(up[i3][0], up[i3][1]);
+                    decimate_pullback(up, kt,
+                                      [&](double us, double vs) { return S.point_at(us, vs); },
+                                      p3b);
+                    std::vector<double> w1(up.size(), 1.0);
+                    std::vector<int> mu(up.size(), 1);
+                    mu.front() = 2; mu.back() = 2;
+                    NurbsCurve u2 = NurbsCurve::create_from_parameters(up, w1, kt, mu, 1, false);
+                    if (u2.is_valid()) uvc = u2;
+                }
+            }
+            if (std::getenv("SESSION_STEP_DBG")) {
+                auto ud = uvc.domain();
+                Point u0 = uvc.point_at(ud.first), u1 = uvc.point_at(ud.second);
+                double s25 = 0, t25 = 0; bool r25;
+                analytic_params_of(analytic_of(si), W_eval(W_a + (W_b - W_a) * 0.25), s25, t25, r25);
+                std::fprintf(stderr, "[EDGE25] circ=%d q(%.3f,%.3f)\n", AS.circle ? 1 : 0, s25, t25);
+                std::fprintf(stderr, "[EDGE] ei=%d ti=%d canon=%d cff=%d Wdir(%.2f,%.2f,%.2f)->(%.2f,%.2f,%.2f) pc(%.2f,%.2f)->(%.2f,%.2f) valid=%d\n",
+                             ei, ti, edge_canon.count(ei) ? edge_canon[ei].first : -1,
+                             edge_canon.count(ei) ? (int)edge_canon[ei].second : -1,
+                             W_eval(W_a)[0], W_eval(W_a)[1], W_eval(W_a)[2],
+                             W_eval(W_b)[0], W_eval(W_b)[1], W_eval(W_b)[2],
+                             u0[0], u0[1], u1[0], u1[1], uvc.is_valid() ? 1 : 0);
+            }
+            int pc = w.write_pcurve(sid, uvc);
+            if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
+        }
+        int geom = cid;
+        if (pcs.size() == 2) {
+            bool same_face = (pc_faces[0] == pc_faces[1]);
+            // SEAM_CURVE: both pcurves reference the SAME surface, so only their ORDER tells
+            // the importer which side each occurrence uses. OCCT's own writer puts the
+            // REVERSED-occurrence pcurve FIRST (verified on its box_cut_tor reference file:
+            // .T. walks pc2's side, .F. walks pc1's) -- and the order only becomes load-
+            // bearing next to CLOSED border circles, where vertex connectivity (start==end,
+            // one vertex) cannot anchor the branch: with .T.-first, box_cut_cyl's bore
+            // accumulated u in [0, 3.5*pi] and failed BRepCheck.
+            // Reader binding verified on prim_cylinder wall: pc1 <-> the FORWARD (.T.)
+            // occurrence. (The earlier .F.-first flip was never load-bearing -- the fix that
+            // mattered then was closed-edge junction rotation.)
+            if (same_face && !pc_fwd[0] && pc_fwd[1]) {
+                std::swap(pcs[0], pcs[1]);
+                std::swap(pc_fwd[0], pc_fwd[1]);
+            }
+            const char* kind = same_face ? "SEAM_CURVE" : "SURFACE_CURVE";
+            geom = w.write_raw(std::string(kind) + "('',#" + std::to_string(cid) + ",(#"
+                               + std::to_string(pcs[0]) + ",#" + std::to_string(pcs[1]) + "),.PCURVE_S1.)");
+        } else if (pcs.size() == 1) {
+            geom = w.write_raw("SURFACE_CURVE('',#" + std::to_string(cid) + ",(#"
+                               + std::to_string(pcs[0]) + "),.PCURVE_S1.)");
+        }
+        return w.write_raw("EDGE_CURVE('',#" + std::to_string(AS.vs) + ",#" + std::to_string(AS.ve)
+                           + ",#" + std::to_string(geom) + ",.T.)");
+    };
+
+    // Closed edges (built start == end) are SPLIT into TWO arcs sharing a new halfway
+    // vertex: Rhino refuses to trim a face whose loop contains ONE closed EDGE_CURVE with
+    // identical start/end VERTEX_POINT (cylinder caps, sphere section circles, spiric
+    // loops all displayed as OPEN/untrimmed faces), while two vertex-bounded arcs import
+    // everywhere. The second id is -1 for open (unsplit) edges.
+    std::vector<std::pair<int, int>> edge_step_id(brep.m_topology_edges.size(), {-1, -1});
+    auto edge_id = [&](int ei) -> std::pair<int, int> {
+        const std::pair<int, int> none(-1, -1);
+        if (ei < 0 || ei >= (int)brep.m_topology_edges.size()) return none;
+        if (edge_step_id[ei].first >= 0) return edge_step_id[ei];
+        const BRepEdge& E = brep.m_topology_edges[ei];
+        if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)brep.m_curves_3d.size()) return none;
         // Written 3D geometry = the FIRST trim's pcurve image, NOT the stored edge curve.
         // co_refine/sew leave edge rep-curves decoupled from trim extents (cyl_common_cyl2's
         // tangent-point stub e#243: trims describe a 0.012-rad stub, the stored 3D curve a
@@ -2302,10 +2651,10 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
         // guarantees 3D curve == pcurve == wire junctions; vertices are its endpoints.
         NurbsCurve c3built;
         int si0 = -1;
+        const NurbsCurve* pcs0 = nullptr;
+        const NurbsSurface* srf0 = nullptr;
+        bool canon_ff = true;
         {
-            const NurbsCurve* pcs0 = nullptr;
-            const NurbsSurface* srf0 = nullptr;
-            bool canon_ff = true;
             auto itc = edge_canon.find(ei);
             if (itc != edge_canon.end() && trim_pc_srf(itc->second.first, &pcs0, &srf0)) {
                 canon_ff = itc->second.second != 0;
@@ -2348,6 +2697,13 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                 const NurbsCurve& ck = brep.m_curves_3d[E.curve_3d_index];
                 if (ck.is_valid()) {
                     auto db2 = c3built.domain();
+                    // Strict on purpose: lenient matching (diag*2e-5 for rational/deg>=2)
+                    // was tried to adopt imported-brep reader curves verbatim, but their
+                    // ~1e-5 projection-fit endpoints land past the diag*1e-7 vertex dedup,
+                    // wires lose shared vertices and chairs fell from SOLIDS 2 to 0. The
+                    // chair bloat was never the 3D curves (compress_curve already fits
+                    // 16-CV cubics) -- it was the dense fallback pcurves, fixed by
+                    // decimate_pullback.
                     double tolm = diag * 1e-6;
                     bool same = true;
                     for (int q = 0; q <= 8 && same; ++q) {
@@ -2378,7 +2734,6 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
         }
         bool rotated = false;
         Point anchor;
-        int cid;
         // written-geometry capture for SameParameter pcurve pullback
         bool W_circle = false;
         Point W_cc(0, 0, 0);
@@ -2395,15 +2750,41 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                 // only fires when the canonical trim's own pcurve starts elsewhere
                 anchor = ita->second;
                 rotated = true;
-                double t0 = c3built.closest_parameter(anchor);
-                double len = d3o.second - d3o.first;
                 int n = 256;
                 std::vector<Point> ps;
                 ps.reserve(n + 1);
-                for (int i = 0; i <= n; ++i) {
-                    double t = t0 + len * i / n;
-                    if (t > d3o.second) t -= len;
-                    ps.push_back(c3built.point_at(t));
+                if (pcs0) {
+                    // Resample through the PCURVE, not the deg-1 c3built: pcurve chords stay
+                    // ON the surface (a sphere-parallel's UV chord IS the parallel), while
+                    // c3built's 3D chords cut inside it -- the rotated resample then baked
+                    // mid-chord points in as data, compress_curve could no longer fit a
+                    // smooth curve through them, and the written 65-gon (sag ~2e-3) made
+                    // Rhino drop the trims of every face it bounded (box x sph z-discs).
+                    auto pdr = pcs0->domain();
+                    auto at_f = [&](double f) {
+                        double t = canon_ff ? pdr.first + (pdr.second - pdr.first) * f
+                                            : pdr.second - (pdr.second - pdr.first) * f;
+                        Point uv = pcs0->point_at(t);
+                        return srf0->point_at(uv[0], uv[1]);
+                    };
+                    double f0 = 0, bd = 1e300;
+                    for (int i = 0; i < n; ++i) {
+                        double d = at_f((double)i / n).distance(anchor);
+                        if (d < bd) { bd = d; f0 = (double)i / n; }
+                    }
+                    for (int i = 0; i <= n; ++i) {
+                        double f = f0 + (double)i / n;
+                        if (f > 1.0) f -= 1.0;
+                        ps.push_back(at_f(f));
+                    }
+                } else {
+                    double t0 = c3built.closest_parameter(anchor);
+                    double len = d3o.second - d3o.first;
+                    for (int i = 0; i <= n; ++i) {
+                        double t = t0 + len * i / n;
+                        if (t > d3o.second) t -= len;
+                        ps.push_back(c3built.point_at(t));
+                    }
                 }
                 ps.front() = anchor;
                 ps.back() = anchor;
@@ -2411,16 +2792,18 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                 if (rot.is_valid()) c3built = rot;
                 else rotated = false;
             }
-            cid = -1;
             // ISO-LINE edges on analytic surfaces are written as exact CIRCLEs. A fitted
             // near-iso spline oscillates across the iso (the torus outer equator v=0 is the
             // tube-angle BRANCH LINE: atan2 flips 0 <-> 2*pi with the sign of z), so the
             // reader's re-projected pcurve zigzags across the period and the wire is dropped
             // as self-intersecting -- tor_cut_tor2's six lens faces imported as FULL tori.
             // OCCT's own writer emits CIRCLE here (verified in its reference file).
+            // The pcurve must live in si0's chart: an edge whose FIRST trim sits on the
+            // mate face (plane) remapped plane-UV coordinates through the sphere chart,
+            // so the sphere-parallel z-disc circles were never recognized as ISO circles.
             const NurbsCurve* pcI = nullptr;
             const NurbsSurface* srfI = nullptr;
-            if (si0 >= 0 && edge_first_trim(ei, &pcI, &srfI)) {
+            if (si0 >= 0 && edge_first_trim(ei, si0, &pcI, &srfI)) {
                 const AnalyticSrf& A = analytic_of(si0);
                 if (A.kind >= 2) {
                     std::vector<Point> stI = remap_samples(si0, *pcI);
@@ -2490,20 +2873,9 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                             cax = Vector(-cax[0], -cax[1], -cax[2]);
                         // ref direction = center -> curve start (vertex parameter 0)
                         double rl = std::sqrt(rp[0] * rp[0] + rp[1] * rp[1] + rp[2] * rp[2]);
-                        auto fnum = [](double x) {
-                            char b[64];
-                            std::snprintf(b, sizeof b, "%.15g", x == 0.0 ? 0.0 : x);
-                            std::string r2s(b);
-                            if (r2s.find('.') == std::string::npos && r2s.find('e') == std::string::npos
-                                && r2s.find('E') == std::string::npos) r2s += ".";
-                            return r2s;
-                        };
                         if (rl > diag * 1e-9) {
-                            int pc_ = w.write_raw("CARTESIAN_POINT('',(" + fnum(cc[0]) + "," + fnum(cc[1]) + "," + fnum(cc[2]) + "))");
-                            int dz = w.write_raw("DIRECTION('',(" + fnum(cax[0]) + "," + fnum(cax[1]) + "," + fnum(cax[2]) + "))");
-                            int dx = w.write_raw("DIRECTION('',(" + fnum(rp[0] / rl) + "," + fnum(rp[1] / rl) + "," + fnum(rp[2] / rl) + "))");
-                            int ax = w.write_raw("AXIS2_PLACEMENT_3D('',#" + std::to_string(pc_) + ",#" + std::to_string(dz) + ",#" + std::to_string(dx) + ")");
-                            cid = w.write_raw("CIRCLE('',#" + std::to_string(ax) + "," + fnum(crad) + ")");
+                            // entities are written per ARC (emit_arc_edge): a closed circle
+                            // splits into two arcs, each with its own ref direction
                             W_circle = true;
                             W_cc = cc; W_cref = Vector(rp[0] / rl, rp[1] / rl, rp[2] / rl);
                             W_cax = cax; W_crad = crad;
@@ -2523,199 +2895,86 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                     }
                 }
             }
-            if (cid < 0) {
+            if (!W_circle) {
                 W_spline = compress_curve(c3built, fit3d);
-                cid = w.write_nurbs_curve(W_spline);
                 auto dW = W_spline.domain();
                 W_a = dW.first; W_b = dW.second;
             }
         }
-        if (cid < 0) return -1;
-        // Evaluate the WRITTEN geometry at its own parameter (SameParameter source).
-        auto W_eval = [&](double t) -> Point {
-            if (!W_circle) return W_spline.point_at(t);
-            Vector Yd(W_cax[1] * W_cref[2] - W_cax[2] * W_cref[1],
-                      W_cax[2] * W_cref[0] - W_cax[0] * W_cref[2],
-                      W_cax[0] * W_cref[1] - W_cax[1] * W_cref[0]);
-            double cs = std::cos(t), sn = std::sin(t);
-            return Point(W_cc[0] + W_crad * (cs * W_cref[0] + sn * Yd[0]),
-                         W_cc[1] + W_crad * (cs * W_cref[1] + sn * Yd[1]),
-                         W_cc[2] + W_crad * (cs * W_cref[2] + sn * Yd[2]));
-        };
-        std::vector<int> pcs;
-        std::vector<int> pc_faces;
-        std::vector<char> pc_fwd;
-        for (int ti : E.trim_indices) {
-            if (ti < 0 || ti >= (int)brep.m_trims.size()) continue;
-            const BRepTrim& T = brep.m_trims[ti];
-            int li = T.loop_index;
-            if (li < 0 || li >= (int)brep.m_loops.size()) continue;
-            int fi2 = brep.m_loops[li].face_index;
-            if (fi2 < 0 || fi2 >= (int)brep.m_faces.size()) continue;
-            int si = brep.m_faces[fi2].surface_index;
-            int sid = surface_id(si);
-            if (sid < 0 || T.curve_2d_index < 0 || T.curve_2d_index >= (int)brep.m_curves_2d.size()) continue;
-            const NurbsSurface& S = brep.m_surfaces[si];
-            // SameParameter pcurve: pull back the WRITTEN 3D geometry at its OWN parameters
-            // (t_i uniform in the written domain, uv_i = analytic inverse, deg-1 with knots
-            // = t_i). OCCT's reader binds ALL of an edge's representations to ONE parameter
-            // range; independently-fitted pcurves (own chord domains) fail its SameParameter
-            // check, so it silently RE-PROJECTED every edge from the 3D curve -- pcurves
-            // never mattered, and any face whose projection is unstable (arcs grazing the
-            // v=0 branch line, tangency cusps) imported as its full periodic surface.
-            NurbsCurve uvc;
-            const AnalyticSrf& A_e = analytic_of(si);
-            if (A_e.kind >= 2) {
-                const double PI_ = 3.14159265358979323846;
-                const double TWOPI = 6.283185307179586;
-                int n = 128;
-                std::vector<Point> uvp;
-                std::vector<double> kts;
-                uvp.reserve(n + 1);
-                kts.reserve(n + 1);
-                double ps = 0, pt = 0;
-                bool hp = false;
-                for (int i2 = 0; i2 <= n; ++i2) {
-                    double t = W_a + (W_b - W_a) * i2 / n;
-                    double sv, tv; bool rok;
-                    analytic_params_of(A_e, W_eval(t), sv, tv, rok);
-                    if (!rok && hp) sv = ps;
-                    if (hp) {
-                        while (sv - ps >  PI_) sv -= TWOPI;
-                        while (sv - ps < -PI_) sv += TWOPI;
-                        if (A_e.kind == 5) {
-                            while (tv - pt >  PI_) tv -= TWOPI;
-                            while (tv - pt < -PI_) tv += TWOPI;
-                        }
-                    }
-                    ps = sv; pt = tv; hp = true;
-                    uvp.push_back(Point(sv, tv, 0.0));
-                    kts.push_back(t);
-                }
-                // branch anchor at the MID sample: curve STARTS often sit exactly on the
-                // seam (junction-rotated circles), where both branch choices are 3D-identical
-                // and the nearest-sample match picks arbitrarily -- prim_cylinder's bottom
-                // circle anchored to u=0 and unwrapped down to [-2pi,0], one period below its
-                // loop. The interior midpoint is 3D-unique, so its branch is unambiguous.
-                std::vector<Point> st = remap_samples(si, brep.m_curves_2d[T.curve_2d_index]);
-                const NurbsCurve& pcs_ = brep.m_curves_2d[T.curve_2d_index];
-                auto pdd = pcs_.domain();
-                size_t mid = uvp.size() / 2;
-                Point Wm = W_eval(W_a + (W_b - W_a) * (double)mid / (double)n);
-                double bd = 1e300; size_t bj = 0;
-                size_t M = st.size() > 1 ? st.size() - 1 : 1;
-                for (size_t j = 0; j < st.size(); ++j) {
-                    Point uv = pcs_.point_at(pdd.first + (pdd.second - pdd.first) * j / (double)M);
-                    double dd = Wm.distance(S.point_at(uv[0], uv[1]));
-                    if (dd < bd) { bd = dd; bj = j; }
-                }
-                double sh_s, sh_t = 0.0;
-                if (!st.empty() && bd < diag * 1e-4) {
-                    sh_s = TWOPI * std::round((st[bj][0] - uvp[mid][0]) / TWOPI);
-                    if (A_e.kind == 5)
-                        sh_t = TWOPI * std::round((st[bj][1] - uvp[mid][1]) / TWOPI);
-                } else {   // decoupled stored pcurve: fall back to mid-sample cell snap
-                    double sm = uvp[mid][0];
-                    sh_s = -TWOPI * std::floor(sm / TWOPI);
-                    if (A_e.kind == 5) {
-                        double tm = uvp[mid][1];
-                        sh_t = -TWOPI * std::floor(tm / TWOPI);
-                    }
-                }
-                if (sh_s != 0.0 || sh_t != 0.0)
-                    for (auto& q : uvp) q = Point(q[0] + sh_s, q[1] + sh_t, q[2]);
-                std::vector<double> w1(uvp.size(), 1.0);
-                std::vector<int> mults(uvp.size(), 1);
-                mults.front() = 2; mults.back() = 2;
-                uvc = NurbsCurve::create_from_parameters(uvp, w1, kts, mults, 1, false);
-            }
-            if (!uvc.is_valid()) {
-                uvc = remap_pcurve(si, brep.m_curves_2d[T.curve_2d_index]);
-                // co-direct fallback pcurves with the written curve
-                auto pd0 = brep.m_curves_2d[T.curve_2d_index].domain();
-                const NurbsCurve& pc0 = brep.m_curves_2d[T.curve_2d_index];
-                auto img = [&](double f) {
-                    Point q = pc0.point_at(pd0.first + (pd0.second - pd0.first) * f);
-                    return S.point_at(q[0], q[1]);
-                };
-                double err_fwd = img(0.05).distance(W_eval(W_a + (W_b - W_a) * 0.05))
-                               + img(0.95).distance(W_eval(W_a + (W_b - W_a) * 0.95));
-                double err_rev = img(0.05).distance(W_eval(W_a + (W_b - W_a) * 0.95))
-                               + img(0.95).distance(W_eval(W_a + (W_b - W_a) * 0.05));
-                if (err_rev < err_fwd) uvc.reverse();
-                // SameParameter domain alignment for the fallback (kind-0) path: without it
-                // the reader rejects the pcurve and re-projects onto the closed B-spline
-                // surface, wandering across the seam (freeform_blob imported as a sliver).
-                {
-                    int n2 = 96;
-                    std::vector<Point> up;
-                    std::vector<double> kt;
-                    auto udm = uvc.domain();
-                    for (int i2 = 0; i2 <= n2; ++i2) {
-                        double f = (double)i2 / n2;
-                        up.push_back(uvc.point_at(udm.first + (udm.second - udm.first) * f));
-                        kt.push_back(W_a + (W_b - W_a) * f);
-                    }
-                    std::vector<double> w1(up.size(), 1.0);
-                    std::vector<int> mu(up.size(), 1);
-                    mu.front() = 2; mu.back() = 2;
-                    NurbsCurve u2 = NurbsCurve::create_from_parameters(up, w1, kt, mu, 1, false);
-                    if (u2.is_valid()) uvc = u2;
-                }
-            }
-            if (std::getenv("SESSION_STEP_DBG")) {
-                auto ud = uvc.domain();
-                Point u0 = uvc.point_at(ud.first), u1 = uvc.point_at(ud.second);
-                double s25 = 0, t25 = 0; bool r25;
-                analytic_params_of(analytic_of(si), W_eval(W_a + (W_b - W_a) * 0.25), s25, t25, r25);
-                std::fprintf(stderr, "[EDGE25] circ=%d q(%.3f,%.3f)\n", W_circle ? 1 : 0, s25, t25);
-                std::fprintf(stderr, "[EDGE] ei=%d ti=%d canon=%d cff=%d Wdir(%.2f,%.2f,%.2f)->(%.2f,%.2f,%.2f) pc(%.2f,%.2f)->(%.2f,%.2f) valid=%d\n",
-                             ei, ti, edge_canon.count(ei) ? edge_canon[ei].first : -1,
-                             edge_canon.count(ei) ? (int)edge_canon[ei].second : -1,
-                             W_eval(W_a)[0], W_eval(W_a)[1], W_eval(W_a)[2],
-                             W_eval(W_b)[0], W_eval(W_b)[1], W_eval(W_b)[2],
-                             u0[0], u0[1], u1[0], u1[1], uvc.is_valid() ? 1 : 0);
-            }
-            int pc = w.write_pcurve(sid, uvc);
-            if (pc >= 0) { pcs.push_back(pc); pc_faces.push_back(fi2); pc_fwd.push_back(trim_sense[ti]); }
-        }
-        int geom = cid;
-        if (pcs.size() == 2) {
-            bool same_face = (pc_faces[0] == pc_faces[1]);
-            // SEAM_CURVE: both pcurves reference the SAME surface, so only their ORDER tells
-            // the importer which side each occurrence uses. OCCT's own writer puts the
-            // REVERSED-occurrence pcurve FIRST (verified on its box_cut_tor reference file:
-            // .T. walks pc2's side, .F. walks pc1's) -- and the order only becomes load-
-            // bearing next to CLOSED border circles, where vertex connectivity (start==end,
-            // one vertex) cannot anchor the branch: with .T.-first, box_cut_cyl's bore
-            // accumulated u in [0, 3.5*pi] and failed BRepCheck.
-            // Reader binding verified on prim_cylinder wall: pc1 <-> the FORWARD (.T.)
-            // occurrence. (The earlier .F.-first flip was never load-bearing -- the fix that
-            // mattered then was closed-edge junction rotation.)
-            if (same_face && !pc_fwd[0] && pc_fwd[1]) {
-                std::swap(pcs[0], pcs[1]);
-                std::swap(pc_fwd[0], pc_fwd[1]);
-            }
-            const char* kind = same_face ? "SEAM_CURVE" : "SURFACE_CURVE";
-            geom = w.write_raw(std::string(kind) + "('',#" + std::to_string(cid) + ",(#"
-                               + std::to_string(pcs[0]) + ",#" + std::to_string(pcs[1]) + "),.PCURVE_S1.)");
-        } else if (pcs.size() == 1) {
-            geom = w.write_raw("SURFACE_CURVE('',#" + std::to_string(cid) + ",(#"
-                               + std::to_string(pcs[0]) + "),.PCURVE_S1.)");
-        }
         // Vertices = the built curve's endpoints, location-deduped. Kernel vertex indices
         // are ignored entirely: they can sit on a DIFFERENT curve than the trims describe.
+        auto d3 = c3built.domain();
+        bool closed_e = rotated
+            || c3built.point_at(d3.first).distance(c3built.point_at(d3.second)) < diag * 1e-7;
         int v0, v1;
         if (rotated) {
             v0 = v1 = vertex_at_point(anchor);
         } else {
-            auto d3 = c3built.domain();
             v0 = vertex_at_point(c3built.point_at(d3.first));
-            v1 = vertex_at_point(c3built.point_at(d3.second));
+            v1 = closed_e ? v0 : vertex_at_point(c3built.point_at(d3.second));
         }
-        if (v0 < 0 || v1 < 0) return -1;
-        edge_step_id[ei] = w.write_raw("EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v1)
-                                       + ",#" + std::to_string(geom) + ",.T.)");
+        if (v0 < 0 || v1 < 0) return none;
+        ArcSpec base;
+        base.circle = W_circle;
+        base.cc = W_cc; base.cref = W_cref; base.cax = W_cax; base.crad = W_crad;
+        base.spline = W_spline;
+        base.a = W_a; base.b = W_b;
+        base.vs = v0; base.ve = v1;
+        if (closed_e) {
+            // split at the parameter midpoint; arc1 keeps the junction anchor as its start
+            // (the rotation above already put the anchor at parameter W_a)
+            ArcSpec a1 = base, a2 = base;
+            bool split_ok = false;
+            Point pm(0, 0, 0);
+            if (W_circle) {
+                double half = 0.5 * (W_b - W_a);
+                Vector Yd(W_cax[1] * W_cref[2] - W_cax[2] * W_cref[1],
+                          W_cax[2] * W_cref[0] - W_cax[0] * W_cref[2],
+                          W_cax[0] * W_cref[1] - W_cax[1] * W_cref[0]);
+                double cs = std::cos(half), sn = std::sin(half);
+                pm = Point(W_cc[0] + W_crad * (cs * W_cref[0] + sn * Yd[0]),
+                           W_cc[1] + W_crad * (cs * W_cref[1] + sn * Yd[1]),
+                           W_cc[2] + W_crad * (cs * W_cref[2] + sn * Yd[2]));
+                Vector r2(pm[0] - W_cc[0], pm[1] - W_cc[1], pm[2] - W_cc[2]);
+                double r2l = std::sqrt(r2[0]*r2[0] + r2[1]*r2[1] + r2[2]*r2[2]);
+                if (r2l > diag * 1e-9) {
+                    a1.b = half;                        // arc1: [0, half] on cref
+                    a2.cref = Vector(r2[0] / r2l, r2[1] / r2l, r2[2] / r2l);
+                    a2.b = W_b - half;                  // arc2: [0, rest] on its OWN ref dir
+                    split_ok = true;
+                }
+            } else {
+                NurbsCurve cl, cr;
+                if (W_spline.split(0.5 * (W_a + W_b), cl, cr) && cl.is_valid() && cr.is_valid()) {
+                    pm = cl.point_at(cl.domain().second);
+                    a1.spline = cl;
+                    auto dl = cl.domain();
+                    a1.a = dl.first; a1.b = dl.second;
+                    a2.spline = cr;
+                    auto dr = cr.domain();
+                    a2.a = dr.first; a2.b = dr.second;
+                    split_ok = true;
+                }
+            }
+            if (split_ok) {
+                int vm = vertex_at_point(pm);
+                if (vm >= 0 && vm != v0) {
+                    a1.f0 = 0.0; a1.f1 = 0.5;
+                    a2.f0 = 0.5; a2.f1 = 1.0;
+                    a1.vs = v0; a1.ve = vm;
+                    a2.vs = vm; a2.ve = v1;
+                    int e1 = emit_arc_edge(ei, a1);
+                    int e2 = emit_arc_edge(ei, a2);
+                    if (e1 >= 0 && e2 >= 0) {
+                        edge_step_id[ei] = {e1, e2};
+                        return edge_step_id[ei];
+                    }
+                }
+            }
+        }
+        int e0 = emit_arc_edge(ei, base);
+        if (e0 < 0) return none;
+        edge_step_id[ei] = {e0, -1};
         return edge_step_id[ei];
     };
 
@@ -2985,11 +3244,17 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                     }
                     if (!own_seam) only_own_seams = false;
                 }
-                int ec = edge_id(trim.edge_index);
-                if (ec < 0) continue;
+                std::pair<int, int> ec = edge_id(trim.edge_index);
+                if (ec.first < 0) continue;
                 bool fwd = trim_sense[trim_idx] != 0;
-                oe_ids.push_back(w.write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec)
+                // split closed edge: BOTH arcs in traversal order (arc1 then arc2 forward,
+                // arc2 then arc1 reversed), each with the trim's sense
+                if (ec.second >= 0 && !fwd) std::swap(ec.first, ec.second);
+                oe_ids.push_back(w.write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec.first)
                                              + (fwd ? ",.T.)" : ",.F.)")));
+                if (ec.second >= 0)
+                    oe_ids.push_back(w.write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec.second)
+                                                 + (fwd ? ",.T.)" : ",.F.)")));
             }
             // CLOSED B-SPLINE face whose only real boundary is its own seam: OCCT bounds such
             // faces with VERTEX_LOOPs at the poles and NO edges (verified on its NurbsConvert

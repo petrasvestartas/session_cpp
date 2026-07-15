@@ -54,6 +54,12 @@ std::map<std::string, Place> placements() {
         // analytic-SSI gap (IntAna_QuadQuadGeo port pending), kept out of the gate.
         {"cone3", {"cone",     {1.8,4.0}, {0,0,-2, 0,1,0, 45}}},
         {"tor3",  {"torus",    {2.0,0.8}, {0,0,-1, 0,0,1, 0}}},  // tube crosses the cone surface
+        // Oriented battery: nothing axis-aligned about these -- deep penetrations with the
+        // second operand rotated in space, so sections leave the iso/axis-aligned comfort zone.
+        {"cylR",  {"cylinder", {1.5,6},   {-1,0,-1.8, 0,1,0, 45}}},  // 45-deg skew, axes cross at (0,0,-0.8)
+        {"boxR",  {"box",      {4,4,4},   {2,1,0, 0,0,1, 30}}},      // rotated 30 deg about z, offset
+        {"torR",  {"torus",    {2.0,0.8}, {0,0,0, 1,0,0, 45}}},      // tilted torus
+        {"coneR", {"cone",     {2.0,4.0}, {0,-2.8,0, 1,0,0, -90}}},  // cone on its side, axis +y
     };
 }
 
@@ -68,6 +74,9 @@ std::vector<std::array<std::string,3>> pairs() {
         {"cone x cyl ", "cone", "cyl"},  {"cone x tor3", "cone", "tor3"},
         {"cyl  x cyl ", "cyl",  "cyl2"}, {"cyl  x tor ", "cyl",  "tor"},
         {"tor  x tor ", "tor",  "tor2"},
+        {"cyl  x cylR", "cyl",  "cylR"}, {"box  x boxR", "box",  "boxR"},
+        {"boxR x sph ", "boxR", "sph"},  {"box  x torR", "box",  "torR"},
+        {"coneRx cyl ", "coneR","cyl"},  {"boxR x cyl ", "boxR", "cyl"},
     };
 }
 
@@ -209,8 +218,12 @@ int main(int argc, char** argv) {
     std::printf("%-13s %-4s | %11s %11s %9s | %4s %5s | s | %8s | verdict\n",
                 "pair", "op", "our_vol", "occt_vol", "rel", "ourF", "occtF", "us");
     int fails = 0, total = 0;
+    // SESSION_NO_ROT: skip the oriented battery (keys ending in 'R') -- their marcher cells
+    // can hang and their volumes fail the gate; used when regenerating the shipped STEP set.
+    bool no_rot = std::getenv("SESSION_NO_ROT") != nullptr;
     for (auto& pr : PRS) {
         if (!filter.empty() && pr[0].find(filter) == std::string::npos) continue;
+        if (no_rot && (pr[1].back() == 'R' || pr[2].back() == 'R')) continue;
         for (const char* mode : {"cut", "common", "fuse"}) {
             const char* oponly = std::getenv("SESSION_OP");   // run a single op for diagnostics
             if (oponly && std::string(mode) != oponly) continue;
@@ -245,11 +258,34 @@ int main(int argc, char** argv) {
                     std::filesystem::create_directories(sd);
                     // ONE file per test operation: operand A (red), operand B (blue) and
                     // the boolean result (green) side by side in their tested positions.
+                    // The written result is unified Rhino-style (coplanar splits merged);
+                    // the gate below still checks the RAW result against raw OCCT counts.
                     ba.surfacecolor = Color(0.85f, 0.25f, 0.20f);
                     bb.surfacecolor = Color(0.20f, 0.45f, 0.85f);
-                    r.surfacecolor  = Color(0.35f, 0.75f, 0.40f);
+                    // Cache the raw result BRep so pb2step can re-emit this STEP later without
+                    // re-running the boolean (SESSION_PB_DUMP=<dir>): dump A, B, result as .pb.
+                    if (const char* pd = std::getenv("SESSION_PB_DUMP")) {
+                        std::filesystem::create_directories(pd);
+                        std::string b = std::string(pd) + "/" + pr[1] + "_" + mode + "_" + pr[2];
+                        ba.pb_dump(b + ".a.pb");
+                        bb.pb_dump(b + ".b.pb");
+                        if (r.face_count() > 0) r.pb_dump(b + ".r.pb");
+                    }
+                    BRep rm = r;
+                    // Coplanar merge is DISPLAY-ONLY and OPT-IN (SESSION_MERGE): it stalls on
+                    // box x tor fuse, so default is OFF -- ship the raw two-arc-split result.
+                    if (std::getenv("SESSION_MERGE")) rm.merge_coplanar_faces();
+                    // Merge is display-only, but it must not change the solid: check volume +
+                    // watertightness against the raw result so a bad merge is caught, not shipped.
+                    double vr = r.volume(), vm = rm.volume();
+                    double mrel = std::abs(vr) > 1e-9 ? std::abs(vm - vr) / std::abs(vr) : std::abs(vm - vr);
+                    if (mrel > 1e-6 || (r.is_solid() && !rm.is_solid()))
+                        std::fprintf(stderr, "[MERGE-WARN] %s %s: vol raw=%.6f merged=%.6f rel=%.2e faces %d->%d solid %d->%d\n",
+                                     pr[0].c_str(), mode, vr, vm, mrel, r.face_count(), rm.face_count(),
+                                     r.is_solid() ? 1 : 0, rm.is_solid() ? 1 : 0);
+                    rm.surfacecolor = Color(0.35f, 0.75f, 0.40f);
                     std::vector<const BRep*> parts = {&ba, &bb};
-                    if (r.face_count() > 0) parts.push_back(&r);
+                    if (rm.face_count() > 0) parts.push_back(&rm);
                     file_step::write_file_step_breps(parts, pr[1] + "_" + mode + "_" + pr[2],
                         std::string(sd) + "/" + pr[1] + "_" + mode + "_" + pr[2] + ".step");
                 }
@@ -288,6 +324,15 @@ int main(int argc, char** argv) {
                     auto frags = ba.boolean_split(bb);
                     double vx = x.volume(), vs = 0;
                     for (auto& f : frags) vs += f.volume();
+                    if (const char* xd = std::getenv("SESSION_XOR_DBG")) {
+                        for (size_t fi = 0; fi < frags.size(); ++fi)
+                            std::fprintf(stderr, "[XORDBG] frag %zu faces %d solid %d vol %.10f\n",
+                                         fi, frags[fi].face_count(), frags[fi].is_solid() ? 1 : 0,
+                                         frags[fi].volume());
+                        if (xd[0] == 'd')
+                            for (size_t fi = 0; fi < frags.size(); ++fi)
+                                frags[fi].pb_dump("xor_frag_" + std::to_string(fi) + ".pb");
+                    }
                     double xref = vfuse - vcom;
                     double xr = xref != 0 ? std::abs(vx - xref) / std::abs(xref) : std::abs(vx);
                     double sr = vfuse != 0 ? std::abs(vs - vfuse) / vfuse : std::abs(vs);
@@ -502,6 +547,10 @@ int main(int argc, char** argv) {
         std::printf("chairs: A breps %zu, B breps %zu\n", as.size(), bs.size());
         if (!as.empty() && !bs.empty()) {
             BRep& A = as[0]; BRep& B = bs[0];
+            if (std::getenv("SESSION_CHAIRS_DUMP")) {
+                A.pb_dump(std::string(cd) + "/chair0.pb");
+                B.pb_dump(std::string(cd) + "/chair1.pb");
+            }
             std::printf("A: faces %d solid %d vol %.4f | B: faces %d solid %d vol %.4f\n",
                         A.face_count(), A.is_solid() ? 1 : 0, A.volume(),
                         B.face_count(), B.is_solid() ? 1 : 0, B.volume());
@@ -509,6 +558,8 @@ int main(int argc, char** argv) {
                 BRep r = A.boolean_difference(B);
                 std::printf("chairs cut: faces %d solid %d vol %.4f\n",
                             r.face_count(), r.is_solid() ? 1 : 0, r.volume());
+                if (std::getenv("SESSION_CHAIRS_DUMP"))
+                    r.pb_dump(std::string(cd) + "/chair_cut.pb");
                 A.surfacecolor = Color(0.85f, 0.25f, 0.20f);
                 B.surfacecolor = Color(0.20f, 0.45f, 0.85f);
                 r.surfacecolor = Color(0.35f, 0.75f, 0.40f);

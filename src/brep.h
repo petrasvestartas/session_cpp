@@ -291,6 +291,13 @@ public:
     /// per-face copy mismatch). Run after sew_coincident_edges. Modifies in place.
     void sameparameter_planar_pcurves();
 
+    /// Rhino-style unify-same-domain for PLANAR faces: faces that are coplanar and share an
+    /// edge merge into ONE face -- the shared edges vanish and the surviving trims re-chain
+    /// into merged loops in a single chart. OCCT keeps these imprinted splits by default
+    /// (its ShapeUpgrade_UnifySameDomain is the equivalent post-step), so the boolean gates
+    /// compare RAW results; call this before presenting/exporting. Modifies in place.
+    void merge_coplanar_faces(double tolerance = 0.0);
+
     /// A | B (fuse).
     BRep boolean_union(const BRep& other, double tolerance = 0.0) const {
         return boolean(other, BooleanOp::Union, tolerance);

@@ -51,6 +51,7 @@ set(UNITY_BUILD_EXCLUDE
     src/nurbssurface_trimmed.cpp
     src/nurbsknot.cpp
     src/mesh.cpp
+    src/mesh_boolean.cpp
     src/brep.cpp
     src/intersection.cpp
     src/graph.cpp
@@ -252,7 +253,7 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-foreach(MAIN_ID 3 6 7)
+foreach(MAIN_ID 3 6 7 8)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
@@ -260,6 +261,14 @@ foreach(MAIN_ID 3 6 7)
         target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endforeach()
+
+# pb2step: write STEP from cached BRep .pb files without re-running any boolean.
+add_executable(pb2step pb2step.cpp)
+target_link_libraries(pb2step PRIVATE session_core)
+LINK_PROTOBUF(pb2step)
+if(ENABLE_PCH)
+    target_precompile_headers(pb2step PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
 
 #############################################################################################
 # TESTS
@@ -299,6 +308,7 @@ set(MINITEST_SOURCES
     src/boolean_polyline_test.cpp
     # src/elementfeature_test.cpp  # removed: source file does not exist (stale reference)
     src/mesh_offset_test.cpp
+    src/instance_ref_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)

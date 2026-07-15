@@ -1969,4 +1969,31 @@ namespace session_cpp {
         MINI_CHECK((big[0] == std::make_pair<size_t, size_t>(0, 1)));
     }
 
+    MINI_TEST("Mesh", "Boolean Difference") {
+        Mesh a = Mesh::create_box(2, 2, 2);
+        Mesh b = Mesh::create_box(2, 2, 2);
+        b.transform(Xform::translation(1, 0, 0));
+        Mesh result = a.boolean_difference(b, 48);
+        MINI_CHECK(result.is_closed());
+        MINI_CHECK(std::abs(std::abs(result.volume()) - 4.0) < 0.2);
+    }
+
+    MINI_TEST("Mesh", "Boolean Union") {
+        Mesh a = Mesh::create_box(2, 2, 2);
+        Mesh b = Mesh::create_box(2, 2, 2);
+        b.transform(Xform::translation(1, 0, 0));
+        Mesh result = a.boolean_union(b, 48);
+        MINI_CHECK(result.is_closed());
+        MINI_CHECK(std::abs(std::abs(result.volume()) - 12.0) < 0.4);
+    }
+
+    MINI_TEST("Mesh", "Boolean Intersection") {
+        Mesh a = Mesh::create_box(2, 2, 2);
+        Mesh b = Mesh::create_box(2, 2, 2);
+        b.transform(Xform::translation(1, 0, 0));
+        Mesh result = a.boolean_intersection(b, 48);
+        MINI_CHECK(result.is_closed());
+        MINI_CHECK(std::abs(std::abs(result.volume()) - 4.0) < 0.2);
+    }
+
 } // namespace session_cpp

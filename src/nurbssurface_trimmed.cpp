@@ -531,7 +531,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create_planar(const NurbsCurve& boundar
     return ts;
 }
 
-std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary) {
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary, double snap_cuts_to_boundary) {
     if (!srf.is_valid()) return {};
 
     auto is_boundary = [&](int cidx) -> bool {
@@ -656,6 +656,48 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         if (use_domain_border && (on_u0 || on_u1 || on_v0 || on_v1))
             continue;
         polylines.push_back({cidx, pts, ts});
+    }
+
+    // ---- 1b. Snap near-boundary cut endpoints onto the trim boundary (T-junction resolution) ----
+    // Freeform section curves (imported-STEP boolean cuts) frequently stop a hair SHORT of the
+    // face's trim boundary -- the endpoint sits ~1e-3 off, so it neither merges with a boundary
+    // vertex nor crosses a boundary segment, stays valence-1, and the dangling-prune below deletes
+    // the whole cut -> the face never splits (parts=0) -> the boolean result is an open shell.
+    // Project any cut endpoint that lies within bnd_snap of a boundary polyline onto that boundary
+    // so the seg-seg pass nodes it. bnd_snap is deliberately small (a fraction of the domain) so
+    // genuine interior fragment ends (B-edge crossings, which must chain to a sibling, not the
+    // boundary) are left untouched. Gated via SESSION_BND_SNAP until matrix-regression-verified.
+    double bnd_snap = snap_cuts_to_boundary;
+    if (const char* bs_env = std::getenv("SESSION_BND_SNAP")) bnd_snap = std::atof(bs_env);
+    if (bnd_snap > 0.0) {
+        auto proj_to_bnd = [&](std::array<double,2>& p) -> bool {
+            double best2 = bnd_snap * bnd_snap; std::array<double,2> bestp = p; bool hit = false;
+            for (const auto& Q : polylines) {
+                if (!is_boundary(Q.cidx)) continue;
+                for (size_t j = 0; j + 1 < Q.pts.size(); ++j) {
+                    double ex = Q.pts[j+1][0]-Q.pts[j][0], ey = Q.pts[j+1][1]-Q.pts[j][1];
+                    double L2 = ex*ex + ey*ey;
+                    double tt = L2 > 1e-30 ? ((p[0]-Q.pts[j][0])*ex + (p[1]-Q.pts[j][1])*ey) / L2 : 0.0;
+                    tt = std::min(std::max(tt, 0.0), 1.0);
+                    double qx = Q.pts[j][0]+tt*ex, qy = Q.pts[j][1]+tt*ey;
+                    double d2 = (p[0]-qx)*(p[0]-qx) + (p[1]-qy)*(p[1]-qy);
+                    if (d2 < best2) { best2 = d2; bestp = {qx, qy}; hit = true; }
+                }
+            }
+            if (hit) p = bestp;
+            return hit;
+        };
+        int nsnap = 0;
+        for (auto& P : polylines) {
+            if (is_boundary(P.cidx) || P.pts.size() < 2) continue;
+            std::array<double,2> f = P.pts.front(), b = P.pts.back();
+            if (proj_to_bnd(f) && std::hypot(f[0]-P.pts[1][0], f[1]-P.pts[1][1]) > 1e-12) { P.pts.front() = f; ++nsnap; }
+            if (proj_to_bnd(b) && std::hypot(b[0]-P.pts[P.pts.size()-2][0], b[1]-P.pts[P.pts.size()-2][1]) > 1e-12) { P.pts.back() = b; ++nsnap; }
+        }
+        if (std::getenv("SESSION_SPLIT_DBG")) {
+            std::fprintf(stderr, "[BNDSNAP] bnd_snap=%.4f snapped=%d\n", bnd_snap, nsnap);
+            std::fflush(stderr);
+        }
     }
 
     // Border sides as polylines: cidx -1 bottom, -2 right, -3 top, -4 left
