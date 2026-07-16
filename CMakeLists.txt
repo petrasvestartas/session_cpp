@@ -53,6 +53,7 @@ set(UNITY_BUILD_EXCLUDE
     src/mesh.cpp
     src/mesh_boolean.cpp
     src/brep.cpp
+    src/brep_section.cpp
     src/intersection.cpp
     src/graph.cpp
     src/tree.cpp

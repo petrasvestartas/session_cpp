@@ -5252,8 +5252,11 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             double chord3 = 0.0;
             for (size_t i = 1; i < pts3.size(); i++)
                 chord3 += std::sqrt((pts3[i][0]-pts3[i-1][0])*(pts3[i][0]-pts3[i-1][0]) + (pts3[i][1]-pts3[i-1][1])*(pts3[i][1]-pts3[i-1][1]) + (pts3[i][2]-pts3[i-1][2])*(pts3[i][2]-pts3[i-1][2]));
-            // Degenerate sliver pieces between near-coincident crossings
-            if (chord3 < h_init * 0.5) continue;
+            // Degenerate sliver pieces between near-coincident crossings. Keep genuinely
+            // short pieces (a section crossing a narrow face produces them; dropping one
+            // leaves the mate operand's cut chain dangling) -- only sampling-noise scale
+            // (well under one marching step) is degenerate.
+            if (chord3 < h_init * 0.05) continue;
 
             // Deflection-refine this piece: insert Newton-corrected midpoints
             // wherever the 3D curve deviates from its chord by more than the

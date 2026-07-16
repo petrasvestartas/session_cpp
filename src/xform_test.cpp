@@ -473,6 +473,38 @@ MINI_TEST("Xform", "Inverse") {
     MINI_CHECK(prod.is_identity());
 }
 
+MINI_TEST("Xform", "Transform Point") {
+    // uncomment #include "xform.h"
+    Xform t = Xform::translation(10.0, 20.0, 30.0);
+    Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
+    Xform composite = t * s;
+    Point p = composite.transform_point(Point(1.0, 1.0, 1.0));
+    MINI_CHECK(TOLERANCE.is_point_close(p, Point(12.0, 23.0, 34.0)));
+
+    Xform pr = Xform::identity();
+    pr.m[0] = 1.2;
+    pr.m[5] = 0.8;
+    pr.m[10] = 1.1;
+    pr.m[14] = 0.5;
+    pr.m[11] = -1.0;
+    pr.m[15] = 0.0;
+    Point q = pr.transform_point(Point(1.0, 1.0, 2.0));
+    MINI_CHECK(TOLERANCE.is_point_close(q, Point(-0.6, -0.4, -1.35)));
+}
+
+MINI_TEST("Xform", "Transform Vector") {
+    // uncomment #include "xform.h"
+    Xform t = Xform::translation(10.0, 20.0, 30.0);
+    Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
+    Xform composite = t * s;
+    Vector v = composite.transform_vector(Vector(1.0, 1.0, 1.0));
+    MINI_CHECK(TOLERANCE.is_vector_close(v, Vector(2.0, 3.0, 4.0)));
+
+    Xform r = Xform::rotation_z(90.0, true);
+    Vector u = r.transform_vector(Vector::x_axis());
+    MINI_CHECK(TOLERANCE.is_vector_close(u, Vector::y_axis()));
+}
+
 MINI_TEST("Xform", "To Cols") {
     // uncomment #include "xform.h"
     Xform xf = Xform::translation(1.0, 2.0, 3.0);

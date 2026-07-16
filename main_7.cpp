@@ -540,6 +540,59 @@ int main(int argc, char** argv) {
         ++total; if (!ok) ++fails;
         std::printf("  freeform verdict: %s\n", ok ? "OK" : "FAIL");
     }
+    // Offline naked-edge trichotomy: for each 1-trim edge of the dumped boolean result, find
+    // its nearest counterpart among the FULL pre-classification splits (A2/B2) and among the
+    // result's own edges -- separates classification drops (counterpart in split only) from
+    // SSI incompleteness (no counterpart anywhere) from sew misses (counterpart kept, unmated).
+    if (const char* ad = std::getenv("SESSION_ANALYZE_NAKED")) {
+        BRep R = BRep::pb_load(std::string(ad) + "/chair_cut.pb");
+        BRep A2 = BRep::pb_load(std::string(ad) + "/split_A2.pb");
+        BRep B2 = BRep::pb_load(std::string(ad) + "/split_B2.pb");
+        auto sample_edges = [](const BRep& X) {
+            std::vector<std::vector<Point>> out(X.m_topology_edges.size());
+            for (size_t e = 0; e < X.m_topology_edges.size(); ++e) {
+                int ci = X.m_topology_edges[e].curve_3d_index;
+                if (ci < 0 || ci >= (int)X.m_curves_3d.size()) continue;
+                const NurbsCurve& C = X.m_curves_3d[ci];
+                auto [t0, t1] = C.domain();
+                for (int k = 0; k <= 24; ++k) out[e].push_back(C.point_at(t0 + (t1 - t0) * k / 24.0));
+            }
+            return out;
+        };
+        auto sR = sample_edges(R), sA = sample_edges(A2), sB = sample_edges(B2);
+        auto p2seg = [](const Point& p, const std::vector<Point>& pl) {
+            double best = 1e300;
+            for (size_t j = 0; j + 1 < pl.size(); ++j) {
+                const Point& a = pl[j]; const Point& b = pl[j + 1];
+                double ex=b[0]-a[0], ey=b[1]-a[1], ez=b[2]-a[2], L2=ex*ex+ey*ey+ez*ez;
+                double t=(L2>1e-30)?((p[0]-a[0])*ex+(p[1]-a[1])*ey+(p[2]-a[2])*ez)/L2:0.0;
+                t=std::min(std::max(t,0.0),1.0);
+                double cx=a[0]+t*ex, cy=a[1]+t*ey, cz=a[2]+t*ez;
+                best=std::min(best,std::sqrt((p[0]-cx)*(p[0]-cx)+(p[1]-cy)*(p[1]-cy)+(p[2]-cz)*(p[2]-cz)));
+            }
+            return best;
+        };
+        auto nearest = [&](const std::vector<Point>& probe, const std::vector<std::vector<Point>>& pool, int skip) {
+            double bh = 1e300; int bi = -1;
+            for (size_t j = 0; j < pool.size(); ++j) {
+                if ((int)j == skip || pool[j].size() < 2) continue;
+                double h = 0.0;
+                for (const auto& p : probe) { h = std::max(h, p2seg(p, pool[j])); if (h >= bh) break; }
+                if (h < bh) { bh = h; bi = (int)j; }
+            }
+            return std::make_pair(bh, bi);
+        };
+        for (size_t e = 0; e < R.m_topology_edges.size(); ++e) {
+            if ((int)R.m_topology_edges[e].trim_indices.size() != 1 || sR[e].size() < 2) continue;
+            auto [ha, ia] = nearest(sR[e], sA, -1);
+            auto [hb, ib] = nearest(sR[e], sB, -1);
+            auto [hr, ir] = nearest(sR[e], sR, (int)e);
+            std::printf("[AN] e=%zu A2(h=%.4f e=%d) B2(h=%.4f e=%d) R(h=%.4f e=%d nt=%d)\n",
+                        e, ha, ia, hb, ib, hr, ir,
+                        ir >= 0 ? (int)R.m_topology_edges[ir].trim_indices.size() : -1);
+        }
+        return 0;
+    }
     // Real-world STEP round-trip: read two chair models, run all three booleans, write one
     // colored STEP per op (A red / B blue / result green) and check the volume identities.
     if (const char* cd = std::getenv("SESSION_CHAIRS")) {

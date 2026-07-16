@@ -645,6 +645,23 @@ std::array<std::array<double, 4>, 4> Xform::to_cols() const {
 // Apply Transformations
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+Point Xform::transform_point(const Point& p) const {
+    double x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+    double y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    double z = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14];
+    double w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (std::abs(w) < 1e-12) {
+        return Point(x, y, z);
+    }
+    return Point(x / w, y / w, z / w);
+}
+
+Vector Xform::transform_vector(const Vector& v) const {
+    double x = m[0] * v[0] + m[4] * v[1] + m[8] * v[2];
+    double y = m[1] * v[0] + m[5] * v[1] + m[9] * v[2];
+    double z = m[2] * v[0] + m[6] * v[1] + m[10] * v[2];
+    return Vector(x, y, z);
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // JSON

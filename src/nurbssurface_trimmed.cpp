@@ -1146,6 +1146,14 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
                     if (!piece.trim(lo, hi_))
                         piece_ok = false;
+                } else if (hi_ - lo <= 1e-14) {
+                    // zero param span: a FULL wrap of a closed pcurve lands ta==tb on the
+                    // period seam -- keep the whole curve; a genuinely degenerate run is
+                    // skipped (its endpoint chord below is zero-length and pushes nothing).
+                    if (!(run.va == run.vb && piece.is_closed())) piece_ok = false;
+                    if (std::getenv("SESSION_SPLIT_DBG"))
+                        std::fprintf(stderr, "[SEGWHOLE] cidx=%d ta=%.5f tb=%.5f va=%d vb=%d keep=%d\n",
+                                     run.cidx, run.ta, run.tb, run.va, run.vb, piece_ok ? 1 : 0);
                 }
                 if (piece_ok && piece.is_valid()) {
                     if (run.ta > run.tb) piece.reverse();  // orient tail->head
@@ -1154,6 +1162,9 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 }
             }
             if (!made) {
+                if (run.cidx >= 0 && std::getenv("SESSION_SPLIT_DBG"))
+                    std::fprintf(stderr, "[SEGFALL] cidx=%d ta=%.5f tb=%.5f -> straight chord\n",
+                                 run.cidx, run.ta, run.tb);
                 const auto& pa = verts[run.va];
                 const auto& pb = verts[run.vb];
                 if (std::hypot(pb[0]-pa[0], pb[1]-pa[1]) > 1e-14) {

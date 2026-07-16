@@ -266,14 +266,45 @@ bool Session::remove_object(const std::string &obj_guid) {
   std::visit(
       [this](const auto &ptr) {
         using T = std::decay_t<decltype(*ptr)>;
+        auto erase_by_guid = [&](auto &vec) {
+          vec.erase(std::remove_if(
+                        vec.begin(), vec.end(),
+                        [&](const auto &p) { return p->guid() == ptr->guid(); }),
+                    vec.end());
+        };
         if constexpr (std::is_same_v<T, Point>) {
-          auto &points = *objects.points;
-          points.erase(std::remove_if(
-                           points.begin(), points.end(),
-                           [&](const auto &p) { return p->guid() == ptr->guid(); }),
-                       points.end());
+          erase_by_guid(*objects.points);
         }
-        // Add other types when Objects class supports them
+        else if constexpr (std::is_same_v<T, Line>) {
+          erase_by_guid(*objects.lines);
+        }
+        else if constexpr (std::is_same_v<T, Plane>) {
+          erase_by_guid(*objects.planes);
+        }
+        else if constexpr (std::is_same_v<T, OBB>) {
+          erase_by_guid(*objects.bboxes);
+        }
+        else if constexpr (std::is_same_v<T, Polyline>) {
+          erase_by_guid(*objects.polylines);
+        }
+        else if constexpr (std::is_same_v<T, PointCloud>) {
+          erase_by_guid(*objects.pointclouds);
+        }
+        else if constexpr (std::is_same_v<T, Mesh>) {
+          erase_by_guid(*objects.meshes);
+        }
+        else if constexpr (std::is_same_v<T, NurbsCurve>) {
+          erase_by_guid(*objects.nurbscurves);
+        }
+        else if constexpr (std::is_same_v<T, NurbsSurface>) {
+          erase_by_guid(*objects.nurbssurfaces);
+        }
+        else if constexpr (std::is_same_v<T, BRep>) {
+          erase_by_guid(*objects.breps);
+        }
+        else if constexpr (std::is_same_v<T, Element>) {
+          erase_by_guid(*objects.elements);
+        }
       },
       it->second);
 
@@ -340,10 +371,32 @@ OBB Session::compute_bounding_box(const Geometry& geometry) {
       return OBB::from_points(geom_ptr->get_points(), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
-      // Extract vertices from mesh
+      // Extract vertices from mesh; xform is the placement, so bake it
       std::vector<Point> points;
       for (const auto& [key, vertex] : geom_ptr->vertex) {
-        points.push_back(vertex.position());
+        points.push_back(geom_ptr->xform.transform_point(vertex.position()));
+      }
+      if (points.empty()) {
+        return OBB::from_point(Point(0, 0, 0), inflate);
+      }
+      return OBB::from_points(points, inflate);
+    }
+    else if constexpr (std::is_same_v<T, std::shared_ptr<BRep>>) {
+      std::vector<Point> points;
+      for (const auto& p : geom_ptr->m_vertices) {
+        points.push_back(geom_ptr->xform.transform_point(p));
+      }
+      // Sample surface points to cover curved surfaces (e.g. sphere with only pole vertices)
+      for (const auto& srf : geom_ptr->m_surfaces) {
+        auto [u0, u1] = srf.domain(0);
+        auto [v0, v1] = srf.domain(1);
+        for (int ui = 0; ui <= 2; ++ui) {
+          for (int vi = 0; vi <= 2; ++vi) {
+            double u = u0 + (u1 - u0) * ui / 2.0;
+            double v = v0 + (v1 - v0) * vi / 2.0;
+            points.push_back(geom_ptr->xform.transform_point(srf.point_at(u, v)));
+          }
+        }
       }
       if (points.empty()) {
         return OBB::from_point(Point(0, 0, 0), inflate);
@@ -810,10 +863,13 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       return closest_hit;
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
-      // Ray-mesh: use triangle SpatialBVH
-      std::vector<Point> hits = Intersection::ray_mesh_bvh(ray, *geom_ptr, tolerance, true);
+      // Ray-mesh: xform is the placement — cast in the mesh's LOCAL frame, return a WORLD hit
+      auto inv = geom_ptr->xform.inverse();
+      if (!inv) return std::nullopt;
+      Line local_ray = Line::from_points(inv->transform_point(ray.start()), inv->transform_point(ray.end()));
+      std::vector<Point> hits = Intersection::ray_mesh_bvh(local_ray, *geom_ptr, tolerance, true);
       if (!hits.empty()) {
-        return hits[0];  // Return closest
+        return geom_ptr->xform.transform_point(hits[0]);  // Return closest
       }
       return std::nullopt;
     }

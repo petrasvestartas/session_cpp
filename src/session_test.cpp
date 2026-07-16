@@ -301,6 +301,18 @@ MINI_TEST("Session", "Ray Cast") {
     auto hits = session.ray_cast(Point(0.0, 0.0, 2.0), Vector(0.0, 0.0, -1.0));
 
     MINI_CHECK(hits.size() >= 1);
+
+    auto placed = std::make_shared<Mesh>();
+    placed->add_vertex(Point(-1.0, -1.0, 0.0), 0);
+    placed->add_vertex(Point(1.0, -1.0, 0.0), 1);
+    placed->add_vertex(Point(0.0, 1.0, 0.0), 2);
+    placed->add_face(std::vector<size_t>{0, 1, 2});
+    placed->xform = Xform::translation(100.0, 0.0, 0.0);
+    session.add_mesh(placed);
+    auto hits2 = session.ray_cast(Point(100.0, 0.0, 2.0), Vector(0.0, 0.0, -1.0));
+
+    MINI_CHECK(hits2.size() >= 1);
+    MINI_CHECK(TOLERANCE.is_close(hits2[0].hit_point[0], 100.0));
 }
 
 MINI_TEST("Session", "Get Object") {

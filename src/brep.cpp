@@ -1,4 +1,5 @@
 #include "brep.h"
+#include "brep_section.h"
 #include "remesh_nurbssurface_grid.h"
 #include "remesh_cdt.h"
 #include "primitives.h"
@@ -3664,13 +3665,19 @@ void BRep::co_refine_coincident_edges(double tol) {
             Point ends[2] = { Cj.point_at_start(), Cj.point_at_end() };
             for (const Point& V : ends) {
                 double tc = C.closest_parameter(V);
-                if (C.point_at(tc).distance(V) > tol) continue;
+                double dv = C.point_at(tc).distance(V);
                 double frac = (tc-dom.first)/(dom.second-dom.first);
+                if (std::getenv("SESSION_SEW_DBG"))
+                    std::fprintf(stderr, "[CRD] ei=%d ej=%d frac=%.6f d=%.4f\n", ei, ej, frac, dv);
+                if (dv > tol) continue;
                 if (frac <= 1e-6 || frac >= 1.0-1e-6) { seam_has_split = true; continue; }
                 bool dup=false; for(auto&s:sp) if(s.second.distance(V)<tol){dup=true;break;}
                 if(!dup) sp.push_back({tc,V});
             }
         }
+        if (std::getenv("SESSION_SEW_DBG") && (!sp.empty() || seam_has_split))
+            std::fprintf(stderr, "[CR] ei=%d splits=%zu seam=%d s(%.4f,%.4f,%.4f) e(%.4f,%.4f,%.4f)\n",
+                ei, sp.size(), seam_has_split ? 1 : 0, pA[0], pA[1], pA[2], pB[0], pB[1], pB[2]);
         if (sp.empty()) continue;
         // EXACT SECTION-CIRCLE REBUILD (P0): the lift stores every 3D edge as a chord polyline
         // (devtol ~2e-3 of the face size), so a split section CIRCLE - and every pcurve rebuilt
@@ -3841,7 +3848,11 @@ void BRep::co_refine_coincident_edges(double tol) {
         for(auto&s:sp){ iparams.push_back(s.first); ipts.push_back(s.second); }
 
         std::vector<NurbsCurve> c3pieces = split_multi(C, iparams);
-        if ((int)c3pieces.size() != (int)iparams.size()+1) continue;  // split failed -> keep edge
+        if ((int)c3pieces.size() != (int)iparams.size()+1) {
+            if (std::getenv("SESSION_SEW_DBG"))
+                std::fprintf(stderr, "[CR] ei=%d SPLIT-FAIL want=%zu got=%zu\n", ei, iparams.size()+1, c3pieces.size());
+            continue;  // split failed -> keep edge
+        }
 
         // wrap-join the first+last 3D piece across the param seam ONLY for a closed edge whose seam
         // is interior to an arc (no split point at the seam). Else (open, or seam coincides with a
@@ -4934,6 +4945,52 @@ void BRep::sew_coincident_edges(double tol) {
             }
         }
     }
+    // Third pass, mutual-best em-match: on grazing surface pairs (two near-identical solids
+    // slightly offset) the two operands' lifts of the SAME section edge share endpoints but
+    // diverge mid-span past tol2 (each polyline hugs its own surface where the surfaces run
+    // nearly parallel). A plain tolerance raise would also merge the two HALVES of a section
+    // loop (they share junction endpoints too) -- so pair only edges that are each other's
+    // MUTUAL best match with clear separation from the runner-up: the true copy sits at
+    // lift-degradation distance, a wrong half at lens height.
+    {
+        std::vector<int> uses(ne, 0);
+        for (const auto& t : m_trims)
+            if (t.edge_index >= 0 && t.edge_index < ne) uses[rep[t.edge_index]]++;
+        double tol3 = tol * 8.0;
+        auto haus = [&](int a, int b) -> double {
+            double h = 0.0;
+            for (const auto& q : samp[a]) { double d = pt_to_polyline(q, samp[b]); if (d > h) h = d; if (h > tol3) return h; }
+            for (const auto& q : samp[b]) { double d = pt_to_polyline(q, samp[a]); if (d > h) h = d; if (h > tol3) return h; }
+            return h;
+        };
+        std::vector<int> cand;
+        for (int ei = 0; ei < ne; ++ei)
+            if (!samp[ei].empty() && rep[ei] == ei && uses[ei] == 1) cand.push_back(ei);
+        std::vector<int> best(ne, -1); std::vector<double> bd(ne, 1e300), bd2(ne, 1e300);
+        for (size_t x = 0; x < cand.size(); ++x)
+            for (size_t y = x + 1; y < cand.size(); ++y) {
+                int a = cand[x], b = cand[y];
+                if (bbox_far(a, b)) continue;
+                const Point& a0 = samp[a].front(); const Point& a1 = samp[a].back();
+                const Point& b0 = samp[b].front(); const Point& b1 = samp[b].back();
+                bool em = (a0.distance(b0) < tol && a1.distance(b1) < tol)
+                       || (a0.distance(b1) < tol && a1.distance(b0) < tol);
+                if (!em) continue;
+                double h = haus(a, b);
+                if (h < bd[a]) { bd2[a] = bd[a]; bd[a] = h; best[a] = b; } else if (h < bd2[a]) bd2[a] = h;
+                if (h < bd[b]) { bd2[b] = bd[b]; bd[b] = h; best[b] = a; } else if (h < bd2[b]) bd2[b] = h;
+            }
+        for (int a : cand) {
+            int b = best[a];
+            if (b < 0 || best[b] != a || a > b) continue;          // mutual best, handle once
+            if (bd[a] > tol3) continue;                            // too far even for a copy
+            if (bd[a] > bd2[a] * 0.6 || bd[a] > bd2[b] * 0.6) continue;  // no clear separation
+            if (rep[a] != a || rep[b] != b) continue;
+            if (std::getenv("SESSION_SEW_DBG"))
+                std::fprintf(stderr, "[P3] merge a=%d b=%d h=%.4f next=%.4f\n", a, b, bd[a], std::min(bd2[a], bd2[b]));
+            rep[b] = a;
+        }
+    }
     if (std::getenv("SESSION_SEW_DBG")) {
         for (int ei = 0; ei < ne; ++ei) {
             if (samp[ei].empty() || rep[ei] != ei) continue;
@@ -5717,10 +5774,36 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         }
         lap("pair_ssi");
     }
+    // S1 (OCCT-adoption plan): build the shared section scaffold and print its
+    // self-diagnostics. Inert -- output unused until S2 wires it into the splits.
+    // Runs its OWN fenced pair loop (lane decision: pre_cuts above stays untouched).
+    static const bool s_scaffold = (std::getenv("SESSION_SECTION_SCAFFOLD") != nullptr);
+    if (imported_freeform && s_scaffold) {
+        SectionScaffold scaf = build_section_scaffold(*this, other, tolerance);
+        std::fprintf(stderr,
+            "[SCAF] chains=%d segs=%zu verts=%zu paves(tA=%d tB=%d x=%d v=%d c=%d) "
+            "drop(verdict=%d micro=%d) dev(A=%.3e B=%.3e) tol3=%.3e\n",
+            scaf.n_chains, scaf.segments.size(), scaf.vertices.size(),
+            scaf.n_paves_trimA, scaf.n_paves_trimB, scaf.n_paves_xing,
+            scaf.n_paves_vertex, scaf.n_paves_closing,
+            scaf.n_dropped_verdict, scaf.n_dropped_micro,
+            scaf.max_devA, scaf.max_devB, scaf.tol3);
+        std::fflush(stderr);
+        lap("scaffold");
+    }
     BRep A2 = split_by_brep(other, tolerance, imported_freeform,
                             imported_freeform ? &cutsA : nullptr);      lap("splitA");
     BRep B2 = other.split_by_brep(*this, tolerance, imported_freeform,
                                   imported_freeform ? &cutsB : nullptr); lap("splitB");
+    if (std::getenv("SESSION_NT_DBG")) {
+        auto cnt1 = [](const BRep& X) { int c = 0; for (const auto& e : X.m_topology_edges) if (e.trim_indices.size() == 1) ++c; return c; };
+        std::printf("[NT] A2 edges1=%d/%d  B2 edges1=%d/%d\n",
+                    cnt1(A2), (int)A2.m_topology_edges.size(), cnt1(B2), (int)B2.m_topology_edges.size());
+    }
+    if (const char* dd = std::getenv("SESSION_DUMP_SPLITS")) {
+        A2.pb_dump(std::string(dd) + "/split_A2.pb");
+        B2.pb_dump(std::string(dd) + "/split_B2.pb");
+    }
     // Classify fragments against the OTHER solid. The operands are typically recognized
     // primitives (box/beam/cylinder) -> test point-in-solid analytically in O(1) and skip the
     // tessellate+ray-cast entirely. Only build a mesh for an operand we could not recognize.
@@ -5939,6 +6022,28 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // into one mated edge -- helps make the result a watertight solid.
     result.sew_coincident_edges();                            lap("sew");
     count_nt("sew");
+    if (std::getenv("SESSION_NT_DBG")) {
+        // lineage of each residual 1-trim edge: owning face + operand side + shape
+        int nA = (int)subA.m_faces.size();
+        for (int e = 0; e < (int)result.m_topology_edges.size(); ++e) {
+            const auto& E = result.m_topology_edges[e];
+            if ((int)E.trim_indices.size() != 1) continue;
+            int ti = E.trim_indices[0];
+            int li = (ti >= 0 && ti < (int)result.m_trims.size()) ? result.m_trims[ti].loop_index : -1;
+            int fi = (li >= 0 && li < (int)result.m_loops.size()) ? result.m_loops[li].face_index : -1;
+            int ci = E.curve_3d_index;
+            double len = 0.0; bool closed = false;
+            if (ci >= 0 && ci < (int)result.m_curves_3d.size()) {
+                const NurbsCurve& C = result.m_curves_3d[ci];
+                auto [t0, t1] = C.domain();
+                Point pp = C.point_at(t0);
+                for (int k = 1; k <= 16; ++k) { Point q = C.point_at(t0 + (t1 - t0) * k / 16.0); len += pp.distance(q); pp = q; }
+                closed = C.point_at(t0).distance(C.point_at(t1)) < 1e-6;
+            }
+            std::printf("[NK] e=%d face=%d side=%c len=%.3f closed=%d\n",
+                        e, fi, (fi >= 0 && fi < nA) ? 'A' : 'B', len, closed ? 1 : 0);
+        }
+    }
     // SameParameter-lite (planar pcurves rebuilt from the curved side's lifted boundary) is
     // gated OFF: it only helps once ALL section arcs are pullback-quality on both surfaces --
     // with mixed-quality copies (box x tor: e16-type arcs sit 5e-4 off the plane) the rebuilt
