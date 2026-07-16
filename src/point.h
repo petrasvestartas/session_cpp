@@ -23,6 +23,8 @@ public:
   std::string name = "my_point";     ///< Point identifier/name
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+  void refresh_guid() { _guid.clear(); }
   double width = 1.0;                ///< Point diameter in pixels
   Color pointcolor = Color::blue();  ///< Color of the point (default: blue)
   Xform xform = Xform::identity();   ///< Transformation matrix

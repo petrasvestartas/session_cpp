@@ -1,0 +1,59 @@
+OCCT irregular BRep solid corpus for boolean testing
+=====================================================
+Source tree : validation/occt_oracle/build/deps/occt/src/occt/data/occ/  (37 .brep + 5 .rle local files)
+Converter   : validation/brep2step/brep2step.exe  (BRepTools::Read -> STEPControl_Writer; --pair mode
+              bbox-aligns and translates B into A to build guaranteed-overlap boolean pairs)
+Validator   : validation/step_probe/step_probe.exe (reader-side values below; all files SOLIDS>=1 VALID 1)
+Note        : tests/boolean gridded suites use locate_data_file (external data repo, not present locally);
+              all corpus files below come from the local data/occ directory.
+
+BASE SOLIDS (15)
+file                          source (data/occ)                 solids faces  volume             valid  surfaces
+occt_propeller.step           Propeller.rle                     1      76     2005632.791344634  1      98 bspline + 275 bezier + torus/cyl/plane (freeform blades)
+occt_mold_bottom.step         Bottom.brep                       1      323    310017.259251086   1      316 bspline + 934 bezier (organic mold half)
+occt_crankarm.step            CrankArm.brep                     2      53     54074.267918968    1      48 bspline + 148 bezier + cones (blended crank arm)
+occt_motor_assembly.step      Motor-c.brep                      17     223    598774.194564648   1      22 bspline + 62 bezier + tori/cones (multi-solid motor)
+occt_ball_valve.step          Ball.brep                         2      17     4612.450979521     1      15 bspline + 34 bezier + tori/spheres
+occt_bottle.step              bottle.brep                       1      71     6962.493785598     1      2 bspline + 42 bezier + 9 tori + 16 spheres (filleted bottle)
+occt_pump_topcover.step       Pump_TopCover.brep                1      8      2495433.713006827  1      6 bspline + 6 bezier + spheres
+occt_pump_nut.step            Pump_Nut.brep                     1      25     24130.310555393    1      34 bezier + 14 cones + tori (chamfered nut)
+occt_exhaust.step             MODERN_Exhaust_1.brep             3      55     53572.769307007    1      6 bspline + 44 bezier (organic exhaust hood)
+occt_sink.step                MODERN_Sink_1.brep                3      170    75636.055770462    1      6 bspline + 164 bezier + 31 tori + 8 sweeps (organic sink)
+occt_chair.step               MODERN_Chair_1.brep               4      138    10024.839378795    1      144 bezier + spheres (blended chair)
+occt_refrigerator_opened.step MODERN_Refrigerator_1_opened.brep 4      88     19654.369153059    1      80 bezier + 16 tori (filleted fridge, open door)
+occt_axis_of_bearing.step     Axis_of_bearing.brep              17     63     52896.104620187    1      12 bezier + 12 tori + 12 spheres + cones (bearing axis, 18 solids writer-side, 17 after STEP roundtrip)
+occt_cooker.step              MODERN_Cooker_1.brep              3      62     101500.629641691   1      32 bezier + 12 tori (filleted cooker)
+occt_table.step               MODERN_Table_1.brep               1      22     30649.481364239    1      12 bezier (rounded table)
+
+PAIR PARTNERS (5) - same source breps, translated via brep2step --pair (bbox-center align + fractional offset)
+file                          source (data/occ)                 solids faces  volume             valid  translation applied (x y z)
+occt_propeller_shifted.step   Propeller.rle                     1      76     2005632.791344688  1      +237.500179123 0 0
+occt_crankarm_in_bottle.step  CrankArm.brep                     2      53     54074.267719332    1      -91.037282382 0 +140.500000000
+occt_pump_nut_in_ball.step    Pump_Nut.brep                     1      25     24130.310555400    1      -78.910958157 -268.133137968 +12.475000141
+occt_exhaust_in_sink.step     MODERN_Exhaust_1.brep             3      55     53572.769307000    1      +117.547083524 +119.882263624 -172.945464484
+occt_crankarm_shifted.step    CrankArm.brep                     2      53     54074.267719218    1      +31.297497026 0 +7.487630189
+
+BOOLEAN ORACLES (step_probe --cut / --common A B; OCCT BRepAlgoAPI reference values)
+pair  A                        B                                op      solids faces  volume             valid
+1     occt_propeller.step      occt_propeller_shifted.step      cut     3      119    1511783.240224860  1
+1     occt_propeller.step      occt_propeller_shifted.step      common  1      62     493849.214459360   1
+2     occt_bottle.step         occt_crankarm_in_bottle.step     cut     1      129    6243.199805665     1
+2     occt_bottle.step         occt_crankarm_in_bottle.step     common  2      66     719.291725987      1
+3     occt_ball_valve.step     occt_pump_nut_in_ball.step       cut     2      22     4558.511442030     1
+3     occt_ball_valve.step     occt_pump_nut_in_ball.step       common  1      7      53.939511031       1
+4     occt_sink.step           occt_exhaust_in_sink.step        cut     7      233    72286.727074774    1
+4     occt_sink.step           occt_exhaust_in_sink.step        common  4      85     3349.331394754     1
+5     occt_crankarm.step       occt_crankarm_shifted.step       cut     4      128    43365.615428860    1
+5     occt_crankarm.step       occt_crankarm_shifted.step       common  3      109    10708.647660661    1
+
+Consistency check (vol(cut) + vol(common) == vol(A)):
+1: 1511783.240 + 493849.214 = 2005632.455 vs 2005632.791 (freeform tol)
+2: 6243.200 + 719.292 = 6962.492 vs 6962.494
+3: 4558.511 + 53.940 = 4612.451 vs 4612.451
+4: 72286.727 + 3349.331 = 75636.058 vs 75636.056
+5: 43365.615 + 10708.648 = 54074.263 vs 54074.268
+
+REJECTED SOURCES (not closed solids or not irregular): asahi (mesh drawable, 0 faces), edge/face/face1/face2/
+fuse/Room/shell1/terrain/wing/MAT (no solids), Top.brep (VALID 0), wedge_ok (plain wedge), mal_vis/mal_tige/
+mal_ecrou (analytic-only), solid.brep (duplicate of mal_tige), CrankArm.rle (duplicate of CrankArm.brep),
+MVCooker/Refrigerator closed (planes+cyl only), CylinderHead/EngineBlock/Piston .rle (analytic-only).

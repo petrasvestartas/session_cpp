@@ -128,6 +128,8 @@ public:
     std::map<std::string, double> default_edge_attributes;                ///< Default edge attrs
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+    void refresh_guid() { _guid.clear(); }
     std::string name = "my_mesh";                                        ///< Mesh name
     ColorMode color_mode = ColorMode::OBJECTCOLOR;                        ///< Active color mode
     Xform xform;                                     ///< Transformation matrix

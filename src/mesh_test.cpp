@@ -1996,4 +1996,15 @@ namespace session_cpp {
         MINI_CHECK(std::abs(std::abs(result.volume()) - 4.0) < 0.2);
     }
 
+    MINI_TEST("Mesh", "Refresh Guid") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        std::string original = mesh.guid();
+        Mesh copy = mesh;
+
+        MINI_CHECK(copy.guid() == original);
+        copy.refresh_guid();
+        MINI_CHECK(copy.guid() != original);
+        MINI_CHECK(mesh.guid() == original);
+    }
+
 } // namespace session_cpp

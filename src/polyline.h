@@ -29,6 +29,8 @@ public:
     std::string name = "my_polyline";
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+    void refresh_guid() { _guid.clear(); }
     std::vector<double> _coords;  // Flat array [x0, y0, z0, x1, y1, z1, ...]
     mutable Plane plane;
     mutable bool _plane_dirty = true;

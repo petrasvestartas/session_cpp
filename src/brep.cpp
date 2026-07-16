@@ -2335,7 +2335,7 @@ BRep BRep::split_by_line(const Line& line, double tolerance) const {
     return split_by_curves({crv}, tolerance);
 }
 
-BRep BRep::subset(const std::vector<int>& face_indices) const {
+BRep BRep::subset(const std::vector<int>& face_indices, std::map<int, int>* edge_remap) const {
     BRep sub;
     sub.name = name;
     std::map<int, int> s_map, c2_map, c3_map, v_map, e_map;
@@ -2408,6 +2408,7 @@ BRep BRep::subset(const std::vector<int>& face_indices) const {
         if (ev != sv && ev >= 0 && ev < (int)sub.m_topology_vertices.size())
             sub.m_topology_vertices[ev].edge_indices.push_back(ei);
     }
+    if (edge_remap) *edge_remap = e_map;
     return sub;
 }
 
@@ -2489,7 +2490,9 @@ void BRep::append_brep(const BRep& other) {
 }
 
 BRep BRep::split_by_brep(const BRep& cutter, double tolerance, bool imported_freeform,
-                         const std::vector<std::vector<NurbsCurve>>* pre_cuts) const {
+                         const std::vector<std::vector<NurbsCurve>>* pre_cuts,
+                         const SectionScaffold* scaf, bool scaf_is_A,
+                         std::map<int, std::array<int, 3>>* sec_edges_out) const {
     std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> cutter_bbs;
     for (const auto& cs : cutter.m_surfaces) cutter_bbs.push_back(aabb_from_surface(cs));
 
@@ -2772,14 +2775,20 @@ BRep BRep::split_by_brep(const BRep& cutter, double tolerance, bool imported_fre
                 push_deduped(pc);
         }
         return out;
-    }, imported_freeform);
+    }, imported_freeform, scaf, scaf_is_A, sec_edges_out);
 }
 
-BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform) const {
+BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform,
+                      const SectionScaffold* scaf, bool scaf_is_A,
+                      std::map<int, std::array<int, 3>>* sec_edges_out) const {
     BRep result;
     result.name = name;
     std::map<std::tuple<long long, long long, long long>, int> vmap;
     std::map<std::tuple<int, int, long long, long long, long long>, int> emap;
+    // OCCT-adoption S2: section edges are keyed by scaffold identity (seg_id) so the two
+    // fragments flanking a section within one operand share ONE edge by construction, and
+    // sec_edges_out lets BRep::boolean merge the operands' copies at combine.
+    std::map<int, int> sec_emap;   // seg_id -> result topology-edge index
     static const bool s_prof = (std::getenv("SESSION_BOOL_PROFILE") != nullptr);
     double prof_ssi = 0, prof_arr = 0, prof_lift = 0;
     auto pf_now = []{ return std::chrono::high_resolution_clock::now(); };
@@ -2842,8 +2851,18 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         return idx;
     };
 
+    // Per-face scaffold state: cut index -> scaffold seg_id (set in the face loop below,
+    // read by append_face to map an arrangement run back to its shared section segment).
+    std::vector<int> scaf_cut_seg_ids;
+    std::vector<std::array<double, 2>> scaf_cut_spans;   // per cut: [t_lo, t_hi] of the TRUE
+                                                          // segment inside the overshot pcurve
+    int scaf_n_boundary = 0;
+    int scaf_fallbacks = 0;
+    const std::vector<NurbsCurve>* all_pcs_ref = nullptr;   // current face's boundary+cut pcurves
+
     auto append_face = [&](const NurbsSurface& srf,
-                           const std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>>& loops) {
+                           const std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>>& loops,
+                           const std::vector<const std::vector<std::array<double, 3>>*>* loop_srcs = nullptr) {
         int si = result.add_surface(srf);
         int fi = result.add_face(si, false);
         // One deviation tolerance per face (chord error target = 5e-4 of the surface size): a
@@ -2860,10 +2879,72 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         // one operand's section copy is now fit-accurate (~1e-5); the other's lift must
         // stay within the sew tolerance of it, not merely within 2e-3 of itself
         double devtol = sd * 2e-3;
-        for (const auto& lp : loops) {
+        for (size_t lidx = 0; lidx < loops.size(); ++lidx) {
+            const auto& lp = loops[lidx];
+            const std::vector<std::array<double, 3>>* srcs =
+                (loop_srcs && lidx < loop_srcs->size()) ? (*loop_srcs)[lidx] : nullptr;
             int li = result.add_loop(fi, lp.first);
-            for (const auto& pc : lp.second) {
+            for (size_t pidx = 0; pidx < lp.second.size(); ++pidx) {
+                const auto& pc = lp.second[pidx];
                 if (!pc.is_valid()) continue;
+                // OCCT-adoption S2: a run sourced from a scaffold section segment lifts
+                // to the SHARED 3D chain (identical on both operands by construction) and
+                // is keyed by seg_id -- one edge record per segment per operand, merged
+                // across operands by BRep::boolean at combine.
+                int seg_id = -1;
+                if (scaf && srcs && pidx < srcs->size()) {
+                    int cidx = (int)(*srcs)[pidx][0];
+                    if (cidx >= scaf_n_boundary &&
+                        cidx - scaf_n_boundary < (int)scaf_cut_seg_ids.size()) {
+                        int ci = cidx - scaf_n_boundary;
+                        const SectionSegment& s = scaf->segments[scaf_cut_seg_ids[ci]];
+                        // accept a run covering the TRUE segment interior [t_lo, t_hi] (the
+                        // pcurve is overshot past the boundary at open ends, so the run's
+                        // crossing-clipped span lands just inside the overshoot); anything
+                        // shorter is an unexpected interior re-split -> legacy-lift fallback.
+                        double t_lo = scaf_cut_spans[ci][0], t_hi = scaf_cut_spans[ci][1];
+                        double slack = (t_hi - t_lo) * 1e-3 + (t_lo > 0.0 ? t_lo : 1e-12) * 1.5;
+                        double ra = std::min((*srcs)[pidx][1], (*srcs)[pidx][2]);
+                        double rb = std::max((*srcs)[pidx][1], (*srcs)[pidx][2]);
+                        // zero-length sliver run (closing-pave / overshoot artifact): emit
+                        // nothing rather than polluting the face with a micro edge
+                        if (rb - ra < 1e-9) continue;
+                        bool whole = ra <= t_lo + slack && rb >= t_hi - slack;
+                        // closed segment (t_lo==0, wrap-around runs): accept by covered length
+                        if (!whole && s.v_start == s.v_end && (rb - ra) >= (t_hi - t_lo) * 0.9)
+                            whole = true;
+                        if (whole) {
+                            seg_id = s.seg_id;
+                        } else {
+                            ++scaf_fallbacks;
+                            if (std::getenv("SESSION_SPLIT_DBG"))
+                                std::fprintf(stderr, "[SCAF-FALL] seg=%d ra=%.5f rb=%.5f t=[%.5f,%.5f]\n",
+                                             s.seg_id, ra, rb, t_lo, t_hi);
+                        }
+                    }
+                }
+                if (seg_id >= 0) {
+                    const SectionSegment& s = scaf->segments[seg_id];
+                    int ei;
+                    BRepTrimType ttype;
+                    auto itS = sec_emap.find(seg_id);
+                    if (itS != sec_emap.end()) {
+                        ei = itS->second;
+                        ttype = BRepTrimType::Mated;
+                    } else {
+                        NurbsCurve c3d = NurbsCurve::create(false, 1, s.p3);
+                        int ci3d = result.add_curve_3d(c3d);
+                        int va = find_or_add_vertex(s.p3.front());
+                        int vb = find_or_add_vertex(s.p3.back());
+                        ei = result.add_edge(ci3d, std::min(va, vb), std::max(va, vb));
+                        sec_emap[seg_id] = ei;
+                        ttype = BRepTrimType::Boundary;
+                        if (sec_edges_out) (*sec_edges_out)[ei] = {seg_id, s.v_start, s.v_end};
+                    }
+                    int ci2d = result.add_curve_2d(pc);
+                    result.add_trim(ci2d, ei, li, false, ttype);
+                    continue;
+                }
                 NurbsCurve c3d;
                 Point p0, p1, pm;
                 lift_loop(srf, devtol, pc, c3d, p0, p1, pm);
@@ -2913,7 +2994,91 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         }
 
         auto pf_t0 = pf_now();
-        std::vector<NurbsCurve> cut_pcs = cut_for(srf);
+        // OCCT-adoption S2: scaffold mode replaces the per-operand cuts with the SHARED
+        // section segments' UV chains (pre-noded, pre-clipped, keep-verdicted once for both
+        // operands) -- the legacy clip/border/snap-bridge stages below are skipped because
+        // they would disturb the cut-index -> seg_id alignment.
+        scaf_cut_seg_ids.clear();
+        scaf_cut_spans.clear();
+        std::vector<NurbsCurve> cut_pcs;
+        if (scaf) {
+            // Scaffold segments end exactly ON the trim boundary (paved there); the
+            // arrangement only nodes transversal CROSSINGS, so a tangent-touching end is
+            // valence-1 and the dangling prune eats the cut. Overshoot each open end past
+            // the boundary (the proven TRIM_SNAP-bridge pattern) so a crossing node forms;
+            // the run's true span [t_lo, t_hi] is remembered for append_face's seg mapping.
+            auto duF = srf.domain(0); auto dvF = srf.domain(1);
+            double ov = std::min(duF.second - duF.first, dvF.second - dvF.first) * 1e-2;
+            // Boundary polylines of THIS face (for the border-coincident drop below): a
+            // section running ALONG the face's own trim boundary does not cut the face --
+            // it derails the arrangement (the legacy off_border lesson).
+            std::vector<std::vector<Point>> bnd_polys_sc;
+            for (auto& bp : outer_pcs) {
+                auto dbp = bp.domain();
+                std::vector<Point> ps(65);
+                for (int i2 = 0; i2 <= 64; ++i2)
+                    ps[i2] = bp.point_at(dbp.first + (dbp.second - dbp.first) * i2 / 64.0);
+                bnd_polys_sc.push_back(std::move(ps));
+            }
+            auto d_bnd_sc = [&](const Point& p) {
+                double best = 1e300;
+                for (auto& poly : bnd_polys_sc)
+                    for (size_t j = 0; j + 1 < poly.size(); ++j) {
+                        double ex = poly[j+1][0]-poly[j][0], ey = poly[j+1][1]-poly[j][1];
+                        double L2 = ex*ex + ey*ey;
+                        double t = L2 > 1e-30 ? ((p[0]-poly[j][0])*ex + (p[1]-poly[j][1])*ey) / L2 : 0.0;
+                        t = std::min(std::max(t, 0.0), 1.0);
+                        double dx = p[0]-poly[j][0]-t*ex, dy = p[1]-poly[j][1]-t*ey;
+                        best = std::min(best, dx*dx + dy*dy);
+                    }
+                return std::sqrt(best);
+            };
+            double eps_border = std::min(duF.second - duF.first, dvF.second - dvF.first) * 2e-3;
+            const auto& ids = scaf_is_A ? scaf->segs_by_surfA[face.surface_index]
+                                        : scaf->segs_by_surfB[face.surface_index];
+            for (int sid : ids) {
+                const SectionSegment& s = scaf->segments[sid];
+                const auto& uv = scaf_is_A ? s.uvA : s.uvB;
+                if (uv.size() < 2) continue;
+                // drop segments coincident with this face's own boundary (all probes ON it)
+                bool on_border = true;
+                for (int qk = 0; qk <= 4 && on_border; ++qk) {
+                    size_t qi = (uv.size() - 1) * qk / 4;
+                    on_border = d_bnd_sc(uv[qi]) < eps_border;
+                }
+                if (on_border) continue;
+                bool closed_seg = s.v_start == s.v_end;
+                std::vector<Point> pts;
+                double t_lo = 0.0;
+                if (!closed_seg) {
+                    double dx = uv[0][0] - uv[1][0], dy = uv[0][1] - uv[1][1];
+                    double L = std::hypot(dx, dy);
+                    if (L > 1e-30) {
+                        pts.push_back(Point(uv[0][0] + dx / L * ov, uv[0][1] + dy / L * ov, 0.0));
+                        t_lo = ov;
+                    }
+                }
+                for (const auto& q : uv) pts.push_back(q);
+                double chain_len = 0.0;
+                for (size_t k = 1; k < uv.size(); ++k)
+                    chain_len += std::hypot(uv[k][0] - uv[k-1][0], uv[k][1] - uv[k-1][1]);
+                double t_hi = t_lo + chain_len;
+                if (!closed_seg) {
+                    size_t n = uv.size();
+                    double dx = uv[n-1][0] - uv[n-2][0], dy = uv[n-1][1] - uv[n-2][1];
+                    double L = std::hypot(dx, dy);
+                    if (L > 1e-30)
+                        pts.push_back(Point(uv[n-1][0] + dx / L * ov, uv[n-1][1] + dy / L * ov, 0.0));
+                }
+                NurbsCurve pc = NurbsCurve::create(false, 1, pts);
+                if (!pc.is_valid()) continue;
+                cut_pcs.push_back(pc);
+                scaf_cut_seg_ids.push_back(sid);
+                scaf_cut_spans.push_back({t_lo, t_hi});
+            }
+        } else {
+            cut_pcs = cut_for(srf);
+        }
         if (s_prof) prof_ssi += pf_us(pf_t0, pf_now());
         if (cut_pcs.empty() || has_inner) {
             std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>> loops;
@@ -2929,7 +3094,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         // loop can exit the face's domain (the blob's silhouette at x=-2 reaches past the
         // wall's edge, its pullback dips to v=-0.05) and the arrangement cannot handle
         // out-of-domain cuts -- the wall face then never splits and loses its hole.
-        {
+        if (!scaf) {
             auto duS = srf.domain(0); auto dvS = srf.domain(1);
             bool cu2 = srf.is_closed(0), cv2 = srf.is_closed(1);
             std::vector<NurbsCurve> clipped;
@@ -3074,7 +3239,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         // For each cut endpoint within snap_hi of the boundary we append a short linear
         // bridge that OVERSHOOTS the boundary polyline, forcing a crossing node so the cut
         // survives the prune and actually partitions the face. Default off => byte-identical.
-        if (const char* snap_env = std::getenv("SESSION_TRIM_SNAP")) {
+        if (const char* snap_env = scaf ? nullptr : std::getenv("SESSION_TRIM_SNAP")) {
             double snap_hi = std::atof(snap_env);
             if (snap_hi <= 0.0) snap_hi = 0.05;
             const double snap_lo = 1e-6;
@@ -3126,6 +3291,8 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         int n_boundary = (int)outer_pcs.size();
         std::vector<NurbsCurve> all_pcs = outer_pcs;
         all_pcs.insert(all_pcs.end(), cut_pcs.begin(), cut_pcs.end());
+        scaf_n_boundary = n_boundary;   // S2: append_face maps run cidx -> seg via these
+        all_pcs_ref = &all_pcs;
         if (std::getenv("SESSION_SPLIT_DBG")) {
             std::fprintf(stderr, "[PRESPLIT] si=%d nbnd=%d totpc=%zu\n",
                          face.surface_index, n_boundary, all_pcs.size());
@@ -3144,7 +3311,10 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         // STEP) operands; every matrix pair has a recognized primitive so this stays 0.0 there.
         // 0.05 validated on the chair pair (all 20 faces of both operands split or pass through
         // correctly); SESSION_BND_SNAP still overrides inside split_by_uv_curves.
-        double snap_bnd = imported_freeform ? 0.05 : 0.0;
+        // Scaffold cuts are pre-noded (paved at trim crossings + overshot past the boundary):
+        // the endpoint projection/jweld machinery, built for UNPAVED legacy cuts, would MOVE
+        // those nodes by up to 0.05 UV and desync the run spans from the scaffold paves.
+        double snap_bnd = (imported_freeform && !scaf) ? 0.05 : 0.0;
         std::vector<NurbsSurfaceTrimmed> parts = s_wiresplit
             ? NurbsSurfaceTrimmed::split_face_by_wires(srf, cut_pcs, outer_pcs, tolerance)
             : NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary, snap_bnd);
@@ -3212,21 +3382,30 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
             // run lifts to its own edge and mates with the matching segment edge of an
             // adjacent face -> watertight imprint. Fall back to the single joined loop.
             std::vector<std::pair<BRepLoopType, std::vector<NurbsCurve>>> loops;
+            std::vector<const std::vector<std::array<double, 3>>*> loop_srcs;
             loops.push_back({BRepLoopType::Outer,
                 part.m_outer_segments.empty() ? std::vector<NurbsCurve>{part.m_outer_loop}
                                               : part.m_outer_segments});
+            loop_srcs.push_back(part.m_outer_segments.empty() ? nullptr : &part.m_outer_segment_srcs);
             for (size_t k = 0; k < part.m_inner_loops.size(); ++k) {
                 const std::vector<NurbsCurve>& isegs =
                     (k < part.m_inner_segments.size()) ? part.m_inner_segments[k]
                                                        : std::vector<NurbsCurve>{};
                 loops.push_back({BRepLoopType::Inner,
                     isegs.empty() ? std::vector<NurbsCurve>{part.m_inner_loops[k]} : isegs});
+                loop_srcs.push_back((!isegs.empty() && k < part.m_inner_segment_srcs.size())
+                                        ? &part.m_inner_segment_srcs[k] : nullptr);
             }
-            append_face(part.m_surface, loops);
+            append_face(part.m_surface, loops, scaf ? &loop_srcs : nullptr);
         }
         if (s_prof) prof_lift += pf_us(pf_t4, pf_now());
     }
     if (s_prof) std::fprintf(stderr, "[split-prof]     ssi=%.1f arr=%.1f lift=%.1f us\n", prof_ssi, prof_arr, prof_lift);
+    if (scaf && std::getenv("SESSION_SPLIT_DBG")) {
+        std::fprintf(stderr, "[SCAF-SPLIT] side=%c sec_edges=%zu fallbacks=%d\n",
+                     scaf_is_A ? 'A' : 'B', sec_emap.size(), scaf_fallbacks);
+        std::fflush(stderr);
+    }
 
     for (int ei = 0; ei < (int)result.m_topology_edges.size(); ++ei) {
         int sv = result.m_topology_edges[ei].start_vertex;
@@ -4768,6 +4947,85 @@ void BRep::make_shared_section_edges(const BRep& A, const BRep& B, double tol) {
     sew_coincident_edges(tol);
 }
 
+void BRep::snap_section_edges(const std::vector<NurbsCurve>& sections, double tol) {
+    if (sections.empty()) return;
+    double diag;
+    {
+        double xmn=1e300,ymn=1e300,zmn=1e300,xmx=-1e300,ymx=-1e300,zmx=-1e300;
+        for (const auto& p : m_vertices) {
+            xmn=std::min(xmn,p[0]); ymn=std::min(ymn,p[1]); zmn=std::min(zmn,p[2]);
+            xmx=std::max(xmx,p[0]); ymx=std::max(ymx,p[1]); zmx=std::max(zmx,p[2]);
+        }
+        diag = std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
+        if (diag <= 0) diag = 1.0;
+    }
+    if (tol <= 0.0) tol = diag * 5e-3;      // endpoint-on-section gate (~sew tolerance)
+    double band = diag * 6e-2;              // mid-span containment band (lift divergence ceiling)
+    auto p2pl = [](const Point& p, const std::vector<Point>& pl) {
+        double best = 1e300;
+        for (size_t j = 0; j + 1 < pl.size(); ++j) {
+            const Point& a = pl[j]; const Point& b = pl[j+1];
+            double ex=b[0]-a[0], ey=b[1]-a[1], ez=b[2]-a[2], L2=ex*ex+ey*ey+ez*ez;
+            double t=(L2>1e-30)?((p[0]-a[0])*ex+(p[1]-a[1])*ey+(p[2]-a[2])*ez)/L2:0.0;
+            t=std::min(std::max(t,0.0),1.0);
+            double cx=a[0]+t*ex, cy=a[1]+t*ey, cz=a[2]+t*ez;
+            best=std::min(best,std::sqrt((p[0]-cx)*(p[0]-cx)+(p[1]-cy)*(p[1]-cy)+(p[2]-cz)*(p[2]-cz)));
+        }
+        return best;
+    };
+    int snapped = 0;
+    for (auto& E : m_topology_edges) {
+        if ((int)E.trim_indices.size() != 1) continue;
+        int ci = E.curve_3d_index;
+        if (ci < 0 || ci >= (int)m_curves_3d.size()) continue;
+        const NurbsCurve C = m_curves_3d[ci];
+        if (!C.is_valid()) continue;
+        auto [t0, t1] = C.domain();
+        const int M = 16;
+        std::vector<Point> es; double len_e = 0.0;
+        for (int k = 0; k <= M; ++k) es.push_back(C.point_at(t0 + (t1 - t0) * k / M));
+        for (int k = 1; k <= M; ++k) len_e += es[k].distance(es[k-1]);
+        if (len_e < tol) continue;                       // micro edge: sew's collapse handles it
+        bool edge_closed = es.front().distance(es.back()) < tol;
+        for (const NurbsCurve& S : sections) {
+            if (!S.is_valid()) continue;
+            auto [d0, d1] = S.domain(); double rng = d1 - d0;
+            if (rng <= 1e-12) continue;
+            bool s_closed = S.point_at(d0).distance(S.point_at(d1)) < tol;
+            double s0 = S.closest_parameter(es.front());
+            double s1 = S.closest_parameter(es.back());
+            if (S.point_at(s0).distance(es.front()) > tol || S.point_at(s1).distance(es.back()) > tol) continue;
+            // sample the sub-arc s0->s1 whose interior passes near the edge midpoint
+            const int N = 40;
+            std::vector<Point> sub;
+            if (edge_closed && s_closed) {
+                for (int k = 0; k <= N; ++k) sub.push_back(S.point_at(d0 + rng * k / N));   // full wrap
+            } else if (s_closed) {
+                auto nrm = [&](double t){ double x = std::fmod(t - d0, rng); if (x < 0) x += rng; return d0 + x; };
+                double a = nrm(s0), b = nrm(s1), m = nrm(S.closest_parameter(es[M/2]));
+                double b_f = (b >= a) ? b : b + rng;
+                double m_f = (m >= a) ? m : m + rng;
+                double tend = (m_f <= b_f + 1e-12) ? b_f : ((b <= a) ? b : b - rng);
+                for (int k = 0; k <= N; ++k) sub.push_back(S.point_at(nrm(a + (tend - a) * k / N)));
+            } else {
+                for (int k = 0; k <= N; ++k) sub.push_back(S.point_at(s0 + (s1 - s0) * k / N));
+            }
+            double len_s = 0.0;
+            for (size_t k = 1; k < sub.size(); ++k) len_s += sub[k].distance(sub[k-1]);
+            // wrong arc of a loop / a face-border shortcut between two crossings: lengths differ
+            if (std::abs(len_s - len_e) > 0.3 * std::max(len_e, tol)) continue;
+            bool inband = true;
+            for (const auto& q : es) if (p2pl(q, sub) > band) { inband = false; break; }
+            if (!inband) continue;
+            NurbsCurve nc = NurbsCurve::create(false, 1, sub);
+            if (nc.is_valid()) { m_curves_3d[ci] = nc; ++snapped; }
+            break;
+        }
+    }
+    if (std::getenv("SESSION_NT_DBG"))
+        std::printf("[SECSNAP] snapped=%d under-mated edges to exact section arcs\n", snapped);
+}
+
 void BRep::sew_coincident_edges(double tol) {
     double diag;
     {
@@ -5746,7 +6004,11 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // asymmetric and the section edge stays naked. One call = symmetric imprint by construction
     // (and half the SSI cost). Matrix pairs (>= 1 recognized primitive) keep the legacy path.
     std::vector<std::vector<NurbsCurve>> cutsA(m_surfaces.size()), cutsB(other.m_surfaces.size());
-    if (imported_freeform) {
+    std::vector<NurbsCurve> sec_c3ds;   // the exact shared section curves, for snap_section_edges
+    // Scaffold mode (S2) computes its own per-pair SSI inside build_section_scaffold below;
+    // skip the pre_cuts pass entirely there (its output would be unused).
+    static const bool s_scaffold_pre = (std::getenv("SESSION_SECTION_SCAFFOLD") != nullptr);
+    if (imported_freeform && !s_scaffold_pre) {
         std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> abbs, bbbs;
         for (const auto& s : m_surfaces) abbs.push_back(aabb_from_surface(s));
         for (const auto& s : other.m_surfaces) bbbs.push_back(aabb_from_surface(s));
@@ -5763,12 +6025,14 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                     for (auto& tr : Intersection::surface_surface(other.m_surfaces[bi], m_surfaces[ai], tolerance)) {
                         if (std::get<2>(tr).is_valid()) cutsA[ai].push_back(std::get<2>(tr));
                         if (std::get<1>(tr).is_valid()) cutsB[bi].push_back(std::get<1>(tr));
+                        if (std::get<0>(tr).is_valid()) sec_c3ds.push_back(std::get<0>(tr));
                     }
                     continue;
                 }
                 for (auto& tr : trs) {
                     if (std::get<1>(tr).is_valid()) cutsA[ai].push_back(std::get<1>(tr));
                     if (std::get<2>(tr).is_valid()) cutsB[bi].push_back(std::get<2>(tr));
+                    if (std::get<0>(tr).is_valid()) sec_c3ds.push_back(std::get<0>(tr));
                 }
             }
         }
@@ -5778,8 +6042,12 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // self-diagnostics. Inert -- output unused until S2 wires it into the splits.
     // Runs its OWN fenced pair loop (lane decision: pre_cuts above stays untouched).
     static const bool s_scaffold = (std::getenv("SESSION_SECTION_SCAFFOLD") != nullptr);
+    SectionScaffold scaf;
+    bool use_scaffold = false;
+    std::map<int, std::array<int, 3>> secA_edges, secB_edges;   // split edge idx -> {seg,v0,v1}
     if (imported_freeform && s_scaffold) {
-        SectionScaffold scaf = build_section_scaffold(*this, other, tolerance);
+        scaf = build_section_scaffold(*this, other, tolerance);
+        use_scaffold = true;
         std::fprintf(stderr,
             "[SCAF] chains=%d segs=%zu verts=%zu paves(tA=%d tB=%d x=%d v=%d c=%d) "
             "drop(verdict=%d micro=%d) dev(A=%.3e B=%.3e) tol3=%.3e\n",
@@ -5792,9 +6060,13 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         lap("scaffold");
     }
     BRep A2 = split_by_brep(other, tolerance, imported_freeform,
-                            imported_freeform ? &cutsA : nullptr);      lap("splitA");
+                            (imported_freeform && !use_scaffold) ? &cutsA : nullptr,
+                            use_scaffold ? &scaf : nullptr, true,
+                            use_scaffold ? &secA_edges : nullptr);      lap("splitA");
     BRep B2 = other.split_by_brep(*this, tolerance, imported_freeform,
-                                  imported_freeform ? &cutsB : nullptr); lap("splitB");
+                                  (imported_freeform && !use_scaffold) ? &cutsB : nullptr,
+                                  use_scaffold ? &scaf : nullptr, false,
+                                  use_scaffold ? &secB_edges : nullptr); lap("splitB");
     if (std::getenv("SESSION_NT_DBG")) {
         auto cnt1 = [](const BRep& X) { int c = 0; for (const auto& e : X.m_topology_edges) if (e.trim_indices.size() == 1) ++c; return c; };
         std::printf("[NT] A2 edges1=%d/%d  B2 edges1=%d/%d\n",
@@ -5937,32 +6209,61 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // Select faces WITH their already-mated topology (subset preserves shared edges), then
     // combine the two sides and sew only the A<->B intersection edges. This keeps each
     // solid's internal box/cylinder edges mated -- the key to a watertight result.
-    BRep subA = A2.subset(keptA);
-    BRep subB = B2.subset(keptB);
+    std::map<int, int> remapA, remapB;   // S2: split-edge idx -> subset-edge idx
+    BRep subA = A2.subset(keptA, use_scaffold ? &remapA : nullptr);
+    BRep subB = B2.subset(keptB, use_scaffold ? &remapB : nullptr);
     for (size_t k = 0; k < revB.size() && k < subB.m_faces.size(); ++k)
         if (revB[k]) subB.m_faces[k].reversed = !subB.m_faces[k].reversed;
+
+    // OCCT-adoption S2: alias subB's scaffold-section edges onto subA's copies. Both sides
+    // lifted the SAME shared chain per segment (identical 3D, identical endpoints), so the
+    // alias turns the pair into ONE edge record with two trims -- no sewing of section edges.
+    std::map<int, int> seg_to_res;   // seg_id -> result (== subA) edge idx
+    std::map<int, int> b_seg_of;     // subB edge idx -> seg_id
+    if (use_scaffold) {
+        for (const auto& kv : secA_edges) {
+            auto itR = remapA.find(kv.first);
+            if (itR != remapA.end()) seg_to_res[kv.second[0]] = itR->second;
+        }
+        for (const auto& kv : secB_edges) {
+            auto itR = remapB.find(kv.first);
+            if (itR != remapB.end()) b_seg_of[itR->second] = kv.second[0];
+        }
+    }
 
     result = subA;
     result.name = "boolean";
     int voff=(int)result.m_vertices.size(), tvoff=(int)result.m_topology_vertices.size();
     int soff=(int)result.m_surfaces.size(), c2off=(int)result.m_curves_2d.size();
-    int c3off=(int)result.m_curves_3d.size(), eoff=(int)result.m_topology_edges.size();
+    int c3off=(int)result.m_curves_3d.size();
     int loff=(int)result.m_loops.size(), foff=(int)result.m_faces.size(), toff=(int)result.m_trims.size();
     for (auto& p : subB.m_vertices) result.m_vertices.push_back(p);
     for (auto& s : subB.m_surfaces) result.m_surfaces.push_back(s);
     for (auto& c : subB.m_curves_2d) result.m_curves_2d.push_back(c);
     for (auto& c : subB.m_curves_3d) result.m_curves_3d.push_back(c);
     for (auto tv : subB.m_topology_vertices) { tv.point_index += voff; tv.edge_indices.clear(); result.m_topology_vertices.push_back(tv); }
-    for (auto e : subB.m_topology_edges) {
+    std::vector<int> b_edge_new(subB.m_topology_edges.size(), -1);
+    int merged_sec = 0;
+    for (int j = 0; j < (int)subB.m_topology_edges.size(); ++j) {
+        auto itSeg = b_seg_of.find(j);
+        if (itSeg != b_seg_of.end()) {
+            auto itA = seg_to_res.find(itSeg->second);
+            if (itA != seg_to_res.end()) { b_edge_new[j] = itA->second; ++merged_sec; continue; }
+        }
+        auto e = subB.m_topology_edges[j];
         if (e.curve_3d_index>=0) e.curve_3d_index += c3off;
         if (e.start_vertex>=0) e.start_vertex += tvoff;
         if (e.end_vertex>=0) e.end_vertex += tvoff;
         e.trim_indices.clear();
+        b_edge_new[j] = (int)result.m_topology_edges.size();
         result.m_topology_edges.push_back(e);
     }
+    if (use_scaffold && std::getenv("SESSION_NT_DBG"))
+        std::printf("[SCAF-MERGE] section edges merged A<->B: %d (A-side %zu, B-side %zu)\n",
+                    merged_sec, seg_to_res.size(), b_seg_of.size());
     for (auto t : subB.m_trims) {
         if (t.curve_2d_index>=0) t.curve_2d_index += c2off;
-        if (t.edge_index>=0) t.edge_index += eoff;
+        if (t.edge_index>=0 && t.edge_index < (int)b_edge_new.size()) t.edge_index = b_edge_new[t.edge_index];
         if (t.loop_index>=0) t.loop_index += loff;
         result.m_trims.push_back(t);
     }
@@ -5998,6 +6299,13 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     lap("combine");
     result.imprint_edges();                                   lap("imprint_edges");
     count_nt("imprint_edges");
+    // Snap under-mated section copies to the exact pair-once section geometry: the two
+    // operands' independent lifts of the same section diverge past the sew tolerance in
+    // grazing regions; after the snap both carry the same polyline and sew mates them.
+    if (imported_freeform && !use_scaffold && !sec_c3ds.empty() && !std::getenv("SESSION_NO_SECSNAP")) {
+        result.snap_section_edges(sec_c3ds);                  lap("secsnap");
+        count_nt("secsnap");
+    }
     // BUILDSPEC P0: shared section-edge backbone, gated by SESSION_BOOL_SHARED_EDGES. When set,
     // recompute the A&B section curve ONCE and make each operand's section arcs reference the
     // EXACT sub-arc of that single curve, then merge -> one shared edge per section (watertight by

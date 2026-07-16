@@ -13,6 +13,8 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <map>
+#include <array>
 
 namespace session_cpp {
 
@@ -67,6 +69,8 @@ class BRep {
 public:
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+    void refresh_guid() { _guid.clear(); }
     std::string name = "my_brep";
     double width = 1.0;
     Color surfacecolor = Color::black();
@@ -212,11 +216,20 @@ public:
     /// the near-boundary cut-endpoint snap in the UV arrangement (freeform x freeform pairs).
     /// pre_cuts (optional): per-surface-index cut pcurves precomputed by the caller (one SSI
     /// per surface PAIR shared by both operands), bypassing the per-operand SSI here.
+    /// scaf/scaf_is_A/sec_edges_out (optional, OCCT-adoption S2): cut with the SHARED section
+    /// scaffold instead of per-operand SSI -- section edges lift from the scaffold's 3D chain
+    /// (identical geometry on both operands by construction) and sec_edges_out reports
+    /// result-edge-index -> {seg_id, v_start, v_end} so BRep::boolean can merge the two
+    /// operands' copies into ONE edge at combine (no sewing of section edges).
     BRep split_by_brep(const BRep& cutter, double tolerance = 0.0, bool imported_freeform = false,
-                       const std::vector<std::vector<NurbsCurve>>* pre_cuts = nullptr) const;
+                       const std::vector<std::vector<NurbsCurve>>* pre_cuts = nullptr,
+                       const struct SectionScaffold* scaf = nullptr, bool scaf_is_A = true,
+                       std::map<int, std::array<int, 3>>* sec_edges_out = nullptr) const;
 
-    /// Build a standalone BRep from a subset of this BRep's faces.
-    BRep subset(const std::vector<int>& face_indices) const;
+    /// Build a standalone BRep from a subset of this BRep's faces. edge_remap (optional):
+    /// old topology-edge index -> new index for edges carried into the subset.
+    BRep subset(const std::vector<int>& face_indices,
+                std::map<int, int>* edge_remap = nullptr) const;
 
     /// Concatenate another BRep's faces/topology into this one (index-offset copy, no sewing).
     void append_brep(const BRep& other);
@@ -259,6 +272,12 @@ public:
     /// never spuriously split. Splits the 3D curve and each trim's 2D pcurve (exact, no refit),
     /// updates the owning loops. Run before sew_coincident_edges. Modifies in place.
     void co_refine_coincident_edges(double tol = 0.0);
+
+    /// Snap under-mated section edges to the exact pair-once section curves: an edge whose BOTH
+    /// endpoints lie on a section c3d (and whose body stays within a band of it) has its 3D
+    /// curve replaced by the exact sub-arc — the two operands' copies of a section then carry
+    /// identical geometry and sew mates them. Run between combine and co_refine. In place.
+    void snap_section_edges(const std::vector<NurbsCurve>& sections, double tol = 0.0);
 
     /// BUILDSPEC P0 — shared section-edge backbone. The A&B section curve is computed ONCE
     /// (Intersection::surface_surface on the ORIGINAL operand surfaces A and B), and each
@@ -429,7 +448,10 @@ private:
     void deep_copy_from(const BRep& src);
 
     /// Shared splitter: subdivide each face by per-face cut pcurves, rebuild a new BRep.
-    BRep split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform = false) const;
+    /// scaf/scaf_is_A/sec_edges_out: see split_by_brep (OCCT-adoption S2 scaffold path).
+    BRep split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform = false,
+                    const struct SectionScaffold* scaf = nullptr, bool scaf_is_A = true,
+                    std::map<int, std::array<int, 3>>* sec_edges_out = nullptr) const;
 };
 
 } // namespace session_cpp

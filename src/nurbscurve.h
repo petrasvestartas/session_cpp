@@ -35,6 +35,8 @@ class NurbsCurve {
 public:
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+    void refresh_guid() { _guid.clear(); }
     std::string name = "my_nurbscurve";
     double width = 1.0;
     std::vector<Color> pointcolors;

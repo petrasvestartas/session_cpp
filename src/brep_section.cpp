@@ -108,7 +108,7 @@ std::vector<std::vector<std::vector<Point>>> face_loops_uv(const BRep& X, int si
                 if (c2 < 0 || c2 >= (int)X.m_curves_2d.size()) continue;
                 const NurbsCurve& pc = X.m_curves_2d[c2];
                 auto dc = pc.domain();
-                int n = std::min(std::max(pc.cv_count() * 4, 16), 512);
+                int n = std::min(std::max(pc.cv_count() * 8, 32), 1024);
                 for (int i = 0; i < n; ++i)   // skip last: next trim starts there
                     poly.push_back(pc.point_at(dc.first + (dc.second - dc.first) * i / n));
             }
@@ -414,7 +414,6 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
 
         const NurbsSurface& sa = A.m_surfaces[ch.surfA];
         const NurbsSurface& sb = B.m_surfaces[ch.surfB];
-        SEval ea{&sa}, eb{&sb};
         auto duaR = sa.domain(0); auto dvaR = sa.domain(1);
         auto dubR = sb.domain(0); auto dvbR = sb.domain(1);
         double epsA = std::min(duaR.second - duaR.first, dvaR.second - dvaR.first) * 1e-3;
@@ -459,16 +458,15 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
             SectionSegment seg;
             seg.seg_id = (int)scaf.segments.size();
             seg.surfA = ch.surfA; seg.surfB = ch.surfB;
-            // endpoints: Newton-refined so pave points are exact on both surfaces
-            double uA0 = a0[0], vA0 = a0[1], uB0 = b0[0], vB0 = b0[1];
-            correct7(ea, eb, uA0, vA0, uB0, vB0, conv_tol);
-            Vector S0, Su0, Sv0; ea(uA0, vA0, S0, Su0, Sv0);
-            double uA1 = a1[0], vA1 = a1[1], uB1 = b1[0], vB1 = b1[1];
-            correct7(ea, eb, uA1, vA1, uB1, vB1, conv_tol);
-            Vector S1, Su1, Sv1; ea(uA1, vA1, S1, Su1, Sv1);
-            seg.p3.push_back(Point(S0[0], S0[1], S0[2]));
-            seg.uvA.push_back(Point(uA0, vA0, 0.0));
-            seg.uvB.push_back(Point(uB0, vB0, 0.0));
+            // Endpoints stay at the RAW chain-lerped pave position: a trim-crossing pave's
+            // reason to exist is to lie ON the boundary polyline -- Newton-refining it onto
+            // the exact section moves it ~sag (up to ~0.02 UV) OFF the boundary and the
+            // arrangement then clips the cut elsewhere. The raw point is within chain sag
+            // (~1e-3) of both surfaces, identical on both operands, absorbed by weld_tol.
+            (void)conv_tol;
+            seg.p3.push_back(p0);
+            seg.uvA.push_back(a0);
+            seg.uvB.push_back(b0);
             for (double w = std::ceil(lo + 1e-9); w < hi - 1e-9; w += 1.0) {
                 Point q, qa, qb;
                 at(w, q, qa, qb);
@@ -476,9 +474,9 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                 seg.uvA.push_back(qa);
                 seg.uvB.push_back(qb);
             }
-            seg.p3.push_back(Point(S1[0], S1[1], S1[2]));
-            seg.uvA.push_back(Point(uA1, vA1, 0.0));
-            seg.uvB.push_back(Point(uB1, vB1, 0.0));
+            seg.p3.push_back(p1);
+            seg.uvA.push_back(a1);
+            seg.uvB.push_back(b1);
             seg.v_start = weld_vertex(seg.p3.front());
             seg.v_end = weld_vertex(seg.p3.back());
             seg.closed = seg.v_start == seg.v_end && seg.p3.size() > 3;

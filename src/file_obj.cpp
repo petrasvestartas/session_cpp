@@ -11,16 +11,12 @@
 
 namespace session_cpp { namespace file_obj {
 
-void write_file_obj(const Mesh& mesh, const std::string& filepath) {
+std::string write_file_obj_to_string(const Mesh& mesh) {
     auto vf = mesh.to_vertices_and_faces();
     const auto& vertices = vf.first;
     const auto& faces = vf.second;
 
-    std::ofstream out(filepath);
-    if (!out.is_open()) {
-        return; // Failed to open file
-    }
-    
+    std::ostringstream out;
     for (const auto& p : vertices) {
         out << "v " << p[0] << " " << p[1] << " " << p[2] << "\n";
     }
@@ -32,12 +28,27 @@ void write_file_obj(const Mesh& mesh, const std::string& filepath) {
         }
         out << "\n";
     }
-    
+    return out.str();
+}
+
+void write_file_obj(const Mesh& mesh, const std::string& filepath) {
+    std::ofstream out(filepath);
+    if (!out.is_open()) {
+        return; // Failed to open file
+    }
+    out << write_file_obj_to_string(mesh);
     out.close(); // Explicitly close and flush
 }
 
 Mesh read_file_obj(const std::string& filepath) {
     std::ifstream in(filepath);
+    std::stringstream buffer;
+    buffer << in.rdbuf();
+    return read_file_obj_from_str(buffer.str());
+}
+
+Mesh read_file_obj_from_str(const std::string& content) {
+    std::istringstream in(content);
     std::string line;
     std::vector<Point> verts;
     std::vector<std::vector<size_t>> faces;

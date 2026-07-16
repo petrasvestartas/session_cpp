@@ -57,4 +57,20 @@ MINI_TEST("FileObj", "Write Read Roundtrip") {
     std::filesystem::remove(temp_file);
 }
 
+MINI_TEST("FileObj", "String Roundtrip") {
+    Mesh original_mesh;
+    auto v0 = original_mesh.add_vertex(Point(0.0, 0.0, 0.0));
+    auto v1 = original_mesh.add_vertex(Point(1.0, 0.0, 0.0));
+    auto v2 = original_mesh.add_vertex(Point(0.0, 1.0, 0.0));
+    auto v3 = original_mesh.add_vertex(Point(0.0, 0.0, 1.0));
+    original_mesh.add_face({v0, v1, v2});
+    original_mesh.add_face({v0, v1, v3});
+    std::string s = file_obj::write_file_obj_to_string(original_mesh);
+    Mesh loaded_mesh = file_obj::read_file_obj_from_str(s);
+
+    MINI_CHECK(loaded_mesh.number_of_vertices() == original_mesh.number_of_vertices());
+    MINI_CHECK(loaded_mesh.number_of_faces() == original_mesh.number_of_faces());
+    MINI_CHECK(TOLERANCE.is_close(loaded_mesh.area(), original_mesh.area()));
+}
+
 } // namespace session_cpp

@@ -32,7 +32,7 @@ Mesh::Mesh() {
 }
 
 Mesh::Mesh(const Mesh& other) {
-    _guid.clear();
+    _guid = other._guid;
     name = other.name;
     halfedge = other.halfedge;
     vertex = other.vertex;
@@ -57,7 +57,7 @@ Mesh::Mesh(const Mesh& other) {
 
 Mesh& Mesh::operator=(const Mesh& other) {
     if (this != &other) {
-        _guid.clear();
+        _guid = other._guid;
         name = other.name;
         halfedge = other.halfedge;
         vertex = other.vertex;

@@ -473,6 +473,8 @@ void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
     m_inner_loops = src.m_inner_loops;
     m_outer_segments = src.m_outer_segments;
     m_inner_segments = src.m_inner_segments;
+    m_outer_segment_srcs = src.m_outer_segment_srcs;
+    m_inner_segment_srcs = src.m_inner_segment_srcs;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1115,7 +1117,8 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     // straight segments), each oriented tail->head along the face walk. Returns the run
     // pieces in connected order (head-to-tail); the caller joins them into a single loop
     // and/or keeps them as the segmentation for watertight edge imprinting.
-    auto cycle_to_segments = [&](const std::vector<int>& cycle) -> std::vector<NurbsCurve> {
+    auto cycle_to_segments = [&](const std::vector<int>& cycle,
+                                 std::vector<std::array<double, 3>>* srcs) -> std::vector<NurbsCurve> {
         struct Run { int cidx, va, vb; double ta, tb; };
         std::vector<Run> runs;
         for (int hi : cycle) {
@@ -1158,6 +1161,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 if (piece_ok && piece.is_valid()) {
                     if (run.ta > run.tb) piece.reverse();  // orient tail->head
                     pieces.push_back(piece);
+                    if (srcs) srcs->push_back({(double)run.cidx, run.ta, run.tb});
                     made = true;
                 }
             }
@@ -1173,6 +1177,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                         Point(pb[0], pb[1], 0.0)
                     };
                     pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
+                    if (srcs) srcs->push_back({-1.0, 0.0, 0.0});
                 }
             }
         }
@@ -1183,15 +1188,18 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     // returns the pieces (which reconstruct the loop exactly); otherwise a polyline fallback
     // loop is produced and seg_valid stays false.
     auto cycle_to_loop = [&](const std::vector<int>& cycle,
-                             std::vector<NurbsCurve>* segments, bool* seg_valid) -> NurbsCurve {
+                             std::vector<NurbsCurve>* segments, bool* seg_valid,
+                             std::vector<std::array<double, 3>>* srcs = nullptr) -> NurbsCurve {
         if (seg_valid) *seg_valid = false;
-        std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
+        std::vector<std::array<double, 3>> piece_srcs;
+        std::vector<NurbsCurve> pieces = cycle_to_segments(cycle, &piece_srcs);
         if (std::getenv("SESSION_SPLIT_DBG")) { std::fprintf(stderr, "[EMIT]   segments=%zu (before join)\n", pieces.size()); std::fflush(stderr); }
         if (pieces.empty())
             return NurbsCurve();
         std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
         if (joined.size() == 1 && joined[0].is_valid() && joined[0].is_closed()) {
             if (segments) *segments = pieces;
+            if (srcs) *srcs = piece_srcs;
             if (seg_valid) *seg_valid = true;
             return joined[0];
         }
@@ -1220,10 +1228,15 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     };
 
     // Reverse a head-to-tail segment list in place so it still traces the loop head-to-tail
-    // after the joined loop was reversed (reverse the order AND each segment).
-    auto reverse_segments = [](std::vector<NurbsCurve>& segs) {
+    // after the joined loop was reversed (reverse the order AND each segment; source tags
+    // follow: order reversed and each (ta,tb) swapped so the tag still means tail->head).
+    auto reverse_segments = [](std::vector<NurbsCurve>& segs, std::vector<std::array<double, 3>>* srcs) {
         std::reverse(segs.begin(), segs.end());
         for (auto& s : segs) s.reverse();
+        if (srcs) {
+            std::reverse(srcs->begin(), srcs->end());
+            for (auto& s : *srcs) std::swap(s[1], s[2]);
+        }
     };
 
     std::vector<NurbsSurfaceTrimmed> result;
@@ -1231,28 +1244,34 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
         if (s_emitdbg) { std::fprintf(stderr, "[EMIT] fi=%d/%zu cyc=%zu loop\n", fi, pos_faces.size(), pos_faces[fi].first.size()); std::fflush(stderr); }
         std::vector<NurbsCurve> outer_segs;
+        std::vector<std::array<double, 3>> outer_srcs;
         bool outer_seg_valid = false;
-        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, &outer_segs, &outer_seg_valid);
+        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, &outer_segs, &outer_seg_valid, &outer_srcs);
         if (!outer.is_valid())
             continue;
         if (loop_signed_area(outer) < 0.0) {
             outer.reverse();
-            if (outer_seg_valid) reverse_segments(outer_segs);
+            if (outer_seg_valid) reverse_segments(outer_segs, &outer_srcs);
         }
         if (s_emitdbg) { std::fprintf(stderr, "[EMIT] fi=%d create\n", fi); std::fflush(stderr); }
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
-        if (outer_seg_valid) ts.m_outer_segments = outer_segs;
+        if (outer_seg_valid) {
+            ts.m_outer_segments = outer_segs;
+            ts.m_outer_segment_srcs = outer_srcs;
+        }
         for (const auto& hole_cycle : holes_of[fi]) {
             std::vector<NurbsCurve> hole_segs;
+            std::vector<std::array<double, 3>> hole_srcs;
             bool hole_seg_valid = false;
-            NurbsCurve hole = cycle_to_loop(hole_cycle, &hole_segs, &hole_seg_valid);
+            NurbsCurve hole = cycle_to_loop(hole_cycle, &hole_segs, &hole_seg_valid, &hole_srcs);
             if (hole.is_valid()) {
                 if (loop_signed_area(hole) > 0.0) {
                     hole.reverse();
-                    if (hole_seg_valid) reverse_segments(hole_segs);
+                    if (hole_seg_valid) reverse_segments(hole_segs, &hole_srcs);
                 }
                 ts.add_inner_loop(hole);
                 ts.m_inner_segments.push_back(hole_seg_valid ? hole_segs : std::vector<NurbsCurve>{});
+                ts.m_inner_segment_srcs.push_back(hole_seg_valid ? hole_srcs : std::vector<std::array<double, 3>>{});
             }
         }
         result.push_back(ts);

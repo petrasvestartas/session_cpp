@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <utility>
+#include <array>
 
 namespace session_cpp {
 
@@ -42,6 +43,14 @@ public:
     // single joined loop instead.
     std::vector<NurbsCurve> m_outer_segments;
     std::vector<std::vector<NurbsCurve>> m_inner_segments;
+
+    // Transient build-time source tags parallel to m_outer_segments / m_inner_segments:
+    // {cidx, ta, tb} = which input pcurve of split_by_uv_curves the run was trimmed from
+    // and its parameter range on it (ta > tb when the run traverses it reversed);
+    // cidx = -1 for straight-chord fallback runs. Lets BRep::split_with map a section
+    // run back to the shared scaffold segment it came from (OCCT pave-block identity).
+    std::vector<std::array<double, 3>> m_outer_segment_srcs;
+    std::vector<std::vector<std::array<double, 3>>> m_inner_segment_srcs;
 
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
