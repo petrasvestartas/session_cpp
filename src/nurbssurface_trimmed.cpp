@@ -533,7 +533,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create_planar(const NurbsCurve& boundar
     return ts;
 }
 
-std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary, double snap_cuts_to_boundary) {
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary, double snap_cuts_to_boundary, const std::vector<Point>* forced_boundary_nodes) {
     if (!srf.is_valid()) return {};
 
     auto is_boundary = [&](int cidx) -> bool {
@@ -658,6 +658,39 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         if (use_domain_border && (on_u0 || on_u1 || on_v0 || on_v1))
             continue;
         polylines.push_back({cidx, pts, ts});
+    }
+
+    // ---- 1a2. Forced boundary nodes (OCCT pave analog) ----
+    // Insert each pave point as an EXACT sample into the nearest boundary polyline segment:
+    // the cut that ends at this same point then connects through the shared vertex-pool
+    // entry, independent of crossing conditioning (a grazing section can shift a computed
+    // crossing 0.1+ ALONG the boundary; a shared vertex cannot).
+    if (forced_boundary_nodes) {
+        double eps_forced = std::min(range_u, range_v) * 1e-2;
+        for (const auto& f : *forced_boundary_nodes) {
+            double best = 1e300; int bp = -1; size_t bj = 0; double bt = 0.0;
+            for (int pi = 0; pi < (int)polylines.size(); ++pi) {
+                if (!is_boundary(polylines[pi].cidx)) continue;
+                auto& P = polylines[pi];
+                for (size_t j = 0; j + 1 < P.pts.size(); ++j) {
+                    double ex = P.pts[j+1][0]-P.pts[j][0], ey = P.pts[j+1][1]-P.pts[j][1];
+                    double L2 = ex*ex + ey*ey;
+                    double t = L2 > 1e-30 ? ((f[0]-P.pts[j][0])*ex + (f[1]-P.pts[j][1])*ey) / L2 : 0.0;
+                    t = std::min(std::max(t, 0.0), 1.0);
+                    double dx = f[0]-P.pts[j][0]-t*ex, dy = f[1]-P.pts[j][1]-t*ey;
+                    double d2 = dx*dx + dy*dy;
+                    if (d2 < best) { best = d2; bp = pi; bj = j; bt = t; }
+                }
+            }
+            if (bp < 0 || std::sqrt(best) > eps_forced) continue;
+            auto& P = polylines[bp];
+            // skip if an existing sample already coincides (weld handles it)
+            if (f.distance(Point(P.pts[bj][0], P.pts[bj][1], 0.0)) < 1e-12) continue;
+            if (f.distance(Point(P.pts[bj+1][0], P.pts[bj+1][1], 0.0)) < 1e-12) continue;
+            double tval = P.ts[bj] + (P.ts[bj+1] - P.ts[bj]) * bt;
+            P.pts.insert(P.pts.begin() + bj + 1, {f[0], f[1]});
+            P.ts.insert(P.ts.begin() + bj + 1, tval);
+        }
     }
 
     // ---- 1b. Snap near-boundary cut endpoints onto the trim boundary (T-junction resolution) ----

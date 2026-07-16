@@ -2856,6 +2856,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
     std::vector<int> scaf_cut_seg_ids;
     std::vector<std::array<double, 2>> scaf_cut_spans;   // per cut: [t_lo, t_hi] of the TRUE
                                                           // segment inside the overshot pcurve
+    std::vector<Point> scaf_forced_nodes;                 // pave endpoints on this face's boundary
     int scaf_n_boundary = 0;
     int scaf_fallbacks = 0;
     const std::vector<NurbsCurve>* all_pcs_ref = nullptr;   // current face's boundary+cut pcurves
@@ -2891,31 +2892,92 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                 // to the SHARED 3D chain (identical on both operands by construction) and
                 // is keyed by seg_id -- one edge record per segment per operand, merged
                 // across operands by BRep::boolean at combine.
-                int seg_id = -1;
+                // OCCT-truth for section runs: the two operands' arrangements will NEVER
+                // agree on clip params, and they don't have to -- both lift their 3D as an
+                // EXACT SUB-RANGE of the one shared chain, so wherever their ranges overlap
+                // the copies are pointwise identical and imprint+sew mate them exactly.
+                bool lifted_from_chain = false;
                 if (scaf && srcs && pidx < srcs->size()) {
                     int cidx = (int)(*srcs)[pidx][0];
                     if (cidx >= scaf_n_boundary &&
                         cidx - scaf_n_boundary < (int)scaf_cut_seg_ids.size()) {
                         int ci = cidx - scaf_n_boundary;
                         const SectionSegment& s = scaf->segments[scaf_cut_seg_ids[ci]];
-                        // accept a run covering the TRUE segment interior [t_lo, t_hi] (the
-                        // pcurve is overshot past the boundary at open ends, so the run's
-                        // crossing-clipped span lands just inside the overshoot); anything
-                        // shorter is an unexpected interior re-split -> legacy-lift fallback.
                         double t_lo = scaf_cut_spans[ci][0], t_hi = scaf_cut_spans[ci][1];
-                        double slack = (t_hi - t_lo) * 1e-3 + (t_lo > 0.0 ? t_lo : 1e-12) * 1.5;
                         double ra = std::min((*srcs)[pidx][1], (*srcs)[pidx][2]);
                         double rb = std::max((*srcs)[pidx][1], (*srcs)[pidx][2]);
-                        // zero-length sliver run (closing-pave / overshoot artifact): emit
-                        // nothing rather than polluting the face with a micro edge
+                        // zero-length sliver run (closing-pave / overshoot artifact): skip
                         if (rb - ra < 1e-9) continue;
-                        bool whole = ra <= t_lo + slack && rb >= t_hi - slack;
-                        // closed segment (t_lo==0, wrap-around runs): accept by covered length
-                        if (!whole && s.v_start == s.v_end && (rb - ra) >= (t_hi - t_lo) * 0.9)
-                            whole = true;
-                        if (whole) {
-                            seg_id = s.seg_id;
-                        } else {
+                        // clamp the run into the true segment (strip the overshoot stubs)
+                        ra = std::max(ra, t_lo);
+                        rb = std::min(rb, t_hi);
+                        if (rb - ra < 1e-9) continue;
+                        const auto& uvS = scaf_is_A ? s.uvA : s.uvB;
+                        int nCh = (int)s.p3.size();
+                        // param (UV arc length from pcurve start incl. overshoot) -> chain pos
+                        auto chain_pos = [&](double t) -> double {
+                            double acc = t_lo;   // chain[0] sits at param t_lo
+                            if (t <= acc) return 0.0;
+                            for (int k = 0; k + 1 < nCh; ++k) {
+                                double d = std::hypot(uvS[k+1][0] - uvS[k][0], uvS[k+1][1] - uvS[k][1]);
+                                if (acc + d >= t) return k + (d > 1e-30 ? (t - acc) / d : 0.0);
+                                acc += d;
+                            }
+                            return (double)(nCh - 1);
+                        };
+                        double fa = chain_pos(ra), fb = chain_pos(rb);
+                        if (fb - fa > 1e-9) {
+                            // extract the shared sub-polyline (lerped fractional ends)
+                            auto lerp3 = [&](double f) {
+                                int k = std::min((int)f, nCh - 2);
+                                double w = f - k;
+                                return Point(s.p3[k][0] + (s.p3[k+1][0]-s.p3[k][0])*w,
+                                             s.p3[k][1] + (s.p3[k+1][1]-s.p3[k][1])*w,
+                                             s.p3[k][2] + (s.p3[k+1][2]-s.p3[k][2])*w);
+                            };
+                            std::vector<Point> sub;
+                            sub.push_back(lerp3(fa));
+                            for (int k = (int)std::ceil(fa + 1e-9); k <= (int)std::floor(fb - 1e-9) && k < nCh; ++k)
+                                sub.push_back(s.p3[k]);
+                            sub.push_back(lerp3(fb));
+                            // snap ends onto the scaffold pave vertices when the run reaches them
+                            if (fa < 1e-6) sub.front() = s.p3.front();
+                            if (fb > nCh - 1 - 1e-6) sub.back() = s.p3.back();
+                            if (sub.size() >= 2 && sub.front().distance(sub.back()) > 1e-12) {
+                                NurbsCurve c3d = NurbsCurve::create(false, 1, sub);
+                                if (c3d.is_valid()) {
+                                    int ci3d = result.add_curve_3d(c3d);
+                                    int va = find_or_add_vertex(sub.front());
+                                    int vb = find_or_add_vertex(sub.back());
+                                    int lo = std::min(va, vb), hi = std::max(va, vb);
+                                    Point pmS = sub[sub.size() / 2];
+                                    auto ekey = std::make_tuple(lo, hi, q6(pmS[0]), q6(pmS[1]), q6(pmS[2]));
+                                    int ei;
+                                    BRepTrimType ttype;
+                                    auto it = emap.find(ekey);
+                                    if (it != emap.end()) {
+                                        ei = it->second;
+                                        ttype = BRepTrimType::Mated;
+                                    } else {
+                                        ei = result.add_edge(ci3d, lo, hi);
+                                        emap[ekey] = ei;
+                                        ttype = BRepTrimType::Boundary;
+                                        // combine-alias key ONLY for whole-segment edges:
+                                        // partial pieces mate via sew (identical geometry)
+                                        bool whole_seg = fa < 1e-6 && fb > nCh - 1 - 1e-6;
+                                        if (whole_seg) {
+                                            if (sec_edges_out)
+                                                (*sec_edges_out)[ei] = {s.seg_id, s.v_start, s.v_end};
+                                            sec_emap[s.seg_id] = ei;
+                                        }
+                                    }
+                                    int ci2d = result.add_curve_2d(pc);
+                                    result.add_trim(ci2d, ei, li, false, ttype);
+                                    lifted_from_chain = true;
+                                }
+                            }
+                        }
+                        if (!lifted_from_chain) {
                             ++scaf_fallbacks;
                             if (std::getenv("SESSION_SPLIT_DBG"))
                                 std::fprintf(stderr, "[SCAF-FALL] seg=%d ra=%.5f rb=%.5f t=[%.5f,%.5f]\n",
@@ -2923,28 +2985,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                         }
                     }
                 }
-                if (seg_id >= 0) {
-                    const SectionSegment& s = scaf->segments[seg_id];
-                    int ei;
-                    BRepTrimType ttype;
-                    auto itS = sec_emap.find(seg_id);
-                    if (itS != sec_emap.end()) {
-                        ei = itS->second;
-                        ttype = BRepTrimType::Mated;
-                    } else {
-                        NurbsCurve c3d = NurbsCurve::create(false, 1, s.p3);
-                        int ci3d = result.add_curve_3d(c3d);
-                        int va = find_or_add_vertex(s.p3.front());
-                        int vb = find_or_add_vertex(s.p3.back());
-                        ei = result.add_edge(ci3d, std::min(va, vb), std::max(va, vb));
-                        sec_emap[seg_id] = ei;
-                        ttype = BRepTrimType::Boundary;
-                        if (sec_edges_out) (*sec_edges_out)[ei] = {seg_id, s.v_start, s.v_end};
-                    }
-                    int ci2d = result.add_curve_2d(pc);
-                    result.add_trim(ci2d, ei, li, false, ttype);
-                    continue;
-                }
+                if (lifted_from_chain) continue;
                 NurbsCurve c3d;
                 Point p0, p1, pm;
                 lift_loop(srf, devtol, pc, c3d, p0, p1, pm);
@@ -3034,6 +3075,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                 return std::sqrt(best);
             };
             double eps_border = std::min(duF.second - duF.first, dvF.second - dvF.first) * 2e-3;
+            scaf_forced_nodes.clear();
             const auto& ids = scaf_is_A ? scaf->segs_by_surfA[face.surface_index]
                                         : scaf->segs_by_surfB[face.surface_index];
             for (int sid : ids) {
@@ -3047,6 +3089,13 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                     on_border = d_bnd_sc(uv[qi]) < eps_border;
                 }
                 if (on_border) continue;
+                // pave endpoints become forced boundary nodes: the arrangement's boundary
+                // polyline passes EXACTLY through them, so the cut connects via the shared
+                // vertex no matter how grazing the crossing is (OCCT FaceInfo.On analog)
+                if (s.v_start != s.v_end) {
+                    scaf_forced_nodes.push_back(uv.front());
+                    scaf_forced_nodes.push_back(uv.back());
+                }
                 bool closed_seg = s.v_start == s.v_end;
                 std::vector<Point> pts;
                 double t_lo = 0.0;
@@ -3317,7 +3366,8 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         double snap_bnd = (imported_freeform && !scaf) ? 0.05 : 0.0;
         std::vector<NurbsSurfaceTrimmed> parts = s_wiresplit
             ? NurbsSurfaceTrimmed::split_face_by_wires(srf, cut_pcs, outer_pcs, tolerance)
-            : NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary, snap_bnd);
+            : NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary, snap_bnd,
+                                                      (scaf && !scaf_forced_nodes.empty()) ? &scaf_forced_nodes : nullptr);
         if (s_prof) prof_arr += pf_us(pf_t2, pf_now());
         if (std::getenv("SESSION_SPLIT_DBG")) {
             std::fprintf(stderr, "[SPLIT] si=%d nbnd=%d cuts=%zu parts=%zu\n",
