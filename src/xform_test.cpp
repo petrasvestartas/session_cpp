@@ -460,6 +460,17 @@ MINI_TEST("Xform", "Inverse") {
     MINI_CHECK(TOLERANCE.is_point_close(roundtrip.vertex_point(5).value(), Point(1, -1, 1)));
     MINI_CHECK(TOLERANCE.is_point_close(roundtrip.vertex_point(6).value(), Point(1, 1, 1)));
     MINI_CHECK(TOLERANCE.is_point_close(roundtrip.vertex_point(7).value(), Point(-1, 1, 1)));
+
+    Xform p = Xform::identity();
+    p.m[0] = 1.2;
+    p.m[5] = 0.8;
+    p.m[10] = 1.1;
+    p.m[14] = 0.5;
+    p.m[11] = -1.0;
+    p.m[15] = 0.0;
+    Xform pinv = p.inverse().value();
+    Xform prod = p * pinv;
+    MINI_CHECK(prod.is_identity());
 }
 
 MINI_TEST("Xform", "To Cols") {

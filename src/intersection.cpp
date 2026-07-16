@@ -4667,6 +4667,8 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         for (auto& [c3, pb] : surface_plane_uv(b, plane, tolerance)) {
             std::vector<NurbsCurve> pas = Closest::surface_curve(a, c3);
             if (pas.size() == 1) result.push_back({c3, pas[0], pb});
+            else if (std::getenv("SESSION_MARCH_DBG"))
+                std::fprintf(stderr, "[PLNSSI] a-planar pas=%zu section dropped\n", pas.size());
         }
         drop_point_sections(result, tolerance);
         return result;
@@ -4677,6 +4679,8 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         for (auto& [c3, pa] : surface_plane_uv(a, plane, tolerance)) {
             std::vector<NurbsCurve> pbs = Closest::surface_curve(b, c3);
             if (pbs.size() == 1) result.push_back({c3, pa, pbs[0]});
+            else if (std::getenv("SESSION_MARCH_DBG"))
+                std::fprintf(stderr, "[PLNSSI] b-planar pbs=%zu section dropped\n", pbs.size());
         }
         drop_point_sections(result, tolerance);
         return result;
@@ -4898,9 +4902,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         return true;
     };
 
-    // trace_dir: forward/backward march from x0; returns (out, closed)
+    // trace_dir: forward/backward march from x0; returns (out, closed); why_out reports the
+    // stop reason ("boundary"/"closed"/"tangency"/"corrector"/"angle"/"singular"/"maxsteps")
     auto trace_dir = [&](const std::array<double, 4>& x0, double dir_sign,
-                         std::vector<std::array<double, 4>>& out) -> bool {
+                         std::vector<std::array<double, 4>>& out, const char** why_out = nullptr) -> bool {
         out.clear();
         std::array<double, 4> x = x0;
         bool have_prev_d = false;
@@ -4912,10 +4917,20 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         double dist_traveled = 0.0;
         double h = h_init;
         int smooth = 0;
+        int tang_reuse = 0;
+        const char* why = "maxsteps";
         for (int step_i = 0; step_i < max_steps; step_i++) {
             std::array<double, 3> d;
             Vector Sa, Sau, Sav, Sbu, Sbv;
-            if (!tangent_3d(x, dir_sign, d, Sa, Sau, Sav, Sbu, Sbv)) break;
+            if (!tangent_3d(x, dir_sign, d, Sa, Sau, Sav, Sbu, Sbv)) {
+                // near-parallel normals: reuse the previous direction and let the
+                // corrector pull back; a genuine grazing tangency still terminates
+                if (!have_prev_d || tang_reuse >= 3) { why = "tangency"; break; }
+                d = prev_d;
+                tang_reuse += 1;
+            } else {
+                tang_reuse = 0;
+            }
             bool accepted = false;
             int attempts = 0;
             std::array<double, 4> xn = {0,0,0,0};
@@ -4932,7 +4947,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     {Sbu[0]*Sbv[0]+Sbu[1]*Sbv[1]+Sbu[2]*Sbv[2], Sbv[0]*Sbv[0]+Sbv[1]*Sbv[1]+Sbv[2]*Sbv[2]}};
                 std::vector<double> rb = {h*(d[0]*Sbu[0]+d[1]*Sbu[1]+d[2]*Sbu[2]), h*(d[0]*Sbv[0]+d[1]*Sbv[1]+d[2]*Sbv[2])};
                 std::vector<double> duv_a, duv_b;
-                if (!solve_gauss(Ma, ra, 2, duv_a) || !solve_gauss(Mb, rb, 2, duv_b)) return false;
+                if (!solve_gauss(Ma, ra, 2, duv_a) || !solve_gauss(Mb, rb, 2, duv_b)) { why = "singular"; break; }
                 double delta[4] = {duv_a[0], duv_a[1], duv_b[0], duv_b[1]};
                 double tc = 1.0;
                 hit_boundary = false;
@@ -4952,7 +4967,15 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                 }
                 for (int k = 0; k < 4; k++) xn[k] = x[k] + tc * delta[k];
                 std::array<double, 3> p_pred = {Sa[0] + d[0]*h*tc, Sa[1] + d[1]*h*tc, Sa[2] + d[2]*h*tc};
-                if (!correct(xn, true, d, p_pred)) return false;
+                if (!correct(xn, true, d, p_pred)) {
+                    // corrector diverged at this step size: halve and retry instead of
+                    // truncating the trace mid-face (dangling cuts get pruned downstream)
+                    why = "corrector";
+                    h *= 0.5;
+                    attempts += 1;
+                    smooth = 0;
+                    continue;
+                }
                 Vector San, Sanu, Sanv;
                 eval_a(xn[0], xn[1], San, Sanu, Sanv);
                 p_cur = {San[0], San[1], San[2]};
@@ -4961,6 +4984,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     double sd0 = (p_cur[0]-p_prev[0])/step_len, sd1 = (p_cur[1]-p_prev[1])/step_len, sd2 = (p_cur[2]-p_prev[2])/step_len;
                     double ddot = sd0*prev_d[0] + sd1*prev_d[1] + sd2*prev_d[2];
                     if (ddot < 0.985 && attempts < 6 && !hit_boundary) {
+                        why = "angle";
                         h *= 0.5;
                         attempts += 1;
                         smooth = 0;
@@ -4970,6 +4994,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                 accepted = true;
             }
             if (!accepted) break;
+            why = "maxsteps";
             prev_d = d;
             have_prev_d = true;
             smooth += 1;
@@ -4982,11 +5007,15 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             if (dist_traveled > close_tol * 3.0 &&
                 std::sqrt((p_cur[0]-p_start[0])*(p_cur[0]-p_start[0]) + (p_cur[1]-p_start[1])*(p_cur[1]-p_start[1]) + (p_cur[2]-p_start[2])*(p_cur[2]-p_start[2])) < close_tol) {
                 out.push_back(x);
+                if (std::getenv("SESSION_MARCH_DBG"))
+                    std::fprintf(stderr, "[MARCH] dir=%+.0f stop=closed n=%d p(%.4f,%.4f,%.4f)\n",
+                        dir_sign, (int)out.size(), p_cur[0], p_cur[1], p_cur[2]);
+                if (why_out) *why_out = "closed";
                 return true;
             }
             out.push_back(x);
             p_prev = p_cur;
-            if (hit_boundary) break;
+            if (hit_boundary) { why = "boundary"; break; }
             for (Seed& sd : seeds) {
                 if (!sd.used) {
                     Vector So, Sou, Sov;
@@ -4996,6 +5025,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                 }
             }
         }
+        if (std::getenv("SESSION_MARCH_DBG"))
+            std::fprintf(stderr, "[MARCH] dir=%+.0f stop=%s n=%d p(%.4f,%.4f,%.4f)\n",
+                dir_sign, why, (int)out.size(), p_prev[0], p_prev[1], p_prev[2]);
+        if (why_out) *why_out = why;
         return false;
     };
 
@@ -5017,14 +5050,21 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         std::array<double, 4> x0 = {seed.u, seed.v, seed.s, seed.t};
         if (!correct(x0, false, dummy3, dummy3)) continue;
         std::vector<std::array<double, 4>> fwd, bwd;
-        bool fwd_closed = trace_dir(x0, +1, fwd);
-        if (!fwd_closed) trace_dir(x0, -1, bwd);
+        const char* fwd_why = "?"; const char* bwd_why = "?";
+        bool fwd_closed = trace_dir(x0, +1, fwd, &fwd_why);
+        if (!fwd_closed) trace_dir(x0, -1, bwd, &bwd_why);
 
         std::vector<std::array<double, 4>> quad;
         for (int i = (int)bwd.size() - 1; i >= 0; i--) quad.push_back(bwd[i]);
         quad.push_back(x0);
         for (auto& p : fwd) quad.push_back(p);
-        if ((int)quad.size() < 4) continue;
+        // A short fragment whose BOTH ends stopped at a chart boundary is a genuine corner
+        // crossing (the section continues on the neighbouring face), not a noise stub --
+        // dropping it leaves the mating face's cut chain dangling and the shell open.
+        int min_pts = (!fwd_closed &&
+                       std::strcmp(fwd_why, "boundary") == 0 &&
+                       std::strcmp(bwd_why, "boundary") == 0) ? 2 : 4;
+        if ((int)quad.size() < min_pts) continue;
 
         // Unwrap all four parameters along the trace
         for (size_t i = 1; i < quad.size(); i++) {
@@ -5041,7 +5081,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         double gap2 = std::sqrt((p_first[0]-p_last[0])*(p_first[0]-p_last[0]) + (p_first[1]-p_last[1])*(p_first[1]-p_last[1]) + (p_first[2]-p_last[2])*(p_first[2]-p_last[2]));
         bool is_loop = fwd_closed || ((int)quad.size() >= 6 && gap2 < close_tol);
         if (is_loop) quad.pop_back();
-        if ((int)quad.size() < 4) continue;
+        if ((int)quad.size() < min_pts) continue;
 
         // Trace-level dedup against already kept traces
         int m = (int)quad.size();

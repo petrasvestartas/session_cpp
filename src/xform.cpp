@@ -579,42 +579,46 @@ Xform Xform::project_to_plane_by_axis(const Plane& plane, const Vector& directio
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 std::optional<Xform> Xform::inverse() const {
-    double a00 = m[0], a01 = m[4], a02 = m[8];
-    double a10 = m[1], a11 = m[5], a12 = m[9];
-    double a20 = m[2], a21 = m[6], a22 = m[10];
+    double s0 = m[0] * m[5] - m[1] * m[4];
+    double s1 = m[0] * m[9] - m[1] * m[8];
+    double s2 = m[0] * m[13] - m[1] * m[12];
+    double s3 = m[4] * m[9] - m[5] * m[8];
+    double s4 = m[4] * m[13] - m[5] * m[12];
+    double s5 = m[8] * m[13] - m[9] * m[12];
+    double c5 = m[10] * m[15] - m[11] * m[14];
+    double c4 = m[6] * m[15] - m[7] * m[14];
+    double c3 = m[6] * m[11] - m[7] * m[10];
+    double c2 = m[2] * m[15] - m[3] * m[14];
+    double c1 = m[2] * m[11] - m[3] * m[10];
+    double c0 = m[2] * m[7] - m[3] * m[6];
+    double det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
 
-    double det = a00 * (a11 * a22 - a12 * a21) 
-              - a01 * (a10 * a22 - a12 * a20)
-              + a02 * (a10 * a21 - a11 * a20);
-    
     if (std::abs(det) < 1e-12) {
         return std::nullopt;
     }
 
     double inv_det = 1.0 / det;
 
-    double m00 = (a11 * a22 - a12 * a21) * inv_det;
-    double m01 = (a02 * a21 - a01 * a22) * inv_det;
-    double m02 = (a01 * a12 - a02 * a11) * inv_det;
-    double m10 = (a12 * a20 - a10 * a22) * inv_det;
-    double m11 = (a00 * a22 - a02 * a20) * inv_det;
-    double m12 = (a02 * a10 - a00 * a12) * inv_det;
-    double m20 = (a10 * a21 - a11 * a20) * inv_det;
-    double m21 = (a01 * a20 - a00 * a21) * inv_det;
-    double m22 = (a00 * a11 - a01 * a10) * inv_det;
-
-    double tx = m[12], ty = m[13], tz = m[14];
-    double itx = -(m00 * tx + m01 * ty + m02 * tz);
-    double ity = -(m10 * tx + m11 * ty + m12 * tz);
-    double itz = -(m20 * tx + m21 * ty + m22 * tz);
-
     Xform res;
     res.guid() = "";
     res.name = "";
-    res.m[0] = m00;  res.m[4] = m01;  res.m[8] = m02;   res.m[12] = itx;
-    res.m[1] = m10;  res.m[5] = m11;  res.m[9] = m12;   res.m[13] = ity;
-    res.m[2] = m20;  res.m[6] = m21;  res.m[10] = m22;  res.m[14] = itz;
-    
+    res.m[0] = (m[5] * c5 - m[9] * c4 + m[13] * c3) * inv_det;
+    res.m[4] = (-m[4] * c5 + m[8] * c4 - m[12] * c3) * inv_det;
+    res.m[8] = (m[7] * s5 - m[11] * s4 + m[15] * s3) * inv_det;
+    res.m[12] = (-m[6] * s5 + m[10] * s4 - m[14] * s3) * inv_det;
+    res.m[1] = (-m[1] * c5 + m[9] * c2 - m[13] * c1) * inv_det;
+    res.m[5] = (m[0] * c5 - m[8] * c2 + m[12] * c1) * inv_det;
+    res.m[9] = (-m[3] * s5 + m[11] * s2 - m[15] * s1) * inv_det;
+    res.m[13] = (m[2] * s5 - m[10] * s2 + m[14] * s1) * inv_det;
+    res.m[2] = (m[1] * c4 - m[5] * c2 + m[13] * c0) * inv_det;
+    res.m[6] = (-m[0] * c4 + m[4] * c2 - m[12] * c0) * inv_det;
+    res.m[10] = (m[3] * s4 - m[7] * s2 + m[15] * s0) * inv_det;
+    res.m[14] = (-m[2] * s4 + m[6] * s2 - m[14] * s0) * inv_det;
+    res.m[3] = (-m[1] * c3 + m[5] * c1 - m[9] * c0) * inv_det;
+    res.m[7] = (m[0] * c3 - m[4] * c1 + m[8] * c0) * inv_det;
+    res.m[11] = (-m[3] * s3 + m[7] * s1 - m[11] * s0) * inv_det;
+    res.m[15] = (m[2] * s3 - m[6] * s1 + m[10] * s0) * inv_det;
+
     return res;
 }
 

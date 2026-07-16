@@ -509,6 +509,28 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
             segs.push_back(c);
         }
     }
+    // Mixed 2D/3D input (UV pcurve pieces alongside z=0 created segments): promote the 2D
+    // pieces to 3D z=0 so the merge operates on one stride -- mixed dims desync the CV
+    // bookkeeping and every later point_at reads out of bounds.
+    {
+        bool any2 = false, any3 = false;
+        for (const NurbsCurve& c : segs) { if (c.m_dim == 2) any2 = true; else if (c.m_dim == 3) any3 = true; }
+        if (any2 && any3) {
+            for (NurbsCurve& c : segs) {
+                if (c.m_dim != 2) continue;
+                int os = c.m_cv_stride, ns = os + 1;
+                std::vector<double> cv((size_t)c.m_cv_count * ns, 0.0);
+                for (int i = 0; i < c.m_cv_count; ++i) {
+                    cv[(size_t)i*ns + 0] = c.m_cv[(size_t)i*os + 0];
+                    cv[(size_t)i*ns + 1] = c.m_cv[(size_t)i*os + 1];
+                    if (c.m_is_rat) cv[(size_t)i*ns + 3] = c.m_cv[(size_t)i*os + 2];
+                }
+                c.m_cv = std::move(cv);
+                c.m_cv_stride = ns;
+                c.m_dim = 3;
+            }
+        }
+    }
     std::vector<std::vector<NurbsCurve>> chains;
     std::vector<bool> used(segs.size(), false);
     for (size_t i = 0; i < segs.size(); i++) {
@@ -597,12 +619,39 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
                 }
             }
             int last = (joined.m_cv_count - 1) * stride;
+            // Guard against a malformed chain member (too few CVs/knots after degree raise,
+            // or an order/stride that never reached the common one): merging it corrupts the
+            // joined curve's count/array bookkeeping and every later point_at reads out of
+            // bounds. Skip it -- the loop then fails the closed check and the caller falls
+            // back to a polyline loop instead of crashing.
+            if (stride <= 0 || cvdim <= 0 ||
+                c.m_order != joined.m_order || c.m_cv_stride != stride || c.cv_size() != cvdim ||
+                (int)joined.m_cv.size() < last + cvdim ||
+                (int)c.m_cv.size() < c.m_cv_count * stride ||
+                (int)c.m_cv.size() <= stride ||
+                (int)c.m_nurbsknot.size() != c.m_cv_count + c.m_order - 2) {
+                if (std::getenv("SESSION_SPLIT_DBG"))
+                    std::fprintf(stderr, "[JOIN] skip malformed piece ci=%zu ord=%d/%d stride=%d/%d cv=%zu cnt=%d knots=%zu\n",
+                        ci, c.m_order, joined.m_order, c.m_cv_stride, stride, c.m_cv.size(), c.m_cv_count, c.m_nurbsknot.size());
+                continue;
+            }
             for (int k = 0; k < cvdim; k++) {
                 joined.m_cv[last + k] = 0.5 * (joined.m_cv[last + k] + c.m_cv[k]);
             }
             joined.m_nurbsknot.insert(joined.m_nurbsknot.end(), c.m_nurbsknot.begin() + (joined.m_order - 1), c.m_nurbsknot.end());
             joined.m_cv.insert(joined.m_cv.end(), c.m_cv.begin() + stride, c.m_cv.end());
             joined.m_cv_count = joined.m_cv_count + c.m_cv_count - 1;
+        }
+        // A merge that tripped the guard leaves count/array bookkeeping intact but the chain
+        // incomplete; a deeper malformation can still desync them. Never hand out a curve
+        // whose arrays cannot back its CV count -- return the raw pieces instead.
+        if ((int)joined.m_cv.size() < (joined.m_cv_count - 1) * joined.m_cv_stride + joined.cv_size() ||
+            (int)joined.m_nurbsknot.size() != joined.m_cv_count + joined.m_order - 2) {
+            if (std::getenv("SESSION_SPLIT_DBG"))
+                std::fprintf(stderr, "[JOIN] post-merge desync: cv=%zu cnt=%d stride=%d knots=%zu ord=%d\n",
+                    joined.m_cv.size(), joined.m_cv_count, joined.m_cv_stride, joined.m_nurbsknot.size(), joined.m_order);
+            for (NurbsCurve& c : chain) result.push_back(c);
+            continue;
         }
         result.push_back(joined);
     }
@@ -778,6 +827,9 @@ bool NurbsCurve::is_valid() const {
     if (m_cv_count < m_order) return false;
     if (m_cv_stride < cv_size()) return false;
     if (m_cv.empty() || m_nurbsknot.empty()) return false;
+    // Storage must actually hold m_cv_count CVs: a count/array mismatch (e.g. a partially
+    // merged join) otherwise passes validation and every point_at reads out of bounds.
+    if ((int)m_cv.size() < (m_cv_count - 1) * m_cv_stride + cv_size()) return false;
     if (!is_valid_nurbsknot_vector()) return false;
     
     // Check CVs for valid values

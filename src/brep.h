@@ -208,8 +208,12 @@ public:
     /// Split this BRep by a line pulled onto each face. New BRep.
     BRep split_by_line(const Line& line, double tolerance = 0.0) const;
 
-    /// Split this BRep by every face of another BRep. New BRep.
-    BRep split_by_brep(const BRep& cutter, double tolerance = 0.0) const;
+    /// Split this BRep by every face of another BRep. New BRep. imported_freeform enables
+    /// the near-boundary cut-endpoint snap in the UV arrangement (freeform x freeform pairs).
+    /// pre_cuts (optional): per-surface-index cut pcurves precomputed by the caller (one SSI
+    /// per surface PAIR shared by both operands), bypassing the per-operand SSI here.
+    BRep split_by_brep(const BRep& cutter, double tolerance = 0.0, bool imported_freeform = false,
+                       const std::vector<std::vector<NurbsCurve>>* pre_cuts = nullptr) const;
 
     /// Build a standalone BRep from a subset of this BRep's faces.
     BRep subset(const std::vector<int>& face_indices) const;
@@ -425,7 +429,7 @@ private:
     void deep_copy_from(const BRep& src);
 
     /// Shared splitter: subdivide each face by per-face cut pcurves, rebuild a new BRep.
-    BRep split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for) const;
+    BRep split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform = false) const;
 };
 
 } // namespace session_cpp

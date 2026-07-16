@@ -917,6 +917,7 @@ bool BRep::is_solid() const {
     double diag = (m_vertices.empty()) ? 1.0 :
         std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
     double deg_tol = std::max(diag * 1e-7, 1e-12);
+    bool solid = true;
     for (const auto& e : m_topology_edges) {
         if ((int)e.trim_indices.size() == 2) continue;
         // A DEGENERATE edge (3D curve collapsed to a point, e.g. a sphere/cone pole) is
@@ -945,11 +946,12 @@ bool BRep::is_solid() const {
             std::fprintf(stderr, "[SOLID] e=%d nt=%d s(%.4f,%.4f,%.4f) e(%.4f,%.4f,%.4f)\n",
                 (int)(&e - &m_topology_edges[0]), (int)e.trim_indices.size(),
                 ps[0],ps[1],ps[2], pe[0],pe[1],pe[2]);
+            solid = false;
             continue;
         }
         return false;
     }
-    return true;
+    return solid;
 }
 
 bool BRep::contains_point(const Mesh& boundary, const Point& p) const {
@@ -2485,7 +2487,8 @@ void BRep::append_brep(const BRep& other) {
     }
 }
 
-BRep BRep::split_by_brep(const BRep& cutter, double tolerance) const {
+BRep BRep::split_by_brep(const BRep& cutter, double tolerance, bool imported_freeform,
+                         const std::vector<std::vector<NurbsCurve>>* pre_cuts) const {
     std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> cutter_bbs;
     for (const auto& cs : cutter.m_surfaces) cutter_bbs.push_back(aabb_from_surface(cs));
 
@@ -2746,16 +2749,32 @@ BRep BRep::split_by_brep(const BRep& cutter, double tolerance) const {
                 std::fprintf(stderr, "[TRIMCUT] frags=%zu joins=%zu out=%zu\n", frags_in, frags_joined, out.size());
             return out;
         }
+        if (pre_cuts) {
+            // Caller supplied the section pcurves (one SSI per surface pair, shared with the
+            // other operand's split) -- consume them instead of re-running an order-sensitive
+            // SSI here.
+            int si = (int)(&srf - m_surfaces.data());
+            if (si >= 0 && si < (int)pre_cuts->size()) {
+                if (std::getenv("SESSION_MARCH_DBG") && !(*pre_cuts)[si].empty())
+                    std::fprintf(stderr, "[PAIR] si=%d pre_cuts=%zu\n", si, (*pre_cuts)[si].size());
+                for (const auto& pc : (*pre_cuts)[si])
+                    push_deduped(pc);
+            }
+            return out;
+        }
         for (size_t ci = 0; ci < cutter.m_surfaces.size(); ++ci) {
             if (!aabb_overlap(srf_bb, cutter_bbs[ci], margin)) continue;
-            for (auto& pc : Intersection::cut_curves_on_surface(srf, cutter.m_surfaces[ci], tolerance))
+            auto cc = Intersection::cut_curves_on_surface(srf, cutter.m_surfaces[ci], tolerance);
+            if (std::getenv("SESSION_MARCH_DBG") && !cc.empty())
+                std::fprintf(stderr, "[PAIR] ci=%zu cuts=%zu\n", ci, cc.size());
+            for (auto& pc : cc)
                 push_deduped(pc);
         }
         return out;
-    });
+    }, imported_freeform);
 }
 
-BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for) const {
+BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform) const {
     BRep result;
     result.name = name;
     std::map<std::tuple<long long, long long, long long>, int> vmap;
@@ -3120,7 +3139,11 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         // in split_by_uv_curves. Auto-enabling on the trim-cut path is deferred until the
         // downstream crash on degenerate snapped 2-point cuts (chair si=16) is fixed and the
         // matrix is re-verified. Default 0.0 => byte-identical to the proven path.
-        double snap_bnd = 0.0;
+        // Near-boundary cut-endpoint snap: default-on ONLY for freeform x freeform (imported
+        // STEP) operands; every matrix pair has a recognized primitive so this stays 0.0 there.
+        // 0.05 validated on the chair pair (all 20 faces of both operands split or pass through
+        // correctly); SESSION_BND_SNAP still overrides inside split_by_uv_curves.
+        double snap_bnd = imported_freeform ? 0.05 : 0.0;
         std::vector<NurbsSurfaceTrimmed> parts = s_wiresplit
             ? NurbsSurfaceTrimmed::split_face_by_wires(srf, cut_pcs, outer_pcs, tolerance)
             : NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary, snap_bnd);
@@ -3174,7 +3197,16 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
             continue;
         }
         auto pf_t4 = pf_now();
+        static const bool s_liftdbg = (std::getenv("SESSION_TRIM_DBG") != nullptr);
+        int _pk = 0;
         for (const auto& part : parts) {
+            if (s_liftdbg) {
+                std::fprintf(stderr, "[LIFTPART] si=%d part %d/%zu outer_valid=%d segs=%zu inner=%zu\n",
+                             face.surface_index, _pk, parts.size(), part.m_outer_loop.is_valid() ? 1 : 0,
+                             part.m_outer_segments.size(), part.m_inner_loops.size());
+                std::fflush(stderr);
+            }
+            ++_pk;
             // Prefer the per-run segmentation (each boundary run a separate pcurve) so each
             // run lifts to its own edge and mates with the matching segment edge of an
             // adjacent face -> watertight imprint. Fall back to the single joined loop.
@@ -5644,13 +5676,56 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     auto lap = [&](const char* what){ if (s_prof) { auto n = t_now(); std::fprintf(stderr, "[bool-prof]   %-16s %8.1f us\n", what, t_us(tp, n)); std::fflush(stderr); tp = n; } };
 
     // Imprint each solid against the other (split faces along the SSI curves).
-    BRep A2 = split_by_brep(other, tolerance);                 lap("splitA");
-    BRep B2 = other.split_by_brep(*this, tolerance);           lap("splitB");
+    // Recognize operands FIRST: two unrecognized (freeform, typically imported-STEP) solids
+    // need the near-boundary cut-endpoint snap in the UV arrangement; every matrix pair has
+    // at least one recognized primitive, so the snap stays off there (byte-identical).
+    PrimSolid prA0 = recognize_solid(*this);
+    PrimSolid prB0 = recognize_solid(other);
+    bool imported_freeform = (prA0.kind == 0 && prB0.kind == 0);
+    // Freeform x freeform: run each surface-pair SSI ONCE and feed BOTH splits from the same
+    // triples (pcurve_a to A's split, pcurve_b to B's). The freeform marcher is order-sensitive
+    // (seeds come from the first argument's cells), so the legacy A-by-B / B-by-A calls can
+    // trace a grazing section in one order and miss it in the other -- the imprint then goes
+    // asymmetric and the section edge stays naked. One call = symmetric imprint by construction
+    // (and half the SSI cost). Matrix pairs (>= 1 recognized primitive) keep the legacy path.
+    std::vector<std::vector<NurbsCurve>> cutsA(m_surfaces.size()), cutsB(other.m_surfaces.size());
+    if (imported_freeform) {
+        std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> abbs, bbbs;
+        for (const auto& s : m_surfaces) abbs.push_back(aabb_from_surface(s));
+        for (const auto& s : other.m_surfaces) bbbs.push_back(aabb_from_surface(s));
+        for (size_t ai = 0; ai < m_surfaces.size(); ++ai) {
+            double am = std::max({abbs[ai].second[0] - abbs[ai].first[0],
+                                  abbs[ai].second[1] - abbs[ai].first[1],
+                                  abbs[ai].second[2] - abbs[ai].first[2]}) * 1e-3;
+            for (size_t bi = 0; bi < other.m_surfaces.size(); ++bi) {
+                if (!aabb_overlap(abbs[ai], bbbs[bi], am)) continue;
+                auto trs = Intersection::surface_surface(m_surfaces[ai], other.m_surfaces[bi], tolerance);
+                if (trs.empty()) {
+                    // order-sensitive marcher found nothing this way round: retry swapped and
+                    // exchange the pcurve roles so both operands still share one section set
+                    for (auto& tr : Intersection::surface_surface(other.m_surfaces[bi], m_surfaces[ai], tolerance)) {
+                        if (std::get<2>(tr).is_valid()) cutsA[ai].push_back(std::get<2>(tr));
+                        if (std::get<1>(tr).is_valid()) cutsB[bi].push_back(std::get<1>(tr));
+                    }
+                    continue;
+                }
+                for (auto& tr : trs) {
+                    if (std::get<1>(tr).is_valid()) cutsA[ai].push_back(std::get<1>(tr));
+                    if (std::get<2>(tr).is_valid()) cutsB[bi].push_back(std::get<2>(tr));
+                }
+            }
+        }
+        lap("pair_ssi");
+    }
+    BRep A2 = split_by_brep(other, tolerance, imported_freeform,
+                            imported_freeform ? &cutsA : nullptr);      lap("splitA");
+    BRep B2 = other.split_by_brep(*this, tolerance, imported_freeform,
+                                  imported_freeform ? &cutsB : nullptr); lap("splitB");
     // Classify fragments against the OTHER solid. The operands are typically recognized
     // primitives (box/beam/cylinder) -> test point-in-solid analytically in O(1) and skip the
     // tessellate+ray-cast entirely. Only build a mesh for an operand we could not recognize.
-    PrimSolid primA = recognize_solid(*this);
-    PrimSolid primB = recognize_solid(other);
+    PrimSolid primA = prA0;
+    PrimSolid primB = prB0;
     Mesh meshA, meshB;
     if (primA.kind == 0) meshA = mesh();
     if (primB.kind == 0) meshB = other.mesh();                 lap("recognize+mesh");

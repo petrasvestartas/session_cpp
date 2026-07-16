@@ -700,6 +700,40 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
+    // ---- 1b2. Weld near-coincident interior cut endpoints (pierce-point junctions) ----
+    // Two section branches meeting at a T/corner junction (the other operand's edge pierces
+    // this face) each stop within marcher tolerance of the true junction, leaving a small UV
+    // gap (~1e-2). Neither end reaches the boundary, both stay valence-1, and the dangling
+    // prune deletes the whole chain -> parts=1. Weld cut endpoints pairwise so the junction
+    // vertex forms. After 1b every cut endpoint is either exactly ON the boundary or more
+    // than bnd_snap away from it; jweld < bnd_snap, so an on-boundary end can only weld to
+    // another on-boundary end (never gets dragged off the boundary).
+    if (bnd_snap > 0.0) {
+        double jweld = bnd_snap * 0.5;
+        std::vector<std::array<double, 2>*> cends;
+        std::vector<double> clen;
+        for (auto& P : polylines) {
+            if (is_boundary(P.cidx) || P.pts.size() < 2) continue;
+            double ext = 0.0;
+            for (size_t k = 1; k < P.pts.size(); ++k)
+                ext += std::hypot(P.pts[k][0] - P.pts[k-1][0], P.pts[k][1] - P.pts[k-1][1]);
+            cends.push_back(&P.pts.front()); clen.push_back(ext);
+            cends.push_back(&P.pts.back());  clen.push_back(ext);
+        }
+        int nweld = 0;
+        for (size_t i = 0; i < cends.size(); ++i)
+            for (size_t j = i + 1; j < cends.size(); ++j) {
+                // same-polyline pair: closing a genuine loop is fine, collapsing a short cut is not
+                if (j == i + 1 && i % 2 == 0 && clen[i] < jweld * 3.0) continue;
+                double d = std::hypot((*cends[i])[0] - (*cends[j])[0], (*cends[i])[1] - (*cends[j])[1]);
+                if (d > 1e-15 && d < jweld) { *cends[j] = *cends[i]; ++nweld; }
+            }
+        if (std::getenv("SESSION_SPLIT_DBG")) {
+            std::fprintf(stderr, "[JWELD] jweld=%.4f welded=%d\n", jweld, nweld);
+            std::fflush(stderr);
+        }
+    }
+
     // Border sides as polylines: cidx -1 bottom, -2 right, -3 top, -4 left
     if (use_domain_border) {
         polylines.push_back({-1, {{u0, v0}, {u1, v0}}, {u0, u1}});
@@ -730,6 +764,23 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 double d = std::hypot((*bends[i])[0] - (*bends[j])[0], (*bends[i])[1] - (*bends[j])[1]);
                 if (d > 1e-15 && d < bweld) *bends[j] = *bends[i];   // weld j onto canonical i
             }
+    }
+
+    // ---- 1d. Drop degenerate cut polylines ----
+    // Endpoint snapping (1b) can collapse a short section onto a single boundary point (both
+    // ends projected together). The resulting near-zero-extent cut yields a sliver cell whose
+    // lifted loop corrupts memory downstream. Remove any non-boundary polyline whose total UV
+    // extent is below a few snap widths; boundary loops are always kept.
+    {
+        double min_ext = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-5);
+        polylines.erase(std::remove_if(polylines.begin(), polylines.end(),
+            [&](const UVPoly& P) {
+                if (is_boundary(P.cidx)) return false;
+                double ext = 0.0;
+                for (size_t k = 1; k < P.pts.size(); ++k)
+                    ext += std::hypot(P.pts[k][0] - P.pts[k-1][0], P.pts[k][1] - P.pts[k-1][1]);
+                return ext < min_ext;
+            }), polylines.end());
     }
 
     // ---- 2. Segment-segment intersections (Newton-refined on real curves) ----
@@ -1086,8 +1137,10 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 const NurbsCurve& crv = pcurves[run.cidx];
                 auto cdom = crv.domain();
                 double c0 = cdom.first, c1 = cdom.second;
-                double lo = std::min(run.ta, run.tb);
-                double hi_ = std::max(run.ta, run.tb);
+                // Clamp to the curve domain: a snapped section run can carry an endpoint
+                // parameter a hair outside [c0,c1], and trimming out-of-domain corrupts memory.
+                double lo = std::max(c0, std::min(run.ta, run.tb));
+                double hi_ = std::min(c1, std::max(run.ta, run.tb));
                 NurbsCurve piece = crv;
                 bool piece_ok = true;
                 if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
@@ -1122,10 +1175,11 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                              std::vector<NurbsCurve>* segments, bool* seg_valid) -> NurbsCurve {
         if (seg_valid) *seg_valid = false;
         std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
+        if (std::getenv("SESSION_SPLIT_DBG")) { std::fprintf(stderr, "[EMIT]   segments=%zu (before join)\n", pieces.size()); std::fflush(stderr); }
         if (pieces.empty())
             return NurbsCurve();
         std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
-        if (joined.size() == 1 && joined[0].is_closed()) {
+        if (joined.size() == 1 && joined[0].is_valid() && joined[0].is_closed()) {
             if (segments) *segments = pieces;
             if (seg_valid) *seg_valid = true;
             return joined[0];
@@ -1162,7 +1216,9 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     };
 
     std::vector<NurbsSurfaceTrimmed> result;
+    bool s_emitdbg = (std::getenv("SESSION_SPLIT_DBG") != nullptr);
     for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
+        if (s_emitdbg) { std::fprintf(stderr, "[EMIT] fi=%d/%zu cyc=%zu loop\n", fi, pos_faces.size(), pos_faces[fi].first.size()); std::fflush(stderr); }
         std::vector<NurbsCurve> outer_segs;
         bool outer_seg_valid = false;
         NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, &outer_segs, &outer_seg_valid);
@@ -1172,6 +1228,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             outer.reverse();
             if (outer_seg_valid) reverse_segments(outer_segs);
         }
+        if (s_emitdbg) { std::fprintf(stderr, "[EMIT] fi=%d create\n", fi); std::fflush(stderr); }
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
         if (outer_seg_valid) ts.m_outer_segments = outer_segs;
         for (const auto& hole_cycle : holes_of[fi]) {
@@ -1702,7 +1759,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_face_by_wires(
         std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
         if (pieces.empty()) return NurbsCurve();
         std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
-        if (joined.size() == 1 && joined[0].is_closed()) {
+        if (joined.size() == 1 && joined[0].is_valid() && joined[0].is_closed()) {
             if (segments) *segments = pieces;
             if (seg_valid) *seg_valid = true;
             return joined[0];

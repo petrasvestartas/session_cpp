@@ -540,7 +540,8 @@ int main(int argc, char** argv) {
         ++total; if (!ok) ++fails;
         std::printf("  freeform verdict: %s\n", ok ? "OK" : "FAIL");
     }
-    // Real-world STEP round-trip: read two chair models, cut A - B, write A/B/result colored.
+    // Real-world STEP round-trip: read two chair models, run all three booleans, write one
+    // colored STEP per op (A red / B blue / result green) and check the volume identities.
     if (const char* cd = std::getenv("SESSION_CHAIRS")) {
         auto as = file_step::read_file_step_breps(std::string(cd) + "/chair0.stp");
         auto bs = file_step::read_file_step_breps(std::string(cd) + "/chair1.stp");
@@ -554,20 +555,33 @@ int main(int argc, char** argv) {
             std::printf("A: faces %d solid %d vol %.4f | B: faces %d solid %d vol %.4f\n",
                         A.face_count(), A.is_solid() ? 1 : 0, A.volume(),
                         B.face_count(), B.is_solid() ? 1 : 0, B.volume());
-            try {
-                BRep r = A.boolean_difference(B);
-                std::printf("chairs cut: faces %d solid %d vol %.4f\n",
-                            r.face_count(), r.is_solid() ? 1 : 0, r.volume());
-                if (std::getenv("SESSION_CHAIRS_DUMP"))
-                    r.pb_dump(std::string(cd) + "/chair_cut.pb");
-                A.surfacecolor = Color(0.85f, 0.25f, 0.20f);
-                B.surfacecolor = Color(0.20f, 0.45f, 0.85f);
-                r.surfacecolor = Color(0.35f, 0.75f, 0.40f);
-                std::vector<const BRep*> parts = {&A, &B};
-                if (r.face_count() > 0) parts.push_back(&r);
-                file_step::write_file_step_breps(parts, "chair0_cut_chair1",
-                    std::string(cd) + "/chair0_cut_chair1.step");
-            } catch (const std::exception& e) { std::printf("chairs cut THREW: %s\n", e.what()); }
+            A.surfacecolor = Color(0.85f, 0.25f, 0.20f);
+            B.surfacecolor = Color(0.20f, 0.45f, 0.85f);
+            const char* opn[3] = {"cut", "common", "fuse"};
+            double vols[3] = {0, 0, 0};
+            for (int m = 0; m < 3; ++m) {
+                try {
+                    BRep r = (m == 0) ? A.boolean_difference(B)
+                           : (m == 1) ? A.boolean_intersection(B)
+                                      : A.boolean_union(B);
+                    vols[m] = r.volume();
+                    std::printf("chairs %-6s: faces %d solid %d vol %.4f\n",
+                                opn[m], r.face_count(), r.is_solid() ? 1 : 0, vols[m]);
+                    if (std::getenv("SESSION_CHAIRS_DUMP"))
+                        r.pb_dump(std::string(cd) + "/chair_" + opn[m] + ".pb");
+                    r.surfacecolor = Color(0.35f, 0.75f, 0.40f);
+                    std::vector<const BRep*> parts = {&A, &B};
+                    if (r.face_count() > 0) parts.push_back(&r);
+                    std::string nm = std::string("chair0_") + opn[m] + "_chair1";
+                    file_step::write_file_step_breps(parts, nm, std::string(cd) + "/" + nm + ".step");
+                } catch (const std::exception& e) { std::printf("chairs %s THREW: %s\n", opn[m], e.what()); }
+            }
+            // identities: cut + common = A ; fuse = A + B - common
+            double va = A.volume(), vb = B.volume();
+            std::printf("chairs [id1] cut+common-A    rel %9.2e\n",
+                        std::abs(vols[0] + vols[1] - va) / std::max(1.0, std::abs(va)));
+            std::printf("chairs [id2] fuse-(A+B-com)  rel %9.2e\n",
+                        std::abs(vols[2] - (va + vb - vols[1])) / std::max(1.0, std::abs(va)));
         }
     }
     if (const char* sd = std::getenv("SESSION_STEP_PRIMS")) {
