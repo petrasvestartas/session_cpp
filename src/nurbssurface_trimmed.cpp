@@ -708,6 +708,30 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         polylines.push_back({-4, {{u0, v1}, {u0, v0}}, {v1, v0}});
     }
 
+    // ---- 1c. Weld boundary-loop endpoints ----
+    // Imported-STEP trim pcurves meet only APPROXIMATELY in UV: consecutive loop curves share
+    // a corner whose two endpoints differ by the STEP import precision (~1e-4), far larger than
+    // snap_uv (= tolerance/uv_to_3d ~ 1e-6). The shared boundary vertex then fails to form, the
+    // loop is an OPEN chain, and the valence-1 dangling-prune (step 4) eats the ENTIRE boundary
+    // -> live_edges empty -> parts=0 -> the face is emitted uncut and the boolean shell stays
+    // open. Snap each boundary polyline endpoint onto a nearby boundary endpoint so the loop
+    // closes. Only boundary polylines are touched (cut crossings are noded exactly downstream);
+    // primitive faces whose corners already coincide within bweld are unaffected (no-op).
+    {
+        double bweld = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 5e-4);
+        std::vector<std::array<double, 2>*> bends;
+        for (auto& P : polylines) {
+            if (!is_boundary(P.cidx) || P.pts.size() < 2) continue;
+            bends.push_back(&P.pts.front());
+            bends.push_back(&P.pts.back());
+        }
+        for (size_t i = 0; i < bends.size(); ++i)
+            for (size_t j = i + 1; j < bends.size(); ++j) {
+                double d = std::hypot((*bends[i])[0] - (*bends[j])[0], (*bends[i])[1] - (*bends[j])[1]);
+                if (d > 1e-15 && d < bweld) *bends[j] = *bends[i];   // weld j onto canonical i
+            }
+    }
+
     // ---- 2. Segment-segment intersections (Newton-refined on real curves) ----
     auto seg_seg = [](const std::array<double, 2>& p1, const std::array<double, 2>& p2,
                       const std::array<double, 2>& p3, const std::array<double, 2>& p4,
@@ -996,6 +1020,15 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             if (!touches_border)
                 neg_faces.push_back(cycle);
         }
+    }
+
+    if (std::getenv("SESSION_SPLIT_DBG")) {
+        double max_area = 0.0;
+        for (const auto& cycle : faces) { double a = std::abs(face_area(cycle)); if (a > max_area) max_area = a; }
+        std::fprintf(stderr, "[ARR] npc=%zu verts=%zu edges=%zu live=%zu cycles=%zu pos=%zu neg=%zu maxarea=%.3e thr=%.3e\n",
+                     polylines.size(), verts.size(), edges.size(), live_edges.size(), faces.size(),
+                     pos_faces.size(), neg_faces.size(), max_area, snap_uv*snap_uv);
+        std::fflush(stderr);
     }
 
     // ---- 6. Assign floating hole loops to their containing faces ----
