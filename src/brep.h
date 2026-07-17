@@ -224,7 +224,9 @@ public:
     BRep split_by_brep(const BRep& cutter, double tolerance = 0.0, bool imported_freeform = false,
                        const std::vector<std::vector<NurbsCurve>>* pre_cuts = nullptr,
                        const struct SectionScaffold* scaf = nullptr, bool scaf_is_A = true,
-                       std::map<int, std::array<int, 3>>* sec_edges_out = nullptr) const;
+                       std::map<int, std::array<int, 3>>* sec_edges_out = nullptr,
+                       std::vector<int>* face_src_out = nullptr,
+                       const std::vector<std::vector<NurbsCurve>>* extra_cuts = nullptr) const;
 
     /// Build a standalone BRep from a subset of this BRep's faces. edge_remap (optional):
     /// old topology-edge index -> new index for edges carried into the subset.
@@ -449,9 +451,13 @@ private:
 
     /// Shared splitter: subdivide each face by per-face cut pcurves, rebuild a new BRep.
     /// scaf/scaf_is_A/sec_edges_out: see split_by_brep (OCCT-adoption S2 scaffold path).
+    /// face_src_out (optional): original face index for each result face -- lets the
+    /// classifier inherit the operand's outward orientation per fragment (angle method).
     BRep split_with(double tolerance, const std::function<std::vector<NurbsCurve>(const NurbsSurface&)>& cut_for, bool imported_freeform = false,
                     const struct SectionScaffold* scaf = nullptr, bool scaf_is_A = true,
-                    std::map<int, std::array<int, 3>>* sec_edges_out = nullptr) const;
+                    std::map<int, std::array<int, 3>>* sec_edges_out = nullptr,
+                    std::vector<int>* face_src_out = nullptr,
+                    const std::vector<std::vector<NurbsCurve>>* extra_cuts = nullptr) const;
 };
 
 } // namespace session_cpp

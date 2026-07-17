@@ -75,7 +75,7 @@ public:
     /// vertices into the boundary polylines before noding, so a cut whose endpoint equals
     /// such a node connects through the shared vertex regardless of crossing conditioning
     /// (grazing sections). Points farther than a small tolerance from any boundary are ignored.
-    static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0, bool use_domain_border = true, int n_boundary = 0, double snap_cuts_to_boundary = 0.0, const std::vector<Point>* forced_boundary_nodes = nullptr);
+    static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0, bool use_domain_border = true, int n_boundary = 0, double snap_cuts_to_boundary = 0.0, const std::vector<Point>* forced_boundary_nodes = nullptr, double forced_node_eps = 0.0);
 
     /// Seam-aware UV face arrangement (port of OCCT BOPAlgo_WireSplitter leftmost-angle walk +
     /// BuilderFace::PerformAreas + DoSplitSEAMOnFace two-pcurve seam). Drop-in for split_by_uv_curves

@@ -121,6 +121,73 @@ std::vector<std::array<std::string,3>> edge_pairs() {
     };
 }
 
+// OCCT test-suite ports (tests/boolean/*_simple + bugs/modalg_*): complex primitive
+// configurations OCCT itself uses as regression cases -- tangent contacts, seam-crossing
+// periodic intersections, grazing rotated operands, multi-solid results, and (via the
+// chain cells below) boolean-of-boolean stress. SESSION_OCCT2=1 runs this grid.
+std::map<std::string, Place> occt2_placements() {
+    return {
+        // bopfuse_simple/ZF6: cone base plane coincident with box top face
+        {"oCONE1", {"cone",     {1,2},       {0,0,2, 0,0,1, 0}}},
+        // bopfuse_simple/ZL2: torus wraps a coaxial cylinder (R == r_cyl), sections at seams
+        {"oCYL48", {"cylinder", {4,8},       {0,0,-4, 0,0,1, 0}}},
+        {"oTOR41", {"torus",    {4,1},       ID}},
+        // bugs/modalg_7/bug32502 (/4): off-axis cylinder pierces sphere across its seam
+        {"oCYLW",  {"cylinder", {0.75,10},   {0,-5,1.75, 1,0,0, -90}}},
+        // bugs/modalg_7/bug32470 (/4): box rotated -45 about y through (0,0,2.5) grazes sphere
+        {"oBOXG",  {"box",      {5,25,25},   {3.5355339059327378,0,2.5, 0,1,0, -45}}},
+        // bugs/modalg_7/bug27274 (/20): equal cylinders crossed at 45 deg, bases at origin
+        {"oCYLA",  {"cylinder", {2.5,7.25},  ID}},
+        {"oCYLB",  {"cylinder", {2.5,7.25},  {0,0,0, 1,0,0, 45}}},
+        // bugs/modalg_7/bug29910_1 (/50): identical tori offset by the major radius
+        {"oTORT1", {"torus",    {2,0.2},     ID}},
+        {"oTORT2", {"torus",    {2,0.2},     {2,0,0, 0,0,1, 0}}},
+        // bopfuse_simple/ZP6 (/50): three mutually orthogonal tori (chain cell)
+        {"oTORX",  {"torus",    {2,0.4},     ID}},
+        {"oTORY",  {"torus",    {2,0.4},     {0,0,0, 1,0,0, 90}}},
+        {"oTORZ",  {"torus",    {2,0.4},     {0,0,0, 0,1,0, 90}}},
+        // bugs/modalg_7/bug31835_1: Steinmetz tricylinder via chained common (chain cell)
+        {"oTCZ",   {"cylinder", {1.5,8},     {0,0,-4, 0,0,1, 0}}},
+        {"oTCX",   {"cylinder", {1.5,8},     {-4,0,0, 0,1,0, 90}}},
+        {"oTCY",   {"cylinder", {1.5,8},     {0,4,0, 1,0,0, 90}}},
+        // bugs/modalg_5/bug23876 (/10): washer (cyl-cyl cut) vs torus at its top rim (chain)
+        {"oCYLO",  {"cylinder", {2,5},       ID}},
+        {"oCYLI",  {"cylinder", {1,5.4},     {0,0,-0.2, 0,0,1, 0}}},
+        {"oTORA",  {"torus",    {1.5,0.5},   {0,0,5, 0,0,1, 0}}},
+        // bugs/modalg_5/bug24359 (2x2x2 corner of the 27-sphere grid): unit-spaced r=2
+        // spheres, heavily overlapping -- progressive fuse (chain cell)
+        {"oS0",    {"sphere",   {2},         ID}},
+        {"oS1",    {"sphere",   {2},         {1,0,0, 0,0,1, 0}}},
+        {"oS2",    {"sphere",   {2},         {0,1,0, 0,0,1, 0}}},
+        {"oS3",    {"sphere",   {2},         {1,1,0, 0,0,1, 0}}},
+        {"oS4",    {"sphere",   {2},         {0,0,1, 0,0,1, 0}}},
+        {"oS5",    {"sphere",   {2},         {1,0,1, 0,0,1, 0}}},
+        {"oS6",    {"sphere",   {2},         {0,1,1, 0,0,1, 0}}},
+        {"oS7",    {"sphere",   {2},         {1,1,1, 0,0,1, 0}}},
+    };
+}
+std::vector<std::array<std::string,3>> occt2_pairs() {
+    return {
+        {"o box coneT ", "box",    "oCONE1"},
+        {"o cyl4 tor41", "oCYL48", "oTOR41"},
+        {"o sph cylW  ", "sph",    "oCYLW"},
+        {"o sph boxG  ", "sph",    "oBOXG"},
+        {"o cylX45    ", "oCYLA",  "oCYLB"},
+        {"o torTwin   ", "oTORT1", "oTORT2"},
+    };
+}
+// (label, shape keys, modes between them) -- left-fold: r = k0; r = m_i(r, k_{i+1})
+struct ChainCell { std::string label; std::vector<std::string> keys; std::vector<std::string> modes; };
+std::vector<ChainCell> occt2_chains() {
+    return {
+        {"o tor3x fuse ", {"oTORX","oTORY","oTORZ"}, {"fuse","fuse"}},
+        {"o tricyl com ", {"oTCZ","oTCX","oTCY"},    {"common","common"}},
+        {"o annulus    ", {"oCYLO","oCYLI","oTORA"}, {"cut","common"}},
+        {"o sph8 fuse  ", {"oS0","oS1","oS2","oS3","oS4","oS5","oS6","oS7"},
+                          {"fuse","fuse","fuse","fuse","fuse","fuse","fuse"}},
+    };
+}
+
 Xform xf_of(const std::array<double,7>& x) {
     Xform t = Xform::translation(x[0], x[1], x[2]);
     if (x[6] == 0.0) return t;
@@ -214,6 +281,12 @@ int main(int argc, char** argv) {
         auto ep = edge_placements();
         PL.insert(ep.begin(), ep.end());
         PRS = edge_pairs();
+    }
+    bool occt2 = std::getenv("SESSION_OCCT2") != nullptr;
+    if (occt2) {
+        auto op2 = occt2_placements();
+        PL.insert(op2.begin(), op2.end());
+        PRS = occt2_pairs();
     }
     std::printf("%-13s %-4s | %11s %11s %9s | %4s %5s | s | %8s | verdict\n",
                 "pair", "op", "our_vol", "occt_vol", "rel", "ourF", "occtF", "us");
@@ -347,6 +420,61 @@ int main(int argc, char** argv) {
             }
         }
     }
+    // OCCT-port chain cells: boolean-of-boolean stress (three-tori fuse, Steinmetz
+    // tricylinder, washer x torus, sphere-grid progressive fuse). Oracle side uses the
+    // boolean_chain op; cache key = label.
+    if (occt2) {
+        for (const auto& cc : occt2_chains()) {
+            if (!filter.empty() && cc.label.find(filter) == std::string::npos) continue;
+            ++total;
+            double v = 0; int nf = 0, solid = 0; long us = 0;
+            try {
+                auto t0 = std::chrono::steady_clock::now();
+                BRep r = build(PL[cc.keys[0]]);
+                for (size_t i = 0; i < cc.modes.size(); ++i) {
+                    BRep s = build(PL[cc.keys[i + 1]]);
+                    r = cc.modes[i] == "cut"    ? r.boolean_difference(s)
+                      : cc.modes[i] == "common" ? r.boolean_intersection(s)
+                                                 : r.boolean_union(s);
+                }
+                us = (long)std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+                v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
+            } catch (const std::exception& e) {
+                std::printf("%-13s chn  | THREW: %s\n", cc.label.c_str(), e.what()); ++fails; continue;
+            } catch (...) { std::printf("%-13s chn  | THREW\n", cc.label.c_str()); ++fails; continue; }
+            std::array<double,3> k = {0, 0, 0};
+            auto it = cache.find(cc.label);
+            if (!refresh && it != cache.end()) k = {it->second.vol, (double)it->second.nf, 1.0};
+            else if (have_oracle) {
+                {
+                    std::ofstream f(req);
+                    f << "OP boolean_chain\nNOPS " << cc.modes.size() << "\nMODES";
+                    for (const auto& m : cc.modes) f << " " << m;
+                    f << "\n";
+                    for (const auto& key : cc.keys) f << shape_str(PL[key]) << "\n";
+                }
+                if (std::system((oracle + " " + req + " " + res).c_str()) == 0) {
+                    std::ifstream f(res); std::string tok2; double vol = 0; int nf2 = 0; bool okv = false, okf = false;
+                    while (f >> tok2) { if (tok2 == "VOLUME") { f >> vol; okv = true; }
+                                        else if (tok2 == "NFACES") { f >> nf2; okf = true; } }
+                    if (okv && okf) { cache[cc.label] = {vol, nf2}; dirty = true; k = {vol, (double)nf2, 1.0}; }
+                }
+            }
+            if (k[2] == 0.0) {
+                std::printf("%-13s chn  | %11.4f %11s %9s | %4d %5s | %d | %8ld | %s\n",
+                            cc.label.c_str(), v, "-", "-", nf, "-", solid, us,
+                            have_oracle ? "OCCT-FAIL" : "no-ref");
+                ++fails; continue;
+            }
+            double rel = k[0] != 0 ? std::abs(v - k[0]) / std::abs(k[0]) : std::abs(v - k[0]);
+            bool ok = rel < 1e-6 && nf == (int)k[1] && solid;
+            if (!ok) ++fails;
+            std::printf("%-13s chn  | %11.4f %11.4f %9.2e | %4d %5d | %d | %8ld | %s\n",
+                        cc.label.c_str(), v, k[0], rel, nf, (int)k[1], solid, us, ok ? "OK" : "FAIL");
+        }
+    }
+
     // Freeform probe: a perturbed-sphere closed NURBS solid (interior CVs moved radially by
     // +-12%; pole rows and seam columns untouched so create_sphere's topology stays valid --
     // the seam gains a C0 tangent kink, which a BRep legitimately allows). Quadric recognition
@@ -612,7 +740,9 @@ int main(int argc, char** argv) {
             B.surfacecolor = Color(0.20f, 0.45f, 0.85f);
             const char* opn[3] = {"cut", "common", "fuse"};
             double vols[3] = {0, 0, 0};
+            const char* oponly_c = std::getenv("SESSION_OP");   // iterate one op cheaply
             for (int m = 0; m < 3; ++m) {
+                if (oponly_c && std::string(opn[m]) != oponly_c) continue;
                 try {
                     BRep r = (m == 0) ? A.boolean_difference(B)
                            : (m == 1) ? A.boolean_intersection(B)
@@ -620,6 +750,34 @@ int main(int argc, char** argv) {
                     vols[m] = r.volume();
                     std::printf("chairs %-6s: faces %d solid %d vol %.4f\n",
                                 opn[m], r.face_count(), r.is_solid() ? 1 : 0, vols[m]);
+                    // Rhino-acceptance audit: max 3D gap between consecutive trims'
+                    // pcurve-image endpoints per loop. Rhino re-projects trims and drops
+                    // wires whose corners exceed its tolerance -- OCCT heals them, so
+                    // step_probe VALID does NOT imply Rhino closes the solid.
+                    if (std::getenv("SESSION_WIREGAP")) {
+                        double gmaxall = 0; int nloops_bad = 0;
+                        for (const auto& lp : r.m_loops) {
+                            double gmax = 0;
+                            int nt2 = (int)lp.trim_indices.size();
+                            for (int t2 = 0; t2 < nt2; ++t2) {
+                                const auto& tr0 = r.m_trims[lp.trim_indices[t2]];
+                                const auto& tr1 = r.m_trims[lp.trim_indices[(t2+1)%nt2]];
+                                if (tr0.curve_2d_index < 0 || tr1.curve_2d_index < 0) continue;
+                                int si2 = r.m_faces[lp.face_index].surface_index;
+                                const NurbsSurface& S2 = r.m_surfaces[si2];
+                                const NurbsCurve& c0 = r.m_curves_2d[tr0.curve_2d_index];
+                                const NurbsCurve& c1 = r.m_curves_2d[tr1.curve_2d_index];
+                                auto d0 = c0.domain(); auto d1 = c1.domain();
+                                Point e0 = c0.point_at(tr0.reversed ? d0.first : d0.second);
+                                Point s1 = c1.point_at(tr1.reversed ? d1.second : d1.first);
+                                gmax = std::max(gmax, S2.point_at(e0[0], e0[1]).distance(S2.point_at(s1[0], s1[1])));
+                            }
+                            gmaxall = std::max(gmaxall, gmax);
+                            if (gmax > 1e-4) ++nloops_bad;
+                        }
+                        std::printf("[WIREGAP] %s max=%.3e loops>1e-4: %d/%zu\n",
+                                    opn[m], gmaxall, nloops_bad, r.m_loops.size());
+                    }
                     if (std::getenv("SESSION_CHAIRS_DUMP"))
                         r.pb_dump(std::string(cd) + "/chair_" + opn[m] + ".pb");
                     r.surfacecolor = Color(0.35f, 0.75f, 0.40f);

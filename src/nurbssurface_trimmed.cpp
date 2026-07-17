@@ -533,7 +533,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create_planar(const NurbsCurve& boundar
     return ts;
 }
 
-std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary, double snap_cuts_to_boundary, const std::vector<Point>* forced_boundary_nodes) {
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance, bool use_domain_border, int n_boundary, double snap_cuts_to_boundary, const std::vector<Point>* forced_boundary_nodes, double forced_node_eps) {
     if (!srf.is_valid()) return {};
 
     auto is_boundary = [&](int cidx) -> bool {
@@ -666,7 +666,10 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     // entry, independent of crossing conditioning (a grazing section can shift a computed
     // crossing 0.1+ ALONG the boundary; a shared vertex cannot).
     if (forced_boundary_nodes) {
-        double eps_forced = std::min(range_u, range_v) * 1e-2;
+        // caller-supplied eps (UV units) covers pave-dedup displacement + sampling sag;
+        // legacy fallback keeps the old domain-relative scale
+        double eps_forced = forced_node_eps > 0.0 ? forced_node_eps
+                                                  : std::min(range_u, range_v) * 1e-2;
         for (const auto& f : *forced_boundary_nodes) {
             double best = 1e300; int bp = -1; size_t bj = 0; double bt = 0.0;
             for (int pi = 0; pi < (int)polylines.size(); ++pi) {
@@ -682,14 +685,49 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                     if (d2 < best) { best = d2; bp = pi; bj = j; bt = t; }
                 }
             }
-            if (bp < 0 || std::sqrt(best) > eps_forced) continue;
+            if (bp < 0 || std::sqrt(best) > eps_forced) {
+                if (std::getenv("SESSION_ARR_DBG"))
+                    std::fprintf(stderr, "[A2] fnode(%.4f,%.4f) MISS d=%.4f eps=%.4f\n",
+                                 f[0], f[1], bp < 0 ? -1.0 : std::sqrt(best), eps_forced);
+                continue;
+            }
             auto& P = polylines[bp];
-            // skip if an existing sample already coincides (weld handles it)
-            if (f.distance(Point(P.pts[bj][0], P.pts[bj][1], 0.0)) < 1e-12) continue;
-            if (f.distance(Point(P.pts[bj+1][0], P.pts[bj+1][1], 0.0)) < 1e-12) continue;
-            double tval = P.ts[bj] + (P.ts[bj+1] - P.ts[bj]) * bt;
-            P.pts.insert(P.pts.begin() + bj + 1, {f[0], f[1]});
-            P.ts.insert(P.ts.begin() + bj + 1, tval);
+            // Insert the boundary node ON THE CURVE at the foot parameter (not the chord
+            // foot): every polyline vertex must lie on its pcurve, or the boundary piece
+            // trimmed at tval later ends ~sag away from this node and cycle_to_loop's
+            // join (snap_uv*4) fails -> polyline fallback -> the face's section edges
+            // lose their chain-lift + alias keys (the complementary A/B key-set lottery).
+            double ex = P.pts[bj+1][0]-P.pts[bj][0], ey = P.pts[bj+1][1]-P.pts[bj][1];
+            std::array<double, 2> q = {P.pts[bj][0] + ex * bt, P.pts[bj][1] + ey * bt};
+            if (P.cidx >= 0) {
+                double tval_q = P.ts[bj] + (P.ts[bj+1] - P.ts[bj]) * bt;
+                Point qc = pcurves[P.cidx].point_at(tval_q);
+                q = {qc[0], qc[1]};
+            }
+            bool inserted = true;
+            if (std::hypot(q[0]-P.pts[bj][0], q[1]-P.pts[bj][1]) < 1e-12) { q = P.pts[bj]; inserted = false; }
+            else if (std::hypot(q[0]-P.pts[bj+1][0], q[1]-P.pts[bj+1][1]) < 1e-12) { q = P.pts[bj+1]; inserted = false; }
+            if (inserted) {
+                double tval = P.ts[bj] + (P.ts[bj+1] - P.ts[bj]) * bt;
+                P.pts.insert(P.pts.begin() + bj + 1, q);
+                P.ts.insert(P.ts.begin() + bj + 1, tval);
+            }
+            // Snap ONLY ends bit-equal to the forced node (raw canonicalized pave ends).
+            // A looser radius here once relocated overshoot STUB TIPS onto the boundary,
+            // leaving a chord collinear with it -- exact angular tie in the cycle walk,
+            // cut traversed as a slit (the B-side parts=1 class).
+            double eps_exact = std::max(1e-12, snap_uv * 4.0);   // >> bit noise, << stub length
+            int nsf = 0, nsb = 0;
+            for (auto& C : polylines) {
+                if (is_boundary(C.cidx) || C.pts.size() < 2) continue;
+                if (std::hypot(C.pts.front()[0]-f[0], C.pts.front()[1]-f[1]) < eps_exact &&
+                    std::hypot(C.pts.front()[0]-q[0], C.pts.front()[1]-q[1]) > 1e-15) { C.pts.front() = q; ++nsf; }
+                if (std::hypot(C.pts.back()[0]-f[0], C.pts.back()[1]-f[1]) < eps_exact &&
+                    std::hypot(C.pts.back()[0]-q[0], C.pts.back()[1]-q[1]) > 1e-15) { C.pts.back() = q; ++nsb; }
+            }
+            if (std::getenv("SESSION_ARR_DBG"))
+                std::fprintf(stderr, "[A2] fnode(%.4f,%.4f) hit bnd=%d q(%.4f,%.4f) ins=%d snapf=%d snapb=%d\n",
+                             f[0], f[1], P.cidx, q[0], q[1], inserted ? 1 : 0, nsf, nsb);
         }
     }
 
@@ -984,6 +1022,19 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
+    // [A2] cut-end connectivity BEFORE pruning: the decisive signal for split failures
+    if (std::getenv("SESSION_ARR_DBG")) {
+        std::map<int, int> deg0;
+        for (const auto& e : edges) { deg0[e.a] += 1; deg0[e.b] += 1; }
+        for (const auto& P : polylines) {
+            if (is_boundary(P.cidx) || P.pts.size() < 2) continue;
+            int va = vert_id(P.pts.front()), vb = vert_id(P.pts.back());
+            std::fprintf(stderr, "[A2] cut ci=%d f(%.4f,%.4f)v%d deg=%d b(%.4f,%.4f)v%d deg=%d\n",
+                         P.cidx, P.pts.front()[0], P.pts.front()[1], va, deg0[va],
+                         P.pts.back()[0], P.pts.back()[1], vb, deg0[vb]);
+        }
+    }
+
     // ---- 4. Prune dangling edges (valence-1 chains) ----
     std::vector<bool> alive(edges.size(), true);
     bool changed = true;
@@ -1006,12 +1057,33 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
+    if (std::getenv("SESSION_ARR_DBG")) {
+        std::map<int, int> pruned;   // cidx -> #edges pruned
+        for (size_t ei = 0; ei < edges.size(); ++ei)
+            if (!alive[ei]) pruned[edges[ei].cidx] += 1;
+        for (auto& kv : pruned)
+            std::fprintf(stderr, "[A2] pruned ci=%d n=%d\n", kv.first, kv.second);
+    }
+
     std::vector<SplitEdge> live_edges;
     for (size_t ei = 0; ei < edges.size(); ++ei)
         if (alive[ei])
             live_edges.push_back(edges[ei]);
     if (live_edges.empty())
         return {};
+
+    if (const char* dp = std::getenv("SESSION_ARR_DUMP")) {
+        static int arr_call = 0;
+        char fn[512];
+        std::snprintf(fn, sizeof fn, "%s_arr%03d.csv", dp, arr_call++);
+        if (FILE* fdump = std::fopen(fn, "w")) {
+            for (size_t vi = 0; vi < verts.size(); ++vi)
+                std::fprintf(fdump, "v,%zu,%.17g,%.17g\n", vi, verts[vi][0], verts[vi][1]);
+            for (const auto& e : live_edges)
+                std::fprintf(fdump, "e,%d,%d,%d,%.17g,%.17g\n", e.a, e.b, e.cidx, e.ta, e.tb);
+            std::fclose(fdump);
+        }
+    }
 
     // ---- 5. Half-edge face extraction (leftmost-turn walk) ----
     struct HalfEdge { int tail, head, eidx, fwd; };
@@ -1091,6 +1163,17 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
 
     std::vector<std::pair<std::vector<int>, double>> pos_faces;
     std::vector<std::vector<int>> neg_faces;
+    if (std::getenv("SESSION_ARR_DBG")) {
+        for (const auto& cycle : faces) {
+            double area = face_area(cycle);
+            if (std::abs(area) <= snap_uv * snap_uv) continue;
+            int nb = 0, nc = 0;
+            for (int hi : cycle)
+                (is_boundary(live_edges[hes[hi].eidx].cidx) ? nb : nc) += 1;
+            std::fprintf(stderr, "[A2] cyc area=%.6g nhe=%zu nb=%d nc=%d\n",
+                         area, cycle.size(), nb, nc);
+        }
+    }
     for (const auto& cycle : faces) {
         double area = face_area(cycle);
         if (area > snap_uv * snap_uv) {
@@ -1229,12 +1312,95 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         if (std::getenv("SESSION_SPLIT_DBG")) { std::fprintf(stderr, "[EMIT]   segments=%zu (before join)\n", pieces.size()); std::fflush(stderr); }
         if (pieces.empty())
             return NurbsCurve();
-        std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, snap_uv * 4.0);
-        if (joined.size() == 1 && joined[0].is_valid() && joined[0].is_closed()) {
-            if (segments) *segments = pieces;
-            if (srcs) *srcs = piece_srcs;
-            if (seg_valid) *seg_valid = true;
-            return joined[0];
+        // SCAFFOLD PATH ONLY (forced nodes present): pieces arrive in CYCLE ORDER, so a
+        // proportionate join tolerance only bridges the residual node gaps (pcurve-vs-
+        // polyline sag, snapped cut ends, refined paves -- measured 1e-5..5e-4 UV).
+        // snap_uv*4 alone (~1e-6) failed ~30 loops per chair split, silently dropping
+        // their chain-lift + alias keys. The LEGACY path keeps snap_uv*4 untouched --
+        // tor x tor spiric loops carry legitimate micro-arcs at their 4 tangent points
+        // that the filter/weld below would corrupt (matrix regression measured).
+        bool scaffold_mode = forced_boundary_nodes != nullptr;
+        double join_tol = scaffold_mode
+            ? std::max(snap_uv * 4.0, std::min(range_u, range_v) * 1.5e-3)
+            : snap_uv * 4.0;
+        // Degenerate micro-pieces (boundary remnants between a forced node and an adjacent
+        // split point, ~1e-5 long) self-report is_closed() and join() then quarantines them
+        // into their own chain -> joined.size()==2 -> loop fallback EVEN WITH zero gaps.
+        // Their neighbors' endpoints already meet within join_tol; drop them.
+        if (scaffold_mode) {
+            std::vector<NurbsCurve> keep_p;
+            std::vector<std::array<double,3>> keep_s;
+            for (size_t k = 0; k < pieces.size(); ++k) {
+                const NurbsCurve& c = pieces[k];
+                auto dc2 = c.domain();
+                double ext = 0.0;
+                Point pv = c.point_at(dc2.first);
+                for (int q2 = 1; q2 <= 4; ++q2) {
+                    Point pq = c.point_at(dc2.first + (dc2.second - dc2.first) * q2 / 4.0);
+                    ext += pv.distance(pq);
+                    pv = pq;
+                }
+                if (ext < join_tol * 0.5) continue;
+                keep_p.push_back(c);
+                if (k < piece_srcs.size()) keep_s.push_back(piece_srcs[k]);
+            }
+            if (!keep_p.empty() && keep_p.size() < pieces.size()) {
+                pieces = std::move(keep_p);
+                piece_srcs = std::move(keep_s);
+            }
+        }
+        std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, join_tol);
+        if (joined.size() == 1 && joined[0].is_valid()) {
+            NurbsCurve& J = joined[0];
+            // is_closed() demands ZERO_TOLERANCE; a legitimate loop reassembled from
+            // trimmed pieces closes within the node-gap scale (~1e-5). Weld the last CV
+            // onto the first (clamped ends ARE CVs) and accept. Scaffold path only.
+            if (scaffold_mode && !J.is_closed() &&
+                J.point_at_start().distance(J.point_at_end()) <= join_tol) {
+                double x, y, z, w;
+                if (J.get_cv_4d(0, x, y, z, w)) {
+                    double xe, ye, ze, we;
+                    J.get_cv_4d(J.cv_count() - 1, xe, ye, ze, we);
+                    J.set_cv_4d(J.cv_count() - 1, x, y, z, we);
+                }
+            }
+            if (J.is_closed()) {
+                // Weld the PIECES too (scaffold path): consecutive trim pieces still meet
+                // only within join_tol; the STEP writer's wires inherit those corner gaps
+                // and Rhino's SameParameter re-projection (stricter than OCCT's) drops the
+                // trims -> faces import OPEN. Snap each piece's start CV onto the previous
+                // piece's end CV (clamped ends ARE CVs): trims become exactly contiguous.
+                if (scaffold_mode && pieces.size() > 1) {
+                    for (size_t k = 0; k < pieces.size(); ++k) {
+                        NurbsCurve& prev = pieces[k];
+                        NurbsCurve& next = pieces[(k + 1) % pieces.size()];
+                        double xe, ye, ze, we, xs, ys, zs, ws;
+                        if (!prev.get_cv_4d(prev.cv_count() - 1, xe, ye, ze, we)) continue;
+                        if (!next.get_cv_4d(0, xs, ys, zs, ws)) continue;
+                        double d = std::sqrt((xe-xs)*(xe-xs) + (ye-ys)*(ye-ys) + (ze-zs)*(ze-zs));
+                        if (d > 1e-15 && d <= join_tol)
+                            next.set_cv_4d(0, xe, ye, ze, ws);
+                    }
+                }
+                if (segments) *segments = pieces;
+                if (srcs) *srcs = piece_srcs;
+                if (seg_valid) *seg_valid = true;
+                return J;
+            }
+        }
+        if (std::getenv("SESSION_SPLIT_DBG")) {
+            double gmax = 0.0;
+            for (size_t k = 0; k < pieces.size(); ++k) {
+                const NurbsCurve& c0 = pieces[k];
+                const NurbsCurve& c1 = pieces[(k+1) % pieces.size()];
+                Point e0 = c0.point_at(c0.domain().second);
+                Point s1 = c1.point_at(c1.domain().first);
+                gmax = std::max(gmax, e0.distance(s1));
+            }
+            std::fprintf(stderr, "[JOINFAIL] pieces=%zu joined=%zu closed=%d gapmax=%.3e tol=%.3e\n",
+                         pieces.size(), joined.size(),
+                         joined.size() == 1 && joined[0].is_valid() ? (joined[0].is_closed() ? 1 : 0) : -1,
+                         gmax, join_tol);
         }
         // Fallback: polyline loop from the face walk
         std::vector<Point> loop_pts;
