@@ -2049,23 +2049,35 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
     // at (subsampled) polyline vertices and stays far inside the declared uncertainty, so
     // import watertightness is unaffected; the kernel's internal geometry is untouched.
     auto compress_curve = [&](const NurbsCurve& c, double tol) -> NurbsCurve {
-        if (!c.is_valid() || c.degree() != 1 || c.is_rational() || c.cv_count() <= 64) return c;
+        // Fit dense degree-1 polylines as compact cubics. Two tolerance tiers: the exact
+        // tier (caller's tol, ~diag*1e-7) preserves analytic-quality geometry bit-tight;
+        // marched SECTION polylines carry ~1e-3-scale sampling noise the exact tier can
+        // never fit, so a looser section tier (diag*2e-5, still 50x under Rhino's 1e-3)
+        // catches them -- without it 497 raw deg-1 curves (up to 147 CVs) shipped per
+        // chair file: 2.1 MB, sliver-segment rendering, and Rhino trim rejection.
+        if (!c.is_valid() || c.degree() != 1 || c.is_rational() || c.cv_count() <= 12) return c;
         std::vector<Point> pts;
         pts.reserve(c.cv_count());
         for (int i = 0; i < c.cv_count(); ++i) pts.push_back(c.get_cv(i));
         int step = std::max(1, (int)pts.size() / 200);
-        for (int ncv = 16; ncv <= 256 && ncv < (int)pts.size(); ncv *= 2) {
-            NurbsCurve fit = NurbsCurve::create_fitted(pts, ncv, 3);
-            if (!fit.is_valid()) continue;
-            double worst = 0.0;
-            for (size_t i = 0; i < pts.size() && worst <= tol; i += (size_t)step) {
-                double t = fit.closest_parameter(pts[i]);
-                worst = std::max(worst, fit.point_at(t).distance(pts[i]));
+        for (double tt : {tol, std::max(tol, diag * 2e-5)}) {
+            for (int ncv = 8; ncv <= 256 && ncv < (int)pts.size(); ncv *= 2) {
+                NurbsCurve fit = NurbsCurve::create_fitted(pts, ncv, 3);
+                if (!fit.is_valid()) continue;
+                // pin the fit's endpoints EXACTLY onto the polyline's (clamped cubic:
+                // endpoint == CV) -- the writer's vertex dedup keys on endpoint location,
+                // and a tt-sized endpoint drift would split shared wire vertices.
+                fit.set_cv(0, pts.front());
+                fit.set_cv(fit.cv_count() - 1, pts.back());
+                double worst = 0.0;
+                for (size_t i = 0; i < pts.size() && worst <= tt; i += (size_t)step) {
+                    double t = fit.closest_parameter(pts[i]);
+                    worst = std::max(worst, fit.point_at(t).distance(pts[i]));
+                }
+                if (worst <= tt)
+                    return fit;
             }
-            if (worst <= tol
-                && fit.point_at_start().distance(pts.front()) <= tol
-                && fit.point_at_end().distance(pts.back()) <= tol)
-                return fit;
+            if (tt >= std::max(tol, diag * 2e-5)) break;   // tiers exhausted
         }
         return c;
     };
