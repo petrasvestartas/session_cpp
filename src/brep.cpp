@@ -6281,6 +6281,12 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // makes imported-BRep booleans watertight (chairs: all 3 ops closed solids matching
     // OCCT). SESSION_NO_SCAFFOLD reverts to the legacy per-operand imprint+sew path.
     static const bool s_scaffold_off = (std::getenv("SESSION_NO_SCAFFOLD") != nullptr);
+    // SESSION_SCAFFOLD_ALL: run the shared-section scaffold for ANY operand pair (not just
+    // freeform x freeform) -- experiment gate for promoting the chairs machinery to the
+    // marcher-red battery families (off-axis quadric pairs whose sections also come from
+    // the walker and suffer the same per-operand imprint+sew divergence).
+    static const bool s_scaffold_all = (std::getenv("SESSION_SCAFFOLD_ALL") != nullptr);
+    bool scaffold_eligible = (imported_freeform || s_scaffold_all) && !s_scaffold_off;
     if (imported_freeform && s_scaffold_off) {
         std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> abbs, bbbs;
         for (const auto& s : m_surfaces) abbs.push_back(aabb_from_surface(s));
@@ -6317,7 +6323,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     SectionScaffold scaf;
     bool use_scaffold = false;
     std::map<int, std::array<int, 3>> secA_edges, secB_edges;   // split edge idx -> {seg,v0,v1}
-    if (imported_freeform && !s_scaffold_off) {
+    if (scaffold_eligible) {
         scaf = build_section_scaffold(*this, other, tolerance);
         use_scaffold = true;
         std::fprintf(stderr,

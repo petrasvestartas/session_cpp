@@ -413,6 +413,110 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
             }
         }
     }
+    // ---- 1a2. Seam decomposition (OCCT DecompositionOfWLine analog) ----
+    // A chain on a PERIODIC surface can wrap the seam: its UV polyline then jumps a
+    // period mid-chain and every downstream 2D stage (paves, arrangement) sees garbage.
+    // Split each chain at seam crossings, inserting the EXACT crossing sample pinned to
+    // the seam on BOTH pieces (identical 3D point, own coord at the two seam bounds) --
+    // the weld reconnects them across the seam. Chairs (non-periodic) no-op here.
+    {
+        auto split_seams = [&](std::vector<Chain>& in, int side) {
+            std::vector<Chain> res;
+            res.reserve(in.size());
+            for (auto& ch : in) {
+                const NurbsSurface& s2 = side == 0 ? A.m_surfaces[ch.surfA] : B.m_surfaces[ch.surfB];
+                bool per[2] = {s2.is_closed(0), s2.is_closed(1)};
+                if (!per[0] && !per[1]) { res.push_back(std::move(ch)); continue; }
+                std::pair<double,double> dom[2] = {s2.domain(0), s2.domain(1)};
+                auto uvs = [&](Chain& c) -> std::vector<Point>& { return side == 0 ? c.uvA : c.uvB; };
+                auto jump_dir = [&](const std::vector<Point>& uv, size_t i) -> int {
+                    for (int d = 0; d < 2; ++d) {
+                        if (!per[d]) continue;
+                        double period = dom[d].second - dom[d].first;
+                        if (std::abs(uv[i+1][d] - uv[i][d]) > period * 0.5) return d;
+                    }
+                    return -1;
+                };
+                {
+                    auto& uv = uvs(ch);
+                    size_t n = uv.size();
+                    std::vector<size_t> jumps;
+                    for (size_t i = 0; i + 1 < n; ++i) if (jump_dir(uv, i) >= 0) jumps.push_back(i);
+                    if (jumps.empty()) { res.push_back(std::move(ch)); continue; }
+                    if (ch.closed) {   // rotate so the walk starts right after a jump
+                        size_t r = (jumps[0] + 1) % n;
+                        std::rotate(ch.p3.begin(),  ch.p3.begin()  + r, ch.p3.end());
+                        std::rotate(ch.uvA.begin(), ch.uvA.begin() + r, ch.uvA.end());
+                        std::rotate(ch.uvB.begin(), ch.uvB.begin() + r, ch.uvB.end());
+                        ch.closed = false;
+                        jumps.clear();
+                        for (size_t i = 0; i + 1 < n; ++i) if (jump_dir(uv, i) >= 0) jumps.push_back(i);
+                    }
+                    SEval eS{&s2};
+                    bool has_pend = false;
+                    Point pend_p3(0,0,0), pend_A(0,0,0), pend_B(0,0,0);
+                    size_t start2 = 0;
+                    for (size_t ji = 0; ji <= jumps.size(); ++ji) {
+                        size_t end2 = ji < jumps.size() ? jumps[ji] : n - 1;
+                        Chain pc;
+                        pc.surfA = ch.surfA; pc.surfB = ch.surfB; pc.closed = false;
+                        if (has_pend) {
+                            pc.p3.push_back(pend_p3);
+                            pc.uvA.push_back(pend_A);
+                            pc.uvB.push_back(pend_B);
+                            has_pend = false;
+                        }
+                        for (size_t k = start2; k <= end2 && k < n; ++k) {
+                            pc.p3.push_back(ch.p3[k]);
+                            pc.uvA.push_back(ch.uvA[k]);
+                            pc.uvB.push_back(ch.uvB[k]);
+                        }
+                        if (ji < jumps.size()) {
+                            size_t i = jumps[ji];
+                            int d = jump_dir(uv, i);
+                            double period = dom[d].second - dom[d].first;
+                            double u0 = uv[i][d];
+                            double u1 = uv[i+1][d] + (uv[i+1][d] < uv[i][d] ? period : -period);
+                            double bnd = (u1 > u0) ? dom[d].second : dom[d].first;
+                            double f = std::abs(u1 - u0) > 1e-30 ? (bnd - u0) / (u1 - u0) : 0.5;
+                            f = std::min(std::max(f, 0.0), 1.0);
+                            Point xA = lerp(ch.uvA[i], ch.uvA[i+1], f);
+                            Point xB = lerp(ch.uvB[i], ch.uvB[i+1], f);
+                            double q4[4] = {xA[0], xA[1], xB[0], xB[1]};
+                            int pin = (side == 0 ? 0 : 2) + d;
+                            q4[pin] = bnd;
+                            {
+                                SEval eA2{&A.m_surfaces[ch.surfA]}, eB2{&B.m_surfaces[ch.surfB]};
+                                correct7_pinned(eA2, eB2, q4[0], q4[1], q4[2], q4[3], pin, conv_tol);
+                            }
+                            q4[pin] = bnd;
+                            Vector S, Su, Sv;
+                            if (side == 0) eS(q4[0], q4[1], S, Su, Sv); else eS(q4[2], q4[3], S, Su, Sv);
+                            Point p3x(S[0], S[1], S[2]);
+                            pc.p3.push_back(p3x);
+                            pc.uvA.push_back(Point(q4[0], q4[1], 0.0));
+                            pc.uvB.push_back(Point(q4[2], q4[3], 0.0));
+                            // mirrored start of the NEXT piece: same 3D, own coord at the
+                            // OTHER seam bound
+                            double other = (bnd == dom[d].second) ? dom[d].first : dom[d].second;
+                            double m4[4] = {q4[0], q4[1], q4[2], q4[3]};
+                            m4[pin] = other;
+                            pend_p3 = p3x;
+                            pend_A = Point(m4[0], m4[1], 0.0);
+                            pend_B = Point(m4[2], m4[3], 0.0);
+                            has_pend = true;
+                        }
+                        if ((int)pc.p3.size() >= 2) res.push_back(std::move(pc));
+                        start2 = end2 + 1;
+                    }
+                }
+            }
+            in = std::move(res);
+        };
+        split_seams(chains, 0);
+        split_seams(chains, 1);
+    }
+
     scaf.n_chains = (int)chains.size();
 
     // ---- 1b. PutToBoundary (OCCT IntWalk analog) ----
