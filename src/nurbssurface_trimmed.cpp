@@ -901,6 +901,21 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     };
 
+    // Cut-endpoint nodes (post-weld): crossings between near-tangential cuts that share a
+    // node wiggle at chord scale -- newton_cc stalls on the singular Jacobian and leaves a
+    // spurious crossing a few 1e-3 from the node, whose sliver piece survives the micro
+    // filter and splits the section run mid-segment (chairsROT z15 seg9: B split 0.008 in
+    // -> partial runs, no alias key). Snap crossings onto a node within jweld: the sliver
+    // collapses to zero (vert_id dedups exact coords, a==b chords drop). Scaffold-scale
+    // paths only (bnd_snap > 0); legacy analytic splits stay byte-identical.
+    std::vector<std::array<double, 2>> cut_nodes;
+    if (bnd_snap > 0.0)
+        for (const auto& P : polylines) {
+            if (is_boundary(P.cidx) || P.pts.size() < 2) continue;
+            cut_nodes.push_back(P.pts.front());
+            cut_nodes.push_back(P.pts.back());
+        }
+    double node_snap = bnd_snap * 0.5;
     std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;  // (poly_index, seg_index) -> list of (frac, u, v, t_on_curve)
     for (int pi = 0; pi < (int)polylines.size(); ++pi) {
         for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
@@ -953,6 +968,10 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                     }
                     std::array<double, 2> hp = {hu, hv};
                     snap_border(hp);
+                    if (!cut_nodes.empty() && A.cidx >= 0 && B.cidx >= 0) {
+                        for (const auto& nd : cut_nodes)
+                            if (std::hypot(hp[0]-nd[0], hp[1]-nd[1]) < node_snap) { hp = nd; break; }
+                    }
                     if (B.cidx < 0) {
                         if (B.cidx == -1 || B.cidx == -3)
                             tb = hp[0];
@@ -1355,8 +1374,14 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             // is_closed() demands ZERO_TOLERANCE; a legitimate loop reassembled from
             // trimmed pieces closes within the node-gap scale (~1e-5). Weld the last CV
             // onto the first (clamped ends ARE CVs) and accept. Scaffold path only.
+            // The cap extends to the forced-node scale: dense crossing clusters skip
+            // degenerate micro-runs (va==vb, keep=0) leaving real holes ~3e-2 UV; losing
+            // the loop over one hole orphans every section key on the face (chairsROT
+            // z15: one 3.2e-2 gap on face A18 cost 3 segments -> 12 naked edges).
+            double close_cap = forced_node_eps > 0.0
+                ? std::max(join_tol, forced_node_eps) : join_tol;
             if (scaffold_mode && !J.is_closed() &&
-                J.point_at_start().distance(J.point_at_end()) <= join_tol) {
+                J.point_at_start().distance(J.point_at_end()) <= close_cap) {
                 double x, y, z, w;
                 if (J.get_cv_4d(0, x, y, z, w)) {
                     double xe, ye, ze, we;

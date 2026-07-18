@@ -22,7 +22,9 @@
 #include <map>
 #include <cmath>
 #include <iomanip>
+#include <set>
 #include "brep.h"
+#include "closest.h"
 #include "intersection.h"
 #include "file_step.h"
 #include "xform.h"
@@ -741,7 +743,8 @@ int main(int argc, char** argv) {
             const char* opn[3] = {"cut", "common", "fuse"};
             double vols[3] = {0, 0, 0};
             const char* oponly_c = std::getenv("SESSION_OP");   // iterate one op cheaply
-            for (int m = 0; m < 3; ++m) {
+            const char* rot_only = std::getenv("SESSION_ROT_ONLY");  // one rot config, no base ops
+            for (int m = 0; m < 3 && !rot_only; ++m) {
                 if (oponly_c && std::string(opn[m]) != oponly_c) continue;
                 try {
                     BRep r = (m == 0) ? A.boolean_difference(B)
@@ -750,6 +753,46 @@ int main(int argc, char** argv) {
                     vols[m] = r.volume();
                     std::printf("chairs %-6s: faces %d solid %d vol %.4f\n",
                                 opn[m], r.face_count(), r.is_solid() ? 1 : 0, vols[m]);
+                    // Corner accuracy audit: a good corner vertex lies ON every adjacent
+                    // face's surface. Junction welds carry chord-lerp sag (weld_tol band),
+                    // so corners can sit visibly off the true 3-surface intersection.
+                    if (std::getenv("SESSION_CORNER_AUDIT")) {
+                        double worst = 0; int nbad = 0, nv = 0;
+                        std::vector<std::pair<double,int>> rows;
+                        for (int vi = 0; vi < (int)r.m_topology_vertices.size(); ++vi) {
+                            const auto& tv = r.m_topology_vertices[vi];
+                            if (tv.point_index < 0 || (int)tv.edge_indices.size() < 3) continue;
+                            const Point& P = r.m_vertices[tv.point_index];
+                            std::set<int> sids;
+                            for (int ei : tv.edge_indices) {
+                                if (ei < 0 || ei >= (int)r.m_topology_edges.size()) continue;
+                                for (int ti : r.m_topology_edges[ei].trim_indices) {
+                                    int li = r.m_trims[ti].loop_index;
+                                    if (li < 0) continue;
+                                    int fi2 = r.m_loops[li].face_index;
+                                    if (fi2 >= 0) sids.insert(r.m_faces[fi2].surface_index);
+                                }
+                            }
+                            double dmax = 0;
+                            for (int si2 : sids) {
+                                auto [cu2, cv3, cd2] = Closest::surface_point(r.m_surfaces[si2], P);
+                                (void)cu2; (void)cv3;
+                                dmax = std::max(dmax, cd2);
+                            }
+                            ++nv;
+                            worst = std::max(worst, dmax);
+                            if (dmax > 1e-3) ++nbad;
+                            rows.push_back({dmax, vi});
+                        }
+                        std::sort(rows.rbegin(), rows.rend());
+                        std::printf("[CORNER] %s verts>=3edges: %d worst=%.4f bad(>1e-3): %d\n",
+                                    opn[m], nv, worst, nbad);
+                        for (int k = 0; k < 5 && k < (int)rows.size(); ++k) {
+                            const Point& P = r.m_vertices[r.m_topology_vertices[rows[k].second].point_index];
+                            std::printf("[CORNER]   v%d d=%.4f p(%.3f,%.3f,%.3f)\n",
+                                        rows[k].second, rows[k].first, P[0], P[1], P[2]);
+                        }
+                    }
                     // Rhino-acceptance audit: max 3D gap between consecutive trims'
                     // pcurve-image endpoints per loop. Rhino re-projects trims and drops
                     // wires whose corners exceed its tolerance -- OCCT heals them, so
@@ -786,6 +829,63 @@ int main(int argc, char** argv) {
                     std::string nm = std::string("chair0_") + opn[m] + "_chair1";
                     file_step::write_file_step_breps(parts, nm, std::string(cd) + "/" + nm + ".step");
                 } catch (const std::exception& e) { std::printf("chairs %s THREW: %s\n", opn[m], e.what()); }
+            }
+            // Rotated-chair robustness battery: rotate B about the JOINT CENTROID through
+            // a config set and run all ops -- a professional kernel must close every one.
+            // Writes each rotated B to chairs/rot/ so step_probe can produce OCCT
+            // references: step_probe --cut chair0.stp rot/B_<cfg>.step
+            if (std::getenv("SESSION_CHAIRS_ROT")) {
+                auto vmean = [](const BRep& X) {
+                    Point c(0, 0, 0);
+                    for (const auto& p : X.m_vertices) c = Point(c[0]+p[0], c[1]+p[1], c[2]+p[2]);
+                    double n = (double)std::max<size_t>(1, X.m_vertices.size());
+                    return Point(c[0]/n, c[1]/n, c[2]/n);
+                };
+                Point ca = vmean(A), cb2 = vmean(B);
+                Point C((ca[0]+cb2[0])*0.5, (ca[1]+cb2[1])*0.5, (ca[2]+cb2[2])*0.5);
+                struct RC { const char* label; int ax; double deg; int ax2; double deg2; };
+                std::vector<RC> cfgs = {
+                    {"z15", 2, 15, -1, 0}, {"z30", 2, 30, -1, 0}, {"z45", 2, 45, -1, 0},
+                    {"z90", 2, 90, -1, 0}, {"x20", 0, 20, -1, 0}, {"y30", 1, 30, -1, 0},
+                    {"z30x20", 2, 30, 0, 20},
+                };
+                std::string rotdir = std::string(cd) + "/rot";
+                std::filesystem::create_directories(rotdir);
+                auto rot_of = [](int ax, double deg) {
+                    return ax == 0 ? Xform::rotation_x(deg, true)
+                         : ax == 1 ? Xform::rotation_y(deg, true)
+                                   : Xform::rotation_z(deg, true);
+                };
+                for (const auto& rc : cfgs) {
+                    if (rot_only && std::string(rc.label) != rot_only) continue;
+                    Xform R = rot_of(rc.ax, rc.deg);
+                    if (rc.ax2 >= 0) R = R * rot_of(rc.ax2, rc.deg2);
+                    Xform M = Xform::translation(C[0], C[1], C[2]) * R
+                            * Xform::translation(-C[0], -C[1], -C[2]);
+                    BRep Brot = B;
+                    Brot.xform = M;
+                    Brot = Brot.transformed();
+                    file_step::write_file_step_brep(Brot, rotdir + "/B_" + rc.label + ".step");
+                    for (int m2 = 0; m2 < 3; ++m2) {
+                        const char* oponly2 = std::getenv("SESSION_OP");
+                        if (oponly2 && std::string(opn[m2]) != oponly2) continue;
+                        try {
+                            BRep r2 = (m2 == 0) ? A.boolean_difference(Brot)
+                                    : (m2 == 1) ? A.boolean_intersection(Brot)
+                                                : A.boolean_union(Brot);
+                            int nk2 = 0;
+                            for (const auto& E2 : r2.m_topology_edges)
+                                if ((int)E2.trim_indices.size() == 1) ++nk2;
+                            std::printf("chairsROT %-7s %-6s: faces %d solid %d naked %d vol %.4f\n",
+                                        rc.label, opn[m2], r2.face_count(),
+                                        r2.is_solid() ? 1 : 0, nk2, r2.volume());
+                        } catch (const std::exception& e2) {
+                            std::printf("chairsROT %-7s %-6s: THREW %s\n", rc.label, opn[m2], e2.what());
+                        } catch (...) {
+                            std::printf("chairsROT %-7s %-6s: THREW\n", rc.label, opn[m2]);
+                        }
+                    }
+                }
             }
             // identities: cut + common = A ; fuse = A + B - common
             double va = A.volume(), vb = B.volume();

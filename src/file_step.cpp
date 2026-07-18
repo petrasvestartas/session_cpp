@@ -2074,6 +2074,27 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                     double t = fit.closest_parameter(pts[i]);
                     worst = std::max(worst, fit.point_at(t).distance(pts[i]));
                 }
+                // Anti-ringing: also walk the FIT and measure to the input polyline --
+                // a cubic through a kinked corner region can pass every data point yet
+                // bulge between them (the surface_plane_uv ringing lesson; renders as
+                // 'badly computed corners').
+                if (worst <= tt) {
+                    auto dfit = fit.domain();
+                    int nfs = std::min(4 * ncv, 160);
+                    for (int k = 0; k <= nfs && worst <= tt; ++k) {
+                        Point q = fit.point_at(dfit.first + (dfit.second - dfit.first) * k / nfs);
+                        double best2 = 1e300;
+                        for (size_t i2 = 0; i2 + 1 < pts.size(); ++i2) {
+                            double ex = pts[i2+1][0]-pts[i2][0], ey = pts[i2+1][1]-pts[i2][1], ez = pts[i2+1][2]-pts[i2][2];
+                            double L2 = ex*ex + ey*ey + ez*ez;
+                            double tt2 = L2 > 1e-30 ? ((q[0]-pts[i2][0])*ex + (q[1]-pts[i2][1])*ey + (q[2]-pts[i2][2])*ez) / L2 : 0.0;
+                            tt2 = std::min(std::max(tt2, 0.0), 1.0);
+                            double dx = q[0]-pts[i2][0]-tt2*ex, dy = q[1]-pts[i2][1]-tt2*ey, dz = q[2]-pts[i2][2]-tt2*ez;
+                            best2 = std::min(best2, dx*dx + dy*dy + dz*dz);
+                        }
+                        worst = std::max(worst, std::sqrt(best2));
+                    }
+                }
                 if (worst <= tt)
                     return fit;
             }

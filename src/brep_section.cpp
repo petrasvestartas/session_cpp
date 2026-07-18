@@ -121,6 +121,58 @@ bool correct7_pinned(const SEval& ea, const SEval& eb, double& uA, double& vA, d
     return g < conv_tol * 10.0;
 }
 
+// True corner = 3-surface intersection point (OCCT: vertices come from EF/FF interference
+// solves, never from polyline crossings). Newton on 6 unknowns: S0(u0,v0) = S1(u1,v1) and
+// S0(u0,v0) = S2(u2,v2). Without this, x-pave corners sit at chord-lerp crossings with up
+// to half-a-chord (~0.1) of sag -- the 'badly computed corners' the user sees.
+bool refine_triple_point(const SEval& e0, const SEval& e1, const SEval& e2,
+                         double x[6], double conv_tol) {
+    for (int it = 0; it < 14; ++it) {
+        Vector P0, P0u, P0v, P1, P1u, P1v, P2, P2u, P2v;
+        e0(x[0], x[1], P0, P0u, P0v);
+        e1(x[2], x[3], P1, P1u, P1v);
+        e2(x[4], x[5], P2, P2u, P2v);
+        double F[6] = {P0[0]-P1[0], P0[1]-P1[1], P0[2]-P1[2],
+                       P0[0]-P2[0], P0[1]-P2[1], P0[2]-P2[2]};
+        double fn = 0; for (int k = 0; k < 6; ++k) fn += F[k]*F[k];
+        if (std::sqrt(fn) < conv_tol) return true;
+        double J[6][6] = {};
+        for (int k = 0; k < 3; ++k) {
+            J[k][0] = P0u[k];   J[k][1] = P0v[k];
+            J[k][2] = -P1u[k];  J[k][3] = -P1v[k];
+            J[k+3][0] = P0u[k]; J[k+3][1] = P0v[k];
+            J[k+3][4] = -P2u[k]; J[k+3][5] = -P2v[k];
+        }
+        // 6x6 Gaussian elimination with partial pivoting
+        double M[6][7];
+        for (int r = 0; r < 6; ++r) { for (int c = 0; c < 6; ++c) M[r][c] = J[r][c]; M[r][6] = F[r]; }
+        for (int c = 0; c < 6; ++c) {
+            int piv = c;
+            for (int r = c + 1; r < 6; ++r) if (std::abs(M[r][c]) > std::abs(M[piv][c])) piv = r;
+            if (std::abs(M[piv][c]) < 1e-30) return false;
+            if (piv != c) for (int k = c; k < 7; ++k) std::swap(M[piv][k], M[c][k]);
+            for (int r = c + 1; r < 6; ++r) {
+                double f = M[r][c] / M[c][c];
+                for (int k = c; k < 7; ++k) M[r][k] -= f * M[c][k];
+            }
+        }
+        double dx[6];
+        for (int r = 5; r >= 0; --r) {
+            double s = M[r][6];
+            for (int c = r + 1; c < 6; ++c) s -= M[r][c] * dx[c];
+            dx[r] = s / M[r][r];
+        }
+        for (int k = 0; k < 6; ++k) x[k] -= dx[k];
+    }
+    Vector P0, P0u, P0v, P1, P1u, P1v, P2, P2u, P2v;
+    e0(x[0], x[1], P0, P0u, P0v);
+    e1(x[2], x[3], P1, P1u, P1v);
+    e2(x[4], x[5], P2, P2u, P2v);
+    double g1 = std::sqrt((P0[0]-P1[0])*(P0[0]-P1[0])+(P0[1]-P1[1])*(P0[1]-P1[1])+(P0[2]-P1[2])*(P0[2]-P1[2]));
+    double g2 = std::sqrt((P0[0]-P2[0])*(P0[0]-P2[0])+(P0[1]-P2[1])*(P0[1]-P2[1])+(P0[2]-P2[2])*(P0[2]-P2[2]));
+    return g1 < conv_tol * 10.0 && g2 < conv_tol * 10.0;
+}
+
 bool seg_seg_2d(const Point& p1, const Point& p2, const Point& p3, const Point& p4,
                 double& s_out, double& t_out) {
     double d1u = p2[0]-p1[0], d1v = p2[1]-p1[1];
@@ -756,9 +808,49 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                     for (size_t j = (c1 == c2 ? i + 2 : 0); j + 1 < uv2.size(); ++j) {
                         double s, t;
                         if (seg_seg_2d(uv1[i], uv1[i+1], uv2[j], uv2[j+1], s, t)) {
-                            add_pave(chains[c1], (int)i, s, 2);
-                            add_pave(chains[c2], (int)j, t, 2);
+                            bool a1 = add_pave(chains[c1], (int)i, s, 2);
+                            bool a2 = add_pave(chains[c2], (int)j, t, 2);
                             scaf.n_paves_xing += 1;
+                            // TRUE CORNER: two sections crossing = a 3-surface point
+                            // (shared surface + each chain's other surface). Solve it
+                            // exactly and pin BOTH paves to the identical point --
+                            // chord-lerp corners carry up to half-a-chord (~0.1) of sag
+                            // and weld visibly off (the 'badly computed corners').
+                            if ((a1 || a2) && c1 != c2) {
+                                int o1 = side == 0 ? chains[c1].surfB : chains[c1].surfA;
+                                int o2 = side == 0 ? chains[c2].surfB : chains[c2].surfA;
+                                int sh = side == 0 ? chains[c1].surfA : chains[c1].surfB;
+                                if (o1 != o2) {
+                                    const NurbsSurface& S0 = side == 0 ? A.m_surfaces[sh] : B.m_surfaces[sh];
+                                    const NurbsSurface& S1 = side == 0 ? B.m_surfaces[o1] : A.m_surfaces[o1];
+                                    const NurbsSurface& S2 = side == 0 ? B.m_surfaces[o2] : A.m_surfaces[o2];
+                                    SEval e0{&S0}, e1{&S1}, e2{&S2};
+                                    const auto& ov1 = side == 0 ? chains[c1].uvB : chains[c1].uvA;
+                                    const auto& ov2 = side == 0 ? chains[c2].uvB : chains[c2].uvA;
+                                    Point shp = lerp(uv1[i], uv1[i+1], s);
+                                    Point q1 = lerp(ov1[i], ov1[std::min(i+1, ov1.size()-1)], s);
+                                    Point q2 = lerp(ov2[j], ov2[std::min(j+1, ov2.size()-1)], t);
+                                    double x6[6] = {shp[0], shp[1], q1[0], q1[1], q2[0], q2[1]};
+                                    if (refine_triple_point(e0, e1, e2, x6, conv_tol)) {
+                                        Vector S, Su, Sv;
+                                        e0(x6[0], x6[1], S, Su, Sv);
+                                        Point p3r(S[0], S[1], S[2]);
+                                        Point p3c = lerp(chains[c1].p3[i],
+                                                         chains[c1].p3[std::min(i+1, chains[c1].p3.size()-1)], s);
+                                        if (p3r.distance(p3c) < weld_tol * 6.0) {
+                                            Point sh_uv(x6[0], x6[1], 0.0);
+                                            Point o1_uv(x6[2], x6[3], 0.0);
+                                            Point o2_uv(x6[4], x6[5], 0.0);
+                                            if (a1) chains[c1].pave_fix[i + s] = side == 0
+                                                ? std::array<Point,3>{p3r, sh_uv, o1_uv}
+                                                : std::array<Point,3>{p3r, o1_uv, sh_uv};
+                                            if (a2) chains[c2].pave_fix[j + t] = side == 0
+                                                ? std::array<Point,3>{p3r, sh_uv, o2_uv}
+                                                : std::array<Point,3>{p3r, o2_uv, sh_uv};
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
             }

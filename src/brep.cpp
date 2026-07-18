@@ -3005,13 +3005,20 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                                     if (it != emap.end()) {
                                         ei = it->second;
                                         ttype = BRepTrimType::Mated;
+                                        if (std::getenv("SESSION_NT_DBG"))
+                                            std::fprintf(stderr, "[SCAF-RUN] seg=%d fa=%.4f fb=%.4f nCh=%d MATED e%d\n",
+                                                         s.seg_id, fa, fb, nCh, ei);
                                     } else {
                                         ei = result.add_edge(ci3d, lo, hi);
                                         emap[ekey] = ei;
                                         ttype = BRepTrimType::Boundary;
                                         // combine-alias key ONLY for whole-segment edges:
-                                        // partial pieces mate via sew (identical geometry)
-                                        bool whole_seg = full_wrap || (fa < 1e-6 && fb > nCh - 1 - 1e-6);
+                                        // partial pieces mate via sew (identical geometry).
+                                        // Index tolerance 1e-2: trim-snapped cut ends can land a
+                                        // sub-micron sliver inside the segment (fb=47.99997) --
+                                        // still the whole section; genuine partials end at chain
+                                        // vertices (integer index) or a full chord away.
+                                        bool whole_seg = full_wrap || (fa < 1e-2 && fb > nCh - 1 - 1e-2);
                                         if (std::getenv("SESSION_NT_DBG"))
                                             std::fprintf(stderr, "[SCAF-RUN] seg=%d fa=%.4f fb=%.4f nCh=%d whole=%d\n",
                                                          s.seg_id, fa, fb, nCh, whole_seg ? 1 : 0);
@@ -6267,6 +6274,8 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     PrimSolid prA0 = recognize_solid(*this);
     PrimSolid prB0 = recognize_solid(other);
     bool imported_freeform = (prA0.kind == 0 && prB0.kind == 0);
+    if (std::getenv("SESSION_REC_DBG"))
+        std::printf("[REC] A kind=%d B kind=%d\n", prA0.kind, prB0.kind);
     // Freeform x freeform: run each surface-pair SSI ONCE and feed BOTH splits from the same
     // triples (pcurve_a to A's split, pcurve_b to B's). The freeform marcher is order-sensitive
     // (seeds come from the first argument's cells), so the legacy A-by-B / B-by-A calls can
@@ -6286,8 +6295,20 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // marcher-red battery families (off-axis quadric pairs whose sections also come from
     // the walker and suffer the same per-operand imprint+sew divergence).
     static const bool s_scaffold_all = (std::getenv("SESSION_SCAFFOLD_ALL") != nullptr);
-    bool scaffold_eligible = (imported_freeform || s_scaffold_all) && !s_scaffold_off;
-    if (imported_freeform && s_scaffold_off) {
+    // "Unrecognized" is not "freeform": native quadric pairs recognize_solid can't name
+    // (cone x cone -- cones have no recognizer) are still exact rational deg-2 surfaces
+    // whose sections the S1 shared-SSI path handles (tangent circles need seam handling
+    // the scaffold lacks). Scaffold-by-default only when a genuinely freeform (deg>=3)
+    // surface is present -- every imported chair qualifies, every matrix cell does not.
+    auto has_freeform = [](const BRep& X) {
+        for (const auto& s : X.m_surfaces)
+            if (s.degree(0) >= 3 || s.degree(1) >= 3) return true;
+        return false;
+    };
+    bool scaffold_eligible =
+        ((imported_freeform && (has_freeform(*this) || has_freeform(other))) || s_scaffold_all)
+        && !s_scaffold_off;
+    if (imported_freeform && !scaffold_eligible) {
         std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> abbs, bbbs;
         for (const auto& s : m_surfaces) abbs.push_back(aabb_from_surface(s));
         for (const auto& s : other.m_surfaces) bbbs.push_back(aabb_from_surface(s));
@@ -6675,7 +6696,8 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         // Deterministic, no ray casts; overrides the sampled verdict near sections,
         // which is exactly where tessellated-mesh rays are least reliable.
         std::vector<int> angle_n(nf, 0), angle_in(nf, 0);
-        if (use_scaffold && sec_edges && src_faces && osign_own && osign_oth) {
+        static const bool s_no_ang = (std::getenv("SESSION_NO_ANG") != nullptr);
+        if (!s_no_ang && use_scaffold && sec_edges && src_faces && osign_own && osign_oth) {
             // other operand: original face per surface (imported breps: 1 face/surface)
             const BRep& oth = solid;   // 'solid' is the opposite operand in BOTH calls
             std::map<int, int> oth_face_of_surf;
@@ -6767,6 +6789,10 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                     if (std::abs(dp) < 0.02) continue;   // tangential: leave to sampling
                     ++angle_n[fi];
                     if (dp < 0.0) ++angle_in[fi];
+                    if (std::getenv("SESSION_CLS_DBG"))
+                        std::printf("[ANGV] %c f%d seg=%d k=%d side=%d dp=%+.3f m3(%.3f,%.3f,%.3f)\n",
+                                    is_first ? 'A' : 'B', fi, seg, k, side, dp,
+                                    s.p3[m][0], s.p3[m][1], s.p3[m][2]);
                 }
             }
             for (int fi = 0; fi < nf; ++fi) {
@@ -6810,6 +6836,136 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                                     is_first ? 'A' : 'B', ei, fs[0], fs[1], flip);
                 }
             }
+        }
+        // CONNEXITY-BLOCK FLOOD (OCCT ClassifyFaces analog): inside/outside may only
+        // change across SECTION edges. Fragments connected through NON-section boundary
+        // -- shared 2-trim edges within a face, or touching border pieces of ADJACENT
+        // original faces -- form one block with ONE majority verdict. Without this,
+        // rotated configs flip verdicts across face borders and orphan whole border
+        // chains (the OWN naked class: 21/30 on chairsROT z15 cut).
+        static const bool s_no_flood = (std::getenv("SESSION_NO_FLOOD") != nullptr);
+        if (!s_no_flood && use_scaffold && sec_edges) {
+            auto face_of = [&](int ti) -> int {
+                if (ti < 0 || ti >= (int)X2.m_trims.size()) return -1;
+                int li = X2.m_trims[ti].loop_index;
+                return (li >= 0 && li < (int)X2.m_loops.size()) ? X2.m_loops[li].face_index : -1;
+            };
+            std::set<int> sec_set;
+            for (const auto& kv : *sec_edges) sec_set.insert(kv.first);
+            // any edge whose BOTH curve endpoints weld to scaffold vertices is a section
+            // piece even if unkeyed (partial runs) -- it must SEPARATE blocks, not join
+            auto near_scaf_vertex = [&](const Point& p) {
+                for (const auto& v : scaf.vertices)
+                    if (v.distance(p) < scaf.tol3 * 2.0) return true;
+                return false;
+            };
+            auto is_section_edge = [&](int ei) {
+                if (sec_set.count(ei)) return true;
+                const auto& E = X2.m_topology_edges[ei];
+                int ci = E.curve_3d_index;
+                if (ci < 0 || ci >= (int)X2.m_curves_3d.size()) return false;
+                const NurbsCurve& C = X2.m_curves_3d[ci];
+                auto dc = C.domain();
+                return near_scaf_vertex(C.point_at(dc.first)) && near_scaf_vertex(C.point_at(dc.second));
+            };
+            std::vector<int> uf(nf);
+            for (int i2 = 0; i2 < nf; ++i2) uf[i2] = i2;
+            std::function<int(int)> uf_find = [&](int a) {
+                while (uf[a] != a) { uf[a] = uf[uf[a]]; a = uf[a]; }
+                return a;
+            };
+            auto unite = [&](int a, int b) { a = uf_find(a); b = uf_find(b); if (a != b) uf[a] = b; };
+            // (1) same-face fragments sharing a NON-section 2-trim edge
+            struct BPc { int fi; std::vector<Point> smp; };
+            std::vector<BPc> border;
+            for (int ei = 0; ei < (int)X2.m_topology_edges.size(); ++ei) {
+                const auto& E = X2.m_topology_edges[ei];
+                if (is_section_edge(ei)) continue;
+                if ((int)E.trim_indices.size() == 2) {
+                    int f1 = face_of(E.trim_indices[0]), f2 = face_of(E.trim_indices[1]);
+                    if (f1 >= 0 && f2 >= 0 && f1 != f2) unite(f1, f2);
+                } else if ((int)E.trim_indices.size() == 1) {
+                    int f1 = face_of(E.trim_indices[0]);
+                    int ci = E.curve_3d_index;
+                    if (f1 < 0 || ci < 0 || ci >= (int)X2.m_curves_3d.size()) continue;
+                    const NurbsCurve& C = X2.m_curves_3d[ci];
+                    auto dc = C.domain();
+                    BPc bp; bp.fi = f1;
+                    for (int k = 0; k <= 8; ++k)
+                        bp.smp.push_back(C.point_at(dc.first + (dc.second - dc.first) * k / 8.0));
+                    border.push_back(std::move(bp));
+                }
+            }
+            // (2) cross-face: two fragments' border pieces touching in 3D (they carry
+            // copies of the same ORIGINAL shared edge). Proximity alone over-unites:
+            // NESTED walls of one chair run parallel 0.018 apart (< on_eps) for their
+            // whole length -- indistinguishable from true adjacency by distance. Gate
+            // on ORIGINAL topology: unite only fragments of ADJACENT original faces
+            // (sharing a 2-trim edge in the operand), which nested parts never are.
+            std::set<std::pair<int,int>> orig_adj;
+            if (src_faces) {
+                for (const auto& E0 : own.m_topology_edges) {
+                    if ((int)E0.trim_indices.size() != 2) continue;
+                    int of[2] = {-1, -1};
+                    for (int k = 0; k < 2; ++k) {
+                        int ti = E0.trim_indices[k];
+                        if (ti < 0 || ti >= (int)own.m_trims.size()) continue;
+                        int li = own.m_trims[ti].loop_index;
+                        if (li < 0 || li >= (int)own.m_loops.size()) continue;
+                        of[k] = own.m_loops[li].face_index;
+                    }
+                    if (of[0] >= 0 && of[1] >= 0 && of[0] != of[1])
+                        orig_adj.insert({std::min(of[0], of[1]), std::max(of[0], of[1])});
+                }
+            }
+            for (size_t i2 = 0; i2 < border.size(); ++i2)
+                for (size_t j2 = i2 + 1; j2 < border.size(); ++j2) {
+                    if (border[i2].fi == border[j2].fi) continue;
+                    if (uf_find(border[i2].fi) == uf_find(border[j2].fi)) continue;
+                    if (src_faces) {
+                        int o1 = border[i2].fi < (int)src_faces->size() ? (*src_faces)[border[i2].fi] : -1;
+                        int o2 = border[j2].fi < (int)src_faces->size() ? (*src_faces)[border[j2].fi] : -1;
+                        if (o1 < 0 || o2 < 0) continue;
+                        if (o1 != o2 && !orig_adj.count({std::min(o1, o2), std::max(o1, o2)})) continue;
+                    }
+                    // SYMMETRIC coverage: true copies of one shared-edge sub-span score
+                    // high BOTH ways; a piece spanning ACROSS a section crossing covers
+                    // its neighbor's sub-span one-way only (base chairs: such asymmetric
+                    // unions bridged the section and flipped correct verdicts, 35->43
+                    // faces). Same-span copies keep uniting (chairsROT z15 25->8 naked).
+                    int hits_i = 0, hits_j = 0;
+                    for (const auto& p : border[i2].smp) {
+                        double dmin2 = 1e300;
+                        for (const auto& q : border[j2].smp) dmin2 = std::min(dmin2, p.distance(q));
+                        if (dmin2 < on_eps) ++hits_i;
+                    }
+                    for (const auto& q : border[j2].smp) {
+                        double dmin2 = 1e300;
+                        for (const auto& p : border[i2].smp) dmin2 = std::min(dmin2, q.distance(p));
+                        if (dmin2 < on_eps) ++hits_j;
+                    }
+                    if (hits_i >= 7 && hits_j >= 7) unite(border[i2].fi, border[j2].fi);
+                }
+            // (3) one confidence-weighted majority verdict per block
+            std::map<int, double> vote_in, vote_n;
+            for (int fi = 0; fi < nf; ++fi) {
+                if (!valid[fi] || is_on[fi]) continue;
+                double w = 0.5 + std::abs((score[fi] < 0 ? (inside_v[fi] ? 1.0 : 0.0) : score[fi]) - 0.5);
+                int r2 = uf_find(fi);
+                vote_in[r2] += inside_v[fi] ? w : 0.0;
+                vote_n[r2] += w;
+            }
+            int nflip = 0;
+            for (int fi = 0; fi < nf; ++fi) {
+                if (!valid[fi] || is_on[fi]) continue;
+                int r2 = uf_find(fi);
+                if (vote_n[r2] <= 0) continue;
+                int bv = vote_in[r2] * 2.0 > vote_n[r2] ? 1 : 0;
+                if (bv != inside_v[fi]) { inside_v[fi] = bv; ++nflip; }
+            }
+            if (nflip && std::getenv("SESSION_CLS_DBG"))
+                std::printf("[CLS-FLOOD] %c flipped %d fragment verdicts to block majority\n",
+                            is_first ? 'A' : 'B', nflip);
         }
         for (int fi = 0; fi < nf; ++fi) {
             if (!valid[fi]) continue;
