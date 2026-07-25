@@ -8001,6 +8001,19 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // set enabled and keep whichever result is closer to watertight. Deterministic,
     // Pareto-clean by construction; watertight-on-first-pass inputs never rerun.
     static bool s_in_auto = false;
+    // portable env set/clear ("KEY=" clears, matching Windows _putenv semantics)
+    auto put_env = [](const char* kv) {
+#ifdef _WIN32
+        _putenv(kv);
+#else
+        std::string s(kv);
+        size_t eq = s.find('=');
+        std::string k = s.substr(0, eq);
+        std::string v = eq == std::string::npos ? "" : s.substr(eq + 1);
+        if (v.empty()) unsetenv(k.c_str());
+        else setenv(k.c_str(), v.c_str(), 1);
+#endif
+    };
     if (!s_in_auto && std::getenv("SESSION_AUTO")) {
         // selection metric: naked count; a CLOSED candidate must also pass a volume
         // sanity gate (finite, positive, and no larger than vol(A)+vol(B) at scale)
@@ -8044,13 +8057,13 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         auto restore_env = [&]() {
             for (auto& kv : saved) {
                 std::string s = kv.first + "=" + kv.second;
-                _putenv(s.c_str());
+                put_env(s.c_str());
             }
         };
         BRep best = std::move(base_res);
         int nk_best = nk0;
         for (const auto& vs : variants) {
-            for (const char* v : vs) _putenv(v);
+            for (const char* v : vs) put_env(v);
             BRep alt = boolean(other, op, tolerance);
             restore_env();
             int nk = metric(alt);
