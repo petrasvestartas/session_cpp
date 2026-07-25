@@ -232,6 +232,14 @@ std::string Line::pb_dumps() const {
     for (int i = 0; i < 16; ++i) {
         proto_xform->add_matrix(xform.m[i]);
     }
+    // Serialize width and linecolor
+    proto.set_width(width);
+    auto* color_proto = proto.mutable_linecolor();
+    color_proto->set_r(linecolor.r);
+    color_proto->set_g(linecolor.g);
+    color_proto->set_b(linecolor.b);
+    color_proto->set_a(linecolor.a);
+    color_proto->set_name(linecolor.name);
     return proto.SerializeAsString();
 }
 
@@ -248,6 +256,17 @@ Line Line::pb_loads(const std::string& data) {
         for (int i = 0; i < proto.xform().matrix_size() && i < 16; ++i) {
             line.xform.m[i] = proto.xform().matrix(i);
         }
+    }
+    // Deserialize width and linecolor
+    if (proto.width() > 0.0) {
+        line.width = proto.width();
+    }
+    if (proto.has_linecolor()) {
+        line.linecolor.r = proto.linecolor().r();
+        line.linecolor.g = proto.linecolor().g();
+        line.linecolor.b = proto.linecolor().b();
+        line.linecolor.a = proto.linecolor().a();
+        line.linecolor.name = proto.linecolor().name();
     }
     return line;
 }

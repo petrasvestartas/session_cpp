@@ -29,6 +29,7 @@
 #include "file_step.h"
 #include "xform.h"
 #include "tolerance.h"
+#include "occt_suite.h"
 using namespace session_cpp;
 
 namespace {
@@ -735,11 +736,223 @@ int main(int argc, char** argv) {
                 A.pb_dump(std::string(cd) + "/chair0.pb");
                 B.pb_dump(std::string(cd) + "/chair1.pb");
             }
-            std::printf("A: faces %d solid %d vol %.4f | B: faces %d solid %d vol %.4f\n",
-                        A.face_count(), A.is_solid() ? 1 : 0, A.volume(),
-                        B.face_count(), B.is_solid() ? 1 : 0, B.volume());
+            bool fast = std::getenv("SESSION_FAST") != nullptr;  // skip slow volume()/STEP for topology-only sweeps
+            if (fast)
+                std::printf("A: faces %d solid %d | B: faces %d solid %d\n",
+                            A.face_count(), A.is_solid() ? 1 : 0,
+                            B.face_count(), B.is_solid() ? 1 : 0);
+            else
+                std::printf("A: faces %d solid %d vol %.4f | B: faces %d solid %d vol %.4f\n",
+                            A.face_count(), A.is_solid() ? 1 : 0, A.volume(),
+                            B.face_count(), B.is_solid() ? 1 : 0, B.volume());
             A.surfacecolor = Color(0.85f, 0.25f, 0.20f);
             B.surfacecolor = Color(0.20f, 0.45f, 0.85f);
+            // Z90 CLASSIFIER PROBE (no boolean, seconds): rotate B by z90 about the joint
+            // centroid, then at a set of test points compare point-in-B classifiers against
+            // each other -- current winding on B.mesh(), the raw winding omega, a finer mesh,
+            // and a multi-ray parity vote. Feed the known-bad z90 fragment samples (f2, f40)
+            // and a small grid; compare to the OCCT oracle offline. Lets classifier ideas
+            // iterate in seconds instead of 10-min booleans.
+            if (std::getenv("SESSION_Z90_PROBE")) {
+                auto vmeanp = [](const BRep& X) {
+                    Point c(0,0,0);
+                    for (const auto& p : X.m_vertices) c = Point(c[0]+p[0], c[1]+p[1], c[2]+p[2]);
+                    double n = (double)std::max<size_t>(1, X.m_vertices.size());
+                    return Point(c[0]/n, c[1]/n, c[2]/n);
+                };
+                Point ca = vmeanp(A), cb = vmeanp(B);
+                Point C((ca[0]+cb[0])*0.5, (ca[1]+cb[1])*0.5, (ca[2]+cb[2])*0.5);
+                Xform M = Xform::translation(C[0],C[1],C[2]) * Xform::rotation_z(90.0, true)
+                        * Xform::translation(-C[0],-C[1],-C[2]);
+                BRep Bp = B; Bp.xform = M; Bp = Bp.transformed();
+                Mesh mb = Bp.mesh();
+                Mesh mbq = Bp.mesh();   // placeholder; refine below if a quality mesh helps
+                // winding omega (raw) at p against a mesh
+                auto omega_of = [](const Mesh& mesh, const Point& p) {
+                    auto [vs, fs] = mesh.to_vertices_and_faces();
+                    double om = 0.0;
+                    for (const auto& f : fs) {
+                        if (f.size() < 3) continue;
+                        for (size_t j = 1; j + 1 < f.size(); ++j) {
+                            const Point& A2 = vs[f[0]]; const Point& B2 = vs[f[j]]; const Point& Cc = vs[f[j+1]];
+                            double ax=A2[0]-p[0],ay=A2[1]-p[1],az=A2[2]-p[2];
+                            double bx=B2[0]-p[0],by=B2[1]-p[1],bz=B2[2]-p[2];
+                            double cx=Cc[0]-p[0],cy=Cc[1]-p[1],cz=Cc[2]-p[2];
+                            double la=std::sqrt(ax*ax+ay*ay+az*az),lb=std::sqrt(bx*bx+by*by+bz*bz),lc=std::sqrt(cx*cx+cy*cy+cz*cz);
+                            if (la<1e-15||lb<1e-15||lc<1e-15) return 12.6;
+                            double det=ax*(by*cz-bz*cy)-ay*(bx*cz-bz*cx)+az*(bx*cy-by*cx);
+                            double den=la*lb*lc+(ax*bx+ay*by+az*bz)*lc+(bx*cx+by*cy+bz*cz)*la+(cx*ax+cy*ay+cz*az)*lb;
+                            om += 2.0*std::atan2(det,den);
+                        }
+                    }
+                    return om;
+                };
+                // multi-ray parity: cast N rays in fixed skew directions, count crossings, majority-in
+                auto ray_parity = [&](const Mesh& mesh, const Point& p) {
+                    double D[7][3] = {{1,0.03,0.017},{0.021,1,0.033},{0.013,0.027,1},
+                                      {1,1,0.7},{1,-0.6,0.4},{-0.5,1,0.8},{0.9,0.4,-1}};
+                    int inv = 0, tot = 0;
+                    for (auto& d : D) {
+                        Line ray(p[0],p[1],p[2], p[0]+d[0]*1000, p[1]+d[1]*1000, p[2]+d[2]*1000);
+                        auto hits = Intersection::ray_mesh(ray, mesh, 1e-9, true);
+                        ++tot; if ((int)hits.size() % 2 == 1) ++inv;
+                    }
+                    return inv * 2 > tot;
+                };
+                // consistently-ORIENTED winding: sum per-face solid angle * outward sign, so a
+                // mesh with inconsistent per-face winding no longer partially cancels to garbage.
+                std::vector<Mesh> fms = Bp.face_meshes();
+                std::vector<double> fsg = Bp.face_outward_signs();
+                auto oriented_omega = [&](const Point& p) {
+                    double om = 0.0;
+                    for (size_t fi = 0; fi < fms.size(); ++fi) {
+                        double s = (fi < fsg.size()) ? fsg[fi] : 1.0;
+                        om += s * omega_of(fms[fi], p);
+                    }
+                    return om;
+                };
+                // EXACT classifier (no mesh): closest point on the TRIMMED boundary + outward
+                // normal sign. Immune to any tessellation over/under-coverage.
+                auto uv_in_trims = [&](const BRep& X, int fi, double u, double v) -> bool {
+                    const auto& face = X.m_faces[fi];
+                    bool in_outer = false; bool have_outer = false;
+                    for (int li : face.loop_indices) {
+                        if (li < 0 || li >= (int)X.m_loops.size()) continue;
+                        const auto& loop = X.m_loops[li];
+                        std::vector<std::array<double,2>> poly;
+                        for (int ti : loop.trim_indices) {
+                            if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
+                            int c2 = X.m_trims[ti].curve_2d_index;
+                            if (c2 < 0 || c2 >= (int)X.m_curves_2d.size()) continue;
+                            const NurbsCurve& pc = X.m_curves_2d[c2];
+                            auto dc = pc.domain();
+                            int ns = std::min(std::max(pc.cv_count()*2, 16), 128);
+                            for (int k = 0; k < ns; ++k) {
+                                Point q = pc.point_at(dc.first + (dc.second-dc.first)*k/ns);
+                                poly.push_back({q[0], q[1]});
+                            }
+                        }
+                        if (poly.size() < 3) continue;
+                        bool inp = false;
+                        for (size_t a = 0, b = poly.size()-1; a < poly.size(); b = a++) {
+                            if (((poly[a][1] > v) != (poly[b][1] > v)) &&
+                                (u < (poly[b][0]-poly[a][0])*(v-poly[a][1])/(poly[b][1]-poly[a][1]+1e-30)+poly[a][0]))
+                                inp = !inp;
+                        }
+                        if (loop.type == BRepLoopType::Outer) { in_outer = inp; have_outer = true; }
+                        else if (inp) return false;   // inside a hole
+                    }
+                    return have_outer ? in_outer : false;
+                };
+                auto exact_inside = [&](const BRep& X, const std::vector<double>& sg, const Point& p) -> bool {
+                    double best_d = 1e300; int best_fi = -1; double bu = 0, bv = 0;
+                    for (int fi = 0; fi < (int)X.m_faces.size(); ++fi) {
+                        int si = X.m_faces[fi].surface_index;
+                        if (si < 0 || si >= (int)X.m_surfaces.size()) continue;
+                        auto [u, v, d] = Closest::surface_point(X.m_surfaces[si], p);
+                        if (d >= best_d) continue;
+                        if (!uv_in_trims(X, fi, u, v)) continue;
+                        best_d = d; best_fi = fi; bu = u; bv = v;
+                    }
+                    if (best_fi < 0) return false;
+                    int si = X.m_faces[best_fi].surface_index;
+                    Vector n = X.m_surfaces[si].normal_at(bu, bv);
+                    double s = (best_fi < (int)sg.size()) ? sg[best_fi] : 1.0;
+                    Point bpt = X.m_surfaces[si].point_at(bu, bv);
+                    double dp = (p[0]-bpt[0])*n[0]*s + (p[1]-bpt[1])*n[1]*s + (p[2]-bpt[2])*n[2]*s;
+                    return dp < 0.0;   // p on the inner side of the outward normal
+                };
+                struct TP { const char* name; double x,y,z; const char* occt; };
+                std::vector<TP> pts = {
+                    {"f2", 10.0533,2.2465,3.2647, "OUT"},
+                    {"f40", 9.4671,1.9436,-0.7861, "IN"},
+                };
+                std::printf("[Z90PROBE] B rotated: faces %d solid %d | face_meshes %zu signs %zu\n",
+                            Bp.face_count(), Bp.is_solid()?1:0, fms.size(), fsg.size());
+                for (auto& tp : pts) {
+                    Point p(tp.x,tp.y,tp.z);
+                    bool cur = Bp.contains_point(mb, p);
+                    double om = omega_of(mb, p);
+                    bool rp = ray_parity(mb, p);
+                    double omo = oriented_omega(p);
+                    bool ex = exact_inside(Bp, fsg, p);
+                    std::printf("[Z90PROBE] %-4s occt=%-3s | winding=%d | rayparity=%d | oriented=%d | EXACT=%d\n",
+                                tp.name, tp.occt, cur?1:0, rp?1:0,
+                                std::abs(omo) > 6.2831853 ? 1 : 0, ex?1:0);
+                    (void)om;
+                }
+                (void)mbq;
+                return 0;
+            }
+            // FAST classification probe (no boolean): rotate B about the joint centroid
+            // through the same config set and print volume() -- which orients every face
+            // via face_outward_signs. A rotation-robust classifier keeps volume() equal to
+            // the unrotated value (80.30) and positive for every config; a fragile one
+            // flips sign or drifts. Seconds, not the 5-min scaffold marcher.
+            if (std::getenv("SESSION_ROT_VOL")) {
+                auto vmean0 = [](const BRep& X) {
+                    Point c(0, 0, 0);
+                    for (const auto& p : X.m_vertices) c = Point(c[0]+p[0], c[1]+p[1], c[2]+p[2]);
+                    double n = (double)std::max<size_t>(1, X.m_vertices.size());
+                    return Point(c[0]/n, c[1]/n, c[2]/n);
+                };
+                Point ca0 = vmean0(A), cb0 = vmean0(B);
+                Point C0((ca0[0]+cb0[0])*0.5, (ca0[1]+cb0[1])*0.5, (ca0[2]+cb0[2])*0.5);
+                struct RCV { const char* label; int ax; double deg; int ax2; double deg2; };
+                std::vector<RCV> cv = {
+                    {"id", -1, 0, -1, 0}, {"z15", 2, 15, -1, 0}, {"z30", 2, 30, -1, 0},
+                    {"z45", 2, 45, -1, 0}, {"z90", 2, 90, -1, 0}, {"x20", 0, 20, -1, 0},
+                    {"y30", 1, 30, -1, 0}, {"z30x20", 2, 30, 0, 20}, {"z37", 2, 37, -1, 0},
+                    {"x13y29", 0, 13, 1, 29}, {"z63", 2, 63, -1, 0},
+                };
+                auto rot_ofv = [](int ax, double deg) {
+                    return ax == 0 ? Xform::rotation_x(deg, true)
+                         : ax == 1 ? Xform::rotation_y(deg, true)
+                                   : Xform::rotation_z(deg, true);
+                };
+                // Cheap signed volume from the classifier's per-face signs and each face's
+                // OWN tessellation flux (no masked Gauss): V = (1/3) sum fsign[f] * flux_nat[f].
+                // A rotation-robust classifier makes this positive and stable near +80.30 for
+                // every config; a fragile one flips it negative.
+                auto probe = [](const BRep& X) {
+                    std::vector<Point> P3; std::vector<Vector> Nn;
+                    std::vector<double> fs = X.face_outward_signs(&P3, &Nn);
+                    double V = 0.0; int nflip = 0, nf = (int)X.m_faces.size();
+                    for (int fi = 0; fi < nf; ++fi) {
+                        Mesh fm = X.subset(std::vector<int>{fi}).mesh();
+                        double fl = 0.0, conv = 0.0, best = 1e300;
+                        for (const auto& kv : fm.face) {
+                            const auto& p = kv.second; if (p.size() < 3) continue;
+                            Point a = fm.vertex.at(p[0]).position();
+                            for (size_t k = 1; k + 1 < p.size(); ++k) {
+                                Point b = fm.vertex.at(p[k]).position(), c = fm.vertex.at(p[k+1]).position();
+                                double ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+                                double nx=(uy*vz-uz*vy)*.5,ny=(uz*vx-ux*vz)*.5,nz=(ux*vy-uy*vx)*.5;
+                                double cx=(a[0]+b[0]+c[0])/3,cy=(a[1]+b[1]+c[1])/3,cz=(a[2]+b[2]+c[2])/3;
+                                fl += (cx*nx+cy*ny+cz*nz)/3.0;
+                                double dx=cx-P3[fi][0],dy=cy-P3[fi][1],dz=cz-P3[fi][2],d2=dx*dx+dy*dy+dz*dz;
+                                if (d2<best){best=d2;conv=nx*Nn[fi][0]+ny*Nn[fi][1]+nz*Nn[fi][2];}
+                            }
+                        }
+                        if (conv < 0) fl = -fl;         // flux in natural-normal orientation
+                        V += fs[fi] * fl;               // fsign already = outward orientation
+                        if (fs[fi] < 0) ++nflip;
+                    }
+                    return std::make_pair(V, nflip);
+                };
+                auto [va, na] = probe(A);
+                std::printf("chairsVOL A          V %+8.4f flips %d\n", va, na);
+                for (const auto& rc : cv) {
+                    Xform R = (rc.ax < 0) ? Xform::identity() : rot_ofv(rc.ax, rc.deg);
+                    if (rc.ax2 >= 0) R = R * rot_ofv(rc.ax2, rc.deg2);
+                    Xform M = Xform::translation(C0[0], C0[1], C0[2]) * R
+                            * Xform::translation(-C0[0], -C0[1], -C0[2]);
+                    BRep Bv = B; Bv.xform = M; Bv = Bv.transformed();
+                    auto [vb, nb] = probe(Bv);
+                    std::printf("chairsVOL B_%-7s V %+8.4f flips %d\n", rc.label, vb, nb);
+                }
+                return 0;
+            }
             const char* opn[3] = {"cut", "common", "fuse"};
             double vols[3] = {0, 0, 0};
             const char* oponly_c = std::getenv("SESSION_OP");   // iterate one op cheaply
@@ -750,9 +963,12 @@ int main(int argc, char** argv) {
                     BRep r = (m == 0) ? A.boolean_difference(B)
                            : (m == 1) ? A.boolean_intersection(B)
                                       : A.boolean_union(B);
-                    vols[m] = r.volume();
-                    std::printf("chairs %-6s: faces %d solid %d vol %.4f\n",
-                                opn[m], r.face_count(), r.is_solid() ? 1 : 0, vols[m]);
+                    int nkb = 0;
+                    for (const auto& Eb : r.m_topology_edges)
+                        if ((int)Eb.trim_indices.size() == 1) ++nkb;
+                    vols[m] = fast ? -1.0 : r.volume();
+                    std::printf("chairs %-6s: faces %d solid %d naked %d vol %.4f\n",
+                                opn[m], r.face_count(), r.is_solid() ? 1 : 0, nkb, vols[m]);
                     // Corner accuracy audit: a good corner vertex lies ON every adjacent
                     // face's surface. Junction welds carry chord-lerp sag (weld_tol band),
                     // so corners can sit visibly off the true 3-surface intersection.
@@ -827,7 +1043,8 @@ int main(int argc, char** argv) {
                     std::vector<const BRep*> parts = {&A, &B};
                     if (r.face_count() > 0) parts.push_back(&r);
                     std::string nm = std::string("chair0_") + opn[m] + "_chair1";
-                    file_step::write_file_step_breps(parts, nm, std::string(cd) + "/" + nm + ".step");
+                    if (!fast)
+                        file_step::write_file_step_breps(parts, nm, std::string(cd) + "/" + nm + ".step");
                 } catch (const std::exception& e) { std::printf("chairs %s THREW: %s\n", opn[m], e.what()); }
             }
             // Rotated-chair robustness battery: rotate B about the JOINT CENTROID through
@@ -844,10 +1061,14 @@ int main(int argc, char** argv) {
                 Point ca = vmean(A), cb2 = vmean(B);
                 Point C((ca[0]+cb2[0])*0.5, (ca[1]+cb2[1])*0.5, (ca[2]+cb2[2])*0.5);
                 struct RC { const char* label; int ax; double deg; int ax2; double deg2; };
+                // Ten deterministic orientations about the joint centroid: single-axis at
+                // several magnitudes, two compound (Euler) cases, and three odd angles that
+                // land nothing on a symmetry (z37/x13y29/z63) so no cell can pass by luck.
                 std::vector<RC> cfgs = {
                     {"z15", 2, 15, -1, 0}, {"z30", 2, 30, -1, 0}, {"z45", 2, 45, -1, 0},
                     {"z90", 2, 90, -1, 0}, {"x20", 0, 20, -1, 0}, {"y30", 1, 30, -1, 0},
                     {"z30x20", 2, 30, 0, 20},
+                    {"z37", 2, 37, -1, 0}, {"x13y29", 0, 13, 1, 29}, {"z63", 2, 63, -1, 0},
                 };
                 std::string rotdir = std::string(cd) + "/rot";
                 std::filesystem::create_directories(rotdir);
@@ -865,7 +1086,8 @@ int main(int argc, char** argv) {
                     BRep Brot = B;
                     Brot.xform = M;
                     Brot = Brot.transformed();
-                    file_step::write_file_step_brep(Brot, rotdir + "/B_" + rc.label + ".step");
+                    if (!fast)
+                        file_step::write_file_step_brep(Brot, rotdir + "/B_" + rc.label + ".step");
                     for (int m2 = 0; m2 < 3; ++m2) {
                         const char* oponly2 = std::getenv("SESSION_OP");
                         if (oponly2 && std::string(opn[m2]) != oponly2) continue;
@@ -878,11 +1100,88 @@ int main(int argc, char** argv) {
                                 if ((int)E2.trim_indices.size() == 1) ++nk2;
                             std::printf("chairsROT %-7s %-6s: faces %d solid %d naked %d vol %.4f\n",
                                         rc.label, opn[m2], r2.face_count(),
-                                        r2.is_solid() ? 1 : 0, nk2, r2.volume());
+                                        r2.is_solid() ? 1 : 0, nk2, fast ? -1.0 : r2.volume());
+                            if (std::getenv("SESSION_TOPO_CHECK"))
+                                std::printf("   %s\n", r2.topology_report().c_str());
+                            if (std::getenv("SESSION_ROT_STEP") && r2.face_count() > 0)
+                                file_step::write_file_step_brep(r2, rotdir + "/res_"
+                                    + rc.label + "_" + opn[m2] + ".step");
                         } catch (const std::exception& e2) {
                             std::printf("chairsROT %-7s %-6s: THREW %s\n", rc.label, opn[m2], e2.what());
                         } catch (...) {
                             std::printf("chairsROT %-7s %-6s: THREW\n", rc.label, opn[m2]);
+                        }
+                    }
+                }
+            }
+            // Randomized-rotation validation battery: SESSION_ROT_RANDOM=N rotates B about the
+            // joint centroid through N deterministic pseudo-random orientations (alternating
+            // axis-angle and Euler), writes each B to chairs/rnd/B_rNNN.step for the OCCT oracle
+            // (step_probe --cut chair0.stp rnd/B_rNNN.step), and reports faces/solid/naked/vol.
+            // Seeded (SESSION_ROT_SEED, default fixed) so the suite is fully reproducible.
+            if (const char* rn = std::getenv("SESSION_ROT_RANDOM")) {
+                int N = std::atoi(rn); if (N < 1) N = 1;
+                unsigned long long st = 0x9E3779B97F4A7C15ULL;
+                if (const char* sd = std::getenv("SESSION_ROT_SEED"))
+                    st ^= (unsigned long long)std::atoll(sd) * 0x100000001B3ULL + 1ULL;
+                auto u01 = [&st]() {
+                    st = st * 6364136223846793005ULL + 1442695040888963407ULL;
+                    return (double)((st >> 11) & ((1ULL << 53) - 1)) / (double)(1ULL << 53);
+                };
+                auto vmeanR = [](const BRep& X) {
+                    Point c(0, 0, 0);
+                    for (const auto& p : X.m_vertices) c = Point(c[0]+p[0], c[1]+p[1], c[2]+p[2]);
+                    double n = (double)std::max<size_t>(1, X.m_vertices.size());
+                    return Point(c[0]/n, c[1]/n, c[2]/n);
+                };
+                Point caR = vmeanR(A), cbR = vmeanR(B);
+                Point C((caR[0]+cbR[0])*0.5, (caR[1]+cbR[1])*0.5, (caR[2]+cbR[2])*0.5);
+                std::string rnddir = std::string(cd) + "/rnd";
+                std::filesystem::create_directories(rnddir);
+                const char* opn2[3] = {"cut", "common", "fuse"};
+                const char* oponlyR = std::getenv("SESSION_OP");
+                for (int k = 0; k < N; ++k) {
+                    Xform M;
+                    if (k % 2 == 0) {
+                        double ax, ay, az, m;
+                        do { ax = u01()*2-1; ay = u01()*2-1; az = u01()*2-1;
+                             m = std::sqrt(ax*ax+ay*ay+az*az); } while (m < 1e-3);
+                        ax/=m; ay/=m; az/=m;
+                        double ang = 10.0 + u01()*80.0;
+                        Line axis(C[0], C[1], C[2], C[0]+ax, C[1]+ay, C[2]+az);
+                        M = Xform::rotation_around_line(axis, ang, true);
+                    } else {
+                        double ex = u01()*120-60, ey = u01()*120-60, ez = u01()*120-60;
+                        Xform R = Xform::rotation_z(ez, true) * Xform::rotation_y(ey, true)
+                                * Xform::rotation_x(ex, true);
+                        M = Xform::translation(C[0], C[1], C[2]) * R
+                          * Xform::translation(-C[0], -C[1], -C[2]);
+                    }
+                    char lab[16]; std::snprintf(lab, sizeof lab, "r%03d", k);
+                    BRep Brot = B; Brot.xform = M; Brot = Brot.transformed();
+                    if (!fast)
+                        file_step::write_file_step_brep(Brot, rnddir + "/B_" + lab + ".step");
+                    for (int m2 = 0; m2 < 3; ++m2) {
+                        if (oponlyR && std::string(opn2[m2]) != oponlyR) continue;
+                        try {
+                            BRep r2 = (m2 == 0) ? A.boolean_difference(Brot)
+                                    : (m2 == 1) ? A.boolean_intersection(Brot)
+                                                : A.boolean_union(Brot);
+                            int nk2 = 0;
+                            for (const auto& E2 : r2.m_topology_edges)
+                                if ((int)E2.trim_indices.size() == 1) ++nk2;
+                            std::printf("chairsRND %-5s %-6s: faces %d solid %d naked %d vol %.4f\n",
+                                        lab, opn2[m2], r2.face_count(),
+                                        r2.is_solid() ? 1 : 0, nk2, fast ? -1.0 : r2.volume());
+                            if (std::getenv("SESSION_TOPO_CHECK"))
+                                std::printf("   %s\n", r2.topology_report().c_str());
+                            if (std::getenv("SESSION_ROT_STEP") && r2.face_count() > 0)
+                                file_step::write_file_step_brep(r2, rnddir + "/res_"
+                                    + std::string(lab) + "_" + opn2[m2] + ".step");
+                        } catch (const std::exception& e2) {
+                            std::printf("chairsRND %-5s %-6s: THREW %s\n", lab, opn2[m2], e2.what());
+                        } catch (...) {
+                            std::printf("chairsRND %-5s %-6s: THREW\n", lab, opn2[m2]);
                         }
                     }
                 }
@@ -911,6 +1210,54 @@ int main(int argc, char** argv) {
         double ref = 64.0 - (4.0/3.0)*3.14159265358979323846*1.5*1.5*1.5;
         std::printf("cavity cut vol %.6f (ref %.6f, rel %9.2e) faces %d solid %d\n",
                     ct.volume(), ref, std::abs(ct.volume()-ref)/ref, ct.face_count(), ct.is_solid()?1:0);
+    }
+    // OCCT test-suite battery (SESSION_OCCT_SUITE): 120 cells harvested from OCCT's own
+    // tests/boolean + bugs/modalg scripts (occt_suite.h, OCCT_SUITE_NOTES.md). One op per
+    // cell as in the source script; reference via the same cached OCCT oracle.
+    if (std::getenv("SESSION_OCCT_SUITE")) {
+        int sfails = 0, stotal = 0;
+        auto mk_place = [](const char* kind, const double* p, const double* xf) {
+            Place pl;
+            pl.kind = kind;
+            int np = std::string(kind) == "box" ? 3 : std::string(kind) == "sphere" ? 1 : 2;
+            pl.p.assign(p, p + np);
+            for (int i = 0; i < 7; ++i) pl.xf[i] = xf[i];
+            return pl;
+        };
+        for (const auto& c : OCCT_SUITE) {
+            if (!filter.empty() && std::string(c.label).find(filter) == std::string::npos) continue;
+            ++stotal;
+            Place A = mk_place(c.kindA, c.pA, c.xfA);
+            Place B = mk_place(c.kindB, c.pB, c.xfB);
+            double v = 0; int nf = 0, solid = 0; long us = 0;
+            try {
+                BRep ba = build(A), bb = build(B);
+                auto t0 = std::chrono::steady_clock::now();
+                BRep r = std::string(c.op) == "cut"    ? ba.boolean_difference(bb)
+                       : std::string(c.op) == "common" ? ba.boolean_intersection(bb)
+                                                       : ba.boolean_union(bb);
+                us = (long)std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+                v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
+            } catch (const std::exception& e) {
+                std::printf("%-14s %-6s | THREW: %s\n", c.label, c.op, e.what()); ++sfails; continue;
+            } catch (...) { std::printf("%-14s %-6s | THREW\n", c.label, c.op); ++sfails; continue; }
+            std::string key = std::string("OS|") + c.label + "|" + c.op;
+            auto k = occt(key, c.op, A, B, have_oracle, oracle, req, res, cache, refresh, dirty);
+            if (k[2] == 0.0) {
+                std::printf("%-14s %-6s | %11.4f %11s %9s | %4d %5s | %d | %8ld | %s\n",
+                            c.label, c.op, v, "-", "-", nf, "-", solid, us,
+                            have_oracle ? "OCCT-FAIL" : "no-ref");
+                ++sfails; continue;
+            }
+            double rel = k[0] != 0 ? std::abs(v - k[0]) / std::abs(k[0]) : std::abs(v - k[0]);
+            bool both_empty = std::abs(k[0]) < 1e-12 && (int)k[1] == 0 && std::abs(v) < 1e-12 && nf == 0;
+            bool ok = both_empty || (rel < 1e-6 && nf == (int)k[1] && solid);
+            if (!ok) ++sfails;
+            std::printf("%-14s %-6s | %11.4f %11.4f %9.2e | %4d %5d | %d | %8ld | %s  (%s)\n",
+                        c.label, c.op, v, k[0], rel, nf, (int)k[1], solid, us, ok ? "OK" : "FAIL", c.src);
+        }
+        std::printf("OCCT-SUITE: %d/%d cells OK\n", stotal - sfails, stotal);
     }
     if (dirty) save_cache(cachePath, cache);
     std::printf("\n%d/%d cells OK (vol rel<1e-6 AND exact faces AND is_solid)\n", total - fails, total);

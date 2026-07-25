@@ -61,6 +61,7 @@ set(UNITY_BUILD_EXCLUDE
     src/element.cpp
     src/yaml/yaml.cpp
     src/mesh_offset.cpp
+    src/io_xyz.cpp
 )
 
 #############################################################################################
@@ -254,7 +255,7 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-foreach(MAIN_ID 3 6 7 8)
+foreach(MAIN_ID 3 6 7 8 9)
     add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
     target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
     LINK_PROTOBUF(main_${MAIN_ID})
@@ -293,6 +294,7 @@ set(MINITEST_SOURCES
     src/graph_test.cpp
     src/intersection_test.cpp
     src/file_obj_test.cpp
+    src/io_xyz_test.cpp
     src/file_step_test.cpp
     src/objects_test.cpp
     src/quaternion_test.cpp

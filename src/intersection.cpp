@@ -2698,7 +2698,7 @@ static bool ssi_plane_cylinder(const RecogSurface& plane, const RecogSurface& cy
     V3 o = plane.p1, nu = ssi_unit(plane.p2);
     V3 P = cyl.p1, w = ssi_unit(cyl.p2); double r = cyl.r;
     double wn = w[0]*nu[0] + w[1]*nu[1] + w[2]*nu[2];
-    if (std::abs(wn) < 1e-7) return false;  // plane parallel to axis -> marcher
+    if (std::abs(wn) < 1e-7) return false;  // plane parallel to axis -> line handler below
     double t = ((o[0]-P[0])*nu[0] + (o[1]-P[1])*nu[1] + (o[2]-P[2])*nu[2]) / wn;
     V3 cc{P[0]+t*w[0], P[1]+t*w[1], P[2]+t*w[2]};
     V3 mraw = ssi_cross(w, nu);
@@ -2710,6 +2710,53 @@ static bool ssi_plane_cylinder(const RecogSurface& plane, const RecogSurface& cy
     V3 minor = ssi_unit(mraw);
     V3 major = ssi_unit(V3{w[0]-wn*nu[0], w[1]-wn*nu[1], w[2]-wn*nu[2]});
     c3 = exact_ellipse(cc[0], cc[1], cc[2], major, minor, r/std::abs(wn), r);
+    return true;
+}
+
+// Plane parallel to the cylinder axis (incl. THROUGH-axis): 0, 1 (tangent) or 2 straight
+// ruling lines. The marcher cannot seed these (OCCT's IntAna handles them analytically);
+// bailing out left half-embedded cylinders unsplit (suite ZN5 family). Returns handled;
+// out may legitimately stay empty (plane beyond the cylinder).
+static bool ssi_plane_cylinder_lines(const RecogSurface& plane, const RecogSurface& cyl,
+                                     const NurbsSurface& cyl_srf, std::vector<NurbsCurve>& out) {
+    V3 o = plane.p1, nu = ssi_unit(plane.p2);
+    V3 P = cyl.p1, w = ssi_unit(cyl.p2); double r = cyl.r;
+    double wn = w[0]*nu[0] + w[1]*nu[1] + w[2]*nu[2];
+    if (std::abs(wn) >= 1e-7) return false;             // not the parallel case
+    double ds = (P[0]-o[0])*nu[0] + (P[1]-o[1])*nu[1] + (P[2]-o[2])*nu[2];
+    double d = std::abs(ds);
+    double tt = r * 1e-9 + 1e-12;
+    if (d > r + tt) return true;                        // parallel and beyond: no intersection
+    // axial extent of THIS cylinder surface (+ margin) so the line segments cover it
+    double smin = 1e300, smax = -1e300;
+    {
+        auto [u0, u1] = cyl_srf.domain(0);
+        auto [v0, v1] = cyl_srf.domain(1);
+        for (double uu : {u0, 0.5*(u0+u1), u1})
+            for (double vv : {v0, v1}) {
+                Point p = cyl_srf.point_at(uu, vv);
+                double s = (p[0]-P[0])*w[0] + (p[1]-P[1])*w[1] + (p[2]-P[2])*w[2];
+                smin = std::min(smin, s); smax = std::max(smax, s);
+            }
+        double pad = 0.05 * std::max(1e-9, smax - smin);
+        smin -= pad; smax += pad;
+    }
+    V3 F{P[0]-ds*nu[0], P[1]-ds*nu[1], P[2]-ds*nu[2]};  // axis point projected into the plane
+    auto emit_line = [&](const V3& q) {
+        std::vector<Point> pts = {
+            Point(q[0]+smin*w[0], q[1]+smin*w[1], q[2]+smin*w[2]),
+            Point(q[0]+smax*w[0], q[1]+smax*w[1], q[2]+smax*w[2])};
+        NurbsCurve L = NurbsCurve::create(false, 1, pts);
+        if (L.is_valid()) out.push_back(L);
+    };
+    if (d >= r - tt) {                                   // tangent: one ruling
+        emit_line(F);
+        return true;
+    }
+    double h = std::sqrt(std::max(0.0, r*r - d*d));
+    V3 s3 = ssi_unit(ssi_cross(w, nu));                  // in-plane, perpendicular to the axis
+    emit_line(V3{F[0]+h*s3[0], F[1]+h*s3[1], F[2]+h*s3[2]});
+    emit_line(V3{F[0]-h*s3[0], F[1]-h*s3[1], F[2]-h*s3[2]});
     return true;
 }
 
@@ -4115,8 +4162,12 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
     }
     else if (ra.kind == K::PLANE && rb.kind == K::SPHERE)        single(ssi_plane_sphere(ra, rb, c3), c3);
     else if (ra.kind == K::SPHERE && rb.kind == K::PLANE)   single(ssi_plane_sphere(rb, ra, c3), c3);
-    else if (ra.kind == K::PLANE && rb.kind == K::CYLINDER) single(ssi_plane_cylinder(ra, rb, c3), c3);
-    else if (ra.kind == K::CYLINDER && rb.kind == K::PLANE) single(ssi_plane_cylinder(rb, ra, c3), c3);
+    else if (ra.kind == K::PLANE && rb.kind == K::CYLINDER) {
+        if (!ssi_plane_cylinder_lines(ra, rb, b, c3_list)) single(ssi_plane_cylinder(ra, rb, c3), c3);
+    }
+    else if (ra.kind == K::CYLINDER && rb.kind == K::PLANE) {
+        if (!ssi_plane_cylinder_lines(rb, ra, a, c3_list)) single(ssi_plane_cylinder(rb, ra, c3), c3);
+    }
     else if (ra.kind == K::PLANE && rb.kind == K::CONE)     handled = ssi_plane_cone(ra, rb, b, c3_list);
     else if (ra.kind == K::CONE && rb.kind == K::PLANE)     handled = ssi_plane_cone(rb, ra, a, c3_list);
     else if (ra.kind == K::PLANE && rb.kind == K::TORUS)    handled = ssi_plane_torus(ra, rb, c3_list);

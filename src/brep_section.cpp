@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <tuple>
 
 namespace session_cpp {
@@ -390,8 +391,11 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
     // disagree by chain+loop sag (~diag*1.5e-3 measured on the chairs). The weld must
     // absorb that or continuations never share a vertex and both cut ends get pruned.
     double weld_tol = diag * 2e-3;
+    if (const char* wm = std::getenv("SESSION_TOL3_MULT")) weld_tol *= std::atof(wm);
     double conv_tol = std::max(tolerance, diag * 1e-9);
     scaf.tol3 = weld_tol;
+    scaf.tol3_rep = weld_tol;
+    if (const char* rm = std::getenv("SESSION_REP_MULT")) scaf.tol3_rep = weld_tol * std::atof(rm);
     scaf.segs_by_surfA.resize(A.m_surfaces.size());
     scaf.segs_by_surfB.resize(B.m_surfaces.size());
 
@@ -462,6 +466,232 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                 if ((int)ch.p3.size() < 2) continue;
                 ch.closed = ch.p3.front().distance(ch.p3.back()) < weld_tol;
                 chains.push_back(std::move(ch));
+            }
+            // ---- 1a1. BRANCH ENUMERATOR (SESSION_SEED2; OCCT IntPolyh analog) ----
+            // The marcher is seed-limited: branches it was never seeded on (the 0.128
+            // mini-branch class, grazing arcs) simply do not exist in `trs`. Enumerate
+            // intersection branches POLYHEDRALLY (grid triangles x grid triangles ->
+            // couple soup -> proximity components) and MARCH any component no existing
+            // chain covers, seeding from the component's own barycentric UVs.
+            if (std::getenv("SESSION_SEED2")) {
+                const int GN = 24;
+                struct GridS {
+                    std::vector<Point> p3;               // (GN+1)^2 nodes
+                    std::vector<std::pair<double,double>> uv;
+                };
+                auto sample_grid = [&](const NurbsSurface& s) {
+                    GridS g;
+                    auto du = s.domain(0); auto dv = s.domain(1);
+                    for (int i = 0; i <= GN; ++i)
+                        for (int j = 0; j <= GN; ++j) {
+                            double u = du.first + (du.second - du.first) * i / GN;
+                            double v = dv.first + (dv.second - dv.first) * j / GN;
+                            g.p3.push_back(s.point_at(u, v));
+                            g.uv.push_back({u, v});
+                        }
+                    return g;
+                };
+                GridS ga = sample_grid(sa), gb = sample_grid(sb);
+                auto node = [&](const GridS& g, int i, int j) -> const Point& {
+                    return g.p3[i * (GN + 1) + j];
+                };
+                // segment of tri-tri intersection (Moller-style via plane clipping)
+                auto tri_seg = [&](const Point& a0, const Point& a1, const Point& a2,
+                                   const Point& b0, const Point& b1, const Point& b2,
+                                   Point& s0, Point& s1) -> bool {
+                    auto nrm = [](const Point& p0, const Point& p1, const Point& p2) {
+                        double ux = p1[0]-p0[0], uy = p1[1]-p0[1], uz = p1[2]-p0[2];
+                        double vx = p2[0]-p0[0], vy = p2[1]-p0[1], vz = p2[2]-p0[2];
+                        return Point(uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx);
+                    };
+                    auto dot3 = [](const Point& n, const Point& p, const Point& o) {
+                        return n[0]*(p[0]-o[0]) + n[1]*(p[1]-o[1]) + n[2]*(p[2]-o[2]);
+                    };
+                    // clip triangle A's edges against B's plane, collect crossings inside B
+                    Point nb = nrm(b0, b1, b2);
+                    double d0 = dot3(nb, a0, b0), d1 = dot3(nb, a1, b0), d2 = dot3(nb, a2, b0);
+                    const Point* T[3] = {&a0, &a1, &a2};
+                    double D[3] = {d0, d1, d2};
+                    std::vector<Point> hits;
+                    for (int e = 0; e < 3; ++e) {
+                        double da = D[e], db2 = D[(e+1)%3];
+                        if ((da > 0) == (db2 > 0)) continue;
+                        double f = da / (da - db2);
+                        const Point& pa = *T[e];
+                        const Point& pb = *T[(e+1)%3];
+                        Point q(pa[0]+f*(pb[0]-pa[0]), pa[1]+f*(pb[1]-pa[1]), pa[2]+f*(pb[2]-pa[2]));
+                        // inside B? barycentric via areas against nb
+                        Point w0 = nrm(b0, b1, q), w1 = nrm(b1, b2, q), w2 = nrm(b2, b0, q);
+                        double s0d = w0[0]*nb[0]+w0[1]*nb[1]+w0[2]*nb[2];
+                        double s1d = w1[0]*nb[0]+w1[1]*nb[1]+w1[2]*nb[2];
+                        double s2d = w2[0]*nb[0]+w2[1]*nb[1]+w2[2]*nb[2];
+                        if (s0d >= -1e-18 && s1d >= -1e-18 && s2d >= -1e-18) hits.push_back(q);
+                    }
+                    // symmetric: B's edges against A's plane
+                    Point na = nrm(a0, a1, a2);
+                    double e0 = dot3(na, b0, a0), e1 = dot3(na, b1, a0), e2 = dot3(na, b2, a0);
+                    const Point* U[3] = {&b0, &b1, &b2};
+                    double E[3] = {e0, e1, e2};
+                    for (int e = 0; e < 3; ++e) {
+                        double da = E[e], db2 = E[(e+1)%3];
+                        if ((da > 0) == (db2 > 0)) continue;
+                        double f = da / (da - db2);
+                        const Point& pa = *U[e];
+                        const Point& pb = *U[(e+1)%3];
+                        Point q(pa[0]+f*(pb[0]-pa[0]), pa[1]+f*(pb[1]-pa[1]), pa[2]+f*(pb[2]-pa[2]));
+                        Point w0 = nrm(a0, a1, q), w1 = nrm(a1, a2, q), w2 = nrm(a2, a0, q);
+                        double s0d = w0[0]*na[0]+w0[1]*na[1]+w0[2]*na[2];
+                        double s1d = w1[0]*na[0]+w1[1]*na[1]+w1[2]*na[2];
+                        double s2d = w2[0]*na[0]+w2[1]*na[1]+w2[2]*na[2];
+                        if (s0d >= -1e-18 && s1d >= -1e-18 && s2d >= -1e-18) hits.push_back(q);
+                    }
+                    if (hits.size() < 2) return false;
+                    // farthest pair among hits (robust to duplicates)
+                    double bd = -1;
+                    for (size_t x = 0; x < hits.size(); ++x)
+                        for (size_t y = x + 1; y < hits.size(); ++y) {
+                            double d = hits[x].distance(hits[y]);
+                            if (d > bd) { bd = d; s0 = hits[x]; s1 = hits[y]; }
+                        }
+                    return bd > 1e-14;
+                };
+                // couple soup with a coarse 3D hash on B's cell bboxes
+                struct Couple { Point m; int ia, ja, ib, jb; };
+                std::vector<Couple> soup;
+                double cell = std::max(1e-12, weld_tol * 8.0);
+                std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<int,int>>> bhash;
+                auto keyof = [&](const Point& p) {
+                    return std::make_tuple((long long)std::floor(p[0]/cell),
+                                           (long long)std::floor(p[1]/cell),
+                                           (long long)std::floor(p[2]/cell));
+                };
+                for (int i = 0; i < GN; ++i)
+                    for (int j = 0; j < GN; ++j) {
+                        Point c0 = node(gb,i,j), c1 = node(gb,i+1,j), c2 = node(gb,i,j+1), c3 = node(gb,i+1,j+1);
+                        Point mid((c0[0]+c3[0])*0.5, (c0[1]+c3[1])*0.5, (c0[2]+c3[2])*0.5);
+                        bhash[keyof(mid)].push_back({i, j});
+                    }
+                for (int i = 0; i < GN; ++i)
+                    for (int j = 0; j < GN; ++j) {
+                        Point a0 = node(ga,i,j), a1 = node(ga,i+1,j), a2 = node(ga,i,j+1), a3 = node(ga,i+1,j+1);
+                        Point am((a0[0]+a3[0])*0.5, (a0[1]+a3[1])*0.5, (a0[2]+a3[2])*0.5);
+                        auto k0 = keyof(am);
+                        for (long long dx = -2; dx <= 2; ++dx)
+                        for (long long dy = -2; dy <= 2; ++dy)
+                        for (long long dz = -2; dz <= 2; ++dz) {
+                            auto it = bhash.find(std::make_tuple(std::get<0>(k0)+dx, std::get<1>(k0)+dy, std::get<2>(k0)+dz));
+                            if (it == bhash.end()) continue;
+                            for (auto [bi2, bj2] : it->second) {
+                                Point b0 = node(gb,bi2,bj2), b1 = node(gb,bi2+1,bj2), b2 = node(gb,bi2,bj2+1), b3 = node(gb,bi2+1,bj2+1);
+                                Point s0, s1;
+                                for (int ta = 0; ta < 2; ++ta)
+                                    for (int tb = 0; tb < 2; ++tb) {
+                                        const Point& A1 = ta ? a3 : a0;
+                                        const Point& B1 = tb ? b3 : b0;
+                                        if (tri_seg(ta ? a1 : a0, ta ? a2 : a1, ta ? a3 : a2,
+                                                    tb ? b1 : b0, tb ? b2 : b1, tb ? b3 : b2, s0, s1)) {
+                                            (void)A1; (void)B1;
+                                            Point m((s0[0]+s1[0])*0.5, (s0[1]+s1[1])*0.5, (s0[2]+s1[2])*0.5);
+                                            soup.push_back({m, i, j, bi2, bj2});
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                if (!soup.empty()) {
+                    // components: union-find by proximity (couples within 2 cells)
+                    std::vector<int> par(soup.size());
+                    for (size_t k = 0; k < par.size(); ++k) par[k] = (int)k;
+                    std::function<int(int)> find = [&](int x) { return par[x] == x ? x : par[x] = find(par[x]); };
+                    double link = cell * 2.0;
+                    for (size_t x = 0; x < soup.size(); ++x)
+                        for (size_t y = x + 1; y < soup.size(); ++y)
+                            if (soup[x].m.distance(soup[y].m) < link) par[find((int)x)] = find((int)y);
+                    std::map<int, std::vector<int>> comps;
+                    for (size_t k = 0; k < soup.size(); ++k) comps[find((int)k)].push_back((int)k);
+                    int n_marched2 = 0;
+                    for (auto& cmp : comps) {
+                        if ((int)cmp.second.size() < 2) continue;         // isolated touch
+                        // covered by an existing chain of THIS pair?
+                        const Couple& rep = soup[cmp.second[cmp.second.size()/2]];
+                        double dmin = 1e300;
+                        for (const auto& ch2 : chains) {
+                            if (ch2.surfA != ai || ch2.surfB != bi) continue;
+                            for (const auto& q : ch2.p3) dmin = std::min(dmin, q.distance(rep.m));
+                        }
+                        double defl = cell;                               // grid deflection scale
+                        if (dmin < defl * 2.0) continue;                  // covered
+                        // MISSING BRANCH: march from the representative couple's UVs
+                        double uA0 = 0.5 * (ga.uv[rep.ia*(GN+1)+rep.ja].first  + ga.uv[(rep.ia+1)*(GN+1)+rep.ja+1].first);
+                        double vA0 = 0.5 * (ga.uv[rep.ia*(GN+1)+rep.ja].second + ga.uv[(rep.ia+1)*(GN+1)+rep.ja+1].second);
+                        double uB0 = 0.5 * (gb.uv[rep.ib*(GN+1)+rep.jb].first  + gb.uv[(rep.ib+1)*(GN+1)+rep.jb+1].first);
+                        double vB0 = 0.5 * (gb.uv[rep.ib*(GN+1)+rep.jb].second + gb.uv[(rep.ib+1)*(GN+1)+rep.jb+1].second);
+                        if (!correct7(ea, eb, uA0, vA0, uB0, vB0, conv_tol)) continue;
+                        Vector S0, Su0, Sv0; ea(uA0, vA0, S0, Su0, Sv0);
+                        Point P0(S0[0], S0[1], S0[2]);
+                        Vector na2 = sa.normal_at(uA0, vA0), nb2 = sb.normal_at(uB0, vB0);
+                        Vector T2(na2[1]*nb2[2]-na2[2]*nb2[1], na2[2]*nb2[0]-na2[0]*nb2[2], na2[0]*nb2[1]-na2[1]*nb2[0]);
+                        double T2l = T2.magnitude();
+                        if (T2l < 1e-10) continue;
+                        T2 = Vector(T2[0]/T2l, T2[1]/T2l, T2[2]/T2l);
+                        double h = std::max(weld_tol * 0.5, defl * 0.25);
+                        std::vector<Point> mp3{P0}, mua{Point(uA0,vA0,0)}, mub{Point(uB0,vB0,0)};
+                        for (int sgn = -1; sgn <= 1; sgn += 2) {
+                            double uA2 = uA0, vA2 = vA0, uB2 = uB0, vB2 = vB0;
+                            Point cur = P0;
+                            Vector Td = T2;
+                            std::vector<Point> part3, partA, partB;
+                            for (int st = 0; st < 400; ++st) {
+                                Point nxt(cur[0]+sgn*h*Td[0], cur[1]+sgn*h*Td[1], cur[2]+sgn*h*Td[2]);
+                                auto [ua1, va1, dq1] = Closest::surface_point(sa, nxt, uA2-0.3, uA2+0.3, vA2-0.3, vA2+0.3);
+                                auto [ub1, vb1, dq2] = Closest::surface_point(sb, nxt, uB2-0.3, uB2+0.3, vB2-0.3, vB2+0.3);
+                                (void)dq1; (void)dq2;
+                                uA2 = ua1; vA2 = va1; uB2 = ub1; vB2 = vb1;
+                                if (!correct7(ea, eb, uA2, vA2, uB2, vB2, conv_tol)) break;
+                                if (uA2 < dua.first - 1e-9 || uA2 > dua.second + 1e-9 ||
+                                    vA2 < dva.first - 1e-9 || vA2 > dva.second + 1e-9 ||
+                                    uB2 < dub.first - 1e-9 || uB2 > dub.second + 1e-9 ||
+                                    vB2 < dvb.first - 1e-9 || vB2 > dvb.second + 1e-9) break;
+                                Vector Sx, Sxu, Sxv; ea(uA2, vA2, Sx, Sxu, Sxv);
+                                Point pn(Sx[0], Sx[1], Sx[2]);
+                                if (pn.distance(P0) < h * 0.5 && st > 4) { part3.push_back(P0); break; }  // closed loop
+                                part3.push_back(pn);
+                                partA.push_back(Point(uA2, vA2, 0));
+                                partB.push_back(Point(uB2, vB2, 0));
+                                Vector na3 = sa.normal_at(uA2, vA2), nb3 = sb.normal_at(uB2, vB2);
+                                Vector T3(na3[1]*nb3[2]-na3[2]*nb3[1], na3[2]*nb3[0]-na3[0]*nb3[2], na3[0]*nb3[1]-na3[1]*nb3[0]);
+                                double T3l = T3.magnitude();
+                                if (T3l > 1e-10) Td = Vector(T3[0]/T3l, T3[1]/T3l, T3[2]/T3l);
+                                cur = pn;
+                            }
+                            if (sgn < 0) {
+                                std::reverse(part3.begin(), part3.end());
+                                std::reverse(partA.begin(), partA.end());
+                                std::reverse(partB.begin(), partB.end());
+                                part3.insert(part3.end(), mp3.begin(), mp3.end());
+                                partA.insert(partA.end(), mua.begin(), mua.end());
+                                partB.insert(partB.end(), mub.begin(), mub.end());
+                                mp3 = std::move(part3); mua = std::move(partA); mub = std::move(partB);
+                            } else {
+                                mp3.insert(mp3.end(), part3.begin(), part3.end());
+                                mua.insert(mua.end(), partA.begin(), partA.end());
+                                mub.insert(mub.end(), partB.begin(), partB.end());
+                            }
+                        }
+                        if ((int)mp3.size() < 3) continue;
+                        Chain nc;
+                        nc.surfA = ai; nc.surfB = bi;
+                        nc.p3 = std::move(mp3); nc.uvA = std::move(mua); nc.uvB = std::move(mub);
+                        nc.closed = nc.p3.front().distance(nc.p3.back()) < weld_tol;
+                        chains.push_back(std::move(nc));
+                        ++n_marched2;
+                        if (std::getenv("SESSION_SPLIT_DBG"))
+                            std::fprintf(stderr, "[SEED2] pair(%d,%d) comp n=%zu dmin=%.4f MARCHED %zu pts\n",
+                                         ai, bi, cmp.second.size(), dmin, chains.back().p3.size());
+                    }
+                    if (n_marched2 && std::getenv("SESSION_NT_DBG"))
+                        std::fprintf(stderr, "[SEED2] pair(%d,%d): %d missing branch(es) marched\n", ai, bi, n_marched2);
+                }
             }
         }
     }
@@ -578,6 +808,7 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
     // step apart and never weld (the si=19 mid-face break class). Extend each open end:
     // extrapolate along the end tangent, find the first chart bound crossed, pin that
     // param to the bound, and re-converge the other three (correct7_pinned).
+    std::map<int, std::vector<std::vector<std::vector<Point>>>> lpA, lpB;  // EXT_TRIM loop cache
     for (auto& ch : chains) {
         if (ch.closed || ch.p3.size() < 2) continue;
         const NurbsSurface& sa = A.m_surfaces[ch.surfA];
@@ -622,6 +853,97 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                         std::fprintf(stderr, "[SCAF-EXT] sA=%d sB=%d end=%d pin=%d ONBND moved=%.4f\n",
                                      ch.surfA, ch.surfB, end, on_k, moved);
                 }
+                // EXT_TRIM pinned variant: an end pinned on THIS chart bound can still be
+                // short of the OTHER operand's TRIM (x20 knot: uvB on B's bound, uvA 0.128
+                // inside A-face-18). March ALONG the pinned border (correct7_pinned) until
+                // the other operand's trim state flips; end the chain at that crossing.
+                if (std::getenv("SESSION_EXT_TRIM")) {
+                    if (!lpA.count(ch.surfA)) lpA[ch.surfA] = face_loops_uv(A, ch.surfA);
+                    if (!lpB.count(ch.surfB)) lpB[ch.surfB] = face_loops_uv(B, ch.surfB);
+                    const auto& fA = lpA[ch.surfA];
+                    const auto& fB = lpB[ch.surfB];
+                    double p[4] = {ch.uvA[i0][0], ch.uvA[i0][1], ch.uvB[i0][0], ch.uvB[i0][1]};
+                    double q2[4] = {prv[0], prv[1], prv[2], prv[3]};
+                    bool inA0 = in_faces_uv(fA, p[0], p[1], 0.0);
+                    bool inB0 = in_faces_uv(fB, p[2], p[3], 0.0);
+                    double step3 = ch.p3[i0].distance(ch.p3[i1]);
+                    bool crossed = false;
+                    std::vector<std::array<double,4>> ext_pts;
+                    for (int stp = 0; stp < 6 && !crossed; ++stp) {
+                        double nx[4];
+                        for (int k = 0; k < 4; ++k) nx[k] = p[k] + (p[k] - q2[k]);
+                        nx[on_k] = bnds[on_k][on_s];
+                        if (!correct7_pinned(ea, eb, nx[0], nx[1], nx[2], nx[3], on_k, conv_tol)) {
+                            if (std::getenv("SESSION_SPLIT_DBG"))
+                                std::fprintf(stderr, "[EXTTRIM-DBG] pinned corr FAIL sA=%d sB=%d end=%d stp=%d\n",
+                                             ch.surfA, ch.surfB, end, stp);
+                            break;
+                        }
+                        nx[on_k] = bnds[on_k][on_s];
+                        double fw = 0;
+                        for (int k = 0; k < 4; ++k) if (k != on_k) fw += (nx[k] - p[k]) * (p[k] - q2[k]);
+                        if (fw <= 0) {
+                            if (std::getenv("SESSION_SPLIT_DBG"))
+                                std::fprintf(stderr, "[EXTTRIM-DBG] pinned BACKWARD sA=%d sB=%d end=%d stp=%d\n",
+                                             ch.surfA, ch.surfB, end, stp);
+                            break;
+                        }
+                        bool inA1 = in_faces_uv(fA, nx[0], nx[1], 0.0);
+                        bool inB1 = in_faces_uv(fB, nx[2], nx[3], 0.0);
+                        if (inA1 != inA0 || inB1 != inB0) {
+                            double aa[4], bb[4];
+                            for (int k = 0; k < 4; ++k) { aa[k] = p[k]; bb[k] = nx[k]; }
+                            for (int it2 = 0; it2 < 24; ++it2) {
+                                double mm[4];
+                                for (int k = 0; k < 4; ++k) mm[k] = 0.5 * (aa[k] + bb[k]);
+                                mm[on_k] = bnds[on_k][on_s];
+                                if (!correct7_pinned(ea, eb, mm[0], mm[1], mm[2], mm[3], on_k, conv_tol)) break;
+                                mm[on_k] = bnds[on_k][on_s];
+                                bool mA = in_faces_uv(fA, mm[0], mm[1], 0.0);
+                                bool mB = in_faces_uv(fB, mm[2], mm[3], 0.0);
+                                if (mA == inA0 && mB == inB0) std::copy(mm, mm+4, aa);
+                                else                          std::copy(mm, mm+4, bb);
+                            }
+                            for (int k = 0; k < 4; ++k) nx[k] = bb[k];
+                            crossed = true;
+                        }
+                        ext_pts.push_back({nx[0], nx[1], nx[2], nx[3]});
+                        for (int k = 0; k < 4; ++k) { q2[k] = p[k]; p[k] = nx[k]; }
+                    }
+                    if (crossed && !ext_pts.empty()) {
+                        double total = 0;
+                        Point prev3 = ch.p3[i0];
+                        std::vector<Point> np3, nuvA, nuvB;
+                        for (const auto& e4 : ext_pts) {
+                            Vector S, Su, Sv; ea(e4[0], e4[1], S, Su, Sv);
+                            Point pn(S[0], S[1], S[2]);
+                            total += prev3.distance(pn);
+                            prev3 = pn;
+                            np3.push_back(pn);
+                            nuvA.push_back(Point(e4[0], e4[1], 0.0));
+                            nuvB.push_back(Point(e4[2], e4[3], 0.0));
+                        }
+                        if (total <= std::max(step3 * 6.0, weld_tol * 6.0)) {
+                            for (size_t m2 = 0; m2 < np3.size(); ++m2) {
+                                if (end == 0) {
+                                    ch.p3.insert(ch.p3.begin(), np3[m2]);
+                                    ch.uvA.insert(ch.uvA.begin(), nuvA[m2]);
+                                    ch.uvB.insert(ch.uvB.begin(), nuvB[m2]);
+                                } else {
+                                    ch.p3.push_back(np3[m2]);
+                                    ch.uvA.push_back(nuvA[m2]);
+                                    ch.uvB.push_back(nuvB[m2]);
+                                }
+                            }
+                            if (std::getenv("SESSION_SPLIT_DBG"))
+                                std::fprintf(stderr, "[SCAF-EXTTRIM] PINNED sA=%d sB=%d end=%d pts=%zu len=%.4f\n",
+                                             ch.surfA, ch.surfB, end, np3.size(), total);
+                        }
+                    } else if (std::getenv("SESSION_SPLIT_DBG") && (inA0 && inB0)) {
+                        std::fprintf(stderr, "[EXTTRIM-DBG] pinned NOCROSS sA=%d sB=%d end=%d (inA=%d inB=%d)\n",
+                                     ch.surfA, ch.surfB, end, inA0, inB0);
+                    }
+                }
                 continue;
             }
             double dir[4]; double dn = 0.0;
@@ -636,7 +958,102 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                     if (f > 1e-9 && f < best_f) { best_f = f; best_k = k; best_s = s2; }
                 }
             }
-            if (best_k < 0) continue;   // interior stop (tangency class) -- leave
+            if (best_k < 0) {
+                // ---- interior stop: EXTEND TO TRIM BOUNDARY (SESSION_EXT_TRIM; OCCT
+                // PutPaveOnCurve/ExtendedTolerance analog). The marcher stalled mid-face
+                // (tangency/step failure at a graze), leaving the end short of the OTHER
+                // kind of border: an operand's TRIM boundary (not a chart bound). The fed
+                // cut then DANGLES inside that operand's face and its arrangement prunes
+                // the whole segment => one-sided imprint (x20 seg29: 0.128 short of A's
+                // 16|18 border; A lost the seg, B kept it 2-trim). March the true SSI
+                // (correct7 steps) along the end tangent until the A- or B-trim state
+                // flips, bisect the crossing, and END the chain exactly there -- the
+                // pave stage then sees a real trim crossing on BOTH operands.
+                if (!std::getenv("SESSION_EXT_TRIM")) continue;
+                if (!lpA.count(ch.surfA)) lpA[ch.surfA] = face_loops_uv(A, ch.surfA);
+                if (!lpB.count(ch.surfB)) lpB[ch.surfB] = face_loops_uv(B, ch.surfB);
+                const auto& fA = lpA[ch.surfA];
+                const auto& fB = lpB[ch.surfB];
+                bool inA0 = in_faces_uv(fA, cur[0], cur[1], 0.0);
+                bool inB0 = in_faces_uv(fB, cur[2], cur[3], 0.0);
+                double step3 = ch.p3[i0].distance(ch.p3[i1]);
+                double p[4] = {cur[0], cur[1], cur[2], cur[3]};
+                double q[4] = {prv[0], prv[1], prv[2], prv[3]};
+                bool crossed = false;
+                std::vector<std::array<double,4>> ext_pts;
+                for (int stp = 0; stp < 6 && !crossed; ++stp) {
+                    double nx[4];
+                    for (int k = 0; k < 4; ++k) nx[k] = p[k] + (p[k] - q[k]);
+                    if (!correct7(ea, eb, nx[0], nx[1], nx[2], nx[3], conv_tol)) {
+                        if (std::getenv("SESSION_SPLIT_DBG"))
+                            std::fprintf(stderr, "[EXTTRIM-DBG] free corr FAIL sA=%d sB=%d end=%d stp=%d\n",
+                                         ch.surfA, ch.surfB, end, stp);
+                        break;
+                    }
+                    // corrector must keep marching FORWARD (a stall re-converges backward)
+                    double fw = 0;
+                    for (int k = 0; k < 4; ++k) fw += (nx[k] - p[k]) * (p[k] - q[k]);
+                    if (fw <= 0) {
+                        if (std::getenv("SESSION_SPLIT_DBG"))
+                            std::fprintf(stderr, "[EXTTRIM-DBG] free BACKWARD sA=%d sB=%d end=%d stp=%d\n",
+                                         ch.surfA, ch.surfB, end, stp);
+                        break;
+                    }
+                    bool inA1 = in_faces_uv(fA, nx[0], nx[1], 0.0);
+                    bool inB1 = in_faces_uv(fB, nx[2], nx[3], 0.0);
+                    if (inA1 != inA0 || inB1 != inB0) {
+                        // bisect the flip between p and nx (correct7 at each midpoint)
+                        double aa[4], bb[4];
+                        for (int k = 0; k < 4; ++k) { aa[k] = p[k]; bb[k] = nx[k]; }
+                        for (int it = 0; it < 24; ++it) {
+                            double mm[4];
+                            for (int k = 0; k < 4; ++k) mm[k] = 0.5 * (aa[k] + bb[k]);
+                            if (!correct7(ea, eb, mm[0], mm[1], mm[2], mm[3], conv_tol)) break;
+                            bool mA = in_faces_uv(fA, mm[0], mm[1], 0.0);
+                            bool mB = in_faces_uv(fB, mm[2], mm[3], 0.0);
+                            if (mA == inA0 && mB == inB0) std::copy(mm, mm+4, aa);
+                            else                          std::copy(mm, mm+4, bb);
+                        }
+                        for (int k = 0; k < 4; ++k) nx[k] = bb[k];
+                        crossed = true;
+                    }
+                    ext_pts.push_back({nx[0], nx[1], nx[2], nx[3]});
+                    for (int k = 0; k < 4; ++k) { q[k] = p[k]; p[k] = nx[k]; }
+                }
+                if (crossed && !ext_pts.empty()) {
+                    double total = 0;
+                    Point prev3 = ch.p3[i0];
+                    std::vector<Point> np3, nuvA, nuvB;
+                    bool ok2 = true;
+                    for (const auto& e4 : ext_pts) {
+                        Vector S, Su, Sv; ea(e4[0], e4[1], S, Su, Sv);
+                        Point pn(S[0], S[1], S[2]);
+                        total += prev3.distance(pn);
+                        prev3 = pn;
+                        np3.push_back(pn);
+                        nuvA.push_back(Point(e4[0], e4[1], 0.0));
+                        nuvB.push_back(Point(e4[2], e4[3], 0.0));
+                    }
+                    if (total > std::max(step3 * 6.0, weld_tol * 6.0)) ok2 = false;
+                    if (ok2) {
+                        for (size_t m2 = 0; m2 < np3.size(); ++m2) {
+                            if (end == 0) {
+                                ch.p3.insert(ch.p3.begin(), np3[m2]);
+                                ch.uvA.insert(ch.uvA.begin(), nuvA[m2]);
+                                ch.uvB.insert(ch.uvB.begin(), nuvB[m2]);
+                            } else {
+                                ch.p3.push_back(np3[m2]);
+                                ch.uvA.push_back(nuvA[m2]);
+                                ch.uvB.push_back(nuvB[m2]);
+                            }
+                        }
+                        if (std::getenv("SESSION_SPLIT_DBG"))
+                            std::fprintf(stderr, "[SCAF-EXTTRIM] sA=%d sB=%d end=%d pts=%zu len=%.4f\n",
+                                         ch.surfA, ch.surfB, end, np3.size(), total);
+                    }
+                }
+                continue;
+            }
             double ext[4];
             for (int k = 0; k < 4; ++k) ext[k] = cur[k] + dir[k] * best_f;
             ext[best_k] = bnds[best_k][best_s];
@@ -894,8 +1311,15 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
 
     // ---- 3. Intervals -> shared verdict -> micro filter -> segments + welded vertices ----
     auto weld_vertex = [&](const Point& p) -> int {
-        for (int vi = 0; vi < (int)scaf.vertices.size(); ++vi)
-            if (scaf.vertices[vi].distance(p) < weld_tol) return vi;
+        // NEAREST match, not first-match: with a fat weld radius, first-match binds a
+        // point to whichever cluster happened to be inserted earlier (order-dependent
+        // junction smearing); nearest-match is deterministic in geometry.
+        int best = -1; double bd = weld_tol;
+        for (int vi = 0; vi < (int)scaf.vertices.size(); ++vi) {
+            double d = scaf.vertices[vi].distance(p);
+            if (d < bd) { bd = d; best = vi; }
+        }
+        if (best >= 0) return best;
         scaf.vertices.push_back(p);
         return (int)scaf.vertices.size() - 1;
     };
@@ -940,21 +1364,126 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
             uvBo = lerp(ch.uvB[i], ch.uvB[std::min(i+1, nS-1)], f);
         };
 
+        // Trim-crossing bisection for the interval keep-verdict. A pave interval is kept
+        // only where the section lies inside BOTH operands' trims. Judging that from the
+        // single midpoint is wrong whenever the interval STRADDLES a trim boundary that was
+        // not paved: the whole interval is discarded, and the surviving chain then stops in
+        // the middle of a face. That leaves a valence-1 end in the shared section network,
+        // and the two operands' arrangements each close the resulting open network their own
+        // way -- two different bridge curves across the same gap, which is exactly the naked
+        // rim seen on y30/x20/z45 (their dangling scaffold vertices ARE the rim corners,
+        // while the one watertight config, z30x20, has none). So: sample the interval, and
+        // when the verdict changes along it, bisect to the crossing and keep the inside
+        // part, ending the chain ON the boundary where it belongs.
+        // OCCT keeps a section block when its midpoint is in-or-ON both faces at 3D
+        // tolerance; our 1e-3-UV band drops whole grazing intervals (the y30 class:
+        // drop(verdict) severs the network exactly where the section hugs a trim).
+        // SESSION_VERDICT_EPS_MULT widens the VERDICT band only (pave/crossing bands
+        // untouched).
+        double eps_vm = 1.0;
+        if (const char* vm2 = std::getenv("SESSION_VERDICT_EPS_MULT")) eps_vm = std::atof(vm2);
+        double epsAv = epsA * eps_vm, epsBv = epsB * eps_vm;
+        auto verdict_eps = [&](double t, double scale) {
+            Point p, a, b;
+            at(t, p, a, b);
+            return in_faces_uv(loopsA[ch.surfA], a[0], a[1], epsAv * scale)
+                && in_faces_uv(loopsB[ch.surfB], b[0], b[1], epsBv * scale);
+        };
+        auto verdict_at = [&](double t) { return verdict_eps(t, 1.0); };
+        // IN-OR-ON QUORUM (SESSION_ON_QUORUM=<W>): OCCT keeps a pave block whose middle
+        // is in-or-ON both faces at 3D tolerance. Analog: keep a whole interval when
+        // EVERY sample is within the wide band (W x verdict eps) AND >=2 samples are
+        // strictly inside -- grazing intervals that hug a trim survive, while pure
+        // boundary-runs (0 strict-in = the coincident slivers that broke base at
+        // VERDICT_EPS_MULT=30) still drop.
+        double on_w = 0.0;
+        if (const char* ow = std::getenv("SESSION_ON_QUORUM")) on_w = std::atof(ow);
+        std::vector<std::pair<double, double>> keep_iv;
+        std::vector<std::pair<double, double>> drop_iv;
         for (size_t k = 0; k + 1 < bps.size(); ++k) {
             double lo = bps[k], hi = bps[k+1];
             if (hi - lo < 1e-9) continue;
-            // shared keep-verdict at the interval midpoint
-            Point pm, am, bm;
-            at((lo + hi) * 0.5, pm, am, bm);
-            bool inA = in_faces_uv(loopsA[ch.surfA], am[0], am[1], epsA);
-            bool inB = in_faces_uv(loopsB[ch.surfB], bm[0], bm[1], epsB);
-            if (!(inA && inB)) {
+            const int NSMP = 9;
+            std::vector<double> ts(NSMP);
+            std::vector<char> vs(NSMP);
+            for (int i = 0; i < NSMP; ++i) {
+                ts[i] = lo + (hi - lo) * (i + 0.5) / NSMP;
+                vs[i] = verdict_at(ts[i]) ? 1 : 0;
+            }
+            int nin = 0;
+            for (char v : vs) nin += v;
+            if (on_w > 1.0 && nin >= 2 && nin < NSMP) {
+                int nwide = 0;
+                for (int i = 0; i < NSMP; ++i) nwide += (vs[i] || verdict_eps(ts[i], on_w)) ? 1 : 0;
+                if (nwide == NSMP) {
+                    keep_iv.push_back({lo, hi});
+                    if (std::getenv("SESSION_SPLIT_DBG"))
+                        std::fprintf(stderr, "[SCAF-ONKEEP] sA=%d sB=%d [%.4f,%.4f] nin=%d/9 grazing kept\n",
+                                     ch.surfA, ch.surfB, lo, hi, nin);
+                    continue;
+                }
+            }
+            if (nin == 0) {
+                drop_iv.push_back({lo, hi});
                 scaf.n_dropped_verdict += 1;
-                if (std::getenv("SESSION_SPLIT_DBG"))
-                    std::fprintf(stderr, "[SCAF-DROP] sA=%d sB=%d inA=%d inB=%d uvA(%.3f,%.3f) uvB(%.3f,%.3f)\n",
-                                 ch.surfA, ch.surfB, inA ? 1 : 0, inB ? 1 : 0, am[0], am[1], bm[0], bm[1]);
+                if (std::getenv("SESSION_SPLIT_DBG")) {
+                    Point pm, am, bm;
+                    at((lo + hi) * 0.5, pm, am, bm);
+                    std::fprintf(stderr, "[SCAF-DROP] sA=%d sB=%d ALL-OUT uvA(%.3f,%.3f) uvB(%.3f,%.3f)\n",
+                                 ch.surfA, ch.surfB, am[0], am[1], bm[0], bm[1]);
+                }
                 continue;
             }
+            if (nin == NSMP) { keep_iv.push_back({lo, hi}); continue; }
+            // Mixed: recover the inside runs, with each end bisected onto the crossing.
+            auto bisect = [&](double tin, double tout) {
+                for (int it = 0; it < 40; ++it) {
+                    double tm = 0.5 * (tin + tout);
+                    if (verdict_at(tm)) tin = tm; else tout = tm;
+                }
+                return tin;
+            };
+            int i = 0;
+            while (i < NSMP) {
+                if (!vs[i]) { ++i; continue; }
+                int j = i;
+                while (j + 1 < NSMP && vs[j + 1]) ++j;
+                double a_end = vs[0] && i == 0 ? lo : bisect(ts[i], i > 0 ? ts[i - 1] : lo);
+                double b_end = (j == NSMP - 1) ? hi : bisect(ts[j], ts[j + 1]);
+                if (b_end - a_end > 1e-9) keep_iv.push_back({a_end, b_end});
+                i = j + 1;
+            }
+            if (std::getenv("SESSION_SPLIT_DBG"))
+                std::fprintf(stderr, "[SCAF-SPLITV] sA=%d sB=%d interval [%.4f,%.4f] mixed %d/%d -> %zu run(s)\n",
+                             ch.surfA, ch.surfB, lo, hi, nin, NSMP, keep_iv.size());
+        }
+        // CONNECTIVITY STUB (SESSION_CONN_STUB, T-junction materializer): a kept interval
+        // whose pave end abuts a VERDICT-DROPPED interval extends a short tail into it.
+        // The tail is out-of-trims, so the target arrangement prunes it as a dangler --
+        // but only AFTER it nodes its crossings, which is exactly the T-junction split
+        // the joining segment needs (the y30 class: the network was severed here).
+        if (const char* cs = std::getenv("SESSION_CONN_STUB")) {
+            double stub = std::atof(cs);
+            if (stub <= 0) stub = 2.0;               // chain-index units (~2 chords)
+            int nst = 0;
+            for (auto& kv : keep_iv) {
+                for (const auto& dv : drop_iv) {
+                    if (std::abs(kv.second - dv.first) < 1e-9) {
+                        kv.second = std::min(dv.second, kv.second + stub);
+                        ++nst;
+                    }
+                    if (std::abs(kv.first - dv.second) < 1e-9) {
+                        kv.first = std::max(dv.first, kv.first - stub);
+                        ++nst;
+                    }
+                }
+            }
+            if (nst && std::getenv("SESSION_SPLIT_DBG"))
+                std::fprintf(stderr, "[CONNSTUB] sA=%d sB=%d extended %d kept ends\n",
+                             ch.surfA, ch.surfB, nst);
+        }
+        for (size_t k = 0; k < keep_iv.size(); ++k) {
+            double lo = keep_iv[k].first, hi = keep_iv[k].second;
             // micro filter (FindValidRange analog): symmetric drop
             Point p0, a0, b0, p1, a1, b1;
             at(lo, p0, a0, b0);
@@ -970,7 +1499,16 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                 }
                 ext += prev.distance(p1);
             }
-            if (ext < weld_tol) { scaf.n_dropped_micro += 1; continue; }
+            // Experiment gate: the micro filter is a real anti-sliver rule, but at a grazing
+            // contact many GENUINE section intervals are this short, and every dropped
+            // interval is a missing rim segment on both operands (the hole class). Scale the
+            // floor down to measure how much of the residual it accounts for.
+            static const double s_micro_k = [] {
+                const char* e = std::getenv("SESSION_SCAF_MICRO");
+                double v = e ? std::atof(e) : 1.0;
+                return v > 0.0 ? v : 1.0;
+            }();
+            if (ext < weld_tol * s_micro_k) { scaf.n_dropped_micro += 1; continue; }
 
             SectionSegment seg;
             seg.seg_id = (int)scaf.segments.size();
@@ -1031,6 +1569,715 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
         }
     }
 
+    // ---- 4a2. SD-WELD: OCCT MakeSDVertices port (BOPAlgo_PaveFiller_1 PerformVV + Tools::MakeBlocks) ----
+    // OCCT proves the tracer PRUNES dangling chords too (BOPAlgo_BuilderFace::PerformShapesToAvoid); the
+    // reason its faces still split is that a section endpoint interior to a face is NEVER valence-1 in the
+    // arrangement -- the DS-level PostTreatFF/MakeSDVertices runs BEFORE splitting and welds every
+    // coincident section endpoint (across ALL surface pairs) into ONE shared valence>=2 node. This is that
+    // pass: a TRANSITIVE union-find over ALL segment endpoints in 3D (not the mutual-nearest valence-1
+    // pairing of the legacy bridge), with the aDist/2 tolerance bridge, then re-derive uvA/uvB for the
+    // merged node by projecting the ONE shared 3D point onto each surface -- so both operands' footprints
+    // reference the same node and staggered/dangling endpoints become impossible. Gate SESSION_SDWELD.
+    if (std::getenv("SESSION_SDWELD")) {
+        // VALENCE-1 ONLY: correct junctions (valence>=2) are already shared; re-averaging/re-projecting
+        // them corrupts the exact network (base 35->127 faces). Only DANGLING ends (valence-1) are
+        // separate-but-should-be-one, so only those are welded (transitive union-find over dangles).
+        std::vector<int> val(scaf.vertices.size(), 0);
+        for (const auto& sg : scaf.segments) {
+            if (sg.v_start >= 0 && sg.v_start < (int)val.size()) val[sg.v_start] += 1;
+            if (sg.v_end   >= 0 && sg.v_end   < (int)val.size()) val[sg.v_end]   += 1;
+        }
+        struct Nd { int seg, end, surfA, surfB, v; Point p; };
+        std::vector<Nd> nd;
+        for (int si = 0; si < (int)scaf.segments.size(); ++si) {
+            const auto& sg = scaf.segments[si];
+            if (sg.v_start == sg.v_end) continue;   // closed loop: no free ends
+            if (sg.v_start >= 0 && sg.v_start < (int)val.size() && val[sg.v_start] == 1)
+                nd.push_back({si, 0, sg.surfA, sg.surfB, sg.v_start, sg.p3.front()});
+            if (sg.v_end >= 0 && sg.v_end < (int)val.size() && val[sg.v_end] == 1)
+                nd.push_back({si, 1, sg.surfA, sg.surfB, sg.v_end,   sg.p3.back()});
+        }
+        int N = (int)nd.size();
+        std::vector<int> uf(N); for (int i=0;i<N;++i) uf[i]=i;
+        std::function<int(int)> ff = [&](int a){ while(uf[a]!=a){uf[a]=uf[uf[a]];a=uf[a];} return a; };
+        auto uni = [&](int a,int b){ a=ff(a); b=ff(b); if(a!=b) uf[a]=b; };
+        auto pd = [&](int surf, bool isA, const Point& p) -> double {
+            if (surf < 0) return 1e300;
+            const NurbsSurface& s = isA ? A.m_surfaces[surf] : B.m_surfaces[surf];
+            auto [u,v,d] = Closest::surface_point(s, p); (void)u; (void)v; return d;
+        };
+        const double max_gap = 0.5;
+        for (int i=0;i<N;++i) for (int j=i+1;j<N;++j) {
+            if (ff(i)==ff(j)) continue;
+            if (nd[i].v >= 0 && nd[i].v == nd[j].v) { uni(i,j); continue; }   // already one vertex
+            double gap = nd[i].p.distance(nd[j].p);
+            if (gap >= max_gap) continue;
+            if (gap < weld_tol) { uni(i,j); continue; }
+            // real junction: the fused point must project onto ALL four referenced surfaces (aDist/2 tol)
+            Point T((nd[i].p[0]+nd[j].p[0])*0.5, (nd[i].p[1]+nd[j].p[1])*0.5, (nd[i].p[2]+nd[j].p[2])*0.5);
+            double tj = std::max(weld_tol, gap*0.5);
+            if (pd(nd[i].surfA,true,T)<=tj && pd(nd[i].surfB,false,T)<=tj &&
+                pd(nd[j].surfA,true,T)<=tj && pd(nd[j].surfB,false,T)<=tj)
+                uni(i,j);
+        }
+        std::map<int,std::vector<int>> comps;
+        for (int i=0;i<N;++i) comps[ff(i)].push_back(i);
+        int n_weld = 0;
+        for (auto& c : comps) {
+            if ((int)c.second.size() < 2) continue;
+            // representative = mean of the component's 3D points (OCCT MakeVertex covering point)
+            Point T(0,0,0);
+            for (int i : c.second) T = Point(T[0]+nd[i].p[0], T[1]+nd[i].p[1], T[2]+nd[i].p[2]);
+            double m = (double)c.second.size();
+            T = Point(T[0]/m, T[1]/m, T[2]/m);
+            int vm = -1;
+            for (int i : c.second) if (nd[i].v >= 0) { vm = nd[i].v; break; }
+            if (vm < 0) { scaf.vertices.push_back(T); vm = (int)scaf.vertices.size()-1; }
+            else scaf.vertices[vm] = T;
+            for (int i : c.second) {
+                SectionSegment& sg = scaf.segments[nd[i].seg];
+                // re-derive uvA/uvB by projecting the ONE shared 3D point onto THIS node's surfaces
+                Point uvA = nd[i].end==0 ? sg.uvA.front() : sg.uvA.back();
+                Point uvB = nd[i].end==0 ? sg.uvB.front() : sg.uvB.back();
+                if (nd[i].surfA >= 0) { auto [u,v,d]=Closest::surface_point(A.m_surfaces[nd[i].surfA],T); (void)d; uvA=Point(u,v,0); }
+                if (nd[i].surfB >= 0) { auto [u,v,d]=Closest::surface_point(B.m_surfaces[nd[i].surfB],T); (void)d; uvB=Point(u,v,0); }
+                if (nd[i].end==0) { sg.p3.front()=T; sg.uvA.front()=uvA; sg.uvB.front()=uvB; sg.v_start=vm; }
+                else              { sg.p3.back()=T;  sg.uvA.back()=uvA;  sg.uvB.back()=uvB;  sg.v_end=vm; }
+            }
+            ++n_weld;
+        }
+        if (std::getenv("SESSION_SPLIT_DBG") || std::getenv("SESSION_NT_DBG"))
+            std::fprintf(stderr, "[SDWELD] endpoints=%d components-welded=%d\n", N, n_weld);
+    }
+
+    // ---- 4b. JUNCTION WELD (SSI-completeness / PostTreatFF closure) ----
+    // A closed solid's section is a set of CLOSED loops, so every scaffold vertex must have
+    // even valence. A valence-1 vertex is a DANGLING end: the SSI marcher terminated short of
+    // a junction where the section crosses one operand's face border onto the adjacent face.
+    // The section arrives at that junction from TWO surface pairs (e.g. A-face-2 x B-face-16
+    // and A-face-3 x B-face-16), and each marcher undershoots it -- leaving two vertices
+    // ~0.1-0.2 apart that should be ONE shared junction vertex. Left dangling, the arrangement
+    // prunes them and each operand closes the open network its own way, producing the naked
+    // rim (proven: the dangling-vertex coordinates ARE the rim corners; the one watertight
+    // rotated config has zero valence-1 vertices). Repair = WELD the pair into one vertex at
+    // their common junction and reproject each incident segment's endpoint onto its OWN
+    // surfaces, so both segments meet there (valence 2) and the arrangement nodes instead of
+    // prunes. A candidate weld is accepted only if the merged point projects onto EVERY
+    // involved surface within tolerance -- a real junction -- so unrelated dangles are never
+    // fused. Gated OFF by default (SESSION_BRIDGE) until validated.
+    // Default-ON (SESSION_NO_BRIDGE opts out). Two repair modes, chosen by surface-pair sharing:
+    //   CASE A (SAME surface pair): the SSI marcher terminated mid-face -> a genuine gap in ONE
+    //     section curve. Re-march the missing sub-arc between the two dangling ends on the shared
+    //     (surfA,surfB) pair (predictor UV step + correct7 corrector), VERIFYING every sample lies
+    //     on BOTH surfaces AND inside BOTH operands' trims. Append it as a new SectionSegment
+    //     welded to the two existing vertices -> valence 2, closure by construction. VERIFY-OR-
+    //     REFUSE: if any sample leaves a surface or a trim (the fictitious straight bridge the OCCT
+    //     oracle flags on y30 e122), do NOT synthesize -- the pair falls through to the residual.
+    //   CASE B (CROSS surface pair): a junction undershoot -- two marchers stopped short of one
+    //     shared 3-surface junction. Fuse the pair to a single vertex at the verified junction.
+    if (std::getenv("SESSION_BRIDGE")) {   // opt-in: closes dangles but can expose one-sided imprints (z30)
+        auto recompute_val = [&](std::vector<int>& val) {
+            val.assign(scaf.vertices.size(), 0);
+            for (const auto& seg : scaf.segments) {
+                if (seg.v_start >= 0 && seg.v_start < (int)val.size()) val[seg.v_start] += 1;
+                if (seg.v_end   >= 0 && seg.v_end   < (int)val.size()) val[seg.v_end]   += 1;
+            }
+        };
+        std::vector<int> val0;
+        recompute_val(val0);
+        // dangling end: which segment, which end, the segment's surface pair, and the end's
+        // parametric footprints (seeds for the march / junction solve)
+        struct Dang { int v, seg, end, surfA, surfB; Point uvA, uvB; };
+        std::vector<Dang> dang;
+        for (int si = 0; si < (int)scaf.segments.size(); ++si) {
+            const auto& seg = scaf.segments[si];
+            for (int end = 0; end < 2; ++end) {
+                int v = end == 0 ? seg.v_start : seg.v_end;
+                if (v < 0 || v >= (int)val0.size() || val0[v] != 1) continue;
+                dang.push_back({v, si, end, seg.surfA, seg.surfB,
+                                end == 0 ? seg.uvA.front() : seg.uvA.back(),
+                                end == 0 ? seg.uvB.front() : seg.uvB.back()});
+            }
+        }
+        // mutually-nearest pairing over ALL dangles within a bounded 3D gap (a junction is a
+        // cross-surface-pair meeting, so pairing must NOT require the same pair)
+        const double max_gap = 0.5;
+        std::vector<int> partner(dang.size(), -1);
+        for (size_t i = 0; i < dang.size(); ++i) {
+            double bd = max_gap; int bj = -1;
+            for (size_t j = 0; j < dang.size(); ++j) {
+                if (j == i || dang[j].v == dang[i].v) continue;
+                double d = scaf.vertices[dang[i].v].distance(scaf.vertices[dang[j].v]);
+                if (d < bd) { bd = d; bj = (int)j; }
+            }
+            partner[i] = bj;
+        }
+        auto proj_dist = [&](int surf, bool isA, const Point& p, Point& uv) -> double {
+            const NurbsSurface& s = isA ? A.m_surfaces[surf] : B.m_surfaces[surf];
+            auto [cu, cv, cd] = Closest::surface_point(s, p);
+            uv = Point(cu, cv, 0.0);
+            return cd;
+        };
+        auto ensure_loops = [&](int sa, int sb) {
+            if (!loopsA.count(sa)) loopsA[sa] = face_loops_uv(A, sa);
+            if (!loopsB.count(sb)) loopsB[sb] = face_loops_uv(B, sb);
+        };
+        int n_marched = 0, n_weld = 0, n_reject = 0;
+        std::vector<bool> used(dang.size(), false);
+        // ---- EF-SEEDED CONTINUATION MARCH (SESSION_EF_MARCH, PerformEF increment 2) ----
+        // A dangle that sits ON the other operand's EDGE is an exact EF junction: the
+        // section CONTINUES there as (same own-surface) x (the NEXT face across that
+        // edge) -- a pair with no seg at all, which no weld/merge can conjure. March it
+        // from the exact anchor; the new seg starts at the dangle vertex, closing its
+        // valence with true geometry.
+        if (std::getenv("SESSION_EF_MARCH")) {
+            // edge -> adjacent surface indices, per operand
+            auto edge_surfs = [](const BRep& OP) {
+                std::map<int, std::set<int>> m;
+                for (const auto& f : OP.m_faces)
+                    for (int li : f.loop_indices) {
+                        if (li < 0 || li >= (int)OP.m_loops.size()) continue;
+                        for (int ti : OP.m_loops[li].trim_indices) {
+                            if (ti < 0 || ti >= (int)OP.m_trims.size()) continue;
+                            int e = OP.m_trims[ti].edge_index;
+                            if (e >= 0) m[e].insert(f.surface_index);
+                        }
+                    }
+                return m;
+            };
+            std::map<int, std::set<int>> eSA = edge_surfs(A), eSB = edge_surfs(B);
+            int n_efm = 0;
+            for (size_t i = 0; i < dang.size(); ++i) {
+                if (used[i]) continue;
+                const Dang di = dang[i];
+                Point P0 = scaf.vertices[di.v];
+                // find an other-operand edge through P0 and its far face
+                auto find_cont = [&](const BRep& OP, const std::map<int, std::set<int>>& eS,
+                                     int keep_surf) -> int {
+                    for (const auto& kv : eS) {
+                        const auto& E = OP.m_topology_edges[kv.first];
+                        if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)OP.m_curves_3d.size()) continue;
+                        if (!kv.second.count(keep_surf)) continue;   // edge must border the CURRENT pair's face
+                        const NurbsCurve& C = OP.m_curves_3d[E.curve_3d_index];
+                        if (!C.is_valid()) continue;
+                        double t = C.closest_parameter(P0);
+                        if (C.point_at(t).distance(P0) > weld_tol * 0.5) continue;
+                        for (int s2 : kv.second)
+                            if (s2 != keep_surf) return s2;
+                    }
+                    return -1;
+                };
+                // continuation across B's edge: pair (di.surfA, sB2); or across A's edge:
+                // pair (sA2, di.surfB)
+                int sB2 = find_cont(B, eSB, di.surfB);
+                int sA2 = sB2 < 0 ? find_cont(A, eSA, di.surfA) : -1;
+                int mA = sB2 >= 0 ? di.surfA : sA2;
+                int mB = sB2 >= 0 ? sB2 : (sA2 >= 0 ? di.surfB : -1);
+                if (mA < 0 || mB < 0) continue;
+                if (mA >= (int)A.m_surfaces.size() || mB >= (int)B.m_surfaces.size()) continue;
+                const NurbsSurface& sa = A.m_surfaces[mA];
+                const NurbsSurface& sb = B.m_surfaces[mB];
+                SEval ea{&sa}, eb{&sb};
+                ensure_loops(mA, mB);
+                auto duaR = sa.domain(0); auto dvaR = sa.domain(1);
+                auto dubR = sb.domain(0); auto dvbR = sb.domain(1);
+                double epsA2 = std::min(duaR.second - duaR.first, dvaR.second - dvaR.first) * 1e-3;
+                double epsB2 = std::min(dubR.second - dubR.first, dvbR.second - dvbR.first) * 1e-3;
+                auto [ua0, va0, da0] = Closest::surface_point(sa, P0);
+                auto [ub0, vb0, db0] = Closest::surface_point(sb, P0);
+                if (da0 > weld_tol || db0 > weld_tol) continue;
+                // tangent of the (sa, sb) intersection at P0
+                Vector na = sa.normal_at(ua0, va0), nb = sb.normal_at(ub0, vb0);
+                Vector T(na[1]*nb[2]-na[2]*nb[1], na[2]*nb[0]-na[0]*nb[2], na[0]*nb[1]-na[1]*nb[0]);
+                double Tl = T.magnitude();
+                if (Tl < 1e-10) continue;                 // tangential: not marchable here
+                T = Vector(T[0]/Tl, T[1]/Tl, T[2]/Tl);
+                // CONTINUATION-ANGLE GATE (OCCT CheckArgumentsToExtend, myMaxConcatAngle
+                // = pi/6): the continuation across an edge cannot turn sharply -- its
+                // tangent must align with the dangling chain's OUTWARD end tangent, and
+                // only that direction is marched. Ungated EF-march regressed y30/z90 by
+                // +9 each (spurious marches from dangles that are not true EF junctions).
+                int sgn_lo = -1, sgn_hi = 1;
+                if (!std::getenv("SESSION_NO_EFGATE")) {
+                    const SectionSegment& dsg = scaf.segments[di.seg];
+                    size_t nn = dsg.p3.size();
+                    Point pe = di.end == 0 ? dsg.p3[0] : dsg.p3[nn-1];
+                    Point pi2 = di.end == 0 ? dsg.p3[std::min<size_t>(1, nn-1)] : dsg.p3[nn >= 2 ? nn-2 : 0];
+                    Vector dout(pe[0]-pi2[0], pe[1]-pi2[1], pe[2]-pi2[2]);
+                    double dl = dout.magnitude();
+                    if (dl > 1e-30) {
+                        double alin = (T[0]*dout[0]+T[1]*dout[1]+T[2]*dout[2]) / dl;
+                        if (std::abs(alin) < 0.866) continue;    // > pi/6 turn: not a continuation
+                        if (alin > 0) sgn_lo = 1; else sgn_hi = -1;
+                    }
+                }
+                double h = weld_tol;
+                int best_len = 0;
+                std::vector<Point> best_p3, best_ua, best_ub;
+                for (int sgn = sgn_lo; sgn <= sgn_hi; sgn += 2) {
+                    std::vector<Point> mp3{P0}, mua{Point(ua0, va0, 0)}, mub{Point(ub0, vb0, 0)};
+                    double uA2 = ua0, vA2 = va0, uB2 = ub0, vB2 = vb0;
+                    Point cur = P0;
+                    for (int st = 0; st < 200; ++st) {
+                        Point nxt(cur[0] + sgn*h*T[0], cur[1] + sgn*h*T[1], cur[2] + sgn*h*T[2]);
+                        auto [ua1, va1, d1] = Closest::surface_point(sa, nxt, uA2 - 0.2, uA2 + 0.2, vA2 - 0.2, vA2 + 0.2);
+                        auto [ub1, vb1, d2] = Closest::surface_point(sb, nxt, uB2 - 0.2, uB2 + 0.2, vB2 - 0.2, vB2 + 0.2);
+                        uA2 = ua1; vA2 = va1; uB2 = ub1; vB2 = vb1;
+                        if (!correct7(ea, eb, uA2, vA2, uB2, vB2, conv_tol)) break;
+                        Point pA = sa.point_at(uA2, vA2), pB = sb.point_at(uB2, vB2);
+                        if (pA.distance(pB) > conv_tol * 10.0) break;
+                        if (!in_faces_uv(loopsA[mA], uA2, vA2, epsA2)) break;
+                        if (!in_faces_uv(loopsB[mB], uB2, vB2, epsB2)) break;
+                        cur = Point((pA[0]+pB[0])*0.5, (pA[1]+pB[1])*0.5, (pA[2]+pB[2])*0.5);
+                        mp3.push_back(cur);
+                        mua.push_back(Point(uA2, vA2, 0));
+                        mub.push_back(Point(uB2, vB2, 0));
+                        // refresh tangent
+                        Vector na2 = sa.normal_at(uA2, vA2), nb2 = sb.normal_at(uB2, vB2);
+                        Vector T2(na2[1]*nb2[2]-na2[2]*nb2[1], na2[2]*nb2[0]-na2[0]*nb2[2], na2[0]*nb2[1]-na2[1]*nb2[0]);
+                        double T2l = T2.magnitude();
+                        if (T2l > 1e-10) {
+                            T2 = Vector(T2[0]/T2l, T2[1]/T2l, T2[2]/T2l);
+                            if (T2[0]*T[0] + T2[1]*T[1] + T2[2]*T[2] < 0)
+                                T2 = Vector(-T2[0], -T2[1], -T2[2]);
+                            T = T2;
+                        }
+                    }
+                    if ((int)mp3.size() > best_len) {
+                        best_len = (int)mp3.size();
+                        best_p3 = std::move(mp3); best_ua = std::move(mua); best_ub = std::move(mub);
+                    }
+                }
+                if (best_len < 3) continue;
+                // 3D length gate: a real continuation spans beyond tolerance
+                double clen = 0;
+                for (size_t k2 = 1; k2 < best_p3.size(); ++k2) clen += best_p3[k2-1].distance(best_p3[k2]);
+                if (clen < weld_tol * 2.0) continue;
+                SectionSegment cont;
+                cont.seg_id = (int)scaf.segments.size();
+                cont.surfA = mA; cont.surfB = mB;
+                cont.v_start = di.v;
+                cont.v_end = weld_vertex(best_p3.back());
+                cont.p3 = std::move(best_p3);
+                cont.uvA = std::move(best_ua);
+                cont.uvB = std::move(best_ub);
+                cont.p3.front() = scaf.vertices[di.v];
+                scaf.segs_by_surfA[mA].push_back(cont.seg_id);
+                scaf.segs_by_surfB[mB].push_back(cont.seg_id);
+                scaf.segments.push_back(std::move(cont));
+                used[i] = true;
+                ++n_efm;
+                if (std::getenv("SESSION_SPLIT_DBG") || std::getenv("SESSION_NT_DBG"))
+                    std::fprintf(stderr, "[EFMARCH] v%d pair(%d,%d) len=%.4f pts=%d\n",
+                                 di.v, mA, mB, clen, best_len);
+            }
+            if (n_efm && (std::getenv("SESSION_SPLIT_DBG") || std::getenv("SESSION_NT_DBG")))
+                std::fprintf(stderr, "[EFMARCH] continuations=%d\n", n_efm);
+        }
+        for (size_t i = 0; i < dang.size(); ++i) {
+            int j = partner[i];
+            if (j < 0 || used[i] || used[(size_t)j] || partner[(size_t)j] != (int)i) continue;   // mutual only
+            const Dang di = dang[i], dj = dang[(size_t)j];
+            if (di.surfA < 0 || di.surfA >= (int)A.m_surfaces.size() ||
+                di.surfB < 0 || di.surfB >= (int)B.m_surfaces.size() ||
+                dj.surfA < 0 || dj.surfA >= (int)A.m_surfaces.size() ||
+                dj.surfB < 0 || dj.surfB >= (int)B.m_surfaces.size()) continue;
+            Point pi = scaf.vertices[di.v], pj = scaf.vertices[dj.v];
+            double gap = pi.distance(pj);
+            if (gap < weld_tol) { used[i] = used[(size_t)j] = true; continue; }  // already one vertex
+            bool same_pair = (di.surfA == dj.surfA && di.surfB == dj.surfB);
+
+            // SESSION_BRIDGE=2: weld + EF-march only. CASE-A same-pair re-march is the
+            // measured source of the z30/z37/y30 regressions (one-sided imprint exposure);
+            // mode 2 leaves same-pair dangles as residual and keeps the junction fuse.
+            if (same_pair && std::atoi(std::getenv("SESSION_BRIDGE")) >= 2) continue;
+            if (same_pair) {
+                // ---- CASE A: local SSI re-march on the shared (surfA,surfB) pair ----
+                // A midpoint FUSE is forbidden for same-pair dangles: the straight chord between
+                // two ends of the SAME section curve lies OFF the curve (the fictitious y30 e122
+                // bridge that sits inside B), and its midpoint still projects onto both surfaces so
+                // the projection gate would wrongly accept it -> naked-worse (z30 22->30). So a
+                // same-pair pair is closed ONLY by a verified re-march; if the march refuses, the
+                // pair is left as residual (never midpoint-welded).
+                const char* refuse = nullptr;
+                if (di.seg == dj.seg) refuse = "same-seg";  // a segment's own two ends: ambiguous, skip
+                std::vector<Point> bp3, bua, bub;
+                if (!refuse) {
+                    const NurbsSurface& sa = A.m_surfaces[di.surfA];
+                    const NurbsSurface& sb = B.m_surfaces[di.surfB];
+                    SEval ea{&sa}, eb{&sb};
+                    auto duaR = sa.domain(0); auto dvaR = sa.domain(1);
+                    auto dubR = sb.domain(0); auto dvbR = sb.domain(1);
+                    double epsA = std::min(duaR.second - duaR.first, dvaR.second - dvaR.first) * 1e-3;
+                    double epsB = std::min(dubR.second - dubR.first, dvbR.second - dvbR.first) * 1e-3;
+                    ensure_loops(di.surfA, di.surfB);
+                    const int NB = 12;
+                    double uA = di.uvA[0], vA = di.uvA[1], uB = di.uvB[0], vB = di.uvB[1];
+                    double sAu = (dj.uvA[0]-di.uvA[0])/NB, sAv = (dj.uvA[1]-di.uvA[1])/NB;
+                    double sBu = (dj.uvB[0]-di.uvB[0])/NB, sBv = (dj.uvB[1]-di.uvB[1])/NB;
+                    bp3.push_back(sa.point_at(uA, vA)); bua.push_back(Point(uA,vA,0)); bub.push_back(Point(uB,vB,0));
+                    for (int s = 1; s <= NB && !refuse; ++s) {
+                        uA += sAu; vA += sAv; uB += sBu; vB += sBv;   // predictor (constant UV step)
+                        if (s < NB) {
+                            if (!correct7(ea, eb, uA, vA, uB, vB, conv_tol)) { refuse = "newton"; break; }
+                            Point pA = sa.point_at(uA, vA), pB = sb.point_at(uB, vB);
+                            if (pA.distance(pB) > conv_tol * 10.0) { refuse = "resid3d"; break; }
+                            if (!in_faces_uv(loopsA[di.surfA], uA, vA, epsA)) { refuse = "outA"; break; }
+                            if (!in_faces_uv(loopsB[di.surfB], uB, vB, epsB)) { refuse = "outB"; break; }
+                        }
+                        bp3.push_back(sa.point_at(uA, vA)); bua.push_back(Point(uA,vA,0)); bub.push_back(Point(uB,vB,0));
+                    }
+                }
+                if (!refuse && bp3.size() >= 2) {
+                    // pin endpoints to the canonical welded vertices/footprints so the arrangement
+                    // nodes them (exact-equal doubles) instead of adding a divergent overshoot stub
+                    bp3.front() = scaf.vertices[di.v]; bua.front() = di.uvA; bub.front() = di.uvB;
+                    bp3.back()  = scaf.vertices[dj.v]; bua.back()  = dj.uvA; bub.back()  = dj.uvB;
+                    SectionSegment bridge;
+                    bridge.seg_id = (int)scaf.segments.size();
+                    bridge.surfA = di.surfA; bridge.surfB = di.surfB;
+                    bridge.p3 = std::move(bp3); bridge.uvA = std::move(bua); bridge.uvB = std::move(bub);
+                    bridge.v_start = di.v; bridge.v_end = dj.v;
+                    scaf.segs_by_surfA[di.surfA].push_back(bridge.seg_id);
+                    scaf.segs_by_surfB[di.surfB].push_back(bridge.seg_id);
+                    scaf.segments.push_back(std::move(bridge));
+                    used[i] = used[(size_t)j] = true; ++n_marched;
+                    if (std::getenv("SESSION_SPLIT_DBG"))
+                        std::fprintf(stderr, "[SCAF-MARCH] v%d..v%d gap=%.4f pair(%d,%d) MARCHED\n",
+                                     di.v, dj.v, gap, di.surfA, di.surfB);
+                } else if (std::getenv("SESSION_SPLIT_DBG")) {
+                    std::fprintf(stderr, "[SCAF-MARCH-REJ] v%d..v%d gap=%.4f pair(%d,%d) refuse=%s\n",
+                                 di.v, dj.v, gap, di.surfA, di.surfB, refuse ? refuse : "size");
+                }
+                continue;   // same-pair: closed by march or left residual -- NEVER midpoint-welded
+            }
+
+            // ---- CASE B: CROSS-pair junction fuse (midpoint T, projection-gated) ----
+            // Only genuine cross-surface-pair undershoots reach here: two marchers stopped short of
+            // one shared 3-surface junction, so the midpoint IS on the junction (both curves pass
+            // through it) and the projection gate is meaningful.
+            // PI/6 TRIPLE ANGLE GATE (OCCT ExtendTwoWLines/CheckArgumentsToExtend,
+            // myMaxConcatAngle): the two chains must approach the junction HEAD-ON --
+            // each outward end tangent within pi/6 of the gap vector, and the tangents
+            // within pi/6 of head-on to each other. Kills the spurious welds that
+            // fused unrelated dangles (the y30 +2 class under ungated CASE B).
+            if (!std::getenv("SESSION_NO_EFGATE")) {
+                auto out_tan = [&](const Dang& d) -> Vector {
+                    const SectionSegment& sg = scaf.segments[d.seg];
+                    size_t nn = sg.p3.size();
+                    Point pe = d.end == 0 ? sg.p3[0] : sg.p3[nn-1];
+                    Point pin = d.end == 0 ? sg.p3[std::min<size_t>(1, nn-1)] : sg.p3[nn >= 2 ? nn-2 : 0];
+                    Vector v(pe[0]-pin[0], pe[1]-pin[1], pe[2]-pin[2]);
+                    double m = v.magnitude();
+                    return m > 1e-30 ? Vector(v[0]/m, v[1]/m, v[2]/m) : Vector(0, 0, 0);
+                };
+                Vector ti_ = out_tan(di), tj_ = out_tan(dj);
+                Vector g(pj[0]-pi[0], pj[1]-pi[1], pj[2]-pi[2]);
+                double gm = g.magnitude();
+                if (gm > 1e-30) { g = Vector(g[0]/gm, g[1]/gm, g[2]/gm); }
+                const double cosg = 0.866;   // pi/6
+                double a1 = ti_[0]*g[0]+ti_[1]*g[1]+ti_[2]*g[2];
+                double a2 = -(tj_[0]*g[0]+tj_[1]*g[1]+tj_[2]*g[2]);
+                double a3 = -(ti_[0]*tj_[0]+ti_[1]*tj_[1]+ti_[2]*tj_[2]);
+                bool head_on = a1 >= cosg && a2 >= cosg && a3 >= cosg;
+                if (!head_on) {
+                    // CORNER route: two DIFFERENT section curves meeting where the
+                    // section crosses a face border -- the junction must lie ON an
+                    // operand EDGE (that crossing is WHY the junction exists). This
+                    // is what separates a real corner from the y30-class spurious
+                    // pairing of unrelated dangles (which floats mid-face).
+                    Point Tm((pi[0]+pj[0])*0.5, (pi[1]+pj[1])*0.5, (pi[2]+pj[2])*0.5);
+                    double edge_band = std::max(weld_tol, gap * 0.5);
+                    bool on_edge = false;
+                    auto near_edge = [&](const BRep& OP) {
+                        for (const auto& E2 : OP.m_topology_edges) {
+                            if (E2.curve_3d_index < 0 || E2.curve_3d_index >= (int)OP.m_curves_3d.size()) continue;
+                            const NurbsCurve& C2 = OP.m_curves_3d[E2.curve_3d_index];
+                            if (!C2.is_valid()) continue;
+                            double t2 = C2.closest_parameter(Tm);
+                            if (C2.point_at(t2).distance(Tm) <= edge_band) return true;
+                        }
+                        return false;
+                    };
+                    on_edge = near_edge(A) || near_edge(B);
+                    if (!on_edge) {
+                        ++n_reject;
+                        if (std::getenv("SESSION_SPLIT_DBG"))
+                            std::fprintf(stderr, "[SCAF-WELD-ANG] v%d..v%d gap=%.4f cos(%.3f,%.3f,%.3f) no-edge REJ\n",
+                                         di.v, dj.v, gap, a1, a2, a3);
+                        continue;
+                    }
+                }
+            }
+            Point T((pi[0]+pj[0])*0.5, (pi[1]+pj[1])*0.5, (pi[2]+pj[2])*0.5);
+            Point uvAi, uvBi, uvAj, uvBj;
+            double dAi = proj_dist(di.surfA, true, T, uvAi);
+            double dBi = proj_dist(di.surfB, false, T, uvBi);
+            double dAj = proj_dist(dj.surfA, true, T, uvAj);
+            double dBj = proj_dist(dj.surfB, false, T, uvBj);
+            double tol_junc = std::max(weld_tol, gap * 0.5);    // midpoint of a real junction sits <= gap/2 off
+            if (dAi > tol_junc || dBi > tol_junc || dAj > tol_junc || dBj > tol_junc) {
+                ++n_reject;
+                if (std::getenv("SESSION_SPLIT_DBG"))
+                    std::fprintf(stderr, "[SCAF-WELD-REJ] v%d..v%d gap=%.4f proj(%.4f,%.4f,%.4f,%.4f) tol=%.4f\n",
+                                 di.v, dj.v, gap, dAi, dBi, dAj, dBj, tol_junc);
+                continue;
+            }
+            int vm = di.v;
+            scaf.vertices[vm] = T;
+            auto set_end = [&](const Dang& d, const Point& uvA, const Point& uvB) {
+                SectionSegment& sg = scaf.segments[d.seg];
+                if (d.end == 0) {
+                    sg.p3.front() = T; sg.uvA.front() = uvA; sg.uvB.front() = uvB; sg.v_start = vm;
+                } else {
+                    sg.p3.back() = T;  sg.uvA.back() = uvA;  sg.uvB.back() = uvB;  sg.v_end = vm;
+                }
+            };
+            set_end(di, uvAi, uvBi);
+            set_end(dj, uvAj, uvBj);
+            used[i] = used[(size_t)j] = true;
+            ++n_weld;
+            if (std::getenv("SESSION_SPLIT_DBG"))
+                std::fprintf(stderr, "[SCAF-WELD] v%d+v%d -> vm%d T(%.3f,%.3f,%.3f) gap=%.4f\n",
+                             di.v, dj.v, vm, T[0], T[1], T[2], gap);
+        }
+        std::vector<int> valf; recompute_val(valf);
+        int residual = 0;
+        for (int v : valf) if (v == 1) ++residual;
+        scaf.n_bridge_marched = n_marched;
+        scaf.n_bridge_welded = n_weld;
+        scaf.n_bridge_residual = residual;
+        if (std::getenv("SESSION_SPLIT_DBG") || std::getenv("SESSION_NT_DBG"))
+            std::fprintf(stderr, "[SCAF-BRIDGE] dangling=%zu marched=%d welded=%d rejected=%d residual=%d\n",
+                         dang.size(), n_marched, n_weld, n_reject, residual);
+    }
+
+    // ---- 4c. EF interference diagnostic (OCCT PerformEF, first increment) ----
+    // Exact surface x other-operand-EDGE intersection points: coarse scan each edge
+    // against each overlapping surface, Gauss-Newton polish E(t) = S(u,v). These ARE the
+    // true junction anchors the dangling chain ends undershoot; the histogram of
+    // dangle-to-EF distances decides the EF-anchored welding design.
+    if (std::getenv("SESSION_EF_DIAG")) {
+        auto ef_scan = [&](const BRep& SURFOP, const BRep& EDGEOP, bool surf_is_A,
+                           std::vector<Point>& out) {
+            for (int si = 0; si < (int)SURFOP.m_surfaces.size(); ++si) {
+                const NurbsSurface& S = SURFOP.m_surfaces[si];
+                for (const auto& E : EDGEOP.m_topology_edges) {
+                    if (E.curve_3d_index < 0 || E.curve_3d_index >= (int)EDGEOP.m_curves_3d.size()) continue;
+                    const NurbsCurve& C = EDGEOP.m_curves_3d[E.curve_3d_index];
+                    if (!C.is_valid()) continue;
+                    auto cd = C.domain();
+                    double prevd = 1e300;
+                    for (int k = 0; k <= 32; ++k) {
+                        double t = cd.first + (cd.second - cd.first) * k / 32.0;
+                        Point p = C.point_at(t);
+                        auto pr = Closest::surface_point(S, p, 0.0, 0.0, 0.0, 0.0);
+                        double u = std::get<0>(pr), v = std::get<1>(pr);
+                        Point q = S.point_at(u, v);
+                        double d = q.distance(p);
+                        // local minimum near the surface -> Newton polish
+                        if (d < weld_tol * 2.0 && d <= prevd) {
+                            double tt = t, uu = u, vv = v;
+                            for (int it = 0; it < 12; ++it) {
+                                auto cder = C.evaluate(tt, 1);          // [P, P']
+                                auto sder = S.evaluate(uu, vv, 1);      // [S, Sv, Su] (kernel order)
+                                double r0 = cder[0][0]-sder[0][0], r1 = cder[0][1]-sder[0][1], r2 = cder[0][2]-sder[0][2];
+                                // J columns: dC/dt, -dS/du, -dS/dv
+                                double J[3][3] = {
+                                    {cder[1][0], -sder[2][0], -sder[1][0]},
+                                    {cder[1][1], -sder[2][1], -sder[1][1]},
+                                    {cder[1][2], -sder[2][2], -sder[1][2]}};
+                                // solve J * dx = -r (Cramer)
+                                double det = J[0][0]*(J[1][1]*J[2][2]-J[1][2]*J[2][1])
+                                           - J[0][1]*(J[1][0]*J[2][2]-J[1][2]*J[2][0])
+                                           + J[0][2]*(J[1][0]*J[2][1]-J[1][1]*J[2][0]);
+                                if (std::abs(det) < 1e-18) break;
+                                auto solve1 = [&](int col) {
+                                    double M[3][3];
+                                    for (int a2 = 0; a2 < 3; ++a2)
+                                        for (int b2 = 0; b2 < 3; ++b2)
+                                            M[a2][b2] = (b2 == col) ? -((a2==0)?r0:(a2==1)?r1:r2) : J[a2][b2];
+                                    return (M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])
+                                          - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])
+                                          + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0])) / det;
+                                };
+                                double dt = solve1(0), du = solve1(1), dv = solve1(2);
+                                tt += dt; uu += du; vv += dv;
+                                tt = std::min(std::max(tt, cd.first), cd.second);
+                                if (std::abs(dt) + std::abs(du) + std::abs(dv) < 1e-14) break;
+                            }
+                            Point pe = C.point_at(tt);
+                            Point qs = S.point_at(uu, vv);
+                            if (pe.distance(qs) < conv_tol * 100.0) {
+                                bool dup = false;
+                                for (const auto& x : out) if (x.distance(pe) < weld_tol * 0.1) { dup = true; break; }
+                                if (!dup) out.push_back(pe);
+                            }
+                        }
+                        prevd = d;
+                    }
+                }
+            }
+            (void)surf_is_A;
+        };
+        std::vector<Point> efpts;
+        ef_scan(A, B, true, efpts);
+        ef_scan(B, A, false, efpts);
+        // dangle-to-EF histogram
+        std::vector<int> val(scaf.vertices.size(), 0);
+        for (const auto& seg : scaf.segments) {
+            if (seg.v_start >= 0) val[seg.v_start] += 1;
+            if (seg.v_end >= 0) val[seg.v_end] += 1;
+        }
+        int nd = 0;
+        for (size_t vi = 0; vi < val.size(); ++vi) {
+            if (val[vi] != 1) continue;
+            ++nd;
+            double best = 1e300;
+            for (const auto& x : efpts) best = std::min(best, x.distance(scaf.vertices[vi]));
+            std::fprintf(stderr, "[EFDIAG] dangle v%zu dEF=%.5f\n", vi, best < 1e300 ? best : -1.0);
+        }
+        std::fprintf(stderr, "[EFDIAG] ef_points=%zu dangles=%d weld_tol=%.4f\n",
+                     efpts.size(), nd, weld_tol);
+    }
+
+    // ---- 4d. CROSS-PAIR SEGMENT UNIFICATION (SESSION_SEG_UNIFY; OCCT PostTreatFF /
+    // same-domain analog). Where the section GRAZES along one operand's face border,
+    // BOTH adjacent face pairs march the same physical curve, minting two near-parallel
+    // segments (x20: seg21 vs seg29, 0.1 apart at graze scale). Each operand then keeps
+    // a DIFFERENT copy and the rims never mate. Cure: snap the shorter segment's samples
+    // onto the longer master's polyline over the overlapping span (geometry becomes ONE),
+    // split the master at the snapped end's fractional index (both networks node there),
+    // and weld end vertices. Downstream identity machinery mates the now-identical copies.
+    if (const char* su = std::getenv("SESSION_SEG_UNIFY")) {
+        double bandm = std::atof(su);
+        if (bandm <= 1.0) bandm = 5.0;
+        double band = bandm * scaf.tol3;
+        auto proj_poly = [&](const Point& q, const std::vector<Point>& pl, double& fidx) -> double {
+            double bd2 = 1e300; fidx = 0.0;
+            for (size_t j = 0; j + 1 < pl.size(); ++j) {
+                double ex = pl[j+1][0]-pl[j][0], ey = pl[j+1][1]-pl[j][1], ez = pl[j+1][2]-pl[j][2];
+                double L2 = ex*ex + ey*ey + ez*ez;
+                double t = L2 > 1e-30 ? ((q[0]-pl[j][0])*ex + (q[1]-pl[j][1])*ey + (q[2]-pl[j][2])*ez) / L2 : 0.0;
+                t = std::min(std::max(t, 0.0), 1.0);
+                double dx = q[0]-pl[j][0]-t*ex, dy = q[1]-pl[j][1]-t*ey, dz = q[2]-pl[j][2]-t*ez;
+                double d2 = dx*dx + dy*dy + dz*dz;
+                if (d2 < bd2) { bd2 = d2; fidx = (double)j + t; }
+            }
+            return std::sqrt(bd2);
+        };
+        auto seg_len = [](const SectionSegment& s) {
+            double L = 0;
+            for (size_t k = 0; k + 1 < s.p3.size(); ++k) L += s.p3[k].distance(s.p3[k+1]);
+            return L;
+        };
+        std::map<int, std::vector<double>> breaks;
+        std::set<int> touched;                       // unify-affected vertex ids (weld scope)
+        int n_unified = 0;
+        int nvert0 = (int)scaf.vertices.size();
+        int nseg0 = (int)scaf.segments.size();
+        for (int i = 0; i < nseg0; ++i) {
+            auto& Si = scaf.segments[i];
+            if (Si.closed || (int)Si.p3.size() < 3) continue;
+            double Li = seg_len(Si);
+            for (int j = 0; j < nseg0; ++j) {
+                if (j == i) continue;
+                auto& Sj = scaf.segments[j];
+                if (Sj.closed || (int)Sj.p3.size() < 3) continue;
+                if (Si.surfA == Sj.surfA && Si.surfB == Sj.surfB) continue;  // same pair = one marcher
+                // graze duplicates come from ADJACENT pairs: one operand surface SHARED
+                // (v1 allowed any pair combo and snapped distinct nearby sections:
+                // base cut 0->9, z30x20 0->47 naked)
+                if (Si.surfA != Sj.surfA && Si.surfB != Sj.surfB) continue;
+                double Lj = seg_len(Sj);
+                if (Lj < Li || (Lj == Li && j > i)) continue;                // master = longer, ties by id
+                int n = (int)Si.p3.size();
+                std::vector<double> fid(n);
+                std::vector<char> inb(n);
+                for (int k = 0; k < n; ++k) {
+                    inb[k] = proj_poly(Si.p3[k], Sj.p3, fid[k]) < band ? 1 : 0;
+                    if (!inb[k]) continue;
+                    // duplicates run PARALLEL along the graze; curves that merely pass
+                    // near (junction crossings) meet at an angle -- exclude them
+                    int k1 = std::min(k + 1, n - 1), k0 = std::max(k - 1, 0);
+                    Point ti_(Si.p3[k1][0]-Si.p3[k0][0], Si.p3[k1][1]-Si.p3[k0][1], Si.p3[k1][2]-Si.p3[k0][2]);
+                    int jj = std::min((int)fid[k], (int)Sj.p3.size() - 2);
+                    Point tj_(Sj.p3[jj+1][0]-Sj.p3[jj][0], Sj.p3[jj+1][1]-Sj.p3[jj][1], Sj.p3[jj+1][2]-Sj.p3[jj][2]);
+                    double ni = std::sqrt(ti_[0]*ti_[0]+ti_[1]*ti_[1]+ti_[2]*ti_[2]);
+                    double nj = std::sqrt(tj_[0]*tj_[0]+tj_[1]*tj_[1]+tj_[2]*tj_[2]);
+                    if (ni > 1e-30 && nj > 1e-30) {
+                        double dt = (ti_[0]*tj_[0]+ti_[1]*tj_[1]+ti_[2]*tj_[2]) / (ni*nj);
+                        if (std::abs(dt) < 0.95) inb[k] = 0;
+                    }
+                }
+                // end-anchored run only (graze duplicates emanate from a shared junction)
+                int lo = 0, hi = n - 1;
+                while (lo < n && !inb[lo]) ++lo;
+                while (hi >= 0 && !inb[hi]) --hi;
+                if (lo != 0 && hi != n - 1) continue;                        // interior-only: skip
+                int a = lo == 0 ? 0 : hi, b2 = lo == 0 ? hi : n - 1;        // covered run [a,b2]
+                bool okrun = a <= b2 && b2 - a + 1 >= 3;
+                for (int k = a; k <= b2 && okrun; ++k) if (!inb[k]) okrun = false;
+                if (!okrun) continue;
+                double runL = 0;
+                for (int k = a; k < b2; ++k) runL += Si.p3[k].distance(Si.p3[k+1]);
+                if (runL < 4.0 * scaf.tol3) continue;                       // junction touch, not a graze
+                // snap covered samples onto the master polyline + reproject own-pair uv
+                for (int k = a; k <= b2; ++k) {
+                    int jj = std::min((int)fid[k], (int)Sj.p3.size() - 2);
+                    double ft = fid[k] - jj;
+                    Point np = lerp(Sj.p3[jj], Sj.p3[jj+1], ft);
+                    Si.p3[k] = np;
+                    auto pa = Closest::surface_point(A.m_surfaces[Si.surfA], np);
+                    Si.uvA[k] = Point(std::get<0>(pa), std::get<1>(pa), 0.0);
+                    auto pb = Closest::surface_point(B.m_surfaces[Si.surfB], np);
+                    Si.uvB[k] = Point(std::get<0>(pb), std::get<1>(pb), 0.0);
+                }
+                // the DEEP end of the run (where Si stops mid-master) must become a node
+                // of the master too: record the break at its fractional index
+                int deep = lo == 0 ? b2 : a;
+                double fdeep = fid[deep];
+                double margin = 1.5;
+                if (fdeep > margin && fdeep < (double)Sj.p3.size() - 1.0 - margin)
+                    breaks[Sj.seg_id].push_back(fdeep);
+                if (Si.v_start >= 0) touched.insert(Si.v_start);
+                if (Si.v_end >= 0) touched.insert(Si.v_end);
+                if (Sj.v_start >= 0) touched.insert(Sj.v_start);
+                if (Sj.v_end >= 0) touched.insert(Sj.v_end);
+                ++n_unified;
+                if (std::getenv("SESSION_SPLIT_DBG") || std::getenv("SESSION_NT_DBG"))
+                    std::fprintf(stderr, "[SEGUNIFY] seg%d(%d,%d) run[%d,%d]/%d L=%.3f -> master seg%d(%d,%d) fdeep=%.2f\n",
+                                 Si.seg_id, Si.surfA, Si.surfB, a, b2, n, runL,
+                                 Sj.seg_id, Sj.surfA, Sj.surfB, fdeep);
+                break;                                                       // one master per segment
+            }
+        }
+        if (!breaks.empty()) refine_scaffold_at_breaks(scaf, breaks);
+        if (n_unified) {
+            // end-vertex weld, SCOPED: only unify-touched ends + refine-minted split
+            // vertices may merge (a global tol3 weld would fuse junctions the builder
+            // deliberately kept apart under the decoupled rep tolerance).
+            for (int v = nvert0; v < (int)scaf.vertices.size(); ++v) touched.insert(v);
+            std::vector<int> vmapU(scaf.vertices.size());
+            for (int v = 0; v < (int)scaf.vertices.size(); ++v) vmapU[v] = v;
+            for (int v = 0; v < (int)scaf.vertices.size(); ++v) {
+                if (vmapU[v] != v) continue;
+                for (int w = v + 1; w < (int)scaf.vertices.size(); ++w) {
+                    if (vmapU[w] != w) continue;
+                    if (!touched.count(v) && !touched.count(w)) continue;
+                    if (scaf.vertices[v].distance(scaf.vertices[w]) <= scaf.tol3)
+                        vmapU[w] = v;
+                }
+            }
+            for (auto& s : scaf.segments) {
+                if (s.v_start >= 0) s.v_start = vmapU[s.v_start];
+                if (s.v_end >= 0) s.v_end = vmapU[s.v_end];
+            }
+            if (std::getenv("SESSION_SPLIT_DBG") || std::getenv("SESSION_NT_DBG"))
+                std::fprintf(stderr, "[SEGUNIFY] unified=%d breaks=%zu\n", n_unified, breaks.size());
+        }
+    }
+
     // ---- 5. Valence audit ([SCAF-VAL]) ----
     // Sections of closed solids are closed loops: every scaffold vertex should have even
     // valence (2 normally, 4 at crossings). A valence-1 vertex = a dangling section end =
@@ -1070,6 +2317,187 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
         std::fflush(stderr);
     }
     return scaf;
+}
+
+int refine_scaffold_at_breaks(SectionScaffold& scaf,
+                              const std::map<int, std::vector<double>>& breaks) {
+    // Fractional-index weld radius for discovered breakpoints. Ends reported within this
+    // distance of a segment end are the segment's own ends (arrangement noise, stub clamps),
+    // not new crossings; two reports within it are the same crossing seen from both operands.
+    // It MUST match the whole-segment tolerance used when the lift decides to emit an alias
+    // key (brep.cpp, `whole_seg`: fa < 1e-2 && fb > nCh-1-1e-2). A larger value here would
+    // open a dead band -- a run starting at fa = 0.03 would be too far in to be keyed as a
+    // whole segment, yet be dismissed here as "already at the end" and never split, so that
+    // segment could never acquire identity by either route.
+    const double eps_f = 1e-2;
+    int n_new = 0, n_closed_skip = 0;
+    auto weld_vertex = [&](const Point& p) {
+        int best = -1; double bd = scaf.tol3;   // nearest-match (see build weld_vertex)
+        for (size_t i = 0; i < scaf.vertices.size(); ++i) {
+            double d = scaf.vertices[i].distance(p);
+            if (d < bd) { bd = d; best = (int)i; }
+        }
+        if (best >= 0) return best;
+        scaf.vertices.push_back(p);
+        return (int)scaf.vertices.size() - 1;
+    };
+    // Linear interpolation IN CHAIN-INDEX SPACE -- the one operation that guarantees both
+    // operands land on the same point: p3/uvA/uvB are index-corresponded, so splitting at
+    // index t splits the 3D curve and BOTH parametric footprints at the same place.
+    auto lerp_at = [](const std::vector<Point>& a, double t, int n) {
+        int k = std::min((int)t, n - 2);
+        if (k < 0) k = 0;
+        double u = t - k;
+        return Point(a[k][0] + (a[k + 1][0] - a[k][0]) * u,
+                     a[k][1] + (a[k + 1][1] - a[k][1]) * u,
+                     a[k][2] + (a[k + 1][2] - a[k][2]) * u);
+    };
+    int n0 = (int)scaf.segments.size();
+    std::vector<SectionSegment> extra;
+    for (const auto& kv : breaks) {
+        int sid = kv.first;
+        if (sid < 0 || sid >= n0) continue;
+        int nCh = (int)scaf.segments[sid].p3.size();
+        if (nCh < 3) continue;
+        if (scaf.segments[sid].closed || scaf.segments[sid].v_start == scaf.segments[sid].v_end) {
+            ++n_closed_skip;     // wrap splitting needs a seam choice; left to the safety net
+            continue;
+        }
+        std::vector<double> f;
+        for (double v : kv.second)
+            if (v > eps_f && v < (double)(nCh - 1) - eps_f) f.push_back(v);
+        if (f.empty()) continue;
+        std::sort(f.begin(), f.end());
+        // Cluster to the MEAN of each group (the same rule normalize_section_blocks uses),
+        // so a crossing reported slightly differently by the two operands lands on one pave.
+        std::vector<double> w;
+        {
+            double lo = f[0], sum = f[0];
+            int cnt = 1;
+            for (size_t i = 1; i <= f.size(); ++i) {
+                if (i == f.size() || f[i] - lo > eps_f) {
+                    w.push_back(sum / cnt);
+                    if (i == f.size()) break;
+                    lo = f[i]; sum = 0.0; cnt = 0;
+                }
+                lo = f[i]; sum += f[i]; ++cnt;
+            }
+        }
+        if (w.empty()) continue;
+        const SectionSegment& s = scaf.segments[sid];
+        if ((int)s.uvA.size() != nCh || (int)s.uvB.size() != nCh) continue;   // lockstep invariant
+        // Reject any breakpoint that would carve off a piece shorter than the 3D weld
+        // tolerance: both of its ends would weld to the SAME scaffold vertex, which the
+        // splitter reads as a CLOSED segment (v_start == v_end) and routes down the
+        // full-wrap path -- losing exactly the identity this refinement exists to create.
+        std::vector<double> alen(nCh, 0.0);
+        for (int k = 1; k < nCh; ++k) alen[k] = alen[k-1] + s.p3[k-1].distance(s.p3[k]);
+        auto arc_at = [&](double t) {
+            t = std::min(std::max(t, 0.0), (double)(nCh - 1));
+            int k = std::min((int)t, nCh - 2);
+            return alen[k] + (alen[k+1] - alen[k]) * (t - k);
+        };
+        std::vector<double> bnds;
+        bnds.push_back(0.0);
+        for (double v : w)
+            if (arc_at(v) - arc_at(bnds.back()) > scaf.tol3) bnds.push_back(v);
+        if (bnds.size() < 2 || arc_at((double)(nCh - 1)) - arc_at(bnds.back()) <= scaf.tol3)
+            continue;   // nothing splittable without creating a micro piece
+        bnds.push_back((double)(nCh - 1));
+        std::vector<SectionSegment> parts;
+        bool ok = true;
+        for (size_t b = 0; b + 1 < bnds.size() && ok; ++b) {
+            double lo = bnds[b], hi = bnds[b + 1];
+            SectionSegment t;
+            t.surfA = s.surfA;
+            t.surfB = s.surfB;
+            t.closed = false;
+            bool at_start = lo <= 1e-12;
+            t.p3.push_back(at_start ? s.p3.front() : lerp_at(s.p3, lo, nCh));
+            t.uvA.push_back(at_start ? s.uvA.front() : lerp_at(s.uvA, lo, nCh));
+            t.uvB.push_back(at_start ? s.uvB.front() : lerp_at(s.uvB, lo, nCh));
+            for (int k = (int)std::ceil(lo + 1e-9); k <= (int)std::floor(hi - 1e-9) && k < nCh; ++k) {
+                t.p3.push_back(s.p3[k]);
+                t.uvA.push_back(s.uvA[k]);
+                t.uvB.push_back(s.uvB[k]);
+            }
+            // The trailing sample at hi == nCh-1 must be the STORED endpoint, bit for bit.
+            // lerp_at computes a[n-2] + (a[n-1]-a[n-2])*1.0, which is not IEEE-identical to
+            // a[n-1]; phase 4 of build_section_scaffold canonicalizes junction UVs precisely
+            // so that segments meeting at a vertex compare equal as exact doubles, and the
+            // splitter's junction detection keys a std::map on those doubles. One ULP of
+            // drift there makes a junction look like two distinct ends, so both incident
+            // cuts get overshoot stubs pointing different ways and the weld is destroyed.
+            bool at_end = hi >= (double)(nCh - 1) - 1e-12;
+            t.p3.push_back(at_end ? s.p3.back() : lerp_at(s.p3, hi, nCh));
+            t.uvA.push_back(at_end ? s.uvA.back() : lerp_at(s.uvA, hi, nCh));
+            t.uvB.push_back(at_end ? s.uvB.back() : lerp_at(s.uvB, hi, nCh));
+            if (t.p3.size() < 2) { ok = false; break; }
+            parts.push_back(std::move(t));
+        }
+        if (!ok || parts.size() < 2) continue;
+        int v0 = s.v_start, v1 = s.v_end, surfA = s.surfA, surfB = s.surfB;
+        for (size_t b = 0; b < parts.size(); ++b) {
+            parts[b].v_start = (b == 0) ? v0 : weld_vertex(parts[b].p3.front());
+            parts[b].v_end = (b + 1 == parts.size()) ? v1 : weld_vertex(parts[b].p3.back());
+        }
+        // The first part keeps the original seg_id so existing per-surface lists stay valid;
+        // the remainder are appended with fresh ids.
+        SectionSegment& dst = scaf.segments[sid];
+        dst.p3 = parts[0].p3;
+        dst.uvA = parts[0].uvA;
+        dst.uvB = parts[0].uvB;
+        dst.v_start = parts[0].v_start;
+        dst.v_end = parts[0].v_end;
+        dst.closed = false;
+        for (size_t b = 1; b < parts.size(); ++b) {
+            parts[b].surfA = surfA;
+            parts[b].surfB = surfB;
+            extra.push_back(std::move(parts[b]));
+        }
+    }
+    for (auto& t : extra) {
+        t.seg_id = (int)scaf.segments.size();
+        if (t.surfA >= 0 && t.surfA < (int)scaf.segs_by_surfA.size())
+            scaf.segs_by_surfA[t.surfA].push_back(t.seg_id);
+        if (t.surfB >= 0 && t.surfB < (int)scaf.segs_by_surfB.size())
+            scaf.segs_by_surfB[t.surfB].push_back(t.seg_id);
+        scaf.segments.push_back(std::move(t));
+        ++n_new;
+    }
+    if (std::getenv("SESSION_NT_DBG") && (n_new || n_closed_skip))
+        std::fprintf(stderr, "[REFINE] split %d new segments, skipped %d closed\n",
+                     n_new, n_closed_skip);
+    return n_new;
+}
+
+// BOP2 M1 — mint each section pave-block ONCE as a shared topological edge whose endpoints are the
+// scaffold's 3D-welded pave vertices. Both operands' arrangements will REFERENCE these edges (Phase 4),
+// so the two copies + alias/sew machinery disappear. Mirrors append_face's 3D/vertex construction
+// (brep.cpp add_curve_3d/add_edge) but keyed by welded scaffold identity, not a coordinate hash.
+SharedEdgePool build_shared_edge_pool(const SectionScaffold& scaf) {
+    SharedEdgePool P;
+    P.vert_tv.assign(scaf.vertices.size(), -1);
+    for (size_t i = 0; i < scaf.vertices.size(); ++i) {
+        int pi = P.arena.add_vertex(scaf.vertices[i]);
+        BRepVertex tv; tv.point_index = pi;
+        P.arena.m_topology_vertices.push_back(tv);
+        P.vert_tv[i] = (int)P.arena.m_topology_vertices.size() - 1;   // topology-vertex index
+    }
+    P.seg_edge.assign(scaf.segments.size(), -1);
+    for (const auto& s : scaf.segments) {
+        if (s.seg_id < 0 || (int)s.p3.size() < 2) continue;
+        if (s.v_start < 0 || s.v_start >= (int)P.vert_tv.size() ||
+            s.v_end   < 0 || s.v_end   >= (int)P.vert_tv.size()) continue;
+        NurbsCurve c3d = NurbsCurve::create(false, 1, s.p3);
+        if (!c3d.is_valid()) continue;
+        int ci3 = P.arena.add_curve_3d(c3d);
+        int v0 = P.vert_tv[s.v_start], v1 = P.vert_tv[s.v_end];   // SHARED endpoints
+        int E = P.arena.add_edge(ci3, v0, v1);
+        if (s.seg_id < (int)P.seg_edge.size()) P.seg_edge[s.seg_id] = E;
+        P.block_edge[{s.seg_id, 0}] = E;
+    }
+    return P;
 }
 
 } // namespace session_cpp

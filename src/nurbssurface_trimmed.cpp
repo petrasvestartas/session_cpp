@@ -909,13 +909,24 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     // collapses to zero (vert_id dedups exact coords, a==b chords drop). Scaffold-scale
     // paths only (bnd_snap > 0); legacy analytic splits stay byte-identical.
     std::vector<std::array<double, 2>> cut_nodes;
-    if (bnd_snap > 0.0)
+    // SESSION_NODESNAP: enable the cut-endpoint crossing-snap on the scaffold path too
+    // (where bnd_snap==0, so the block above is inert). The scaffold pre-nodes transversal
+    // crossings, but near-tangential section cuts that share a paved node still leave a
+    // spurious ~1e-2 crossing (newton_cc stalls on the singular Jacobian) that self-intersects
+    // the wire (chairsROT z90 cut WIRE 38 / z45 / x13y29). Snapping the CROSSING POINT onto the
+    // shared node (never the polyline endpoints) collapses the sliver, so no phantom split forms.
+    static const char* s_nodesnap_env = std::getenv("SESSION_NODESNAP");
+    double nodesnap_scale = 0.0;
+    if (s_nodesnap_env) { nodesnap_scale = std::atof(s_nodesnap_env); if (nodesnap_scale <= 0.0) nodesnap_scale = 0.02; }
+    if (bnd_snap > 0.0 || nodesnap_scale > 0.0)
         for (const auto& P : polylines) {
             if (is_boundary(P.cidx) || P.pts.size() < 2) continue;
             cut_nodes.push_back(P.pts.front());
             cut_nodes.push_back(P.pts.back());
         }
-    double node_snap = bnd_snap * 0.5;
+    double node_snap = bnd_snap > 0.0 ? bnd_snap * 0.5
+                                      : nodesnap_scale * std::min(range_u, range_v);
+    int n_nodesnapped = 0;
     std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;  // (poly_index, seg_index) -> list of (frac, u, v, t_on_curve)
     for (int pi = 0; pi < (int)polylines.size(); ++pi) {
         for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
@@ -943,7 +954,49 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             }
             if (bminu > amaxu || bmaxu < aminu || bminv > amaxv || bmaxv < aminv)
                 continue;
+            // Coincidence dedup (SESSION_CUTDEDUP): two NON-boundary section cuts that are the SAME
+            // curve (a re-imprinted section over the existing run, or a spurious double) must not be
+            // intersected -- their overlap floods `splits` and blows the arrangement to multi-GB. Detect
+            // TRUE coincidence geometrically (one cut lies on the other along its whole length), NOT by a
+            // raw crossing count -- a count cap wrongly drops legitimate high-crossing DISTINCT cuts and
+            // fragments the result (measured: SESSION_CUTCAP=24 regressed z45/z63). Directed both ways so
+            // a short duplicate on a long run is caught.
+            static const bool s_cutdedup = std::getenv("SESSION_CUTDEDUP") != nullptr;
+            if (s_cutdedup && !is_boundary(A.cidx) && !is_boundary(B.cidx)
+                && A.pts.size() >= 2 && B.pts.size() >= 2) {
+                double cotol = std::min(range_u, range_v) * 3e-3;
+                auto pt2poly = [](const std::array<double,2>& p,
+                                  const std::vector<std::array<double,2>>& q) {
+                    double best = 1e300;
+                    for (size_t j = 0; j + 1 < q.size(); ++j) {
+                        double ex = q[j+1][0]-q[j][0], ey = q[j+1][1]-q[j][1];
+                        double L2 = ex*ex + ey*ey;
+                        double tt = L2 > 1e-30 ? ((p[0]-q[j][0])*ex + (p[1]-q[j][1])*ey)/L2 : 0.0;
+                        tt = std::min(std::max(tt, 0.0), 1.0);
+                        double cx = q[j][0]+tt*ex, cy = q[j][1]+tt*ey;
+                        best = std::min(best, std::hypot(p[0]-cx, p[1]-cy));
+                    }
+                    return best;
+                };
+                auto covered = [&](const std::vector<std::array<double,2>>& x,
+                                   const std::vector<std::array<double,2>>& y) {
+                    const int ns = 9; int nco = 0;
+                    for (int k = 0; k < ns; ++k) {
+                        int idx = (int)((double)k/(ns-1) * (x.size()-1) + 0.5);
+                        if (pt2poly(x[idx], y) < cotol) ++nco;
+                    }
+                    return nco >= ns - 1;
+                };
+                if (covered(A.pts, B.pts) || covered(B.pts, A.pts))
+                    continue;   // one section cut lies on the other -> do not intersect the duplicate
+            }
+            // Per-pair intersection cap (SESSION_CUTCAP): cheap backstop for any residual pathology the
+            // coincidence test misses. Only fires far above any legitimate crossing count.
+            static const int s_cutcap = std::getenv("SESSION_CUTCAP")
+                                        ? std::atoi(std::getenv("SESSION_CUTCAP")) : 0;
+            int pair_hits = 0;
             for (int ia = 0; ia + 1 < (int)A.pts.size(); ++ia) {
+                if (s_cutcap > 0 && pair_hits > s_cutcap) break;
                 for (int ib = 0; ib + 1 < (int)B.pts.size(); ++ib) {
                     double s, t;
                     if (!seg_seg(A.pts[ia], A.pts[ia+1], B.pts[ib], B.pts[ib+1], s, t))
@@ -970,7 +1023,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                     snap_border(hp);
                     if (!cut_nodes.empty() && A.cidx >= 0 && B.cidx >= 0) {
                         for (const auto& nd : cut_nodes)
-                            if (std::hypot(hp[0]-nd[0], hp[1]-nd[1]) < node_snap) { hp = nd; break; }
+                            if (std::hypot(hp[0]-nd[0], hp[1]-nd[1]) < node_snap) { hp = nd; ++n_nodesnapped; break; }
                     }
                     if (B.cidx < 0) {
                         if (B.cidx == -1 || B.cidx == -3)
@@ -986,10 +1039,15 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                     }
                     splits[{pi, ia}].push_back({s, hp[0], hp[1], ta});
                     splits[{pj, ib}].push_back({t, hp[0], hp[1], tb});
+                    ++pair_hits;
                 }
+                if (s_cutcap > 0 && pair_hits > s_cutcap) break;
             }
         }
     }
+    if (n_nodesnapped > 0 && std::getenv("SESSION_SPLIT_DBG"))
+        std::fprintf(stderr, "[NODESNAP] node_snap=%.5f snapped=%d cut_nodes=%d\n",
+                     node_snap, n_nodesnapped, (int)cut_nodes.size());
 
     // ---- 3. Rebuild polylines with split vertices; build the vertex pool ----
     std::map<std::pair<long long, long long>, std::vector<int>> cell_map;
@@ -1055,6 +1113,16 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     }
 
     // ---- 4. Prune dangling edges (valence-1 chains) ----
+    // P1c-alt / topology-aware prune (SESSION_SECPROTECT): a scaffold SECTION cut (cidx >= n_boundary)
+    // is a real surface-surface intersection -- if ONE operand's arrangement makes it dangle (the mate
+    // undershoots the junction in 2D) the standard prune deletes it, leaving the OTHER operand's copy
+    // with no mate (naked). Protecting section-cut edges from the dangling prune keeps that run so the
+    // two operands' copies mate at combine. No re-split (unlike SESSION_SYMEMIT) -> no coincidence
+    // explosion. Boundary-derived danglers (cidx < n_boundary) are still pruned normally.
+    static const bool s_secprotect = (std::getenv("SESSION_SECPROTECT") != nullptr);
+    auto protected_cut = [&](size_t ei) {
+        return s_secprotect && edges[ei].cidx >= n_boundary;
+    };
     std::vector<bool> alive(edges.size(), true);
     bool changed = true;
     while (changed) {
@@ -1068,6 +1136,8 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
         for (size_t ei = 0; ei < edges.size(); ++ei) {
             if (!alive[ei])
+                continue;
+            if (protected_cut(ei))
                 continue;
             if (degree[edges[ei].a] == 1 || degree[edges[ei].b] == 1) {
                 alive[ei] = false;
@@ -1312,7 +1382,19 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                         Point(pb[0], pb[1], 0.0)
                     };
                     pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
-                    if (srcs) srcs->push_back({-1.0, 0.0, 0.0});
+                    // SEGFALL IDENTITY GUARD (Law 5, symmetric total imprint): a run that came from
+                    // a scaffold SECTION cut (run.cidx >= 0) must NOT degrade to a src=-1 legacy
+                    // boundary edge -- that drops the seg_id, so the section imprints on ONE operand
+                    // only (the other operand built a valid piece and keyed it) and the two copies can
+                    // never alias -> naked. Preserving {cidx, ta, tb} lets append_face re-lift the
+                    // EXACT shared sub-chain (3D from scaf, ignoring this straight-chord 2D) and record
+                    // the pave-block span, so both operands' copies key the SAME segment and mate.
+                    if (srcs) {
+                        if (run.cidx >= 0 && std::getenv("SESSION_SEGKEEP"))
+                            srcs->push_back({(double)run.cidx, run.ta, run.tb});
+                        else
+                            srcs->push_back({-1.0, 0.0, 0.0});
+                    }
                 }
             }
         }

@@ -64,11 +64,11 @@ namespace session_cpp {
         MINI_CHECK(p[1] == 20.0);
         MINI_CHECK(p[2] == 30.0);
         MINI_CHECK(p.width == 1.0);
-        MINI_CHECK(p.pointcolor == Color::blue());
+        MINI_CHECK(p.pointcolor == Color::black());
         MINI_CHECK(!p.guid().empty());
         MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
         MINI_CHECK(pstr == "10.000000, 20.000000, 30.000000");
-        MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 1, 1), 1.000000)");
+        MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 0, 1), 1.000000)");
         MINI_CHECK(pcopy == p && pcopy.guid() != p.guid());
         MINI_CHECK(pother != p);
         MINI_CHECK(pmult[0] == 20.0 && pmult[1] == 40.0 && pmult[2] == 60.0);

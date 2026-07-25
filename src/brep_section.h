@@ -3,6 +3,7 @@
 #include "brep.h"
 #include "point.h"
 #include <vector>
+#include <map>
 
 namespace session_cpp {
 
@@ -28,6 +29,9 @@ struct SectionScaffold {
     std::vector<std::vector<int>> segs_by_surfA;  // per A-surface index -> seg ids
     std::vector<std::vector<int>> segs_by_surfB;  // per B-surface index -> seg ids
     double tol3 = 0.0;                            // 3D weld / micro tolerance used
+    double tol3_rep = 0.0;                        // representational tolerance (capture/
+                                                  // micro/tube bands); decoupled from the
+                                                  // junction weld radius (SESSION_REP_MULT)
     // Self-diagnostics ([SCAF] gate): chain fidelity + pave census.
     int n_chains = 0;
     int n_paves_trimA = 0;
@@ -37,9 +41,29 @@ struct SectionScaffold {
     int n_paves_closing = 0;
     int n_dropped_verdict = 0;
     int n_dropped_micro = 0;
+    int n_bridge_marched = 0;                     // valence-1 bridge: same-pair SSI re-marches appended
+    int n_bridge_welded = 0;                      // valence-1 bridge: cross-pair junctions fused
+    int n_bridge_residual = 0;                    // valence-1 vertices still dangling after the bridge
     double max_devA = 0.0;                        // max |A(uvA[i]) - p3[i]| over all chains
     double max_devB = 0.0;                        // max |B(uvB[i]) - p3[i]|
 };
+
+// BOP2 (SESSION_BOP2) — SHARED-EDGE POOL: the OCCT BOPDS_PaveBlock analog. Each section
+// pave-block (a SectionSegment) is minted ONCE as a single topological edge whose 3D curve
+// is the shared chain and whose endpoints are the scaffold's 3D-welded pave vertices, so both
+// operands' face arrangements REFERENCE the same edge (2-trim by construction) instead of
+// minting private copies that must be aliased/sewn afterward. `arena` owns only the shared
+// vertices + section edges; the operand splits attach their own pcurves + trims to these edges.
+struct SharedEdgePool {
+    BRep arena;                                   // owns m_vertices/m_topology_vertices/m_curves_3d/m_topology_edges
+    std::vector<int> vert_tv;                     // scaffold vertex id -> arena topology-vertex idx
+    std::vector<int> seg_edge;                    // seg_id -> arena edge idx (block 0 / whole seg)
+    std::map<std::pair<int,int>, int> block_edge; // (seg_id, block) -> arena edge idx
+};
+
+// Build the shared-edge pool from a finished scaffold (M1). One edge per segment, endpoints =
+// scaffold welded pave vertices -> both operands land on the SAME topology vertex by construction.
+SharedEdgePool build_shared_edge_pool(const SectionScaffold& scaf);
 
 // Build the shared section scaffold for an imported-freeform boolean pair (OCCT
 // PaveFiller MakeBlocks analog). Runs ONE SSI per overlapping surface pair (with the
@@ -49,5 +73,22 @@ struct SectionScaffold {
 // keep-verdict per interval (midpoint inside A's trims AND B's trims), drops micro
 // intervals symmetrically, and welds pave vertices in 3D across all pairs.
 SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tolerance);
+
+// PRESERVE-IDENTITY REFINEMENT (OCCT's "re-compare after splits" / PostTreatFF step).
+// A face's UV arrangement can discover a crossing INTERIOR to a section segment -- a place
+// the scaffold did not pave. The operand then emits a partial run there, and because the
+// two operands' arrangements never agree on clip parameters, their partial copies carry
+// different endpoints and no shared identity: the defect that Hausdorff sewing cannot fix.
+// The cure is to make the SCAFFOLD authoritative: feed every discovered breakpoint back,
+// split the shared segment there (both operands' footprints split at the SAME chain index,
+// and the new endpoint becomes ONE welded scaffold vertex), and re-run the splits. After
+// refinement every run spans a whole segment, so each section edge is keyed by segment
+// identity and the operands' copies are the same edge by construction.
+//
+// breaks: seg_id -> fractional chain indices reported by either operand. Splits only open
+// segments (closed/full-wrap segments are left intact and reported). Returns the number of
+// new segments created; 0 means the scaffold already paved every discovered crossing.
+int refine_scaffold_at_breaks(SectionScaffold& scaf,
+                              const std::map<int, std::vector<double>>& breaks);
 
 } // namespace session_cpp

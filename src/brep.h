@@ -148,6 +148,14 @@ public:
     /// Return true if the BRep forms a closed (watertight) solid.
     bool is_solid() const;
 
+    /// OCCT-BRepCheck-style topology audit that is_solid() does not perform: counts naked
+    /// (1-trim) and non-manifold (>2-trim) edges, duplicate vertices/edges, connected shell
+    /// components (union-find over 2-trim adjacency), and the Euler characteristic V-E+F per
+    /// shell (2-2g for a closed orientable shell). Returns a one-line-per-metric report; the
+    /// bool out-param `valid_manifold` is true iff 0 naked, 0 non-manifold, and every shell is
+    /// closed (Euler even). Diagnostic only -- does not mutate.
+    std::string topology_report(bool* valid_manifold = nullptr) const;
+
     /// Validate the trim-orientation invariant (OCCT contract): within each loop the trims,
     /// traversed with their `reversed` flags applied, chain head-to-tail and close; where the
     /// loop does not jump a periodic seam, its signed UV area matches its type (outer CCW,
@@ -167,6 +175,14 @@ public:
     /// As contains_point but reusing a precomputed boundary mesh (avoids re-tessellation
     /// when classifying many points against the same solid).
     bool contains_point(const Mesh& boundary, const Point& p) const;
+
+    /// EXACT point-in-solid, mesh-free: find the closest point on the TRIMMED boundary
+    /// (nearest surface point that lies inside its face's trim loops, over all faces) and
+    /// return true iff `p` is on the inner side of that face's outward normal. Immune to the
+    /// tessellation over/under-coverage that makes the winding-number/ray classifiers on a
+    /// self-overlapping imported mesh answer wrong (rotated freeform chairs). `osign` is the
+    /// per-face outward sign from face_outward_signs() (pass empty to compute internally).
+    bool contains_point_exact(const Point& p, const std::vector<double>& osign) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Building
@@ -226,7 +242,34 @@ public:
                        const struct SectionScaffold* scaf = nullptr, bool scaf_is_A = true,
                        std::map<int, std::array<int, 3>>* sec_edges_out = nullptr,
                        std::vector<int>* face_src_out = nullptr,
-                       const std::vector<std::vector<NurbsCurve>>* extra_cuts = nullptr) const;
+                       const std::vector<std::vector<NurbsCurve>>* extra_cuts = nullptr,
+                       std::map<int, std::array<double, 3>>* sec_spans_out = nullptr,
+                       const struct SharedEdgePool* pool = nullptr) const;
+
+    /// OCCT pave-block normalization of scaffold section edges. spans: edge index ->
+    /// {seg_id, fa, fb} (fractional chain-index range of the edge on its segment, recorded
+    /// by split_by_brep for every chain-lifted run). Per segment, the union of all edges'
+    /// range ends forms the pave set; every edge is split at interior paves (3D re-extracted
+    /// from the shared chain, so pieces are bit-identical across copies) and same-block
+    /// copies are merged into one edge (capped at 2 trims). This is the BOPDS common-block
+    /// analog: partial runs whose clip params disagree across flanks/operands become
+    /// identical per-block edges instead of relying on Hausdorff sewing. Updates spans and
+    /// sec_edges (whole-segment keys re-validated, block edges keyed) in place. Returns the
+    /// number of edges merged away.
+    int normalize_section_blocks(const struct SectionScaffold& scaf,
+                                 std::map<int, std::array<double, 3>>& spans,
+                                 std::map<int, std::array<int, 3>>* sec_edges,
+                                 const char* tag,
+                                 const std::map<int, std::vector<double>>* shared_centers = nullptr);
+
+    /// Recover span records for LEGACY-lifted section edges: an under-mated (< 2-trim) edge whose
+    /// samples all lie on a scaffold segment's shared chain but which carries no {seg_id,fa,fb}
+    /// span (it was dropped to a straight-chord / boundary edge by the operand's arrangement) is
+    /// matched geometrically to that segment and given a span, so normalize_section_blocks pulls it
+    /// into the identity-based pave-block merge instead of leaving it for Hausdorff sewing (which
+    /// fails on staggered copies). Returns the number of spans recovered. Adds to `spans` in place.
+    int recover_section_spans(const struct SectionScaffold& scaf,
+                              std::map<int, std::array<double, 3>>& spans);
 
     /// Build a standalone BRep from a subset of this BRep's faces. edge_remap (optional):
     /// old topology-edge index -> new index for edges carried into the subset.
@@ -259,7 +302,7 @@ public:
     /// edges is broken to match them. Splits the edge's 3D curve and each trim's 2D pcurve,
     /// updating the owning loops. Run before sew_coincident_edges to resolve mismatched
     /// boundary segmentation between adjacent faces. Modifies in place.
-    void imprint_edges(double tol = 0.0);
+    void imprint_edges(double tol = 0.0, bool mated_too = false);
 
     /// Merge edges whose 3D curves coincide (Hausdorff < tol) into single mated edges, and
     /// weld vertices within tol. Repairs a non-watertight BRep (e.g. after split/boolean) so
@@ -457,7 +500,9 @@ private:
                     const struct SectionScaffold* scaf = nullptr, bool scaf_is_A = true,
                     std::map<int, std::array<int, 3>>* sec_edges_out = nullptr,
                     std::vector<int>* face_src_out = nullptr,
-                    const std::vector<std::vector<NurbsCurve>>* extra_cuts = nullptr) const;
+                    const std::vector<std::vector<NurbsCurve>>* extra_cuts = nullptr,
+                    std::map<int, std::array<double, 3>>* sec_spans_out = nullptr,
+                    const struct SharedEdgePool* pool = nullptr) const;
 };
 
 } // namespace session_cpp
