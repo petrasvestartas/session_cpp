@@ -1,0 +1,59 @@
+{
+  "type": "Session",
+  "name": "my_session",
+  "guid": "8081b2bc-3085-4161-9d01-0a015505d640",
+  "objects": {
+    "type": "Objects",
+    "guid": "005ef373-03e1-4cac-a489-10524195791a",
+    "name": "my_objects",
+    "bboxes": [],
+    "breps": [],
+    "elements": [],
+    "lines": [],
+    "meshes": [],
+    "nurbscurves": [],
+    "nurbssurfaces": [],
+    "planes": [],
+    "points": [],
+    "pointclouds": [],
+    "polylines": [],
+    "components": [
+      {
+        "size": 3000,
+        "height": 650,
+        "rise": 453,
+        "type": "FloorBuilder",
+        "guid": "321aa442-1bba-43ec-966b-abbc7ef81f19",
+        "name": "floor_builder"
+      }
+    ]
+  },
+  "tree": {
+    "type": "Tree",
+    "guid": "ddf92013-7b00-48b4-9f4e-d70b329b9ab7",
+    "name": "my_session_tree",
+    "root": {
+      "type": "TreeNode",
+      "guid": "d4dc041d-b96e-4d0a-a74f-992101dc4e45",
+      "name": "my_session",
+      "children": []
+    }
+  },
+  "graph": {
+    "type": "Graph",
+    "name": "my_session_graph",
+    "guid": "c6761b07-daa7-45b7-8eb3-f8d7f1994dd0",
+    "vertices": [
+      {
+        "type": "Vertex",
+        "name": "321aa442-1bba-43ec-966b-abbc7ef81f19",
+        "guid": "82c379b8-75b0-4ab0-8d56-3696a3b158a7",
+        "attribute": "component_floor_builder",
+        "index": 0
+      }
+    ],
+    "edges": [],
+    "vertex_count": 1,
+    "edge_count": 0
+  }
+}

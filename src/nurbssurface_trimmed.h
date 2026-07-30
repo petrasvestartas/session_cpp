@@ -52,6 +52,19 @@ public:
     std::vector<std::array<double, 3>> m_outer_segment_srcs;
     std::vector<std::vector<std::array<double, 3>>> m_inner_segment_srcs;
 
+    // SEAM-MERGED CO-REGIONS (transient, SESSION_SEAM_MERGE). On a chart that is CLOSED in u
+    // (or v) the lines u=u0 and u=u1 are THE SAME 3D meridian, so two UV regions that meet
+    // there are ONE face. Their union is not a connected polygon in [u0,u1]x[v0,v1] and the
+    // surface cannot be evaluated outside its domain, so the merged face carries its second
+    // region as an ADDITIONAL OUTER wire (exactly how the untrimmed primitive sphere face is
+    // already built: one face, one wire per seam side, the seam edge referenced twice). The
+    // shared seam edge then has two trims that both belong to this one face -- a seam edge,
+    // not a naked one -- and brep_massprops integrates the union because the two wires' UV
+    // boxes are disjoint (so neither is healed into a hole of the other).
+    std::vector<NurbsCurve> m_extra_outer_loops;
+    std::vector<std::vector<NurbsCurve>> m_extra_outer_segments;
+    std::vector<std::vector<std::array<double, 3>>> m_extra_outer_segment_srcs;
+
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Static Factory Methods

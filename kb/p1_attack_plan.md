@@ -142,4 +142,5 @@ overlap means totals are upper bounds per mechanism but the union covers all 174
    the symmetric control path is untouched. Verify z15 17→0 first (single-mechanism config), then z45/z37/z30.
 
 Regression gates per step: z30x20 cut must stay faces 34 / naked 0; base chairs cut/common/fuse exact
-(35/46.8114, 25/33.4951, 50/127.0950); matrix 45/45.
+(35/46.7943, 25/33.5025, 50/127.0913); matrix 45/45.
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->

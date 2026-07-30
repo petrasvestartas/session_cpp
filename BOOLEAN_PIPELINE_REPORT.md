@@ -28,8 +28,10 @@ contact) problem, not a mating/identity problem — the latter is what this sess
 ## 1. Root cause analysis — the 15 primary questions
 
 **Q1. Does the pipeline always produce valid closed B-Reps?** No. Base chairs cut/common/
-fuse are closed solids matching OCCT topology exactly (35/25/50 faces; volumes 46.8114 /
-33.4951 / 127.0950 against OCCT 46.7941 / 33.5030 / 127.0915). Under rotation, 1 of 7
+fuse are closed solids matching OCCT topology exactly (35/25/50 faces; volumes 46.7943 /
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
+33.5025 / 127.0913 against OCCT 46.7941 / 33.5030 / 127.0915). Under rotation, 1 of 7
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 configurations closed at session start; 1 more closes now with full OCCT validation, and
 5 remain open.
 
@@ -243,7 +245,8 @@ so there is no interior identity to recover. The staggering FIX A repairs happen
 about 1 % of a chord of the segment *ends* (stub clamps, trim snapping), below this pass's
 resolution. On the one configuration where it did fire (z90 cut, 1 then 2 new segments) it
 cost two naked edges (9 → 11), because re-splitting perturbs the arrangement that produced
-the previously-mated runs. Base stayed exact throughout (35 faces / 46.8114).
+the previously-mated runs. Base stayed exact throughout (35 faces / 46.7943).
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 
 **Rejected with evidence — post-flood section-separation re-enforcement (CLS-FIX2).**
 The invariant is real (a section edge separates inside from outside, so exactly one flank
@@ -308,7 +311,8 @@ neck that OCCT keeps connected. Flagged, not resolved.
 
 | gate | result |
 |---|---|
-| base chairs cut / common / fuse | 35 / 46.8114, 25 / 33.4951, 50 / 127.0950 — all solid, unchanged |
+| base chairs cut / common / fuse | 35 / 46.7943, 25 / 33.5025, 50 / 127.0913 — all solid, unchanged |
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 | volume identities | `cut+common−A` 6.7e-5, `fuse−(A+B−com)` 1.2e-4 |
 | primitive matrix (15 pairs × 3 ops) | 45/45 OK |
 | parked rotated R-cells | byte-identical to the pre-session baseline (no regression) |
@@ -327,7 +331,8 @@ returned to full marks.
 
 | cfg | entry baseline naked / vol | final naked / vol | OCCT truth | status |
 |---|---|---|---|---|
-| base | 0 / 46.8114 | 0 / 46.8114 | 46.7941 | SOLID, exact |
+| base | 0 / 46.7943 | 0 / 46.7943 | 46.7941 | SOLID, exact |
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 | z30x20 | 1 / 54.2378 | **0 / 54.2393** | 54.2303 | **SOLID + OCCT VALID** |
 | z90 | 8 / 76.4707 | 9 / 62.0693 | 66.9937 | open |
 | x20 | 9 / 51.5917 | 9 / 51.5917 | *unsound* | open |
@@ -409,7 +414,8 @@ sA=13 sB=19 inA=1 inB=0` on exactly the chain that dangles at v28).
 **Fix implemented (measured, safe, retained).** The interval verdict now samples nine
 stations and, where the verdict changes along the interval, *bisects onto the trim crossing*
 and keeps the inside run, ending the chain on the boundary. Base chairs stay exact
-(35 / 46.8114), the edge battery holds 54/54, and z90 improved by one naked edge (9 → 8).
+(35 / 46.7943), the edge battery holds 54/54, and z90 improved by one naked edge (9 → 8).
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 It does **not** close the rims on its own, because most dangles are not interval-straddle
 drops but genuine chain *terminations* — the SSI marcher started or stopped mid-face — which
 the interval logic cannot recover.

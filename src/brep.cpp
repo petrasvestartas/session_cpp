@@ -1,5 +1,6 @@
 #include "brep.h"
 #include "brep_section.h"
+#include "brep_samedomain.h"
 #include "remesh_nurbssurface_grid.h"
 #include "remesh_cdt.h"
 #include "primitives.h"
@@ -19,9 +20,162 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstdio>
+#include <stdexcept>
+#ifdef __linux__
+#include <unistd.h>
+#endif
+#include "brep_massprops.h"
 #include "brep.pb.h"
 
 namespace session_cpp {
+
+// ---- Boolean resource guard (AUTO memory balloon, task #9) -----------------------------
+// A grazing-config SYMEMIT re-split feeds the UV arrangement two nearly-coincident copies
+// of one section polyline; their sampled micro-crossings dice the segment into a sliver
+// ladder (measured z37 cut: 265 chain-lift runs of seg 21, 19k+ topology edges, 8.3 GB
+// RSS, std::bad_alloc). Bounds: (a) g_segrun_cap = max chain-lift runs per segment per
+// operand split; (b) g_mem_cap_mb = RSS ceiling checked at the per-face arrangement and
+// every 8th capped run. Tripping either THROWS; the AUTO ladder catches, discards that
+// variant and continues (ACIS retry-loop doctrine: a failed escalation is a verdict, not
+// a crash). Both caps are 0 (inert, byte-identical pipeline) unless armed by the AUTO
+// ladder or explicitly via SESSION_MEM_CAP_MB / SESSION_SEGRUN_CAP.
+namespace {
+long brep_rss_mb() {
+#ifdef __linux__
+    std::FILE* f = std::fopen("/proc/self/statm", "r");
+    if (!f) return 0;
+    long pages = 0, resident = 0;
+    int nr = std::fscanf(f, "%ld %ld", &pages, &resident);
+    std::fclose(f);
+    if (nr != 2) return 0;
+    return resident * (sysconf(_SC_PAGESIZE) / 1024L) / 1024L;
+#else
+    return 0;
+#endif
+}
+long g_mem_cap_mb = 0;   // 0 = off
+int g_segrun_cap = 0;    // 0 = off
+// Connected-component (SHELL) count over faces linked by shared topology edges. is_solid()
+// only asserts "every edge has 2 trims", which a result that has come APART into several
+// separately-closed shells still satisfies -- an independent OCCT read of the result set found
+// 2-4 shells on every rotated config except z30x20, invisible to the naked-edge metric. A
+// config going 1 -> N shells is a stronger and earlier signal than naked count (doctrine
+// Law 6: validity is a pipeline invariant, not a final check).
+int brep_shell_count(const BRep& X) {
+    int nf = (int)X.m_faces.size();
+    if (nf == 0) return 0;
+    std::vector<int> par(nf);
+    for (int i = 0; i < nf; ++i) par[i] = i;
+    std::function<int(int)> find = [&](int a) { return par[a] == a ? a : par[a] = find(par[a]); };
+    std::map<int, int> first_face;   // edge index -> a face using it
+    for (int fi = 0; fi < nf; ++fi)
+        for (int li : X.m_faces[fi].loop_indices) {
+            if (li < 0 || li >= (int)X.m_loops.size()) continue;
+            for (int ti : X.m_loops[li].trim_indices) {
+                if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
+                int ei = X.m_trims[ti].edge_index;
+                if (ei < 0) continue;
+                auto it = first_face.find(ei);
+                if (it == first_face.end()) first_face[ei] = fi;
+                else par[find(it->second)] = find(fi);
+            }
+        }
+    std::set<int> comps;
+    for (int fi = 0; fi < nf; ++fi) comps.insert(find(fi));
+    return (int)comps.size();
+}
+void brep_seam_audit(const BRep& result, double tolerance) {
+        auto trim_pts = [&](int ti, int n, std::vector<Point>& out) {
+            const BRepTrim& T = result.m_trims[ti];
+            if (T.curve_2d_index < 0 || T.curve_2d_index >= (int)result.m_curves_2d.size()) return false;
+            int li = T.loop_index;
+            if (li < 0 || li >= (int)result.m_loops.size()) return false;
+            int fi = result.m_loops[li].face_index;
+            if (fi < 0 || fi >= (int)result.m_faces.size()) return false;
+            int si = result.m_faces[fi].surface_index;
+            if (si < 0 || si >= (int)result.m_surfaces.size()) return false;
+            const NurbsCurve& pc = result.m_curves_2d[T.curve_2d_index];
+            const NurbsSurface& S = result.m_surfaces[si];
+            auto d = pc.domain();
+            out.clear();
+            for (int k = 0; k <= n; ++k) {
+                Point uv = pc.point_at(d.first + (d.second - d.first) * k / n);
+                out.push_back(S.point_at(uv[0], uv[1]));
+            }
+            return true;
+        };
+        auto hausdorff = [](const std::vector<Point>& a, const std::vector<Point>& b) {
+            double m = 0;
+            for (const auto& p : a) {
+                double bd = 1e300;
+                for (size_t j = 0; j + 1 < b.size(); ++j) {
+                    double ex = b[j+1][0]-b[j][0], ey = b[j+1][1]-b[j][1], ez = b[j+1][2]-b[j][2];
+                    double L2 = ex*ex + ey*ey + ez*ez;
+                    double t = L2 > 1e-30 ? ((p[0]-b[j][0])*ex + (p[1]-b[j][1])*ey + (p[2]-b[j][2])*ez) / L2 : 0.0;
+                    t = std::min(1.0, std::max(0.0, t));
+                    Point q(b[j][0]+t*ex, b[j][1]+t*ey, b[j][2]+t*ez);
+                    bd = std::min(bd, p.distance(q));
+                }
+                m = std::max(m, bd);
+            }
+            return m;
+        };
+        const int NS = 12;
+        double band = tolerance > 0 ? tolerance : 1e-6;
+        int n_dev = 0, n_share = 0;
+        std::vector<std::vector<Point>> esamp(result.m_topology_edges.size());
+        std::vector<int> ntrim(result.m_topology_edges.size(), 0);
+        for (size_t e = 0; e < result.m_topology_edges.size(); ++e) {
+            const auto& E = result.m_topology_edges[e];
+            ntrim[e] = (int)E.trim_indices.size();
+            if (E.trim_indices.empty()) continue;
+            std::vector<Point> a;
+            if (trim_pts(E.trim_indices[0], NS, a)) esamp[e] = a;
+            if (E.trim_indices.size() == 2) {
+                std::vector<Point> b;
+                if (!esamp[e].empty() && trim_pts(E.trim_indices[1], NS, b) && !b.empty()) {
+                    double dv = std::max(hausdorff(esamp[e], b), hausdorff(b, esamp[e]));
+                    if (dv > band * 10) {
+                        ++n_dev;
+                        const Point& m0 = esamp[e][NS/2];
+                        std::fprintf(stderr, "[SEAM-DEV] e=%zu dev=%.6f at (%.4f,%.4f,%.4f)\n",
+                                     e, dv, m0[0], m0[1], m0[2]);
+                    }
+                }
+            }
+        }
+        // sharing: distinct edge records whose sampled curves coincide
+        for (size_t e = 0; e < esamp.size(); ++e) {
+            if (esamp[e].empty()) continue;
+            for (size_t f = e + 1; f < esamp.size(); ++f) {
+                if (esamp[f].empty()) continue;
+                if (esamp[e][NS/2].distance(esamp[f][NS/2]) > band * 1e3) continue;   // cheap reject
+                double dv = std::max(hausdorff(esamp[e], esamp[f]), hausdorff(esamp[f], esamp[e]));
+                if (dv <= band * 10) {
+                    ++n_share;
+                    const Point& m0 = esamp[e][NS/2];
+                    std::fprintf(stderr, "[SEAM-SHARE] e=%zu(%dt) == e=%zu(%dt) gap=%.3e at (%.4f,%.4f,%.4f)\n",
+                                 e, ntrim[e], f, ntrim[f], dv, m0[0], m0[1], m0[2]);
+                }
+            }
+        }
+        std::fprintf(stderr, "[SEAM] diverging 2-trim edges=%d unshared coincident pairs=%d (band=%.2e)\n",
+                     n_dev, n_share, band);
+        std::fflush(stderr);
+}
+
+// (surface_index, seg_id) pairs actually fed as cut pcurves by the LAST split_with scaffold
+// pass. Read by boolean()'s SYMEMIT emission to avoid re-imprinting a section the face
+// already received (see SYMEMIT-DUP note there). Single-threaded pipeline; reset per split.
+std::set<std::pair<int, int>> g_fed_cuts;
+void guard_check_mem(const char* where) {
+    if (g_mem_cap_mb <= 0) return;
+    long r = brep_rss_mb();
+    if (r > g_mem_cap_mb)
+        throw std::runtime_error(std::string("[MEMCAP] rss ") + std::to_string(r) + "MB > " +
+                                 std::to_string(g_mem_cap_mb) + "MB at " + where);
+}
+}  // namespace
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Constructors
@@ -300,6 +454,26 @@ BRep BRep::create_sphere(double radius) {
     int ci_seam = brep.add_curve_3d(seam_crv);
     int ei_seam = brep.add_edge(ci_seam, 0, 1);
 
+    // POLE EDGES (SESSION_POLE_EDGE), OCCT convention. OCCT's input sphere carries THREE edges:
+    // two DEGENERATED edges spanning the full u period, one per pole, plus the seam meridian --
+    // a pole edge appears ONCE in the wire, the seam twice. Our results already agree with that
+    // (degenerate-edge counts match res_degen exactly at roty0/24/30) but our PRIMITIVE gave the
+    // pole trims edge_index = -1, so a consumer walking a wire saw a different topology for a
+    // primitive than for a boolean result built from it. The degenerate curve is the v=const
+    // iso, so it carries the surface's own u knot vector and hence OCCT's [u0,u1] range.
+    // DEFAULT ON (SESSION_NO_POLE_EDGE opts out). Guards battery run with it on and every
+    // measure unchanged: primitive matrix 60 cells 0 changed, edge grid 54/54, chairs
+    // 35/46.7943 + 25/33.5025 + 50/127.0913, C++ minitests 760/760, rotated-primitive sweep
+    // 95 cells 0 changed, SPHCYL sweep byte-identical. It only adds the two edge records.
+    static const bool s_pole_edge = (std::getenv("SESSION_NO_POLE_EDGE") == nullptr);
+    int ei_pole_s = -1, ei_pole_n = -1;
+    if (s_pole_edge) {
+        NurbsCurve deg_s = srf.iso_curve(0, dom_v.first);
+        NurbsCurve deg_n = srf.iso_curve(0, dom_v.second);
+        if (deg_s.is_valid()) ei_pole_s = brep.add_edge(brep.add_curve_3d(deg_s), 0, 0);
+        if (deg_n.is_valid()) ei_pole_n = brep.add_edge(brep.add_curve_3d(deg_n), 1, 1);
+    }
+
     int si = brep.add_surface(srf);
     int fi = brep.add_face(si, false);
     int li = brep.add_loop(fi, BRepLoopType::Outer);
@@ -308,7 +482,7 @@ BRep BRep::create_sphere(double radius) {
         Point(dom_u.first, dom_v.first, 0),
         Point(dom_u.second, dom_v.first, 0),
     });
-    brep.add_trim(brep.add_curve_2d(c2d_south), -1, li, false, BRepTrimType::Singular);
+    brep.add_trim(brep.add_curve_2d(c2d_south), ei_pole_s, li, false, BRepTrimType::Singular);
     auto c2d_sr = NurbsCurve::create(false, 1, {
         Point(dom_u.second, dom_v.first, 0),
         Point(dom_u.second, dom_v.second, 0),
@@ -318,7 +492,7 @@ BRep BRep::create_sphere(double radius) {
         Point(dom_u.second, dom_v.second, 0),
         Point(dom_u.first, dom_v.second, 0),
     });
-    brep.add_trim(brep.add_curve_2d(c2d_north), -1, li, false, BRepTrimType::Singular);
+    brep.add_trim(brep.add_curve_2d(c2d_north), ei_pole_n, li, false, BRepTrimType::Singular);
     auto c2d_sl = NurbsCurve::create(false, 1, {
         Point(dom_u.first, dom_v.second, 0),
         Point(dom_u.first, dom_v.first, 0),
@@ -355,6 +529,14 @@ BRep BRep::create_cone(double radius, double height) {
     int ci_seam = brep.add_curve_3d(seam_line);
     int ei_base = brep.add_edge(ci_base, vi_base, vi_base);
     int ei_seam = brep.add_edge(ci_seam, vi_base, vi_apex);
+    // Apex pole edge, same OCCT convention as the sphere's two poles (see create_sphere).
+    // The cone has ONE singular boundary (v=v1, the apex); v=v0 is a genuine base circle.
+    static const bool s_pole_edge_c = (std::getenv("SESSION_NO_POLE_EDGE") == nullptr);
+    int ei_pole_a = -1;
+    if (s_pole_edge_c) {
+        NurbsCurve deg_a = body.iso_curve(0, dom_v.second);
+        if (deg_a.is_valid()) ei_pole_a = brep.add_edge(brep.add_curve_3d(deg_a), vi_apex, vi_apex);
+    }
 
     int si_body = brep.add_surface(body);
     NurbsSurface cap_base; cap_base.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
@@ -374,7 +556,7 @@ BRep BRep::create_cone(double radius, double height) {
     brep.add_trim(brep.add_curve_2d(c2d_sr), ei_seam, li_body, false, BRepTrimType::Seam);
     auto c2d_apex = NurbsCurve::create(false, 1, {
         Point(dom_u.second, dom_v.second, 0), Point(dom_u.first, dom_v.second, 0)});
-    brep.add_trim(brep.add_curve_2d(c2d_apex), -1, li_body, false, BRepTrimType::Singular);
+    brep.add_trim(brep.add_curve_2d(c2d_apex), ei_pole_a, li_body, false, BRepTrimType::Singular);
     auto c2d_sl = NurbsCurve::create(false, 1, {
         Point(dom_u.first, dom_v.second, 0), Point(dom_u.first, dom_v.first, 0)});
     brep.add_trim(brep.add_curve_2d(c2d_sl), ei_seam, li_body, true, BRepTrimType::Seam);
@@ -965,6 +1147,119 @@ bool BRep::is_solid() const {
     return solid;
 }
 
+double BRep::update_tolerances(double floor_tol, double vertex_pad, int samples_per_span) {
+    // Closest point on `c` to `q` in [ta,tb], Newton-polished from `t`. The seed is a
+    // parameter-fraction match along the same edge, so this is a local polish and not a search.
+    auto closest_on = [](const NurbsCurve& c, const Point& q, double ta, double tb, double t) {
+        if (tb < ta) std::swap(ta, tb);
+        t = std::min(std::max(t, ta), tb);
+        double best = 1e300;
+        for (int it = 0; it < 10; ++it) {
+            std::vector<Vector> d = c.evaluate(t, 2);
+            if (d.size() < 3) break;
+            const double rx = d[0][0]-q[0], ry = d[0][1]-q[1], rz = d[0][2]-q[2];
+            best = std::min(best, rx*rx + ry*ry + rz*rz);
+            const double f  = rx*d[1][0] + ry*d[1][1] + rz*d[1][2];
+            const double fp = d[1][0]*d[1][0] + d[1][1]*d[1][1] + d[1][2]*d[1][2]
+                            + rx*d[2][0] + ry*d[2][1] + rz*d[2][2];
+            if (std::abs(fp) < 1e-300) break;
+            double tn = std::min(std::max(t - f/fp, ta), tb);
+            if (std::abs(tn - t) <= 1e-16 * std::max(1.0, std::abs(t))) { t = tn; break; }
+            t = tn;
+        }
+        Point p = c.point_at(t);
+        double dx = p[0]-q[0], dy = p[1]-q[1], dz = p[2]-q[2];
+        return std::sqrt(std::min(best, dx*dx + dy*dy + dz*dz));
+    };
+    const int K = std::max(1, samples_per_span);
+    double worst = 0.0;
+    for (auto& e : m_topology_edges) {
+        double tol = floor_tol;
+        if (e.curve_3d_index >= 0 && e.curve_3d_index < (int)m_curves_3d.size()) {
+            const NurbsCurve& C = m_curves_3d[e.curve_3d_index];
+            auto dc = C.domain();
+            for (int ti : e.trim_indices) {
+                if (ti < 0 || ti >= (int)m_trims.size()) continue;
+                const BRepTrim& T = m_trims[ti];
+                if (T.curve_2d_index < 0 || T.curve_2d_index >= (int)m_curves_2d.size()) continue;
+                if (T.loop_index < 0 || T.loop_index >= (int)m_loops.size()) continue;
+                int fi = m_loops[T.loop_index].face_index;
+                if (fi < 0 || fi >= (int)m_faces.size()) continue;
+                int si = m_faces[fi].surface_index;
+                if (si < 0 || si >= (int)m_surfaces.size()) continue;
+                const NurbsSurface& S = m_surfaces[si];
+                const NurbsCurve& P = m_curves_2d[T.curve_2d_index];
+                auto dp = P.domain();
+                // Sample density follows the pcurve's OWN spans, so a finely represented trim
+                // is measured finely and a 2-CV exact one is not oversampled.
+                int nspan = std::max(1, P.cv_count() - P.degree());
+                int n = std::min(std::max(nspan * K, 16), 4000);
+                // The pcurve is CHORD-parametrized and the 3D curve is (typically) a rational
+                // conic whose parameter is not arc length, so a same-FRACTION seed is off by
+                // the whole reparametrization -- measured, that mis-seeding reported 3.0 on a
+                // circle of radius 1.5, i.e. the diameter. Seed from a coarse table of the 3D
+                // curve instead, then Newton-polish inside the bracketing table interval.
+                const int M = std::min(std::max(nspan * 2, 64), 2048);
+                std::vector<Point> tab;
+                tab.reserve(M + 1);
+                for (int k = 0; k <= M; ++k)
+                    tab.push_back(C.point_at(dc.first + (dc.second - dc.first) * k / M));
+                double tdev = 0.0, dev_a = 0.0, dev_b = 0.0;
+                for (int i = 0; i <= n; ++i) {
+                    double f = (double)i / n;
+                    Point uv = P.point_at(dp.first + (dp.second - dp.first) * f);
+                    Point q = S.point_at(uv[0], uv[1]);
+                    int bk = 0; double bd = 1e300;
+                    for (int k = 0; k <= M; ++k) {
+                        double dd = tab[k].distance(q);
+                        if (dd < bd) { bd = dd; bk = k; }
+                    }
+                    const double h = (dc.second - dc.first) / M;
+                    double ta = dc.first + h * std::max(0, bk - 1);
+                    double tb = dc.first + h * std::min(M, bk + 1);
+                    double dv = closest_on(C, q, ta, tb, dc.first + h * bk);
+                    tol = std::max(tol, dv);
+                    tdev = std::max(tdev, dv);
+                    if (i == 0) dev_a = dv;
+                    if (i == n) dev_b = dv;
+                }
+                if (const char* td = std::getenv("SESSION_ETOL_DBG"); td && td[0]) {
+                    Point a2 = S.point_at(P.point_at(dp.first)[0], P.point_at(dp.first)[1]);
+                    Point b2 = S.point_at(P.point_at(dp.second)[0], P.point_at(dp.second)[1]);
+                    std::fprintf(stderr,
+                        "[ETOLD] e%d t%d f%d s%d pc(d%d,%d cv) dev=%.3e end0=%.3e end1=%.3e "
+                        "pc0=(%.6f,%.6f,%.6f) pc1=(%.6f,%.6f,%.6f) c0=(%.6f,%.6f,%.6f) c1=(%.6f,%.6f,%.6f)\n",
+                        (int)(&e - &m_topology_edges[0]), ti, fi, si, P.degree(), P.cv_count(),
+                        tdev, dev_a, dev_b, a2[0],a2[1],a2[2], b2[0],b2[1],b2[2],
+                        tab.front()[0],tab.front()[1],tab.front()[2],
+                        tab.back()[0],tab.back()[1],tab.back()[2]);
+                }
+            }
+        }
+        e.tolerance = tol;
+        worst = std::max(worst, tol);
+    }
+    for (auto& v : m_topology_vertices) {
+        double tol = floor_tol;
+        Point vp(0, 0, 0);
+        bool have = v.point_index >= 0 && v.point_index < (int)m_vertices.size();
+        if (have) vp = m_vertices[v.point_index];
+        for (int ei : v.edge_indices) {
+            if (ei < 0 || ei >= (int)m_topology_edges.size()) continue;
+            const BRepEdge& E = m_topology_edges[ei];
+            // OCCT enlarges a vertex to the incident curve tolerance plus exactly 1.0e-12.
+            tol = std::max(tol, E.tolerance + vertex_pad);
+            if (!have || E.curve_3d_index < 0 || E.curve_3d_index >= (int)m_curves_3d.size()) continue;
+            const NurbsCurve& C = m_curves_3d[E.curve_3d_index];
+            auto dc = C.domain();
+            tol = std::max(tol, std::min(vp.distance(C.point_at(dc.first)),
+                                         vp.distance(C.point_at(dc.second))));
+        }
+        v.tolerance = tol;
+    }
+    return worst;
+}
+
 std::string BRep::topology_report(bool* valid_manifold) const {
     int nf = (int)m_faces.size();
     int ne = (int)m_topology_edges.size();
@@ -1181,7 +1476,18 @@ bool BRep::contains_point_exact(const Point& p, const std::vector<double>& osign
         return bd;
     };
     bool exact2 = std::getenv("SESSION_NO_EXACT_PIP2") == nullptr;   // robust boundary-fallback (default on)
+    // PIP-GUARD (session B defect report, kb/p3_integration_notes.md 5.1): the signed-nearest
+    // rule is unsound when the nearest point lies on a TRIM BOUNDARY (the probe is nearest to an
+    // EDGE, where the face normal is not the separating direction -- p and q sit at the same
+    // radius but different angles, so (p-q).n = cos(dtheta)-1 < 0 ALWAYS: a systematic false
+    // "inside" of order the sampling sagitta, measured -1.9e-2 on stacked unit cylinders), and
+    // when the probe direction is tangential to the boundary (|dp| ~ 1e-16 = pure round-off,
+    // sign flips per sample). Tier 1 (free): prefer an INTERIOR hit over an equidistant BOUNDARY
+    // hit. Tier 2: if the winner is still a boundary hit or |dp| <= 1e-6*d, settle by ray parity.
+    static const bool s_pip_guard = (std::getenv("SESSION_PIP_GUARD") != nullptr);
     double best_d = 1e300; int best_fi = -1; double bu = 0, bv = 0;
+    bool best_on_boundary = false;
+    double int_d = 1e300; int int_fi = -1; double iu = 0, iv = 0;   // best INTERIOR (in-trim) hit
     // Pass 1: in-trim closest points (cheap; byte-identical to the legacy path). Off-trim faces
     // are DEFERRED so their (expensive) boundary sampling runs only when it could still win.
     std::vector<std::array<double,4>> offtrim;   // {surf-closest d, fi, u, v}
@@ -1190,7 +1496,8 @@ bool BRep::contains_point_exact(const Point& p, const std::vector<double>& osign
         if (si < 0 || si >= (int)m_surfaces.size()) continue;
         auto [u, v, d] = Closest::surface_point(m_surfaces[si], p);
         if (uv_in_trims(fi, u, v)) {
-            if (d < best_d) { best_d = d; best_fi = fi; bu = u; bv = v; }
+            if (d < best_d) { best_d = d; best_fi = fi; bu = u; bv = v; best_on_boundary = false; }
+            if (d < int_d) { int_d = d; int_fi = fi; iu = u; iv = v; }
         } else if (exact2) {
             offtrim.push_back({d, (double)fi, u, v});
         }
@@ -1205,8 +1512,13 @@ bool BRep::contains_point_exact(const Point& p, const std::vector<double>& osign
             if (o[0] >= best_d) break;   // sorted: this and all later off-trim faces cannot win
             double ou = o[2], ov = o[3];
             double bd = closest_on_trim((int)o[1], ou, ov);
-            if (bd < best_d) { best_d = bd; best_fi = (int)o[1]; bu = ou; bv = ov; }
+            if (bd < best_d) { best_d = bd; best_fi = (int)o[1]; bu = ou; bv = ov; best_on_boundary = true; }
         }
+    }
+    // Tier 1: an interior hit at (essentially) the same distance is the sound one -- its normal
+    // IS the separating direction, while the boundary hit's is not.
+    if (s_pip_guard && best_on_boundary && int_fi >= 0 && int_d <= best_d * (1.0 + 1e-6)) {
+        best_d = int_d; best_fi = int_fi; bu = iu; bv = iv; best_on_boundary = false;
     }
     if (best_fi < 0) return false;   // no in-trim boundary point found: treat as outside
     int si = m_faces[best_fi].surface_index;
@@ -1214,6 +1526,19 @@ bool BRep::contains_point_exact(const Point& p, const std::vector<double>& osign
     double s = (best_fi < (int)sg->size()) ? (*sg)[best_fi] : 1.0;
     Point bpt = m_surfaces[si].point_at(bu, bv);
     double dp = (p[0]-bpt[0])*n[0]*s + (p[1]-bpt[1])*n[1]*s + (p[2]-bpt[2])*n[2]*s;
+    if (s_pip_guard && (best_on_boundary || std::abs(dp) <= 1e-6 * best_d)) {
+        // Tier 2: the sign carries no information here -- settle by ray parity on the mesh.
+        // 1-entry cache (classification probes the SAME operand thousands of times in a row;
+        // mesh() is not cached and tessellating per probe would dominate the runtime).
+        static thread_local const BRep* s_owner = nullptr;
+        static thread_local size_t s_nf = 0, s_nv = 0;
+        static thread_local Mesh s_mesh;
+        if (s_owner != this || s_nf != m_faces.size() || s_nv != m_vertices.size()) {
+            s_mesh = mesh();
+            s_owner = this; s_nf = m_faces.size(); s_nv = m_vertices.size();
+        }
+        return contains_point(s_mesh, p);
+    }
     return dp < 0.0;   // inner side of the outward normal
 }
 
@@ -1440,8 +1765,37 @@ std::vector<double> BRep::face_outward_signs(std::vector<Point>* P3s, std::vecto
             return true;
         };
         if (!outers.empty()) {
-            std::vector<Polyline> all; all.push_back(outers[0]);
-            for (auto& in : inners) all.push_back(in);
+            // Wire-aware, like BRep::boolean's face_sample: a seam-merged face carries one outer
+            // wire per seam side, and a hole belonging to the other wire sits OUTSIDE this one.
+            // No-op for the single-outer-wire faces every default path produces.
+            auto bbox_of = [](const Polyline& pl) {
+                std::array<double,4> b = {1e300, -1e300, 1e300, -1e300};
+                for (const auto& p : pl.get_points()) {
+                    b[0] = std::min(b[0], p[0]); b[1] = std::max(b[1], p[0]);
+                    b[2] = std::min(b[2], p[1]); b[3] = std::max(b[3], p[1]);
+                }
+                return b;
+            };
+            size_t obest = 0;
+            if (outers.size() > 1) {
+                double barea = -1.0;
+                for (size_t k = 0; k < outers.size(); ++k) {
+                    auto b = bbox_of(outers[k]);
+                    double ar = (b[1]-b[0]) * (b[3]-b[2]);
+                    if (ar > barea) { barea = ar; obest = k; }
+                }
+            }
+            std::vector<Polyline> all; all.push_back(outers[obest]);
+            {
+                auto B = bbox_of(outers[obest]);
+                for (auto& in : inners) {
+                    if (outers.size() > 1) {
+                        auto b = bbox_of(in);
+                        if (b[0] < B[0] || b[1] > B[1] || b[2] < B[2] || b[3] > B[3]) continue;
+                    }
+                    all.push_back(in);
+                }
+            }
             std::vector<std::array<int,3>> tris;
             try { tris = RemeshCDT::triangulate(all); } catch (...) {}
             std::vector<Point> flat;
@@ -1987,6 +2341,46 @@ std::vector<double> BRep::face_outward_signs(std::vector<Point>* P3s, std::vecto
 }
 
 double BRep::volume() const {
+    // MIGRATED to the Green-reduced quadrature (brep_massprops). The legacy body below computes
+    // each curved face's flux by a composite Gauss over the TRIM'S UV BOUNDING BOX with a
+    // point-in-trim mask. That is exact only for rectangular trims, and it returns the
+    // COMPLEMENT of a region PINCHED against a chart boundary: measured on sphere r=2.5 minus
+    // cylinder r=1 at the exact pole tangency 23.578178478 deg, where the remaining sphere band
+    // touches v=v1 at a single u, its bounding box becomes the whole domain and this returned
+    // 15.061775908 for a solid whose true volume is 50.388051 -- brep_massprops returned
+    // 50.386790817 on the same BRep. It also differs from the correct integrator by ~2.5e-5
+    // generally, which is the scale this campaign has been steering by.
+    //
+    // brep_massprops reduces the surface integral to a boundary integral over the ACTUAL trim
+    // loops (Green), keeps a closed-form exact path for planar faces, is adaptive under a hard
+    // evaluation budget so it always terminates, and reproduces the analytic volume AND area of
+    // all five primitives to 1e-15 -- with the cylinder and cone CAPS taking the planar
+    // closed-form path and measuring exactly pi r^2, so the "planar face bounded by one closed
+    // trim integrated over the whole parameter rectangle" trap does not fire on them.
+    //
+    // CHAIRS CONSTANTS MOVED. The base-chair gate was cut 46.8114 / common 33.4951 / fuse
+    // 127.0950; those were produced by the legacy integrator and could not satisfy their own
+    // partition identity (cut+common vs vol(A)=80.296862 from validation/OCCT_TRUTH.md was off
+    // by 1.20e-4, the fuse identity by 2.85e-5). The migrated numbers are 46.7943 / 33.5025 /
+    // 127.0913, whose identities are 7.7e-7 and 6.0e-7 -- 155x and 48x better, both inside 1e-6.
+    // Any gate or doc still asserting the old three will report a false regression.
+    //
+    // SESSION_NO_MASSPROPS_VOL restores the legacy integrator for A/B.
+    static const bool s_legacy_vol = (std::getenv("SESSION_NO_MASSPROPS_VOL") != nullptr);
+    if (!s_legacy_vol) {
+        // SESSION_MP_INTERVALS raises brep_massprops' per-trim initial-interval budget. Any
+        // pcurve with more knot spans than that is merged down to it UNIFORMLY, so a densely
+        // sampled boundary (the torus pullback emits 4000 points because its spiric sections
+        // have no rational form) is integrated as a uniformly decimated version of itself.
+        MassPropsOptions o;
+        if (const char* mi = std::getenv("SESSION_MP_INTERVALS")) {
+            int q = std::atoi(mi);
+            if (q > 16) o.max_init_intervals = q;
+        }
+        return brep_massprops(*this, o).volume;
+    }
+
+    // ---- LEGACY bbox-Gauss integrator (opt-in only) ----
     // Divergence theorem: V = (1/3) sum_faces flux_outward, flux = integral of S . n_out dA.
     // This is made independent of stored orientation flags (which differ between primitive
     // constructors and the boolean rebuilder): each face's OUTWARD sign is determined
@@ -2623,7 +3017,12 @@ double BRep::volume() const {
         // full-domain rect face's seam boundaries cancel pairwise (I = 0), so the rect Gauss
         // stays authoritative there (rect_trim is coverage-gated: masked faces never qualify).
         double gauss_val = flux_nat;
-        if (have_analytic && !curved_rect && !pole_face) flux_nat = flux_analytic;
+        // SESSION_NO_ANFLUX: fall back to the numeric Gauss flux even where the closed-form
+        // chart integral is available. Diagnostic for the 9.4e-05 cluster -- if the error
+        // VANISHES with the analytic path disabled, the closed-form formula (not the
+        // quadrature) is what is wrong, which is the opposite of the standing assumption.
+        static const bool s_no_anflux = (std::getenv("SESSION_NO_ANFLUX") != nullptr);
+        if (have_analytic && !curved_rect && !pole_face && !s_no_anflux) flux_nat = flux_analytic;
         if (std::getenv("SESSION_VOL_DBG"))
             std::fprintf(stderr,"[VOLDBG] f=%ld planar=%d haveA=%d rect=%d pole=%d sign=%.0f gauss=%.6f an=%.6f\n",
                 (long)(&face-&m_faces[0]), is_planar(srf)?1:0, have_analytic?1:0, curved_rect?1:0, pole_face?1:0, sign, gauss_val, flux_analytic);
@@ -2631,6 +3030,7 @@ double BRep::volume() const {
     }
     return std::abs(total) / 3.0;
 }
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 // Building
@@ -3272,6 +3672,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                       const std::vector<std::vector<NurbsCurve>>* extra_cuts,
                       std::map<int, std::array<double, 3>>* sec_spans_out,
                       const SharedEdgePool* pool) const {
+    g_fed_cuts.clear();   // records (surface, seg) cuts actually fed on the scaffold path
     BRep result;
     result.name = name;
     // BOP2 Phase 4: pre-seed the result with the SHARED arena so section runs REFERENCE
@@ -3664,6 +4065,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
     std::vector<Point> scaf_forced_nodes;                 // pave endpoints on this face's boundary
     int scaf_n_boundary = 0;
     int scaf_fallbacks = 0;
+    std::map<int, int> seg_run_count;   // resource guard: chain-lift runs per segment (whole split)
     const std::vector<NurbsCurve>* all_pcs_ref = nullptr;   // current face's boundary+cut pcurves
 
     auto append_face = [&](const NurbsSurface& srf,
@@ -3747,6 +4149,15 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                         };
                         double fa = full_wrap ? 0.0 : chain_pos(ra);
                         double fb = full_wrap ? (double)(nCh - 1) : chain_pos(rb);
+                        if (g_segrun_cap > 0 && !stub_legacy && fb - fa > 1e-9) {
+                            int& rc = seg_run_count[s.seg_id];
+                            if (++rc > g_segrun_cap)
+                                throw std::runtime_error(
+                                    "[RUNCAP] sliver ladder: seg " + std::to_string(s.seg_id) +
+                                    " lifted " + std::to_string(rc) + " runs (cap " +
+                                    std::to_string(g_segrun_cap) + ")");
+                            if ((rc & 7) == 0) guard_check_mem("chain-lift");
+                        }
                         if (!stub_legacy && fb - fa > 1e-9) {
                             // extract the shared sub-polyline (lerped fractional ends)
                             auto lerp3 = [&](double f) {
@@ -3998,6 +4409,11 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                             edge_kind_dbg[ei] = 'L';
                             note_edge_dev(ei, devtol);
                         }
+                        static const bool s_seam_dbg = (std::getenv("SESSION_SEAM_DBG") != nullptr);
+                        if (s_seam_dbg)
+                            std::fprintf(stderr, "[BEDGE] fi=%d li=%d lo=%d hi=%d pm(%.7f,%.7f,%.7f) ei=%d %s\n",
+                                         fi, li, lo, hi, pm[0], pm[1], pm[2], ei,
+                                         ttype == BRepTrimType::Mated ? "MATED" : "new");
                     }
                     int ci2d = result.add_curve_2d(pcp);
                     result.add_trim(ci2d, ei, li, false, ttype);
@@ -4260,6 +4676,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                 cut_pcs.push_back(pc);
                 scaf_cut_seg_ids.push_back(sid);
                 scaf_cut_spans.push_back({n_pre * step, (n_pre + (int)uv.size() - 1) * step});
+                g_fed_cuts.insert({face.surface_index, sid});
             }
             // PutSEInOtherFaces (OCCT PaveFiller): a section segment from ANOTHER surface
             // pair whose 3D chain lies ON this surface must also cut THIS face -- the
@@ -4582,6 +4999,7 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
         // the endpoint projection/jweld machinery, built for UNPAVED legacy cuts, would MOVE
         // those nodes by up to 0.05 UV and desync the run spans from the scaffold paves.
         double snap_bnd = (imported_freeform && !scaf) ? 0.05 : 0.0;
+        guard_check_mem("arrangement");
         std::vector<NurbsSurfaceTrimmed> parts = s_wiresplit
             ? NurbsSurfaceTrimmed::split_face_by_wires(srf, cut_pcs, outer_pcs, tolerance)
             : NurbsSurfaceTrimmed::split_by_uv_curves(srf, all_pcs, tolerance, false, n_boundary, snap_bnd,
@@ -4669,6 +5087,18 @@ BRep BRep::split_with(double tolerance, const std::function<std::vector<NurbsCur
                 part.m_outer_segments.empty() ? std::vector<NurbsCurve>{part.m_outer_loop}
                                               : part.m_outer_segments});
             loop_srcs.push_back(part.m_outer_segments.empty() ? nullptr : &part.m_outer_segment_srcs);
+            // SEAM CO-REGIONS (SESSION_SEAM_MERGE): additional OUTER wires of the SAME face --
+            // the second side of a region that meets itself across the u (or v) seam. Empty
+            // unless the splitter merged, so the default path is unchanged.
+            for (size_t k = 0; k < part.m_extra_outer_loops.size(); ++k) {
+                const std::vector<NurbsCurve>& xsegs =
+                    (k < part.m_extra_outer_segments.size()) ? part.m_extra_outer_segments[k]
+                                                             : std::vector<NurbsCurve>{};
+                loops.push_back({BRepLoopType::Outer,
+                    xsegs.empty() ? std::vector<NurbsCurve>{part.m_extra_outer_loops[k]} : xsegs});
+                loop_srcs.push_back((!xsegs.empty() && k < part.m_extra_outer_segment_srcs.size())
+                                        ? &part.m_extra_outer_segment_srcs[k] : nullptr);
+            }
             for (size_t k = 0; k < part.m_inner_loops.size(); ++k) {
                 const std::vector<NurbsCurve>& isegs =
                     (k < part.m_inner_segments.size()) ? part.m_inner_segments[k]
@@ -8018,62 +8448,171 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         // selection metric: naked count; a CLOSED candidate must also pass a volume
         // sanity gate (finite, positive, and no larger than vol(A)+vol(B) at scale)
         // so an inverted/degenerate shell can never win the ladder on naked=0 alone.
-        double volAB = 0.0;
+        double volAB = 0.0, volA = 0.0, volB = 0.0;
         {
             BRep ca = *this, cb = other;
             double va = std::abs(ca.volume()), vb = std::abs(cb.volume());
-            if (std::isfinite(va) && std::isfinite(vb)) volAB = va + vb;
+            if (std::isfinite(va) && std::isfinite(vb)) { volA = va; volB = vb; volAB = va + vb; }
         }
+        // PER-OP volume bounds. The old gate only rejected v > vol(A)+vol(B), which a CUT
+        // result can satisfy while still being impossible: measured z90 cut = 92.38 with
+        // vol(A) = 80.30, reported "solid 1 naked 0" and accepted by the ladder. A cut can
+        // never exceed A; an intersection never exceeds min(A,B); a union is bracketed by
+        // max(A,B) and A+B. Closed-but-impossible must lose to any true closure.
+        auto vol_ok = [&](double v) {
+            if (!std::isfinite(v) || v <= 0) return false;
+            const double s = 1e-3;
+            switch (op) {
+                case BooleanOp::Difference:   return v <= volA * (1 + s);
+                case BooleanOp::Intersection: return v <= std::min(volA, volB) * (1 + s);
+                case BooleanOp::Union:        return v <= volAB * (1 + s) &&
+                                                     v >= std::max(volA, volB) * (1 - s);
+            }
+            return true;
+        };
+        // Bounding boxes of the operands, for the containment invariant below.
+        auto bbox_of = [](const BRep& X, double* mn, double* mx) {
+            mn[0]=mn[1]=mn[2]=1e300; mx[0]=mx[1]=mx[2]=-1e300;
+            for (const auto& p : X.m_vertices)
+                for (int k = 0; k < 3; ++k) { mn[k]=std::min(mn[k],p[k]); mx[k]=std::max(mx[k],p[k]); }
+        };
+        double amn[3], amx[3], bmn[3], bmx[3];
+        bbox_of(*this, amn, amx);
+        bbox_of(other, bmn, bmx);
+        double bbox_margin = 0.0;
+        for (int k = 0; k < 3; ++k) bbox_margin = std::max(bbox_margin, amx[k]-amn[k]);
+        bbox_margin *= 1e-3;
         auto metric = [&](BRep& r) -> int {
-            int nk = 0;
-            for (const auto& e : r.m_topology_edges)
-                if ((int)e.trim_indices.size() == 1) ++nk;
+            int nk = 0, nm = 0;
+            for (const auto& e : r.m_topology_edges) {
+                int nt = (int)e.trim_indices.size();
+                if (nt == 1) ++nk;
+                // NON-MANIFOLD edges must COUNT AGAINST a candidate. Counting only 1-trim
+                // edges made a 3-trim edge score ZERO -- invisible to the metric and therefore
+                // *preferred* over a clean edge. That is how res_y30_cut's 13 non-manifold
+                // edges were selected and never registered: OCCT's importer decomposes such an
+                // edge and the free boundaries it creates are unhealable (they are where the
+                // 58 import-naked edges came from). argmin over a metric blind to the fatal
+                // defect class is worse than no metric.
+                else if (nt > 2) ++nm;
+            }
+            nk += nm;
+            if (nk == 0) {
+                // CONTAINMENT INVARIANT (needs no oracle): a cut cannot leave A's box, an
+                // intersection cannot leave EITHER operand's box. Caught instantly by this:
+                // freeform_common_box spans (-2.24,-2.64,-2.18)..(2.49,2.64,2.18) while the box
+                // operand is only (-2,-2,-2)..(2,2,2) -- an intersection outside an operand.
+                double rmn[3], rmx[3];
+                bbox_of(r, rmn, rmx);
+                bool bad_box = false;
+                for (int k = 0; k < 3 && !bad_box; ++k) {
+                    if (op == BooleanOp::Difference || op == BooleanOp::Intersection)
+                        if (rmn[k] < amn[k]-bbox_margin || rmx[k] > amx[k]+bbox_margin) bad_box = true;
+                    if (op == BooleanOp::Intersection)
+                        if (rmn[k] < bmn[k]-bbox_margin || rmx[k] > bmx[k]+bbox_margin) bad_box = true;
+                }
+                if (bad_box) {
+                    if (std::getenv("SESSION_NT_DBG"))
+                        std::fprintf(stderr, "[AUTO] candidate closed but bbox escapes an operand -> demoted\n");
+                    nk = 1;
+                }
+            }
             if (nk == 0 && volAB > 0) {
                 double v = r.volume();
-                if (!std::isfinite(v) || v <= 0 || v > volAB * 1.001)
-                    nk = 1;                    // closed-but-wrong: demote below true closures
+                if (!vol_ok(v)) {
+                    if (std::getenv("SESSION_NT_DBG"))
+                        std::fprintf(stderr, "[AUTO] candidate closed but vol %.4f out of bounds "
+                                     "(A=%.4f B=%.4f op=%d) -> demoted\n", v, volA, volB, (int)op);
+                    nk = 1;                    // closed-but-impossible: demote below true closures
+                }
             }
+            // NOTE: shell count is REPORTED, never gated on. With naked == 0 every edge
+            // already has 2 trims, so every connected component is closed BY CONSTRUCTION --
+            // "several shells" then means several CLOSED solids, which is the CORRECT answer
+            // for many cells (OCCT reference: z30/z45/z37/z63 cut are each 2 solids, x13y29
+            // common is 3). An earlier version of this gate demoted shells != 1 and would
+            // have rejected those correct answers; the real defect signature is one OPEN
+            // shell plus a small closed chunk, and an open shell always shows up as naked > 0.
+            if (nk == 0 && std::getenv("SESSION_NT_DBG"))
+                std::fprintf(stderr, "[AUTO] candidate closed: shells=%d\n", brep_shell_count(r));
             return nk;
         };
-        s_in_auto = true;
+        // RAII: recursion flag + resource caps + variant env, all restored on ANY exit
+        // path (a ballooning variant THROWS from deep inside the split -- without this the
+        // env leaked and s_in_auto stayed set, poisoning every later op in the process).
+        const char* touched[] = {"SESSION_BRIDGE", "SESSION_EF_MARCH", "SESSION_NO_EFGATE", "SESSION_M3", "SESSION_SYMEMIT", "SESSION_SEED2"};
+        std::map<std::string, std::string> saved;
+        for (const char* k : touched) {
+            const char* v = std::getenv(k);
+            saved[k] = v ? v : "";
+        }
+        struct AutoScope {
+            bool& flag;
+            long m0; int r0;
+            std::map<std::string, std::string>& env0;
+            std::function<void(const char*)> pe;
+            AutoScope(bool& f, std::map<std::string, std::string>& e, std::function<void(const char*)> p)
+                : flag(f), m0(g_mem_cap_mb), r0(g_segrun_cap), env0(e), pe(std::move(p)) {
+                flag = true;
+                const char* mc = std::getenv("SESSION_MEM_CAP_MB");
+                const char* rc = std::getenv("SESSION_SEGRUN_CAP");
+                g_mem_cap_mb = mc ? std::atol(mc) : 3000;
+                g_segrun_cap = rc ? std::atoi(rc) : 64;
+            }
+            void restore_env() {
+                for (auto& kv : env0) pe((kv.first + "=" + kv.second).c_str());
+            }
+            ~AutoScope() {
+                restore_env();
+                g_mem_cap_mb = m0;
+                g_segrun_cap = r0;
+                flag = false;
+            }
+        } scope(s_in_auto, saved, put_env);
         BRep base_res = boolean(other, op, tolerance);
         int nk0 = metric(base_res);
-        if (nk0 == 0) { s_in_auto = false; return base_res; }
+        if (nk0 == 0) return base_res;
         // escalation ladder, strictest first; each variant's env is fully restored
         static const std::vector<std::vector<const char*>> variants = {
             {"SESSION_BRIDGE=2", "SESSION_EF_MARCH=1"},
             {"SESSION_BRIDGE=1", "SESSION_EF_MARCH=1"},
             {"SESSION_BRIDGE=2", "SESSION_EF_MARCH=1", "SESSION_NO_EFGATE=1"},
             {"SESSION_BRIDGE=2", "SESSION_EF_MARCH=1", "SESSION_NO_EFGATE=1", "SESSION_M3="},
+            // SEED2 = polyhedral branch DISCOVERY (IntPolyh analog): the marcher is
+            // seed-limited and simply never traces branches it was not seeded on, which no
+            // amount of repair downstream can invent (doctrine Law 4: discovery != refinement).
+            // Measured as a ladder variant: z37 27->16, z30 6->5, x20 +1, rest flat -- so it
+            // belongs in the ladder (which keeps the minimum) rather than as a global default.
+            {"SESSION_SEED2=1"},
+            {"SESSION_SEED2=1", "SESSION_BRIDGE=2", "SESSION_EF_MARCH=1"},
             {"SESSION_SYMEMIT=1"},
             {"SESSION_SYMEMIT=1", "SESSION_BRIDGE=2", "SESSION_EF_MARCH=1"},
-        };
-        const char* touched[] = {"SESSION_BRIDGE", "SESSION_EF_MARCH", "SESSION_NO_EFGATE", "SESSION_M3", "SESSION_SYMEMIT"};
-        std::map<std::string, std::string> saved;
-        for (const char* k : touched) {
-            const char* v = std::getenv(k);
-            saved[k] = v ? v : "";
-        }
-        auto restore_env = [&]() {
-            for (auto& kv : saved) {
-                std::string s = kv.first + "=" + kv.second;
-                put_env(s.c_str());
-            }
         };
         BRep best = std::move(base_res);
         int nk_best = nk0;
         for (const auto& vs : variants) {
             for (const char* v : vs) put_env(v);
-            BRep alt = boolean(other, op, tolerance);
-            restore_env();
-            int nk = metric(alt);
+            BRep alt;
+            int nk = -1;
+            try {
+                alt = boolean(other, op, tolerance);
+            } catch (const std::exception& e) {
+                // resource guard trip (or any variant failure) = discarded candidate
+                if (std::getenv("SESSION_NT_DBG"))
+                    std::fprintf(stderr, "[AUTO] variant %s(+%zu): THREW %s\n",
+                                 vs[0], vs.size(), e.what());
+                scope.restore_env();
+                continue;
+            }
+            scope.restore_env();
+            nk = metric(alt);
             if (std::getenv("SESSION_NT_DBG"))
                 std::fprintf(stderr, "[AUTO] variant %s(+%zu): naked %d (best %d)\n",
                              vs[0], vs.size(), nk, nk_best);
             if (nk < nk_best) { nk_best = nk; best = std::move(alt); }
             if (nk_best == 0) break;
         }
-        s_in_auto = false;
+        if (std::getenv("SESSION_SEAM_AUDIT")) brep_seam_audit(best, tolerance);
         return best;
     }
     // Optional phase profiling (set SESSION_BOOL_PROFILE=1). Prints per-phase microseconds.
@@ -8194,6 +8733,30 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         std::fflush(stderr);
         lap("bop2_pool");
     }
+    // HOOK 1-PRE (SESSION_SD): same-domain detection on the ORIGINAL faces, BEFORE any split.
+    // MEASURED NECESSITY: on A-op-A (chair1 = byte copy of chair0, so every face is exactly
+    // coincident) the post-split hook is useless -- the section stage has already produced 481
+    // "intersection" segments between coincident surfaces and shattered A into 312 fragments
+    // against B's 20, so no edge-set bucketing can pair them. A surface cannot be intersected
+    // with itself; coincident pairs must be recognised HERE and routed to the same-domain
+    // path instead of the marcher (OCCT: an FF interference between same-domain faces yields
+    // a SD pair, never section curves).
+    if (use_scaffold && std::getenv("SESSION_SD") && !std::getenv("SESSION_SD_NOHOOKS")) {
+        double key_tol_pre = scaf.tol3_rep > 0 ? scaf.tol3_rep : scaf.tol3;
+        SameDomain sdp(key_tol_pre);
+        for (int f = 0; f < (int)m_faces.size(); ++f) sdp.add_face(*this, f, 0, 0);
+        for (int f = 0; f < (int)other.m_faces.size(); ++f) sdp.add_face(other, f, 1, 1);
+        sdp.detect();
+        std::fprintf(stderr, "[SD-PRE] key_tol=%.4e faces(A=%zu B=%zu) groups=%d pairs=%zu\n",
+                     key_tol_pre, m_faces.size(), other.m_faces.size(),
+                     sdp.group_count(), sdp.pairs().size());
+        for (const auto& pr : sdp.pairs())
+            std::fprintf(stderr, "[SD-PRE-PAIR] %c f%d <-> %c f%d orient=%s\n",
+                         sdp.face(pr.i).operand ? 'B' : 'A', sdp.face(pr.i).face,
+                         sdp.face(pr.j).operand ? 'B' : 'A', sdp.face(pr.j).face,
+                         pr.orient == 0 ? "same" : "opposite");
+        std::fflush(stderr);
+    }
     std::vector<int> srcA_faces, srcB_faces;   // fragment -> original face (angle classify)
     // Pave-block spans: edge -> {seg_id, fa, fb} for every chain-lifted section run.
     std::map<int, std::array<double, 3>> spansA, spansB;
@@ -8212,6 +8775,9 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // pcurve (the segment's uvA/uvB, projected as a closed loop) so its arrangement re-imprints the
     // contact and sew mates it. Persist across run_splits() re-entries; merged into onCutsA/onCutsB.
     std::vector<std::vector<NurbsCurve>> p1c_onA, p1c_onB;
+    // (surface, seg) cuts each operand's split actually fed -- snapshotted from g_fed_cuts
+    // right after each split_by_brep call (see the SYMEMIT-DUP filter below).
+    std::set<std::pair<int, int>> fedA, fedB;
     // One split pass over BOTH operands. Re-entrant: the preserve-identity loop below
     // re-runs it after the scaffold has been refined, so every piece of per-pass state is
     // cleared here rather than at its declaration.
@@ -8231,6 +8797,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                                   (use_scaffold && !onCutsB.empty()) ? &onCutsB : nullptr,
                                   use_scaffold ? &spansB : nullptr,
                                   use_bop2 ? &bop2_pool : nullptr); lap("splitB");
+    fedB = g_fed_cuts;
     if (use_scaffold) {
         onCutsA.resize(m_surfaces.size());
         double on_det;
@@ -8244,7 +8811,14 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         std::vector<std::pair<std::array<double,3>, std::array<double,3>>> a_sbbs;
         for (const auto& s : m_surfaces) a_sbbs.push_back(aabb_from_surface(s));
         int n_imprint = 0;
-        for (int fb = 0; fb < (int)B2.m_faces.size(); ++fb) {
+        // SESSION_SD: this legacy ON-imprint path projects EVERY B2 fragment that rides on an
+        // A surface back onto A as a same-domain cut. On coincident operands that is the whole
+        // boundary (A-op-A: 20 of 20 fragments), so it re-shatters exactly the region the
+        // common-block suppression just cleaned -- a clean section network is worthless if a
+        // second path re-imprints the coincident region anyway. Under SESSION_SD the
+        // same-domain machinery owns coincidence, so this path stands down.
+        static const bool s_sd_mode = (std::getenv("SESSION_SD") != nullptr);
+        for (int fb = 0; !s_sd_mode && fb < (int)B2.m_faces.size(); ++fb) {
             const auto& face = B2.m_faces[fb];
             if (face.surface_index < 0) continue;
             const NurbsSurface& sb = B2.m_surfaces[face.surface_index];
@@ -8265,7 +8839,79 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                 }
             }
             if (smp.size() < 8) continue;
-            // coincident with which A surface? require nearly ALL samples within the band
+            // ---- ON-relationship test ----
+            // LEGACY predicate (kept for A/B): rim-only samples, "nearly all" within a flat
+            // band (2 outliers tolerated), projected onto the UNTRIMMED surface, no
+            // orientation check, first match wins. Every one of those is unsound:
+            //  - rim-only is not AREAL: a fragment whose rim grazes a surface while its
+            //    interior bulges away passes;
+            //  - the 2-outlier slack is not fail-closed;
+            //  - Closest::surface_point projects onto the infinite surface, so a fragment
+            //    nowhere near A's actual FACE still matches;
+            //  - with no orientation test a fragment lying on the far side, or meeting the
+            //    surface at an angle, is imprinted as if coincident.
+            // MEASURED CONSEQUENCE: on A-op-A it fires 20/20 (all spurious, re-shattering the
+            // boundary); on y30 -- which has NO coincidence at all (SD groups=0) -- disabling
+            // it alone moved the cut from 23.9619 to 47.6964 against a 46.9596 reference.
+            // CORRECTED predicate (SESSION_ONIMP_FIX): AREAL interior probes, fail-closed (ALL
+            // probes), projection required to land INSIDE one of A's real faces on that
+            // surface, and normals required to agree (|cos| >= 0.9) at every probe.
+            static const bool s_onimp_fix = (std::getenv("SESSION_ONIMP_FIX") != nullptr);
+            static const bool s_onimp_dbg = (std::getenv("SESSION_ONIMP_DBG") != nullptr);
+            // interior (in-material) probes of the fragment, in its own uv
+            std::vector<std::array<double,2>> fpoly;   // uv rim polygon (outer loop)
+            for (int li : face.loop_indices) {
+                if (li < 0 || li >= (int)B2.m_loops.size()) continue;
+                if (B2.m_loops[li].type != BRepLoopType::Outer) continue;
+                for (int ti : B2.m_loops[li].trim_indices) {
+                    if (ti < 0 || ti >= (int)B2.m_trims.size()) continue;
+                    int c2 = B2.m_trims[ti].curve_2d_index;
+                    if (c2 < 0 || c2 >= (int)B2.m_curves_2d.size()) continue;
+                    const NurbsCurve& pc = B2.m_curves_2d[c2];
+                    auto dc = pc.domain();
+                    for (int k = 0; k < 8; ++k) {
+                        Point uv = pc.point_at(dc.first + (dc.second-dc.first)*k/8.0);
+                        fpoly.push_back({uv[0], uv[1]});
+                    }
+                }
+            }
+            auto uv_in_poly = [](const std::vector<std::array<double,2>>& poly, double u, double v) {
+                bool in = false;
+                for (size_t a2 = 0, b2 = poly.size()-1; a2 < poly.size(); b2 = a2++)
+                    if (((poly[a2][1] > v) != (poly[b2][1] > v)) &&
+                        (u < (poly[b2][0]-poly[a2][0])*(v-poly[a2][1])/(poly[b2][1]-poly[a2][1]+1e-30)+poly[a2][0]))
+                        in = !in;
+                return in;
+            };
+            std::vector<std::array<double,2>> probes_uv;
+            if (fpoly.size() >= 3) {
+                double umn=1e300,umx=-1e300,vmn=1e300,vmx=-1e300;
+                for (const auto& p : fpoly) { umn=std::min(umn,p[0]); umx=std::max(umx,p[0]);
+                                              vmn=std::min(vmn,p[1]); vmx=std::max(vmx,p[1]); }
+                for (int i2 = 1; i2 <= 4; ++i2)
+                    for (int j2 = 1; j2 <= 4; ++j2) {
+                        double u = umn + (umx-umn)*i2/5.0, v = vmn + (vmx-vmn)*j2/5.0;
+                        if (uv_in_poly(fpoly, u, v)) probes_uv.push_back({u, v});
+                    }
+                // THIN-FRAGMENT FALLBACK. A coarse grid misses a thin sliver entirely, and
+                // "no probes" then made areal_ok false -- rejecting by ARTIFACT, not by
+                // geometry. MEASURED: all 27 y30 candidates reported probes=0 while being
+                // EXACTLY coincident (dmin=dmax=0.0000, |cos|=1.000), so the areal test was
+                // silently behaving as a wholesale disable for every thin fragment. Fall back
+                // to rim-edge midpoints pulled slightly toward the polygon centroid: always
+                // in-material, and it degrades gracefully instead of vanishing.
+                if (probes_uv.empty() && fpoly.size() >= 3) {
+                    double cu2 = 0, cv2 = 0;
+                    for (const auto& p : fpoly) { cu2 += p[0]; cv2 += p[1]; }
+                    cu2 /= (double)fpoly.size(); cv2 /= (double)fpoly.size();
+                    if (uv_in_poly(fpoly, cu2, cv2)) probes_uv.push_back({cu2, cv2});
+                    for (size_t k2 = 0; k2 < fpoly.size(); k2 += std::max<size_t>(1, fpoly.size()/8)) {
+                        double u = fpoly[k2][0] + (cu2 - fpoly[k2][0]) * 0.25;
+                        double v = fpoly[k2][1] + (cv2 - fpoly[k2][1]) * 0.25;
+                        if (uv_in_poly(fpoly, u, v)) probes_uv.push_back({u, v});
+                    }
+                }
+            }
             int best_sa = -1;
             for (int sa = 0; sa < (int)m_surfaces.size() && best_sa < 0; ++sa) {
                 bool overlap = true;
@@ -8280,10 +8926,54 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                     dmin = std::min(dmin, cd); dmax = std::max(dmax, cd);
                     if (cd < on_det) ++nco;
                 }
+                bool legacy_ok = (nco >= (int)smp.size() - 2);
+                // corrected: areal + fail-closed + on-the-FACE + orientation
+                bool areal_ok = !probes_uv.empty();
+                double worst_dot = 1.0;
+                if (areal_ok) {
+                    for (const auto& puv : probes_uv) {
+                        Point q = sb.point_at(puv[0], puv[1]);
+                        auto [cu, cv2, cd] = Closest::surface_point(m_surfaces[sa], q);
+                        if (!(cd < on_det)) { areal_ok = false; break; }
+                        // must land inside a REAL face of A on this surface
+                        bool on_face = false;
+                        for (int af = 0; af < (int)m_faces.size() && !on_face; ++af) {
+                            if (m_faces[af].surface_index != sa) continue;
+                            for (int ali : m_faces[af].loop_indices) {
+                                if (ali < 0 || ali >= (int)m_loops.size()) continue;
+                                if (m_loops[ali].type != BRepLoopType::Outer) continue;
+                                std::vector<std::array<double,2>> apoly;
+                                for (int ati : m_loops[ali].trim_indices) {
+                                    if (ati < 0 || ati >= (int)m_trims.size()) continue;
+                                    int ac2 = m_trims[ati].curve_2d_index;
+                                    if (ac2 < 0 || ac2 >= (int)m_curves_2d.size()) continue;
+                                    const NurbsCurve& apc = m_curves_2d[ac2];
+                                    auto adc = apc.domain();
+                                    for (int k = 0; k < 8; ++k) {
+                                        Point auv = apc.point_at(adc.first + (adc.second-adc.first)*k/8.0);
+                                        apoly.push_back({auv[0], auv[1]});
+                                    }
+                                }
+                                if (apoly.size() >= 3 && uv_in_poly(apoly, cu, cv2)) { on_face = true; break; }
+                            }
+                        }
+                        if (!on_face) { areal_ok = false; break; }
+                        Vector nb2 = sb.normal_at(puv[0], puv[1]);
+                        Vector na2 = m_surfaces[sa].normal_at(cu, cv2);
+                        double dt = std::abs(nb2[0]*na2[0] + nb2[1]*na2[1] + nb2[2]*na2[2]);
+                        worst_dot = std::min(worst_dot, dt);
+                        if (dt < 0.9) { areal_ok = false; break; }
+                    }
+                }
+                if (s_onimp_dbg && (legacy_ok || areal_ok))
+                    std::fprintf(stderr, "[ONIMP-CAND] fb=%d sa=%d rim=%d/%zu dmin=%.4f dmax=%.4f "
+                                 "probes=%zu legacy=%d areal=%d wdot=%.3f\n",
+                                 fb, sa, nco, smp.size(), dmin, dmax, probes_uv.size(),
+                                 legacy_ok ? 1 : 0, areal_ok ? 1 : 0, worst_dot);
                 if (std::getenv("SESSION_ONDET_DBG") && nco > 0)
                     std::fprintf(stderr, "[ONDET] fb=%d sa=%d nco=%d/%zu dmin=%.4f dmax=%.4f band=%.4f\n",
                                  fb, sa, nco, smp.size(), dmin, dmax, on_det);
-                if (nco >= (int)smp.size() - 2) best_sa = sa;   // whole fragment rides on sa
+                if (s_onimp_fix ? areal_ok : legacy_ok) best_sa = sa;
             }
             if (best_sa < 0) continue;
             // imprint: project each LOOP of the fragment onto A's surface as a closed pcurve
@@ -8332,8 +9022,37 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                             use_scaffold ? &onCutsA : nullptr,
                             use_scaffold ? &spansA : nullptr,
                             use_bop2 ? &bop2_pool : nullptr);      lap("splitA");
+    fedA = g_fed_cuts;
     };   // end run_splits
     run_splits();
+    // HOOK 1 (SESSION_SD, kb/p3_integration_notes.md): same-domain DETECTION over the two
+    // SPLIT operands, in OCCT's FillSameDomainFaces slot (after BuildSplitFaces, before
+    // selection). Diagnostic-only at this stage: it does not mutate either operand and does
+    // not yet drive selection (HOOK 2). Motivation is measured, not speculative -- x20 cut
+    // deletes 12 of A's 36 fragments whose probe points sit at distance 0.00e+00 from B's
+    // boundary while our own ON-detector reports on=0 for every one of them.
+    // key_tol is LOAD-BEARING per B's precondition: we have no shared section entities, so
+    // geometric bucketing at key_tol substitutes for OCCT's IsSame identity. Too tight =>
+    // zero SD pairs => silently wrong COMMON/CUT. B recommends tol3_rep.
+    if (use_scaffold && std::getenv("SESSION_SD") && !std::getenv("SESSION_SD_NOHOOKS")) {
+        double key_tol = scaf.tol3_rep > 0 ? scaf.tol3_rep : scaf.tol3;
+        SameDomain sd(key_tol);
+        for (int f = 0; f < A2.face_count(); ++f) sd.add_face(A2, f, 0, 0);
+        for (int f = 0; f < B2.face_count(); ++f) sd.add_face(B2, f, 1, 1);
+        sd.detect();
+        std::fprintf(stderr, "[SD] key_tol=%.4e faces(A=%d B=%d) groups=%d pairs=%zu\n",
+                     key_tol, A2.face_count(), B2.face_count(),
+                     sd.group_count(), sd.pairs().size());
+        for (const auto& pr : sd.pairs()) {
+            const SDFaceRec& fi2 = sd.face(pr.i);
+            const SDFaceRec& fj2 = sd.face(pr.j);
+            std::fprintf(stderr, "[SD-PAIR] %c f%d <-> %c f%d orient=%s via=%d\n",
+                         fi2.operand ? 'B' : 'A', fi2.face,
+                         fj2.operand ? 'B' : 'A', fj2.face,
+                         pr.orient == 0 ? "same" : "opposite", pr.via);
+        }
+        std::fflush(stderr);
+    }
     // P1c SYMMETRIC EMISSION (SESSION_SYMEMIT): the two operands' arrangements can disagree on which
     // scaffold section runs survive the dangling-edge prune -- one operand emits a section segment the
     // other PRUNES (measured z90 cut: A drops segs 0,1,2,20,21,22 that B keeps). The pruned side leaves
@@ -8352,6 +9071,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
             const std::set<int>& have  = forA ? segsA : segsB;
             const std::set<int>& other_have = forA ? segsB : segsA;
             const std::vector<NurbsSurface>& surfs = forA ? a_surfs : b_surfs;
+            const std::set<std::pair<int, int>>& fed = forA ? fedA : fedB;
             out.assign(nsurf, {});
             int n = 0;
             for (int sid : other_have) {
@@ -8360,6 +9080,22 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
                 int surf = forA ? s.surfA : s.surfB;
                 const std::vector<Point>& uv = forA ? s.uvA : s.uvB;
                 if (surf < 0 || surf >= nsurf || uv.size() < 2) continue;
+                // SYMEMIT-DUP (task #9 root cause): "missing from spans" does NOT mean
+                // "never fed". split_with feeds EVERY scaffold segment on the surface as a
+                // cut (segs_by_surf*), so a segment whose runs were PRUNED downstream is
+                // still in that face's cut set. Re-imprinting its pcurve here puts a SECOND
+                // near-identical polyline into the same UV arrangement: the two copies
+                // cross at every sampling difference and dice the segment into a sliver
+                // ladder (measured z37: seg 11 lifted 459 runs, 19k edges, 8.3 GB ->
+                // std::bad_alloc; x20: seg 21 at 278 runs and non-terminating). A duplicate
+                // curve can never supply the missing run -- the prune is downstream of the
+                // cut. Emit ONLY for segments this operand genuinely never fed.
+                if (!std::getenv("SESSION_SYMEMIT_DUP") && fed.count({surf, sid})) {
+                    if (std::getenv("SESSION_NT_DBG"))
+                        std::fprintf(stderr, "[SYMEMIT] %s skip-fed seg=%d surf=%d\n",
+                                     forA ? "A" : "B", sid, surf);
+                    continue;
+                }
                 if ((int)out[surf].size() >= MAX_PER_SURF || n >= MAX_TOTAL) continue;
                 // Validate: finite, non-degenerate, and inside the target surface's uv domain
                 // (a stray/grazing segment can carry uv far outside -> arrangement explosion).
@@ -8533,7 +9269,7 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // allowed and the second is normally a no-op. After this, section runs span whole
     // segments and are keyed by segment identity -- shared by construction, not by distance.
     // MEASURED: OFF by default (SESSION_REFINE enables). The mechanism is correct and it
-    // converges -- base chairs stay exact (35 faces / 46.8114) and it reports 0 new segments
+    // converges -- base chairs stay exact (35 faces / 46.7943) and it reports 0 new segments
     // on base, y30 and z30x20, i.e. it finds nothing to split. That is the finding: the
     // operands' arrangements are NOT noding section chains at un-paved interior points, so
     // there is no interior identity to recover. The staggering that FIX A repairs happens
@@ -8673,14 +9409,60 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
             if (X.m_loops[li].type == BRepLoopType::Outer) outers.emplace_back(pts);
             else inners.emplace_back(pts);
         }
+        // SYMMETRIC-PROBE HAZARD (OCCT IntermediatePoint doctrine, PAR_T = 0.43213918).
+        // A probe at a SYMMETRIC location -- domain centre, midpoint, equal-weight centroid --
+        // lands exactly on a symmetry plane, seam or shared edge in symmetric geometry, where
+        // the quantity being probed is UNDEFINED rather than merely small (distances tie at 0,
+        // normals come out perpendicular). Our whole corpus is symmetric: boxes centred on the
+        // origin, coaxial cylinders, spheres at the origin, A-op-A. OCCT picks an
+        // irrational-looking interior parameter precisely so this cannot happen. Two different
+        // constants are used for u and v so a square face's DIAGONAL symmetry is broken too.
+        static const bool s_probe_fix = (std::getenv("SESSION_PROBE_FIX") != nullptr);
+        const double PAR_T  = 0.43213918;   // OCCT IntermediatePoint
+        const double PAR_T2 = 0.61803399;   // golden-ratio conjugate, != PAR_T and != 1-PAR_T
         auto fallback = [&]() {
             auto [u0,u1] = srf.domain(0); auto [v0,v1] = srf.domain(1);
-            if (ou) *ou = 0.5*(u0+u1); if (ov) *ov = 0.5*(v0+v1);
-            return srf.point_at(0.5*(u0+u1), 0.5*(v0+v1));
+            double fu = s_probe_fix ? PAR_T  : 0.5;
+            double fv = s_probe_fix ? PAR_T2 : 0.5;
+            double uu = u0 + (u1-u0)*fu, vv = v0 + (v1-v0)*fv;
+            if (ou) *ou = uu; if (ov) *ov = vv;
+            return srf.point_at(uu, vv);
         };
         if (outers.empty()) return fallback();
-        std::vector<Polyline> all; all.push_back(outers[0]);
-        for (auto& in : inners) all.push_back(in);
+        // WIRE-AWARE PROBE. A face may carry more than one outer wire (a seam-merged region
+        // has one wire per seam side, exactly like the untrimmed primitive sphere face).
+        // Triangulate the LARGEST outer wire together with only the inner wires that lie
+        // inside it -- feeding the CDT a hole that sits outside its outer polygon produces a
+        // meaningless probe point. With a single outer wire this picks outers[0] and every
+        // inner wire, i.e. it is a no-op on the default path.
+        auto bbox_of = [](const Polyline& pl) {
+            std::array<double,4> b = {1e300, -1e300, 1e300, -1e300};
+            for (const auto& p : pl.get_points()) {
+                b[0] = std::min(b[0], p[0]); b[1] = std::max(b[1], p[0]);
+                b[2] = std::min(b[2], p[1]); b[3] = std::max(b[3], p[1]);
+            }
+            return b;
+        };
+        size_t obest = 0;
+        if (outers.size() > 1) {
+            double barea = -1.0;
+            for (size_t k = 0; k < outers.size(); ++k) {
+                auto b = bbox_of(outers[k]);
+                double ar = (b[1]-b[0]) * (b[3]-b[2]);
+                if (ar > barea) { barea = ar; obest = k; }
+            }
+        }
+        std::vector<Polyline> all; all.push_back(outers[obest]);
+        {
+            auto B = bbox_of(outers[obest]);
+            for (auto& in : inners) {
+                if (outers.size() > 1) {
+                    auto b = bbox_of(in);
+                    if (b[0] < B[0] || b[1] > B[1] || b[2] < B[2] || b[3] > B[3]) continue;
+                }
+                all.push_back(in);
+            }
+        }
         std::vector<std::array<int,3>> tris;
         try { tris = RemeshCDT::triangulate(all); } catch (...) { return fallback(); }
         std::vector<Point> flat;
@@ -8699,8 +9481,15 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         }
         if (best < 0) return fallback();
         const auto& t = tris[best];
-        double cu = (flat[t[0]][0] + flat[t[1]][0] + flat[t[2]][0]) / 3.0;
-        double cv = (flat[t[0]][1] + flat[t[1]][1] + flat[t[2]][1]) / 3.0;
+        // Equal-weight (1/3,1/3,1/3) is a SYMMETRIC probe: on an isoceles/equilateral triangle
+        // straddling a symmetry plane the centroid sits exactly ON it. Asymmetric barycentric
+        // weights (summing to 1, all strictly interior) keep the point well inside the triangle
+        // while making a symmetry landing impossible.
+        double w0 = s_probe_fix ? 0.43213918 : (1.0/3.0);
+        double w1 = s_probe_fix ? 0.34589803 : (1.0/3.0);
+        double w2 = s_probe_fix ? (1.0 - 0.43213918 - 0.34589803) : (1.0/3.0);
+        double cu = w0*flat[t[0]][0] + w1*flat[t[1]][0] + w2*flat[t[2]][0];
+        double cv = w0*flat[t[0]][1] + w1*flat[t[1]][1] + w2*flat[t[2]][1];
         if (ou) *ou = cu; if (ov) *ov = cv;
         return srf.point_at(cu, cv);
     };
@@ -8750,10 +9539,15 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
         }
         std::sort(by_area.begin(), by_area.end(), [](auto& a, auto& b) { return a.first > b.first; });
         std::vector<Point> out;
+        // same symmetric-probe hazard as face_sample: equal weights land on symmetry planes
+        static const bool s_probe_fix2 = (std::getenv("SESSION_PROBE_FIX") != nullptr);
         for (size_t k = 0; k < by_area.size() && (int)out.size() < K; ++k) {
             const auto& t = tris[by_area[k].second];
-            double cu = (flat[t[0]][0] + flat[t[1]][0] + flat[t[2]][0]) / 3.0;
-            double cv = (flat[t[0]][1] + flat[t[1]][1] + flat[t[2]][1]) / 3.0;
+            double w0 = s_probe_fix2 ? 0.43213918 : (1.0/3.0);
+            double w1 = s_probe_fix2 ? 0.34589803 : (1.0/3.0);
+            double w2 = s_probe_fix2 ? (1.0 - 0.43213918 - 0.34589803) : (1.0/3.0);
+            double cu = w0*flat[t[0]][0] + w1*flat[t[1]][0] + w2*flat[t[2]][0];
+            double cv = w0*flat[t[0]][1] + w1*flat[t[1]][1] + w2*flat[t[2]][1];
             out.push_back(srf.point_at(cu, cv));
         }
         return out;
@@ -10787,6 +11581,18 @@ BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
     // with mixed-quality copies (box x tor: e16-type arcs sit 5e-4 off the plane) the rebuilt
     // disks inherit that bias and the volume moves AWAY from truth (+9e-6 vs +1.8e-6).
     if (std::getenv("SESSION_SAMEPARAM")) { result.sameparameter_planar_pcurves(); lap("sameparam"); }
+    // SEAM AUDIT (SESSION_SEAM_AUDIT): the two failure modes an independent OCCT read of the
+    // exported STEP finds but every internal metric misses. (1) DEVIATION -- an edge our
+    // topology calls 2-trim whose two trims trace DIFFERENT 3D curves (each trim evaluated on
+    // its OWN surface): topologically closed, geometrically open (z90 class). (2) SHARING --
+    // two DISTINCT edge records carrying the SAME curve (measured gap 0.0 / 4e-16 on y30),
+    // each used by one face: our count sees two mated edges, the exporter writes two
+    // unshared EDGE_CURVEs and the re-import is naked (y30/x13y29 class = Law 1 stitch-vs-
+    // imprint in its purest observable form). Prints per-defect positions so the damage
+    // cluster can be localized directly.
+    // Skipped for nested AUTO variants (s_in_auto): the ladder would pay for it 8x and the
+    // only result that matters is the one AUTO returns, which is audited in that branch.
+    if (std::getenv("SESSION_SEAM_AUDIT") && !s_in_auto) brep_seam_audit(result, tolerance);
     return result;
 }
 

@@ -27,6 +27,10 @@ enum class BRepLoopType { Outer = 0, Inner = 1 };
 struct BRepVertex {
     int point_index = -1;
     std::vector<int> edge_indices;
+    /// Measured vertex tolerance: the enclosing radius of the incident edge ends, enlarged
+    /// past the worst incident edge tolerance (OCCT: curve tolerance + 1.0e-12 exactly).
+    /// Runtime-only, see BRepEdge::tolerance.
+    double tolerance = 0.0;
 };
 
 struct BRepEdge {
@@ -34,6 +38,13 @@ struct BRepEdge {
     int start_vertex = -1;
     int end_vertex = -1;
     std::vector<int> trim_indices;
+    /// MEASURED geometric tolerance of THIS edge: the worst distance between the edge's 3D
+    /// curve and each adjacent face's pcurve LIFTED through that face's surface. An
+    /// approximated trim whose error is not recorded is exactly the "watertight but wrong"
+    /// generator, so this is measured per edge (OCCT records it per pave block, never
+    /// inherited from the parent curve) by BRep::update_tolerances(). 0 = never measured.
+    /// Runtime-only: not serialized, so the JSON/proto shape is unchanged.
+    double tolerance = 0.0;
 };
 
 struct BRepTrim {
@@ -147,6 +158,20 @@ public:
 
     /// Return true if the BRep forms a closed (watertight) solid.
     bool is_solid() const;
+
+    /// MEASURE and record the geometric tolerance of every edge and vertex (BRepEdge::tolerance
+    /// / BRepVertex::tolerance). For each edge, each adjacent trim's pcurve is lifted through
+    /// its face's surface and compared against the edge's own 3D curve at dense samples; the
+    /// edge tolerance is the worst such distance, floored at `floor_tol`. Vertex tolerance is
+    /// the worst incident edge tolerance plus `vertex_pad`, and at least the spread of the
+    /// incident edge ends around the stored vertex point.
+    ///
+    /// This is the record OCCT keeps PER PAVE BLOCK -- a split curve's four pieces each carry
+    /// their OWN measured value rather than inheriting the parent's. Without it an approximated
+    /// boundary reports a tolerance it never achieved.
+    /// Returns the worst edge tolerance found.
+    double update_tolerances(double floor_tol = 1e-7, double vertex_pad = 1e-12,
+                             int samples_per_span = 3);
 
     /// OCCT-BRepCheck-style topology audit that is_solid() does not perform: counts naked
     /// (1-trim) and non-manifold (>2-trim) edges, duplicate vertices/edges, connected shell

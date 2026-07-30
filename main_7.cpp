@@ -24,6 +24,7 @@
 #include <iomanip>
 #include <set>
 #include "brep.h"
+#include "brep_massprops.h"
 #include "closest.h"
 #include "intersection.h"
 #include "file_step.h"
@@ -33,6 +34,169 @@
 using namespace session_cpp;
 
 namespace {
+
+// NAKED/NON-MANIFOLD COUNT THAT EXCLUDES DEGENERATE EDGES, matching BRep::is_solid() and
+// OCCT. A sphere pole and a cone apex are zero-length edges: watertight by construction, and
+// excluded from manifold checks. Counting them as naked produces FALSE FAILURES on every
+// result containing a pole or apex -- measured: sphere x cylinder at 0 deg scored "3 faces /
+// 2 naked / FAIL" while actually being is_solid=1 with volume 15.061795, the exact analytic
+// value. Any corpus scored with a naive nt==1 count is wrong wherever a pole survives.
+void count_naked_nonmani(const BRep& X, int& naked, int& nonmani) {
+    naked = 0; nonmani = 0;
+    for (const auto& e : X.m_topology_edges) {
+        int nt = (int)e.trim_indices.size();
+        if (nt == 2 || nt == 0) continue;
+        bool degenerate = false;
+        int ci = e.curve_3d_index;
+        if (ci >= 0 && ci < (int)X.m_curves_3d.size()) {
+            const NurbsCurve& c = X.m_curves_3d[ci];
+            auto dc = c.domain();
+            double len = 0.0; Point prev = c.point_at(dc.first);
+            for (int k = 1; k <= 8; ++k) {
+                Point q = c.point_at(dc.first + (dc.second - dc.first) * k / 8.0);
+                len += prev.distance(q); prev = q;
+            }
+            double diag = 0.0;
+            if (!X.m_vertices.empty()) {
+                double mn[3] = {1e300,1e300,1e300}, mx[3] = {-1e300,-1e300,-1e300};
+                for (const auto& p : X.m_vertices)
+                    for (int k = 0; k < 3; ++k) { mn[k]=std::min(mn[k],p[k]); mx[k]=std::max(mx[k],p[k]); }
+                diag = std::sqrt((mx[0]-mn[0])*(mx[0]-mn[0])+(mx[1]-mn[1])*(mx[1]-mn[1])+(mx[2]-mn[2])*(mx[2]-mn[2]));
+            }
+            degenerate = (len <= std::max(diag * 1e-7, 1e-12));
+        }
+        if (degenerate) continue;
+        if (nt == 1) ++naked; else ++nonmani;
+    }
+}
+
+// PER-FACE VALIDITY (session C's splitter audit: the standout gate -- caught 2 of 32 broken
+// faces on y30 with ZERO false positives on the verified reference's 32 faces, and found a
+// second broken face that wire analysis alone missed). Two independent checks:
+//   (a) OUTER WIRE CLOSED  -- the outer loop's trim chain must close on itself.
+//   (b) TRIMMED AREA <= UNTRIMMED PATCH AREA -- a trimmed face cannot have more area than the
+//       surface patch it lives on. y30's f3 measured ratio 1.9806 (35.379663 on a 17.862850
+//       patch), which no tolerance argument can explain. Area catches what volume cannot:
+//       y30's result area is +11.2% over the reference while its volume looks plausible.
+// Returns {invalid_face_count, total_trimmed_area}. Numeric double integral of |Su x Sv|,
+// masked by point-in-trim, so it needs no new kernel API.
+std::pair<int,double> face_validity_report(const BRep& X, bool verbose) {
+    int n_bad = 0; double area_tot = 0.0;
+    for (int fi = 0; fi < (int)X.m_faces.size(); ++fi) {
+        const auto& F = X.m_faces[fi];
+        if (F.surface_index < 0 || F.surface_index >= (int)X.m_surfaces.size()) continue;
+        const NurbsSurface& S = X.m_surfaces[F.surface_index];
+        auto du = S.domain(0); auto dv = S.domain(1);
+        // (a) outer wire closure, measured in 3D on the trim curves
+        bool wire_open = false;
+        for (int li : F.loop_indices) {
+            if (li < 0 || li >= (int)X.m_loops.size()) continue;
+            if (X.m_loops[li].type != BRepLoopType::Outer) continue;
+            std::vector<Point> ends;
+            for (int ti : X.m_loops[li].trim_indices) {
+                if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
+                int c2 = X.m_trims[ti].curve_2d_index;
+                if (c2 < 0 || c2 >= (int)X.m_curves_2d.size()) continue;
+                const NurbsCurve& pc = X.m_curves_2d[c2];
+                auto dc = pc.domain();
+                Point a = pc.point_at(dc.first), b = pc.point_at(dc.second);
+                ends.push_back(S.point_at(a[0], a[1]));
+                ends.push_back(S.point_at(b[0], b[1]));
+            }
+            if (ends.size() >= 4) {
+                double diag = 0; for (auto& p : ends) diag = std::max(diag, p.distance(ends[0]));
+                double tol = std::max(1e-9, diag * 1e-4);
+                // every endpoint must be matched by another endpoint (chain closes)
+                for (size_t k = 0; k < ends.size() && !wire_open; ++k) {
+                    double best = 1e300;
+                    for (size_t j = 0; j < ends.size(); ++j)
+                        if (j / 2 != k / 2) best = std::min(best, ends[k].distance(ends[j]));
+                    if (best > tol) wire_open = true;
+                }
+            }
+        }
+        // (b) trimmed vs untrimmed area
+        std::vector<std::array<double,2>> poly;
+        for (int li : F.loop_indices) {
+            if (li < 0 || li >= (int)X.m_loops.size()) continue;
+            if (X.m_loops[li].type != BRepLoopType::Outer) continue;
+            for (int ti : X.m_loops[li].trim_indices) {
+                if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
+                int c2 = X.m_trims[ti].curve_2d_index;
+                if (c2 < 0 || c2 >= (int)X.m_curves_2d.size()) continue;
+                const NurbsCurve& pc = X.m_curves_2d[c2];
+                auto dc = pc.domain();
+                for (int k = 0; k < 16; ++k) {
+                    Point q = pc.point_at(dc.first + (dc.second-dc.first)*k/16.0);
+                    poly.push_back({q[0], q[1]});
+                }
+            }
+        }
+        auto inside = [&](double u, double v) {
+            if (poly.size() < 3) return true;
+            bool in = false;
+            for (size_t a2 = 0, b2 = poly.size()-1; a2 < poly.size(); b2 = a2++)
+                if (((poly[a2][1] > v) != (poly[b2][1] > v)) &&
+                    (u < (poly[b2][0]-poly[a2][0])*(v-poly[a2][1])/(poly[b2][1]-poly[a2][1]+1e-30)+poly[a2][0]))
+                    in = !in;
+            return in;
+        };
+        const int NG = 40;
+        double du_s = (du.second-du.first)/NG, dv_s = (dv.second-dv.first)/NG;
+        double a_full = 0, a_trim = 0;
+        for (int i = 0; i < NG; ++i)
+            for (int j = 0; j < NG; ++j) {
+                double u = du.first + du_s*(i+0.5), v = dv.first + dv_s*(j+0.5);
+                // evaluate() returns [S, Sv, Su] for num_derivs=1 (k,l-loop order)
+                std::vector<Vector> d = S.evaluate(u, v, 1);
+                if (d.size() < 3) continue;
+                const Vector& Sv = d[1];
+                const Vector& Su = d[2];
+                Vector cr(Su[1]*Sv[2]-Su[2]*Sv[1], Su[2]*Sv[0]-Su[0]*Sv[2], Su[0]*Sv[1]-Su[1]*Sv[0]);
+                double da = cr.magnitude() * du_s * dv_s;
+                a_full += da;
+                if (inside(u, v)) a_trim += da;
+            }
+        area_tot += a_trim;
+        bool area_bad = (a_full > 1e-12) && (a_trim / a_full > 1.02);   // 2% slack for the mask
+        if (wire_open || area_bad) {
+            ++n_bad;
+            if (verbose)
+                std::printf("   [FACEBAD] f%d %s%s trimmed %.6f patch %.6f ratio %.4f\n",
+                            fi, wire_open ? "OPEN-WIRE " : "", area_bad ? "AREA>PATCH" : "",
+                            a_trim, a_full, a_full > 1e-12 ? a_trim/a_full : 0.0);
+        }
+    }
+    return {n_bad, area_tot};
+}
+
+// SHELL COUNT: connected components of faces linked by shared topology edges. is_solid() only
+// asserts "every edge has 2 trims", which a result that has come APART into several separately
+// closed shells still satisfies (an independent OCCT read of the shipped result set found 2-4
+// shells on every rotated config except z30x20 -- invisible to the naked-edge metric).
+int shell_count_of(const BRep& X) {
+    int nf = (int)X.m_faces.size();
+    if (nf == 0) return 0;
+    std::vector<int> par(nf);
+    for (int i = 0; i < nf; ++i) par[i] = i;
+    std::function<int(int)> find = [&](int a) { return par[a] == a ? a : par[a] = find(par[a]); };
+    std::map<int, int> first_face;
+    for (int fi = 0; fi < nf; ++fi)
+        for (int li : X.m_faces[fi].loop_indices) {
+            if (li < 0 || li >= (int)X.m_loops.size()) continue;
+            for (int ti : X.m_loops[li].trim_indices) {
+                if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
+                int ei = X.m_trims[ti].edge_index;
+                if (ei < 0) continue;
+                auto it = first_face.find(ei);
+                if (it == first_face.end()) first_face[ei] = fi;
+                else par[find(it->second)] = find(fi);
+            }
+        }
+    std::set<int> comps;
+    for (int fi = 0; fi < nf; ++fi) comps.insert(find(fi));
+    return (int)comps.size();
+}
 
 struct Place { std::string kind; std::vector<double> p; std::array<double,7> xf; };  // xf: tx ty tz ax ay az deg
 struct Ref { double vol; int nf; };
@@ -210,6 +374,77 @@ BRep build(const Place& pl) {
     return b.transformed();
 }
 
+// RIGID-MOTION EQUIVARIANCE SWEEP (SESSION_POSE_SWEEP). The decisive experiment for P1:
+// rotate BOTH operands by the SAME rigid motion and re-run. A rigid motion cannot change
+// volumes or face counts, so ANY deviation from the angle-0 answer is pure pose dependence
+// -- no oracle needed. A CLIFF at some angle means a recogniser predicate with an angular
+// tolerance; a smooth RAMP means accumulated numerical error. One run distinguishes them.
+void pose_sweep(const Place& pa, const Place& pb, const char* label) {
+    const double angles[] = {0.0, 1e-6, 1e-4, 1e-2, 0.1, 1.0, 5.0, 15.0, 30.0, 45.0};
+    const char* opn3[3] = {"cut", "common", "fuse"};
+    double base[3] = {0, 0, 0};
+    int basef[3] = {0, 0, 0};
+    std::printf("\n[POSE] %s : rigid-motion equivariance (both operands rotated together)\n", label);
+    std::printf("[POSE] %-10s %-8s %12s %12s %10s %6s\n", "angle_deg", "op", "vol", "d_vol", "rel", "faces");
+    for (double ang : angles) {
+        // arbitrary non-axis-aligned rotation axis so the motion is generic
+        Xform R = Xform::rotation_around_line(Line(0, 0, 0, 0.4082, 0.8165, 0.4082), ang, true);
+        for (int m = 0; m < 3; ++m) {
+            BRep A2 = build(pa), B2 = build(pb);
+            A2.xform = R; A2 = A2.transformed();
+            B2.xform = R; B2 = B2.transformed();
+            double v = 0; int nf = 0;
+            try {
+                BRep r = m == 0 ? A2.boolean_difference(B2)
+                       : m == 1 ? A2.boolean_intersection(B2)
+                                : A2.boolean_union(B2);
+                v = r.volume(); nf = r.face_count();
+            } catch (const std::exception& e) {
+                std::printf("[POSE] %-10.6f %-8s THREW %s\n", ang, opn3[m], e.what());
+                continue;
+            }
+            if (ang == 0.0) { base[m] = v; basef[m] = nf; }
+            double dv = v - base[m];
+            double rel = std::abs(base[m]) > 1e-12 ? std::abs(dv) / std::abs(base[m]) : std::abs(dv);
+            std::printf("[POSE] %-10.6f %-8s %12.6f %12.3e %10.2e %6d%s\n",
+                        ang, opn3[m], v, dv, rel, nf,
+                        nf != basef[m] ? "  FACES-DIFFER" : (rel > 1e-9 ? "  <== BREAK" : ""));
+        }
+        std::fflush(stdout);
+    }
+}
+
+// RELATIVE-POSE SWEEP (SESSION_RELPOSE_SWEEP). Rotating only B changes the answer, so
+// volumes cannot be compared across angles. The oracle-free invariant that IS valid at every
+// relative pose is the partition identity vol(cut) + vol(common) == vol(A). Sweeping the
+// relative angle and watching that residual finds the angles where an analytic branch is
+// missing (the marcher takes over and leaks volume) -- the boundaries of the recogniser
+// coverage, measured rather than read out of the code.
+void relpose_sweep(const Place& pa, const Place& pb, const char* label) {
+    std::printf("\n[RELPOSE] %s : partition identity vs relative angle\n", label);
+    std::printf("[RELPOSE] %-9s %10s %10s %10s %10s %5s %5s\n",
+                "angle", "cut", "common", "sum", "rel", "fc", "fo");
+    BRep A0 = build(pa);
+    double vA = A0.volume();
+    for (double ang : {0.0, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 75.0, 90.0}) {
+        Xform R = Xform::rotation_around_line(Line(0, 0, 0, 0.4082, 0.8165, 0.4082), ang, true);
+        BRep A2 = build(pa);
+        BRep B2 = build(pb); B2.xform = R; B2 = B2.transformed();
+        double vc = 0, vo = 0; int fc = 0, fo = 0; bool ok = true;
+        try {
+            BRep rc = A2.boolean_difference(B2);  vc = rc.volume(); fc = rc.face_count();
+            BRep ro = A2.boolean_intersection(B2); vo = ro.volume(); fo = ro.face_count();
+        } catch (const std::exception& e) {
+            std::printf("[RELPOSE] %-9.2f THREW %s\n", ang, e.what()); ok = false;
+        }
+        if (!ok) continue;
+        double sum = vc + vo, rel = std::abs(sum - vA) / std::max(1.0, std::abs(vA));
+        std::printf("[RELPOSE] %-9.2f %10.5f %10.5f %10.5f %10.2e %5d %5d%s\n",
+                    ang, vc, vo, sum, rel, fc, fo, rel > 1e-6 ? "  ** VIOLATION **" : "");
+        std::fflush(stdout);
+    }
+}
+
 std::string shape_str(const Place& pl) {
     std::ostringstream s;
     s << "SHAPE " << pl.kind;
@@ -279,6 +514,740 @@ int main(int argc, char** argv) {
     if (refresh) std::fprintf(stderr, "(--refresh: re-shelling oracle for every cell)\n");
 
     auto PL = placements();
+    if (std::getenv("SESSION_MPCHECK")) {
+        // INTEGRATOR A/B on the five primitives, where the answer is analytic. Columns:
+        // BRep::volume()/legacy bbox-Gauss, brep_massprops' Green-reduced path, and the analytic
+        // truth. Also area, because the known trap (a planar face bounded by ONE closed trim
+        // integrated over the whole parameter rectangle) shows up in area first.
+        const double PI = Tolerance::PI;
+        struct C { const char* nm; BRep b; double vol, area; };
+        std::vector<C> cs;
+        cs.push_back({"box 4x4x4", BRep::create_box(4,4,4), 64.0, 96.0});
+        cs.push_back({"sphere 2.5", BRep::create_sphere(2.5), 4.0/3.0*PI*15.625, 4*PI*6.25});
+        cs.push_back({"cylinder 1.5x6", BRep::create_cylinder(1.5,6), PI*2.25*6, 2*PI*2.25 + 2*PI*1.5*6});
+        cs.push_back({"cone r2 h5", BRep::create_cone(2.0,5.0), PI*4.0*5.0/3.0,
+                      PI*4.0 + PI*2.0*std::sqrt(4.0+25.0)});
+        cs.push_back({"torus 2/0.8", BRep::create_torus(2.0,0.8), 2*PI*PI*2.0*0.64,
+                      4*PI*PI*2.0*0.8});
+        std::printf("%-16s %18s %18s %18s | %18s %18s %18s\n",
+                    "primitive", "vol_legacy", "vol_massprops", "vol_analytic",
+                    "area_massprops", "area_analytic", "rel_area");
+        {   // Boolean-produced faces, where the planar caps are bounded by ONE CLOSED trim --
+            // the configuration the "whole parameter rectangle instead of the disk" trap needs.
+            BRep box2 = BRep::create_box(2,2,2);
+            BRep cyl2 = BRep::create_cylinder(0.7, 3.0);
+            cyl2.xform = Xform::translation(0,0,-1.5); cyl2 = cyl2.transformed();
+            cs.push_back({"box2 ^ cyl0.7", box2.boolean_intersection(cyl2), PI*0.49*2.0, -1.0});
+            BRep box4 = BRep::create_box(4,4,4);
+            BRep sph15 = BRep::create_sphere(1.5);
+            cs.push_back({"box4 ^ sph1.5", box4.boolean_intersection(sph15),
+                          4.0/3.0*PI*3.375, 4*PI*2.25});
+        }
+        for (auto& c : cs) {
+            MassProps m = brep_massprops(c.b);
+            std::printf("%-16s %18.9f %18.9f %18.9f | %18.9f %18.9f %18.3e\n",
+                        c.nm, c.b.volume(), m.volume, c.vol, m.area, c.area,
+                        c.area > 0 ? std::abs(m.area - c.area) / c.area : 0.0);
+            std::printf("    shells=%d closed=%d converged=%d closure=%.3e naked=%d vols=[",
+                        m.shell_count, m.closed?1:0, m.converged?1:0, m.closure_residual, m.naked_edges);
+            for (double sv2 : m.shell_volumes) std::printf("%.9f ", sv2);
+            std::printf("]  sum(outward*flux)/3=%.9f\n",
+                        [&]{ double a=0; for (const auto& f2 : m.faces) a += f2.outward*f2.flux; return a/3.0; }());
+            for (const auto& fm : m.faces)
+                std::printf("    face %d path=%d shell=%d area=%.9f flux=%.9f outward=%+.0f traversal=%+.0f chain_gap=%.2e\n",
+                            fm.face_index, (int)fm.path, fm.shell, fm.area, fm.flux, fm.outward,
+                            fm.traversal, fm.chain_gap);
+        }
+        return 0;
+    }
+    if (std::getenv("SESSION_TRIMKIND")) {
+        // What does an emitted split face's BRepTrim actually CARRY as its 2D curve?
+        // An exact conic pcurve is degree>=2 and rational; a sampled polyline is degree 1.
+        // OCCT stores the exact Geom2d curve here, so a face bounded by a circular arc IS
+        // bounded by an arc; if ours stores a polygon, the face area is the inscribed polygon's.
+        auto dump = [](const BRep& X, const char* nm) {
+            int exact = 0, poly = 0, polycv = 0;
+            std::printf("[TRIMKIND] %s: faces=%d\n", nm, X.face_count());
+            for (int fi = 0; fi < (int)X.m_faces.size(); ++fi) {
+                const auto& F = X.m_faces[fi];
+                if (F.surface_index < 0 || F.surface_index >= (int)X.m_surfaces.size()) continue;
+                bool planar = X.m_surfaces[F.surface_index].is_planar(nullptr, 1e-6);
+                for (int li : F.loop_indices) {
+                    if (li < 0 || li >= (int)X.m_loops.size()) continue;
+                    for (int ti : X.m_loops[li].trim_indices) {
+                        if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
+                        int c2 = X.m_trims[ti].curve_2d_index;
+                        if (c2 < 0 || c2 >= (int)X.m_curves_2d.size()) continue;
+                        const NurbsCurve& pc = X.m_curves_2d[c2];
+                        bool ex = pc.degree() >= 2 && pc.is_rational();
+                        if (ex) ++exact; else { ++poly; polycv += pc.cv_count(); }
+                        std::printf("   f%-2d %-6s deg=%d rat=%d cvs=%-5d %s\n",
+                                    fi, planar ? "PLANE" : "curved", pc.degree(),
+                                    pc.is_rational() ? 1 : 0, pc.cv_count(),
+                                    ex ? "EXACT-CONIC" : "POLYLINE");
+                    }
+                }
+            }
+            std::printf("[TRIMKIND] %s: exact=%d polyline=%d (avg %d cvs)\n",
+                        nm, exact, poly, poly ? polycv/poly : 0);
+        };
+        BRep box = BRep::create_box(4, 4, 4);
+        BRep sph = BRep::create_sphere(2.5);
+        dump(box.boolean_intersection(sph), "box x sph common");
+        BRep cyl = BRep::create_cylinder(1.5, 6);
+        dump(box.boolean_intersection(cyl), "box x cyl common (matrix: EXACT 3.8e-16)");
+        return 0;
+    }
+    if (std::getenv("SESSION_SPLITCOUNT")) {
+        // The minitest "BRep::Boolean Sphere Split" asserts 8 here and its own comment records
+        // why: "OCCT keeps the cap as a single seam-spanning face = 7; joining the halves needs
+        // full seam identification". This probe prints the number so the seam merge's effect on
+        // that documented defect is measurable without editing the test.
+        BRep sph = BRep::create_sphere(2.5);
+        BRep box = BRep::create_box(4, 4, 4);
+        // PRIMITIVE TOPOLOGY vs the OCCT tracer's input dumps (kb/occt_trace_findings.md Q4):
+        // BRepPrimAPI_MakeSphere(2.5) = 1 face / 3 edges / 2 vertices (2 degenerated poles over
+        // the full u period + the seam meridian); BRepPrimAPI_MakeCone = 2 faces / 3 edges /
+        // 2 vertices. "wire" counts how many trims reference each edge -- a pole must appear
+        // ONCE, a seam TWICE.
+        {
+            BRep cone = BRep::create_cone(2.0, 5.0);
+            auto dump = [](const char* nm, const BRep& X, int occt_f, int occt_e, int occt_v) {
+                int degn = 0;
+                std::vector<int> uses(X.m_topology_edges.size(), 0);
+                for (const auto& t : X.m_trims)
+                    if (t.edge_index >= 0 && t.edge_index < (int)uses.size()) ++uses[t.edge_index];
+                std::string useq;
+                for (size_t e = 0; e < X.m_topology_edges.size(); ++e) {
+                    int ci = X.m_topology_edges[e].curve_3d_index;
+                    bool dg = false;
+                    if (ci >= 0 && ci < (int)X.m_curves_3d.size()) {
+                        const NurbsCurve& c = X.m_curves_3d[ci];
+                        auto dc = c.domain(); Point p0 = c.point_at(dc.first); double ext = 0.0;
+                        for (int k = 1; k <= 4; ++k)
+                            ext = std::max(ext, p0.distance(c.point_at(dc.first + (dc.second-dc.first)*k/4.0)));
+                        dg = ext < 1e-9;
+                    }
+                    if (dg) ++degn;
+                    useq += (dg ? "D" : "e") + std::to_string(uses[e]) + " ";
+                }
+                int nsing = 0;
+                for (const auto& t : X.m_trims) if (t.type == BRepTrimType::Singular) ++nsing;
+                std::printf("[PRIMTOP] %-6s faces=%d edges=%zu verts=%zu degen=%d singular_trims=%d "
+                            "wire_uses=[%s] solid=%d vol=%.6f  (OCCT %d/%d/%d)\n",
+                            nm, X.face_count(), X.m_topology_edges.size(), X.m_topology_vertices.size(),
+                            degn, nsing, useq.c_str(), X.is_solid() ? 1 : 0, X.volume(),
+                            occt_f, occt_e, occt_v);
+            };
+            dump("sphere", sph, 1, 3, 2);
+            dump("cone", cone, 2, 3, 2);
+        }
+        BRep B2 = sph.split_by_brep(box);
+        BRep bcut = box.boolean_difference(sph), bcom = box.boolean_intersection(sph);
+        int nk1, nm1, nk2, nm2;
+        count_naked_nonmani(bcut, nk1, nm1);
+        count_naked_nonmani(bcom, nk2, nm2);
+        std::printf("[SPLITCOUNT] sphere.split_by_brep(box) faces=%d (OCCT 7)\n", B2.face_count());
+        std::printf("[SPLITCOUNT] box-sph cut  faces=%d nk=%d nm=%d solid=%d vol=%.9f (occt 9.545724581)\n",
+                    bcut.face_count(), nk1, nm1, bcut.is_solid() ? 1 : 0, bcut.volume());
+        std::printf("[SPLITCOUNT] box-sph com  faces=%d nk=%d nm=%d solid=%d vol=%.9f (occt 54.454275630)\n",
+                    bcom.face_count(), nk2, nm2, bcom.is_solid() ? 1 : 0, bcom.volume());
+        // THE WRAP CASE (kb Q3 case A): OCCT's sphere-intersect-box keeps the central band as ONE
+        // sphere face spanning u0=0..2pi with the seam-straddling +X hole opened into its outer
+        // wire -- 1 spherical + 6 planar = 7. Count curved vs planar to prove we do the same
+        // rather than reaching 7 some other way.
+        auto split_kind = [](const BRep& X, const char* nm) {
+            int planar = 0, curved = 0;
+            for (const auto& f : X.m_faces) {
+                if (f.surface_index < 0 || f.surface_index >= (int)X.m_surfaces.size()) continue;
+                if (X.m_surfaces[f.surface_index].is_planar(nullptr, 1e-6)) ++planar; else ++curved;
+            }
+            std::printf("[SPLITCOUNT] %s curved=%d planar=%d\n", nm, curved, planar);
+        };
+        split_kind(bcom, "box-sph com  (OCCT curved=1 planar=6)");
+        split_kind(bcut, "box-sph cut  (OCCT curved=7 planar=6)");
+        return 0;
+    }
+    if (std::getenv("SESSION_SPHCYL")) {
+        // MINIMAL CURVED REPRODUCER. Sphere x cylinder, cylinder axis through the sphere
+        // centre, tilted. One section circle, exact analytic inputs, no coincidence, no
+        // trimming complexity. Sweep the tilt finely and report BOTH ops so the exact angle
+        // where behaviour changes is visible. vol(A) is analytic, so the partition identity
+        // cut+common == vol(A) is an exact oracle-free accuracy test at every angle.
+        double sr = 2.5, cr = 1.0, ch = 8.0;
+        if (const char* e = std::getenv("SESSION_SPHCYL_R")) cr = std::atof(e);
+        BRep S0 = BRep::create_sphere(sr);
+        double volA = S0.volume();
+        // analytic truth: V(sphere ∩ infinite cylinder r through centre) -- spherical cylinder
+        double a = std::sqrt(std::max(0.0, sr*sr - cr*cr));
+        double v_int = 4.0*Tolerance::PI/3.0*(sr*sr*sr - std::pow(sr*sr - cr*cr, 1.5));
+        std::printf("[SPHCYL] sphere r=%.3f (vol %.6f)  cylinder r=%.3f h=%.1f through centre\n",
+                    sr, volA, cr, ch);
+        std::printf("[SPHCYL] analytic: common=%.6f  cut=%.6f  (half-height of cap a=%.6f)\n",
+                    v_int, volA - v_int, a);
+        std::printf("[SPHCYL] %8s | %s | %s | %12s %12s %12s | %s\n",
+                    "tilt", "cut f/nk/nm", "com f/nk/nm", "vol_cut", "vol_com", "sum", "verdict");
+        const char* angs = std::getenv("SESSION_SPHCYL_ANGLES");
+        std::vector<double> tilts;
+        if (angs) { std::string s(angs); size_t p = 0; while (p < s.size()) { size_t q = s.find(',', p);
+                    tilts.push_back(std::atof(s.substr(p, q==std::string::npos?q:q-p).c_str()));
+                    if (q == std::string::npos) break; p = q+1; } }
+        else tilts = {0.0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 5.0, 15.0, 30.0, 45.0};
+        for (double t : tilts) {
+            BRep S = BRep::create_sphere(sr);
+            // SESSION_SPHCYL_SPIN=<deg>: rotate the SPHERE about its own polar axis. This is a
+            // GEOMETRIC NO-OP for the answer (the sphere is rotationally symmetric about Z and
+            // the cylinder axis passes through the centre), but it MOVES THE SEAM. If the
+            // result depends on it, the seam is proven to be the cause.
+            if (const char* spn = std::getenv("SESSION_SPHCYL_SPIN")) {
+                if (spn[0]) {
+                    S.xform = Xform::rotation_around_line(Line(0,0,0, 0,0,1), std::atof(spn), true);
+                    S = S.transformed();
+                }
+            }
+            BRep C = BRep::create_cylinder(cr, ch);
+            C.xform = Xform::translation(0, 0, -ch*0.5); C = C.transformed();
+            BRep C2 = C;
+            // SESSION_SPHCYL_AXIS=110 rotates about (1,1,0) instead of Y. Same pair, same
+            // angle, different axis: Y works at every tilt, (1,1,0) fails at 20 deg.
+            const char* axe = std::getenv("SESSION_SPHCYL_AXIS");
+            bool a110 = (axe && axe[0] && std::string(axe) == "110");
+            C2.xform = a110
+                ? Xform::rotation_around_line(Line(0,0,0, 0.70710678,0.70710678,0), t, true)
+                : Xform::rotation_around_line(Line(0,0,0, 0,1,0), t, true);
+            C2 = C2.transformed();
+            // SESSION_SPHCYL_SSI: raw section probe. Prints, per surface pair, the pcurves the
+            // intersector hands the splitter (count + UV bbox + 3D length). Tells apart "the
+            // section was never produced" from "the arrangement lost it".
+            if (std::getenv("SESSION_SPHCYL_SSI")) {
+                auto probe = [&](const char* who, const BRep& T, const BRep& Cx) {
+                    for (size_t ti = 0; ti < T.m_surfaces.size(); ++ti)
+                        for (size_t ci2 = 0; ci2 < Cx.m_surfaces.size(); ++ci2) {
+                            auto pcs = Intersection::cut_curves_on_surface(
+                                T.m_surfaces[ti], Cx.m_surfaces[ci2], 1e-6);
+                            if (pcs.empty()) continue;
+                            std::printf("[SSI] tilt=%.3f %s tsi=%zu csi=%zu n=%zu\n",
+                                        t, who, ti, ci2, pcs.size());
+                            for (size_t k = 0; k < pcs.size(); ++k) {
+                                auto dq = pcs[k].domain();
+                                double xmn=1e300,xmx=-1e300,ymn=1e300,ymx=-1e300,len3=0.0;
+                                Point prev(0,0,0);
+                                for (int q2 = 0; q2 <= 64; ++q2) {
+                                    Point uvq = pcs[k].point_at(dq.first + (dq.second-dq.first)*q2/64.0);
+                                    xmn=std::min(xmn,uvq[0]); xmx=std::max(xmx,uvq[0]);
+                                    ymn=std::min(ymn,uvq[1]); ymx=std::max(ymx,uvq[1]);
+                                    Point p3q = T.m_surfaces[ti].point_at(uvq[0], uvq[1]);
+                                    if (q2) len3 += prev.distance(p3q);
+                                    prev = p3q;
+                                }
+                                Point qa = pcs[k].point_at(dq.first), qb = pcs[k].point_at(dq.second);
+                                std::printf("[SSI]   %zu a(%.4f,%.4f) b(%.4f,%.4f) bbox[%.3f,%.3f]x[%.3f,%.3f] len3=%.4f closed=%d\n",
+                                            k, qa[0],qa[1], qb[0],qb[1], xmn,xmx,ymn,ymx, len3,
+                                            qa.distance(qb) < 1e-9 ? 1 : 0);
+                            }
+                        }
+                };
+                probe("S", S, C2);
+                probe("C", C2, S);
+                std::fflush(stdout);
+                continue;
+            }
+            // naked_real / nonmanifold EXCLUDE zero-length pole edges (count_naked_nonmani,
+            // validated against is_solid on this very pole shape). Volume alone hides the
+            // defect (35-44 deg: exact volume, open cut), so closure_residual is scored too.
+            int nkc=0,nmc=0,nko=0,nmo=0,nfc=0,nfo=0; double vc=std::nan(""), vo=std::nan("");
+            double clc = std::nan(""), clo = std::nan("");
+            try {
+                BRep rc = S.boolean_difference(C2);
+                count_naked_nonmani(rc, nkc, nmc);
+                nfc = rc.face_count(); vc = rc.volume();
+                clc = brep_massprops(rc).closure_residual;
+                BRep ro = S.boolean_intersection(C2);
+                count_naked_nonmani(ro, nko, nmo);
+                nfo = ro.face_count(); vo = ro.volume();
+                clo = brep_massprops(ro).closure_residual;
+                if (std::getenv("SESSION_SPHCYL_DBG")) {
+                    // deg = zero-length edge RECORDS, directly comparable to OCCT's res_degen.
+                    // OCCT carries a DEGENERATED edge at every pole in BOTH input and result;
+                    // our create_sphere gives the pole trims edge_index -1 (no edge record at
+                    // all), so input and result use different conventions -- the mismatch that
+                    // made a raw nt==1 count misreport these results as open.
+                    auto degcount = [](const BRep& X) {
+                        double mn[3] = {1e300,1e300,1e300}, mx[3] = {-1e300,-1e300,-1e300};
+                        for (const auto& p : X.m_vertices)
+                            for (int k = 0; k < 3; ++k) { mn[k]=std::min(mn[k],p[k]); mx[k]=std::max(mx[k],p[k]); }
+                        double diag = std::sqrt((mx[0]-mn[0])*(mx[0]-mn[0])+(mx[1]-mn[1])*(mx[1]-mn[1])+(mx[2]-mn[2])*(mx[2]-mn[2]));
+                        double tol = std::max(diag * 1e-7, 1e-12);
+                        int n = 0;
+                        for (const auto& e : X.m_topology_edges) {
+                            int ci = e.curve_3d_index;
+                            if (ci < 0 || ci >= (int)X.m_curves_3d.size()) continue;
+                            const NurbsCurve& c = X.m_curves_3d[ci];
+                            auto dc = c.domain(); Point p0 = c.point_at(dc.first); double ext = 0.0;
+                            for (int k = 1; k <= 4; ++k)
+                                ext = std::max(ext, p0.distance(c.point_at(dc.first + (dc.second-dc.first)*k/4.0)));
+                            if (ext < tol) ++n;
+                        }
+                        return n;
+                    };
+                    std::printf("[SPHCYL-DBG] tilt %.3f cut: solid=%d f=%d nk=%d nm=%d deg=%d cl=%.2e ar=%.6f | "
+                                "com: solid=%d f=%d nk=%d nm=%d deg=%d cl=%.2e ar=%.6f\n",
+                                t, rc.is_solid()?1:0, nfc, nkc, nmc, degcount(rc), clc,
+                                brep_massprops(rc).area,
+                                ro.is_solid()?1:0, nfo, nko, nmo, degcount(ro), clo,
+                                brep_massprops(ro).area);
+                }
+                if (std::getenv("SESSION_SPHCYL_MESH")) {
+                    // INDEPENDENT THIRD MEASUREMENT to arbitrate between the two integrators:
+                    // tessellate and sum signed tetrahedra, (1/6) (a x b) . c. Uses no trim
+                    // quadrature at all, so it shares no failure mode with either.
+                    auto mesh_vol = [](const BRep& X) {
+                        Mesh m = X.mesh();
+                        auto [vs, fs] = m.to_vertices_and_faces();
+                        double v = 0.0;
+                        for (const auto& f : fs) {
+                            if (f.size() < 3) continue;
+                            for (size_t j = 1; j + 1 < f.size(); ++j) {
+                                const Point& A = vs[f[0]]; const Point& B = vs[f[j]]; const Point& C = vs[f[j+1]];
+                                v += (A[0]*(B[1]*C[2]-B[2]*C[1])
+                                    - A[1]*(B[0]*C[2]-B[2]*C[0])
+                                    + A[2]*(B[0]*C[1]-B[1]*C[0])) / 6.0;
+                            }
+                        }
+                        return std::abs(v);
+                    };
+                    std::printf("[MESHVOL] tilt %.6f cut mesh=%.6f vol=%.6f | com mesh=%.6f vol=%.6f\n",
+                                t, mesh_vol(rc), vc, mesh_vol(ro), vo);
+                }
+                if (std::getenv("SESSION_SPHCYL_ORIENT")) {
+                    // Per-face orientation/flux of the CUT. At the exact pole tangency the cut's
+                    // AREA is right (100.7746 vs OCCT 100.776103, i.e. the correct two faces) but
+                    // its VOLUME comes back as the complement, so the suspect is the per-face
+                    // `outward` sense, not the face selection. OCCT's reference for this case is
+                    // RESFACE i=1 Sphere ori=FWD area=71.9829307 and i=2 Cylinder ori=REV.
+                    MassProps mpc = brep_massprops(rc);
+                    std::printf("[ORIENT] tilt %.6f cut  BRep::volume=%.9f  brep_massprops=%.9f  (truth 50.388051)\n",
+                                t, rc.volume(), mpc.volume);
+                    for (const auto& fm : mpc.faces)
+                        std::printf("[ORIENT] tilt %.6f cut f=%d area=%.6f flux=%.6f traversal=%+.0f outward=%+.0f path=%d\n",
+                                    t, fm.face_index, fm.area, fm.flux, fm.traversal, fm.outward, (int)fm.path);
+                    // BRep::volume()'s own per-face sign probe (a CDT-interior point stepped along
+                    // the natural normal). This is the suspect: at the tangency the sphere band's
+                    // UV polygon is PINCHED at the pole, and a pinched polygon breaks the
+                    // parity/CDT reasoning the probe relies on.
+                    std::vector<Point> P3; std::vector<Vector> Nn;
+                    std::vector<double> sg = rc.face_outward_signs(&P3, &Nn);
+                    for (size_t k = 0; k < sg.size(); ++k)
+                        std::printf("[ORIENT] tilt %.6f cut f=%zu sign=%+.0f probe=(%.5f,%.5f,%.5f) nat=(%.4f,%.4f,%.4f)\n",
+                                    t, k, sg[k],
+                                    k < P3.size() ? P3[k][0] : 0.0, k < P3.size() ? P3[k][1] : 0.0,
+                                    k < P3.size() ? P3[k][2] : 0.0,
+                                    k < Nn.size() ? Nn[k][0] : 0.0, k < Nn.size() ? Nn[k][1] : 0.0,
+                                    k < Nn.size() ? Nn[k][2] : 0.0);
+                }
+            } catch (const std::exception& e) {
+                std::printf("[SPHCYL] %8.3f THREW %s\n", t, e.what()); continue;
+            }
+            double sum = vc + vo;
+            double tolv = 1e-6;   // relative
+            if (const char* tv = std::getenv("SESSION_SPHCYL_TOL")) tolv = std::atof(tv);
+            bool ok = !nkc && !nmc && !nko && !nmo &&
+                      std::isfinite(vc) && std::isfinite(vo) &&
+                      clc < 1e-9 && clo < 1e-9 &&
+                      std::abs(vo - v_int)/v_int < tolv &&
+                      std::abs(vc - (volA - v_int))/(volA - v_int) < tolv;
+            std::printf("[SPHCYL] %8.3f | %2d/%d/%d      | %2d/%d/%d      | %12.6f %12.6f %12.6f | %s\n",
+                        t, nfc,nkc,nmc, nfo,nko,nmo, vc, vo, sum, ok ? "PASS" : "FAIL");
+            std::fflush(stdout);
+        }
+        return 0;
+    }
+    if (const char* insp = std::getenv("SESSION_INSPECT")) {
+        // CURATED IN-MEMORY INSPECTION SET. Operands are built by create_* and rotated in
+        // memory; STEP is OUTPUT ONLY, so nothing here is contaminated by the reader. One
+        // file per cell: A red, rotated B blue, result green, one product per BRep.
+        // Accuracy is oracle-free: both cut and common are computed and the partition
+        // identity cut+common == vol(A) is checked (vol(A) is analytic for a primitive).
+        std::string dir = insp;
+        std::filesystem::create_directories(dir);
+        std::printf("| file | pair | rotation | faces | solid | shells | naked | nonmani | our vol | cut+common | vol(A) | verdict |\n");
+        std::printf("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n");
+        auto emit = [&](const std::string& fname, const std::string& pairname,
+                        const std::string& rotdesc, BRep A2, BRep B2, int op) {
+            const char* opn3[3] = {"cut", "common", "fuse"};
+            double volA = A2.volume();
+            BRep res, other;
+            try {
+                res   = op == 0 ? A2.boolean_difference(B2)
+                      : op == 1 ? A2.boolean_intersection(B2) : A2.boolean_union(B2);
+                other = op == 0 ? A2.boolean_intersection(B2) : A2.boolean_difference(B2);
+            } catch (const std::exception& e) {
+                std::printf("| %s | %s | %s | THREW %s |\n", fname.c_str(), pairname.c_str(),
+                            rotdesc.c_str(), e.what());
+                return;
+            }
+            // degeneracy-aware, matching is_solid(): a sphere pole / cone apex is a
+            // zero-length edge and is watertight by construction, not a naked edge.
+            int nk = 0, nm = 0, nk2 = 0, nm2 = 0;
+            count_naked_nonmani(res, nk, nm);
+            count_naked_nonmani(other, nk2, nm2);
+            bool closed = (nk == 0 && nm == 0);
+            double vres = closed ? res.volume() : std::nan("");
+            double vsum = std::nan("");
+            if (closed && nk2 == 0 && nm2 == 0) vsum = vres + other.volume();
+            bool pass = closed && std::isfinite(vsum) &&
+                        std::abs(vsum - volA) / std::max(1.0, volA) < 1e-6;
+            BRep ac = A2, bc = B2, rc = res;
+            ac.surfacecolor = Color(0.85f, 0.25f, 0.20f);
+            bc.surfacecolor = Color(0.20f, 0.45f, 0.85f);
+            rc.surfacecolor = Color(0.35f, 0.75f, 0.40f);
+            std::vector<const BRep*> parts = {&ac, &bc};
+            if (rc.face_count() > 0) parts.push_back(&rc);
+            file_step::write_file_step_breps(parts, fname, dir + "/" + fname + ".step");
+            std::printf("| %s.step | %s %s | %s | %d | %d | %d | %d | %d | %.4f | %.4f | %.4f | %s |\n",
+                        fname.c_str(), pairname.c_str(), opn3[op], rotdesc.c_str(),
+                        res.face_count(), res.is_solid() ? 1 : 0, shell_count_of(res), nk, nm,
+                        vres, vsum, volA, pass ? "PASS" : (rc.face_count() == 0 ? "EMPTY" : "FAIL"));
+            std::fflush(stdout);
+        };
+        auto rotY = [](double deg) { return Xform::rotation_around_line(Line(0,0,0, 0,1,0), deg, true); };
+        auto rot110 = [](double deg) { return Xform::rotation_around_line(Line(0,0,0, 0.70710678,0.70710678,0), deg, true); };
+        // (a) MINIMAL REPRODUCER: sphere x cylinder, cylinder axis through the sphere centre,
+        //     tilted by a fraction of a degree. Exact analytic inputs; closure collapses.
+        for (double t : {0.0, 0.1, 0.2, 0.3, 0.5}) {
+            BRep S = BRep::create_sphere(2.5);
+            BRep C = BRep::create_cylinder(1.0, 8.0);
+            C.xform = Xform::translation(0,0,-4.0); C = C.transformed();
+            BRep C2 = C; C2.xform = rotY(t); C2 = C2.transformed();
+            char nm[64]; std::snprintf(nm, sizeof nm, "A_sphcyl_tilt%.1f_cut", t);
+            char rd[32]; std::snprintf(rd, sizeof rd, "%.1f deg about Y", t);
+            emit(nm, "sph x cyl", rd, S, C2, 0);
+        }
+        // (b) THE 0.01-DEGREE FLIP about (1,1,0)
+        for (double t : {20.00, 20.01, 20.02, 20.03}) {
+            BRep S = BRep::create_sphere(2.5);
+            BRep C = BRep::create_cylinder(1.0, 8.0);
+            C.xform = Xform::translation(0,0,-4.0); C = C.transformed();
+            BRep C2 = C; C2.xform = rot110(t); C2 = C2.transformed();
+            char nm[64]; std::snprintf(nm, sizeof nm, "B_sphcyl_110axis_%.2f_cut", t);
+            char rd[32]; std::snprintf(rd, sizeof rd, "%.2f deg about (1,1,0)", t);
+            emit(nm, "sph x cyl", rd, S, C2, 0);
+        }
+        // (c) THE WORKING CASE: box x box at clearly different arbitrary rotations
+        {
+            unsigned sd = 20260726u;
+            auto rnd = [&]() { sd = sd*1664525u + 1013904223u; return (sd>>8)/16777216.0; };
+            for (int k = 0; k < 4; ++k) {
+                double ax=rnd()*2-1, ay=rnd()*2-1, az=rnd()*2-1;
+                double m=std::sqrt(ax*ax+ay*ay+az*az); ax/=m; ay/=m; az/=m;
+                double ang=rnd()*360.0, d=1.5+rnd()*1.5;
+                BRep A2 = BRep::create_box(4,4,4);
+                BRep B2 = BRep::create_box(4,4,4);
+                B2.xform = Xform::translation(d,d*0.3,d*0.6) * Xform::rotation_around_line(Line(0,0,0,ax,ay,az), ang, true);
+                B2 = B2.transformed();
+                char nm[64]; std::snprintf(nm, sizeof nm, "C_boxbox_pose%d_cut", k);
+                char rd[48]; std::snprintf(rd, sizeof rd, "%.0f deg arbitrary axis", ang);
+                emit(nm, "box x box", rd, A2, B2, 0);
+            }
+        }
+        // (d) FAILING CURVED FAMILIES, genuinely interfering poses
+        struct FC { const char* nm; BRep (*ma)(); BRep (*mb)(); double d; };
+        static const FC fams[] = {
+            {"sphsph",  []{ return BRep::create_sphere(2.5); },      []{ return BRep::create_sphere(2.0); }, 2.0},
+            {"boxsph",  []{ return BRep::create_box(4,4,4); },       []{ return BRep::create_sphere(2.5); }, 1.8},
+            {"conecone",[]{ return BRep::create_cone(2.0,4.0); },    []{ return BRep::create_cone(2.0,4.0); }, 1.5},
+            {"cylcyl",  []{ return BRep::create_cylinder(1.5,6); },  []{ return BRep::create_cylinder(1.5,6); }, 1.5},
+            {"boxcone", []{ return BRep::create_box(4,4,4); },       []{ return BRep::create_cone(2.0,4.0); }, 1.2},
+            {"cylcone", []{ return BRep::create_cylinder(1.5,6); },  []{ return BRep::create_cone(2.0,4.0); }, 1.2},
+            {"boxtor",  []{ return BRep::create_box(4,4,4); },       []{ return BRep::create_torus(2.0,0.8); }, 1.0},
+        };
+        for (const auto& f : fams)
+            for (int k = 0; k < 2; ++k) {
+                double ang = (k == 0) ? 25.0 : 55.0;
+                BRep A2 = f.ma(), B2 = f.mb();
+                B2.xform = Xform::translation(f.d, f.d*0.4, f.d*0.2)
+                         * Xform::rotation_around_line(Line(0,0,0, 0.4082,0.8165,0.4082), ang, true);
+                B2 = B2.transformed();
+                char nm[64]; std::snprintf(nm, sizeof nm, "D_%s_rot%.0f_cut", f.nm, ang);
+                char rd[48]; std::snprintf(rd, sizeof rd, "%.0f deg tilted axis", ang);
+                emit(nm, f.nm, rd, A2, B2, 0);
+            }
+        return 0;
+    }
+    if (const char* ps = std::getenv("SESSION_PRIMSWEEP")) {
+        // DEFINITIVE IN-MEMORY ROTATED-PRIMITIVE SWEEP. No STEP anywhere in the loop, so
+        // rotation is isolated from the loader/domain defect. One PAIR per process so a hang
+        // kills only that pair and is counted, never silently dropped.
+        // Verdict rule: naked == 0 AND non-manifold == 0 (with naked 0 every shell is closed
+        // by construction). Accuracy is ORACLE-FREE: partition identity cut+common == vol(A),
+        // exact here because in-memory operand volumes are analytic.
+        struct K { const char* name; BRep (*make)(); double rad; };
+        static const K kinds[] = {
+            {"box", []{ return BRep::create_box(4, 4, 4); }, 3.47},
+            {"sph", []{ return BRep::create_sphere(2.5); }, 2.5},
+            {"cyl", []{ return BRep::create_cylinder(1.5, 6); }, 3.35},
+            {"cone", []{ return BRep::create_cone(2.0, 4.0); }, 2.83},
+            {"tor", []{ return BRep::create_torus(2.0, 0.8); }, 2.8},
+        };
+        std::vector<std::pair<int,int>> pairs_i;
+        for (int a = 0; a < 5; ++a) for (int b = a; b < 5; ++b) pairs_i.push_back({a, b});
+        int pi = std::atoi(ps);
+        if (pi < 0 || pi >= (int)pairs_i.size()) return 0;
+        int ka = pairs_i[pi].first, kb = pairs_i[pi].second;
+        int NPOSE = 20;
+        if (const char* np = std::getenv("SESSION_PRIMSWEEP_N")) NPOSE = std::atoi(np);
+        unsigned seed = 20260726u + 7919u * (unsigned)pi;
+        auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.0; };
+        BRep A0 = kinds[ka].make();
+        double volA = A0.volume();
+        std::printf("[PRIM] pair %-9s vol(A)=%.6f\n",
+                    (std::string(kinds[ka].name) + " x " + kinds[kb].name).c_str(), volA);
+        for (int p = 0; p < NPOSE; ++p) {
+            double ax = rnd()*2-1, ay = rnd()*2-1, az = rnd()*2-1;
+            double m = std::sqrt(ax*ax+ay*ay+az*az); if (m < 1e-6) { ax=1; ay=0; az=0; m=1; }
+            ax/=m; ay/=m; az/=m;
+            double ang = rnd()*360.0;
+            // translation magnitude spread so the overlap fraction spans shallow..deep
+            double f = 0.15 + 0.70 * rnd();
+            double d = f * (kinds[ka].rad + kinds[kb].rad);
+            double tx = rnd()*2-1, ty = rnd()*2-1, tz = rnd()*2-1;
+            double tm = std::sqrt(tx*tx+ty*ty+tz*tz); if (tm < 1e-6) { tx=1; ty=0; tz=0; tm=1; }
+            tx = tx/tm*d; ty = ty/tm*d; tz = tz/tm*d;
+            Xform R = Xform::rotation_around_line(Line(0,0,0, ax,ay,az), ang, true);
+            Xform M = Xform::translation(tx, ty, tz) * R;
+            double v[3] = {0,0,0}; int nk[3] = {0,0,0}, nm[3] = {0,0,0}, nf[3] = {0,0,0}, sol[3] = {0,0,0};
+            double cl[3] = {0,0,0};
+            long ms_tot = 0; bool threw = false;
+            for (int op = 0; op < 3; ++op) {
+                BRep A2 = kinds[ka].make();
+                BRep B2 = kinds[kb].make(); B2.xform = M; B2 = B2.transformed();
+                auto t0 = std::chrono::steady_clock::now();
+                try {
+                    BRep r = op == 0 ? A2.boolean_difference(B2)
+                           : op == 1 ? A2.boolean_intersection(B2)
+                                     : A2.boolean_union(B2);
+                    count_naked_nonmani(r, nk[op], nm[op]);   // degeneracy-aware
+                    nf[op] = r.face_count(); sol[op] = r.is_solid() ? 1 : 0;
+                    // SESSION_PRIMSWEEP_NOVOL: skip volume() so a hang can be attributed to
+                    // the BOOLEAN or to volume() -- session C measured volume() failing to
+                    // terminate on NURBS solids, which would misattribute 127 "timeouts".
+                    // NB: an EMPTY value must count as UNSET. "VAR=" makes getenv return "" (non-null), which
+                    // silently disabled every volume and scored a whole 251-cell sweep CLOSED-WRONG.
+                    const char* nv_env = std::getenv("SESSION_PRIMSWEEP_NOVOL");
+                    static const bool s_novol = (nv_env != nullptr && nv_env[0] != '\0');
+                    v[op] = (!s_novol && nk[op] == 0 && nm[op] == 0) ? r.volume() : std::nan("");
+                    // CLOSURE. Volume alone hides the defect: unmerged/duplicated pieces can
+                    // sum to the correct volume while the shell is not geometrically closed
+                    // (measured: sphere x cylinder 35-44 deg). closure_residual = |sum of
+                    // outward vector areas| / area; our own solids read 1e-17, legitimate
+                    // curved results 1e-12, and brep_massprops itself declares a shell open
+                    // above 1e-6.
+                    cl[op] = (!s_novol) ? brep_massprops(r).closure_residual : 0.0;
+                } catch (...) { threw = true; }
+                ms_tot += (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - t0).count();
+            }
+            bool clean = !threw && nk[0]==0 && nk[1]==0 && nm[0]==0 && nm[1]==0;
+            double prel = std::nan("");
+            if (clean && std::isfinite(v[0]) && std::isfinite(v[1]))
+                prel = std::abs(v[0] + v[1] - volA) / std::max(1.0, volA);
+            double clmax = std::max(std::max(cl[0], cl[1]), cl[2]);
+            const char* verdict = threw ? "THREW"
+                                : (nk[0]||nk[1]||nk[2]||nm[0]||nm[1]||nm[2]) ? "OPEN"
+                                : (clmax > 1e-6) ? "UNCLOSED"
+                                : (std::isfinite(prel) && prel < 1e-6) ? "EXACT" : "CLOSED-WRONG";
+            std::printf("[PRIM] %-9s p%02d ang %6.1f f %.2f | cut %2df/%dnk/%dnm common %2df/%dnk/%dnm fuse %2df/%dnk/%dnm | part %9.2e | cl %8.1e | %5ldms | %s\n",
+                        (std::string(kinds[ka].name)+"x"+kinds[kb].name).c_str(), p, ang, f,
+                        nf[0], nk[0], nm[0], nf[1], nk[1], nm[1], nf[2], nk[2], nm[2],
+                        prel, clmax, ms_tot, verdict);
+            std::fflush(stdout);
+        }
+        return 0;
+    }
+    if (std::getenv("SESSION_REPARAM_CTRL")) {
+        // THE CONTROL THAT DECIDES WHETHER THIS IS A STEP BUG OR A PARAMETERISATION BUG.
+        // Take an IN-MEMORY box -- never written, never read -- and rescale each face's UV
+        // domain WITHOUT touching geometry (same CVs, same surface, affine knot rescale; the
+        // trims are rescaled identically so the face is geometrically unchanged). If the
+        // boolean then breaks the same way the STEP round trip breaks, the defect is
+        // PARAMETERISATION SENSITIVITY and has nothing to do with STEP -- STEP is merely how
+        // we encountered it. Domain-relative tolerances (samp_tol = max(range)*2e-5,
+        // eps_border = min(range)*2e-3, snap_uv, scaf_forced_eps = min_range*1.3e-1) are
+        // measuring parameter space, which is an arbitrary modelling choice.
+        auto run_cut = [&](const char* tag, BRep A2, BRep B2) {
+            try {
+                BRep cu = A2.boolean_difference(B2);
+                int nk = 0; for (const auto& e : cu.m_topology_edges) if ((int)e.trim_indices.size() == 1) ++nk;
+                std::printf("[REPARAM] %-22s cut faces %d solid %d naked %d vol %.6f\n",
+                            tag, cu.face_count(), cu.is_solid() ? 1 : 0, nk, cu.volume());
+            } catch (const std::exception& e) {
+                std::printf("[REPARAM] %-22s THREW %s\n", tag, e.what());
+            }
+            std::fflush(stdout);
+        };
+        double scales[] = {1.0, 4.08, 100.0};
+        for (double sc : scales) {
+            BRep A2 = BRep::create_box(4, 4, 4);
+            BRep B2 = BRep::create_box(4, 4, 4);
+            B2.xform = Xform::translation(1, 0, 0); B2 = B2.transformed();
+            if (sc != 1.0) {
+                // rescale surface domains AND the trim pcurves by the same affine map
+                auto reparam = [&](BRep& X) {
+                    for (auto& s : X.m_surfaces) {
+                        auto du = s.domain(0); auto dv = s.domain(1);
+                        s.set_domain(0, du.first * sc, du.second * sc);
+                        s.set_domain(1, dv.first * sc, dv.second * sc);
+                    }
+                    for (auto& pc : X.m_curves_2d)
+                        for (int i = 0; i < pc.cv_count(); ++i) {
+                            Point q = pc.get_cv(i);
+                            pc.set_cv(i, Point(q[0]*sc, q[1]*sc, q[2]));
+                        }
+                };
+                reparam(A2); reparam(B2);
+            }
+            char tag[64]; std::snprintf(tag, sizeof tag, "in-memory scale x%.2f", sc);
+            run_cut(tag, A2, B2);
+        }
+        // THE ACTUAL DIFFERENCE THE READER INTRODUCES: the domain is PADDED BEYOND THE TRIMS,
+        // so the face no longer FILLS its domain (STEP box face: domain [-0.04,4.04], trims
+        // spanning [0,4] -- a 1% margin all round). In-memory faces always fill their domain
+        // exactly, and several code paths special-case a full-domain rectangular face
+        // (curved_rect / rect_trim / use_domain_border). Reproduce that here with geometry
+        // and trims untouched: only the surface's domain is widened.
+        for (double pad : {0.01, 0.04, 0.25}) {
+            BRep A2 = BRep::create_box(4, 4, 4);
+            BRep B2 = BRep::create_box(4, 4, 4);
+            B2.xform = Xform::translation(1, 0, 0); B2 = B2.transformed();
+            auto widen = [&](BRep& X) {
+                for (auto& s : X.m_surfaces) {
+                    auto du = s.domain(0); auto dv = s.domain(1);
+                    double ru = du.second-du.first, rv = dv.second-dv.first;
+                    s.set_domain(0, du.first - ru*pad, du.second + ru*pad);
+                    s.set_domain(1, dv.first - rv*pad, dv.second + rv*pad);
+                }
+            };
+            widen(A2); widen(B2);
+            char tag[64]; std::snprintf(tag, sizeof tag, "domain PAD %.0f%% (trims fixed)", pad*100);
+            run_cut(tag, A2, B2);
+        }
+        return 0;
+    }
+    if (std::getenv("SESSION_ROUNDTRIP_RESID")) {
+        // THE DECISIVE COMPARISON (session C's ticket + session A's re-derivation reading):
+        // the SAME primitive, in memory vs after a STEP round trip. In memory its analytic
+        // parameters are exact by construction; from STEP they must be RE-FITTED from samples
+        // of the returned NURBS (fit_cylinder 5x5 + PCA, etc). If analytic identity is
+        // preserved through I/O the two residuals match; if it is discarded, the round-tripped
+        // one is orders of magnitude worse -- and that single fact explains "exact in memory,
+        // garbage from STEP" AND the 9.4e-05 rotated cluster with one mechanism.
+        std::string dir = "/tmp/claude-1000/rt_resid";
+        std::filesystem::create_directories(dir);
+        struct C { const char* name; BRep b; };
+        std::vector<C> cells;
+        cells.push_back({"box",      BRep::create_box(4, 4, 4)});
+        cells.push_back({"cylinder", BRep::create_cylinder(1.5, 6)});
+        cells.push_back({"cone",     BRep::create_cone(2.0, 4.0)});
+        cells.push_back({"sphere",   BRep::create_sphere(2.5)});
+        cells.push_back({"torus",    BRep::create_torus(2.0, 0.8)});
+        for (auto& c : cells) {
+            std::string path = dir + "/" + c.name + ".step";
+            file_step::write_file_step_brep(c.b, path);
+            std::vector<BRep> back = file_step::read_file_step_breps(path);
+            std::printf("\n[RT] %-9s in-memory vol %.9f | round-trip breps %zu vol %.9f\n",
+                        c.name, c.b.volume(), back.size(),
+                        back.empty() ? 0.0 : back[0].volume());
+            std::fflush(stdout);
+            // trigger recognition on both paths; SESSION_RECOG_RESID prints the residuals
+            if (!back.empty()) {
+                const BRep& r = back[0];
+                std::printf("[RT] %-9s topo  in-mem F=%zu L=%zu T=%zu E=%zu V=%zu | STEP F=%zu L=%zu T=%zu E=%zu V=%zu | solid %d/%d\n",
+                            c.name, c.b.m_faces.size(), c.b.m_loops.size(), c.b.m_trims.size(),
+                            c.b.m_topology_edges.size(), c.b.m_topology_vertices.size(),
+                            r.m_faces.size(), r.m_loops.size(), r.m_trims.size(),
+                            r.m_topology_edges.size(), r.m_topology_vertices.size(),
+                            c.b.is_solid() ? 1 : 0, r.is_solid() ? 1 : 0);
+                // C's ticket: same solid vs itself translated +1, in memory vs from STEP
+                BRep t_mem = c.b;  t_mem.xform = Xform::translation(1, 0, 0); t_mem = t_mem.transformed();
+                BRep t_stp = r;    t_stp.xform = Xform::translation(1, 0, 0); t_stp = t_stp.transformed();
+                auto rep = [&](const char* tag, const BRep& A2, const BRep& B2) {
+                    try {
+                        BRep cu = A2.boolean_difference(B2);
+                        int nk = 0; for (const auto& e : cu.m_topology_edges) if ((int)e.trim_indices.size() == 1) ++nk;
+                        std::printf("[RT] %-9s %-10s cut faces %d solid %d naked %d vol %.6f\n",
+                                    c.name, tag, cu.face_count(), cu.is_solid() ? 1 : 0, nk, cu.volume());
+                    } catch (const std::exception& e) {
+                        std::printf("[RT] %-9s %-10s THREW %s\n", c.name, tag, e.what());
+                    }
+                };
+                // Domains and degrees: identical topology + identical surfaces but a
+                // different boolean means the difference is in the PARAMETERIZATION, and many
+                // splitter tolerances are domain-relative (samp_tol = max(range)*2e-5,
+                // eps_border = min(range)*2e-3, snap_uv ...), so a rescaled domain silently
+                // rescales every one of them.
+                for (size_t si = 0; si < c.b.m_surfaces.size() && si < 3; ++si) {
+                    auto du0 = c.b.m_surfaces[si].domain(0); auto dv0 = c.b.m_surfaces[si].domain(1);
+                    auto du1 = r.m_surfaces[si].domain(0);   auto dv1 = r.m_surfaces[si].domain(1);
+                    std::printf("[RT] %-9s s%zu dom mem u[%.4f,%.4f] v[%.4f,%.4f] deg %d/%d | STEP u[%.4f,%.4f] v[%.4f,%.4f] deg %d/%d\n",
+                                c.name, si, du0.first, du0.second, dv0.first, dv0.second,
+                                c.b.m_surfaces[si].degree(0), c.b.m_surfaces[si].degree(1),
+                                du1.first, du1.second, dv1.first, dv1.second,
+                                r.m_surfaces[si].degree(0), r.m_surfaces[si].degree(1));
+                }
+                rep("mem-x-mem", c.b, t_mem);
+                rep("stp-x-stp", r, t_stp);
+                std::fflush(stdout);
+            }
+            std::fprintf(stderr, "[RT] === %s IN-MEMORY ===\n", c.name);
+            for (const auto& s : c.b.m_surfaces) Intersection::surface_surface(s, s, 1e-6);
+            if (!back.empty()) {
+                std::fprintf(stderr, "[RT] === %s ROUND-TRIPPED ===\n", c.name);
+                for (const auto& s : back[0].m_surfaces) Intersection::surface_surface(s, s, 1e-6);
+            }
+        }
+        return 0;
+    }
+    if (std::getenv("SESSION_OPVOL")) {
+        // Does a RIGID MOTION change an operand's own computed volume? It must not. This is
+        // the cheapest possible check and it sits upstream of every boolean: if vol(boxR) is
+        // not exactly vol(box), every cell using boxR inherits the error and no amount of
+        // section/pcurve/flux work can fix it.
+        std::printf("%-8s %14s %14s\n", "placement", "volume", "rel_vs_exact");
+        struct { const char* key; double exact; } cells[] = {
+            {"box", 64.0}, {"boxR", 64.0}, {"sph", 0.0}, {"cyl", 0.0},
+            {"cylR", 0.0}, {"cone", 0.0}, {"coneR", 0.0}, {"tor", 0.0}, {"torR", 0.0},
+        };
+        for (auto& c : cells) {
+            auto it = PL.find(c.key);
+            if (it == PL.end()) continue;
+            BRep b = build(it->second);
+            double v = b.volume();
+            if (c.exact > 0)
+                std::printf("%-8s %14.9f  rel %.3e\n", c.key, v, std::abs(v-c.exact)/c.exact);
+            else
+                std::printf("%-8s %14.9f\n", c.key, v);
+        }
+        return 0;
+    }
+    if (std::getenv("SESSION_RELPOSE_SWEEP")) {
+        relpose_sweep(PL["box"], PL["box2"], "box x box2 (planar)");
+        relpose_sweep(PL["box"], PL["cyl"],  "box x cyl  (planar x cylinder)");
+        relpose_sweep(PL["cyl"], PL["cyl2"], "cyl x cyl2 (cylinder x cylinder)");
+        relpose_sweep(PL["box"], PL["sph"],  "box x sph  (planar x sphere)");
+        relpose_sweep(PL["box"], PL["tor"],  "box x tor  (planar x torus)");
+        relpose_sweep(PL["sph"], PL["cyl"],  "sph x cyl  (sphere x cylinder)");
+        return 0;
+    }
+    if (std::getenv("SESSION_POSE_SWEEP")) {
+        // pairs chosen to separate the variables: planar (exact when rotated), curved
+        // axis-aligned (exact), curved+curved, and the torus (worst measured).
+        pose_sweep(PL["box"],  PL["box2"], "box  x box2  (planar x planar)");
+        pose_sweep(PL["cyl"],  PL["cyl2"], "cyl  x cyl2  (curved x curved, axis-aligned at 0)");
+        pose_sweep(PL["box"],  PL["cyl"],  "box  x cyl   (planar x curved)");
+        pose_sweep(PL["sph"],  PL["cyl"],  "sph  x cyl   (curved x curved)");
+        pose_sweep(PL["box"],  PL["tor"],  "box  x tor   (torus)");
+        return 0;
+    }
     auto PRS = pairs();
     if (std::getenv("SESSION_EDGE")) {
         auto ep = edge_placements();
@@ -366,6 +1335,50 @@ int main(int argc, char** argv) {
                         std::string(sd) + "/" + pr[1] + "_" + mode + "_" + pr[2] + ".step");
                 }
                 v = r.volume(); nf = r.face_count(); solid = r.is_solid() ? 1 : 0;
+                // PER-FACE ATTRIBUTION. A cell that is wrong by 1e-5 in TOTAL says nothing
+                // about which face carries it; the per-face area/flux does. Prints each
+                // face's trim kinds too, so an exact rational pcurve and a fitted sampled
+                // one are told apart at a glance.
+                if (const char* mf = std::getenv("SESSION_MPFACE"); mf && mf[0]) {
+                    MassProps m = brep_massprops(r);
+                    {   // MEASURED edge tolerances: how far each face's pcurve, lifted through
+                        // its surface, actually sits from the edge's own 3D curve.
+                        BRep rt = r;
+                        double wt = rt.update_tolerances();
+                        std::vector<std::pair<double,int>> tl;
+                        for (int ei = 0; ei < (int)rt.m_topology_edges.size(); ++ei)
+                            tl.push_back({rt.m_topology_edges[ei].tolerance, ei});
+                        std::sort(tl.rbegin(), tl.rend());
+                        std::printf("[ETOL] %s %s edges=%d worst=%.3e top:",
+                                    pr[0].c_str(), mode, (int)tl.size(), wt);
+                        for (size_t i = 0; i < tl.size() && i < 8; ++i)
+                            std::printf(" e%d=%.2e", tl[i].second, tl[i].first);
+                        std::printf("\n");
+                    }
+                    std::printf("[MPF] %s %s vol=%.12f err=%.3e conv=%d closed=%d closure=%.2e gap=%.2e evals=%lld\n",
+                                pr[0].c_str(), mode, m.volume, m.volume_error, m.converged?1:0,
+                                m.closed?1:0, m.closure_residual, m.max_chain_gap, m.surface_evals);
+                    for (const auto& fm : m.faces) {
+                        int fi = fm.face_index;
+                        std::string kinds;
+                        if (fi >= 0 && fi < (int)r.m_faces.size())
+                            for (int li : r.m_faces[fi].loop_indices) {
+                                if (li < 0 || li >= (int)r.m_loops.size()) continue;
+                                for (int ti : r.m_loops[li].trim_indices) {
+                                    if (ti < 0 || ti >= (int)r.m_trims.size()) continue;
+                                    int c2 = r.m_trims[ti].curve_2d_index;
+                                    if (c2 < 0 || c2 >= (int)r.m_curves_2d.size()) continue;
+                                    const NurbsCurve& pc = r.m_curves_2d[c2];
+                                    kinds += " d" + std::to_string(pc.degree())
+                                           + (pc.is_rational() ? "r" : "p")
+                                           + "/" + std::to_string(pc.cv_count());
+                                }
+                            }
+                        std::printf("[MPF]   f%-2d path=%d area=%.12f flux=%.12f aerr=%.2e ferr=%.2e out=%+.0f gap=%.1e |%s\n",
+                                    fi, (int)fm.path, fm.area, fm.flux, fm.area_err, fm.flux_err,
+                                    fm.outward, fm.chain_gap, kinds.c_str());
+                    }
+                }
             } catch (const std::exception& e) {
                 std::printf("%-13s %-4s | THREW: %s\n", pr[0].c_str(), mode, e.what()); ++fails; continue;
             } catch (...) { std::printf("%-13s %-4s | THREW\n", pr[0].c_str(), mode); ++fails; continue; }
@@ -386,6 +1399,12 @@ int main(int argc, char** argv) {
             if (!ok) ++fails;
             std::printf("%-13s %-4s | %11.4f %11.4f %9.2e | %4d %5d | %d | %8ld | %s\n",
                         pr[0].c_str(), mode, v, k[0], rel, nf, (int)k[1], solid, us, ok ? "OK" : "FAIL");
+            // Full-precision echo. A 3-digit `rel` cannot tell "the change did nothing" from
+            // "the change moved it by 0.4%", and that distinction decided whether the pcurve
+            // deviation is the error source at all.
+            if (const char* vp = std::getenv("SESSION_VOLPREC"); vp && vp[0])
+                std::printf("   [VP] %-13s %-6s our %.12f occt %.12f rel %.6e\n",
+                            pr[0].c_str(), mode, v, k[0], rel);
         }
         // Composite-op identities against the cached references:
         //   vol(xor)  == fuse - common,   sum(split fragments) == fuse.
@@ -531,8 +1550,10 @@ int main(int argc, char** argv) {
             }
             std::printf("freeform pillow: vol %.4f solid %d faces %d\n",
                         pil.volume(), pil.is_solid() ? 1 : 0, pil.face_count());
+            // single-operand file: gated for the same reason as freeform_blob.step above.
             if (const char* sd = std::getenv("SESSION_STEP_DIR"))
-                file_step::write_file_step_brep(pil, std::string(sd) + "/freeform_pillow.step");
+                if (std::getenv("SESSION_STEP_EXTRAS"))
+                    file_step::write_file_step_brep(pil, std::string(sd) + "/freeform_pillow.step");
         }
         BRep box = BRep::create_box(4, 4, 4);
         if (std::getenv("SESSION_SSI_DBG")) {
@@ -583,7 +1604,11 @@ int main(int argc, char** argv) {
                 file_step::write_file_step_breps({&ia, &ib, &r},
                     std::string("box_") + modes[m] + "_blob",
                     std::string(sd) + "/freeform_" + modes[m] + "_box.step");
-                if (m == 0) file_step::write_file_step_brep(ff, std::string(sd) + "/freeform_blob.step");
+                // operand-only file: kept behind a gate so the SHIPPED inspection set stays
+                // one-file-per-cell (A+B+result). The user inspects every file and asked for
+                // no extra variants alongside the result files.
+                if (m == 0 && std::getenv("SESSION_STEP_EXTRAS"))
+                    file_step::write_file_step_brep(ff, std::string(sd) + "/freeform_blob.step");
             }
             if (std::getenv("SESSION_SOLID_DBG")) {
                 int bad = 0;
@@ -1088,6 +2113,15 @@ int main(int argc, char** argv) {
                     Brot = Brot.transformed();
                     if (!fast)
                         file_step::write_file_step_brep(Brot, rotdir + "/B_" + rc.label + ".step");
+                    // PARTITION IDENTITY (oracle-free): vol(cut) + vol(common) == vol(A).
+                    // The one self-validation that catches a CLOSED-but-WRONG result without
+                    // any reference -- y30's cut of 23.9619 against vol(A) 80.30 demands a
+                    // common of 56.34, which nothing produces. It is cross-op, so it is
+                    // unavailable to a single result in isolation; that is exactly why every
+                    // single-result invariant we own (naked, nonmanifold, shells, bbox,
+                    // per-op volume bound) passes y30's wrong answer.
+                    double rot_vol[3] = {0, 0, 0};
+                    bool rot_closed[3] = {false, false, false};
                     for (int m2 = 0; m2 < 3; ++m2) {
                         const char* oponly2 = std::getenv("SESSION_OP");
                         if (oponly2 && std::string(opn[m2]) != oponly2) continue;
@@ -1095,22 +2129,81 @@ int main(int argc, char** argv) {
                             BRep r2 = (m2 == 0) ? A.boolean_difference(Brot)
                                     : (m2 == 1) ? A.boolean_intersection(Brot)
                                                 : A.boolean_union(Brot);
-                            int nk2 = 0;
-                            for (const auto& E2 : r2.m_topology_edges)
-                                if ((int)E2.trim_indices.size() == 1) ++nk2;
-                            std::printf("chairsROT %-7s %-6s: faces %d solid %d naked %d vol %.4f\n",
-                                        rc.label, opn[m2], r2.face_count(),
-                                        r2.is_solid() ? 1 : 0, nk2, fast ? -1.0 : r2.volume());
+                            int nk2 = 0, nm2 = 0;
+                            for (const auto& E2 : r2.m_topology_edges) {
+                                int nt = (int)E2.trim_indices.size();
+                                if (nt == 1) ++nk2;
+                                // NON-MANIFOLD (>2 faces on one edge) = the MEASURED cause of the
+                                // "naked 0 but the exported result is open" contradiction:
+                                // res_y30_cut.step has 268 EDGE_CURVEs, ZERO referenced once
+                                // (nothing is unshared -- the kernel's edge sharing is faithful)
+                                // but THIRTEEN referenced MORE than twice. OCCT cannot sew a
+                                // manifold shell at a 3-face edge, so it splits there -> open
+                                // shells + 58 import-naked edges. Invisible to the naked count
+                                // (1-trim only) AND to is_solid() (continues on nt==2, ignores >2).
+                                else if (nt > 2) ++nm2;
+                            }
+                            // shells: is_solid() cannot see a boundary that has come APART into
+                            // several separately-closed shells (independent OCCT read found 2-4
+                            // shells on every rotated config but z30x20). Report it always.
+                            // VOLUME IS UNDEFINED ON AN OPEN BOUNDARY. volume() applies the
+                            // divergence theorem, which requires a closed surface; on a shell
+                            // with naked edges the number is meaningless and has been actively
+                            // misleading (y30 cut printed 23.9619 vs reference 46.9596, x13y29
+                            // 68.0078 vs 48.4734 -- both were open shells, so neither number was
+                            // a wrong volume, it was a non-volume). Print it ONLY when closed.
+                            // A result is only a candidate solid when naked==0 AND nonmanifold==0.
+                            bool closed2 = (nk2 == 0 && nm2 == 0);
+                            if (fast)
+                                std::printf("chairsROT %-7s %-6s: faces %d solid %d shells %d naked %d nonmani %d\n",
+                                            rc.label, opn[m2], r2.face_count(),
+                                            r2.is_solid() ? 1 : 0, shell_count_of(r2), nk2, nm2);
+                            else if (closed2) {
+                                double v2 = r2.volume();
+                                rot_vol[m2] = v2; rot_closed[m2] = true;
+                                std::printf("chairsROT %-7s %-6s: faces %d solid %d shells %d naked %d nonmani %d vol %.4f\n",
+                                            rc.label, opn[m2], r2.face_count(),
+                                            r2.is_solid() ? 1 : 0, shell_count_of(r2), nk2, nm2, v2);
+                            }
+                            else
+                                std::printf("chairsROT %-7s %-6s: faces %d solid %d shells %d naked %d nonmani %d vol UNDEFINED(open/nonmanifold)\n",
+                                            rc.label, opn[m2], r2.face_count(),
+                                            r2.is_solid() ? 1 : 0, shell_count_of(r2), nk2, nm2);
                             if (std::getenv("SESSION_TOPO_CHECK"))
                                 std::printf("   %s\n", r2.topology_report().c_str());
-                            if (std::getenv("SESSION_ROT_STEP") && r2.face_count() > 0)
-                                file_step::write_file_step_brep(r2, rotdir + "/res_"
-                                    + rc.label + "_" + opn[m2] + ".step");
+                            // INSPECTION FILE (user-facing): one file per cell containing the
+                            // OPERANDS AND THE RESULT, colour-coded exactly like the base path
+                            // (A red, rotated B blue, result green) -- a result-only file gives
+                            // the user no way to see what was cut from what. When the op yields
+                            // nothing, still write A+B so the inputs are visible and the empty
+                            // result is evident from the file rather than from a missing file.
+                            if (std::getenv("SESSION_ROT_STEP")) {
+                                BRep rc2 = r2;
+                                rc2.surfacecolor = Color(0.35f, 0.75f, 0.40f);
+                                std::vector<const BRep*> parts = {&A, &Brot};
+                                if (rc2.face_count() > 0) parts.push_back(&rc2);
+                                std::string path = rotdir + "/res_" + rc.label + "_" + opn[m2] + ".step";
+                                file_step::write_file_step_breps(parts, "res_" + std::string(rc.label)
+                                                                 + "_" + opn[m2], path);
+                                if (rc2.face_count() == 0)
+                                    std::printf("   [ROTSTEP] %s %s: EMPTY result -- wrote operands only\n",
+                                                rc.label, opn[m2]);
+                            }
                         } catch (const std::exception& e2) {
                             std::printf("chairsROT %-7s %-6s: THREW %s\n", rc.label, opn[m2], e2.what());
                         } catch (...) {
                             std::printf("chairsROT %-7s %-6s: THREW\n", rc.label, opn[m2]);
                         }
+                    }
+                    // Partition identity, reported whenever BOTH cut and common are closed
+                    // (needs no oracle -- see the note above the op loop).
+                    if (rot_closed[0] && rot_closed[1]) {
+                        double va2 = A.volume();
+                        double sum = rot_vol[0] + rot_vol[1];
+                        double rel = std::abs(sum - va2) / std::max(1.0, std::abs(va2));
+                        std::printf("chairsROT %-7s [PARTITION] cut %.4f + common %.4f = %.4f vs A %.4f  rel %.2e  %s\n",
+                                    rc.label, rot_vol[0], rot_vol[1], sum, va2, rel,
+                                    rel < 1e-3 ? "OK" : "** VIOLATION **");
                     }
                 }
             }
@@ -1175,9 +2268,19 @@ int main(int argc, char** argv) {
                                         r2.is_solid() ? 1 : 0, nk2, fast ? -1.0 : r2.volume());
                             if (std::getenv("SESSION_TOPO_CHECK"))
                                 std::printf("   %s\n", r2.topology_report().c_str());
-                            if (std::getenv("SESSION_ROT_STEP") && r2.face_count() > 0)
-                                file_step::write_file_step_brep(r2, rnddir + "/res_"
-                                    + std::string(lab) + "_" + opn2[m2] + ".step");
+                            // same inspection format as the deterministic battery: operands +
+                            // result in one colour-coded file (A red, rotated B blue, result green)
+                            if (std::getenv("SESSION_ROT_STEP")) {
+                                BRep rc2 = r2;
+                                rc2.surfacecolor = Color(0.35f, 0.75f, 0.40f);
+                                std::vector<const BRep*> parts = {&A, &Brot};
+                                if (rc2.face_count() > 0) parts.push_back(&rc2);
+                                std::string nm = "res_" + std::string(lab) + "_" + opn2[m2];
+                                file_step::write_file_step_breps(parts, nm, rnddir + "/" + nm + ".step");
+                                if (rc2.face_count() == 0)
+                                    std::printf("   [ROTSTEP] %s %s: EMPTY result -- wrote operands only\n",
+                                                lab, opn2[m2]);
+                            }
                         } catch (const std::exception& e2) {
                             std::printf("chairsRND %-5s %-6s: THREW %s\n", lab, opn2[m2], e2.what());
                         } catch (...) {

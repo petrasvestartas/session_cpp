@@ -108,7 +108,8 @@ then classification).
       oriented-winding fail identically (mesh GEOMETRY is bad, not orientation). BRep::contains_point_exact
       = closest point on the TRIMMED boundary + outward-normal sign, MESH-FREE, gets both right.
       Wired into classify in_other/in_own for freeform (primitives keep inside_prim -> matrix/edge
-      untouched). Gate SESSION_NO_EXACT_PIP. RESULT: base chairs cut EXACT (35/46.8114), z90 A-side
+      untouched). Gate SESSION_NO_EXACT_PIP. RESULT: base chairs cut EXACT (35/46.7943), z90 A-side
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
       classification 91%->96% (audit vs OCCT point oracle). z90 residual now = 2 fragments (f19/f22)
       that are a near-TANGENT region (A grazes B's boundary within 0.08) flagged ON -- a grazing/ON
       interaction, NOT a winding error. z90 8 naked -> still 8 (the winding fix changed verdicts

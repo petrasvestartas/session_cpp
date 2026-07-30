@@ -75,8 +75,10 @@ REMEDIATION_PLAN.md); it does not repeat their content, it distills what was PRO
   within 1%, plus our topology_report (naked=0, manifold, single-shell where expected).
 - OCCT_TRUTH.md is checked in (chairs dir); z15-common/x20-common are OCCT-degenerate —
   detect degeneracy, never gate on those volumes.
-- Base regression set that must stay EXACT: base chairs cut/common/fuse 35/46.8114,
-  25/33.4951, 50/127.0950; primitive matrix 45/45; SESSION_EDGE 54/54; minitests 760.
+- Base regression set that must stay EXACT: base chairs cut/common/fuse 35/46.7943,
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
+  25/33.5025, 50/127.0913; primitive matrix 45/45; SESSION_EDGE 54/54; minitests 760.
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 - Process: private exe copies (main_7_<tag>.exe), SESSION_NO_MERGE for chairs runs,
   parallel background runs with `wait`, tasklist not pgrep.
 
@@ -117,8 +119,10 @@ What BOP2 adds:
   (env/DLL/locale, needs root-cause). Rebuild/repair, verify against chair0.stp + OCCT_TRUTH
   regeneration spot-check. NOTHING can be claimed without this.
 - **M1 — DONE.** Shared edge pool from scaffold (SESSION_BOP2), base cut unaffected.
-- **M2 — base chairs via BOP2 assembly.** Cut/common/fuse EXACT (35/46.8114, 25/33.4951,
-  50/127.0950) with NO sew/alias/normalize invoked on the BOP2 path. Proof the core works.
+- **M2 — base chairs via BOP2 assembly.** Cut/common/fuse EXACT (35/46.7943, 25/33.5025,
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
+  50/127.0913) with NO sew/alias/normalize invoked on the BOP2 path. Proof the core works.
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 - **M3 — rotated battery closure.** All 10 rot configs × 3 ops: OCCT-VALID, solids per
   OCCT_TRUTH, vol within 1% where OCCT sound. Expected mechanism: pave completeness +
   shared edges kill the mating class; topological orientation kills the z90 class.
@@ -143,7 +147,8 @@ What BOP2 adds:
 
 ## 5. Current session state — 2026-07-24 (supersedes the 07-23 entry)
 Milestone status: M0 DONE (oracle healthy; CLI order was the bug). M1 DONE. M2 DONE —
-base cut/common/fuse EXACT (35/46.8114, 25/33.4951, 50/127.0950) with sew DISABLED.
+base cut/common/fuse EXACT (35/46.7943, 25/33.5025, 50/127.0913) with sew DISABLED.
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 M4 effectively DONE (matrix 0-FAIL, edge 0-FAIL, minitests green, NK-RESCUE default-on).
 M3 is the active frontier; M5/M6 blocked on it.
 

@@ -376,7 +376,35 @@ Point lerp(const Point& a, const Point& b, double t) {
 
 } // namespace
 
+namespace {
+// Are two surfaces the SAME surface over their shared domain (same-domain / coincident)?
+// Grid-sample sa and, for each sample, take the closest point on sb: coincident iff EVERY
+// sample lies within band. Areal by construction (Law 3) -- a tangent line or a single
+// touching point can never pass, because only a measure-zero subset of samples would hit.
+bool surfaces_coincident(const NurbsSurface& sa, const NurbsSurface& sb, double band) {
+    auto du = sa.domain(0); auto dv = sa.domain(1);
+    const int N = 4;   // 5x5 = 25 probes
+    for (int i = 0; i <= N; ++i)
+        for (int j = 0; j <= N; ++j) {
+            double u = du.first + (du.second - du.first) * i / N;
+            double v = dv.first + (dv.second - dv.first) * j / N;
+            Point p = sa.point_at(u, v);
+            auto [cu, cv, cd] = Closest::surface_point(sb, p);
+            if (!(cd < band)) return false;
+            // ORIENTATION GATE: distance alone is the unguarded-predicate bug this campaign
+            // has now found twice (the legacy ON-imprint had exactly this shape). band is
+            // weld_tol ~ 3.3e-2 here, fat enough that two surfaces MEETING at an angle can
+            // sit inside it over a whole patch. Coincident surfaces must also be PARALLEL.
+            Vector na = sa.normal_at(u, v), nb = sb.normal_at(cu, cv);
+            if (std::abs(na[0]*nb[0] + na[1]*nb[1] + na[2]*nb[2]) < 0.9) return false;
+        }
+    return true;
+}
+}  // namespace
+
 SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tolerance) {
+    // Same-domain SSI guard: opt-in while it is measured (SESSION_SD). See [SD-SKIP] below.
+    static const bool s_sd_guard = (std::getenv("SESSION_SD") != nullptr);
     SectionScaffold scaf;
     if (tolerance <= 0.0) tolerance = Tolerance::ZERO_TOLERANCE;
 
@@ -418,6 +446,20 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
             if (!overlap(ai, bi, margin)) continue;
             const NurbsSurface& sa = A.m_surfaces[ai];
             const NurbsSurface& sb = B.m_surfaces[bi];
+            // SAME-DOMAIN GUARD (SESSION_SD): a surface cannot be intersected with itself.
+            // When sa and sb are the SAME surface (coincident within band), the true section
+            // is the whole shared patch, not a curve -- the marcher instead emits a mess of
+            // spurious branches. MEASURED on A-op-A (chair1 = byte copy of chair0): 481
+            // "section" segments that shatter A's 20 faces into 312 fragments, destroying the
+            // operands before classification ever runs (cut 68 faces/16 naked, common 203/42,
+            // fuse times out). Coincident pairs belong to the same-domain path (op-table),
+            // never to SSI. Detection is a direct sampled test on this pair, so it costs
+            // nothing when the surfaces are apart.
+            if (s_sd_guard && surfaces_coincident(sa, sb, weld_tol)) {
+                if (std::getenv("SESSION_SPLIT_DBG"))
+                    std::fprintf(stderr, "[SD-SKIP] surfA=%d surfB=%d coincident -> no SSI\n", ai, bi);
+                continue;
+            }
             auto trs = Intersection::surface_surface(sa, sb, tolerance);
             bool swapped = false;
             if (trs.empty()) {   // order-sensitive marcher: retry swapped (G1 fence kept)
@@ -694,6 +736,69 @@ SectionScaffold build_section_scaffold(const BRep& A, const BRep& B, double tole
                 }
             }
         }
+    }
+    // ---- 1a1b. COMMON-BLOCK SUPPRESSION (SESSION_SD; OCCT PerformCommonBlocks slot) ----
+    // Step 2 of the same-domain requirement. When a region of the two boundaries COINCIDES,
+    // the marcher still runs on every ADJACENT face pair (A's face i x B's face j, i != j)
+    // and those pairs genuinely intersect -- along the solids' SHARED EDGES. On A-op-A that
+    // is 481 "sections" from 20x20 pairs, shattering A's 20 faces into 312 fragments. Such a
+    // curve is not a transversal section at all: it is a COMMON BLOCK (one edge belonging to
+    // both operands), and OCCT builds it with BOPAlgo_Tools::PerformCommonBlocks instead of
+    // marching it (kb/audit_occt_pavefiller-core.md). We do not yet SYNTHESISE common blocks;
+    // this pass only refuses to treat them as new section curves. Test is deliberately
+    // two-sided -- the chain must lie on an EXISTING edge of A *and* of B -- so the grazing
+    // class where a section runs along ONE operand's trim (the y30 family) is untouched.
+    if (s_sd_guard && !chains.empty()) {
+        auto edge_polys = [&](const BRep& X) {
+            std::vector<std::vector<Point>> out;
+            for (const auto& e : X.m_topology_edges) {
+                if (e.curve_3d_index < 0 || e.curve_3d_index >= (int)X.m_curves_3d.size()) continue;
+                const NurbsCurve& c = X.m_curves_3d[e.curve_3d_index];
+                if (!c.is_valid()) continue;
+                auto d = c.domain();
+                std::vector<Point> ps;
+                for (int k = 0; k <= 24; ++k) ps.push_back(c.point_at(d.first + (d.second-d.first)*k/24.0));
+                out.push_back(std::move(ps));
+            }
+            return out;
+        };
+        std::vector<std::vector<Point>> ea = edge_polys(A), eb = edge_polys(B);
+        auto on_some_edge = [&](const std::vector<std::vector<Point>>& polys, const Chain& ch) {
+            // every probe of the chain must be within band of ONE single edge polyline
+            for (const auto& poly : polys) {
+                bool all_on = true;
+                for (int k = 0; k <= 8 && all_on; ++k) {
+                    const Point& q = ch.p3[(ch.p3.size() - 1) * k / 8];
+                    double bd = 1e300;
+                    for (size_t j = 0; j + 1 < poly.size(); ++j) {
+                        double ex = poly[j+1][0]-poly[j][0], ey = poly[j+1][1]-poly[j][1], ez = poly[j+1][2]-poly[j][2];
+                        double L2 = ex*ex + ey*ey + ez*ez;
+                        double t = L2 > 1e-30 ? ((q[0]-poly[j][0])*ex + (q[1]-poly[j][1])*ey + (q[2]-poly[j][2])*ez)/L2 : 0.0;
+                        t = std::min(1.0, std::max(0.0, t));
+                        Point cp(poly[j][0]+t*ex, poly[j][1]+t*ey, poly[j][2]+t*ez);
+                        bd = std::min(bd, q.distance(cp));
+                    }
+                    if (!(bd < weld_tol)) all_on = false;
+                }
+                if (all_on) return true;
+            }
+            return false;
+        };
+        std::vector<Chain> kept;
+        int n_cb = 0;
+        for (auto& ch : chains) {
+            if ((int)ch.p3.size() >= 2 && on_some_edge(ea, ch) && on_some_edge(eb, ch)) {
+                ++n_cb;
+                continue;                       // common block: not a new section curve
+            }
+            kept.push_back(std::move(ch));
+        }
+        if (n_cb) {
+            std::fprintf(stderr, "[SD-CB] common-block chains suppressed: %d of %zu\n",
+                         n_cb, chains.size());
+            std::fflush(stderr);
+        }
+        chains = std::move(kept);
     }
     // ---- 1a2. Seam decomposition (OCCT DecompositionOfWLine analog) ----
     // A chain on a PERIODIC surface can wrap the seam: its UV polyline then jumps a

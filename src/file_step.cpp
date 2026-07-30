@@ -1050,6 +1050,15 @@ public:
 // BRep assembly from STEP (reads MANIFOLD_SOLID_BREP)
 // ============================================================
 
+// Opt-out for pole/apex branch seeding, shared by the reader's projection fallback and the
+// writer's pullback + pcurve remap (all three take atan2 of a point whose radius is pure
+// round-off unless seeded). Read once; getenv()!=nullptr is true for an EMPTY value, so the
+// flag is only ON when the value is non-empty.
+static bool no_pole_seed() {
+    static const char* p = std::getenv("SESSION_NO_POLE_SEED");
+    return p && p[0];
+}
+
 static NurbsCurve polyline_nurbs(const std::vector<Point>& pts, int dim) {
     int n = (int)pts.size();
     if (n < 2) return NurbsCurve(dim, false, 2, 0);
@@ -1266,6 +1275,21 @@ struct BRepBuilder {
                     // END of the sample list backwards, then restore curve order.
                     std::vector<Point> ordered = samples;
                     if (rev) std::reverse(ordered.begin(), ordered.end());
+                    // The FIRST sample of the FIRST edge of a loop has no branch reference, and
+                    // when it sits on a pole/apex its angle is atan2 of two coordinates that are
+                    // pure round-off (OCCT writes a cone apex as (-4.4e-16, 1.1e-31, 4)), i.e.
+                    // an arbitrary value that then anchors the whole loop. The chart window is
+                    // sized from these angles: occt_prim_cone came out SIX quarter-spans wide
+                    // (540 degrees) instead of four, and the self-overlapping cone integrated to
+                    // 19.5403488074 against a truth of 16.7551608191 -- solid, closed-looking,
+                    // 16.6% wrong. Seed the branch from the first RADIALLY VALID sample instead;
+                    // a no-op when sample 0 is already valid (the shift rounds to zero).
+                    if (!have_prev && !no_pole_seed())
+                        for (size_t k = 0; k < ordered.size(); ++k) {
+                            double s2, t2; bool ok2;
+                            r.an_st_of(an, ordered[k], s2, t2, ok2);
+                            if (ok2) { ps = s2; pt = t2; have_prev = true; break; }
+                        }
                     std::vector<Point> st_ord;
                     for (size_t k = 0; k < ordered.size(); ++k) {
                         double s, t; bool ok;
@@ -1285,6 +1309,35 @@ struct BRepBuilder {
                 lp.edges.push_back({edge_idx, rev, seam, std::move(st)});
             }
             if (!lp.edges.empty()) loops.push_back(std::move(lp));
+        // FACE_BOUND vs FACE_OUTER_BOUND: BOTH are legal STEP spellings of an outer
+        // boundary. Rhino writes FACE_OUTER_BOUND; OCCT and FreeCAD write FACE_BOUND. Trusting
+        // the entity NAME meant every OCCT/FreeCAD-authored file loaded with its outer boundary
+        // treated as a HOLE -- the complement of the intended region. Measured: chair0 vol
+        // 19.2149 instead of 80.3011; an OCCT cylinder reading 9.4269 = 28.2743/3, which is
+        // where the "1/3 volume" cluster came from (NOT a flux-formula factor).
+        // Decide GEOMETRICALLY, and ONLY when the file gave no explicit outer bound, so files
+        // that do use FACE_OUTER_BOUND stay bit-for-bit identical: the outer loop is the one
+        // with the largest UV extent (a hole lies strictly inside it). A face with several
+        // holes emits several FACE_BOUNDs, so picking the LARGEST -- rather than flipping them
+        // all to outer -- is what makes multi-hole faces correct.
+        {
+            bool any_outer = false;
+            for (const auto& l : loops) if (l.is_outer) any_outer = true;
+            if (!any_outer && !loops.empty()) {
+                size_t best = 0; double best_a = -1.0;
+                for (size_t i = 0; i < loops.size(); ++i) {
+                    double mnu=1e300, mnv=1e300, mxu=-1e300, mxv=-1e300;
+                    for (const auto& e : loops[i].edges)
+                        for (const auto& q : e.st) {
+                            mnu = std::min(mnu, q[0]); mxu = std::max(mxu, q[0]);
+                            mnv = std::min(mnv, q[1]); mxv = std::max(mxv, q[1]);
+                        }
+                    double a = (mxu > mnu && mxv > mnv) ? (mxu-mnu)*(mxv-mnv) : 0.0;
+                    if (a > best_a) { best_a = a; best = i; }
+                }
+                loops[best].is_outer = true;
+            }
+        }
         }
         if (loops.empty()) return false;
 
@@ -1387,6 +1440,130 @@ struct BRepBuilder {
         return true;
     }
 
+    // VERTEX_LOOP bound: the legal STEP spelling of "this face has NO edge boundary -- it is
+    // the whole surface". A full sphere written by OCCT/FreeCAD is exactly this: one
+    // ADVANCED_FACE, one FACE_BOUND, one VERTEX_LOOP holding a single VERTEX_POINT at a pole.
+    // Skipping it (the reader only ever looked for EDGE_LOOP) imported the sphere as a
+    // 1-face/0-edge/0-volume husk -- and because an empty operand makes a boolean return A
+    // unchanged, `box CUT sphere` then reported closed=1 solids=1 vol=64 (the untouched box):
+    // a SILENT FALSE PASS, not a visible failure.
+    //
+    // The face's trim is the FULL parameter domain. Which boundary curves that domain needs is
+    // read off the surface itself, so the same code serves the analytic sphere and the closed
+    // B-spline sphere our OWN writer emits with VERTEX_LOOPs (see emit_brep_shells):
+    //   closed in u + degenerate at both v ends  -> sphere: seam meridian (twice) + 2 poles
+    //   closed in u + closed in v                -> torus: u-seam (twice) + v-seam (twice)
+    // Poles get REAL degenerate edges appearing ONCE in the wire while the seam edge appears
+    // TWICE -- the OCCT convention create_sphere/create_cone already mint (SESSION_NO_POLE_EDGE
+    // opts out there), so an imported primitive has the same topology as a native one.
+    bool add_face_vertex_loop(const std::vector<int>& vl_vertex_ids, int surface_ref,
+                              bool same_sense) {
+        NurbsSurface srf;
+        StepReader::AnFace an = r.get_analytic_srf(surface_ref);
+        if (an.kind == 4)        srf = r.build_analytic_nurbs(an, 0, 4, 0, 0, -1, 2);
+        else if (an.kind == 5)   srf = r.build_analytic_nurbs(an, 0, 4, 0, 0,  0, 4);
+        else if (an.kind == 0)   srf = r.get_nurbs_surface(surface_ref);
+        if (!srf.is_valid()) return false;
+
+        auto du = srf.domain(0), dv = srf.domain(1);
+        const int NS = 17;
+        auto at = [&](int i, int j) {
+            return srf.point_at(du.first + (du.second - du.first) * i / (NS - 1),
+                                dv.first + (dv.second - dv.first) * j / (NS - 1));
+        };
+        double scale = 0.0;
+        for (int i = 0; i < NS; ++i)
+            for (int j = 0; j < NS; ++j) scale = std::max(scale, at(i, j).distance(at(0, 0)));
+        if (!(scale > 0)) return false;
+        double tol = scale * 1e-7;
+        auto all_same = [&](bool along_u, int fixed) {
+            Point p0 = along_u ? at(0, fixed) : at(fixed, 0);
+            for (int k = 1; k < NS; ++k)
+                if ((along_u ? at(k, fixed) : at(fixed, k)).distance(p0) > tol) return false;
+            return true;
+        };
+        bool closed_u = true, closed_v = true;
+        for (int k = 0; k < NS; ++k) {
+            if (at(0, k).distance(at(NS - 1, k)) > tol) closed_u = false;
+            if (at(k, 0).distance(at(k, NS - 1)) > tol) closed_v = false;
+        }
+        bool degen_v0 = all_same(true, 0), degen_v1 = all_same(true, NS - 1);
+        if (!closed_u) return false;                       // an unbounded/open chart cannot be
+        if (!((degen_v0 && degen_v1) || closed_v)) return false;  // bounded by a vertex alone
+
+        // Reuse the STEP VERTEX_POINTs the file gave us where they coincide, so shared vertex
+        // identity survives; mint one otherwise. Matched by POSITION first, so a VERTEX_LOOP
+        // vertex that sits on neither boundary never becomes an orphan topology vertex.
+        auto step_point_of = [&](int vp_id) {
+            const auto& eit = sf.entities.find(vp_id);
+            if (eit != sf.entities.end()) {
+                const StepSubEntity* sub = eit->second.find("VERTEX_POINT");
+                if (sub)
+                    for (const auto& p : sub->params)
+                        if (p.tag == StepTag::Ref) return r.get_point(p.ref_id);
+            }
+            return Point(1e300, 1e300, 1e300);
+        };
+        auto topo_vertex_at = [&](const Point& q) {
+            for (int vid : vl_vertex_ids)
+                if (step_point_of(vid).distance(q) <= tol) return get_vertex(vid);
+            int pi = brep.add_vertex(q);
+            BRepVertex bv; bv.point_index = pi;
+            brep.m_topology_vertices.push_back(bv);
+            return (int)brep.m_topology_vertices.size() - 1;
+        };
+        auto uv_line = [&](double u0, double v0, double u1, double v1) {
+            return brep.add_curve_2d(NurbsCurve::create(false, 1,
+                {Point(u0, v0, 0), Point(u1, v1, 0)}));
+        };
+
+        int si = brep.add_surface(srf);
+        int fi = brep.add_face(si, !same_sense);
+        int li = brep.add_loop(fi, BRepLoopType::Outer);
+
+        if (degen_v0 && degen_v1) {                                   // sphere-like
+            int v_lo = topo_vertex_at(at(0, 0)), v_hi = topo_vertex_at(at(0, NS - 1));
+            NurbsCurve seam = srf.iso_curve(1, du.first);             // v-varying meridian
+            if (!seam.is_valid()) return false;
+            int ei_seam = brep.add_edge(brep.add_curve_3d(seam), v_lo, v_hi);
+            int ei_lo = -1, ei_hi = -1;
+            NurbsCurve d_lo = srf.iso_curve(0, dv.first), d_hi = srf.iso_curve(0, dv.second);
+            if (d_lo.is_valid()) ei_lo = brep.add_edge(brep.add_curve_3d(d_lo), v_lo, v_lo);
+            if (d_hi.is_valid()) ei_hi = brep.add_edge(brep.add_curve_3d(d_hi), v_hi, v_hi);
+            brep.add_trim(uv_line(du.first, dv.first, du.second, dv.first), ei_lo, li, false,
+                          BRepTrimType::Singular);
+            brep.add_trim(uv_line(du.second, dv.first, du.second, dv.second), ei_seam, li, false,
+                          BRepTrimType::Seam);
+            brep.add_trim(uv_line(du.second, dv.second, du.first, dv.second), ei_hi, li, false,
+                          BRepTrimType::Singular);
+            brep.add_trim(uv_line(du.first, dv.second, du.first, dv.first), ei_seam, li, true,
+                          BRepTrimType::Seam);
+        } else {                                                      // torus-like
+            int v0 = topo_vertex_at(at(0, 0));
+            NurbsCurve c_u = srf.iso_curve(1, du.first);              // u-seam (varies v)
+            NurbsCurve c_v = srf.iso_curve(0, dv.first);              // v-seam (varies u)
+            if (!c_u.is_valid() || !c_v.is_valid()) return false;
+            int ei_u = brep.add_edge(brep.add_curve_3d(c_u), v0, v0);
+            int ei_v = brep.add_edge(brep.add_curve_3d(c_v), v0, v0);
+            brep.add_trim(uv_line(du.first, dv.first, du.second, dv.first), ei_v, li, false,
+                          BRepTrimType::Seam);
+            brep.add_trim(uv_line(du.second, dv.first, du.second, dv.second), ei_u, li, false,
+                          BRepTrimType::Seam);
+            brep.add_trim(uv_line(du.second, dv.second, du.first, dv.second), ei_v, li, true,
+                          BRepTrimType::Seam);
+            brep.add_trim(uv_line(du.first, dv.second, du.first, dv.first), ei_u, li, true,
+                          BRepTrimType::Seam);
+        }
+        for (int ei = 0; ei < (int)brep.m_topology_edges.size(); ++ei) {
+            const BRepEdge& E = brep.m_topology_edges[ei];
+            auto& sv = brep.m_topology_vertices[E.start_vertex].edge_indices;
+            auto& ev = brep.m_topology_vertices[E.end_vertex].edge_indices;
+            if (std::find(sv.begin(), sv.end(), ei) == sv.end()) sv.push_back(ei);
+            if (std::find(ev.begin(), ev.end(), ei) == ev.end()) ev.push_back(ei);
+        }
+        return true;
+    }
+
     void add_face(int face_id) {
         const auto& feit = sf.entities.find(face_id);
         if (feit == sf.entities.end()) return;
@@ -1404,6 +1581,35 @@ struct BRepBuilder {
             } else if (p.tag == StepTag::Enum) {
                 same_sense = (p.str == "T");
             }
+        }
+
+        // VERTEX_LOOP-only face = full parameter domain (see add_face_vertex_loop). Only when
+        // the file gives NO edge loop at all: a face that mixes an EDGE_LOOP with a VERTEX_LOOP
+        // keeps the edge-driven path unchanged, so no already-working file moves.
+        static const char* s_novl = std::getenv("SESSION_NO_VERTEX_LOOP");
+        if (surface_ref >= 0 && !(s_novl && s_novl[0])) {
+            std::vector<int> vl_verts;
+            bool any_edge_loop = false;
+            for (int bid : bound_refs) {
+                const auto& bent = sf.entities.find(bid);
+                if (bent == sf.entities.end()) continue;
+                const StepSubEntity* bsub = bent->second.find("FACE_OUTER_BOUND");
+                if (!bsub) bsub = bent->second.find("FACE_BOUND");
+                if (!bsub) continue;
+                int loop_ref = -1;
+                for (const auto& p : bsub->params)
+                    if (p.tag == StepTag::Ref) { loop_ref = p.ref_id; break; }
+                const auto& lent = sf.entities.find(loop_ref);
+                if (lent == sf.entities.end()) continue;
+                if (lent->second.has("EDGE_LOOP")) { any_edge_loop = true; continue; }
+                const StepSubEntity* vl = lent->second.find("VERTEX_LOOP");
+                if (!vl) continue;
+                for (const auto& p : vl->params)
+                    if (p.tag == StepTag::Ref) { vl_verts.push_back(p.ref_id); break; }
+            }
+            if (!any_edge_loop && !vl_verts.empty()
+                && add_face_vertex_loop(vl_verts, surface_ref, same_sense))
+                return;
         }
 
         // Analytic quadric faces (cyl/cone/sphere/torus): rebuild the exact kernel-canonical
@@ -1568,6 +1774,35 @@ struct BRepBuilder {
                 lp.edges.push_back(std::move(le2));
             }
             if (!lp.edges.empty()) loops.push_back(std::move(lp));
+        // FACE_BOUND vs FACE_OUTER_BOUND: BOTH are legal STEP spellings of an outer
+        // boundary. Rhino writes FACE_OUTER_BOUND; OCCT and FreeCAD write FACE_BOUND. Trusting
+        // the entity NAME meant every OCCT/FreeCAD-authored file loaded with its outer boundary
+        // treated as a HOLE -- the complement of the intended region. Measured: chair0 vol
+        // 19.2149 instead of 80.3011; an OCCT cylinder reading 9.4269 = 28.2743/3, which is
+        // where the "1/3 volume" cluster came from (NOT a flux-formula factor).
+        // Decide GEOMETRICALLY, and ONLY when the file gave no explicit outer bound, so files
+        // that do use FACE_OUTER_BOUND stay bit-for-bit identical: the outer loop is the one
+        // with the largest UV extent (a hole lies strictly inside it). A face with several
+        // holes emits several FACE_BOUNDs, so picking the LARGEST -- rather than flipping them
+        // all to outer -- is what makes multi-hole faces correct.
+        {
+            bool any_outer = false;
+            for (const auto& l : loops) if (l.is_outer) any_outer = true;
+            if (!any_outer && !loops.empty()) {
+                size_t best = 0; double best_a = -1.0;
+                for (size_t i = 0; i < loops.size(); ++i) {
+                    double mnu=1e300, mnv=1e300, mxu=-1e300, mxv=-1e300;
+                    for (const auto& e : loops[i].edges)
+                        for (const auto& q : e.uv) {
+                            mnu = std::min(mnu, q[0]); mxu = std::max(mxu, q[0]);
+                            mnv = std::min(mnv, q[1]); mxv = std::max(mxv, q[1]);
+                        }
+                    double a = (mxu > mnu && mxv > mnv) ? (mxu-mnu)*(mxv-mnv) : 0.0;
+                    if (a > best_a) { best_a = a; best = i; }
+                }
+                loops[best].is_outer = true;
+            }
+        }
         }
 
         // Chain-align UV U values for cylindrical surfaces.
@@ -2187,9 +2422,11 @@ std::vector<NurbsSurfaceTrimmed> read_file_step_nurbssurfaces_trimmed(const std:
         for (int bid : bound_refs) {
             auto bit = sf.entities.find(bid);
             if (bit == sf.entities.end()) continue;
+            // accept BOTH spellings (see the FACE_BOUND note above); this legacy path takes
+            // the first bound as the outer one, which is what it already assumed.
             bool is_outer = bit->second.has("FACE_OUTER_BOUND");
-            if (!is_outer) continue;
-            const StepSubEntity* bsub = bit->second.find("FACE_OUTER_BOUND");
+            const StepSubEntity* bsub = is_outer ? bit->second.find("FACE_OUTER_BOUND")
+                                                 : bit->second.find("FACE_BOUND");
             if (!bsub) continue;
             int loop_ref = -1;
             for (const auto& p : bsub->params) if (p.tag == StepTag::Ref) { loop_ref = p.ref_id; break; }
@@ -2258,16 +2495,55 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
     std::vector<BRep> out;
     // Deterministic FILE order (ascending entity id): the entity map is unordered, and a
     // multi-solid file (A red / B blue / result green) must read back as written.
-    std::vector<int> msb_ids;
-    for (const auto& kv : sf.entities)
-        if (kv.second.has("MANIFOLD_SOLID_BREP")) msb_ids.push_back(kv.first);
-    std::sort(msb_ids.begin(), msb_ids.end());
-    for (int mid : msb_ids) {
-        const auto& kv = *sf.entities.find(mid);
-        const StepSubEntity* msb = kv.second.find("MANIFOLD_SOLID_BREP");
-        if (!msb) continue;
-        int shell_ref = -1;
-        for (const auto& p : msb->params) if (p.tag == StepTag::Ref) { shell_ref = p.ref_id; break; }
+    //
+    // ROOT SPELLINGS. Enumerating only MANIFOLD_SOLID_BREP made three other legal roots read as
+    // an EMPTY file -- and an empty operand makes a boolean return the other operand unchanged,
+    // which every closure-based verdict scores as a PASS (the same silent-false-pass mechanism
+    // as the unread VERTEX_LOOP). BREP_WITH_VOIDS is a SUBTYPE of manifold_solid_brep but is
+    // written under its own name, so has("MANIFOLD_SOLID_BREP") is false for it;
+    // SHELL_BASED_SURFACE_MODEL carries a list of OPEN_SHELLs, which build_from_shell already
+    // accepted -- only this scan never reached them. Measured on the repo corpus:
+    // step_import/hammer.step (45 faces) and step_import/fuse.step (10) read as 0 breps, and
+    // massprops_fx/occ_box_cavity.step (a box with a cavity) likewise.
+    // Void shells of a BREP_WITH_VOIDS are read as their own BReps (the kernel has no cavity
+    // container); the outer shell stays first.
+    static const char* s_noroots = std::getenv("SESSION_NO_STEP_ROOTS");
+    bool extra_roots = !(s_noroots && s_noroots[0]);
+    std::vector<std::pair<int, int>> roots;   // (entity id, shell ref) in file order
+    std::vector<int> ids;
+    for (const auto& kv : sf.entities) ids.push_back(kv.first);
+    std::sort(ids.begin(), ids.end());
+    for (int id : ids) {
+        const StepEntity& e = sf.entities.find(id)->second;
+        auto refs_of = [&](const StepSubEntity* s, bool list_too) {
+            std::vector<int> rr;
+            if (!s) return rr;
+            for (const auto& p : s->params) {
+                if (p.tag == StepTag::Ref) rr.push_back(p.ref_id);
+                else if (list_too && p.tag == StepTag::List)
+                    for (const auto& v : p.list) if (v.tag == StepTag::Ref) rr.push_back(v.ref_id);
+            }
+            return rr;
+        };
+        if (e.has("MANIFOLD_SOLID_BREP") || (extra_roots && e.has("BREP_WITH_VOIDS"))) {
+            const StepSubEntity* s = e.find("MANIFOLD_SOLID_BREP");
+            if (!s) s = e.find("BREP_WITH_VOIDS");
+            auto rr = refs_of(s, extra_roots);
+            for (int sh : rr) roots.emplace_back(id, sh);
+        } else if (extra_roots && e.has("SHELL_BASED_SURFACE_MODEL")) {
+            for (int sh : refs_of(e.find("SHELL_BASED_SURFACE_MODEL"), true))
+                roots.emplace_back(id, sh);
+        }
+    }
+    for (const auto& [id, shell_ref0] : roots) {
+        (void)id;
+        int shell_ref = shell_ref0;
+        // ORIENTED_CLOSED_SHELL wraps the real shell with a sense flag (void shells).
+        const auto& sh = sf.entities.find(shell_ref);
+        if (extra_roots && sh != sf.entities.end() && sh->second.has("ORIENTED_CLOSED_SHELL")) {
+            const StepSubEntity* os = sh->second.find("ORIENTED_CLOSED_SHELL");
+            for (const auto& p : os->params) if (p.tag == StepTag::Ref) { shell_ref = p.ref_id; break; }
+        }
         if (shell_ref < 0) continue;
         BRepBuilder builder(r, sf);
         BRep b = builder.build_from_shell(shell_ref);
@@ -2729,6 +3005,14 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
         const double PI_ = 3.14159265358979323846;
         double prev_s = 0, prev_t = 0;
         bool have_prev = false;
+        // Pole/apex seeding, as in emit_arc_edge's pullback (see SESSION_NO_POLE_SEED).
+        if (!no_pole_seed())
+            for (int i = 0; i <= n; ++i) {
+                Point uv0 = pc.point_at(pd.first + (pd.second - pd.first) * i / n);
+                double sv, tv; bool rok;
+                analytic_params_of(A, S.point_at(uv0[0], uv0[1]), sv, tv, rok);
+                if (rok) { prev_s = sv; prev_t = tv; have_prev = true; break; }
+            }
         for (int i = 0; i <= n; ++i) {
             Point uv = pc.point_at(pd.first + (pd.second - pd.first) * i / n);
             Point p3 = S.point_at(uv[0], uv[1]);
@@ -3043,6 +3327,18 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                 w3.reserve(n + 1);
                 double ps = 0, pt = 0;
                 bool hp = false;
+                // Seed the branch from the first RADIALLY VALID sample: a cone-apex / sphere-pole
+                // endpoint has no defined angle, and taking atan2 of its round-off coordinates
+                // made the written seam pcurve a DIAGONAL instead of an iso -- the re-imported
+                // chart then spanned 6 quarter-arcs (540 degrees) and the next round trip lost
+                // the apex trim (cone r2 volume 50.17 against 16.755). Same hazard, same cure as
+                // the reader's projection fallback (SESSION_NO_POLE_SEED opts out of both).
+                if (!no_pole_seed())
+                    for (int i2 = 0; i2 <= n; ++i2) {
+                        double sv, tv; bool rok;
+                        analytic_params_of(A_e, W_eval(W_a + (W_b - W_a) * i2 / n), sv, tv, rok);
+                        if (rok) { ps = sv; pt = tv; hp = true; break; }
+                    }
                 for (int i2 = 0; i2 <= n; ++i2) {
                     double t = W_a + (W_b - W_a) * i2 / n;
                     Point Pw = W_eval(t);
@@ -3075,13 +3371,33 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                     Point Wm = W_eval(W_a + (W_b - W_a) * (double)mid / (double)n);
                     double bd = 1e300; size_t bj = 0;
                     size_t M = st.size() > 1 ? st.size() - 1 : 1;
-                    for (size_t j = 0; j < st.size(); ++j) {
-                        Point uv = pcs_.point_at(pdd.first + (pdd.second - pdd.first) * j / (double)M);
-                        double dd = Wm.distance(S.point_at(uv[0], uv[1]));
-                        if (dd < bd) { bd = dd; bj = j; }
+                    // Sampling resolution of the STORED pcurve, in 3D: the mid sample of the
+                    // written arc can never land closer than half a chord of it. A stored
+                    // pcurve is a POLYLINE (imported faces carry 48-point chains), so this is
+                    // the floor on bd -- gating on an absolute diag*1e-4 instead rejected every
+                    // imported analytic seam and fell through to the branch below, which snaps
+                    // BOTH occurrences of a seam into [0,2pi) and so can NEVER emit the pair one
+                    // period apart. That silently dropped the u=0 alias: an OCCT torus imports
+                    // exactly (25.2661872669) but a round trip through our own writer came back
+                    // at 12.6330936334 -- exactly HALF the solid -- with closure_residual 0.36.
+                    // (`diag` is the VERTEX bounding box, which for a 1-vertex torus is a point
+                    // and falls back to 1.0, so the old threshold was not even model-scaled.)
+                    double pc_chord = 0.0;
+                    {
+                        Point prev3;
+                        for (size_t j = 0; j < st.size(); ++j) {
+                            Point uv = pcs_.point_at(pdd.first + (pdd.second - pdd.first) * j / (double)M);
+                            Point q3 = S.point_at(uv[0], uv[1]);
+                            if (j) pc_chord = std::max(pc_chord, q3.distance(prev3));
+                            prev3 = q3;
+                            double dd = Wm.distance(q3);
+                            if (dd < bd) { bd = dd; bj = j; }
+                        }
                     }
+                    static const char* s_nosa = std::getenv("SESSION_NO_SEAM_ALIAS");
+                    if (s_nosa && s_nosa[0]) pc_chord = 0.0;      // pre-fix gate, for A/B runs
                     double sh_s, sh_t = 0.0;
-                    if (!st.empty() && bd < diag * 1e-4) {
+                    if (!st.empty() && bd < std::max(diag * 1e-4, pc_chord)) {
                         sh_s = TWOPI * std::round((st[bj][0] - uvp[mid][0]) / TWOPI);
                         if (A_e.kind == 5)
                             sh_t = TWOPI * std::round((st[bj][1] - uvp[mid][1]) / TWOPI);
@@ -3092,6 +3408,16 @@ static std::vector<std::vector<int>> emit_brep_shells(StepWriter& w, const BRep&
                             double tm = uvp[mid][1];
                             sh_t = -TWOPI * std::floor(tm / TWOPI);
                         }
+                    }
+                    {
+                        static const char* dbg = std::getenv("SESSION_STEP_SEAMDBG");
+                        if (dbg && dbg[0])
+                            std::fprintf(stderr, "[SEAMDBG] ei=%d ti=%d f=%d kind=%d st=%zu bd=%.3e "
+                                         "diagtol=%.3e uvmid=(%.6f,%.6f) st_bj=(%.6f,%.6f) sh=(%.6f,%.6f)\n",
+                                         ei, ti, fi2, A_e.kind, st.size(), bd, diag * 1e-4,
+                                         uvp[mid][0], uvp[mid][1],
+                                         st.empty() ? 0.0 : st[bj][0], st.empty() ? 0.0 : st[bj][1],
+                                         sh_s, sh_t);
                     }
                     if (sh_s != 0.0 || sh_t != 0.0)
                         for (auto& q : uvp) q = Point(q[0] + sh_s, q[1] + sh_t, q[2]);

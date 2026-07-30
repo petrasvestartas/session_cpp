@@ -1,0 +1,39 @@
+{
+    "color": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "guid": "90fbacf3-81ab-4053-854f-a5ef8b15f4be",
+        "name": "white",
+        "r": 1.0,
+        "type": "Color"
+    },
+    "definition_guid": "def-abc",
+    "flags": 7,
+    "guid": "ac9cb644-953e-461e-b7d9-b9671697876b",
+    "name": "test_ref",
+    "type": "InstanceRef",
+    "xform": {
+        "guid": "79fbab68-7387-46dc-a0ed-4c74d95b3271",
+        "m": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            1.0,
+            2.0,
+            3.0,
+            1.0
+        ],
+        "name": "my_xform",
+        "type": "Xform"
+    }
+}

@@ -2614,7 +2614,65 @@ static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& a
     return true;
 }
 
+// RECOGNITION RESIDUAL PROBE (SESSION_RECOG_RESID). THE PRINCIPLE UNDER TEST: exact geometry
+// must SURVIVE a transform as exact geometry, not be RE-DERIVED from samples. A rotated plane
+// is still exactly a plane (normal R*n); a rotated cylinder is still exactly a cylinder (axis
+// R*a). recognize_surface instead re-derives every primitive from sampled points -- planes from
+// point_at/normal_at at the domain centre, and sphere/cylinder/cone/torus from least-squares
+// over an 8x8 sample grid. Any residual there is injected at the START of the pipeline, so no
+// downstream refinement can remove it -- exactly the signature of the 9.4e-05 cluster.
+// This prints max |implicit(P)| over a sample grid, i.e. how far the RECOGNISED primitive is
+// from the surface it claims to describe.
+static double point_axis_dist(const V3& apt, const V3& adir, const V3& P);
+static double axial_coord(const V3& apt, const V3& adir, const V3& P);
+
+static void recog_residual_report(const NurbsSurface& s, const RecogSurface& rs) {
+    if (rs.kind == RecogSurface::NONE) return;
+    auto [u0, u1] = s.domain(0);
+    auto [v0, v1] = s.domain(1);
+    double worst = 0.0;
+    for (int i = 0; i <= 12; ++i)
+        for (int j = 0; j <= 12; ++j) {
+            Point p = s.point_at(u0 + (u1-u0)*i/12.0, v0 + (v1-v0)*j/12.0);
+            V3 P{p[0], p[1], p[2]};
+            double res = 0.0;
+            if (rs.kind == RecogSurface::PLANE) {
+                V3 n = ssi_unit(rs.p2);
+                res = std::abs((P[0]-rs.p1[0])*n[0] + (P[1]-rs.p1[1])*n[1] + (P[2]-rs.p1[2])*n[2]);
+            } else if (rs.kind == RecogSurface::SPHERE) {
+                double dx = P[0]-rs.p1[0], dy = P[1]-rs.p1[1], dz = P[2]-rs.p1[2];
+                res = std::abs(std::sqrt(dx*dx+dy*dy+dz*dz) - rs.r);
+            } else if (rs.kind == RecogSurface::CYLINDER) {
+                res = std::abs(point_axis_dist(rs.p1, ssi_unit(rs.p2), P) - rs.r);
+            } else if (rs.kind == RecogSurface::CONE) {
+                V3 a = ssi_unit(rs.p2);
+                double ax = axial_coord(rs.p1, a, P);
+                double rr = point_axis_dist(rs.p1, a, P);
+                res = std::abs(rr - std::abs(ax) * std::tan(rs.r));
+            } else if (rs.kind == RecogSurface::TORUS) {
+                V3 w = ssi_unit(rs.p2);
+                double ax = axial_coord(rs.p1, w, P);
+                double rho = point_axis_dist(rs.p1, w, P);
+                res = std::abs(std::sqrt((rho-rs.r)*(rs.r>0?1:1)*(rho-rs.r) + ax*ax) - rs.r2);
+            }
+            worst = std::max(worst, res);
+        }
+    const char* kn = rs.kind == RecogSurface::PLANE ? "PLANE" : rs.kind == RecogSurface::SPHERE ? "SPHERE"
+                   : rs.kind == RecogSurface::CYLINDER ? "CYL" : rs.kind == RecogSurface::CONE ? "CONE" : "TORUS";
+    std::fprintf(stderr, "[RECRESID] %-6s max|implicit|=%.6e\n", kn, worst);
+}
+
+static RecogSurface recognize_surface_impl(const NurbsSurface& surface, double tol);
+
+// Wrapper so the residual probe sees every recognition without patching each return.
 static RecogSurface recognize_surface(const NurbsSurface& surface, double tol) {
+    static const bool s_recresid = (std::getenv("SESSION_RECOG_RESID") != nullptr);
+    RecogSurface rs = recognize_surface_impl(surface, tol);
+    if (s_recresid) recog_residual_report(surface, rs);
+    return rs;
+}
+
+static RecogSurface recognize_surface_impl(const NurbsSurface& surface, double tol) {
     RecogSurface rs;
     if (surface.is_planar(nullptr, tol)) {
         auto [u0, u1] = surface.domain(0);
@@ -3333,6 +3391,31 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         double denom = ta[hi] - ta[lo];
         double f = (std::abs(denom) > 1e-15) ? (a_target - ta[lo]) / denom : 0.0;
         double vc = tv[lo] + (tv[hi] - tv[lo]) * f;
+        // NEWTON POLISH. The sphere and cone branches above bisect 60 times and land on the
+        // exact v; this branch used a 256-entry table with LINEAR interpolation and stopped
+        // there, so its v was wrong by the table's quadratic error. Measured on cone x tor3
+        // common: the cone side placed the shared section circle at (1.303352, -0.606704) and
+        // the torus side at (1.303348, -0.606712) -- the same edge carried by two operands
+        // 1.5e-05 apart, which is the whole cell error (4.11e-05). Two secant steps on
+        // minor_angle(srf(um,v)) - a_target close it to machine precision.
+        {
+            const double dv = (v1 - v0) * 1e-7;
+            const double vlo = std::min(v0, v1), vhi = std::max(v0, v1);
+            auto ang_at = [&](double v) {
+                double a = minor_angle(srf.point_at(um, std::min(std::max(v, vlo), vhi))) - a_target;
+                while (a >  PI) a -= TWO_PI;
+                while (a < -PI) a += TWO_PI;
+                return a;
+            };
+            for (int np = 0; np < 3; ++np) {
+                double g0 = ang_at(vc), g1 = ang_at(std::min(vc + dv, vhi));
+                double dg = (g1 - g0) / dv;
+                if (std::abs(dg) < 1e-12) break;
+                double vn = std::min(std::max(vc - g0 / dg, vlo), vhi);
+                if (std::abs(vn - vc) <= 1e-15 * std::max(1.0, std::abs(vc))) { vc = vn; break; }
+                vc = vn;
+            }
+        }
         return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
     }
 
@@ -3345,6 +3428,365 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
 // the iterative projector got ~0.18 wrong), and the nonlinear meridian v is found by bisection.
 // Returns the seam-split arcs (a circle straddling the seam -> 2 arcs, each anchored on the seam),
 // as exact-endpoint degree-1 polylines. Empty if not a usable sphere/circle.
+// SHARED ADAPTIVE REFINEMENT for the analytic pullbacks (sphere / cone-cylinder / torus).
+//
+// All three sample the 3D section at a fixed count and emit a degree-1 UV polyline. That
+// polyline IS the face's trim curve, so the boundary of the boolean result in 3D is
+// srf(polyline) and a chord that shortcuts the true pullback is a REAL geometric error. It was
+// invisible while BRep::volume() used the bbox-Gauss integrator (which does not react to the
+// trim at all -- a 20x refinement moved it by 0.000000); with the Green-reduced integrator it
+// is measurable, and refining the SPHERE alone already cut box x sph common from 2.22e-4 to
+// 1.39e-5 and sph x sph common from 5.13e-4 to 3.21e-5.
+//
+// Criterion: bisect a segment while the foot-of-perpendicular in UV, LIFTED TO 3D, is farther
+// than tol3 from the true pullback of the segment's mid-parameter. Perpendicular rather than
+// same-parameter, because an exact_circle is a rational quadratic whose parameter is not arc
+// length -- a same-parameter comparison is dominated by a tangential slide and reports ~1e-4
+// everywhere, refining the whole curve uniformly instead of the singular neighbourhood.
+//
+// Ceiling: max_pts is deliberately low. brep_massprops merges any pcurve with more than
+// max_init_intervals (512) knot spans down to that count UNIFORMLY, so overshooting the ceiling
+// makes it integrate a coarser boundary than the one we built and drives the closure residual
+// from 1e-14 to 1e-5. Refinement quality is capped by that budget, not by the tolerance.
+static void refine_pullback(const std::function<Point(double, double)>& eval_uv,
+                            const NurbsCurve& c3d,
+                            const std::function<void(double, double&, double&)>& project_t,
+                            double u0, double range_u, double v0, double range_v, bool wrap_v,
+                            double tol3, size_t max_pts,
+                            std::vector<std::array<double, 3>>& tuv) {
+    if (tuv.size() < 2) return;
+    auto wrap_u = [&](double u) { return u - std::floor((u - u0) / range_u) * range_u; };
+    auto wrapv = [&](double v) {
+        return wrap_v ? v - std::floor((v - v0) / range_v) * range_v : v;
+    };
+    for (int depth = 0; depth < 12 && tuv.size() < max_pts; ++depth) {
+        std::vector<std::array<double, 3>> next;
+        next.reserve(tuv.size() * 2);
+        bool inserted = false;
+        for (size_t i = 0; i + 1 < tuv.size(); ++i) {
+            next.push_back(tuv[i]);
+            if (tuv.size() + next.size() > max_pts * 2) continue;
+            const double tm = 0.5 * (tuv[i][0] + tuv[i + 1][0]);
+            if (tm <= tuv[i][0] || tm >= tuv[i + 1][0]) continue;
+            double um2, vm2;
+            project_t(tm, um2, vm2);
+            while (um2 - tuv[i][1] >  range_u * 0.5) um2 -= range_u;
+            while (um2 - tuv[i][1] < -range_u * 0.5) um2 += range_u;
+            if (wrap_v) {
+                while (vm2 - tuv[i][2] >  range_v * 0.5) vm2 -= range_v;
+                while (vm2 - tuv[i][2] < -range_v * 0.5) vm2 += range_v;
+            }
+            const double eu = tuv[i + 1][1] - tuv[i][1], ev = tuv[i + 1][2] - tuv[i][2];
+            const double L2 = eu * eu + ev * ev;
+            double sfrac = L2 > 1e-30 ? ((um2 - tuv[i][1]) * eu + (vm2 - tuv[i][2]) * ev) / L2 : 0.0;
+            sfrac = std::min(std::max(sfrac, 0.0), 1.0);
+            const double uc = tuv[i][1] + sfrac * eu, vc = tuv[i][2] + sfrac * ev;
+            const Point foot3 = eval_uv(wrap_u(uc), wrapv(vc));
+            const Point true3 = eval_uv(wrap_u(um2), wrapv(vm2));
+            if (foot3.distance(true3) <= tol3) continue;
+            // MEASURED NULL: refining against the EMITTED cubic instead of the chord (local
+            // Catmull-Rom model, perpendicular gap) was tried and is 10x WORSE -- box x sph
+            // common 1.73e-06 -> 1.93e-05. The cubic criterion is satisfied far earlier, so the
+            // node set ends up coarse, and the emitted create_interpolated curve (Chord knots,
+            // Bessel ends) is not the Catmull-Rom the criterion modelled. Over-refining against
+            // the chord and then fitting a cubic through the denser nodes wins: the ceiling is
+            // there to bound cost, and spending it is the right call.
+            next.push_back({tm, um2, vm2});
+            inserted = true;
+        }
+        next.push_back(tuv.back());
+        tuv.swap(next);
+        if (!inserted) break;
+    }
+    if (std::getenv("SESSION_SSI_DBG"))
+        std::fprintf(stderr, "[PBADAPT] pts=%zu tol3=%.3e\n", tuv.size(), tol3);
+}
+
+// Tolerance + ceiling shared by the three pullbacks (SESSION_PB_TOL / SESSION_PB_MAXPTS).
+static void pullback_refine_params(double scale_len, double& tol3, size_t& max_pts) {
+    double tol_scale = 1e-6;
+    if (const char* ts = std::getenv("SESSION_PB_TOL")) { double q = std::atof(ts); if (q > 0.0) tol_scale = q; }
+    tol3 = std::max(scale_len * tol_scale, 1e-12);
+    max_pts = 460;
+    if (const char* mp = std::getenv("SESSION_PB_MAXPTS")) { int q = std::atoi(mp); if (q > 8) max_pts = (size_t)q; }
+}
+
+// EMITTED TRIM GEOMETRY. The pullback of a conic onto a sphere/cone chart is transcendental --
+// there is no exact rational 2D curve to store, unlike a plane (affine inverse -> the exact
+// rational circle) or a cylinder cut perpendicular to its axis (-> an exact v=const line). So
+// the choice is not exact-vs-sampled but WHICH approximation the emitted trim carries, and a
+// degree-1 polyline is the worst one available: the face is then bounded by a polygon INSCRIBED
+// in its true boundary, whose area error is O(h^2). Measured directly: box x sph common carries
+// 121-CV polylines on the sphere face and is wrong by 2.22e-04, while box x cyl common -- whose
+// cylinder trims are 2-CV straight lines that ARE the exact pullback -- is exact to 3.8e-16.
+// A cubic interpolant through the same points is O(h^4) instead, for the same sample budget.
+
+// ---- SEAM-SPLIT SEGMENT PROVENANCE ---------------------------------------------------------
+// One node of a pullback segment: the parameter it occupies on the EXACT 3D section curve and
+// its image in the target surface's own (u,v), already shifted into the segment's period cell.
+struct PBNode { double t, u, v; };
+
+// Where a seam-split segment came from. A segment that only knows its UV points cannot be
+// evaluated against the exact curve it is an approximation OF, so its fitted pcurve's true
+// deviation is unmeasurable and any "tolerance-driven" refinement is really refining a chord
+// proxy. Carrying the [t0,t1] sub-range plus the 3D curve and a projector fixes that.
+struct PBSource {
+    const NurbsSurface* srf = nullptr;
+    const NurbsCurve* c3d = nullptr;
+    /// t on `c3d` -> (u,v) on `srf`, in the surface's own parameter order (torus u/v swap
+    /// resolved). The result is a REPRESENTATIVE: periodic directions come back inside one
+    /// period and the consumer re-anchors it against a neighbouring node.
+    std::function<void(double, double&, double&)> project;
+    double per_u = 0.0;   ///< u period, 0 = not periodic (no re-anchoring)
+    double per_v = 0.0;   ///< v period, 0 = not periodic
+    bool valid() const { return srf && c3d && (bool)project; }
+};
+
+static double pb_anchor(double x, double ref, double per) {
+    if (per <= 0.0) return x;
+    while (x - ref >  0.5 * per) x -= per;
+    while (x - ref < -0.5 * per) x += per;
+    return x;
+}
+
+// Closest point on `c` to `q`, seeded at `t` and confined to [ta,tb]. Newton on
+// f(t) = (C(t)-q).C'(t); the seed comes from the node bracket so the bracket is tight and
+// the iteration is a local polish, not a search. Returns the squared distance.
+static double pb_closest_d2(const NurbsCurve& c, const Point& q, double ta, double tb, double t) {
+    if (tb < ta) std::swap(ta, tb);
+    t = std::min(std::max(t, ta), tb);
+    double best = 1e300, bt = t;
+    for (int it = 0; it < 8; ++it) {
+        std::vector<Vector> d = c.evaluate(t, 2);
+        if (d.size() < 3) break;
+        const double rx = d[0][0]-q[0], ry = d[0][1]-q[1], rz = d[0][2]-q[2];
+        const double d2 = rx*rx + ry*ry + rz*rz;
+        if (d2 < best) { best = d2; bt = t; }
+        const double f  = rx*d[1][0] + ry*d[1][1] + rz*d[1][2];
+        const double fp = d[1][0]*d[1][0] + d[1][1]*d[1][1] + d[1][2]*d[1][2]
+                        + rx*d[2][0] + ry*d[2][1] + rz*d[2][2];
+        if (std::abs(fp) < 1e-300) break;
+        double tn = t - f/fp;
+        if (!(tn > ta)) tn = ta;
+        if (!(tn < tb)) tn = tb;
+        if (std::abs(tn - t) <= 1e-15 * std::max(1.0, std::abs(t))) { t = tn; break; }
+        t = tn;
+    }
+    Point p = c.point_at(t);
+    double dx = p[0]-q[0], dy = p[1]-q[1], dz = p[2]-q[2];
+    double d2 = dx*dx + dy*dy + dz*dz;
+    (void)bt;
+    return std::min(best, d2);
+}
+
+// Chord-length node parameters of `create_interpolated(pts)` mapped onto [0,1] -- the parameter
+// at which the emitted interpolant passes through node i. (Chord knot style; verified against
+// the emitted curve before use, see fit_pullback_curve.)
+static void pb_chord_params(const std::vector<PBNode>& nd, std::vector<double>& s) {
+    s.assign(nd.size(), 0.0);
+    double acc = 0.0;
+    for (size_t i = 1; i < nd.size(); ++i) {
+        acc += std::sqrt((nd[i].u-nd[i-1].u)*(nd[i].u-nd[i-1].u)
+                       + (nd[i].v-nd[i-1].v)*(nd[i].v-nd[i-1].v));
+        s[i] = acc;
+    }
+    if (acc > 1e-300) for (auto& x : s) x /= acc;
+    else for (size_t i = 0; i < s.size(); ++i) s[i] = nd.size() > 1 ? (double)i/(nd.size()-1) : 0.0;
+}
+
+static NurbsCurve pb_build(const std::vector<PBNode>& nd, bool smooth) {
+    std::vector<Point> pts;
+    pts.reserve(nd.size());
+    for (const auto& n : nd) pts.push_back(Point(n.u, n.v, 0.0));
+    if (smooth && pts.size() >= 4) {
+        NurbsCurve c = NurbsCurve::create_interpolated(pts);
+        if (c.is_valid()) { c.set_domain(0.0, 1.0); return c; }
+    }
+    NurbsCurve c = NurbsCurve::create(false, 1, pts);
+    if (c.is_valid()) c.set_domain(0.0, 1.0);
+    return c;
+}
+
+// TOLERANCE-DRIVEN FIT, with the emitted curve itself in the loop (SESSION_PB_FIT).
+//
+// The two refinements that came before this refined a PROXY: the chord through the node set
+// (plateaus -- a polygon's sag is O(h^2) no matter which curve is finally emitted through the
+// nodes) and a local Catmull-Rom stand-in for the emitted cubic (10x WORSE: the criterion is
+// satisfied while the node set is still coarse, and the emitted create_interpolated curve --
+// Chord knots, Bessel ends -- is not that local cubic). The only criterion that cannot lie is
+// the emitted curve's own deviation, measured in 3D:
+//
+//   build the interpolant through the nodes -> LIFT it through the surface -> for dense samples
+//   take the closest point on the EXACT 3D section -> refine every interval still over target.
+//
+// Stops on tolerance, on the node cap, or on the iteration cap, and reports which.
+enum class PBStop { Tol, NodeCap, IterCap, Unfittable };
+static NurbsCurve fit_pullback_curve(std::vector<PBNode>& nd, const PBSource& src, bool smooth,
+                                     double target, size_t max_nodes, int max_iters,
+                                     double& achieved, PBStop& stop) {
+    achieved = -1.0;
+    stop = PBStop::Unfittable;
+    NurbsCurve c = pb_build(nd, smooth);
+    if (!src.valid() || nd.size() < 2 || !c.is_valid()) return c;
+    // The fit needs a MONOTONE t bracket per interval. A rotated ring (SESSION_PB_ROT) wraps
+    // its t sequence, so it is emitted unfitted rather than measured against a bracket that
+    // does not exist.
+    const bool up = nd.back().t > nd.front().t;
+    for (size_t i = 1; i < nd.size(); ++i)
+        if ((nd[i].t - nd[i-1].t) * (up ? 1.0 : -1.0) <= 0.0) return c;
+
+    const NurbsSurface& S = *src.srf;
+    const NurbsCurve& C = *src.c3d;
+    std::vector<double> s;
+    stop = PBStop::IterCap;
+    for (int iter = 0; iter < max_iters; ++iter) {
+        pb_chord_params(nd, s);
+        // Verify the assumed node<->parameter correspondence before trusting it: if the
+        // emitted curve does not pass through node i at s[i], the bracket seeds are wrong
+        // and the measurement would be meaningless.
+        double node_err = 0.0;
+        for (size_t i = 0; i < nd.size(); ++i) {
+            Point p = c.point_at(s[i]);
+            node_err = std::max(node_err, std::hypot(p[0]-nd[i].u, p[1]-nd[i].v));
+        }
+        double uv_scale = 0.0;
+        for (size_t i = 1; i < nd.size(); ++i)
+            uv_scale += std::hypot(nd[i].u-nd[i-1].u, nd[i].v-nd[i-1].v);
+        if (node_err > 1e-6 * std::max(uv_scale, 1e-12)) { stop = PBStop::Unfittable; return c; }
+
+        const int K = 2;                      // interior probes per interval
+        std::vector<double> dev(nd.size() - 1, 0.0);
+        double worst = 0.0;
+        for (size_t i = 0; i + 1 < nd.size(); ++i) {
+            const double ta = std::min(nd[i].t, nd[i+1].t), tb = std::max(nd[i].t, nd[i+1].t);
+            for (int k = 1; k <= K; ++k) {
+                const double f = (double)k / (K + 1);
+                const double sq = s[i] + (s[i+1] - s[i]) * f;
+                Point q2 = c.point_at(sq);
+                Point q3 = S.point_at(q2[0], q2[1]);
+                const double seed = nd[i].t + (nd[i+1].t - nd[i].t) * f;
+                // widen the bracket by one interval each way: the nearest point of the exact
+                // curve to a sagging chord can sit just outside the node bracket
+                const double lo = (i > 0) ? nd[i-1].t : nd[0].t;
+                const double hi = (i + 2 < nd.size()) ? nd[i+2].t : nd.back().t;
+                double d2 = pb_closest_d2(C, q3, std::min(std::min(lo,hi), std::min(ta,tb)),
+                                          std::max(std::max(lo,hi), std::max(ta,tb)), seed);
+                dev[i] = std::max(dev[i], std::sqrt(std::max(0.0, d2)));
+            }
+            worst = std::max(worst, dev[i]);
+        }
+        achieved = worst;
+        if (worst <= target) { stop = PBStop::Tol; break; }
+        if (nd.size() >= max_nodes) { stop = PBStop::NodeCap; break; }
+        // Split every interval still over target (the worst one included): one-at-a-time
+        // refinement needs O(n) rebuilds of an O(n) solve to reach the same node set.
+        std::vector<PBNode> next;
+        next.reserve(nd.size() * 2);
+        size_t budget = max_nodes - nd.size();
+        // worst-first so the node cap is spent where it matters
+        std::vector<size_t> order(dev.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::sort(order.begin(), order.end(), [&](size_t a, size_t b){ return dev[a] > dev[b]; });
+        std::vector<char> split(dev.size(), 0);
+        for (size_t oi = 0; oi < order.size() && budget > 0; ++oi) {
+            if (dev[order[oi]] <= target) break;
+            split[order[oi]] = 1;
+            --budget;
+        }
+        bool any = false;
+        for (size_t i = 0; i + 1 < nd.size(); ++i) {
+            next.push_back(nd[i]);
+            if (!split[i]) continue;
+            const double tm = 0.5 * (nd[i].t + nd[i+1].t);
+            if (!(tm > std::min(nd[i].t, nd[i+1].t) && tm < std::max(nd[i].t, nd[i+1].t))) continue;
+            double um, vm;
+            src.project(tm, um, vm);
+            um = pb_anchor(um, 0.5*(nd[i].u + nd[i+1].u), src.per_u);
+            vm = pb_anchor(vm, 0.5*(nd[i].v + nd[i+1].v), src.per_v);
+            next.push_back({tm, um, vm});
+            any = true;
+        }
+        next.push_back(nd.back());
+        if (!any) { stop = PBStop::NodeCap; break; }
+        nd.swap(next);
+        c = pb_build(nd, smooth);
+        if (!c.is_valid()) { c = pb_build(nd, false); stop = PBStop::Unfittable; break; }
+    }
+    return c;
+}
+
+static NurbsCurve emit_pullback_curve(const std::vector<PBNode>& nodes, const PBSource* src) {
+    static const bool s_smooth = [] { const char* p = std::getenv("SESSION_PB_SMOOTH"); return p && p[0]; }();
+    static const bool s_fit    = [] { const char* p = std::getenv("SESSION_PB_FIT");    return p && p[0]; }();
+    static const double s_target = [] {
+        const char* p = std::getenv("SESSION_PB_FITTOL");
+        double q = (p && p[0]) ? std::atof(p) : 0.0;
+        return q > 0.0 ? q : 1e-9;
+    }();
+    static const size_t s_maxnodes = [] {
+        const char* p = std::getenv("SESSION_PB_FITMAX");
+        int q = (p && p[0]) ? std::atoi(p) : 0;
+        return (size_t)(q > 8 ? q : 500);
+    }();
+    // DUPLICATE NODES AT THE SEAM ANCHOR. When a sample lands EXACTLY on the seam (a section
+    // circle symmetric about the u=u0 meridian always has one), the crossing fraction is 0 or 1
+    // and the synthesized seam node coincides with the neighbouring sample. A repeated point
+    // gives the chord knot vector a zero span, create_interpolated goes singular and returns
+    // invalid, and the arc silently falls back to a DEGREE-1 POLYLINE. Measured on box x sph:
+    // the x=+2 circle's two seam arcs came out as a 261-CV cubic (deviation 8.2e-10) and a
+    // 242-CV polyline (deviation 4.4e-05) -- and that one polyline arc was the whole cell error
+    // (sphere-face area over by 1.13e-04, volume by 9.44e-05). The seam ENDPOINTS must survive
+    // exactly, so a duplicate at the tail replaces its predecessor rather than being dropped.
+    auto dedupe = [](std::vector<PBNode> v) {
+        if (v.size() < 2) return v;
+        double scale = 0.0;
+        for (size_t i = 1; i < v.size(); ++i)
+            scale = std::max(scale, std::max(std::abs(v[i].u - v[i-1].u), std::abs(v[i].v - v[i-1].v)));
+        const double eps = std::max(scale * 1e-9, 1e-14);
+        std::vector<PBNode> o;
+        o.push_back(v.front());
+        for (size_t i = 1; i < v.size(); ++i) {
+            if (std::abs(v[i].u - o.back().u) <= eps && std::abs(v[i].v - o.back().v) <= eps) {
+                if (i + 1 == v.size()) o.back() = v[i];   // keep the exact seam endpoint
+                continue;
+            }
+            o.push_back(v[i]);
+        }
+        return o;
+    };
+    if (s_fit && src && src->valid() && nodes.size() >= 2) {
+        std::vector<PBNode> nd = (s_smooth || s_fit) ? dedupe(nodes) : nodes;
+        double achieved = -1.0;
+        PBStop stop = PBStop::Unfittable;
+        NurbsCurve c = fit_pullback_curve(nd, *src, s_smooth, s_target, s_maxnodes, 24, achieved, stop);
+        if (c.is_valid()) {
+            if (std::getenv("SESSION_PB_DBG"))
+                std::fprintf(stderr, "[PBFIT] n=%zu->%zu dev=%.3e target=%.1e stop=%s\n",
+                             nodes.size(), nd.size(), achieved, s_target,
+                             stop == PBStop::Tol ? "TOL" : stop == PBStop::NodeCap ? "NODECAP"
+                             : stop == PBStop::IterCap ? "ITERCAP" : "UNFITTABLE");
+            return c;
+        }
+    }
+    if (s_smooth) {
+        std::vector<PBNode> nd = dedupe(nodes);
+        std::vector<Point> dp;
+        dp.reserve(nd.size());
+        for (const auto& n : nd) dp.push_back(Point(n.u, n.v, 0.0));
+        if (dp.size() >= 4) {
+            NurbsCurve c = NurbsCurve::create_interpolated(dp);
+            if (c.is_valid()) return c;
+            if (std::getenv("SESSION_PB_DBG"))
+                std::fprintf(stderr, "[PBFIT] create_interpolated INVALID on %zu pts (from %zu)\n",
+                             dp.size(), nodes.size());
+        }
+    }
+    std::vector<Point> pts;
+    pts.reserve(nodes.size());
+    for (const auto& n : nodes) pts.push_back(Point(n.u, n.v, 0.0));
+    return NurbsCurve::create(false, 1, pts);
+}
+
 static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
                                                         const RecogSurface& recog,
                                                         const NurbsCurve& c3d) {
@@ -3425,11 +3867,11 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
     };
     // Sample the 3D curve; project each point analytically -> (u_unwrapped, v).
     auto [t0, t1] = c3d.domain();
-    int n = std::max(c3d.cv_count() * 8, 120);
-    std::vector<std::array<double,2>> uv;  // u_unwrapped (may go outside [u0,u1]), v
-    double prev_u = 0.0;
-    for (int i = 0; i <= n; ++i) {
-        Point p = c3d.point_at(t0 + (t1-t0)*i/n);
+    // Project ONE 3D curve parameter to (u,v). `u` comes back in [u0,u1]; the caller unwraps
+    // it against its predecessor. Kept as a lambda so the adaptive refinement below can
+    // project an arbitrary mid-parameter, not just the uniform grid.
+    auto project_t = [&](double t, double& u_out, double& v_out) {
+        Point p = c3d.point_at(t);
         double r[3] = {p[0]-C[0], p[1]-C[1], p[2]-C[2]};
         double lon = std::atan2(dot(r,Ys), dot(r,Xs));   // (-pi, pi], exact
         double h = dot(r, Zs);
@@ -3463,21 +3905,96 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
             if (std::abs(dg) < 1e-12) break;
             v = std::min(std::max(vc2 - g0/dg, std::min(v0,v1)), std::max(v0,v1));
         }
+        u_out = u; v_out = v;
+    };
+    int n = std::max(c3d.cv_count() * 8, 120);
+    std::vector<std::array<double,3>> tuv;  // t, u_unwrapped (may leave [u0,u1]), v
+    double prev_u = 0.0;
+    for (int i = 0; i <= n; ++i) {
+        double t = t0 + (t1-t0)*i/n;
+        double u, v;
+        project_t(t, u, v);
         if (i > 0) { while (u - prev_u >  range_u*0.5) u -= range_u;
                      while (u - prev_u < -range_u*0.5) u += range_u; }
         prev_u = u;
-        uv.push_back({u, v});
+        tuv.push_back({t, u, v});
     }
+    // ---- ADAPTIVE REFINEMENT (SESSION_PB_ADAPT), shared with the cone/cylinder and torus
+    // pullbacks. Unbounded chord error near a POLE, where u sweeps ~180 deg over a vanishing
+    // arc length: a section circle passing 0.6 deg from the sphere's pole has two consecutive
+    // uniform samples straddling it, and the straight UV chord cuts the cap short.
+    static const bool s_pb_adapt = (std::getenv("SESSION_PB_ADAPT") != nullptr);
+    if (s_pb_adapt) {
+        double tol3; size_t max_pts;
+        pullback_refine_params(recog.r, tol3, max_pts);
+        refine_pullback([&](double a, double b){ return srf.point_at(a, b); },
+                        c3d, project_t, u0, range_u, v0, v1 - v0, false, tol3, max_pts, tuv);
+    }
+    // {u_unwrapped, v, t}: the 3D parameter rides along so every seam-split segment below
+    // knows which sub-range of `c3d` it is the pullback OF.
+    std::vector<std::array<double,3>> uv;
+    uv.reserve(tuv.size());
+    for (const auto& e : tuv) uv.push_back({e[1], e[2], e[0]});
     if (uv.size() < 2) return {};
+    // ---- FULL-WRAP SEAM ANCHORING (SESSION_PB_ROT) ----
+    // A CLOSED section that encircles the pole advances monotonically through exactly ONE
+    // u-period. Whether it pulls back as one clean arc u0->u1 or as two arcs depends only on
+    // where the 3D curve's own start parameter happens to fall: a section symmetric about the
+    // u=u0 meridian starts on the seam and gives one arc, any other orientation starts mid-span
+    // and the seam split below cuts it at that ARBITRARY interior u. The other operand -- whose
+    // chart has the same section whole -- then has no 1:1 mate for either half and the boolean
+    // leaves the section naked. Measured on the same sphere x cylinder pair, only tilted about
+    // (1,1,0) instead of Y: 6 naked edges, common 9.597724 against the analytic 15.061795, while
+    // the Y-tilt of the identical geometry is exact. Rotate the sample ring so it starts AND
+    // ends exactly on the seam: same curve, same set of points, one arc.
+    static const bool s_pb_rot = (std::getenv("SESSION_PB_ROT") != nullptr);
+    if (s_pb_rot && uv.size() > 4) {
+        bool closed3 = c3d.point_at(t0).distance(c3d.point_at(t1)) <= std::max(recog.r * 1e-6, 1e-12);
+        size_t N = uv.size() - 1;                 // ring size (uv.back() repeats uv.front())
+        auto kof0 = [&](double u) { return (int)std::floor((u - u0) / range_u + 1e-9); };
+        int cross = -1;
+        if (closed3)
+            for (size_t i = 0; i + 1 < uv.size(); ++i)
+                if (kof0(uv[i+1][0]) != kof0(uv[i][0])) { cross = (int)i; break; }
+        // cross < 0 : the closed loop never touches the seam -> already one clean arc.
+        if (cross >= 0 && cross != 0) {
+            std::vector<double> d(N);
+            for (size_t i = 0; i < N; ++i) d[i] = uv[i+1][0] - uv[i][0];
+            bool up = d[cross] > 0.0;
+            double su = u0 + range_u * (up ? (kof0(uv[cross][0]) + 1) : kof0(uv[cross][0]));
+            double f = std::abs(d[cross]) > 1e-15 ? (su - uv[cross][0]) / d[cross] : 0.0;
+            f = std::min(std::max(f, 0.0), 1.0);
+            double vc = uv[cross][1] + (uv[cross+1][1] - uv[cross][1]) * f;
+            double tc = uv[cross][2] + (uv[cross+1][2] - uv[cross][2]) * f;
+            std::vector<std::array<double,3>> rot;
+            rot.reserve(N + 2);
+            double cu = up ? u0 : u1;             // re-enter on the opposite seam side
+            rot.push_back({cu, vc, tc});
+            double acc = cu + d[cross] * (1.0 - f);
+            for (size_t s = 1; s <= N; ++s) {
+                size_t i = (size_t)(cross + (int)s) % N;
+                rot.push_back({acc, uv[i][1], uv[i][2]});
+                if (s < N) acc += d[i];
+            }
+            rot.push_back({acc + d[cross] * f, vc, tc});
+            uv.swap(rot);
+            if (std::getenv("SESSION_SSI_DBG"))
+                std::fprintf(stderr, "[PBROT] cross=%d up=%d su=%.4f pts=%zu\n",
+                             cross, up ? 1 : 0, su, uv.size());
+        }
+    }
     // Split the continuous (u,v) polyline into arcs by "domain copy" index k = floor((u-u0)/range).
     // When k changes between consecutive samples the curve crosses a seam: end the current arc
     // EXACTLY on the seam (u0 or u1) and start the next on the opposite seam, each shifted into
     // [u0,u1]. So a circle straddling the seam -> two arcs anchored exactly on u0 and u1.
     std::vector<NurbsCurve> out;
-    std::vector<Point> seg;
+    std::vector<PBNode> seg;
+    PBSource src;
+    src.srf = &srf; src.c3d = &c3d; src.per_u = range_u; src.per_v = 0.0;
+    src.project = [&](double tq, double& uo, double& vo) { project_t(tq, uo, vo); };
     auto kof = [&](double u) -> int { return (int)std::floor((u - u0) / range_u + 1e-9); };
     int cur_k = kof(uv[0][0]);
-    seg.push_back(Point(uv[0][0] - cur_k*range_u, uv[0][1], 0.0));
+    seg.push_back({uv[0][2], uv[0][0] - cur_k*range_u, uv[0][1]});
     for (size_t i = 1; i < uv.size(); ++i) {
         int ki = kof(uv[i][0]);
         while (ki != cur_k) {
@@ -3488,15 +4005,16 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(const NurbsSurface& srf,
             double f = (std::abs(denom) > 1e-15) ? (seam_cont - uv[i-1][0]) / denom : 0.0;
             f = std::min(std::max(f, 0.0), 1.0);
             double vc = uv[i-1][1] + (uv[i][1] - uv[i-1][1]) * f;
-            seg.push_back(Point(seam_cont - cur_k*range_u, vc, 0.0));  // end at u1 (step>0) or u0
-            if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+            double tc = uv[i-1][2] + (uv[i][2] - uv[i-1][2]) * f;
+            seg.push_back({tc, seam_cont - cur_k*range_u, vc});  // end at u1 (step>0) or u0
+            if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
             seg.clear();
-            seg.push_back(Point(seam_cont - nk*range_u, vc, 0.0));     // start at u0 (step>0) or u1
+            seg.push_back({tc, seam_cont - nk*range_u, vc});     // start at u0 (step>0) or u1
             cur_k = nk;
         }
-        seg.push_back(Point(uv[i][0] - cur_k*range_u, uv[i][1], 0.0));
+        seg.push_back({uv[i][2], uv[i][0] - cur_k*range_u, uv[i][1]});
     }
-    if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+    if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
     return out;
 }
 
@@ -3558,14 +4076,15 @@ static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
     };
     auto [t0, t1] = c3d.domain();
     int n = std::max(c3d.cv_count() * 8, 120);
-    std::vector<std::array<double,2>> uv;
-    double prev_u = 0.0, prev_lon = 0.0;
-    for (int i = 0; i <= n; ++i) {
-        Point p = c3d.point_at(t0 + (t1-t0)*i/n);
+    // Projection of ONE 3D parameter, factored out so the shared adaptive refinement can
+    // project an arbitrary mid-parameter (same structure as the sphere pullback).
+    double prev_lon_s = 0.0;
+    auto project_t = [&](double tq, double& u_out, double& v_out) {
+        Point p = c3d.point_at(tq);
         double r[3] = {p[0]-A[0], p[1]-A[1], p[2]-A[2]};
         double rad = std::sqrt(std::max(0.0, dot(r,Xc)*dot(r,Xc) + dot(r,Yc)*dot(r,Yc)));
-        double lon = (rad > 1e-12) ? std::atan2(dot(r,Yc), dot(r,Xc)) : prev_lon;
-        prev_lon = lon;
+        double lon = (rad > 1e-12) ? std::atan2(dot(r,Yc), dot(r,Xc)) : prev_lon_s;
+        prev_lon_s = lon;
         double u = u_from_lon(lon);
         // Newton-polish the table inversion (see sphere pullback).
         if (rad > 1e-12) for (int np = 0; np < 2; ++np) {
@@ -3583,17 +4102,46 @@ static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
             if (std::abs(dg) < 1e-12) break;
             u = std::min(std::max(uc - g0/dg, u0), u1);
         }
+        u_out = u;
+        v_out = v_from_height(dot(r, Zc));
+    };
+    std::vector<std::array<double,3>> tuv;
+    double prev_u = 0.0;
+    double bmn[3] = {1e300,1e300,1e300}, bmx[3] = {-1e300,-1e300,-1e300};
+    for (int i = 0; i <= n; ++i) {
+        double tq = t0 + (t1-t0)*i/n;
+        double u, v;
+        project_t(tq, u, v);
         if (i > 0) { while (u - prev_u >  range_u*0.5) u -= range_u;
                      while (u - prev_u < -range_u*0.5) u += range_u; }
         prev_u = u;
-        uv.push_back({u, v_from_height(dot(r, Zc))});
+        tuv.push_back({tq, u, v});
+        Point pq = c3d.point_at(tq);
+        for (int k = 0; k < 3; ++k) { bmn[k]=std::min(bmn[k],pq[k]); bmx[k]=std::max(bmx[k],pq[k]); }
     }
+    // SESSION_PB_ADAPT: same criterion and ceiling as the sphere. recog.r is the cone HALF-ANGLE,
+    // not a length, so the tolerance scale is the section's own size.
+    static const bool s_pb_adapt_c = (std::getenv("SESSION_PB_ADAPT") != nullptr);
+    if (s_pb_adapt_c && tuv.size() >= 2) {
+        double diag = std::sqrt((bmx[0]-bmn[0])*(bmx[0]-bmn[0]) + (bmx[1]-bmn[1])*(bmx[1]-bmn[1])
+                              + (bmx[2]-bmn[2])*(bmx[2]-bmn[2]));
+        double tol3; size_t max_pts;
+        pullback_refine_params(std::max(diag * 0.5, 1e-9), tol3, max_pts);
+        refine_pullback([&](double a, double b){ return srf.point_at(a, b); },
+                        c3d, project_t, u0, range_u, v0, v1 - v0, false, tol3, max_pts, tuv);
+    }
+    std::vector<std::array<double,3>> uv;    // {u_unwrapped, v, t}
+    uv.reserve(tuv.size());
+    for (const auto& e : tuv) uv.push_back({e[1], e[2], e[0]});
     if (uv.size() < 2) return {};
     std::vector<NurbsCurve> out;
-    std::vector<Point> seg;
+    std::vector<PBNode> seg;
+    PBSource src;
+    src.srf = &srf; src.c3d = &c3d; src.per_u = range_u; src.per_v = 0.0;
+    src.project = [&](double tq, double& uo, double& vo) { project_t(tq, uo, vo); };
     auto kof = [&](double u) -> int { return (int)std::floor((u - u0) / range_u + 1e-9); };
     int cur_k = kof(uv[0][0]);
-    seg.push_back(Point(uv[0][0] - cur_k*range_u, uv[0][1], 0.0));
+    seg.push_back({uv[0][2], uv[0][0] - cur_k*range_u, uv[0][1]});
     for (size_t i = 1; i < uv.size(); ++i) {
         int ki = kof(uv[i][0]);
         while (ki != cur_k) {
@@ -3604,15 +4152,16 @@ static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
             double f = (std::abs(denom) > 1e-15) ? (seam_cont - uv[i-1][0]) / denom : 0.0;
             f = std::min(std::max(f, 0.0), 1.0);
             double vc = uv[i-1][1] + (uv[i][1] - uv[i-1][1]) * f;
-            seg.push_back(Point(seam_cont - cur_k*range_u, vc, 0.0));
-            if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+            double tc = uv[i-1][2] + (uv[i][2] - uv[i-1][2]) * f;
+            seg.push_back({tc, seam_cont - cur_k*range_u, vc});
+            if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
             seg.clear();
-            seg.push_back(Point(seam_cont - nk*range_u, vc, 0.0));
+            seg.push_back({tc, seam_cont - nk*range_u, vc});
             cur_k = nk;
         }
-        seg.push_back(Point(uv[i][0] - cur_k*range_u, uv[i][1], 0.0));
+        seg.push_back({uv[i][2], uv[i][0] - cur_k*range_u, uv[i][1]});
     }
-    if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+    if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
     return out;
 }
 
@@ -3740,16 +4289,36 @@ static std::vector<NurbsCurve> analytic_torus_pullback(const NurbsSurface& srf,
     // the pullback polyline IS the boundary volume() integrates on a torus (spirics have
     // no rational form): one-sided chord sag transfers ~4e-3 flux from blisters to band
     // at n=240; sag scales n^-2
-    int n = std::max(c3d.cv_count() * 8, 4000);
-    std::vector<std::array<double,2>> ab;
-    double prev_a = 0.0, prev_b = 0.0;
-    for (int i = 0; i <= n; ++i) {
-        Point q = c3d.point_at(t0 + (t1-t0)*i/n);
+    // SESSION_PB_ADAPT trades the fixed 4000-sample polyline for a MODEST uniform seed plus
+    // adaptive refinement under the shared 460-point ceiling. On a torus that is not merely
+    // cheaper: brep_massprops merges any pcurve with more than max_init_intervals (512) knot
+    // spans down to 512 UNIFORMLY, so a 4000-point boundary is integrated as a uniformly
+    // decimated version of itself -- the dense sampling never reaches the integrator, while an
+    // adaptive polyline under the ceiling does. Both a and b are periodic here, so the
+    // refinement unwraps BOTH directions.
+    // NOTE: adaptive refinement was PORTED HERE AND REVERTED. Seeding at 240 and refining to
+    // the 460-point ceiling made tor x tor cut/common LOSE solidity (is_solid 1 -> 0) and moved
+    // box x tor fuse from OK to 5.87e-06: on a torus the section is a spiric with no rational
+    // form, and the fixed 4000-sample density is doing real work that 460 adaptive points
+    // cannot replace. The torus cells are limited downstream instead -- see BRep::volume().
+    static const bool s_pb_adapt_t = false;
+    int n = s_pb_adapt_t ? std::max(c3d.cv_count() * 2, 240)
+                         : std::max(c3d.cv_count() * 8, 4000);
+    auto project_t = [&](double tq, double& a_out, double& b_out) {
+        Point q = c3d.point_at(tq);
         double lon = lon_of(q), vh = vhat_of(q);
         double a = inv_table(ta, tlon, lon);
         double b = inv_table(tb, tvh, vh);
         a = polish(a, lon, a0, a1, range_a, [&](double x){ return lon_of(pt_ab(x, b_ref)); });
         b = polish(b, vh,  b0, b1, range_b, [&](double x){ return vhat_of(pt_ab(a_ref, x)); });
+        a_out = a; b_out = b;
+    };
+    std::vector<std::array<double,3>> tab;
+    double prev_a = 0.0, prev_b = 0.0;
+    for (int i = 0; i <= n; ++i) {
+        double tq = t0 + (t1-t0)*i/n;
+        double a, b;
+        project_t(tq, a, b);
         if (i > 0) {
             while (a - prev_a >  range_a*0.5) a -= range_a;
             while (a - prev_a < -range_a*0.5) a += range_a;
@@ -3757,22 +4326,38 @@ static std::vector<NurbsCurve> analytic_torus_pullback(const NurbsSurface& srf,
             while (b - prev_b < -range_b*0.5) b += range_b;
         }
         prev_a = a; prev_b = b;
-        ab.push_back({a, b});
+        tab.push_back({tq, a, b});
     }
+    if (s_pb_adapt_t && tab.size() >= 2) {
+        double tol3; size_t max_pts;
+        pullback_refine_params(rmin, tol3, max_pts);
+        refine_pullback(pt_ab, c3d, project_t, a0, range_a, b0, range_b, true, tol3, max_pts, tab);
+    }
+    std::vector<std::array<double,3>> ab;    // {a_unwrapped, b_unwrapped, t}
+    ab.reserve(tab.size());
+    for (const auto& e : tab) ab.push_back({e[1], e[2], e[0]});
     if (ab.size() < 2) return {};
     // split on BOTH seams: the unwrapped (a,b) path against the period-cell grid
     std::vector<NurbsCurve> out;
-    std::vector<Point> seg;
+    std::vector<PBNode> seg;
+    PBSource src;
+    src.srf = &srf; src.c3d = &c3d;
+    src.per_u = swapped ? range_b : range_a;
+    src.per_v = swapped ? range_a : range_b;
+    src.project = [&](double tq, double& uo, double& vo) {
+        double a, b; project_t(tq, a, b);
+        if (swapped) { uo = b; vo = a; } else { uo = a; vo = b; }
+    };
     auto kof = [](double x, double x0, double rng) { return (int)std::floor((x - x0) / rng + 1e-9); };
-    auto emit = [&](double a, double b, int ka, int kb) {
+    auto emit = [&](double a, double b, double t, int ka, int kb) {
         double uu = a - ka*range_a, vv = b - kb*range_b;
-        seg.push_back(swapped ? Point(vv, uu, 0.0) : Point(uu, vv, 0.0));
+        seg.push_back(swapped ? PBNode{t, vv, uu} : PBNode{t, uu, vv});
     };
     int ka = kof(ab[0][0], a0, range_a), kb = kof(ab[0][1], b0, range_b);
-    emit(ab[0][0], ab[0][1], ka, kb);
+    emit(ab[0][0], ab[0][1], ab[0][2], ka, kb);
     for (size_t i = 1; i < ab.size(); ++i) {
-        double pa = ab[i-1][0], pb = ab[i-1][1];
-        double qa = ab[i][0],   qb = ab[i][1];
+        double pa = ab[i-1][0], pb = ab[i-1][1], pt = ab[i-1][2];
+        double qa = ab[i][0],   qb = ab[i][1],   qt = ab[i][2];
         for (int guard = 0; guard < 8; ++guard) {
             int kqa = kof(qa, a0, range_a), kqb = kof(qb, b0, range_b);
             if (kqa == ka && kqb == kb) break;
@@ -3785,27 +4370,31 @@ static std::vector<NurbsCurve> analytic_torus_pullback(const NurbsSurface& srf,
                 double den = qb - pb; fb = std::abs(den) > 1e-15 ? (bound - pb)/den : 0.0; }
             if (fa <= fb) {
                 double bound = a0 + (sa > 0 ? ka+1 : ka)*range_a;
-                double bv = pb + (qb - pb)*std::min(std::max(fa, 0.0), 1.0);
-                emit(bound, bv, ka, kb);
-                if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+                double cf = std::min(std::max(fa, 0.0), 1.0);
+                double bv = pb + (qb - pb)*cf;
+                double bt = pt + (qt - pt)*cf;
+                emit(bound, bv, bt, ka, kb);
+                if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
                 seg.clear();
                 ka += sa;
-                emit(bound, bv, ka, kb);
-                pa = bound; pb = bv;
+                emit(bound, bv, bt, ka, kb);
+                pa = bound; pb = bv; pt = bt;
             } else {
                 double bound = b0 + (sb > 0 ? kb+1 : kb)*range_b;
-                double bu = pa + (qa - pa)*std::min(std::max(fb, 0.0), 1.0);
-                emit(bu, bound, ka, kb);
-                if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+                double cf = std::min(std::max(fb, 0.0), 1.0);
+                double bu = pa + (qa - pa)*cf;
+                double bt = pt + (qt - pt)*cf;
+                emit(bu, bound, bt, ka, kb);
+                if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
                 seg.clear();
                 kb += sb;
-                emit(bu, bound, ka, kb);
-                pa = bu; pb = bound;
+                emit(bu, bound, bt, ka, kb);
+                pa = bu; pb = bound; pt = bt;
             }
         }
-        emit(qa, qb, ka, kb);
+        emit(qa, qb, qt, ka, kb);
     }
-    if (seg.size() >= 2) out.push_back(NurbsCurve::create(false, 1, seg));
+    if (seg.size() >= 2) out.push_back(emit_pullback_curve(seg, &src));
     return out;
 }
 
@@ -4222,8 +4811,33 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
         NurbsCurve pb = analytic_pcurve(b, rb, cc3);
         if (!pa.is_valid() && ra.kind == K::TORUS) { auto v = analytic_torus_pullback(a, ra, cc3); if (!v.empty()) pa = v[0]; }
         if (!pb.is_valid() && rb.kind == K::TORUS) { auto v = analytic_torus_pullback(b, rb, cc3); if (!v.empty()) pb = v[0]; }
+        // SEAM-ROBUST PULLBACK (SESSION_SSI_KEEP). A recognized, analytically EXACT 3D section
+        // must never be discarded because one operand's convenience pcurve could not be built:
+        // the triple is dropped as a whole below, so BOTH operands then lose the section and the
+        // boolean silently under-cuts. Measured: sphere r=2.5 x cylinder r=1 tilted 25 deg -- the
+        // second (south) circle's iterative projection onto the sphere returns empty, the triple
+        // is dropped, and the CYLINDER loses its cut too (1 section instead of 2) -> common
+        // 15.908478 vs the analytic 15.061795. The periodic charts already own exact per-point
+        // inverses (atan2 longitude, bisected meridian) that handle seam straddling; use them
+        // here as well, exactly as the TORUS branch above already does.
+        // DEFAULT ON. Guards battery run with it on: primitive matrix 59/63 measured cells
+        // verdict-identical and 8-digit volume-identical to the old path; edge grid 54/54;
+        // chairs cut 35/46.7943, common 25/33.5025, fuse 50/127.0913 identical; C++ minitests
+        // 760/760; 175-cell in-memory rotated-primitive sweep 0 cells changed. It only ever
+        // ADDS a section that was being thrown away. SESSION_NO_SSI_KEEP restores the old path.
+        static const bool s_ssi_keep = (std::getenv("SESSION_NO_SSI_KEEP") == nullptr);
+        if (s_ssi_keep) {
+            if (!pa.is_valid() && ra.kind == K::SPHERE) { auto v = analytic_sphere_pullback(a, ra, cc3); if (!v.empty()) pa = v[0]; }
+            if (!pb.is_valid() && rb.kind == K::SPHERE) { auto v = analytic_sphere_pullback(b, rb, cc3); if (!v.empty()) pb = v[0]; }
+            if (!pa.is_valid() && (ra.kind == K::CONE || ra.kind == K::CYLINDER)) { auto v = analytic_cone_pullback(a, ra, cc3); if (!v.empty()) pa = v[0]; }
+            if (!pb.is_valid() && (rb.kind == K::CONE || rb.kind == K::CYLINDER)) { auto v = analytic_cone_pullback(b, rb, cc3); if (!v.empty()) pb = v[0]; }
+        }
         if (!pa.is_valid()) { auto v = Closest::surface_curve(a, cc3); if (!v.empty()) pa = v[0]; }
         if (!pb.is_valid()) { auto v = Closest::surface_curve(b, cc3); if (!v.empty()) pb = v[0]; }
+        static const bool s_an_dbg = (std::getenv("SESSION_SSI_DBG") != nullptr);
+        if (s_an_dbg)
+            std::fprintf(stderr, "[ANALYTIC] cc3 pa=%d pb=%d ka=%d kb=%d\n",
+                         pa.is_valid() ? 1 : 0, pb.is_valid() ? 1 : 0, (int)ra.kind, (int)rb.kind);
         if (pa.is_valid() && pb.is_valid())
             res.triples.push_back(std::make_tuple(cc3, pa, pb));
     }
@@ -5594,6 +6208,69 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(const NurbsSurface& 
     for (auto& tr : surface_surface(target, cutter, tolerance)) {
         const NurbsCurve& c3d = std::get<0>(tr);
         std::vector<NurbsCurve> pcs;
+        // MEASURED NULL -- keep default OFF. The hypothesis was that the ~1e-5 plateau comes
+        // from one section having TWO representations: an exact affine (rational circle) pcurve
+        // on a PLANE operand and a sampled polyline on the sphere/cone partner. Forcing the
+        // plane side onto the SAME sample grid (below) makes both operands' boundaries one
+        // identical 3D polyline. Result on box x sph: cut 1.27e-03, common 2.22e-04, fuse
+        // 1.61e-04 -- BYTE-IDENTICAL to the unshared path, with the branch verified to fire 18
+        // times and produce valid curves. So the plane-side representation does not reach the
+        // integrated boundary at all, and the exact/sampled mismatch is NOT the mechanism.
+        // Kept, gated, as the record of a refuted hypothesis.
+        //
+        // SHARED-REPRESENTATION TEST (SESSION_PB_SHARED). One 3D section must have ONE
+        // representation. A PLANE's inverse is affine and exact, so from a rational circle it
+        // yields the EXACT circle as the face boundary; the sphere/cone inverse is
+        // transcendental, so that operand gets a POLYLINE inscribed in the same circle. The two
+        // operands then bound their shared section with two different curves and disagree by the
+        // sag -- refining only the sampled side moves it away from its partner, not toward it.
+        // Deriving the plane's pcurve from the SAME sample grid (each point mapped by the exact
+        // affine inverse) gives both operands one identical 3D boundary.
+        static const bool s_pb_shared = (std::getenv("SESSION_PB_SHARED") != nullptr);
+        if (s_pb_shared && rt.kind == RecogSurface::PLANE) {
+            auto [pu0, pu1] = target.domain(0);
+            auto [pv0, pv1] = target.domain(1);
+            Point o = target.point_at(pu0, pv0);
+            Point pu = target.point_at(pu1, pv0);
+            Point pv = target.point_at(pu0, pv1);
+            double ex[3] = {pu[0]-o[0], pu[1]-o[1], pu[2]-o[2]};
+            double ey[3] = {pv[0]-o[0], pv[1]-o[1], pv[2]-o[2]};
+            double exx = ex[0]*ex[0]+ex[1]*ex[1]+ex[2]*ex[2];
+            double eyy = ey[0]*ey[0]+ey[1]*ey[1]+ey[2]*ey[2];
+            double exy = ex[0]*ey[0]+ex[1]*ey[1]+ex[2]*ey[2];
+            double det = exx*eyy - exy*exy;
+            if (std::abs(det) > 1e-18) {
+                auto dcs = c3d.domain();
+                int ns = std::max(c3d.cv_count() * 8, 120);
+                std::vector<Point> pts;
+                pts.reserve(ns + 1);
+                for (int i = 0; i <= ns; ++i) {
+                    Point P = c3d.point_at(dcs.first + (dcs.second - dcs.first) * i / ns);
+                    double r[3] = {P[0]-o[0], P[1]-o[1], P[2]-o[2]};
+                    double rx = r[0]*ex[0]+r[1]*ex[1]+r[2]*ex[2];
+                    double ry = r[0]*ey[0]+r[1]*ey[1]+r[2]*ey[2];
+                    double aa = (eyy*rx - exy*ry) / det;
+                    double bb = (exx*ry - exy*rx) / det;
+                    pts.push_back(Point(pu0 + aa*(pu1-pu0), pv0 + bb*(pv1-pv0), 0.0));
+                }
+                NurbsCurve shared = NurbsCurve::create(false, 1, pts);
+                if (std::getenv("SESSION_SSI_DBG"))
+                    std::fprintf(stderr, "[PBSHARED] plane target: %d pts valid=%d\n",
+                                 (int)pts.size(), shared.is_valid() ? 1 : 0);
+                if (shared.is_valid()) {
+                    pcs.push_back(shared);
+                    for (const auto& pc : pcs) {
+                        if (cutter_planar) {
+                            auto clipped = clip_pcurve_to_cutter(target, pc, cutter);
+                            out.insert(out.end(), clipped.begin(), clipped.end());
+                        } else {
+                            out.push_back(pc);
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
         NurbsCurve pa_an = analytic_pcurve(target, rt, c3d);
         if (pa_an.is_valid()) {
             pcs.push_back(pa_an);

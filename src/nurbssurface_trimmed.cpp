@@ -475,6 +475,9 @@ void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
     m_inner_segments = src.m_inner_segments;
     m_outer_segment_srcs = src.m_outer_segment_srcs;
     m_inner_segment_srcs = src.m_inner_segment_srcs;
+    m_extra_outer_loops = src.m_extra_outer_loops;
+    m_extra_outer_segments = src.m_extra_outer_segments;
+    m_extra_outer_segment_srcs = src.m_extra_outer_segment_srcs;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1317,6 +1320,175 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             holes_of[best].push_back(cycle);
     }
 
+    // ---- 6b. SEAM-REGION MERGE (SESSION_SEAM_MERGE) ----
+    // On a chart CLOSED in u, the border lines u=u0 and u=u1 are the SAME 3D meridian: two UV
+    // regions that meet across it are ONE face. The arrangement is UV-keyed and cannot know
+    // this, so it emits them separately. Group such regions here (union-find over the four
+    // chart borders, so a torus -- closed in BOTH parameters -- composes in u and v) and emit
+    // one face per group. NOTE the representation: the union of two seam-adjacent regions is
+    // NOT a connected polygon inside [u0,u1]x[v0,v1], and this kernel's NurbsSurface cannot be
+    // evaluated outside its domain (find_span clamps), so the group cannot be re-expressed as
+    // one wire. It is emitted the way the untrimmed primitive sphere face already is: ONE face
+    // carrying ONE WIRE PER SEAM SIDE, with the seam edge referenced by both. Identity of that
+    // edge does NOT come from a coordinate weld -- both wires' seam runs carry the same source
+    // boundary pcurve index, so BRep::split_with maps them through scaf_bnd_edge_ids to the one
+    // ORIGINAL seam edge (bemap), and the merged face's two trims land on that single entity.
+    // A region touching BOTH seam sides over the same v-interval is the ordinary full-wrap band
+    // (already one face) and pairs only with itself, which is skipped.
+    // SESSION_SEAM_MERGE=u  -> compose in u only, =v -> v only, anything else -> both.
+    static const char* s_seam_env = std::getenv("SESSION_SEAM_MERGE");
+    static const bool s_seam_merge = (s_seam_env != nullptr);
+    static const bool s_seam_u = !s_seam_env || s_seam_env[0] != 'v';
+    static const bool s_seam_v = !s_seam_env || s_seam_env[0] != 'u';
+    std::vector<int> merge_parent(pos_faces.size());
+    for (size_t i = 0; i < merge_parent.size(); ++i) merge_parent[i] = (int)i;
+    int n_seam_merges = 0;
+    if (s_seam_merge && pos_faces.size() > 1) {
+        bool cu = srf.is_closed(0) && s_seam_u, cv = srf.is_closed(1) && s_seam_v;
+        if (cu || cv) {
+            double seam_eps = std::max(snap_uv * 4.0, std::min(range_u, range_v) * 1e-7);
+            struct Iv { double a, b; };
+            size_t NF = pos_faces.size();
+            std::vector<std::vector<Iv>> lo_u(NF), hi_u(NF), lo_v(NF), hi_v(NF);
+            for (size_t fj = 0; fj < NF; ++fj) {
+                for (int hj : pos_faces[fj].first) {
+                    const auto& pa = verts[hes[hj].tail];
+                    const auto& pb = verts[hes[hj].head];
+                    if (cu && std::abs(pa[0]-u0) < seam_eps && std::abs(pb[0]-u0) < seam_eps
+                        && std::abs(pa[1]-pb[1]) > seam_eps)
+                        lo_u[fj].push_back({std::min(pa[1],pb[1]), std::max(pa[1],pb[1])});
+                    if (cu && std::abs(pa[0]-u1) < seam_eps && std::abs(pb[0]-u1) < seam_eps
+                        && std::abs(pa[1]-pb[1]) > seam_eps)
+                        hi_u[fj].push_back({std::min(pa[1],pb[1]), std::max(pa[1],pb[1])});
+                    if (cv && std::abs(pa[1]-v0) < seam_eps && std::abs(pb[1]-v0) < seam_eps
+                        && std::abs(pa[0]-pb[0]) > seam_eps)
+                        lo_v[fj].push_back({std::min(pa[0],pb[0]), std::max(pa[0],pb[0])});
+                    if (cv && std::abs(pa[1]-v1) < seam_eps && std::abs(pb[1]-v1) < seam_eps
+                        && std::abs(pa[0]-pb[0]) > seam_eps)
+                        hi_v[fj].push_back({std::min(pa[0],pb[0]), std::max(pa[0],pb[0])});
+                }
+            }
+            std::function<int(int)> uf_find = [&](int x) {
+                while (merge_parent[x] != x) { merge_parent[x] = merge_parent[merge_parent[x]]; x = merge_parent[x]; }
+                return x;
+            };
+            auto uf_uni = [&](int x, int y) {
+                x = uf_find(x); y = uf_find(y);
+                if (x != y) { merge_parent[x] = y; ++n_seam_merges; }
+            };
+            double ov_eps = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-6);
+            // Shared seam interval of two regions' runs on OPPOSITE sides of the seam, or an
+            // empty interval when they do not meet there.
+            auto shared = [&](const std::vector<Iv>& A, const std::vector<Iv>& B, double& oa, double& ob) {
+                for (const auto& a : A)
+                    for (const auto& b : B) {
+                        double lo = std::max(a.a, b.a), hi = std::min(a.b, b.b);
+                        if (hi - lo > ov_eps) { oa = lo; ob = hi; return true; }
+                    }
+                return false;
+            };
+            // WRAP TEST -- the whole rule (kb/occt_trace_findings.md Q3, from the instrumented
+            // OCCT tracer). OCCT merges across a seam ONLY when the region is periodic-CLOSED in
+            // that parameter: then it emits ONE face and reinstates the seam edge twice, once at
+            // u=u0 and once at u=u1. A region that merely STRADDLES the seam without wrapping
+            // stays TWO faces -- measured on sph_box_cut, whose +X cap becomes u in [5.63,2pi]
+            // and u in [0,0.6523] with areas summing to exactly one cap, and on cone_cone_p1_cut.
+            // Merging the straddle case is what drove tor x tor cut to 8.5029 against a truth of
+            // 18.7296 and cost 10 matrix cells their face-count parity. Decide it directly: at a
+            // v inside the two regions' shared seam interval, march a FULL period; every sample
+            // must fall inside one of the two regions or they do not wrap.
+            const int NW = 96;
+            auto wraps = [&](int i, int j, int dir, double ca, double cb) {
+                double mid = 0.5 * (ca + cb);
+                double s0 = (dir == 0) ? u0 : v0;
+                double span = (dir == 0) ? range_u : range_v;
+                for (int k = 0; k < NW; ++k) {
+                    double t = s0 + span * (k + 0.5) / NW;
+                    std::array<double, 2> q = (dir == 0) ? std::array<double, 2>{t, mid}
+                                                         : std::array<double, 2>{mid, t};
+                    if (!point_in_cycle(q, pos_faces[i].first) &&
+                        !point_in_cycle(q, pos_faces[j].first))
+                        return false;
+                }
+                return true;
+            };
+            static const bool s_seam_dbg2 = (std::getenv("SESSION_SPLIT_DBG") != nullptr);
+            // POLE MERGE: TRIED AND MEASURED WRONG, do not reinstate. A pole line is a seam
+            // whose whole 3D image is one point, so it is tempting to merge regions whose runs
+            // tile it -- at the exact tangency 23.578178478 deg our arrangement pinches the north
+            // disk into two lobes of UV area 0.349413 each (exactly half the south disk's
+            // 0.698825, which stays whole). Merging them gives ONE face, but the OCCT tracer says
+            // it keeps them SEPARATE: sph_cyl_roty23578_common is res_face=4 with
+            // RESFACE i=1 u in [0,1.5708] and i=3 u in [4.7124,2pi], each area 1.63922141, plus
+            // three degenerate edges each used by ONE face. Merging moved us from OCCT's 4 faces
+            // to 3, and it did not fix the tangency cut (still 15.061776). The rule really is
+            // "merge only a WRAP", at a seam and at a pole alike.
+            for (size_t i = 0; i < NF; ++i)
+                for (size_t j = 0; j < NF; ++j) {
+                    if (i == j) continue;
+                    double ca, cb;
+                    if (cu && shared(lo_u[i], hi_u[j], ca, cb)) {
+                        bool w = wraps((int)i, (int)j, 0, ca, cb);
+                        if (s_seam_dbg2)
+                            std::fprintf(stderr, "[SEAMMERGE] cand u i=%zu j=%zu v=[%.4f,%.4f] wraps=%d\n",
+                                         i, j, ca, cb, w ? 1 : 0);
+                        if (w) uf_uni((int)i, (int)j);
+                    }
+                    if (cv && shared(lo_v[i], hi_v[j], ca, cb)) {
+                        bool w = wraps((int)i, (int)j, 1, ca, cb);
+                        if (s_seam_dbg2)
+                            std::fprintf(stderr, "[SEAMMERGE] cand v i=%zu j=%zu u=[%.4f,%.4f] wraps=%d\n",
+                                         i, j, ca, cb, w ? 1 : 0);
+                        if (w) uf_uni((int)i, (int)j);
+                    }
+                }
+            // NESTING GUARD. The merged face carries one wire per co-region, and
+            // brep_massprops decides "hole" by asking whether a loop's UV box sits INSIDE the
+            // dominant loop's box -- so a group whose members nest would have one wire's flux
+            // SUBTRACTED instead of added. Measured on tor x tor cut (both parameters closed,
+            // so a group can span a domain corner): volume 8.5029 against a truth of 18.7296.
+            // Refuse to merge such a group; the unmerged emission is always sound.
+            {
+                std::vector<std::array<double,4>> bb(NF, {1e300, -1e300, 1e300, -1e300});
+                for (size_t fj = 0; fj < NF; ++fj)
+                    for (int hj : pos_faces[fj].first) {
+                        const auto& p = verts[hes[hj].tail];
+                        bb[fj][0] = std::min(bb[fj][0], p[0]); bb[fj][1] = std::max(bb[fj][1], p[0]);
+                        bb[fj][2] = std::min(bb[fj][2], p[1]); bb[fj][3] = std::max(bb[fj][3], p[1]);
+                    }
+                std::map<int, std::vector<int>> grp;
+                for (size_t i = 0; i < NF; ++i) grp[uf_find((int)i)].push_back((int)i);
+                for (auto& kv : grp) {
+                    if (kv.second.size() < 2) continue;
+                    // (No hole guard: OCCT's wrap case legitimately carries holes -- sph_box_common
+                    // keeps three closed hole circles as inner wires on the one merged sphere face
+                    // -- so refusing on holes would refuse exactly the case being reproduced.
+                    // BRep::boolean's face_sample is wire-aware instead.)
+                    bool nested = false;
+                    for (size_t a = 0; a < kv.second.size() && !nested; ++a)
+                        for (size_t b = 0; b < kv.second.size() && !nested; ++b) {
+                            if (a == b) continue;
+                            const auto& X = bb[kv.second[a]];
+                            const auto& Y = bb[kv.second[b]];
+                            double tu = 1e-9 * std::max(1.0, Y[1]-Y[0]), tv = 1e-9 * std::max(1.0, Y[3]-Y[2]);
+                            if (X[0] >= Y[0]-tu && X[1] <= Y[1]+tu && X[2] >= Y[2]-tv && X[3] <= Y[3]+tv)
+                                nested = true;
+                        }
+                    if (nested) {
+                        for (int m : kv.second) merge_parent[m] = m;
+                        n_seam_merges -= (int)kv.second.size() - 1;
+                        if (std::getenv("SESSION_SPLIT_DBG"))
+                            std::fprintf(stderr, "[SEAMMERGE] group of %zu REFUSED (nested UV boxes)\n",
+                                         kv.second.size());
+                    }
+                }
+            }
+            if (n_seam_merges > 0 && std::getenv("SESSION_SPLIT_DBG"))
+                std::fprintf(stderr, "[SEAMMERGE] regions=%zu merges=%d closed_u=%d closed_v=%d\n",
+                             NF, n_seam_merges, cu ? 1 : 0, cv ? 1 : 0);
+        }
+    }
+
     // ---- 7. Emit one trimmed surface per face ----
     // Collapse consecutive same-curve half-edges into exact trims (border runs become
     // straight segments), each oriented tail->head along the face walk. Returns the run
@@ -1460,9 +1632,18 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             // degenerate micro-runs (va==vb, keep=0) leaving real holes ~3e-2 UV; losing
             // the loop over one hole orphans every section key on the face (chairsROT
             // z15: one 3.2e-2 gap on face A18 cost 3 segments -> 12 naked edges).
+            // The weld is NOT scaffold-only. On the legacy path the alternative to welding a
+            // gap that is already 1000x inside join_tol is the polyline fallback below, which
+            // throws the whole loop's curve representation away: measured on tor x tor common,
+            // two spiric loops joined with gapmax 1.818e-09 against join_tol 1.6e-06, failed
+            // is_closed()'s ZERO_TOLERANCE, and came back as 2129-point DEGREE-1 loops whose
+            // faces then measured 2.840280 against their mirror faces' 2.846855 -- a 6.6e-03
+            // area deficit that was the entire tor x tor error. (The scaffold-only PIECE
+            // FILTER above stays scaffold-only: it drops micro-pieces, and the tor x tor
+            // spirics carry legitimate micro-arcs at their four tangent points.)
             double close_cap = forced_node_eps > 0.0
                 ? std::max(join_tol, forced_node_eps) : join_tol;
-            if (scaffold_mode && !J.is_closed() &&
+            if (!J.is_closed() &&
                 J.point_at_start().distance(J.point_at_end()) <= close_cap) {
                 double x, y, z, w;
                 if (J.get_cv_4d(0, x, y, z, w)) {
@@ -1547,37 +1728,87 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
 
     std::vector<NurbsSurfaceTrimmed> result;
     bool s_emitdbg = (std::getenv("SESSION_SPLIT_DBG") != nullptr);
-    for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
-        if (s_emitdbg) { std::fprintf(stderr, "[EMIT] fi=%d/%zu cyc=%zu loop\n", fi, pos_faces.size(), pos_faces[fi].first.size()); std::fflush(stderr); }
+    // One emitted face per SEAM GROUP (identity when the merge is off: every region is its
+    // own group, so the emitted output is byte-identical to the pre-merge path).
+    std::vector<std::vector<int>> groups(pos_faces.size());
+    {
+        std::function<int(int)> gfind = [&](int x) {
+            while (merge_parent[x] != x) { merge_parent[x] = merge_parent[merge_parent[x]]; x = merge_parent[x]; }
+            return x;
+        };
+        for (int fi = 0; fi < (int)pos_faces.size(); ++fi) groups[gfind(fi)].push_back(fi);
+        // largest region first: it becomes the face's primary wire
+        for (auto& g : groups)
+            std::sort(g.begin(), g.end(), [&](int a, int b) { return pos_faces[a].second > pos_faces[b].second; });
+    }
+    auto build_region = [&](int fi, NurbsCurve& outer, std::vector<NurbsCurve>& segs,
+                            std::vector<std::array<double, 3>>& srcs, bool& seg_valid) -> bool {
+        segs.clear(); srcs.clear(); seg_valid = false;
+        outer = cycle_to_loop(pos_faces[fi].first, &segs, &seg_valid, &srcs);
+        if (!outer.is_valid()) return false;
+        if (loop_signed_area(outer) < 0.0) {
+            outer.reverse();
+            if (seg_valid) reverse_segments(segs, &srcs);
+        }
+        return true;
+    };
+    for (int gi = 0; gi < (int)groups.size(); ++gi) {
+        if (groups[gi].empty()) continue;
+        int fi = groups[gi][0];
+        if (s_emitdbg) {
+            double bu0 = 1e300, bu1 = -1e300, bv0 = 1e300, bv1 = -1e300;
+            for (int hj : pos_faces[fi].first) {
+                const auto& p = verts[hes[hj].tail];
+                bu0 = std::min(bu0, p[0]); bu1 = std::max(bu1, p[0]);
+                bv0 = std::min(bv0, p[1]); bv1 = std::max(bv1, p[1]);
+            }
+            std::fprintf(stderr, "[EMIT] fi=%d/%zu cyc=%zu grp=%zu uvarea=%.6g bbox[%.4f,%.4f]x[%.4f,%.4f]\n",
+                         fi, pos_faces.size(), pos_faces[fi].first.size(), groups[gi].size(),
+                         pos_faces[fi].second, bu0, bu1, bv0, bv1);
+            std::fflush(stderr);
+        }
         std::vector<NurbsCurve> outer_segs;
         std::vector<std::array<double, 3>> outer_srcs;
         bool outer_seg_valid = false;
-        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, &outer_segs, &outer_seg_valid, &outer_srcs);
-        if (!outer.is_valid())
+        NurbsCurve outer;
+        if (!build_region(fi, outer, outer_segs, outer_srcs, outer_seg_valid))
             continue;
-        if (loop_signed_area(outer) < 0.0) {
-            outer.reverse();
-            if (outer_seg_valid) reverse_segments(outer_segs, &outer_srcs);
-        }
         if (s_emitdbg) { std::fprintf(stderr, "[EMIT] fi=%d create\n", fi); std::fflush(stderr); }
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
         if (outer_seg_valid) {
             ts.m_outer_segments = outer_segs;
             ts.m_outer_segment_srcs = outer_srcs;
         }
-        for (const auto& hole_cycle : holes_of[fi]) {
-            std::vector<NurbsCurve> hole_segs;
-            std::vector<std::array<double, 3>> hole_srcs;
-            bool hole_seg_valid = false;
-            NurbsCurve hole = cycle_to_loop(hole_cycle, &hole_segs, &hole_seg_valid, &hole_srcs);
-            if (hole.is_valid()) {
-                if (loop_signed_area(hole) > 0.0) {
-                    hole.reverse();
-                    if (hole_seg_valid) reverse_segments(hole_segs, &hole_srcs);
+        // seam co-regions: additional OUTER wires on the SAME face
+        for (size_t gk = 1; gk < groups[gi].size(); ++gk) {
+            std::vector<NurbsCurve> xsegs;
+            std::vector<std::array<double, 3>> xsrcs;
+            bool xvalid = false;
+            NurbsCurve xouter;
+            if (!build_region(groups[gi][gk], xouter, xsegs, xsrcs, xvalid)) continue;
+            ts.m_extra_outer_loops.push_back(xouter);
+            ts.m_extra_outer_segments.push_back(xvalid ? xsegs : std::vector<NurbsCurve>{});
+            ts.m_extra_outer_segment_srcs.push_back(xvalid ? xsrcs : std::vector<std::array<double, 3>>{});
+        }
+        if (s_emitdbg && groups[gi].size() > 1)
+            std::fprintf(stderr, "[SEAMMERGE] emit grp=%zu extra=%zu segs0=%zu\n",
+                         groups[gi].size(), ts.m_extra_outer_loops.size(),
+                         ts.m_extra_outer_segments.empty() ? 0 : ts.m_extra_outer_segments[0].size());
+        for (int mem : groups[gi]) {
+            for (const auto& hole_cycle : holes_of[mem]) {
+                std::vector<NurbsCurve> hole_segs;
+                std::vector<std::array<double, 3>> hole_srcs;
+                bool hole_seg_valid = false;
+                NurbsCurve hole = cycle_to_loop(hole_cycle, &hole_segs, &hole_seg_valid, &hole_srcs);
+                if (hole.is_valid()) {
+                    if (loop_signed_area(hole) > 0.0) {
+                        hole.reverse();
+                        if (hole_seg_valid) reverse_segments(hole_segs, &hole_srcs);
+                    }
+                    ts.add_inner_loop(hole);
+                    ts.m_inner_segments.push_back(hole_seg_valid ? hole_segs : std::vector<NurbsCurve>{});
+                    ts.m_inner_segment_srcs.push_back(hole_seg_valid ? hole_srcs : std::vector<std::array<double, 3>>{});
                 }
-                ts.add_inner_loop(hole);
-                ts.m_inner_segments.push_back(hole_seg_valid ? hole_segs : std::vector<NurbsCurve>{});
-                ts.m_inner_segment_srcs.push_back(hole_seg_valid ? hole_srcs : std::vector<std::array<double, 3>>{});
             }
         }
         result.push_back(ts);

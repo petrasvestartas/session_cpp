@@ -68,7 +68,8 @@ experiment: `SESSION_ANG_PRIMARY` (angle-primary parity seed, §2c). Verified: d
 Implemented per KB law 7: the section-bounded-block parity phase is seeded from fragments with strong
 ANALYTIC angle evidence (`ang_abs>0 && |ang_sum|/ang_abs>=0.5`) rather than the sampling-derived
 `score`; only components with no angle evidence fall back to score. `brep.cpp` parity block.
-**Result: SAFE but INEFFECTIVE (negative result).** base+angle cut = 46.8114 EXACT (does not break
+**Result: SAFE but INEFFECTIVE (negative result).** base+angle cut = 46.7943 EXACT (does not break
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 base). But x20 cut vol = **51.5354 — UNCHANGED** (should be ≈80; near-tangent → cut ≈ A). x20's
 parity already classifies without fallback (comps=1, done=35) and the orphan shell persists, so the
 classification error is **NOT in the parity SEED**. It lies deeper: either the connexity-flood block
@@ -91,7 +92,8 @@ point-classifier, not just angle-primary seeding.**
   fuzzy-value auto-escalation. NOTE: closure is a *tolerant* solid (approximate by design); it does
   NOT fix classification, so a closed shell may still have the wrong faces (see §2).
 
-Invariants held: base cut/common/fuse EXACT (35/46.8114, 25/33.4951, 50/127.0950); matrix 45/45 and
+Invariants held: base cut/common/fuse EXACT (35/46.7943, 25/33.5025, 50/127.0913); matrix 45/45 and
+  <!-- provenance: the 46.8114 / 33.4951 / 127.0950 triple was produced by the boundary-insensitive bbox-Gauss integrator; BRep::volume() now uses the Green-reduced quadrature. Partition identity cut+common vs vol(A)=80.296862: 1.20e-4 old, 7.7e-7 new. -->
 edge 54/54 byte-identical by construction (primitive cells never take the scaffold path); z30x20 stays
 a closed solid; the ladder/bridge are no-ops on all of these (zero dangles / already closed).
 

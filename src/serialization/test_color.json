@@ -1,0 +1,9 @@
+{
+    "a": 1.0,
+    "b": 0.25,
+    "g": 0.5,
+    "guid": "cbcfeb7e-78f7-4a29-8250-3c8f740d19f9",
+    "name": "serialization/test_color",
+    "r": 1.0,
+    "type": "Color"
+}
