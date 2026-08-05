@@ -220,6 +220,13 @@ public:
    */
   bool remove_object(const std::string &obj_guid);
 
+  /**
+   * Canonical object order: the objects vectors walked in one fixed type sequence —
+   * deterministic across runs AND languages (lookup/map iteration is neither).
+   * Viewers and reconcile key their rows off this.
+   */
+  std::vector<std::string> order() const;
+
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Tree Operations
   ///////////////////////////////////////////////////////////////////////////////////////////

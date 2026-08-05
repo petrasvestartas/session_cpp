@@ -1242,14 +1242,42 @@ void V2Section::make_blocks(V2Curve& c, const V2FaceRef&, const V2FaceRef&) {
     c.paves.back().vertex = vb;
 
     // 2. interior paves — every one names a real entity (G3)
+    //
+    // PAVE FUSION (OCCT PutPaveOnCurve / ContainsParameter, PaveFiller_6.cxx:2959): two paves
+    // whose 3D points are already covered by ONE node of this curve are ONE node. Measured on
+    // cylinder x cylinder: the marcher's own closure point lands 2.35e-06 off the seam it
+    // provably crosses, so the closing pave and the seam-crossing pave named TWO vertices
+    // 2.35e-06 apart; the carrier edge then carried a 2e-06 MICRO block and the wire walk ate
+    // the face (MicroEdge/EdgeNotConsumed). The weld distance is the section stage's own
+    // resolution on this curve, scaled — never a coordinate search: identity is still the
+    // arena index of the SURVIVING node.
+    static const double s_weld_mult = []() {
+        const char* p = std::getenv("SESSION_V2_PAVE_WELD");
+        return (p && p[0]) ? std::atof(p) : 30.0;
+    }();
+    const double weld = std::max(c.tol, 1e-7) * s_weld_mult;
+    std::vector<std::pair<double, int>> placed;
+    placed.push_back(std::make_pair(d.first, va));
+    if (!c.closed) placed.push_back(std::make_pair(d.second, vb));
     for (size_t i = 1; i + 1 < c.paves.size(); ++i) {
         V2Pave& p = c.paves[i];
-        const int v = m_ds.append_vertex(c.c3d->point_at(p.t), c.tol);
+        const Point P = c.c3d->point_at(p.t);
+        int fused_to = -1;
+        for (const std::pair<double, int>& q : placed) {
+            if (v2dist3(P, c.c3d->point_at(q.first)) <= weld) { fused_to = q.second; break; }
+        }
+        if (fused_to >= 0) {
+            p.vertex = fused_to;
+            p.fused = true;
+            continue;
+        }
+        const int v = m_ds.append_vertex(P, c.tol);
         if (m_ds.add_pave(c.carrier_edge, p.t, v, m_prm.fuzzy) != BdsArena::PaveStatus::Inserted) {
             p.vertex = -1;   // refused (coincident with an existing pave): not a separate node
             continue;
         }
         p.vertex = v;
+        placed.push_back(std::make_pair(p.t, v));
     }
     c.paves.erase(std::remove_if(c.paves.begin() + 1, c.paves.end() - 1,
                                  [](const V2Pave& p) { return p.vertex < 0; }),
@@ -1419,11 +1447,46 @@ void V2Section::post_treat_ff() {
     std::sort(nodes.begin(), nodes.end());
     nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
 
+    // JUNCTION FUSION (OCCT PostTreatFF's nested pave filler, PaveFiller_6.cxx:1165). An OPEN
+    // end of a marched branch is not a geometric coincidence: the marcher stops short of a
+    // crunode (surfaces go tangent, Newton loses the direction), so two branches that meet at
+    // one quartic node arrive 1e-5..1e-4 apart -- far outside the tolerance band, far inside
+    // the marcher's own termination scale. Two such UNNAMED ends (never a trim/seam crossing,
+    // which names a real boundary entity) are fused at the marcher's resolution: 4x the
+    // largest trail chord of the two parent curves. Measured on cone x cone: the six branches
+    // chain into the correct closed network only with this, else every section chord dangles
+    // and the walk prunes the whole lateral face (DoubledHangingPruned x12, refusal).
+    std::map<int, bool> node_open;
+    std::map<int, double> node_chord;
+    for (const V2Curve& c : m_curves) {
+        double chord = 0.0;
+        for (size_t q = 1; q < c.trail.size(); ++q)
+            chord = std::max(chord, v2dist3(c.trail[q].p, c.trail[q - 1].p));
+        for (const V2Block& b : c.blocks) {
+            if (!b.kept) continue;
+            for (int e = 0; e < 2; ++e) {
+                const int v = e ? b.v1 : b.v0;
+                node_chord[v] = std::max(node_chord[v], chord);
+                bool open_end = false;
+                for (const V2Pave& p : c.paves)
+                    if (p.vertex == v && p.origin == V2PaveOrigin::CurveBound) open_end = true;
+                if (open_end) node_open[v] = true;
+            }
+        }
+    }
+    static const double s_junction_mult = []() {
+        const char* p = std::getenv("SESSION_V2_JUNCTION_WELD");
+        return (p && p[0]) ? std::atof(p) : 4.0;
+    }();
+
     V2UF uf;
     uf.reset((int)nodes.size());
     for (size_t i = 0; i < nodes.size(); ++i)
         for (size_t k = i + 1; k < nodes.size(); ++k) {
-            const double band = m_ds.tolerance(nodes[i]) + m_ds.tolerance(nodes[k]) + m_prm.fuzzy;
+            double band = m_ds.tolerance(nodes[i]) + m_ds.tolerance(nodes[k]) + m_prm.fuzzy;
+            if (node_open[nodes[i]] && node_open[nodes[k]])
+                band = std::max(band, s_junction_mult *
+                                          std::max(node_chord[nodes[i]], node_chord[nodes[k]]));
             if (v2dist3(m_ds.vertex_point(nodes[i]), m_ds.vertex_point(nodes[k])) <= band)
                 uf.join((int)i, (int)k);
         }

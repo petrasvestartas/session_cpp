@@ -374,6 +374,41 @@ target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
 
 #############################################################################################
+# V3 SOURCES — ground-up boolean rewrite (kb/BOOL_V3_MEMORY.md). Same isolation contract as
+# v2: own object library, only v3 mains link it, a broken v3 file breaks nothing else.
+#############################################################################################
+file(GLOB V3_SOURCES CONFIGURE_DEPENDS "src/v3/*.cpp")
+list(FILTER V3_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
+add_library(session_v3 OBJECT ${V3_SOURCES})
+target_link_libraries(session_v3 PUBLIC session_core)
+target_include_directories(session_v3 PUBLIC ${PROJECT_SOURCE_DIR}/src/v3)
+add_dependencies(session_v3 proto_objects)
+# No UNITY_BUILD: v3 files are under active development.
+if(ENABLE_PCH)
+    target_precompile_headers(session_v3 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
+
+# main_25 — v3 gate driver (G1 geometry, later the boolean ladders).
+if(EXISTS "${PROJECT_SOURCE_DIR}/main_25.cpp" AND NOT TARGET main_25)
+    add_executable(main_25 main_25.cpp)
+    target_link_libraries(main_25 PRIVATE session_core session_v3)
+    LINK_PROTOBUF(main_25)
+    if(ENABLE_PCH)
+        target_precompile_headers(main_25 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+    endif()
+endif()
+
+# main_26 — v3 G3 gate: booleans on STEP-imported analytic primitives (step_import).
+if(EXISTS "${PROJECT_SOURCE_DIR}/main_26.cpp" AND NOT TARGET main_26)
+    add_executable(main_26 main_26.cpp)
+    target_link_libraries(main_26 PRIVATE session_core session_v3)
+    LINK_PROTOBUF(main_26)
+    if(ENABLE_PCH)
+        target_precompile_headers(main_26 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+    endif()
+endif()
+
+#############################################################################################
 # main_19 — v2 CLOSURE-RESIDUAL driver. Appended (not folded into the V2_MAIN_IDS list) and
 # guarded by NOT TARGET so concurrent sessions editing the list above cannot clash with it.
 #############################################################################################
@@ -383,6 +418,16 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/main_19.cpp" AND NOT TARGET main_19)
     LINK_PROTOBUF(main_19)
     if(ENABLE_PCH)
         target_precompile_headers(main_19 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+    endif()
+endif()
+
+# main_27 — v3 G4 gate: chairs driver (kb/BOOL_V3_MEMORY.md, remaining work item 3).
+if(EXISTS "${PROJECT_SOURCE_DIR}/main_27.cpp" AND NOT TARGET main_27)
+    add_executable(main_27 main_27.cpp)
+    target_link_libraries(main_27 PRIVATE session_core session_v3)
+    LINK_PROTOBUF(main_27)
+    if(ENABLE_PCH)
+        target_precompile_headers(main_27 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
     endif()
 endif()
 

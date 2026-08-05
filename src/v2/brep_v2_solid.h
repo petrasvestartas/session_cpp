@@ -20,6 +20,7 @@
 // it; the entry point is brep_v2_boolean.h, gated behind SESSION_V2.
 
 #include "brep.h"
+#include "brep_massprops.h"
 #include "mesh.h"
 #include "point.h"
 #include <array>
@@ -143,6 +144,15 @@ struct V2Topo {
                                                  ///< with the surface's natural (Su x Sv) normal
     mutable bool meshes_built = false;
     void ensure_meshes() const;
+
+    /// Exact per-face boundary integrals (brep_massprops), built lazily. This is the
+    /// orientation/volume data the mesh path was an approximation of: FaceMassProps::flux is
+    /// the natural-normal vector flux of each face, so an oriented shell volume is a signed
+    /// sum, and it costs milliseconds where the CDT tessellation of 512-sample pcurve loops
+    /// cost minutes (measured: 164 s -> 0.05 s on box x box rotated).
+    mutable MassProps mp;
+    mutable bool mp_built = false;
+    void ensure_massprops() const;
 
     void build(const BRep& brep);
     int nb_faces() const { return b ? (int)b->m_faces.size() : 0; }

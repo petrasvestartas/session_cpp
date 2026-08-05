@@ -384,6 +384,11 @@ public:
     ///   [1] S . n                  -> 3V             (div r = 3)
     ///   [2+k] (S_k^2 / 2) n_k      -> integral of x_k over the enclosed volume
     ///                                 (div of (x^2/2,0,0) = x, etc.)
+    /// When wind_p is set, all of that is replaced by a single component:
+    ///   [0] n . (S - p) / |S - p|^3   -> winding-number density about *wind_p
+    /// (the solid-angle kernel; its trimmed-face integral summed over a shell with
+    /// consistent orientation is +-4pi for a point inside the shell's enclosed
+    /// region, ~0 outside). Used by the cavity-nesting verification in PASS 3.
     void integrand(double u, double v, double* out) const {
         u = std::min(std::max(u, du.first), du.second);
         v = std::min(std::max(v, dv.first), dv.second);
@@ -391,6 +396,15 @@ public:
         auto e = S.evaluate(u, v, 1);  // [S, Sv, Su]
         if (e.size() < 3) { for (int k = 0; k < NC; ++k) out[k] = 0.0; return; }
         const Vector n = vcross(e[2], e[1]);
+        if (wind_p) {
+            const double rx = e[0][0] - (*wind_p)[0], ry = e[0][1] - (*wind_p)[1],
+                         rz = e[0][2] - (*wind_p)[2];
+            const double r2 = rx * rx + ry * ry + rz * rz;
+            for (int k = 0; k < NC; ++k) out[k] = 0.0;
+            if (r2 > 1e-300)
+                out[0] = (n[0] * rx + n[1] * ry + n[2] * rz) / (r2 * std::sqrt(r2));
+            return;
+        }
         out[0] = n.magnitude();
         out[1] = vdot(e[0], n);
         out[2] = 0.5 * e[0][0] * e[0][0] * n[0];
@@ -491,13 +505,20 @@ public:
                 acc.e[k] += q.e[k];
                 acc.a[k] += q.a[k];
             }
-            if (budget_left <= 0) { capped = true; break; }
+            // Do NOT break on an exhausted budget: adaptive_gk always evaluates
+            // the full initial panel list, so later trims stay initial-panel
+            // accurate. Breaking here silently DROPS every remaining trim of
+            // the loop (box_sph fuse: budget blown by the symmetric-moment
+            // trap on the full-sphere frame, then 4 hole loops lost a trim
+            // each and the face lost ~9.3 of area).
+            if (budget_left <= 0) capped = true;
         }
     }
 
     const NurbsSurface& S;
     const MassPropsOptions& opt;
     long long& budget_left;
+    const Point* wind_p = nullptr;  ///< winding-density mode (PASS 3 cavity check)
     std::pair<double, double> du{0, 1}, dv{0, 1};
     std::vector<double> uk;
     mutable double inner_err[NC] = {0, 0, 0, 0, 0};
@@ -596,6 +617,10 @@ MassProps brep_massprops(const BRep& brep, const MassPropsOptions& opt) {
     // Faces integrated over the whole parameter rectangle: their stored loops are degenerate,
     // so the material-left walk is the CCW walk of the DOMAIN rectangle, not of those loops.
     std::vector<char> face_fulldom(static_cast<size_t>(std::max(nf, 0)), 0);
+    // Resolved trim loops per face, kept for the PASS 3 cavity verification (the winding
+    // integral reuses them; empty for full-domain faces and skipped faces).
+    std::vector<std::vector<std::vector<TrimRef>>> saved_loops(
+        static_cast<size_t>(std::max(nf, 0)));
 
     ///////////////////////////////////////////////////////////////////////////////////////
     // PASS 1 -- per-face trimmed integrals, NATURAL normal.
@@ -913,8 +938,12 @@ MassProps brep_massprops(const BRep& brep, const MassPropsOptions& opt) {
                     trim_c3[ti2] = static_cast<signed char>(-trim_c3[ti2]);
                     trim_fwd[ti2] = static_cast<char>(trim_fwd[ti2] ? 0 : 1);
                 }
+                // saved_loops (PASS 3 winding check) reintegrates the loops, so the saved
+                // chain must carry the healed sense too: invert each trim's walk.
+                for (TrimRef& tr : loops[L]) tr.fwd = !tr.fwd;
             }
         }
+        saved_loops[static_cast<size_t>(fi)] = loops;
 
         Quad tot;
         tot.zero();
@@ -1208,16 +1237,158 @@ MassProps brep_massprops(const BRep& brep, const MassPropsOptions& opt) {
         }
     }
     std::vector<int> depth(nc, 0);
-    for (size_t a = 0; a < nc; ++a)
-        for (size_t b = 0; b < nc; ++b) {
-            if (a == b || shell_v[b] <= shell_v[a]) continue;
-            const auto& A = sbb[a];
-            const auto& B = sbb[b];
-            const double tol = 1e-9 * std::max(1.0, (B[1] - B[0]) + (B[3] - B[2]) + (B[5] - B[4]));
-            if (A[0] >= B[0] - tol && A[1] <= B[1] + tol && A[2] >= B[2] - tol &&
-                A[3] <= B[3] + tol && A[4] >= B[4] - tol && A[5] <= B[5] + tol)
-                ++depth[a];
+    {
+        // Bbox nesting is only a NECESSARY condition for a cavity, not a sufficient one:
+        // disjoint lumps of a multi-piece boolean result nest bboxes freely (v3 step_import
+        // box_x_box_p1: the cut is THREE lumps; the two small lumps' bboxes sit inside the
+        // big lump's and were read as cavities and SUBTRACTED -- 19.0108 reported where the
+        // exact polyhedral volume is 22.4415; per-face fluxes and per-shell volumes were all
+        // correct, the depth test alone was wrong). Every bbox-nested pair is therefore
+        // verified geometrically: the winding number of sample points on shell a about
+        // shell b's enclosed region decides containment (details below). Multi-shell breps
+        // with nested bboxes are rare, so single-shell breps pay nothing.
+        std::vector<std::pair<int, int>> nested;
+        for (size_t a = 0; a < nc; ++a)
+            for (size_t b = 0; b < nc; ++b) {
+                if (a == b || shell_v[b] <= shell_v[a]) continue;
+                const auto& A = sbb[a];
+                const auto& B = sbb[b];
+                const double tol =
+                    1e-9 * std::max(1.0, (B[1] - B[0]) + (B[3] - B[2]) + (B[5] - B[4]));
+                if (A[0] >= B[0] - tol && A[1] <= B[1] + tol && A[2] >= B[2] - tol &&
+                    A[3] <= B[3] + tol && A[4] >= B[4] - tol && A[5] <= B[5] + tol)
+                    nested.push_back({static_cast<int>(a), static_cast<int>(b)});
+            }
+        if (!nested.empty()) {
+            // Geometric verification, MESH-FREE: the face mesher is not safe on this path
+            // (its CDT grinds for minutes on the dense polyline pcurves of boolean output;
+            // corpus matrix_rot coneRx_cyl/common went 12 s -> >600 s when an earlier
+            // version of this check called face_meshes()) and the UV CDT fails on some
+            // boolean loops outright. Instead the winding number of each sample point about
+            // shell b is INTEGRATED analytically: the solid-angle kernel n.(S-p)/|S-p|^3
+            // summed over b's trimmed faces with the shell's consistent orientation
+            // (sgn * traversal) is +-4*pi inside and ~0 outside. This reuses the PASS 1
+            // Green machinery (FaceIntegrator wind mode + the saved resolved loops), so it
+            // costs about one extra face integration per sample point and only runs for
+            // bbox-nested pairs.
+            // Sample points per shell: boundary points of its faces (lifted trim samples),
+            // nudged 1% toward the shell's sample centroid so a tangent point-contact does
+            // not read as containment. Collected lazily, once per shell.
+            std::vector<std::vector<Point>> spts(nc);
+            std::vector<Point> scent(nc, Point(0, 0, 0));
+            std::vector<char> ssampled(nc, 0), sok(nc, 0);
+            auto sample_shell = [&](int c) -> bool {
+                const size_t ci = static_cast<size_t>(c);
+                if (ssampled[ci]) return sok[ci] != 0;
+                ssampled[ci] = 1;
+                std::vector<Point>& pts = spts[ci];
+                double cx = 0, cy = 0, cz = 0;
+                for (int i = 0; i < nf; ++i) {
+                    if (comp[static_cast<size_t>(i)] != c) continue;
+                    const BRepFace& face = brep.m_faces[static_cast<size_t>(i)];
+                    if (face.surface_index < 0 ||
+                        face.surface_index >= static_cast<int>(brep.m_surfaces.size()))
+                        continue;
+                    const NurbsSurface& srf =
+                        brep.m_surfaces[static_cast<size_t>(face.surface_index)];
+                    if (!srf.is_valid()) continue;
+                    auto add_uv = [&](double u, double v) {
+                        const Point p = srf.point_at(u, v);
+                        pts.push_back(p);
+                        cx += p[0]; cy += p[1]; cz += p[2];
+                    };
+                    if (face_fulldom[static_cast<size_t>(i)]) {
+                        auto d0 = srf.domain(0), d1 = srf.domain(1);
+                        for (int ku = 0; ku <= 2; ++ku)
+                            for (int kv = 0; kv <= 2; ++kv)
+                                add_uv(d0.first + (d0.second - d0.first) * ku / 2.0,
+                                       d1.first + (d1.second - d1.first) * kv / 2.0);
+                        continue;
+                    }
+                    for (const auto& L : saved_loops[static_cast<size_t>(i)])
+                        for (const TrimRef& tr : L) {
+                            auto dc = tr.pc->domain();
+                            for (int k = 0; k <= 4; ++k) {
+                                const double f = static_cast<double>(k) / 4.0;
+                                const double t = tr.fwd
+                                                     ? dc.first + (dc.second - dc.first) * f
+                                                     : dc.second - (dc.second - dc.first) * f;
+                                const Point q = tr.pc->point_at(t);
+                                add_uv(q[0], q[1]);
+                            }
+                        }
+                }
+                if (pts.empty()) return false;
+                const double inv = 1.0 / static_cast<double>(pts.size());
+                scent[ci] = Point(cx * inv, cy * inv, cz * inv);
+                sok[ci] = 1;
+                return true;
+            };
+            // Winding number of p about shell b, or NaN when a quadrature capped
+            // (a sample essentially ON b's surface: tangent contact -- unverifiable).
+            auto winding_of = [&](int b, const Point& p) -> double {
+                double w = 0.0;
+                for (int i = 0; i < nf; ++i) {
+                    if (comp[static_cast<size_t>(i)] != b) continue;
+                    const FaceMassProps& F = out.faces[static_cast<size_t>(i)];
+                    if (F.path == MassPropsPath::Skipped) continue;
+                    const BRepFace& face = brep.m_faces[static_cast<size_t>(i)];
+                    if (face.surface_index < 0 ||
+                        face.surface_index >= static_cast<int>(brep.m_surfaces.size()))
+                        return std::numeric_limits<double>::quiet_NaN();
+                    const NurbsSurface& srf =
+                        brep.m_surfaces[static_cast<size_t>(face.surface_index)];
+                    long long wb = std::max<long long>(opt.min_face_evals, 250000);
+                    FaceIntegrator fint(srf, opt, wb);
+                    fint.wind_p = &p;
+                    double raw = 0.0;
+                    bool cap = false;
+                    if (face_fulldom[static_cast<size_t>(i)]) {
+                        Quad q;
+                        q.zero();
+                        fint.full_domain(q, cap);
+                        raw = q.r[0];
+                    } else {
+                        const double uref = srf.domain(0).first;
+                        for (const auto& L : saved_loops[static_cast<size_t>(i)]) {
+                            Quad q;
+                            fint.loop_green(L, uref, q, cap);
+                            raw += q.r[0];
+                            if (cap) break;
+                        }
+                    }
+                    if (cap || wb <= 0)
+                        return std::numeric_limits<double>::quiet_NaN();
+                    w += sgn[static_cast<size_t>(i)] * F.traversal * raw;
+                }
+                return w / (4.0 * 3.14159265358979323846);
+            };
+            for (const auto& pr : nested) {
+                const int a = pr.first, b = pr.second;
+                // No samples to test with -> keep the historical bbox verdict.
+                if (!sample_shell(a)) {
+                    ++depth[static_cast<size_t>(a)];
+                    continue;
+                }
+                const std::vector<Point>& pts = spts[static_cast<size_t>(a)];
+                const Point& ct = scent[static_cast<size_t>(a)];
+                const size_t step = std::max<size_t>(1, pts.size() / 5);
+                int inside = 0, outside = 0;
+                for (size_t k = 0; k < pts.size() && inside + outside < 5; k += step) {
+                    const Point& v = pts[k];
+                    const Point q(v[0] * 0.99 + ct[0] * 0.01, v[1] * 0.99 + ct[1] * 0.01,
+                                  v[2] * 0.99 + ct[2] * 0.01);
+                    const double w = winding_of(b, q);
+                    if (std::isnan(w)) continue;   // unverifiable sample: no vote
+                    if (std::abs(w) > 0.5) ++inside;
+                    else ++outside;
+                }
+                if (inside > outside) ++depth[static_cast<size_t>(a)];
+                else if (inside == 0 && outside == 0)
+                    ++depth[static_cast<size_t>(a)];   // all capped: historical verdict
+            }
         }
+    }
 
     ///////////////////////////////////////////////////////////////////////////////////////
     // PASS 4 -- totals.

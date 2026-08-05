@@ -332,14 +332,28 @@ MINI_TEST("Session", "Get Object") {
 MINI_TEST("Session", "Remove Object") {
     // uncomment #include "session.h"
     // uncomment #include "point.h"
+    // uncomment #include "element.h"
 
     Session session;
     auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
     session.add_point(point);
     bool removed = session.remove_object(point->guid());
 
+    std::vector<Point> polygon = {Point(0.0,0.0,0.0), Point(2.0,0.0,0.0), Point(2.0,2.0,0.0), Point(0.0,2.0,0.0)};
+    auto plate = std::make_shared<ElementPlate>(polygon, 0.2, "p1");
+    std::string eguid = plate->guid();
+    session.add_element(plate);
+    bool eremoved = session.remove_object(eguid);
+
+    std::string fname = "serialization/test_session_remove.bin";
+    session.pb_dump(fname);
+    Session loaded = Session::pb_load(fname);
+
     MINI_CHECK(removed);
     MINI_CHECK(session.lookup.count(point->guid()) == 0);
+    MINI_CHECK(eremoved);
+    MINI_CHECK(session.objects.elements->size() == 0);
+    MINI_CHECK(loaded.lookup.count(eguid) == 0); // removed objects must not resurrect on save/load
 }
 
 MINI_TEST("Session", "Get Geometry") {
@@ -414,6 +428,50 @@ MINI_TEST("Session", "Protobuf Roundtrip") {
 
     MINI_CHECK(loaded.name == session.name);
     MINI_CHECK(loaded.lookup.size() == session.lookup.size());
+}
+
+MINI_TEST("Session", "Lookup Mutation Roundtrip") {
+    // uncomment #include "session.h"
+    // uncomment #include "line.h"
+
+    Session session;
+    auto line = std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    std::string guid = line->guid();
+    session.add_line(line);
+
+    std::get<std::shared_ptr<Line>>(session.lookup[guid])->width = 5.0;
+
+    std::string fname = "serialization/test_session_lookup.bin";
+    session.pb_dump(fname);
+    Session loaded = Session::pb_load(fname);
+
+    MINI_CHECK(loaded.objects.lines->at(0)->width == 5.0);
+    MINI_CHECK(std::get<std::shared_ptr<Line>>(loaded.lookup[guid])->width == 5.0);
+}
+
+MINI_TEST("Session", "Order") {
+    // uncomment #include "session.h"
+    // uncomment #include "line.h"
+    // uncomment #include "point.h"
+
+    Session session;
+    auto line = std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string line_guid = line->guid();
+    std::string point_guid = point->guid();
+    session.add_line(line);
+    session.add_point(point);
+
+    std::vector<std::string> order = session.order();
+
+    std::string fname = "serialization/test_session_order.bin";
+    session.pb_dump(fname);
+    Session loaded = Session::pb_load(fname);
+
+    MINI_CHECK(order.size() == 2);
+    MINI_CHECK(order[0] == point_guid);
+    MINI_CHECK(order[1] == line_guid);
+    MINI_CHECK(loaded.order() == order);
 }
 
 MINI_TEST("Session", "Tree Transformation Hierarchy") {

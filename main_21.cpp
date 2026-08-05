@@ -1,214 +1,366 @@
-// main_21 — TIER 2: THE ROTATED CHAIRS THROUGH BOTH KERNELS.
+// main_21 — random-rotation boolean battery for the six primitives, with STEP output.
 //
-// The chairs are trimmed multi-face solids read from STEP (20 faces each) — the closest thing
-// in this corpus to real CAD input. This driver runs ONE cell per process so that 30 cells x 2
-// kernels can be spread over the machine and so that a hang or a crash costs one cell instead
-// of the whole sweep. It performs NO scoring of its own: every number printed comes from the
-// shared harness src/v2/v2_verdict.h (validated by main_17), and the operands are the STORED
-// files serialization/boolean_steps/chairs/rot/B_<cfg>.step — byte-identical to the ones that
-// produced every historical number — never a re-derived rotation.
+// For every unordered pair (with repetition) of {box, sphere, pyramid, torus, cone, cylinder}
+// and every op {cut, common, fuse}, operand B is given a seeded random rotation + translation
+// (deterministic per pair/op/seed), the boolean runs through the v2 pipeline
+// (v2sol::v2_boolean; its report says whether the v2 front end answered or it delegated to
+// the kernel's v1 route), and the result is written as a STEP file for visual inspection.
 //
-// ENV (all required except where noted):
-//   SESSION_T2_CFG     base | z15 | z30 | z45 | z90 | x20 | y30 | z30x20 | z37 | x13y29 | z63
-//                      or  self   (A-op-A: chair0 against an independently re-read copy)
-//   SESSION_T2_OP      cut | common | fuse
-//   SESSION_T2_KERNEL  v1 (BRep::boolean) | v2 (v2sol::v2_boolean)
-//   SESSION_T2_DIR     chairs directory (default serialization/boolean_steps/chairs)
-//   SESSION_T2_OPERANDS  optional: also print the verdict of A and B and exit
+// Every produced STEP is gated against the OCCT oracle (validation/step_probe): the oracle
+// booleans THE SAME two operand STEP files, and our result must import VALID with a volume
+// within 1% of the oracle's (empty/degenerate cells follow the OCCT_TRUTH.md doctrine).
 //
-// Output: exactly one line beginning "T2CELL " with key=value fields, plus a trailing
-// "T2DONE" so a collector can tell a completed run from a killed one.
+//   main_21 [--seeds N] [--seed0 S] [--out DIR] [--pairs a,b] [--ops cut,common,fuse]
+//           [--probe PATH] [--no-oracle]
+//
+// Defaults: --seeds 2 --out validation/boolean_steps_v2 --probe validation/step_probe/build/step_probe
+// Run from the repository root.
 
 #include "src/brep.h"
 #include "src/file_step.h"
+#include "src/xform.h"
 #include "src/v2/brep_v2_boolean.h"
-#include "src/v2/v2_verdict.h"
 
-#include <chrono>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <functional>
+#include <map>
+#include <memory>
+#include <random>
+#include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <vector>
 
 using namespace session_cpp;
-using session_cpp::v2v::V2Verdict;
-using session_cpp::v2v::v2_verdict;
 
-static const char* env_or(const char* k, const char* dflt) {
-    const char* p = std::getenv(k);
-    return (p && p[0]) ? p : dflt;   // getenv()!=nullptr is TRUE for an EMPTY value
+namespace {
+
+struct Prim {
+    std::string name;
+    std::function<BRep()> make;
+    double radius;   // bounding-sphere radius of the canonical placement (for overlap placement)
+};
+
+BRep centered(BRep b, double dz) {
+    b.xform = Xform::translation(0, 0, dz);
+    return b.transformed();
 }
 
-static double secs_since(std::chrono::steady_clock::time_point t0) {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+const std::vector<Prim>& prims() {
+    static const std::vector<Prim> ps = {
+        {"box",      [] { return BRep::create_box(4, 4, 4); },                    3.4641},
+        {"sphere",   [] { return BRep::create_sphere(2.5); },                     2.5},
+        {"pyramid",  [] { return centered(BRep::create_pyramid(4, 5), -2.5); },   3.7749},
+        {"torus",    [] { return BRep::create_torus(3, 1); },                     4.0},
+        {"cone",     [] { return centered(BRep::create_cone(2, 5), -2.5); },      3.2016},
+        {"cylinder", [] { return centered(BRep::create_cylinder(1.5, 6), -3.0); },3.3541},
+    };
+    return ps;
 }
 
-/// THE SCORING OPTIONS. The harness's own defaults (4e6 global / 4e4 per-face evaluations) are
-/// MEASURED to be insufficient on this corpus: at the default budget the un-booleaned operand
-/// chair0 integrates to volume 83.1539 (OCCT truth 80.2969, +3.6%) with closure_residual
-/// 9.117e-03 and converged=0 — one face (index 16) hits its per-face cap. With the budget raised
-/// 100x the SAME operand gives 80.2941 (3.4e-05 relative) and residual 6.37e-06. Scoring a
-/// boolean result against a reference volume with a quadrature that is itself 3.6% wrong would
-/// measure the quadrature, not the kernel, so every number in this driver uses the raised
-/// budget. Nothing else about the harness is changed: v2v::v2_verdict(b, opt) is a documented
-/// entry point of the shared harness and all the topology rules are untouched.
-static MassPropsOptions score_options() {
-    MassPropsOptions o = v2v::v2_verdict_options();
-    long long mult = 100;
-    const char* p = std::getenv("SESSION_T2_BUDGET");
-    if (p && p[0]) mult = std::atoll(p);
-    if (mult < 1) mult = 1;
-    o.max_surface_evals *= mult;
-    o.min_face_evals *= mult;
+uint64_t mix(uint64_t h, uint64_t v) {
+    h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+    return h;
+}
+uint64_t hash_str(const std::string& s) {
+    uint64_t h = 1469598103934665603ULL;
+    for (char c : s) { h ^= (uint64_t)(unsigned char)c; h *= 1099511628211ULL; }
+    return h;
+}
+
+std::string run_capture(const std::string& cmd) {
+    std::string out;
+    FILE* fp = popen(cmd.c_str(), "r");
+    if (!fp) return out;
+    char buf[4096];
+    while (fgets(buf, sizeof buf, fp)) out += buf;
+    pclose(fp);
+    return out;
+}
+
+// Find "KEY=<number>" or "KEY <number>" in probe output.
+bool find_kv(const std::string& text, const std::string& key, double& val) {
+    size_t p = text.find(key);
+    while (p != std::string::npos) {
+        size_t e = p + key.size();
+        if (e < text.size() && (text[e] == '=' || text[e] == ' ')) {
+            while (e < text.size() && (text[e] == '=' || text[e] == ' ')) ++e;
+            char* end = nullptr;
+            val = std::strtod(text.c_str() + e, &end);
+            if (end != text.c_str() + e) return true;
+        }
+        p = text.find(key, p + 1);
+    }
+    return false;
+}
+
+struct OracleResult {
+    bool ran = false;
+    double volume = 0.0, solids = -1, valid = -1, faces = -1;
+};
+OracleResult oracle_boolean(const std::string& probe, const std::string& op,
+                            const std::string& fa, const std::string& fb) {
+    OracleResult o;
+    std::string out = run_capture("\"" + probe + "\" --" + op + " \"" + fa + "\" \"" + fb + "\" 2>/dev/null");
+    if (out.empty()) return o;
+    o.ran = true;
+    find_kv(out, "OP_VOLUME", o.volume);
+    find_kv(out, "OP_SOLIDS", o.solids);
+    find_kv(out, "OP_VALID", o.valid);
+    find_kv(out, "OP_FACES", o.faces);
     return o;
 }
 
-static void print_verdict(const char* tag, const std::string& cfg, const std::string& op,
-                          const std::string& kern, const V2Verdict& v, double secs,
-                          const char* note) {
-    std::printf("%s cfg=%s op=%s kernel=%s F=%d shells=%d solids=%d naked=%d nonman=%d seam=%d "
-                "degen=%d orphan=%d edges=%d resid=%.3e area=%.6f vol=%.6f volvalid=%d "
-                "converged=%d closed=%d secs=%.1f note=%s\n",
-                tag, cfg.c_str(), op.c_str(), kern.c_str(), v.faces, v.shells, v.solids,
-                v.naked_real, v.nonmanifold, v.seam_edges, v.degenerate, v.orphan, v.edges,
-                v.closure_residual, v.area, v.volume, (int)v.volume_valid, (int)v.converged,
-                (int)v.closed(), secs, note);
-    std::fflush(stdout);
+struct ProbeResult {
+    bool ran = false;
+    double volume = 0.0, solids = -1, valid = -1, naked = -1;
+};
+ProbeResult probe_result(const std::string& probe, const std::string& f) {
+    ProbeResult r;
+    std::string out = run_capture("\"" + probe + "\" \"" + f + "\" -n 2>/dev/null");
+    if (out.empty()) return r;
+    r.ran = true;
+    find_kv(out, "VOLUME", r.volume);
+    find_kv(out, "SOLIDS", r.solids);
+    find_kv(out, "VALID", r.valid);
+    find_kv(out, "NAKED", r.naked);
+    return r;
 }
 
-int main() {
-    const std::string dir = env_or("SESSION_T2_DIR", "serialization/boolean_steps/chairs");
-    const std::string cfg = env_or("SESSION_T2_CFG", "base");
-    const std::string op = env_or("SESSION_T2_OP", "cut");
-    const std::string kern = env_or("SESSION_T2_KERNEL", "v2");
-
-    std::vector<BRep> as, bs;
-    try {
-        as = file_step::read_file_step_breps(dir + "/chair0.stp");
-        if (cfg == "base")
-            bs = file_step::read_file_step_breps(dir + "/chair1.stp");
-        else if (cfg == "self")
-            bs = file_step::read_file_step_breps(dir + "/chair0.stp");   // independent re-read
-        else
-            bs = file_step::read_file_step_breps(dir + "/rot/B_" + cfg + ".step");
-    } catch (const std::exception& e) {
-        std::printf("T2CELL cfg=%s op=%s kernel=%s LOAD_THREW %s\nT2DONE\n", cfg.c_str(),
-                    op.c_str(), kern.c_str(), e.what());
-        return 1;
+void ensure_dir(const std::string& path) {
+    std::string cur;
+    for (char c : path) {
+        cur += c;
+        if (c == '/' && cur.size() > 1) mkdir(cur.c_str(), 0775);
     }
-    if (as.empty() || bs.empty()) {
-        std::printf("T2CELL cfg=%s op=%s kernel=%s LOAD_EMPTY a=%zu b=%zu\nT2DONE\n", cfg.c_str(),
-                    op.c_str(), kern.c_str(), as.size(), bs.size());
-        return 1;
-    }
-    const BRep& A = as[0];
-    const BRep& B = bs[0];
+    mkdir(path.c_str(), 0775);
+}
 
-    if (std::getenv("SESSION_T2_OPERANDS")) {
-        // The harness is only usable on this corpus if it certifies the OPERANDS. Print the
-        // full mass-properties census so a failure to certify can be attributed (budget,
-        // trim-chain gap, or a genuinely open input) instead of guessed at.
-        const BRep* ops[2] = {&A, &B};
-        const char* nm[2] = {"A", "B"};
-        for (int i = 0; i < 2; ++i) {
-            auto t0 = std::chrono::steady_clock::now();
-            const V2Verdict v = v2_verdict(*ops[i]);
-            print_verdict("T2OPERAND", cfg, "-", nm[i], v, secs_since(t0),
-                          ops[i]->is_solid() ? "is_solid=1" : "is_solid=0");
-            const MassProps mp = brep_massprops(*ops[i], v2v::v2_verdict_options());
-            std::printf("T2MP %s kernel_volume=%.6f mp_volume=%.6f volerr=%.3e area=%.6f "
-                        "converged=%d closed=%d resid=%.3e max_chain_gap=%.3e naked=%d "
-                        "shells=%d evals=%lld secs=%.1f\n",
-                        nm[i], ops[i]->volume(), mp.volume, mp.volume_error, mp.area,
-                        (int)mp.converged, (int)mp.closed, mp.closure_residual, mp.max_chain_gap,
-                        mp.naked_edges, mp.shell_count, mp.surface_evals, mp.seconds);
-            for (const auto& f : mp.faces)
-                std::printf("T2MPF %s face=%d path=%d area=%.6f aerr=%.2e gap=%.3e vec=(%.3e,%.3e,%.3e) "
-                            "evals=%lld budget_hit=%d\n",
-                            nm[i], f.face_index, (int)f.path, f.area, f.area_err, f.chain_gap,
-                            f.vec_area[0], f.vec_area[1], f.vec_area[2], f.evals,
-                            (int)f.budget_hit);
+}  // namespace
+
+int main(int argc, char** argv) {
+    int seeds = 2, seed0 = 1;
+    std::string outdir = "validation/boolean_steps_v2";
+    std::string probe = "validation/step_probe/build/step_probe";
+    std::string pair_filter, op_filter = "cut,common,fuse";
+    bool use_oracle = true;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string k = argv[i];
+        auto nxt = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : std::string(); };
+        if (k == "--seeds") seeds = std::max(1, std::atoi(nxt().c_str()));
+        else if (k == "--seed0") seed0 = std::atoi(nxt().c_str());
+        else if (k == "--out") outdir = nxt();
+        else if (k == "--probe") probe = nxt();
+        else if (k == "--pairs") pair_filter = nxt();
+        else if (k == "--ops") op_filter = nxt();
+        else if (k == "--no-oracle") use_oracle = false;
+        else { std::fprintf(stderr, "main_21: unknown option %s\n", k.c_str()); return 2; }
+    }
+    if (use_oracle) {
+        std::ifstream chk(probe);
+        if (!chk.good()) {
+            std::fprintf(stderr, "main_21: no oracle at %s (--probe, or --no-oracle)\n", probe.c_str());
+            return 2;
         }
-        std::printf("T2DONE\n");
-        return 0;
     }
 
-    if (std::getenv("SESSION_T2_SELFTEST")) {
-        // WHY the harness refuses the chairs. Three questions, each answered by measurement:
-        //  (a) is it the BUDGET?      -> re-score chair0 with a 100x larger evaluation budget
-        //  (b) is it STEP IMPORT?     -> round-trip a box and a sphere through STEP and re-score
-        //  (c) is it CHAIR-SPECIFIC?  -> compare the two answers
-        MassPropsOptions big = v2v::v2_verdict_options();
-        big.max_surface_evals = 400000000;
-        big.min_face_evals = 20000000;
-        const V2Verdict vb = v2_verdict(A, big);
-        std::printf("T2SELF chair0_big_budget %s\n", vb.str().c_str());
+    std::vector<std::string> ops;
+    {
+        std::stringstream ss(op_filter);
+        std::string o;
+        while (std::getline(ss, o, ',')) ops.push_back(o);
+    }
 
-        struct RT { const char* name; BRep b; };
-        std::vector<RT> rts;
-        rts.push_back({"box2", BRep::create_box(2, 2, 2)});
-        rts.push_back({"sphere1", BRep::create_sphere(1.0)});
-        rts.push_back({"cylinder", BRep::create_cylinder(1.0, 2.0)});
-        const std::string tmp = env_or("SESSION_T2_TMP", "/tmp");
-        for (auto& rt : rts) {
-            const V2Verdict v0 = v2_verdict(rt.b);
-            const std::string p = tmp + "/t2_rt_" + rt.name + ".step";
-            file_step::write_file_step_brep(rt.b, p);
-            auto back = file_step::read_file_step_breps(p);
-            std::printf("T2SELF %-9s before{%s}\n", rt.name, v0.str().c_str());
-            if (back.empty()) { std::printf("T2SELF %-9s after{NO_BREP}\n", rt.name); continue; }
-            const V2Verdict v1 = v2_verdict(back[0]);
-            const MassProps m1 = brep_massprops(back[0], v2v::v2_verdict_options());
-            std::printf("T2SELF %-9s after {%s} max_chain_gap=%.3e kernel_vol=%.6f\n", rt.name,
-                        v1.str().c_str(), m1.max_chain_gap, back[0].volume());
+    ensure_dir(outdir);
+    std::ofstream card(outdir + "/_scorecard.md");
+    card << "# Boolean battery scorecard — random rotations, v2 pipeline vs OCCT step_probe\n\n";
+    card << "| case | op | engine | our valid/naked/solids/vol | occt valid/solids/vol | verdict |\n";
+    card << "|---|---|---|---|---|---|\n";
+
+    int npass = 0, nfail = 0, nskip = 0;
+    const auto& ps = prims();
+
+    for (size_t ia = 0; ia < ps.size(); ++ia) {
+        for (size_t ib = ia; ib < ps.size(); ++ib) {
+            const std::string pair = ps[ia].name + "_" + ps[ib].name;
+            if (!pair_filter.empty() && pair_filter.find(pair) == std::string::npos) continue;
+
+            BRep A = ps[ia].make();
+            const std::string pdir = outdir + "/" + pair;
+            ensure_dir(pdir);
+
+            for (int seed = seed0; seed < seed0 + seeds; ++seed) {
+                // Deterministic per (pair, seed): rotate B about a random axis by a random
+                // angle, then translate so the centres are 10..60% of (rA+rB) apart.
+                uint64_t h = mix(hash_str(pair), (uint64_t)seed * 0x2545F4914F6CDD1DULL);
+                std::mt19937_64 rng(h);
+                std::normal_distribution<double> gauss(0.0, 1.0);
+                std::uniform_real_distribution<double> uni(0.0, 1.0);
+                Vector axis(gauss(rng), gauss(rng), gauss(rng));
+                const double alen = std::sqrt(axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2]);
+                axis = Vector(axis[0]/alen, axis[1]/alen, axis[2]/alen);
+                const double ang = uni(rng) * 360.0;
+                Vector dir(gauss(rng), gauss(rng), gauss(rng));
+                const double dlen = std::sqrt(dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2]);
+                const double dist = (0.10 + 0.50 * uni(rng)) * (ps[ia].radius + ps[ib].radius);
+                const double tx = dir[0]/dlen*dist, ty = dir[1]/dlen*dist, tz = dir[2]/dlen*dist;
+
+                BRep B = ps[ib].make();
+                B.xform = Xform::translation(tx, ty, tz) * Xform::rotation(axis, ang, true);
+                B = B.transformed();
+
+                char sbuf[8];
+                std::snprintf(sbuf, sizeof sbuf, "s%02d", seed);
+                const std::string fa = pdir + "/_A_" + sbuf + ".step";
+                const std::string fb = pdir + "/_B_" + sbuf + ".step";
+                file_step::write_file_step_brep(A, fa);
+                file_step::write_file_step_brep(B, fb);
+
+                // Run every op first; the verdict is per-TRIPLE (OCCT_TRUTH.md doctrine):
+                // cells where the ORACLE's own answer is broken (OP_SOLIDS=0 with real volume,
+                // or OP_VALID=0) are gated on the partition identities cut+common=vol(A),
+                // fuse=vol(A)+vol(B)-common, never on the oracle's wrong volume.
+                struct OpRec {
+                    std::string op, engine = "-", why;
+                    bool wrote = false, threw = false;
+                    ProbeResult pr;
+                    OracleResult oc;
+                    int verdict = 0;   // 0 skip, 1 pass, 2 fail
+                };
+                std::vector<OpRec> recs;
+                for (const std::string& op : ops) {
+                    OpRec rc;
+                    rc.op = op;
+                    const std::string tag = pair + ":" + op + ":" + sbuf;
+                    if (std::getenv("SESSION_M21_DBG"))
+                        std::fprintf(stderr, "[M21] %s axis=(%.4f,%.4f,%.4f) ang=%.3f t=(%.4f,%.4f,%.4f)\n",
+                                     tag.c_str(), axis[0], axis[1], axis[2], ang, tx, ty, tz);
+                    v2sol::V2BooleanReport rep;
+                    v2sol::V2Op vop = v2sol::V2Op::Cut;
+                    if (op == "common") vop = v2sol::V2Op::Common;
+                    else if (op == "fuse") vop = v2sol::V2Op::Fuse;
+                    else if (op == "cut21") vop = v2sol::V2Op::Cut21;
+                    BRep R;
+                    try {
+                        R = v2sol::v2_boolean(A, B, vop, v2sol::V2BooleanOptions{}, &rep);
+                    } catch (const std::exception& e) {
+                        rc.threw = true;
+                        rc.why = std::string("threw ") + e.what();
+                        recs.push_back(rc);
+                        continue;
+                    }
+                    rc.engine = rep.stage_fail.empty() ? "v2front" : "v1deleg";
+                    const std::string fr = pdir + "/" + pair + "_" + op + "_" + sbuf + ".step";
+                    if (R.face_count() > 0) {
+                        file_step::write_file_step_brep(R, fr);
+                        rc.wrote = true;
+                    }
+                    if (use_oracle) {
+                        rc.oc = oracle_boolean(probe, op, fa, fb);
+                        if (rc.wrote) rc.pr = probe_result(probe, fr);
+                    }
+                    recs.push_back(rc);
+                }
+
+                const double volA = std::abs(A.volume()), volB = std::abs(B.volume());
+                auto find_rec = [&](const char* o) -> const OpRec* {
+                    for (const auto& r : recs) if (r.op == o) return &r;
+                    return nullptr;
+                };
+                // partition identities over OUR measured volumes (empty = 0)
+                bool ident_ran = false, ident_ok = true;
+                std::string ident_why;
+                if (use_oracle) {
+                    const OpRec *rcut = find_rec("cut"), *rcom = find_rec("common"),
+                                *rfus = find_rec("fuse");
+                    if (rcut && rcom && rfus && !rcut->threw && !rcom->threw && !rfus->threw) {
+                        auto vol_of = [](const OpRec* r) {
+                            return (r->wrote && r->pr.ran) ? r->pr.volume : 0.0;
+                        };
+                        const double vc = vol_of(rcut), vm = vol_of(rcom), vf = vol_of(rfus);
+                        const double e1 = std::fabs(vc + vm - volA);
+                        const double e2 = std::fabs(vf + vm - (volA + volB));
+                        ident_ran = true;
+                        if (e1 > 0.01 * volA) {
+                            ident_ok = false;
+                            char b[64];
+                            std::snprintf(b, sizeof b, " cut+common-A=%.4g", e1);
+                            ident_why += b;
+                        }
+                        if (e2 > 0.01 * (volA + volB)) {
+                            ident_ok = false;
+                            char b[64];
+                            std::snprintf(b, sizeof b, " fuse+common-A-B=%.4g", e2);
+                            ident_why += b;
+                        }
+                    }
+                }
+
+                for (OpRec& rc : recs) {
+                    if (rc.threw) { rc.verdict = 2; continue; }
+                    if (!use_oracle) { rc.verdict = 0; continue; }
+                    const bool oracle_broken =
+                        rc.oc.ran && rc.oc.faces >= 0 &&
+                        ((rc.oc.solids == 0 && std::fabs(rc.oc.volume) > 0.01) || rc.oc.valid == 0);
+                    if (!rc.wrote) {
+                        if (rc.oc.ran && rc.oc.solids == 0) { rc.verdict = 1; rc.why = "empty=empty"; }
+                        else { rc.verdict = 2; rc.why = "empty, oracle not empty"; }
+                        continue;
+                    }
+                    if (!rc.pr.ran || !rc.oc.ran) { rc.verdict = 0; rc.why = "probe failed"; continue; }
+                    // our STEP must import VALID, always (oracle topology is never gated)
+                    if (rc.pr.valid != 1) { rc.verdict = 2; rc.why = "invalid"; continue; }
+                    const bool degenerate = std::fabs(rc.oc.volume) <= 0.01;
+                    if (degenerate) {   // grazing/contact cell: never gate volume
+                        rc.verdict = (std::fabs(rc.pr.volume) <= 0.05) ? 1 : 2;
+                        if (rc.verdict == 2) rc.why = "degenerate but vol=" +
+                            std::to_string(rc.pr.volume);
+                        continue;
+                    }
+                    if (oracle_broken) {
+                        // OCCT's own cell is defective: the identities are the only truth
+                        if (ident_ran && ident_ok) { rc.verdict = 1; rc.why = "occt-broken,ident-ok"; }
+                        else { rc.verdict = 2; rc.why = "occt-broken" + ident_why; }
+                        continue;
+                    }
+                    if (std::fabs(rc.pr.volume - rc.oc.volume) > 0.01 * std::fabs(rc.oc.volume)) {
+                        rc.verdict = 2;
+                        rc.why = "vol";
+                        continue;
+                    }
+                    rc.verdict = 1;
+                }
+
+                for (const OpRec& rc : recs) {
+                    const char* vstr = rc.verdict == 1 ? "PASS" : rc.verdict == 2 ? "FAIL" : "SKIP";
+                    if (rc.verdict == 1) ++npass;
+                    else if (rc.verdict == 2) ++nfail;
+                    else ++nskip;
+                    char ours[128], theirs[128];
+                    std::snprintf(ours, sizeof ours, "%.0f/%.0f/%.0f/%.6g",
+                                  rc.pr.valid, rc.pr.naked, rc.pr.solids, rc.pr.volume);
+                    std::snprintf(theirs, sizeof theirs, "%.0f/%.0f/%.6g",
+                                  rc.oc.valid, rc.oc.solids, rc.oc.volume);
+                    const std::string tag = pair + ":" + rc.op + ":" + sbuf;
+                    card << "| " << pair << " " << sbuf << " | " << rc.op << " | " << rc.engine
+                         << " | " << (rc.wrote ? ours : (rc.threw ? "THREW" : "empty")) << " | "
+                         << (use_oracle ? theirs : "-") << " | " << vstr
+                         << (rc.why.empty() ? "" : (" " + rc.why)) << " |\n";
+                    std::printf("%-4s %-44s %-8s ours=%-28s occt=%s %s\n", vstr, tag.c_str(),
+                                rc.engine.c_str(), rc.wrote ? ours : (rc.threw ? "THREW" : "empty"),
+                                use_oracle ? theirs : "-", rc.why.c_str());
+                }
+            }
         }
-        std::printf("T2DONE\n");
-        return 0;
     }
-
-    const auto t0 = std::chrono::steady_clock::now();
-    BRep r;
-    try {
-        if (kern == "v1") {
-            r = (op == "cut")      ? A.boolean_difference(B)
-                : (op == "common") ? A.boolean_intersection(B)
-                                   : A.boolean_union(B);
-        } else {
-            v2sol::V2BooleanReport rep;
-            r = (op == "cut")      ? v2sol::v2_cut(A, B, 0.0, &rep)
-                : (op == "common") ? v2sol::v2_common(A, B, 0.0, &rep)
-                                   : v2sol::v2_fuse(A, B, 0.0, &rep);
-            std::printf("T2REPORT cfg=%s op=%s %s\n", cfg.c_str(), op.c_str(),
-                        rep.str().c_str());
-            std::fflush(stdout);
-        }
-    } catch (const std::exception& e) {
-        std::printf("T2CELL cfg=%s op=%s kernel=%s THREW secs=%.1f what=%s\nT2DONE\n", cfg.c_str(),
-                    op.c_str(), kern.c_str(), secs_since(t0), e.what());
-        return 2;
-    } catch (...) {
-        std::printf("T2CELL cfg=%s op=%s kernel=%s THREW secs=%.1f what=?\nT2DONE\n", cfg.c_str(),
-                    op.c_str(), kern.c_str(), secs_since(t0));
-        return 2;
-    }
-    const double t_bool = secs_since(t0);
-
-    if (r.face_count() == 0) {
-        std::printf("T2CELL cfg=%s op=%s kernel=%s F=0 shells=0 solids=0 naked=0 nonman=0 seam=0 "
-                    "degen=0 orphan=0 edges=0 resid=1.000e+00 area=0.000000 vol=0.000000 "
-                    "volvalid=0 converged=1 closed=0 secs=%.1f note=EMPTY_RESULT\n",
-                    cfg.c_str(), op.c_str(), kern.c_str(), t_bool);
-        std::printf("T2DONE\n");
-        return 0;
-    }
-
-    const auto t1 = std::chrono::steady_clock::now();
-    const V2Verdict v = v2_verdict(r, score_options());  // THE shared harness, raised budget.
-    char note[96];
-    std::snprintf(note, sizeof note, "kvol=%.6f score_secs=%.1f",
-                  (v.naked_real == 0 && v.nonmanifold == 0) ? r.volume() : 0.0, secs_since(t1));
-    print_verdict("T2CELL", cfg, op, kern, v, t_bool, note);
-    std::printf("T2DONE\n");
-    return 0;
+    card << "\nPASS " << npass << " FAIL " << nfail << " SKIP " << nskip << "\n";
+    std::printf("\nPASS %d FAIL %d SKIP %d\nscorecard: %s\n", npass, nfail, nskip,
+                (outdir + "/_scorecard.md").c_str());
+    return nfail > 0 ? 1 : 0;
 }

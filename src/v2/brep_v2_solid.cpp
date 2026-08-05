@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <chrono>
 #include <deque>
 
 namespace session_cpp {
@@ -152,10 +154,25 @@ bool V2Topo::is_seam(int edge, int face) const {
     return n > 1;
 }
 
+void V2Topo::ensure_massprops() const {
+    if (mp_built || !b) return;
+    mp_built = true;
+    mp = brep_massprops(*b, MassPropsOptions());
+}
+
 void V2Topo::ensure_meshes() const {
     if (meshes_built || !b) return;
     meshes_built = true;
+    static const bool s_prof3 = (std::getenv("SESSION_V2_PROF") != nullptr);
+    const auto t0 = std::chrono::high_resolution_clock::now();
     face_mesh = b->face_meshes();
+    if (s_prof3) {
+        const auto n = std::chrono::high_resolution_clock::now();
+        std::fprintf(stderr, "[v2-prof]   topo.face_meshes %10.1f ms (%zu faces)\n",
+                     std::chrono::duration<double, std::milli>(n - t0).count(),
+                     face_mesh.size());
+        std::fflush(stderr);
+    }
     face_mesh_sign.assign(face_mesh.size(), 1.0);
     for (size_t f = 0; f < face_mesh.size(); ++f) {
         if (f >= b->m_faces.size()) continue;
@@ -484,22 +501,19 @@ static bool v2sol_soup_contains(const V2SolTriSoup& s, const Point& p) {
 }
 
 double v2_shell_signed_volume(const V2Topo& topo, const V2Shell& shell) {
-    topo.ensure_meshes();
+    // EXACT oriented volume: sum of per-face natural-normal fluxes, each flipped by the face's
+    // orientation in the shell (growth shells positive, hole shells negative). Replaces the
+    // triangle-soup sum, whose CDT tessellation of 512-sample pcurve loops cost ~80 s per call
+    // site on boolean results; the Green quadrature answers the same question in milliseconds.
+    topo.ensure_massprops();
     double vol = 0.0;
     for (const auto& of : shell.faces) {
-        if (of.face < 0 || of.face >= (int)topo.face_mesh.size()) continue;
-        const double s = topo.face_mesh_sign[of.face] * (of.reversed ? -1.0 : 1.0);
-        auto vf = topo.face_mesh[of.face].to_vertices_and_faces();
-        for (const auto& tri : vf.second)
-            for (size_t k = 2; k < tri.size(); ++k) {
-                const Point& a = vf.first[tri[0]];
-                const Point& b = vf.first[tri[k - 1]];
-                const Point& c = vf.first[tri[k]];
-                const Vector va(a[0], a[1], a[2]);
-                const Vector vb(b[0], b[1], b[2]);
-                const Vector vc(c[0], c[1], c[2]);
-                vol += s * va.dot(vb.cross(vc)) / 6.0;
-            }
+        if (of.face < 0 || of.face >= (int)topo.mp.faces.size()) continue;
+        const FaceMassProps& F = topo.mp.faces[of.face];
+        if (F.face_index != of.face) continue;
+        const double s = (topo.b->m_faces[of.face].reversed ? -1.0 : 1.0) *
+                         (of.reversed ? -1.0 : 1.0);
+        vol += s * F.flux / 3.0;
     }
     return vol;
 }
@@ -509,14 +523,13 @@ bool v2_shell_is_hole(const V2Topo& topo, const V2Shell& shell, bool* undecided)
     const double v = v2_shell_signed_volume(topo, shell);
     double scale = shell.box.diagonal();
     if (scale <= 1e-9) {
-        topo.ensure_meshes();
-        V2Box bx;
-        for (const auto& of : shell.faces) {
-            if (of.face < 0 || of.face >= (int)topo.face_mesh.size()) continue;
-            auto vf = topo.face_mesh[of.face].to_vertices_and_faces();
-            for (const Point& p : vf.first) bx.add(p);
-        }
-        scale = bx.diagonal();
+        // degenerate box: fall back to the total face area as the size proxy
+        topo.ensure_massprops();
+        double a = 0.0;
+        for (const auto& of : shell.faces)
+            if (of.face >= 0 && of.face < (int)topo.mp.faces.size())
+                a += topo.mp.faces[of.face].area;
+        scale = std::sqrt(std::max(a, 1e-30));
     }
     scale = std::max(1e-12, scale);
     if (std::fabs(v) < 1e-9 * scale * scale * scale) {
@@ -528,27 +541,31 @@ bool v2_shell_is_hole(const V2Topo& topo, const V2Shell& shell, bool* undecided)
 
 bool v2_shell_inside(const V2Topo& topo, const V2Shell& inner, const V2Shell& outer) {
     if (inner.box.is_out(outer.box)) return false;
-    topo.ensure_meshes();
-    V2SolTriSoup soup;
+    // Far-field containment by closest-boundary classification on the OUTER shell's own
+    // faces (contains_point_exact: no tessellation anywhere). The outer shell's faces, with
+    // their shell orientations, are the boundary the inner shell is tested against.
+    std::vector<int> ids;
+    std::map<int, bool> rev;
     for (const auto& of : outer.faces) {
-        if (of.face < 0 || of.face >= (int)topo.face_mesh.size()) continue;
-        auto vf = topo.face_mesh[of.face].to_vertices_and_faces();
-        for (const auto& tri : vf.second)
-            for (size_t k = 2; k < tri.size(); ++k) {
-                std::array<Point, 3> t{vf.first[tri[0]], vf.first[tri[k - 1]], vf.first[tri[k]]};
-                soup.tri.push_back(t);
-                soup.box.add(t[0]);
-                soup.box.add(t[1]);
-                soup.box.add(t[2]);
-            }
+        if (of.face < 0 || of.face >= (int)topo.b->m_faces.size()) continue;
+        if (std::find(ids.begin(), ids.end(), of.face) == ids.end()) {
+            ids.push_back(of.face);
+            rev[of.face] = of.reversed;
+        }
     }
-    if (soup.empty()) return false;
+    if (ids.empty()) return false;
+    BRep sub = topo.b->subset(ids);
+    std::vector<double> osign(sub.m_faces.size(), 1.0);
+    for (size_t k = 0; k < ids.size() && k < sub.m_faces.size(); ++k) {
+        const bool fr = sub.m_faces[k].reversed;
+        osign[k] = (fr ? -1.0 : 1.0) * (rev[ids[k]] ? -1.0 : 1.0);
+    }
     int in = 0, out = 0;
     for (const auto& of : inner.faces) {
         Point p;
         Vector nn;
         if (!v2_face_probe(*topo.b, of.face, p, nn)) continue;
-        (v2sol_soup_contains(soup, p) ? in : out)++;
+        (sub.contains_point_exact(p, osign) ? in : out)++;
         if (in + out >= 5) break;
     }
     return in > out;

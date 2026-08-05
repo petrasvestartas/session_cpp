@@ -142,6 +142,7 @@ std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface
 std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent) {
   objects.breps->push_back(brep);
   lookup[brep->guid()] = brep;
+  bvh_cache_dirty = true;
   graph.add_node(brep->guid(), "brep_" + brep->name);
   auto node = std::make_shared<TreeNode>(brep->guid());
   if (parent) add(node, parent);
@@ -151,6 +152,7 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::sha
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
   objects.elements->push_back(element);
   lookup[element->guid()] = element;
+  bvh_cache_dirty = true;
   graph.add_node(element->guid(), "element_" + element->name);
   auto node = std::make_shared<TreeNode>(element->guid());
   if (parent) add(node, parent);
@@ -254,7 +256,25 @@ void Session::add_edge(const std::string &guid1, const std::string &guid2,
   graph.add_edge(guid1, guid2, attribute);
 }
 
+std::vector<std::string> Session::order() const {
+  std::vector<std::string> order;
+  order.reserve(lookup.size());
+  for (const auto &p : *objects.points) order.push_back(p->guid());
+  for (const auto &l : *objects.lines) order.push_back(l->guid());
+  for (const auto &p : *objects.planes) order.push_back(p->guid());
+  for (const auto &b : *objects.bboxes) order.push_back(b->guid());
+  for (const auto &p : *objects.polylines) order.push_back(p->guid());
+  for (const auto &p : *objects.pointclouds) order.push_back(p->guid());
+  for (const auto &m : *objects.meshes) order.push_back(m->guid());
+  for (const auto &n : *objects.nurbscurves) order.push_back(n->guid());
+  for (const auto &n : *objects.nurbssurfaces) order.push_back(n->guid());
+  for (const auto &b : *objects.breps) order.push_back(b->guid());
+  for (const auto &e : *objects.elements) order.push_back(e->guid());
+  return order;
+}
+
 bool Session::remove_object(const std::string &obj_guid) {
+  bvh_cache_dirty = true; // removed objects must vanish from the ray BVH
   auto it = lookup.find(obj_guid);
   if (it == lookup.end()) {
     return false;
@@ -449,9 +469,10 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
   boxes.reserve(lookup.size());
   guids.reserve(lookup.size());
   
-  for (const auto& [g, geometry] : lookup) {
-    OBB bbox = compute_bounding_box(geometry);
-    boxes.push_back(bbox);
+  for (const auto& g : order()) {
+    auto it = lookup.find(g);
+    if (it == lookup.end()) continue;
+    boxes.push_back(compute_bounding_box(it->second));
     guids.push_back(g);
   }
   
@@ -717,34 +738,32 @@ Session Session::pb_load(const std::string& filename) {
 // Ray Intersection
 
 void Session::cache_geometry_aabb(const std::string& obj_guid, const Geometry& geometry) {
-  // Compute and cache bounding box incrementally
-  cached_boxes.push_back(compute_bounding_box(geometry));
-  cached_guids.push_back(obj_guid);
-  bvh_cache_dirty = true;  // Mark SpatialBVH as needing rebuild
+  // LAZY (P5): boxes are recomputed in rebuild_ray_bvh_cache from the canonical order —
+  // always fresh, nothing retained per-add. Adds only mark the cache dirty.
+  (void)obj_guid; (void)geometry;
+  bvh_cache_dirty = true;
 }
 
 void Session::rebuild_ray_bvh_cache() {
-  // Fast rebuild: just reconstruct SpatialBVH from already-cached boxes
-  // (AABBs were computed incrementally when geometry was added)
-  
-  if (cached_boxes.size() != lookup.size()) {
-    // Cache is invalid (geometry removed or cache empty), full rebuild needed
-    cached_boxes.clear();
-    cached_guids.clear();
-    cached_boxes.reserve(lookup.size());
-    cached_guids.reserve(lookup.size());
-    
-    // Compute and cache all bounding boxes
-    for (const auto& [g, geometry] : lookup) {
-      cached_boxes.push_back(compute_bounding_box(geometry));
-      cached_guids.push_back(g);
-    }
+  // LAZY (P5): boxes are recomputed here from the document in canonical order() — always
+  // fresh (an object mutated through lookup gets a fresh box), deterministic across runs
+  // and languages, and LOCAL: the BVH copies them into its nodes, so nothing box-shaped is
+  // retained on Session (cached_boxes stays empty; kept only for API compatibility).
+  cached_boxes.clear();
+  cached_guids.clear();
+  std::vector<OBB> boxes;
+  boxes.reserve(lookup.size());
+  for (const auto& g : order()) {
+    auto it = lookup.find(g);
+    if (it == lookup.end()) continue;
+    boxes.push_back(compute_bounding_box(it->second));
+    cached_guids.push_back(g);
   }
-  
-  // Build SpatialBVH from cached boxes (FAST: ~1ms for 10k boxes)
-  if (!cached_boxes.empty()) {
-    double world_size = SpatialBVH::compute_world_size(cached_boxes);
-    cached_ray_bvh = SpatialBVH::from_boxes(cached_boxes, world_size);
+  if (!boxes.empty()) {
+    double world_size = SpatialBVH::compute_world_size(boxes);
+    cached_ray_bvh = SpatialBVH::from_boxes(boxes, world_size);
+  } else {
+    cached_ray_bvh = SpatialBVH();
   }
 }
 
@@ -770,7 +789,9 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
   
   for (int idx : candidate_ids) {
     const std::string& obj_guid = cached_guids[idx];
-    const Geometry& geom = lookup[obj_guid];
+    auto lookup_it = lookup.find(obj_guid);
+    if (lookup_it == lookup.end()) continue; // removed since the BVH was built
+    const Geometry& geom = lookup_it->second;
     
     std::optional<Point> hit = ray_intersect_geometry(ray, geom, tolerance);
     if (hit) {
@@ -782,7 +803,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
         if (dist < closest_dist - tolerance) {
           hits.clear();
         }
-        hits.push_back({guid(), *hit, dist});
+        hits.push_back({obj_guid, *hit, dist});
         closest_dist = dist;
       }
     }

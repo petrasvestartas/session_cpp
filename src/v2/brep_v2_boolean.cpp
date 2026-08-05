@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <array>
 #include <memory>
+#include <chrono>
 #include <map>
 #include <set>
 
@@ -529,6 +530,18 @@ struct V2Front {
 /// Build the whole v2 front end for one operand pair. Returns false when a stage refuses; the
 /// caller then falls back to the v1 route and SAYS SO in the report (guarantee I-13).
 static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F) {
+    static const bool s_prof2 = (std::getenv("SESSION_V2_PROF") != nullptr);
+    auto t_now = [] { return std::chrono::high_resolution_clock::now(); };
+    auto t0 = t_now();
+    auto flap = [&](const char* what) {
+        if (s_prof2) {
+            auto n = t_now();
+            std::fprintf(stderr, "[v2-prof]   front.%-12s %10.1f ms\n", what,
+                         std::chrono::duration<double, std::milli>(n - t0).count());
+            std::fflush(stderr);
+            t0 = n;
+        }
+    };
     F.ds.init({&A, &B}, std::max(tol, 1e-7));
 
     // The arena builds pave-block pools LAZILY (kb/v2_splitface_notes.md §2 rule 2): materialise
@@ -549,7 +562,9 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
         else prm.trail_samples = 768;
     }
     v2sec::V2Section S(F.ds, ops, prm);
+    flap("arena");
     if (S.perform_all() <= 0) return false;
+    flap("section");
     F.n_curves = (int)S.curves().size();
     F.n_section_edges = (int)S.section_edges().size();
     F.n_section_nodes = (int)S.section_nodes().size();
@@ -592,6 +607,7 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
         egap[(size_t)q] = g;
     }
 
+    flap("egap");
     // A section pave that was born ON an operand edge (a trim crossing) must also become a pave
     // OF that edge, or the boundary carries no node where the section lands and the wire walk
     // prunes the whole face. This is the EF interference in its only load-bearing form; the
@@ -689,6 +705,7 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
             }
         }
     }
+    flap("pave_attach");
     F.ds.update_pave_blocks();
 
     // ---- per-face input assembly (kb/v2_splitface_notes.md §9 gap 1) ----------------------
@@ -909,7 +926,10 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
                 // that, not the topology, is what caps the closure residual on quadric pairs.
                 static const int s_secn = []() {
                     const char* p = std::getenv("SESSION_V2_SEC_N");
-                    return (p && p[0]) ? std::max(4, std::atoi(p)) : 192;
+                    // 768 == the trail density: stride 1 takes the exact trail footprints
+                    // VERBATIM (no interpolated error at all); 512 measured resid 2.6e-09 on
+                    // sphere x box (refusal), 768 measures 5.6e-12 (accepted with 200x margin).
+                    return (p && p[0]) ? std::max(4, std::atoi(p)) : 768;
                 }();
                 NurbsCurve spc = v2sol_trail_pcurve(c.trail, blk.t0, blk.t1, is1, s_secn);
                 v2sol_wrap_pcurve(*srf, tol, spc);
@@ -977,6 +997,7 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
         if (after > before) ++F.n_faces_split;
         else ++F.n_faces_lost;   // a source face that produced nothing: the stage REFUSES
     }
+    flap("split_faces");
     F.n_extended = em.extended_surfaces();
     F.n_inextensible = em.inextensible_faces();
     // THE FRONT-END SELF-CHECK, AND THE THIRD ACCEPTANCE CONDITION.
@@ -993,24 +1014,53 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
     // because the imprinted section pcurve is an approximation and the two pieces then do not
     // tile the chart exactly. Those are precisely the motions whose boolean came back not-closed.
     {
+        // The split-faithful verdict needs CONVERGED mass properties: the sweep-tuned cap
+        // (v2_verdict_options: 4e6 evals) is exhausted by the 512-span section pcurves of a
+        // curved split (sphere x box measured: partial quadrature 62.18 vs true 65.45,
+        // converged=false), which refused a GEOMETRICALLY EXACT split. Use the default
+        // budget here; the capped one stays for sweep scoring.
+        const MassPropsOptions full_opts;
         std::vector<int> ia, ib;
         for (int k = 0; k < (int)F.face_operand.size(); ++k)
             (F.face_operand[k] == 0 ? ia : ib).push_back(k);
-        const v2v::V2Verdict va = v2v::v2_verdict(F.arena_brep.subset(ia));
-        const v2v::V2Verdict vb = v2v::v2_verdict(F.arena_brep.subset(ib));
-        const v2v::V2Verdict oa = v2v::v2_verdict(A);
-        const v2v::V2Verdict ob = v2v::v2_verdict(B);
+        const v2v::V2Verdict va = v2v::v2_verdict(F.arena_brep.subset(ia), full_opts);
+        const v2v::V2Verdict vb = v2v::v2_verdict(F.arena_brep.subset(ib), full_opts);
+        const v2v::V2Verdict oa = v2v::v2_verdict(A, full_opts);
+        const v2v::V2Verdict ob = v2v::v2_verdict(B, full_opts);
         const double rel = 1e-9;
         F.split_faithful =
             va.closed() && vb.closed() &&
             std::fabs(va.volume - oa.volume) <= rel * std::max(1e-30, std::fabs(oa.volume)) &&
             std::fabs(vb.volume - ob.volume) <= rel * std::max(1e-30, std::fabs(ob.volume));
         const char* p = std::getenv("SESSION_V2_SFDBG");
-        if (p && p[0])
+        if (p && p[0]) {
             std::printf("[SFDBG] SPLIT A{%s} want_vol=%.10f\n[SFDBG] SPLIT B{%s} want_vol=%.10f\n"
                         "[SFDBG] SPLIT faithful=%d\n",
                         va.str().c_str(), oa.volume, vb.str().c_str(), ob.volume,
                         (int)F.split_faithful);
+            if (p[0] == '4') {
+                std::printf("[SFDBG]   lost=%d unused=%d extended=%d inextensible=%d\n",
+                            F.n_faces_lost, F.n_unused, F.n_extended, F.n_inextensible);
+                // per-image area + flux census: which split region breaks closure
+                {
+                    std::vector<int> ia, ib;
+                    for (int k = 0; k < (int)F.face_operand.size(); ++k)
+                        (F.face_operand[k] == 0 ? ia : ib).push_back(k);
+                    for (int side = 0; side < 2; ++side) {
+                        const std::vector<int>& idx = side ? ib : ia;
+                        const MassProps mp = brep_massprops(F.arena_brep.subset(idx));
+                        for (size_t q = 0; q < idx.size() && q < mp.faces.size(); ++q) {
+                            const FaceMassProps& fm = mp.faces[q];
+                            std::printf("[SFDBG]   img k=%2d op=%d src=%d area=%.6f out=%+.0f "
+                                        "va=(%.4f,%.4f,%.4f) flux=%.4f trav=%+.0f gap=%.2e\n",
+                                        idx[q], side, F.face_src[idx[q]], fm.area, fm.outward,
+                                        fm.vec_area[0], fm.vec_area[1], fm.vec_area[2], fm.flux,
+                                        fm.traversal, fm.chain_gap);
+                        }
+                    }
+                }
+            }
+        }
     }
     // ACCEPTANCE GATE. The front end is used only when it split EVERY source face. Losing even
     // one face silently deletes material, which is exactly the failure mode this pipeline exists
@@ -1027,6 +1077,7 @@ static bool v2sol_run_front(const BRep& A, const BRep& B, double tol, V2Front& F
     // the pairs cleanly -- box/sphere/torus 0, cylinder x cylinder 4, cone x cone 2,
     // box x sphere 4, box x cone 2, sphere x cylinder 8 -- and every non-zero one is a pair whose
     // v2 answer was wrong. So it is a REFUSAL, reported, and the v1 route runs instead.
+    flap("selfcheck");
     F.ok = (F.arena_brep.face_count() > 0 && F.n_faces_lost == 0 && F.n_unused == 0 &&
             F.split_faithful);
     return F.ok;
@@ -1040,6 +1091,18 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
                 V2BooleanReport* report) {
     V2BooleanReport rep;
     const bool dbg = opt.verbose || v2sol_dbg();
+    static const bool s_prof = (std::getenv("SESSION_V2_PROF") != nullptr);
+    auto t_now = [] { return std::chrono::high_resolution_clock::now(); };
+    auto t0 = t_now();
+    auto lap = [&](const char* what) {
+        if (s_prof) {
+            auto n = t_now();
+            std::fprintf(stderr, "[v2-prof] %-16s %10.1f ms\n", what,
+                         std::chrono::duration<double, std::milli>(n - t0).count());
+            std::fflush(stderr);
+            t0 = n;
+        }
+    };
 
     const V2Box boxA = v2sol_brep_box(A), boxB = v2sol_brep_box(B);
     V2Box both = boxA;
@@ -1057,6 +1120,7 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
     static const bool s_nofront = (std::getenv("SESSION_V2_NOFRONT") != nullptr);
     V2Front F;
     if (!s_nofront && v2sol_run_front(A, B, tol, F)) {
+        lap("front");
         rep.n_section_curves = F.n_curves;
         for (int o : F.face_operand) (o == 0 ? rep.n_faces_a : rep.n_faces_b)++;
 
@@ -1077,6 +1141,7 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
         }
         const std::vector<double> osignA = v2_outward_signs(A);
         const std::vector<double> osignB = v2_outward_signs(B);
+        lap("outward_signs");
 
         // stage 6: classify ONCE (guarantee I-10)
         const double cls_tol2 = std::max(1e-9, scale * 1e-5);
@@ -1109,6 +1174,7 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
             }
         }
 
+        lap("classify");
         // stage 4 (post): fuse same-domain face images to ONE arena face index (P-1)
         std::vector<int> arena_id((size_t)nf);
         for (int k = 0; k < nf; ++k) arena_id[k] = k;
@@ -1156,6 +1222,7 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
             }
         }
 
+        lap("samedomain");
         // stage 7: selection (BuildBOP op-table, two fences)
         V2SelectionInput sin;
         V2InParts in_obj, in_too;
@@ -1193,6 +1260,7 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
             return BRep();
         }
 
+        lap("select");
         // stage 8: assemble. NO sew, NO snap, NO co-refine, NO fuzzy: a section edge shared by a
         // face of A and a face of B is already ONE edge index of F.arena_brep, so subsetting
         // preserves the adjacency the shell walk needs.
@@ -1228,17 +1296,42 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
             if (sh.is_hole) ++rep.n_holes;
         }
         for (const auto& a : bs2.alerts()) rep.alerts.push_back(a);
-        rep.verdict = v2_verdict(out2);
-        rep.stage_fail.clear();
-        if (dbg)
-            std::printf("[V2] FRONT curves=%d secedges=%d secnodes=%d faces=%d/%d ext=%d inext=%d "
-                        "| %s\n",
-                        F.n_curves, F.n_section_edges, F.n_section_nodes, rep.n_faces_a,
-                        rep.n_faces_b, F.n_extended, F.n_inextensible, rep.str().c_str());
-        if (report) *report = rep;
-        return out2;
+        lap("assemble");
+        // POST-SELECTION ACCEPTANCE GATE (OCCT PostTreat doctrine): the faithful-split gate
+        // certifies CONSTRUCTION, not selection. A wrong keep-set still shares every edge by
+        // construction, so its failure shows up as a GEOMETRIC one: naked edges from a face
+        // whose region was mis-kept, or a closure residual orders of magnitude above the
+        // section fidelity (~1e-11 with the 768-sample imprint; a wrong keep-set measures
+        // 1e-2..1e-1 -- sphere x box common and box x torus s01, both caught below). Shipping
+        // a closed-but-wrong answer is the one failure mode this pipeline exists to remove,
+        // so such a result REFUSES and the v1 route answers instead (guarantee I-13).
+        {
+            const v2v::V2Verdict acc = v2v::v2_verdict(out2, MassPropsOptions());
+            static const double s_acc_resid = []() {
+                const char* p = std::getenv("SESSION_V2_ACC_RESID");
+                return (p && p[0]) ? std::atof(p) : 1e-5;
+            }();
+            if (acc.naked_real > 0 || acc.nonmanifold > 0 ||
+                !std::isfinite(acc.closure_residual) || acc.closure_residual > s_acc_resid) {
+                if (dbg)
+                    std::printf("[V2] POST-GATE refuse: naked=%d nonman=%d resid=%.3e\n",
+                                acc.naked_real, acc.nonmanifold, acc.closure_residual);
+                rep.stage_fail = "v2-post-gate(naked-or-open)";
+                // fall through to the delegation path below
+            } else {
+                rep.verdict = v2_verdict(out2);
+                rep.stage_fail.clear();
+                if (dbg)
+                    std::printf("[V2] FRONT curves=%d secedges=%d secnodes=%d faces=%d/%d ext=%d "
+                                "inext=%d | %s\n",
+                                F.n_curves, F.n_section_edges, F.n_section_nodes, rep.n_faces_a,
+                                rep.n_faces_b, F.n_extended, F.n_inextensible, rep.str().c_str());
+                if (report) *report = rep;
+                return out2;
+            }
+        }
     }
-    rep.stage_fail = "v2-front-unavailable(v1-fallback)";
+    rep.stage_fail = rep.stage_fail.empty() ? "v2-front-unavailable(v1-fallback)" : rep.stage_fail;
 
     // WHEN THE FRONT END REFUSES, THE SHIPPED KERNEL ANSWERS. Guarantee I-13 says the v1 route
     // runs instead; the v1 route is BRep::boolean, not the older v2 experiment below it, and the
@@ -1256,7 +1349,7 @@ BRep v2_boolean(const BRep& A, const BRep& B, V2Op op, const V2BooleanOptions& o
         if (op == V2Op::Common) bop = BRep::BooleanOp::Intersection;
         else if (op == V2Op::Cut) bop = BRep::BooleanOp::Difference;
         else if (op == V2Op::Cut21) bop = BRep::BooleanOp::Difference;
-        BRep out = (op == V2Op::Cut21) ? B.boolean(A, bop) : A.boolean(B, bop);
+        BRep out = (op == V2Op::Cut21) ? B.boolean_v1(A, bop) : A.boolean_v1(B, bop);
         rep.stage_fail = "v2-front-refused(delegated-to-kernel)";
         rep.verdict = v2_verdict(out);
         if (dbg) std::printf("[V2] %s\n", rep.str().c_str());
@@ -1634,4 +1727,25 @@ BRep v2_cut21(const BRep& A, const BRep& B, double tol, V2BooleanReport* r) {
 }
 
 }  // namespace v2sol
+
+// BACKEND SELF-REGISTRATION. Every binary that links session_v2 routes BRep::boolean through
+// the v2 pipeline by default (the front end still delegates to boolean_v1 on refusal, so no
+// case is stranded). session_core-only binaries (point_minitest) see no behavioural change.
+namespace {
+struct V2BooleanBackendRegistrar {
+    V2BooleanBackendRegistrar() {
+        BRep::register_boolean_backend(
+            [](const BRep& A, const BRep& B, BRep::BooleanOp op, double tol) -> BRep {
+                v2sol::V2Op vop = v2sol::V2Op::Fuse;
+                if (op == BRep::BooleanOp::Difference) vop = v2sol::V2Op::Cut;
+                else if (op == BRep::BooleanOp::Intersection) vop = v2sol::V2Op::Common;
+                v2sol::V2BooleanOptions o;
+                o.tolerance = tol;
+                return v2sol::v2_boolean(A, B, vop, o, nullptr);
+            });
+    }
+};
+static V2BooleanBackendRegistrar s_v2_boolean_backend_registrar;
+}  // namespace
+
 }  // namespace session_cpp

@@ -99,6 +99,16 @@ nlohmann::ordered_json Objects::jsondump() const {
                                 {"components", components_json}};
 }
 
+// pb_loads/jsonload return by value; make_shared<T>(loaded) COPIES, and the guid-refreshing
+// copy constructor mints a FRESH guid — silently re-guiding every object on load and orphaning
+// tree/graph references keyed by guid. A LOAD is not a duplicate: restore the loaded identity.
+template <typename T>
+static std::shared_ptr<T> keep_guid(T&& loaded) {
+  auto p = std::make_shared<T>(loaded);
+  p->guid() = loaded.guid();
+  return p;
+}
+
 Objects Objects::jsonload(const nlohmann::json &data) {
   // Create Objects instance
   Objects objects(data["name"].get<std::string>());
@@ -108,7 +118,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<OBB>> bboxes;
     bboxes.reserve(data["bboxes"].size());
     for (const auto &bbox_data : data["bboxes"])
-      bboxes.push_back(std::make_shared<OBB>(OBB::jsonload(bbox_data)));
+      bboxes.push_back(keep_guid(OBB::jsonload(bbox_data)));
     *objects.bboxes = std::move(bboxes);
   }
   
@@ -117,7 +127,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<Line>> lines;
     lines.reserve(data["lines"].size());
     for (const auto &line_data : data["lines"])
-      lines.push_back(std::make_shared<Line>(Line::jsonload(line_data)));
+      lines.push_back(keep_guid(Line::jsonload(line_data)));
     *objects.lines = std::move(lines);
   }
   
@@ -126,7 +136,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<Mesh>> meshes;
     meshes.reserve(data["meshes"].size());
     for (const auto &mesh_data : data["meshes"])
-      meshes.push_back(std::make_shared<Mesh>(Mesh::jsonload(mesh_data)));
+      meshes.push_back(keep_guid(Mesh::jsonload(mesh_data)));
     *objects.meshes = std::move(meshes);
   }
   
@@ -135,7 +145,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<NurbsCurve>> nurbscurves;
     nurbscurves.reserve(data["nurbscurves"].size());
     for (const auto &nc_data : data["nurbscurves"])
-      nurbscurves.push_back(std::make_shared<NurbsCurve>(NurbsCurve::jsonload(nc_data)));
+      nurbscurves.push_back(keep_guid(NurbsCurve::jsonload(nc_data)));
     *objects.nurbscurves = std::move(nurbscurves);
   }
 
@@ -144,7 +154,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<NurbsSurface>> nurbssurfaces;
     nurbssurfaces.reserve(data["nurbssurfaces"].size());
     for (const auto &ns_data : data["nurbssurfaces"])
-      nurbssurfaces.push_back(std::make_shared<NurbsSurface>(NurbsSurface::jsonload(ns_data)));
+      nurbssurfaces.push_back(keep_guid(NurbsSurface::jsonload(ns_data)));
     *objects.nurbssurfaces = std::move(nurbssurfaces);
   }
 
@@ -153,7 +163,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<BRep>> breps;
     breps.reserve(data["breps"].size());
     for (const auto &b_data : data["breps"])
-      breps.push_back(std::make_shared<BRep>(BRep::jsonload(b_data)));
+      breps.push_back(keep_guid(BRep::jsonload(b_data)));
     *objects.breps = std::move(breps);
   }
 
@@ -162,7 +172,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<Element>> elements;
     elements.reserve(data["elements"].size());
     for (const auto &e_data : data["elements"])
-      elements.push_back(std::make_shared<Element>(Element::jsonload(e_data)));
+      elements.push_back(keep_guid(Element::jsonload(e_data)));
     *objects.elements = std::move(elements);
   }
 
@@ -171,7 +181,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<Plane>> planes;
     planes.reserve(data["planes"].size());
     for (const auto &plane_data : data["planes"])
-      planes.push_back(std::make_shared<Plane>(Plane::jsonload(plane_data)));
+      planes.push_back(keep_guid(Plane::jsonload(plane_data)));
     *objects.planes = std::move(planes);
   }
   
@@ -180,7 +190,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<Point>> points;
     points.reserve(data["points"].size());
     for (const auto &point_data : data["points"])
-      points.push_back(std::make_shared<Point>(Point::jsonload(point_data)));
+      points.push_back(keep_guid(Point::jsonload(point_data)));
     *objects.points = std::move(points);
   }
   
@@ -189,7 +199,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<PointCloud>> pointclouds;
     pointclouds.reserve(data["pointclouds"].size());
     for (const auto &pointcloud_data : data["pointclouds"])
-      pointclouds.push_back(std::make_shared<PointCloud>(PointCloud::jsonload(pointcloud_data)));
+      pointclouds.push_back(keep_guid(PointCloud::jsonload(pointcloud_data)));
     *objects.pointclouds = std::move(pointclouds);
   }
   
@@ -198,7 +208,7 @@ Objects Objects::jsonload(const nlohmann::json &data) {
     std::vector<std::shared_ptr<Polyline>> polylines;
     polylines.reserve(data["polylines"].size());
     for (const auto &polyline_data : data["polylines"])
-      polylines.push_back(std::make_shared<Polyline>(Polyline::jsonload(polyline_data)));
+      polylines.push_back(keep_guid(Polyline::jsonload(polyline_data)));
     *objects.polylines = std::move(polylines);
   }
 
@@ -265,27 +275,27 @@ Objects Objects::pb_loads(const std::string& data) {
   Objects objects(proto.name());
   objects.guid() = proto.guid();
   for (const auto& p : proto.points())
-    objects.points->push_back(std::make_shared<Point>(Point::pb_loads(p.SerializeAsString())));
+    objects.points->push_back(keep_guid(Point::pb_loads(p.SerializeAsString())));
   for (const auto& l : proto.lines())
-    objects.lines->push_back(std::make_shared<Line>(Line::pb_loads(l.SerializeAsString())));
+    objects.lines->push_back(keep_guid(Line::pb_loads(l.SerializeAsString())));
   for (const auto& p : proto.planes())
-    objects.planes->push_back(std::make_shared<Plane>(Plane::pb_loads(p.SerializeAsString())));
+    objects.planes->push_back(keep_guid(Plane::pb_loads(p.SerializeAsString())));
   for (const auto& b : proto.bboxes())
-    objects.bboxes->push_back(std::make_shared<OBB>(OBB::pb_loads(b.SerializeAsString())));
+    objects.bboxes->push_back(keep_guid(OBB::pb_loads(b.SerializeAsString())));
   for (const auto& p : proto.polylines())
-    objects.polylines->push_back(std::make_shared<Polyline>(Polyline::pb_loads(p.SerializeAsString())));
+    objects.polylines->push_back(keep_guid(Polyline::pb_loads(p.SerializeAsString())));
   for (const auto& p : proto.pointclouds())
-    objects.pointclouds->push_back(std::make_shared<PointCloud>(PointCloud::pb_loads(p.SerializeAsString())));
+    objects.pointclouds->push_back(keep_guid(PointCloud::pb_loads(p.SerializeAsString())));
   for (const auto& m : proto.meshes())
-    objects.meshes->push_back(std::make_shared<Mesh>(Mesh::pb_loads(m.SerializeAsString())));
+    objects.meshes->push_back(keep_guid(Mesh::pb_loads(m.SerializeAsString())));
   for (const auto& nc : proto.nurbscurves())
-    objects.nurbscurves->push_back(std::make_shared<NurbsCurve>(NurbsCurve::pb_loads(nc.SerializeAsString())));
+    objects.nurbscurves->push_back(keep_guid(NurbsCurve::pb_loads(nc.SerializeAsString())));
   for (const auto& ns : proto.nurbssurfaces())
-    objects.nurbssurfaces->push_back(std::make_shared<NurbsSurface>(NurbsSurface::pb_loads(ns.SerializeAsString())));
+    objects.nurbssurfaces->push_back(keep_guid(NurbsSurface::pb_loads(ns.SerializeAsString())));
   for (const auto& b : proto.breps())
-    objects.breps->push_back(std::make_shared<BRep>(BRep::pb_loads(b.SerializeAsString())));
+    objects.breps->push_back(keep_guid(BRep::pb_loads(b.SerializeAsString())));
   for (const auto& e : proto.elements())
-    objects.elements->push_back(std::make_shared<Element>(Element::pb_loads(e.SerializeAsString())));
+    objects.elements->push_back(keep_guid(Element::pb_loads(e.SerializeAsString())));
   for (const auto& pc : proto.components()) {
     Component c;
     c.type_name = pc.type_name();

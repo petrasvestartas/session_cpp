@@ -117,6 +117,10 @@ public:
     /// Create a cone along +Z: base circle (radius) at z=0, apex at z=height.
     static BRep create_cone(double radius, double height);
 
+    /// Create a square pyramid: base edge `base` centered at the origin in the z=0 plane,
+    /// apex at (0,0,height). 5 planar faces; each triangle's apex row is a degenerate trim.
+    static BRep create_pyramid(double base, double height);
+
     /// Create a torus centered at the origin in the XY plane (axis +Z).
     static BRep create_torus(double major_radius, double minor_radius);
 
@@ -314,13 +318,22 @@ public:
     /// Boolean operation kind.
     enum class BooleanOp { Union, Difference, Intersection };
 
-    /// Boolean of two solids via imprint -> classify -> select -> sew.
-    /// Imprints both solids against each other (split_by_brep), classifies each face
-    /// fragment as inside/outside the other solid (ray-cast parity), selects the fragments
-    /// for the requested operation, and sews them (shared imprint edges merged by position).
-    /// Scoped to the kernel's planar + quadric solids; matches OCCT BRepAlgoAPI_* on
-    /// volume/face-count for those cases.
+    /// Boolean of two solids. DEFAULT BACKEND: the v2 OCCT-architecture pipeline (pave filler /
+    /// shared section edges / wire-splitter / BuildBOP selection), active in every binary that
+    /// links the session_v2 module (it self-registers via register_boolean_backend). Binaries
+    /// that link only session_core, or runs with SESSION_V1_BOOL set, use the v1
+    /// imprint -> classify -> select -> sew pipeline (boolean_v1), which is also the fallback
+    /// the v2 front end delegates to when it refuses a pair.
     BRep boolean(const BRep& other, BooleanOp op, double tolerance = 0.0) const;
+
+    /// The v1 imprint/sew pipeline. Public because the v2 front end delegates to it on
+    /// refusal; new code should call boolean() and let the router choose.
+    BRep boolean_v1(const BRep& other, BooleanOp op, double tolerance = 0.0) const;
+
+    /// Register the v2 boolean backend (called once by the session_v2 module's static
+    /// initialiser). Passing nullptr restores boolean_v1 as the backend.
+    static void register_boolean_backend(
+        BRep (*fn)(const BRep& A, const BRep& B, BooleanOp op, double tolerance));
 
     /// Imprint T-junctions: split any under-mated edge at interior points that coincide with
     /// another edge's endpoint vertex, so a long edge that spans several shorter coincident

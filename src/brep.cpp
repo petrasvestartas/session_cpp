@@ -582,6 +582,103 @@ BRep BRep::create_cone(double radius, double height) {
     return brep;
 }
 
+BRep BRep::create_pyramid(double base, double height) {
+    // Square pyramid: base edge `base` centered at the origin in the z=0 plane, apex at
+    // (0,0,height). 5 planar faces: 1 square base + 4 triangles. The apex row of each
+    // triangular bilinear patch is a DEGENERATE trim (same convention as the cone apex /
+    // sphere pole): a zero-length Singular edge, excluded from the manifold count.
+    BRep brep;
+    brep.name = "pyramid";
+    const double h = base * 0.5;
+
+    Point corners[4] = {
+        Point(-h, -h, 0.0),
+        Point( h, -h, 0.0),
+        Point( h,  h, 0.0),
+        Point(-h,  h, 0.0),
+    };
+    Point apex(0.0, 0.0, height);
+    for (int i = 0; i < 4; ++i) brep.add_vertex(corners[i]);
+    brep.add_vertex(apex);   // vertex 4
+
+    // 8 real edges: 4 base + 4 slant (slant stored corner -> apex)
+    int edge_verts[8][2] = {
+        {0,1},{1,2},{2,3},{3,0},
+        {0,4},{1,4},{2,4},{3,4},
+    };
+    for (int i = 0; i < 8; ++i) {
+        Point p0 = i < 4 ? corners[edge_verts[i][0]] : corners[edge_verts[i][0]];
+        Point p1 = (edge_verts[i][1] == 4) ? apex : corners[edge_verts[i][1]];
+        NurbsCurve line = NurbsCurve::create(false, 1, {p0, p1});
+        brep.add_curve_3d(line);
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        BRepVertex tv;
+        tv.point_index = i;
+        brep.m_topology_vertices.push_back(tv);
+    }
+    for (int i = 0; i < 8; ++i)
+        brep.add_edge(i, edge_verts[i][0], edge_verts[i][1]);
+
+    // Base quad: CCW from below (normal -Z), same winding as create_box's bottom face.
+    {
+        int fv[4] = {0, 3, 2, 1};
+        Point p00 = corners[fv[0]], p10 = corners[fv[1]];
+        Point p01 = corners[fv[3]], p11 = corners[fv[2]];
+        NurbsSurface srf;
+        srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
+        srf.set_cv(0, 0, p00); srf.set_cv(1, 0, p10);
+        srf.set_cv(0, 1, p01); srf.set_cv(1, 1, p11);
+        int si = brep.add_surface(srf);
+        int face_idx = brep.add_face(si, false);
+        int loop_idx = brep.add_loop(face_idx, BRepLoopType::Outer);
+        Point uv_corners[4] = {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)};
+        int base_edges[4] = {3, 2, 1, 0};   // (0->3)=e3, (3->2)=e2, (2->1)=e1, (1->0)=e0
+        for (int ei = 0; ei < 4; ++ei) {
+            int next = (ei + 1) % 4;
+            NurbsCurve trim_crv = NurbsCurve::create(false, 1, {uv_corners[ei], uv_corners[next]});
+            int c2d_idx = brep.add_curve_2d(trim_crv);
+            int edge_idx = base_edges[ei];
+            bool rev = (edge_verts[edge_idx][0] != fv[ei]);
+            brep.add_trim(c2d_idx, edge_idx, loop_idx, rev, BRepTrimType::Mated);
+        }
+    }
+
+    // 4 triangular side faces: (corner_i, corner_{i+1}, apex), CCW from outside.
+    for (int fi = 0; fi < 4; ++fi) {
+        int a = fi, b = (fi + 1) % 4;
+        NurbsSurface srf;
+        srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
+        srf.set_cv(0, 0, corners[a]); srf.set_cv(1, 0, corners[b]);
+        srf.set_cv(0, 1, apex);       srf.set_cv(1, 1, apex);   // degenerate v=1 row
+        int si = brep.add_surface(srf);
+        int face_idx = brep.add_face(si, false);
+        int loop_idx = brep.add_loop(face_idx, BRepLoopType::Outer);
+
+        // Degenerate apex edge for this face (zero 3D extent, apex vertex used twice).
+        NurbsCurve deg = NurbsCurve::create(false, 1, {apex, apex});
+        int ei_deg = brep.add_edge(brep.add_curve_3d(deg), 4, 4);
+
+        // UV loop: (0,0)->(1,0) base a->b; (1,0)->(1,1) slant b->apex;
+        //          (1,1)->(0,1) apex row (degenerate); (0,1)->(0,0) apex->a.
+        brep.add_trim(brep.add_curve_2d(NurbsCurve::create(false, 1, {Point(0,0,0), Point(1,0,0)})),
+                      fi, loop_idx, edge_verts[fi][0] != a, BRepTrimType::Mated);
+        brep.add_trim(brep.add_curve_2d(NurbsCurve::create(false, 1, {Point(1,0,0), Point(1,1,0)})),
+                      4 + b, loop_idx, false, BRepTrimType::Mated);
+        brep.add_trim(brep.add_curve_2d(NurbsCurve::create(false, 1, {Point(1,1,0), Point(0,1,0)})),
+                      ei_deg, loop_idx, false, BRepTrimType::Singular);
+        brep.add_trim(brep.add_curve_2d(NurbsCurve::create(false, 1, {Point(0,1,0), Point(0,0,0)})),
+                      4 + a, loop_idx, true, BRepTrimType::Mated);
+    }
+
+    for (int ei = 0; ei < (int)brep.m_topology_edges.size(); ++ei) {
+        brep.m_topology_vertices[brep.m_topology_edges[ei].start_vertex].edge_indices.push_back(ei);
+        brep.m_topology_vertices[brep.m_topology_edges[ei].end_vertex].edge_indices.push_back(ei);
+    }
+    return brep;
+}
+
 BRep BRep::create_torus(double major_radius, double minor_radius) {
     // Torus: a single closed face, periodic in BOTH u (major circle) and v (minor circle). No caps,
     // no poles -- two seams: the u-seam (minor circle at u=0) and the v-seam (outer major circle at
@@ -8422,7 +8519,24 @@ static bool inside_prim(const PrimSolid& ps, const Point& p, double tol) {
 }
 }  // namespace
 
+static BRep (*s_boolean_backend)(const BRep&, const BRep&, BRep::BooleanOp, double) = nullptr;
+
+void BRep::register_boolean_backend(
+    BRep (*fn)(const BRep& A, const BRep& B, BooleanOp op, double tolerance)) {
+    s_boolean_backend = fn;
+}
+
 BRep BRep::boolean(const BRep& other, BooleanOp op, double tolerance) const {
+    // ROUTER: the registered v2 backend answers by default (any binary linking session_v2);
+    // SESSION_V1_BOOL or an unregistered backend (session_core-only binaries) selects the v1
+    // pipeline. The v2 front end itself delegates to boolean_v1 when it refuses a pair, so
+    // routing never strands a case.
+    static const bool s_v1 = (std::getenv("SESSION_V1_BOOL") != nullptr);
+    if (!s_v1 && s_boolean_backend) return s_boolean_backend(*this, other, op, tolerance);
+    return boolean_v1(other, op, tolerance);
+}
+
+BRep BRep::boolean_v1(const BRep& other, BooleanOp op, double tolerance) const {
     // AUTO VARIANT SELECTION (SESSION_AUTO; ACIS retry-loop / OCCT escalation doctrine).
     // The junction-repair mechanisms (bridge weld, EF-march) are decisively positive on
     // some knot geometries and negative on others, and no LOCAL acceptance test decides

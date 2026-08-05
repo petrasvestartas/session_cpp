@@ -247,6 +247,22 @@ namespace session_cpp {
         MINI_CHECK(std::abs(cone.volume() - (PI * 1.0 * 2.0 / 3.0)) / (PI * 2.0 / 3.0) < 1e-4);
     }
 
+    MINI_TEST("BRep", "Create Pyramid") {
+        BRep pyr = BRep::create_pyramid(2.0, 3.0);   // base 2x2 at z=0, apex z=3
+        Mesh m = pyr.mesh();
+        MINI_CHECK(pyr.is_valid());
+        MINI_CHECK(pyr.face_count() == 5);            // base quad + 4 triangles
+        MINI_CHECK(pyr.is_solid());
+        MINI_CHECK(pyr.name == "pyramid");
+        MINI_CHECK(!m.is_empty());
+        // V = (1/3) base^2 h
+        MINI_CHECK(std::abs(pyr.volume() - (2.0 * 2.0 * 3.0 / 3.0)) / 4.0 < 1e-9);
+        // centroid of a pyramid is at h/4 above the base
+        MINI_CHECK(pyr.contains_point(Point(0, 0, 0.75)));
+        MINI_CHECK(!pyr.contains_point(Point(0, 0, 3.1)));
+        MINI_CHECK(!pyr.contains_point(Point(1.01, 0, 0.01)));
+    }
+
     MINI_TEST("BRep", "Create Torus") {
         const double PI = 3.14159265358979323846;
         BRep tor = BRep::create_torus(2.0, 0.5);   // major R=2, minor r=0.5
