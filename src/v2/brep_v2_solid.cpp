@@ -14,6 +14,9 @@
 namespace session_cpp {
 namespace v2sol {
 
+// MSVC has no M_PI.
+static constexpr double PI = 3.14159265358979323846;
+
 const char* v2_alert_name(V2Alert a) {
     switch (a) {
         case V2Alert::ShellSplitterFailed: return "ShellSplitterFailed";
@@ -362,7 +365,7 @@ void v2_orient_faces_on_shell(const V2Topo& topo, V2Shell& shell) {
 double v2_angle_with_ref(const Vector& d1, const Vector& d2, const Vector& dref) {
     const Vector x = d1.cross(d2);
     const double cosinus = d1.dot(d2);
-    double beta = (M_PI / 2.0) * (1.0 - cosinus);
+    double beta = (PI / 2.0) * (1.0 - cosinus);
     if (x.dot(dref) < 0.0) beta = -beta;
     return beta;
 }
@@ -418,14 +421,14 @@ bool v2_get_face_off(const V2Topo& topo, int ref_use, V2OrientedFace ref,
         const bool computed = v2sol_face_normal_at(*topo.b, f2.face, px, n2);
         if (f2.reversed) n2 = Vector(-n2[0], -n2[1], -n2[2]);
         const Vector b2 = computed ? v2_vunit(n2.cross(t2)) : Vector(0, 0, 0);
-        double angle = computed ? v2_angle_with_ref(b1, b2, dtf) : 2.0 * M_PI;
+        double angle = computed ? v2_angle_with_ref(b1, b2, dtf) : 2.0 * PI;
         if (std::fabs(angle) < V2_ANGULAR) {
-            if (f2 == ref) angle = M_PI;
-            else if (f2.face == ref.face) angle = 2.0 * M_PI;
-            else if (!computed) angle = 2.0 * M_PI;
+            if (f2 == ref) angle = PI;
+            else if (f2.face == ref.face) angle = 2.0 * PI;
+            else if (!computed) angle = 2.0 * PI;
         }
         if (std::fabs(angle) < crit || std::fabs(std::fabs(angle) - angle_min) < crit) ok = false;
-        if (angle < 0) angle += 2.0 * M_PI;
+        if (angle < 0) angle += 2.0 * PI;
         if (angle < angle_min) {
             angle_min = angle;
             picked = f2;

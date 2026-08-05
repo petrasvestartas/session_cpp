@@ -21,6 +21,7 @@
 //      SESSION_V19_TOPN how many worst edges to print (default 8)
 
 #include "src/brep.h"
+#include "src/tolerance.h"
 #include "src/brep_massprops.h"
 #include "src/nurbscurve.h"
 #include "src/nurbssurface.h"
@@ -332,7 +333,7 @@ struct Row {
 
 static void one(const BRep& S, const BRep& C, double deg, bool full, int topn) {
     const MassPropsOptions o = v2_verdict_options();
-    g_axis = Vector(std::sin(deg * M_PI / 180.0), 0.0, std::cos(deg * M_PI / 180.0));
+    g_axis = Vector(std::sin(deg * Tolerance::PI / 180.0), 0.0, std::cos(deg * Tolerance::PI / 180.0));
     const char* opsel = std::getenv("SESSION_V19_OP");
     const bool do_cut = !opsel || std::strcmp(opsel, "common") != 0;
     const bool do_com = !opsel || std::strcmp(opsel, "cut") != 0;
@@ -389,8 +390,8 @@ int main() {
     ///////////////////////////////////////////////////////////////////////////////////////
     const BRep S = BRep::create_sphere(2.5);
     const BRep C0 = moved(BRep::create_cylinder(1.0, 8.0), Xform::translation(0, 0, -4.0));
-    const double want_common = 4.0 * M_PI / 3.0 * (15.625 - std::pow(5.25, 1.5));
-    const double want_cut = 4.0 * M_PI / 3.0 * 15.625 - want_common;
+    const double want_common = 4.0 * Tolerance::PI / 3.0 * (15.625 - std::pow(5.25, 1.5));
+    const double want_cut = 4.0 * Tolerance::PI / 3.0 * 15.625 - want_common;
     std::printf("\n=== PART B  TILT SWEEP  analytic common=%.9f cut=%.9f ===\n", want_common,
                 want_cut);
 
@@ -398,7 +399,7 @@ int main() {
     if (one_tilt) {
         const double deg = std::atof(one_tilt);
         Vector ay(0, 1, 0);
-        const BRep C = moved(C0, Xform::rotation(ay, deg * M_PI / 180.0, false));
+        const BRep C = moved(C0, Xform::rotation(ay, deg * Tolerance::PI / 180.0, false));
         one(S, C, deg, true, topn);
         std::printf("\n[V19] TOTAL %d/%d\n", g_pass, g_pass + g_fail);
         return g_fail == 0 ? 0 : 1;
@@ -409,7 +410,7 @@ int main() {
     for (int i = 0; i < nt; ++i) {
         const double deg = 45.0 * i / (double)(nt - 1);
         Vector ay(0, 1, 0);
-        const BRep C = moved(C0, Xform::rotation(ay, deg * M_PI / 180.0, false));
+        const BRep C = moved(C0, Xform::rotation(ay, deg * Tolerance::PI / 180.0, false));
         one(S, C, deg, false, topn);
     }
 

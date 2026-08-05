@@ -19,6 +19,7 @@
 //      SESSION_V2_DBG   per-run driver census
 
 #include "src/brep.h"
+#include "src/tolerance.h"
 #include "src/brep_massprops.h"
 #include "src/v2/brep_v2_boolean.h"
 #include "src/v2/brep_v2_solid.h"
@@ -309,9 +310,9 @@ static void part2_assembly() {
         const bool ok = bs.shells().size() == 1 && bs.shells()[0].closed &&
                         bs.shells()[0].manifold && !bs.shells()[0].is_hole;
         const MassProps mp = brep_massprops(b, mp_opt());
-        cell("T7 torus_closed_manifold_not_hole", ok && vol_ok(mp.volume, 2 * M_PI * M_PI * 3.0),
+        cell("T7 torus_closed_manifold_not_hole", ok && vol_ok(mp.volume, 2 * Tolerance::PI * Tolerance::PI * 3.0),
              sfmt("shells=%zu vol=%.9f want=%.9f", bs.shells().size(), mp.volume,
-                  2 * M_PI * M_PI * 3.0));
+                  2 * Tolerance::PI * Tolerance::PI * 3.0));
     }
 
     // T8 — two disjoint boxes: two solids, never merged toward one (I-8)
@@ -507,8 +508,8 @@ static std::vector<Pair> build_ladder() {
         p.name = "sphere x sphere";
         p.A = BRep::create_sphere(1.0);
         p.B = moved(BRep::create_sphere(1.0), Xform::translation(1.0, 0, 0));
-        p.volA = 4.0 * M_PI / 3.0;
-        p.common = 5.0 * M_PI / 12.0;
+        p.volA = 4.0 * Tolerance::PI / 3.0;
+        p.common = 5.0 * Tolerance::PI / 12.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -517,8 +518,8 @@ static std::vector<Pair> build_ladder() {
         p.name = "sphere x cylinder";
         p.A = BRep::create_sphere(2.5);
         p.B = moved(BRep::create_cylinder(1.0, 8.0), Xform::translation(0, 0, -4.0));
-        p.volA = 4.0 * M_PI / 3.0 * 15.625;
-        p.common = 4.0 * M_PI / 3.0 * (15.625 - std::pow(6.25 - 1.0, 1.5));
+        p.volA = 4.0 * Tolerance::PI / 3.0 * 15.625;
+        p.common = 4.0 * Tolerance::PI / 3.0 * (15.625 - std::pow(6.25 - 1.0, 1.5));
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -528,7 +529,7 @@ static std::vector<Pair> build_ladder() {
         p.A = BRep::create_box(3, 3, 3);
         p.B = moved(BRep::create_sphere(1.0), Xform::translation(1.5, 0, 0));
         p.volA = 27.0;
-        p.common = 2.0 * M_PI / 3.0;
+        p.common = 2.0 * Tolerance::PI / 3.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -538,8 +539,8 @@ static std::vector<Pair> build_ladder() {
         p.A = moved(BRep::create_cylinder(1.0, 4.0), Xform::translation(0, 0, -2.0));
         Vector ax(1, 0, 0);
         p.B = moved(moved(BRep::create_cylinder(1.0, 4.0), Xform::translation(0, 0, -2.0)),
-                    Xform::rotation(ax, M_PI / 2.0, false));
-        p.volA = M_PI * 4.0;
+                    Xform::rotation(ax, Tolerance::PI / 2.0, false));
+        p.volA = Tolerance::PI * 4.0;
         p.common = 16.0 / 3.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
@@ -549,8 +550,8 @@ static std::vector<Pair> build_ladder() {
         p.name = "box x cone(A=cone)";
         p.A = BRep::create_cone(1.0, 2.0);
         p.B = moved(BRep::create_box(4, 4, 4), Xform::translation(0, 0, 3.0));
-        p.volA = M_PI * 2.0 / 3.0;
-        p.common = M_PI / 12.0;
+        p.volA = Tolerance::PI * 2.0 / 3.0;
+        p.common = Tolerance::PI / 12.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -559,11 +560,11 @@ static std::vector<Pair> build_ladder() {
         p.name = "cone x cone";
         p.A = BRep::create_cone(1.0, 2.0);
         Vector ax(1, 0, 0);
-        p.B = moved(moved(BRep::create_cone(1.5, 2.0), Xform::rotation(ax, M_PI, false)),
+        p.B = moved(moved(BRep::create_cone(1.5, 2.0), Xform::rotation(ax, Tolerance::PI, false)),
                     Xform::translation(0, 0, 1.6));
-        p.volA = M_PI * 2.0 / 3.0;
+        p.volA = Tolerance::PI * 2.0 / 3.0;
         // r_A(z) = 1 - z/2 on [0,2]; r_B(z) = 0.75(z+0.4) on [-0.4,1.6]; they cross at z=0.56
-        p.common = M_PI * (0.5625 * (std::pow(0.96, 3) - std::pow(0.4, 3)) / 3.0 +
+        p.common = Tolerance::PI * (0.5625 * (std::pow(0.96, 3) - std::pow(0.4, 3)) / 3.0 +
                            2.0 * (std::pow(0.72, 3) - std::pow(0.2, 3)) / 3.0);
         p.cut = p.volA - p.common;
         v.push_back(p);
@@ -573,9 +574,9 @@ static std::vector<Pair> build_ladder() {
         p.name = "torus x torus";
         p.A = BRep::create_torus(3.0, 1.0);
         p.B = moved(BRep::create_torus(3.0, 1.0), Xform::translation(0, 0, 1.5));
-        p.volA = 2.0 * M_PI * M_PI * 3.0;
+        p.volA = 2.0 * Tolerance::PI * Tolerance::PI * 3.0;
         const double lens = 2.0 * std::acos(0.75) - 0.75 * std::sqrt(4.0 - 2.25);
-        p.common = 2.0 * M_PI * 3.0 * lens;
+        p.common = 2.0 * Tolerance::PI * 3.0 * lens;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -650,8 +651,8 @@ static void part3_ladder(int nmotions, const char* only) {
 
 static void part3b_tilt_sweep(int nsteps) {
     std::printf("\n=== PART 3b  SPHERE r=2.5  x  CYLINDER r=1 THROUGH CENTRE, tilt 0..45 deg ===\n");
-    const double want_common = 4.0 * M_PI / 3.0 * (15.625 - std::pow(5.25, 1.5));
-    const double want_cut = 4.0 * M_PI / 3.0 * 15.625 - want_common;
+    const double want_common = 4.0 * Tolerance::PI / 3.0 * (15.625 - std::pow(5.25, 1.5));
+    const double want_cut = 4.0 * Tolerance::PI / 3.0 * 15.625 - want_common;
     std::printf("[V2] analytic: common=%.6f cut=%.6f (tilt invariant)\n", want_common, want_cut);
 
     const BRep S = BRep::create_sphere(2.5);
@@ -661,7 +662,7 @@ static void part3b_tilt_sweep(int nsteps) {
     for (int i = 0; i < nsteps; ++i) {
         const double deg = 45.0 * i / (double)(nsteps - 1 > 0 ? nsteps - 1 : 1);
         Vector ay(0, 1, 0);
-        const BRep C = moved(C0, Xform::rotation(ay, deg * M_PI / 180.0, false));
+        const BRep C = moved(C0, Xform::rotation(ay, deg * Tolerance::PI / 180.0, false));
         static const char* side = std::getenv("SESSION_V2_TILT_SIDE");
         static const double t_from = std::getenv("SESSION_V2_TILT_FROM")
                                          ? std::atof(std::getenv("SESSION_V2_TILT_FROM")) : -1.0;
@@ -706,9 +707,9 @@ static void part4_idempotence(int nmotions) {
     struct C { const char* name; BRep b; double vol; };
     std::vector<C> cs;
     cs.push_back({"box", BRep::create_box(2, 2, 2), 8.0});
-    cs.push_back({"sphere", BRep::create_sphere(1.0), 4.0 * M_PI / 3.0});
-    cs.push_back({"cylinder", BRep::create_cylinder(1.0, 2.0), M_PI * 2.0});
-    cs.push_back({"cone", BRep::create_cone(1.0, 2.0), M_PI * 2.0 / 3.0});
+    cs.push_back({"sphere", BRep::create_sphere(1.0), 4.0 * Tolerance::PI / 3.0});
+    cs.push_back({"cylinder", BRep::create_cylinder(1.0, 2.0), Tolerance::PI * 2.0});
+    cs.push_back({"cone", BRep::create_cone(1.0, 2.0), Tolerance::PI * 2.0 / 3.0});
 
     for (auto& c : cs) {
         int cut_ok = 0, com_ok = 0, fus_ok = 0, n = 0;

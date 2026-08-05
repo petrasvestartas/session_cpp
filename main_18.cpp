@@ -17,6 +17,7 @@
 // transform composed exactly as main_16's build_ladder() composes it and inverted.
 
 #include "src/brep.h"
+#include "src/tolerance.h"
 #include "src/brep_massprops.h"
 #include "src/v2/brep_v2_boolean.h"
 #include "src/v2/brep_v2_solid.h"
@@ -92,8 +93,8 @@ static std::vector<Pair> build_ladder() {
         p.name = "sphere x sphere";
         p.A = BRep::create_sphere(1.0);
         p.B = moved(BRep::create_sphere(1.0), Xform::translation(1.0, 0, 0));
-        p.volA = 4.0 * M_PI / 3.0;
-        p.common = 5.0 * M_PI / 12.0;
+        p.volA = 4.0 * Tolerance::PI / 3.0;
+        p.common = 5.0 * Tolerance::PI / 12.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -102,8 +103,8 @@ static std::vector<Pair> build_ladder() {
         p.name = "sphere x cylinder";
         p.A = BRep::create_sphere(2.5);
         p.B = moved(BRep::create_cylinder(1.0, 8.0), Xform::translation(0, 0, -4.0));
-        p.volA = 4.0 * M_PI / 3.0 * 15.625;
-        p.common = 4.0 * M_PI / 3.0 * (15.625 - std::pow(6.25 - 1.0, 1.5));
+        p.volA = 4.0 * Tolerance::PI / 3.0 * 15.625;
+        p.common = 4.0 * Tolerance::PI / 3.0 * (15.625 - std::pow(6.25 - 1.0, 1.5));
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -113,7 +114,7 @@ static std::vector<Pair> build_ladder() {
         p.A = BRep::create_box(3, 3, 3);
         p.B = moved(BRep::create_sphere(1.0), Xform::translation(1.5, 0, 0));
         p.volA = 27.0;
-        p.common = 2.0 * M_PI / 3.0;
+        p.common = 2.0 * Tolerance::PI / 3.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -123,8 +124,8 @@ static std::vector<Pair> build_ladder() {
         p.A = moved(BRep::create_cylinder(1.0, 4.0), Xform::translation(0, 0, -2.0));
         Vector ax(1, 0, 0);
         p.B = moved(moved(BRep::create_cylinder(1.0, 4.0), Xform::translation(0, 0, -2.0)),
-                    Xform::rotation(ax, M_PI / 2.0, false));
-        p.volA = M_PI * 4.0;
+                    Xform::rotation(ax, Tolerance::PI / 2.0, false));
+        p.volA = Tolerance::PI * 4.0;
         p.common = 16.0 / 3.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
@@ -134,8 +135,8 @@ static std::vector<Pair> build_ladder() {
         p.name = "box x cone(A=cone)";
         p.A = BRep::create_cone(1.0, 2.0);
         p.B = moved(BRep::create_box(4, 4, 4), Xform::translation(0, 0, 3.0));
-        p.volA = M_PI * 2.0 / 3.0;
-        p.common = M_PI / 12.0;
+        p.volA = Tolerance::PI * 2.0 / 3.0;
+        p.common = Tolerance::PI / 12.0;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -144,10 +145,10 @@ static std::vector<Pair> build_ladder() {
         p.name = "cone x cone";
         p.A = BRep::create_cone(1.0, 2.0);
         Vector ax(1, 0, 0);
-        p.B = moved(moved(BRep::create_cone(1.5, 2.0), Xform::rotation(ax, M_PI, false)),
+        p.B = moved(moved(BRep::create_cone(1.5, 2.0), Xform::rotation(ax, Tolerance::PI, false)),
                     Xform::translation(0, 0, 1.6));
-        p.volA = M_PI * 2.0 / 3.0;
-        p.common = M_PI * (0.5625 * (std::pow(0.96, 3) - std::pow(0.4, 3)) / 3.0 +
+        p.volA = Tolerance::PI * 2.0 / 3.0;
+        p.common = Tolerance::PI * (0.5625 * (std::pow(0.96, 3) - std::pow(0.4, 3)) / 3.0 +
                            2.0 * (std::pow(0.72, 3) - std::pow(0.2, 3)) / 3.0);
         p.cut = p.volA - p.common;
         v.push_back(p);
@@ -157,9 +158,9 @@ static std::vector<Pair> build_ladder() {
         p.name = "torus x torus";
         p.A = BRep::create_torus(3.0, 1.0);
         p.B = moved(BRep::create_torus(3.0, 1.0), Xform::translation(0, 0, 1.5));
-        p.volA = 2.0 * M_PI * M_PI * 3.0;
+        p.volA = 2.0 * Tolerance::PI * Tolerance::PI * 3.0;
         const double lens = 2.0 * std::acos(0.75) - 0.75 * std::sqrt(4.0 - 2.25);
-        p.common = 2.0 * M_PI * 3.0 * lens;
+        p.common = 2.0 * Tolerance::PI * 3.0 * lens;
         p.cut = p.volA - p.common;
         v.push_back(p);
     }
@@ -332,7 +333,7 @@ static int mode_signs(int n) {
             std::printf("--- motion %d ---\n", k);
             report_signs("coneA", A, ca);
 
-            Xform rb = Xform::rotation(ax, M_PI, false);
+            Xform rb = Xform::rotation(ax, Tolerance::PI, false);
             Xform bw = M * (Xform::translation(0, 0, 1.6) * rb);
             ConeSpec cb;
             cb.r = 1.5; cb.h = 2.0;
