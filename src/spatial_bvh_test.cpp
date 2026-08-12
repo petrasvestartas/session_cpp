@@ -362,8 +362,8 @@ MINI_TEST("SpatialBVH", "Fixed 100 Boxes") {
 
     std::sort(pairs.begin(), pairs.end());
 
-    MINI_CHECK(pairs.size() > 0);
-    MINI_CHECK(pairs.size() <= 26);
+    MINI_CHECK(pairs.size() == 13);
+    MINI_CHECK(std::find(pairs.begin(), pairs.end(), std::make_pair(4, 74)) != pairs.end());
 
     for (const auto& [i, j] : pairs) {
         MINI_CHECK(i >= 0);
@@ -392,7 +392,10 @@ MINI_TEST("SpatialBVH", "Query Aabb") {
     };
     SpatialBVH bvh = SpatialBVH::from_boxes(bboxes, 100.0);
     // Query near origin — should hit box 0 only
-    AABB query(0.0, 0.0, 0.0, 0.5, 0.5, 0.5);
+    OBB query(
+        Point(0.0, 0.0, 0.0),
+        Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0), Vector(0.5, 0.5, 0.5));
     std::vector<int> hits = bvh.query_aabb(query);
 
     MINI_CHECK(!hits.empty());
@@ -400,9 +403,144 @@ MINI_TEST("SpatialBVH", "Query Aabb") {
     MINI_CHECK(std::find(hits.begin(), hits.end(), 1) == hits.end());
     MINI_CHECK(std::find(hits.begin(), hits.end(), 2) == hits.end());
     // Query covering all three boxes
-    AABB query_all(2.5, 2.5, 0.0, 5.0, 5.0, 2.0);
+    OBB query_all(
+        Point(2.5, 2.5, 0.0),
+        Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0), Vector(5.0, 5.0, 2.0));
     std::vector<int> hits_all = bvh.query_aabb(query_all);
     MINI_CHECK(hits_all.size() == 3);
+}
+
+MINI_TEST("SpatialBVH", "Build From Boxes") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> boxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.5, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(10.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    SpatialBVH bvh;
+    bvh.build_from_boxes(boxes.data(), boxes.size(), 100.0);
+    auto [pairs, indices, checks] = bvh.check_all_collisions(boxes);
+
+    MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 100.0));
+    MINI_CHECK(pairs.size() == 1);
+    MINI_CHECK(std::find(pairs.begin(), pairs.end(), std::make_pair(0, 1)) != pairs.end());
+}
+
+MINI_TEST("SpatialBVH", "Build From Aabbs") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "aabb.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<AABB> aabbs = {
+        AABB(0.0, 0.0, 0.0, 2.0, 2.0, 2.0),
+        AABB(3.0, 0.0, 0.0, 2.0, 2.0, 2.0),
+        AABB(50.0, 0.0, 0.0, 2.0, 2.0, 2.0),
+    };
+    SpatialBVH bvh;
+    bvh.build_from_aabbs(aabbs.data(), aabbs.size(), 100.0);
+    OBB query(
+        Point(0.0, 0.0, 0.0),
+        Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+        Vector(0.0, 0.0, 1.0), Vector(2.0, 2.0, 2.0));
+    std::vector<int> hits = bvh.query_aabb(query);
+
+    MINI_CHECK(hits.size() == 2);
+    MINI_CHECK(std::find(hits.begin(), hits.end(), 0) != hits.end());
+    MINI_CHECK(std::find(hits.begin(), hits.end(), 1) != hits.end());
+}
+
+MINI_TEST("SpatialBVH", "Build With Guids") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> boxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.5, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(10.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    std::vector<std::pair<OBB, std::string>> boxes_with_guids = {
+        {boxes[0], "a"},
+        {boxes[1], "b"},
+        {boxes[2], "c"},
+    };
+    SpatialBVH bvh;
+    bvh.build_with_guids(boxes_with_guids);
+
+    MINI_CHECK(bvh.object_guids.size() == 3);
+    MINI_CHECK(bvh.object_guids[0] == "a");
+    MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 24.2));
+}
+
+MINI_TEST("SpatialBVH", "Check All Collisions Guids") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> boxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.5, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(10.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    std::vector<std::pair<OBB, std::string>> boxes_with_guids = {
+        {boxes[0], "a"},
+        {boxes[1], "b"},
+        {boxes[2], "c"},
+    };
+    SpatialBVH bvh;
+    bvh.build_with_guids(boxes_with_guids);
+    auto guid_pairs = bvh.check_all_collisions_guids(boxes);
+
+    MINI_CHECK(guid_pairs.size() == 1);
+    MINI_CHECK(guid_pairs[0] == std::make_pair(std::string("a"), std::string("b")));
+}
+
+MINI_TEST("SpatialBVH", "Find Collisions") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> boxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.5, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(10.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
+    auto [c0, checks0] = bvh.find_collisions(0, boxes[0], boxes);
+    auto [c2, checks2] = bvh.find_collisions(2, boxes[2], boxes);
+
+    MINI_CHECK(c0 == std::vector<int>{1});
+    MINI_CHECK(c2.empty());
+    MINI_CHECK(checks0 > 0);
 }
 
 } // namespace session_cpp

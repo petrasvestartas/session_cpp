@@ -39,7 +39,6 @@ inline constexpr PointCloud::Impl_::Impl_(
         name_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        xform_{nullptr},
         point_size_{0} {}
 
 template <typename>
@@ -71,20 +70,18 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_._has_bits_),
-        10, // hasbit index offset
+        9, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.coords_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.colors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.normals_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.point_size_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.xform_),
         3,
         4,
         0,
         1,
         2,
-        6,
         5,
 };
 
@@ -97,27 +94,21 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 };
 const char descriptor_table_protodef_pointcloud_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\020pointcloud.proto\022\rsession_proto\032\013xform"
-    ".proto\"\222\001\n\nPointCloud\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
-    "ame\030\002 \001(\t\022\016\n\006coords\030\003 \003(\001\022\016\n\006colors\030\004 \003("
-    "\r\022\017\n\007normals\030\005 \003(\001\022\022\n\npoint_size\030\006 \001(\001\022#"
-    "\n\005xform\030\007 \001(\0132\024.session_proto.Xformb\006pro"
-    "to3"
-};
-static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_pointcloud_2eproto_deps[1] = {
-        &::descriptor_table_xform_2eproto,
+    "\n\020pointcloud.proto\022\rsession_proto\"s\n\nPoi"
+    "ntCloud\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\016\n\006c"
+    "oords\030\003 \003(\001\022\016\n\006colors\030\004 \003(\r\022\017\n\007normals\030\005"
+    " \003(\001\022\022\n\npoint_size\030\006 \001(\001J\004\010\007\020\010b\006proto3"
 };
 static ::absl::once_flag descriptor_table_pointcloud_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_pointcloud_2eproto = {
     false,
     false,
-    203,
+    158,
     descriptor_table_protodef_pointcloud_2eproto,
     "pointcloud.proto",
     &descriptor_table_pointcloud_2eproto_once,
-    descriptor_table_pointcloud_2eproto_deps,
-    1,
+    nullptr,
+    0,
     1,
     schemas,
     file_default_instances,
@@ -136,12 +127,6 @@ class PointCloud::_Internal {
       8 * PROTOBUF_FIELD_OFFSET(PointCloud, _impl_._has_bits_);
 };
 
-void PointCloud::clear_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ != nullptr) _impl_.xform_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000020U);
-}
 PointCloud::PointCloud(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, PointCloud_class_data_.base()) {
@@ -177,10 +162,6 @@ PointCloud::PointCloud(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.xform_ = (CheckHasBit(cached_has_bits, 0x00000020U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_)
-                : nullptr;
   _impl_.point_size_ = from._impl_.point_size_;
 
   // @@protoc_insertion_point(copy_constructor:session_proto.PointCloud)
@@ -198,12 +179,7 @@ PROTOBUF_NDEBUG_INLINE PointCloud::Impl_::Impl_(
 
 inline void PointCloud::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, xform_),
-           0,
-           offsetof(Impl_, point_size_) -
-               offsetof(Impl_, xform_) +
-               sizeof(Impl_::point_size_));
+  _impl_.point_size_ = {};
 }
 PointCloud::~PointCloud() {
   // @@protoc_insertion_point(destructor:session_proto.PointCloud)
@@ -218,7 +194,6 @@ inline void PointCloud::SharedDtor(MessageLite& self) {
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.guid_.Destroy();
   this_._impl_.name_.Destroy();
-  delete this_._impl_.xform_;
   this_._impl_.~Impl_();
 }
 
@@ -285,18 +260,18 @@ PointCloud::GetClassData() const {
   return PointCloud_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 7, 1, 41, 2>
+const ::_pbi::TcParseTable<3, 6, 0, 41, 2>
 PointCloud::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(PointCloud, _impl_._has_bits_),
     0, // no _extensions_
-    7, 56,  // max_field_number, fast_idx_mask
+    6, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967168,  // skipmap
+    4294967232,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    7,  // num_field_entries
-    1,  // num_aux_entries
-    offsetof(decltype(_table_), aux_entries),
+    6,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
     PointCloud_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -327,12 +302,9 @@ PointCloud::_table_ = {
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.normals_)}},
     // double point_size = 6;
     {::_pbi::TcParser::FastF64S1,
-     {49, 6, 0,
+     {49, 5, 0,
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_)}},
-    // .session_proto.Xform xform = 7;
-    {::_pbi::TcParser::FastMtS1,
-     {58, 5, 0,
-      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.xform_)}},
+    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
@@ -347,13 +319,9 @@ PointCloud::_table_ = {
     // repeated double normals = 5;
     {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.normals_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
     // double point_size = 6;
-    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
-    // .session_proto.Xform xform = 7;
-    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.xform_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
   }},
-  {{
-      {::_pbi::TcParser::GetTable<::session_proto::Xform>()},
-  }},
+  // no aux_entries
   {{
     "\30\4\4\0\0\0\0\0"
     "session_proto.PointCloud"
@@ -369,7 +337,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.coords_.Clear();
     }
@@ -384,10 +352,6 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
     }
     if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       _impl_.name_.ClearNonDefaultToEmpty();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      ABSL_DCHECK(_impl_.xform_ != nullptr);
-      _impl_.xform_->Clear();
     }
   }
   _impl_.point_size_ = 0;
@@ -460,19 +424,12 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
   }
 
   // double point_size = 6;
-  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_point_size()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
           6, this_._internal_point_size(), target);
     }
-  }
-
-  // .session_proto.Xform xform = 7;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        7, *this_._impl_.xform_, this_._impl_.xform_->GetCachedSize(), target,
-        stream);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -500,7 +457,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
     // repeated double coords = 3;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       ::size_t data_size = ::size_t{8} *
@@ -542,13 +499,8 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
                                         this_._internal_name());
       }
     }
-    // .session_proto.Xform xform = 7;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.xform_);
-    }
     // double point_size = 6;
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_point_size()) != 0) {
         total_size += 9;
       }
@@ -566,14 +518,13 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
-  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.PointCloud)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_coords()->MergeFrom(from._internal_coords());
     }
@@ -602,14 +553,6 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      ABSL_DCHECK(from._impl_.xform_ != nullptr);
-      if (_this->_impl_.xform_ == nullptr) {
-        _this->_impl_.xform_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_);
-      } else {
-        _this->_impl_.xform_->MergeFrom(*from._impl_.xform_);
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_point_size()) != 0) {
         _this->_impl_.point_size_ = from._impl_.point_size_;
       }
@@ -639,12 +582,7 @@ void PointCloud::InternalSwap(PointCloud* PROTOBUF_RESTRICT PROTOBUF_NONNULL oth
   _impl_.normals_.InternalSwap(&other->_impl_.normals_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
-  ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_)
-      + sizeof(PointCloud::_impl_.point_size_)
-      - PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.xform_)>(
-          reinterpret_cast<char*>(&_impl_.xform_),
-          reinterpret_cast<char*>(&other->_impl_.xform_));
+  swap(_impl_.point_size_, other->_impl_.point_size_);
 }
 
 ::google::protobuf::Metadata PointCloud::GetMetadata() const {

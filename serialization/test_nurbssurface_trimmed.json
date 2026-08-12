@@ -1,5 +1,5 @@
 {
-    "guid": "2e116f6b-fe80-47c6-83e8-972ef4e7f5aa",
+    "guid": "af575d38-aa05-49b0-8aff-8a670980eb05",
     "inner_loops": [],
     "name": "test_nurbssurface_trimmed",
     "outer_loop": {
@@ -33,7 +33,7 @@
         "cv_count": 5,
         "cv_stride": 3,
         "dimension": 3,
-        "guid": "18f0c674-1117-4db5-8dca-7c6f51ae6142",
+        "guid": "a0c723be-07e3-4c45-b43b-83cb38e102cb",
         "is_rational": false,
         "nurbsknots": [
             0.0,
@@ -47,30 +47,7 @@
         "order": 2,
         "pointcolors": [],
         "type": "NurbsCurve",
-        "width": 1.0,
-        "xform": {
-            "guid": "52bdf1e0-b6fc-4a81-9571-eb2f89158adc",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        }
+        "width": 1.0
     },
     "surface": {
         "control_points": [
@@ -91,7 +68,7 @@
         "cv_count_v": 2,
         "dimension": 3,
         "facecolors": [],
-        "guid": "dd95cf46-0195-41d9-9bf3-f58727d323c6",
+        "guid": "64191876-445c-4e45-9114-3c9090e794ef",
         "is_rational": false,
         "nurbsknots_u": [
             0.0,
@@ -107,63 +84,17 @@
         "order_v": 2,
         "pointcolors": [],
         "type": "NurbsSurface",
-        "width": 1.0,
-        "xform": {
-            "guid": "c85b84da-2d70-4ec4-80fd-267b1b8ee81e",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        }
+        "width": 1.0
     },
     "surfacecolor": {
         "a": 1.0,
         "b": 1.0,
         "g": 1.0,
-        "guid": "1e1272a0-ebae-4e4d-9b2e-32864be1bfaf",
+        "guid": "b8487274-5d48-4810-8c33-21350047924f",
         "name": "my_color",
         "r": 1.0,
         "type": "Color"
     },
     "type": "NurbsSurfaceTrimmed",
-    "width": 2.0,
-    "xform": {
-        "guid": "7a005a9c-7c53-4b82-8925-ab909ea32411",
-        "m": [
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0
-        ],
-        "name": "my_xform",
-        "type": "Xform"
-    }
+    "width": 2.0
 }

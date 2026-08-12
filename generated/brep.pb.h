@@ -31,7 +31,6 @@
 #include "google/protobuf/generated_enum_reflection.h"
 #include "google/protobuf/unknown_field_set.h"
 #include "color.pb.h"
-#include "xform.pb.h"
 #include "nurbssurface.pb.h"
 #include "nurbscurve.pb.h"
 #include "point.pb.h"
@@ -1481,7 +1480,6 @@ class BRep final : public ::google::protobuf::Message
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kSurfacecolorFieldNumber = 13,
-    kXformFieldNumber = 14,
     kWidthFieldNumber = 12,
   };
   // repeated .session_proto.NurbsCurve curves_2d = 3;
@@ -1682,21 +1680,6 @@ class BRep final : public ::google::protobuf::Message
   ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_surfacecolor();
 
   public:
-  // .session_proto.Xform xform = 14;
-  bool has_xform() const;
-  void clear_xform() ;
-  const ::session_proto::Xform& xform() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_xform();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_xform();
-  void set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_xform();
-
-  private:
-  const ::session_proto::Xform& _internal_xform() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_xform();
-
-  public:
   // double width = 12;
   void clear_width() ;
   double width() const;
@@ -1711,8 +1694,8 @@ class BRep final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 14,
-                                   11, 43,
+  static const ::google::protobuf::internal::TcParseTable<4, 13,
+                                   10, 43,
                                    2>
       _table_;
 
@@ -1745,7 +1728,6 @@ class BRep final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE surfacecolor_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE xform_;
     double width_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -3024,7 +3006,7 @@ inline void BRep::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00002000U);
+                  0x00001000U);
 }
 inline double BRep::width() const {
   // @@protoc_insertion_point(field_get:session_proto.BRep.width)
@@ -3032,7 +3014,7 @@ inline double BRep::width() const {
 }
 inline void BRep::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_set:session_proto.BRep.width)
 }
 inline double BRep::_internal_width() const {
@@ -3135,99 +3117,6 @@ inline void BRep::set_allocated_surfacecolor(::session_proto::Color* PROTOBUF_NU
 
   _impl_.surfacecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.BRep.surfacecolor)
-}
-
-// .session_proto.Xform xform = 14;
-inline bool BRep::has_xform() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00001000U);
-  PROTOBUF_ASSUME(!value || _impl_.xform_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& BRep::_internal_xform() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.xform_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& BRep::xform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.BRep.xform)
-  return _internal_xform();
-}
-inline void BRep::unsafe_arena_set_allocated_xform(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00001000U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.BRep.xform)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE BRep::release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
-  ::session_proto::Xform* released = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE BRep::unsafe_arena_release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.BRep.xform)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
-  ::session_proto::Xform* temp = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL BRep::_internal_mutable_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.xform_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL BRep::mutable_xform()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
-  ::session_proto::Xform* _msg = _internal_mutable_xform();
-  // @@protoc_insertion_point(field_mutable:session_proto.BRep.xform)
-  return _msg;
-}
-inline void BRep::set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00001000U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
-  }
-
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.BRep.xform)
 }
 
 #ifdef __GNUC__

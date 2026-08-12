@@ -29,7 +29,6 @@
 #include "google/protobuf/repeated_field.h"  // IWYU pragma: export
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
 #include "google/protobuf/unknown_field_set.h"
-#include "xform.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -214,7 +213,6 @@ class Vector final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kNameFieldNumber = 4,
-    kXformFieldNumber = 5,
     kXFieldNumber = 1,
     kYFieldNumber = 2,
     kZFieldNumber = 3,
@@ -232,21 +230,6 @@ class Vector final : public ::google::protobuf::Message
   const ::std::string& _internal_name() const;
   PROTOBUF_ALWAYS_INLINE void _internal_set_name(const ::std::string& value);
   ::std::string* PROTOBUF_NONNULL _internal_mutable_name();
-
-  public:
-  // .session_proto.Xform xform = 5;
-  bool has_xform() const;
-  void clear_xform() ;
-  const ::session_proto::Xform& xform() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_xform();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_xform();
-  void set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_xform();
-
-  private:
-  const ::session_proto::Xform& _internal_xform() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_xform();
 
   public:
   // double x = 1;
@@ -283,8 +266,8 @@ class Vector final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 5,
-                                   1, 33,
+  static const ::google::protobuf::internal::TcParseTable<2, 4,
+                                   0, 33,
                                    2>
       _table_;
 
@@ -306,7 +289,6 @@ class Vector final : public ::google::protobuf::Message
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::internal::ArenaStringPtr name_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE xform_;
     double x_;
     double y_;
     double z_;
@@ -339,7 +321,7 @@ inline void Vector::clear_x() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.x_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000004U);
+                  0x00000002U);
 }
 inline double Vector::x() const {
   // @@protoc_insertion_point(field_get:session_proto.Vector.x)
@@ -347,7 +329,7 @@ inline double Vector::x() const {
 }
 inline void Vector::set_x(double value) {
   _internal_set_x(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
   // @@protoc_insertion_point(field_set:session_proto.Vector.x)
 }
 inline double Vector::_internal_x() const {
@@ -364,7 +346,7 @@ inline void Vector::clear_y() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.y_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000004U);
 }
 inline double Vector::y() const {
   // @@protoc_insertion_point(field_get:session_proto.Vector.y)
@@ -372,7 +354,7 @@ inline double Vector::y() const {
 }
 inline void Vector::set_y(double value) {
   _internal_set_y(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   // @@protoc_insertion_point(field_set:session_proto.Vector.y)
 }
 inline double Vector::_internal_y() const {
@@ -389,7 +371,7 @@ inline void Vector::clear_z() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.z_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00000008U);
 }
 inline double Vector::z() const {
   // @@protoc_insertion_point(field_get:session_proto.Vector.z)
@@ -397,7 +379,7 @@ inline double Vector::z() const {
 }
 inline void Vector::set_z(double value) {
   _internal_set_z(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_set:session_proto.Vector.z)
 }
 inline double Vector::_internal_z() const {
@@ -472,99 +454,6 @@ inline void Vector::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
     _impl_.name_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:session_proto.Vector.name)
-}
-
-// .session_proto.Xform xform = 5;
-inline bool Vector::has_xform() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000002U);
-  PROTOBUF_ASSUME(!value || _impl_.xform_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& Vector::_internal_xform() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.xform_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& Vector::xform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.Vector.xform)
-  return _internal_xform();
-}
-inline void Vector::unsafe_arena_set_allocated_xform(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Vector.xform)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE Vector::release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
-  ::session_proto::Xform* released = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE Vector::unsafe_arena_release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.Vector.xform)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
-  ::session_proto::Xform* temp = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL Vector::_internal_mutable_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.xform_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL Vector::mutable_xform()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
-  ::session_proto::Xform* _msg = _internal_mutable_xform();
-  // @@protoc_insertion_point(field_mutable:session_proto.Vector.xform)
-  return _msg;
-}
-inline void Vector::set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
-  }
-
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.Vector.xform)
 }
 
 #ifdef __GNUC__

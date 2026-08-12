@@ -30,7 +30,6 @@
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
 #include "google/protobuf/unknown_field_set.h"
 #include "color.pb.h"
-#include "xform.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -220,7 +219,6 @@ class NurbsCurve final : public ::google::protobuf::Message
     kLinecolorsFieldNumber = 13,
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
-    kXformFieldNumber = 12,
     kDimensionFieldNumber = 3,
     kIsRationalFieldNumber = 4,
     kOrderFieldNumber = 5,
@@ -328,21 +326,6 @@ class NurbsCurve final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_name();
 
   public:
-  // .session_proto.Xform xform = 12;
-  bool has_xform() const;
-  void clear_xform() ;
-  const ::session_proto::Xform& xform() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_xform();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_xform();
-  void set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_xform();
-
-  private:
-  const ::session_proto::Xform& _internal_xform() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_xform();
-
-  public:
   // int32 dimension = 3;
   void clear_dimension() ;
   ::int32_t dimension() const;
@@ -407,8 +390,8 @@ class NurbsCurve final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 13,
-                                   3, 49,
+  static const ::google::protobuf::internal::TcParseTable<4, 12,
+                                   2, 49,
                                    2>
       _table_;
 
@@ -435,7 +418,6 @@ class NurbsCurve final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedPtrField< ::session_proto::Color > linecolors_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE xform_;
     ::int32_t dimension_;
     bool is_rational_;
     ::int32_t order_;
@@ -601,7 +583,7 @@ inline void NurbsCurve::clear_dimension() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.dimension_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000040U);
 }
 inline ::int32_t NurbsCurve::dimension() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.dimension)
@@ -609,7 +591,7 @@ inline ::int32_t NurbsCurve::dimension() const {
 }
 inline void NurbsCurve::set_dimension(::int32_t value) {
   _internal_set_dimension(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.dimension)
 }
 inline ::int32_t NurbsCurve::_internal_dimension() const {
@@ -626,7 +608,7 @@ inline void NurbsCurve::clear_is_rational() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_rational_ = false;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000100U);
+                  0x00000080U);
 }
 inline bool NurbsCurve::is_rational() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.is_rational)
@@ -634,7 +616,7 @@ inline bool NurbsCurve::is_rational() const {
 }
 inline void NurbsCurve::set_is_rational(bool value) {
   _internal_set_is_rational(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.is_rational)
 }
 inline bool NurbsCurve::_internal_is_rational() const {
@@ -651,7 +633,7 @@ inline void NurbsCurve::clear_order() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.order_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000200U);
+                  0x00000100U);
 }
 inline ::int32_t NurbsCurve::order() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.order)
@@ -659,7 +641,7 @@ inline ::int32_t NurbsCurve::order() const {
 }
 inline void NurbsCurve::set_order(::int32_t value) {
   _internal_set_order(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.order)
 }
 inline ::int32_t NurbsCurve::_internal_order() const {
@@ -676,7 +658,7 @@ inline void NurbsCurve::clear_cv_count() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_count_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000400U);
+                  0x00000200U);
 }
 inline ::int32_t NurbsCurve::cv_count() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.cv_count)
@@ -684,7 +666,7 @@ inline ::int32_t NurbsCurve::cv_count() const {
 }
 inline void NurbsCurve::set_cv_count(::int32_t value) {
   _internal_set_cv_count(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.cv_count)
 }
 inline ::int32_t NurbsCurve::_internal_cv_count() const {
@@ -701,7 +683,7 @@ inline void NurbsCurve::clear_cv_stride() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_stride_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00001000U);
+                  0x00000800U);
 }
 inline ::int32_t NurbsCurve::cv_stride() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.cv_stride)
@@ -709,7 +691,7 @@ inline ::int32_t NurbsCurve::cv_stride() const {
 }
 inline void NurbsCurve::set_cv_stride(::int32_t value) {
   _internal_set_cv_stride(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.cv_stride)
 }
 inline ::int32_t NurbsCurve::_internal_cv_stride() const {
@@ -826,7 +808,7 @@ inline void NurbsCurve::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000800U);
+                  0x00000400U);
 }
 inline double NurbsCurve::width() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.width)
@@ -834,7 +816,7 @@ inline double NurbsCurve::width() const {
 }
 inline void NurbsCurve::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.width)
 }
 inline double NurbsCurve::_internal_width() const {
@@ -894,99 +876,6 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::Color>* PROTOBUF_NO
 NurbsCurve::_internal_mutable_pointcolors() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.pointcolors_;
-}
-
-// .session_proto.Xform xform = 12;
-inline bool NurbsCurve::has_xform() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000040U);
-  PROTOBUF_ASSUME(!value || _impl_.xform_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& NurbsCurve::_internal_xform() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.xform_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& NurbsCurve::xform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.xform)
-  return _internal_xform();
-}
-inline void NurbsCurve::unsafe_arena_set_allocated_xform(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.NurbsCurve.xform)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE NurbsCurve::release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  ::session_proto::Xform* released = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE NurbsCurve::unsafe_arena_release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.NurbsCurve.xform)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  ::session_proto::Xform* temp = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL NurbsCurve::_internal_mutable_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.xform_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL NurbsCurve::mutable_xform()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
-  ::session_proto::Xform* _msg = _internal_mutable_xform();
-  // @@protoc_insertion_point(field_mutable:session_proto.NurbsCurve.xform)
-  return _msg;
-}
-inline void NurbsCurve::set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  }
-
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.NurbsCurve.xform)
 }
 
 // repeated .session_proto.Color linecolors = 13;

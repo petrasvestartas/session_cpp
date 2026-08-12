@@ -27,7 +27,6 @@ public:
   void refresh_guid() { _guid.clear(); }
   double width = 1.0;                ///< Point diameter in pixels
   Color pointcolor = Color::black();  ///< Color of the point (default: black)
-  Xform xform = Xform::identity();   ///< Transformation matrix
 
 private:
   mutable std::string _guid;         ///< Lazily generated unique identifier
@@ -74,20 +73,15 @@ public:
   ///////////////////////////////////////////////////////////////////////////////////////////
 
   /**
-   * @brief Apply the stored xform transformation to the point coordinates.
-   * 
-   * Transforms the point in-place and resets xform to identity.
+   * @brief Apply a transformation to the point coordinates, in place.
    */
-  void transform();
+  void transform(const Xform& xform);
 
   /**
-   * @brief Return a transformed copy of the point.
-   * 
-   * Returns a new point with the transformation applied.
-   * The original point and its xform remain unchanged.
+   * @brief Return a transformed copy of the point, leaving the original unchanged.
    * @return A new transformed point.
    */
-  Point transformed() const;
+  Point transformed(const Xform& xform) const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // JSON

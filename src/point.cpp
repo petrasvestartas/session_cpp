@@ -3,7 +3,6 @@
 
 #include "point.pb.h"
 #include "color.pb.h"
-#include "xform.pb.h"
 
 namespace session_cpp {
 
@@ -13,7 +12,6 @@ Point::Point(const Point &other)
       name(other.name),
       width(other.width),
       pointcolor(other.pointcolor),
-      xform(other.xform),
       _x(other._x),
       _y(other._y),
       _z(other._z) {}
@@ -25,7 +23,6 @@ Point &Point::operator=(const Point &other) {
     name = other.name;
     width = other.width;
     pointcolor = other.pointcolor;
-    xform = other.xform;
     _x = other._x;
     _y = other._y;
     _z = other._z;
@@ -37,19 +34,18 @@ Point &Point::operator=(const Point &other) {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void Point::transform() {
+void Point::transform(const Xform& xform) {
   double x = _x, y = _y, z = _z;
   double w = xform.m[3]*x + xform.m[7]*y + xform.m[11]*z + xform.m[15];
   double w_inv = (std::abs(w) > 1e-10) ? 1.0 / w : 1.0;
   _x = (xform.m[0]*x + xform.m[4]*y + xform.m[8]*z + xform.m[12]) * w_inv;
   _y = (xform.m[1]*x + xform.m[5]*y + xform.m[9]*z + xform.m[13]) * w_inv;
   _z = (xform.m[2]*x + xform.m[6]*y + xform.m[10]*z + xform.m[14]) * w_inv;
-  xform = Xform::identity();
 }
 
-Point Point::transformed() const {
+Point Point::transformed(const Xform& xform) const {
   Point result = *this;
-  result.transform();
+  result.transform(xform);
   return result;
 }
 
@@ -67,7 +63,6 @@ nlohmann::ordered_json Point::jsondump() const {
   data["type"] = "Point";
   data["width"] = width;
   data["x"] = clean_float(_x);
-  data["xform"] = xform.jsondump();
   data["y"] = clean_float(_y);
   data["z"] = clean_float(_z);
   return data;
@@ -80,9 +75,6 @@ Point Point::jsonload(const nlohmann::json &data) {
   point.name = data["name"];
   point.pointcolor = Color::jsonload(data["pointcolor"]);
   point.width = data["width"];
-  if (data.contains("xform")) {
-    point.xform = Xform::jsonload(data["xform"]);
-  }
   return point;
 }
 
@@ -128,14 +120,6 @@ std::string Point::pb_dumps() const {
   color_proto->set_b(pointcolor.b);
   color_proto->set_a(pointcolor.a);
   
-  // Set xform
-  auto* xform_proto = proto.mutable_xform();
-  xform_proto->set_guid(xform.guid());
-  xform_proto->set_name(xform.name);
-  for (int i = 0; i < 16; ++i) {
-    xform_proto->add_matrix(xform.m[i]);
-  }
-  
   return proto.SerializeAsString();
 }
 
@@ -155,14 +139,6 @@ Point Point::pb_loads(const std::string& data) {
   point.pointcolor.g = color_proto.g();
   point.pointcolor.b = color_proto.b();
   point.pointcolor.a = color_proto.a();
-  
-  // Load xform
-  const auto& xform_proto = proto.xform();
-  point.xform.guid() = xform_proto.guid();
-  point.xform.name = xform_proto.name();
-  for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
-    point.xform.m[i] = xform_proto.matrix(i);
-  }
   
   return point;
 }

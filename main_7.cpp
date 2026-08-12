@@ -370,8 +370,8 @@ BRep build(const Place& pl) {
            : pl.kind == "cylinder" ? BRep::create_cylinder(pl.p[0], pl.p[1])
            : pl.kind == "cone"     ? BRep::create_cone(pl.p[0], pl.p[1])
                                     : BRep::create_torus(pl.p[0], pl.p[1]);
-    b.xform = xf_of(pl.xf);
-    return b.transformed();
+    b.transform(xf_of(pl.xf));
+    return b;
 }
 
 // RIGID-MOTION EQUIVARIANCE SWEEP (SESSION_POSE_SWEEP). The decisive experiment for P1:
@@ -391,8 +391,8 @@ void pose_sweep(const Place& pa, const Place& pb, const char* label) {
         Xform R = Xform::rotation_around_line(Line(0, 0, 0, 0.4082, 0.8165, 0.4082), ang, true);
         for (int m = 0; m < 3; ++m) {
             BRep A2 = build(pa), B2 = build(pb);
-            A2.xform = R; A2 = A2.transformed();
-            B2.xform = R; B2 = B2.transformed();
+            A2 = A2.transformed(R);
+            B2 = B2.transformed(R);
             double v = 0; int nf = 0;
             try {
                 BRep r = m == 0 ? A2.boolean_difference(B2)
@@ -429,7 +429,7 @@ void relpose_sweep(const Place& pa, const Place& pb, const char* label) {
     for (double ang : {0.0, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 75.0, 90.0}) {
         Xform R = Xform::rotation_around_line(Line(0, 0, 0, 0.4082, 0.8165, 0.4082), ang, true);
         BRep A2 = build(pa);
-        BRep B2 = build(pb); B2.xform = R; B2 = B2.transformed();
+        BRep B2 = build(pb); B2 = B2.transformed(R);
         double vc = 0, vo = 0; int fc = 0, fo = 0; bool ok = true;
         try {
             BRep rc = A2.boolean_difference(B2);  vc = rc.volume(); fc = rc.face_count();
@@ -536,7 +536,7 @@ int main(int argc, char** argv) {
             // the configuration the "whole parameter rectangle instead of the disk" trap needs.
             BRep box2 = BRep::create_box(2,2,2);
             BRep cyl2 = BRep::create_cylinder(0.7, 3.0);
-            cyl2.xform = Xform::translation(0,0,-1.5); cyl2 = cyl2.transformed();
+            cyl2 = cyl2.transformed(Xform::translation(0,0,-1.5));
             cs.push_back({"box2 ^ cyl0.7", box2.boolean_intersection(cyl2), PI*0.49*2.0, -1.0});
             BRep box4 = BRep::create_box(4,4,4);
             BRep sph15 = BRep::create_sphere(1.5);
@@ -701,21 +701,19 @@ int main(int argc, char** argv) {
             // result depends on it, the seam is proven to be the cause.
             if (const char* spn = std::getenv("SESSION_SPHCYL_SPIN")) {
                 if (spn[0]) {
-                    S.xform = Xform::rotation_around_line(Line(0,0,0, 0,0,1), std::atof(spn), true);
-                    S = S.transformed();
+                    S = S.transformed(Xform::rotation_around_line(Line(0,0,0, 0,0,1), std::atof(spn), true));
                 }
             }
             BRep C = BRep::create_cylinder(cr, ch);
-            C.xform = Xform::translation(0, 0, -ch*0.5); C = C.transformed();
+            C = C.transformed(Xform::translation(0, 0, -ch*0.5));
             BRep C2 = C;
             // SESSION_SPHCYL_AXIS=110 rotates about (1,1,0) instead of Y. Same pair, same
             // angle, different axis: Y works at every tilt, (1,1,0) fails at 20 deg.
             const char* axe = std::getenv("SESSION_SPHCYL_AXIS");
             bool a110 = (axe && axe[0] && std::string(axe) == "110");
-            C2.xform = a110
+            C2 = C2.transformed(a110
                 ? Xform::rotation_around_line(Line(0,0,0, 0.70710678,0.70710678,0), t, true)
-                : Xform::rotation_around_line(Line(0,0,0, 0,1,0), t, true);
-            C2 = C2.transformed();
+                : Xform::rotation_around_line(Line(0,0,0, 0,1,0), t, true));
             // SESSION_SPHCYL_SSI: raw section probe. Prints, per surface pair, the pcurves the
             // intersector hands the splitter (count + UV bbox + 3D length). Tells apart "the
             // section was never produced" from "the arrangement lost it".
@@ -917,8 +915,8 @@ int main(int argc, char** argv) {
         for (double t : {0.0, 0.1, 0.2, 0.3, 0.5}) {
             BRep S = BRep::create_sphere(2.5);
             BRep C = BRep::create_cylinder(1.0, 8.0);
-            C.xform = Xform::translation(0,0,-4.0); C = C.transformed();
-            BRep C2 = C; C2.xform = rotY(t); C2 = C2.transformed();
+            C = C.transformed(Xform::translation(0,0,-4.0));
+            BRep C2 = C; C2 = C2.transformed(rotY(t));
             char nm[64]; std::snprintf(nm, sizeof nm, "A_sphcyl_tilt%.1f_cut", t);
             char rd[32]; std::snprintf(rd, sizeof rd, "%.1f deg about Y", t);
             emit(nm, "sph x cyl", rd, S, C2, 0);
@@ -927,8 +925,8 @@ int main(int argc, char** argv) {
         for (double t : {20.00, 20.01, 20.02, 20.03}) {
             BRep S = BRep::create_sphere(2.5);
             BRep C = BRep::create_cylinder(1.0, 8.0);
-            C.xform = Xform::translation(0,0,-4.0); C = C.transformed();
-            BRep C2 = C; C2.xform = rot110(t); C2 = C2.transformed();
+            C = C.transformed(Xform::translation(0,0,-4.0));
+            BRep C2 = C; C2 = C2.transformed(rot110(t));
             char nm[64]; std::snprintf(nm, sizeof nm, "B_sphcyl_110axis_%.2f_cut", t);
             char rd[32]; std::snprintf(rd, sizeof rd, "%.2f deg about (1,1,0)", t);
             emit(nm, "sph x cyl", rd, S, C2, 0);
@@ -943,8 +941,7 @@ int main(int argc, char** argv) {
                 double ang=rnd()*360.0, d=1.5+rnd()*1.5;
                 BRep A2 = BRep::create_box(4,4,4);
                 BRep B2 = BRep::create_box(4,4,4);
-                B2.xform = Xform::translation(d,d*0.3,d*0.6) * Xform::rotation_around_line(Line(0,0,0,ax,ay,az), ang, true);
-                B2 = B2.transformed();
+                B2 = B2.transformed(Xform::translation(d,d*0.3,d*0.6) * Xform::rotation_around_line(Line(0,0,0,ax,ay,az), ang, true));
                 char nm[64]; std::snprintf(nm, sizeof nm, "C_boxbox_pose%d_cut", k);
                 char rd[48]; std::snprintf(rd, sizeof rd, "%.0f deg arbitrary axis", ang);
                 emit(nm, "box x box", rd, A2, B2, 0);
@@ -965,9 +962,8 @@ int main(int argc, char** argv) {
             for (int k = 0; k < 2; ++k) {
                 double ang = (k == 0) ? 25.0 : 55.0;
                 BRep A2 = f.ma(), B2 = f.mb();
-                B2.xform = Xform::translation(f.d, f.d*0.4, f.d*0.2)
-                         * Xform::rotation_around_line(Line(0,0,0, 0.4082,0.8165,0.4082), ang, true);
-                B2 = B2.transformed();
+                B2 = B2.transformed(Xform::translation(f.d, f.d*0.4, f.d*0.2)
+                         * Xform::rotation_around_line(Line(0,0,0, 0.4082,0.8165,0.4082), ang, true));
                 char nm[64]; std::snprintf(nm, sizeof nm, "D_%s_rot%.0f_cut", f.nm, ang);
                 char rd[48]; std::snprintf(rd, sizeof rd, "%.0f deg tilted axis", ang);
                 emit(nm, f.nm, rd, A2, B2, 0);
@@ -1020,7 +1016,7 @@ int main(int argc, char** argv) {
             long ms_tot = 0; bool threw = false;
             for (int op = 0; op < 3; ++op) {
                 BRep A2 = kinds[ka].make();
-                BRep B2 = kinds[kb].make(); B2.xform = M; B2 = B2.transformed();
+                BRep B2 = kinds[kb].make(); B2 = B2.transformed(M);
                 auto t0 = std::chrono::steady_clock::now();
                 try {
                     BRep r = op == 0 ? A2.boolean_difference(B2)
@@ -1089,7 +1085,7 @@ int main(int argc, char** argv) {
         for (double sc : scales) {
             BRep A2 = BRep::create_box(4, 4, 4);
             BRep B2 = BRep::create_box(4, 4, 4);
-            B2.xform = Xform::translation(1, 0, 0); B2 = B2.transformed();
+            B2 = B2.transformed(Xform::translation(1, 0, 0));
             if (sc != 1.0) {
                 // rescale surface domains AND the trim pcurves by the same affine map
                 auto reparam = [&](BRep& X) {
@@ -1118,7 +1114,7 @@ int main(int argc, char** argv) {
         for (double pad : {0.01, 0.04, 0.25}) {
             BRep A2 = BRep::create_box(4, 4, 4);
             BRep B2 = BRep::create_box(4, 4, 4);
-            B2.xform = Xform::translation(1, 0, 0); B2 = B2.transformed();
+            B2 = B2.transformed(Xform::translation(1, 0, 0));
             auto widen = [&](BRep& X) {
                 for (auto& s : X.m_surfaces) {
                     auto du = s.domain(0); auto dv = s.domain(1);
@@ -1168,8 +1164,8 @@ int main(int argc, char** argv) {
                             r.m_topology_edges.size(), r.m_topology_vertices.size(),
                             c.b.is_solid() ? 1 : 0, r.is_solid() ? 1 : 0);
                 // C's ticket: same solid vs itself translated +1, in memory vs from STEP
-                BRep t_mem = c.b;  t_mem.xform = Xform::translation(1, 0, 0); t_mem = t_mem.transformed();
-                BRep t_stp = r;    t_stp.xform = Xform::translation(1, 0, 0); t_stp = t_stp.transformed();
+                BRep t_mem = c.b;  t_mem = t_mem.transformed(Xform::translation(1, 0, 0));
+                BRep t_stp = r;    t_stp = t_stp.transformed(Xform::translation(1, 0, 0));
                 auto rep = [&](const char* tag, const BRep& A2, const BRep& B2) {
                     try {
                         BRep cu = A2.boolean_difference(B2);
@@ -1789,7 +1785,7 @@ int main(int argc, char** argv) {
                 Point C((ca[0]+cb[0])*0.5, (ca[1]+cb[1])*0.5, (ca[2]+cb[2])*0.5);
                 Xform M = Xform::translation(C[0],C[1],C[2]) * Xform::rotation_z(90.0, true)
                         * Xform::translation(-C[0],-C[1],-C[2]);
-                BRep Bp = B; Bp.xform = M; Bp = Bp.transformed();
+                BRep Bp = B; Bp = Bp.transformed(M);
                 Mesh mb = Bp.mesh();
                 Mesh mbq = Bp.mesh();   // placeholder; refine below if a quality mesh helps
                 // winding omega (raw) at p against a mesh
@@ -1972,7 +1968,7 @@ int main(int argc, char** argv) {
                     if (rc.ax2 >= 0) R = R * rot_ofv(rc.ax2, rc.deg2);
                     Xform M = Xform::translation(C0[0], C0[1], C0[2]) * R
                             * Xform::translation(-C0[0], -C0[1], -C0[2]);
-                    BRep Bv = B; Bv.xform = M; Bv = Bv.transformed();
+                    BRep Bv = B; Bv = Bv.transformed(M);
                     auto [vb, nb] = probe(Bv);
                     std::printf("chairsVOL B_%-7s V %+8.4f flips %d\n", rc.label, vb, nb);
                 }
@@ -2109,8 +2105,7 @@ int main(int argc, char** argv) {
                     Xform M = Xform::translation(C[0], C[1], C[2]) * R
                             * Xform::translation(-C[0], -C[1], -C[2]);
                     BRep Brot = B;
-                    Brot.xform = M;
-                    Brot = Brot.transformed();
+                    Brot = Brot.transformed(M);
                     if (!fast)
                         file_step::write_file_step_brep(Brot, rotdir + "/B_" + rc.label + ".step");
                     // PARTITION IDENTITY (oracle-free): vol(cut) + vol(common) == vol(A).
@@ -2251,7 +2246,7 @@ int main(int argc, char** argv) {
                           * Xform::translation(-C[0], -C[1], -C[2]);
                     }
                     char lab[16]; std::snprintf(lab, sizeof lab, "r%03d", k);
-                    BRep Brot = B; Brot.xform = M; Brot = Brot.transformed();
+                    BRep Brot = B; Brot = Brot.transformed(M);
                     if (!fast)
                         file_step::write_file_step_brep(Brot, rnddir + "/B_" + lab + ".step");
                     for (int m2 = 0; m2 < 3; ++m2) {

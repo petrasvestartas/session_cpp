@@ -1,31 +1,8 @@
 {
-    "guid": "94f838aa-da13-45c9-81b3-a9c90de4348f",
+    "guid": "8d12efc5-7a4e-4ad4-aa4e-bf0908d52432",
     "name": "test_vector",
     "type": "Vector",
     "x": 42.1,
-    "xform": {
-        "guid": "da8d0b5f-a674-4a23-bc3b-b16cc00ada77",
-        "m": [
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0
-        ],
-        "name": "my_xform",
-        "type": "Xform"
-    },
     "y": 84.2,
     "z": 126.3
 }

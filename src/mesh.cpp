@@ -20,12 +20,10 @@ bool point_in_polygon_2d(double, double, const std::vector<double>&);
 
 #include "mesh.pb.h"
 #include "color.pb.h"
-#include "xform.pb.h"
 
 namespace session_cpp {
 
 Mesh::Mesh() {
-    xform = Xform::identity();
     default_vertex_attributes["x"] = 0.0;
     default_vertex_attributes["y"] = 0.0;
     default_vertex_attributes["z"] = 0.0;
@@ -48,7 +46,6 @@ Mesh::Mesh(const Mesh& other) {
     widths = other.widths;
     objectcolor = other.objectcolor;
     color_mode = other.color_mode;
-    xform = other.xform;
     max_vertex = other.max_vertex;
     max_face = other.max_face;
     triangulation = other.triangulation;
@@ -72,7 +69,6 @@ Mesh& Mesh::operator=(const Mesh& other) {
         linecolors = other.linecolors;
         widths = other.widths;
         color_mode = other.color_mode;
-        xform = other.xform;
         max_vertex = other.max_vertex;
         max_face = other.max_face;
         triangulation = other.triangulation;
@@ -88,7 +84,6 @@ bool Mesh::operator==(const Mesh& other) const {
     if (name != other.name) return false;
     if (vertex != other.vertex) return false;
     if (face != other.face) return false;
-    if (xform != other.xform) return false;
     return true;
 }
 
@@ -2443,7 +2438,7 @@ std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> Mesh::to_vertice
 bool Mesh::transform(const Xform& xf) {
   for (auto& [idx, vdata] : vertex) {
     Point pt(vdata.x, vdata.y, vdata.z);
-    pt.xform = xf; pt.transform();
+    pt.transform(xf);
     vdata.x = pt[0];
     vdata.y = pt[1];
     vdata.z = pt[2];
@@ -2456,16 +2451,6 @@ bool Mesh::transform(const Xform& xf) {
   triangle_face_subidx_cache.clear();
   vertices_cache.clear();
   return true;
-}
-
-void Mesh::transform() {
-  transform(xform);
-}
-
-Mesh Mesh::transformed() const {
-  Mesh result = *this;
-  result.transform();
-  return result;
 }
 
 Mesh Mesh::transformed(const Xform& xf) const {
@@ -2581,7 +2566,6 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["vertex"] = vertex_data;
 
     data["widths"] = widths;
-    data["xform"] = xform.jsondump();
 
     return data;
 }
@@ -2711,9 +2695,6 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
 
     if (data.contains("widths") && data["widths"].is_array()) {
         mesh.widths = data["widths"].get<std::vector<double>>();
-    }
-    if (data.contains("xform")) {
-        mesh.xform = Xform::jsonload(data["xform"]);
     }
 
     if (data.contains("objectcolor")) {
@@ -3406,14 +3387,6 @@ std::string Mesh::pb_dumps() const {
     oc_proto->set_a(objectcolor.a);
     proto.set_color_mode(static_cast<int>(color_mode));
 
-    // Xform
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid());
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        xform_proto->add_matrix(xform.m[i]);
-    }
-
     return proto.SerializeAsString();
 }
 
@@ -3537,14 +3510,6 @@ Mesh Mesh::pb_loads(const std::string& data) {
         mesh.objectcolor.name = oc.name();
     }
     mesh.color_mode = static_cast<ColorMode>(proto.color_mode());
-
-    // Xform
-    const auto& xform_proto = proto.xform();
-    mesh.xform.guid() = xform_proto.guid();
-    mesh.xform.name = xform_proto.name();
-    for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
-        mesh.xform.m[i] = xform_proto.matrix(i);
-    }
 
     // Update max counters
     if (!mesh.vertex.empty()) {

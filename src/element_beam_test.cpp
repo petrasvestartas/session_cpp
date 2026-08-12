@@ -96,8 +96,8 @@ MINI_TEST("ElementBeam", "Session Geometry") {
     // uncomment #include "mesh.h"
     // uncomment #include "xform.h"
     ElementBeam b(0.1, 0.2, 3.0);
-    b.session_transformation = Xform::translation(10.0, 0.0, 0.0);
-    auto sg = b.session_geometry();
+    Xform b_xf = Xform::translation(10.0, 0.0, 0.0);
+    auto sg = b.session_geometry(b_xf);
 
     MINI_CHECK(std::holds_alternative<Mesh>(sg));
     auto& mesh = std::get<Mesh>(sg);
@@ -110,7 +110,6 @@ MINI_TEST("ElementBeam", "Json Roundtrip") {
     // uncomment #include "element_beam.h"
     // uncomment #include "xform.h"
     ElementBeam b(0.15, 0.3, 5.0, "json_beam");
-    b.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_beam_element.json";
     b.file_json_dump(fname);
@@ -126,7 +125,6 @@ MINI_TEST("ElementBeam", "Protobuf Roundtrip") {
     // uncomment #include "element_beam.h"
     // uncomment #include "xform.h"
     ElementBeam b(0.15, 0.3, 5.0, "proto_beam");
-    b.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string path = "serialization/test_beam_element.bin";
     b.pb_dump(path);

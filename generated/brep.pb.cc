@@ -187,7 +187,6 @@ inline constexpr BRep::Impl_::Impl_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         surfacecolor_{nullptr},
-        xform_{nullptr},
         width_{0} {}
 
 template <typename>
@@ -270,7 +269,7 @@ const ::uint32_t
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_._has_bits_),
-        17, // hasbit index offset
+        16, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.curves_2d_),
@@ -284,7 +283,6 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.faces_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.surfacecolor_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.xform_),
         9,
         10,
         0,
@@ -296,9 +294,8 @@ const ::uint32_t
         6,
         7,
         8,
-        13,
-        11,
         12,
+        11,
 };
 
 static const ::_pbi::MigrationSchema
@@ -321,57 +318,55 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 const char descriptor_table_protodef_brep_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\nbrep.proto\022\rsession_proto\032\013color.proto"
-    "\032\013xform.proto\032\022nurbssurface.proto\032\020nurbs"
-    "curve.proto\032\013point.proto\"7\n\nBRepVertex\022\023"
-    "\n\013point_index\030\001 \001(\005\022\024\n\014edge_indices\030\002 \003("
-    "\005\"b\n\010BRepEdge\022\026\n\016curve_3d_index\030\001 \001(\005\022\024\n"
-    "\014start_vertex\030\002 \001(\005\022\022\n\nend_vertex\030\003 \001(\005\022"
-    "\024\n\014trim_indices\030\004 \003(\005\"\207\001\n\010BRepTrim\022\026\n\016cu"
-    "rve_2d_index\030\001 \001(\005\022\022\n\nedge_index\030\002 \001(\005\022\022"
-    "\n\nloop_index\030\003 \001(\005\022\020\n\010reversed\030\004 \001(\010\022)\n\004"
-    "type\030\005 \001(\0162\033.session_proto.BRepTrimType\""
-    "_\n\010BRepLoop\022\024\n\014trim_indices\030\001 \003(\005\022\022\n\nfac"
-    "e_index\030\002 \001(\005\022)\n\004type\030\003 \001(\0162\033.session_pr"
-    "oto.BRepLoopType\"r\n\010BRepFace\022\025\n\rsurface_"
-    "index\030\001 \001(\005\022\024\n\014loop_indices\030\002 \003(\005\022\020\n\010rev"
-    "ersed\030\003 \001(\010\022\'\n\tfacecolor\030\004 \001(\0132\024.session"
-    "_proto.Color\"\224\004\n\004BRep\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
-    "ame\030\002 \001(\t\022,\n\tcurves_2d\030\003 \003(\0132\031.session_p"
-    "roto.NurbsCurve\022,\n\tcurves_3d\030\004 \003(\0132\031.ses"
-    "sion_proto.NurbsCurve\022-\n\010surfaces\030\005 \003(\0132"
-    "\033.session_proto.NurbsSurface\022&\n\010vertices"
-    "\030\006 \003(\0132\024.session_proto.Point\0224\n\021topology"
-    "_vertices\030\007 \003(\0132\031.session_proto.BRepVert"
-    "ex\022/\n\016topology_edges\030\010 \003(\0132\027.session_pro"
-    "to.BRepEdge\022&\n\005trims\030\t \003(\0132\027.session_pro"
-    "to.BRepTrim\022&\n\005loops\030\n \003(\0132\027.session_pro"
-    "to.BRepLoop\022&\n\005faces\030\013 \003(\0132\027.session_pro"
-    "to.BRepFace\022\r\n\005width\030\014 \001(\001\022*\n\014surfacecol"
-    "or\030\r \001(\0132\024.session_proto.Color\022#\n\005xform\030"
-    "\016 \001(\0132\024.session_proto.Xform*S\n\014BRepTrimT"
-    "ype\022\021\n\rTRIM_BOUNDARY\020\000\022\016\n\nTRIM_MATED\020\001\022\r"
-    "\n\tTRIM_SEAM\020\002\022\021\n\rTRIM_SINGULAR\020\003*.\n\014BRep"
-    "LoopType\022\016\n\nLOOP_OUTER\020\000\022\016\n\nLOOP_INNER\020\001"
-    "b\006proto3"
+    "\032\022nurbssurface.proto\032\020nurbscurve.proto\032\013"
+    "point.proto\"7\n\nBRepVertex\022\023\n\013point_index"
+    "\030\001 \001(\005\022\024\n\014edge_indices\030\002 \003(\005\"b\n\010BRepEdge"
+    "\022\026\n\016curve_3d_index\030\001 \001(\005\022\024\n\014start_vertex"
+    "\030\002 \001(\005\022\022\n\nend_vertex\030\003 \001(\005\022\024\n\014trim_indic"
+    "es\030\004 \003(\005\"\207\001\n\010BRepTrim\022\026\n\016curve_2d_index\030"
+    "\001 \001(\005\022\022\n\nedge_index\030\002 \001(\005\022\022\n\nloop_index\030"
+    "\003 \001(\005\022\020\n\010reversed\030\004 \001(\010\022)\n\004type\030\005 \001(\0162\033."
+    "session_proto.BRepTrimType\"_\n\010BRepLoop\022\024"
+    "\n\014trim_indices\030\001 \003(\005\022\022\n\nface_index\030\002 \001(\005"
+    "\022)\n\004type\030\003 \001(\0162\033.session_proto.BRepLoopT"
+    "ype\"r\n\010BRepFace\022\025\n\rsurface_index\030\001 \001(\005\022\024"
+    "\n\014loop_indices\030\002 \003(\005\022\020\n\010reversed\030\003 \001(\010\022\'"
+    "\n\tfacecolor\030\004 \001(\0132\024.session_proto.Color\""
+    "\365\003\n\004BRep\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022,\n\t"
+    "curves_2d\030\003 \003(\0132\031.session_proto.NurbsCur"
+    "ve\022,\n\tcurves_3d\030\004 \003(\0132\031.session_proto.Nu"
+    "rbsCurve\022-\n\010surfaces\030\005 \003(\0132\033.session_pro"
+    "to.NurbsSurface\022&\n\010vertices\030\006 \003(\0132\024.sess"
+    "ion_proto.Point\0224\n\021topology_vertices\030\007 \003"
+    "(\0132\031.session_proto.BRepVertex\022/\n\016topolog"
+    "y_edges\030\010 \003(\0132\027.session_proto.BRepEdge\022&"
+    "\n\005trims\030\t \003(\0132\027.session_proto.BRepTrim\022&"
+    "\n\005loops\030\n \003(\0132\027.session_proto.BRepLoop\022&"
+    "\n\005faces\030\013 \003(\0132\027.session_proto.BRepFace\022\r"
+    "\n\005width\030\014 \001(\001\022*\n\014surfacecolor\030\r \001(\0132\024.se"
+    "ssion_proto.ColorJ\004\010\016\020\017*S\n\014BRepTrimType\022"
+    "\021\n\rTRIM_BOUNDARY\020\000\022\016\n\nTRIM_MATED\020\001\022\r\n\tTR"
+    "IM_SEAM\020\002\022\021\n\rTRIM_SINGULAR\020\003*.\n\014BRepLoop"
+    "Type\022\016\n\nLOOP_OUTER\020\000\022\016\n\nLOOP_INNER\020\001b\006pr"
+    "oto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_brep_2eproto_deps[5] = {
+    descriptor_table_brep_2eproto_deps[4] = {
         &::descriptor_table_color_2eproto,
         &::descriptor_table_nurbscurve_2eproto,
         &::descriptor_table_nurbssurface_2eproto,
         &::descriptor_table_point_2eproto,
-        &::descriptor_table_xform_2eproto,
 };
 static ::absl::once_flag descriptor_table_brep_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_brep_2eproto = {
     false,
     false,
-    1288,
+    1244,
     descriptor_table_protodef_brep_2eproto,
     "brep.proto",
     &descriptor_table_brep_2eproto_once,
     descriptor_table_brep_2eproto_deps,
-    5,
+    4,
     6,
     schemas,
     file_default_instances,
@@ -2270,12 +2265,6 @@ void BRep::clear_surfacecolor() {
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000800U);
 }
-void BRep::clear_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ != nullptr) _impl_.xform_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00001000U);
-}
 BRep::BRep(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, BRep_class_data_.base()) {
@@ -2320,9 +2309,6 @@ BRep::BRep(
   _impl_.surfacecolor_ = (CheckHasBit(cached_has_bits, 0x00000800U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.surfacecolor_)
                 : nullptr;
-  _impl_.xform_ = (CheckHasBit(cached_has_bits, 0x00001000U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_)
-                : nullptr;
   _impl_.width_ = from._impl_.width_;
 
   // @@protoc_insertion_point(copy_constructor:session_proto.BRep)
@@ -2366,7 +2352,6 @@ inline void BRep::SharedDtor(MessageLite& self) {
   this_._impl_.guid_.Destroy();
   this_._impl_.name_.Destroy();
   delete this_._impl_.surfacecolor_;
-  delete this_._impl_.xform_;
   this_._impl_.~Impl_();
 }
 
@@ -2457,17 +2442,17 @@ BRep::GetClassData() const {
   return BRep_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 14, 11, 43, 2>
+const ::_pbi::TcParseTable<4, 13, 10, 43, 2>
 BRep::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(BRep, _impl_._has_bits_),
     0, // no _extensions_
-    14, 120,  // max_field_number, fast_idx_mask
+    13, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294950912,  // skipmap
+    4294959104,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    14,  // num_field_entries
-    11,  // num_aux_entries
+    13,  // num_field_entries
+    10,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     BRep_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -2523,16 +2508,13 @@ BRep::_table_ = {
       PROTOBUF_FIELD_OFFSET(BRep, _impl_.faces_)}},
     // double width = 12;
     {::_pbi::TcParser::FastF64S1,
-     {97, 13, 0,
+     {97, 12, 0,
       PROTOBUF_FIELD_OFFSET(BRep, _impl_.width_)}},
     // .session_proto.Color surfacecolor = 13;
     {::_pbi::TcParser::FastMtS1,
      {106, 11, 9,
       PROTOBUF_FIELD_OFFSET(BRep, _impl_.surfacecolor_)}},
-    // .session_proto.Xform xform = 14;
-    {::_pbi::TcParser::FastMtS1,
-     {114, 12, 10,
-      PROTOBUF_FIELD_OFFSET(BRep, _impl_.xform_)}},
+    {::_pbi::TcParser::MiniParse, {}},
     {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
@@ -2560,11 +2542,9 @@ BRep::_table_ = {
     // repeated .session_proto.BRepFace faces = 11;
     {PROTOBUF_FIELD_OFFSET(BRep, _impl_.faces_), _Internal::kHasBitsOffset + 8, 8, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // double width = 12;
-    {PROTOBUF_FIELD_OFFSET(BRep, _impl_.width_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(BRep, _impl_.width_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     // .session_proto.Color surfacecolor = 13;
     {PROTOBUF_FIELD_OFFSET(BRep, _impl_.surfacecolor_), _Internal::kHasBitsOffset + 11, 9, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
-    // .session_proto.Xform xform = 14;
-    {PROTOBUF_FIELD_OFFSET(BRep, _impl_.xform_), _Internal::kHasBitsOffset + 12, 10, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::NurbsCurve>()},
@@ -2577,7 +2557,6 @@ BRep::_table_ = {
       {::_pbi::TcParser::GetTable<::session_proto::BRepLoop>()},
       {::_pbi::TcParser::GetTable<::session_proto::BRepFace>()},
       {::_pbi::TcParser::GetTable<::session_proto::Color>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Xform>()},
   }},
   {{
     "\22\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
@@ -2620,7 +2599,7 @@ PROTOBUF_NOINLINE void BRep::Clear() {
       _impl_.loops_.Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       _impl_.faces_.Clear();
     }
@@ -2633,10 +2612,6 @@ PROTOBUF_NOINLINE void BRep::Clear() {
     if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       ABSL_DCHECK(_impl_.surfacecolor_ != nullptr);
       _impl_.surfacecolor_->Clear();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
-      ABSL_DCHECK(_impl_.xform_ != nullptr);
-      _impl_.xform_->Clear();
     }
   }
   _impl_.width_ = 0;
@@ -2801,7 +2776,7 @@ PROTOBUF_NOINLINE void BRep::Clear() {
   }
 
   // double width = 12;
-  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_width()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -2813,13 +2788,6 @@ PROTOBUF_NOINLINE void BRep::Clear() {
   if (CheckHasBit(cached_has_bits, 0x00000800U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         13, *this_._impl_.surfacecolor_, this_._impl_.surfacecolor_->GetCachedSize(), target,
-        stream);
-  }
-
-  // .session_proto.Xform xform = 14;
-  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        14, *this_._impl_.xform_, this_._impl_.xform_->GetCachedSize(), target,
         stream);
   }
 
@@ -2906,7 +2874,7 @@ PROTOBUF_NOINLINE void BRep::Clear() {
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
     // repeated .session_proto.BRepFace faces = 11;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       total_size += 1UL * this_._internal_faces_size();
@@ -2933,13 +2901,8 @@ PROTOBUF_NOINLINE void BRep::Clear() {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.surfacecolor_);
     }
-    // .session_proto.Xform xform = 14;
-    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.xform_);
-    }
     // double width = 12;
-    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_width()) != 0) {
         total_size += 9;
       }
@@ -3006,7 +2969,7 @@ void BRep::MergeImpl(::google::protobuf::MessageLite& to_msg,
           from._internal_loops());
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       _this->_internal_mutable_faces()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -3039,14 +3002,6 @@ void BRep::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00001000U)) {
-      ABSL_DCHECK(from._impl_.xform_ != nullptr);
-      if (_this->_impl_.xform_ == nullptr) {
-        _this->_impl_.xform_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_);
-      } else {
-        _this->_impl_.xform_->MergeFrom(*from._impl_.xform_);
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_width()) != 0) {
         _this->_impl_.width_ = from._impl_.width_;
       }

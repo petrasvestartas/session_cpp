@@ -56,8 +56,7 @@ void check(const std::string& name, const BRep& b, const Truth& t, double rtol, 
     g_max_seconds = std::max(g_max_seconds, secs);
 
     BRep tb = b;
-    tb.xform = Xform::translation(37.0, -11.0, 53.0);
-    tb.transform();
+    tb.transform(Xform::translation(37.0, -11.0, 53.0));
     MassProps tm = brep_massprops(tb, opt);
     const double einv = std::max(relerr(tm.volume, m.volume), relerr(tm.area, m.area));
 
@@ -197,8 +196,7 @@ int main(int argc, char** argv) {
                 }
             }
             BRep tb = b;
-            tb.xform = Xform::translation(100, -37, 61);
-            tb.transform();
+            tb.transform(Xform::translation(100, -37, 61));
             MassProps tm = brep_massprops(tb);
             MassProps m = brep_massprops(b);
             std::printf("  TRANSLATED V=%.12f A=%.12f  (dV=%.3e rel) -- a CLOSED shell makes "
@@ -370,8 +368,7 @@ int main(int argc, char** argv) {
         check("mem/box_with_cavity", cav, T, 1e-9, 5.0);
         // and the same two shells DISJOINT: legitimately a two-solid result, volumes add.
         BRep sph2 = BRep::create_sphere(2.0);
-        sph2.xform = Xform::translation(20, 0, 0);
-        sph2.transform();
+        sph2.transform(Xform::translation(20, 0, 0));
         Truth T2{216.0 + 4.0 / 3.0 * PI * 8.0, 216.0 + 4 * PI * 4.0, false, 0, 0, 0};
         check("mem/two_disjoint_solids", merge_breps(BRep::create_box(6, 6, 6), sph2), T2, 1e-9,
               5.0);

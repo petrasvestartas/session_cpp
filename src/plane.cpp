@@ -6,7 +6,6 @@
 #include "plane.pb.h"
 #include "point.pb.h"
 #include "vector.pb.h"
-#include "xform.pb.h"
 
 namespace session_cpp {
 
@@ -15,7 +14,6 @@ namespace session_cpp {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 Plane::Plane() {
-    xform = Xform::identity();
     _origin = Point(0.0, 0.0, 0.0);
     _x_axis = Vector::x_axis();
     _y_axis = Vector::y_axis();
@@ -31,7 +29,6 @@ Plane::Plane(const Plane& other)
       name(other.name),
       width(other.width),
       linecolor(other.linecolor),
-      xform(other.xform),
       _origin(other._origin),
       _x_axis(other._x_axis),
       _y_axis(other._y_axis),
@@ -48,7 +45,6 @@ Plane& Plane::operator=(const Plane& other) {
         name = other.name;
         width = other.width;
         linecolor = other.linecolor;
-        xform = other.xform;
         _origin = other._origin;
         _x_axis = other._x_axis;
         _y_axis = other._y_axis;
@@ -62,7 +58,6 @@ Plane& Plane::operator=(const Plane& other) {
 }
 
 Plane::Plane(const Point& point, const Vector& x_axis, const Vector& y_axis, std::string name) {
-    xform = Xform::identity();
     this->name = name;
     _origin = point;
     _x_axis = x_axis;
@@ -79,7 +74,6 @@ Plane::Plane(const Point& point, const Vector& x_axis, const Vector& y_axis, std
 }
 
 Plane::Plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
-    xform = Xform::identity();
     _origin = origin;
     _x_axis = x_axis;
     _y_axis = y_axis;
@@ -310,17 +304,16 @@ std::string Plane::repr() const {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void Plane::transform() {
-  _origin.xform = xform; _origin.transform();
-  _x_axis.xform = xform; _x_axis.transform();
-  _y_axis.xform = xform; _y_axis.transform();
-  _z_axis.xform = xform; _z_axis.transform();
-  xform = Xform::identity();
+void Plane::transform(const Xform& xform) {
+  _origin.transform(xform);
+  _x_axis.transform(xform);
+  _y_axis.transform(xform);
+  _z_axis.transform(xform);
 }
 
-Plane Plane::transformed() const {
+Plane Plane::transformed(const Xform& xform) const {
   Plane result = *this;
-  result.transform();
+  result.transform(xform);
   return result;
 }
 
@@ -407,7 +400,6 @@ nlohmann::ordered_json Plane::jsondump() const {
     data["name"] = name;
     data["type"] = "Plane";
     data["width"] = clean_float(width);
-    data["xform"] = xform.jsondump();
     return data;
 }
 
@@ -427,9 +419,6 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     }
     if (data.contains("width")) {
         plane.width = data["width"].get<double>();
-    }
-    if (data.contains("xform")) {
-        plane.xform = Xform::jsonload(data["xform"]);
     }
 
     plane._a = plane._z_axis[0];
@@ -492,12 +481,6 @@ std::string Plane::pb_dumps() const {
     color_proto->set_b(linecolor.b);
     color_proto->set_a(linecolor.a);
 
-    // Serialize xform
-    auto* proto_xform = proto.mutable_xform();
-    proto_xform->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        proto_xform->add_matrix(xform.m[i]);
-    }
     return proto.SerializeAsString();
 }
 
@@ -531,13 +514,6 @@ Plane Plane::pb_loads(const std::string& data) {
     plane.linecolor.b = color_proto.b();
     plane.linecolor.a = color_proto.a();
 
-    // Deserialize xform if present
-    if (proto.has_xform()) {
-        plane.xform.name = proto.xform().name();
-        for (int i = 0; i < proto.xform().matrix_size() && i < 16; ++i) {
-            plane.xform.m[i] = proto.xform().matrix(i);
-        }
-    }
     return plane;
 }
 

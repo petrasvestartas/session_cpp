@@ -37,7 +37,6 @@ public:
     double width = 1.0;
     Color linecolor = Color::black();
 
-    Xform xform;
 
     /// Get plane (lazy — computed on first access from first 3 points)
     const Plane& get_plane() const;
@@ -158,23 +157,8 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    void transform();
-    Polyline transformed() const;
-
-    /**
-     * @brief Return a copy of this polyline with `xf` applied to every point.
-     *
-     * Verbatim of the inlined `xform_polyline()` helper from main_5.cpp:
-     * applies a column-major affine transformation matrix.
-     *
-     * Named `transformed_xform` (not an overload of `transformed()`) so the
-     * Rust + Python ports can share the same name (Rust + Python don't
-     * support overload-by-signature).
-     *
-     * @param xf Column-major affine transformation matrix.
-     * @return New polyline with transformed coordinates.
-     */
-    Polyline transformed_xform(const Xform& xf) const;
+    void transform(const Xform& xform);
+    Polyline transformed(const Xform& xform) const;
 
     /**
      * @brief Translate every point of this polyline by `v` (in place).

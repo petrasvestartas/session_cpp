@@ -3,18 +3,18 @@
         "a": 1.0,
         "b": 1.0,
         "g": 1.0,
-        "guid": "76d72efa-b75d-4826-8881-ef6b344bdd12",
+        "guid": "3161de1c-b188-416c-a272-13a9121ba5f2",
         "name": "white",
         "r": 1.0,
         "type": "Color"
     },
     "definition_guid": "def-abc",
     "flags": 7,
-    "guid": "db7d1faf-d507-4e61-8511-809ea43105d6",
+    "guid": "50033848-777d-43e1-814b-13ca33b565ca",
     "name": "test_ref",
     "type": "InstanceRef",
     "xform": {
-        "guid": "b1012ee5-140b-40d9-9be3-9c2a9c5465cc",
+        "guid": "c5cdc201-e524-447b-8064-1a495cf0e4af",
         "m": [
             1.0,
             0.0,

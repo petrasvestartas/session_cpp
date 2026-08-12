@@ -12,7 +12,6 @@
 
 #include "polyline.pb.h"
 #include "point.pb.h"
-#include "xform.pb.h"
 
 namespace session_cpp {
 
@@ -25,8 +24,7 @@ Polyline::Polyline(const Polyline& other)
       _coords(other._coords),
       plane(other.plane),
       width(other.width),
-      linecolor(other.linecolor),
-      xform(other.xform) {}
+      linecolor(other.linecolor) {}
 
 /// Copy assignment (creates a new guid() while copying data)
 Polyline& Polyline::operator=(const Polyline& other) {
@@ -37,7 +35,6 @@ Polyline& Polyline::operator=(const Polyline& other) {
         plane = other.plane;
         width = other.width;
         linecolor = other.linecolor;
-        xform = other.xform;
     }
     return *this;
 }
@@ -317,38 +314,21 @@ Point Polyline::operator[](size_t index) const {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void Polyline::transform() {
+void Polyline::transform(const Xform& xform) {
     for (size_t i = 0; i < point_count(); i++) {
         size_t idx = i * 3;
         Point pt(_coords[idx], _coords[idx + 1], _coords[idx + 2]);
-        pt.xform = xform; pt.transform();
+        pt.transform(xform);
         _coords[idx] = pt[0];
         _coords[idx + 1] = pt[1];
         _coords[idx + 2] = pt[2];
     }
-    xform = Xform::identity();
 }
 
-Polyline Polyline::transformed() const {
+Polyline Polyline::transformed(const Xform& xform) const {
     Polyline result = *this;
-    result.transform();
+    result.transform(xform);
     return result;
-}
-
-Polyline Polyline::transformed_xform(const Xform& xf) const {
-    // Verbatim port of `xform_polyline()` from main_5.cpp. Applies a
-    // column-major affine transformation matrix.
-    const auto& M = xf.m;
-    std::vector<Point> pts;
-    pts.reserve(point_count());
-    for (size_t i = 0; i < point_count(); i++) {
-        Point p = get_point(i);
-        double x = M[0]*p[0] + M[4]*p[1] + M[8]*p[2]  + M[12];
-        double y = M[1]*p[0] + M[5]*p[1] + M[9]*p[2]  + M[13];
-        double z = M[2]*p[0] + M[6]*p[1] + M[10]*p[2] + M[14];
-        pts.emplace_back(x, y, z);
-    }
-    return Polyline(pts);
 }
 
 void Polyline::translate(const Vector& v) {
@@ -406,7 +386,6 @@ nlohmann::ordered_json Polyline::jsondump() const {
     j["name"] = name;
     j["type"] = "Polyline";
     j["width"] = width;
-    j["xform"] = xform.jsondump();
     return j;
 }
 
@@ -433,9 +412,6 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
     }
     if (data.contains("linecolor")) {
         polyline.linecolor = Color::jsonload(data["linecolor"]);
-    }
-    if (data.contains("xform")) {
-        polyline.xform = Xform::jsonload(data["xform"]);
     }
 
     polyline.recompute_plane_if_needed();
@@ -485,13 +461,6 @@ std::string Polyline::pb_dumps() const {
     color_proto->set_a(linecolor.a);
     color_proto->set_name(linecolor.name);
 
-    // Set xform
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        xform_proto->add_matrix(xform.m[i]);
-    }
-
     return proto.SerializeAsString();
 }
 
@@ -511,15 +480,6 @@ Polyline Polyline::pb_loads(const std::string& data) {
     if (proto.has_linecolor()) {
         const auto& c = proto.linecolor();
         pl.linecolor = Color(c.r(), c.g(), c.b(), c.a(), c.name());
-    }
-
-    // Load xform
-    if (proto.has_xform()) {
-        const auto& xform_proto = proto.xform();
-        pl.xform.name = xform_proto.name();
-        for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
-            pl.xform.m[i] = xform_proto.matrix(i);
-        }
     }
 
     return pl;

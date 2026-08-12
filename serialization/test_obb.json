@@ -1,13 +1,13 @@
 {
     "type": "OBB",
     "center": {
-        "guid": "8369616d-86d1-4cfb-933d-d9f978ba15ef",
+        "guid": "5161a464-28c3-47a4-befe-c664e705afd4",
         "name": "my_point",
         "pointcolor": {
             "a": 1.0,
             "b": 0.0,
             "g": 0.0,
-            "guid": "62be2314-0b36-419f-a68c-380e0d830530",
+            "guid": "67ae2954-cb1b-429a-b306-94e0e6cf1fb6",
             "name": "black",
             "r": 0.0,
             "type": "Color"
@@ -15,156 +15,41 @@
         "type": "Point",
         "width": 1.0,
         "x": 1.0,
-        "xform": {
-            "guid": "72d75406-6ad5-4380-aa97-cb4566731262",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        },
         "y": 2.0,
         "z": 3.0
     },
     "x_axis": {
-        "guid": "c205face-2445-4895-9341-464062650e3d",
+        "guid": "97f17dc4-59b5-47ae-aa90-4b8f83884b37",
         "name": "my_vector",
         "type": "Vector",
         "x": 1.0,
-        "xform": {
-            "guid": "2abfe052-cf03-45db-84c8-805e2c49019b",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        },
         "y": 0.0,
         "z": 0.0
     },
     "y_axis": {
-        "guid": "2d55116a-751d-4544-8add-835b12d4a2e8",
+        "guid": "44079c41-da42-4d6f-9e0c-aa3aaac9edb7",
         "name": "my_vector",
         "type": "Vector",
         "x": 0.0,
-        "xform": {
-            "guid": "43dc1b98-e95e-426b-aef1-5ca54726aacb",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        },
         "y": 1.0,
         "z": 0.0
     },
     "z_axis": {
-        "guid": "8e84f51b-61f2-4466-b6c2-00ad0baa8e1c",
+        "guid": "1a0113d0-b3c1-43e7-8d83-aa4968a2bec6",
         "name": "my_vector",
         "type": "Vector",
         "x": 0.0,
-        "xform": {
-            "guid": "dda82d87-0dd1-4e2c-9f83-618c6a892aa9",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        },
         "y": 0.0,
         "z": 1.0
     },
     "half_size": {
-        "guid": "2b568a35-9a66-4afe-9e50-e7b8de83e40d",
+        "guid": "f3fecbe8-06d4-42c5-8ffb-82c6d0c26005",
         "name": "my_vector",
         "type": "Vector",
         "x": 5.0,
-        "xform": {
-            "guid": "386434f9-eff9-447a-981e-b37d33d5b33b",
-            "m": [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                1.0
-            ],
-            "name": "my_xform",
-            "type": "Xform"
-        },
         "y": 5.0,
         "z": 5.0
     },
-    "guid": "892fa585-7f9f-499f-8c77-494498a3faf7",
+    "guid": "5c731aae-8222-4c36-9ea6-0b1a1e088994",
     "name": "test_bbox"
 }

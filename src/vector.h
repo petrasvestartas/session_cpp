@@ -29,7 +29,6 @@ class Point; // Forward declaration
 class Vector {
 public:
   std::string name = "my_vector"; ///< Vector identifier/name
-  Xform xform = Xform::identity();   ///< Transformation matrix
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
@@ -63,7 +62,7 @@ public:
 
   /// Copy constructor - creates new GUID for the copy (lazily)
   Vector(const Vector &other)
-      : name(other.name), xform(other.xform), _x(other._x), _y(other._y), _z(other._z),
+      : name(other.name), _x(other._x), _y(other._y), _z(other._z),
         _magnitude(other._magnitude), _has_magnitude(other._has_magnitude) {}
 
   /// Copy assignment operator - creates new GUID for the copy (lazily)
@@ -71,7 +70,6 @@ public:
     if (this != &other) {
       _guid.clear();
       name = other.name;
-      xform = other.xform;
       _x = other._x;
       _y = other._y;
       _z = other._z;
@@ -239,13 +237,12 @@ public:
   // Transform
   ///////////////////////////////////////////////////////////////////////////////////////////
 
-  /// Apply the stored xform transformation to the vector coordinates.
-  /// Transforms the vector in-place and resets xform to identity.
-  void transform();
+  /// Apply a transformation to the vector coordinates, in place.
+  /// Only the rotation/scale part applies: a vector has no position to translate.
+  void transform(const Xform& xform);
 
-  /// Return a transformed copy of the vector.
-  /// The original vector and its xform remain unchanged.
-  Vector transformed() const;
+  /// Return a transformed copy of the vector, leaving the original unchanged.
+  Vector transformed(const Xform& xform) const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
   // Details / Geometry

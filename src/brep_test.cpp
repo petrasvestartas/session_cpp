@@ -165,8 +165,8 @@ namespace session_cpp {
         // uncomment #include "tolerance.h"
 
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        box.xform = Xform::translation(10.0, 20.0, 30.0);
-        BRep moved = box.transformed();
+        Xform box_xf = Xform::translation(10.0, 20.0, 30.0);
+        BRep moved = box.transformed(box_xf);
 
         Point pt = moved.point_at(0, 0.0, 0.0);
         Point pt_orig = box.point_at(0, 0.0, 0.0);
@@ -597,8 +597,8 @@ namespace session_cpp {
         // Box 4x4x4 centered (z in [-2,2]) with a cylinder r=1 running through it (z in [-3,3]).
         BRep box = BRep::create_box(4, 4, 4);
         BRep cyl = BRep::create_cylinder(1.0, 6.0);
-        cyl.xform = Xform::translation(0, 0, -3);
-        cyl = cyl.transformed();
+        Xform cyl_xf = Xform::translation(0, 0, -3);
+        cyl = cyl.transformed(cyl_xf);
 
         // imprint -> classify -> select -> sew. Validated vs OCCT BRepAlgoAPI_* (oracle):
         // face counts match exactly (cut=7, common=3, fuse=10) and -- with the exact rational
@@ -702,7 +702,7 @@ namespace session_cpp {
         // Reproduces docs/examples/breps/brep_booleans.py: Box(2) + Cylinder(r=0.7, h=3, centred).
         // OCCT (oracle): fuse 9.539380400258997/10, cut 4.921239199482002/7, common 3.078760800517997/3.
         BRep box = BRep::create_box(2, 2, 2);
-        BRep cyl = BRep::create_cylinder(0.7, 3.0); cyl.xform = Xform::translation(0, 0, -1.5); cyl = cyl.transformed();
+        BRep cyl = BRep::create_cylinder(0.7, 3.0); Xform cyl_xf = Xform::translation(0, 0, -1.5); cyl = cyl.transformed(cyl_xf);
         BRep fus = box.boolean_union(cyl);
         BRep cut = box.boolean_difference(cyl);
         BRep com = box.boolean_intersection(cyl);
@@ -723,7 +723,7 @@ namespace session_cpp {
         // fuse V=70.283 10f.
         const double PI = 3.14159265358979323846;
         BRep box = BRep::create_box(4, 4, 4);
-        BRep cyl = BRep::create_cylinder(1.0, 6.0); cyl.xform = Xform::translation(0.5, 0, -3); cyl = cyl.transformed();
+        BRep cyl = BRep::create_cylinder(1.0, 6.0); Xform cyl_xf = Xform::translation(0.5, 0, -3); cyl = cyl.transformed(cyl_xf);
         BRep cut = box.boolean_difference(cyl);
         BRep com = box.boolean_intersection(cyl);
         BRep fus = box.boolean_union(cyl);
@@ -763,7 +763,7 @@ namespace session_cpp {
         // intersection + edge-imprint (T-junction split) + sew -> watertight solids matching
         // OCCT BRepAlgoAPI (oracle): cut V=60 11f, common V=4 6f, fuse V=68 11f.
         BRep ba = BRep::create_box(4, 4, 4);
-        BRep bb = BRep::create_box(2, 2, 2); bb.xform = Xform::translation(2, 0, 0); bb = bb.transformed();
+        BRep bb = BRep::create_box(2, 2, 2); Xform bb_xf = Xform::translation(2, 0, 0); bb = bb.transformed(bb_xf);
         BRep bcut = ba.boolean_difference(bb);
         BRep bcom = ba.boolean_intersection(bb);
         BRep bfus = ba.boolean_union(bb);
@@ -798,14 +798,14 @@ namespace session_cpp {
         };
         auto box  = []{ return BRep::create_box(4,4,4); };
         auto sph  = []{ return BRep::create_sphere(2.5); };
-        auto cyl  = []{ BRep c=BRep::create_cylinder(1.5,6); c.xform=Xform::translation(0,0,-3); return c.transformed(); };
-        auto cone = []{ BRep c=BRep::create_cone(2.0,4.0);   c.xform=Xform::translation(0,0,-2); return c.transformed(); };
+        auto cyl  = []{ BRep c=BRep::create_cylinder(1.5,6); return c.transformed(Xform::translation(0,0,-3)); };
+        auto cone = []{ BRep c=BRep::create_cone(2.0,4.0);   return c.transformed(Xform::translation(0,0,-2)); };
         auto tor  = []{ return BRep::create_torus(2.0,0.8); };
-        auto box2 = []{ BRep c=BRep::create_box(2,2,2);      c.xform=Xform::translation(2,0,0); return c.transformed(); };
-        auto sph2 = []{ BRep c=BRep::create_sphere(2.0);     c.xform=Xform::translation(2,0,0); return c.transformed(); };
-        auto cyl2 = []{ BRep c=BRep::create_cylinder(1.5,6); c.xform=Xform::translation(-3,0,0)*Xform::rotation_y(90,true); return c.transformed(); };
-        auto cone2= []{ BRep c=BRep::create_cone(2.0,4.0);   c.xform=Xform::translation(0,0,2)*Xform::rotation_x(180,true); return c.transformed(); };
-        auto tor2 = []{ BRep c=BRep::create_torus(2.0,0.8);  c.xform=Xform::translation(2,0,0); return c.transformed(); };
+        auto box2 = []{ BRep c=BRep::create_box(2,2,2);      return c.transformed(Xform::translation(2,0,0)); };
+        auto sph2 = []{ BRep c=BRep::create_sphere(2.0);     return c.transformed(Xform::translation(2,0,0)); };
+        auto cyl2 = []{ BRep c=BRep::create_cylinder(1.5,6); return c.transformed(Xform::translation(-3,0,0)*Xform::rotation_y(90,true)); };
+        auto cone2= []{ BRep c=BRep::create_cone(2.0,4.0);   return c.transformed(Xform::translation(0,0,2)*Xform::rotation_x(180,true)); };
+        auto tor2 = []{ BRep c=BRep::create_torus(2.0,0.8);  return c.transformed(Xform::translation(2,0,0)); };
         std::fprintf(stderr, "\n=== NxN BOOLEAN MATRIX (session, overlapping configs) ===\n");
         cell("box","box",    box(), box2());
         cell("box","sphere", box(), sph());

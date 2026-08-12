@@ -29,7 +29,6 @@ namespace session_cpp {
         std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
         double width = 1.0;                ///< Width for plane visualization
         Color linecolor = Color::blue();   ///< Color of the plane (default: blue)
-        Xform xform;   ///< Transformation matrix
 
         private:
         mutable std::string _guid;         ///< Lazily generated unique identifier
@@ -83,11 +82,11 @@ namespace session_cpp {
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply the stored xform transformation to the plane (in-place)
-    void transform();
+    /// Apply a transformation to the plane (in-place)
+    void transform(const Xform& xform);
 
     /// Return a transformed copy of the plane
-    Plane transformed() const;
+    Plane transformed(const Xform& xform) const;
 
     /// Equality operator (compares origin and axes, ignores guid)
     bool operator==(const Plane &other) const;

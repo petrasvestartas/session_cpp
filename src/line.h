@@ -29,7 +29,6 @@ public:
     void refresh_guid() { _guid.clear(); }
     double width = 1.0;                ///< Line width in pixels
     Color linecolor = Color::black();  ///< Color of the line
-    Xform xform;   ///< Transformation matrix
 
 private:
     mutable std::string _guid;         ///< Lazily generated unique identifier
@@ -168,11 +167,11 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply the stored xform transformation to the line coordinates (in-place).
-    void transform();
+    /// Apply a transformation to the line coordinates (in-place).
+    void transform(const Xform& xform);
 
     /// Return a transformed copy of the line.
-    Line transformed() const;
+    Line transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization

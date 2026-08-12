@@ -38,7 +38,7 @@ private:
     std::unique_ptr<Node> _root;
 
     static double dist_sq(const Point& a, const Point& b);
-    static std::unique_ptr<Node> build(const std::vector<Point>& pts, std::vector<int>& indices, int depth);
+    static std::unique_ptr<Node> build(const std::vector<Point>& pts, std::vector<int>& indices, int lo, int hi, int depth);
     static void nearest_1(const Node* node, const std::vector<Point>& pts, const Point& q, int& best_idx, double& best_d2);
     static void nearest_k_rec(const Node* node, const std::vector<Point>& pts, const Point& q, int k, std::vector<std::pair<double, int>>& heap);
     static void radius_rec(const Node* node, const std::vector<Point>& pts, const Point& q, double r2, std::vector<std::pair<int, double>>& result);

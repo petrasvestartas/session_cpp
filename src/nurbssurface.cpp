@@ -329,7 +329,6 @@ bool NurbsSurface::operator==(const NurbsSurface& other) const {
     if (pointcolors != other.pointcolors) return false;
     if (facecolors != other.facecolors) return false;
     if (linecolors != other.linecolors) return false;
-    if (xform != other.xform) return false;
 
     // Compare NURBS structure
     if (m_dim != other.m_dim) return false;
@@ -370,7 +369,6 @@ void NurbsSurface::initialize() {
     pointcolors.clear();
     facecolors.clear();
     linecolors.clear();
-    xform = Xform::identity();
 
     m_dim = 0;
     m_is_rat = 0;
@@ -1530,25 +1528,15 @@ bool NurbsSurface::increase_degree(int dir, int desired_degree) {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void NurbsSurface::transform() {
-    transform(xform);
-}
-
 bool NurbsSurface::transform(const Xform& xf) {
     for (int i = 0; i < m_cv_count[0]; i++) {
         for (int j = 0; j < m_cv_count[1]; j++) {
             Point pt = get_cv(i, j);
-            pt.xform = xf; pt.transform();
+            pt.transform(xf);
             set_cv(i, j, pt);
         }
     }
     return true;
-}
-
-NurbsSurface NurbsSurface::transformed() const {
-    NurbsSurface result = *this;
-    result.transform();
-    return result;
 }
 
 NurbsSurface NurbsSurface::transformed(const Xform& xf) const {
@@ -1812,7 +1800,6 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
 
     j["type"] = "NurbsSurface";
     j["width"] = width;
-    j["xform"] = xform.jsondump();
     return j;
 }
 
@@ -1864,9 +1851,6 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
                 surface.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
                     arr[i+2].get<int>(), arr[i+3].get<int>()));
             }
-        }
-        if (data.contains("xform")) {
-            surface.xform = Xform::jsonload(data["xform"]);
         }
         if (data.contains("mesh") && !data["mesh"].is_null()) {
             surface.m_mesh = Mesh::jsonload(data["mesh"]);
@@ -1944,14 +1928,6 @@ std::string NurbsSurface::pb_dumps() const {
         cp->set_r(c.r); cp->set_g(c.g); cp->set_b(c.b); cp->set_a(c.a);
     }
 
-    // Transform
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid());
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        xform_proto->add_matrix(xform.m[i]);
-    }
-
     // Cached mesh
     if (m_mesh.number_of_vertices() > 0) {
         std::string mesh_data = m_mesh.pb_dumps();
@@ -2006,14 +1982,6 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
     for (int i = 0; i < proto.linecolors_size(); ++i) {
         const auto& c = proto.linecolors(i);
         surface.linecolors.push_back(Color(c.r(), c.g(), c.b(), c.a()));
-    }
-
-    // Load transform
-    const auto& xform_proto = proto.xform();
-    surface.xform.guid() = xform_proto.guid();
-    surface.xform.name = xform_proto.name();
-    for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i) {
-        surface.xform.m[i] = xform_proto.matrix(i);
     }
 
     // Load cached mesh
@@ -2110,7 +2078,6 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     pointcolors = src.pointcolors;
     facecolors = src.facecolors;
     linecolors = src.linecolors;
-    xform = src.xform;
 
     m_dim = src.m_dim;
     m_is_rat = src.m_is_rat;

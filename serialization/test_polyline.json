@@ -13,40 +13,17 @@
     11.0,
     12.0
   ],
-  "guid": "13e8db71-0bd3-40c5-ae6b-8a9f4770e364",
+  "guid": "09965ddf-b9f7-414e-969d-327f03ebbe26",
   "linecolor": {
     "a": 1.0,
     "b": 0.0,
     "g": 0.0,
-    "guid": "05dfca9c-85c1-4290-ba9d-9dd5197db743",
+    "guid": "87d79542-9ff3-4234-86dc-9f280da079c7",
     "name": "black",
     "r": 0.0,
     "type": "Color"
   },
   "name": "test_polyline",
   "type": "Polyline",
-  "width": 1.0,
-  "xform": {
-    "guid": "5e93b890-01bd-4888-b03c-62a4954072b1",
-    "m": [
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0
-    ],
-    "name": "my_xform",
-    "type": "Xform"
-  }
+  "width": 1.0
 }

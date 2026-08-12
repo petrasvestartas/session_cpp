@@ -115,8 +115,7 @@ static void run_identity() {
         // the STRUCTURE of the arena at all. This is the property the v1 splitter loses.
         BRep b0 = BRep::create_box(2, 2, 2);
         BRep b1 = BRep::create_box(2, 2, 2);
-        b1.xform = Xform::translation(137.0, -41.5, 9.25);
-        b1.transform();
+        b1.transform(Xform::translation(137.0, -41.5, 9.25));
         BdsArena d0, d1;
         d0.init({&b0});
         d1.init({&b1});

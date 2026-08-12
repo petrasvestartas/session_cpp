@@ -97,8 +97,8 @@ static double median(std::vector<double> v) {
 
 static BRep moved(const BRep& b, const Xform& x) {
     BRep c = b;
-    c.xform = x;
-    return c.transformed();
+    c.transform(x);
+    return c;
 }
 
 // main_16.cpp motion(k), byte for byte: the same poses the acceptance ladder scores.

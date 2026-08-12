@@ -207,8 +207,8 @@ MINI_TEST("Plane", "Transform") {
     // uncomment #include "xform.h"
 
     Plane pl = Plane::xy_plane();
-    pl.xform = Xform::translation(1.0, 2.0, 3.0);
-    pl.transform();
+    Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
+    pl.transform(pl_xf);
 
     MINI_CHECK(TOLERANCE.is_close(pl.origin()[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(pl.origin()[1], 2.0));
@@ -220,8 +220,8 @@ MINI_TEST("Plane", "Transformed") {
     // uncomment #include "xform.h"
 
     Plane pl = Plane::xy_plane();
-    pl.xform = Xform::translation(1.0, 2.0, 3.0);
-    Plane pl2 = pl.transformed();
+    Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
+    Plane pl2 = pl.transformed(pl_xf);
 
     MINI_CHECK(TOLERANCE.is_close(pl2.origin()[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(pl2.origin()[1], 2.0));

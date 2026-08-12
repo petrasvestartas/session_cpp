@@ -1,6 +1,6 @@
 {
   "type": "Objects",
-  "guid": "8ca6f736-035e-448f-9978-b13af94e61ff",
+  "guid": "4d05d82b-1b0c-444f-a234-c3ac871b2e73",
   "name": "my_objects",
   "bboxes": [],
   "breps": [],
@@ -12,13 +12,13 @@
   "planes": [],
   "points": [
     {
-      "guid": "9da56cd5-22c9-4933-9fc7-91303d727720",
+      "guid": "8c1cfcdf-cafd-4857-8fd1-fdee785f4c1a",
       "name": "my_point",
       "pointcolor": {
         "a": 1.0,
         "b": 0.0,
         "g": 0.0,
-        "guid": "772d2970-5ed7-4829-9984-c141d556e84a",
+        "guid": "2e13a9d2-4278-4a48-9813-cf13883bf35e",
         "name": "black",
         "r": 0.0,
         "type": "Color"
@@ -26,40 +26,17 @@
       "type": "Point",
       "width": 1.0,
       "x": 1.0,
-      "xform": {
-        "guid": "03e7e3ee-21d0-40a8-aa15-3ea1e4062ae4",
-        "m": [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "name": "my_xform",
-        "type": "Xform"
-      },
       "y": 2.0,
       "z": 3.0
     },
     {
-      "guid": "6f643508-6851-418e-9152-1f4b13fd2ddf",
+      "guid": "39b164b8-a74c-4e4f-80aa-dd73774aed15",
       "name": "my_point",
       "pointcolor": {
         "a": 1.0,
         "b": 0.0,
         "g": 0.0,
-        "guid": "16a82b69-d041-4ddb-88fd-69b7befe5493",
+        "guid": "4730ad6a-a569-4526-acfa-cf940e9c5b6f",
         "name": "black",
         "r": 0.0,
         "type": "Color"
@@ -67,29 +44,6 @@
       "type": "Point",
       "width": 1.0,
       "x": 4.0,
-      "xform": {
-        "guid": "b1b21309-8c5d-46b0-a431-8db512db71df",
-        "m": [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          1.0
-        ],
-        "name": "my_xform",
-        "type": "Xform"
-      },
       "y": 5.0,
       "z": 6.0
     }

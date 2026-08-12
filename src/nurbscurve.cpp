@@ -3202,10 +3202,6 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void NurbsCurve::transform() {
-    transform(xform);
-}
-
 bool NurbsCurve::transform(const Xform& xf) {
     for (int i = 0; i < m_cv_count; i++) {
         Point p = get_cv(i);
@@ -3220,12 +3216,6 @@ bool NurbsCurve::transform(const Xform& xf) {
         }
     }
     return true;
-}
-
-NurbsCurve NurbsCurve::transformed() const {
-    NurbsCurve result = *this;
-    result.transform();
-    return result;
 }
 
 NurbsCurve NurbsCurve::transformed(const Xform& xf) const {
@@ -3282,7 +3272,6 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
 
     j["type"] = "NurbsCurve";
     j["width"] = width;
-    j["xform"] = xform.jsondump();
 
     return j;
 }
@@ -3334,9 +3323,6 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
                 curve.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
                     arr[i+2].get<int>(), arr[i+3].get<int>()));
             }
-        }
-        if (data.contains("xform")) {
-            curve.xform = Xform::jsonload(data["xform"]);
         }
     }
 
@@ -3401,13 +3387,6 @@ std::string NurbsCurve::pb_dumps() const {
         cp->set_r(c.r); cp->set_g(c.g); cp->set_b(c.b); cp->set_a(c.a);
     }
 
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid());
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        xform_proto->add_matrix(xform.m[i]);
-    }
-
     return proto.SerializeAsString();
 }
 
@@ -3437,15 +3416,6 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
     for (int i = 0; i < proto.linecolors_size(); ++i) {
         const auto& c = proto.linecolors(i);
         curve.linecolors.push_back(Color(c.r(), c.g(), c.b(), c.a()));
-    }
-
-    if (proto.has_xform()) {
-        const auto& x = proto.xform();
-        curve.xform.guid() = x.guid();
-        curve.xform.name = x.name();
-        for (int i = 0; i < 16 && i < x.matrix_size(); ++i) {
-            curve.xform.m[i] = x.matrix(i);
-        }
     }
 
     return curve;
@@ -3809,7 +3779,6 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     width = src.width;
     pointcolors = src.pointcolors;
     linecolors = src.linecolors;
-    xform = src.xform;
     invalidate_rmf_cache();
 }
 // De Boor algorithm for trimming/extending B-spline spans

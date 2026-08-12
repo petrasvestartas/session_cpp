@@ -50,7 +50,7 @@ MINI_TEST("Element", "Constructor") {
     MINI_CHECK(e != e3);
 }
 
-MINI_TEST("Element", "Session Transformation") {
+MINI_TEST("Element", "Place") {
     // uncomment #include "element.h"
     // uncomment #include "mesh.h"
     // uncomment #include "point.h"
@@ -66,10 +66,14 @@ MINI_TEST("Element", "Session Transformation") {
     );
     Element e(m);
     Xform xf = Xform::translation(10.0, 20.0, 30.0);
-    e.session_transformation = xf;
+    e.place(xf);
 
     MINI_CHECK(e.is_dirty());
-    MINI_CHECK(e.session_transformation == xf);
+    if (auto* mesh = std::get_if<Mesh>(&e.geometry())) {
+        double min_x = std::numeric_limits<double>::max();
+        for (const auto& [k, v] : mesh->vertex) min_x = std::min(min_x, v.x);
+        MINI_CHECK(min_x > 9.0);
+    }
 }
 
 MINI_TEST("Element", "Add Feature") {
@@ -152,8 +156,8 @@ MINI_TEST("Element", "Session Geometry") {
         {{0, 1, 2, 3}}
     );
     Element e(m);
-    e.session_transformation = Xform::translation(10.0, 0.0, 0.0);
-    auto sg = e.session_geometry();
+    Xform e_xf = Xform::translation(10.0, 0.0, 0.0);
+    auto sg = e.session_geometry(e_xf);
 
     MINI_CHECK(std::holds_alternative<Mesh>(sg));
     auto& mesh = std::get<Mesh>(sg);
@@ -243,7 +247,6 @@ MINI_TEST("Element", "Json Roundtrip") {
         {{0, 1, 2, 3}}
     );
     Element e(m, "json_test");
-    e.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_element.json";
     e.file_json_dump(fname);
@@ -260,7 +263,6 @@ MINI_TEST("Element", "Protobuf Roundtrip") {
     // uncomment #include "xform.h"
     BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "proto_test");
-    e.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string path = "serialization/test_element.bin";
     e.pb_dump(path);

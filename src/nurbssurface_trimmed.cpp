@@ -451,7 +451,6 @@ bool NurbsSurfaceTrimmed::operator==(const NurbsSurfaceTrimmed& other) const {
     if (name != other.name) return false;
     if (width != other.width) return false;
     if (surfacecolor != other.surfacecolor) return false;
-    if (xform != other.xform) return false;
     if (m_surface != other.m_surface) return false;
     return true;
 }
@@ -467,7 +466,6 @@ void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
     name = src.name;
     width = src.width;
     surfacecolor = src.surfacecolor;
-    xform = src.xform;
     m_surface = src.m_surface;
     m_outer_loop = src.m_outer_loop;
     m_inner_loops = src.m_inner_loops;
@@ -3017,15 +3015,13 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const Nurb
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void NurbsSurfaceTrimmed::transform() {
-    m_surface.xform = xform;
-    m_surface.transform();
-    xform = Xform::identity();
+void NurbsSurfaceTrimmed::transform(const Xform& xform) {
+    m_surface.transform(xform);
 }
 
-NurbsSurfaceTrimmed NurbsSurfaceTrimmed::transformed() const {
+NurbsSurfaceTrimmed NurbsSurfaceTrimmed::transformed(const Xform& xform) const {
     NurbsSurfaceTrimmed ts = *this;
-    ts.transform();
+    ts.transform(xform);
     return ts;
 }
 
@@ -3046,7 +3042,6 @@ nlohmann::ordered_json NurbsSurfaceTrimmed::jsondump() const {
     j["surfacecolor"] = surfacecolor.jsondump();
     j["type"] = "NurbsSurfaceTrimmed";
     j["width"] = width;
-    j["xform"] = xform.jsondump();
     return j;
 }
 
@@ -3056,7 +3051,6 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::jsonload(const nlohmann::json& data) {
     if (data.contains("name")) ts.name = data["name"];
     if (data.contains("width")) ts.width = data["width"];
     if (data.contains("surfacecolor")) ts.surfacecolor = Color::jsonload(data["surfacecolor"]);
-    if (data.contains("xform")) ts.xform = Xform::jsonload(data["xform"]);
     if (data.contains("surface")) ts.m_surface = NurbsSurface::jsonload(data["surface"]);
     if (data.contains("outer_loop")) ts.m_outer_loop = NurbsCurve::jsonload(data["outer_loop"]);
     if (data.contains("inner_loops")) {
@@ -3120,13 +3114,6 @@ std::string NurbsSurfaceTrimmed::pb_dumps() const {
     color_proto->set_b(surfacecolor.b);
     color_proto->set_a(surfacecolor.a);
 
-    // Transform
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid());
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i)
-        xform_proto->add_matrix(xform.m[i]);
-
     return proto.SerializeAsString();
 }
 
@@ -3164,13 +3151,6 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_loads(const std::string& data) {
     ts.surfacecolor.g = color_proto.g();
     ts.surfacecolor.b = color_proto.b();
     ts.surfacecolor.a = color_proto.a();
-
-    // Transform
-    const auto& xform_proto = proto.xform();
-    ts.xform.guid() = xform_proto.guid();
-    ts.xform.name = xform_proto.name();
-    for (int i = 0; i < 16 && i < xform_proto.matrix_size(); ++i)
-        ts.xform.m[i] = xform_proto.matrix(i);
 
     return ts;
 }

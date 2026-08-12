@@ -83,3 +83,4 @@ docs_output/
 build2/
 .claude/
 serialization/boolean_steps/
+.protoc/

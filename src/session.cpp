@@ -5,6 +5,7 @@
 #include "session.pb.h"
 #include <algorithm>
 #include <functional>
+#include <set>
 
 /**
  * ADDING NEW GEOMETRY TYPES - CHECKLIST
@@ -273,6 +274,92 @@ std::vector<std::string> Session::order() const {
   return order;
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////
+// Xforms - the one place a transformation is stored
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void Session::set_xform(const std::string &guid, const Xform &xform) {
+  xforms[guid] = xform;
+  bvh_cache_dirty = true;
+}
+
+Xform Session::xform(const std::string &guid) const {
+  auto it = xforms.find(guid);
+  return it == xforms.end() ? Xform::identity() : it->second;
+}
+
+bool Session::remove_xform(const std::string &guid) {
+  bool removed = xforms.erase(guid) > 0;
+  if (removed) {
+    bvh_cache_dirty = true;
+  }
+  return removed;
+}
+
+Xform Session::world_xform(const std::string &guid) const {
+  Xform acc = xform(guid);
+  auto node = tree.get_node_by_name(guid);
+  if (node) {
+    // ancestors() runs immediate parent -> root, so left-multiplying each in turn yields
+    // root * ... * parent * local - the same order the tree walk composes.
+    for (auto *ancestor : node->ancestors()) {
+      auto it = xforms.find(ancestor->name);
+      if (it != xforms.end()) {
+        acc = it->second * acc;
+      }
+    }
+  }
+  // No tree node: the object is its own root, so acc stays its local transform. Returning
+  // identity here would silently move every unparented object to the origin.
+  return acc;
+}
+
+std::unordered_map<std::string, Xform> Session::world_xforms() const {
+  std::unordered_map<std::string, Xform> out;
+  std::function<void(const std::shared_ptr<TreeNode> &, const Xform &)> walk =
+      [&](const std::shared_ptr<TreeNode> &node, const Xform &parent_xform) {
+        auto it = xforms.find(node->name);
+        Xform current = it == xforms.end() ? parent_xform : parent_xform * it->second;
+        out[node->name] = current;
+        for (auto *child : node->children()) {
+          walk(child->shared_from_this(), current);
+        }
+      };
+
+  if (tree.root()) {
+    walk(tree.root(), Xform::identity());
+  }
+  // Objects that were added without a parent have no tree node; they are their own roots.
+  for (const auto &[obj_guid, obj_xform] : xforms) {
+    out.emplace(obj_guid, obj_xform);
+  }
+  return out;
+}
+
+std::vector<std::pair<std::string, Xform>> Session::xforms_ordered() const {
+  std::vector<std::pair<std::string, Xform>> ordered;
+  for (const auto &g : order()) {
+    auto it = xforms.find(g);
+    if (it != xforms.end() && !it->second.is_identity()) {
+      ordered.emplace_back(g, it->second);
+    }
+  }
+  // Group nodes carry transforms too but hold no geometry, so they are absent from order();
+  // they follow, sorted by guid, or a group's placement would be lost on save.
+  std::set<std::string> listed;
+  for (const auto &[g, x] : ordered) listed.insert(g);
+  std::vector<std::pair<std::string, Xform>> rest;
+  for (const auto &[obj_guid, obj_xform] : xforms) {
+    if (!listed.count(obj_guid) && !obj_xform.is_identity()) {
+      rest.emplace_back(obj_guid, obj_xform);
+    }
+  }
+  std::sort(rest.begin(), rest.end(),
+            [](const auto &a, const auto &b) { return a.first < b.first; });
+  ordered.insert(ordered.end(), rest.begin(), rest.end());
+  return ordered;
+}
+
 bool Session::remove_object(const std::string &obj_guid) {
   bvh_cache_dirty = true; // removed objects must vanish from the ray BVH
   auto it = lookup.find(obj_guid);
@@ -330,6 +417,7 @@ bool Session::remove_object(const std::string &obj_guid) {
 
   // Remove from lookup table
   lookup.erase(it);
+  xforms.erase(obj_guid);
 
   // Remove from tree
   auto tree_node = tree.find_node_by_guid(obj_guid);
@@ -371,30 +459,34 @@ std::vector<std::string> Session::get_neighbours(const std::string &obj_guid) {
 // SpatialBVH Collision Detection
 
 // ADD NEW GEOMETRY TYPES HERE: Add bounding box computation for collision detection
-OBB Session::compute_bounding_box(const Geometry& geometry) {
+OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) {
   double inflate = Tolerance::APPROXIMATION;
-  
-  return std::visit([inflate](auto&& geom_ptr) -> OBB {
+  auto tp = [&xform](const Point& p) -> Point { return xform.transform_point(p); };
+
+  return std::visit([inflate, &xform, &tp](auto&& geom_ptr) -> OBB {
     using T = std::decay_t<decltype(geom_ptr)>;
-    
+
     if constexpr (std::is_same_v<T, std::shared_ptr<Point>>) {
-      return OBB::from_point(*geom_ptr, inflate);
+      return OBB::from_point(tp(*geom_ptr), inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Line>>) {
-      std::vector<Point> points = {geom_ptr->start(), geom_ptr->end()};
+      std::vector<Point> points = {tp(geom_ptr->start()), tp(geom_ptr->end())};
       return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Polyline>>) {
-      return OBB::from_points(geom_ptr->get_points(), inflate);
+      std::vector<Point> points;
+      for (const auto& p : geom_ptr->get_points()) points.push_back(tp(p));
+      return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<PointCloud>>) {
-      return OBB::from_points(geom_ptr->get_points(), inflate);
+      std::vector<Point> points;
+      for (const auto& p : geom_ptr->get_points()) points.push_back(tp(p));
+      return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
-      // Extract vertices from mesh; xform is the placement, so bake it
       std::vector<Point> points;
       for (const auto& [key, vertex] : geom_ptr->vertex) {
-        points.push_back(geom_ptr->xform.transform_point(vertex.position()));
+        points.push_back(tp(vertex.position()));
       }
       if (points.empty()) {
         return OBB::from_point(Point(0, 0, 0), inflate);
@@ -404,7 +496,7 @@ OBB Session::compute_bounding_box(const Geometry& geometry) {
     else if constexpr (std::is_same_v<T, std::shared_ptr<BRep>>) {
       std::vector<Point> points;
       for (const auto& p : geom_ptr->m_vertices) {
-        points.push_back(geom_ptr->xform.transform_point(p));
+        points.push_back(tp(p));
       }
       // Sample surface points to cover curved surfaces (e.g. sphere with only pole vertices)
       for (const auto& srf : geom_ptr->m_surfaces) {
@@ -414,7 +506,7 @@ OBB Session::compute_bounding_box(const Geometry& geometry) {
           for (int vi = 0; vi <= 2; ++vi) {
             double u = u0 + (u1 - u0) * ui / 2.0;
             double v = v0 + (v1 - v0) * vi / 2.0;
-            points.push_back(geom_ptr->xform.transform_point(srf.point_at(u, v)));
+            points.push_back(tp(srf.point_at(u, v)));
           }
         }
       }
@@ -431,16 +523,17 @@ OBB Session::compute_bounding_box(const Geometry& geometry) {
         inflated.half_size[1] + inflate,
         inflated.half_size[2] + inflate
       );
+      inflated.transform(xform);
       return inflated;
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Plane>>) {
       // Create bounded box around plane origin
-      return OBB::from_point(geom_ptr->origin(), inflate * 10.0);
+      return OBB::from_point(tp(geom_ptr->origin()), inflate * 10.0);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsCurve>>) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(); ++i)
-        points.push_back(geom_ptr->get_cv(i));
+        points.push_back(tp(geom_ptr->get_cv(i)));
       if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
       return OBB::from_points(points, inflate);
     }
@@ -448,13 +541,15 @@ OBB Session::compute_bounding_box(const Geometry& geometry) {
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(0); ++i)
         for (int j = 0; j < geom_ptr->cv_count(1); ++j)
-          points.push_back(geom_ptr->get_cv(i, j));
+          points.push_back(tp(geom_ptr->get_cv(i, j)));
       if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
       return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Element>>) {
       auto e_copy = *geom_ptr;
-      return e_copy.aabb();
+      auto box = e_copy.aabb();
+      box.transform(xform);
+      return box;
     }
     else {
       return OBB::from_point(Point(0, 0, 0), inflate);
@@ -468,11 +563,13 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
   std::vector<std::string> guids;
   boxes.reserve(lookup.size());
   guids.reserve(lookup.size());
-  
+
+  auto world = world_xforms();
   for (const auto& g : order()) {
     auto it = lookup.find(g);
     if (it == lookup.end()) continue;
-    boxes.push_back(compute_bounding_box(it->second));
+    auto wit = world.find(g);
+    boxes.push_back(compute_bounding_box(it->second, wit == world.end() ? Xform::identity() : wit->second));
     guids.push_back(g);
   }
   
@@ -508,86 +605,71 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
 // Transformed Geometry
 
 Objects Session::get_geometry() const {
-  // Deep copy all objects
-  Objects transformed_objects = objects;
-  
-  // Rebuild lookup from copied objects
-  std::unordered_map<std::string, Geometry> transformed_lookup;
-  
-  auto add_to_lookup = [&](auto& collection) {
-    for (auto& geom : *collection) {
-      transformed_lookup[geom->guid()] = geom;
+  // A REAL deep copy. Objects holds shared_ptr<vector<shared_ptr<T>>> and has no copy
+  // constructor, so `Objects copy = objects;` shared both the vectors and the objects
+  // themselves - this const method used to mutate the session's own geometry.
+  Objects out(objects.name);
+  out.guid() = objects.guid();
+
+  auto clone_into = [](const auto& src_vec, auto& dst_vec) {
+    for (const auto& src : src_vec) {
+      using T = typename std::decay_t<decltype(*src)>;
+      auto copy = std::make_shared<T>(*src);
+      copy->guid() = src->guid();
+      dst_vec.push_back(copy);
     }
   };
-  
-  add_to_lookup(transformed_objects.points);
-  add_to_lookup(transformed_objects.lines);
-  add_to_lookup(transformed_objects.planes);
-  add_to_lookup(transformed_objects.bboxes);
-  add_to_lookup(transformed_objects.polylines);
-  add_to_lookup(transformed_objects.pointclouds);
-  add_to_lookup(transformed_objects.meshes);
-  add_to_lookup(transformed_objects.nurbscurves);
-  add_to_lookup(transformed_objects.nurbssurfaces);
-  add_to_lookup(transformed_objects.breps);
-  add_to_lookup(transformed_objects.elements);
+  clone_into(*objects.points, *out.points);
+  clone_into(*objects.lines, *out.lines);
+  clone_into(*objects.planes, *out.planes);
+  clone_into(*objects.bboxes, *out.bboxes);
+  clone_into(*objects.polylines, *out.polylines);
+  clone_into(*objects.pointclouds, *out.pointclouds);
+  clone_into(*objects.meshes, *out.meshes);
+  clone_into(*objects.nurbscurves, *out.nurbscurves);
+  clone_into(*objects.nurbssurfaces, *out.nurbssurfaces);
+  clone_into(*objects.breps, *out.breps);
+  // Elements are polymorphic and their copy constructor mints a fresh guid, so they are
+  // cloned by concrete type and the identity is restored.
+  for (const auto& src : *objects.elements) {
+    std::shared_ptr<Element> copy;
+    if (auto* p = dynamic_cast<const ElementPlate*>(src.get())) copy = std::make_shared<ElementPlate>(*p);
+    else if (auto* c = dynamic_cast<const ElementColumn*>(src.get())) copy = std::make_shared<ElementColumn>(*c);
+    else if (auto* b = dynamic_cast<const ElementBeam*>(src.get())) copy = std::make_shared<ElementBeam>(*b);
+    else copy = std::make_shared<Element>(*src);
+    copy->guid() = src->guid();
+    out.elements->push_back(copy);
+  }
+  *out.components = *objects.components;
 
-  // Helper lambda to recursively transform nodes
-  std::function<void(std::shared_ptr<TreeNode>, const Xform&)> transform_node = 
-    [&](std::shared_ptr<TreeNode> node, const Xform& parent_xform) {
-      // Get geometry from the lookup
-      auto it = transformed_lookup.find(node->name);
-      
-      Xform current_xform = parent_xform;
-      
-      if (it != transformed_lookup.end()) {
-        // Transform in-place
-        std::visit([&](auto&& geom_ptr) {
-          using T = std::decay_t<decltype(geom_ptr)>;
-          if constexpr (std::is_same_v<T, std::shared_ptr<Element>>) {
-            geom_ptr->session_transformation = parent_xform * geom_ptr->session_transformation;
-            current_xform = geom_ptr->session_transformation;
-          } else {
-            geom_ptr->xform = parent_xform * geom_ptr->xform;
-            current_xform = geom_ptr->xform;
-          }
-        }, it->second);
-      }
-      
-      // Recursively process children
-      for (auto* child : node->children()) {
-        transform_node(child->shared_from_this(), current_xform);
-      }
-    };
-  
-  // Start from root with identity transformation
-  if (tree.root()) {
-    transform_node(tree.root(), Xform::identity());
+  auto world = world_xforms();
+
+  // No type is skipped: C++ used to leave breps un-baked, so a placement in the tree silently
+  // did nothing for them.
+  auto bake = [&world](auto& vec) {
+    for (auto& item : vec) {
+      auto it = world.find(item->guid());
+      if (it == world.end() || it->second.is_identity()) continue;
+      item->transform(it->second);
+    }
+  };
+  bake(*out.points);
+  bake(*out.lines);
+  bake(*out.planes);
+  bake(*out.bboxes);
+  bake(*out.polylines);
+  bake(*out.pointclouds);
+  bake(*out.meshes);
+  bake(*out.nurbscurves);
+  bake(*out.nurbssurfaces);
+  bake(*out.breps);
+  for (auto& item : *out.elements) {
+    auto it = world.find(item->guid());
+    if (it == world.end() || it->second.is_identity()) continue;
+    item->place(it->second);
   }
-  
-  // Apply accumulated transformations to actual geometry coordinates
-  for (auto& point : *transformed_objects.points) {
-    point->transform();
-  }
-  for (auto& line : *transformed_objects.lines) {
-    line->transform();
-  }
-  for (auto& plane : *transformed_objects.planes) {
-    plane->transform();
-  }
-  for (auto& bbox : *transformed_objects.bboxes) {
-    bbox->transform();
-  }
-  for (auto& polyline : *transformed_objects.polylines) {
-    polyline->transform();
-  }
-  for (auto& pointcloud : *transformed_objects.pointclouds) {
-    pointcloud->transform();
-  }
-  for (auto& mesh : *transformed_objects.meshes) {
-    mesh->transform();
-  }
-  return transformed_objects;
+
+  return out;
 }
 
 // JSON Serialization
@@ -600,6 +682,14 @@ nlohmann::ordered_json Session::jsondump() const {
   data["objects"] = objects.jsondump();
   data["tree"] = tree.jsondump();
   data["graph"] = graph.jsondump();
+  nlohmann::ordered_json xforms_json = nlohmann::ordered_json::array();
+  for (const auto &[obj_guid, obj_xform] : xforms_ordered()) {
+    nlohmann::ordered_json entry;
+    entry["guid"] = obj_guid;
+    entry["xform"] = obj_xform.jsondump();
+    xforms_json.push_back(entry);
+  }
+  data["xforms"] = xforms_json;
   return data;
 }
 
@@ -656,6 +746,13 @@ Session Session::jsonload(const nlohmann::json &data) {
     session.graph = Graph::jsonload(data["graph"]);
   }
 
+  // Load local transforms (absent in older files)
+  if (data.contains("xforms")) {
+    for (const auto &entry : data["xforms"]) {
+      session.xforms[entry["guid"].get<std::string>()] = Xform::jsonload(entry["xform"]);
+    }
+  }
+
 
   return session;
 }
@@ -686,6 +783,12 @@ std::string Session::pb_dumps() const {
   proto.mutable_objects()->ParseFromString(objects.pb_dumps());
   proto.mutable_tree()->ParseFromString(tree.pb_dumps());
   proto.mutable_graph()->ParseFromString(graph.pb_dumps());
+  // Xforms in canonical order() sequence - a map would not be deterministic
+  for (const auto &[obj_guid, obj_xform] : xforms_ordered()) {
+    auto *entry = proto.add_xforms();
+    entry->set_guid(obj_guid);
+    entry->mutable_xform()->ParseFromString(obj_xform.pb_dumps());
+  }
   return proto.SerializeAsString();
 }
 
@@ -718,6 +821,10 @@ Session Session::pb_loads(const std::string& data) {
   for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid()] = ns;
   for (const auto& b : *session.objects.breps) session.lookup[b->guid()] = b;
   for (const auto& e : *session.objects.elements) session.lookup[e->guid()] = e;
+
+  for (const auto& entry : proto.xforms()) {
+    session.xforms[entry.guid()] = Xform::pb_loads(entry.xform().SerializeAsString());
+  }
 
   return session;
 }
@@ -753,10 +860,12 @@ void Session::rebuild_ray_bvh_cache() {
   cached_guids.clear();
   std::vector<OBB> boxes;
   boxes.reserve(lookup.size());
+  auto world = world_xforms();
   for (const auto& g : order()) {
     auto it = lookup.find(g);
     if (it == lookup.end()) continue;
-    boxes.push_back(compute_bounding_box(it->second));
+    auto wit = world.find(g);
+    boxes.push_back(compute_bounding_box(it->second, wit == world.end() ? Xform::identity() : wit->second));
     cached_guids.push_back(g);
   }
   if (!boxes.empty()) {
@@ -786,14 +895,19 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
   std::vector<RayHit> hits;
   Line ray = Line::from_points(origin, origin + direction * 10000.0);  // Long ray
   double closest_dist = std::numeric_limits<double>::infinity();
-  
+
+  // Placements come from the session, not the geometry; resolve them all up front.
+  auto world = world_xforms();
+
   for (int idx : candidate_ids) {
     const std::string& obj_guid = cached_guids[idx];
     auto lookup_it = lookup.find(obj_guid);
     if (lookup_it == lookup.end()) continue; // removed since the BVH was built
     const Geometry& geom = lookup_it->second;
-    
-    std::optional<Point> hit = ray_intersect_geometry(ray, geom, tolerance);
+    auto wit = world.find(obj_guid);
+    Xform placement = wit == world.end() ? Xform::identity() : wit->second;
+
+    std::optional<Point> hit = ray_intersect_geometry(ray, geom, tolerance, placement);
     if (hit) {
       double dist = origin.distance(*hit);
       
@@ -814,7 +928,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
 }
 
 // ADD NEW GEOMETRY TYPES HERE: Add ray intersection logic for precise ray casting
-std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance) {
+std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance, const Xform& placement) {
   return std::visit([&](auto&& geom_ptr) -> std::optional<Point> {
     using T = std::decay_t<decltype(geom_ptr)>;
     
@@ -884,13 +998,13 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       return closest_hit;
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
-      // Ray-mesh: xform is the placement — cast in the mesh's LOCAL frame, return a WORLD hit
-      auto inv = geom_ptr->xform.inverse();
+      // The session holds the placement: cast in the mesh's LOCAL frame, return a WORLD hit
+      auto inv = placement.inverse();
       if (!inv) return std::nullopt;
       Line local_ray = Line::from_points(inv->transform_point(ray.start()), inv->transform_point(ray.end()));
       std::vector<Point> hits = Intersection::ray_mesh_bvh(local_ray, *geom_ptr, tolerance, true);
       if (!hits.empty()) {
-        return geom_ptr->xform.transform_point(hits[0]);  // Return closest
+        return placement.transform_point(hits[0]);  // Return closest
       }
       return std::nullopt;
     }

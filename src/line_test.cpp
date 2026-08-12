@@ -129,13 +129,12 @@ MINI_TEST("Line", "Transformation") {
     // uncomment #include "xform.h"
 
     Line l(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
-    l.xform = Xform::translation(10.0, 0.0, 0.0);
-    Line l_transformed = l.transformed(); // Make a copy
-    l.transform(); // After the call, "xform" is reset
+    Xform l_xf = Xform::translation(10.0, 0.0, 0.0);
+    Line l_transformed = l.transformed(l_xf); // Make a copy
+    l.transform(l_xf);
 
     MINI_CHECK(l_transformed[0] == 10.0 && l_transformed[3] == 11.0);
     MINI_CHECK(l[0] == 10.0 && l[3] == 11.0);
-    MINI_CHECK(l.xform == Xform::identity());
 }
 
 MINI_TEST("Line", "Json Roundtrip") {

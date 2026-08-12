@@ -10,7 +10,6 @@
 #include "boundingbox.pb.h"
 #include "point.pb.h"
 #include "vector.pb.h"
-#include "xform.pb.h"
 #include <fstream>
 #include <cmath>
 #include <algorithm>
@@ -80,7 +79,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
     double max_z = std::numeric_limits<double>::lowest();
 
     for (const auto& pt : points) {
-        Point local_pt = pt; local_pt.xform = world_to_local; local_pt = local_pt.transformed();
+        Point local_pt = pt.transformed(world_to_local);
         min_x = std::min(min_x, local_pt[0]);
         min_y = std::min(min_y, local_pt[1]);
         min_z = std::min(min_z, local_pt[2]);
@@ -96,7 +95,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
         (max_z - min_z) * 0.5 + inflate_amount
     );
 
-    Point world_center = local_center; world_center.xform = local_to_world; world_center = world_center.transformed();
+    Point world_center = local_center.transformed(local_to_world);
 
     return OBB(world_center, x_axis, y_axis, z_axis, half_size);
 }
@@ -424,17 +423,16 @@ bool OBB::separating_plane_exists(const Vector& relative_position, const Vector&
     return dot_rp > (proj1 + proj2);
 }
 
-void OBB::transform() {
-  center.xform = xform; center.transform();
-  x_axis.xform = xform; x_axis.transform();
-  y_axis.xform = xform; y_axis.transform();
-  z_axis.xform = xform; z_axis.transform();
-  xform = Xform::identity();
+void OBB::transform(const Xform& xform) {
+  center.transform(xform);
+  x_axis.transform(xform);
+  y_axis.transform(xform);
+  z_axis.transform(xform);
 }
 
-OBB OBB::transformed() const {
+OBB OBB::transformed(const Xform& xform) const {
   OBB result = *this;
-  result.transform();
+  result.transform(xform);
   return result;
 }
 
@@ -594,12 +592,6 @@ std::string OBB::pb_dumps() const {
     proto.mutable_half_size()->ParseFromString(half_size.pb_dumps());
     proto.set_guid(guid());
     proto.set_name(name);
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid());
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        xform_proto->add_matrix(xform.m[i]);
-    }
     return proto.SerializeAsString();
 }
 
@@ -614,9 +606,6 @@ OBB OBB::pb_loads(const std::string& data) {
     OBB box(c, xa, ya, za, hs);
     box.guid() = proto.guid();
     box.name = proto.name();
-    if (proto.has_xform()) {
-        box.xform = Xform::pb_loads(proto.xform().SerializeAsString());
-    }
     return box;
 }
 

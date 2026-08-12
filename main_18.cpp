@@ -54,8 +54,8 @@ static Xform motion(int k) {
 
 static BRep moved(const BRep& b, const Xform& x) {
     BRep c = b;
-    c.xform = x;
-    return c.transformed();
+    c.transform(x);
+    return c;
 }
 
 static Point xf_pt(const Xform& m, const Point& p) {

@@ -150,7 +150,6 @@ MINI_TEST("ElementPlate", "Json Roundtrip") {
         Point(0, 2, 0),
     };
     ElementPlate p(polygon, 0.3, "json_plate");
-    p.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_plate_element.json";
     p.file_json_dump(fname);
@@ -173,7 +172,6 @@ MINI_TEST("ElementPlate", "Protobuf Roundtrip") {
         Point(0, 2, 0),
     };
     ElementPlate p(polygon, 0.3, "proto_plate");
-    p.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string path = "serialization/test_plate_element.bin";
     p.pb_dump(path);

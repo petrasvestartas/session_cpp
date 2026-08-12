@@ -307,8 +307,9 @@ MINI_TEST("Session", "Ray Cast") {
     placed->add_vertex(Point(1.0, -1.0, 0.0), 1);
     placed->add_vertex(Point(0.0, 1.0, 0.0), 2);
     placed->add_face(std::vector<size_t>{0, 1, 2});
-    placed->xform = Xform::translation(100.0, 0.0, 0.0);
+    std::string placed_guid = placed->guid();
     session.add_mesh(placed);
+    session.set_xform(placed_guid, Xform::translation(100.0, 0.0, 0.0));
     auto hits2 = session.ray_cast(Point(100.0, 0.0, 2.0), Vector(0.0, 0.0, -1.0));
 
     MINI_CHECK(hits2.size() >= 1);
@@ -367,6 +368,28 @@ MINI_TEST("Session", "Get Geometry") {
     Objects geom = session.get_geometry();
 
     MINI_CHECK(geom.points->size() == 1);
+}
+
+MINI_TEST("Session", "Get Geometry Is Pure") {
+    // get_geometry() is const: it returns a flattened SNAPSHOT and must never touch the
+    // session's own geometry, so calling it twice gives the same answer.
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+    session.add_point(point);
+    session.set_xform(guid, Xform::translation(10.0, 0.0, 0.0));
+
+    Point first = *session.get_geometry().points->at(0);
+    Point second = *session.get_geometry().points->at(0);
+
+    MINI_CHECK(TOLERANCE.is_close(first[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close(second[0], 11.0));
+    MINI_CHECK(TOLERANCE.is_close((*point)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close((*session.objects.points->at(0))[0], 1.0));
 }
 
 MINI_TEST("Session", "Compute Face To Face") {
@@ -474,6 +497,87 @@ MINI_TEST("Session", "Order") {
     MINI_CHECK(loaded.order() == order);
 }
 
+MINI_TEST("Session", "Set Xform") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+    session.add_point(point);
+
+    Xform shift = Xform::translation(5.0, 0.0, 0.0);
+    session.set_xform(guid, shift);
+
+    MINI_CHECK(session.xform(guid) == shift);
+    // No parent was passed, so the object has no tree node: it is its own root and keeps
+    // its placement. Falling back to identity here would move it to the origin.
+    MINI_CHECK(session.world_xform(guid) == shift);
+    MINI_CHECK(session.world_xforms()[guid] == shift);
+    MINI_CHECK(session.xform("missing") == Xform::identity());
+    MINI_CHECK(session.remove_xform(guid));
+    MINI_CHECK(session.xform(guid) == Xform::identity());
+}
+
+MINI_TEST("Session", "World Xform Hierarchy") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    auto b = std::make_shared<Point>(0.0, 0.0, 0.0);
+    auto c = std::make_shared<Point>(0.0, 0.0, 0.0);
+    std::string a_guid = a->guid();
+    std::string b_guid = b->guid();
+    std::string c_guid = c->guid();
+    auto a_node = session.add_point(a);
+    auto b_node = session.add_point(b);
+    auto c_node = session.add_point(c);
+
+    session.add(a_node);
+    session.add(b_node, a_node);
+    session.add(c_node, b_node);
+
+    // Rotation and translation do not commute, so a reversed fold fails these checks.
+    Xform a_xform = Xform::rotation_z(Tolerance::PI / 2.0);
+    Xform b_xform = Xform::translation(2.0, 0.0, 0.0);
+    Xform c_xform = Xform::rotation_z(Tolerance::PI / 2.0);
+    session.set_xform(a_guid, a_xform);
+    session.set_xform(b_guid, b_xform);
+    session.set_xform(c_guid, c_xform);
+
+    auto world = session.world_xforms();
+
+    MINI_CHECK(session.world_xform(a_guid) == a_xform);
+    MINI_CHECK(session.world_xform(b_guid) == a_xform * b_xform);
+    MINI_CHECK(session.world_xform(c_guid) == a_xform * b_xform * c_xform);
+    MINI_CHECK(world[c_guid] == session.world_xform(c_guid));
+}
+
+MINI_TEST("Session", "Xform Roundtrip") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+    session.add_point(point);
+    session.set_xform(guid, Xform::translation(7.0, 8.0, 9.0));
+
+    std::string fname = "serialization/test_session_xform.bin";
+    session.pb_dump(fname);
+    Session loaded = Session::pb_load(fname);
+    Session json_loaded = Session::file_json_loads(session.file_json_dumps());
+
+    MINI_CHECK(loaded.xform(guid) == session.xform(guid));
+    MINI_CHECK(loaded.xforms.size() == 1);
+    MINI_CHECK(json_loaded.xform(guid) == session.xform(guid));
+    MINI_CHECK(json_loaded.xforms.size() == 1);
+}
+
 MINI_TEST("Session", "Tree Transformation Hierarchy") {
     // uncomment #include "session.h"
     // uncomment #include "mesh.h"
@@ -506,10 +610,13 @@ MINI_TEST("Session", "Tree Transformation Hierarchy") {
     };
 
     auto box1 = create_box(Point(0, 0, 0), 2.0);
+    std::string box1_guid = box1->guid();
     auto box1_node = scene.add_mesh(box1);
     auto box2 = create_box(Point(0, 0, 0), 2.0);
+    std::string box2_guid = box2->guid();
     auto box2_node = scene.add_mesh(box2);
     auto box3 = create_box(Point(0, 0, 0), 2.0);
+    std::string box3_guid = box3->guid();
     auto box3_node = scene.add_mesh(box3);
 
     scene.add(box1_node);
@@ -519,18 +626,21 @@ MINI_TEST("Session", "Tree Transformation Hierarchy") {
     Plane plane_from(Point(0,0,0), Vector(1,0,0), Vector(0,1,0));
     Plane plane_to(Point(0,0,1.0), Vector(1,0,0), Vector(0,1,0));
     Xform xy_to_top = Xform::plane_to_plane(plane_from, plane_to);
-    box1->xform = Xform::rotation_z(Tolerance::PI / 1.5) * xy_to_top;
-    box2->xform = Xform::translation(2.0, 0, 0) * Xform::rotation_z(Tolerance::PI / 6.0);
-    box3->xform = Xform::translation(2.0, 0, 0);
+    scene.set_xform(box1_guid, Xform::rotation_z(Tolerance::PI / 1.5) * xy_to_top);
+    scene.set_xform(box2_guid, Xform::translation(2.0, 0, 0) * Xform::rotation_z(Tolerance::PI / 6.0));
+    scene.set_xform(box3_guid, Xform::translation(2.0, 0, 0));
 
+    // get_geometry BAKES the cumulative placement into the coordinates, so the deepest box
+    // must land exactly where its world xform sends the original corner.
+    Xform world3 = scene.world_xform(box3_guid);
+    Point expected = world3.transform_point(Point(-1.0, -1.0, -1.0));
     Objects transformed = scene.get_geometry();
+    Point baked = *(*transformed.meshes)[2]->vertex_point(0);
 
     MINI_CHECK(transformed.meshes->size() == 3);
-    auto& m1 = (*transformed.meshes)[0];
-    Point v0 = m1->vertex.at(0).position();
-    MINI_CHECK(std::abs(v0[0] - 1.36603) < 1e-4);
-    MINI_CHECK(std::abs(v0[1] - (-0.366025)) < 1e-4);
-    MINI_CHECK(std::abs(v0[2] - 0.0) < 1e-4);
+    MINI_CHECK(TOLERANCE.is_close(baked[0], expected[0]));
+    MINI_CHECK(TOLERANCE.is_close(baked[1], expected[1]));
+    MINI_CHECK(TOLERANCE.is_close(baked[2], expected[2]));
 }
 
 MINI_TEST("Session", "Add Component") {

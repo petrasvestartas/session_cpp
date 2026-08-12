@@ -96,8 +96,8 @@ MINI_TEST("ElementColumn", "Session Geometry") {
     // uncomment #include "mesh.h"
     // uncomment #include "xform.h"
     ElementColumn c(0.4, 0.4, 3.0);
-    c.session_transformation = Xform::translation(10.0, 0.0, 0.0);
-    auto sg = c.session_geometry();
+    Xform c_xf = Xform::translation(10.0, 0.0, 0.0);
+    auto sg = c.session_geometry(c_xf);
 
     MINI_CHECK(std::holds_alternative<Mesh>(sg));
     auto& mesh = std::get<Mesh>(sg);
@@ -110,7 +110,6 @@ MINI_TEST("ElementColumn", "Json Roundtrip") {
     // uncomment #include "element_column.h"
     // uncomment #include "xform.h"
     ElementColumn c(0.5, 0.6, 4.0, "json_col");
-    c.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string fname = "serialization/test_column_element.json";
     c.file_json_dump(fname);
@@ -126,7 +125,6 @@ MINI_TEST("ElementColumn", "Protobuf Roundtrip") {
     // uncomment #include "element_column.h"
     // uncomment #include "xform.h"
     ElementColumn c(0.5, 0.6, 4.0, "proto_col");
-    c.session_transformation = Xform::translation(1.0, 2.0, 3.0);
 
     std::string path = "serialization/test_column_element.bin";
     c.pb_dump(path);

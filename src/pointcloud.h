@@ -28,8 +28,6 @@ public:
     /// Point size for rendering
     double point_size = 1.0;
 
-    /// Transformation matrix applied by transform()/transformed()
-    Xform xform;
 
 private:
     mutable std::string _guid; ///< Lazily generated unique identifier
@@ -146,11 +144,11 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply this cloud's xform in place
-    void transform();
+    /// Apply a transformation to this cloud in place
+    void transform(const Xform& xform);
 
-    /// Return a copy of this cloud with its xform applied
-    PointCloud transformed() const;
+    /// Return a copy of this cloud with the transformation applied
+    PointCloud transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // No-copy Operators

@@ -228,8 +228,7 @@ BRep v2dump_build_shape(const V2DumpSpec& sp, std::string* why) {
         b = BRep::create_box(dx, dy, dz);
         if (!sp.center) {
             Xform t = Xform::translation(dx / 2.0, dy / 2.0, dz / 2.0);
-            b.xform = t;
-            b.transform();
+            b.transform(t);
         }
     } else {
         if (why) *why = "unknown shape type '" + sp.type + "'";
@@ -242,8 +241,7 @@ BRep v2dump_build_shape(const V2DumpSpec& sp, std::string* why) {
     if (sp.has("rotz")) T = Xform::rotation_z(sp.get("rotz", 0), true) * T;
     if (sp.has("tx") || sp.has("ty") || sp.has("tz"))
         T = Xform::translation(sp.get("tx", 0), sp.get("ty", 0), sp.get("tz", 0)) * T;
-    b.xform = T;
-    b.transform();
+    b.transform(T);
     return b;
 }
 

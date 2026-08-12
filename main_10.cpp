@@ -30,11 +30,10 @@ static BRep place(BRep b, double tx, double ty, double tz, int axis = 2, double 
         Xform r = axis == 0 ? Xform::rotation_x(deg, true)
                 : axis == 1 ? Xform::rotation_y(deg, true)
                             : Xform::rotation_z(deg, true);
-        b.xform = t * r;
+        b.transform(t * r);
     } else {
-        b.xform = t;
+        b.transform(t);
     }
-    b.transform();
     return b;
 }
 

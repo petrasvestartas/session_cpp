@@ -730,33 +730,29 @@ namespace session_cpp {
         };
 
 
-        // transform() - Apply stored xform (in-place)                                                                                                                                                         
-        NurbsSurface surface1 = NurbsSurface::create(false, false, 3, 3, 4, 4, points);                                                         
-        surface1.xform = Xform::translation(0.0, 0.0, 1.0);  
-        surface1.transform();  // applies stored xform, modifies surface1
+        // Variant 1: transform(const Xform&) - in place
+        NurbsSurface surface1 = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+        Xform surface1_xf = Xform::translation(0.0, 0.0, 1.0);
+        surface1.transform(surface1_xf);
 
-        MINI_CHECK(surface1.xform.is_identity() == false);
         MINI_CHECK(surface1.cv(0, 0)[2] == 1.0);
 
-        // transform(const Xform&) - Apply custom xform (in-place)
+        // Variant 2: transform(const Xform&) - in place, matrix built separately
         NurbsSurface surface2 = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
         Xform x = Xform::translation(0.0, 0.0, 1.0);
         surface2.transform(x);  // modifies surface2 directly
-        MINI_CHECK(surface2.xform.is_identity() == true);
         MINI_CHECK(surface2.cv(0, 0)[2] == 1.0);
 
-        // transformed() - Get copy with stored xform applied
+        // Variant 3: transformed(const Xform&) - returns a copy
         NurbsSurface surface3 = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
-        surface3.xform = Xform::translation(0.0, 0.0, 10.0);
-        NurbsSurface surface3_transformed = surface3.transformed();
-        MINI_CHECK(surface3_transformed.xform.is_identity() == false);
+        Xform surface3_xf = Xform::translation(0.0, 0.0, 10.0);
+        NurbsSurface surface3_transformed = surface3.transformed(surface3_xf);
         MINI_CHECK(surface3_transformed.cv(0, 0)[2] == 10.0);
         
-        // transformed(const Xform&) - Get copy with custom xform
+        // Variant 4: transformed(const Xform&) - returns a copy, matrix built separately
         NurbsSurface surface4 = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
         x = Xform::translation(0.0, 0.0, 10.0);
         NurbsSurface surface4_transformed = surface4.transformed(x); 
-        MINI_CHECK(surface4_transformed.xform.is_identity() == true);
         MINI_CHECK(surface4_transformed.cv(0, 0)[2] == 10.0);
 
     }

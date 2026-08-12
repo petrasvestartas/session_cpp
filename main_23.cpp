@@ -47,8 +47,8 @@ using session_cpp::v2v::v2_verdict_topology_only;
 static BRep translated(const BRep& b, double tx, double ty, double tz) {
     if (tx == 0.0 && ty == 0.0 && tz == 0.0) return b;
     BRep c = b;
-    c.xform = Xform::translation(tx, ty, tz);
-    return c.transformed();
+    c.transform(Xform::translation(tx, ty, tz));
+    return c;
 }
 
 /// Parse "own:sphere@1,0,0" / "step:/path/f.step#2@0,0,3".  Exits 4 on an unreadable source so

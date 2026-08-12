@@ -38,7 +38,6 @@ public:
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;
 
-    Xform xform;
 
     OBB();
     OBB(const Point& center, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis, const Vector& half_size);
@@ -83,8 +82,8 @@ public:
     bool collides_with_rtcd(const OBB& other) const;
     bool collides_with_naive(const OBB& other) const;
 
-    void transform();
-    OBB transformed() const;
+    void transform(const Xform& xform);
+    OBB transformed(const Xform& xform) const;
 
     nlohmann::ordered_json jsondump() const;
     static OBB jsonload(const nlohmann::json& data);
@@ -141,10 +140,10 @@ inline bool get_separating_plane(
 inline void transform_plane_as_vector_array(Vector* plane, const Xform& xform)
 {
     Point p = {plane[0][0], plane[0][1], plane[0][2]};
-    p.xform = xform; p.transform();
+    p.transform(xform);
     plane[0] = {p[0], p[1], p[2]};
     for (int i = 1; i < 4; i++) {
-        plane[i].xform = xform; plane[i].transform();
+        plane[i].transform(xform);
     }
 }
 

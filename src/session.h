@@ -70,6 +70,11 @@ public:
   Graph graph; ///< Graph structure for relationships
   std::unordered_map<std::string, Component>
       component_lookup; ///< Fast lookup for custom components by GUID
+  /// Guid -> LOCAL transform, relative to the tree parent. THE only place a transform is
+  /// stored: geometry types carry no transformation member. Cumulative placement comes from
+  /// world_xform(), which multiplies down the tree. Serialized explicitly by
+  /// jsondump/pb_dumps in order() sequence (a map has no deterministic order).
+  std::unordered_map<std::string, Xform> xforms;
   SpatialBVH bvh;    ///< Bounding volume hierarchy for collision detection
   
   // SpatialBVH caching for ray casting performance
@@ -228,6 +233,30 @@ public:
   std::vector<std::string> order() const;
 
   ///////////////////////////////////////////////////////////////////////////////////////////
+  // Xforms - the one place a transformation is stored
+  ///////////////////////////////////////////////////////////////////////////////////////////
+
+  /// Sets the LOCAL transform of an object, relative to its tree parent.
+  void set_xform(const std::string &guid, const Xform &xform);
+
+  /// The LOCAL transform of an object, identity when none was set.
+  Xform xform(const std::string &guid) const;
+
+  /// Removes an object's local transform, returning whether one was present.
+  bool remove_xform(const std::string &guid);
+
+  /// The CUMULATIVE placement of an object: every ancestor's transform multiplied down the
+  /// tree onto its own. An object with no tree node is its own root and returns its local
+  /// transform - objects added without a parent are never attached, so treating a missing
+  /// node as identity would silently move them to the origin.
+  Xform world_xform(const std::string &guid) const;
+
+  /// Every object's cumulative placement, computed in ONE downward pass. Use this instead of
+  /// calling world_xform() per object: that does a whole-tree scan to find each node, which
+  /// is quadratic over a session.
+  std::unordered_map<std::string, Xform> world_xforms() const;
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
   // Tree Operations
   ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -273,11 +302,13 @@ public:
   ///////////////////////////////////////////////////////////////////////////////////////////
 
   /**
-   * @brief Compute bounding box for a geometry object, inflated by tolerance.
+   * @brief Bounding box of an object in WORLD placement, inflated by tolerance.
    * @param geometry The geometry variant
+   * @param xform The object's cumulative transform from world_xform() - the geometry itself
+   *              stores no placement, so it must be supplied here
    * @return Inflated bounding box for collision detection
    */
-  static OBB compute_bounding_box(const Geometry& geometry);
+  static OBB compute_bounding_box(const Geometry& geometry, const Xform& xform);
 
   /**
    * @brief Get all collision pairs using SpatialBVH and add them as graph edges.
@@ -325,12 +356,13 @@ public:
   ///////////////////////////////////////////////////////////////////////////////////////////
 
   /**
-   * @brief Get all geometry with transformations applied from tree hierarchy.
-   * 
-   * Recursively traverses the tree and applies parent transformations to children.
-   * Each child's transformation is the composition of all ancestor transformations
-   * multiplied by its own transformation.
-   * 
+   * @brief All geometry with its hierarchical placement BAKED into the coordinates.
+   *
+   * Each object is transformed by its cumulative world_xform() - its own transform with every
+   * ancestor's multiplied down the tree. The result is a FLATTENED snapshot: every guid's world
+   * transform is identity by construction, so never pair it back with session.xforms or the
+   * placement would be applied twice.
+   *
    * @return Objects collection with transformed geometry
    */
   Objects get_geometry() const;
@@ -363,14 +395,19 @@ public:
 private:
   mutable std::string _guid;
 
+  /// The xforms in canonical order() sequence, identity entries omitted - the exact sequence
+  /// jsondump and pb_dumps write, so both formats share one order.
+  std::vector<std::pair<std::string, Xform>> xforms_ordered() const;
+
   /**
    * @brief Test ray intersection with a specific geometry object.
    * @param ray The ray to test
    * @param geometry The geometry variant to test against
    * @param tolerance Intersection tolerance
+   * @param placement The object's cumulative world transform (the session holds it, not the geometry)
    * @return Hit point if intersection found, nullopt otherwise
    */
-  std::optional<Point> ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance);
+  std::optional<Point> ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance, const Xform& placement);
   
   /**
    * @brief Rebuild the cached SpatialBVH for ray casting.

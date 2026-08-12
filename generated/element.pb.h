@@ -29,7 +29,6 @@
 #include "google/protobuf/repeated_field.h"  // IWYU pragma: export
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
 #include "google/protobuf/unknown_field_set.h"
-#include "xform.pb.h"
 #include "plane.pb.h"
 // @@protoc_insertion_point(includes)
 
@@ -640,7 +639,6 @@ class Element final : public ::google::protobuf::Message
     kGeometryTypeFieldNumber = 3,
     kGeometryDataFieldNumber = 4,
     kKeyFieldNumber = 8,
-    kSessionTransformationFieldNumber = 5,
     kComponentPlaneFieldNumber = 9,
   };
   // repeated int32 joint_types = 6;
@@ -753,21 +751,6 @@ class Element final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_key();
 
   public:
-  // .session_proto.Xform session_transformation = 5;
-  bool has_session_transformation() const;
-  void clear_session_transformation() ;
-  const ::session_proto::Xform& session_transformation() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_session_transformation();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_session_transformation();
-  void set_allocated_session_transformation(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_session_transformation(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_session_transformation();
-
-  private:
-  const ::session_proto::Xform& _internal_session_transformation() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_session_transformation();
-
-  public:
   // .session_proto.Plane component_plane = 9;
   bool has_component_plane() const;
   void clear_component_plane() ;
@@ -787,8 +770,8 @@ class Element final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 9,
-                                   3, 62,
+  static const ::google::protobuf::internal::TcParseTable<4, 8,
+                                   2, 62,
                                    2>
       _table_;
 
@@ -817,7 +800,6 @@ class Element final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr geometry_type_;
     ::google::protobuf::internal::ArenaStringPtr geometry_data_;
     ::google::protobuf::internal::ArenaStringPtr key_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE session_transformation_;
     ::session_proto::Plane* PROTOBUF_NULLABLE component_plane_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -1242,99 +1224,6 @@ inline void Element::set_allocated_geometry_data(::std::string* PROTOBUF_NULLABL
   // @@protoc_insertion_point(field_set_allocated:session_proto.Element.geometry_data)
 }
 
-// .session_proto.Xform session_transformation = 5;
-inline bool Element::has_session_transformation() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
-  PROTOBUF_ASSUME(!value || _impl_.session_transformation_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& Element::_internal_session_transformation() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.session_transformation_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& Element::session_transformation() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.Element.session_transformation)
-  return _internal_session_transformation();
-}
-inline void Element::unsafe_arena_set_allocated_session_transformation(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.session_transformation_);
-  }
-  _impl_.session_transformation_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Element.session_transformation)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE Element::release_session_transformation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  ::session_proto::Xform* released = _impl_.session_transformation_;
-  _impl_.session_transformation_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE Element::unsafe_arena_release_session_transformation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.Element.session_transformation)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  ::session_proto::Xform* temp = _impl_.session_transformation_;
-  _impl_.session_transformation_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL Element::_internal_mutable_session_transformation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.session_transformation_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.session_transformation_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.session_transformation_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL Element::mutable_session_transformation()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
-  ::session_proto::Xform* _msg = _internal_mutable_session_transformation();
-  // @@protoc_insertion_point(field_mutable:session_proto.Element.session_transformation)
-  return _msg;
-}
-inline void Element::set_allocated_session_transformation(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.session_transformation_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  }
-
-  _impl_.session_transformation_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.Element.session_transformation)
-}
-
 // repeated int32 joint_types = 6;
 inline int Element::_internal_joint_types_size() const {
   return _internal_joint_types().size();
@@ -1508,7 +1397,7 @@ inline void Element::set_allocated_key(::std::string* PROTOBUF_NULLABLE value) {
 
 // .session_proto.Plane component_plane = 9;
 inline bool Element::has_component_plane() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000100U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
   PROTOBUF_ASSUME(!value || _impl_.component_plane_ != nullptr);
   return value;
 }
@@ -1529,16 +1418,16 @@ inline void Element::unsafe_arena_set_allocated_component_plane(
   }
   _impl_.component_plane_ = reinterpret_cast<::session_proto::Plane*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Element.component_plane)
 }
 inline ::session_proto::Plane* PROTOBUF_NULLABLE Element::release_component_plane() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::session_proto::Plane* released = _impl_.component_plane_;
   _impl_.component_plane_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -1558,7 +1447,7 @@ inline ::session_proto::Plane* PROTOBUF_NULLABLE Element::unsafe_arena_release_c
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.component_plane)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::session_proto::Plane* temp = _impl_.component_plane_;
   _impl_.component_plane_ = nullptr;
   return temp;
@@ -1573,7 +1462,7 @@ inline ::session_proto::Plane* PROTOBUF_NONNULL Element::_internal_mutable_compo
 }
 inline ::session_proto::Plane* PROTOBUF_NONNULL Element::mutable_component_plane()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::session_proto::Plane* _msg = _internal_mutable_component_plane();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.component_plane)
   return _msg;
@@ -1590,9 +1479,9 @@ inline void Element::set_allocated_component_plane(::session_proto::Plane* PROTO
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   }
 
   _impl_.component_plane_ = reinterpret_cast<::session_proto::Plane*>(value);

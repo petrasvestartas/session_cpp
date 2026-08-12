@@ -509,8 +509,7 @@ Mesh Primitives::transform_geometry(
     std::vector<size_t> vertex_keys;
     vertex_keys.reserve(vertices.size());
     for (const auto& v : vertices) {
-        Point transformed = v; transformed.xform = xform; transformed = transformed.transformed();
-        vertex_keys.push_back(mesh.add_vertex(transformed));
+        vertex_keys.push_back(mesh.add_vertex(v.transformed(xform)));
     }
     for (const auto& tri : triangles) {
         std::vector<size_t> face_vertices = {vertex_keys[tri[0]], vertex_keys[tri[1]], vertex_keys[tri[2]]};
@@ -749,8 +748,7 @@ Mesh Primitives::arrow_mesh(const Line& line, double radius) {
 
     std::vector<size_t> body_vertex_map;
     for (const auto& v : body_geometry.first) {
-        Point transformed = v; transformed.xform = body_xform; transformed = transformed.transformed();
-        body_vertex_map.push_back(mesh.add_vertex(transformed));
+        body_vertex_map.push_back(mesh.add_vertex(v.transformed(body_xform)));
     }
     for (const auto& tri : body_geometry.second) {
         std::vector<size_t> face_vertices = {body_vertex_map[tri[0]], body_vertex_map[tri[1]], body_vertex_map[tri[2]]};
@@ -759,8 +757,7 @@ Mesh Primitives::arrow_mesh(const Line& line, double radius) {
 
     std::vector<size_t> cone_vertex_map;
     for (const auto& v : cone_geometry.first) {
-        Point transformed = v; transformed.xform = cone_xform; transformed = transformed.transformed();
-        cone_vertex_map.push_back(mesh.add_vertex(transformed));
+        cone_vertex_map.push_back(mesh.add_vertex(v.transformed(cone_xform)));
     }
     for (const auto& tri : cone_geometry.second) {
         std::vector<size_t> face_vertices = {cone_vertex_map[tri[0]], cone_vertex_map[tri[1]], cone_vertex_map[tri[2]]};

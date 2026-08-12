@@ -29,7 +29,6 @@ public:
     std::string name = "my_nurbssurface_trimmed";
     double width = 1.0;
     Color surfacecolor = Color::black();
-    Xform xform = Xform::identity();
 
     NurbsSurface m_surface;
     NurbsCurve m_outer_loop;
@@ -196,11 +195,11 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply the stored xform to the surface geometry and reset xform to identity.
-    void transform();
+    /// Apply a transformation to the surface geometry (in-place).
+    void transform(const Xform& xform);
 
-    /// Return a copy with the stored xform applied.
-    NurbsSurfaceTrimmed transformed() const;
+    /// Return a copy with the transformation applied.
+    NurbsSurfaceTrimmed transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization

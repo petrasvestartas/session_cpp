@@ -95,8 +95,7 @@ Xform random_pose(Lcg& r, double tr_scale) {
 
 BRep moved(const BRep& b, const Xform& x) {
     BRep t = b;
-    t.xform = x;
-    t.transform();
+    t.transform(x);
     return t;
 }
 
@@ -283,12 +282,10 @@ void t0_metric() {
     std::vector<D> ds;
     {
         BRep cy = BRep::create_cylinder(0.5, 6.0);
-        cy.xform = Xform::translation(0, 0, -3.0);
-        cy.transform();
+        cy.transform(Xform::translation(0, 0, -3.0));
         ds.push_back({"sphere - cylinder", BRep::create_sphere(2.0).boolean_difference(cy)});
         BRep co = BRep::create_cone(0.8, 3.0);
-        co.xform = Xform::translation(0, 0, -1.5);
-        co.transform();
+        co.transform(Xform::translation(0, 0, -1.5));
         ds.push_back({"box - cone", BRep::create_box(2, 2, 2).boolean_difference(co)});
     }
     for (D& d : ds) {
@@ -319,8 +316,7 @@ void t1_sphere_sphere() {
     std::printf("\nT1  sphere x sphere, 21 rigid poses (analytic circle r=sqrt(3)/2)\n");
     const BRep A0 = BRep::create_sphere(1.0);
     BRep B0 = BRep::create_sphere(1.0);
-    B0.xform = Xform::translation(1, 0, 0);
-    B0.transform();
+    B0.transform(Xform::translation(1, 0, 0));
     Lcg rng(20260726ULL);
     Run base;
     bool base_seam_ok = false;
@@ -351,13 +347,10 @@ void t1_sphere_sphere() {
         if (geom) {
             const V2Curve& c = S.curves()[0];
             Point ctr(0.5, 0, 0);
-            ctr.xform = X;
-            ctr.transform();
+            ctr.transform(X);
             Point nrm_a(0, 0, 0), nrm_b(1, 0, 0);
-            nrm_a.xform = X;
-            nrm_a.transform();
-            nrm_b.xform = X;
-            nrm_b.transform();
+            nrm_a.transform(X);
+            nrm_b.transform(X);
             const double nx[3] = {nrm_b[0] - nrm_a[0], nrm_b[1] - nrm_a[1], nrm_b[2] - nrm_a[2]};
             for (const V2PntOn2S& s2 : c.trail) {
                 er = std::max(er, std::abs(ctr.distance(s2.p) - std::sqrt(3.0) / 2));
@@ -409,8 +402,7 @@ void t2_sphere_cylinder() {
     const double tilts[] = {0.0, 0.01, 0.1, 0.3, 1.0, 5.0, 15.0, 30.0, 45.0};
     const BRep A = BRep::create_sphere(2.0);
     BRep C0 = BRep::create_cylinder(1.0, 6.0);
-    C0.xform = Xform::translation(0, 0, -3.0);
-    C0.transform();
+    C0.transform(Xform::translation(0, 0, -3.0));
     const double want_len = 2.0 * (2.0 * PI * 1.0);   // two circles of radius 1 at z = +-sqrt(3)
     Run base;
     int okc = 0;
@@ -454,8 +446,7 @@ void t3_forty_five() {
     std::printf("\nT3  sphere x cylinder at 45 deg -- section-stage verdict, and v1 downstream\n");
     const BRep A = BRep::create_sphere(2.0);
     BRep C0 = BRep::create_cylinder(1.0, 6.0);
-    C0.xform = Xform::translation(0, 0, -3.0);
-    C0.transform();
+    C0.transform(Xform::translation(0, 0, -3.0));
     Vector axis(1, 1, 0);
     const BRep C = moved(C0, Xform::rotation(axis, 45.0 * PI / 180.0));
     BdsArena ds;
@@ -551,8 +542,7 @@ void t5_box_cylinder() {
     std::printf("\nT5  box [-1,1]^3 x cylinder R=0.6 axis Z -- cylinder seam crossing\n");
     const BRep Bx = BRep::create_box(2, 2, 2);
     BRep Cy = BRep::create_cylinder(0.6, 4.0);
-    Cy.xform = Xform::translation(0, 0, -2.0);
-    Cy.transform();
+    Cy.transform(Xform::translation(0, 0, -2.0));
     const std::vector<const BRep*> ops = {&Bx, &Cy};
     BdsArena ds;
     ds.init(ops, 1e-7);
@@ -588,11 +578,9 @@ void t5b_sphere_seam() {
     // The sphere is spun about its OWN axis: identical geometry, seam moved off the point
     // where the analytic circle happens to start, so the crossing is a genuine interior pave.
     BRep Sp = BRep::create_sphere(1.0);
-    Sp.xform = Xform::rotation_z(0.7);
-    Sp.transform();
+    Sp.transform(Xform::rotation_z(0.7));
     BRep Bx = BRep::create_box(4, 4, 3);
-    Bx.xform = Xform::translation(0, 0, 2.0);
-    Bx.transform();
+    Bx.transform(Xform::translation(0, 0, 2.0));
     const std::vector<const BRep*> ops = {&Sp, &Bx};
     BdsArena ds;
     ds.init(ops, 1e-7);
@@ -629,8 +617,7 @@ void t6_box_cone() {
     {
         const BRep Bx = BRep::create_box(2, 2, 2);
         BRep Co = BRep::create_cone(0.8, 3.0);
-        Co.xform = Xform::translation(0, 0, -1.5);
-        Co.transform();
+        Co.transform(Xform::translation(0, 0, -1.5));
         const std::vector<const BRep*> ops = {&Bx, &Co};
         BdsArena ds;
         ds.init(ops, 1e-7);
@@ -653,8 +640,7 @@ void t6_box_cone() {
         std::printf("    (b) cone poking through the sides, 9 rigid poses of BOTH operands\n");
         const BRep Bx0 = BRep::create_box(2, 2, 2);
         BRep Co0 = BRep::create_cone(1.5, 3.0);
-        Co0.xform = Xform::translation(0, 0, -1.5);
-        Co0.transform();
+        Co0.transform(Xform::translation(0, 0, -1.5));
         Lcg rng(777ULL);
         Run base;
         int okc = 0;
@@ -742,8 +728,7 @@ void t8_typed() {
     // (a) two spheres that touch externally at one point -> not a section curve
     const BRep A = BRep::create_sphere(1.0);
     BRep B0 = BRep::create_sphere(1.0);
-    B0.xform = Xform::translation(2.0, 0, 0);
-    B0.transform();
+    B0.transform(Xform::translation(2.0, 0, 0));
     {
         BdsArena ds;
         const std::vector<const BRep*> ops = {&A, &B0};
@@ -760,8 +745,7 @@ void t8_typed() {
     // (b) two far-apart solids -> Empty, decided by the boxes, no SSI call at all
     {
         BRep C = BRep::create_sphere(1.0);
-        C.xform = Xform::translation(100, 0, 0);
-        C.transform();
+        C.transform(Xform::translation(100, 0, 0));
         BdsArena ds;
         const std::vector<const BRep*> ops = {&A, &C};
         ds.init(ops, 1e-7);
@@ -810,15 +794,13 @@ void t10_provenance() {
     std::vector<Case> cases;
     {
         BRep cy = BRep::create_cylinder(0.6, 4.0);
-        cy.xform = Xform::translation(0, 0, -2.0);
-        cy.transform();
+        cy.transform(Xform::translation(0, 0, -2.0));
         cases.push_back({"box x cylinder", BRep::create_box(2, 2, 2), cy});
     }
     cases.push_back({"box x sphere", BRep::create_box(2, 2, 2), BRep::create_sphere(1.5)});
     {
         BRep co = BRep::create_cone(1.5, 3.0);
-        co.xform = Xform::translation(0, 0, -1.5);
-        co.transform();
+        co.transform(Xform::translation(0, 0, -1.5));
         cases.push_back({"box x cone", BRep::create_box(2, 2, 2), co});
     }
     int total = 0, bad = 0;

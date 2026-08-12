@@ -99,7 +99,6 @@ inline constexpr Element::Impl_::Impl_(
         key_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        session_transformation_{nullptr},
         component_plane_{nullptr} {}
 
 template <typename>
@@ -145,12 +144,11 @@ const ::uint32_t
         0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_._has_bits_),
-        12, // hasbit index offset
+        11, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.geometry_type_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.geometry_data_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.session_transformation_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.joint_types_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.j_mf_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.key_),
@@ -159,11 +157,10 @@ const ::uint32_t
         3,
         4,
         5,
-        7,
         0,
         1,
         6,
-        8,
+        7,
 };
 
 static const ::_pbi::MigrationSchema
@@ -179,34 +176,32 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 };
 const char descriptor_table_protodef_element_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\relement.proto\022\rsession_proto\032\013xform.pr"
-    "oto\032\013plane.proto\"G\n\017JointConnection\022\020\n\010j"
-    "oint_id\030\001 \001(\005\022\017\n\007is_male\030\002 \001(\010\022\021\n\tparame"
-    "ter\030\003 \001(\001\"A\n\nFaceJoints\0223\n\013connections\030\001"
-    " \003(\0132\036.session_proto.JointConnection\"\203\002\n"
-    "\007Element\022\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\025\n\r"
-    "geometry_type\030\003 \001(\t\022\025\n\rgeometry_data\030\004 \001"
-    "(\014\0224\n\026session_transformation\030\005 \001(\0132\024.ses"
-    "sion_proto.Xform\022\023\n\013joint_types\030\006 \003(\005\022\'\n"
-    "\004j_mf\030\007 \003(\0132\031.session_proto.FaceJoints\022\013"
-    "\n\003key\030\010 \001(\t\022-\n\017component_plane\030\t \001(\0132\024.s"
-    "ession_proto.Planeb\006proto3"
+    "\n\relement.proto\022\rsession_proto\032\013plane.pr"
+    "oto\"G\n\017JointConnection\022\020\n\010joint_id\030\001 \001(\005"
+    "\022\017\n\007is_male\030\002 \001(\010\022\021\n\tparameter\030\003 \001(\001\"A\n\n"
+    "FaceJoints\0223\n\013connections\030\001 \003(\0132\036.sessio"
+    "n_proto.JointConnection\"\323\001\n\007Element\022\014\n\004n"
+    "ame\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\025\n\rgeometry_type"
+    "\030\003 \001(\t\022\025\n\rgeometry_data\030\004 \001(\014\022\023\n\013joint_t"
+    "ypes\030\006 \003(\005\022\'\n\004j_mf\030\007 \003(\0132\031.session_proto"
+    ".FaceJoints\022\013\n\003key\030\010 \001(\t\022-\n\017component_pl"
+    "ane\030\t \001(\0132\024.session_proto.PlaneJ\004\010\005\020\006b\006p"
+    "roto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_element_2eproto_deps[2] = {
+    descriptor_table_element_2eproto_deps[1] = {
         &::descriptor_table_plane_2eproto,
-        &::descriptor_table_xform_2eproto,
 };
 static ::absl::once_flag descriptor_table_element_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_element_2eproto = {
     false,
     false,
-    466,
+    405,
     descriptor_table_protodef_element_2eproto,
     "element.proto",
     &descriptor_table_element_2eproto_once,
     descriptor_table_element_2eproto_deps,
-    2,
+    1,
     3,
     schemas,
     file_default_instances,
@@ -828,17 +823,11 @@ class Element::_Internal {
       8 * PROTOBUF_FIELD_OFFSET(Element, _impl_._has_bits_);
 };
 
-void Element::clear_session_transformation() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.session_transformation_ != nullptr) _impl_.session_transformation_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
-}
 void Element::clear_component_plane() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.component_plane_ != nullptr) _impl_.component_plane_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000100U);
+                  0x00000080U);
 }
 Element::Element(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
@@ -878,10 +867,7 @@ Element::Element(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
   ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.session_transformation_ = (CheckHasBit(cached_has_bits, 0x00000080U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.session_transformation_)
-                : nullptr;
-  _impl_.component_plane_ = (CheckHasBit(cached_has_bits, 0x00000100U))
+  _impl_.component_plane_ = (CheckHasBit(cached_has_bits, 0x00000080U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.component_plane_)
                 : nullptr;
 
@@ -902,12 +888,7 @@ PROTOBUF_NDEBUG_INLINE Element::Impl_::Impl_(
 
 inline void Element::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, session_transformation_),
-           0,
-           offsetof(Impl_, component_plane_) -
-               offsetof(Impl_, session_transformation_) +
-               sizeof(Impl_::component_plane_));
+  _impl_.component_plane_ = {};
 }
 Element::~Element() {
   // @@protoc_insertion_point(destructor:session_proto.Element)
@@ -925,7 +906,6 @@ inline void Element::SharedDtor(MessageLite& self) {
   this_._impl_.geometry_type_.Destroy();
   this_._impl_.geometry_data_.Destroy();
   this_._impl_.key_.Destroy();
-  delete this_._impl_.session_transformation_;
   delete this_._impl_.component_plane_;
   this_._impl_.~Impl_();
 }
@@ -989,17 +969,17 @@ Element::GetClassData() const {
   return Element_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 9, 3, 62, 2>
+const ::_pbi::TcParseTable<4, 8, 2, 62, 2>
 Element::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Element, _impl_._has_bits_),
     0, // no _extensions_
     9, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294966784,  // skipmap
+    4294966800,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    9,  // num_field_entries
-    3,  // num_aux_entries
+    8,  // num_field_entries
+    2,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Element_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -1025,17 +1005,14 @@ Element::_table_ = {
     {::_pbi::TcParser::FastBS1,
      {34, 5, 0,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_data_)}},
-    // .session_proto.Xform session_transformation = 5;
-    {::_pbi::TcParser::FastMtS1,
-     {42, 7, 0,
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.session_transformation_)}},
+    {::_pbi::TcParser::MiniParse, {}},
     // repeated int32 joint_types = 6;
     {::_pbi::TcParser::FastV32P1,
      {50, 0, 0,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.joint_types_)}},
     // repeated .session_proto.FaceJoints j_mf = 7;
     {::_pbi::TcParser::FastMtR1,
-     {58, 1, 1,
+     {58, 1, 0,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.j_mf_)}},
     // string key = 8;
     {::_pbi::TcParser::FastUS1,
@@ -1043,7 +1020,7 @@ Element::_table_ = {
       PROTOBUF_FIELD_OFFSET(Element, _impl_.key_)}},
     // .session_proto.Plane component_plane = 9;
     {::_pbi::TcParser::FastMtS1,
-     {74, 8, 2,
+     {74, 7, 1,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.component_plane_)}},
     {::_pbi::TcParser::MiniParse, {}},
     {::_pbi::TcParser::MiniParse, {}},
@@ -1062,24 +1039,21 @@ Element::_table_ = {
     {PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_type_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // bytes geometry_data = 4;
     {PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_data_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kBytes | ::_fl::kRepAString)},
-    // .session_proto.Xform session_transformation = 5;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.session_transformation_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // repeated int32 joint_types = 6;
     {PROTOBUF_FIELD_OFFSET(Element, _impl_.joint_types_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedInt32)},
     // repeated .session_proto.FaceJoints j_mf = 7;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.j_mf_), _Internal::kHasBitsOffset + 1, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Element, _impl_.j_mf_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // string key = 8;
     {PROTOBUF_FIELD_OFFSET(Element, _impl_.key_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // .session_proto.Plane component_plane = 9;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.component_plane_), _Internal::kHasBitsOffset + 8, 2, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Element, _impl_.component_plane_), _Internal::kHasBitsOffset + 7, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
-      {::_pbi::TcParser::GetTable<::session_proto::Xform>()},
       {::_pbi::TcParser::GetTable<::session_proto::FaceJoints>()},
       {::_pbi::TcParser::GetTable<::session_proto::Plane>()},
   }},
   {{
-    "\25\4\4\15\0\0\0\0\3\0\0\0\0\0\0\0"
+    "\25\4\4\15\0\0\0\3\0\0\0\0\0\0\0\0"
     "session_proto.Element"
     "name"
     "guid"
@@ -1118,13 +1092,9 @@ PROTOBUF_NOINLINE void Element::Clear() {
       _impl_.key_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(_impl_.session_transformation_ != nullptr);
-      _impl_.session_transformation_->Clear();
+      ABSL_DCHECK(_impl_.component_plane_ != nullptr);
+      _impl_.component_plane_->Clear();
     }
-  }
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
-    ABSL_DCHECK(_impl_.component_plane_ != nullptr);
-    _impl_.component_plane_->Clear();
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -1187,13 +1157,6 @@ PROTOBUF_NOINLINE void Element::Clear() {
     }
   }
 
-  // .session_proto.Xform session_transformation = 5;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        5, *this_._impl_.session_transformation_, this_._impl_.session_transformation_->GetCachedSize(), target,
-        stream);
-  }
-
   // repeated int32 joint_types = 6;
   if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
     {
@@ -1229,7 +1192,7 @@ PROTOBUF_NOINLINE void Element::Clear() {
   }
 
   // .session_proto.Plane component_plane = 9;
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         9, *this_._impl_.component_plane_, this_._impl_.component_plane_->GetCachedSize(), target,
         stream);
@@ -1310,15 +1273,8 @@ PROTOBUF_NOINLINE void Element::Clear() {
                                         this_._internal_key());
       }
     }
-    // .session_proto.Xform session_transformation = 5;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.session_transformation_);
-    }
-  }
-   {
     // .session_proto.Plane component_plane = 9;
-    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.component_plane_);
     }
@@ -1397,20 +1353,12 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(from._impl_.session_transformation_ != nullptr);
-      if (_this->_impl_.session_transformation_ == nullptr) {
-        _this->_impl_.session_transformation_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.session_transformation_);
+      ABSL_DCHECK(from._impl_.component_plane_ != nullptr);
+      if (_this->_impl_.component_plane_ == nullptr) {
+        _this->_impl_.component_plane_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.component_plane_);
       } else {
-        _this->_impl_.session_transformation_->MergeFrom(*from._impl_.session_transformation_);
+        _this->_impl_.component_plane_->MergeFrom(*from._impl_.component_plane_);
       }
-    }
-  }
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
-    ABSL_DCHECK(from._impl_.component_plane_ != nullptr);
-    if (_this->_impl_.component_plane_ == nullptr) {
-      _this->_impl_.component_plane_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.component_plane_);
-    } else {
-      _this->_impl_.component_plane_->MergeFrom(*from._impl_.component_plane_);
     }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
@@ -1439,12 +1387,7 @@ void Element::InternalSwap(Element* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.geometry_type_, &other->_impl_.geometry_type_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.geometry_data_, &other->_impl_.geometry_data_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.key_, &other->_impl_.key_, arena);
-  ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.component_plane_)
-      + sizeof(Element::_impl_.component_plane_)
-      - PROTOBUF_FIELD_OFFSET(Element, _impl_.session_transformation_)>(
-          reinterpret_cast<char*>(&_impl_.session_transformation_),
-          reinterpret_cast<char*>(&other->_impl_.session_transformation_));
+  swap(_impl_.component_plane_, other->_impl_.component_plane_);
 }
 
 ::google::protobuf::Metadata Element::GetMetadata() const {

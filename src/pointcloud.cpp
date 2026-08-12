@@ -5,7 +5,6 @@
 #include <sstream>
 
 #include "pointcloud.pb.h"
-#include "xform.pb.h"
 
 namespace session_cpp {
 
@@ -14,14 +13,11 @@ namespace session_cpp {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 PointCloud::PointCloud() {
-    xform = Xform::identity();
 }
 
 PointCloud::PointCloud(const std::vector<Point>& points,
                        const std::vector<Vector>& normals,
                        const std::vector<Color>& colors) {
-    xform = Xform::identity();
-
     _coords.reserve(points.size() * 3);
     for (const auto& p : points) {
         _coords.push_back(p[0]);
@@ -49,7 +45,6 @@ PointCloud::PointCloud(const PointCloud& other)
     :
       name(other.name),
       point_size(other.point_size),
-      xform(other.xform),
       _coords(other._coords),
       _colors(other._colors),
       _normals(other._normals) {
@@ -60,7 +55,6 @@ PointCloud& PointCloud::operator=(const PointCloud& other) {
         _guid.clear();
         name = other.name;
         point_size = other.point_size;
-        xform = other.xform;
         _coords = other._coords;
         _colors = other._colors;
         _normals = other._normals;
@@ -208,11 +202,11 @@ bool PointCloud::operator!=(const PointCloud& other) const {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void PointCloud::transform() {
+void PointCloud::transform(const Xform& xform) {
     for (size_t i = 0; i < point_count(); ++i) {
         size_t idx = i * 3;
         Point pt(_coords[idx], _coords[idx + 1], _coords[idx + 2]);
-        pt.xform = xform; pt.transform();
+        pt.transform(xform);
         _coords[idx] = pt[0];
         _coords[idx + 1] = pt[1];
         _coords[idx + 2] = pt[2];
@@ -221,18 +215,16 @@ void PointCloud::transform() {
     for (size_t i = 0; i < normal_count(); ++i) {
         size_t idx = i * 3;
         Vector n(_normals[idx], _normals[idx + 1], _normals[idx + 2]);
-        n.xform = xform; n.transform();
+        n.transform(xform);
         _normals[idx] = n[0];
         _normals[idx + 1] = n[1];
         _normals[idx + 2] = n[2];
     }
-
-    xform = Xform::identity();
 }
 
-PointCloud PointCloud::transformed() const {
+PointCloud PointCloud::transformed(const Xform& xform) const {
     PointCloud result = *this;
-    result.transform();
+    result.transform(xform);
     return result;
 }
 
@@ -290,7 +282,6 @@ nlohmann::ordered_json PointCloud::jsondump() const {
     data["normals"] = _normals;
     data["point_size"] = point_size;
     data["type"] = "PointCloud";
-    data["xform"] = xform.jsondump();
     return data;
 }
 
@@ -304,9 +295,6 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
     pc.name = data.value("name", pc.name);
     pc.point_size = data.value("point_size", 1.0);
 
-    if (data.contains("xform")) {
-        pc.xform = Xform::jsonload(data["xform"]);
-    }
 
     return pc;
 }
@@ -353,12 +341,6 @@ std::string PointCloud::pb_dumps() const {
         proto.add_normals(n);
     }
 
-    auto* proto_xform = proto.mutable_xform();
-    proto_xform->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        proto_xform->add_matrix(xform.m[i]);
-    }
-
     return proto.SerializeAsString();
 }
 
@@ -378,13 +360,6 @@ PointCloud PointCloud::pb_loads(const std::string& data) {
     pc.guid() = proto.guid();
     pc.name = proto.name();
     pc.point_size = proto.point_size() > 0 ? proto.point_size() : 1.0;
-
-    if (proto.has_xform()) {
-        pc.xform.name = proto.xform().name();
-        for (int i = 0; i < proto.xform().matrix_size() && i < 16; ++i) {
-            pc.xform.m[i] = proto.xform().matrix(i);
-        }
-    }
 
     return pc;
 }

@@ -423,8 +423,8 @@ namespace session_cpp {
         });
 
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
-        ts.xform = Xform::translation(10.0, 20.0, 30.0);
-        NurbsSurfaceTrimmed ts2 = ts.transformed();
+        Xform ts_xf = Xform::translation(10.0, 20.0, 30.0);
+        NurbsSurfaceTrimmed ts2 = ts.transformed(ts_xf);
 
         auto dom_u = ts2.surface().domain(0);
         auto dom_v = ts2.surface().domain(1);

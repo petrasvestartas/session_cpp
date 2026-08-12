@@ -54,8 +54,8 @@ static void cell(const std::string& n, bool ok, const std::string& d = "") {
 
 static BRep moved(const BRep& b, const Xform& x) {
     BRep c = b;
-    c.xform = x;
-    return c.transformed();
+    c.transform(x);
+    return c;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

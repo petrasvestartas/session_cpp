@@ -105,10 +105,8 @@ static Rigid compose(const Rigid& second, const Rigid& first) {
 }
 
 static void apply_motion(BRep& b, const Xform& xr, const Xform& xt) {
-    b.xform = xr;
-    b.transform();
-    b.xform = xt;
-    b.transform();
+    b.transform(xr);
+    b.transform(xt);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -278,8 +276,7 @@ static void run_stage_coverage() {
         // vertex lies on a face, so this cell measures EF alone.
         BRep A = BRep::create_box(2, 2, 2);
         BRep B = BRep::create_box(2, 2, 2);
-        B.xform = Xform::translation(1.0, 1.0, 1.0);
-        B.transform();
+        B.transform(Xform::translation(1.0, 1.0, 1.0));
         BdsArena ds;
         ds.init({&A, &B});
         V2Interf iv(ds, {&A, &B});
@@ -299,8 +296,7 @@ static void run_stage_coverage() {
         BRep A = BRep::create_box(2, 2, 2);
         BRep B = BRep::create_box(2, 2, 2);
         Vector zax(0, 0, 1);
-        B.xform = Xform::rotation(zax, 0.7853981633974483);
-        B.transform();
+        B.transform(Xform::rotation(zax, 0.7853981633974483));
         BdsArena ds;
         ds.init({&A, &B});
         V2Interf iv(ds, {&A, &B});
@@ -318,8 +314,7 @@ static void run_stage_coverage() {
         // trim (kb/port_03 acceptance test T5). They must land in that face's IN set.
         BRep A = BRep::create_box(2, 2, 2);
         BRep B = BRep::create_box(1, 1, 1);
-        B.xform = Xform::translation(1.5, 0.0, 0.0);
-        B.transform();
+        B.transform(Xform::translation(1.5, 0.0, 0.0));
         BdsArena ds;
         ds.init({&A, &B});
         V2Interf iv(ds, {&A, &B});
@@ -338,8 +333,7 @@ static void run_stage_coverage() {
         // cloud of vertex parts.
         BRep C = BRep::create_box(2, 2, 2);
         BRep D = BRep::create_box(2, 2, 2);
-        D.xform = Xform::translation(2.0, 0.0, 0.0);
-        D.transform();
+        D.transform(Xform::translation(2.0, 0.0, 0.0));
         BdsArena ds2;
         ds2.init({&C, &D});
         V2Interf iv2(ds2, {&C, &D});
@@ -356,8 +350,7 @@ static void run_stage_coverage() {
         // B's two corners (+-0.5, 1, 1) sit exactly on A's edge {y=1, z=1, x in [-1,1]}.
         BRep A = BRep::create_box(2, 2, 2);
         BRep B = BRep::create_box(1, 1, 1);
-        B.xform = Xform::translation(0.0, 1.5, 1.5);
-        B.transform();
+        B.transform(Xform::translation(0.0, 1.5, 1.5));
         BdsArena ds;
         ds.init({&A, &B});
         V2Interf iv(ds, {&A, &B});
@@ -874,20 +867,16 @@ static void run_rotation_invariance() {
         BRep a = BRep::create_cone(1.0, 2.0);
         BRep b = BRep::create_cone(1.0, 2.0);
         Vector xax(1, 0, 0);
-        b.xform = Xform::rotation(xax, 3.141592653589793);
-        b.transform();
-        b.xform = Xform::translation(0.3, 0.0, 1.5);
-        b.transform();
+        b.transform(Xform::rotation(xax, 3.141592653589793));
+        b.transform(Xform::translation(0.3, 0.0, 1.5));
         setups.push_back({"cone_x_cone", a, b});
     }
     {
         BRep a = BRep::create_cylinder(1.0, 2.0);
         BRep b = BRep::create_cylinder(1.0, 2.0);
         Vector yax(0, 1, 0);
-        b.xform = Xform::rotation(yax, 1.5707963267948966);
-        b.transform();
-        b.xform = Xform::translation(0.0, 0.0, 1.0);
-        b.transform();
+        b.transform(Xform::rotation(yax, 1.5707963267948966));
+        b.transform(Xform::translation(0.0, 0.0, 1.0));
         setups.push_back({"cylinder_x_cylinder", a, b});
     }
     for (Setup& s : setups) {

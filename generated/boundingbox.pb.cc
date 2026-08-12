@@ -39,8 +39,7 @@ inline constexpr BoundingBox::Impl_::Impl_(
         x_axis_{nullptr},
         y_axis_{nullptr},
         z_axis_{nullptr},
-        half_size_{nullptr},
-        xform_{nullptr} {}
+        half_size_{nullptr} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR BoundingBox::BoundingBox(::_pbi::ConstantInitialized)
@@ -71,7 +70,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_._has_bits_),
-        11, // hasbit index offset
+        10, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.center_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.x_axis_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.y_axis_),
@@ -79,7 +78,6 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.half_size_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.name_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.xform_),
         2,
         3,
         4,
@@ -87,7 +85,6 @@ const ::uint32_t
         6,
         0,
         1,
-        7,
 };
 
 static const ::_pbi::MigrationSchema
@@ -100,31 +97,29 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 const char descriptor_table_protodef_boundingbox_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\021boundingbox.proto\022\rsession_proto\032\013poin"
-    "t.proto\032\014vector.proto\032\013xform.proto\"\223\002\n\013B"
-    "oundingBox\022$\n\006center\030\001 \001(\0132\024.session_pro"
-    "to.Point\022%\n\006x_axis\030\002 \001(\0132\025.session_proto"
-    ".Vector\022%\n\006y_axis\030\003 \001(\0132\025.session_proto."
-    "Vector\022%\n\006z_axis\030\004 \001(\0132\025.session_proto.V"
-    "ector\022(\n\thalf_size\030\005 \001(\0132\025.session_proto"
-    ".Vector\022\014\n\004guid\030\006 \001(\t\022\014\n\004name\030\007 \001(\t\022#\n\005x"
-    "form\030\010 \001(\0132\024.session_proto.Xformb\006proto3"
+    "t.proto\032\014vector.proto\"\364\001\n\013BoundingBox\022$\n"
+    "\006center\030\001 \001(\0132\024.session_proto.Point\022%\n\006x"
+    "_axis\030\002 \001(\0132\025.session_proto.Vector\022%\n\006y_"
+    "axis\030\003 \001(\0132\025.session_proto.Vector\022%\n\006z_a"
+    "xis\030\004 \001(\0132\025.session_proto.Vector\022(\n\thalf"
+    "_size\030\005 \001(\0132\025.session_proto.Vector\022\014\n\004gu"
+    "id\030\006 \001(\t\022\014\n\004name\030\007 \001(\tJ\004\010\010\020\tb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_boundingbox_2eproto_deps[3] = {
+    descriptor_table_boundingbox_2eproto_deps[2] = {
         &::descriptor_table_point_2eproto,
         &::descriptor_table_vector_2eproto,
-        &::descriptor_table_xform_2eproto,
 };
 static ::absl::once_flag descriptor_table_boundingbox_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_boundingbox_2eproto = {
     false,
     false,
-    360,
+    316,
     descriptor_table_protodef_boundingbox_2eproto,
     "boundingbox.proto",
     &descriptor_table_boundingbox_2eproto_once,
     descriptor_table_boundingbox_2eproto_deps,
-    3,
+    2,
     1,
     schemas,
     file_default_instances,
@@ -173,12 +168,6 @@ void BoundingBox::clear_half_size() {
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000040U);
 }
-void BoundingBox::clear_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ != nullptr) _impl_.xform_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
-}
 BoundingBox::BoundingBox(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, BoundingBox_class_data_.base()) {
@@ -226,9 +215,6 @@ BoundingBox::BoundingBox(
   _impl_.half_size_ = (CheckHasBit(cached_has_bits, 0x00000040U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.half_size_)
                 : nullptr;
-  _impl_.xform_ = (CheckHasBit(cached_has_bits, 0x00000080U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_)
-                : nullptr;
 
   // @@protoc_insertion_point(copy_constructor:session_proto.BoundingBox)
 }
@@ -244,9 +230,9 @@ inline void BoundingBox::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, center_),
            0,
-           offsetof(Impl_, xform_) -
+           offsetof(Impl_, half_size_) -
                offsetof(Impl_, center_) +
-               sizeof(Impl_::xform_));
+               sizeof(Impl_::half_size_));
 }
 BoundingBox::~BoundingBox() {
   // @@protoc_insertion_point(destructor:session_proto.BoundingBox)
@@ -266,7 +252,6 @@ inline void BoundingBox::SharedDtor(MessageLite& self) {
   delete this_._impl_.y_axis_;
   delete this_._impl_.z_axis_;
   delete this_._impl_.half_size_;
-  delete this_._impl_.xform_;
   this_._impl_.~Impl_();
 }
 
@@ -313,17 +298,17 @@ BoundingBox::GetClassData() const {
   return BoundingBox_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 8, 6, 50, 2>
+const ::_pbi::TcParseTable<3, 7, 5, 42, 2>
 BoundingBox::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_._has_bits_),
     0, // no _extensions_
-    8, 56,  // max_field_number, fast_idx_mask
+    7, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967040,  // skipmap
+    4294967168,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    8,  // num_field_entries
-    6,  // num_aux_entries
+    7,  // num_field_entries
+    5,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     BoundingBox_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -332,10 +317,7 @@ BoundingBox::_table_ = {
     ::_pbi::TcParser::GetTable<::session_proto::BoundingBox>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // .session_proto.Xform xform = 8;
-    {::_pbi::TcParser::FastMtS1,
-     {66, 7, 5,
-      PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.xform_)}},
+    {::_pbi::TcParser::MiniParse, {}},
     // .session_proto.Point center = 1;
     {::_pbi::TcParser::FastMtS1,
      {10, 2, 0,
@@ -381,8 +363,6 @@ BoundingBox::_table_ = {
     {PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.guid_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string name = 7;
     {PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.name_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
-    // .session_proto.Xform xform = 8;
-    {PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.xform_), _Internal::kHasBitsOffset + 7, 5, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Point>()},
@@ -390,10 +370,9 @@ BoundingBox::_table_ = {
       {::_pbi::TcParser::GetTable<::session_proto::Vector>()},
       {::_pbi::TcParser::GetTable<::session_proto::Vector>()},
       {::_pbi::TcParser::GetTable<::session_proto::Vector>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Xform>()},
   }},
   {{
-    "\31\0\0\0\0\0\4\4\0\0\0\0\0\0\0\0"
+    "\31\0\0\0\0\0\4\4"
     "session_proto.BoundingBox"
     "guid"
     "name"
@@ -407,7 +386,7 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _impl_.guid_.ClearNonDefaultToEmpty();
     }
@@ -433,10 +412,6 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
     if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       ABSL_DCHECK(_impl_.half_size_ != nullptr);
       _impl_.half_size_->Clear();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(_impl_.xform_ != nullptr);
-      _impl_.xform_->Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -517,13 +492,6 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
     }
   }
 
-  // .session_proto.Xform xform = 8;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        8, *this_._impl_.xform_, this_._impl_.xform_->GetCachedSize(), target,
-        stream);
-  }
-
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -549,7 +517,7 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     // string guid = 6;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_guid().empty()) {
@@ -589,11 +557,6 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.half_size_);
     }
-    // .session_proto.Xform xform = 8;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.xform_);
-    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -614,7 +577,7 @@ void BoundingBox::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
@@ -673,14 +636,6 @@ void BoundingBox::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.half_size_->MergeFrom(*from._impl_.half_size_);
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(from._impl_.xform_ != nullptr);
-      if (_this->_impl_.xform_ == nullptr) {
-        _this->_impl_.xform_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_);
-      } else {
-        _this->_impl_.xform_->MergeFrom(*from._impl_.xform_);
-      }
-    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -704,8 +659,8 @@ void BoundingBox::InternalSwap(BoundingBox* PROTOBUF_RESTRICT PROTOBUF_NONNULL o
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.xform_)
-      + sizeof(BoundingBox::_impl_.xform_)
+      PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.half_size_)
+      + sizeof(BoundingBox::_impl_.half_size_)
       - PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.center_)>(
           reinterpret_cast<char*>(&_impl_.center_),
           reinterpret_cast<char*>(&other->_impl_.center_));

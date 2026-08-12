@@ -35,7 +35,6 @@ public:
     std::vector<Color> pointcolors;
     std::vector<Color> facecolors;
     std::vector<Color> linecolors;
-    Xform xform = Xform::identity();
 
     int m_dim;
     int m_is_rat;
@@ -93,7 +92,7 @@ public:
                 int cv_count0, int cv_count1);
 
     /// Deep copy. Copies all CV data, nurbsknots, metadata (guid, name,
-    /// color, xform). The copy gets a new guid.
+    /// color). The copy gets a new guid.
     NurbsSurface(const NurbsSurface& other);
 
     /// Deep copy assignment. Same semantics as copy constructor —
@@ -102,7 +101,7 @@ public:
 
     /// Compares dimension, rationality, orders, CV counts, all nurbsknot values,
     /// and all CV coordinates within machine epsilon. Does NOT compare guid,
-    /// name, color, or xform.
+    /// name or color.
     bool operator==(const NurbsSurface& other) const;
     bool operator!=(const NurbsSurface& other) const;
 
@@ -436,19 +435,10 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply this->xform matrix to all CVs in-place, then reset xform to
-    /// identity. For rational surfaces, transforms homogeneous coordinates.
-    /// Call before mesh() to ensure the mesh reflects the transformation.
-    void transform();
-
     /// Apply the given 4x4 transformation matrix to all CVs in-place.
     /// Supports translation, rotation, scaling, and projection.
     /// For rational surfaces, transforms homogeneous (x*w, y*w, z*w, w).
     bool transform(const Xform& xform);
-
-    /// Return a new surface with this->xform applied to CVs.
-    /// The original surface is not modified. Copy gets new guid.
-    NurbsSurface transformed() const;
 
     /// Return a new surface with the given xform applied to CVs.
     /// The original surface is not modified. Copy gets new guid.
@@ -500,7 +490,7 @@ public:
 
     /// Serialize to JSON with alphabetically ordered keys. Includes all NURBS
     /// data (dimension, orders, nurbsknots, CVs, rationality) plus metadata
-    /// (guid, name, color arrays, xform, width).
+    /// (guid, name, color arrays, width).
     nlohmann::ordered_json jsondump() const;
 
     /// Deserialize from a JSON object. Reads all fields written by jsondump.

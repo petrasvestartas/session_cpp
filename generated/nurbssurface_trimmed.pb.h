@@ -30,7 +30,6 @@
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
 #include "google/protobuf/unknown_field_set.h"
 #include "color.pb.h"
-#include "xform.pb.h"
 #include "nurbssurface.pb.h"
 #include "nurbscurve.pb.h"
 // @@protoc_insertion_point(includes)
@@ -222,7 +221,6 @@ class NurbsSurfaceTrimmed final : public ::google::protobuf::Message
     kSurfaceFieldNumber = 3,
     kOuterLoopFieldNumber = 4,
     kSurfacecolorFieldNumber = 7,
-    kXformFieldNumber = 8,
     kWidthFieldNumber = 6,
   };
   // repeated .session_proto.NurbsCurve inner_loops = 5;
@@ -317,21 +315,6 @@ class NurbsSurfaceTrimmed final : public ::google::protobuf::Message
   ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_surfacecolor();
 
   public:
-  // .session_proto.Xform xform = 8;
-  bool has_xform() const;
-  void clear_xform() ;
-  const ::session_proto::Xform& xform() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_xform();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_xform();
-  void set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_xform();
-
-  private:
-  const ::session_proto::Xform& _internal_xform() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_xform();
-
-  public:
   // double width = 6;
   void clear_width() ;
   double width() const;
@@ -346,8 +329,8 @@ class NurbsSurfaceTrimmed final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 8,
-                                   5, 58,
+  static const ::google::protobuf::internal::TcParseTable<3, 7,
+                                   4, 50,
                                    2>
       _table_;
 
@@ -374,7 +357,6 @@ class NurbsSurfaceTrimmed final : public ::google::protobuf::Message
     ::session_proto::NurbsSurface* PROTOBUF_NULLABLE surface_;
     ::session_proto::NurbsCurve* PROTOBUF_NULLABLE outer_loop_;
     ::session_proto::Color* PROTOBUF_NULLABLE surfacecolor_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE xform_;
     double width_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -771,7 +753,7 @@ inline void NurbsSurfaceTrimmed::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000040U);
 }
 inline double NurbsSurfaceTrimmed::width() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurfaceTrimmed.width)
@@ -779,7 +761,7 @@ inline double NurbsSurfaceTrimmed::width() const {
 }
 inline void NurbsSurfaceTrimmed::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurfaceTrimmed.width)
 }
 inline double NurbsSurfaceTrimmed::_internal_width() const {
@@ -882,99 +864,6 @@ inline void NurbsSurfaceTrimmed::set_allocated_surfacecolor(::session_proto::Col
 
   _impl_.surfacecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.NurbsSurfaceTrimmed.surfacecolor)
-}
-
-// .session_proto.Xform xform = 8;
-inline bool NurbsSurfaceTrimmed::has_xform() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000040U);
-  PROTOBUF_ASSUME(!value || _impl_.xform_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& NurbsSurfaceTrimmed::_internal_xform() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.xform_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& NurbsSurfaceTrimmed::xform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.NurbsSurfaceTrimmed.xform)
-  return _internal_xform();
-}
-inline void NurbsSurfaceTrimmed::unsafe_arena_set_allocated_xform(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.NurbsSurfaceTrimmed.xform)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE NurbsSurfaceTrimmed::release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  ::session_proto::Xform* released = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE NurbsSurfaceTrimmed::unsafe_arena_release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.NurbsSurfaceTrimmed.xform)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  ::session_proto::Xform* temp = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL NurbsSurfaceTrimmed::_internal_mutable_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.xform_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL NurbsSurfaceTrimmed::mutable_xform()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
-  ::session_proto::Xform* _msg = _internal_mutable_xform();
-  // @@protoc_insertion_point(field_mutable:session_proto.NurbsSurfaceTrimmed.xform)
-  return _msg;
-}
-inline void NurbsSurfaceTrimmed::set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
-  }
-
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.NurbsSurfaceTrimmed.xform)
 }
 
 #ifdef __GNUC__

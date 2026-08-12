@@ -49,15 +49,13 @@ MINI_TEST("Xform", "Constructor") {
     Xform s = Xform::scale_xyz(2.0, 1.0, 1.0);
     Xform combined = t * s;
     Point p(1.0, 0.0, 0.0);
-    p.xform = combined;
-    Point result = p.transformed();
+    Point result = p.transformed(combined);
 
     // In-place multiplication (*=)
     Xform t2 = Xform::translation(10.0, 0.0, 0.0);
     t2 *= s;
     p = Point(1.0, 0.0, 0.0);
-    p.xform = t2;
-    Point result2 = p.transformed();
+    Point result2 = p.transformed(t2);
 
     MINI_CHECK(x.name == "my_xform");
     MINI_CHECK(!x.guid().empty());
@@ -393,7 +391,7 @@ MINI_TEST("Xform", "Project To Plane") {
     Xform move = Xform::translation(0, 0, 1);
     Xform proj = Xform::project_to_plane(plane);
     Xform xf = proj * move;
-    auto tp = [&](double x, double y, double z) { Point p(x,y,z); p.xform = xf; return p.transformed(); };
+    auto tp = [&](double x, double y, double z) { return Point(x,y,z).transformed(xf); };
     Polyline outline({
         tp(-1, -1, -1),
         tp(1, -1, -1),
@@ -426,7 +424,7 @@ MINI_TEST("Xform", "Project To Plane By Axis") {
     Xform move = Xform::translation(0, 0, 1);
     Xform proj = Xform::project_to_plane_by_axis(plane, direction);
     Xform xf = proj * move;
-    auto tp = [&](double x, double y, double z) { Point p(x,y,z); p.xform = xf; return p.transformed(); };
+    auto tp = [&](double x, double y, double z) { return Point(x,y,z).transformed(xf); };
     Polyline outline({
         tp(-1, -1, 1),
         tp(1, -1, -1),
@@ -531,31 +529,26 @@ MINI_TEST("Xform", "Transform Geometry") {
 
     // Transform Point: (1,2,3) -> (11,22,33)
     Point pt(1.0, 2.0, 3.0);
-    pt.xform = t;
-    Point pt_transformed = pt.transformed();
+    Point pt_transformed = pt.transformed(t);
 
     // Transform Vector: translation should NOT affect vectors
     Vector v(1.0, 0.0, 0.0);
-    v.xform = t;
-    Vector v_transformed = v.transformed();
+    Vector v_transformed = v.transformed(t);
 
     // Transform Line: (0,0,0)-(1,0,0) -> (10,20,30)-(11,20,30)
     Line ln(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
-    ln.xform = t;
-    Line ln_transformed = ln.transformed();
+    Line ln_transformed = ln.transformed(t);
 
     // Transform Plane: origin (0,0,0) -> (10,20,30)
     Point pl_o(0.0, 0.0, 0.0);
     Vector pl_x(1.0, 0.0, 0.0);
     Vector pl_y(0.0, 1.0, 0.0);
     Plane pl(pl_o, pl_x, pl_y);
-    pl.xform = t;
-    Plane pl_transformed = pl.transformed();
+    Plane pl_transformed = pl.transformed(t);
 
     // Transform Polyline: 3 points translated
     Polyline poly({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
-    poly.xform = t;
-    Polyline poly_transformed = poly.transformed();
+    Polyline poly_transformed = poly.transformed(t);
     std::vector<Point> pts = poly_transformed.get_points();
 
     MINI_CHECK(TOLERANCE.is_point_close(pt_transformed, Point(11.0, 22.0, 33.0)));

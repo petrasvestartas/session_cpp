@@ -194,7 +194,6 @@ bool BRep::operator==(const BRep& other) const {
     if (name != other.name) return false;
     if (width != other.width) return false;
     if (surfacecolor != other.surfacecolor) return false;
-    if (xform != other.xform) return false;
     if (m_faces.size() != other.m_faces.size()) return false;
     if (m_surfaces.size() != other.m_surfaces.size()) return false;
     if (m_topology_edges.size() != other.m_topology_edges.size()) return false;
@@ -211,7 +210,6 @@ void BRep::deep_copy_from(const BRep& src) {
     name = src.name;
     width = src.width;
     surfacecolor = src.surfacecolor;
-    xform = src.xform;
     m_surfaces = src.m_surfaces;
     m_curves_3d = src.m_curves_3d;
     m_curves_2d = src.m_curves_2d;
@@ -12120,14 +12118,12 @@ Vector BRep::normal_at(int face_idx, double u, double v) const {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void BRep::transform() {
+void BRep::transform(const Xform& xform) {
     for (auto& srf : m_surfaces) {
-        srf.xform = xform;
-        srf.transform();
+        srf.transform(xform);
     }
     for (auto& crv : m_curves_3d) {
-        crv.xform = xform;
-        crv.transform();
+        crv.transform(xform);
     }
     // Xform.m is COLUMN-major (see Xform::transform_point). The old manual row-major
     // multiply here applied the TRANSPOSED rotation about the origin and dropped the
@@ -12135,12 +12131,11 @@ void BRep::transform() {
     // not match its surfaces (silent until vertex identity became load-bearing).
     for (auto& pt : m_vertices)
         pt = xform.transform_point(pt);
-    xform = Xform::identity();
 }
 
-BRep BRep::transformed() const {
+BRep BRep::transformed(const Xform& xform) const {
     BRep b = *this;
-    b.transform();
+    b.transform(xform);
     return b;
 }
 
@@ -12232,7 +12227,6 @@ nlohmann::ordered_json BRep::jsondump() const {
     for (const auto& v : m_vertices)
         j["vertices"].push_back(nlohmann::ordered_json::array({v[0], v[1], v[2]}));
     j["width"] = width;
-    j["xform"] = xform.jsondump();
     return j;
 }
 
@@ -12242,7 +12236,6 @@ BRep BRep::jsonload(const nlohmann::json& data) {
     if (data.contains("name")) b.name = data["name"];
     if (data.contains("width")) b.width = data["width"];
     if (data.contains("surfacecolor")) b.surfacecolor = Color::jsonload(data["surfacecolor"]);
-    if (data.contains("xform")) b.xform = Xform::jsonload(data["xform"]);
     if (data.contains("curves_2d"))
         for (const auto& c : data["curves_2d"]) b.m_curves_2d.push_back(NurbsCurve::jsonload(c));
     if (data.contains("curves_3d"))
@@ -12385,11 +12378,6 @@ std::string BRep::pb_dumps() const {
     color_proto->set_b(surfacecolor.b);
     color_proto->set_a(surfacecolor.a);
 
-    auto* xform_proto = proto.mutable_xform();
-    xform_proto->set_guid(xform.guid());
-    xform_proto->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) xform_proto->add_matrix(xform.m[i]);
-
     return proto.SerializeAsString();
 }
 
@@ -12466,12 +12454,6 @@ BRep BRep::pb_loads(const std::string& data) {
     b.surfacecolor.g = cp.g();
     b.surfacecolor.b = cp.b();
     b.surfacecolor.a = cp.a();
-
-    const auto& xp = proto.xform();
-    b.xform.guid() = xp.guid();
-    b.xform.name = xp.name();
-    for (int i = 0; i < 16 && i < xp.matrix_size(); ++i)
-        b.xform.m[i] = xp.matrix(i);
 
     return b;
 }

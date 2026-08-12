@@ -165,16 +165,14 @@ static void test_recognition() {
     for (int trial = 0; trial < 8; trial++) {
         Xform xf = random_rotation();
         BRep cyl = BRep::create_cylinder(1.5, 3.0);
-        cyl.xform = xf;
-        cyl.transform();
+        cyl.transform(xf);
         int cyl_count = 0;
         for (auto& s : cyl.m_surfaces)
             if (recognize(s).k == Srf::CYLINDER) cyl_count++;
         CHECK(cyl_count == 1, "rotated cylinder: recognized %d cyl surfaces", cyl_count);
 
         BRep sph = BRep::create_sphere(2.0);
-        sph.xform = xf;
-        sph.transform();
+        sph.transform(xf);
         CHECK(recognize(sph.m_surfaces[0]).k == Srf::SPHERE, "rotated sphere not recognized");
     }
 }
@@ -250,8 +248,7 @@ static void test_topology_roundtrip() {
     for (int trial = 0; trial < 4; trial++) {
         Xform xf = random_rotation();
         BRep b = BRep::create_cylinder(1.5, 3.0);
-        b.xform = xf;
-        b.transform();
+        b.transform(xf);
         v3::Solid s = v3::from_brep(b);
         CHECK(s.is_closed(), "rot cyl: v3 not closed");
         BRep r = v3::to_brep(s);
@@ -295,8 +292,7 @@ static void test_classifier() {
     for (int trial = 0; trial < 3; trial++) {
         Xform xf = random_rotation();
         BRep b = BRep::create_sphere(2.0);
-        b.xform = xf;
-        b.transform();
+        b.transform(xf);
         v3::Solid s = v3::from_brep(b);
         v3::orient_solid(s);
         CHECK(v3::classify_point(s, v3::V3{0, 0, 0}) == v3::PtCls::IN,
@@ -379,8 +375,7 @@ static void test_boolean() {
         BRep b = BRep::create_box(1.5, 1.5, 1.5);
         Vector ax(1, 1, 1);
         ax = ax / ax.magnitude();
-        b.xform = Xform::axis_rotation(0.6, ax, false);
-        b.transform();
+        b.transform(Xform::axis_rotation(0.6, ax, false));
         run(a, b, "box_box_rot");
     }
     run(BRep::create_sphere(1.5), BRep::create_cylinder(0.8, 3.0), "sph_cyl");
@@ -396,8 +391,7 @@ static void test_boolean() {
     // extraction in the UV arrangement is a known gap).
     auto rot_z = [](BRep b, double ang) {
         Vector z(0, 0, 1);
-        b.xform = Xform::axis_rotation(ang, z, false);
-        b.transform();
+        b.transform(Xform::axis_rotation(ang, z, false));
         return b;
     };
     {
@@ -405,30 +399,26 @@ static void test_boolean() {
         // seam-interior on the tube's upper half)
         BRep b = BRep::create_box(1.0, 1.0, 1.0);
         Vector ax(0, 1, 0);
-        b.xform = Xform::translation(1.5, 0, 0.95) *
-                  Xform::axis_rotation(0.35, ax, false);
-        b.transform();
+        b.transform(Xform::translation(1.5, 0, 0.95) *
+                  Xform::axis_rotation(0.35, ax, false));
         run(b, rot_z(BRep::create_torus(1.5, 0.5), 1.1), "tor_box");
     }
     {
         BRep b = BRep::create_cylinder(0.35, 5.0);
         Vector ax(0, 1, 0);
-        b.xform = Xform::translation(0, 0, -0.45) *
-                  Xform::axis_rotation(PI / 2, ax, false); // axis +z -> +x
-        b.transform();
+        b.transform(Xform::translation(0, 0, -0.45) *
+                    Xform::axis_rotation(PI / 2, ax, false)); // axis +z -> +x
         run(rot_z(BRep::create_torus(1.5, 0.5), 1.1), b, "tor_cyl");
     }
     {
         BRep b = BRep::create_sphere(0.6);
-        b.xform = Xform::translation(1.5, 0, 0.55);
-        b.transform();
+        b.transform(Xform::translation(1.5, 0, 0.55));
         run(rot_z(BRep::create_torus(1.5, 0.5), 1.1), b, "sph_tor");
     }
     {
         // regression: walked loop crossing the torus v-seam (z straddles 0)
         BRep b = BRep::create_sphere(0.8);
-        b.xform = Xform::translation(1.5, 0, 0.35);
-        b.transform();
+        b.transform(Xform::translation(1.5, 0, 0.35));
         run(rot_z(BRep::create_torus(1.5, 0.5), 1.1), b, "sph_tor_seam");
     }
     {
@@ -439,8 +429,7 @@ static void test_boolean() {
     }
     {
         BRep b = BRep::create_sphere(0.7);
-        b.xform = Xform::translation(0.9, 0, 1.2);
-        b.transform();
+        b.transform(Xform::translation(0.9, 0, 1.2));
         run(rot_z(BRep::create_cone(1.5, 3.0), 0.9), b, "cone_sph_nc");
     }
     // randomly rotated primitive pairs
@@ -448,8 +437,7 @@ static void test_boolean() {
         Xform xf = random_rotation();
         BRep a = BRep::create_box(2, 2, 2);
         BRep b = BRep::create_cylinder(0.9, 3.0);
-        b.xform = xf;
-        b.transform();
+        b.transform(xf);
         char nm[32];
         std::snprintf(nm, 32, "box_cyl_rot%d", trial);
         run(a, b, nm);
@@ -520,8 +508,7 @@ int main(int argc, char** argv) {
         bool got = false;
         for (int attempt = 0; attempt < 4 && !got; attempt++) {
             B = B0;
-            B.xform = mc_pose(B0, B0.volume(), 0);
-            B.transform();
+            B.transform(mc_pose(B0, B0.volume(), 0));
             v3::Solid sa = v3::from_brep(A), sb = v3::from_brep(B);
             bool ixc = false, ixm = false, ixf = false;
             v3::Solid cut = v3::boolean(sa, sb, v3::BoolOp::CUT, 1e-6, &ixc);
@@ -656,8 +643,7 @@ int main(int argc, char** argv) {
         // tor_cyl's rotated cylinder: dump aligned loop charts
         BRep b = BRep::create_cylinder(0.35, 5.0);
         Vector ax(0, 1, 0);
-        b.xform = Xform::axis_rotation(PI / 2, ax, false);
-        b.transform();
+        b.transform(Xform::axis_rotation(PI / 2, ax, false));
         v3::Solid s = v3::from_brep(b);
         for (size_t f = 0; f < s.faces.size(); f++) {
             const v3::Srf& sr = s.srfs[s.faces[f].srf];

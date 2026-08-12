@@ -31,7 +31,6 @@
 #include "google/protobuf/unknown_field_set.h"
 #include "color.pb.h"
 #include "point.pb.h"
-#include "xform.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -219,7 +218,6 @@ class Line final : public ::google::protobuf::Message
     kNameFieldNumber = 4,
     kStartFieldNumber = 1,
     kEndFieldNumber = 2,
-    kXformFieldNumber = 5,
     kLinecolorFieldNumber = 7,
     kWidthFieldNumber = 6,
   };
@@ -283,21 +281,6 @@ class Line final : public ::google::protobuf::Message
   ::session_proto::Point* PROTOBUF_NONNULL _internal_mutable_end();
 
   public:
-  // .session_proto.Xform xform = 5;
-  bool has_xform() const;
-  void clear_xform() ;
-  const ::session_proto::Xform& xform() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_xform();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_xform();
-  void set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_xform();
-
-  private:
-  const ::session_proto::Xform& _internal_xform() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_xform();
-
-  public:
   // .session_proto.Color linecolor = 7;
   bool has_linecolor() const;
   void clear_linecolor() ;
@@ -327,8 +310,8 @@ class Line final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 7,
-                                   4, 35,
+  static const ::google::protobuf::internal::TcParseTable<3, 6,
+                                   3, 35,
                                    2>
       _table_;
 
@@ -353,7 +336,6 @@ class Line final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Point* PROTOBUF_NULLABLE start_;
     ::session_proto::Point* PROTOBUF_NULLABLE end_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE xform_;
     ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
     double width_;
     PROTOBUF_TSAN_DECLARE_MEMBER
@@ -696,105 +678,12 @@ inline void Line::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   // @@protoc_insertion_point(field_set_allocated:session_proto.Line.name)
 }
 
-// .session_proto.Xform xform = 5;
-inline bool Line::has_xform() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
-  PROTOBUF_ASSUME(!value || _impl_.xform_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& Line::_internal_xform() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.xform_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& Line::xform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.Line.xform)
-  return _internal_xform();
-}
-inline void Line::unsafe_arena_set_allocated_xform(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Line.xform)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE Line::release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
-  ::session_proto::Xform* released = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE Line::unsafe_arena_release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.Line.xform)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
-  ::session_proto::Xform* temp = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL Line::_internal_mutable_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.xform_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL Line::mutable_xform()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
-  ::session_proto::Xform* _msg = _internal_mutable_xform();
-  // @@protoc_insertion_point(field_mutable:session_proto.Line.xform)
-  return _msg;
-}
-inline void Line::set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
-  }
-
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.Line.xform)
-}
-
 // double width = 6;
 inline void Line::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000040U);
+                  0x00000020U);
 }
 inline double Line::width() const {
   // @@protoc_insertion_point(field_get:session_proto.Line.width)
@@ -802,7 +691,7 @@ inline double Line::width() const {
 }
 inline void Line::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   // @@protoc_insertion_point(field_set:session_proto.Line.width)
 }
 inline double Line::_internal_width() const {
@@ -816,7 +705,7 @@ inline void Line::_internal_set_width(double value) {
 
 // .session_proto.Color linecolor = 7;
 inline bool Line::has_linecolor() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000020U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
   PROTOBUF_ASSUME(!value || _impl_.linecolor_ != nullptr);
   return value;
 }
@@ -837,16 +726,16 @@ inline void Line::unsafe_arena_set_allocated_linecolor(
   }
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Line.linecolor)
 }
 inline ::session_proto::Color* PROTOBUF_NULLABLE Line::release_linecolor() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Color* released = _impl_.linecolor_;
   _impl_.linecolor_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -866,7 +755,7 @@ inline ::session_proto::Color* PROTOBUF_NULLABLE Line::unsafe_arena_release_line
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Line.linecolor)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Color* temp = _impl_.linecolor_;
   _impl_.linecolor_ = nullptr;
   return temp;
@@ -881,7 +770,7 @@ inline ::session_proto::Color* PROTOBUF_NONNULL Line::_internal_mutable_linecolo
 }
 inline ::session_proto::Color* PROTOBUF_NONNULL Line::mutable_linecolor()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Color* _msg = _internal_mutable_linecolor();
   // @@protoc_insertion_point(field_mutable:session_proto.Line.linecolor)
   return _msg;
@@ -898,9 +787,9 @@ inline void Line::set_allocated_linecolor(::session_proto::Color* PROTOBUF_NULLA
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
 
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);

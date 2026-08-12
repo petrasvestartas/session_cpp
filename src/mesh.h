@@ -132,7 +132,6 @@ public:
     void refresh_guid() { _guid.clear(); }
     std::string name = "my_mesh";                                        ///< Mesh name
     ColorMode color_mode = ColorMode::OBJECTCOLOR;                        ///< Active color mode
-    Xform xform;                                     ///< Transformation matrix
 
     void set_pointcolors(std::vector<Color> v) { pointcolors = std::move(v); color_mode = ColorMode::POINTCOLORS; }
     void set_facecolors(std::vector<Color> v) { facecolors = std::move(v); color_mode = ColorMode::FACECOLORS; }
@@ -559,8 +558,6 @@ public:
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     bool transform(const Xform& xf);
-    void transform();
-    Mesh transformed() const;
     Mesh transformed(const Xform& xf) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////

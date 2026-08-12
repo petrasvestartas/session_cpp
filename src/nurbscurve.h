@@ -41,7 +41,6 @@ public:
     double width = 1.0;
     std::vector<Color> pointcolors;
     std::vector<Color> linecolors;
-    Xform xform = Xform::identity();
 
     // Core NURBS data
     int m_dim;              // Dimension (typically 3 for 3D curves)
@@ -464,16 +463,10 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
     
-    /// Apply stored xform transformation (in-place)
-    void transform();
-    
-    /// Apply custom transformation matrix (in-place)
+    /// Apply a transformation matrix (in-place)
     bool transform(const Xform& xform);
     
     /// Get transformed copy
-    NurbsCurve transformed() const;
-    
-    /// Get transformed copy with custom xform
     NurbsCurve transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////

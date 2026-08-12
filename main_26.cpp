@@ -107,8 +107,7 @@ static void run_case(const BRep& a, const BRep& b0, double va, double vb,
         BRep b = b0;
         Xform xf;
         pose_of(b, vb, xf);
-        b.xform = xf;
-        b.transform();
+        b.transform(xf);
         v3::Solid sa = v3::from_brep(a), sb = v3::from_brep(b);
         bool ixc = false, ixm = false, ixf = false;
         v3::Solid cut = v3::boolean(sa, sb, v3::BoolOp::CUT, 1e-6, &ixc);

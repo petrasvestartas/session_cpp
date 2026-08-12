@@ -222,6 +222,82 @@ std::vector<int> SpatialBVH::query_aabb(const AABB& query) const {
     return hits;
 }
 
+std::vector<int> SpatialBVH::query_aabb(const OBB& query) const {
+    return query_aabb(aabb_from_obb(query));
+}
+
+void SpatialBVH::build_with_guids(const std::vector<std::pair<OBB, std::string>>& boxes_with_guids) {
+    if (boxes_with_guids.empty()) {
+        object_guids.clear();
+        build({});
+        return;
+    }
+
+    std::vector<OBB> bounding_boxes;
+    bounding_boxes.reserve(boxes_with_guids.size());
+    object_guids.clear();
+    object_guids.reserve(boxes_with_guids.size());
+    for (const auto& [bbox, id] : boxes_with_guids) {
+        bounding_boxes.push_back(bbox);
+        object_guids.push_back(id);
+    }
+
+    world_size = compute_world_size(bounding_boxes);
+    build(bounding_boxes);
+}
+
+std::vector<std::pair<std::string, std::string>> SpatialBVH::check_all_collisions_guids(const std::vector<OBB>& bounding_boxes) {
+    auto [collision_pairs, colliding_indices, checks] = check_all_collisions(bounding_boxes);
+
+    std::vector<std::pair<std::string, std::string>> guid_collisions;
+    for (const auto& [i, j] : collision_pairs) {
+        if (i < (int)object_guids.size() && j < (int)object_guids.size()) {
+            guid_collisions.emplace_back(object_guids[i], object_guids[j]);
+        }
+    }
+    return guid_collisions;
+}
+
+std::pair<std::vector<int>, int> SpatialBVH::find_collisions(int object_id, const OBB& query_bbox, const std::vector<OBB>& bounding_boxes) const {
+    std::vector<int> collisions;
+    int check_count = 0;
+
+    if (!root) {
+        return {collisions, check_count};
+    }
+
+    AABB query = aabb_from_obb(query_bbox);
+    std::vector<const SpatialBVHNode*> stack;
+    stack.reserve(64);
+    stack.push_back(root);
+
+    while (!stack.empty()) {
+        const SpatialBVHNode* node = stack.back(); stack.pop_back();
+
+        // Early exit if query doesn't intersect this node's AABB
+        if (!aabb_intersect(query, node->aabb)) continue;
+        check_count++;
+
+        // If leaf node, check for collision
+        if (node->is_leaf()) {
+            int node_object_id = node->object_id;
+            // Don't check collision with self
+            if (node_object_id != object_id
+                && node_object_id < (int)bounding_boxes.size()
+                && aabb_intersect(query, aabb_from_obb(bounding_boxes[node_object_id]))) {
+                collisions.push_back(node_object_id);
+            }
+            continue;
+        }
+
+        // Internal node: push children
+        if (node->left)  stack.push_back(node->left);
+        if (node->right) stack.push_back(node->right);
+    }
+
+    return {collisions, check_count};
+}
+
 std::vector<int> SpatialBVH::nearest_neighbors(int object_id,
                                         const std::vector<OBB>& bounding_boxes,
                                         double inflate) const {
@@ -568,56 +644,6 @@ void SpatialBVH::build_from_boxes(const OBB* boxes, size_t count, double ws) {
 SpatialBVHNode* SpatialBVH::alloc_node() {
     node_arena.emplace_back();
     return &node_arena.back();
-}
-
-SpatialBVHNode* SpatialBVH::create_subtree(std::vector<ObjectInfo>& objects, int begin, int end, const OBB* boxes) {
-    if (begin == end) {
-        // Create leaf node
-        SpatialBVHNode* node = alloc_node();
-        node->object_id = objects[begin].id;
-        const OBB& bb = boxes[objects[begin].id];
-        node->aabb = AABB{bb.center[0], bb.center[1], bb.center[2],
-                             bb.half_size[0], bb.half_size[1], bb.half_size[2]};
-        node->left = nullptr;
-        node->right = nullptr;
-        return node;
-    } else {
-        // Create internal node with simple midpoint split
-        int mid = (begin + end) / 2;
-        SpatialBVHNode* node = alloc_node();
-
-        // Recursively create children
-        node->left = create_subtree(objects, begin, mid, boxes);
-        node->right = create_subtree(objects, mid + 1, end, boxes);
-
-        // Inline AABB merging (avoid function call overhead)
-        const auto& aabb1 = node->left->aabb;
-        const auto& aabb2 = node->right->aabb;
-        
-        // Cache component values
-        double c1x = aabb1.cx, c1y = aabb1.cy, c1z = aabb1.cz;
-        double h1x = aabb1.hx, h1y = aabb1.hy, h1z = aabb1.hz;
-        double c2x = aabb2.cx, c2y = aabb2.cy, c2z = aabb2.cz;
-        double h2x = aabb2.hx, h2y = aabb2.hy, h2z = aabb2.hz;
-        
-        // Calculate merged AABB directly
-        double min_x = std::min(c1x - h1x, c2x - h2x);
-        double min_y = std::min(c1y - h1y, c2y - h2y);
-        double min_z = std::min(c1z - h1z, c2z - h2z);
-        double max_x = std::max(c1x + h1x, c2x + h2x);
-        double max_y = std::max(c1y + h1y, c2y + h2y);
-        double max_z = std::max(c1z + h1z, c2z + h2z);
-        
-        node->aabb = AABB{(min_x + max_x) * 0.5,
-                              (min_y + max_y) * 0.5,
-                              (min_z + max_z) * 0.5,
-                              (max_x - min_x) * 0.5,
-                              (max_y - min_y) * 0.5,
-                              (max_z - min_z) * 0.5};
-
-        node->object_id = -1;
-        return node;
-    }
 }
 
 OBB SpatialBVH::merge_aabb(const OBB& aabb1, const OBB& aabb2) {

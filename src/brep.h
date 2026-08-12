@@ -85,7 +85,6 @@ public:
     std::string name = "my_brep";
     double width = 1.0;
     Color surfacecolor = Color::black();
-    Xform xform = Xform::identity();
 
     // Geometry pools
     std::vector<NurbsSurface> m_surfaces;
@@ -464,11 +463,11 @@ public:
     // Transformation
     ///////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Apply the stored xform to all geometry and reset xform to identity.
-    void transform();
+    /// Apply a transformation to all geometry (in-place).
+    void transform(const Xform& xform);
 
-    /// Return a copy with the stored xform applied to all geometry.
-    BRep transformed() const;
+    /// Return a copy with the transformation applied to all geometry.
+    BRep transformed(const Xform& xform) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // JSON Serialization

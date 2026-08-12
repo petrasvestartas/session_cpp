@@ -1,6 +1,6 @@
 // SpatialBVH — binary tree with OBB leaves, Morton-code (LBVH) construction.
 // Use for: collision detection and closest-point between many dynamic objects.
-//   Handles oriented boxes; supports OBB-OBB overlap as the inner test.
+//   Handles oriented boxes via their tight world-space AABBs (half-axes projected).
 // Prefer over SpatialAABBTree when objects rotate or you need OBB tightness.
 // Prefer over SpatialRTree  when all queries are nearest-object, not region overlap.
 // Prefer over SpatialKDTree when objects are volumetric (not point clouds).
@@ -48,24 +48,31 @@ public:
     std::string name;
     SpatialBVHNode* root;
     double world_size;
-    
+    std::vector<std::string> object_guids;
+
     // Node arena to store all nodes contiguously (no per-node heap allocations)
     std::vector<SpatialBVHNode> node_arena;
 
     SpatialBVH(double world_size = 1000.0);
-    
+
     // Compute world size from bounding boxes
     static double compute_world_size(const std::vector<OBB>& bounding_boxes);
-    
+
     static SpatialBVH from_boxes(const std::vector<OBB>& bounding_boxes, double world_size);
-    
+
     // Fast build accepting continuous array of boxes (no copies)
     void build_from_boxes(const OBB* boxes, size_t count, double ws);
     // Fast build accepting continuous array of lightweight AABBs (no OBB construction)
     void build_from_aabbs(const AABB* aabbs, size_t count, double ws);
-    
+    // Build from bounding boxes with GUIDs; world size auto-computed
+    void build_with_guids(const std::vector<std::pair<OBB, std::string>>& boxes_with_guids);
+
     void build(const std::vector<OBB>& bounding_boxes);
     std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> check_all_collisions(const std::vector<OBB>& bounding_boxes);
+    std::vector<std::pair<std::string, std::string>> check_all_collisions_guids(const std::vector<OBB>& bounding_boxes);
+
+    // Collisions of one object against the tree, excluding self; returns (object_ids, check_count)
+    std::pair<std::vector<int>, int> find_collisions(int object_id, const OBB& query_bbox, const std::vector<OBB>& bounding_boxes) const;
 
     // Public helper methods for testing
     OBB merge_aabb(const OBB& aabb1, const OBB& aabb2);
@@ -74,6 +81,7 @@ public:
 
     // Find all leaf object_ids whose AABB overlaps the query box.
     std::vector<int> query_aabb(const AABB& query) const;
+    std::vector<int> query_aabb(const OBB& query) const;
 
     // Convenience: find leaf object_ids near `object_id`, excluding self.
     // Inflates the half-extents of the object's AABB by `inflate` and queries.
@@ -99,7 +107,6 @@ private:
     SpatialBVHNode* alloc_node();
 
     // Subtree creation using sorted object keys and read-only boxes array
-    SpatialBVHNode* create_subtree(std::vector<ObjectInfo>& objects, int begin, int end, const OBB* boxes);
 };
 
 // Morton code functions

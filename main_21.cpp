@@ -47,8 +47,8 @@ struct Prim {
 };
 
 BRep centered(BRep b, double dz) {
-    b.xform = Xform::translation(0, 0, dz);
-    return b.transformed();
+    b.transform(Xform::translation(0, 0, dz));
+    return b;
 }
 
 const std::vector<Prim>& prims() {
@@ -212,8 +212,7 @@ int main(int argc, char** argv) {
                 const double tx = dir[0]/dlen*dist, ty = dir[1]/dlen*dist, tz = dir[2]/dlen*dist;
 
                 BRep B = ps[ib].make();
-                B.xform = Xform::translation(tx, ty, tz) * Xform::rotation(axis, ang, true);
-                B = B.transformed();
+                B = B.transformed(Xform::translation(tx, ty, tz) * Xform::rotation(axis, ang, true));
 
                 char sbuf[8];
                 std::snprintf(sbuf, sizeof sbuf, "s%02d", seed);

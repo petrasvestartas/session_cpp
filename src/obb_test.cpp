@@ -116,15 +116,14 @@ MINI_TEST("OBB", "Transformation") {
         Point(1.0, 1.0, 0.0),
     };
     OBB bb = OBB::from_points(pts);
-    bb.xform = Xform::translation(0.0, 0.0, 5.0);
+    Xform bb_xf = Xform::translation(0.0, 0.0, 5.0);
 
-    OBB bbt = bb.transformed();
+    OBB bbt = bb.transformed(bb_xf);
 
     MINI_CHECK(TOLERANCE.is_close(bbt.center[2], 5.0));
 
-    bb.transform();
+    bb.transform(bb_xf);
 
-    MINI_CHECK(bb.xform == Xform::identity());
     MINI_CHECK(TOLERANCE.is_close(bb.center[2], 5.0));
 }
 

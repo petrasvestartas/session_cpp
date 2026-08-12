@@ -31,7 +31,6 @@
 #include "google/protobuf/unknown_field_set.h"
 #include "point.pb.h"
 #include "vector.pb.h"
-#include "xform.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -222,7 +221,6 @@ class BoundingBox final : public ::google::protobuf::Message
     kYAxisFieldNumber = 3,
     kZAxisFieldNumber = 4,
     kHalfSizeFieldNumber = 5,
-    kXformFieldNumber = 8,
   };
   // string guid = 6;
   void clear_guid() ;
@@ -329,27 +327,12 @@ class BoundingBox final : public ::google::protobuf::Message
   ::session_proto::Vector* PROTOBUF_NONNULL _internal_mutable_half_size();
 
   public:
-  // .session_proto.Xform xform = 8;
-  bool has_xform() const;
-  void clear_xform() ;
-  const ::session_proto::Xform& xform() const;
-  [[nodiscard]] ::session_proto::Xform* PROTOBUF_NULLABLE release_xform();
-  ::session_proto::Xform* PROTOBUF_NONNULL mutable_xform();
-  void set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value);
-  ::session_proto::Xform* PROTOBUF_NULLABLE unsafe_arena_release_xform();
-
-  private:
-  const ::session_proto::Xform& _internal_xform() const;
-  ::session_proto::Xform* PROTOBUF_NONNULL _internal_mutable_xform();
-
-  public:
   // @@protoc_insertion_point(class_scope:session_proto.BoundingBox)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 8,
-                                   6, 50,
+  static const ::google::protobuf::internal::TcParseTable<3, 7,
+                                   5, 42,
                                    2>
       _table_;
 
@@ -377,7 +360,6 @@ class BoundingBox final : public ::google::protobuf::Message
     ::session_proto::Vector* PROTOBUF_NULLABLE y_axis_;
     ::session_proto::Vector* PROTOBUF_NULLABLE z_axis_;
     ::session_proto::Vector* PROTOBUF_NULLABLE half_size_;
-    ::session_proto::Xform* PROTOBUF_NULLABLE xform_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -995,99 +977,6 @@ inline void BoundingBox::set_allocated_name(::std::string* PROTOBUF_NULLABLE val
     _impl_.name_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:session_proto.BoundingBox.name)
-}
-
-// .session_proto.Xform xform = 8;
-inline bool BoundingBox::has_xform() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
-  PROTOBUF_ASSUME(!value || _impl_.xform_ != nullptr);
-  return value;
-}
-inline const ::session_proto::Xform& BoundingBox::_internal_xform() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Xform* p = _impl_.xform_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Xform&>(::session_proto::_Xform_default_instance_);
-}
-inline const ::session_proto::Xform& BoundingBox::xform() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.BoundingBox.xform)
-  return _internal_xform();
-}
-inline void BoundingBox::unsafe_arena_set_allocated_xform(
-    ::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.BoundingBox.xform)
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE BoundingBox::release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  ::session_proto::Xform* released = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Xform* PROTOBUF_NULLABLE BoundingBox::unsafe_arena_release_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.BoundingBox.xform)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  ::session_proto::Xform* temp = _impl_.xform_;
-  _impl_.xform_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL BoundingBox::_internal_mutable_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Xform>(GetArena());
-    _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(p);
-  }
-  return _impl_.xform_;
-}
-inline ::session_proto::Xform* PROTOBUF_NONNULL BoundingBox::mutable_xform()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
-  ::session_proto::Xform* _msg = _internal_mutable_xform();
-  // @@protoc_insertion_point(field_mutable:session_proto.BoundingBox.xform)
-  return _msg;
-}
-inline void BoundingBox::set_allocated_xform(::session_proto::Xform* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.xform_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
-  }
-
-  _impl_.xform_ = reinterpret_cast<::session_proto::Xform*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.BoundingBox.xform)
 }
 
 #ifdef __GNUC__

@@ -189,8 +189,8 @@ static BRep make_tube(double r, double h, double amp) {
 static BRep translated(const BRep& b, double tx, double ty, double tz) {
     if (tx == 0.0 && ty == 0.0 && tz == 0.0) return b;
     BRep c = b;
-    c.xform = Xform::translation(tx, ty, tz);
-    return c.transformed();
+    c.transform(Xform::translation(tx, ty, tz));
+    return c;
 }
 
 /// Exits 4 on an unreadable/unknown source so a missing file is never scored as a boolean

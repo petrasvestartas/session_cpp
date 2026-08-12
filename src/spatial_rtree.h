@@ -325,7 +325,7 @@ private:
         }
     }
 
-    bool search_internal(const Rect& rect, Node* node, int& count, std::function<bool(const DATATYPE&)>& callback) const {
+    bool search_internal(const Rect& rect, Node* node, int& count, const std::function<bool(const DATATYPE&)>& callback) const {
         if (node->is_leaf()) {
             for (int i = 0; i < node->m_count; i++) {
                 if (overlaps(rect, node->m_branch[i].m_rect)) {
@@ -415,7 +415,7 @@ public:
         return true;
     }
 
-    int search(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], std::function<bool(const DATATYPE&)> a_callback) const {
+    int search(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], const std::function<bool(const DATATYPE&)>& a_callback) const {
         Rect rect = make_rect(a_min, a_max);
         int count = 0;
         search_internal(rect, m_root, count, a_callback);

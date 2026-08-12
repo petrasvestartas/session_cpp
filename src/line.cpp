@@ -103,7 +103,6 @@ Line::Line(const Line& other)
       name(other.name),
       width(other.width),
       linecolor(other.linecolor),
-      xform(other.xform),
       _x0(other._x0),
       _y0(other._y0),
       _z0(other._z0),
@@ -118,7 +117,6 @@ Line& Line::operator=(const Line& other) {
         name = other.name;
         width = other.width;
         linecolor = other.linecolor;
-        xform = other.xform;
         _x0 = other._x0;
         _y0 = other._y0;
         _z0 = other._z0;
@@ -133,12 +131,12 @@ Line& Line::operator=(const Line& other) {
 // Transformation
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void Line::transform() {
+void Line::transform(const Xform& xform) {
   Point start(_x0, _y0, _z0);
   Point end(_x1, _y1, _z1);
   
-  start.xform = xform; start.transform();
-  end.xform = xform; end.transform();
+  start.transform(xform);
+  end.transform(xform);
   
   _x0 = start[0];
   _y0 = start[1];
@@ -146,12 +144,11 @@ void Line::transform() {
   _x1 = end[0];
   _y1 = end[1];
   _z1 = end[2];
-  xform = Xform::identity();
 }
 
-Line Line::transformed() const {
+Line Line::transformed(const Xform& xform) const {
   Line result = *this;
-  result.transform();
+  result.transform(xform);
   return result;
 }
 
@@ -169,7 +166,6 @@ nlohmann::ordered_json Line::jsondump() const {
     data["width"] = width;
     data["x0"] = _x0;
     data["x1"] = _x1;
-    data["xform"] = xform.jsondump();
     data["y0"] = _y0;
     data["y1"] = _y1;
     data["z0"] = _z0;
@@ -183,9 +179,6 @@ Line Line::jsonload(const nlohmann::json& data) {
     line.name = data["name"];
     line.linecolor = Color::jsonload(data["linecolor"]);
     line.width = data["width"];
-    if (data.contains("xform")) {
-        line.xform = Xform::jsonload(data["xform"]);
-    }
     return line;
 }
 
@@ -226,12 +219,6 @@ std::string Line::pb_dumps() const {
     end->set_z(_z1);
     proto.set_guid(guid());
     proto.set_name(name);
-    // Serialize xform
-    auto* proto_xform = proto.mutable_xform();
-    proto_xform->set_name(xform.name);
-    for (int i = 0; i < 16; ++i) {
-        proto_xform->add_matrix(xform.m[i]);
-    }
     // Serialize width and linecolor
     proto.set_width(width);
     auto* color_proto = proto.mutable_linecolor();
@@ -250,13 +237,6 @@ Line Line::pb_loads(const std::string& data) {
               proto.end().x(), proto.end().y(), proto.end().z());
     line.guid() = proto.guid();
     line.name = proto.name();
-    // Deserialize xform if present
-    if (proto.has_xform()) {
-        line.xform.name = proto.xform().name();
-        for (int i = 0; i < proto.xform().matrix_size() && i < 16; ++i) {
-            line.xform.m[i] = proto.xform().matrix(i);
-        }
-    }
     // Deserialize width and linecolor
     if (proto.width() > 0.0) {
         line.width = proto.width();

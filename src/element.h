@@ -25,11 +25,10 @@ public:
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;
-    Xform session_transformation = Xform::identity();
 
-    Element(const std::string& name = "my_element", const Xform& transformation = Xform::identity());
-    Element(const Mesh& geometry, const std::string& name = "my_element", const Xform& transformation = Xform::identity());
-    Element(const BRep& geometry, const std::string& name = "my_element", const Xform& transformation = Xform::identity());
+    Element(const std::string& name = "my_element");
+    Element(const Mesh& geometry, const std::string& name = "my_element");
+    Element(const BRep& geometry, const std::string& name = "my_element");
     Element(const Element& other);
     Element& operator=(const Element& other);
     virtual ~Element() = default;
@@ -37,7 +36,9 @@ public:
     const ElementGeometry& geometry() const { return _geometry; }
     bool has_geometry() const;
     std::string geometry_type_name() const;
-    ElementGeometry session_geometry() const;
+    /// The element's geometry placed by `xform`. The placement is supplied by the caller -
+    /// an Element no longer stores one; the Session does. Pass identity for local geometry.
+    ElementGeometry session_geometry(const Xform& xform) const;
     OBB aabb();
     OBB obb();
     Mesh collision_mesh();
@@ -54,6 +55,9 @@ public:
     size_t features_count() const { return _features.size(); }
 
     void add_feature(std::function<Mesh(Mesh)> f);
+    /// Bake a placement into this element's own geometry, invalidating the cached boxes.
+    /// The Session owns the placement, so it hands it in here rather than the Element storing it.
+    void place(const Xform& xform);
     void set_geometry(const Mesh& geo);
     void set_geometry(const BRep& geo);
     void set_polylines(std::vector<Polyline> polys);
@@ -110,7 +114,7 @@ protected:
 class ElementColumn : public Element {
 public:
     ElementColumn(double width = 0.4, double depth = 0.4, double height = 3.0,
-                  const std::string& name = "my_column", const Xform& transformation = Xform::identity());
+                  const std::string& name = "my_column");
     ElementColumn(const ElementColumn& other);
     ElementColumn& operator=(const ElementColumn& other);
 
@@ -148,7 +152,7 @@ private:
 class ElementBeam : public Element {
 public:
     ElementBeam(double width = 0.1, double depth = 0.2, double length = 3.0,
-                const std::string& name = "my_beam", const Xform& transformation = Xform::identity());
+                const std::string& name = "my_beam");
     ElementBeam(const ElementBeam& other);
     ElementBeam& operator=(const ElementBeam& other);
 
@@ -192,11 +196,11 @@ struct JointConnection {
 class ElementPlate : public Element {
 public:
     ElementPlate(const std::vector<Point>& polygon = {}, double thickness = 0.1,
-                 const std::string& name = "my_plate", const Xform& transformation = Xform::identity());
+                 const std::string& name = "my_plate");
     ElementPlate(const std::vector<Point>& bottom, const std::vector<Point>& top,
-                 const std::string& name = "my_plate", const Xform& transformation = Xform::identity());
+                 const std::string& name = "my_plate");
     ElementPlate(const Polyline& bottom, const Polyline& top,
-                 const std::string& name = "my_plate", const Xform& transformation = Xform::identity());
+                 const std::string& name = "my_plate");
     ElementPlate(const ElementPlate& other);
     ElementPlate& operator=(const ElementPlate& other);
 

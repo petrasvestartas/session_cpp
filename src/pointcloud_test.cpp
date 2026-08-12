@@ -273,8 +273,8 @@ MINI_TEST("PointCloud", "Transform") {
     // uncomment #include "xform.h"
 
     PointCloud pc({Point(1.0, 2.0, 3.0)}, {}, {});
-    pc.xform = Xform::translation(10.0, 20.0, 30.0);
-    pc.transform();
+    Xform pc_xf = Xform::translation(10.0, 20.0, 30.0);
+    pc.transform(pc_xf);
 
     MINI_CHECK(TOLERANCE.is_close(pc.get_point(0)[0], 11.0));
     MINI_CHECK(TOLERANCE.is_close(pc.get_point(0)[1], 22.0));
@@ -287,8 +287,8 @@ MINI_TEST("PointCloud", "Transformed") {
     // uncomment #include "xform.h"
 
     PointCloud pc({Point(1.0, 2.0, 3.0)}, {}, {});
-    pc.xform = Xform::translation(10.0, 20.0, 30.0);
-    PointCloud pc2 = pc.transformed();
+    Xform pc_xf = Xform::translation(10.0, 20.0, 30.0);
+    PointCloud pc2 = pc.transformed(pc_xf);
 
     MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[0], 11.0));
     MINI_CHECK(TOLERANCE.is_close(pc2.get_point(0)[1], 22.0));

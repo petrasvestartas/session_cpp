@@ -141,13 +141,12 @@ MINI_TEST("Polyline", "Transformation") {
         Point(1.0, 1.0, 0.0),
         Point(0.0, 1.0, 0.0),
     });
-    pl.xform = Xform::translation(10.0, 0.0, 0.0);
-    Polyline pl_transformed = pl.transformed();
-    pl.transform();
+    Xform pl_xf = Xform::translation(10.0, 0.0, 0.0);
+    Polyline pl_transformed = pl.transformed(pl_xf);
+    pl.transform(pl_xf);
 
     MINI_CHECK(pl_transformed.get_point(0)[0] == 10.0 && pl_transformed.get_point(1)[0] == 11.0);
     MINI_CHECK(pl.get_point(0)[0] == 10.0 && pl.get_point(1)[0] == 11.0);
-    MINI_CHECK(pl.xform == Xform::identity());
 }
 
 MINI_TEST("Polyline", "Json Roundtrip") {
@@ -882,21 +881,6 @@ MINI_TEST("Polyline", "Simplify Two Points") {
     std::vector<Point> result = Polyline::simplify_points(pts, 0.001);
 
     MINI_CHECK(result.size() == 2);
-}
-
-MINI_TEST("Polyline", "Transformed Xform") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "xform.h"
-
-    Polyline pl({
-        Point(0.0, 0.0, 0.0),
-        Point(1.0, 0.0, 0.0),
-    });
-    Xform xf = Xform::translation(10.0, 0.0, 0.0);
-    Polyline pl_x = pl.transformed_xform(xf);
-
-    MINI_CHECK(TOLERANCE.is_close(pl_x.get_point(0)[0], 10.0));
-    MINI_CHECK(TOLERANCE.is_close(pl_x.get_point(1)[0], 11.0));
 }
 
 MINI_TEST("Polyline", "Translate") {

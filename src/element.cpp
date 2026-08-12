@@ -9,17 +9,16 @@ namespace session_cpp {
 // Element
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-Element::Element(const std::string& name, const Xform& transformation) : name(name), session_transformation(transformation) {}
+Element::Element(const std::string& name) : name(name) {}
 
-Element::Element(const Mesh& geometry, const std::string& name, const Xform& transformation)
-    : name(name), session_transformation(transformation), _geometry(geometry) {}
+Element::Element(const Mesh& geometry, const std::string& name)
+    : name(name), _geometry(geometry) {}
 
-Element::Element(const BRep& geometry, const std::string& name, const Xform& transformation)
-    : name(name), session_transformation(transformation), _geometry(geometry) {}
+Element::Element(const BRep& geometry, const std::string& name)
+    : name(name), _geometry(geometry) {}
 
 Element::Element(const Element& other)
     : name(other.name),
-      session_transformation(other.session_transformation),
       _geometry(other._geometry), _is_dirty(true),
       _features(other._features) {}
 
@@ -27,7 +26,6 @@ Element& Element::operator=(const Element& other) {
     if (this != &other) {
         _guid.clear();
         name = other.name;
-        session_transformation = other.session_transformation;
         _geometry = other._geometry;
         _features = other._features;
         _is_dirty = true;
@@ -53,19 +51,17 @@ std::string Element::geometry_type_name() const {
     return "None";
 }
 
-ElementGeometry Element::session_geometry() const {
+ElementGeometry Element::session_geometry(const Xform& xform) const {
     if (!has_geometry()) return std::monostate{};
     auto geo = _geometry;
     if (auto* mesh = std::get_if<Mesh>(&geo)) {
         *mesh = apply_features(*mesh);
-        if (!session_transformation.is_identity()) {
-            mesh->xform = session_transformation * mesh->xform;
-            mesh->transform();
+        if (!xform.is_identity()) {
+            mesh->transform(xform);
         }
     } else if (auto* brep = std::get_if<BRep>(&geo)) {
-        if (!session_transformation.is_identity()) {
-            brep->xform = session_transformation * brep->xform;
-            brep->transform();
+        if (!xform.is_identity()) {
+            brep->transform(xform);
         }
     }
     return geo;
@@ -113,6 +109,11 @@ std::optional<Line> Element::axis() {
 
 void Element::add_feature(std::function<Mesh(Mesh)> f) {
     _features.push_back(std::move(f));
+    _is_dirty = true;
+}
+
+void Element::place(const Xform& xform) {
+    _geometry = session_geometry(xform);
     _is_dirty = true;
 }
 
@@ -171,27 +172,27 @@ std::string Element::repr() const {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 OBB Element::compute_aabb() {
-    auto geo = session_geometry();
+    auto geo = session_geometry(Xform::identity());
     if (std::holds_alternative<std::monostate>(geo))
         return OBB::from_point(Point(0, 0, 0), 0.0);
     return obb_from_geometry(geo);
 }
 
 OBB Element::compute_obb() {
-    auto geo = session_geometry();
+    auto geo = session_geometry(Xform::identity());
     if (std::holds_alternative<std::monostate>(geo))
         return OBB::from_point(Point(0, 0, 0), 0.0);
     return obb_from_geometry(geo);
 }
 
 Mesh Element::compute_collision_mesh() {
-    auto geo = session_geometry();
+    auto geo = session_geometry(Xform::identity());
     if (auto* mesh = std::get_if<Mesh>(&geo)) return *mesh;
     return Mesh();
 }
 
 Point Element::compute_point() {
-    auto geo = session_geometry();
+    auto geo = session_geometry(Xform::identity());
     if (auto* mesh = std::get_if<Mesh>(&geo)) {
         if (mesh->vertex.empty()) return Point(0, 0, 0);
         double sx = 0, sy = 0, sz = 0;
@@ -258,7 +259,6 @@ nlohmann::ordered_json Element::jsondump() const {
         {"geometry_type", geo_type},
         {"guid", guid()},
         {"name", name},
-        {"session_transformation", session_transformation.jsondump()},
         {"type", "Element"},
     };
 }
@@ -273,8 +273,6 @@ Element Element::jsonload(const nlohmann::json& data) {
     }
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
-    if (data.contains("session_transformation"))
-        elem.session_transformation = Xform::jsonload(data["session_transformation"]);
     return elem;
 }
 
@@ -311,9 +309,6 @@ std::string Element::pb_dumps() const {
     } else {
         proto.set_geometry_type("None");
     }
-    auto* xf = proto.mutable_session_transformation();
-    xf->set_name(session_transformation.name);
-    for (int i = 0; i < 16; ++i) xf->add_matrix(session_transformation.m[i]);
     return proto.SerializeAsString();
 }
 
@@ -329,11 +324,6 @@ Element Element::pb_loads(const std::string& data) {
     } else if (geo_type == "BRep" && !proto.geometry_data().empty()) {
         elem._geometry = BRep::pb_loads(proto.geometry_data());
     }
-    Xform xf;
-    xf.name = proto.session_transformation().name();
-    if (proto.session_transformation().matrix_size() == 16)
-        for (int i = 0; i < 16; ++i) xf.m[i] = proto.session_transformation().matrix(i);
-    elem.session_transformation = xf;
     return elem;
 }
 
@@ -356,8 +346,8 @@ std::ostream& operator<<(std::ostream& os, const Element& e) { return os << e.st
 // ElementColumn
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-ElementColumn::ElementColumn(double width, double depth, double height, const std::string& name, const Xform& transformation)
-    : Element(name, transformation), _width(width), _depth(depth), _height(height) {
+ElementColumn::ElementColumn(double width, double depth, double height, const std::string& name)
+    : Element(name), _width(width), _depth(depth), _height(height) {
     _geometry = compute_element_geometry();
 }
 
@@ -492,7 +482,6 @@ nlohmann::ordered_json ElementColumn::jsondump() const {
         {"guid", guid()},
         {"height", _height},
         {"name", name},
-        {"session_transformation", session_transformation.jsondump()},
         {"type", "ElementColumn"},
         {"width", _width},
     };
@@ -506,8 +495,6 @@ ElementColumn ElementColumn::jsonload(const nlohmann::json& data) {
     );
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
-    if (data.contains("session_transformation"))
-        elem.session_transformation = Xform::jsonload(data["session_transformation"]);
     return elem;
 }
 
@@ -528,9 +515,6 @@ std::string ElementColumn::pb_dumps() const {
     nlohmann::json params = {{"width", _width}, {"depth", _depth}, {"height", _height}};
     std::string params_str = params.dump();
     proto.set_geometry_data(params_str);
-    auto* xf = proto.mutable_session_transformation();
-    xf->set_name(session_transformation.name);
-    for (int i = 0; i < 16; ++i) xf->add_matrix(session_transformation.m[i]);
     return proto.SerializeAsString();
 }
 
@@ -541,11 +525,6 @@ ElementColumn ElementColumn::pb_loads(const std::string& data) {
     ElementColumn elem(params["width"], params["depth"], params["height"]);
     elem.guid() = proto.guid();
     elem.name = proto.name();
-    Xform xf;
-    xf.name = proto.session_transformation().name();
-    if (proto.session_transformation().matrix_size() == 16)
-        for (int i = 0; i < 16; ++i) xf.m[i] = proto.session_transformation().matrix(i);
-    elem.session_transformation = xf;
     return elem;
 }
 
@@ -560,8 +539,8 @@ ElementColumn ElementColumn::pb_load(const std::string& path) {
 // ElementBeam
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-ElementBeam::ElementBeam(double width, double depth, double length, const std::string& name, const Xform& transformation)
-    : Element(name, transformation), _width(width), _depth(depth), _length(length) {
+ElementBeam::ElementBeam(double width, double depth, double length, const std::string& name)
+    : Element(name), _width(width), _depth(depth), _length(length) {
     _geometry = compute_element_geometry();
 }
 
@@ -696,7 +675,6 @@ nlohmann::ordered_json ElementBeam::jsondump() const {
         {"guid", guid()},
         {"length", _length},
         {"name", name},
-        {"session_transformation", session_transformation.jsondump()},
         {"type", "ElementBeam"},
         {"width", _width},
     };
@@ -710,8 +688,6 @@ ElementBeam ElementBeam::jsonload(const nlohmann::json& data) {
     );
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
-    if (data.contains("session_transformation"))
-        elem.session_transformation = Xform::jsonload(data["session_transformation"]);
     return elem;
 }
 
@@ -732,9 +708,6 @@ std::string ElementBeam::pb_dumps() const {
     nlohmann::json params = {{"width", _width}, {"depth", _depth}, {"length", _length}};
     std::string params_str = params.dump();
     proto.set_geometry_data(params_str);
-    auto* xf = proto.mutable_session_transformation();
-    xf->set_name(session_transformation.name);
-    for (int i = 0; i < 16; ++i) xf->add_matrix(session_transformation.m[i]);
     return proto.SerializeAsString();
 }
 
@@ -745,11 +718,6 @@ ElementBeam ElementBeam::pb_loads(const std::string& data) {
     ElementBeam elem(params["width"], params["depth"], params["length"]);
     elem.guid() = proto.guid();
     elem.name = proto.name();
-    Xform xf;
-    xf.name = proto.session_transformation().name();
-    if (proto.session_transformation().matrix_size() == 16)
-        for (int i = 0; i < 16; ++i) xf.m[i] = proto.session_transformation().matrix(i);
-    elem.session_transformation = xf;
     return elem;
 }
 
@@ -765,8 +733,8 @@ ElementBeam ElementBeam::pb_load(const std::string& path) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 ElementPlate::ElementPlate(const std::vector<Point>& polygon, double thickness,
-                           const std::string& name, const Xform& transformation)
-    : Element(name, transformation), _thickness(thickness) {
+                           const std::string& name)
+    : Element(name), _thickness(thickness) {
     if (polygon.empty()) {
         _polygon = {Point(-0.5,-0.5,0), Point(0.5,-0.5,0), Point(0.5,0.5,0), Point(-0.5,0.5,0)};
     } else {
@@ -791,12 +759,12 @@ static std::vector<Point> strip_closing(const std::vector<Point>& pts) {
     return pts;
 }
 
-ElementPlate::ElementPlate(const Polyline& bottom, const Polyline& top, const std::string& name, const Xform& transformation)
-    : ElementPlate(bottom.get_points(), top.get_points(), name, transformation) {}
+ElementPlate::ElementPlate(const Polyline& bottom, const Polyline& top, const std::string& name)
+    : ElementPlate(bottom.get_points(), top.get_points(), name) {}
 
 ElementPlate::ElementPlate(const std::vector<Point>& bottom, const std::vector<Point>& top,
-                           const std::string& name, const Xform& transformation)
-    : Element(name, transformation) {
+                           const std::string& name)
+    : Element(name) {
     auto bot = strip_closing(bottom);
     auto tp = strip_closing(top);
     _polygon.reserve(bot.size());
@@ -1061,7 +1029,6 @@ nlohmann::ordered_json ElementPlate::jsondump() const {
         {"name", name},
         {"polygon", poly_json},
         {"polygon_top", poly_top_json},
-        {"session_transformation", session_transformation.jsondump()},
         {"thickness", _thickness},
         {"type", "ElementPlate"},
     };
@@ -1083,8 +1050,6 @@ ElementPlate ElementPlate::jsonload(const nlohmann::json& data) {
         : ElementPlate(polygon, polygon_top);
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
-    if (data.contains("session_transformation"))
-        elem.session_transformation = Xform::jsonload(data["session_transformation"]);
     if (data.contains("joint_types"))
         elem._joint_types = data["joint_types"].get<std::vector<int>>();
     if (data.contains("j_mf")) {
@@ -1123,9 +1088,6 @@ std::string ElementPlate::pb_dumps() const {
     params["thickness"] = _thickness;
     std::string params_str = params.dump();
     proto.set_geometry_data(params_str);
-    auto* xf = proto.mutable_session_transformation();
-    xf->set_name(session_transformation.name);
-    for (int i = 0; i < 16; ++i) xf->add_matrix(session_transformation.m[i]);
     for (int jt : _joint_types) proto.add_joint_types(jt);
     for (const auto& face : _j_mf) {
         auto* fj = proto.add_j_mf();
@@ -1166,11 +1128,6 @@ ElementPlate ElementPlate::pb_loads(const std::string& data) {
     ElementPlate elem(polygon, params["thickness"]);
     elem.guid() = proto.guid();
     elem.name = proto.name();
-    Xform xf;
-    xf.name = proto.session_transformation().name();
-    if (proto.session_transformation().matrix_size() == 16)
-        for (int i = 0; i < 16; ++i) xf.m[i] = proto.session_transformation().matrix(i);
-    elem.session_transformation = xf;
     elem._joint_types.assign(proto.joint_types().begin(), proto.joint_types().end());
     for (const auto& fj : proto.j_mf()) {
         std::vector<JointConnection> face;

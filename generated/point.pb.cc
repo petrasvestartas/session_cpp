@@ -36,7 +36,6 @@ inline constexpr Point::Impl_::Impl_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         pointcolor_{nullptr},
-        xform_{nullptr},
         x_{0},
         y_{0},
         z_{0},
@@ -71,7 +70,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_._has_bits_),
-        11, // hasbit index offset
+        10, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.x_),
@@ -79,15 +78,13 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.z_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.pointcolor_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.xform_),
         0,
         1,
+        3,
         4,
         5,
         6,
-        7,
         2,
-        3,
 };
 
 static const ::_pbi::MigrationSchema
@@ -100,27 +97,25 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 const char descriptor_table_protodef_point_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\013point.proto\022\rsession_proto\032\013color.prot"
-    "o\032\013xform.proto\"\242\001\n\005Point\022\014\n\004guid\030\001 \001(\t\022\014"
-    "\n\004name\030\002 \001(\t\022\t\n\001x\030\003 \001(\001\022\t\n\001y\030\004 \001(\001\022\t\n\001z\030"
-    "\005 \001(\001\022\r\n\005width\030\006 \001(\001\022(\n\npointcolor\030\007 \001(\013"
-    "2\024.session_proto.Color\022#\n\005xform\030\010 \001(\0132\024."
-    "session_proto.Xformb\006proto3"
+    "o\"\203\001\n\005Point\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022"
+    "\t\n\001x\030\003 \001(\001\022\t\n\001y\030\004 \001(\001\022\t\n\001z\030\005 \001(\001\022\r\n\005widt"
+    "h\030\006 \001(\001\022(\n\npointcolor\030\007 \001(\0132\024.session_pr"
+    "oto.ColorJ\004\010\010\020\tb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_point_2eproto_deps[2] = {
+    descriptor_table_point_2eproto_deps[1] = {
         &::descriptor_table_color_2eproto,
-        &::descriptor_table_xform_2eproto,
 };
 static ::absl::once_flag descriptor_table_point_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_point_2eproto = {
     false,
     false,
-    227,
+    183,
     descriptor_table_protodef_point_2eproto,
     "point.proto",
     &descriptor_table_point_2eproto_once,
     descriptor_table_point_2eproto_deps,
-    2,
+    1,
     1,
     schemas,
     file_default_instances,
@@ -144,12 +139,6 @@ void Point::clear_pointcolor() {
   if (_impl_.pointcolor_ != nullptr) _impl_.pointcolor_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000004U);
-}
-void Point::clear_xform() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.xform_ != nullptr) _impl_.xform_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
 }
 Point::Point(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
@@ -185,9 +174,6 @@ Point::Point(
   ::uint32_t cached_has_bits = _impl_._has_bits_[0];
   _impl_.pointcolor_ = (CheckHasBit(cached_has_bits, 0x00000004U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.pointcolor_)
-                : nullptr;
-  _impl_.xform_ = (CheckHasBit(cached_has_bits, 0x00000008U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_)
                 : nullptr;
   ::memcpy(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, x_),
@@ -229,7 +215,6 @@ inline void Point::SharedDtor(MessageLite& self) {
   this_._impl_.guid_.Destroy();
   this_._impl_.name_.Destroy();
   delete this_._impl_.pointcolor_;
-  delete this_._impl_.xform_;
   this_._impl_.~Impl_();
 }
 
@@ -276,17 +261,17 @@ Point::GetClassData() const {
   return Point_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 8, 2, 44, 2>
+const ::_pbi::TcParseTable<3, 7, 1, 36, 2>
 Point::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Point, _impl_._has_bits_),
     0, // no _extensions_
-    8, 56,  // max_field_number, fast_idx_mask
+    7, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967040,  // skipmap
+    4294967168,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    8,  // num_field_entries
-    2,  // num_aux_entries
+    7,  // num_field_entries
+    1,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Point_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -295,10 +280,7 @@ Point::_table_ = {
     ::_pbi::TcParser::GetTable<::session_proto::Point>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // .session_proto.Xform xform = 8;
-    {::_pbi::TcParser::FastMtS1,
-     {66, 3, 1,
-      PROTOBUF_FIELD_OFFSET(Point, _impl_.xform_)}},
+    {::_pbi::TcParser::MiniParse, {}},
     // string guid = 1;
     {::_pbi::TcParser::FastUS1,
      {10, 0, 0,
@@ -309,19 +291,19 @@ Point::_table_ = {
       PROTOBUF_FIELD_OFFSET(Point, _impl_.name_)}},
     // double x = 3;
     {::_pbi::TcParser::FastF64S1,
-     {25, 4, 0,
+     {25, 3, 0,
       PROTOBUF_FIELD_OFFSET(Point, _impl_.x_)}},
     // double y = 4;
     {::_pbi::TcParser::FastF64S1,
-     {33, 5, 0,
+     {33, 4, 0,
       PROTOBUF_FIELD_OFFSET(Point, _impl_.y_)}},
     // double z = 5;
     {::_pbi::TcParser::FastF64S1,
-     {41, 6, 0,
+     {41, 5, 0,
       PROTOBUF_FIELD_OFFSET(Point, _impl_.z_)}},
     // double width = 6;
     {::_pbi::TcParser::FastF64S1,
-     {49, 7, 0,
+     {49, 6, 0,
       PROTOBUF_FIELD_OFFSET(Point, _impl_.width_)}},
     // .session_proto.Color pointcolor = 7;
     {::_pbi::TcParser::FastMtS1,
@@ -335,24 +317,21 @@ Point::_table_ = {
     // string name = 2;
     {PROTOBUF_FIELD_OFFSET(Point, _impl_.name_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // double x = 3;
-    {PROTOBUF_FIELD_OFFSET(Point, _impl_.x_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(Point, _impl_.x_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     // double y = 4;
-    {PROTOBUF_FIELD_OFFSET(Point, _impl_.y_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(Point, _impl_.y_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     // double z = 5;
-    {PROTOBUF_FIELD_OFFSET(Point, _impl_.z_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(Point, _impl_.z_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     // double width = 6;
-    {PROTOBUF_FIELD_OFFSET(Point, _impl_.width_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(Point, _impl_.width_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     // .session_proto.Color pointcolor = 7;
     {PROTOBUF_FIELD_OFFSET(Point, _impl_.pointcolor_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
-    // .session_proto.Xform xform = 8;
-    {PROTOBUF_FIELD_OFFSET(Point, _impl_.xform_), _Internal::kHasBitsOffset + 3, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Color>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Xform>()},
   }},
   {{
-    "\23\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
+    "\23\4\4\0\0\0\0\0"
     "session_proto.Point"
     "guid"
     "name"
@@ -366,7 +345,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _impl_.guid_.ClearNonDefaultToEmpty();
     }
@@ -377,12 +356,8 @@ PROTOBUF_NOINLINE void Point::Clear() {
       ABSL_DCHECK(_impl_.pointcolor_ != nullptr);
       _impl_.pointcolor_->Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      ABSL_DCHECK(_impl_.xform_ != nullptr);
-      _impl_.xform_->Clear();
-    }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x000000f0U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000078U)) {
     ::memset(&_impl_.x_, 0, static_cast<::size_t>(
         reinterpret_cast<char*>(&_impl_.width_) -
         reinterpret_cast<char*>(&_impl_.x_)) + sizeof(_impl_.width_));
@@ -431,7 +406,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
   }
 
   // double x = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_x()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -440,7 +415,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
   }
 
   // double y = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_y()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -449,7 +424,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
   }
 
   // double z = 5;
-  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_z()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -458,7 +433,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
   }
 
   // double width = 6;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_width()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -470,13 +445,6 @@ PROTOBUF_NOINLINE void Point::Clear() {
   if (CheckHasBit(cached_has_bits, 0x00000004U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         7, *this_._impl_.pointcolor_, this_._impl_.pointcolor_->GetCachedSize(), target,
-        stream);
-  }
-
-  // .session_proto.Xform xform = 8;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        8, *this_._impl_.xform_, this_._impl_.xform_->GetCachedSize(), target,
         stream);
   }
 
@@ -505,7 +473,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     // string guid = 1;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_guid().empty()) {
@@ -525,31 +493,26 @@ PROTOBUF_NOINLINE void Point::Clear() {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.pointcolor_);
     }
-    // .session_proto.Xform xform = 8;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.xform_);
-    }
     // double x = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_x()) != 0) {
         total_size += 9;
       }
     }
     // double y = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_y()) != 0) {
         total_size += 9;
       }
     }
     // double z = 5;
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_z()) != 0) {
         total_size += 9;
       }
     }
     // double width = 6;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_width()) != 0) {
         total_size += 9;
       }
@@ -574,7 +537,7 @@ void Point::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
@@ -602,29 +565,21 @@ void Point::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      ABSL_DCHECK(from._impl_.xform_ != nullptr);
-      if (_this->_impl_.xform_ == nullptr) {
-        _this->_impl_.xform_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_);
-      } else {
-        _this->_impl_.xform_->MergeFrom(*from._impl_.xform_);
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_x()) != 0) {
         _this->_impl_.x_ = from._impl_.x_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_y()) != 0) {
         _this->_impl_.y_ = from._impl_.y_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_z()) != 0) {
         _this->_impl_.z_ = from._impl_.z_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_width()) != 0) {
         _this->_impl_.width_ = from._impl_.width_;
       }
