@@ -3,7 +3,7 @@
     "a": 1.0,
     "b": 1.0,
     "g": 0.0,
-    "guid": "83a6e183-df8a-45e9-996c-f437dc8c08f7",
+    "guid": "ffa55e06-562c-44c4-9128-43bcf0972d13",
     "name": "blue",
     "r": 0.0,
     "type": "Color"
@@ -22,7 +22,7 @@
     0.0,
     1.0
   ],
-  "guid": "cf421bb1-a26d-49a4-b10d-050b537bb34e",
+  "guid": "562f9d2a-9d1c-4558-86ae-7bb744187f4d",
   "name": "test_plane",
   "type": "Plane",
   "width": 1.0

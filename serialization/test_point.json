@@ -1,11 +1,11 @@
 {
-    "guid": "a0f4ae1a-5bc2-4416-8d45-a3c5b7a785b5",
+    "guid": "9f6abb54-1a1f-4b3a-9c11-641f63d3ddd1",
     "name": "test_point",
     "pointcolor": {
         "a": 1.0,
         "b": 0.25,
         "g": 0.5,
-        "guid": "dd5e91db-4234-4484-b357-fd62d3983c55",
+        "guid": "6088aa83-902b-46f2-b532-523ece862d4b",
         "name": "my_color",
         "r": 1.0,
         "type": "Color"
