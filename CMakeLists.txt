@@ -350,7 +350,7 @@ set(MINITEST_SOURCES
     src/graph_test.cpp
     src/intersection_test.cpp
     src/file_obj_test.cpp
-    src/io_xyz_test.cpp
+    src/io_test.cpp
     src/file_step_test.cpp
     src/objects_test.cpp
     src/quaternion_test.cpp

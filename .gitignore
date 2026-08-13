@@ -84,3 +84,8 @@ build2/
 .claude/
 serialization/boolean_steps/
 .protoc/
+
+# Test roundtrip artifacts: rewritten by every minitest run (fresh random GUIDs =
+# perpetual churn) and regenerated on the first run of a fresh clone. step_import/
+# and boolean_steps/ stay tracked - they are checked-in INPUT/ground-truth data.
+serialization/test_*
