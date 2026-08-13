@@ -16,7 +16,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "7173e048-d6b7-49d3-9f01-ce18b663dbf2",
+            "guid": "3ea1675b-ecdc-45df-9f59-91ece7a65e98",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -45,7 +45,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "dd4d920b-0a13-441f-b679-682ced6a0447",
+            "guid": "049d8295-2854-4072-a418-d73006452619",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -74,7 +74,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "2e2e5a07-2054-40a7-9c93-899cbf7ce236",
+            "guid": "5f590431-3715-47f0-bbda-da595340218e",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -103,7 +103,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "d23044ec-05de-4123-a60a-3571e55f6f7d",
+            "guid": "4af0e6e9-d993-4ad1-9f34-d145f5932619",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -132,7 +132,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "6bd6a849-c9b8-4a86-920f-74f088d78f28",
+            "guid": "ef04a3e7-1e49-487b-843e-fde4d6c8d297",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -161,7 +161,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "3afcc71f-9d07-4c18-beec-e2142d1472b0",
+            "guid": "01cc9a49-e540-44ad-8e45-4972b1e8c292",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -190,7 +190,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "beeaab7d-156f-4263-92bc-77a0ae0a8b20",
+            "guid": "f63e68fe-86c0-45e1-b3b1-53ebeccb52b8",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -219,7 +219,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "ba8d1354-7710-4cad-ad47-4dc50bc77a0d",
+            "guid": "db7cadda-a566-41f1-b990-e04ae5568683",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -248,7 +248,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "a7421c7d-b43e-47db-8b80-b3e1a471643f",
+            "guid": "102156ec-ed82-4b52-a0ef-d79ca60f59a4",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -277,7 +277,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "eaa4b5f6-4653-4bc1-95a8-be23d2d9c1ed",
+            "guid": "762c8ca6-9438-4742-bca5-576027b4be77",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -306,7 +306,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "f7dc192e-10c3-4d73-84ea-c9f22849d147",
+            "guid": "c805bd49-85ee-46fd-bceb-b88cadb7be7b",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -335,7 +335,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "4c07f4a5-cea8-4e86-b420-63caf122ea9b",
+            "guid": "3c687889-784f-4273-bf65-8dc802559c51",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -364,7 +364,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "768b350f-2e57-4aba-9a9f-735c8efb63c0",
+            "guid": "02bf3011-91c1-470b-aaee-d2797e49701d",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -393,7 +393,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "cefd6246-3ee0-49c7-a6fc-7ec59accb09c",
+            "guid": "ec86f21a-bd9f-456e-924e-786422430261",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -422,7 +422,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "0f832bb8-e573-4227-aeef-28cc03117b54",
+            "guid": "c5118948-d155-4ae1-b14b-b24c22315d9f",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -451,7 +451,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "6346c79c-983f-4176-b749-b0f1ec7731fb",
+            "guid": "61abade1-77ff-497d-964f-b06b9e92fb19",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -480,7 +480,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "9542f9a7-662c-4934-87af-198743ffd19b",
+            "guid": "9a11386f-d9d4-449f-adf5-6e0cfefc7fe5",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -509,7 +509,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "f569b46d-2ac4-48f2-b81b-05c21d8e52ad",
+            "guid": "5ac1e286-4fb0-4339-a5c7-9ba45dbd9f4b",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -538,7 +538,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "ee8c141d-9da8-4e27-a226-a3236628b678",
+            "guid": "3e20022a-a2ae-4ff3-9897-8ec56b65a0a8",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -567,7 +567,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "cf670745-549d-49ce-8782-c0ac9f70c015",
+            "guid": "a0b7224e-1e65-4dbc-8535-f63568034634",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -596,7 +596,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "815b5b4a-3934-4ac9-a604-0897f80401a8",
+            "guid": "8c70a88e-8579-46f7-8791-3309b4850838",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -625,7 +625,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "2f9a7257-187d-49a2-ae85-2018bf9856de",
+            "guid": "84f47d9d-370d-497a-a2ac-a4d73c92fc3c",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -654,7 +654,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "67a46aec-0162-4f20-8d2f-8e9a45275be1",
+            "guid": "5e4c62bf-1be5-4d1f-bc55-780ae014dbf0",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -683,7 +683,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "181a8920-6a31-49ad-be3b-c9b1e0959fc7",
+            "guid": "0a9aae2b-1fc7-4382-a822-408055c6408d",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -714,7 +714,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "68acca34-33c9-4a7e-bc5e-9fe1ac45ccaa",
+            "guid": "63d47192-88e3-4cc8-a209-6778ea19dddf",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -743,7 +743,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "4b06e0c2-21c9-4790-90ef-76254c77d987",
+            "guid": "9357e531-ee3a-4764-abf2-e383694e9bd7",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -772,7 +772,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "59dab2e3-9b16-403d-b3f9-13797fd987a0",
+            "guid": "dceadaad-718e-4876-b7a3-795b75f326d4",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -801,7 +801,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "49f3e200-0cfc-47c9-aac3-a4d75c396027",
+            "guid": "2b45f0d6-ac9e-4f8d-99a8-3f01d1ee951a",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -830,7 +830,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "1f6132a8-ab70-4434-a37c-8988d057f97e",
+            "guid": "303db672-8762-4c1a-b4ab-2371849f136a",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -859,7 +859,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "c112b46e-69a1-4694-aa6a-68ccb2d96bd1",
+            "guid": "aa26ef09-f6c1-4762-8d14-f2c16e16fdfd",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -888,7 +888,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "b6fe75ea-257a-4b3d-9fdd-f9ba3a593784",
+            "guid": "702a0366-b507-4584-a799-8f4431493881",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -917,7 +917,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "b25cf980-c850-42a1-8a48-fb9a9f710ad1",
+            "guid": "d20071d3-70fe-4c08-8885-dd45a9374713",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -946,7 +946,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "7ba059eb-f7ed-4277-97a2-6ebd903cbc36",
+            "guid": "a4ecc868-4064-4e8c-8a5f-c2a34ed19fd8",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -975,7 +975,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "e377ffea-feb4-4be3-abe6-8b82c81f1bf6",
+            "guid": "68f261e0-3172-433c-b5ab-6d8a8ed69a09",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -1004,7 +1004,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "cabf84ef-82ab-4567-b55d-2417c7375b9f",
+            "guid": "c2de0225-0a96-437d-8dd5-24b807d8af30",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -1033,7 +1033,7 @@
             "cv_count": 2,
             "cv_stride": 3,
             "dimension": 3,
-            "guid": "8329fd0b-a5c3-415b-b7fc-e221ac91b8bd",
+            "guid": "40e6668e-7dcd-49b5-a249-707b9e759542",
             "is_rational": false,
             "nurbsknots": [
                 0.0,
@@ -1091,7 +1091,7 @@
             "surface_index": 5
         }
     ],
-    "guid": "3a96627c-2a15-4981-be51-c826121dbfe4",
+    "guid": "e4666a99-7dcc-409b-9305-4e7f17a69453",
     "loops": [
         {
             "face_index": 0,
@@ -1175,7 +1175,7 @@
             "cv_count_v": 2,
             "dimension": 3,
             "facecolors": [],
-            "guid": "19cfba1b-cd8a-43d0-99e2-68287343a755",
+            "guid": "9d998e3e-98e5-4548-8847-10a66a315c9b",
             "is_rational": false,
             "nurbsknots_u": [
                 0.0,
@@ -1212,7 +1212,7 @@
             "cv_count_v": 2,
             "dimension": 3,
             "facecolors": [],
-            "guid": "f8d6b4aa-fc8a-4e00-b479-571093357be3",
+            "guid": "082a22e4-dd4b-43c1-9572-ba6c5f399d5f",
             "is_rational": false,
             "nurbsknots_u": [
                 0.0,
@@ -1249,7 +1249,7 @@
             "cv_count_v": 2,
             "dimension": 3,
             "facecolors": [],
-            "guid": "fdab5730-f1b2-409c-9b9f-3666695945d3",
+            "guid": "b11b6feb-6ea7-4deb-a2e3-e54b0ac048b9",
             "is_rational": false,
             "nurbsknots_u": [
                 0.0,
@@ -1286,7 +1286,7 @@
             "cv_count_v": 2,
             "dimension": 3,
             "facecolors": [],
-            "guid": "252c6e3e-bdee-4eb5-9437-2e42c2391f55",
+            "guid": "f79dd21f-4339-4de4-bfe6-cbed070689ae",
             "is_rational": false,
             "nurbsknots_u": [
                 0.0,
@@ -1323,7 +1323,7 @@
             "cv_count_v": 2,
             "dimension": 3,
             "facecolors": [],
-            "guid": "0f6b2a58-b740-4d4a-bb17-7a2e83c1db7c",
+            "guid": "8f8f2291-8702-4c67-8fb1-6f1c2ffb1579",
             "is_rational": false,
             "nurbsknots_u": [
                 0.0,
@@ -1360,7 +1360,7 @@
             "cv_count_v": 2,
             "dimension": 3,
             "facecolors": [],
-            "guid": "9b261075-90f9-4777-a47d-caf926329df9",
+            "guid": "868c43a8-f6d4-4bd9-a557-0c7ef9a63071",
             "is_rational": false,
             "nurbsknots_u": [
                 0.0,
@@ -1383,7 +1383,7 @@
         "a": 1.0,
         "b": 1.0,
         "g": 1.0,
-        "guid": "832b9564-21ee-403e-be25-7069de122fc4",
+        "guid": "0c79fac9-bf2d-48a8-81bf-0c12abd3925d",
         "name": "my_color",
         "r": 1.0,
         "type": "Color"
