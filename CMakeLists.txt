@@ -81,7 +81,24 @@ endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native")
+    # -march=native bakes the BUILD machine's instruction set into the objects. That is fine on one
+    # developer machine and unsafe anywhere the artefacts can move: CI caches session_cpp/build/,
+    # and GitHub's ubuntu-22.04 fleet is a mix of CPU models, so objects compiled where AVX-512
+    # exists get reused where it does not. The binary then dies on its first instruction -
+    # "Illegal instruction (core dumped)", exit 132 - after a build that looked completely healthy,
+    # which makes it read as a test failure rather than a toolchain one.
+    #
+    # Default off, so a build is portable to any machine that can run the compiler's baseline.
+    # Turn it on for local number-crunching: cmake -DSESSION_NATIVE_ARCH=ON
+    # (A portable middle ground, if the baseline ever proves too slow, is -march=x86-64-v2: SSE4.2
+    # and POPCNT, present on anything since ~2009, and safe across every runner.)
+    option(SESSION_NATIVE_ARCH
+           "Optimise for THIS machine's CPU (-march=native). Local builds only." OFF)
+    if(SESSION_NATIVE_ARCH)
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native")
+    else()
+        set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+    endif()
 elseif(MSVC)
     add_compile_options(/W4 /utf-8 /external:W0)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
