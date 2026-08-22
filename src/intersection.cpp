@@ -7276,14 +7276,49 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
 
     std::vector<std::tuple<int, int, int, int, int, Polyline>> results;
 
+    // Per-face inflated AABBs, once for every face of every element - straight off the flat
+    // coords, no Point allocation. Two faces can only yield a NON-EMPTY contact area if their
+    // inflated boxes overlap, so the pair loop rejects on six compares before any plane math
+    // or polygon boolean runs. This kills the coplanar-but-distant pairs (same infinite
+    // plane, far apart) that used to reach boolean_op and return empty. Conservative by the
+    // coplanar tolerance, so accepted pairs are unchanged.
+    std::vector<std::vector<std::array<double, 6>>> face_boxes(polylines.size());
+    for (size_t e = 0; e < polylines.size(); ++e) {
+        face_boxes[e].reserve(polylines[e].size());
+        for (const auto& f : polylines[e]) {
+            std::array<double, 6> bx = {
+                std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(),
+                std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(),
+                -std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()};
+            const auto& c = f._coords;   // public flat array, no Point copies
+            for (size_t k = 0; k + 2 < c.size(); k += 3) {
+                bx[0] = std::min(bx[0], c[k]);     bx[3] = std::max(bx[3], c[k]);
+                bx[1] = std::min(bx[1], c[k + 1]); bx[4] = std::max(bx[4], c[k + 1]);
+                bx[2] = std::min(bx[2], c[k + 2]); bx[5] = std::max(bx[5], c[k + 2]);
+            }
+            for (int k = 0; k < 3; ++k) { bx[k] -= coplanar_tolerance; bx[k + 3] += coplanar_tolerance; }
+            face_boxes[e].push_back(bx);
+        }
+    }
+
     for (size_t idx = 0; idx < adjacency.size(); idx += 4) {
         int a = adjacency[idx], b = adjacency[idx + 1];
 
         bool found = false;
         for (int i = 0; i < (int)planes[a].size() && !found; i++) {
+            // Hoisted out of the j loop: origin()/z_axis() copy per call, and the old code
+            // re-copied face i's pair for every face j.
+            const Point oa = planes[a][i].origin();
+            const Vector za = planes[a][i].z_axis();
+            const auto& ba = face_boxes[a][i];
             for (int j = 0; j < (int)planes[b].size(); j++) {
+                const auto& bb = face_boxes[b][j];
+                if (ba[0] > bb[3] || bb[0] > ba[3]
+                    || ba[1] > bb[4] || bb[1] > ba[4]
+                    || ba[2] > bb[5] || bb[2] > ba[5])
+                    continue;
                 if (!Plane::is_coplanar(
-                        planes[a][i].origin(), planes[a][i].z_axis(),
+                        oa, za,
                         planes[b][j].origin(), planes[b][j].z_axis(),
                         false, coplanar_tolerance))
                     continue;
@@ -7291,7 +7326,7 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
                 auto pts_i = polylines[a][i].get_points();
                 Vector edge(pts_i[1][0]-pts_i[0][0], pts_i[1][1]-pts_i[0][1], pts_i[1][2]-pts_i[0][2]);
                 edge.normalize_self();
-                Vector zax = planes[a][i].z_axis();
+                Vector zax = za;
                 Vector yax = zax.cross(edge);
                 yax.normalize_self();
                 Plane pln(pts_i[0], edge, yax, zax);
