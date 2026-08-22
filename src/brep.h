@@ -68,6 +68,26 @@ struct BRepFace {
     Color facecolor = Color(0, 0, 0, 0);  // a=0 → not set
 };
 
+/// The ONE shared measurement verdict. Every gate, battery row, and corpus cell must be
+/// scored through BRep::verdict() -- verdict logic duplicated across call sites with
+/// divergent rules (1% here, 1e-6 there, poles counted as naked in a third place) is how
+/// a blind metric ends up driving a campaign. Degenerate pole/apex edges are excluded
+/// exactly as is_solid() excludes them; `volume` is NaN unless `closed` (the divergence
+/// integral of an open shell is origin-dependent noise, never a volume).
+struct BRepVerdict {
+    int faces = 0;
+    int naked = 0;             ///< 1-trim edges, degeneracy-excluded
+    int nonmanifold = 0;       ///< >2-trim edges, degeneracy-excluded
+    int degenerate = 0;        ///< zero-length pole/apex edges (watertight by construction)
+    int orphan = 0;            ///< 0-trim dead records (no face references them)
+    int shells = 0;            ///< connected components over shared topology edges
+    int closed_shells = 0;     ///< components with no naked/non-manifold edge
+    bool closed = false;       ///< naked==0 && nonmanifold==0 && faces>0
+    double closure_residual = 0.0;  ///< |sum outward face vector areas| / area (scale-free)
+    double volume = 0.0;       ///< massprops volume; NaN unless closed
+    std::string row() const;   ///< canonical one-line "VERDICT k=v ..." record
+};
+
 /**
  * @class BRep
  * @brief Boundary Representation solid model with indexed topology.
@@ -183,6 +203,11 @@ public:
     /// bool out-param `valid_manifold` is true iff 0 naked, 0 non-manifold, and every shell is
     /// closed (Euler even). Diagnostic only -- does not mutate.
     std::string topology_report(bool* valid_manifold = nullptr) const;
+
+    /// The shared measurement verdict (see BRepVerdict). `with_volume=false` skips the
+    /// massprops integration (closure_residual/volume become NaN) for cheap topology-only
+    /// counts inside loops.
+    BRepVerdict verdict(bool with_volume = true) const;
 
     /// Validate the trim-orientation invariant (OCCT contract): within each loop the trims,
     /// traversed with their `reversed` flags applied, chain head-to-tail and close; where the
@@ -541,5 +566,16 @@ private:
                     std::map<int, std::array<double, 3>>* sec_spans_out = nullptr,
                     const struct SharedEdgePool* pool = nullptr) const;
 };
+
+/// Degenerate-edge tolerance: bbox-diagonal-scaled, floored (matches is_solid()).
+double brep_degenerate_tol(const BRep& X);
+
+/// True if the edge's 3D curve has collapsed to a point (sphere pole, cone apex):
+/// max extent from the curve start over 4 samples < deg_tol -- the exact rule
+/// is_solid() applies, shared so every counter classifies borderline edges identically.
+bool brep_edge_is_degenerate(const BRep& X, const BRepEdge& e, double deg_tol);
+
+/// Connected-component (SHELL) count over faces linked by shared topology edges.
+int brep_shell_count(const BRep& X);
 
 } // namespace session_cpp

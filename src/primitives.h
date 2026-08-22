@@ -10,7 +10,6 @@
 #include "plane.h"
 #include "xform.h"
 #include "nurbsknot.h"
-#include "tolerance.h"
 #include <map>
 #include <array>
 

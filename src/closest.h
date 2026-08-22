@@ -4,7 +4,6 @@
 #include "line.h"
 #include "polyline.h"
 #include "aabb.h"
-#include "tolerance.h"
 #include <tuple>
 #include <vector>
 

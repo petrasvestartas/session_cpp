@@ -30,6 +30,7 @@ import datetime
 import glob
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -98,13 +99,15 @@ def partition(args, L):
     L.append("| config | vol(A) | our cut | our common | our fuse | cut+com-A | "
              "fuse-(A+B-com) | verdict |")
     L.append("|---|---|---|---|---|---|---|---|")
-    viol = []
+    viol, skipped = [], []
     for key in sorted(groups):
         g = groups[key]
         if set(g) != {"cut", "common", "fuse"}:
+            skipped.append(key + " (incomplete triple)")
             continue
         if any(g[op]["verdict"] in ("crash", "timeout") for op in g):
             L.append("| %s | - | - | - | - | - | - | SKIPPED (crash/timeout) |" % key)
+            skipped.append(key + " (crash/timeout)")
             continue
         if key.startswith("chairs"):
             vA, vB = man["volA"], man["volB"]
@@ -115,6 +118,7 @@ def partition(args, L):
         our = {op: g[op].get("our_vol") for op in ("cut", "common", "fuse")}
         if any(v is None for v in our.values()):
             L.append("| %s | %.4f | - | - | - | - | - | SKIPPED (no volume) |" % (key, vA))
+            skipped.append(key + " (no volume)")
             continue
         r1 = our["cut"] + our["common"] - vA
         r2 = our["fuse"] - (vA + vB - our["common"])
@@ -142,7 +146,12 @@ def partition(args, L):
                          % "/".join(neg))
             viol.append((key, ticket("invariant/partition/%s" % key, rec, note), note))
     L.append("")
-    L.append("partition violations: %d" % len(viol))
+    # Skipped groups are FINDINGS, not free passes: a config that never yields a
+    # complete measurable triple is invisible to the identity, which is how the
+    # matrix_rot battery went unmeasured for a whole campaign.
+    L.append("partition violations: %d (skipped groups: %d%s)"
+             % (len(viol), len(skipped),
+                " -- " + "; ".join(skipped) if skipped else ""))
     return viol
 
 
@@ -292,11 +301,87 @@ def idempotence(args, L):
     return viol
 
 
+# ----------------------------------------------------------------------- bbox
+
+PT3 = re.compile(r"CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(([^)]*)\)\s*\)")
+
+
+def bbox_of(path):
+    lo, hi = [1e300] * 3, [-1e300] * 3
+    for m in PT3.finditer(open(path, errors="replace").read()):
+        parts = [p.strip() for p in m.group(1).split(",")]
+        if len(parts) != 3:
+            continue
+        try:
+            v = [float(p) for p in parts]
+        except ValueError:
+            continue
+        for i in range(3):
+            lo[i] = min(lo[i], v[i])
+            hi[i] = max(hi[i], v[i])
+    return (lo, hi) if hi[0] >= lo[0] else None
+
+
+def bbox_containment(args, L):
+    """bbox(exported result file) must sit inside bbox(A) union bbox(B) + tol for EVERY
+    op: fuse's bbox IS the union, cut/common are subsets, and the export may include the
+    operands, which lie inside the union by definition. A violation means the result
+    carries INVENTED geometry outside both operands -- the divergent-closure defect
+    class (census class B) -- detected with no oracle at all. Scans the chairs work
+    exports left by the most recent runner pass."""
+    wd = os.path.join(runner.WORK, "chairs")
+    a, b = os.path.join(wd, "chair0.stp"), os.path.join(wd, "chair1.stp")
+    L.append("## bbox containment (work exports)")
+    L.append("")
+    viol = []
+    if not (os.path.exists(a) and os.path.exists(b)):
+        L.append("no pinned operands -- run the corpus first")
+        return viol
+    cases = []
+    for op in runner.OPS:
+        p = os.path.join(wd, "chair0_%s_chair1.step" % op)
+        if os.path.exists(p):
+            cases.append(("chairs_base/%s" % op, a, b, p,
+                          {"battery": "chairs_base", "op": op}))
+    for cfg in runner.CFGS:
+        bb = os.path.join(wd, "rot", "B_%s.step" % cfg)
+        for op in runner.OPS:
+            p = os.path.join(wd, "rot", "res_%s_%s.step" % (cfg, op))
+            if os.path.exists(p) and os.path.exists(bb):
+                cases.append(("chairs_rot/%s/%s" % (cfg, op), a, bb, p,
+                              {"battery": "chairs_rot", "cfg": cfg, "op": op}))
+    L.append("| cell | overshoot | verdict |")
+    L.append("|---|---|---|")
+    for cell, pa, pb, pr, t in cases:
+        ba, bb_, br = bbox_of(pa), bbox_of(pb), bbox_of(pr)
+        if not (ba and bb_ and br):
+            L.append("| %s | - | SKIPPED (empty bbox) |" % cell)
+            continue
+        lo = [min(ba[0][i], bb_[0][i]) for i in range(3)]
+        hi = [max(ba[1][i], bb_[1][i]) for i in range(3)]
+        diag = sum((hi[i] - lo[i]) ** 2 for i in range(3)) ** 0.5
+        tol = max(1e-9, diag * 1e-6)
+        over = max(max(lo[i] - br[0][i], br[1][i] - hi[i]) for i in range(3))
+        bad = over > tol
+        L.append("| %s | %.3e | %s |" % (cell, over, "**VIOLATION**" if bad else "ok"))
+        if bad:
+            note = ("bbox containment broken: exported result exceeds bbox(A) union "
+                    "bbox(B) by %.6f (tol %.2e). Geometry exists outside both operands "
+                    "-- invented/divergent closure, oracle-free." % (over, tol))
+            viol.append((cell, ticket("invariant/bbox/%s" % cell,
+                                      {"secs": 0.0, "verdict": "bbox", "truth": t},
+                                      note), note))
+    L.append("")
+    L.append("bbox violations: %d / %d cases" % (len(viol), len(cases)))
+    return viol
+
+
 # ----------------------------------------------------------------------- main
 
 def main():
     ap = argparse.ArgumentParser(description="metamorphic invariant engine over T0")
-    ap.add_argument("what", choices=["partition", "equivariance", "idempotence", "all"])
+    ap.add_argument("what", choices=["partition", "equivariance", "idempotence",
+                                     "bbox", "all"])
     ap.add_argument("--ledger", default="")
     ap.add_argument("--exe", default=runner.KERNEL)
     ap.add_argument("--motions", type=int, default=2)
@@ -320,6 +405,9 @@ def main():
         L.append("")
     if args.what in ("idempotence", "all"):
         viol += idempotence(args, L)
+        L.append("")
+    if args.what in ("bbox", "all"):
+        viol += bbox_containment(args, L)
         L.append("")
     L.append("## tickets")
     L.append("")

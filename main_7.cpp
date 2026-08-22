@@ -42,32 +42,10 @@ namespace {
 // 2 naked / FAIL" while actually being is_solid=1 with volume 15.061795, the exact analytic
 // value. Any corpus scored with a naive nt==1 count is wrong wherever a pole survives.
 void count_naked_nonmani(const BRep& X, int& naked, int& nonmani) {
-    naked = 0; nonmani = 0;
-    for (const auto& e : X.m_topology_edges) {
-        int nt = (int)e.trim_indices.size();
-        if (nt == 2 || nt == 0) continue;
-        bool degenerate = false;
-        int ci = e.curve_3d_index;
-        if (ci >= 0 && ci < (int)X.m_curves_3d.size()) {
-            const NurbsCurve& c = X.m_curves_3d[ci];
-            auto dc = c.domain();
-            double len = 0.0; Point prev = c.point_at(dc.first);
-            for (int k = 1; k <= 8; ++k) {
-                Point q = c.point_at(dc.first + (dc.second - dc.first) * k / 8.0);
-                len += prev.distance(q); prev = q;
-            }
-            double diag = 0.0;
-            if (!X.m_vertices.empty()) {
-                double mn[3] = {1e300,1e300,1e300}, mx[3] = {-1e300,-1e300,-1e300};
-                for (const auto& p : X.m_vertices)
-                    for (int k = 0; k < 3; ++k) { mn[k]=std::min(mn[k],p[k]); mx[k]=std::max(mx[k],p[k]); }
-                diag = std::sqrt((mx[0]-mn[0])*(mx[0]-mn[0])+(mx[1]-mn[1])*(mx[1]-mn[1])+(mx[2]-mn[2])*(mx[2]-mn[2]));
-            }
-            degenerate = (len <= std::max(diag * 1e-7, 1e-12));
-        }
-        if (degenerate) continue;
-        if (nt == 1) ++naked; else ++nonmani;
-    }
+    // Delegates to the ONE shared verdict harness (BRep::verdict) so every battery row
+    // classifies borderline degenerate edges identically to is_solid()/massprops.
+    BRepVerdict v = X.verdict(false);
+    naked = v.naked; nonmani = v.nonmanifold;
 }
 
 // PER-FACE VALIDITY (session C's splitter audit: the standout gate -- caught 2 of 32 broken
@@ -174,28 +152,48 @@ std::pair<int,double> face_validity_report(const BRep& X, bool verbose) {
 // asserts "every edge has 2 trims", which a result that has come APART into several separately
 // closed shells still satisfies (an independent OCCT read of the shipped result set found 2-4
 // shells on every rotated config except z30x20 -- invisible to the naked-edge metric).
-int shell_count_of(const BRep& X) {
-    int nf = (int)X.m_faces.size();
-    if (nf == 0) return 0;
-    std::vector<int> par(nf);
-    for (int i = 0; i < nf; ++i) par[i] = i;
-    std::function<int(int)> find = [&](int a) { return par[a] == a ? a : par[a] = find(par[a]); };
-    std::map<int, int> first_face;
-    for (int fi = 0; fi < nf; ++fi)
-        for (int li : X.m_faces[fi].loop_indices) {
-            if (li < 0 || li >= (int)X.m_loops.size()) continue;
-            for (int ti : X.m_loops[li].trim_indices) {
-                if (ti < 0 || ti >= (int)X.m_trims.size()) continue;
-                int ei = X.m_trims[ti].edge_index;
-                if (ei < 0) continue;
-                auto it = first_face.find(ei);
-                if (it == first_face.end()) first_face[ei] = fi;
-                else par[find(it->second)] = find(fi);
-            }
+int shell_count_of(const BRep& X) { return brep_shell_count(X); }
+
+// VERDICT SELFTEST: the shared harness may not score anything before it is validated on
+// the known-degenerate shapes -- sphere poles, cone apex, pyramid apex rows, cylinder and
+// torus seams -- both in memory and through a STEP round trip. A naive nt==1 counter
+// fails sphere/cone here (poles read as naked); corpus/runner.py runs this before every
+// ledger and refuses to score when it fails.
+int verdict_selftest() {
+    const double PI = Tolerance::PI;
+    struct C { const char* nm; BRep b; double vol; };
+    std::vector<C> cs;
+    cs.push_back({"box", BRep::create_box(4,4,4), 64.0});
+    cs.push_back({"cylinder", BRep::create_cylinder(1.5,6), PI*2.25*6});
+    cs.push_back({"sphere", BRep::create_sphere(2.5), 4.0/3.0*PI*15.625});
+    cs.push_back({"cone", BRep::create_cone(2.0,5.0), PI*4.0*5.0/3.0});
+    cs.push_back({"pyramid", BRep::create_pyramid(3.0,2.0), 9.0*2.0/3.0});
+    cs.push_back({"torus", BRep::create_torus(2.0,0.8), 2*PI*PI*2.0*0.64});
+    int fails = 0;
+    auto check = [&](const char* nm, const char* stage, const BRep& b, double vol_true) {
+        BRepVerdict v = b.verdict();
+        double rel = std::abs(v.volume - vol_true) / vol_true;
+        bool ok = v.closed && v.shells == 1 && v.closed_shells == 1 && v.orphan == 0
+               && v.closure_residual < 1e-6 && rel < 1e-9;
+        if (!ok) ++fails;
+        std::printf("SELFTEST %-8s %-9s %s rel=%.2e %s\n",
+                    nm, stage, v.row().c_str(), rel, ok ? "ok" : "FAIL");
+    };
+    auto tmp = std::filesystem::temp_directory_path() / "verdict_selftest.step";
+    for (auto& c : cs) {
+        check(c.nm, "memory", c.b, c.vol);
+        file_step::write_file_step_breps({&c.b}, c.nm, tmp.string());
+        auto back = file_step::read_file_step_breps(tmp.string());
+        if (back.size() != 1) {
+            ++fails;
+            std::printf("SELFTEST %-8s roundtrip read %d breps FAIL\n", c.nm, (int)back.size());
+            continue;
         }
-    std::set<int> comps;
-    for (int fi = 0; fi < nf; ++fi) comps.insert(find(fi));
-    return (int)comps.size();
+        check(c.nm, "roundtrip", back[0], c.vol);
+    }
+    std::error_code ec; std::filesystem::remove(tmp, ec);
+    std::printf("SELFTEST %s (%d checks failed)\n", fails ? "FAIL" : "PASS", fails);
+    return fails ? 1 : 0;
 }
 
 struct Place { std::string kind; std::vector<double> p; std::array<double,7> xf; };  // xf: tx ty tz ax ay az deg
@@ -501,6 +499,7 @@ int main(int argc, char** argv) {
         if (a == "--refresh") refresh = true;
         else if (filter.empty()) filter = a;   // substring pair-label filter (skip other/hanging cells)
     }
+    if (filter == "verdict_selftest") return verdict_selftest();
     auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
     std::string oracle = (root / "validation" / "occt_oracle" / "build" / "Release" / "oracle.exe").string();
     std::string req = (root / "validation" / "_m7_req.txt").string();

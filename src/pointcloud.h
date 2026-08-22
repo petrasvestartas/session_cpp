@@ -82,6 +82,11 @@ public:
     void add_point(const Point& point);
 
     /// Get all points as a vector
+    /// The flat coordinate array itself, [x0, y0, z0, x1, ...]. A renderer walking millions of
+    /// points cannot afford get_point per point: that builds a Point, which owns a name and a
+    /// colour, so a large scan spends most of its walk in the allocator.
+    const std::vector<double>& coords() const { return _coords; }
+
     std::vector<Point> get_points() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -101,6 +106,10 @@ public:
     void add_color(const Color& color);
 
     /// Get all colors as a vector
+    /// The flat colour array itself, [r0, g0, b0, a0, r1, ...] as 0-255 - the same encoding the
+    /// proto carries. Same reason as coords(): get_color builds a Color, which owns a name.
+    const std::vector<int>& colors() const { return _colors; }
+
     std::vector<Color> get_colors() const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////

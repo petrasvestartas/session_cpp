@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -273,6 +274,38 @@ int main(int argc, char** argv) {
                 2 * (sx * sy - PI * rh * rh) + 2 * (sx * sz + sy * sz) + 2 * PI * rh * sz,
                 true, 0, 0, 0};
         check("mem/block_with_hole", BRep::create_block_with_hole(sx, sy, sz, rh), T, 1e-9, 5.0);
+    }
+
+    std::printf("\n=== 3b. RIGID-MOTION SWEEP (seeded random motions, rtol 1e-9) ===\n");
+    {
+        // ~100 RANDOM rigid motions per shape (main_17's 10 deterministic motions are a
+        // smoke test, not a sweep): volume AND area must be pose-invariant at 1e-9 -- the
+        // oracle-trust requirement before any boolean volume is graded against it.
+        struct S { const char* nm; const BRep* b; const Truth* t; };
+        const S ss[] = {{"box", &box, &T_box}, {"sphere", &sph, &T_sph},
+                        {"cylinder", &cyl, &T_cyl}, {"cone", &con, &T_con},
+                        {"torus", &tor, &T_tor}};
+        int n_mot = 100;
+        if (const char* e = std::getenv("SESSION_MOTIONS")) n_mot = std::atoi(e);
+        std::mt19937 rng(20260814u);
+        std::uniform_real_distribution<double> u(-1.0, 1.0);
+        for (const S& s : ss) {
+            double worst_v = 0.0, worst_a = 0.0;
+            for (int k = 0; k < n_mot; ++k) {
+                Vector ax(u(rng), u(rng), u(rng));
+                while (ax.magnitude() < 1e-3) ax = Vector(u(rng), u(rng), u(rng));
+                BRep tb = *s.b;
+                tb.transform(Xform::rotation(ax, u(rng) * 180.0, true));
+                tb.transform(Xform::translation(u(rng) * 50.0, u(rng) * 50.0, u(rng) * 50.0));
+                MassProps m = brep_massprops(tb);
+                worst_v = std::max(worst_v, relerr(m.volume, s.t->volume));
+                worst_a = std::max(worst_a, relerr(m.area, s.t->area));
+            }
+            const bool ok = worst_v <= 1e-9 && worst_a <= 1e-9;
+            std::printf("motions/%-9s %s worst relerr vol=%.3e area=%.3e (n=%d)\n",
+                        s.nm, ok ? "PASS" : "FAIL", worst_v, worst_a, n_mot);
+            if (ok) ++g_pass; else ++g_fail;
+        }
     }
 
     // ---------------------------------------------------------------------------------------

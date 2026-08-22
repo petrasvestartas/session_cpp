@@ -483,7 +483,115 @@ public:
             if (dv_zero || u_at_ref) continue;
 
             const bool fwd = tr.fwd;
+            // EXACT-BOUNDARY MODE. A boolean-result trim stores a chordal (degree-1
+            // sampled) pcurve whose surface lift sits off the edge's exact 3D curve by
+            // the recorded edge tolerance (sph x sph section: 9.85e-3). Each face then
+            // integrates against its own chordal shadow, the two lifted boundaries
+            // disagree, and the sliver between them books ~1e-4 relative volume on a
+            // closed solid (the 13-cell matrix drift, regression window bb06574). When
+            // the trim carries an image-matched exact 3D curve, integrate against THAT
+            // curve: sample X on c3, invert (u,v) by Newton on the first fundamental
+            // form (seeded from the chordal pcurve, which is within the edge tolerance
+            // of the answer), and take dv/ds from the tangent solve -- both faces then
+            // integrate the SAME boundary and the closure residual collapses. Falls
+            // back to the pcurve wholesale if any pre-validation probe fails to invert.
+            const NurbsCurve* c3p = tr.c3;
+            const bool f3 = c3p && (tr.fwd == tr.c3_fwd);
+            std::pair<double, double> d3{0, 1};
+            if (c3p) d3 = c3p->domain();
+            auto invert3 = [&](double s, double& u, double& v, double& dv_ds) {
+                const double sf = f3 ? s : 1.0 - s;
+                const double t3 = d3.first + (d3.second - d3.first) * sf;
+                auto ce = c3p->evaluate(t3, 1);
+                if (ce.size() < 2) return false;
+                const double tp = fwd ? (dc.first + (dc.second - dc.first) * s)
+                                      : (dc.second - (dc.second - dc.first) * s);
+                const Point q0 = pc.point_at(tp);
+                u = q0[0]; v = q0[1];
+                const double scale = 1.0 + std::sqrt(ce[0][0] * ce[0][0] +
+                                                     ce[0][1] * ce[0][1] +
+                                                     ce[0][2] * ce[0][2]);
+                const double tol2 = (1e-11 * scale) * (1e-11 * scale);
+                // S.evaluate returns [S, Sv, Su] (v-partial FIRST -- see integrand()):
+                // Su = se[2], Sv = se[1].
+                double a = 0, b = 0, c = 0, det = 0, r2 = 1e300;
+                std::vector<Vector> se;
+                for (int it = 0; it < 10; ++it) {
+                    se = S.evaluate(u, v, 1);
+                    if (se.size() < 3) return false;
+                    const double rx = se[0][0] - ce[0][0], ry = se[0][1] - ce[0][1],
+                                 rz = se[0][2] - ce[0][2];
+                    r2 = rx * rx + ry * ry + rz * rz;
+                    if (r2 < tol2) break;
+                    a = vdot(se[2], se[2]); b = vdot(se[2], se[1]); c = vdot(se[1], se[1]);
+                    det = a * c - b * b;
+                    if (std::abs(det) < 1e-300) return false;
+                    const double g1 = se[2][0] * rx + se[2][1] * ry + se[2][2] * rz;
+                    const double g2 = se[1][0] * rx + se[1][1] * ry + se[1][2] * rz;
+                    u = std::min(std::max(u + (-g1 * c + g2 * b) / det, du.first), du.second);
+                    v = std::min(std::max(v + (-a * g2 + b * g1) / det, dv.first), dv.second);
+                }
+                if (!(r2 < tol2)) return false;
+                a = vdot(se[2], se[2]); b = vdot(se[2], se[1]); c = vdot(se[1], se[1]);
+                det = a * c - b * b;
+                if (std::abs(det) < 1e-300) return false;
+                const double h1 = se[2][0] * ce[1][0] + se[2][1] * ce[1][1] + se[2][2] * ce[1][2];
+                const double h2 = se[1][0] * ce[1][0] + se[1][1] * ce[1][1] + se[1][2] * ce[1][2];
+                const double dv_dt3 = (h1 * (-b) + h2 * a) / det;
+                dv_ds = dv_dt3 * (d3.second - d3.first) * (f3 ? 1.0 : -1.0);
+                return true;
+            };
+            bool use3 = c3p != nullptr;
+            // EXACTNESS CERTIFICATE: engage ONLY for single-span degree-2 arcs (conic
+            // registry output) -- the one shape that is provably exact and seam-safe.
+            // Everything else measured harmful: a marched section's c3 can be a COARSER
+            // polyline than its own pcurve (sph x sph: deg1 cv5 vs cv31; 19 matrix
+            // cells regressed, ledger 20260814-1506), and on periodic surfaces even a
+            // DENSE polyline c3 (tor x tor: deg1 cv1031/2155) wrecks the integral
+            // because Newton inversion is seam-blind (u snaps across the chart when the
+            // section crosses the seam; tor fuse 43.99 -> 26.34). is_rational() is a
+            // storage flag, not a geometry certificate -- do not gate on it. Phase 3
+            // (exact sections + typed curve-exactness) is the intended widening.
+            if (use3 && !(c3p->degree() == 2 && c3p->cv_count() == 3))
+                use3 = false;
+            if (use3 && std::getenv("SESSION_MP_C3DBG")) {
+                auto ce = c3p->evaluate(0.5 * (d3.first + d3.second), 1);
+                std::fprintf(stderr,
+                             "[C3-MATCH] deg=%d cv=%d dom=[%.4g,%.4g] |d1|=%.6g f3=%d\n",
+                             c3p->degree(), c3p->cv_count(), d3.first, d3.second,
+                             ce.size() > 1 ? ce[1].magnitude() : -1.0, f3 ? 1 : 0);
+            }
+            if (use3)
+                for (int i = 0; i <= 8 && use3; ++i) {
+                    double u, v, dvds;
+                    if (!invert3(i / 8.0, u, v, dvds)) use3 = false;
+                }
+            std::vector<double> br;
+            if (use3) {
+                std::vector<double> pbr = trim_breaks(pc, opt.max_init_intervals);
+                br.reserve(pbr.size());
+                for (double t : pbr)
+                    br.push_back((t - dc.first) / (dc.second - dc.first));
+            } else {
+                br = trim_breaks(pc, opt.max_init_intervals);
+            }
             auto f = [&](double t, double* o) {
+                if (use3) {
+                    double u, v, dvds;
+                    if (!invert3(t, u, v, dvds) || dvds == 0.0) {
+                        for (int k = 0; k < NC; ++k) o[k] = 0.0;
+                        if (std::getenv("SESSION_MP_C3DBG"))
+                            std::fprintf(stderr, "[C3] t=%.4f INVERT-FAIL\n", t);
+                        return;
+                    }
+                    double H[NC];
+                    inner_H(uref, u, v, H);
+                    for (int k = 0; k < NC; ++k) o[k] = H[k] * dvds;
+                    if (std::getenv("SESSION_MP_C3DBG"))
+                        std::fprintf(stderr, "[C3] t=%.4f uv=(%.5f,%.5f) dvds=%.6g H1=%.6g\n",
+                                     t, u, v, dvds, H[1]);
+                    return;
+                }
                 const double tt = fwd ? t : (dc.first + dc.second - t);
                 auto pe = pc.evaluate(tt, 1);
                 if (pe.size() < 2) { for (int k = 0; k < NC; ++k) o[k] = 0.0; return; }
@@ -494,7 +602,6 @@ public:
                 inner_H(uref, pe[0][0], pe[0][1], H);
                 for (int k = 0; k < NC; ++k) o[k] = H[k] * dvdt;
             };
-            std::vector<double> br = trim_breaks(pc, opt.max_init_intervals);
             Quad q;
             bool cap = false;
             adaptive_gk(f, br, outer_rtol, atol, outer_panels, opt.max_depth, budget_left, q, cap,
@@ -606,8 +713,18 @@ MassProps brep_massprops(const BRep& brep, const MassPropsOptions& opt) {
     const long long face_share =
         std::max(opt.min_face_evals, nf > 0 ? opt.max_surface_evals / nf : opt.max_surface_evals);
 
-    for (const BRepEdge& e : brep.m_topology_edges)
-        if (e.trim_indices.size() != 2) ++out.naked_edges;
+    // Degeneracy-aware boundary defects, same rule as is_solid()/verdict(): a sphere pole
+    // or cone apex is watertight by construction, and counting it here made `closed` false
+    // on every pole-bearing solid; 0-trim orphan records have no topological role either.
+    {
+        const double deg_tol = brep_degenerate_tol(brep);
+        for (const BRepEdge& e : brep.m_topology_edges) {
+            const size_t nt = e.trim_indices.size();
+            if (nt == 2 || nt == 0) continue;
+            if (brep_edge_is_degenerate(brep, e, deg_tol)) continue;
+            ++out.naked_edges;
+        }
+    }
     out.closed = (out.naked_edges == 0);
 
     // Resolved traversal direction of every trim (filled in PASS 1, reused in PASS 2).

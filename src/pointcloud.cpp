@@ -1,6 +1,7 @@
 #include "pointcloud.h"
 #include "guid.h"
 #include "tolerance.h"
+#include <cmath>
 #include <fstream>
 #include <sstream>
 
@@ -27,10 +28,10 @@ PointCloud::PointCloud(const std::vector<Point>& points,
 
     _colors.reserve(colors.size() * 4);
     for (const auto& c : colors) {
-        _colors.push_back(c.r);
-        _colors.push_back(c.g);
-        _colors.push_back(c.b);
-        _colors.push_back(c.a);
+        _colors.push_back(static_cast<int>(std::lround(c.r * 255.0)));
+        _colors.push_back(static_cast<int>(std::lround(c.g * 255.0)));
+        _colors.push_back(static_cast<int>(std::lround(c.b * 255.0)));
+        _colors.push_back(static_cast<int>(std::lround(c.a * 255.0)));
     }
 
     _normals.reserve(normals.size() * 3);
@@ -110,22 +111,24 @@ std::vector<Point> PointCloud::get_points() const {
 
 Color PointCloud::get_color(size_t index) const {
     size_t idx = index * 4;
-    return Color(_colors[idx], _colors[idx + 1], _colors[idx + 2], _colors[idx + 3]);
+    // Stored 0-255 (the flat array is int, and the proto field is uint32); Color is 0-1.
+    return Color(_colors[idx] / 255.0, _colors[idx + 1] / 255.0,
+                 _colors[idx + 2] / 255.0, _colors[idx + 3] / 255.0);
 }
 
 void PointCloud::set_color(size_t index, const Color& color) {
     size_t idx = index * 4;
-    _colors[idx] = color.r;
-    _colors[idx + 1] = color.g;
-    _colors[idx + 2] = color.b;
-    _colors[idx + 3] = color.a;
+    _colors[idx] = static_cast<int>(std::lround(color.r * 255.0));
+    _colors[idx + 1] = static_cast<int>(std::lround(color.g * 255.0));
+    _colors[idx + 2] = static_cast<int>(std::lround(color.b * 255.0));
+    _colors[idx + 3] = static_cast<int>(std::lround(color.a * 255.0));
 }
 
 void PointCloud::add_color(const Color& color) {
-    _colors.push_back(color.r);
-    _colors.push_back(color.g);
-    _colors.push_back(color.b);
-    _colors.push_back(color.a);
+    _colors.push_back(static_cast<int>(std::lround(color.r * 255.0)));
+    _colors.push_back(static_cast<int>(std::lround(color.g * 255.0)));
+    _colors.push_back(static_cast<int>(std::lround(color.b * 255.0)));
+    _colors.push_back(static_cast<int>(std::lround(color.a * 255.0)));
 }
 
 std::vector<Color> PointCloud::get_colors() const {
@@ -133,7 +136,8 @@ std::vector<Color> PointCloud::get_colors() const {
     colors.reserve(color_count());
     for (size_t i = 0; i < color_count(); ++i) {
         size_t idx = i * 4;
-        colors.emplace_back(_colors[idx], _colors[idx + 1], _colors[idx + 2], _colors[idx + 3]);
+        colors.emplace_back(_colors[idx] / 255.0, _colors[idx + 1] / 255.0,
+                            _colors[idx + 2] / 255.0, _colors[idx + 3] / 255.0);
     }
     return colors;
 }

@@ -142,6 +142,7 @@ MINI_TEST("Line", "Json Roundtrip") {
 
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
     l.name = "test_line";
+    l.dash = {3.0, 2.0};
 
     //   jsondump()      | ordered_json | to JSON object
     //   jsonload(j)     | ordered_json | from JSON object
@@ -174,6 +175,7 @@ MINI_TEST("Line", "Json Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
     MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
+    MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
 }
 
 MINI_TEST("Line", "Protobuf Roundtrip") {
@@ -181,6 +183,7 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
 
     Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
     l.name = "test_line";
+    l.dash = {3.0, 2.0};
 
     //   pb_dumps()      | string       | to protobuf bytes
     //   pb_loads(s)     | string       | from protobuf bytes
@@ -206,6 +209,7 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[3], 168.4));
     MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
+    MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
     MINI_CHECK(loaded.guid() == l.guid());
 }
 

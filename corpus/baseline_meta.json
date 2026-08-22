@@ -1,11 +1,21 @@
 {
- "ts": "20260725-211255",
+ "ts": "20260814-171127",
  "exe": "/home/petras/code/code_rust/session/session_cpp/build/main_7",
  "exe_meta": {
-  "sha1": "091310f2a261b2122b6bdf5d65a1d81c723d9cff",
-  "size": 12188544,
-  "mtime": "2026-07-25T20:42:01"
+  "sha1": "8337095e0be91fe2fcaf3b229654dbe37331ae33",
+  "size": 12848928,
+  "mtime": "2026-08-14T17:05:13"
+ },
+ "probe_meta": {
+  "sha1": "69664b865a59ef170cb46af09079692bdbe8d7d9",
+  "size": 29954120,
+  "mtime": "2026-08-02T00:32:30"
+ },
+ "git": {
+  "commit": "110f57db8165195a66619af17daf71d6908e0307",
+  "dirty": true,
+  "diff_sha1": "9ce5c3c47faec3dedcb515e980d7aeaed6724496"
  },
  "flags": {},
- "cells": 132
+ "cells": 150
 }

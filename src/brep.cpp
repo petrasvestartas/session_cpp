@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <limits>
 #include <cstdio>
 #include <stdexcept>
 #ifdef __linux__
@@ -55,6 +56,7 @@ long brep_rss_mb() {
 }
 long g_mem_cap_mb = 0;   // 0 = off
 int g_segrun_cap = 0;    // 0 = off
+}  // anonymous namespace: brep_shell_count has external linkage (declared in brep.h)
 // Connected-component (SHELL) count over faces linked by shared topology edges. is_solid()
 // only asserts "every edge has 2 trims", which a result that has come APART into several
 // separately-closed shells still satisfies -- an independent OCCT read of the result set found
@@ -84,6 +86,7 @@ int brep_shell_count(const BRep& X) {
     for (int fi = 0; fi < nf; ++fi) comps.insert(find(fi));
     return (int)comps.size();
 }
+namespace {
 void brep_seam_audit(const BRep& result, double tolerance) {
         auto trim_pts = [&](int ti, int n, std::vector<Point>& out) {
             const BRepTrim& T = result.m_trims[ti];
@@ -1184,17 +1187,35 @@ bool BRep::is_valid() const {
     return true;
 }
 
-bool BRep::is_solid() const {
-    if (m_topology_edges.empty()) return false;
-    // bbox diagonal for the degenerate-edge tolerance.
+double brep_degenerate_tol(const BRep& X) {
     double xmn=1e300,ymn=1e300,zmn=1e300,xmx=-1e300,ymx=-1e300,zmx=-1e300;
-    for (const auto& p : m_vertices) {
+    for (const auto& p : X.m_vertices) {
         xmn=std::min(xmn,p[0]); ymn=std::min(ymn,p[1]); zmn=std::min(zmn,p[2]);
         xmx=std::max(xmx,p[0]); ymx=std::max(ymx,p[1]); zmx=std::max(zmx,p[2]);
     }
-    double diag = (m_vertices.empty()) ? 1.0 :
+    double diag = X.m_vertices.empty() ? 1.0 :
         std::sqrt((xmx-xmn)*(xmx-xmn)+(ymx-ymn)*(ymx-ymn)+(zmx-zmn)*(zmx-zmn));
-    double deg_tol = std::max(diag * 1e-7, 1e-12);
+    if (diag <= 0) diag = 1.0;
+    return std::max(diag * 1e-7, 1e-12);
+}
+
+bool brep_edge_is_degenerate(const BRep& X, const BRepEdge& e, double deg_tol) {
+    int ci = e.curve_3d_index;
+    if (ci < 0 || ci >= (int)X.m_curves_3d.size()) return false;
+    const NurbsCurve& c = X.m_curves_3d[ci];
+    auto dc = c.domain();
+    Point p0 = c.point_at(dc.first);
+    double ext = 0.0;
+    for (int k = 1; k <= 4; ++k) {
+        Point pk = c.point_at(dc.first + (dc.second - dc.first) * k / 4.0);
+        ext = std::max(ext, p0.distance(pk));
+    }
+    return ext < deg_tol;
+}
+
+bool BRep::is_solid() const {
+    if (m_topology_edges.empty()) return false;
+    double deg_tol = brep_degenerate_tol(*this);
     bool solid = true;
     for (const auto& e : m_topology_edges) {
         if ((int)e.trim_indices.size() == 2) continue;
@@ -1213,17 +1234,7 @@ bool BRep::is_solid() const {
         // face -- and OCCT excludes such degenerate edges from manifold checks. Skip them;
         // only genuine (non-zero-length) edges must be 2-trim.
         int ci = e.curve_3d_index;
-        if (ci >= 0 && ci < (int)m_curves_3d.size()) {
-            const NurbsCurve& c = m_curves_3d[ci];
-            auto dc = c.domain();
-            Point p0 = c.point_at(dc.first);
-            double ext = 0.0;
-            for (int k = 1; k <= 4; ++k) {
-                Point pk = c.point_at(dc.first + (dc.second - dc.first) * k / 4.0);
-                ext = std::max(ext, p0.distance(pk));
-            }
-            if (ext < deg_tol) continue;
-        }
+        if (brep_edge_is_degenerate(*this, e, deg_tol)) continue;
         if (std::getenv("SESSION_SOLID_DBG")) {
             Point ps(0,0,0), pe(0,0,0);
             if (ci >= 0 && ci < (int)m_curves_3d.size()) {
@@ -1472,6 +1483,72 @@ std::string BRep::topology_report(bool* valid_manifold) const {
     return std::string(head) + euler;
 }
 
+std::string BRepVerdict::row() const {
+    char buf[256];
+    std::snprintf(buf, sizeof buf,
+        "VERDICT faces=%d naked=%d nonman=%d degen=%d orphan=%d shells=%d "
+        "closed_shells=%d closed=%d closure=%.3e vol=%.9g",
+        faces, naked, nonmanifold, degenerate, orphan, shells, closed_shells,
+        closed ? 1 : 0, closure_residual, volume);
+    return std::string(buf);
+}
+
+BRepVerdict BRep::verdict(bool with_volume) const {
+    BRepVerdict v;
+    v.faces = (int)m_faces.size();
+    double deg_tol = brep_degenerate_tol(*this);
+    auto face_of_trim = [&](int ti) -> int {
+        if (ti < 0 || ti >= (int)m_trims.size()) return -1;
+        int li = m_trims[ti].loop_index;
+        return (li >= 0 && li < (int)m_loops.size()) ? m_loops[li].face_index : -1;
+    };
+    // One union-find over faces joined by ANY shared edge (brep_shell_count semantics:
+    // a non-manifold junction still connects), so `shells` matches the numbers every
+    // battery row has historically printed.
+    int nf = v.faces;
+    std::vector<int> uf(std::max(nf, 1));
+    for (int i = 0; i < nf; ++i) uf[i] = i;
+    std::function<int(int)> find = [&](int a) {
+        while (uf[a] != a) { uf[a] = uf[uf[a]]; a = uf[a]; }
+        return a;
+    };
+    for (const auto& e : m_topology_edges) {
+        int prev = -1;
+        for (int ti : e.trim_indices) {
+            int fi = face_of_trim(ti);
+            if (fi < 0) continue;
+            if (prev >= 0 && fi != prev) { int a = find(prev), b = find(fi); if (a != b) uf[a] = b; }
+            prev = fi;
+        }
+    }
+    // Edge classes, degeneracy-excluded exactly as is_solid(); per-shell defect tally.
+    std::map<int, int> shell_bad;
+    for (const auto& e : m_topology_edges) {
+        int nt = (int)e.trim_indices.size();
+        if (nt == 0) { ++v.orphan; continue; }
+        if (brep_edge_is_degenerate(*this, e, deg_tol)) { ++v.degenerate; continue; }
+        if (nt == 2) continue;
+        if (nt == 1) ++v.naked; else ++v.nonmanifold;
+        int fi = face_of_trim(e.trim_indices[0]);
+        if (fi >= 0) ++shell_bad[find(fi)];
+    }
+    std::set<int> roots;
+    for (int i = 0; i < nf; ++i) roots.insert(find(i));
+    v.shells = (int)roots.size();
+    for (int r : roots)
+        if (shell_bad.find(r) == shell_bad.end()) ++v.closed_shells;
+    v.closed = (nf > 0 && v.naked == 0 && v.nonmanifold == 0);
+    if (with_volume) {
+        MassProps mp = brep_massprops(*this);
+        v.closure_residual = mp.closure_residual;
+        v.volume = v.closed ? mp.volume : std::numeric_limits<double>::quiet_NaN();
+    } else {
+        v.closure_residual = std::numeric_limits<double>::quiet_NaN();
+        v.volume = std::numeric_limits<double>::quiet_NaN();
+    }
+    return v;
+}
+
 bool BRep::contains_point(const Mesh& boundary, const Point& p) const {
     // Generalized winding number (Van Oosterom-Strackee solid angles): deterministic and
     // crack-robust -- a tessellation gap perturbs the winding by its own (tiny) solid
@@ -1579,7 +1656,11 @@ bool BRep::contains_point_exact(const Point& p, const std::vector<double>& osign
     // when the probe direction is tangential to the boundary (|dp| ~ 1e-16 = pure round-off,
     // sign flips per sample). Tier 1 (free): prefer an INTERIOR hit over an equidistant BOUNDARY
     // hit. Tier 2: if the winner is still a boundary hit or |dp| <= 1e-6*d, settle by ray parity.
-    static const bool s_pip_guard = (std::getenv("SESSION_PIP_GUARD") != nullptr);
+    // Default ON since 2026-08-14: both unsound cases fire on flush imported operands
+    // (GZ-J phi=0: A's flush face read in_p==in_m==1, the top face's tangential probes
+    // coin-flipped all-inside -> cut dropped 2 faces, common invented a phantom slab).
+    // With the guard, flush cut/common/fuse are exact. SESSION_NO_PIP_GUARD reverts.
+    static const bool s_pip_guard = (std::getenv("SESSION_NO_PIP_GUARD") == nullptr);
     double best_d = 1e300; int best_fi = -1; double bu = 0, bv = 0;
     bool best_on_boundary = false;
     double int_d = 1e300; int int_fi = -1; double iu = 0, iv = 0;   // best INTERIOR (in-trim) hit
@@ -8778,6 +8859,54 @@ BRep BRep::boolean_v1(const BRep& other, BooleanOp op, double tolerance) const {
     bool scaffold_eligible =
         ((imported_freeform && (has_freeform(*this) || has_freeform(other))) || s_scaffold_all)
         && !s_scaffold_off;
+    // PRE-SPLIT SAME-DOMAIN PAIRING (2026-08-14, live; kb/p3_integration_notes.md HOOK
+    // 1-PRE promoted from diagnostic to driving). Coincident/near-coincident faces are
+    // recognised on the ORIGINAL operands, BEFORE any SSI: a surface must never be
+    // intersected with its own coincident partner (OCCT: an FF interference between
+    // same-domain faces yields an SD pair, never section curves -- the near-parallel
+    // marcher otherwise minted 4 overlapping wall fragments at phi=1e-6 flush boxes,
+    // all kept). Pairs are keyed by ORIGINAL face; fragments reach the verdict through
+    // src_faces. Fuzz band diag*2e-4 covers the sub-tolerance angle decades (the SD
+    // resolution IS the correct answer there: the wedge volume is below tolerance).
+    // SESSION_SD_NOHOOKS reverts.
+    std::map<int, bool> pre_pairA, pre_pairB;      // ORIGINAL face -> orient_same
+    std::set<std::pair<int, int>> sd_suppress;     // (surfA, surfB) SSI suppression
+    if (imported_freeform && !std::getenv("SESSION_SD_NOHOOKS")) {
+        double mn[3] = {1e300, 1e300, 1e300}, mx[3] = {-1e300, -1e300, -1e300};
+        for (const auto& p : m_vertices)
+            for (int k = 0; k < 3; ++k) { mn[k] = std::min(mn[k], p[k]); mx[k] = std::max(mx[k], p[k]); }
+        for (const auto& p : other.m_vertices)
+            for (int k = 0; k < 3; ++k) { mn[k] = std::min(mn[k], p[k]); mx[k] = std::max(mx[k], p[k]); }
+        const double diag = std::sqrt((mx[0]-mn[0])*(mx[0]-mn[0]) + (mx[1]-mn[1])*(mx[1]-mn[1])
+                                      + (mx[2]-mn[2])*(mx[2]-mn[2]));
+        // Fuzz at PRECISION scale (OCCT Precision::Confusion doctrine), never a fat
+        // band: pairing must fire only for true sub-tolerance coincidence. A fat band
+        // (diag*2e-4, first attempt) paired walls whose wedge is REAL geometry and
+        // silently discarded measurable volume (phi=0.001..0.1 deg common -> 0).
+        // Strictly precision-scale (diag*1e-7): the boolean's working tolerance (~1e-3)
+        // must NOT widen pairing -- at 0.001..0.01 deg the wedge (1e-4..1e-3 volume) is
+        // real geometry the oracle measures; silently absorbing sub-tolerance features
+        // is the fuzzy-boolean's job only when a user asks for it.
+        SameDomain sdp(std::max(diag * 1e-6, 1e-9), std::max(diag * 1e-7, 1e-9));
+        for (int f = 0; f < (int)m_faces.size(); ++f) sdp.add_face(*this, f, 0, 0);
+        for (int f = 0; f < (int)other.m_faces.size(); ++f) sdp.add_face(other, f, 1, 1);
+        sdp.detect();
+        for (const auto& pr : sdp.pairs()) {
+            const SDFaceRec& fa = sdp.face(pr.i);
+            const SDFaceRec& fb = sdp.face(pr.j);
+            if (fa.operand == fb.operand) continue;
+            const SDFaceRec& ra = fa.operand ? fb : fa;    // A-side record
+            const SDFaceRec& rb = fa.operand ? fa : fb;
+            const bool os = pr.orient == 0;
+            pre_pairA[ra.face] = os;
+            pre_pairB[rb.face] = os;
+            sd_suppress.insert({m_faces[ra.face].surface_index,
+                                other.m_faces[rb.face].surface_index});
+            if (std::getenv("SESSION_SD"))
+                std::fprintf(stderr, "[SD-PRE-PAIR] A f%d <-> B f%d orient=%s via=%d\n",
+                             ra.face, rb.face, os ? "same" : "opposite", pr.via);
+        }
+    }
     if (imported_freeform && !scaffold_eligible) {
         std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> abbs, bbbs;
         for (const auto& s : m_surfaces) abbs.push_back(aabb_from_surface(s));
@@ -8788,6 +8917,8 @@ BRep BRep::boolean_v1(const BRep& other, BooleanOp op, double tolerance) const {
                                   abbs[ai].second[2] - abbs[ai].first[2]}) * 1e-3;
             for (size_t bi = 0; bi < other.m_surfaces.size(); ++bi) {
                 if (!aabb_overlap(abbs[ai], bbbs[bi], am)) continue;
+                // Coincident partners never intersect each other (SD pair, not sections).
+                if (sd_suppress.count({(int)ai, (int)bi})) continue;
                 auto trs = Intersection::surface_surface(m_surfaces[ai], other.m_surfaces[bi], tolerance);
                 if (trs.empty()) {
                     // order-sensitive marcher found nothing this way round: retry swapped and
@@ -8805,6 +8936,15 @@ BRep BRep::boolean_v1(const BRep& other, BooleanOp op, double tolerance) const {
                     if (std::get<0>(tr).is_valid()) sec_c3ds.push_back(std::get<0>(tr));
                 }
             }
+        }
+        // Paired (coincident) faces take NO cuts at all: their resolution is the SD
+        // verdict, and at sub-tolerance angles the neighbouring faces' SSI only GRAZES
+        // the wall along its boundary, minting overlapping pseudo-fragments (phi=1e-6:
+        // 4 copies of A's wall, every one sampling at the wall centre). At larger
+        // angles the pair does not form and cuts apply normally.
+        for (const auto& sp2 : sd_suppress) {
+            if (sp2.first >= 0 && sp2.first < (int)cutsA.size()) cutsA[sp2.first].clear();
+            if (sp2.second >= 0 && sp2.second < (int)cutsB.size()) cutsB[sp2.second].clear();
         }
         lap("pair_ssi");
     }
@@ -9146,24 +9286,41 @@ BRep BRep::boolean_v1(const BRep& other, BooleanOp op, double tolerance) const {
     // key_tol is LOAD-BEARING per B's precondition: we have no shared section entities, so
     // geometric bucketing at key_tol substitutes for OCCT's IsSame identity. Too tight =>
     // zero SD pairs => silently wrong COMMON/CUT. B recommends tol3_rep.
-    if (use_scaffold && std::getenv("SESSION_SD") && !std::getenv("SESSION_SD_NOHOOKS")) {
+    // HOOK 2 (2026-08-14, live): detection now DRIVES selection. Pairs land in
+    // sd_pairA/sd_pairB (split-face index -> orient_same) consumed by classify's ON
+    // branch via the verified BuildBOP table (sd_select_sd_face) -- decided once per
+    // PAIR, never by per-face probes, which coin-flip exactly at coincident walls
+    // (GZ-J flush boxes: probe ON missed A's wall entirely). SESSION_SD_NOHOOKS
+    // reverts to probe-only.
+    std::map<int, bool> sd_pairA, sd_pairB;   // split-face index -> orient_same
+    if (use_scaffold && !std::getenv("SESSION_SD_NOHOOKS")) {
         double key_tol = scaf.tol3_rep > 0 ? scaf.tol3_rep : scaf.tol3;
         SameDomain sd(key_tol);
         for (int f = 0; f < A2.face_count(); ++f) sd.add_face(A2, f, 0, 0);
         for (int f = 0; f < B2.face_count(); ++f) sd.add_face(B2, f, 1, 1);
         sd.detect();
-        std::fprintf(stderr, "[SD] key_tol=%.4e faces(A=%d B=%d) groups=%d pairs=%zu\n",
-                     key_tol, A2.face_count(), B2.face_count(),
-                     sd.group_count(), sd.pairs().size());
         for (const auto& pr : sd.pairs()) {
             const SDFaceRec& fi2 = sd.face(pr.i);
             const SDFaceRec& fj2 = sd.face(pr.j);
-            std::fprintf(stderr, "[SD-PAIR] %c f%d <-> %c f%d orient=%s via=%d\n",
-                         fi2.operand ? 'B' : 'A', fi2.face,
-                         fj2.operand ? 'B' : 'A', fj2.face,
-                         pr.orient == 0 ? "same" : "opposite", pr.via);
+            if (fi2.operand == fj2.operand) continue;      // cross-operand pairs only
+            const bool os = pr.orient == 0;
+            (fi2.operand ? sd_pairB : sd_pairA)[fi2.face] = os;
+            (fj2.operand ? sd_pairB : sd_pairA)[fj2.face] = os;
         }
-        std::fflush(stderr);
+        if (std::getenv("SESSION_SD")) {
+            std::fprintf(stderr, "[SD] key_tol=%.4e faces(A=%d B=%d) groups=%d pairs=%zu\n",
+                         key_tol, A2.face_count(), B2.face_count(),
+                         sd.group_count(), sd.pairs().size());
+            for (const auto& pr : sd.pairs()) {
+                const SDFaceRec& fi2 = sd.face(pr.i);
+                const SDFaceRec& fj2 = sd.face(pr.j);
+                std::fprintf(stderr, "[SD-PAIR] %c f%d <-> %c f%d orient=%s via=%d\n",
+                             fi2.operand ? 'B' : 'A', fi2.face,
+                             fj2.operand ? 'B' : 'A', fj2.face,
+                             pr.orient == 0 ? "same" : "opposite", pr.via);
+            }
+            std::fflush(stderr);
+        }
     }
     // P1c SYMMETRIC EMISSION (SESSION_SYMEMIT): the two operands' arrangements can disagree on which
     // scaffold section runs survive the dangling-edge prune -- one operand emits a section segment the
@@ -9790,6 +9947,40 @@ BRep BRep::boolean_v1(const BRep& other, BooleanOp op, double tolerance) const {
             if (X2.m_faces[fi].surface_index < 0) continue;
             if (micro[fi]) continue;                       // sliver: stays invalid, never kept
             valid[fi] = true;
+            // SD-PAIRED WALL: exact identity (edge-sig bucketing at tol3_rep), decided
+            // once per PAIR by the verified BuildBOP table. Takes precedence over every
+            // probe below -- probes coin-flip exactly here (both boundaries within
+            // on_eps; GZ-J flush: A wall read in_p==in_m==1, ON never fired).
+            {
+                bool sd_hit = false, sd_orient = false;
+                const std::map<int, bool>& sdmap = is_first ? sd_pairA : sd_pairB;
+                auto sdit = sdmap.find(fi);
+                if (sdit != sdmap.end()) {
+                    sd_hit = true; sd_orient = sdit->second;
+                } else {
+                    // Pre-split pairs are keyed by ORIGINAL face; fragments inherit
+                    // through src_faces (whole faces when the SSI was suppressed).
+                    const std::map<int, bool>& pmap = is_first ? pre_pairA : pre_pairB;
+                    const int src = (src_faces && fi < (int)src_faces->size())
+                                        ? (*src_faces)[fi] : fi;
+                    auto pit = pmap.find(src);
+                    if (pit != pmap.end()) { sd_hit = true; sd_orient = pit->second; }
+                }
+                if (sd_hit) {
+                    is_on[fi] = 1;
+                    const SDOp sop = op == BooleanOp::Union ? SDOp::Fuse
+                                   : op == BooleanOp::Intersection ? SDOp::Common
+                                                                   : SDOp::Cut;
+                    const SDVerdict v = sd_select_sd_face(sop, is_first ? 0 : 1,
+                                                          sd_orient);
+                    keep_v[fi] = v != SDVerdict::Drop;
+                    if (std::getenv("SESSION_CLS_DBG"))
+                        std::printf("[CLS] %c f%d SD-PAIR orient_%s keep=%d\n",
+                                    is_first ? 'A' : 'B', fi,
+                                    sd_orient ? "same" : "opp", keep_v[fi] ? 1 : 0);
+                    continue;
+                }
+            }
             double cu = 0, cv2 = 0;
             Point sp = face_sample(X2, fi, &cu, &cv2);
             fsample[fi] = sp;

@@ -1533,7 +1533,7 @@ namespace session_cpp {
         // Write to session pb so it can be inspected in Rhino
         Session session;
         session.add_mesh(std::make_shared<Mesh>(m));
-        std::string pb_path = "C:/Users/Petras/Desktop/plate_failing_loft.pb";
+        std::string pb_path = "serialization/test_plate_failing_loft.pb";
         session.pb_dump(pb_path);
         printf("Session written to: %s\n", pb_path.c_str());
     }
@@ -1626,7 +1626,7 @@ namespace session_cpp {
 
         Session session;
         session.add_mesh(std::make_shared<Mesh>(m));
-        std::string pb_path = "C:/Users/Petras/Desktop/plate_v2_loft.pb";
+        std::string pb_path = "serialization/test_plate_v2_loft.pb";
         session.pb_dump(pb_path);
         printf("Session written to: %s\n", pb_path.c_str());
     }
@@ -1719,7 +1719,7 @@ namespace session_cpp {
 
         Session session;
         session.add_mesh(std::make_shared<Mesh>(m));
-        std::string pb_path = "C:/Users/Petras/Desktop/plate_v3_loft.pb";
+        std::string pb_path = "serialization/test_plate_v3_loft.pb";
         session.pb_dump(pb_path);
         printf("Session written to: %s\n", pb_path.c_str());
     }

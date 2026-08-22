@@ -214,6 +214,7 @@ class Line final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
+    kDashFieldNumber = 8,
     kGuidFieldNumber = 3,
     kNameFieldNumber = 4,
     kStartFieldNumber = 1,
@@ -221,6 +222,24 @@ class Line final : public ::google::protobuf::Message
     kLinecolorFieldNumber = 7,
     kWidthFieldNumber = 6,
   };
+  // repeated double dash = 8;
+  int dash_size() const;
+  private:
+  int _internal_dash_size() const;
+
+  public:
+  void clear_dash() ;
+  double dash(int index) const;
+  void set_dash(int index, double value);
+  void add_dash(double value);
+  const ::google::protobuf::RepeatedField<double>& dash() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_dash();
+
+  private:
+  const ::google::protobuf::RepeatedField<double>& _internal_dash() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_dash();
+
+  public:
   // string guid = 3;
   void clear_guid() ;
   const ::std::string& guid() const;
@@ -310,7 +329,7 @@ class Line final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 6,
+  static const ::google::protobuf::internal::TcParseTable<3, 7,
                                    3, 35,
                                    2>
       _table_;
@@ -332,6 +351,7 @@ class Line final : public ::google::protobuf::Message
         const Line& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedField<double> dash_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Point* PROTOBUF_NULLABLE start_;
@@ -364,7 +384,7 @@ extern const ::google::protobuf::internal::ClassDataFull Line_class_data_;
 
 // .session_proto.Point start = 1;
 inline bool Line::has_start() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000004U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000008U);
   PROTOBUF_ASSUME(!value || _impl_.start_ != nullptr);
   return value;
 }
@@ -385,16 +405,16 @@ inline void Line::unsafe_arena_set_allocated_start(
   }
   _impl_.start_ = reinterpret_cast<::session_proto::Point*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Line.start)
 }
 inline ::session_proto::Point* PROTOBUF_NULLABLE Line::release_start() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   ::session_proto::Point* released = _impl_.start_;
   _impl_.start_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -414,7 +434,7 @@ inline ::session_proto::Point* PROTOBUF_NULLABLE Line::unsafe_arena_release_star
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Line.start)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   ::session_proto::Point* temp = _impl_.start_;
   _impl_.start_ = nullptr;
   return temp;
@@ -429,7 +449,7 @@ inline ::session_proto::Point* PROTOBUF_NONNULL Line::_internal_mutable_start() 
 }
 inline ::session_proto::Point* PROTOBUF_NONNULL Line::mutable_start()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   ::session_proto::Point* _msg = _internal_mutable_start();
   // @@protoc_insertion_point(field_mutable:session_proto.Line.start)
   return _msg;
@@ -446,9 +466,9 @@ inline void Line::set_allocated_start(::session_proto::Point* PROTOBUF_NULLABLE 
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   }
 
   _impl_.start_ = reinterpret_cast<::session_proto::Point*>(value);
@@ -457,7 +477,7 @@ inline void Line::set_allocated_start(::session_proto::Point* PROTOBUF_NULLABLE 
 
 // .session_proto.Point end = 2;
 inline bool Line::has_end() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000008U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
   PROTOBUF_ASSUME(!value || _impl_.end_ != nullptr);
   return value;
 }
@@ -478,16 +498,16 @@ inline void Line::unsafe_arena_set_allocated_end(
   }
   _impl_.end_ = reinterpret_cast<::session_proto::Point*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Line.end)
 }
 inline ::session_proto::Point* PROTOBUF_NULLABLE Line::release_end() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Point* released = _impl_.end_;
   _impl_.end_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -507,7 +527,7 @@ inline ::session_proto::Point* PROTOBUF_NULLABLE Line::unsafe_arena_release_end(
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Line.end)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Point* temp = _impl_.end_;
   _impl_.end_ = nullptr;
   return temp;
@@ -522,7 +542,7 @@ inline ::session_proto::Point* PROTOBUF_NONNULL Line::_internal_mutable_end() {
 }
 inline ::session_proto::Point* PROTOBUF_NONNULL Line::mutable_end()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Point* _msg = _internal_mutable_end();
   // @@protoc_insertion_point(field_mutable:session_proto.Line.end)
   return _msg;
@@ -539,9 +559,9 @@ inline void Line::set_allocated_end(::session_proto::Point* PROTOBUF_NULLABLE va
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
 
   _impl_.end_ = reinterpret_cast<::session_proto::Point*>(value);
@@ -553,7 +573,7 @@ inline void Line::clear_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.guid_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000001U);
+                  0x00000002U);
 }
 inline const ::std::string& Line::guid() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -563,13 +583,13 @@ inline const ::std::string& Line::guid() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Line::set_guid(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
   _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Line.guid)
 }
 inline ::std::string* PROTOBUF_NONNULL Line::mutable_guid()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
   ::std::string* _s = _internal_mutable_guid();
   // @@protoc_insertion_point(field_mutable:session_proto.Line.guid)
   return _s;
@@ -589,10 +609,10 @@ inline ::std::string* PROTOBUF_NONNULL Line::_internal_mutable_guid() {
 inline ::std::string* PROTOBUF_NULLABLE Line::release_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Line.guid)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000001U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000002U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000001U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
   auto* released = _impl_.guid_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.guid_.Set("", GetArena());
@@ -602,9 +622,9 @@ inline ::std::string* PROTOBUF_NULLABLE Line::release_guid() {
 inline void Line::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000001U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
   }
   _impl_.guid_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
@@ -618,7 +638,7 @@ inline void Line::clear_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.name_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000002U);
+                  0x00000004U);
 }
 inline const ::std::string& Line::name() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -628,13 +648,13 @@ inline const ::std::string& Line::name() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Line::set_name(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Line.name)
 }
 inline ::std::string* PROTOBUF_NONNULL Line::mutable_name()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   ::std::string* _s = _internal_mutable_name();
   // @@protoc_insertion_point(field_mutable:session_proto.Line.name)
   return _s;
@@ -654,10 +674,10 @@ inline ::std::string* PROTOBUF_NONNULL Line::_internal_mutable_name() {
 inline ::std::string* PROTOBUF_NULLABLE Line::release_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Line.name)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000002U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000004U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
   auto* released = _impl_.name_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.name_.Set("", GetArena());
@@ -667,9 +687,9 @@ inline ::std::string* PROTOBUF_NULLABLE Line::release_name() {
 inline void Line::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
   }
   _impl_.name_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
@@ -683,7 +703,7 @@ inline void Line::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000020U);
+                  0x00000040U);
 }
 inline double Line::width() const {
   // @@protoc_insertion_point(field_get:session_proto.Line.width)
@@ -691,7 +711,7 @@ inline double Line::width() const {
 }
 inline void Line::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   // @@protoc_insertion_point(field_set:session_proto.Line.width)
 }
 inline double Line::_internal_width() const {
@@ -705,7 +725,7 @@ inline void Line::_internal_set_width(double value) {
 
 // .session_proto.Color linecolor = 7;
 inline bool Line::has_linecolor() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000020U);
   PROTOBUF_ASSUME(!value || _impl_.linecolor_ != nullptr);
   return value;
 }
@@ -726,16 +746,16 @@ inline void Line::unsafe_arena_set_allocated_linecolor(
   }
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Line.linecolor)
 }
 inline ::session_proto::Color* PROTOBUF_NULLABLE Line::release_linecolor() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   ::session_proto::Color* released = _impl_.linecolor_;
   _impl_.linecolor_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -755,7 +775,7 @@ inline ::session_proto::Color* PROTOBUF_NULLABLE Line::unsafe_arena_release_line
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Line.linecolor)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   ::session_proto::Color* temp = _impl_.linecolor_;
   _impl_.linecolor_ = nullptr;
   return temp;
@@ -770,7 +790,7 @@ inline ::session_proto::Color* PROTOBUF_NONNULL Line::_internal_mutable_linecolo
 }
 inline ::session_proto::Color* PROTOBUF_NONNULL Line::mutable_linecolor()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   ::session_proto::Color* _msg = _internal_mutable_linecolor();
   // @@protoc_insertion_point(field_mutable:session_proto.Line.linecolor)
   return _msg;
@@ -787,13 +807,63 @@ inline void Line::set_allocated_linecolor(::session_proto::Color* PROTOBUF_NULLA
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   }
 
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.Line.linecolor)
+}
+
+// repeated double dash = 8;
+inline int Line::_internal_dash_size() const {
+  return _internal_dash().size();
+}
+inline int Line::dash_size() const {
+  return _internal_dash_size();
+}
+inline void Line::clear_dash() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.dash_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline double Line::dash(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.Line.dash)
+  return _internal_dash().Get(index);
+}
+inline void Line::set_dash(int index, double value) {
+  _internal_mutable_dash()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.Line.dash)
+}
+inline void Line::add_dash(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_dash()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.Line.dash)
+}
+inline const ::google::protobuf::RepeatedField<double>& Line::dash() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.Line.dash)
+  return _internal_dash();
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL Line::mutable_dash()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.Line.dash)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_dash();
+}
+inline const ::google::protobuf::RepeatedField<double>&
+Line::_internal_dash() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.dash_;
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
+Line::_internal_mutable_dash() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.dash_;
 }
 
 #ifdef __GNUC__

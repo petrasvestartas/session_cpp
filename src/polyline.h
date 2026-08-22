@@ -35,6 +35,7 @@ public:
     mutable Plane plane;
     mutable bool _plane_dirty = true;
     double width = 1.0;
+    std::vector<double> dash;   ///< Dash pattern: on/off lengths in mm, repeating; empty = solid
     Color linecolor = Color::black();
 
 

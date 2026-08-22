@@ -214,6 +214,7 @@ class Polyline final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kCoordsFieldNumber = 3,
+    kDashFieldNumber = 7,
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kLinecolorFieldNumber = 5,
@@ -235,6 +236,24 @@ class Polyline final : public ::google::protobuf::Message
   private:
   const ::google::protobuf::RepeatedField<double>& _internal_coords() const;
   ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_coords();
+
+  public:
+  // repeated double dash = 7;
+  int dash_size() const;
+  private:
+  int _internal_dash_size() const;
+
+  public:
+  void clear_dash() ;
+  double dash(int index) const;
+  void set_dash(int index, double value);
+  void add_dash(double value);
+  const ::google::protobuf::RepeatedField<double>& dash() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_dash();
+
+  private:
+  const ::google::protobuf::RepeatedField<double>& _internal_dash() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_dash();
 
   public:
   // string guid = 1;
@@ -296,7 +315,7 @@ class Polyline final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 5,
+  static const ::google::protobuf::internal::TcParseTable<3, 6,
                                    1, 39,
                                    2>
       _table_;
@@ -319,6 +338,7 @@ class Polyline final : public ::google::protobuf::Message
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::RepeatedField<double> coords_;
+    ::google::protobuf::RepeatedField<double> dash_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
@@ -352,7 +372,7 @@ inline void Polyline::clear_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.guid_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000002U);
+                  0x00000004U);
 }
 inline const ::std::string& Polyline::guid() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -362,13 +382,13 @@ inline const ::std::string& Polyline::guid() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Polyline::set_guid(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Polyline.guid)
 }
 inline ::std::string* PROTOBUF_NONNULL Polyline::mutable_guid()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   ::std::string* _s = _internal_mutable_guid();
   // @@protoc_insertion_point(field_mutable:session_proto.Polyline.guid)
   return _s;
@@ -388,10 +408,10 @@ inline ::std::string* PROTOBUF_NONNULL Polyline::_internal_mutable_guid() {
 inline ::std::string* PROTOBUF_NULLABLE Polyline::release_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Polyline.guid)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000002U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000004U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
   auto* released = _impl_.guid_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.guid_.Set("", GetArena());
@@ -401,9 +421,9 @@ inline ::std::string* PROTOBUF_NULLABLE Polyline::release_guid() {
 inline void Polyline::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000002U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
   }
   _impl_.guid_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
@@ -417,7 +437,7 @@ inline void Polyline::clear_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.name_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000004U);
+                  0x00000008U);
 }
 inline const ::std::string& Polyline::name() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -427,13 +447,13 @@ inline const ::std::string& Polyline::name() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Polyline::set_name(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Polyline.name)
 }
 inline ::std::string* PROTOBUF_NONNULL Polyline::mutable_name()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   ::std::string* _s = _internal_mutable_name();
   // @@protoc_insertion_point(field_mutable:session_proto.Polyline.name)
   return _s;
@@ -453,10 +473,10 @@ inline ::std::string* PROTOBUF_NONNULL Polyline::_internal_mutable_name() {
 inline ::std::string* PROTOBUF_NULLABLE Polyline::release_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Polyline.name)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000004U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000008U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   auto* released = _impl_.name_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.name_.Set("", GetArena());
@@ -466,9 +486,9 @@ inline ::std::string* PROTOBUF_NULLABLE Polyline::release_name() {
 inline void Polyline::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   }
   _impl_.name_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
@@ -532,7 +552,7 @@ inline void Polyline::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00000020U);
 }
 inline double Polyline::width() const {
   // @@protoc_insertion_point(field_get:session_proto.Polyline.width)
@@ -540,7 +560,7 @@ inline double Polyline::width() const {
 }
 inline void Polyline::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   // @@protoc_insertion_point(field_set:session_proto.Polyline.width)
 }
 inline double Polyline::_internal_width() const {
@@ -554,7 +574,7 @@ inline void Polyline::_internal_set_width(double value) {
 
 // .session_proto.Color linecolor = 5;
 inline bool Polyline::has_linecolor() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000008U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
   PROTOBUF_ASSUME(!value || _impl_.linecolor_ != nullptr);
   return value;
 }
@@ -575,16 +595,16 @@ inline void Polyline::unsafe_arena_set_allocated_linecolor(
   }
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Polyline.linecolor)
 }
 inline ::session_proto::Color* PROTOBUF_NULLABLE Polyline::release_linecolor() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Color* released = _impl_.linecolor_;
   _impl_.linecolor_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -604,7 +624,7 @@ inline ::session_proto::Color* PROTOBUF_NULLABLE Polyline::unsafe_arena_release_
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Polyline.linecolor)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Color* temp = _impl_.linecolor_;
   _impl_.linecolor_ = nullptr;
   return temp;
@@ -619,7 +639,7 @@ inline ::session_proto::Color* PROTOBUF_NONNULL Polyline::_internal_mutable_line
 }
 inline ::session_proto::Color* PROTOBUF_NONNULL Polyline::mutable_linecolor()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::session_proto::Color* _msg = _internal_mutable_linecolor();
   // @@protoc_insertion_point(field_mutable:session_proto.Polyline.linecolor)
   return _msg;
@@ -636,13 +656,63 @@ inline void Polyline::set_allocated_linecolor(::session_proto::Color* PROTOBUF_N
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
 
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.Polyline.linecolor)
+}
+
+// repeated double dash = 7;
+inline int Polyline::_internal_dash_size() const {
+  return _internal_dash().size();
+}
+inline int Polyline::dash_size() const {
+  return _internal_dash_size();
+}
+inline void Polyline::clear_dash() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.dash_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000002U);
+}
+inline double Polyline::dash(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.Polyline.dash)
+  return _internal_dash().Get(index);
+}
+inline void Polyline::set_dash(int index, double value) {
+  _internal_mutable_dash()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.Polyline.dash)
+}
+inline void Polyline::add_dash(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_dash()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000002U);
+  // @@protoc_insertion_point(field_add:session_proto.Polyline.dash)
+}
+inline const ::google::protobuf::RepeatedField<double>& Polyline::dash() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.Polyline.dash)
+  return _internal_dash();
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL Polyline::mutable_dash()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000002U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.Polyline.dash)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_dash();
+}
+inline const ::google::protobuf::RepeatedField<double>&
+Polyline::_internal_dash() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.dash_;
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
+Polyline::_internal_mutable_dash() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.dash_;
 }
 
 #ifdef __GNUC__

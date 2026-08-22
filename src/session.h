@@ -19,7 +19,6 @@
 #include "brep.h"
 #include "tree.h"
 #include "spatial_bvh.h"
-#include "tolerance.h"
 #include <fstream>
 #include <iostream>
 #include <optional>

@@ -176,6 +176,42 @@ namespace session_cpp {
         MINI_CHECK(std::abs(pt[2] - pt_orig[2] - 30.0) < 0.01);
     }
 
+    MINI_TEST("BRep", "Transform Roundtrip") {
+        // uncomment #include "brep.h"
+        // uncomment #include "point.h"
+        // uncomment #include "vector.h"
+        // uncomment #include "xform.h"
+        // uncomment #include "tolerance.h"
+
+        Point anchor = Xform::rotation_z(90.0, true).transform_point(Point(1.0, 0.0, 0.0));
+
+        MINI_CHECK(std::abs(anchor[0]) < 1e-9);
+        MINI_CHECK(std::abs(anchor[1] - 1.0) < 1e-9);
+
+        Vector axis(0.3, 0.5, 0.81);
+        Xform rot = Xform::rotation(axis, 37.0, true);
+        Xform tr = Xform::translation(10.0, -5.0, 3.0);
+        BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        BRep moved = box.transformed(rot).transformed(tr);
+
+        bool match = true;
+        for (size_t i = 0; i < box.m_vertices.size(); ++i) {
+            Point expect = tr.transform_point(rot.transform_point(box.m_vertices[i]));
+            if (moved.m_vertices[i].distance(expect) > 1e-9) match = false;
+        }
+
+        MINI_CHECK(match);
+
+        BRep back = moved.transformed(tr.inverse().value()).transformed(rot.inverse().value());
+
+        bool restored = true;
+        for (size_t i = 0; i < box.m_vertices.size(); ++i)
+            if (back.m_vertices[i].distance(box.m_vertices[i]) > 1e-9) restored = false;
+
+        MINI_CHECK(restored);
+        MINI_CHECK(back.is_solid());
+    }
+
     MINI_TEST("BRep", "Json Roundtrip") {
         // uncomment #include "brep.h"
         // uncomment #include "color.h"

@@ -28,6 +28,7 @@ public:
     /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
     void refresh_guid() { _guid.clear(); }
     double width = 1.0;                ///< Line width in pixels
+    std::vector<double> dash;          ///< Dash pattern: on/off lengths in mm, repeating; empty = solid
     Color linecolor = Color::black();  ///< Color of the line
 
 private:

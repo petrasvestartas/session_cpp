@@ -8,7 +8,6 @@
 #include "spatial_bvh.h"
 #include "spatial_aabbtree.h"
 #include "aabb.h"
-#include "tolerance.h"
 #include "json.h"
 #include "line.h"
 #include "polyline.h"

@@ -199,6 +199,29 @@ MINI_TEST("PointCloud", "Add Color") {
     MINI_CHECK(pc.get_color(0).r == 1.0f && pc.get_color(0).g == 0.0f && pc.get_color(0).b == 1.0f);
 }
 
+MINI_TEST("PointCloud", "Coords") {
+    // uncomment #include "pointcloud.h"
+    // uncomment #include "point.h"
+
+    PointCloud pc({Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)}, {}, {});
+    const std::vector<double>& coords = pc.coords();
+
+    MINI_CHECK(coords.size() == 6);
+    MINI_CHECK(TOLERANCE.is_close(coords[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(coords[5], 6.0));
+}
+
+MINI_TEST("PointCloud", "Colors") {
+    // uncomment #include "pointcloud.h"
+    // uncomment #include "color.h"
+
+    PointCloud pc({}, {}, {Color(1.0f, 0.0f, 0.0f, 1.0f)});
+    const std::vector<int>& colors = pc.colors();
+
+    MINI_CHECK(colors.size() == 4);
+    MINI_CHECK(colors[0] == 255 && colors[1] == 0 && colors[2] == 0 && colors[3] == 255);
+}
+
 MINI_TEST("PointCloud", "Get Colors") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "color.h"

@@ -24,6 +24,7 @@ Polyline::Polyline(const Polyline& other)
       _coords(other._coords),
       plane(other.plane),
       width(other.width),
+      dash(other.dash),
       linecolor(other.linecolor) {}
 
 /// Copy assignment (creates a new guid() while copying data)
@@ -34,6 +35,7 @@ Polyline& Polyline::operator=(const Polyline& other) {
         _coords = other._coords;
         plane = other.plane;
         width = other.width;
+        dash = other.dash;
         linecolor = other.linecolor;
     }
     return *this;
@@ -381,6 +383,7 @@ nlohmann::ordered_json Polyline::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json j;
     j["coords"] = _coords;
+    j["dash"] = dash;
     j["guid"] = guid();
     j["linecolor"] = linecolor.jsondump();
     j["name"] = name;
@@ -409,6 +412,9 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
 
     if (data.contains("width")) {
         polyline.width = data["width"];
+    }
+    if (data.contains("dash")) {
+        polyline.dash = data["dash"].get<std::vector<double>>();
     }
     if (data.contains("linecolor")) {
         polyline.linecolor = Color::jsonload(data["linecolor"]);
@@ -447,6 +453,9 @@ std::string Polyline::pb_dumps() const {
     proto.set_guid(this->guid());
     proto.set_name(this->name);
     proto.set_width(this->width);
+    for (double d : dash) {
+        proto.add_dash(d);
+    }
 
     // Add coords as flat array [x0, y0, z0, x1, y1, z1, ...]
     for (double c : _coords) {
@@ -475,6 +484,7 @@ Polyline Polyline::pb_loads(const std::string& data) {
     pl.guid() = proto.guid();
     pl.name = proto.name();
     pl.width = proto.width();
+    pl.dash.assign(proto.dash().begin(), proto.dash().end());
 
     // Load linecolor
     if (proto.has_linecolor()) {

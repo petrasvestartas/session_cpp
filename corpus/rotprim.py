@@ -238,15 +238,7 @@ def point_mean(path):
 
 # -------------------------------------------------------------------- probing
 
-def probe_topo(path):
-    out = subprocess.run([runner.PROBE, path, "-n"], capture_output=True, text=True,
-                         timeout=CELL_TIMEOUT).stdout
-    d = {}
-    for k in ("EDGES", "NAKED", "SEAM", "SHARED", "DEGEN", "NONMANIFOLD",
-              "SHELLS_CLOSED", "SHELLS_OPEN"):
-        m = re.search(r"^%s (\d+)" % k, out, re.M)
-        d[k.lower()] = int(m.group(1)) if m else None
-    return d
+probe_topo = runner.probe_topo
 
 
 def run_cell(cell_id, a_file, b_file, op, truth, timeout=CELL_TIMEOUT):
@@ -259,10 +251,11 @@ def run_cell(cell_id, a_file, b_file, op, truth, timeout=CELL_TIMEOUT):
     if os.path.exists(out_step):
         os.remove(out_step)
     exe = os.path.join(runner.WORK, "main_7_snapshot")
-    rc, out, dt, to = runner.run_kernel(exe, ["zzzz"],
-                                        {"SESSION_CHAIRS": wd, "SESSION_OP": op},
-                                        timeout=timeout)
-    rec = {"cell": cell_id, "op": op, "secs": round(dt, 1),
+    rc, out, dt, to, km = runner.run_kernel(exe, ["zzzz"],
+                                            {"SESSION_CHAIRS": wd, "SESSION_OP": op},
+                                            timeout=timeout)
+    rec = {"cell": cell_id, "op": op, "secs": round(dt, 1), "rc": rc,
+           "maxrss_kb": km["maxrss_kb"],
            "truth_vol": truth["vol"], "truth_solids": truth.get("solids")}
     if to:
         rec["verdict"] = "timeout"
@@ -281,6 +274,11 @@ def run_cell(cell_id, a_file, b_file, op, truth, timeout=CELL_TIMEOUT):
         rec["our_vol"] = 0.0
         return rec
     meas = runner.measure_result(out_step, volA, volB)
+    # A 2-unit export holds ONLY the operands (kernel produced no result unit). When
+    # the kernel row also says 0 faces, the result is EMPTY -- reporting the whole
+    # file's A+B volume minted phantom '128 closed' verdicts no kernel change can fix.
+    if meas is not None and meas.get("units") == 2 and rec.get("kfaces") == 0:
+        meas = {"vol": 0.0, "solids": 0, "valid": meas["valid"], "units": 2}
     topo = probe_topo(out_step)
     # operand shells are closed and manifold, so any naked/non-manifold edge in the
     # combined file belongs to OUR result
@@ -864,6 +862,100 @@ def cmd_analytic(args):
     return rows, viol
 
 
+# -------------------------------------------------------------------------- gzj
+
+def cmd_gzj(args):
+    """GZ-J: two flush 4x4x4 boxes, B rotated by phi about its own z-axis then set at
+    (4,0,0) -- the 40-line analytic repro of the rotated-chairs residue class
+    (kb/corpus_stress_matrix_design.md:346). Oracle-free truth: V(common) = 8*phi_rad
+    exactly (numerically verified 7.999996..8.000138 over phi 1e-9..1e-5 deg),
+    V(cut) = 64 - common, V(fuse) = 128 - common. The phi ladder localises the angle
+    decade where the kernel loses the wedge; run BEFORE debugging any chair."""
+    runner.prep_work(runner.KERNEL)          # re-pin the snapshot to the current build
+    idx = operand_index()
+    a_file = idx["box"]["file"]
+    gzdir = os.path.join(T0R, "gzj")
+    os.makedirs(gzdir, exist_ok=True)
+    phis = [float(p) for p in args.phis.split(",")]
+    rows, viol = [], 0
+    for phi in phis:
+        b_file = os.path.join(gzdir, "B_rotz%g.step" % phi)
+        place(a_file, b_file, (0.0, 0.0, 1.0), phi, trans=(4.0, 0.0, 0.0))
+        common = 8.0 * math.radians(phi)
+        truth = {"cut": 64.0 - common, "common": common, "fuse": 128.0 - common}
+        for op in OPS:
+            t = {"vol": truth[op], "volA": 64.0, "volB": 64.0, "solids": 1}
+            rec = run_cell("gzj_rotz%g_%s" % (phi, op), a_file, b_file, op, t,
+                           timeout=args.timeout)
+            tv = truth[op]
+            rec["phi_deg"] = phi
+            # run_cell's EMPTY cutoff would grade a sub-0.01 wedge as "empty is exact";
+            # the wedge IS the measurement, so grade against the formula directly
+            # (denominator floored at EMPTY so the phi=0 flush control stays gradable).
+            rec["rel_exact"] = (abs(rec.get("our_vol", 0.0) - tv)
+                                / max(abs(tv), runner.EMPTY))
+            bad = rec.get("closed") is False or rec["rel_exact"] > 0.01
+            if bad:
+                viol += 1
+            rows.append(rec)
+            print("gzj phi=%-8g %-6s %-12s closed=%s vol=%-14.9g truth=%-14.9g "
+                  "rel=%.3e %s" % (phi, op, rec["verdict"], rec.get("closed"),
+                                   rec.get("our_vol", 0.0), tv, rec["rel_exact"],
+                                   "VIOLATION" if bad else "ok"), flush=True)
+    print("\ngzj violations: %d / %d" % (viol, len(rows)))
+    save_ledger("gzj", {"phis": phis, "rows": rows, "violations": viol})
+    return rows
+
+
+# -------------------------------------------------------------------------- seam
+
+def cmd_seam(args):
+    """Seam-equivariance twins: rotating a surface-of-revolution operand about its OWN
+    symmetry axis moves only its parameterization seam, never its geometry, so A op B
+    and A op R_sym(B) must measure identically (vol/faces/closed/verdict). Divergence =
+    seam-placement sensitivity (the sphere-cylinder asin(1/2.5) cliff class), which no
+    other tier can see."""
+    runner.prep_work(runner.KERNEL)
+    idx = operand_index()
+    a_file = idx["box"]["file"]
+    seamdir = os.path.join(T0R, "seam")
+    os.makedirs(seamdir, exist_ok=True)
+    SEAM_TOL = 0.005                 # same geometry, only the seam moved (cf. EQUI_TOL)
+    rows, viol = [], 0
+    for name in ("sph", "cyl", "cone", "tor"):
+        b_file = idx[name]["file"]
+        truth = {"vol": None, "volA": idx["box"]["volume"], "volB": idx[name]["volume"]}
+        refs = {}
+        for op in OPS:
+            refs[op] = run_cell("seam_%s_ref_%s" % (name, op), a_file, b_file, op,
+                                truth, timeout=args.timeout)
+        for ang in (30.0, 90.0):
+            twin = os.path.join(seamdir, "B_%s_z%g.step" % (name, ang))
+            place(b_file, twin, (0.0, 0.0, 1.0), ang)
+            for op in OPS:
+                rec = run_cell("seam_%s_z%g_%s" % (name, ang, op), a_file, twin, op,
+                               truth, timeout=args.timeout)
+                r0 = refs[op]
+                v0, v1 = r0.get("our_vol"), rec.get("our_vol")
+                dv = abs((v1 or 0.0) - (v0 or 0.0)) / max(abs(v0 or 0.0), runner.EMPTY)
+                bad = (rec["verdict"] != r0["verdict"]
+                       or rec.get("closed") != r0.get("closed")
+                       or rec.get("kfaces") != r0.get("kfaces")
+                       or dv > SEAM_TOL)
+                if bad:
+                    viol += 1
+                rows.append({"pair": "box_x_%s" % name, "ang": ang, "op": op,
+                             "ref_verdict": r0["verdict"], "twin_verdict": rec["verdict"],
+                             "ref_vol": v0, "twin_vol": v1, "dvol_rel": dv,
+                             "violation": bool(bad)})
+                print("seam box_x_%-5s z%-4g %-6s ref %-12s twin %-12s dvol %.3e %s"
+                      % (name, ang, op, r0["verdict"], rec["verdict"], dv,
+                         "VIOLATION" if bad else "ok"), flush=True)
+    print("\nseam violations: %d / %d" % (viol, len(rows)))
+    save_ledger("seam", {"rows": rows, "violations": viol})
+    return rows
+
+
 # ------------------------------------------------------------------------ main
 
 def main():
@@ -903,6 +995,10 @@ def main():
     p = sub.add_parser("equivariance"); common(p); p.set_defaults(fn=cmd_equivariance)
     p = sub.add_parser("selfop"); common(p); p.set_defaults(fn=cmd_selfop)
     p = sub.add_parser("analytic"); common(p); p.set_defaults(fn=cmd_analytic)
+    p = sub.add_parser("seam"); common(p); p.set_defaults(fn=cmd_seam)
+    p = sub.add_parser("gzj"); common(p); p.set_defaults(fn=cmd_gzj)
+    p.add_argument("--phis", default="0,0.000001,0.00001,0.0001,0.001,0.01,0.1,1,5",
+                   help="comma list of wedge angles in degrees (0 = flush control)")
     args = ap.parse_args()
     if not os.path.exists(os.path.join(runner.WORK, "main_7_snapshot")):
         runner.prep_work(runner.KERNEL)

@@ -2,7 +2,6 @@
 
 #include "nurbssurface.h"
 #include "mesh.h"
-#include "tolerance.h"
 
 namespace session_cpp {
 

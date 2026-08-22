@@ -102,6 +102,7 @@ Line::Line(const Line& other)
     :
       name(other.name),
       width(other.width),
+      dash(other.dash),
       linecolor(other.linecolor),
       _x0(other._x0),
       _y0(other._y0),
@@ -116,6 +117,7 @@ Line& Line::operator=(const Line& other) {
         _guid.clear();
         name = other.name;
         width = other.width;
+        dash = other.dash;
         linecolor = other.linecolor;
         _x0 = other._x0;
         _y0 = other._y0;
@@ -159,6 +161,7 @@ Line Line::transformed(const Xform& xform) const {
 nlohmann::ordered_json Line::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json data;
+    data["dash"] = dash;
     data["guid"] = guid();
     data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
@@ -179,6 +182,9 @@ Line Line::jsonload(const nlohmann::json& data) {
     line.name = data["name"];
     line.linecolor = Color::jsonload(data["linecolor"]);
     line.width = data["width"];
+    if (data.contains("dash")) {
+        line.dash = data["dash"].get<std::vector<double>>();
+    }
     return line;
 }
 
@@ -219,8 +225,11 @@ std::string Line::pb_dumps() const {
     end->set_z(_z1);
     proto.set_guid(guid());
     proto.set_name(name);
-    // Serialize width and linecolor
+    // Serialize width, dash and linecolor
     proto.set_width(width);
+    for (double d : dash) {
+        proto.add_dash(d);
+    }
     auto* color_proto = proto.mutable_linecolor();
     color_proto->set_r(linecolor.r);
     color_proto->set_g(linecolor.g);
@@ -241,6 +250,7 @@ Line Line::pb_loads(const std::string& data) {
     if (proto.width() > 0.0) {
         line.width = proto.width();
     }
+    line.dash.assign(proto.dash().begin(), proto.dash().end());
     if (proto.has_linecolor()) {
         line.linecolor.r = proto.linecolor().r();
         line.linecolor.g = proto.linecolor().g();
