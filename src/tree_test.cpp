@@ -379,8 +379,10 @@ MINI_TEST("Tree", "Add Child By Guid") {
     t.add(a, root);
     t.add(b, root);
     bool ok = t.add_child_by_guid(a->guid(), b->guid());
+    bool cycle = t.add_child_by_guid(b->guid(), root->guid());
 
     MINI_CHECK(ok);
+    MINI_CHECK(!cycle);
     MINI_CHECK(a->children().size() == 1);
 }
 

@@ -7,6 +7,7 @@
 #include <queue>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace session_cpp {
 
@@ -138,6 +139,8 @@ std::vector<TreeNode *> TreeNode::traverse(const std::string &strategy,
         result.insert(result.end(), child_result.begin(), child_result.end());
       }
       result.push_back(const_cast<TreeNode *>(this));
+    } else {
+      throw std::invalid_argument("Unknown traversal order: " + order);
     }
   } else if (strategy == "breadthfirst") {
     std::queue<TreeNode *> queue;
@@ -181,13 +184,13 @@ nlohmann::ordered_json Tree::jsondump() const {
 }
 
 Tree Tree::jsonload(const nlohmann::json &data) {
-  auto tree = std::make_shared<Tree>(data["name"]);
-  tree->guid() = data["guid"];
+  Tree tree(data["name"]);
+  tree.guid() = data["guid"];
   if (!data["root"].is_null()) {
     auto root = TreeNode::jsonload(data["root"]);
-    tree->add(root);
+    tree.add(root);
   }
-  return *tree;
+  return tree;
 }
 
 std::string Tree::file_json_dumps() const {
@@ -301,7 +304,6 @@ void Tree::add(std::shared_ptr<TreeNode> node,
     node->_tree = std::weak_ptr<Tree>();
   } else {
     // Add as child to parent
-    node->_tree = std::weak_ptr<Tree>();
     parent->add(node);
   }
 }
@@ -352,11 +354,9 @@ std::shared_ptr<TreeNode> Tree::remove(std::shared_ptr<TreeNode> node) {
 
 std::vector<std::shared_ptr<TreeNode>> Tree::leaves() const {
   std::vector<std::shared_ptr<TreeNode>> result;
-  if (_root) {
-    for (const auto &node : nodes()) {
-      if (node->is_leaf()) {
-        result.push_back(node);
-      }
+  for (const auto &node : nodes()) {
+    if (node->is_leaf()) {
+      result.push_back(node);
     }
   }
   return result;
@@ -368,15 +368,14 @@ Tree::traverse(const std::string &strategy, const std::string &order) const {
   if (!_root)
     return result;
 
+  std::unordered_map<TreeNode *, std::shared_ptr<TreeNode>> lookup;
+  for (const auto &node : nodes())
+    lookup[node.get()] = node;
+
   auto raw_nodes = _root->traverse(strategy, order);
   for (auto raw_node : raw_nodes) {
-    // Find the corresponding shared_ptr for each raw pointer
-    for (const auto &node : nodes()) {
-      if (node.get() == raw_node) {
-        result.push_back(node);
-        break;
-      }
-    }
+    // Map each raw pointer back to its owning shared_ptr
+    result.push_back(lookup[raw_node]);
   }
   return result;
 }
