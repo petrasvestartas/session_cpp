@@ -315,6 +315,13 @@ Xform Session::world_xform(const std::string &guid) const {
 }
 
 std::unordered_map<std::string, Xform> Session::world_xforms() const {
+  // Nothing to compose: with no local transforms every composed frame IS the identity, and
+  // every caller already falls back to identity for a guid the map lacks. Walking the tree
+  // anyway costs one string copy + hash insert per NODE, paid again on every rebuild.
+  if (xforms.empty()) {
+    return {};
+  }
+
   std::unordered_map<std::string, Xform> out;
   std::function<void(const std::shared_ptr<TreeNode> &, const Xform &)> walk =
       [&](const std::shared_ptr<TreeNode> &node, const Xform &parent_xform) {

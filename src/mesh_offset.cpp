@@ -2,6 +2,7 @@
 #include "matrix.h"
 #include "plane.h"
 #include "tolerance.h"
+#include <algorithm>
 
 namespace session_cpp {
 
@@ -75,16 +76,22 @@ static std::map<size_t, Point> _offset_vertices(
     const std::map<size_t, Plane>& planes)
 {
     std::map<size_t, Point> result;
+    // vertex -> incident faces in ONE face walk (a per-vertex vertex_faces() call is O(F)
+    // now that topology is lazy — this loop over all vertices would be quadratic)
+    std::map<size_t, std::vector<size_t>> vf;
+    for (const auto& [fkey, verts] : mesh.face)
+        for (size_t v : verts) vf[v].push_back(fkey);
+    for (auto& [v, f] : vf) std::sort(f.begin(), f.end());
     for (size_t vk : mesh.vertices()) {
         auto vp = mesh.vertex_point(vk);
         if (!vp.has_value()) continue;
-        auto fkeys = mesh.vertex_faces(vk);
-        if (!fkeys.has_value() || fkeys->empty()) {
+        auto fit = vf.find(vk);
+        if (fit == vf.end() || fit->second.empty()) {
             result[vk] = *vp;
             continue;
         }
         std::vector<Plane> adj;
-        for (size_t fk : *fkeys) {
+        for (size_t fk : fit->second) {
             auto it = planes.find(fk);
             if (it != planes.end()) adj.push_back(it->second);
         }

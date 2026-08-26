@@ -16,6 +16,7 @@
 #include <vector>
 #include <string>
 #include <optional>
+#include <memory>
 #include <cmath>
 #include <tuple>
 #include <functional>
@@ -53,12 +54,89 @@ enum class NormalWeighting {
     Uniform  ///< Uniform weighting
 };
 
+/// A vertex's attribute map, paid for ONLY when the vertex has attributes.
+///
+/// This behaves like the `std::map<std::string, double>` it replaces at every call site -
+/// `find`/`end`, `count`, `at`, `operator[]`, `==`, range-for, assignment from a map, JSON
+/// conversion - but it is one pointer wide and allocates nothing until something is stored in it.
+///
+/// The reason is the shape of real data. A mesh from a PDF sheet or a scan carries positions and
+/// nothing else: hundreds of thousands of vertices, ZERO attribute entries, and a full empty map
+/// header each regardless - 48 of every 72 bytes of `VertexData`. Attributes are a
+/// NURBS-tessellation and vertex-colour feature (u/v, r/g/b, nx/ny/nz); those meshes are
+/// thousands of vertices, not millions, and one allocation each is nothing to them.
+///
+/// Iteration is over `std::map`, so the order stays alphabetical and the JSON dumps are unchanged.
+class Attributes {
+public:
+    using Map = std::map<std::string, double>;
+    using const_iterator = Map::const_iterator;
+    using value_type = Map::value_type;
+
+    Attributes() = default;
+    Attributes(const Attributes& o) : m_(o.m_ ? std::make_unique<Map>(*o.m_) : nullptr) {}
+    Attributes(Attributes&&) noexcept = default;
+    Attributes(const Map& m) { if (!m.empty()) m_ = std::make_unique<Map>(m); }
+    Attributes& operator=(const Attributes& o) {
+        m_ = o.m_ ? std::make_unique<Map>(*o.m_) : nullptr;
+        return *this;
+    }
+    Attributes& operator=(Attributes&&) noexcept = default;
+    Attributes& operator=(const Map& m) {
+        m_ = m.empty() ? nullptr : std::make_unique<Map>(m);
+        return *this;
+    }
+
+    /// The map itself, or a shared empty one - so every reader below is allocation-free.
+    const Map& map() const {
+        static const Map empty;
+        return m_ ? *m_ : empty;
+    }
+    const_iterator begin() const { return map().begin(); }
+    const_iterator end() const { return map().end(); }
+    const_iterator find(const std::string& k) const { return map().find(k); }
+    size_t count(const std::string& k) const { return map().count(k); }
+    const double& at(const std::string& k) const { return map().at(k); }
+    size_t size() const { return map().size(); }
+    bool empty() const { return map().empty(); }
+
+    /// The only mutating entry point, and the only one that can allocate.
+    double& operator[](const std::string& k) {
+        if (!m_) m_ = std::make_unique<Map>();
+        return (*m_)[k];
+    }
+    size_t erase(const std::string& k) {
+        if (!m_) return 0;
+        size_t n = m_->erase(k);
+        // Back to the un-allocated state, so a map that empties out stops costing anything.
+        if (m_->empty()) m_.reset();
+        return n;
+    }
+    void clear() { m_.reset(); }
+
+    bool operator==(const Attributes& o) const { return map() == o.map(); }
+    bool operator!=(const Attributes& o) const { return !(*this == o); }
+    bool operator==(const Map& o) const { return map() == o; }
+    bool operator!=(const Map& o) const { return !(*this == o); }
+
+private:
+    std::unique_ptr<Map> m_;
+};
+
+/// nlohmann-json hooks, so `j["attributes"] = vdata.attributes` writes the same object it always
+/// did. Templated on the json type because the dumps use `ordered_json`, which is a different
+/// instantiation from `json` - a non-template overload on one would silently not apply to the other.
+template <typename J>
+void to_json(J& j, const Attributes& a) { j = a.map(); }
+template <typename J>
+void from_json(const J& j, Attributes& a) { a = j.template get<Attributes::Map>(); }
+
 /// Vertex data containing position and attributes
 struct VertexData {
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
-    std::map<std::string, double> attributes;
+    Attributes attributes;  ///< Custom vertex attributes; holds no map until one is stored
 
     VertexData() = default;
     VertexData(const Point& p) : x(p[0]), y(p[1]), z(p[2]) {}
@@ -171,6 +249,15 @@ private:
     mutable std::vector<std::pair<size_t, size_t>> triangle_face_subidx_cache; ///< (face_idx, sub_idx)
     mutable std::vector<Point> vertices_cache; ///< Cached vertices for fast lookup
     mutable std::shared_ptr<SpatialAABBTree> triangle_aabb_tree;
+
+    /// Every (u, v) some face ring walks, as a flat set. The halfedge-free backbone of the
+    /// pure readers (is_closed, edges, boundaries): one transient allocation per call instead
+    /// of a persistent nested-map structure per mesh.
+    std::set<std::pair<size_t, size_t>> directed_face_edges() const;
+
+    /// Face-derived halfedge connectivity, computed WITHOUT mutating — pb_dumps borrows it
+    /// when the lazy map was never built, so the wire format never changes.
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> compute_halfedges() const;
 
 public:
 
@@ -380,6 +467,14 @@ public:
     /// For closed meshes: flip entire mesh if normals point inward. Returns true if flipped.
     bool orient_outward();
 
+    /// Recreate halfedge from vertex + face alone.
+    void rebuild_halfedges();
+
+    /// Topology is LAZY: a freshly DECODED mesh carries no halfedge map. Every EDIT entry
+    /// point calls this first; the pure readers are face-based and never build it.
+    /// Rebuilds iff halfedge is empty and faces exist.
+    void ensure_halfedges();
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Connectivity Queries
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -389,6 +484,11 @@ public:
 
     /// Get the faces on each side of an edge
     std::optional<std::vector<size_t>> edge_faces(size_t u, size_t v) const;
+
+    /// Every directed face edge -> its face key, in ONE face walk. The bulk form of
+    /// edge_faces for per-edge loops (a per-call edge_faces is O(E) face-based, so a
+    /// loop over all edges would be quadratic — build this once instead).
+    std::map<std::pair<size_t, size_t>, size_t> edge_face_map() const;
 
     /// Get the edge as a Line
     std::optional<Line> edge_line(size_t u, size_t v) const;

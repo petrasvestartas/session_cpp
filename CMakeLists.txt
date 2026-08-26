@@ -381,6 +381,7 @@ set(MINITEST_SOURCES
     src/matrix_test.cpp
     src/convex_hull_test.cpp
     src/spatial_kdtree_test.cpp
+    src/spatial_octree_test.cpp
     src/boolean_polyline_test.cpp
     # src/elementfeature_test.cpp  # removed: source file does not exist (stale reference)
     src/mesh_offset_test.cpp

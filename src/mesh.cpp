@@ -92,15 +92,11 @@ bool Mesh::operator!=(const Mesh& other) const { return !(*this == other); }
 Mesh::~Mesh() {}
 
 size_t Mesh::number_of_edges() const {
-    std::set<std::pair<size_t, size_t>> seen;
+    auto dfe = directed_face_edges();
     size_t count = 0;
-    
-    for (const auto& [u, neighbors] : halfedge) {
-        for (const auto& [v, _] : neighbors) {
-            auto edge = std::minmax(u, v);
-            if (seen.insert(edge).second) {
-                count++;
-            }
+    for (const auto& [u, v] : dfe) {
+        if (u < v || dfe.find({v, u}) == dfe.end()) {
+            count++;
         }
     }
     return count;
@@ -123,28 +119,24 @@ std::vector<size_t> Mesh::faces() const {
 }
 
 std::vector<std::pair<size_t, size_t>> Mesh::edges() const {
+    auto dfe = directed_face_edges();
     std::set<std::pair<size_t, size_t>> seen;
-    std::vector<std::pair<size_t, size_t>> result;
-    for (const auto& [u, neighbors] : halfedge) {
-        for (const auto& [v, _] : neighbors) {
-            auto edge = std::minmax(u, v);
-            if (seen.insert(edge).second)
-                result.push_back(edge);
-        }
-    }
-    return result;
+    for (const auto& [u, v] : dfe)
+        seen.insert(std::minmax(u, v));
+    return std::vector<std::pair<size_t, size_t>>(seen.begin(), seen.end());
 }
 
 std::vector<std::pair<size_t, size_t>> Mesh::naked_edges(bool boundary) const {
+    // one directed set for the whole call — never one per edge (that walk is quadratic)
+    auto dfe = directed_face_edges();
     std::set<std::pair<size_t, size_t>> seen;
+    for (const auto& [u, v] : dfe)
+        seen.insert(std::minmax(u, v));
     std::vector<std::pair<size_t, size_t>> result;
-    for (const auto& [u, neighbors] : halfedge) {
-        for (const auto& [v, _] : neighbors) {
-            auto edge = std::minmax(u, v);
-            if (!seen.insert(edge).second) continue;
-            if (is_edge_on_boundary(u, v) == boundary)
-                result.push_back(edge);
-        }
+    for (const auto& [u, v] : seen) {
+        bool naked = !(dfe.count({u, v}) && dfe.count({v, u}));
+        if (naked == boundary)
+            result.push_back({u, v});
     }
     return result;
 }
@@ -187,10 +179,13 @@ bool Mesh::is_closed() const {
                 hole_edges.emplace(b, a);
             }
         }
-    for (const auto& [u, nbrs] : halfedge)
-        for (const auto& [v, fkey] : nbrs)
-            if (!fkey.has_value() && hole_edges.find({u, v}) == hole_edges.end()) return false;
-    return !halfedge.empty();
+    auto dfe = directed_face_edges();
+    for (const auto& [u, v] : dfe) {
+        // a face edge whose reverse no face walks is a border — unless a declared hole
+        // ring owns it (hole_edges holds both directions)
+        if (dfe.find({v, u}) == dfe.end() && hole_edges.find({v, u}) == hole_edges.end()) return false;
+    }
+    return !vertex.empty();
 }
 
 static void parallel_for(size_t n, std::function<void(size_t)> fn) {
@@ -403,6 +398,7 @@ bool Mesh::unify_winding() {
 }
 
 bool Mesh::orient_outward() {
+    ensure_halfedges();
     if (face.empty() || !naked_edges(true).empty()) return false;
     double vol = 0.0;
     for (const auto& [fk, verts] : face) {
@@ -433,6 +429,7 @@ bool Mesh::orient_outward() {
 }
 
 size_t Mesh::add_vertex(const Point& position, std::optional<size_t> vkey) {
+    ensure_halfedges();
     size_t vertex_key = vkey.value_or(max_vertex);
     
     if (vertex_key >= max_vertex) {
@@ -453,6 +450,7 @@ size_t Mesh::add_vertex(const Point& position, std::optional<size_t> vkey) {
 }
 
 std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey) {
+    ensure_halfedges();
     if (vertices.size() < 3) {
         return std::nullopt;
     }
@@ -502,7 +500,50 @@ std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::o
     return face_key;
 }
 
+std::set<std::pair<size_t, size_t>> Mesh::directed_face_edges() const {
+    std::set<std::pair<size_t, size_t>> s;
+    for (const auto& [fkey, verts] : face) {
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i)
+            s.insert({verts[i], verts[(i + 1) % n]});
+    }
+    return s;
+}
+
+std::map<size_t, std::map<size_t, std::optional<size_t>>> Mesh::compute_halfedges() const {
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> he;
+    for (const auto& [vkey, _] : vertex)
+        he[vkey] = {};
+    for (const auto& [fkey, verts] : face) {
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            size_t u = verts[i];
+            size_t v = verts[(i + 1) % n];
+            he[u][v] = fkey;
+            if (!he[v].count(u))
+                he[v][u] = std::nullopt;
+        }
+    }
+    return he;
+}
+
+void Mesh::rebuild_halfedges() {
+    halfedge = compute_halfedges();
+}
+
+/// Topology is LAZY: a freshly DECODED mesh carries no halfedge map — measured as the
+/// dominant decode-time and memory cost on dense scenes (a nested map per vertex,
+/// per mesh). Every EDIT entry point calls this first; the pure readers are face-based
+/// and never build it. Constructed meshes (add_vertex/add_face from empty) maintain the
+/// map incrementally exactly as before, so this fires only on decoded-then-edited meshes.
+void Mesh::ensure_halfedges() {
+    if (halfedge.empty() && !face.empty()) {
+        rebuild_halfedges();
+    }
+}
+
 void Mesh::remove_face(size_t fkey) {
+    ensure_halfedges();
     auto it = face.find(fkey);
     if (it == face.end()) return;
     const auto& verts = it->second;
@@ -543,6 +584,7 @@ void Mesh::remove_face(size_t fkey) {
 }
 
 void Mesh::remove_vertex(size_t vkey) {
+    ensure_halfedges();
     if (vertex.find(vkey) == vertex.end()) return;
     std::vector<size_t> faces_to_remove;
     for (const auto& [fk, verts] : face)
@@ -576,6 +618,7 @@ void Mesh::remove_vertex(size_t vkey) {
 }
 
 void Mesh::remove_edge(size_t u, size_t v) {
+    ensure_halfedges();
     std::vector<size_t> faces_to_remove;
     auto uit = halfedge.find(u);
     if (uit != halfedge.end()) {
@@ -610,6 +653,7 @@ void Mesh::remove_edge(size_t u, size_t v) {
 }
 
 void Mesh::flip_face(size_t fkey) {
+    ensure_halfedges();
     auto it = face.find(fkey);
     if (it == face.end()) return;
     auto fv = it->second;
@@ -636,48 +680,52 @@ void Mesh::flip() {
 }
 
 std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::edge_edges(size_t u, size_t v) const {
-    bool uv = halfedge.count(u) && halfedge.at(u).count(v);
-    bool vu = halfedge.count(v) && halfedge.at(v).count(u);
-    if (!uv && !vu) return std::nullopt;
+    auto dfe = directed_face_edges();
+    if (!dfe.count({u, v}) && !dfe.count({v, u})) return std::nullopt;
+    auto ends = [&dfe](size_t x) {
+        std::set<size_t> keys;
+        for (const auto& [a, b] : dfe) {
+            if (a == x) keys.insert(b);
+            else if (b == x) keys.insert(a);
+        }
+        return keys;
+    };
     std::vector<std::pair<size_t, size_t>> edges;
-    auto it = halfedge.find(u);
-    if (it != halfedge.end()) {
-        for (const auto& [w, _] : it->second) {
-            if (w != v) edges.push_back({u, w});
-        }
-    }
-    auto it2 = halfedge.find(v);
-    if (it2 != halfedge.end()) {
-        for (const auto& [w, _] : it2->second) {
-            if (w != u) edges.push_back({v, w});
-        }
-    }
+    for (size_t w : ends(u)) if (w != v) edges.push_back({u, w});
+    for (size_t w : ends(v)) if (w != u) edges.push_back({v, w});
     return edges;
 }
 
+std::map<std::pair<size_t, size_t>, size_t> Mesh::edge_face_map() const {
+    std::map<std::pair<size_t, size_t>, size_t> m;
+    for (const auto& [fkey, verts] : face) {
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i)
+            m[{verts[i], verts[(i + 1) % n]}] = fkey;
+    }
+    return m;
+}
+
 std::optional<std::vector<size_t>> Mesh::edge_faces(size_t u, size_t v) const {
-    std::optional<size_t> f0, f1;
-    auto it = halfedge.find(u);
-    if (it != halfedge.end()) {
-        auto jt = it->second.find(v);
-        if (jt != it->second.end()) f0 = jt->second;
-    }
-    auto it2 = halfedge.find(v);
-    if (it2 != halfedge.end()) {
-        auto jt2 = it2->second.find(u);
-        if (jt2 != it2->second.end()) f1 = jt2->second;
-    }
-    if (!f0 && !f1) return std::nullopt;
     std::vector<size_t> result;
-    if (f0) result.push_back(*f0);
-    if (f1) result.push_back(*f1);
+    for (const auto& [fkey, verts] : face) {
+        size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            size_t a = verts[i];
+            size_t b = verts[(i + 1) % n];
+            if ((a == u && b == v) || (a == v && b == u)) {
+                if (std::find(result.begin(), result.end(), fkey) == result.end())
+                    result.push_back(fkey);
+            }
+        }
+    }
+    if (result.empty()) return std::nullopt;
     return result;
 }
 
 std::optional<Line> Mesh::edge_line(size_t u, size_t v) const {
-    bool uv = halfedge.count(u) && halfedge.at(u).count(v);
-    bool vu = halfedge.count(v) && halfedge.at(v).count(u);
-    if (!uv && !vu) return std::nullopt;
+    auto dfe = directed_face_edges();
+    if (!dfe.count({u, v}) && !dfe.count({v, u})) return std::nullopt;
     auto pu = vertex_point(u);
     auto pv = vertex_point(v);
     if (!pu || !pv) return std::nullopt;
@@ -699,14 +747,11 @@ std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::face_edges(size_t fa
 std::optional<std::vector<size_t>> Mesh::face_faces(size_t face_key) const {
     auto fe = face_edges(face_key);
     if (!fe) return std::nullopt;
+    auto efm = edge_face_map();
     std::vector<size_t> neighbors;
     for (const auto& [u, v] : *fe) {
-        auto it = halfedge.find(v);
-        if (it == halfedge.end()) continue;
-        auto jt = it->second.find(u);
-        if (jt != it->second.end() && jt->second.has_value()) {
-            neighbors.push_back(*jt->second);
-        }
+        auto it = efm.find({v, u});
+        if (it != efm.end()) neighbors.push_back(it->second);
     }
     return neighbors;
 }
@@ -738,21 +783,27 @@ std::optional<std::vector<size_t>> Mesh::face_vertices(size_t face_key) const {
 }
 
 std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::vertex_edges(size_t vertex_key) const {
-    auto it = halfedge.find(vertex_key);
-    if (it == halfedge.end()) return std::nullopt;
+    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
+    auto keys = vertex_vertices(vertex_key);
+    if (!keys) return std::nullopt;
     std::vector<std::pair<size_t, size_t>> edges;
-    for (const auto& [u, _] : it->second) {
+    for (size_t u : *keys) {
         edges.push_back({vertex_key, u});
     }
     return edges;
 }
 
 std::optional<std::vector<size_t>> Mesh::vertex_faces(size_t vertex_key) const {
-    auto it = halfedge.find(vertex_key);
-    if (it == halfedge.end()) return std::nullopt;
+    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
+    // same order as the halfedge version: neighbors sorted, each mapped to the face of
+    // the DIRECTED edge (v, u) — one entry per incident face, no duplicates
+    auto efm = edge_face_map();
+    auto keys = vertex_vertices(vertex_key);
+    if (!keys) return std::nullopt;
     std::vector<size_t> faces;
-    for (const auto& [v, face_opt] : it->second) {
-        if (face_opt.has_value()) faces.push_back(*face_opt);
+    for (size_t u : *keys) {
+        auto it = efm.find({vertex_key, u});
+        if (it != efm.end()) faces.push_back(it->second);
     }
     return faces;
 }
@@ -766,13 +817,14 @@ std::optional<Point> Mesh::vertex_point(size_t vertex_key) const {
 }
 
 std::optional<std::vector<size_t>> Mesh::vertex_vertices(size_t vertex_key) const {
-    auto it = halfedge.find(vertex_key);
-    if (it == halfedge.end()) return std::nullopt;
-    std::vector<size_t> neighbors;
-    for (const auto& [v, _] : it->second) {
-        neighbors.push_back(v);
+    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
+    auto dfe = directed_face_edges();
+    std::set<size_t> keys;
+    for (const auto& [u, v] : dfe) {
+        if (u == vertex_key) keys.insert(v);
+        else if (v == vertex_key) keys.insert(u);
     }
-    return neighbors;
+    return std::vector<size_t>(keys.begin(), keys.end());
 }
 
 std::optional<std::vector<size_t>> Mesh::vertex_neighbors(size_t vertex_key, bool ordered) const {
@@ -1242,13 +1294,8 @@ std::vector<std::pair<size_t, size_t>> Mesh::edges_where_predicate(const std::fu
 }
 
 bool Mesh::is_edge_on_boundary(size_t u, size_t v) const {
-    auto check = [&](size_t a, size_t b) {
-        auto it = halfedge.find(a);
-        if (it == halfedge.end()) return true;
-        auto jt = it->second.find(b);
-        return jt == it->second.end() || !jt->second.has_value();
-    };
-    return check(u, v) || check(v, u);
+    auto dfe = directed_face_edges();
+    return !(dfe.count({u, v}) && dfe.count({v, u}));
 }
 
 bool Mesh::is_face_on_boundary(size_t face_key) const {
@@ -1261,20 +1308,9 @@ bool Mesh::is_face_on_boundary(size_t face_key) const {
 }
 
 bool Mesh::is_vertex_on_boundary(size_t vertex_key) const {
-    auto it = halfedge.find(vertex_key);
-    if (it == halfedge.end()) {
-        return false;
-    }
-    
-    for (const auto& [v, face_opt] : it->second) {
-        if (!face_opt.has_value()) {
-            return true;
-        }
-    }
-    
-    for (const auto& [u, neighbors] : halfedge) {
-        auto neighbor_it = neighbors.find(vertex_key);
-        if (neighbor_it != neighbors.end() && !neighbor_it->second.has_value()) {
+    auto dfe = directed_face_edges();
+    for (const auto& [u, v] : dfe) {
+        if (dfe.find({v, u}) == dfe.end() && (u == vertex_key || v == vertex_key)) {
             return true;
         }
     }
@@ -2510,9 +2546,16 @@ nlohmann::ordered_json Mesh::jsondump() const {
     
     data["guid"] = guid();
     
-    // Halfedge connectivity
+    // Halfedge connectivity — lazy topology: if the map was never built, compute it
+    // transiently so the JSON format never changes
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> he_owned;
+    const auto* he_src = &halfedge;
+    if (halfedge.empty() && !face.empty()) {
+        he_owned = compute_halfedges();
+        he_src = &he_owned;
+    }
     nlohmann::ordered_json halfedge_data;
-    for (const auto& [u, neighbors] : halfedge) {
+    for (const auto& [u, neighbors] : *he_src) {
         nlohmann::ordered_json neighbor_data;
         for (const auto& [v, face_opt] : neighbors) {
             neighbor_data[std::to_string(v)] = face_opt.has_value() ? nlohmann::json(face_opt.value()) : nlohmann::json(nullptr);
@@ -3312,8 +3355,15 @@ std::string Mesh::pb_dumps() const {
         }
     }
 
-    // Halfedges
-    for (const auto& [u, neighbors] : halfedge) {
+    // Halfedges — lazy topology: if this mesh was decoded and never edited, the map was
+    // never built — compute it transiently so the WIRE stays exactly what it always was
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> he_owned;
+    const auto* he_src = &halfedge;
+    if (halfedge.empty() && !face.empty()) {
+        he_owned = compute_halfedges();
+        he_src = &he_owned;
+    }
+    for (const auto& [u, neighbors] : *he_src) {
         auto& hmap = (*proto.mutable_halfedges())[u];
         for (const auto& [v, fkey_opt] : neighbors) {
             (*hmap.mutable_neighbors())[v] = fkey_opt.value_or(UINT64_MAX);
@@ -3408,7 +3458,6 @@ Mesh Mesh::pb_loads(const std::string& data) {
             vd.attributes[k] = v;
         }
         mesh.vertex[vkey] = vd;
-        mesh.halfedge[vkey] = {};
     }
 
     // Faces
@@ -3443,18 +3492,11 @@ Mesh Mesh::pb_loads(const std::string& data) {
         mesh.triangulation[fkey] = tris;
     }
 
-    // Halfedges
-    for (const auto& [u, hmap] : proto.halfedges()) {
-        std::map<size_t, std::optional<size_t>> neighbors;
-        for (const auto& [v, fkey] : hmap.neighbors()) {
-            if (fkey == UINT64_MAX) {
-                neighbors[v] = std::nullopt;
-            } else {
-                neighbors[v] = fkey;
-            }
-        }
-        mesh.halfedge[u] = neighbors;
-    }
+    // Topology is LAZY: the wire may carry a halfedges map (older writers), but decoding
+    // it into a nested map per vertex was the single biggest load cost for dense
+    // scenes — and the viewer never reads it. ensure_halfedges rebuilds from faces the
+    // first time an EDIT needs it; pb_dumps computes it transiently so the wire format
+    // is unchanged. The pure readers (is_closed, edges, boundaries) are face-based.
 
     // Edge data
     for (const auto& edata : proto.edge_data()) {
@@ -3749,6 +3791,8 @@ Mesh::miter_contours(const Mesh& shell, double thickness,
         std::vector<Point>, std::vector<Point>,
         std::vector<Point>, std::vector<Point>,
         Vector>> result;
+    // one bulk edge->face map for the whole call (shell may carry no halfedge map)
+    auto efm = shell.edge_face_map();
     for (size_t fk : shell.faces()) {
         auto fverts_opt = shell.face_vertices(fk);
         if (!fverts_opt) continue;
@@ -3772,15 +3816,12 @@ Mesh::miter_contours(const Mesh& shell, double thickness,
         for (size_t i = 0; i < n; ++i) {
             size_t j = (i + 1) % n;
             Vector avg_n = fn;
-            auto outer = shell.halfedge.find(fverts[j]);
-            if (outer != shell.halfedge.end()) {
-                auto inner = outer->second.find(fverts[i]);
-                if (inner != outer->second.end() && inner->second.has_value()) {
-                    Vector adj = fold_face_normal(shell, inner->second.value());
-                    Vector sum(fn[0]+adj[0], fn[1]+adj[1], fn[2]+adj[2]);
-                    double len = std::sqrt(sum[0]*sum[0]+sum[1]*sum[1]+sum[2]*sum[2]);
-                    if (len > 0.1) { sum.normalize_self(); avg_n = sum; }
-                }
+            auto adj_it = efm.find({fverts[j], fverts[i]});
+            if (adj_it != efm.end()) {
+                Vector adj = fold_face_normal(shell, adj_it->second);
+                Vector sum(fn[0]+adj[0], fn[1]+adj[1], fn[2]+adj[2]);
+                double len = std::sqrt(sum[0]*sum[0]+sum[1]*sum[1]+sum[2]*sum[2]);
+                if (len > 0.1) { sum.normalize_self(); avg_n = sum; }
             }
             double ex = pts[j][0]-pts[i][0];
             double ey = pts[j][1]-pts[i][1];
