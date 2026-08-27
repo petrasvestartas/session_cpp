@@ -380,6 +380,36 @@ namespace session_cpp {
     }
 
 
+    MINI_TEST("RemeshCDT", "Degenerate hole keeps flat indices") {
+        // uncomment #include "mesh.h"
+        // uncomment #include "polyline.h"
+        // uncomment #include "remesh_cdt.h"
+
+        Polyline border({
+            Point(0, 0, 0),
+            Point(4, 0, 0),
+            Point(4, 4, 0),
+            Point(0, 4, 0),
+        });
+        Polyline degen({
+            Point(1.5, 2, 0),
+            Point(2.5, 2, 0),
+        });
+        Polyline hole({
+            Point(1, 1, 0),
+            Point(1, 3, 0),
+            Point(3, 3, 0),
+            Point(3, 1, 0),
+        });
+        auto tris = RemeshCDT::triangulate({border, degen, hole});
+        int mx = 0;
+        for (const auto& t : tris)
+            for (int k = 0; k < 3; ++k)
+                if (t[k] > mx) mx = t[k];
+
+        MINI_CHECK(!tris.empty() && mx == 9);
+    }
+
     MINI_TEST("RemeshCDT", "Large coordinates") {
         // uncomment #include "mesh.h"
         // uncomment #include "polyline.h"

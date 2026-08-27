@@ -1085,7 +1085,6 @@ std::vector<std::array<int,3>> RemeshCDT::triangulate(const std::vector<Polyline
     std::vector<std::vector<std::pair<double,double>>> holes_2d;
     for (size_t i = 1; i < polylines.size(); ++i) {
         auto h = strip_close_pl(polylines[i]);
-        if (h.size() < 3) continue;
         std::vector<std::pair<double,double>> h2d;
         for (const auto& p : h) h2d.push_back({p[0], p[1]});
         holes_2d.push_back(std::move(h2d));
