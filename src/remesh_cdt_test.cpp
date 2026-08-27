@@ -380,6 +380,22 @@ namespace session_cpp {
     }
 
 
+    MINI_TEST("RemeshCDT", "Large coordinates") {
+        // uncomment #include "mesh.h"
+        // uncomment #include "polyline.h"
+        // uncomment #include "remesh_cdt.h"
+
+        Polyline border({
+            Point(1e13, 1e13, 0),
+            Point(1e13 + 4, 1e13, 0),
+            Point(1e13 + 4, 1e13 + 4, 0),
+            Point(1e13, 1e13 + 4, 0),
+        });
+        auto tris = RemeshCDT::triangulate({border});
+
+        MINI_CHECK(tris.size() == 2);
+    }
+
     MINI_TEST("RemeshCDT", "plate_failing 15-vert outer + 4 holes") {
         // Exact coordinates from debug_cdt_plate_failing.py (BOT face, 2D via from_polylines)
         std::vector<Point> border = {
