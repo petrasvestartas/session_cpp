@@ -921,7 +921,18 @@ std::vector<std::array<int,3>> cdt_triangulate(
     const std::vector<std::pair<double,double>>& border_2d,
     const std::vector<std::vector<std::pair<double,double>>>& holes_2d)
 {
-    const double scale = 1e6;
+    // Adaptive precision: drop decimal digits until the largest coordinate fits int64
+    // headroom (9e17), so huge inputs cannot overflow the exact integer arithmetic.
+    double max_coord = 1.0;
+    for (const auto& p : border_2d)
+        max_coord = std::max({max_coord, std::abs(p.first), std::abs(p.second)});
+    for (const auto& h : holes_2d)
+        for (const auto& p : h)
+            max_coord = std::max({max_coord, std::abs(p.first), std::abs(p.second)});
+    int precision = 6;
+    while (precision > 0 && max_coord * std::pow(10.0, precision) > 9e17)
+        --precision;
+    const double scale = std::pow(10.0, precision);
     auto to_pt64 = [&](double x, double y) -> Point64 {
         return { int64_t(std::round(x * scale)), int64_t(std::round(y * scale)) };
     };
@@ -930,7 +941,7 @@ std::vector<std::array<int,3>> cdt_triangulate(
     // Clipper2's sweep-line CDT fails to generate triangles adjacent to a hole
     // when any hole vertex shares the same int64 y-coordinate as a border vertex
     // (constraint edges become collinear at that y level).
-    // Fix: shift each conflicting hole vertex by -1 int64 unit in y (≈ 1 nm).
+    // Fix: shift each conflicting hole vertex by -1 int64 unit in y (~1/scale units).
     // This is done consistently in both flat/pt_map and CDT input so all indices remain valid.
     std::unordered_set<int64_t> border_ys;
     for (const auto& p : border_2d)
