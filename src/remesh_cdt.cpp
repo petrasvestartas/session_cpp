@@ -2,8 +2,6 @@
 #include "session_config.h"
 #include <vector>
 #include <array>
-#include <map>
-#include <set>
 #include <stack>
 #include <algorithm>
 #include <numeric>
@@ -56,7 +54,7 @@ inline int CrossProductSign(const Point64& p1, const Point64& p2, const Point64&
 
 inline double Sqr(double x) { return x * x; }
 
-inline double DistanceSqr(const Point64& a, const Point64& b)
+inline double DistSqr(const Point64& a, const Point64& b)
 {
     return Sqr(static_cast<double>(a.x - b.x)) + Sqr(static_cast<double>(a.y - b.y));
 }
@@ -110,11 +108,6 @@ public:
 static bool VertexListSort(const Vertex2* a, const Vertex2* b)
 {
     return (a->pt.y == b->pt.y) ? (a->pt.x < b->pt.x) : (a->pt.y > b->pt.y);
-}
-
-static bool EdgeListSort(const Edge* a, const Edge* b)
-{
-    return a->vL->pt.x < b->vL->pt.x;
 }
 
 // ---- Edge predicates ----
@@ -239,8 +232,8 @@ static double ShortestDistFromSegment(const Point64& pt,
     double ax = static_cast<double>(pt.x - segPt1.x);
     double ay = static_cast<double>(pt.y - segPt1.y);
     double qNum = ax * dx + ay * dy;
-    if (qNum < 0)                  return DistanceSqr(pt, segPt1);
-    if (qNum > Sqr(dx) + Sqr(dy)) return DistanceSqr(pt, segPt2);
+    if (qNum < 0)                  return DistSqr(pt, segPt1);
+    if (qNum > Sqr(dx) + Sqr(dy)) return DistSqr(pt, segPt2);
     return Sqr(ax * dy - dx * ay) / (dx * dx + dy * dy);
 }
 
@@ -266,11 +259,6 @@ static IntersectKind SegsIntersect(const Point64 s1a, const Point64 s1b,
     return IntersectKind::none;
 }
 
-static double DistSqr(const Point64& pt1, const Point64& pt2)
-{
-    return Sqr(static_cast<double>(pt1.x - pt2.x)) + Sqr(static_cast<double>(pt1.y - pt2.y));
-}
-
 // ---- Sweep-line CDT engine ----
 
 class Delaunay {
@@ -284,25 +272,6 @@ private:
     bool                 useDelaunay = true;
     Vertex2*             lowermostVertex = nullptr;
     Edge*                firstActive = nullptr; // head of doubly-linked active-edge list
-    int64_t              sweepY_ = 0;
-
-    // Comparator: orders active edges by x-intercept at current sweepY_.
-    // Non-crossing invariant (CDT input) ensures relative order is stable across y-bands.
-    struct EdgeXCmp {
-        const int64_t* pY = nullptr;
-        static double xAt(const Edge* e, int64_t y) noexcept {
-            int64_t dy = e->vB->pt.y - e->vT->pt.y;
-            if (dy == 0) return (double)(e->vT->pt.x + e->vB->pt.x) * 0.5;
-            return e->vT->pt.x + (double)(e->vB->pt.x - e->vT->pt.x)
-                   * (double)(y - e->vT->pt.y) / (double)dy;
-        }
-        bool operator()(const Edge* a, const Edge* b) const noexcept {
-            double xa = xAt(a, *pY), xb = xAt(b, *pY);
-            if (xa != xb) return xa < xb;
-            return a < b; // pointer tiebreak for strict weak ordering
-        }
-    };
-    std::set<Edge*, EdgeXCmp> activeSet_;
 
     void      AddPath(const Path64& path);
     bool      AddPaths(const Paths64& paths);
@@ -320,8 +289,7 @@ private:
     void      ForceLegal(Edge* edge);
 
 public:
-    explicit Delaunay(bool delaunay = true)
-        : useDelaunay(delaunay), activeSet_(EdgeXCmp{&sweepY_}) {}
+    explicit Delaunay(bool delaunay = true) : useDelaunay(delaunay) {}
     ~Delaunay() { CleanUp(); }
     Paths64 Execute(const Paths64& paths, TriangulateResult& triResult);
 };
@@ -334,7 +302,6 @@ void Delaunay::CleanUp()
     allEdges.resize(0);
     for (auto t : allTriangles) delete t;
     allTriangles.resize(0);
-    activeSet_.clear();
     firstActive = nullptr;
     lowermostVertex = nullptr;
 }
@@ -348,13 +315,11 @@ void Delaunay::AddEdgeToActives(Edge* edge)
     edge->isActive = true;
     if (firstActive) firstActive->prevE = edge;
     firstActive = edge;
-    activeSet_.insert(edge);
 }
 
 // Remove edge from active list/BST and from both endpoint vertex edge-lists.
 void Delaunay::RemoveEdgeFromActives(Edge* edge)
 {
-    activeSet_.erase(edge);
     RemoveEdgeFromVertex(edge->vB, edge);
     RemoveEdgeFromVertex(edge->vT, edge);
     Edge* prev = edge->prevE;
@@ -458,7 +423,6 @@ Edge* Delaunay::CreateInnerLocMinLooseEdge(Vertex2* vAbove)
 
     int64_t xAbove = vAbove->pt.x;
     int64_t yAbove = vAbove->pt.y;
-    sweepY_ = yAbove;
 
     Edge* eBelow = nullptr;
     double bestD = -1.0;
@@ -776,8 +740,8 @@ bool Delaunay::AddPaths(const Paths64& paths)
         std::accumulate(paths.begin(), paths.end(), size_t(0),
             [](const auto& a, const Path64& path) { return a + path.size(); });
     if (total_vertex_count == 0) return false;
-    allVertices.reserve(allVertices.capacity() + total_vertex_count);
-    allEdges.reserve(allEdges.capacity() + total_vertex_count);
+    allVertices.reserve(allVertices.size() + total_vertex_count);
+    allEdges.reserve(allEdges.size() + total_vertex_count);
     for (const Path64& path : paths) AddPath(path);
     return allVertices.size() > 2;
 }
@@ -806,12 +770,10 @@ Paths64 Delaunay::Execute(const Paths64& paths, TriangulateResult& triResult)
         while (!locMinStack.empty()) locMinStack.pop();
     }
 
-    std::sort(allEdges.begin(), allEdges.end(), EdgeListSort);
     std::sort(allVertices.begin(), allVertices.end(), VertexListSort);
     MergeDupOrCollinearVertices();
 
     int64_t currY = allVertices[0]->pt.y;
-    sweepY_ = currY;
     for (auto vIt = allVertices.begin(); vIt != allVertices.end(); ++vIt) {
         Vertex2* v = *vIt;
         if (v->edges.empty()) continue;
@@ -851,7 +813,6 @@ Paths64 Delaunay::Execute(const Paths64& paths, TriangulateResult& triResult)
                 }
             }
             currY = v->pt.y;
-            sweepY_ = currY;
         }
 
         for (int i = static_cast<int>(v->edges.size()) - 1; i >= 0; --i) {
