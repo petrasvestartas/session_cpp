@@ -6454,8 +6454,38 @@ bool Intersection::polyline_plane(const Polyline& polyline, const Plane& plane, 
         Point b = polyline.get_point(i + 1);
         double va = plane_value_at(plane, a);
         double vb = plane_value_at(plane, b);
-        if (std::fabs(va) < Tolerance::ZERO_TOLERANCE || std::fabs(vb) < Tolerance::ZERO_TOLERANCE)
+        bool a_on = std::fabs(va) < Tolerance::ZERO_TOLERANCE;
+        bool b_on = std::fabs(vb) < Tolerance::ZERO_TOLERANCE;
+        // A segment lying IN the plane stays skipped (no single crossing to
+        // report), but a polyline crossing the plane exactly THROUGH a
+        // vertex used to lose the crossing entirely: the old guard skipped
+        // both segments touching the vertex, the caller saw < 2 points, and
+        // e.g. a flush-aligned plate silently produced no joint - a false
+        // negative on precisely the tidy axis-aligned data users model.
+        // Emit the on-plane vertex once, as the crossing of the segment it
+        // STARTS (the closing segment of a closed polyline then sees it as
+        // 'b' and stays silent, so there is no duplicate).
+        if (a_on && b_on) continue;
+        if (a_on) {
+            points.push_back(a);
+            edge_ids.push_back(static_cast<int>(i));
             continue;
+        }
+        if (b_on) {
+            // Handled as the next segment's 'a' - except on the final
+            // segment of an OPEN polyline, where 'b' never becomes an 'a'.
+            if (i + 2 == n) {
+                Point front = polyline.get_point(0);
+                bool closes = std::fabs(b[0]-front[0]) < Tolerance::ZERO_TOLERANCE &&
+                              std::fabs(b[1]-front[1]) < Tolerance::ZERO_TOLERANCE &&
+                              std::fabs(b[2]-front[2]) < Tolerance::ZERO_TOLERANCE;
+                if (!closes) {
+                    points.push_back(b);
+                    edge_ids.push_back(static_cast<int>(i));
+                }
+            }
+            continue;
+        }
         Line seg(a[0], a[1], a[2], b[0], b[1], b[2]);
         Point hit;
         if (line_plane(seg, plane, hit, true)) {
@@ -6795,8 +6825,25 @@ bool Intersection::polyline_plane_to_line(const Polyline& poly, const Plane& pla
     std::vector<int> edge_ids;
     if (!polyline_plane(poly, plane, pts, edge_ids)) return false;
     if (pts.size() < 2) return false;
-    const Point& a = pts[0];
-    const Point& b = pts[1];
+    // With more than 2 crossings (non-convex contact patch) the first two in
+    // edge order are an arbitrary sub-chord; take the EXTREME pair so the
+    // joint line spans the full patch. For exactly 2 crossings this is
+    // byte-identical to the old behaviour.
+    size_t ia = 0, ib = 1;
+    if (pts.size() > 2) {
+        double best = -1.0;
+        for (size_t p1 = 0; p1 + 1 < pts.size(); ++p1) {
+            for (size_t p2 = p1 + 1; p2 < pts.size(); ++p2) {
+                double dx = pts[p1][0]-pts[p2][0];
+                double dy = pts[p1][1]-pts[p2][1];
+                double dz = pts[p1][2]-pts[p2][2];
+                double d  = dx*dx + dy*dy + dz*dz;
+                if (d > best) { best = d; ia = p1; ib = p2; }
+            }
+        }
+    }
+    const Point& a = pts[ia];
+    const Point& b = pts[ib];
     double da = (a[0]-align_start[0])*(a[0]-align_start[0]) +
                 (a[1]-align_start[1])*(a[1]-align_start[1]) +
                 (a[2]-align_start[2])*(a[2]-align_start[2]);
