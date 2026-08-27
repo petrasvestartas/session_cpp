@@ -451,8 +451,6 @@ namespace session_cpp {
             Polyline(h4),
         }, false, false);
 
-        printf("plate_failing: faces=%zu  vertices=%zu  valid=%d\n",
-               m.faces().size(), m.vertices().size(), (int)m.is_valid());
         MINI_CHECK(m.is_valid());
     }
 
