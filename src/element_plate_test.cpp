@@ -238,11 +238,17 @@ MINI_TEST("ElementPlate", "Axis") {
     std::vector<Point> polygon = {Point(0,0,0), Point(2,0,0), Point(2,2,0), Point(0,2,0)};
     ElementPlate p(polygon, 0.4);
     auto ax = p.axis();
+    std::vector<Point> top = {Point(0,0,1), Point(2,0,1), Point(2,2,1), Point(0,2,1)};
+    ElementPlate p2(polygon, top);
+    auto ax2 = p2.axis();
+
     MINI_CHECK(ax.has_value());
     MINI_CHECK(TOLERANCE.is_close(ax->start()[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(ax->start()[1], 1.0));
     MINI_CHECK(TOLERANCE.is_close(ax->start()[2], 0.0));
     MINI_CHECK(TOLERANCE.is_close(ax->end()[2], -0.4));
+    MINI_CHECK(TOLERANCE.is_close(ax2->start()[2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(ax2->end()[2], 1.0));
 }
 
 MINI_TEST("ElementPlate", "Joint Types") {
