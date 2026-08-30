@@ -94,8 +94,14 @@ MINI_TEST("Element", "Add Feature") {
     auto my_feature = [](Mesh geo) -> Mesh { return geo; };
     e.add_feature(my_feature);
 
+    // Features are Mesh -> Mesh, so BRep geometry passes through untouched
+    Element eb(BRep::create_box(1.0, 1.0, 1.0), "brep_feature");
+    eb.add_feature([](Mesh) -> Mesh { return Mesh(); });
+    auto sg = eb.session_geometry(Xform::identity());
+
     MINI_CHECK(e.is_dirty());
     MINI_CHECK(e.features_count() == 1);
+    MINI_CHECK(std::holds_alternative<BRep>(sg));
 }
 
 MINI_TEST("Element", "AABB") {
