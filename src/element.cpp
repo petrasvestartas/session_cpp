@@ -811,8 +811,8 @@ void ElementPlate::set_polygon(const std::vector<Point>& pts) {
     _polygon.clear();
     _polygon.reserve(pts.size());
     for (const auto& p : pts) _polygon.emplace_back(p[0], p[1], p[2]);
-    _geometry = compute_element_geometry();
-    reset();
+    // _polygon_top is paired index-by-index with _polygon, so it has to follow the new outline.
+    set_thickness(_thickness);
 }
 
 void ElementPlate::set_polygon_top(const std::vector<Point>& pts) {
@@ -1045,9 +1045,9 @@ ElementPlate ElementPlate::jsonload(const nlohmann::json& data) {
         for (const auto& p : data["polygon_top"])
             polygon_top.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
     }
-    ElementPlate elem = polygon_top.empty()
-        ? ElementPlate(polygon.empty() ? std::vector<Point>{} : polygon, data.value("thickness", 0.1))
-        : ElementPlate(polygon, polygon_top);
+    // Stored arrays are already oriented; the (bottom, top) ctor would re-run its swap heuristic.
+    ElementPlate elem(polygon.empty() ? std::vector<Point>{} : polygon, data.value("thickness", 0.1));
+    if (!polygon_top.empty()) elem.set_polygon_top(polygon_top);
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
     if (data.contains("joint_types"))
@@ -1084,7 +1084,11 @@ std::string ElementPlate::pb_dumps() const {
     nlohmann::json poly_json = nlohmann::json::array();
     for (const auto& p : _polygon)
         poly_json.push_back({p[0], p[1], p[2]});
+    nlohmann::json poly_top_json = nlohmann::json::array();
+    for (const auto& p : _polygon_top)
+        poly_top_json.push_back({p[0], p[1], p[2]});
     params["polygon"] = poly_json;
+    params["polygon_top"] = poly_top_json;
     params["thickness"] = _thickness;
     std::string params_str = params.dump();
     proto.set_geometry_data(params_str);
@@ -1125,7 +1129,13 @@ ElementPlate ElementPlate::pb_loads(const std::string& data) {
     std::vector<Point> polygon;
     for (const auto& p : params["polygon"])
         polygon.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
-    ElementPlate elem(polygon, params["thickness"]);
+    std::vector<Point> polygon_top;
+    if (params.contains("polygon_top")) {
+        for (const auto& p : params["polygon_top"])
+            polygon_top.emplace_back(p[0].get<double>(), p[1].get<double>(), p[2].get<double>());
+    }
+    ElementPlate elem(polygon, params["thickness"].get<double>());
+    if (!polygon_top.empty()) elem.set_polygon_top(polygon_top);
     elem.guid() = proto.guid();
     elem.name = proto.name();
     elem._joint_types.assign(proto.joint_types().begin(), proto.joint_types().end());

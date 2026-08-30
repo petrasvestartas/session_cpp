@@ -40,6 +40,7 @@ MINI_TEST("ElementPlate", "Constructor") {
     MINI_CHECK(pstr == "ElementPlate(plate1, 4 pts, 0.2)");
     MINI_CHECK(prepr == "ElementPlate(" + guid + ", plate1, 4 pts, 0.2)");
     MINI_CHECK(pcopy == p && pcopy.guid() != p.guid());
+    MINI_CHECK(TOLERANCE.is_close(pcopy.polygon_top()[0][2], -0.2));
     MINI_CHECK(p == p2);
     MINI_CHECK(p != p3);
 }
@@ -59,6 +60,7 @@ MINI_TEST("ElementPlate", "Setters") {
     // uncomment #include "point.h"
     ElementPlate p;
     p.set_thickness(0.3);
+    double top_z = p.polygon_top()[0][2];
     p.set_polygon({
         Point(0, 0, 0),
         Point(3, 0, 0),
@@ -69,6 +71,8 @@ MINI_TEST("ElementPlate", "Setters") {
     MINI_CHECK(p.thickness() == 0.3);
     MINI_CHECK(p.polygon().size() == 4);
     MINI_CHECK(p.has_geometry());
+    MINI_CHECK(TOLERANCE.is_close(top_z, -0.3));
+    MINI_CHECK(TOLERANCE.is_close(p.polygon_top()[1][0], 3.0));
 }
 
 MINI_TEST("ElementPlate", "Mesh Topology") {
@@ -159,6 +163,8 @@ MINI_TEST("ElementPlate", "Json Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.thickness(), 0.3));
     MINI_CHECK(loaded.polygon().size() == 4);
     MINI_CHECK(TOLERANCE.is_close(loaded.polygon()[1][0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.polygon()[0][2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.polygon_top()[0][2], -0.3));
 }
 
 MINI_TEST("ElementPlate", "Protobuf Roundtrip") {
@@ -176,11 +182,18 @@ MINI_TEST("ElementPlate", "Protobuf Roundtrip") {
     std::string path = "serialization/test_plate_element.bin";
     p.pb_dump(path);
     ElementPlate loaded = ElementPlate::pb_load(path);
+    std::vector<Point> top = {Point(0,0,1), Point(2,0,1), Point(2,2,1), Point(0,2,1)};
+    ElementPlate p2(polygon, top, "proto_tb_plate");
+    p2.pb_dump(path);
+    ElementPlate loaded2 = ElementPlate::pb_load(path);
 
     MINI_CHECK(loaded.name == "proto_plate");
     MINI_CHECK(TOLERANCE.is_close(loaded.thickness(), 0.3));
     MINI_CHECK(loaded.polygon().size() == 4);
     MINI_CHECK(TOLERANCE.is_close(loaded.polygon()[1][0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.polygon()[0][2], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(loaded.polygon_top()[0][2], -0.3));
+    MINI_CHECK(TOLERANCE.is_close(loaded2.polygon_top()[0][2], 1.0));
 }
 
 MINI_TEST("ElementPlate", "From Top Bottom") {
