@@ -269,6 +269,7 @@ MINI_TEST("Line", "Closest Point") {
     auto [t1, cp1] = l.closest_point(p1);
     auto [t2, cp2] = l.closest_point(p2);
     auto [t3, cp3] = l.closest_point(p3);
+    auto [t4, cp4] = l.closest_point(p3, false);
 
     MINI_CHECK(cp1[0] == 5.0 && cp1[1] == 0.0 && cp1[2] == 0.0);
     MINI_CHECK(cp2[0] == 0.0 && cp2[1] == 0.0 && cp2[2] == 0.0);
@@ -276,6 +277,7 @@ MINI_TEST("Line", "Closest Point") {
     MINI_CHECK(TOLERANCE.is_close(t1, 0.5));
     MINI_CHECK(TOLERANCE.is_close(t2, 0.0));
     MINI_CHECK(TOLERANCE.is_close(t3, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(t4, 1.5) && cp4[0] == 15.0);
 }
 
 MINI_TEST("Line", "Start End Center") {
