@@ -53,17 +53,27 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
         cyz += dy * dz;
     }
 
-    // Power iteration to find dominant eigenvector
-    double vx = 1.0, vy = 0.0, vz = 0.0;
-    for (int iter = 0; iter < 100; ++iter) {
-        double nx = cxx * vx + cxy * vy + cxz * vz;
-        double ny = cxy * vx + cyy * vy + cyz * vz;
-        double nz = cxz * vx + cyz * vy + czz * vz;
-        double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
-        if (mag < 1e-15) break;
-        vx = nx / mag;
-        vy = ny / mag;
-        vz = nz / mag;
+    // Power iteration seeded from every axis: a seed orthogonal to the dominant
+    // eigenvector never reaches it, so keep the largest Rayleigh quotient.
+    double vx = 1.0, vy = 0.0, vz = 0.0, best = -1.0;
+    for (int seed = 0; seed < 3; ++seed) {
+        double sx = seed == 0 ? 1.0 : 0.0;
+        double sy = seed == 1 ? 1.0 : 0.0;
+        double sz = seed == 2 ? 1.0 : 0.0;
+        for (int iter = 0; iter < 100; ++iter) {
+            double nx = cxx * sx + cxy * sy + cxz * sz;
+            double ny = cxy * sx + cyy * sy + cyz * sz;
+            double nz = cxz * sx + cyz * sy + czz * sz;
+            double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
+            if (mag < 1e-15) break;
+            sx = nx / mag;
+            sy = ny / mag;
+            sz = nz / mag;
+        }
+        double eig = sx * (cxx * sx + cxy * sy + cxz * sz)
+                   + sy * (cxy * sx + cyy * sy + cyz * sz)
+                   + sz * (cxz * sx + cyz * sy + czz * sz);
+        if (eig > best) { best = eig; vx = sx; vy = sy; vz = sz; }
     }
 
     // Determine line extent from projected points
@@ -178,7 +188,7 @@ nlohmann::ordered_json Line::jsondump() const {
 
 Line Line::jsonload(const nlohmann::json& data) {
     Line line(data["x0"], data["y0"], data["z0"], data["x1"], data["y1"], data["z1"]);
-    line.guid() = data["guid"];
+    line._guid = data["guid"].get<std::string>();
     line.name = data["name"];
     line.linecolor = Color::jsonload(data["linecolor"]);
     line.width = data["width"];
@@ -244,7 +254,7 @@ Line Line::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     Line line(proto.start().x(), proto.start().y(), proto.start().z(),
               proto.end().x(), proto.end().y(), proto.end().z());
-    line.guid() = proto.guid();
+    line._guid = proto.guid();
     line.name = proto.name();
     // Deserialize width and linecolor
     if (proto.width() > 0.0) {
@@ -543,22 +553,23 @@ bool Line::overlap_average(const Line& other, Line& out) const {
 void Line::extend(double ext_start, double ext_end) {
     Point s = start(), e = end();
     Polyline::extend_line_segment(s, e, ext_start, ext_end);
-    *this = Line::from_points(s, e);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 void Line::extend_equally(double dist, double proportion) {
     if (dist == 0 && proportion == 0) return;
     Point s = start(), e = end();
     Polyline::extend_segment_equally(s, e, dist, proportion);
-    *this = Line::from_points(s, e);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 void Line::scale(double dist) {
     Point s = start(), e = end();
-    Vector v(e[0]-s[0], e[1]-s[1], e[2]-s[2]);
-    s[0]+=v[0]*dist; s[1]+=v[1]*dist; s[2]+=v[2]*dist;
-    e[0]-=v[0]*dist; e[1]-=v[1]*dist; e[2]-=v[2]*dist;
-    *this = Line::from_points(s, e);
+    Polyline::shrink_line_segment(s, e, dist);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 bool Line::from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out) {

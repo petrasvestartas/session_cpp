@@ -133,7 +133,7 @@ public:
     /// Extend equally: absolute dist or fraction proportion.
     void extend_equally(double dist = 0, double proportion = 0);
 
-    /// Scale line to given length (shrink symmetrically from both ends).
+    /// Shrink symmetrically from both ends by `dist` as a fraction of the length (negative grows).
     void scale(double dist);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
