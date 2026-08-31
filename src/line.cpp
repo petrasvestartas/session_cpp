@@ -543,22 +543,23 @@ bool Line::overlap_average(const Line& other, Line& out) const {
 void Line::extend(double ext_start, double ext_end) {
     Point s = start(), e = end();
     Polyline::extend_line_segment(s, e, ext_start, ext_end);
-    *this = Line::from_points(s, e);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 void Line::extend_equally(double dist, double proportion) {
     if (dist == 0 && proportion == 0) return;
     Point s = start(), e = end();
     Polyline::extend_segment_equally(s, e, dist, proportion);
-    *this = Line::from_points(s, e);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 void Line::scale(double dist) {
     Point s = start(), e = end();
-    Vector v(e[0]-s[0], e[1]-s[1], e[2]-s[2]);
-    s[0]+=v[0]*dist; s[1]+=v[1]*dist; s[2]+=v[2]*dist;
-    e[0]-=v[0]*dist; e[1]-=v[1]*dist; e[2]-=v[2]*dist;
-    *this = Line::from_points(s, e);
+    Polyline::shrink_line_segment(s, e, dist);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 bool Line::from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out) {
