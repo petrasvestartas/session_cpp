@@ -26,64 +26,9 @@ namespace _pbi = ::google::protobuf::internal;
 namespace _fl = ::google::protobuf::internal::field_layout;
 namespace session_proto {
 
-inline constexpr JointConnection::Impl_::Impl_(
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        joint_id_{0},
-        is_male_{false},
-        parameter_{0} {}
-
-template <typename>
-PROTOBUF_CONSTEXPR JointConnection::JointConnection(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(JointConnection_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(::_pbi::ConstantInitialized()) {
-}
-struct JointConnectionDefaultTypeInternal {
-  PROTOBUF_CONSTEXPR JointConnectionDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~JointConnectionDefaultTypeInternal() {}
-  union {
-    JointConnection _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 JointConnectionDefaultTypeInternal _JointConnection_default_instance_;
-
-inline constexpr FaceJoints::Impl_::Impl_(
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        connections_{} {}
-
-template <typename>
-PROTOBUF_CONSTEXPR FaceJoints::FaceJoints(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(FaceJoints_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(::_pbi::ConstantInitialized()) {
-}
-struct FaceJointsDefaultTypeInternal {
-  PROTOBUF_CONSTEXPR FaceJointsDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~FaceJointsDefaultTypeInternal() {}
-  union {
-    FaceJoints _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 FaceJointsDefaultTypeInternal _FaceJoints_default_instance_;
-
 inline constexpr Element::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
-        joint_types_{},
-        _joint_types_cached_byte_size_{0},
-        j_mf_{},
         name_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
@@ -95,11 +40,7 @@ inline constexpr Element::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         geometry_data_(
             &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        key_(
-            &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()),
-        component_plane_{nullptr} {}
+            ::_pbi::ConstantInitialized()) {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Element::Element(::_pbi::ConstantInitialized)
@@ -129,80 +70,43 @@ const ::uint32_t
     TableStruct_element_2eproto::offsets[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
         protodesc_cold) = {
         0x081, // bitmap
-        PROTOBUF_FIELD_OFFSET(::session_proto::JointConnection, _impl_._has_bits_),
-        6, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::session_proto::JointConnection, _impl_.joint_id_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::JointConnection, _impl_.is_male_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::JointConnection, _impl_.parameter_),
-        0,
-        1,
-        2,
-        0x081, // bitmap
-        PROTOBUF_FIELD_OFFSET(::session_proto::FaceJoints, _impl_._has_bits_),
-        4, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::session_proto::FaceJoints, _impl_.connections_),
-        0,
-        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_._has_bits_),
-        11, // hasbit index offset
+        7, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.geometry_type_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.geometry_data_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.joint_types_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.j_mf_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.key_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.component_plane_),
-        2,
-        3,
-        4,
-        5,
         0,
         1,
-        6,
-        7,
+        2,
+        3,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-        {0, sizeof(::session_proto::JointConnection)},
-        {9, sizeof(::session_proto::FaceJoints)},
-        {14, sizeof(::session_proto::Element)},
+        {0, sizeof(::session_proto::Element)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
-    &::session_proto::_JointConnection_default_instance_._instance,
-    &::session_proto::_FaceJoints_default_instance_._instance,
     &::session_proto::_Element_default_instance_._instance,
 };
 const char descriptor_table_protodef_element_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\relement.proto\022\rsession_proto\032\013plane.pr"
-    "oto\"G\n\017JointConnection\022\020\n\010joint_id\030\001 \001(\005"
-    "\022\017\n\007is_male\030\002 \001(\010\022\021\n\tparameter\030\003 \001(\001\"A\n\n"
-    "FaceJoints\0223\n\013connections\030\001 \003(\0132\036.sessio"
-    "n_proto.JointConnection\"\323\001\n\007Element\022\014\n\004n"
-    "ame\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\025\n\rgeometry_type"
-    "\030\003 \001(\t\022\025\n\rgeometry_data\030\004 \001(\014\022\023\n\013joint_t"
-    "ypes\030\006 \003(\005\022\'\n\004j_mf\030\007 \003(\0132\031.session_proto"
-    ".FaceJoints\022\013\n\003key\030\010 \001(\t\022-\n\017component_pl"
-    "ane\030\t \001(\0132\024.session_proto.PlaneJ\004\010\005\020\006b\006p"
-    "roto3"
-};
-static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_element_2eproto_deps[1] = {
-        &::descriptor_table_plane_2eproto,
+    "\n\relement.proto\022\rsession_proto\"q\n\007Elemen"
+    "t\022\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\025\n\rgeometr"
+    "y_type\030\003 \001(\t\022\025\n\rgeometry_data\030\004 \001(\014J\004\010\005\020"
+    "\006J\004\010\006\020\007J\004\010\007\020\010J\004\010\010\020\tJ\004\010\t\020\nb\006proto3"
 };
 static ::absl::once_flag descriptor_table_element_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_element_2eproto = {
     false,
     false,
-    405,
+    153,
     descriptor_table_protodef_element_2eproto,
     "element.proto",
     &descriptor_table_element_2eproto_once,
-    descriptor_table_element_2eproto_deps,
+    nullptr,
+    0,
     1,
-    3,
     schemas,
     file_default_instances,
     TableStruct_element_2eproto::offsets,
@@ -210,609 +114,6 @@ PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_element_2eprot
     file_level_service_descriptors_element_2eproto,
 };
 namespace session_proto {
-// ===================================================================
-
-class JointConnection::_Internal {
- public:
-  using HasBits =
-      decltype(::std::declval<JointConnection>()._impl_._has_bits_);
-  static constexpr ::int32_t kHasBitsOffset =
-      8 * PROTOBUF_FIELD_OFFSET(JointConnection, _impl_._has_bits_);
-};
-
-JointConnection::JointConnection(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, JointConnection_class_data_.base()) {
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena) {
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  SharedCtor(arena);
-  // @@protoc_insertion_point(arena_constructor:session_proto.JointConnection)
-}
-JointConnection::JointConnection(
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const JointConnection& from)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, JointConnection_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(from._impl_) {
-  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
-      from._internal_metadata_);
-}
-PROTOBUF_NDEBUG_INLINE JointConnection::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-      : _cached_size_{0} {}
-
-inline void JointConnection::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
-  new (&_impl_) Impl_(internal_visibility(), arena);
-  ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, joint_id_),
-           0,
-           offsetof(Impl_, parameter_) -
-               offsetof(Impl_, joint_id_) +
-               sizeof(Impl_::parameter_));
-}
-JointConnection::~JointConnection() {
-  // @@protoc_insertion_point(destructor:session_proto.JointConnection)
-  SharedDtor(*this);
-}
-inline void JointConnection::SharedDtor(MessageLite& self) {
-  JointConnection& this_ = static_cast<JointConnection&>(self);
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    this_.CheckHasBitConsistency();
-  }
-  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
-  ABSL_DCHECK(this_.GetArena() == nullptr);
-  this_._impl_.~Impl_();
-}
-
-inline void* PROTOBUF_NONNULL JointConnection::PlacementNew_(
-    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
-  return ::new (mem) JointConnection(arena);
-}
-constexpr auto JointConnection::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(JointConnection),
-                                            alignof(JointConnection));
-}
-constexpr auto JointConnection::InternalGenerateClassData_() {
-  return ::google::protobuf::internal::ClassDataFull{
-      ::google::protobuf::internal::ClassData{
-          &_JointConnection_default_instance_._instance,
-          &_table_.header,
-          nullptr,  // OnDemandRegisterArenaDtor
-          nullptr,  // IsInitialized
-          &JointConnection::MergeImpl,
-          ::google::protobuf::Message::GetNewImpl<JointConnection>(),
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-          &JointConnection::SharedDtor,
-          ::google::protobuf::Message::GetClearImpl<JointConnection>(), &JointConnection::ByteSizeLong,
-              &JointConnection::_InternalSerialize,
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          PROTOBUF_FIELD_OFFSET(JointConnection, _impl_._cached_size_),
-          false,
-      },
-      &JointConnection::kDescriptorMethods,
-      &descriptor_table_element_2eproto,
-      nullptr,  // tracker
-  };
-}
-
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
-    ::google::protobuf::internal::ClassDataFull JointConnection_class_data_ =
-        JointConnection::InternalGenerateClassData_();
-
-PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
-JointConnection::GetClassData() const {
-  ::google::protobuf::internal::PrefetchToLocalCache(&JointConnection_class_data_);
-  ::google::protobuf::internal::PrefetchToLocalCache(JointConnection_class_data_.tc_table);
-  return JointConnection_class_data_.base();
-}
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<2, 3, 0, 0, 2>
-JointConnection::_table_ = {
-  {
-    PROTOBUF_FIELD_OFFSET(JointConnection, _impl_._has_bits_),
-    0, // no _extensions_
-    3, 24,  // max_field_number, fast_idx_mask
-    offsetof(decltype(_table_), field_lookup_table),
-    4294967288,  // skipmap
-    offsetof(decltype(_table_), field_entries),
-    3,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
-    JointConnection_class_data_.base(),
-    nullptr,  // post_loop_handler
-    ::_pbi::TcParser::GenericFallback,  // fallback
-    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
-    ::_pbi::TcParser::GetTable<::session_proto::JointConnection>(),  // to_prefetch
-    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
-  }, {{
-    {::_pbi::TcParser::MiniParse, {}},
-    // int32 joint_id = 1;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(JointConnection, _impl_.joint_id_), 0>(),
-     {8, 0, 0,
-      PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.joint_id_)}},
-    // bool is_male = 2;
-    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(JointConnection, _impl_.is_male_), 1>(),
-     {16, 1, 0,
-      PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.is_male_)}},
-    // double parameter = 3;
-    {::_pbi::TcParser::FastF64S1,
-     {25, 2, 0,
-      PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.parameter_)}},
-  }}, {{
-    65535, 65535
-  }}, {{
-    // int32 joint_id = 1;
-    {PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.joint_id_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
-    // bool is_male = 2;
-    {PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.is_male_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
-    // double parameter = 3;
-    {PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.parameter_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
-  }},
-  // no aux_entries
-  {{
-  }},
-};
-PROTOBUF_NOINLINE void JointConnection::Clear() {
-// @@protoc_insertion_point(message_clear_start:session_proto.JointConnection)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
-    ::memset(&_impl_.joint_id_, 0, static_cast<::size_t>(
-        reinterpret_cast<char*>(&_impl_.parameter_) -
-        reinterpret_cast<char*>(&_impl_.joint_id_)) + sizeof(_impl_.parameter_));
-  }
-  _impl_._has_bits_.Clear();
-  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-::uint8_t* PROTOBUF_NONNULL JointConnection::_InternalSerialize(
-    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
-    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
-  const JointConnection& this_ = static_cast<const JointConnection&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-::uint8_t* PROTOBUF_NONNULL JointConnection::_InternalSerialize(
-    ::uint8_t* PROTOBUF_NONNULL target,
-    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
-  const JointConnection& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    this_.CheckHasBitConsistency();
-  }
-  // @@protoc_insertion_point(serialize_to_array_start:session_proto.JointConnection)
-  ::uint32_t cached_has_bits = 0;
-  (void)cached_has_bits;
-
-  cached_has_bits = this_._impl_._has_bits_[0];
-  // int32 joint_id = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-    if (this_._internal_joint_id() != 0) {
-      target =
-          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<1>(
-              stream, this_._internal_joint_id(), target);
-    }
-  }
-
-  // bool is_male = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-    if (this_._internal_is_male() != 0) {
-      target = stream->EnsureSpace(target);
-      target = ::_pbi::WireFormatLite::WriteBoolToArray(
-          2, this_._internal_is_male(), target);
-    }
-  }
-
-  // double parameter = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-    if (::absl::bit_cast<::uint64_t>(this_._internal_parameter()) != 0) {
-      target = stream->EnsureSpace(target);
-      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
-          3, this_._internal_parameter(), target);
-    }
-  }
-
-  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
-    target =
-        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
-            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
-  }
-  // @@protoc_insertion_point(serialize_to_array_end:session_proto.JointConnection)
-  return target;
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-::size_t JointConnection::ByteSizeLong(const MessageLite& base) {
-  const JointConnection& this_ = static_cast<const JointConnection&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-::size_t JointConnection::ByteSizeLong() const {
-  const JointConnection& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  // @@protoc_insertion_point(message_byte_size_start:session_proto.JointConnection)
-  ::size_t total_size = 0;
-
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void)cached_has_bits;
-
-  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
-  cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
-    // int32 joint_id = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      if (this_._internal_joint_id() != 0) {
-        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
-            this_._internal_joint_id());
-      }
-    }
-    // bool is_male = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      if (this_._internal_is_male() != 0) {
-        total_size += 2;
-      }
-    }
-    // double parameter = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      if (::absl::bit_cast<::uint64_t>(this_._internal_parameter()) != 0) {
-        total_size += 9;
-      }
-    }
-  }
-  return this_.MaybeComputeUnknownFieldsSize(total_size,
-                                             &this_._impl_._cached_size_);
-}
-
-void JointConnection::MergeImpl(::google::protobuf::MessageLite& to_msg,
-                            const ::google::protobuf::MessageLite& from_msg) {
-   auto* const _this =
-      static_cast<JointConnection*>(&to_msg);
-  auto& from = static_cast<const JointConnection&>(from_msg);
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    from.CheckHasBitConsistency();
-  }
-  // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.JointConnection)
-  ABSL_DCHECK_NE(&from, _this);
-  ::uint32_t cached_has_bits = 0;
-  (void)cached_has_bits;
-
-  cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
-    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      if (from._internal_joint_id() != 0) {
-        _this->_impl_.joint_id_ = from._impl_.joint_id_;
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      if (from._internal_is_male() != 0) {
-        _this->_impl_.is_male_ = from._impl_.is_male_;
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      if (::absl::bit_cast<::uint64_t>(from._internal_parameter()) != 0) {
-        _this->_impl_.parameter_ = from._impl_.parameter_;
-      }
-    }
-  }
-  _this->_impl_._has_bits_[0] |= cached_has_bits;
-  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
-      from._internal_metadata_);
-}
-
-void JointConnection::CopyFrom(const JointConnection& from) {
-  // @@protoc_insertion_point(class_specific_copy_from_start:session_proto.JointConnection)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-
-void JointConnection::InternalSwap(JointConnection* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
-  using ::std::swap;
-  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
-  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.parameter_)
-      + sizeof(JointConnection::_impl_.parameter_)
-      - PROTOBUF_FIELD_OFFSET(JointConnection, _impl_.joint_id_)>(
-          reinterpret_cast<char*>(&_impl_.joint_id_),
-          reinterpret_cast<char*>(&other->_impl_.joint_id_));
-}
-
-::google::protobuf::Metadata JointConnection::GetMetadata() const {
-  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
-}
-// ===================================================================
-
-class FaceJoints::_Internal {
- public:
-  using HasBits =
-      decltype(::std::declval<FaceJoints>()._impl_._has_bits_);
-  static constexpr ::int32_t kHasBitsOffset =
-      8 * PROTOBUF_FIELD_OFFSET(FaceJoints, _impl_._has_bits_);
-};
-
-FaceJoints::FaceJoints(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, FaceJoints_class_data_.base()) {
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena) {
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  SharedCtor(arena);
-  // @@protoc_insertion_point(arena_constructor:session_proto.FaceJoints)
-}
-PROTOBUF_NDEBUG_INLINE FaceJoints::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
-    [[maybe_unused]] const ::session_proto::FaceJoints& from_msg)
-      : _has_bits_{from._has_bits_},
-        _cached_size_{0},
-        connections_{visibility, arena, from.connections_} {}
-
-FaceJoints::FaceJoints(
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
-    const FaceJoints& from)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, FaceJoints_class_data_.base()) {
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena) {
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  FaceJoints* const _this = this;
-  (void)_this;
-  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
-      from._internal_metadata_);
-  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-
-  // @@protoc_insertion_point(copy_constructor:session_proto.FaceJoints)
-}
-PROTOBUF_NDEBUG_INLINE FaceJoints::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-      : _cached_size_{0},
-        connections_{visibility, arena} {}
-
-inline void FaceJoints::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
-  new (&_impl_) Impl_(internal_visibility(), arena);
-}
-FaceJoints::~FaceJoints() {
-  // @@protoc_insertion_point(destructor:session_proto.FaceJoints)
-  SharedDtor(*this);
-}
-inline void FaceJoints::SharedDtor(MessageLite& self) {
-  FaceJoints& this_ = static_cast<FaceJoints&>(self);
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    this_.CheckHasBitConsistency();
-  }
-  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
-  ABSL_DCHECK(this_.GetArena() == nullptr);
-  this_._impl_.~Impl_();
-}
-
-inline void* PROTOBUF_NONNULL FaceJoints::PlacementNew_(
-    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
-  return ::new (mem) FaceJoints(arena);
-}
-constexpr auto FaceJoints::InternalNewImpl_() {
-  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
-      PROTOBUF_FIELD_OFFSET(FaceJoints, _impl_.connections_) +
-          decltype(FaceJoints::_impl_.connections_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-  });
-  if (arena_bits.has_value()) {
-    return ::google::protobuf::internal::MessageCreator::ZeroInit(
-        sizeof(FaceJoints), alignof(FaceJoints), *arena_bits);
-  } else {
-    return ::google::protobuf::internal::MessageCreator(&FaceJoints::PlacementNew_,
-                                 sizeof(FaceJoints),
-                                 alignof(FaceJoints));
-  }
-}
-constexpr auto FaceJoints::InternalGenerateClassData_() {
-  return ::google::protobuf::internal::ClassDataFull{
-      ::google::protobuf::internal::ClassData{
-          &_FaceJoints_default_instance_._instance,
-          &_table_.header,
-          nullptr,  // OnDemandRegisterArenaDtor
-          nullptr,  // IsInitialized
-          &FaceJoints::MergeImpl,
-          ::google::protobuf::Message::GetNewImpl<FaceJoints>(),
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-          &FaceJoints::SharedDtor,
-          ::google::protobuf::Message::GetClearImpl<FaceJoints>(), &FaceJoints::ByteSizeLong,
-              &FaceJoints::_InternalSerialize,
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          PROTOBUF_FIELD_OFFSET(FaceJoints, _impl_._cached_size_),
-          false,
-      },
-      &FaceJoints::kDescriptorMethods,
-      &descriptor_table_element_2eproto,
-      nullptr,  // tracker
-  };
-}
-
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
-    ::google::protobuf::internal::ClassDataFull FaceJoints_class_data_ =
-        FaceJoints::InternalGenerateClassData_();
-
-PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
-FaceJoints::GetClassData() const {
-  ::google::protobuf::internal::PrefetchToLocalCache(&FaceJoints_class_data_);
-  ::google::protobuf::internal::PrefetchToLocalCache(FaceJoints_class_data_.tc_table);
-  return FaceJoints_class_data_.base();
-}
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<0, 1, 1, 0, 2>
-FaceJoints::_table_ = {
-  {
-    PROTOBUF_FIELD_OFFSET(FaceJoints, _impl_._has_bits_),
-    0, // no _extensions_
-    1, 0,  // max_field_number, fast_idx_mask
-    offsetof(decltype(_table_), field_lookup_table),
-    4294967294,  // skipmap
-    offsetof(decltype(_table_), field_entries),
-    1,  // num_field_entries
-    1,  // num_aux_entries
-    offsetof(decltype(_table_), aux_entries),
-    FaceJoints_class_data_.base(),
-    nullptr,  // post_loop_handler
-    ::_pbi::TcParser::GenericFallback,  // fallback
-    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
-    ::_pbi::TcParser::GetTable<::session_proto::FaceJoints>(),  // to_prefetch
-    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
-  }, {{
-    // repeated .session_proto.JointConnection connections = 1;
-    {::_pbi::TcParser::FastMtR1,
-     {10, 0, 0,
-      PROTOBUF_FIELD_OFFSET(FaceJoints, _impl_.connections_)}},
-  }}, {{
-    65535, 65535
-  }}, {{
-    // repeated .session_proto.JointConnection connections = 1;
-    {PROTOBUF_FIELD_OFFSET(FaceJoints, _impl_.connections_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
-  }},
-  {{
-      {::_pbi::TcParser::GetTable<::session_proto::JointConnection>()},
-  }},
-  {{
-  }},
-};
-PROTOBUF_NOINLINE void FaceJoints::Clear() {
-// @@protoc_insertion_point(message_clear_start:session_proto.FaceJoints)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  cached_has_bits = _impl_._has_bits_[0];
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    _impl_.connections_.Clear();
-  }
-  _impl_._has_bits_.Clear();
-  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-::uint8_t* PROTOBUF_NONNULL FaceJoints::_InternalSerialize(
-    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
-    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
-  const FaceJoints& this_ = static_cast<const FaceJoints&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-::uint8_t* PROTOBUF_NONNULL FaceJoints::_InternalSerialize(
-    ::uint8_t* PROTOBUF_NONNULL target,
-    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
-  const FaceJoints& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    this_.CheckHasBitConsistency();
-  }
-  // @@protoc_insertion_point(serialize_to_array_start:session_proto.FaceJoints)
-  ::uint32_t cached_has_bits = 0;
-  (void)cached_has_bits;
-
-  cached_has_bits = this_._impl_._has_bits_[0];
-  // repeated .session_proto.JointConnection connections = 1;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    for (unsigned i = 0, n = static_cast<unsigned>(
-                             this_._internal_connections_size());
-         i < n; i++) {
-      const auto& repfield = this_._internal_connections().Get(i);
-      target =
-          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-              1, repfield, repfield.GetCachedSize(),
-              target, stream);
-    }
-  }
-
-  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
-    target =
-        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
-            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
-  }
-  // @@protoc_insertion_point(serialize_to_array_end:session_proto.FaceJoints)
-  return target;
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-::size_t FaceJoints::ByteSizeLong(const MessageLite& base) {
-  const FaceJoints& this_ = static_cast<const FaceJoints&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-::size_t FaceJoints::ByteSizeLong() const {
-  const FaceJoints& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  // @@protoc_insertion_point(message_byte_size_start:session_proto.FaceJoints)
-  ::size_t total_size = 0;
-
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void)cached_has_bits;
-
-  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
-   {
-    // repeated .session_proto.JointConnection connections = 1;
-    cached_has_bits = this_._impl_._has_bits_[0];
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      total_size += 1UL * this_._internal_connections_size();
-      for (const auto& msg : this_._internal_connections()) {
-        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
-      }
-    }
-  }
-  return this_.MaybeComputeUnknownFieldsSize(total_size,
-                                             &this_._impl_._cached_size_);
-}
-
-void FaceJoints::MergeImpl(::google::protobuf::MessageLite& to_msg,
-                            const ::google::protobuf::MessageLite& from_msg) {
-   auto* const _this =
-      static_cast<FaceJoints*>(&to_msg);
-  auto& from = static_cast<const FaceJoints&>(from_msg);
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    from.CheckHasBitConsistency();
-  }
-  ::google::protobuf::Arena* arena = _this->GetArena();
-  // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.FaceJoints)
-  ABSL_DCHECK_NE(&from, _this);
-  ::uint32_t cached_has_bits = 0;
-  (void)cached_has_bits;
-
-  cached_has_bits = from._impl_._has_bits_[0];
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    _this->_internal_mutable_connections()->InternalMergeFromWithArena(
-        ::google::protobuf::MessageLite::internal_visibility(), arena,
-        from._internal_connections());
-  }
-  _this->_impl_._has_bits_[0] |= cached_has_bits;
-  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
-      from._internal_metadata_);
-}
-
-void FaceJoints::CopyFrom(const FaceJoints& from) {
-  // @@protoc_insertion_point(class_specific_copy_from_start:session_proto.FaceJoints)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-
-void FaceJoints::InternalSwap(FaceJoints* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
-  using ::std::swap;
-  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
-  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  _impl_.connections_.InternalSwap(&other->_impl_.connections_);
-}
-
-::google::protobuf::Metadata FaceJoints::GetMetadata() const {
-  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
-}
 // ===================================================================
 
 class Element::_Internal {
@@ -823,12 +124,6 @@ class Element::_Internal {
       8 * PROTOBUF_FIELD_OFFSET(Element, _impl_._has_bits_);
 };
 
-void Element::clear_component_plane() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.component_plane_ != nullptr) _impl_.component_plane_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
-}
 Element::Element(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, Element_class_data_.base()) {
@@ -844,14 +139,10 @@ PROTOBUF_NDEBUG_INLINE Element::Impl_::Impl_(
     [[maybe_unused]] const ::session_proto::Element& from_msg)
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
-        joint_types_{visibility, arena, from.joint_types_},
-        _joint_types_cached_byte_size_{0},
-        j_mf_{visibility, arena, from.j_mf_},
         name_(arena, from.name_),
         guid_(arena, from.guid_),
         geometry_type_(arena, from.geometry_type_),
-        geometry_data_(arena, from.geometry_data_),
-        key_(arena, from.key_) {}
+        geometry_data_(arena, from.geometry_data_) {}
 
 Element::Element(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -866,10 +157,6 @@ Element::Element(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.component_plane_ = (CheckHasBit(cached_has_bits, 0x00000080U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.component_plane_)
-                : nullptr;
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Element)
 }
@@ -877,18 +164,13 @@ PROTOBUF_NDEBUG_INLINE Element::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
-        joint_types_{visibility, arena},
-        _joint_types_cached_byte_size_{0},
-        j_mf_{visibility, arena},
         name_(arena),
         guid_(arena),
         geometry_type_(arena),
-        geometry_data_(arena),
-        key_(arena) {}
+        geometry_data_(arena) {}
 
 inline void Element::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  _impl_.component_plane_ = {};
 }
 Element::~Element() {
   // @@protoc_insertion_point(destructor:session_proto.Element)
@@ -905,8 +187,6 @@ inline void Element::SharedDtor(MessageLite& self) {
   this_._impl_.guid_.Destroy();
   this_._impl_.geometry_type_.Destroy();
   this_._impl_.geometry_data_.Destroy();
-  this_._impl_.key_.Destroy();
-  delete this_._impl_.component_plane_;
   this_._impl_.~Impl_();
 }
 
@@ -916,24 +196,8 @@ inline void* PROTOBUF_NONNULL Element::PlacementNew_(
   return ::new (mem) Element(arena);
 }
 constexpr auto Element::InternalNewImpl_() {
-  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.joint_types_) +
-          decltype(Element::_impl_.joint_types_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.j_mf_) +
-          decltype(Element::_impl_.j_mf_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-  });
-  if (arena_bits.has_value()) {
-    return ::google::protobuf::internal::MessageCreator::CopyInit(
-        sizeof(Element), alignof(Element), *arena_bits);
-  } else {
-    return ::google::protobuf::internal::MessageCreator(&Element::PlacementNew_,
-                                 sizeof(Element),
-                                 alignof(Element));
-  }
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Element),
+                                            alignof(Element));
 }
 constexpr auto Element::InternalGenerateClassData_() {
   return ::google::protobuf::internal::ClassDataFull{
@@ -969,18 +233,18 @@ Element::GetClassData() const {
   return Element_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 8, 2, 62, 2>
+const ::_pbi::TcParseTable<2, 4, 0, 51, 2>
 Element::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Element, _impl_._has_bits_),
     0, // no _extensions_
-    9, 120,  // max_field_number, fast_idx_mask
+    4, 24,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294966800,  // skipmap
+    4294967280,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    8,  // num_field_entries
-    2,  // num_aux_entries
-    offsetof(decltype(_table_), aux_entries),
+    4,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
     Element_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -988,77 +252,41 @@ Element::_table_ = {
     ::_pbi::TcParser::GetTable<::session_proto::Element>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    {::_pbi::TcParser::MiniParse, {}},
+    // bytes geometry_data = 4;
+    {::_pbi::TcParser::FastBS1,
+     {34, 3, 0,
+      PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_data_)}},
     // string name = 1;
     {::_pbi::TcParser::FastUS1,
-     {10, 2, 0,
+     {10, 0, 0,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.name_)}},
     // string guid = 2;
     {::_pbi::TcParser::FastUS1,
-     {18, 3, 0,
+     {18, 1, 0,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.guid_)}},
     // string geometry_type = 3;
     {::_pbi::TcParser::FastUS1,
-     {26, 4, 0,
+     {26, 2, 0,
       PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_type_)}},
-    // bytes geometry_data = 4;
-    {::_pbi::TcParser::FastBS1,
-     {34, 5, 0,
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_data_)}},
-    {::_pbi::TcParser::MiniParse, {}},
-    // repeated int32 joint_types = 6;
-    {::_pbi::TcParser::FastV32P1,
-     {50, 0, 0,
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.joint_types_)}},
-    // repeated .session_proto.FaceJoints j_mf = 7;
-    {::_pbi::TcParser::FastMtR1,
-     {58, 1, 0,
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.j_mf_)}},
-    // string key = 8;
-    {::_pbi::TcParser::FastUS1,
-     {66, 6, 0,
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.key_)}},
-    // .session_proto.Plane component_plane = 9;
-    {::_pbi::TcParser::FastMtS1,
-     {74, 7, 1,
-      PROTOBUF_FIELD_OFFSET(Element, _impl_.component_plane_)}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
     // string name = 1;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.name_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Element, _impl_.name_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string guid = 2;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.guid_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Element, _impl_.guid_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string geometry_type = 3;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_type_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_type_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // bytes geometry_data = 4;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_data_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kBytes | ::_fl::kRepAString)},
-    // repeated int32 joint_types = 6;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.joint_types_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedInt32)},
-    // repeated .session_proto.FaceJoints j_mf = 7;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.j_mf_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
-    // string key = 8;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.key_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
-    // .session_proto.Plane component_plane = 9;
-    {PROTOBUF_FIELD_OFFSET(Element, _impl_.component_plane_), _Internal::kHasBitsOffset + 7, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Element, _impl_.geometry_data_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kBytes | ::_fl::kRepAString)},
   }},
+  // no aux_entries
   {{
-      {::_pbi::TcParser::GetTable<::session_proto::FaceJoints>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Plane>()},
-  }},
-  {{
-    "\25\4\4\15\0\0\0\3\0\0\0\0\0\0\0\0"
+    "\25\4\4\15\0\0\0\0"
     "session_proto.Element"
     "name"
     "guid"
     "geometry_type"
-    "key"
   }},
 };
 PROTOBUF_NOINLINE void Element::Clear() {
@@ -1069,31 +297,18 @@ PROTOBUF_NOINLINE void Element::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      _impl_.joint_types_.Clear();
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-      _impl_.j_mf_.Clear();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _impl_.name_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       _impl_.guid_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       _impl_.geometry_type_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       _impl_.geometry_data_.ClearNonDefaultToEmpty();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-      _impl_.key_.ClearNonDefaultToEmpty();
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(_impl_.component_plane_ != nullptr);
-      _impl_.component_plane_->Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -1120,7 +335,7 @@ PROTOBUF_NOINLINE void Element::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // string name = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -1130,7 +345,7 @@ PROTOBUF_NOINLINE void Element::Clear() {
   }
 
   // string guid = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
     if (!this_._internal_guid().empty()) {
       const ::std::string& _s = this_._internal_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -1140,7 +355,7 @@ PROTOBUF_NOINLINE void Element::Clear() {
   }
 
   // string geometry_type = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
     if (!this_._internal_geometry_type().empty()) {
       const ::std::string& _s = this_._internal_geometry_type();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -1150,52 +365,11 @@ PROTOBUF_NOINLINE void Element::Clear() {
   }
 
   // bytes geometry_data = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
     if (!this_._internal_geometry_data().empty()) {
       const ::std::string& _s = this_._internal_geometry_data();
       target = stream->WriteBytesMaybeAliased(4, _s, target);
     }
-  }
-
-  // repeated int32 joint_types = 6;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    {
-      int byte_size = this_._impl_._joint_types_cached_byte_size_.Get();
-      if (byte_size > 0) {
-        target = stream->WriteInt32Packed(
-            6, this_._internal_joint_types(), byte_size, target);
-      }
-    }
-  }
-
-  // repeated .session_proto.FaceJoints j_mf = 7;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-    for (unsigned i = 0, n = static_cast<unsigned>(
-                             this_._internal_j_mf_size());
-         i < n; i++) {
-      const auto& repfield = this_._internal_j_mf().Get(i);
-      target =
-          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-              7, repfield, repfield.GetCachedSize(),
-              target, stream);
-    }
-  }
-
-  // string key = 8;
-  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-    if (!this_._internal_key().empty()) {
-      const ::std::string& _s = this_._internal_key();
-      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
-          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Element.key");
-      target = stream->WriteStringMaybeAliased(8, _s, target);
-    }
-  }
-
-  // .session_proto.Plane component_plane = 9;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        9, *this_._impl_.component_plane_, this_._impl_.component_plane_->GetCachedSize(), target,
-        stream);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -1223,60 +397,34 @@ PROTOBUF_NOINLINE void Element::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
-    // repeated int32 joint_types = 6;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      total_size +=
-          ::_pbi::WireFormatLite::Int32SizeWithPackedTagSize(
-              this_._internal_joint_types(), 1,
-              this_._impl_._joint_types_cached_byte_size_);
-    }
-    // repeated .session_proto.FaceJoints j_mf = 7;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-      total_size += 1UL * this_._internal_j_mf_size();
-      for (const auto& msg : this_._internal_j_mf()) {
-        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
-      }
-    }
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
     // string name = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
     // string guid = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
       }
     }
     // string geometry_type = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (!this_._internal_geometry_type().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_geometry_type());
       }
     }
     // bytes geometry_data = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!this_._internal_geometry_data().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::BytesSize(
                                         this_._internal_geometry_data());
       }
-    }
-    // string key = 8;
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-      if (!this_._internal_key().empty()) {
-        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
-                                        this_._internal_key());
-      }
-    }
-    // .session_proto.Plane component_plane = 9;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.component_plane_);
     }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
@@ -1291,23 +439,14 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
-  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.Element)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      _this->_internal_mutable_joint_types()->MergeFrom(from._internal_joint_types());
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-      _this->_internal_mutable_j_mf()->InternalMergeFromWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), arena,
-          from._internal_j_mf());
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -1316,7 +455,7 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
       } else {
@@ -1325,7 +464,7 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (!from._internal_geometry_type().empty()) {
         _this->_internal_set_geometry_type(from._internal_geometry_type());
       } else {
@@ -1334,30 +473,13 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!from._internal_geometry_data().empty()) {
         _this->_internal_set_geometry_data(from._internal_geometry_data());
       } else {
         if (_this->_impl_.geometry_data_.IsDefault()) {
           _this->_internal_set_geometry_data("");
         }
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
-      if (!from._internal_key().empty()) {
-        _this->_internal_set_key(from._internal_key());
-      } else {
-        if (_this->_impl_.key_.IsDefault()) {
-          _this->_internal_set_key("");
-        }
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(from._impl_.component_plane_ != nullptr);
-      if (_this->_impl_.component_plane_ == nullptr) {
-        _this->_impl_.component_plane_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.component_plane_);
-      } else {
-        _this->_impl_.component_plane_->MergeFrom(*from._impl_.component_plane_);
       }
     }
   }
@@ -1380,14 +502,10 @@ void Element::InternalSwap(Element* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ABSL_DCHECK_EQ(arena, other->GetArena());
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  _impl_.joint_types_.InternalSwap(&other->_impl_.joint_types_);
-  _impl_.j_mf_.InternalSwap(&other->_impl_.j_mf_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.geometry_type_, &other->_impl_.geometry_type_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.geometry_data_, &other->_impl_.geometry_data_, arena);
-  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.key_, &other->_impl_.key_, arena);
-  swap(_impl_.component_plane_, other->_impl_.component_plane_);
 }
 
 ::google::protobuf::Metadata Element::GetMetadata() const {

@@ -214,8 +214,6 @@ public:
 
   /// Compute face-to-face contacts between all elements.
   /// Uses SpatialBVH + OBB for adjacency, then boolean intersection for contact areas.
-  /// Results stored as polylines + graph edges between elements.
-  void compute_face_to_face(double inflate = 5.0, double coplanar_tolerance = 50.0);
 
   /**
    * @brief Remove an object from the session

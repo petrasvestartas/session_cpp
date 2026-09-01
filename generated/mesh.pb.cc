@@ -150,24 +150,6 @@ struct HoleRingDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 HoleRingDefaultTypeInternal _HoleRing_default_instance_;
 template <typename>
-PROTOBUF_CONSTEXPR HalfedgeMap_NeighborsEntry_DoNotUse::HalfedgeMap_NeighborsEntry_DoNotUse(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : HalfedgeMap_NeighborsEntry_DoNotUse::MapEntry(HalfedgeMap_NeighborsEntry_DoNotUse_class_data_.base()){}
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : HalfedgeMap_NeighborsEntry_DoNotUse::MapEntry() {
-}
-#endif  // PROTOBUF_CUSTOM_VTABLE
-struct HalfedgeMap_NeighborsEntry_DoNotUseDefaultTypeInternal {
-  PROTOBUF_CONSTEXPR HalfedgeMap_NeighborsEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~HalfedgeMap_NeighborsEntry_DoNotUseDefaultTypeInternal() {}
-  union {
-    HalfedgeMap_NeighborsEntry_DoNotUse _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 HalfedgeMap_NeighborsEntry_DoNotUseDefaultTypeInternal _HalfedgeMap_NeighborsEntry_DoNotUse_default_instance_;
-template <typename>
 PROTOBUF_CONSTEXPR FaceData_AttributesEntry_DoNotUse::FaceData_AttributesEntry_DoNotUse(::_pbi::ConstantInitialized)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : FaceData_AttributesEntry_DoNotUse::MapEntry(FaceData_AttributesEntry_DoNotUse_class_data_.base()){}
@@ -250,31 +232,6 @@ struct Mesh_TriangulationEntry_DoNotUseDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Mesh_TriangulationEntry_DoNotUseDefaultTypeInternal _Mesh_TriangulationEntry_DoNotUse_default_instance_;
 
-inline constexpr HalfedgeMap::Impl_::Impl_(
-    ::_pbi::ConstantInitialized) noexcept
-      : _cached_size_{0},
-        neighbors_{} {}
-
-template <typename>
-PROTOBUF_CONSTEXPR HalfedgeMap::HalfedgeMap(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(HalfedgeMap_class_data_.base()),
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(),
-#endif  // PROTOBUF_CUSTOM_VTABLE
-      _impl_(::_pbi::ConstantInitialized()) {
-}
-struct HalfedgeMapDefaultTypeInternal {
-  PROTOBUF_CONSTEXPR HalfedgeMapDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~HalfedgeMapDefaultTypeInternal() {}
-  union {
-    HalfedgeMap _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 HalfedgeMapDefaultTypeInternal _HalfedgeMap_default_instance_;
-
 inline constexpr FaceData::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
@@ -348,24 +305,6 @@ struct Mesh_VerticesEntry_DoNotUseDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Mesh_VerticesEntry_DoNotUseDefaultTypeInternal _Mesh_VerticesEntry_DoNotUse_default_instance_;
 template <typename>
-PROTOBUF_CONSTEXPR Mesh_HalfedgesEntry_DoNotUse::Mesh_HalfedgesEntry_DoNotUse(::_pbi::ConstantInitialized)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : Mesh_HalfedgesEntry_DoNotUse::MapEntry(Mesh_HalfedgesEntry_DoNotUse_class_data_.base()){}
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : Mesh_HalfedgesEntry_DoNotUse::MapEntry() {
-}
-#endif  // PROTOBUF_CUSTOM_VTABLE
-struct Mesh_HalfedgesEntry_DoNotUseDefaultTypeInternal {
-  PROTOBUF_CONSTEXPR Mesh_HalfedgesEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
-  ~Mesh_HalfedgesEntry_DoNotUseDefaultTypeInternal() {}
-  union {
-    Mesh_HalfedgesEntry_DoNotUse _instance;
-  };
-};
-
-PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
-    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Mesh_HalfedgesEntry_DoNotUseDefaultTypeInternal _Mesh_HalfedgesEntry_DoNotUse_default_instance_;
-template <typename>
 PROTOBUF_CONSTEXPR Mesh_FacesEntry_DoNotUse::Mesh_FacesEntry_DoNotUse(::_pbi::ConstantInitialized)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : Mesh_FacesEntry_DoNotUse::MapEntry(Mesh_FacesEntry_DoNotUse_class_data_.base()){}
@@ -388,10 +327,9 @@ inline constexpr Mesh::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
         edge_data_{},
-        pointcolors_{},
-        facecolors_{},
-        linecolors_{},
         widths_{},
+        facecolors_rgba_{},
+        linecolors_rgba_{},
         guid_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
@@ -402,11 +340,11 @@ inline constexpr Mesh::Impl_::Impl_(
         color_mode_{0},
         vertices_{},
         faces_{},
-        halfedges_{},
         default_vertex_attributes_{},
         default_face_attributes_{},
         default_edge_attributes_{},
-        triangulation_{} {}
+        triangulation_{},
+        pointcolors_rgba_{} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Mesh::Mesh(::_pbi::ConstantInitialized)
@@ -453,18 +391,6 @@ const ::uint32_t
         1,
         2,
         3,
-        0x081, // bitmap
-        PROTOBUF_FIELD_OFFSET(::session_proto::HalfedgeMap_NeighborsEntry_DoNotUse, _impl_._has_bits_),
-        5, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::session_proto::HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.key_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.value_),
-        0,
-        1,
-        0x081, // bitmap
-        PROTOBUF_FIELD_OFFSET(::session_proto::HalfedgeMap, _impl_._has_bits_),
-        4, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::session_proto::HalfedgeMap, _impl_.neighbors_),
-        0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::HoleRing, _impl_._has_bits_),
         4, // hasbit index offset
@@ -522,13 +448,6 @@ const ::uint32_t
         0,
         1,
         0x081, // bitmap
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh_HalfedgesEntry_DoNotUse, _impl_._has_bits_),
-        5, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh_HalfedgesEntry_DoNotUse, _impl_.key_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh_HalfedgesEntry_DoNotUse, _impl_.value_),
-        0,
-        1,
-        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh_DefaultVertexAttributesEntry_DoNotUse, _impl_._has_bits_),
         5, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh_DefaultVertexAttributesEntry_DoNotUse, _impl_.key_),
@@ -558,67 +477,60 @@ const ::uint32_t
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_._has_bits_),
-        19, // hasbit index offset
+        18, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.vertices_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.faces_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.halfedges_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.edge_data_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.default_vertex_attributes_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.default_face_attributes_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.default_edge_attributes_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.pointcolors_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.facecolors_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.linecolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.widths_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.objectcolor_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.color_mode_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.triangulation_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.pointcolors_rgba_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.facecolors_rgba_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Mesh, _impl_.linecolors_rgba_),
+        4,
         5,
-        6,
+        8,
         9,
+        0,
         10,
         11,
-        0,
         12,
+        1,
+        6,
+        7,
         13,
         14,
-        1,
         2,
         3,
-        4,
-        7,
-        8,
-        15,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, sizeof(::session_proto::VertexData_AttributesEntry_DoNotUse)},
         {7, sizeof(::session_proto::VertexData)},
-        {18, sizeof(::session_proto::HalfedgeMap_NeighborsEntry_DoNotUse)},
-        {25, sizeof(::session_proto::HalfedgeMap)},
-        {30, sizeof(::session_proto::HoleRing)},
-        {35, sizeof(::session_proto::FaceData_AttributesEntry_DoNotUse)},
-        {42, sizeof(::session_proto::FaceData)},
-        {51, sizeof(::session_proto::EdgeData_AttributesEntry_DoNotUse)},
-        {58, sizeof(::session_proto::EdgeData)},
-        {67, sizeof(::session_proto::TriList)},
-        {72, sizeof(::session_proto::Mesh_VerticesEntry_DoNotUse)},
-        {79, sizeof(::session_proto::Mesh_FacesEntry_DoNotUse)},
-        {86, sizeof(::session_proto::Mesh_HalfedgesEntry_DoNotUse)},
-        {93, sizeof(::session_proto::Mesh_DefaultVertexAttributesEntry_DoNotUse)},
-        {100, sizeof(::session_proto::Mesh_DefaultFaceAttributesEntry_DoNotUse)},
-        {107, sizeof(::session_proto::Mesh_DefaultEdgeAttributesEntry_DoNotUse)},
-        {114, sizeof(::session_proto::Mesh_TriangulationEntry_DoNotUse)},
-        {121, sizeof(::session_proto::Mesh)},
+        {18, sizeof(::session_proto::HoleRing)},
+        {23, sizeof(::session_proto::FaceData_AttributesEntry_DoNotUse)},
+        {30, sizeof(::session_proto::FaceData)},
+        {39, sizeof(::session_proto::EdgeData_AttributesEntry_DoNotUse)},
+        {46, sizeof(::session_proto::EdgeData)},
+        {55, sizeof(::session_proto::TriList)},
+        {60, sizeof(::session_proto::Mesh_VerticesEntry_DoNotUse)},
+        {67, sizeof(::session_proto::Mesh_FacesEntry_DoNotUse)},
+        {74, sizeof(::session_proto::Mesh_DefaultVertexAttributesEntry_DoNotUse)},
+        {81, sizeof(::session_proto::Mesh_DefaultFaceAttributesEntry_DoNotUse)},
+        {88, sizeof(::session_proto::Mesh_DefaultEdgeAttributesEntry_DoNotUse)},
+        {95, sizeof(::session_proto::Mesh_TriangulationEntry_DoNotUse)},
+        {102, sizeof(::session_proto::Mesh)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::session_proto::_VertexData_AttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_VertexData_default_instance_._instance,
-    &::session_proto::_HalfedgeMap_NeighborsEntry_DoNotUse_default_instance_._instance,
-    &::session_proto::_HalfedgeMap_default_instance_._instance,
     &::session_proto::_HoleRing_default_instance_._instance,
     &::session_proto::_FaceData_AttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_FaceData_default_instance_._instance,
@@ -627,7 +539,6 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::session_proto::_TriList_default_instance_._instance,
     &::session_proto::_Mesh_VerticesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Mesh_FacesEntry_DoNotUse_default_instance_._instance,
-    &::session_proto::_Mesh_HalfedgesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Mesh_DefaultVertexAttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Mesh_DefaultFaceAttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Mesh_DefaultEdgeAttributesEntry_DoNotUse_default_instance_._instance,
@@ -641,51 +552,44 @@ const char descriptor_table_protodef_mesh_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIA
     "\001z\030\003 \001(\001\022=\n\nattributes\030\004 \003(\0132).session_p"
     "roto.VertexData.AttributesEntry\0321\n\017Attri"
     "butesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\001:\002"
-    "8\001\"}\n\013HalfedgeMap\022<\n\tneighbors\030\001 \003(\0132).s"
-    "ession_proto.HalfedgeMap.NeighborsEntry\032"
-    "0\n\016NeighborsEntry\022\013\n\003key\030\001 \001(\004\022\r\n\005value\030"
-    "\002 \001(\004:\0028\001\"\034\n\010HoleRing\022\020\n\010vertices\030\001 \003(\004\""
-    "\264\001\n\010FaceData\022\020\n\010vertices\030\001 \003(\004\022;\n\nattrib"
-    "utes\030\002 \003(\0132\'.session_proto.FaceData.Attr"
-    "ibutesEntry\022&\n\005holes\030\003 \003(\0132\027.session_pro"
-    "to.HoleRing\0321\n\017AttributesEntry\022\013\n\003key\030\001 "
-    "\001(\t\022\r\n\005value\030\002 \001(\001:\0028\001\"\234\001\n\010EdgeData\022\017\n\007v"
-    "ertex1\030\001 \001(\004\022\017\n\007vertex2\030\002 \001(\004\022;\n\nattribu"
-    "tes\030\003 \003(\0132\'.session_proto.EdgeData.Attri"
-    "butesEntry\0321\n\017AttributesEntry\022\013\n\003key\030\001 \001"
-    "(\t\022\r\n\005value\030\002 \001(\001:\0028\001\"\033\n\007TriList\022\020\n\010vert"
-    "ices\030\001 \003(\004\"\336\t\n\004Mesh\022\014\n\004guid\030\001 \001(\t\022\014\n\004nam"
-    "e\030\002 \001(\t\0223\n\010vertices\030\003 \003(\0132!.session_prot"
-    "o.Mesh.VerticesEntry\022-\n\005faces\030\004 \003(\0132\036.se"
-    "ssion_proto.Mesh.FacesEntry\0225\n\thalfedges"
-    "\030\005 \003(\0132\".session_proto.Mesh.HalfedgesEnt"
-    "ry\022*\n\tedge_data\030\006 \003(\0132\027.session_proto.Ed"
-    "geData\022S\n\031default_vertex_attributes\030\007 \003("
-    "\01320.session_proto.Mesh.DefaultVertexAttr"
-    "ibutesEntry\022O\n\027default_face_attributes\030\010"
-    " \003(\0132..session_proto.Mesh.DefaultFaceAtt"
-    "ributesEntry\022O\n\027default_edge_attributes\030"
-    "\t \003(\0132..session_proto.Mesh.DefaultEdgeAt"
-    "tributesEntry\022)\n\013pointcolors\030\n \003(\0132\024.ses"
-    "sion_proto.Color\022(\n\nfacecolors\030\013 \003(\0132\024.s"
-    "ession_proto.Color\022(\n\nlinecolors\030\014 \003(\0132\024"
-    ".session_proto.Color\022\016\n\006widths\030\r \003(\001\022)\n\013"
-    "objectcolor\030\017 \001(\0132\024.session_proto.Color\022"
-    "\022\n\ncolor_mode\030\020 \001(\005\022=\n\rtriangulation\030\021 \003"
-    "(\0132&.session_proto.Mesh.TriangulationEnt"
-    "ry\032J\n\rVerticesEntry\022\013\n\003key\030\001 \001(\004\022(\n\005valu"
-    "e\030\002 \001(\0132\031.session_proto.VertexData:\0028\001\032E"
-    "\n\nFacesEntry\022\013\n\003key\030\001 \001(\004\022&\n\005value\030\002 \001(\013"
-    "2\027.session_proto.FaceData:\0028\001\032L\n\016Halfedg"
-    "esEntry\022\013\n\003key\030\001 \001(\004\022)\n\005value\030\002 \001(\0132\032.se"
-    "ssion_proto.HalfedgeMap:\0028\001\032>\n\034DefaultVe"
-    "rtexAttributesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005valu"
-    "e\030\002 \001(\001:\0028\001\032<\n\032DefaultFaceAttributesEntr"
-    "y\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\001:\0028\001\032<\n\032Def"
-    "aultEdgeAttributesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005"
-    "value\030\002 \001(\001:\0028\001\032L\n\022TriangulationEntry\022\013\n"
-    "\003key\030\001 \001(\004\022%\n\005value\030\002 \001(\0132\026.session_prot"
-    "o.TriList:\0028\001J\004\010\016\020\017b\006proto3"
+    "8\001\"\034\n\010HoleRing\022\020\n\010vertices\030\001 \003(\004\"\264\001\n\010Fac"
+    "eData\022\020\n\010vertices\030\001 \003(\004\022;\n\nattributes\030\002 "
+    "\003(\0132\'.session_proto.FaceData.AttributesE"
+    "ntry\022&\n\005holes\030\003 \003(\0132\027.session_proto.Hole"
+    "Ring\0321\n\017AttributesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005"
+    "value\030\002 \001(\001:\0028\001\"\234\001\n\010EdgeData\022\017\n\007vertex1\030"
+    "\001 \001(\004\022\017\n\007vertex2\030\002 \001(\004\022;\n\nattributes\030\003 \003"
+    "(\0132\'.session_proto.EdgeData.AttributesEn"
+    "try\0321\n\017AttributesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005v"
+    "alue\030\002 \001(\001:\0028\001\"\033\n\007TriList\022\020\n\010vertices\030\001 "
+    "\003(\004\"\276\010\n\004Mesh\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t"
+    "\0223\n\010vertices\030\003 \003(\0132!.session_proto.Mesh."
+    "VerticesEntry\022-\n\005faces\030\004 \003(\0132\036.session_p"
+    "roto.Mesh.FacesEntry\022*\n\tedge_data\030\006 \003(\0132"
+    "\027.session_proto.EdgeData\022S\n\031default_vert"
+    "ex_attributes\030\007 \003(\01320.session_proto.Mesh"
+    ".DefaultVertexAttributesEntry\022O\n\027default"
+    "_face_attributes\030\010 \003(\0132..session_proto.M"
+    "esh.DefaultFaceAttributesEntry\022O\n\027defaul"
+    "t_edge_attributes\030\t \003(\0132..session_proto."
+    "Mesh.DefaultEdgeAttributesEntry\022\016\n\006width"
+    "s\030\r \003(\001\022)\n\013objectcolor\030\017 \001(\0132\024.session_p"
+    "roto.Color\022\022\n\ncolor_mode\030\020 \001(\005\022=\n\rtriang"
+    "ulation\030\021 \003(\0132&.session_proto.Mesh.Trian"
+    "gulationEntry\022\030\n\020pointcolors_rgba\030\022 \003(\002\022"
+    "\027\n\017facecolors_rgba\030\023 \003(\002\022\027\n\017linecolors_r"
+    "gba\030\024 \003(\002\032J\n\rVerticesEntry\022\013\n\003key\030\001 \001(\004\022"
+    "(\n\005value\030\002 \001(\0132\031.session_proto.VertexDat"
+    "a:\0028\001\032E\n\nFacesEntry\022\013\n\003key\030\001 \001(\004\022&\n\005valu"
+    "e\030\002 \001(\0132\027.session_proto.FaceData:\0028\001\032>\n\034"
+    "DefaultVertexAttributesEntry\022\013\n\003key\030\001 \001("
+    "\t\022\r\n\005value\030\002 \001(\001:\0028\001\032<\n\032DefaultFaceAttri"
+    "butesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\001:\002"
+    "8\001\032<\n\032DefaultEdgeAttributesEntry\022\013\n\003key\030"
+    "\001 \001(\t\022\r\n\005value\030\002 \001(\001:\0028\001\032L\n\022Triangulatio"
+    "nEntry\022\013\n\003key\030\001 \001(\004\022%\n\005value\030\002 \001(\0132\026.ses"
+    "sion_proto.TriList:\0028\001J\004\010\005\020\006J\004\010\n\020\013J\004\010\013\020\014"
+    "J\004\010\014\020\rJ\004\010\016\020\017b\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_mesh_2eproto_deps[1] = {
@@ -695,13 +599,13 @@ static ::absl::once_flag descriptor_table_mesh_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_mesh_2eproto = {
     false,
     false,
-    1987,
+    1700,
     descriptor_table_protodef_mesh_2eproto,
     "mesh.proto",
     &descriptor_table_mesh_2eproto_once,
     descriptor_table_mesh_2eproto_deps,
     1,
-    18,
+    15,
     schemas,
     file_default_instances,
     TableStruct_mesh_2eproto::offsets,
@@ -1209,392 +1113,6 @@ void VertexData::InternalSwap(VertexData* PROTOBUF_RESTRICT PROTOBUF_NONNULL oth
 }
 
 ::google::protobuf::Metadata VertexData::GetMetadata() const {
-  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
-}
-// ===================================================================
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-HalfedgeMap_NeighborsEntry_DoNotUse::HalfedgeMap_NeighborsEntry_DoNotUse()
-    : SuperType(HalfedgeMap_NeighborsEntry_DoNotUse_class_data_.base()) {}
-HalfedgeMap_NeighborsEntry_DoNotUse::HalfedgeMap_NeighborsEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-    : SuperType(arena, HalfedgeMap_NeighborsEntry_DoNotUse_class_data_.base()) {}
-#else   // PROTOBUF_CUSTOM_VTABLE
-HalfedgeMap_NeighborsEntry_DoNotUse::HalfedgeMap_NeighborsEntry_DoNotUse() : SuperType() {}
-HalfedgeMap_NeighborsEntry_DoNotUse::HalfedgeMap_NeighborsEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
-#endif  // PROTOBUF_CUSTOM_VTABLE
-inline void* PROTOBUF_NONNULL HalfedgeMap_NeighborsEntry_DoNotUse::PlacementNew_(
-    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
-  return ::new (mem) HalfedgeMap_NeighborsEntry_DoNotUse(arena);
-}
-constexpr auto HalfedgeMap_NeighborsEntry_DoNotUse::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(HalfedgeMap_NeighborsEntry_DoNotUse),
-                                            alignof(HalfedgeMap_NeighborsEntry_DoNotUse));
-}
-constexpr auto HalfedgeMap_NeighborsEntry_DoNotUse::InternalGenerateClassData_() {
-  return ::google::protobuf::internal::ClassDataFull{
-      ::google::protobuf::internal::ClassData{
-          &_HalfedgeMap_NeighborsEntry_DoNotUse_default_instance_._instance,
-          &_table_.header,
-          nullptr,  // OnDemandRegisterArenaDtor
-          nullptr,  // IsInitialized
-          &HalfedgeMap_NeighborsEntry_DoNotUse::MergeImpl,
-          ::google::protobuf::Message::GetNewImpl<HalfedgeMap_NeighborsEntry_DoNotUse>(),
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-          &HalfedgeMap_NeighborsEntry_DoNotUse::SharedDtor,
-          static_cast<void (::google::protobuf::MessageLite::*)()>(&HalfedgeMap_NeighborsEntry_DoNotUse::ClearImpl),
-              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
-              ,
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          PROTOBUF_FIELD_OFFSET(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_._cached_size_),
-          false,
-      },
-      &HalfedgeMap_NeighborsEntry_DoNotUse::kDescriptorMethods,
-      &descriptor_table_mesh_2eproto,
-      nullptr,  // tracker
-  };
-}
-
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
-    ::google::protobuf::internal::ClassDataFull HalfedgeMap_NeighborsEntry_DoNotUse_class_data_ =
-        HalfedgeMap_NeighborsEntry_DoNotUse::InternalGenerateClassData_();
-
-PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
-HalfedgeMap_NeighborsEntry_DoNotUse::GetClassData() const {
-  ::google::protobuf::internal::PrefetchToLocalCache(&HalfedgeMap_NeighborsEntry_DoNotUse_class_data_);
-  ::google::protobuf::internal::PrefetchToLocalCache(HalfedgeMap_NeighborsEntry_DoNotUse_class_data_.tc_table);
-  return HalfedgeMap_NeighborsEntry_DoNotUse_class_data_.base();
-}
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<1, 2, 0, 0, 2>
-HalfedgeMap_NeighborsEntry_DoNotUse::_table_ = {
-  {
-    PROTOBUF_FIELD_OFFSET(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_._has_bits_),
-    0, // no _extensions_
-    2, 8,  // max_field_number, fast_idx_mask
-    offsetof(decltype(_table_), field_lookup_table),
-    4294967292,  // skipmap
-    offsetof(decltype(_table_), field_entries),
-    2,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
-    HalfedgeMap_NeighborsEntry_DoNotUse_class_data_.base(),
-    nullptr,  // post_loop_handler
-    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
-    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
-    ::_pbi::TcParser::GetTable<::session_proto::HalfedgeMap_NeighborsEntry_DoNotUse>(),  // to_prefetch
-    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
-  }, {{
-    // uint64 value = 2;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.value_), 1>(),
-     {16, 1, 0,
-      PROTOBUF_FIELD_OFFSET(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.value_)}},
-    // uint64 key = 1;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.key_), 0>(),
-     {8, 0, 0,
-      PROTOBUF_FIELD_OFFSET(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.key_)}},
-  }}, {{
-    65535, 65535
-  }}, {{
-    // uint64 key = 1;
-    {PROTOBUF_FIELD_OFFSET(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
-    // uint64 value = 2;
-    {PROTOBUF_FIELD_OFFSET(HalfedgeMap_NeighborsEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
-  }},
-  // no aux_entries
-  {{
-  }},
-};
-// ===================================================================
-
-class HalfedgeMap::_Internal {
- public:
-  using HasBits =
-      decltype(::std::declval<HalfedgeMap>()._impl_._has_bits_);
-  static constexpr ::int32_t kHasBitsOffset =
-      8 * PROTOBUF_FIELD_OFFSET(HalfedgeMap, _impl_._has_bits_);
-};
-
-HalfedgeMap::HalfedgeMap(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, HalfedgeMap_class_data_.base()) {
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena) {
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  SharedCtor(arena);
-  // @@protoc_insertion_point(arena_constructor:session_proto.HalfedgeMap)
-}
-PROTOBUF_NDEBUG_INLINE HalfedgeMap::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
-    [[maybe_unused]] const ::session_proto::HalfedgeMap& from_msg)
-      : _has_bits_{from._has_bits_},
-        _cached_size_{0},
-        neighbors_{visibility, arena, from.neighbors_} {}
-
-HalfedgeMap::HalfedgeMap(
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
-    const HalfedgeMap& from)
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-    : ::google::protobuf::Message(arena, HalfedgeMap_class_data_.base()) {
-#else   // PROTOBUF_CUSTOM_VTABLE
-    : ::google::protobuf::Message(arena) {
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  HalfedgeMap* const _this = this;
-  (void)_this;
-  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
-      from._internal_metadata_);
-  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-
-  // @@protoc_insertion_point(copy_constructor:session_proto.HalfedgeMap)
-}
-PROTOBUF_NDEBUG_INLINE HalfedgeMap::Impl_::Impl_(
-    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
-    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-      : _cached_size_{0},
-        neighbors_{visibility, arena} {}
-
-inline void HalfedgeMap::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
-  new (&_impl_) Impl_(internal_visibility(), arena);
-}
-HalfedgeMap::~HalfedgeMap() {
-  // @@protoc_insertion_point(destructor:session_proto.HalfedgeMap)
-  SharedDtor(*this);
-}
-inline void HalfedgeMap::SharedDtor(MessageLite& self) {
-  HalfedgeMap& this_ = static_cast<HalfedgeMap&>(self);
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    this_.CheckHasBitConsistency();
-  }
-  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
-  ABSL_DCHECK(this_.GetArena() == nullptr);
-  this_._impl_.~Impl_();
-}
-
-inline void* PROTOBUF_NONNULL HalfedgeMap::PlacementNew_(
-    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
-  return ::new (mem) HalfedgeMap(arena);
-}
-constexpr auto HalfedgeMap::InternalNewImpl_() {
-  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
-      PROTOBUF_FIELD_OFFSET(HalfedgeMap, _impl_.neighbors_) +
-          decltype(HalfedgeMap::_impl_.neighbors_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-  });
-  if (arena_bits.has_value()) {
-    return ::google::protobuf::internal::MessageCreator::CopyInit(
-        sizeof(HalfedgeMap), alignof(HalfedgeMap), *arena_bits);
-  } else {
-    return ::google::protobuf::internal::MessageCreator(&HalfedgeMap::PlacementNew_,
-                                 sizeof(HalfedgeMap),
-                                 alignof(HalfedgeMap));
-  }
-}
-constexpr auto HalfedgeMap::InternalGenerateClassData_() {
-  return ::google::protobuf::internal::ClassDataFull{
-      ::google::protobuf::internal::ClassData{
-          &_HalfedgeMap_default_instance_._instance,
-          &_table_.header,
-          nullptr,  // OnDemandRegisterArenaDtor
-          nullptr,  // IsInitialized
-          &HalfedgeMap::MergeImpl,
-          ::google::protobuf::Message::GetNewImpl<HalfedgeMap>(),
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-          &HalfedgeMap::SharedDtor,
-          ::google::protobuf::Message::GetClearImpl<HalfedgeMap>(), &HalfedgeMap::ByteSizeLong,
-              &HalfedgeMap::_InternalSerialize,
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          PROTOBUF_FIELD_OFFSET(HalfedgeMap, _impl_._cached_size_),
-          false,
-      },
-      &HalfedgeMap::kDescriptorMethods,
-      &descriptor_table_mesh_2eproto,
-      nullptr,  // tracker
-  };
-}
-
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
-    ::google::protobuf::internal::ClassDataFull HalfedgeMap_class_data_ =
-        HalfedgeMap::InternalGenerateClassData_();
-
-PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
-HalfedgeMap::GetClassData() const {
-  ::google::protobuf::internal::PrefetchToLocalCache(&HalfedgeMap_class_data_);
-  ::google::protobuf::internal::PrefetchToLocalCache(HalfedgeMap_class_data_.tc_table);
-  return HalfedgeMap_class_data_.base();
-}
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<0, 1, 1, 0, 2>
-HalfedgeMap::_table_ = {
-  {
-    PROTOBUF_FIELD_OFFSET(HalfedgeMap, _impl_._has_bits_),
-    0, // no _extensions_
-    1, 0,  // max_field_number, fast_idx_mask
-    offsetof(decltype(_table_), field_lookup_table),
-    4294967294,  // skipmap
-    offsetof(decltype(_table_), field_entries),
-    1,  // num_field_entries
-    1,  // num_aux_entries
-    offsetof(decltype(_table_), aux_entries),
-    HalfedgeMap_class_data_.base(),
-    nullptr,  // post_loop_handler
-    ::_pbi::TcParser::GenericFallback,  // fallback
-    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
-    ::_pbi::TcParser::GetTable<::session_proto::HalfedgeMap>(),  // to_prefetch
-    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
-  }, {{
-    {::_pbi::TcParser::MiniParse, {}},
-  }}, {{
-    65535, 65535
-  }}, {{
-    // map<uint64, uint64> neighbors = 1;
-    {PROTOBUF_FIELD_OFFSET(HalfedgeMap, _impl_.neighbors_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
-  }},
-  {{
-      {::_pbi::TcParser::GetMapAuxInfo(
-          0, 0, 4, 4, 0)},
-  }},
-  {{
-  }},
-};
-PROTOBUF_NOINLINE void HalfedgeMap::Clear() {
-// @@protoc_insertion_point(message_clear_start:session_proto.HalfedgeMap)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  cached_has_bits = _impl_._has_bits_[0];
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    _impl_.neighbors_.Clear();
-  }
-  _impl_._has_bits_.Clear();
-  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-::uint8_t* PROTOBUF_NONNULL HalfedgeMap::_InternalSerialize(
-    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
-    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
-  const HalfedgeMap& this_ = static_cast<const HalfedgeMap&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-::uint8_t* PROTOBUF_NONNULL HalfedgeMap::_InternalSerialize(
-    ::uint8_t* PROTOBUF_NONNULL target,
-    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
-  const HalfedgeMap& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    this_.CheckHasBitConsistency();
-  }
-  // @@protoc_insertion_point(serialize_to_array_start:session_proto.HalfedgeMap)
-  ::uint32_t cached_has_bits = 0;
-  (void)cached_has_bits;
-
-  cached_has_bits = this_._impl_._has_bits_[0];
-  // map<uint64, uint64> neighbors = 1;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    if (!this_._internal_neighbors().empty()) {
-      using MapType = ::google::protobuf::Map<::uint64_t, ::uint64_t>;
-      using WireHelper = _pbi::MapEntryFuncs<::uint64_t, ::uint64_t,
-                                     _pbi::WireFormatLite::TYPE_UINT64,
-                                     _pbi::WireFormatLite::TYPE_UINT64>;
-      const auto& field = this_._internal_neighbors();
-
-      if (stream->IsSerializationDeterministic() && field.size() > 1) {
-        for (const auto& entry : ::google::protobuf::internal::MapSorterFlat<MapType>(field)) {
-          target = WireHelper::InternalSerialize(
-              1, entry.first, entry.second, target, stream);
-        }
-      } else {
-        for (const auto& entry : field) {
-          target = WireHelper::InternalSerialize(
-              1, entry.first, entry.second, target, stream);
-        }
-      }
-    }
-  }
-
-  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
-    target =
-        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
-            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
-  }
-  // @@protoc_insertion_point(serialize_to_array_end:session_proto.HalfedgeMap)
-  return target;
-}
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-::size_t HalfedgeMap::ByteSizeLong(const MessageLite& base) {
-  const HalfedgeMap& this_ = static_cast<const HalfedgeMap&>(base);
-#else   // PROTOBUF_CUSTOM_VTABLE
-::size_t HalfedgeMap::ByteSizeLong() const {
-  const HalfedgeMap& this_ = *this;
-#endif  // PROTOBUF_CUSTOM_VTABLE
-  // @@protoc_insertion_point(message_byte_size_start:session_proto.HalfedgeMap)
-  ::size_t total_size = 0;
-
-  ::uint32_t cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void)cached_has_bits;
-
-  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
-   {
-    // map<uint64, uint64> neighbors = 1;
-    cached_has_bits = this_._impl_._has_bits_[0];
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-      total_size +=
-          1 * ::google::protobuf::internal::FromIntSize(this_._internal_neighbors_size());
-      for (const auto& entry : this_._internal_neighbors()) {
-        total_size += _pbi::MapEntryFuncs<::uint64_t, ::uint64_t,
-                                       _pbi::WireFormatLite::TYPE_UINT64,
-                                       _pbi::WireFormatLite::TYPE_UINT64>::ByteSizeLong(entry.first, entry.second);
-      }
-    }
-  }
-  return this_.MaybeComputeUnknownFieldsSize(total_size,
-                                             &this_._impl_._cached_size_);
-}
-
-void HalfedgeMap::MergeImpl(::google::protobuf::MessageLite& to_msg,
-                            const ::google::protobuf::MessageLite& from_msg) {
-   auto* const _this =
-      static_cast<HalfedgeMap*>(&to_msg);
-  auto& from = static_cast<const HalfedgeMap&>(from_msg);
-  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
-    from.CheckHasBitConsistency();
-  }
-  // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.HalfedgeMap)
-  ABSL_DCHECK_NE(&from, _this);
-  ::uint32_t cached_has_bits = 0;
-  (void)cached_has_bits;
-
-  cached_has_bits = from._impl_._has_bits_[0];
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
-    _this->_impl_.neighbors_.MergeFrom(from._impl_.neighbors_);
-  }
-  _this->_impl_._has_bits_[0] |= cached_has_bits;
-  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
-      from._internal_metadata_);
-}
-
-void HalfedgeMap::CopyFrom(const HalfedgeMap& from) {
-  // @@protoc_insertion_point(class_specific_copy_from_start:session_proto.HalfedgeMap)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-
-void HalfedgeMap::InternalSwap(HalfedgeMap* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
-  using ::std::swap;
-  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
-  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
-  _impl_.neighbors_.InternalSwap(&other->_impl_.neighbors_);
-}
-
-::google::protobuf::Metadata HalfedgeMap::GetMetadata() const {
   return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
 }
 // ===================================================================
@@ -3312,102 +2830,6 @@ Mesh_FacesEntry_DoNotUse::_table_ = {
 // ===================================================================
 
 #if defined(PROTOBUF_CUSTOM_VTABLE)
-Mesh_HalfedgesEntry_DoNotUse::Mesh_HalfedgesEntry_DoNotUse()
-    : SuperType(Mesh_HalfedgesEntry_DoNotUse_class_data_.base()) {}
-Mesh_HalfedgesEntry_DoNotUse::Mesh_HalfedgesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
-    : SuperType(arena, Mesh_HalfedgesEntry_DoNotUse_class_data_.base()) {}
-#else   // PROTOBUF_CUSTOM_VTABLE
-Mesh_HalfedgesEntry_DoNotUse::Mesh_HalfedgesEntry_DoNotUse() : SuperType() {}
-Mesh_HalfedgesEntry_DoNotUse::Mesh_HalfedgesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
-#endif  // PROTOBUF_CUSTOM_VTABLE
-inline void* PROTOBUF_NONNULL Mesh_HalfedgesEntry_DoNotUse::PlacementNew_(
-    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
-  return ::new (mem) Mesh_HalfedgesEntry_DoNotUse(arena);
-}
-constexpr auto Mesh_HalfedgesEntry_DoNotUse::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(Mesh_HalfedgesEntry_DoNotUse),
-                                            alignof(Mesh_HalfedgesEntry_DoNotUse));
-}
-constexpr auto Mesh_HalfedgesEntry_DoNotUse::InternalGenerateClassData_() {
-  return ::google::protobuf::internal::ClassDataFull{
-      ::google::protobuf::internal::ClassData{
-          &_Mesh_HalfedgesEntry_DoNotUse_default_instance_._instance,
-          &_table_.header,
-          nullptr,  // OnDemandRegisterArenaDtor
-          nullptr,  // IsInitialized
-          &Mesh_HalfedgesEntry_DoNotUse::MergeImpl,
-          ::google::protobuf::Message::GetNewImpl<Mesh_HalfedgesEntry_DoNotUse>(),
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-          &Mesh_HalfedgesEntry_DoNotUse::SharedDtor,
-          static_cast<void (::google::protobuf::MessageLite::*)()>(&Mesh_HalfedgesEntry_DoNotUse::ClearImpl),
-              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
-              ,
-#endif  // PROTOBUF_CUSTOM_VTABLE
-          PROTOBUF_FIELD_OFFSET(Mesh_HalfedgesEntry_DoNotUse, _impl_._cached_size_),
-          false,
-      },
-      &Mesh_HalfedgesEntry_DoNotUse::kDescriptorMethods,
-      &descriptor_table_mesh_2eproto,
-      nullptr,  // tracker
-  };
-}
-
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
-    ::google::protobuf::internal::ClassDataFull Mesh_HalfedgesEntry_DoNotUse_class_data_ =
-        Mesh_HalfedgesEntry_DoNotUse::InternalGenerateClassData_();
-
-PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
-Mesh_HalfedgesEntry_DoNotUse::GetClassData() const {
-  ::google::protobuf::internal::PrefetchToLocalCache(&Mesh_HalfedgesEntry_DoNotUse_class_data_);
-  ::google::protobuf::internal::PrefetchToLocalCache(Mesh_HalfedgesEntry_DoNotUse_class_data_.tc_table);
-  return Mesh_HalfedgesEntry_DoNotUse_class_data_.base();
-}
-PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<1, 2, 1, 0, 2>
-Mesh_HalfedgesEntry_DoNotUse::_table_ = {
-  {
-    PROTOBUF_FIELD_OFFSET(Mesh_HalfedgesEntry_DoNotUse, _impl_._has_bits_),
-    0, // no _extensions_
-    2, 8,  // max_field_number, fast_idx_mask
-    offsetof(decltype(_table_), field_lookup_table),
-    4294967292,  // skipmap
-    offsetof(decltype(_table_), field_entries),
-    2,  // num_field_entries
-    1,  // num_aux_entries
-    offsetof(decltype(_table_), aux_entries),
-    Mesh_HalfedgesEntry_DoNotUse_class_data_.base(),
-    nullptr,  // post_loop_handler
-    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
-    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
-    ::_pbi::TcParser::GetTable<::session_proto::Mesh_HalfedgesEntry_DoNotUse>(),  // to_prefetch
-    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
-  }, {{
-    // .session_proto.HalfedgeMap value = 2;
-    {::_pbi::TcParser::FastMtS1,
-     {18, 0, 0,
-      PROTOBUF_FIELD_OFFSET(Mesh_HalfedgesEntry_DoNotUse, _impl_.value_)}},
-    // uint64 key = 1;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint64_t, offsetof(Mesh_HalfedgesEntry_DoNotUse, _impl_.key_), 1>(),
-     {8, 1, 0,
-      PROTOBUF_FIELD_OFFSET(Mesh_HalfedgesEntry_DoNotUse, _impl_.key_)}},
-  }}, {{
-    65535, 65535
-  }}, {{
-    // uint64 key = 1;
-    {PROTOBUF_FIELD_OFFSET(Mesh_HalfedgesEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt64)},
-    // .session_proto.HalfedgeMap value = 2;
-    {PROTOBUF_FIELD_OFFSET(Mesh_HalfedgesEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
-  }},
-  {{
-      {::_pbi::TcParser::GetTable<::session_proto::HalfedgeMap>()},
-  }},
-  {{
-  }},
-};
-// ===================================================================
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
 Mesh_DefaultVertexAttributesEntry_DoNotUse::Mesh_DefaultVertexAttributesEntry_DoNotUse()
     : SuperType(Mesh_DefaultVertexAttributesEntry_DoNotUse_class_data_.base()) {}
 Mesh_DefaultVertexAttributesEntry_DoNotUse::Mesh_DefaultVertexAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
@@ -3802,29 +3224,11 @@ class Mesh::_Internal {
       8 * PROTOBUF_FIELD_OFFSET(Mesh, _impl_._has_bits_);
 };
 
-void Mesh::clear_pointcolors() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.pointcolors_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000002U);
-}
-void Mesh::clear_facecolors() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.facecolors_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000004U);
-}
-void Mesh::clear_linecolors() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.linecolors_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000008U);
-}
 void Mesh::clear_objectcolor() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.objectcolor_ != nullptr) _impl_.objectcolor_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000040U);
 }
 Mesh::Mesh(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
@@ -3842,19 +3246,18 @@ PROTOBUF_NDEBUG_INLINE Mesh::Impl_::Impl_(
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
         edge_data_{visibility, arena, from.edge_data_},
-        pointcolors_{visibility, arena, from.pointcolors_},
-        facecolors_{visibility, arena, from.facecolors_},
-        linecolors_{visibility, arena, from.linecolors_},
         widths_{visibility, arena, from.widths_},
+        facecolors_rgba_{visibility, arena, from.facecolors_rgba_},
+        linecolors_rgba_{visibility, arena, from.linecolors_rgba_},
         guid_(arena, from.guid_),
         name_(arena, from.name_),
         vertices_{visibility, arena, from.vertices_},
         faces_{visibility, arena, from.faces_},
-        halfedges_{visibility, arena, from.halfedges_},
         default_vertex_attributes_{visibility, arena, from.default_vertex_attributes_},
         default_face_attributes_{visibility, arena, from.default_face_attributes_},
         default_edge_attributes_{visibility, arena, from.default_edge_attributes_},
-        triangulation_{visibility, arena, from.triangulation_} {}
+        triangulation_{visibility, arena, from.triangulation_},
+        pointcolors_rgba_{visibility, arena, from.pointcolors_rgba_} {}
 
 Mesh::Mesh(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -3870,7 +3273,7 @@ Mesh::Mesh(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
   ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.objectcolor_ = (CheckHasBit(cached_has_bits, 0x00000080U))
+  _impl_.objectcolor_ = (CheckHasBit(cached_has_bits, 0x00000040U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.objectcolor_)
                 : nullptr;
   _impl_.color_mode_ = from._impl_.color_mode_;
@@ -3882,19 +3285,18 @@ PROTOBUF_NDEBUG_INLINE Mesh::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
         edge_data_{visibility, arena},
-        pointcolors_{visibility, arena},
-        facecolors_{visibility, arena},
-        linecolors_{visibility, arena},
         widths_{visibility, arena},
+        facecolors_rgba_{visibility, arena},
+        linecolors_rgba_{visibility, arena},
         guid_(arena),
         name_(arena),
         vertices_{visibility, arena},
         faces_{visibility, arena},
-        halfedges_{visibility, arena},
         default_vertex_attributes_{visibility, arena},
         default_face_attributes_{visibility, arena},
         default_edge_attributes_{visibility, arena},
-        triangulation_{visibility, arena} {}
+        triangulation_{visibility, arena},
+        pointcolors_rgba_{visibility, arena} {}
 
 inline void Mesh::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
@@ -3937,10 +3339,6 @@ constexpr auto Mesh::InternalNewImpl_() {
           decltype(Mesh::_impl_.faces_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.halfedges_) +
-          decltype(Mesh::_impl_.halfedges_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.edge_data_) +
           decltype(Mesh::_impl_.edge_data_)::
               InternalGetArenaOffset(
@@ -3957,24 +3355,24 @@ constexpr auto Mesh::InternalNewImpl_() {
           decltype(Mesh::_impl_.default_edge_attributes_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.pointcolors_) +
-          decltype(Mesh::_impl_.pointcolors_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.facecolors_) +
-          decltype(Mesh::_impl_.facecolors_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.linecolors_) +
-          decltype(Mesh::_impl_.linecolors_)::
-              InternalGetArenaOffset(
-                  ::google::protobuf::Message::internal_visibility()),
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.widths_) +
           decltype(Mesh::_impl_.widths_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.triangulation_) +
           decltype(Mesh::_impl_.triangulation_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.pointcolors_rgba_) +
+          decltype(Mesh::_impl_.pointcolors_rgba_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.facecolors_rgba_) +
+          decltype(Mesh::_impl_.facecolors_rgba_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.linecolors_rgba_) +
+          decltype(Mesh::_impl_.linecolors_rgba_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
   });
@@ -4021,17 +3419,17 @@ Mesh::GetClassData() const {
   return Mesh_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 16, 16, 122, 2>
+const ::_pbi::TcParseTable<3, 15, 11, 114, 2>
 Mesh::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Mesh, _impl_._has_bits_),
     0, // no _extensions_
-    17, 120,  // max_field_number, fast_idx_mask
+    20, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294844416,  // skipmap
+    4293930512,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    16,  // num_field_entries
-    16,  // num_aux_entries
+    15,  // num_field_entries
+    11,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Mesh_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -4042,88 +3440,72 @@ Mesh::_table_ = {
   }, {{
     // int32 color_mode = 16;
     {::_pbi::TcParser::FastV32S2,
-     {384, 8, 0,
+     {384, 7, 0,
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.color_mode_)}},
     // string guid = 1;
     {::_pbi::TcParser::FastUS1,
-     {10, 5, 0,
+     {10, 4, 0,
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.guid_)}},
     // string name = 2;
     {::_pbi::TcParser::FastUS1,
-     {18, 6, 0,
+     {18, 5, 0,
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.name_)}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
+    // repeated float facecolors_rgba = 19;
+    {::_pbi::TcParser::FastF32P2,
+     {410, 2, 0,
+      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.facecolors_rgba_)}},
+    // repeated float linecolors_rgba = 20;
+    {::_pbi::TcParser::FastF32P2,
+     {418, 3, 0,
+      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.linecolors_rgba_)}},
+    // repeated double widths = 13;
+    {::_pbi::TcParser::FastF64P1,
+     {106, 1, 0,
+      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.widths_)}},
     // repeated .session_proto.EdgeData edge_data = 6;
     {::_pbi::TcParser::FastMtR1,
      {50, 0, 0,
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.edge_data_)}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    {::_pbi::TcParser::MiniParse, {}},
-    // repeated .session_proto.Color pointcolors = 10;
-    {::_pbi::TcParser::FastMtR1,
-     {82, 1, 1,
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.pointcolors_)}},
-    // repeated .session_proto.Color facecolors = 11;
-    {::_pbi::TcParser::FastMtR1,
-     {90, 2, 2,
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.facecolors_)}},
-    // repeated .session_proto.Color linecolors = 12;
-    {::_pbi::TcParser::FastMtR1,
-     {98, 3, 3,
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.linecolors_)}},
-    // repeated double widths = 13;
-    {::_pbi::TcParser::FastF64P1,
-     {106, 4, 0,
-      PROTOBUF_FIELD_OFFSET(Mesh, _impl_.widths_)}},
-    {::_pbi::TcParser::MiniParse, {}},
     // .session_proto.Color objectcolor = 15;
     {::_pbi::TcParser::FastMtS1,
-     {122, 7, 4,
+     {122, 6, 1,
       PROTOBUF_FIELD_OFFSET(Mesh, _impl_.objectcolor_)}},
   }}, {{
     65535, 65535
   }}, {{
     // string guid = 1;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.guid_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.guid_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string name = 2;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.name_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.name_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // map<uint64, .session_proto.VertexData> vertices = 3;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.vertices_), _Internal::kHasBitsOffset + 9, 5, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.vertices_), _Internal::kHasBitsOffset + 8, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // map<uint64, .session_proto.FaceData> faces = 4;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.faces_), _Internal::kHasBitsOffset + 10, 7, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
-    // map<uint64, .session_proto.HalfedgeMap> halfedges = 5;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.halfedges_), _Internal::kHasBitsOffset + 11, 9, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.faces_), _Internal::kHasBitsOffset + 9, 4, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // repeated .session_proto.EdgeData edge_data = 6;
     {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.edge_data_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // map<string, double> default_vertex_attributes = 7;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.default_vertex_attributes_), _Internal::kHasBitsOffset + 12, 11, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.default_vertex_attributes_), _Internal::kHasBitsOffset + 10, 6, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // map<string, double> default_face_attributes = 8;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.default_face_attributes_), _Internal::kHasBitsOffset + 13, 12, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.default_face_attributes_), _Internal::kHasBitsOffset + 11, 7, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // map<string, double> default_edge_attributes = 9;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.default_edge_attributes_), _Internal::kHasBitsOffset + 14, 13, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
-    // repeated .session_proto.Color pointcolors = 10;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.pointcolors_), _Internal::kHasBitsOffset + 1, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
-    // repeated .session_proto.Color facecolors = 11;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.facecolors_), _Internal::kHasBitsOffset + 2, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
-    // repeated .session_proto.Color linecolors = 12;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.linecolors_), _Internal::kHasBitsOffset + 3, 3, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.default_edge_attributes_), _Internal::kHasBitsOffset + 12, 8, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
     // repeated double widths = 13;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.widths_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.widths_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
     // .session_proto.Color objectcolor = 15;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.objectcolor_), _Internal::kHasBitsOffset + 7, 4, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.objectcolor_), _Internal::kHasBitsOffset + 6, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // int32 color_mode = 16;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.color_mode_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.color_mode_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
     // map<uint64, .session_proto.TriList> triangulation = 17;
-    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.triangulation_), _Internal::kHasBitsOffset + 15, 14, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.triangulation_), _Internal::kHasBitsOffset + 13, 9, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    // repeated float pointcolors_rgba = 18;
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.pointcolors_rgba_), _Internal::kHasBitsOffset + 14, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFloat)},
+    // repeated float facecolors_rgba = 19;
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.facecolors_rgba_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFloat)},
+    // repeated float linecolors_rgba = 20;
+    {PROTOBUF_FIELD_OFFSET(Mesh, _impl_.linecolors_rgba_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFloat)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::EdgeData>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Color>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Color>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Color>()},
       {::_pbi::TcParser::GetTable<::session_proto::Color>()},
       {::_pbi::TcParser::GetMapAuxInfo(
           0, 0, 4, 11, 0)},
@@ -4131,9 +3513,6 @@ Mesh::_table_ = {
       {::_pbi::TcParser::GetMapAuxInfo(
           0, 0, 4, 11, 0)},
       {::_pbi::TcParser::GetTable<::session_proto::FaceData>()},
-      {::_pbi::TcParser::GetMapAuxInfo(
-          0, 0, 4, 11, 0)},
-      {::_pbi::TcParser::GetTable<::session_proto::HalfedgeMap>()},
       {::_pbi::TcParser::GetMapAuxInfo(
           1, 0, 9, 1, 0)},
       {::_pbi::TcParser::GetMapAuxInfo(
@@ -4145,7 +3524,7 @@ Mesh::_table_ = {
       {::_pbi::TcParser::GetTable<::session_proto::TriList>()},
   }},
   {{
-    "\22\4\4\0\0\0\0\31\27\27\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+    "\22\4\4\0\0\0\31\27\27\0\0\0\0\0\0\0"
     "session_proto.Mesh"
     "guid"
     "name"
@@ -4162,55 +3541,52 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.edge_data_.Clear();
     }
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-      _impl_.pointcolors_.Clear();
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
-      _impl_.facecolors_.Clear();
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
-      _impl_.linecolors_.Clear();
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
       _impl_.widths_.Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      _impl_.facecolors_rgba_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+      _impl_.linecolors_rgba_.Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       _impl_.guid_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       _impl_.name_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       ABSL_DCHECK(_impl_.objectcolor_ != nullptr);
       _impl_.objectcolor_->Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x0000ff00U)) {
-    _impl_.color_mode_ = 0;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+  _impl_.color_mode_ = 0;
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       _impl_.vertices_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
       _impl_.faces_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
-      _impl_.halfedges_.Clear();
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
       _impl_.default_vertex_attributes_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
       _impl_.default_face_attributes_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
       _impl_.default_edge_attributes_.Clear();
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00008000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
       _impl_.triangulation_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+      _impl_.pointcolors_rgba_.Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -4237,7 +3613,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // string guid = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     if (!this_._internal_guid().empty()) {
       const ::std::string& _s = this_._internal_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -4247,7 +3623,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // string name = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -4257,7 +3633,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // map<uint64, .session_proto.VertexData> vertices = 3;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
     if (!this_._internal_vertices().empty()) {
       using MapType = ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>;
       using WireHelper = _pbi::MapEntryFuncs<::uint64_t, ::session_proto::VertexData,
@@ -4280,7 +3656,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // map<uint64, .session_proto.FaceData> faces = 4;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
     if (!this_._internal_faces().empty()) {
       using MapType = ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>;
       using WireHelper = _pbi::MapEntryFuncs<::uint64_t, ::session_proto::FaceData,
@@ -4302,29 +3678,6 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
     }
   }
 
-  // map<uint64, .session_proto.HalfedgeMap> halfedges = 5;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
-    if (!this_._internal_halfedges().empty()) {
-      using MapType = ::google::protobuf::Map<::uint64_t, ::session_proto::HalfedgeMap>;
-      using WireHelper = _pbi::MapEntryFuncs<::uint64_t, ::session_proto::HalfedgeMap,
-                                     _pbi::WireFormatLite::TYPE_UINT64,
-                                     _pbi::WireFormatLite::TYPE_MESSAGE>;
-      const auto& field = this_._internal_halfedges();
-
-      if (stream->IsSerializationDeterministic() && field.size() > 1) {
-        for (const auto& entry : ::google::protobuf::internal::MapSorterFlat<MapType>(field)) {
-          target = WireHelper::InternalSerialize(
-              5, entry.first, entry.second, target, stream);
-        }
-      } else {
-        for (const auto& entry : field) {
-          target = WireHelper::InternalSerialize(
-              5, entry.first, entry.second, target, stream);
-        }
-      }
-    }
-  }
-
   // repeated .session_proto.EdgeData edge_data = 6;
   if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
     for (unsigned i = 0, n = static_cast<unsigned>(
@@ -4339,7 +3692,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // map<string, double> default_vertex_attributes = 7;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
     if (!this_._internal_default_vertex_attributes().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, double>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
@@ -4368,7 +3721,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // map<string, double> default_face_attributes = 8;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
     if (!this_._internal_default_face_attributes().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, double>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
@@ -4397,7 +3750,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // map<string, double> default_edge_attributes = 9;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
     if (!this_._internal_default_edge_attributes().empty()) {
       using MapType = ::google::protobuf::Map<::std::string, double>;
       using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
@@ -4425,61 +3778,22 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
     }
   }
 
-  // repeated .session_proto.Color pointcolors = 10;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-    for (unsigned i = 0, n = static_cast<unsigned>(
-                             this_._internal_pointcolors_size());
-         i < n; i++) {
-      const auto& repfield = this_._internal_pointcolors().Get(i);
-      target =
-          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-              10, repfield, repfield.GetCachedSize(),
-              target, stream);
-    }
-  }
-
-  // repeated .session_proto.Color facecolors = 11;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
-    for (unsigned i = 0, n = static_cast<unsigned>(
-                             this_._internal_facecolors_size());
-         i < n; i++) {
-      const auto& repfield = this_._internal_facecolors().Get(i);
-      target =
-          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-              11, repfield, repfield.GetCachedSize(),
-              target, stream);
-    }
-  }
-
-  // repeated .session_proto.Color linecolors = 12;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
-    for (unsigned i = 0, n = static_cast<unsigned>(
-                             this_._internal_linecolors_size());
-         i < n; i++) {
-      const auto& repfield = this_._internal_linecolors().Get(i);
-      target =
-          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-              12, repfield, repfield.GetCachedSize(),
-              target, stream);
-    }
-  }
-
   // repeated double widths = 13;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
     if (this_._internal_widths_size() > 0) {
       target = stream->WriteFixedPacked(13, this_._internal_widths(), target);
     }
   }
 
   // .session_proto.Color objectcolor = 15;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         15, *this_._impl_.objectcolor_, this_._impl_.objectcolor_->GetCachedSize(), target,
         stream);
   }
 
   // int32 color_mode = 16;
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
     if (this_._internal_color_mode() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteInt32ToArray(
@@ -4488,7 +3802,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
   }
 
   // map<uint64, .session_proto.TriList> triangulation = 17;
-  if (CheckHasBitForRepeated(cached_has_bits, 0x00008000U)) {
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
     if (!this_._internal_triangulation().empty()) {
       using MapType = ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>;
       using WireHelper = _pbi::MapEntryFuncs<::uint64_t, ::session_proto::TriList,
@@ -4507,6 +3821,27 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
               17, entry.first, entry.second, target, stream);
         }
       }
+    }
+  }
+
+  // repeated float pointcolors_rgba = 18;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+    if (this_._internal_pointcolors_rgba_size() > 0) {
+      target = stream->WriteFixedPacked(18, this_._internal_pointcolors_rgba(), target);
+    }
+  }
+
+  // repeated float facecolors_rgba = 19;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+    if (this_._internal_facecolors_rgba_size() > 0) {
+      target = stream->WriteFixedPacked(19, this_._internal_facecolors_rgba(), target);
+    }
+  }
+
+  // repeated float linecolors_rgba = 20;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+    if (this_._internal_linecolors_rgba_size() > 0) {
+      target = stream->WriteFixedPacked(20, this_._internal_linecolors_rgba(), target);
     }
   }
 
@@ -4543,29 +3878,8 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
         total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
       }
     }
-    // repeated .session_proto.Color pointcolors = 10;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-      total_size += 1UL * this_._internal_pointcolors_size();
-      for (const auto& msg : this_._internal_pointcolors()) {
-        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
-      }
-    }
-    // repeated .session_proto.Color facecolors = 11;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
-      total_size += 1UL * this_._internal_facecolors_size();
-      for (const auto& msg : this_._internal_facecolors()) {
-        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
-      }
-    }
-    // repeated .session_proto.Color linecolors = 12;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
-      total_size += 1UL * this_._internal_linecolors_size();
-      for (const auto& msg : this_._internal_linecolors()) {
-        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
-      }
-    }
     // repeated double widths = 13;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
       ::size_t data_size = ::size_t{8} *
           ::_pbi::FromIntSize(this_._internal_widths_size());
       ::size_t tag_size = data_size == 0
@@ -4574,36 +3888,56 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
                               static_cast<::int32_t>(data_size));
       total_size += tag_size + data_size;
     }
+    // repeated float facecolors_rgba = 19;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      ::size_t data_size = ::size_t{4} *
+          ::_pbi::FromIntSize(this_._internal_facecolors_rgba_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 2 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
+    // repeated float linecolors_rgba = 20;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+      ::size_t data_size = ::size_t{4} *
+          ::_pbi::FromIntSize(this_._internal_linecolors_rgba_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 2 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
     // string guid = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
       }
     }
     // string name = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
     // .session_proto.Color objectcolor = 15;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.objectcolor_);
     }
-  }
-  if (BatchCheckHasBit(cached_has_bits, 0x0000ff00U)) {
     // int32 color_mode = 16;
-    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       if (this_._internal_color_mode() != 0) {
         total_size += 2 + ::_pbi::WireFormatLite::Int32Size(
                                         this_._internal_color_mode());
       }
     }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     // map<uint64, .session_proto.VertexData> vertices = 3;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_vertices_size());
       for (const auto& entry : this_._internal_vertices()) {
@@ -4613,7 +3947,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
       }
     }
     // map<uint64, .session_proto.FaceData> faces = 4;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_faces_size());
       for (const auto& entry : this_._internal_faces()) {
@@ -4622,18 +3956,8 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
                                        _pbi::WireFormatLite::TYPE_MESSAGE>::ByteSizeLong(entry.first, entry.second);
       }
     }
-    // map<uint64, .session_proto.HalfedgeMap> halfedges = 5;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
-      total_size +=
-          1 * ::google::protobuf::internal::FromIntSize(this_._internal_halfedges_size());
-      for (const auto& entry : this_._internal_halfedges()) {
-        total_size += _pbi::MapEntryFuncs<::uint64_t, ::session_proto::HalfedgeMap,
-                                       _pbi::WireFormatLite::TYPE_UINT64,
-                                       _pbi::WireFormatLite::TYPE_MESSAGE>::ByteSizeLong(entry.first, entry.second);
-      }
-    }
     // map<string, double> default_vertex_attributes = 7;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_default_vertex_attributes_size());
       for (const auto& entry : this_._internal_default_vertex_attributes()) {
@@ -4643,7 +3967,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
       }
     }
     // map<string, double> default_face_attributes = 8;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_default_face_attributes_size());
       for (const auto& entry : this_._internal_default_face_attributes()) {
@@ -4653,7 +3977,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
       }
     }
     // map<string, double> default_edge_attributes = 9;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
       total_size +=
           1 * ::google::protobuf::internal::FromIntSize(this_._internal_default_edge_attributes_size());
       for (const auto& entry : this_._internal_default_edge_attributes()) {
@@ -4663,7 +3987,7 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
       }
     }
     // map<uint64, .session_proto.TriList> triangulation = 17;
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00008000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
       total_size +=
           2 * ::google::protobuf::internal::FromIntSize(this_._internal_triangulation_size());
       for (const auto& entry : this_._internal_triangulation()) {
@@ -4671,6 +3995,16 @@ PROTOBUF_NOINLINE void Mesh::Clear() {
                                        _pbi::WireFormatLite::TYPE_UINT64,
                                        _pbi::WireFormatLite::TYPE_MESSAGE>::ByteSizeLong(entry.first, entry.second);
       }
+    }
+    // repeated float pointcolors_rgba = 18;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+      ::size_t data_size = ::size_t{4} *
+          ::_pbi::FromIntSize(this_._internal_pointcolors_rgba_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 2 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
     }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
@@ -4699,24 +4033,15 @@ void Mesh::MergeImpl(::google::protobuf::MessageLite& to_msg,
           from._internal_edge_data());
     }
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
-      _this->_internal_mutable_pointcolors()->InternalMergeFromWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), arena,
-          from._internal_pointcolors());
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
-      _this->_internal_mutable_facecolors()->InternalMergeFromWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), arena,
-          from._internal_facecolors());
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
-      _this->_internal_mutable_linecolors()->InternalMergeFromWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), arena,
-          from._internal_linecolors());
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
       _this->_internal_mutable_widths()->MergeFrom(from._internal_widths());
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      _this->_internal_mutable_facecolors_rgba()->MergeFrom(from._internal_facecolors_rgba());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+      _this->_internal_mutable_linecolors_rgba()->MergeFrom(from._internal_linecolors_rgba());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
       } else {
@@ -4725,7 +4050,7 @@ void Mesh::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -4734,7 +4059,7 @@ void Mesh::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       ABSL_DCHECK(from._impl_.objectcolor_ != nullptr);
       if (_this->_impl_.objectcolor_ == nullptr) {
         _this->_impl_.objectcolor_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.objectcolor_);
@@ -4742,33 +4067,33 @@ void Mesh::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.objectcolor_->MergeFrom(*from._impl_.objectcolor_);
       }
     }
-  }
-  if (BatchCheckHasBit(cached_has_bits, 0x0000ff00U)) {
-    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       if (from._internal_color_mode() != 0) {
         _this->_impl_.color_mode_ = from._impl_.color_mode_;
       }
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       _this->_impl_.vertices_.MergeFrom(from._impl_.vertices_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
       _this->_impl_.faces_.MergeFrom(from._impl_.faces_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
-      _this->_impl_.halfedges_.MergeFrom(from._impl_.halfedges_);
-    }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
       _this->_impl_.default_vertex_attributes_.MergeFrom(from._impl_.default_vertex_attributes_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000800U)) {
       _this->_impl_.default_face_attributes_.MergeFrom(from._impl_.default_face_attributes_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00001000U)) {
       _this->_impl_.default_edge_attributes_.MergeFrom(from._impl_.default_edge_attributes_);
     }
-    if (CheckHasBitForRepeated(cached_has_bits, 0x00008000U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00002000U)) {
       _this->_impl_.triangulation_.MergeFrom(from._impl_.triangulation_);
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+      _this->_internal_mutable_pointcolors_rgba()->MergeFrom(from._internal_pointcolors_rgba());
     }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
@@ -4791,10 +4116,9 @@ void Mesh::InternalSwap(Mesh* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
   _impl_.edge_data_.InternalSwap(&other->_impl_.edge_data_);
-  _impl_.pointcolors_.InternalSwap(&other->_impl_.pointcolors_);
-  _impl_.facecolors_.InternalSwap(&other->_impl_.facecolors_);
-  _impl_.linecolors_.InternalSwap(&other->_impl_.linecolors_);
   _impl_.widths_.InternalSwap(&other->_impl_.widths_);
+  _impl_.facecolors_rgba_.InternalSwap(&other->_impl_.facecolors_rgba_);
+  _impl_.linecolors_rgba_.InternalSwap(&other->_impl_.linecolors_rgba_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
@@ -4805,11 +4129,11 @@ void Mesh::InternalSwap(Mesh* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
           reinterpret_cast<char*>(&other->_impl_.objectcolor_));
   _impl_.vertices_.InternalSwap(&other->_impl_.vertices_);
   _impl_.faces_.InternalSwap(&other->_impl_.faces_);
-  _impl_.halfedges_.InternalSwap(&other->_impl_.halfedges_);
   _impl_.default_vertex_attributes_.InternalSwap(&other->_impl_.default_vertex_attributes_);
   _impl_.default_face_attributes_.InternalSwap(&other->_impl_.default_face_attributes_);
   _impl_.default_edge_attributes_.InternalSwap(&other->_impl_.default_edge_attributes_);
   _impl_.triangulation_.InternalSwap(&other->_impl_.triangulation_);
+  _impl_.pointcolors_rgba_.InternalSwap(&other->_impl_.pointcolors_rgba_);
 }
 
 ::google::protobuf::Metadata Mesh::GetMetadata() const {

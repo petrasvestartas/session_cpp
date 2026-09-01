@@ -3355,20 +3355,8 @@ std::string Mesh::pb_dumps() const {
         }
     }
 
-    // Halfedges — lazy topology: if this mesh was decoded and never edited, the map was
-    // never built — compute it transiently so the WIRE stays exactly what it always was
-    std::map<size_t, std::map<size_t, std::optional<size_t>>> he_owned;
-    const auto* he_src = &halfedge;
-    if (halfedge.empty() && !face.empty()) {
-        he_owned = compute_halfedges();
-        he_src = &he_owned;
-    }
-    for (const auto& [u, neighbors] : *he_src) {
-        auto& hmap = (*proto.mutable_halfedges())[u];
-        for (const auto& [v, fkey_opt] : neighbors) {
-            (*hmap.mutable_neighbors())[v] = fkey_opt.value_or(UINT64_MAX);
-        }
-    }
+    // P6: halfedges are no longer on the wire — the field is gone from the schema. Topology
+    // is derived; ensure_halfedges() rebuilds it from faces the first time an edit needs it.
 
     // Edge data
     for (const auto& [edge, attrs] : edgedata) {
@@ -3393,33 +3381,18 @@ std::string Mesh::pb_dumps() const {
 
     // Colors
     for (const auto& c : pointcolors) {
-        auto* color_proto = proto.add_pointcolors();
-        color_proto->set_guid(c.guid());
-        color_proto->set_name(c.name);
-        color_proto->set_r(c.r);
-        color_proto->set_g(c.g);
-        color_proto->set_b(c.b);
-        color_proto->set_a(c.a);
+        proto.add_pointcolors_rgba(c.r); proto.add_pointcolors_rgba(c.g);
+        proto.add_pointcolors_rgba(c.b); proto.add_pointcolors_rgba(c.a);
     }
 
     for (const auto& c : facecolors) {
-        auto* color_proto = proto.add_facecolors();
-        color_proto->set_guid(c.guid());
-        color_proto->set_name(c.name);
-        color_proto->set_r(c.r);
-        color_proto->set_g(c.g);
-        color_proto->set_b(c.b);
-        color_proto->set_a(c.a);
+        proto.add_facecolors_rgba(c.r); proto.add_facecolors_rgba(c.g);
+        proto.add_facecolors_rgba(c.b); proto.add_facecolors_rgba(c.a);
     }
 
     for (const auto& c : linecolors) {
-        auto* color_proto = proto.add_linecolors();
-        color_proto->set_guid(c.guid());
-        color_proto->set_name(c.name);
-        color_proto->set_r(c.r);
-        color_proto->set_g(c.g);
-        color_proto->set_b(c.b);
-        color_proto->set_a(c.a);
+        proto.add_linecolors_rgba(c.r); proto.add_linecolors_rgba(c.g);
+        proto.add_linecolors_rgba(c.b); proto.add_linecolors_rgba(c.a);
     }
 
     // Widths
@@ -3518,25 +3491,22 @@ Mesh Mesh::pb_loads(const std::string& data) {
     }
 
     // Colors
-    for (const auto& c : proto.pointcolors()) {
-        Color color(c.r(), c.g(), c.b(), c.a());
-        color.guid() = c.guid();
-        color.name = c.name();
-        mesh.pointcolors.push_back(color);
+    {
+        const auto& rgba = proto.pointcolors_rgba();
+        for (int i = 0; i + 3 < rgba.size(); i += 4)
+            mesh.pointcolors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
     }
 
-    for (const auto& c : proto.facecolors()) {
-        Color color(c.r(), c.g(), c.b(), c.a());
-        color.guid() = c.guid();
-        color.name = c.name();
-        mesh.facecolors.push_back(color);
+    {
+        const auto& rgba = proto.facecolors_rgba();
+        for (int i = 0; i + 3 < rgba.size(); i += 4)
+            mesh.facecolors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
     }
 
-    for (const auto& c : proto.linecolors()) {
-        Color color(c.r(), c.g(), c.b(), c.a());
-        color.guid() = c.guid();
-        color.name = c.name();
-        mesh.linecolors.push_back(color);
+    {
+        const auto& rgba = proto.linecolors_rgba();
+        for (int i = 0; i + 3 < rgba.size(); i += 4)
+            mesh.linecolors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
     }
 
     // Widths

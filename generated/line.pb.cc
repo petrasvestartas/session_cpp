@@ -30,15 +30,17 @@ inline constexpr Line::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
         dash_{},
+        coords_{},
+        linecolor_rgba_{},
         guid_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         name_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        start_{nullptr},
-        end_{nullptr},
-        linecolor_{nullptr},
+        linecolor_name_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
         width_{0} {}
 
 template <typename>
@@ -71,20 +73,20 @@ const ::uint32_t
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_._has_bits_),
         10, // hasbit index offset
-        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.start_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.end_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.width_),
-        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.linecolor_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.dash_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.coords_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.linecolor_rgba_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.linecolor_name_),
         3,
         4,
+        6,
+        0,
         1,
         2,
-        6,
         5,
-        0,
 };
 
 static const ::_pbi::MigrationSchema
@@ -96,29 +98,22 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 };
 const char descriptor_table_protodef_line_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\nline.proto\022\rsession_proto\032\013color.proto"
-    "\032\013point.proto\"\266\001\n\004Line\022#\n\005start\030\001 \001(\0132\024."
-    "session_proto.Point\022!\n\003end\030\002 \001(\0132\024.sessi"
-    "on_proto.Point\022\014\n\004guid\030\003 \001(\t\022\014\n\004name\030\004 \001"
-    "(\t\022\r\n\005width\030\006 \001(\001\022\'\n\tlinecolor\030\007 \001(\0132\024.s"
-    "ession_proto.Color\022\014\n\004dash\030\010 \003(\001J\004\010\005\020\006b\006"
-    "proto3"
-};
-static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_line_2eproto_deps[2] = {
-        &::descriptor_table_color_2eproto,
-        &::descriptor_table_point_2eproto,
+    "\n\nline.proto\022\rsession_proto\"\227\001\n\004Line\022\014\n\004"
+    "guid\030\003 \001(\t\022\014\n\004name\030\004 \001(\t\022\r\n\005width\030\006 \001(\001\022"
+    "\014\n\004dash\030\010 \003(\001\022\016\n\006coords\030\t \003(\001\022\026\n\016linecol"
+    "or_rgba\030\n \003(\002\022\026\n\016linecolor_name\030\013 \001(\tJ\004\010"
+    "\001\020\002J\004\010\002\020\003J\004\010\005\020\006J\004\010\007\020\010b\006proto3"
 };
 static ::absl::once_flag descriptor_table_line_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_line_2eproto = {
     false,
     false,
-    246,
+    189,
     descriptor_table_protodef_line_2eproto,
     "line.proto",
     &descriptor_table_line_2eproto_once,
-    descriptor_table_line_2eproto_deps,
-    2,
+    nullptr,
+    0,
     1,
     schemas,
     file_default_instances,
@@ -137,24 +132,6 @@ class Line::_Internal {
       8 * PROTOBUF_FIELD_OFFSET(Line, _impl_._has_bits_);
 };
 
-void Line::clear_start() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.start_ != nullptr) _impl_.start_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
-}
-void Line::clear_end() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.end_ != nullptr) _impl_.end_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
-}
-void Line::clear_linecolor() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.linecolor_ != nullptr) _impl_.linecolor_->Clear();
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000020U);
-}
 Line::Line(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, Line_class_data_.base()) {
@@ -171,8 +148,11 @@ PROTOBUF_NDEBUG_INLINE Line::Impl_::Impl_(
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
         dash_{visibility, arena, from.dash_},
+        coords_{visibility, arena, from.coords_},
+        linecolor_rgba_{visibility, arena, from.linecolor_rgba_},
         guid_(arena, from.guid_),
-        name_(arena, from.name_) {}
+        name_(arena, from.name_),
+        linecolor_name_(arena, from.linecolor_name_) {}
 
 Line::Line(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -187,16 +167,6 @@ Line::Line(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.start_ = (CheckHasBit(cached_has_bits, 0x00000008U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.start_)
-                : nullptr;
-  _impl_.end_ = (CheckHasBit(cached_has_bits, 0x00000010U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.end_)
-                : nullptr;
-  _impl_.linecolor_ = (CheckHasBit(cached_has_bits, 0x00000020U))
-                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.linecolor_)
-                : nullptr;
   _impl_.width_ = from._impl_.width_;
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Line)
@@ -206,17 +176,15 @@ PROTOBUF_NDEBUG_INLINE Line::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
         dash_{visibility, arena},
+        coords_{visibility, arena},
+        linecolor_rgba_{visibility, arena},
         guid_(arena),
-        name_(arena) {}
+        name_(arena),
+        linecolor_name_(arena) {}
 
 inline void Line::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, start_),
-           0,
-           offsetof(Impl_, width_) -
-               offsetof(Impl_, start_) +
-               sizeof(Impl_::width_));
+  _impl_.width_ = {};
 }
 Line::~Line() {
   // @@protoc_insertion_point(destructor:session_proto.Line)
@@ -231,9 +199,7 @@ inline void Line::SharedDtor(MessageLite& self) {
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.guid_.Destroy();
   this_._impl_.name_.Destroy();
-  delete this_._impl_.start_;
-  delete this_._impl_.end_;
-  delete this_._impl_.linecolor_;
+  this_._impl_.linecolor_name_.Destroy();
   this_._impl_.~Impl_();
 }
 
@@ -246,6 +212,14 @@ constexpr auto Line::InternalNewImpl_() {
   constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
       PROTOBUF_FIELD_OFFSET(Line, _impl_.dash_) +
           decltype(Line::_impl_.dash_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Line, _impl_.coords_) +
+          decltype(Line::_impl_.coords_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_rgba_) +
+          decltype(Line::_impl_.linecolor_rgba_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
   });
@@ -292,18 +266,18 @@ Line::GetClassData() const {
   return Line_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 7, 3, 35, 2>
+const ::_pbi::TcParseTable<3, 7, 0, 49, 2>
 Line::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Line, _impl_._has_bits_),
     0, // no _extensions_
-    8, 56,  // max_field_number, fast_idx_mask
+    11, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967056,  // skipmap
+    4294965331,  // skipmap
     offsetof(decltype(_table_), field_entries),
     7,  // num_field_entries
-    3,  // num_aux_entries
-    offsetof(decltype(_table_), aux_entries),
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
     Line_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -315,59 +289,53 @@ Line::_table_ = {
     {::_pbi::TcParser::FastF64P1,
      {66, 0, 0,
       PROTOBUF_FIELD_OFFSET(Line, _impl_.dash_)}},
-    // .session_proto.Point start = 1;
-    {::_pbi::TcParser::FastMtS1,
-     {10, 3, 0,
-      PROTOBUF_FIELD_OFFSET(Line, _impl_.start_)}},
-    // .session_proto.Point end = 2;
-    {::_pbi::TcParser::FastMtS1,
-     {18, 4, 1,
-      PROTOBUF_FIELD_OFFSET(Line, _impl_.end_)}},
+    // repeated double coords = 9;
+    {::_pbi::TcParser::FastF64P1,
+     {74, 1, 0,
+      PROTOBUF_FIELD_OFFSET(Line, _impl_.coords_)}},
+    // repeated float linecolor_rgba = 10;
+    {::_pbi::TcParser::FastF32P1,
+     {82, 2, 0,
+      PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_rgba_)}},
     // string guid = 3;
     {::_pbi::TcParser::FastUS1,
-     {26, 1, 0,
+     {26, 3, 0,
       PROTOBUF_FIELD_OFFSET(Line, _impl_.guid_)}},
     // string name = 4;
     {::_pbi::TcParser::FastUS1,
-     {34, 2, 0,
+     {34, 4, 0,
       PROTOBUF_FIELD_OFFSET(Line, _impl_.name_)}},
     {::_pbi::TcParser::MiniParse, {}},
     // double width = 6;
     {::_pbi::TcParser::FastF64S1,
      {49, 6, 0,
       PROTOBUF_FIELD_OFFSET(Line, _impl_.width_)}},
-    // .session_proto.Color linecolor = 7;
-    {::_pbi::TcParser::FastMtS1,
-     {58, 5, 2,
-      PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_)}},
+    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
-    // .session_proto.Point start = 1;
-    {PROTOBUF_FIELD_OFFSET(Line, _impl_.start_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
-    // .session_proto.Point end = 2;
-    {PROTOBUF_FIELD_OFFSET(Line, _impl_.end_), _Internal::kHasBitsOffset + 4, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // string guid = 3;
-    {PROTOBUF_FIELD_OFFSET(Line, _impl_.guid_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Line, _impl_.guid_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string name = 4;
-    {PROTOBUF_FIELD_OFFSET(Line, _impl_.name_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Line, _impl_.name_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // double width = 6;
     {PROTOBUF_FIELD_OFFSET(Line, _impl_.width_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
-    // .session_proto.Color linecolor = 7;
-    {PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_), _Internal::kHasBitsOffset + 5, 2, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // repeated double dash = 8;
     {PROTOBUF_FIELD_OFFSET(Line, _impl_.dash_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    // repeated double coords = 9;
+    {PROTOBUF_FIELD_OFFSET(Line, _impl_.coords_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    // repeated float linecolor_rgba = 10;
+    {PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_rgba_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFloat)},
+    // string linecolor_name = 11;
+    {PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_name_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
   }},
+  // no aux_entries
   {{
-      {::_pbi::TcParser::GetTable<::session_proto::Point>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Point>()},
-      {::_pbi::TcParser::GetTable<::session_proto::Color>()},
-  }},
-  {{
-    "\22\0\0\4\4\0\0\0"
+    "\22\4\4\0\0\0\0\16"
     "session_proto.Line"
     "guid"
     "name"
+    "linecolor_name"
   }},
 };
 PROTOBUF_NOINLINE void Line::Clear() {
@@ -382,23 +350,20 @@ PROTOBUF_NOINLINE void Line::Clear() {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.dash_.Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      _impl_.guid_.ClearNonDefaultToEmpty();
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+      _impl_.coords_.Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      _impl_.name_.ClearNonDefaultToEmpty();
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      _impl_.linecolor_rgba_.Clear();
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      ABSL_DCHECK(_impl_.start_ != nullptr);
-      _impl_.start_->Clear();
+      _impl_.guid_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-      ABSL_DCHECK(_impl_.end_ != nullptr);
-      _impl_.end_->Clear();
+      _impl_.name_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      ABSL_DCHECK(_impl_.linecolor_ != nullptr);
-      _impl_.linecolor_->Clear();
+      _impl_.linecolor_name_.ClearNonDefaultToEmpty();
     }
   }
   _impl_.width_ = 0;
@@ -425,22 +390,8 @@ PROTOBUF_NOINLINE void Line::Clear() {
   (void)cached_has_bits;
 
   cached_has_bits = this_._impl_._has_bits_[0];
-  // .session_proto.Point start = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        1, *this_._impl_.start_, this_._impl_.start_->GetCachedSize(), target,
-        stream);
-  }
-
-  // .session_proto.Point end = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        2, *this_._impl_.end_, this_._impl_.end_->GetCachedSize(), target,
-        stream);
-  }
-
   // string guid = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
     if (!this_._internal_guid().empty()) {
       const ::std::string& _s = this_._internal_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -450,7 +401,7 @@ PROTOBUF_NOINLINE void Line::Clear() {
   }
 
   // string name = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -468,17 +419,34 @@ PROTOBUF_NOINLINE void Line::Clear() {
     }
   }
 
-  // .session_proto.Color linecolor = 7;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
-        7, *this_._impl_.linecolor_, this_._impl_.linecolor_->GetCachedSize(), target,
-        stream);
-  }
-
   // repeated double dash = 8;
   if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
     if (this_._internal_dash_size() > 0) {
       target = stream->WriteFixedPacked(8, this_._internal_dash(), target);
+    }
+  }
+
+  // repeated double coords = 9;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+    if (this_._internal_coords_size() > 0) {
+      target = stream->WriteFixedPacked(9, this_._internal_coords(), target);
+    }
+  }
+
+  // repeated float linecolor_rgba = 10;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+    if (this_._internal_linecolor_rgba_size() > 0) {
+      target = stream->WriteFixedPacked(10, this_._internal_linecolor_rgba(), target);
+    }
+  }
+
+  // string linecolor_name = 11;
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (!this_._internal_linecolor_name().empty()) {
+      const ::std::string& _s = this_._internal_linecolor_name();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Line.linecolor_name");
+      target = stream->WriteStringMaybeAliased(11, _s, target);
     }
   }
 
@@ -518,34 +486,46 @@ PROTOBUF_NOINLINE void Line::Clear() {
                               static_cast<::int32_t>(data_size));
       total_size += tag_size + data_size;
     }
+    // repeated double coords = 9;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+      ::size_t data_size = ::size_t{8} *
+          ::_pbi::FromIntSize(this_._internal_coords_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
+    // repeated float linecolor_rgba = 10;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      ::size_t data_size = ::size_t{4} *
+          ::_pbi::FromIntSize(this_._internal_linecolor_rgba_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
     // string guid = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
       }
     }
     // string name = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
-    // .session_proto.Point start = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.start_);
-    }
-    // .session_proto.Point end = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.end_);
-    }
-    // .session_proto.Color linecolor = 7;
+    // string linecolor_name = 11;
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      total_size += 1 +
-                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.linecolor_);
+      if (!this_._internal_linecolor_name().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_linecolor_name());
+      }
     }
     // double width = 6;
     if (CheckHasBit(cached_has_bits, 0x00000040U)) {
@@ -566,7 +546,6 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
-  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.Line)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
@@ -577,7 +556,13 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_dash()->MergeFrom(from._internal_dash());
     }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
+      _this->_internal_mutable_coords()->MergeFrom(from._internal_coords());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      _this->_internal_mutable_linecolor_rgba()->MergeFrom(from._internal_linecolor_rgba());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
       } else {
@@ -586,7 +571,7 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -595,28 +580,13 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      ABSL_DCHECK(from._impl_.start_ != nullptr);
-      if (_this->_impl_.start_ == nullptr) {
-        _this->_impl_.start_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.start_);
-      } else {
-        _this->_impl_.start_->MergeFrom(*from._impl_.start_);
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
-      ABSL_DCHECK(from._impl_.end_ != nullptr);
-      if (_this->_impl_.end_ == nullptr) {
-        _this->_impl_.end_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.end_);
-      } else {
-        _this->_impl_.end_->MergeFrom(*from._impl_.end_);
-      }
-    }
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
-      ABSL_DCHECK(from._impl_.linecolor_ != nullptr);
-      if (_this->_impl_.linecolor_ == nullptr) {
-        _this->_impl_.linecolor_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.linecolor_);
+      if (!from._internal_linecolor_name().empty()) {
+        _this->_internal_set_linecolor_name(from._internal_linecolor_name());
       } else {
-        _this->_impl_.linecolor_->MergeFrom(*from._impl_.linecolor_);
+        if (_this->_impl_.linecolor_name_.IsDefault()) {
+          _this->_internal_set_linecolor_name("");
+        }
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000040U)) {
@@ -645,14 +615,12 @@ void Line::InternalSwap(Line* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
   _impl_.dash_.InternalSwap(&other->_impl_.dash_);
+  _impl_.coords_.InternalSwap(&other->_impl_.coords_);
+  _impl_.linecolor_rgba_.InternalSwap(&other->_impl_.linecolor_rgba_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
-  ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Line, _impl_.width_)
-      + sizeof(Line::_impl_.width_)
-      - PROTOBUF_FIELD_OFFSET(Line, _impl_.start_)>(
-          reinterpret_cast<char*>(&_impl_.start_),
-          reinterpret_cast<char*>(&other->_impl_.start_));
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.linecolor_name_, &other->_impl_.linecolor_name_, arena);
+  swap(_impl_.width_, other->_impl_.width_);
 }
 
 ::google::protobuf::Metadata Line::GetMetadata() const {

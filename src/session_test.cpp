@@ -159,11 +159,9 @@ MINI_TEST("Session", "Add Brep") {
 
 MINI_TEST("Session", "Add Element") {
     // uncomment #include "session.h"
-    // uncomment #include "element_plate.h"
 
     Session session;
-    std::vector<Point> polygon = {Point(0,0,0), Point(2,0,0), Point(2,2,0), Point(0,2,0)};
-    auto plate = std::make_shared<ElementPlate>(polygon, 0.2, "p1");
+    auto plate = std::make_shared<Element>("p1");
     session.add_element(plate);
 
     MINI_CHECK(session.objects.elements->size() == 1);
@@ -340,8 +338,7 @@ MINI_TEST("Session", "Remove Object") {
     session.add_point(point);
     bool removed = session.remove_object(point->guid());
 
-    std::vector<Point> polygon = {Point(0.0,0.0,0.0), Point(2.0,0.0,0.0), Point(2.0,2.0,0.0), Point(0.0,2.0,0.0)};
-    auto plate = std::make_shared<ElementPlate>(polygon, 0.2, "p1");
+    auto plate = std::make_shared<Element>("p1");
     std::string eguid = plate->guid();
     session.add_element(plate);
     bool eremoved = session.remove_object(eguid);
@@ -391,22 +388,6 @@ MINI_TEST("Session", "Get Geometry Is Pure") {
     MINI_CHECK(TOLERANCE.is_close((*point)[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close((*session.objects.points->at(0))[0], 1.0));
 }
-
-MINI_TEST("Session", "Compute Face To Face") {
-    // uncomment #include "session.h"
-    // uncomment #include "element_plate.h"
-
-    Session session;
-    auto p1 = std::make_shared<ElementPlate>(std::vector<Point>{Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}, 0.2, "p1");
-    auto p2 = std::make_shared<ElementPlate>(std::vector<Point>{Point(0,0,-0.2), Point(1,0,-0.2), Point(1,1,-0.2), Point(0,1,-0.2)}, 0.2, "p2");
-    session.add_element(p1);
-    session.add_element(p2);
-    session.compute_face_to_face(5.0, 0.001);
-
-    MINI_CHECK(session.objects.elements->size() == 2);
-    MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
-}
-
 MINI_TEST("Session", "Json Roundtrip") {
     // uncomment #include "session.h"
     // uncomment #include "point.h"

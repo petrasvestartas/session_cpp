@@ -215,35 +215,26 @@ Line Line::file_json_load(const std::string& filename) {
 
 std::string Line::pb_dumps() const {
     session_proto::Line proto;
-    auto* start = proto.mutable_start();
-    start->set_x(_x0);
-    start->set_y(_y0);
-    start->set_z(_z0);
-    auto* end = proto.mutable_end();
-    end->set_x(_x1);
-    end->set_y(_y1);
-    end->set_z(_z1);
+    // P6: coords packed, colour packed; the name rides a zero-cost string
+    proto.add_coords(_x0); proto.add_coords(_y0); proto.add_coords(_z0);
+    proto.add_coords(_x1); proto.add_coords(_y1); proto.add_coords(_z1);
     proto.set_guid(guid());
     proto.set_name(name);
-    // Serialize width, dash and linecolor
     proto.set_width(width);
     for (double d : dash) {
         proto.add_dash(d);
     }
-    auto* color_proto = proto.mutable_linecolor();
-    color_proto->set_r(linecolor.r);
-    color_proto->set_g(linecolor.g);
-    color_proto->set_b(linecolor.b);
-    color_proto->set_a(linecolor.a);
-    color_proto->set_name(linecolor.name);
+    proto.add_linecolor_rgba(linecolor.r); proto.add_linecolor_rgba(linecolor.g);
+    proto.add_linecolor_rgba(linecolor.b); proto.add_linecolor_rgba(linecolor.a);
+    proto.set_linecolor_name(linecolor.name);
     return proto.SerializeAsString();
 }
 
 Line Line::pb_loads(const std::string& data) {
     session_proto::Line proto;
     proto.ParseFromString(data);
-    Line line(proto.start().x(), proto.start().y(), proto.start().z(),
-              proto.end().x(), proto.end().y(), proto.end().z());
+    const auto& c = proto.coords();
+    Line line = c.size() == 6 ? Line(c[0], c[1], c[2], c[3], c[4], c[5]) : Line();
     line.guid() = proto.guid();
     line.name = proto.name();
     // Deserialize width and linecolor
@@ -251,12 +242,13 @@ Line Line::pb_loads(const std::string& data) {
         line.width = proto.width();
     }
     line.dash.assign(proto.dash().begin(), proto.dash().end());
-    if (proto.has_linecolor()) {
-        line.linecolor.r = proto.linecolor().r();
-        line.linecolor.g = proto.linecolor().g();
-        line.linecolor.b = proto.linecolor().b();
-        line.linecolor.a = proto.linecolor().a();
-        line.linecolor.name = proto.linecolor().name();
+    const auto& rgba = proto.linecolor_rgba();
+    if (rgba.size() == 4) {
+        line.linecolor.r = rgba[0];
+        line.linecolor.g = rgba[1];
+        line.linecolor.b = rgba[2];
+        line.linecolor.a = rgba[3];
+        if (!proto.linecolor_name().empty()) line.linecolor.name = proto.linecolor_name();
     }
     return line;
 }

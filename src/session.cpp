@@ -169,62 +169,6 @@ std::shared_ptr<TreeNode> Session::add_component(Component component, std::share
   return node;
 }
 
-void Session::compute_face_to_face(double inflate, double coplanar_tolerance) {
-    auto& elems = *objects.elements;
-    size_t N = elems.size();
-    if (N == 0) return;
-
-    // Step A: Fast AABB from raw polygon data (no Polyline construction)
-    std::vector<AABB> aabbs(N);
-    for (size_t i = 0; i < N; i++) {
-        auto* plate = dynamic_cast<ElementPlate*>(elems[i].get());
-        if (plate) aabbs[i] = plate->compute_aabb_fast(inflate);
-        else aabbs[i] = AABB::from_points({}, inflate); // fallback
-    }
-
-    // Step B: SpatialBVH broad phase
-    double ws = 0;
-    for (auto& a : aabbs) {
-        ws = std::max(ws, std::abs(a.cx+a.hx)); ws = std::max(ws, std::abs(a.cy+a.hy));
-        ws = std::max(ws, std::abs(a.cz+a.hz)); ws = std::max(ws, std::abs(a.cx-a.hx));
-        ws = std::max(ws, std::abs(a.cy-a.hy)); ws = std::max(ws, std::abs(a.cz-a.hz));
-    }
-    SpatialBVH local_bvh;
-    local_bvh.build_from_aabbs(aabbs.data(), N, ws * 2);
-    std::vector<int> adjacency;
-    for (size_t i = 0; i < N; i++) {
-        auto hits = local_bvh.query_aabb(aabbs[i]);
-        for (int j : hits) {
-            if ((int)i < j) {
-                adjacency.push_back(static_cast<int>(i));
-                adjacency.push_back(j);
-                adjacency.push_back(-1);
-                adjacency.push_back(-1);
-            }
-        }
-    }
-
-    // Step C: Cache polylines + planes, then face-to-face
-    std::vector<std::vector<Polyline>> all_polys(N);
-    std::vector<std::vector<Plane>> all_planes(N);
-    for (size_t i = 0; i < N; i++) {
-        all_polys[i] = elems[i]->polylines();
-        all_planes[i] = elems[i]->planes();
-    }
-    auto joints = Intersection::face_to_face(adjacency, all_polys, all_planes, coplanar_tolerance);
-
-    auto g = add_group("Joints");
-    for (size_t k = 0; k < joints.size(); k++) {
-        auto& [a, b, fi, fj, type, poly] = joints[k];
-        auto jpl = std::make_shared<Polyline>(std::move(poly));
-        jpl->name = "joint_" + std::to_string(k);
-        add_polyline(jpl, g);
-        add_edge(elems[a]->guid(), elems[b]->guid(),
-            std::to_string(fi) + "," + std::to_string(fj) + "," +
-            std::to_string(type) + "," + jpl->guid());
-    }
-}
-
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
   auto node = std::make_shared<TreeNode>(group_name);
   add(node);
@@ -636,14 +580,9 @@ Objects Session::get_geometry() const {
   clone_into(*objects.nurbscurves, *out.nurbscurves);
   clone_into(*objects.nurbssurfaces, *out.nurbssurfaces);
   clone_into(*objects.breps, *out.breps);
-  // Elements are polymorphic and their copy constructor mints a fresh guid, so they are
-  // cloned by concrete type and the identity is restored.
+  // Element's copy constructor mints a fresh guid, so identity is restored after the copy.
   for (const auto& src : *objects.elements) {
-    std::shared_ptr<Element> copy;
-    if (auto* p = dynamic_cast<const ElementPlate*>(src.get())) copy = std::make_shared<ElementPlate>(*p);
-    else if (auto* c = dynamic_cast<const ElementColumn*>(src.get())) copy = std::make_shared<ElementColumn>(*c);
-    else if (auto* b = dynamic_cast<const ElementBeam*>(src.get())) copy = std::make_shared<ElementBeam>(*b);
-    else copy = std::make_shared<Element>(*src);
+    auto copy = std::make_shared<Element>(*src);
     copy->guid() = src->guid();
     out.elements->push_back(copy);
   }
