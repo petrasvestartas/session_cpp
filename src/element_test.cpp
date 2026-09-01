@@ -406,6 +406,7 @@ MINI_TEST("Element", "FeaturesRoundTrip") {
     e.set_dimensions(Vector(120.0, 80.0, 12.5));
     e.add_feature(ElementFeature("cut", 2,
         {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "notch"));
+    std::string feature_guid = e.features()[0].guid();
 
     Element loaded = Element::pb_loads(e.pb_dumps());
 
@@ -419,6 +420,9 @@ MINI_TEST("Element", "FeaturesRoundTrip") {
     MINI_CHECK(loaded.features()[0].face_index == 2);
     MINI_CHECK(loaded.features()[0].name == "notch");
     MINI_CHECK(loaded.features()[0].outlines.size() == 1);
+    // The guid is the feature's handle: a package that wrote a joint has to find it again, and
+    // the index in `features` moves the moment an earlier feature is removed.
+    MINI_CHECK(loaded.features()[0].guid() == feature_guid);
 }
 
 MINI_TEST("Element", "DimensionsAreNominalNotMeasured") {

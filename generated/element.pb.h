@@ -221,6 +221,7 @@ class ElementFeature final : public ::google::protobuf::Message
     kOutlinesFieldNumber = 4,
     kNameFieldNumber = 1,
     kFeatureTypeFieldNumber = 2,
+    kGuidFieldNumber = 5,
     kFaceIndexFieldNumber = 3,
   };
   // repeated .session_proto.Polyline outlines = 4;
@@ -270,6 +271,21 @@ class ElementFeature final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_feature_type();
 
   public:
+  // string guid = 5;
+  void clear_guid() ;
+  const ::std::string& guid() const;
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_guid(Arg_&& arg, Args_... args);
+  ::std::string* PROTOBUF_NONNULL mutable_guid();
+  [[nodiscard]] ::std::string* PROTOBUF_NULLABLE release_guid();
+  void set_allocated_guid(::std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const ::std::string& _internal_guid() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_guid(const ::std::string& value);
+  ::std::string* PROTOBUF_NONNULL _internal_mutable_guid();
+
+  public:
   // int32 face_index = 3;
   void clear_face_index() ;
   ::int32_t face_index() const;
@@ -284,8 +300,8 @@ class ElementFeature final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<2, 4,
-                                   1, 53,
+  static const ::google::protobuf::internal::TcParseTable<3, 5,
+                                   1, 57,
                                    2>
       _table_;
 
@@ -309,6 +325,7 @@ class ElementFeature final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedPtrField< ::session_proto::Polyline > outlines_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::google::protobuf::internal::ArenaStringPtr feature_type_;
+    ::google::protobuf::internal::ArenaStringPtr guid_;
     ::int32_t face_index_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -804,7 +821,7 @@ inline void ElementFeature::clear_face_index() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.face_index_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000010U);
 }
 inline ::int32_t ElementFeature::face_index() const {
   // @@protoc_insertion_point(field_get:session_proto.ElementFeature.face_index)
@@ -812,7 +829,7 @@ inline ::int32_t ElementFeature::face_index() const {
 }
 inline void ElementFeature::set_face_index(::int32_t value) {
   _internal_set_face_index(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   // @@protoc_insertion_point(field_set:session_proto.ElementFeature.face_index)
 }
 inline ::int32_t ElementFeature::_internal_face_index() const {
@@ -872,6 +889,71 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::Polyline>* PROTOBUF
 ElementFeature::_internal_mutable_outlines() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.outlines_;
+}
+
+// string guid = 5;
+inline void ElementFeature::clear_guid() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.guid_.ClearToEmpty();
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000008U);
+}
+inline const ::std::string& ElementFeature::guid() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.ElementFeature.guid)
+  return _internal_guid();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void ElementFeature::set_guid(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:session_proto.ElementFeature.guid)
+}
+inline ::std::string* PROTOBUF_NONNULL ElementFeature::mutable_guid()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ::std::string* _s = _internal_mutable_guid();
+  // @@protoc_insertion_point(field_mutable:session_proto.ElementFeature.guid)
+  return _s;
+}
+inline const ::std::string& ElementFeature::_internal_guid() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.guid_.Get();
+}
+inline void ElementFeature::_internal_set_guid(const ::std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.guid_.Set(value, GetArena());
+}
+inline ::std::string* PROTOBUF_NONNULL ElementFeature::_internal_mutable_guid() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.guid_.Mutable( GetArena());
+}
+inline ::std::string* PROTOBUF_NULLABLE ElementFeature::release_guid() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.ElementFeature.guid)
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000008U)) {
+    return nullptr;
+  }
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  auto* released = _impl_.guid_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.guid_.Set("", GetArena());
+  }
+  return released;
+}
+inline void ElementFeature::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  }
+  _impl_.guid_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
+    _impl_.guid_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:session_proto.ElementFeature.guid)
 }
 
 // -------------------------------------------------------------------

@@ -336,6 +336,7 @@ std::string Element::pb_dumps() const {
     }
     for (const auto& f : _features) {
         auto* pf = proto.add_features();
+        pf->set_guid(f.guid());
         pf->set_name(f.name);
         pf->set_feature_type(f.feature_type);
         pf->set_face_index(f.face_index);
@@ -369,6 +370,10 @@ Element Element::pb_loads(const std::string& data) {
     }
     for (const auto& f : proto.features()) {
         ElementFeature feature;
+        // Assigned, not minted: a feature that comes back off the wire is the SAME feature the
+        // package wrote, and anything holding its guid must still find it. An empty guid on the
+        // wire (a file written before features had one) leaves the lazy mint to whoever asks.
+        if (!f.guid().empty()) feature.guid() = f.guid();
         feature.name = f.name();
         feature.feature_type = f.feature_type();
         feature.face_index = f.face_index();

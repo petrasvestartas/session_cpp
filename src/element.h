@@ -46,9 +46,50 @@ struct ElementFeature {
         : name(std::move(name)), feature_type(std::move(feature_type)),
           face_index(face_index), outlines(std::move(outlines)) {}
 
+    /// Lazily minted, like every other identity in the kernel - a feature nobody names never
+    /// pays for a guid.
+    ///
+    /// A feature is addressable in its own right: the package that wrote a joint needs to name
+    /// it again later, to update it, to report a clash against it, or to let a viewer select one
+    /// of the forty cuts on a beam. The only other handle is the index in `features`, and that
+    /// moves the moment an earlier feature is removed.
+    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    /// Clear the guid so a FRESH one mints on next read - the duplicate enabler.
+    void refresh_guid() { _guid.clear(); }
+
+    /// A copy is a new feature that happens to look the same, so it gets a new identity; a move
+    /// is the same feature in a new place, so the identity travels.
+    ///
+    /// Declaring the move members is not optional once a guid exists. A user-declared copy
+    /// constructor suppresses the implicit move, so a `pb_loads` that misses NRVO falls back to
+    /// the COPY and silently drops the guid it has just decoded - every other field survives, so
+    /// the object looks right and only its identity is wrong. That is what broke Line on MSVC;
+    /// see line.h.
+    ElementFeature(const ElementFeature& other)
+        : name(other.name), feature_type(other.feature_type),
+          face_index(other.face_index), outlines(other.outlines) {}
+    ElementFeature& operator=(const ElementFeature& other) {
+        if (this != &other) {
+            _guid.clear();
+            name = other.name;
+            feature_type = other.feature_type;
+            face_index = other.face_index;
+            outlines = other.outlines;
+        }
+        return *this;
+    }
+    ElementFeature(ElementFeature&& other) noexcept = default;
+    ElementFeature& operator=(ElementFeature&& other) noexcept = default;
+
+    /// Data equality, not identity: two features describing the same cut on the same face ARE
+    /// equal, exactly as `Line::operator==` ignores its guid.
     bool operator==(const ElementFeature& other) const;
     bool operator!=(const ElementFeature& other) const { return !(*this == other); }
     std::string str() const;
+
+private:
+    mutable std::string _guid;
 };
 
 class Element {

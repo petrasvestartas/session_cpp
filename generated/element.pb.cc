@@ -36,6 +36,9 @@ inline constexpr ElementFeature::Impl_::Impl_(
         feature_type_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
+        guid_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()),
         face_index_{0} {}
 
 template <typename>
@@ -112,15 +115,17 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::ElementFeature, _impl_._has_bits_),
-        7, // hasbit index offset
+        8, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::ElementFeature, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::ElementFeature, _impl_.feature_type_),
         PROTOBUF_FIELD_OFFSET(::session_proto::ElementFeature, _impl_.face_index_),
         PROTOBUF_FIELD_OFFSET(::session_proto::ElementFeature, _impl_.outlines_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::ElementFeature, _impl_.guid_),
         1,
         2,
-        3,
+        4,
         0,
+        3,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_._has_bits_),
         12, // hasbit index offset
@@ -147,7 +152,7 @@ const ::uint32_t
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, sizeof(::session_proto::ElementFeature)},
-        {11, sizeof(::session_proto::Element)},
+        {13, sizeof(::session_proto::Element)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::session_proto::_ElementFeature_default_instance_._instance,
@@ -156,18 +161,18 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 const char descriptor_table_protodef_element_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\relement.proto\022\rsession_proto\032\016polyline"
-    ".proto\032\014vector.proto\"s\n\016ElementFeature\022\014"
-    "\n\004name\030\001 \001(\t\022\024\n\014feature_type\030\002 \001(\t\022\022\n\nfa"
-    "ce_index\030\003 \001(\005\022)\n\010outlines\030\004 \003(\0132\027.sessi"
-    "on_proto.Polyline\"\253\002\n\007Element\022\014\n\004name\030\001 "
-    "\001(\t\022\014\n\004guid\030\002 \001(\t\022\025\n\rgeometry_type\030\003 \001(\t"
-    "\022\025\n\rgeometry_data\030\004 \001(\014\022\024\n\014element_type\030"
-    "\n \001(\t\022\024\n\014element_data\030\013 \001(\014\0220\n\021insertion"
-    "_vectors\030\014 \003(\0132\025.session_proto.Vector\022)\n"
-    "\ndimensions\030\r \001(\0132\025.session_proto.Vector"
-    "\022/\n\010features\030\016 \003(\0132\035.session_proto.Eleme"
-    "ntFeatureJ\004\010\005\020\006J\004\010\006\020\007J\004\010\007\020\010J\004\010\010\020\tJ\004\010\t\020\nb"
-    "\006proto3"
+    ".proto\032\014vector.proto\"\201\001\n\016ElementFeature\022"
+    "\014\n\004name\030\001 \001(\t\022\024\n\014feature_type\030\002 \001(\t\022\022\n\nf"
+    "ace_index\030\003 \001(\005\022)\n\010outlines\030\004 \003(\0132\027.sess"
+    "ion_proto.Polyline\022\014\n\004guid\030\005 \001(\t\"\253\002\n\007Ele"
+    "ment\022\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\025\n\rgeom"
+    "etry_type\030\003 \001(\t\022\025\n\rgeometry_data\030\004 \001(\014\022\024"
+    "\n\014element_type\030\n \001(\t\022\024\n\014element_data\030\013 \001"
+    "(\014\0220\n\021insertion_vectors\030\014 \003(\0132\025.session_"
+    "proto.Vector\022)\n\ndimensions\030\r \001(\0132\025.sessi"
+    "on_proto.Vector\022/\n\010features\030\016 \003(\0132\035.sess"
+    "ion_proto.ElementFeatureJ\004\010\005\020\006J\004\010\006\020\007J\004\010\007"
+    "\020\010J\004\010\010\020\tJ\004\010\t\020\nb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_element_2eproto_deps[2] = {
@@ -178,7 +183,7 @@ static ::absl::once_flag descriptor_table_element_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_element_2eproto = {
     false,
     false,
-    487,
+    502,
     descriptor_table_protodef_element_2eproto,
     "element.proto",
     &descriptor_table_element_2eproto_once,
@@ -225,7 +230,8 @@ PROTOBUF_NDEBUG_INLINE ElementFeature::Impl_::Impl_(
         _cached_size_{0},
         outlines_{visibility, arena, from.outlines_},
         name_(arena, from.name_),
-        feature_type_(arena, from.feature_type_) {}
+        feature_type_(arena, from.feature_type_),
+        guid_(arena, from.guid_) {}
 
 ElementFeature::ElementFeature(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -250,7 +256,8 @@ PROTOBUF_NDEBUG_INLINE ElementFeature::Impl_::Impl_(
       : _cached_size_{0},
         outlines_{visibility, arena},
         name_(arena),
-        feature_type_(arena) {}
+        feature_type_(arena),
+        guid_(arena) {}
 
 inline void ElementFeature::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
@@ -269,6 +276,7 @@ inline void ElementFeature::SharedDtor(MessageLite& self) {
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.name_.Destroy();
   this_._impl_.feature_type_.Destroy();
+  this_._impl_.guid_.Destroy();
   this_._impl_.~Impl_();
 }
 
@@ -327,16 +335,16 @@ ElementFeature::GetClassData() const {
   return ElementFeature_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<2, 4, 1, 53, 2>
+const ::_pbi::TcParseTable<3, 5, 1, 57, 2>
 ElementFeature::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_._has_bits_),
     0, // no _extensions_
-    4, 24,  // max_field_number, fast_idx_mask
+    5, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967280,  // skipmap
+    4294967264,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    4,  // num_field_entries
+    5,  // num_field_entries
     1,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     ElementFeature_class_data_.base(),
@@ -346,10 +354,7 @@ ElementFeature::_table_ = {
     ::_pbi::TcParser::GetTable<::session_proto::ElementFeature>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // repeated .session_proto.Polyline outlines = 4;
-    {::_pbi::TcParser::FastMtR1,
-     {34, 0, 0,
-      PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.outlines_)}},
+    {::_pbi::TcParser::MiniParse, {}},
     // string name = 1;
     {::_pbi::TcParser::FastUS1,
      {10, 1, 0,
@@ -359,9 +364,19 @@ ElementFeature::_table_ = {
      {18, 2, 0,
       PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.feature_type_)}},
     // int32 face_index = 3;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(ElementFeature, _impl_.face_index_), 3>(),
-     {24, 3, 0,
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(ElementFeature, _impl_.face_index_), 4>(),
+     {24, 4, 0,
       PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.face_index_)}},
+    // repeated .session_proto.Polyline outlines = 4;
+    {::_pbi::TcParser::FastMtR1,
+     {34, 0, 0,
+      PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.outlines_)}},
+    // string guid = 5;
+    {::_pbi::TcParser::FastUS1,
+     {42, 3, 0,
+      PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.guid_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
@@ -370,18 +385,21 @@ ElementFeature::_table_ = {
     // string feature_type = 2;
     {PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.feature_type_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // int32 face_index = 3;
-    {PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.face_index_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+    {PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.face_index_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
     // repeated .session_proto.Polyline outlines = 4;
     {PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.outlines_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    // string guid = 5;
+    {PROTOBUF_FIELD_OFFSET(ElementFeature, _impl_.guid_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Polyline>()},
   }},
   {{
-    "\34\4\14\0\0\0\0\0"
+    "\34\4\14\0\0\4\0\0"
     "session_proto.ElementFeature"
     "name"
     "feature_type"
+    "guid"
   }},
 };
 PROTOBUF_NOINLINE void ElementFeature::Clear() {
@@ -392,7 +410,7 @@ PROTOBUF_NOINLINE void ElementFeature::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.outlines_.Clear();
     }
@@ -401,6 +419,9 @@ PROTOBUF_NOINLINE void ElementFeature::Clear() {
     }
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       _impl_.feature_type_.ClearNonDefaultToEmpty();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      _impl_.guid_.ClearNonDefaultToEmpty();
     }
   }
   _impl_.face_index_ = 0;
@@ -448,7 +469,7 @@ PROTOBUF_NOINLINE void ElementFeature::Clear() {
   }
 
   // int32 face_index = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     if (this_._internal_face_index() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<3>(
@@ -466,6 +487,16 @@ PROTOBUF_NOINLINE void ElementFeature::Clear() {
           ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
               4, repfield, repfield.GetCachedSize(),
               target, stream);
+    }
+  }
+
+  // string guid = 5;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (!this_._internal_guid().empty()) {
+      const ::std::string& _s = this_._internal_guid();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.ElementFeature.guid");
+      target = stream->WriteStringMaybeAliased(5, _s, target);
     }
   }
 
@@ -494,7 +525,7 @@ PROTOBUF_NOINLINE void ElementFeature::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     // repeated .session_proto.Polyline outlines = 4;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       total_size += 1UL * this_._internal_outlines_size();
@@ -516,8 +547,15 @@ PROTOBUF_NOINLINE void ElementFeature::Clear() {
                                         this_._internal_feature_type());
       }
     }
-    // int32 face_index = 3;
+    // string guid = 5;
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (!this_._internal_guid().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_guid());
+      }
+    }
+    // int32 face_index = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (this_._internal_face_index() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_face_index());
@@ -543,7 +581,7 @@ void ElementFeature::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_outlines()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -568,6 +606,15 @@ void ElementFeature::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      if (!from._internal_guid().empty()) {
+        _this->_internal_set_guid(from._internal_guid());
+      } else {
+        if (_this->_impl_.guid_.IsDefault()) {
+          _this->_internal_set_guid("");
+        }
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (from._internal_face_index() != 0) {
         _this->_impl_.face_index_ = from._impl_.face_index_;
       }
@@ -595,6 +642,7 @@ void ElementFeature::InternalSwap(ElementFeature* PROTOBUF_RESTRICT PROTOBUF_NON
   _impl_.outlines_.InternalSwap(&other->_impl_.outlines_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.feature_type_, &other->_impl_.feature_type_, arena);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   swap(_impl_.face_index_, other->_impl_.face_index_);
 }
 
