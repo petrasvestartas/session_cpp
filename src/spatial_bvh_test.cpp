@@ -547,4 +547,37 @@ MINI_TEST("SpatialBVH", "Find Collisions") {
     MINI_CHECK(checks0 > 0);
 }
 
+MINI_TEST("SpatialBVH", "Ray Cast") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> boxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(5.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.0, 5.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
+    // Ray along +x misses the box at y=5 and reports the other two near-to-far
+    std::vector<int> hits;
+    bool found = bvh.ray_cast(Point(-10.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), hits, true);
+
+    MINI_CHECK(found);
+    MINI_CHECK(hits.size() == 2);
+    MINI_CHECK(hits[0] == 0);
+    MINI_CHECK(hits[1] == 1);
+    // Boxes entirely behind the origin are pruned, not returned
+    std::vector<int> behind;
+    bool any = bvh.ray_cast(Point(0.0, 0.0, 20.0), Vector(0.0, 0.0, 1.0), behind, true);
+
+    MINI_CHECK(!any);
+    MINI_CHECK(behind.empty());
+}
+
 } // namespace session_cpp
