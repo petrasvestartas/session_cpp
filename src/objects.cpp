@@ -294,8 +294,11 @@ Objects Objects::pb_loads(const std::string& data) {
     objects.nurbssurfaces->push_back(keep_guid(NurbsSurface::pb_loads(ns.SerializeAsString())));
   for (const auto& b : proto.breps())
     objects.breps->push_back(keep_guid(BRep::pb_loads(b.SerializeAsString())));
+  // pb_loads_shared, not pb_loads: the latter returns by value and would slice a
+  // registered domain element back to its base, silently dropping everything the
+  // package put in `element_data`. It already keeps the guid, so no keep_guid here.
   for (const auto& e : proto.elements())
-    objects.elements->push_back(keep_guid(Element::pb_loads(e.SerializeAsString())));
+    objects.elements->push_back(Element::pb_loads_shared(e.SerializeAsString()));
   for (const auto& pc : proto.components()) {
     Component c;
     c.type_name = pc.type_name();

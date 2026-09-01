@@ -11,6 +11,8 @@
 #include "polyline.h"
 #include "vector.h"
 #include <functional>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -19,6 +21,35 @@
 namespace session_cpp {
 
 using ElementGeometry = std::variant<std::monostate, Mesh, BRep>;
+
+/// One modification applied to a host element - a cut, a drill, a joint pocket.
+///
+/// The serializable half of what `Element::add_geometry_op` cannot be: that takes a
+/// `std::function<Mesh(Mesh)>`, so an operation applied in memory vanishes the moment the
+/// Session is written. Domains worked around it by adding flat arrays to Element - a joint
+/// type code per face - which is how timber fields ended up in element.proto and had to be
+/// reserved out again. An ElementFeature carries the same information in a shape every domain
+/// can use.
+///
+/// The kernel does not know how to APPLY one: `feature_type` means something only to the
+/// package that wrote it. It knows enough to DRAW one, which is what lets a viewer show
+/// features from a package it has never heard of.
+struct ElementFeature {
+    std::string name;               ///< Human-readable label
+    std::string feature_type;       ///< e.g. "cut", "drill", "joint"; the package's vocabulary
+    int face_index = -1;            ///< Face of the host this applies to; -1 = whole element
+    std::vector<Polyline> outlines; ///< Geometry of the modification
+
+    ElementFeature() = default;
+    ElementFeature(std::string feature_type, int face_index, std::vector<Polyline> outlines,
+                   std::string name = "")
+        : name(std::move(name)), feature_type(std::move(feature_type)),
+          face_index(face_index), outlines(std::move(outlines)) {}
+
+    bool operator==(const ElementFeature& other) const;
+    bool operator!=(const ElementFeature& other) const { return !(*this == other); }
+    std::string str() const;
+};
 
 class Element {
 public:
@@ -63,9 +94,36 @@ public:
     const std::optional<OBB>& cached_obb() const { return _obb; }
     const std::optional<Mesh>& cached_collision_mesh() const { return _collision_mesh; }
     const std::optional<Point>& cached_point() const { return _point; }
+    /// In-memory mesh operations, applied lazily when geometry is computed.
+    ///
+    /// Renamed off "feature": these are `std::function`s and CANNOT be serialized, whereas
+    /// `features()` below is data that survives a Session round trip. Two different things
+    /// wearing one name was the confusion that made a joint type code look like it needed its
+    /// own field on Element.
+    size_t geometry_ops_count() const { return _geometry_ops.size(); }
+    void add_geometry_op(std::function<Mesh(Mesh)> f);
+
+    /// Modifications carried BY this element, and written with it.
+    const std::vector<ElementFeature>& features() const { return _features; }
+    void set_features(std::vector<ElementFeature> features) { _features = std::move(features); }
+    void add_feature(ElementFeature feature) { _features.push_back(std::move(feature)); }
     size_t features_count() const { return _features.size(); }
 
-    void add_feature(std::function<Mesh(Mesh)> f);
+    /// Direction(s) the element is inserted along when the assembly is put together. General to
+    /// any assembly: it is what an assembly sequence is ordered by. Plural because an element
+    /// with several jointed faces can admit a different direction per face.
+    const std::vector<Vector>& insertion_vectors() const { return _insertion_vectors; }
+    void set_insertion_vectors(std::vector<Vector> v) { _insertion_vectors = std::move(v); }
+
+    /// NOMINAL extents in this element's own frame - authored design intent, NOT a measurement.
+    /// Plate: x/y outline extent, z thickness. Beam: x/y cross-section, z length.
+    ///
+    /// Deliberately distinct from obb(), which MEASURES the geometry that exists. The two are
+    /// allowed to disagree: a thickness drives a loft before there is any geometry to measure,
+    /// so the nominal value has to exist first and outlive what is built from it. Read obb()
+    /// for how big it IS, this for how big it was MEANT to be. Nullopt = never authored.
+    const std::optional<Vector>& dimensions() const { return _dimensions; }
+    void set_dimensions(const Vector& d) { _dimensions = d; }
     /// Bake a placement into this element's own geometry, invalidating the cached boxes.
     /// The Session owns the placement, so it hands it in here rather than the Element storing it.
     void place(const Xform& xform);
@@ -91,6 +149,43 @@ public:
 
     virtual std::string pb_dumps() const;
     static Element pb_loads(const std::string& data);
+
+    // ── Polymorphic elements ────────────────────────────────────────────────────────────
+    // An Element is a geometry container and knows nothing about domains (see element.proto).
+    // A downstream package that needs more - wood's plate carries insertion vectors, joint
+    // type codes, cut outlines - registers a factory under its own type name. The name goes
+    // in `element_type` and the extra state in `element_data`; the kernel copies both through
+    // without interpreting either.
+    //
+    // Why a registry rather than more virtuals: `pb_loads` is a static returning by VALUE, so
+    // a derived element loaded through Objects was sliced to its base. Dumping already
+    // dispatched (`pb_dumps` is virtual), so a subclass wrote its payload correctly and then
+    // lost it on the way back in. The factory is the missing half of that round trip.
+
+    /// This element's own type name, written to `element_type`. The base returns "" - proto3
+    /// omits empty strings, so a plain Element's bytes are byte-identical to before this
+    /// existed, which is what keeps the cross-language golden files valid.
+    virtual std::string element_type_name() const { return ""; }
+
+    /// This element's own state, written to `element_data`. Opaque to the kernel; the format
+    /// is entirely the registering package's business. Base has none.
+    virtual std::string element_data_dumps() const { return ""; }
+
+    /// Builds one element from a full serialized `session_proto.Element` - the same bytes
+    /// `pb_loads` takes, so a factory can read the base fields as well as `element_data`.
+    using Factory = std::function<std::shared_ptr<Element>(const std::string& data)>;
+
+    /// Register `factory` for `type_name`. Idempotent re-registration of the same name
+    /// replaces the previous factory. Call it once, before loading anything.
+    static void register_type(const std::string& type_name, Factory factory);
+    static bool is_registered(const std::string& type_name);
+    static std::vector<std::string> registered_types();
+
+    /// Load an element, preserving its derived type when one is registered. Falls back to a
+    /// base Element when `element_type` is empty OR names a type nobody registered - an
+    /// unknown domain type degrades to its geometry rather than failing the whole Session,
+    /// which is what lets a viewer open a file written by a package it does not have.
+    static std::shared_ptr<Element> pb_loads_shared(const std::string& data);
     void pb_dump(const std::string& path) const;
     static Element pb_load(const std::string& path);
 
@@ -108,7 +203,10 @@ protected:
     std::optional<std::vector<Plane>> _planes;
     std::optional<std::vector<Vector>> _edge_vectors;
     std::optional<Line> _axis;
-    std::vector<std::function<Mesh(Mesh)>> _features;
+    std::vector<std::function<Mesh(Mesh)>> _geometry_ops;
+    std::vector<ElementFeature> _features;
+    std::vector<Vector> _insertion_vectors;
+    std::optional<Vector> _dimensions;
 
     OBB compute_aabb();
     OBB compute_obb();
@@ -118,7 +216,7 @@ protected:
     virtual std::vector<Plane> compute_planes() const;
     virtual std::vector<Vector> compute_edge_vectors() const;
     virtual std::optional<Line> compute_axis() const;
-    Mesh apply_features(Mesh geo) const;
+    Mesh apply_geometry_ops(Mesh geo) const;
     static OBB obb_from_geometry(const ElementGeometry& geo);
 };
 

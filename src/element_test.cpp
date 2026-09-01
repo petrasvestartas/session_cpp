@@ -1,6 +1,10 @@
 #include "mini_test.h"
 #include "element.h"
+#include "element.pb.h"   // the registry tests build/inspect the wire message directly
 #include "tolerance.h"
+
+#include <cmath>
+#include <memory>
 
 using namespace session_cpp::mini_test;
 
@@ -76,7 +80,7 @@ MINI_TEST("Element", "Place") {
     }
 }
 
-MINI_TEST("Element", "Add Feature") {
+MINI_TEST("Element", "Add Geometry Op") {
     // uncomment #include "element.h"
     // uncomment #include "mesh.h"
     // uncomment #include "point.h"
@@ -92,15 +96,15 @@ MINI_TEST("Element", "Add Feature") {
     Element e(m);
 
     auto my_feature = [](Mesh geo) -> Mesh { return geo; };
-    e.add_feature(my_feature);
+    e.add_geometry_op(my_feature);
 
     // Features are Mesh -> Mesh, so BRep geometry passes through untouched
     Element eb(BRep::create_box(1.0, 1.0, 1.0), "brep_feature");
-    eb.add_feature([](Mesh) -> Mesh { return Mesh(); });
+    eb.add_geometry_op([](Mesh) -> Mesh { return Mesh(); });
     auto sg = eb.session_geometry(Xform::identity());
 
     MINI_CHECK(e.is_dirty());
-    MINI_CHECK(e.features_count() == 1);
+    MINI_CHECK(e.geometry_ops_count() == 1);
     MINI_CHECK(std::holds_alternative<BRep>(sg));
 }
 
@@ -294,6 +298,153 @@ MINI_TEST("Element", "Polylines") {
     MINI_CHECK(e.planes().empty());
     MINI_CHECK(e.edge_vectors().empty());
     MINI_CHECK(!e.axis().has_value());
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Element - polymorphic registry
+//
+// The contract a downstream package (wood's plate) depends on: a registered type survives a
+// round trip through the Session, and an UNregistered one degrades to a base Element with its
+// geometry intact rather than failing the load.
+///////////////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+/// Stand-in for a domain element: carries state the kernel knows nothing about.
+class TestPlate : public Element {
+public:
+    TestPlate() = default;
+    TestPlate(const Mesh& geo, const std::string& n, double thickness, std::vector<int> codes)
+        : Element(geo, n), thickness(thickness), codes(std::move(codes)) {}
+
+    double thickness = 0.0;
+    std::vector<int> codes;
+
+    std::string element_type_name() const override { return "TestPlate"; }
+
+    // Deliberately a trivial hand-rolled encoding: the kernel never parses this, so the
+    // format is the package's own business - which is the property under test.
+    std::string element_data_dumps() const override {
+        std::string out = std::to_string(thickness);
+        for (int c : codes) { out += "," + std::to_string(c); }
+        return out;
+    }
+
+    static void register_with_kernel() {
+        Element::register_type("TestPlate", [](const std::string& data) {
+            Element base = Element::pb_loads(data);          // base fields + geometry
+            session_proto::Element proto;
+            proto.ParseFromString(data);
+
+            auto plate = std::make_shared<TestPlate>();
+            static_cast<Element&>(*plate) = base;
+            plate->guid() = proto.guid();
+
+            std::string payload = proto.element_data();
+            size_t pos = payload.find(',');
+            plate->thickness = std::stod(payload.substr(0, pos));
+            while (pos != std::string::npos) {
+                size_t next = payload.find(',', pos + 1);
+                plate->codes.push_back(std::stoi(payload.substr(pos + 1, next - pos - 1)));
+                pos = next;
+            }
+            return plate;
+        });
+    }
+};
+
+Mesh unit_quad() {
+    return Mesh::from_vertices_and_faces(
+        {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}, {{0, 1, 2, 3}});
+}
+
+}  // namespace
+
+MINI_TEST("Element", "RegistryRoundTrip") {
+    TestPlate::register_with_kernel();
+    MINI_CHECK(Element::is_registered("TestPlate"));
+
+    TestPlate plate(unit_quad(), "plate_0", 12.5, {30, 11, 20});
+    auto loaded = Element::pb_loads_shared(plate.pb_dumps());
+
+    // The derived type came back, not a sliced base.
+    auto* as_plate = dynamic_cast<TestPlate*>(loaded.get());
+    MINI_CHECK(as_plate != nullptr);
+    MINI_CHECK(as_plate->element_type_name() == "TestPlate");
+
+    // Identity, base state and domain state all survived.
+    MINI_CHECK(as_plate->guid() == plate.guid());
+    MINI_CHECK(as_plate->name == "plate_0");
+    MINI_CHECK(std::holds_alternative<Mesh>(as_plate->geometry()));
+    MINI_CHECK(std::abs(as_plate->thickness - 12.5) < 1e-9);
+    MINI_CHECK(as_plate->codes.size() == 3);
+    MINI_CHECK(as_plate->codes[0] == 30 && as_plate->codes[1] == 11 && as_plate->codes[2] == 20);
+}
+
+MINI_TEST("Element", "RegistryUnknownTypeDegrades") {
+    // A file written by a package this binary does not have. The element must still load,
+    // keeping its geometry - a viewer opens the file, it just does not know it is a plate.
+    MINI_CHECK(!Element::is_registered("NeverRegistered"));
+
+    session_proto::Element proto;
+    proto.ParseFromString(Element(unit_quad(), "mystery").pb_dumps());
+    proto.set_element_type("NeverRegistered");
+    proto.set_element_data("whatever this package meant");
+
+    auto loaded = Element::pb_loads_shared(proto.SerializeAsString());
+    MINI_CHECK(loaded != nullptr);
+    MINI_CHECK(loaded->name == "mystery");
+    MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
+}
+
+MINI_TEST("Element", "FeaturesRoundTrip") {
+    // insertion_vectors / dimensions / features are the general shape that replaced the
+    // per-domain arrays (joint_types and friends) that used to sit on this message. All three
+    // must survive a round trip or a domain is right back to inventing its own fields.
+    Element e(unit_quad(), "plate_0");
+    e.set_insertion_vectors({Vector(0, 0, 1), Vector(1, 0, 0)});
+    e.set_dimensions(Vector(120.0, 80.0, 12.5));
+    e.add_feature(ElementFeature("cut", 2,
+        {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "notch"));
+
+    Element loaded = Element::pb_loads(e.pb_dumps());
+
+    MINI_CHECK(loaded.insertion_vectors().size() == 2);
+    MINI_CHECK(loaded.insertion_vectors()[0] == Vector(0, 0, 1));
+    MINI_CHECK(loaded.dimensions().has_value());
+    // z is the thickness - the whole reason this is a vector rather than one double.
+    MINI_CHECK(std::abs((*loaded.dimensions())[2] - 12.5) < 1e-9);
+    MINI_CHECK(loaded.features().size() == 1);
+    MINI_CHECK(loaded.features()[0].feature_type == "cut");
+    MINI_CHECK(loaded.features()[0].face_index == 2);
+    MINI_CHECK(loaded.features()[0].name == "notch");
+    MINI_CHECK(loaded.features()[0].outlines.size() == 1);
+}
+
+MINI_TEST("Element", "DimensionsAreNominalNotMeasured") {
+    // dimensions is AUTHORED intent; obb() MEASURES what exists. They are allowed to disagree,
+    // and this pins that they are genuinely independent - a nominal thickness set before any
+    // geometry is built must not be overwritten by whatever the geometry turns out to be.
+    Element e(unit_quad(), "plate");
+    MINI_CHECK(!e.dimensions().has_value());     // never authored
+
+    e.set_dimensions(Vector(120.0, 80.0, 12.5)); // nominal, nothing like the unit quad
+    OBB measured = e.obb();
+
+    MINI_CHECK(std::abs((*e.dimensions())[0] - 120.0) < 1e-9);
+    MINI_CHECK(measured.half_size[0] < 1.0);      // the geometry is still a unit quad
+}
+
+MINI_TEST("Element", "RegistryLeavesBaseBytesUnchanged") {
+    // proto3 omits empty scalars, so adding element_type/element_data must not have changed
+    // one byte of a plain Element - the cross-language golden files depend on it.
+    Element e(unit_quad(), "plain");
+    session_proto::Element proto;
+    proto.ParseFromString(e.pb_dumps());
+
+    MINI_CHECK(proto.element_type().empty());
+    MINI_CHECK(proto.element_data().empty());
+    MINI_CHECK(e.element_type_name().empty());
 }
 
 } // namespace session_cpp

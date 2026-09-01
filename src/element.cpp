@@ -20,14 +20,18 @@ Element::Element(const BRep& geometry, const std::string& name)
 Element::Element(const Element& other)
     : name(other.name),
       _geometry(other._geometry), _is_dirty(true),
-      _features(other._features) {}
+      _geometry_ops(other._geometry_ops), _features(other._features),
+      _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions) {}
 
 Element& Element::operator=(const Element& other) {
     if (this != &other) {
         _guid.clear();
         name = other.name;
         _geometry = other._geometry;
+        _geometry_ops = other._geometry_ops;
         _features = other._features;
+        _insertion_vectors = other._insertion_vectors;
+        _dimensions = other._dimensions;
         _is_dirty = true;
         _aabb.reset();
         _obb.reset();
@@ -55,7 +59,7 @@ ElementGeometry Element::session_geometry(const Xform& xform) const {
     if (!has_geometry()) return std::monostate{};
     auto geo = _geometry;
     if (auto* mesh = std::get_if<Mesh>(&geo)) {
-        *mesh = apply_features(*mesh);
+        *mesh = apply_geometry_ops(*mesh);
         if (!xform.is_identity()) {
             mesh->transform(xform);
         }
@@ -107,8 +111,8 @@ std::optional<Line> Element::axis() {
     return _axis;
 }
 
-void Element::add_feature(std::function<Mesh(Mesh)> f) {
-    _features.push_back(std::move(f));
+void Element::add_geometry_op(std::function<Mesh(Mesh)> f) {
+    _geometry_ops.push_back(std::move(f));
     _is_dirty = true;
 }
 
@@ -219,9 +223,19 @@ std::vector<Plane> Element::compute_planes() const { return {}; }
 std::vector<Vector> Element::compute_edge_vectors() const { return {}; }
 std::optional<Line> Element::compute_axis() const { return std::nullopt; }
 
-Mesh Element::apply_features(Mesh geo) const {
-    for (const auto& f : _features) geo = f(geo);
+Mesh Element::apply_geometry_ops(Mesh geo) const {
+    for (const auto& f : _geometry_ops) geo = f(geo);
     return geo;
+}
+
+bool ElementFeature::operator==(const ElementFeature& other) const {
+    return name == other.name && feature_type == other.feature_type
+        && face_index == other.face_index && outlines == other.outlines;
+}
+
+std::string ElementFeature::str() const {
+    return fmt::format("ElementFeature({}, face {}, {} outline(s))",
+                       feature_type, face_index, outlines.size());
 }
 
 OBB Element::obb_from_geometry(const ElementGeometry& geo) {
@@ -309,6 +323,26 @@ std::string Element::pb_dumps() const {
     } else {
         proto.set_geometry_type("None");
     }
+    // Both empty for a plain Element, and proto3 does not emit empty scalars - so the bytes
+    // of a base element are exactly what they were before the registry existed.
+    proto.set_element_type(element_type_name());
+    proto.set_element_data(element_data_dumps());
+
+    for (const auto& v : _insertion_vectors) {
+        proto.add_insertion_vectors()->ParseFromString(v.pb_dumps());
+    }
+    if (_dimensions.has_value()) {
+        proto.mutable_dimensions()->ParseFromString(_dimensions->pb_dumps());
+    }
+    for (const auto& f : _features) {
+        auto* pf = proto.add_features();
+        pf->set_name(f.name);
+        pf->set_feature_type(f.feature_type);
+        pf->set_face_index(f.face_index);
+        for (const auto& o : f.outlines) {
+            pf->add_outlines()->ParseFromString(o.pb_dumps());
+        }
+    }
     return proto.SerializeAsString();
 }
 
@@ -324,6 +358,25 @@ Element Element::pb_loads(const std::string& data) {
     } else if (geo_type == "BRep" && !proto.geometry_data().empty()) {
         elem._geometry = BRep::pb_loads(proto.geometry_data());
     }
+
+    for (const auto& v : proto.insertion_vectors()) {
+        elem._insertion_vectors.push_back(Vector::pb_loads(v.SerializeAsString()));
+    }
+    // has_dimensions, not an emptiness check: (0,0,0) is a legitimate authored value and
+    // must not be confused with "never authored", which is why this member is optional.
+    if (proto.has_dimensions()) {
+        elem._dimensions = Vector::pb_loads(proto.dimensions().SerializeAsString());
+    }
+    for (const auto& f : proto.features()) {
+        ElementFeature feature;
+        feature.name = f.name();
+        feature.feature_type = f.feature_type();
+        feature.face_index = f.face_index();
+        for (const auto& o : f.outlines()) {
+            feature.outlines.push_back(Polyline::pb_loads(o.SerializeAsString()));
+        }
+        elem._features.push_back(std::move(feature));
+    }
     return elem;
 }
 
@@ -338,6 +391,54 @@ Element Element::pb_load(const std::string& path) {
     std::string data((std::istreambuf_iterator<char>(file)),
                       std::istreambuf_iterator<char>());
     return pb_loads(data);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// Element - polymorphic registry
+///////////////////////////////////////////////////////////////////////////////////////////
+
+// Function-local static, not a namespace-scope one: a downstream package registers from a
+// static initializer, and a namespace-scope map might not be constructed yet when it runs.
+// This way the map is built on first use, whenever that is.
+static std::map<std::string, Element::Factory>& element_registry() {
+    static std::map<std::string, Element::Factory> registry;
+    return registry;
+}
+
+void Element::register_type(const std::string& type_name, Element::Factory factory) {
+    if (type_name.empty() || !factory) { return; }
+    element_registry()[type_name] = std::move(factory);
+}
+
+bool Element::is_registered(const std::string& type_name) {
+    return element_registry().count(type_name) > 0;
+}
+
+std::vector<std::string> Element::registered_types() {
+    std::vector<std::string> names;
+    names.reserve(element_registry().size());
+    for (const auto& [name, _] : element_registry()) { names.push_back(name); }
+    return names;
+}
+
+std::shared_ptr<Element> Element::pb_loads_shared(const std::string& data) {
+    session_proto::Element proto;
+    proto.ParseFromString(data);
+
+    const std::string& type_name = proto.element_type();
+    if (!type_name.empty()) {
+        auto it = element_registry().find(type_name);
+        if (it != element_registry().end()) {
+            if (auto derived = it->second(data)) { return derived; }
+            // A factory that returns null is a bug in that package, not a corrupt file -
+            // fall through to the base so one bad type cannot take the Session with it.
+        }
+    }
+
+    // No type, no factory, or a factory that declined: keep the geometry and the identity.
+    auto base = std::make_shared<Element>(pb_loads(data));
+    base->guid() = proto.guid();
+    return base;
 }
 
 std::ostream& operator<<(std::ostream& os, const Element& e) { return os << e.str(); }
