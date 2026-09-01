@@ -87,6 +87,23 @@ struct ElementFeature {
     bool operator==(const ElementFeature& other) const;
     bool operator!=(const ElementFeature& other) const { return !(*this == other); }
     std::string str() const;
+    std::string repr() const;
+    friend std::ostream& operator<<(std::ostream& os, const ElementFeature& f);
+
+    /// A feature serializes on its own, not only as part of its host. A package that stores a
+    /// library of standard cuts, or reports one across a wire, has a single feature in hand and
+    /// nothing to attach it to - and every other class in the kernel round-trips by itself.
+    nlohmann::ordered_json jsondump() const;
+    static ElementFeature jsonload(const nlohmann::json& data);
+    void file_json_dump(const std::string& filename) const;
+    static ElementFeature file_json_load(const std::string& filename);
+    std::string file_json_dumps() const;
+    static ElementFeature file_json_loads(const std::string& json_string);
+
+    std::string pb_dumps() const;
+    static ElementFeature pb_loads(const std::string& data);
+    void pb_dump(const std::string& filename) const;
+    static ElementFeature pb_load(const std::string& filename);
 
 private:
     mutable std::string _guid;
@@ -203,14 +220,21 @@ public:
     // dispatched (`pb_dumps` is virtual), so a subclass wrote its payload correctly and then
     // lost it on the way back in. The factory is the missing half of that round trip.
 
-    /// This element's own type name, written to `element_type`. The base returns "" - proto3
-    /// omits empty strings, so a plain Element's bytes are byte-identical to before this
-    /// existed, which is what keeps the cross-language golden files valid.
-    virtual std::string element_type_name() const { return ""; }
+    /// This element's own type name, written to `element_type`. A plain Element authored in
+    /// memory returns "" - proto3 omits empty strings, so its bytes are byte-identical to
+    /// before this existed, which is what keeps the cross-language golden files valid.
+    ///
+    /// A base Element that was LOADED from a derived element's bytes returns the type it was
+    /// carrying. Without that, opening a wood file in a viewer that has no wood registered and
+    /// saving it again wrote `element_type=""` and destroyed the payload - the kernel promised
+    /// above to copy both through untouched, and this is the half that keeps the promise. A
+    /// derived class overrides this and never consults the carried value.
+    virtual std::string element_type_name() const { return _element_type; }
 
     /// This element's own state, written to `element_data`. Opaque to the kernel; the format
-    /// is entirely the registering package's business. Base has none.
-    virtual std::string element_data_dumps() const { return ""; }
+    /// is entirely the registering package's business. Carried through for the same reason as
+    /// `element_type_name` above.
+    virtual std::string element_data_dumps() const { return _element_data; }
 
     /// Builds one element from a full serialized `session_proto.Element` - the same bytes
     /// `pb_loads` takes, so a factory can read the base fields as well as `element_data`.
@@ -226,7 +250,7 @@ public:
     /// base Element when `element_type` is empty OR names a type nobody registered - an
     /// unknown domain type degrades to its geometry rather than failing the whole Session,
     /// which is what lets a viewer open a file written by a package it does not have.
-    static std::shared_ptr<Element> pb_loads_shared(const std::string& data);
+    static std::shared_ptr<Element> pb_loads_polymorphic(const std::string& data);
     void pb_dump(const std::string& path) const;
     static Element pb_load(const std::string& path);
 
@@ -248,6 +272,10 @@ protected:
     std::vector<ElementFeature> _features;
     std::vector<Vector> _insertion_vectors;
     std::optional<Vector> _dimensions;
+    /// The derived type name and payload this element was LOADED with, for an element whose
+    /// type nobody registered. Empty on anything authored in memory. See the two virtuals.
+    std::string _element_type;
+    std::string _element_data;
 
     OBB compute_aabb();
     OBB compute_obb();
@@ -263,4 +291,5 @@ protected:
 
 
 std::ostream& operator<<(std::ostream& os, const Element& e);
+std::ostream& operator<<(std::ostream& os, const ElementFeature& f);
 } // namespace session_cpp

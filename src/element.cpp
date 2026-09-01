@@ -21,7 +21,8 @@ Element::Element(const Element& other)
     : name(other.name),
       _geometry(other._geometry), _is_dirty(true),
       _geometry_ops(other._geometry_ops), _features(other._features),
-      _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions) {}
+      _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions),
+      _element_type(other._element_type), _element_data(other._element_data) {}
 
 Element& Element::operator=(const Element& other) {
     if (this != &other) {
@@ -32,6 +33,8 @@ Element& Element::operator=(const Element& other) {
         _features = other._features;
         _insertion_vectors = other._insertion_vectors;
         _dimensions = other._dimensions;
+        _element_type = other._element_type;
+        _element_data = other._element_data;
         _is_dirty = true;
         _aabb.reset();
         _obb.reset();
@@ -158,7 +161,14 @@ Element Element::duplicate() const {
 }
 
 bool Element::operator==(const Element& other) const {
-    return name == other.name && geometry_type_name() == other.geometry_type_name();
+    // Data equality, not identity - the guid is excluded, exactly as in Line. Every field that
+    // survives a round trip is compared, so `pb_loads(e.pb_dumps()) == e` is a real test rather
+    // than one that passes on two fields and ignores the other five.
+    return name == other.name && geometry_type_name() == other.geometry_type_name() &&
+           element_type_name() == other.element_type_name() &&
+           element_data_dumps() == other.element_data_dumps() &&
+           _insertion_vectors == other._insertion_vectors &&
+           _dimensions == other._dimensions && _features == other._features;
 }
 
 bool Element::operator!=(const Element& other) const { return !(*this == other); }
@@ -237,6 +247,77 @@ std::string ElementFeature::str() const {
     return fmt::format("ElementFeature({}, face {}, {} outline(s))",
                        feature_type, face_index, outlines.size());
 }
+std::string ElementFeature::repr() const { return str(); }
+std::ostream& operator<<(std::ostream& os, const ElementFeature& f) { return os << f.str(); }
+
+nlohmann::ordered_json ElementFeature::jsondump() const {
+    nlohmann::ordered_json outs = nlohmann::ordered_json::array();
+    for (const auto& o : outlines) outs.push_back(o.jsondump());
+    return nlohmann::ordered_json{
+        {"face_index", face_index},
+        {"feature_type", feature_type},
+        {"guid", guid()},
+        {"name", name},
+        {"outlines", outs},
+        {"type", "ElementFeature"},
+    };
+}
+ElementFeature ElementFeature::jsonload(const nlohmann::json& data) {
+    ElementFeature f;
+    f.face_index = data.value("face_index", -1);
+    f.feature_type = data.value("feature_type", std::string());
+    // Assigned, not minted: a feature read back is the SAME feature, so anything holding its
+    // guid still finds it. Absent means the file predates the field - leave the lazy mint.
+    std::string g = data.value("guid", std::string());
+    if (!g.empty()) f.guid() = g;
+    f.name = data.value("name", std::string());
+    if (data.contains("outlines")) {
+        for (const auto& o : data["outlines"]) f.outlines.push_back(Polyline::jsonload(o));
+    }
+    return f;
+}
+std::string ElementFeature::file_json_dumps() const { return jsondump().dump(); }
+ElementFeature ElementFeature::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+void ElementFeature::file_json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(2);
+}
+ElementFeature ElementFeature::file_json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    return jsonload(nlohmann::json::parse(file));
+}
+std::string ElementFeature::pb_dumps() const {
+    session_proto::ElementFeature proto;
+    proto.set_guid(guid());
+    proto.set_name(name);
+    proto.set_feature_type(feature_type);
+    proto.set_face_index(face_index);
+    for (const auto& o : outlines) proto.add_outlines()->ParseFromString(o.pb_dumps());
+    return proto.SerializeAsString();
+}
+ElementFeature ElementFeature::pb_loads(const std::string& data) {
+    session_proto::ElementFeature proto;
+    proto.ParseFromString(data);
+    ElementFeature f;
+    if (!proto.guid().empty()) f.guid() = proto.guid();
+    f.name = proto.name();
+    f.feature_type = proto.feature_type();
+    f.face_index = proto.face_index();
+    for (const auto& o : proto.outlines()) f.outlines.push_back(Polyline::pb_loads(o.SerializeAsString()));
+    return f;
+}
+void ElementFeature::pb_dump(const std::string& filename) const {
+    std::string data = pb_dumps();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+ElementFeature ElementFeature::pb_load(const std::string& filename) {
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return pb_loads(data);
+}
 
 OBB Element::obb_from_geometry(const ElementGeometry& geo) {
     double inflate = 0.0;
@@ -258,6 +339,26 @@ OBB Element::obb_from_geometry(const ElementGeometry& geo) {
 // Element - JSON
 ///////////////////////////////////////////////////////////////////////////////////////////
 
+/// `element_data` is opaque BYTES and JSON has no byte type, so it travels as hex. Hex rather
+/// than base64 because it is a handful of lines in each of the three languages and needs no
+/// dependency in any of them - and this has to encode identically in all three, or the JSON
+/// stops being a cross-language format.
+static std::string to_hex(const std::string& bytes) {
+    static const char* digits = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (unsigned char c : bytes) { out += digits[c >> 4]; out += digits[c & 15]; }
+    return out;
+}
+static std::string from_hex(const std::string& hex) {
+    std::string out;
+    out.reserve(hex.size() / 2);
+    for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+        out += static_cast<char>(std::stoi(hex.substr(i, 2), nullptr, 16));
+    }
+    return out;
+}
+
 nlohmann::ordered_json Element::jsondump() const {
     nlohmann::ordered_json geo_data = nullptr;
     std::string geo_type = "None";
@@ -268,10 +369,24 @@ nlohmann::ordered_json Element::jsondump() const {
         geo_type = "BRep";
         geo_data = brep->jsondump();
     }
+    // Everything the element carries, not just the two fields it had before the registry: a
+    // format that silently drops five of them is not a serialization format, and `file_json_dump`
+    // has to round-trip whatever `pb_dumps` does, or the two disagree about what an Element is.
+    nlohmann::ordered_json dims = nullptr;
+    if (_dimensions.has_value()) dims = _dimensions->jsondump();
+    nlohmann::ordered_json feats = nlohmann::ordered_json::array();
+    for (const auto& f : _features) feats.push_back(f.jsondump());
+    nlohmann::ordered_json ivs = nlohmann::ordered_json::array();
+    for (const auto& v : _insertion_vectors) ivs.push_back(v.jsondump());
     return nlohmann::ordered_json{
+        {"dimensions", dims},
+        {"element_data", to_hex(element_data_dumps())},
+        {"element_type", element_type_name()},
+        {"features", feats},
         {"geometry_data", geo_data},
         {"geometry_type", geo_type},
         {"guid", guid()},
+        {"insertion_vectors", ivs},
         {"name", name},
         {"type", "Element"},
     };
@@ -287,6 +402,21 @@ Element Element::jsonload(const nlohmann::json& data) {
     }
     elem.guid() = data.value("guid", elem.guid());
     elem.name = data.value("name", elem.name);
+    // null, not absent-or-empty: (0,0,0) is a legitimate authored dimension, so the two cases
+    // stay distinguishable here exactly as `has_dimensions` keeps them apart on the wire.
+    if (data.contains("dimensions") && !data["dimensions"].is_null()) {
+        elem._dimensions = Vector::jsonload(data["dimensions"]);
+    }
+    elem._element_type = data.value("element_type", std::string());
+    elem._element_data = from_hex(data.value("element_data", std::string()));
+    if (data.contains("features")) {
+        for (const auto& f : data["features"]) elem._features.push_back(ElementFeature::jsonload(f));
+    }
+    if (data.contains("insertion_vectors")) {
+        for (const auto& v : data["insertion_vectors"]) {
+            elem._insertion_vectors.push_back(Vector::jsonload(v));
+        }
+    }
     return elem;
 }
 
@@ -360,6 +490,12 @@ Element Element::pb_loads(const std::string& data) {
         elem._geometry = BRep::pb_loads(proto.geometry_data());
     }
 
+    // Carried, not interpreted. A viewer with no wood package registered loads a wood element
+    // as a base Element; if these two were dropped here, saving it again wrote empty strings and
+    // destroyed the payload the file was written with. See `element_type_name` in element.h.
+    elem._element_type = proto.element_type();
+    elem._element_data = proto.element_data();
+
     for (const auto& v : proto.insertion_vectors()) {
         elem._insertion_vectors.push_back(Vector::pb_loads(v.SerializeAsString()));
     }
@@ -426,7 +562,7 @@ std::vector<std::string> Element::registered_types() {
     return names;
 }
 
-std::shared_ptr<Element> Element::pb_loads_shared(const std::string& data) {
+std::shared_ptr<Element> Element::pb_loads_polymorphic(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
 
@@ -434,16 +570,22 @@ std::shared_ptr<Element> Element::pb_loads_shared(const std::string& data) {
     if (!type_name.empty()) {
         auto it = element_registry().find(type_name);
         if (it != element_registry().end()) {
-            if (auto derived = it->second(data)) { return derived; }
-            // A factory that returns null is a bug in that package, not a corrupt file -
-            // fall through to the base so one bad type cannot take the Session with it.
+            // A THROWING factory is the same failure as a null-returning one - a bug in that
+            // package - and it must not take the whole Session with it either. Without this
+            // catch, one malformed wood element makes every other element in the file
+            // unreachable, which is the opposite of the graceful degradation below.
+            try {
+                if (auto derived = it->second(data)) { return derived; }
+            } catch (const std::exception&) {
+            }
+            // A factory that returns null or throws: fall through to the base.
         }
     }
 
-    // No type, no factory, or a factory that declined: keep the geometry and the identity.
-    auto base = std::make_shared<Element>(pb_loads(data));
-    base->guid() = proto.guid();
-    return base;
+    // No type, no factory, or a factory that declined: keep the geometry, the identity, AND the
+    // derived payload - `pb_loads` carries `element_type`/`element_data` through, so re-saving
+    // this element writes the bytes the package wrote rather than erasing them.
+    return std::make_shared<Element>(pb_loads(data));
 }
 
 std::ostream& operator<<(std::ostream& os, const Element& e) { return os << e.str(); }

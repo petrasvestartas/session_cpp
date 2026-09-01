@@ -365,7 +365,7 @@ MINI_TEST("Element", "RegistryRoundTrip") {
     MINI_CHECK(Element::is_registered("TestPlate"));
 
     TestPlate plate(unit_quad(), "plate_0", 12.5, {30, 11, 20});
-    auto loaded = Element::pb_loads_shared(plate.pb_dumps());
+    auto loaded = Element::pb_loads_polymorphic(plate.pb_dumps());
 
     // The derived type came back, not a sliced base.
     auto* as_plate = dynamic_cast<TestPlate*>(loaded.get());
@@ -391,7 +391,7 @@ MINI_TEST("Element", "RegistryUnknownTypeDegrades") {
     proto.set_element_type("NeverRegistered");
     proto.set_element_data("whatever this package meant");
 
-    auto loaded = Element::pb_loads_shared(proto.SerializeAsString());
+    auto loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
     MINI_CHECK(loaded != nullptr);
     MINI_CHECK(loaded->name == "mystery");
     MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
@@ -449,6 +449,116 @@ MINI_TEST("Element", "RegistryLeavesBaseBytesUnchanged") {
     MINI_CHECK(proto.element_type().empty());
     MINI_CHECK(proto.element_data().empty());
     MINI_CHECK(e.element_type_name().empty());
+}
+
+MINI_TEST("Element", "UnknownTypeSurvivesResave") {
+    // The whole point of element_type/element_data: a viewer WITHOUT the wood package opens a
+    // wood file, edits something else, and saves. If the kernel does not carry these two
+    // through, that save silently destroys the payload - the geometry still looks right, so
+    // nothing announces the loss. This is the test that would have caught it.
+    session_proto::Element proto;
+    proto.ParseFromString(Element(unit_quad(), "plate").pb_dumps());
+    proto.set_element_type("wood::Plate");
+    proto.set_element_data("the package's own bytes");
+    std::string original = proto.SerializeAsString();
+
+    Element loaded = Element::pb_loads(original);
+    MINI_CHECK(loaded.element_type_name() == "wood::Plate");
+    MINI_CHECK(loaded.element_data_dumps() == "the package's own bytes");
+
+    session_proto::Element resaved;
+    resaved.ParseFromString(loaded.pb_dumps());
+    MINI_CHECK(resaved.element_type() == "wood::Plate");
+    MINI_CHECK(resaved.element_data() == "the package's own bytes");
+}
+
+MINI_TEST("Element", "DuplicateKeepsEveryField") {
+    // A copy that drops fields is the same silent data loss as a save that drops them, and a
+    // duplicate is what an assembly does to place the same part twice.
+    Element e(unit_quad(), "original");
+    e.set_insertion_vectors({Vector(0, 0, 1)});
+    e.set_dimensions(Vector(120.0, 80.0, 12.5));
+    e.add_feature(ElementFeature("cut", 2, {}, "notch"));
+
+    Element copy = e.duplicate();
+
+    MINI_CHECK(copy == e);                    // every carried field compares equal
+    MINI_CHECK(copy.guid() != e.guid());      // but it is a different object
+    MINI_CHECK(copy.insertion_vectors().size() == 1);
+    MINI_CHECK(copy.dimensions().has_value());
+    MINI_CHECK(copy.features().size() == 1);
+}
+
+MINI_TEST("Element", "EqualityComparesCarriedFields") {
+    // Equality that looks at name and geometry only makes every round-trip test above vacuous:
+    // it would pass while the loader dropped all five of the other fields.
+    Element a(unit_quad(), "same");
+    Element b(unit_quad(), "same");
+    MINI_CHECK(a == b);
+
+    b.set_dimensions(Vector(1, 2, 3));
+    MINI_CHECK(a != b);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
+// ElementFeature
+///////////////////////////////////////////////////////////////////////////////////////////
+
+MINI_TEST("ElementFeature", "Constructor") {
+    Polyline outline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)});
+    ElementFeature f("cut", 2, {outline}, "notch");
+
+    MINI_CHECK(f.feature_type == "cut");
+    MINI_CHECK(f.face_index == 2);
+    MINI_CHECK(f.name == "notch");
+    MINI_CHECK(f.outlines.size() == 1);
+
+    ElementFeature same("cut", 2, {outline}, "notch");
+    MINI_CHECK(f == same);
+    MINI_CHECK(!(f != same));
+    // Data equality, not identity - the two guids differ and the features are still equal.
+    MINI_CHECK(f.guid() != same.guid());
+
+    ElementFeature other("drill", 2, {outline}, "notch");
+    MINI_CHECK(f != other);
+
+    MINI_CHECK(f.str() == "ElementFeature(cut, face 2, 1 outline(s))");
+    MINI_CHECK(f.repr() == f.str());
+
+    ElementFeature empty;
+    MINI_CHECK(empty.face_index == -1);
+    MINI_CHECK(empty.outlines.empty());
+}
+
+MINI_TEST("ElementFeature", "Json Roundtrip") {
+    ElementFeature f("cut", 2,
+        {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "notch");
+    std::string feature_guid = f.guid();
+
+    std::string fname = "serialization/test_element_feature.json";
+    f.file_json_dump(fname);
+    ElementFeature loaded = ElementFeature::file_json_load(fname);
+
+    MINI_CHECK(loaded == f);
+    MINI_CHECK(loaded.outlines.size() == 1);
+    // Read back, not re-minted: whoever holds the guid must still find this feature.
+    MINI_CHECK(loaded.guid() == feature_guid);
+}
+
+MINI_TEST("ElementFeature", "Protobuf Roundtrip") {
+    ElementFeature f("drill", 5,
+        {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "hole");
+    std::string feature_guid = f.guid();
+
+    std::string path = "serialization/test_element_feature.bin";
+    f.pb_dump(path);
+    ElementFeature loaded = ElementFeature::pb_load(path);
+
+    MINI_CHECK(loaded == f);
+    MINI_CHECK(loaded.feature_type == "drill");
+    MINI_CHECK(loaded.face_index == 5);
+    MINI_CHECK(loaded.outlines.size() == 1);
+    MINI_CHECK(loaded.guid() == feature_guid);
 }
 
 } // namespace session_cpp
