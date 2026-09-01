@@ -458,6 +458,10 @@ MINI_TEST("SpatialBVH", "Build From Aabbs") {
     MINI_CHECK(hits.size() == 2);
     MINI_CHECK(std::find(hits.begin(), hits.end(), 0) != hits.end());
     MINI_CHECK(std::find(hits.begin(), hits.end(), 1) != hits.end());
+
+    bvh.build_from_aabbs(aabbs.data(), 0, 50.0);
+
+    MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 50.0));
 }
 
 MINI_TEST("SpatialBVH", "Build With Guids") {

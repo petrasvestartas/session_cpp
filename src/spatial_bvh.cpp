@@ -36,13 +36,13 @@ bool SpatialBVH::aabb_intersect(const AABB& aabb1, const AABB& aabb2) const {
 }
 
 void SpatialBVH::build_from_aabbs(const AABB* aabbs, size_t count, double ws) {
+    this->world_size = ws;
+
     if (count == 0) {
         root = nullptr;
         node_arena.clear();
         return;
     }
-
-    this->world_size = ws;
 
     // Morton codes normalized over the INPUT's own bounds - not the
     // origin-centered world_size. Sized by max |coordinate|, a scene far from the origin
