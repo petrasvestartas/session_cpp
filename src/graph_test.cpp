@@ -166,6 +166,23 @@ MINI_TEST("Graph", "Has Edge") {
     MINI_CHECK(!g.has_edge(ac));
 }
 
+MINI_TEST("Graph", "Has Guid") {
+    // A guid is lazily minted, so ASKING for one creates it. The writers used to ask for every
+    // vertex and edge, which minted 34,592 UUIDs for one drawing sheet and wrote 1.3 MB of them
+    // into a file whose reader discards them. has_guid() answers without minting, so a thing
+    // nobody names never pays for one.
+    Vertex v("a");
+    Edge e("a", "b");
+
+    MINI_CHECK(!v.has_guid());              // nobody has asked
+    MINI_CHECK(!e.has_guid());
+
+    std::string minted = v.guid();
+    MINI_CHECK(!minted.empty());
+    MINI_CHECK(v.has_guid());               // asking created it
+    MINI_CHECK(v.guid() == minted);         // and it is stable
+}
+
 MINI_TEST("Graph", "Add Node") {
     Graph g("g");
     auto key = g.add_node("a");
