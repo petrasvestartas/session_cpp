@@ -167,8 +167,24 @@ if(MSVC)
 endif()
 
 
+# Where session_cpp's OWN files live.
+#
+# CMAKE_CURRENT_LIST_DIR, never CMAKE_SOURCE_DIR. CMAKE_SOURCE_DIR is the TOP-LEVEL
+# project's directory - whoever ran cmake - so it only happens to be right when
+# session_cpp is the top-level project. Under add_subdirectory() from a consumer it
+# becomes the CONSUMER's root, and session_cpp then hunts for its own generated
+# protobufs inside that consumer.
+#
+# That is why wood and wood_nano each mirrored session_cpp/generated into their own
+# root: a workaround for this line, not a requirement of theirs. The mirror is also
+# what made a schema change corrupt the heap - file(COPY) preserves timestamps, so a
+# refreshed element.pb.h could be older than the objects built against the previous
+# one, and the build then linked two different layouts of session_proto::Element
+# together. With the paths anchored here, no consumer needs a copy at all.
+set(SESSION_CPP_ROOT "${CMAKE_CURRENT_LIST_DIR}")
+
 # Session proto directory
-set(SESSION_PROTO_DIR "${CMAKE_SOURCE_DIR}/../session_proto")
+set(SESSION_PROTO_DIR "${SESSION_CPP_ROOT}/../session_proto")
 if(NOT EXISTS "${SESSION_PROTO_DIR}")
     FetchContent_Declare(session_proto_files
         GIT_REPOSITORY https://github.com/petrasvestartas/session_proto.git
@@ -181,7 +197,7 @@ endif()
 
 # Option C: consume committed .pb.cc/.pb.h from session_cpp/generated/.
 # No protoc invocation at build time.
-set(GENERATED_DIR "${CMAKE_SOURCE_DIR}/generated")
+set(GENERATED_DIR "${SESSION_CPP_ROOT}/generated")
 
 file(GLOB PROTO_SOURCES "${GENERATED_DIR}/*.pb.cc")
 file(GLOB PROTO_HEADERS "${GENERATED_DIR}/*.pb.h")
@@ -203,7 +219,7 @@ if(SESSION_REGEN_PROTO AND TARGET protoc)
                 --proto_path=${SESSION_PROTO_DIR}
                 ${PROTO_FILES}
         DEPENDS protoc ${PROTO_FILES}
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        WORKING_DIRECTORY "${SESSION_CPP_ROOT}"
         COMMENT "Regenerating committed .pb.cc/.pb.h into generated/"
         VERBATIM
     )
