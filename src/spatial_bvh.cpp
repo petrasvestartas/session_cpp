@@ -603,6 +603,7 @@ bool SpatialBVH::ray_cast(const Point& origin,
                    std::vector<int>& candidate_leaf_ids,
                    bool find_all) const
 {
+    (void)find_all; // every candidate is returned; ordering already puts the nearest first
     candidate_leaf_ids.clear();
     if (!root) return false;
 
@@ -638,9 +639,6 @@ bool SpatialBVH::ray_cast(const Point& origin,
         if (node->is_leaf()) {
             candidate_leaf_ids.push_back(node->object_id);
             any = true;
-            if (!find_all && candidate_leaf_ids.size() >= 1) {
-                // Early exit for find_first, but keep traversing for near-first ordering
-            }
             continue;
         }
 
