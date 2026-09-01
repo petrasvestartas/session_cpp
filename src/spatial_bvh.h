@@ -60,7 +60,7 @@ public:
 
     static SpatialBVH from_boxes(const std::vector<OBB>& bounding_boxes, double world_size);
 
-    // Fast build accepting continuous array of boxes (no copies)
+    // Build from a continuous array of boxes; each OBB is projected to its world AABB first
     void build_from_boxes(const OBB* boxes, size_t count, double ws);
     // Fast build accepting continuous array of lightweight AABBs (no OBB construction)
     void build_from_aabbs(const AABB* aabbs, size_t count, double ws);
