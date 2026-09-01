@@ -67,6 +67,17 @@ public:
     /// Copy assignment (creates a new guid while copying data)
     Line& operator=(const Line& other);
 
+    /// Move constructor and assignment: identity SURVIVES a move.
+    ///
+    /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
+    /// `_guid` transfers. Declaring these is also what makes `return line;` safe: the copy above
+    /// is user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO
+    /// fell back to the COPY and silently dropped the guid it had just deserialized. Every other
+    /// field survived, so the object looked right and only its identity was wrong - which showed
+    /// up as a bad variant access on the far side of a Session roundtrip.
+    Line(Line&& other) noexcept = default;
+    Line& operator=(Line&& other) noexcept = default;
+
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Geometry Methods
     ///////////////////////////////////////////////////////////////////////////////////////////
