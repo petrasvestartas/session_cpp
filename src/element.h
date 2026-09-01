@@ -30,6 +30,17 @@ public:
     Element(const Mesh& geometry, const std::string& name = "my_element");
     Element(const BRep& geometry, const std::string& name = "my_element");
     Element(const Element& other);
+    /// Move constructor and assignment: identity SURVIVES a move.
+    ///
+    /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
+    /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
+    /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
+    /// to the COPY and silently dropped the guid it had just deserialized - every other field
+    /// survived, so the object looked right and only its identity was wrong. That is what broke Line
+    /// on MSVC when its pb_loads changed shape; see line.h.
+    Element(Element&& other) noexcept = default;
+    Element& operator=(Element&& other) noexcept = default;
+
     Element& operator=(const Element& other);
     virtual ~Element() = default;
 

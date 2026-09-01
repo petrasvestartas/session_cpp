@@ -95,6 +95,17 @@ public:
     /// color). The copy gets a new guid.
     NurbsSurface(const NurbsSurface& other);
 
+    /// Move constructor and assignment: identity SURVIVES a move.
+    ///
+    /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
+    /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
+    /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
+    /// to the COPY and silently dropped the guid it had just deserialized - every other field
+    /// survived, so the object looked right and only its identity was wrong. That is what broke Line
+    /// on MSVC when its pb_loads changed shape; see line.h.
+    NurbsSurface(NurbsSurface&& other) noexcept = default;
+    NurbsSurface& operator=(NurbsSurface&& other) noexcept = default;
+
     /// Deep copy assignment. Same semantics as copy constructor —
     /// copies all data, generates new guid for the target.
     NurbsSurface& operator=(const NurbsSurface& other);
