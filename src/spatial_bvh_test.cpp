@@ -580,4 +580,25 @@ MINI_TEST("SpatialBVH", "Ray Cast") {
     MINI_CHECK(behind.empty());
 }
 
+MINI_TEST("SpatialBVH", "Coincident Centers") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    // Identical centers collapse every Morton code to 0; the tree comes from the index tiebreak
+    std::vector<OBB> boxes;
+    for (int i = 0; i < 5; ++i) {
+        boxes.emplace_back(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0));
+    }
+    SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
+    auto [pairs, colliding_indices, checks] = bvh.check_all_collisions(boxes);
+    std::vector<int> hits = bvh.query_aabb(boxes[0]);
+
+    MINI_CHECK(pairs.size() == 10);
+    MINI_CHECK(colliding_indices.size() == 5);
+    MINI_CHECK(hits.size() == 5);
+}
+
 } // namespace session_cpp
