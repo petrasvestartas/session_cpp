@@ -458,11 +458,18 @@ std::string Element::pb_dumps() const {
     proto.set_element_type(element_type_name());
     proto.set_element_data(element_data_dumps());
 
+    // Packed triples, not sub-messages. Not for the bytes - a unit axis is 2 B CHEAPER as a
+    // sub-message - but for the shape: no per-entry `name` String allocated on decode, and no
+    // serialize-then-reparse round trip. See element.proto.
     for (const auto& v : _insertion_vectors) {
-        proto.add_insertion_vectors()->ParseFromString(v.pb_dumps());
+        proto.add_insertion_vectors(v[0]);
+        proto.add_insertion_vectors(v[1]);
+        proto.add_insertion_vectors(v[2]);
     }
     if (_dimensions.has_value()) {
-        proto.mutable_dimensions()->ParseFromString(_dimensions->pb_dumps());
+        proto.add_dimensions((*_dimensions)[0]);
+        proto.add_dimensions((*_dimensions)[1]);
+        proto.add_dimensions((*_dimensions)[2]);
     }
     for (const auto& f : _features) {
         auto* pf = proto.add_features();
@@ -496,13 +503,15 @@ Element Element::pb_loads(const std::string& data) {
     elem._element_type = proto.element_type();
     elem._element_data = proto.element_data();
 
-    for (const auto& v : proto.insertion_vectors()) {
-        elem._insertion_vectors.push_back(Vector::pb_loads(v.SerializeAsString()));
+    for (int i = 0; i + 2 < proto.insertion_vectors_size(); i += 3) {
+        elem._insertion_vectors.push_back(Vector(proto.insertion_vectors(i),
+                                                 proto.insertion_vectors(i + 1),
+                                                 proto.insertion_vectors(i + 2)));
     }
-    // has_dimensions, not an emptiness check: (0,0,0) is a legitimate authored value and
-    // must not be confused with "never authored", which is why this member is optional.
-    if (proto.has_dimensions()) {
-        elem._dimensions = Vector::pb_loads(proto.dimensions().SerializeAsString());
+    // Length, not a zero check: (0,0,0) is a legitimate authored value and must not be confused
+    // with "never authored", which is what an EMPTY field means here.
+    if (proto.dimensions_size() == 3) {
+        elem._dimensions = Vector(proto.dimensions(0), proto.dimensions(1), proto.dimensions(2));
     }
     for (const auto& f : proto.features()) {
         ElementFeature feature;

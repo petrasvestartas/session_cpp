@@ -30,7 +30,6 @@
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
 #include "google/protobuf/unknown_field_set.h"
 #include "polyline.pb.h"
-#include "vector.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -479,6 +478,7 @@ class Element final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kInsertionVectorsFieldNumber = 12,
+    kDimensionsFieldNumber = 13,
     kFeaturesFieldNumber = 14,
     kNameFieldNumber = 1,
     kGuidFieldNumber = 2,
@@ -486,25 +486,43 @@ class Element final : public ::google::protobuf::Message
     kGeometryDataFieldNumber = 4,
     kElementTypeFieldNumber = 10,
     kElementDataFieldNumber = 11,
-    kDimensionsFieldNumber = 13,
   };
-  // repeated .session_proto.Vector insertion_vectors = 12;
+  // repeated double insertion_vectors = 12;
   int insertion_vectors_size() const;
   private:
   int _internal_insertion_vectors_size() const;
 
   public:
   void clear_insertion_vectors() ;
-  ::session_proto::Vector* PROTOBUF_NONNULL mutable_insertion_vectors(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::Vector>* PROTOBUF_NONNULL mutable_insertion_vectors();
+  double insertion_vectors(int index) const;
+  void set_insertion_vectors(int index, double value);
+  void add_insertion_vectors(double value);
+  const ::google::protobuf::RepeatedField<double>& insertion_vectors() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_insertion_vectors();
 
   private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::Vector>& _internal_insertion_vectors() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::Vector>* PROTOBUF_NONNULL _internal_mutable_insertion_vectors();
+  const ::google::protobuf::RepeatedField<double>& _internal_insertion_vectors() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_insertion_vectors();
+
   public:
-  const ::session_proto::Vector& insertion_vectors(int index) const;
-  ::session_proto::Vector* PROTOBUF_NONNULL add_insertion_vectors();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::Vector>& insertion_vectors() const;
+  // repeated double dimensions = 13;
+  int dimensions_size() const;
+  private:
+  int _internal_dimensions_size() const;
+
+  public:
+  void clear_dimensions() ;
+  double dimensions(int index) const;
+  void set_dimensions(int index, double value);
+  void add_dimensions(double value);
+  const ::google::protobuf::RepeatedField<double>& dimensions() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_dimensions();
+
+  private:
+  const ::google::protobuf::RepeatedField<double>& _internal_dimensions() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_dimensions();
+
+  public:
   // repeated .session_proto.ElementFeature features = 14;
   int features_size() const;
   private:
@@ -612,27 +630,12 @@ class Element final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_element_data();
 
   public:
-  // .session_proto.Vector dimensions = 13;
-  bool has_dimensions() const;
-  void clear_dimensions() ;
-  const ::session_proto::Vector& dimensions() const;
-  [[nodiscard]] ::session_proto::Vector* PROTOBUF_NULLABLE release_dimensions();
-  ::session_proto::Vector* PROTOBUF_NONNULL mutable_dimensions();
-  void set_allocated_dimensions(::session_proto::Vector* PROTOBUF_NULLABLE value);
-  void unsafe_arena_set_allocated_dimensions(::session_proto::Vector* PROTOBUF_NULLABLE value);
-  ::session_proto::Vector* PROTOBUF_NULLABLE unsafe_arena_release_dimensions();
-
-  private:
-  const ::session_proto::Vector& _internal_dimensions() const;
-  ::session_proto::Vector* PROTOBUF_NONNULL _internal_mutable_dimensions();
-
-  public:
   // @@protoc_insertion_point(class_scope:session_proto.Element)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<4, 9,
-                                   3, 71,
+                                   1, 71,
                                    2>
       _table_;
 
@@ -653,7 +656,8 @@ class Element final : public ::google::protobuf::Message
         const Element& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::Vector > insertion_vectors_;
+    ::google::protobuf::RepeatedField<double> insertion_vectors_;
+    ::google::protobuf::RepeatedField<double> dimensions_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::ElementFeature > features_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
@@ -661,7 +665,6 @@ class Element final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr geometry_data_;
     ::google::protobuf::internal::ArenaStringPtr element_type_;
     ::google::protobuf::internal::ArenaStringPtr element_data_;
-    ::session_proto::Vector* PROTOBUF_NULLABLE dimensions_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -965,7 +968,7 @@ inline void Element::clear_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.name_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000004U);
+                  0x00000008U);
 }
 inline const ::std::string& Element::name() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -975,13 +978,13 @@ inline const ::std::string& Element::name() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Element::set_name(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Element.name)
 }
 inline ::std::string* PROTOBUF_NONNULL Element::mutable_name()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   ::std::string* _s = _internal_mutable_name();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.name)
   return _s;
@@ -1001,10 +1004,10 @@ inline ::std::string* PROTOBUF_NONNULL Element::_internal_mutable_name() {
 inline ::std::string* PROTOBUF_NULLABLE Element::release_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.name)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000004U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000008U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   auto* released = _impl_.name_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.name_.Set("", GetArena());
@@ -1014,9 +1017,9 @@ inline ::std::string* PROTOBUF_NULLABLE Element::release_name() {
 inline void Element::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
   }
   _impl_.name_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
@@ -1030,7 +1033,7 @@ inline void Element::clear_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.guid_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000010U);
 }
 inline const ::std::string& Element::guid() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1040,13 +1043,13 @@ inline const ::std::string& Element::guid() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Element::set_guid(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Element.guid)
 }
 inline ::std::string* PROTOBUF_NONNULL Element::mutable_guid()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   ::std::string* _s = _internal_mutable_guid();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.guid)
   return _s;
@@ -1066,10 +1069,10 @@ inline ::std::string* PROTOBUF_NONNULL Element::_internal_mutable_guid() {
 inline ::std::string* PROTOBUF_NULLABLE Element::release_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.guid)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000008U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000010U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   auto* released = _impl_.guid_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.guid_.Set("", GetArena());
@@ -1079,9 +1082,9 @@ inline ::std::string* PROTOBUF_NULLABLE Element::release_guid() {
 inline void Element::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
   }
   _impl_.guid_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
@@ -1095,7 +1098,7 @@ inline void Element::clear_geometry_type() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.geometry_type_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00000020U);
 }
 inline const ::std::string& Element::geometry_type() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1105,13 +1108,13 @@ inline const ::std::string& Element::geometry_type() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Element::set_geometry_type(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   _impl_.geometry_type_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Element.geometry_type)
 }
 inline ::std::string* PROTOBUF_NONNULL Element::mutable_geometry_type()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   ::std::string* _s = _internal_mutable_geometry_type();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.geometry_type)
   return _s;
@@ -1131,10 +1134,10 @@ inline ::std::string* PROTOBUF_NONNULL Element::_internal_mutable_geometry_type(
 inline ::std::string* PROTOBUF_NULLABLE Element::release_geometry_type() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.geometry_type)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000010U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000020U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   auto* released = _impl_.geometry_type_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.geometry_type_.Set("", GetArena());
@@ -1144,9 +1147,9 @@ inline ::std::string* PROTOBUF_NULLABLE Element::release_geometry_type() {
 inline void Element::set_allocated_geometry_type(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   }
   _impl_.geometry_type_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.geometry_type_.IsDefault()) {
@@ -1160,7 +1163,7 @@ inline void Element::clear_geometry_data() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.geometry_data_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000020U);
+                  0x00000040U);
 }
 inline const ::std::string& Element::geometry_data() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1170,13 +1173,13 @@ inline const ::std::string& Element::geometry_data() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Element::set_geometry_data(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   _impl_.geometry_data_.SetBytes(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Element.geometry_data)
 }
 inline ::std::string* PROTOBUF_NONNULL Element::mutable_geometry_data()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   ::std::string* _s = _internal_mutable_geometry_data();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.geometry_data)
   return _s;
@@ -1196,10 +1199,10 @@ inline ::std::string* PROTOBUF_NONNULL Element::_internal_mutable_geometry_data(
 inline ::std::string* PROTOBUF_NULLABLE Element::release_geometry_data() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.geometry_data)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000020U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000040U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
   auto* released = _impl_.geometry_data_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.geometry_data_.Set("", GetArena());
@@ -1209,9 +1212,9 @@ inline ::std::string* PROTOBUF_NULLABLE Element::release_geometry_data() {
 inline void Element::set_allocated_geometry_data(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
   }
   _impl_.geometry_data_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.geometry_data_.IsDefault()) {
@@ -1225,7 +1228,7 @@ inline void Element::clear_element_type() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.element_type_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000040U);
+                  0x00000080U);
 }
 inline const ::std::string& Element::element_type() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1235,13 +1238,13 @@ inline const ::std::string& Element::element_type() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Element::set_element_type(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   _impl_.element_type_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Element.element_type)
 }
 inline ::std::string* PROTOBUF_NONNULL Element::mutable_element_type()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::std::string* _s = _internal_mutable_element_type();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.element_type)
   return _s;
@@ -1261,10 +1264,10 @@ inline ::std::string* PROTOBUF_NONNULL Element::_internal_mutable_element_type()
 inline ::std::string* PROTOBUF_NULLABLE Element::release_element_type() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.element_type)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000040U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000080U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   auto* released = _impl_.element_type_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.element_type_.Set("", GetArena());
@@ -1274,9 +1277,9 @@ inline ::std::string* PROTOBUF_NULLABLE Element::release_element_type() {
 inline void Element::set_allocated_element_type(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   }
   _impl_.element_type_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.element_type_.IsDefault()) {
@@ -1290,7 +1293,7 @@ inline void Element::clear_element_data() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.element_data_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000100U);
 }
 inline const ::std::string& Element::element_data() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1300,13 +1303,13 @@ inline const ::std::string& Element::element_data() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Element::set_element_data(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   _impl_.element_data_.SetBytes(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Element.element_data)
 }
 inline ::std::string* PROTOBUF_NONNULL Element::mutable_element_data()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   ::std::string* _s = _internal_mutable_element_data();
   // @@protoc_insertion_point(field_mutable:session_proto.Element.element_data)
   return _s;
@@ -1326,10 +1329,10 @@ inline ::std::string* PROTOBUF_NONNULL Element::_internal_mutable_element_data()
 inline ::std::string* PROTOBUF_NULLABLE Element::release_element_data() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Element.element_data)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000080U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000100U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
   auto* released = _impl_.element_data_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.element_data_.Set("", GetArena());
@@ -1339,9 +1342,9 @@ inline ::std::string* PROTOBUF_NULLABLE Element::release_element_data() {
 inline void Element::set_allocated_element_data(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
   }
   _impl_.element_data_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.element_data_.IsDefault()) {
@@ -1350,147 +1353,104 @@ inline void Element::set_allocated_element_data(::std::string* PROTOBUF_NULLABLE
   // @@protoc_insertion_point(field_set_allocated:session_proto.Element.element_data)
 }
 
-// repeated .session_proto.Vector insertion_vectors = 12;
+// repeated double insertion_vectors = 12;
 inline int Element::_internal_insertion_vectors_size() const {
   return _internal_insertion_vectors().size();
 }
 inline int Element::insertion_vectors_size() const {
   return _internal_insertion_vectors_size();
 }
-inline ::session_proto::Vector* PROTOBUF_NONNULL Element::mutable_insertion_vectors(int index)
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_mutable:session_proto.Element.insertion_vectors)
-  return _internal_mutable_insertion_vectors()->Mutable(index);
+inline void Element::clear_insertion_vectors() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.insertion_vectors_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::Vector>* PROTOBUF_NONNULL Element::mutable_insertion_vectors()
+inline double Element::insertion_vectors(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.Element.insertion_vectors)
+  return _internal_insertion_vectors().Get(index);
+}
+inline void Element::set_insertion_vectors(int index, double value) {
+  _internal_mutable_insertion_vectors()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.Element.insertion_vectors)
+}
+inline void Element::add_insertion_vectors(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_insertion_vectors()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.Element.insertion_vectors)
+}
+inline const ::google::protobuf::RepeatedField<double>& Element::insertion_vectors() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.Element.insertion_vectors)
+  return _internal_insertion_vectors();
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL Element::mutable_insertion_vectors()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.Element.insertion_vectors)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_insertion_vectors();
 }
-inline const ::session_proto::Vector& Element::insertion_vectors(int index) const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.Element.insertion_vectors)
-  return _internal_insertion_vectors().Get(index);
-}
-inline ::session_proto::Vector* PROTOBUF_NONNULL Element::add_insertion_vectors()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::session_proto::Vector* _add =
-      _internal_mutable_insertion_vectors()->InternalAddWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_add:session_proto.Element.insertion_vectors)
-  return _add;
-}
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::Vector>& Element::insertion_vectors() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.Element.insertion_vectors)
-  return _internal_insertion_vectors();
-}
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::Vector>&
+inline const ::google::protobuf::RepeatedField<double>&
 Element::_internal_insertion_vectors() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.insertion_vectors_;
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::Vector>* PROTOBUF_NONNULL
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
 Element::_internal_mutable_insertion_vectors() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.insertion_vectors_;
 }
 
-// .session_proto.Vector dimensions = 13;
-inline bool Element::has_dimensions() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000100U);
-  PROTOBUF_ASSUME(!value || _impl_.dimensions_ != nullptr);
-  return value;
+// repeated double dimensions = 13;
+inline int Element::_internal_dimensions_size() const {
+  return _internal_dimensions().size();
 }
-inline const ::session_proto::Vector& Element::_internal_dimensions() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::session_proto::Vector* p = _impl_.dimensions_;
-  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Vector&>(::session_proto::_Vector_default_instance_);
+inline int Element::dimensions_size() const {
+  return _internal_dimensions_size();
 }
-inline const ::session_proto::Vector& Element::dimensions() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+inline void Element::clear_dimensions() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.dimensions_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000002U);
+}
+inline double Element::dimensions(int index) const {
   // @@protoc_insertion_point(field_get:session_proto.Element.dimensions)
+  return _internal_dimensions().Get(index);
+}
+inline void Element::set_dimensions(int index, double value) {
+  _internal_mutable_dimensions()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.Element.dimensions)
+}
+inline void Element::add_dimensions(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_dimensions()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000002U);
+  // @@protoc_insertion_point(field_add:session_proto.Element.dimensions)
+}
+inline const ::google::protobuf::RepeatedField<double>& Element::dimensions() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.Element.dimensions)
   return _internal_dimensions();
 }
-inline void Element::unsafe_arena_set_allocated_dimensions(
-    ::session_proto::Vector* PROTOBUF_NULLABLE value) {
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL Element::mutable_dimensions()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000002U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.Element.dimensions)
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.dimensions_);
-  }
-  _impl_.dimensions_ = reinterpret_cast<::session_proto::Vector*>(value);
-  if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000100U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Element.dimensions)
+  return _internal_mutable_dimensions();
 }
-inline ::session_proto::Vector* PROTOBUF_NULLABLE Element::release_dimensions() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
-  ::session_proto::Vector* released = _impl_.dimensions_;
-  _impl_.dimensions_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::session_proto::Vector* PROTOBUF_NULLABLE Element::unsafe_arena_release_dimensions() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:session_proto.Element.dimensions)
-
-  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
-  ::session_proto::Vector* temp = _impl_.dimensions_;
-  _impl_.dimensions_ = nullptr;
-  return temp;
-}
-inline ::session_proto::Vector* PROTOBUF_NONNULL Element::_internal_mutable_dimensions() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.dimensions_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Vector>(GetArena());
-    _impl_.dimensions_ = reinterpret_cast<::session_proto::Vector*>(p);
-  }
+inline const ::google::protobuf::RepeatedField<double>&
+Element::_internal_dimensions() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.dimensions_;
 }
-inline ::session_proto::Vector* PROTOBUF_NONNULL Element::mutable_dimensions()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
-  ::session_proto::Vector* _msg = _internal_mutable_dimensions();
-  // @@protoc_insertion_point(field_mutable:session_proto.Element.dimensions)
-  return _msg;
-}
-inline void Element::set_allocated_dimensions(::session_proto::Vector* PROTOBUF_NULLABLE value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.dimensions_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    SetHasBit(_impl_._has_bits_[0], 0x00000100U);
-  } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
-  }
-
-  _impl_.dimensions_ = reinterpret_cast<::session_proto::Vector*>(value);
-  // @@protoc_insertion_point(field_set_allocated:session_proto.Element.dimensions)
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
+Element::_internal_mutable_dimensions() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.dimensions_;
 }
 
 // repeated .session_proto.ElementFeature features = 14;
@@ -1504,7 +1464,7 @@ inline void Element::clear_features() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.features_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000002U);
+                  0x00000004U);
 }
 inline ::session_proto::ElementFeature* PROTOBUF_NONNULL Element::mutable_features(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1513,7 +1473,7 @@ inline ::session_proto::ElementFeature* PROTOBUF_NONNULL Element::mutable_featur
 }
 inline ::google::protobuf::RepeatedPtrField<::session_proto::ElementFeature>* PROTOBUF_NONNULL Element::mutable_features()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000002U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000004U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.Element.features)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_features();
@@ -1529,7 +1489,7 @@ inline ::session_proto::ElementFeature* PROTOBUF_NONNULL Element::add_features()
   ::session_proto::ElementFeature* _add =
       _internal_mutable_features()->InternalAddWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000002U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000004U);
   // @@protoc_insertion_point(field_add:session_proto.Element.features)
   return _add;
 }
