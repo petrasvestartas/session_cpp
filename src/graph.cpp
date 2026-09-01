@@ -156,7 +156,7 @@ std::string Graph::pb_dumps() const {
   for (const auto &[vname, vertex] : vertices) {
     auto &v = (*proto.mutable_vertices())[vname];
     v.set_name(vertex.name);
-    v.set_guid(vertex.guid());
+    if (vertex.has_guid()) v.set_guid(vertex.guid());
     v.set_attribute(vertex.attribute);
     v.set_index(vertex.index);
   }
@@ -168,7 +168,7 @@ std::string Graph::pb_dumps() const {
       if (seen.find(key) == seen.end()) {
         seen.insert(key);
         auto *e = proto.add_edges();
-        e->set_guid(edge.guid());
+        if (edge.has_guid()) e->set_guid(edge.guid());
         e->set_name(edge.name);
         e->set_v0(edge.v0);
         e->set_v1(edge.v1);

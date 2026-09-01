@@ -251,6 +251,15 @@ public:
     /// unknown domain type degrades to its geometry rather than failing the whole Session,
     /// which is what lets a viewer open a file written by a package it does not have.
     static std::shared_ptr<Element> pb_loads_polymorphic(const std::string& data);
+
+    /// The same, from JSON - and through the SAME factory, not a second registry.
+    ///
+    /// A factory takes serialized proto bytes. That is the only contract, and it stays the only
+    /// contract: this reads the JSON into a base Element, which carries `element_type` and
+    /// `element_data` through unchanged, and re-encodes THAT for the factory. So a package
+    /// registers once and both formats reconstruct its type. Without this the JSON path could
+    /// not rebuild a derived element at all - it kept the payload but always handed back a base.
+    static std::shared_ptr<Element> file_json_loads_polymorphic(const std::string& s);
     void pb_dump(const std::string& path) const;
     static Element pb_load(const std::string& path);
 

@@ -26,6 +26,15 @@ public:
   /// Vertex name (also used as key in Graph::vertices)
   std::string name = "my_vertex";
 
+  /// Whether this identity has actually been minted.
+  ///
+  /// A serializer that calls `guid()` MINTS one for everything it writes, which defeats the
+  /// lazy scheme everywhere it is used on a bulk collection: a drawing sheet with 34,592 graph
+  /// vertices generated 34,592 UUIDs at write time and put ~1.3 MB of them in the file for a
+  /// `Session::pb_loads` that discards every one. Ask this first, and write nothing when the
+  /// answer is no.
+  bool has_guid() const { return !_guid.empty(); }
+
   /// Lazy GUID accessor (const)
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
@@ -63,6 +72,15 @@ class Edge {
 public:
   /// Edge name
   std::string name = "my_edge";
+
+  /// Whether this identity has actually been minted.
+  ///
+  /// A serializer that calls `guid()` MINTS one for everything it writes, which defeats the
+  /// lazy scheme everywhere it is used on a bulk collection: a drawing sheet with 34,592 graph
+  /// vertices generated 34,592 UUIDs at write time and put ~1.3 MB of them in the file for a
+  /// `Session::pb_loads` that discards every one. Ask this first, and write nothing when the
+  /// answer is no.
+  bool has_guid() const { return !_guid.empty(); }
 
   /// Lazy GUID accessor (const)
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
@@ -122,6 +140,15 @@ public:
 
   /// Graph identifier/name
   std::string name = "my_graph";
+
+  /// Whether this identity has actually been minted.
+  ///
+  /// A serializer that calls `guid()` MINTS one for everything it writes, which defeats the
+  /// lazy scheme everywhere it is used on a bulk collection: a drawing sheet with 34,592 graph
+  /// vertices generated 34,592 UUIDs at write time and put ~1.3 MB of them in the file for a
+  /// `Session::pb_loads` that discards every one. Ask this first, and write nothing when the
+  /// answer is no.
+  bool has_guid() const { return !_guid.empty(); }
 
   /// Lazy GUID accessor (const)
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }

@@ -451,6 +451,42 @@ MINI_TEST("Element", "RegistryLeavesBaseBytesUnchanged") {
     MINI_CHECK(e.element_type_name().empty());
 }
 
+MINI_TEST("Element", "RegistryJsonRoundTrip") {
+    // The JSON path reconstructs the derived type too, through the SAME factory. Before this,
+    // JSON kept the payload but always handed back a base - so a package could round-trip
+    // through .pb and not through .json, for no reason a caller could see.
+    TestPlate::register_with_kernel();
+
+    TestPlate plate(unit_quad(), "plate_json", 9.5, {7, 8});
+    auto loaded = Element::file_json_loads_polymorphic(plate.file_json_dumps());
+
+    auto* as_plate = dynamic_cast<TestPlate*>(loaded.get());
+    MINI_CHECK(as_plate != nullptr);
+    MINI_CHECK(as_plate->name == "plate_json");
+    MINI_CHECK(as_plate->guid() == plate.guid());
+    MINI_CHECK(std::abs(as_plate->thickness - 9.5) < 1e-9);
+    MINI_CHECK(as_plate->codes.size() == 2);
+    MINI_CHECK(as_plate->codes[0] == 7 && as_plate->codes[1] == 8);
+}
+
+MINI_TEST("Element", "ThrowingFactoryDegradesToBase") {
+    // A factory that throws is a bug in that package, exactly like one returning null, and it
+    // must not take the whole Session down. Without the catch, one malformed element made
+    // every other element in the file unreachable.
+    Element::register_type("Exploding", [](const std::string&) -> std::shared_ptr<Element> {
+        throw std::runtime_error("this package is broken");
+    });
+
+    session_proto::Element proto;
+    proto.ParseFromString(Element(unit_quad(), "victim").pb_dumps());
+    proto.set_element_type("Exploding");
+
+    auto loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
+    MINI_CHECK(loaded != nullptr);
+    MINI_CHECK(loaded->name == "victim");
+    MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
+}
+
 MINI_TEST("Element", "UnknownTypeSurvivesResave") {
     // The whole point of element_type/element_data: a viewer WITHOUT the wood package opens a
     // wood file, edits something else, and saves. If the kernel does not carry these two

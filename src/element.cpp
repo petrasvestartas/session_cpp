@@ -562,6 +562,22 @@ std::vector<std::string> Element::registered_types() {
     return names;
 }
 
+std::shared_ptr<Element> Element::file_json_loads_polymorphic(const std::string& s) {
+    // The base load carries element_type/element_data through, so re-encoding it gives the
+    // factory exactly the proto bytes it expects - one registration, both formats.
+    Element base = file_json_loads(s);
+    if (!base.element_type_name().empty()) {
+        auto it = element_registry().find(base.element_type_name());
+        if (it != element_registry().end()) {
+            try {
+                if (auto derived = it->second(base.pb_dumps())) { return derived; }
+            } catch (const std::exception&) {
+            }
+        }
+    }
+    return std::make_shared<Element>(std::move(base));
+}
+
 std::shared_ptr<Element> Element::pb_loads_polymorphic(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
