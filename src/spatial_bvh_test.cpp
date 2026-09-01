@@ -578,6 +578,17 @@ MINI_TEST("SpatialBVH", "Ray Cast") {
 
     MINI_CHECK(!any);
     MINI_CHECK(behind.empty());
+    // A ray travelling inside the plane of a zero-thickness box still reports it
+    std::vector<OBB> flat = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(0.0, 1.0, 1.0)),
+    };
+    SpatialBVH flat_bvh = SpatialBVH::from_boxes(flat, 100.0);
+    std::vector<int> coplanar;
+
+    MINI_CHECK(flat_bvh.ray_cast(Point(0.0, 0.0, -5.0), Vector(0.0, 0.0, 1.0), coplanar, true));
+    MINI_CHECK(coplanar.size() == 1);
 }
 
 MINI_TEST("SpatialBVH", "Coincident Centers") {

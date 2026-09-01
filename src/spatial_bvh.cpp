@@ -359,10 +359,17 @@ static bool ray_aabb_intersect(const Point& origin,
     double invy = inv(direction[1]);
     double invz = inv(direction[2]);
 
+    // Seed from the unbounded interval so all three slabs fold the same way. A slab with zero
+    // extent, a zero direction component and the origin in its plane yields 0*inf = NaN, and
+    // min/max drop a NaN second argument; seeding tmin/tmax from the x slab let that NaN
+    // through instead and turned a ray travelling inside a flat box into a reported miss.
+    double tmin = -std::numeric_limits<double>::infinity();
+    double tmax = std::numeric_limits<double>::infinity();
+
     double tx1 = (min_x - origin[0]) * invx;
     double tx2 = (max_x - origin[0]) * invx;
-    double tmin = std::min(tx1, tx2);
-    double tmax = std::max(tx1, tx2);
+    tmin = std::max(tmin, std::min(tx1, tx2));
+    tmax = std::min(tmax, std::max(tx1, tx2));
 
     double ty1 = (min_y - origin[1]) * invy;
     double ty2 = (max_y - origin[1]) * invy;
