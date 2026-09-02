@@ -53,7 +53,6 @@ set(UNITY_BUILD_EXCLUDE
     src/mesh.cpp
     src/mesh_boolean.cpp
     src/brep.cpp
-    src/brep_section.cpp
     src/intersection.cpp
     src/graph.cpp
     src/tree.cpp
@@ -254,13 +253,6 @@ endfunction()
 file(GLOB PROJECT_SOURCES "src/*.cpp")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
 list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_minitest\\.cpp$")
-# BUILD ISOLATION (kb/PLAN_v2_execution.md §1 0.1). The v2 kernel lives in src/v2/ and is
-# built by the SEPARATE session_v2 target below; the glob above is non-recursive so it never
-# sees it. This filter is the second fence: if a v2 source ever reappears at src/*.cpp (a
-# stale editor buffer, a bad merge) it still does NOT enter session_core, so a half-written
-# v2 file cannot break main_7 or any other v1 target.
-list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*brep_v2_.*\\.cpp$")
-list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*v2_verdict\\.cpp$")
 # tiny-yaml lives in src/yaml/ — non-recursive glob misses it.
 list(APPEND PROJECT_SOURCES "${PROJECT_SOURCE_DIR}/src/yaml/yaml.cpp")
 
@@ -295,70 +287,12 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
-#############################################################################################
-# V2 SOURCES — ISOLATED TARGET  (kb/PLAN_v2_execution.md §1 0.1)
-#############################################################################################
-# Everything under src/v2/ is compiled into its OWN object library. session_core does not see
-# it (non-recursive glob + the explicit filters above), so a broken, half-written or colliding
-# v2 file breaks ONLY main_13..main_17 — never main_7, never the minitests, never any other
-# session. Four sessions editing v2 concurrently stop being coupled to the v1 build.
-#
-# SAFETY VALVE: a v2 file that is missing or does not compile is listed in V2_EXCLUDE below,
-# with a comment and a date, rather than being left in to break the target.
-# CONFIGURE_DEPENDS: several sessions add files here concurrently; without it a newly added v2
-# source is silently not compiled until someone re-runs cmake by hand.
-file(GLOB V2_SOURCES CONFIGURE_DEPENDS "src/v2/*.cpp")
-list(FILTER V2_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
-set(V2_EXCLUDE
-    # e.g. src/v2/brep_v2_foo.cpp   # 2026-07-26 mid-rewrite, does not compile
-)
-foreach(EX ${V2_EXCLUDE})
-    list(FILTER V2_SOURCES EXCLUDE REGEX ".*${EX}$")
-endforeach()
-
-# TRIPWIRE. A v2 source written back to the OLD src/ path — a stale editor buffer in another
-# session — is compiled by NEITHER target, by design. Say so loudly at configure time rather
-# than let someone spend an hour editing a file that has no effect on any binary.
-file(GLOB V2_STRAYS CONFIGURE_DEPENDS "src/brep_v2_*.cpp" "src/brep_v2_*.h" "src/v2_verdict.*")
-if(V2_STRAYS)
-    message(WARNING "v2 sources sit at the OLD path and are NOT compiled. Move them into "
-                    "src/v2/ (keep the newer copy):\n  ${V2_STRAYS}")
-endif()
-
-add_library(session_v2 OBJECT ${V2_SOURCES})
-# session_core is PUBLIC: v2 inherits src/, the generated proto dir and protobuf, and the v2
-# mains that link session_v2 get src/v2/ on their include path too.
-target_link_libraries(session_v2 PUBLIC session_core)
-target_include_directories(session_v2 PUBLIC ${PROJECT_SOURCE_DIR}/src/v2)
-add_dependencies(session_v2 proto_objects)
-# No UNITY_BUILD here: the v2 files are under simultaneous active development by separate
-# sessions, and unity batching turns one session's file-local name collision into everyone
-# else's compile error. Namespaces (v2sec / v2sf / v2int / v2sol / v2v) stay mandatory anyway.
+# main_3 — session/quaternion/plane demo driver.
+add_executable(main_3 main_3.cpp)
+target_link_libraries(main_3 PRIVATE session_core)
+LINK_PROTOBUF(main_3)
 if(ENABLE_PCH)
-    target_precompile_headers(session_v2 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-endif()
-
-# main_13..main_17 are the v2 test drivers; only they link session_v2.
-set(V2_MAIN_IDS 13 14 15 16 17)
-
-foreach(MAIN_ID 3 6 7 8 9 10 11 12 13 14 15 16 17)
-    add_executable(main_${MAIN_ID} main_${MAIN_ID}.cpp)
-    target_link_libraries(main_${MAIN_ID} PRIVATE session_core)
-    if(MAIN_ID IN_LIST V2_MAIN_IDS)
-        target_link_libraries(main_${MAIN_ID} PRIVATE session_v2)
-    endif()
-    LINK_PROTOBUF(main_${MAIN_ID})
-    if(ENABLE_PCH)
-        target_precompile_headers(main_${MAIN_ID} PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-    endif()
-endforeach()
-
-# pb2step: write STEP from cached BRep .pb files without re-running any boolean.
-add_executable(pb2step pb2step.cpp)
-target_link_libraries(pb2step PRIVATE session_core)
-LINK_PROTOBUF(pb2step)
-if(ENABLE_PCH)
-    target_precompile_headers(pb2step PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+    target_precompile_headers(main_3 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
 endif()
 
 #############################################################################################
@@ -404,61 +338,10 @@ add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
 
-#############################################################################################
-# V3 SOURCES — ground-up boolean rewrite (kb/BOOL_V3_MEMORY.md). Same isolation contract as
-# v2: own object library, only v3 mains link it, a broken v3 file breaks nothing else.
-#############################################################################################
-file(GLOB V3_SOURCES CONFIGURE_DEPENDS "src/v3/*.cpp")
-list(FILTER V3_SOURCES EXCLUDE REGEX ".*_test\\.cpp$")
-add_library(session_v3 OBJECT ${V3_SOURCES})
-target_link_libraries(session_v3 PUBLIC session_core)
-target_include_directories(session_v3 PUBLIC ${PROJECT_SOURCE_DIR}/src/v3)
-add_dependencies(session_v3 proto_objects)
-# No UNITY_BUILD: v3 files are under active development.
-if(ENABLE_PCH)
-    target_precompile_headers(session_v3 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+# Optional local scratch driver (untracked): drop a main_dbg.cpp next to this file to get a
+# quick executable linked against the kernel without touching the test targets.
+if(EXISTS "${PROJECT_SOURCE_DIR}/main_dbg.cpp")
+    add_executable(main_dbg main_dbg.cpp)
+    target_link_libraries(main_dbg PRIVATE session_core)
+    LINK_PROTOBUF(main_dbg)
 endif()
-
-# main_25 — v3 gate driver (G1 geometry, later the boolean ladders).
-if(EXISTS "${PROJECT_SOURCE_DIR}/main_25.cpp" AND NOT TARGET main_25)
-    add_executable(main_25 main_25.cpp)
-    target_link_libraries(main_25 PRIVATE session_core session_v3)
-    LINK_PROTOBUF(main_25)
-    if(ENABLE_PCH)
-        target_precompile_headers(main_25 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-    endif()
-endif()
-
-# main_26 — v3 G3 gate: booleans on STEP-imported analytic primitives (step_import).
-if(EXISTS "${PROJECT_SOURCE_DIR}/main_26.cpp" AND NOT TARGET main_26)
-    add_executable(main_26 main_26.cpp)
-    target_link_libraries(main_26 PRIVATE session_core session_v3)
-    LINK_PROTOBUF(main_26)
-    if(ENABLE_PCH)
-        target_precompile_headers(main_26 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-    endif()
-endif()
-
-#############################################################################################
-# main_19 — v2 CLOSURE-RESIDUAL driver. Appended (not folded into the V2_MAIN_IDS list) and
-# guarded by NOT TARGET so concurrent sessions editing the list above cannot clash with it.
-#############################################################################################
-if(EXISTS "${PROJECT_SOURCE_DIR}/main_19.cpp" AND NOT TARGET main_19)
-    add_executable(main_19 main_19.cpp)
-    target_link_libraries(main_19 PRIVATE session_core session_v2)
-    LINK_PROTOBUF(main_19)
-    if(ENABLE_PCH)
-        target_precompile_headers(main_19 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-    endif()
-endif()
-
-# main_27 — v3 G4 gate: chairs driver (kb/BOOL_V3_MEMORY.md, remaining work item 3).
-if(EXISTS "${PROJECT_SOURCE_DIR}/main_27.cpp" AND NOT TARGET main_27)
-    add_executable(main_27 main_27.cpp)
-    target_link_libraries(main_27 PRIVATE session_core session_v3)
-    LINK_PROTOBUF(main_27)
-    if(ENABLE_PCH)
-        target_precompile_headers(main_27 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
-    endif()
-endif()
-

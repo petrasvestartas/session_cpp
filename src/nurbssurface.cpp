@@ -1641,41 +1641,24 @@ NurbsCurve NurbsSurface::iso_curve(int dir, double c) const {
         span_index = m_cv_count[1 - dir] - m_order[1 - dir];
     }
 
-    // For each CV of the isocurve, evaluate a temporary curve through the surface
+    // Each iso-curve CV is the blend of the constant direction at c in HOMOGENEOUS coordinates:
+    // a non-rational helper curve through (wx, wy, wz) and one through (w, 0, 0) evaluate that
+    // blend exactly, so a rational surface (sphere, torus) yields its exact rational iso-curve.
     for (int cv_idx = 0; cv_idx < nurbs_crv.m_cv_count; cv_idx++) {
-        NurbsCurve N(m_dim, m_is_rat != 0, m_order[1 - dir], m_cv_count[1 - dir]);
-
+        NurbsCurve N(3, false, m_order[1 - dir], m_cv_count[1 - dir]);
+        NurbsCurve W(3, false, m_order[1 - dir], m_cv_count[1 - dir]);
         for (int i = 0; i < N.nurbsknot_count(); i++) {
             N.set_nurbsknot(i, nurbsknot(1 - dir, i));
+            W.set_nurbsknot(i, nurbsknot(1 - dir, i));
         }
-
         for (int i = 0; i < m_cv_count[1 - dir]; i++) {
             const double* Scv = dir ? cv(i, cv_idx) : cv(cv_idx, i);
-
-            if (m_is_rat) {
-                double x = Scv[0];
-                double y = (m_dim > 1) ? Scv[1] : 0;
-                double z = (m_dim > 2) ? Scv[2] : 0;
-                double w = Scv[m_dim];
-                N.set_cv_4d(i, x, y, z, w);
-            } else {
-                Point pt(Scv[0],
-                        (m_dim > 1) ? Scv[1] : 0,
-                        (m_dim > 2) ? Scv[2] : 0);
-                N.set_cv(i, pt);
-            }
+            N.set_cv(i, Point(Scv[0], (m_dim > 1) ? Scv[1] : 0, (m_dim > 2) ? Scv[2] : 0));
+            W.set_cv(i, Point(m_is_rat ? Scv[m_dim] : 1.0, 0, 0));
         }
-
-        Point pt = N.point_at(c);
-        nurbs_crv.set_cv(cv_idx, pt);
-
-        if (m_is_rat) {
-            double w_sum = 0.0;
-            for (int i = 0; i < m_cv_count[1 - dir]; i++) {
-                w_sum += N.weight(i);
-            }
-            nurbs_crv.set_weight(cv_idx, w_sum / m_cv_count[1 - dir]);
-        }
+        Point q = N.point_at(c);
+        if (m_is_rat) nurbs_crv.set_cv_4d(cv_idx, q[0], q[1], q[2], W.point_at(c)[0]);
+        else nurbs_crv.set_cv(cv_idx, q);
     }
 
     return nurbs_crv;

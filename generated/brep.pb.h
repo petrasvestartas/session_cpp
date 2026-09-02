@@ -58,14 +58,16 @@ extern "C" {
 extern const ::google::protobuf::internal::DescriptorTable descriptor_table_brep_2eproto;
 }  // extern "C"
 namespace session_proto {
-enum BRepLoopType : int;
-extern const uint32_t BRepLoopType_internal_data_[];
-enum BRepTrimType : int;
-extern const uint32_t BRepTrimType_internal_data_[];
+enum BRepOrientation : int;
+extern const uint32_t BRepOrientation_internal_data_[];
 class BRep;
 struct BRepDefaultTypeInternal;
 extern BRepDefaultTypeInternal _BRep_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull BRep_class_data_;
+class BRepCurveOnSurface;
+struct BRepCurveOnSurfaceDefaultTypeInternal;
+extern BRepCurveOnSurfaceDefaultTypeInternal _BRepCurveOnSurface_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull BRepCurveOnSurface_class_data_;
 class BRepEdge;
 struct BRepEdgeDefaultTypeInternal;
 extern BRepEdgeDefaultTypeInternal _BRepEdge_default_instance_;
@@ -74,103 +76,72 @@ class BRepFace;
 struct BRepFaceDefaultTypeInternal;
 extern BRepFaceDefaultTypeInternal _BRepFace_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull BRepFace_class_data_;
-class BRepLoop;
-struct BRepLoopDefaultTypeInternal;
-extern BRepLoopDefaultTypeInternal _BRepLoop_default_instance_;
-extern const ::google::protobuf::internal::ClassDataFull BRepLoop_class_data_;
-class BRepTrim;
-struct BRepTrimDefaultTypeInternal;
-extern BRepTrimDefaultTypeInternal _BRepTrim_default_instance_;
-extern const ::google::protobuf::internal::ClassDataFull BRepTrim_class_data_;
+class BRepRef;
+struct BRepRefDefaultTypeInternal;
+extern BRepRefDefaultTypeInternal _BRepRef_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull BRepRef_class_data_;
+class BRepShell;
+struct BRepShellDefaultTypeInternal;
+extern BRepShellDefaultTypeInternal _BRepShell_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull BRepShell_class_data_;
+class BRepSolid;
+struct BRepSolidDefaultTypeInternal;
+extern BRepSolidDefaultTypeInternal _BRepSolid_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull BRepSolid_class_data_;
 class BRepVertex;
 struct BRepVertexDefaultTypeInternal;
 extern BRepVertexDefaultTypeInternal _BRepVertex_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull BRepVertex_class_data_;
+class BRepWire;
+struct BRepWireDefaultTypeInternal;
+extern BRepWireDefaultTypeInternal _BRepWire_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull BRepWire_class_data_;
 }  // namespace session_proto
 namespace google {
 namespace protobuf {
 template <>
-internal::EnumTraitsT<::session_proto::BRepLoopType_internal_data_>
-    internal::EnumTraitsImpl::value<::session_proto::BRepLoopType>;
-template <>
-internal::EnumTraitsT<::session_proto::BRepTrimType_internal_data_>
-    internal::EnumTraitsImpl::value<::session_proto::BRepTrimType>;
+internal::EnumTraitsT<::session_proto::BRepOrientation_internal_data_>
+    internal::EnumTraitsImpl::value<::session_proto::BRepOrientation>;
 }  // namespace protobuf
 }  // namespace google
 
 namespace session_proto {
-enum BRepTrimType : int {
-  TRIM_BOUNDARY = 0,
-  TRIM_MATED = 1,
-  TRIM_SEAM = 2,
-  TRIM_SINGULAR = 3,
-  BRepTrimType_INT_MIN_SENTINEL_DO_NOT_USE_ =
+enum BRepOrientation : int {
+  ORIENTATION_FORWARD = 0,
+  ORIENTATION_REVERSED = 1,
+  ORIENTATION_INTERNAL = 2,
+  ORIENTATION_EXTERNAL = 3,
+  BRepOrientation_INT_MIN_SENTINEL_DO_NOT_USE_ =
       ::std::numeric_limits<::int32_t>::min(),
-  BRepTrimType_INT_MAX_SENTINEL_DO_NOT_USE_ =
+  BRepOrientation_INT_MAX_SENTINEL_DO_NOT_USE_ =
       ::std::numeric_limits<::int32_t>::max(),
 };
 
-extern const uint32_t BRepTrimType_internal_data_[];
-inline constexpr BRepTrimType BRepTrimType_MIN =
-    static_cast<BRepTrimType>(0);
-inline constexpr BRepTrimType BRepTrimType_MAX =
-    static_cast<BRepTrimType>(3);
-inline bool BRepTrimType_IsValid(int value) {
+extern const uint32_t BRepOrientation_internal_data_[];
+inline constexpr BRepOrientation BRepOrientation_MIN =
+    static_cast<BRepOrientation>(0);
+inline constexpr BRepOrientation BRepOrientation_MAX =
+    static_cast<BRepOrientation>(3);
+inline bool BRepOrientation_IsValid(int value) {
   return 0 <= value && value <= 3;
 }
-inline constexpr int BRepTrimType_ARRAYSIZE = 3 + 1;
-const ::google::protobuf::EnumDescriptor* PROTOBUF_NONNULL BRepTrimType_descriptor();
+inline constexpr int BRepOrientation_ARRAYSIZE = 3 + 1;
+const ::google::protobuf::EnumDescriptor* PROTOBUF_NONNULL BRepOrientation_descriptor();
 template <typename T>
-const ::std::string& BRepTrimType_Name(T value) {
-  static_assert(::std::is_same<T, BRepTrimType>::value ||
+const ::std::string& BRepOrientation_Name(T value) {
+  static_assert(::std::is_same<T, BRepOrientation>::value ||
                     ::std::is_integral<T>::value,
-                "Incorrect type passed to BRepTrimType_Name().");
-  return BRepTrimType_Name(static_cast<BRepTrimType>(value));
+                "Incorrect type passed to BRepOrientation_Name().");
+  return BRepOrientation_Name(static_cast<BRepOrientation>(value));
 }
 template <>
-inline const ::std::string& BRepTrimType_Name(BRepTrimType value) {
-  return ::google::protobuf::internal::NameOfDenseEnum<BRepTrimType_descriptor, 0, 3>(
+inline const ::std::string& BRepOrientation_Name(BRepOrientation value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<BRepOrientation_descriptor, 0, 3>(
       static_cast<int>(value));
 }
-inline bool BRepTrimType_Parse(
-    ::absl::string_view name, BRepTrimType* PROTOBUF_NONNULL value) {
-  return ::google::protobuf::internal::ParseNamedEnum<BRepTrimType>(BRepTrimType_descriptor(), name,
-                                           value);
-}
-enum BRepLoopType : int {
-  LOOP_OUTER = 0,
-  LOOP_INNER = 1,
-  BRepLoopType_INT_MIN_SENTINEL_DO_NOT_USE_ =
-      ::std::numeric_limits<::int32_t>::min(),
-  BRepLoopType_INT_MAX_SENTINEL_DO_NOT_USE_ =
-      ::std::numeric_limits<::int32_t>::max(),
-};
-
-extern const uint32_t BRepLoopType_internal_data_[];
-inline constexpr BRepLoopType BRepLoopType_MIN =
-    static_cast<BRepLoopType>(0);
-inline constexpr BRepLoopType BRepLoopType_MAX =
-    static_cast<BRepLoopType>(1);
-inline bool BRepLoopType_IsValid(int value) {
-  return 0 <= value && value <= 1;
-}
-inline constexpr int BRepLoopType_ARRAYSIZE = 1 + 1;
-const ::google::protobuf::EnumDescriptor* PROTOBUF_NONNULL BRepLoopType_descriptor();
-template <typename T>
-const ::std::string& BRepLoopType_Name(T value) {
-  static_assert(::std::is_same<T, BRepLoopType>::value ||
-                    ::std::is_integral<T>::value,
-                "Incorrect type passed to BRepLoopType_Name().");
-  return BRepLoopType_Name(static_cast<BRepLoopType>(value));
-}
-template <>
-inline const ::std::string& BRepLoopType_Name(BRepLoopType value) {
-  return ::google::protobuf::internal::NameOfDenseEnum<BRepLoopType_descriptor, 0, 1>(
-      static_cast<int>(value));
-}
-inline bool BRepLoopType_Parse(
-    ::absl::string_view name, BRepLoopType* PROTOBUF_NONNULL value) {
-  return ::google::protobuf::internal::ParseNamedEnum<BRepLoopType>(BRepLoopType_descriptor(), name,
+inline bool BRepOrientation_Parse(
+    ::absl::string_view name, BRepOrientation* PROTOBUF_NONNULL value) {
+  return ::google::protobuf::internal::ParseNamedEnum<BRepOrientation>(BRepOrientation_descriptor(), name,
                                            value);
 }
 
@@ -179,30 +150,30 @@ inline bool BRepLoopType_Parse(
 
 // -------------------------------------------------------------------
 
-class BRepVertex final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:session_proto.BRepVertex) */ {
+class BRepRef final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepRef) */ {
  public:
-  inline BRepVertex() : BRepVertex(nullptr) {}
-  ~BRepVertex() PROTOBUF_FINAL;
+  inline BRepRef() : BRepRef(nullptr) {}
+  ~BRepRef() PROTOBUF_FINAL;
 
 #if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(BRepVertex* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+  void operator delete(BRepRef* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
     SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepVertex));
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepRef));
   }
 #endif
 
   template <typename = void>
-  explicit PROTOBUF_CONSTEXPR BRepVertex(::google::protobuf::internal::ConstantInitialized);
+  explicit PROTOBUF_CONSTEXPR BRepRef(::google::protobuf::internal::ConstantInitialized);
 
-  inline BRepVertex(const BRepVertex& from) : BRepVertex(nullptr, from) {}
-  inline BRepVertex(BRepVertex&& from) noexcept
-      : BRepVertex(nullptr, ::std::move(from)) {}
-  inline BRepVertex& operator=(const BRepVertex& from) {
+  inline BRepRef(const BRepRef& from) : BRepRef(nullptr, from) {}
+  inline BRepRef(BRepRef&& from) noexcept
+      : BRepRef(nullptr, ::std::move(from)) {}
+  inline BRepRef& operator=(const BRepRef& from) {
     CopyFrom(from);
     return *this;
   }
-  inline BRepVertex& operator=(BRepVertex&& from) noexcept {
+  inline BRepRef& operator=(BRepRef&& from) noexcept {
     if (this == &from) return *this;
     if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
       InternalSwap(&from);
@@ -230,13 +201,13 @@ class BRepVertex final : public ::google::protobuf::Message
   static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
     return default_instance().GetMetadata().reflection;
   }
-  static const BRepVertex& default_instance() {
-    return *reinterpret_cast<const BRepVertex*>(
-        &_BRepVertex_default_instance_);
+  static const BRepRef& default_instance() {
+    return *reinterpret_cast<const BRepRef*>(
+        &_BRepRef_default_instance_);
   }
   static constexpr int kIndexInFileMessages = 0;
-  friend void swap(BRepVertex& a, BRepVertex& b) { a.Swap(&b); }
-  inline void Swap(BRepVertex* PROTOBUF_NONNULL other) {
+  friend void swap(BRepRef& a, BRepRef& b) { a.Swap(&b); }
+  inline void Swap(BRepRef* PROTOBUF_NONNULL other) {
     if (other == this) return;
     if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
       InternalSwap(other);
@@ -244,7 +215,7 @@ class BRepVertex final : public ::google::protobuf::Message
       ::google::protobuf::internal::GenericSwap(this, other);
     }
   }
-  void UnsafeArenaSwap(BRepVertex* PROTOBUF_NONNULL other) {
+  void UnsafeArenaSwap(BRepRef* PROTOBUF_NONNULL other) {
     if (other == this) return;
     ABSL_DCHECK(GetArena() == other->GetArena());
     InternalSwap(other);
@@ -252,13 +223,13 @@ class BRepVertex final : public ::google::protobuf::Message
 
   // implements Message ----------------------------------------------
 
-  BRepVertex* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<BRepVertex>(arena);
+  BRepRef* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepRef>(arena);
   }
   using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const BRepVertex& from);
+  void CopyFrom(const BRepRef& from);
   using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const BRepVertex& from) { BRepVertex::MergeImpl(*this, from); }
+  void MergeFrom(const BRepRef& from) { BRepRef::MergeImpl(*this, from); }
 
   private:
   static void MergeImpl(::google::protobuf::MessageLite& to_msg,
@@ -294,17 +265,17 @@ class BRepVertex final : public ::google::protobuf::Message
   private:
   void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
   static void SharedDtor(MessageLite& self);
-  void InternalSwap(BRepVertex* PROTOBUF_NONNULL other);
+  void InternalSwap(BRepRef* PROTOBUF_NONNULL other);
  private:
   template <typename T>
   friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "session_proto.BRepVertex"; }
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepRef"; }
 
-  explicit BRepVertex(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  BRepVertex(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepVertex& from);
-  BRepVertex(
-      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepVertex&& from) noexcept
-      : BRepVertex(arena) {
+  explicit BRepRef(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepRef(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepRef& from);
+  BRepRef(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepRef&& from) noexcept
+      : BRepRef(arena) {
     *this = ::std::move(from);
   }
   const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
@@ -321,38 +292,30 @@ class BRepVertex final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
-    kEdgeIndicesFieldNumber = 2,
-    kPointIndexFieldNumber = 1,
+    kIndexFieldNumber = 1,
+    kOrientationFieldNumber = 2,
   };
-  // repeated int32 edge_indices = 2;
-  int edge_indices_size() const;
-  private:
-  int _internal_edge_indices_size() const;
-
-  public:
-  void clear_edge_indices() ;
-  ::int32_t edge_indices(int index) const;
-  void set_edge_indices(int index, ::int32_t value);
-  void add_edge_indices(::int32_t value);
-  const ::google::protobuf::RepeatedField<::int32_t>& edge_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_edge_indices();
+  // int32 index = 1;
+  void clear_index() ;
+  ::int32_t index() const;
+  void set_index(::int32_t value);
 
   private:
-  const ::google::protobuf::RepeatedField<::int32_t>& _internal_edge_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_edge_indices();
+  ::int32_t _internal_index() const;
+  void _internal_set_index(::int32_t value);
 
   public:
-  // int32 point_index = 1;
-  void clear_point_index() ;
-  ::int32_t point_index() const;
-  void set_point_index(::int32_t value);
+  // .session_proto.BRepOrientation orientation = 2;
+  void clear_orientation() ;
+  ::session_proto::BRepOrientation orientation() const;
+  void set_orientation(::session_proto::BRepOrientation value);
 
   private:
-  ::int32_t _internal_point_index() const;
-  void _internal_set_point_index(::int32_t value);
+  ::session_proto::BRepOrientation _internal_orientation() const;
+  void _internal_set_orientation(::session_proto::BRepOrientation value);
 
   public:
-  // @@protoc_insertion_point(class_scope:session_proto.BRepVertex)
+  // @@protoc_insertion_point(class_scope:session_proto.BRepRef)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
@@ -375,45 +338,44 @@ class BRepVertex final : public ::google::protobuf::Message
     inline explicit Impl_(
         ::google::protobuf::internal::InternalVisibility visibility,
         ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
-        const BRepVertex& from_msg);
+        const BRepRef& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
-    ::google::protobuf::RepeatedField<::int32_t> edge_indices_;
-    ::google::protobuf::internal::CachedSize _edge_indices_cached_byte_size_;
-    ::int32_t point_index_;
+    ::int32_t index_;
+    int orientation_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
   friend struct ::TableStruct_brep_2eproto;
 };
 
-extern const ::google::protobuf::internal::ClassDataFull BRepVertex_class_data_;
+extern const ::google::protobuf::internal::ClassDataFull BRepRef_class_data_;
 // -------------------------------------------------------------------
 
-class BRepTrim final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:session_proto.BRepTrim) */ {
+class BRepCurveOnSurface final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepCurveOnSurface) */ {
  public:
-  inline BRepTrim() : BRepTrim(nullptr) {}
-  ~BRepTrim() PROTOBUF_FINAL;
+  inline BRepCurveOnSurface() : BRepCurveOnSurface(nullptr) {}
+  ~BRepCurveOnSurface() PROTOBUF_FINAL;
 
 #if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(BRepTrim* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+  void operator delete(BRepCurveOnSurface* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
     SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepTrim));
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepCurveOnSurface));
   }
 #endif
 
   template <typename = void>
-  explicit PROTOBUF_CONSTEXPR BRepTrim(::google::protobuf::internal::ConstantInitialized);
+  explicit PROTOBUF_CONSTEXPR BRepCurveOnSurface(::google::protobuf::internal::ConstantInitialized);
 
-  inline BRepTrim(const BRepTrim& from) : BRepTrim(nullptr, from) {}
-  inline BRepTrim(BRepTrim&& from) noexcept
-      : BRepTrim(nullptr, ::std::move(from)) {}
-  inline BRepTrim& operator=(const BRepTrim& from) {
+  inline BRepCurveOnSurface(const BRepCurveOnSurface& from) : BRepCurveOnSurface(nullptr, from) {}
+  inline BRepCurveOnSurface(BRepCurveOnSurface&& from) noexcept
+      : BRepCurveOnSurface(nullptr, ::std::move(from)) {}
+  inline BRepCurveOnSurface& operator=(const BRepCurveOnSurface& from) {
     CopyFrom(from);
     return *this;
   }
-  inline BRepTrim& operator=(BRepTrim&& from) noexcept {
+  inline BRepCurveOnSurface& operator=(BRepCurveOnSurface&& from) noexcept {
     if (this == &from) return *this;
     if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
       InternalSwap(&from);
@@ -441,13 +403,13 @@ class BRepTrim final : public ::google::protobuf::Message
   static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
     return default_instance().GetMetadata().reflection;
   }
-  static const BRepTrim& default_instance() {
-    return *reinterpret_cast<const BRepTrim*>(
-        &_BRepTrim_default_instance_);
+  static const BRepCurveOnSurface& default_instance() {
+    return *reinterpret_cast<const BRepCurveOnSurface*>(
+        &_BRepCurveOnSurface_default_instance_);
   }
   static constexpr int kIndexInFileMessages = 2;
-  friend void swap(BRepTrim& a, BRepTrim& b) { a.Swap(&b); }
-  inline void Swap(BRepTrim* PROTOBUF_NONNULL other) {
+  friend void swap(BRepCurveOnSurface& a, BRepCurveOnSurface& b) { a.Swap(&b); }
+  inline void Swap(BRepCurveOnSurface* PROTOBUF_NONNULL other) {
     if (other == this) return;
     if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
       InternalSwap(other);
@@ -455,7 +417,7 @@ class BRepTrim final : public ::google::protobuf::Message
       ::google::protobuf::internal::GenericSwap(this, other);
     }
   }
-  void UnsafeArenaSwap(BRepTrim* PROTOBUF_NONNULL other) {
+  void UnsafeArenaSwap(BRepCurveOnSurface* PROTOBUF_NONNULL other) {
     if (other == this) return;
     ABSL_DCHECK(GetArena() == other->GetArena());
     InternalSwap(other);
@@ -463,13 +425,13 @@ class BRepTrim final : public ::google::protobuf::Message
 
   // implements Message ----------------------------------------------
 
-  BRepTrim* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<BRepTrim>(arena);
+  BRepCurveOnSurface* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepCurveOnSurface>(arena);
   }
   using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const BRepTrim& from);
+  void CopyFrom(const BRepCurveOnSurface& from);
   using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const BRepTrim& from) { BRepTrim::MergeImpl(*this, from); }
+  void MergeFrom(const BRepCurveOnSurface& from) { BRepCurveOnSurface::MergeImpl(*this, from); }
 
   private:
   static void MergeImpl(::google::protobuf::MessageLite& to_msg,
@@ -505,17 +467,17 @@ class BRepTrim final : public ::google::protobuf::Message
   private:
   void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
   static void SharedDtor(MessageLite& self);
-  void InternalSwap(BRepTrim* PROTOBUF_NONNULL other);
+  void InternalSwap(BRepCurveOnSurface* PROTOBUF_NONNULL other);
  private:
   template <typename T>
   friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "session_proto.BRepTrim"; }
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepCurveOnSurface"; }
 
-  explicit BRepTrim(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  BRepTrim(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepTrim& from);
-  BRepTrim(
-      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepTrim&& from) noexcept
-      : BRepTrim(arena) {
+  explicit BRepCurveOnSurface(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepCurveOnSurface(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepCurveOnSurface& from);
+  BRepCurveOnSurface(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepCurveOnSurface&& from) noexcept
+      : BRepCurveOnSurface(arena) {
     *this = ::std::move(from);
   }
   const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
@@ -532,13 +494,21 @@ class BRepTrim final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
-    kCurve2DIndexFieldNumber = 1,
-    kEdgeIndexFieldNumber = 2,
-    kLoopIndexFieldNumber = 3,
-    kReversedFieldNumber = 4,
-    kTypeFieldNumber = 5,
+    kSurfaceIndexFieldNumber = 1,
+    kCurve2DIndexFieldNumber = 2,
+    kCurve2DIndex2FieldNumber = 3,
   };
-  // int32 curve_2d_index = 1;
+  // int32 surface_index = 1;
+  void clear_surface_index() ;
+  ::int32_t surface_index() const;
+  void set_surface_index(::int32_t value);
+
+  private:
+  ::int32_t _internal_surface_index() const;
+  void _internal_set_surface_index(::int32_t value);
+
+  public:
+  // int32 curve_2d_index = 2;
   void clear_curve_2d_index() ;
   ::int32_t curve_2d_index() const;
   void set_curve_2d_index(::int32_t value);
@@ -548,271 +518,17 @@ class BRepTrim final : public ::google::protobuf::Message
   void _internal_set_curve_2d_index(::int32_t value);
 
   public:
-  // int32 edge_index = 2;
-  void clear_edge_index() ;
-  ::int32_t edge_index() const;
-  void set_edge_index(::int32_t value);
+  // int32 curve_2d_index_2 = 3;
+  void clear_curve_2d_index_2() ;
+  ::int32_t curve_2d_index_2() const;
+  void set_curve_2d_index_2(::int32_t value);
 
   private:
-  ::int32_t _internal_edge_index() const;
-  void _internal_set_edge_index(::int32_t value);
+  ::int32_t _internal_curve_2d_index_2() const;
+  void _internal_set_curve_2d_index_2(::int32_t value);
 
   public:
-  // int32 loop_index = 3;
-  void clear_loop_index() ;
-  ::int32_t loop_index() const;
-  void set_loop_index(::int32_t value);
-
-  private:
-  ::int32_t _internal_loop_index() const;
-  void _internal_set_loop_index(::int32_t value);
-
-  public:
-  // bool reversed = 4;
-  void clear_reversed() ;
-  bool reversed() const;
-  void set_reversed(bool value);
-
-  private:
-  bool _internal_reversed() const;
-  void _internal_set_reversed(bool value);
-
-  public:
-  // .session_proto.BRepTrimType type = 5;
-  void clear_type() ;
-  ::session_proto::BRepTrimType type() const;
-  void set_type(::session_proto::BRepTrimType value);
-
-  private:
-  ::session_proto::BRepTrimType _internal_type() const;
-  void _internal_set_type(::session_proto::BRepTrimType value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:session_proto.BRepTrim)
- private:
-  class _Internal;
-  friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 5,
-                                   0, 0,
-                                   2>
-      _table_;
-
-  friend class ::google::protobuf::MessageLite;
-  friend class ::google::protobuf::Arena;
-  template <typename T>
-  friend class ::google::protobuf::Arena::InternalHelper;
-  using InternalArenaConstructable_ = void;
-  using DestructorSkippable_ = void;
-  struct Impl_ {
-    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
-    inline explicit Impl_(
-        ::google::protobuf::internal::InternalVisibility visibility,
-        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-    inline explicit Impl_(
-        ::google::protobuf::internal::InternalVisibility visibility,
-        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
-        const BRepTrim& from_msg);
-    ::google::protobuf::internal::HasBits<1> _has_bits_;
-    ::google::protobuf::internal::CachedSize _cached_size_;
-    ::int32_t curve_2d_index_;
-    ::int32_t edge_index_;
-    ::int32_t loop_index_;
-    bool reversed_;
-    int type_;
-    PROTOBUF_TSAN_DECLARE_MEMBER
-  };
-  union { Impl_ _impl_; };
-  friend struct ::TableStruct_brep_2eproto;
-};
-
-extern const ::google::protobuf::internal::ClassDataFull BRepTrim_class_data_;
-// -------------------------------------------------------------------
-
-class BRepLoop final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:session_proto.BRepLoop) */ {
- public:
-  inline BRepLoop() : BRepLoop(nullptr) {}
-  ~BRepLoop() PROTOBUF_FINAL;
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(BRepLoop* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
-    SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepLoop));
-  }
-#endif
-
-  template <typename = void>
-  explicit PROTOBUF_CONSTEXPR BRepLoop(::google::protobuf::internal::ConstantInitialized);
-
-  inline BRepLoop(const BRepLoop& from) : BRepLoop(nullptr, from) {}
-  inline BRepLoop(BRepLoop&& from) noexcept
-      : BRepLoop(nullptr, ::std::move(from)) {}
-  inline BRepLoop& operator=(const BRepLoop& from) {
-    CopyFrom(from);
-    return *this;
-  }
-  inline BRepLoop& operator=(BRepLoop&& from) noexcept {
-    if (this == &from) return *this;
-    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
-      InternalSwap(&from);
-    } else {
-      CopyFrom(from);
-    }
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
-  }
-  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
-  }
-
-  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
-    return GetDescriptor();
-  }
-  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
-    return default_instance().GetMetadata().descriptor;
-  }
-  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
-    return default_instance().GetMetadata().reflection;
-  }
-  static const BRepLoop& default_instance() {
-    return *reinterpret_cast<const BRepLoop*>(
-        &_BRepLoop_default_instance_);
-  }
-  static constexpr int kIndexInFileMessages = 3;
-  friend void swap(BRepLoop& a, BRepLoop& b) { a.Swap(&b); }
-  inline void Swap(BRepLoop* PROTOBUF_NONNULL other) {
-    if (other == this) return;
-    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
-      InternalSwap(other);
-    } else {
-      ::google::protobuf::internal::GenericSwap(this, other);
-    }
-  }
-  void UnsafeArenaSwap(BRepLoop* PROTOBUF_NONNULL other) {
-    if (other == this) return;
-    ABSL_DCHECK(GetArena() == other->GetArena());
-    InternalSwap(other);
-  }
-
-  // implements Message ----------------------------------------------
-
-  BRepLoop* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<BRepLoop>(arena);
-  }
-  using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const BRepLoop& from);
-  using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const BRepLoop& from) { BRepLoop::MergeImpl(*this, from); }
-
-  private:
-  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
-                        const ::google::protobuf::MessageLite& from_msg);
-
-  public:
-  bool IsInitialized() const {
-    return true;
-  }
-  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
-  #if defined(PROTOBUF_CUSTOM_VTABLE)
-  private:
-  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
-  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
-      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
-      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
-
-  public:
-  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
-  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
-      ::uint8_t* PROTOBUF_NONNULL target,
-      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
-    return _InternalSerialize(*this, target, stream);
-  }
-  #else   // PROTOBUF_CUSTOM_VTABLE
-  ::size_t ByteSizeLong() const final;
-  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
-      ::uint8_t* PROTOBUF_NONNULL target,
-      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
-  #endif  // PROTOBUF_CUSTOM_VTABLE
-  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
-
-  private:
-  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  static void SharedDtor(MessageLite& self);
-  void InternalSwap(BRepLoop* PROTOBUF_NONNULL other);
- private:
-  template <typename T>
-  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "session_proto.BRepLoop"; }
-
-  explicit BRepLoop(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  BRepLoop(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepLoop& from);
-  BRepLoop(
-      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepLoop&& from) noexcept
-      : BRepLoop(arena) {
-    *this = ::std::move(from);
-  }
-  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
-  static void* PROTOBUF_NONNULL PlacementNew_(
-      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
-      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  static constexpr auto InternalNewImpl_();
-
- public:
-  static constexpr auto InternalGenerateClassData_();
-
-  ::google::protobuf::Metadata GetMetadata() const;
-  // nested types ----------------------------------------------------
-
-  // accessors -------------------------------------------------------
-  enum : int {
-    kTrimIndicesFieldNumber = 1,
-    kFaceIndexFieldNumber = 2,
-    kTypeFieldNumber = 3,
-  };
-  // repeated int32 trim_indices = 1;
-  int trim_indices_size() const;
-  private:
-  int _internal_trim_indices_size() const;
-
-  public:
-  void clear_trim_indices() ;
-  ::int32_t trim_indices(int index) const;
-  void set_trim_indices(int index, ::int32_t value);
-  void add_trim_indices(::int32_t value);
-  const ::google::protobuf::RepeatedField<::int32_t>& trim_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_trim_indices();
-
-  private:
-  const ::google::protobuf::RepeatedField<::int32_t>& _internal_trim_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_trim_indices();
-
-  public:
-  // int32 face_index = 2;
-  void clear_face_index() ;
-  ::int32_t face_index() const;
-  void set_face_index(::int32_t value);
-
-  private:
-  ::int32_t _internal_face_index() const;
-  void _internal_set_face_index(::int32_t value);
-
-  public:
-  // .session_proto.BRepLoopType type = 3;
-  void clear_type() ;
-  ::session_proto::BRepLoopType type() const;
-  void set_type(::session_proto::BRepLoopType value);
-
-  private:
-  ::session_proto::BRepLoopType _internal_type() const;
-  void _internal_set_type(::session_proto::BRepLoopType value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:session_proto.BRepLoop)
+  // @@protoc_insertion_point(class_scope:session_proto.BRepCurveOnSurface)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
@@ -835,46 +551,45 @@ class BRepLoop final : public ::google::protobuf::Message
     inline explicit Impl_(
         ::google::protobuf::internal::InternalVisibility visibility,
         ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
-        const BRepLoop& from_msg);
+        const BRepCurveOnSurface& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
-    ::google::protobuf::RepeatedField<::int32_t> trim_indices_;
-    ::google::protobuf::internal::CachedSize _trim_indices_cached_byte_size_;
-    ::int32_t face_index_;
-    int type_;
+    ::int32_t surface_index_;
+    ::int32_t curve_2d_index_;
+    ::int32_t curve_2d_index_2_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
   friend struct ::TableStruct_brep_2eproto;
 };
 
-extern const ::google::protobuf::internal::ClassDataFull BRepLoop_class_data_;
+extern const ::google::protobuf::internal::ClassDataFull BRepCurveOnSurface_class_data_;
 // -------------------------------------------------------------------
 
-class BRepEdge final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:session_proto.BRepEdge) */ {
+class BRepWire final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepWire) */ {
  public:
-  inline BRepEdge() : BRepEdge(nullptr) {}
-  ~BRepEdge() PROTOBUF_FINAL;
+  inline BRepWire() : BRepWire(nullptr) {}
+  ~BRepWire() PROTOBUF_FINAL;
 
 #if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(BRepEdge* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+  void operator delete(BRepWire* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
     SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepEdge));
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepWire));
   }
 #endif
 
   template <typename = void>
-  explicit PROTOBUF_CONSTEXPR BRepEdge(::google::protobuf::internal::ConstantInitialized);
+  explicit PROTOBUF_CONSTEXPR BRepWire(::google::protobuf::internal::ConstantInitialized);
 
-  inline BRepEdge(const BRepEdge& from) : BRepEdge(nullptr, from) {}
-  inline BRepEdge(BRepEdge&& from) noexcept
-      : BRepEdge(nullptr, ::std::move(from)) {}
-  inline BRepEdge& operator=(const BRepEdge& from) {
+  inline BRepWire(const BRepWire& from) : BRepWire(nullptr, from) {}
+  inline BRepWire(BRepWire&& from) noexcept
+      : BRepWire(nullptr, ::std::move(from)) {}
+  inline BRepWire& operator=(const BRepWire& from) {
     CopyFrom(from);
     return *this;
   }
-  inline BRepEdge& operator=(BRepEdge&& from) noexcept {
+  inline BRepWire& operator=(BRepWire&& from) noexcept {
     if (this == &from) return *this;
     if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
       InternalSwap(&from);
@@ -902,13 +617,13 @@ class BRepEdge final : public ::google::protobuf::Message
   static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
     return default_instance().GetMetadata().reflection;
   }
-  static const BRepEdge& default_instance() {
-    return *reinterpret_cast<const BRepEdge*>(
-        &_BRepEdge_default_instance_);
+  static const BRepWire& default_instance() {
+    return *reinterpret_cast<const BRepWire*>(
+        &_BRepWire_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 1;
-  friend void swap(BRepEdge& a, BRepEdge& b) { a.Swap(&b); }
-  inline void Swap(BRepEdge* PROTOBUF_NONNULL other) {
+  static constexpr int kIndexInFileMessages = 4;
+  friend void swap(BRepWire& a, BRepWire& b) { a.Swap(&b); }
+  inline void Swap(BRepWire* PROTOBUF_NONNULL other) {
     if (other == this) return;
     if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
       InternalSwap(other);
@@ -916,7 +631,7 @@ class BRepEdge final : public ::google::protobuf::Message
       ::google::protobuf::internal::GenericSwap(this, other);
     }
   }
-  void UnsafeArenaSwap(BRepEdge* PROTOBUF_NONNULL other) {
+  void UnsafeArenaSwap(BRepWire* PROTOBUF_NONNULL other) {
     if (other == this) return;
     ABSL_DCHECK(GetArena() == other->GetArena());
     InternalSwap(other);
@@ -924,13 +639,13 @@ class BRepEdge final : public ::google::protobuf::Message
 
   // implements Message ----------------------------------------------
 
-  BRepEdge* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<BRepEdge>(arena);
+  BRepWire* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepWire>(arena);
   }
   using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const BRepEdge& from);
+  void CopyFrom(const BRepWire& from);
   using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const BRepEdge& from) { BRepEdge::MergeImpl(*this, from); }
+  void MergeFrom(const BRepWire& from) { BRepWire::MergeImpl(*this, from); }
 
   private:
   static void MergeImpl(::google::protobuf::MessageLite& to_msg,
@@ -966,17 +681,17 @@ class BRepEdge final : public ::google::protobuf::Message
   private:
   void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
   static void SharedDtor(MessageLite& self);
-  void InternalSwap(BRepEdge* PROTOBUF_NONNULL other);
+  void InternalSwap(BRepWire* PROTOBUF_NONNULL other);
  private:
   template <typename T>
   friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "session_proto.BRepEdge"; }
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepWire"; }
 
-  explicit BRepEdge(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
-  BRepEdge(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepEdge& from);
-  BRepEdge(
-      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepEdge&& from) noexcept
-      : BRepEdge(arena) {
+  explicit BRepWire(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepWire(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepWire& from);
+  BRepWire(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepWire&& from) noexcept
+      : BRepWire(arena) {
     *this = ::std::move(from);
   }
   const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
@@ -993,65 +708,31 @@ class BRepEdge final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
-    kTrimIndicesFieldNumber = 4,
-    kCurve3DIndexFieldNumber = 1,
-    kStartVertexFieldNumber = 2,
-    kEndVertexFieldNumber = 3,
+    kEdgesFieldNumber = 1,
   };
-  // repeated int32 trim_indices = 4;
-  int trim_indices_size() const;
+  // repeated .session_proto.BRepRef edges = 1;
+  int edges_size() const;
   private:
-  int _internal_trim_indices_size() const;
+  int _internal_edges_size() const;
 
   public:
-  void clear_trim_indices() ;
-  ::int32_t trim_indices(int index) const;
-  void set_trim_indices(int index, ::int32_t value);
-  void add_trim_indices(::int32_t value);
-  const ::google::protobuf::RepeatedField<::int32_t>& trim_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_trim_indices();
+  void clear_edges() ;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL mutable_edges(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL mutable_edges();
 
   private:
-  const ::google::protobuf::RepeatedField<::int32_t>& _internal_trim_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_trim_indices();
-
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& _internal_edges() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL _internal_mutable_edges();
   public:
-  // int32 curve_3d_index = 1;
-  void clear_curve_3d_index() ;
-  ::int32_t curve_3d_index() const;
-  void set_curve_3d_index(::int32_t value);
-
-  private:
-  ::int32_t _internal_curve_3d_index() const;
-  void _internal_set_curve_3d_index(::int32_t value);
-
-  public:
-  // int32 start_vertex = 2;
-  void clear_start_vertex() ;
-  ::int32_t start_vertex() const;
-  void set_start_vertex(::int32_t value);
-
-  private:
-  ::int32_t _internal_start_vertex() const;
-  void _internal_set_start_vertex(::int32_t value);
-
-  public:
-  // int32 end_vertex = 3;
-  void clear_end_vertex() ;
-  ::int32_t end_vertex() const;
-  void set_end_vertex(::int32_t value);
-
-  private:
-  ::int32_t _internal_end_vertex() const;
-  void _internal_set_end_vertex(::int32_t value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:session_proto.BRepEdge)
+  const ::session_proto::BRepRef& edges(int index) const;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL add_edges();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& edges() const;
+  // @@protoc_insertion_point(class_scope:session_proto.BRepWire)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<2, 4,
-                                   0, 0,
+  static const ::google::protobuf::internal::TcParseTable<0, 1,
+                                   1, 0,
                                    2>
       _table_;
 
@@ -1069,21 +750,411 @@ class BRepEdge final : public ::google::protobuf::Message
     inline explicit Impl_(
         ::google::protobuf::internal::InternalVisibility visibility,
         ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
-        const BRepEdge& from_msg);
+        const BRepWire& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
-    ::google::protobuf::RepeatedField<::int32_t> trim_indices_;
-    ::google::protobuf::internal::CachedSize _trim_indices_cached_byte_size_;
-    ::int32_t curve_3d_index_;
-    ::int32_t start_vertex_;
-    ::int32_t end_vertex_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepRef > edges_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
   friend struct ::TableStruct_brep_2eproto;
 };
 
-extern const ::google::protobuf::internal::ClassDataFull BRepEdge_class_data_;
+extern const ::google::protobuf::internal::ClassDataFull BRepWire_class_data_;
+// -------------------------------------------------------------------
+
+class BRepSolid final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepSolid) */ {
+ public:
+  inline BRepSolid() : BRepSolid(nullptr) {}
+  ~BRepSolid() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(BRepSolid* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepSolid));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR BRepSolid(::google::protobuf::internal::ConstantInitialized);
+
+  inline BRepSolid(const BRepSolid& from) : BRepSolid(nullptr, from) {}
+  inline BRepSolid(BRepSolid&& from) noexcept
+      : BRepSolid(nullptr, ::std::move(from)) {}
+  inline BRepSolid& operator=(const BRepSolid& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline BRepSolid& operator=(BRepSolid&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const BRepSolid& default_instance() {
+    return *reinterpret_cast<const BRepSolid*>(
+        &_BRepSolid_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 7;
+  friend void swap(BRepSolid& a, BRepSolid& b) { a.Swap(&b); }
+  inline void Swap(BRepSolid* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(BRepSolid* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  BRepSolid* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepSolid>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const BRepSolid& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const BRepSolid& from) { BRepSolid::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(BRepSolid* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepSolid"; }
+
+  explicit BRepSolid(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepSolid(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepSolid& from);
+  BRepSolid(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepSolid&& from) noexcept
+      : BRepSolid(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kShellsFieldNumber = 1,
+  };
+  // repeated .session_proto.BRepRef shells = 1;
+  int shells_size() const;
+  private:
+  int _internal_shells_size() const;
+
+  public:
+  void clear_shells() ;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL mutable_shells(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL mutable_shells();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& _internal_shells() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL _internal_mutable_shells();
+  public:
+  const ::session_proto::BRepRef& shells(int index) const;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL add_shells();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& shells() const;
+  // @@protoc_insertion_point(class_scope:session_proto.BRepSolid)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<0, 1,
+                                   1, 0,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const BRepSolid& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepRef > shells_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_brep_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull BRepSolid_class_data_;
+// -------------------------------------------------------------------
+
+class BRepShell final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepShell) */ {
+ public:
+  inline BRepShell() : BRepShell(nullptr) {}
+  ~BRepShell() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(BRepShell* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepShell));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR BRepShell(::google::protobuf::internal::ConstantInitialized);
+
+  inline BRepShell(const BRepShell& from) : BRepShell(nullptr, from) {}
+  inline BRepShell(BRepShell&& from) noexcept
+      : BRepShell(nullptr, ::std::move(from)) {}
+  inline BRepShell& operator=(const BRepShell& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline BRepShell& operator=(BRepShell&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const BRepShell& default_instance() {
+    return *reinterpret_cast<const BRepShell*>(
+        &_BRepShell_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 6;
+  friend void swap(BRepShell& a, BRepShell& b) { a.Swap(&b); }
+  inline void Swap(BRepShell* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(BRepShell* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  BRepShell* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepShell>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const BRepShell& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const BRepShell& from) { BRepShell::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(BRepShell* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepShell"; }
+
+  explicit BRepShell(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepShell(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepShell& from);
+  BRepShell(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepShell&& from) noexcept
+      : BRepShell(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kFacesFieldNumber = 1,
+  };
+  // repeated .session_proto.BRepRef faces = 1;
+  int faces_size() const;
+  private:
+  int _internal_faces_size() const;
+
+  public:
+  void clear_faces() ;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL mutable_faces(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL mutable_faces();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& _internal_faces() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL _internal_mutable_faces();
+  public:
+  const ::session_proto::BRepRef& faces(int index) const;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL add_faces();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& faces() const;
+  // @@protoc_insertion_point(class_scope:session_proto.BRepShell)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<0, 1,
+                                   1, 0,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const BRepShell& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepRef > faces_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_brep_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull BRepShell_class_data_;
 // -------------------------------------------------------------------
 
 class BRepFace final : public ::google::protobuf::Message
@@ -1141,7 +1212,7 @@ class BRepFace final : public ::google::protobuf::Message
     return *reinterpret_cast<const BRepFace*>(
         &_BRepFace_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 4;
+  static constexpr int kIndexInFileMessages = 5;
   friend void swap(BRepFace& a, BRepFace& b) { a.Swap(&b); }
   inline void Swap(BRepFace* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -1228,29 +1299,28 @@ class BRepFace final : public ::google::protobuf::Message
 
   // accessors -------------------------------------------------------
   enum : int {
-    kLoopIndicesFieldNumber = 2,
+    kWiresFieldNumber = 2,
     kFacecolorFieldNumber = 4,
+    kToleranceFieldNumber = 3,
     kSurfaceIndexFieldNumber = 1,
-    kReversedFieldNumber = 3,
   };
-  // repeated int32 loop_indices = 2;
-  int loop_indices_size() const;
+  // repeated .session_proto.BRepRef wires = 2;
+  int wires_size() const;
   private:
-  int _internal_loop_indices_size() const;
+  int _internal_wires_size() const;
 
   public:
-  void clear_loop_indices() ;
-  ::int32_t loop_indices(int index) const;
-  void set_loop_indices(int index, ::int32_t value);
-  void add_loop_indices(::int32_t value);
-  const ::google::protobuf::RepeatedField<::int32_t>& loop_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_loop_indices();
+  void clear_wires() ;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL mutable_wires(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL mutable_wires();
 
   private:
-  const ::google::protobuf::RepeatedField<::int32_t>& _internal_loop_indices() const;
-  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_loop_indices();
-
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& _internal_wires() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL _internal_mutable_wires();
   public:
+  const ::session_proto::BRepRef& wires(int index) const;
+  ::session_proto::BRepRef* PROTOBUF_NONNULL add_wires();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& wires() const;
   // .session_proto.Color facecolor = 4;
   bool has_facecolor() const;
   void clear_facecolor() ;
@@ -1266,6 +1336,16 @@ class BRepFace final : public ::google::protobuf::Message
   ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_facecolor();
 
   public:
+  // double tolerance = 3;
+  void clear_tolerance() ;
+  double tolerance() const;
+  void set_tolerance(double value);
+
+  private:
+  double _internal_tolerance() const;
+  void _internal_set_tolerance(double value);
+
+  public:
   // int32 surface_index = 1;
   void clear_surface_index() ;
   ::int32_t surface_index() const;
@@ -1276,22 +1356,12 @@ class BRepFace final : public ::google::protobuf::Message
   void _internal_set_surface_index(::int32_t value);
 
   public:
-  // bool reversed = 3;
-  void clear_reversed() ;
-  bool reversed() const;
-  void set_reversed(bool value);
-
-  private:
-  bool _internal_reversed() const;
-  void _internal_set_reversed(bool value);
-
-  public:
   // @@protoc_insertion_point(class_scope:session_proto.BRepFace)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<2, 4,
-                                   1, 0,
+                                   2, 0,
                                    2>
       _table_;
 
@@ -1312,11 +1382,10 @@ class BRepFace final : public ::google::protobuf::Message
         const BRepFace& from_msg);
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
-    ::google::protobuf::RepeatedField<::int32_t> loop_indices_;
-    ::google::protobuf::internal::CachedSize _loop_indices_cached_byte_size_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepRef > wires_;
     ::session_proto::Color* PROTOBUF_NULLABLE facecolor_;
+    double tolerance_;
     ::int32_t surface_index_;
-    bool reversed_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1324,6 +1393,470 @@ class BRepFace final : public ::google::protobuf::Message
 };
 
 extern const ::google::protobuf::internal::ClassDataFull BRepFace_class_data_;
+// -------------------------------------------------------------------
+
+class BRepEdge final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepEdge) */ {
+ public:
+  inline BRepEdge() : BRepEdge(nullptr) {}
+  ~BRepEdge() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(BRepEdge* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepEdge));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR BRepEdge(::google::protobuf::internal::ConstantInitialized);
+
+  inline BRepEdge(const BRepEdge& from) : BRepEdge(nullptr, from) {}
+  inline BRepEdge(BRepEdge&& from) noexcept
+      : BRepEdge(nullptr, ::std::move(from)) {}
+  inline BRepEdge& operator=(const BRepEdge& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline BRepEdge& operator=(BRepEdge&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const BRepEdge& default_instance() {
+    return *reinterpret_cast<const BRepEdge*>(
+        &_BRepEdge_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 3;
+  friend void swap(BRepEdge& a, BRepEdge& b) { a.Swap(&b); }
+  inline void Swap(BRepEdge* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(BRepEdge* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  BRepEdge* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepEdge>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const BRepEdge& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const BRepEdge& from) { BRepEdge::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(BRepEdge* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepEdge"; }
+
+  explicit BRepEdge(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepEdge(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepEdge& from);
+  BRepEdge(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepEdge&& from) noexcept
+      : BRepEdge(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kPcurvesFieldNumber = 6,
+    kCurve3DIndexFieldNumber = 1,
+    kStartVertexFieldNumber = 2,
+    kToleranceFieldNumber = 4,
+    kEndVertexFieldNumber = 3,
+    kDegeneratedFieldNumber = 5,
+  };
+  // repeated .session_proto.BRepCurveOnSurface pcurves = 6;
+  int pcurves_size() const;
+  private:
+  int _internal_pcurves_size() const;
+
+  public:
+  void clear_pcurves() ;
+  ::session_proto::BRepCurveOnSurface* PROTOBUF_NONNULL mutable_pcurves(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>* PROTOBUF_NONNULL mutable_pcurves();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>& _internal_pcurves() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>* PROTOBUF_NONNULL _internal_mutable_pcurves();
+  public:
+  const ::session_proto::BRepCurveOnSurface& pcurves(int index) const;
+  ::session_proto::BRepCurveOnSurface* PROTOBUF_NONNULL add_pcurves();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>& pcurves() const;
+  // int32 curve_3d_index = 1;
+  void clear_curve_3d_index() ;
+  ::int32_t curve_3d_index() const;
+  void set_curve_3d_index(::int32_t value);
+
+  private:
+  ::int32_t _internal_curve_3d_index() const;
+  void _internal_set_curve_3d_index(::int32_t value);
+
+  public:
+  // int32 start_vertex = 2;
+  void clear_start_vertex() ;
+  ::int32_t start_vertex() const;
+  void set_start_vertex(::int32_t value);
+
+  private:
+  ::int32_t _internal_start_vertex() const;
+  void _internal_set_start_vertex(::int32_t value);
+
+  public:
+  // double tolerance = 4;
+  void clear_tolerance() ;
+  double tolerance() const;
+  void set_tolerance(double value);
+
+  private:
+  double _internal_tolerance() const;
+  void _internal_set_tolerance(double value);
+
+  public:
+  // int32 end_vertex = 3;
+  void clear_end_vertex() ;
+  ::int32_t end_vertex() const;
+  void set_end_vertex(::int32_t value);
+
+  private:
+  ::int32_t _internal_end_vertex() const;
+  void _internal_set_end_vertex(::int32_t value);
+
+  public:
+  // bool degenerated = 5;
+  void clear_degenerated() ;
+  bool degenerated() const;
+  void set_degenerated(bool value);
+
+  private:
+  bool _internal_degenerated() const;
+  void _internal_set_degenerated(bool value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:session_proto.BRepEdge)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<3, 6,
+                                   1, 0,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const BRepEdge& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepCurveOnSurface > pcurves_;
+    ::int32_t curve_3d_index_;
+    ::int32_t start_vertex_;
+    double tolerance_;
+    ::int32_t end_vertex_;
+    bool degenerated_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_brep_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull BRepEdge_class_data_;
+// -------------------------------------------------------------------
+
+class BRepVertex final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:session_proto.BRepVertex) */ {
+ public:
+  inline BRepVertex() : BRepVertex(nullptr) {}
+  ~BRepVertex() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(BRepVertex* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(BRepVertex));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR BRepVertex(::google::protobuf::internal::ConstantInitialized);
+
+  inline BRepVertex(const BRepVertex& from) : BRepVertex(nullptr, from) {}
+  inline BRepVertex(BRepVertex&& from) noexcept
+      : BRepVertex(nullptr, ::std::move(from)) {}
+  inline BRepVertex& operator=(const BRepVertex& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline BRepVertex& operator=(BRepVertex&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const BRepVertex& default_instance() {
+    return *reinterpret_cast<const BRepVertex*>(
+        &_BRepVertex_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 1;
+  friend void swap(BRepVertex& a, BRepVertex& b) { a.Swap(&b); }
+  inline void Swap(BRepVertex* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(BRepVertex* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  BRepVertex* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<BRepVertex>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const BRepVertex& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const BRepVertex& from) { BRepVertex::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(BRepVertex* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "session_proto.BRepVertex"; }
+
+  explicit BRepVertex(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  BRepVertex(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const BRepVertex& from);
+  BRepVertex(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, BRepVertex&& from) noexcept
+      : BRepVertex(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kPointFieldNumber = 1,
+    kToleranceFieldNumber = 2,
+  };
+  // .session_proto.Point point = 1;
+  bool has_point() const;
+  void clear_point() ;
+  const ::session_proto::Point& point() const;
+  [[nodiscard]] ::session_proto::Point* PROTOBUF_NULLABLE release_point();
+  ::session_proto::Point* PROTOBUF_NONNULL mutable_point();
+  void set_allocated_point(::session_proto::Point* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_point(::session_proto::Point* PROTOBUF_NULLABLE value);
+  ::session_proto::Point* PROTOBUF_NULLABLE unsafe_arena_release_point();
+
+  private:
+  const ::session_proto::Point& _internal_point() const;
+  ::session_proto::Point* PROTOBUF_NONNULL _internal_mutable_point();
+
+  public:
+  // double tolerance = 2;
+  void clear_tolerance() ;
+  double tolerance() const;
+  void set_tolerance(double value);
+
+  private:
+  double _internal_tolerance() const;
+  void _internal_set_tolerance(double value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:session_proto.BRepVertex)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<1, 2,
+                                   1, 0,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const BRepVertex& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::session_proto::Point* PROTOBUF_NULLABLE point_;
+    double tolerance_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_brep_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull BRepVertex_class_data_;
 // -------------------------------------------------------------------
 
 class BRep final : public ::google::protobuf::Message
@@ -1381,7 +1914,7 @@ class BRep final : public ::google::protobuf::Message
     return *reinterpret_cast<const BRep*>(
         &_BRep_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 5;
+  static constexpr int kIndexInFileMessages = 8;
   friend void swap(BRep& a, BRep& b) { a.Swap(&b); }
   inline void Swap(BRep* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -1472,11 +2005,11 @@ class BRep final : public ::google::protobuf::Message
     kCurves3DFieldNumber = 4,
     kSurfacesFieldNumber = 5,
     kVerticesFieldNumber = 6,
-    kTopologyVerticesFieldNumber = 7,
-    kTopologyEdgesFieldNumber = 8,
-    kTrimsFieldNumber = 9,
-    kLoopsFieldNumber = 10,
-    kFacesFieldNumber = 11,
+    kEdgesFieldNumber = 7,
+    kWiresFieldNumber = 8,
+    kFacesFieldNumber = 9,
+    kShellsFieldNumber = 10,
+    kSolidsFieldNumber = 11,
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kSurfacecolorFieldNumber = 13,
@@ -1533,92 +2066,58 @@ class BRep final : public ::google::protobuf::Message
   const ::session_proto::NurbsSurface& surfaces(int index) const;
   ::session_proto::NurbsSurface* PROTOBUF_NONNULL add_surfaces();
   const ::google::protobuf::RepeatedPtrField<::session_proto::NurbsSurface>& surfaces() const;
-  // repeated .session_proto.Point vertices = 6;
+  // repeated .session_proto.BRepVertex vertices = 6;
   int vertices_size() const;
   private:
   int _internal_vertices_size() const;
 
   public:
   void clear_vertices() ;
-  ::session_proto::Point* PROTOBUF_NONNULL mutable_vertices(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::Point>* PROTOBUF_NONNULL mutable_vertices();
+  ::session_proto::BRepVertex* PROTOBUF_NONNULL mutable_vertices(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL mutable_vertices();
 
   private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::Point>& _internal_vertices() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::Point>* PROTOBUF_NONNULL _internal_mutable_vertices();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>& _internal_vertices() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL _internal_mutable_vertices();
   public:
-  const ::session_proto::Point& vertices(int index) const;
-  ::session_proto::Point* PROTOBUF_NONNULL add_vertices();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::Point>& vertices() const;
-  // repeated .session_proto.BRepVertex topology_vertices = 7;
-  int topology_vertices_size() const;
+  const ::session_proto::BRepVertex& vertices(int index) const;
+  ::session_proto::BRepVertex* PROTOBUF_NONNULL add_vertices();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>& vertices() const;
+  // repeated .session_proto.BRepEdge edges = 7;
+  int edges_size() const;
   private:
-  int _internal_topology_vertices_size() const;
+  int _internal_edges_size() const;
 
   public:
-  void clear_topology_vertices() ;
-  ::session_proto::BRepVertex* PROTOBUF_NONNULL mutable_topology_vertices(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL mutable_topology_vertices();
+  void clear_edges() ;
+  ::session_proto::BRepEdge* PROTOBUF_NONNULL mutable_edges(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL mutable_edges();
 
   private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>& _internal_topology_vertices() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL _internal_mutable_topology_vertices();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>& _internal_edges() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL _internal_mutable_edges();
   public:
-  const ::session_proto::BRepVertex& topology_vertices(int index) const;
-  ::session_proto::BRepVertex* PROTOBUF_NONNULL add_topology_vertices();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>& topology_vertices() const;
-  // repeated .session_proto.BRepEdge topology_edges = 8;
-  int topology_edges_size() const;
+  const ::session_proto::BRepEdge& edges(int index) const;
+  ::session_proto::BRepEdge* PROTOBUF_NONNULL add_edges();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>& edges() const;
+  // repeated .session_proto.BRepWire wires = 8;
+  int wires_size() const;
   private:
-  int _internal_topology_edges_size() const;
+  int _internal_wires_size() const;
 
   public:
-  void clear_topology_edges() ;
-  ::session_proto::BRepEdge* PROTOBUF_NONNULL mutable_topology_edges(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL mutable_topology_edges();
+  void clear_wires() ;
+  ::session_proto::BRepWire* PROTOBUF_NONNULL mutable_wires(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>* PROTOBUF_NONNULL mutable_wires();
 
   private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>& _internal_topology_edges() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL _internal_mutable_topology_edges();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>& _internal_wires() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>* PROTOBUF_NONNULL _internal_mutable_wires();
   public:
-  const ::session_proto::BRepEdge& topology_edges(int index) const;
-  ::session_proto::BRepEdge* PROTOBUF_NONNULL add_topology_edges();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>& topology_edges() const;
-  // repeated .session_proto.BRepTrim trims = 9;
-  int trims_size() const;
-  private:
-  int _internal_trims_size() const;
-
-  public:
-  void clear_trims() ;
-  ::session_proto::BRepTrim* PROTOBUF_NONNULL mutable_trims(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>* PROTOBUF_NONNULL mutable_trims();
-
-  private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>& _internal_trims() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>* PROTOBUF_NONNULL _internal_mutable_trims();
-  public:
-  const ::session_proto::BRepTrim& trims(int index) const;
-  ::session_proto::BRepTrim* PROTOBUF_NONNULL add_trims();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>& trims() const;
-  // repeated .session_proto.BRepLoop loops = 10;
-  int loops_size() const;
-  private:
-  int _internal_loops_size() const;
-
-  public:
-  void clear_loops() ;
-  ::session_proto::BRepLoop* PROTOBUF_NONNULL mutable_loops(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>* PROTOBUF_NONNULL mutable_loops();
-
-  private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>& _internal_loops() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>* PROTOBUF_NONNULL _internal_mutable_loops();
-  public:
-  const ::session_proto::BRepLoop& loops(int index) const;
-  ::session_proto::BRepLoop* PROTOBUF_NONNULL add_loops();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>& loops() const;
-  // repeated .session_proto.BRepFace faces = 11;
+  const ::session_proto::BRepWire& wires(int index) const;
+  ::session_proto::BRepWire* PROTOBUF_NONNULL add_wires();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>& wires() const;
+  // repeated .session_proto.BRepFace faces = 9;
   int faces_size() const;
   private:
   int _internal_faces_size() const;
@@ -1635,6 +2134,40 @@ class BRep final : public ::google::protobuf::Message
   const ::session_proto::BRepFace& faces(int index) const;
   ::session_proto::BRepFace* PROTOBUF_NONNULL add_faces();
   const ::google::protobuf::RepeatedPtrField<::session_proto::BRepFace>& faces() const;
+  // repeated .session_proto.BRepShell shells = 10;
+  int shells_size() const;
+  private:
+  int _internal_shells_size() const;
+
+  public:
+  void clear_shells() ;
+  ::session_proto::BRepShell* PROTOBUF_NONNULL mutable_shells(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>* PROTOBUF_NONNULL mutable_shells();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>& _internal_shells() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>* PROTOBUF_NONNULL _internal_mutable_shells();
+  public:
+  const ::session_proto::BRepShell& shells(int index) const;
+  ::session_proto::BRepShell* PROTOBUF_NONNULL add_shells();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>& shells() const;
+  // repeated .session_proto.BRepSolid solids = 11;
+  int solids_size() const;
+  private:
+  int _internal_solids_size() const;
+
+  public:
+  void clear_solids() ;
+  ::session_proto::BRepSolid* PROTOBUF_NONNULL mutable_solids(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>* PROTOBUF_NONNULL mutable_solids();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>& _internal_solids() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>* PROTOBUF_NONNULL _internal_mutable_solids();
+  public:
+  const ::session_proto::BRepSolid& solids(int index) const;
+  ::session_proto::BRepSolid* PROTOBUF_NONNULL add_solids();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>& solids() const;
   // string guid = 1;
   void clear_guid() ;
   const ::std::string& guid() const;
@@ -1719,12 +2252,12 @@ class BRep final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedPtrField< ::session_proto::NurbsCurve > curves_2d_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::NurbsCurve > curves_3d_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::NurbsSurface > surfaces_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::Point > vertices_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepVertex > topology_vertices_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepEdge > topology_edges_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepTrim > trims_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepLoop > loops_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepVertex > vertices_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepEdge > edges_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepWire > wires_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::BRepFace > faces_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepShell > shells_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::BRepSolid > solids_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE surfacecolor_;
@@ -1751,81 +2284,257 @@ extern const ::google::protobuf::internal::ClassDataFull BRep_class_data_;
 #endif  // __GNUC__
 // -------------------------------------------------------------------
 
-// BRepVertex
+// BRepRef
 
-// int32 point_index = 1;
-inline void BRepVertex::clear_point_index() {
+// int32 index = 1;
+inline void BRepRef::clear_index() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.point_index_ = 0;
+  _impl_.index_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline ::int32_t BRepRef::index() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepRef.index)
+  return _internal_index();
+}
+inline void BRepRef::set_index(::int32_t value) {
+  _internal_set_index(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepRef.index)
+}
+inline ::int32_t BRepRef::_internal_index() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.index_;
+}
+inline void BRepRef::_internal_set_index(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.index_ = value;
+}
+
+// .session_proto.BRepOrientation orientation = 2;
+inline void BRepRef::clear_orientation() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.orientation_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000002U);
 }
-inline ::int32_t BRepVertex::point_index() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepVertex.point_index)
-  return _internal_point_index();
+inline ::session_proto::BRepOrientation BRepRef::orientation() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepRef.orientation)
+  return _internal_orientation();
 }
-inline void BRepVertex::set_point_index(::int32_t value) {
-  _internal_set_point_index(value);
+inline void BRepRef::set_orientation(::session_proto::BRepOrientation value) {
+  _internal_set_orientation(value);
   SetHasBit(_impl_._has_bits_[0], 0x00000002U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepVertex.point_index)
+  // @@protoc_insertion_point(field_set:session_proto.BRepRef.orientation)
 }
-inline ::int32_t BRepVertex::_internal_point_index() const {
+inline ::session_proto::BRepOrientation BRepRef::_internal_orientation() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.point_index_;
+  return static_cast<::session_proto::BRepOrientation>(_impl_.orientation_);
 }
-inline void BRepVertex::_internal_set_point_index(::int32_t value) {
+inline void BRepRef::_internal_set_orientation(::session_proto::BRepOrientation value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.point_index_ = value;
+  _impl_.orientation_ = value;
 }
 
-// repeated int32 edge_indices = 2;
-inline int BRepVertex::_internal_edge_indices_size() const {
-  return _internal_edge_indices().size();
+// -------------------------------------------------------------------
+
+// BRepVertex
+
+// .session_proto.Point point = 1;
+inline bool BRepVertex::has_point() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000001U);
+  PROTOBUF_ASSUME(!value || _impl_.point_ != nullptr);
+  return value;
 }
-inline int BRepVertex::edge_indices_size() const {
-  return _internal_edge_indices_size();
+inline const ::session_proto::Point& BRepVertex::_internal_point() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Point* p = _impl_.point_;
+  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Point&>(::session_proto::_Point_default_instance_);
 }
-inline void BRepVertex::clear_edge_indices() {
+inline const ::session_proto::Point& BRepVertex::point() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRepVertex.point)
+  return _internal_point();
+}
+inline void BRepVertex::unsafe_arena_set_allocated_point(
+    ::session_proto::Point* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.edge_indices_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.point_);
+  }
+  _impl_.point_ = reinterpret_cast<::session_proto::Point*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000001U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.BRepVertex.point)
+}
+inline ::session_proto::Point* PROTOBUF_NULLABLE BRepVertex::release_point() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000001U);
+  ::session_proto::Point* released = _impl_.point_;
+  _impl_.point_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Point* PROTOBUF_NULLABLE BRepVertex::unsafe_arena_release_point() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.BRepVertex.point)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000001U);
+  ::session_proto::Point* temp = _impl_.point_;
+  _impl_.point_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Point* PROTOBUF_NONNULL BRepVertex::_internal_mutable_point() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.point_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Point>(GetArena());
+    _impl_.point_ = reinterpret_cast<::session_proto::Point*>(p);
+  }
+  return _impl_.point_;
+}
+inline ::session_proto::Point* PROTOBUF_NONNULL BRepVertex::mutable_point()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  ::session_proto::Point* _msg = _internal_mutable_point();
+  // @@protoc_insertion_point(field_mutable:session_proto.BRepVertex.point)
+  return _msg;
+}
+inline void BRepVertex::set_allocated_point(::session_proto::Point* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.point_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000001U);
+  }
+
+  _impl_.point_ = reinterpret_cast<::session_proto::Point*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.BRepVertex.point)
+}
+
+// double tolerance = 2;
+inline void BRepVertex::clear_tolerance() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.tolerance_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000002U);
+}
+inline double BRepVertex::tolerance() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepVertex.tolerance)
+  return _internal_tolerance();
+}
+inline void BRepVertex::set_tolerance(double value) {
+  _internal_set_tolerance(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepVertex.tolerance)
+}
+inline double BRepVertex::_internal_tolerance() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.tolerance_;
+}
+inline void BRepVertex::_internal_set_tolerance(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.tolerance_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// BRepCurveOnSurface
+
+// int32 surface_index = 1;
+inline void BRepCurveOnSurface::clear_surface_index() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.surface_index_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
                   0x00000001U);
 }
-inline ::int32_t BRepVertex::edge_indices(int index) const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepVertex.edge_indices)
-  return _internal_edge_indices().Get(index);
+inline ::int32_t BRepCurveOnSurface::surface_index() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepCurveOnSurface.surface_index)
+  return _internal_surface_index();
 }
-inline void BRepVertex::set_edge_indices(int index, ::int32_t value) {
-  _internal_mutable_edge_indices()->Set(index, value);
-  // @@protoc_insertion_point(field_set:session_proto.BRepVertex.edge_indices)
+inline void BRepCurveOnSurface::set_surface_index(::int32_t value) {
+  _internal_set_surface_index(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepCurveOnSurface.surface_index)
 }
-inline void BRepVertex::add_edge_indices(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _internal_mutable_edge_indices()->Add(value);
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_add:session_proto.BRepVertex.edge_indices)
-}
-inline const ::google::protobuf::RepeatedField<::int32_t>& BRepVertex::edge_indices() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRepVertex.edge_indices)
-  return _internal_edge_indices();
-}
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL BRepVertex::mutable_edge_indices()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepVertex.edge_indices)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_edge_indices();
-}
-inline const ::google::protobuf::RepeatedField<::int32_t>&
-BRepVertex::_internal_edge_indices() const {
+inline ::int32_t BRepCurveOnSurface::_internal_surface_index() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.edge_indices_;
+  return _impl_.surface_index_;
 }
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
-BRepVertex::_internal_mutable_edge_indices() {
+inline void BRepCurveOnSurface::_internal_set_surface_index(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.surface_index_ = value;
+}
+
+// int32 curve_2d_index = 2;
+inline void BRepCurveOnSurface::clear_curve_2d_index() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.curve_2d_index_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000002U);
+}
+inline ::int32_t BRepCurveOnSurface::curve_2d_index() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepCurveOnSurface.curve_2d_index)
+  return _internal_curve_2d_index();
+}
+inline void BRepCurveOnSurface::set_curve_2d_index(::int32_t value) {
+  _internal_set_curve_2d_index(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepCurveOnSurface.curve_2d_index)
+}
+inline ::int32_t BRepCurveOnSurface::_internal_curve_2d_index() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.edge_indices_;
+  return _impl_.curve_2d_index_;
+}
+inline void BRepCurveOnSurface::_internal_set_curve_2d_index(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.curve_2d_index_ = value;
+}
+
+// int32 curve_2d_index_2 = 3;
+inline void BRepCurveOnSurface::clear_curve_2d_index_2() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.curve_2d_index_2_ = 0;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000004U);
+}
+inline ::int32_t BRepCurveOnSurface::curve_2d_index_2() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepCurveOnSurface.curve_2d_index_2)
+  return _internal_curve_2d_index_2();
+}
+inline void BRepCurveOnSurface::set_curve_2d_index_2(::int32_t value) {
+  _internal_set_curve_2d_index_2(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepCurveOnSurface.curve_2d_index_2)
+}
+inline ::int32_t BRepCurveOnSurface::_internal_curve_2d_index_2() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.curve_2d_index_2_;
+}
+inline void BRepCurveOnSurface::_internal_set_curve_2d_index_2(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.curve_2d_index_2_ = value;
 }
 
 // -------------------------------------------------------------------
@@ -1887,7 +2596,7 @@ inline void BRepEdge::clear_end_vertex() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.end_vertex_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000010U);
 }
 inline ::int32_t BRepEdge::end_vertex() const {
   // @@protoc_insertion_point(field_get:session_proto.BRepEdge.end_vertex)
@@ -1895,7 +2604,7 @@ inline ::int32_t BRepEdge::end_vertex() const {
 }
 inline void BRepEdge::set_end_vertex(::int32_t value) {
   _internal_set_end_vertex(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   // @@protoc_insertion_point(field_set:session_proto.BRepEdge.end_vertex)
 }
 inline ::int32_t BRepEdge::_internal_end_vertex() const {
@@ -1907,287 +2616,170 @@ inline void BRepEdge::_internal_set_end_vertex(::int32_t value) {
   _impl_.end_vertex_ = value;
 }
 
-// repeated int32 trim_indices = 4;
-inline int BRepEdge::_internal_trim_indices_size() const {
-  return _internal_trim_indices().size();
-}
-inline int BRepEdge::trim_indices_size() const {
-  return _internal_trim_indices_size();
-}
-inline void BRepEdge::clear_trim_indices() {
+// double tolerance = 4;
+inline void BRepEdge::clear_tolerance() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.trim_indices_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000001U);
-}
-inline ::int32_t BRepEdge::trim_indices(int index) const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepEdge.trim_indices)
-  return _internal_trim_indices().Get(index);
-}
-inline void BRepEdge::set_trim_indices(int index, ::int32_t value) {
-  _internal_mutable_trim_indices()->Set(index, value);
-  // @@protoc_insertion_point(field_set:session_proto.BRepEdge.trim_indices)
-}
-inline void BRepEdge::add_trim_indices(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _internal_mutable_trim_indices()->Add(value);
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_add:session_proto.BRepEdge.trim_indices)
-}
-inline const ::google::protobuf::RepeatedField<::int32_t>& BRepEdge::trim_indices() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRepEdge.trim_indices)
-  return _internal_trim_indices();
-}
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL BRepEdge::mutable_trim_indices()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepEdge.trim_indices)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_trim_indices();
-}
-inline const ::google::protobuf::RepeatedField<::int32_t>&
-BRepEdge::_internal_trim_indices() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.trim_indices_;
-}
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
-BRepEdge::_internal_mutable_trim_indices() {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.trim_indices_;
-}
-
-// -------------------------------------------------------------------
-
-// BRepTrim
-
-// int32 curve_2d_index = 1;
-inline void BRepTrim::clear_curve_2d_index() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.curve_2d_index_ = 0;
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000001U);
-}
-inline ::int32_t BRepTrim::curve_2d_index() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepTrim.curve_2d_index)
-  return _internal_curve_2d_index();
-}
-inline void BRepTrim::set_curve_2d_index(::int32_t value) {
-  _internal_set_curve_2d_index(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepTrim.curve_2d_index)
-}
-inline ::int32_t BRepTrim::_internal_curve_2d_index() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.curve_2d_index_;
-}
-inline void BRepTrim::_internal_set_curve_2d_index(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.curve_2d_index_ = value;
-}
-
-// int32 edge_index = 2;
-inline void BRepTrim::clear_edge_index() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.edge_index_ = 0;
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000002U);
-}
-inline ::int32_t BRepTrim::edge_index() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepTrim.edge_index)
-  return _internal_edge_index();
-}
-inline void BRepTrim::set_edge_index(::int32_t value) {
-  _internal_set_edge_index(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepTrim.edge_index)
-}
-inline ::int32_t BRepTrim::_internal_edge_index() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.edge_index_;
-}
-inline void BRepTrim::_internal_set_edge_index(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.edge_index_ = value;
-}
-
-// int32 loop_index = 3;
-inline void BRepTrim::clear_loop_index() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.loop_index_ = 0;
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000004U);
-}
-inline ::int32_t BRepTrim::loop_index() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepTrim.loop_index)
-  return _internal_loop_index();
-}
-inline void BRepTrim::set_loop_index(::int32_t value) {
-  _internal_set_loop_index(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepTrim.loop_index)
-}
-inline ::int32_t BRepTrim::_internal_loop_index() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.loop_index_;
-}
-inline void BRepTrim::_internal_set_loop_index(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.loop_index_ = value;
-}
-
-// bool reversed = 4;
-inline void BRepTrim::clear_reversed() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.reversed_ = false;
+  _impl_.tolerance_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
                   0x00000008U);
 }
-inline bool BRepTrim::reversed() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepTrim.reversed)
-  return _internal_reversed();
+inline double BRepEdge::tolerance() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepEdge.tolerance)
+  return _internal_tolerance();
 }
-inline void BRepTrim::set_reversed(bool value) {
-  _internal_set_reversed(value);
+inline void BRepEdge::set_tolerance(double value) {
+  _internal_set_tolerance(value);
   SetHasBit(_impl_._has_bits_[0], 0x00000008U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepTrim.reversed)
+  // @@protoc_insertion_point(field_set:session_proto.BRepEdge.tolerance)
 }
-inline bool BRepTrim::_internal_reversed() const {
+inline double BRepEdge::_internal_tolerance() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.reversed_;
+  return _impl_.tolerance_;
 }
-inline void BRepTrim::_internal_set_reversed(bool value) {
+inline void BRepEdge::_internal_set_tolerance(double value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.reversed_ = value;
+  _impl_.tolerance_ = value;
 }
 
-// .session_proto.BRepTrimType type = 5;
-inline void BRepTrim::clear_type() {
+// bool degenerated = 5;
+inline void BRepEdge::clear_degenerated() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.type_ = 0;
+  _impl_.degenerated_ = false;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00000020U);
 }
-inline ::session_proto::BRepTrimType BRepTrim::type() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepTrim.type)
-  return _internal_type();
+inline bool BRepEdge::degenerated() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepEdge.degenerated)
+  return _internal_degenerated();
 }
-inline void BRepTrim::set_type(::session_proto::BRepTrimType value) {
-  _internal_set_type(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepTrim.type)
+inline void BRepEdge::set_degenerated(bool value) {
+  _internal_set_degenerated(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepEdge.degenerated)
 }
-inline ::session_proto::BRepTrimType BRepTrim::_internal_type() const {
+inline bool BRepEdge::_internal_degenerated() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return static_cast<::session_proto::BRepTrimType>(_impl_.type_);
+  return _impl_.degenerated_;
 }
-inline void BRepTrim::_internal_set_type(::session_proto::BRepTrimType value) {
+inline void BRepEdge::_internal_set_degenerated(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.type_ = value;
+  _impl_.degenerated_ = value;
+}
+
+// repeated .session_proto.BRepCurveOnSurface pcurves = 6;
+inline int BRepEdge::_internal_pcurves_size() const {
+  return _internal_pcurves().size();
+}
+inline int BRepEdge::pcurves_size() const {
+  return _internal_pcurves_size();
+}
+inline void BRepEdge::clear_pcurves() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.pcurves_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline ::session_proto::BRepCurveOnSurface* PROTOBUF_NONNULL BRepEdge::mutable_pcurves(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.BRepEdge.pcurves)
+  return _internal_mutable_pcurves()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>* PROTOBUF_NONNULL BRepEdge::mutable_pcurves()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepEdge.pcurves)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_pcurves();
+}
+inline const ::session_proto::BRepCurveOnSurface& BRepEdge::pcurves(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRepEdge.pcurves)
+  return _internal_pcurves().Get(index);
+}
+inline ::session_proto::BRepCurveOnSurface* PROTOBUF_NONNULL BRepEdge::add_pcurves()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepCurveOnSurface* _add =
+      _internal_mutable_pcurves()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.BRepEdge.pcurves)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>& BRepEdge::pcurves() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRepEdge.pcurves)
+  return _internal_pcurves();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>&
+BRepEdge::_internal_pcurves() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.pcurves_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepCurveOnSurface>* PROTOBUF_NONNULL
+BRepEdge::_internal_mutable_pcurves() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.pcurves_;
 }
 
 // -------------------------------------------------------------------
 
-// BRepLoop
+// BRepWire
 
-// repeated int32 trim_indices = 1;
-inline int BRepLoop::_internal_trim_indices_size() const {
-  return _internal_trim_indices().size();
+// repeated .session_proto.BRepRef edges = 1;
+inline int BRepWire::_internal_edges_size() const {
+  return _internal_edges().size();
 }
-inline int BRepLoop::trim_indices_size() const {
-  return _internal_trim_indices_size();
+inline int BRepWire::edges_size() const {
+  return _internal_edges_size();
 }
-inline void BRepLoop::clear_trim_indices() {
+inline void BRepWire::clear_edges() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.trim_indices_.Clear();
+  _impl_.edges_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
                   0x00000001U);
 }
-inline ::int32_t BRepLoop::trim_indices(int index) const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepLoop.trim_indices)
-  return _internal_trim_indices().Get(index);
-}
-inline void BRepLoop::set_trim_indices(int index, ::int32_t value) {
-  _internal_mutable_trim_indices()->Set(index, value);
-  // @@protoc_insertion_point(field_set:session_proto.BRepLoop.trim_indices)
-}
-inline void BRepLoop::add_trim_indices(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _internal_mutable_trim_indices()->Add(value);
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_add:session_proto.BRepLoop.trim_indices)
-}
-inline const ::google::protobuf::RepeatedField<::int32_t>& BRepLoop::trim_indices() const
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepWire::mutable_edges(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRepLoop.trim_indices)
-  return _internal_trim_indices();
+  // @@protoc_insertion_point(field_mutable:session_proto.BRepWire.edges)
+  return _internal_mutable_edges()->Mutable(index);
 }
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL BRepLoop::mutable_trim_indices()
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL BRepWire::mutable_edges()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepLoop.trim_indices)
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepWire.edges)
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_trim_indices();
+  return _internal_mutable_edges();
 }
-inline const ::google::protobuf::RepeatedField<::int32_t>&
-BRepLoop::_internal_trim_indices() const {
+inline const ::session_proto::BRepRef& BRepWire::edges(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRepWire.edges)
+  return _internal_edges().Get(index);
+}
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepWire::add_edges()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepRef* _add =
+      _internal_mutable_edges()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.BRepWire.edges)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& BRepWire::edges() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRepWire.edges)
+  return _internal_edges();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>&
+BRepWire::_internal_edges() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.trim_indices_;
+  return _impl_.edges_;
 }
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
-BRepLoop::_internal_mutable_trim_indices() {
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL
+BRepWire::_internal_mutable_edges() {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.trim_indices_;
-}
-
-// int32 face_index = 2;
-inline void BRepLoop::clear_face_index() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.face_index_ = 0;
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000002U);
-}
-inline ::int32_t BRepLoop::face_index() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepLoop.face_index)
-  return _internal_face_index();
-}
-inline void BRepLoop::set_face_index(::int32_t value) {
-  _internal_set_face_index(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000002U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepLoop.face_index)
-}
-inline ::int32_t BRepLoop::_internal_face_index() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.face_index_;
-}
-inline void BRepLoop::_internal_set_face_index(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.face_index_ = value;
-}
-
-// .session_proto.BRepLoopType type = 3;
-inline void BRepLoop::clear_type() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.type_ = 0;
-  ClearHasBit(_impl_._has_bits_[0],
-                  0x00000004U);
-}
-inline ::session_proto::BRepLoopType BRepLoop::type() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepLoop.type)
-  return _internal_type();
-}
-inline void BRepLoop::set_type(::session_proto::BRepLoopType value) {
-  _internal_set_type(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepLoop.type)
-}
-inline ::session_proto::BRepLoopType BRepLoop::_internal_type() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return static_cast<::session_proto::BRepLoopType>(_impl_.type_);
-}
-inline void BRepLoop::_internal_set_type(::session_proto::BRepLoopType value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.type_ = value;
+  return &_impl_.edges_;
 }
 
 // -------------------------------------------------------------------
@@ -2199,7 +2791,7 @@ inline void BRepFace::clear_surface_index() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.surface_index_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000004U);
+                  0x00000008U);
 }
 inline ::int32_t BRepFace::surface_index() const {
   // @@protoc_insertion_point(field_get:session_proto.BRepFace.surface_index)
@@ -2207,7 +2799,7 @@ inline ::int32_t BRepFace::surface_index() const {
 }
 inline void BRepFace::set_surface_index(::int32_t value) {
   _internal_set_surface_index(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_set:session_proto.BRepFace.surface_index)
 }
 inline ::int32_t BRepFace::_internal_surface_index() const {
@@ -2219,79 +2811,85 @@ inline void BRepFace::_internal_set_surface_index(::int32_t value) {
   _impl_.surface_index_ = value;
 }
 
-// repeated int32 loop_indices = 2;
-inline int BRepFace::_internal_loop_indices_size() const {
-  return _internal_loop_indices().size();
+// repeated .session_proto.BRepRef wires = 2;
+inline int BRepFace::_internal_wires_size() const {
+  return _internal_wires().size();
 }
-inline int BRepFace::loop_indices_size() const {
-  return _internal_loop_indices_size();
+inline int BRepFace::wires_size() const {
+  return _internal_wires_size();
 }
-inline void BRepFace::clear_loop_indices() {
+inline void BRepFace::clear_wires() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.loop_indices_.Clear();
+  _impl_.wires_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
                   0x00000001U);
 }
-inline ::int32_t BRepFace::loop_indices(int index) const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepFace.loop_indices)
-  return _internal_loop_indices().Get(index);
-}
-inline void BRepFace::set_loop_indices(int index, ::int32_t value) {
-  _internal_mutable_loop_indices()->Set(index, value);
-  // @@protoc_insertion_point(field_set:session_proto.BRepFace.loop_indices)
-}
-inline void BRepFace::add_loop_indices(::int32_t value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _internal_mutable_loop_indices()->Add(value);
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_add:session_proto.BRepFace.loop_indices)
-}
-inline const ::google::protobuf::RepeatedField<::int32_t>& BRepFace::loop_indices() const
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepFace::mutable_wires(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRepFace.loop_indices)
-  return _internal_loop_indices();
+  // @@protoc_insertion_point(field_mutable:session_proto.BRepFace.wires)
+  return _internal_mutable_wires()->Mutable(index);
 }
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL BRepFace::mutable_loop_indices()
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL BRepFace::mutable_wires()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepFace.loop_indices)
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepFace.wires)
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_loop_indices();
+  return _internal_mutable_wires();
 }
-inline const ::google::protobuf::RepeatedField<::int32_t>&
-BRepFace::_internal_loop_indices() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.loop_indices_;
+inline const ::session_proto::BRepRef& BRepFace::wires(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRepFace.wires)
+  return _internal_wires().Get(index);
 }
-inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
-BRepFace::_internal_mutable_loop_indices() {
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepFace::add_wires()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepRef* _add =
+      _internal_mutable_wires()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.BRepFace.wires)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& BRepFace::wires() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRepFace.wires)
+  return _internal_wires();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>&
+BRepFace::_internal_wires() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.loop_indices_;
+  return _impl_.wires_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL
+BRepFace::_internal_mutable_wires() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.wires_;
 }
 
-// bool reversed = 3;
-inline void BRepFace::clear_reversed() {
+// double tolerance = 3;
+inline void BRepFace::clear_tolerance() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.reversed_ = false;
+  _impl_.tolerance_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000004U);
 }
-inline bool BRepFace::reversed() const {
-  // @@protoc_insertion_point(field_get:session_proto.BRepFace.reversed)
-  return _internal_reversed();
+inline double BRepFace::tolerance() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRepFace.tolerance)
+  return _internal_tolerance();
 }
-inline void BRepFace::set_reversed(bool value) {
-  _internal_set_reversed(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
-  // @@protoc_insertion_point(field_set:session_proto.BRepFace.reversed)
+inline void BRepFace::set_tolerance(double value) {
+  _internal_set_tolerance(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  // @@protoc_insertion_point(field_set:session_proto.BRepFace.tolerance)
 }
-inline bool BRepFace::_internal_reversed() const {
+inline double BRepFace::_internal_tolerance() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.reversed_;
+  return _impl_.tolerance_;
 }
-inline void BRepFace::_internal_set_reversed(bool value) {
+inline void BRepFace::_internal_set_tolerance(double value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.reversed_ = value;
+  _impl_.tolerance_ = value;
 }
 
 // .session_proto.Color facecolor = 4;
@@ -2385,6 +2983,126 @@ inline void BRepFace::set_allocated_facecolor(::session_proto::Color* PROTOBUF_N
 
   _impl_.facecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.BRepFace.facecolor)
+}
+
+// -------------------------------------------------------------------
+
+// BRepShell
+
+// repeated .session_proto.BRepRef faces = 1;
+inline int BRepShell::_internal_faces_size() const {
+  return _internal_faces().size();
+}
+inline int BRepShell::faces_size() const {
+  return _internal_faces_size();
+}
+inline void BRepShell::clear_faces() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.faces_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepShell::mutable_faces(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.BRepShell.faces)
+  return _internal_mutable_faces()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL BRepShell::mutable_faces()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepShell.faces)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_faces();
+}
+inline const ::session_proto::BRepRef& BRepShell::faces(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRepShell.faces)
+  return _internal_faces().Get(index);
+}
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepShell::add_faces()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepRef* _add =
+      _internal_mutable_faces()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.BRepShell.faces)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& BRepShell::faces() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRepShell.faces)
+  return _internal_faces();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>&
+BRepShell::_internal_faces() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.faces_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL
+BRepShell::_internal_mutable_faces() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.faces_;
+}
+
+// -------------------------------------------------------------------
+
+// BRepSolid
+
+// repeated .session_proto.BRepRef shells = 1;
+inline int BRepSolid::_internal_shells_size() const {
+  return _internal_shells().size();
+}
+inline int BRepSolid::shells_size() const {
+  return _internal_shells_size();
+}
+inline void BRepSolid::clear_shells() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.shells_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepSolid::mutable_shells(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.BRepSolid.shells)
+  return _internal_mutable_shells()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL BRepSolid::mutable_shells()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRepSolid.shells)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_shells();
+}
+inline const ::session_proto::BRepRef& BRepSolid::shells(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRepSolid.shells)
+  return _internal_shells().Get(index);
+}
+inline ::session_proto::BRepRef* PROTOBUF_NONNULL BRepSolid::add_shells()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepRef* _add =
+      _internal_mutable_shells()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000001U);
+  // @@protoc_insertion_point(field_add:session_proto.BRepSolid.shells)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>& BRepSolid::shells() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRepSolid.shells)
+  return _internal_shells();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>&
+BRepSolid::_internal_shells() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.shells_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepRef>* PROTOBUF_NONNULL
+BRepSolid::_internal_mutable_shells() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.shells_;
 }
 
 // -------------------------------------------------------------------
@@ -2671,281 +3389,175 @@ BRep::_internal_mutable_surfaces() {
   return &_impl_.surfaces_;
 }
 
-// repeated .session_proto.Point vertices = 6;
+// repeated .session_proto.BRepVertex vertices = 6;
 inline int BRep::_internal_vertices_size() const {
   return _internal_vertices().size();
 }
 inline int BRep::vertices_size() const {
   return _internal_vertices_size();
 }
-inline ::session_proto::Point* PROTOBUF_NONNULL BRep::mutable_vertices(int index)
+inline void BRep::clear_vertices() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.vertices_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000008U);
+}
+inline ::session_proto::BRepVertex* PROTOBUF_NONNULL BRep::mutable_vertices(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   // @@protoc_insertion_point(field_mutable:session_proto.BRep.vertices)
   return _internal_mutable_vertices()->Mutable(index);
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::Point>* PROTOBUF_NONNULL BRep::mutable_vertices()
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL BRep::mutable_vertices()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.vertices)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_vertices();
 }
-inline const ::session_proto::Point& BRep::vertices(int index) const
+inline const ::session_proto::BRepVertex& BRep::vertices(int index) const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   // @@protoc_insertion_point(field_get:session_proto.BRep.vertices)
   return _internal_vertices().Get(index);
 }
-inline ::session_proto::Point* PROTOBUF_NONNULL BRep::add_vertices()
+inline ::session_proto::BRepVertex* PROTOBUF_NONNULL BRep::add_vertices()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::session_proto::Point* _add =
+  ::session_proto::BRepVertex* _add =
       _internal_mutable_vertices()->InternalAddWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), GetArena());
   SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_add:session_proto.BRep.vertices)
   return _add;
 }
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::Point>& BRep::vertices() const
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>& BRep::vertices() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   // @@protoc_insertion_point(field_list:session_proto.BRep.vertices)
   return _internal_vertices();
 }
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::Point>&
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>&
 BRep::_internal_vertices() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.vertices_;
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::Point>* PROTOBUF_NONNULL
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL
 BRep::_internal_mutable_vertices() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.vertices_;
 }
 
-// repeated .session_proto.BRepVertex topology_vertices = 7;
-inline int BRep::_internal_topology_vertices_size() const {
-  return _internal_topology_vertices().size();
+// repeated .session_proto.BRepEdge edges = 7;
+inline int BRep::_internal_edges_size() const {
+  return _internal_edges().size();
 }
-inline int BRep::topology_vertices_size() const {
-  return _internal_topology_vertices_size();
+inline int BRep::edges_size() const {
+  return _internal_edges_size();
 }
-inline void BRep::clear_topology_vertices() {
+inline void BRep::clear_edges() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.topology_vertices_.Clear();
+  _impl_.edges_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
                   0x00000010U);
 }
-inline ::session_proto::BRepVertex* PROTOBUF_NONNULL BRep::mutable_topology_vertices(int index)
+inline ::session_proto::BRepEdge* PROTOBUF_NONNULL BRep::mutable_edges(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_mutable:session_proto.BRep.topology_vertices)
-  return _internal_mutable_topology_vertices()->Mutable(index);
+  // @@protoc_insertion_point(field_mutable:session_proto.BRep.edges)
+  return _internal_mutable_edges()->Mutable(index);
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL BRep::mutable_topology_vertices()
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL BRep::mutable_edges()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000010U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.topology_vertices)
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.edges)
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_topology_vertices();
+  return _internal_mutable_edges();
 }
-inline const ::session_proto::BRepVertex& BRep::topology_vertices(int index) const
+inline const ::session_proto::BRepEdge& BRep::edges(int index) const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.BRep.topology_vertices)
-  return _internal_topology_vertices().Get(index);
+  // @@protoc_insertion_point(field_get:session_proto.BRep.edges)
+  return _internal_edges().Get(index);
 }
-inline ::session_proto::BRepVertex* PROTOBUF_NONNULL BRep::add_topology_vertices()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::session_proto::BRepVertex* _add =
-      _internal_mutable_topology_vertices()->InternalAddWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000010U);
-  // @@protoc_insertion_point(field_add:session_proto.BRep.topology_vertices)
-  return _add;
-}
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>& BRep::topology_vertices() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRep.topology_vertices)
-  return _internal_topology_vertices();
-}
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>&
-BRep::_internal_topology_vertices() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.topology_vertices_;
-}
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepVertex>* PROTOBUF_NONNULL
-BRep::_internal_mutable_topology_vertices() {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.topology_vertices_;
-}
-
-// repeated .session_proto.BRepEdge topology_edges = 8;
-inline int BRep::_internal_topology_edges_size() const {
-  return _internal_topology_edges().size();
-}
-inline int BRep::topology_edges_size() const {
-  return _internal_topology_edges_size();
-}
-inline void BRep::clear_topology_edges() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.topology_edges_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000020U);
-}
-inline ::session_proto::BRepEdge* PROTOBUF_NONNULL BRep::mutable_topology_edges(int index)
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_mutable:session_proto.BRep.topology_edges)
-  return _internal_mutable_topology_edges()->Mutable(index);
-}
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL BRep::mutable_topology_edges()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000020U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.topology_edges)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_topology_edges();
-}
-inline const ::session_proto::BRepEdge& BRep::topology_edges(int index) const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.BRep.topology_edges)
-  return _internal_topology_edges().Get(index);
-}
-inline ::session_proto::BRepEdge* PROTOBUF_NONNULL BRep::add_topology_edges()
+inline ::session_proto::BRepEdge* PROTOBUF_NONNULL BRep::add_edges()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   ::session_proto::BRepEdge* _add =
-      _internal_mutable_topology_edges()->InternalAddWithArena(
+      _internal_mutable_edges()->InternalAddWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000020U);
-  // @@protoc_insertion_point(field_add:session_proto.BRep.topology_edges)
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000010U);
+  // @@protoc_insertion_point(field_add:session_proto.BRep.edges)
   return _add;
 }
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>& BRep::topology_edges() const
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>& BRep::edges() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRep.topology_edges)
-  return _internal_topology_edges();
+  // @@protoc_insertion_point(field_list:session_proto.BRep.edges)
+  return _internal_edges();
 }
 inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>&
-BRep::_internal_topology_edges() const {
+BRep::_internal_edges() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.topology_edges_;
+  return _impl_.edges_;
 }
 inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepEdge>* PROTOBUF_NONNULL
-BRep::_internal_mutable_topology_edges() {
+BRep::_internal_mutable_edges() {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.topology_edges_;
+  return &_impl_.edges_;
 }
 
-// repeated .session_proto.BRepTrim trims = 9;
-inline int BRep::_internal_trims_size() const {
-  return _internal_trims().size();
+// repeated .session_proto.BRepWire wires = 8;
+inline int BRep::_internal_wires_size() const {
+  return _internal_wires().size();
 }
-inline int BRep::trims_size() const {
-  return _internal_trims_size();
+inline int BRep::wires_size() const {
+  return _internal_wires_size();
 }
-inline void BRep::clear_trims() {
+inline void BRep::clear_wires() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.trims_.Clear();
+  _impl_.wires_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000040U);
+                  0x00000020U);
 }
-inline ::session_proto::BRepTrim* PROTOBUF_NONNULL BRep::mutable_trims(int index)
+inline ::session_proto::BRepWire* PROTOBUF_NONNULL BRep::mutable_wires(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_mutable:session_proto.BRep.trims)
-  return _internal_mutable_trims()->Mutable(index);
+  // @@protoc_insertion_point(field_mutable:session_proto.BRep.wires)
+  return _internal_mutable_wires()->Mutable(index);
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>* PROTOBUF_NONNULL BRep::mutable_trims()
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>* PROTOBUF_NONNULL BRep::mutable_wires()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.trims)
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.wires)
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_trims();
+  return _internal_mutable_wires();
 }
-inline const ::session_proto::BRepTrim& BRep::trims(int index) const
+inline const ::session_proto::BRepWire& BRep::wires(int index) const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.BRep.trims)
-  return _internal_trims().Get(index);
+  // @@protoc_insertion_point(field_get:session_proto.BRep.wires)
+  return _internal_wires().Get(index);
 }
-inline ::session_proto::BRepTrim* PROTOBUF_NONNULL BRep::add_trims()
+inline ::session_proto::BRepWire* PROTOBUF_NONNULL BRep::add_wires()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::session_proto::BRepTrim* _add =
-      _internal_mutable_trims()->InternalAddWithArena(
+  ::session_proto::BRepWire* _add =
+      _internal_mutable_wires()->InternalAddWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
-  // @@protoc_insertion_point(field_add:session_proto.BRep.trims)
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_add:session_proto.BRep.wires)
   return _add;
 }
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>& BRep::trims() const
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>& BRep::wires() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRep.trims)
-  return _internal_trims();
+  // @@protoc_insertion_point(field_list:session_proto.BRep.wires)
+  return _internal_wires();
 }
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>&
-BRep::_internal_trims() const {
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>&
+BRep::_internal_wires() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.trims_;
+  return _impl_.wires_;
 }
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepTrim>* PROTOBUF_NONNULL
-BRep::_internal_mutable_trims() {
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepWire>* PROTOBUF_NONNULL
+BRep::_internal_mutable_wires() {
   ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.trims_;
+  return &_impl_.wires_;
 }
 
-// repeated .session_proto.BRepLoop loops = 10;
-inline int BRep::_internal_loops_size() const {
-  return _internal_loops().size();
-}
-inline int BRep::loops_size() const {
-  return _internal_loops_size();
-}
-inline void BRep::clear_loops() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.loops_.Clear();
-  ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000080U);
-}
-inline ::session_proto::BRepLoop* PROTOBUF_NONNULL BRep::mutable_loops(int index)
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_mutable:session_proto.BRep.loops)
-  return _internal_mutable_loops()->Mutable(index);
-}
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>* PROTOBUF_NONNULL BRep::mutable_loops()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
-  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.loops)
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _internal_mutable_loops();
-}
-inline const ::session_proto::BRepLoop& BRep::loops(int index) const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:session_proto.BRep.loops)
-  return _internal_loops().Get(index);
-}
-inline ::session_proto::BRepLoop* PROTOBUF_NONNULL BRep::add_loops()
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  ::session_proto::BRepLoop* _add =
-      _internal_mutable_loops()->InternalAddWithArena(
-          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
-  // @@protoc_insertion_point(field_add:session_proto.BRep.loops)
-  return _add;
-}
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>& BRep::loops() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_list:session_proto.BRep.loops)
-  return _internal_loops();
-}
-inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>&
-BRep::_internal_loops() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.loops_;
-}
-inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepLoop>* PROTOBUF_NONNULL
-BRep::_internal_mutable_loops() {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return &_impl_.loops_;
-}
-
-// repeated .session_proto.BRepFace faces = 11;
+// repeated .session_proto.BRepFace faces = 9;
 inline int BRep::_internal_faces_size() const {
   return _internal_faces().size();
 }
@@ -2956,7 +3568,7 @@ inline void BRep::clear_faces() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.faces_.Clear();
   ClearHasBitForRepeated(_impl_._has_bits_[0],
-                  0x00000100U);
+                  0x00000040U);
 }
 inline ::session_proto::BRepFace* PROTOBUF_NONNULL BRep::mutable_faces(int index)
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -2965,7 +3577,7 @@ inline ::session_proto::BRepFace* PROTOBUF_NONNULL BRep::mutable_faces(int index
 }
 inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepFace>* PROTOBUF_NONNULL BRep::mutable_faces()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.faces)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_faces();
@@ -2981,7 +3593,7 @@ inline ::session_proto::BRepFace* PROTOBUF_NONNULL BRep::add_faces()
   ::session_proto::BRepFace* _add =
       _internal_mutable_faces()->InternalAddWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
   // @@protoc_insertion_point(field_add:session_proto.BRep.faces)
   return _add;
 }
@@ -2999,6 +3611,118 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepFace>* PROTOBUF
 BRep::_internal_mutable_faces() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.faces_;
+}
+
+// repeated .session_proto.BRepShell shells = 10;
+inline int BRep::_internal_shells_size() const {
+  return _internal_shells().size();
+}
+inline int BRep::shells_size() const {
+  return _internal_shells_size();
+}
+inline void BRep::clear_shells() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.shells_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000080U);
+}
+inline ::session_proto::BRepShell* PROTOBUF_NONNULL BRep::mutable_shells(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.BRep.shells)
+  return _internal_mutable_shells()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>* PROTOBUF_NONNULL BRep::mutable_shells()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.shells)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_shells();
+}
+inline const ::session_proto::BRepShell& BRep::shells(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRep.shells)
+  return _internal_shells().Get(index);
+}
+inline ::session_proto::BRepShell* PROTOBUF_NONNULL BRep::add_shells()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepShell* _add =
+      _internal_mutable_shells()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_add:session_proto.BRep.shells)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>& BRep::shells() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRep.shells)
+  return _internal_shells();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>&
+BRep::_internal_shells() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.shells_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepShell>* PROTOBUF_NONNULL
+BRep::_internal_mutable_shells() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.shells_;
+}
+
+// repeated .session_proto.BRepSolid solids = 11;
+inline int BRep::_internal_solids_size() const {
+  return _internal_solids().size();
+}
+inline int BRep::solids_size() const {
+  return _internal_solids_size();
+}
+inline void BRep::clear_solids() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.solids_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000100U);
+}
+inline ::session_proto::BRepSolid* PROTOBUF_NONNULL BRep::mutable_solids(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.BRep.solids)
+  return _internal_mutable_solids()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>* PROTOBUF_NONNULL BRep::mutable_solids()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.BRep.solids)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_solids();
+}
+inline const ::session_proto::BRepSolid& BRep::solids(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.BRep.solids)
+  return _internal_solids().Get(index);
+}
+inline ::session_proto::BRepSolid* PROTOBUF_NONNULL BRep::add_solids()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::BRepSolid* _add =
+      _internal_mutable_solids()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_add:session_proto.BRep.solids)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>& BRep::solids() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.BRep.solids)
+  return _internal_solids();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>&
+BRep::_internal_solids() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.solids_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::BRepSolid>* PROTOBUF_NONNULL
+BRep::_internal_mutable_solids() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.solids_;
 }
 
 // double width = 12;
@@ -3131,16 +3855,10 @@ namespace google {
 namespace protobuf {
 
 template <>
-struct is_proto_enum<::session_proto::BRepTrimType> : std::true_type {};
+struct is_proto_enum<::session_proto::BRepOrientation> : std::true_type {};
 template <>
-inline const EnumDescriptor* PROTOBUF_NONNULL GetEnumDescriptor<::session_proto::BRepTrimType>() {
-  return ::session_proto::BRepTrimType_descriptor();
-}
-template <>
-struct is_proto_enum<::session_proto::BRepLoopType> : std::true_type {};
-template <>
-inline const EnumDescriptor* PROTOBUF_NONNULL GetEnumDescriptor<::session_proto::BRepLoopType>() {
-  return ::session_proto::BRepLoopType_descriptor();
+inline const EnumDescriptor* PROTOBUF_NONNULL GetEnumDescriptor<::session_proto::BRepOrientation>() {
+  return ::session_proto::BRepOrientation_descriptor();
 }
 
 }  // namespace protobuf

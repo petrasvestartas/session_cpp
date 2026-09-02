@@ -395,9 +395,9 @@ public:
     /// Equivalent to point_at(domain(0).first/second, domain(1).first/second).
     Point point_at_corner(int u_end, int v_end) const;
 
-    /// Extract an isoparametric curve at parameter c.
-    /// dir=0: fix u=c, return curve in v (column of surface).
-    /// dir=1: fix v=c, return curve in u (row of surface).
+    /// Extract an isoparametric curve; `dir` is the direction that VARIES along the curve.
+    /// dir=0: fix v=c, return the curve along u. dir=1: fix u=c, return the curve along v.
+    /// Rational surfaces yield their exact rational iso-curve (homogeneous blend).
     NurbsCurve iso_curve(int dir, double c) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////

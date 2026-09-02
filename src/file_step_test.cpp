@@ -256,12 +256,31 @@ MINI_TEST("FileStep", "BRep Read Schoring") {
         MINI_CHECK(b.is_valid());
         MINI_CHECK(b.m_surfaces.size() == (size_t)b.face_count());
         MINI_CHECK(b.m_curves_3d.size() == (size_t)b.edge_count());
-        MINI_CHECK(b.m_curves_2d.size() == b.m_trims.size());
+        MINI_CHECK(b.shell_count() == 1 && b.solid_count() == 1);
+        for (const auto& e : b.m_edges) MINI_CHECK(!e.pcurves.empty());
     }
 
     // Verify point count via read_file_step_points
     auto pts = file_step::read_file_step_points(step_path);
     MINI_CHECK(pts.size() == 350);
+}
+
+MINI_TEST("FileStep", "BRep Round Trip") {
+    std::string path = "serialization/test_brep_roundtrip.step";
+    BRep cyl = BRep::create_cylinder(1.0, 2.0);
+    cyl.name = "cylinder";
+    file_step::write_file_step_brep(cyl, path);
+
+    auto breps = file_step::read_file_step_breps(path);
+    MINI_CHECK(breps.size() == 1);
+    MINI_CHECK(breps[0].is_valid());
+    MINI_CHECK(breps[0].face_count() == 3);
+    MINI_CHECK(breps[0].edge_count() == 3);
+    MINI_CHECK(breps[0].vertex_count() == 2);
+    MINI_CHECK(breps[0].is_solid());
+    MINI_CHECK(std::abs(breps[0].volume() - cyl.volume()) < 0.05 * cyl.volume());
+
+    std::filesystem::remove(path);
 }
 
 } // namespace session_cpp

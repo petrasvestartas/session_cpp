@@ -446,8 +446,8 @@ OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) 
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<BRep>>) {
       std::vector<Point> points;
-      for (const auto& p : geom_ptr->m_vertices) {
-        points.push_back(tp(p));
+      for (const auto& v : geom_ptr->m_vertices) {
+        points.push_back(tp(v.point));
       }
       // Sample surface points to cover curved surfaces (e.g. sphere with only pole vertices)
       for (const auto& srf : geom_ptr->m_surfaces) {

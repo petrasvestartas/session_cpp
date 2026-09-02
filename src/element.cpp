@@ -219,8 +219,8 @@ Point Element::compute_point() {
     if (auto* brep = std::get_if<BRep>(&geo)) {
         if (brep->m_vertices.empty()) return Point(0, 0, 0);
         double sx = 0, sy = 0, sz = 0;
-        for (const auto& p : brep->m_vertices) {
-            sx += p[0]; sy += p[1]; sz += p[2];
+        for (const auto& v : brep->m_vertices) {
+            sx += v.point[0]; sy += v.point[1]; sz += v.point[2];
         }
         double n = static_cast<double>(brep->m_vertices.size());
         return Point(sx / n, sy / n, sz / n);
@@ -330,7 +330,7 @@ OBB Element::obb_from_geometry(const ElementGeometry& geo) {
     }
     if (auto* brep = std::get_if<BRep>(&geo)) {
         if (brep->m_vertices.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
-        return OBB::from_points(brep->m_vertices, inflate);
+        return OBB::from_points(brep->vertex_points(), inflate);
     }
     return OBB::from_point(Point(0, 0, 0), inflate);
 }
