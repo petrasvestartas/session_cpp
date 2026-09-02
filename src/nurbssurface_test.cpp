@@ -367,8 +367,10 @@ namespace session_cpp {
 
         // Set nurbsknots
         bool is_set = s.set_nurbsknot(0, 2, 0.5);
+        MINI_CHECK(is_set);
         MINI_CHECK(s.nurbsknot(0, 2) == 0.5);
         is_set = s.set_nurbsknot(0, 2, 0.0); // reset
+        MINI_CHECK(is_set);
 
         // Verify start multiplicity
         int mult_u_start = s.nurbsknot_multiplicity(0, 0);
@@ -416,6 +418,8 @@ namespace session_cpp {
 
         MINI_CHECK(TOLERANCE.is_close(domain_u.first, 0));
         MINI_CHECK(TOLERANCE.is_close(domain_u.second, 1));
+        MINI_CHECK(TOLERANCE.is_close(domain_v.first, 0));
+        MINI_CHECK(TOLERANCE.is_close(domain_v.second, 1));
 
         // Set Domain
         bool is_set_u = s.set_domain(0, -1.1, 2.3);

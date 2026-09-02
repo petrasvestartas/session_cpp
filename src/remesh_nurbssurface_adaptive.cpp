@@ -35,8 +35,12 @@ double RemeshNurbsSurfaceAdaptive::compute_bbox_diagonal() const {
     for (int i = 0; i < m_surface.cv_count(0); ++i)
         for (int j = 0; j < m_surface.cv_count(1); ++j) {
             Point p = m_surface.get_cv(i, j);
-            if (p[0] < minx) minx = p[0]; if (p[1] < miny) miny = p[1]; if (p[2] < minz) minz = p[2];
-            if (p[0] > maxx) maxx = p[0]; if (p[1] > maxy) maxy = p[1]; if (p[2] > maxz) maxz = p[2];
+            if (p[0] < minx) minx = p[0];
+            if (p[1] < miny) miny = p[1];
+            if (p[2] < minz) minz = p[2];
+            if (p[0] > maxx) maxx = p[0];
+            if (p[1] > maxy) maxy = p[1];
+            if (p[2] > maxz) maxz = p[2];
         }
     double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
     return std::sqrt(dx * dx + dy * dy + dz * dz);

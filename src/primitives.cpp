@@ -1031,8 +1031,10 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
             double dx = pt[0]-orig[0], dy = pt[1]-orig[1], dz = pt[2]-orig[2];
             double u = dx*xax[0] + dy*xax[1] + dz*xax[2];
             double v = dx*yax[0] + dy*yax[1] + dz*yax[2];
-            if (u < min_u) min_u = u; if (u > max_u) max_u = u;
-            if (v < min_v) min_v = v; if (v > max_v) max_v = v;
+            if (u < min_u) min_u = u;
+            if (u > max_u) max_u = u;
+            if (v < min_v) min_v = v;
+            if (v > max_v) max_v = v;
         }
 
         double pad = std::max(max_u - min_u, max_v - min_v) * 0.05;
@@ -1058,8 +1060,10 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
         double dx = pt[0]-orig[0], dy = pt[1]-orig[1], dz = pt[2]-orig[2];
         double u = dx*xax[0] + dy*xax[1] + dz*xax[2];
         double v = dx*yax[0] + dy*yax[1] + dz*yax[2];
-        if (u < min_u) min_u = u; if (u > max_u) max_u = u;
-        if (v < min_v) min_v = v; if (v > max_v) max_v = v;
+        if (u < min_u) min_u = u;
+        if (u > max_u) max_u = u;
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
     }
 
     double pad = std::max(max_u - min_u, max_v - min_v) * 0.05;

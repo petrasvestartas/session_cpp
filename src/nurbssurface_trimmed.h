@@ -34,35 +34,6 @@ public:
     NurbsCurve m_outer_loop;
     std::vector<NurbsCurve> m_inner_loops;
 
-    // Transient build-time hint (NOT serialized, NOT compared): the outer/inner loops as
-    // their natural arrangement-run segments, head-to-tail oriented consistently with the
-    // joined m_outer_loop / m_inner_loops. Populated by split_by_uv_curves; consumed by
-    // BRep::split_with so each boundary run becomes a separate edge that mates with the
-    // matching segment edge of an adjacent face (watertight imprint). Empty => use the
-    // single joined loop instead.
-    std::vector<NurbsCurve> m_outer_segments;
-    std::vector<std::vector<NurbsCurve>> m_inner_segments;
-
-    // Transient build-time source tags parallel to m_outer_segments / m_inner_segments:
-    // {cidx, ta, tb} = which input pcurve of split_by_uv_curves the run was trimmed from
-    // and its parameter range on it (ta > tb when the run traverses it reversed);
-    // cidx = -1 for straight-chord fallback runs. Lets BRep::split_with map a section
-    // run back to the shared scaffold segment it came from (OCCT pave-block identity).
-    std::vector<std::array<double, 3>> m_outer_segment_srcs;
-    std::vector<std::vector<std::array<double, 3>>> m_inner_segment_srcs;
-
-    // SEAM-MERGED CO-REGIONS (transient, SESSION_SEAM_MERGE). On a chart that is CLOSED in u
-    // (or v) the lines u=u0 and u=u1 are THE SAME 3D meridian, so two UV regions that meet
-    // there are ONE face. Their union is not a connected polygon in [u0,u1]x[v0,v1] and the
-    // surface cannot be evaluated outside its domain, so the merged face carries its second
-    // region as an ADDITIONAL OUTER wire (exactly how the untrimmed primitive sphere face is
-    // already built: one face, one wire per seam side, the seam edge referenced twice). The
-    // shared seam edge then has two trims that both belong to this one face -- a seam edge,
-    // not a naked one -- and brep_massprops integrates the union because the two wires' UV
-    // boxes are disjoint (so neither is healed into a hole of the other).
-    std::vector<NurbsCurve> m_extra_outer_loops;
-    std::vector<std::vector<NurbsCurve>> m_extra_outer_segments;
-    std::vector<std::vector<std::array<double, 3>>> m_extra_outer_segment_srcs;
 
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -83,22 +54,7 @@ public:
     /// NurbsSurfaceTrimmed per face. Loops are exact trims of the input
     /// pcurves joined with straight border segments. Dangling open cutters
     /// that do not reach the border or another cutter are discarded.
-    /// forced_boundary_nodes (optional, OCCT pave analog): UV points inserted as EXACT
-    /// vertices into the boundary polylines before noding, so a cut whose endpoint equals
-    /// such a node connects through the shared vertex regardless of crossing conditioning
-    /// (grazing sections). Points farther than a small tolerance from any boundary are ignored.
-    static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0, bool use_domain_border = true, int n_boundary = 0, double snap_cuts_to_boundary = 0.0, const std::vector<Point>* forced_boundary_nodes = nullptr, double forced_node_eps = 0.0);
-
-    /// Seam-aware UV face arrangement (port of OCCT BOPAlgo_WireSplitter leftmost-angle walk +
-    /// BuilderFace::PerformAreas + DoSplitSEAMOnFace two-pcurve seam). Drop-in for split_by_uv_curves
-    /// used by BRep::split_with when SESSION_WIRESPLIT is set: vertices keyed by 3D position so
-    /// periodic seams/poles merge, minimal directed loops walked by the min-clockwise PCURVE-TANGENT
-    /// turn, then outer/hole classified by signed UV area and nested. Same NurbsSurfaceTrimmed output.
-    static std::vector<NurbsSurfaceTrimmed> split_face_by_wires(
-        const NurbsSurface& srf,
-        const std::vector<NurbsCurve>& section_pcurves,
-        const std::vector<NurbsCurve>& boundary_pcurves,
-        double tolerance = 0.0);
+    static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0);
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Constructors & Destructor

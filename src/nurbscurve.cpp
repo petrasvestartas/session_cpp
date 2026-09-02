@@ -630,9 +630,6 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
                 (int)c.m_cv.size() < c.m_cv_count * stride ||
                 (int)c.m_cv.size() <= stride ||
                 (int)c.m_nurbsknot.size() != c.m_cv_count + c.m_order - 2) {
-                if (std::getenv("SESSION_SPLIT_DBG"))
-                    std::fprintf(stderr, "[JOIN] skip malformed piece ci=%zu ord=%d/%d stride=%d/%d cv=%zu cnt=%d knots=%zu\n",
-                        ci, c.m_order, joined.m_order, c.m_cv_stride, stride, c.m_cv.size(), c.m_cv_count, c.m_nurbsknot.size());
                 continue;
             }
             for (int k = 0; k < cvdim; k++) {
@@ -647,9 +644,6 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
         // whose arrays cannot back its CV count -- return the raw pieces instead.
         if ((int)joined.m_cv.size() < (joined.m_cv_count - 1) * joined.m_cv_stride + joined.cv_size() ||
             (int)joined.m_nurbsknot.size() != joined.m_cv_count + joined.m_order - 2) {
-            if (std::getenv("SESSION_SPLIT_DBG"))
-                std::fprintf(stderr, "[JOIN] post-merge desync: cv=%zu cnt=%d stride=%d knots=%zu ord=%d\n",
-                    joined.m_cv.size(), joined.m_cv_count, joined.m_cv_stride, joined.m_nurbsknot.size(), joined.m_order);
             for (NurbsCurve& c : chain) result.push_back(c);
             continue;
         }
@@ -2610,8 +2604,7 @@ bool NurbsCurve::reverse() {
     for (int i = 0; i < m_cv_count / 2; i++) {
         int j = m_cv_count - 1 - i;
         double xi, yi, zi, wi, xj, yj, zj, wj;
-        get_cv_4d(i, xi, yi, zi, wi);
-        get_cv_4d(j, xj, yj, zj, wj);
+        if (!get_cv_4d(i, xi, yi, zi, wi) || !get_cv_4d(j, xj, yj, zj, wj)) continue;
         set_cv_4d(i, xj, yj, zj, wj);
         set_cv_4d(j, xi, yi, zi, wi);
     }
@@ -3235,8 +3228,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     nlohmann::json cps = nlohmann::json::array();
     for (int i = 0; i < m_cv_count; i++) {
         if (m_is_rat) {
-            double x, y, z, w;
-            get_cv_4d(i, x, y, z, w);
+            auto [x, y, z, w] = get_cv_4d(i);
             cps.push_back({x, y, z, w});
         } else {
             Point p = get_cv(i);

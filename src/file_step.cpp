@@ -1050,15 +1050,6 @@ public:
 // BRep assembly from STEP (reads MANIFOLD_SOLID_BREP)
 // ============================================================
 
-// Opt-out for pole/apex branch seeding, shared by the reader's projection fallback and the
-// writer's pullback + pcurve remap (all three take atan2 of a point whose radius is pure
-// round-off unless seeded). Read once; getenv()!=nullptr is true for an EMPTY value, so the
-// flag is only ON when the value is non-empty.
-static bool no_pole_seed() {
-    static const char* p = std::getenv("SESSION_NO_POLE_SEED");
-    return p && p[0];
-}
-
 static NurbsCurve polyline_nurbs(const std::vector<Point>& pts, int dim) {
     int n = (int)pts.size();
     if (n < 2) return NurbsCurve(dim, false, 2, 0);
@@ -1319,7 +1310,7 @@ struct BRepBuilder {
                     // 19.5403488074 against a truth of 16.7551608191 -- solid, closed-looking,
                     // 16.6% wrong. Seed the branch from the first RADIALLY VALID sample instead;
                     // a no-op when sample 0 is already valid (the shift rounds to zero).
-                    if (!have_prev && !no_pole_seed())
+                    if (!have_prev)
                         for (size_t k = 0; k < ordered.size(); ++k) {
                             double s2, t2; bool ok2;
                             r.an_st_of(an, ordered[k], s2, t2, ok2);
@@ -1598,8 +1589,7 @@ struct BRepBuilder {
         // VERTEX_LOOP-only face = full parameter domain (see add_face_vertex_loop). Only when
         // the file gives NO edge loop at all: a face that mixes an EDGE_LOOP with a VERTEX_LOOP
         // keeps the edge-driven path unchanged, so no already-working file moves.
-        static const char* s_novl = std::getenv("SESSION_NO_VERTEX_LOOP");
-        if (surface_ref >= 0 && !(s_novl && s_novl[0])) {
+        if (surface_ref >= 0) {
             std::vector<int> vl_verts;
             bool any_edge_loop = false;
             for (int bid : bound_refs) {
@@ -1915,8 +1905,10 @@ struct BRepBuilder {
         for (const auto& lp : loops)
             for (const auto& le : lp.edges)
                 for (const auto& p : le.uv) {
-                    if (p[0]<umin) umin=p[0]; if (p[0]>umax) umax=p[0];
-                    if (p[1]<vmin) vmin=p[1]; if (p[1]>vmax) vmax=p[1];
+                    if (p[0]<umin) umin=p[0];
+                    if (p[0]>umax) umax=p[0];
+                    if (p[1]<vmin) vmin=p[1];
+                    if (p[1]>vmax) vmax=p[1];
                 }
         if (umin > umax) { umin=-1; umax=1; vmin=-1; vmax=1; }
 
@@ -2450,14 +2442,11 @@ std::vector<NurbsSurfaceTrimmed> read_file_step_nurbssurfaces_trimmed(const std:
 
         int surface_ref = -1;
         std::vector<int> bound_refs;
-        bool same_sense = true;
         for (const auto& p : face->params) {
             if (p.tag == StepTag::List) {
                 for (const auto& v : p.list) if (v.tag == StepTag::Ref) bound_refs.push_back(v.ref_id);
             } else if (p.tag == StepTag::Ref) {
                 surface_ref = p.ref_id;
-            } else if (p.tag == StepTag::Enum) {
-                same_sense = (p.str == "T");
             }
         }
         if (surface_ref < 0) continue;
@@ -2504,11 +2493,9 @@ std::vector<NurbsSurfaceTrimmed> read_file_step_nurbssurfaces_trimmed(const std:
                 if (oeit == sf.entities.end()) continue;
                 const StepSubEntity* oe = oeit->second.find("ORIENTED_EDGE");
                 if (!oe) continue;
-                int ec_ref = -1; bool oe_orient = true;
-                for (const auto& p : oe->params) {
+                int ec_ref = -1;
+                for (const auto& p : oe->params)
                     if (p.tag == StepTag::Ref) ec_ref = p.ref_id;
-                    else if (p.tag == StepTag::Enum) oe_orient = (p.str == "T");
-                }
                 if (ec_ref < 0) continue;
                 auto ecit = sf.entities.find(ec_ref);
                 if (ecit == sf.entities.end()) continue;
@@ -2561,8 +2548,6 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
     // massprops_fx/occ_box_cavity.step (a box with a cavity) likewise.
     // Void shells of a BREP_WITH_VOIDS are read as their own BReps (the kernel has no cavity
     // container); the outer shell stays first.
-    static const char* s_noroots = std::getenv("SESSION_NO_STEP_ROOTS");
-    bool extra_roots = !(s_noroots && s_noroots[0]);
     std::vector<std::pair<int, int>> roots;   // (entity id, shell ref) in file order
     std::vector<int> ids;
     for (const auto& kv : sf.entities) ids.push_back(kv.first);
@@ -2579,12 +2564,12 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
             }
             return rr;
         };
-        if (e.has("MANIFOLD_SOLID_BREP") || (extra_roots && e.has("BREP_WITH_VOIDS"))) {
+        if (e.has("MANIFOLD_SOLID_BREP") || e.has("BREP_WITH_VOIDS")) {
             const StepSubEntity* s = e.find("MANIFOLD_SOLID_BREP");
             if (!s) s = e.find("BREP_WITH_VOIDS");
-            auto rr = refs_of(s, extra_roots);
+            auto rr = refs_of(s, true);
             for (int sh : rr) roots.emplace_back(id, sh);
-        } else if (extra_roots && e.has("SHELL_BASED_SURFACE_MODEL")) {
+        } else if (e.has("SHELL_BASED_SURFACE_MODEL")) {
             for (int sh : refs_of(e.find("SHELL_BASED_SURFACE_MODEL"), true))
                 roots.emplace_back(id, sh);
         }
@@ -2594,7 +2579,7 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
         int shell_ref = shell_ref0;
         // ORIENTED_CLOSED_SHELL wraps the real shell with a sense flag (void shells).
         const auto& sh = sf.entities.find(shell_ref);
-        if (extra_roots && sh != sf.entities.end() && sh->second.has("ORIENTED_CLOSED_SHELL")) {
+        if (sh != sf.entities.end() && sh->second.has("ORIENTED_CLOSED_SHELL")) {
             const StepSubEntity* os = sh->second.find("ORIENTED_CLOSED_SHELL");
             for (const auto& p : os->params) if (p.tag == StepTag::Ref) { shell_ref = p.ref_id; break; }
         }

@@ -1106,9 +1106,12 @@ Mesh RemeshCDT::from_polylines(const std::vector<Polyline>& polylines, bool is_2
             double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
             double maxx = minx, maxy = miny, maxz = minz;
             for (const auto& p : pts) {
-                if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
-                if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
-                if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
+                if (p[0] < minx) minx = p[0];
+                if (p[0] > maxx) maxx = p[0];
+                if (p[1] < miny) miny = p[1];
+                if (p[1] > maxy) maxy = p[1];
+                if (p[2] < minz) minz = p[2];
+                if (p[2] > maxz) maxz = p[2];
             }
             double dx = maxx-minx, dy = maxy-miny, dz = maxz-minz;
             double diag = std::sqrt(dx*dx + dy*dy + dz*dz);

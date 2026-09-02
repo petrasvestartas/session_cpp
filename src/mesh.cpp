@@ -1845,9 +1845,12 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
         double minx = all_pts[0][0], miny = all_pts[0][1], minz = all_pts[0][2];
         double maxx = minx, maxy = miny, maxz = minz;
         for (const auto& p : all_pts) {
-            if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
-            if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
-            if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
+            if (p[0] < minx) minx = p[0];
+            if (p[0] > maxx) maxx = p[0];
+            if (p[1] < miny) miny = p[1];
+            if (p[1] > maxy) maxy = p[1];
+            if (p[2] < minz) minz = p[2];
+            if (p[2] > maxz) maxz = p[2];
         }
         double diag = std::sqrt((maxx-minx)*(maxx-minx) + (maxy-miny)*(maxy-miny) + (maxz-minz)*(maxz-minz));
         eps = diag * 1e-6;
@@ -2009,9 +2012,12 @@ Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyl
         double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
         double maxx = minx, maxy = miny, maxz = minz;
         for (const auto& p : pts) {
-            if (p[0] < minx) minx = p[0]; if (p[0] > maxx) maxx = p[0];
-            if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
-            if (p[2] < minz) minz = p[2]; if (p[2] > maxz) maxz = p[2];
+            if (p[0] < minx) minx = p[0];
+            if (p[0] > maxx) maxx = p[0];
+            if (p[1] < miny) miny = p[1];
+            if (p[1] > maxy) maxy = p[1];
+            if (p[2] < minz) minz = p[2];
+            if (p[2] > maxz) maxz = p[2];
         }
         double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
         double diag = std::sqrt(dx*dx + dy*dy + dz*dz);

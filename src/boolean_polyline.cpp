@@ -135,8 +135,10 @@ struct ScanlineHeap {
         // sift down
         size_t i=0;
         for(;;) { size_t l=2*i+1, r=l+1, m=i;
-            if(l<sz&&buf[l]>buf[m]) m=l; if(r<sz&&buf[r]>buf[m]) m=r;
-            if(m==i) break; std::swap(buf[i],buf[m]); i=m; }
+            if(l<sz&&buf[l]>buf[m]) m=l;
+            if(r<sz&&buf[r]>buf[m]) m=r;
+            if(m==i) break;
+            std::swap(buf[i],buf[m]); i=m; }
     }
 };
 
@@ -1298,7 +1300,7 @@ static VOutPt* v_dispose_outpt(VOutPt* op) {
 static void v_do_split_op(VattiScratch& sc, VOutRec* outrec, VOutPt* splitOp) {
     VOutPt* prevOp = splitOp->prev; VOutPt* nnOp = splitOp->next->next;
     outrec->pts = prevOp;
-    BIVec2 ip;
+    BIVec2 ip{};
     v_get_seg_isect_pt(prevOp->pt, splitOp->pt, splitOp->next->pt, nnOp->pt, ip);
     double area1 = v_area_outpt(outrec->pts);
     if (std::fabs(area1) < 2) { outrec->pts=nullptr; return; }
@@ -1433,7 +1435,9 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
             bool a_in_b=pip_i(va[0],vb), b_in_a=pip_i(vb[0],va);
             if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
             if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
-            if(a_in_b)return{};if(b_in_a)return{a};return{a};
+            if(a_in_b)return{};
+            if(b_in_a)return{a};
+            return{a};
         }
         // Containment: no crossings → pure containment
         bool any_cross=false;
@@ -1471,7 +1475,9 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
             }
             if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
             if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
-            if(a_in_b)return{};if(b_in_a)return{a};return{a};
+            if(a_in_b)return{};
+            if(b_in_a)return{a};
+            return{a};
         }
         v_add_path(va, na, 0, sc);
         v_add_path(vb, nb, 1, sc);
@@ -1492,7 +1498,9 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
             bool a_in_b=pip_vertex(va_head->pt, vb_head), b_in_a=pip_vertex(vb_head->pt, va_head);
             if(clip_type==0){if(a_in_b)return{a};if(b_in_a)return{b};return{};}
             if(clip_type==1){if(a_in_b)return{b};if(b_in_a)return{a};return{a,b};}
-            if(a_in_b)return{};if(b_in_a)return{a};return{a};
+            if(a_in_b)return{};
+            if(b_in_a)return{a};
+            return{a};
         }
     }
     if (!v_execute_internal(sc, clip_type)) return {};
@@ -1529,7 +1537,8 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
 #endif
         dst[2] = 0.0; dst += 3;
         for (o=o->next; o!=op->next; o=o->next) {
-            if (o->pt==last) continue; last=o->pt;
+            if (o->pt==last) continue;
+            last=o->pt;
 #if VATTI_HAS_SSE2
             _mm_storeu_pd(dst, _mm_mul_pd(_mm_set_pd(double(last.y), double(last.x)), isv));
 #else
