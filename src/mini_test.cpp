@@ -193,6 +193,10 @@ static fs::path compute_repo_root() {
 int run_all(const std::string &language) {
   (void)language; // currently only "cpp" is used for folder selection
 
+  // Every serialization round-trip writes into <session_cpp>/serialization/, which is
+  // gitignored (test_*) and so absent on a fresh checkout.
+  fs::create_directories("serialization");
+
   auto &tests = registry();
   if (tests.empty()) {
     return 0;
