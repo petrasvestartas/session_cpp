@@ -1946,9 +1946,18 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
         }
     }
 
-    // Load control vertices
-    for (int i = 0; i < proto.cvs_size() && i < (int)surface.m_cv.size(); i++) {
-        surface.m_cv[i] = proto.cvs(i);
+    // Load control vertices - the wire is row-major (see to_proto); honor its strides
+    int cv_sz = surface.cv_size();
+    int stride_u = proto.cv_stride_u() > 0 ? proto.cv_stride_u() : cv_sz * surface.m_cv_count[1];
+    int stride_v = proto.cv_stride_v() > 0 ? proto.cv_stride_v() : cv_sz;
+    for (int i = 0; i < surface.m_cv_count[0]; i++) {
+        for (int j = 0; j < surface.m_cv_count[1]; j++) {
+            int src = i * stride_u + j * stride_v;
+            int dst = i * surface.m_cv_stride[0] + j * surface.m_cv_stride[1];
+            for (int d = 0; d < cv_sz; d++) {
+                if (src + d < proto.cvs_size()) surface.m_cv[dst + d] = proto.cvs(src + d);
+            }
+        }
     }
 
     // Load visual properties
