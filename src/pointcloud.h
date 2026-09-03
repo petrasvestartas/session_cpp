@@ -34,6 +34,21 @@ private:
     std::vector<double> _coords;  ///< Flat coords [x0, y0, z0, x1, y1, z1, ...]
     std::vector<int> _colors;     ///< Flat colors [r0, g0, b0, a0, ...]
     std::vector<double> _normals; ///< Flat normals [nx0, ny0, nz0, ...]
+    /// LOD octree over the points, one flat array per SpatialOctree node field. Built by
+    /// build_lod(), which PERMUTES the three arrays above into octree order - so a node is one
+    /// contiguous (_lod_first, _lod_count) range and the order permutation never has to be
+    /// stored. Empty means no octree.
+    std::vector<double> _lod_min;    ///< node cube minimum, 3 per node
+    std::vector<double> _lod_size;   ///< node cube edge, 1 per node
+    std::vector<double> _lod_spacing;///< grid-accept spacing, 1 per node
+    std::vector<int> _lod_level;     ///< depth from the root, 1 per node
+    std::vector<int> _lod_first;     ///< first point row of the node, 1 per node
+    std::vector<int> _lod_count;     ///< points in the node, 1 per node
+    std::vector<int> _lod_children;  ///< present children compacted into 8 slots, -1 = unused
+    /// STABLE per-point ids, one per point, parallel to _coords. Assigned once by the first
+    /// build_lod and permuted with the points ever after, so an index that moves does not take
+    /// the point's identity with it. Empty = no tree yet, so the index IS the id.
+    std::vector<int> _point_ids;
 
 public:
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -141,6 +156,51 @@ public:
 
     /// Get all normals as a vector
     std::vector<Vector> get_normals() const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // LOD Octree
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// Build the LOD octree and REORDER the points into octree order. Every point's index
+    /// changes; a node becomes one contiguous range. Expensive - about 10 s on 14 M points -
+    /// so it is called once by whoever writes the cloud, never per construction.
+    void build_lod(double root_spacing, int leaf_capacity);
+
+    /// True when an octree has been built
+    bool has_lod() const { return !_lod_size.empty(); }
+
+    /// Number of octree nodes
+    size_t lod_node_count() const { return _lod_size.size(); }
+
+    /// Node cube: minimum corner and edge length
+    std::pair<Point, double> lod_cube(int i) const;
+
+    /// Grid-accept spacing of a node
+    double lod_spacing(int i) const { return _lod_spacing[i]; }
+
+    /// Node depth from the root
+    int lod_level(int i) const { return _lod_level[i]; }
+
+    /// Node point range as (first, count) into the reordered arrays
+    std::pair<int, int> lod_range(int i) const { return {_lod_first[i], _lod_count[i]}; }
+
+    /// Present child node indices, compacted, -1 padding
+    std::vector<int> lod_children(int i) const;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // Stable Point Ids
+    ///////////////////////////////////////////////////////////////////////////////////////////
+
+    /// The stable ids, parallel to the points. Empty until a tree is built.
+    const std::vector<int>& point_ids() const { return _point_ids; }
+
+    /// The stable id of a point, by its CURRENT index. Falls back to the index itself while no
+    /// tree has been built, which is exactly what the id would have been.
+    int point_id(int index) const { return _point_ids.empty() ? index : _point_ids[index]; }
+
+    /// Where a stable id lives NOW, or -1 if this cloud has no such point. Linear: a caller
+    /// resolving many ids should build its own map.
+    int index_of_id(int id) const;
 
     ///////////////////////////////////////////////////////////////////////////////////////////
     // String Representations

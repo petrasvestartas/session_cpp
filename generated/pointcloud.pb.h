@@ -215,6 +215,14 @@ class PointCloud final : public ::google::protobuf::Message
     kCoordsFieldNumber = 3,
     kColorsFieldNumber = 4,
     kNormalsFieldNumber = 5,
+    kLodMinFieldNumber = 8,
+    kLodSizeFieldNumber = 9,
+    kLodSpacingFieldNumber = 10,
+    kLodLevelFieldNumber = 11,
+    kLodFirstFieldNumber = 12,
+    kLodCountFieldNumber = 13,
+    kLodChildrenFieldNumber = 14,
+    kPointIdsFieldNumber = 15,
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kPointSizeFieldNumber = 6,
@@ -273,6 +281,150 @@ class PointCloud final : public ::google::protobuf::Message
   ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_normals();
 
   public:
+  // repeated double lod_min = 8;
+  int lod_min_size() const;
+  private:
+  int _internal_lod_min_size() const;
+
+  public:
+  void clear_lod_min() ;
+  double lod_min(int index) const;
+  void set_lod_min(int index, double value);
+  void add_lod_min(double value);
+  const ::google::protobuf::RepeatedField<double>& lod_min() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_lod_min();
+
+  private:
+  const ::google::protobuf::RepeatedField<double>& _internal_lod_min() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_lod_min();
+
+  public:
+  // repeated double lod_size = 9;
+  int lod_size_size() const;
+  private:
+  int _internal_lod_size_size() const;
+
+  public:
+  void clear_lod_size() ;
+  double lod_size(int index) const;
+  void set_lod_size(int index, double value);
+  void add_lod_size(double value);
+  const ::google::protobuf::RepeatedField<double>& lod_size() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_lod_size();
+
+  private:
+  const ::google::protobuf::RepeatedField<double>& _internal_lod_size() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_lod_size();
+
+  public:
+  // repeated double lod_spacing = 10;
+  int lod_spacing_size() const;
+  private:
+  int _internal_lod_spacing_size() const;
+
+  public:
+  void clear_lod_spacing() ;
+  double lod_spacing(int index) const;
+  void set_lod_spacing(int index, double value);
+  void add_lod_spacing(double value);
+  const ::google::protobuf::RepeatedField<double>& lod_spacing() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL mutable_lod_spacing();
+
+  private:
+  const ::google::protobuf::RepeatedField<double>& _internal_lod_spacing() const;
+  ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_lod_spacing();
+
+  public:
+  // repeated int32 lod_level = 11;
+  int lod_level_size() const;
+  private:
+  int _internal_lod_level_size() const;
+
+  public:
+  void clear_lod_level() ;
+  ::int32_t lod_level(int index) const;
+  void set_lod_level(int index, ::int32_t value);
+  void add_lod_level(::int32_t value);
+  const ::google::protobuf::RepeatedField<::int32_t>& lod_level() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_lod_level();
+
+  private:
+  const ::google::protobuf::RepeatedField<::int32_t>& _internal_lod_level() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_lod_level();
+
+  public:
+  // repeated int32 lod_first = 12;
+  int lod_first_size() const;
+  private:
+  int _internal_lod_first_size() const;
+
+  public:
+  void clear_lod_first() ;
+  ::int32_t lod_first(int index) const;
+  void set_lod_first(int index, ::int32_t value);
+  void add_lod_first(::int32_t value);
+  const ::google::protobuf::RepeatedField<::int32_t>& lod_first() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_lod_first();
+
+  private:
+  const ::google::protobuf::RepeatedField<::int32_t>& _internal_lod_first() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_lod_first();
+
+  public:
+  // repeated int32 lod_count = 13;
+  int lod_count_size() const;
+  private:
+  int _internal_lod_count_size() const;
+
+  public:
+  void clear_lod_count() ;
+  ::int32_t lod_count(int index) const;
+  void set_lod_count(int index, ::int32_t value);
+  void add_lod_count(::int32_t value);
+  const ::google::protobuf::RepeatedField<::int32_t>& lod_count() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_lod_count();
+
+  private:
+  const ::google::protobuf::RepeatedField<::int32_t>& _internal_lod_count() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_lod_count();
+
+  public:
+  // repeated int32 lod_children = 14;
+  int lod_children_size() const;
+  private:
+  int _internal_lod_children_size() const;
+
+  public:
+  void clear_lod_children() ;
+  ::int32_t lod_children(int index) const;
+  void set_lod_children(int index, ::int32_t value);
+  void add_lod_children(::int32_t value);
+  const ::google::protobuf::RepeatedField<::int32_t>& lod_children() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL mutable_lod_children();
+
+  private:
+  const ::google::protobuf::RepeatedField<::int32_t>& _internal_lod_children() const;
+  ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL _internal_mutable_lod_children();
+
+  public:
+  // repeated fixed32 point_ids = 15;
+  int point_ids_size() const;
+  private:
+  int _internal_point_ids_size() const;
+
+  public:
+  void clear_point_ids() ;
+  ::uint32_t point_ids(int index) const;
+  void set_point_ids(int index, ::uint32_t value);
+  void add_point_ids(::uint32_t value);
+  const ::google::protobuf::RepeatedField<::uint32_t>& point_ids() const;
+  ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL mutable_point_ids();
+
+  private:
+  const ::google::protobuf::RepeatedField<::uint32_t>& _internal_point_ids() const;
+  ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL _internal_mutable_point_ids();
+
+  public:
   // string guid = 1;
   void clear_guid() ;
   const ::std::string& guid() const;
@@ -317,8 +469,8 @@ class PointCloud final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 6,
-                                   0, 41,
+  static const ::google::protobuf::internal::TcParseTable<4, 14,
+                                   0, 49,
                                    2>
       _table_;
 
@@ -343,6 +495,18 @@ class PointCloud final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedField<::uint32_t> colors_;
     ::google::protobuf::internal::CachedSize _colors_cached_byte_size_;
     ::google::protobuf::RepeatedField<double> normals_;
+    ::google::protobuf::RepeatedField<double> lod_min_;
+    ::google::protobuf::RepeatedField<double> lod_size_;
+    ::google::protobuf::RepeatedField<double> lod_spacing_;
+    ::google::protobuf::RepeatedField<::int32_t> lod_level_;
+    ::google::protobuf::internal::CachedSize _lod_level_cached_byte_size_;
+    ::google::protobuf::RepeatedField<::int32_t> lod_first_;
+    ::google::protobuf::internal::CachedSize _lod_first_cached_byte_size_;
+    ::google::protobuf::RepeatedField<::int32_t> lod_count_;
+    ::google::protobuf::internal::CachedSize _lod_count_cached_byte_size_;
+    ::google::protobuf::RepeatedField<::int32_t> lod_children_;
+    ::google::protobuf::internal::CachedSize _lod_children_cached_byte_size_;
+    ::google::protobuf::RepeatedField<::uint32_t> point_ids_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     double point_size_;
@@ -375,7 +539,7 @@ inline void PointCloud::clear_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.guid_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000800U);
 }
 inline const ::std::string& PointCloud::guid() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -385,13 +549,13 @@ inline const ::std::string& PointCloud::guid() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void PointCloud::set_guid(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.PointCloud.guid)
 }
 inline ::std::string* PROTOBUF_NONNULL PointCloud::mutable_guid()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   ::std::string* _s = _internal_mutable_guid();
   // @@protoc_insertion_point(field_mutable:session_proto.PointCloud.guid)
   return _s;
@@ -411,10 +575,10 @@ inline ::std::string* PROTOBUF_NONNULL PointCloud::_internal_mutable_guid() {
 inline ::std::string* PROTOBUF_NULLABLE PointCloud::release_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.PointCloud.guid)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000008U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000800U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
   auto* released = _impl_.guid_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.guid_.Set("", GetArena());
@@ -424,9 +588,9 @@ inline ::std::string* PROTOBUF_NULLABLE PointCloud::release_guid() {
 inline void PointCloud::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
   }
   _impl_.guid_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
@@ -440,7 +604,7 @@ inline void PointCloud::clear_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.name_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00001000U);
 }
 inline const ::std::string& PointCloud::name() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -450,13 +614,13 @@ inline const ::std::string& PointCloud::name() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void PointCloud::set_name(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.PointCloud.name)
 }
 inline ::std::string* PROTOBUF_NONNULL PointCloud::mutable_name()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   ::std::string* _s = _internal_mutable_name();
   // @@protoc_insertion_point(field_mutable:session_proto.PointCloud.name)
   return _s;
@@ -476,10 +640,10 @@ inline ::std::string* PROTOBUF_NONNULL PointCloud::_internal_mutable_name() {
 inline ::std::string* PROTOBUF_NULLABLE PointCloud::release_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.PointCloud.name)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000010U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00001000U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
   auto* released = _impl_.name_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.name_.Set("", GetArena());
@@ -489,9 +653,9 @@ inline ::std::string* PROTOBUF_NULLABLE PointCloud::release_name() {
 inline void PointCloud::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+    SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
   }
   _impl_.name_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
@@ -655,7 +819,7 @@ inline void PointCloud::clear_point_size() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.point_size_ = 0;
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000020U);
+                  0x00002000U);
 }
 inline double PointCloud::point_size() const {
   // @@protoc_insertion_point(field_get:session_proto.PointCloud.point_size)
@@ -663,7 +827,7 @@ inline double PointCloud::point_size() const {
 }
 inline void PointCloud::set_point_size(double value) {
   _internal_set_point_size(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
   // @@protoc_insertion_point(field_set:session_proto.PointCloud.point_size)
 }
 inline double PointCloud::_internal_point_size() const {
@@ -673,6 +837,406 @@ inline double PointCloud::_internal_point_size() const {
 inline void PointCloud::_internal_set_point_size(double value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.point_size_ = value;
+}
+
+// repeated double lod_min = 8;
+inline int PointCloud::_internal_lod_min_size() const {
+  return _internal_lod_min().size();
+}
+inline int PointCloud::lod_min_size() const {
+  return _internal_lod_min_size();
+}
+inline void PointCloud::clear_lod_min() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_min_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000008U);
+}
+inline double PointCloud::lod_min(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_min)
+  return _internal_lod_min().Get(index);
+}
+inline void PointCloud::set_lod_min(int index, double value) {
+  _internal_mutable_lod_min()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_min)
+}
+inline void PointCloud::add_lod_min(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_min()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000008U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_min)
+}
+inline const ::google::protobuf::RepeatedField<double>& PointCloud::lod_min() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_min)
+  return _internal_lod_min();
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL PointCloud::mutable_lod_min()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000008U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_min)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_min();
+}
+inline const ::google::protobuf::RepeatedField<double>&
+PointCloud::_internal_lod_min() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_min_;
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_min() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_min_;
+}
+
+// repeated double lod_size = 9;
+inline int PointCloud::_internal_lod_size_size() const {
+  return _internal_lod_size().size();
+}
+inline int PointCloud::lod_size_size() const {
+  return _internal_lod_size_size();
+}
+inline void PointCloud::clear_lod_size() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_size_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000010U);
+}
+inline double PointCloud::lod_size(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_size)
+  return _internal_lod_size().Get(index);
+}
+inline void PointCloud::set_lod_size(int index, double value) {
+  _internal_mutable_lod_size()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_size)
+}
+inline void PointCloud::add_lod_size(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_size()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000010U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_size)
+}
+inline const ::google::protobuf::RepeatedField<double>& PointCloud::lod_size() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_size)
+  return _internal_lod_size();
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL PointCloud::mutable_lod_size()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000010U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_size)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_size();
+}
+inline const ::google::protobuf::RepeatedField<double>&
+PointCloud::_internal_lod_size() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_size_;
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_size() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_size_;
+}
+
+// repeated double lod_spacing = 10;
+inline int PointCloud::_internal_lod_spacing_size() const {
+  return _internal_lod_spacing().size();
+}
+inline int PointCloud::lod_spacing_size() const {
+  return _internal_lod_spacing_size();
+}
+inline void PointCloud::clear_lod_spacing() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_spacing_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000020U);
+}
+inline double PointCloud::lod_spacing(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_spacing)
+  return _internal_lod_spacing().Get(index);
+}
+inline void PointCloud::set_lod_spacing(int index, double value) {
+  _internal_mutable_lod_spacing()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_spacing)
+}
+inline void PointCloud::add_lod_spacing(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_spacing()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_spacing)
+}
+inline const ::google::protobuf::RepeatedField<double>& PointCloud::lod_spacing() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_spacing)
+  return _internal_lod_spacing();
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL PointCloud::mutable_lod_spacing()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_spacing)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_spacing();
+}
+inline const ::google::protobuf::RepeatedField<double>&
+PointCloud::_internal_lod_spacing() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_spacing_;
+}
+inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_spacing() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_spacing_;
+}
+
+// repeated int32 lod_level = 11;
+inline int PointCloud::_internal_lod_level_size() const {
+  return _internal_lod_level().size();
+}
+inline int PointCloud::lod_level_size() const {
+  return _internal_lod_level_size();
+}
+inline void PointCloud::clear_lod_level() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_level_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000040U);
+}
+inline ::int32_t PointCloud::lod_level(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_level)
+  return _internal_lod_level().Get(index);
+}
+inline void PointCloud::set_lod_level(int index, ::int32_t value) {
+  _internal_mutable_lod_level()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_level)
+}
+inline void PointCloud::add_lod_level(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_level()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_level)
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>& PointCloud::lod_level() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_level)
+  return _internal_lod_level();
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL PointCloud::mutable_lod_level()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_level)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_level();
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>&
+PointCloud::_internal_lod_level() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_level_;
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_level() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_level_;
+}
+
+// repeated int32 lod_first = 12;
+inline int PointCloud::_internal_lod_first_size() const {
+  return _internal_lod_first().size();
+}
+inline int PointCloud::lod_first_size() const {
+  return _internal_lod_first_size();
+}
+inline void PointCloud::clear_lod_first() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_first_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000080U);
+}
+inline ::int32_t PointCloud::lod_first(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_first)
+  return _internal_lod_first().Get(index);
+}
+inline void PointCloud::set_lod_first(int index, ::int32_t value) {
+  _internal_mutable_lod_first()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_first)
+}
+inline void PointCloud::add_lod_first(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_first()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_first)
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>& PointCloud::lod_first() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_first)
+  return _internal_lod_first();
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL PointCloud::mutable_lod_first()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_first)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_first();
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>&
+PointCloud::_internal_lod_first() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_first_;
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_first() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_first_;
+}
+
+// repeated int32 lod_count = 13;
+inline int PointCloud::_internal_lod_count_size() const {
+  return _internal_lod_count().size();
+}
+inline int PointCloud::lod_count_size() const {
+  return _internal_lod_count_size();
+}
+inline void PointCloud::clear_lod_count() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_count_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000100U);
+}
+inline ::int32_t PointCloud::lod_count(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_count)
+  return _internal_lod_count().Get(index);
+}
+inline void PointCloud::set_lod_count(int index, ::int32_t value) {
+  _internal_mutable_lod_count()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_count)
+}
+inline void PointCloud::add_lod_count(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_count()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_count)
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>& PointCloud::lod_count() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_count)
+  return _internal_lod_count();
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL PointCloud::mutable_lod_count()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_count)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_count();
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>&
+PointCloud::_internal_lod_count() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_count_;
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_count() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_count_;
+}
+
+// repeated int32 lod_children = 14;
+inline int PointCloud::_internal_lod_children_size() const {
+  return _internal_lod_children().size();
+}
+inline int PointCloud::lod_children_size() const {
+  return _internal_lod_children_size();
+}
+inline void PointCloud::clear_lod_children() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.lod_children_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000200U);
+}
+inline ::int32_t PointCloud::lod_children(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.lod_children)
+  return _internal_lod_children().Get(index);
+}
+inline void PointCloud::set_lod_children(int index, ::int32_t value) {
+  _internal_mutable_lod_children()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.lod_children)
+}
+inline void PointCloud::add_lod_children(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_lod_children()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000200U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.lod_children)
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>& PointCloud::lod_children() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.lod_children)
+  return _internal_lod_children();
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL PointCloud::mutable_lod_children()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000200U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.lod_children)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_lod_children();
+}
+inline const ::google::protobuf::RepeatedField<::int32_t>&
+PointCloud::_internal_lod_children() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.lod_children_;
+}
+inline ::google::protobuf::RepeatedField<::int32_t>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_lod_children() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.lod_children_;
+}
+
+// repeated fixed32 point_ids = 15;
+inline int PointCloud::_internal_point_ids_size() const {
+  return _internal_point_ids().size();
+}
+inline int PointCloud::point_ids_size() const {
+  return _internal_point_ids_size();
+}
+inline void PointCloud::clear_point_ids() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.point_ids_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000400U);
+}
+inline ::uint32_t PointCloud::point_ids(int index) const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.point_ids)
+  return _internal_point_ids().Get(index);
+}
+inline void PointCloud::set_point_ids(int index, ::uint32_t value) {
+  _internal_mutable_point_ids()->Set(index, value);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.point_ids)
+}
+inline void PointCloud::add_point_ids(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _internal_mutable_point_ids()->Add(value);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000400U);
+  // @@protoc_insertion_point(field_add:session_proto.PointCloud.point_ids)
+}
+inline const ::google::protobuf::RepeatedField<::uint32_t>& PointCloud::point_ids() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.PointCloud.point_ids)
+  return _internal_point_ids();
+}
+inline ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL PointCloud::mutable_point_ids()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000400U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.PointCloud.point_ids)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_point_ids();
+}
+inline const ::google::protobuf::RepeatedField<::uint32_t>&
+PointCloud::_internal_point_ids() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.point_ids_;
+}
+inline ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL
+PointCloud::_internal_mutable_point_ids() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.point_ids_;
 }
 
 #ifdef __GNUC__

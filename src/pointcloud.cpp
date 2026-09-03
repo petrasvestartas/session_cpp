@@ -1,5 +1,6 @@
 #include "pointcloud.h"
 #include "guid.h"
+#include "spatial_octree.h"
 #include "tolerance.h"
 #include <cmath>
 #include <fstream>
@@ -175,6 +176,108 @@ std::vector<Vector> PointCloud::get_normals() const {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
+// LOD Octree
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void PointCloud::build_lod(double root_spacing, int leaf_capacity) {
+    SpatialOctree tree = SpatialOctree::from_coords(_coords, root_spacing, leaf_capacity);
+    const std::vector<int>& order = tree.order();
+
+    // Identity is minted HERE, before the first permutation, so an id records where a point
+    // began. After this the ids travel with the points and the index is free to move.
+    if (_point_ids.empty()) {
+        _point_ids.resize(_coords.size() / 3);
+        for (size_t k = 0; k < _point_ids.size(); ++k) {
+            _point_ids[k] = static_cast<int>(k);
+        }
+    }
+
+    // Permute the three parallel arrays into octree order. This is what lets a node be one
+    // (first, count) range, so `order` itself never has to be stored - 4 bytes a point.
+    std::vector<double> coords;
+    coords.reserve(_coords.size());
+    std::vector<int> colors;
+    colors.reserve(_colors.size());
+    std::vector<double> normals;
+    normals.reserve(_normals.size());
+    std::vector<int> ids;
+    ids.reserve(_point_ids.size());
+    bool has_colors = _colors.size() == order.size() * 4;
+    bool has_normals = _normals.size() == order.size() * 3;
+    for (int idx : order) {
+        ids.push_back(_point_ids[idx]);
+        for (int k = 0; k < 3; ++k) {
+            coords.push_back(_coords[idx * 3 + k]);
+        }
+        if (has_colors) {
+            for (int k = 0; k < 4; ++k) {
+                colors.push_back(_colors[idx * 4 + k]);
+            }
+        }
+        if (has_normals) {
+            for (int k = 0; k < 3; ++k) {
+                normals.push_back(_normals[idx * 3 + k]);
+            }
+        }
+    }
+    _coords = std::move(coords);
+    _point_ids = std::move(ids);
+    if (has_colors) {
+        _colors = std::move(colors);
+    }
+    if (has_normals) {
+        _normals = std::move(normals);
+    }
+
+    int n = tree.node_count();
+    _lod_min.clear();
+    _lod_size.clear();
+    _lod_spacing.clear();
+    _lod_level.clear();
+    _lod_first.clear();
+    _lod_count.clear();
+    _lod_children.clear();
+    for (int i = 0; i < n; ++i) {
+        std::pair<Point, double> cube = tree.node_cube(i);
+        _lod_min.push_back(cube.first[0] - cube.second * 0.5);
+        _lod_min.push_back(cube.first[1] - cube.second * 0.5);
+        _lod_min.push_back(cube.first[2] - cube.second * 0.5);
+        _lod_size.push_back(cube.second);
+        _lod_spacing.push_back(tree.node_spacing(i));
+        _lod_level.push_back(tree.node_level(i));
+        std::pair<int, int> range = tree.node_range(i);
+        _lod_first.push_back(range.first);
+        _lod_count.push_back(range.second);
+        std::vector<int> kids = tree.children(i);
+        for (int k = 0; k < 8; ++k) {
+            _lod_children.push_back(k < static_cast<int>(kids.size()) ? kids[k] : -1);
+        }
+    }
+}
+
+std::pair<Point, double> PointCloud::lod_cube(int i) const {
+    double half = _lod_size[i] * 0.5;
+    return {Point(_lod_min[i * 3] + half, _lod_min[i * 3 + 1] + half, _lod_min[i * 3 + 2] + half),
+            _lod_size[i]};
+}
+
+int PointCloud::index_of_id(int id) const {
+    if (_point_ids.empty()) {
+        return id >= 0 && id < static_cast<int>(_coords.size() / 3) ? id : -1;
+    }
+    for (size_t k = 0; k < _point_ids.size(); ++k) {
+        if (_point_ids[k] == id) {
+            return static_cast<int>(k);
+        }
+    }
+    return -1;
+}
+
+std::vector<int> PointCloud::lod_children(int i) const {
+    return std::vector<int>(_lod_children.begin() + i * 8, _lod_children.begin() + i * 8 + 8);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////
 // String Representations
 ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -195,7 +298,10 @@ bool PointCloud::operator==(const PointCloud& other) const {
     return name == other.name &&
            _coords == other._coords &&
            _colors == other._colors &&
-           _normals == other._normals;
+           _normals == other._normals &&
+           _lod_first == other._lod_first &&
+           _lod_count == other._lod_count &&
+           _point_ids == other._point_ids;
 }
 
 bool PointCloud::operator!=(const PointCloud& other) const {
@@ -282,8 +388,16 @@ nlohmann::ordered_json PointCloud::jsondump() const {
     data["colors"] = _colors;
     data["coords"] = _coords;
     data["guid"] = guid();
+    data["lod_children"] = _lod_children;
+    data["lod_count"] = _lod_count;
+    data["lod_first"] = _lod_first;
+    data["lod_level"] = _lod_level;
+    data["lod_min"] = _lod_min;
+    data["lod_size"] = _lod_size;
+    data["lod_spacing"] = _lod_spacing;
     data["name"] = name;
     data["normals"] = _normals;
+    data["point_ids"] = _point_ids;
     data["point_size"] = point_size;
     data["type"] = "PointCloud";
     return data;
@@ -298,7 +412,14 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
     pc.guid() = data.value("guid", pc.guid());
     pc.name = data.value("name", pc.name);
     pc.point_size = data.value("point_size", 1.0);
-
+    pc._lod_min = data.value("lod_min", std::vector<double>{});
+    pc._lod_size = data.value("lod_size", std::vector<double>{});
+    pc._lod_spacing = data.value("lod_spacing", std::vector<double>{});
+    pc._lod_level = data.value("lod_level", std::vector<int>{});
+    pc._lod_first = data.value("lod_first", std::vector<int>{});
+    pc._lod_count = data.value("lod_count", std::vector<int>{});
+    pc._lod_children = data.value("lod_children", std::vector<int>{});
+    pc._point_ids = data.value("point_ids", std::vector<int>{});
 
     return pc;
 }
@@ -344,6 +465,30 @@ std::string PointCloud::pb_dumps() const {
     for (double n : _normals) {
         proto.add_normals(n);
     }
+    for (double v : _lod_min) {
+        proto.add_lod_min(v);
+    }
+    for (double v : _lod_size) {
+        proto.add_lod_size(v);
+    }
+    for (double v : _lod_spacing) {
+        proto.add_lod_spacing(v);
+    }
+    for (int v : _lod_level) {
+        proto.add_lod_level(v);
+    }
+    for (int v : _lod_first) {
+        proto.add_lod_first(v);
+    }
+    for (int v : _lod_count) {
+        proto.add_lod_count(v);
+    }
+    for (int v : _lod_children) {
+        proto.add_lod_children(v);
+    }
+    for (int v : _point_ids) {
+        proto.add_point_ids(static_cast<uint32_t>(v));
+    }
 
     return proto.SerializeAsString();
 }
@@ -364,6 +509,14 @@ PointCloud PointCloud::pb_loads(const std::string& data) {
     pc.guid() = proto.guid();
     pc.name = proto.name();
     pc.point_size = proto.point_size() > 0 ? proto.point_size() : 1.0;
+    pc._lod_min.assign(proto.lod_min().begin(), proto.lod_min().end());
+    pc._lod_size.assign(proto.lod_size().begin(), proto.lod_size().end());
+    pc._lod_spacing.assign(proto.lod_spacing().begin(), proto.lod_spacing().end());
+    pc._lod_level.assign(proto.lod_level().begin(), proto.lod_level().end());
+    pc._lod_first.assign(proto.lod_first().begin(), proto.lod_first().end());
+    pc._lod_count.assign(proto.lod_count().begin(), proto.lod_count().end());
+    pc._lod_children.assign(proto.lod_children().begin(), proto.lod_children().end());
+    pc._point_ids.assign(proto.point_ids().begin(), proto.point_ids().end());
 
     return pc;
 }

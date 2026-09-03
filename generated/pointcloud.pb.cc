@@ -33,6 +33,18 @@ inline constexpr PointCloud::Impl_::Impl_(
         colors_{},
         _colors_cached_byte_size_{0},
         normals_{},
+        lod_min_{},
+        lod_size_{},
+        lod_spacing_{},
+        lod_level_{},
+        _lod_level_cached_byte_size_{0},
+        lod_first_{},
+        _lod_first_cached_byte_size_{0},
+        lod_count_{},
+        _lod_count_cached_byte_size_{0},
+        lod_children_{},
+        _lod_children_cached_byte_size_{0},
+        point_ids_{},
         guid_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
@@ -70,19 +82,35 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_._has_bits_),
-        9, // hasbit index offset
+        17, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.coords_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.colors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.normals_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.point_size_),
-        3,
-        4,
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_min_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_size_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_spacing_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_level_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_first_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_count_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_children_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.point_ids_),
+        11,
+        12,
         0,
         1,
         2,
+        13,
+        3,
+        4,
         5,
+        6,
+        7,
+        8,
+        9,
+        10,
 };
 
 static const ::_pbi::MigrationSchema
@@ -94,16 +122,20 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 };
 const char descriptor_table_protodef_pointcloud_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\020pointcloud.proto\022\rsession_proto\"s\n\nPoi"
-    "ntCloud\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\016\n\006c"
-    "oords\030\003 \003(\001\022\016\n\006colors\030\004 \003(\r\022\017\n\007normals\030\005"
-    " \003(\001\022\022\n\npoint_size\030\006 \001(\001J\004\010\007\020\010b\006proto3"
+    "\n\020pointcloud.proto\022\rsession_proto\"\215\002\n\nPo"
+    "intCloud\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\016\n\006"
+    "coords\030\003 \003(\001\022\016\n\006colors\030\004 \003(\r\022\017\n\007normals\030"
+    "\005 \003(\001\022\022\n\npoint_size\030\006 \001(\001\022\017\n\007lod_min\030\010 \003"
+    "(\001\022\020\n\010lod_size\030\t \003(\001\022\023\n\013lod_spacing\030\n \003("
+    "\001\022\021\n\tlod_level\030\013 \003(\005\022\021\n\tlod_first\030\014 \003(\005\022"
+    "\021\n\tlod_count\030\r \003(\005\022\024\n\014lod_children\030\016 \003(\005"
+    "\022\021\n\tpoint_ids\030\017 \003(\007J\004\010\007\020\010b\006proto3"
 };
 static ::absl::once_flag descriptor_table_pointcloud_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_pointcloud_2eproto = {
     false,
     false,
-    158,
+    313,
     descriptor_table_protodef_pointcloud_2eproto,
     "pointcloud.proto",
     &descriptor_table_pointcloud_2eproto_once,
@@ -146,6 +178,18 @@ PROTOBUF_NDEBUG_INLINE PointCloud::Impl_::Impl_(
         colors_{visibility, arena, from.colors_},
         _colors_cached_byte_size_{0},
         normals_{visibility, arena, from.normals_},
+        lod_min_{visibility, arena, from.lod_min_},
+        lod_size_{visibility, arena, from.lod_size_},
+        lod_spacing_{visibility, arena, from.lod_spacing_},
+        lod_level_{visibility, arena, from.lod_level_},
+        _lod_level_cached_byte_size_{0},
+        lod_first_{visibility, arena, from.lod_first_},
+        _lod_first_cached_byte_size_{0},
+        lod_count_{visibility, arena, from.lod_count_},
+        _lod_count_cached_byte_size_{0},
+        lod_children_{visibility, arena, from.lod_children_},
+        _lod_children_cached_byte_size_{0},
+        point_ids_{visibility, arena, from.point_ids_},
         guid_(arena, from.guid_),
         name_(arena, from.name_) {}
 
@@ -174,6 +218,18 @@ PROTOBUF_NDEBUG_INLINE PointCloud::Impl_::Impl_(
         colors_{visibility, arena},
         _colors_cached_byte_size_{0},
         normals_{visibility, arena},
+        lod_min_{visibility, arena},
+        lod_size_{visibility, arena},
+        lod_spacing_{visibility, arena},
+        lod_level_{visibility, arena},
+        _lod_level_cached_byte_size_{0},
+        lod_first_{visibility, arena},
+        _lod_first_cached_byte_size_{0},
+        lod_count_{visibility, arena},
+        _lod_count_cached_byte_size_{0},
+        lod_children_{visibility, arena},
+        _lod_children_cached_byte_size_{0},
+        point_ids_{visibility, arena},
         guid_(arena),
         name_(arena) {}
 
@@ -214,6 +270,38 @@ constexpr auto PointCloud::InternalNewImpl_() {
                   ::google::protobuf::Message::internal_visibility()),
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.normals_) +
           decltype(PointCloud::_impl_.normals_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_min_) +
+          decltype(PointCloud::_impl_.lod_min_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_size_) +
+          decltype(PointCloud::_impl_.lod_size_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_spacing_) +
+          decltype(PointCloud::_impl_.lod_spacing_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_level_) +
+          decltype(PointCloud::_impl_.lod_level_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_first_) +
+          decltype(PointCloud::_impl_.lod_first_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_count_) +
+          decltype(PointCloud::_impl_.lod_count_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_children_) +
+          decltype(PointCloud::_impl_.lod_children_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_ids_) +
+          decltype(PointCloud::_impl_.point_ids_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
   });
@@ -260,16 +348,16 @@ PointCloud::GetClassData() const {
   return PointCloud_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 6, 0, 41, 2>
+const ::_pbi::TcParseTable<4, 14, 0, 49, 2>
 PointCloud::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(PointCloud, _impl_._has_bits_),
     0, // no _extensions_
-    6, 56,  // max_field_number, fast_idx_mask
+    15, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967232,  // skipmap
+    4294934592,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    6,  // num_field_entries
+    14,  // num_field_entries
     0,  // num_aux_entries
     offsetof(decltype(_table_), field_names),  // no aux_entries
     PointCloud_class_data_.base(),
@@ -282,11 +370,11 @@ PointCloud::_table_ = {
     {::_pbi::TcParser::MiniParse, {}},
     // string guid = 1;
     {::_pbi::TcParser::FastUS1,
-     {10, 3, 0,
+     {10, 11, 0,
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.guid_)}},
     // string name = 2;
     {::_pbi::TcParser::FastUS1,
-     {18, 4, 0,
+     {18, 12, 0,
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.name_)}},
     // repeated double coords = 3;
     {::_pbi::TcParser::FastF64P1,
@@ -302,16 +390,48 @@ PointCloud::_table_ = {
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.normals_)}},
     // double point_size = 6;
     {::_pbi::TcParser::FastF64S1,
-     {49, 5, 0,
+     {49, 13, 0,
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_)}},
     {::_pbi::TcParser::MiniParse, {}},
+    // repeated double lod_min = 8;
+    {::_pbi::TcParser::FastF64P1,
+     {66, 3, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_min_)}},
+    // repeated double lod_size = 9;
+    {::_pbi::TcParser::FastF64P1,
+     {74, 4, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_size_)}},
+    // repeated double lod_spacing = 10;
+    {::_pbi::TcParser::FastF64P1,
+     {82, 5, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_spacing_)}},
+    // repeated int32 lod_level = 11;
+    {::_pbi::TcParser::FastV32P1,
+     {90, 6, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_level_)}},
+    // repeated int32 lod_first = 12;
+    {::_pbi::TcParser::FastV32P1,
+     {98, 7, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_first_)}},
+    // repeated int32 lod_count = 13;
+    {::_pbi::TcParser::FastV32P1,
+     {106, 8, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_count_)}},
+    // repeated int32 lod_children = 14;
+    {::_pbi::TcParser::FastV32P1,
+     {114, 9, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_children_)}},
+    // repeated fixed32 point_ids = 15;
+    {::_pbi::TcParser::FastF32P1,
+     {122, 10, 0,
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_ids_)}},
   }}, {{
     65535, 65535
   }}, {{
     // string guid = 1;
-    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.guid_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.guid_), _Internal::kHasBitsOffset + 11, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string name = 2;
-    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.name_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.name_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // repeated double coords = 3;
     {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.coords_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
     // repeated uint32 colors = 4;
@@ -319,11 +439,27 @@ PointCloud::_table_ = {
     // repeated double normals = 5;
     {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.normals_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
     // double point_size = 6;
-    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+    // repeated double lod_min = 8;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_min_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    // repeated double lod_size = 9;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_size_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    // repeated double lod_spacing = 10;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_spacing_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+    // repeated int32 lod_level = 11;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_level_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedInt32)},
+    // repeated int32 lod_first = 12;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_first_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedInt32)},
+    // repeated int32 lod_count = 13;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_count_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedInt32)},
+    // repeated int32 lod_children = 14;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.lod_children_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedInt32)},
+    // repeated fixed32 point_ids = 15;
+    {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_ids_), _Internal::kHasBitsOffset + 10, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFixed32)},
   }},
   // no aux_entries
   {{
-    "\30\4\4\0\0\0\0\0"
+    "\30\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
     "session_proto.PointCloud"
     "guid"
     "name"
@@ -337,7 +473,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.coords_.Clear();
     }
@@ -347,10 +483,36 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
       _impl_.normals_.Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+      _impl_.lod_min_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+      _impl_.lod_size_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000020U)) {
+      _impl_.lod_spacing_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      _impl_.lod_level_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+      _impl_.lod_first_.Clear();
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+      _impl_.lod_count_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+      _impl_.lod_children_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+      _impl_.point_ids_.Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       _impl_.guid_.ClearNonDefaultToEmpty();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
       _impl_.name_.ClearNonDefaultToEmpty();
     }
   }
@@ -379,7 +541,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // string guid = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000800U)) {
     if (!this_._internal_guid().empty()) {
       const ::std::string& _s = this_._internal_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -389,7 +551,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
   }
 
   // string name = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -424,11 +586,83 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
   }
 
   // double point_size = 6;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_point_size()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
           6, this_._internal_point_size(), target);
+    }
+  }
+
+  // repeated double lod_min = 8;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+    if (this_._internal_lod_min_size() > 0) {
+      target = stream->WriteFixedPacked(8, this_._internal_lod_min(), target);
+    }
+  }
+
+  // repeated double lod_size = 9;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+    if (this_._internal_lod_size_size() > 0) {
+      target = stream->WriteFixedPacked(9, this_._internal_lod_size(), target);
+    }
+  }
+
+  // repeated double lod_spacing = 10;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000020U)) {
+    if (this_._internal_lod_spacing_size() > 0) {
+      target = stream->WriteFixedPacked(10, this_._internal_lod_spacing(), target);
+    }
+  }
+
+  // repeated int32 lod_level = 11;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    {
+      int byte_size = this_._impl_._lod_level_cached_byte_size_.Get();
+      if (byte_size > 0) {
+        target = stream->WriteInt32Packed(
+            11, this_._internal_lod_level(), byte_size, target);
+      }
+    }
+  }
+
+  // repeated int32 lod_first = 12;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+    {
+      int byte_size = this_._impl_._lod_first_cached_byte_size_.Get();
+      if (byte_size > 0) {
+        target = stream->WriteInt32Packed(
+            12, this_._internal_lod_first(), byte_size, target);
+      }
+    }
+  }
+
+  // repeated int32 lod_count = 13;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+    {
+      int byte_size = this_._impl_._lod_count_cached_byte_size_.Get();
+      if (byte_size > 0) {
+        target = stream->WriteInt32Packed(
+            13, this_._internal_lod_count(), byte_size, target);
+      }
+    }
+  }
+
+  // repeated int32 lod_children = 14;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+    {
+      int byte_size = this_._impl_._lod_children_cached_byte_size_.Get();
+      if (byte_size > 0) {
+        target = stream->WriteInt32Packed(
+            14, this_._internal_lod_children(), byte_size, target);
+      }
+    }
+  }
+
+  // repeated fixed32 point_ids = 15;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+    if (this_._internal_point_ids_size() > 0) {
+      target = stream->WriteFixedPacked(15, this_._internal_point_ids(), target);
     }
   }
 
@@ -457,7 +691,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double coords = 3;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       ::size_t data_size = ::size_t{8} *
@@ -485,22 +719,92 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
                               static_cast<::int32_t>(data_size));
       total_size += tag_size + data_size;
     }
+    // repeated double lod_min = 8;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+      ::size_t data_size = ::size_t{8} *
+          ::_pbi::FromIntSize(this_._internal_lod_min_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
+    // repeated double lod_size = 9;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+      ::size_t data_size = ::size_t{8} *
+          ::_pbi::FromIntSize(this_._internal_lod_size_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
+    // repeated double lod_spacing = 10;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000020U)) {
+      ::size_t data_size = ::size_t{8} *
+          ::_pbi::FromIntSize(this_._internal_lod_spacing_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
+    // repeated int32 lod_level = 11;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      total_size +=
+          ::_pbi::WireFormatLite::Int32SizeWithPackedTagSize(
+              this_._internal_lod_level(), 1,
+              this_._impl_._lod_level_cached_byte_size_);
+    }
+    // repeated int32 lod_first = 12;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+      total_size +=
+          ::_pbi::WireFormatLite::Int32SizeWithPackedTagSize(
+              this_._internal_lod_first(), 1,
+              this_._impl_._lod_first_cached_byte_size_);
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+    // repeated int32 lod_count = 13;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+      total_size +=
+          ::_pbi::WireFormatLite::Int32SizeWithPackedTagSize(
+              this_._internal_lod_count(), 1,
+              this_._impl_._lod_count_cached_byte_size_);
+    }
+    // repeated int32 lod_children = 14;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+      total_size +=
+          ::_pbi::WireFormatLite::Int32SizeWithPackedTagSize(
+              this_._internal_lod_children(), 1,
+              this_._impl_._lod_children_cached_byte_size_);
+    }
+    // repeated fixed32 point_ids = 15;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+      ::size_t data_size = ::size_t{4} *
+          ::_pbi::FromIntSize(this_._internal_point_ids_size());
+      ::size_t tag_size = data_size == 0
+          ? 0
+          : 1 + ::_pbi::WireFormatLite::Int32Size(
+                              static_cast<::int32_t>(data_size));
+      total_size += tag_size + data_size;
+    }
     // string guid = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
       }
     }
     // string name = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
     // double point_size = 6;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_point_size()) != 0) {
         total_size += 9;
       }
@@ -524,7 +828,7 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_coords()->MergeFrom(from._internal_coords());
     }
@@ -534,7 +838,33 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
       _this->_internal_mutable_normals()->MergeFrom(from._internal_normals());
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000008U)) {
+      _this->_internal_mutable_lod_min()->MergeFrom(from._internal_lod_min());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+      _this->_internal_mutable_lod_size()->MergeFrom(from._internal_lod_size());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000020U)) {
+      _this->_internal_mutable_lod_spacing()->MergeFrom(from._internal_lod_spacing());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      _this->_internal_mutable_lod_level()->MergeFrom(from._internal_lod_level());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+      _this->_internal_mutable_lod_first()->MergeFrom(from._internal_lod_first());
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
+      _this->_internal_mutable_lod_count()->MergeFrom(from._internal_lod_count());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000200U)) {
+      _this->_internal_mutable_lod_children()->MergeFrom(from._internal_lod_children());
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000400U)) {
+      _this->_internal_mutable_point_ids()->MergeFrom(from._internal_point_ids());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
       } else {
@@ -543,7 +873,7 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -552,7 +882,7 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_point_size()) != 0) {
         _this->_impl_.point_size_ = from._impl_.point_size_;
       }
@@ -580,6 +910,14 @@ void PointCloud::InternalSwap(PointCloud* PROTOBUF_RESTRICT PROTOBUF_NONNULL oth
   _impl_.coords_.InternalSwap(&other->_impl_.coords_);
   _impl_.colors_.InternalSwap(&other->_impl_.colors_);
   _impl_.normals_.InternalSwap(&other->_impl_.normals_);
+  _impl_.lod_min_.InternalSwap(&other->_impl_.lod_min_);
+  _impl_.lod_size_.InternalSwap(&other->_impl_.lod_size_);
+  _impl_.lod_spacing_.InternalSwap(&other->_impl_.lod_spacing_);
+  _impl_.lod_level_.InternalSwap(&other->_impl_.lod_level_);
+  _impl_.lod_first_.InternalSwap(&other->_impl_.lod_first_);
+  _impl_.lod_count_.InternalSwap(&other->_impl_.lod_count_);
+  _impl_.lod_children_.InternalSwap(&other->_impl_.lod_children_);
+  _impl_.point_ids_.InternalSwap(&other->_impl_.point_ids_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   swap(_impl_.point_size_, other->_impl_.point_size_);

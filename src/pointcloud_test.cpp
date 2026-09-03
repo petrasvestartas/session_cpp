@@ -290,6 +290,34 @@ MINI_TEST("PointCloud", "Get Normals") {
     MINI_CHECK(TOLERANCE.is_close(normals[1][0], 1.0));
 }
 
+MINI_TEST("PointCloud", "Point Ids") {
+    // uncomment #include "pointcloud.h"
+    // uncomment #include <vector>
+
+    std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    PointCloud pc = PointCloud::from_coords(coords, {}, {});
+    Point before = pc.get_point(5);
+    pc.build_lod(1.0, 2);
+
+    MINI_CHECK(pc.point_ids().size() == 8);
+    MINI_CHECK(pc.index_of_id(5) >= 0);
+    MINI_CHECK(pc.get_point(pc.index_of_id(5)) == before);
+}
+
+MINI_TEST("PointCloud", "Build Lod") {
+    // uncomment #include "pointcloud.h"
+    // uncomment #include <vector>
+
+    std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+    PointCloud pc = PointCloud::from_coords(coords, {}, {});
+    pc.build_lod(1.0, 2);
+
+    MINI_CHECK(pc.has_lod());
+    MINI_CHECK(pc.lod_node_count() == 8);
+    MINI_CHECK(pc.lod_range(0).first == 0 && pc.lod_range(0).second == 1);
+    MINI_CHECK(pc.coords().size() == 24);
+}
+
 MINI_TEST("PointCloud", "Transform") {
     // uncomment #include "pointcloud.h"
     // uncomment #include "point.h"
