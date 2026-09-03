@@ -70,7 +70,7 @@ nlohmann::ordered_json Point::jsondump() const {
 /// Create point from JSON data
 Point Point::jsonload(const nlohmann::json &data) {
   Point point(data["x"], data["y"], data["z"]);
-  point.guid() = data["guid"];
+  point._guid = data["guid"];
   point.name = data["name"];
   point.pointcolor = Color::jsonload(data["pointcolor"]);
   point.width = data["width"];
@@ -127,7 +127,7 @@ Point Point::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
   
   Point point(proto.x(), proto.y(), proto.z());
-  point.guid() = proto.guid();
+  point._guid = proto.guid();
   point.name = proto.name();
   point.width = proto.width();
   

@@ -117,6 +117,7 @@ namespace session_cpp {
         Point loaded = Point::file_json_load(filename);
 
         MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded.guid() == p.guid());
         MINI_CHECK(loaded[0] == p[0]);
         MINI_CHECK(loaded[1] == p[1]);
         MINI_CHECK(loaded[2] == p[2]);
@@ -142,6 +143,7 @@ namespace session_cpp {
         Point loaded = Point::pb_load(filename);
 
         MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded.guid() == p.guid());
         MINI_CHECK(loaded[0] == p[0]);
         MINI_CHECK(loaded[1] == p[1]);
         MINI_CHECK(loaded[2] == p[2]);
