@@ -55,16 +55,15 @@ Point Point::transformed(const Xform& xform) const {
 
 /// Convert to JSON-serializable object (alphabetical order to match Rust)
 nlohmann::ordered_json Point::jsondump() const {
-  auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
   nlohmann::ordered_json data;
   data["guid"] = guid();
   data["name"] = name;
   data["pointcolor"] = pointcolor.jsondump();
   data["type"] = "Point";
   data["width"] = width;
-  data["x"] = clean_float(_x);
-  data["y"] = clean_float(_y);
-  data["z"] = clean_float(_z);
+  data["x"] = _x;
+  data["y"] = _y;
+  data["z"] = _z;
   return data;
 }
 

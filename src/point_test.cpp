@@ -100,7 +100,7 @@ namespace session_cpp {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
-        Point p(1.5, 2.5, 3.5);
+        Point p(1.567, 2.567, 3.567);
         p.name = "test_point";
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
@@ -132,7 +132,7 @@ namespace session_cpp {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
-        Point p(1.5, 2.5, 3.5);
+        Point p(1.567, 2.567, 3.567);
         p.name = "test_point";
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
