@@ -368,15 +368,11 @@ Point Point::lerp(const Point& a, const Point& b, double t) {
 
 std::vector<Point> Point::interpolate(const Point& from, const Point& to, int steps, int kind) {
     std::vector<Point> pts;
+    pts.reserve(steps > 0 ? steps + 2 : 2);
     if (kind == 1 || kind == 2)
         pts.push_back(from);
-    for (int i = 1; i <= steps; ++i) {
-        double t = static_cast<double>(i) / static_cast<double>(steps + 1);
-        pts.emplace_back(
-            from[0] + t * (to[0] - from[0]),
-            from[1] + t * (to[1] - from[1]),
-            from[2] + t * (to[2] - from[2]));
-    }
+    for (int i = 1; i <= steps; ++i)
+        pts.push_back(lerp(from, to, static_cast<double>(i) / static_cast<double>(steps + 1)));
     if (kind == 1)
         pts.push_back(to);
     return pts;
