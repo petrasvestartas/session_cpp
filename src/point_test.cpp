@@ -52,6 +52,7 @@ namespace session_cpp {
         Point result_div = p / 2.0;
         Point result_add = p + Vector(1.0, 1.0, 1.0);
         Point diff_point = p - Vector(1.0, 1.0, 1.0);
+        Vector diff_vector = p - pother;
 
         // Static sum and sub methods
         Point p1(1.0, 2.0, 3.0);
@@ -79,6 +80,7 @@ namespace session_cpp {
         MINI_CHECK(result_div[0] == 5.0 && result_div[1] == 10.0 && result_div[2] == 15.0);
         MINI_CHECK(result_add[0] == 11.0 && result_add[1] == 21.0 && result_add[2] == 31.0);
         MINI_CHECK(diff_point[0] == 9.0 && diff_point[1] == 19.0 && diff_point[2] == 29.0);
+        MINI_CHECK(diff_vector[0] == 9.0 && diff_vector[1] == 18.0 && diff_vector[2] == 27.0);
         MINI_CHECK(psum[0] == 5.0 && psum[1] == 7.0 && psum[2] == 9.0);
         MINI_CHECK(pdif[0] == 3.0 && pdif[1] == 3.0 && pdif[2] == 3.0);
     }
@@ -100,7 +102,7 @@ namespace session_cpp {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
-        Point p(1.5, 2.5, 3.5);
+        Point p(1.567, 2.567, 3.567);
         p.name = "test_point";
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
@@ -117,6 +119,7 @@ namespace session_cpp {
         Point loaded = Point::file_json_load(filename);
 
         MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded.guid() == p.guid());
         MINI_CHECK(loaded[0] == p[0]);
         MINI_CHECK(loaded[1] == p[1]);
         MINI_CHECK(loaded[2] == p[2]);
@@ -132,7 +135,7 @@ namespace session_cpp {
         // uncomment #include "point.h"
         // uncomment #include "color.h"
 
-        Point p(1.5, 2.5, 3.5);
+        Point p(1.567, 2.567, 3.567);
         p.name = "test_point";
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
@@ -142,6 +145,7 @@ namespace session_cpp {
         Point loaded = Point::pb_load(filename);
 
         MINI_CHECK(loaded.name == p.name);
+        MINI_CHECK(loaded.guid() == p.guid());
         MINI_CHECK(loaded[0] == p[0]);
         MINI_CHECK(loaded[1] == p[1]);
         MINI_CHECK(loaded[2] == p[2]);
@@ -195,6 +199,34 @@ namespace session_cpp {
         double d = Point::squared_distance(p0, p1);
 
         MINI_CHECK(TOLERANCE.is_close(d, 14.0));
+    }
+
+    MINI_TEST("Point", "Interpolate") {
+        // uncomment #include "point.h"
+
+        Point a(0.0, 0.0, 0.0);
+        Point b(10.0, 0.0, 0.0);
+        std::vector<Point> pts0 = Point::interpolate(a, b, 3, 0);
+        std::vector<Point> pts1 = Point::interpolate(a, b, 3, 1);
+        std::vector<Point> pts2 = Point::interpolate(a, b, 3, 2);
+
+        MINI_CHECK(pts0.size() == 3 && pts0[0][0] == 2.5 && pts0[2][0] == 7.5);
+        MINI_CHECK(pts1.size() == 5 && pts1[0][0] == 0.0 && pts1[4][0] == 10.0);
+        MINI_CHECK(pts2.size() == 4 && pts2[0][0] == 0.0 && pts2[3][0] == 7.5);
+    }
+
+    MINI_TEST("Point", "Lerp") {
+        // uncomment #include "point.h"
+
+        Point a(0.0, 0.0, 0.0);
+        Point b(10.0, 20.0, 30.0);
+        Point mid = Point::lerp(a, b, 0.5);
+        Point start = Point::lerp(a, b, 0.0);
+        Point end = Point::lerp(a, b, 1.0);
+
+        MINI_CHECK(mid[0] == 5.0 && mid[1] == 10.0 && mid[2] == 15.0);
+        MINI_CHECK(start[0] == 0.0 && start[1] == 0.0 && start[2] == 0.0);
+        MINI_CHECK(end[0] == 10.0 && end[1] == 20.0 && end[2] == 30.0);
     }
 
     MINI_TEST("Point", "Area") {

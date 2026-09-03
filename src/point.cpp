@@ -55,23 +55,22 @@ Point Point::transformed(const Xform& xform) const {
 
 /// Convert to JSON-serializable object (alphabetical order to match Rust)
 nlohmann::ordered_json Point::jsondump() const {
-  auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
   nlohmann::ordered_json data;
   data["guid"] = guid();
   data["name"] = name;
   data["pointcolor"] = pointcolor.jsondump();
   data["type"] = "Point";
   data["width"] = width;
-  data["x"] = clean_float(_x);
-  data["y"] = clean_float(_y);
-  data["z"] = clean_float(_z);
+  data["x"] = _x;
+  data["y"] = _y;
+  data["z"] = _z;
   return data;
 }
 
 /// Create point from JSON data
 Point Point::jsonload(const nlohmann::json &data) {
   Point point(data["x"], data["y"], data["z"]);
-  point.guid() = data["guid"];
+  point._guid = data["guid"];
   point.name = data["name"];
   point.pointcolor = Color::jsonload(data["pointcolor"]);
   point.width = data["width"];
@@ -128,7 +127,7 @@ Point Point::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
   
   Point point(proto.x(), proto.y(), proto.z());
-  point.guid() = proto.guid();
+  point._guid = proto.guid();
   point.name = proto.name();
   point.width = proto.width();
   
@@ -369,15 +368,11 @@ Point Point::lerp(const Point& a, const Point& b, double t) {
 
 std::vector<Point> Point::interpolate(const Point& from, const Point& to, int steps, int kind) {
     std::vector<Point> pts;
+    pts.reserve(steps > 0 ? steps + 2 : 2);
     if (kind == 1 || kind == 2)
         pts.push_back(from);
-    for (int i = 1; i <= steps; ++i) {
-        double t = static_cast<double>(i) / static_cast<double>(steps + 1);
-        pts.emplace_back(
-            from[0] + t * (to[0] - from[0]),
-            from[1] + t * (to[1] - from[1]),
-            from[2] + t * (to[2] - from[2]));
-    }
+    for (int i = 1; i <= steps; ++i)
+        pts.push_back(lerp(from, to, static_cast<double>(i) / static_cast<double>(steps + 1)));
     if (kind == 1)
         pts.push_back(to);
     return pts;
