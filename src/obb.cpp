@@ -527,15 +527,16 @@ bool OBB::collides_with_naive(const OBB& other) const {
 }
 
 nlohmann::ordered_json OBB::jsondump() const {
+    // Alphabetical order to match Rust's serde_json
     return {
-        {"type", "OBB"},
         {"center", center.jsondump()},
+        {"guid", guid()},
+        {"half_size", half_size.jsondump()},
+        {"name", name},
+        {"type", "OBB"},
         {"x_axis", x_axis.jsondump()},
         {"y_axis", y_axis.jsondump()},
-        {"z_axis", z_axis.jsondump()},
-        {"half_size", half_size.jsondump()},
-        {"guid", guid()},
-        {"name", name}
+        {"z_axis", z_axis.jsondump()}
     };
 }
 
