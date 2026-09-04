@@ -421,9 +421,9 @@ std::vector<std::array<int,3>> Delaunay2D::get_triangles() const {
 
 } // anonymous namespace
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Constructors
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 NurbsSurfaceTrimmed::NurbsSurfaceTrimmed() {}
 
@@ -460,9 +460,9 @@ void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
     m_inner_loops = src.m_inner_loops;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Static Factory Methods
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create(const NurbsSurface& surface, const NurbsCurve& outer_loop) {
     NurbsSurfaceTrimmed ts;
@@ -1109,9 +1109,9 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     return result;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Accessors
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 NurbsSurface NurbsSurfaceTrimmed::surface() const { return m_surface; }
 NurbsCurve NurbsSurfaceTrimmed::get_outer_loop() const { return m_outer_loop; }
@@ -1119,9 +1119,9 @@ void NurbsSurfaceTrimmed::set_outer_loop(const NurbsCurve& loop) { m_outer_loop 
 bool NurbsSurfaceTrimmed::is_trimmed() const { return m_outer_loop.is_valid(); }
 bool NurbsSurfaceTrimmed::is_valid() const { return m_surface.is_valid(); }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Inner Loops
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 void NurbsSurfaceTrimmed::add_inner_loop(const NurbsCurve& loop_2d) {
     m_inner_loops.push_back(loop_2d);
@@ -1155,16 +1155,16 @@ NurbsCurve NurbsSurfaceTrimmed::get_inner_loop(int index) const { return m_inner
 int NurbsSurfaceTrimmed::inner_loop_count() const { return static_cast<int>(m_inner_loops.size()); }
 void NurbsSurfaceTrimmed::clear_inner_loops() { m_inner_loops.clear(); }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Evaluation
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 Point NurbsSurfaceTrimmed::point_at(double u, double v) const { return m_surface.point_at(u, v); }
 Vector NurbsSurfaceTrimmed::normal_at(double u, double v) const { return m_surface.normal_at(u, v); }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Meshing
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 Mesh NurbsSurfaceTrimmed::mesh() const { return mesh_q(20.0, 0.005); }
 
@@ -1735,9 +1735,9 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const Nurb
     return out;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Transformation
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 void NurbsSurfaceTrimmed::transform(const Xform& xform) {
     m_surface.transform(xform);
@@ -1749,9 +1749,9 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::transformed(const Xform& xform) const {
     return ts;
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // JSON Serialization
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json NurbsSurfaceTrimmed::jsondump() const {
     nlohmann::ordered_json j;
@@ -1801,9 +1801,9 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::file_json_load(const std::string& filen
     return jsonload(data);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Protobuf Serialization
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::string NurbsSurfaceTrimmed::pb_dumps() const {
     session_proto::NurbsSurfaceTrimmed proto;
@@ -1892,9 +1892,9 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_load(const std::string& filename) {
     return pb_loads(data);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // String Representation
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::string NurbsSurfaceTrimmed::str() const {
     return fmt::format("NurbsSurfaceTrimmed(name={}, trimmed={}, holes={})",

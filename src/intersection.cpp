@@ -916,9 +916,9 @@ std::vector<Point> Intersection::ray_mesh_bvh(
     return result;
 }
 
-//==========================================================================================
+// ═══════════════════════════════════════════════════════════════════════════
 // NURBS Curve Intersection Helper Functions
-//==========================================================================================
+// ═══════════════════════════════════════════════════════════════════════════
 
 namespace {
     double curve_signed_distance_to_plane(const Point& pt, const Plane& plane) {
@@ -988,9 +988,9 @@ namespace {
     }
 }
 
-//==========================================================================================
+// ═══════════════════════════════════════════════════════════════════════════
 // NURBS Curve Intersection Methods
-//==========================================================================================
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::vector<double> Intersection::curve_plane(
     const NurbsCurve& curve,
@@ -1467,7 +1467,7 @@ std::pair<double, double> Intersection::curve_closest_point(
     return Closest::curve_point(curve, test_point, t0, t1);
 }
 
-//==========================================================================================
+// ═══════════════════════════════════════════════════════════════════════════
 // NURBS Surface Intersection Methods (Curve Tracing)
 //
 // Algorithm: predictor-corrector marching on the implicit function
@@ -1481,7 +1481,7 @@ std::pair<double, double> Intersection::curve_closest_point(
 // References:
 //   OpenCASCADE IntPatch_ImpPrmIntersection / IWalking
 //   Barnhill et al. "Surface/Surface Intersection" CAGD 1987
-//==========================================================================================
+// ═══════════════════════════════════════════════════════════════════════════
 
 namespace {
 

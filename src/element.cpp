@@ -5,9 +5,9 @@
 
 namespace session_cpp {
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Element
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 Element::Element(const std::string& name) : name(name) {}
 
@@ -181,9 +181,9 @@ std::string Element::repr() const {
     return fmt::format("Element({}, {}, {})", guid(), name, geometry_type_name());
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Element - Computation
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 OBB Element::compute_aabb() {
     auto geo = session_geometry(Xform::identity());
@@ -335,9 +335,9 @@ OBB Element::obb_from_geometry(const ElementGeometry& geo) {
     return OBB::from_point(Point(0, 0, 0), inflate);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Element - JSON
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// `element_data` is opaque BYTES and JSON has no byte type, so it travels as hex. Hex rather
 /// than base64 because it is a handful of lines in each of the three languages and needs no
@@ -436,9 +436,9 @@ Element Element::file_json_load(const std::string& path) {
     return jsonload(nlohmann::json::parse(file));
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Element - Protobuf
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::string Element::pb_dumps() const {
     session_proto::Element proto;
@@ -543,9 +543,9 @@ Element Element::pb_load(const std::string& path) {
     return pb_loads(data);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 // Element - polymorphic registry
-///////////////////////////////////////////////////////////////////////////////////////////
+// ═══════════════════════════════════════════════════════════════════════════
 
 // Function-local static, not a namespace-scope one: a downstream package registers from a
 // static initializer, and a namespace-scope map might not be constructed yet when it runs.
@@ -615,6 +615,5 @@ std::shared_ptr<Element> Element::pb_loads_polymorphic(const std::string& data) 
 
 std::ostream& operator<<(std::ostream& os, const Element& e) { return os << e.str(); }
 
-///////////////////////////////////////////////////////////////////////////////////////////
 
 } // namespace session_cpp

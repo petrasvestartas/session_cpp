@@ -36,9 +36,9 @@ public:
 
 
 public:
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Static Factory Methods
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Create trimmed surface from a NURBS surface and a 2D outer boundary loop.
     /// The outer_loop must be a closed curve in the surface's UV parameter space.
@@ -56,9 +56,9 @@ public:
     /// that do not reach the border or another cutter are discarded.
     static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Constructors & Destructor
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     NurbsSurfaceTrimmed();
     NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other);
@@ -78,9 +78,9 @@ public:
     bool operator!=(const NurbsSurfaceTrimmed& other) const;
     ~NurbsSurfaceTrimmed();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Get the underlying NURBS surface.
     NurbsSurface surface() const;
@@ -97,9 +97,9 @@ public:
     /// Return true if the surface, outer loop, and all inner loops are valid.
     bool is_valid() const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Inner Loops
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Add a pre-built 2D hole loop directly in UV parameter space.
     void add_inner_loop(const NurbsCurve& loop_2d);
@@ -119,9 +119,9 @@ public:
     /// Remove all inner loops.
     void clear_inner_loops();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Evaluate a 3D point on the underlying surface at parameters (u, v).
     Point point_at(double u, double v) const;
@@ -129,9 +129,9 @@ public:
     /// Evaluate the surface normal at parameters (u, v).
     Vector normal_at(double u, double v) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Generate a triangle mesh respecting outer and inner trim loops.
     /// Uses adaptive subdivision based on surface curvature and chord-height tolerance.
@@ -158,9 +158,9 @@ public:
     /// combinations). Each region comes back as a first-class multi-plane trimmed surface.
     static std::vector<NurbsSurfaceTrimmed> split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Apply a transformation to the surface geometry (in-place).
     void transform(const Xform& xform);
@@ -168,9 +168,9 @@ public:
     /// Return a copy with the transformation applied.
     NurbsSurfaceTrimmed transformed(const Xform& xform) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // JSON Serialization
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Convert to JSON object with fields in alphabetical order.
     nlohmann::ordered_json jsondump() const;
@@ -190,9 +190,9 @@ public:
     /// Deserialize from a JSON string.
     static NurbsSurfaceTrimmed file_json_loads(const std::string& json_string);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf Serialization
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Serialize to a protobuf binary string.
     std::string pb_dumps() const;
@@ -206,9 +206,9 @@ public:
     /// Read from a protobuf file.
     static NurbsSurfaceTrimmed pb_load(const std::string& filename);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // String Representation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Simple string (type, surface degree, trim loop counts).
     std::string str() const;
@@ -222,9 +222,9 @@ public:
 private:
     mutable std::string _guid;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Internal Helpers
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     void deep_copy_from(const NurbsSurfaceTrimmed& src);
 };

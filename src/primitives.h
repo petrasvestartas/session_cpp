@@ -19,9 +19,9 @@ namespace session_cpp {
 class Primitives {
 public:
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Mesh primitives
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Create an arrow mesh (cylinder body + cone head) oriented along a line.
     /// Body is 80% of line length, cone head is 20%. Cone radius is 1.5× body radius.
@@ -48,9 +48,9 @@ public:
     /// Create an icosahedron mesh (20 triangular faces) with given edge length.
     static Mesh icosahedron(double edge = 2.0);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Curve primitives
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
 
     /// Create a full circle as a rational quadratic NURBS (9 CVs, degree 2).
@@ -78,9 +78,9 @@ public:
                                            CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord,
                                            CurveInterpStyle end_condition = CurveInterpStyle::Rhino);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Surface primitives
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Create a NURBS cylinder surface (rational, degree 2x1).
     static NurbsSurface cylinder_surface(double cx, double cy, double cz, double radius, double height);
@@ -97,9 +97,9 @@ public:
     /// Create a quad sphere from 6 rational biquadratic Bézier patches (cube projection).
     static std::vector<NurbsSurface> quad_sphere(double cx, double cy, double cz, double radius);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Surface factory methods
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Create a ruled (linear loft) surface between two curves.
     static NurbsSurface create_ruled(const NurbsCurve& curveA, const NurbsCurve& curveB);
@@ -133,9 +133,9 @@ public:
     /// Tileable: edges match for seamless stacking in both x and y.
     static NurbsSurface wave_surface(double size, double amplitude);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Surface-to-mesh subdivision
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Create a quad mesh by sampling a surface on a regular u×v grid.
     static Mesh quad_mesh(const NurbsSurface& surface, int u_count, int v_count);

@@ -110,9 +110,9 @@ public:
     std::vector<BRepSolid> m_solids;
 
 public:
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Static Factory Methods
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Axis-aligned box centered at the origin: 6 faces, 12 edges, 8 vertices, one solid.
     static BRep create_box(double sx, double sy, double sz);
@@ -141,9 +141,9 @@ public:
     /// One planar face per closed curve with optional hole curves (inner wires). Free faces.
     static BRep from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::vector<std::vector<NurbsCurve>>& holes = {});
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Constructors & Destructor
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     BRep();
     BRep(const BRep& other);
@@ -152,9 +152,9 @@ public:
     bool operator!=(const BRep& other) const;
     ~BRep();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     int vertex_count() const;
     int edge_count() const;
@@ -199,9 +199,9 @@ public:
     /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only.
     double volume() const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Building (BRep_Builder)
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     int add_surface(const NurbsSurface& srf);
     int add_curve_3d(const NurbsCurve& crv);
@@ -229,9 +229,9 @@ public:
     /// MakeSolid + Add(shells).
     int add_solid(const std::vector<BRepRef>& shells);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// One welded triangle mesh of every face, wound to the face's outward orientation.
     Mesh mesh() const;
@@ -242,9 +242,9 @@ public:
     /// As face_meshes with a tessellation-quality override for the grid-meshed faces.
     std::vector<Mesh> face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Surface point of a face at (u, v).
     Point point_at(int face_index, double u, double v) const;
@@ -252,9 +252,9 @@ public:
     /// Surface normal of a face at (u, v), flipped when the face is Reversed in its shell.
     Vector normal_at(int face_index, double u, double v) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Transform surfaces, 3D curves and vertices in place (pcurves are parametric, untouched).
     void transform(const Xform& xform);
@@ -262,9 +262,9 @@ public:
     /// Return a transformed copy.
     BRep transformed(const Xform& xform) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // JSON Serialization
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     nlohmann::ordered_json jsondump() const;
     static BRep jsonload(const nlohmann::json& data);
@@ -273,18 +273,18 @@ public:
     std::string file_json_dumps() const;
     static BRep file_json_loads(const std::string& json_string);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf Serialization
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     std::string pb_dumps() const;
     static BRep pb_loads(const std::string& data);
     void pb_dump(const std::string& filename) const;
     static BRep pb_load(const std::string& filename);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // String Representation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     std::string str() const;
     std::string repr() const;

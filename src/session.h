@@ -97,9 +97,9 @@ public:
   /// Convert session to string representation
   std::string str() const;
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // Geometry Management
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief Get a geometry object by GUID with type safety.
@@ -130,6 +130,30 @@ public:
       return nullptr;
     auto ptr = std::get_if<std::shared_ptr<T>>(&it->second);
     return ptr ? *ptr : nullptr;
+  }
+
+  /**
+   * @brief Select objects of one type, grouped by the top-level nodes of the tree.
+   * @tparam T The geometry type to select (Polyline, Mesh, etc.)
+   * @return One vector per direct child of the root, in tree order, each holding that
+   * subtree's objects of type T in depth-first order. A child holding no object of type T
+   * contributes no vector, so the result has no empty entries.
+   */
+  template <typename T> std::vector<std::vector<T>> select_by_type() const {
+    std::vector<std::vector<T>> groups;
+    std::shared_ptr<TreeNode> root = tree.root();
+    if (!root)
+      return groups;
+    for (TreeNode *group : root->children()) {
+      std::vector<T> items;
+      for (TreeNode *node : group->descendants()) {
+        if (std::shared_ptr<const T> object = get_object<T>(node->name))
+          items.push_back(*object);
+      }
+      if (!items.empty())
+        groups.push_back(std::move(items));
+    }
+    return groups;
   }
 
   /**
@@ -229,9 +253,9 @@ public:
    */
   std::vector<std::string> order() const;
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // Xforms - the one place a transformation is stored
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /// Sets the LOCAL transform of an object, relative to its tree parent.
   void set_xform(const std::string &guid, const Xform &xform);
@@ -253,9 +277,9 @@ public:
   /// is quadratic over a session.
   std::unordered_map<std::string, Xform> world_xforms() const;
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // Tree Operations
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief Add a parent-child relationship in the tree.
@@ -273,9 +297,9 @@ public:
    */
   std::vector<std::string> get_children(const std::string &obj_guid) const;
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // Graph Operations
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief Add a relationship edge in the graph.
@@ -294,9 +318,9 @@ public:
    */
   std::vector<std::string> get_neighbours(const std::string &obj_guid);
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // SpatialBVH Collision Detection
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief Bounding box of an object in WORLD placement, inflated by tolerance.
@@ -320,9 +344,9 @@ public:
    */
   std::vector<std::pair<std::string, std::string>> get_collisions();
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // Ray Intersection
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief Result of a ray intersection with geometry.
@@ -348,9 +372,9 @@ public:
    */
   std::vector<RayHit> ray_cast(const Point& origin, const Vector& direction, double tolerance = 1e-3);
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // Transformed Geometry
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief All geometry with its hierarchical placement BAKED into the coordinates.
@@ -364,9 +388,9 @@ public:
    */
   Objects get_geometry() const;
 
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
   // JSON Serialization
-  ///////////////////////////////////////////////////////////////////////////////////////////
+  // ═══════════════════════════════════════════════════════════════════════════
 
   /**
    * @brief Serializes the Session instance to JSON.

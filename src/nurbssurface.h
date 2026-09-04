@@ -47,9 +47,9 @@ public:
     mutable Mesh m_mesh;
 
 public:
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Static Factory Method
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Build surface from a flat list of 3D control points in row-major order
     /// (u varies slowest, v varies fastest). Allocates nurbsknot vectors as clamped
@@ -75,9 +75,9 @@ public:
         int degree_u, int degree_v,
         bool periodic_u = false, bool periodic_v = false);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Constructors & Destructor
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Default constructor. Creates an empty invalid surface with m_dim=0,
     /// zero orders, zero CV counts, and no nurbsknot/CV storage allocated.
@@ -118,9 +118,9 @@ public:
 
     ~NurbsSurface();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Initialization
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Zero all member fields: m_dim=0, orders=0, CV counts=0.
     /// Clears nurbsknot and CV vectors. Does not free — vectors handle own memory.
@@ -149,9 +149,9 @@ public:
     /// After this call, is_valid() returns false.
     void destroy();
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Boolean Queries
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Checks structural consistency: orders >= 2, cv_count >= order in both
     /// dirs, nurbsknot vectors have correct length (cv_count + order - 2), nurbsknots
@@ -199,9 +199,9 @@ public:
                       bool ignore_parameterization,
                       double tolerance = Tolerance::ZERO_TOLERANCE) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Attributes
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Surface dimension — always 3 for 3D geometry.
     /// Rational surfaces store dim+1 values per CV (x*w, y*w, z*w, w).
@@ -237,9 +237,9 @@ public:
     /// interior nurbsknot intervals.
     int span_count(int dir) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Control Vertex Access
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Raw pointer to the start of CV[i][j] data in m_cv. Points to dim
     /// doubles (non-rational) or dim+1 doubles (rational, stored as
@@ -276,9 +276,9 @@ public:
     /// No-op for non-rational surfaces.
     bool set_weight(int i, int j, double weight);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // NurbsKnot Access
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Get the nurbsknot value at the given index in direction dir.
     /// Index must be in [0, nurbsknot_count(dir)-1].
@@ -303,9 +303,9 @@ public:
     /// Increases cv_count(dir) by nurbsknot_multiplicity.
     bool insert_nurbsknot(int dir, double nurbsknot_value, int nurbsknot_multiplicity = 1);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Domain
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Returns the parameter interval [t0, t1] where the surface is defined
     /// in the given direction. Determined by the first/last "active" nurbsknots:
@@ -322,9 +322,9 @@ public:
     std::vector<double> get_span_vector(int dir) const;
 
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Division
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     
     /// Evaluate the surface at a regular nu x nv grid of parameters spanning
     /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])
@@ -339,9 +339,9 @@ public:
         divide_by_count_planes(int nu, int nv) const;
 
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Evaluate surface point at parameters (u,v) using de Boor's algorithm.
     /// Finds nurbsknot span in each direction, computes basis functions, and sums
@@ -400,9 +400,9 @@ public:
     /// Rational surfaces yield their exact rational iso-curve (homogeneous blend).
     NurbsCurve iso_curve(int dir, double c) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Modification
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Reverse parameterization in dir. Flips the order of CVs and mirrors
     /// the nurbsknot vector. Surface shape is unchanged but parameter direction
@@ -442,9 +442,9 @@ public:
     /// No-op if current degree >= desired_degree.
     bool increase_degree(int dir, int desired_degree);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Apply the given 4x4 transformation matrix to all CVs in-place.
     /// Supports translation, rotation, scaling, and projection.
@@ -455,9 +455,9 @@ public:
     /// The original surface is not modified. Copy gets new guid.
     NurbsSurface transformed(const Xform& xform) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Geometric Operations (Additional)
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Split this surface by a plane into trimmed faces. Computes the
     /// surface/plane intersection with UV pcurves and splits the UV domain
@@ -483,9 +483,9 @@ public:
     /// Split this surface by every face of a BRep (planar faces via fast plane path).
     std::vector<NurbsSurfaceTrimmed> split_by_brep(const BRep& brep, double tolerance = 0.0) const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Tessellate using hierarchical quadtree adaptive subdivision in UV space.
     /// Refines cells exceeding angle/edge/chord thresholds up to depth 8.
@@ -495,9 +495,9 @@ public:
     /// Primary meshing entry point. Uses mesh_grid strategy.
     Mesh mesh() const;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Serialization
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Serialize to JSON with alphabetically ordered keys. Includes all NURBS
     /// data (dimension, orders, nurbsknots, CVs, rationality) plus metadata
@@ -533,9 +533,9 @@ public:
     /// Read protobuf binary from file.
     static NurbsSurface pb_load(const std::string& filename);
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // String Representation
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Short summary: "NurbsSurface(deg 3x3, cv 10x8)".
     /// Used by operator<< for stream output.
@@ -551,9 +551,9 @@ public:
 private:
     mutable std::string _guid;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
     // Internal
-    ///////////////////////////////////////////////////////////////////////////////////////////
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Tessellate using adaptive UV-parameter grid. Called by mesh().
     Mesh mesh_grid() const;
