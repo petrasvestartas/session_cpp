@@ -409,9 +409,8 @@ void OBB::union_with(const OBB& other) {
 }
 
 bool OBB::separating_plane_exists(const Vector& relative_position, const Vector& axis, const OBB& box1, const OBB& box2) {
-    // Fallback (unused by optimized path, but kept for API completeness)
-    Vector rp = relative_position;
-    double dot_rp = std::abs(rp.dot(axis));
+    // The SAT axis test behind collides_with_naive; collides_with_rtcd inlines its own.
+    double dot_rp = std::abs(relative_position.dot(axis));
     Vector v1 = box1.x_axis * box1.half_size[0];
     Vector v2 = box1.y_axis * box1.half_size[1];
     Vector v3 = box1.z_axis * box1.half_size[2];
@@ -499,12 +498,10 @@ bool OBB::collides_with_rtcd(const OBB& other) const {
 }
 
 bool OBB::collides_with_naive(const OBB& other) const {
-    Point center_pt(center[0], center[1], center[2]);
-    Point other_center_pt(other.center[0], other.center[1], other.center[2]);
-    Vector relative_position = Vector::from_points(center_pt, other_center_pt);
+    Vector relative_position(other.center[0] - center[0], other.center[1] - center[1], other.center[2] - center[2]);
 
-    const Vector x1 = x_axis, y1 = y_axis, z1 = z_axis;
-    const Vector x2 = other.x_axis, y2 = other.y_axis, z2 = other.z_axis;
+    const Vector& x1 = x_axis; const Vector& y1 = y_axis; const Vector& z1 = z_axis;
+    const Vector& x2 = other.x_axis; const Vector& y2 = other.y_axis; const Vector& z2 = other.z_axis;
 
     if (separating_plane_exists(relative_position, x1, *this, other)) return false;
     if (separating_plane_exists(relative_position, y1, *this, other)) return false;
@@ -527,15 +524,16 @@ bool OBB::collides_with_naive(const OBB& other) const {
 }
 
 nlohmann::ordered_json OBB::jsondump() const {
+    // Alphabetical order to match Rust's serde_json
     return {
-        {"type", "OBB"},
         {"center", center.jsondump()},
+        {"guid", guid()},
+        {"half_size", half_size.jsondump()},
+        {"name", name},
+        {"type", "OBB"},
         {"x_axis", x_axis.jsondump()},
         {"y_axis", y_axis.jsondump()},
-        {"z_axis", z_axis.jsondump()},
-        {"half_size", half_size.jsondump()},
-        {"guid", guid()},
-        {"name", name}
+        {"z_axis", z_axis.jsondump()}
     };
 }
 

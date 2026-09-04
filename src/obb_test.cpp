@@ -211,6 +211,12 @@ MINI_TEST("OBB", "Accessors") {
     MINI_CHECK(b.get_corners().size() == 8);
     MINI_CHECK(b.get_edges().size() == 12);
 
+    double c45 = std::sqrt(2.0) * 0.5;
+    OBB rotated(Point(0.0, 0.0, 0.0), Vector(c45, c45, 0.0), Vector(-c45, c45, 0.0), Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0));
+
+    MINI_CHECK(TOLERANCE.is_close(rotated.min_point()[0], -std::sqrt(2.0)));
+    MINI_CHECK(TOLERANCE.is_close(rotated.max_point()[1], std::sqrt(2.0)));
+
     OBB c = OBB::from_point(Point(5.0, 2.0, 3.0), 1.0);
     b.union_with(c);
 
@@ -285,6 +291,17 @@ MINI_TEST("OBB", "From Geometry") {
     }), 0.0);
 
     MINI_CHECK(bb_ns.is_valid());
+
+    Plane plane = Plane::xy_plane();
+    OBB bb_pl_plane = OBB::from_polyline(Polyline({
+        Point(0.0, 0.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+        Point(4.0, 4.0, 4.0),
+    }), plane, 0.0);
+    OBB bb_mesh_plane = OBB::from_mesh(Primitives::cube(2.0), plane, 0.0);
+
+    MINI_CHECK(TOLERANCE.is_close(bb_pl_plane.half_size[0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(bb_mesh_plane.volume(), 8.0));
 }
 
 MINI_TEST("OBB", "From Plane") {
@@ -309,6 +326,21 @@ MINI_TEST("OBB", "From Plane") {
     MINI_CHECK(TOLERANCE.is_close(bb.half_size[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(bb.half_size[1], 1.5));
     MINI_CHECK(TOLERANCE.is_close(bb.x_axis[0], 1.0));
+
+    // a 2x4x6 box in a 45 degree frame: the inverse frame swaps the first two half sizes
+    double c45 = std::sqrt(2.0) * 0.5;
+    Plane rotated(Point(10.0, 0.0, 0.0), Vector(c45, c45, 0.0), Vector(-c45, c45, 0.0));
+    std::vector<Point> box_pts;
+    for (double u : {0.0, 2.0})
+        for (double v : {0.0, 4.0})
+            for (double w : {0.0, 6.0})
+                box_pts.push_back(Point(10.0 + (u - v) * c45, (u + v) * c45, w));
+    OBB rb = OBB::from_points(box_pts, rotated, 0.0);
+
+    MINI_CHECK(TOLERANCE.is_close(rb.half_size[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(rb.half_size[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(rb.center[0], 10.0 - c45));
+    MINI_CHECK(TOLERANCE.is_close(rb.center[1], 3.0 * c45));
 }
 
 MINI_TEST("OBB", "Two Rectangles") {
