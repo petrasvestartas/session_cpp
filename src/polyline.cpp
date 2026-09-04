@@ -64,6 +64,15 @@ Polyline Polyline::from_sides(int sides, double radius, bool close) {
     return Polyline(pts);
 }
 
+Polyline Polyline::rectangle(const Plane& plane, double width, double height, bool close) {
+    Point o = plane.origin();
+    Vector x = plane.x_axis() * width;
+    Vector y = plane.y_axis() * height;
+    std::vector<Point> pts{o, o + x, o + x + y, o + y};
+    if (close) pts.push_back(pts.front());
+    return Polyline(pts);
+}
+
 Polyline Polyline::from_coords(const std::vector<double>& coords) {
     Polyline pl;
     pl._coords = coords;
