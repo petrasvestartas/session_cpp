@@ -71,8 +71,9 @@ public:
     /// Create a regular polygon with given number of sides and radius.
     static Polyline from_sides(int sides, double radius = 1.0, bool close = false);
 
-    /// Create a rectangle with its corner at the plane origin, sides along x_axis and y_axis.
-    static Polyline rectangle(const Plane& plane, double width, double height, bool close = true);
+    /// Create a rectangle with its corner at origin, sides along x_axis and y_axis.
+    static Polyline rectangle(const Point& origin, const Vector& x_axis, const Vector& y_axis,
+                              double width, double height, bool close = true);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Core Methods (str, repr, duplicate, eq)

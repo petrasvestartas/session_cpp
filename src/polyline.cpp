@@ -64,7 +64,9 @@ Polyline Polyline::from_sides(int sides, double radius, bool close) {
     return Polyline(pts);
 }
 
-Polyline Polyline::rectangle(const Plane& plane, double width, double height, bool close) {
+Polyline Polyline::rectangle(const Point& origin, const Vector& x_axis, const Vector& y_axis,
+                             double width, double height, bool close) {
+    Plane plane(origin, x_axis, y_axis);
     Point o = plane.origin();
     Vector x = plane.x_axis() * width;
     Vector y = plane.y_axis() * height;

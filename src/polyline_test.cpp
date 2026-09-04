@@ -131,7 +131,7 @@ MINI_TEST("Polyline", "From Sides") {
 }
 
 MINI_TEST("Polyline", "Rectangle") {
-    Polyline r = Polyline::rectangle(Plane::xy_plane(), 2.0, 1.0, true);
+    Polyline r = Polyline::rectangle(Point(0, 0, 0), Vector::x_axis(), Vector::y_axis(), 2.0, 1.0, true);
 
     MINI_CHECK(r.point_count() == 5);
     MINI_CHECK(r.is_closed());
