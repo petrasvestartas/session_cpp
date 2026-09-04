@@ -86,6 +86,30 @@ MINI_TEST("Session", "Add Polyline") {
     MINI_CHECK(session.lookup.count(pl->guid()) == 1);
 }
 
+MINI_TEST("Session", "Select By Type") {
+    // uncomment #include "session.h"
+    // uncomment #include "polyline.h"
+
+    Session session;
+    auto g0 = session.add_group("g0");
+    auto g1 = session.add_group("g1");
+    auto g2 = session.add_group("g2");
+
+    session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{Point(0,0,0), Point(1,0,0)}), g0);
+    session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{Point(0,1,0), Point(1,1,0)}), g0);
+    session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{Point(0,2,0), Point(1,2,0)}), g1);
+    session.add_point(std::make_shared<Point>(9, 9, 9), g2);
+
+    std::vector<std::vector<Polyline>> groups = session.select_by_type<Polyline>();
+
+    MINI_CHECK(groups.size() == 2);
+    MINI_CHECK(groups[0].size() == 2);
+    MINI_CHECK(groups[1].size() == 1);
+    MINI_CHECK(TOLERANCE.is_close(groups[1][0].get_point(0)[1], 2.0));
+
+    MINI_CHECK(session.select_by_type<Mesh>().empty());
+}
+
 MINI_TEST("Session", "Add Pointcloud") {
     // uncomment #include "session.h"
     // uncomment #include "pointcloud.h"
