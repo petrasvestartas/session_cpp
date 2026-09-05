@@ -524,6 +524,12 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(div_pts[8], Point(3.671428983538974, 0.598213507250245, 0.000000000000000)));
         MINI_CHECK(TOLERANCE.is_point_close(div_pts[9], Point(4.000000000000000, 0.000000000000000, 0.000000000000000)));
 
+        // Dividing a polyline is an arc-length division, not a division of the parameter
+        // range: the middle of a 1 + 9 long polyline is at x = 5, not at its middle vertex.
+        NurbsCurve poly = NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(1, 0, 0), Point(10, 0, 0)});
+        auto [poly_pts, poly_params] = poly.divide_by_count(3, true);
+        MINI_CHECK(std::abs(poly_pts[1][0] - 5.0) < 1e-6);
+
         // divide_by_length
         auto [len_pts, len_params] = curve.divide_by_length(0.5);
 
