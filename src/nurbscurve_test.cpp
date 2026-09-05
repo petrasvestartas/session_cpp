@@ -887,6 +887,13 @@ namespace session_cpp {
 
         MINI_CHECK(loaded_proto_string == curve);
         MINI_CHECK(loaded == curve);
+
+        // The presentation fields ride along too: width survives the round trip.
+        NurbsCurve styled = curve;
+        styled.width = 2.5;
+        NurbsCurve loaded_styled = NurbsCurve::pb_loads(styled.pb_dumps());
+        MINI_CHECK(loaded_styled.width == 2.5);
+        MINI_CHECK(loaded_styled == styled);
     }
 
     MINI_TEST("NurbsCurve", "Curvature") {
