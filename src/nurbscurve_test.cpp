@@ -879,6 +879,8 @@ namespace session_cpp {
             double t = t0 + (t1 - t0) * i / 8.0;
             MINI_CHECK(std::abs(circle.curvature_at(t) - 1.0 / R) < 1e-6);
         }
+        // The exact rational circle integrates to its exact circumference.
+        MINI_CHECK(std::abs(circle.length() - 2.0 * Tolerance::PI * R) < 1e-9);
         // A straight line has zero curvature.
         std::vector<Point> line_pts = {Point(0, 0, 0), Point(1, 0, 0), Point(2, 0, 0), Point(3, 0, 0)};
         NurbsCurve line = NurbsCurve::create(false, 1, line_pts);
