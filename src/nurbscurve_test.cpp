@@ -300,6 +300,13 @@ namespace session_cpp {
         copy_curve.insert_nurbsknot(1.5, 1);
         MINI_CHECK(TOLERANCE.is_point_close(before_pt, copy_curve.point_at(1.5)));
 
+        // A repeated interior nurbsknot ends a span early: the length must still cover
+        // every span past it.
+        NurbsCurve kinked = curve;
+        double kinked_length = kinked.length();
+        kinked.insert_nurbsknot(1.5, 2);
+        MINI_CHECK(TOLERANCE.is_close(kinked.length(), kinked_length));
+
         // Useful for controlling curve by cv on lying on it
         double greville0 = curve.greville_abcissa(0);
         MINI_CHECK(TOLERANCE.is_close(greville0, 0.0));

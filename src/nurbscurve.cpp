@@ -1730,7 +1730,9 @@ double NurbsCurve::length(double /*tolerance*/) const {
     };
 
     double total = 0.0;
-    int n_spans = span_count();
+    // Count nurbsknot INTERVALS, not span_count(): a repeated interior nurbsknot makes
+    // span_count() smaller than the interval count, and the trailing spans go unintegrated.
+    int n_spans = m_cv_count - m_order + 1;
     const int SUBDIVISIONS = 4;
 
     for (int span = 0; span < n_spans; span++) {
