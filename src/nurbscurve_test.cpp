@@ -681,6 +681,9 @@ namespace session_cpp {
         auto [curve_left, curve_right] = curve.split(split_t);
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), curve_left.point_at_end()));
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), curve_right.point_at_start()));
+        // Each piece keeps the parameterization and the geometry of the original curve.
+        MINI_CHECK(TOLERANCE.is_point_close(curve_left.point_at_middle(),
+                                            curve.point_at((curve.domain_start() + split_t) * 0.5)));
 
         // Extend curve smoothly at both ends
         NurbsCurve curve_extended = curve;
