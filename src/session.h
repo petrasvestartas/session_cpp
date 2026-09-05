@@ -157,50 +157,70 @@ public:
   }
 
   /**
+   * Every add_* below SKIPS an object that is null or carries nothing to draw, and returns
+   * nullptr instead of a node: an empty point cloud, a polyline of fewer than two points, a
+   * mesh without faces, a curve with fewer than two control vertices, an element with no
+   * geometry. The session stays free of objects a viewer cannot render, and no caller has to
+   * test its geometry before handing it over.
+   */
+
+  /**
    * @brief Add a point to the session.
    * @param point Shared pointer to the point to add
-   * @return Shared pointer to the TreeNode created for this point
+   * @return Shared pointer to the TreeNode created for this point, nullptr if point is null
    */
   std::shared_ptr<TreeNode> add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a line to the session.
-   * @return Shared pointer to the TreeNode created for this line
+   * @return Shared pointer to the TreeNode created for this line, nullptr if line is null
    */
   std::shared_ptr<TreeNode> add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a plane to the session.
-   * @return Shared pointer to the TreeNode created for this plane
+   * @return Shared pointer to the TreeNode created for this plane, nullptr if plane is null
    */
   std::shared_ptr<TreeNode> add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a bounding box to the session.
-   * @return Shared pointer to the TreeNode created for this bounding box
+   * @return Shared pointer to the TreeNode created for this box, nullptr if bbox is null
    */
   std::shared_ptr<TreeNode> add_obb(std::shared_ptr<OBB> bbox);
 
   /**
    * @brief Add a polyline to the session.
-   * @return Shared pointer to the TreeNode created for this polyline
+   * @return Shared pointer to the TreeNode created for this polyline, nullptr if the polyline
+   * is null or has fewer than two points
    */
   std::shared_ptr<TreeNode> add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a point cloud to the session.
-   * @return Shared pointer to the TreeNode created for this point cloud
+   * @return Shared pointer to the TreeNode created for this cloud, nullptr if the cloud is
+   * null or holds no points
    */
   std::shared_ptr<TreeNode> add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
    * @brief Add a mesh to the session.
-   * @return Shared pointer to the TreeNode created for this mesh
+   * @return Shared pointer to the TreeNode created for this mesh, nullptr if the mesh is null
+   * or has no vertices or no faces
    */
   std::shared_ptr<TreeNode> add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent = nullptr);
+
+  /// Add a curve. Null, or fewer than two control vertices, adds nothing and returns nullptr.
   std::shared_ptr<TreeNode> add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve, std::shared_ptr<TreeNode> parent = nullptr);
+
+  /// Add a surface. Null, or no control vertices, adds nothing and returns nullptr.
   std::shared_ptr<TreeNode> add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface, std::shared_ptr<TreeNode> parent = nullptr);
+
+  /// Add a brep. Null, or no faces and no vertices, adds nothing and returns nullptr.
   std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent = nullptr);
+
+  /// Add an element. Only a null element adds nothing: an Element is a data record and is kept
+  /// even when it carries no geometry.
   std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent = nullptr);
 
   /**
@@ -211,7 +231,8 @@ public:
 
   /**
    * @brief Add a TreeNode to the tree hierarchy.
-   * @param node The TreeNode to add
+   * @param node The TreeNode to add; a null node is ignored, so passing an add_* result
+   * straight through works even when that add_* skipped its geometry
    * @param parent Optional parent TreeNode (defaults to root if not provided)
    */
   void add(std::shared_ptr<TreeNode> node,

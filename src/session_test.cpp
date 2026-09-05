@@ -193,6 +193,34 @@ MINI_TEST("Session", "Add Element") {
     MINI_CHECK(session.graph.has_node(plate->guid()));
 }
 
+MINI_TEST("Session", "Add Empty Geometry") {
+    // uncomment #include "session.h"
+
+    // Nothing to draw is never added: the caller does not test its geometry first.
+    Session session;
+    auto group = session.add_group("empty");
+
+    MINI_CHECK(session.add_point(nullptr, group) == nullptr);
+    MINI_CHECK(session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{Point(0,0,0)}), group) == nullptr);
+    MINI_CHECK(session.add_pointcloud(std::make_shared<PointCloud>(), group) == nullptr);
+    MINI_CHECK(session.add_mesh(std::make_shared<Mesh>(), group) == nullptr);
+    MINI_CHECK(session.add_nurbscurve(std::make_shared<NurbsCurve>(), group) == nullptr);
+    MINI_CHECK(session.add_nurbssurface(std::make_shared<NurbsSurface>(), group) == nullptr);
+    MINI_CHECK(session.add_brep(std::make_shared<BRep>(), group) == nullptr);
+
+    // A mesh with vertices but no faces draws nothing either.
+    auto vertices_only = std::make_shared<Mesh>();
+    vertices_only->add_vertex(Point(0,0,0), 0);
+    MINI_CHECK(session.add_mesh(vertices_only, group) == nullptr);
+
+    // add(add_XXX(...), group) stays a valid one-liner when the geometry was skipped.
+    session.add(session.add_mesh(std::make_shared<Mesh>(), group), group);
+
+    MINI_CHECK(session.lookup.empty());
+    MINI_CHECK(session.order().empty());
+    MINI_CHECK(group->children().empty());
+}
+
 MINI_TEST("Session", "Add Group") {
     // uncomment #include "session.h"
 

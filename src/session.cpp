@@ -50,8 +50,14 @@ std::string Session::str() const {
 }
 
 // Geometry Management
+//
+// Every add_* below is a no-op returning nullptr when the object is null or carries nothing
+// to draw - an empty point cloud, a polyline of fewer than two points, a mesh without faces.
+// The check lives here so no caller has to write it, and so a scene never holds an object a
+// viewer cannot render.
 
 std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent) {
+  if (!point) return nullptr;
   objects.points->push_back(point);
   lookup[point->guid()] = point;
   graph.add_node(point->guid(), "point_" + point->name);
@@ -62,6 +68,7 @@ std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::
 }
 
 std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent) {
+  if (!line) return nullptr;
   objects.lines->push_back(line);
   lookup[line->guid()] = line;
   graph.add_node(line->guid(), "line_" + line->name);
@@ -72,6 +79,7 @@ std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent) {
+  if (!plane) return nullptr;
   objects.planes->push_back(plane);
   lookup[plane->guid()] = plane;
   graph.add_node(plane->guid(), "plane_" + plane->name);
@@ -82,6 +90,7 @@ std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::
 }
 
 std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
+  if (!bbox) return nullptr;
   objects.bboxes->push_back(bbox);
   lookup[bbox->guid()] = bbox;
   graph.add_node(bbox->guid(), "bbox_" + bbox->name);
@@ -91,6 +100,7 @@ std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
 }
 
 std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent) {
+  if (!polyline || polyline->point_count() < 2) return nullptr;
   objects.polylines->push_back(polyline);
   lookup[polyline->guid()] = polyline;
   graph.add_node(polyline->guid(), "polyline_" + polyline->name);
@@ -101,6 +111,7 @@ std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyli
 }
 
 std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent) {
+  if (!pointcloud || pointcloud->is_empty()) return nullptr;
   objects.pointclouds->push_back(pointcloud);
   lookup[pointcloud->guid()] = pointcloud;
   graph.add_node(pointcloud->guid(), "pointcloud_" + pointcloud->name);
@@ -111,6 +122,7 @@ std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> po
 }
 
 std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent) {
+  if (!mesh || mesh->is_empty() || mesh->number_of_faces() == 0) return nullptr;
   objects.meshes->push_back(mesh);
   lookup[mesh->guid()] = mesh;
   graph.add_node(mesh->guid(), "mesh_" + mesh->name);
@@ -121,6 +133,7 @@ std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve, std::shared_ptr<TreeNode> parent) {
+  if (!nurbscurve || nurbscurve->cv_count() < 2) return nullptr;
   objects.nurbscurves->push_back(nurbscurve);
   lookup[nurbscurve->guid()] = nurbscurve;
   graph.add_node(nurbscurve->guid(), "nurbscurve_" + nurbscurve->name);
@@ -131,6 +144,7 @@ std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nu
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface, std::shared_ptr<TreeNode> parent) {
+  if (!nurbssurface || nurbssurface->cv_count() == 0) return nullptr;
   objects.nurbssurfaces->push_back(nurbssurface);
   lookup[nurbssurface->guid()] = nurbssurface;
   graph.add_node(nurbssurface->guid(), "nurbssurface_" + nurbssurface->name);
@@ -141,6 +155,7 @@ std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface
 }
 
 std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent) {
+  if (!brep || (brep->face_count() == 0 && brep->vertex_count() == 0)) return nullptr;
   objects.breps->push_back(brep);
   lookup[brep->guid()] = brep;
   bvh_cache_dirty = true;
@@ -151,6 +166,9 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
+  // Kept even with no geometry: an Element is a data record - features, insertion vectors,
+  // element_data a consumer reads back - and dropping one would lose that on a round trip.
+  if (!element) return nullptr;
   objects.elements->push_back(element);
   lookup[element->guid()] = element;
   bvh_cache_dirty = true;
@@ -189,6 +207,9 @@ std::shared_ptr<TreeNode> Session::find_group(const std::string& group_name) con
 
 void Session::add(std::shared_ptr<TreeNode> node,
                   std::shared_ptr<TreeNode> parent) {
+  // add_* hands back nullptr for geometry with nothing to draw, so
+  // add(add_mesh(m), group) stays a valid one-liner for a mesh that was skipped.
+  if (node == nullptr) return;
   if (parent == nullptr) {
     tree.add(node, tree.root());
   } else {
