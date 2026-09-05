@@ -784,6 +784,11 @@ bool NurbsCurve::create_periodic_uniform(int dimension, int order,
                                         const std::vector<Point>& points,
                                         double nurbsknot_delta) {
     int point_count = static_cast<int>(points.size());
+    // The wrap below repeats the first (order - 1) points, so fewer points than the order
+    // would read past the end of the input.
+    if (point_count < order) {
+        return false;
+    }
     if (!create(dimension, false, order, point_count + order - 1)) {
         return false;
     }
@@ -1267,6 +1272,8 @@ bool NurbsCurve::set_domain(double t0, double t1) {
 
 std::vector<double> NurbsCurve::get_span_vector() const {
     std::vector<double> spans;
+    // An empty curve has no nurbsknots, so the reads below would run off the array.
+    if (!is_valid()) return spans;
     spans.push_back(m_nurbsknot[m_order-2]);
     
     for (int i = m_order - 1; i < m_cv_count; i++) {
@@ -1730,7 +1737,9 @@ double NurbsCurve::length(double /*tolerance*/) const {
     };
 
     double total = 0.0;
-    int n_spans = span_count();
+    // Count nurbsknot INTERVALS, not span_count(): a repeated interior nurbsknot makes
+    // span_count() smaller than the interval count, and the trailing spans go unintegrated.
+    int n_spans = m_cv_count - m_order + 1;
     const int SUBDIVISIONS = 4;
 
     for (int span = 0; span < n_spans; span++) {
@@ -1785,6 +1794,20 @@ bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points,
     // Work queue: segments to potentially subdivide (ta, tb)
     std::vector<std::pair<double, double>> work_queue;
     work_queue.push_back({t0, t1});
+
+    // Closed curves: start == end, so the initial (t0,t1) chord has zero length and the
+    // adaptive loop skips it. Force-subdivide into thirds to bootstrap.
+    if (point_at(t0).distance(point_at(t1)) < 1e-6 && curve_len > max_edge_length) {
+        double span = (t1 - t0) / 3.0;
+        double tm1 = t0 + span;
+        double tm2 = t0 + 2.0 * span;
+        samples.push_back({tm1, point_at(tm1)});
+        samples.push_back({tm2, point_at(tm2)});
+        work_queue.clear();
+        work_queue.push_back({t0, tm1});
+        work_queue.push_back({tm1, tm2});
+        work_queue.push_back({tm2, t1});
+    }
 
     const int max_iterations = 10000;
     int iterations = 0;
