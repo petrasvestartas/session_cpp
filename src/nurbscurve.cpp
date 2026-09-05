@@ -784,6 +784,11 @@ bool NurbsCurve::create_periodic_uniform(int dimension, int order,
                                         const std::vector<Point>& points,
                                         double nurbsknot_delta) {
     int point_count = static_cast<int>(points.size());
+    // The wrap below repeats the first (order - 1) points, so fewer points than the order
+    // would read past the end of the input.
+    if (point_count < order) {
+        return false;
+    }
     if (!create(dimension, false, order, point_count + order - 1)) {
         return false;
     }

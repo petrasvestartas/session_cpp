@@ -116,6 +116,11 @@ namespace session_cpp {
             MINI_CHECK(cp.degree() == 3);
             MINI_CHECK(cp.cv_count() == 13);
             MINI_CHECK(cp.is_closed());
+
+            // A periodic curve wraps the first (order - 1) points, so fewer points than the
+            // order have nothing to wrap and must not be read past the end of the input.
+            NurbsCurve too_few = NurbsCurve::create(true, 3, {Point(0, 0, 0), Point(1, 0, 0)});
+            MINI_CHECK(!too_few.is_valid());
     }
 
     MINI_TEST("NurbsCurve", "Create From Parameters") {
