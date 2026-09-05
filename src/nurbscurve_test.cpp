@@ -478,6 +478,8 @@ namespace session_cpp {
         // Span of distict nurbsknot intervals
         std::vector<double> intervals =  curve.get_span_vector();
         MINI_CHECK(TOLERANCE.is_close(intervals[0], 0.0) && TOLERANCE.is_close(intervals[1], 0.5) && TOLERANCE.is_close(intervals[2], 1.0));
+        // An empty curve has no spans to report.
+        MINI_CHECK(NurbsCurve().get_span_vector().empty());
 
         // ═══════════════════════════════════════════════════════════════════════════
         // Geometric checks

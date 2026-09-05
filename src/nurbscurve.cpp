@@ -1272,6 +1272,8 @@ bool NurbsCurve::set_domain(double t0, double t1) {
 
 std::vector<double> NurbsCurve::get_span_vector() const {
     std::vector<double> spans;
+    // An empty curve has no nurbsknots, so the reads below would run off the array.
+    if (!is_valid()) return spans;
     spans.push_back(m_nurbsknot[m_order-2]);
     
     for (int i = m_order - 1; i < m_cv_count; i++) {
