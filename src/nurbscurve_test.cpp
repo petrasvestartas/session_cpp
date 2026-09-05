@@ -323,6 +323,7 @@ namespace session_cpp {
         double kinked_length = kinked.length();
         kinked.insert_nurbsknot(1.5, 2);
         MINI_CHECK(TOLERANCE.is_close(kinked.length(), kinked_length));
+        MINI_CHECK(kinked.span_count() == 3);
 
         // Useful for controlling curve by cv on lying on it
         double greville0 = curve.greville_abcissa(0);
