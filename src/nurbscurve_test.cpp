@@ -387,6 +387,11 @@ namespace session_cpp {
         curve.set_weight(2, 0.5);
         MINI_CHECK(curve.weight(2) == 0.5);
 
+        // set_cv takes a euclidean point: it must read back unchanged on a rational curve,
+        // where a stale weight would scale it.
+        curve.set_cv(2, Point(7.0, 8.0, 9.0));
+        MINI_CHECK(TOLERANCE.is_point_close(curve.get_cv(2), Point(7.0, 8.0, 9.0)));
+
         // ═══════════════════════════════════════════════════════════════════════════
         // NurbsKnot Access
         // ═══════════════════════════════════════════════════════════════════════════
