@@ -1788,6 +1788,20 @@ bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points,
     std::vector<std::pair<double, double>> work_queue;
     work_queue.push_back({t0, t1});
 
+    // Closed curves: start == end, so the initial (t0,t1) chord has zero length and the
+    // adaptive loop skips it. Force-subdivide into thirds to bootstrap.
+    if (point_at(t0).distance(point_at(t1)) < 1e-6 && curve_len > max_edge_length) {
+        double span = (t1 - t0) / 3.0;
+        double tm1 = t0 + span;
+        double tm2 = t0 + 2.0 * span;
+        samples.push_back({tm1, point_at(tm1)});
+        samples.push_back({tm2, point_at(tm2)});
+        work_queue.clear();
+        work_queue.push_back({t0, tm1});
+        work_queue.push_back({tm1, tm2});
+        work_queue.push_back({tm2, t1});
+    }
+
     const int max_iterations = 10000;
     int iterations = 0;
 

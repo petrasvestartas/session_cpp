@@ -498,6 +498,12 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[13], Point(2.0, 0.5, 0.0)));
         MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[26], Point(4.0, 0.0, 0.0)));
 
+        // A closed curve has a zero-length start-to-end chord: the subdivision must still
+        // sample it instead of returning the degenerate two-point polyline.
+        NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 2.0);
+        auto [circle_pts, circle_params] = circle.to_polyline_adaptive(0.1, 0.0, 0.0);
+        MINI_CHECK(circle_pts.size() == 25);
+
         // divide_by_count
         auto [div_pts, div_params] = curve.divide_by_count(10, true);
 
