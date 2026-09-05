@@ -254,6 +254,12 @@ namespace session_cpp {
         truncated.m_cv.pop_back();
         MINI_CHECK(!truncated.is_valid());
 
+        // A curve needs a non-empty domain: equal end nurbsknots leave nothing to evaluate.
+        NurbsCurve flat = curve;
+        for (int i = 0; i < flat.nurbsknot_count(); ++i) flat.set_nurbsknot(i, 1.0);
+        MINI_CHECK(!flat.is_valid());
+        MINI_CHECK(!flat.is_valid_nurbsknot_vector());
+
         // Check whole nurbsknot vector for
         // For correct size: order + cv_count - 2
         // Non-decreasing (can repeat, can't go down)
