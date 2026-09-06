@@ -645,9 +645,10 @@ std::pair<std::vector<Polyline>, std::vector<Plane>> BRep::planar_faces() const 
         const BRepFace& face = m_faces[fi];
         if (face.surface_index < 0 || face.wires.empty()) { continue; }
 
-        // One call decides the skip AND yields the plane, so the two outputs cannot drift.
-        Plane plane;
-        if (!m_surfaces[face.surface_index].is_planar(&plane)) { continue; }
+        // is_planar decides whether the face qualifies at all; its own plane output is
+        // NOT used below - it is derived from surface control points via a CV-traversal
+        // order that has no defined sign, so it disagrees with the wire winding used here.
+        if (!m_surfaces[face.surface_index].is_planar()) { continue; }
 
         std::vector<Point> points;
         for (const BRepRef& er : wire_edges(face.wires[0])) {
@@ -676,18 +677,22 @@ std::pair<std::vector<Polyline>, std::vector<Plane>> BRep::planar_faces() const 
             }
         }
         if (points.size() < 3) { continue; }
+
+        // Same recipe as Element::compute_planes() for the Mesh branch: centroid origin,
+        // Newell normal over the (still open) point loop - exact here, since these are
+        // real BRep vertices, not a tessellation.
+        Point origin = Point::centroid(points);
+        Vector normal = Vector::average_normal(points);
+
+        // wire_edges() only composes the wire's own orientation, never the face's
+        // orientation in its shell, so a Reversed face's wire winds no differently than
+        // the same face used Forward: the Newell normal above does not carry this and
+        // must be flipped explicitly to point out of the solid.
+        if (face_orientation(fi) == BRepOrientation::Reversed) { normal.reverse(); }
+
         points.push_back(points.front());   // closed, as Mesh::face_outlines() is
-
-        // Point out of the solid, not along the surface's own parametrisation.
-        if (face_orientation(fi) == BRepOrientation::Reversed) {
-            Point origin = plane.origin();
-            Vector normal = plane.z_axis();
-            normal.reverse();
-            plane = Plane::from_point_normal(origin, normal);
-        }
-
         polylines.emplace_back(points);
-        planes.push_back(plane);
+        planes.push_back(Plane::from_point_normal(origin, normal));
     }
     return {polylines, planes};
 }

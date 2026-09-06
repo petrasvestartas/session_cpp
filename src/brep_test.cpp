@@ -780,48 +780,83 @@ namespace session_cpp {
     MINI_TEST("BRep", "FacePlanesReversedFlip") {
         // Every primitive factory registers its planar faces Forward in their shell, so
         // FacePolylinesBox alone never exercises the Reversed-orientation flip in
-        // planar_faces(). Build a single planar face by hand (same pattern as the "Add
-        // Face" test) and reference it Reversed from a free shell, so face_orientation()
-        // reports Reversed and the flip must fire.
-        BRep b;
-        NurbsSurface srf;
-        srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-        srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
-        srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
-        Plane raw_plane;
-        MINI_CHECK(srf.is_planar(&raw_plane));
-        int si = b.add_surface(srf);
+        // planar_faces(). is_planar's own raw normal has no defined sign (a CV-traversal
+        // order picks it, not this code) so it is not a meaningful reference; what matters
+        // is that the SAME face geometry, referenced Forward vs Reversed by its shell,
+        // yields opposite emitted normals. Build the identical planar quad face twice
+        // (same pattern as the "Add Face" test) and put one in a Forward free shell, the
+        // other in a Reversed one.
+        auto build_quad_face = [](BRep& b) -> int {
+            NurbsSurface srf;
+            srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
+            srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
+            srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
+            int si = b.add_surface(srf);
 
-        Point corners[4] = {
-            Point(0, 0, 0),
-            Point(1, 0, 0),
-            Point(1, 1, 0),
-            Point(0, 1, 0),
+            Point corners[4] = {
+                Point(0, 0, 0),
+                Point(1, 0, 0),
+                Point(1, 1, 0),
+                Point(0, 1, 0),
+            };
+            for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
+            std::vector<BRepRef> refs;
+            for (int i = 0; i < 4; ++i) {
+                int j = (i + 1) % 4;
+                int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+                int ei = b.add_edge(ci, i, j);
+                int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+                b.add_pcurve(ei, si, c2);
+                refs.push_back({ei, BRepOrientation::Forward});
+            }
+            int wi = b.add_wire(refs);
+            return b.add_face(si, {{wi, BRepOrientation::Forward}});
         };
-        for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
-        std::vector<BRepRef> refs;
-        for (int i = 0; i < 4; ++i) {
-            int j = (i + 1) % 4;
-            int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
-            int ei = b.add_edge(ci, i, j);
-            int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
-            b.add_pcurve(ei, si, c2);
-            refs.push_back({ei, BRepOrientation::Forward});
-        }
-        int wi = b.add_wire(refs);
-        int fi = b.add_face(si, {{wi, BRepOrientation::Forward}});
-        b.add_shell({{fi, BRepOrientation::Reversed}});   // free shell: face used Reversed
 
-        MINI_CHECK(b.face_orientation(fi) == BRepOrientation::Reversed);
+        BRep b;
+        int fi_forward = build_quad_face(b);
+        b.add_shell({{fi_forward, BRepOrientation::Forward}});
+        int fi_reversed = build_quad_face(b);
+        b.add_shell({{fi_reversed, BRepOrientation::Reversed}});
+
+        MINI_CHECK(b.face_orientation(fi_forward) == BRepOrientation::Forward);
+        MINI_CHECK(b.face_orientation(fi_reversed) == BRepOrientation::Reversed);
 
         std::vector<Plane> planes = b.face_planes();
-        MINI_CHECK(planes.size() == 1);
-        const Vector& n = planes[0].z_axis();
-        const Vector& raw_n = raw_plane.z_axis();
-        MINI_CHECK(std::fabs(n[0] + raw_n[0]) < 1e-9);
-        MINI_CHECK(std::fabs(n[1] + raw_n[1]) < 1e-9);
-        MINI_CHECK(std::fabs(n[2] + raw_n[2]) < 1e-9);
-        MINI_CHECK(planes[0].origin() == raw_plane.origin());
+        MINI_CHECK(planes.size() == 2);   // both faces are planar quads
+        const Vector& n_forward = planes[0].z_axis();
+        const Vector& n_reversed = planes[1].z_axis();
+        MINI_CHECK(std::fabs(n_forward[0] + n_reversed[0]) < 1e-9);
+        MINI_CHECK(std::fabs(n_forward[1] + n_reversed[1]) < 1e-9);
+        MINI_CHECK(std::fabs(n_forward[2] + n_reversed[2]) < 1e-9);
+    }
+
+    MINI_TEST("BRep", "FacePlanesPointOutward") {
+        // create_box/create_cylinder are origin-centred, so a face's plane origin is
+        // itself a position vector from the solid's interior; for an outward normal that
+        // vector and the normal must point into the same half-space: dot(origin, normal) > 0.
+        BRep box = BRep::create_box(2.0, 2.0, 2.0);
+        std::vector<Plane> box_planes = box.face_planes();
+        MINI_CHECK(box_planes.size() == 6);
+        for (const Plane& pl : box_planes) {
+            const Point& o = pl.origin();
+            const Vector& n = pl.z_axis();
+            double d = o[0] * n[0] + o[1] * n[1] + o[2] * n[2];
+            MINI_CHECK(d > 0.0);
+        }
+
+        BRep cyl = BRep::create_cylinder(1.0, 4.0);
+        std::vector<Plane> cyl_planes = cyl.face_planes();
+        MINI_CHECK(cyl_planes.size() == 2);
+        for (const Plane& pl : cyl_planes) {
+            const Point& o = pl.origin();
+            const Vector& n = pl.z_axis();
+            // The bottom cap (z=0) and top cap (z=4): the cap at z=0's outward normal is
+            // -Z, the cap at z=4's outward normal is +Z - same sign as its own z coordinate
+            // once shifted so the solid's interior (z in (0,4)) is the origin side.
+            const double mid_z = 2.0;
+            MINI_CHECK((o[2] - mid_z) * n[2] > 0.0);
+        }
     }
 
 } // namespace session_cpp
