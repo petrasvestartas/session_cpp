@@ -222,18 +222,18 @@ std::array<Point, 8> AABB::get_corners() const {
 std::vector<Line> AABB::get_edges() const {
     auto c = corners();
     return {
-        Line(c[0][0], c[0][1], c[0][2], c[1][0], c[1][1], c[1][2]),
-        Line(c[1][0], c[1][1], c[1][2], c[2][0], c[2][1], c[2][2]),
-        Line(c[2][0], c[2][1], c[2][2], c[3][0], c[3][1], c[3][2]),
-        Line(c[3][0], c[3][1], c[3][2], c[0][0], c[0][1], c[0][2]),
-        Line(c[4][0], c[4][1], c[4][2], c[5][0], c[5][1], c[5][2]),
-        Line(c[5][0], c[5][1], c[5][2], c[6][0], c[6][1], c[6][2]),
-        Line(c[6][0], c[6][1], c[6][2], c[7][0], c[7][1], c[7][2]),
-        Line(c[7][0], c[7][1], c[7][2], c[4][0], c[4][1], c[4][2]),
-        Line(c[0][0], c[0][1], c[0][2], c[4][0], c[4][1], c[4][2]),
-        Line(c[1][0], c[1][1], c[1][2], c[5][0], c[5][1], c[5][2]),
-        Line(c[2][0], c[2][1], c[2][2], c[6][0], c[6][1], c[6][2]),
-        Line(c[3][0], c[3][1], c[3][2], c[7][0], c[7][1], c[7][2]),
+        Line::from_points(c[0], c[1]),
+        Line::from_points(c[1], c[2]),
+        Line::from_points(c[2], c[3]),
+        Line::from_points(c[3], c[0]),
+        Line::from_points(c[4], c[5]),
+        Line::from_points(c[5], c[6]),
+        Line::from_points(c[6], c[7]),
+        Line::from_points(c[7], c[4]),
+        Line::from_points(c[0], c[4]),
+        Line::from_points(c[1], c[5]),
+        Line::from_points(c[2], c[6]),
+        Line::from_points(c[3], c[7]),
     };
 }
 
