@@ -79,13 +79,13 @@ AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) 
     }
     const int NUM_SAMPLES = 20;
     double dt = (t1 - t0) / NUM_SAMPLES;
-    for (int axis = 0; axis < 3; axis++) {
-        for (int i = 0; i < NUM_SAMPLES; i++) {
-            double t_start = t0 + i * dt;
-            double t_end = t_start + dt;
-            auto deriv_start = curve.evaluate(t_start, 1);
-            auto deriv_end = curve.evaluate(t_end, 1);
-            if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        double t_start = t0 + i * dt;
+        double t_end = t_start + dt;
+        auto deriv_start = curve.evaluate(t_start, 1);
+        auto deriv_end = curve.evaluate(t_end, 1);
+        if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+        for (int axis = 0; axis < 3; axis++) {
             double d_start = deriv_start[1][axis];
             double d_end = deriv_end[1][axis];
             if (d_start * d_end < 0) {
