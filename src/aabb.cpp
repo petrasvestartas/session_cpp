@@ -112,7 +112,7 @@ AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) 
                     auto deriv_check = curve.evaluate(t_root, 1);
                     if (deriv_check.size() >= 2) {
                         double f_check = deriv_check[1][axis];
-                        if (f_check * d_start < 0) { t_hi = t_root; d_end = f_check; }
+                        if (f_check * d_start < 0) t_hi = t_root;
                         else { t_lo = t_root; d_start = f_check; }
                     }
                 }
