@@ -242,15 +242,7 @@ Point AABB::point_at(double x, double y, double z) const {
 }
 
 void AABB::union_with(const AABB& other) {
-    double min_x = std::min(cx - hx, other.cx - other.hx);
-    double min_y = std::min(cy - hy, other.cy - other.hy);
-    double min_z = std::min(cz - hz, other.cz - other.hz);
-    double max_x = std::max(cx + hx, other.cx + other.hx);
-    double max_y = std::max(cy + hy, other.cy + other.hy);
-    double max_z = std::max(cz + hz, other.cz + other.hz);
-    cx = (min_x + max_x) * 0.5; hx = (max_x - min_x) * 0.5;
-    cy = (min_y + max_y) * 0.5; hy = (max_y - min_y) * 0.5;
-    cz = (min_z + max_z) * 0.5; hz = (max_z - min_z) * 0.5;
+    *this = merge(*this, other);
 }
 
 }
