@@ -859,4 +859,75 @@ namespace session_cpp {
         }
     }
 
+    MINI_TEST("BRep", "FacePlanesOutwardIgnoresBlockWithHoleReversedFace") {
+        // create_block_with_hole registers its bore body face Reversed in the shell (the
+        // only Reversed reference any primitive factory produces); the bore itself is
+        // non-planar and skipped, but this exercises the outward pass on a BRep that
+        // genuinely mixes Forward and Reversed shell references.
+        BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
+        MINI_CHECK(b.is_solid());
+        Point solid_centroid = Point::centroid(b.vertex_points());
+        std::vector<Plane> planes = b.face_planes();
+        MINI_CHECK(planes.size() == 6);   // 4 sides + 2 capped faces; the bore is skipped
+        for (const Plane& pl : planes) {
+            const Point& o = pl.origin();
+            const Vector& n = pl.z_axis();
+            double d = (o[0] - solid_centroid[0]) * n[0]
+                     + (o[1] - solid_centroid[1]) * n[1]
+                     + (o[2] - solid_centroid[2]) * n[2];
+            MINI_CHECK(d > 0.0);
+        }
+    }
+
+    MINI_TEST("BRep", "FacePlanesOutwardUnderMirroredWinding") {
+        // A mirror (negative-determinant Xform) inverts every face's wire winding while
+        // remaining a valid closed solid - exactly the corruption a bad loft can produce,
+        // and the failure mode FacePlanesPointOutward cannot see because create_box and
+        // create_cylinder happen to already be wound the "natural" way. Outward
+        // orientation must not depend on winding being right; this proves it does not.
+        //
+        // At the same time this proves the OTHER half of the contract: the orientation
+        // pass flips normals only and must never re-wind a polyline (Mesh::loft pairs
+        // co-wound bottom/top loops vertex-by-vertex; a "helpful" re-wind here would
+        // silently break that correspondence downstream). So this one test asserts BOTH
+        // outward normals AND untouched winding on the same mis-wound solid.
+        Xform mirror = Xform::scale_xyz(-1.0, 1.0, 1.0);
+        BRep b = BRep::create_box(2.0, 2.0, 2.0).transformed(mirror);
+        MINI_CHECK(b.is_solid());
+
+        std::vector<Polyline> pls = b.face_polylines();
+        std::vector<Plane> planes = b.face_planes();
+        MINI_CHECK(pls.size() == 6);
+        MINI_CHECK(planes.size() == 6);
+
+        Point solid_centroid = Point::centroid(b.vertex_points());
+
+        for (size_t fi = 0; fi < pls.size(); ++fi) {
+            // Outward, regardless of the mirror's effect on winding.
+            const Point& o = planes[fi].origin();
+            const Vector& n = planes[fi].z_axis();
+            double d = (o[0] - solid_centroid[0]) * n[0]
+                     + (o[1] - solid_centroid[1]) * n[1]
+                     + (o[2] - solid_centroid[2]) * n[2];
+            MINI_CHECK(d > 0.0);
+
+            // Untouched winding: every box edge is a straight line, so the expected point
+            // order is reconstructed here using ONLY the same public wire-walk API
+            // face_polylines() itself uses (wire_edges/m_edges/m_vertices), independent of
+            // its internal implementation, and compared byte-for-byte to what was emitted.
+            std::vector<Point> expected;
+            for (const BRepRef& er : b.wire_edges(b.m_faces[(int)fi].wires[0])) {
+                const BRepEdge& edge = b.m_edges[er.index];
+                const bool reversed = (er.orientation == BRepOrientation::Reversed);
+                const int start = reversed ? edge.end_vertex : edge.start_vertex;
+                expected.push_back(b.m_vertices[start].point);
+            }
+            expected.push_back(expected.front());
+
+            std::vector<Point> actual = pls[fi].get_points();
+            MINI_CHECK(actual.size() == expected.size());
+            for (size_t k = 0; k < actual.size(); ++k) { MINI_CHECK(actual[k] == expected[k]); }
+        }
+    }
+
 } // namespace session_cpp

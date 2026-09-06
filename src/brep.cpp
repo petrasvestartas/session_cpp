@@ -694,6 +694,53 @@ std::pair<std::vector<Polyline>, std::vector<Plane>> BRep::planar_faces() const 
         polylines.emplace_back(points);
         planes.push_back(Plane::from_point_normal(origin, normal));
     }
+
+    // Wire winding (and therefore the Newell normal above) is not trustworthy on its own:
+    // a lofted solid's wires are not guaranteed wound the "natural" way, and neither
+    // is_planar's plane (round-1 finding) nor a per-face wire walk (this finding) can be
+    // trusted for SIGN. For a genuinely closed solid there is a topological ground truth
+    // instead: BRep_Tool-style divergence theorem says the boundary's enclosed volume is
+    // positive iff every normal faces outward. So sum each emitted face's contribution
+    // using the exact tetrahedra-fan formula BRep::volume() already uses over the
+    // tessellated mesh (src/mesh.cpp Mesh::volume), just signed and fed from these
+    // polylines instead of mesh triangles; if the total comes out negative, every normal
+    // is flipped together. This is a single GLOBAL correction, not a per-face one: it
+    // fixes the whole assembly being consistently inside-out (is_planar's bug, a mirror
+    // transform, ...) but cannot detect or repair one face wound backwards relative to
+    // its neighbors within an otherwise-correct shell - that would need per-edge manifold
+    // consistency checking, which this function deliberately does NOT do: per-face
+    // winding consistency is the producer's job (compas_occt's OCCBrep.sew(), i.e.
+    // BRepBuilderAPI_Sewing) before a BRep ever reaches here, and this global flip
+    // mirrors OCCBrep.make_positive()'s `if is_closed and volume < 0: shape_reversed(...)`.
+    //
+    // This pass touches PLANES ONLY. It never reorders, reverses or otherwise rewinds a
+    // polyline: Mesh::loft pairs a bottom and top loop vertex-by-vertex by shared winding,
+    // and wood rebuilds plates from exactly that correspondence, so face_polylines()'s
+    // winding must stay exactly what the source wire walk produced, always.
+    if (is_solid() && !planes.empty()) {
+        double signed_volume6 = 0.0;
+        for (const Polyline& pl : polylines) {
+            const std::vector<Point> pts = pl.get_points();
+            if (pts.size() < 3) { continue; }
+            const Point& p0 = pts[0];
+            for (size_t k = 1; k + 1 < pts.size(); ++k) {
+                const Point& p1 = pts[k];
+                const Point& p2 = pts[k + 1];
+                signed_volume6 += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+                                + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
+                                + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+            }
+        }
+        if (signed_volume6 < 0.0) {
+            for (Plane& pl : planes) {
+                Point o = pl.origin();
+                Vector n = pl.z_axis();
+                n.reverse();
+                pl = Plane::from_point_normal(o, n);
+            }
+        }
+    }
+
     return {polylines, planes};
 }
 

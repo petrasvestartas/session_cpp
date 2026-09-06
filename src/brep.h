@@ -195,11 +195,32 @@ public:
     /// order, inner wires ignored. A face on a non-planar surface yields nothing -
     /// contact detection is flat-only, and a sampled cylinder ring would be a polyline
     /// that lies about being flat. Index-aligned with face_planes().
+    ///
+    /// Winding is preserved exactly as the source geometry gives it. Callers that loft
+    /// depend on paired loops staying co-wound; this function must never re-wind an
+    /// outline to make a normal come out right.
     std::vector<Polyline> face_polylines() const;
 
-    /// The plane of each face face_polylines() emitted, in the same order. Taken from
-    /// NurbsSurface::is_planar, so exact rather than a Newell estimate, and flipped when
-    /// face_orientation() reports the face Reversed in its shell.
+    /// The plane of each face face_polylines() emitted, in the same order: origin is the
+    /// outline's centroid, normal from Vector::average_normal (Newell) - NOT taken from
+    /// NurbsSurface::is_planar, whose own plane has no defined sign (see .cpp).
+    ///
+    /// Normals always point outward, as they would from a valid closed solid, derived
+    /// INDEPENDENTLY of the polyline winding. The two are decoupled on purpose: that is
+    /// what lets the loft keep the winding it needs while contact detection gets the
+    /// normals it needs. This holds when the BRep encloses a closed shell/solid (oriented
+    /// globally via the divergence theorem over the emitted polylines - see .cpp); a BRep
+    /// of free faces only (e.g. from_polylines) has no inside and therefore no defined
+    /// "outward", so those normals are left exactly as the wire winding gives, sign
+    /// undefined. The divergence-theorem correction is global, not per-face: it fixes the
+    /// whole shell being consistently inside-out (is_planar's own sign bug, a mirror
+    /// transform, ...) but does NOT detect or repair a single face wound backwards
+    /// relative to its neighbors within an otherwise-correct shell - a mis-sewn shell
+    /// would still emit one wrong normal here. Per-face winding consistency is expected
+    /// to already hold by the time a BRep reaches this function: it is the producer's job
+    /// (compas_occt's OCCBrep.sew() / BRepBuilderAPI_Sewing), and the matching global flip
+    /// this function performs mirrors OCCBrep.make_positive()'s
+    /// `if is_closed and volume < 0: shape_reversed(...)`.
     std::vector<Plane> face_planes() const;
 
 private:
