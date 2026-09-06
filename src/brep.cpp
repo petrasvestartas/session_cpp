@@ -631,6 +631,70 @@ std::vector<Point> BRep::vertex_points() const {
     return pts;
 }
 
+namespace {
+/// Samples per curved edge of a planar face. A planar face may carry an arc edge (a
+/// rounded corner, a circular boss); its two vertices alone would cut the corner off.
+constexpr int CURVED_EDGE_SAMPLES = 16;
+}
+
+std::pair<std::vector<Polyline>, std::vector<Plane>> BRep::planar_faces() const {
+    std::vector<Polyline> polylines;
+    std::vector<Plane> planes;
+
+    for (int fi = 0; fi < (int)m_faces.size(); ++fi) {
+        const BRepFace& face = m_faces[fi];
+        if (face.surface_index < 0 || face.wires.empty()) { continue; }
+
+        // One call decides the skip AND yields the plane, so the two outputs cannot drift.
+        Plane plane;
+        if (!m_surfaces[face.surface_index].is_planar(&plane)) { continue; }
+
+        std::vector<Point> points;
+        for (const BRepRef& er : wire_edges(face.wires[0])) {
+            if (er.index < 0 || er.index >= (int)m_edges.size()) { continue; }
+            const BRepEdge& edge = m_edges[er.index];
+            if (edge.degenerated) { continue; }
+            const bool reversed = (er.orientation == BRepOrientation::Reversed);
+
+            const bool curved = edge.curve_3d_index >= 0
+                             && m_curves_3d[edge.curve_3d_index].degree() > 1;
+            if (curved) {
+                const NurbsCurve& c = m_curves_3d[edge.curve_3d_index];
+                const std::pair<double, double> d = c.domain();
+                // Half-open: the next edge contributes this edge's end point.
+                for (int s = 0; s < CURVED_EDGE_SAMPLES; ++s) {
+                    const double u = (double)s / (double)CURVED_EDGE_SAMPLES;
+                    const double t = reversed ? d.second + (d.first - d.second) * u
+                                              : d.first + (d.second - d.first) * u;
+                    points.push_back(c.point_at(t));
+                }
+            } else {
+                const int start = reversed ? edge.end_vertex : edge.start_vertex;
+                if (start >= 0 && start < (int)m_vertices.size()) {
+                    points.push_back(m_vertices[start].point);
+                }
+            }
+        }
+        if (points.size() < 3) { continue; }
+        points.push_back(points.front());   // closed, as Mesh::face_outlines() is
+
+        // Point out of the solid, not along the surface's own parametrisation.
+        if (face_orientation(fi) == BRepOrientation::Reversed) {
+            Point origin = plane.origin();
+            Vector normal = plane.z_axis();
+            normal.reverse();
+            plane = Plane::from_point_normal(origin, normal);
+        }
+
+        polylines.emplace_back(points);
+        planes.push_back(plane);
+    }
+    return {polylines, planes};
+}
+
+std::vector<Polyline> BRep::face_polylines() const { return planar_faces().first; }
+std::vector<Plane>    BRep::face_planes()    const { return planar_faces().second; }
+
 double BRep::update_tolerances() {
     double worst = 0.0;
     for (auto& e : m_edges) {

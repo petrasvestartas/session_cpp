@@ -191,6 +191,23 @@ public:
     /// Vertex positions, in vertex order.
     std::vector<Point> vertex_points() const;
 
+    /// One closed Polyline per PLANAR face: the outer wire (wires[0]) walked in wire
+    /// order, inner wires ignored. A face on a non-planar surface yields nothing -
+    /// contact detection is flat-only, and a sampled cylinder ring would be a polyline
+    /// that lies about being flat. Index-aligned with face_planes().
+    std::vector<Polyline> face_polylines() const;
+
+    /// The plane of each face face_polylines() emitted, in the same order. Taken from
+    /// NurbsSurface::is_planar, so exact rather than a Newell estimate, and flipped when
+    /// face_orientation() reports the face Reversed in its shell.
+    std::vector<Plane> face_planes() const;
+
+private:
+    /// Both public accessors in one walk, so their index alignment is structural rather
+    /// than a convention two functions must separately remember.
+    std::pair<std::vector<Polyline>, std::vector<Plane>> planar_faces() const;
+public:
+
     /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst distance between its
     /// curve ends (3D curve and each pcurve lifted through its surface) and its vertices, and
     /// every vertex tolerance to the worst incident edge end. Returns the largest tolerance.

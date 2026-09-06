@@ -684,4 +684,49 @@ namespace session_cpp {
         MINI_CHECK(std::abs(vsph - (4.0 / 3.0) * Tolerance::PI * 8) / ((4.0 / 3.0) * Tolerance::PI * 8) < 0.05);
     }
 
+    MINI_TEST("BRep", "FacePolylinesBox") {
+        BRep b = BRep::create_box(2.0, 2.0, 2.0);
+        std::vector<Polyline> pls = b.face_polylines();
+        std::vector<Plane> pls_planes = b.face_planes();
+        MINI_CHECK(pls.size() == 6);                 // every face of a box is planar
+        MINI_CHECK(pls_planes.size() == pls.size()); // index-aligned
+        for (const Polyline& p : pls) {
+            MINI_CHECK(p.point_count() == 5);        // closed quad
+            MINI_CHECK(p.get_point(0) == p.get_point(4));
+        }
+    }
+
+    MINI_TEST("BRep", "FacePolylinesCylinderCapsOnly") {
+        // Two planar caps and one cylindrical barrel; the barrel must contribute nothing.
+        BRep b = BRep::create_cylinder(1.0, 4.0);
+        MINI_CHECK(b.face_count() == 3);
+        MINI_CHECK(b.face_polylines().size() == 2);
+        MINI_CHECK(b.face_planes().size() == 2);
+    }
+
+    MINI_TEST("BRep", "FacePolylinesIgnoresHoles") {
+        // The holed face has an outer wire and an inner wire; only the outer one is emitted,
+        // so the face still yields exactly ONE polyline.
+        BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
+        std::vector<Polyline> pls = b.face_polylines();
+        MINI_CHECK(!pls.empty());
+        MINI_CHECK(pls.size() == b.face_planes().size());
+        // No emitted polyline may be the hole circle: every point sits on the block bounds.
+        for (const Polyline& p : pls) {
+            for (size_t i = 0; i < p.point_count(); ++i) {
+                const Point pt = p.get_point(i);
+                const bool on_bounds = std::fabs(std::fabs(pt[0]) - 2.0) < 1e-6
+                                    || std::fabs(std::fabs(pt[1]) - 2.0) < 1e-6
+                                    || std::fabs(std::fabs(pt[2]) - 1.0) < 1e-6;
+                MINI_CHECK(on_bounds);
+            }
+        }
+    }
+
+    MINI_TEST("BRep", "FacePolylinesNoPlanarFaces") {
+        BRep b = BRep::create_sphere(1.0);           // one non-planar face
+        MINI_CHECK(b.face_polylines().empty());
+        MINI_CHECK(b.face_planes().empty());
+    }
+
 } // namespace session_cpp
