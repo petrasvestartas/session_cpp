@@ -690,10 +690,49 @@ namespace session_cpp {
         std::vector<Plane> pls_planes = b.face_planes();
         MINI_CHECK(pls.size() == 6);                 // every face of a box is planar
         MINI_CHECK(pls_planes.size() == pls.size()); // index-aligned
-        for (const Polyline& p : pls) {
+
+        // Every face sits at |coord| == 1 along exactly one axis (half of size 2.0), and
+        // the plane's origin must sit on that same face. The plane's normal (taken from
+        // is_planar, not a Newell estimate) must be an exact unit vector along that same
+        // axis, and across all 6 faces the normals must be exactly the six cardinal
+        // directions +-X/+-Y/+-Z with no two faces sharing one - not a specific sign per
+        // face, since is_planar's own CV-traversal convention (not this task's code)
+        // decides which of the two signs a given face lands on.
+        bool seen[3][2] = {{false, false}, {false, false}, {false, false}};
+        for (size_t fi = 0; fi < pls.size(); ++fi) {
+            const Polyline& p = pls[fi];
+            const Plane& pl = pls_planes[fi];
             MINI_CHECK(p.point_count() == 5);        // closed quad
             MINI_CHECK(p.get_point(0) == p.get_point(4));
+
+            int axis = -1;
+            double sign = 0.0;
+            for (int a = 0; a < 3; ++a) {
+                bool constant = true;
+                for (size_t i = 1; i < p.point_count(); ++i) {
+                    if (std::fabs(p.get_point(i)[a] - p.get_point(0)[a]) > 1e-9) { constant = false; break; }
+                }
+                if (constant && std::fabs(std::fabs(p.get_point(0)[a]) - 1.0) < 1e-9) {
+                    axis = a;
+                    sign = p.get_point(0)[a] > 0 ? 1.0 : -1.0;
+                    break;
+                }
+            }
+            MINI_CHECK(axis >= 0);
+            MINI_CHECK(std::fabs(pl.origin()[axis] - sign) < 1e-9); // origin sits on the face's own plane
+
+            const Vector& n = pl.z_axis();
+            MINI_CHECK(std::fabs(std::fabs(n[axis]) - 1.0) < 1e-6); // unit length, along that axis
+            for (int a2 = 0; a2 < 3; ++a2)
+                if (a2 != axis) { MINI_CHECK(std::fabs(n[a2]) < 1e-6); }
+
+            int normal_sign = n[axis] > 0.0 ? 1 : 0;
+            MINI_CHECK(!seen[axis][normal_sign]);    // this cardinal direction not claimed by an earlier face
+            seen[axis][normal_sign] = true;
         }
+        for (int a = 0; a < 3; ++a)
+            for (int s = 0; s < 2; ++s)
+                MINI_CHECK(seen[a][s]);              // all six of +-X/+-Y/+-Z are covered
     }
 
     MINI_TEST("BRep", "FacePolylinesCylinderCapsOnly") {
@@ -705,20 +744,29 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "FacePolylinesIgnoresHoles") {
-        // The holed face has an outer wire and an inner wire; only the outer one is emitted,
-        // so the face still yields exactly ONE polyline.
+        // 4 planar side quads + 2 planar capped faces (each with an outer wire and a hole
+        // inner wire) + 1 non-planar bore = 7 faces, 6 of them planar. A face that wrongly
+        // walked ALL of its wires (outer + hole) would still pass a plain "on the block
+        // bounds" check, since the hole circles lie in the z=-1/z=+1 cap planes too - so
+        // this test pins the polyline COUNT per face and the exact quad POINT COUNT, both
+        // of which a hole-wire leak breaks (leaking a circle adds ~16 sampled points and
+        // does not add a second, separate polyline).
         BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
         std::vector<Polyline> pls = b.face_polylines();
-        MINI_CHECK(!pls.empty());
+        MINI_CHECK(pls.size() == 6);                 // one polyline per planar face, never two
         MINI_CHECK(pls.size() == b.face_planes().size());
-        // No emitted polyline may be the hole circle: every point sits on the block bounds.
         for (const Polyline& p : pls) {
+            MINI_CHECK(p.point_count() == 5);        // outer wire only: closed quad, 4 corners
             for (size_t i = 0; i < p.point_count(); ++i) {
                 const Point pt = p.get_point(i);
+                // On the block bounds...
                 const bool on_bounds = std::fabs(std::fabs(pt[0]) - 2.0) < 1e-6
                                     || std::fabs(std::fabs(pt[1]) - 2.0) < 1e-6
                                     || std::fabs(std::fabs(pt[2]) - 1.0) < 1e-6;
                 MINI_CHECK(on_bounds);
+                // ...and never on the hole circle (radius 1 about the Z axis).
+                const double radius_to_z_axis = std::sqrt(pt[0] * pt[0] + pt[1] * pt[1]);
+                MINI_CHECK(radius_to_z_axis > 1.0 + 1e-6);
             }
         }
     }
@@ -727,6 +775,53 @@ namespace session_cpp {
         BRep b = BRep::create_sphere(1.0);           // one non-planar face
         MINI_CHECK(b.face_polylines().empty());
         MINI_CHECK(b.face_planes().empty());
+    }
+
+    MINI_TEST("BRep", "FacePlanesReversedFlip") {
+        // Every primitive factory registers its planar faces Forward in their shell, so
+        // FacePolylinesBox alone never exercises the Reversed-orientation flip in
+        // planar_faces(). Build a single planar face by hand (same pattern as the "Add
+        // Face" test) and reference it Reversed from a free shell, so face_orientation()
+        // reports Reversed and the flip must fire.
+        BRep b;
+        NurbsSurface srf;
+        srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
+        srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
+        srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
+        Plane raw_plane;
+        MINI_CHECK(srf.is_planar(&raw_plane));
+        int si = b.add_surface(srf);
+
+        Point corners[4] = {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        };
+        for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
+        std::vector<BRepRef> refs;
+        for (int i = 0; i < 4; ++i) {
+            int j = (i + 1) % 4;
+            int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+            int ei = b.add_edge(ci, i, j);
+            int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+            b.add_pcurve(ei, si, c2);
+            refs.push_back({ei, BRepOrientation::Forward});
+        }
+        int wi = b.add_wire(refs);
+        int fi = b.add_face(si, {{wi, BRepOrientation::Forward}});
+        b.add_shell({{fi, BRepOrientation::Reversed}});   // free shell: face used Reversed
+
+        MINI_CHECK(b.face_orientation(fi) == BRepOrientation::Reversed);
+
+        std::vector<Plane> planes = b.face_planes();
+        MINI_CHECK(planes.size() == 1);
+        const Vector& n = planes[0].z_axis();
+        const Vector& raw_n = raw_plane.z_axis();
+        MINI_CHECK(std::fabs(n[0] + raw_n[0]) < 1e-9);
+        MINI_CHECK(std::fabs(n[1] + raw_n[1]) < 1e-9);
+        MINI_CHECK(std::fabs(n[2] + raw_n[2]) < 1e-9);
+        MINI_CHECK(planes[0].origin() == raw_plane.origin());
     }
 
 } // namespace session_cpp
