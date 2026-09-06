@@ -2001,4 +2001,21 @@ namespace session_cpp {
         MINI_CHECK(mesh.guid() == original);
     }
 
+    MINI_TEST("Mesh", "AssignmentKeepsObjectColor") {
+        // operator= copied color_mode but not objectcolor, so `a = b` kept a's old colour
+        // while claiming b's mode - a mesh assigned into an Element's geometry variant came
+        // out white however it had been coloured.
+        Mesh source = Mesh::from_vertices_and_faces(
+            {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)},
+            {{0, 1, 2, 3}});
+        source.set_objectcolor(Color(0.72f, 0.72f, 0.74f, 1.0f, "grey"));
+
+        Mesh target;
+        target = source;                          // assignment, not construction
+        MINI_CHECK(target.get_objectcolor().r == source.get_objectcolor().r);
+        MINI_CHECK(target.get_objectcolor().g == source.get_objectcolor().g);
+        MINI_CHECK(target.get_objectcolor().b == source.get_objectcolor().b);
+        MINI_CHECK(target.color_mode == source.color_mode);
+    }
+
 } // namespace session_cpp

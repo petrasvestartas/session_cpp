@@ -68,6 +68,9 @@ Mesh& Mesh::operator=(const Mesh& other) {
         facecolors = other.facecolors;
         linecolors = other.linecolors;
         widths = other.widths;
+        // objectcolor belongs with color_mode: the copy constructor takes it and this used
+        // to not, so `a = b` silently kept a's old colour while claiming b's colour mode.
+        objectcolor = other.objectcolor;
         color_mode = other.color_mode;
         max_vertex = other.max_vertex;
         max_face = other.max_face;
