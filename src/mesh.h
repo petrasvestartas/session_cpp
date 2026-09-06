@@ -557,6 +557,11 @@ public:
 
     std::optional<Point> face_center(size_t face_key) const;
     std::optional<Polyline> face_polygon(size_t face_key) const;
+
+    /// Every face as a closed outline, in face-key order - a solid AS its face loops,
+    /// which is what face-to-face contact detection consumes (Element::polylines() is
+    /// this function). Outer rings only; a face of fewer than three vertices is skipped.
+    std::vector<Polyline> face_outlines() const;
     void flip_cycles();
 
     // ═══════════════════════════════════════════════════════════════════════════

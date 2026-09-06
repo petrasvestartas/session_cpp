@@ -228,8 +228,29 @@ Point Element::compute_point() {
     return Point(0, 0, 0);
 }
 
-std::vector<Polyline> Element::compute_polylines() const { return {}; }
-std::vector<Plane> Element::compute_planes() const { return {}; }
+// A mesh solid IS its face outlines, so the two face views are read off the geometry
+// rather than stored beside it. A domain type with its own face convention (wood's
+// plate: top, bottom, then sides) overrides these - mesh face order is not that.
+std::vector<Polyline> Element::compute_polylines() const {
+    if (const Mesh* mesh = std::get_if<Mesh>(&_geometry)) { return mesh->face_outlines(); }
+    return {};
+}
+
+/// One plane per face outline: centroid origin, Newell normal. The closing point is
+/// dropped first - it would pull the centroid towards the first vertex.
+std::vector<Plane> Element::compute_planes() const {
+    std::vector<Plane> planes;
+    for (const Polyline& outline : compute_polylines()) {
+        std::vector<Point> points = outline.get_points();
+        if (points.size() > 1 && points.front() == points.back()) { points.pop_back(); }
+        if (points.size() < 3) { continue; }
+        // from_point_normal takes non-const refs, so both need to be lvalues.
+        Point  origin = Point::centroid(points);
+        Vector normal = Vector::average_normal(points);
+        planes.push_back(Plane::from_point_normal(origin, normal));
+    }
+    return planes;
+}
 std::vector<Vector> Element::compute_edge_vectors() const { return {}; }
 std::optional<Line> Element::compute_axis() const { return std::nullopt; }
 

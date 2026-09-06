@@ -1067,6 +1067,17 @@ std::vector<size_t> Mesh::face_sample(size_t size, uint32_t seed) const {
 
 std::optional<Point> Mesh::face_center(size_t face_key) const { return face_centroid(face_key); }
 
+std::vector<Polyline> Mesh::face_outlines() const {
+    std::vector<Polyline> outlines;
+    outlines.reserve(face.size());
+    for (size_t face_key : faces()) {
+        std::optional<Polyline> outline = face_polygon(face_key);
+        // A closed triangle is four points; anything shorter encloses nothing.
+        if (outline && outline->point_count() >= 4) { outlines.push_back(std::move(*outline)); }
+    }
+    return outlines;
+}
+
 std::optional<Polyline> Mesh::face_polygon(size_t face_key) const {
     auto pts_opt = face_points(face_key);
     if (!pts_opt.has_value()) return std::nullopt;

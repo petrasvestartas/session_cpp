@@ -294,10 +294,22 @@ MINI_TEST("Element", "Polylines") {
         {{0, 1, 2, 3}});
     Element e(m, "test_element");
 
-    MINI_CHECK(e.polylines().empty());
-    MINI_CHECK(e.planes().empty());
+    // A mesh element's face views are its solid's face outlines, one plane each.
+    MINI_CHECK(e.polylines().size() == 1);
+    MINI_CHECK(e.polylines()[0].point_count() == 5);           // closed quad
+    MINI_CHECK(e.polylines()[0].get_point(0) == Point(0,0,0));
+    MINI_CHECK(e.polylines()[0].get_point(4) == Point(0,0,0));
+    MINI_CHECK(e.planes().size() == 1);
+    MINI_CHECK(e.planes()[0].origin() == Point(0.5, 0.5, 0.0));
+    const Vector& normal = e.planes()[0].z_axis();   // Newell, so not unit length
+    MINI_CHECK(std::fabs(normal[0]) < 1e-12 && std::fabs(normal[1]) < 1e-12 && normal[2] > 0.0);
     MINI_CHECK(e.edge_vectors().empty());
     MINI_CHECK(!e.axis().has_value());
+}
+
+MINI_TEST("Element", "PolylinesEmptyWithoutMesh") {
+    MINI_CHECK(Element("no_geometry").polylines().empty());
+    MINI_CHECK(Element("no_geometry").planes().empty());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
