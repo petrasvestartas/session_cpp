@@ -1,8 +1,6 @@
 #include "nurbssurface_trimmed.h"
 #include "closest.h"
 #include "primitives.h"
-#include "remesh_nurbssurface_grid.h"
-#include "remesh_cdt.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <set>
@@ -1553,8 +1551,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
 // sequentially by each plane (Sutherland-Hodgman per triangle, crossings Newton-refined onto the
 // crossing plane), so K planes carve a clean region without per-cell CSG. Coincident 3D verts are
 // welded so periodic seams (cylinder/torus/sphere) close watertight.
-// REQUIRES header declaration in nurbssurface_trimmed.h (next to mesh_by_plane):
-//   Mesh mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes, double max_angle_deg, double chord_factor) const;
 Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes,
                                          double max_angle_deg, double chord_factor) const {
     const NurbsSurface& srf = m_surface;
