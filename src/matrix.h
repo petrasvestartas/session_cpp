@@ -18,6 +18,7 @@ namespace session_cpp {
 class Matrix {
 public:
     std::string name = "my_matrix";
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     int rows = 0;

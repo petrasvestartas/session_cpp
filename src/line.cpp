@@ -218,7 +218,7 @@ std::string Line::pb_dumps() const {
     // P6: coords packed, colour packed; the name rides a zero-cost string
     proto.add_coords(_x0); proto.add_coords(_y0); proto.add_coords(_z0);
     proto.add_coords(_x1); proto.add_coords(_y1); proto.add_coords(_z1);
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_width(width);
     for (double d : dash) {
@@ -235,7 +235,7 @@ Line Line::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     const auto& c = proto.coords();
     Line line = c.size() == 6 ? Line(c[0], c[1], c[2], c[3], c[4], c[5]) : Line();
-    line.guid() = proto.guid();
+    if (!proto.guid().empty()) { line.guid() = proto.guid(); }
     line.name = proto.name();
     // Deserialize width and linecolor
     if (proto.width() > 0.0) {

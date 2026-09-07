@@ -3355,7 +3355,7 @@ NurbsCurve NurbsCurve::pb_load(const std::string& filename) {
 
 std::string NurbsCurve::pb_dumps() const {
     session_proto::NurbsCurve proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_dimension(m_dim);
     proto.set_is_rational(m_is_rat != 0);
@@ -3387,7 +3387,7 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     NurbsCurve curve(proto.dimension(), proto.is_rational(), proto.order(), proto.cv_count());
-    curve.guid() = proto.guid();
+    if (!proto.guid().empty()) { curve.guid() = proto.guid(); }
     curve.name = proto.name();
     curve.width = proto.width() != 0.0 ? proto.width() : 1.0;
 

@@ -383,23 +383,20 @@ Plane Plane::operator-(const Vector &other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json Plane::jsondump() const {
-    auto clean_float = [](double val) -> double {
-        return static_cast<double>(std::round(val * 100.0) / 100.0);
-    };
     // Alphabetical order to match Rust's serde_json
     // Use single flat frame array of 12 numbers: [ox, oy, oz, xx, xy, xz, yx, yy, yz, zx, zy, zz]
     nlohmann::ordered_json data;
     data["linecolor"] = linecolor.jsondump();
     data["frame"] = {
-        clean_float(_origin[0]), clean_float(_origin[1]), clean_float(_origin[2]),
-        clean_float(_x_axis[0]), clean_float(_x_axis[1]), clean_float(_x_axis[2]),
-        clean_float(_y_axis[0]), clean_float(_y_axis[1]), clean_float(_y_axis[2]),
-        clean_float(_z_axis[0]), clean_float(_z_axis[1]), clean_float(_z_axis[2])
+        _origin[0], _origin[1], _origin[2],
+        _x_axis[0], _x_axis[1], _x_axis[2],
+        _y_axis[0], _y_axis[1], _y_axis[2],
+        _z_axis[0], _z_axis[1], _z_axis[2]
     };
     data["guid"] = guid();
     data["name"] = name;
     data["type"] = "Plane";
-    data["width"] = clean_float(width);
+    data["width"] = width;
     return data;
 }
 
@@ -456,7 +453,7 @@ Plane Plane::file_json_load(const std::string& filename) {
 
 std::string Plane::pb_dumps() const {
     session_proto::Plane proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
 
     // Frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
@@ -489,7 +486,7 @@ Plane Plane::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Plane plane;
-    plane.guid() = proto.guid();
+    if (!proto.guid().empty()) { plane.guid() = proto.guid(); }
     plane.name = proto.name();
 
     // Parse frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles

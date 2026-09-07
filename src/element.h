@@ -53,6 +53,7 @@ struct ElementFeature {
     /// it again later, to update it, to report a clash against it, or to let a viewer select one
     /// of the forty cuts on a beam. The only other handle is the index in `features`, and that
     /// moves the moment an earlier feature is removed.
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     /// Clear the guid so a FRESH one mints on next read - the duplicate enabler.
@@ -111,6 +112,7 @@ private:
 
 class Element {
 public:
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;

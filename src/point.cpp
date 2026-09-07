@@ -55,16 +55,15 @@ Point Point::transformed(const Xform& xform) const {
 
 /// Convert to JSON-serializable object (alphabetical order to match Rust)
 nlohmann::ordered_json Point::jsondump() const {
-  auto clean_float = [](double val) -> double { return std::round(val * 100.0) / 100.0; };
   nlohmann::ordered_json data;
   data["guid"] = guid();
   data["name"] = name;
   data["pointcolor"] = pointcolor.jsondump();
   data["type"] = "Point";
   data["width"] = width;
-  data["x"] = clean_float(_x);
-  data["y"] = clean_float(_y);
-  data["z"] = clean_float(_z);
+  data["x"] = _x;
+  data["y"] = _y;
+  data["z"] = _z;
   return data;
 }
 
@@ -105,7 +104,7 @@ Point Point::file_json_load(const std::string& filename) {
 
 std::string Point::pb_dumps() const {
   session_proto::Point proto;
-  proto.set_guid(guid());
+  if (has_guid()) { proto.set_guid(guid()); }
   proto.set_name(name);
   proto.set_x(_x);
   proto.set_y(_y);
@@ -128,7 +127,7 @@ Point Point::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
   
   Point point(proto.x(), proto.y(), proto.z());
-  point.guid() = proto.guid();
+  if (!proto.guid().empty()) { point.guid() = proto.guid(); }
   point.name = proto.name();
   point.width = proto.width();
   

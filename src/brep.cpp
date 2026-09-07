@@ -1217,7 +1217,7 @@ static std::vector<BRepRef> refs_from_proto(const google::protobuf::RepeatedPtrF
 
 std::string BRep::pb_dumps() const {
     session_proto::BRep proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_width(width);
     for (const auto& c : m_curves_2d) proto.add_curves_2d()->ParseFromString(c.pb_dumps());
@@ -1271,7 +1271,7 @@ BRep BRep::pb_loads(const std::string& data) {
     session_proto::BRep proto;
     proto.ParseFromString(data);
     BRep b;
-    b.guid() = proto.guid();
+    if (!proto.guid().empty()) { b.guid() = proto.guid(); }
     b.name = proto.name();
     b.width = proto.width();
     for (const auto& c : proto.curves_2d()) b.m_curves_2d.push_back(NurbsCurve::pb_loads(c.SerializeAsString()));

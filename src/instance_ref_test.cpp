@@ -104,13 +104,14 @@ MINI_TEST("InstanceRef", "Protobuf Roundtrip") {
     ref.flags = 5;
 
     // String
+    const std::string guid = ref.guid();
     std::string s = ref.pb_dumps();
     InstanceRef loaded_s = InstanceRef::pb_loads(s);
 
     MINI_CHECK(loaded_s.name == "test_ref");
     MINI_CHECK(loaded_s.definition_guid == "def-xyz");
     MINI_CHECK(loaded_s.flags == 5);
-    MINI_CHECK(loaded_s.guid() == ref.guid());
+    MINI_CHECK(loaded_s.guid() == guid);
     MINI_CHECK(TOLERANCE.is_close(loaded_s[14], 3.0));
 
     // File
@@ -119,7 +120,7 @@ MINI_TEST("InstanceRef", "Protobuf Roundtrip") {
     InstanceRef loaded = InstanceRef::pb_load(fname);
     MINI_CHECK(loaded.name == "test_ref");
     MINI_CHECK(loaded.definition_guid == "def-xyz");
-    MINI_CHECK(loaded.guid() == ref.guid());
+    MINI_CHECK(loaded.guid() == guid);
     MINI_CHECK(TOLERANCE.is_close(loaded[12], 1.0));
     MINI_CHECK(TOLERANCE.is_close(loaded[13], 2.0));
     MINI_CHECK(TOLERANCE.is_close(loaded[14], 3.0));

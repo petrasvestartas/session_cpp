@@ -43,6 +43,7 @@ public:
  */
 class SpatialBVH {
 public:
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string name;

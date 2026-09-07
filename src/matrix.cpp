@@ -463,7 +463,7 @@ Matrix Matrix::file_json_load(const std::string& filename) {
 
 std::string Matrix::pb_dumps() const {
     session_proto::Matrix msg;
-    msg.set_guid(guid());
+    if (has_guid()) { msg.set_guid(guid()); }
     msg.set_name(name);
     msg.set_rows(rows);
     msg.set_cols(cols);

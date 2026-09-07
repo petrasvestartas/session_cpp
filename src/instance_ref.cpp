@@ -156,7 +156,7 @@ InstanceRef InstanceRef::file_json_load(const std::string& filename) {
 
 std::string InstanceRef::pb_dumps() const {
     session_proto::InstanceRef proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_definition_guid(definition_guid);
     auto* proto_xform = proto.mutable_xform();
@@ -177,7 +177,7 @@ InstanceRef InstanceRef::pb_loads(const std::string& data) {
     session_proto::InstanceRef proto;
     proto.ParseFromString(data);
     InstanceRef ref;
-    ref.guid() = proto.guid();
+    if (!proto.guid().empty()) { ref.guid() = proto.guid(); }
     ref.name = proto.name();
     ref.definition_guid = proto.definition_guid();
     if (proto.has_xform()) {

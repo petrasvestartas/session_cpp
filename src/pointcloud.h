@@ -17,6 +17,7 @@ namespace session_cpp {
 class PointCloud {
 public:
     /// Lazy GUID accessor (const)
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
     /// Lazy GUID accessor (mutable)

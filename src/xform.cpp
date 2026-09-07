@@ -710,7 +710,7 @@ Xform Xform::file_json_load(const std::string& filename) {
 
 std::string Xform::pb_dumps() const {
     session_proto::Xform proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     for (int i = 0; i < 16; ++i) {
         proto.add_matrix(m[i]);
@@ -723,7 +723,7 @@ Xform Xform::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Xform xform;
-    xform.guid() = proto.guid();
+    if (!proto.guid().empty()) { xform.guid() = proto.guid(); }
     xform.name = proto.name();
     for (int i = 0; i < 16 && i < proto.matrix_size(); ++i) {
         xform.m[i] = proto.matrix(i);

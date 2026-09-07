@@ -377,6 +377,7 @@ MINI_TEST("Element", "RegistryRoundTrip") {
     MINI_CHECK(Element::is_registered("TestPlate"));
 
     TestPlate plate(unit_quad(), "plate_0", 12.5, {30, 11, 20});
+    const std::string guid = plate.guid();
     auto loaded = Element::pb_loads_polymorphic(plate.pb_dumps());
 
     // The derived type came back, not a sliced base.
@@ -385,7 +386,7 @@ MINI_TEST("Element", "RegistryRoundTrip") {
     MINI_CHECK(as_plate->element_type_name() == "TestPlate");
 
     // Identity, base state and domain state all survived.
-    MINI_CHECK(as_plate->guid() == plate.guid());
+    MINI_CHECK(as_plate->guid() == guid);
     MINI_CHECK(as_plate->name == "plate_0");
     MINI_CHECK(std::holds_alternative<Mesh>(as_plate->geometry()));
     MINI_CHECK(std::abs(as_plate->thickness - 12.5) < 1e-9);

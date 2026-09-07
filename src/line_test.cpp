@@ -191,12 +191,13 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
     //   pb_load(path)   | file         | read from file
 
     // String
+    const std::string guid = l.guid();
     std::string s = l.pb_dumps();
     Line loaded_s = Line::pb_loads(s);
 
     MINI_CHECK(loaded_s.name == "test_line");
     MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
-    MINI_CHECK(loaded_s.guid() == l.guid());
+    MINI_CHECK(loaded_s.guid() == guid);
 
     // File
     std::string fname = "serialization/test_line.bin";
@@ -210,7 +211,7 @@ MINI_TEST("Line", "Protobuf Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
     MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
     MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
-    MINI_CHECK(loaded.guid() == l.guid());
+    MINI_CHECK(loaded.guid() == guid);
 }
 
 MINI_TEST("Line", "Length") {

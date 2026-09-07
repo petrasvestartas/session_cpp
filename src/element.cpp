@@ -311,7 +311,7 @@ ElementFeature ElementFeature::file_json_load(const std::string& filename) {
 }
 std::string ElementFeature::pb_dumps() const {
     session_proto::ElementFeature proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_feature_type(feature_type);
     proto.set_face_index(face_index);
@@ -463,7 +463,7 @@ Element Element::file_json_load(const std::string& path) {
 
 std::string Element::pb_dumps() const {
     session_proto::Element proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     if (auto* mesh = std::get_if<Mesh>(&_geometry)) {
         proto.set_geometry_type("Mesh");
@@ -509,7 +509,7 @@ Element Element::pb_loads(const std::string& data) {
     session_proto::Element proto;
     proto.ParseFromString(data);
     Element elem;
-    elem.guid() = proto.guid();
+    if (!proto.guid().empty()) { elem.guid() = proto.guid(); }
     elem.name = proto.name();
     std::string geo_type = proto.geometry_type();
     if (geo_type == "Mesh" && !proto.geometry_data().empty()) {

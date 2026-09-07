@@ -149,7 +149,7 @@ Graph Graph::file_json_load(const std::string &filename) {
 std::string Graph::pb_dumps() const {
   session_proto::Graph proto;
   proto.set_name(name);
-  proto.set_guid(guid());
+  if (has_guid()) { proto.set_guid(guid()); }
   proto.set_vertex_count(vertex_count);
   proto.set_edge_count(edge_count);
 
@@ -186,7 +186,7 @@ Graph Graph::pb_loads(const std::string &data) {
   proto.ParseFromString(data);
 
   Graph graph(proto.name());
-  graph.guid() = proto.guid();
+  if (!proto.guid().empty()) { graph.guid() = proto.guid(); }
   graph.vertex_count = proto.vertex_count();
   graph.edge_count = proto.edge_count();
 

@@ -1867,7 +1867,7 @@ std::string NurbsSurface::pb_dumps() const {
     session_proto::NurbsSurface proto;
 
     // Basic metadata
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_dimension(m_dim);
     proto.set_is_rational(m_is_rat != 0);
@@ -1931,7 +1931,7 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
                    proto.cv_count_u(), proto.cv_count_v());
 
     // Load metadata
-    surface.guid() = proto.guid();
+    if (!proto.guid().empty()) { surface.guid() = proto.guid(); }
     surface.name = proto.name();
 
     // Load nurbsknot vectors

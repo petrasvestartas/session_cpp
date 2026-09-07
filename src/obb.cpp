@@ -590,7 +590,7 @@ std::string OBB::pb_dumps() const {
     proto.mutable_y_axis()->ParseFromString(y_axis.pb_dumps());
     proto.mutable_z_axis()->ParseFromString(z_axis.pb_dumps());
     proto.mutable_half_size()->ParseFromString(half_size.pb_dumps());
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     return proto.SerializeAsString();
 }
@@ -604,7 +604,7 @@ OBB OBB::pb_loads(const std::string& data) {
     Vector za = Vector::pb_loads(proto.z_axis().SerializeAsString());
     Vector hs = Vector::pb_loads(proto.half_size().SerializeAsString());
     OBB box(c, xa, ya, za, hs);
-    box.guid() = proto.guid();
+    if (!proto.guid().empty()) { box.guid() = proto.guid(); }
     box.name = proto.name();
     return box;
 }

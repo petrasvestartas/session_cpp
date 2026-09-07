@@ -37,6 +37,7 @@ public:
   TreeNode(std::string name = "my_node") { this->name = name; }
 
   /// Lazy GUID accessor (const)
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
   /// Lazy GUID accessor (mutable)
@@ -115,6 +116,7 @@ class Tree {
 
 public:
   /// Lazy GUID accessor (const)
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
   /// Lazy GUID accessor (mutable)

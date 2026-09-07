@@ -3330,7 +3330,7 @@ LoftResult Mesh::loft_panels(
 
 std::string Mesh::pb_dumps() const {
     session_proto::Mesh proto;
-    proto.set_guid(this->guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(this->name);
 
     // Vertices
@@ -3438,7 +3438,7 @@ Mesh Mesh::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Mesh mesh;
-    mesh.guid() = proto.guid();
+    if (!proto.guid().empty()) { mesh.guid() = proto.guid(); }
     mesh.name = proto.name();
 
     // Vertices

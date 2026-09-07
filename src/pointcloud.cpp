@@ -452,7 +452,7 @@ PointCloud PointCloud::file_json_load(const std::string& filename) {
 
 std::string PointCloud::pb_dumps() const {
     session_proto::PointCloud proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_point_size(point_size);
 
@@ -506,7 +506,7 @@ PointCloud PointCloud::pb_loads(const std::string& data) {
     std::vector<double> normals(proto.normals().begin(), proto.normals().end());
 
     PointCloud pc = from_coords(coords, colors, normals);
-    pc.guid() = proto.guid();
+    if (!proto.guid().empty()) { pc.guid() = proto.guid(); }
     pc.name = proto.name();
     pc.point_size = proto.point_size() > 0 ? proto.point_size() : 1.0;
     pc._lod_min.assign(proto.lod_min().begin(), proto.lod_min().end());

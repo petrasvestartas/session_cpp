@@ -25,6 +25,7 @@ namespace session_cpp {
     class Plane {
         public:
         std::string name = "my_plane";     ///< Plane identifier/name
+        bool has_guid() const { return !_guid.empty(); }
         const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
         std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
         double width = 1.0;                ///< Width for plane visualization

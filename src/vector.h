@@ -29,6 +29,7 @@ class Point; // Forward declaration
 class Vector {
 public:
   std::string name = "my_vector"; ///< Vector identifier/name
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 

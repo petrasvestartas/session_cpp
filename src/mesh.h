@@ -203,6 +203,7 @@ public:
     std::map<std::string, double> default_vertex_attributes;              ///< Default vertex attrs
     std::map<std::string, double> default_face_attributes;                ///< Default face attrs
     std::map<std::string, double> default_edge_attributes;                ///< Default edge attrs
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.

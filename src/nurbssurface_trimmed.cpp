@@ -1807,7 +1807,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::file_json_load(const std::string& filen
 
 std::string NurbsSurfaceTrimmed::pb_dumps() const {
     session_proto::NurbsSurfaceTrimmed proto;
-    proto.set_guid(guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
     proto.set_width(width);
 
@@ -1846,7 +1846,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     NurbsSurfaceTrimmed ts;
-    ts.guid() = proto.guid();
+    if (!proto.guid().empty()) { ts.guid() = proto.guid(); }
     ts.name = proto.name();
     ts.width = proto.width();
 

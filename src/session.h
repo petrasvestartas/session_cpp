@@ -29,14 +29,7 @@
 
 namespace session_cpp {
 
-/**
- * WHEN ADDING A NEW GEOMETRY TYPE:
- * 1. Add it to this Geometry variant below
- * 2. See complete checklist in session.cpp (top of file)
- * 3. Update Objects class collections (objects.h/cpp)
- * 4. Add Session::add_XXX() method
- * 5. Update visitor patterns: compute_bounding_box(), ray_intersect_geometry()
- */
+/// A new type joins here and in the checklist at the top of session.cpp.
 
 // All geometry types as a variant
 using Geometry = std::variant<
@@ -53,13 +46,11 @@ using Geometry = std::variant<
     std::shared_ptr<Element>
 >;
 
-/**
- * @class Session
- * @brief A session containing geometry objects.
- */
+/// A session containing geometry objects.
 class Session {
 public:
   std::string name = "my_session"; ///< The name of the session
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   Objects objects;                 ///< Collection of geometry objects
@@ -82,10 +73,7 @@ public:
   std::vector<OBB> cached_boxes;        ///< Cached AABBs (avoid recomputing)
   bool bvh_cache_dirty = true;                  ///< Flag to rebuild SpatialBVH cache
 
-  /**
-   * @brief Constructor.
-   * @param name The name of the session.
-   */
+  /// Constructor.
   Session(std::string name = "my_session")
       : name(std::move(name)), objects(),
         tree(this->name + "_tree"), graph(this->name + "_graph") {
@@ -101,13 +89,7 @@ public:
   // Geometry Management
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Get a geometry object by GUID with type safety.
-   * @tparam T The geometry type to retrieve (Point, Vector, etc.)
-   * @param guid The GUID of the geometry object
-   * @return Shared pointer to the object if found and of correct type, nullptr
-   * otherwise
-   */
+  /// Get a geometry object by GUID with type safety.
   template <typename T> std::shared_ptr<T> get_object(const std::string &guid) {
     auto it = lookup.find(guid);
     if (it == lookup.end())
@@ -116,13 +98,7 @@ public:
     return ptr ? *ptr : nullptr;
   }
 
-  /**
-   * @brief Get a geometry object by GUID (const version).
-   * @tparam T The geometry type to retrieve
-   * @param guid The GUID of the geometry object
-   * @return Shared pointer to the object if found and of correct type, nullptr
-   * otherwise
-   */
+  /// Get a geometry object by GUID (const version).
   template <typename T>
   std::shared_ptr<const T> get_object(const std::string &guid) const {
     auto it = lookup.find(guid);
@@ -132,13 +108,7 @@ public:
     return ptr ? *ptr : nullptr;
   }
 
-  /**
-   * @brief Select objects of one type, grouped by the top-level nodes of the tree.
-   * @tparam T The geometry type to select (Polyline, Mesh, etc.)
-   * @return One vector per direct child of the root, in tree order, each holding that
-   * subtree's objects of type T in depth-first order. A child holding no object of type T
-   * contributes no vector, so the result has no empty entries.
-   */
+  /// Select objects of one type, grouped by the top-level nodes of the tree.
   template <typename T> std::vector<std::vector<T>> select_by_type() const {
     std::vector<std::vector<T>> groups;
     std::shared_ptr<TreeNode> root = tree.root();
@@ -156,58 +126,27 @@ public:
     return groups;
   }
 
-  /**
-   * Every add_* below SKIPS an object that is null or carries nothing to draw, and returns
-   * nullptr instead of a node: an empty point cloud, a polyline of fewer than two points, a
-   * mesh without faces, a curve with fewer than two control vertices, an element with no
-   * geometry. The session stays free of objects a viewer cannot render, and no caller has to
-   * test its geometry before handing it over.
-   */
+  /// Every add_* below SKIPS an object that is null or carries nothing to draw, and returns
 
-  /**
-   * @brief Add a point to the session.
-   * @param point Shared pointer to the point to add
-   * @return Shared pointer to the TreeNode created for this point, nullptr if point is null
-   */
+  /// Add a point to the session.
   std::shared_ptr<TreeNode> add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a line to the session.
-   * @return Shared pointer to the TreeNode created for this line, nullptr if line is null
-   */
+  /// Add a line to the session.
   std::shared_ptr<TreeNode> add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a plane to the session.
-   * @return Shared pointer to the TreeNode created for this plane, nullptr if plane is null
-   */
+  /// Add a plane to the session.
   std::shared_ptr<TreeNode> add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a bounding box to the session.
-   * @return Shared pointer to the TreeNode created for this box, nullptr if bbox is null
-   */
+  /// Add a bounding box to the session.
   std::shared_ptr<TreeNode> add_obb(std::shared_ptr<OBB> bbox);
 
-  /**
-   * @brief Add a polyline to the session.
-   * @return Shared pointer to the TreeNode created for this polyline, nullptr if the polyline
-   * is null or has fewer than two points
-   */
+  /// Add a polyline to the session.
   std::shared_ptr<TreeNode> add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a point cloud to the session.
-   * @return Shared pointer to the TreeNode created for this cloud, nullptr if the cloud is
-   * null or holds no points
-   */
+  /// Add a point cloud to the session.
   std::shared_ptr<TreeNode> add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a mesh to the session.
-   * @return Shared pointer to the TreeNode created for this mesh, nullptr if the mesh is null
-   * or has no vertices or no faces
-   */
+  /// Add a mesh to the session.
   std::shared_ptr<TreeNode> add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent = nullptr);
 
   /// Add a curve. Null, or fewer than two control vertices, adds nothing and returns nullptr.
@@ -223,18 +162,10 @@ public:
   /// even when it carries no geometry.
   std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a custom component (any object with type_name/guid/name/extra).
-   * @return Shared pointer to the TreeNode created for this component
-   */
+  /// Add a custom component (any object with type_name/guid/name/extra).
   std::shared_ptr<TreeNode> add_component(Component component, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /**
-   * @brief Add a TreeNode to the tree hierarchy.
-   * @param node The TreeNode to add; a null node is ignored, so passing an add_* result
-   * straight through works even when that add_* skipped its geometry
-   * @param parent Optional parent TreeNode (defaults to root if not provided)
-   */
+  /// Add a TreeNode to the tree hierarchy.
   void add(std::shared_ptr<TreeNode> node,
            std::shared_ptr<TreeNode> parent = nullptr);
 
@@ -248,30 +179,17 @@ public:
   void add_surface(std::shared_ptr<NurbsSurface> surface);
   void add_curve(std::shared_ptr<NurbsCurve> curve);
 
-  /**
-   * @brief Add an edge between two geometry objects in the graph.
-   * @param guid1 GUID of the first geometry object
-   * @param guid2 GUID of the second geometry object
-   * @param attribute Edge attribute description
-   */
+  /// Add an edge between two geometry objects in the graph.
   void add_edge(const std::string &guid1, const std::string &guid2,
                 const std::string &attribute = "");
 
   /// Compute face-to-face contacts between all elements.
   /// Uses SpatialBVH + OBB for adjacency, then boolean intersection for contact areas.
 
-  /**
-   * @brief Remove an object from the session
-   * @param obj_guid The GUID of the object to remove
-   * @return True if removed, false if not found
-   */
+  /// Remove an object from the session
   bool remove_object(const std::string &obj_guid);
 
-  /**
-   * Canonical object order: the objects vectors walked in one fixed type sequence —
-   * deterministic across runs AND languages (lookup/map iteration is neither).
-   * Viewers and reconcile key their rows off this.
-   */
+  /// Canonical object order: the objects vectors walked in one fixed type sequence —
   std::vector<std::string> order() const;
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -302,128 +220,64 @@ public:
   // Tree Operations
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Add a parent-child relationship in the tree.
-   * @param parent_guid GUID of the parent object
-   * @param child_guid GUID of the child object
-   * @return True if relationship was added successfully
-   */
+  /// Add a parent-child relationship in the tree.
   bool add_hierarchy(const std::string &parent_guid,
                      const std::string &child_guid);
 
-  /**
-   * @brief Get the children of a parent GUID
-   * @param obj_guid The GUID to search for
-   * @return List of children GUIDs
-   */
+  /// Get the children of a parent GUID
   std::vector<std::string> get_children(const std::string &obj_guid) const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Graph Operations
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Add a relationship edge in the graph.
-   * @param from_guid Source object GUID
-   * @param to_guid Target object GUID
-   * @param relationship_type Type of relationship
-   */
+  /// Add a relationship edge in the graph.
   void add_relationship(const std::string &from_guid,
                         const std::string &to_guid,
                         const std::string &relationship_type = "default");
 
-  /**
-   * @brief Get the neighbours of a GUID
-   * @param obj_guid The GUID to find connections for
-   * @return List of connected GUIDs
-   */
+  /// Get the neighbours of a GUID
   std::vector<std::string> get_neighbours(const std::string &obj_guid);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // SpatialBVH Collision Detection
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Bounding box of an object in WORLD placement, inflated by tolerance.
-   * @param geometry The geometry variant
-   * @param xform The object's cumulative transform from world_xform() - the geometry itself
-   *              stores no placement, so it must be supplied here
-   * @return Inflated bounding box for collision detection
-   */
+  /// Bounding box of an object in WORLD placement, inflated by tolerance.
   static OBB compute_bounding_box(const Geometry& geometry, const Xform& xform);
 
-  /**
-   * @brief Get all collision pairs using SpatialBVH and add them as graph edges.
-   * 
-   * Automatically:
-   * - Computes bounding boxes for all objects with tolerance inflation
-   * - Builds/rebuilds the SpatialBVH with auto-computed world size
-   * - Detects all collision pairs
-   * - Adds collision edges to the graph
-   * 
-   * @return Vector of (guid1, guid2) pairs representing colliding geometry
-   */
+  /// Get all collision pairs using SpatialBVH and add them as graph edges.
   std::vector<std::pair<std::string, std::string>> get_collisions();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Ray Intersection
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Result of a ray intersection with geometry.
-   */
+  /// Result of a ray intersection with geometry.
   struct RayHit {
     std::string guid;      ///< GUID of hit object
     Point hit_point;       ///< Intersection point
     double distance;        ///< Distance from ray origin
   };
 
-  /**
-   * @brief Cast a ray through the scene and find the closest intersecting geometry.
-   * 
-   * Uses SpatialBVH for acceleration:
-   * - Phase 1: SpatialBVH ray traversal to get candidate objects (fast, conservative)
-   * - Phase 2: Precise geometry intersection tests (slower, exact)
-   * - Optimization: Tracks closest hit distance and only keeps nearest hits
-   * 
-   * @param origin Ray origin point
-   * @param direction Ray direction vector
-   * @param tolerance Intersection tolerance for proximity tests
-   * @return Vector of closest hit(s) - typically one hit, may be multiple if at same distance
-   */
+  /// Cast a ray through the scene and find the closest intersecting geometry.
   std::vector<RayHit> ray_cast(const Point& origin, const Vector& direction, double tolerance = 1e-3);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Transformed Geometry
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief All geometry with its hierarchical placement BAKED into the coordinates.
-   *
-   * Each object is transformed by its cumulative world_xform() - its own transform with every
-   * ancestor's multiplied down the tree. The result is a FLATTENED snapshot: every guid's world
-   * transform is identity by construction, so never pair it back with session.xforms or the
-   * placement would be applied twice.
-   *
-   * @return Objects collection with transformed geometry
-   */
+  /// All geometry with its hierarchical placement BAKED into the coordinates.
   Objects get_geometry() const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON Serialization
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Serializes the Session instance to JSON.
-   * @return JSON representation of the Session instance.
-   */
+  /// Serializes the Session instance to JSON.
   nlohmann::ordered_json jsondump() const;
 
-  /**
-   * @brief Creates a Session instance from JSON data.
-   * @param data JSON data containing session information.
-   * @return Session instance created from the data.
-   */
+  /// Creates a Session instance from JSON data.
   static Session jsonload(const nlohmann::json &data);
   std::string file_json_dumps() const;
   static Session file_json_loads(const std::string& json_string);
@@ -441,41 +295,18 @@ private:
   /// jsondump and pb_dumps write, so both formats share one order.
   std::vector<std::pair<std::string, Xform>> xforms_ordered() const;
 
-  /**
-   * @brief Test ray intersection with a specific geometry object.
-   * @param ray The ray to test
-   * @param geometry The geometry variant to test against
-   * @param tolerance Intersection tolerance
-   * @param placement The object's cumulative world transform (the session holds it, not the geometry)
-   * @return Hit point if intersection found, nullopt otherwise
-   */
+  /// Test ray intersection with a specific geometry object.
   std::optional<Point> ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance, const Xform& placement);
   
-  /**
-   * @brief Rebuild the cached SpatialBVH for ray casting.
-   * Called automatically when SpatialBVH cache is dirty.
-   */
+  /// Rebuild the cached SpatialBVH for ray casting.
   void rebuild_ray_bvh_cache();
   
-  /**
-   * @brief Invalidate the SpatialBVH cache (call when geometry is added/removed).
-   */
+  /// Invalidate the SpatialBVH cache (call when geometry is added/removed).
   void invalidate_bvh_cache() { bvh_cache_dirty = true; }
   
-  /**
-   * @brief Cache geometry bounding box incrementally
-   * @param obj_guid The GUID of the geometry
-   * @param geometry The geometry variant
-   */
+  /// Cache geometry bounding box incrementally
   void cache_geometry_aabb(const std::string& obj_guid, const Geometry& geometry);
 };
-/**
- * @brief  To use this operator, you can do:
- *         Point point(1.5, 2.5, 3.5);
- *         std::cout << "Created point: " << point << std::endl;
- * @param os The output stream.
- * @param point The Point to insert into the stream.
- * @return A reference to the output stream.
- */
+/// To use this operator, you can do:
 std::ostream &operator<<(std::ostream &os, const Session &session);
 } // namespace session_cpp

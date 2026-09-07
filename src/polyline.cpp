@@ -461,7 +461,7 @@ Polyline Polyline::file_json_load(const std::string& filename) {
 
 std::string Polyline::pb_dumps() const {
     session_proto::Polyline proto;
-    proto.set_guid(this->guid());
+    if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(this->name);
     proto.set_width(this->width);
     for (double d : dash) {
@@ -492,7 +492,7 @@ Polyline Polyline::pb_loads(const std::string& data) {
     std::vector<double> coords(proto.coords().begin(), proto.coords().end());
 
     Polyline pl = Polyline::from_coords(coords);
-    pl.guid() = proto.guid();
+    if (!proto.guid().empty()) { pl.guid() = proto.guid(); }
     pl.name = proto.name();
     pl.width = proto.width();
     pl.dash.assign(proto.dash().begin(), proto.dash().end());

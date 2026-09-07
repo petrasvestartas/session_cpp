@@ -7,40 +7,15 @@
 #include <functional>
 #include <set>
 
-/**
- * ADDING NEW GEOMETRY TYPES - CHECKLIST
- * =====================================
- * 
- * When adding a new geometry type (e.g., Sphere, Cone, etc.), update:
- * 
- * 1. SESSION.H:
- *    - Add to Geometry variant (e.g., std::shared_ptr<Sphere>)
- *    - Add collection to Objects class (e.g., std::shared_ptr<std::vector<std::shared_ptr<Sphere>>> spheres)
- *    - Add to Objects constructor initialization
- *    - Declare Session::add_XXX() method
- * 
- * 2. SESSION.CPP:
- *    - Implement Session::add_XXX() method
- *    - Add case in Session::compute_bounding_box() visitor
- *    - Add case in Session::ray_intersect_geometry() visitor
- *    - Add collection to Session::get_geometry() transformation loop
- *    - Add collection to Session::jsonload() rebuild lookup
- * 
- * 3. OBJECTS.H/CPP:
- *    - Add collection member and initialization
- *    - Add to Objects::jsondump()
- *    - Add to Objects::jsonload()
- *    - Add to Objects::to_string()
- * 
- * 4. INTERSECTION.H/CPP (if needed):
- *    - Implement ray-geometry intersection method
- *    - Consider adding to existing methods if applicable
- * 
- * Critical visitor patterns to update:
- * - compute_bounding_box(): Define AABB for collision detection
- * - ray_intersect_geometry(): Define precise ray intersection logic
- * - get_geometry(): Apply transformations to new type
- */
+// ═══════════════════════════════════════════════════════════════════════════
+// Adding a geometry type
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// - session.h: the Geometry variant, the Objects collection, Session::add_XXX()
+// - session.cpp: add_XXX(), compute_bounding_box(), ray_intersect_geometry(),
+//   get_geometry(), the lookup rebuild in jsonload() and pb_loads()
+// - objects.h/.cpp: the collection, jsondump/jsonload, str()
+// - intersection.h/.cpp: a ray test, when the type can be hit
 
 namespace session_cpp {
 
@@ -49,7 +24,9 @@ std::string Session::str() const {
                      objects.str(), tree.str(), graph.str());
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // Geometry Management
+// ═══════════════════════════════════════════════════════════════════════════
 //
 // Every add_* below is a no-op returning nullptr when the object is null or carries nothing
 // to draw - an empty point cloud, a polyline of fewer than two points, a mesh without faces.
@@ -57,7 +34,8 @@ std::string Session::str() const {
 // viewer cannot render.
 
 std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent) {
-  if (!point) return nullptr;
+  if (!point)
+    return nullptr;
   objects.points->push_back(point);
   lookup[point->guid()] = point;
   graph.add_node(point->guid(), "point_" + point->name);
@@ -68,7 +46,8 @@ std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::
 }
 
 std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent) {
-  if (!line) return nullptr;
+  if (!line)
+    return nullptr;
   objects.lines->push_back(line);
   lookup[line->guid()] = line;
   graph.add_node(line->guid(), "line_" + line->name);
@@ -79,7 +58,8 @@ std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent) {
-  if (!plane) return nullptr;
+  if (!plane)
+    return nullptr;
   objects.planes->push_back(plane);
   lookup[plane->guid()] = plane;
   graph.add_node(plane->guid(), "plane_" + plane->name);
@@ -90,7 +70,8 @@ std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::
 }
 
 std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
-  if (!bbox) return nullptr;
+  if (!bbox)
+    return nullptr;
   objects.bboxes->push_back(bbox);
   lookup[bbox->guid()] = bbox;
   graph.add_node(bbox->guid(), "bbox_" + bbox->name);
@@ -100,7 +81,8 @@ std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
 }
 
 std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent) {
-  if (!polyline || polyline->point_count() < 2) return nullptr;
+  if (!polyline || polyline->point_count() < 2)
+    return nullptr;
   objects.polylines->push_back(polyline);
   lookup[polyline->guid()] = polyline;
   graph.add_node(polyline->guid(), "polyline_" + polyline->name);
@@ -111,7 +93,8 @@ std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyli
 }
 
 std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent) {
-  if (!pointcloud || pointcloud->is_empty()) return nullptr;
+  if (!pointcloud || pointcloud->is_empty())
+    return nullptr;
   objects.pointclouds->push_back(pointcloud);
   lookup[pointcloud->guid()] = pointcloud;
   graph.add_node(pointcloud->guid(), "pointcloud_" + pointcloud->name);
@@ -122,7 +105,8 @@ std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> po
 }
 
 std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent) {
-  if (!mesh || mesh->is_empty() || mesh->number_of_faces() == 0) return nullptr;
+  if (!mesh || mesh->is_empty() || mesh->number_of_faces() == 0)
+    return nullptr;
   objects.meshes->push_back(mesh);
   lookup[mesh->guid()] = mesh;
   graph.add_node(mesh->guid(), "mesh_" + mesh->name);
@@ -133,7 +117,8 @@ std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve, std::shared_ptr<TreeNode> parent) {
-  if (!nurbscurve || nurbscurve->cv_count() < 2) return nullptr;
+  if (!nurbscurve || nurbscurve->cv_count() < 2)
+    return nullptr;
   objects.nurbscurves->push_back(nurbscurve);
   lookup[nurbscurve->guid()] = nurbscurve;
   graph.add_node(nurbscurve->guid(), "nurbscurve_" + nurbscurve->name);
@@ -144,7 +129,8 @@ std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nu
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface, std::shared_ptr<TreeNode> parent) {
-  if (!nurbssurface || nurbssurface->cv_count() == 0) return nullptr;
+  if (!nurbssurface || nurbssurface->cv_count() == 0)
+    return nullptr;
   objects.nurbssurfaces->push_back(nurbssurface);
   lookup[nurbssurface->guid()] = nurbssurface;
   graph.add_node(nurbssurface->guid(), "nurbssurface_" + nurbssurface->name);
@@ -155,7 +141,8 @@ std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface
 }
 
 std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent) {
-  if (!brep || (brep->face_count() == 0 && brep->vertex_count() == 0)) return nullptr;
+  if (!brep || (brep->face_count() == 0 && brep->vertex_count() == 0))
+    return nullptr;
   objects.breps->push_back(brep);
   lookup[brep->guid()] = brep;
   bvh_cache_dirty = true;
@@ -168,7 +155,8 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::sha
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
   // Kept even with no geometry: an Element is a data record - features, insertion vectors,
   // element_data a consumer reads back - and dropping one would lose that on a round trip.
-  if (!element) return nullptr;
+  if (!element)
+    return nullptr;
   objects.elements->push_back(element);
   lookup[element->guid()] = element;
   bvh_cache_dirty = true;
@@ -209,7 +197,8 @@ void Session::add(std::shared_ptr<TreeNode> node,
                   std::shared_ptr<TreeNode> parent) {
   // add_* hands back nullptr for geometry with nothing to draw, so
   // add(add_mesh(m), group) stays a valid one-liner for a mesh that was skipped.
-  if (node == nullptr) return;
+  if (node == nullptr)
+    return;
   if (parent == nullptr) {
     tree.add(node, tree.root());
   } else {
@@ -405,8 +394,9 @@ bool Session::remove_object(const std::string &obj_guid) {
   return true;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // Tree Operations
-
+// ═══════════════════════════════════════════════════════════════════════════
 bool Session::add_hierarchy(const std::string &parent_guid,
                             const std::string &child_guid) {
   return tree.add_child_by_guid(parent_guid, child_guid);
@@ -416,8 +406,9 @@ std::vector<std::string> Session::get_children(const std::string &obj_guid) cons
   return tree.get_children_guids(obj_guid);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // Graph Operations
-
+// ═══════════════════════════════════════════════════════════════════════════
 void Session::add_relationship(const std::string &from_guid,
                                const std::string &to_guid,
                                const std::string &relationship_type) {
@@ -428,8 +419,9 @@ std::vector<std::string> Session::get_neighbours(const std::string &obj_guid) {
   return graph.neighbors(obj_guid);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // SpatialBVH Collision Detection
-
+// ═══════════════════════════════════════════════════════════════════════════
 // ADD NEW GEOMETRY TYPES HERE: Add bounding box computation for collision detection
 OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) {
   double inflate = Tolerance::APPROXIMATION;
@@ -506,7 +498,8 @@ OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) 
       std::vector<Point> points;
       for (int i = 0; i < geom_ptr->cv_count(); ++i)
         points.push_back(tp(geom_ptr->get_cv(i)));
-      if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
+      if (points.empty())
+        return OBB::from_point(Point(0, 0, 0), inflate);
       return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<NurbsSurface>>) {
@@ -514,7 +507,8 @@ OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) 
       for (int i = 0; i < geom_ptr->cv_count(0); ++i)
         for (int j = 0; j < geom_ptr->cv_count(1); ++j)
           points.push_back(tp(geom_ptr->get_cv(i, j)));
-      if (points.empty()) return OBB::from_point(Point(0, 0, 0), inflate);
+      if (points.empty())
+        return OBB::from_point(Point(0, 0, 0), inflate);
       return OBB::from_points(points, inflate);
     }
     else if constexpr (std::is_same_v<T, std::shared_ptr<Element>>) {
@@ -539,7 +533,8 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
   auto world = world_xforms();
   for (const auto& g : order()) {
     auto it = lookup.find(g);
-    if (it == lookup.end()) continue;
+    if (it == lookup.end())
+      continue;
     auto wit = world.find(g);
     boxes.push_back(compute_bounding_box(it->second, wit == world.end() ? Xform::identity() : wit->second));
     guids.push_back(g);
@@ -574,8 +569,9 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
   return guid_pairs;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // Transformed Geometry
-
+// ═══════════════════════════════════════════════════════════════════════════
 Objects Session::get_geometry() const {
   // A REAL deep copy. Objects holds shared_ptr<vector<shared_ptr<T>>> and has no copy
   // constructor, so `Objects copy = objects;` shared both the vectors and the objects
@@ -616,7 +612,8 @@ Objects Session::get_geometry() const {
   auto bake = [&world](auto& vec) {
     for (auto& item : vec) {
       auto it = world.find(item->guid());
-      if (it == world.end() || it->second.is_identity()) continue;
+      if (it == world.end() || it->second.is_identity())
+        continue;
       item->transform(it->second);
     }
   };
@@ -632,15 +629,17 @@ Objects Session::get_geometry() const {
   bake(*out.breps);
   for (auto& item : *out.elements) {
     auto it = world.find(item->guid());
-    if (it == world.end() || it->second.is_identity()) continue;
+    if (it == world.end() || it->second.is_identity())
+      continue;
     item->place(it->second);
   }
 
   return out;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // JSON Serialization
-
+// ═══════════════════════════════════════════════════════════════════════════
 nlohmann::ordered_json Session::jsondump() const {
   nlohmann::ordered_json data;
   data["type"] = "Session";
@@ -720,7 +719,6 @@ Session Session::jsonload(const nlohmann::json &data) {
     }
   }
 
-
   return session;
 }
 
@@ -746,7 +744,7 @@ Session Session::file_json_load(const std::string& filename) {
 std::string Session::pb_dumps() const {
   session_proto::Session proto;
   proto.set_name(name);
-  proto.set_guid(guid());
+  if (has_guid()) { proto.set_guid(guid()); }
   proto.mutable_objects()->ParseFromString(objects.pb_dumps());
   proto.mutable_tree()->ParseFromString(tree.pb_dumps());
   proto.mutable_graph()->ParseFromString(graph.pb_dumps());
@@ -764,7 +762,7 @@ Session Session::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
 
   Session session(proto.name());
-  session.guid() = proto.guid();
+  if (!proto.guid().empty()) { session.guid() = proto.guid(); }
 
   if (proto.has_objects()) {
     session.objects = Objects::pb_loads(proto.objects().SerializeAsString());
@@ -775,7 +773,6 @@ Session Session::pb_loads(const std::string& data) {
   if (proto.has_graph()) {
     session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
   }
-
 
   for (const auto& p : *session.objects.points) session.lookup[p->guid()] = p;
   for (const auto& l : *session.objects.lines) session.lookup[l->guid()] = l;
@@ -809,8 +806,9 @@ Session Session::pb_load(const std::string& filename) {
   return pb_loads(data);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
 // Ray Intersection
-
+// ═══════════════════════════════════════════════════════════════════════════
 void Session::cache_geometry_aabb(const std::string& obj_guid, const Geometry& geometry) {
   // LAZY (P5): boxes are recomputed in rebuild_ray_bvh_cache from the canonical order —
   // always fresh, nothing retained per-add. Adds only mark the cache dirty.
@@ -830,7 +828,8 @@ void Session::rebuild_ray_bvh_cache() {
   auto world = world_xforms();
   for (const auto& g : order()) {
     auto it = lookup.find(g);
-    if (it == lookup.end()) continue;
+    if (it == lookup.end())
+      continue;
     auto wit = world.find(g);
     boxes.push_back(compute_bounding_box(it->second, wit == world.end() ? Xform::identity() : wit->second));
     cached_guids.push_back(g);
@@ -967,7 +966,8 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
     else if constexpr (std::is_same_v<T, std::shared_ptr<Mesh>>) {
       // The session holds the placement: cast in the mesh's LOCAL frame, return a WORLD hit
       auto inv = placement.inverse();
-      if (!inv) return std::nullopt;
+      if (!inv)
+        return std::nullopt;
       Line local_ray = Line::from_points(inv->transform_point(ray.start()), inv->transform_point(ray.end()));
       std::vector<Point> hits = Intersection::ray_mesh_bvh(local_ray, *geom_ptr, tolerance, true);
       if (!hits.empty()) {

@@ -233,7 +233,7 @@ std::string Tree::pb_dumps() const {
     };
 
   session_proto::Tree proto;
-  proto.set_guid(guid());
+  if (has_guid()) { proto.set_guid(guid()); }
   proto.set_name(name);
   if (_root) {
     *proto.mutable_root() = node_to_proto(_root.get());
@@ -260,7 +260,7 @@ Tree Tree::pb_loads(const std::string& data) {
     };
 
   Tree tree(proto.name());
-  tree.guid() = proto.guid();
+  if (!proto.guid().empty()) { tree.guid() = proto.guid(); }
   if (proto.has_root()) {
     tree.add(proto_to_node(proto.root()));
   }

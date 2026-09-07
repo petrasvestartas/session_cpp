@@ -164,11 +164,12 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
     bb.name = "test_bbox_proto";
 
     // String
+    const std::string guid = bb.guid();
     std::string s = bb.pb_dumps();
     OBB loaded_s = OBB::pb_loads(s);
 
     MINI_CHECK(loaded_s.name == "test_bbox_proto");
-    MINI_CHECK(loaded_s.guid() == bb.guid());
+    MINI_CHECK(loaded_s.guid() == guid);
     MINI_CHECK(TOLERANCE.is_close(loaded_s.center[0], 1.0));
 
     // File
@@ -177,7 +178,7 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
     OBB loaded = OBB::pb_load(fname);
 
     MINI_CHECK(loaded.name == "test_bbox_proto");
-    MINI_CHECK(loaded.guid() == bb.guid());
+    MINI_CHECK(loaded.guid() == guid);
     MINI_CHECK(TOLERANCE.is_close(loaded.center[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.half_size[0], 5.0));
 }

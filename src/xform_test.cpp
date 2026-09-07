@@ -588,11 +588,12 @@ MINI_TEST("Xform", "Protobuf Roundtrip") {
     xform.name = "test_xform_proto";
 
     std::string filename = "serialization/test_xform.bin";
+    const std::string guid = xform.guid();
     xform.pb_dump(filename);
     Xform loaded = Xform::pb_load(filename);
 
     MINI_CHECK(loaded.name == "test_xform_proto");
-    MINI_CHECK(loaded.guid() == xform.guid());
+    MINI_CHECK(loaded.guid() == guid);
     MINI_CHECK(TOLERANCE.is_close(loaded.m[0], 1.0) && TOLERANCE.is_close(loaded.m[1], 0.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.m[2], 0.0) && TOLERANCE.is_close(loaded.m[3], 0.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.m[4], 0.0) && TOLERANCE.is_close(loaded.m[5], 1.0));

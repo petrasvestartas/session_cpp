@@ -112,7 +112,7 @@ Color Color::file_json_load(const std::string& filename) {
 
 std::string Color::pb_dumps() const {
   session_proto::Color proto;
-  proto.set_guid(guid());
+  if (has_guid()) { proto.set_guid(guid()); }
   proto.set_name(name);
   proto.set_r(r);
   proto.set_g(g);
@@ -126,7 +126,7 @@ Color Color::pb_loads(const std::string& data) {
   proto.ParseFromString(data);
 
   Color color(proto.r(), proto.g(), proto.b(), proto.a(), proto.name());
-  color.guid() = proto.guid();
+  if (!proto.guid().empty()) { color.guid() = proto.guid(); }
   return color;
 }
 

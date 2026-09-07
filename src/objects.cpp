@@ -247,7 +247,7 @@ Objects Objects::file_json_load(const std::string& filename) {
 std::string Objects::pb_dumps() const {
   session_proto::Objects proto;
   proto.set_name(name);
-  proto.set_guid(guid());
+  if (has_guid()) { proto.set_guid(guid()); }
   for (const auto& p : *points) proto.add_points()->ParseFromString(p->pb_dumps());
   for (const auto& l : *lines) proto.add_lines()->ParseFromString(l->pb_dumps());
   for (const auto& pl : *planes) proto.add_planes()->ParseFromString(pl->pb_dumps());
@@ -273,7 +273,7 @@ Objects Objects::pb_loads(const std::string& data) {
   session_proto::Objects proto;
   proto.ParseFromString(data);
   Objects objects(proto.name());
-  objects.guid() = proto.guid();
+  if (!proto.guid().empty()) { objects.guid() = proto.guid(); }
   for (const auto& p : proto.points())
     objects.points->push_back(keep_guid(Point::pb_loads(p.SerializeAsString())));
   for (const auto& l : proto.lines())

@@ -34,6 +34,7 @@ struct Component {
   std::string name = "my_component";   ///< Human-readable name
   nlohmann::ordered_json extra;        ///< All custom fields (everything except type/guid/name)
 
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid()       { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
@@ -71,6 +72,7 @@ private:
 class Objects {
 public:
   std::string name = "my_objects"; ///< The name of the objects
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   

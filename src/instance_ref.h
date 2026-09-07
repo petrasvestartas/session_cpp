@@ -23,6 +23,7 @@ namespace session_cpp {
 class InstanceRef {
 public:
     std::string name = "my_instance_ref";   ///< Instance identifier/name
+    bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string definition_guid;             ///< Guid of the definition this instance places

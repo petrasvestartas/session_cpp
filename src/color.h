@@ -18,6 +18,7 @@ namespace session_cpp {
 class Color {
 public:
   std::string name = "my_color"; ///< Name of the color
+  bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
   float r;                ///< Red component (0.0-1.0)
