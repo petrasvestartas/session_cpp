@@ -301,7 +301,7 @@ MINI_TEST("Element", "Polylines") {
     MINI_CHECK(e.polylines()[0].get_point(4) == Point(0,0,0));
     MINI_CHECK(e.planes().size() == 1);
     MINI_CHECK(e.planes()[0].origin() == Point(0.5, 0.5, 0.0));
-    const Vector& normal = e.planes()[0].z_axis();   // Newell, so not unit length
+    const Vector normal = e.planes()[0].z_axis();
     MINI_CHECK(std::fabs(normal[0]) < 1e-12 && std::fabs(normal[1]) < 1e-12 && normal[2] > 0.0);
     MINI_CHECK(e.edge_vectors().empty());
     MINI_CHECK(!e.axis().has_value());
