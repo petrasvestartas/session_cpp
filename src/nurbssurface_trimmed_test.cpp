@@ -148,7 +148,6 @@ namespace session_cpp {
         // uncomment #include "nurbssurface.h"
         // uncomment #include "nurbscurve.h"
         // uncomment #include "point.h"
-        // uncomment #include "primitives.h"
 
         // Create surface with bump
         int n = 8;
@@ -173,9 +172,14 @@ namespace session_cpp {
 
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
 
-        // Add hole
-        NurbsCurve hole = Primitives::circle(3.5, 3.5, 0, 1.0);
-        ts.add_hole(hole);
+        // Add hole as UV curve directly
+        NurbsCurve hole = NurbsCurve::create(true, 1, {
+            Point(0.4, 0.4, 0.0),
+            Point(0.6, 0.4, 0.0),
+            Point(0.6, 0.6, 0.0),
+            Point(0.4, 0.6, 0.0),
+        });
+        ts.add_inner_loop(hole);
 
         MINI_CHECK(ts.is_valid());
         MINI_CHECK(ts.is_trimmed());
@@ -316,35 +320,41 @@ namespace session_cpp {
         srf.set_cv(0, 1, Point(0, 6, 0));
         srf.set_cv(1, 1, Point(6, 6, 0));
 
-        // Untrimmed mesh
-        Mesh m_full = srf.mesh();
-
-        // Trimmed mesh (smaller outer boundary)
         NurbsCurve outer = NurbsCurve::create(true, 1, {
-            Point(0.1, 0.1, 0),
-            Point(0.9, 0.1, 0),
-            Point(0.9, 0.9, 0),
-            Point(0.1, 0.9, 0),
+            Point(0.05, 0.05, 0),
+            Point(0.95, 0.05, 0),
+            Point(0.95, 0.95, 0),
+            Point(0.05, 0.95, 0),
         });
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
         Mesh m = ts.mesh();
-
-        // Trimmed with hole
-        NurbsCurve hole = NurbsCurve::create(true, 1, {
-            Point(0.3, 0.3, 0),
-            Point(0.7, 0.3, 0),
-            Point(0.7, 0.7, 0),
-            Point(0.3, 0.7, 0),
-        });
-        NurbsSurfaceTrimmed ts_hole = NurbsSurfaceTrimmed::create(srf, outer);
-        ts_hole.add_inner_loop(hole);
-        Mesh m_hole = ts_hole.mesh();
-
         MINI_CHECK(!m.is_empty());
-        MINI_CHECK(m.number_of_vertices() > 0);
-        MINI_CHECK(m.number_of_faces() > 0);
-        MINI_CHECK(m.number_of_faces() > 0);
-        MINI_CHECK(m_hole.number_of_faces() > 0);
+        MINI_CHECK(m.number_of_vertices() >= 4);
+        MINI_CHECK(m.number_of_faces() >= 2);
+        for (const auto& [vk, vd] : m.vertex) {
+            double nx = 0, ny = 0, nz = 0;
+            auto it = vd.attributes.find("nx"); if (it != vd.attributes.end()) nx = it->second;
+            it = vd.attributes.find("ny"); if (it != vd.attributes.end()) ny = it->second;
+            it = vd.attributes.find("nz"); if (it != vd.attributes.end()) nz = it->second;
+            MINI_CHECK(std::sqrt(nx*nx + ny*ny + nz*nz) > 0.5);
+        }
+
+        NurbsCurve bnd = NurbsCurve::create(true, 1, {
+            Point(0, 0, 0),
+            Point(6, 0, 0),
+            Point(6, 6, 0),
+            Point(0, 6, 0),
+        });
+        NurbsSurfaceTrimmed ts_hole = NurbsSurfaceTrimmed::create_planar(bnd);
+        ts_hole.add_hole(NurbsCurve::create(true, 1, {
+            Point(2, 2, 0),
+            Point(4, 2, 0),
+            Point(4, 4, 0),
+            Point(2, 4, 0),
+        }));
+        Mesh mh = ts_hole.mesh();
+        MINI_CHECK(!mh.is_empty());
+        MINI_CHECK(mh.number_of_faces() >= 2);
 
         // Planar circle (rational NURBS outer loop)
         double cw = std::sqrt(2.0) / 2.0;
@@ -361,6 +371,36 @@ namespace session_cpp {
         MINI_CHECK(mc.number_of_vertices() >= 30);
         MINI_CHECK(mc.number_of_faces() >= 30);
         for (const auto& [vk, vd] : mc.vertex) {
+            double nx = 0, ny = 0, nz = 0;
+            auto it = vd.attributes.find("nx"); if (it != vd.attributes.end()) nx = it->second;
+            it = vd.attributes.find("ny"); if (it != vd.attributes.end()) ny = it->second;
+            it = vd.attributes.find("nz"); if (it != vd.attributes.end()) nz = it->second;
+            MINI_CHECK(std::sqrt(nx*nx + ny*ny + nz*nz) > 0.5);
+        }
+
+        // Non-planar curved surface (Gaussian bump)
+        int n = 8;
+        std::vector<Point> pts;
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j) {
+                double x = i, y = j;
+                double r2 = (x - 1.5) * (x - 1.5) + (y - 1.5) * (y - 1.5);
+                double z = 5.0 * exp(-r2) + 0.3 * sin(Tolerance::PI * x / 7.0) * sin(Tolerance::PI * y / 7.0);
+                pts.push_back(Point(x, y, z));
+            }
+        NurbsSurface bump_srf = NurbsSurface::create(false, false, 3, 3, n, n, pts);
+        NurbsCurve bump_outer = NurbsCurve::create(true, 1, {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
+        });
+        NurbsSurfaceTrimmed ts_bump = NurbsSurfaceTrimmed::create(bump_srf, bump_outer);
+        Mesh mb = ts_bump.mesh();
+        MINI_CHECK(!mb.is_empty());
+        MINI_CHECK(mb.number_of_vertices() >= 20);
+        MINI_CHECK(mb.number_of_faces() >= 30);
+        for (const auto& [vk, vd] : mb.vertex) {
             double nx = 0, ny = 0, nz = 0;
             auto it = vd.attributes.find("nx"); if (it != vd.attributes.end()) nx = it->second;
             it = vd.attributes.find("ny"); if (it != vd.attributes.end()) ny = it->second;
@@ -477,6 +517,9 @@ namespace session_cpp {
         MINI_CHECK(loaded_json == ts);
         MINI_CHECK(loaded_json_string == ts);
         MINI_CHECK(loaded_from_file == ts);
+        MINI_CHECK(loaded_json.is_trimmed());
+        MINI_CHECK(loaded_json_string.is_trimmed());
+        MINI_CHECK(loaded_from_file.is_trimmed());
     }
 
     MINI_TEST("NurbsSurfaceTrimmed", "Protobuf Roundtrip") {
@@ -516,6 +559,8 @@ namespace session_cpp {
 
         MINI_CHECK(loaded_proto_string == ts);
         MINI_CHECK(loaded == ts);
+        MINI_CHECK(loaded_proto_string.is_trimmed());
+        MINI_CHECK(loaded.is_trimmed());
     }
 
 } // namespace session_cpp

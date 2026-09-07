@@ -1,8 +1,6 @@
 #include "nurbssurface_trimmed.h"
 #include "closest.h"
 #include "primitives.h"
-#include "remesh_nurbssurface_grid.h"
-#include "remesh_cdt.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <set>
@@ -250,7 +248,9 @@ int Delaunay2D::insert(double x, double y) {
     if ((int)visit_stamp_.size() < (int)triangles.size()+64)
         visit_stamp_.resize(triangles.size()+64, 0);
     bad_.clear();
-    bad_.push_back(start); visit_stamp_[start] = visit_epoch_;
+    // locate() returns -1 only when no triangle is alive; seeding the BFS with it would
+    // index visit_stamp_/triangles at -1.
+    if (start >= 0) { bad_.push_back(start); visit_stamp_[start] = visit_epoch_; }
     int bfs_front = 0;
     while (bfs_front < (int)bad_.size()) {
         int ti = bad_[bfs_front++];
@@ -1281,6 +1281,8 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
     for (const auto& hp : hole_uvs) hole_coords.push_back(to_flat(hp));
 
     auto inside_trim = [&](double u, double v) -> bool {
+        // outer-bbox reject first: refinement probes most triangles outside the trim region
+        if (u < bb_umin || u > bb_umax || v < bb_vmin || v > bb_vmax) return false;
         if (!point_in_polygon_2d(u, v, outer_coords)) return false;
         for (const auto& hc : hole_coords)
             if (point_in_polygon_2d(u, v, hc)) return false;
@@ -1549,8 +1551,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
 // sequentially by each plane (Sutherland-Hodgman per triangle, crossings Newton-refined onto the
 // crossing plane), so K planes carve a clean region without per-cell CSG. Coincident 3D verts are
 // welded so periodic seams (cylinder/torus/sphere) close watertight.
-// REQUIRES header declaration in nurbssurface_trimmed.h (next to mesh_by_plane):
-//   Mesh mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes, double max_angle_deg, double chord_factor) const;
 Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes,
                                          double max_angle_deg, double chord_factor) const {
     const NurbsSurface& srf = m_surface;
