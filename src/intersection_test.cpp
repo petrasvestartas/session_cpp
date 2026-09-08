@@ -1155,6 +1155,18 @@ MINI_TEST("Intersection", "Polyline Plane") {
     for (const auto& p : points) {
         MINI_CHECK(std::fabs(p[0]) < 1e-9);
     }
+
+    // Plane through two opposite vertices: each vertex is reported once.
+    Point dp(0.0, 0.0, 0.0);
+    Vector dn(1.0, -1.0, 0.0);
+    Plane diag = Plane::from_point_normal(dp, dn);
+    std::vector<Point> dpts;
+    std::vector<int> dids;
+    MINI_CHECK(Intersection::polyline_plane(poly, diag, dpts, dids));
+    MINI_CHECK(dpts.size() == 2);
+    MINI_CHECK(dids[0] == 0 && dids[1] == 2);
+    MINI_CHECK(TOLERANCE.is_close(dpts[0][0], -1.0));
+    MINI_CHECK(TOLERANCE.is_close(dpts[1][0], 1.0));
 }
 
 MINI_TEST("Intersection", "Line Line 3D") {
@@ -1199,6 +1211,17 @@ MINI_TEST("Intersection", "Polyline Plane To Line") {
     MINI_CHECK(ok);
     MINI_CHECK(TOLERANCE.is_close(out.start()[0], 0.0));
     MINI_CHECK(TOLERANCE.is_close(out.end()[0], 4.0));
+
+    // Four crossings (non-convex comb): the line spans the EXTREME pair.
+    Polyline comb({
+        Point(0.0, 0.0, 0.0), Point(4.0, 0.0, 0.0), Point(4.0, 3.0, 0.0),
+        Point(3.0, 3.0, 0.0), Point(3.0, 1.0, 0.0), Point(1.0, 1.0, 0.0),
+        Point(1.0, 3.0, 0.0), Point(0.0, 3.0, 0.0), Point(0.0, 0.0, 0.0),
+    });
+    Line wide;
+    MINI_CHECK(Intersection::polyline_plane_to_line(comb, pln, align_start, wide));
+    MINI_CHECK(TOLERANCE.is_close(wide.start()[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(wide.end()[0], 4.0));
 }
 
 MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
@@ -1280,6 +1303,50 @@ MINI_TEST("Intersection", "Closed And Open Paths 2D") {
     double t_hi = std::max(cp_pair.first, cp_pair.second);
     MINI_CHECK(TOLERANCE.is_close(t_lo, 1.5));
     MINI_CHECK(TOLERANCE.is_close(t_hi, 3.5));
+}
+
+MINI_TEST("Intersection", "Line Line Classified") {
+    // uncomment #include "intersection.h"
+
+    // Crossing perpendicular segments meeting at their midpoints.
+    Line s0(-1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line s1(0.0, -1.0, 0.0, 0.0, 1.0, 0.0);
+    Point p0, p1;
+    Vector v0, v1, normal;
+    bool type0 = false, type1 = false, is_parallel = false;
+    bool ok = Intersection::line_line_classified(s0, s1, 1, 1, 0, 0, 0.5,
+                                                 p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(!is_parallel);
+    MINI_CHECK(std::fabs(p0[0]) < 1e-6);
+    MINI_CHECK(std::fabs(p0[1]) < 1e-6);
+    MINI_CHECK(std::fabs(p1[0]) < 1e-6);
+    MINI_CHECK(std::fabs(p1[1]) < 1e-6);
+    MINI_CHECK(std::fabs(std::fabs(normal[2]) - 1.0) < 1e-6);
+
+    // Shared-endpoint case: both segments start at the same point.
+    Line e0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line e1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    bool ok2 = Intersection::line_line_classified(e0, e1, 1, 1, 0, 0, 0.5,
+                                                  p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok2);
+    MINI_CHECK(!type0);
+    MINI_CHECK(!type1);
+    MINI_CHECK(std::fabs(p0[0]) < 1e-6);
+    MINI_CHECK(std::fabs(p0[1]) < 1e-6);
+
+    // Parallel offset segments.
+    Line q0(0.0, 0.0, 0.0, 2.0, 0.0, 0.0);
+    Line q1(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
+    bool ok3 = Intersection::line_line_classified(q0, q1, 1, 1, 0, 0, 0.5,
+                                                  p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok3);
+    MINI_CHECK(is_parallel);
+    MINI_CHECK(!type0);
+    MINI_CHECK(!type1);
 }
 
 } // namespace session_cpp
