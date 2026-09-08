@@ -1,7 +1,7 @@
+#include "remesh_nurbssurface_grid.h"
 #include "nurbssurface_trimmed.h"
 #include "closest.h"
 #include "primitives.h"
-#include "remesh_nurbssurface_grid.h"
 #include "remesh_cdt.h"
 #include "fmt/core.h"
 #include <fstream>
@@ -14,6 +14,16 @@
 #include "nurbssurface_trimmed.pb.h"
 
 namespace session_cpp {
+
+/// Evaluate the C0-knot side belonging to this triangle rather than its neighbor.
+static Vector crease_side_normal(const NurbsSurface& surface, const std::vector<double> (&knots)[2],
+                                  const std::array<double,2>& center, std::array<double,2> uv) {
+    for (int dir=0;dir<2;++dir)
+        if (std::find(knots[dir].begin(),knots[dir].end(),uv[dir]) != knots[dir].end())
+            uv[dir] = std::nextafter(uv[dir],center[dir]);
+    return surface.normal_at(uv[0],uv[1]);
+}
+
 bool point_in_polygon_2d(double, double, const std::vector<double>&);
 namespace {
 
@@ -1180,10 +1190,7 @@ Mesh NurbsSurfaceTrimmed::mesh() const { return mesh_q(20.0, 0.005); }
 //   4. Delete exterior triangles, lift to 3D, set per-vertex analytic normals.
 // Planar surfaces need no interior refinement (deflection is ~0), so step 3 exits immediately
 // and the same code path yields the minimal boundary triangulation.
-Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) const {
-    if (!is_trimmed()) return m_surface.mesh();
-
-    // 3D bbox diagonal from surface control points -> deflection tolerance.
+double NurbsSurfaceTrimmed::bbox_diagonal() const {
     double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
     for (int i = 0; i < m_surface.cv_count(0); ++i)
         for (int j = 0; j < m_surface.cv_count(1); ++j) {
@@ -1195,9 +1202,13 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
         }
     double bbox_diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+
         (bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
-    if (bbox_diag < 1e-12) bbox_diag = 1.0;
-    double deflection = bbox_diag * chord_factor;
-    double cos_max_angle = std::cos(std::min(std::max(max_angle_deg, 0.1), 179.0) * Tolerance::PI / 180.0);
+    return bbox_diag < 1e-12 ? 1.0 : bbox_diag;
+}
+
+Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) const {
+    if (!is_trimmed()) return m_surface.mesh();
+
+    double deflection = bbox_diagonal() * chord_factor;
 
     auto eval3 = [&](double u, double v) -> std::array<double,3> {
         Point p = m_surface.point_at(u, v);
@@ -1256,11 +1267,46 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
         return out;
     };
 
-    auto outer_uv = disc_loop(m_outer_loop);
-    std::vector<std::vector<Point>> hole_uvs;
+    TrimLoops loops;
+    loops.uv.push_back(disc_loop(m_outer_loop));
     for (const auto& inner : m_inner_loops)
-        hole_uvs.push_back(disc_loop(inner));
-    if (outer_uv.size() < 3) return m_surface.mesh();
+        loops.uv.push_back(disc_loop(inner));
+    return triangulate(loops, max_angle_deg, chord_factor);
+}
+
+Mesh NurbsSurfaceTrimmed::mesh_loops(const TrimLoops& loops, double max_angle_deg, double chord_factor) const {
+    if (loops.uv.empty() || !std::isfinite(max_angle_deg) || max_angle_deg <= 0.0
+        || !std::isfinite(chord_factor) || chord_factor <= 0.0
+        || (!loops.xyz.empty() && loops.xyz.size() != loops.uv.size())) return Mesh();
+    size_t expected = 0;
+    for (size_t li = 0; li < loops.uv.size(); ++li) {
+        const auto& points = loops.uv[li];
+        if (points.size() < 3 || (!loops.xyz.empty() && loops.xyz[li].size() != points.size())) return Mesh();
+        for (const auto& point : points)
+            if (!std::isfinite(point[0]) || !std::isfinite(point[1])) return Mesh();
+        if (!loops.xyz.empty()) for (const auto& point : loops.xyz[li])
+            if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2])) return Mesh();
+        expected += points.size();
+    }
+    Mesh result = triangulate(loops, max_angle_deg, chord_factor);
+    std::set<std::string> actual;
+    for (const auto& [key, vd] : result.vertex)
+        for (const auto& [name, value] : vd.attributes)
+            if (name.starts_with("boundary/")) actual.insert(name);
+    return actual.size() == expected ? result : Mesh();
+}
+
+Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const {
+    if (loops.uv.empty() || loops.uv[0].size() < 3) return m_surface.mesh();
+    const std::vector<Point>& outer_uv = loops.uv[0];
+    double bbox_diag = bbox_diagonal();
+    double deflection = bbox_diag * chord_factor;
+    double cos_max_angle = std::cos(std::min(std::max(max_angle_deg, 0.1), 179.0) * Tolerance::PI / 180.0);
+
+    auto eval3 = [&](double u, double v) -> std::array<double,3> {
+        Point p = m_surface.point_at(u, v);
+        return {p[0], p[1], p[2]};
+    };
 
     double bb_umin = 1e30, bb_vmin = 1e30, bb_umax = -1e30, bb_vmax = -1e30;
     for (const auto& p : outer_uv) {
@@ -1278,7 +1324,7 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
     };
     auto outer_coords = to_flat(outer_uv);
     std::vector<std::vector<double>> hole_coords;
-    for (const auto& hp : hole_uvs) hole_coords.push_back(to_flat(hp));
+    for (size_t li = 1; li < loops.uv.size(); ++li) hole_coords.push_back(to_flat(loops.uv[li]));
 
     auto inside_trim = [&](double u, double v) -> bool {
         if (!point_in_polygon_2d(u, v, outer_coords)) return false;
@@ -1288,24 +1334,73 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
     };
 
     // ---- 2. Constrained Delaunay of the trim wire ----
+    // Every loop vertex keeps its Delaunay id, so a 3D point and a tag the caller gave it
+    // reach the mesh vertex it becomes.
+    std::vector<double> crease_knots[2];
+    for (int dir = 0; dir < 2; ++dir) {
+        auto [start, end] = m_surface.domain(dir);
+        const auto& knots = m_surface.m_nurbsknot[dir];
+        for (double knot : knots) {
+            if (knot <= start || knot >= end || std::find(crease_knots[dir].begin(), crease_knots[dir].end(), knot) != crease_knots[dir].end()) continue;
+            if (std::count(knots.begin(), knots.end(), knot) >= m_surface.degree(dir)) crease_knots[dir].push_back(knot);
+        }
+    }
     Delaunay2D dt(bb_umin, bb_vmin, bb_umax, bb_vmax);
-    auto insert_loop = [&](const std::vector<Point>& pts) {
+    std::vector<std::vector<int>> loop_vids;
+    std::map<int, std::tuple<size_t, size_t, double>> boundary_intervals;
+    for (size_t li = 0; li < loops.uv.size(); ++li) {
+        const auto& pts = loops.uv[li];
         std::vector<int> vis;
-        vis.reserve(pts.size());
         for (const auto& p : pts) vis.push_back(dt.insert(p[0], p[1]));
         for (size_t i = 0; i < vis.size(); ++i) {
             size_t j = (i + 1) % vis.size();
-            if (vis[i] >= 0 && vis[j] >= 0 && vis[i] != vis[j])
-                dt.insert_constraint(vis[i], vis[j]);
+            std::vector<std::pair<double, int>> events = {{0.0, vis[i]}, {1.0, vis[j]}};
+            for (int dir = 0; dir < 2; ++dir) {
+                double delta = pts[j][dir] - pts[i][dir];
+                if (delta == 0.0) continue;
+                for (double knot : crease_knots[dir]) {
+                    double t = (knot - pts[i][dir]) / delta;
+                    if (t <= 0.0 || t >= 1.0) continue;
+                    double uv[2] = {pts[i][0] + t*(pts[j][0]-pts[i][0]), pts[i][1] + t*(pts[j][1]-pts[i][1])};
+                    uv[dir] = knot;
+                    int vi = dt.insert(uv[0], uv[1]);
+                    if (vi >= 0) boundary_intervals[vi] = {li, i, t};
+                    events.push_back({t, vi});
+                }
+            }
+            std::sort(events.begin(), events.end());
+            for (size_t k = 1; k < events.size(); ++k)
+                if (events[k-1].second >= 0 && events[k].second >= 0 && events[k-1].second != events[k].second)
+                    dt.insert_constraint(events[k-1].second, events[k].second);
         }
-    };
-    insert_loop(outer_uv);
-    for (const auto& hp : hole_uvs) insert_loop(hp);
+        loop_vids.push_back(vis);
+    }
+    for (double u : crease_knots[0]) for (double v : crease_knots[1])
+        if (inside_trim(u, v)) dt.insert(u, v);
+    for (int dir = 0; dir < 2; ++dir) {
+        for (double knot : crease_knots[dir]) {
+            std::vector<std::pair<double, int>> nodes;
+            for (size_t vi = 0; vi < dt.vertices.size(); ++vi) {
+                double uv[2] = {dt.vertices[vi].x, dt.vertices[vi].y};
+                if (uv[dir] == knot) nodes.push_back({uv[1-dir], (int)vi});
+            }
+            std::sort(nodes.begin(), nodes.end());
+            for (size_t k = 1; k < nodes.size(); ++k) {
+                double uv[2] = {knot, knot};
+                uv[1-dir] = (nodes[k-1].first + nodes[k].first) * 0.5;
+                if (inside_trim(uv[0], uv[1])) dt.insert_constraint(nodes[k-1].second, nodes[k].second);
+            }
+        }
+    }
+    for (const auto& p : loops.interior_uv)
+        if (inside_trim(p[0], p[1])) dt.insert(p[0], p[1]);
 
     // ---- 3. Interior refinement by surface deflection ----
+    // Interior seeds still undergo the same deflection and normal-angle checks.
     const int MAX_ITERS = 8;
     const size_t MAX_VERTS = 200000;
-    for (int iter = 0; iter < MAX_ITERS; ++iter) {
+    int iters = MAX_ITERS;
+    for (int iter = 0; iter < iters; ++iter) {
         std::vector<std::array<double,2>> to_insert;
         for (const auto& tri : dt.triangles) {
             if (!tri.alive) continue;
@@ -1323,9 +1418,9 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
             double dev = std::abs(((pm[0]-pa[0])*nx+(pm[1]-pa[1])*ny+(pm[2]-pa[2])*nz)/nl);
             bool refine = dev > deflection;
             if (!refine) {
-                Vector na = m_surface.normal_at(A.x, A.y);
-                Vector nb = m_surface.normal_at(B.x, B.y);
-                Vector nc2 = m_surface.normal_at(C.x, C.y);
+                Vector na = crease_side_normal(m_surface, crease_knots, {cu,cv}, {A.x,A.y});
+                Vector nb = crease_side_normal(m_surface, crease_knots, {cu,cv}, {B.x,B.y});
+                Vector nc2 = crease_side_normal(m_surface, crease_knots, {cu,cv}, {C.x,C.y});
                 double d1 = na[0]*nb[0]+na[1]*nb[1]+na[2]*nb[2];
                 double d2 = nb[0]*nc2[0]+nb[1]*nc2[1]+nb[2]*nc2[2];
                 double d3 = na[0]*nc2[0]+na[1]*nc2[1]+na[2]*nc2[2];
@@ -1352,7 +1447,22 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
     }
 
     auto tris = dt.get_triangles();
-    if (tris.empty()) return m_surface.mesh();
+    if (tris.empty()) return Mesh();
+    for (const auto& tri : tris) for (int dir = 0; dir < 2; ++dir) {
+        double low = INFINITY, high = -INFINITY;
+        for (int vi : tri) {
+            double value = dir == 0 ? dt.vertices[vi].x : dt.vertices[vi].y;
+            low = std::min(low, value); high = std::max(high, value);
+        }
+        for (double knot : crease_knots[dir]) if (low < knot && knot < high) return Mesh();
+    }
+
+    // A loop vertex given a 3D point lifts to it, not through the surface: that point is the
+    // edge polygon's and the neighbouring face lifts to the same bits.
+    std::vector<std::pair<int, int>> given(dt.vertices.size(), {-1, -1});
+    for (size_t li = 0; li < loop_vids.size() && li < loops.xyz.size(); ++li)
+        for (size_t k = 0; k < loop_vids[li].size() && k < loops.xyz[li].size(); ++k)
+            if (loop_vids[li][k] >= 0) given[loop_vids[li][k]] = {(int)li, (int)k};
 
     Mesh result;
     std::vector<size_t> vert_map(dt.vertices.size(), SIZE_MAX);
@@ -1361,8 +1471,8 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
     // torus, sphere) stitches at its seam: distinct UV columns u0 and u1 (or rows v0/v1)
     // evaluate to the SAME 3D point, so they must share one mesh vertex. Spatial hash on a
     // weld-tolerance grid; new points scan the 3x3x3 neighbour cells.
-    double weld_tol = bbox_diag * 1e-5;
-    double cell = (weld_tol > 0.0) ? weld_tol : 1.0;
+    double weld_tol = loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0;
+    double cell = bbox_diag * 1e-5;
     std::map<std::tuple<long long,long long,long long>,
              std::vector<std::pair<std::array<double,3>, size_t>>> cell_map;
     auto weld_vertex = [&](double x, double y, double z) -> size_t {
@@ -1388,7 +1498,14 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
         for (int k = 0; k < 3; ++k) {
             int vi = tri[k];
             if (vert_map[vi] != SIZE_MAX) continue;
-            Point p = m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
+            Point p;
+            if (given[vi].first >= 0) p = loops.xyz[given[vi].first][given[vi].second];
+            else if (boundary_intervals.count(vi) && !loops.xyz.empty()) {
+                auto [li, k, t] = boundary_intervals[vi];
+                const auto& a = loops.xyz[li][k];
+                const auto& b = loops.xyz[li][(k + 1) % loops.xyz[li].size()];
+                p = Point(a[0] + t*(b[0]-a[0]), a[1] + t*(b[1]-a[1]), a[2] + t*(b[2]-a[2]));
+            } else p = m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
             vert_map[vi] = weld_vertex(p[0], p[1], p[2]);
         }
     for (const auto& tri : tris) {
@@ -1396,11 +1513,54 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
         if (v0 == v1 || v1 == v2 || v2 == v0) continue;
         result.add_face({v0, v1, v2});
     }
+    // A singular point (a pole, an apex) has no analytic normal: it takes the mean of its
+    // fan's face normals, summed in face-key order so the bits never depend on map order.
+    std::map<size_t, std::array<double,3>> fan;
+    std::vector<size_t> fkeys;
+    for (const auto& [fk, verts] : result.face) fkeys.push_back(fk);
+    std::sort(fkeys.begin(), fkeys.end());
+    for (size_t fk : fkeys) {
+        const auto& verts = result.face[fk];
+        Point a = result.vertex[verts[0]].position(), b = result.vertex[verts[1]].position(), c = result.vertex[verts[2]].position();
+        double e1[3] = {b[0]-a[0], b[1]-a[1], b[2]-a[2]}, e2[3] = {c[0]-a[0], c[1]-a[1], c[2]-a[2]};
+        double n[3] = {e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]};
+        for (size_t vk : verts) {
+            auto& acc = fan[vk];
+            acc[0] += n[0]; acc[1] += n[1]; acc[2] += n[2];
+        }
+    }
     for (size_t vi = 0; vi < vert_map.size(); ++vi) {
         if (vert_map[vi] == SIZE_MAX) continue;
-        Vector nrm = m_surface.normal_at(dt.vertices[vi].x, dt.vertices[vi].y);
-        result.vertex[vert_map[vi]].set_normal(nrm[0], nrm[1], nrm[2]);
+        VertexData& vd = result.vertex[vert_map[vi]];
+        // normal_at's singular +Z sentinel is not a valid analytic face normal.
+        auto derivatives = m_surface.evaluate(dt.vertices[vi].x, dt.vertices[vi].y, 1);
+        Vector nrm(0.0, 0.0, 0.0);
+        if (derivatives.size() >= 3) nrm = derivatives[2].cross(derivatives[1]);
+        double nl = std::sqrt(nrm[0]*nrm[0] + nrm[1]*nrm[1] + nrm[2]*nrm[2]);
+        if (std::isfinite(nl) && nl > 0.0) {
+            nrm = Vector(nrm[0]/nl, nrm[1]/nl, nrm[2]/nl);
+        } else {
+            auto f = fan.count(vert_map[vi]) ? fan[vert_map[vi]] : std::array<double,3>{0.0, 0.0, 1.0};
+            double fl = std::sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+            nrm = std::isfinite(fl) && fl > 0.0 ? Vector(f[0]/fl, f[1]/fl, f[2]/fl) : Vector(0.0, 0.0, 1.0);
+        }
+        vd.set_normal(nrm[0], nrm[1], nrm[2]);
+        vd.attributes["u"] = dt.vertices[vi].x;
+        vd.attributes["v"] = dt.vertices[vi].y;
+
     }
+    for (size_t li = 0; li < loop_vids.size(); ++li) {
+        for (size_t k = 0; k < loop_vids[li].size(); ++k) {
+            int vi = loop_vids[li][k];
+            if (vi >= 0 && vert_map[vi] != SIZE_MAX)
+                result.vertex[vert_map[vi]].attributes["boundary/" + std::to_string(li) + "/" + std::to_string(k)] = 1.0;
+        }
+    }
+    for (const auto& [vi, interval] : boundary_intervals) {
+        auto [li, k, t] = interval;
+        if (vert_map[vi] != SIZE_MAX) result.vertex[vert_map[vi]].attributes["boundary_interval/" + std::to_string(li) + "/" + std::to_string(k)] = t;
+    }
+    RemeshNurbsSurfaceGrid::split_crease_normals(m_surface, result);
     return result;
 }
 

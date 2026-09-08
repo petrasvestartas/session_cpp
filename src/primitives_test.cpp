@@ -605,8 +605,27 @@ MINI_TEST("Primitives", "Nurbssurface Extrusion") {
     MINI_CHECK(s_wavy.is_valid());
     MINI_CHECK(s_wavy.degree(0) == 1 && s_wavy.degree(1) == 1);
     MINI_CHECK(s_wavy.cv_count(0) == 4 && s_wavy.cv_count(1) == 2);
-    MINI_CHECK(m_wavy.number_of_vertices() == 8);
+    // Each planar panel owns its crease normals: eight positions, twelve shading vertices.
+    MINI_CHECK(m_wavy.number_of_vertices() == 12);
     MINI_CHECK(m_wavy.number_of_faces() == 6);
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            int copies = 0;
+            for (const auto& [key, vertex] : m_wavy.vertex) {
+                if (TOLERANCE.is_point_close(vertex.position(), s_wavy.get_cv(i, j))) ++copies;
+            }
+            MINI_CHECK(copies == ((i == 0 || i == 3) ? 1 : 2));
+        }
+    }
+    for (const auto& [key, corners] : m_wavy.face) {
+        const auto normal = m_wavy.face_normal(key).value();
+        for (const auto corner : corners) {
+            const auto shading = m_wavy.vertex.at(corner).normal().value();
+            for (int axis = 0; axis < 3; ++axis) {
+                MINI_CHECK(std::abs(shading[axis] - normal[axis]) < 1e-9);
+            }
+        }
+    }
     MINI_CHECK(TOLERANCE.is_point_close(s_wavy.get_cv(0,0), Point(40.0, 3.0, 0.0)));
     MINI_CHECK(TOLERANCE.is_point_close(s_wavy.get_cv(0,1), Point(40.0, 4.0, 5.0)));
     MINI_CHECK(TOLERANCE.is_point_close(s_wavy.get_cv(1,0), Point(45.0, 0.0, 0.0)));

@@ -9,8 +9,109 @@
 #include <cmath>
 #include <map>
 #include <algorithm>
+#include <limits>
+#include <optional>
+#include <tuple>
 
 namespace session_cpp {
+
+/// Locate a point on this lifted pcurve when surface inversion reaches another branch.
+static double boundary_parameter(const NurbsSurface& surface, const NurbsCurve& curve, const Point& point) {
+    const auto [start,end]=curve.domain();
+    const auto distance=[&](double t) { const Point uv=curve.point_at(t); return surface.point_at(uv[0],uv[1]).distance(point); };
+    const int count=std::clamp(curve.cv_count()*4,32,4096);
+    const double step=(end-start)/count;
+    double best=start, error=distance(start);
+    for (int index=1;index<=count;++index) {
+        const double t=index==count?end:start+index*step;
+        const double candidate=distance(t);
+        if (candidate<error) { best=t; error=candidate; }
+    }
+    double left=std::max(best-step,start), right=std::min(best+step,end);
+    const double ratio=(std::sqrt(5.0)-1.0)*0.5;
+    double a=right-ratio*(right-left), b=left+ratio*(right-left);
+    double da=distance(a), db=distance(b);
+    for (int i=0;i<64;++i) {
+        if (da<db) {
+            right=b; b=a; db=da; a=right-ratio*(right-left); da=distance(a);
+        } else {
+            left=a; a=b; da=db; b=left+ratio*(right-left); db=distance(b);
+        }
+    }
+    if (da<error) { best=a; error=da; }
+    if (db<error) best=b;
+    return best;
+}
+
+/// Unit normal on a boundary, taking the one-sided limit at a singular endpoint.
+/// Undefined derivatives do not manufacture an angular error against a +Z sentinel.
+static std::optional<Vector> boundary_normal(const NurbsSurface& surface, const NurbsCurve& curve, double t, double toward) {
+    for (double at : {t, t + (toward - t) * 1e-6}) {
+        Point uv = curve.point_at(at);
+        auto derivatives = surface.evaluate(uv[0], uv[1], 1);
+        if (derivatives.size() < 3) continue;
+        Vector n = derivatives[1].cross(derivatives[2]);
+        double scale = std::max({std::abs(n[0]), std::abs(n[1]), std::abs(n[2])});
+        if (!std::isfinite(scale) || scale == 0.0) continue;
+        n = n / scale;
+        double length = n.magnitude();
+        if (std::isfinite(length) && length > 0.0) return n / length;
+    }
+    return std::nullopt;
+}
+
+/// Refine the lifted pcurve using the same angular and chord criteria as the face.
+/// Existing samples remain exact; every inserted point is shared by incident faces.
+/// Eight split levels and at most 4096 added points per edge bound refinement work.
+static std::vector<std::tuple<double, Point, Point>> refine_surface_boundary(
+    const NurbsSurface& surface, const NurbsCurve& curve,
+    const std::vector<std::tuple<double, Point, Point>>& samples, double angle, double chord) {
+    if (samples.size() < 2) return samples;
+    double inf = std::numeric_limits<double>::infinity();
+    double low[3] = {inf,inf,inf}, high[3] = {-inf,-inf,-inf};
+    for (int u=0; u<surface.cv_count(0); ++u) {
+        for (int v=0; v<surface.cv_count(1); ++v) {
+            Point p = surface.get_cv(u,v);
+            for (int axis=0; axis<3; ++axis) { low[axis]=std::min(low[axis],p[axis]); high[axis]=std::max(high[axis],p[axis]); }
+        }
+    }
+    double diagonal=std::sqrt(std::pow(high[0]-low[0],2)+std::pow(high[1]-low[1],2)+std::pow(high[2]-low[2],2));
+    double tolerance=diagonal*chord;
+    double cosine=std::cos(std::clamp(angle,0.1,179.0)*Tolerance::PI/180.0);
+    using Sample = std::tuple<double,Point,Point>;
+    std::vector<Sample> result;
+    result.reserve(samples.size());
+    int added=0;
+    for (size_t i=1; i<samples.size(); ++i) {
+        std::vector<std::tuple<Sample,Sample,int>> stack{{samples[i-1],samples[i],0}};
+        while (!stack.empty()) {
+            auto [a,b,depth]=stack.back(); stack.pop_back();
+            double t=(std::get<0>(a)+std::get<0>(b))*0.5;
+            Point uv=curve.point_at(t), point=surface.point_at(uv[0],uv[1]);
+            const Point &pa=std::get<2>(a), &pb=std::get<2>(b);
+            Point center((pa[0]+pb[0])*0.5,(pa[1]+pb[1])*0.5,(pa[2]+pb[2])*0.5);
+            std::optional<Vector> normals[3]={boundary_normal(surface,curve,std::get<0>(a),std::get<0>(b)),boundary_normal(surface,curve,t,std::get<0>(a)),boundary_normal(surface,curve,std::get<0>(b),std::get<0>(a))};
+            bool angular=false;
+            for (int j=0;j<3;++j) for (int k=j+1;k<3;++k) if (normals[j] && normals[k]) {
+                const auto &n=*normals[j], &m=*normals[k];
+                angular = angular || n[0]*m[0]+n[1]*m[1]+n[2]*m[2]<cosine;
+            }
+            if ((point.distance(center)>tolerance || angular) && depth<8 && added<4096) {
+                ++added;
+                Sample middle{t,uv,point};
+                stack.push_back({middle,b,depth+1}); stack.push_back({a,middle,depth+1});
+            } else result.push_back(a);
+        }
+    }
+    result.push_back(samples.back());
+    return result;
+}
+
+/// Compare canonical boundary positions without tolerance or identity substitution.
+static bool same_boundary_point(const Point& a, const Point& b) {
+    return a[0]==b[0] && a[1]==b[1] && a[2]==b[2];
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Orientation
@@ -906,10 +1007,13 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         face_direct[fi] = std::abs(std::abs(area) * 0.5 - domain_area) < 1e-3 * domain_area;
     }
 
-    // Phase 2: direct faces. Record the 3D boundary discretisation along every edge shared
-    // with a CDT face so both sides tessellate the seam with the same points.
+    // Phase 2: direct faces. The first incident grid supplies the canonical edge polygon.
+    // Mismatching incident grids are rebuilt with these constraints and their interior UV seeds.
+    std::vector<bool> rebuild_grid(nf, false);
     std::vector<Mesh> fmesh(nf);
     std::map<int, std::vector<Point>> edge_bnd;
+    std::map<int, std::tuple<int,int,std::vector<double>>> edge_basis;
+    std::map<int,std::vector<std::pair<double,Point>>> edge_samples;
     for (int fi = 0; fi < nf; ++fi) {
         if (!face_direct[fi]) continue;
         const auto& face = m_faces[fi];
@@ -922,10 +1026,9 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         double utol = (u1 - u0) * 0.001, vtol = (v1 - v0) * 0.001;
         for (const auto& er : wire_edges(face.wires[0])) {
             int eidx = er.index;
-            if (edge_bnd.count(eidx)) continue;
             bool shared = false;
             for (const auto& fr : edge_faces(eidx))
-                if (fr.index != fi && !face_direct[fr.index]) { shared = true; break; }
+                if (fr.index != fi) { shared = true; break; }
             if (!shared) continue;
             int ci = pcurve_index(eidx, fi, er.orientation);
             if (ci < 0) continue;
@@ -946,58 +1049,176 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
                 else if (at_u1 && std::abs(iu->second - u1) < utol * 0.1) pts.push_back({iv->second, vd.position()});
             }
             std::sort(pts.begin(), pts.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+            pts.erase(std::unique(pts.begin(),pts.end(),[](const auto& a,const auto& b){return a.first==b.first;}),pts.end());
             if (pts.size() >= 2) {
+                int varying=(at_v0 || at_v1)?0:1;
+                auto [t0,t1]=c2d.domain();
+                std::vector<double> parameters;
                 std::vector<Point> bnd;
-                for (auto& [p, pt] : pts) bnd.push_back(pt);
-                edge_bnd[eidx] = bnd;
+                for (auto& [p, pt] : pts) {
+                    parameters.push_back(t0+(p-sp[varying])/(ep[varying]-sp[varying])*(t1-t0));
+                    bnd.push_back(pt);
+                }
+                if (edge_bnd.count(eidx)) {
+                    const auto& canonical = edge_bnd.at(eidx);
+                    bool matches=canonical.size()==bnd.size() && (std::equal(canonical.begin(),canonical.end(),bnd.begin(),same_boundary_point) || std::equal(canonical.begin(),canonical.end(),bnd.rbegin(),same_boundary_point));
+                    rebuild_grid[fi] = rebuild_grid[fi] || !matches;
+                } else { edge_bnd[eidx] = bnd; edge_basis[eidx]={fi,ci,parameters}; }
             }
         }
     }
 
-    // Phase 3: CDT faces. Shared edges reuse the direct face's boundary points projected into
-    // this face's planar patch; every other edge samples its own pcurve.
+    // Refine canonical boundary endpoints before constrained interior refinement.
+    // Every incident face is rebuilt with the same refined source polygon.
+    for (const auto& [edge,basis] : edge_basis) {
+        const auto& [face,pcurve,parameters]=basis;
+        bool curved_cdt=false;
+        for (const auto& incident:edge_faces(edge)) {
+            const int fi=incident.index;
+            curved_cdt=curved_cdt || ((!face_direct[fi] || rebuild_grid[fi]) && !m_surfaces[m_faces[fi].surface_index].is_planar(nullptr,0.0));
+        }
+        if (!curved_cdt) continue;
+        const auto& surface=m_surfaces[m_faces[face].surface_index];
+        const auto& curve=m_curves_2d[pcurve];
+        const auto& points=edge_bnd.at(edge);
+        std::vector<std::tuple<double,Point,Point>> samples;
+        for (size_t i=0;i<parameters.size();++i) samples.emplace_back(parameters[i],curve.point_at(parameters[i]),points[i]);
+        std::sort(samples.begin(),samples.end(),[](const auto& a,const auto& b){return std::get<0>(a)<std::get<0>(b);});
+        if (m_edges[edge].start_vertex==m_edges[edge].end_vertex) {
+            double end=curve.domain().second;
+            if (!samples.empty() && std::get<0>(samples.back())<end) samples.emplace_back(end,curve.point_at(end),std::get<2>(samples.front()));
+        }
+        auto refined=refine_surface_boundary(surface,curve,samples,has_quality?max_angle_deg:20.0,has_quality?chord_factor:0.005);
+        if (refined.size()>samples.size()) {
+            std::vector<Point> points;
+            for (const auto& sample:refined) {
+                points.push_back(std::get<2>(sample));
+                edge_samples[edge].emplace_back(std::get<0>(sample),std::get<1>(sample));
+            }
+            edge_bnd[edge]=points;
+            for (const auto& incident:edge_faces(edge)) rebuild_grid[incident.index]=true;
+        }
+    }
+
+    for (int fi=0;fi<nf;++fi) if (rebuild_grid[fi]) face_direct[fi]=false;
+
+    // Phase 3: CDT faces preserve their supplied boundary-node identities. Shared
+    // XYZ samples are mapped onto the actual pcurve and checked in model space.
     for (int fi = 0; fi < nf; ++fi) {
         if (face_direct[fi]) continue;
         const auto& face = m_faces[fi];
-        const NurbsSurface& srf = m_surfaces[face.surface_index];
-        Point p00 = srf.get_cv(0, 0), p10 = srf.get_cv(1, 0), p01 = srf.get_cv(0, 1);
-        double eu[3] = {p10[0]-p00[0], p10[1]-p00[1], p10[2]-p00[2]};
-        double ev[3] = {p01[0]-p00[0], p01[1]-p00[1], p01[2]-p00[2]};
-        double eu2 = eu[0]*eu[0]+eu[1]*eu[1]+eu[2]*eu[2], ev2 = ev[0]*ev[0]+ev[1]*ev[1]+ev[2]*ev[2];
-        bool can_project = srf.degree(0) == 1 && srf.degree(1) == 1 && eu2 > 1e-28 && ev2 > 1e-28;
-
+        const auto& srf = m_surfaces[face.surface_index];
+        double angle = has_quality ? max_angle_deg : 20.0;
+        double chord = has_quality ? chord_factor : 0.005;
+        TrimLoops loops;
+        if (rebuild_grid[fi]) {
+            auto [u0,u1]=srf.domain(0); auto [v0,v1]=srf.domain(1);
+            for (const auto& [key,vertex] : fmesh[fi].vertex) {
+                auto u=vertex.attributes.find("u"),v=vertex.attributes.find("v");
+                if (u!=vertex.attributes.end() && v!=vertex.attributes.end() && u->second>u0 && u->second<u1 && v->second>v0 && v->second<v1)
+                    loops.interior_uv.push_back(Point(u->second,v->second,0.0));
+            }
+        }
+        std::vector<std::tuple<int, size_t, size_t, size_t>> uses;
+        bool valid = true;
+        for (size_t wi = 0; wi < face.wires.size(); ++wi) {
+            std::vector<Point> uv, xyz;
+            for (const auto& er : wire_edges(face.wires[wi])) {
+                int ei = er.index;
+                const auto& edge = m_edges[ei];
+                int ci = pcurve_index(ei, fi, er.orientation);
+                if (ci < 0) { valid = false; break; }
+                const auto& crv = m_curves_2d[ci];
+                std::vector<std::tuple<double, Point, Point>> samples;
+                if (edge_bnd.count(ei)) {
+                    for (size_t index=0;index<edge_bnd[ei].size();++index) {
+                        const auto& p=edge_bnd[ei][index];
+                        double t;
+                        Point q;
+                        if (edge_basis.count(ei) && std::get<0>(edge_basis[ei])==fi && std::get<1>(edge_basis[ei])==ci && edge_samples.count(ei)) {
+                            t=edge_samples[ei][index].first;
+                            q=edge_samples[ei][index].second;
+                        } else {
+                            const auto [u,v]=srf.closest_parameters(p);
+                            t=crv.closest_parameter(Point(u,v,0.0));
+                            q=crv.point_at(t);
+                        }
+                        double scale = std::max({std::abs(p[0]), std::abs(p[1]), std::abs(p[2]), 1.0});
+                        double tolerance = std::max({edge.tolerance, face.tolerance, std::sqrt(std::numeric_limits<double>::epsilon()) * scale});
+                        if (srf.point_at(q[0],q[1]).distance(p)>tolerance) {
+                            t=boundary_parameter(srf,crv,p); q=crv.point_at(t);
+                            if (srf.point_at(q[0],q[1]).distance(p)>tolerance) { valid=false; break; }
+                        }
+                        samples.push_back({t, q, p});
+                    }
+                    std::sort(samples.begin(), samples.end(), [](const auto& a, const auto& b) { return std::get<0>(a) < std::get<0>(b); });
+                    samples.erase(std::unique(samples.begin(), samples.end(), [](const auto& a, const auto& b) { return std::get<0>(a) == std::get<0>(b); }), samples.end());
+                } else {
+                    int count = std::min(std::max(crv.cv_count() * 4, (int)std::ceil(360.0 / std::max(angle, 0.1))), 4096);
+                    std::vector<Point> points;
+                    std::vector<double> parameters;
+                    if (crv.degree() <= 1 && !crv.is_rational() && srf.is_planar(nullptr, 0.0)) {
+                        for (int k = 0; k < crv.cv_count(); ++k) {
+                            points.push_back(crv.get_cv(k));
+                            parameters.push_back(crv.greville_abcissa(k));
+                        }
+                    } else {
+                        auto divided = crv.divide_by_count(count, true);
+                        points = divided.first;
+                        parameters = divided.second;
+                    }
+                    for (size_t k = 0; k < points.size(); ++k) {
+                        const Point& q = points[k];
+                        Point p = srf.point_at(q[0], q[1]);
+                        samples.push_back({parameters[k], q, p});
+                    }
+                    std::vector<Point> positions;
+                    for (const auto& sample : samples) positions.push_back(std::get<2>(sample));
+                    samples = refine_surface_boundary(srf, crv, samples, angle, chord);
+                    positions.clear();
+                    for (const auto& sample : samples) positions.push_back(std::get<2>(sample));
+                    edge_bnd[ei] = positions;
+                }
+                if (edge.start_vertex == edge.end_vertex && samples.size() > 1) {
+                    auto first = samples.front();
+                    const auto& p = std::get<2>(first);
+                    const auto& q = std::get<2>(samples.back());
+                    if (p[0] != q[0] || p[1] != q[1] || p[2] != q[2]) samples.push_back({crv.domain().second, std::get<1>(first), p});
+                }
+                if (er.orientation == BRepOrientation::Reversed) std::reverse(samples.begin(), samples.end());
+                if (samples.size() < 2) { valid = false; break; }
+                uses.push_back({ei, wi, uv.size(), samples.size()});
+                for (size_t k = 0; k + 1 < samples.size(); ++k) {
+                    uv.push_back(std::get<1>(samples[k]));
+                    xyz.push_back(std::get<2>(samples[k]));
+                }
+            }
+            loops.uv.push_back(uv);
+            loops.xyz.push_back(xyz);
+        }
+        if (!valid) continue;
         NurbsSurfaceTrimmed ts;
         ts.m_surface = srf;
-        for (size_t wi = 0; wi < face.wires.size(); ++wi) {
-            std::vector<Point> loop_pts;
-            for (const auto& er : wire_edges(face.wires[wi])) {
-                int ci = pcurve_index(er.index, fi, er.orientation);
-                if (ci < 0) continue;
-                const NurbsCurve& crv = m_curves_2d[ci];
-                std::vector<Point> seg;
-                if (can_project && edge_bnd.count(er.index)) {
-                    for (const auto& pt : edge_bnd[er.index]) {
-                        double dx = pt[0]-p00[0], dy = pt[1]-p00[1], dz = pt[2]-p00[2];
-                        seg.push_back(Point((dx*eu[0]+dy*eu[1]+dz*eu[2]) / eu2, (dx*ev[0]+dy*ev[1]+dz*ev[2]) / ev2, 0));
-                    }
-                    Point start = crv.point_at(er.orientation == BRepOrientation::Reversed ? crv.domain().second : crv.domain().first);
-                    if (seg.front().distance(start) > seg.back().distance(start)) std::reverse(seg.begin(), seg.end());
-                } else {
-                    if (crv.degree() <= 1 && !crv.is_rational()) {
-                        for (int k = 0; k < crv.cv_count(); ++k) seg.push_back(crv.get_cv(k));
-                    } else {
-                        seg = crv.divide_by_count(std::max(crv.cv_count() * 4, 16), true).first;
-                    }
-                    if (er.orientation == BRepOrientation::Reversed) std::reverse(seg.begin(), seg.end());
+        // Map order must not change constrained refinement or boundary visibility.
+        std::sort(loops.interior_uv.begin(),loops.interior_uv.end(),[](const Point& a,const Point& b){ return a[0]<b[0] || (a[0]==b[0] && a[1]<b[1]); });
+        fmesh[fi] = ts.mesh_loops(loops, angle, chord);
+        // Each occurrence keeps both ends, including the next edge's starting vertex.
+        for (size_t use_id = 0; use_id < uses.size(); ++use_id) {
+            auto [edge, li, start, count] = uses[use_id];
+            size_t length = loops.uv[li].size();
+            if (length == 0) continue;
+            for (size_t sample = 0; sample < count; ++sample) {
+                std::string key = "boundary/" + std::to_string(li) + "/" + std::to_string((start + sample) % length);
+                for (auto& [vk, vd] : fmesh[fi].vertex) {
+                    if (vd.attributes.count(key)) vd.attributes["brep_edge/" + std::to_string(edge) + "/" + std::to_string(use_id) + "/" + std::to_string(sample)] = 1.0;
                 }
-                for (size_t k = 0; k + 1 < seg.size(); ++k) loop_pts.push_back(seg[k]);
+                if (sample + 1 < count) {
+                    std::string interval = "boundary_interval/" + std::to_string(li) + "/" + std::to_string((start + sample) % length);
+                    for (auto& [vk, vd] : fmesh[fi].vertex)
+                        if (vd.attributes.count(interval)) vd.attributes["brep_edge_interval/" + std::to_string(edge) + "/" + std::to_string(use_id) + "/" + std::to_string(sample)] = vd.attributes[interval];
+                }
             }
-            if (loop_pts.size() < 3) continue;
-            NurbsCurve loop_crv = NurbsCurve::create(true, 1, loop_pts);
-            if (wi == 0) ts.m_outer_loop = loop_crv;
-            else ts.m_inner_loops.push_back(loop_crv);
         }
-        fmesh[fi] = ts.mesh();
     }
 
     // A Reversed face has its outward normal opposite to the surface normal: flip winding

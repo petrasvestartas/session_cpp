@@ -2,8 +2,83 @@
 #include "tolerance.h"
 #include <cmath>
 #include <algorithm>
+#include <set>
+#include <limits>
 
 namespace session_cpp {
+
+/// Split shading vertices at internal C0 knots only when one-sided normals disagree.
+void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& mesh) {
+    std::map<size_t, unsigned> candidates;
+    for (const auto& [key, vd] : mesh.vertex) {
+        if (!vd.attributes.count("u") || !vd.attributes.count("v")) continue;
+        double uv[2] = {vd.attributes.at("u"), vd.attributes.at("v")};
+        unsigned flags = 0;
+        for (int dir = 0; dir < 2; ++dir) {
+            auto [start, end] = s.domain(dir);
+            double value = uv[dir];
+            if (value <= start || value >= end) continue;
+            auto multiplicity = std::count(s.m_nurbsknot[dir].begin(), s.m_nurbsknot[dir].end(), value);
+            if (multiplicity < s.degree(dir)) continue;
+            double lo[2] = {uv[0], uv[1]}, hi[2] = {uv[0], uv[1]};
+            lo[dir] = std::nextafter(value, -std::numeric_limits<double>::infinity());
+            hi[dir] = std::nextafter(value, std::numeric_limits<double>::infinity());
+            Vector a = s.normal_at(lo[0], lo[1]), b = s.normal_at(hi[0], hi[1]);
+            double aa = a[0]*a[0]+a[1]*a[1]+a[2]*a[2], bb = b[0]*b[0]+b[1]*b[1]+b[2]*b[2];
+            double dot = (a[0]*b[0]+a[1]*b[1]+a[2]*b[2]) / std::sqrt(aa*bb);
+            if (std::isfinite(dot) && dot < 1.0 - 64.0*std::numeric_limits<double>::epsilon()) flags |= 1u << dir;
+        }
+        if (flags) candidates[key] = flags;
+    }
+    if (candidates.empty()) return;
+    std::map<std::pair<size_t, unsigned>, size_t> copies;
+    std::set<size_t> used;
+    std::vector<size_t> face_keys;
+    for (const auto& [key, vertices] : mesh.face) face_keys.push_back(key);
+    std::sort(face_keys.begin(), face_keys.end());
+    for (size_t face_key : face_keys) {
+        auto vertices = mesh.face[face_key];
+        double center[2] = {0.0, 0.0};
+        for (size_t key : vertices) {
+            center[0] += mesh.vertex[key].attributes.at("u");
+            center[1] += mesh.vertex[key].attributes.at("v");
+        }
+        center[0] /= vertices.size(); center[1] /= vertices.size();
+        auto face_normal = mesh.face_normal(face_key);
+        auto split = vertices;
+        for (size_t corner = 0; corner < vertices.size(); ++corner) {
+            size_t key = vertices[corner];
+            if (!candidates.count(key)) continue;
+            unsigned flags = candidates[key], side = 0;
+            auto original = mesh.vertex[key];
+            double uv[2] = {original.attributes.at("u"), original.attributes.at("v")};
+            for (int dir = 0; dir < 2; ++dir) {
+                if (!(flags & (1u << dir))) continue;
+                bool high = center[dir] > uv[dir];
+                if (high) side |= 1u << dir;
+                uv[dir] = std::nextafter(uv[dir], high ? std::numeric_limits<double>::infinity() : -std::numeric_limits<double>::infinity());
+            }
+            auto identity = std::make_pair(key, side);
+            size_t target;
+            if (copies.count(identity)) target = copies[identity];
+            else {
+                if (used.insert(key).second) target = key;
+                else { target = mesh.add_vertex(original.position()); mesh.vertex[target] = original; }
+                copies[identity] = target;
+            }
+            Vector n = s.normal_at(uv[0], uv[1]);
+            double length = std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
+            if (std::isfinite(length) && length > 0.0) {
+                double sign = 1.0;
+                if (face_normal && n[0]*(*face_normal)[0]+n[1]*(*face_normal)[1]+n[2]*(*face_normal)[2] < 0.0) sign = -1.0;
+                mesh.vertex[target].set_normal(sign*n[0]/length, sign*n[1]/length, sign*n[2]/length);
+            }
+            split[corner] = target;
+        }
+        mesh.face[face_key] = split;
+    }
+    mesh.rebuild_halfedges();
+}
 
 Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
     return from_u_v_q(s, max_u, max_v, 20.0, 0.005);
@@ -356,9 +431,13 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(const NurbsSurface& s, int max_u, int ma
     }
 
     // Compute vertex normals from face normals
-    int nv_total = (int)result.vertex.size();
+    size_t nv_total = result.vertex.size();
     std::vector<double> vnx(nv_total, 0.0), vny(nv_total, 0.0), vnz(nv_total, 0.0);
-    for (auto& [fi, vids] : result.face) {
+    std::vector<size_t> face_keys;
+    for (const auto& [fi, vids] : result.face) face_keys.push_back(fi);
+    std::sort(face_keys.begin(), face_keys.end());
+    for (size_t fi : face_keys) {
+        const auto& vids = result.face.at(fi);
         if (vids.size() < 3) continue;
         Point pos0 = result.vertex.at(vids[0]).position();
         Point pos1 = result.vertex.at(vids[1]).position();
@@ -368,11 +447,33 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(const NurbsSurface& s, int max_u, int ma
         double fnx = e1y*e2z - e1z*e2y, fny = e1z*e2x - e1x*e2z, fnz = e1x*e2y - e1y*e2x;
         for (auto vi : vids) { vnx[vi] += fnx; vny[vi] += fny; vnz[vi] += fnz; }
     }
-    for (int i = 0; i < nv_total; ++i) {
+    for (size_t i = 0; i < nv_total; ++i) {
         double len = std::sqrt(vnx[i]*vnx[i] + vny[i]*vny[i] + vnz[i]*vnz[i]);
-        if (len > 1e-15) { vnx[i] /= len; vny[i] /= len; vnz[i] /= len; }
-        result.vertex[i].set_normal(vnx[i], vny[i], vnz[i]);
+        double fx = 0.0, fy = 0.0, fz = 1.0;
+        if (std::isfinite(len) && len > 0.0) {
+            fx = vnx[i] / len; fy = vny[i] / len; fz = vnz[i] / len;
+        }
+        double nx = fx, ny = fy, nz = fz;
+        auto& vd = result.vertex[i];
+        auto u = vd.attributes.find("u"), v = vd.attributes.find("v");
+        bool is_pole = (sing_v0 && i == south_pole) || (sing_v1 && i == north_pole);
+        // Surface normals preserve smooth interiors; singular poles use adjacent facets.
+        if (!is_pole && u != vd.attributes.end() && v != vd.attributes.end()) {
+            // Reject normal_at's singular +Z sentinel, including U-collapsed corners.
+            auto derivatives = s.evaluate(u->second, v->second, 1);
+            Vector na(0.0, 0.0, 0.0);
+            if (derivatives.size() >= 3) na = derivatives[2].cross(derivatives[1]);
+            double nl = std::sqrt(na[0]*na[0] + na[1]*na[1] + na[2]*na[2]);
+            if (std::isfinite(nl) && nl > 0.0) {
+                nx = na[0] / nl; ny = na[1] / nl; nz = na[2] / nl;
+                if (nx * fx + ny * fy + nz * fz < 0.0) {
+                    nx = -nx; ny = -ny; nz = -nz;
+                }
+            }
+        }
+        vd.set_normal(nx, ny, nz);
     }
+    split_crease_normals(s, result);
     return result;
 }
 

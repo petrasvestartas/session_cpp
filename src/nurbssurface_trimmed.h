@@ -14,6 +14,18 @@
 
 namespace session_cpp {
 
+
+/// What a BRep hands the mesher for one face: every wire as a UV polygon whose vertices lift
+/// to a given 3D point (the edge polygon's, shared bit for bit with the neighbouring face) and
+/// retain loop/sample identities; plus interior UV points inserted before refinement. The
+/// mesher keeps these loop vertices as they are, so two faces meshed from the same polygons
+/// share their boundary exactly and an edge drawn from the polygon lies on both tessellations.
+struct TrimLoops {
+    std::vector<std::vector<Point>> uv;
+    std::vector<std::vector<Point>> xyz;
+    std::vector<Point> interior_uv;
+};
+
 /**
  * @class NurbsSurfaceTrimmed
  * @brief A NURBS surface bounded by a closed outer loop and optional inner loops (holes).
@@ -143,6 +155,18 @@ public:
     /// Unified deflection-refined constrained-Delaunay pipeline (BRepMesh / OpenNURBS style).
     Mesh mesh_q(double max_angle_deg, double chord_factor) const;
 
+    /// Mesh a sampled outer loop followed by holes in surface UV coordinates. Optional XYZ
+    /// positions use the surface's coordinate space and must match every loop vertex. Existing
+    /// samples retain their exact positions and `boundary/{loop}/{sample}` attributes. Knot-line
+    /// intersections add `boundary_interval/{loop}/{segment}` fractions on the supplied XYZ chord
+    /// (or the surface when XYZ is absent); these fractions are polygon intervals, not CAD curve
+    /// parameters. Interior C0 knot lines are constrained and actual normal discontinuities split
+    /// shading vertices, preserving boundary provenance on both copies. Angular quality is degrees;
+    /// chord factor scales the surface bounding-box diagonal. Refinement is capped at eight passes
+    /// and 200000 vertices. Invalid inputs, missing boundary samples, or unconstrained C0 crossings
+    /// return an empty mesh. Input polygon quality remains the caller's responsibility.
+    Mesh mesh_loops(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
+
     /// Mesh the surface trimmed by a plane (q0, normal), keeping the half where (S-q0).n <= 0.
     /// OCCT path-A algorithm: span-adaptive UV grid + marching-squares clip where the signed
     /// distance field f(u,v)=(S(u,v)-q0).n changes sign, with every boundary crossing
@@ -221,6 +245,14 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurfaceTrimmed& ts);
 
 private:
+    /// The constrained Delaunay of `loops` in UV, refined, trimmed, lifted and welded: the one
+    /// body mesh_q and mesh_loops share. Loop vertices without a given 3D point lift through
+    /// the surface.
+    Mesh triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
+
+    /// Diagonal of the control-point box: the scale every deflection tolerance is a fraction of.
+    double bbox_diagonal() const;
+
     mutable std::string _guid;
 
     // ═══════════════════════════════════════════════════════════════════════════

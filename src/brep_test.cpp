@@ -1,3 +1,4 @@
+#include "remesh_nurbssurface_grid.h"
 #include "mini_test.h"
 #include "brep.h"
 #include "nurbssurface.h"
@@ -12,6 +13,7 @@
 #include "primitives.h"
 
 #include <cmath>
+#include <limits>
 #include <filesystem>
 
 using namespace session_cpp::mini_test;
@@ -28,6 +30,63 @@ namespace session_cpp {
             if (uses[0].orientation == uses[1].orientation) return false;
         }
         return true;
+    }
+
+    MINI_TEST("BRep", "Shared Grid Boundary") {
+        BRep b; std::vector<NurbsSurface> surfaces;
+        for (int face=0;face<2;++face) {
+            std::vector<Point> points;
+            for (int i=0;i<3;++i) for (int j=0;j<2;++j) {
+                double z=i!=1 ? 0.0 : j==0 || face==0 ? .5 : 4.0;
+                points.push_back(Point(i*.5,j*(face==0 ? 1.0 : -1.0),z));
+            }
+            NurbsSurface surface=NurbsSurface::create(false,false,2,1,3,2,points);
+            int si=b.add_surface(surface);
+            std::array<std::array<double,2>,4> corners={{{0,0},{1,0},{1,1},{0,1}}};
+            std::vector<int> vertices;
+            for (auto q:corners) vertices.push_back(b.add_vertex(surface.point_at(q[0],q[1]),0.0));
+            std::vector<BRepRef> edges;
+            for (int side=0;side<4;++side) {
+                auto a=corners[side],z=corners[(side+1)%4];int edge;
+                if (side==0 && face==1) edge=0;
+                else {
+                    int dir=a[0]!=z[0] ? 0 : 1;
+                    NurbsCurve curve=surface.iso_curve(dir,a[1-dir]);
+                    if (a[dir]>z[dir]) curve.reverse();
+                    int ci=b.add_curve_3d(curve);edge=b.add_edge(ci,vertices[side],vertices[(side+1)%4]);
+                }
+                NurbsCurve pc=NurbsCurve::create(false,1,{Point(a[0],a[1],0),Point(z[0],z[1],0)});
+                int ci=b.add_curve_2d(pc);b.add_pcurve(edge,si,ci,-1);edges.push_back({edge,BRepOrientation::Forward});
+            }
+            int wi=b.add_wire(edges);b.add_face(si,{{wi,BRepOrientation::Forward}},1e-8);surfaces.push_back(surface);
+        }
+        auto boundary=[](const Mesh& mesh){
+            std::vector<std::array<double,3>> points;
+            for (const auto& [key,v]:mesh.vertex) if (v.attributes.at("v")==0.0) points.push_back({v.x,v.y,v.z});
+            std::sort(points.begin(),points.end());return points;
+        };
+        std::vector<Mesh> original;
+        for (const auto& s:surfaces) original.push_back(RemeshNurbsSurfaceGrid::from_u_v_q(s,0,0,20,.005));
+        MINI_CHECK(boundary(original[0]).size()==7 && boundary(original[1]).size()==11);
+        auto meshes=b.face_meshes_q(true,20,.005);auto first=boundary(meshes[0]),second=boundary(meshes[1]);
+        MINI_CHECK(first==second && first.size()==7);
+        MINI_CHECK(meshes[0].face.size()==original[0].face.size() && !meshes[1].face.empty());
+        double maximum=0;
+        for (size_t i=0;i+1<first.size();++i) {
+            auto a=first[i],z=first[i+1];auto actual=surfaces[0].point_at((a[0]+z[0])*.5,0);
+            double sag=0;for(int d=0;d<3;++d) sag+=std::pow(actual[d]-(a[d]+z[d])*.5,2);
+            maximum=std::max(maximum,std::sqrt(sag));
+        }
+        MINI_CHECK(maximum<=.005*1.5);
+        const Mesh refined_original=RemeshNurbsSurfaceGrid::from_u_v_q(surfaces[0],0,0,5.0,.001);
+        meshes=b.face_meshes_q(true,5.0,.001); first=boundary(meshes[0]);
+        MINI_CHECK(first==boundary(meshes[1]) && !meshes[0].face.empty() && !meshes[1].face.empty());
+        for (const auto& point:boundary(refined_original)) MINI_CHECK(std::find(first.begin(),first.end(),point)!=first.end());
+        const double cosine=std::cos(5.0*Tolerance::PI/180.0);
+        for (size_t i=0;i+1<first.size();++i) {
+            const Vector a=surfaces[0].normal_at(first[i][0],0.0), z=surfaces[0].normal_at(first[i+1][0],0.0);
+            MINI_CHECK(a.dot(z)>=cosine-64.0*std::numeric_limits<double>::epsilon());
+        }
     }
 
     MINI_TEST("BRep", "Constructor") {

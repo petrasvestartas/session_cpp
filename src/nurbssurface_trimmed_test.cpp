@@ -17,6 +17,108 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
+// A collapsed planar corner takes its own triangle fan, never normal_at's +Z sentinel.
+MINI_TEST("NurbsSurfaceTrimmed", "Singular Planar Normal") {
+    NurbsSurfaceTrimmed trimmed;
+    trimmed.m_surface = NurbsSurface::create(false,false,1,1,2,2,{
+        Point(-1,0,0),Point(0,0,1),Point(1,0,0),Point(0,0,1)});
+    TrimLoops loops;
+    loops.uv = {{Point(0,0,0),Point(1,0,0),Point(1,1,0),Point(0,1,0)}};
+    Mesh mesh = trimmed.mesh_loops(loops,5.0,0.001);
+    MINI_CHECK(!mesh.face.empty());
+    bool apex = false;
+    for (const auto& [key, vertex] : mesh.vertex) {
+        auto normal = vertex.normal().value();
+        MINI_CHECK(std::abs(normal[0]) < 1e-12 && std::abs(normal[2]) < 1e-12);
+        MINI_CHECK(std::abs(std::abs(normal[1])-1.0) < 1e-12);
+        apex = apex || vertex.z == 1.0;
+    }
+    MINI_CHECK(apex);
+}
+
+MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
+    NurbsSurfaceTrimmed ts;
+    ts.m_surface = NurbsSurface::create(false, false, 1, 1, 3, 2, {
+        Point(0,0,0), Point(0,1,0), Point(1,0,0), Point(1,1,0), Point(2,0,1), Point(2,1,1)});
+    TrimLoops loops;
+    loops.uv = {{Point(.1,.1,0),Point(1.9,.1,0),Point(1.9,.9,0),Point(.1,.9,0)},
+                {Point(.8,.4,0),Point(1.2,.4,0),Point(1.2,.6,0),Point(.8,.6,0)}};
+    Mesh mesh = ts.mesh_loops(loops,20.0,.005);
+    MINI_CHECK(mesh.vertex.size()==16 && mesh.face.size()==12);
+    int flat=0, tilted=0;
+    for (const auto& [key,vd] : mesh.vertex) {
+        if (vd.attributes.at("u") == 1.0) {
+            bool interval=false;
+            for (const auto& [name,value] : vd.attributes) if (name.rfind("boundary_interval/",0)==0) interval=true;
+            MINI_CHECK(interval && vd.z == 0.0);
+            auto normal=vd.normal().value();
+            if (std::abs(normal[0])<1e-12) ++flat;
+            if (std::abs(normal[0]+std::sqrt(.5))<1e-12) ++tilted;
+        }
+    }
+    MINI_CHECK(flat==4 && tilted==4);
+    for (const auto& [key,face] : mesh.face) {
+        double low=INFINITY, high=-INFINITY,u=0,v=0;
+        for (size_t key : face) {double x=mesh.vertex[key].attributes.at("u");low=std::min(low,x);high=std::max(high,x);u+=x;v+=mesh.vertex[key].attributes.at("v");}
+        MINI_CHECK(!(low<1.0 && high>1.0));
+        u/=3;v/=3;
+        MINI_CHECK(!(u>.8 && u<1.2 && v>.4 && v<.6));
+    }
+}
+
+MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
+    NurbsSurface planar = NurbsSurface::create(false, false, 1, 1, 2, 2, {
+        Point(0.0, 0.0, 0.0), Point(0.0, 4.0, 0.0),
+        Point(4.0, 0.0, 0.0), Point(4.0, 4.0, 0.0),
+    });
+    for (const auto& surface : {planar, Primitives::wave_surface(1.0, 0.5)}) {
+        NurbsSurfaceTrimmed ts;
+        ts.m_surface = surface;
+        TrimLoops loops;
+        for (const auto& range : {std::pair<double, double>{0.0, 1.0}, {0.25, 0.75}}) {
+            auto [low, high] = range;
+            std::vector<Point> uv, xyz;
+            std::vector<std::pair<double, double>> corners = {{low, low}, {high, low}, {high, high}, {low, high}};
+            for (size_t side = 0; side < 4; ++side) {
+                auto a = corners[side], b = corners[(side + 1) % 4];
+                for (int sample = 0; sample < 8; ++sample) {
+                    double t = sample / 8.0;
+                    uv.push_back(Point(a.first + t*(b.first-a.first), a.second + t*(b.second-a.second), 0.0));
+                }
+            }
+            for (const auto& p : uv) xyz.push_back(ts.m_surface.point_at(p[0], p[1]));
+            loops.uv.push_back(uv); loops.xyz.push_back(xyz);
+        }
+        Mesh mesh = ts.mesh_loops(loops, 20.0, 0.005);
+        MINI_CHECK(!mesh.face.empty());
+        for (size_t li = 0; li < loops.xyz.size(); ++li) {
+            const auto& points = loops.xyz[li];
+            for (size_t sample = 0; sample < points.size(); ++sample) {
+                const auto& p = points[sample];
+                std::string key = "boundary/" + std::to_string(li) + "/" + std::to_string(sample);
+                bool found = false;
+                for (const auto& [vk, vd] : mesh.vertex) {
+                    if (vd.attributes.count(key)) {
+                        MINI_CHECK(vd.x == p[0] && vd.y == p[1] && vd.z == p[2]);
+                        found = true;
+                        break;
+                    }
+                }
+                MINI_CHECK(found);
+            }
+        }
+        for (const auto& [fk, vertices] : mesh.face) {
+            double u = 0.0, v = 0.0;
+            for (size_t key : vertices) { u += mesh.vertex[key].attributes["u"]; v += mesh.vertex[key].attributes["v"]; }
+            u /= vertices.size(); v /= vertices.size();
+            MINI_CHECK(!(u > 0.25 && u < 0.75 && v > 0.25 && v < 0.75));
+        }
+        loops.xyz[0].pop_back();
+        MINI_CHECK(ts.mesh_loops(loops, 20.0, 0.005).face.empty());
+    }
+}
+
+
     MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
         // uncomment #include "nurbssurface_trimmed.h"
         // uncomment #include "nurbssurface.h"
