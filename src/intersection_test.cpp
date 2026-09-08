@@ -1322,6 +1322,21 @@ MINI_TEST("Intersection", "Closed And Open Paths 2D") {
     double t_hi = std::max(cp_pair.first, cp_pair.second);
     MINI_CHECK(TOLERANCE.is_close(t_lo, 1.5));
     MINI_CHECK(TOLERANCE.is_close(t_hi, 3.5));
+
+    // Joint running exactly ALONG the plate's top edge: the winding number puts
+    // that boundary outside, so only the collinear overlap keeps the flush side.
+    Polyline flush({
+        Point(-2.0, 10.0, 0.0),
+        Point(12.0, 10.0, 0.0),
+    });
+    Polyline flush_out;
+    std::pair<double, double> flush_cp;
+    MINI_CHECK(Intersection::closed_and_open_paths_2d(plate, flush, pln, flush_out, flush_cp));
+    MINI_CHECK(flush_out.point_count() == 2);
+    MINI_CHECK(TOLERANCE.is_close(flush_out.get_point(0)[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(flush_out.get_point(1)[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(flush_cp.first, 2.0));
+    MINI_CHECK(TOLERANCE.is_close(flush_cp.second, 3.0));
 }
 
 MINI_TEST("Intersection", "Line Line Classified") {
