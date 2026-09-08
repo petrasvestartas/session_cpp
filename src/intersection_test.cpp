@@ -270,6 +270,15 @@ MINI_TEST("Intersection", "Ray Box") {
     MINI_CHECK(result);
     MINI_CHECK(std::fabs(tmin - 4.0) < 1e-4);
     MINI_CHECK(std::fabs(tmax - 6.0) < 1e-4);
+
+    // Ray grazing the min-y and min-z faces: a zero direction component must
+    // give 0 * DBL_MAX == 0, not a NaN that drops the slab constraint.
+    Line graze(0.0, -1.0, -1.0, 1.0, -1.0, -1.0);
+    std::vector<Point> gpts;
+    MINI_CHECK(Intersection::ray_box(graze, box, -10.0, 10.0, gpts));
+    MINI_CHECK(gpts.size() == 2);
+    MINI_CHECK(std::fabs(gpts[0][0]) < 1e-4);
+    MINI_CHECK(std::fabs(gpts[1][0] - 1.0) < 1e-4);
 }
 
 MINI_TEST("Intersection", "Ray Box Miss") {
@@ -461,6 +470,16 @@ MINI_TEST("Intersection", "Ray Mesh First") {
 
     MINI_CHECK(result);
     MINI_CHECK(hits.size() == 1);
+
+    // Line overload with find_all=false returns the CLOSEST hit, even when a
+    // farther face comes first in face order.
+    std::vector<std::vector<Point>> far_first = {polygons[1], polygons[0]};
+    Mesh far_mesh = Mesh::from_polylines(far_first);
+    Line ray(0.5, 0.5, -1.0, 0.5, 0.5, 0.0);
+    std::vector<Point> closest = Intersection::ray_mesh(ray, far_mesh, 1e-6, false);
+
+    MINI_CHECK(closest.size() == 1);
+    MINI_CHECK(std::fabs(closest[0][2]) < 1e-3);
 }
 
 MINI_TEST("Intersection", "Ray Mesh Miss") {
