@@ -211,7 +211,7 @@ namespace session_cpp {
    * @param can_be_flipped Bool flag to indicate if the normal can be flipped.
    * @return True if two planes are pointing to the same or flipped normal and share the same origin.
    */
-  static bool is_coplanar(const Plane &plane0, const Plane plane1, bool can_be_flipped = true);
+  static bool is_coplanar(const Plane &plane0, const Plane &plane1, bool can_be_flipped = true);
   static bool is_coplanar(const Point& origin0, const Vector& normal0,
                           const Point& origin1, const Vector& normal1,
                           bool can_be_flipped = true, double tolerance = -1.0);

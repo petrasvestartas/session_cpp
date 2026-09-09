@@ -563,11 +563,8 @@ void Plane::rotate(double angles_in_radians) {
 }
 
 bool Plane::is_right_hand() const {
-    Vector x_copy = _x_axis;
-    Vector y_copy = _y_axis;
-    Vector z_copy = _z_axis;
-    Vector cross = x_copy.cross(y_copy);
-    double dot_product = cross.dot(z_copy);
+    Vector cross = _x_axis.cross(_y_axis);
+    double dot_product = cross.dot(_z_axis);
     return dot_product > 0.999;
 }
 
@@ -600,7 +597,7 @@ bool Plane::is_same_position(const Plane &plane0, const Plane &plane1) {
     return dist0 < tolerance && dist1 < tolerance;
 }
 
-bool Plane::is_coplanar(const Plane &plane0, const Plane plane1, bool can_be_flipped) {
+bool Plane::is_coplanar(const Plane &plane0, const Plane &plane1, bool can_be_flipped) {
     return is_same_direction(plane0, plane1, can_be_flipped) &&
            is_same_position(plane0, plane1);
 }
@@ -634,9 +631,7 @@ Plane Plane::translate_by_normal(double distance) const {
     Point new_origin = _origin + (normal * distance);
 
     // Create new plane with same orientation but new origin
-    Vector x_copy = _x_axis;
-    Vector y_copy = _y_axis;
-    return Plane(new_origin, x_copy, y_copy, name);
+    return Plane(new_origin, _x_axis, _y_axis, name);
 }
 
 std::vector<Polyline> Plane::to_polylines(double scale) const {
