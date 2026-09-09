@@ -1,7 +1,6 @@
 #pragma once
 #include "color.h"
 #include "xform.h"
-#include "xform.h"
 #include "fmt/core.h"
 #include "guid.h"
 #include "json.h"
@@ -11,8 +10,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <vector.h>
-#include <point.h>
+#include "vector.h"
+#include "point.h"
 
 namespace session_cpp {
 
@@ -226,13 +225,19 @@ namespace session_cpp {
   Plane translate_by_normal(double distance) const;
 
   /**
+   * @brief Rectangle and axis lines that draw this plane.
+   *
+   * @param scale Size of the rectangle and of each axis line.
+   * @return Rectangle first, then the x, y and z axis lines.
+   */
+  std::vector<Polyline> to_polylines(double scale = 1.0) const;
+
+  /**
    * @brief Project a point onto this plane (orthogonal projection).
    *
    * @param p The point to project.
    * @return The projected point on the plane.
    */
-  std::vector<Polyline> to_polylines(double scale = 1.0) const;
-
   Point project(const Point& p) const {
       const Vector& n = z_axis();
       const Point&  o = origin();
