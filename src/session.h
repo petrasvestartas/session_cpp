@@ -26,6 +26,7 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <memory>
 
 namespace session_cpp {
 
@@ -280,13 +281,13 @@ public:
   /// Creates a Session instance from JSON data.
   static Session jsonload(const nlohmann::json &data);
   std::string file_json_dumps() const;
-  static Session file_json_loads(const std::string& json_string);
+  static std::shared_ptr<Session> file_json_loads(const std::string& json_string);
   void file_json_dump(const std::string& filename) const;
-  static Session file_json_load(const std::string& filename);
+  static std::shared_ptr<Session> file_json_load(const std::string& filename);
   std::string pb_dumps() const;
-  static Session pb_loads(const std::string& data);
+  static std::shared_ptr<Session> pb_loads(const std::string& data);
   void pb_dump(const std::string& filename) const;
-  static Session pb_load(const std::string& filename);
+  static std::shared_ptr<Session> pb_load(const std::string& filename);
 
 private:
   mutable std::string _guid;

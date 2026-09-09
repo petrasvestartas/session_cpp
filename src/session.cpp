@@ -726,8 +726,8 @@ std::string Session::file_json_dumps() const {
   return jsondump().dump();
 }
 
-Session Session::file_json_loads(const std::string& json_string) {
-  return jsonload(nlohmann::ordered_json::parse(json_string));
+std::shared_ptr<Session> Session::file_json_loads(const std::string& json_string) {
+  return std::make_shared<Session>(jsonload(nlohmann::ordered_json::parse(json_string)));
 }
 
 void Session::file_json_dump(const std::string& filename) const {
@@ -735,10 +735,10 @@ void Session::file_json_dump(const std::string& filename) const {
   file << jsondump().dump(4);
 }
 
-Session Session::file_json_load(const std::string& filename) {
+std::shared_ptr<Session> Session::file_json_load(const std::string& filename) {
   std::ifstream file(filename);
   nlohmann::json data = nlohmann::json::parse(file);
-  return jsonload(data);
+  return std::make_shared<Session>(jsonload(data));
 }
 
 std::string Session::pb_dumps() const {
@@ -757,37 +757,37 @@ std::string Session::pb_dumps() const {
   return proto.SerializeAsString();
 }
 
-Session Session::pb_loads(const std::string& data) {
+std::shared_ptr<Session> Session::pb_loads(const std::string& data) {
   session_proto::Session proto;
   proto.ParseFromString(data);
 
-  Session session(proto.name());
-  if (!proto.guid().empty()) { session.guid() = proto.guid(); }
+  auto session = std::make_shared<Session>(proto.name());
+  if (!proto.guid().empty()) { session->guid() = proto.guid(); }
 
   if (proto.has_objects()) {
-    session.objects = Objects::pb_loads(proto.objects().SerializeAsString());
+    session->objects = Objects::pb_loads(proto.objects().SerializeAsString());
   }
   if (proto.has_tree()) {
-    session.tree = Tree::pb_loads(proto.tree().SerializeAsString());
+    session->tree = Tree::pb_loads(proto.tree().SerializeAsString());
   }
   if (proto.has_graph()) {
-    session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
+    session->graph = Graph::pb_loads(proto.graph().SerializeAsString());
   }
 
-  for (const auto& p : *session.objects.points) session.lookup[p->guid()] = p;
-  for (const auto& l : *session.objects.lines) session.lookup[l->guid()] = l;
-  for (const auto& pl : *session.objects.planes) session.lookup[pl->guid()] = pl;
-  for (const auto& b : *session.objects.bboxes) session.lookup[b->guid()] = b;
-  for (const auto& pl : *session.objects.polylines) session.lookup[pl->guid()] = pl;
-  for (const auto& pc : *session.objects.pointclouds) session.lookup[pc->guid()] = pc;
-  for (const auto& m : *session.objects.meshes) session.lookup[m->guid()] = m;
-  for (const auto& nc : *session.objects.nurbscurves) session.lookup[nc->guid()] = nc;
-  for (const auto& ns : *session.objects.nurbssurfaces) session.lookup[ns->guid()] = ns;
-  for (const auto& b : *session.objects.breps) session.lookup[b->guid()] = b;
-  for (const auto& e : *session.objects.elements) session.lookup[e->guid()] = e;
+  for (const auto& p : *session->objects.points) session->lookup[p->guid()] = p;
+  for (const auto& l : *session->objects.lines) session->lookup[l->guid()] = l;
+  for (const auto& pl : *session->objects.planes) session->lookup[pl->guid()] = pl;
+  for (const auto& b : *session->objects.bboxes) session->lookup[b->guid()] = b;
+  for (const auto& pl : *session->objects.polylines) session->lookup[pl->guid()] = pl;
+  for (const auto& pc : *session->objects.pointclouds) session->lookup[pc->guid()] = pc;
+  for (const auto& m : *session->objects.meshes) session->lookup[m->guid()] = m;
+  for (const auto& nc : *session->objects.nurbscurves) session->lookup[nc->guid()] = nc;
+  for (const auto& ns : *session->objects.nurbssurfaces) session->lookup[ns->guid()] = ns;
+  for (const auto& b : *session->objects.breps) session->lookup[b->guid()] = b;
+  for (const auto& e : *session->objects.elements) session->lookup[e->guid()] = e;
 
   for (const auto& entry : proto.xforms()) {
-    session.xforms[entry.guid()] = Xform::pb_loads(entry.xform().SerializeAsString());
+    session->xforms[entry.guid()] = Xform::pb_loads(entry.xform().SerializeAsString());
   }
 
   return session;
@@ -799,7 +799,7 @@ void Session::pb_dump(const std::string& filename) const {
   file.write(data.data(), data.size());
 }
 
-Session Session::pb_load(const std::string& filename) {
+std::shared_ptr<Session> Session::pb_load(const std::string& filename) {
   std::ifstream file(filename, std::ios::binary);
   std::string data((std::istreambuf_iterator<char>(file)),
                     std::istreambuf_iterator<char>());
