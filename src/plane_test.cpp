@@ -63,6 +63,9 @@ MINI_TEST("Plane", "Constructor") {
     Point p2(1.0, 0.0, 0.0);
     Plane pl_2pts = Plane::from_two_points(p1, p2);
 
+    // Non-unit x-axis with a y-axis that is not perpendicular to it
+    Plane pl_skew(Point(0.0, 0.0, 0.0), Vector(2.0, 0.0, 0.0), Vector(1.0, 1.0, 0.0));
+
     // Standard planes
     Plane xy = Plane::xy_plane();
     Plane yz = Plane::yz_plane();
@@ -89,6 +92,7 @@ MINI_TEST("Plane", "Constructor") {
     MINI_CHECK(TOLERANCE.is_close(pl_pn.origin()[2], 5.0) && TOLERANCE.is_close(pl_pn.z_axis()[2], 1.0));
     MINI_CHECK(TOLERANCE.is_close(pl_pts.c(), 1.0));
     MINI_CHECK(TOLERANCE.is_close(pl_2pts.x_axis()[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_skew.x_axis().dot(pl_skew.y_axis()), 0.0) && pl_skew.is_right_hand());
     MINI_CHECK(xy.name == "xy_plane" && yz.name == "yz_plane" && xz.name == "xz_plane");
     MINI_CHECK(TOLERANCE.is_close(pl_iadd.origin()[0], 1.0) && TOLERANCE.is_close(pl_iadd.origin()[1], 2.0) && TOLERANCE.is_close(pl_iadd.origin()[2], 3.0));
     MINI_CHECK(TOLERANCE.is_close(pl_isub.origin()[0], -1.0) && TOLERANCE.is_close(pl_isub.origin()[2], -3.0));

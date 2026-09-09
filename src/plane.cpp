@@ -62,7 +62,7 @@ Plane::Plane(const Point& point, const Vector& x_axis, const Vector& y_axis, std
     _origin = point;
     _x_axis = x_axis;
     _x_axis.normalize_self();
-    _y_axis = y_axis - x_axis * (y_axis.dot(_x_axis));
+    _y_axis = y_axis - _x_axis * (y_axis.dot(_x_axis));
     _y_axis.normalize_self();
     _z_axis = _x_axis.cross(_y_axis);
     _z_axis.normalize_self();
