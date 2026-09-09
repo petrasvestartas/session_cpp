@@ -409,7 +409,7 @@ Plane Plane::jsonload(const nlohmann::json &data) {
     plane._x_axis = Vector(frame[3].get<double>(), frame[4].get<double>(), frame[5].get<double>());
     plane._y_axis = Vector(frame[6].get<double>(), frame[7].get<double>(), frame[8].get<double>());
     plane._z_axis = Vector(frame[9].get<double>(), frame[10].get<double>(), frame[11].get<double>());
-    plane.guid() = data["guid"];
+    plane._guid = data["guid"];
     plane.name = data["name"];
     if (data.contains("linecolor")) {
         plane.linecolor = Color::jsonload(data["linecolor"]);
@@ -487,7 +487,7 @@ Plane Plane::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
 
     Plane plane;
-    if (!proto.guid().empty()) { plane.guid() = proto.guid(); }
+    if (!proto.guid().empty()) { plane._guid = proto.guid(); }
     plane.name = proto.name();
     plane.width = proto.width() > 0.0 ? proto.width() : 1.0;
 
