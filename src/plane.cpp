@@ -386,7 +386,6 @@ nlohmann::ordered_json Plane::jsondump() const {
     // Alphabetical order to match Rust's serde_json
     // Use single flat frame array of 12 numbers: [ox, oy, oz, xx, xy, xz, yx, yy, yz, zx, zy, zz]
     nlohmann::ordered_json data;
-    data["linecolor"] = linecolor.jsondump();
     data["frame"] = {
         _origin[0], _origin[1], _origin[2],
         _x_axis[0], _x_axis[1], _x_axis[2],
@@ -394,6 +393,7 @@ nlohmann::ordered_json Plane::jsondump() const {
         _z_axis[0], _z_axis[1], _z_axis[2]
     };
     data["guid"] = guid();
+    data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
     data["type"] = "Plane";
     data["width"] = width;

@@ -249,9 +249,12 @@ MINI_TEST("Plane", "Json Roundtrip") {
     std::string fname = "serialization/test_plane.json";
     pl.file_json_dump(fname);
     Plane loaded = Plane::file_json_load(fname);
+    Plane flipped(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), Vector(0.0, 0.0, -1.0));
+    Plane round_tripped = Plane::file_json_loads(flipped.file_json_dumps());
 
     MINI_CHECK(loaded.name == "test_plane");
     MINI_CHECK(TOLERANCE.is_close(loaded.c(), 1.0));
+    MINI_CHECK(TOLERANCE.is_close(round_tripped.z_axis()[2], -1.0) && TOLERANCE.is_close(round_tripped.c(), -1.0));
 }
 
 MINI_TEST("Plane", "Protobuf Roundtrip") {
