@@ -53,7 +53,7 @@ MINI_TEST("Plane", "Constructor") {
     // From three points
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
-        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
         Point(0.0, 1.0, 0.0),
     };
     Plane pl_pts = Plane::from_points(pts);
@@ -78,6 +78,7 @@ MINI_TEST("Plane", "Constructor") {
     Plane pl_isub = Plane::xy_plane();
     pl_isub -= offset;
     Plane pl_base = Plane::xy_plane();
+    pl_base.linecolor = Color::red();
     Plane pl_add = pl_base + offset;
     Plane pl_sub = pl_base - offset;
 
@@ -90,14 +91,14 @@ MINI_TEST("Plane", "Constructor") {
     MINI_CHECK(plrepr == "Plane(my_plane, 0.000000, 0.000000, 0.000000, 0.000000, 0.000000, 1.000000, Color(blue, 0.0, 0.0, 1.0, 1.0))");
     MINI_CHECK(plcopy == pl && plcopy.guid() != pl.guid());
     MINI_CHECK(TOLERANCE.is_close(pl_pn.origin()[2], 5.0) && TOLERANCE.is_close(pl_pn.z_axis()[2], 1.0));
-    MINI_CHECK(TOLERANCE.is_close(pl_pts.c(), 1.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_pts.c(), 1.0) && TOLERANCE.is_close(pl_pts.x_axis()[0], pl_pts.x_axis()[1]));
     MINI_CHECK(TOLERANCE.is_close(pl_2pts.x_axis()[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(pl_skew.x_axis().dot(pl_skew.y_axis()), 0.0) && pl_skew.is_right_hand());
     MINI_CHECK(xy.name == "xy_plane" && yz.name == "yz_plane" && xz.name == "xz_plane");
     MINI_CHECK(TOLERANCE.is_close(pl_iadd.origin()[0], 1.0) && TOLERANCE.is_close(pl_iadd.origin()[1], 2.0) && TOLERANCE.is_close(pl_iadd.origin()[2], 3.0));
     MINI_CHECK(TOLERANCE.is_close(pl_isub.origin()[0], -1.0) && TOLERANCE.is_close(pl_isub.origin()[2], -3.0));
-    MINI_CHECK(TOLERANCE.is_close(pl_add.origin()[2], 3.0));
-    MINI_CHECK(TOLERANCE.is_close(pl_sub.origin()[2], -3.0));
+    MINI_CHECK(TOLERANCE.is_close(pl_add.origin()[2], 3.0) && pl_add.linecolor == Color::red());
+    MINI_CHECK(TOLERANCE.is_close(pl_sub.origin()[2], -3.0) && pl_sub.linecolor == Color::red());
 }
 
 MINI_TEST("Plane", "Is Valid") {
@@ -139,10 +140,12 @@ MINI_TEST("Plane", "Is Right Hand") {
     Plane xy = Plane::xy_plane();
     Plane yz = Plane::yz_plane();
     Plane xz = Plane::xz_plane();
+    Plane half(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), Vector(0.0, 0.0, 0.5));
 
     MINI_CHECK(xy.is_right_hand());
     MINI_CHECK(yz.is_right_hand());
     MINI_CHECK(xz.is_right_hand());
+    MINI_CHECK(!half.is_right_hand());
 }
 
 MINI_TEST("Plane", "Is Same Direction") {
@@ -191,6 +194,7 @@ MINI_TEST("Plane", "Translate By Normal") {
 
     MINI_CHECK(TOLERANCE.is_close(moved.origin()[2], 5.0));
     MINI_CHECK(TOLERANCE.is_close(pl.origin()[2], 0.0));
+    MINI_CHECK(moved.name == pl.name);
 }
 
 MINI_TEST("Plane", "Base1 Base2") {
