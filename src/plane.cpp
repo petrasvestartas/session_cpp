@@ -455,6 +455,7 @@ std::string Plane::pb_dumps() const {
     session_proto::Plane proto;
     if (has_guid()) { proto.set_guid(guid()); }
     proto.set_name(name);
+    proto.set_width(width);
 
     // Frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
     proto.add_frame(_origin[0]);
@@ -488,6 +489,7 @@ Plane Plane::pb_loads(const std::string& data) {
     Plane plane;
     if (!proto.guid().empty()) { plane.guid() = proto.guid(); }
     plane.name = proto.name();
+    plane.width = proto.width() > 0.0 ? proto.width() : 1.0;
 
     // Parse frame: origin(3) + x_axis(3) + y_axis(3) + z_axis(3) = 12 doubles
     if (proto.frame_size() >= 12) {

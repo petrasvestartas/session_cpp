@@ -263,9 +263,15 @@ MINI_TEST("Plane", "Protobuf Roundtrip") {
     std::string fname = "serialization/test_plane.bin";
     pl.pb_dump(fname);
     Plane loaded = Plane::pb_load(fname);
+    Plane wide = Plane::xy_plane();
+    wide.width = 3.0;
+    Plane round_tripped = Plane::pb_loads(wide.pb_dumps());
+    Plane empty = Plane::pb_loads(std::string());
 
     MINI_CHECK(loaded.name == "test_plane");
     MINI_CHECK(TOLERANCE.is_close(loaded.c(), 1.0));
+    MINI_CHECK(TOLERANCE.is_close(round_tripped.width, 3.0));
+    MINI_CHECK(TOLERANCE.is_close(empty.c(), 1.0));
 }
 
 MINI_TEST("Plane", "Has On Negative Side") {
