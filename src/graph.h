@@ -254,6 +254,11 @@ public:
   /// Alias for neighbors()
   std::vector<std::string> get_neighbors(const std::string &node);
 
+  /// The edges incident to a node, with what it takes to add each one back: one
+  /// (other, attribute, forward) per edge, forward when `node` is the edge's v0, so add_edge can
+  /// be replayed with the vertices in their original order. An unknown node has no edges.
+  std::vector<std::tuple<std::string, std::string, bool>> edges_of(const std::string &node) const;
+
   /// Number of vertices in the graph
   int number_of_vertices() const;
 

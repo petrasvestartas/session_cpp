@@ -438,6 +438,16 @@ std::vector<std::string> Graph::get_neighbors(const std::string &node) {
   return neighbors(node);
 }
 
+std::vector<std::tuple<std::string, std::string, bool>> Graph::edges_of(const std::string &node) const {
+  std::vector<std::tuple<std::string, std::string, bool>> out;
+  auto it = edges.find(node);
+  if (it == edges.end())
+    return out;
+  for (const auto &[other, edge] : it->second)
+    out.emplace_back(other, edge.attribute, edge.v0 == node);
+  return out;
+}
+
 int Graph::number_of_vertices() const {
   return static_cast<int>(vertices.size());
 }

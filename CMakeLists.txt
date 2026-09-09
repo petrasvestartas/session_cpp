@@ -322,6 +322,7 @@ set(MINITEST_SOURCES
     src/objects_test.cpp
     src/quaternion_test.cpp
     src/session_test.cpp
+    src/history_test.cpp
     src/tree_test.cpp
     src/brep_test.cpp
     src/element_test.cpp

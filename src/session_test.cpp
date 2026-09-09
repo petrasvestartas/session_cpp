@@ -720,4 +720,205 @@ MINI_TEST("Session", "Component Json Roundtrip") {
     MINI_CHECK(loaded.objects.components->at(0).guid()        == guid);
 }
 
+MINI_TEST("Session", "Document Workflow") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto a = std::make_shared<Point>(1.0, 0.0, 0.0);
+    auto b = std::make_shared<Point>(2.0, 0.0, 0.0);
+    auto c = std::make_shared<Point>(3.0, 0.0, 0.0);
+    std::string a_guid = a->guid();
+    std::string b_guid = b->guid();
+    std::string c_guid = c->guid();
+    session.add_point(a);
+    session.add_point(b);
+    session.add_point(c);
+
+    session.replace(b_guid, std::make_shared<Point>(20.0, 0.0, 0.0));
+    session.remove_object(c_guid);
+    Xform shift = Xform::translation(0.0, 5.0, 0.0);
+    session.set_xform(a_guid, shift);
+
+    std::string fname = "serialization/test_session_document.bin";
+    session.pb_dump(fname);
+    std::shared_ptr<Session> loaded = Session::pb_load(fname);
+
+    MINI_CHECK(loaded->lookup.size() == 2);
+    MINI_CHECK(loaded->lookup.count(a_guid) == 1);
+    MINI_CHECK(loaded->lookup.count(b_guid) == 1);
+    MINI_CHECK(loaded->lookup.count(c_guid) == 0);
+    MINI_CHECK(TOLERANCE.is_close((*std::get<std::shared_ptr<Point>>(loaded->lookup[b_guid]))[0], 20.0));
+    MINI_CHECK(loaded->xform(a_guid) == shift);
+    MINI_CHECK(loaded->history.depth() == 0);
+}
+
+MINI_TEST("Session", "Undo Remove") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto group = session.add_group("g");
+    auto a = std::make_shared<Point>(1.0, 0.0, 0.0);
+    auto b = std::make_shared<Point>(2.0, 0.0, 0.0);
+    auto c = std::make_shared<Point>(3.0, 0.0, 0.0);
+    std::string a_guid = a->guid();
+    std::string b_guid = b->guid();
+    std::string c_guid = c->guid();
+    session.add_point(a, group);
+    auto b_node = session.add_point(b, group);
+    session.add_point(c, b_node);
+    session.add_edge(a_guid, b_guid, "connection");
+    Xform shift = Xform::translation(0.0, 5.0, 0.0);
+    session.set_xform(b_guid, shift);
+
+    session.begin("remove");
+    session.remove_object(b_guid);
+    session.commit();
+    bool gone = session.lookup.count(b_guid) == 0 && group->children().size() == 1;
+    session.undo();
+
+    MINI_CHECK(gone);
+    MINI_CHECK(session.lookup.count(b_guid) == 1);
+    MINI_CHECK(session.objects.points->at(1)->guid() == b_guid);
+    MINI_CHECK(group->children()[1]->name == b_guid);
+    MINI_CHECK(group->children()[1]->children()[0]->name == c_guid);
+    MINI_CHECK(session.graph.has_edge({a_guid, b_guid}));
+    MINI_CHECK(session.graph.edge_attribute(a_guid, b_guid) == "connection");
+    MINI_CHECK(session.xform(b_guid) == shift);
+
+    session.redo();
+
+    MINI_CHECK(session.lookup.count(b_guid) == 0);
+    MINI_CHECK(session.objects.points->size() == 2);
+    MINI_CHECK(group->children().size() == 1);
+    MINI_CHECK(!session.graph.has_edge({a_guid, b_guid}));
+    MINI_CHECK(session.xform(b_guid) == Xform::identity());
+}
+
+MINI_TEST("Session", "Undo Add") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+
+    Session session;
+    auto group = session.add_group("g");
+    session.add_point(std::make_shared<Point>(0.0, 0.0, 0.0), group);
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+
+    session.begin("add");
+    session.add_point(point, group);
+    session.commit();
+    session.undo();
+    bool gone = session.lookup.count(guid) == 0 && session.objects.points->size() == 1;
+    session.redo();
+
+    MINI_CHECK(gone);
+    MINI_CHECK(session.lookup.count(guid) == 1);
+    MINI_CHECK(session.objects.points->at(1)->guid() == guid);
+    MINI_CHECK(group->children()[1]->name == guid);
+    MINI_CHECK(session.graph.has_node(guid));
+    MINI_CHECK(TOLERANCE.is_close((*std::get<std::shared_ptr<Point>>(session.lookup[guid]))[2], 3.0));
+}
+
+MINI_TEST("Session", "Undo Replace") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+
+    Session session;
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+    session.add_point(point);
+
+    session.begin("replace");
+    session.replace(guid, std::make_shared<Point>(9.0, 9.0, 9.0));
+    session.commit();
+    double replaced = (*std::get<std::shared_ptr<Point>>(session.lookup[guid]))[0];
+    session.undo();
+    double restored = (*std::get<std::shared_ptr<Point>>(session.lookup[guid]))[0];
+    session.redo();
+
+    MINI_CHECK(TOLERANCE.is_close(replaced, 9.0));
+    MINI_CHECK(TOLERANCE.is_close(restored, 1.0));
+    MINI_CHECK(TOLERANCE.is_close((*std::get<std::shared_ptr<Point>>(session.lookup[guid]))[0], 9.0));
+    MINI_CHECK(session.objects.points->at(0)->guid() == guid);
+    MINI_CHECK(session.objects.points->size() == 1);
+}
+
+MINI_TEST("Session", "Undo Xform") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+    // uncomment #include "xform.h"
+
+    Session session;
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+    session.add_point(point);
+    Xform shift = Xform::translation(5.0, 0.0, 0.0);
+
+    session.begin("move");
+    session.set_xform(guid, shift);
+    session.commit();
+    session.undo();
+    bool cleared = session.xform(guid) == Xform::identity();
+    session.redo();
+
+    session.begin("reset");
+    session.remove_xform(guid);
+    session.commit();
+    session.undo();
+
+    MINI_CHECK(cleared);
+    MINI_CHECK(session.xform(guid) == shift);
+    MINI_CHECK(session.xforms.size() == 1);
+}
+
+MINI_TEST("Session", "History Purged On Save") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+
+    Session session;
+
+    session.begin("add");
+    session.add_point(std::make_shared<Point>(0.0, 0.0, 0.0));
+    session.commit();
+    int before_pb = session.history.depth();
+    session.pb_dumps();
+    int after_pb = session.history.depth();
+
+    session.begin("add");
+    session.add_point(std::make_shared<Point>(1.0, 0.0, 0.0));
+    session.commit();
+    int before_json = session.history.depth();
+    session.file_json_dumps();
+
+    MINI_CHECK(before_pb == 1);
+    MINI_CHECK(after_pb == 0);
+    MINI_CHECK(before_json == 1);
+    MINI_CHECK(session.history.depth() == 0);
+    MINI_CHECK(!session.undo());
+    MINI_CHECK(session.objects.points->size() == 2);
+}
+
+MINI_TEST("Session", "History Capacity") {
+    // uncomment #include "session.h"
+    // uncomment #include "point.h"
+
+    Session session;
+    for (int i = 0; i < 70; ++i) {
+        session.begin("add");
+        session.add_point(std::make_shared<Point>(double(i), 0.0, 0.0));
+        session.commit();
+    }
+    int depth = session.history.depth();
+    while (session.undo()) {}
+
+    MINI_CHECK(depth == 64);
+    MINI_CHECK(!session.history.can_undo());
+    MINI_CHECK(session.objects.points->size() == 6);
+    MINI_CHECK(TOLERANCE.is_close((*session.objects.points->at(5))[0], 5.0));
+}
+
 } // namespace session_cpp

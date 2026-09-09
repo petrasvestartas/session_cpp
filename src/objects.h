@@ -16,6 +16,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace session_cpp {
@@ -138,6 +139,26 @@ public:
 private:
   mutable std::string _guid;
 };
+
+/// All geometry types as a variant. A new type joins here and in the checklist at the top of
+/// session.cpp.
+using Geometry = std::variant<
+    std::shared_ptr<OBB>,
+    std::shared_ptr<Line>,
+    std::shared_ptr<Mesh>,
+    std::shared_ptr<Plane>,
+    std::shared_ptr<Point>,
+    std::shared_ptr<PointCloud>,
+    std::shared_ptr<NurbsCurve>,
+    std::shared_ptr<NurbsSurface>,
+    std::shared_ptr<Polyline>,
+    std::shared_ptr<BRep>,
+    std::shared_ptr<Element>
+>;
+
+/// Anything an Objects collection holds: geometry, or a Component.
+using Item = std::variant<Geometry, Component>;
+
 /**
  * @brief  To use this operator, you can do:
  *         Point point(1.5, 2.5, 3.5);

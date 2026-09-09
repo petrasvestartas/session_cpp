@@ -33,123 +33,137 @@ std::string Session::str() const {
 // The check lives here so no caller has to write it, and so a scene never holds an object a
 // viewer cannot render.
 
+namespace {
+
+/// getattr(objects, collection): calls f on the Objects vector of that name.
+template <typename F> void with_collection(const Objects &objects, const std::string &collection, F &&f) {
+  if (collection == "points") f(*objects.points);
+  else if (collection == "lines") f(*objects.lines);
+  else if (collection == "planes") f(*objects.planes);
+  else if (collection == "bboxes") f(*objects.bboxes);
+  else if (collection == "polylines") f(*objects.polylines);
+  else if (collection == "pointclouds") f(*objects.pointclouds);
+  else if (collection == "meshes") f(*objects.meshes);
+  else if (collection == "nurbscurves") f(*objects.nurbscurves);
+  else if (collection == "nurbssurfaces") f(*objects.nurbssurfaces);
+  else if (collection == "breps") f(*objects.breps);
+  else if (collection == "elements") f(*objects.elements);
+  else if (collection == "components") f(*objects.components);
+}
+
+/// Calls f on the live object behind an item, geometry or component.
+template <typename F> auto with_item(const Item &item, F &&f) {
+  return std::visit([&](const auto &stored) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(stored)>, Component>)
+      return f(stored);
+    else
+      return std::visit([&](const auto &live) { return f(*live); }, stored);
+  }, item);
+}
+
+/// The element an Objects vector of value type E stores for an item.
+template <typename E> E element_of(const Item &item) {
+  if constexpr (std::is_same_v<E, Component>)
+    return std::get<Component>(item);
+  else
+    return std::get<E>(std::get<Geometry>(item));
+}
+
+/// The guid of an Objects vector element, a shared_ptr or a Component.
+template <typename E> std::string guid_of(const E &element) {
+  if constexpr (std::is_same_v<E, Component>)
+    return element.guid();
+  else
+    return element->guid();
+}
+
+} // namespace
+
+std::shared_ptr<TreeNode> Session::_add_object(const std::string &collection, const Item &obj, const std::string &type_prefix, std::shared_ptr<TreeNode> parent) {
+  std::string guid = with_item(obj, [](const auto &live) { return live.guid(); });
+  int obj_index = 0;
+  with_collection(objects, collection, [&](auto &items) {
+    items.push_back(element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
+    obj_index = static_cast<int>(items.size()) - 1;
+  });
+  if (const Geometry *geometry = std::get_if<Geometry>(&obj))
+    lookup[guid] = *geometry;
+  else
+    component_lookup[guid] = std::get<Component>(obj);
+  std::string attribute = type_prefix + "_" + with_item(obj, [](const auto &live) { return live.name; });
+  graph.add_node(guid, attribute);
+  bvh_cache_dirty = true;
+  auto node = std::make_shared<TreeNode>(guid);
+  std::optional<std::string> parent_guid;
+  int index = 0;
+  if (parent) {
+    add(node, parent);
+    parent_guid = parent->name;
+    index = static_cast<int>(parent->children().size()) - 1;
+  }
+  if (history.current)
+    history.record(AddOp(guid, clone(obj), collection, obj_index, std::nullopt, parent_guid, index, nullptr, attribute, {}));
+  return node;
+}
+
 std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent) {
   if (!point)
     return nullptr;
-  objects.points->push_back(point);
-  lookup[point->guid()] = point;
-  graph.add_node(point->guid(), "point_" + point->name);
-  cache_geometry_aabb(point->guid(), point);
-  auto node = std::make_shared<TreeNode>(point->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("points", point, "point", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent) {
   if (!line)
     return nullptr;
-  objects.lines->push_back(line);
-  lookup[line->guid()] = line;
-  graph.add_node(line->guid(), "line_" + line->name);
-  cache_geometry_aabb(line->guid(), line);
-  auto node = std::make_shared<TreeNode>(line->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("lines", line, "line", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent) {
   if (!plane)
     return nullptr;
-  objects.planes->push_back(plane);
-  lookup[plane->guid()] = plane;
-  graph.add_node(plane->guid(), "plane_" + plane->name);
-  cache_geometry_aabb(plane->guid(), plane);
-  auto node = std::make_shared<TreeNode>(plane->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("planes", plane, "plane", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
   if (!bbox)
     return nullptr;
-  objects.bboxes->push_back(bbox);
-  lookup[bbox->guid()] = bbox;
-  graph.add_node(bbox->guid(), "bbox_" + bbox->name);
-  cache_geometry_aabb(bbox->guid(), bbox);
-  auto node = std::make_shared<TreeNode>(bbox->guid());
-  return node;
+  return _add_object("bboxes", bbox, "bbox", nullptr);
 }
 
 std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent) {
   if (!polyline || polyline->point_count() < 2)
     return nullptr;
-  objects.polylines->push_back(polyline);
-  lookup[polyline->guid()] = polyline;
-  graph.add_node(polyline->guid(), "polyline_" + polyline->name);
-  cache_geometry_aabb(polyline->guid(), polyline);
-  auto node = std::make_shared<TreeNode>(polyline->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("polylines", polyline, "polyline", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_pointcloud(std::shared_ptr<PointCloud> pointcloud, std::shared_ptr<TreeNode> parent) {
   if (!pointcloud || pointcloud->is_empty())
     return nullptr;
-  objects.pointclouds->push_back(pointcloud);
-  lookup[pointcloud->guid()] = pointcloud;
-  graph.add_node(pointcloud->guid(), "pointcloud_" + pointcloud->name);
-  cache_geometry_aabb(pointcloud->guid(), pointcloud);
-  auto node = std::make_shared<TreeNode>(pointcloud->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("pointclouds", pointcloud, "pointcloud", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent) {
   if (!mesh || mesh->is_empty() || mesh->number_of_faces() == 0)
     return nullptr;
-  objects.meshes->push_back(mesh);
-  lookup[mesh->guid()] = mesh;
-  graph.add_node(mesh->guid(), "mesh_" + mesh->name);
-  cache_geometry_aabb(mesh->guid(), mesh);
-  auto node = std::make_shared<TreeNode>(mesh->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("meshes", mesh, "mesh", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbscurve(std::shared_ptr<NurbsCurve> nurbscurve, std::shared_ptr<TreeNode> parent) {
   if (!nurbscurve || nurbscurve->cv_count() < 2)
     return nullptr;
-  objects.nurbscurves->push_back(nurbscurve);
-  lookup[nurbscurve->guid()] = nurbscurve;
-  graph.add_node(nurbscurve->guid(), "nurbscurve_" + nurbscurve->name);
-  cache_geometry_aabb(nurbscurve->guid(), nurbscurve);
-  auto node = std::make_shared<TreeNode>(nurbscurve->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("nurbscurves", nurbscurve, "nurbscurve", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_nurbssurface(std::shared_ptr<NurbsSurface> nurbssurface, std::shared_ptr<TreeNode> parent) {
   if (!nurbssurface || nurbssurface->cv_count() == 0)
     return nullptr;
-  objects.nurbssurfaces->push_back(nurbssurface);
-  lookup[nurbssurface->guid()] = nurbssurface;
-  graph.add_node(nurbssurface->guid(), "nurbssurface_" + nurbssurface->name);
-  cache_geometry_aabb(nurbssurface->guid(), nurbssurface);
-  auto node = std::make_shared<TreeNode>(nurbssurface->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("nurbssurfaces", nurbssurface, "nurbssurface", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent) {
   if (!brep || (brep->face_count() == 0 && brep->vertex_count() == 0))
     return nullptr;
-  objects.breps->push_back(brep);
-  lookup[brep->guid()] = brep;
-  bvh_cache_dirty = true;
-  graph.add_node(brep->guid(), "brep_" + brep->name);
-  auto node = std::make_shared<TreeNode>(brep->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("breps", brep, "brep", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
@@ -157,22 +171,11 @@ std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element,
   // element_data a consumer reads back - and dropping one would lose that on a round trip.
   if (!element)
     return nullptr;
-  objects.elements->push_back(element);
-  lookup[element->guid()] = element;
-  bvh_cache_dirty = true;
-  graph.add_node(element->guid(), "element_" + element->name);
-  auto node = std::make_shared<TreeNode>(element->guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("elements", element, "element", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_component(Component component, std::shared_ptr<TreeNode> parent) {
-  component_lookup[component.guid()] = component;
-  objects.components->push_back(component);
-  graph.add_node(component.guid(), "component_" + component.name);
-  auto node = std::make_shared<TreeNode>(component.guid());
-  if (parent) add(node, parent);
-  return node;
+  return _add_object("components", component, "component", parent);
 }
 
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
@@ -233,6 +236,12 @@ std::vector<std::string> Session::order() const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void Session::set_xform(const std::string &guid, const Xform &xform) {
+  if (history.current) {
+    std::optional<Xform> before;
+    if (auto it = xforms.find(guid); it != xforms.end())
+      before = it->second;
+    history.record(XformOp(guid, before, xform));
+  }
   xforms[guid] = xform;
   bvh_cache_dirty = true;
 }
@@ -243,11 +252,14 @@ Xform Session::xform(const std::string &guid) const {
 }
 
 bool Session::remove_xform(const std::string &guid) {
-  bool removed = xforms.erase(guid) > 0;
-  if (removed) {
-    bvh_cache_dirty = true;
-  }
-  return removed;
+  auto before = xforms.find(guid);
+  if (before == xforms.end())
+    return false;
+  if (history.current)
+    history.record(XformOp(guid, before->second, std::nullopt));
+  xforms.erase(before);
+  bvh_cache_dirty = true;
+  return true;
 }
 
 Xform Session::world_xform(const std::string &guid) const {
@@ -322,76 +334,159 @@ std::vector<std::pair<std::string, Xform>> Session::xforms_ordered() const {
 }
 
 bool Session::remove_object(const std::string &obj_guid) {
-  bvh_cache_dirty = true; // removed objects must vanish from the ray BVH
-  auto it = lookup.find(obj_guid);
-  if (it == lookup.end()) {
+  std::optional<RemoveOp> op = _detach(obj_guid);
+  if (!op)
     return false;
-  }
-
-  invalidate_bvh_cache();
-
-  // Determine type and remove from typed collection
-  std::visit(
-      [this](const auto &ptr) {
-        using T = std::decay_t<decltype(*ptr)>;
-        auto erase_by_guid = [&](auto &vec) {
-          vec.erase(std::remove_if(
-                        vec.begin(), vec.end(),
-                        [&](const auto &p) { return p->guid() == ptr->guid(); }),
-                    vec.end());
-        };
-        if constexpr (std::is_same_v<T, Point>) {
-          erase_by_guid(*objects.points);
-        }
-        else if constexpr (std::is_same_v<T, Line>) {
-          erase_by_guid(*objects.lines);
-        }
-        else if constexpr (std::is_same_v<T, Plane>) {
-          erase_by_guid(*objects.planes);
-        }
-        else if constexpr (std::is_same_v<T, OBB>) {
-          erase_by_guid(*objects.bboxes);
-        }
-        else if constexpr (std::is_same_v<T, Polyline>) {
-          erase_by_guid(*objects.polylines);
-        }
-        else if constexpr (std::is_same_v<T, PointCloud>) {
-          erase_by_guid(*objects.pointclouds);
-        }
-        else if constexpr (std::is_same_v<T, Mesh>) {
-          erase_by_guid(*objects.meshes);
-        }
-        else if constexpr (std::is_same_v<T, NurbsCurve>) {
-          erase_by_guid(*objects.nurbscurves);
-        }
-        else if constexpr (std::is_same_v<T, NurbsSurface>) {
-          erase_by_guid(*objects.nurbssurfaces);
-        }
-        else if constexpr (std::is_same_v<T, BRep>) {
-          erase_by_guid(*objects.breps);
-        }
-        else if constexpr (std::is_same_v<T, Element>) {
-          erase_by_guid(*objects.elements);
-        }
-      },
-      it->second);
-
-  // Remove from lookup table
-  lookup.erase(it);
-  xforms.erase(obj_guid);
-
-  // Remove from tree
-  auto tree_node = tree.find_node_by_guid(obj_guid);
-  if (tree_node) {
-    tree.remove(tree_node);
-  }
-
-  // Remove from graph
-  if (graph.has_node(obj_guid)) {
-    graph.remove_node(obj_guid);
-  }
-
+  history.record(*op);
   return true;
+}
+
+bool Session::replace(const std::string &guid, const Geometry &obj) {
+  auto before = lookup.find(guid);
+  if (before == lookup.end())
+    return false;
+  std::visit([&](const auto &live) { live->guid() = guid; }, obj);
+  if (history.current)
+    history.record(ReplaceOp(guid, clone(before->second), clone(obj)));
+  _swap(guid, obj);
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// History
+// ═══════════════════════════════════════════════════════════════════════════
+
+void Session::begin(const std::string &label) { history.begin(label); }
+
+void Session::commit() { history.commit(); }
+
+bool Session::undo() { return history.undo(*this); }
+
+bool Session::redo() { return history.redo(*this); }
+
+std::pair<std::string, int> Session::_locate(const std::string &guid) const {
+  for (const auto &[collection, prefix] : COLLECTIONS) {
+    int found = -1;
+    with_collection(objects, collection, [&](const auto &items) {
+      for (size_t i = 0; i < items.size(); ++i)
+        if (guid_of(items[i]) == guid)
+          found = static_cast<int>(i);
+    });
+    if (found >= 0)
+      return {collection, found};
+  }
+  return {"", -1};
+}
+
+std::optional<RemoveOp> Session::_detach(const std::string &guid) {
+  std::optional<Item> obj;
+  if (auto it = lookup.find(guid); it != lookup.end())
+    obj = it->second;
+  else if (auto it = component_lookup.find(guid); it != component_lookup.end())
+    obj = it->second;
+  if (!obj)
+    return std::nullopt;
+  auto [collection, obj_index] = _locate(guid);
+  if (obj_index >= 0)
+    with_collection(objects, collection, [&](auto &items) { items.erase(items.begin() + obj_index); });
+  lookup.erase(guid);
+  component_lookup.erase(guid);
+  std::optional<Xform> xform;
+  if (auto it = xforms.find(guid); it != xforms.end()) {
+    xform = it->second;
+    xforms.erase(it);
+  }
+  bvh_cache_dirty = true;
+
+  std::optional<std::string> parent_guid;
+  int index = 0;
+  std::shared_ptr<TreeNode> node = tree.get_node_by_name(guid);
+  if (node) {
+    if (std::shared_ptr<TreeNode> parent = node->parent()) {
+      parent_guid = parent->name;
+      std::vector<TreeNode *> children = parent->children();
+      index = static_cast<int>(std::find(children.begin(), children.end(), node.get()) - children.begin());
+    }
+    node = tree.remove(node);
+  }
+
+  std::string attribute;
+  std::vector<std::tuple<std::string, std::string, bool>> edges;
+  if (graph.has_node(guid)) {
+    attribute = graph.node_attribute(guid);
+    edges = graph.edges_of(guid);
+    graph.remove_node(guid);
+  }
+
+  return RemoveOp(guid, clone(*obj), collection, obj_index, xform, parent_guid, index, node, attribute, edges);
+}
+
+void Session::_attach(const Tombstone &op) {
+  Item obj = clone(op.obj);
+  with_collection(objects, op.collection, [&](auto &items) {
+    using E = typename std::decay_t<decltype(items)>::value_type;
+    items.insert(items.begin() + std::min<size_t>(op.obj_index, items.size()), element_of<E>(obj));
+  });
+  if (const Geometry *geometry = std::get_if<Geometry>(&obj))
+    lookup[op.guid] = *geometry;
+  else
+    component_lookup[op.guid] = std::get<Component>(obj);
+  if (op.xform)
+    xforms[op.guid] = *op.xform;
+  bvh_cache_dirty = true;
+
+  std::shared_ptr<TreeNode> node = op.node;
+  if (!node)
+    node = std::make_shared<TreeNode>(op.guid);
+  if (op.parent_guid) {
+    std::shared_ptr<TreeNode> parent = tree.get_node_by_name(*op.parent_guid);
+    if (parent) {
+      tree.add(node, parent);
+      // A TreeNode owns its children privately, so the node moves from the end to op.index by
+      // re-adding every sibling that should follow it.
+      std::vector<TreeNode *> children = parent->children();
+      for (size_t i = std::min<size_t>(op.index, children.size() - 1); i + 1 < children.size(); ++i)
+        parent->add(parent->remove(children[i]->shared_from_this()));
+    }
+  }
+
+  graph.add_node(op.guid, op.attribute);
+  for (const auto &[other, attribute, forward] : op.edges) {
+    if (!graph.has_node(other))
+      continue;
+    if (forward)
+      graph.add_edge(op.guid, other, attribute);
+    else
+      graph.add_edge(other, op.guid, attribute);
+  }
+}
+
+void Session::_swap(const std::string &guid, const Item &obj) {
+  auto [collection, obj_index] = _locate(guid);
+  if (obj_index < 0)
+    return;
+  with_collection(objects, collection, [&](auto &items) {
+    items[obj_index] = element_of<typename std::decay_t<decltype(items)>::value_type>(obj);
+  });
+  if (const Geometry *geometry = std::get_if<Geometry>(&obj))
+    lookup[guid] = *geometry;
+  else
+    component_lookup[guid] = std::get<Component>(obj);
+  bvh_cache_dirty = true;
+  std::string attribute;
+  for (const auto &[name, prefix] : COLLECTIONS)
+    if (name == collection)
+      attribute = prefix + "_" + with_item(obj, [](const auto &live) { return live.name; });
+  if (graph.has_node(guid))
+    graph.node_attribute(guid, attribute);
+}
+
+void Session::_place(const std::string &guid, const std::optional<Xform> &xform) {
+  if (xform)
+    xforms[guid] = *xform;
+  else
+    xforms.erase(guid);
+  bvh_cache_dirty = true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -723,6 +818,7 @@ Session Session::jsonload(const nlohmann::json &data) {
 }
 
 std::string Session::file_json_dumps() const {
+  history.clear();
   return jsondump().dump();
 }
 
@@ -731,6 +827,7 @@ std::shared_ptr<Session> Session::file_json_loads(const std::string& json_string
 }
 
 void Session::file_json_dump(const std::string& filename) const {
+  history.clear();
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
@@ -742,6 +839,7 @@ std::shared_ptr<Session> Session::file_json_load(const std::string& filename) {
 }
 
 std::string Session::pb_dumps() const {
+  history.clear();
   session_proto::Session proto;
   proto.set_name(name);
   if (has_guid()) { proto.set_guid(guid()); }
@@ -794,6 +892,7 @@ std::shared_ptr<Session> Session::pb_loads(const std::string& data) {
 }
 
 void Session::pb_dump(const std::string& filename) const {
+  history.clear();
   std::string data = pb_dumps();
   std::ofstream file(filename, std::ios::binary);
   file.write(data.data(), data.size());

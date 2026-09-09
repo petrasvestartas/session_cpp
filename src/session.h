@@ -18,6 +18,7 @@
 #include "nurbssurface.h"
 #include "brep.h"
 #include "tree.h"
+#include "history.h"
 #include "spatial_bvh.h"
 #include <fstream>
 #include <iostream>
@@ -30,22 +31,21 @@
 
 namespace session_cpp {
 
-/// A new type joins here and in the checklist at the top of session.cpp.
-
-// All geometry types as a variant
-using Geometry = std::variant<
-    std::shared_ptr<OBB>,
-    std::shared_ptr<Line>,
-    std::shared_ptr<Mesh>,
-    std::shared_ptr<Plane>,
-    std::shared_ptr<Point>,
-    std::shared_ptr<PointCloud>,
-    std::shared_ptr<NurbsCurve>,
-    std::shared_ptr<NurbsSurface>,
-    std::shared_ptr<Polyline>,
-    std::shared_ptr<BRep>,
-    std::shared_ptr<Element>
->;
+/// The Objects lists in order() sequence, each with the prefix of its graph node attribute.
+inline const std::vector<std::pair<std::string, std::string>> COLLECTIONS = {
+    {"points", "point"},
+    {"lines", "line"},
+    {"planes", "plane"},
+    {"bboxes", "bbox"},
+    {"polylines", "polyline"},
+    {"pointclouds", "pointcloud"},
+    {"meshes", "mesh"},
+    {"nurbscurves", "nurbscurve"},
+    {"nurbssurfaces", "nurbssurface"},
+    {"breps", "brep"},
+    {"elements", "element"},
+    {"components", "component"},
+};
 
 /// A session containing geometry objects.
 class Session {
@@ -66,6 +66,10 @@ public:
   /// world_xform(), which multiplies down the tree. Serialized explicitly by
   /// jsondump/pb_dumps in order() sequence (a map has no deterministic order).
   std::unordered_map<std::string, Xform> xforms;
+  /// Undo/redo buffer, in memory only. Ops are recorded ONLY while a transaction is open
+  /// (begin ... commit), and every save purges it, as Rhino does - which is why it is mutable:
+  /// the const dumps clear it.
+  mutable History history;
   SpatialBVH bvh;    ///< Bounding volume hierarchy for collision detection
   
   // SpatialBVH caching for ray casting performance
@@ -187,8 +191,17 @@ public:
   /// Compute face-to-face contacts between all elements.
   /// Uses SpatialBVH + OBB for adjacency, then boolean intersection for contact areas.
 
-  /// Remove an object from the session
+  /// Remove an object by its GUID from every live table at once: its typed list, lookup, its
+  /// xform, its tree node (with the subtree) and its graph node with every incident edge. The
+  /// removal record is the tombstone that undo restores from.
   bool remove_object(const std::string &obj_guid);
+
+  /// Swap the object stored under guid for obj, which takes over that guid, in its typed list
+  /// and lookup, and refresh its graph node attribute. This is the recorded edit: undo restores
+  /// the previous object, redo the new one, as absolute snapshots. Mutating an object in place
+  /// through lookup stays possible and is NOT recorded - history only sees what goes through
+  /// replace. Returns false when the guid is not found.
+  bool replace(const std::string &guid, const Geometry &obj);
 
   /// Canonical object order: the objects vectors walked in one fixed type sequence —
   std::vector<std::string> order() const;
@@ -216,6 +229,17 @@ public:
   /// calling world_xform() per object: that does a whole-tree scan to find each node, which
   /// is quadratic over a session.
   std::unordered_map<std::string, Xform> world_xforms() const;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // History
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Open a history transaction: every add, remove, replace and xform change until commit
+  /// becomes one undo step.
+  void begin(const std::string &label);
+  void commit();
+  bool undo();
+  bool redo();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Tree Operations
@@ -290,7 +314,29 @@ public:
   static std::shared_ptr<Session> pb_load(const std::string& filename);
 
 private:
+  friend class History;
   mutable std::string _guid;
+
+  /// Store an object in its typed list, lookup, graph and tree, recording an AddOp when a
+  /// transaction is open.
+  std::shared_ptr<TreeNode> _add_object(const std::string &collection, const Item &obj, const std::string &type_prefix, std::shared_ptr<TreeNode> parent);
+
+  /// Which Objects list holds a guid, and where; ("", -1) when none does.
+  std::pair<std::string, int> _locate(const std::string &guid) const;
+
+  /// Take an object out of every live table, unrecorded, returning its tombstone.
+  std::optional<RemoveOp> _detach(const std::string &guid);
+
+  /// Put an object back from its tombstone, unrecorded: typed list at its old index, lookup,
+  /// xform, tree node under the same parent at the same index with its subtree, graph node and
+  /// every incident edge whose other end is still present.
+  void _attach(const Tombstone &op);
+
+  /// Store obj under guid in its typed list and lookup, unrecorded.
+  void _swap(const std::string &guid, const Item &obj);
+
+  /// Set or drop (nullopt) the local transform under guid, unrecorded.
+  void _place(const std::string &guid, const std::optional<Xform> &xform);
 
   /// The xforms in canonical order() sequence, identity entries omitted - the exact sequence
   /// jsondump and pb_dumps write, so both formats share one order.
