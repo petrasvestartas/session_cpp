@@ -293,4 +293,15 @@ MINI_TEST("Plane", "Has On Negative Side") {
     MINI_CHECK(!pl.has_on_negative_side(above));
 }
 
+MINI_TEST("Plane", "Project") {
+    // uncomment #include "plane.h"
+
+    Plane pl = Plane::xy_plane();
+    Point above(1.0, 2.0, 5.0);
+    Point on_plane = pl.project(above);
+
+    MINI_CHECK(TOLERANCE.is_close(on_plane[0], 1.0) && TOLERANCE.is_close(on_plane[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(on_plane[2], 0.0));
+}
+
 } // namespace session_cpp
