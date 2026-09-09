@@ -309,6 +309,11 @@ void Plane::transform(const Xform& xform) {
   _x_axis.transform(xform);
   _y_axis.transform(xform);
   _z_axis.transform(xform);
+
+  _a = _z_axis[0];
+  _b = _z_axis[1];
+  _c = _z_axis[2];
+  _d = -(_a * _origin[0] + _b * _origin[1] + _c * _origin[2]);
 }
 
 Plane Plane::transformed(const Xform& xform) const {
