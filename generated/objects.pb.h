@@ -40,6 +40,7 @@
 #include "nurbssurface.pb.h"
 #include "brep.pb.h"
 #include "element.pb.h"
+#include "sheet.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -487,6 +488,7 @@ class Objects final : public ::google::protobuf::Message
     kComponentsFieldNumber = 16,
     kNameFieldNumber = 1,
     kGuidFieldNumber = 2,
+    kSheetsFieldNumber = 17,
   };
   // repeated .session_proto.Point points = 3;
   int points_size() const;
@@ -722,12 +724,29 @@ class Objects final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_guid();
 
   public:
+  // repeated .session_proto.Sheet sheets = 17;
+  int sheets_size() const;
+  private:
+  int _internal_sheets_size() const;
+
+  public:
+  void clear_sheets() ;
+  ::session_proto::Sheet* PROTOBUF_NONNULL mutable_sheets(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL mutable_sheets();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& _internal_sheets() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL _internal_mutable_sheets();
+  public:
+  const ::session_proto::Sheet& sheets(int index) const;
+  ::session_proto::Sheet* PROTOBUF_NONNULL add_sheets();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& sheets() const;
   // @@protoc_insertion_point(class_scope:session_proto.Objects)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 14,
-                                   12, 46,
+  static const ::google::protobuf::internal::TcParseTable<4, 15,
+                                   13, 46,
                                    2>
       _table_;
 
@@ -762,6 +781,7 @@ class Objects final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedPtrField< ::session_proto::Component > components_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::Sheet > sheets_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1784,6 +1804,56 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::Component>* PROTOBU
 Objects::_internal_mutable_components() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.components_;
+}
+
+// repeated .session_proto.Sheet sheets = 17;
+inline int Objects::_internal_sheets_size() const {
+  return _internal_sheets().size();
+}
+inline int Objects::sheets_size() const {
+  return _internal_sheets_size();
+}
+inline ::session_proto::Sheet* PROTOBUF_NONNULL Objects::mutable_sheets(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.Objects.sheets)
+  return _internal_mutable_sheets()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL Objects::mutable_sheets()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00004000U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.Objects.sheets)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_sheets();
+}
+inline const ::session_proto::Sheet& Objects::sheets(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Objects.sheets)
+  return _internal_sheets().Get(index);
+}
+inline ::session_proto::Sheet* PROTOBUF_NONNULL Objects::add_sheets()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::Sheet* _add =
+      _internal_mutable_sheets()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00004000U);
+  // @@protoc_insertion_point(field_add:session_proto.Objects.sheets)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& Objects::sheets() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.Objects.sheets)
+  return _internal_sheets();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>&
+Objects::_internal_sheets() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.sheets_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL
+Objects::_internal_mutable_sheets() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.sheets_;
 }
 
 #ifdef __GNUC__

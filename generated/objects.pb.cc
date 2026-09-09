@@ -82,7 +82,8 @@ inline constexpr Objects::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         guid_(
             &::google::protobuf::internal::fixed_address_empty_string,
-            ::_pbi::ConstantInitialized()) {}
+            ::_pbi::ConstantInitialized()),
+        sheets_{} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Objects::Objects(::_pbi::ConstantInitialized)
@@ -124,7 +125,7 @@ const ::uint32_t
         3,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_._has_bits_),
-        17, // hasbit index offset
+        18, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.points_),
@@ -139,6 +140,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.breps_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.elements_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.components_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Objects, _impl_.sheets_),
         12,
         13,
         0,
@@ -153,6 +155,7 @@ const ::uint32_t
         9,
         10,
         11,
+        14,
 };
 
 static const ::_pbi::MigrationSchema
@@ -170,26 +173,28 @@ const char descriptor_table_protodef_objects_2eproto[] ABSL_ATTRIBUTE_SECTION_VA
     "oto\032\nline.proto\032\013plane.proto\032\021boundingbo"
     "x.proto\032\016polyline.proto\032\020pointcloud.prot"
     "o\032\nmesh.proto\032\020nurbscurve.proto\032\022nurbssu"
-    "rface.proto\032\nbrep.proto\032\relement.proto\"M"
-    "\n\tComponent\022\021\n\ttype_name\030\001 \001(\t\022\014\n\004guid\030\002"
-    " \001(\t\022\014\n\004name\030\003 \001(\t\022\021\n\tjson_data\030\004 \001(\t\"\242\004"
-    "\n\007Objects\022\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022$\n"
-    "\006points\030\003 \003(\0132\024.session_proto.Point\022\"\n\005l"
-    "ines\030\004 \003(\0132\023.session_proto.Line\022$\n\006plane"
-    "s\030\005 \003(\0132\024.session_proto.Plane\022*\n\006bboxes\030"
-    "\006 \003(\0132\032.session_proto.BoundingBox\022*\n\tpol"
-    "ylines\030\007 \003(\0132\027.session_proto.Polyline\022.\n"
-    "\013pointclouds\030\010 \003(\0132\031.session_proto.Point"
-    "Cloud\022#\n\006meshes\030\t \003(\0132\023.session_proto.Me"
-    "sh\022.\n\013nurbscurves\030\014 \003(\0132\031.session_proto."
-    "NurbsCurve\0222\n\rnurbssurfaces\030\r \003(\0132\033.sess"
-    "ion_proto.NurbsSurface\022\"\n\005breps\030\016 \003(\0132\023."
-    "session_proto.BRep\022(\n\010elements\030\017 \003(\0132\026.s"
-    "ession_proto.Element\022,\n\ncomponents\030\020 \003(\013"
-    "2\030.session_proto.Componentb\006proto3"
+    "rface.proto\032\nbrep.proto\032\relement.proto\032\013"
+    "sheet.proto\"M\n\tComponent\022\021\n\ttype_name\030\001 "
+    "\001(\t\022\014\n\004guid\030\002 \001(\t\022\014\n\004name\030\003 \001(\t\022\021\n\tjson_"
+    "data\030\004 \001(\t\"\310\004\n\007Objects\022\014\n\004name\030\001 \001(\t\022\014\n\004"
+    "guid\030\002 \001(\t\022$\n\006points\030\003 \003(\0132\024.session_pro"
+    "to.Point\022\"\n\005lines\030\004 \003(\0132\023.session_proto."
+    "Line\022$\n\006planes\030\005 \003(\0132\024.session_proto.Pla"
+    "ne\022*\n\006bboxes\030\006 \003(\0132\032.session_proto.Bound"
+    "ingBox\022*\n\tpolylines\030\007 \003(\0132\027.session_prot"
+    "o.Polyline\022.\n\013pointclouds\030\010 \003(\0132\031.sessio"
+    "n_proto.PointCloud\022#\n\006meshes\030\t \003(\0132\023.ses"
+    "sion_proto.Mesh\022.\n\013nurbscurves\030\014 \003(\0132\031.s"
+    "ession_proto.NurbsCurve\0222\n\rnurbssurfaces"
+    "\030\r \003(\0132\033.session_proto.NurbsSurface\022\"\n\005b"
+    "reps\030\016 \003(\0132\023.session_proto.BRep\022(\n\010eleme"
+    "nts\030\017 \003(\0132\026.session_proto.Element\022,\n\ncom"
+    "ponents\030\020 \003(\0132\030.session_proto.Component\022"
+    "$\n\006sheets\030\021 \003(\0132\024.session_proto.Sheetb\006p"
+    "roto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_objects_2eproto_deps[11] = {
+    descriptor_table_objects_2eproto_deps[12] = {
         &::descriptor_table_boundingbox_2eproto,
         &::descriptor_table_brep_2eproto,
         &::descriptor_table_element_2eproto,
@@ -201,17 +206,18 @@ static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
         &::descriptor_table_point_2eproto,
         &::descriptor_table_pointcloud_2eproto,
         &::descriptor_table_polyline_2eproto,
+        &::descriptor_table_sheet_2eproto,
 };
 static ::absl::once_flag descriptor_table_objects_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_objects_2eproto = {
     false,
     false,
-    834,
+    885,
     descriptor_table_protodef_objects_2eproto,
     "objects.proto",
     &descriptor_table_objects_2eproto_once,
     descriptor_table_objects_2eproto_deps,
-    11,
+    12,
     2,
     schemas,
     file_default_instances,
@@ -696,6 +702,12 @@ void Objects::clear_elements() {
   ClearHasBitForRepeated(_impl_._has_bits_[0],
                   0x00000400U);
 }
+void Objects::clear_sheets() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.sheets_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00004000U);
+}
 Objects::Objects(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, Objects_class_data_.base()) {
@@ -724,7 +736,8 @@ PROTOBUF_NDEBUG_INLINE Objects::Impl_::Impl_(
         elements_{visibility, arena, from.elements_},
         components_{visibility, arena, from.components_},
         name_(arena, from.name_),
-        guid_(arena, from.guid_) {}
+        guid_(arena, from.guid_),
+        sheets_{visibility, arena, from.sheets_} {}
 
 Objects::Objects(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -759,7 +772,8 @@ PROTOBUF_NDEBUG_INLINE Objects::Impl_::Impl_(
         elements_{visibility, arena},
         components_{visibility, arena},
         name_(arena),
-        guid_(arena) {}
+        guid_(arena),
+        sheets_{visibility, arena} {}
 
 inline void Objects::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
@@ -835,6 +849,10 @@ constexpr auto Objects::InternalNewImpl_() {
           decltype(Objects::_impl_.components_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Objects, _impl_.sheets_) +
+          decltype(Objects::_impl_.sheets_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
   });
   if (arena_bits.has_value()) {
     return ::google::protobuf::internal::MessageCreator::CopyInit(
@@ -879,17 +897,17 @@ Objects::GetClassData() const {
   return Objects_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<4, 14, 12, 46, 2>
+const ::_pbi::TcParseTable<4, 15, 13, 46, 2>
 Objects::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Objects, _impl_._has_bits_),
     0, // no _extensions_
-    16, 120,  // max_field_number, fast_idx_mask
+    17, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294903296,  // skipmap
+    4294837760,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    14,  // num_field_entries
-    12,  // num_aux_entries
+    15,  // num_field_entries
+    13,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Objects_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -987,6 +1005,8 @@ Objects::_table_ = {
     {PROTOBUF_FIELD_OFFSET(Objects, _impl_.elements_), _Internal::kHasBitsOffset + 10, 10, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // repeated .session_proto.Component components = 16;
     {PROTOBUF_FIELD_OFFSET(Objects, _impl_.components_), _Internal::kHasBitsOffset + 11, 11, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    // repeated .session_proto.Sheet sheets = 17;
+    {PROTOBUF_FIELD_OFFSET(Objects, _impl_.sheets_), _Internal::kHasBitsOffset + 14, 12, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Point>()},
@@ -1001,6 +1021,7 @@ Objects::_table_ = {
       {::_pbi::TcParser::GetTable<::session_proto::BRep>()},
       {::_pbi::TcParser::GetTable<::session_proto::Element>()},
       {::_pbi::TcParser::GetTable<::session_proto::Component>()},
+      {::_pbi::TcParser::GetTable<::session_proto::Sheet>()},
   }},
   {{
     "\25\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
@@ -1043,7 +1064,7 @@ PROTOBUF_NOINLINE void Objects::Clear() {
       _impl_.nurbscurves_.Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       _impl_.nurbssurfaces_.Clear();
     }
@@ -1061,6 +1082,9 @@ PROTOBUF_NOINLINE void Objects::Clear() {
     }
     if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       _impl_.guid_.ClearNonDefaultToEmpty();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+      _impl_.sheets_.Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -1262,6 +1286,19 @@ PROTOBUF_NOINLINE void Objects::Clear() {
     }
   }
 
+  // repeated .session_proto.Sheet sheets = 17;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+    for (unsigned i = 0, n = static_cast<unsigned>(
+                             this_._internal_sheets_size());
+         i < n; i++) {
+      const auto& repfield = this_._internal_sheets().Get(i);
+      target =
+          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+              17, repfield, repfield.GetCachedSize(),
+              target, stream);
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -1345,7 +1382,7 @@ PROTOBUF_NOINLINE void Objects::Clear() {
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     // repeated .session_proto.NurbsSurface nurbssurfaces = 13;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       total_size += 1UL * this_._internal_nurbssurfaces_size();
@@ -1386,6 +1423,13 @@ PROTOBUF_NOINLINE void Objects::Clear() {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
+      }
+    }
+    // repeated .session_proto.Sheet sheets = 17;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+      total_size += 2UL * this_._internal_sheets_size();
+      for (const auto& msg : this_._internal_sheets()) {
+        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
       }
     }
   }
@@ -1450,7 +1494,7 @@ void Objects::MergeImpl(::google::protobuf::MessageLite& to_msg,
           from._internal_nurbscurves());
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000100U)) {
       _this->_internal_mutable_nurbssurfaces()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -1489,6 +1533,11 @@ void Objects::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00004000U)) {
+      _this->_internal_mutable_sheets()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_sheets());
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -1523,6 +1572,7 @@ void Objects::InternalSwap(Objects* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   _impl_.components_.InternalSwap(&other->_impl_.components_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
+  _impl_.sheets_.InternalSwap(&other->_impl_.sheets_);
 }
 
 ::google::protobuf::Metadata Objects::GetMetadata() const {
