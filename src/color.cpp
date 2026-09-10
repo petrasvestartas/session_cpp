@@ -168,36 +168,31 @@ bool Color::operator==(const Color &other) const {
 bool Color::operator!=(const Color &other) const { return !(*this == other); }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Details
-// ═══════════════════════════════════════════════════════════════════════════
-
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Presets
 // ═══════════════════════════════════════════════════════════════════════════
 
-Color Color::white()   { thread_local static Color _c(1.0f, 1.0f, 1.0f, 1.0f, "white");     return _c; }
-Color Color::black()   { thread_local static Color _c(0.0f, 0.0f, 0.0f, 1.0f, "black");     return _c; }
-Color Color::grey()    { thread_local static Color _c(0.5f, 0.5f, 0.5f, 1.0f, "grey");      return _c; }
-Color Color::red()     { thread_local static Color _c(1.0f, 0.0f, 0.0f, 1.0f, "red");       return _c; }
-Color Color::orange()  { thread_local static Color _c(1.0f, 0.5f, 0.0f, 1.0f, "orange");    return _c; }
-Color Color::yellow()  { thread_local static Color _c(1.0f, 1.0f, 0.0f, 1.0f, "yellow");    return _c; }
-Color Color::lime()    { thread_local static Color _c(0.5f, 1.0f, 0.0f, 1.0f, "lime");      return _c; }
-Color Color::green()   { thread_local static Color _c(0.0f, 1.0f, 0.0f, 1.0f, "green");     return _c; }
-Color Color::mint()    { thread_local static Color _c(0.0f, 1.0f, 0.5f, 1.0f, "mint");      return _c; }
-Color Color::cyan()    { thread_local static Color _c(0.0f, 1.0f, 1.0f, 1.0f, "cyan");      return _c; }
-Color Color::azure()   { thread_local static Color _c(0.0f, 0.5f, 1.0f, 1.0f, "azure");     return _c; }
-Color Color::blue()    { thread_local static Color _c(0.0f, 0.0f, 1.0f, 1.0f, "blue");      return _c; }
-Color Color::violet()  { thread_local static Color _c(0.5f, 0.0f, 1.0f, 1.0f, "violet");    return _c; }
-Color Color::magenta() { thread_local static Color _c(1.0f, 0.0f, 1.0f, 1.0f, "magenta");   return _c; }
-Color Color::pink()    { thread_local static Color _c(1.0f, 0.0f, 0.5f, 1.0f, "pink");      return _c; }
-Color Color::maroon()  { thread_local static Color _c(0.5f, 0.0f, 0.0f, 1.0f, "maroon");    return _c; }
-Color Color::brown()   { thread_local static Color _c(0.5f, 0.25f, 0.0f, 1.0f, "brown");    return _c; }
-Color Color::olive()   { thread_local static Color _c(0.5f, 0.5f, 0.0f, 1.0f, "olive");     return _c; }
-Color Color::teal()    { thread_local static Color _c(0.0f, 0.5f, 0.5f, 1.0f, "teal");      return _c; }
-Color Color::navy()    { thread_local static Color _c(0.0f, 0.0f, 0.5f, 1.0f, "navy");      return _c; }
-Color Color::purple()  { thread_local static Color _c(0.5f, 0.0f, 0.5f, 1.0f, "purple");    return _c; }
-Color Color::silver()  { thread_local static Color _c(0.75f, 0.75f, 0.75f, 1.0f, "silver"); return _c; }
+Color Color::white()   { return Color(1.0f, 1.0f, 1.0f, 1.0f, "white"); }
+Color Color::black()   { return Color(0.0f, 0.0f, 0.0f, 1.0f, "black"); }
+Color Color::grey()    { return Color(0.5f, 0.5f, 0.5f, 1.0f, "grey"); }
+Color Color::red()     { return Color(1.0f, 0.0f, 0.0f, 1.0f, "red"); }
+Color Color::orange()  { return Color(1.0f, 0.5f, 0.0f, 1.0f, "orange"); }
+Color Color::yellow()  { return Color(1.0f, 1.0f, 0.0f, 1.0f, "yellow"); }
+Color Color::lime()    { return Color(0.5f, 1.0f, 0.0f, 1.0f, "lime"); }
+Color Color::green()   { return Color(0.0f, 1.0f, 0.0f, 1.0f, "green"); }
+Color Color::mint()    { return Color(0.0f, 1.0f, 0.5f, 1.0f, "mint"); }
+Color Color::cyan()    { return Color(0.0f, 1.0f, 1.0f, 1.0f, "cyan"); }
+Color Color::azure()   { return Color(0.0f, 0.5f, 1.0f, 1.0f, "azure"); }
+Color Color::blue()    { return Color(0.0f, 0.0f, 1.0f, 1.0f, "blue"); }
+Color Color::violet()  { return Color(0.5f, 0.0f, 1.0f, 1.0f, "violet"); }
+Color Color::magenta() { return Color(1.0f, 0.0f, 1.0f, 1.0f, "magenta"); }
+Color Color::pink()    { return Color(1.0f, 0.0f, 0.5f, 1.0f, "pink"); }
+Color Color::maroon()  { return Color(0.5f, 0.0f, 0.0f, 1.0f, "maroon"); }
+Color Color::brown()   { return Color(0.5f, 0.25f, 0.0f, 1.0f, "brown"); }
+Color Color::olive()   { return Color(0.5f, 0.5f, 0.0f, 1.0f, "olive"); }
+Color Color::teal()    { return Color(0.0f, 0.5f, 0.5f, 1.0f, "teal"); }
+Color Color::navy()    { return Color(0.0f, 0.0f, 0.5f, 1.0f, "navy"); }
+Color Color::purple()  { return Color(0.5f, 0.0f, 0.5f, 1.0f, "purple"); }
+Color Color::silver()  { return Color(0.75f, 0.75f, 0.75f, 1.0f, "silver"); }
 
 std::vector<Color> Color::palette() {
     return {
