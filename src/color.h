@@ -2,12 +2,14 @@
 #include "fmt/core.h"
 #include "guid.h"
 #include "json.h"
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace session_cpp {
 
@@ -36,7 +38,7 @@ public:
    */
   Color(float r = 1.0f, float g = 1.0f, float b = 1.0f,
         float a = 1.0f, std::string name = "my_color")
-      : name(name),
+      : name(std::move(name)),
         r(std::clamp(r, 0.0f, 1.0f)),
         g(std::clamp(g, 0.0f, 1.0f)),
         b(std::clamp(b, 0.0f, 1.0f)),
