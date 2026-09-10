@@ -48,6 +48,7 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid() != c.guid());
         MINI_CHECK(c != Color(1.0f, 0.0f, 0.0f, 0.5f, "red"));
         MINI_CHECK(cclamp[0] == 1.0f && cclamp[1] == 0.0f && cclamp[2] == 0.5f && cclamp[3] == 1.0f);
+        MINI_CHECK(Color(1.0f, 0.5f, 0.25f, 1.0f).str() == "1.0, 0.5, 0.2, 1.0");
     }
 
     MINI_TEST("Color", "Json Roundtrip"){
