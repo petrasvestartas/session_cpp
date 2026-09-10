@@ -79,11 +79,12 @@ nlohmann::ordered_json Color::jsondump() const {
 }
 
 Color Color::jsonload(const nlohmann::json &data) {
-  Color color(data["r"].get<float>(),
-              data["g"].get<float>(),
-              data["b"].get<float>(),
-              data["a"].get<float>(), data["name"]);
-  color.guid() = data["guid"];
+  // Indexing a const json with an absent key is undefined; rgb are required, the rest default.
+  Color color(data.at("r").get<float>(),
+              data.at("g").get<float>(),
+              data.at("b").get<float>(),
+              data.value("a", 1.0f), data.value("name", std::string("my_color")));
+  if (data.contains("guid")) { color.guid() = data["guid"]; }
   return color;
 }
 
