@@ -217,10 +217,10 @@ private:
 
 /**
  * @brief  To use this operator, you can do:
- *         Point point(1.5, 2.5, 3.5);
- *         std::cout << "Created point: " << point << std::endl;
+ *         Color color(1.0f, 0.5f, 0.25f, 1.0f);
+ *         std::cout << "Created color: " << color << std::endl;
  * @param os The output stream.
- * @param point The Point to insert into the stream.
+ * @param color The Color to insert into the stream.
  * @return A reference to the output stream.
  */
 std::ostream &operator<<(std::ostream &os, const Color &color);
