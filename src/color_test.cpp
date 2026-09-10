@@ -35,6 +35,9 @@ namespace session_cpp {
         Color ccopy = c;
         Color cother(1.0f, 0.0f, 0.0f, 1.0f, "red");
 
+        // Out-of-range values clamp to [0, 1]
+        Color cclamp(2.0f, -1.0f, 0.5f, 5.0f);
+
         MINI_CHECK(c.name == "red");
         MINI_CHECK(c.guid() != "");
         MINI_CHECK(c[0] == 1.0f && c[1] == 0.0f && c[2] == 0.0f && c[3] == 1.0f);
@@ -43,12 +46,14 @@ namespace session_cpp {
         MINI_CHECK(crepr == "Color(red, 1.0, 0.0, 0.0, 1.0)");
         MINI_CHECK(ccopy == cother);
         MINI_CHECK(ccopy.guid() != c.guid());
+        MINI_CHECK(c != Color(1.0f, 0.0f, 0.0f, 0.5f, "red"));
+        MINI_CHECK(cclamp[0] == 1.0f && cclamp[1] == 0.0f && cclamp[2] == 0.5f && cclamp[3] == 1.0f);
     }
 
     MINI_TEST("Color", "Json Roundtrip"){
       // uncomment #include "color.h"
 
-      Color c(1.0f, 0.5f, 0.25f, 1.0f, "serialization/test_color");
+      Color c(1.0f, 0.5f, 0.25f, 1.0f, "test_color");
 
       //   jsondump()      │ ordered_json │ to JSON object (internal use)
       //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
@@ -61,7 +66,7 @@ namespace session_cpp {
       c.file_json_dump(filename);
       Color loaded = Color::file_json_load(filename);
 
-      MINI_CHECK(loaded.name == "serialization/test_color");
+      MINI_CHECK(loaded.name == "test_color");
       MINI_CHECK(loaded[0] == 1.0f);
       MINI_CHECK(loaded[1] == 0.5f);
       MINI_CHECK(loaded[2] == 0.25f);
@@ -71,13 +76,13 @@ namespace session_cpp {
     MINI_TEST("Color", "Protobuf Roundtrip"){
       // uncomment #include "color.h"
 
-      Color c(1.0f, 0.5f, 0.25f, 1.0f, "serialization/test_color");
+      Color c(1.0f, 0.5f, 0.25f, 1.0f, "test_color");
 
       std::string filename = "serialization/test_color.bin";
       c.pb_dump(filename);
       Color loaded = Color::pb_load(filename);
 
-      MINI_CHECK(loaded.name == "serialization/test_color");
+      MINI_CHECK(loaded.name == "test_color");
       MINI_CHECK(loaded[0] == 1.0f);
       MINI_CHECK(loaded[1] == 0.5f);
       MINI_CHECK(loaded[2] == 0.25f);
@@ -146,6 +151,21 @@ namespace session_cpp {
       MINI_CHECK(navy == Color(0.0f, 0.0f, 0.5f, 1.0f, "navy"));
       MINI_CHECK(purple == Color(0.5f, 0.0f, 0.5f, 1.0f, "purple"));
       MINI_CHECK(silver == Color(0.75f, 0.75f, 0.75f, 1.0f, "silver"));
+    }
+
+    MINI_TEST("Color", "Palette"){
+      // uncomment #include "color.h"
+
+      std::vector<Color> palette = Color::palette();
+
+      // Every call builds fresh colors, so mutating one leaves the presets alone
+      palette[0].name = "mutated";
+
+      MINI_CHECK(palette.size() == 12);
+      MINI_CHECK(palette[0] == Color(1.0f, 0.0f, 0.0f, 1.0f, "mutated"));
+      MINI_CHECK(palette[11] == Color(1.0f, 0.0f, 0.5f, 1.0f, "pink"));
+      MINI_CHECK(Color::palette()[0] == Color(1.0f, 0.0f, 0.0f, 1.0f, "red"));
+      MINI_CHECK(Color::red().name == "red");
     }
 
 }
