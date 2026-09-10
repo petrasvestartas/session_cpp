@@ -87,6 +87,17 @@ public:
     tree.add(root_node);
   }
 
+  /// A copy is an INDEPENDENT session holding the same data: every object, every tree node
+  /// and every table is duplicated, and nothing is shared with the original. Identities come
+  /// across unchanged, because the tree, the graph and the xforms all key on them - a
+  /// duplicate that renamed its geometry would be a session whose own indexes no longer
+  /// matched it. The BVH caches are not copied; they are marked dirty and rebuilt on demand,
+  /// since their nodes are raw pointers into an arena. History starts empty.
+  Session(const Session& other);
+  Session& operator=(const Session& other);
+  Session(Session&&) noexcept = default;
+  Session& operator=(Session&&) noexcept = default;
+
   /// Convert session to string representation
   std::string str() const;
 
@@ -305,13 +316,13 @@ public:
   /// Creates a Session instance from JSON data.
   static Session jsonload(const nlohmann::json &data);
   std::string file_json_dumps() const;
-  static std::shared_ptr<Session> file_json_loads(const std::string& json_string);
+  static Session file_json_loads(const std::string& json_string);
   void file_json_dump(const std::string& filename) const;
-  static std::shared_ptr<Session> file_json_load(const std::string& filename);
+  static Session file_json_load(const std::string& filename);
   std::string pb_dumps() const;
-  static std::shared_ptr<Session> pb_loads(const std::string& data);
+  static Session pb_loads(const std::string& data);
   void pb_dump(const std::string& filename) const;
-  static std::shared_ptr<Session> pb_load(const std::string& filename);
+  static Session pb_load(const std::string& filename);
 
 private:
   friend class History;
@@ -334,6 +345,10 @@ private:
 
   /// Store obj under guid in its typed list and lookup, unrecorded.
   void _swap(const std::string &guid, const Item &obj);
+
+  /// Point `lookup` and `component_lookup` at the objects this session currently holds. Used
+  /// after anything that replaces the collections wholesale: a load, or a copy.
+  void _index_objects();
 
   /// Set or drop (nullopt) the local transform under guid, unrecorded.
   void _place(const std::string &guid, const std::optional<Xform> &xform);

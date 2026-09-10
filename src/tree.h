@@ -133,6 +133,13 @@ public:
   /// Default / named constructor
   Tree(std::string name = "my_tree") { this->name = name; }
 
+  /// A copy duplicates the whole node hierarchy. The root is held by shared_ptr, so the
+  /// implicit copy shared it and two trees reparented each other's nodes.
+  Tree(const Tree& other);
+  Tree& operator=(const Tree& other);
+  Tree(Tree&&) noexcept = default;
+  Tree& operator=(Tree&&) noexcept = default;
+
   /// Simple string form (like Python __str__)
   std::string str() const;
 

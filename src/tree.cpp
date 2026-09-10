@@ -286,6 +286,32 @@ Tree Tree::pb_load(const std::string& filename) {
 
 std::string Tree::str() const { return fmt::format("Tree: {}", name); }
 
+namespace {
+
+/// One node and everything under it, duplicated. Names carry the identity a Session keys on -
+/// a geometry node is named by its object's guid - so they, the colour and the node's own guid
+/// all come across, and only the objects are new.
+std::shared_ptr<TreeNode> clone_node(const TreeNode& node) {
+  auto copy = std::make_shared<TreeNode>(node.name);
+  if (node.has_guid()) { copy->guid() = node.guid(); }
+  copy->color = node.color;
+  for (const TreeNode* child : node.children()) { copy->add(clone_node(*child)); }
+  return copy;
+}
+
+} // namespace
+
+Tree::Tree(const Tree& other) {
+  name = other.name;
+  if (other.has_guid()) { guid() = other.guid(); }
+  if (other._root) { _root = clone_node(*other._root); }
+}
+
+Tree& Tree::operator=(const Tree& other) {
+  if (this != &other) { Tree copy(other); *this = std::move(copy); }
+  return *this;
+}
+
 std::shared_ptr<TreeNode> Tree::root() const { return _root; }
 
 void Tree::add(std::shared_ptr<TreeNode> node,

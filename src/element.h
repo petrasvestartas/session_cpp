@@ -194,6 +194,16 @@ public:
     void reset();
 
     Element duplicate() const;
+
+    /// A polymorphic copy: the SAME derived type, carrying the same data.
+    ///
+    /// `Element` is the base of domain types that add their own tag and payload (see the
+    /// registry below), and `std::make_shared<Element>(*e)` on one of those slices it back to
+    /// a plain Element. Anything that duplicates a whole collection of elements - Session's
+    /// copy constructor - goes through this instead. A derived type overrides it with one line.
+    /// Identity follows the copy constructor: the clone mints its own guid, and a caller that
+    /// needs the original's puts it back.
+    virtual std::shared_ptr<Element> clone() const { return std::make_shared<Element>(*this); }
     virtual bool operator==(const Element& other) const;
     bool operator!=(const Element& other) const;
     virtual std::string str() const;

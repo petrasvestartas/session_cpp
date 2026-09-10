@@ -111,6 +111,19 @@ public:
     this->components = std::make_shared<std::vector<Component>>();
   }
 
+  /// A copy duplicates every list AND every object in it, identities included.
+  ///
+  /// The lists are held by shared_ptr, so the implicit copy shared them: two Objects, one set
+  /// of geometry, and clearing either cleared both. Guids are put back after each object's own
+  /// copy constructor mints a fresh one, because a Session's tree, graph and xforms all key on
+  /// them - a duplicate that renamed everything would be a session whose own indexes no longer
+  /// matched its geometry.
+  Objects(const Objects& other);
+  Objects& operator=(const Objects& other);
+  /// A move is the same collection in a new place, so the lists transfer as they are.
+  Objects(Objects&&) noexcept = default;
+  Objects& operator=(Objects&&) noexcept = default;
+
   /// Convert objects to string representation
   std::string str() const;
 

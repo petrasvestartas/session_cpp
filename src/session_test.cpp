@@ -19,6 +19,44 @@ MINI_TEST("Session", "Constructor") {
     MINI_CHECK(named.name == "my_named_session");
 }
 
+MINI_TEST("Session", "Copy") {
+    Session session("original");
+    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    auto element = std::make_shared<Element>("plate");
+    auto group = session.add_group("Group");
+    session.add_point(point, group);
+    session.add_element(element, group);
+    session.add_edge(point->guid(), element->guid(), "touching");
+    session.set_xform(point->guid(), Xform::translation(1.0, 0.0, 0.0));
+    const std::string guid = session.guid();   // minted here; a guid nobody asked for is not data
+
+    Session copy = session;
+
+    MINI_CHECK(copy.name == session.name);
+    MINI_CHECK(copy.guid() == guid);
+    MINI_CHECK(copy.objects.points->size() == 1);
+    MINI_CHECK(copy.objects.elements->size() == 1);
+    MINI_CHECK(copy.lookup.size() == session.lookup.size());
+    MINI_CHECK(copy.graph.number_of_edges() == 1);
+    MINI_CHECK(copy.xforms.size() == 1);
+    MINI_CHECK(copy.tree.root()->descendants().size() == session.tree.root()->descendants().size());
+
+    // The data is the same, the storage is not.
+    MINI_CHECK(copy.objects.points != session.objects.points);
+    MINI_CHECK(copy.objects.elements != session.objects.elements);
+    MINI_CHECK(copy.tree.root() != session.tree.root());
+    MINI_CHECK(copy.objects.points->at(0) != session.objects.points->at(0));
+    MINI_CHECK(copy.objects.points->at(0)->guid() == point->guid());
+    MINI_CHECK(copy.objects.elements->at(0)->guid() == element->guid());
+    MINI_CHECK(copy.lookup.count(point->guid()) == 1);
+
+    // Touching the copy leaves the original alone.
+    copy.objects.points->clear();
+    copy.tree.root()->children().empty();
+    MINI_CHECK(session.objects.points->size() == 1);
+    MINI_CHECK(copy.objects.points->size() == 0);
+}
+
 MINI_TEST("Session", "Add Point") {
     // uncomment #include "session.h"
     // uncomment #include "point.h"
@@ -397,13 +435,13 @@ MINI_TEST("Session", "Remove Object") {
 
     std::string fname = "serialization/test_session_remove.bin";
     session.pb_dump(fname);
-    std::shared_ptr<Session> loaded = Session::pb_load(fname);
+    Session loaded = Session::pb_load(fname);
 
     MINI_CHECK(removed);
     MINI_CHECK(session.lookup.count(point->guid()) == 0);
     MINI_CHECK(eremoved);
     MINI_CHECK(session.objects.elements->size() == 0);
-    MINI_CHECK(loaded->lookup.count(eguid) == 0); // removed objects must not resurrect on save/load
+    MINI_CHECK(loaded.lookup.count(eguid) == 0); // removed objects must not resurrect on save/load
 }
 
 MINI_TEST("Session", "Get Geometry") {
@@ -460,11 +498,11 @@ MINI_TEST("Session", "Json Roundtrip") {
 
     std::string fname = "serialization/test_session.json";
     session.file_json_dump(fname);
-    std::shared_ptr<Session> loaded = Session::file_json_load(fname);
+    Session loaded = Session::file_json_load(fname);
 
-    MINI_CHECK(loaded->name == session.name);
-    MINI_CHECK(loaded->lookup.size() == session.lookup.size());
-    MINI_CHECK(loaded->graph.number_of_vertices() == session.graph.number_of_vertices());
+    MINI_CHECK(loaded.name == session.name);
+    MINI_CHECK(loaded.lookup.size() == session.lookup.size());
+    MINI_CHECK(loaded.graph.number_of_vertices() == session.graph.number_of_vertices());
 }
 
 MINI_TEST("Session", "Protobuf Roundtrip") {
@@ -480,10 +518,10 @@ MINI_TEST("Session", "Protobuf Roundtrip") {
 
     std::string fname = "serialization/test_session.bin";
     session.pb_dump(fname);
-    std::shared_ptr<Session> loaded = Session::pb_load(fname);
+    Session loaded = Session::pb_load(fname);
 
-    MINI_CHECK(loaded->name == session.name);
-    MINI_CHECK(loaded->lookup.size() == session.lookup.size());
+    MINI_CHECK(loaded.name == session.name);
+    MINI_CHECK(loaded.lookup.size() == session.lookup.size());
 }
 
 MINI_TEST("Session", "Lookup Mutation Roundtrip") {
@@ -499,10 +537,10 @@ MINI_TEST("Session", "Lookup Mutation Roundtrip") {
 
     std::string fname = "serialization/test_session_lookup.bin";
     session.pb_dump(fname);
-    std::shared_ptr<Session> loaded = Session::pb_load(fname);
+    Session loaded = Session::pb_load(fname);
 
-    MINI_CHECK(loaded->objects.lines->at(0)->width == 5.0);
-    MINI_CHECK(std::get<std::shared_ptr<Line>>(loaded->lookup[guid])->width == 5.0);
+    MINI_CHECK(loaded.objects.lines->at(0)->width == 5.0);
+    MINI_CHECK(std::get<std::shared_ptr<Line>>(loaded.lookup[guid])->width == 5.0);
 }
 
 MINI_TEST("Session", "Order") {
@@ -522,12 +560,12 @@ MINI_TEST("Session", "Order") {
 
     std::string fname = "serialization/test_session_order.bin";
     session.pb_dump(fname);
-    std::shared_ptr<Session> loaded = Session::pb_load(fname);
+    Session loaded = Session::pb_load(fname);
 
     MINI_CHECK(order.size() == 2);
     MINI_CHECK(order[0] == point_guid);
     MINI_CHECK(order[1] == line_guid);
-    MINI_CHECK(loaded->order() == order);
+    MINI_CHECK(loaded.order() == order);
 }
 
 MINI_TEST("Session", "Set Xform") {
@@ -602,13 +640,13 @@ MINI_TEST("Session", "Xform Roundtrip") {
 
     std::string fname = "serialization/test_session_xform.bin";
     session.pb_dump(fname);
-    std::shared_ptr<Session> loaded = Session::pb_load(fname);
-    std::shared_ptr<Session> json_loaded = Session::file_json_loads(session.file_json_dumps());
+    Session loaded = Session::pb_load(fname);
+    Session json_loaded = Session::file_json_loads(session.file_json_dumps());
 
-    MINI_CHECK(loaded->xform(guid) == session.xform(guid));
-    MINI_CHECK(loaded->xforms.size() == 1);
-    MINI_CHECK(json_loaded->xform(guid) == session.xform(guid));
-    MINI_CHECK(json_loaded->xforms.size() == 1);
+    MINI_CHECK(loaded.xform(guid) == session.xform(guid));
+    MINI_CHECK(loaded.xforms.size() == 1);
+    MINI_CHECK(json_loaded.xform(guid) == session.xform(guid));
+    MINI_CHECK(json_loaded.xforms.size() == 1);
 }
 
 MINI_TEST("Session", "Tree Transformation Hierarchy") {
@@ -743,15 +781,15 @@ MINI_TEST("Session", "Document Workflow") {
 
     std::string fname = "serialization/test_session_document.bin";
     session.pb_dump(fname);
-    std::shared_ptr<Session> loaded = Session::pb_load(fname);
+    Session loaded = Session::pb_load(fname);
 
-    MINI_CHECK(loaded->lookup.size() == 2);
-    MINI_CHECK(loaded->lookup.count(a_guid) == 1);
-    MINI_CHECK(loaded->lookup.count(b_guid) == 1);
-    MINI_CHECK(loaded->lookup.count(c_guid) == 0);
-    MINI_CHECK(TOLERANCE.is_close((*std::get<std::shared_ptr<Point>>(loaded->lookup[b_guid]))[0], 20.0));
-    MINI_CHECK(loaded->xform(a_guid) == shift);
-    MINI_CHECK(loaded->history.depth() == 0);
+    MINI_CHECK(loaded.lookup.size() == 2);
+    MINI_CHECK(loaded.lookup.count(a_guid) == 1);
+    MINI_CHECK(loaded.lookup.count(b_guid) == 1);
+    MINI_CHECK(loaded.lookup.count(c_guid) == 0);
+    MINI_CHECK(TOLERANCE.is_close((*std::get<std::shared_ptr<Point>>(loaded.lookup[b_guid]))[0], 20.0));
+    MINI_CHECK(loaded.xform(a_guid) == shift);
+    MINI_CHECK(loaded.history.depth() == 0);
 }
 
 MINI_TEST("Session", "Undo Remove") {

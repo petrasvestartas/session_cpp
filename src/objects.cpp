@@ -3,6 +3,65 @@
 
 namespace session_cpp {
 
+namespace {
+
+/// One list, duplicated: new vector, new objects, same guids. A geometry copy constructor
+/// mints a fresh guid by design, so the original's is put back.
+template <class T>
+std::shared_ptr<std::vector<std::shared_ptr<T>>>
+clone_list(const std::shared_ptr<std::vector<std::shared_ptr<T>>>& source) {
+  auto out = std::make_shared<std::vector<std::shared_ptr<T>>>();
+  if (!source) { return out; }
+  out->reserve(source->size());
+  for (const std::shared_ptr<T>& item : *source) {
+    if (!item) { out->push_back(nullptr); continue; }
+    std::shared_ptr<T> copy = std::make_shared<T>(*item);
+    if (item->has_guid()) { copy->guid() = item->guid(); }
+    out->push_back(std::move(copy));
+  }
+  return out;
+}
+
+/// Elements are polymorphic: a domain type derives from Element and carries its own tag, so
+/// this goes through the virtual clone rather than the copy constructor.
+std::shared_ptr<std::vector<std::shared_ptr<Element>>>
+clone_elements(const std::shared_ptr<std::vector<std::shared_ptr<Element>>>& source) {
+  auto out = std::make_shared<std::vector<std::shared_ptr<Element>>>();
+  if (!source) { return out; }
+  out->reserve(source->size());
+  for (const std::shared_ptr<Element>& item : *source) {
+    if (!item) { out->push_back(nullptr); continue; }
+    std::shared_ptr<Element> copy = item->clone();
+    if (item->has_guid()) { copy->guid() = item->guid(); }
+    out->push_back(std::move(copy));
+  }
+  return out;
+}
+
+} // namespace
+
+Objects::Objects(const Objects& other) : name(other.name) {
+  if (other.has_guid()) { guid() = other.guid(); }
+  points        = clone_list(other.points);
+  lines         = clone_list(other.lines);
+  planes        = clone_list(other.planes);
+  bboxes        = clone_list(other.bboxes);
+  polylines     = clone_list(other.polylines);
+  pointclouds   = clone_list(other.pointclouds);
+  meshes        = clone_list(other.meshes);
+  nurbscurves   = clone_list(other.nurbscurves);
+  nurbssurfaces = clone_list(other.nurbssurfaces);
+  breps         = clone_list(other.breps);
+  elements      = clone_elements(other.elements);
+  components    = std::make_shared<std::vector<Component>>(other.components ? *other.components
+                                                                            : std::vector<Component>{});
+}
+
+Objects& Objects::operator=(const Objects& other) {
+  if (this != &other) { Objects copy(other); *this = std::move(copy); }
+  return *this;
+}
+
 std::string Objects::str() const {
   return fmt::format("Objects(name={}, guid={}, points={})", name, guid(),
                      points->size());
