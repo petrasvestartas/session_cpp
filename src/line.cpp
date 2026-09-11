@@ -76,10 +76,12 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
         if (eig > best) { best = eig; vx = sx; vy = sy; vz = sz; }
     }
 
-    // Determine line extent from projected points
-    double half_len;
+    // Span the projected extent. The centroid is not its midpoint, so mirroring the longer
+    // half returned a line longer than the points it was fitted to.
+    double t_min, t_max;
     if (length <= 0.0) {
-        double t_min = 0.0, t_max = 0.0;
+        t_min = 0.0;
+        t_max = 0.0;
         for (const auto& p : points) {
             double dx = p[0] - cx;
             double dy = p[1] - cy;
@@ -88,16 +90,16 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
             t_min = std::min(t_min, t);
             t_max = std::max(t_max, t);
         }
-        half_len = std::max(std::abs(t_min), std::abs(t_max));
-        if (half_len < 1e-10) half_len = 0.5;
+        if (t_max - t_min < 1e-10) { t_min = -0.5; t_max = 0.5; }
     } else {
-        half_len = length / 2.0;
+        t_min = -length / 2.0;
+        t_max = length / 2.0;
     }
 
-    // Create line from centroid +/- direction * half_len
+    // Create line from centroid + direction * t
     return Line(
-        cx - vx * half_len, cy - vy * half_len, cz - vz * half_len,
-        cx + vx * half_len, cy + vy * half_len, cz + vz * half_len
+        cx + vx * t_min, cy + vy * t_min, cz + vz * t_min,
+        cx + vx * t_max, cy + vy * t_max, cz + vz * t_max
     );
 }
 
