@@ -53,17 +53,27 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
         cyz += dy * dz;
     }
 
-    // Power iteration to find dominant eigenvector
-    double vx = 1.0, vy = 0.0, vz = 0.0;
-    for (int iter = 0; iter < 100; ++iter) {
-        double nx = cxx * vx + cxy * vy + cxz * vz;
-        double ny = cxy * vx + cyy * vy + cyz * vz;
-        double nz = cxz * vx + cyz * vy + czz * vz;
-        double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
-        if (mag < 1e-15) break;
-        vx = nx / mag;
-        vy = ny / mag;
-        vz = nz / mag;
+    // Power iteration seeded from every axis: a seed orthogonal to the dominant
+    // eigenvector never reaches it, so keep the largest Rayleigh quotient.
+    double vx = 1.0, vy = 0.0, vz = 0.0, best = -1.0;
+    for (int seed = 0; seed < 3; ++seed) {
+        double sx = seed == 0 ? 1.0 : 0.0;
+        double sy = seed == 1 ? 1.0 : 0.0;
+        double sz = seed == 2 ? 1.0 : 0.0;
+        for (int iter = 0; iter < 100; ++iter) {
+            double nx = cxx * sx + cxy * sy + cxz * sz;
+            double ny = cxy * sx + cyy * sy + cyz * sz;
+            double nz = cxz * sx + cyz * sy + czz * sz;
+            double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
+            if (mag < 1e-15) break;
+            sx = nx / mag;
+            sy = ny / mag;
+            sz = nz / mag;
+        }
+        double eig = sx * (cxx * sx + cxy * sy + cxz * sz)
+                   + sy * (cxy * sx + cyy * sy + cyz * sz)
+                   + sz * (cxz * sx + cyz * sy + czz * sz);
+        if (eig > best) { best = eig; vx = sx; vy = sy; vz = sz; }
     }
 
     // Determine line extent from projected points
