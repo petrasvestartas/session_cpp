@@ -190,7 +190,7 @@ nlohmann::ordered_json Line::jsondump() const {
 
 Line Line::jsonload(const nlohmann::json& data) {
     Line line(data["x0"], data["y0"], data["z0"], data["x1"], data["y1"], data["z1"]);
-    line.guid() = data["guid"];
+    line._guid = data["guid"].get<std::string>();
     line.name = data["name"];
     line.linecolor = Color::jsonload(data["linecolor"]);
     line.width = data["width"];
@@ -247,7 +247,7 @@ Line Line::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     const auto& c = proto.coords();
     Line line = c.size() == 6 ? Line(c[0], c[1], c[2], c[3], c[4], c[5]) : Line();
-    if (!proto.guid().empty()) { line.guid() = proto.guid(); }
+    if (!proto.guid().empty()) { line._guid = proto.guid(); }
     line.name = proto.name();
     // Deserialize width and linecolor
     if (proto.width() > 0.0) {
