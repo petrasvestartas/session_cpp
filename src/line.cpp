@@ -7,7 +7,6 @@
 #include <stdexcept>
 
 #include "line.pb.h"
-#include "point.pb.h"
 
 namespace session_cpp {
 
@@ -417,10 +416,7 @@ Vector Line::to_direction() const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 double Line::length() const {
-    double dx = _x1 - _x0;
-    double dy = _y1 - _y0;
-    double dz = _z1 - _z0;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
+    return std::sqrt(squared_length());
 }
 
 double Line::squared_length() const {
@@ -529,18 +525,9 @@ bool Line::overlap(const Line& other, Line& out) const {
 }
 
 bool Line::overlap_average(const Line& other, Line& out) const {
-    Line lineA, lineB;
-    overlap(other, lineA);
-    other.overlap(*this, lineB);
-    Point a0=lineA.start(), a1=lineA.end(), b0=lineB.start(), b1=lineB.end();
-    Point m0s((a0[0]+b0[0])*0.5,(a0[1]+b0[1])*0.5,(a0[2]+b0[2])*0.5);
-    Point m0e((a1[0]+b1[0])*0.5,(a1[1]+b1[1])*0.5,(a1[2]+b1[2])*0.5);
-    Point m1s((a0[0]+b1[0])*0.5,(a0[1]+b1[1])*0.5,(a0[2]+b1[2])*0.5);
-    Point m1e((a1[0]+b0[0])*0.5,(a1[1]+b0[1])*0.5,(a1[2]+b0[2])*0.5);
-    double dx0=m0e[0]-m0s[0], dy0=m0e[1]-m0s[1], dz0=m0e[2]-m0s[2];
-    double dx1=m1e[0]-m1s[0], dy1=m1e[1]-m1s[1], dz1=m1e[2]-m1s[2];
-    out = (dx0*dx0+dy0*dy0+dz0*dz0 >= dx1*dx1+dy1*dy1+dz1*dz1)
-          ? Line::from_points(m0s, m0e) : Line::from_points(m1s, m1e);
+    Point os, oe;
+    Polyline::line_line_overlap_average(start(), end(), other.start(), other.end(), os, oe);
+    out = Line::from_points(os, oe);
     return out.squared_length() > 0.0;
 }
 
