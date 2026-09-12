@@ -36,13 +36,13 @@ bool SpatialBVH::aabb_intersect(const AABB& aabb1, const AABB& aabb2) const {
 }
 
 void SpatialBVH::build_from_aabbs(const AABB* aabbs, size_t count, double ws) {
+    this->world_size = ws;
+
     if (count == 0) {
         root = nullptr;
         node_arena.clear();
         return;
     }
-
-    this->world_size = ws;
 
     // Morton codes normalized over the INPUT's own bounds - not the
     // origin-centered world_size. Sized by max |coordinate|, a scene far from the origin
@@ -359,10 +359,17 @@ static bool ray_aabb_intersect(const Point& origin,
     double invy = inv(direction[1]);
     double invz = inv(direction[2]);
 
+    // Seed from the unbounded interval so all three slabs fold the same way. A slab with zero
+    // extent, a zero direction component and the origin in its plane yields 0*inf = NaN, and
+    // min/max drop a NaN second argument; seeding tmin/tmax from the x slab let that NaN
+    // through instead and turned a ray travelling inside a flat box into a reported miss.
+    double tmin = -std::numeric_limits<double>::infinity();
+    double tmax = std::numeric_limits<double>::infinity();
+
     double tx1 = (min_x - origin[0]) * invx;
     double tx2 = (max_x - origin[0]) * invx;
-    double tmin = std::min(tx1, tx2);
-    double tmax = std::max(tx1, tx2);
+    tmin = std::max(tmin, std::min(tx1, tx2));
+    tmax = std::min(tmax, std::max(tx1, tx2));
 
     double ty1 = (min_y - origin[1]) * invy;
     double ty2 = (max_y - origin[1]) * invy;
@@ -463,226 +470,10 @@ void SpatialBVH::build(const std::vector<OBB>& bounding_boxes) {
 }
 
 void SpatialBVH::build_from_boxes(const OBB* boxes, size_t count, double ws) {
-    if (count == 0) {
-        root = nullptr;
-        node_arena.clear();
-        return;
-    }
-
-    this->world_size = ws;
-
-    // Morton codes normalized over the INPUT's own bounds - not the
-    // origin-centered world_size. Sized by max |coordinate|, a scene far from the origin
-    // collapses into a handful of Morton cells: the tree stays balanced (index tiebreak)
-    // but loses all spatial coherence - measured 480x slower queries for the same boxes
-    // moved 5 km out. Bounds normalization makes tree quality translation-invariant;
-    // query results are unaffected (they test exact AABBs), world_size stays as metadata.
-    double lo[3] = {boxes[0].center[0], boxes[0].center[1], boxes[0].center[2]};
-    double hi[3] = {boxes[0].center[0], boxes[0].center[1], boxes[0].center[2]};
-    for (size_t i = 1; i < count; ++i) {
-        for (int k = 0; k < 3; ++k) {
-            lo[k] = std::min(lo[k], boxes[i].center[k]);
-            hi[k] = std::max(hi[k], boxes[i].center[k]);
-        }
-    }
-    // ONE scale for all three axes (the scene's bounding CUBE): per-axis stretch would
-    // blow a nearly-flat axis up to the full 1024 cells and scatter xy-neighbours in the
-    // sort - measured 4x slower queries on a sheet-like scene. Cubic cells keep the sort
-    // spatially honest; a flat axis simply occupies few cells, which is the truth.
-    double ext = std::max(hi[0] - lo[0], std::max(hi[1] - lo[1], hi[2] - lo[2]));
-    double s = ext > 0.0 ? 1023.0 / ext : 0.0;
-    auto q = [&](double c, int k) -> uint32_t {
-        return std::min(static_cast<uint32_t>((c - lo[k]) * s), 1023u);
-    };
-    std::vector<ObjectInfo> objects;
-    objects.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        const auto& bbox = boxes[i];
-        uint32_t morton_code = expand_bits(q(bbox.center[0], 0))
-            | (expand_bits(q(bbox.center[1], 1)) << 1)
-            | (expand_bits(q(bbox.center[2], 2)) << 2);
-        objects.emplace_back(ObjectInfo{static_cast<int>(i), morton_code});
-    }
-
-    // Radix sort by 30-bit Morton code (3 passes of 10 bits) for speed
-    {
-        auto radix_sort = [&](std::vector<ObjectInfo>& arr) {
-            const int RADIX = 1024; // 2^10
-            const int PASSES = 3;   // 30 bits total
-            std::vector<ObjectInfo> tmp(arr.size());
-            for (int pass = 0; pass < PASSES; ++pass) {
-                std::array<int, RADIX> count{};
-                int shift = pass * 10;
-                for (const auto& e : arr) {
-                    int b = static_cast<int>((e.morton_code >> shift) & (RADIX - 1));
-                    count[b]++;
-                }
-                // Prefix sums
-                int sum = 0;
-                for (int i = 0; i < RADIX; ++i) {
-                    int c = count[i];
-                    count[i] = sum;
-                    sum += c;
-                }
-                // Stable scatter
-                for (const auto& e : arr) {
-                    int b = static_cast<int>((e.morton_code >> shift) & (RADIX - 1));
-                    tmp[count[b]++] = e;
-                }
-                arr.swap(tmp);
-            }
-        };
-        radix_sort(objects);
-    }
-
-    // Prepare node arena: 2*n - 1 nodes total
-    node_arena.clear();
-    node_arena.reserve(static_cast<size_t>(2 * count - 1));
-
-    // LBVH (Karras 2012) O(N) construction
-    const int N = static_cast<int>(count);
-    if (N == 1) {
-        // Single leaf
-        SpatialBVHNode* leaf = alloc_node();
-        leaf->object_id = objects[0].id;
-        const OBB& bb = boxes[objects[0].id];
-        leaf->aabb = aabb_from_obb(bb);
-        leaf->left = leaf->right = nullptr;
-        root = leaf;
-        return;
-    }
-
-    std::vector<uint32_t> codes(N);
-    for (int i = 0; i < N; ++i) codes[i] = objects[i].morton_code;
-
-    auto clz32 = [](uint32_t x) -> int {
-        if (x == 0) return 32;
-#if defined(__clang__) || defined(__GNUC__)
-        return __builtin_clz(x);
-#else
-        // Fallback
-        int n = 0; while ((x & 0x80000000u) == 0) { n++; x <<= 1; } return n;
-#endif
-    };
-
-    auto commonPrefix = [&](int i, int j) -> int {
-        if (j < 0 || j >= N) return -1; // out of range
-        uint32_t ci = codes[i];
-        uint32_t cj = codes[j];
-        if (ci != cj) return clz32(ci ^ cj);
-        // Disambiguate equal Morton codes using index bits
-        uint32_t di = static_cast<uint32_t>(i);
-        uint32_t dj = static_cast<uint32_t>(j);
-        return 32 + clz32(di ^ dj);
-    };
-
-    auto determineRange = [&](int i, int& first, int& last) {
-        int d = (commonPrefix(i, i + 1) - commonPrefix(i, i - 1)) > 0 ? 1 : -1;
-        int deltaMin = commonPrefix(i, i - d);
-
-        // Find lmax by exponential search
-        int l = 1;
-        while (commonPrefix(i, i + l * d) > deltaMin) {
-            l <<= 1;
-        }
-
-        // Binary search to find exact bound
-        int bound = 0;
-        for (int t = l >> 1; t > 0; t >>= 1) {
-            if (commonPrefix(i, i + (bound + t) * d) > deltaMin) bound += t;
-        }
-        int j = i + bound * d;
-        first = std::min(i, j);
-        last = std::max(i, j);
-    };
-
-    auto findSplit = [&](int first, int last) -> int {
-        int common = commonPrefix(first, last);
-        int split = first;
-        int step = last - first;
-        do {
-            step = (step + 1) >> 1; // ceil div 2
-            int newSplit = split + step;
-            if (newSplit < last) {
-                int splitPrefix = commonPrefix(first, newSplit);
-                if (splitPrefix > common) split = newSplit;
-            }
-        } while (step > 1);
-        return split;
-    };
-
-    // Allocate leaves
-    std::vector<SpatialBVHNode*> leaves(N);
-    for (int i = 0; i < N; ++i) {
-        SpatialBVHNode* leaf = alloc_node();
-        leaf->object_id = objects[i].id;
-        const OBB& bb = boxes[objects[i].id];
-        leaf->aabb = aabb_from_obb(bb);
-        leaf->left = leaf->right = nullptr;
-        leaves[i] = leaf;
-    }
-
-    // Allocate internal nodes
-    std::vector<SpatialBVHNode*> internals(N - 1);
-    for (int i = 0; i < N - 1; ++i) {
-        SpatialBVHNode* in = alloc_node();
-        in->object_id = -1;
-        in->left = in->right = nullptr;
-        internals[i] = in;
-    }
-
-    // Build topology
-    std::vector<char> has_parent(N - 1, 0);
-    for (int i = 0; i < N - 1; ++i) {
-        int first, last;
-        determineRange(i, first, last);
-        int split = findSplit(first, last);
-
-        // Left child
-        if (split == first) {
-            internals[i]->left = leaves[split];
-        } else {
-            internals[i]->left = internals[split];
-            has_parent[split] = 1;
-        }
-
-        // Right child
-        if (split + 1 == last) {
-            internals[i]->right = leaves[split + 1];
-        } else {
-            internals[i]->right = internals[split + 1];
-            has_parent[split + 1] = 1;
-        }
-    }
-
-    // Find root (internal node without parent)
-    int rootIdx = 0;
-    for (int i = 0; i < N - 1; ++i) {
-        if (!has_parent[i]) { rootIdx = i; break; }
-    }
-    root = internals[rootIdx];
-
-    // Post-order compute internal AABBs
-    std::function<void(SpatialBVHNode*)> compute = [&](SpatialBVHNode* n) {
-        if (!n || n->is_leaf()) return;
-        compute(n->left);
-        compute(n->right);
-        const auto& a = n->left->aabb;
-        const auto& b = n->right->aabb;
-        double min_x = std::min(a.cx - a.hx, b.cx - b.hx);
-        double min_y = std::min(a.cy - a.hy, b.cy - b.hy);
-        double min_z = std::min(a.cz - a.hz, b.cz - b.hz);
-        double max_x = std::max(a.cx + a.hx, b.cx + b.hx);
-        double max_y = std::max(a.cy + a.hy, b.cy + b.hy);
-        double max_z = std::max(a.cz + a.hz, b.cz + b.hz);
-        n->aabb = AABB{(min_x + max_x) * 0.5,
-                          (min_y + max_y) * 0.5,
-                          (min_z + max_z) * 0.5,
-                          (max_x - min_x) * 0.5,
-                          (max_y - min_y) * 0.5,
-                          (max_z - min_z) * 0.5};
-    };
-    compute(root);
+    std::vector<AABB> aabbs;
+    aabbs.reserve(count);
+    for (size_t i = 0; i < count; ++i) aabbs.push_back(aabb_from_obb(boxes[i]));
+    build_from_aabbs(aabbs.data(), count, ws);
 }
 
 SpatialBVHNode* SpatialBVH::alloc_node() {
@@ -819,6 +610,7 @@ bool SpatialBVH::ray_cast(const Point& origin,
                    std::vector<int>& candidate_leaf_ids,
                    bool find_all) const
 {
+    (void)find_all; // every candidate is returned; ordering already puts the nearest first
     candidate_leaf_ids.clear();
     if (!root) return false;
 
@@ -854,9 +646,6 @@ bool SpatialBVH::ray_cast(const Point& origin,
         if (node->is_leaf()) {
             candidate_leaf_ids.push_back(node->object_id);
             any = true;
-            if (!find_all && candidate_leaf_ids.size() >= 1) {
-                // Early exit for find_first, but keep traversing for near-first ordering
-            }
             continue;
         }
 

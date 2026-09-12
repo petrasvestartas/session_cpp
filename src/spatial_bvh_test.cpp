@@ -458,6 +458,10 @@ MINI_TEST("SpatialBVH", "Build From Aabbs") {
     MINI_CHECK(hits.size() == 2);
     MINI_CHECK(std::find(hits.begin(), hits.end(), 0) != hits.end());
     MINI_CHECK(std::find(hits.begin(), hits.end(), 1) != hits.end());
+
+    bvh.build_from_aabbs(aabbs.data(), 0, 50.0);
+
+    MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 50.0));
 }
 
 MINI_TEST("SpatialBVH", "Build With Guids") {
@@ -541,6 +545,71 @@ MINI_TEST("SpatialBVH", "Find Collisions") {
     MINI_CHECK(c0 == std::vector<int>{1});
     MINI_CHECK(c2.empty());
     MINI_CHECK(checks0 > 0);
+}
+
+MINI_TEST("SpatialBVH", "Ray Cast") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    std::vector<OBB> boxes = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(5.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+        OBB(Point(0.0, 5.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+    };
+    SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
+    // Ray along +x misses the box at y=5 and reports the other two near-to-far
+    std::vector<int> hits;
+    bool found = bvh.ray_cast(Point(-10.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), hits, true);
+
+    MINI_CHECK(found);
+    MINI_CHECK(hits.size() == 2);
+    MINI_CHECK(hits[0] == 0);
+    MINI_CHECK(hits[1] == 1);
+    // Boxes entirely behind the origin are pruned, not returned
+    std::vector<int> behind;
+    bool any = bvh.ray_cast(Point(0.0, 0.0, 20.0), Vector(0.0, 0.0, 1.0), behind, true);
+
+    MINI_CHECK(!any);
+    MINI_CHECK(behind.empty());
+    // A ray travelling inside the plane of a zero-thickness box still reports it
+    std::vector<OBB> flat = {
+        OBB(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(0.0, 1.0, 1.0)),
+    };
+    SpatialBVH flat_bvh = SpatialBVH::from_boxes(flat, 100.0);
+    std::vector<int> coplanar;
+
+    MINI_CHECK(flat_bvh.ray_cast(Point(0.0, 0.0, -5.0), Vector(0.0, 0.0, 1.0), coplanar, true));
+    MINI_CHECK(coplanar.size() == 1);
+}
+
+MINI_TEST("SpatialBVH", "Coincident Centers") {
+    // uncomment #include "spatial_bvh.h"
+    // uncomment #include "obb.h"
+    // uncomment #include "point.h"
+    // uncomment #include "vector.h"
+    // Identical centers collapse every Morton code to 0; the tree comes from the index tiebreak
+    std::vector<OBB> boxes;
+    for (int i = 0; i < 5; ++i) {
+        boxes.emplace_back(Point(0.0, 0.0, 0.0),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
+            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0));
+    }
+    SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
+    auto [pairs, colliding_indices, checks] = bvh.check_all_collisions(boxes);
+    std::vector<int> hits = bvh.query_aabb(boxes[0]);
+
+    MINI_CHECK(pairs.size() == 10);
+    MINI_CHECK(colliding_indices.size() == 5);
+    MINI_CHECK(hits.size() == 5);
 }
 
 } // namespace session_cpp
