@@ -79,13 +79,13 @@ AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) 
     }
     const int NUM_SAMPLES = 20;
     double dt = (t1 - t0) / NUM_SAMPLES;
-    for (int axis = 0; axis < 3; axis++) {
-        for (int i = 0; i < NUM_SAMPLES; i++) {
-            double t_start = t0 + i * dt;
-            double t_end = t_start + dt;
-            auto deriv_start = curve.evaluate(t_start, 1);
-            auto deriv_end = curve.evaluate(t_end, 1);
-            if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        double t_start = t0 + i * dt;
+        double t_end = t_start + dt;
+        auto deriv_start = curve.evaluate(t_start, 1);
+        auto deriv_end = curve.evaluate(t_end, 1);
+        if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+        for (int axis = 0; axis < 3; axis++) {
             double d_start = deriv_start[1][axis];
             double d_end = deriv_end[1][axis];
             if (d_start * d_end < 0) {
@@ -112,7 +112,7 @@ AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) 
                     auto deriv_check = curve.evaluate(t_root, 1);
                     if (deriv_check.size() >= 2) {
                         double f_check = deriv_check[1][axis];
-                        if (f_check * d_start < 0) { t_hi = t_root; d_end = f_check; }
+                        if (f_check * d_start < 0) t_hi = t_root;
                         else { t_lo = t_root; d_start = f_check; }
                     }
                 }
@@ -222,18 +222,18 @@ std::array<Point, 8> AABB::get_corners() const {
 std::vector<Line> AABB::get_edges() const {
     auto c = corners();
     return {
-        Line(c[0][0], c[0][1], c[0][2], c[1][0], c[1][1], c[1][2]),
-        Line(c[1][0], c[1][1], c[1][2], c[2][0], c[2][1], c[2][2]),
-        Line(c[2][0], c[2][1], c[2][2], c[3][0], c[3][1], c[3][2]),
-        Line(c[3][0], c[3][1], c[3][2], c[0][0], c[0][1], c[0][2]),
-        Line(c[4][0], c[4][1], c[4][2], c[5][0], c[5][1], c[5][2]),
-        Line(c[5][0], c[5][1], c[5][2], c[6][0], c[6][1], c[6][2]),
-        Line(c[6][0], c[6][1], c[6][2], c[7][0], c[7][1], c[7][2]),
-        Line(c[7][0], c[7][1], c[7][2], c[4][0], c[4][1], c[4][2]),
-        Line(c[0][0], c[0][1], c[0][2], c[4][0], c[4][1], c[4][2]),
-        Line(c[1][0], c[1][1], c[1][2], c[5][0], c[5][1], c[5][2]),
-        Line(c[2][0], c[2][1], c[2][2], c[6][0], c[6][1], c[6][2]),
-        Line(c[3][0], c[3][1], c[3][2], c[7][0], c[7][1], c[7][2]),
+        Line::from_points(c[0], c[1]),
+        Line::from_points(c[1], c[2]),
+        Line::from_points(c[2], c[3]),
+        Line::from_points(c[3], c[0]),
+        Line::from_points(c[4], c[5]),
+        Line::from_points(c[5], c[6]),
+        Line::from_points(c[6], c[7]),
+        Line::from_points(c[7], c[4]),
+        Line::from_points(c[0], c[4]),
+        Line::from_points(c[1], c[5]),
+        Line::from_points(c[2], c[6]),
+        Line::from_points(c[3], c[7]),
     };
 }
 
@@ -242,15 +242,7 @@ Point AABB::point_at(double x, double y, double z) const {
 }
 
 void AABB::union_with(const AABB& other) {
-    double min_x = std::min(cx - hx, other.cx - other.hx);
-    double min_y = std::min(cy - hy, other.cy - other.hy);
-    double min_z = std::min(cz - hz, other.cz - other.hz);
-    double max_x = std::max(cx + hx, other.cx + other.hx);
-    double max_y = std::max(cy + hy, other.cy + other.hy);
-    double max_z = std::max(cz + hz, other.cz + other.hz);
-    cx = (min_x + max_x) * 0.5; hx = (max_x - min_x) * 0.5;
-    cy = (min_y + max_y) * 0.5; hy = (max_y - min_y) * 0.5;
-    cz = (min_z + max_z) * 0.5; hz = (max_z - min_z) * 0.5;
+    *this = merge(*this, other);
 }
 
 }
