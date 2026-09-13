@@ -882,7 +882,11 @@ std::vector<Point> Intersection::ray_mesh(
     std::vector<RayHit> hits;
     std::vector<Point> result;
     
-    if (ray_mesh(origin, direction, mesh, hits, find_all)) {
+    // Always collect every hit: this overload promises the CLOSEST point for
+    // find_all=false, while the RayHit overload's early exit returns the first
+    // hit in FACE order, which is only the closest by accident of face order.
+    if (ray_mesh(origin, direction, mesh, hits, true)) {
+        if (!find_all) hits.resize(1);
         result.reserve(hits.size());
         for (const auto& hit : hits) {
             result.push_back(hit.point);

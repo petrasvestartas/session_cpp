@@ -270,6 +270,15 @@ MINI_TEST("Intersection", "Ray Box") {
     MINI_CHECK(result);
     MINI_CHECK(std::fabs(tmin - 4.0) < 1e-4);
     MINI_CHECK(std::fabs(tmax - 6.0) < 1e-4);
+
+    // Ray grazing the min-y and min-z faces: a zero direction component must
+    // give 0 * DBL_MAX == 0, not a NaN that drops the slab constraint.
+    Line graze(0.0, -1.0, -1.0, 1.0, -1.0, -1.0);
+    std::vector<Point> gpts;
+    MINI_CHECK(Intersection::ray_box(graze, box, -10.0, 10.0, gpts));
+    MINI_CHECK(gpts.size() == 2);
+    MINI_CHECK(std::fabs(gpts[0][0]) < 1e-4);
+    MINI_CHECK(std::fabs(gpts[1][0] - 1.0) < 1e-4);
 }
 
 MINI_TEST("Intersection", "Ray Box Miss") {
@@ -461,6 +470,16 @@ MINI_TEST("Intersection", "Ray Mesh First") {
 
     MINI_CHECK(result);
     MINI_CHECK(hits.size() == 1);
+
+    // Line overload with find_all=false returns the CLOSEST hit, even when a
+    // farther face comes first in face order.
+    std::vector<std::vector<Point>> far_first = {polygons[1], polygons[0]};
+    Mesh far_mesh = Mesh::from_polylines(far_first);
+    Line ray(0.5, 0.5, -1.0, 0.5, 0.5, 0.0);
+    std::vector<Point> closest = Intersection::ray_mesh(ray, far_mesh, 1e-6, false);
+
+    MINI_CHECK(closest.size() == 1);
+    MINI_CHECK(std::fabs(closest[0][2]) < 1e-3);
 }
 
 MINI_TEST("Intersection", "Ray Mesh Miss") {
@@ -1155,6 +1174,18 @@ MINI_TEST("Intersection", "Polyline Plane") {
     for (const auto& p : points) {
         MINI_CHECK(std::fabs(p[0]) < 1e-9);
     }
+
+    // Plane through two opposite vertices: each vertex is reported once.
+    Point dp(0.0, 0.0, 0.0);
+    Vector dn(1.0, -1.0, 0.0);
+    Plane diag = Plane::from_point_normal(dp, dn);
+    std::vector<Point> dpts;
+    std::vector<int> dids;
+    MINI_CHECK(Intersection::polyline_plane(poly, diag, dpts, dids));
+    MINI_CHECK(dpts.size() == 2);
+    MINI_CHECK(dids[0] == 0 && dids[1] == 2);
+    MINI_CHECK(TOLERANCE.is_close(dpts[0][0], -1.0));
+    MINI_CHECK(TOLERANCE.is_close(dpts[1][0], 1.0));
 }
 
 MINI_TEST("Intersection", "Line Line 3D") {
@@ -1199,6 +1230,17 @@ MINI_TEST("Intersection", "Polyline Plane To Line") {
     MINI_CHECK(ok);
     MINI_CHECK(TOLERANCE.is_close(out.start()[0], 0.0));
     MINI_CHECK(TOLERANCE.is_close(out.end()[0], 4.0));
+
+    // Four crossings (non-convex comb): the line spans the EXTREME pair.
+    Polyline comb({
+        Point(0.0, 0.0, 0.0), Point(4.0, 0.0, 0.0), Point(4.0, 3.0, 0.0),
+        Point(3.0, 3.0, 0.0), Point(3.0, 1.0, 0.0), Point(1.0, 1.0, 0.0),
+        Point(1.0, 3.0, 0.0), Point(0.0, 3.0, 0.0), Point(0.0, 0.0, 0.0),
+    });
+    Line wide;
+    MINI_CHECK(Intersection::polyline_plane_to_line(comb, pln, align_start, wide));
+    MINI_CHECK(TOLERANCE.is_close(wide.start()[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(wide.end()[0], 4.0));
 }
 
 MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
@@ -1280,6 +1322,65 @@ MINI_TEST("Intersection", "Closed And Open Paths 2D") {
     double t_hi = std::max(cp_pair.first, cp_pair.second);
     MINI_CHECK(TOLERANCE.is_close(t_lo, 1.5));
     MINI_CHECK(TOLERANCE.is_close(t_hi, 3.5));
+
+    // Joint running exactly ALONG the plate's top edge: the winding number puts
+    // that boundary outside, so only the collinear overlap keeps the flush side.
+    Polyline flush({
+        Point(-2.0, 10.0, 0.0),
+        Point(12.0, 10.0, 0.0),
+    });
+    Polyline flush_out;
+    std::pair<double, double> flush_cp;
+    MINI_CHECK(Intersection::closed_and_open_paths_2d(plate, flush, pln, flush_out, flush_cp));
+    MINI_CHECK(flush_out.point_count() == 2);
+    MINI_CHECK(TOLERANCE.is_close(flush_out.get_point(0)[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(flush_out.get_point(1)[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(flush_cp.first, 2.0));
+    MINI_CHECK(TOLERANCE.is_close(flush_cp.second, 3.0));
+}
+
+MINI_TEST("Intersection", "Line Line Classified") {
+    // uncomment #include "intersection.h"
+
+    // Crossing perpendicular segments meeting at their midpoints.
+    Line s0(-1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line s1(0.0, -1.0, 0.0, 0.0, 1.0, 0.0);
+    Point p0, p1;
+    Vector v0, v1, normal;
+    bool type0 = false, type1 = false, is_parallel = false;
+    bool ok = Intersection::line_line_classified(s0, s1, 1, 1, 0, 0, 0.5,
+                                                 p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(!is_parallel);
+    MINI_CHECK(std::fabs(p0[0]) < 1e-6);
+    MINI_CHECK(std::fabs(p0[1]) < 1e-6);
+    MINI_CHECK(std::fabs(p1[0]) < 1e-6);
+    MINI_CHECK(std::fabs(p1[1]) < 1e-6);
+    MINI_CHECK(std::fabs(std::fabs(normal[2]) - 1.0) < 1e-6);
+
+    // Shared-endpoint case: both segments start at the same point.
+    Line e0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line e1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    bool ok2 = Intersection::line_line_classified(e0, e1, 1, 1, 0, 0, 0.5,
+                                                  p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok2);
+    MINI_CHECK(!type0);
+    MINI_CHECK(!type1);
+    MINI_CHECK(std::fabs(p0[0]) < 1e-6);
+    MINI_CHECK(std::fabs(p0[1]) < 1e-6);
+
+    // Parallel offset segments.
+    Line q0(0.0, 0.0, 0.0, 2.0, 0.0, 0.0);
+    Line q1(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
+    bool ok3 = Intersection::line_line_classified(q0, q1, 1, 1, 0, 0, 0.5,
+                                                  p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok3);
+    MINI_CHECK(is_parallel);
+    MINI_CHECK(!type0);
+    MINI_CHECK(!type1);
 }
 
 } // namespace session_cpp
