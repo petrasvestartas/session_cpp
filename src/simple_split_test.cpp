@@ -1,8 +1,10 @@
 #include "brep.h"
+#include "line.h"
 #include "mini_test.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "point.h"
+#include "polyline.h"
 #include "primitives.h"
 #include "simple_split.h"
 #include "tolerance.h"
@@ -220,4 +222,37 @@ MINI_TEST("SimpleSplit", "Split Surface By Curves") {
   }
   MINI_CHECK(rejected);
 }
+
+MINI_TEST("SimpleSplit", "Split Line By Curves") {
+  auto line = Line::from_points(Point(-2, 0, 0), Point(2, 0, 0));
+  line.name = "retained";
+  line.width = 3.;
+  line.dash = {1., 2.};
+  auto cutter = NurbsCurve::create(false, 1, {Point(0, -2, 0), Point(0, 2, 0)});
+  auto pieces = simple_split::split_line_by_curves(line, {cutter}, 1e-6);
+  MINI_CHECK(pieces.size() == 2);
+  MINI_CHECK(pieces[0].point_at(1).distance(Point(0, 0, 0)) < 1e-6);
+  MINI_CHECK(pieces[1].point_at(0).distance(Point(0, 0, 0)) < 1e-6);
+  MINI_CHECK(pieces[0].name == line.name && pieces[0].width == line.width &&
+             pieces[0].dash == line.dash);
+  MINI_CHECK(line.length() == 4.);
+}
+MINI_TEST("SimpleSplit", "Split Polyline By Curves") {
+  Polyline polyline({Point(-2, 0, 0), Point(2, 0, 0), Point(2, 3, 0)});
+  polyline.name = "retained";
+  polyline.width = 3.;
+  polyline.dash = {1., 2.};
+  auto cutter = NurbsCurve::create(false, 1, {Point(0, -2, 0), Point(0, 2, 0)});
+  auto pieces =
+      simple_split::split_polyline_by_curves(polyline, {cutter}, 1e-6);
+  MINI_CHECK(pieces.size() == 2);
+  MINI_CHECK(pieces[0].point_count() == 2 && pieces[1].point_count() == 3);
+  MINI_CHECK(pieces[1].get_point(1).distance(Point(2, 0, 0)) < 1e-6);
+  MINI_CHECK(pieces[1].get_point(2).distance(Point(2, 3, 0)) < 1e-6);
+  MINI_CHECK(pieces[0].name == polyline.name &&
+             pieces[0].width == polyline.width &&
+             pieces[0].dash == polyline.dash);
+  MINI_CHECK(polyline.point_count() == 3);
+}
+
 } // namespace session_cpp

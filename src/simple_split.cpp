@@ -1,5 +1,7 @@
 #include "simple_split.h"
 #include "closest.h"
+#include "line.h"
+#include "polyline.h"
 #include "tolerance.h"
 #include <algorithm>
 #include <array>
@@ -879,5 +881,40 @@ BRep split_surface_by_curves(const NurbsSurface &surface,
   }
   result.add_face(si, {{result.add_wire(edges), forward}});
   return split_brep_face_by_curves(result, 0, cutters, tolerance);
+}
+std::vector<Line> split_line_by_curves(const Line &line,
+                                       const std::vector<NurbsCurve> &cutters,
+                                       double tolerance) {
+  auto curve =
+      NurbsCurve::create(false, 1, {line.point_at(0), line.point_at(1)});
+  std::vector<Line> result;
+  for (const auto &piece : split_curve_by_curves(curve, cutters, tolerance)) {
+    auto next = Line::from_points(piece.point_at_start(), piece.point_at_end());
+    next.name = line.name;
+    next.width = line.width;
+    next.dash = line.dash;
+    next.linecolor = line.linecolor;
+    result.push_back(std::move(next));
+  }
+  return result;
+}
+std::vector<Polyline>
+split_polyline_by_curves(const Polyline &polyline,
+                         const std::vector<NurbsCurve> &cutters,
+                         double tolerance) {
+  auto curve = NurbsCurve::create(false, 1, polyline.get_points());
+  std::vector<Polyline> result;
+  for (const auto &piece : split_curve_by_curves(curve, cutters, tolerance)) {
+    std::vector<Point> points;
+    for (double t : piece.get_span_vector())
+      points.push_back(piece.point_at(t));
+    Polyline next(points);
+    next.name = polyline.name;
+    next.width = polyline.width;
+    next.dash = polyline.dash;
+    next.linecolor = polyline.linecolor;
+    result.push_back(std::move(next));
+  }
+  return result;
 }
 } // namespace session_cpp::simple_split

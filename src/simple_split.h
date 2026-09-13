@@ -4,6 +4,10 @@
 #include "nurbssurface.h"
 #include <vector>
 
+namespace session_cpp {
+class Line;
+class Polyline;
+} // namespace session_cpp
 namespace session_cpp::simple_split {
 /// Split a curve at isolated 3D intersections; retain every piece and reject
 /// overlapping cutters.
@@ -20,4 +24,15 @@ BRep split_brep_face_by_curves(const BRep &brep, int face_index,
 BRep split_surface_by_curves(const NurbsSurface &surface,
                              const std::vector<NurbsCurve> &cutters,
                              double tolerance);
+/// Split a line at isolated 3D intersections, retaining line types and display
+/// attributes.
+std::vector<Line> split_line_by_curves(const Line &line,
+                                       const std::vector<NurbsCurve> &cutters,
+                                       double tolerance);
+/// Split a polyline, retaining each original corner, piece order and display
+/// attributes.
+std::vector<Polyline>
+split_polyline_by_curves(const Polyline &polyline,
+                         const std::vector<NurbsCurve> &cutters,
+                         double tolerance);
 } // namespace session_cpp::simple_split
