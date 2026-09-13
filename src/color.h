@@ -2,234 +2,155 @@
 #include "fmt/core.h"
 #include "guid.h"
 #include "json.h"
+#include <algorithm>
 #include <array>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <stdexcept>
+#include <ostream>
 #include <string>
+#include <vector>
+
+namespace session_proto {
+class Color;
+}
 
 namespace session_cpp {
 
-/**
- * @class Color
- * @brief A color is defined by RGBA coordinates from 0.0 to 1.0.
- */
+/// A color with RGBA components in [0.0, 1.0]
 class Color {
 public:
-  std::string name = "my_color"; ///< Name of the color
-  bool has_guid() const { return !_guid.empty(); }
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  float r;                ///< Red component (0.0-1.0)
-  float g;                ///< Green component (0.0-1.0)
-  float b;                ///< Blue component (0.0-1.0)
-  float a;                ///< Alpha component (0.0-1.0)
+  std::string name = "my_color";
+  float r;
+  float g;
+  float b;
+  float a;
 
-  /**
-   * @brief Constructor with RGBA values.
-   * @param r Red component (0.0-1.0). Default: 1.0.
-   * @param g Green component (0.0-1.0). Default: 1.0.
-   * @param b Blue component (0.0-1.0). Default: 1.0.
-   * @param a Alpha component (0.0-1.0). Default: 1.0.
-   * @param name Name for the color. Default: "my_color".
-   */
-  Color(float r = 1.0f, float g = 1.0f, float b = 1.0f,
-        float a = 1.0f, std::string name = "my_color")
-      : name(name),
-        r(std::clamp(r, 0.0f, 1.0f)),
-        g(std::clamp(g, 0.0f, 1.0f)),
-        b(std::clamp(b, 0.0f, 1.0f)),
-        a(std::clamp(a, 0.0f, 1.0f)) {}
+  /// Construct from RGBA components, each clamped to [0.0, 1.0]
+  Color(float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f,
+        std::string name = "my_color")
+      : name(name), r(std::clamp(r, 0.0f, 1.0f)), g(std::clamp(g, 0.0f, 1.0f)),
+        b(std::clamp(b, 0.0f, 1.0f)), a(std::clamp(a, 0.0f, 1.0f)) {}
 
-  /// Copy constructor (creates a new guid while copying data)
+  /// Copy constructor (new guid, same data)
   Color(const Color &other);
 
-  /// Move constructor and assignment: identity SURVIVES a move.
-  ///
-  /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
-  /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
-  /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
-  /// to the COPY and silently dropped the guid it had just deserialized - every other field
-  /// survived, so the object looked right and only its identity was wrong. That is what broke Line
-  /// on MSVC when its pb_loads changed shape; see line.h.
-  Color(Color&& other) noexcept = default;
-  Color& operator=(Color&& other) noexcept = default;
-
-  /// Copy assignment (creates a new guid while copying data)
+  /// Copy assignment (new guid, same data)
   Color &operator=(const Color &other);
+
+  /// Move keeps the guid; declaring it stops `return x;` from falling back to
+  /// the guid-minting copy
+  Color(Color &&other) noexcept = default;
+  Color &operator=(Color &&other) noexcept = default;
+
+  bool has_guid() const { return !_guid.empty(); }
+  const std::string &guid() const {
+    if (_guid.empty())
+      _guid = ::guid();
+    return _guid;
+  }
+  std::string &guid() {
+    if (_guid.empty())
+      _guid = ::guid();
+    return _guid;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Operators
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Simple string representation (like Python __str__): "r, g, b, a"
-  std::string str() const;
+  /// Component by index (0=r, 1=g, 2=b, 3=a)
+  float &operator[](int index);
+  const float &operator[](int index) const;
 
-  /// Detailed representation (like Python __repr__): "Color(name, r, g, b, a)"
-  std::string repr() const;
-
-  /// Equality operator
   bool operator==(const Color &other) const;
-
-  /// Inequality operator
   bool operator!=(const Color &other) const;
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // No-copy Operators (index access)
+  // Presets
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Get/set color component by index (0=r, 1=g, 2=b, 3=a)
-  float &operator[](int index);
+  static Color white();
+  static Color black();
+  static Color grey();
+  static Color red();
+  static Color orange();
+  static Color yellow();
+  static Color lime();
+  static Color green();
+  static Color mint();
+  static Color cyan();
+  static Color azure();
+  static Color blue();
+  static Color violet();
+  static Color magenta();
+  static Color pink();
+  static Color maroon();
+  static Color brown();
+  static Color olive();
+  static Color teal();
+  static Color navy();
+  static Color purple();
+  static Color silver();
 
-  /// Get color component by index (const version)
-  const float &operator[](int index) const;
+  /// The 12 spectral colors in order
+  static std::vector<Color> palette();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Conversion
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Components as [r, g, b, a]
+  std::array<float, 4> to_unified_array() const;
+
+  /// Color from [r, g, b, a]
+  static Color from_unified_array(std::array<float, 4> arr);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Convert to JSON-serializable object.
   nlohmann::ordered_json jsondump() const;
-
-  /// Create color from JSON data.
   static Color jsonload(const nlohmann::json &data);
-
-  /// Convert to JSON string
   std::string file_json_dumps() const;
-
-  /// Load from JSON string
-  static Color file_json_loads(const std::string& json_string);
-
-  /// Write JSON to file
-  void file_json_dump(const std::string& filename) const;
-
-  /// Read JSON from file
-  static Color file_json_load(const std::string& filename);
+  static Color file_json_loads(const std::string &json_string);
+  void file_json_dump(const std::string &filename) const;
+  static Color file_json_load(const std::string &filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Protobuf
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Convert to protobuf binary string
+  /// Convert to the protobuf message
+  session_proto::Color to_proto() const;
+
+  /// Construct from the protobuf message
+  static Color from_proto(const session_proto::Color &proto);
+
   std::string pb_dumps() const;
-
-  /// Load from protobuf binary string
-  static Color pb_loads(const std::string& data);
-
-  /// Write protobuf to file
-  void pb_dump(const std::string& filename) const;
-
-  /// Read protobuf from file
-  static Color pb_load(const std::string& filename);
+  static Color pb_loads(const std::string &data);
+  void pb_dump(const std::string &filename) const;
+  static Color pb_load(const std::string &filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Details
+  // String
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Create a white color.
-  static Color white();
+  /// "r, g, b, a"
+  std::string str() const;
 
-  /// Create a black color.
-  static Color black();
-
-  /// Create a grey color.
-  static Color grey();
-
-  /// Create a red color.
-  static Color red();
-
-  /// Create an orange color.
-  static Color orange();
-
-  /// Create a yellow color.
-  static Color yellow();
-
-  /// Create a lime color.
-  static Color lime();
-
-  /// Create a green color.
-  static Color green();
-
-  /// Create a mint color.
-  static Color mint();
-
-  /// Create a cyan color.
-  static Color cyan();
-
-  /// Create an azure color.
-  static Color azure();
-
-  /// Create a blue color.
-  static Color blue();
-
-  /// Create a violet color.
-  static Color violet();
-
-  /// Create a magenta color.
-  static Color magenta();
-
-  /// Create a pink color.
-  static Color pink();
-
-  /// Create a maroon color.
-  static Color maroon();
-
-  /// Create a brown color.
-  static Color brown();
-
-  /// Create an olive color.
-  static Color olive();
-
-  /// Create a teal color.
-  static Color teal();
-
-  /// Create a navy color.
-  static Color navy();
-
-  /// Create a purple color.
-  static Color purple();
-
-  /// Create a silver color.
-  static Color silver();
-
-  /// Return a palette of 12 spectral colors in order.
-  static std::vector<Color> palette();
-
-  /**
-   * @brief Convert to normalized float array [0-1].
-   * @return Array [r, g, b, a] with values normalized to [0.0, 1.0].
-   */
-  std::array<float, 4> to_unified_array() const;
-
-  /**
-   * @brief Create color from normalized float values [0-1].
-   * @param arr Array [r, g, b, a] with values in [0.0, 1.0] range.
-   * @return A new Color with values in [0.0, 1.0] range.
-   */
-  static Color from_unified_array(std::array<float, 4> arr);
+  /// "Color(name, r, g, b, a)"
+  std::string repr() const;
 
 private:
-  mutable std::string _guid; ///< Lazily generated unique identifier
+  mutable std::string _guid;
 };
 
-/**
- * @brief  To use this operator, you can do:
- *         Point point(1.5, 2.5, 3.5);
- *         std::cout << "Created point: " << point << std::endl;
- * @param os The output stream.
- * @param point The Point to insert into the stream.
- * @return A reference to the output stream.
- */
 std::ostream &operator<<(std::ostream &os, const Color &color);
 
 } // namespace session_cpp
 
-// fmt formatter specialization for Color - enables direct fmt::print(color)
 template <> struct fmt::formatter<session_cpp::Color> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
-  auto format(const session_cpp::Color &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.str());
+  auto format(const session_cpp::Color &color, fmt::format_context &ctx) const {
+    return fmt::format_to(ctx.out(), "{}", color.str());
   }
 };
