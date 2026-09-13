@@ -305,7 +305,18 @@ MINI_TEST("Line", "Fit Points") {
     };
     Line l_fit = Line::fit_points(fit_pts);
 
+    // Spread along Y only, unreachable from a single X seed, and asymmetric about the centroid.
+    std::vector<Point> fit_y = {
+        Point(0.0, 0.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+        Point(0.0, 9.0, 0.0),
+    };
+    Line l_fit_y = Line::fit_points(fit_y);
+
     MINI_CHECK(l_fit.length() > 0.0);
+    MINI_CHECK(TOLERANCE.is_close(l_fit_y.length(), 9.0));
+    MINI_CHECK(TOLERANCE.is_close(l_fit_y.start()[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(l_fit_y.end()[1], 9.0));
 }
 
 MINI_TEST("Line", "Subdivide") {
@@ -363,10 +374,18 @@ MINI_TEST("Line", "Extend") {
     // uncomment #include "line.h"
 
     Line l = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+    l.name = "beam";
+    l.width = 3.0;
+    l.dash = {2.0, 1.0};
+    l.linecolor = Color(1.0f, 0.0f, 0.0f, 1.0f, "red");
+    std::string gid = l.guid();
     l.extend(1.0, 2.0);
 
     MINI_CHECK(TOLERANCE.is_close(l.start()[0], -1.0));
     MINI_CHECK(TOLERANCE.is_close(l.end()[0], 12.0));
+    MINI_CHECK(l.name == "beam" && l.width == 3.0);
+    MINI_CHECK(l.dash == std::vector<double>({2.0, 1.0}));
+    MINI_CHECK(l.linecolor[0] == 1.0f && l.guid() == gid);
 }
 
 } // namespace session_cpp

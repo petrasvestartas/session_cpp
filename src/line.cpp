@@ -7,7 +7,6 @@
 #include <stdexcept>
 
 #include "line.pb.h"
-#include "point.pb.h"
 
 namespace session_cpp {
 
@@ -53,23 +52,35 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
         cyz += dy * dz;
     }
 
-    // Power iteration to find dominant eigenvector
-    double vx = 1.0, vy = 0.0, vz = 0.0;
-    for (int iter = 0; iter < 100; ++iter) {
-        double nx = cxx * vx + cxy * vy + cxz * vz;
-        double ny = cxy * vx + cyy * vy + cyz * vz;
-        double nz = cxz * vx + cyz * vy + czz * vz;
-        double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
-        if (mag < 1e-15) break;
-        vx = nx / mag;
-        vy = ny / mag;
-        vz = nz / mag;
+    // Power iteration seeded from every axis: a seed orthogonal to the dominant
+    // eigenvector never reaches it, so keep the largest Rayleigh quotient.
+    double vx = 1.0, vy = 0.0, vz = 0.0, best = -1.0;
+    for (int seed = 0; seed < 3; ++seed) {
+        double sx = seed == 0 ? 1.0 : 0.0;
+        double sy = seed == 1 ? 1.0 : 0.0;
+        double sz = seed == 2 ? 1.0 : 0.0;
+        for (int iter = 0; iter < 100; ++iter) {
+            double nx = cxx * sx + cxy * sy + cxz * sz;
+            double ny = cxy * sx + cyy * sy + cyz * sz;
+            double nz = cxz * sx + cyz * sy + czz * sz;
+            double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
+            if (mag < 1e-15) break;
+            sx = nx / mag;
+            sy = ny / mag;
+            sz = nz / mag;
+        }
+        double eig = sx * (cxx * sx + cxy * sy + cxz * sz)
+                   + sy * (cxy * sx + cyy * sy + cyz * sz)
+                   + sz * (cxz * sx + cyz * sy + czz * sz);
+        if (eig > best) { best = eig; vx = sx; vy = sy; vz = sz; }
     }
 
-    // Determine line extent from projected points
-    double half_len;
+    // Span the projected extent. The centroid is not its midpoint, so mirroring the longer
+    // half returned a line longer than the points it was fitted to.
+    double t_min, t_max;
     if (length <= 0.0) {
-        double t_min = 0.0, t_max = 0.0;
+        t_min = 0.0;
+        t_max = 0.0;
         for (const auto& p : points) {
             double dx = p[0] - cx;
             double dy = p[1] - cy;
@@ -78,16 +89,16 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
             t_min = std::min(t_min, t);
             t_max = std::max(t_max, t);
         }
-        half_len = std::max(std::abs(t_min), std::abs(t_max));
-        if (half_len < 1e-10) half_len = 0.5;
+        if (t_max - t_min < 1e-10) { t_min = -0.5; t_max = 0.5; }
     } else {
-        half_len = length / 2.0;
+        t_min = -length / 2.0;
+        t_max = length / 2.0;
     }
 
-    // Create line from centroid +/- direction * half_len
+    // Create line from centroid + direction * t
     return Line(
-        cx - vx * half_len, cy - vy * half_len, cz - vz * half_len,
-        cx + vx * half_len, cy + vy * half_len, cz + vz * half_len
+        cx + vx * t_min, cy + vy * t_min, cz + vz * t_min,
+        cx + vx * t_max, cy + vy * t_max, cz + vz * t_max
     );
 }
 
@@ -178,7 +189,7 @@ nlohmann::ordered_json Line::jsondump() const {
 
 Line Line::jsonload(const nlohmann::json& data) {
     Line line(data["x0"], data["y0"], data["z0"], data["x1"], data["y1"], data["z1"]);
-    line.guid() = data["guid"];
+    line._guid = data["guid"].get<std::string>();
     line.name = data["name"];
     line.linecolor = Color::jsonload(data["linecolor"]);
     line.width = data["width"];
@@ -235,7 +246,7 @@ Line Line::pb_loads(const std::string& data) {
     proto.ParseFromString(data);
     const auto& c = proto.coords();
     Line line = c.size() == 6 ? Line(c[0], c[1], c[2], c[3], c[4], c[5]) : Line();
-    if (!proto.guid().empty()) { line.guid() = proto.guid(); }
+    if (!proto.guid().empty()) { line._guid = proto.guid(); }
     line.name = proto.name();
     // Deserialize width and linecolor
     if (proto.width() > 0.0) {
@@ -405,10 +416,7 @@ Vector Line::to_direction() const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 double Line::length() const {
-    double dx = _x1 - _x0;
-    double dy = _y1 - _y0;
-    double dz = _z1 - _z0;
-    return std::sqrt(dx * dx + dy * dy + dz * dz);
+    return std::sqrt(squared_length());
 }
 
 double Line::squared_length() const {
@@ -517,40 +525,32 @@ bool Line::overlap(const Line& other, Line& out) const {
 }
 
 bool Line::overlap_average(const Line& other, Line& out) const {
-    Line lineA, lineB;
-    overlap(other, lineA);
-    other.overlap(*this, lineB);
-    Point a0=lineA.start(), a1=lineA.end(), b0=lineB.start(), b1=lineB.end();
-    Point m0s((a0[0]+b0[0])*0.5,(a0[1]+b0[1])*0.5,(a0[2]+b0[2])*0.5);
-    Point m0e((a1[0]+b1[0])*0.5,(a1[1]+b1[1])*0.5,(a1[2]+b1[2])*0.5);
-    Point m1s((a0[0]+b1[0])*0.5,(a0[1]+b1[1])*0.5,(a0[2]+b1[2])*0.5);
-    Point m1e((a1[0]+b0[0])*0.5,(a1[1]+b0[1])*0.5,(a1[2]+b0[2])*0.5);
-    double dx0=m0e[0]-m0s[0], dy0=m0e[1]-m0s[1], dz0=m0e[2]-m0s[2];
-    double dx1=m1e[0]-m1s[0], dy1=m1e[1]-m1s[1], dz1=m1e[2]-m1s[2];
-    out = (dx0*dx0+dy0*dy0+dz0*dz0 >= dx1*dx1+dy1*dy1+dz1*dz1)
-          ? Line::from_points(m0s, m0e) : Line::from_points(m1s, m1e);
+    Point os, oe;
+    Polyline::line_line_overlap_average(start(), end(), other.start(), other.end(), os, oe);
+    out = Line::from_points(os, oe);
     return out.squared_length() > 0.0;
 }
 
 void Line::extend(double ext_start, double ext_end) {
     Point s = start(), e = end();
     Polyline::extend_line_segment(s, e, ext_start, ext_end);
-    *this = Line::from_points(s, e);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 void Line::extend_equally(double dist, double proportion) {
     if (dist == 0 && proportion == 0) return;
     Point s = start(), e = end();
     Polyline::extend_segment_equally(s, e, dist, proportion);
-    *this = Line::from_points(s, e);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 void Line::scale(double dist) {
     Point s = start(), e = end();
-    Vector v(e[0]-s[0], e[1]-s[1], e[2]-s[2]);
-    s[0]+=v[0]*dist; s[1]+=v[1]*dist; s[2]+=v[2]*dist;
-    e[0]-=v[0]*dist; e[1]-=v[1]*dist; e[2]-=v[2]*dist;
-    *this = Line::from_points(s, e);
+    Polyline::shrink_line_segment(s, e, dist);
+    _x0 = s[0]; _y0 = s[1]; _z0 = s[2];
+    _x1 = e[0]; _y1 = e[1]; _z1 = e[2];
 }
 
 bool Line::from_projected_points(const Line& line, const std::vector<Point>& pts, Line& out) {
