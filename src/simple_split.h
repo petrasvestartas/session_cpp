@@ -1,0 +1,23 @@
+#pragma once
+#include "brep.h"
+#include "nurbscurve.h"
+#include "nurbssurface.h"
+#include <vector>
+
+namespace session_cpp::simple_split {
+/// Split a curve at isolated 3D intersections; retain every piece and reject
+/// overlapping cutters.
+std::vector<NurbsCurve>
+split_curve_by_curves(const NurbsCurve &curve,
+                      const std::vector<NurbsCurve> &cutters, double tolerance);
+/// Partition one face inside its owning BRep, retaining all regions and shared
+/// shell topology.
+BRep split_brep_face_by_curves(const BRep &brep, int face_index,
+                               const std::vector<NurbsCurve> &cutters,
+                               double tolerance);
+/// Wrap a surface's natural boundary in a BRep and partition it with on-surface
+/// curves.
+BRep split_surface_by_curves(const NurbsSurface &surface,
+                             const std::vector<NurbsCurve> &cutters,
+                             double tolerance);
+} // namespace session_cpp::simple_split
