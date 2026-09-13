@@ -1005,6 +1005,19 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         }
         double domain_area = (u1 - u0) * (v1 - v0);
         face_direct[fi] = std::abs(std::abs(area) * 0.5 - domain_area) < 1e-3 * domain_area;
+        // Topological edge ends must be domain corners; internal polyline controls are not new vertices.
+        const BRep& mesh_brep = *this;
+        for (const BRepRef& er : mesh_brep.wire_edges(face.wires[0])) {
+            const int ci = mesh_brep.pcurve_index(er.index, fi, er.orientation);
+            if (ci < 0) continue;
+            const auto& curve = mesh_brep.m_curves_2d[ci];
+            for (int k : {0, std::max(0, curve.cv_count() - 1)}) {
+                const Point p = curve.get_cv(k);
+                const bool corner_u = std::min(std::abs(p[0] - u0), std::abs(p[0] - u1)) <= (u1 - u0) * 1e-9;
+                const bool corner_v = std::min(std::abs(p[1] - v0), std::abs(p[1] - v1)) <= (v1 - v0) * 1e-9;
+                if (!corner_u || !corner_v) { face_direct[fi] = false; }
+            }
+        }
     }
 
     // Phase 2: direct faces. The first incident grid supplies the canonical edge polygon.

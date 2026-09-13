@@ -99,6 +99,13 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
   MINI_CHECK(split.face_count() == 7);
   MINI_CHECK(split.is_valid() && split.is_solid());
   MINI_CHECK(box.face_count() == 6);
+  auto meshes = split.face_meshes_q(true, 20., 0.005);
+  MINI_CHECK(std::abs(meshes[0].area() - 50.) < 1e-6);
+  MINI_CHECK(std::abs(meshes[6].area() - 50.) < 1e-6);
+  double neighbor_area = 0.;
+  for (int i = 1; i < 6; ++i)
+    neighbor_area += meshes[i].area();
+  MINI_CHECK(std::abs(neighbor_area - 500.) < 1e-6);
   auto closed = NurbsCurve::create(
       false, 3,
       {mapped(.2, .3), mapped(.8, .3), mapped(.5, .9), mapped(.2, .3)});
