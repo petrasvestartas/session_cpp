@@ -31,6 +31,9 @@ MINI_TEST("AABB", "Constructor") {
 
     MINI_CHECK(a.closest_point(Point(0.0, 0.0, 0.0)) == Point(0.0, 0.0, 0.0));
     MINI_CHECK(a.closest_point(Point(10.0, 0.0, 0.0)) == Point(1.0, 0.0, 0.0));
+    // a negative half-size inverts the box; the clamp then resolves to cx - hx
+    AABB inv(0.0, 0.0, 0.0, -1.0, -1.0, -1.0);
+    MINI_CHECK(inv.closest_point(Point(0.0, 0.0, 0.0)) == Point(1.0, 1.0, 1.0));
     MINI_CHECK(a.contains(Point(0.0, 0.0, 0.0)));
     MINI_CHECK(!a.contains(Point(10.0, 0.0, 0.0)));
 
@@ -123,6 +126,17 @@ MINI_TEST("AABB", "From Geometry") {
 
     MINI_CHECK(a_nc.is_valid());
     MINI_CHECK(a_nc.contains(Point(1.5, 0.0, 0.0)));
+
+    NurbsCurve bulge = NurbsCurve::create(false, 2, {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 2.0, 0.0),
+        Point(2.0, 1.0, 0.0),
+    });
+    AABB a_hull = AABB::from_nurbscurve(bulge, 0.0, false);
+    AABB a_tight = AABB::from_nurbscurve(bulge, 0.0, true);
+
+    MINI_CHECK(TOLERANCE.is_close(a_hull.max_point()[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(a_tight.max_point()[1], 4.0 / 3.0));
 
     NurbsSurface surf = NurbsSurface::create(false, false, 1, 1, 2, 2, {
         Point(0.0, 0.0, 0.0),
