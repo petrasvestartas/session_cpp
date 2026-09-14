@@ -62,6 +62,7 @@ MINI_TEST("TreeNode", "Add") {
     auto parent = std::make_shared<TreeNode>("parent");
     auto child = std::make_shared<TreeNode>("child");
     parent->add(child);
+    parent->add(parent);
 
     MINI_CHECK(parent->children().size() == 1);
     MINI_CHECK(child->parent().get() == parent.get());
@@ -309,7 +310,7 @@ MINI_TEST("Tree", "Add Child By Guid") {
     t.add(a, root);
     t.add(b, root);
     bool ok = t.add_child_by_guid(a->guid(), b->guid());
-    bool cycle = t.add_child_by_guid(b->guid(), root->guid());
+    bool cycle = t.add_child_by_guid(b->guid(), a->guid());
 
     MINI_CHECK(ok);
     MINI_CHECK(!cycle);

@@ -20,6 +20,12 @@ bool TreeNode::is_leaf() const { return _children.empty(); }
 void TreeNode::add(std::shared_ptr<TreeNode> child) {
   if (!child)
     return;
+  if (child.get() == this)
+    return;
+  for (std::shared_ptr<TreeNode> ancestor = shared_from_this(); ancestor;
+       ancestor = ancestor->parent())
+    if (ancestor == child)
+      return;
   child->_parent = shared_from_this();
   _children.push_back(child);
 }
@@ -281,6 +287,12 @@ bool Tree::add_child_by_guid(const std::string &parent_guid, const std::string &
   std::shared_ptr<TreeNode> child = find_node_by_guid(child_guid);
   if (!parent || !child)
     return false;
+  if (parent == child)
+    return false;
+  for (std::shared_ptr<TreeNode> ancestor = parent; ancestor;
+       ancestor = ancestor->parent())
+    if (ancestor == child)
+      return false;
   std::shared_ptr<TreeNode> current = child->parent();
   if (!current)
     return false;
