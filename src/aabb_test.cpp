@@ -70,6 +70,10 @@ MINI_TEST("AABB", "From Geometry") {
     MINI_CHECK(a_pts.min_point() == Point(0.0, 0.0, 0.0));
     MINI_CHECK(a_pts.max_point() == Point(3.0, 4.0, 5.0));
 
+    AABB a_negative = AABB::from_points({Point(-5.0, -4.0, -3.0), Point(-1.0, -2.0, -1.0)});
+    MINI_CHECK(a_negative.min_point() == Point(-5.0, -4.0, -3.0));
+    MINI_CHECK(a_negative.max_point() == Point(-1.0, -2.0, -1.0));
+
     Line ln(0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
     AABB a_line = AABB::from_line(ln, 1.0);
 
