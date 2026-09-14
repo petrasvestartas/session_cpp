@@ -1,6 +1,6 @@
 #include "mini_test.h"
 #include "element.h"
-#include "element.pb.h"   // the registry tests build/inspect the wire message directly
+#include "element.pb.h"
 #include "tolerance.h"
 
 #include <cmath>
@@ -15,10 +15,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Element", "Constructor") {
-    // uncomment #include "element.h"
-    // uncomment #include "brep.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -55,10 +51,6 @@ MINI_TEST("Element", "Constructor") {
 }
 
 MINI_TEST("Element", "Place") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "xform.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -81,9 +73,6 @@ MINI_TEST("Element", "Place") {
 }
 
 MINI_TEST("Element", "Add Geometry Op") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -98,7 +87,6 @@ MINI_TEST("Element", "Add Geometry Op") {
     auto my_feature = [](Mesh geo) -> Mesh { return geo; };
     e.add_geometry_op(my_feature);
 
-    // Features are Mesh -> Mesh, so BRep geometry passes through untouched
     Element eb(BRep::create_box(1.0, 1.0, 1.0), "brep_feature");
     eb.add_geometry_op([](Mesh) -> Mesh { return Mesh(); });
     auto sg = eb.session_geometry(Xform::identity());
@@ -109,10 +97,6 @@ MINI_TEST("Element", "Add Geometry Op") {
 }
 
 MINI_TEST("Element", "AABB") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -131,10 +115,6 @@ MINI_TEST("Element", "AABB") {
 }
 
 MINI_TEST("Element", "OBB") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -152,10 +132,6 @@ MINI_TEST("Element", "OBB") {
 }
 
 MINI_TEST("Element", "Session Geometry") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "xform.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -171,17 +147,12 @@ MINI_TEST("Element", "Session Geometry") {
 
     MINI_CHECK(std::holds_alternative<Mesh>(sg));
     auto& mesh = std::get<Mesh>(sg);
-    auto verts_it = mesh.vertex.begin();
-    MINI_CHECK(TOLERANCE.is_close(verts_it->second.x, 10.0));
-    ++verts_it;
-    MINI_CHECK(TOLERANCE.is_close(verts_it->second.x, 11.0));
+    MINI_CHECK(TOLERANCE.is_close(mesh.vertex.at(0).x, 10.0));
+    MINI_CHECK(TOLERANCE.is_close(mesh.vertex.at(1).x, 11.0));
     MINI_CHECK(&std::get<Mesh>(e.geometry()) != &mesh);
 }
 
 MINI_TEST("Element", "Reset") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -204,9 +175,6 @@ MINI_TEST("Element", "Reset") {
 }
 
 MINI_TEST("Element", "Compute Point") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -225,10 +193,6 @@ MINI_TEST("Element", "Compute Point") {
 }
 
 MINI_TEST("Element", "Brep Aabb") {
-    // uncomment #include "element.h"
-    // uncomment #include "brep.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "brep_element");
     OBB aabb = e.aabb();
@@ -243,10 +207,6 @@ MINI_TEST("Element", "Brep Aabb") {
 }
 
 MINI_TEST("Element", "Json Roundtrip") {
-    // uncomment #include "element.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "xform.h"
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -268,9 +228,6 @@ MINI_TEST("Element", "Json Roundtrip") {
 }
 
 MINI_TEST("Element", "Protobuf Roundtrip") {
-    // uncomment #include "element.h"
-    // uncomment #include "brep.h"
-    // uncomment #include "xform.h"
     BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "proto_test");
 
@@ -290,15 +247,15 @@ MINI_TEST("Element", "Protobuf Roundtrip") {
 
 MINI_TEST("Element", "Polylines") {
     Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)},
-        {{0, 1, 2, 3}});
+        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
+        {{0, 1, 2, 3}}
+    );
     Element e(m, "test_element");
 
-    // A mesh element's face views are its solid's face outlines, one plane each.
     MINI_CHECK(e.polylines().size() == 1);
-    MINI_CHECK(e.polylines()[0].point_count() == 5);           // closed quad
-    MINI_CHECK(e.polylines()[0].get_point(0) == Point(0,0,0));
-    MINI_CHECK(e.polylines()[0].get_point(4) == Point(0,0,0));
+    MINI_CHECK(e.polylines()[0].point_count() == 5);
+    MINI_CHECK(e.polylines()[0].get_point(0) == Point(0, 0, 0));
+    MINI_CHECK(e.polylines()[0].get_point(4) == Point(0, 0, 0));
     MINI_CHECK(e.planes().size() == 1);
     MINI_CHECK(e.planes()[0].origin() == Point(0.5, 0.5, 0.0));
     const Vector normal = e.planes()[0].z_axis();
@@ -307,17 +264,13 @@ MINI_TEST("Element", "Polylines") {
     MINI_CHECK(!e.axis().has_value());
 }
 
-MINI_TEST("Element", "PolylinesEmptyWithoutMesh") {
+MINI_TEST("Element", "Polylines Empty Without Mesh") {
     MINI_CHECK(Element("no_geometry").polylines().empty());
     MINI_CHECK(Element("no_geometry").planes().empty());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Element - polymorphic registry
-//
-// The contract a downstream package (wood's plate) depends on: a registered type survives a
-// round trip through the Session, and an UNregistered one degrades to a base Element with its
-// geometry intact rather than failing the load.
+// Element - Polymorphic registry
 // ═══════════════════════════════════════════════════════════════════════════
 
 namespace {
@@ -334,17 +287,15 @@ public:
 
     std::string element_type_name() const override { return "TestPlate"; }
 
-    // Deliberately a trivial hand-rolled encoding: the kernel never parses this, so the
-    // format is the package's own business - which is the property under test.
     std::string element_data_dumps() const override {
         std::string out = std::to_string(thickness);
-        for (int c : codes) { out += "," + std::to_string(c); }
+        for (int c : codes) out += "," + std::to_string(c);
         return out;
     }
 
     static void register_with_kernel() {
         Element::register_type("TestPlate", [](const std::string& data) {
-            Element base = Element::pb_loads(data);          // base fields + geometry
+            Element base = Element::pb_loads(data);
             session_proto::Element proto;
             proto.ParseFromString(data);
 
@@ -367,12 +318,19 @@ public:
 
 Mesh unit_quad() {
     return Mesh::from_vertices_and_faces(
-        {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)}, {{0, 1, 2, 3}});
+        {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0)
+        },
+        {{0, 1, 2, 3}}
+    );
 }
 
 }  // namespace
 
-MINI_TEST("Element", "RegistryRoundTrip") {
+MINI_TEST("Element", "Registry Round Trip") {
     TestPlate::register_with_kernel();
     MINI_CHECK(Element::is_registered("TestPlate"));
 
@@ -380,12 +338,10 @@ MINI_TEST("Element", "RegistryRoundTrip") {
     const std::string guid = plate.guid();
     auto loaded = Element::pb_loads_polymorphic(plate.pb_dumps());
 
-    // The derived type came back, not a sliced base.
     auto* as_plate = dynamic_cast<TestPlate*>(loaded.get());
     MINI_CHECK(as_plate != nullptr);
     MINI_CHECK(as_plate->element_type_name() == "TestPlate");
 
-    // Identity, base state and domain state all survived.
     MINI_CHECK(as_plate->guid() == guid);
     MINI_CHECK(as_plate->name == "plate_0");
     MINI_CHECK(std::holds_alternative<Mesh>(as_plate->geometry()));
@@ -394,9 +350,7 @@ MINI_TEST("Element", "RegistryRoundTrip") {
     MINI_CHECK(as_plate->codes[0] == 30 && as_plate->codes[1] == 11 && as_plate->codes[2] == 20);
 }
 
-MINI_TEST("Element", "RegistryUnknownTypeDegrades") {
-    // A file written by a package this binary does not have. The element must still load,
-    // keeping its geometry - a viewer opens the file, it just does not know it is a plate.
+MINI_TEST("Element", "Registry Unknown Type Degrades") {
     MINI_CHECK(!Element::is_registered("NeverRegistered"));
 
     session_proto::Element proto;
@@ -410,15 +364,12 @@ MINI_TEST("Element", "RegistryUnknownTypeDegrades") {
     MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
 }
 
-MINI_TEST("Element", "FeaturesRoundTrip") {
-    // insertion_vectors / dimensions / features are the general shape that replaced the
-    // per-domain arrays (joint_types and friends) that used to sit on this message. All three
-    // must survive a round trip or a domain is right back to inventing its own fields.
+MINI_TEST("Element", "Features Round Trip") {
     Element e(unit_quad(), "plate_0");
     e.set_insertion_vectors({Vector(0, 0, 1), Vector(1, 0, 0)});
     e.set_dimensions(Vector(120.0, 80.0, 12.5));
     e.add_feature(ElementFeature("cut", 2,
-        {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "notch"));
+        {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch"));
     std::string feature_guid = e.features()[0].guid();
 
     Element loaded = Element::pb_loads(e.pb_dumps());
@@ -426,35 +377,27 @@ MINI_TEST("Element", "FeaturesRoundTrip") {
     MINI_CHECK(loaded.insertion_vectors().size() == 2);
     MINI_CHECK(loaded.insertion_vectors()[0] == Vector(0, 0, 1));
     MINI_CHECK(loaded.dimensions().has_value());
-    // z is the thickness - the whole reason this is a vector rather than one double.
     MINI_CHECK(std::abs((*loaded.dimensions())[2] - 12.5) < 1e-9);
     MINI_CHECK(loaded.features().size() == 1);
     MINI_CHECK(loaded.features()[0].feature_type == "cut");
     MINI_CHECK(loaded.features()[0].face_index == 2);
     MINI_CHECK(loaded.features()[0].name == "notch");
     MINI_CHECK(loaded.features()[0].outlines.size() == 1);
-    // The guid is the feature's handle: a package that wrote a joint has to find it again, and
-    // the index in `features` moves the moment an earlier feature is removed.
     MINI_CHECK(loaded.features()[0].guid() == feature_guid);
 }
 
-MINI_TEST("Element", "DimensionsAreNominalNotMeasured") {
-    // dimensions is AUTHORED intent; obb() MEASURES what exists. They are allowed to disagree,
-    // and this pins that they are genuinely independent - a nominal thickness set before any
-    // geometry is built must not be overwritten by whatever the geometry turns out to be.
+MINI_TEST("Element", "Dimensions Are Nominal Not Measured") {
     Element e(unit_quad(), "plate");
-    MINI_CHECK(!e.dimensions().has_value());     // never authored
+    MINI_CHECK(!e.dimensions().has_value());
 
-    e.set_dimensions(Vector(120.0, 80.0, 12.5)); // nominal, nothing like the unit quad
+    e.set_dimensions(Vector(120.0, 80.0, 12.5));
     OBB measured = e.obb();
 
     MINI_CHECK(std::abs((*e.dimensions())[0] - 120.0) < 1e-9);
-    MINI_CHECK(measured.half_size[0] < 1.0);      // the geometry is still a unit quad
+    MINI_CHECK(measured.half_size[0] < 1.0);
 }
 
-MINI_TEST("Element", "RegistryLeavesBaseBytesUnchanged") {
-    // proto3 omits empty scalars, so adding element_type/element_data must not have changed
-    // one byte of a plain Element - the cross-language golden files depend on it.
+MINI_TEST("Element", "Registry Leaves Base Bytes Unchanged") {
     Element e(unit_quad(), "plain");
     session_proto::Element proto;
     proto.ParseFromString(e.pb_dumps());
@@ -464,10 +407,7 @@ MINI_TEST("Element", "RegistryLeavesBaseBytesUnchanged") {
     MINI_CHECK(e.element_type_name().empty());
 }
 
-MINI_TEST("Element", "RegistryJsonRoundTrip") {
-    // The JSON path reconstructs the derived type too, through the SAME factory. Before this,
-    // JSON kept the payload but always handed back a base - so a package could round-trip
-    // through .pb and not through .json, for no reason a caller could see.
+MINI_TEST("Element", "Registry Json Round Trip") {
     TestPlate::register_with_kernel();
 
     TestPlate plate(unit_quad(), "plate_json", 9.5, {7, 8});
@@ -482,10 +422,7 @@ MINI_TEST("Element", "RegistryJsonRoundTrip") {
     MINI_CHECK(as_plate->codes[0] == 7 && as_plate->codes[1] == 8);
 }
 
-MINI_TEST("Element", "ThrowingFactoryDegradesToBase") {
-    // A factory that throws is a bug in that package, exactly like one returning null, and it
-    // must not take the whole Session down. Without the catch, one malformed element made
-    // every other element in the file unreachable.
+MINI_TEST("Element", "Throwing Factory Degrades To Base") {
     Element::register_type("Exploding", [](const std::string&) -> std::shared_ptr<Element> {
         throw std::runtime_error("this package is broken");
     });
@@ -500,11 +437,7 @@ MINI_TEST("Element", "ThrowingFactoryDegradesToBase") {
     MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
 }
 
-MINI_TEST("Element", "UnknownTypeSurvivesResave") {
-    // The whole point of element_type/element_data: a viewer WITHOUT the wood package opens a
-    // wood file, edits something else, and saves. If the kernel does not carry these two
-    // through, that save silently destroys the payload - the geometry still looks right, so
-    // nothing announces the loss. This is the test that would have caught it.
+MINI_TEST("Element", "Unknown Type Survives Resave") {
     session_proto::Element proto;
     proto.ParseFromString(Element(unit_quad(), "plate").pb_dumps());
     proto.set_element_type("wood::Plate");
@@ -521,9 +454,7 @@ MINI_TEST("Element", "UnknownTypeSurvivesResave") {
     MINI_CHECK(resaved.element_data() == "the package's own bytes");
 }
 
-MINI_TEST("Element", "DuplicateKeepsEveryField") {
-    // A copy that drops fields is the same silent data loss as a save that drops them, and a
-    // duplicate is what an assembly does to place the same part twice.
+MINI_TEST("Element", "Duplicate Keeps Every Field") {
     Element e(unit_quad(), "original");
     e.set_insertion_vectors({Vector(0, 0, 1)});
     e.set_dimensions(Vector(120.0, 80.0, 12.5));
@@ -531,16 +462,14 @@ MINI_TEST("Element", "DuplicateKeepsEveryField") {
 
     Element copy = e.duplicate();
 
-    MINI_CHECK(copy == e);                    // every carried field compares equal
-    MINI_CHECK(copy.guid() != e.guid());      // but it is a different object
+    MINI_CHECK(copy == e);
+    MINI_CHECK(copy.guid() != e.guid());
     MINI_CHECK(copy.insertion_vectors().size() == 1);
     MINI_CHECK(copy.dimensions().has_value());
     MINI_CHECK(copy.features().size() == 1);
 }
 
-MINI_TEST("Element", "EqualityComparesCarriedFields") {
-    // Equality that looks at name and geometry only makes every round-trip test above vacuous:
-    // it would pass while the loader dropped all five of the other fields.
+MINI_TEST("Element", "Equality Compares Carried Fields") {
     Element a(unit_quad(), "same");
     Element b(unit_quad(), "same");
     MINI_CHECK(a == b);
@@ -554,7 +483,12 @@ MINI_TEST("Element", "EqualityComparesCarriedFields") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("ElementFeature", "Constructor") {
-    Polyline outline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)});
+    Polyline outline({
+        Point(0, 0, 0),
+        Point(1, 0, 0),
+        Point(1, 1, 0),
+        Point(0, 0, 0)
+    });
     ElementFeature f("cut", 2, {outline}, "notch");
 
     MINI_CHECK(f.feature_type == "cut");
@@ -565,7 +499,6 @@ MINI_TEST("ElementFeature", "Constructor") {
     ElementFeature same("cut", 2, {outline}, "notch");
     MINI_CHECK(f == same);
     MINI_CHECK(!(f != same));
-    // Data equality, not identity - the two guids differ and the features are still equal.
     MINI_CHECK(f.guid() != same.guid());
 
     ElementFeature other("drill", 2, {outline}, "notch");
@@ -581,7 +514,7 @@ MINI_TEST("ElementFeature", "Constructor") {
 
 MINI_TEST("ElementFeature", "Json Roundtrip") {
     ElementFeature f("cut", 2,
-        {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "notch");
+        {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch");
     std::string feature_guid = f.guid();
 
     std::string fname = "serialization/test_element_feature.json";
@@ -590,13 +523,12 @@ MINI_TEST("ElementFeature", "Json Roundtrip") {
 
     MINI_CHECK(loaded == f);
     MINI_CHECK(loaded.outlines.size() == 1);
-    // Read back, not re-minted: whoever holds the guid must still find this feature.
     MINI_CHECK(loaded.guid() == feature_guid);
 }
 
 MINI_TEST("ElementFeature", "Protobuf Roundtrip") {
     ElementFeature f("drill", 5,
-        {Polyline({Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,0,0)})}, "hole");
+        {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "hole");
     std::string feature_guid = f.guid();
 
     std::string path = "serialization/test_element_feature.bin";

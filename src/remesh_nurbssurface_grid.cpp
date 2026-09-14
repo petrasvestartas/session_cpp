@@ -1,480 +1,433 @@
 #include "remesh_nurbssurface_grid.h"
 #include "tolerance.h"
-#include <cmath>
 #include <algorithm>
-#include <set>
+#include <cmath>
 #include <limits>
+#include <map>
+#include <set>
 
 namespace session_cpp {
+namespace {
 
-/// Split shading vertices at internal C0 knots only when one-sided normals disagree.
-void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& mesh) {
-    std::map<size_t, unsigned> candidates;
-    for (const auto& [key, vd] : mesh.vertex) {
-        if (!vd.attributes.count("u") || !vd.attributes.count("v")) continue;
-        double uv[2] = {vd.attributes.at("u"), vd.attributes.at("v")};
-        unsigned flags = 0;
-        for (int dir = 0; dir < 2; ++dir) {
-            auto [start, end] = s.domain(dir);
-            double value = uv[dir];
-            if (value <= start || value >= end) continue;
-            auto multiplicity = std::count(s.m_nurbsknot[dir].begin(), s.m_nurbsknot[dir].end(), value);
-            if (multiplicity < s.degree(dir)) continue;
-            double lo[2] = {uv[0], uv[1]}, hi[2] = {uv[0], uv[1]};
-            lo[dir] = std::nextafter(value, -std::numeric_limits<double>::infinity());
-            hi[dir] = std::nextafter(value, std::numeric_limits<double>::infinity());
-            Vector a = s.normal_at(lo[0], lo[1]), b = s.normal_at(hi[0], hi[1]);
-            double aa = a[0]*a[0]+a[1]*a[1]+a[2]*a[2], bb = b[0]*b[0]+b[1]*b[1]+b[2]*b[2];
-            double dot = (a[0]*b[0]+a[1]*b[1]+a[2]*b[2]) / std::sqrt(aa*bb);
-            if (std::isfinite(dot) && dot < 1.0 - 64.0*std::numeric_limits<double>::epsilon()) flags |= 1u << dir;
-        }
-        if (flags) candidates[key] = flags;
-    }
-    if (candidates.empty()) return;
-    std::map<std::pair<size_t, unsigned>, size_t> copies;
-    std::set<size_t> used;
-    std::vector<size_t> face_keys;
-    for (const auto& [key, vertices] : mesh.face) face_keys.push_back(key);
-    std::sort(face_keys.begin(), face_keys.end());
-    for (size_t face_key : face_keys) {
-        auto vertices = mesh.face[face_key];
-        double center[2] = {0.0, 0.0};
-        for (size_t key : vertices) {
-            center[0] += mesh.vertex[key].attributes.at("u");
-            center[1] += mesh.vertex[key].attributes.at("v");
-        }
-        center[0] /= vertices.size(); center[1] /= vertices.size();
-        auto face_normal = mesh.face_normal(face_key);
-        auto split = vertices;
-        for (size_t corner = 0; corner < vertices.size(); ++corner) {
-            size_t key = vertices[corner];
-            if (!candidates.count(key)) continue;
-            unsigned flags = candidates[key], side = 0;
-            auto original = mesh.vertex[key];
-            double uv[2] = {original.attributes.at("u"), original.attributes.at("v")};
-            for (int dir = 0; dir < 2; ++dir) {
-                if (!(flags & (1u << dir))) continue;
-                bool high = center[dir] > uv[dir];
-                if (high) side |= 1u << dir;
-                uv[dir] = std::nextafter(uv[dir], high ? std::numeric_limits<double>::infinity() : -std::numeric_limits<double>::infinity());
-            }
-            auto identity = std::make_pair(key, side);
-            size_t target;
-            if (copies.count(identity)) target = copies[identity];
-            else {
-                if (used.insert(key).second) target = key;
-                else { target = mesh.add_vertex(original.position()); mesh.vertex[target] = original; }
-                copies[identity] = target;
-            }
-            Vector n = s.normal_at(uv[0], uv[1]);
-            double length = std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
-            if (std::isfinite(length) && length > 0.0) {
-                double sign = 1.0;
-                if (face_normal && n[0]*(*face_normal)[0]+n[1]*(*face_normal)[1]+n[2]*(*face_normal)[2] < 0.0) sign = -1.0;
-                mesh.vertex[target].set_normal(sign*n[0]/length, sign*n[1]/length, sign*n[2]/length);
-            }
-            split[corner] = target;
-        }
-        mesh.face[face_key] = split;
-    }
-    mesh.rebuild_halfedges();
+constexpr int MAX_SUBS = 24;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sampling
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Euclidean length without the zero gate of magnitude()
+double norm(const Vector& v) {
+    return std::sqrt(v.magnitude_squared());
 }
+
+/// Surface point at t along dir with the other parameter fixed
+Point point_along(const NurbsSurface& s, int dir, double t, double fixed) {
+    return dir == 0 ? s.point_at(t, fixed) : s.point_at(fixed, t);
+}
+
+/// Surface normal at t along dir with the other parameter fixed
+Vector normal_along(const NurbsSurface& s, int dir, double t, double fixed) {
+    return dir == 0 ? s.normal_at(t, fixed) : s.normal_at(fixed, t);
+}
+
+/// Sv x Su unnormalized, zero when the surface cannot be evaluated; normal_at would give a +Z sentinel at a pole
+Vector raw_normal(const NurbsSurface& s, double u, double v) {
+    const std::vector<Vector> derivatives = s.evaluate(u, v, 1);
+    if (derivatives.size() < 3) return Vector(0.0, 0.0, 0.0);
+    return derivatives[2].cross(derivatives[1]);
+}
+
+/// Diagonal of the control point bounding box
+double bbox_diagonal(const NurbsSurface& s) {
+    Point lo(1e30, 1e30, 1e30);
+    Point hi(-1e30, -1e30, -1e30);
+    for (int i = 0; i < s.cv_count(0); ++i)
+        for (int j = 0; j < s.cv_count(1); ++j) {
+            const Point p = s.get_cv(i, j);
+            for (int k = 0; k < 3; ++k) {
+                lo[k] = std::min(lo[k], p[k]);
+                hi[k] = std::max(hi[k], p[k]);
+            }
+        }
+    return norm(hi - lo);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Subdivisions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Largest turn of the unit normal in degrees over [t0, t1], sampled at the span midpoints of the other direction
+double span_angle(const NurbsSurface& s, int dir, double t0, double t1, const std::vector<double>& osp) {
+    double max_angle = 0.0;
+    for (size_t si = 0; si + 1 < osp.size(); ++si) {
+        const double fixed = (osp[si] + osp[si + 1]) * 0.5;
+        Vector first(0.0, 0.0, 0.0);
+        Vector last(0.0, 0.0, 0.0);
+        bool has_first = false;
+        for (int k = 0; k <= 4; ++k) {
+            const Vector n = normal_along(s, dir, t0 + k * (t1 - t0) / 4.0, fixed);
+            const double length = norm(n);
+            if (length < 1e-10) continue;
+            const Vector unit = n / length;
+            if (!has_first) first = unit;
+            has_first = true;
+            last = unit;
+        }
+        if (!has_first) continue;
+        const double dot = std::max(-1.0, std::min(1.0, first.dot(last)));
+        max_angle = std::max(max_angle, std::acos(dot) * 180.0 / Tolerance::PI);
+    }
+    return max_angle;
+}
+
+/// Largest height of [t0, t1] over its chord, at up to four positions across the other direction
+double span_deviation(const NurbsSurface& s, int dir, double t0, double t1, const std::vector<double>& osp) {
+    double max_dev = 0.0;
+    const int nc = std::min((int)osp.size() - 1, 3);
+    for (int ci = 0; ci <= nc; ++ci) {
+        const double fixed = osp.front() + ci * (osp.back() - osp.front()) / std::max(nc, 1);
+        const Point p0 = point_along(s, dir, t0, fixed);
+        const Point p1 = point_along(s, dir, t1, fixed);
+        for (int k = 1; k <= 3; ++k) {
+            const double frac = k / 4.0;
+            const Point pm = point_along(s, dir, t0 + frac * (t1 - t0), fixed);
+            max_dev = std::max(max_dev, norm(pm - (p0 + (p1 - p0) * frac)));
+        }
+    }
+    return max_dev;
+}
+
+/// Subdivisions per span along dir: the normal turn against max_angle_deg, the chord height against chord_tol, at least two on a curved span
+std::vector<int> span_subs(const NurbsSurface& s, int dir, const std::vector<double>& sp, const std::vector<double>& osp, double max_angle_deg, double chord_tol) {
+    const int degree = s.degree(dir);
+    std::vector<int> subs(sp.size() - 1, 1);
+    for (size_t i = 0; i + 1 < sp.size(); ++i) {
+        if (degree > 1) {
+            const double angle = span_angle(s, dir, sp[i], sp[i + 1], osp);
+            subs[i] = std::clamp((int)std::ceil(angle / max_angle_deg), 1, MAX_SUBS);
+        }
+        const double dev = span_deviation(s, dir, sp[i], sp[i + 1], osp);
+        if (dev > chord_tol) subs[i] = std::max(subs[i], std::clamp((int)std::ceil(std::sqrt(dev / chord_tol)), 2, MAX_SUBS));
+        if (degree > 1) subs[i] = std::max(subs[i], 2);
+    }
+    return subs;
+}
+
+/// Length of the iso-curve at fixed along dir as a polyline of n steps
+double isocurve_length(const NurbsSurface& s, int dir, const std::vector<double>& sp, double fixed, int n) {
+    double length = 0.0;
+    Point prev = point_along(s, dir, sp.front(), fixed);
+    for (int i = 1; i <= n; ++i) {
+        const Point next = point_along(s, dir, sp.front() + i * (sp.back() - sp.front()) / n, fixed);
+        length += norm(next - prev);
+        prev = next;
+    }
+    return length;
+}
+
+/// Scale up the curved direction whose spacing is more than twice the other's
+void balance_subs(const NurbsSurface& s, const std::vector<double>& usp, const std::vector<double>& vsp, std::vector<int>& u_subs, std::vector<int>& v_subs) {
+    int total_u = 1;
+    int total_v = 1;
+    for (int sub : u_subs) total_u += sub;
+    for (int sub : v_subs) total_v += sub;
+    const double u_len = isocurve_length(s, 0, usp, (vsp.front() + vsp.back()) * 0.5, std::max(total_u, 10));
+    const double v_len = isocurve_length(s, 1, vsp, (usp.front() + usp.back()) * 0.5, std::max(total_v, 10));
+    if (u_len <= 1e-14 || v_len <= 1e-14) return;
+    const double ratio = (u_len / total_u) / (v_len / total_v);
+    if (ratio > 2.0 && s.degree(0) > 1) {
+        const double scale = std::sqrt(ratio);
+        for (int& sub : u_subs) sub = std::min(MAX_SUBS, (int)std::ceil(sub * scale));
+    } else if (ratio < 0.5 && s.degree(1) > 1) {
+        const double scale = std::sqrt(1.0 / ratio);
+        for (int& sub : v_subs) sub = std::min(MAX_SUBS, (int)std::ceil(sub * scale));
+    }
+}
+
+/// Subdivisions both directions of a bilinear surface need for its twist, 1 when every span centre lies within twist_tol of its diagonal midpoint
+int twist_subs(const NurbsSurface& s, const std::vector<double>& usp, const std::vector<double>& vsp, double twist_tol) {
+    double max_twist = 0.0;
+    for (size_t i = 0; i + 1 < usp.size(); ++i)
+        for (size_t j = 0; j + 1 < vsp.size(); ++j) {
+            const Point pm = s.point_at((usp[i] + usp[i + 1]) * 0.5, (vsp[j] + vsp[j + 1]) * 0.5);
+            const Point p00 = s.point_at(usp[i], vsp[j]);
+            const Point p11 = s.point_at(usp[i + 1], vsp[j + 1]);
+            max_twist = std::max(max_twist, norm(pm - Point::sum(p00, p11) * 0.5));
+        }
+    if (max_twist <= twist_tol) return 1;
+    return std::clamp((int)std::ceil(2.0 * std::sqrt(max_twist / twist_tol)), 4, MAX_SUBS);
+}
+
+/// One more subdivision on the largest span when the total is even, so a closed direction triangulates seamlessly
+void make_odd(std::vector<int>& subs) {
+    int total = 0;
+    for (int sub : subs) total += sub;
+    if (total % 2 == 0) *std::max_element(subs.begin(), subs.end()) += 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Parameters
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// n parameters spaced evenly by arc length along the iso-curve at fixed
+std::vector<double> arclen_params(const NurbsSurface& s, int dir, int n, const std::vector<double>& sp, double fixed) {
+    const int nsample = std::max(n * 20, 200);
+    std::vector<double> st(nsample + 1);
+    std::vector<double> sl(nsample + 1, 0.0);
+    Point prev = point_along(s, dir, sp.front(), fixed);
+    for (int k = 0; k <= nsample; ++k) {
+        st[k] = sp.front() + k * (sp.back() - sp.front()) / nsample;
+        if (k == 0) continue;
+        const Point next = point_along(s, dir, st[k], fixed);
+        sl[k] = sl[k - 1] + norm(next - prev);
+        prev = next;
+    }
+    std::vector<double> params;
+    params.push_back(sp.front());
+    int j = 0;
+    for (int i = 1; i < n - 1; ++i) {
+        const double target = sl[nsample] * i / (n - 1);
+        while (j < nsample && sl[j] < target) ++j;
+        const int a = j > 0 ? j - 1 : 0;
+        const double frac = sl[j] > sl[a] ? (target - sl[a]) / (sl[j] - sl[a]) : 0.0;
+        params.push_back(st[a] + frac * (st[j] - st[a]));
+    }
+    params.push_back(sp.back());
+    return params;
+}
+
+/// Every span split into its subdivisions, ending on the last span boundary
+std::vector<double> span_params(const std::vector<double>& sp, const std::vector<int>& subs) {
+    std::vector<double> params;
+    for (size_t i = 0; i + 1 < sp.size(); ++i)
+        for (int sub = 0; sub < subs[i]; ++sub)
+            params.push_back(sp[i] + sub * (sp[i + 1] - sp[i]) / subs[i]);
+    params.push_back(sp.back());
+    return params;
+}
+
+/// Closed direction: drop the duplicate end and fill a wrap gap wider than 1.5 times the largest step
+void fix_closed_gap(std::vector<double>& params, double domain_end) {
+    if (params.size() < 3) return;
+    params.pop_back();
+    const double wrap_gap = domain_end - params.back();
+    double max_gap = 0.0;
+    for (size_t i = 1; i < params.size(); ++i) max_gap = std::max(max_gap, params[i] - params[i - 1]);
+    if (max_gap <= 0.0 || wrap_gap <= max_gap * 1.5) return;
+    const int extra = (int)std::ceil(wrap_gap / max_gap) - 1;
+    const double step = wrap_gap / (extra + 1);
+    for (int e = 1; e <= extra; ++e) params.push_back(params.back() + step);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Vertices and faces
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Vertex at S(u, v) tagged with its parameters
+size_t add_vertex_uv(const NurbsSurface& s, Mesh& mesh, double u, double v) {
+    const size_t key = mesh.add_vertex(s.point_at(u, v));
+    mesh.vertex[key].attributes["u"] = u;
+    mesh.vertex[key].attributes["v"] = v;
+    return key;
+}
+
+/// Grid vertices row by row over us and the rows j_start..j_end of vs
+std::vector<size_t> add_grid(const NurbsSurface& s, Mesh& mesh, const std::vector<double>& us, const std::vector<double>& vs, int j_start, int j_end) {
+    std::vector<size_t> grid;
+    for (double u : us)
+        for (int j = j_start; j < j_end; ++j)
+            grid.push_back(add_vertex_uv(s, mesh, u, vs[j]));
+    return grid;
+}
+
+/// Fans from the south pole, checkerboard-split quads, fans to the north pole
+void add_faces(Mesh& mesh, const std::vector<size_t>& grid, int nu, bool closed_u, bool wrap_v, std::optional<size_t> south, std::optional<size_t> north) {
+    const int nv = (int)grid.size() / nu;
+    const int nu_faces = closed_u ? nu : nu - 1;
+    const int nv_faces = wrap_v ? nv : nv - 1;
+    if (south)
+        for (int i = 0; i < nu_faces; ++i) mesh.add_face({*south, grid[((i + 1) % nu) * nv], grid[i * nv]});
+    for (int i = 0; i < nu_faces; ++i)
+        for (int j = 0; j < nv_faces; ++j) {
+            const int i1 = (i + 1) % nu;
+            const int j1 = (j + 1) % nv;
+            const size_t v00 = grid[i * nv + j];
+            const size_t v10 = grid[i1 * nv + j];
+            const size_t v01 = grid[i * nv + j1];
+            const size_t v11 = grid[i1 * nv + j1];
+            if ((i + j) % 2 == 0) {
+                mesh.add_face({v00, v10, v11});
+                mesh.add_face({v00, v11, v01});
+            } else {
+                mesh.add_face({v00, v10, v01});
+                mesh.add_face({v10, v11, v01});
+            }
+        }
+    if (north)
+        for (int i = 0; i < nu_faces; ++i) mesh.add_face({grid[i * nv + nv - 1], grid[((i + 1) % nu) * nv + nv - 1], *north});
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Normals
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Sum of the unnormalized face normals around each vertex key, faces taken in key order
+std::vector<Vector> fan_normals(const Mesh& mesh) {
+    std::vector<Vector> sums(mesh.vertex.size(), Vector(0.0, 0.0, 0.0));
+    for (const auto& [key, vertices] : mesh.face) {
+        if (vertices.size() < 3) continue;
+        const Point p0 = mesh.vertex.at(vertices[0]).position();
+        const Point p1 = mesh.vertex.at(vertices[1]).position();
+        const Point p2 = mesh.vertex.at(vertices[2]).position();
+        const Vector n = (p1 - p0).cross(p2 - p0);
+        for (size_t vertex : vertices) sums[vertex] += n;
+    }
+    return sums;
+}
+
+/// Unit surface normal on the side of the fan normal; the fan normal at the poles and where the surface normal vanishes, +Z when the fan vanishes too
+void set_normals(const NurbsSurface& s, Mesh& mesh, std::optional<size_t> south, std::optional<size_t> north) {
+    const std::vector<Vector> sums = fan_normals(mesh);
+    for (auto& [key, vd] : mesh.vertex) {
+        Vector n(0.0, 0.0, 1.0);
+        const double fan_length = norm(sums[key]);
+        if (std::isfinite(fan_length) && fan_length > 0.0) n = sums[key] / fan_length;
+        if (key != south && key != north) {
+            const Vector raw = raw_normal(s, vd.attributes.at("u"), vd.attributes.at("v"));
+            const double length = norm(raw);
+            if (std::isfinite(length) && length > 0.0) n = raw.dot(n) < 0.0 ? -raw / length : raw / length;
+        }
+        vd.set_normal(n[0], n[1], n[2]);
+    }
+}
+
+/// Bit per direction where (u, v) sits on an internal knot of full multiplicity whose one-sided normals disagree
+unsigned crease_flags(const NurbsSurface& s, double u, double v) {
+    const double uv[2] = {u, v};
+    unsigned flags = 0;
+    for (int dir = 0; dir < 2; ++dir) {
+        const auto [start, end] = s.domain(dir);
+        const double value = uv[dir];
+        if (value <= start || value >= end) continue;
+        if (std::count(s.m_nurbsknot[dir].begin(), s.m_nurbsknot[dir].end(), value) < s.degree(dir)) continue;
+        double lo[2] = {u, v};
+        double hi[2] = {u, v};
+        lo[dir] = std::nextafter(value, -std::numeric_limits<double>::infinity());
+        hi[dir] = std::nextafter(value, std::numeric_limits<double>::infinity());
+        const Vector a = s.normal_at(lo[0], lo[1]);
+        const Vector b = s.normal_at(hi[0], hi[1]);
+        const double length = std::sqrt(a.magnitude_squared() * b.magnitude_squared());
+        if (length == 0.0) continue;
+        const double dot = a.dot(b) / length;
+        if (std::isfinite(dot) && dot < 1.0 - 64.0 * std::numeric_limits<double>::epsilon()) flags |= 1u << dir;
+    }
+    return flags;
+}
+
+/// Nudge uv one ulp toward center in each flagged direction; bit per direction nudged upward
+unsigned crease_side(const double center[2], double uv[2], unsigned flags) {
+    unsigned side = 0;
+    for (int dir = 0; dir < 2; ++dir) {
+        if (!(flags & (1u << dir))) continue;
+        const bool high = center[dir] > uv[dir];
+        if (high) side |= 1u << dir;
+        uv[dir] = std::nextafter(uv[dir], high ? std::numeric_limits<double>::infinity() : -std::numeric_limits<double>::infinity());
+    }
+    return side;
+}
+
+/// Vertex carrying a corner: the original the first time its key is met, then one copy per (key, side)
+size_t crease_target(Mesh& mesh, std::map<std::pair<size_t, unsigned>, size_t>& copies, std::set<size_t>& used, size_t key, unsigned side) {
+    const std::pair<size_t, unsigned> identity(key, side);
+    if (copies.count(identity)) return copies[identity];
+    if (used.insert(key).second) return copies[identity] = key;
+    const size_t target = mesh.add_vertex(mesh.vertex[key].position());
+    mesh.vertex[target] = mesh.vertex[key];
+    return copies[identity] = target;
+}
+
+} // namespace
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RemeshNurbsSurfaceGrid
+// ═══════════════════════════════════════════════════════════════════════════
 
 Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
     return from_u_v_q(s, max_u, max_v, 20.0, 0.005);
 }
 
 Mesh RemeshNurbsSurfaceGrid::from_u_v_q(const NurbsSurface& s, int max_u, int max_v, double max_angle_deg, double chord_factor) {
-    const double MAX_ANGLE = max_angle_deg;
-    std::vector<double> usp = s.get_span_vector(0);
-    std::vector<double> vsp = s.get_span_vector(1);
-    int ns_u = (int)usp.size() - 1, ns_v = (int)vsp.size() - 1;
-
-    int deg_u = s.degree(0), deg_v = s.degree(1);
-
-    double minx = 1e30, miny = 1e30, minz = 1e30;
-    double maxx = -1e30, maxy = -1e30, maxz = -1e30;
-    for (int i = 0; i < s.cv_count(0); ++i) {
-        for (int j = 0; j < s.cv_count(1); ++j) {
-            Point p = s.get_cv(i, j);
-            if (p[0] < minx) minx = p[0];
-            if (p[1] < miny) miny = p[1];
-            if (p[2] < minz) minz = p[2];
-            if (p[0] > maxx) maxx = p[0];
-            if (p[1] > maxy) maxy = p[1];
-            if (p[2] > maxz) maxz = p[2];
-        }
+    const std::vector<double> usp = s.get_span_vector(0);
+    const std::vector<double> vsp = s.get_span_vector(1);
+    const double bbox_diag = bbox_diagonal(s);
+    const double chord_tol = bbox_diag * chord_factor;
+    std::vector<int> u_subs = span_subs(s, 0, usp, vsp, max_angle_deg, chord_tol);
+    std::vector<int> v_subs = span_subs(s, 1, vsp, usp, max_angle_deg, chord_tol);
+    balance_subs(s, usp, vsp, u_subs, v_subs);
+    const bool sing_v0 = s.is_singular(0);
+    const bool sing_v1 = s.is_singular(2);
+    if (s.degree(0) == 1 && s.degree(1) == 1 && !sing_v0 && !sing_v1) {
+        const int twist = twist_subs(s, usp, vsp, bbox_diag > 0.0 ? chord_tol : 1e-6);
+        for (int& sub : u_subs) sub = std::max(sub, twist);
+        for (int& sub : v_subs) sub = std::max(sub, twist);
     }
-    double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
-    double bbox_diag = std::sqrt(dx * dx + dy * dy + dz * dz);
+    const bool closed_u = s.is_closed(0);
+    const bool closed_v = s.is_closed(1);
+    if (closed_u && max_u == 0) make_odd(u_subs);
+    if (closed_v && max_v == 0) make_odd(v_subs);
+    const double u_mid = (usp.front() + usp.back()) * 0.5;
+    const double v_mid = (vsp.front() + vsp.back()) * 0.5;
+    std::vector<double> us = max_u > 0 ? arclen_params(s, 0, std::max(max_u, 2), usp, v_mid) : span_params(usp, u_subs);
+    std::vector<double> vs = max_v > 0 ? arclen_params(s, 1, std::max(max_v, 2), vsp, u_mid) : span_params(vsp, v_subs);
+    if (closed_u) fix_closed_gap(us, usp.back());
+    if (closed_v) fix_closed_gap(vs, vsp.back());
+    const int nv = (int)vs.size();
+    Mesh mesh;
+    std::optional<size_t> south;
+    std::optional<size_t> north;
+    if (sing_v0) south = add_vertex_uv(s, mesh, us[0], vs[0]);
+    if (sing_v1) north = add_vertex_uv(s, mesh, us[0], vs[nv - 1]);
+    const std::vector<size_t> grid = add_grid(s, mesh, us, vs, sing_v0 ? 1 : 0, sing_v1 ? nv - 1 : nv);
+    add_faces(mesh, grid, (int)us.size(), closed_u, closed_v && !sing_v0 && !sing_v1, south, north);
+    set_normals(s, mesh, south, north);
+    split_crease_normals(s, mesh);
+    return mesh;
+}
 
-    auto span_subs = [&](int dir, const std::vector<double>& sp,
-                         const std::vector<double>& osp) -> std::vector<int> {
-        int n = (int)sp.size() - 1;
-        std::vector<int> subs(n, 1);
-        int n_other = (int)osp.size() - 1;
-        std::vector<double> s_positions(n_other);
-        for (int k = 0; k < n_other; ++k)
-            s_positions[k] = (osp[k] + osp[k + 1]) * 0.5;
-        int degree_dir = (dir == 0) ? deg_u : deg_v;
-        for (int i = 0; i < n; ++i) {
-            double t0 = sp[i], t1 = sp[i + 1];
-            if (degree_dir > 1) {
-                double max_angle = 0.0;
-                for (int si = 0; si < n_other; ++si) {
-                    double sv = s_positions[si];
-                    double fn[3]={0,0,0}, ln[3]={0,0,0};
-                    bool has_first = false;
-                    for (int k = 0; k <= 4; ++k) {
-                        double t = t0 + k * (t1 - t0) / 4.0;
-                        Vector nrm = (dir == 0) ? s.normal_at(t, sv) : s.normal_at(sv, t);
-                        double nx = nrm[0], ny = nrm[1], nz = nrm[2];
-                        double len = std::sqrt(nx*nx + ny*ny + nz*nz);
-                        if (len < 1e-10) continue;
-                        nx/=len; ny/=len; nz/=len;
-                        if (!has_first) { fn[0]=nx; fn[1]=ny; fn[2]=nz; has_first=true; }
-                        ln[0]=nx; ln[1]=ny; ln[2]=nz;
-                    }
-                    double total_angle = 0.0;
-                    if (has_first) {
-                        double dot = fn[0]*ln[0] + fn[1]*ln[1] + fn[2]*ln[2];
-                        total_angle = std::acos(std::max(-1.0, std::min(1.0, dot))) * 180.0 / Tolerance::PI;
-                    }
-                    if (total_angle > max_angle) max_angle = total_angle;
-                }
-                subs[i] = std::min(24, std::max(1, (int)std::ceil(max_angle / MAX_ANGLE)));
+void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& mesh) {
+    std::map<size_t, unsigned> candidates;
+    for (const auto& [key, vd] : mesh.vertex) {
+        if (!vd.attributes.count("u") || !vd.attributes.count("v")) continue;
+        const unsigned flags = crease_flags(s, vd.attributes.at("u"), vd.attributes.at("v"));
+        if (flags) candidates[key] = flags;
+    }
+    if (candidates.empty()) return;
+    std::map<std::pair<size_t, unsigned>, size_t> copies;
+    std::set<size_t> used;
+    for (auto& [face_key, vertices] : mesh.face) {
+        double center[2] = {0.0, 0.0};
+        for (size_t key : vertices) {
+            center[0] += mesh.vertex[key].attributes.at("u");
+            center[1] += mesh.vertex[key].attributes.at("v");
+        }
+        center[0] /= vertices.size();
+        center[1] /= vertices.size();
+        const std::optional<Vector> face_normal = mesh.face_normal(face_key);
+        for (size_t& key : vertices) {
+            if (!candidates.count(key)) continue;
+            double uv[2] = {mesh.vertex[key].attributes.at("u"), mesh.vertex[key].attributes.at("v")};
+            const unsigned side = crease_side(center, uv, candidates[key]);
+            const size_t target = crease_target(mesh, copies, used, key, side);
+            const Vector n = s.normal_at(uv[0], uv[1]);
+            const double length = norm(n);
+            if (std::isfinite(length) && length > 0.0) {
+                const double sign = face_normal && n.dot(*face_normal) < 0.0 ? -1.0 : 1.0;
+                mesh.vertex[target].set_normal(sign * n[0] / length, sign * n[1] / length, sign * n[2] / length);
             }
-
-            // Direct chord-height deviation check
-            {
-                double chord_tol = bbox_diag * chord_factor;
-                double max_dev = 0.0;
-                int nc = std::min(n_other, 3);
-                for (int ci = 0; ci <= nc; ++ci) {
-                    double sv = osp.front() + ci * (osp.back() - osp.front()) / std::max(nc, 1);
-                    double px0, py0, pz0, px1, py1, pz1;
-                    if (dir == 0) {
-                        s.point_at(t0, sv, px0, py0, pz0);
-                        s.point_at(t1, sv, px1, py1, pz1);
-                    } else {
-                        s.point_at(sv, t0, px0, py0, pz0);
-                        s.point_at(sv, t1, px1, py1, pz1);
-                    }
-                    for (int k = 1; k <= 3; ++k) {
-                        double frac = k / 4.0;
-                        double tm = t0 + frac * (t1 - t0);
-                        double pmx, pmy, pmz;
-                        if (dir == 0) s.point_at(tm, sv, pmx, pmy, pmz);
-                        else          s.point_at(sv, tm, pmx, pmy, pmz);
-                        double lx = px0 + frac * (px1 - px0);
-                        double ly = py0 + frac * (py1 - py0);
-                        double lz = pz0 + frac * (pz1 - pz0);
-                        double ddx = pmx - lx, ddy = pmy - ly, ddz = pmz - lz;
-                        double dev = std::sqrt(ddx*ddx + ddy*ddy + ddz*ddz);
-                        if (dev > max_dev) max_dev = dev;
-                    }
-                }
-                if (max_dev > chord_tol) {
-                    int chord_subs = std::min(24, std::max(2, (int)std::ceil(std::sqrt(max_dev / chord_tol))));
-                    subs[i] = std::max(subs[i], chord_subs);
-                }
-            }
-
-            if (degree_dir > 1) subs[i] = std::max(subs[i], 2);
-        }
-        return subs;
-    };
-
-    std::vector<int> u_subs = span_subs(0, usp, vsp);
-    std::vector<int> v_subs = span_subs(1, vsp, usp);
-
-    // Arc-length aspect ratio balancing
-    {
-        int total_u = 0, total_v = 0;
-        for (int sv : u_subs) total_u += sv;
-        for (int sv : v_subs) total_v += sv;
-        total_u += 1; total_v += 1;
-        double v_mid = (vsp.front() + vsp.back()) * 0.5;
-        double u_mid = (usp.front() + usp.back()) * 0.5;
-        double u_len = 0.0, v_len = 0.0;
-        {
-            double px0, py0, pz0;
-            s.point_at(usp.front(), v_mid, px0, py0, pz0);
-            int n_sample = std::max(total_u, 10);
-            for (int i = 1; i <= n_sample; ++i) {
-                double u = usp.front() + i * (usp.back() - usp.front()) / n_sample;
-                double px1, py1, pz1;
-                s.point_at(u, v_mid, px1, py1, pz1);
-                u_len += std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
-                px0 = px1; py0 = py1; pz0 = pz1;
-            }
-        }
-        {
-            double px0, py0, pz0;
-            s.point_at(u_mid, vsp.front(), px0, py0, pz0);
-            int n_sample = std::max(total_v, 10);
-            for (int i = 1; i <= n_sample; ++i) {
-                double v = vsp.front() + i * (vsp.back() - vsp.front()) / n_sample;
-                double px1, py1, pz1;
-                s.point_at(u_mid, v, px1, py1, pz1);
-                v_len += std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
-                px0 = px1; py0 = py1; pz0 = pz1;
-            }
-        }
-        if (u_len > 1e-14 && v_len > 1e-14 && total_u > 0 && total_v > 0) {
-            double spacing_u = u_len / total_u;
-            double spacing_v = v_len / total_v;
-            double ratio = spacing_u / spacing_v;
-            if (ratio > 2.0 && deg_u > 1) {
-                double scale = std::sqrt(ratio);
-                for (int& sv : u_subs) sv = std::min(24, (int)std::ceil(sv * scale));
-            } else if (ratio < 0.5 && deg_v > 1) {
-                double scale = std::sqrt(1.0 / ratio);
-                for (int& sv : v_subs) sv = std::min(24, (int)std::ceil(sv * scale));
-            }
+            key = target;
         }
     }
-
-    // Bilinear twist check (skip for singular surfaces — fan triangulation handles those)
-    if (deg_u == 1 && deg_v == 1 && !s.is_singular(0) && !s.is_singular(2)) {
-        double chord_tol = (bbox_diag > 0) ? bbox_diag * chord_factor : 1e-6;
-        double max_twist = 0.0;
-        for (int i = 0; i < ns_u; ++i)
-            for (int j = 0; j < ns_v; ++j) {
-                double u0 = usp[i], u1 = usp[i+1];
-                double v0 = vsp[j], v1 = vsp[j+1];
-                double pmx, pmy, pmz;
-                s.point_at((u0+u1)*0.5, (v0+v1)*0.5, pmx, pmy, pmz);
-                double p00x, p00y, p00z, p11x, p11y, p11z;
-                s.point_at(u0, v0, p00x, p00y, p00z);
-                s.point_at(u1, v1, p11x, p11y, p11z);
-                double mx = (p00x+p11x)*0.5, my = (p00y+p11y)*0.5, mz = (p00z+p11z)*0.5;
-                double ddx = pmx-mx, ddy = pmy-my, ddz = pmz-mz;
-                double twist = std::sqrt(ddx*ddx+ddy*ddy+ddz*ddz);
-                if (twist > max_twist) max_twist = twist;
-            }
-        if (max_twist > chord_tol) {
-            int twist_subs = std::min(24, std::max(4, (int)std::ceil(2.0 * std::sqrt(max_twist / chord_tol))));
-            for (int& sv : u_subs) sv = std::max(sv, twist_subs);
-            for (int& sv : v_subs) sv = std::max(sv, twist_subs);
-        }
-    }
-
-    bool closed_u = s.is_closed(0);
-    bool closed_v = s.is_closed(1);
-
-    // Ensure odd total subdivisions for closed directions (seamless checkerboard triangulation)
-    if (closed_u && max_u == 0) {
-        int total = 0; for (int sv : u_subs) total += sv;
-        if (total % 2 == 0) *std::max_element(u_subs.begin(), u_subs.end()) += 1;
-    }
-    if (closed_v && max_v == 0) {
-        int total = 0; for (int sv : v_subs) total += sv;
-        if (total % 2 == 0) *std::max_element(v_subs.begin(), v_subs.end()) += 1;
-    }
-
-    // Arc-length parameterization: sample dense curve, redistribute n points evenly by 3D length
-    auto arclen_params = [&](int n, const std::vector<double>& sp, double fixed) -> std::vector<double> {
-        int nsample = std::max(n * 20, 200);
-        std::vector<double> st(nsample + 1);
-        std::vector<double> sl(nsample + 1, 0.0);
-        double px0, py0, pz0;
-        bool is_u = (&sp == &usp);
-        double t0 = sp.front();
-        if (is_u) s.point_at(t0, fixed, px0, py0, pz0);
-        else      s.point_at(fixed, t0, px0, py0, pz0);
-        for (int k = 0; k <= nsample; ++k) {
-            double t = sp.front() + k * (sp.back() - sp.front()) / nsample;
-            st[k] = t;
-            if (k > 0) {
-                double px1, py1, pz1;
-                if (is_u) s.point_at(t, fixed, px1, py1, pz1);
-                else      s.point_at(fixed, t, px1, py1, pz1);
-                double d = std::sqrt((px1-px0)*(px1-px0)+(py1-py0)*(py1-py0)+(pz1-pz0)*(pz1-pz0));
-                sl[k] = sl[k-1] + d;
-                px0 = px1; py0 = py1; pz0 = pz1;
-            }
-        }
-        double total = sl[nsample];
-        std::vector<double> params;
-        params.push_back(sp.front());
-        int j = 0;
-        for (int i = 1; i < n - 1; ++i) {
-            double target = total * i / (n - 1);
-            while (j < nsample && sl[j] < target) ++j;
-            double ta = st[j > 0 ? j-1 : 0], tb = st[j];
-            double la = sl[j > 0 ? j-1 : 0], lb = sl[j];
-            double frac = (lb > la) ? (target - la) / (lb - la) : 0.0;
-            params.push_back(ta + frac * (tb - ta));
-        }
-        params.push_back(sp.back());
-        return params;
-    };
-
-    // Build parameter arrays
-    double v_mid = (vsp.front() + vsp.back()) * 0.5;
-    double u_mid = (usp.front() + usp.back()) * 0.5;
-    std::vector<double> us, vs;
-    if (max_u > 0) {
-        us = arclen_params(std::max(max_u, 2), usp, v_mid);
-    } else {
-        for (int i = 0; i < ns_u; ++i)
-            for (int sv = 0; sv < u_subs[i]; ++sv)
-                us.push_back(usp[i] + sv * (usp[i+1] - usp[i]) / u_subs[i]);
-        us.push_back(usp.back());
-    }
-    if (max_v > 0) {
-        vs = arclen_params(std::max(max_v, 2), vsp, u_mid);
-    } else {
-        for (int i = 0; i < ns_v; ++i)
-            for (int sv = 0; sv < v_subs[i]; ++sv)
-                vs.push_back(vsp[i] + sv * (vsp[i+1] - vsp[i]) / v_subs[i]);
-        vs.push_back(vsp.back());
-    }
-
-    // For closed surfaces, ensure the wrapping gap is not disproportionately large.
-    auto fix_closed_gap = [](std::vector<double>& params, const std::vector<double>& spans, bool closed) {
-        if (!closed || params.size() < 3) return;
-        params.pop_back();
-        double domain_end = spans.back();
-        double wrap_gap = domain_end - params.back();
-        double max_gap = 0;
-        for (size_t i = 1; i < params.size(); i++)
-            max_gap = std::max(max_gap, params[i] - params[i - 1]);
-        if (max_gap > 0 && wrap_gap > max_gap * 1.5) {
-            int extra = (int)std::ceil(wrap_gap / max_gap) - 1;
-            double step = wrap_gap / (extra + 1);
-            for (int e = 1; e <= extra; e++)
-                params.push_back(params.back() + step);
-        }
-    };
-
-    fix_closed_gap(us, usp, closed_u);
-    fix_closed_gap(vs, vsp, closed_v);
-    int nu = (int)us.size(), nv = (int)vs.size();
-
-    // Detect singular edges (collapsed to a single point)
-    bool sing_v0 = s.is_singular(0); // south: v=vs[0]
-    bool sing_v1 = s.is_singular(2); // north: v=vs[nv-1]
-    int j_start = sing_v0 ? 1 : 0;
-    int j_end = sing_v1 ? nv - 1 : nv;
-    int nv_grid = j_end - j_start;
-
-    Mesh result;
-    size_t south_pole = 0, north_pole = 0;
-    if (sing_v0) {
-        double px, py, pz;
-        s.point_at(us[0], vs[0], px, py, pz);
-        south_pole = result.add_vertex(Point(px, py, pz));
-        result.vertex[south_pole].attributes["u"] = us[0];
-        result.vertex[south_pole].attributes["v"] = vs[0];
-    }
-    if (sing_v1) {
-        double px, py, pz;
-        s.point_at(us[0], vs[nv - 1], px, py, pz);
-        north_pole = result.add_vertex(Point(px, py, pz));
-        result.vertex[north_pole].attributes["u"] = us[0];
-        result.vertex[north_pole].attributes["v"] = vs[nv - 1];
-    }
-    size_t grid_base = result.vertex.size();
-    for (int i = 0; i < nu; ++i)
-        for (int j = j_start; j < j_end; ++j) {
-            double px, py, pz;
-            s.point_at(us[i], vs[j], px, py, pz);
-            size_t vk = result.add_vertex(Point(px, py, pz));
-            result.vertex[vk].attributes["u"] = us[i];
-            result.vertex[vk].attributes["v"] = vs[j];
-        }
-
-    auto grid_idx = [&](int i, int j) -> size_t {
-        return grid_base + (size_t)i * nv_grid + (j - j_start);
-    };
-
-    int nu_faces = closed_u ? nu : nu - 1;
-
-    // South pole fan
-    if (sing_v0) {
-        for (int i = 0; i < nu_faces; ++i) {
-            int i1 = (i + 1) % nu;
-            result.add_face({south_pole, grid_idx(i1, j_start), grid_idx(i, j_start)});
-        }
-    }
-
-    // Interior grid faces
-    int nv_interior = nv_grid - 1;
-    if (closed_v && !sing_v0 && !sing_v1) nv_interior = nv_grid;
-    for (int i = 0; i < nu_faces; ++i)
-        for (int jj = 0; jj < nv_interior; ++jj) {
-            int j = jj + j_start;
-            int i1 = (i + 1) % nu;
-            int j1 = (closed_v && !sing_v0 && !sing_v1)
-                     ? ((jj + 1) % nv_grid + j_start)
-                     : (j + 1);
-            size_t v00 = grid_idx(i, j), v10 = grid_idx(i1, j);
-            size_t v01 = grid_idx(i, j1), v11 = grid_idx(i1, j1);
-            if ((i + jj) % 2 == 0) {
-                result.add_face({v00, v10, v11});
-                result.add_face({v00, v11, v01});
-            } else {
-                result.add_face({v00, v10, v01});
-                result.add_face({v10, v11, v01});
-            }
-        }
-
-    // North pole fan
-    if (sing_v1) {
-        int j_last = j_end - 1;
-        for (int i = 0; i < nu_faces; ++i) {
-            int i1 = (i + 1) % nu;
-            result.add_face({grid_idx(i, j_last), grid_idx(i1, j_last), north_pole});
-        }
-    }
-
-    // Compute vertex normals from face normals
-    size_t nv_total = result.vertex.size();
-    std::vector<double> vnx(nv_total, 0.0), vny(nv_total, 0.0), vnz(nv_total, 0.0);
-    std::vector<size_t> face_keys;
-    for (const auto& [fi, vids] : result.face) face_keys.push_back(fi);
-    std::sort(face_keys.begin(), face_keys.end());
-    for (size_t fi : face_keys) {
-        const auto& vids = result.face.at(fi);
-        if (vids.size() < 3) continue;
-        Point pos0 = result.vertex.at(vids[0]).position();
-        Point pos1 = result.vertex.at(vids[1]).position();
-        Point pos2 = result.vertex.at(vids[2]).position();
-        double e1x = pos1[0]-pos0[0], e1y = pos1[1]-pos0[1], e1z = pos1[2]-pos0[2];
-        double e2x = pos2[0]-pos0[0], e2y = pos2[1]-pos0[1], e2z = pos2[2]-pos0[2];
-        double fnx = e1y*e2z - e1z*e2y, fny = e1z*e2x - e1x*e2z, fnz = e1x*e2y - e1y*e2x;
-        for (auto vi : vids) { vnx[vi] += fnx; vny[vi] += fny; vnz[vi] += fnz; }
-    }
-    for (size_t i = 0; i < nv_total; ++i) {
-        double len = std::sqrt(vnx[i]*vnx[i] + vny[i]*vny[i] + vnz[i]*vnz[i]);
-        double fx = 0.0, fy = 0.0, fz = 1.0;
-        if (std::isfinite(len) && len > 0.0) {
-            fx = vnx[i] / len; fy = vny[i] / len; fz = vnz[i] / len;
-        }
-        double nx = fx, ny = fy, nz = fz;
-        auto& vd = result.vertex[i];
-        auto u = vd.attributes.find("u"), v = vd.attributes.find("v");
-        bool is_pole = (sing_v0 && i == south_pole) || (sing_v1 && i == north_pole);
-        // Surface normals preserve smooth interiors; singular poles use adjacent facets.
-        if (!is_pole && u != vd.attributes.end() && v != vd.attributes.end()) {
-            // Reject normal_at's singular +Z sentinel, including U-collapsed corners.
-            auto derivatives = s.evaluate(u->second, v->second, 1);
-            Vector na(0.0, 0.0, 0.0);
-            if (derivatives.size() >= 3) na = derivatives[2].cross(derivatives[1]);
-            double nl = std::sqrt(na[0]*na[0] + na[1]*na[1] + na[2]*na[2]);
-            if (std::isfinite(nl) && nl > 0.0) {
-                nx = na[0] / nl; ny = na[1] / nl; nz = na[2] / nl;
-                if (nx * fx + ny * fy + nz * fz < 0.0) {
-                    nx = -nx; ny = -ny; nz = -nz;
-                }
-            }
-        }
-        vd.set_normal(nx, ny, nz);
-    }
-    split_crease_normals(s, result);
-    return result;
+    mesh.rebuild_halfedges();
 }
 
 } // namespace session_cpp

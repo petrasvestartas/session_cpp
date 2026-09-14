@@ -1,50 +1,32 @@
 #include "mini_test.h"
 #include "polyline.h"
+#include "color.h"
+#include "plane.h"
 #include "point.h"
 #include "vector.h"
-#include "color.h"
 #include "tolerance.h"
-#include "plane.h"
-
 #include <cmath>
 #include <vector>
-#include <sstream>
 
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
 MINI_TEST("Polyline", "Constructor") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // uncomment #include "color.h"
-
-    // Constructor with points
     Point p0(0.0, 0.0, 0.0);
     Point p1(1.0, 0.0, 0.0);
     Point p2(1.0, 1.0, 0.0);
     Point p3(0.0, 1.0, 0.0);
     Polyline pl({p0, p1, p2, p3});
-
-    // Basic properties
     size_t point_count = pl.len();
     size_t segment_count = pl.segment_count();
     bool is_empty = pl.is_empty();
-
-    // Get point
     Point pt = pl.get_point(1);
-
-    // Index operator
     Point pt_idx = pl[1];
     Polyline pl_copy = pl;
     pl_copy.set_point(0, Point(5.0, 6.0, 7.0));
-
-    // Minimal and Full String Representation
     std::string plstr = pl.str();
     std::string plrepr = pl.repr();
-
-    // Copy (duplicates everything except guid())
     Polyline plcopy = pl;
     Polyline plother({
         Point(0.0, 0.0, 0.0),
@@ -53,7 +35,6 @@ MINI_TEST("Polyline", "Constructor") {
         Point(0.0, 1.0, 0.0),
     });
 
-    // No-copy operators
     Polyline plmult = pl;
     plmult *= 2.0;
     Polyline pldiv = pl;
@@ -63,13 +44,11 @@ MINI_TEST("Polyline", "Constructor") {
     Polyline plsub = pl;
     plsub -= Vector(1.0, 1.0, 1.0);
 
-    // Copy operators
     Polyline rmul = pl * 2.0;
     Polyline rdiv = pl / 2.0;
     Polyline radd = pl + Vector(1.0, 1.0, 1.0);
     Polyline rdif = pl - Vector(1.0, 1.0, 1.0);
 
-    // Negation (reverse point order)
     Polyline plneg({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -78,7 +57,6 @@ MINI_TEST("Polyline", "Constructor") {
     });
     Polyline neg = -plneg;
 
-    // Polyline with custom color and width
     Polyline plc({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -107,8 +85,6 @@ MINI_TEST("Polyline", "Constructor") {
     MINI_CHECK(rdif.get_point(0)[0] == -1.0 && rdif.get_point(0)[1] == -1.0);
     MINI_CHECK(neg.get_point(0)[0] == 3.0 && neg.get_point(3)[0] == 0.0);
     MINI_CHECK(plc.linecolor[0] == 1.0f && plc.linecolor[1] == 0.0f && plc.width == 2.5);
-
-
 }
 
 MINI_TEST("Polyline", "From Coords") {
@@ -141,10 +117,6 @@ MINI_TEST("Polyline", "Rectangle") {
 }
 
 MINI_TEST("Polyline", "Transformation") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -160,9 +132,6 @@ MINI_TEST("Polyline", "Transformation") {
 }
 
 MINI_TEST("Polyline", "Json Roundtrip") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
     Polyline pl({
         Point(1.0, 2.0, 3.0),
         Point(4.0, 5.0, 6.0),
@@ -171,14 +140,6 @@ MINI_TEST("Polyline", "Json Roundtrip") {
     });
     pl.name = "test_polyline";
 
-    //   jsondump()      │ ordered_json │ to JSON object (internal use)
-    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   file_json_dumps()    │ std::string  │ to JSON string
-    //   file_json_loads(s)   │ std::string  │ from JSON string
-    //   file_json_dump(path) │ file         │ write to file
-    //   file_json_load(path) │ file         │ read from file
-
-    // file_json_dump(fname) / file_json_load(fname) - file-based serialization
     std::string fname = "serialization/test_polyline.json";
     pl.file_json_dump(fname);
     Polyline loaded = Polyline::file_json_load(fname);
@@ -188,15 +149,9 @@ MINI_TEST("Polyline", "Json Roundtrip") {
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(0)[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(1)[1], 5.0));
     MINI_CHECK(TOLERANCE.is_close(loaded.get_point(2)[2], 9.0));
-
-
-
 }
 
 MINI_TEST("Polyline", "Protobuf Roundtrip") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
     Polyline pl({
         Point(1.0, 2.0, 3.0),
         Point(4.0, 5.0, 6.0),
@@ -205,7 +160,6 @@ MINI_TEST("Polyline", "Protobuf Roundtrip") {
     });
     pl.name = "test_polyline";
 
-    // pb_dump(fname) / pb_load(fname) - file-based serialization
     std::string fname = "serialization/test_polyline.bin";
     pl.pb_dump(fname);
     Polyline loaded = Polyline::pb_load(fname);
@@ -218,10 +172,6 @@ MINI_TEST("Polyline", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Polyline", "Length") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
-    // L-shaped polyline: 1 unit right, 1 unit up, 1 unit left = 3 units total
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -233,15 +183,9 @@ MINI_TEST("Polyline", "Length") {
 
     MINI_CHECK(TOLERANCE.is_close(ln, 3.0));
     MINI_CHECK(TOLERANCE.is_close(mag_sq, 3.0));
-
-
 }
 
 MINI_TEST("Polyline", "Center") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
-    // Square polyline
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -253,15 +197,9 @@ MINI_TEST("Polyline", "Center") {
     MINI_CHECK(TOLERANCE.is_close(c[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(c[1], 1.0));
     MINI_CHECK(TOLERANCE.is_close(c[2], 0.0));
-
-
 }
 
 MINI_TEST("Polyline", "Is Closed") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
-    // Open polyline
     Polyline open_pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -270,7 +208,6 @@ MINI_TEST("Polyline", "Is Closed") {
     });
     bool is_open = open_pl.is_closed();
 
-    // Closed polyline (first and last point same)
     Polyline closed_pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -281,14 +218,9 @@ MINI_TEST("Polyline", "Is Closed") {
 
     MINI_CHECK(!is_open);
     MINI_CHECK(is_closed);
-
-
 }
 
 MINI_TEST("Polyline", "Closed") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
     Polyline open_pl({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)});
     Polyline closed_from_open = open_pl.closed();
 
@@ -302,9 +234,6 @@ MINI_TEST("Polyline", "Closed") {
 }
 
 MINI_TEST("Polyline", "Reverse") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -312,26 +241,19 @@ MINI_TEST("Polyline", "Reverse") {
         Point(3.0, 0.0, 0.0),
     });
 
-    // Test reversed() returns new polyline
     Polyline rev = pl.reversed();
     double orig_first = pl.get_point(0)[0];
     double rev_first = rev.get_point(0)[0];
 
-    // Test reverse() in place
     pl.reverse();
     double in_place_first = pl.get_point(0)[0];
 
     MINI_CHECK(orig_first == 0.0);
     MINI_CHECK(rev_first == 3.0);
     MINI_CHECK(in_place_first == 3.0);
-
-
 }
 
 MINI_TEST("Polyline", "Closest Point") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -347,8 +269,6 @@ MINI_TEST("Polyline", "Closest Point") {
     MINI_CHECK(TOLERANCE.is_close(closest[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(closest[1], 0.0));
     MINI_CHECK(TOLERANCE.is_close(distance, 1.0));
-
-
 }
 
 MINI_TEST("Polyline", "Closest Point To Line") {
@@ -554,14 +474,12 @@ MINI_TEST("Polyline", "Point At") {
 }
 
 MINI_TEST("Polyline", "Is Clockwise") {
-    // Clockwise square (when viewed from +Z)
     Polyline cw_pl({
         Point(0.0, 0.0, 0.0),
         Point(0.0, 1.0, 0.0),
         Point(1.0, 1.0, 0.0),
         Point(1.0, 0.0, 0.0),
     });
-    // Counter-clockwise square
     Polyline ccw_pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -627,17 +545,11 @@ MINI_TEST("Polyline", "Average Plane") {
 }
 
 MINI_TEST("Polyline", "Interpolate Points") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
-
     Point a(0.0, 0.0, 0.0);
     Point b(4.0, 0.0, 0.0);
 
-    // kind 0: no endpoints — 3 interior points at t=0.25, 0.5, 0.75
     auto pts0 = Polyline::interpolate_points(a, b, 3, 0);
-    // kind 1: both endpoints — 5 points
     auto pts1 = Polyline::interpolate_points(a, b, 3, 1);
-    // kind 2: start only — 4 points (from + 3 interior)
     auto pts2 = Polyline::interpolate_points(a, b, 3, 2);
 
     MINI_CHECK(pts0.size() == 3);
@@ -729,30 +641,29 @@ MINI_TEST("Polyline", "Polylabel Circle Division Points") {
 }
 
 MINI_TEST("Polyline", "Boolean Op") {
-    using P = Point;
     Polyline sq_a({
-        P(-1.0, -1.0, 0.0),
-        P( 1.0, -1.0, 0.0),
-        P( 1.0,  1.0, 0.0),
-        P(-1.0,  1.0, 0.0),
+        Point(-1.0, -1.0, 0.0),
+        Point( 1.0, -1.0, 0.0),
+        Point( 1.0,  1.0, 0.0),
+        Point(-1.0,  1.0, 0.0),
     });
     Polyline sq_b({
-        P(0.0, 0.0, 0.0),
-        P(2.0, 0.0, 0.0),
-        P(2.0, 2.0, 0.0),
-        P(0.0, 2.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(2.0, 2.0, 0.0),
+        Point(0.0, 2.0, 0.0),
     });
     Polyline sq_inside({
-        P(-0.5, -0.5, 0.0),
-        P( 0.5, -0.5, 0.0),
-        P( 0.5,  0.5, 0.0),
-        P(-0.5,  0.5, 0.0),
+        Point(-0.5, -0.5, 0.0),
+        Point( 0.5, -0.5, 0.0),
+        Point( 0.5,  0.5, 0.0),
+        Point(-0.5,  0.5, 0.0),
     });
     Polyline sq_disjoint({
-        P(5.0, 5.0, 0.0),
-        P(6.0, 5.0, 0.0),
-        P(6.0, 6.0, 0.0),
-        P(5.0, 6.0, 0.0),
+        Point(5.0, 5.0, 0.0),
+        Point(6.0, 5.0, 0.0),
+        Point(6.0, 6.0, 0.0),
+        Point(5.0, 6.0, 0.0),
     });
 
     auto isect  = Polyline::boolean_op(sq_a, sq_b, 0);
@@ -787,23 +698,23 @@ MINI_TEST("Polyline", "Boolean Op") {
 }
 
 MINI_TEST("Polyline", "Boolean Op Plane") {
-    using P = Point;
-    // Two overlapping squares lifted to z=5 and clipped against the z=5 plane
     Point origin(0,0,5);
     Vector normal(0,0,1);
     Plane plane = Plane::from_point_normal(origin, normal);
-    Polyline sq_a({P(-1,-1,5), P(1,-1,5), P(1,1,5), P(-1,1,5), P(-1,-1,5)});
-    Polyline sq_b({P(0,0,5),  P(2,0,5), P(2,2,5), P(0,2,5), P(0,0,5)});
+    Polyline sq_a({Point(-1,-1,5), Point(1,-1,5), Point(1,1,5), Point(-1,1,5), Point(-1,-1,5)});
+    Polyline sq_b({Point(0,0,5),  Point(2,0,5), Point(2,2,5), Point(0,2,5), Point(0,0,5)});
     auto isect = Polyline::boolean_op(sq_a, sq_b, plane, 0);
     auto uni   = Polyline::boolean_op(sq_a, sq_b, plane, 1);
     auto diff  = Polyline::boolean_op(sq_a, sq_b, plane, 2);
     MINI_CHECK(isect.size() == 1);
     MINI_CHECK(uni.size() == 1);
     MINI_CHECK(diff.size() == 1);
-    // All result points must lie on the plane (z ≈ 5)
-    for (size_t i = 0; i < isect[0].point_count(); ++i) MINI_CHECK(TOLERANCE.is_close(isect[0][i][2], 5.0));
-    for (size_t i = 0; i < uni[0].point_count(); ++i)   MINI_CHECK(TOLERANCE.is_close(uni[0][i][2], 5.0));
-    for (size_t i = 0; i < diff[0].point_count(); ++i)  MINI_CHECK(TOLERANCE.is_close(diff[0][i][2], 5.0));
+    for (const Point &p : isect[0].get_points())
+        MINI_CHECK(TOLERANCE.is_close(p[2], 5.0));
+    for (const Point &p : uni[0].get_points())
+        MINI_CHECK(TOLERANCE.is_close(p[2], 5.0));
+    for (const Point &p : diff[0].get_points())
+        MINI_CHECK(TOLERANCE.is_close(p[2], 5.0));
 }
 
 MINI_TEST("Polyline", "Merge Collinear") {
@@ -894,9 +805,6 @@ MINI_TEST("Polyline", "Simplify Two Points") {
 }
 
 MINI_TEST("Polyline", "Translate") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "vector.h"
-
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -910,8 +818,6 @@ MINI_TEST("Polyline", "Translate") {
 }
 
 MINI_TEST("Polyline", "Extend Edge Equally") {
-    // uncomment #include "polyline.h"
-
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -925,5 +831,4 @@ MINI_TEST("Polyline", "Extend Edge Equally") {
     MINI_CHECK(TOLERANCE.is_close(pl.get_point(1)[0], 11.0));
     MINI_CHECK(TOLERANCE.is_close(pl.get_point(4)[0], -1.0));
 }
-
 } // namespace session_cpp

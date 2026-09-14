@@ -98,7 +98,11 @@ int main() {
     {
         auto g = session.add_group("07_FromRotation");
         Plane plane_a = Plane::xy_plane();
-        Plane plane_b(Point(0.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), Vector(-1.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0));
+        Plane plane_b(
+            Point(0.0, 0.0, 0.0),
+            Vector(0.0, 1.0, 0.0),
+            Vector(-1.0, 0.0, 0.0)
+        );
         Quaternion q = Quaternion::from_rotation(plane_a, plane_b);
         session.add_plane(make_plane(plane_a, "plane_a", Color(160, 160, 160)), g);
         session.add_plane(make_plane(plane_b, "plane_b", Color::blue()), g);

@@ -1,22 +1,19 @@
 #pragma once
 
-#include "point.h"
-#include "vector.h"
-#include "plane.h"
-#include "xform.h"
 #include "color.h"
-#include "tolerance.h"
-#include "obb.h"
-#include "nurbscurve.h"
 #include "guid.h"
 #include "json.h"
 #include "mesh.h"
-#include <vector>
+#include "nurbscurve.h"
+#include "plane.h"
+#include "point.h"
+#include "tolerance.h"
+#include "vector.h"
+#include "xform.h"
 #include <string>
-#include <cmath>
-#include <algorithm>
-#include <stdexcept>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 namespace session_cpp {
 
@@ -24,12 +21,13 @@ class Line;
 class BRep;
 class NurbsSurfaceTrimmed;
 
+/// A NURBS surface: OpenNURBS layout, nurbsknot count = order + cv_count - 2 per direction, homogeneous row-major CVs when rational
 class NurbsSurface {
 public:
     bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+    /// Clear the guid so a fresh one mints lazily on next read
     void refresh_guid() { _guid.clear(); }
     std::string name = "my_nurbssurface";
     double width = 1.0;
@@ -42,551 +40,317 @@ public:
     int m_order[2];
     int m_cv_count[2];
     int m_cv_stride[2];
-
     std::vector<double> m_nurbsknot[2];
     std::vector<double> m_cv;
     mutable Mesh m_mesh;
 
-public:
     // ═══════════════════════════════════════════════════════════════════════════
-    // Static Factory Method
+    // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Build surface from a flat list of 3D control points in row-major order
-    /// (u varies slowest, v varies fastest). Allocates nurbsknot vectors as clamped
-    /// uniform if not periodic. points.size() must equal cv_count_u * cv_count_v.
-    /// Periodic flags wrap the nurbsknot structure in the respective direction.
-    static NurbsSurface create(bool periodic_u, bool periodic_v,
-                              int degree_u, int degree_v,
-                              int cv_count_u, int cv_count_v,
-                              const std::vector<Point>& points);
+    /// Clamped or periodic uniform surface through cv_count_u x cv_count_v points in row-major order (u slowest)
+    static NurbsSurface create(bool periodic_u, bool periodic_v, int degree_u, int degree_v, int cv_count_u, int cv_count_v, const std::vector<Point>& points);
 
-    /// Create a NURBS surface from explicit parameters (OCCT / compas_occt convention:
-    /// distinct knots + per-knot multiplicities, per direction). Mirrors
-    /// OCCNurbsSurface.from_parameters and underlies from_points / from_meshgrid.
-    /// `points`/`weights` follow the compas grid convention: a list of v-rows, each with
-    /// u columns (points[iv][iu]). Internal (OpenNURBS) knot vectors are the expanded full
-    /// knot vectors with first and last entries dropped; domains become
-    /// [knots_u.front(), knots_u.back()] x [knots_v.front(), knots_v.back()].
+    /// OCCT convention: points[iv][iu], weights[iv][iu], distinct knots with multiplicities per direction
     static NurbsSurface create_from_parameters(
         const std::vector<std::vector<Point>>& points,
         const std::vector<std::vector<double>>& weights,
-        const std::vector<double>& knots_u, const std::vector<double>& knots_v,
-        const std::vector<int>& mults_u, const std::vector<int>& mults_v,
-        int degree_u, int degree_v,
-        bool periodic_u = false, bool periodic_v = false);
+        const std::vector<double>& knots_u,
+        const std::vector<double>& knots_v,
+        const std::vector<int>& mults_u,
+        const std::vector<int>& mults_v,
+        int degree_u,
+        int degree_v,
+        bool periodic_u = false,
+        bool periodic_v = false
+    );
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors & Destructor
+    // Constructors
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Default constructor. Creates an empty invalid surface with m_dim=0,
-    /// zero orders, zero CV counts, and no nurbsknot/CV storage allocated.
-    /// is_valid() returns false. Use create() or create_raw() to populate.
     NurbsSurface();
-
-    /// Parametric constructor. Allocates CV array and nurbsknot vectors sized for
-    /// the given orders and CV counts. Fills nurbsknots as clamped uniform [0..n].
-    /// CVs are zeroed. Stride is set to dim (or dim+1 if rational).
-    NurbsSurface(int dimension, bool is_rational,
-                int order0, int order1,
-                int cv_count0, int cv_count1);
-
-    /// Deep copy. Copies all CV data, nurbsknots, metadata (guid, name,
-    /// color). The copy gets a new guid.
+    NurbsSurface(int dimension, bool is_rational, int order0, int order1, int cv_count0, int cv_count1);
+    /// Copy (new guid, same data)
     NurbsSurface(const NurbsSurface& other);
-
-    /// Move constructor and assignment: identity SURVIVES a move.
-    ///
-    /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
-    /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
-    /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
-    /// to the COPY and silently dropped the guid it had just deserialized - every other field
-    /// survived, so the object looked right and only its identity was wrong. That is what broke Line
-    /// on MSVC when its pb_loads changed shape; see line.h.
+    /// Move keeps the guid: the same object in a new place
     NurbsSurface(NurbsSurface&& other) noexcept = default;
     NurbsSurface& operator=(NurbsSurface&& other) noexcept = default;
-
-    /// Deep copy assignment. Same semantics as copy constructor —
-    /// copies all data, generates new guid for the target.
     NurbsSurface& operator=(const NurbsSurface& other);
-
-    /// Compares dimension, rationality, orders, CV counts, all nurbsknot values,
-    /// and all CV coordinates within machine epsilon. Does NOT compare guid,
-    /// name or color.
+    /// Same name, width, colors, layout, nurbsknots and CVs; guid ignored
     bool operator==(const NurbsSurface& other) const;
     bool operator!=(const NurbsSurface& other) const;
-
     ~NurbsSurface();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Initialization
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Zero all member fields: m_dim=0, orders=0, CV counts=0.
-    /// Clears nurbsknot and CV vectors. Does not free — vectors handle own memory.
+    /// Reset every field to the empty invalid surface
     void initialize();
 
-    /// Low-level allocation. Sets up nurbsknot vectors (periodic or clamped uniform)
-    /// and CV array for the given dimensions. Returns false if params invalid
-    /// (order < 2, cv_count < order). Prefer the parametric constructor or
-    /// create() for normal use.
-    bool create_raw(int dimension, bool is_rational,
-               int order0, int order1,
-               int cv_count0, int cv_count1,
-               bool is_periodic_u = false, bool is_periodic_v = false,
-               double nurbsknot_delta_u = 1.0, double nurbsknot_delta_v = 1.0);
+    /// Allocate nurbsknots (clamped or periodic uniform) and zeroed CVs; false when order < 2 or cv_count < order
+    bool create_raw(int dimension, bool is_rational, int order0, int order1, int cv_count0, int cv_count1, bool is_periodic_u = false, bool is_periodic_v = false, double nurbsknot_delta_u = 1.0, double nurbsknot_delta_v = 1.0);
 
-    /// Convenience wrapper around create_raw that always produces clamped
-    /// uniform nurbsknots with the given delta spacing. Equivalent to
-    /// create_raw(..., false, false, delta0, delta1).
-    bool create_clamped_uniform(int dimension,
-                               int order0, int order1,
-                               int cv_count0, int cv_count1,
-                               double nurbsknot_delta0 = 1.0,
-                               double nurbsknot_delta1 = 1.0);
+    /// Non-rational surface with clamped uniform nurbsknots of the given spacing
+    bool create_clamped_uniform(int dimension, int order0, int order1, int cv_count0, int cv_count1, double nurbsknot_delta0 = 1.0, double nurbsknot_delta1 = 1.0);
 
-    /// Clear all data and reset to empty invalid state.
-    /// After this call, is_valid() returns false.
+    /// Clear all data; is_valid() is false afterwards
     void destroy();
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Boolean Queries
+    // Boolean queries
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Checks structural consistency: orders >= 2, cv_count >= order in both
-    /// dirs, nurbsknot vectors have correct length (cv_count + order - 2), nurbsknots
-    /// are non-decreasing, CV array has correct total size, and strides are
-    /// consistent with dimension and rationality.
+    /// Orders >= 2, cv_count >= order, nurbsknot vectors of the right length and non-decreasing, CV array large enough
     bool is_valid() const;
 
-    /// Validate the nurbsknot vector: must be non-decreasing, no multiplicity
-    /// exceeding order, and correct length relative to cv_count and order.
+    /// Nurbsknot vector in dir has the right length and is non-decreasing
     bool is_valid_nurbsknot_vector(int dir) const;
 
-    /// True if surface carries per-CV weights (NURBS). False for polynomial
-    /// B-spline surfaces where all weights are implicitly 1.0.
     bool is_rational() const { return m_is_rat != 0; }
 
-    /// True if the surface wraps in the given direction: the first and last
-    /// rows (dir=0) or columns (dir=1) of CVs coincide within tolerance.
-    /// Does not check nurbsknot periodicity — use is_periodic() for that.
+    /// First and last CV rows across dir coincide when clamped, else periodic
     bool is_closed(int dir) const;
 
-    /// True if the nurbsknot vector in dir has periodic structure: the first
-    /// and last degree-many nurbsknot intervals are equal. A periodic surface
-    /// is always closed but a closed surface may not be periodic.
+    /// Uniform nurbsknot spacing in dir and the first degree CV rows repeat the last
     bool is_periodic(int dir) const;
 
-    /// Tests whether all control points lie within a single plane (up to
-    /// tolerance). If plane is non-null and surface is planar, writes the
-    /// best-fit plane. Uses SVD of the CV centroid-relative matrix.
+    /// Every CV within tolerance of one plane, written to plane when given
     bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
 
-    /// True if the given boundary edge is collapsed to a single point —
-    /// all CVs along that edge coincide within tolerance.
-    /// side: 0=south (v=0), 1=east (u=1), 2=north (v=1), 3=west (u=0).
+    /// Clamped side collapsed to one point; side: 0 south (v0), 1 east (u1), 2 north (v1), 3 west (u0)
     bool is_singular(int side) const;
 
-    /// True if end nurbsknots have full multiplicity (equal to order) in dir.
-    /// end: 0=start only, 1=end only, 2=both ends.
-    /// Clamped nurbsknots force the surface to interpolate the boundary CVs.
+    /// Full end multiplicity in dir; end: 0 start, 1 end, 2 both
     bool is_clamped(int dir, int end = 2) const;
 
-    /// True if surfaces have identical structure (dim, order, cv_count, CVs,
-    /// weights). When ignore_parameterization is false, nurbsknot vectors must also
-    /// match within tolerance.
-    bool is_duplicate(const NurbsSurface& other,
-                      bool ignore_parameterization,
-                      double tolerance = Tolerance::ZERO_TOLERANCE) const;
+    /// Same layout, CVs and weights within tolerance; nurbsknots too unless ignore_parameterization
+    bool is_duplicate(const NurbsSurface& other, bool ignore_parameterization, double tolerance = Tolerance::ZERO_TOLERANCE) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Attributes
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Surface dimension — always 3 for 3D geometry.
-    /// Rational surfaces store dim+1 values per CV (x*w, y*w, z*w, w).
     int dimension() const { return m_dim; }
-
-    /// Polynomial order = degree + 1 in the given direction.
-    /// dir=0 for u, dir=1 for v. Minimum order is 2 (linear).
     int order(int dir) const;
-
-    /// Polynomial degree = order - 1 in the given direction.
-    /// Degree 1 = linear, 2 = quadratic, 3 = cubic.
     int degree(int dir) const;
-
-    /// Number of control vertices in the given direction.
-    /// Must be >= order(dir) for a valid surface.
     int cv_count(int dir) const;
-
-    /// Total number of control vertices = cv_count(0) * cv_count(1).
-    /// This is the count of Point-sized entries in the CV array.
+    /// cv_count(0) * cv_count(1)
     int cv_count() const;
-
-    /// Number of doubles stored per control vertex.
-    /// Returns dim+1 if rational (homogeneous coords), dim otherwise.
+    /// Doubles per CV: dim + 1 when rational
     int cv_size() const;
-
-    /// Number of nurbsknots in the given direction = cv_count + order - 2.
-    /// Follows the OpenNURBS convention (no endpoint duplication beyond
-    /// what the multiplicity requires).
+    /// order + cv_count - 2
     int nurbsknot_count(int dir) const;
-
-    /// Number of non-degenerate nurbsknot spans (intervals where the basis is
-    /// non-zero) in the given direction. Equals the number of distinct
-    /// interior nurbsknot intervals.
+    /// cv_count - order + 1
     int span_count(int dir) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Control Vertex Access
+    // Control vertex access
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Raw pointer to the start of CV[i][j] data in m_cv. Points to dim
-    /// doubles (non-rational) or dim+1 doubles (rational, stored as
-    /// x*w, y*w, z*w, w). Use cv_size() for the element count.
+    /// Pointer to CV[i][j], cv_size() doubles (x*w, y*w, z*w, w when rational), null when out of range
     double* cv(int i, int j);
     const double* cv(int i, int j) const;
-
-    /// Returns CV[i][j] as a 3D Point. For rational surfaces, divides the
-    /// homogeneous coordinates by weight: (x*w/w, y*w/w, z*w/w).
-    /// Returns origin if indices are out of range.
+    /// Euclidean CV (divided by weight when rational), origin when out of range
     Point get_cv(int i, int j) const;
-
-    /// Returns CV[i][j] as homogeneous coordinates (x*w, y*w, z*w, w).
-    /// For non-rational surfaces, w is always 1.0 and x,y,z are the
-    /// Euclidean coordinates directly.
+    /// Homogeneous CV (x, y, z, w), w = 1 when non-rational
     bool get_cv_4d(int i, int j, double& x, double& y, double& z, double& w) const;
-
-    /// Set CV[i][j] from a 3D Point. For rational surfaces, multiplies by
-    /// the existing weight: stores (x*w, y*w, z*w). Weight is preserved.
-    /// Returns false if indices are out of range.
+    /// Set the Euclidean CV, keeping its weight
     bool set_cv(int i, int j, const Point& point);
-
-    /// Set CV[i][j] directly from homogeneous coordinates (x*w, y*w, z*w, w).
-    /// For non-rational surfaces, only x,y,z are stored and w is ignored.
-    /// Returns false if indices are out of range.
+    /// Set the homogeneous CV; w ignored when non-rational
     bool set_cv_4d(int i, int j, double x, double y, double z, double w);
-
-    /// Get the weight at CV[i][j]. Returns 1.0 for non-rational surfaces.
-    /// For rational, reads the last component of the homogeneous CV.
     double weight(int i, int j) const;
-
-    /// Set the weight at CV[i][j]. For rational surfaces, updates the w
-    /// component and rescales x*w, y*w, z*w to preserve the 3D position.
-    /// No-op for non-rational surfaces.
+    /// Rescale the homogeneous CV to the new weight so the Euclidean point stays; false when non-rational
     bool set_weight(int i, int j, double weight);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // NurbsKnot Access
+    // NurbsKnot access
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Get the nurbsknot value at the given index in direction dir.
-    /// Index must be in [0, nurbsknot_count(dir)-1].
     double nurbsknot(int dir, int nurbsknot_index) const;
-
-    /// Set the nurbsknot value at the given index. Does not enforce ordering —
-    /// caller must ensure the nurbsknot vector remains non-decreasing.
     bool set_nurbsknot(int dir, int nurbsknot_index, double nurbsknot_value);
-
-    /// Count how many consecutive nurbsknots equal the value at nurbsknot_index.
-    /// Multiplicity determines continuity: mult=order means C^-1 (discontinuous),
-    /// mult=1 means C^(degree-1) (maximum smoothness).
     int nurbsknot_multiplicity(int dir, int nurbsknot_index) const;
-
-    /// Return a copy of the full nurbsknot vector for the given direction.
-    /// Length is nurbsknot_count(dir).
     std::vector<double> get_nurbsknots(int dir) const;
-
-    /// Insert a nurbsknot at the given value in direction dir using Oslo algorithm.
-    /// Adds nurbsknot_multiplicity copies. Refines the nurbsknot vector without changing
-    /// surface shape — new CVs are computed to maintain geometry.
-    /// Increases cv_count(dir) by nurbsknot_multiplicity.
+    /// Insert a nurbsknot with the given multiplicity in dir without changing the shape
     bool insert_nurbsknot(int dir, double nurbsknot_value, int nurbsknot_multiplicity = 1);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Domain
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Returns the parameter interval [t0, t1] where the surface is defined
-    /// in the given direction. Determined by the first/last "active" nurbsknots:
-    /// nurbsknot[degree] and nurbsknot[cv_count-1].
+    /// [nurbsknot[order - 2], nurbsknot[cv_count - 1]] in dir
     std::pair<double, double> domain(int dir) const;
-
-    /// Reparametrize the surface so domain(dir) becomes [t0, t1].
-    /// Linearly remaps all nurbsknot values. Returns false if t0 >= t1.
+    /// Linearly remap the nurbsknots in dir onto [t0, t1]
     bool set_domain(int dir, double t0, double t1);
-
-    /// Returns the sorted list of distinct nurbsknot values within the active
-    /// domain. These are the span boundaries — parameter values where
-    /// the polynomial pieces join.
+    /// Distinct nurbsknot values inside the domain of dir
     std::vector<double> get_span_vector(int dir) const;
-
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Division
     // ═══════════════════════════════════════════════════════════════════════════
-    
-    /// Evaluate the surface at a regular nu x nv grid of parameters spanning
-    /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])
-    /// where each param is (u,v). Useful for visualization and sampling.
-    std::tuple<std::vector<std::vector<Point>>, std::vector<std::vector<Vector>>, std::vector<std::vector<std::pair<double,double>>>>
-        divide_by_count_points(int nu, int nv) const;
 
-    /// Evaluate the surface at a regular nu x nv grid of parameters spanning
-    /// the full domain. Returns (points[nu+1][nv+1], params[nu+1][nv+1])
-    /// where each param is (u,v). Useful for visualization and sampling.
-    std::pair<std::vector<std::vector<Plane>>, std::vector<std::vector<std::pair<double,double>>>>
-        divide_by_count_planes(int nu, int nv) const;
+    /// Points, normals and (u, v) on a (nu + 1) x (nv + 1) grid over the domain
+    std::tuple<std::vector<std::vector<Point>>, std::vector<std::vector<Vector>>, std::vector<std::vector<std::pair<double, double>>>> divide_by_count_points(int nu, int nv) const;
 
+    /// Frames (x = dS/du, y = dS/dv) and (u, v) on a (nu + 1) x (nv + 1) grid over the domain
+    std::pair<std::vector<std::vector<Plane>>, std::vector<std::vector<std::pair<double, double>>>> divide_by_count_planes(int nu, int nv) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Evaluate surface point at parameters (u,v) using de Boor's algorithm.
-    /// Finds nurbsknot span in each direction, computes basis functions, and sums
-    /// the weighted CVs. For rational surfaces, divides by the sum of
-    /// weights (perspective division).
+    /// S(u, v) by the tensor-product basis; origin when invalid
     Point point_at(double u, double v) const;
 
-    /// Evaluate surface point and store coordinates in output parameters.
+    /// S(u, v) into three doubles
     void point_at(double u, double v, double& px, double& py, double& pz) const {
-        Point p = point_at(u, v);
-        px = p[0]; py = p[1]; pz = p[2];
+        const Point p = point_at(u, v);
+        px = p[0];
+        py = p[1];
+        pz = p[2];
     }
 
-    /// Parameters (u,v) of the closest point on the surface to test_point (grid seed + Newton).
-    /// Matches OCCT GeomAPI_ProjectPointOnSurface.
+    /// (u, v) of the closest surface point (grid seed + Newton)
     std::pair<double, double> closest_parameters(const Point& test_point) const;
-
-    /// Closest point on the surface to test_point.
     Point closest_point(const Point& test_point) const;
 
-    /// Gaussian curvature K = (LN - M^2)/(EG - F^2) at (u,v) from the first/second
-    /// fundamental forms. Matches OCCT GeomLProp_SLProps::GaussianCurvature.
+    /// K = (LN - M^2) / (EG - F^2)
     double gaussian_curvature(double u, double v) const;
-
-    /// Mean curvature H = (EN - 2FM + GL)/(2(EG - F^2)) at (u,v).
-    /// Matches OCCT GeomLProp_SLProps::MeanCurvature (magnitude; sign follows the
-    /// Su x Sv normal orientation).
+    /// H = (EN - 2FM + GL) / (2(EG - F^2)), sign following Su x Sv
     double mean_curvature(double u, double v) const;
 
-    /// Compute unit surface normal at (u,v) as the cross product of the first
-    /// partial derivatives: N = normalize(dS/du x dS/dv). Returns zero vector
-    /// at singular points where partials are parallel.
+    /// Unit normal dS/dv x dS/du, z-axis at singular points
     Vector normal_at(double u, double v) const;
 
-    /// Local frame at (u, v): origin = S(u,v), x-axis = dS/du, y-axis = dS/dv.
-    /// Mirrors OCCNurbsSurface.frame_at. The Plane orthonormalizes the axes; its
-    /// z-axis equals normal_at(u, v).
+    /// Frame at (u, v): origin S, x-axis dS/du, y-axis dS/dv
     Plane frame_at(double u, double v) const;
 
-    /// Intersection points of an (infinite) line with the surface.
-    /// Mirrors OCCNurbsSurface.intersections_with_line (OCCT GeomAPI_IntCS).
+    /// Points where the infinite line pierces the surface (grid seed + Newton)
     std::vector<Point> intersections_with_line(const Line& line) const;
 
-    /// Evaluate point and partial derivatives up to num_derivs order at (u,v).
-    /// Returns flat array in (k,l)-loop order: [S, Sv, Svv, Su, Suv, Suu] for num_derivs=2.
-    /// num_derivs=0 returns just the point. Uses basis_functions_derivatives.
+    /// Point and partials up to num_derivs (max 2) in (k, l) loop order: [S, Sv, Svv, Su, Suv, Suu]
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
 
-    /// Get surface point at one of the four corners.
-    /// u_end=0/1 maps to domain start/end in u, v_end=0/1 in v.
-    /// Equivalent to point_at(domain(0).first/second, domain(1).first/second).
+    /// Corner CV; u_end and v_end are 0 or 1
     Point point_at_corner(int u_end, int v_end) const;
 
-    /// Extract an isoparametric curve; `dir` is the direction that VARIES along the curve.
-    /// dir=0: fix v=c, return the curve along u. dir=1: fix u=c, return the curve along v.
-    /// Rational surfaces yield their exact rational iso-curve (homogeneous blend).
+    /// Iso-curve varying along dir at the other parameter c; rational surfaces give their exact rational curve
     NurbsCurve iso_curve(int dir, double c) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Modification
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Reverse parameterization in dir. Flips the order of CVs and mirrors
-    /// the nurbsknot vector. Surface shape is unchanged but parameter direction
-    /// is reversed: point_at(u) becomes point_at(1-u).
+    /// Flip the parameterization in dir
     bool reverse(int dir);
-
-    /// Swap u and v directions. Transposes the CV grid and exchanges the
-    /// two nurbsknot vectors. After transpose, what was an iso-u curve becomes
-    /// an iso-v curve and vice versa.
+    /// Swap u and v
     bool transpose();
-
-    /// Swap two coordinate axes (e.g., axis_i=0, axis_j=2 swaps X and Z)
-    /// in every control vertex. Used for coordinate system conversions.
+    /// Swap two coordinate axes in every CV
     bool swap_coordinates(int axis_i, int axis_j);
-
-    /// Restrict the surface to sub-domain [t0,t1] in dir. Inserts nurbsknots at
-    /// trim boundaries (if needed) and discards CVs and nurbsknots outside the
-    /// interval. The resulting surface is geometrically identical within
-    /// the sub-domain.
+    /// Restrict dir to the sub-domain
     bool trim(int dir, const std::pair<double, double>& domain);
-
-    /// Split the surface at parameter c in dir into two separate surfaces.
-    /// Returns {west/south, east/north}. Both are invalid if c is outside domain.
+    /// Two surfaces split at c in dir; both invalid when c is outside the domain
     std::pair<NurbsSurface, NurbsSurface> split(int dir, double c) const;
-
-    /// Convert polynomial B-spline to rational form by adding weights=1.0
-    /// to every CV. Surface shape is unchanged. No-op if already rational.
+    /// Add weights of 1
     bool make_rational();
-
-    /// Convert rational to polynomial by removing weights. Only succeeds
-    /// if all weights are equal (within tolerance). Divides each CV by its
-    /// weight and strips the w component.
+    /// Drop weights, dividing each CV by its own
     bool make_non_rational();
-
-    /// Elevate polynomial degree in dir to desired_degree by inserting new
-    /// nurbsknots and recomputing CVs. Surface shape is preserved exactly.
-    /// No-op if current degree >= desired_degree.
+    /// Elevate the degree in dir without changing the shape
     bool increase_degree(int dir, int desired_degree);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Apply the given 4x4 transformation matrix to all CVs in-place.
-    /// Supports translation, rotation, scaling, and projection.
-    /// For rational surfaces, transforms homogeneous (x*w, y*w, z*w, w).
     bool transform(const Xform& xform);
-
-    /// Return a new surface with the given xform applied to CVs.
-    /// The original surface is not modified. Copy gets new guid.
     NurbsSurface transformed(const Xform& xform) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Geometric Operations (Additional)
+    // Splitting
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Split this surface by a plane into trimmed faces. Computes the
-    /// surface/plane intersection with UV pcurves and splits the UV domain
-    /// along them.
+    /// Trimmed faces on each side of the plane
     std::vector<NurbsSurfaceTrimmed> split_by_plane(const Plane& plane, double tolerance = 0.0) const;
-
-    /// Split this surface by 3D curves lying on (or near) it. Each curve is
-    /// pulled back to UV via closest-point projection; curves whose pullback
-    /// fails (off-surface) are skipped.
+    /// Trimmed faces cut by curves pulled onto the surface; off-surface curves are skipped
     std::vector<NurbsSurfaceTrimmed> split_by_curves(const std::vector<NurbsCurve>& curves, double tolerance = 0.0) const;
-
-    /// Split this surface by a line pulled onto it (Rhino "pull then split").
-    /// The line is converted to a degree-1 curve and projected onto the
-    /// surface by closest points; the surface is split along the pulled
-    /// curve. A pulled curve that does not reach the boundary or another
-    /// cutter is discarded. For a planar cut, use split_by_plane.
+    /// Trimmed faces cut by a line pulled onto the surface
     std::vector<NurbsSurfaceTrimmed> split_by_line(const Line& line, double tolerance = 0.0) const;
-
-    /// Split this surface by another surface. Computes the surface/surface
-    /// intersection and splits the UV domain along the pcurves on this surface.
+    /// Trimmed faces cut by the surface/surface intersection
     std::vector<NurbsSurfaceTrimmed> split_by_surface(const NurbsSurface& cutter, double tolerance = 0.0) const;
-
-    /// Split this surface by every face of a BRep (planar faces via fast plane path).
+    /// Trimmed faces cut by every overlapping face of the brep
     std::vector<NurbsSurfaceTrimmed> split_by_brep(const BRep& brep, double tolerance = 0.0) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Tessellate using hierarchical quadtree adaptive subdivision in UV space.
-    /// Refines cells exceeding angle/edge/chord thresholds up to depth 8.
-    Mesh mesh_adaptive(double max_angle = 20.0, double max_edge_length = 0.0,
-                       double min_edge_length = 0.0, double max_chord_height = 0.0) const;
+    /// Quadtree subdivision in UV up to depth 8; cached in m_mesh
+    Mesh mesh_adaptive(double max_angle = 20.0, double max_edge_length = 0.0, double min_edge_length = 0.0, double max_chord_height = 0.0) const;
 
-    /// Primary meshing entry point. Uses mesh_grid strategy.
+    /// Two triangles for a planar surface, else the span grid; cached in m_mesh
     Mesh mesh() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Serialization
+    // JSON
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Serialize to JSON with alphabetically ordered keys. Includes all NURBS
-    /// data (dimension, orders, nurbsknots, CVs, rationality) plus metadata
-    /// (guid, name, color arrays, width).
     nlohmann::ordered_json jsondump() const;
-
-    /// Deserialize from a JSON object. Reads all fields written by jsondump.
-    /// Missing fields get default values.
     static NurbsSurface jsonload(const nlohmann::json& data);
-
-    /// Write JSON to file (calls jsondump internally).
     void file_json_dump(const std::string& filename) const;
-
-    /// Read JSON from file (calls jsonload internally).
     static NurbsSurface file_json_load(const std::string& filename);
-
-    /// Serialize to JSON string.
     std::string file_json_dumps() const;
-
-    /// Deserialize from JSON string.
     static NurbsSurface file_json_loads(const std::string& json_string);
 
-    /// Serialize to protobuf binary format using the NurbsSurface message
-    /// from session.proto. Includes all NURBS data and metadata.
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Protobuf
+    // ═══════════════════════════════════════════════════════════════════════════
+
     std::string pb_dumps() const;
-
-    /// Deserialize from protobuf binary string.
     static NurbsSurface pb_loads(const std::string& data);
-
-    /// Write protobuf binary to file.
     void pb_dump(const std::string& filename) const;
-
-    /// Read protobuf binary from file.
     static NurbsSurface pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // String Representation
+    // String
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Short summary: "NurbsSurface(deg 3x3, cv 10x8)".
-    /// Used by operator<< for stream output.
+    /// "NurbsSurface(name=..., degree=(u, v), cvs=(u, v))"
     std::string str() const;
-
-    /// Detailed multi-line representation including rational flag,
-    /// nurbsknot counts, domain ranges, and trim loop info.
+    /// Multi-line form with every control point
     std::string repr() const;
-
-    /// Stream output operator (calls str())
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface);
 
 private:
     mutable std::string _guid;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Internal
+    // Private helpers
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Tessellate using adaptive UV-parameter grid. Called by mesh().
-    Mesh mesh_grid() const;
-
+    /// Copy every field but the guid
+    void deep_copy_from(const NurbsSurface& src);
     bool zero_cvs();
     bool make_clamped_uniform_nurbsknot_vector(int dir, double delta = 1.0);
-
-    /// Replace the nurbsknot vector in dir with periodic uniform sequence:
-    /// evenly spaced without end-clamping. The surface wraps smoothly
-    /// if CVs are also set up periodically.
     bool make_periodic_uniform_nurbsknot_vector(int dir, double delta = 1.0);
-
-    /// Deep copy all data from src: dimension, orders, CV counts, strides,
-    /// nurbsknot vectors, CV array, trim loops, and visual metadata.
-    /// Called by copy constructor and assignment operator.
-    void deep_copy_from(const NurbsSurface& src);
-
-    /// Binary search for the nurbsknot span index containing parameter t in dir.
-    /// Returns i such that nurbsknot[i] <= t < nurbsknot[i+1], clamped to the valid
-    /// range [degree, cv_count-1]. Handles repeated nurbsknots correctly.
+    /// Euclidean point of a homogeneous CV or blend
+    Point dehomogenize(const double* h) const;
+    /// Span index in dir containing t
     int find_span(int dir, double t) const;
-
-    /// Compute the non-zero B-spline basis functions N_{span-deg,p}(t)
-    /// through N_{span,p}(t). Writes order values into basis vector.
-    /// Uses the Cox-de Boor recurrence with the standard triangular table.
-    void basis_functions(int dir, int span, double t, std::vector<double>& basis) const;
-
-    /// Compute basis functions and their derivatives up to deriv_order at t.
-    /// ders[k][j] = k-th derivative of the j-th basis function.
-    /// Uses algorithm from "The NURBS Book" (Piegl & Tiller, A2.3).
-    void basis_functions_derivatives(int dir, int span, double t, int deriv_order,
-                                   std::vector<std::vector<double>>& ders) const;
+    /// Basis derivatives ders[k][j] of the order functions on the span (Piegl & Tiller A2.3)
+    std::vector<std::vector<double>> basis_functions_derivatives(int dir, int span, double t, int deriv_order) const;
+    /// Rational quotient rule on homogeneous partials in (k, l) loop order (Piegl & Tiller A4.4)
+    std::vector<Vector> rational_derivatives(const std::vector<std::vector<double>>& skl, int num_derivs) const;
+    /// Newton on (n1, n2) . (S - p0) = 0 from (u, v); false when it leaves the domain or stalls
+    bool line_newton(double& u, double& v, const Point& p0, const Vector& n1, const Vector& n2) const;
+    /// First and second fundamental forms at (u, v); false at a singular point
+    bool fundamental_forms(double u, double v, double& E, double& F, double& G, double& L, double& M, double& N) const;
+    /// Two triangles through the four corners with one shared normal
+    Mesh mesh_planar() const;
+    /// Pack the CV rows across dir into one curve along dir with cv_size * cv_count(1 - dir) doubles per CV
+    NurbsCurve to_curve(int dir) const;
+    /// Unpack a curve made by to_curve back into this surface along dir
+    bool from_curve(const NurbsCurve& crv, int dir);
 };
 
 } // namespace session_cpp

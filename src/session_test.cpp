@@ -239,7 +239,7 @@ MINI_TEST("Session", "Add Empty Geometry") {
     auto group = session.add_group("empty");
 
     MINI_CHECK(session.add_point(nullptr, group) == nullptr);
-    MINI_CHECK(session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{Point(0,0,0)}), group) == nullptr);
+    MINI_CHECK(session.add_polyline(std::make_shared<Polyline>(std::vector<Point>{Point(0, 0, 0)}), group) == nullptr);
     MINI_CHECK(session.add_pointcloud(std::make_shared<PointCloud>(), group) == nullptr);
     MINI_CHECK(session.add_mesh(std::make_shared<Mesh>(), group) == nullptr);
     MINI_CHECK(session.add_nurbscurve(std::make_shared<NurbsCurve>(), group) == nullptr);

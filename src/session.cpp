@@ -665,33 +665,33 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
     boxes.push_back(compute_bounding_box(it->second, wit == world.end() ? Xform::identity() : wit->second));
     guids.push_back(g);
   }
-  
+
   if (boxes.empty()) {
     return {};
   }
-  
+
   // Build SpatialBVH and check collisions
   double world_size = SpatialBVH::compute_world_size(boxes);
   bvh = SpatialBVH::from_boxes(boxes, world_size);
   auto [collision_pairs, colliding_indices, checks] = bvh.check_all_collisions(boxes);
   (void)colliding_indices;
   (void)checks;
-  
+
   // Map index pairs to GUID pairs
   std::vector<std::pair<std::string, std::string>> guid_pairs;
   guid_pairs.reserve(collision_pairs.size());
   for (const auto& [i, j] : collision_pairs) {
-    if (i >= 0 && i < static_cast<int>(guids.size()) && 
+    if (i >= 0 && i < static_cast<int>(guids.size()) &&
         j >= 0 && j < static_cast<int>(guids.size())) {
       guid_pairs.emplace_back(guids[i], guids[j]);
     }
   }
-  
+
   // Add collision edges to graph
   for (const auto& [guid1, guid2] : guid_pairs) {
     graph.add_edge(guid1, guid2, "bvh_collision");
   }
-  
+
   return guid_pairs;
 }
 
@@ -968,15 +968,15 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
     rebuild_ray_bvh_cache();
     bvh_cache_dirty = false;
   }
-  
+
   if (cached_guids.empty()) return {};
-  
+
   // SpatialBVH OPTIMIZATION: Get candidate indices from CACHED SpatialBVH ray traversal
   // This prunes objects whose AABBs don't intersect the ray, providing
   // acceleration for ALL geometry types (Point, Line, Mesh, etc.)
   std::vector<int> candidate_ids;
   cached_ray_bvh.ray_cast(origin, direction, candidate_ids, true);
-  
+
   // Test candidates with precise geometry intersection and track closest hit
   std::vector<RayHit> hits;
   Line ray = Line::from_points(origin, origin + direction * 10000.0);  // Long ray
@@ -996,7 +996,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
     std::optional<Point> hit = ray_intersect_geometry(ray, geom, tolerance, placement);
     if (hit) {
       double dist = origin.distance(*hit);
-      
+
       // Only keep hits closer than current closest
       if (dist < closest_dist) {
         // Clear previous hits if this is closer
@@ -1008,7 +1008,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
       }
     }
   }
-  
+
   // Already sorted by discovery order (closest first)
   return hits;
 }
@@ -1017,7 +1017,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
 std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance, const Xform& placement) {
   return std::visit([&](auto&& geom_ptr) -> std::optional<Point> {
     using T = std::decay_t<decltype(geom_ptr)>;
-    
+
     if constexpr (std::is_same_v<T, std::shared_ptr<Point>>) {
       // Ray-point: parametric distance calculation
       Vector ray_dir = ray.end() - ray.start();
@@ -1048,7 +1048,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       // Ray-polyline: test each segment, return closest
       std::optional<Point> closest_hit;
       double min_dist = std::numeric_limits<double>::infinity();
-      
+
       for (size_t i = 0; i < geom_ptr->segment_count(); ++i) {
         Point p0 = geom_ptr->get_point(i);
         Point p1 = geom_ptr->get_point(i + 1);
@@ -1069,7 +1069,7 @@ std::optional<Point> Session::ray_intersect_geometry(const Line& ray, const Geom
       std::optional<Point> closest_hit;
       double min_dist = std::numeric_limits<double>::infinity();
       Vector ray_dir = ray.end() - ray.start();
-      
+
       for (const Point& pt : geom_ptr->get_points()) {
         Vector to_point = pt - ray.start();
         double t = to_point.dot(ray_dir) / ray_dir.dot(ray_dir);

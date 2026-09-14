@@ -18,11 +18,14 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("AABB", "Constructor") {
-    // uncomment #include "aabb.h"
-    // uncomment #include "point.h"
-    // AABB(0,0,0, 1,2,3) — dims 2×4×6
     AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
+    AABB empty;
 
+    MINI_CHECK(empty == AABB(0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+    MINI_CHECK(a == AABB(0.0, 0.0, 0.0, 1.0, 2.0, 3.0));
+    MINI_CHECK(a != empty);
+    MINI_CHECK(a.str() == "0.000000, 0.000000, 0.000000, 1.000000, 2.000000, 3.000000");
+    MINI_CHECK(a.repr() == "AABB(0.000000, 0.000000, 0.000000, 1.000000, 2.000000, 3.000000)");
     MINI_CHECK(TOLERANCE.is_close(a.area(), 88.0));
     MINI_CHECK(a.center() == Point(0.0, 0.0, 0.0));
     MINI_CHECK(TOLERANCE.is_close(a.diagonal(), 2.0 * std::sqrt(14.0)));
@@ -54,11 +57,6 @@ MINI_TEST("AABB", "Constructor") {
 }
 
 MINI_TEST("AABB", "From Geometry") {
-    // uncomment #include "line.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "pointcloud.h"
-    // uncomment #include "nurbscurve.h"
-    // uncomment #include "nurbssurface.h"
     AABB a_pt = AABB::from_point(Point(1.0, 2.0, 3.0), 0.5);
 
     MINI_CHECK(a_pt.center() == Point(1.0, 2.0, 3.0));

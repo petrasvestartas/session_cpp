@@ -4,8 +4,11 @@
 #include "plane.h"
 #include "line.h"
 #include "polyline.h"
-
+#include "tolerance.h"
 #include "xform.pb.h"
+#include "fmt/core.h"
+#include <fstream>
+#include <stdexcept>
 
 namespace session_cpp {
 
@@ -14,10 +17,7 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 
 Xform::Xform() {
-    m = {0.0, 0.0, 0.0, 0.0,
-         0.0, 0.0, 0.0, 0.0,
-         0.0, 0.0, 0.0, 0.0,
-         0.0, 0.0, 0.0, 0.0};
+    m.fill(0.0);
     m[0] = 1.0;
     m[5] = 1.0;
     m[10] = 1.0;
@@ -26,13 +26,8 @@ Xform::Xform() {
 
 Xform::Xform(const std::array<double, 16>& matrix) : m(matrix) {}
 
-/// Copy constructor (creates a new guid() while copying data)
-Xform::Xform(const Xform& other)
-    :
-      name(other.name),
-      m(other.m) {}
+Xform::Xform(const Xform& other) : name(other.name), m(other.m) {}
 
-/// Copy assignment (creates a new guid() while copying data)
 Xform& Xform::operator=(const Xform& other) {
     if (this != &other) {
         _guid.clear();
@@ -43,8 +38,7 @@ Xform& Xform::operator=(const Xform& other) {
 }
 
 Xform Xform::identity() {
-    thread_local static Xform _identity;
-    return _identity;
+    return Xform();
 }
 
 Xform Xform::from_matrix(const std::array<double, 16>& matrix) {
@@ -57,9 +51,9 @@ Xform Xform::from_matrix(const std::array<double, 16>& matrix) {
 
 Xform Xform::from_axes(const Vector& col_x, const Vector& col_y, const Vector& col_z) {
     Xform xform;
-    xform.m[0]  = col_x[0]; xform.m[1]  = col_x[1]; xform.m[2]  = col_x[2];
-    xform.m[4]  = col_y[0]; xform.m[5]  = col_y[1]; xform.m[6]  = col_y[2];
-    xform.m[8]  = col_z[0]; xform.m[9]  = col_z[1]; xform.m[10] = col_z[2];
+    xform.m[0] = col_x[0]; xform.m[1] = col_x[1]; xform.m[2] = col_x[2];
+    xform.m[4] = col_y[0]; xform.m[5] = col_y[1]; xform.m[6] = col_y[2];
+    xform.m[8] = col_z[0]; xform.m[9] = col_z[1]; xform.m[10] = col_z[2];
     return xform;
 }
 
@@ -74,8 +68,8 @@ Xform Xform::translation(double x, double y, double z) {
 Xform Xform::rotation_x(double angle, bool degrees) {
     if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    double cos_angle = std::cos(angle);
-    double sin_angle = std::sin(angle);
+    const double cos_angle = std::cos(angle);
+    const double sin_angle = std::sin(angle);
     xform.m[5] = cos_angle;
     xform.m[6] = sin_angle;
     xform.m[9] = -sin_angle;
@@ -86,8 +80,8 @@ Xform Xform::rotation_x(double angle, bool degrees) {
 Xform Xform::rotation_y(double angle, bool degrees) {
     if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    double cos_angle = std::cos(angle);
-    double sin_angle = std::sin(angle);
+    const double cos_angle = std::cos(angle);
+    const double sin_angle = std::sin(angle);
     xform.m[0] = cos_angle;
     xform.m[2] = -sin_angle;
     xform.m[8] = sin_angle;
@@ -98,8 +92,8 @@ Xform Xform::rotation_y(double angle, bool degrees) {
 Xform Xform::rotation_z(double angle, bool degrees) {
     if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    double cos_angle = std::cos(angle);
-    double sin_angle = std::sin(angle);
+    const double cos_angle = std::cos(angle);
+    const double sin_angle = std::sin(angle);
     xform.m[0] = cos_angle;
     xform.m[1] = sin_angle;
     xform.m[4] = -sin_angle;
@@ -107,52 +101,47 @@ Xform Xform::rotation_z(double angle, bool degrees) {
     return xform;
 }
 
-Xform Xform::rotation(Vector& axis, double angle, bool degrees) {
+Xform Xform::rotation(const Vector& axis, double angle, bool degrees) {
     if (degrees) angle = angle * Tolerance::TO_RADIANS;
     Xform xform;
-    axis.normalize_self();
-
-    double cos_angle = std::cos(angle);
-    double sin_angle = std::sin(angle);
-    double one_minus_cos = 1.0 - cos_angle;
-
-    double xx = axis[0] * axis[0];
-    double xy = axis[0] * axis[1];
-    double xz = axis[0] * axis[2];
-    double yy = axis[1] * axis[1];
-    double yz = axis[1] * axis[2];
-    double zz = axis[2] * axis[2];
-
+    const Vector unit = axis.normalized();
+    const double cos_angle = std::cos(angle);
+    const double sin_angle = std::sin(angle);
+    const double one_minus_cos = 1.0 - cos_angle;
+    const double xx = unit[0] * unit[0];
+    const double xy = unit[0] * unit[1];
+    const double xz = unit[0] * unit[2];
+    const double yy = unit[1] * unit[1];
+    const double yz = unit[1] * unit[2];
+    const double zz = unit[2] * unit[2];
     xform.m[0] = cos_angle + xx * one_minus_cos;
-    xform.m[1] = xy * one_minus_cos + axis[2] * sin_angle;
-    xform.m[2] = xz * one_minus_cos - axis[1] * sin_angle;
-
-    xform.m[4] = xy * one_minus_cos - axis[2] * sin_angle;
+    xform.m[1] = xy * one_minus_cos + unit[2] * sin_angle;
+    xform.m[2] = xz * one_minus_cos - unit[1] * sin_angle;
+    xform.m[4] = xy * one_minus_cos - unit[2] * sin_angle;
     xform.m[5] = cos_angle + yy * one_minus_cos;
-    xform.m[6] = yz * one_minus_cos + axis[0] * sin_angle;
-
-    xform.m[8] = xz * one_minus_cos + axis[1] * sin_angle;
-    xform.m[9] = yz * one_minus_cos - axis[0] * sin_angle;
+    xform.m[6] = yz * one_minus_cos + unit[0] * sin_angle;
+    xform.m[8] = xz * one_minus_cos + unit[1] * sin_angle;
+    xform.m[9] = yz * one_minus_cos - unit[0] * sin_angle;
     xform.m[10] = cos_angle + zz * one_minus_cos;
-
     return xform;
 }
 
 Xform Xform::rotation_around_line(const Line& line, double angle, bool degrees) {
-    Point p = line.start();
-    Vector d = line.to_direction();
-    Xform t0 = translation(-p[0], -p[1], -p[2]);
-    Xform r = rotation(d, angle, degrees);
-    Xform t1 = translation(p[0], p[1], p[2]);
+    const Point p = line.start();
+    const Vector d = line.to_direction();
+    const Xform t0 = translation(-p[0], -p[1], -p[2]);
+    const Xform r = rotation(d, angle, degrees);
+    const Xform t1 = translation(p[0], p[1], p[2]);
     return t1 * (r * t0);
 }
 
-Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, Vector& z_axis_1,
-                           Point& origin_0, Vector& x_axis_0, Vector& y_axis_0, Vector& z_axis_0) {
-    double a = x_axis_1.dot(y_axis_1);
-    double b = x_axis_1.dot(z_axis_1);
-    double c = y_axis_1.dot(z_axis_1);
-
+Xform Xform::change_basis(
+    const Point& origin_1, const Vector& x_axis_1, const Vector& y_axis_1, const Vector& z_axis_1,
+    const Point& origin_0, const Vector& x_axis_0, const Vector& y_axis_0, const Vector& z_axis_0
+) {
+    const double a = x_axis_1.dot(y_axis_1);
+    const double b = x_axis_1.dot(z_axis_1);
+    const double c = y_axis_1.dot(z_axis_1);
     double r[3][6] = {
         {x_axis_1.dot(x_axis_1), a, b, x_axis_1.dot(x_axis_0), x_axis_1.dot(y_axis_0), x_axis_1.dot(z_axis_0)},
         {a, y_axis_1.dot(y_axis_1), c, y_axis_1.dot(x_axis_0), y_axis_1.dot(y_axis_0), y_axis_1.dot(z_axis_0)},
@@ -163,13 +152,11 @@ Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, V
     if (r[2][2] > r[i0][i0]) i0 = 2;
     int i1 = (i0 + 1) % 3;
     int i2 = (i1 + 1) % 3;
-
     if (r[i0][i0] == 0.0) return Xform::identity();
 
     double d = 1.0 / r[i0][i0];
     for (int j = 0; j < 6; j++) r[i0][j] *= d;
     r[i0][i0] = 1.0;
-
     if (r[i1][i0] != 0.0) {
         d = -r[i1][i0];
         for (int j = 0; j < 6; j++) r[i1][j] += d * r[i0][j];
@@ -181,15 +168,12 @@ Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, V
         r[i2][i0] = 0.0;
     }
 
-    if (std::abs(r[i1][i1]) < std::abs(r[i2][i2])) {
-        std::swap(i1, i2);
-    }
+    if (std::abs(r[i1][i1]) < std::abs(r[i2][i2])) std::swap(i1, i2);
     if (r[i1][i1] == 0.0) return Xform::identity();
 
     d = 1.0 / r[i1][i1];
     for (int j = 0; j < 6; j++) r[i1][j] *= d;
     r[i1][i1] = 1.0;
-
     if (r[i0][i1] != 0.0) {
         d = -r[i0][i1];
         for (int j = 0; j < 6; j++) r[i0][j] += d * r[i1][j];
@@ -206,7 +190,6 @@ Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, V
     d = 1.0 / r[i2][i2];
     for (int j = 0; j < 6; j++) r[i2][j] *= d;
     r[i2][i2] = 1.0;
-
     if (r[i0][i2] != 0.0) {
         d = -r[i0][i2];
         for (int j = 0; j < 6; j++) r[i0][j] += d * r[i2][j];
@@ -219,119 +202,63 @@ Xform Xform::change_basis(Point& origin_1, Vector& x_axis_1, Vector& y_axis_1, V
     }
 
     Xform m_xform;
-    m_xform.m[0] = static_cast<double>(r[0][3]);
-    m_xform.m[4] = static_cast<double>(r[0][4]);
-    m_xform.m[8] = static_cast<double>(r[0][5]);
-    m_xform.m[1] = static_cast<double>(r[1][3]);
-    m_xform.m[5] = static_cast<double>(r[1][4]);
-    m_xform.m[9] = static_cast<double>(r[1][5]);
-    m_xform.m[2] = static_cast<double>(r[2][3]);
-    m_xform.m[6] = static_cast<double>(r[2][4]);
-    m_xform.m[10] = static_cast<double>(r[2][5]);
+    m_xform.m[0] = r[0][3];
+    m_xform.m[4] = r[0][4];
+    m_xform.m[8] = r[0][5];
+    m_xform.m[1] = r[1][3];
+    m_xform.m[5] = r[1][4];
+    m_xform.m[9] = r[1][5];
+    m_xform.m[2] = r[2][3];
+    m_xform.m[6] = r[2][4];
+    m_xform.m[10] = r[2][5];
 
-    Xform t0 = translation(-origin_1[0], -origin_1[1], -origin_1[2]);
-    Xform t2 = translation(origin_0[0], origin_0[1], origin_0[2]);
+    const Xform t0 = translation(-origin_1[0], -origin_1[1], -origin_1[2]);
+    const Xform t2 = translation(origin_0[0], origin_0[1], origin_0[2]);
     return t2 * (m_xform * t0);
 }
 
 Xform Xform::from_change_of_basis(const Polyline& rect0, const Polyline& rect1) {
-    // Verbatim port of the inline `change_basis(rect0, rect1, out)`
-    // helper from main_5.cpp:782 (which mirrored wood `wood_joint.cpp:103`).
-    // Maps the unit cube [-0.5, +0.5]³ → world frame defined by rect0/rect1.
-
-    if (rect0.point_count() < 4 || rect1.point_count() < 1) {
-        return Xform::identity();
-    }
-
-    Point  O1(-0.5, -0.5, -0.5);
-    Vector X1(1, 0, 0), Y1(0, 1, 0), Z1(0, 0, 1);
-
-    Point O0 = rect0.get_point(0);
-    Point r01 = rect0.get_point(1);
-    Point r03 = rect0.get_point(3);
-    Point r10 = rect1.get_point(0);
-    Vector X0(r01[0]-O0[0], r01[1]-O0[1], r01[2]-O0[2]);
-    Vector Y0(r03[0]-O0[0], r03[1]-O0[1], r03[2]-O0[2]);
-    Vector Z0(r10[0]-O0[0], r10[1]-O0[1], r10[2]-O0[2]);
-
-    // Build 3x6 augmented matrix [Gram(X1,Y1,Z1) | dot(Xi,X0j)]
-    double a = X1.dot(Y1), b = X1.dot(Z1), c = Y1.dot(Z1);
-    double R[3][6] = {
-        { X1.dot(X1), a, b, X1.dot(X0), X1.dot(Y0), X1.dot(Z0) },
-        { a, Y1.dot(Y1), c, Y1.dot(X0), Y1.dot(Y0), Y1.dot(Z0) },
-        { b, c, Z1.dot(Z1), Z1.dot(X0), Z1.dot(Y0), Z1.dot(Z0) }
-    };
-
-    // Gaussian elimination with partial pivoting (verbatim from wood).
-    int i0 = (R[0][0] >= R[1][1]) ? 0 : 1;
-    if (R[2][2] > R[i0][i0]) i0 = 2;
-    int i1 = (i0 + 1) % 3;
-    int i2 = (i1 + 1) % 3;
-    if (R[i0][i0] == 0.0) return Xform::identity();
-
-    auto elim = [&](int pivot, int target) {
-        if (R[target][pivot] == 0.0) return;
-        double dd = -R[target][pivot];
-        for (int k = 0; k < 6; k++) R[target][k] += dd * R[pivot][k];
-        R[target][pivot] = 0.0;
-    };
-    auto norm_row = [&](int row) {
-        double dd = 1.0 / R[row][row];
-        for (int k = 0; k < 6; k++) R[row][k] *= dd;
-        R[row][row] = 1.0;
-    };
-
-    norm_row(i0); elim(i0, i1); elim(i0, i2);
-    if (std::abs(R[i1][i1]) < std::abs(R[i2][i2])) std::swap(i1, i2);
-    if (R[i1][i1] == 0.0) return Xform::identity();
-    norm_row(i1); elim(i1, i0); elim(i1, i2);
-    if (R[i2][i2] == 0.0) return Xform::identity();
-    norm_row(i2); elim(i2, i0); elim(i2, i1);
-
-    // Compose: T2 * M * T0
-    double tx = O0[0] - (R[0][3]*O1[0] + R[0][4]*O1[1] + R[0][5]*O1[2]);
-    double ty = O0[1] - (R[1][3]*O1[0] + R[1][4]*O1[1] + R[1][5]*O1[2]);
-    double tz = O0[2] - (R[2][3]*O1[0] + R[2][4]*O1[1] + R[2][5]*O1[2]);
-    std::array<double, 16> mat = {
-        R[0][3], R[1][3], R[2][3], 0,
-        R[0][4], R[1][4], R[2][4], 0,
-        R[0][5], R[1][5], R[2][5], 0,
-        tx,      ty,      tz,      1
-    };
-    return Xform(mat);
+    if (rect0.point_count() < 4 || rect1.point_count() < 1) return Xform::identity();
+    const Point origin_1(-0.5, -0.5, -0.5);
+    const Vector x_axis_1(1, 0, 0);
+    const Vector y_axis_1(0, 1, 0);
+    const Vector z_axis_1(0, 0, 1);
+    const Point origin_0 = rect0.get_point(0);
+    const Vector x_axis_0 = rect0.get_point(1) - origin_0;
+    const Vector y_axis_0 = rect0.get_point(3) - origin_0;
+    const Vector z_axis_0 = rect1.get_point(0) - origin_0;
+    return change_basis(origin_1, x_axis_1, y_axis_1, z_axis_1, origin_0, x_axis_0, y_axis_0, z_axis_0);
 }
 
 Xform Xform::plane_to_plane(const Plane& plane_from, const Plane& plane_to) {
-    Vector x0 = plane_from.x_axis(), y0 = plane_from.y_axis(), z0 = plane_from.z_axis();
-    Vector x1 = plane_to.x_axis(), y1 = plane_to.y_axis(), z1 = plane_to.z_axis();
-    x0.normalize_self(); y0.normalize_self(); z0.normalize_self();
-    x1.normalize_self(); y1.normalize_self(); z1.normalize_self();
-
+    const Vector x0 = plane_from.x_axis().normalized();
+    const Vector y0 = plane_from.y_axis().normalized();
+    const Vector z0 = plane_from.z_axis().normalized();
+    const Vector x1 = plane_to.x_axis().normalized();
+    const Vector y1 = plane_to.y_axis().normalized();
+    const Vector z1 = plane_to.z_axis().normalized();
     const Point& origin_0 = plane_from.origin();
     const Point& origin_1 = plane_to.origin();
 
-    Xform t0 = translation(-origin_0[0], -origin_0[1], -origin_0[2]);
-
+    const Xform t0 = translation(-origin_0[0], -origin_0[1], -origin_0[2]);
     Xform f0;
     f0.m[0] = x0[0]; f0.m[1] = x0[1]; f0.m[2] = x0[2];
     f0.m[4] = y0[0]; f0.m[5] = y0[1]; f0.m[6] = y0[2];
     f0.m[8] = z0[0]; f0.m[9] = z0[1]; f0.m[10] = z0[2];
-
     Xform f1;
     f1.m[0] = x1[0]; f1.m[4] = x1[1]; f1.m[8] = x1[2];
     f1.m[1] = y1[0]; f1.m[5] = y1[1]; f1.m[9] = y1[2];
     f1.m[2] = z1[0]; f1.m[6] = z1[1]; f1.m[10] = z1[2];
-
-    Xform r = f1 * f0;
-    Xform t1 = translation(origin_1[0], origin_1[1], origin_1[2]);
+    const Xform r = f1 * f0;
+    const Xform t1 = translation(origin_1[0], origin_1[1], origin_1[2]);
     return t1 * (r * t0);
 }
 
-Xform Xform::plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) {
-    Vector x = x_axis, y = y_axis, z = z_axis;
-    x.normalize_self(); y.normalize_self(); z.normalize_self();
-
-    Xform t = translation(-origin[0], -origin[1], -origin[2]);
+Xform Xform::plane_to_xy(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
+    const Vector x = x_axis.normalized();
+    const Vector y = y_axis.normalized();
+    const Vector z = z_axis.normalized();
+    const Xform t = translation(-origin[0], -origin[1], -origin[2]);
     Xform f;
     f.m[0] = x[0]; f.m[1] = x[1]; f.m[2] = x[2];
     f.m[4] = y[0]; f.m[5] = y[1]; f.m[6] = y[2];
@@ -339,73 +266,51 @@ Xform Xform::plane_to_xy(Point& origin, Vector& x_axis, Vector& y_axis, Vector& 
     return f * t;
 }
 
-Xform Xform::xy_to_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) {
-    Vector x = x_axis, y = y_axis, z = z_axis;
-    x.normalize_self(); y.normalize_self(); z.normalize_self();
-
+Xform Xform::xy_to_plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
+    const Vector x = x_axis.normalized();
+    const Vector y = y_axis.normalized();
+    const Vector z = z_axis.normalized();
     Xform f;
     f.m[0] = x[0]; f.m[4] = y[0]; f.m[8] = z[0];
     f.m[1] = x[1]; f.m[5] = y[1]; f.m[9] = z[1];
     f.m[2] = x[2]; f.m[6] = y[2]; f.m[10] = z[2];
-
-    Xform t = translation(origin[0], origin[1], origin[2]);
+    const Xform t = translation(origin[0], origin[1], origin[2]);
     return t * f;
 }
 
-// Correct world→local rotation + translation. Stores basis as matrix ROWS
-// (column-major indices: m[0]=row0col0, m[4]=row0col1, m[8]=row0col2). For
-// a world point p the result is `f*(p - origin)` where `f` is the rotation
-// whose rows are the unit basis vectors — i.e. the dot-products (x·(p-o),
-// y·(p-o), z·(p-o)).
-Xform Xform::world_to_frame(const Point& origin, Vector x_axis, Vector y_axis, Vector z_axis) {
-    x_axis.normalize_self();
-    y_axis.normalize_self();
-    z_axis.normalize_self();
-
+Xform Xform::world_to_frame(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
+    const Vector x = x_axis.normalized();
+    const Vector y = y_axis.normalized();
+    const Vector z = z_axis.normalized();
     Xform f;
-    // Row 0 = x_axis
-    f.m[0]  = x_axis[0]; f.m[4]  = x_axis[1]; f.m[8]  = x_axis[2];
-    // Row 1 = y_axis
-    f.m[1]  = y_axis[0]; f.m[5]  = y_axis[1]; f.m[9]  = y_axis[2];
-    // Row 2 = z_axis
-    f.m[2]  = z_axis[0]; f.m[6]  = z_axis[1]; f.m[10] = z_axis[2];
-
-    Xform t = translation(-origin[0], -origin[1], -origin[2]);
+    f.m[0] = x[0]; f.m[4] = x[1]; f.m[8] = x[2];
+    f.m[1] = y[0]; f.m[5] = y[1]; f.m[9] = y[2];
+    f.m[2] = z[0]; f.m[6] = z[1]; f.m[10] = z[2];
+    const Xform t = translation(-origin[0], -origin[1], -origin[2]);
     return f * t;
 }
 
-// Correct local→world rotation + translation (inverse of world_to_frame).
-// Stores basis as matrix COLUMNS. For a local point (u,v,w):
-//   world = origin + u*x + v*y + w*z
-Xform Xform::frame_to_world(const Point& origin, Vector x_axis, Vector y_axis, Vector z_axis) {
-    x_axis.normalize_self();
-    y_axis.normalize_self();
-    z_axis.normalize_self();
-
+Xform Xform::frame_to_world(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
+    const Vector x = x_axis.normalized();
+    const Vector y = y_axis.normalized();
+    const Vector z = z_axis.normalized();
     Xform f;
-    // Column 0 = x_axis
-    f.m[0]  = x_axis[0]; f.m[1]  = x_axis[1]; f.m[2]  = x_axis[2];
-    // Column 1 = y_axis
-    f.m[4]  = y_axis[0]; f.m[5]  = y_axis[1]; f.m[6]  = y_axis[2];
-    // Column 2 = z_axis
-    f.m[8]  = z_axis[0]; f.m[9]  = z_axis[1]; f.m[10] = z_axis[2];
-
-    Xform t = translation(origin[0], origin[1], origin[2]);
+    f.m[0] = x[0]; f.m[1] = x[1]; f.m[2] = x[2];
+    f.m[4] = y[0]; f.m[5] = y[1]; f.m[6] = y[2];
+    f.m[8] = z[0]; f.m[9] = z[1]; f.m[10] = z[2];
+    const Xform t = translation(origin[0], origin[1], origin[2]);
     return t * f;
 }
 
 Xform Xform::to_frame(const Plane& frame) {
-    // Transform from world XY to target frame (same as COMPAS from_frame)
-    // Matrix columns are: xaxis, yaxis, zaxis, origin
-    Vector x = frame.x_axis(), y = frame.y_axis(), z = frame.z_axis();
-    x.normalize_self(); y.normalize_self(); z.normalize_self();
+    const Vector x = frame.x_axis().normalized();
+    const Vector y = frame.y_axis().normalized();
+    const Vector z = frame.z_axis().normalized();
     const Point& o = frame.origin();
-
     Xform xf;
-    xf.m[0] = x[0]; xf.m[4] = y[0]; xf.m[8]  = z[0]; xf.m[12] = o[0];
-    xf.m[1] = x[1]; xf.m[5] = y[1]; xf.m[9]  = z[1]; xf.m[13] = o[1];
+    xf.m[0] = x[0]; xf.m[4] = y[0]; xf.m[8] = z[0];  xf.m[12] = o[0];
+    xf.m[1] = x[1]; xf.m[5] = y[1]; xf.m[9] = z[1];  xf.m[13] = o[1];
     xf.m[2] = x[2]; xf.m[6] = y[2]; xf.m[10] = z[2]; xf.m[14] = o[2];
-    xf.m[3] = 0.0;  xf.m[7] = 0.0;  xf.m[11] = 0.0;  xf.m[15] = 1.0;
     return xf;
 }
 
@@ -417,108 +322,86 @@ Xform Xform::scale_xyz(double scale_x, double scale_y, double scale_z) {
     return xform;
 }
 
-Xform Xform::scale_uniform(Point& origin, double scale_value) {
-    Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
-    Xform t1 = scale_xyz(scale_value, scale_value, scale_value);
-    Xform t2 = translation(origin[0], origin[1], origin[2]);
+Xform Xform::scale_uniform(const Point& origin, double scale_value) {
+    const Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
+    const Xform t1 = scale_xyz(scale_value, scale_value, scale_value);
+    const Xform t2 = translation(origin[0], origin[1], origin[2]);
     return t2 * (t1 * t0);
 }
 
-Xform Xform::scale_non_uniform(Point& origin, double scale_x, double scale_y, double scale_z) {
-    Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
-    Xform t1 = scale_xyz(scale_x, scale_y, scale_z);
-    Xform t2 = translation(origin[0], origin[1], origin[2]);
+Xform Xform::scale_non_uniform(const Point& origin, double scale_x, double scale_y, double scale_z) {
+    const Xform t0 = translation(-origin[0], -origin[1], -origin[2]);
+    const Xform t1 = scale_xyz(scale_x, scale_y, scale_z);
+    const Xform t2 = translation(origin[0], origin[1], origin[2]);
     return t2 * (t1 * t0);
 }
 
-Xform Xform::axis_rotation(double angle, Vector& axis, bool degrees) {
+Xform Xform::axis_rotation(double angle, const Vector& axis, bool degrees) {
     if (degrees) angle = angle * Tolerance::TO_RADIANS;
-    double c = std::cos(angle);
-    double s = std::sin(angle);
-    double ux = axis[0];
-    double uy = axis[1];
-    double uz = axis[2];
-    double t = 1.0 - c;
-
+    const double c = std::cos(angle);
+    const double s = std::sin(angle);
+    const double ux = axis[0];
+    const double uy = axis[1];
+    const double uz = axis[2];
+    const double t = 1.0 - c;
     Xform xform;
     xform.m[0] = t * ux * ux + c;
     xform.m[4] = t * ux * uy - uz * s;
     xform.m[8] = t * ux * uz + uy * s;
-
     xform.m[1] = t * ux * uy + uz * s;
     xform.m[5] = t * uy * uy + c;
     xform.m[9] = t * uy * uz - ux * s;
-
     xform.m[2] = t * ux * uz - uy * s;
     xform.m[6] = t * uy * uz + ux * s;
     xform.m[10] = t * uz * uz + c;
-
     return xform;
 }
 
 Xform Xform::look_at_right_handed(const Point& eye, const Point& target, const Vector& up) {
-    Vector f = target - eye;
-    f.normalize_self();
-    Vector up_copy = up;
-    up_copy.normalize_self();
-    Vector s = f.cross(up_copy);
-    s.normalize_self();
-    Vector u = s.cross(f);
-
+    const Vector f = (target - eye).normalized();
+    const Vector s = f.cross(up.normalized()).normalized();
+    const Vector u = s.cross(f);
     Xform xform;
     xform.m[0] = s[0];
     xform.m[4] = s[1];
     xform.m[8] = s[2];
-
     xform.m[1] = u[0];
     xform.m[5] = u[1];
     xform.m[9] = u[2];
-
     xform.m[2] = -f[0];
     xform.m[6] = -f[1];
     xform.m[10] = -f[2];
-
-    Vector eye_vec(eye[0], eye[1], eye[2]);
+    const Vector eye_vec(eye[0], eye[1], eye[2]);
     xform.m[12] = -s.dot(eye_vec);
     xform.m[13] = -u.dot(eye_vec);
     xform.m[14] = f.dot(eye_vec);
-
     return xform;
 }
 
 Xform Xform::look_to_right_handed(const Point& eye, const Vector& direction, const Vector& up) {
-    Vector f = direction;
-    f.normalize_self();
-    Vector up_copy = up;
-    up_copy.normalize_self();
-    Vector s = f.cross(up_copy);
-    s.normalize_self();
-    Vector u = s.cross(f);
-
+    const Vector f = direction.normalized();
+    const Vector s = f.cross(up.normalized()).normalized();
+    const Vector u = s.cross(f);
     Xform xform;
     xform.m[0] = s[0];
     xform.m[4] = s[1];
     xform.m[8] = s[2];
-
     xform.m[1] = u[0];
     xform.m[5] = u[1];
     xform.m[9] = u[2];
-
     xform.m[2] = -f[0];
     xform.m[6] = -f[1];
     xform.m[10] = -f[2];
-
-    Vector eye_vec(eye[0], eye[1], eye[2]);
+    const Vector eye_vec(eye[0], eye[1], eye[2]);
     xform.m[12] = -s.dot(eye_vec);
     xform.m[13] = -u.dot(eye_vec);
     xform.m[14] = f.dot(eye_vec);
-
     return xform;
 }
 
 Xform Xform::perspective(double fov_y, double aspect, double near, double far) {
-    double f = 1.0 / std::tan(fov_y / 2.0);
-    double nf = near - far;
+    const double f = 1.0 / std::tan(fov_y / 2.0);
+    const double nf = near - far;
     Xform xform;
     xform.m.fill(0.0);
     xform.m[0] = f / aspect;
@@ -530,9 +413,9 @@ Xform Xform::perspective(double fov_y, double aspect, double near, double far) {
 }
 
 Xform Xform::orthographic(double left, double right, double bottom, double top, double near, double far) {
-    double rl = right - left;
-    double tb = top - bottom;
-    double nf = near - far;
+    const double rl = right - left;
+    const double tb = top - bottom;
+    const double nf = near - far;
     Xform xform;
     xform.m.fill(0.0);
     xform.m[0] = 2.0 / rl;
@@ -548,30 +431,47 @@ Xform Xform::orthographic(double left, double right, double bottom, double top, 
 Xform Xform::project_to_plane(const Plane& plane) {
     const Vector& n = plane.z_axis();
     const Point& o = plane.origin();
-    double nx = n[0], ny = n[1], nz = n[2];
-    double d = o[0] * nx + o[1] * ny + o[2] * nz;
+    const double nx = n[0], ny = n[1], nz = n[2];
+    const double d = o[0] * nx + o[1] * ny + o[2] * nz;
     Xform xform;
-    xform.m[0]  = 1.0 - nx * nx;  xform.m[4]  = -nx * ny;        xform.m[8]  = -nx * nz;        xform.m[12] = nx * d;
-    xform.m[1]  = -ny * nx;       xform.m[5]  = 1.0 - ny * ny;   xform.m[9]  = -ny * nz;        xform.m[13] = ny * d;
-    xform.m[2]  = -nz * nx;       xform.m[6]  = -nz * ny;        xform.m[10] = 1.0 - nz * nz;   xform.m[14] = nz * d;
-    xform.m[3]  = 0.0;            xform.m[7]  = 0.0;             xform.m[11] = 0.0;              xform.m[15] = 1.0;
+    xform.m[0] = 1.0 - nx * nx; xform.m[4] = -nx * ny;       xform.m[8] = -nx * nz;        xform.m[12] = nx * d;
+    xform.m[1] = -ny * nx;      xform.m[5] = 1.0 - ny * ny;  xform.m[9] = -ny * nz;        xform.m[13] = ny * d;
+    xform.m[2] = -nz * nx;      xform.m[6] = -nz * ny;       xform.m[10] = 1.0 - nz * nz;  xform.m[14] = nz * d;
     return xform;
 }
 
 Xform Xform::project_to_plane_by_axis(const Plane& plane, const Vector& direction) {
     const Vector& n = plane.z_axis();
     const Point& o = plane.origin();
-    double nx = n[0], ny = n[1], nz = n[2];
-    double dx = direction[0], dy = direction[1], dz = direction[2];
-    double dot_nd = nx * dx + ny * dy + nz * dz;
-    double s = 1.0 / dot_nd;
-    double d = o[0] * nx + o[1] * ny + o[2] * nz;
+    const double nx = n[0], ny = n[1], nz = n[2];
+    const double dx = direction[0], dy = direction[1], dz = direction[2];
+    const double s = 1.0 / (nx * dx + ny * dy + nz * dz);
+    const double d = o[0] * nx + o[1] * ny + o[2] * nz;
     Xform xform;
-    xform.m[0]  = 1.0 - dx*s*nx;  xform.m[4]  = -dx*s*ny;        xform.m[8]  = -dx*s*nz;        xform.m[12] = dx*s*d;
-    xform.m[1]  = -dy*s*nx;       xform.m[5]  = 1.0 - dy*s*ny;   xform.m[9]  = -dy*s*nz;        xform.m[13] = dy*s*d;
-    xform.m[2]  = -dz*s*nx;       xform.m[6]  = -dz*s*ny;        xform.m[10] = 1.0 - dz*s*nz;   xform.m[14] = dz*s*d;
-    xform.m[3]  = 0.0;            xform.m[7]  = 0.0;             xform.m[11] = 0.0;              xform.m[15] = 1.0;
+    xform.m[0] = 1.0 - dx * s * nx; xform.m[4] = -dx * s * ny;       xform.m[8] = -dx * s * nz;        xform.m[12] = dx * s * d;
+    xform.m[1] = -dy * s * nx;      xform.m[5] = 1.0 - dy * s * ny;  xform.m[9] = -dy * s * nz;        xform.m[13] = dy * s * d;
+    xform.m[2] = -dz * s * nx;      xform.m[6] = -dz * s * ny;       xform.m[10] = 1.0 - dz * s * nz;  xform.m[14] = dz * s * d;
     return xform;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Apply Transformations
+// ═══════════════════════════════════════════════════════════════════════════
+
+Point Xform::transform_point(const Point& p) const {
+    const double x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+    const double y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    const double z = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14];
+    const double w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (std::abs(w) < 1e-12) return Point(x, y, z);
+    return Point(x / w, y / w, z / w);
+}
+
+Vector Xform::transform_vector(const Vector& v) const {
+    const double x = m[0] * v[0] + m[4] * v[1] + m[8] * v[2];
+    const double y = m[1] * v[0] + m[5] * v[1] + m[9] * v[2];
+    const double z = m[2] * v[0] + m[6] * v[1] + m[10] * v[2];
+    return Vector(x, y, z);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -579,29 +479,22 @@ Xform Xform::project_to_plane_by_axis(const Plane& plane, const Vector& directio
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::optional<Xform> Xform::inverse() const {
-    double s0 = m[0] * m[5] - m[1] * m[4];
-    double s1 = m[0] * m[9] - m[1] * m[8];
-    double s2 = m[0] * m[13] - m[1] * m[12];
-    double s3 = m[4] * m[9] - m[5] * m[8];
-    double s4 = m[4] * m[13] - m[5] * m[12];
-    double s5 = m[8] * m[13] - m[9] * m[12];
-    double c5 = m[10] * m[15] - m[11] * m[14];
-    double c4 = m[6] * m[15] - m[7] * m[14];
-    double c3 = m[6] * m[11] - m[7] * m[10];
-    double c2 = m[2] * m[15] - m[3] * m[14];
-    double c1 = m[2] * m[11] - m[3] * m[10];
-    double c0 = m[2] * m[7] - m[3] * m[6];
-    double det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
-
-    if (std::abs(det) < 1e-12) {
-        return std::nullopt;
-    }
-
-    double inv_det = 1.0 / det;
-
+    const double s0 = m[0] * m[5] - m[1] * m[4];
+    const double s1 = m[0] * m[9] - m[1] * m[8];
+    const double s2 = m[0] * m[13] - m[1] * m[12];
+    const double s3 = m[4] * m[9] - m[5] * m[8];
+    const double s4 = m[4] * m[13] - m[5] * m[12];
+    const double s5 = m[8] * m[13] - m[9] * m[12];
+    const double c5 = m[10] * m[15] - m[11] * m[14];
+    const double c4 = m[6] * m[15] - m[7] * m[14];
+    const double c3 = m[6] * m[11] - m[7] * m[10];
+    const double c2 = m[2] * m[15] - m[3] * m[14];
+    const double c1 = m[2] * m[11] - m[3] * m[10];
+    const double c0 = m[2] * m[7] - m[3] * m[6];
+    const double det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
+    if (std::abs(det) < 1e-12) return std::nullopt;
+    const double inv_det = 1.0 / det;
     Xform res;
-    res.guid() = "";
-    res.name = "";
     res.m[0] = (m[5] * c5 - m[9] * c4 + m[13] * c3) * inv_det;
     res.m[4] = (-m[4] * c5 + m[8] * c4 - m[12] * c3) * inv_det;
     res.m[8] = (m[7] * s5 - m[11] * s4 + m[15] * s3) * inv_det;
@@ -618,49 +511,23 @@ std::optional<Xform> Xform::inverse() const {
     res.m[7] = (m[0] * c3 - m[4] * c1 + m[8] * c0) * inv_det;
     res.m[11] = (-m[3] * s3 + m[7] * s1 - m[11] * s0) * inv_det;
     res.m[15] = (m[2] * s3 - m[6] * s1 + m[10] * s0) * inv_det;
-
     return res;
 }
 
 bool Xform::is_identity() const {
-    Xform identity;
-    for (int i = 0; i < 16; i++) {
-        if (std::abs(m[i] - identity.m[i]) > 1e-10) {
-            return false;
-        }
-    }
+    const Xform identity;
+    for (int i = 0; i < 16; i++)
+        if (std::abs(m[i] - identity.m[i]) > 1e-10) return false;
     return true;
 }
 
 std::array<std::array<double, 4>, 4> Xform::to_cols() const {
     return {{
-        {m[0],  m[1],  m[2],  m[3] },
-        {m[4],  m[5],  m[6],  m[7] },
-        {m[8],  m[9],  m[10], m[11]},
+        {m[0], m[1], m[2], m[3]},
+        {m[4], m[5], m[6], m[7]},
+        {m[8], m[9], m[10], m[11]},
         {m[12], m[13], m[14], m[15]},
     }};
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Apply Transformations
-// ═══════════════════════════════════════════════════════════════════════════
-
-Point Xform::transform_point(const Point& p) const {
-    double x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-    double y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-    double z = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14];
-    double w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
-    if (std::abs(w) < 1e-12) {
-        return Point(x, y, z);
-    }
-    return Point(x / w, y / w, z / w);
-}
-
-Vector Xform::transform_vector(const Vector& v) const {
-    double x = m[0] * v[0] + m[4] * v[1] + m[8] * v[2];
-    double y = m[1] * v[0] + m[5] * v[1] + m[9] * v[2];
-    double z = m[2] * v[0] + m[6] * v[1] + m[10] * v[2];
-    return Vector(x, y, z);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -668,7 +535,6 @@ Vector Xform::transform_vector(const Vector& v) const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json Xform::jsondump() const {
-    // Alphabetical order to match Rust's serde_json
     nlohmann::ordered_json data;
     data["guid"] = guid();
     data["m"] = m;
@@ -685,6 +551,16 @@ Xform Xform::jsonload(const nlohmann::json& data) {
     return xform;
 }
 
+void Xform::file_json_dump(const std::string& filename) const {
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+Xform Xform::file_json_load(const std::string& filename) {
+    std::ifstream file(filename);
+    return jsonload(nlohmann::json::parse(file));
+}
+
 std::string Xform::file_json_dumps() const {
     return jsondump().dump();
 }
@@ -693,54 +569,39 @@ Xform Xform::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Xform::file_json_dump(const std::string& filename) const {
-    std::ofstream file(filename);
-    file << jsondump().dump(4);
-}
-
-Xform Xform::file_json_load(const std::string& filename) {
-    std::ifstream file(filename);
-    nlohmann::json data = nlohmann::json::parse(file);
-    return jsonload(data);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string Xform::pb_dumps() const {
     session_proto::Xform proto;
-    if (has_guid()) { proto.set_guid(guid()); }
+    if (has_guid()) proto.set_guid(guid());
     proto.set_name(name);
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < 16; i++)
         proto.add_matrix(m[i]);
-    }
     return proto.SerializeAsString();
 }
 
 Xform Xform::pb_loads(const std::string& data) {
     session_proto::Xform proto;
     proto.ParseFromString(data);
-
     Xform xform;
-    if (!proto.guid().empty()) { xform.guid() = proto.guid(); }
+    if (!proto.guid().empty()) xform.guid() = proto.guid();
     xform.name = proto.name();
-    for (int i = 0; i < 16 && i < proto.matrix_size(); ++i) {
+    for (int i = 0; i < 16 && i < proto.matrix_size(); i++)
         xform.m[i] = proto.matrix(i);
-    }
     return xform;
 }
 
 void Xform::pb_dump(const std::string& filename) const {
-    std::string data = pb_dumps();
+    const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 Xform Xform::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
-    std::string data((std::istreambuf_iterator<char>(file)),
-                      std::istreambuf_iterator<char>());
+    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     return pb_loads(data);
 }
 
@@ -750,21 +611,14 @@ Xform Xform::pb_load(const std::string& filename) {
 
 Xform Xform::operator*(const Xform& other) const {
     Xform result;
-    result.m = {0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0};
-
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             double sum = 0.0;
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < 4; k++)
                 sum += m[k * 4 + i] * other.m[j * 4 + k];
-            }
             result.m[j * 4 + i] = sum;
         }
     }
-
     return result;
 }
 
@@ -774,26 +628,20 @@ Xform& Xform::operator*=(const Xform& other) {
 }
 
 double& Xform::operator()(int row, int col) {
-    if (row < 0 || row >= 4 || col < 0 || col >= 4) {
+    if (row < 0 || row >= 4 || col < 0 || col >= 4)
         throw std::out_of_range("Index out of bounds: (" + std::to_string(row) + ", " + std::to_string(col) + ")");
-    }
     return m[col * 4 + row];
 }
 
 const double& Xform::operator()(int row, int col) const {
-    if (row < 0 || row >= 4 || col < 0 || col >= 4) {
+    if (row < 0 || row >= 4 || col < 0 || col >= 4)
         throw std::out_of_range("Index out of bounds: (" + std::to_string(row) + ", " + std::to_string(col) + ")");
-    }
     return m[col * 4 + row];
 }
 
 bool Xform::operator==(const Xform& other) const {
-    constexpr double tolerance = 1e-10;
-    for (size_t i = 0; i < 16; ++i) {
-        if (std::abs(m[i] - other.m[i]) > tolerance) {
-            return false;
-        }
-    }
+    for (int i = 0; i < 16; i++)
+        if (std::abs(m[i] - other.m[i]) > 1e-10) return false;
     return true;
 }
 
@@ -806,15 +654,12 @@ bool Xform::operator!=(const Xform& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string Xform::str() const {
-    std::ostringstream oss;
+    std::string rows;
     for (int i = 0; i < 4; i++) {
-        oss << "[" << fmt::format("{:.6f}", m[i]) << ", "
-            << fmt::format("{:.6f}", m[4 + i]) << ", "
-            << fmt::format("{:.6f}", m[8 + i]) << ", "
-            << fmt::format("{:.6f}", m[12 + i]) << "]";
-        if (i < 3) oss << "\n";
+        rows += fmt::format("[{:.6f}, {:.6f}, {:.6f}, {:.6f}]", m[i], m[4 + i], m[8 + i], m[12 + i]);
+        if (i < 3) rows += "\n";
     }
-    return oss.str();
+    return rows;
 }
 
 std::string Xform::repr() const {

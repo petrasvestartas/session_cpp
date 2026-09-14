@@ -71,7 +71,7 @@ public:
   /// the const dumps clear it.
   mutable History history;
   SpatialBVH bvh;    ///< Bounding volume hierarchy for collision detection
-  
+
   // SpatialBVH caching for ray casting performance
   SpatialBVH cached_ray_bvh;                           ///< Cached SpatialBVH for ray casting
   std::vector<std::string> cached_guids;        ///< GUID mapping for cached SpatialBVH
@@ -359,13 +359,13 @@ private:
 
   /// Test ray intersection with a specific geometry object.
   std::optional<Point> ray_intersect_geometry(const Line& ray, const Geometry& geometry, double tolerance, const Xform& placement);
-  
+
   /// Rebuild the cached SpatialBVH for ray casting.
   void rebuild_ray_bvh_cache();
-  
+
   /// Invalidate the SpatialBVH cache (call when geometry is added/removed).
   void invalidate_bvh_cache() { bvh_cache_dirty = true; }
-  
+
   /// Cache geometry bounding box incrementally
   void cache_geometry_aabb(const std::string& obj_guid, const Geometry& geometry);
 };

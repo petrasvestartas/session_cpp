@@ -1,9 +1,15 @@
 #pragma once
+#include "json.h"
 #include <cmath>
+#include <cstdint>
+#include <optional>
 #include <string>
-#include <sstream>
-#include <iomanip>
+#include <utility>
 #include <vector>
+
+namespace session_proto {
+class Tolerance;
+}
 
 namespace session_cpp {
 
@@ -11,80 +17,65 @@ class Point;
 class Vector;
 class ToleranceGuard;
 
-// Scale factor
-constexpr double SCALE = 1e6;
+constexpr double SCALE = 1e6; ///< Default coordinate-key scale.
 
-/**
- * @class Tolerance
- * @brief A tolerance class for geometric comparisons.
+/** @class Tolerance
+ * @brief Tolerance settings for geometric comparisons.
  */
 class Tolerance {
 public:
-    // Mathematical constants (moved from namespace level for MSVC compatibility)
-    static constexpr double PI = 3.14159265358979323846;
-    static constexpr double TWO_PI  = 2.0 * PI;
-    static constexpr double HALF_PI = PI / 2.0;
-    static constexpr double TO_DEGREES = 180.0 / PI;
-    static constexpr double TO_RADIANS = PI / 180.0;
-    
-    // Default tolerance values (double precision)
-    static constexpr double ABSOLUTE = 1e-9;
-    static constexpr double RELATIVE = 1e-6;
-    static constexpr double ANGULAR = 1e-6;
-    static constexpr double APPROXIMATION = 1e-3;
-    static constexpr int PRECISION = 3;
-    static constexpr double LINEARDEFLECTION = 1e-3;
-    static constexpr double ANGULARDEFLECTION = 1e-1;
-    static constexpr double ANGLE_TOLERANCE_DEGREES = 0.11;
-    static constexpr double ZERO_TOLERANCE = 1e-12; // do not change this value, it is used algorithms heavily
-    static constexpr double ROUNDING = 6;
+    static constexpr double PI = 3.14159265358979323846; ///< Circle constant.
+    static constexpr double TWO_PI = 2.0 * PI;           ///< Full turn in radians.
+    static constexpr double HALF_PI = PI / 2.0;          ///< Quarter turn in radians.
+    static constexpr double TO_DEGREES = 180.0 / PI;     ///< Radian-to-degree factor.
+    static constexpr double TO_RADIANS = PI / 180.0;     ///< Degree-to-radian factor.
 
-    friend class ToleranceGuard;
+    static constexpr double ABSOLUTE = 1e-9;              ///< Default absolute tolerance.
+    static constexpr double RELATIVE = 1e-6;              ///< Default relative tolerance.
+    static constexpr double ANGULAR = 1e-6;               ///< Default angular tolerance.
+    static constexpr double APPROXIMATION = 1e-3;         ///< Default approximation tolerance.
+    static constexpr int PRECISION = 3;                   ///< Default decimal precision.
+    static constexpr double LINEARDEFLECTION = 1e-3;      ///< Default linear deflection.
+    static constexpr double ANGULARDEFLECTION = 1e-1;     ///< Default angular deflection.
+    static constexpr double ANGLE_TOLERANCE_DEGREES = 0.11; ///< Angular tolerance in degrees.
+    /// Used heavily by algorithms; do not change
+    static constexpr double ZERO_TOLERANCE = 1e-12;
+    static constexpr int ROUNDING = 6; ///< Default coordinate-key rounding.
 
 private:
     std::string _unit;
-    double _absolute;
-    double _relative;
-    double _angular;
-    double _approximation;
-    int _precision;
-    double _lineardeflection;
-    double _angulardeflection;
-    
-    bool _has_absolute;
-    bool _has_relative;
-    bool _has_angular;
-    bool _has_approximation;
-    bool _has_precision;
-    bool _has_lineardeflection;
-    bool _has_angulardeflection;
+    std::optional<double> _absolute;
+    std::optional<double> _relative;
+    std::optional<double> _angular;
+    std::optional<double> _approximation;
+    std::optional<int> _precision;
+    std::optional<double> _lineardeflection;
+    std::optional<double> _angulardeflection;
 
 public:
-    /// Construct tolerance with a unit system (e.g., "M", "MM")
+    /// Construct tolerance with a unit system ("M" or "MM")
     explicit Tolerance(const std::string& unit = "M");
-    
+
     /// Reset all overrides to default constants
     void reset();
-    
-    // Getters
+
     /// Current unit system
     std::string unit() const { return _unit; }
     /// Absolute tolerance value (or default ABSOLUTE)
-    double absolute() const { return _has_absolute ? _absolute : ABSOLUTE; }
+    double absolute() const { return _absolute.value_or(ABSOLUTE); }
     /// Relative tolerance value (or default RELATIVE)
-    double relative() const { return _has_relative ? _relative : RELATIVE; }
+    double relative() const { return _relative.value_or(RELATIVE); }
     /// Angular tolerance value in radians (or default ANGULAR)
-    double angular() const { return _has_angular ? _angular : ANGULAR; }
+    double angular() const { return _angular.value_or(ANGULAR); }
     /// Approximation tolerance (or default APPROXIMATION)
-    double approximation() const { return _has_approximation ? _approximation : APPROXIMATION; }
+    double approximation() const { return _approximation.value_or(APPROXIMATION); }
     /// Decimal precision used for formatting (or default PRECISION)
-    int precision() const { return _has_precision ? _precision : PRECISION; }
+    int precision() const { return _precision.value_or(PRECISION); }
     /// Linear deflection value (or default LINEARDEFLECTION)
-    double lineardeflection() const { return _has_lineardeflection ? _lineardeflection : LINEARDEFLECTION; }
+    double lineardeflection() const { return _lineardeflection.value_or(LINEARDEFLECTION); }
     /// Angular deflection value (or default ANGULARDEFLECTION)
-    double angulardeflection() const { return _has_angulardeflection ? _angulardeflection : ANGULARDEFLECTION; }
-    
-    // Setters
+    double angulardeflection() const { return _angulardeflection.value_or(ANGULARDEFLECTION); }
+
     /// Set current unit system
     void set_unit(const std::string& value);
     /// Override absolute tolerance
@@ -101,8 +92,7 @@ public:
     void set_lineardeflection(double value);
     /// Override angular deflection
     void set_angulardeflection(double value);
-    
-    // Tolerance operations
+
     /// Compute combined tolerance from relative and absolute components
     double tolerance(double truevalue, double rtol, double atol) const;
     /// Compare two values within tolerance
@@ -131,7 +121,6 @@ public:
     /// Create a RAII guard that restores tolerance on destruction
     ToleranceGuard temporary();
 
-    // Formatting
     /// Create a geometric key string for 3D point with optional precision
     std::string key(double x, double y, double z, int precision = -999) const;
     /// Create a geometric key string for 2D point with optional precision
@@ -141,48 +130,87 @@ public:
     /// Determine decimal precision from a tolerance value
     int precision_from_tolerance(double tol = -1) const;
 
+    /// Serialize to an ordered JSON object
+    nlohmann::ordered_json jsondump() const;
+    /// Deserialize from a JSON object
+    static Tolerance jsonload(const nlohmann::json& data);
+    /// Serialize to a JSON string
+    std::string file_json_dumps() const;
+    /// Deserialize from a JSON string
+    static Tolerance file_json_loads(const std::string& json_string);
+    /// Write JSON to a file
+    void file_json_dump(const std::string& filename) const;
+    /// Read JSON from a file
+    static Tolerance file_json_load(const std::string& filename);
+
+    /// Convert to the protobuf message
+    session_proto::Tolerance to_proto() const;
+    /// Construct from the protobuf message
+    static Tolerance from_proto(const session_proto::Tolerance& proto);
+    /// Serialize to protobuf bytes
+    std::string pb_dumps() const;
+    /// Deserialize from protobuf bytes
+    static Tolerance pb_loads(const std::string& data);
+    /// Write protobuf bytes to a file
+    void pb_dump(const std::string& filename) const;
+    /// Read protobuf bytes from a file
+    static Tolerance pb_load(const std::string& filename);
+
     /// Convert degrees to radians
     static double to_radians(double degrees) { return degrees * TO_RADIANS; }
     /// Convert radians to degrees
     static double to_degrees(double radians) { return radians * TO_DEGREES; }
-
-    /// Round a value to a given number of decimal places (like Python's round(value, ndigits))
-    static double round_to(double value, int ndigits) {
-        double factor = std::pow(10.0, ndigits);
-        return std::round(value * factor) / factor;
-    }
+    /// Round a value to a given number of decimal places
+    static double round_to(double value, int ndigits);
 };
 
-/// RAII guard that restores Tolerance state on destruction
+/** @class ToleranceGuard
+ * @brief RAII guard that restores Tolerance state on destruction.
+ */
 class ToleranceGuard {
-    Tolerance& target_;
-    std::string saved_unit_;
-    double saved_absolute_, saved_relative_, saved_angular_, saved_approximation_;
-    int saved_precision_;
-    double saved_lineardeflection_, saved_angulardeflection_;
-    bool saved_has_absolute_, saved_has_relative_, saved_has_angular_;
-    bool saved_has_approximation_, saved_has_precision_;
-    bool saved_has_lineardeflection_, saved_has_angulardeflection_;
+    Tolerance* _target;
+    Tolerance _saved;
 public:
-    explicit ToleranceGuard(Tolerance& t);
-    ~ToleranceGuard();
+    /// Save the target's current settings.
+    explicit ToleranceGuard(Tolerance& target) : _target(&target), _saved(target) {}
+    /// Restore the saved settings.
+    ~ToleranceGuard() { if (_target) *_target = _saved; }
+    /// Guards cannot be copied.
     ToleranceGuard(const ToleranceGuard&) = delete;
+    /// Guards cannot be copy-assigned.
     ToleranceGuard& operator=(const ToleranceGuard&) = delete;
-    ToleranceGuard(ToleranceGuard&&) = default;
-    Tolerance& operator*() { return target_; }
-    Tolerance* operator->() { return &target_; }
+    /// Transfer restoration responsibility.
+    ToleranceGuard(ToleranceGuard&& other) noexcept
+        : _target(std::exchange(other._target, nullptr)), _saved(std::move(other._saved)) {}
+    /// Guards cannot be move-assigned.
+    ToleranceGuard& operator=(ToleranceGuard&&) = delete;
+
+    /// Access the guarded tolerance.
+    Tolerance& operator*() { return *_target; }
+    /// Access the guarded tolerance.
+    Tolerance* operator->() { return _target; }
 };
 
-// Global tolerance instance
+/// Global tolerance instance
 extern Tolerance TOLERANCE;
 
-// Utility functions
+// ═══════════════════════════════════════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Check if a number is finite
 bool is_finite(double x);
+/// Order-independent key from two ints: larger in the high 32 bits
 uint64_t unique_from_two_int(int a, int b);
+/// Signed modulo into [0, n-1]; 0 when n == 0
 int wrap_index(int index, int n);
+/// Opposite side of a right triangle: edge_length * tan(angle_deg)
 double triangle_edge_by_angle(double edge_length, double angle_deg);
+/// Convert radians to degrees
 double rad_to_deg(double radians);
+/// Convert degrees to radians
 double deg_to_rad(double degrees);
+/// Number of decimal digits of the integer part of |n|; 0 when |n| < 1
 int count_digits(double n);
 
 } // namespace session_cpp

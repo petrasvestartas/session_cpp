@@ -1,182 +1,155 @@
 #include "mesh_offset.h"
 #include "matrix.h"
-#include "plane.h"
-#include "tolerance.h"
 #include <algorithm>
+#include <set>
 
 namespace session_cpp {
+namespace {
 
-// Compute offset planes: each face plane translated by distance along its normal.
-static std::map<size_t, Plane> _offset_planes(const Mesh& mesh, double distance) {
-    std::map<size_t, Plane> planes;
-    for (size_t fk : mesh.faces()) {
-        auto c = mesh.face_centroid(fk);
-        auto n = mesh.face_normal(fk);
-        if (!c.has_value() || !n.has_value()) continue;
-        Point origin = Point(
-            (*c)[0] + distance * (*n)[0],
-            (*c)[1] + distance * (*n)[1],
-            (*c)[2] + distance * (*n)[2]);
-        Vector normal = *n;
-        planes[fk] = Plane::from_point_normal(origin, normal);
+/// Least-squares point on the planes, fallback fills any free direction
+Point intersect_planes(const std::vector<Plane>& planes, const Point& fallback) {
+    if (planes.empty())
+        return fallback;
+    if (planes.size() == 1) {
+        const Plane& plane = planes[0];
+        const double t = -plane.d() - (plane.a() * fallback[0] + plane.b() * fallback[1] + plane.c() * fallback[2]);
+        return Point(fallback[0] + t * plane.a(), fallback[1] + t * plane.b(), fallback[2] + t * plane.c());
     }
-    return planes;
-}
-
-// Find offset position of a vertex via least-squares intersection of adjacent offset planes.
-// Uses Tikhonov regularization so unconstrained directions fall back to the original position.
-static Point _intersect_planes(
-    const std::vector<Plane>& planes,
-    const Point& fallback)
-{
-    int n = (int)planes.size();
-    if (n == 0) return fallback;
-
-    // For a single plane: project fallback onto it.
-    if (n == 1) {
-        double nx = planes[0].a(), ny = planes[0].b(), nz = planes[0].c();
-        double d_rhs = -planes[0].d();
-        double t = d_rhs - (nx * fallback[0] + ny * fallback[1] + nz * fallback[2]);
-        return Point(fallback[0] + t * nx, fallback[1] + t * ny, fallback[2] + t * nz);
-    }
-
-    // Normal equations: (N^T N + eps I) x = N^T d + eps * fallback
-    // eps regularization pulls unconstrained directions (e.g. flat mesh) toward fallback.
-    constexpr double eps = 1e-8;
-    double A[3][3] = {};
-    double b[3] = {};
-    for (const auto& pl : planes) {
-        double r0 = pl.a(), r1 = pl.b(), r2 = pl.c();
-        double d_rhs = -pl.d();
-        A[0][0] += r0*r0; A[0][1] += r0*r1; A[0][2] += r0*r2;
-        A[1][0] += r1*r0; A[1][1] += r1*r1; A[1][2] += r1*r2;
-        A[2][0] += r2*r0; A[2][1] += r2*r1; A[2][2] += r2*r2;
-        b[0] += r0 * d_rhs;
-        b[1] += r1 * d_rhs;
-        b[2] += r2 * d_rhs;
-    }
-    A[0][0] += eps; A[1][1] += eps; A[2][2] += eps;
-    b[0] += eps * fallback[0];
-    b[1] += eps * fallback[1];
-    b[2] += eps * fallback[2];
-
-    Matrix mat = Matrix::from_vec(3, 3, {
-        A[0][0], A[0][1], A[0][2],
-        A[1][0], A[1][1], A[1][2],
-        A[2][0], A[2][1], A[2][2]});
-    Matrix rhs = Matrix::from_vec(3, 1, {b[0], b[1], b[2]});
-    auto sol = mat.solve(rhs);
-    if (!sol.has_value()) return fallback;
-    return Point((*sol)(0, 0), (*sol)(1, 0), (*sol)(2, 0));
-}
-
-// Compute new vertex positions from the offset planes of adjacent faces.
-static std::map<size_t, Point> _offset_vertices(
-    const Mesh& mesh,
-    const std::map<size_t, Plane>& planes)
-{
-    std::map<size_t, Point> result;
-    // vertex -> incident faces in ONE face walk (a per-vertex vertex_faces() call is O(F)
-    // now that topology is lazy — this loop over all vertices would be quadratic)
-    std::map<size_t, std::vector<size_t>> vf;
-    for (const auto& [fkey, verts] : mesh.face)
-        for (size_t v : verts) vf[v].push_back(fkey);
-    for (auto& [v, f] : vf) std::sort(f.begin(), f.end());
-    for (size_t vk : mesh.vertices()) {
-        auto vp = mesh.vertex_point(vk);
-        if (!vp.has_value()) continue;
-        auto fit = vf.find(vk);
-        if (fit == vf.end() || fit->second.empty()) {
-            result[vk] = *vp;
-            continue;
+    const double eps = 1e-8;
+    Matrix lhs(3, 3);
+    Matrix rhs(3, 1);
+    for (const Plane& plane : planes) {
+        const double row[3] = {plane.a(), plane.b(), plane.c()};
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j)
+                lhs(i, j) += row[i] * row[j];
+            rhs(i, 0) -= row[i] * plane.d();
         }
-        std::vector<Plane> adj;
-        for (size_t fk : fit->second) {
-            auto it = planes.find(fk);
-            if (it != planes.end()) adj.push_back(it->second);
-        }
-        result[vk] = _intersect_planes(adj, *vp);
     }
-    return result;
+    for (int i = 0; i < 3; ++i) {
+        lhs(i, i) += eps;
+        rhs(i, 0) += eps * fallback[i];
+    }
+    const std::optional<Matrix> solution = lhs.solve(rhs);
+    if (!solution.has_value())
+        return fallback;
+    return Point((*solution)(0, 0), (*solution)(1, 0), (*solution)(2, 0));
 }
+
+/// Naked edges wound the way their face walks them
+std::vector<std::pair<size_t, size_t>> boundary_edges(const Mesh& mesh) {
+    std::set<std::pair<size_t, size_t>> directed;
+    for (size_t fkey : mesh.faces()) {
+        const std::vector<size_t>& vertices = mesh.face.at(fkey);
+        for (size_t i = 0; i < vertices.size(); ++i)
+            directed.insert({vertices[i], vertices[(i + 1) % vertices.size()]});
+    }
+    std::vector<std::pair<size_t, size_t>> edges;
+    for (const auto& [u, v] : mesh.naked_edges(true)) {
+        if (directed.count({u, v}))
+            edges.push_back({u, v});
+        else
+            edges.push_back({v, u});
+    }
+    return edges;
+}
+
+} // namespace
 
 Mesh MeshOffset::from_mesh(const Mesh& mesh, double distance) {
-    auto planes = _offset_planes(mesh, distance);
-    auto off_verts = _offset_vertices(mesh, planes);
-
+    const std::map<size_t, Plane> planes = offset_planes(mesh, distance);
+    const std::map<size_t, Point> offsets = offset_vertices(mesh, planes);
     Mesh result;
-    std::map<size_t, size_t> bot_vmap, top_vmap;
-    for (size_t vk : mesh.vertices()) {
-        bot_vmap[vk] = result.add_vertex(mesh.vertex_point(vk).value());
-        top_vmap[vk] = result.add_vertex(off_verts[vk]);
+    std::map<size_t, size_t> bottom;
+    std::map<size_t, size_t> top;
+    for (size_t vkey : mesh.vertices()) {
+        bottom[vkey] = result.add_vertex(mesh.vertex_point(vkey).value());
+        top[vkey] = result.add_vertex(offsets.at(vkey));
     }
-
-    for (size_t fk : mesh.faces()) {
-        auto fv = mesh.face_vertices(fk).value();
-        std::vector<size_t> bkeys, tkeys;
-        for (size_t v : fv) {
-            bkeys.push_back(bot_vmap[v]);
-            tkeys.push_back(top_vmap[v]);
+    for (size_t fkey : mesh.faces()) {
+        const std::vector<size_t> vertices = mesh.face_vertices(fkey).value();
+        std::vector<size_t> bottom_face;
+        std::vector<size_t> top_face;
+        for (size_t vkey : vertices) {
+            bottom_face.push_back(bottom.at(vkey));
+            top_face.push_back(top.at(vkey));
         }
-        std::reverse(bkeys.begin(), bkeys.end());
-        result.add_face(bkeys);
-        result.add_face(tkeys);
+        std::reverse(bottom_face.begin(), bottom_face.end());
+        result.add_face(bottom_face);
+        result.add_face(top_face);
     }
-
-    for (const auto& [u, v] : mesh.naked_edges(true))
-        result.add_face({bot_vmap[u], bot_vmap[v], top_vmap[v], top_vmap[u]});
-
+    for (const auto& [u, v] : boundary_edges(mesh))
+        result.add_face({bottom.at(u), bottom.at(v), top.at(v), top.at(u)});
     return result;
 }
 
 MeshOffset::Layers MeshOffset::from_mesh_layers(const Mesh& mesh, double distance) {
-    auto planes = _offset_planes(mesh, distance);
-    auto off_verts = _offset_vertices(mesh, planes);
-
+    const std::map<size_t, Plane> planes = offset_planes(mesh, distance);
+    const std::map<size_t, Point> offsets = offset_vertices(mesh, planes);
     Layers layers;
-    std::map<size_t, size_t> bot_vmap, top_vmap;
-    for (size_t vk : mesh.vertices()) {
-        bot_vmap[vk] = layers.bottom.add_vertex(mesh.vertex_point(vk).value());
-        top_vmap[vk] = layers.top.add_vertex(off_verts[vk]);
+    std::map<size_t, size_t> bottom;
+    std::map<size_t, size_t> top;
+    for (size_t vkey : mesh.vertices()) {
+        bottom[vkey] = layers.bottom.add_vertex(mesh.vertex_point(vkey).value());
+        top[vkey] = layers.top.add_vertex(offsets.at(vkey));
     }
-
-    for (size_t fk : mesh.faces()) {
-        auto fv = mesh.face_vertices(fk).value();
-        std::vector<size_t> bkeys, tkeys;
-        for (size_t v : fv) {
-            bkeys.push_back(bot_vmap[v]);
-            tkeys.push_back(top_vmap[v]);
+    for (size_t fkey : mesh.faces()) {
+        const std::vector<size_t> vertices = mesh.face_vertices(fkey).value();
+        std::vector<size_t> bottom_face;
+        std::vector<size_t> top_face;
+        for (size_t vkey : vertices) {
+            bottom_face.push_back(bottom.at(vkey));
+            top_face.push_back(top.at(vkey));
         }
-        std::reverse(bkeys.begin(), bkeys.end());
-        layers.bottom.add_face(bkeys);
-        layers.top.add_face(tkeys);
+        std::reverse(bottom_face.begin(), bottom_face.end());
+        layers.bottom.add_face(bottom_face);
+        layers.top.add_face(top_face);
     }
-
-    std::map<size_t, size_t> s_bot, s_top;
-    for (const auto& [u, v] : mesh.naked_edges(true)) {
-        if (!s_bot.count(u))
-            s_bot[u] = layers.sides.add_vertex(mesh.vertex_point(u).value());
-        if (!s_bot.count(v))
-            s_bot[v] = layers.sides.add_vertex(mesh.vertex_point(v).value());
-        if (!s_top.count(u))
-            s_top[u] = layers.sides.add_vertex(off_verts[u]);
-        if (!s_top.count(v))
-            s_top[v] = layers.sides.add_vertex(off_verts[v]);
-        layers.sides.add_face({s_bot[u], s_bot[v], s_top[v], s_top[u]});
+    std::map<size_t, size_t> side_bottom;
+    std::map<size_t, size_t> side_top;
+    for (const auto& [u, v] : boundary_edges(mesh)) {
+        for (size_t vkey : {u, v}) {
+            if (!side_bottom.count(vkey))
+                side_bottom[vkey] = layers.sides.add_vertex(mesh.vertex_point(vkey).value());
+            if (!side_top.count(vkey))
+                side_top[vkey] = layers.sides.add_vertex(offsets.at(vkey));
+        }
+        layers.sides.add_face({side_bottom.at(u), side_bottom.at(v), side_top.at(v), side_top.at(u)});
     }
-
     return layers;
 }
 
 std::map<size_t, Plane> MeshOffset::offset_planes(const Mesh& mesh, double distance) {
-    return _offset_planes(mesh, distance);
+    std::map<size_t, Plane> planes;
+    for (size_t fkey : mesh.faces()) {
+        const std::optional<Point> centroid = mesh.face_centroid(fkey);
+        const std::optional<Vector> normal = mesh.face_normal(fkey);
+        if (!centroid.has_value() || !normal.has_value())
+            continue;
+        planes[fkey] = Plane::from_point_normal(*centroid + *normal * distance, *normal);
+    }
+    return planes;
 }
 
-std::map<size_t, Point> MeshOffset::offset_vertices(
-    const Mesh& mesh,
-    const std::map<size_t, Plane>& planes)
-{
-    return _offset_vertices(mesh, planes);
+std::map<size_t, Point> MeshOffset::offset_vertices(const Mesh& mesh, const std::map<size_t, Plane>& planes) {
+    std::map<size_t, std::vector<size_t>> vertex_faces;
+    for (size_t fkey : mesh.faces())
+        for (size_t vkey : mesh.face.at(fkey))
+            vertex_faces[vkey].push_back(fkey);
+    std::map<size_t, Point> result;
+    for (size_t vkey : mesh.vertices()) {
+        const std::optional<Point> point = mesh.vertex_point(vkey);
+        if (!point.has_value())
+            continue;
+        std::vector<Plane> adjacent;
+        for (size_t fkey : vertex_faces[vkey]) {
+            const auto found = planes.find(fkey);
+            if (found != planes.end())
+                adjacent.push_back(found->second);
+        }
+        result[vkey] = intersect_planes(adjacent, *point);
+    }
+    return result;
 }
 
 } // namespace session_cpp

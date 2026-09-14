@@ -1,454 +1,309 @@
 #pragma once
+#include "color.h"
+#include "guid.h"
+#include "json.h"
+#include "line.h"
 #include "plane.h"
 #include "point.h"
 #include "vector.h"
-#include "color.h"
 #include "xform.h"
-#include "line.h"
-#include "guid.h"
-#include "json.h"
-#include <vector>
-#include <string>
-#include <fstream>
-#include <iostream>
+#include "fmt/core.h"
+#include <array>
 #include <optional>
+#include <ostream>
+#include <string>
 #include <tuple>
+#include <vector>
 
 namespace session_cpp {
 
-
-/**
- * @class Polyline
- * @brief A polyline defined by a collection of coordinates with an associated plane.
- *
- * Internally stores coordinates as a flat array [x0, y0, z0, x1, y1, z1, ...] for
- * efficient serialization. Provides Point-based API for compatibility.
- */
+/// A polyline stored as flat coordinates [x0, y0, z0, x1, y1, z1, ...] with a lazily computed plane
 class Polyline {
 public:
-    std::string name = "my_polyline";
-    bool has_guid() const { return !_guid.empty(); }
-    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
-    void refresh_guid() { _guid.clear(); }
-    std::vector<double> _coords;  // Flat array [x0, y0, z0, x1, y1, z1, ...]
-    mutable Plane plane;
-    mutable bool _plane_dirty = true;
-    double width = 1.0;
-    std::vector<double> dash;   ///< Dash pattern: on/off lengths in mm, repeating; empty = solid
-    Color linecolor = Color::black();
+  std::string name = "my_polyline";
+  std::vector<double> _coords;
+  mutable Plane plane;
+  mutable bool _plane_dirty = true;
+  double width = 1.0;
+  std::vector<double> dash;
+  Color linecolor = Color::black();
 
+  Polyline();
+  explicit Polyline(const std::vector<Point> &pts);
 
-    /// Get plane (lazy — computed on first access from first 3 points)
-    const Plane& get_plane() const;
+  /// Copy constructor (new guid, same data)
+  Polyline(const Polyline &other);
 
-    /// Default constructor
-    Polyline();
+  /// Copy assignment (new guid, same data)
+  Polyline &operator=(const Polyline &other);
 
-    /// Copy constructor (creates a new guid while copying data)
-    Polyline(const Polyline& other);
+  /// Move keeps the guid; declaring it stops `return x;` from falling back to the guid-minting copy
+  Polyline(Polyline &&other) noexcept = default;
+  Polyline &operator=(Polyline &&other) noexcept = default;
 
-    /// Move constructor and assignment: identity SURVIVES a move.
-    ///
-    /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
-    /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
-    /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
-    /// to the COPY and silently dropped the guid it had just deserialized - every other field
-    /// survived, so the object looked right and only its identity was wrong. That is what broke Line
-    /// on MSVC when its pb_loads changed shape; see line.h.
-    Polyline(Polyline&& other) noexcept = default;
-    Polyline& operator=(Polyline&& other) noexcept = default;
+  bool has_guid() const { return !_guid.empty(); }
+  const std::string &guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string &guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
-    /// Copy assignment (creates a new guid while copying data)
-    Polyline& operator=(const Polyline& other);
+  /// Clear the guid so a fresh one mints lazily on next read
+  void refresh_guid() { _guid.clear(); }
 
-    /// Constructor with points (converts to flat coords internally)
-    explicit Polyline(const std::vector<Point>& pts);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Static constructors
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Constructor with flat coords
-    static Polyline from_coords(const std::vector<double>& coords);
+  static Polyline from_coords(const std::vector<double> &coords);
 
-    /// Create a regular polygon with given number of sides and radius.
-    static Polyline from_sides(int sides, double radius = 1.0, bool close = false);
+  /// Regular polygon of sides around the origin in the XY plane
+  static Polyline from_sides(int sides, double radius = 1.0, bool close = false);
 
-    /// Create a rectangle with its corner at origin, sides along x_axis and y_axis.
-    static Polyline rectangle(const Point& origin, const Vector& x_axis, const Vector& y_axis,
-                              double width, double height, bool close = true);
+  /// Rectangle with its corner at origin, sides along x_axis and y_axis
+  static Polyline rectangle(const Point &origin, const Vector &x_axis, const Vector &y_axis, double width, double height, bool close = true);
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Core Methods (str, repr, duplicate, eq)
-    // ═══════════════════════════════════════════════════════════════════════════
+  /// Quadratic Bezier through p0, p1, p2 sampled at divisions points
+  static Polyline quadratic_points(const Point &p0, const Point &p1, const Point &p2, int divisions = 7);
 
-    /// Returns minimal string representation
-    std::string str() const;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Accessors
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Returns detailed string representation
-    std::string repr() const;
+  size_t point_count() const;
+  size_t len() const;
+  bool is_empty() const;
+  size_t segment_count() const;
 
-    /// Equality operator (compares values, ignores GUIDs)
-    bool operator==(const Polyline& other) const;
-    bool operator!=(const Polyline& other) const;
+  /// Point at index, or the origin when out of range
+  Point get_point(size_t index) const;
+  std::vector<Point> get_points() const;
+  std::vector<Line> get_lines() const;
 
-    /// Index operator (returns point at index)
-    Point operator[](size_t index) const;
+  /// Plane from the first non-collinear triple, computed on first access
+  const Plane &get_plane() const;
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Point Access
-    // ═══════════════════════════════════════════════════════════════════════════
+  double length() const;
+  double length_squared() const;
 
-    /// Returns the number of points in the polyline
-    size_t point_count() const;
+  /// First and last points coincide
+  bool is_closed() const;
 
-    /// Returns the number of points (alias for point_count)
-    size_t len() const;
+  /// Copy with the first point appended when open
+  Polyline closed() const;
 
-    /// Returns all points as Point objects
-    std::vector<Point> get_points() const;
+  /// Average of the points, closing duplicate excluded
+  Point center() const;
 
-    /// Returns true if the polyline has no points
-    bool is_empty() const;
+  /// Origin at center, x along the first segment, z the average normal
+  void get_average_plane(Point &origin, Vector &x_axis, Vector &y_axis, Vector &z_axis) const;
 
-    /// Returns the number of segments (n-1 for n points)
-    size_t segment_count() const;
-
-    /// Returns all segments as Line objects
-    std::vector<Line> get_lines() const;
+  /// Origin at the first point, normal the average normal
+  void get_fast_plane(Point &origin, Plane &pln) const;
 
-    /// Calculates the total length of the polyline
-    double length() const;
+  /// One flag per corner, true when convex against the average normal
+  void get_convex_corners(std::vector<bool> &convex_or_concave) const;
 
-    /// Returns the point at the given index
-    Point get_point(size_t index) const;
+  /// Shoelace sign of the points projected onto pln
+  bool is_clockwise(const Plane &pln) const;
 
-    /// Sets the point at the given index
-    void set_point(size_t index, const Point& point);
+  /// Winding-number test on x and y
+  bool point_in_polygon_2d(const Point &p) const;
 
-    /// Adds a point to the end of the polyline
-    void add_point(const Point& point);
+  /// Distance to the nearest segment, with its index and the closest point
+  double closest_distance_and_point(const Point &point, size_t &edge_id, Point &closest_point) const;
 
-    /// Inserts a point at the specified index
-    void insert_point(size_t index, const Point& point);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Mutators
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Removes and returns the point at the specified index
-    bool remove_point(size_t index, Point& out_point);
+  void set_point(size_t index, const Point &point);
+  void add_point(const Point &point);
+  void insert_point(size_t index, const Point &point);
 
-    /// Reverses the order of points in the polyline
-    void reverse();
+  /// Remove the point at index into out_point; false when out of range
+  bool remove_point(size_t index, Point &out_point);
 
-    /// Returns a new polyline with reversed point order
-    Polyline reversed() const;
+  void reverse();
+  Polyline reversed() const;
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Operators
-    // ═══════════════════════════════════════════════════════════════════════════
+  /// Rotate the points by times positions, keeping the closing duplicate
+  void shift(int times);
 
-    /// Translates all points by a vector (in-place)
-    Polyline& operator+=(const Vector& v);
+  void translate(const Vector &v);
+  Polyline translated(const Vector &v) const;
 
-    /// Translates all points by a vector (returns new polyline)
-    Polyline operator+(const Vector& v) const;
+  /// Move the segment ends by dist0 and dist1, or by proportions of its length when non-zero
+  void extend_segment(int segment_id, double dist0, double dist1, double proportion0 = 0.0, double proportion1 = 0.0);
 
-    /// Translates all points by negative vector (in-place)
-    Polyline& operator-=(const Vector& v);
+  /// Move both segment ends by dist, or by proportion of its length when non-zero
+  void extend_segment_equally(int segment_id, double dist, double proportion = 0.0);
 
-    /// Translates all points by negative vector (returns new polyline)
-    Polyline operator-(const Vector& v) const;
+  /// Slide both ends of edge edge_idx outward by distance, keeping the closing duplicate in sync
+  void extend_edge_equally(size_t edge_idx, double distance);
 
-    /// Multiply all coordinates by scalar (in-place)
-    Polyline& operator*=(double factor);
+  /// Drop points whose neighbours are collinear within tol; closed polylines wrap around
+  void merge_collinear(double tol = Tolerance::APPROXIMATION);
 
-    /// Multiply polyline by scalar (returns new polyline)
-    Polyline operator*(double factor) const;
+  /// Drop consecutive points closer than tol
+  void remove_consecutive_duplicates(double tol = Tolerance::APPROXIMATION);
 
-    /// Divide all coordinates by scalar (in-place)
-    Polyline& operator/=(double factor);
+  /// Ramer-Douglas-Peucker copy
+  Polyline simplify(double tolerance) const;
 
-    /// Divide polyline by scalar (returns new polyline)
-    Polyline operator/(double factor) const;
+  /// Part on one side of plane; flip picks the normal side, unset keeps the arc-length midpoint side
+  Polyline cut_by_plane(const Plane &plane, std::optional<bool> flip = std::nullopt) const;
 
-    /// Negate polyline (reverse point order)
-    Polyline operator-() const;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Operators
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Transformation
-    // ═══════════════════════════════════════════════════════════════════════════
+  /// Same name, coordinates to 1e-6, width and linecolor; guid ignored
+  bool operator==(const Polyline &other) const;
+  bool operator!=(const Polyline &other) const;
 
-    void transform(const Xform& xform);
-    Polyline transformed(const Xform& xform) const;
+  Point operator[](size_t index) const;
 
-    /**
-     * @brief Translate every point of this polyline by `v` (in place).
-     *
-     * Mirrors the free function `move(std::vector<Point>&, const Vector&)`
-     * in this header — promoted to a class method for ergonomics.
-     *
-     * Named `translate` (not `move`) for cross-language parity: Rust's
-     * `move` is a keyword, and `translate` is more descriptive.
-     *
-     * @param v Translation vector.
-     */
-    void translate(const Vector& v);
-
-    /// Non-mutating translate: returns a new Polyline offset by v.
-    Polyline translated(const Vector& v) const;
-
-    /**
-     * @brief Slide both endpoints of edge `edge_idx` outward (or inward
-     *        for negative `distance`) along the edge tangent.
-     *
-     * For closed polylines, the closing-duplicate vertex is kept in sync
-     * (i.e. modifying point 0 also modifies point n-1 if they coincide).
-     * Wood's `merge_joints` calls this in opposite-edge pairs (0+2, 1+3)
-     * to scale rectangle joint volumes uniformly along their two
-     * principal axes.
-     *
-     * @param edge_idx Index of the first vertex of the edge.
-     * @param distance Signed distance to extend each endpoint by.
-     */
-    void extend_edge_equally(size_t edge_idx, double distance);
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // JSON Serialization
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Convert to JSON-serializable object (uses compact coords format)
-    nlohmann::ordered_json jsondump() const;
-
-    /// Create polyline from JSON data (supports both coords and legacy points format)
-    static Polyline jsonload(const nlohmann::json& data);
-
-    /// Serialize to JSON file
-    void file_json_dump(const std::string& filename) const;
-
-    /// Deserialize from JSON file
-    static Polyline file_json_load(const std::string& filename);
-
-    /// Convert to JSON string
-    std::string file_json_dumps() const;
-
-    /// Load from JSON string
-    static Polyline file_json_loads(const std::string& json_string);
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Protobuf Serialization
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Convert to protobuf binary string
-    std::string pb_dumps() const;
-
-    /// Load from protobuf binary string
-    static Polyline pb_loads(const std::string& data);
-
-    /// Write protobuf to file
-    void pb_dump(const std::string& filename) const;
-
-    /// Read protobuf from file
-    static Polyline pb_load(const std::string& filename);
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Geometric Utilities
-    // ═══════════════════════════════════════════════════════════════════════════
+  Polyline &operator+=(const Vector &v);
+  Polyline &operator-=(const Vector &v);
+  Polyline &operator*=(double factor);
+  Polyline &operator/=(double factor);
 
-    /// Shift polyline points by specified number of positions
-    void shift(int times);
-
-    /// Calculate squared length of polyline (faster, no sqrt)
-    double length_squared() const;
-
-    /// Get point at parameter t along a line segment (t=0 is start, t=1 is end)
-    static Point point_at(const Point& start, const Point& end, double t);
+  Polyline operator+(const Vector &v) const;
+  Polyline operator-(const Vector &v) const;
+  Polyline operator*(double factor) const;
+  Polyline operator/(double factor) const;
 
-    /// Generate a polyline along a quadratic Bezier curve defined by three points.
-    ///
-    /// Evaluates B(t) = (1-t)²·p0 + 2(1-t)t·p1 + t²·p2 for ``divisions``
-    /// uniformly-spaced values of t in [0, 1].
-    ///
-    /// @param p0        Start point.
-    /// @param p1        Control point (the parabola apex direction).
-    /// @param p2        End point.
-    /// @param divisions Number of points along the curve (minimum 2).
-    /// @return          Polyline of ``divisions`` sampled points.
-    static Polyline quadratic_points(const Point& p0, const Point& p1, const Point& p2,
-                                     int divisions = 7);
-
-    /// Find closest point on line segment to given point, returns parameter t
-    static void closest_point_to_line(const Point& point, const Point& line_start, 
-                                     const Point& line_end, double& t);
-
-    /// Check if two line segments overlap and return the overlapping segment
-    static bool line_line_overlap(const Point& line0_start, const Point& line0_end,
-                                 const Point& line1_start, const Point& line1_end,
-                                 Point& overlap_start, Point& overlap_end);
-
-    /// Calculate average of two line segments
-    static void line_line_average(const Point& line0_start, const Point& line0_end,
-                                 const Point& line1_start, const Point& line1_end,
-                                 Point& output_start, Point& output_end);
-
-    /// Calculate overlap average of two line segments
-    static void line_line_overlap_average(const Point& line0_start, const Point& line0_end,
-                                         const Point& line1_start, const Point& line1_end,
-                                         Point& output_start, Point& output_end);
-
-    /// Create line from projected points onto a base line
-    static bool line_from_projected_points(const Point& line_start, const Point& line_end,
-                                          const std::vector<Point>& points,
-                                          Point& output_start, Point& output_end);
-
-    /// Find closest distance and point from a point to this polyline
-    double closest_distance_and_point(const Point& point, size_t& edge_id, Point& closest_point) const;
-
-    /// Check if polyline is closed (first and last points are the same)
-    bool is_closed() const;
-    Polyline closed() const;
-
-    /// Cut polyline by plane, returning the portion on one side.
-    ///
-    /// By default (flip has no value) the side containing the arc-length
-    /// midpoint is kept.  Pass flip=false to keep the side opposite to the
-    /// plane normal, or flip=true to keep the side aligned with the normal.
-    ///
-    /// Segment-plane intersections are inserted as new vertices.
-    /// Consecutive near-duplicate points (within 1e-6) are removed.
-    Polyline cut_by_plane(const Plane& plane,
-                          std::optional<bool> flip = std::nullopt) const;
-
-    /// Calculate center point of polyline
-    Point center() const;
-
-    /// Get average plane from polyline points
-    void get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const;
-
-    /// Winding-number point-in-polygon test. p.x/y tested; polygon vertex z ignored.
-    bool point_in_polygon_2d(const Point& p) const;
-
-    /// Get fast plane calculation from polyline
-    void get_fast_plane(Point& origin, Plane& pln) const;
-
-    /// Extend polyline segment
-    void extend_segment(int segment_id, double dist0, double dist1, 
-                       double proportion0 = 0.0, double proportion1 = 0.0);
-
-    /// Extend segment equally on both ends (static utility)
-    static void extend_segment_equally(Point& segment_start, Point& segment_end,
-                                      double dist, double proportion = 0.0);
-
-    /// Extend a line segment independently at each end by a real (normalized) distance
-    static void extend_line_segment(Point& start, Point& end, double d0, double d1);
-
-    /// Shrink a line segment equally from both ends by a fraction of its length (not normalized)
-    static void shrink_line_segment(Point& start, Point& end, double dist);
-
-    /// Extend polyline segment equally
-    void extend_segment_equally(int segment_id, double dist, double proportion = 0.0);
-
-    /// Check if polyline is clockwise oriented
-    bool is_clockwise(const Plane& pln) const;
-
-    /// Get convex/concave corners of polyline
-    void get_convex_corners(std::vector<bool>& convex_or_concave) const;
-
-    /// Interpolate between two polylines
-    static Polyline tween_two_polylines(const Polyline& polyline0, const Polyline& polyline1,
-                                       double weight);
-
-    /// Linear interpolation between two points.
-    /// kind: 0=no endpoints, 1=both endpoints, 2=start only
-    static std::vector<Point> interpolate_points(const Point& from, const Point& to, int steps, int kind = 0);
-
-    /// 2D convex hull (quickhull) in the polygon's local plane.
-    static Polyline quick_hull(const Polyline& polygon);
-
-    /// Minimum-area bounding rectangle via rotating calipers; returns closed 5-pt Polyline.
-    static std::optional<Polyline> bounding_rectangle(const Polyline& polygon);
-
-    /// Grid of interior points; offset_dist insets (-) or outsets (+) polygon via miter
-    /// offset before sampling (0 = skip); div_dist = grid spacing.
-    static std::vector<Point> grid_of_points_in_polygon(const Polyline& polygon,
-                                                        double offset_dist, double div_dist,
-                                                        size_t max_pts = 100);
-
-    /// Largest inscribed circle via mapbox polylabel (quadtree subdivision).
-    /// polylines[0] is the outer boundary; polylines[1..] are holes.
-    /// Returns (center, plane, radius).
-    static std::tuple<Point, Plane, double> polylabel(const std::vector<Polyline>& polylines,
-                                                      double precision = 1.0);
-
-    /// Points on the polylabel inscribed circle, scaled by `scale`.
-    /// If `orient_to_closest_edge`, the circle is rotated so its first division
-    /// aligns with the polygon edge closest to the center.
-    static std::vector<Point> polylabel_circle_division_points(
-        const Vector& division_direction_in_3d,
-        const std::vector<Polyline>& polylines,
-        int division = 4,
-        double scale = 0.75,
-        double precision = 1.0,
-        bool orient_to_closest_edge = true);
-
-    /// Boolean operation on two closed planar polylines (2D, uses x,y only).
-    /// clip_type: 0=intersection, 1=union, 2=difference (a minus b).
-    /// Returns 0+ result polygons. Uses Vatti scanline algorithm.
-    static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, int clip_type);
-
-    /// Boolean operation on two 3D coplanar polylines.
-    /// Projects to plane's local 2D, runs boolean, inverse-transforms back to 3D.
-    static std::vector<Polyline> boolean_op(const Polyline& a, const Polyline& b, const Plane& plane, int clip_type);
-
-    /// Merge consecutive collinear segments (in-place); closed polyline wraps around
-    void merge_collinear(double tol = Tolerance::APPROXIMATION);
-
-    /// Simplify a point list using Ramer-Douglas-Peucker
-    static std::vector<Point> simplify_points(const std::vector<Point>& points, double tolerance);
-
-    /// Simplify this polyline using Ramer-Douglas-Peucker
-    Polyline simplify(double tolerance) const;
-
-    /// Remove consecutive near-duplicate points in place
-    void remove_consecutive_duplicates(double tol = Tolerance::APPROXIMATION);
-
-    /// Build two oriented rectangular cross-section polylines (male rect0, female rect1)
-    /// from a local frame: center point p, tangent direction segment_vector, and zaxis.
-    /// radius controls the half-width; length is the extent along segment_vector.
-    /// middle=true: symmetric about p; flip_male: +1/-1/0 for corner order.
-    static void two_rects_from_frame(
-        const Point&  p,
-        const Vector& segment_vector,
-        const Vector& zaxis,
-        bool          middle,
-        double        radius,
-        double        length,
-        int           flip_male,
-        Polyline&     rect0,
-        Polyline&     rect1);
+  /// Reversed copy
+  Polyline operator-() const;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Transformation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void transform(const Xform &xform);
+  Polyline transformed(const Xform &xform) const;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Segment utilities
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Point at parameter t (0 = start, 1 = end)
+  static Point point_at(const Point &start, const Point &end, double t);
+
+  /// Parameter t of the closest point on the line through line_start and line_end
+  static void closest_point_to_line(const Point &point, const Point &line_start, const Point &line_end, double &t);
+
+  /// Collinear overlap of two segments; false when none or a single point
+  static bool line_line_overlap(const Point &line0_start, const Point &line0_end, const Point &line1_start, const Point &line1_end, Point &overlap_start, Point &overlap_end);
+
+  /// Midpoints of the paired starts and ends
+  static void line_line_average(const Point &line0_start, const Point &line0_end, const Point &line1_start, const Point &line1_end, Point &output_start, Point &output_end);
+
+  /// Longer of the two midpoint pairings of the mutual overlaps
+  static void line_line_overlap_average(const Point &line0_start, const Point &line0_end, const Point &line1_start, const Point &line1_end, Point &output_start, Point &output_end);
+
+  /// Extreme sub-segment of the line spanned by the projected points; false when a single point
+  static bool line_from_projected_points(const Point &line_start, const Point &line_end, const std::vector<Point> &points, Point &output_start, Point &output_end);
+
+  /// Move both ends by dist, or by proportion of the length when non-zero
+  static void extend_segment_equally(Point &segment_start, Point &segment_end, double dist, double proportion = 0.0);
+
+  /// Move start by d0 and end by d1 along the unit direction
+  static void extend_line_segment(Point &start, Point &end, double d0, double d1);
+
+  /// Move both ends inward by dist as a fraction of the length
+  static void shrink_line_segment(Point &start, Point &end, double dist);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Polygon utilities
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Pointwise blend; polyline0 when the counts differ
+  static Polyline tween_two_polylines(const Polyline &polyline0, const Polyline &polyline1, double weight);
+
+  /// steps points between from and to; kind 0 none, 1 both, 2 start endpoint
+  static std::vector<Point> interpolate_points(const Point &from, const Point &to, int steps, int kind = 0);
+
+  /// Convex hull in the polygon's average plane
+  static Polyline quick_hull(const Polyline &polygon);
+
+  /// Minimum-area rectangle of the hull as a closed 5-point polyline
+  static std::optional<Polyline> bounding_rectangle(const Polyline &polygon);
+
+  /// Grid of interior points spaced div_dist, on the polygon miter-offset by offset_dist
+  static std::vector<Point> grid_of_points_in_polygon(const Polyline &polygon, double offset_dist, double div_dist, size_t max_pts = 100);
+
+  /// Largest inscribed circle of polylines[0] minus the holes polylines[1..]: center, plane, radius
+  static std::tuple<Point, Plane, double> polylabel(const std::vector<Polyline> &polylines, double precision = 1.0);
+
+  /// division points on the polylabel circle scaled by scale, oriented to the closest edge or division_direction_in_3d
+  static std::vector<Point> polylabel_circle_division_points(const Vector &division_direction_in_3d, const std::vector<Polyline> &polylines, int division = 4, double scale = 0.75, double precision = 1.0, bool orient_to_closest_edge = true);
+
+  /// Vatti boolean of two closed polylines on x and y; clip_type 0 intersection, 1 union, 2 a minus b
+  static std::vector<Polyline> boolean_op(const Polyline &a, const Polyline &b, int clip_type);
+
+  /// Boolean of two coplanar polylines in plane's local frame
+  static std::vector<Polyline> boolean_op(const Polyline &a, const Polyline &b, const Plane &plane, int clip_type);
+
+  /// Ramer-Douglas-Peucker on a point list
+  static std::vector<Point> simplify_points(const std::vector<Point> &points, double tolerance);
+
+  /// Male rect0 and female rect1 cross-sections of radius about p along segment_vector; flip_male rotates the corners
+  static void two_rects_from_frame(const Point &p, const Vector &segment_vector, const Vector &zaxis, bool middle, double radius, double length, int flip_male, Polyline &rect0, Polyline &rect1);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // JSON
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  nlohmann::ordered_json jsondump() const;
+  static Polyline jsonload(const nlohmann::json &data);
+  std::string file_json_dumps() const;
+  static Polyline file_json_loads(const std::string &json_string);
+  void file_json_dump(const std::string &filename) const;
+  static Polyline file_json_load(const std::string &filename);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Protobuf
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  std::string pb_dumps() const;
+  static Polyline pb_loads(const std::string &data);
+  void pb_dump(const std::string &filename) const;
+  static Polyline pb_load(const std::string &filename);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // String
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// "[(x0, y0, z0), (x1, y1, z1), ...]"
+  std::string str() const;
+
+  /// "Polyline(name, N points)"
+  std::string repr() const;
 
 private:
-    mutable std::string _guid; ///< Lazily generated unique identifier
+  mutable std::string _guid;
 
-    /// Helper to recompute plane when points change
-    void recompute_plane_if_needed();
-
-    /// Calculate average normal from polyline points
-    void average_normal(Vector& average_normal) const;
-
-    static double simplify_perp_dist(const Point& pt, const Point& line_start, const Point& line_end);
-    static void simplify_rdp(const std::vector<Point>& points, int start, int end, double tolerance, std::vector<bool>& keep);
+  void recompute_plane_if_needed();
+  void average_normal(Vector &avg_normal) const;
+  Point point_at_length(double distance) const;
+  void project_to_plane(const Point &origin, const Vector &x_axis, const Vector &y_axis, std::vector<std::array<double, 2>> &pts2d) const;
+  static Point unproject(const Point &origin, const Vector &x_axis, const Vector &y_axis, double u, double v);
+  static void quick_hull_recurse(const std::vector<std::array<double, 2>> &pts, double ax, double ay, double bx, double by, std::vector<std::array<double, 2>> &hull);
+  static void offset_polygon_2d(std::vector<std::array<double, 2>> &poly2d, double offset_dist);
+  static bool point_in_polygon(const std::vector<std::array<double, 2>> &poly2d, double px, double py);
+  static bool closest_edge(const Point &center, const std::vector<Polyline> &polylines, size_t &edge_i, size_t &edge_j);
+  static Polyline boolean_project(const Polyline &pl, const Plane &plane);
+  static void ensure_ccw(Polyline &p2d);
+  static double simplify_perp_dist(const Point &pt, const Point &line_start, const Point &line_end);
+  static void simplify_rdp(const std::vector<Point> &points, int start, int end, double tolerance, std::vector<bool> &keep);
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Stream operator
-// ═══════════════════════════════════════════════════════════════════════════
-
-std::ostream& operator<<(std::ostream& os, const Polyline& polyline);
+std::ostream &operator<<(std::ostream &os, const Polyline &polyline);
 
 } // namespace session_cpp
 
-// fmt formatter specialization for Polyline
 template <> struct fmt::formatter<session_cpp::Polyline> {
-    constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
-
-    auto format(const session_cpp::Polyline& polyline, fmt::format_context& ctx) const {
-        return fmt::format_to(ctx.out(), "Polyline(guid={}, name={}, points={})",
-                            polyline.guid(), polyline.name, polyline.point_count());
-    }
+  constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
+  auto format(const session_cpp::Polyline &o, fmt::format_context &ctx) const {
+    return fmt::format_to(ctx.out(), "{}", o.repr());
+  }
 };

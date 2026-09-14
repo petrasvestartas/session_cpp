@@ -9,25 +9,45 @@
 #include <map>
 #include <tuple>
 #include <array>
-#include <functional>
 #include <limits>
 #include "nurbssurface_trimmed.pb.h"
 
 namespace session_cpp {
 
-/// Evaluate the C0-knot side belonging to this triangle rather than its neighbor.
-static Vector crease_side_normal(const NurbsSurface& surface, const std::vector<double> (&knots)[2],
-                                  const std::array<double,2>& center, std::array<double,2> uv) {
-    for (int dir=0;dir<2;++dir)
-        if (std::find(knots[dir].begin(),knots[dir].end(),uv[dir]) != knots[dir].end())
-            uv[dir] = std::nextafter(uv[dir],center[dir]);
-    return surface.normal_at(uv[0],uv[1]);
-}
-
-bool point_in_polygon_2d(double, double, const std::vector<double>&);
 namespace {
 
-// ---- FlatMap64: open-addressing hash map with uint64_t keys ----
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Normal on the side of a C0 knot line that belongs to the triangle around center
+Vector crease_side_normal(const NurbsSurface& surface, const std::vector<double> (&knots)[2], const std::array<double, 2>& center, std::array<double, 2> uv) {
+    for (int dir = 0; dir < 2; ++dir)
+        if (std::find(knots[dir].begin(), knots[dir].end(), uv[dir]) != knots[dir].end())
+            uv[dir] = std::nextafter(uv[dir], center[dir]);
+    return surface.normal_at(uv[0], uv[1]);
+}
+
+/// Winding-number test of (u, v) against a closed UV polygon
+bool point_in_polygon_2d(double u, double v, const std::vector<Point>& poly) {
+    int winding = 0;
+    const size_t n = poly.size();
+    for (size_t i = 0; i < n; ++i) {
+        const size_t j = (i + 1) % n;
+        const double x0 = poly[i][0];
+        const double y0 = poly[i][1];
+        const double x1 = poly[j][0];
+        const double y1 = poly[j][1];
+        const double cross = (x1 - x0) * (v - y0) - (y1 - y0) * (u - x0);
+        if (y0 <= v && y1 > v && cross > 0.0) ++winding;
+        if (y0 > v && y1 <= v && cross < 0.0) --winding;
+    }
+    return winding != 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FlatMap64
+// ═══════════════════════════════════════════════════════════════════════════
 
 template<typename V>
 class FlatMap64 {
@@ -120,7 +140,9 @@ public:
     size_t size() const { return size_; }
 };
 
-// ---- Delaunay2D: Bowyer-Watson CDT in 2D UV space ----
+// ═══════════════════════════════════════════════════════════════════════════
+// Delaunay2D
+// ═══════════════════════════════════════════════════════════════════════════
 
 struct Vertex2D { double x = 0.0, y = 0.0; };
 
@@ -395,7 +417,6 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
                 if (nb_t.adj[kk]==new_ti&&nb_t.constrained[kk]) { nt.constrained[k]=true; break; }
         }
     }
-    // mark constrained flag on the new shared edge
     for (auto& tri : triangles) {
         if (!tri.alive) continue;
         for (int k=0;k<3;++k) {
@@ -429,49 +450,10 @@ std::vector<std::array<int,3>> Delaunay2D::get_triangles() const {
     return result;
 }
 
-} // anonymous namespace
+} // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Constructors
-// ═══════════════════════════════════════════════════════════════════════════
-
-NurbsSurfaceTrimmed::NurbsSurfaceTrimmed() {}
-
-NurbsSurfaceTrimmed::NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other) {
-    deep_copy_from(other);
-}
-
-NurbsSurfaceTrimmed& NurbsSurfaceTrimmed::operator=(const NurbsSurfaceTrimmed& other) {
-    if (this != &other) deep_copy_from(other);
-    return *this;
-}
-
-bool NurbsSurfaceTrimmed::operator==(const NurbsSurfaceTrimmed& other) const {
-    if (name != other.name) return false;
-    if (width != other.width) return false;
-    if (surfacecolor != other.surfacecolor) return false;
-    if (m_surface != other.m_surface) return false;
-    return true;
-}
-
-bool NurbsSurfaceTrimmed::operator!=(const NurbsSurfaceTrimmed& other) const {
-    return !(*this == other);
-}
-
-NurbsSurfaceTrimmed::~NurbsSurfaceTrimmed() {}
-
-void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
-    _guid.clear();
-    name = src.name;
-    width = src.width;
-    surfacecolor = src.surfacecolor;
-    m_surface = src.m_surface;
-    m_outer_loop = src.m_outer_loop;
-    m_inner_loops = src.m_inner_loops;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Static Factory Methods
+// Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create(const NurbsSurface& surface, const NurbsCurve& outer_loop) {
@@ -559,9 +541,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     else
         snap_uv = std::min(range_u, range_v) * 1e-7;
 
-    // ---- 1. Sample cutters into tagged UV polylines ----
-    // The split faces' trims CARRY these polylines as pcurves, so the sampling sag is a
-    // direct geometric error of the result.
     double samp_tol = std::max(range_u, range_v) * 2e-5;
     struct UVPoly { int cidx; std::vector<std::array<double, 2>> pts; std::vector<double> ts; };
     std::vector<UVPoly> polylines;
@@ -635,8 +614,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
         if (pts.size() < 2)
             continue;
-        // A cutter lying entirely on one border line coincides with the domain edge
-        // (e.g. a cut circle on the seam) and splits nothing.
         bool on_u0 = true, on_u1 = true, on_v0 = true, on_v1 = true;
         for (const auto& p : pts) {
             if (std::abs(p[0] - u0) >= snap_uv) on_u0 = false;
@@ -649,15 +626,11 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         polylines.push_back({cidx, pts, ts});
     }
 
-    // Border sides as polylines: cidx -1 bottom, -2 right, -3 top, -4 left
     polylines.push_back({-1, {{u0, v0}, {u1, v0}}, {u0, u1}});
     polylines.push_back({-2, {{u1, v0}, {u1, v1}}, {v0, v1}});
     polylines.push_back({-3, {{u1, v1}, {u0, v1}}, {u1, u0}});
     polylines.push_back({-4, {{u0, v1}, {u0, v0}}, {v1, v0}});
 
-    // ---- 1b. Drop degenerate cut polylines ----
-    // A cutter whose whole UV extent is below a few snap widths yields a sliver cell whose
-    // lifted loop corrupts memory downstream. Border sides are always kept.
     {
         double min_ext = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-5);
         polylines.erase(std::remove_if(polylines.begin(), polylines.end(),
@@ -670,7 +643,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             }), polylines.end());
     }
 
-    // ---- 2. Segment-segment intersections (Newton-refined on real curves) ----
     auto seg_seg = [](const std::array<double, 2>& p1, const std::array<double, 2>& p2,
                       const std::array<double, 2>& p3, const std::array<double, 2>& p4,
                       double& s_out, double& t_out) -> bool {
@@ -715,7 +687,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     };
 
-    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;  // (poly_index, seg_index) -> list of (frac, u, v, t_on_curve)
+    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;
     for (int pi = 0; pi < (int)polylines.size(); ++pi) {
         for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
             const UVPoly& A = polylines[pi];
@@ -786,7 +758,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
-    // ---- 3. Rebuild polylines with split vertices; build the vertex pool ----
     std::map<std::pair<long long, long long>, std::vector<int>> cell_map;
     std::vector<std::array<double, 2>> verts;
 
@@ -816,7 +787,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
 
     for (int pi = 0; pi < (int)polylines.size(); ++pi) {
         const UVPoly& poly = polylines[pi];
-        std::vector<std::pair<int, double>> chain;  // (vid, t_on_curve)
+        std::vector<std::pair<int, double>> chain;
         for (int i = 0; i < (int)poly.pts.size(); ++i) {
             chain.push_back({vert_id(poly.pts[i]), poly.ts[i]});
             auto sit = splits.find({pi, i});
@@ -836,7 +807,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
-    // ---- 4. Prune dangling edges (valence-1 chains) ----
     std::vector<bool> alive(edges.size(), true);
     bool changed = true;
     while (changed) {
@@ -865,7 +835,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     if (live_edges.empty())
         return {};
 
-    // ---- 5. Half-edge face extraction (leftmost-turn walk) ----
     struct HalfEdge { int tail, head, eidx, fwd; };
     std::vector<HalfEdge> hes;
     for (int ei = 0; ei < (int)live_edges.size(); ++ei) {
@@ -889,21 +858,19 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         for (size_t pos = 0; pos < outs.size(); ++pos) {
             int hi = outs[pos];
             int tw = hi ^ 1;
-            // at vertex vid, incoming tw arrives; next outgoing is the one
-            // clockwise from the reversed incoming (leftmost turn)
             int nxt = outs[(pos + outs.size() - 1) % outs.size()];
             next_he[tw] = nxt;
         }
     }
 
     std::vector<bool> visited(hes.size(), false);
-    std::vector<std::vector<int>> faces;  // list of list of he indices
+    std::vector<std::vector<int>> faces;
     for (int hi = 0; hi < (int)hes.size(); ++hi) {
         if (visited[hi])
             continue;
         std::vector<int> cycle;
         int cur = hi;
-        while (cur >= 0 && !visited[cur]) {  // cur>=0 guards an unlinked half-edge
+        while (cur >= 0 && !visited[cur]) {
             visited[cur] = true;
             cycle.push_back(cur);
             cur = next_he[cur];
@@ -960,7 +927,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
-    // ---- 6. Assign floating hole loops to their containing faces ----
     std::vector<std::vector<std::vector<int>>> holes_of(pos_faces.size());
     for (const auto& cycle : neg_faces) {
         const auto& sample = verts[hes[cycle[0]].tail];
@@ -970,8 +936,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             const auto& fc = pos_faces[fi].first;
             double area = pos_faces[fi].second;
             if (area < best_area && point_in_cycle(sample, fc)) {
-                // the hole vertex lies ON the cycle of its own disk face;
-                // skip faces sharing vertices with the hole cycle
                 std::set<int> hole_vids;
                 std::set<int> face_vids;
                 for (int hi : cycle)
@@ -988,9 +952,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
             holes_of[best].push_back(cycle);
     }
 
-    // ---- 7. Emit one trimmed surface per face ----
-    // Collapse consecutive same-curve half-edges into exact trims (border runs become
-    // straight segments), each oriented tail->head along the face walk.
     auto cycle_to_segments = [&](const std::vector<int>& cycle) -> std::vector<NurbsCurve> {
         struct Run { int cidx, va, vb; double ta, tb; };
         std::vector<Run> runs;
@@ -1013,8 +974,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 const NurbsCurve& crv = pcurves[run.cidx];
                 auto cdom = crv.domain();
                 double c0 = cdom.first, c1 = cdom.second;
-                // Clamp to the curve domain: a snapped run can carry an endpoint parameter a
-                // hair outside [c0,c1], and trimming out-of-domain corrupts memory.
                 double lo = std::max(c0, std::min(run.ta, run.tb));
                 double hi_ = std::min(c1, std::max(run.ta, run.tb));
                 NurbsCurve piece = crv;
@@ -1023,13 +982,10 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                     if (!piece.trim(lo, hi_))
                         piece_ok = false;
                 } else if (hi_ - lo <= 1e-14) {
-                    // zero param span: a FULL wrap of a closed pcurve lands ta==tb on the
-                    // period seam -- keep the whole curve; a genuinely degenerate run is
-                    // skipped (its endpoint chord below is zero-length and pushes nothing).
                     if (!(run.va == run.vb && piece.is_closed())) piece_ok = false;
                 }
                 if (piece_ok && piece.is_valid()) {
-                    if (run.ta > run.tb) piece.reverse();  // orient tail->head
+                    if (run.ta > run.tb) piece.reverse();
                     pieces.push_back(piece);
                     made = true;
                 }
@@ -1049,8 +1005,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         return pieces;
     };
 
-    // Join the run pieces into one closed loop; a polyline loop from the face walk is the
-    // fallback when the pieces do not chain.
     auto cycle_to_loop = [&](const std::vector<int>& cycle) -> NurbsCurve {
         std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
         if (pieces.empty())
@@ -1059,10 +1013,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, join_tol);
         if (joined.size() == 1 && joined[0].is_valid()) {
             NurbsCurve& J = joined[0];
-            // is_closed() demands ZERO_TOLERANCE; a loop reassembled from trimmed pieces
-            // closes within the join tolerance. Weld the last CV onto the first (clamped
-            // ends ARE CVs) rather than fall back to a polyline that discards the exact
-            // curve representation.
             if (!J.is_closed() &&
                 J.point_at_start().distance(J.point_at_end()) <= join_tol) {
                 double x, y, z, w;
@@ -1119,6 +1069,68 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     return result;
 }
 
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes) {
+    std::vector<NurbsSurfaceTrimmed> out;
+    int k = (int)planes.size();
+    if (k == 0 || k > 16) return out;
+    for (int mask = 0; mask < (1 << k); ++mask) {
+        std::vector<std::pair<Point, Vector>> cp;
+        for (int i = 0; i < k; ++i) {
+            const Point& q = planes[i].first;
+            const Vector& n = planes[i].second;
+            bool flip = ((mask >> i) & 1) == 1;
+            Vector nn = flip ? Vector(-n[0], -n[1], -n[2]) : Vector(n[0], n[1], n[2]);
+            cp.push_back({q, nn});
+        }
+        NurbsSurfaceTrimmed ts;
+        ts.m_surface = srf;
+        Mesh m = ts.mesh_by_planes(cp, 20.0, 0.01);
+        if (m.number_of_faces() > 0) {
+            out.push_back(ts);
+        }
+    }
+    return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
+
+NurbsSurfaceTrimmed::NurbsSurfaceTrimmed() {}
+
+NurbsSurfaceTrimmed::NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other) {
+    deep_copy_from(other);
+}
+
+NurbsSurfaceTrimmed& NurbsSurfaceTrimmed::operator=(const NurbsSurfaceTrimmed& other) {
+    if (this != &other) deep_copy_from(other);
+    return *this;
+}
+
+bool NurbsSurfaceTrimmed::operator==(const NurbsSurfaceTrimmed& other) const {
+    if (name != other.name) return false;
+    if (width != other.width) return false;
+    if (surfacecolor != other.surfacecolor) return false;
+    if (m_surface != other.m_surface) return false;
+    return true;
+}
+
+bool NurbsSurfaceTrimmed::operator!=(const NurbsSurfaceTrimmed& other) const {
+    return !(*this == other);
+}
+
+NurbsSurfaceTrimmed::~NurbsSurfaceTrimmed() {}
+
+void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
+    _guid.clear();
+    name = src.name;
+    width = src.width;
+    surfacecolor = src.surfacecolor;
+    m_surface = src.m_surface;
+    m_outer_loop = src.m_outer_loop;
+    m_inner_loops = src.m_inner_loops;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1130,7 +1142,7 @@ bool NurbsSurfaceTrimmed::is_trimmed() const { return m_outer_loop.is_valid(); }
 bool NurbsSurfaceTrimmed::is_valid() const { return m_surface.is_valid(); }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Inner Loops
+// Inner loops
 // ═══════════════════════════════════════════════════════════════════════════
 
 void NurbsSurfaceTrimmed::add_inner_loop(const NurbsCurve& loop_2d) {
@@ -1178,18 +1190,6 @@ Vector NurbsSurfaceTrimmed::normal_at(double u, double v) const { return m_surfa
 
 Mesh NurbsSurfaceTrimmed::mesh() const { return mesh_q(20.0, 0.005); }
 
-// Unified trimmed-surface tessellation (BRepMesh / OpenNURBS model):
-//   1. Discretize each UV trim loop into a polygon, adaptively refining segments whose
-//      lifted 3D midpoint deviates from the chord — so the boundary follows the surface.
-//   2. Constrained Delaunay of the UV domain with the trim loops as boundary constraints.
-//   3. Refine the interior by surface DEFLECTION: repeatedly split any triangle whose surface
-//      point at its UV centroid lies farther than the deflection tolerance from the triangle's
-//      3D plane (or whose corner normals turn more than max_angle_deg). New points go in at the
-//      centroid only when it is inside the trim region, keeping the CDT boundary-conforming and
-//      producing graded, well-shaped triangles — dense where curved, coarse where flat.
-//   4. Delete exterior triangles, lift to 3D, set per-vertex analytic normals.
-// Planar surfaces need no interior refinement (deflection is ~0), so step 3 exits immediately
-// and the same code path yields the minimal boundary triangulation.
 double NurbsSurfaceTrimmed::bbox_diagonal() const {
     double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
     for (int i = 0; i < m_surface.cv_count(0); ++i)
@@ -1215,7 +1215,6 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
         return {p[0], p[1], p[2]};
     };
 
-    // ---- 1. Adaptive trim-wire discretization in UV ----
     auto disc_loop = [&](const NurbsCurve& crv) -> std::vector<Point> {
         std::vector<Point> raw;
         if (crv.degree() <= 1 && !crv.is_rational()) {
@@ -1232,38 +1231,33 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
             else break;
         }
         if (raw.size() < 2) return raw;
-        // Recursively split each segment while its lifted 3D midpoint deviates from the chord.
         std::vector<Point> out;
         out.reserve(raw.size() * 2);
-        std::function<void(const Point&, const Point&, int)> rec =
-            [&](const Point& a, const Point& b, int depth) {
+        for (size_t i = 0; i < raw.size(); ++i) {
+            std::vector<std::tuple<Point, Point, int>> stack = {{raw[i], raw[(i+1)%raw.size()], 0}};
+            while (!stack.empty()) {
+                auto [a, b, depth] = stack.back();
+                stack.pop_back();
                 double mu = (a[0]+b[0])*0.5, mv = (a[1]+b[1])*0.5;
                 auto pa = eval3(a[0], a[1]), pb = eval3(b[0], b[1]), pm = eval3(mu, mv);
                 double ex = pb[0]-pa[0], ey = pb[1]-pa[1], ez = pb[2]-pa[2];
-                double L2 = ex*ex + ey*ey + ez*ez;
+                double l2 = ex*ex + ey*ey + ez*ez;
                 double dev = 0.0;
-                if (L2 > 1e-30) {
-                    double t = ((pm[0]-pa[0])*ex+(pm[1]-pa[1])*ey+(pm[2]-pa[2])*ez)/L2;
+                if (l2 > 1e-30) {
+                    double t = ((pm[0]-pa[0])*ex+(pm[1]-pa[1])*ey+(pm[2]-pa[2])*ez)/l2;
                     double cx = pa[0]+t*ex, cy = pa[1]+t*ey, cz = pa[2]+t*ez;
                     dev = std::sqrt((pm[0]-cx)*(pm[0]-cx)+(pm[1]-cy)*(pm[1]-cy)+(pm[2]-cz)*(pm[2]-cz));
                 } else {
-                    // Degenerate 3D chord: the two endpoints coincide in 3D. This is either a
-                    // true singular edge (the whole segment collapses to a point -> pm == pa,
-                    // dev stays ~0, no refinement) or a seam-wrap edge (a single UV segment that
-                    // wraps a periodic surface, e.g. a cylinder/sphere rim u:0->2pi -> pm lies on
-                    // the far side). Measure deviation as the midpoint-to-endpoint 3D distance so
-                    // seam-wrap edges get subdivided into the underlying circle instead of a chord.
                     dev = std::sqrt((pm[0]-pa[0])*(pm[0]-pa[0])+(pm[1]-pa[1])*(pm[1]-pa[1])+(pm[2]-pa[2])*(pm[2]-pa[2]));
                 }
                 if (dev > deflection && depth < 6) {
-                    rec(a, Point(mu, mv, 0.0), depth+1);
-                    rec(Point(mu, mv, 0.0), b, depth+1);
+                    stack.push_back({Point(mu, mv, 0.0), b, depth+1});
+                    stack.push_back({a, Point(mu, mv, 0.0), depth+1});
                 } else {
                     out.push_back(a);
                 }
-            };
-        for (size_t i = 0; i < raw.size(); ++i)
-            rec(raw[i], raw[(i+1)%raw.size()], 0);
+            }
+        }
         return out;
     };
 
@@ -1316,26 +1310,13 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
         if (p[1] > bb_vmax) bb_vmax = p[1];
     }
 
-    auto to_flat = [](const std::vector<Point>& pts) -> std::vector<double> {
-        std::vector<double> c;
-        c.reserve(pts.size() * 2);
-        for (const auto& p : pts) { c.push_back(p[0]); c.push_back(p[1]); }
-        return c;
-    };
-    auto outer_coords = to_flat(outer_uv);
-    std::vector<std::vector<double>> hole_coords;
-    for (size_t li = 1; li < loops.uv.size(); ++li) hole_coords.push_back(to_flat(loops.uv[li]));
-
     auto inside_trim = [&](double u, double v) -> bool {
-        if (!point_in_polygon_2d(u, v, outer_coords)) return false;
-        for (const auto& hc : hole_coords)
-            if (point_in_polygon_2d(u, v, hc)) return false;
+        if (!point_in_polygon_2d(u, v, outer_uv)) return false;
+        for (size_t li = 1; li < loops.uv.size(); ++li)
+            if (point_in_polygon_2d(u, v, loops.uv[li])) return false;
         return true;
     };
 
-    // ---- 2. Constrained Delaunay of the trim wire ----
-    // Every loop vertex keeps its Delaunay id, so a 3D point and a tag the caller gave it
-    // reach the mesh vertex it becomes.
     std::vector<double> crease_knots[2];
     for (int dir = 0; dir < 2; ++dir) {
         auto [start, end] = m_surface.domain(dir);
@@ -1395,8 +1376,6 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     for (const auto& p : loops.interior_uv)
         if (inside_trim(p[0], p[1])) dt.insert(p[0], p[1]);
 
-    // ---- 3. Interior refinement by surface deflection ----
-    // Interior seeds still undergo the same deflection and normal-angle checks.
     const int MAX_ITERS = 8;
     const size_t MAX_VERTS = 200000;
     int iters = MAX_ITERS;
@@ -1437,7 +1416,6 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
         if (dt.vertices.size() >= MAX_VERTS) break;
     }
 
-    // ---- 4. Trim, lift, normals ----
     dt.cleanup();
     for (auto& tri : dt.triangles) {
         if (!tri.alive) continue;
@@ -1457,8 +1435,6 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
         for (double knot : crease_knots[dir]) if (low < knot && knot < high) return Mesh();
     }
 
-    // A loop vertex given a 3D point lifts to it, not through the surface: that point is the
-    // edge polygon's and the neighbouring face lifts to the same bits.
     std::vector<std::pair<int, int>> given(dt.vertices.size(), {-1, -1});
     for (size_t li = 0; li < loop_vids.size() && li < loops.xyz.size(); ++li)
         for (size_t k = 0; k < loop_vids[li].size() && k < loops.xyz[li].size(); ++k)
@@ -1467,10 +1443,6 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     Mesh result;
     std::vector<size_t> vert_map(dt.vertices.size(), SIZE_MAX);
 
-    // Lift to 3D, welding coincident vertices so a closed/periodic surface (cylinder, cone,
-    // torus, sphere) stitches at its seam: distinct UV columns u0 and u1 (or rows v0/v1)
-    // evaluate to the SAME 3D point, so they must share one mesh vertex. Spatial hash on a
-    // weld-tolerance grid; new points scan the 3x3x3 neighbour cells.
     double weld_tol = loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0;
     double cell = bbox_diag * 1e-5;
     std::map<std::tuple<long long,long long,long long>,
@@ -1513,8 +1485,6 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
         if (v0 == v1 || v1 == v2 || v2 == v0) continue;
         result.add_face({v0, v1, v2});
     }
-    // A singular point (a pole, an apex) has no analytic normal: it takes the mean of its
-    // fan's face normals, summed in face-key order so the bits never depend on map order.
     std::map<size_t, std::array<double,3>> fan;
     std::vector<size_t> fkeys;
     for (const auto& [fk, verts] : result.face) fkeys.push_back(fk);
@@ -1532,7 +1502,6 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     for (size_t vi = 0; vi < vert_map.size(); ++vi) {
         if (vert_map[vi] == SIZE_MAX) continue;
         VertexData& vd = result.vertex[vert_map[vi]];
-        // normal_at's singular +Z sentinel is not a valid analytic face normal.
         auto derivatives = m_surface.evaluate(dt.vertices[vi].x, dt.vertices[vi].y, 1);
         Vector nrm(0.0, 0.0, 0.0);
         if (derivatives.size() >= 3) nrm = derivatives[2].cross(derivatives[1]);
@@ -1579,8 +1548,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
         auto p = eval3(u, v);
         return (p[0]-q0[0])*nx + (p[1]-q0[1])*ny + (p[2]-q0[2])*nz;
     };
-    // Newton: move (u,v) so f(u,v)->0, stepping along the UV gradient of f. Lands the point
-    // exactly on the cut plane (the verified fix vs the old column-scan's off-plane strays).
     auto refine = [&](double& u, double& v) {
         for (int it = 0; it < 12; ++it) {
             double fv = field(u, v);
@@ -1595,12 +1562,11 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
         }
     };
 
-    // ---- span-adaptive UV grid (curvature: normal-angle + chord deflection) ----
     auto usp = srf.get_span_vector(0);
     auto vsp = srf.get_span_vector(1);
     if (usp.size() < 2 || vsp.size() < 2) return srf.mesh();
     int deg_u = srf.degree(0), deg_v = srf.degree(1);
-    double bmin[3] = {1e30,1e30,1e30}, bmax[3] = {-1e30,-1e30,-1e30};
+    double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
     for (int i = 0; i < srf.cv_count(0); ++i)
         for (int j = 0; j < srf.cv_count(1); ++j) {
             Point p = srf.get_cv(i, j);
@@ -1615,7 +1581,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
         double s_mid = (osp.front()+osp.back())*0.5;
         for (int i = 0; i < n; ++i) {
             double t0 = sp[i], t1 = sp[i+1];
-            // angle across the span at mid-other-param
             if (deg > 1) {
                 double ma = 0.0; std::array<double,3> pn{};
                 for (int k = 0; k <= 4; ++k) {
@@ -1626,7 +1591,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
                 }
                 subs[i] = std::max(subs[i], std::max(1, std::min((int)std::ceil(ma/max_angle_deg), 64)));
             }
-            // chord deflection across the span
             std::array<double,3> p0 = (dir==0)?eval3(t0,s_mid):eval3(s_mid,t0);
             std::array<double,3> p1 = (dir==0)?eval3(t1,s_mid):eval3(s_mid,t1);
             double dev = 0.0;
@@ -1654,7 +1618,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
     std::vector<std::vector<double>> F(nu, std::vector<double>(nv));
     for (int i = 0; i < nu; ++i) for (int j = 0; j < nv; ++j) F[i][j] = field(us[i], vs[j]);
 
-    // ---- build mesh: weld coincident 3D vertices (closes periodic seams) ----
     Mesh result;
     double weld_tol = bbox_diag * 1e-5, cell = weld_tol > 0 ? weld_tol : 1.0;
     std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<std::array<double,3>, size_t>>> cmap;
@@ -1671,7 +1634,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
         cmap[std::make_tuple(ci,cj,ck)].push_back({{x,y,z}, vk});
         return vk;
     };
-    // crossing on a cell edge between an inside (f<=0) and outside corner, refined onto plane.
     auto cross = [&](double ua, double va, double ub, double vb) -> size_t {
         double fa = field(ua,va), fb = field(ub,vb);
         double t = (std::abs(fa-fb) > 1e-30) ? fa/(fa-fb) : 0.5;
@@ -1687,7 +1649,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
             bool in[4] = {F[i][j]<=0, F[i+1][j]<=0, F[i+1][j+1]<=0, F[i][j+1]<=0};
             int cnt = (in[0]?1:0)+(in[1]?1:0)+(in[2]?1:0)+(in[3]?1:0);
             if (cnt == 0) continue;
-            // assemble the clipped cell polygon (corners that are inside + edge crossings, in order)
             std::vector<size_t> poly;
             for (int k = 0; k < 4; ++k) {
                 int kn = (k+1)%4;
@@ -1704,13 +1665,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
     if (result.face.empty()) return srf.mesh();
     return result;
 }
-// Multi-plane SPLIT clip: keep the region inside ALL half-spaces { (S-q).n <= 0 }. Tessellates
-// the surface into a triangle soup (UV) on a span-adaptive grid, then clips that soup
-// sequentially by each plane (Sutherland-Hodgman per triangle, crossings Newton-refined onto the
-// crossing plane), so K planes carve a clean region without per-cell CSG. Coincident 3D verts are
-// welded so periodic seams (cylinder/torus/sphere) close watertight.
-// REQUIRES header declaration in nurbssurface_trimmed.h (next to mesh_by_plane):
-//   Mesh mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes, double max_angle_deg, double chord_factor) const;
 Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes,
                                          double max_angle_deg, double chord_factor) const {
     const NurbsSurface& srf = m_surface;
@@ -1718,9 +1672,9 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
     for (const auto& qn : planes) {
         const Point& q = qn.first; const Vector& n = qn.second;
         double nx = n[0], ny = n[1], nz = n[2];
-        double l = std::sqrt(nx*nx + ny*ny + nz*nz);
-        if (l < 1e-12) continue;
-        pl.push_back({{q[0], q[1], q[2]}, {nx/l, ny/l, nz/l}});
+        double nl = std::sqrt(nx*nx + ny*ny + nz*nz);
+        if (nl < 1e-12) continue;
+        pl.push_back({{q[0], q[1], q[2]}, {nx/nl, ny/nl, nz/nl}});
     }
     if (pl.empty()) return srf.mesh();
 
@@ -1731,8 +1685,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
         auto p = e3(u, v); const auto& q = pl[k].first; const auto& n = pl[k].second;
         return (p[0]-q[0])*n[0] + (p[1]-q[1])*n[1] + (p[2]-q[2])*n[2];
     };
-    // Newton: move (u,v) so f_k(u,v)->0, stepping along the UV gradient. Lands the point exactly
-    // on the k-th cut plane (so the carved boundary lies on it).
     auto refine_k = [&](int k, double& u, double& v) {
         const auto& n = pl[k].second;
         for (int it = 0; it < 12; ++it) {
@@ -1748,12 +1700,11 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
         }
     };
 
-    // ---- span-adaptive UV grid (curvature: normal-angle + chord deflection) ----
     auto usp = srf.get_span_vector(0);
     auto vsp = srf.get_span_vector(1);
     if (usp.size() < 2 || vsp.size() < 2) return srf.mesh();
     int deg_u = srf.degree(0), deg_v = srf.degree(1);
-    double bmin[3] = {1e30,1e30,1e30}, bmax[3] = {-1e30,-1e30,-1e30};
+    double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
     for (int i = 0; i < srf.cv_count(0); ++i)
         for (int j = 0; j < srf.cv_count(1); ++j) {
             Point p = srf.get_cv(i, j);
@@ -1802,7 +1753,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
     int nu = (int)us.size(), nv = (int)vs.size();
     if (nu < 2 || nv < 2) return srf.mesh();
 
-    // ---- triangle soup over the UV grid (two tris per cell) ----
     typedef std::array<std::array<double,2>,3> UVTri;
     std::vector<UVTri> tris;
     tris.reserve((size_t)(nu-1)*(nv-1)*2);
@@ -1817,7 +1767,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
         }
     }
 
-    // ---- sequentially clip the soup by each half-space (Sutherland-Hodgman per triangle) ----
     double eps = 1e-9;
     for (int k = 0; k < (int)pl.size(); ++k) {
         std::vector<UVTri> next;
@@ -1843,7 +1792,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
     }
     if (tris.empty()) return Mesh();
 
-    // ---- build mesh: weld coincident 3D vertices (closes periodic seams) ----
     Mesh result;
     double weld_tol = diag * 1e-5, cell = weld_tol > 0 ? weld_tol : 1.0;
     std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<std::array<double,3>, size_t>>> cmap;
@@ -1872,29 +1820,6 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vect
     return result;
 }
 
-std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes) {
-    std::vector<NurbsSurfaceTrimmed> out;
-    int k = (int)planes.size();
-    if (k == 0 || k > 16) return out;
-    for (int mask = 0; mask < (1 << k); ++mask) {
-        std::vector<std::pair<Point, Vector>> cp;
-        for (int i = 0; i < k; ++i) {
-            const Point& q = planes[i].first;
-            const Vector& n = planes[i].second;
-            bool flip = ((mask >> i) & 1) == 1;
-            Vector nn = flip ? Vector(-n[0], -n[1], -n[2]) : Vector(n[0], n[1], n[2]);
-            cp.push_back({q, nn});
-        }
-        NurbsSurfaceTrimmed ts;
-        ts.m_surface = srf;
-        Mesh m = ts.mesh_by_planes(cp, 20.0, 0.01);
-        if (m.number_of_faces() > 0) {
-            out.push_back(ts);
-        }
-    }
-    return out;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1910,7 +1835,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::transformed(const Xform& xform) const {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// JSON Serialization
+// JSON
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json NurbsSurfaceTrimmed::jsondump() const {
@@ -1962,7 +1887,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::file_json_load(const std::string& filen
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Protobuf Serialization
+// Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string NurbsSurfaceTrimmed::pb_dumps() const {
@@ -1971,26 +1896,22 @@ std::string NurbsSurfaceTrimmed::pb_dumps() const {
     proto.set_name(name);
     proto.set_width(width);
 
-    // Surface
     std::string srf_data = m_surface.pb_dumps();
     auto* srf_proto = proto.mutable_surface();
     srf_proto->ParseFromString(srf_data);
 
-    // Outer loop
     if (is_trimmed()) {
         std::string loop_data = m_outer_loop.pb_dumps();
         auto* ol = proto.mutable_outer_loop();
         ol->ParseFromString(loop_data);
     }
 
-    // Inner loops
     for (const auto& inner : m_inner_loops) {
         std::string loop_data = inner.pb_dumps();
         auto* il = proto.add_inner_loops();
         il->ParseFromString(loop_data);
     }
 
-    // Color
     auto* color_proto = proto.mutable_surfacecolor();
     color_proto->set_name(surfacecolor.name);
     color_proto->set_r(surfacecolor.r);
@@ -2010,25 +1931,21 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_loads(const std::string& data) {
     ts.name = proto.name();
     ts.width = proto.width();
 
-    // Surface
     if (proto.has_surface()) {
         std::string srf_data = proto.surface().SerializeAsString();
         ts.m_surface = NurbsSurface::pb_loads(srf_data);
     }
 
-    // Outer loop
     if (proto.has_outer_loop()) {
         std::string loop_data = proto.outer_loop().SerializeAsString();
         ts.m_outer_loop = NurbsCurve::pb_loads(loop_data);
     }
 
-    // Inner loops
     for (int i = 0; i < proto.inner_loops_size(); ++i) {
         std::string loop_data = proto.inner_loops(i).SerializeAsString();
         ts.m_inner_loops.push_back(NurbsCurve::pb_loads(loop_data));
     }
 
-    // Color
     const auto& color_proto = proto.surfacecolor();
     ts.surfacecolor.name = color_proto.name();
     ts.surfacecolor.r = color_proto.r();
@@ -2053,7 +1970,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_load(const std::string& filename) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// String Representation
+// String
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string NurbsSurfaceTrimmed::str() const {

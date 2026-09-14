@@ -6,21 +6,30 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("SessionConfig", "Runtime Modification") {
-        // uncomment #include "session_config.h"
-        // SessionConfig holds global rendering/export flags.
-        // explode_mesh_faces: when true, each mesh face is a separate mesh (for coloring)
-        // scale_factor: unit conversion multiplier applied during export (1.0 = meters)
-        // Modify config at runtime, then reset() restores all defaults.
+        SESSION_CONFIG.reset();
+        SessionConfig config;
+        SessionConfig other;
 
+        MINI_CHECK(!config.explode_mesh_faces);
+        MINI_CHECK(config.scale_factor == 1.0);
+        config.explode_mesh_faces = true;
+        config.scale_factor = 0.001;
+        MINI_CHECK(config.explode_mesh_faces);
+        MINI_CHECK(config.scale_factor == 0.001);
+        MINI_CHECK(!other.explode_mesh_faces);
+        MINI_CHECK(other.scale_factor == 1.0);
         MINI_CHECK(!SESSION_CONFIG.explode_mesh_faces);
+        MINI_CHECK(SESSION_CONFIG.scale_factor == 1.0);
         SESSION_CONFIG.explode_mesh_faces = true;
-        MINI_CHECK(SESSION_CONFIG.explode_mesh_faces);
-        MINI_CHECK(std::abs(SESSION_CONFIG.scale_factor - 1.0) < 1e-10);
         SESSION_CONFIG.scale_factor = 0.001;
-        MINI_CHECK(std::abs(SESSION_CONFIG.scale_factor - 0.001) < 1e-10);
+        MINI_CHECK(SESSION_CONFIG.explode_mesh_faces);
+        MINI_CHECK(SESSION_CONFIG.scale_factor == 0.001);
         SESSION_CONFIG.reset();
         MINI_CHECK(!SESSION_CONFIG.explode_mesh_faces);
-        MINI_CHECK(std::abs(SESSION_CONFIG.scale_factor - 1.0) < 1e-10);
+        MINI_CHECK(SESSION_CONFIG.scale_factor == 1.0);
+        config.reset();
+        MINI_CHECK(!config.explode_mesh_faces);
+        MINI_CHECK(config.scale_factor == 1.0);
     }
 
 }

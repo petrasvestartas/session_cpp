@@ -1,4 +1,3 @@
-#include "remesh_nurbssurface_grid.h"
 #include "mini_test.h"
 #include "brep.h"
 #include "nurbssurface.h"
@@ -7,99 +6,141 @@
 #include "point.h"
 #include "vector.h"
 #include "xform.h"
-#include "tolerance.h"
 #include "mesh.h"
 #include "color.h"
 #include "primitives.h"
+#include "remesh_nurbssurface_grid.h"
+#include "tolerance.h"
 
 #include <cmath>
+#include <array>
 #include <limits>
+#include <algorithm>
 #include <filesystem>
 
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    // Every non-degenerated edge of a solid is used by exactly two faces with opposite
-    // composed orientations (the manifold contract BRepCheck enforces).
+    /// Every non-degenerated edge of a solid is used by exactly two faces with opposite composed orientations
     static bool edges_manifold(const BRep& b) {
         for (int ei = 0; ei < b.edge_count(); ++ei) {
             if (b.m_edges[ei].degenerated) continue;
-            std::vector<BRepRef> uses = b.edge_faces(ei);
+            const std::vector<BRepRef> uses = b.edge_faces(ei);
             if (uses.size() != 2) return false;
             if (uses[0].orientation == uses[1].orientation) return false;
         }
         return true;
     }
 
-    MINI_TEST("BRep", "Shared Grid Boundary") {
-        BRep b; std::vector<NurbsSurface> surfaces;
-        for (int face=0;face<2;++face) {
-            std::vector<Point> points;
-            for (int i=0;i<3;++i) for (int j=0;j<2;++j) {
-                double z=i!=1 ? 0.0 : j==0 || face==0 ? .5 : 4.0;
-                points.push_back(Point(i*.5,j*(face==0 ? 1.0 : -1.0),z));
-            }
-            NurbsSurface surface=NurbsSurface::create(false,false,2,1,3,2,points);
-            int si=b.add_surface(surface);
-            std::array<std::array<double,2>,4> corners={{{0,0},{1,0},{1,1},{0,1}}};
-            std::vector<int> vertices;
-            for (auto q:corners) vertices.push_back(b.add_vertex(surface.point_at(q[0],q[1]),0.0));
-            std::vector<BRepRef> edges;
-            for (int side=0;side<4;++side) {
-                auto a=corners[side],z=corners[(side+1)%4];int edge;
-                if (side==0 && face==1) edge=0;
-                else {
-                    int dir=a[0]!=z[0] ? 0 : 1;
-                    NurbsCurve curve=surface.iso_curve(dir,a[1-dir]);
-                    if (a[dir]>z[dir]) curve.reverse();
-                    int ci=b.add_curve_3d(curve);edge=b.add_edge(ci,vertices[side],vertices[(side+1)%4]);
-                }
-                NurbsCurve pc=NurbsCurve::create(false,1,{Point(a[0],a[1],0),Point(z[0],z[1],0)});
-                int ci=b.add_curve_2d(pc);b.add_pcurve(edge,si,ci,-1);edges.push_back({edge,BRepOrientation::Forward});
-            }
-            int wi=b.add_wire(edges);b.add_face(si,{{wi,BRepOrientation::Forward}},1e-8);surfaces.push_back(surface);
-        }
-        auto boundary=[](const Mesh& mesh){
-            std::vector<std::array<double,3>> points;
-            for (const auto& [key,v]:mesh.vertex) if (v.attributes.at("v")==0.0) points.push_back({v.x,v.y,v.z});
-            std::sort(points.begin(),points.end());return points;
+    /// Sorted positions of the mesh vertices on the v = 0 side
+    static std::vector<std::array<double, 3>> boundary_points(const Mesh& mesh) {
+        std::vector<std::array<double, 3>> points;
+        for (const auto& [key, v] : mesh.vertex)
+            if (v.attributes.at("v") == 0.0) points.push_back({v.x, v.y, v.z});
+        std::sort(points.begin(), points.end());
+        return points;
+    }
+
+    /// Unit planar quad face with straight edges and pcurves; returns the face index
+    static int build_quad_face(BRep& b) {
+        NurbsSurface srf(3, false, 2, 2, 2, 2);
+        srf.set_cv(0, 0, Point(0, 0, 0));
+        srf.set_cv(1, 0, Point(1, 0, 0));
+        srf.set_cv(0, 1, Point(0, 1, 0));
+        srf.set_cv(1, 1, Point(1, 1, 0));
+        const int si = b.add_surface(srf);
+        const Point corners[4] = {
+            Point(0, 0, 0),
+            Point(1, 0, 0),
+            Point(1, 1, 0),
+            Point(0, 1, 0),
         };
-        std::vector<Mesh> original;
-        for (const auto& s:surfaces) original.push_back(RemeshNurbsSurfaceGrid::from_u_v_q(s,0,0,20,.005));
-        MINI_CHECK(boundary(original[0]).size()==7 && boundary(original[1]).size()==11);
-        auto meshes=b.face_meshes_q(true,20,.005);auto first=boundary(meshes[0]),second=boundary(meshes[1]);
-        MINI_CHECK(first==second && first.size()==7);
-        MINI_CHECK(meshes[0].face.size()==original[0].face.size() && !meshes[1].face.empty());
-        double maximum=0;
-        for (size_t i=0;i+1<first.size();++i) {
-            auto a=first[i],z=first[i+1];auto actual=surfaces[0].point_at((a[0]+z[0])*.5,0);
-            double sag=0;for(int d=0;d<3;++d) sag+=std::pow(actual[d]-(a[d]+z[d])*.5,2);
-            maximum=std::max(maximum,std::sqrt(sag));
+        for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
+        std::vector<BRepRef> refs;
+        for (int i = 0; i < 4; ++i) {
+            const int j = (i + 1) % 4;
+            const int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+            const int ei = b.add_edge(ci, i, j);
+            const int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+            b.add_pcurve(ei, si, c2);
+            refs.push_back({ei, BRepOrientation::Forward});
         }
-        MINI_CHECK(maximum<=.005*1.5);
-        const Mesh refined_original=RemeshNurbsSurfaceGrid::from_u_v_q(surfaces[0],0,0,5.0,.001);
-        meshes=b.face_meshes_q(true,5.0,.001); first=boundary(meshes[0]);
-        MINI_CHECK(first==boundary(meshes[1]) && !meshes[0].face.empty() && !meshes[1].face.empty());
-        for (const auto& point:boundary(refined_original)) MINI_CHECK(std::find(first.begin(),first.end(),point)!=first.end());
-        const double cosine=std::cos(5.0*Tolerance::PI/180.0);
-        for (size_t i=0;i+1<first.size();++i) {
-            const Vector a=surfaces[0].normal_at(first[i][0],0.0), z=surfaces[0].normal_at(first[i+1][0],0.0);
-            MINI_CHECK(a.dot(z)>=cosine-64.0*std::numeric_limits<double>::epsilon());
+        const int wi = b.add_wire(refs);
+        return b.add_face(si, {{wi, BRepOrientation::Forward}});
+    }
+
+    MINI_TEST("BRep", "Shared Grid Boundary") {
+        BRep b;
+        std::vector<NurbsSurface> surfaces;
+        for (int face = 0; face < 2; ++face) {
+            std::vector<Point> points;
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 2; ++j) {
+                    const double z = i != 1 ? 0.0 : (j == 0 || face == 0 ? 0.5 : 4.0);
+                    points.push_back(Point(i * 0.5, j * (face == 0 ? 1.0 : -1.0), z));
+                }
+            const NurbsSurface surface = NurbsSurface::create(false, false, 2, 1, 3, 2, points);
+            const int si = b.add_surface(surface);
+            const std::array<double, 2> corners[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+            std::vector<int> vertices;
+            for (int side = 0; side < 4; ++side) vertices.push_back(b.add_vertex(surface.point_at(corners[side][0], corners[side][1])));
+            std::vector<BRepRef> edges;
+            for (int side = 0; side < 4; ++side) {
+                const std::array<double, 2> a = corners[side];
+                const std::array<double, 2> z = corners[(side + 1) % 4];
+                int edge = 0;
+                if (side != 0 || face != 1) {
+                    const int dir = a[0] != z[0] ? 0 : 1;
+                    NurbsCurve curve = surface.iso_curve(dir, a[1 - dir]);
+                    if (a[dir] > z[dir]) curve.reverse();
+                    edge = b.add_edge(b.add_curve_3d(curve), vertices[side], vertices[(side + 1) % 4]);
+                }
+                const NurbsCurve pc = NurbsCurve::create(false, 1, {Point(a[0], a[1], 0), Point(z[0], z[1], 0)});
+                b.add_pcurve(edge, si, b.add_curve_2d(pc));
+                edges.push_back({edge, BRepOrientation::Forward});
+            }
+            b.add_face(si, {{b.add_wire(edges), BRepOrientation::Forward}}, 1e-8);
+            surfaces.push_back(surface);
+        }
+        std::vector<Mesh> original;
+        for (const NurbsSurface& s : surfaces) original.push_back(RemeshNurbsSurfaceGrid::from_u_v_q(s, 0, 0, 20.0, 0.005));
+        MINI_CHECK(boundary_points(original[0]).size() == 7 && boundary_points(original[1]).size() == 11);
+        std::vector<Mesh> meshes = b.face_meshes_q(true, 20.0, 0.005);
+        std::vector<std::array<double, 3>> first = boundary_points(meshes[0]);
+        const std::vector<std::array<double, 3>> second = boundary_points(meshes[1]);
+        MINI_CHECK(first == second && first.size() == 7);
+        MINI_CHECK(meshes[0].face.size() == original[0].face.size() && !meshes[1].face.empty());
+        double maximum = 0.0;
+        for (size_t i = 0; i + 1 < first.size(); ++i) {
+            const std::array<double, 3> a = first[i];
+            const std::array<double, 3> z = first[i + 1];
+            const Point actual = surfaces[0].point_at((a[0] + z[0]) * 0.5, 0.0);
+            double sag = 0.0;
+            for (int d = 0; d < 3; ++d) sag += std::pow(actual[d] - (a[d] + z[d]) * 0.5, 2);
+            maximum = std::max(maximum, std::sqrt(sag));
+        }
+        MINI_CHECK(maximum <= 0.005 * 1.5);
+        const Mesh refined = RemeshNurbsSurfaceGrid::from_u_v_q(surfaces[0], 0, 0, 5.0, 0.001);
+        meshes = b.face_meshes_q(true, 5.0, 0.001);
+        first = boundary_points(meshes[0]);
+        MINI_CHECK(first == boundary_points(meshes[1]) && !meshes[0].face.empty() && !meshes[1].face.empty());
+        for (const std::array<double, 3>& point : boundary_points(refined))
+            MINI_CHECK(std::find(first.begin(), first.end(), point) != first.end());
+        const double cosine = std::cos(5.0 * Tolerance::PI / 180.0);
+        for (size_t i = 0; i + 1 < first.size(); ++i) {
+            const Vector a = surfaces[0].normal_at(first[i][0], 0.0);
+            const Vector z = surfaces[0].normal_at(first[i + 1][0], 0.0);
+            MINI_CHECK(a.dot(z) >= cosine - 64.0 * std::numeric_limits<double>::epsilon());
         }
     }
 
     MINI_TEST("BRep", "Constructor") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-
         BRep b;
 
-        // String representations
         std::string sstr = b.str();
         std::string srepr = b.repr();
 
-        // Copy (new guid())
         BRep bcopy = b;
 
         MINI_CHECK(!b.is_valid());
@@ -114,9 +155,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Box") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
 
         MINI_CHECK(box.is_valid());
@@ -128,9 +166,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Accessors") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
 
         int vc = box.vertex_count();
@@ -155,17 +190,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Add Face") {
-        // uncomment #include "brep.h"
-        // uncomment #include "nurbssurface.h"
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "point.h"
-        // uncomment #include "mesh.h"
-
         BRep b;
-        NurbsSurface srf;
-        srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-        srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
-        srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
+        NurbsSurface srf(3, false, 2, 2, 2, 2);
+        srf.set_cv(0, 0, Point(0, 0, 0));
+        srf.set_cv(1, 0, Point(1, 0, 0));
+        srf.set_cv(0, 1, Point(0, 1, 0));
+        srf.set_cv(1, 1, Point(1, 1, 0));
         int si = b.add_surface(srf);
 
         Point corners[4] = {
@@ -201,9 +231,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Mesh") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         Mesh m = box.mesh();
         std::vector<Mesh> fm = box.face_meshes();
@@ -216,11 +243,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Point At") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-        // uncomment #include "tolerance.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         Point pt = box.point_at(0, 0.5, 0.5);
         Vector n = box.normal_at(0, 0.5, 0.5);
@@ -234,9 +256,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Is Solid") {
-        // uncomment #include "brep.h"
-        // uncomment #include "polyline.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         BRep cyl = BRep::create_cylinder(1.0, 2.0);
         BRep sph = BRep::create_sphere(1.0);
@@ -266,8 +285,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Is Closed") {
-        // uncomment #include "brep.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         BRep open = box;
         open.m_shells[0].faces.pop_back();
@@ -279,8 +296,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Wire Edges") {
-        // uncomment #include "brep.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         BRepRef fwd{0, BRepOrientation::Forward};
         BRepRef rev{0, BRepOrientation::Reversed};
@@ -297,8 +312,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Edge Faces") {
-        // uncomment #include "brep.h"
-
         BRep cyl = BRep::create_cylinder(1.0, 2.0);
         std::vector<BRepRef> bot = cyl.edge_faces(0);
         std::vector<BRepRef> seam = cyl.edge_faces(2);
@@ -316,9 +329,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Update Tolerances") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         double worst = box.update_tolerances();
         BRep bent = box;
@@ -338,11 +348,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Transformation") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-        // uncomment #include "xform.h"
-        // uncomment #include "tolerance.h"
-
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         Xform box_xf = Xform::translation(10.0, 20.0, 30.0);
         BRep moved = box.transformed(box_xf);
@@ -357,12 +362,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Transform Roundtrip") {
-        // uncomment #include "brep.h"
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-        // uncomment #include "xform.h"
-        // uncomment #include "tolerance.h"
-
         Vector axis(0.3, 0.5, 0.81);
         Xform rot = Xform::rotation(axis, 37.0, true);
         Xform tr = Xform::translation(10.0, -5.0, 3.0);
@@ -388,24 +387,17 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Json Roundtrip") {
-        // uncomment #include "brep.h"
-        // uncomment #include "color.h"
-        // uncomment #include <filesystem>
-
         BRep box = BRep::create_cylinder(1.0, 2.0);
         box.name = "test_brep";
         box.width = 2.0;
         box.surfacecolor = Color(255, 128, 64, 255);
 
-        // JSON object
         nlohmann::ordered_json json = box.jsondump();
         BRep loaded_json = BRep::jsonload(json);
 
-        // String
         std::string json_string = box.file_json_dumps();
         BRep loaded_json_string = BRep::file_json_loads(json_string);
 
-        // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.json").string();
         box.file_json_dump(filename);
         BRep loaded_from_file = BRep::file_json_load(filename);
@@ -419,9 +411,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Cylinder") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep cyl = BRep::create_cylinder(1.0, 2.0);
         Mesh m = cyl.mesh();
 
@@ -435,9 +424,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Sphere") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep sph = BRep::create_sphere(1.0);
         Mesh m = sph.mesh();
 
@@ -452,9 +438,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Cone") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep cone = BRep::create_cone(1.0, 2.0);
         Mesh m = cone.mesh();
 
@@ -468,9 +451,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Pyramid") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep pyr = BRep::create_pyramid(2.0, 1.0);
         Mesh m = pyr.mesh();
 
@@ -484,9 +464,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Torus") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep tor = BRep::create_torus(2.0, 0.5);
         Mesh m = tor.mesh();
 
@@ -500,9 +477,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Block With Hole") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
         BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
         Mesh m = bh.mesh();
 
@@ -518,10 +492,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Polylines") {
-        // uncomment #include "brep.h"
-        // uncomment #include "polyline.h"
-        // uncomment #include "mesh.h"
-
         double hx = 1.0, hy = 1.5, hz = 2.0;
         Point c[8] = {
             Point(-hx, -hy, -hz),
@@ -592,10 +562,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Nurbscurves") {
-        // uncomment #include "brep.h"
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "mesh.h"
-
         double hx = 1.0, hy = 1.5, hz = 2.0;
         Point c[8] = {
             Point(-hx, -hy, -hz),
@@ -664,11 +630,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Nurbscurves Holes") {
-        // uncomment #include "brep.h"
-        // uncomment #include "nurbscurve.h"
-        // uncomment #include "mesh.h"
-        // uncomment #include "primitives.h"
-
         auto outer = NurbsCurve::create(false, 1, {
             Point(-5, -5, 0),
             Point(5, -5, 0),
@@ -691,10 +652,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Mesh Orientation") {
-        // uncomment #include "brep.h"
-        // uncomment #include "mesh.h"
-
-        // Reversed faces must flip winding; an unflipped bore inflates the volume.
         BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
         double vol = bh.mesh().volume();
         double ref = 8.0 * 6.0 * 4.0 - Tolerance::PI * 1.5 * 1.5 * 4.0;
@@ -703,20 +660,14 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Protobuf Roundtrip") {
-        // uncomment #include "brep.h"
-        // uncomment #include "color.h"
-        // uncomment #include <filesystem>
-
         BRep box = BRep::create_cylinder(1.0, 2.0);
         box.name = "test_brep";
         box.width = 2.0;
         box.surfacecolor = Color(255, 128, 64, 255);
 
-        // String
         std::string proto_string = box.pb_dumps();
         BRep loaded_proto_string = BRep::pb_loads(proto_string);
 
-        // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.bin").string();
         box.pb_dump(filename);
         BRep loaded = BRep::pb_load(filename);
@@ -729,39 +680,28 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Volume") {
-        // uncomment #include "brep.h"
-        // uncomment #include "tolerance.h"
-
-        BRep box = BRep::create_box(2, 3, 4);          // 2x3x4 -> 24
-        BRep cyl = BRep::create_cylinder(1.0, 4.0);    // pi r^2 h = 4 pi
-        BRep sph = BRep::create_sphere(2.0);           // 4/3 pi r^3
+        BRep box = BRep::create_box(2, 3, 4);
+        BRep cyl = BRep::create_cylinder(1.0, 4.0);
+        BRep sph = BRep::create_sphere(2.0);
         double vbox = box.volume(), vcyl = cyl.volume(), vsph = sph.volume();
 
-        // Tessellated volume: the default grid density is 2-4% under the analytic value.
         MINI_CHECK(std::abs(vbox - 24.0) < 1e-9);
         MINI_CHECK(std::abs(vcyl - 4 * Tolerance::PI) / (4 * Tolerance::PI) < 0.05);
         MINI_CHECK(std::abs(vsph - (4.0 / 3.0) * Tolerance::PI * 8) / ((4.0 / 3.0) * Tolerance::PI * 8) < 0.05);
     }
 
-    MINI_TEST("BRep", "FacePolylinesBox") {
+    MINI_TEST("BRep", "Face Polylines Box") {
         BRep b = BRep::create_box(2.0, 2.0, 2.0);
         std::vector<Polyline> pls = b.face_polylines();
         std::vector<Plane> pls_planes = b.face_planes();
-        MINI_CHECK(pls.size() == 6);                 // every face of a box is planar
-        MINI_CHECK(pls_planes.size() == pls.size()); // index-aligned
+        MINI_CHECK(pls.size() == 6);
+        MINI_CHECK(pls_planes.size() == pls.size());
 
-        // Every face sits at |coord| == 1 along exactly one axis (half of size 2.0), and
-        // the plane's origin must sit on that same face. The plane's normal (taken from
-        // is_planar, not a Newell estimate) must be an exact unit vector along that same
-        // axis, and across all 6 faces the normals must be exactly the six cardinal
-        // directions +-X/+-Y/+-Z with no two faces sharing one - not a specific sign per
-        // face, since is_planar's own CV-traversal convention (not this task's code)
-        // decides which of the two signs a given face lands on.
         bool seen[3][2] = {{false, false}, {false, false}, {false, false}};
         for (size_t fi = 0; fi < pls.size(); ++fi) {
             const Polyline& p = pls[fi];
             const Plane& pl = pls_planes[fi];
-            MINI_CHECK(p.point_count() == 5);        // closed quad
+            MINI_CHECK(p.point_count() == 5);
             MINI_CHECK(p.get_point(0) == p.get_point(4));
 
             int axis = -1;
@@ -769,7 +709,10 @@ namespace session_cpp {
             for (int a = 0; a < 3; ++a) {
                 bool constant = true;
                 for (size_t i = 1; i < p.point_count(); ++i) {
-                    if (std::fabs(p.get_point(i)[a] - p.get_point(0)[a]) > 1e-9) { constant = false; break; }
+                    if (std::fabs(p.get_point(i)[a] - p.get_point(0)[a]) > 1e-9) {
+                        constant = false;
+                        break;
+                    }
                 }
                 if (constant && std::fabs(std::fabs(p.get_point(0)[a]) - 1.0) < 1e-9) {
                     axis = a;
@@ -778,100 +721,55 @@ namespace session_cpp {
                 }
             }
             MINI_CHECK(axis >= 0);
-            MINI_CHECK(std::fabs(pl.origin()[axis] - sign) < 1e-9); // origin sits on the face's own plane
+            MINI_CHECK(std::fabs(pl.origin()[axis] - sign) < 1e-9);
 
             const Vector& n = pl.z_axis();
-            MINI_CHECK(std::fabs(std::fabs(n[axis]) - 1.0) < 1e-6); // unit length, along that axis
+            MINI_CHECK(std::fabs(std::fabs(n[axis]) - 1.0) < 1e-6);
             for (int a2 = 0; a2 < 3; ++a2)
-                if (a2 != axis) { MINI_CHECK(std::fabs(n[a2]) < 1e-6); }
+                if (a2 != axis) MINI_CHECK(std::fabs(n[a2]) < 1e-6);
 
             int normal_sign = n[axis] > 0.0 ? 1 : 0;
-            MINI_CHECK(!seen[axis][normal_sign]);    // this cardinal direction not claimed by an earlier face
+            MINI_CHECK(!seen[axis][normal_sign]);
             seen[axis][normal_sign] = true;
         }
         for (int a = 0; a < 3; ++a)
             for (int s = 0; s < 2; ++s)
-                MINI_CHECK(seen[a][s]);              // all six of +-X/+-Y/+-Z are covered
+                MINI_CHECK(seen[a][s]);
     }
 
-    MINI_TEST("BRep", "FacePolylinesCylinderCapsOnly") {
-        // Two planar caps and one cylindrical barrel; the barrel must contribute nothing.
+    MINI_TEST("BRep", "Face Polylines Cylinder Caps Only") {
         BRep b = BRep::create_cylinder(1.0, 4.0);
         MINI_CHECK(b.face_count() == 3);
         MINI_CHECK(b.face_polylines().size() == 2);
         MINI_CHECK(b.face_planes().size() == 2);
     }
 
-    MINI_TEST("BRep", "FacePolylinesIgnoresHoles") {
-        // 4 planar side quads + 2 planar capped faces (each with an outer wire and a hole
-        // inner wire) + 1 non-planar bore = 7 faces, 6 of them planar. A face that wrongly
-        // walked ALL of its wires (outer + hole) would still pass a plain "on the block
-        // bounds" check, since the hole circles lie in the z=-1/z=+1 cap planes too - so
-        // this test pins the polyline COUNT per face and the exact quad POINT COUNT, both
-        // of which a hole-wire leak breaks (leaking a circle adds ~16 sampled points and
-        // does not add a second, separate polyline).
+    MINI_TEST("BRep", "Face Polylines Ignores Holes") {
         BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
         std::vector<Polyline> pls = b.face_polylines();
-        MINI_CHECK(pls.size() == 6);                 // one polyline per planar face, never two
+        MINI_CHECK(pls.size() == 6);
         MINI_CHECK(pls.size() == b.face_planes().size());
         for (const Polyline& p : pls) {
-            MINI_CHECK(p.point_count() == 5);        // outer wire only: closed quad, 4 corners
+            MINI_CHECK(p.point_count() == 5);
             for (size_t i = 0; i < p.point_count(); ++i) {
                 const Point pt = p.get_point(i);
-                // On the block bounds...
                 const bool on_bounds = std::fabs(std::fabs(pt[0]) - 2.0) < 1e-6
                                     || std::fabs(std::fabs(pt[1]) - 2.0) < 1e-6
                                     || std::fabs(std::fabs(pt[2]) - 1.0) < 1e-6;
                 MINI_CHECK(on_bounds);
-                // ...and never on the hole circle (radius 1 about the Z axis).
                 const double radius_to_z_axis = std::sqrt(pt[0] * pt[0] + pt[1] * pt[1]);
                 MINI_CHECK(radius_to_z_axis > 1.0 + 1e-6);
             }
         }
     }
 
-    MINI_TEST("BRep", "FacePolylinesNoPlanarFaces") {
-        BRep b = BRep::create_sphere(1.0);           // one non-planar face
+    MINI_TEST("BRep", "Face Polylines No Planar Faces") {
+        BRep b = BRep::create_sphere(1.0);
         MINI_CHECK(b.face_polylines().empty());
         MINI_CHECK(b.face_planes().empty());
     }
 
-    MINI_TEST("BRep", "FacePlanesReversedFlip") {
-        // Every primitive factory registers its planar faces Forward in their shell, so
-        // FacePolylinesBox alone never exercises the Reversed-orientation flip in
-        // planar_faces(). is_planar's own raw normal has no defined sign (a CV-traversal
-        // order picks it, not this code) so it is not a meaningful reference; what matters
-        // is that the SAME face geometry, referenced Forward vs Reversed by its shell,
-        // yields opposite emitted normals. Build the identical planar quad face twice
-        // (same pattern as the "Add Face" test) and put one in a Forward free shell, the
-        // other in a Reversed one.
-        auto build_quad_face = [](BRep& b) -> int {
-            NurbsSurface srf;
-            srf.create_raw(3, false, 2, 2, 2, 2, false, false, 1.0, 1.0);
-            srf.set_cv(0, 0, Point(0, 0, 0)); srf.set_cv(1, 0, Point(1, 0, 0));
-            srf.set_cv(0, 1, Point(0, 1, 0)); srf.set_cv(1, 1, Point(1, 1, 0));
-            int si = b.add_surface(srf);
-
-            Point corners[4] = {
-                Point(0, 0, 0),
-                Point(1, 0, 0),
-                Point(1, 1, 0),
-                Point(0, 1, 0),
-            };
-            for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
-            std::vector<BRepRef> refs;
-            for (int i = 0; i < 4; ++i) {
-                int j = (i + 1) % 4;
-                int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
-                int ei = b.add_edge(ci, i, j);
-                int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
-                b.add_pcurve(ei, si, c2);
-                refs.push_back({ei, BRepOrientation::Forward});
-            }
-            int wi = b.add_wire(refs);
-            return b.add_face(si, {{wi, BRepOrientation::Forward}});
-        };
-
+    MINI_TEST("BRep", "Face Planes Reversed Flip") {
         BRep b;
         int fi_forward = build_quad_face(b);
         b.add_shell({{fi_forward, BRepOrientation::Forward}});
@@ -882,7 +780,7 @@ namespace session_cpp {
         MINI_CHECK(b.face_orientation(fi_reversed) == BRepOrientation::Reversed);
 
         std::vector<Plane> planes = b.face_planes();
-        MINI_CHECK(planes.size() == 2);   // both faces are planar quads
+        MINI_CHECK(planes.size() == 2);
         const Vector& n_forward = planes[0].z_axis();
         const Vector& n_reversed = planes[1].z_axis();
         MINI_CHECK(std::fabs(n_forward[0] + n_reversed[0]) < 1e-9);
@@ -890,10 +788,7 @@ namespace session_cpp {
         MINI_CHECK(std::fabs(n_forward[2] + n_reversed[2]) < 1e-9);
     }
 
-    MINI_TEST("BRep", "FacePlanesPointOutward") {
-        // create_box/create_cylinder are origin-centred, so a face's plane origin is
-        // itself a position vector from the solid's interior; for an outward normal that
-        // vector and the normal must point into the same half-space: dot(origin, normal) > 0.
+    MINI_TEST("BRep", "Face Planes Point Outward") {
         BRep box = BRep::create_box(2.0, 2.0, 2.0);
         std::vector<Plane> box_planes = box.face_planes();
         MINI_CHECK(box_planes.size() == 6);
@@ -910,24 +805,17 @@ namespace session_cpp {
         for (const Plane& pl : cyl_planes) {
             const Point& o = pl.origin();
             const Vector& n = pl.z_axis();
-            // The bottom cap (z=0) and top cap (z=4): the cap at z=0's outward normal is
-            // -Z, the cap at z=4's outward normal is +Z - same sign as its own z coordinate
-            // once shifted so the solid's interior (z in (0,4)) is the origin side.
             const double mid_z = 2.0;
             MINI_CHECK((o[2] - mid_z) * n[2] > 0.0);
         }
     }
 
-    MINI_TEST("BRep", "FacePlanesOutwardIgnoresBlockWithHoleReversedFace") {
-        // create_block_with_hole registers its bore body face Reversed in the shell (the
-        // only Reversed reference any primitive factory produces); the bore itself is
-        // non-planar and skipped, but this exercises the outward pass on a BRep that
-        // genuinely mixes Forward and Reversed shell references.
+    MINI_TEST("BRep", "Face Planes Outward Block With Hole") {
         BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
         MINI_CHECK(b.is_solid());
         Point solid_centroid = Point::centroid(b.vertex_points());
         std::vector<Plane> planes = b.face_planes();
-        MINI_CHECK(planes.size() == 6);   // 4 sides + 2 capped faces; the bore is skipped
+        MINI_CHECK(planes.size() == 6);
         for (const Plane& pl : planes) {
             const Point& o = pl.origin();
             const Vector& n = pl.z_axis();
@@ -938,18 +826,7 @@ namespace session_cpp {
         }
     }
 
-    MINI_TEST("BRep", "FacePlanesOutwardUnderMirroredWinding") {
-        // A mirror (negative-determinant Xform) inverts every face's wire winding while
-        // remaining a valid closed solid - exactly the corruption a bad loft can produce,
-        // and the failure mode FacePlanesPointOutward cannot see because create_box and
-        // create_cylinder happen to already be wound the "natural" way. Outward
-        // orientation must not depend on winding being right; this proves it does not.
-        //
-        // At the same time this proves the OTHER half of the contract: the orientation
-        // pass flips normals only and must never re-wind a polyline (Mesh::loft pairs
-        // co-wound bottom/top loops vertex-by-vertex; a "helpful" re-wind here would
-        // silently break that correspondence downstream). So this one test asserts BOTH
-        // outward normals AND untouched winding on the same mis-wound solid.
+    MINI_TEST("BRep", "Face Planes Outward Under Mirrored Winding") {
         Xform mirror = Xform::scale_xyz(-1.0, 1.0, 1.0);
         BRep b = BRep::create_box(2.0, 2.0, 2.0).transformed(mirror);
         MINI_CHECK(b.is_solid());
@@ -962,7 +839,6 @@ namespace session_cpp {
         Point solid_centroid = Point::centroid(b.vertex_points());
 
         for (size_t fi = 0; fi < pls.size(); ++fi) {
-            // Outward, regardless of the mirror's effect on winding.
             const Point& o = planes[fi].origin();
             const Vector& n = planes[fi].z_axis();
             double d = (o[0] - solid_centroid[0]) * n[0]
@@ -970,10 +846,6 @@ namespace session_cpp {
                      + (o[2] - solid_centroid[2]) * n[2];
             MINI_CHECK(d > 0.0);
 
-            // Untouched winding: every box edge is a straight line, so the expected point
-            // order is reconstructed here using ONLY the same public wire-walk API
-            // face_polylines() itself uses (wire_edges/m_edges/m_vertices), independent of
-            // its internal implementation, and compared byte-for-byte to what was emitted.
             std::vector<Point> expected;
             for (const BRepRef& er : b.wire_edges(b.m_faces[(int)fi].wires[0])) {
                 const BRepEdge& edge = b.m_edges[er.index];
@@ -985,7 +857,7 @@ namespace session_cpp {
 
             std::vector<Point> actual = pls[fi].get_points();
             MINI_CHECK(actual.size() == expected.size());
-            for (size_t k = 0; k < actual.size(); ++k) { MINI_CHECK(actual[k] == expected[k]); }
+            for (size_t k = 0; k < actual.size(); ++k) MINI_CHECK(actual[k] == expected[k]);
         }
     }
 

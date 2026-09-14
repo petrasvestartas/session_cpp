@@ -1,126 +1,153 @@
 #include "convex_hull.h"
+#include "vector.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <numeric>
 #include <set>
 
 namespace session_cpp {
+namespace {
 
-double ConvexHull::cross_2d(const Point& o, const Point& a, const Point& b) {
+/// Twice the signed area of o-a-b in XY, positive for a left turn
+double cross_2d(const Point& o, const Point& a, const Point& b) {
     return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
 }
 
+/// Appends point i to the chain after popping every tail that no longer turns left towards it
+void extend_chain(const std::vector<Point>& points, std::vector<int>& chain, int i) {
+    while (chain.size() >= 2 && cross_2d(points[chain[chain.size() - 2]], points[chain[chain.size() - 1]], points[i]) <= 0.0)
+        chain.pop_back();
+    chain.push_back(i);
+}
+
+/// Six times the signed volume of a-b-c-d, positive when d is on the normal side of a-b-c
+double signed_volume(const Point& a, const Point& b, const Point& c, const Point& d) {
+    return (b - a).cross(c - a).dot(d - a);
+}
+
+/// Indices of the points above the face a-b-c
+std::vector<int> visible_from(const std::vector<int>& indices, const std::vector<Point>& points, const Point& a, const Point& b, const Point& c) {
+    std::vector<int> result;
+    for (int i : indices)
+        if (signed_volume(a, b, c, points[i]) > 1e-10)
+            result.push_back(i);
+    return result;
+}
+
+/// Index of the point highest above the face a-b-c, -1 when none is above
+int farthest_point(const std::vector<int>& indices, const std::vector<Point>& points, const Point& a, const Point& b, const Point& c) {
+    int best = -1;
+    double best_volume = 0.0;
+    for (int i : indices) {
+        const double volume = signed_volume(a, b, c, points[i]);
+        if (volume > best_volume) {
+            best_volume = volume;
+            best = i;
+        }
+    }
+    return best;
+}
+
+/// Hull faces over a-b-c: the face itself when no candidate is above it, else the three faces to the farthest candidate, recursively
+void quickhull_faces(const std::vector<Point>& points, const std::vector<int>& indices, int a, int b, int c, std::vector<std::array<int, 3>>& faces) {
+    const std::vector<int> visible = visible_from(indices, points, points[a], points[b], points[c]);
+    const int apex = farthest_point(visible, points, points[a], points[b], points[c]);
+    if (apex == -1) {
+        faces.push_back({a, b, c});
+        return;
+    }
+    quickhull_faces(points, visible_from(visible, points, points[a], points[b], points[apex]), a, b, apex, faces);
+    quickhull_faces(points, visible_from(visible, points, points[b], points[c], points[apex]), b, c, apex, faces);
+    quickhull_faces(points, visible_from(visible, points, points[c], points[a], points[apex]), c, a, apex, faces);
+}
+
+} // namespace
+
 std::vector<Point> ConvexHull::hull_2d(const std::vector<Point>& points) {
-    int n = static_cast<int>(points.size());
-    if (n < 3) return points;
-    std::vector<const Point*> pts;
-    for (const auto& p : points) pts.push_back(&p);
-    std::sort(pts.begin(), pts.end(), [](const Point* a, const Point* b) {
-        return (*a)[0] < (*b)[0] || ((*a)[0] == (*b)[0] && (*a)[1] < (*b)[1]);
-    });
-    std::vector<const Point*> lower;
-    for (auto* p : pts) {
-        while (lower.size() >= 2 && cross_2d(*lower[lower.size() - 2], *lower[lower.size() - 1], *p) <= 0.0)
-            lower.pop_back();
-        lower.push_back(p);
-    }
-    std::vector<const Point*> upper;
-    for (int i = n - 1; i >= 0; --i) {
-        while (upper.size() >= 2 && cross_2d(*upper[upper.size() - 2], *upper[upper.size() - 1], *pts[i]) <= 0.0)
-            upper.pop_back();
-        upper.push_back(pts[i]);
-    }
+    const int n = static_cast<int>(points.size());
+    if (n < 3)
+        return points;
+    std::vector<int> order(n);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&points](int a, int b) { return points[a][0] < points[b][0] || (points[a][0] == points[b][0] && points[a][1] < points[b][1]); });
+    std::vector<int> lower;
+    for (int i : order)
+        extend_chain(points, lower, i);
+    std::vector<int> upper;
+    for (int i = n - 1; i >= 0; --i)
+        extend_chain(points, upper, order[i]);
     lower.pop_back();
     upper.pop_back();
-    std::vector<Point> result;
-    for (auto* p : lower) result.push_back(*p);
-    for (auto* p : upper) result.push_back(*p);
-    return result;
-}
-
-std::tuple<double, double, double> ConvexHull::normal(const Point& a, const Point& b, const Point& c) {
-    double ax = b[0] - a[0], ay = b[1] - a[1], az = b[2] - a[2];
-    double bx = c[0] - a[0], by = c[1] - a[1], bz = c[2] - a[2];
-    return {ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx};
-}
-
-double ConvexHull::signed_volume(const Point& a, const Point& b, const Point& c, const Point& d) {
-    auto [nx, ny, nz] = normal(a, b, c);
-    return nx * (d[0] - a[0]) + ny * (d[1] - a[1]) + nz * (d[2] - a[2]);
-}
-
-int ConvexHull::farthest_point(const std::vector<int>& pts_idx, const std::vector<Point>& points, const Point& a, const Point& b, const Point& c) {
-    int best_idx = -1;
-    double best_vol = 0.0;
-    for (int i : pts_idx) {
-        double v = signed_volume(a, b, c, points[i]);
-        if (v > best_vol) { best_vol = v; best_idx = i; }
-    }
-    return best_idx;
-}
-
-std::vector<int> ConvexHull::visible_from(const std::vector<int>& pts_idx, const std::vector<Point>& points, const Point& a, const Point& b, const Point& c) {
-    std::vector<int> result;
-    for (int i : pts_idx) {
-        if (signed_volume(a, b, c, points[i]) > 1e-10) result.push_back(i);
-    }
-    return result;
-}
-
-void ConvexHull::quickhull_3d_faces(const std::vector<Point>& points, const std::vector<int>& pts_idx, int a, int b, int c, std::vector<std::tuple<int, int, int>>& faces) {
-    std::vector<int> vis = visible_from(pts_idx, points, points[a], points[b], points[c]);
-    if (vis.empty()) { faces.emplace_back(a, b, c); return; }
-    int apex = farthest_point(vis, points, points[a], points[b], points[c]);
-    if (apex == -1) { faces.emplace_back(a, b, c); return; }
-    auto v_ab = visible_from(vis, points, points[a], points[b], points[apex]);
-    auto v_bc = visible_from(vis, points, points[b], points[c], points[apex]);
-    auto v_ca = visible_from(vis, points, points[c], points[a], points[apex]);
-    quickhull_3d_faces(points, v_ab, a, b, apex, faces);
-    quickhull_3d_faces(points, v_bc, b, c, apex, faces);
-    quickhull_3d_faces(points, v_ca, c, a, apex, faces);
+    std::vector<Point> hull;
+    for (int i : lower)
+        hull.push_back(points[i]);
+    for (int i : upper)
+        hull.push_back(points[i]);
+    return hull;
 }
 
 Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
-    int n = static_cast<int>(points.size());
+    const int n = static_cast<int>(points.size());
     Mesh mesh;
     if (n < 4) {
         std::vector<size_t> vkeys;
-        for (const auto& p : points) vkeys.push_back(mesh.add_vertex(p));
-        if (n == 3) mesh.add_face(vkeys);
+        for (const Point& point : points)
+            vkeys.push_back(mesh.add_vertex(point));
+        if (n == 3)
+            mesh.add_face(vkeys);
         return mesh;
     }
     int p0 = 0;
-    for (int i = 1; i < n; ++i) if (points[i][0] < points[p0][0]) p0 = i;
+    for (int i = 1; i < n; ++i)
+        if (points[i][0] < points[p0][0])
+            p0 = i;
     int p1 = 0;
-    for (int i = 0; i < n; ++i) {
-        double d = (points[i][0]-points[p0][0])*(points[i][0]-points[p0][0])+(points[i][1]-points[p0][1])*(points[i][1]-points[p0][1])+(points[i][2]-points[p0][2])*(points[i][2]-points[p0][2]);
-        double d1 = (points[p1][0]-points[p0][0])*(points[p1][0]-points[p0][0])+(points[p1][1]-points[p0][1])*(points[p1][1]-points[p0][1])+(points[p1][2]-points[p0][2])*(points[p1][2]-points[p0][2]);
-        if (d > d1) p1 = i;
-    }
-    double ax = points[p1][0]-points[p0][0], ay = points[p1][1]-points[p0][1], az = points[p1][2]-points[p0][2];
-    auto dist_line = [&](int i) {
-        double bx = points[i][0]-points[p0][0], by = points[i][1]-points[p0][1], bz = points[i][2]-points[p0][2];
-        double cx = ay*bz-az*by, cy = az*bx-ax*bz, cz = ax*by-ay*bx;
-        return cx*cx+cy*cy+cz*cz;
-    };
+    for (int i = 1; i < n; ++i)
+        if ((points[i] - points[p0]).magnitude_squared() > (points[p1] - points[p0]).magnitude_squared())
+            p1 = i;
+    const Vector axis = points[p1] - points[p0];
     int p2 = -1;
-    double best2 = -1.0;
-    for (int i = 0; i < n; ++i) { if (i == p0 || i == p1) continue; double d = dist_line(i); if (d > best2) { best2 = d; p2 = i; } }
+    double best_distance = -1.0;
+    for (int i = 0; i < n; ++i) {
+        if (i == p0 || i == p1)
+            continue;
+        const double distance = axis.cross(points[i] - points[p0]).magnitude_squared();
+        if (distance > best_distance) {
+            best_distance = distance;
+            p2 = i;
+        }
+    }
     int p3 = -1;
-    double best3 = -1.0;
-    for (int i = 0; i < n; ++i) { if (i == p0 || i == p1 || i == p2) continue; double v = std::abs(signed_volume(points[p0], points[p1], points[p2], points[i])); if (v > best3) { best3 = v; p3 = i; } }
-    if (signed_volume(points[p0], points[p1], points[p2], points[p3]) > 0.0) std::swap(p1, p2);
+    double best_volume = -1.0;
+    for (int i = 0; i < n; ++i) {
+        if (i == p0 || i == p1 || i == p2)
+            continue;
+        const double volume = std::abs(signed_volume(points[p0], points[p1], points[p2], points[i]));
+        if (volume > best_volume) {
+            best_volume = volume;
+            p3 = i;
+        }
+    }
+    if (signed_volume(points[p0], points[p1], points[p2], points[p3]) > 0.0)
+        std::swap(p1, p2);
     std::vector<int> rest;
-    for (int i = 0; i < n; ++i) if (i != p0 && i != p1 && i != p2 && i != p3) rest.push_back(i);
-    std::vector<std::tuple<int, int, int>> faces;
-    quickhull_3d_faces(points, rest, p0, p1, p2, faces);
-    quickhull_3d_faces(points, rest, p0, p3, p1, faces);
-    quickhull_3d_faces(points, rest, p1, p3, p2, faces);
-    quickhull_3d_faces(points, rest, p2, p3, p0, faces);
-    std::set<int> used_set;
-    for (auto& [a, b, c] : faces) { used_set.insert(a); used_set.insert(b); used_set.insert(c); }
-    std::vector<size_t> idx_to_vkey(n, 0);
-    for (int idx : used_set) idx_to_vkey[idx] = mesh.add_vertex(points[idx]);
-    for (auto& [a, b, c] : faces) mesh.add_face({idx_to_vkey[a], idx_to_vkey[b], idx_to_vkey[c]});
+    for (int i = 0; i < n; ++i)
+        if (i != p0 && i != p1 && i != p2 && i != p3)
+            rest.push_back(i);
+    std::vector<std::array<int, 3>> faces;
+    quickhull_faces(points, rest, p0, p1, p2, faces);
+    quickhull_faces(points, rest, p0, p3, p1, faces);
+    quickhull_faces(points, rest, p1, p3, p2, faces);
+    quickhull_faces(points, rest, p2, p3, p0, faces);
+    std::set<int> used;
+    for (const std::array<int, 3>& face : faces)
+        used.insert(face.begin(), face.end());
+    std::vector<size_t> vkeys(n, 0);
+    for (int i : used)
+        vkeys[i] = mesh.add_vertex(points[i]);
+    for (const std::array<int, 3>& face : faces)
+        mesh.add_face({vkeys[face[0]], vkeys[face[1]], vkeys[face[2]]});
     return mesh;
 }
 

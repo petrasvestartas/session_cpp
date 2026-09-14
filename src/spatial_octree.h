@@ -1,14 +1,5 @@
-// SpatialOctree — Potree-style multi-resolution LOD octree over bare 3D points.
-// Use for: level-of-detail point-cloud rendering. Each node owns a spacing-limited
-//   SUBSAMPLE of the points (grid accept, first point wins, leftovers descend into
-//   octants at half the spacing), so drawing shallow nodes far away and deep nodes up
-//   close gives Potree's uniform on-screen density. `order()` is the permutation that
-//   makes every node's points CONTIGUOUS - upload points in that order and a node is
-//   one (first, count) range.
-// Prefer over SpatialKDTree when the question is "which points at what density",
-//   not "which point is nearest".
-// Note: static structure; rebuild required after point insertion.
 #pragma once
+
 #include "point.h"
 #include <array>
 #include <utility>
@@ -16,13 +7,7 @@
 
 namespace session_cpp {
 
-/**
- * @class SpatialOctree
- * @brief LOD octree: per-node spacing-limited subsamples over a reordered point set.
- *
- * Build on construction; the root cube is the bounding box grown to a cube.
- * Complements SpatialKDTree (nearest queries) and SpatialRTree (box queries).
- */
+/// Potree-style LOD octree: every node keeps a spacing-limited subsample and order() makes each node's points contiguous.
 class SpatialOctree {
 public:
     SpatialOctree(std::vector<Point> points, double root_spacing, int leaf_capacity);
@@ -37,6 +22,10 @@ public:
     const std::vector<int>& order() const;
 
 private:
+    static const int MAX_LEVEL = 21;
+    static const int STACK_SIZE = 8 * MAX_LEVEL;
+    static const int NULL_IDX = -1;
+
     struct Node {
         std::array<double, 3> min;
         double size;
@@ -47,12 +36,25 @@ private:
         std::array<int, 8> children;
     };
 
+    struct Task {
+        std::array<double, 3> min;
+        double size;
+        int level;
+        double spacing;
+        int lo;
+        int hi;
+        int parent;
+        int octant;
+    };
+
     std::vector<Node> _nodes;
     std::vector<int> _order;
 
     SpatialOctree() = default;
-    void init(const std::vector<double>& coords, double root_spacing, int leaf_capacity);
-    int build(const std::vector<double>& coords, const std::array<double, 3>& min, double size, int level, double spacing, const std::vector<int>& idxs, int leaf_capacity);
+    std::pair<std::array<double, 3>, double> root_cube(const std::vector<double>& coords) const;
+    void build(const std::vector<double>& coords, double root_spacing, int leaf_capacity);
+    std::array<int, 9> accept(const std::vector<double>& coords, const Task& task, std::vector<int>& indices);
+    void push(Task stack[], int& top, const Task& task) const;
 };
 
 } // namespace session_cpp

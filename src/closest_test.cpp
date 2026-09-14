@@ -1,16 +1,15 @@
 #include "mini_test.h"
-#include "closest.h"
 #include "aabb.h"
+#include "closest.h"
 #include "line.h"
-#include "polyline.h"
+#include "mesh.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
-#include "mesh.h"
-#include "pointcloud.h"
-#include "primitives.h"
 #include "point.h"
+#include "pointcloud.h"
+#include "polyline.h"
+#include "primitives.h"
 #include "tolerance.h"
-
 #include <cmath>
 
 using namespace session_cpp::mini_test;
@@ -18,9 +17,6 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Closest", "Line Point") {
-    // uncomment #include "closest.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
     Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
 
     auto [cp1, t1, d1] = Closest::line_point(l, Point(5.0, 5.0, 0.0));
@@ -42,9 +38,6 @@ MINI_TEST("Closest", "Line Point") {
 }
 
 MINI_TEST("Closest", "Polyline Point") {
-    // uncomment #include "closest.h"
-    // uncomment #include "point.h"
-    // uncomment #include "polyline.h"
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -62,9 +55,6 @@ MINI_TEST("Closest", "Polyline Point") {
 }
 
 MINI_TEST("Closest", "Curve Point") {
-    // uncomment #include "closest.h"
-    // uncomment #include "nurbscurve.h"
-    // uncomment #include "point.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 2.0, 0.0),
@@ -84,26 +74,19 @@ MINI_TEST("Closest", "Curve Point") {
 }
 
 MINI_TEST("Closest", "Surface Point") {
-    // uncomment #include "closest.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "point.h"
     std::vector<Point> pts = {
-        // i=0
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
         Point(3.0, 0.0, 0.0),
-        // i=1
         Point(0.0, 1.0, 0.0),
         Point(1.0, 1.0, 1.0),
         Point(2.0, 1.0, 1.0),
         Point(3.0, 1.0, 0.0),
-        // i=2
         Point(0.0, 2.0, 0.0),
         Point(1.0, 2.0, 1.0),
         Point(2.0, 2.0, 1.0),
         Point(3.0, 2.0, 0.0),
-        // i=3
         Point(0.0, 3.0, 0.0),
         Point(1.0, 3.0, 0.0),
         Point(2.0, 3.0, 0.0),
@@ -122,10 +105,6 @@ MINI_TEST("Closest", "Surface Point") {
 }
 
 MINI_TEST("Closest", "Surface Curve") {
-    // uncomment #include "closest.h"
-    // uncomment #include "nurbscurve.h"
-    // uncomment #include "point.h"
-    // uncomment #include "primitives.h"
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
     auto [u0, u1] = cyl.domain(0);
     auto [v0, v1] = cyl.domain(1);
@@ -164,10 +143,6 @@ MINI_TEST("Closest", "Surface Curve") {
 }
 
 MINI_TEST("Closest", "Mesh Point") {
-    // uncomment #include "closest.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "primitives.h"
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point(m, Point(0.0, 0.0, 2.0));
@@ -180,10 +155,6 @@ MINI_TEST("Closest", "Mesh Point") {
 }
 
 MINI_TEST("Closest", "Mesh Point AABB") {
-    // uncomment #include "closest.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "primitives.h"
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
@@ -196,9 +167,6 @@ MINI_TEST("Closest", "Mesh Point AABB") {
 }
 
 MINI_TEST("Closest", "Pointcloud Point") {
-    // uncomment #include "closest.h"
-    // uncomment #include "point.h"
-    // uncomment #include "pointcloud.h"
     PointCloud pc({
         Point(0.0, 0.0, 0.0),
         Point(5.0, 0.0, 0.0),
@@ -218,10 +186,6 @@ MINI_TEST("Closest", "Pointcloud Point") {
 }
 
 MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
-    // uncomment #include "closest.h"
-    // uncomment #include "point.h"
-    // uncomment #include "pointcloud.h"
-    // SpatialKDTree variant: same result as linear scan, O(log n) query
     PointCloud pc({
         Point(0.0, 0.0, 0.0),
         Point(5.0, 0.0, 0.0),
@@ -241,10 +205,6 @@ MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
 }
 
 MINI_TEST("Closest", "Lines Closest") {
-    // uncomment #include "closest.h"
-    // uncomment #include "aabb.h"
-    // uncomment #include "line.h"
-    // 3 lines: first two sharing an endpoint, third far away
     std::vector<Line> lines = {
         Line(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
         Line(5.0, 0.0, 0.0, 10.0, 0.0, 0.0),
@@ -259,10 +219,6 @@ MINI_TEST("Closest", "Lines Closest") {
 }
 
 MINI_TEST("Closest", "Polylines Closest") {
-    // uncomment #include "closest.h"
-    // uncomment #include "aabb.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     std::vector<Polyline> pls = {
         Polyline({Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
         Polyline({Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)}),
@@ -277,10 +233,6 @@ MINI_TEST("Closest", "Polylines Closest") {
 }
 
 MINI_TEST("Closest", "Nurbscurves Closest") {
-    // uncomment #include "closest.h"
-    // uncomment #include "aabb.h"
-    // uncomment #include "nurbscurve.h"
-    // uncomment #include "point.h"
     std::vector<NurbsCurve> curves = {
         NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
         NurbsCurve::create(false, 1, {Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)}),
@@ -295,9 +247,6 @@ MINI_TEST("Closest", "Nurbscurves Closest") {
 }
 
 MINI_TEST("Closest", "Boxes Closest") {
-    // uncomment #include "closest.h"
-    // uncomment #include "aabb.h"
-    // 3 boxes: first two touching faces (shared at x=1), third far away
     std::vector<AABB> boxes = {
         AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
         AABB(2.0, 0.0, 0.0, 1.0, 1.0, 1.0),

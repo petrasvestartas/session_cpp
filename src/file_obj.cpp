@@ -1,28 +1,24 @@
 #include "file_obj.h"
-#include "mesh.h"
+#include <cstdlib>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <sstream>
-#include <string>
-#include <vector>
-#include <cmath>
 
 namespace session_cpp { namespace file_obj {
 
 std::string write_file_obj_to_string(const Mesh& mesh) {
-    auto vf = mesh.to_vertices_and_faces();
-    const auto& vertices = vf.first;
-    const auto& faces = vf.second;
-
+    const auto [vertices, faces] = mesh.to_vertices_and_faces();
     std::ostringstream out;
-    for (const auto& p : vertices) {
+    out << std::setprecision(std::numeric_limits<double>::max_digits10);
+    for (const Point& p : vertices)
         out << "v " << p[0] << " " << p[1] << " " << p[2] << "\n";
-    }
-    for (const auto& face : faces) {
-        if (face.size() < 3) continue;
+    for (const std::vector<size_t>& face : faces) {
+        if (face.size() < 3)
+            continue;
         out << "f";
-        for (auto i : face) {
-            out << " " << (i + 1);
-        }
+        for (const size_t i : face)
+            out << " " << i + 1;
         out << "\n";
     }
     return out.str();
@@ -30,11 +26,40 @@ std::string write_file_obj_to_string(const Mesh& mesh) {
 
 void write_file_obj(const Mesh& mesh, const std::string& filepath) {
     std::ofstream out(filepath);
-    if (!out.is_open()) {
-        return; // Failed to open file
-    }
+    if (!out.is_open())
+        return;
     out << write_file_obj_to_string(mesh);
-    out.close(); // Explicitly close and flush
+}
+
+Mesh read_file_obj_from_str(const std::string& content) {
+    std::istringstream in(content);
+    std::string line;
+    std::vector<Point> verts;
+    std::vector<std::vector<size_t>> faces;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#')
+            continue;
+        if (line.rfind("v ", 0) == 0) {
+            std::istringstream iss(line.substr(2));
+            double x, y, z;
+            if (iss >> x >> y >> z)
+                verts.emplace_back(x, y, z);
+        } else if (line.rfind("f ", 0) == 0) {
+            std::istringstream iss(line.substr(2));
+            std::string tok;
+            std::vector<size_t> face;
+            while (iss >> tok) {
+                const long long idx = std::atoll(tok.substr(0, tok.find('/')).c_str());
+                if (idx == 0)
+                    continue;
+                const long long vidx = idx > 0 ? idx - 1 : static_cast<long long>(verts.size()) + idx;
+                face.push_back(static_cast<size_t>(vidx));
+            }
+            if (face.size() >= 3)
+                faces.push_back(face);
+        }
+    }
+    return Mesh::from_vertices_and_faces(verts, faces);
 }
 
 Mesh read_file_obj(const std::string& filepath) {
@@ -44,77 +69,37 @@ Mesh read_file_obj(const std::string& filepath) {
     return read_file_obj_from_str(buffer.str());
 }
 
-Mesh read_file_obj_from_str(const std::string& content) {
-    std::istringstream in(content);
-    std::string line;
-    std::vector<Point> verts;
-    std::vector<std::vector<size_t>> faces;
-
-    while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        if (line.rfind("v ", 0) == 0) {
-            std::istringstream iss(line);
-            char v; double x, y, z; iss >> v >> x >> y >> z;
-            verts.emplace_back(x, y, z);
-        } else if (line.rfind("f ", 0) == 0) {
-            std::istringstream iss(line.substr(2));
-            std::string tok;
-            std::vector<size_t> face;
-            while (iss >> tok) {
-                auto slash = tok.find('/');
-                std::string sidx = (slash == std::string::npos) ? tok : tok.substr(0, slash);
-                if (sidx.empty()) continue;
-                long long idx = std::stoll(sidx);
-                if (idx == 0) continue;
-                size_t vidx = (idx > 0) ? static_cast<size_t>(idx - 1)
-                                        : static_cast<size_t>(static_cast<long long>(verts.size()) + idx);
-                face.push_back(vidx);
-            }
-            if (face.size() >= 3) faces.push_back(std::move(face));
-        }
-    }
-
-    Mesh mesh;
-    std::vector<size_t> vkeys; vkeys.reserve(verts.size());
-    for (const auto& p : verts) vkeys.push_back(mesh.add_vertex(p));
-    for (const auto& f : faces) {
-        std::vector<size_t> vlist; vlist.reserve(f.size());
-        for (auto i : f) vlist.push_back(vkeys[i]);
-        mesh.add_face(vlist);
-    }
-    return mesh;
-}
-
 std::vector<Polyline> read_file_obj_polylines(const std::string& filepath) {
     std::ifstream in(filepath);
     std::string line;
     std::vector<Point> verts;
     std::vector<Polyline> polylines;
-    std::vector<int> curv_indices;
+    std::vector<long long> curv;
     bool in_curv = false;
-
     while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        if (line.empty() || line[0] == '#')
+            continue;
         if (line.rfind("v ", 0) == 0) {
-            std::istringstream iss(line);
-            char v; double x, y, z; iss >> v >> x >> y >> z;
-            verts.emplace_back(x, y, z);
+            std::istringstream iss(line.substr(2));
+            double x, y, z;
+            if (iss >> x >> y >> z)
+                verts.emplace_back(x, y, z);
         } else if (line.rfind("curv ", 0) == 0) {
             std::istringstream iss(line.substr(5));
-            double u0, u1; iss >> u0 >> u1;
-            curv_indices.clear();
-            int idx;
-            while (iss >> idx) curv_indices.push_back(idx);
+            std::string u0, u1;
+            iss >> u0 >> u1;
+            curv.clear();
+            long long idx;
+            while (iss >> idx)
+                curv.push_back(idx);
             in_curv = true;
         } else if (line.rfind("end", 0) == 0 && in_curv) {
-            if (!curv_indices.empty()) {
-                std::vector<Point> pts;
-                for (int idx : curv_indices) {
-                    size_t vi = static_cast<size_t>(idx - 1);
-                    if (vi < verts.size()) pts.push_back(verts[vi]);
-                }
-                if (pts.size() >= 2) polylines.emplace_back(pts);
-            }
+            std::vector<Point> pts;
+            for (const long long idx : curv)
+                if (idx > 0 && static_cast<size_t>(idx) <= verts.size())
+                    pts.push_back(verts[static_cast<size_t>(idx - 1)]);
+            if (pts.size() >= 2)
+                polylines.emplace_back(pts);
             in_curv = false;
         }
     }

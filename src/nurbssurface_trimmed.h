@@ -14,26 +14,14 @@
 
 namespace session_cpp {
 
-
-/// What a BRep hands the mesher for one face: every wire as a UV polygon whose vertices lift
-/// to a given 3D point (the edge polygon's, shared bit for bit with the neighbouring face) and
-/// retain loop/sample identities; plus interior UV points inserted before refinement. The
-/// mesher keeps these loop vertices as they are, so two faces meshed from the same polygons
-/// share their boundary exactly and an edge drawn from the polygon lies on both tessellations.
+/// Trim wires of one face as UV polygons, optional 3D points per loop vertex shared bit for bit with the neighbouring face, and interior UV seeds
 struct TrimLoops {
     std::vector<std::vector<Point>> uv;
     std::vector<std::vector<Point>> xyz;
     std::vector<Point> interior_uv;
 };
 
-/**
- * @class NurbsSurfaceTrimmed
- * @brief A NURBS surface bounded by a closed outer loop and optional inner loops (holes).
- *
- * Represents a face of a boundary representation: the underlying surface provides
- * the parametric geometry, while 2D trim curves define the visible region.
- * Meshing respects both outer boundary and inner hole loops.
- */
+/// A NURBS surface bounded by a closed outer loop and optional inner loops in its UV space
 class NurbsSurfaceTrimmed {
 public:
     bool has_guid() const { return !_guid.empty(); }
@@ -47,45 +35,33 @@ public:
     NurbsCurve m_outer_loop;
     std::vector<NurbsCurve> m_inner_loops;
 
-
 public:
     // ═══════════════════════════════════════════════════════════════════════════
-    // Static Factory Methods
+    // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Create trimmed surface from a NURBS surface and a 2D outer boundary loop.
-    /// The outer_loop must be a closed curve in the surface's UV parameter space.
+    /// Surface with a closed outer loop given in its UV parameter space
     static NurbsSurfaceTrimmed create(const NurbsSurface& surface, const NurbsCurve& outer_loop);
 
-    /// Create a planar trimmed surface from a closed 3D boundary curve.
-    /// Fits a plane to the curve, projects it to 2D, and builds the trim loop automatically.
+    /// Planar surface fitted to a closed 3D boundary, the boundary projected as the outer loop
     static NurbsSurfaceTrimmed create_planar(const NurbsCurve& boundary);
 
-    /// Split a surface into trimmed faces by UV pcurves.
-    /// Builds a planar arrangement of the UV domain rectangle and the given
-    /// pcurves (NurbsCurves with x=u, y=v, z=0), extracts faces, and emits one
-    /// NurbsSurfaceTrimmed per face. Loops are exact trims of the input
-    /// pcurves joined with straight border segments. Dangling open cutters
-    /// that do not reach the border or another cutter are discarded.
+    /// One trimmed face per region of the UV domain carved by the pcurves (x=u, y=v, z=0); dangling cutters are discarded
     static std::vector<NurbsSurfaceTrimmed> split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance = 0.0);
 
+    /// One trimmed face per non-empty region carved by the planes (all 2^K sign combinations)
+    static std::vector<NurbsSurfaceTrimmed> split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes);
+
     // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors & Destructor
+    // Constructors
     // ═══════════════════════════════════════════════════════════════════════════
 
     NurbsSurfaceTrimmed();
+    /// Copy (new guid, same data)
     NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other);
-    /// Move constructor and assignment: identity SURVIVES a move.
-    ///
-    /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
-    /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
-    /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
-    /// to the COPY and silently dropped the guid it had just deserialized - every other field
-    /// survived, so the object looked right and only its identity was wrong. That is what broke Line
-    /// on MSVC when its pb_loads changed shape; see line.h.
+    /// Move keeps the guid: the same object in a new place
     NurbsSurfaceTrimmed(NurbsSurfaceTrimmed&& other) noexcept = default;
     NurbsSurfaceTrimmed& operator=(NurbsSurfaceTrimmed&& other) noexcept = default;
-
     NurbsSurfaceTrimmed& operator=(const NurbsSurfaceTrimmed& other);
     bool operator==(const NurbsSurfaceTrimmed& other) const;
     bool operator!=(const NurbsSurfaceTrimmed& other) const;
@@ -95,171 +71,98 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Get the underlying NURBS surface.
     NurbsSurface surface() const;
-
-    /// Get the outer boundary loop (closed 2D curve in UV space).
     NurbsCurve get_outer_loop() const;
-
-    /// Replace the outer boundary loop with a new closed 2D curve.
     void set_outer_loop(const NurbsCurve& loop);
-
-    /// Return true if the surface has a non-trivial outer loop (not the full domain).
+    /// True when the outer loop is a valid curve
     bool is_trimmed() const;
-
-    /// Return true if the surface, outer loop, and all inner loops are valid.
+    /// True when the underlying surface is valid
     bool is_valid() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Inner Loops
+    // Inner loops
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Add a pre-built 2D hole loop directly in UV parameter space.
+    /// Hole given directly as a closed 2D curve in UV space
     void add_inner_loop(const NurbsCurve& loop_2d);
-
-    /// Add a hole from a 3D curve by projecting it onto the surface's UV domain.
+    /// Hole from a 3D curve pulled onto the surface and normalized into [0,1]^2
     void add_hole(const NurbsCurve& curve_3d);
-
-    /// Add multiple holes from 3D curves, projecting each onto the surface.
     void add_holes(const std::vector<NurbsCurve>& curves_3d);
-
-    /// Get the inner loop at the given index (0-based).
     NurbsCurve get_inner_loop(int index) const;
-
-    /// Return the number of inner (hole) loops.
     int inner_loop_count() const;
-
-    /// Remove all inner loops.
     void clear_inner_loops();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Evaluate a 3D point on the underlying surface at parameters (u, v).
     Point point_at(double u, double v) const;
-
-    /// Evaluate the surface normal at parameters (u, v).
     Vector normal_at(double u, double v) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Generate a triangle mesh respecting outer and inner trim loops.
-    /// Uses adaptive subdivision based on surface curvature and chord-height tolerance.
+    /// mesh_q at 20 degrees and a chord factor of 0.005
     Mesh mesh() const;
 
-    /// Mesh at a chosen tessellation quality: angular bound (degrees, normal turn across a
-    /// triangle) and chord factor (deflection tolerance as a fraction of the 3D bbox diagonal).
-    /// Unified deflection-refined constrained-Delaunay pipeline (BRepMesh / OpenNURBS style).
+    /// Deflection-refined constrained Delaunay of the trim loops: angular bound in degrees, chord factor as a fraction of the bbox diagonal
     Mesh mesh_q(double max_angle_deg, double chord_factor) const;
 
-    /// Mesh a sampled outer loop followed by holes in surface UV coordinates. Optional XYZ
-    /// positions use the surface's coordinate space and must match every loop vertex. Existing
-    /// samples retain their exact positions and `boundary/{loop}/{sample}` attributes. Knot-line
-    /// intersections add `boundary_interval/{loop}/{segment}` fractions on the supplied XYZ chord
-    /// (or the surface when XYZ is absent); these fractions are polygon intervals, not CAD curve
-    /// parameters. Interior C0 knot lines are constrained and actual normal discontinuities split
-    /// shading vertices, preserving boundary provenance on both copies. Angular quality is degrees;
-    /// chord factor scales the surface bounding-box diagonal. Refinement is capped at eight passes
-    /// and 200000 vertices. Invalid inputs, missing boundary samples, or unconstrained C0 crossings
-    /// return an empty mesh. Input polygon quality remains the caller's responsibility.
+    /// Mesh sampled loops (outer first, then holes) keeping every loop vertex, tagged boundary/{loop}/{sample}; knot crossings add boundary_interval/{loop}/{segment}; empty mesh on invalid input
     Mesh mesh_loops(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
 
-    /// Mesh the surface trimmed by a plane (q0, normal), keeping the half where (S-q0).n <= 0.
-    /// OCCT path-A algorithm: span-adaptive UV grid + marching-squares clip where the signed
-    /// distance field f(u,v)=(S(u,v)-q0).n changes sign, with every boundary crossing
-    /// Newton-refined onto the plane (so the cut curve lies exactly on it), then coincident-3D
-    /// vertices welded so periodic seams (cylinder/torus/sphere) close watertight.
+    /// Mesh of the half (S-q0).n <= 0: span-adaptive grid, marching-squares clip with Newton-refined crossings, seams welded
     Mesh mesh_by_plane(const Point& q0, const Vector& normal, double max_angle_deg, double chord_factor) const;
 
-    /// Multi-plane half-space clip: keep the region inside ALL half-spaces { (S-q).n <= 0 }.
-    /// Planes are passed in (no persisted cut state). Same span-adaptive UV grid + per-plane
-    /// Sutherland-Hodgman clip + Newton-onto-plane + 3D weld as mesh_by_plane, generalised to K planes.
+    /// Mesh of the region inside every half-space (S-q).n <= 0: triangle soup clipped plane by plane, seams welded
     Mesh mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes, double max_angle_deg, double chord_factor) const;
-
-    /// Split a surface into every non-empty region carved by `planes` (all 2^K sign
-    /// combinations). Each region comes back as a first-class multi-plane trimmed surface.
-    static std::vector<NurbsSurfaceTrimmed> split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Apply a transformation to the surface geometry (in-place).
     void transform(const Xform& xform);
-
-    /// Return a copy with the transformation applied.
     NurbsSurfaceTrimmed transformed(const Xform& xform) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // JSON Serialization
+    // JSON
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Convert to JSON object with fields in alphabetical order.
     nlohmann::ordered_json jsondump() const;
-
-    /// Construct from a JSON object.
     static NurbsSurfaceTrimmed jsonload(const nlohmann::json& data);
-
-    /// Write JSON to a file.
     void file_json_dump(const std::string& filename) const;
-
-    /// Read from a JSON file.
     static NurbsSurfaceTrimmed file_json_load(const std::string& filename);
-
-    /// Serialize to a JSON string.
     std::string file_json_dumps() const;
-
-    /// Deserialize from a JSON string.
     static NurbsSurfaceTrimmed file_json_loads(const std::string& json_string);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Protobuf Serialization
+    // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Serialize to a protobuf binary string.
     std::string pb_dumps() const;
-
-    /// Deserialize from a protobuf binary string.
     static NurbsSurfaceTrimmed pb_loads(const std::string& data);
-
-    /// Write protobuf to a file.
     void pb_dump(const std::string& filename) const;
-
-    /// Read from a protobuf file.
     static NurbsSurfaceTrimmed pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // String Representation
+    // String
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Simple string (type, surface degree, trim loop counts).
+    /// "NurbsSurfaceTrimmed(name=..., trimmed=..., holes=...)"
     std::string str() const;
-
-    /// Detailed string with surface domain and CV counts.
+    /// Multi-line form with the surface
     std::string repr() const;
-
-    /// Stream output operator (calls str()).
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurfaceTrimmed& ts);
 
 private:
-    /// The constrained Delaunay of `loops` in UV, refined, trimmed, lifted and welded: the one
-    /// body mesh_q and mesh_loops share. Loop vertices without a given 3D point lift through
-    /// the surface.
+    /// Constrained Delaunay of the loops in UV, refined, trimmed, lifted and welded: the one body mesh_q and mesh_loops share
     Mesh triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
-
-    /// Diagonal of the control-point box: the scale every deflection tolerance is a fraction of.
+    /// Diagonal of the control-point box, the scale every deflection tolerance is a fraction of
     double bbox_diagonal() const;
+    void deep_copy_from(const NurbsSurfaceTrimmed& src);
 
     mutable std::string _guid;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Internal Helpers
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    void deep_copy_from(const NurbsSurfaceTrimmed& src);
 };
 
 } // namespace session_cpp

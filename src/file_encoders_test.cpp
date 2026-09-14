@@ -5,19 +5,17 @@
 #include "line.h"
 #include "tolerance.h"
 #include <filesystem>
+#include <map>
 
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 using namespace session_cpp::file_encoders;
 
 MINI_TEST("FileEncoders", "Json Dump Load") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
-    std::filesystem::create_directories("./serialization");
     Point original(1.5, 2.5, 3.5);
     original.name = "test_point";
 
-    std::string filepath = "./serialization/test_encoders_point.json";
+    std::string filepath = "serialization/test_encoders_point.json";
     file_json_dump(original, filepath);
 
     Point loaded = file_json_load<Point>(filepath);
@@ -31,8 +29,6 @@ MINI_TEST("FileEncoders", "Json Dump Load") {
 }
 
 MINI_TEST("FileEncoders", "Json Dumps Loads") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "vector.h"
     Vector original(42.1, 84.2, 126.3);
     original.name = "test_vector";
 
@@ -50,8 +46,6 @@ MINI_TEST("FileEncoders", "Json Dumps Loads") {
 }
 
 MINI_TEST("FileEncoders", "Encode Collection Values") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
     std::vector<Point> points;
     points.push_back(Point(1.0, 2.0, 3.0));
     points.push_back(Point(4.0, 5.0, 6.0));
@@ -67,8 +61,6 @@ MINI_TEST("FileEncoders", "Encode Collection Values") {
 }
 
 MINI_TEST("FileEncoders", "Encode Collection Shared Ptr") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "line.h"
     std::vector<std::shared_ptr<Line>> lines;
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
@@ -82,8 +74,6 @@ MINI_TEST("FileEncoders", "Encode Collection Shared Ptr") {
 }
 
 MINI_TEST("FileEncoders", "Decode Collection") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
     std::vector<Point> original_points;
     original_points.push_back(Point(1.0, 2.0, 3.0));
     original_points.push_back(Point(4.0, 5.0, 6.0));
@@ -97,8 +87,6 @@ MINI_TEST("FileEncoders", "Decode Collection") {
 }
 
 MINI_TEST("FileEncoders", "Decode Collection Ptr") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "vector.h"
     std::vector<std::shared_ptr<Vector>> original_vectors;
     original_vectors.push_back(std::make_shared<Vector>(1.0, 0.0, 0.0));
     original_vectors.push_back(std::make_shared<Vector>(0.0, 1.0, 0.0));
@@ -112,8 +100,6 @@ MINI_TEST("FileEncoders", "Decode Collection Ptr") {
 }
 
 MINI_TEST("FileEncoders", "Nested Collections") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "line.h"
     std::vector<Line> lines;
     lines.push_back(Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(Line(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
@@ -132,15 +118,12 @@ MINI_TEST("FileEncoders", "Nested Collections") {
 }
 
 MINI_TEST("FileEncoders", "Roundtrip File Io") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "vector.h"
-    std::filesystem::create_directories("./serialization");
     std::vector<Vector> vectors;
     vectors.push_back(Vector(1.0, 0.0, 0.0));
     vectors.push_back(Vector(0.0, 1.0, 0.0));
     vectors.push_back(Vector(0.0, 0.0, 1.0));
 
-    std::string filepath = "./serialization/test_encoders_collection.json";
+    std::string filepath = "serialization/test_encoders_collection.json";
     auto json_arr = file_encode_collection(vectors);
     file_json_dump(json_arr, filepath);
 
@@ -156,8 +139,6 @@ MINI_TEST("FileEncoders", "Roundtrip File Io") {
 }
 
 MINI_TEST("FileEncoders", "Pretty Vs Compact") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
     Point point(1.0, 2.0, 3.0);
 
     std::string pretty = file_json_dumps(point, true);
@@ -175,7 +156,6 @@ MINI_TEST("FileEncoders", "Pretty Vs Compact") {
 }
 
 MINI_TEST("FileEncoders", "Decode Primitives") {
-    // uncomment #include "file_encoders.h"
     nlohmann::json num = 42;
     std::string json_str = num.dump();
     auto loaded = nlohmann::json::parse(json_str);
@@ -199,8 +179,6 @@ MINI_TEST("FileEncoders", "Decode Primitives") {
 }
 
 MINI_TEST("FileEncoders", "Decode List") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
     std::vector<int> data = {1, 2, 3};
     nlohmann::json j = data;
     std::string json_str = j.dump();
@@ -223,8 +201,6 @@ MINI_TEST("FileEncoders", "Decode List") {
 }
 
 MINI_TEST("FileEncoders", "Decode Dict") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "vector.h"
     std::map<std::string, int> data;
     data["a"] = 1;
     data["b"] = 2;
@@ -242,7 +218,6 @@ MINI_TEST("FileEncoders", "Decode Dict") {
 }
 
 MINI_TEST("FileEncoders", "List In List In List") {
-    // uncomment #include "file_encoders.h"
     nlohmann::json data = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
     std::string json_str = data.dump();
     auto loaded = nlohmann::json::parse(json_str);
@@ -253,8 +228,6 @@ MINI_TEST("FileEncoders", "List In List In List") {
 }
 
 MINI_TEST("FileEncoders", "Dict Of Lists") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
     std::vector<Point> points;
     points.push_back(Point(1.0, 0.0, 0.0));
     points.push_back(Point(0.0, 1.0, 0.0));
@@ -275,8 +248,6 @@ MINI_TEST("FileEncoders", "Dict Of Lists") {
 }
 
 MINI_TEST("FileEncoders", "List Of Dict") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
     Point point(1.0, 2.0, 3.0);
 
     nlohmann::json data = nlohmann::json::array();
@@ -295,9 +266,6 @@ MINI_TEST("FileEncoders", "List Of Dict") {
 }
 
 MINI_TEST("FileEncoders", "Dict Of Dicts") {
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     Point point(1.0, 2.0, 3.0);
     Vector vec(0.0, 0.0, 1.0);
 

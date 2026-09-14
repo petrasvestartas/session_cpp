@@ -76,7 +76,7 @@ public:
   bool has_guid() const { return !_guid.empty(); }
   const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
   std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  
+
   // Collections for all geometry types
   std::shared_ptr<std::vector<std::shared_ptr<Point>>> points;
   std::shared_ptr<std::vector<std::shared_ptr<Line>>> lines;

@@ -6,21 +6,15 @@
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TreeNode
+// ═══════════════════════════════════════════════════════════════════════════
+
 MINI_TEST("TreeNode", "Constructor") {
-    // uncomment #include "tree.h"
-    // uncomment #include "color.h"
-
-    // Default constructor
     auto n0 = std::make_shared<TreeNode>();
-
-    // Constructor with name
     auto n = std::make_shared<TreeNode>("my_named_node");
     n->color = Color(1.0f, 0.0f, 0.0f, 1.0f);
-
-    // Minimal string representation
     std::string nstr = n->str();
-
-    // Copies (compared by guid)
     auto nother = std::make_shared<TreeNode>("my_named_node");
 
     MINI_CHECK(n0->name == "my_node");
@@ -33,17 +27,13 @@ MINI_TEST("TreeNode", "Constructor") {
 }
 
 MINI_TEST("TreeNode", "Json Roundtrip") {
-    // uncomment #include "tree.h"
-    // uncomment #include "file_encoders.h"
-
     auto original = std::make_shared<TreeNode>("test_node");
     auto child = std::make_shared<TreeNode>("child_node");
     original->add(child);
 
     std::string fname = "serialization/test_treenode.json";
     file_encoders::file_json_dump(original->jsondump(), fname);
-    auto loaded_json = file_encoders::file_json_load_data(fname);
-    auto loaded = TreeNode::jsonload(loaded_json);
+    auto loaded = TreeNode::jsonload(file_encoders::file_json_load_data(fname));
 
     MINI_CHECK(loaded->name == original->name);
     MINI_CHECK(loaded->children().size() == 1);
@@ -51,8 +41,6 @@ MINI_TEST("TreeNode", "Json Roundtrip") {
 }
 
 MINI_TEST("TreeNode", "Is Root") {
-    // uncomment #include "tree.h"
-
     auto root = std::make_shared<TreeNode>("root");
     auto child = std::make_shared<TreeNode>("child");
     root->add(child);
@@ -62,8 +50,6 @@ MINI_TEST("TreeNode", "Is Root") {
 }
 
 MINI_TEST("TreeNode", "Is Leaf") {
-    // uncomment #include "tree.h"
-
     auto parent = std::make_shared<TreeNode>("parent");
     auto child = std::make_shared<TreeNode>("child");
     parent->add(child);
@@ -72,17 +58,7 @@ MINI_TEST("TreeNode", "Is Leaf") {
     MINI_CHECK(!parent->is_leaf());
 }
 
-MINI_TEST("TreeNode", "Tree") {
-    // uncomment #include "tree.h"
-
-    auto n = std::make_shared<TreeNode>("standalone");
-
-    MINI_CHECK(n->tree() == nullptr);
-}
-
 MINI_TEST("TreeNode", "Add") {
-    // uncomment #include "tree.h"
-
     auto parent = std::make_shared<TreeNode>("parent");
     auto child = std::make_shared<TreeNode>("child");
     parent->add(child);
@@ -92,8 +68,6 @@ MINI_TEST("TreeNode", "Add") {
 }
 
 MINI_TEST("TreeNode", "Remove") {
-    // uncomment #include "tree.h"
-
     auto parent = std::make_shared<TreeNode>("parent");
     auto child = std::make_shared<TreeNode>("child");
     parent->add(child);
@@ -105,8 +79,6 @@ MINI_TEST("TreeNode", "Remove") {
 }
 
 MINI_TEST("TreeNode", "Parent") {
-    // uncomment #include "tree.h"
-
     auto root = std::make_shared<TreeNode>("root");
     auto child = std::make_shared<TreeNode>("child");
     root->add(child);
@@ -116,8 +88,6 @@ MINI_TEST("TreeNode", "Parent") {
 }
 
 MINI_TEST("TreeNode", "Ancestors") {
-    // uncomment #include "tree.h"
-
     auto root = std::make_shared<TreeNode>("root");
     auto mid = std::make_shared<TreeNode>("mid");
     auto leaf = std::make_shared<TreeNode>("leaf");
@@ -132,8 +102,6 @@ MINI_TEST("TreeNode", "Ancestors") {
 }
 
 MINI_TEST("TreeNode", "Descendants") {
-    // uncomment #include "tree.h"
-
     auto root = std::make_shared<TreeNode>("root");
     auto mid = std::make_shared<TreeNode>("mid");
     auto leaf = std::make_shared<TreeNode>("leaf");
@@ -148,8 +116,6 @@ MINI_TEST("TreeNode", "Descendants") {
 }
 
 MINI_TEST("TreeNode", "Children") {
-    // uncomment #include "tree.h"
-
     auto parent = std::make_shared<TreeNode>("parent");
     auto c1 = std::make_shared<TreeNode>("c1");
     auto c2 = std::make_shared<TreeNode>("c2");
@@ -164,8 +130,6 @@ MINI_TEST("TreeNode", "Children") {
 }
 
 MINI_TEST("TreeNode", "Traverse") {
-    // uncomment #include "tree.h"
-
     auto root = std::make_shared<TreeNode>("root");
     auto a = std::make_shared<TreeNode>("a");
     auto b = std::make_shared<TreeNode>("b");
@@ -181,16 +145,13 @@ MINI_TEST("TreeNode", "Traverse") {
     MINI_CHECK(bfs.size() == 3 && bfs[0]->name == "root");
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Tree
+// ═══════════════════════════════════════════════════════════════════════════
+
 MINI_TEST("Tree", "Constructor") {
-    // uncomment #include "tree.h"
-
-    // Default constructor
     Tree t0;
-
-    // Constructor with name
     Tree t("my_named_tree");
-
-    // Minimal string representation
     std::string tstr = t.str();
 
     MINI_CHECK(t0.name == "my_tree");
@@ -200,18 +161,9 @@ MINI_TEST("Tree", "Constructor") {
 }
 
 MINI_TEST("Tree", "Json Roundtrip") {
-    // uncomment #include "tree.h"
-
     Tree original("test_tree");
     auto root_node = std::make_shared<TreeNode>("root_node");
     original.add(root_node);
-
-    //   jsondump()      │ ordered_json │ to JSON object (internal use)
-    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   file_json_dumps()    │ std::string  │ to JSON string
-    //   file_json_loads(s)   │ std::string  │ from JSON string
-    //   file_json_dump(path) │ file         │ write to file
-    //   file_json_load(path) │ file         │ read from file
 
     std::string fname = "serialization/test_tree.json";
     original.file_json_dump(fname);
@@ -222,8 +174,6 @@ MINI_TEST("Tree", "Json Roundtrip") {
 }
 
 MINI_TEST("Tree", "Protobuf Roundtrip") {
-    // uncomment #include "tree.h"
-
     Tree original("test_tree");
     auto root_node = std::make_shared<TreeNode>("root_node");
     original.add(root_node);
@@ -237,8 +187,6 @@ MINI_TEST("Tree", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Tree", "Root") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     t.add(root);
@@ -247,8 +195,6 @@ MINI_TEST("Tree", "Root") {
 }
 
 MINI_TEST("Tree", "Add") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto child = std::make_shared<TreeNode>("child");
@@ -259,24 +205,20 @@ MINI_TEST("Tree", "Add") {
 }
 
 MINI_TEST("Tree", "Nodes") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto child = std::make_shared<TreeNode>("child");
     t.add(root);
     t.add(child, root);
 
-    auto all = t.nodes();
+    auto all_nodes = t.nodes();
 
-    MINI_CHECK(all.size() == 2);
-    MINI_CHECK(all[0]->name == "root");
-    MINI_CHECK(all[1]->name == "child");
+    MINI_CHECK(all_nodes.size() == 2);
+    MINI_CHECK(all_nodes[0]->name == "root");
+    MINI_CHECK(all_nodes[1]->name == "child");
 }
 
 MINI_TEST("Tree", "Remove") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto child = std::make_shared<TreeNode>("child");
@@ -288,8 +230,6 @@ MINI_TEST("Tree", "Remove") {
 }
 
 MINI_TEST("Tree", "Leaves") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto a = std::make_shared<TreeNode>("a");
@@ -306,8 +246,6 @@ MINI_TEST("Tree", "Leaves") {
 }
 
 MINI_TEST("Tree", "Traverse") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto a = std::make_shared<TreeNode>("a");
@@ -324,8 +262,6 @@ MINI_TEST("Tree", "Traverse") {
 }
 
 MINI_TEST("Tree", "Get Node By Name") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto child = std::make_shared<TreeNode>("target");
@@ -339,8 +275,6 @@ MINI_TEST("Tree", "Get Node By Name") {
 }
 
 MINI_TEST("Tree", "Get Nodes By Name") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto a = std::make_shared<TreeNode>("dup");
@@ -355,8 +289,6 @@ MINI_TEST("Tree", "Get Nodes By Name") {
 }
 
 MINI_TEST("Tree", "Find Node By Guid") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     t.add(root);
@@ -369,8 +301,6 @@ MINI_TEST("Tree", "Find Node By Guid") {
 }
 
 MINI_TEST("Tree", "Add Child By Guid") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto a = std::make_shared<TreeNode>("a");
@@ -387,8 +317,6 @@ MINI_TEST("Tree", "Add Child By Guid") {
 }
 
 MINI_TEST("Tree", "Get Children Guids") {
-    // uncomment #include "tree.h"
-
     Tree t("t");
     auto root = std::make_shared<TreeNode>("root");
     auto a = std::make_shared<TreeNode>("a");

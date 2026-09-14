@@ -20,10 +20,6 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("OBB", "Constructor") {
-    // uncomment #include "obb.h"
-    // uncomment #include "aabb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     // from_point
     OBB bb1 = OBB::from_point(Point(5.0, 5.0, 5.0), 2.0);
 
@@ -54,6 +50,15 @@ MINI_TEST("OBB", "Constructor") {
     MINI_CHECK(TOLERANCE.is_close(box.half_size[0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(box.half_size[1], 2.0));
     MINI_CHECK(TOLERANCE.is_close(box.half_size[2], 3.0));
+
+    // operators
+    OBB same(box);
+
+    MINI_CHECK(box == same);
+    MINI_CHECK(box != bb1);
+    MINI_CHECK(box.guid() != same.guid());
+    MINI_CHECK(box.str() == "0.000000, 0.000000, 0.000000\n1.000000, 0.000000, 0.000000\n0.000000, 1.000000, 0.000000\n0.000000, 0.000000, 1.000000\n1.000000, 2.000000, 3.000000");
+    MINI_CHECK(box.repr() == "OBB(my_obb, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 1.000000, 2.000000, 3.000000)");
 
     // aabb
     AABB bb_aabb = bb2.aabb();
@@ -91,8 +96,6 @@ MINI_TEST("OBB", "Constructor") {
 }
 
 MINI_TEST("OBB", "Collision") {
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     OBB bb1 = OBB::from_point(Point(0.0, 0.0, 0.0), 1.0);
     OBB bb2 = OBB::from_point(Point(1.5, 0.0, 0.0), 1.0);
     OBB bb3 = OBB::from_point(Point(5.0, 5.0, 5.0), 0.5);
@@ -108,9 +111,6 @@ MINI_TEST("OBB", "Collision") {
 }
 
 MINI_TEST("OBB", "Transformation") {
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "xform.h"
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0),
@@ -128,8 +128,6 @@ MINI_TEST("OBB", "Transformation") {
 }
 
 MINI_TEST("OBB", "Json Roundtrip") {
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox";
 
@@ -158,8 +156,6 @@ MINI_TEST("OBB", "Json Roundtrip") {
 }
 
 MINI_TEST("OBB", "Protobuf Roundtrip") {
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox_proto";
 
@@ -184,8 +180,6 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("OBB", "Accessors") {
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
     // axis-aligned OBB: center=(1,2,3), half_size=(1,2,3), dims 2×4×6
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -219,12 +213,6 @@ MINI_TEST("OBB", "Accessors") {
 }
 
 MINI_TEST("OBB", "From Geometry") {
-    // uncomment #include "line.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "pointcloud.h"
-    // uncomment #include "nurbscurve.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "primitives.h"
     OBB bb_line = OBB::from_line(Line(0.0, 0.0, 0.0, 4.0, 0.0, 0.0), 0.1);
 
     MINI_CHECK(bb_line.is_valid());
@@ -289,8 +277,6 @@ MINI_TEST("OBB", "From Geometry") {
 }
 
 MINI_TEST("OBB", "From Plane") {
-    // uncomment #include "obb.h"
-    // uncomment #include "plane.h"
     Plane plane = Plane::xy_plane();
     OBB box(plane, 2.0, 3.0, 4.0);
 
@@ -313,7 +299,6 @@ MINI_TEST("OBB", "From Plane") {
 }
 
 MINI_TEST("OBB", "Two Rectangles") {
-    // uncomment #include "obb.h"
     OBB bb(
         Point(1.0, 2.0, 3.0),
         Vector(1.0, 0.0, 0.0),

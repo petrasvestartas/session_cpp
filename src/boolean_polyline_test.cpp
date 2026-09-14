@@ -1,16 +1,17 @@
 #include "mini_test.h"
-#include "polyline.h"
 #include "boolean_polyline.h"
+#include "point.h"
+#include "polyline.h"
 #include <cmath>
+#include <vector>
+
+using namespace session_cpp::mini_test;
 
 namespace session_cpp {
-using namespace session_cpp::mini_test;
 
 static constexpr double PI2 = 6.283185307179586476;
 
 MINI_TEST("Boolean Polyline", "Overlapping Squares") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     Polyline a({Point(-1,-1,0), Point(1,-1,0), Point(1,1,0), Point(-1,1,0), Point(-1,-1,0)});
     Polyline b({Point(0,0,0), Point(2,0,0), Point(2,2,0), Point(0,2,0), Point(0,0,0)});
     auto isect = Polyline::boolean_op(a, b, 0);
@@ -25,8 +26,6 @@ MINI_TEST("Boolean Polyline", "Overlapping Squares") {
 }
 
 MINI_TEST("Boolean Polyline", "Circle Vs Rectangle") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     std::vector<Point> pts;
     for (int i = 0; i < 64; i++) {
         double a = PI2 * i / 64;
@@ -47,8 +46,6 @@ MINI_TEST("Boolean Polyline", "Circle Vs Rectangle") {
 }
 
 MINI_TEST("Boolean Polyline", "Star Vs Circle") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     std::vector<Point> star_pts;
     for (int i = 0; i < 10; i++) {
         double a = PI2 * i / 10;
@@ -76,8 +73,6 @@ MINI_TEST("Boolean Polyline", "Star Vs Circle") {
 }
 
 MINI_TEST("Boolean Polyline", "L Shape Vs Rectangle") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     Polyline l_shape({
         Point(15,-1,0), Point(18,-1,0), Point(18,0,0),
         Point(16,0,0), Point(16,2,0), Point(15,2,0), Point(15,-1,0)
@@ -95,8 +90,6 @@ MINI_TEST("Boolean Polyline", "L Shape Vs Rectangle") {
 }
 
 MINI_TEST("Boolean Polyline", "Two Large Circles") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     std::vector<Point> pts_a, pts_b;
     for (int i = 0; i < 256; i++) {
         double a = PI2 * i / 256;
@@ -118,8 +111,6 @@ MINI_TEST("Boolean Polyline", "Two Large Circles") {
 }
 
 MINI_TEST("Boolean Polyline", "Diamond Vs Triangle") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     Polyline diamond({Point(28,0,0), Point(30,-2,0), Point(32,0,0), Point(30,2,0), Point(28,0,0)});
     Polyline tri({Point(29,-2,0), Point(33,0,0), Point(29,2,0), Point(29,-2,0)});
     auto isect = Polyline::boolean_op(diamond, tri, 0);
@@ -134,8 +125,6 @@ MINI_TEST("Boolean Polyline", "Diamond Vs Triangle") {
 }
 
 MINI_TEST("Boolean Polyline", "Star Vs Star") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     std::vector<Point> pts_a;
     for (int i = 0; i < 12; i++) {
         double a = PI2 * i / 12;
@@ -163,8 +152,6 @@ MINI_TEST("Boolean Polyline", "Star Vs Star") {
 }
 
 MINI_TEST("Boolean Polyline", "Cross Shape") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     Polyline narrow({Point(42,-2,0), Point(44,-2,0), Point(44,2,0), Point(42,2,0), Point(42,-2,0)});
     Polyline wide({Point(40,-0.5,0), Point(46,-0.5,0), Point(46,0.5,0), Point(40,0.5,0), Point(40,-0.5,0)});
     auto isect = Polyline::boolean_op(narrow, wide, 0);
@@ -179,8 +166,6 @@ MINI_TEST("Boolean Polyline", "Cross Shape") {
 }
 
 MINI_TEST("Boolean Polyline", "Concave Arrow Vs Circle") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     Polyline arrow({
         Point(49,0,0), Point(52,2,0), Point(51,0.5,0), Point(53,0.5,0),
         Point(53,-0.5,0), Point(51,-0.5,0), Point(52,-2,0), Point(49,0,0)
@@ -204,8 +189,6 @@ MINI_TEST("Boolean Polyline", "Concave Arrow Vs Circle") {
 }
 
 MINI_TEST("Boolean Polyline", "Two Large Circles 1000") {
-    // uncomment #include "polyline.h"
-    // uncomment #include "point.h"
     std::vector<Point> pts_a, pts_b;
     for (int i = 0; i < 1000; i++) {
         double a = PI2 * i / 1000;
@@ -227,8 +210,6 @@ MINI_TEST("Boolean Polyline", "Two Large Circles 1000") {
 }
 
 MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
-    // Coordinates near 1e7 would overflow int64 cross products with the old
-    // fixed 1e9 scale: (1e7*1e9)^2 = 1e32 >> int64::max (~9.2e18)
     Polyline a({Point(64e6,1e6,0), Point(64e6+2e6,1e6,0), Point(64e6+2e6,1e6+2e6,0), Point(64e6,1e6+2e6,0), Point(64e6,1e6,0)});
     Polyline b({Point(64e6+1e6,1e6+1e6,0), Point(64e6+3e6,1e6+1e6,0), Point(64e6+3e6,1e6+3e6,0), Point(64e6+1e6,1e6+3e6,0), Point(64e6+1e6,1e6+1e6,0)});
     auto isect = Polyline::boolean_op(a, b, 0);
@@ -241,14 +222,6 @@ MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
     MINI_CHECK(diff.size() >= 1);
     MINI_CHECK(diff[0].point_count() > 0);
 }
-
-// ── Open-subject × closed-clip Vatti tests ──────────────────────────────
-// Exercises BooleanPolyline::clip_open_against_closed. Covers the three
-// primary behaviours needed by rossiniere joints:
-//   1) simple transverse crossing (enter + exit),
-//   2) diagonal transverse crossing,
-//   3) full joint-rectangle-vs-plate fixture (multi-segment open path
-//      traversing a rotated-plane plate).
 
 MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {
     Polyline open_line({Point(-2, 0, 0), Point(2, 0, 0)});
@@ -277,8 +250,6 @@ MINI_TEST("Boolean Polyline Open", "Diagonal Line Vs Unit Square") {
 }
 
 MINI_TEST("Boolean Polyline Open", "Interior Open Path Passes Through") {
-    // Multi-vertex open path with both endpoints OUTSIDE clip — expect a
-    // single piece crossing from entry to exit.
     Polyline open_path({Point(-2, 0, 0), Point(0, 0.2, 0), Point(2, 0, 0)});
     Polyline sq({Point(-1,-1,0), Point(1,-1,0), Point(1,1,0), Point(-1,1,0), Point(-1,-1,0)});
     auto out = BooleanPolyline::clip_open_against_closed(open_path, sq);

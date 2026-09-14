@@ -51,7 +51,6 @@ set(UNITY_BUILD_EXCLUDE
     src/nurbssurface_trimmed.cpp
     src/nurbsknot.cpp
     src/mesh.cpp
-    src/mesh_boolean.cpp
     src/brep.cpp
     src/intersection.cpp
     src/graph.cpp
@@ -60,7 +59,7 @@ set(UNITY_BUILD_EXCLUDE
     src/element.cpp
     src/yaml/yaml.cpp
     src/mesh_offset.cpp
-    src/io_xyz.cpp
+    src/io.cpp
 )
 
 #############################################################################################
@@ -301,6 +300,7 @@ endif()
 set(MINITEST_SOURCES
     src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp src/session_config_test.cpp
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
+    src/simple_split_test.cpp
     src/xform_test.cpp src/mesh_test.cpp src/nurbsknot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/closest_test.cpp
     src/primitives_test.cpp

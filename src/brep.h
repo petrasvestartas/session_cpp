@@ -3,6 +3,7 @@
 #include "nurbssurface.h"
 #include "nurbscurve.h"
 #include "polyline.h"
+#include "plane.h"
 #include "mesh.h"
 #include "point.h"
 #include "xform.h"
@@ -14,38 +15,36 @@
 
 namespace session_cpp {
 
-/// TopAbs_Orientation: carried by the parent -> child reference, never by the shape.
+/// TopAbs_Orientation: carried by the parent -> child reference, never by the shape
 enum class BRepOrientation { Forward = 0, Reversed = 1, Internal = 2, External = 3 };
 
-/// TopAbs::Reverse.
+/// TopAbs::Reverse
 BRepOrientation brep_reverse(BRepOrientation o);
 
-/// TopAbs::Compose: the orientation of a sub-shape reached through a parent with orientation `a`.
+/// TopAbs::Compose: the orientation of a sub-shape reached through a parent with orientation `a`
 BRepOrientation brep_compose(BRepOrientation a, BRepOrientation b);
 
-/// TopoDS_Shape: an oriented reference to a sub-shape (index into the owning table).
+/// TopoDS_Shape: an oriented reference to a sub-shape (index into the owning table)
 struct BRepRef {
     int index = -1;
     BRepOrientation orientation = BRepOrientation::Forward;
     bool operator==(const BRepRef& o) const { return index == o.index && orientation == o.orientation; }
 };
 
-/// BRep_TVertex.
+/// BRep_TVertex
 struct BRepVertex {
     Point point;
     double tolerance = 0.0;
 };
 
-/// BRep_CurveOnSurface / BRep_CurveOnClosedSurface. curve_2d_index_2 is the pcurve of the
-/// REVERSED use of the edge on a closed surface (seam); -1 otherwise. Pcurves run in the
-/// edge's own direction (OCCT SameParameter convention).
+/// BRep_CurveOnSurface: curve_2d_index_2 is the pcurve of the REVERSED use on a closed surface (seam), -1 otherwise; pcurves run in the edge's own direction
 struct BRepCurveOnSurface {
     int surface_index = -1;
     int curve_2d_index = -1;
     int curve_2d_index_2 = -1;
 };
 
-/// BRep_TEdge. curve_3d_index is -1 for a degenerated edge (sphere pole, cone apex).
+/// BRep_TEdge: curve_3d_index is -1 for a degenerated edge (sphere pole, cone apex)
 struct BRepEdge {
     int curve_3d_index = -1;
     int start_vertex = -1;
@@ -55,54 +54,45 @@ struct BRepEdge {
     std::vector<BRepCurveOnSurface> pcurves;
 };
 
-/// TopoDS_TWire.
+/// TopoDS_TWire
 struct BRepWire {
     std::vector<BRepRef> edges;
 };
 
-/// BRep_TFace. The first wire is the outer boundary.
+/// BRep_TFace: the first wire is the outer boundary; facecolor alpha 0 means unset
 struct BRepFace {
     int surface_index = -1;
     std::vector<BRepRef> wires;
     double tolerance = 0.0;
-    Color facecolor = Color(0, 0, 0, 0);  // a=0 -> not set
+    Color facecolor = Color(0, 0, 0, 0);
 };
 
-/// TopoDS_TShell.
+/// TopoDS_TShell
 struct BRepShell {
     std::vector<BRepRef> faces;
 };
 
-/// TopoDS_TSolid.
+/// TopoDS_TSolid
 struct BRepSolid {
     std::vector<BRepRef> shells;
 };
 
-/**
- * @class BRep
- * @brief Boundary representation after OCCT's TopoDS/BRep model, with indexed tables.
- *
- * Geometry pools (surfaces, 3D curves, 2D pcurves) and shape tables (vertices, edges, wires,
- * faces, shells, solids). Every parent -> child link is a BRepRef carrying the orientation.
- * The BRep itself is the compound: its free shapes are those no parent references.
- */
+/// Boundary representation after OCCT's TopoDS/BRep model: geometry pools, indexed shape tables, every parent -> child link a BRepRef carrying the orientation
 class BRep {
 public:
     bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    /// Clear the guid so a FRESH one mints lazily on next read.
+    /// Clear the guid so a fresh one mints lazily on next read
     void refresh_guid() { _guid.clear(); }
     std::string name = "my_brep";
     double width = 1.0;
     Color surfacecolor = Color::black();
 
-    // Geometry pools
     std::vector<NurbsSurface> m_surfaces;
     std::vector<NurbsCurve> m_curves_3d;
     std::vector<NurbsCurve> m_curves_2d;
 
-    // Shape tables
     std::vector<BRepVertex> m_vertices;
     std::vector<BRepEdge> m_edges;
     std::vector<BRepWire> m_wires;
@@ -110,40 +100,39 @@ public:
     std::vector<BRepShell> m_shells;
     std::vector<BRepSolid> m_solids;
 
-public:
     // ═══════════════════════════════════════════════════════════════════════════
-    // Static Factory Methods
+    // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Axis-aligned box centered at the origin: 6 faces, 12 edges, 8 vertices, one solid.
+    /// Axis-aligned box centered at the origin: 6 faces, 12 edges, 8 vertices, one solid
     static BRep create_box(double sx, double sy, double sz);
 
-    /// Cylinder along +Z: one periodic body face (seam edge) and two planar caps.
+    /// Cylinder along +Z: one periodic body face (seam edge) and two planar caps
     static BRep create_cylinder(double radius, double height);
 
-    /// Sphere centered at the origin: one face, a seam meridian and two degenerated pole edges.
+    /// Sphere centered at the origin: one face, a seam meridian and two degenerated pole edges
     static BRep create_sphere(double radius);
 
-    /// Cone along +Z: base circle at z=0, apex at z=height (degenerated apex edge), planar base.
+    /// Cone along +Z: base circle at z=0, apex at z=height (degenerated apex edge), planar base
     static BRep create_cone(double radius, double height);
 
-    /// Square pyramid: base edge `base` centered at the origin in z=0, apex at (0,0,height).
+    /// Square pyramid: base edge `base` centered at the origin in z=0, apex at (0,0,height)
     static BRep create_pyramid(double base, double height);
 
-    /// Torus in the XY plane: one face closed in both directions, two seam edges, one vertex.
+    /// Torus in the XY plane: one face closed in both directions, two seam edges, one vertex
     static BRep create_torus(double major_radius, double minor_radius);
 
-    /// Axis-aligned box with a cylindrical through-hole along Z.
+    /// Axis-aligned box with a cylindrical through-hole along Z
     static BRep create_block_with_hole(double sx, double sy, double sz, double hole_radius);
 
-    /// One planar face per closed polyline; coincident vertices and edges are shared. Free faces.
+    /// One planar face per closed polyline; coincident vertices and edges are shared, closed sheets become solids
     static BRep from_polylines(const std::vector<Polyline>& polylines);
 
-    /// One planar face per closed curve with optional hole curves (inner wires). Free faces.
+    /// One planar face per closed curve with optional hole curves (inner wires); closed sheets become solids
     static BRep from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::vector<std::vector<NurbsCurve>>& holes = {});
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors & Destructor
+    // Constructors
     // ═══════════════════════════════════════════════════════════════════════════
 
     BRep();
@@ -164,145 +153,106 @@ public:
     int shell_count() const;
     int solid_count() const;
 
-    /// Every reference resolves into its table, every face has a surface and an outer wire,
-    /// every edge has two vertices and (unless degenerated) a 3D curve.
+    /// Every reference resolves into its table, every face has a surface and an outer wire, every edge two vertices and (unless degenerated) a 3D curve
     bool is_valid() const;
 
-    /// BRep_Tool::IsClosed(shell): every non-degenerated edge is used exactly twice by the
-    /// shell's faces (a seam counts twice through its two pcurves).
+    /// BRep_Tool::IsClosed(shell): every non-degenerated edge is used exactly twice by the shell's faces (a seam counts twice through its two pcurves)
     bool is_closed(int shell_index) const;
 
-    /// At least one solid, and every shell of every solid is closed.
+    /// At least one solid, and every shell of every solid is closed
     bool is_solid() const;
 
-    /// Orientation of a face inside its first parent shell; Forward for a free face.
+    /// Orientation of a face inside its first parent shell; Forward for a free face
     BRepOrientation face_orientation(int face_index) const;
 
-    /// BRep_Tool::CurveOnSurface(E, F): the pcurve index of an edge on a face's surface for the
-    /// given use orientation (the REVERSED pcurve on a seam); -1 if none.
+    /// BRep_Tool::CurveOnSurface(E, F): the pcurve index of an edge on a face's surface for the given use orientation (the REVERSED pcurve on a seam); -1 if none
     int pcurve_index(int edge_index, int face_index, BRepOrientation orientation) const;
 
-    /// The edges of a wire composed with the wire's own orientation (a Reversed wire is
-    /// traversed backwards with every edge reversed).
+    /// The edges of a wire composed with the wire's own orientation (a Reversed wire is traversed backwards with every edge reversed)
     std::vector<BRepRef> wire_edges(const BRepRef& wire) const;
 
-    /// Faces sharing an edge, each with the orientation of that edge use.
+    /// Faces sharing an edge, each with the orientation of that edge use
     std::vector<BRepRef> edge_faces(int edge_index) const;
 
-    /// Vertex positions, in vertex order.
+    /// Vertex positions, in vertex order
     std::vector<Point> vertex_points() const;
 
-    /// One closed Polyline per PLANAR face: the outer wire (wires[0]) walked in wire
-    /// order, inner wires ignored. A face on a non-planar surface yields nothing -
-    /// contact detection is flat-only, and a sampled cylinder ring would be a polyline
-    /// that lies about being flat. Index-aligned with face_planes().
-    ///
-    /// Winding is preserved exactly as the source geometry gives it. Callers that loft
-    /// depend on paired loops staying co-wound; this function must never re-wind an
-    /// outline to make a normal come out right.
+    /// One closed polyline per PLANAR face: the outer wire walked in wire order with its winding untouched (lofts pair loops by it), inner wires ignored; index-aligned with face_planes
     std::vector<Polyline> face_polylines() const;
 
-    /// The plane of each face face_polylines() emitted, in the same order: origin is the
-    /// outline's centroid, normal from Vector::average_normal (Newell) - NOT taken from
-    /// NurbsSurface::is_planar, whose own plane has no defined sign (see .cpp).
-    ///
-    /// Normals always point outward, as they would from a valid closed solid, derived
-    /// INDEPENDENTLY of the polyline winding. The two are decoupled on purpose: that is
-    /// what lets the loft keep the winding it needs while contact detection gets the
-    /// normals it needs. This holds when the BRep encloses a closed shell/solid (oriented
-    /// globally via the divergence theorem over the emitted polylines - see .cpp); a BRep
-    /// of free faces only (e.g. from_polylines) has no inside and therefore no defined
-    /// "outward", so those normals are left exactly as the wire winding gives, sign
-    /// undefined. The divergence-theorem correction is global, not per-face: it fixes the
-    /// whole shell being consistently inside-out (is_planar's own sign bug, a mirror
-    /// transform, ...) but does NOT detect or repair a single face wound backwards
-    /// relative to its neighbors within an otherwise-correct shell - a mis-sewn shell
-    /// would still emit one wrong normal here. Per-face winding consistency is expected
-    /// to already hold by the time a BRep reaches this function: it is the producer's job
-    /// (compas_occt's OCCBrep.sew() / BRepBuilderAPI_Sewing), and the matching global flip
-    /// this function performs mirrors OCCBrep.make_positive()'s
-    /// `if is_closed and volume < 0: shape_reversed(...)`.
+    /// The plane of every face face_polylines emits: centroid origin, Newell normal flipped for a Reversed face, and the whole set flipped when a closed solid encloses negative volume so normals point outward; free faces keep the wire's sign
     std::vector<Plane> face_planes() const;
 
-private:
-    /// Both public accessors in one walk, so their index alignment is structural rather
-    /// than a convention two functions must separately remember.
-    std::pair<std::vector<Polyline>, std::vector<Plane>> planar_faces() const;
-public:
-
-    /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst distance between its
-    /// curve ends (3D curve and each pcurve lifted through its surface) and its vertices, and
-    /// every vertex tolerance to the worst incident edge end. Returns the largest tolerance.
+    /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst gap between its curve ends (3D and lifted pcurves) and its vertices, every vertex to its worst edge; returns the largest
     double update_tolerances();
 
-    /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only.
+    /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only
     double volume() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Building (BRep_Builder)
+    // Building
     // ═══════════════════════════════════════════════════════════════════════════
 
     int add_surface(const NurbsSurface& srf);
     int add_curve_3d(const NurbsCurve& crv);
     int add_curve_2d(const NurbsCurve& crv);
 
-    /// MakeVertex.
+    /// MakeVertex
     int add_vertex(const Point& pt, double tolerance = 0.0);
 
-    /// MakeEdge: curve_3d_index -1 makes a degenerated edge (start == end vertex).
+    /// MakeEdge: curve_3d_index -1 makes a degenerated edge (start == end vertex)
     int add_edge(int curve_3d_index, int start_vertex, int end_vertex, double tolerance = 0.0);
 
-    /// UpdateEdge(E, pcurve, S): attach a pcurve on a surface; curve_2d_index_2 for the
-    /// reversed use on a closed surface. Replaces an existing record for the same surface.
+    /// UpdateEdge(E, pcurve, S): attach a pcurve on a surface, curve_2d_index_2 for the reversed use on a closed surface; replaces an existing record for the same surface
     void add_pcurve(int edge_index, int surface_index, int curve_2d_index, int curve_2d_index_2 = -1);
 
-    /// MakeWire + Add(edges).
+    /// MakeWire + Add(edges)
     int add_wire(const std::vector<BRepRef>& edges);
 
-    /// MakeFace(S) + Add(wires); the first wire is the outer boundary.
+    /// MakeFace(S) + Add(wires); the first wire is the outer boundary
     int add_face(int surface_index, const std::vector<BRepRef>& wires, double tolerance = 0.0);
 
-    /// MakeShell + Add(faces).
+    /// MakeShell + Add(faces)
     int add_shell(const std::vector<BRepRef>& faces);
 
-    /// MakeSolid + Add(shells).
+    /// MakeSolid + Add(shells)
     int add_solid(const std::vector<BRepRef>& shells);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// One welded triangle mesh of every face, wound to the face's outward orientation.
+    /// One welded triangle mesh of every face, wound to the face's outward orientation
     Mesh mesh() const;
 
-    /// One mesh per face, in face order (vertices not shared across faces).
+    /// One mesh per face, in face order (vertices not shared across faces)
     std::vector<Mesh> face_meshes() const;
 
-    /// As face_meshes with a tessellation-quality override for the grid-meshed faces.
+    /// As face_meshes with a tessellation-quality override (max_angle_deg, chord_factor) when has_quality
     std::vector<Mesh> face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Surface point of a face at (u, v).
+    /// Surface point of a face at (u, v)
     Point point_at(int face_index, double u, double v) const;
 
-    /// Surface normal of a face at (u, v), flipped when the face is Reversed in its shell.
+    /// Surface normal of a face at (u, v), flipped when the face is Reversed in its shell
     Vector normal_at(int face_index, double u, double v) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Transform surfaces, 3D curves and vertices in place (pcurves are parametric, untouched).
+    /// Transform surfaces, 3D curves and vertices in place (pcurves are parametric, untouched)
     void transform(const Xform& xform);
 
-    /// Return a transformed copy.
+    /// Return a transformed copy
     BRep transformed(const Xform& xform) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // JSON Serialization
+    // JSON
     // ═══════════════════════════════════════════════════════════════════════════
 
     nlohmann::ordered_json jsondump() const;
@@ -313,7 +263,7 @@ public:
     static BRep file_json_loads(const std::string& json_string);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Protobuf Serialization
+    // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
 
     std::string pb_dumps() const;
@@ -322,7 +272,7 @@ public:
     static BRep pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // String Representation
+    // String
     // ═══════════════════════════════════════════════════════════════════════════
 
     std::string str() const;
@@ -331,9 +281,6 @@ public:
 
 private:
     mutable std::string _guid;
-
-    /// UV polygon of one wire of a face (pcurves sampled in traversal order).
-    std::vector<Point> wire_uv_points(int face_index, const BRepRef& wire) const;
 };
 
 } // namespace session_cpp

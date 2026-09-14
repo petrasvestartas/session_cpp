@@ -1,27 +1,110 @@
-﻿#include "mesh.h"
+#include "mesh.h"
 #include "remesh_cdt.h"
-namespace session_cpp {
-std::vector<std::array<int,3>> cdt_triangulate(
-    const std::vector<std::pair<double,double>>&,
-    const std::vector<std::vector<std::pair<double,double>>>&);
-bool point_in_polygon_2d(double, double, const std::vector<double>&);
-}
+#include "intersection.h"
+#include "plane.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <unordered_map>
-#include <unordered_set>
 #include <bit>
 #include <limits>
 #include <thread>
 #include <atomic>
-
 #include "mesh.pb.h"
 #include "color.pb.h"
 
 namespace session_cpp {
+
+std::vector<std::array<int,3>> cdt_triangulate(
+    const std::vector<std::pair<double,double>>&,
+    const std::vector<std::vector<std::pair<double,double>>>&);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+static void parallel_for(size_t n, const std::function<void(size_t)>& fn) {
+    const unsigned int hw = std::max(1u, std::thread::hardware_concurrency());
+    const unsigned int nthreads = static_cast<unsigned int>(std::min((size_t)hw, n));
+    std::atomic<size_t> idx{0};
+    std::vector<std::thread> threads;
+    threads.reserve(nthreads);
+    for (unsigned int t = 0; t < nthreads; ++t)
+        threads.emplace_back([&] {
+            for (size_t i = idx.fetch_add(1); i < n; i = idx.fetch_add(1))
+                fn(i);
+        });
+    for (std::thread& th : threads) th.join();
+}
+
+/// Unit Newell normal of a closed ring
+static Vector newell_normal(const std::vector<Point>& pts) {
+    const size_t n = pts.size();
+    double nx = 0, ny = 0, nz = 0;
+    for (size_t i = 0; i < n; ++i) {
+        const Point& a = pts[i];
+        const Point& b = pts[(i + 1) % n];
+        nx += (a[1] - b[1]) * (a[2] + b[2]);
+        ny += (a[2] - b[2]) * (a[0] + b[0]);
+        nz += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    Vector normal(nx, ny, nz);
+    if (!normal.normalize_self()) return Vector(0, 0, 0);
+    return normal;
+}
+
+/// Average of a point ring
+static Point ring_centroid(const std::vector<Point>& pts) {
+    double x = 0, y = 0, z = 0;
+    for (const Point& p : pts) { x += p[0]; y += p[1]; z += p[2]; }
+    const double n = static_cast<double>(pts.size());
+    return Point(x / n, y / n, z / n);
+}
+
+/// CDT of a planar ring projected onto its own plane; indices into pts, empty when degenerate
+static std::vector<std::array<int,3>> planar_cdt(const std::vector<Point>& pts) {
+    const size_t n = pts.size();
+    double nx = 0, ny = 0, nz = 0;
+    for (size_t i = 0; i < n; i++) {
+        const Point& a = pts[i];
+        const Point& b = pts[(i + 1) % n];
+        nx += (a[1] - b[1]) * (a[2] + b[2]);
+        ny += (a[2] - b[2]) * (a[0] + b[0]);
+        nz += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const double nlen = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (nlen <= 1e-12) return {};
+    nx /= nlen; ny /= nlen; nz /= nlen;
+    double ux = 1, uy = 0, uz = 0;
+    if (std::abs(nx) > 0.9) { ux = 0; uy = 1; }
+    const double dot = ux * nx + uy * ny + uz * nz;
+    ux -= dot * nx; uy -= dot * ny; uz -= dot * nz;
+    const double um = std::sqrt(ux * ux + uy * uy + uz * uz);
+    ux /= um; uy /= um; uz /= um;
+    const double vx = ny * uz - nz * uy, vy = nz * ux - nx * uz, vz = nx * uy - ny * ux;
+    std::vector<std::pair<double,double>> bpts;
+    bpts.reserve(n);
+    for (const Point& p : pts)
+        bpts.push_back({p[0] * ux + p[1] * uy + p[2] * uz, p[0] * vx + p[1] * vy + p[2] * vz});
+    return cdt_triangulate(bpts, {});
+}
+
+/// Twice the signed 2D area of a ring
+static double signed_area_2d(const std::vector<std::pair<double,double>>& pts) {
+    double area = 0.0;
+    const size_t n = pts.size();
+    for (size_t i = 0; i < n; ++i) {
+        const size_t j = (i + 1) % n;
+        area += pts[i].first * pts[j].second - pts[j].first * pts[i].second;
+    }
+    return area;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
 
 Mesh::Mesh() {
     default_vertex_attributes["x"] = 0.0;
@@ -30,11 +113,17 @@ Mesh::Mesh() {
 }
 
 Mesh::Mesh(const Mesh& other) {
+    *this = other;
+}
+
+Mesh& Mesh::operator=(const Mesh& other) {
+    if (this == &other) return *this;
     _guid = other._guid;
     name = other.name;
     halfedge = other.halfedge;
     vertex = other.vertex;
     face = other.face;
+    face_holes = other.face_holes;
     facedata = other.facedata;
     edgedata = other.edgedata;
     default_vertex_attributes = other.default_vertex_attributes;
@@ -49,37 +138,7 @@ Mesh::Mesh(const Mesh& other) {
     max_vertex = other.max_vertex;
     max_face = other.max_face;
     triangulation = other.triangulation;
-    face_holes = other.face_holes;
-}
-
-Mesh& Mesh::operator=(const Mesh& other) {
-    if (this != &other) {
-        _guid = other._guid;
-        name = other.name;
-        halfedge = other.halfedge;
-        vertex = other.vertex;
-        face = other.face;
-        facedata = other.facedata;
-        edgedata = other.edgedata;
-        default_vertex_attributes = other.default_vertex_attributes;
-        default_face_attributes = other.default_face_attributes;
-        default_edge_attributes = other.default_edge_attributes;
-        pointcolors = other.pointcolors;
-        facecolors = other.facecolors;
-        linecolors = other.linecolors;
-        widths = other.widths;
-        // objectcolor belongs with color_mode: the copy constructor takes it and this used
-        // to not, so `a = b` silently kept a's old colour while claiming b's colour mode.
-        objectcolor = other.objectcolor;
-        color_mode = other.color_mode;
-        max_vertex = other.max_vertex;
-        max_face = other.max_face;
-        triangulation = other.triangulation;
-        face_holes = other.face_holes;
-        triangle_bvh_built = false;
-        triangle_bvh.reset();
-        triangle_aabb_tree.reset();
-    }
+    clear_triangle_bvh();
     return *this;
 }
 
@@ -94,115 +153,577 @@ bool Mesh::operator!=(const Mesh& other) const { return !(*this == other); }
 
 Mesh::~Mesh() {}
 
-size_t Mesh::number_of_edges() const {
-    auto dfe = directed_face_edges();
-    size_t count = 0;
-    for (const auto& [u, v] : dfe) {
-        if (u < v || dfe.find({v, u}) == dfe.end()) {
-            count++;
+Mesh Mesh::from_vertices_and_faces(const std::vector<Point>& vertices, const std::vector<std::vector<size_t>>& faces) {
+    Mesh mesh;
+    for (const Point& pt : vertices)
+        mesh.add_vertex(pt);
+    for (const std::vector<size_t>& f : faces)
+        mesh.add_face(f);
+    return mesh;
+}
+
+/// Vertex key of p, merged by precision grid when given and by exact bits otherwise
+static size_t polylines_vertex_key(
+    Mesh& mesh,
+    const Point& p,
+    std::optional<double> precision,
+    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t>& map_eps,
+    std::map<std::tuple<uint64_t, uint64_t, uint64_t>, size_t>& map_exact
+) {
+    if (precision.has_value()) {
+        const double eps = *precision;
+        const std::tuple<int64_t, int64_t, int64_t> key(
+            static_cast<int64_t>(std::round(p[0] / eps)),
+            static_cast<int64_t>(std::round(p[1] / eps)),
+            static_cast<int64_t>(std::round(p[2] / eps)));
+        const auto it = map_eps.find(key);
+        if (it != map_eps.end()) return it->second;
+        const size_t vk = mesh.add_vertex(p);
+        map_eps[key] = vk;
+        return vk;
+    }
+    const std::tuple<uint64_t, uint64_t, uint64_t> key(
+        std::bit_cast<uint64_t>(p[0]),
+        std::bit_cast<uint64_t>(p[1]),
+        std::bit_cast<uint64_t>(p[2]));
+    const auto it = map_exact.find(key);
+    if (it != map_exact.end()) return it->second;
+    const size_t vk = mesh.add_vertex(p);
+    map_exact[key] = vk;
+    return vk;
+}
+
+Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision) {
+    Mesh mesh;
+    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t> map_eps;
+    std::map<std::tuple<uint64_t, uint64_t, uint64_t>, size_t> map_exact;
+    for (const std::vector<Point>& poly : polygons) {
+        if (poly.size() < 3) continue;
+        std::vector<size_t> vkeys;
+        vkeys.reserve(poly.size());
+        for (const Point& p : poly)
+            vkeys.push_back(polylines_vertex_key(mesh, p, precision, map_eps, map_exact));
+        if (vkeys.size() > 1 && vkeys.back() == vkeys.front())
+            vkeys.pop_back();
+        if (vkeys.size() < 3) continue;
+        const std::optional<size_t> fk = mesh.add_face(vkeys);
+        if (!fk || vkeys.size() < 4) continue;
+        const std::vector<Point> ring(poly.begin(), poly.begin() + vkeys.size());
+        const std::vector<std::array<int,3>> tris = planar_cdt(ring);
+        if (tris.empty()) continue;
+        std::vector<std::array<size_t,3>> tri_list;
+        tri_list.reserve(tris.size());
+        for (const std::array<int,3>& t : tris)
+            tri_list.push_back({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+        mesh.triangulation[*fk] = tri_list;
+    }
+    return mesh;
+}
+
+/// Grid spacing for merging line endpoints: the given precision or a millionth of the bbox diagonal
+static double lines_precision(const std::vector<Point>& pts, std::optional<double> precision) {
+    const double eps = precision.value_or(0.0);
+    if (eps > 0.0) return eps;
+    double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
+    double maxx = minx, maxy = miny, maxz = minz;
+    for (const Point& p : pts) {
+        minx = std::min(minx, p[0]); maxx = std::max(maxx, p[0]);
+        miny = std::min(miny, p[1]); maxy = std::max(maxy, p[1]);
+        minz = std::min(minz, p[2]); maxz = std::max(maxz, p[2]);
+    }
+    const double diag = std::sqrt((maxx-minx)*(maxx-minx) + (maxy-miny)*(maxy-miny) + (maxz-minz)*(maxz-minz));
+    return std::max(diag * 1e-6, 1e-12);
+}
+
+/// Index of p in verts, appending it when its grid cell is new
+static size_t lines_vertex_id(
+    const Point& p,
+    double eps,
+    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t>& vmap,
+    std::vector<Point>& verts
+) {
+    const std::tuple<int64_t, int64_t, int64_t> key(
+        static_cast<int64_t>(std::round(p[0] / eps)),
+        static_cast<int64_t>(std::round(p[1] / eps)),
+        static_cast<int64_t>(std::round(p[2] / eps)));
+    const auto it = vmap.find(key);
+    if (it != vmap.end()) return it->second;
+    const size_t id = verts.size();
+    verts.push_back(p);
+    vmap[key] = id;
+    return id;
+}
+
+/// Face cycles of a planar graph: from u->v the next edge turns to the CW predecessor of u around v
+static std::vector<std::vector<size_t>> lines_face_cycles(std::map<size_t, std::vector<size_t>>& adj, size_t nv) {
+    std::set<std::pair<size_t, size_t>> visited;
+    std::vector<std::vector<size_t>> cycles;
+    for (const auto& [u, nbrs] : adj) {
+        for (size_t v : nbrs) {
+            if (visited.count({u, v})) continue;
+            std::vector<size_t> cycle;
+            size_t cu = u, cv = v;
+            bool valid = true;
+            while (cycle.size() <= nv * 2) {
+                if (visited.count({cu, cv})) break;
+                visited.insert({cu, cv});
+                cycle.push_back(cu);
+                const std::vector<size_t>& cv_nbrs = adj[cv];
+                const auto it = std::find(cv_nbrs.begin(), cv_nbrs.end(), cu);
+                if (it == cv_nbrs.end()) { valid = false; break; }
+                const size_t idx = static_cast<size_t>(it - cv_nbrs.begin());
+                const size_t prev_idx = (idx == 0) ? cv_nbrs.size() - 1 : idx - 1;
+                cu = cv;
+                cv = cv_nbrs[prev_idx];
+            }
+            if (cycle.size() > nv * 2) valid = false;
+            if (valid && cycle.size() >= 3) cycles.push_back(cycle);
         }
     }
-    return count;
+    return cycles;
 }
 
-std::vector<size_t> Mesh::vertices() const {
-    std::vector<size_t> result;
-    result.reserve(vertex.size());
-    for (const auto& [k, _] : vertex)
-        result.push_back(k);
-    return result;
-}
-
-std::vector<size_t> Mesh::faces() const {
-    std::vector<size_t> result;
-    result.reserve(face.size());
-    for (const auto& [k, _] : face)
-        result.push_back(k);
-    return result;
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::edges() const {
-    auto dfe = directed_face_edges();
-    std::set<std::pair<size_t, size_t>> seen;
-    for (const auto& [u, v] : dfe)
-        seen.insert(std::minmax(u, v));
-    return std::vector<std::pair<size_t, size_t>>(seen.begin(), seen.end());
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::naked_edges(bool boundary) const {
-    // one directed set for the whole call — never one per edge (that walk is quadratic)
-    auto dfe = directed_face_edges();
-    std::set<std::pair<size_t, size_t>> seen;
-    for (const auto& [u, v] : dfe)
-        seen.insert(std::minmax(u, v));
-    std::vector<std::pair<size_t, size_t>> result;
-    for (const auto& [u, v] : seen) {
-        bool naked = !(dfe.count({u, v}) && dfe.count({v, u}));
-        if (naked == boundary)
-            result.push_back({u, v});
+/// Index of the cycle with the most negative signed area: the outer boundary
+static size_t lines_outer_cycle(const std::vector<std::vector<size_t>>& cycles, const std::vector<Point>& verts) {
+    size_t min_idx = 0;
+    double min_area = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < cycles.size(); ++i) {
+        std::vector<std::pair<double,double>> pts;
+        pts.reserve(cycles[i].size());
+        for (size_t vid : cycles[i]) pts.push_back({verts[vid][0], verts[vid][1]});
+        const double area = signed_area_2d(pts) * 0.5;
+        if (area < min_area) { min_area = area; min_idx = i; }
     }
-    return result;
+    return min_idx;
 }
 
-std::vector<size_t> Mesh::naked_vertices(bool boundary) const {
-    std::vector<size_t> result;
-    for (const auto& [vk, _] : vertex)
-        if (is_vertex_on_boundary(vk) == boundary)
-            result.push_back(vk);
-    return result;
-}
-
-std::vector<size_t> Mesh::naked_faces(bool boundary) const {
-    std::vector<size_t> result;
-    for (const auto& [fk, _] : face)
-        if (is_face_on_boundary(fk) == boundary)
-            result.push_back(fk);
-    return result;
-}
-
-bool Mesh::is_valid() const {
-    if (vertex.empty() || face.empty()) return false;
-    for (const auto& [fkey, vkeys] : face) {
-        if (vkeys.size() < 3) return false;
-        for (size_t vk : vkeys) {
-            if (vertex.find(vk) == vertex.end()) return false;
+Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face, std::optional<double> precision) {
+    if (lines.empty()) return Mesh();
+    std::vector<Point> all_pts;
+    all_pts.reserve(lines.size() * 2);
+    for (const Line& ln : lines) {
+        all_pts.push_back(ln.start());
+        all_pts.push_back(ln.end());
+    }
+    const double eps = lines_precision(all_pts, precision);
+    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t> vmap;
+    std::vector<Point> verts;
+    std::map<size_t, std::vector<size_t>> adj;
+    for (const Line& ln : lines) {
+        const size_t a = lines_vertex_id(ln.start(), eps, vmap, verts);
+        const size_t b = lines_vertex_id(ln.end(), eps, vmap, verts);
+        if (a == b) continue;
+        adj[a].push_back(b);
+        adj[b].push_back(a);
+    }
+    for (auto& [v, nbrs] : adj) {
+        std::sort(nbrs.begin(), nbrs.end());
+        nbrs.erase(std::unique(nbrs.begin(), nbrs.end()), nbrs.end());
+        const double vx = verts[v][0], vy = verts[v][1];
+        std::sort(nbrs.begin(), nbrs.end(), [&](size_t a, size_t b) {
+            return std::atan2(verts[a][1] - vy, verts[a][0] - vx) < std::atan2(verts[b][1] - vy, verts[b][0] - vx);
+        });
+    }
+    std::vector<std::vector<size_t>> cycles = lines_face_cycles(adj, verts.size());
+    if (delete_boundary_face && !cycles.empty())
+        cycles.erase(cycles.begin() + lines_outer_cycle(cycles, verts));
+    Mesh mesh;
+    std::vector<size_t> vkeys;
+    vkeys.reserve(verts.size());
+    for (const Point& pt : verts) vkeys.push_back(mesh.add_vertex(pt));
+    for (const std::vector<size_t>& cycle : cycles) {
+        std::vector<size_t> fvkeys;
+        fvkeys.reserve(cycle.size());
+        for (size_t vid : cycle) fvkeys.push_back(vkeys[vid]);
+        const std::optional<size_t> fk = mesh.add_face(fvkeys);
+        if (!fk) continue;
+        std::vector<size_t> ordered = cycle;
+        std::vector<std::pair<double,double>> bpts;
+        bpts.reserve(ordered.size());
+        for (size_t vid : ordered) bpts.push_back({verts[vid][0], verts[vid][1]});
+        if (signed_area_2d(bpts) < 0.0) {
+            std::reverse(bpts.begin(), bpts.end());
+            std::reverse(ordered.begin(), ordered.end());
         }
+        const std::vector<std::array<int,3>> tris = cdt_triangulate(bpts, {});
+        std::vector<std::array<size_t, 3>> tri_list;
+        tri_list.reserve(tris.size());
+        for (const std::array<int,3>& t : tris)
+            tri_list.push_back({vkeys[ordered[t[0]]], vkeys[ordered[t[1]]], vkeys[ordered[t[2]]]});
+        mesh.triangulation[*fk] = tri_list;
     }
-    return true;
+    return mesh;
 }
 
-bool Mesh::is_closed() const {
-    std::set<std::pair<size_t,size_t>> hole_edges;
-    for (const auto& [fk, rings] : face_holes)
-        for (const auto& ring : rings) {
-            size_t n = ring.size();
-            for (size_t i = 0; i < n; ++i) {
-                size_t a = ring[i], b = ring[(i + 1) % n];
-                hole_edges.emplace(a, b);
-                hole_edges.emplace(b, a);
+Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox) {
+    if (polylines.empty()) return Mesh();
+    std::vector<Polyline> pls;
+    pls.reserve(polylines.size());
+    for (const std::vector<Point>& v : polylines) pls.emplace_back(v);
+    return RemeshCDT::from_polylines(pls, false, !sort_by_bbox);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Loft
+// ═══════════════════════════════════════════════════════════════════════════
+
+struct LoftFrame { Point origin; Vector xaxis; Vector yaxis; };
+struct LoftRing { size_t off; size_t n; };
+struct LoftPoly { LoftRing bot; LoftRing top; };
+
+static std::pair<double, double> loft_project(const LoftFrame& frame, const Point& p) {
+    const double dx = p[0] - frame.origin[0];
+    const double dy = p[1] - frame.origin[1];
+    const double dz = p[2] - frame.origin[2];
+    return {dx * frame.xaxis[0] + dy * frame.xaxis[1] + dz * frame.xaxis[2],
+            dx * frame.yaxis[0] + dy * frame.yaxis[1] + dz * frame.yaxis[2]};
+}
+
+/// Polyline points without the closing duplicate
+static std::vector<Point> loft_open_points(const Polyline& pl) {
+    std::vector<Point> pts = pl.get_points();
+    if (pts.size() > 1) {
+        const Point& f = pts.front();
+        const Point& b = pts.back();
+        if (std::abs(f[0]-b[0]) < 1e-12 && std::abs(f[1]-b[1]) < 1e-12 && std::abs(f[2]-b[2]) < 1e-12)
+            pts.pop_back();
+    }
+    return pts;
+}
+
+static double loft_signed_area(const LoftFrame& frame, const std::vector<Point>& pts) {
+    std::vector<std::pair<double,double>> pts2d;
+    pts2d.reserve(pts.size());
+    for (const Point& p : pts) pts2d.push_back(loft_project(frame, p));
+    return signed_area_2d(pts2d) * 0.5;
+}
+
+/// Index of the polyline with the largest bbox diagonal
+static size_t loft_border_index(const std::vector<Polyline>& polylines) {
+    size_t border_idx = 0;
+    double max_diag = 0.0;
+    for (size_t i = 0; i < polylines.size(); ++i) {
+        const std::vector<Point> pts = polylines[i].get_points();
+        if (pts.empty()) continue;
+        double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
+        double maxx = minx, maxy = miny, maxz = minz;
+        for (const Point& p : pts) {
+            minx = std::min(minx, p[0]); maxx = std::max(maxx, p[0]);
+            miny = std::min(miny, p[1]); maxy = std::max(maxy, p[1]);
+            minz = std::min(minz, p[2]); maxz = std::max(maxz, p[2]);
+        }
+        const double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
+        const double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
+        if (diag > max_diag) { max_diag = diag; border_idx = i; }
+    }
+    return border_idx;
+}
+
+/// Projection frame of the border polyline, y flipped so z points from bottom to top
+static LoftFrame loft_frame(const Polyline& bottom, const Polyline& top) {
+    Point origin;
+    Vector xaxis, yaxis, zaxis;
+    bottom.get_average_plane(origin, xaxis, yaxis, zaxis);
+    const Point c0 = bottom.center();
+    const Point c1 = top.center();
+    const Vector bottom_to_top(c1[0]-c0[0], c1[1]-c0[1], c1[2]-c0[2]);
+    if (zaxis.dot(bottom_to_top) < 0)
+        yaxis = Vector(-yaxis[0], -yaxis[1], -yaxis[2]);
+    return {origin, xaxis, yaxis};
+}
+
+/// Vertex keys of pts; consecutive same-position points share one key
+static std::vector<size_t> loft_add_vkeys(Mesh& mesh, const std::vector<Point>& pts) {
+    std::vector<size_t> keys;
+    keys.reserve(pts.size());
+    for (size_t i = 0; i < pts.size(); ++i) {
+        if (i > 0) {
+            const Point& prev = pts[i-1];
+            const Point& curr = pts[i];
+            const double dx = curr[0]-prev[0], dy = curr[1]-prev[1], dz = curr[2]-prev[2];
+            if (dx*dx + dy*dy + dz*dz < 1e-20) {
+                keys.push_back(keys.back());
+                continue;
             }
         }
-    auto dfe = directed_face_edges();
-    for (const auto& [u, v] : dfe) {
-        // a face edge whose reverse no face walks is a border — unless a declared hole
-        // ring owns it (hole_edges holds both directions)
-        if (dfe.find({v, u}) == dfe.end() && hole_edges.find({v, u}) == hole_edges.end()) return false;
+        keys.push_back(mesh.add_vertex(pts[i]));
     }
-    return !vertex.empty();
+    return keys;
 }
 
-static void parallel_for(size_t n, std::function<void(size_t)> fn) {
-    unsigned int hw = std::max(1u, std::thread::hardware_concurrency());
-    unsigned int nthreads = static_cast<unsigned int>(std::min((size_t)hw, n));
-    std::atomic<size_t> idx{0};
-    std::vector<std::thread> threads;
-    threads.reserve(nthreads);
-    for (unsigned int t = 0; t < nthreads; ++t)
-        threads.emplace_back([&] {
-            for (size_t i = idx.fetch_add(1); i < n; i = idx.fetch_add(1))
-                fn(i);
-        });
-    for (auto& th : threads) th.join();
+/// Split triangle j, which spans corners a and c, at boundary vertex b
+static void loft_split_triangle(std::vector<std::array<size_t,3>>& tris, size_t j, size_t a, size_t c, size_t b) {
+    const std::array<size_t,3> ft = tris[j];
+    std::array<size_t,3> t1, t2;
+    if ((ft[0]==a||ft[0]==c)&&(ft[1]==a||ft[1]==c))
+        { t1={ft[0],b,ft[2]}; t2={b,ft[1],ft[2]}; }
+    else if ((ft[1]==a||ft[1]==c)&&(ft[2]==a||ft[2]==c))
+        { t1={ft[0],ft[1],b}; t2={ft[0],b,ft[2]}; }
+    else
+        { t1={ft[0],ft[1],b}; t2={b,ft[1],ft[2]}; }
+    tris[j] = t1;
+    tris.push_back(t2);
+}
+
+/// Insert boundary vertices the CDT skipped as collinear, one per pass
+static void loft_fix_collinear(std::vector<std::array<size_t,3>>& tris, const std::vector<size_t>& fvkeys) {
+    const size_t n = fvkeys.size();
+    for (size_t pass = 0; pass < n; ++pass) {
+        std::set<size_t> used;
+        for (const std::array<size_t,3>& t : tris)
+            for (size_t v : t) used.insert(v);
+        bool changed = false;
+        for (size_t k = 0; k < n && !changed; ++k) {
+            const size_t b = fvkeys[k];
+            if (used.count(b)) continue;
+            const size_t a = fvkeys[(k+n-1)%n], c = fvkeys[(k+1)%n];
+            for (size_t j = 0; j < tris.size(); ++j) {
+                const bool has_a = (tris[j][0]==a||tris[j][1]==a||tris[j][2]==a);
+                const bool has_c = (tris[j][0]==c||tris[j][1]==c||tris[j][2]==c);
+                if (!has_a || !has_c) continue;
+                loft_split_triangle(tris, j, a, c, b);
+                changed = true;
+                break;
+            }
+        }
+        if (!changed) return;
+    }
+}
+
+/// Drop triangles with zero area in the projected integer grid
+static void loft_drop_degenerate(std::vector<std::array<size_t,3>>& tris, const Mesh& mesh, const LoftFrame& frame) {
+    const double sc = 1e6;
+    std::vector<std::array<size_t,3>> kept;
+    kept.reserve(tris.size());
+    for (const std::array<size_t,3>& t : tris) {
+        const auto [u0, v0] = loft_project(frame, mesh.vertex.at(t[0]).position());
+        const auto [u1, v1] = loft_project(frame, mesh.vertex.at(t[1]).position());
+        const auto [u2, v2] = loft_project(frame, mesh.vertex.at(t[2]).position());
+        const int64_t iu0 = std::llround(u0*sc), iv0 = std::llround(v0*sc);
+        const int64_t iu1 = std::llround(u1*sc), iv1 = std::llround(v1*sc);
+        const int64_t iu2 = std::llround(u2*sc), iv2 = std::llround(v2*sc);
+        if ((iu1-iu0)*(iv2-iv0)-(iv1-iv0)*(iu2-iu0) != 0) kept.push_back(t);
+    }
+    tris = kept;
+}
+
+/// One n-gon cap with stored CDT triangulation and hole rings; reversed for the bottom
+static void loft_cap(
+    Mesh& mesh,
+    const LoftFrame& frame,
+    const std::vector<LoftRing>& rings,
+    const std::vector<Point>& pts,
+    const std::vector<size_t>& vkeys,
+    bool reverse,
+    bool fix_collinear
+) {
+    std::vector<std::pair<double,double>> border_2d;
+    std::vector<size_t> outer;
+    for (size_t i = 0; i < rings[0].n; ++i) {
+        const size_t vi = rings[0].off + i;
+        if (!outer.empty() && vkeys[vi] == vkeys[outer.back()]) continue;
+        border_2d.push_back(loft_project(frame, pts[vi]));
+        outer.push_back(vi);
+    }
+    std::vector<size_t> flat = outer;
+    std::vector<std::vector<std::pair<double,double>>> holes_2d;
+    std::vector<std::vector<size_t>> hole_rings;
+    for (size_t h = 1; h < rings.size(); ++h) {
+        std::vector<std::pair<double,double>> hole;
+        std::vector<size_t> ring;
+        for (size_t i = rings[h].off; i < rings[h].off + rings[h].n; ++i) {
+            hole.push_back(loft_project(frame, pts[i]));
+            flat.push_back(i);
+            ring.push_back(vkeys[i]);
+        }
+        holes_2d.push_back(std::move(hole));
+        hole_rings.push_back(std::move(ring));
+    }
+    const std::vector<std::array<int,3>> tris = cdt_triangulate(border_2d, holes_2d);
+    std::vector<size_t> fvkeys;
+    fvkeys.reserve(outer.size());
+    for (size_t i = 0; i < outer.size(); ++i)
+        fvkeys.push_back(vkeys[outer[reverse ? outer.size() - 1 - i : i]]);
+    const std::optional<size_t> fk = mesh.add_face(fvkeys);
+    if (!fk) return;
+    std::vector<std::array<size_t,3>> tri_list;
+    tri_list.reserve(tris.size());
+    for (const std::array<int,3>& t : tris) {
+        if (reverse) tri_list.push_back({vkeys[flat[t[0]]], vkeys[flat[t[2]]], vkeys[flat[t[1]]]});
+        else tri_list.push_back({vkeys[flat[t[0]]], vkeys[flat[t[1]]], vkeys[flat[t[2]]]});
+    }
+    if (fix_collinear) {
+        loft_fix_collinear(tri_list, fvkeys);
+        loft_drop_degenerate(tri_list, mesh, frame);
+    }
+    mesh.set_face_triangulation(*fk, tri_list);
+    if (!hole_rings.empty() && !tri_list.empty())
+        mesh.set_face_holes(*fk, hole_rings);
+}
+
+/// Squared 2D length of edge i of a ring
+static double loft_edge_sq_2d(const LoftFrame& frame, const std::vector<Point>& pts, size_t i) {
+    const size_t j = (i + 1) % pts.size();
+    const auto [xi, yi] = loft_project(frame, pts[i]);
+    const auto [xj, yj] = loft_project(frame, pts[j]);
+    const double dx = xj - xi, dy = yj - yi;
+    return dx*dx + dy*dy;
+}
+
+/// Start offsets (ia, ib): the longest bottom edge, and the top offset that minimizes the projected gap
+static std::pair<size_t, size_t> loft_wall_start(const LoftFrame& frame, const std::vector<Point>& bpts, const std::vector<Point>& tpts) {
+    const size_t bot_n = bpts.size(), top_n = tpts.size();
+    size_t ia = 0, ib = 0;
+    double max_b = 0;
+    for (size_t k = 0; k < bot_n; ++k) {
+        const double v = loft_edge_sq_2d(frame, bpts, k);
+        if (v > max_b) { max_b = v; ia = k; }
+    }
+    if (bot_n != top_n) return {ia, ib};
+    double min_total = std::numeric_limits<double>::max();
+    for (size_t cand = 0; cand < top_n; ++cand) {
+        double total = 0.0;
+        for (size_t k = 0; k < bot_n; ++k) {
+            const auto [xb, yb] = loft_project(frame, bpts[(ia+k)%bot_n]);
+            const auto [xt, yt] = loft_project(frame, tpts[(cand+k)%top_n]);
+            total += (xt-xb)*(xt-xb) + (yt-yb)*(yt-yb);
+        }
+        if (total < min_total) { min_total = total; ib = cand; }
+    }
+    return {ia, ib};
+}
+
+static bool loft_same_point(const Point& a, const Point& b) {
+    return std::abs(a[0]-b[0]) < 1e-10 && std::abs(a[1]-b[1]) < 1e-10 && std::abs(a[2]-b[2]) < 1e-10;
+}
+
+/// Quad walls for equal counts; a collapsed bottom or top edge gives a triangle
+static void loft_walls_quads(
+    Mesh& mesh,
+    const LoftPoly& poly,
+    size_t ia,
+    size_t ib,
+    const std::vector<Point>& bpts,
+    const std::vector<Point>& tpts,
+    const std::vector<size_t>& bot_vkeys,
+    const std::vector<size_t>& top_vkeys
+) {
+    const size_t bot_n = poly.bot.n, top_n = poly.top.n;
+    for (size_t k = 0; k < bot_n; ++k) {
+        const size_t cb = poly.bot.off+(ia+k)%bot_n, ct = poly.top.off+(ib+k)%top_n;
+        const size_t nb = poly.bot.off+(ia+k+1)%bot_n, nt = poly.top.off+(ib+k+1)%top_n;
+        const bool bot_col = loft_same_point(bpts[(ia+k)%bot_n], bpts[(ia+k+1)%bot_n]);
+        const bool top_col = loft_same_point(tpts[(ib+k)%top_n], tpts[(ib+k+1)%top_n]);
+        if (bot_col && top_col) continue;
+        else if (bot_col) mesh.add_face({bot_vkeys[cb], top_vkeys[nt], top_vkeys[ct]});
+        else if (top_col) mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]});
+        else mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[nt], top_vkeys[ct]});
+    }
+}
+
+/// Normalized arc lengths of a ring starting at offset start
+static std::vector<double> loft_arcs(const std::vector<Point>& pts, size_t start) {
+    const size_t n = pts.size();
+    std::vector<double> arcs(n + 1, 0.0);
+    for (size_t k = 0; k < n; ++k) {
+        const size_t i = (start+k)%n, j = (start+k+1)%n;
+        const double dx = pts[j][0]-pts[i][0], dy = pts[j][1]-pts[i][1], dz = pts[j][2]-pts[i][2];
+        arcs[k+1] = arcs[k] + std::sqrt(dx*dx+dy*dy+dz*dz);
+    }
+    const double inv = arcs[n] > 0 ? 1.0/arcs[n] : 1.0;
+    for (double& a : arcs) a *= inv;
+    return arcs;
+}
+
+/// Zipper walls for unequal counts: quads where arc lengths meet, triangles elsewhere
+static void loft_walls_zipper(
+    Mesh& mesh,
+    const LoftPoly& poly,
+    size_t ia,
+    size_t ib,
+    const std::vector<Point>& bpts,
+    const std::vector<Point>& tpts,
+    const std::vector<size_t>& bot_vkeys,
+    const std::vector<size_t>& top_vkeys
+) {
+    const size_t bot_n = poly.bot.n, top_n = poly.top.n;
+    const std::vector<double> b_arcs = loft_arcs(bpts, ia);
+    const std::vector<double> t_arcs = loft_arcs(tpts, ib);
+    size_t bi = 0, ti = 0;
+    while (bi < bot_n || ti < top_n) {
+        const size_t cb = poly.bot.off+(ia+bi)%bot_n, ct = poly.top.off+(ib+ti)%top_n;
+        const size_t nb = poly.bot.off+(ia+bi+1)%bot_n, nt = poly.top.off+(ib+ti+1)%top_n;
+        if (bi >= bot_n) {
+            mesh.add_face({bot_vkeys[cb], top_vkeys[ct], top_vkeys[nt]}); ++ti;
+        } else if (ti >= top_n) {
+            mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]}); ++bi;
+        } else if (std::abs(b_arcs[bi+1] - t_arcs[ti+1]) < 1e-9) {
+            mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[nt], top_vkeys[ct]}); ++bi; ++ti;
+        } else if (b_arcs[bi+1] < t_arcs[ti+1]) {
+            mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]}); ++bi;
+        } else {
+            mesh.add_face({bot_vkeys[cb], top_vkeys[ct], top_vkeys[nt]}); ++ti;
+        }
+    }
+}
+
+static void loft_walls(
+    Mesh& mesh,
+    const LoftFrame& frame,
+    const LoftPoly& poly,
+    const std::vector<Point>& all_bot,
+    const std::vector<Point>& all_top,
+    const std::vector<size_t>& bot_vkeys,
+    const std::vector<size_t>& top_vkeys
+) {
+    const std::vector<Point> bpts(all_bot.begin()+poly.bot.off, all_bot.begin()+poly.bot.off+poly.bot.n);
+    const std::vector<Point> tpts(all_top.begin()+poly.top.off, all_top.begin()+poly.top.off+poly.top.n);
+    const auto [ia, ib] = loft_wall_start(frame, bpts, tpts);
+    if (poly.bot.n == poly.top.n)
+        loft_walls_quads(mesh, poly, ia, ib, bpts, tpts, bot_vkeys, top_vkeys);
+    else
+        loft_walls_zipper(mesh, poly, ia, ib, bpts, tpts, bot_vkeys, top_vkeys);
+}
+
+Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap, bool fix_collinear) {
+    if (polylines0.empty() || polylines1.empty()) return Mesh();
+    if (polylines0.size() != polylines1.size()) return Mesh();
+    const size_t border_idx = loft_border_index(polylines0);
+    const LoftFrame frame = loft_frame(polylines0[border_idx], polylines1[border_idx]);
+    std::vector<size_t> order;
+    order.push_back(border_idx);
+    for (size_t i = 0; i < polylines0.size(); ++i)
+        if (i != border_idx) order.push_back(i);
+    std::vector<LoftPoly> polys;
+    std::vector<Point> all_bot;
+    std::vector<Point> all_top;
+    for (size_t oi = 0; oi < order.size(); ++oi) {
+        std::vector<Point> bot = loft_open_points(polylines0[order[oi]]);
+        std::vector<Point> top = loft_open_points(polylines1[order[oi]]);
+        const double area = loft_signed_area(frame, bot);
+        if (oi == 0 ? (area < 0) : (area > 0)) {
+            std::reverse(bot.begin(), bot.end());
+            std::reverse(top.begin(), top.end());
+        }
+        polys.push_back({{all_bot.size(), bot.size()}, {all_top.size(), top.size()}});
+        for (const Point& p : bot) all_bot.push_back(p);
+        for (const Point& p : top) all_top.push_back(p);
+    }
+    Mesh mesh;
+    const std::vector<size_t> bot_vkeys = loft_add_vkeys(mesh, all_bot);
+    const std::vector<size_t> top_vkeys = loft_add_vkeys(mesh, all_top);
+    if (cap) {
+        std::vector<LoftRing> bot_rings, top_rings;
+        for (const LoftPoly& poly : polys) {
+            bot_rings.push_back(poly.bot);
+            top_rings.push_back(poly.top);
+        }
+        loft_cap(mesh, frame, bot_rings, all_bot, bot_vkeys, true, fix_collinear);
+        loft_cap(mesh, frame, top_rings, all_top, top_vkeys, false, fix_collinear);
+    }
+    for (const LoftPoly& poly : polys)
+        loft_walls(mesh, frame, poly, all_bot, all_top, bot_vkeys, top_vkeys);
+    return mesh;
 }
 
 std::vector<Mesh> Mesh::from_polygon_with_holes_many(
@@ -210,7 +731,7 @@ std::vector<Mesh> Mesh::from_polygon_with_holes_many(
     bool sort_by_bbox, bool parallel)
 {
     std::vector<Mesh> results(inputs.size());
-    auto fn = [&](size_t i) { results[i] = from_polygon_with_holes(inputs[i], sort_by_bbox); };
+    const std::function<void(size_t)> fn = [&](size_t i) { results[i] = from_polygon_with_holes(inputs[i], sort_by_bbox); };
     if (parallel && inputs.size() > 1) parallel_for(inputs.size(), fn);
     else for (size_t i = 0; i < inputs.size(); ++i) fn(i);
     return results;
@@ -221,1569 +742,359 @@ std::vector<Mesh> Mesh::loft_many(
     bool cap, bool parallel, bool fix_collinear)
 {
     std::vector<Mesh> results(pairs.size());
-    auto fn = [&](size_t i) { results[i] = loft(pairs[i].first, pairs[i].second, cap, fix_collinear); };
+    const std::function<void(size_t)> fn = [&](size_t i) { results[i] = loft(pairs[i].first, pairs[i].second, cap, fix_collinear); };
     if (parallel && pairs.size() > 1) parallel_for(pairs.size(), fn);
     else for (size_t i = 0; i < pairs.size(); ++i) fn(i);
     return results;
 }
 
-int Mesh::euler() const {
-    return static_cast<int>(number_of_vertices()) - 
-           static_cast<int>(number_of_edges()) + 
-           static_cast<int>(number_of_faces());
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Loft panels
+// ═══════════════════════════════════════════════════════════════════════════
 
-void Mesh::clear() {
-    halfedge.clear();
-    vertex.clear();
-    face.clear();
-    facedata.clear();
-    edgedata.clear();
-    triangulation.clear();
-    face_holes.clear();
-    max_vertex = 0;
-    max_face = 0;
-    pointcolors.clear();
-    facecolors.clear();
-    linecolors.clear();
-    widths.clear();
-    objectcolor = Color::white();
-    color_mode = ColorMode::OBJECTCOLOR;
-    triangle_bvh_built = false;
-    triangle_bvh.reset();
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-}
-
-Mesh Mesh::unweld() const {
-    Mesh m;
-    for (const auto& [fkey, vkeys] : face) {
-        std::vector<size_t> new_vkeys;
-        new_vkeys.reserve(vkeys.size());
-        for (size_t vk : vkeys) {
-            const auto& vd = vertex.at(vk);
-            new_vkeys.push_back(m.add_vertex(Point(vd.x, vd.y, vd.z)));
+/// Drop ring points collinear with their neighbors, until none is left
+static void lp_merge_collinear(std::vector<Point>& pts, std::vector<size_t>& vkeys) {
+    const double tol = Tolerance::APPROXIMATION;
+    const double zt2 = Tolerance::ZERO_TOLERANCE * Tolerance::ZERO_TOLERANCE;
+    const size_t bound = pts.size();
+    for (size_t pass = 0; pass < bound; ++pass) {
+        const size_t m = pts.size();
+        if (m < 3) return;
+        bool changed = false;
+        std::vector<Point> np;
+        std::vector<size_t> nk;
+        for (size_t i = 0; i < m; i++) {
+            const size_t p = (i + m - 1) % m, nx = (i + 1) % m;
+            const double ax = pts[i][0]-pts[p][0], ay = pts[i][1]-pts[p][1], az = pts[i][2]-pts[p][2];
+            const double bx = pts[nx][0]-pts[i][0], by = pts[nx][1]-pts[i][1], bz = pts[nx][2]-pts[i][2];
+            const double cx = ay*bz-az*by, cy = az*bx-ax*bz, cz = ax*by-ay*bx;
+            const double a2 = ax*ax+ay*ay+az*az, b2 = bx*bx+by*by+bz*bz;
+            if (a2 < zt2 || b2 < zt2 || cx*cx+cy*cy+cz*cz < tol*tol*a2*b2) changed = true;
+            else { np.push_back(pts[i]); nk.push_back(vkeys[i]); }
         }
-        m.add_face(new_vkeys);
+        pts = np;
+        vkeys = nk;
+        if (!changed) return;
     }
-    return m;
 }
 
-Mesh Mesh::weld(double tolerance) const {
-    if (vertex.empty()) return Mesh();
-
-    std::vector<size_t> vkeys;
-    std::vector<Point> positions;
-    vkeys.reserve(vertex.size());
-    positions.reserve(vertex.size());
-    for (const auto& [vk, vd] : vertex) {
-        vkeys.push_back(vk);
-        positions.push_back(vd.position());
-    }
-    size_t n = vkeys.size();
-
-    std::vector<size_t> parent(n);
-    std::iota(parent.begin(), parent.end(), 0);
-    std::function<size_t(size_t)> find = [&](size_t x) -> size_t {
-        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-        return x;
-    };
-
-    if (tolerance > 0.0) {
-        std::vector<OBB> boxes;
-        boxes.reserve(n);
-        for (const auto& p : positions)
-            boxes.push_back(OBB::from_point(p, tolerance));
-        double ws = SpatialBVH::compute_world_size(boxes);
-        SpatialBVH bvh = SpatialBVH::from_boxes(boxes, ws);
-        auto [pairs, ignore1, ignore2] = bvh.check_all_collisions(boxes);
-        for (const auto& [i, j] : pairs) {
-            if (positions[i].distance(positions[j]) <= tolerance) {
-                size_t ri = find(i), rj = find(j);
-                if (ri != rj) parent[ri] = rj;
-            }
+/// Drop ring points closer than a thousandth of the longest edge to their predecessor
+static void lp_merge_close(std::vector<Point>& pts, std::vector<size_t>& vkeys) {
+    const size_t sz = pts.size();
+    double max_edge = 0;
+    for (size_t i = 0; i < sz; i++)
+        max_edge = std::max(max_edge, pts[i].distance(pts[(i+1)%sz]));
+    const double stol = max_edge * 0.001;
+    std::vector<Point> tp;
+    std::vector<size_t> tk;
+    for (size_t i = 0; i < sz; i++) {
+        if (tp.empty() || tp.back().distance(pts[i]) > stol) {
+            tp.push_back(pts[i]);
+            tk.push_back(vkeys[i]);
         }
     }
-
-    std::map<size_t, size_t> root_to_rep;
-    for (size_t i = 0; i < n; i++) {
-        size_t root = find(i);
-        auto [it, inserted] = root_to_rep.emplace(root, vkeys[i]);
-        if (!inserted && vkeys[i] < it->second) it->second = vkeys[i];
+    while (tp.size() >= 3 && tp.back().distance(tp.front()) <= stol) {
+        tp.pop_back();
+        tk.pop_back();
     }
-    std::map<size_t, size_t> vkey_to_rep;
+    if (tp.size() < 3) return;
+    pts = tp;
+    vkeys = tk;
+}
+
+static Point lp_offset_toward(const Point& p, double cx, double cy, double cz, double gap) {
+    double dx = cx-p[0], dy = cy-p[1], dz = cz-p[2];
+    const double len = std::sqrt(dx*dx+dy*dy+dz*dz);
+    if (len > 1e-10) { dx *= gap/len; dy *= gap/len; dz *= gap/len; }
+    return Point(p[0]+dx, p[1]+dy, p[2]+dz);
+}
+
+static Point lp_face_centroid(const Mesh& m, size_t fk) {
+    const std::vector<size_t> vkeys = *m.face_vertices(fk);
+    double cx = 0, cy = 0, cz = 0;
+    for (size_t vk : vkeys) {
+        const Point p = *m.vertex_point(vk);
+        cx += p[0]; cy += p[1]; cz += p[2];
+    }
+    return Point(cx/vkeys.size(), cy/vkeys.size(), cz/vkeys.size());
+}
+
+/// Greedy top/bottom face pairs by centroid distance, sorted by key
+static std::vector<std::pair<size_t,size_t>> lp_match_faces(const Mesh& top_mesh, const Mesh& bot_mesh) {
+    const std::vector<size_t> tfks = top_mesh.faces();
+    const std::vector<size_t> bfks = bot_mesh.faces();
+    std::vector<std::tuple<double, size_t, size_t>> dists;
+    dists.reserve(tfks.size() * bfks.size());
+    for (size_t ti = 0; ti < tfks.size(); ti++)
+        for (size_t bi = 0; bi < bfks.size(); bi++)
+            dists.push_back({lp_face_centroid(top_mesh, tfks[ti]).distance(lp_face_centroid(bot_mesh, bfks[bi])), ti, bi});
+    std::sort(dists.begin(), dists.end());
+    std::vector<bool> top_used(tfks.size(), false), bot_used(bfks.size(), false);
+    std::vector<std::pair<size_t,size_t>> face_match;
+    for (const auto& [d, ti, bi] : dists) {
+        if (top_used[ti] || bot_used[bi]) continue;
+        face_match.push_back({tfks[ti], bfks[bi]});
+        top_used[ti] = true;
+        bot_used[bi] = true;
+    }
+    std::sort(face_match.begin(), face_match.end());
+    return face_match;
+}
+
+/// Reverse top and bottom rings so the top normal points from bottom to top and the bottom normal away
+static void lp_orient_rings(std::vector<Point>& top_pts, std::vector<size_t>& top_vkeys, std::vector<Point>& bot_pts, std::vector<size_t>& bot_vkeys) {
+    const Point tc = ring_centroid(top_pts);
+    const Point bc = ring_centroid(bot_pts);
+    Vector axis(tc[0]-bc[0], tc[1]-bc[1], tc[2]-bc[2]);
+    if (!axis.normalize_self()) return;
+    if (newell_normal(top_pts).dot(axis) < 0) {
+        std::reverse(top_pts.begin(), top_pts.end());
+        std::reverse(top_vkeys.begin(), top_vkeys.end());
+    }
+    if (newell_normal(bot_pts).dot(axis) > 0) {
+        std::reverse(bot_pts.begin(), bot_pts.end());
+        std::reverse(bot_vkeys.begin(), bot_vkeys.end());
+    }
+}
+
+/// Cap face over local keys with its planar CDT stored
+static std::optional<size_t> lp_add_cap(Mesh& mesh, const std::vector<size_t>& cap, const std::vector<Point>& pts) {
+    const std::optional<size_t> fk = mesh.add_face(cap);
+    if (!fk || cap.size() < 3) return fk;
+    const std::vector<std::array<int,3>> tris = planar_cdt(pts);
+    if (tris.empty()) return fk;
+    std::vector<std::array<size_t,3>> tri_list;
+    tri_list.reserve(tris.size());
+    for (const std::array<int,3>& t : tris)
+        tri_list.push_back({cap[t[0]], cap[t[1]], cap[t[2]]});
+    mesh.set_face_triangulation(*fk, std::move(tri_list));
+    return fk;
+}
+
+/// Edge midpoints of a ring
+static std::vector<Point> lp_midpoints(const std::vector<Point>& pts) {
+    const size_t n = pts.size();
+    std::vector<Point> mids(n);
     for (size_t i = 0; i < n; i++)
-        vkey_to_rep[vkeys[i]] = root_to_rep.at(find(i));
+        mids[i] = Point((pts[i][0]+pts[(i+1)%n][0])*0.5, (pts[i][1]+pts[(i+1)%n][1])*0.5, (pts[i][2]+pts[(i+1)%n][2])*0.5);
+    return mids;
+}
 
-    Mesh m;
-    std::set<size_t> added;
+/// Index of the point in pts nearest to p
+static size_t lp_nearest(const Point& p, const std::vector<Point>& pts) {
+    double best_d = std::numeric_limits<double>::max();
+    size_t best = 0;
+    for (size_t i = 0; i < pts.size(); i++) {
+        const double d = p.distance(pts[i]);
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
+}
+
+/// Quad wall over matched edge j of the bottom and ti of the top, inset by edge_gap
+static std::optional<size_t> lp_add_quad(LoftPanel& panel, size_t b0, size_t b1, size_t t0, size_t t1, double edge_gap) {
+    if (edge_gap <= 0.0) return panel.mesh.add_face({b0, t1, t0, b1});
+    const Point pb0 = *panel.mesh.vertex_point(b0);
+    const Point pb1 = *panel.mesh.vertex_point(b1);
+    const Point pt0 = *panel.mesh.vertex_point(t0);
+    const Point pt1 = *panel.mesh.vertex_point(t1);
+    const double cx = (pb0[0]+pb1[0]+pt0[0]+pt1[0])*0.25;
+    const double cy = (pb0[1]+pb1[1]+pt0[1]+pt1[1])*0.25;
+    const double cz = (pb0[2]+pb1[2]+pt0[2]+pt1[2])*0.25;
+    const size_t nb0 = panel.mesh.add_vertex(lp_offset_toward(pb0, cx, cy, cz, edge_gap));
+    const size_t nb1 = panel.mesh.add_vertex(lp_offset_toward(pb1, cx, cy, cz, edge_gap));
+    return panel.mesh.add_face({nb0, t1, t0, nb1});
+}
+
+/// A triangle from every unmatched top edge to the nearest bottom vertex
+static void lp_add_top_triangles(
+    LoftPanel& panel,
+    const std::vector<Point>& top_mids,
+    const std::vector<size_t>& top_vkeys,
+    const std::vector<Point>& bot_pts,
+    const std::vector<size_t>& bot_vkeys,
+    const std::vector<bool>& top_used
+) {
+    const size_t n = top_vkeys.size();
     for (size_t i = 0; i < n; i++) {
-        size_t rep = vkey_to_rep.at(vkeys[i]);
-        if (added.insert(rep).second)
-            m.add_vertex(vertex.at(rep).position(), rep);
-    }
-    for (const auto& [fk, fvkeys] : face) {
-        std::vector<size_t> new_vkeys;
-        new_vkeys.reserve(fvkeys.size());
-        for (size_t vk : fvkeys) new_vkeys.push_back(vkey_to_rep.at(vk));
-        m.add_face(new_vkeys, fk);
-    }
-    return m;
-}
-
-bool Mesh::unify_winding() {
-    if (face.size() < 2) return false;
-
-    std::map<std::pair<size_t,size_t>, std::vector<std::tuple<size_t,size_t,size_t>>> edge_faces;
-    for (auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t u = verts[i];
-            size_t v = verts[(i + 1) % n];
-            auto edge = u < v ? std::make_pair(u, v) : std::make_pair(v, u);
-            edge_faces[edge].emplace_back(fkey, u, v);
+        if (top_used[i]) continue;
+        const size_t t0 = panel.orig_top_to_local[top_vkeys[i]];
+        const size_t t1 = panel.orig_top_to_local[top_vkeys[(i+1)%n]];
+        const size_t bv = panel.orig_bot_to_local[bot_vkeys[lp_nearest(top_mids[i], bot_pts)]];
+        const std::optional<size_t> fk = panel.mesh.add_face({t1, t0, bv});
+        if (fk) {
+            LoftWallFace w;
+            w.face_key = *fk;
+            panel.wall_faces.push_back(w);
         }
     }
+}
 
-    std::set<size_t> visited;
-    std::set<size_t> flipped;
-    for (auto& [seed, _dummy] : face) {
-        if (visited.count(seed)) continue;
-        visited.insert(seed);
-        std::vector<size_t> queue = {seed};
-        while (!queue.empty()) {
-            size_t f = queue.back(); queue.pop_back();
-            bool is_flipped = flipped.count(f) > 0;
-            const auto& verts = face[f];
-            size_t n = verts.size();
-            for (size_t i = 0; i < n; ++i) {
-                size_t u_orig = verts[i];
-                size_t v_orig = verts[(i + 1) % n];
-                size_t eff_u = is_flipped ? v_orig : u_orig;
-                size_t eff_v = is_flipped ? u_orig : v_orig;
-                auto edge = u_orig < v_orig ? std::make_pair(u_orig, v_orig) : std::make_pair(v_orig, u_orig);
-                auto it = edge_faces.find(edge);
-                if (it == edge_faces.end()) continue;
-                for (auto& [adj_key, adj_u, adj_v] : it->second) {
-                    if (adj_key == f || visited.count(adj_key)) continue;
-                    if (!(adj_u == eff_v && adj_v == eff_u))
-                        flipped.insert(adj_key);
-                    visited.insert(adj_key);
-                    queue.push_back(adj_key);
-                }
+/// Walls of one panel: a quad per mutually nearest edge pair, a triangle for every unmatched edge
+static void lp_add_walls(
+    LoftPanel& panel,
+    const std::vector<Point>& top_pts,
+    const std::vector<size_t>& top_vkeys,
+    const std::vector<Point>& bot_pts,
+    const std::vector<size_t>& bot_vkeys,
+    double edge_gap,
+    double edge_match_threshold,
+    bool skip_triangles
+) {
+    const size_t n = top_pts.size(), m = bot_pts.size();
+    const std::vector<Point> top_mids = lp_midpoints(top_pts);
+    const std::vector<Point> bot_mids = lp_midpoints(bot_pts);
+    std::vector<size_t> bot_to_top(m), top_to_bot(n);
+    std::vector<double> bot_dist(m);
+    for (size_t j = 0; j < m; j++) {
+        bot_to_top[j] = lp_nearest(bot_mids[j], top_mids);
+        bot_dist[j] = bot_mids[j].distance(top_mids[bot_to_top[j]]);
+    }
+    for (size_t i = 0; i < n; i++)
+        top_to_bot[i] = lp_nearest(top_mids[i], bot_mids);
+    double avg = 0;
+    for (size_t j = 0; j < m; j++) avg += bot_dist[j];
+    const double threshold = avg / m * edge_match_threshold;
+    std::vector<bool> top_used(n, false);
+    for (size_t j = 0; j < m; j++) {
+        const size_t b0 = panel.orig_bot_to_local[bot_vkeys[j]];
+        const size_t b1 = panel.orig_bot_to_local[bot_vkeys[(j+1)%m]];
+        const size_t ti = bot_to_top[j];
+        if (bot_dist[j] <= threshold && top_to_bot[ti] == j) {
+            const size_t t0 = panel.orig_top_to_local[top_vkeys[ti]];
+            const size_t t1 = panel.orig_top_to_local[top_vkeys[(ti+1)%n]];
+            const std::optional<size_t> fk = lp_add_quad(panel, b0, b1, t0, t1, edge_gap);
+            if (fk) {
+                LoftWallFace w;
+                w.face_key = *fk;
+                w.is_quad = true;
+                w.top_v0 = top_vkeys[ti];
+                w.top_v1 = top_vkeys[(ti+1)%n];
+                w.bot_v0 = bot_vkeys[(j+1)%m];
+                w.bot_v1 = bot_vkeys[j];
+                panel.wall_faces.push_back(w);
+            }
+            top_used[ti] = true;
+        } else if (!skip_triangles) {
+            const size_t tv = panel.orig_top_to_local[top_vkeys[lp_nearest(bot_mids[j], top_pts)]];
+            const std::optional<size_t> fk = panel.mesh.add_face({b0, tv, b1});
+            if (fk) {
+                LoftWallFace w;
+                w.face_key = *fk;
+                panel.wall_faces.push_back(w);
             }
         }
     }
+    if (!skip_triangles) lp_add_top_triangles(panel, top_mids, top_vkeys, bot_pts, bot_vkeys, top_used);
+}
 
-    if (flipped.empty()) return false;
+/// One panel between matched faces tfk of the top mesh and bfk of the bottom mesh
+static LoftPanel lp_build_panel(
+    const Mesh& top_mesh,
+    const Mesh& bot_mesh,
+    size_t tfk,
+    size_t bfk,
+    double edge_gap,
+    double edge_match_threshold,
+    bool add_caps,
+    bool skip_triangles
+) {
+    LoftPanel panel;
+    std::vector<size_t> top_vkeys = *top_mesh.face_vertices(tfk);
+    std::vector<size_t> bot_vkeys = *bot_mesh.face_vertices(bfk);
+    std::vector<Point> top_pts, bot_pts;
+    for (size_t vk : top_vkeys) top_pts.push_back(*top_mesh.vertex_point(vk));
+    for (size_t vk : bot_vkeys) bot_pts.push_back(*bot_mesh.vertex_point(vk));
+    lp_merge_collinear(top_pts, top_vkeys);
+    lp_merge_collinear(bot_pts, bot_vkeys);
+    lp_merge_close(top_pts, top_vkeys);
+    lp_orient_rings(top_pts, top_vkeys, bot_pts, bot_vkeys);
+    for (size_t i = 0; i < top_pts.size(); i++) {
+        const size_t lk = panel.mesh.add_vertex(top_pts[i]);
+        panel.orig_top_to_local[top_vkeys[i]] = lk;
+        panel.top_vertices.push_back(lk);
+    }
+    for (size_t j = 0; j < bot_pts.size(); j++) {
+        const size_t lk = panel.mesh.add_vertex(bot_pts[j]);
+        panel.orig_bot_to_local[bot_vkeys[j]] = lk;
+        panel.bot_vertices.push_back(lk);
+    }
+    if (add_caps)
+        panel.top_face_key = lp_add_cap(panel.mesh, panel.top_vertices, top_pts);
+    lp_add_walls(panel, top_pts, top_vkeys, bot_pts, bot_vkeys, edge_gap, edge_match_threshold, skip_triangles);
+    if (add_caps)
+        panel.bot_face_key = lp_add_cap(panel.mesh, panel.bot_vertices, bot_pts);
+    std::map<size_t,size_t> fkey_to_idx;
+    size_t fi = 0;
+    for (const auto& [fk, _] : panel.mesh.face)
+        fkey_to_idx[fk] = fi++;
+    for (LoftWallFace& w : panel.wall_faces) {
+        w.face_index = fkey_to_idx[w.face_key];
+        panel.face_roles[w.face_key] = w.is_quad ? LoftFaceRole::QuadWall : LoftFaceRole::TriWall;
+    }
+    if (panel.top_face_key) panel.face_roles[*panel.top_face_key] = LoftFaceRole::TopCap;
+    if (panel.bot_face_key) panel.face_roles[*panel.bot_face_key] = LoftFaceRole::BotCap;
+    return panel;
+}
 
-    for (size_t fkey : flipped)
-        std::reverse(face[fkey].begin(), face[fkey].end());
-
-    for (auto& [u, nbrs] : halfedge)
-        nbrs.clear();
-    for (auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t u = verts[i];
-            size_t v = verts[(i + 1) % n];
-            halfedge[u][v] = fkey;
-            if (!halfedge[v].count(u))
-                halfedge[v][u] = std::nullopt;
+/// Quad walls of different panels that share a top edge, once per pair
+static std::vector<LoftAdjPair> lp_adjacency(const std::vector<LoftPanel>& panels) {
+    std::map<std::pair<size_t,size_t>, std::pair<size_t,size_t>> edge_to_wall;
+    for (size_t pi = 0; pi < panels.size(); pi++)
+        for (size_t wi = 0; wi < panels[pi].wall_faces.size(); wi++) {
+            const LoftWallFace& w = panels[pi].wall_faces[wi];
+            if (w.is_quad) edge_to_wall[{w.top_v0, w.top_v1}] = {pi, wi};
         }
-    }
-
-    orient_outward();
-    return true;
-}
-
-bool Mesh::orient_outward() {
-    ensure_halfedges();
-    if (face.empty() || !naked_edges(true).empty()) return false;
-    double vol = 0.0;
-    for (const auto& [fk, verts] : face) {
-        size_t n = verts.size();
-        auto p0 = *vertex_point(verts[0]);
-        for (size_t i = 1; i + 1 < n; ++i) {
-            auto p1 = *vertex_point(verts[i]);
-            auto p2 = *vertex_point(verts[i + 1]);
-            vol += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
-                 + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
-                 + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+    std::vector<LoftAdjPair> adjacency;
+    for (size_t pi = 0; pi < panels.size(); pi++)
+        for (size_t wi = 0; wi < panels[pi].wall_faces.size(); wi++) {
+            const LoftWallFace& w = panels[pi].wall_faces[wi];
+            if (!w.is_quad) continue;
+            const auto it = edge_to_wall.find({w.top_v1, w.top_v0});
+            if (it != edge_to_wall.end() && it->second.first > pi)
+                adjacency.push_back({pi, wi, it->second.first, it->second.second});
         }
-    }
-    if (vol >= 0.0) return false;
-    for (auto& [fk, verts] : face)
-        std::reverse(verts.begin(), verts.end());
-    for (auto& [u, nbrs] : halfedge) nbrs.clear();
-    for (const auto& [fk, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t u = verts[i], v = verts[(i + 1) % n];
-            halfedge[u][v] = fk;
-            if (!halfedge[v].count(u))
-                halfedge[v][u] = std::nullopt;
-        }
-    }
-    return true;
-}
-
-size_t Mesh::add_vertex(const Point& position, std::optional<size_t> vkey) {
-    ensure_halfedges();
-    size_t vertex_key = vkey.value_or(max_vertex);
-    
-    if (vertex_key >= max_vertex) {
-        max_vertex = vertex_key + 1;
-    }
-    
-    vertex[vertex_key] = VertexData(position);
-    halfedge[vertex_key] = {};
-    pointcolors.push_back(Color::white());
-    triangle_bvh_built = false;
-    triangle_bvh.reset();
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-    return vertex_key;
-}
-
-std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey) {
-    ensure_halfedges();
-    if (vertices.size() < 3) {
-        return std::nullopt;
-    }
-    
-    for (size_t v : vertices) {
-        if (vertex.find(v) == vertex.end()) {
-            return std::nullopt;
-        }
-    }
-    
-    std::set<size_t> unique_vertices(vertices.begin(), vertices.end());
-    if (unique_vertices.size() != vertices.size()) {
-        return std::nullopt;
-    }
-    
-    size_t face_key = fkey.value_or(max_face);
-    
-    if (face_key >= max_face) {
-        max_face = face_key + 1;
-    }
-    
-    face[face_key] = vertices;
-    triangulation.erase(face_key);
-    facecolors.push_back(Color::white());
-    
-    for (size_t i = 0; i < vertices.size(); ++i) {
-        size_t u = vertices[i];
-        size_t v = vertices[(i + 1) % vertices.size()];
-        
-        bool is_new_edge = (halfedge[v].find(u) == halfedge[v].end());
-        
-        halfedge[u][v] = face_key;
-        
-        if (is_new_edge) {
-            halfedge[v][u] = std::nullopt;
-            linecolors.push_back(Color::black());
-            widths.push_back(1.0);
-        }
-    }
-    triangle_bvh_built = false;
-    triangle_bvh.reset();
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-    return face_key;
-}
-
-std::set<std::pair<size_t, size_t>> Mesh::directed_face_edges() const {
-    std::set<std::pair<size_t, size_t>> s;
-    for (const auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i)
-            s.insert({verts[i], verts[(i + 1) % n]});
-    }
-    return s;
-}
-
-std::map<size_t, std::map<size_t, std::optional<size_t>>> Mesh::compute_halfedges() const {
-    std::map<size_t, std::map<size_t, std::optional<size_t>>> he;
-    for (const auto& [vkey, _] : vertex)
-        he[vkey] = {};
-    for (const auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t u = verts[i];
-            size_t v = verts[(i + 1) % n];
-            he[u][v] = fkey;
-            if (!he[v].count(u))
-                he[v][u] = std::nullopt;
-        }
-    }
-    return he;
-}
-
-void Mesh::rebuild_halfedges() {
-    halfedge = compute_halfedges();
-}
-
-/// Topology is LAZY: a freshly DECODED mesh carries no halfedge map — measured as the
-/// dominant decode-time and memory cost on dense scenes (a nested map per vertex,
-/// per mesh). Every EDIT entry point calls this first; the pure readers are face-based
-/// and never build it. Constructed meshes (add_vertex/add_face from empty) maintain the
-/// map incrementally exactly as before, so this fires only on decoded-then-edited meshes.
-void Mesh::ensure_halfedges() {
-    if (halfedge.empty() && !face.empty()) {
-        rebuild_halfedges();
-    }
-}
-
-void Mesh::remove_face(size_t fkey) {
-    ensure_halfedges();
-    auto it = face.find(fkey);
-    if (it == face.end()) return;
-    const auto& verts = it->second;
-    size_t n = verts.size();
-    for (size_t i = 0; i < n; ++i) {
-        size_t u = verts[i];
-        size_t v = verts[(i + 1) % n];
-        auto uit = halfedge.find(u);
-        if (uit == halfedge.end()) continue;
-        auto vit = uit->second.find(v);
-        if (vit == uit->second.end()) continue;
-        vit->second = std::nullopt;
-        auto vit2 = halfedge.find(v);
-        if (vit2 != halfedge.end()) {
-            auto uit2 = vit2->second.find(u);
-            if (uit2 != vit2->second.end() && !uit2->second.has_value()) {
-                uit->second.erase(v);
-                vit2->second.erase(u);
-            }
-        }
-    }
-    face.erase(fkey);
-    triangulation.erase(fkey);
-    facedata.erase(fkey);
-    face_holes.erase(fkey);
-    size_t n_edges = number_of_edges();
-    if (linecolors.size() > n_edges) linecolors.resize(n_edges);
-    if (widths.size() > n_edges) widths.resize(n_edges);
-    size_t n_faces = face.size();
-    if (facecolors.size() > n_faces) facecolors.resize(n_faces);
-    triangle_bvh_built = false;
-    triangle_bvh.reset();
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-}
-
-void Mesh::remove_vertex(size_t vkey) {
-    ensure_halfedges();
-    if (vertex.find(vkey) == vertex.end()) return;
-    std::vector<size_t> faces_to_remove;
-    for (const auto& [fk, verts] : face)
-        for (size_t vk : verts)
-            if (vk == vkey) { faces_to_remove.push_back(fk); break; }
-    for (size_t fk : faces_to_remove)
-        remove_face(fk);
-    auto hit = halfedge.find(vkey);
-    if (hit != halfedge.end()) {
-        for (auto& [v, _] : hit->second) {
-            auto vit = halfedge.find(v);
-            if (vit != halfedge.end()) vit->second.erase(vkey);
-        }
-        halfedge.erase(vkey);
-    }
-    for (auto it = edgedata.begin(); it != edgedata.end(); ) {
-        if (it->first.first == vkey || it->first.second == vkey)
-            it = edgedata.erase(it);
-        else ++it;
-    }
-    vertex.erase(vkey);
-    size_t n_vertices = vertex.size();
-    if (pointcolors.size() > n_vertices) pointcolors.resize(n_vertices);
-    triangle_bvh_built = false;
-    triangle_bvh.reset();
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-}
-
-void Mesh::remove_edge(size_t u, size_t v) {
-    ensure_halfedges();
-    std::vector<size_t> faces_to_remove;
-    auto uit = halfedge.find(u);
-    if (uit != halfedge.end()) {
-        auto vit = uit->second.find(v);
-        if (vit != uit->second.end() && vit->second.has_value())
-            faces_to_remove.push_back(*vit->second);
-    }
-    auto vit = halfedge.find(v);
-    if (vit != halfedge.end()) {
-        auto uit2 = vit->second.find(u);
-        if (uit2 != vit->second.end() && uit2->second.has_value())
-            faces_to_remove.push_back(*uit2->second);
-    }
-    for (size_t fk : faces_to_remove)
-        remove_face(fk);
-    auto hit = halfedge.find(u);
-    if (hit != halfedge.end()) hit->second.erase(v);
-    auto hit2 = halfedge.find(v);
-    if (hit2 != halfedge.end()) hit2->second.erase(u);
-    edgedata.erase({u, v});
-    edgedata.erase({v, u});
-    size_t n_edges = number_of_edges();
-    if (linecolors.size() > n_edges) linecolors.resize(n_edges);
-    if (widths.size() > n_edges) widths.resize(n_edges);
-    triangle_bvh_built = false;
-    triangle_bvh.reset();
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-}
-
-void Mesh::flip_face(size_t fkey) {
-    ensure_halfedges();
-    auto it = face.find(fkey);
-    if (it == face.end()) return;
-    auto fv = it->second;
-    remove_face(fkey);
-    std::reverse(fv.begin(), fv.end());
-    add_face(fv, fkey);
-}
-
-void Mesh::flip() {
-    for (auto& [fkey, verts] : face)
-        std::reverse(verts.begin(), verts.end());
-    for (auto& [u, nbrs] : halfedge)
-        nbrs.clear();
-    for (auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t u = verts[i];
-            size_t v = verts[(i + 1) % n];
-            halfedge[u][v] = fkey;
-            if (!halfedge[v].count(u))
-                halfedge[v][u] = std::nullopt;
-        }
-    }
-}
-
-std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::edge_edges(size_t u, size_t v) const {
-    auto dfe = directed_face_edges();
-    if (!dfe.count({u, v}) && !dfe.count({v, u})) return std::nullopt;
-    auto ends = [&dfe](size_t x) {
-        std::set<size_t> keys;
-        for (const auto& [a, b] : dfe) {
-            if (a == x) keys.insert(b);
-            else if (b == x) keys.insert(a);
-        }
-        return keys;
-    };
-    std::vector<std::pair<size_t, size_t>> edges;
-    for (size_t w : ends(u)) if (w != v) edges.push_back({u, w});
-    for (size_t w : ends(v)) if (w != u) edges.push_back({v, w});
-    return edges;
-}
-
-std::map<std::pair<size_t, size_t>, size_t> Mesh::edge_face_map() const {
-    std::map<std::pair<size_t, size_t>, size_t> m;
-    for (const auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i)
-            m[{verts[i], verts[(i + 1) % n]}] = fkey;
-    }
-    return m;
-}
-
-std::optional<std::vector<size_t>> Mesh::edge_faces(size_t u, size_t v) const {
-    std::vector<size_t> result;
-    for (const auto& [fkey, verts] : face) {
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t a = verts[i];
-            size_t b = verts[(i + 1) % n];
-            if ((a == u && b == v) || (a == v && b == u)) {
-                if (std::find(result.begin(), result.end(), fkey) == result.end())
-                    result.push_back(fkey);
-            }
-        }
-    }
-    if (result.empty()) return std::nullopt;
-    return result;
-}
-
-std::optional<Line> Mesh::edge_line(size_t u, size_t v) const {
-    auto dfe = directed_face_edges();
-    if (!dfe.count({u, v}) && !dfe.count({v, u})) return std::nullopt;
-    auto pu = vertex_point(u);
-    auto pv = vertex_point(v);
-    if (!pu || !pv) return std::nullopt;
-    return Line::from_points(*pu, *pv);
-}
-
-std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::face_edges(size_t face_key) const {
-    auto it = face.find(face_key);
-    if (it == face.end()) return std::nullopt;
-    std::vector<std::pair<size_t, size_t>> edges;
-    const auto& verts = it->second;
-    size_t n = verts.size();
-    for (size_t i = 0; i < n; ++i) {
-        edges.push_back({verts[i], verts[(i + 1) % n]});
-    }
-    return edges;
-}
-
-std::optional<std::vector<size_t>> Mesh::face_faces(size_t face_key) const {
-    auto fe = face_edges(face_key);
-    if (!fe) return std::nullopt;
-    auto efm = edge_face_map();
-    std::vector<size_t> neighbors;
-    for (const auto& [u, v] : *fe) {
-        auto it = efm.find({v, u});
-        if (it != efm.end()) neighbors.push_back(it->second);
-    }
-    return neighbors;
-}
-
-std::optional<std::vector<Point>> Mesh::face_points(size_t face_key) const {
-    auto fv = face_vertices(face_key);
-    if (!fv) return std::nullopt;
-    std::vector<Point> pts;
-    for (auto vk : *fv) {
-        auto p = vertex_point(vk);
-        if (!p) return std::nullopt;
-        pts.push_back(*p);
-    }
-    return pts;
-}
-
-std::optional<Polyline> Mesh::face_polyline(size_t face_key) const {
-    auto pts = face_points(face_key);
-    if (!pts) return std::nullopt;
-    return Polyline(*pts);
-}
-
-std::optional<std::vector<size_t>> Mesh::face_vertices(size_t face_key) const {
-    auto it = face.find(face_key);
-    if (it == face.end()) {
-        return std::nullopt;
-    }
-    return it->second;
-}
-
-std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::vertex_edges(size_t vertex_key) const {
-    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
-    auto keys = vertex_vertices(vertex_key);
-    if (!keys) return std::nullopt;
-    std::vector<std::pair<size_t, size_t>> edges;
-    for (size_t u : *keys) {
-        edges.push_back({vertex_key, u});
-    }
-    return edges;
-}
-
-std::optional<std::vector<size_t>> Mesh::vertex_faces(size_t vertex_key) const {
-    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
-    // same order as the halfedge version: neighbors sorted, each mapped to the face of
-    // the DIRECTED edge (v, u) — one entry per incident face, no duplicates
-    auto efm = edge_face_map();
-    auto keys = vertex_vertices(vertex_key);
-    if (!keys) return std::nullopt;
-    std::vector<size_t> faces;
-    for (size_t u : *keys) {
-        auto it = efm.find({vertex_key, u});
-        if (it != efm.end()) faces.push_back(it->second);
-    }
-    return faces;
-}
-
-std::optional<Point> Mesh::vertex_point(size_t vertex_key) const {
-    auto it = vertex.find(vertex_key);
-    if (it == vertex.end()) {
-        return std::nullopt;
-    }
-    return it->second.position();
-}
-
-std::optional<std::vector<size_t>> Mesh::vertex_vertices(size_t vertex_key) const {
-    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
-    auto dfe = directed_face_edges();
-    std::set<size_t> keys;
-    for (const auto& [u, v] : dfe) {
-        if (u == vertex_key) keys.insert(v);
-        else if (v == vertex_key) keys.insert(u);
-    }
-    return std::vector<size_t>(keys.begin(), keys.end());
-}
-
-std::optional<std::vector<size_t>> Mesh::vertex_neighbors(size_t vertex_key, bool ordered) const {
-    auto it = halfedge.find(vertex_key);
-    if (it == halfedge.end()) return std::nullopt;
-    std::vector<size_t> nbrs;
-    for (const auto& [v, _] : it->second) nbrs.push_back(v);
-    if (!ordered || nbrs.size() <= 1) return nbrs;
-    size_t start = nbrs[0];
-    for (auto n : nbrs) {
-        auto fit = it->second.find(n);
-        if (fit != it->second.end() && !fit->second.has_value()) { start = n; break; }
-    }
-    auto cur_face_at = [&](size_t a, size_t b) -> std::optional<size_t> {
-        auto ait = halfedge.find(a);
-        if (ait == halfedge.end()) return std::nullopt;
-        auto bit = ait->second.find(b);
-        if (bit == ait->second.end()) return std::nullopt;
-        return bit->second;
-    };
-    auto fkey = cur_face_at(start, vertex_key);
-    std::vector<size_t> out{ start };
-    int guard = 0;
-    while (fkey.has_value() && guard < 10000) {
-        ++guard;
-        auto vit = face.find(*fkey);
-        if (vit == face.end()) break;
-        const auto& verts = vit->second;
-        size_t i = 0;
-        bool found = false;
-        for (; i < verts.size(); ++i) if (verts[i] == vertex_key) { found = true; break; }
-        if (!found) break;
-        size_t nbr = verts[(i + 1) % verts.size()];
-        if (nbr == start) break;
-        out.push_back(nbr);
-        fkey = cur_face_at(nbr, vertex_key);
-    }
-    return out;
-}
-
-std::vector<size_t> Mesh::vertices_on_boundary() const {
-    std::vector<size_t> out;
-    for (const auto& [v, _] : vertex) {
-        if (is_vertex_on_boundary(v)) out.push_back(v);
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::edges_on_boundary() const {
-    std::vector<std::pair<size_t, size_t>> out;
-    for (const auto& [u, nbrs] : halfedge) {
-        for (const auto& [v, f] : nbrs) {
-            if (!f.has_value()) out.emplace_back(u, v);
-        }
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
-
-std::vector<size_t> Mesh::faces_on_boundary() const {
-    std::vector<size_t> out;
-    for (const auto& [f, _] : face) {
-        if (is_face_on_boundary(f)) out.push_back(f);
-    }
-    std::sort(out.begin(), out.end());
-    return out;
-}
-
-std::optional<size_t> Mesh::halfedge_face(std::pair<size_t, size_t> edge) const {
-    auto it = halfedge.find(edge.first);
-    if (it == halfedge.end()) return std::nullopt;
-    auto jt = it->second.find(edge.second);
-    if (jt == it->second.end()) return std::nullopt;
-    return jt->second;
-}
-
-std::optional<std::pair<size_t, size_t>> Mesh::halfedge_after(std::pair<size_t, size_t> edge) const {
-    auto [u, v] = edge;
-    auto f = halfedge_face(edge);
-    if (f.has_value()) {
-        auto vit = face.find(*f);
-        if (vit == face.end()) return std::nullopt;
-        const auto& verts = vit->second;
-        for (size_t i = 0; i < verts.size(); ++i) {
-            if (verts[i] == v) {
-                return std::make_pair(v, verts[(i + 1) % verts.size()]);
-            }
-        }
-        return std::nullopt;
-    }
-    auto it = halfedge.find(v);
-    if (it == halfedge.end()) return std::nullopt;
-    for (const auto& [w, fw] : it->second) {
-        if (w != u && !fw.has_value()) {
-            return std::make_pair(v, w);
-        }
-    }
-    return std::nullopt;
-}
-
-std::optional<std::pair<size_t, size_t>> Mesh::halfedge_before(std::pair<size_t, size_t> edge) const {
-    auto [u, v] = edge;
-    auto f = halfedge_face(edge);
-    if (f.has_value()) {
-        auto vit = face.find(*f);
-        if (vit == face.end()) return std::nullopt;
-        const auto& verts = vit->second;
-        size_t n = verts.size();
-        for (size_t i = 0; i < n; ++i) {
-            if (verts[i] == u) {
-                return std::make_pair(verts[(i + n - 1) % n], u);
-            }
-        }
-        return std::nullopt;
-    }
-    auto it = halfedge.find(u);
-    if (it == halfedge.end()) return std::nullopt;
-    for (const auto& [w, _] : it->second) {
-        if (w == v) continue;
-        auto wit = halfedge.find(w);
-        if (wit == halfedge.end()) continue;
-        auto wjt = wit->second.find(u);
-        if (wjt != wit->second.end() && !wjt->second.has_value()) {
-            return std::make_pair(w, u);
-        }
-    }
-    return std::nullopt;
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::halfedge_loop(std::pair<size_t, size_t> edge) const {
-    if (is_edge_on_boundary(edge.first, edge.second)) {
-        std::vector<std::pair<size_t, size_t>> edges{ edge };
-        size_t u = edge.first, v = edge.second;
-        int guard = 0;
-        while (guard < 10000) {
-            ++guard;
-            auto nbrs_opt = vertex_neighbors(v, false);
-            if (!nbrs_opt.has_value() || nbrs_opt->size() == 2) break;
-            std::optional<size_t> nbr;
-            for (auto temp : *nbrs_opt) {
-                if (temp == u) continue;
-                if (is_edge_on_boundary(v, temp)) { nbr = temp; break; }
-            }
-            if (!nbr.has_value()) break;
-            u = v; v = *nbr;
-            edges.emplace_back(u, v);
-            if (v == edges.front().first) break;
-        }
-        return edges;
-    }
-    std::vector<std::pair<size_t, size_t>> edges{ edge };
-    size_t u = edge.first, v = edge.second;
-    int guard = 0;
-    while (guard < 10000) {
-        ++guard;
-        auto nbrs_opt = vertex_neighbors(v, true);
-        if (!nbrs_opt.has_value() || nbrs_opt->size() != 4) break;
-        const auto& nbrs = *nbrs_opt;
-        size_t i = 0;
-        bool found = false;
-        for (; i < nbrs.size(); ++i) if (nbrs[i] == u) { found = true; break; }
-        if (!found) break;
-        u = v;
-        size_t n = nbrs.size();
-        v = nbrs[(i + n - 2) % n];
-        edges.emplace_back(u, v);
-        if (v == edges.front().first) break;
-    }
-    return edges;
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::halfedge_strip(std::pair<size_t, size_t> edge) const {
-    size_t u = edge.first, v = edge.second;
-    std::vector<std::pair<size_t, size_t>> edges{ edge };
-    int guard = 0;
-    while (guard < 10000) {
-        ++guard;
-        auto fopt = halfedge_face({ u, v });
-        if (!fopt.has_value()) break;
-        auto vit = face.find(*fopt);
-        if (vit == face.end()) break;
-        const auto& verts = vit->second;
-        if (verts.size() != 4) break;
-        size_t i = 0;
-        bool found = false;
-        for (; i < verts.size(); ++i) if (verts[i] == u) { found = true; break; }
-        if (!found) break;
-        size_t n = verts.size();
-        u = verts[(i + n - 1) % n];
-        v = verts[(i + n - 2) % n];
-        edges.emplace_back(u, v);
-        if (std::make_pair(u, v) == edge) break;
-    }
-    return edges;
-}
-
-namespace {
-template <typename T>
-std::vector<T> lcg_sample_impl(const std::vector<T>& keys, size_t size, uint32_t seed) {
-    if (keys.empty() || size == 0) return {};
-    size_t n = keys.size();
-    size_t take = std::min(size, n);
-    if (seed == 0) {
-        std::vector<T> out(keys.begin(), keys.begin() + take);
-        return out;
-    }
-    uint32_t s = seed & 0x7FFFFFFFu;
-    if (s == 0) s = 1;
-    std::set<size_t> used;
-    std::vector<T> out;
-    out.reserve(take);
-    while (out.size() < take) {
-        s = (s * 1103515245u + 12345u) & 0x7FFFFFFFu;
-        size_t i = static_cast<size_t>(s) % n;
-        if (used.insert(i).second) out.push_back(keys[i]);
-    }
-    return out;
-}
-}
-
-std::vector<size_t> Mesh::vertex_sample(size_t size, uint32_t seed) const {
-    std::vector<size_t> keys;
-    for (const auto& [k, _] : vertex) keys.push_back(k);
-    std::sort(keys.begin(), keys.end());
-    return lcg_sample_impl(keys, size, seed);
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::edge_sample(size_t size, uint32_t seed) const {
-    auto e = edges();
-    return lcg_sample_impl(e, size, seed);
-}
-
-std::vector<size_t> Mesh::face_sample(size_t size, uint32_t seed) const {
-    std::vector<size_t> keys;
-    for (const auto& [k, _] : face) keys.push_back(k);
-    std::sort(keys.begin(), keys.end());
-    return lcg_sample_impl(keys, size, seed);
-}
-
-std::optional<Point> Mesh::face_center(size_t face_key) const { return face_centroid(face_key); }
-
-std::vector<Polyline> Mesh::face_outlines() const {
-    std::vector<Polyline> outlines;
-    outlines.reserve(face.size());
-    for (size_t face_key : faces()) {
-        std::optional<Polyline> outline = face_polygon(face_key);
-        // A closed triangle is four points; anything shorter encloses nothing.
-        if (outline && outline->point_count() >= 4) { outlines.push_back(std::move(*outline)); }
-    }
-    return outlines;
-}
-
-std::optional<Polyline> Mesh::face_polygon(size_t face_key) const {
-    auto pts_opt = face_points(face_key);
-    if (!pts_opt.has_value()) return std::nullopt;
-    auto pts = *pts_opt;
-    if (!pts.empty()) {
-        if (!(pts.front() == pts.back())) pts.push_back(pts.front());
-    }
-    return Polyline{ pts };
-}
-
-void Mesh::flip_cycles() { flip(); }
-
-void Mesh::update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
-    for (const auto& [k, v] : attrs) default_vertex_attributes[k] = v;
-}
-void Mesh::update_default_face_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
-    for (const auto& [k, v] : attrs) default_face_attributes[k] = v;
-}
-void Mesh::update_default_edge_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
-    for (const auto& [k, v] : attrs) default_edge_attributes[k] = v;
-}
-
-std::optional<double> Mesh::vertex_attribute(size_t key, const std::string& name) const {
-    auto it = vertex.find(key);
-    if (it == vertex.end()) return std::nullopt;
-    auto ait = it->second.attributes.find(name);
-    if (ait != it->second.attributes.end()) return ait->second;
-    auto dit = default_vertex_attributes.find(name);
-    if (dit != default_vertex_attributes.end()) return dit->second;
-    return std::nullopt;
-}
-
-void Mesh::set_vertex_attribute(size_t key, const std::string& name, double value) {
-    auto it = vertex.find(key);
-    if (it == vertex.end()) return;
-    it->second.attributes[name] = value;
-}
-
-std::optional<double> Mesh::face_attribute(size_t fkey, const std::string& name) const {
-    if (face.find(fkey) == face.end()) return std::nullopt;
-    auto fit = facedata.find(fkey);
-    if (fit != facedata.end()) {
-        auto ait = fit->second.find(name);
-        if (ait != fit->second.end()) return ait->second;
-    }
-    auto dit = default_face_attributes.find(name);
-    if (dit != default_face_attributes.end()) return dit->second;
-    return std::nullopt;
-}
-
-void Mesh::set_face_attribute(size_t fkey, const std::string& name, double value) {
-    if (face.find(fkey) == face.end()) return;
-    facedata[fkey][name] = value;
-}
-
-std::optional<double> Mesh::edge_attribute(std::pair<size_t, size_t> edge, const std::string& name) const {
-    auto [u, v] = edge;
-    bool exists = false;
-    auto uit = halfedge.find(u);
-    if (uit != halfedge.end() && uit->second.find(v) != uit->second.end()) exists = true;
-    auto vit = halfedge.find(v);
-    if (vit != halfedge.end() && vit->second.find(u) != vit->second.end()) exists = true;
-    if (!exists) return std::nullopt;
-    auto eit = edgedata.find({ u, v });
-    if (eit == edgedata.end()) eit = edgedata.find({ v, u });
-    if (eit != edgedata.end()) {
-        auto ait = eit->second.find(name);
-        if (ait != eit->second.end()) return ait->second;
-    }
-    auto dit = default_edge_attributes.find(name);
-    if (dit != default_edge_attributes.end()) return dit->second;
-    return std::nullopt;
-}
-
-void Mesh::set_edge_attribute(std::pair<size_t, size_t> edge, const std::string& name, double value) {
-    auto [u, v] = edge;
-    auto key = (edgedata.find({ v, u }) != edgedata.end()) ? std::make_pair(v, u) : std::make_pair(u, v);
-    edgedata[key][name] = value;
-}
-
-std::vector<std::optional<double>> Mesh::vertices_attribute(const std::string& name, const std::vector<size_t>* keys) const {
-    std::vector<size_t> all;
-    if (!keys) {
-        for (const auto& [k, _] : vertex) all.push_back(k);
-        std::sort(all.begin(), all.end());
-        keys = &all;
-    }
-    std::vector<std::optional<double>> out;
-    out.reserve(keys->size());
-    for (auto k : *keys) out.push_back(vertex_attribute(k, name));
-    return out;
-}
-
-void Mesh::set_vertices_attribute(const std::string& name, double value, const std::vector<size_t>* keys) {
-    std::vector<size_t> all;
-    if (!keys) {
-        for (const auto& [k, _] : vertex) all.push_back(k);
-        std::sort(all.begin(), all.end());
-        keys = &all;
-    }
-    for (auto k : *keys) set_vertex_attribute(k, name, value);
-}
-
-std::vector<std::optional<double>> Mesh::faces_attribute(const std::string& name, const std::vector<size_t>* keys) const {
-    std::vector<size_t> all;
-    if (!keys) {
-        for (const auto& [k, _] : face) all.push_back(k);
-        std::sort(all.begin(), all.end());
-        keys = &all;
-    }
-    std::vector<std::optional<double>> out;
-    out.reserve(keys->size());
-    for (auto k : *keys) out.push_back(face_attribute(k, name));
-    return out;
-}
-
-void Mesh::set_faces_attribute(const std::string& name, double value, const std::vector<size_t>* keys) {
-    std::vector<size_t> all;
-    if (!keys) {
-        for (const auto& [k, _] : face) all.push_back(k);
-        std::sort(all.begin(), all.end());
-        keys = &all;
-    }
-    for (auto k : *keys) set_face_attribute(k, name, value);
-}
-
-std::vector<std::optional<double>> Mesh::edges_attribute(const std::string& name, const std::vector<std::pair<size_t, size_t>>* keys) const {
-    std::vector<std::pair<size_t, size_t>> all;
-    if (!keys) { all = edges(); keys = &all; }
-    std::vector<std::optional<double>> out;
-    out.reserve(keys->size());
-    for (auto e : *keys) out.push_back(edge_attribute(e, name));
-    return out;
-}
-
-void Mesh::set_edges_attribute(const std::string& name, double value, const std::vector<std::pair<size_t, size_t>>* keys) {
-    std::vector<std::pair<size_t, size_t>> all;
-    if (!keys) { all = edges(); keys = &all; }
-    for (auto e : *keys) set_edge_attribute(e, name, value);
-}
-
-std::vector<size_t> Mesh::vertices_where(const std::vector<std::pair<std::string, double>>& conditions) const {
-    std::vector<size_t> out;
-    std::vector<size_t> keys;
-    for (const auto& [k, _] : vertex) keys.push_back(k);
-    std::sort(keys.begin(), keys.end());
-    for (auto k : keys) {
-        bool ok = true;
-        for (const auto& [n, v] : conditions) {
-            auto val = vertex_attribute(k, n);
-            if (!val.has_value() || *val != v) { ok = false; break; }
-        }
-        if (ok) out.push_back(k);
-    }
-    return out;
-}
-
-std::vector<size_t> Mesh::faces_where(const std::vector<std::pair<std::string, double>>& conditions) const {
-    std::vector<size_t> out;
-    std::vector<size_t> keys;
-    for (const auto& [k, _] : face) keys.push_back(k);
-    std::sort(keys.begin(), keys.end());
-    for (auto k : keys) {
-        bool ok = true;
-        for (const auto& [n, v] : conditions) {
-            auto val = face_attribute(k, n);
-            if (!val.has_value() || *val != v) { ok = false; break; }
-        }
-        if (ok) out.push_back(k);
-    }
-    return out;
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::edges_where(const std::vector<std::pair<std::string, double>>& conditions) const {
-    std::vector<std::pair<size_t, size_t>> out;
-    for (auto e : edges()) {
-        bool ok = true;
-        for (const auto& [n, v] : conditions) {
-            auto val = edge_attribute(e, n);
-            if (!val.has_value() || *val != v) { ok = false; break; }
-        }
-        if (ok) out.push_back(e);
-    }
-    return out;
-}
-
-std::vector<size_t> Mesh::vertices_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const {
-    std::vector<size_t> out;
-    std::vector<size_t> keys;
-    for (const auto& [k, _] : vertex) keys.push_back(k);
-    std::sort(keys.begin(), keys.end());
-    for (auto k : keys) {
-        std::map<std::string, double> attrs = default_vertex_attributes;
-        auto vit = vertex.find(k);
-        if (vit != vertex.end()) for (const auto& [kk, vv] : vit->second.attributes) attrs[kk] = vv;
-        if (pred(k, attrs)) out.push_back(k);
-    }
-    return out;
-}
-
-std::vector<size_t> Mesh::faces_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const {
-    std::vector<size_t> out;
-    std::vector<size_t> keys;
-    for (const auto& [k, _] : face) keys.push_back(k);
-    std::sort(keys.begin(), keys.end());
-    for (auto k : keys) {
-        std::map<std::string, double> attrs = default_face_attributes;
-        auto fit = facedata.find(k);
-        if (fit != facedata.end()) for (const auto& [kk, vv] : fit->second) attrs[kk] = vv;
-        if (pred(k, attrs)) out.push_back(k);
-    }
-    return out;
-}
-
-std::vector<std::pair<size_t, size_t>> Mesh::edges_where_predicate(const std::function<bool(std::pair<size_t, size_t>, const std::map<std::string, double>&)>& pred) const {
-    std::vector<std::pair<size_t, size_t>> out;
-    for (auto e : edges()) {
-        std::map<std::string, double> attrs = default_edge_attributes;
-        auto eit = edgedata.find(e);
-        if (eit == edgedata.end()) eit = edgedata.find({ e.second, e.first });
-        if (eit != edgedata.end()) for (const auto& [kk, vv] : eit->second) attrs[kk] = vv;
-        if (pred(e, attrs)) out.push_back(e);
-    }
-    return out;
-}
-
-bool Mesh::is_edge_on_boundary(size_t u, size_t v) const {
-    auto dfe = directed_face_edges();
-    return !(dfe.count({u, v}) && dfe.count({v, u}));
-}
-
-bool Mesh::is_face_on_boundary(size_t face_key) const {
-    auto fe = face_edges(face_key);
-    if (!fe) return false;
-    for (const auto& [u, v] : *fe) {
-        if (is_edge_on_boundary(u, v)) return true;
-    }
-    return false;
-}
-
-bool Mesh::is_vertex_on_boundary(size_t vertex_key) const {
-    auto dfe = directed_face_edges();
-    for (const auto& [u, v] : dfe) {
-        if (dfe.find({v, u}) == dfe.end() && (u == vertex_key || v == vertex_key)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-double Mesh::area() const {
-    double total = 0.0;
-    for (const auto& [fk, _] : face) {
-        auto a = face_area(fk);
-        if (a) total += *a;
-    }
-    return total;
-}
-
-Point Mesh::centroid() const {
-    double x = 0, y = 0, z = 0;
-    for (const auto& [vk, v] : vertex) {
-        auto p = v.position();
-        x += p[0]; y += p[1]; z += p[2];
-    }
-    double n = vertex.empty() ? 1.0 : (double)vertex.size();
-    return Point(x / n, y / n, z / n);
-}
-
-std::optional<double> Mesh::dihedral_angle(size_t u, size_t v) const {
-    auto ef = edge_faces(u, v);
-    if (!ef || ef->size() < 2) return std::nullopt;
-    auto n0_opt = face_normal((*ef)[0]);
-    auto n1_opt = face_normal((*ef)[1]);
-    if (!n0_opt.has_value() || !n1_opt.has_value()) return std::nullopt;
-    double dot = std::clamp(n0_opt->dot(*n1_opt), -1.0, 1.0);
-    return (Tolerance::PI - std::acos(dot)) * 180.0 / Tolerance::PI;
-}
-
-std::tuple<std::map<std::pair<size_t,size_t>,double>, std::vector<Polyline>, std::vector<Point>>
-Mesh::dihedral_angles(double scale, bool with_arcs, bool with_points) const {
-    std::map<std::pair<size_t,size_t>,double> angles;
-    std::vector<Polyline> arcs;
-    std::vector<Point> points;
-    const int arc_n = 12;
-    for (auto& [u, v] : edges()) {
-        auto da = dihedral_angle(u, v);
-        if (!da) continue;
-        angles[{u, v}] = *da;
-        double deg = *da;
-        auto ep0 = vertex_point(u);
-        auto ep1 = vertex_point(v);
-        if (!ep0 || !ep1) continue;
-        double mx = ((*ep0)[0]+(*ep1)[0])*0.5;
-        double my = ((*ep0)[1]+(*ep1)[1])*0.5;
-        double mz = ((*ep0)[2]+(*ep1)[2])*0.5;
-        if (scale == 0.0) {
-            if (with_points) {
-                Point pt(mx, my, mz, std::to_string(deg));
-                pt.pointcolor = Color(240, 220, 0);
-                points.push_back(pt);
-            }
-            continue;
-        }
-        auto ef = edge_faces(u, v);
-        if (!ef || ef->size() < 2) continue;
-        double ex=(*ep1)[0]-(*ep0)[0], ey=(*ep1)[1]-(*ep0)[1], ez=(*ep1)[2]-(*ep0)[2];
-        double elen=std::sqrt(ex*ex+ey*ey+ez*ez);
-        if (elen < 1e-10) continue;
-        ex/=elen; ey/=elen; ez/=elen;
-        auto fc0 = face_centroid((*ef)[0]);
-        auto fc1 = face_centroid((*ef)[1]);
-        if (!fc0 || !fc1) continue;
-        double d0x=(*fc0)[0]-mx, d0y=(*fc0)[1]-my, d0z=(*fc0)[2]-mz;
-        double dot0=d0x*ex+d0y*ey+d0z*ez;
-        d0x-=dot0*ex; d0y-=dot0*ey; d0z-=dot0*ez;
-        double d0len=std::sqrt(d0x*d0x+d0y*d0y+d0z*d0z);
-        if (d0len < 1e-10) continue;
-        d0x/=d0len; d0y/=d0len; d0z/=d0len;
-        double d1x=(*fc1)[0]-mx, d1y=(*fc1)[1]-my, d1z=(*fc1)[2]-mz;
-        double dot1=d1x*ex+d1y*ey+d1z*ez;
-        d1x-=dot1*ex; d1y-=dot1*ey; d1z-=dot1*ez;
-        double d1len=std::sqrt(d1x*d1x+d1y*d1y+d1z*d1z);
-        if (d1len < 1e-10) continue;
-        d1x/=d1len; d1y/=d1len; d1z/=d1len;
-        double theta=std::acos(std::max(-1.0, std::min(1.0, d0x*d1x+d0y*d1y+d0z*d1z)));
-        if (std::abs(std::sin(theta)) < 1e-10) continue;
-        std::vector<Point> arc_pts;
-        for (int j = 0; j <= arc_n; j++) {
-            double t=(double)j/arc_n;
-            double w1=std::sin((1.0-t)*theta)/std::sin(theta);
-            double w2=std::sin(t*theta)/std::sin(theta);
-            arc_pts.push_back(Point(
-                mx+(w1*d0x+w2*d1x)*scale,
-                my+(w1*d0y+w2*d1y)*scale,
-                mz+(w1*d0z+w2*d1z)*scale));
-        }
-        if (with_arcs) {
-            Polyline arc(arc_pts);
-            arc.name = "dihedral_e"+std::to_string(u)+"_"+std::to_string(v)+"="+std::to_string(deg);
-            arc.linecolor = Color(240, 220, 0);
-            arcs.push_back(arc);
-        }
-        if (with_points) {
-            Point pt(arc_pts[arc_n/2][0], arc_pts[arc_n/2][1], arc_pts[arc_n/2][2], std::to_string(deg));
-            pt.pointcolor = Color(240, 220, 0);
-            points.push_back(pt);
-        }
-    }
-    return {angles, arcs, points};
-}
-
-std::optional<double> Mesh::face_area(size_t face_key) const {
-    auto vertices_opt = face_vertices(face_key);
-    if (!vertices_opt.has_value() || vertices_opt->size() < 3) {
-        return 0.0;
-    }
-    
-    const auto& vertices = *vertices_opt;
-    double area = 0.0;
-    auto p0_opt = vertex_point(vertices[0]);
-    if (!p0_opt) return std::nullopt;
-    const auto& p0 = *p0_opt;
-    
-    for (size_t i = 1; i < vertices.size() - 1; ++i) {
-        auto p1_opt = vertex_point(vertices[i]);
-        auto p2_opt = vertex_point(vertices[i + 1]);
-        if (!p1_opt || !p2_opt) return std::nullopt;
-        
-        const auto& p1 = *p1_opt;
-        const auto& p2 = *p2_opt;
-        
-        Vector u(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-        Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
-        
-        area += u.cross(v).magnitude() * 0.5;
-    }
-    return area;
-}
-
-std::optional<Point> Mesh::face_centroid(size_t face_key) const {
-    auto verts = face_vertices(face_key);
-    if (!verts || verts->empty()) return std::nullopt;
-    double x = 0, y = 0, z = 0;
-    for (auto vk : *verts) {
-        auto p = vertex_point(vk);
-        if (!p) return std::nullopt;
-        x += (*p)[0]; y += (*p)[1]; z += (*p)[2];
-    }
-    double n = (double)verts->size();
-    return Point(x / n, y / n, z / n);
-}
-
-std::optional<Vector> Mesh::face_normal(size_t face_key) const {
-    return face_normal_unitized(face_key, true);
-}
-
-std::optional<Vector> Mesh::face_normal_unitized(size_t face_key, bool unitized) const {
-    auto vertices_opt = face_vertices(face_key);
-    if (!vertices_opt.has_value() || vertices_opt->size() < 3) {
-        return std::nullopt;
-    }
-
-    const auto& vertices = *vertices_opt;
-    auto p0_opt = vertex_point(vertices[0]);
-    auto p1_opt = vertex_point(vertices[1]);
-    auto p2_opt = vertex_point(vertices[2]);
-
-    if (!p0_opt || !p1_opt || !p2_opt) {
-        return std::nullopt;
-    }
-
-    const auto& p0 = *p0_opt;
-    const auto& p1 = *p1_opt;
-    const auto& p2 = *p2_opt;
-
-    Vector u(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-    Vector v(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
-
-    Vector normal = u.cross(v);
-    if (!unitized) {
-        return Vector(normal[0], normal[1], normal[2]);
-    }
-    double len = normal.magnitude();
-
-    if (len > Tolerance::ZERO_TOLERANCE) {
-        return Vector(normal[0] / len, normal[1] / len, normal[2] / len);
-    }
-    return std::nullopt;
-}
-
-std::map<size_t, Vector> Mesh::face_normals() const {
-    std::map<size_t, Vector> normals;
-    for (const auto& [face_key, _] : face) {
-        auto normal_opt = face_normal(face_key);
-        if (normal_opt) {
-            normals[face_key] = *normal_opt;
-        }
-    }
-    return normals;
-}
-
-std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_key) const {
-    auto vertices_opt = face_vertices(face_key);
-    if (!vertices_opt) return std::nullopt;
-
-    const auto& vertices = *vertices_opt;
-    auto it = std::find(vertices.begin(), vertices.end(), vertex_key);
-    if (it == vertices.end()) return std::nullopt;
-
-    size_t vertex_index = std::distance(vertices.begin(), it);
-    size_t n = vertices.size();
-    size_t prev_vertex = vertices[(vertex_index + n - 1) % n];
-    size_t next_vertex = vertices[(vertex_index + 1) % n];
-
-    auto center_opt = vertex_point(vertex_key);
-    auto prev_opt = vertex_point(prev_vertex);
-    auto next_opt = vertex_point(next_vertex);
-
-    if (!center_opt || !prev_opt || !next_opt) return std::nullopt;
-
-    const auto& center = *center_opt;
-    const auto& prev_pos = *prev_opt;
-    const auto& next_pos = *next_opt;
-
-    Vector u(prev_pos[0] - center[0], prev_pos[1] - center[1], prev_pos[2] - center[2]);
-    Vector v(next_pos[0] - center[0], next_pos[1] - center[1], next_pos[2] - center[2]);
-
-    double u_len = u.magnitude();
-    double v_len = v.magnitude();
-
-    if (u_len < Tolerance::ZERO_TOLERANCE || v_len < Tolerance::ZERO_TOLERANCE) {
-        return 0.0;
-    }
-
-    double cos_angle = u.dot(v) / (u_len * v_len);
-    cos_angle = std::clamp(cos_angle, -1.0, 1.0);
-    return std::acos(cos_angle);
-}
-
-std::optional<Vector> Mesh::vertex_normal(size_t vertex_key) const {
-    return vertex_normal_weighted(vertex_key, NormalWeighting::Area);
-}
-
-std::optional<Vector> Mesh::vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const {
-    auto faces_opt = vertex_faces(vertex_key);
-    if (!faces_opt || faces_opt->empty()) {
-        return std::nullopt;
-    }
-
-    Vector normal_acc(0.0, 0.0, 0.0);
-
-    for (size_t face_key : *faces_opt) {
-        auto face_normal_opt = face_normal(face_key);
-        if (!face_normal_opt) continue;
-
-        const auto& fn = *face_normal_opt;
-        double weight = 1.0;
-
-        switch (weighting) {
-            case NormalWeighting::Area:
-                weight = face_area(face_key).value_or(1.0);
-                break;
-            case NormalWeighting::Angle:
-                weight = vertex_angle_in_face(vertex_key, face_key).value_or(1.0);
-                break;
-            case NormalWeighting::Uniform:
-                weight = 1.0;
-                break;
-        }
-
-        normal_acc[0] = normal_acc[0] + fn[0] * weight;
-        normal_acc[1] = normal_acc[1] + fn[1] * weight;
-        normal_acc[2] = normal_acc[2] + fn[2] * weight;
-    }
-
-    double len = normal_acc.magnitude();
-    if (len > Tolerance::ZERO_TOLERANCE) {
-        return Vector(normal_acc[0] / len, normal_acc[1] / len, normal_acc[2] / len);
-    }
-    return std::nullopt;
-}
-
-std::map<size_t, Vector> Mesh::vertex_normals() const {
-    return vertex_normals_weighted(NormalWeighting::Area);
-}
-
-std::map<size_t, Vector> Mesh::vertex_normals_weighted(NormalWeighting weighting) const {
-    std::map<size_t, Vector> acc;
-    for (const auto& [fk, vkeys] : face) {
-        size_t n = vkeys.size();
-        if (n < 3) continue;
-        std::vector<double> px(n), py(n), pz(n);
-        bool ok = true;
-        for (size_t i = 0; i < n; ++i) {
-            auto p = vertex_point(vkeys[i]);
-            if (!p) { ok = false; break; }
-            px[i] = (*p)[0]; py[i] = (*p)[1]; pz[i] = (*p)[2];
-        }
-        if (!ok) continue;
-        double ex = px[1]-px[0], ey = py[1]-py[0], ez = pz[1]-pz[0];
-        double fx = px[2]-px[0], fy = py[2]-py[0], fz = pz[2]-pz[0];
-        double cnx = ey*fz-ez*fy, cny = ez*fx-ex*fz, cnz = ex*fy-ey*fx;
-        double len = std::sqrt(cnx*cnx + cny*cny + cnz*cnz);
-        if (len < Tolerance::ZERO_TOLERANCE) continue;
-        double ux = cnx/len, uy = cny/len, uz = cnz/len;
-        double area = 0.0;
-        if (weighting == NormalWeighting::Area) {
-            for (size_t i = 1; i+1 < n; ++i) {
-                double ax = px[i]-px[0], ay = py[i]-py[0], az = pz[i]-pz[0];
-                double bx = px[i+1]-px[0], by = py[i+1]-py[0], bz = pz[i+1]-pz[0];
-                double cx = ay*bz-az*by, cy = az*bx-ax*bz, cz = ax*by-ay*bx;
-                area += std::sqrt(cx*cx + cy*cy + cz*cz) * 0.5;
-            }
-        }
-        for (size_t i = 0; i < n; ++i) {
-            double weight;
-            if (weighting == NormalWeighting::Uniform) {
-                weight = 1.0;
-            } else if (weighting == NormalWeighting::Area) {
-                weight = area;
-            } else {
-                size_t prev = (i + n - 1) % n, next = (i + 1) % n;
-                double ax = px[prev]-px[i], ay = py[prev]-py[i], az = pz[prev]-pz[i];
-                double bx = px[next]-px[i], by = py[next]-py[i], bz = pz[next]-pz[i];
-                double a_len = std::sqrt(ax*ax + ay*ay + az*az);
-                double b_len = std::sqrt(bx*bx + by*by + bz*bz);
-                if (a_len < Tolerance::ZERO_TOLERANCE || b_len < Tolerance::ZERO_TOLERANCE) weight = 0.0;
-                else { double cos_a = std::clamp((ax*bx+ay*by+az*bz)/(a_len*b_len), -1.0, 1.0); weight = std::acos(cos_a); }
-            }
-            auto& v = acc[vkeys[i]];
-            v[0] = v[0] + ux * weight;
-            v[1] = v[1] + uy * weight;
-            v[2] = v[2] + uz * weight;
-        }
-    }
-    std::map<size_t, Vector> normals;
-    for (auto& [vk, v] : acc) {
-        double len = v.magnitude();
-        if (len > Tolerance::ZERO_TOLERANCE)
-            normals[vk] = Vector(v[0] / len, v[1] / len, v[2] / len);
-    }
-    return normals;
-}
-
-double Mesh::volume() const {
-    double total = 0.0;
-    for (const auto& [fk, vkeys] : face) {
-        if (vkeys.size() < 3) continue;
-        auto p0o = vertex_point(vkeys[0]);
-        if (!p0o) continue;
-        const auto& p0 = *p0o;
-        for (size_t i = 1; i + 1 < vkeys.size(); ++i) {
-            auto p1o = vertex_point(vkeys[i]);
-            auto p2o = vertex_point(vkeys[i + 1]);
-            if (!p1o || !p2o) continue;
-            const auto& p1 = *p1o;
-            const auto& p2 = *p2o;
-            total += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
-                   + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
-                   + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
-        }
-    }
-    return std::abs(total) / 6.0;
-}
-
-Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision) {
-    Mesh mesh;
-    
-    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t> map_eps;
-    std::map<std::tuple<uint64_t, uint64_t, uint64_t>, size_t> map_exact;
-    
-    auto get_vkey = [&](const Point& p) -> size_t {
-        if (precision.has_value()) {
-            double eps = *precision;
-            int64_t kx = static_cast<int64_t>(std::round(p[0] / eps));
-            int64_t ky = static_cast<int64_t>(std::round(p[1] / eps));
-            int64_t kz = static_cast<int64_t>(std::round(p[2] / eps));
-            auto key = std::make_tuple(kx, ky, kz);
-            
-            auto it = map_eps.find(key);
-            if (it != map_eps.end()) {
-                return it->second;
-            }
-            size_t vk = mesh.add_vertex(p);
-            map_eps[key] = vk;
-            return vk;
-        } else {
-            auto key = std::make_tuple(
-                std::bit_cast<uint64_t>(p[0]),
-                std::bit_cast<uint64_t>(p[1]),
-                std::bit_cast<uint64_t>(p[2]));
-            
-            auto it = map_exact.find(key);
-            if (it != map_exact.end()) {
-                return it->second;
-            }
-            size_t vk = mesh.add_vertex(p);
-            map_exact[key] = vk;
-            return vk;
-        }
-    };
-    
-    for (const auto& poly : polygons) {
-        if (poly.size() < 3) continue;
-
-        std::vector<size_t> vkeys;
-        vkeys.reserve(poly.size());
-        for (const auto& p : poly) {
-            vkeys.push_back(get_vkey(p));
-        }
-        if (vkeys.size() > 1 && vkeys.back() == vkeys.front())
-            vkeys.pop_back();
-        if (vkeys.size() < 3) continue;
-        auto fk = mesh.add_face(vkeys);
-        if (fk && vkeys.size() >= 4) {
-            int np = (int)poly.size();
-            double nx=0, ny=0, nz=0;
-            for (int i = 0; i < np; i++) {
-                const auto& a = poly[i]; const auto& b = poly[(i+1)%np];
-                nx += (a[1]-b[1])*(a[2]+b[2]);
-                ny += (a[2]-b[2])*(a[0]+b[0]);
-                nz += (a[0]-b[0])*(a[1]+b[1]);
-            }
-            double nlen = std::sqrt(nx*nx+ny*ny+nz*nz);
-            if (nlen > 1e-12) {
-                nx/=nlen; ny/=nlen; nz/=nlen;
-                double ux=1,uy=0,uz=0;
-                if (std::abs(nx) > 0.9) { ux=0; uy=1; }
-                double dot=ux*nx+uy*ny+uz*nz;
-                ux-=dot*nx; uy-=dot*ny; uz-=dot*nz;
-                double um=std::sqrt(ux*ux+uy*uy+uz*uz);
-                ux/=um; uy/=um; uz/=um;
-                double vx=ny*uz-nz*uy, vy=nz*ux-nx*uz, vz=nx*uy-ny*ux;
-                std::vector<std::pair<double,double>> bpts;
-                int nk = (int)vkeys.size();
-                for (int i = 0; i < nk; ++i)
-                    bpts.push_back({poly[i][0]*ux+poly[i][1]*uy+poly[i][2]*uz,
-                                    poly[i][0]*vx+poly[i][1]*vy+poly[i][2]*vz});
-                auto tris = cdt_triangulate(bpts, {});
-                std::vector<std::array<size_t,3>> tri_list;
-                for (const auto& t : tris)
-                    tri_list.push_back({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
-                mesh.triangulation[*fk] = tri_list;
-            }
-        }
-    }
-    return mesh;
-}
-
-Mesh Mesh::from_vertices_and_faces(const std::vector<Point>& vertices,
-                                    const std::vector<std::vector<size_t>>& faces) {
-    Mesh mesh;
-    for (const auto& pt : vertices)
-        mesh.add_vertex(pt);
-    for (const auto& f : faces)
-        mesh.add_face(f);
-    return mesh;
+    return adjacency;
+}
+
+/// One face per panel, from its local top or bottom ring
+static Mesh lp_ordered_mesh(const std::vector<LoftPanel>& panels, bool top) {
+    Mesh ordered;
+    for (size_t i = 0; i < panels.size(); i++) {
+        const std::vector<size_t>& ring = top ? panels[i].top_vertices : panels[i].bot_vertices;
+        std::vector<size_t> vks;
+        vks.reserve(ring.size());
+        for (size_t lk : ring) vks.push_back(ordered.add_vertex(*panels[i].mesh.vertex_point(lk)));
+        ordered.add_face(vks, i);
+    }
+    return ordered;
+}
+
+LoftResult Mesh::loft_panels(
+    const std::vector<std::vector<Point>>& top_polygons,
+    const std::vector<std::vector<Point>>& bot_polygons,
+    double merge_precision,
+    double edge_gap,
+    double edge_match_threshold,
+    bool   add_caps,
+    bool   skip_triangles)
+{
+    const Mesh top_mesh = Mesh::from_polylines(top_polygons, merge_precision);
+    const Mesh bot_mesh = Mesh::from_polylines(bot_polygons, merge_precision);
+    const std::vector<std::pair<size_t,size_t>> face_match = lp_match_faces(top_mesh, bot_mesh);
+    std::vector<LoftPanel> panels;
+    panels.reserve(face_match.size());
+    for (const auto& [tfk, bfk] : face_match)
+        panels.push_back(lp_build_panel(top_mesh, bot_mesh, tfk, bfk, edge_gap, edge_match_threshold, add_caps, skip_triangles));
+    std::vector<LoftAdjPair> adjacency = lp_adjacency(panels);
+    Mesh top_ordered = lp_ordered_mesh(panels, true);
+    Mesh bot_ordered = lp_ordered_mesh(panels, false);
+    return {std::move(panels), std::move(adjacency), std::move(top_ordered), std::move(bot_ordered)};
 }
 
 Mesh Mesh::create_box(double x, double y, double z) {
-    double hx = x * 0.5, hy = y * 0.5, hz = z * 0.5;
-    std::vector<Point> vertices = {
+    const double hx = x * 0.5, hy = y * 0.5, hz = z * 0.5;
+    const std::vector<Point> vertices = {
         Point(-hx, -hy, -hz),
         Point( hx, -hy, -hz),
         Point( hx,  hy, -hz),
@@ -1793,22 +1104,22 @@ Mesh Mesh::create_box(double x, double y, double z) {
         Point( hx,  hy,  hz),
         Point(-hx,  hy,  hz),
     };
-    std::vector<std::vector<size_t>> faces = {
-        {0, 3, 2, 1},  // bottom
-        {4, 5, 6, 7},  // top
-        {0, 1, 5, 4},  // front
-        {2, 3, 7, 6},  // back
-        {0, 4, 7, 3},  // left
-        {1, 2, 6, 5},  // right
+    const std::vector<std::vector<size_t>> faces = {
+        {0, 3, 2, 1},
+        {4, 5, 6, 7},
+        {0, 1, 5, 4},
+        {2, 3, 7, 6},
+        {0, 4, 7, 3},
+        {1, 2, 6, 5},
     };
     return from_vertices_and_faces(vertices, faces);
 }
 
 Mesh Mesh::create_dodecahedron(double edge) {
-    double phi = (1.0 + std::sqrt(5.0)) / 2.0;
-    double ip = 1.0 / phi;
-    double s = edge / (2.0 * ip);
-    Point verts[20] = {
+    const double phi = (1.0 + std::sqrt(5.0)) / 2.0;
+    const double ip = 1.0 / phi;
+    const double s = edge / (2.0 * ip);
+    const Point verts[20] = {
         Point(s, s, s),
         Point(s, s, -s),
         Point(s, -s, s),
@@ -1830,1088 +1141,1638 @@ Mesh Mesh::create_dodecahedron(double edge) {
         Point(-s*phi, 0, s*ip),
         Point(-s*phi, 0, -s*ip),
     };
-    int idx[12][5] = {
-        {0, 8,10, 2,16}, {0,16,17, 1,12}, {0,12,14, 4, 8},
-        {1,17, 3,11, 9}, {1, 9, 5,14,12}, {2,10, 6,15,13},
-        {2,13, 3,17,16}, {3,13,15, 7,11}, {4,14, 5,19,18},
-        {4,18, 6,10, 8}, {5, 9,11, 7,19}, {6,18,19, 7,15},
+    const int idx[12][5] = {
+        {0, 8, 10, 2, 16}, {0, 16, 17, 1, 12}, {0, 12, 14, 4, 8},
+        {1, 17, 3, 11, 9}, {1, 9, 5, 14, 12}, {2, 10, 6, 15, 13},
+        {2, 13, 3, 17, 16}, {3, 13, 15, 7, 11}, {4, 14, 5, 19, 18},
+        {4, 18, 6, 10, 8}, {5, 9, 11, 7, 19}, {6, 18, 19, 7, 15},
     };
     std::vector<std::vector<Point>> faces;
-    for (auto& f : idx)
+    faces.reserve(12);
+    for (const auto& f : idx)
         faces.push_back({verts[f[0]], verts[f[1]], verts[f[2]], verts[f[3]], verts[f[4]]});
     return from_polylines(faces, 1e-6);
 }
 
-Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face, std::optional<double> precision) {
-    if (lines.empty()) return Mesh();
+/// Number of points of a polyline without its closing duplicate
+static size_t pairs_open_count(const Polyline& pl) {
+    const size_t n = pl.point_count();
+    if (n > 1 && pl.is_closed()) return n - 1;
+    return n;
+}
 
-    // Collect all endpoints
+/// Open polyline with every coordinate divided by scale
+static Polyline pairs_scaled_open(const Polyline& src, double scale) {
+    const size_t limit = pairs_open_count(src);
+    std::vector<Point> pts;
+    pts.reserve(limit);
+    for (size_t j = 0; j < limit; ++j) {
+        const Point p = src.get_point(j);
+        pts.push_back(Point(p[0] / scale, p[1] / scale, p[2] / scale));
+    }
+    return Polyline(pts);
+}
+
+Mesh Mesh::from_polyline_pairs(const std::vector<Polyline>& pairs, double scale) {
+    if (pairs.empty() || pairs.size() % 2 != 0) return Mesh();
+    for (size_t i = 0; i < pairs.size(); i += 2) {
+        const size_t a = pairs_open_count(pairs[i]);
+        const size_t b = pairs_open_count(pairs[i + 1]);
+        if (a != b || a < 3) return Mesh();
+    }
+    std::vector<Polyline> top_polys, bot_polys;
+    top_polys.reserve(pairs.size() / 2);
+    bot_polys.reserve(pairs.size() / 2);
+    for (size_t i = 0; i < pairs.size(); i += 2) {
+        top_polys.push_back(pairs_scaled_open(pairs[i], scale));
+        bot_polys.push_back(pairs_scaled_open(pairs[i + 1], scale));
+    }
+    return loft(top_polys, bot_polys, true);
+}
+
+void Mesh::from_polyline_pairs_vnf(
+    const std::vector<Polyline>& pairs,
+    std::vector<double>& out_vertices,
+    std::vector<double>& out_normals,
+    std::vector<int>& out_triangles,
+    double scale)
+{
+    const Mesh m = from_polyline_pairs(pairs, scale);
+    if (m.is_empty()) return;
+    const std::map<size_t, Vector> face_nrms = m.face_normals();
+    for (size_t fk : m.faces()) {
+        const std::optional<std::vector<Point>> fpts = m.face_points(fk);
+        if (!fpts || fpts->size() < 3) continue;
+        Vector nrm(0.0, 0.0, 1.0);
+        const auto it = face_nrms.find(fk);
+        if (it != face_nrms.end()) nrm = it->second;
+        for (size_t i = 1; i + 1 < fpts->size(); ++i) {
+            for (const Point* p : {&(*fpts)[0], &(*fpts)[i], &(*fpts)[i + 1]}) {
+                out_triangles.push_back(static_cast<int>(out_triangles.size()));
+                out_vertices.push_back((*p)[0]);
+                out_vertices.push_back((*p)[1]);
+                out_vertices.push_back((*p)[2]);
+                out_normals.push_back(nrm[0]);
+                out_normals.push_back(nrm[1]);
+                out_normals.push_back(nrm[2]);
+            }
+        }
+    }
+}
+
+Mesh Mesh::reflex_fold(const Polyline& cross_section, const Polyline& profile) {
+    const size_t n_cs = cross_section.point_count();
+    const size_t n_p = profile.point_count();
+    std::vector<Plane> planes;
+    planes.reserve(n_cs);
+    for (size_t i = 0; i < n_cs; ++i) {
+        Vector normal(0, 0, 1);
+        if (i > 0 && i < n_cs - 1) {
+            const Point ci = cross_section[i];
+            const Point cp = cross_section[i - 1];
+            const Point cn = cross_section[i + 1];
+            const Vector v1 = Vector(cp[0]-ci[0], cp[1]-ci[1], cp[2]-ci[2]).normalized();
+            const Vector v2 = Vector(cn[0]-ci[0], cn[1]-ci[1], cn[2]-ci[2]).normalized();
+            normal = Vector(v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2]);
+            if (!normal.normalize_self()) normal = Vector(0, 0, 1);
+        }
+        planes.push_back(Plane::from_point_normal(cross_section[i], normal));
+    }
     std::vector<Point> all_pts;
-    all_pts.reserve(lines.size() * 2);
-    for (const auto& ln : lines) {
-        all_pts.push_back(ln.start());
-        all_pts.push_back(ln.end());
-    }
-
-    // Compute precision from bbox if not given
-    double eps = precision.value_or(0.0);
-    if (eps <= 0.0) {
-        double minx = all_pts[0][0], miny = all_pts[0][1], minz = all_pts[0][2];
-        double maxx = minx, maxy = miny, maxz = minz;
-        for (const auto& p : all_pts) {
-            if (p[0] < minx) minx = p[0];
-            if (p[0] > maxx) maxx = p[0];
-            if (p[1] < miny) miny = p[1];
-            if (p[1] > maxy) maxy = p[1];
-            if (p[2] < minz) minz = p[2];
-            if (p[2] > maxz) maxz = p[2];
+    all_pts.reserve(n_cs * n_p);
+    for (size_t j = 0; j < n_p; ++j)
+        all_pts.push_back(profile[j]);
+    std::vector<std::vector<size_t>> faces;
+    for (size_t i = 1; i < n_cs; ++i) {
+        const Point& po = planes[i].origin();
+        const Point& pp = planes[i - 1].origin();
+        const Vector n1(po[0]-pp[0], po[1]-pp[1], po[2]-pp[2]);
+        const Vector& n2 = planes[i].z_axis();
+        const size_t row_start = all_pts.size();
+        for (size_t j = 0; j < n_p; ++j) {
+            const Point pvrt = all_pts[row_start - n_p + j];
+            const Vector diff(po[0]-pvrt[0], po[1]-pvrt[1], po[2]-pvrt[2]);
+            const double denom = n2.dot(n1);
+            const double t = (std::abs(denom) > 1e-12) ? n2.dot(diff) / denom : 0.0;
+            all_pts.push_back(Point(pvrt[0]+n1[0]*t, pvrt[1]+n1[1]*t, pvrt[2]+n1[2]*t));
         }
-        double diag = std::sqrt((maxx-minx)*(maxx-minx) + (maxy-miny)*(maxy-miny) + (maxz-minz)*(maxz-minz));
-        eps = diag * 1e-6;
-        if (eps < 1e-12) eps = 1e-12;
-    }
-
-    // Merge vertices using grid quantization
-    std::map<std::tuple<int64_t, int64_t, int64_t>, size_t> vmap;
-    std::vector<Point> verts;
-    auto get_vid = [&](const Point& p) -> size_t {
-        int64_t kx = static_cast<int64_t>(std::round(p[0] / eps));
-        int64_t ky = static_cast<int64_t>(std::round(p[1] / eps));
-        int64_t kz = static_cast<int64_t>(std::round(p[2] / eps));
-        auto key = std::make_tuple(kx, ky, kz);
-        auto it = vmap.find(key);
-        if (it != vmap.end()) return it->second;
-        size_t id = verts.size();
-        verts.push_back(p);
-        vmap[key] = id;
-        return id;
-    };
-
-    // Build adjacency from line segments
-    size_t nv = 0;
-    std::map<size_t, std::vector<size_t>> adj;
-    for (const auto& ln : lines) {
-        size_t a = get_vid(ln.start());
-        size_t b = get_vid(ln.end());
-        if (a == b) continue;
-        adj[a].push_back(b);
-        adj[b].push_back(a);
-    }
-    nv = verts.size();
-
-    // Sort neighbors CCW by angle at each vertex
-    for (auto& [v, nbrs] : adj) {
-        // Remove duplicates
-        std::sort(nbrs.begin(), nbrs.end());
-        nbrs.erase(std::unique(nbrs.begin(), nbrs.end()), nbrs.end());
-        // Sort by atan2 angle
-        double vx = verts[v][0], vy = verts[v][1];
-        std::sort(nbrs.begin(), nbrs.end(), [&](size_t a, size_t b) {
-            double aa = std::atan2(verts[a][1] - vy, verts[a][0] - vx);
-            double ba = std::atan2(verts[b][1] - vy, verts[b][0] - vx);
-            return aa < ba;
-        });
-    }
-
-    // Half-edge traversal to find face cycles
-    // For directed edge u->v, next edge starts at v, going to the neighbor
-    // just CW after u in v's CCW-sorted list (predecessor of u)
-    std::set<std::pair<size_t, size_t>> visited;
-    std::vector<std::vector<size_t>> face_cycles;
-
-    for (auto& [u, nbrs] : adj) {
-        for (size_t v : nbrs) {
-            if (visited.count({u, v})) continue;
-
-            std::vector<size_t> cycle;
-            size_t cu = u, cv = v;
-            bool valid = true;
-            while (true) {
-                if (visited.count({cu, cv})) break;
-                visited.insert({cu, cv});
-                cycle.push_back(cu);
-
-                // Find next: at vertex cv, find cu in cv's neighbor list,
-                // then take the predecessor (CW neighbor = previous in CCW order)
-                auto& cv_nbrs = adj[cv];
-                auto it = std::find(cv_nbrs.begin(), cv_nbrs.end(), cu);
-                if (it == cv_nbrs.end()) { valid = false; break; }
-                size_t idx = static_cast<size_t>(it - cv_nbrs.begin());
-                size_t prev_idx = (idx == 0) ? cv_nbrs.size() - 1 : idx - 1;
-                size_t nxt = cv_nbrs[prev_idx];
-
-                cu = cv;
-                cv = nxt;
-
-                if (cycle.size() > nv * 2) { valid = false; break; }
-            }
-
-            if (valid && cycle.size() >= 3) {
-                face_cycles.push_back(cycle);
-            }
+        for (size_t j = 0; j + 1 < n_p; ++j) {
+            const size_t new_j = row_start + j;
+            const size_t old_j = row_start - n_p + j;
+            faces.push_back({new_j, old_j, old_j + 1, new_j + 1});
         }
     }
-
-    // Build mesh from cycles
-    Mesh mesh;
-    std::vector<size_t> vkeys;
-    vkeys.reserve(verts.size());
-    for (const auto& pt : verts) vkeys.push_back(mesh.add_vertex(pt));
-
-    // Optionally delete the exterior face (most-negative signed area)
-    if (delete_boundary_face && !face_cycles.empty()) {
-        size_t min_idx = 0;
-        double min_area = std::numeric_limits<double>::max();
-        for (size_t i = 0; i < face_cycles.size(); ++i) {
-            double area = 0.0;
-            const auto& cyc = face_cycles[i];
-            size_t cn = cyc.size();
-            for (size_t j = 0; j < cn; ++j) {
-                size_t a = cyc[j], b = cyc[(j+1)%cn];
-                area += verts[a][0] * verts[b][1] - verts[b][0] * verts[a][1];
-            }
-            area *= 0.5;
-            if (area < min_area) { min_area = area; min_idx = i; }
-        }
-        face_cycles.erase(face_cycles.begin() + min_idx);
-    }
-
-    for (const auto& cycle : face_cycles) {
-        std::vector<size_t> fvkeys;
-        fvkeys.reserve(cycle.size());
-        for (size_t vid : cycle) fvkeys.push_back(vkeys[vid]);
-        auto fkey_opt = mesh.add_face(fvkeys);
-        if (fkey_opt.has_value()) {
-            std::vector<size_t> ordered = cycle;
-            std::vector<std::pair<double,double>> bpts;
-            bpts.reserve(ordered.size());
-            for (size_t vid : ordered) bpts.push_back({verts[vid][0], verts[vid][1]});
-            double area = 0.0;
-            for (size_t j = 0, cn = bpts.size(); j < cn; ++j) {
-                size_t k = (j + 1) % cn;
-                area += bpts[j].first * bpts[k].second - bpts[k].first * bpts[j].second;
-            }
-            if (area < 0.0) { std::reverse(bpts.begin(), bpts.end()); std::reverse(ordered.begin(), ordered.end()); }
-            auto tris = cdt_triangulate(bpts, {});
-            std::vector<std::array<size_t, 3>> tri_list;
-            for (const auto& t : tris)
-                tri_list.push_back({vkeys[ordered[t[0]]], vkeys[ordered[t[1]]], vkeys[ordered[t[2]]]});
-            mesh.triangulation[fkey_opt.value()] = tri_list;
-        }
-    }
-
-    return mesh;
+    return Mesh::from_vertices_and_faces(all_pts, faces);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Miter contours
+// ═══════════════════════════════════════════════════════════════════════════
 
-Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox) {
-    if (polylines.empty()) return Mesh();
-    std::vector<Polyline> pls;
-    for (const auto& v : polylines) pls.emplace_back(v);
-    return RemeshCDT::from_polylines(pls, false, !sort_by_bbox);
+/// Corners whose interior angle is below max_angle_deg
+static std::vector<bool> fold_chamfer_mask(const std::vector<Point>& pts, double max_angle_deg) {
+    const size_t n = pts.size();
+    std::vector<bool> mask(n, false);
+    for (size_t i = 0; i < n; ++i) {
+        const size_t prev = (i + n - 1) % n;
+        const size_t next = (i + 1) % n;
+        const Vector dp(pts[prev][0]-pts[i][0], pts[prev][1]-pts[i][1], pts[prev][2]-pts[i][2]);
+        const Vector dn(pts[next][0]-pts[i][0], pts[next][1]-pts[i][1], pts[next][2]-pts[i][2]);
+        const double lp = dp.magnitude();
+        const double ln = dn.magnitude();
+        if (lp < 1e-12 || ln < 1e-12) continue;
+        const double cos_a = std::clamp(dp.dot(dn) / (lp * ln), -1.0, 1.0);
+        mask[i] = std::acos(cos_a) * Tolerance::TO_DEGREES < max_angle_deg;
+    }
+    return mask;
 }
 
-Mesh Mesh::loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap, bool fix_collinear) {
-    // LOFT_DUMP=1 env var: print per-poly ia/ib/winding/strip diagnostics to stderr
-    const bool loft_dbg = (std::getenv("LOFT_DUMP") != nullptr);
-    if (polylines0.empty() || polylines1.empty()) return Mesh();
-    if (polylines0.size() != polylines1.size()) return Mesh();
-
-    // Find border polyline (largest bbox diagonal) among polylines0
-    int border_idx = 0;
-    double max_diag = 0.0;
-    for (size_t i = 0; i < polylines0.size(); ++i) {
-        auto pts = polylines0[i].get_points();
-        if (pts.empty()) continue;
-        double minx = pts[0][0], miny = pts[0][1], minz = pts[0][2];
-        double maxx = minx, maxy = miny, maxz = minz;
-        for (const auto& p : pts) {
-            if (p[0] < minx) minx = p[0];
-            if (p[0] > maxx) maxx = p[0];
-            if (p[1] < miny) miny = p[1];
-            if (p[1] > maxy) maxy = p[1];
-            if (p[2] < minz) minz = p[2];
-            if (p[2] > maxz) maxz = p[2];
-        }
-        double dx = maxx - minx, dy = maxy - miny, dz = maxz - minz;
-        double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
-        if (diag > max_diag) { max_diag = diag; border_idx = static_cast<int>(i); }
+/// Ring with every masked corner cut back by s, capped at a third of the shortest edge
+static std::vector<Point> fold_chamfer(const std::vector<Point>& pts, double s, const std::vector<bool>& mask) {
+    const size_t n = pts.size();
+    if (s <= 0.0) return pts;
+    double min_edge = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < n; ++i) {
+        const size_t j = (i + 1) % n;
+        const Vector d(pts[j][0]-pts[i][0], pts[j][1]-pts[i][1], pts[j][2]-pts[i][2]);
+        min_edge = std::min(min_edge, d.magnitude());
     }
-
-    auto get_open_points = [](const Polyline& pl) -> std::vector<Point> {
-        auto pts = pl.get_points();
-        if (pts.size() > 1) {
-            const auto& f = pts.front();
-            const auto& b = pts.back();
-            if (std::abs(f[0]-b[0]) < 1e-12 && std::abs(f[1]-b[1]) < 1e-12 && std::abs(f[2]-b[2]) < 1e-12)
-                pts.pop_back();
-        }
-        return pts;
-    };
-
-    // Compute average plane from border polyline for 2D projection
-    Point origin;
-    Vector xaxis, yaxis, zaxis;
-    polylines0[border_idx].get_average_plane(origin, xaxis, yaxis, zaxis);
-
-    // Orient zaxis from bottom toward top so winding check is consistent
-    {
-        Point c0 = polylines0[border_idx].center();
-        Point c1 = polylines1[border_idx].center();
-        Vector bottom_to_top(c1[0]-c0[0], c1[1]-c0[1], c1[2]-c0[2]);
-        if (zaxis.dot(bottom_to_top) < 0) {
-            zaxis = Vector(-zaxis[0], -zaxis[1], -zaxis[2]);
-            yaxis = Vector(-yaxis[0], -yaxis[1], -yaxis[2]);
-        }
-    }
-
-    auto project_2d = [&](const Point& p) -> std::pair<double, double> {
-        double dx = p[0] - origin[0];
-        double dy = p[1] - origin[1];
-        double dz = p[2] - origin[2];
-        double u = dx * xaxis[0] + dy * xaxis[1] + dz * xaxis[2];
-        double v = dx * yaxis[0] + dy * yaxis[1] + dz * yaxis[2];
-        return {u, v};
-    };
-
-    // 2D signed area: positive = CCW, negative = CW
-    auto signed_area_2d = [&](const std::vector<Point>& pts) -> double {
-        double area = 0.0;
-        size_t n = pts.size();
-        for (size_t i = 0; i < n; ++i) {
-            size_t j = (i + 1) % n;
-            auto [xi, yi] = project_2d(pts[i]);
-            auto [xj, yj] = project_2d(pts[j]);
-            area += xi * yj - xj * yi;
-        }
-        return area * 0.5;
-    };
-
-    // Build ordered list: border first, then holes
-    std::vector<int> order;
-    order.push_back(border_idx);
-    for (size_t i = 0; i < polylines0.size(); ++i)
-        if (static_cast<int>(i) != border_idx) order.push_back(static_cast<int>(i));
-
-    // Collect open points, enforce winding: border=CCW, holes=CW
-    struct PolyInfo { size_t bot_off; size_t bot_n; size_t top_off; size_t top_n; };
-    std::vector<PolyInfo> poly_infos;
-    std::vector<Point> all_bot_pts;
-    std::vector<Point> all_top_pts;
-
-    // Drop index i from paired polylines when bot[i] AND top[i] are both collinear
-    // with their kept neighbors (in the loft's 2D projection frame, using the
-    // SAME int64 quantization the CDT uses internally). This keeps cap-CDT
-    // input and side-wall segments in sync: any vertex the CDT would skip as
-    // collinear is also dropped from the side-wall chain.
-    for (size_t oi = 0; oi < order.size(); ++oi) {
-        int idx = order[oi];
-        auto bot = get_open_points(polylines0[idx]);
-        auto top = get_open_points(polylines1[idx]);
-
-        bool is_border = (oi == 0);
-        double area = signed_area_2d(bot);
-        // Outer boundary: enforce CCW (positive area) for CDT.
-        // Holes: enforce CW (negative area) so Delaunay treats them as inner local minima.
-        bool reversed = false;
-        if (is_border ? (area < 0) : (area > 0)) {
-            std::reverse(bot.begin(), bot.end());
-            std::reverse(top.begin(), top.end());
-            reversed = true;
-        }
-
-        if (loft_dbg) {
-            fprintf(stderr, "LOFT poly[%zu] is_border=%d area=%.4g reversed=%d bot=%zu top=%zu%s\n",
-                oi, (int)is_border, area,
-                reversed ? 1 : 0,
-                bot.size(), top.size(),
-                (bot.size() != top.size() ? " COUNT_MISMATCH" : ""));
-        }
-
-        poly_infos.push_back({all_bot_pts.size(), bot.size(), all_top_pts.size(), top.size()});
-        for (const auto& p : bot) all_bot_pts.push_back(p);
-        for (const auto& p : top) all_top_pts.push_back(p);
-    }
-
-    // Build mesh
-    Mesh mesh;
-
-    // Build vertex keys — reuse the same key for consecutive same-position points
-    // (collapsed pairs) so wall faces and cap CDT triangles share edges correctly.
-    auto add_vkeys = [&](const std::vector<Point>& pts) {
-        std::vector<size_t> keys;
-        keys.reserve(pts.size());
-        for (size_t i = 0; i < pts.size(); ++i) {
-            if (i > 0) {
-                const auto& prev = pts[i-1];
-                const auto& curr = pts[i];
-                double dx = curr[0]-prev[0], dy = curr[1]-prev[1], dz = curr[2]-prev[2];
-                if (dx*dx + dy*dy + dz*dz < 1e-20) {
-                    keys.push_back(keys.back());
-                    continue;
-                }
-            }
-            keys.push_back(mesh.add_vertex(pts[i]));
-        }
-        return keys;
-    };
-
-    std::vector<size_t> bot_vkeys = add_vkeys(all_bot_pts);
-    std::vector<size_t> top_vkeys = add_vkeys(all_top_pts);
-
-    if (cap) {
-        // Cap CDT: build deduplicated 2D border (strips consecutive collapsed pairs)
-        // with flat_vkey mapping CDT-index → index into vkeys array.
-        // N-gon cap with stored CDT triangulation. Collapsed pairs share the same
-        // vertex key (from add_vkeys), so the n-gon boundary and triangulation
-        // both use unique keys — Rhino renders them as polygon faces.
-
-        // Bottom cap — n-gon boundary reversed (CCW from outside), CDT triangulation stored.
-        {
-            std::vector<std::pair<double,double>> b_border_2d;
-            std::vector<size_t> b_outer_vkey;
-            for (size_t i = 0; i < poly_infos[0].bot_n; ++i) {
-                size_t vi = poly_infos[0].bot_off + i;
-                if (!b_outer_vkey.empty() && bot_vkeys[vi] == bot_vkeys[b_outer_vkey.back()]) continue;
-                b_border_2d.push_back(project_2d(all_bot_pts[vi]));
-                b_outer_vkey.push_back(vi);
-            }
-            std::vector<size_t> b_flat_vkey = b_outer_vkey;
-            std::vector<std::vector<std::pair<double,double>>> b_holes_2d;
-            std::vector<std::vector<size_t>> b_hole_rings;
-            for (size_t h = 1; h < poly_infos.size(); ++h) {
-                std::vector<std::pair<double,double>> hole;
-                std::vector<size_t> hole_ring;
-                for (size_t i = poly_infos[h].bot_off; i < poly_infos[h].bot_off + poly_infos[h].bot_n; ++i) {
-                    hole.push_back(project_2d(all_bot_pts[i]));
-                    b_flat_vkey.push_back(i);
-                    hole_ring.push_back(bot_vkeys[i]);
-                }
-                b_holes_2d.push_back(std::move(hole));
-                b_hole_rings.push_back(std::move(hole_ring));
-            }
-            auto b_tris = cdt_triangulate(b_border_2d, b_holes_2d);
-            // N-gon: reversed outer-only keys for CCW winding from outside.
-            std::vector<size_t> fvkeys;
-            for (int i = (int)b_outer_vkey.size() - 1; i >= 0; --i)
-                fvkeys.push_back(bot_vkeys[b_outer_vkey[i]]);
-            auto fk = mesh.add_face(fvkeys);
-            if (fk.has_value()) {
-                std::vector<std::array<size_t,3>> tri_list;
-                for (const auto& f : b_tris)
-                    tri_list.push_back({bot_vkeys[b_flat_vkey[f[0]]], bot_vkeys[b_flat_vkey[f[2]]], bot_vkeys[b_flat_vkey[f[1]]]});
-                if (fix_collinear) {
-                // Insert boundary vertices skipped by CDT (collinear vertices not in any triangle).
-                // For each orphaned vertex B (between prev A and next C in fvkeys), find the
-                // triangle spanning edge {A,C} and split it at B.
-                {
-                    auto split_at = [](std::vector<std::array<size_t,3>>& tl,
-                                       size_t j, size_t A, size_t C, size_t B) {
-                        std::array<size_t,3>& ft = tl[j];
-                        std::array<size_t,3> t1, t2;
-                        if ((ft[0]==A||ft[0]==C)&&(ft[1]==A||ft[1]==C))
-                            { t1={ft[0],B,ft[2]}; t2={B,ft[1],ft[2]}; }
-                        else if ((ft[1]==A||ft[1]==C)&&(ft[2]==A||ft[2]==C))
-                            { t1={ft[0],ft[1],B}; t2={ft[0],B,ft[2]}; }
-                        else
-                            { t1={ft[0],ft[1],B}; t2={B,ft[1],ft[2]}; }
-                        ft = t1; tl.push_back(t2);
-                    };
-                    bool chg = true;
-                    while (chg) {
-                        chg = false;
-                        std::set<size_t> tv;
-                        for (const auto& t : tri_list) for (size_t v : t) tv.insert(v);
-                        size_t n = fvkeys.size();
-                        for (size_t k = 0; k < n; ++k) {
-                            size_t B = fvkeys[k];
-                            if (tv.count(B)) continue;
-                            size_t A = fvkeys[(k+n-1)%n], C = fvkeys[(k+1)%n];
-                            for (size_t j = 0; j < tri_list.size(); ++j) {
-                                bool hA=(tri_list[j][0]==A||tri_list[j][1]==A||tri_list[j][2]==A);
-                                bool hC=(tri_list[j][0]==C||tri_list[j][1]==C||tri_list[j][2]==C);
-                                if (!hA||!hC) continue;
-                                split_at(tri_list, j, A, C, B); chg=true; break;
-                            }
-                            if (chg) break;
-                        }
-                    }
-                }
-                // Remove any remaining zero-area triangles (degenerate CDT artifacts).
-                {
-                    const double sc = 1e6;
-                    tri_list.erase(
-                        std::remove_if(tri_list.begin(), tri_list.end(),
-                            [&](const std::array<size_t,3>& t) -> bool {
-                                const auto& v0=mesh.vertex.at(t[0]); const auto& v1=mesh.vertex.at(t[1]); const auto& v2=mesh.vertex.at(t[2]);
-                                auto [u0,vv0]=project_2d(Point(v0.x,v0.y,v0.z));
-                                auto [u1,vv1]=project_2d(Point(v1.x,v1.y,v1.z));
-                                auto [u2,vv2]=project_2d(Point(v2.x,v2.y,v2.z));
-                                int64_t iu0=std::llround(u0*sc),iv0=std::llround(vv0*sc);
-                                int64_t iu1=std::llround(u1*sc),iv1=std::llround(vv1*sc);
-                                int64_t iu2=std::llround(u2*sc),iv2=std::llround(vv2*sc);
-                                return (iu1-iu0)*(iv2-iv0)-(iv1-iv0)*(iu2-iu0)==0;
-                            }),
-                        tri_list.end());
-                }
-                } // fix_collinear
-                mesh.triangulation[fk.value()] = tri_list;
-                if (!b_hole_rings.empty() && !tri_list.empty())
-                    mesh.face_holes[fk.value()] = b_hole_rings;
-            }
-        }
-
-        // Top cap — n-gon boundary forward (CCW from outside), CDT triangulation stored.
-        {
-            std::vector<std::pair<double,double>> t_border_2d;
-            std::vector<size_t> t_outer_vkey;
-            for (size_t i = 0; i < poly_infos[0].top_n; ++i) {
-                size_t vi = poly_infos[0].top_off + i;
-                if (!t_outer_vkey.empty() && top_vkeys[vi] == top_vkeys[t_outer_vkey.back()]) continue;
-                t_border_2d.push_back(project_2d(all_top_pts[vi]));
-                t_outer_vkey.push_back(vi);
-            }
-            std::vector<size_t> t_flat_vkey = t_outer_vkey;
-            std::vector<std::vector<std::pair<double,double>>> t_holes_2d;
-            std::vector<std::vector<size_t>> t_hole_rings;
-            for (size_t h = 1; h < poly_infos.size(); ++h) {
-                std::vector<std::pair<double,double>> hole;
-                std::vector<size_t> hole_ring;
-                for (size_t i = poly_infos[h].top_off; i < poly_infos[h].top_off + poly_infos[h].top_n; ++i) {
-                    hole.push_back(project_2d(all_top_pts[i]));
-                    t_flat_vkey.push_back(i);
-                    hole_ring.push_back(top_vkeys[i]);
-                }
-                t_holes_2d.push_back(std::move(hole));
-                t_hole_rings.push_back(std::move(hole_ring));
-            }
-            auto t_tris = cdt_triangulate(t_border_2d, t_holes_2d);
-            // N-gon: forward outer-only keys for CCW winding from outside.
-            std::vector<size_t> fvkeys;
-            for (size_t vi : t_outer_vkey)
-                fvkeys.push_back(top_vkeys[vi]);
-            auto fk = mesh.add_face(fvkeys);
-            if (fk.has_value()) {
-                std::vector<std::array<size_t,3>> tri_list;
-                for (const auto& f : t_tris)
-                    tri_list.push_back({top_vkeys[t_flat_vkey[f[0]]], top_vkeys[t_flat_vkey[f[1]]], top_vkeys[t_flat_vkey[f[2]]]});
-                if (fix_collinear) {
-                // Insert boundary vertices skipped by CDT (collinear vertices not in any triangle).
-                {
-                    auto split_at = [](std::vector<std::array<size_t,3>>& tl,
-                                       size_t j, size_t A, size_t C, size_t B) {
-                        std::array<size_t,3>& ft = tl[j];
-                        std::array<size_t,3> t1, t2;
-                        if ((ft[0]==A||ft[0]==C)&&(ft[1]==A||ft[1]==C))
-                            { t1={ft[0],B,ft[2]}; t2={B,ft[1],ft[2]}; }
-                        else if ((ft[1]==A||ft[1]==C)&&(ft[2]==A||ft[2]==C))
-                            { t1={ft[0],ft[1],B}; t2={ft[0],B,ft[2]}; }
-                        else
-                            { t1={ft[0],ft[1],B}; t2={B,ft[1],ft[2]}; }
-                        ft = t1; tl.push_back(t2);
-                    };
-                    bool chg = true;
-                    while (chg) {
-                        chg = false;
-                        std::set<size_t> tv;
-                        for (const auto& t : tri_list) for (size_t v : t) tv.insert(v);
-                        size_t n = fvkeys.size();
-                        for (size_t k = 0; k < n; ++k) {
-                            size_t B = fvkeys[k];
-                            if (tv.count(B)) continue;
-                            size_t A = fvkeys[(k+n-1)%n], C = fvkeys[(k+1)%n];
-                            for (size_t j = 0; j < tri_list.size(); ++j) {
-                                bool hA=(tri_list[j][0]==A||tri_list[j][1]==A||tri_list[j][2]==A);
-                                bool hC=(tri_list[j][0]==C||tri_list[j][1]==C||tri_list[j][2]==C);
-                                if (!hA||!hC) continue;
-                                split_at(tri_list, j, A, C, B); chg=true; break;
-                            }
-                            if (chg) break;
-                        }
-                    }
-                }
-                // Remove any remaining zero-area triangles (degenerate CDT artifacts).
-                {
-                    const double sc = 1e6;
-                    tri_list.erase(
-                        std::remove_if(tri_list.begin(), tri_list.end(),
-                            [&](const std::array<size_t,3>& t) -> bool {
-                                const auto& v0=mesh.vertex.at(t[0]); const auto& v1=mesh.vertex.at(t[1]); const auto& v2=mesh.vertex.at(t[2]);
-                                auto [u0,vv0]=project_2d(Point(v0.x,v0.y,v0.z));
-                                auto [u1,vv1]=project_2d(Point(v1.x,v1.y,v1.z));
-                                auto [u2,vv2]=project_2d(Point(v2.x,v2.y,v2.z));
-                                int64_t iu0=std::llround(u0*sc),iv0=std::llround(vv0*sc);
-                                int64_t iu1=std::llround(u1*sc),iv1=std::llround(vv1*sc);
-                                int64_t iu2=std::llround(u2*sc),iv2=std::llround(vv2*sc);
-                                return (iu1-iu0)*(iv2-iv0)-(iv1-iv0)*(iu2-iu0)==0;
-                            }),
-                        tri_list.end());
-                }
-                } // fix_collinear
-                mesh.triangulation[fk.value()] = tri_list;
-                if (!t_hole_rings.empty() && !tri_list.empty())
-                    mesh.face_holes[fk.value()] = t_hole_rings;
-            }
-        }
-    }
-
-    // Side faces: align by longest edge (2D projected), quads for equal counts, zipper+triangles otherwise
-    // Use 2D projected lengths so top/bot faces on parallel planes (offset in Z) get the same ia/ib.
-    auto edsq2d = [&](const std::vector<Point>& pts, size_t i) -> double {
-        size_t j = (i + 1) % pts.size();
-        auto [xi, yi] = project_2d(pts[i]);
-        auto [xj, yj] = project_2d(pts[j]);
-        double dx = xj - xi, dy = yj - yi;
-        return dx*dx + dy*dy;
-    };
-    for (const auto& pi : poly_infos) {
-        size_t bot_off = pi.bot_off, bot_n = pi.bot_n, top_off = pi.top_off, top_n = pi.top_n;
-        std::vector<Point> bpts(all_bot_pts.begin()+bot_off, all_bot_pts.begin()+bot_off+bot_n);
-        std::vector<Point> tpts(all_top_pts.begin()+top_off, all_top_pts.begin()+top_off+top_n);
-        size_t ia = 0, ib = 0;
-        double max_b = 0;
-        for (size_t k = 0; k < bot_n; ++k) { double v = edsq2d(bpts, k); if (v > max_b) { max_b = v; ia = k; } }
-        if (bot_n == top_n) {
-            double min_total = std::numeric_limits<double>::max();
-            for (size_t cand = 0; cand < top_n; ++cand) {
-                double total = 0.0;
-                for (size_t k = 0; k < bot_n; ++k) {
-                    auto [xb, yb] = project_2d(bpts[(ia+k)%bot_n]);
-                    auto [xt, yt] = project_2d(tpts[(cand+k)%top_n]);
-                    total += (xt-xb)*(xt-xb) + (yt-yb)*(yt-yb);
-                }
-                if (total < min_total) { min_total = total; ib = cand; }
-            }
-        }
-        if (loft_dbg) {
-            fprintf(stderr, "  walls bot_n=%zu top_n=%zu ia=%zu ib=%zu%s path=%s\n",
-                bot_n, top_n, ia, ib,
-                (ia != ib ? " IA_IB_MISMATCH" : ""),
-                (bot_n == top_n ? "quad" : "zipper"));
-        }
-        if (bot_n == top_n) {
-            for (size_t k = 0; k < bot_n; ++k) {
-                size_t cb = bot_off+(ia+k)%bot_n, ct = top_off+(ib+k)%top_n;
-                size_t nb = bot_off+(ia+k+1)%bot_n, nt = top_off+(ib+k+1)%top_n;
-                const Point& pb0 = bpts[(ia+k)%bot_n];
-                const Point& pb1 = bpts[(ia+k+1)%bot_n];
-                const Point& pt0 = tpts[(ib+k)%top_n];
-                const Point& pt1 = tpts[(ib+k+1)%top_n];
-                bool bot_col = (std::abs(pb0[0]-pb1[0]) < 1e-10 && std::abs(pb0[1]-pb1[1]) < 1e-10 && std::abs(pb0[2]-pb1[2]) < 1e-10);
-                bool top_col = (std::abs(pt0[0]-pt1[0]) < 1e-10 && std::abs(pt0[1]-pt1[1]) < 1e-10 && std::abs(pt0[2]-pt1[2]) < 1e-10);
-                if (bot_col && top_col) continue;
-                else if (bot_col) mesh.add_face({bot_vkeys[cb], top_vkeys[nt], top_vkeys[ct]});
-                else if (top_col) mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]});
-                else mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[nt], top_vkeys[ct]});
-            }
+    const double sc = std::min(s, min_edge / 3.0);
+    std::vector<Point> result;
+    result.reserve(2 * n);
+    for (size_t i = 0; i < n; ++i) {
+        if (!mask[i]) {
+            result.push_back(pts[i]);
             continue;
         }
-        std::vector<double> b_arcs(bot_n+1, 0.0);
-        for (size_t k = 0; k < bot_n; ++k) {
-            size_t i = (ia+k)%bot_n, j = (ia+k+1)%bot_n;
-            double dx = bpts[j][0]-bpts[i][0], dy = bpts[j][1]-bpts[i][1], dz = bpts[j][2]-bpts[i][2];
-            b_arcs[k+1] = b_arcs[k] + std::sqrt(dx*dx+dy*dy+dz*dz);
-        }
-        std::vector<double> t_arcs(top_n+1, 0.0);
-        for (size_t k = 0; k < top_n; ++k) {
-            size_t i = (ib+k)%top_n, j = (ib+k+1)%top_n;
-            double dx = tpts[j][0]-tpts[i][0], dy = tpts[j][1]-tpts[i][1], dz = tpts[j][2]-tpts[i][2];
-            t_arcs[k+1] = t_arcs[k] + std::sqrt(dx*dx+dy*dy+dz*dz);
-        }
-        double inv_b = b_arcs[bot_n] > 0 ? 1.0/b_arcs[bot_n] : 1.0;
-        double inv_t = t_arcs[top_n] > 0 ? 1.0/t_arcs[top_n] : 1.0;
-        size_t bi = 0, ti = 0;
-        while (bi < bot_n || ti < top_n) {
-            size_t cb = bot_off+(ia+bi)%bot_n, ct = top_off+(ib+ti)%top_n;
-            size_t nb = bot_off+(ia+bi+1)%bot_n, nt = top_off+(ib+ti+1)%top_n;
-            if (bi >= bot_n) {
-                mesh.add_face({bot_vkeys[cb], top_vkeys[ct], top_vkeys[nt]}); ++ti;
-            } else if (ti >= top_n) {
-                mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]}); ++bi;
-            } else {
-                double bp = b_arcs[bi+1]*inv_b, tp = t_arcs[ti+1]*inv_t;
-                if (std::abs(bp-tp) < 1e-9) {
-                    mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[nt], top_vkeys[ct]}); ++bi; ++ti;
-                } else if (bp < tp) {
-                    mesh.add_face({bot_vkeys[cb], bot_vkeys[nb], top_vkeys[ct]}); ++bi;
-                } else {
-                    mesh.add_face({bot_vkeys[cb], top_vkeys[ct], top_vkeys[nt]}); ++ti;
-                }
-            }
-        }
+        const size_t prev = (i + n - 1) % n;
+        const size_t next = (i + 1) % n;
+        const Vector dp(pts[prev][0]-pts[i][0], pts[prev][1]-pts[i][1], pts[prev][2]-pts[i][2]);
+        const Vector dn(pts[next][0]-pts[i][0], pts[next][1]-pts[i][1], pts[next][2]-pts[i][2]);
+        const double lp = dp.magnitude();
+        const double ln = dn.magnitude();
+        const double sp = (lp > 1e-12) ? sc / lp : 0.0;
+        const double sn = (ln > 1e-12) ? sc / ln : 0.0;
+        result.push_back(Point(pts[i][0]+dp[0]*sp, pts[i][1]+dp[1]*sp, pts[i][2]+dp[2]*sp));
+        result.push_back(Point(pts[i][0]+dn[0]*sn, pts[i][1]+dn[1]*sn, pts[i][2]+dn[2]*sn));
     }
-
-    return mesh;
+    return result;
 }
 
-std::map<size_t, size_t> Mesh::vertex_index() const {
-    // Collect and sort keys to ensure consistent ordering
-    std::vector<size_t> keys;
-    keys.reserve(vertex.size());
-    for (const auto& [key, _] : vertex) {
-        keys.push_back(key);
+/// Newell normal of a face, +z when the face is missing
+static Vector fold_face_normal(const Mesh& mesh, size_t fk) {
+    const std::optional<std::vector<Point>> pts = mesh.face_points(fk);
+    if (!pts) return Vector(0, 0, 1);
+    return newell_normal(*pts);
+}
+
+/// One miter plane per edge, through the edge midpoint along the averaged neighbor normal
+static std::vector<Plane> miter_planes(
+    const Mesh& shell,
+    const std::map<std::pair<size_t, size_t>, size_t>& efm,
+    const std::vector<size_t>& fverts,
+    const std::vector<Point>& pts,
+    const Vector& fn
+) {
+    const size_t n = fverts.size();
+    std::vector<Plane> planes;
+    planes.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        const size_t j = (i + 1) % n;
+        Vector avg_n = fn;
+        const auto adj_it = efm.find({fverts[j], fverts[i]});
+        if (adj_it != efm.end()) {
+            const Vector adj = fold_face_normal(shell, adj_it->second);
+            Vector sum(fn[0]+adj[0], fn[1]+adj[1], fn[2]+adj[2]);
+            if (sum.magnitude() > 0.1 && sum.normalize_self()) avg_n = sum;
+        }
+        Vector edge_dir(pts[j][0]-pts[i][0], pts[j][1]-pts[i][1], pts[j][2]-pts[i][2]);
+        if (!edge_dir.normalize_self()) return {};
+        Vector mn = avg_n.cross(edge_dir);
+        if (!mn.normalize_self()) return {};
+        const Point mid((pts[i][0]+pts[j][0])/2, (pts[i][1]+pts[j][1])/2, (pts[i][2]+pts[j][2])/2);
+        planes.push_back(Plane::from_point_normal(mid, mn));
     }
-    std::sort(keys.begin(), keys.end());
-    
-    // Create index mapping
-    std::map<size_t, size_t> index_map;
-    for (size_t index = 0; index < keys.size(); ++index) {
-        index_map[keys[index]] = index;
+    return planes;
+}
+
+/// Where the corner lines pierce a plane, empty when any misses
+static std::vector<Point> miter_contour(const std::vector<Line>& corner_lines, const Plane& plane) {
+    std::vector<Point> contour;
+    contour.reserve(corner_lines.size());
+    for (const Line& line : corner_lines) {
+        Point p;
+        if (!Intersection::line_plane(line, plane, p, false)) return {};
+        contour.push_back(p);
     }
-    return index_map;
+    return contour;
+}
+
+std::vector<std::tuple<
+    std::vector<Point>, std::vector<Point>,
+    std::vector<Point>, std::vector<Point>,
+    Vector>>
+Mesh::miter_contours(const Mesh& shell, double thickness,
+                     double chamfer_bot, double chamfer_top, bool,
+                     double chamfer_angle_deg) {
+    std::vector<std::tuple<
+        std::vector<Point>, std::vector<Point>,
+        std::vector<Point>, std::vector<Point>,
+        Vector>> result;
+    const std::map<std::pair<size_t, size_t>, size_t> efm = shell.edge_face_map();
+    for (size_t fk : shell.faces()) {
+        const std::vector<size_t>& fverts = *shell.face_vertices(fk);
+        const size_t n = fverts.size();
+        const std::optional<std::vector<Point>> pts = shell.face_points(fk);
+        if (!pts || pts->size() != n) continue;
+        const Vector fn = newell_normal(*pts);
+        const Point cen = ring_centroid(*pts);
+        const std::vector<Plane> planes = miter_planes(shell, efm, fverts, *pts, fn);
+        if (planes.size() != n) continue;
+        std::vector<Line> corner_lines(n);
+        bool ok = true;
+        for (size_t i = 0; i < n && ok; ++i)
+            ok = Intersection::plane_plane(planes[i], planes[(i + 1) % n], corner_lines[i]);
+        if (!ok) continue;
+        const Point bot_origin(cen[0]+fn[0]*2.0*thickness, cen[1]+fn[1]*2.0*thickness, cen[2]+fn[2]*2.0*thickness);
+        const std::vector<Point> top_contour = miter_contour(corner_lines, Plane::from_point_normal(cen, fn));
+        const std::vector<Point> bot_contour = miter_contour(corner_lines, Plane::from_point_normal(bot_origin, fn));
+        if (top_contour.size() != n || bot_contour.size() != n) continue;
+        const std::vector<bool> top_mask = fold_chamfer_mask(top_contour, chamfer_angle_deg);
+        const std::vector<bool> bot_mask = fold_chamfer_mask(bot_contour, chamfer_angle_deg);
+        const std::vector<Point> top_ch = fold_chamfer(top_contour, chamfer_bot, top_mask);
+        const std::vector<Point> bot_ch = fold_chamfer(bot_contour, chamfer_top, bot_mask);
+        result.push_back(std::make_tuple(top_ch, bot_ch, top_contour, bot_contour, fn));
+    }
+    return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Boolean Queries
+// ═══════════════════════════════════════════════════════════════════════════
+
+bool Mesh::is_valid() const {
+    if (vertex.empty() || face.empty()) return false;
+    for (const auto& [fkey, vkeys] : face) {
+        if (vkeys.size() < 3) return false;
+        for (size_t vk : vkeys)
+            if (vertex.find(vk) == vertex.end()) return false;
+    }
+    return true;
+}
+
+bool Mesh::is_closed() const {
+    std::set<std::pair<size_t,size_t>> hole_edges;
+    for (const auto& [fk, rings] : face_holes)
+        for (const std::vector<size_t>& ring : rings) {
+            const size_t n = ring.size();
+            for (size_t i = 0; i < n; ++i) {
+                hole_edges.emplace(ring[i], ring[(i + 1) % n]);
+                hole_edges.emplace(ring[(i + 1) % n], ring[i]);
+            }
+        }
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    for (const auto& [u, v] : dfe)
+        if (dfe.find({v, u}) == dfe.end() && hole_edges.find({v, u}) == hole_edges.end()) return false;
+    return !vertex.empty();
+}
+
+bool Mesh::is_vertex_on_boundary(size_t vertex_key) const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    for (const auto& [u, v] : dfe)
+        if (dfe.find({v, u}) == dfe.end() && (u == vertex_key || v == vertex_key)) return true;
+    return false;
+}
+
+bool Mesh::is_edge_on_boundary(size_t u, size_t v) const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    return !(dfe.count({u, v}) && dfe.count({v, u}));
+}
+
+bool Mesh::is_face_on_boundary(size_t face_key) const {
+    const std::optional<std::vector<std::pair<size_t, size_t>>> fe = face_edges(face_key);
+    if (!fe) return false;
+    for (const auto& [u, v] : *fe)
+        if (is_edge_on_boundary(u, v)) return true;
+    return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Attributes
+// ═══════════════════════════════════════════════════════════════════════════
+
+size_t Mesh::number_of_edges() const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    size_t count = 0;
+    for (const auto& [u, v] : dfe)
+        if (u < v || dfe.find({v, u}) == dfe.end()) count++;
+    return count;
+}
+
+int Mesh::euler() const {
+    return static_cast<int>(number_of_vertices()) - static_cast<int>(number_of_edges()) + static_cast<int>(number_of_faces());
+}
+
+std::vector<size_t> Mesh::vertices() const {
+    std::vector<size_t> result;
+    result.reserve(vertex.size());
+    for (const auto& [k, _] : vertex)
+        result.push_back(k);
+    return result;
+}
+
+std::vector<size_t> Mesh::faces() const {
+    std::vector<size_t> result;
+    result.reserve(face.size());
+    for (const auto& [k, _] : face)
+        result.push_back(k);
+    return result;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges() const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    std::set<std::pair<size_t, size_t>> seen;
+    for (const auto& [u, v] : dfe)
+        seen.insert(std::minmax(u, v));
+    return std::vector<std::pair<size_t, size_t>>(seen.begin(), seen.end());
 }
 
 std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> Mesh::to_vertices_and_faces() const {
-    auto vertex_idx = vertex_index();
+    const std::map<size_t, size_t> vertex_idx = vertex_index();
     std::vector<Point> vertices(vertex.size());
-    
-    for (const auto& [key, vdata] : vertex) {
-        size_t idx = vertex_idx[key];
-        vertices[idx] = vdata.position();
-    }
-    
-    // Sort face keys to ensure consistent ordering
-    std::vector<size_t> face_keys;
-    face_keys.reserve(face.size());
-    for (const auto& [key, _] : face) {
-        face_keys.push_back(key);
-    }
-    std::sort(face_keys.begin(), face_keys.end());
-    
+    for (const auto& [key, vdata] : vertex)
+        vertices[vertex_idx.at(key)] = vdata.position();
     std::vector<std::vector<size_t>> faces;
-    for (size_t face_key : face_keys) {
-        const auto& face_vertices = face.at(face_key);
+    faces.reserve(face.size());
+    for (const auto& [key, face_vertices] : face) {
         std::vector<size_t> remapped;
         remapped.reserve(face_vertices.size());
-        for (size_t v : face_vertices) {
+        for (size_t v : face_vertices)
             remapped.push_back(vertex_idx.at(v));
-        }
         faces.push_back(remapped);
     }
     return {vertices, faces};
 }
 
-bool Mesh::transform(const Xform& xf) {
-  for (auto& [idx, vdata] : vertex) {
-    Point pt(vdata.x, vdata.y, vdata.z);
-    pt.transform(xf);
-    vdata.x = pt[0];
-    vdata.y = pt[1];
-    vdata.z = pt[2];
-  }
-  triangle_bvh_built = false;
-  triangle_bvh.reset();
-  triangle_boxes_cache.clear();
-  triangle_aabbs_cache.clear();
-  triangle_indices_cache.clear();
-  triangle_face_subidx_cache.clear();
-  vertices_cache.clear();
-  return true;
+std::map<size_t, size_t> Mesh::vertex_index() const {
+    std::map<size_t, size_t> index_map;
+    size_t index = 0;
+    for (const auto& [key, _] : vertex)
+        index_map[key] = index++;
+    return index_map;
 }
 
-Mesh Mesh::transformed(const Xform& xf) const {
-  Mesh result = *this;
-  result.transform(xf);
-  return result;
+std::vector<std::pair<size_t, size_t>> Mesh::naked_edges(bool boundary) const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    std::set<std::pair<size_t, size_t>> seen;
+    for (const auto& [u, v] : dfe)
+        seen.insert(std::minmax(u, v));
+    std::vector<std::pair<size_t, size_t>> result;
+    for (const auto& [u, v] : seen) {
+        const bool naked = !(dfe.count({u, v}) && dfe.count({v, u}));
+        if (naked == boundary) result.push_back({u, v});
+    }
+    return result;
 }
 
-nlohmann::ordered_json Mesh::jsondump() const {
-    nlohmann::ordered_json data;
-    
-    // Alphabetical order to match Rust's serde_json output
-    data["color_mode"] = color_mode_to_string(color_mode);
-    data["default_edge_attributes"] = default_edge_attributes;
-    data["default_face_attributes"] = default_face_attributes;
-    data["default_vertex_attributes"] = default_vertex_attributes;
-    
-    // Edge attributes
-    nlohmann::ordered_json edgedata_json = nlohmann::ordered_json::object();
-    for (const auto& [edge, attrs] : edgedata) {
-        std::string edge_key = std::to_string(edge.first) + "," + std::to_string(edge.second);
-        edgedata_json[edge_key] = attrs;
-    }
-    data["edgedata"] = edgedata_json;
-    
-    // Face data
-    nlohmann::ordered_json face_data;
-    for (const auto& [key, vertices] : face) {
-        face_data[std::to_string(key)] = vertices;
-    }
-    data["face"] = face_data;
+std::vector<size_t> Mesh::naked_vertices(bool boundary) const {
+    std::vector<size_t> result;
+    for (const auto& [vk, _] : vertex)
+        if (is_vertex_on_boundary(vk) == boundary) result.push_back(vk);
+    return result;
+}
 
-    // Face holes
-    nlohmann::ordered_json face_holes_json = nlohmann::ordered_json::object();
-    for (const auto& [fkey, rings] : face_holes) {
-        nlohmann::json rings_arr = nlohmann::json::array();
-        for (const auto& ring : rings)
-            rings_arr.push_back(ring);
-        face_holes_json[std::to_string(fkey)] = rings_arr;
-    }
-    data["face_holes"] = face_holes_json;
+std::vector<size_t> Mesh::naked_faces(bool boundary) const {
+    std::vector<size_t> result;
+    for (const auto& [fk, _] : face)
+        if (is_face_on_boundary(fk) == boundary) result.push_back(fk);
+    return result;
+}
 
-    // Face colors (RGBA)
-    nlohmann::ordered_json facecolors_arr = nlohmann::ordered_json::array();
-    for (const auto& c : facecolors) {
-        facecolors_arr.push_back(c.r); facecolors_arr.push_back(c.g);
-        facecolors_arr.push_back(c.b); facecolors_arr.push_back(c.a);
-    }
-    data["facecolors"] = facecolors_arr;
-    
-    // Face attributes
-    nlohmann::ordered_json facedata_json = nlohmann::ordered_json::object();
-    for (const auto& [key, attrs] : facedata) {
-        facedata_json[std::to_string(key)] = attrs;
-    }
-    data["facedata"] = facedata_json;
-    
-    data["guid"] = guid();
-    
-    // Halfedge connectivity — lazy topology: if the map was never built, compute it
-    // transiently so the JSON format never changes
-    std::map<size_t, std::map<size_t, std::optional<size_t>>> he_owned;
-    const auto* he_src = &halfedge;
-    if (halfedge.empty() && !face.empty()) {
-        he_owned = compute_halfedges();
-        he_src = &he_owned;
-    }
-    nlohmann::ordered_json halfedge_data;
-    for (const auto& [u, neighbors] : *he_src) {
-        nlohmann::ordered_json neighbor_data;
-        for (const auto& [v, face_opt] : neighbors) {
-            neighbor_data[std::to_string(v)] = face_opt.has_value() ? nlohmann::json(face_opt.value()) : nlohmann::json(nullptr);
+// ═══════════════════════════════════════════════════════════════════════════
+// Vertex and Face Operations
+// ═══════════════════════════════════════════════════════════════════════════
+
+size_t Mesh::add_vertex(const Point& position, std::optional<size_t> vkey) {
+    ensure_halfedges();
+    const size_t vertex_key = vkey.value_or(max_vertex);
+    if (vertex_key >= max_vertex) max_vertex = vertex_key + 1;
+    vertex[vertex_key] = VertexData(position);
+    halfedge[vertex_key] = {};
+    pointcolors.push_back(Color::white());
+    clear_triangle_bvh();
+    return vertex_key;
+}
+
+std::optional<size_t> Mesh::add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey) {
+    ensure_halfedges();
+    if (vertices.size() < 3) return std::nullopt;
+    for (size_t v : vertices)
+        if (vertex.find(v) == vertex.end()) return std::nullopt;
+    const std::set<size_t> unique_vertices(vertices.begin(), vertices.end());
+    if (unique_vertices.size() != vertices.size()) return std::nullopt;
+    const size_t face_key = fkey.value_or(max_face);
+    if (face_key >= max_face) max_face = face_key + 1;
+    face[face_key] = vertices;
+    triangulation.erase(face_key);
+    facecolors.push_back(Color::white());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        const size_t u = vertices[i];
+        const size_t v = vertices[(i + 1) % vertices.size()];
+        const bool is_new_edge = (halfedge[v].find(u) == halfedge[v].end());
+        halfedge[u][v] = face_key;
+        if (is_new_edge) {
+            halfedge[v][u] = std::nullopt;
+            linecolors.push_back(Color::black());
+            widths.push_back(1.0);
         }
-        halfedge_data[std::to_string(u)] = neighbor_data;
     }
-    data["halfedge"] = halfedge_data;
-
-    // Line colors (RGBA)
-    nlohmann::ordered_json linecolors_arr = nlohmann::ordered_json::array();
-    for (const auto& c : linecolors) {
-        linecolors_arr.push_back(c.r); linecolors_arr.push_back(c.g);
-        linecolors_arr.push_back(c.b); linecolors_arr.push_back(c.a);
-    }
-    data["linecolors"] = linecolors_arr;
-
-    data["max_face"] = max_face;
-    data["max_vertex"] = max_vertex;
-    data["name"] = name;
-    data["objectcolor"] = objectcolor.jsondump();
-
-    // Point colors (RGBA)
-    nlohmann::ordered_json pointcolors_arr = nlohmann::ordered_json::array();
-    for (const auto& c : pointcolors) {
-        pointcolors_arr.push_back(c.r); pointcolors_arr.push_back(c.g);
-        pointcolors_arr.push_back(c.b); pointcolors_arr.push_back(c.a);
-    }
-    data["pointcolors"] = pointcolors_arr;
-
-    nlohmann::ordered_json triangulation_json = nlohmann::ordered_json::object();
-    for (const auto& [fkey, tris] : triangulation) {
-        nlohmann::json tri_arr = nlohmann::json::array();
-        for (const auto& t : tris)
-            tri_arr.push_back({t[0], t[1], t[2]});
-        triangulation_json[std::to_string(fkey)] = tri_arr;
-    }
-    data["triangulation"] = triangulation_json;
-
-    data["type"] = "Mesh";
-    
-    // Vertex data
-    nlohmann::ordered_json vertex_data;
-    for (const auto& [key, vdata] : vertex) {
-        nlohmann::ordered_json v;
-        v["attributes"] = vdata.attributes;
-        v["x"] = vdata.x;
-        v["y"] = vdata.y;
-        v["z"] = vdata.z;
-        vertex_data[std::to_string(key)] = v;
-    }
-    data["vertex"] = vertex_data;
-
-    data["widths"] = widths;
-
-    return data;
+    clear_triangle_bvh();
+    return face_key;
 }
 
-Mesh Mesh::jsonload(const nlohmann::json& data) {
-    Mesh mesh;
-    
-    if (data.contains("guid")) mesh.guid() = data["guid"];
-    if (data.contains("name")) mesh.name = data["name"];
-    
-    // Load halfedge connectivity
-    if (data.contains("halfedge")) {
-        for (const auto& [u_str, neighbors] : data["halfedge"].items()) {
-            size_t u = std::stoull(u_str);
-            mesh.halfedge[u] = {};
-            for (const auto& [v_str, face_val] : neighbors.items()) {
-                size_t v = std::stoull(v_str);
-                if (face_val.is_null()) {
-                    mesh.halfedge[u][v] = std::nullopt;
-                } else {
-                    mesh.halfedge[u][v] = face_val.get<size_t>();
+void Mesh::remove_vertex(size_t vkey) {
+    ensure_halfedges();
+    if (vertex.find(vkey) == vertex.end()) return;
+    std::vector<size_t> faces_to_remove;
+    for (const auto& [fk, verts] : face)
+        if (std::find(verts.begin(), verts.end(), vkey) != verts.end()) faces_to_remove.push_back(fk);
+    for (size_t fk : faces_to_remove)
+        remove_face(fk);
+    const auto hit = halfedge.find(vkey);
+    if (hit != halfedge.end()) {
+        for (const auto& [v, _] : hit->second) {
+            const auto vit = halfedge.find(v);
+            if (vit != halfedge.end()) vit->second.erase(vkey);
+        }
+        halfedge.erase(vkey);
+    }
+    for (auto it = edgedata.begin(); it != edgedata.end(); ) {
+        if (it->first.first == vkey || it->first.second == vkey) it = edgedata.erase(it);
+        else ++it;
+    }
+    vertex.erase(vkey);
+    if (pointcolors.size() > vertex.size()) pointcolors.resize(vertex.size());
+    clear_triangle_bvh();
+}
+
+void Mesh::remove_face(size_t fkey) {
+    ensure_halfedges();
+    const auto it = face.find(fkey);
+    if (it == face.end()) return;
+    const std::vector<size_t> verts = it->second;
+    const size_t n = verts.size();
+    for (size_t i = 0; i < n; ++i) {
+        const size_t u = verts[i];
+        const size_t v = verts[(i + 1) % n];
+        const auto uit = halfedge.find(u);
+        if (uit == halfedge.end()) continue;
+        const auto vit = uit->second.find(v);
+        if (vit == uit->second.end()) continue;
+        vit->second = std::nullopt;
+        const auto vit2 = halfedge.find(v);
+        if (vit2 == halfedge.end()) continue;
+        const auto uit2 = vit2->second.find(u);
+        if (uit2 != vit2->second.end() && !uit2->second.has_value()) {
+            uit->second.erase(v);
+            vit2->second.erase(u);
+        }
+    }
+    face.erase(fkey);
+    triangulation.erase(fkey);
+    facedata.erase(fkey);
+    face_holes.erase(fkey);
+    const size_t n_edges = number_of_edges();
+    if (linecolors.size() > n_edges) linecolors.resize(n_edges);
+    if (widths.size() > n_edges) widths.resize(n_edges);
+    if (facecolors.size() > face.size()) facecolors.resize(face.size());
+    clear_triangle_bvh();
+}
+
+void Mesh::remove_edge(size_t u, size_t v) {
+    ensure_halfedges();
+    std::vector<size_t> faces_to_remove;
+    const std::optional<size_t> f_uv = halfedge_face({u, v});
+    const std::optional<size_t> f_vu = halfedge_face({v, u});
+    if (f_uv) faces_to_remove.push_back(*f_uv);
+    if (f_vu && f_vu != f_uv) faces_to_remove.push_back(*f_vu);
+    for (size_t fk : faces_to_remove)
+        remove_face(fk);
+    const auto hit = halfedge.find(u);
+    if (hit != halfedge.end()) hit->second.erase(v);
+    const auto hit2 = halfedge.find(v);
+    if (hit2 != halfedge.end()) hit2->second.erase(u);
+    edgedata.erase({u, v});
+    edgedata.erase({v, u});
+    const size_t n_edges = number_of_edges();
+    if (linecolors.size() > n_edges) linecolors.resize(n_edges);
+    if (widths.size() > n_edges) widths.resize(n_edges);
+    clear_triangle_bvh();
+}
+
+void Mesh::flip_face(size_t fkey) {
+    ensure_halfedges();
+    const auto it = face.find(fkey);
+    if (it == face.end()) return;
+    std::vector<size_t> fv = it->second;
+    remove_face(fkey);
+    std::reverse(fv.begin(), fv.end());
+    add_face(fv, fkey);
+}
+
+void Mesh::flip() {
+    for (auto& [fkey, verts] : face)
+        std::reverse(verts.begin(), verts.end());
+    rebuild_halfedges();
+}
+
+void Mesh::clear() {
+    halfedge.clear();
+    vertex.clear();
+    face.clear();
+    facedata.clear();
+    edgedata.clear();
+    triangulation.clear();
+    face_holes.clear();
+    max_vertex = 0;
+    max_face = 0;
+    pointcolors.clear();
+    facecolors.clear();
+    linecolors.clear();
+    widths.clear();
+    objectcolor = Color::white();
+    color_mode = ColorMode::OBJECTCOLOR;
+    clear_triangle_bvh();
+}
+
+Mesh Mesh::unweld() const {
+    Mesh m;
+    for (const auto& [fkey, vkeys] : face) {
+        std::vector<size_t> new_vkeys;
+        new_vkeys.reserve(vkeys.size());
+        for (size_t vk : vkeys)
+            new_vkeys.push_back(m.add_vertex(vertex.at(vk).position()));
+        m.add_face(new_vkeys);
+    }
+    return m;
+}
+
+/// Root of x in a union-find forest, halving the path on the way
+static size_t weld_find(std::vector<size_t>& parent, size_t x) {
+    const size_t bound = parent.size();
+    for (size_t step = 0; step < bound && parent[x] != x; ++step) {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    return x;
+}
+
+Mesh Mesh::weld(double tolerance) const {
+    if (vertex.empty()) return Mesh();
+    const std::vector<size_t> vkeys = vertices();
+    std::vector<Point> positions;
+    positions.reserve(vkeys.size());
+    for (size_t vk : vkeys) positions.push_back(vertex.at(vk).position());
+    const size_t n = vkeys.size();
+    std::vector<size_t> parent(n);
+    std::iota(parent.begin(), parent.end(), 0);
+    if (tolerance > 0.0) {
+        std::vector<OBB> boxes;
+        boxes.reserve(n);
+        for (const Point& p : positions)
+            boxes.push_back(OBB::from_point(p, tolerance));
+        const double ws = SpatialBVH::compute_world_size(boxes);
+        SpatialBVH bvh = SpatialBVH::from_boxes(boxes, ws);
+        const auto [pairs, ignore1, ignore2] = bvh.check_all_collisions(boxes);
+        for (const auto& [i, j] : pairs) {
+            if (positions[i].distance(positions[j]) > tolerance) continue;
+            const size_t ri = weld_find(parent, i), rj = weld_find(parent, j);
+            if (ri != rj) parent[ri] = rj;
+        }
+    }
+    std::map<size_t, size_t> root_to_rep;
+    for (size_t i = 0; i < n; i++) {
+        const size_t root = weld_find(parent, i);
+        const auto [it, inserted] = root_to_rep.emplace(root, vkeys[i]);
+        if (!inserted && vkeys[i] < it->second) it->second = vkeys[i];
+    }
+    std::map<size_t, size_t> vkey_to_rep;
+    for (size_t i = 0; i < n; i++)
+        vkey_to_rep[vkeys[i]] = root_to_rep.at(weld_find(parent, i));
+    Mesh m;
+    std::set<size_t> added;
+    for (size_t i = 0; i < n; i++) {
+        const size_t rep = vkey_to_rep.at(vkeys[i]);
+        if (added.insert(rep).second)
+            m.add_vertex(vertex.at(rep).position(), rep);
+    }
+    for (const auto& [fk, fvkeys] : face) {
+        std::vector<size_t> new_vkeys;
+        new_vkeys.reserve(fvkeys.size());
+        for (size_t vk : fvkeys) new_vkeys.push_back(vkey_to_rep.at(vk));
+        m.add_face(new_vkeys, fk);
+    }
+    return m;
+}
+
+bool Mesh::unify_winding() {
+    if (face.size() < 2) return false;
+    std::map<std::pair<size_t,size_t>, std::vector<std::tuple<size_t,size_t,size_t>>> edge_faces;
+    for (const auto& [fkey, verts] : face) {
+        const size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            const size_t u = verts[i];
+            const size_t v = verts[(i + 1) % n];
+            edge_faces[std::minmax(u, v)].emplace_back(fkey, u, v);
+        }
+    }
+    std::set<size_t> visited;
+    std::set<size_t> flipped;
+    for (const auto& [seed, _] : face) {
+        if (visited.count(seed)) continue;
+        visited.insert(seed);
+        std::vector<size_t> queue = {seed};
+        while (!queue.empty()) {
+            const size_t f = queue.back();
+            queue.pop_back();
+            const bool is_flipped = flipped.count(f) > 0;
+            const std::vector<size_t>& verts = face[f];
+            const size_t n = verts.size();
+            for (size_t i = 0; i < n; ++i) {
+                const size_t u_orig = verts[i];
+                const size_t v_orig = verts[(i + 1) % n];
+                const size_t eff_u = is_flipped ? v_orig : u_orig;
+                const size_t eff_v = is_flipped ? u_orig : v_orig;
+                for (const auto& [adj_key, adj_u, adj_v] : edge_faces[std::minmax(u_orig, v_orig)]) {
+                    if (adj_key == f || visited.count(adj_key)) continue;
+                    if (!(adj_u == eff_v && adj_v == eff_u)) flipped.insert(adj_key);
+                    visited.insert(adj_key);
+                    queue.push_back(adj_key);
                 }
             }
         }
     }
-    
-    // Load vertex data
-    if (data.contains("vertex")) {
-        for (const auto& [key_str, vdata] : data["vertex"].items()) {
-            size_t key = std::stoull(key_str);
-            VertexData vertex_data;
-            vertex_data.x = vdata["x"];
-            vertex_data.y = vdata["y"];
-            vertex_data.z = vdata["z"];
-            if (vdata.contains("attributes")) {
-                vertex_data.attributes = vdata["attributes"].get<std::map<std::string, double>>();
+    if (flipped.empty()) return false;
+    for (size_t fkey : flipped)
+        std::reverse(face[fkey].begin(), face[fkey].end());
+    rebuild_halfedges();
+    orient_outward();
+    return true;
+}
+
+bool Mesh::orient_outward() {
+    ensure_halfedges();
+    if (face.empty() || !naked_edges(true).empty()) return false;
+    double vol = 0.0;
+    for (const auto& [fk, verts] : face) {
+        const Point p0 = *vertex_point(verts[0]);
+        for (size_t i = 1; i + 1 < verts.size(); ++i) {
+            const Point p1 = *vertex_point(verts[i]);
+            const Point p2 = *vertex_point(verts[i + 1]);
+            vol += p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+                 + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
+                 + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+        }
+    }
+    if (vol >= 0.0) return false;
+    for (auto& [fk, verts] : face)
+        std::reverse(verts.begin(), verts.end());
+    rebuild_halfedges();
+    return true;
+}
+
+void Mesh::rebuild_halfedges() {
+    halfedge = compute_halfedges();
+}
+
+void Mesh::ensure_halfedges() {
+    if (halfedge.empty() && !face.empty()) rebuild_halfedges();
+}
+
+std::set<std::pair<size_t, size_t>> Mesh::directed_face_edges() const {
+    std::set<std::pair<size_t, size_t>> s;
+    for (const auto& [fkey, verts] : face) {
+        const size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i)
+            s.insert({verts[i], verts[(i + 1) % n]});
+    }
+    return s;
+}
+
+std::map<size_t, std::map<size_t, std::optional<size_t>>> Mesh::compute_halfedges() const {
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> he;
+    for (const auto& [vkey, _] : vertex)
+        he[vkey] = {};
+    for (const auto& [fkey, verts] : face) {
+        const size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            const size_t u = verts[i];
+            const size_t v = verts[(i + 1) % n];
+            he[u][v] = fkey;
+            if (!he[v].count(u)) he[v][u] = std::nullopt;
+        }
+    }
+    return he;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Connectivity Queries
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Sorted neighbors of x over a directed edge set
+static std::set<size_t> edge_ends(const std::set<std::pair<size_t, size_t>>& dfe, size_t x) {
+    std::set<size_t> keys;
+    for (const auto& [a, b] : dfe) {
+        if (a == x) keys.insert(b);
+        else if (b == x) keys.insert(a);
+    }
+    return keys;
+}
+
+std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::edge_edges(size_t u, size_t v) const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    if (!dfe.count({u, v}) && !dfe.count({v, u})) return std::nullopt;
+    std::vector<std::pair<size_t, size_t>> edges;
+    for (size_t w : edge_ends(dfe, u))
+        if (w != v) edges.push_back({u, w});
+    for (size_t w : edge_ends(dfe, v))
+        if (w != u) edges.push_back({v, w});
+    return edges;
+}
+
+std::optional<std::vector<size_t>> Mesh::edge_faces(size_t u, size_t v) const {
+    std::vector<size_t> result;
+    for (const auto& [fkey, verts] : face) {
+        const size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i) {
+            const size_t a = verts[i];
+            const size_t b = verts[(i + 1) % n];
+            if (!((a == u && b == v) || (a == v && b == u))) continue;
+            if (std::find(result.begin(), result.end(), fkey) == result.end()) result.push_back(fkey);
+        }
+    }
+    if (result.empty()) return std::nullopt;
+    return result;
+}
+
+std::map<std::pair<size_t, size_t>, size_t> Mesh::edge_face_map() const {
+    std::map<std::pair<size_t, size_t>, size_t> m;
+    for (const auto& [fkey, verts] : face) {
+        const size_t n = verts.size();
+        for (size_t i = 0; i < n; ++i)
+            m[{verts[i], verts[(i + 1) % n]}] = fkey;
+    }
+    return m;
+}
+
+std::optional<Line> Mesh::edge_line(size_t u, size_t v) const {
+    const std::set<std::pair<size_t, size_t>> dfe = directed_face_edges();
+    if (!dfe.count({u, v}) && !dfe.count({v, u})) return std::nullopt;
+    const std::optional<Point> pu = vertex_point(u);
+    const std::optional<Point> pv = vertex_point(v);
+    if (!pu || !pv) return std::nullopt;
+    return Line::from_points(*pu, *pv);
+}
+
+std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::face_edges(size_t face_key) const {
+    const auto it = face.find(face_key);
+    if (it == face.end()) return std::nullopt;
+    const std::vector<size_t>& verts = it->second;
+    const size_t n = verts.size();
+    std::vector<std::pair<size_t, size_t>> edges;
+    edges.reserve(n);
+    for (size_t i = 0; i < n; ++i)
+        edges.push_back({verts[i], verts[(i + 1) % n]});
+    return edges;
+}
+
+std::optional<std::vector<size_t>> Mesh::face_faces(size_t face_key) const {
+    const std::optional<std::vector<std::pair<size_t, size_t>>> fe = face_edges(face_key);
+    if (!fe) return std::nullopt;
+    const std::map<std::pair<size_t, size_t>, size_t> efm = edge_face_map();
+    std::vector<size_t> neighbors;
+    for (const auto& [u, v] : *fe) {
+        const auto it = efm.find({v, u});
+        if (it != efm.end()) neighbors.push_back(it->second);
+    }
+    return neighbors;
+}
+
+std::optional<std::vector<Point>> Mesh::face_points(size_t face_key) const {
+    const std::optional<std::vector<size_t>> fv = face_vertices(face_key);
+    if (!fv) return std::nullopt;
+    std::vector<Point> pts;
+    pts.reserve(fv->size());
+    for (size_t vk : *fv) {
+        const std::optional<Point> p = vertex_point(vk);
+        if (!p) return std::nullopt;
+        pts.push_back(*p);
+    }
+    return pts;
+}
+
+std::optional<Polyline> Mesh::face_polyline(size_t face_key) const {
+    const std::optional<std::vector<Point>> pts = face_points(face_key);
+    if (!pts) return std::nullopt;
+    return Polyline(*pts);
+}
+
+std::optional<std::vector<size_t>> Mesh::face_vertices(size_t face_key) const {
+    const auto it = face.find(face_key);
+    if (it == face.end()) return std::nullopt;
+    return it->second;
+}
+
+std::optional<std::vector<std::pair<size_t, size_t>>> Mesh::vertex_edges(size_t vertex_key) const {
+    const std::optional<std::vector<size_t>> keys = vertex_vertices(vertex_key);
+    if (!keys) return std::nullopt;
+    std::vector<std::pair<size_t, size_t>> edges;
+    edges.reserve(keys->size());
+    for (size_t u : *keys)
+        edges.push_back({vertex_key, u});
+    return edges;
+}
+
+std::optional<std::vector<size_t>> Mesh::vertex_faces(size_t vertex_key) const {
+    const std::optional<std::vector<size_t>> keys = vertex_vertices(vertex_key);
+    if (!keys) return std::nullopt;
+    const std::map<std::pair<size_t, size_t>, size_t> efm = edge_face_map();
+    std::vector<size_t> faces;
+    for (size_t u : *keys) {
+        const auto it = efm.find({vertex_key, u});
+        if (it != efm.end()) faces.push_back(it->second);
+    }
+    return faces;
+}
+
+std::optional<Point> Mesh::vertex_point(size_t vertex_key) const {
+    const auto it = vertex.find(vertex_key);
+    if (it == vertex.end()) return std::nullopt;
+    return it->second.position();
+}
+
+std::optional<std::vector<size_t>> Mesh::vertex_vertices(size_t vertex_key) const {
+    if (vertex.find(vertex_key) == vertex.end()) return std::nullopt;
+    const std::set<size_t> keys = edge_ends(directed_face_edges(), vertex_key);
+    return std::vector<size_t>(keys.begin(), keys.end());
+}
+
+std::optional<std::vector<size_t>> Mesh::vertex_neighbors(size_t vertex_key, bool ordered) const {
+    const auto it = halfedge.find(vertex_key);
+    if (it == halfedge.end()) return std::nullopt;
+    std::vector<size_t> nbrs;
+    for (const auto& [v, _] : it->second) nbrs.push_back(v);
+    if (!ordered || nbrs.size() <= 1) return nbrs;
+    size_t start = nbrs[0];
+    for (size_t n : nbrs) {
+        if (!it->second.at(n).has_value()) { start = n; break; }
+    }
+    std::optional<size_t> fkey = halfedge_face({start, vertex_key});
+    std::vector<size_t> out{ start };
+    for (size_t step = 0; step < face.size() && fkey.has_value(); ++step) {
+        const auto fit = face.find(*fkey);
+        if (fit == face.end()) break;
+        const std::vector<size_t>& verts = fit->second;
+        const auto pos = std::find(verts.begin(), verts.end(), vertex_key);
+        if (pos == verts.end()) break;
+        const size_t nbr = verts[(pos - verts.begin() + 1) % verts.size()];
+        if (nbr == start) break;
+        out.push_back(nbr);
+        fkey = halfedge_face({nbr, vertex_key});
+    }
+    return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Boundary
+// ═══════════════════════════════════════════════════════════════════════════
+
+std::vector<size_t> Mesh::vertices_on_boundary() const {
+    std::vector<size_t> out;
+    for (const auto& [v, _] : vertex)
+        if (is_vertex_on_boundary(v)) out.push_back(v);
+    return out;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges_on_boundary() const {
+    std::vector<std::pair<size_t, size_t>> out;
+    for (const auto& [u, nbrs] : halfedge)
+        for (const auto& [v, f] : nbrs)
+            if (!f.has_value()) out.emplace_back(u, v);
+    return out;
+}
+
+std::vector<size_t> Mesh::faces_on_boundary() const {
+    std::vector<size_t> out;
+    for (const auto& [f, _] : face)
+        if (is_face_on_boundary(f)) out.push_back(f);
+    return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Halfedge Navigation
+// ═══════════════════════════════════════════════════════════════════════════
+
+std::optional<size_t> Mesh::halfedge_face(std::pair<size_t, size_t> edge) const {
+    const auto it = halfedge.find(edge.first);
+    if (it == halfedge.end()) return std::nullopt;
+    const auto jt = it->second.find(edge.second);
+    if (jt == it->second.end()) return std::nullopt;
+    return jt->second;
+}
+
+std::optional<std::pair<size_t, size_t>> Mesh::halfedge_after(std::pair<size_t, size_t> edge) const {
+    const auto [u, v] = edge;
+    const std::optional<size_t> f = halfedge_face(edge);
+    if (f.has_value()) {
+        const auto fit = face.find(*f);
+        if (fit == face.end()) return std::nullopt;
+        const std::vector<size_t>& verts = fit->second;
+        const auto pos = std::find(verts.begin(), verts.end(), v);
+        if (pos == verts.end()) return std::nullopt;
+        return std::make_pair(v, verts[(pos - verts.begin() + 1) % verts.size()]);
+    }
+    const auto it = halfedge.find(v);
+    if (it == halfedge.end()) return std::nullopt;
+    for (const auto& [w, fw] : it->second)
+        if (w != u && !fw.has_value()) return std::make_pair(v, w);
+    return std::nullopt;
+}
+
+std::optional<std::pair<size_t, size_t>> Mesh::halfedge_before(std::pair<size_t, size_t> edge) const {
+    const auto [u, v] = edge;
+    const std::optional<size_t> f = halfedge_face(edge);
+    if (f.has_value()) {
+        const auto fit = face.find(*f);
+        if (fit == face.end()) return std::nullopt;
+        const std::vector<size_t>& verts = fit->second;
+        const size_t n = verts.size();
+        const auto pos = std::find(verts.begin(), verts.end(), u);
+        if (pos == verts.end()) return std::nullopt;
+        return std::make_pair(verts[(pos - verts.begin() + n - 1) % n], u);
+    }
+    const auto it = halfedge.find(u);
+    if (it == halfedge.end()) return std::nullopt;
+    for (const auto& [w, _] : it->second) {
+        if (w == v) continue;
+        const auto wit = halfedge.find(w);
+        if (wit == halfedge.end()) continue;
+        const auto wjt = wit->second.find(u);
+        if (wjt != wit->second.end() && !wjt->second.has_value()) return std::make_pair(w, u);
+    }
+    return std::nullopt;
+}
+
+/// Boundary loop from edge: at each vertex continue along the other boundary edge
+static std::vector<std::pair<size_t, size_t>> halfedge_loop_boundary(const Mesh& mesh, std::pair<size_t, size_t> edge) {
+    std::vector<std::pair<size_t, size_t>> edges{ edge };
+    size_t u = edge.first, v = edge.second;
+    for (size_t step = 0; step < mesh.vertex.size(); ++step) {
+        const std::optional<std::vector<size_t>> nbrs = mesh.vertex_neighbors(v, false);
+        if (!nbrs.has_value() || nbrs->size() == 2) break;
+        std::optional<size_t> nbr;
+        for (size_t temp : *nbrs) {
+            if (temp == u) continue;
+            if (mesh.is_edge_on_boundary(v, temp)) { nbr = temp; break; }
+        }
+        if (!nbr.has_value()) break;
+        u = v;
+        v = *nbr;
+        edges.emplace_back(u, v);
+        if (v == edges.front().first) break;
+    }
+    return edges;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::halfedge_loop(std::pair<size_t, size_t> edge) const {
+    if (is_edge_on_boundary(edge.first, edge.second)) return halfedge_loop_boundary(*this, edge);
+    std::vector<std::pair<size_t, size_t>> edges{ edge };
+    size_t u = edge.first, v = edge.second;
+    for (size_t step = 0; step < vertex.size(); ++step) {
+        const std::optional<std::vector<size_t>> nbrs = vertex_neighbors(v, true);
+        if (!nbrs.has_value() || nbrs->size() != 4) break;
+        const auto pos = std::find(nbrs->begin(), nbrs->end(), u);
+        if (pos == nbrs->end()) break;
+        const size_t i = pos - nbrs->begin();
+        u = v;
+        v = (*nbrs)[(i + 2) % 4];
+        edges.emplace_back(u, v);
+        if (v == edges.front().first) break;
+    }
+    return edges;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::halfedge_strip(std::pair<size_t, size_t> edge) const {
+    size_t u = edge.first, v = edge.second;
+    std::vector<std::pair<size_t, size_t>> edges{ edge };
+    for (size_t step = 0; step < face.size(); ++step) {
+        const std::optional<size_t> fopt = halfedge_face({ u, v });
+        if (!fopt.has_value()) break;
+        const auto fit = face.find(*fopt);
+        if (fit == face.end()) break;
+        const std::vector<size_t>& verts = fit->second;
+        if (verts.size() != 4) break;
+        const auto pos = std::find(verts.begin(), verts.end(), u);
+        if (pos == verts.end()) break;
+        const size_t i = pos - verts.begin();
+        u = verts[(i + 3) % 4];
+        v = verts[(i + 2) % 4];
+        edges.emplace_back(u, v);
+        if (std::make_pair(u, v) == edge) break;
+    }
+    return edges;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sampling
+// ═══════════════════════════════════════════════════════════════════════════
+
+template <typename T>
+static std::vector<T> lcg_sample(const std::vector<T>& keys, size_t size, uint32_t seed) {
+    if (keys.empty() || size == 0) return {};
+    const size_t n = keys.size();
+    const size_t take = std::min(size, n);
+    if (seed == 0) return std::vector<T>(keys.begin(), keys.begin() + take);
+    uint32_t s = seed & 0x7FFFFFFFu;
+    if (s == 0) s = 1;
+    std::set<size_t> used;
+    std::vector<T> out;
+    out.reserve(take);
+    while (out.size() < take) {
+        s = (s * 1103515245u + 12345u) & 0x7FFFFFFFu;
+        const size_t i = static_cast<size_t>(s) % n;
+        if (used.insert(i).second) out.push_back(keys[i]);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::vertex_sample(size_t size, uint32_t seed) const {
+    return lcg_sample(vertices(), size, seed);
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edge_sample(size_t size, uint32_t seed) const {
+    return lcg_sample(edges(), size, seed);
+}
+
+std::vector<size_t> Mesh::face_sample(size_t size, uint32_t seed) const {
+    return lcg_sample(faces(), size, seed);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Aliases
+// ═══════════════════════════════════════════════════════════════════════════
+
+std::optional<Point> Mesh::face_center(size_t face_key) const { return face_centroid(face_key); }
+
+std::optional<Polyline> Mesh::face_polygon(size_t face_key) const {
+    const std::optional<std::vector<Point>> pts_opt = face_points(face_key);
+    if (!pts_opt.has_value()) return std::nullopt;
+    std::vector<Point> pts = *pts_opt;
+    if (!pts.empty() && !(pts.front() == pts.back())) pts.push_back(pts.front());
+    return Polyline{ pts };
+}
+
+std::vector<Polyline> Mesh::face_outlines() const {
+    std::vector<Polyline> outlines;
+    outlines.reserve(face.size());
+    for (size_t face_key : faces()) {
+        const std::optional<Polyline> outline = face_polygon(face_key);
+        if (outline && outline->point_count() >= 4) outlines.push_back(*outline);
+    }
+    return outlines;
+}
+
+void Mesh::flip_cycles() { flip(); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Attribute API
+// ═══════════════════════════════════════════════════════════════════════════
+
+void Mesh::update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
+    for (const auto& [k, v] : attrs) default_vertex_attributes[k] = v;
+}
+
+void Mesh::update_default_face_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
+    for (const auto& [k, v] : attrs) default_face_attributes[k] = v;
+}
+
+void Mesh::update_default_edge_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
+    for (const auto& [k, v] : attrs) default_edge_attributes[k] = v;
+}
+
+std::optional<double> Mesh::vertex_attribute(size_t key, const std::string& name) const {
+    const auto it = vertex.find(key);
+    if (it == vertex.end()) return std::nullopt;
+    const auto ait = it->second.attributes.find(name);
+    if (ait != it->second.attributes.end()) return ait->second;
+    const auto dit = default_vertex_attributes.find(name);
+    if (dit != default_vertex_attributes.end()) return dit->second;
+    return std::nullopt;
+}
+
+void Mesh::set_vertex_attribute(size_t key, const std::string& name, double value) {
+    const auto it = vertex.find(key);
+    if (it == vertex.end()) return;
+    it->second.attributes[name] = value;
+}
+
+std::optional<double> Mesh::face_attribute(size_t fkey, const std::string& name) const {
+    if (face.find(fkey) == face.end()) return std::nullopt;
+    const auto fit = facedata.find(fkey);
+    if (fit != facedata.end()) {
+        const auto ait = fit->second.find(name);
+        if (ait != fit->second.end()) return ait->second;
+    }
+    const auto dit = default_face_attributes.find(name);
+    if (dit != default_face_attributes.end()) return dit->second;
+    return std::nullopt;
+}
+
+void Mesh::set_face_attribute(size_t fkey, const std::string& name, double value) {
+    if (face.find(fkey) == face.end()) return;
+    facedata[fkey][name] = value;
+}
+
+std::optional<double> Mesh::edge_attribute(std::pair<size_t, size_t> edge, const std::string& name) const {
+    const auto [u, v] = edge;
+    const auto uit = halfedge.find(u);
+    const auto vit = halfedge.find(v);
+    const bool uv = uit != halfedge.end() && uit->second.count(v);
+    const bool vu = vit != halfedge.end() && vit->second.count(u);
+    if (!uv && !vu) return std::nullopt;
+    auto eit = edgedata.find({ u, v });
+    if (eit == edgedata.end()) eit = edgedata.find({ v, u });
+    if (eit != edgedata.end()) {
+        const auto ait = eit->second.find(name);
+        if (ait != eit->second.end()) return ait->second;
+    }
+    const auto dit = default_edge_attributes.find(name);
+    if (dit != default_edge_attributes.end()) return dit->second;
+    return std::nullopt;
+}
+
+void Mesh::set_edge_attribute(std::pair<size_t, size_t> edge, const std::string& name, double value) {
+    const auto [u, v] = edge;
+    const std::pair<size_t, size_t> key = edgedata.count({ v, u }) ? std::make_pair(v, u) : std::make_pair(u, v);
+    edgedata[key][name] = value;
+}
+
+std::vector<std::optional<double>> Mesh::vertices_attribute(const std::string& name, const std::vector<size_t>* keys) const {
+    const std::vector<size_t> all = vertices();
+    if (!keys) keys = &all;
+    std::vector<std::optional<double>> out;
+    out.reserve(keys->size());
+    for (size_t k : *keys) out.push_back(vertex_attribute(k, name));
+    return out;
+}
+
+void Mesh::set_vertices_attribute(const std::string& name, double value, const std::vector<size_t>* keys) {
+    const std::vector<size_t> all = vertices();
+    if (!keys) keys = &all;
+    for (size_t k : *keys) set_vertex_attribute(k, name, value);
+}
+
+std::vector<std::optional<double>> Mesh::faces_attribute(const std::string& name, const std::vector<size_t>* keys) const {
+    const std::vector<size_t> all = faces();
+    if (!keys) keys = &all;
+    std::vector<std::optional<double>> out;
+    out.reserve(keys->size());
+    for (size_t k : *keys) out.push_back(face_attribute(k, name));
+    return out;
+}
+
+void Mesh::set_faces_attribute(const std::string& name, double value, const std::vector<size_t>* keys) {
+    const std::vector<size_t> all = faces();
+    if (!keys) keys = &all;
+    for (size_t k : *keys) set_face_attribute(k, name, value);
+}
+
+std::vector<std::optional<double>> Mesh::edges_attribute(const std::string& name, const std::vector<std::pair<size_t, size_t>>* keys) const {
+    const std::vector<std::pair<size_t, size_t>> all = edges();
+    if (!keys) keys = &all;
+    std::vector<std::optional<double>> out;
+    out.reserve(keys->size());
+    for (const std::pair<size_t, size_t>& e : *keys) out.push_back(edge_attribute(e, name));
+    return out;
+}
+
+void Mesh::set_edges_attribute(const std::string& name, double value, const std::vector<std::pair<size_t, size_t>>* keys) {
+    const std::vector<std::pair<size_t, size_t>> all = edges();
+    if (!keys) keys = &all;
+    for (const std::pair<size_t, size_t>& e : *keys) set_edge_attribute(e, name, value);
+}
+
+std::vector<size_t> Mesh::vertices_where(const std::vector<std::pair<std::string, double>>& conditions) const {
+    std::vector<size_t> out;
+    for (size_t k : vertices()) {
+        bool ok = true;
+        for (const auto& [n, v] : conditions) {
+            const std::optional<double> val = vertex_attribute(k, n);
+            if (!val.has_value() || *val != v) { ok = false; break; }
+        }
+        if (ok) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::faces_where(const std::vector<std::pair<std::string, double>>& conditions) const {
+    std::vector<size_t> out;
+    for (size_t k : faces()) {
+        bool ok = true;
+        for (const auto& [n, v] : conditions) {
+            const std::optional<double> val = face_attribute(k, n);
+            if (!val.has_value() || *val != v) { ok = false; break; }
+        }
+        if (ok) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges_where(const std::vector<std::pair<std::string, double>>& conditions) const {
+    std::vector<std::pair<size_t, size_t>> out;
+    for (const std::pair<size_t, size_t>& e : edges()) {
+        bool ok = true;
+        for (const auto& [n, v] : conditions) {
+            const std::optional<double> val = edge_attribute(e, n);
+            if (!val.has_value() || *val != v) { ok = false; break; }
+        }
+        if (ok) out.push_back(e);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::vertices_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const {
+    std::vector<size_t> out;
+    for (size_t k : vertices()) {
+        std::map<std::string, double> attrs = default_vertex_attributes;
+        for (const auto& [kk, vv] : vertex.at(k).attributes) attrs[kk] = vv;
+        if (pred(k, attrs)) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<size_t> Mesh::faces_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const {
+    std::vector<size_t> out;
+    for (size_t k : faces()) {
+        std::map<std::string, double> attrs = default_face_attributes;
+        const auto fit = facedata.find(k);
+        if (fit != facedata.end())
+            for (const auto& [kk, vv] : fit->second) attrs[kk] = vv;
+        if (pred(k, attrs)) out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<std::pair<size_t, size_t>> Mesh::edges_where_predicate(const std::function<bool(std::pair<size_t, size_t>, const std::map<std::string, double>&)>& pred) const {
+    std::vector<std::pair<size_t, size_t>> out;
+    for (const std::pair<size_t, size_t>& e : edges()) {
+        std::map<std::string, double> attrs = default_edge_attributes;
+        auto eit = edgedata.find(e);
+        if (eit == edgedata.end()) eit = edgedata.find({ e.second, e.first });
+        if (eit != edgedata.end())
+            for (const auto& [kk, vv] : eit->second) attrs[kk] = vv;
+        if (pred(e, attrs)) out.push_back(e);
+    }
+    return out;
+}
+
+std::optional<Vector> Mesh::face_normal_unitized(size_t face_key, bool unitized) const {
+    const std::optional<std::vector<size_t>> vertices_opt = face_vertices(face_key);
+    if (!vertices_opt.has_value() || vertices_opt->size() < 3) return std::nullopt;
+    const std::vector<size_t>& vertices = *vertices_opt;
+    const std::optional<Point> p0 = vertex_point(vertices[0]);
+    const std::optional<Point> p1 = vertex_point(vertices[1]);
+    const std::optional<Point> p2 = vertex_point(vertices[2]);
+    if (!p0 || !p1 || !p2) return std::nullopt;
+    const Vector u((*p1)[0] - (*p0)[0], (*p1)[1] - (*p0)[1], (*p1)[2] - (*p0)[2]);
+    const Vector v((*p2)[0] - (*p0)[0], (*p2)[1] - (*p0)[1], (*p2)[2] - (*p0)[2]);
+    const Vector normal = u.cross(v);
+    if (!unitized) return normal;
+    const double len = normal.magnitude();
+    if (len > Tolerance::ZERO_TOLERANCE) return Vector(normal[0] / len, normal[1] / len, normal[2] / len);
+    return std::nullopt;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Geometric Properties
+// ═══════════════════════════════════════════════════════════════════════════
+
+double Mesh::area() const {
+    double total = 0.0;
+    for (const auto& [fk, _] : face) {
+        const std::optional<double> a = face_area(fk);
+        if (a) total += *a;
+    }
+    return total;
+}
+
+Point Mesh::centroid() const {
+    double x = 0, y = 0, z = 0;
+    for (const auto& [vk, v] : vertex) {
+        x += v.x;
+        y += v.y;
+        z += v.z;
+    }
+    const double n = vertex.empty() ? 1.0 : static_cast<double>(vertex.size());
+    return Point(x / n, y / n, z / n);
+}
+
+std::optional<double> Mesh::dihedral_angle(size_t u, size_t v) const {
+    const std::optional<std::vector<size_t>> ef = edge_faces(u, v);
+    if (!ef || ef->size() < 2) return std::nullopt;
+    const std::optional<Vector> n0 = face_normal((*ef)[0]);
+    const std::optional<Vector> n1 = face_normal((*ef)[1]);
+    if (!n0.has_value() || !n1.has_value()) return std::nullopt;
+    const double dot = std::clamp(n0->dot(*n1), -1.0, 1.0);
+    return (Tolerance::PI - std::acos(dot)) * 180.0 / Tolerance::PI;
+}
+
+/// Unit direction from the edge midpoint to the face centroid, in the plane perpendicular to the edge
+static std::optional<Vector> dihedral_arm(const Point& centroid, const Point& mid, const Vector& edge) {
+    Vector d(centroid[0]-mid[0], centroid[1]-mid[1], centroid[2]-mid[2]);
+    const double dot = d.dot(edge);
+    d = Vector(d[0]-dot*edge[0], d[1]-dot*edge[1], d[2]-dot*edge[2]);
+    const double len = d.magnitude();
+    if (len < 1e-10) return std::nullopt;
+    return Vector(d[0]/len, d[1]/len, d[2]/len);
+}
+
+std::tuple<std::map<std::pair<size_t,size_t>,double>, std::vector<Polyline>, std::vector<Point>>
+Mesh::dihedral_angles(double scale, bool with_arcs, bool with_points) const {
+    std::map<std::pair<size_t,size_t>,double> angles;
+    std::vector<Polyline> arcs;
+    std::vector<Point> points;
+    const int arc_n = 12;
+    const Color label_color = Color::yellow();
+    for (const auto& [u, v] : edges()) {
+        const std::optional<double> da = dihedral_angle(u, v);
+        if (!da) continue;
+        angles[{u, v}] = *da;
+        const Point ep0 = *vertex_point(u);
+        const Point ep1 = *vertex_point(v);
+        const Point mid((ep0[0]+ep1[0])*0.5, (ep0[1]+ep1[1])*0.5, (ep0[2]+ep1[2])*0.5);
+        if (scale == 0.0) {
+            if (!with_points) continue;
+            Point pt(mid[0], mid[1], mid[2], std::to_string(*da));
+            pt.pointcolor = label_color;
+            points.push_back(pt);
+            continue;
+        }
+        const std::vector<size_t> ef = *edge_faces(u, v);
+        Vector edge(ep1[0]-ep0[0], ep1[1]-ep0[1], ep1[2]-ep0[2]);
+        if (edge.magnitude() < 1e-10 || !edge.normalize_self()) continue;
+        const std::optional<Vector> d0 = dihedral_arm(*face_centroid(ef[0]), mid, edge);
+        const std::optional<Vector> d1 = dihedral_arm(*face_centroid(ef[1]), mid, edge);
+        if (!d0 || !d1) continue;
+        const double theta = std::acos(std::clamp(d0->dot(*d1), -1.0, 1.0));
+        if (std::abs(std::sin(theta)) < 1e-10) continue;
+        std::vector<Point> arc_pts;
+        arc_pts.reserve(arc_n + 1);
+        for (int j = 0; j <= arc_n; j++) {
+            const double t = static_cast<double>(j) / arc_n;
+            const double w1 = std::sin((1.0-t)*theta) / std::sin(theta);
+            const double w2 = std::sin(t*theta) / std::sin(theta);
+            arc_pts.push_back(Point(
+                mid[0]+(w1*(*d0)[0]+w2*(*d1)[0])*scale,
+                mid[1]+(w1*(*d0)[1]+w2*(*d1)[1])*scale,
+                mid[2]+(w1*(*d0)[2]+w2*(*d1)[2])*scale));
+        }
+        if (with_arcs) {
+            Polyline arc(arc_pts);
+            arc.name = "dihedral_e"+std::to_string(u)+"_"+std::to_string(v)+"="+std::to_string(*da);
+            arc.linecolor = label_color;
+            arcs.push_back(arc);
+        }
+        if (with_points) {
+            Point pt(arc_pts[arc_n/2][0], arc_pts[arc_n/2][1], arc_pts[arc_n/2][2], std::to_string(*da));
+            pt.pointcolor = label_color;
+            points.push_back(pt);
+        }
+    }
+    return {angles, arcs, points};
+}
+
+std::optional<double> Mesh::face_area(size_t face_key) const {
+    const std::optional<std::vector<size_t>> vertices_opt = face_vertices(face_key);
+    if (!vertices_opt.has_value() || vertices_opt->size() < 3) return 0.0;
+    const std::vector<size_t>& vertices = *vertices_opt;
+    const std::optional<Point> p0 = vertex_point(vertices[0]);
+    if (!p0) return std::nullopt;
+    double area = 0.0;
+    for (size_t i = 1; i + 1 < vertices.size(); ++i) {
+        const std::optional<Point> p1 = vertex_point(vertices[i]);
+        const std::optional<Point> p2 = vertex_point(vertices[i + 1]);
+        if (!p1 || !p2) return std::nullopt;
+        const Vector u((*p1)[0] - (*p0)[0], (*p1)[1] - (*p0)[1], (*p1)[2] - (*p0)[2]);
+        const Vector v((*p2)[0] - (*p0)[0], (*p2)[1] - (*p0)[1], (*p2)[2] - (*p0)[2]);
+        area += u.cross(v).magnitude() * 0.5;
+    }
+    return area;
+}
+
+std::optional<Point> Mesh::face_centroid(size_t face_key) const {
+    const std::optional<std::vector<size_t>> verts = face_vertices(face_key);
+    if (!verts || verts->empty()) return std::nullopt;
+    double x = 0, y = 0, z = 0;
+    for (size_t vk : *verts) {
+        const std::optional<Point> p = vertex_point(vk);
+        if (!p) return std::nullopt;
+        x += (*p)[0]; y += (*p)[1]; z += (*p)[2];
+    }
+    const double n = static_cast<double>(verts->size());
+    return Point(x / n, y / n, z / n);
+}
+
+std::optional<Vector> Mesh::face_normal(size_t face_key) const {
+    return face_normal_unitized(face_key, true);
+}
+
+std::map<size_t, Vector> Mesh::face_normals() const {
+    std::map<size_t, Vector> normals;
+    for (const auto& [face_key, _] : face) {
+        const std::optional<Vector> normal = face_normal(face_key);
+        if (normal) normals[face_key] = *normal;
+    }
+    return normals;
+}
+
+std::optional<double> Mesh::vertex_angle_in_face(size_t vertex_key, size_t face_key) const {
+    const std::optional<std::vector<size_t>> vertices_opt = face_vertices(face_key);
+    if (!vertices_opt) return std::nullopt;
+    const std::vector<size_t>& vertices = *vertices_opt;
+    const auto it = std::find(vertices.begin(), vertices.end(), vertex_key);
+    if (it == vertices.end()) return std::nullopt;
+    const size_t vertex_index = std::distance(vertices.begin(), it);
+    const size_t n = vertices.size();
+    const std::optional<Point> center = vertex_point(vertex_key);
+    const std::optional<Point> prev_pos = vertex_point(vertices[(vertex_index + n - 1) % n]);
+    const std::optional<Point> next_pos = vertex_point(vertices[(vertex_index + 1) % n]);
+    if (!center || !prev_pos || !next_pos) return std::nullopt;
+    const Vector u((*prev_pos)[0] - (*center)[0], (*prev_pos)[1] - (*center)[1], (*prev_pos)[2] - (*center)[2]);
+    const Vector v((*next_pos)[0] - (*center)[0], (*next_pos)[1] - (*center)[1], (*next_pos)[2] - (*center)[2]);
+    const double u_len = u.magnitude();
+    const double v_len = v.magnitude();
+    if (u_len < Tolerance::ZERO_TOLERANCE || v_len < Tolerance::ZERO_TOLERANCE) return 0.0;
+    return std::acos(std::clamp(u.dot(v) / (u_len * v_len), -1.0, 1.0));
+}
+
+std::optional<Vector> Mesh::vertex_normal(size_t vertex_key) const {
+    return vertex_normal_weighted(vertex_key, NormalWeighting::Area);
+}
+
+std::optional<Vector> Mesh::vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const {
+    const std::optional<std::vector<size_t>> faces_opt = vertex_faces(vertex_key);
+    if (!faces_opt || faces_opt->empty()) return std::nullopt;
+    Vector normal_acc(0.0, 0.0, 0.0);
+    for (size_t face_key : *faces_opt) {
+        const std::optional<Vector> fn = face_normal(face_key);
+        if (!fn) continue;
+        double weight = 1.0;
+        if (weighting == NormalWeighting::Area) weight = face_area(face_key).value_or(1.0);
+        else if (weighting == NormalWeighting::Angle) weight = vertex_angle_in_face(vertex_key, face_key).value_or(1.0);
+        normal_acc[0] = normal_acc[0] + (*fn)[0] * weight;
+        normal_acc[1] = normal_acc[1] + (*fn)[1] * weight;
+        normal_acc[2] = normal_acc[2] + (*fn)[2] * weight;
+    }
+    const double len = normal_acc.magnitude();
+    if (len > Tolerance::ZERO_TOLERANCE) return Vector(normal_acc[0] / len, normal_acc[1] / len, normal_acc[2] / len);
+    return std::nullopt;
+}
+
+std::map<size_t, Vector> Mesh::vertex_normals() const {
+    return vertex_normals_weighted(NormalWeighting::Area);
+}
+
+/// Corner weight of vertex i in a face: its interior angle
+static double corner_angle(const std::vector<Point>& pts, size_t i) {
+    const size_t n = pts.size();
+    const size_t prev = (i + n - 1) % n, next = (i + 1) % n;
+    const Vector a(pts[prev][0]-pts[i][0], pts[prev][1]-pts[i][1], pts[prev][2]-pts[i][2]);
+    const Vector b(pts[next][0]-pts[i][0], pts[next][1]-pts[i][1], pts[next][2]-pts[i][2]);
+    const double a_len = a.magnitude();
+    const double b_len = b.magnitude();
+    if (a_len < Tolerance::ZERO_TOLERANCE || b_len < Tolerance::ZERO_TOLERANCE) return 0.0;
+    return std::acos(std::clamp(a.dot(b) / (a_len * b_len), -1.0, 1.0));
+}
+
+std::map<size_t, Vector> Mesh::vertex_normals_weighted(NormalWeighting weighting) const {
+    std::map<size_t, Vector> acc;
+    for (const auto& [fk, vkeys] : face) {
+        if (vkeys.size() < 3) continue;
+        const std::optional<std::vector<Point>> pts = face_points(fk);
+        if (!pts) continue;
+        const std::optional<Vector> normal = face_normal(fk);
+        if (!normal) continue;
+        double area = 0.0;
+        if (weighting == NormalWeighting::Area) area = *face_area(fk);
+        for (size_t i = 0; i < vkeys.size(); ++i) {
+            double weight = 1.0;
+            if (weighting == NormalWeighting::Area) weight = area;
+            else if (weighting == NormalWeighting::Angle) weight = corner_angle(*pts, i);
+            Vector& v = acc[vkeys[i]];
+            v[0] = v[0] + (*normal)[0] * weight;
+            v[1] = v[1] + (*normal)[1] * weight;
+            v[2] = v[2] + (*normal)[2] * weight;
+        }
+    }
+    std::map<size_t, Vector> normals;
+    for (const auto& [vk, v] : acc) {
+        const double len = v.magnitude();
+        if (len > Tolerance::ZERO_TOLERANCE) normals[vk] = Vector(v[0] / len, v[1] / len, v[2] / len);
+    }
+    return normals;
+}
+
+double Mesh::volume() const {
+    double total = 0.0;
+    for (const auto& [fk, vkeys] : face) {
+        if (vkeys.size() < 3) continue;
+        const std::optional<Point> p0 = vertex_point(vkeys[0]);
+        if (!p0) continue;
+        for (size_t i = 1; i + 1 < vkeys.size(); ++i) {
+            const std::optional<Point> p1 = vertex_point(vkeys[i]);
+            const std::optional<Point> p2 = vertex_point(vkeys[i + 1]);
+            if (!p1 || !p2) continue;
+            total += (*p0)[0] * ((*p1)[1] * (*p2)[2] - (*p1)[2] * (*p2)[1])
+                   + (*p0)[1] * ((*p1)[2] * (*p2)[0] - (*p1)[0] * (*p2)[2])
+                   + (*p0)[2] * ((*p1)[0] * (*p2)[1] - (*p1)[1] * (*p2)[0]);
+        }
+    }
+    return std::abs(total) / 6.0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Triangle BVH
+// ═══════════════════════════════════════════════════════════════════════════
+
+struct TriangleTask { uint32_t i0, i1, i2; size_t face_idx; size_t sub_idx; };
+
+/// Every triangle of the mesh: the stored triangulation of an n-gon, a fan from vertex 0 otherwise
+static std::vector<TriangleTask> triangle_tasks(const Mesh& mesh, const std::vector<std::vector<size_t>>& faces) {
+    const std::map<size_t, size_t> vkey_to_idx = mesh.vertex_index();
+    const std::vector<size_t> face_keys = mesh.faces();
+    const std::map<size_t, std::vector<std::array<size_t, 3>>>& triangulation = mesh.get_triangulation();
+    std::vector<TriangleTask> tasks;
+    for (size_t fi = 0; fi < faces.size(); ++fi) {
+        const std::vector<size_t>& fv = faces[fi];
+        if (fv.size() < 3) continue;
+        const auto it = fv.size() >= 5 ? triangulation.find(face_keys[fi]) : triangulation.end();
+        if (it != triangulation.end()) {
+            for (size_t j = 0; j < it->second.size(); ++j) {
+                const std::array<size_t, 3>& t = it->second[j];
+                tasks.push_back({static_cast<uint32_t>(vkey_to_idx.at(t[0])), static_cast<uint32_t>(vkey_to_idx.at(t[1])), static_cast<uint32_t>(vkey_to_idx.at(t[2])), fi, j});
             }
-            mesh.vertex[key] = vertex_data;
-            if (!data.contains("halfedge")) {
-                mesh.halfedge[key] = {};
-            }
-            if (key >= mesh.max_vertex) mesh.max_vertex = key + 1;
+            continue;
         }
+        for (size_t j = 1; j + 1 < fv.size(); ++j)
+            tasks.push_back({static_cast<uint32_t>(fv[0]), static_cast<uint32_t>(fv[j]), static_cast<uint32_t>(fv[j+1]), fi, j});
     }
-    
-    // Load face data
-    if (data.contains("face")) {
-        for (const auto& [key_str, vertices] : data["face"].items()) {
-            size_t key = std::stoull(key_str);
-            mesh.face[key] = vertices.get<std::vector<size_t>>();
-            if (key >= mesh.max_face) mesh.max_face = key + 1;
-        }
-    }
-    
-    // Load face holes
-    if (data.contains("face_holes")) {
-        for (const auto& [fk_str, rings_val] : data["face_holes"].items()) {
-            size_t fk = std::stoull(fk_str);
-            std::vector<std::vector<size_t>> rings;
-            for (const auto& ring : rings_val)
-                rings.push_back(ring.get<std::vector<size_t>>());
-            mesh.face_holes[fk] = rings;
-        }
-    }
+    return tasks;
+}
 
-    // Load face attributes
-    if (data.contains("facedata")) {
-        for (const auto& [key_str, attrs] : data["facedata"].items()) {
-            size_t key = std::stoull(key_str);
-            mesh.facedata[key] = attrs.get<std::map<std::string, double>>();
-        }
-    }
-    
-    // Load edge attributes
-    if (data.contains("edgedata")) {
-        for (const auto& [edge_str, attrs] : data["edgedata"].items()) {
-            size_t comma_pos = edge_str.find(',');
-            size_t u = std::stoull(edge_str.substr(0, comma_pos));
-            size_t v = std::stoull(edge_str.substr(comma_pos + 1));
-            mesh.edgedata[{u, v}] = attrs.get<std::map<std::string, double>>();
-        }
-    }
-    
-    if (data.contains("default_vertex_attributes")) {
-        mesh.default_vertex_attributes = data["default_vertex_attributes"];
-    }
-    if (data.contains("default_face_attributes")) {
-        mesh.default_face_attributes = data["default_face_attributes"];
-    }
-    if (data.contains("default_edge_attributes")) {
-        mesh.default_edge_attributes = data["default_edge_attributes"];
-    }
-    if (data.contains("max_vertex")) {
-        mesh.max_vertex = data["max_vertex"];
-    }
-    if (data.contains("max_face")) {
-        mesh.max_face = data["max_face"];
-    }
+/// AABB of a triangle, padded by a thousandth
+static AABB triangle_aabb(const Point& p0, const Point& p1, const Point& p2) {
+    const double min_x = std::min({p0[0], p1[0], p2[0]}) - 0.001;
+    const double min_y = std::min({p0[1], p1[1], p2[1]}) - 0.001;
+    const double min_z = std::min({p0[2], p1[2], p2[2]}) - 0.001;
+    const double max_x = std::max({p0[0], p1[0], p2[0]}) + 0.001;
+    const double max_y = std::max({p0[1], p1[1], p2[1]}) + 0.001;
+    const double max_z = std::max({p0[2], p1[2], p2[2]}) + 0.001;
+    return AABB{(min_x + max_x) * 0.5, (min_y + max_y) * 0.5, (min_z + max_z) * 0.5,
+                (max_x - min_x) * 0.5, (max_y - min_y) * 0.5, (max_z - min_z) * 0.5};
+}
 
-    // Load colors from flat RGB arrays
-    if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
-        const auto& arr = data["pointcolors"];
-        mesh.pointcolors.clear();
-        for (size_t i = 0; i + 3 < arr.size(); i += 4) {
-            mesh.pointcolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
-                arr[i+2].get<int>(), arr[i+3].get<int>()));
-        }
+/// World size for the BVH Morton grid: 2.2 times the largest absolute extent, at least 10
+static double triangle_world_size(const std::vector<AABB>& aabbs) {
+    double extent = 0.0;
+    for (const AABB& bb : aabbs) {
+        extent = std::max(extent, std::fabs(bb.cx - bb.hx));
+        extent = std::max(extent, std::fabs(bb.cx + bb.hx));
+        extent = std::max(extent, std::fabs(bb.cy - bb.hy));
+        extent = std::max(extent, std::fabs(bb.cy + bb.hy));
+        extent = std::max(extent, std::fabs(bb.cz - bb.hz));
+        extent = std::max(extent, std::fabs(bb.cz + bb.hz));
     }
-
-    if (data.contains("facecolors") && data["facecolors"].is_array()) {
-        const auto& arr = data["facecolors"];
-        mesh.facecolors.clear();
-        for (size_t i = 0; i + 3 < arr.size(); i += 4) {
-            mesh.facecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
-                arr[i+2].get<int>(), arr[i+3].get<int>()));
-        }
-    }
-
-    if (data.contains("linecolors") && data["linecolors"].is_array()) {
-        const auto& arr = data["linecolors"];
-        mesh.linecolors.clear();
-        for (size_t i = 0; i + 3 < arr.size(); i += 4) {
-            mesh.linecolors.push_back(Color(arr[i].get<int>(), arr[i+1].get<int>(),
-                arr[i+2].get<int>(), arr[i+3].get<int>()));
-        }
-    }
-
-    if (data.contains("widths") && data["widths"].is_array()) {
-        mesh.widths = data["widths"].get<std::vector<double>>();
-    }
-
-    if (data.contains("objectcolor")) {
-        mesh.objectcolor = Color::jsonload(data["objectcolor"]);
-    }
-    if (data.contains("color_mode")) {
-        mesh.color_mode = color_mode_from_string(data["color_mode"].get<std::string>());
-    }
-
-    if (data.contains("triangulation")) {
-        for (const auto& [fk_str, tris_val] : data["triangulation"].items()) {
-            size_t fk = std::stoull(fk_str);
-            std::vector<std::array<size_t,3>> tris;
-            for (const auto& t : tris_val)
-                tris.push_back({t[0].get<size_t>(), t[1].get<size_t>(), t[2].get<size_t>()});
-            mesh.triangulation[fk] = tris;
-        }
-    }
-
-    return mesh;
+    return std::max(2.2 * extent, 10.0);
 }
 
 void Mesh::build_triangle_bvh(bool force) const {
     if (triangle_bvh_built && !force) return;
-
-    triangle_boxes_cache.clear();
-    triangle_aabbs_cache.clear();
-    triangle_indices_cache.clear();
-    triangle_face_subidx_cache.clear();
-    vertices_cache.clear();
-
-    auto vf = to_vertices_and_faces();
-    vertices_cache = vf.first;
-    const std::vector<std::vector<size_t>>& faces_vec = vf.second;
-
-    std::vector<size_t> vertex_keys;
-    vertex_keys.reserve(vertex.size());
-    for (const auto& kv : vertex) vertex_keys.push_back(kv.first);
-    std::sort(vertex_keys.begin(), vertex_keys.end());
-    std::unordered_map<size_t, size_t> vkey_to_idx;
-    vkey_to_idx.reserve(vertex_keys.size());
-    for (size_t i = 0; i < vertex_keys.size(); ++i) vkey_to_idx[vertex_keys[i]] = i;
-
-    std::vector<size_t> face_keys;
-    face_keys.reserve(face.size());
-    for (const auto& kv : face) face_keys.push_back(kv.first);
-    std::sort(face_keys.begin(), face_keys.end());
-
-    size_t tri_count = 0;
-    for (size_t fi = 0; fi < faces_vec.size(); ++fi) {
-        const auto& fv = faces_vec[fi];
-        if (fv.size() < 3) continue;
-        if (fv.size() >= 5 && fi < face_keys.size()) {
-            auto it = triangulation.find(face_keys[fi]);
-            if (it != triangulation.end()) { tri_count += it->second.size(); continue; }
-        }
-        tri_count += fv.size() - 2;
-    }
-    triangle_aabbs_cache.resize(tri_count);
-    triangle_indices_cache.resize(tri_count);
-    triangle_face_subidx_cache.resize(tri_count);
-
-    struct TriTask { uint32_t i0, i1, i2; size_t face_idx; size_t sub_idx; size_t out_idx; };
-    std::vector<TriTask> tasks;
-    tasks.reserve(tri_count);
-
-    size_t out = 0;
-    for (size_t fi = 0; fi < faces_vec.size(); ++fi) {
-        const auto& fv = faces_vec[fi];
-        if (fv.size() < 3) continue;
-        if (fv.size() >= 5 && fi < face_keys.size()) {
-            auto it = triangulation.find(face_keys[fi]);
-            if (it != triangulation.end()) {
-                for (size_t j = 0; j < it->second.size(); ++j) {
-                    const auto& t = it->second[j];
-                    tasks.push_back(TriTask{static_cast<uint32_t>(vkey_to_idx.at(t[0])), static_cast<uint32_t>(vkey_to_idx.at(t[1])), static_cast<uint32_t>(vkey_to_idx.at(t[2])), fi, j, out});
-                    out++;
-                }
-                continue;
-            }
-        }
-        for (size_t j = 1; j + 1 < fv.size(); ++j) {
-            tasks.push_back(TriTask{static_cast<uint32_t>(fv[0]), static_cast<uint32_t>(fv[j]), static_cast<uint32_t>(fv[j+1]), fi, j, out});
-            out++;
-        }
-    }
-
-    auto worker = [&](size_t begin, size_t end){
-        for (size_t k = begin; k < end; ++k) {
-            const auto& t = tasks[k];
-            const Point& p0 = vertices_cache[t.i0];
-            const Point& p1 = vertices_cache[t.i1];
-            const Point& p2 = vertices_cache[t.i2];
-
-            double min_x = std::min(std::min(p0[0], p1[0]), p2[0]) - 0.001;
-            double min_y = std::min(std::min(p0[1], p1[1]), p2[1]) - 0.001;
-            double min_z = std::min(std::min(p0[2], p1[2]), p2[2]) - 0.001;
-            double max_x = std::max(std::max(p0[0], p1[0]), p2[0]) + 0.001;
-            double max_y = std::max(std::max(p0[1], p1[1]), p2[1]) + 0.001;
-            double max_z = std::max(std::max(p0[2], p1[2]), p2[2]) + 0.001;
-
-            double cx = (min_x + max_x) * 0.5;
-            double cy = (min_y + max_y) * 0.5;
-            double cz = (min_z + max_z) * 0.5;
-            double hx = (max_x - min_x) * 0.5;
-            double hy = (max_y - min_y) * 0.5;
-            double hz = (max_z - min_z) * 0.5;
-
-            AABB bb{cx, cy, cz, hx, hy, hz};
-            triangle_aabbs_cache[t.out_idx] = bb;
-            triangle_indices_cache[t.out_idx] = TriangleIndex{t.i0, t.i1, t.i2};
-            triangle_face_subidx_cache[t.out_idx] = {t.face_idx, t.sub_idx};
-        }
-    };
-
-    unsigned int threads = std::max(1u, std::thread::hardware_concurrency());
-    size_t total = tasks.size();
-    size_t block = (total + threads - 1) / threads;
-    std::vector<std::thread> pool;
-    pool.reserve(threads);
-    size_t beginIdx = 0;
-    for (unsigned int ti = 0; ti < threads && beginIdx < total; ++ti) {
-        size_t endIdx = std::min(beginIdx + block, total);
-        pool.emplace_back(worker, beginIdx, endIdx);
-        beginIdx = endIdx;
-    }
-    for (auto& th : pool) th.join();
-
-    // Compute world size from object bounds (triangle AABBs)
-    double min_x = std::numeric_limits<double>::infinity();
-    double min_y = std::numeric_limits<double>::infinity();
-    double min_z = std::numeric_limits<double>::infinity();
-    double max_x = -std::numeric_limits<double>::infinity();
-    double max_y = -std::numeric_limits<double>::infinity();
-    double max_z = -std::numeric_limits<double>::infinity();
-    for (const auto& bb : triangle_aabbs_cache) {
-        double bx0 = bb.cx - bb.hx; double bx1 = bb.cx + bb.hx;
-        double by0 = bb.cy - bb.hy; double by1 = bb.cy + bb.hy;
-        double bz0 = bb.cz - bb.hz; double bz1 = bb.cz + bb.hz;
-        if (bx0 < min_x) min_x = bx0;
-        if (bx1 > max_x) max_x = bx1;
-        if (by0 < min_y) min_y = by0;
-        if (by1 > max_y) max_y = by1;
-        if (bz0 < min_z) min_z = bz0;
-        if (bz1 > max_z) max_z = bz1;
-    }
-    double extent_x = std::max(std::fabs(min_x), std::fabs(max_x));
-    double extent_y = std::max(std::fabs(min_y), std::fabs(max_y));
-    double extent_z = std::max(std::fabs(min_z), std::fabs(max_z));
-    double max_extent = std::max({extent_x, extent_y, extent_z});
-    double world_size = std::max(2.2 * max_extent, 10.0);
-
+    clear_triangle_bvh();
+    const auto [vertices, faces] = to_vertices_and_faces();
+    vertices_cache = vertices;
+    const std::vector<TriangleTask> tasks = triangle_tasks(*this, faces);
+    triangle_aabbs_cache.resize(tasks.size());
+    triangle_indices_cache.resize(tasks.size());
+    triangle_face_subidx_cache.resize(tasks.size());
+    parallel_for(tasks.size(), [&](size_t k) {
+        const TriangleTask& t = tasks[k];
+        triangle_aabbs_cache[k] = triangle_aabb(vertices_cache[t.i0], vertices_cache[t.i1], vertices_cache[t.i2]);
+        triangle_indices_cache[k] = TriangleIndex{t.i0, t.i1, t.i2};
+        triangle_face_subidx_cache[k] = {t.face_idx, t.sub_idx};
+    });
     triangle_bvh = std::make_shared<SpatialBVH>();
-    triangle_bvh->build_from_aabbs(triangle_aabbs_cache.data(), triangle_aabbs_cache.size(), world_size);
+    triangle_bvh->build_from_aabbs(triangle_aabbs_cache.data(), triangle_aabbs_cache.size(), triangle_world_size(triangle_aabbs_cache));
     triangle_bvh_built = true;
 }
 
@@ -2923,12 +2784,11 @@ bool Mesh::triangle_bvh_ray_cast(const Point& origin, const Vector& direction, s
 
 bool Mesh::get_triangle_by_id(int tri_id, size_t& face_idx, size_t& sub_idx, Point& v0, Point& v1, Point& v2) const {
     if (tri_id < 0) return false;
-    size_t id = static_cast<size_t>(tri_id);
+    const size_t id = static_cast<size_t>(tri_id);
     if (id >= triangle_indices_cache.size() || id >= triangle_face_subidx_cache.size()) return false;
-    const auto& tri = triangle_indices_cache[id];
-    const auto& fs = triangle_face_subidx_cache[id];
-    face_idx = fs.first;
-    sub_idx = fs.second;
+    const TriangleIndex& tri = triangle_indices_cache[id];
+    face_idx = triangle_face_subidx_cache[id].first;
+    sub_idx = triangle_face_subidx_cache[id].second;
     if (tri.i0 >= vertices_cache.size() || tri.i1 >= vertices_cache.size() || tri.i2 >= vertices_cache.size()) return false;
     v0 = vertices_cache[tri.i0];
     v1 = vertices_cache[tri.i1];
@@ -2940,7 +2800,6 @@ void Mesh::clear_triangle_bvh() const {
     triangle_bvh_built = false;
     triangle_bvh.reset();
     triangle_aabb_tree.reset();
-    triangle_boxes_cache.clear();
     triangle_aabbs_cache.clear();
     triangle_indices_cache.clear();
     triangle_face_subidx_cache.clear();
@@ -2954,6 +2813,184 @@ void Mesh::build_triangle_aabb_tree(bool force) const {
     triangle_aabb_tree->build(triangle_aabbs_cache.data(), triangle_aabbs_cache.size());
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Transformation
+// ═══════════════════════════════════════════════════════════════════════════
+
+bool Mesh::transform(const Xform& xf) {
+    for (auto& [idx, vdata] : vertex) {
+        Point pt(vdata.x, vdata.y, vdata.z);
+        pt.transform(xf);
+        vdata.set_position(pt);
+    }
+    clear_triangle_bvh();
+    return true;
+}
+
+Mesh Mesh::transformed(const Xform& xf) const {
+    Mesh result = *this;
+    result.transform(xf);
+    return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Colors as a flat [r, g, b, a, ...] array
+static nlohmann::ordered_json colors_to_json(const std::vector<Color>& colors) {
+    nlohmann::ordered_json arr = nlohmann::ordered_json::array();
+    for (const Color& c : colors) {
+        arr.push_back(c.r);
+        arr.push_back(c.g);
+        arr.push_back(c.b);
+        arr.push_back(c.a);
+    }
+    return arr;
+}
+
+/// Colors from a flat [r, g, b, a, ...] array
+static std::vector<Color> colors_from_json(const nlohmann::json& arr) {
+    std::vector<Color> colors;
+    if (!arr.is_array()) return colors;
+    for (size_t i = 0; i + 3 < arr.size(); i += 4)
+        colors.push_back(Color(arr[i].get<float>(), arr[i+1].get<float>(), arr[i+2].get<float>(), arr[i+3].get<float>()));
+    return colors;
+}
+
+nlohmann::ordered_json Mesh::jsondump() const {
+    nlohmann::ordered_json data;
+    data["color_mode"] = color_mode_to_string(color_mode);
+    data["default_edge_attributes"] = default_edge_attributes;
+    data["default_face_attributes"] = default_face_attributes;
+    data["default_vertex_attributes"] = default_vertex_attributes;
+    nlohmann::ordered_json edgedata_json = nlohmann::ordered_json::object();
+    for (const auto& [edge, attrs] : edgedata)
+        edgedata_json[std::to_string(edge.first) + "," + std::to_string(edge.second)] = attrs;
+    data["edgedata"] = edgedata_json;
+    nlohmann::ordered_json face_json = nlohmann::ordered_json::object();
+    for (const auto& [key, vertices] : face)
+        face_json[std::to_string(key)] = vertices;
+    data["face"] = face_json;
+    nlohmann::ordered_json face_holes_json = nlohmann::ordered_json::object();
+    for (const auto& [fkey, rings] : face_holes)
+        face_holes_json[std::to_string(fkey)] = rings;
+    data["face_holes"] = face_holes_json;
+    data["facecolors"] = colors_to_json(facecolors);
+    nlohmann::ordered_json facedata_json = nlohmann::ordered_json::object();
+    for (const auto& [key, attrs] : facedata)
+        facedata_json[std::to_string(key)] = attrs;
+    data["facedata"] = facedata_json;
+    data["guid"] = guid();
+    const std::map<size_t, std::map<size_t, std::optional<size_t>>> he = halfedge.empty() && !face.empty() ? compute_halfedges() : halfedge;
+    nlohmann::ordered_json halfedge_json = nlohmann::ordered_json::object();
+    for (const auto& [u, neighbors] : he) {
+        nlohmann::ordered_json neighbor_json = nlohmann::ordered_json::object();
+        for (const auto& [v, face_opt] : neighbors)
+            neighbor_json[std::to_string(v)] = face_opt.has_value() ? nlohmann::json(face_opt.value()) : nlohmann::json(nullptr);
+        halfedge_json[std::to_string(u)] = neighbor_json;
+    }
+    data["halfedge"] = halfedge_json;
+    data["linecolors"] = colors_to_json(linecolors);
+    data["max_face"] = max_face;
+    data["max_vertex"] = max_vertex;
+    data["name"] = name;
+    data["objectcolor"] = objectcolor.jsondump();
+    data["pointcolors"] = colors_to_json(pointcolors);
+    nlohmann::ordered_json triangulation_json = nlohmann::ordered_json::object();
+    for (const auto& [fkey, tris] : triangulation) {
+        nlohmann::json tri_arr = nlohmann::json::array();
+        for (const std::array<size_t, 3>& t : tris)
+            tri_arr.push_back({t[0], t[1], t[2]});
+        triangulation_json[std::to_string(fkey)] = tri_arr;
+    }
+    data["triangulation"] = triangulation_json;
+    data["type"] = "Mesh";
+    nlohmann::ordered_json vertex_json = nlohmann::ordered_json::object();
+    for (const auto& [key, vdata] : vertex) {
+        nlohmann::ordered_json v;
+        v["attributes"] = vdata.attributes;
+        v["x"] = vdata.x;
+        v["y"] = vdata.y;
+        v["z"] = vdata.z;
+        vertex_json[std::to_string(key)] = v;
+    }
+    data["vertex"] = vertex_json;
+    data["widths"] = widths;
+    return data;
+}
+
+Mesh Mesh::jsonload(const nlohmann::json& data) {
+    Mesh mesh;
+    if (data.contains("guid")) mesh.guid() = data["guid"];
+    if (data.contains("name")) mesh.name = data["name"];
+    if (data.contains("halfedge")) {
+        for (const auto& [u_str, neighbors] : data["halfedge"].items()) {
+            const size_t u = std::stoull(u_str);
+            mesh.halfedge[u] = {};
+            for (const auto& [v_str, face_val] : neighbors.items()) {
+                const size_t v = std::stoull(v_str);
+                if (face_val.is_null()) mesh.halfedge[u][v] = std::nullopt;
+                else mesh.halfedge[u][v] = face_val.get<size_t>();
+            }
+        }
+    }
+    if (data.contains("vertex")) {
+        for (const auto& [key_str, vdata] : data["vertex"].items()) {
+            const size_t key = std::stoull(key_str);
+            VertexData vertex_data;
+            vertex_data.x = vdata["x"];
+            vertex_data.y = vdata["y"];
+            vertex_data.z = vdata["z"];
+            if (vdata.contains("attributes")) vertex_data.attributes = vdata["attributes"].get<std::map<std::string, double>>();
+            mesh.vertex[key] = vertex_data;
+            if (!data.contains("halfedge")) mesh.halfedge[key] = {};
+            if (key >= mesh.max_vertex) mesh.max_vertex = key + 1;
+        }
+    }
+    if (data.contains("face")) {
+        for (const auto& [key_str, vertices] : data["face"].items()) {
+            const size_t key = std::stoull(key_str);
+            mesh.face[key] = vertices.get<std::vector<size_t>>();
+            if (key >= mesh.max_face) mesh.max_face = key + 1;
+        }
+    }
+    if (data.contains("face_holes"))
+        for (const auto& [fk_str, rings] : data["face_holes"].items())
+            mesh.face_holes[std::stoull(fk_str)] = rings.get<std::vector<std::vector<size_t>>>();
+    if (data.contains("facedata"))
+        for (const auto& [key_str, attrs] : data["facedata"].items())
+            mesh.facedata[std::stoull(key_str)] = attrs.get<std::map<std::string, double>>();
+    if (data.contains("edgedata")) {
+        for (const auto& [edge_str, attrs] : data["edgedata"].items()) {
+            const size_t comma_pos = edge_str.find(',');
+            const size_t u = std::stoull(edge_str.substr(0, comma_pos));
+            const size_t v = std::stoull(edge_str.substr(comma_pos + 1));
+            mesh.edgedata[{u, v}] = attrs.get<std::map<std::string, double>>();
+        }
+    }
+    if (data.contains("default_vertex_attributes")) mesh.default_vertex_attributes = data["default_vertex_attributes"];
+    if (data.contains("default_face_attributes")) mesh.default_face_attributes = data["default_face_attributes"];
+    if (data.contains("default_edge_attributes")) mesh.default_edge_attributes = data["default_edge_attributes"];
+    if (data.contains("max_vertex")) mesh.max_vertex = data["max_vertex"];
+    if (data.contains("max_face")) mesh.max_face = data["max_face"];
+    if (data.contains("pointcolors")) mesh.pointcolors = colors_from_json(data["pointcolors"]);
+    if (data.contains("facecolors")) mesh.facecolors = colors_from_json(data["facecolors"]);
+    if (data.contains("linecolors")) mesh.linecolors = colors_from_json(data["linecolors"]);
+    if (data.contains("widths") && data["widths"].is_array()) mesh.widths = data["widths"].get<std::vector<double>>();
+    if (data.contains("objectcolor")) mesh.objectcolor = Color::jsonload(data["objectcolor"]);
+    if (data.contains("color_mode")) mesh.color_mode = color_mode_from_string(data["color_mode"].get<std::string>());
+    if (data.contains("triangulation")) {
+        for (const auto& [fk_str, tris_val] : data["triangulation"].items()) {
+            std::vector<std::array<size_t,3>> tris;
+            for (const auto& t : tris_val)
+                tris.push_back({t[0].get<size_t>(), t[1].get<size_t>(), t[2].get<size_t>()});
+            mesh.triangulation[std::stoull(fk_str)] = tris;
+        }
+    }
+    return mesh;
+}
+
 std::string Mesh::file_json_dumps() const {
     return jsondump().dump();
 }
@@ -2963,9 +3000,8 @@ Mesh Mesh::file_json_loads(const std::string& json_string) {
 }
 
 void Mesh::file_json_dump(const std::string& filename) const {
-    nlohmann::ordered_json j = jsondump();
     std::ofstream f(filename);
-    f << j.dump(2);
+    f << jsondump().dump(2);
 }
 
 Mesh Mesh::file_json_load(const std::string& filename) {
@@ -2976,452 +3012,82 @@ Mesh Mesh::file_json_load(const std::string& filename) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Loft panels
-// ═══════════════════════════════════════════════════════════════════════════
-
-static std::array<double,3> lp_newell_normal(const std::vector<Point>& pts) {
-    double nx=0, ny=0, nz=0;
-    int n = (int)pts.size();
-    for (int i = 0; i < n; i++) {
-        const auto& a = pts[i];
-        const auto& b = pts[(i+1)%n];
-        nx += (a[1]-b[1]) * (a[2]+b[2]);
-        ny += (a[2]-b[2]) * (a[0]+b[0]);
-        nz += (a[0]-b[0]) * (a[1]+b[1]);
-    }
-    return {nx, ny, nz};
-}
-
-static void lp_merge_collinear(std::vector<Point>& pts, std::vector<size_t>& vkeys) {
-    const double tol = Tolerance::APPROXIMATION;
-    const double zt2 = Tolerance::ZERO_TOLERANCE * Tolerance::ZERO_TOLERANCE;
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        int m = (int)pts.size();
-        if (m < 3) break;
-        std::vector<Point> np; std::vector<size_t> nk;
-        for (int i = 0; i < m; i++) {
-            int p=(i-1+m)%m, nx=(i+1)%m;
-            double ax=pts[i][0]-pts[p][0], ay=pts[i][1]-pts[p][1], az=pts[i][2]-pts[p][2];
-            double bx=pts[nx][0]-pts[i][0], by=pts[nx][1]-pts[i][1], bz=pts[nx][2]-pts[i][2];
-            double cx=ay*bz-az*by, cy=az*bx-ax*bz, cz=ax*by-ay*bx;
-            double a2=ax*ax+ay*ay+az*az, b2=bx*bx+by*by+bz*bz;
-            if (a2<zt2||b2<zt2||cx*cx+cy*cy+cz*cz<tol*tol*a2*b2) changed=true;
-            else { np.push_back(pts[i]); nk.push_back(vkeys[i]); }
-        }
-        pts=np; vkeys=nk;
-    }
-}
-
-static Point lp_offset_toward(const Point& p, double cx, double cy, double cz, double gap) {
-    double dx=cx-p[0], dy=cy-p[1], dz=cz-p[2];
-    double len=std::sqrt(dx*dx+dy*dy+dz*dz);
-    if (len>1e-10) { dx*=gap/len; dy*=gap/len; dz*=gap/len; }
-    return Point(p[0]+dx, p[1]+dy, p[2]+dz);
-}
-
-static Point lp_face_centroid(const Mesh& m, size_t fk) {
-    auto vkeys = *m.face_vertices(fk);
-    double cx=0,cy=0,cz=0;
-    for (auto vk : vkeys) { auto p=*m.vertex_point(vk); cx+=p[0]; cy+=p[1]; cz+=p[2]; }
-    return Point(cx/vkeys.size(), cy/vkeys.size(), cz/vkeys.size());
-}
-
-LoftResult Mesh::loft_panels(
-    const std::vector<std::vector<Point>>& top_polygons,
-    const std::vector<std::vector<Point>>& bot_polygons,
-    double merge_precision,
-    double edge_gap,
-    double edge_match_threshold,
-    bool   add_caps,
-    bool   skip_triangles)
-{
-    Mesh top_mesh = Mesh::from_polylines(top_polygons, merge_precision);
-    Mesh bot_mesh = Mesh::from_polylines(bot_polygons, merge_precision);
-
-    std::vector<size_t> tfks, bfks;
-    for (auto& [fk, _] : top_mesh.face) tfks.push_back(fk);
-    for (auto& [fk, _] : bot_mesh.face) bfks.push_back(fk);
-
-    std::vector<std::tuple<double, size_t, size_t>> dists;
-    dists.reserve(tfks.size() * bfks.size());
-    for (size_t ti = 0; ti < tfks.size(); ti++)
-        for (size_t bi = 0; bi < bfks.size(); bi++)
-            dists.push_back({lp_face_centroid(top_mesh, tfks[ti]).distance(
-                             lp_face_centroid(bot_mesh, bfks[bi])), ti, bi});
-    std::sort(dists.begin(), dists.end());
-
-    std::vector<bool> top_used(tfks.size(), false), bot_used(bfks.size(), false);
-    std::vector<std::pair<size_t,size_t>> face_match;
-    for (auto& [d, ti, bi] : dists) {
-        if (top_used[ti] || bot_used[bi]) continue;
-        face_match.push_back({tfks[ti], bfks[bi]});
-        top_used[ti] = true;
-        bot_used[bi] = true;
-    }
-    std::sort(face_match.begin(), face_match.end());
-
-    std::vector<LoftPanel> panels;
-    panels.reserve(face_match.size());
-    for (size_t si = 0; si < face_match.size(); si++) {
-        auto& [tfk, bfk] = face_match[si];
-        LoftPanel panel;
-        panel.top_face_key = 0;
-        panel.bot_face_key = 0;
-
-        auto top_vkeys = *top_mesh.face_vertices(tfk);
-        auto bot_vkeys = *bot_mesh.face_vertices(bfk);
-
-        std::vector<Point> top_pts, bot_pts;
-        for (auto vk : top_vkeys) top_pts.push_back(*top_mesh.vertex_point(vk));
-        for (auto vk : bot_vkeys) bot_pts.push_back(*bot_mesh.vertex_point(vk));
-
-        lp_merge_collinear(top_pts, top_vkeys);
-        lp_merge_collinear(bot_pts, bot_vkeys);
-        {
-            double max_te = 0;
-            int sz = (int)top_pts.size();
-            for (int i = 0; i < sz; i++)
-                max_te = std::max(max_te, top_pts[i].distance(top_pts[(i+1)%sz]));
-            const double stol = max_te * 0.001;
-            {
-                std::vector<Point> tp; std::vector<size_t> tk;
-                for (int i = 0; i < (int)top_pts.size(); i++) {
-                    if (tp.empty() || tp.back().distance(top_pts[i]) > stol) {
-                        tp.push_back(top_pts[i]); tk.push_back(top_vkeys[i]);
-                    }
-                }
-                while ((int)tp.size() >= 3 && tp.back().distance(tp.front()) <= stol) {
-                    tp.pop_back(); tk.pop_back();
-                }
-                if ((int)tp.size() >= 3) { top_pts = tp; top_vkeys = tk; }
-            }
-        }
-        int n = (int)top_pts.size();
-        int m = (int)bot_pts.size();
-
-        double tcx=0,tcy=0,tcz=0, bcx=0,bcy=0,bcz=0;
-        for (auto& p : top_pts) { tcx+=p[0]; tcy+=p[1]; tcz+=p[2]; }
-        for (auto& p : bot_pts) { bcx+=p[0]; bcy+=p[1]; bcz+=p[2]; }
-        tcx/=n; tcy/=n; tcz/=n;
-        bcx/=m; bcy/=m; bcz/=m;
-        double ax=tcx-bcx, ay=tcy-bcy, az=tcz-bcz;
-        double alen=std::sqrt(ax*ax+ay*ay+az*az);
-        if (alen>1e-12) {ax/=alen; ay/=alen; az/=alen;}
-
-        auto [tnx,tny,tnz] = lp_newell_normal(top_pts);
-        if (tnx*ax+tny*ay+tnz*az < 0) {
-            std::reverse(top_pts.begin(), top_pts.end());
-            std::reverse(top_vkeys.begin(), top_vkeys.end());
-        }
-        auto [bnx,bny,bnz] = lp_newell_normal(bot_pts);
-        if (bnx*ax+bny*ay+bnz*az > 0) {
-            std::reverse(bot_pts.begin(), bot_pts.end());
-            std::reverse(bot_vkeys.begin(), bot_vkeys.end());
-        }
-        for (int i = 0; i < n; i++) {
-            size_t lk = panel.mesh.add_vertex(top_pts[i]);
-            panel.orig_top_to_local[top_vkeys[i]] = lk;
-            panel.top_vertices.push_back(lk);
-        }
-        for (int j = 0; j < m; j++) {
-            size_t lk = panel.mesh.add_vertex(bot_pts[j]);
-            panel.orig_bot_to_local[bot_vkeys[j]] = lk;
-            panel.bot_vertices.push_back(lk);
-        }
-
-        if (add_caps) {
-            std::vector<size_t> top_cap;
-            for (auto vk : top_vkeys) top_cap.push_back(panel.orig_top_to_local[vk]);
-            auto fk = panel.mesh.add_face(top_cap);
-            panel.top_face_key = fk;
-            if (fk && top_cap.size() >= 3) {
-                auto [nx, ny, nz] = lp_newell_normal(top_pts);
-                double mag = std::sqrt(nx*nx + ny*ny + nz*nz);
-                if (mag > 1e-12) {
-                    nx /= mag; ny /= mag; nz /= mag;
-                    double ux = 1, uy = 0, uz = 0;
-                    if (std::abs(nx) > 0.9) { ux = 0; uy = 1; }
-                    double dot = ux*nx + uy*ny + uz*nz;
-                    ux -= dot*nx; uy -= dot*ny; uz -= dot*nz;
-                    double um = std::sqrt(ux*ux + uy*uy + uz*uz);
-                    ux /= um; uy /= um; uz /= um;
-                    double vx = ny*uz - nz*uy, vy = nz*ux - nx*uz, vz = nx*uy - ny*ux;
-                    std::vector<std::pair<double,double>> bpts;
-                    for (const auto& p : top_pts)
-                        bpts.push_back({p[0]*ux + p[1]*uy + p[2]*uz, p[0]*vx + p[1]*vy + p[2]*vz});
-                    auto tris = cdt_triangulate(bpts, {});
-                    if (!tris.empty()) {
-                        std::vector<std::array<size_t,3>> tri_list;
-                        for (const auto& t : tris)
-                            tri_list.push_back({top_cap[t[0]], top_cap[t[1]], top_cap[t[2]]});
-                        panel.mesh.set_face_triangulation(*fk, std::move(tri_list));
-                    }
-                }
-            }
-        }
-
-        std::vector<Point> top_mids(n), bot_mids(m);
-        for (int i = 0; i < n; i++)
-            top_mids[i] = Point((top_pts[i][0]+top_pts[(i+1)%n][0])*0.5,
-                                (top_pts[i][1]+top_pts[(i+1)%n][1])*0.5,
-                                (top_pts[i][2]+top_pts[(i+1)%n][2])*0.5);
-        for (int j = 0; j < m; j++)
-            bot_mids[j] = Point((bot_pts[j][0]+bot_pts[(j+1)%m][0])*0.5,
-                                (bot_pts[j][1]+bot_pts[(j+1)%m][1])*0.5,
-                                (bot_pts[j][2]+bot_pts[(j+1)%m][2])*0.5);
-
-        std::vector<int> bot_to_top(m, -1);
-        std::vector<double> bot_dist(m, 1e300);
-        for (int j = 0; j < m; j++)
-            for (int i = 0; i < n; i++) {
-                double d = bot_mids[j].distance(top_mids[i]);
-                if (d < bot_dist[j]) { bot_dist[j] = d; bot_to_top[j] = i; }
-            }
-
-        std::vector<int> top_to_bot(n, -1);
-        std::vector<double> top_dist(n, 1e300);
-        for (int i = 0; i < n; i++)
-            for (int j = 0; j < m; j++) {
-                double d = top_mids[i].distance(bot_mids[j]);
-                if (d < top_dist[i]) { top_dist[i] = d; top_to_bot[i] = j; }
-            }
-
-        double avg = 0;
-        for (int j = 0; j < m; j++) avg += bot_dist[j];
-        avg /= m;
-        double threshold = avg * edge_match_threshold;
-
-        std::vector<bool> top_used_edge(n, false);
-        for (int j = 0; j < m; j++) {
-            size_t b0 = panel.orig_bot_to_local[bot_vkeys[j]];
-            size_t b1 = panel.orig_bot_to_local[bot_vkeys[(j+1)%m]];
-            int ti = bot_to_top[j];
-            if (ti >= 0 && bot_dist[j] <= threshold && top_to_bot[ti] == j) {
-                size_t t0 = panel.orig_top_to_local[top_vkeys[ti]];
-                size_t t1 = panel.orig_top_to_local[top_vkeys[(ti+1)%n]];
-                std::optional<size_t> fk;
-                if (edge_gap > 0.0) {
-                    auto pb0 = *panel.mesh.vertex_point(b0);
-                    auto pb1 = *panel.mesh.vertex_point(b1);
-                    auto pt0 = *panel.mesh.vertex_point(t0);
-                    auto pt1 = *panel.mesh.vertex_point(t1);
-                    double cx=(pb0[0]+pb1[0]+pt0[0]+pt1[0])*0.25;
-                    double cy=(pb0[1]+pb1[1]+pt0[1]+pt1[1])*0.25;
-                    double cz=(pb0[2]+pb1[2]+pt0[2]+pt1[2])*0.25;
-                    size_t nb0 = panel.mesh.add_vertex(lp_offset_toward(pb0, cx, cy, cz, edge_gap));
-                    size_t nb1 = panel.mesh.add_vertex(lp_offset_toward(pb1, cx, cy, cz, edge_gap));
-                    fk = panel.mesh.add_face({nb0, t1, t0, nb1});
-                } else {
-                    fk = panel.mesh.add_face({b0, t1, t0, b1});
-                }
-                if (fk) {
-                    LoftWallFace w; w.face_key = *fk; w.is_quad = true;
-                    w.top_v0 = top_vkeys[ti]; w.top_v1 = top_vkeys[(ti+1)%n];
-                    w.bot_v0 = bot_vkeys[(j+1)%m]; w.bot_v1 = bot_vkeys[j];
-                    panel.wall_faces.push_back(w);
-                }
-                top_used_edge[ti] = true;
-            } else if (!skip_triangles) {
-                double best_d = 1e300; int best_tv = 0;
-                for (int i = 0; i < n; i++) {
-                    double d = bot_mids[j].distance(top_pts[i]);
-                    if (d < best_d) { best_d = d; best_tv = i; }
-                }
-                size_t tv = panel.orig_top_to_local[top_vkeys[best_tv]];
-                auto fk = panel.mesh.add_face({b0, tv, b1});
-                if (fk) { LoftWallFace w; w.face_key = *fk; w.is_quad = false; panel.wall_faces.push_back(w); }
-            }
-        }
-
-        if (!skip_triangles) {
-            for (int i = 0; i < n; i++) {
-                if (top_used_edge[i]) continue;
-                size_t t0 = panel.orig_top_to_local[top_vkeys[i]];
-                size_t t1 = panel.orig_top_to_local[top_vkeys[(i+1)%n]];
-                double best_d = 1e300; int best_bv = 0;
-                for (int j = 0; j < m; j++) {
-                    double d = top_mids[i].distance(bot_pts[j]);
-                    if (d < best_d) { best_d = d; best_bv = j; }
-                }
-                size_t bv = panel.orig_bot_to_local[bot_vkeys[best_bv]];
-                auto fk = panel.mesh.add_face({t1, t0, bv});
-                if (fk) { LoftWallFace w; w.face_key = *fk; w.is_quad = false; panel.wall_faces.push_back(w); }
-            }
-        }
-
-        if (add_caps) {
-            std::vector<size_t> bot_cap;
-            for (int j = 0; j < m; j++)
-                bot_cap.push_back(panel.orig_bot_to_local[bot_vkeys[j]]);
-            auto bot_cap_fk = panel.mesh.add_face(bot_cap);
-            panel.bot_face_key = bot_cap_fk;
-            if (bot_cap_fk && bot_cap.size() >= 3) {
-                auto [bcnx, bcny, bcnz] = lp_newell_normal(bot_pts);
-                double bcmag = std::sqrt(bcnx*bcnx + bcny*bcny + bcnz*bcnz);
-                if (bcmag > 1e-12) {
-                    bcnx /= bcmag; bcny /= bcmag; bcnz /= bcmag;
-                    double bcux = 1, bcuy = 0, bcuz = 0;
-                    if (std::abs(bcnx) > 0.9) { bcux = 0; bcuy = 1; }
-                    double bcdot = bcux*bcnx + bcuy*bcny + bcuz*bcnz;
-                    bcux -= bcdot*bcnx; bcuy -= bcdot*bcny; bcuz -= bcdot*bcnz;
-                    double bcum = std::sqrt(bcux*bcux + bcuy*bcuy + bcuz*bcuz);
-                    bcux /= bcum; bcuy /= bcum; bcuz /= bcum;
-                    double bcvx = bcny*bcuz - bcnz*bcuy, bcvy = bcnz*bcux - bcnx*bcuz, bcvz = bcnx*bcuy - bcny*bcux;
-                    std::vector<std::pair<double,double>> bpts2;
-                    for (const auto& p : bot_pts)
-                        bpts2.push_back({p[0]*bcux + p[1]*bcuy + p[2]*bcuz, p[0]*bcvx + p[1]*bcvy + p[2]*bcvz});
-                    auto btris = cdt_triangulate(bpts2, {});
-                    if (!btris.empty()) {
-                        std::vector<std::array<size_t,3>> tri_list;
-                        for (const auto& t : btris)
-                            tri_list.push_back({bot_cap[t[0]], bot_cap[t[1]], bot_cap[t[2]]});
-                        panel.mesh.set_face_triangulation(*bot_cap_fk, std::move(tri_list));
-                    }
-                }
-            }
-        }
-
-        std::map<size_t,size_t> fkey_to_idx;
-        size_t fi = 0;
-        for (const auto& [fk, _] : panel.mesh.face)
-            fkey_to_idx[fk] = fi++;
-        for (auto& w : panel.wall_faces) {
-            w.face_index = fkey_to_idx[w.face_key];
-            panel.face_roles[w.face_key] = w.is_quad ? LoftFaceRole::QuadWall : LoftFaceRole::TriWall;
-        }
-        if (panel.top_face_key) panel.face_roles[*panel.top_face_key] = LoftFaceRole::TopCap;
-        if (panel.bot_face_key) panel.face_roles[*panel.bot_face_key] = LoftFaceRole::BotCap;
-
-        panels.push_back(std::move(panel));
-    }
-    std::map<std::pair<size_t,size_t>, std::pair<size_t,size_t>> edge_to_wall;
-    for (size_t pi = 0; pi < panels.size(); pi++)
-        for (size_t wi = 0; wi < panels[pi].wall_faces.size(); wi++) {
-            const auto& w = panels[pi].wall_faces[wi];
-            if (!w.is_quad) continue;
-            edge_to_wall[{w.top_v0, w.top_v1}] = {pi, wi};
-        }
-    std::vector<LoftAdjPair> adjacency;
-    for (size_t pi = 0; pi < panels.size(); pi++)
-        for (size_t wi = 0; wi < panels[pi].wall_faces.size(); wi++) {
-            const auto& w = panels[pi].wall_faces[wi];
-            if (!w.is_quad) continue;
-            auto it = edge_to_wall.find({w.top_v1, w.top_v0});
-            if (it != edge_to_wall.end() && it->second.first > pi)
-                adjacency.push_back({pi, wi, it->second.first, it->second.second});
-        }
-    Mesh top_ordered, bot_ordered;
-    for (size_t i = 0; i < panels.size(); i++) {
-        std::vector<size_t> tvks, bvks;
-        for (auto lk : panels[i].top_vertices) tvks.push_back(top_ordered.add_vertex(*panels[i].mesh.vertex_point(lk)));
-        for (auto lk : panels[i].bot_vertices) bvks.push_back(bot_ordered.add_vertex(*panels[i].mesh.vertex_point(lk)));
-        top_ordered.add_face(tvks, i);
-        bot_ordered.add_face(bvks, i);
-    }
-    return {std::move(panels), std::move(adjacency), std::move(top_ordered), std::move(bot_ordered)};
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Append colors as flat r, g, b, a floats
+static void colors_to_rgba(const std::vector<Color>& colors, google::protobuf::RepeatedField<float>* rgba) {
+    for (const Color& c : colors) {
+        rgba->Add(c.r);
+        rgba->Add(c.g);
+        rgba->Add(c.b);
+        rgba->Add(c.a);
+    }
+}
+
+/// Colors from flat r, g, b, a floats
+static std::vector<Color> colors_from_rgba(const google::protobuf::RepeatedField<float>& rgba) {
+    std::vector<Color> colors;
+    for (int i = 0; i + 3 < rgba.size(); i += 4)
+        colors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
+    return colors;
+}
 
 std::string Mesh::pb_dumps() const {
     session_proto::Mesh proto;
-    if (has_guid()) { proto.set_guid(guid()); }
-    proto.set_name(this->name);
-
-    // Vertices
+    if (has_guid()) proto.set_guid(guid());
+    proto.set_name(name);
     for (const auto& [vkey, vdata] : vertex) {
-        auto& vertex_proto = (*proto.mutable_vertices())[vkey];
+        session_proto::VertexData& vertex_proto = (*proto.mutable_vertices())[vkey];
         vertex_proto.set_x(vdata.x);
         vertex_proto.set_y(vdata.y);
         vertex_proto.set_z(vdata.z);
-        for (const auto& [k, v] : vdata.attributes) {
+        for (const auto& [k, v] : vdata.attributes)
             (*vertex_proto.mutable_attributes())[k] = v;
-        }
     }
-
-    // Faces
     for (const auto& [fkey, fverts] : face) {
-        auto& face_proto = (*proto.mutable_faces())[fkey];
-        for (size_t v : fverts) {
+        session_proto::FaceData& face_proto = (*proto.mutable_faces())[fkey];
+        for (size_t v : fverts)
             face_proto.add_vertices(v);
-        }
-        auto it = facedata.find(fkey);
-        if (it != facedata.end()) {
-            for (const auto& [k, v] : it->second) {
+        const auto it = facedata.find(fkey);
+        if (it != facedata.end())
+            for (const auto& [k, v] : it->second)
                 (*face_proto.mutable_attributes())[k] = v;
-            }
-        }
-        auto hit = face_holes.find(fkey);
+        const auto hit = face_holes.find(fkey);
         if (hit != face_holes.end()) {
-            for (const auto& ring : hit->second) {
-                auto* hole_proto = face_proto.add_holes();
+            for (const std::vector<size_t>& ring : hit->second) {
+                session_proto::HoleRing* hole_proto = face_proto.add_holes();
                 for (size_t v : ring) hole_proto->add_vertices(v);
             }
         }
     }
-
-    // Triangulation
     for (const auto& [fkey, tris] : triangulation) {
-        auto& tri_list = (*proto.mutable_triangulation())[fkey];
-        for (const auto& t : tris) {
+        session_proto::TriList& tri_list = (*proto.mutable_triangulation())[fkey];
+        for (const std::array<size_t, 3>& t : tris) {
             tri_list.add_vertices(t[0]);
             tri_list.add_vertices(t[1]);
             tri_list.add_vertices(t[2]);
         }
     }
-
-    // P6: halfedges are no longer on the wire — the field is gone from the schema. Topology
-    // is derived; ensure_halfedges() rebuilds it from faces the first time an edit needs it.
-
-    // Edge data
     for (const auto& [edge, attrs] : edgedata) {
-        auto* edge_proto = proto.add_edge_data();
+        session_proto::EdgeData* edge_proto = proto.add_edge_data();
         edge_proto->set_vertex1(edge.first);
         edge_proto->set_vertex2(edge.second);
-        for (const auto& [k, v] : attrs) {
+        for (const auto& [k, v] : attrs)
             (*edge_proto->mutable_attributes())[k] = v;
-        }
     }
-
-    // Default attributes
-    for (const auto& [k, v] : default_vertex_attributes) {
+    for (const auto& [k, v] : default_vertex_attributes)
         (*proto.mutable_default_vertex_attributes())[k] = v;
-    }
-    for (const auto& [k, v] : default_face_attributes) {
+    for (const auto& [k, v] : default_face_attributes)
         (*proto.mutable_default_face_attributes())[k] = v;
-    }
-    for (const auto& [k, v] : default_edge_attributes) {
+    for (const auto& [k, v] : default_edge_attributes)
         (*proto.mutable_default_edge_attributes())[k] = v;
-    }
-
-    // Colors
-    for (const auto& c : pointcolors) {
-        proto.add_pointcolors_rgba(c.r); proto.add_pointcolors_rgba(c.g);
-        proto.add_pointcolors_rgba(c.b); proto.add_pointcolors_rgba(c.a);
-    }
-
-    for (const auto& c : facecolors) {
-        proto.add_facecolors_rgba(c.r); proto.add_facecolors_rgba(c.g);
-        proto.add_facecolors_rgba(c.b); proto.add_facecolors_rgba(c.a);
-    }
-
-    for (const auto& c : linecolors) {
-        proto.add_linecolors_rgba(c.r); proto.add_linecolors_rgba(c.g);
-        proto.add_linecolors_rgba(c.b); proto.add_linecolors_rgba(c.a);
-    }
-
-    // Widths
-    for (double w : widths) {
+    colors_to_rgba(pointcolors, proto.mutable_pointcolors_rgba());
+    colors_to_rgba(facecolors, proto.mutable_facecolors_rgba());
+    colors_to_rgba(linecolors, proto.mutable_linecolors_rgba());
+    for (double w : widths)
         proto.add_widths(w);
-    }
-
-    // Object color
-    auto* oc_proto = proto.mutable_objectcolor();
+    session_proto::Color* oc_proto = proto.mutable_objectcolor();
     oc_proto->set_guid(objectcolor.guid());
     oc_proto->set_name(objectcolor.name);
     oc_proto->set_r(objectcolor.r);
@@ -3429,45 +3095,34 @@ std::string Mesh::pb_dumps() const {
     oc_proto->set_b(objectcolor.b);
     oc_proto->set_a(objectcolor.a);
     proto.set_color_mode(static_cast<int>(color_mode));
-
     return proto.SerializeAsString();
 }
 
 Mesh Mesh::pb_loads(const std::string& data) {
     session_proto::Mesh proto;
     proto.ParseFromString(data);
-
     Mesh mesh;
-    if (!proto.guid().empty()) { mesh.guid() = proto.guid(); }
+    if (!proto.guid().empty()) mesh.guid() = proto.guid();
     mesh.name = proto.name();
-
-    // Vertices
     for (const auto& [vkey, vdata] : proto.vertices()) {
         VertexData vd;
         vd.x = vdata.x();
         vd.y = vdata.y();
         vd.z = vdata.z();
-        for (const auto& [k, v] : vdata.attributes()) {
+        for (const auto& [k, v] : vdata.attributes())
             vd.attributes[k] = v;
-        }
         mesh.vertex[vkey] = vd;
     }
-
-    // Faces
     for (const auto& [fkey, fdata] : proto.faces()) {
         std::vector<size_t> verts;
-        for (uint64_t v : fdata.vertices()) {
+        for (uint64_t v : fdata.vertices())
             verts.push_back(v);
-        }
         mesh.face[fkey] = verts;
-        if (fdata.attributes_size() > 0) {
-            for (const auto& [k, v] : fdata.attributes()) {
-                mesh.facedata[fkey][k] = v;
-            }
-        }
+        for (const auto& [k, v] : fdata.attributes())
+            mesh.facedata[fkey][k] = v;
         if (fdata.holes_size() > 0) {
             std::vector<std::vector<size_t>> rings;
-            for (const auto& hole : fdata.holes()) {
+            for (const session_proto::HoleRing& hole : fdata.holes()) {
                 std::vector<size_t> ring;
                 for (uint64_t v : hole.vertices()) ring.push_back(v);
                 rings.push_back(ring);
@@ -3475,8 +3130,6 @@ Mesh Mesh::pb_loads(const std::string& data) {
             mesh.face_holes[fkey] = rings;
         }
     }
-
-    // Triangulation
     for (const auto& [fkey, tri_list] : proto.triangulation()) {
         std::vector<std::array<size_t, 3>> tris;
         const auto& vlist = tri_list.vertices();
@@ -3484,85 +3137,41 @@ Mesh Mesh::pb_loads(const std::string& data) {
             tris.push_back({static_cast<size_t>(vlist[i]), static_cast<size_t>(vlist[i+1]), static_cast<size_t>(vlist[i+2])});
         mesh.triangulation[fkey] = tris;
     }
-
-    // Topology is LAZY: the wire may carry a halfedges map (older writers), but decoding
-    // it into a nested map per vertex was the single biggest load cost for dense
-    // scenes — and the viewer never reads it. ensure_halfedges rebuilds from faces the
-    // first time an EDIT needs it; pb_dumps computes it transiently so the wire format
-    // is unchanged. The pure readers (is_closed, edges, boundaries) are face-based.
-
-    // Edge data
-    for (const auto& edata : proto.edge_data()) {
-        auto key = std::make_pair(static_cast<size_t>(edata.vertex1()), static_cast<size_t>(edata.vertex2()));
-        for (const auto& [k, v] : edata.attributes()) {
+    for (const session_proto::EdgeData& edata : proto.edge_data()) {
+        const std::pair<size_t, size_t> key(static_cast<size_t>(edata.vertex1()), static_cast<size_t>(edata.vertex2()));
+        for (const auto& [k, v] : edata.attributes())
             mesh.edgedata[key][k] = v;
-        }
     }
-
-    // Default attributes
-    for (const auto& [k, v] : proto.default_vertex_attributes()) {
+    for (const auto& [k, v] : proto.default_vertex_attributes())
         mesh.default_vertex_attributes[k] = v;
-    }
-    for (const auto& [k, v] : proto.default_face_attributes()) {
+    for (const auto& [k, v] : proto.default_face_attributes())
         mesh.default_face_attributes[k] = v;
-    }
-    for (const auto& [k, v] : proto.default_edge_attributes()) {
+    for (const auto& [k, v] : proto.default_edge_attributes())
         mesh.default_edge_attributes[k] = v;
-    }
-
-    // Colors
-    {
-        const auto& rgba = proto.pointcolors_rgba();
-        for (int i = 0; i + 3 < rgba.size(); i += 4)
-            mesh.pointcolors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
-    }
-
-    {
-        const auto& rgba = proto.facecolors_rgba();
-        for (int i = 0; i + 3 < rgba.size(); i += 4)
-            mesh.facecolors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
-    }
-
-    {
-        const auto& rgba = proto.linecolors_rgba();
-        for (int i = 0; i + 3 < rgba.size(); i += 4)
-            mesh.linecolors.emplace_back(rgba[i], rgba[i+1], rgba[i+2], rgba[i+3]);
-    }
-
-    // Widths
-    for (double w : proto.widths()) {
+    mesh.pointcolors = colors_from_rgba(proto.pointcolors_rgba());
+    mesh.facecolors = colors_from_rgba(proto.facecolors_rgba());
+    mesh.linecolors = colors_from_rgba(proto.linecolors_rgba());
+    for (double w : proto.widths())
         mesh.widths.push_back(w);
-    }
-
-    // Object color
-    {
-        const auto& oc = proto.objectcolor();
-        mesh.objectcolor = Color(oc.r(), oc.g(), oc.b(), oc.a());
-        mesh.objectcolor.guid() = oc.guid();
-        mesh.objectcolor.name = oc.name();
-    }
+    const session_proto::Color& oc = proto.objectcolor();
+    mesh.objectcolor = Color(oc.r(), oc.g(), oc.b(), oc.a());
+    mesh.objectcolor.guid() = oc.guid();
+    mesh.objectcolor.name = oc.name();
     mesh.color_mode = static_cast<ColorMode>(proto.color_mode());
-
-    // Update max counters
-    if (!mesh.vertex.empty()) {
-        mesh.max_vertex = mesh.vertex.rbegin()->first + 1;
-    }
-    if (!mesh.face.empty()) {
-        mesh.max_face = mesh.face.rbegin()->first + 1;
-    }
-
+    if (!mesh.vertex.empty()) mesh.max_vertex = mesh.vertex.rbegin()->first + 1;
+    if (!mesh.face.empty()) mesh.max_face = mesh.face.rbegin()->first + 1;
     return mesh;
 }
 
 void Mesh::pb_dump(const std::string& filename) const {
-    std::string data = pb_dumps();
+    const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 Mesh Mesh::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
-    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     return pb_loads(data);
 }
 
@@ -3571,346 +3180,16 @@ Mesh Mesh::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string Mesh::str() const {
-    return fmt::format("Mesh(name={}, vertices={}, faces={})",
-                       name, number_of_vertices(), number_of_faces());
+    return fmt::format("Mesh(name={}, vertices={}, faces={})", name, number_of_vertices(), number_of_faces());
 }
 
 std::string Mesh::repr() const {
-    return fmt::format("Mesh(\n  name={},\n  vertices={},\n  faces={},\n  edges={}\n)",
-                       name, number_of_vertices(), number_of_faces(), number_of_edges());
+    return fmt::format("Mesh(\n  name={},\n  vertices={},\n  faces={},\n  edges={}\n)", name, number_of_vertices(), number_of_faces(), number_of_edges());
 }
 
 std::ostream& operator<<(std::ostream& os, const Mesh& mesh) {
     os << mesh.str();
     return os;
 }
-
-Mesh Mesh::from_polyline_pairs(const std::vector<Polyline>& pairs, double scale) {
-    if (pairs.empty() || pairs.size() % 2 != 0) return Mesh();
-
-    // Number of open (non-duplicate) points in a polyline
-    auto open_count = [](const Polyline& pl) -> size_t {
-        size_t n = pl.point_count();
-        if (n > 1 && pl.is_closed()) return n - 1;
-        return n;
-    };
-
-    // Validate: each top/bottom pair must have the same vertex count and at least 3 points
-    for (size_t i = 0; i < pairs.size(); i += 2) {
-        size_t a = open_count(pairs[i]);
-        size_t b = open_count(pairs[i + 1]);
-        if (a != b || a < 3) return Mesh();
-    }
-
-    // Separate into top / bottom polylines, strip closing vertex, apply scale
-    std::vector<Polyline> top_polys, bot_polys;
-    top_polys.reserve(pairs.size() / 2);
-    bot_polys.reserve(pairs.size() / 2);
-
-    for (size_t i = 0; i < pairs.size(); i += 2) {
-        auto make_scaled = [&](const Polyline& src) -> Polyline {
-            size_t limit = open_count(src);
-            std::vector<Point> pts;
-            pts.reserve(limit);
-            for (size_t j = 0; j < limit; ++j) {
-                Point p = src.get_point(j);
-                pts.push_back(Point(p[0] / scale, p[1] / scale, p[2] / scale));
-            }
-            return Polyline(pts);
-        };
-        top_polys.push_back(make_scaled(pairs[i]));
-        bot_polys.push_back(make_scaled(pairs[i + 1]));
-    }
-
-    return loft(top_polys, bot_polys, /*cap=*/true);
-}
-
-void Mesh::from_polyline_pairs_vnf(
-    const std::vector<Polyline>& pairs,
-    std::vector<double>& out_vertices,
-    std::vector<double>& out_normals,
-    std::vector<int>& out_triangles,
-    double scale)
-{
-    Mesh m = from_polyline_pairs(pairs, scale);
-    if (m.is_empty()) return;
-
-    auto face_nrms = m.face_normals();
-
-    for (size_t fk : m.faces()) {
-        auto maybe_verts = m.face_vertices(fk);
-        if (!maybe_verts || maybe_verts->size() < 3) continue;
-        const auto& fverts = *maybe_verts;
-
-        // Collect all vertex positions up front; skip degenerate faces
-        std::vector<Point> fpts;
-        fpts.reserve(fverts.size());
-        bool valid = true;
-        for (size_t vk : fverts) {
-            auto pos = m.vertex_point(vk);
-            if (!pos) { valid = false; break; }
-            fpts.push_back(*pos);
-        }
-        if (!valid) continue;
-
-        Vector nrm(0.0, 0.0, 1.0);
-        auto it = face_nrms.find(fk);
-        if (it != face_nrms.end()) nrm = it->second;
-
-        // Fan-triangulate and emit flat VNF (each triangle owns its 3 vertex slots)
-        for (size_t i = 1; i + 1 < fpts.size(); ++i) {
-            for (const Point* p : {&fpts[0], &fpts[i], &fpts[i + 1]}) {
-                out_triangles.push_back(static_cast<int>(out_triangles.size()));
-                out_vertices.push_back((*p)[0]);
-                out_vertices.push_back((*p)[1]);
-                out_vertices.push_back((*p)[2]);
-                out_normals.push_back(nrm[0]);
-                out_normals.push_back(nrm[1]);
-                out_normals.push_back(nrm[2]);
-            }
-        }
-    }
-}
-
-} // namespace session_cpp
-
-// ── Folded-plate / shell mesh factories ──────────────────────────────────────
-// Formerly tps_fold.cpp — moved here so the implementations live alongside
-// the rest of the Mesh static factories declared in mesh.h.
-
-#include "intersection.h"
-#include "plane.h"
-#include "line.h"
-
-namespace {
-
-static session_cpp::Vector fold_newell_normal(const std::vector<session_cpp::Point>& pts) {
-    size_t n = pts.size();
-    double nx = 0, ny = 0, nz = 0;
-    for (size_t i = 0; i < n; ++i) {
-        size_t j = (i + 1) % n;
-        nx += (pts[i][1] - pts[j][1]) * (pts[i][2] + pts[j][2]);
-        ny += (pts[i][2] - pts[j][2]) * (pts[i][0] + pts[j][0]);
-        nz += (pts[i][0] - pts[j][0]) * (pts[i][1] + pts[j][1]);
-    }
-    session_cpp::Vector N(nx, ny, nz);
-    N.normalize_self();
-    return N;
-}
-
-static session_cpp::Point fold_centroid(const std::vector<session_cpp::Point>& pts) {
-    double x = 0, y = 0, z = 0;
-    for (auto& p : pts) { x += p[0]; y += p[1]; z += p[2]; }
-    double n = static_cast<double>(pts.size());
-    return session_cpp::Point(x / n, y / n, z / n);
-}
-
-static std::vector<bool> fold_chamfer_mask(const std::vector<session_cpp::Point>& pts, double max_angle_deg) {
-    size_t n = pts.size();
-    std::vector<bool> mask(n, false);
-    for (size_t i = 0; i < n; ++i) {
-        size_t prev = (i + n - 1) % n;
-        size_t next = (i + 1) % n;
-        double dpx = pts[prev][0]-pts[i][0], dpy = pts[prev][1]-pts[i][1], dpz = pts[prev][2]-pts[i][2];
-        double dnx = pts[next][0]-pts[i][0], dny = pts[next][1]-pts[i][1], dnz = pts[next][2]-pts[i][2];
-        double lp = std::sqrt(dpx*dpx + dpy*dpy + dpz*dpz);
-        double ln = std::sqrt(dnx*dnx + dny*dny + dnz*dnz);
-        if (lp < 1e-12 || ln < 1e-12) continue;
-        double cosA = std::max(-1.0, std::min(1.0, (dpx*dnx + dpy*dny + dpz*dnz) / (lp * ln)));
-        double angle_deg = std::acos(cosA) * session_cpp::Tolerance::TO_DEGREES;
-        mask[i] = (angle_deg < max_angle_deg);
-    }
-    return mask;
-}
-
-static std::vector<session_cpp::Point> fold_chamfer(
-        const std::vector<session_cpp::Point>& pts, double s,
-        const std::vector<bool>* mask = nullptr) {
-    size_t n = pts.size();
-    if (s <= 0.0) return pts;
-    double min_edge = std::numeric_limits<double>::max();
-    for (size_t i = 0; i < n; ++i) {
-        size_t j = (i + 1) % n;
-        double dx = pts[j][0]-pts[i][0], dy = pts[j][1]-pts[i][1], dz = pts[j][2]-pts[i][2];
-        min_edge = std::min(min_edge, std::sqrt(dx*dx + dy*dy + dz*dz));
-    }
-    double sc = std::min(s, min_edge / 3.0);
-    std::vector<session_cpp::Point> result;
-    result.reserve(2 * n);
-    for (size_t i = 0; i < n; ++i) {
-        bool do_chamfer = (mask == nullptr) || (*mask)[i];
-        size_t prev = (i + n - 1) % n;
-        size_t next = (i + 1) % n;
-        double dpx = pts[prev][0]-pts[i][0], dpy = pts[prev][1]-pts[i][1], dpz = pts[prev][2]-pts[i][2];
-        double dnx = pts[next][0]-pts[i][0], dny = pts[next][1]-pts[i][1], dnz = pts[next][2]-pts[i][2];
-        double lp = std::sqrt(dpx*dpx + dpy*dpy + dpz*dpz);
-        double ln = std::sqrt(dnx*dnx + dny*dny + dnz*dnz);
-        if (do_chamfer) {
-            double sp = (lp > 1e-12) ? sc / lp : 0.0;
-            double sn = (ln > 1e-12) ? sc / ln : 0.0;
-            result.push_back(session_cpp::Point(pts[i][0]+dpx*sp, pts[i][1]+dpy*sp, pts[i][2]+dpz*sp));
-            result.push_back(session_cpp::Point(pts[i][0]+dnx*sn, pts[i][1]+dny*sn, pts[i][2]+dnz*sn));
-        } else {
-            result.push_back(pts[i]);
-        }
-    }
-    return result;
-}
-
-static session_cpp::Vector fold_face_normal(const session_cpp::Mesh& mesh, size_t fk) {
-    auto fv = mesh.face_vertices(fk);
-    if (!fv) return session_cpp::Vector(0, 0, 1);
-    std::vector<session_cpp::Point> pts;
-    for (auto vk : *fv)
-        if (auto p = mesh.vertex_point(vk)) pts.push_back(*p);
-    return fold_newell_normal(pts);
-}
-
-} // anonymous namespace
-
-namespace session_cpp {
-
-std::vector<std::tuple<
-    std::vector<Point>, std::vector<Point>,
-    std::vector<Point>, std::vector<Point>,
-    Vector>>
-Mesh::miter_contours(const Mesh& shell, double thickness,
-                     double chamfer_bot, double chamfer_top, bool,
-                     double chamfer_angle_deg) {
-    std::vector<std::tuple<
-        std::vector<Point>, std::vector<Point>,
-        std::vector<Point>, std::vector<Point>,
-        Vector>> result;
-    // one bulk edge->face map for the whole call (shell may carry no halfedge map)
-    auto efm = shell.edge_face_map();
-    for (size_t fk : shell.faces()) {
-        auto fverts_opt = shell.face_vertices(fk);
-        if (!fverts_opt) continue;
-        const auto& fverts = *fverts_opt;
-        size_t n = fverts.size();
-
-        std::vector<Point> pts;
-        pts.reserve(n);
-        for (auto vk : fverts) {
-            auto p = shell.vertex_point(vk);
-            if (!p) { pts.clear(); break; }
-            pts.push_back(*p);
-        }
-        if (pts.size() != n) continue;
-
-        Vector fn = fold_newell_normal(pts);
-        Point cen = fold_centroid(pts);
-
-        std::vector<Plane> miter_planes;
-        miter_planes.reserve(n);
-        for (size_t i = 0; i < n; ++i) {
-            size_t j = (i + 1) % n;
-            Vector avg_n = fn;
-            auto adj_it = efm.find({fverts[j], fverts[i]});
-            if (adj_it != efm.end()) {
-                Vector adj = fold_face_normal(shell, adj_it->second);
-                Vector sum(fn[0]+adj[0], fn[1]+adj[1], fn[2]+adj[2]);
-                double len = std::sqrt(sum[0]*sum[0]+sum[1]*sum[1]+sum[2]*sum[2]);
-                if (len > 0.1) { sum.normalize_self(); avg_n = sum; }
-            }
-            double ex = pts[j][0]-pts[i][0];
-            double ey = pts[j][1]-pts[i][1];
-            double ez = pts[j][2]-pts[i][2];
-            Vector edge_dir(ex, ey, ez);
-            edge_dir.normalize_self();
-            Vector mn = avg_n.cross(edge_dir);
-            mn.normalize_self();
-            Point mid((pts[i][0]+pts[j][0])/2, (pts[i][1]+pts[j][1])/2, (pts[i][2]+pts[j][2])/2);
-            miter_planes.push_back(Plane::from_point_normal(mid, mn));
-        }
-
-        std::vector<Line> corner_lines(n);
-        bool ok = true;
-        for (size_t i = 0; i < n; ++i) {
-            if (!Intersection::plane_plane(miter_planes[i], miter_planes[(i + 1) % n], corner_lines[i])) {
-                ok = false; break;
-            }
-        }
-        if (!ok) continue;
-
-        Point bot_origin(cen[0]+fn[0]*2.0*thickness, cen[1]+fn[1]*2.0*thickness, cen[2]+fn[2]*2.0*thickness);
-        Plane top_plane = Plane::from_point_normal(cen, fn);
-        Plane bot_plane = Plane::from_point_normal(bot_origin, fn);
-
-        std::vector<Point> top_contour, bot_contour;
-        top_contour.reserve(n);
-        bot_contour.reserve(n);
-        for (size_t i = 0; i < n; ++i) {
-            Point tp, bp;
-            if (!Intersection::line_plane(corner_lines[i], top_plane, tp, false)) { ok = false; break; }
-            if (!Intersection::line_plane(corner_lines[i], bot_plane, bp, false)) { ok = false; break; }
-            top_contour.push_back(tp);
-            bot_contour.push_back(bp);
-        }
-        if (!ok) continue;
-
-        auto top_mask = fold_chamfer_mask(top_contour, chamfer_angle_deg);
-        auto bot_mask = fold_chamfer_mask(bot_contour, chamfer_angle_deg);
-        auto top_ch = fold_chamfer(top_contour, chamfer_bot, &top_mask);
-        auto bot_ch = fold_chamfer(bot_contour, chamfer_top, &bot_mask);
-        result.push_back(std::make_tuple(top_ch, bot_ch, top_contour, bot_contour, fn));
-    }
-    return result;
-}
-
-Mesh Mesh::reflex_fold(const Polyline& cross_section, const Polyline& profile) {
-    size_t nCS = cross_section.point_count();
-    size_t nP  = profile.point_count();
-
-    std::vector<Plane> planes;
-    planes.reserve(nCS);
-    for (size_t i = 0; i < nCS; ++i) {
-        Vector normal(0, 0, 1);
-        if (i > 0 && i < nCS - 1) {
-            Point ci = cross_section[i];
-            Point cp = cross_section[i - 1];
-            Point cn = cross_section[i + 1];
-            Vector v1(cp[0]-ci[0], cp[1]-ci[1], cp[2]-ci[2]);
-            Vector v2(cn[0]-ci[0], cn[1]-ci[1], cn[2]-ci[2]);
-            v1 = v1.normalized();
-            v2 = v2.normalized();
-            normal = Vector(v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2]);
-            normal.normalize_self();
-        }
-        Point origin = cross_section[i];
-        planes.push_back(Plane::from_point_normal(origin, normal));
-    }
-
-    std::vector<Point> all_pts;
-    all_pts.reserve(nCS * nP);
-    for (size_t j = 0; j < nP; ++j)
-        all_pts.push_back(profile[j]);
-
-    std::vector<std::vector<size_t>> faces;
-    for (size_t i = 1; i < nCS; ++i) {
-        const Point& po = planes[i].origin();
-        const Point& pp = planes[i - 1].origin();
-        Vector n1(po[0]-pp[0], po[1]-pp[1], po[2]-pp[2]);
-        const Vector& n2 = planes[i].z_axis();
-
-        size_t row_start = all_pts.size();
-        for (size_t j = 0; j < nP; ++j) {
-            const Point& pvrt = all_pts[row_start - nP + j];
-            Vector diff(po[0]-pvrt[0], po[1]-pvrt[1], po[2]-pvrt[2]);
-            double denom = n2.dot(n1);
-            double t = (std::abs(denom) > 1e-12) ? n2.dot(diff) / denom : 0.0;
-            all_pts.push_back(Point(pvrt[0]+n1[0]*t, pvrt[1]+n1[1]*t, pvrt[2]+n1[2]*t));
-        }
-        for (size_t j = 0; j + 1 < nP; ++j) {
-            size_t new_j  = row_start + j;
-            size_t old_j  = row_start - nP + j;
-            size_t new_j1 = row_start + j + 1;
-            size_t old_j1 = row_start - nP + j + 1;
-            faces.push_back({new_j, old_j, old_j1, new_j1});
-        }
-    }
-    return Mesh::from_vertices_and_faces(all_pts, faces);
-}
-
 
 } // namespace session_cpp

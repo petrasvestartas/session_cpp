@@ -5,8 +5,6 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("SpatialRTree", "Constructor") {
-    // uncomment #include "spatial_rtree.h"
-    // RTree3: dynamic spatial index — insert/remove support, O(log n) overlap search
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -21,14 +19,12 @@ MINI_TEST("SpatialRTree", "Constructor") {
 }
 
 MINI_TEST("SpatialRTree", "Creation") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
 
     MINI_CHECK(t.count() == 0);
 }
 
 MINI_TEST("SpatialRTree", "Insert") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 42);
@@ -37,7 +33,6 @@ MINI_TEST("SpatialRTree", "Insert") {
 }
 
 MINI_TEST("SpatialRTree", "Insert Multiple") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -50,7 +45,6 @@ MINI_TEST("SpatialRTree", "Insert Multiple") {
 }
 
 MINI_TEST("SpatialRTree", "Search Hit") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {2, 2, 2};
     t.insert(a_min, a_max, 0);
@@ -66,7 +60,6 @@ MINI_TEST("SpatialRTree", "Search Hit") {
 }
 
 MINI_TEST("SpatialRTree", "Search Miss") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 7);
@@ -77,7 +70,6 @@ MINI_TEST("SpatialRTree", "Search Miss") {
 }
 
 MINI_TEST("SpatialRTree", "Remove") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 5);
@@ -87,7 +79,6 @@ MINI_TEST("SpatialRTree", "Remove") {
 }
 
 MINI_TEST("SpatialRTree", "Remove All") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -101,7 +92,6 @@ MINI_TEST("SpatialRTree", "Remove All") {
 }
 
 MINI_TEST("SpatialRTree", "Search Count") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -120,7 +110,6 @@ MINI_TEST("SpatialRTree", "Search Count") {
 }
 
 MINI_TEST("SpatialRTree", "Search Stop") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 0);
@@ -133,7 +122,6 @@ MINI_TEST("SpatialRTree", "Search Stop") {
 }
 
 MINI_TEST("SpatialRTree", "Search 100 Boxes") {
-    // uncomment #include "spatial_rtree.h"
     RTree3 t;
     int id = 0;
     auto add = [&](double x0, double y0, double z0, double x1, double y1, double z1) {

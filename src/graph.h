@@ -1,58 +1,49 @@
 #pragma once
-#include "fmt/core.h" // for fmt::formatter specializations in this header
-#include "guid.h"     // for ::guid() used in in-class member initializers
-#include "json.h"     // for nlohmann::json types used in function signatures
-#include <array>
+#include "fmt/core.h"
+#include "guid.h"
+#include "json.h"
+#include <algorithm>
+#include <climits>
+#include <deque>
+#include <fstream>
 #include <map>
 #include <ostream>
+#include <set>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <vector>
-// Implementation-only headers required by this translation unit
-#include <algorithm> // std::sort
-#include <climits>   // INT_MAX
-#include <deque>     // std::deque
-#include <fstream>   // std::ifstream, std::ofstream
-#include <set>       // std::set
-#include <stdexcept> // std::runtime_error
+
 namespace session_cpp {
 
-/**
- * @class Vertex
- * @brief A graph vertex with a name, attribute string, and integer index.
- */
+// ═══════════════════════════════════════════════════════════════════════════
+// Vertex
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A graph vertex with a name, attribute string and integer index
 class Vertex {
 public:
-  /// Vertex name (also used as key in Graph::vertices)
+  /// Vertex name, also the key in Graph::vertices
   std::string name = "my_vertex";
-
-  /// Whether this identity has actually been minted.
-  ///
-  /// A serializer that calls `guid()` MINTS one for everything it writes, which defeats the
-  /// lazy scheme everywhere it is used on a bulk collection: a drawing sheet with 34,592 graph
-  /// vertices generated 34,592 UUIDs at write time and put ~1.3 MB of them in the file for a
-  /// `Session::pb_loads` that discards every one. Ask this first, and write nothing when the
-  /// answer is no.
-  bool has_guid() const { return !_guid.empty(); }
-
-  /// Lazy GUID accessor (const)
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-
-  /// Lazy GUID accessor (mutable)
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
   /// Vertex attribute data as string
   std::string attribute = "";
 
-  /// Integer index of the vertex (assigned by Graph)
+  /// Integer index of the vertex, assigned by Graph
   int index = -1;
 
-  /// Default / named constructor
+  /// Construct from name and attribute
   Vertex(std::string name = "my_vertex", std::string attribute = "")
       : name(name), attribute(attribute) {}
 
-  /// Simple string form (like Python __str__)
-  std::string str() const;
+  /// True once a guid has been minted; asking guid() mints one
+  bool has_guid() const { return !_guid.empty(); }
+
+  /// Lazy guid accessor (const)
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Lazy guid accessor (mutable)
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
   /// Serialize to ordered JSON object
   nlohmann::ordered_json jsondump() const;
@@ -60,33 +51,22 @@ public:
   /// Deserialize from JSON object
   static Vertex jsonload(const nlohmann::json &data);
 
+  /// "Vertex(guid, name, attribute, index)"
+  std::string str() const;
+
 private:
-  mutable std::string _guid; ///< Lazily generated unique identifier
+  mutable std::string _guid;
 };
 
-/**
- * @class Edge
- * @brief A graph edge connecting two vertices by name.
- */
+// ═══════════════════════════════════════════════════════════════════════════
+// Edge
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A graph edge connecting two vertices by name
 class Edge {
 public:
   /// Edge name
   std::string name = "my_edge";
-
-  /// Whether this identity has actually been minted.
-  ///
-  /// A serializer that calls `guid()` MINTS one for everything it writes, which defeats the
-  /// lazy scheme everywhere it is used on a bulk collection: a drawing sheet with 34,592 graph
-  /// vertices generated 34,592 UUIDs at write time and put ~1.3 MB of them in the file for a
-  /// `Session::pb_loads` that discards every one. Ask this first, and write nothing when the
-  /// answer is no.
-  bool has_guid() const { return !_guid.empty(); }
-
-  /// Lazy GUID accessor (const)
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-
-  /// Lazy GUID accessor (mutable)
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
 
   /// First vertex name
   std::string v0 = "";
@@ -97,15 +77,30 @@ public:
   /// Edge attribute data as string
   std::string attribute = "";
 
-  /// Integer index of the edge (assigned by Graph)
+  /// Integer index of the edge, assigned by Graph
   int index = -1;
 
-  /// Default / parameterized constructor
+  /// Construct from endpoints and attribute
   Edge(std::string v0 = "", std::string v1 = "", std::string attribute = "")
       : v0(v0), v1(v1), attribute(attribute) {}
 
-  /// Simple string form (like Python __str__)
-  std::string str() const;
+  /// True once a guid has been minted; asking guid() mints one
+  bool has_guid() const { return !_guid.empty(); }
+
+  /// Lazy guid accessor (const)
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Lazy guid accessor (mutable)
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// The (v0, v1) tuple
+  std::tuple<std::string, std::string> vertices() const;
+
+  /// True if this edge touches the given vertex
+  bool connects(const std::string &vertex_id) const;
+
+  /// The other endpoint given one endpoint, empty if not connected
+  std::string other_vertex(const std::string &vertex_id) const;
 
   /// Serialize to ordered JSON object
   nlohmann::ordered_json jsondump() const;
@@ -113,61 +108,126 @@ public:
   /// Deserialize from JSON object
   static Edge jsonload(const nlohmann::json &data);
 
-  /// Return (v0, v1) tuple
-  std::tuple<std::string, std::string> vertices() const;
-
-  /// True if this edge connects the given vertex
-  bool connects(const std::string &vertex_id);
-
-  /// Return the other endpoint of an edge given one endpoint
-  std::string other_vertex(const std::string &vertex_id);
+  /// "Edge(guid, name, v0, v1, attribute)"
+  std::string str() const;
 
 private:
-  mutable std::string _guid; ///< Lazily generated unique identifier
+  mutable std::string _guid;
 };
 
-/**
- * @class Graph
- * @brief A graph data structure with string-only vertices and attributes.
- */
-class Graph {
-private:
-  std::map<std::string, Vertex> vertices; ///< node_name -> Vertex object
+// ═══════════════════════════════════════════════════════════════════════════
+// Graph
+// ═══════════════════════════════════════════════════════════════════════════
 
+/// An undirected graph with string vertices and string attributes
+class Graph {
 public:
-  /// node_name -> {neighbor_name -> Edge object}
+  /// node_name -> {neighbor_name -> Edge}, every edge stored in both directions
   std::map<std::string, std::map<std::string, Edge>> edges;
 
-  /// Graph identifier/name
+  /// Graph name
   std::string name = "my_graph";
 
-  /// Whether this identity has actually been minted.
-  ///
-  /// A serializer that calls `guid()` MINTS one for everything it writes, which defeats the
-  /// lazy scheme everywhere it is used on a bulk collection: a drawing sheet with 34,592 graph
-  /// vertices generated 34,592 UUIDs at write time and put ~1.3 MB of them in the file for a
-  /// `Session::pb_loads` that discards every one. Ask this first, and write nothing when the
-  /// answer is no.
-  bool has_guid() const { return !_guid.empty(); }
-
-  /// Lazy GUID accessor (const)
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-
-  /// Lazy GUID accessor (mutable)
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-
-  /// Track next available vertex index
+  /// Next available vertex index
   int vertex_count = 0;
 
-  /// Track next available edge index
+  /// Next available edge index
   int edge_count = 0;
 
-  /// Default / named constructor
-  Graph(std::string name = "my_graph")
-      : name(name), vertex_count(0), edge_count(0) {}
+  /// Construct from name
+  Graph(std::string name = "my_graph") : name(name) {}
 
-  /// Simple string form (like Python __str__)
-  std::string str() const;
+  /// True once a guid has been minted; asking guid() mints one
+  bool has_guid() const { return !_guid.empty(); }
+
+  /// Lazy guid accessor (const)
+  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Lazy guid accessor (mutable)
+  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Details
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// True if a node with the given key exists
+  bool has_node(const std::string &key) const;
+
+  /// True if an edge between the given endpoints exists
+  bool has_edge(const std::tuple<std::string, std::string> &key) const;
+
+  /// Add a node and return its key
+  std::string add_node(const std::string &key, const std::string &attribute = "");
+
+  /// Add an edge between u and v, creating missing nodes, and return (u, v)
+  std::tuple<std::string, std::string> add_edge(const std::string &u, const std::string &v, const std::string &attribute = "");
+
+  /// Remove a node and all its edges
+  void remove_node(const std::string &key);
+
+  /// Remove an edge, keeping its nodes
+  void remove_edge(const std::tuple<std::string, std::string> &edge);
+
+  /// All vertices in the graph
+  std::vector<Vertex> get_vertices() const;
+
+  /// All edges in the graph as (u, v) tuples, each once
+  std::vector<std::tuple<std::string, std::string>> get_edges() const;
+
+  /// All neighbors of a node
+  std::vector<std::string> neighbors(const std::string &node) const;
+
+  /// Alias for neighbors()
+  std::vector<std::string> get_neighbors(const std::string &node) const;
+
+  /// Incident edges as (other, attribute, forward); forward when node is the edge's v0
+  std::vector<std::tuple<std::string, std::string, bool>> edges_of(const std::string &node) const;
+
+  /// Number of vertices in the graph
+  int number_of_vertices() const;
+
+  /// Number of edges in the graph
+  int number_of_edges() const;
+
+  /// Remove all vertices and edges
+  void clear();
+
+  /// Get or set node attribute (sets if value is non-empty)
+  std::string node_attribute(const std::string &node, const std::string &value = "");
+
+  /// Get or set edge attribute (sets if value is non-empty)
+  std::string edge_attribute(const std::string &u, const std::string &v, const std::string &value = "");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Algorithms
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Breadth-first order from start
+  std::vector<std::string> bfs(const std::string &start) const;
+
+  /// Depth-first order from start
+  std::vector<std::string> dfs(const std::string &start) const;
+
+  /// Connected components as sorted node name lists
+  std::vector<std::vector<std::string>> connected_components() const;
+
+  /// True if the graph has at most one connected component
+  bool is_connected() const;
+
+  /// Number of connected components
+  int number_connected_components() const;
+
+  /// Shortest path between u and v, empty if disconnected
+  std::vector<std::string> shortest_path(const std::string &u, const std::string &v) const;
+
+  /// Length of the shortest path between u and v, -1 if disconnected
+  int shortest_path_length(const std::string &u, const std::string &v) const;
+
+  /// True if the graph contains a cycle
+  bool has_cycle() const;
+
+  /// A basis of fundamental cycles
+  std::vector<std::vector<std::string>> cycle_basis() const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
@@ -207,123 +267,29 @@ public:
   /// Read protobuf from file
   static Graph pb_load(const std::string &filename);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Details
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /// True if a node with the given key exists
-  bool has_node(const std::string &key);
-
-  /// True if an edge between the given endpoints exists
-  bool has_edge(const std::tuple<std::string, std::string> &key);
-
-  /// Add a node and return its key
-  std::string add_node(const std::string &key,
-                       const std::string &attribute = "");
-
-  /// Add an edge between u and v and return the edge tuple
-  std::tuple<std::string, std::string>
-  add_edge(const std::string &u, const std::string &v,
-           const std::string &attribute = "");
-
-  /// Remove a node and all its edges
-  void remove_node(const std::string &key);
-
-  /// Remove an edge from the graph
-  void remove_edge(const std::tuple<std::string, std::string> &edge);
+  /// "Graph(guid, name, vertex_count, edge_count)"
+  std::string str() const;
 
 private:
+  std::map<std::string, Vertex> vertices;
   mutable std::string _guid;
 
-  /// Reassign vertex indices to maintain contiguous sequence 0, 1, 2, ...
+  /// Renumber vertex indices 0, 1, 2, ... keeping their relative order
   void _reassign_indices();
 
-  /// Reassign edge indices to maintain contiguous sequence 0, 1, 2, ...
+  /// Renumber edge indices 0, 1, 2, ... keeping their relative order
   void _reassign_edge_indices();
-
-public:
-  /// Get all vertices in the graph
-  std::vector<Vertex> get_vertices();
-
-  /// Get all edges in the graph as (u, v) tuples
-  std::vector<std::tuple<std::string, std::string>> get_edges();
-
-  /// All neighbors of a node
-  std::vector<std::string> neighbors(const std::string &node);
-
-  /// Alias for neighbors()
-  std::vector<std::string> get_neighbors(const std::string &node);
-
-  /// The edges incident to a node, with what it takes to add each one back: one
-  /// (other, attribute, forward) per edge, forward when `node` is the edge's v0, so add_edge can
-  /// be replayed with the vertices in their original order. An unknown node has no edges.
-  std::vector<std::tuple<std::string, std::string, bool>> edges_of(const std::string &node) const;
-
-  /// Number of vertices in the graph
-  int number_of_vertices() const;
-
-  /// Number of edges in the graph
-  int number_of_edges() const;
-
-  /// Remove all vertices and edges
-  void clear();
-
-  /// Get or set node attribute (sets if value is non-empty)
-  std::string node_attribute(const std::string &node,
-                             const std::string &value = "");
-
-  /// Get or set edge attribute (sets if value is non-empty)
-  std::string edge_attribute(const std::string &u, const std::string &v,
-                             const std::string &value = "");
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Algorithms
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /// Breadth-first search starting at start
-  std::vector<std::string> bfs(const std::string &start);
-
-  /// Depth-first search starting at start
-  std::vector<std::string> dfs(const std::string &start);
-
-  /// Connected components as vectors of node names
-  std::vector<std::vector<std::string>> connected_components();
-
-  /// True if the graph has exactly one connected component
-  bool is_connected();
-
-  /// Number of connected components
-  int number_connected_components();
-
-  /// Shortest path between u and v (empty if disconnected)
-  std::vector<std::string> shortest_path(const std::string &u,
-                                         const std::string &v);
-
-  /// Length of the shortest path between u and v (-1 if disconnected)
-  int shortest_path_length(const std::string &u, const std::string &v);
-
-  /// True if the graph contains a cycle
-  bool has_cycle();
-
-  /// A basis of fundamental cycles in the graph
-  std::vector<std::vector<std::string>> cycle_basis();
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Stream operators
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Stream output operator for vertex
 std::ostream &operator<<(std::ostream &os, const Vertex &vertex);
-
-/// Stream output operator for edge
 std::ostream &operator<<(std::ostream &os, const Edge &edge);
-
-/// Stream output operator for graph
 std::ostream &operator<<(std::ostream &os, const Graph &graph);
 } // namespace session_cpp
 
-// fmt formatter specialization for Vertex - enables direct fmt::print(vertex)
 template <> struct fmt::formatter<session_cpp::Vertex> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
@@ -332,7 +298,6 @@ template <> struct fmt::formatter<session_cpp::Vertex> {
   }
 };
 
-// fmt formatter specialization for Edge - enables direct fmt::print(edge)
 template <> struct fmt::formatter<session_cpp::Edge> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 
@@ -341,7 +306,6 @@ template <> struct fmt::formatter<session_cpp::Edge> {
   }
 };
 
-// fmt formatter specialization for Graph - enables direct fmt::print(graph)
 template <> struct fmt::formatter<session_cpp::Graph> {
   constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
 

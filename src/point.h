@@ -1,277 +1,160 @@
 #pragma once
 #include "color.h"
-#include "xform.h"
-#include "fmt/core.h"
 #include "guid.h"
 #include "json.h"
+#include "vector.h"
+#include "xform.h"
+#include "fmt/core.h"
 #include <cmath>
 #include <fstream>
-#include <iostream>
-#include <sstream>
+#include <ostream>
 #include <stdexcept>
 #include <string>
-#include <vector.h>
+#include <vector>
 
 namespace session_cpp {
 
-/**
- * @class Point
- * @brief A point defined by XYZ coordinates with display properties.
- */
+/// A 3D point with display width and color
 class Point {
 public:
-  std::string name = "my_point";     ///< Point identifier/name
-  bool has_guid() const { return !_guid.empty(); }
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
-  void refresh_guid() { _guid.clear(); }
-  double width = 1.0;                ///< Point diameter in pixels
-  Color pointcolor = Color::black();  ///< Color of the point (default: black)
+  std::string name = "my_point";
+  double width = 1.0;
+  Color pointcolor = Color::black();
 
-private:
-  mutable std::string _guid;         ///< Lazily generated unique identifier
-  double _x = 0.0;                   ///< X coordinate (private)
-  double _y = 0.0;                   ///< Y coordinate (private)
-  double _z = 0.0;                   ///< Z coordinate (private)
-
-public:
-
-
-  /**
-   * @brief Constructor.
-   * @param x The X coordinate of the point.
-   * @param y The Y coordinate of the point.
-   * @param z The Z coordinate of the point.
-   * @param point_name Optional name for the point (default: "my_point").
-   */
-  Point(double x, double y, double z, std::string point_name = "my_point")
-      : name(std::move(point_name)), _x(x), _y(y), _z(z) {}
   Point() : _x(0.0), _y(0.0), _z(0.0) {}
 
-  /// Copy constructor (creates a new guid while copying data)
+  Point(double x, double y, double z, std::string name = "my_point")
+      : name(std::move(name)), _x(x), _y(y), _z(z) {}
+
+  /// Copy constructor (new guid, same data)
   Point(const Point &other);
 
-  /// Move constructor and assignment: identity SURVIVES a move.
-  ///
-  /// A copy is a new object and mints a new guid; a move is the SAME object in a new place, so
-  /// `_guid` transfers. Declaring these is also what keeps `return x;` safe: the copy below is
-  /// user-declared, which suppresses the implicit move, so a `pb_loads` that missed NRVO fell back
-  /// to the COPY and silently dropped the guid it had just deserialized - every other field
-  /// survived, so the object looked right and only its identity was wrong. That is what broke Line
-  /// on MSVC when its pb_loads changed shape; see line.h.
-  Point(Point&& other) noexcept = default;
-  Point& operator=(Point&& other) noexcept = default;
-
-  /// Copy assignment (creates a new guid while copying data)
+  /// Copy assignment (new guid, same data)
   Point &operator=(const Point &other);
 
+  /// Move keeps the guid; declaring it stops `return x;` from falling back to the guid-minting copy
+  Point(Point &&other) noexcept = default;
+  Point &operator=(Point &&other) noexcept = default;
+
+  bool has_guid() const { return !_guid.empty(); }
+  const std::string &guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string &guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Clear the guid so a fresh one mints lazily on next read
+  void refresh_guid() { _guid.clear(); }
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // Operators - const because they oinly read values, dont modify them
+  // Operators
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Convert point to string representation
-  std::string str() const;    ///< simple coordinate string (like Python str)
-  std::string repr() const;   ///< detailed representation (like Python repr)
+  /// Coordinate by index (0=x, 1=y, 2=z)
+  double &operator[](int index);
+  const double &operator[](int index) const;
 
-  /// Equality operator
   bool operator==(const Point &other) const;
-
-  /// Inequality operator
   bool operator!=(const Point &other) const;
+
+  Point &operator*=(double factor);
+  Point &operator/=(double factor);
+  Point &operator+=(const Vector &other);
+  Point &operator-=(const Vector &other);
+
+  Point operator*(double factor) const;
+  Point operator/(double factor) const;
+  Point operator+(const Vector &other) const;
+  Point operator-(const Vector &other) const;
+  Vector operator-(const Point &other) const;
+
+  /// Coordinate-wise sum of two points
+  static Point sum(const Point &p0, const Point &p1);
+
+  /// Coordinate-wise difference of two points
+  static Point sub(const Point &p0, const Point &p1);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Transformation
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * @brief Apply a transformation to the point coordinates, in place.
-   */
-  void transform(const Xform& xform);
+  /// Transform in place
+  void transform(const Xform &xform);
 
-  /**
-   * @brief Return a transformed copy of the point, leaving the original unchanged.
-   * @return A new transformed point.
-   */
-  Point transformed(const Xform& xform) const;
+  /// Transformed copy
+  Point transformed(const Xform &xform) const;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Geometry
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// True when a, b, c turn counter-clockwise in the xy plane
+  static bool is_ccw(const Point &a, const Point &b, const Point &c);
+
+  /// Mid point between this point and p
+  Point mid_point(const Point &p) const;
+  static Point mid_point(const Point &a, const Point &b);
+
+  /// Distance to p, scaled to stay finite for large coordinates
+  double distance(const Point &p, double double_min = 1e-12) const;
+  static double distance(const Point &a, const Point &b, double double_min = 1e-12);
+
+  /// Squared distance to p, scaled to stay finite for large coordinates
+  double squared_distance(const Point &p, double double_min = 1e-12) const;
+  static double squared_distance(const Point &a, const Point &b, double double_min = 1e-12);
+
+  /// Point at parameter t in [0, 1] between a and b
+  static Point lerp(const Point &a, const Point &b, double t);
+
+  /// Evenly spaced points between from and to (kind: 0=no endpoints, 1=both, 2=start only)
+  static std::vector<Point> interpolate(const Point &from, const Point &to, int steps, int kind = 0);
+
+  /// Shoelace area of a polygon in the xy plane
+  static double area(const std::vector<Point> &points);
+
+  /// Area-weighted centroid of a quadrilateral
+  static Point centroid_quad(const std::vector<Point> &vertices);
+
+  /// Arithmetic mean of points; empty input returns the origin
+  static Point centroid(const std::vector<Point> &points);
+
+  /// Unsigned dihedral angle in degrees of edge pq between half-planes pqr and pqs
+  static double dihedral_angle_deg(const Point &p, const Point &q, const Point &r, const Point &s);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Convert to JSON-serializable object
   nlohmann::ordered_json jsondump() const;
-
-  /// Create point from JSON data
   static Point jsonload(const nlohmann::json &data);
-
-  /// Write JSON to file
-  void file_json_dump(const std::string& filename) const;
-
-  /// Read JSON from file
-  static Point file_json_load(const std::string& filename);
-
-  /// Convert to JSON string
   std::string file_json_dumps() const;
-
-  /// Load from JSON string
-  static Point file_json_loads(const std::string& json_string);
+  static Point file_json_loads(const std::string &json_string);
+  void file_json_dump(const std::string &filename) const;
+  static Point file_json_load(const std::string &filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Protobuf
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Convert to protobuf binary string
   std::string pb_dumps() const;
-
-  /// Load from protobuf binary string
-  static Point pb_loads(const std::string& data);
-
-  /// Write protobuf to file
-  void pb_dump(const std::string& filename) const;
-
-  /// Read protobuf from file
-  static Point pb_load(const std::string& filename);
+  static Point pb_loads(const std::string &data);
+  void pb_dump(const std::string &filename) const;
+  static Point pb_load(const std::string &filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // No-copy Operators
+  // String
   // ═══════════════════════════════════════════════════════════════════════════
 
-  double &operator[](int index);
+  /// "x, y, z"
+  std::string str() const;
 
-  const double &operator[](int index) const;
+  /// "Point(name, x, y, z, Color(...), width)"
+  std::string repr() const;
 
-  Point &operator*=(double factor);
-  
-  Point &operator/=(double factor);
+private:
+  mutable std::string _guid;
+  double _x = 0.0;
+  double _y = 0.0;
+  double _z = 0.0;
+};
 
-  Point &operator+=(const Vector &other);
-
-  Point &operator-=(const Vector &other);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Copy Operators
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  Point operator*(double factor) const;
-
-  Point operator/(double factor) const;
-
-  Point operator+(const Vector& other) const;
-
-  Point operator-(const Vector& other) const;
-
-  Vector operator-(const Point& other) const;
-
-  /// Returns a new point that is the sum of two points.
-  static Point sum(const Point& p0, const Point& p1);
-
-  /// Returns a new point that is the difference of two points.
-  static Point sub(const Point& p0, const Point& p1);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Details
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  /**
-   * @brief Check if the points are in counter-clockwise order.
-   * 
-   * @param a First point.
-   * @param b Second point.
-   * @param c Third point.
-   * @return True if the points are in counter-clockwise order, False otherwise.
-   */
-  static bool ccw(const Point& a, const Point& b, const Point& c);
-
-  static bool is_ccw(const Point& a, const Point& b, const Point& c);
-
-  /**
-   * @brief Calculate the mid point between this point and another point.
-   * 
-   * @param p The other point.
-   * @return The mid point between this point and the other point.
-   */
-  Point mid_point(const Point& p) const;
-
-  static Point mid_point(const Point& a, const Point& b);
-
-  /**
-   * @brief Calculate the distance between this point and another point.
-   * 
-   * @param p The other point.
-   * @param float_min The minimum value for the distance. Defaults to 1e-12.
-   * @return The distance between this point and the other point.
-   */
-  double distance(const Point& p, double float_min = 1e-12) const;
-
-  static double distance(const Point& a, const Point& b, double float_min = 1e-12);
-
-  double squared_distance(const Point& p, double float_min = 1e-12) const;
-
-  static double squared_distance(const Point& a, const Point& b, double float_min = 1e-12);
-
-  /// Linear interpolation between two points.
-  /// kind: 0=no endpoints (default), 1=both endpoints, 2=start only
-  static std::vector<Point> interpolate(const Point& from, const Point& to, int steps, int kind = 0);
-
-  /// Lerp: single point at parameter t in [0, 1].
-  static Point lerp(const Point& a, const Point& b, double t);
-
-  /**
-   * @brief Calculate the area of a polygon.
-   * 
-   * @param points The points of the polygon.
-   * @return The area of the polygon.
-   */
-  static double area(const std::vector<Point>& points);
-
-  /**
-   * @brief Calculate the centroid of a quadrilateral.
-   *
-   * @param vertices The vertices of the quadrilateral.
-   * @return The centroid of the quadrilateral.
-   */
-  static Point centroid_quad(const std::vector<Point>& vertices);
-
-  /**
-   * @brief Calculate the centroid (arithmetic mean) of N points.
-   *
-   * @param points The points to average. Empty input returns the origin.
-   * @return The centroid: (sum_x/N, sum_y/N, sum_z/N).
-   */
-  static Point centroid(const std::vector<Point>& points);
-
-  /**
-   * @brief Approximate dihedral angle (degrees, [0, 180]) of edge `pq`
-   *        in the tetrahedron `(p, q, r, s)`.
-   *
-   * Geometric definition: angle between half-plane (pqr) and half-plane
-   * (pqs) measured in the plane perpendicular to edge pq. Equivalent to
-   * `std::abs(CGAL::approximate_dihedral_angle(p, q, r, s))`.
-   *
-   * @param p First vertex of the shared edge.
-   * @param q Second vertex of the shared edge.
-   * @param r Third vertex (defines first half-plane via pq, pr).
-   * @param s Fourth vertex (defines second half-plane via pq, ps).
-   * @return Unsigned dihedral angle in degrees, in [0, 180].
-   */
-  static double dihedral_angle_deg(const Point& p, const Point& q,
-                                    const Point& r, const Point& s);
-
-}; // End of Point class
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Not class methods
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * @brief  To use this operator, you can do:
- *         Point point(1.5, 2.5, 3.5);
- *         std::cout << "Created point: " << point << std::endl;
- * @param os The output stream.
- * @param point The Point to insert into the stream.
- * @return A reference to the output stream.
- */
 std::ostream &operator<<(std::ostream &os, const Point &point);
 
 } // namespace session_cpp

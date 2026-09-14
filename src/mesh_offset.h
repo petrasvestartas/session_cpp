@@ -1,9 +1,11 @@
 #pragma once
+#include <map>
 #include "mesh.h"
 #include "plane.h"
 
 namespace session_cpp {
 
+/// Thick shell of a mesh: original faces, offset faces, quads on naked edges
 struct MeshOffset {
     struct Layers {
         Mesh top;
@@ -11,20 +13,17 @@ struct MeshOffset {
         Mesh sides;
     };
 
-    // Returns a closed shell: bottom (original) + top (offset) + side quads along boundary edges.
+    /// One closed mesh: reversed bottom, offset top, one quad per naked edge
     static Mesh from_mesh(const Mesh& mesh, double distance);
 
-    // Returns separate layers: top (offset faces), bottom (original faces), sides (boundary quads).
+    /// The same shell as three meshes: top, bottom and sides
     static Layers from_mesh_layers(const Mesh& mesh, double distance);
 
-    // Public helpers for visualization.
-    // Per-face offset planes: each face plane translated by distance along its normal.
+    /// Plane of each face translated by distance along its normal, by face key
     static std::map<size_t, Plane> offset_planes(const Mesh& mesh, double distance);
 
-    // Per-vertex offset positions: intersection of all adjacent offset planes.
-    static std::map<size_t, Point> offset_vertices(
-        const Mesh& mesh,
-        const std::map<size_t, Plane>& planes);
+    /// Offset position of each vertex: least-squares meet of its face planes, by vertex key
+    static std::map<size_t, Point> offset_vertices(const Mesh& mesh, const std::map<size_t, Plane>& planes);
 };
 
 } // namespace session_cpp

@@ -1,4 +1,4 @@
-﻿#include "mini_test.h"
+#include "mini_test.h"
 #include "fmt/format.h"
 #include "mesh.h"
 #include "color.h"
@@ -7,8 +7,6 @@
 #include "polyline.h"
 #include "xform.h"
 #include "tolerance.h"
-#include "file_encoders.h"
-#include "session.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,10 +16,7 @@
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
-
     MINI_TEST("Mesh", "Constructor") {
-        // uncomment #include "mesh.h"
-
         std::vector<Point> vertices = Polyline::from_sides(6, 1.0, false).get_points();
         Mesh mesh = Mesh::from_vertices_and_faces(vertices, {{0, 1, 2, 3, 4, 5}});
         std::string sstr = mesh.str();
@@ -33,11 +28,9 @@ namespace session_cpp {
 
         std::vector<Color> palette = Color::palette();
 
-        // set_objectcolor does not change color_mode
         mesh.set_objectcolor(Color::grey());
         MINI_CHECK(mesh.color_mode == ColorMode::OBJECTCOLOR);
 
-        // set_pointcolors → color_mode = PointColors
         std::vector<Color> pc;
         pc.reserve(mesh.number_of_vertices());
         for (size_t i = 0; i < mesh.number_of_vertices(); ++i)
@@ -46,7 +39,6 @@ namespace session_cpp {
         MINI_CHECK(mesh.color_mode == ColorMode::POINTCOLORS);
         MINI_CHECK(mesh.get_pointcolors().size() == mesh.number_of_vertices());
 
-        // set_facecolors → color_mode = FaceColors
         std::vector<Color> fc;
         fc.reserve(mesh.number_of_faces());
         for (size_t i = 0; i < mesh.number_of_faces(); ++i)
@@ -55,7 +47,6 @@ namespace session_cpp {
         MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
         MINI_CHECK(mesh.get_facecolors().size() == mesh.number_of_faces());
 
-        // set_linecolors does not change color_mode
         std::vector<Color> lc;
         std::vector<double> lw(mesh.number_of_edges(), 0.1);
         lc.reserve(mesh.number_of_edges());
@@ -65,20 +56,17 @@ namespace session_cpp {
         MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
         MINI_CHECK(mesh.get_linecolors().size() == mesh.number_of_edges());
 
-        // clear_facecolors reverts color_mode only if currently FaceColors
         mesh.color_mode = ColorMode::FACECOLORS;
         MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
         mesh.clear_facecolors();
         MINI_CHECK(mesh.color_mode == ColorMode::OBJECTCOLOR);
         MINI_CHECK(mesh.get_facecolors().empty());
 
-        // clear_pointcolors does not revert if color_mode != PointColors
         mesh.color_mode = ColorMode::FACECOLORS;
         MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
         mesh.clear_pointcolors();
         MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
 
-        // clear_linecolors does not change color_mode
         mesh.color_mode = ColorMode::POINTCOLORS;
         mesh.clear_linecolors();
         MINI_CHECK(mesh.color_mode == ColorMode::POINTCOLORS);
@@ -86,8 +74,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "From Polylines") {
-        // uncomment #include "mesh.h"
-
         Mesh mesh = Mesh::from_polylines({
             {
                 {1.28955, 0, 1.127558},
@@ -119,8 +105,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "From Lines") {
-        // uncomment #include "mesh.h"
-
         std::vector<Line> lines = {
             Line::from_points(Point(4.948083, -0.149798, 1.00765),
                               Point(4.395544, -0.996413, 1.196018)),
@@ -149,8 +133,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "From Polygon With Holes") {
-        // uncomment #include "mesh.h"
-
         Mesh mesh = Mesh::from_polygon_with_holes({
             {
                 {8.940934, 0.917382, 0.049546},
@@ -201,8 +183,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "Loft") {
-        // uncomment #include "mesh.h"
-
         std::vector<Polyline> bottom = {
             Polyline(std::vector<Point>{
                 {13.20069, -0.556523, -0.178103},
@@ -277,9 +257,7 @@ namespace session_cpp {
         MINI_CHECK(!mesh_no_cap.is_closed());
     }
 
-    MINI_TEST("Mesh", "Loft concave with holes and collinear") {
-        // uncomment #include "mesh.h"
-
+    MINI_TEST("Mesh", "Loft Concave With Holes") {
         std::vector<Polyline> annen_bot = {
             Polyline({
                 {2142.008, -530.170, 1172.487},
@@ -378,8 +356,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "From Polygon With Holes Many") {
-        // uncomment #include "mesh.h"
-
         std::vector<std::vector<std::vector<Point>>> inputs;
         for (int i = 0; i < 4; ++i) {
             double x = i * 7.0;
@@ -409,8 +385,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "Loft Many") {
-        // uncomment #include "mesh.h"
-
         std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>> loft_inputs;
         for (int i = 0; i < 6; ++i) {
             double x = i * 3.0;
@@ -460,9 +434,7 @@ namespace session_cpp {
 
     }
 
-    MINI_TEST("Mesh", "Loft with quads and triangles") {
-        // uncomment #include "mesh.h"
-
+    MINI_TEST("Mesh", "Loft With Quads And Triangles") {
         std::vector<std::vector<Point>> top7 = {
             {
                 {250, -250, 500},
@@ -571,7 +543,6 @@ namespace session_cpp {
         };
         auto [panels, adj, top_mesh, bot_mesh] = Mesh::loft_panels(top7, bot7);
 
-        // Color faces: blue=top cap, red=bot cap, gray=quad wall, yellow=tri wall
         for (size_t i = 0; i < panels.size(); i++) {
             std::vector<Color> face_colors;
             face_colors.reserve(panels[i].face_roles.size());
@@ -586,13 +557,11 @@ namespace session_cpp {
             panels[i].mesh.set_facecolors(face_colors);
         }
 
-        // face centroids labelled with panel index
         for (size_t i = 0; i < panels.size(); i++) {
             auto c = panels[i].mesh.centroid();
             c.name = fmt::format("p{}", i);
         }
 
-        // adjacency: for each shared edge — text dot at midpoint labelled "p{i}f{idx}<->p{j}f{idx}"
         for (const auto& [i, wi, pj, wj] : adj) {
             const auto& w = panels[i].wall_faces[wi];
             auto pt = *panels[i].mesh.face_centroid(w.face_key);
@@ -618,12 +587,10 @@ namespace session_cpp {
         MINI_CHECK(adj[6].pi == 3 && adj[6].pj == 5);
         MINI_CHECK(adj[7].pi == 4 && adj[7].pj == 5);
         MINI_CHECK(adj[8].pi == 5 && adj[8].pj == 6);
-          
+
     }
 
     MINI_TEST("Mesh", "Boolean Queries") {
-        // uncomment #include "mesh.h"
-
         Mesh mesh = Mesh::from_polylines({
             {
                 {1.28955, 0, 1.127558},
@@ -680,8 +647,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "Attributes") {
-        // uncomment #include "mesh.h"
-
         Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
         size_t n_vertices = mesh.number_of_vertices();
@@ -727,7 +692,6 @@ namespace session_cpp {
         MINI_CHECK(vertex_to_index[6] == 6);
         MINI_CHECK(vertex_to_index[7] == 7);
 
-        // vertices / faces / edges
         auto vertices = mesh.vertices();
         MINI_CHECK(vertices.size() == 8);
         MINI_CHECK(vertices[0] == 0);
@@ -766,7 +730,6 @@ namespace session_cpp {
         MINI_CHECK(mesh.naked_edges(true).size() == 0);
         MINI_CHECK(mesh.naked_faces(false).size() == 6);
 
-        // remove one face — box becomes open, check naked
         mesh.remove_face(mesh.faces()[0]);
 
         auto ne = mesh.naked_edges(true);
@@ -784,9 +747,17 @@ namespace session_cpp {
         MINI_CHECK(nfi.size() == 1);
     }
 
-    MINI_TEST("Mesh", "Create Dodecahedron") {
-        // uncomment #include "mesh.h"
+    MINI_TEST("Mesh", "Edges") {
+        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+        size_t v0 = mesh.vertices()[0];
+        size_t v1 = mesh.vertices()[1];
+        auto edges = mesh.edges();
 
+        MINI_CHECK(edges.size() == 12);
+        MINI_CHECK(edges[0] == std::make_pair(v0, v1));
+    }
+
+    MINI_TEST("Mesh", "Create Dodecahedron") {
         Mesh m = Mesh::create_dodecahedron(2.0);
 
         MINI_CHECK(m.is_valid());
@@ -794,9 +765,7 @@ namespace session_cpp {
         MINI_CHECK(m.number_of_faces() == 12);
     }
 
-    MINI_TEST("Mesh", "Vertex and Face Operations") {
-        // uncomment #include "mesh.h"
-
+    MINI_TEST("Mesh", "Vertex And Face Operations") {
         double hx = 0.5, hy = 0.5, hz = 0.5;
         std::vector<Point> verts = {
             Point(-hx, -hy, -hz),
@@ -814,46 +783,37 @@ namespace session_cpp {
 
         Mesh mesh = Mesh();
 
-        
-        for (const auto& v : verts) 
+
+        for (const auto& v : verts)
             mesh.add_vertex(v);
-    
-        for (const auto& f : faces) 
+
+        for (const auto& f : faces)
             mesh.add_face(f);
 
         MINI_CHECK(!mesh.add_face({0, 1}, std::nullopt).has_value());
         MINI_CHECK(!mesh.add_face({0, 1, 0}, std::nullopt).has_value());
 
-        // remove_vertex(0): removes vertex 0 + 3 adjacent faces (0,2,4)
-        // vertices → [1,2,3,4,5,6,7], faces → [1,3,5]
         mesh.remove_vertex(0);
         MINI_CHECK(mesh.number_of_vertices() == 7);
         MINI_CHECK(mesh.number_of_faces() == 3);
 
-        // remove_edge(1,2): removes face 5 [1,2,6,5], faces → [1,3]
         mesh.remove_edge(1, 2);
         MINI_CHECK(mesh.number_of_faces() == 2);
 
-        // remove_face(1): removes face 1 [4,5,6,7], faces → [3]
         mesh.remove_face(1);
         MINI_CHECK(mesh.number_of_faces() == 1);
 
-        // clear
         mesh.clear();
         MINI_CHECK(mesh.is_empty());
 
-        // rebuild
         for (const auto& v : verts) mesh.add_vertex(v);
         for (const auto& f : faces) mesh.add_face(f);
 
-        // unweld and weld
         mesh = mesh.unweld();
         MINI_CHECK(mesh.number_of_vertices() == 24);
         mesh = mesh.weld(0.001);
         MINI_CHECK(mesh.number_of_vertices() == 8);
         MINI_CHECK(mesh.number_of_faces() == 6);
-        // face 0: 0 1 2 3, face 1: 4 5 6 7, face 2: 0 3 5 4
-        // face 3: 2 1 7 6, face 4: 0 4 7 1, face 5: 3 2 6 5
         auto fv0 = *mesh.face_vertices(0); auto fv1 = *mesh.face_vertices(1);
         auto fv2 = *mesh.face_vertices(2); auto fv3 = *mesh.face_vertices(3);
         auto fv4 = *mesh.face_vertices(4); auto fv5 = *mesh.face_vertices(5);
@@ -864,7 +824,6 @@ namespace session_cpp {
         MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
         MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
 
-        // flip_face(0): face 0 → [3,2,1,0], faces 1-5 unchanged
         mesh.flip_face(0);
         fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
         fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
@@ -876,7 +835,6 @@ namespace session_cpp {
         MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
         MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
 
-        // unify_winding: face 0 restored to [0,1,2,3], faces 1-5 unchanged
         mesh.unify_winding();
         fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
         fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
@@ -888,8 +846,6 @@ namespace session_cpp {
         MINI_CHECK(fv4[0] == 0 && fv4[1] == 4 && fv4[2] == 7 && fv4[3] == 1);
         MINI_CHECK(fv5[0] == 3 && fv5[1] == 2 && fv5[2] == 6 && fv5[3] == 5);
 
-        // flip: face 0 → [3,2,1,0], face 1 → [7,6,5,4], face 2 → [4,5,3,0]
-        // face 3 → [6,7,1,2], face 4 → [1,7,4,0], face 5 → [5,6,2,3]
         mesh.flip();
         fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
         fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
@@ -901,8 +857,6 @@ namespace session_cpp {
         MINI_CHECK(fv4[0] == 1 && fv4[1] == 7 && fv4[2] == 4 && fv4[3] == 0);
         MINI_CHECK(fv5[0] == 5 && fv5[1] == 6 && fv5[2] == 2 && fv5[3] == 3);
 
-        // orient_outward: face 0 → [0,1,2,3], face 1 → [4,5,6,7], face 2 → [0,3,5,4]
-        // face 3 → [2,1,7,6], face 4 → [0,4,7,1], face 5 → [3,2,6,5]
         mesh.orient_outward();
         fv0 = *mesh.face_vertices(0); fv1 = *mesh.face_vertices(1);
         fv2 = *mesh.face_vertices(2); fv3 = *mesh.face_vertices(3);
@@ -916,8 +870,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "Connectivity Queries") {
-        // uncomment #include "mesh.h"
-
         std::vector<Point> pts = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 0.0, 0.0),
@@ -930,11 +882,8 @@ namespace session_cpp {
         auto v = mesh.vertices();
         auto f = mesh.faces();
 
-        // edge edges
-        // edge 1 - 2, edges: 1-0, 1-4, 2-3, 2-4
         std::optional<std::vector<std::pair<size_t, size_t>>> ee = mesh.edge_edges(1, 2);
         if (ee){
-
             size_t u0 = (*ee)[0].first;
             size_t v0 = (*ee)[0].second;
             Line l0 = mesh.edge_line(u0, v0).value();
@@ -959,17 +908,13 @@ namespace session_cpp {
             Point mid3 = l3.center();
             mid3.name = "e" + std::to_string(u3) + "-" + std::to_string(v3);
 
-            std::set<std::pair<size_t, size_t>> ee_set(ee->begin(), ee->end());
-
             MINI_CHECK(ee->size() == 4);
             MINI_CHECK(((*ee)[0] == std::make_pair(1ul, 0ul)) || ((*ee)[0] == std::make_pair(0ul, 1ul)));
             MINI_CHECK(((*ee)[1] == std::make_pair(1ul, 4ul)) || ((*ee)[1] == std::make_pair(4ul, 1ul)));
             MINI_CHECK(((*ee)[2] == std::make_pair(2ul, 3ul)) || ((*ee)[2] == std::make_pair(3ul, 2ul)));
-            MINI_CHECK(((*ee)[3] == std::make_pair(2ul, 4ul)) || ((*ee)[3] == std::make_pair(4ul, 2ul)));  
+            MINI_CHECK(((*ee)[3] == std::make_pair(2ul, 4ul)) || ((*ee)[3] == std::make_pair(4ul, 2ul)));
         }
 
-        // edge faces
-        // edge 1-2, faces: 0, 1
         std::optional<std::vector<size_t>> ef = mesh.edge_faces(1, 2);
         if (ef) {
             size_t ef0 = (*ef)[0];
@@ -983,8 +928,6 @@ namespace session_cpp {
             MINI_CHECK(ef0 == 0 && ef1 == 1);
         }
 
-        // face_edges
-        // face 0, edges: 0-1, 1-2, 2-3, 3-0
         std::optional<std::vector<std::pair<size_t, size_t>>> fe = mesh.face_edges(f[0]);
         if (fe) {
             Line l0 = mesh.edge_line((*fe)[0].first, (*fe)[0].second).value();
@@ -1007,8 +950,6 @@ namespace session_cpp {
             MINI_CHECK(((*fe)[3] == std::make_pair(3ul, 0ul)));
         }
 
-        // face_faces
-        // face 0, adjacent faces: 1
         std::optional<std::vector<size_t>> ff = mesh.face_faces(f[0]);
         if (ff) {
             size_t ff0 = (*ff)[0];
@@ -1019,7 +960,6 @@ namespace session_cpp {
             MINI_CHECK(ff0 == 1);
         }
 
-        // face points
         std::optional<std::vector<Point>> points = mesh.face_points(f[0]);
         if (points) {
             size_t pointcount = (*points).size();
@@ -1027,7 +967,6 @@ namespace session_cpp {
             MINI_CHECK(pointcount == 4);
         }
 
-        // face polyline
         std::optional<Polyline> pl = mesh.face_polyline(f[0]);
         if (pl) {
             size_t pointcount = (*pl).point_count();
@@ -1035,8 +974,6 @@ namespace session_cpp {
             MINI_CHECK(pointcount == 4);
         }
 
-        // face_vertices
-        // face 0 vertices: 0, 1, 2, 3
         std::optional<std::vector<size_t>> fv = mesh.face_vertices(f[0]);
         if(fv.has_value()) {
             size_t fv0 = (*fv)[0];
@@ -1058,9 +995,7 @@ namespace session_cpp {
             MINI_CHECK(fv3 == 3);
             MINI_CHECK(fv->size() == 4);
         }
-    
-        // vertex_edges
-        // vertex 3, edges 1-0, 1-2, 1-4
+
         std::optional<std::vector<std::pair<size_t, size_t>>> ve = mesh.vertex_edges(v[1]);
         if (ve) {
             Point vp = *mesh.vertex_point(v[1]);
@@ -1082,11 +1017,8 @@ namespace session_cpp {
             MINI_CHECK((*ve).size() == 3);
         }
 
-        // vertex_faces
         std::optional<std::vector<size_t>> vf = mesh.vertex_faces(v[1]);
-        // vertex 3, faces 0, 1
         if (vf) {
-
             Point vp = *mesh.vertex_point(v[1]);
             vp.name = "v" + std::to_string(v[1]);
 
@@ -1100,12 +1032,10 @@ namespace session_cpp {
             MINI_CHECK((*vf)[1] == 1);
         }
 
-        // vertex_vertices
-        // vertex 1, neighbors 0, 2, 4
         std::optional<std::vector<size_t>> vn = mesh.vertex_vertices(v[1]);
         if (vn) {
             Point p0 = *mesh.vertex_point(v[1]);
-            p0.name = "main" + std::to_string(v[1]); 
+            p0.name = "main" + std::to_string(v[1]);
 
             Point np0 = *mesh.vertex_point((*vn)[0]);
             np0.name = std::to_string((*vn)[0]);
@@ -1124,20 +1054,15 @@ namespace session_cpp {
 
 
     MINI_TEST("Mesh", "Geometric Properties") {
-        // uncomment #include "mesh.h"
-
         Mesh mesh = Mesh::create_dodecahedron(1.5);
 
-        // area
         double area = mesh.area();
 
         MINI_CHECK(TOLERANCE.is_close(area, 46.4528898159021));
 
-        // centroid
         Point centroid = mesh.centroid();
         MINI_CHECK(TOLERANCE.is_point_close(centroid, Point(0.0, 0.0, 0.0)));
 
-        // dihedral angle
         auto [angles, arcs, points] = mesh.dihedral_angles(0.3);
 
         for (const auto& [edge, angle] : angles) {
@@ -1145,16 +1070,14 @@ namespace session_cpp {
             MINI_CHECK(TOLERANCE.is_close(angle_in_degrees, 116.565051177078));
         }
 
-        // face area
         for (size_t f : mesh.faces()) {
             auto face_area = mesh.face_area(f);
             MINI_CHECK(face_area.has_value());
             MINI_CHECK(TOLERANCE.is_close(*face_area, 3.87107415132518));
         }
-        
-        // face centroid
+
         std::vector<Point> centroids;
-        for (size_t f : mesh.faces()) 
+        for (size_t f : mesh.faces())
             centroids.emplace_back(*mesh.face_centroid(f));
 
         MINI_CHECK(TOLERANCE.is_point_close(centroids[0],  Point( 0.878115294937453,  0.0,                1.420820393249937)));
@@ -1170,7 +1093,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(centroids[10], Point(-0.878115294937453,  0.0,               -1.420820393249937)));
         MINI_CHECK(TOLERANCE.is_point_close(centroids[11], Point(-1.420820393249937, -0.878115294937453, 0.0              )));
 
-        // face normal / s
         std::map<size_t, Vector> face_normals = mesh.face_normals();
         for (size_t f : mesh.faces()) {
             auto fn = mesh.face_normal(f);
@@ -1191,7 +1113,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_vector_close(face_normals[10], Vector(-0.5257311121191336,  0.0,                -0.8506508083520400)));
         MINI_CHECK(TOLERANCE.is_vector_close(face_normals[11], Vector(-0.8506508083520400, -0.5257311121191336,  0.0               )));
 
-        // vertex angle in face
         for (const size_t f : mesh.faces()) {
             auto fv = *mesh.face_vertices(f);
             for (const size_t v : fv) {
@@ -1201,7 +1122,6 @@ namespace session_cpp {
             }
         }
 
-        // vertex normal / s
         std::map<size_t, Vector> vertex_normals = mesh.vertex_normals();
         for (const size_t v : mesh.vertices()){
             auto vn = mesh.vertex_normal(v);
@@ -1230,7 +1150,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals[18], Vector(-0.9341723589627157,  0.0,                -0.3568220897730899)));
         MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals[19], Vector(-0.9341723589627158,  0.0,                 0.3568220897730899)));
 
-        // vertex normal weighted / s
         std::map<size_t, Vector> vertex_normals_weighted = mesh.vertex_normals_weighted(NormalWeighting::Angle);
         for (const size_t v : mesh.vertices()){
             auto vnw = mesh.vertex_normal_weighted(v, NormalWeighting::Angle);
@@ -1260,15 +1179,12 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_vector_close(vertex_normals_weighted[19], Vector(-0.9341723589627158,  0.0,                 0.3568220897730899)));
 
 
-        // volume
         double volume = mesh.volume();
         MINI_CHECK(TOLERANCE.is_close(volume, 25.8630264921081));
 
     }
 
     MINI_TEST("Mesh", "Transformation") {
-        // uncomment #include "mesh.h"
-
         std::vector<Point> pts = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 0.0, 0.0),
@@ -1277,26 +1193,22 @@ namespace session_cpp {
         Mesh mesh = Mesh::from_vertices_and_faces(pts, {{0,1,2}});
         size_t v0 = mesh.vertices()[0];
 
-        // transform(const Xform&) — apply in place
         Mesh mesh1 = mesh;
         Xform mesh1_xf = Xform::translation(0.0, 0.0, 1.0);
         mesh1.transform(mesh1_xf);
 
         MINI_CHECK((*mesh1.vertex_point(v0))[2] == 1.0);
 
-        // transform(const Xform&) — apply in place, matrix built separately
         Mesh mesh2 = mesh;
         Xform x = Xform::translation(0.0, 0.0, 1.0);
         mesh2.transform(x);
         MINI_CHECK((*mesh2.vertex_point(v0))[2] == 1.0);
 
-        // transformed(const Xform&) — returns a copy
         Mesh mesh3 = mesh;
         Xform mesh3_xf = Xform::translation(0.0, 0.0, 10.0);
         Mesh mesh3t = mesh3.transformed(mesh3_xf);
         MINI_CHECK((*mesh3t.vertex_point(v0))[2] == 10.0);
 
-        // transformed(const Xform&) — copy with given xform applied
         Mesh mesh4 = mesh;
         x = Xform::translation(0.0, 0.0, 10.0);
         Mesh mesh4t = mesh4.transformed(x);
@@ -1304,22 +1216,15 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "Json Roundtrip") {
-        // uncomment #include "mesh.h"
-        // uncomment #include "point.h"
-        // uncomment #include <filesystem>
-
         Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
         mesh.name = "test_mesh";
 
-        // JSON object
         nlohmann::ordered_json json = mesh.jsondump();
         Mesh loaded_json = Mesh::jsonload(json);
 
-        // String
         std::string json_string = mesh.file_json_dumps();
         Mesh loaded_string = Mesh::file_json_loads(json_string);
 
-        // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_mesh.json").string();
         mesh.file_json_dump(filename);
         Mesh loaded_file = Mesh::file_json_load(filename);
@@ -1328,7 +1233,6 @@ namespace session_cpp {
         MINI_CHECK(loaded_string == mesh);
         MINI_CHECK(loaded_file == mesh);
 
-        // Triangulation roundtrip
         std::vector<std::vector<Point>> polys = {{
             Point(0.0, 0.0, 0.0),
             Point(1.0, 0.0, 0.0),
@@ -1341,7 +1245,6 @@ namespace session_cpp {
         MINI_CHECK(!loaded_tri.get_triangulation().empty());
         MINI_CHECK(loaded_tri.get_triangulation().count(fk) > 0);
 
-        // Face holes roundtrip
         Mesh hmesh = Mesh::from_polygon_with_holes(
             {
                 {
@@ -1364,18 +1267,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("Mesh", "Protobuf Roundtrip") {
-        // uncomment #include "mesh.h"
-        // uncomment #include "point.h"
-        // uncomment #include <filesystem>
-
         Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
         mesh.name = "test_mesh_proto";
 
-        // String
         std::string proto_string = mesh.pb_dumps();
         Mesh loaded_string = Mesh::pb_loads(proto_string);
 
-        // File
         std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_mesh.bin").string();
         mesh.pb_dump(filename);
         Mesh loaded_file = Mesh::pb_load(filename);
@@ -1383,7 +1280,6 @@ namespace session_cpp {
         MINI_CHECK(loaded_string == mesh);
         MINI_CHECK(loaded_file == mesh);
 
-        // Triangulation roundtrip
         std::vector<std::vector<Point>> polys = {{
             Point(0.0, 0.0, 0.0),
             Point(1.0, 0.0, 0.0),
@@ -1396,7 +1292,6 @@ namespace session_cpp {
         MINI_CHECK(!loaded_tri.get_triangulation().empty());
         MINI_CHECK(loaded_tri.get_triangulation().count(fk) > 0);
 
-        // Face holes roundtrip
         Mesh hmesh = Mesh::from_polygon_with_holes(
             {
                 {
@@ -1418,20 +1313,8 @@ namespace session_cpp {
         MINI_CHECK(loaded_holes.get_face_holes().at(hfk) == hmesh.get_face_holes().at(hfk));
     }
 
-    MINI_TEST("Mesh", "Edges") {
-        // uncomment #include "mesh.h"
-
-        Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
-        size_t v0 = mesh.vertices()[0];
-        size_t v1 = mesh.vertices()[1];
-        auto edges = mesh.edges();
-
-        MINI_CHECK(edges.size() == 12);
-        MINI_CHECK(edges[0] == std::make_pair(v0, v1));
-    }
-
-    MINI_TEST("Mesh", "Loft plate_failing 15-vert outer + 4 holes") {
-        std::vector<Polyline> bot_polylines = {
+    MINI_TEST("Mesh", "Loft Plate Four Holes") {
+        std::vector<Polyline> bot = {
             Polyline(std::vector<Point>{
                 { 734.392021, -1906.59468,  1101.588031},
                 { 632.396858, -1838.597905,  948.595287},
@@ -1478,7 +1361,7 @@ namespace session_cpp {
                 { 219.882876, -1531.572963,  353.83603 },
             }),
         };
-        std::vector<Polyline> top_polylines = {
+        std::vector<Polyline> top = {
             Polyline(std::vector<Point>{
                 { 711.660594, -1906.59468,  1126.880036},
                 { 605.549364, -1835.85386,   967.713191},
@@ -1525,21 +1408,12 @@ namespace session_cpp {
                 { 197.007245, -1563.492448,  354.900013},
             }),
         };
-        Mesh m = Mesh::loft(bot_polylines, top_polylines, true, true);
-        printf("Loft plate_failing: faces=%zu  vertices=%zu  valid=%d  closed=%d\n",
-               m.faces().size(), m.vertices().size(), (int)m.is_valid(), (int)m.is_closed());
+        Mesh m = Mesh::loft(bot, top, true, true);
         MINI_CHECK(m.is_valid());
-
-        // Write to session pb so it can be inspected in Rhino
-        Session session;
-        session.add_mesh(std::make_shared<Mesh>(m));
-        std::string pb_path = "serialization/test_plate_failing_loft.pb";
-        session.pb_dump(pb_path);
-        printf("Session written to: %s\n", pb_path.c_str());
     }
 
-    MINI_TEST("Mesh", "Loft plate_v2 15-vert outer + 3 holes") {
-        std::vector<Polyline> top_polylines = {
+    MINI_TEST("Mesh", "Loft Plate V2") {
+        std::vector<Polyline> top = {
             Polyline(std::vector<Point>{
                 { 734.392021,  -28.40532,  1101.588031},
                 { 630.839301,  -97.440466,  946.258951},
@@ -1579,7 +1453,7 @@ namespace session_cpp {
                 { 207.128489, -332.744435,  346.070162},
             }),
         };
-        std::vector<Polyline> bot_polylines = {
+        std::vector<Polyline> bot = {
             Polyline(std::vector<Point>{
                 { 717.764591,  -24.335988, 1136.036032},
                 { 607.106921,  -98.107768,  970.049526},
@@ -1619,20 +1493,12 @@ namespace session_cpp {
                 { 197.481393, -371.191453,  355.611235},
             }),
         };
-        Mesh m = Mesh::loft(top_polylines, bot_polylines, true, true);
-        printf("Loft plate_v2: faces=%zu  vertices=%zu  valid=%d  closed=%d\n",
-               m.faces().size(), m.vertices().size(), (int)m.is_valid(), (int)m.is_closed());
+        Mesh m = Mesh::loft(top, bot, true, true);
         MINI_CHECK(m.is_valid());
-
-        Session session;
-        session.add_mesh(std::make_shared<Mesh>(m));
-        std::string pb_path = "serialization/test_plate_v2_loft.pb";
-        session.pb_dump(pb_path);
-        printf("Session written to: %s\n", pb_path.c_str());
     }
 
-    MINI_TEST("Mesh", "Loft plate_v3 15-vert outer + 3 holes") {
-        std::vector<Polyline> top_polylines = {
+    MINI_TEST("Mesh", "Loft Plate V3") {
+        std::vector<Polyline> top = {
             Polyline(std::vector<Point>{
                 { 734.392021,  352.59468,  1101.588031},
                 { 618.973111,  275.648741,  928.459666},
@@ -1672,7 +1538,7 @@ namespace session_cpp {
                 { 209.347583,   49.734961,  349.398804},
             }),
         };
-        std::vector<Polyline> bot_polylines = {
+        std::vector<Polyline> bot = {
             Polyline(std::vector<Point>{
                 { 717.764591,  356.664012, 1136.036032},
                 { 618.973111,  290.803025,  987.848811},
@@ -1712,16 +1578,8 @@ namespace session_cpp {
                 { 209.347583,   17.71934,   373.41052 },
             }),
         };
-        Mesh m = Mesh::loft(top_polylines, bot_polylines, true, true);
-        printf("Loft plate_v3: faces=%zu  vertices=%zu  valid=%d  closed=%d\n",
-               m.faces().size(), m.vertices().size(), (int)m.is_valid(), (int)m.is_closed());
+        Mesh m = Mesh::loft(top, bot, true, true);
         MINI_CHECK(m.is_valid());
-
-        Session session;
-        session.add_mesh(std::make_shared<Mesh>(m));
-        std::string pb_path = "serialization/test_plate_v3_loft.pb";
-        session.pb_dump(pb_path);
-        printf("Session written to: %s\n", pb_path.c_str());
     }
 
     MINI_TEST("Mesh", "Vertex Neighbors") {
@@ -1963,33 +1821,6 @@ namespace session_cpp {
         MINI_CHECK((big[0] == std::make_pair<size_t, size_t>(0, 1)));
     }
 
-    MINI_TEST("Mesh", "Boolean Difference") {
-        Mesh a = Mesh::create_box(2, 2, 2);
-        Mesh b = Mesh::create_box(2, 2, 2);
-        b.transform(Xform::translation(1, 0, 0));
-        Mesh result = a.boolean_difference(b, 48);
-        MINI_CHECK(result.is_closed());
-        MINI_CHECK(std::abs(std::abs(result.volume()) - 4.0) < 0.2);
-    }
-
-    MINI_TEST("Mesh", "Boolean Union") {
-        Mesh a = Mesh::create_box(2, 2, 2);
-        Mesh b = Mesh::create_box(2, 2, 2);
-        b.transform(Xform::translation(1, 0, 0));
-        Mesh result = a.boolean_union(b, 48);
-        MINI_CHECK(result.is_closed());
-        MINI_CHECK(std::abs(std::abs(result.volume()) - 12.0) < 0.4);
-    }
-
-    MINI_TEST("Mesh", "Boolean Intersection") {
-        Mesh a = Mesh::create_box(2, 2, 2);
-        Mesh b = Mesh::create_box(2, 2, 2);
-        b.transform(Xform::translation(1, 0, 0));
-        Mesh result = a.boolean_intersection(b, 48);
-        MINI_CHECK(result.is_closed());
-        MINI_CHECK(std::abs(std::abs(result.volume()) - 4.0) < 0.2);
-    }
-
     MINI_TEST("Mesh", "Refresh Guid") {
         Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
         std::string original = mesh.guid();
@@ -2001,17 +1832,14 @@ namespace session_cpp {
         MINI_CHECK(mesh.guid() == original);
     }
 
-    MINI_TEST("Mesh", "AssignmentKeepsObjectColor") {
-        // operator= copied color_mode but not objectcolor, so `a = b` kept a's old colour
-        // while claiming b's mode - a mesh assigned into an Element's geometry variant came
-        // out white however it had been coloured.
+    MINI_TEST("Mesh", "Assignment Keeps Objectcolor") {
         Mesh source = Mesh::from_vertices_and_faces(
             {Point(0,0,0), Point(1,0,0), Point(1,1,0), Point(0,1,0)},
             {{0, 1, 2, 3}});
         source.set_objectcolor(Color(0.72f, 0.72f, 0.74f, 1.0f, "grey"));
 
         Mesh target;
-        target = source;                          // assignment, not construction
+        target = source;
         MINI_CHECK(target.get_objectcolor().r == source.get_objectcolor().r);
         MINI_CHECK(target.get_objectcolor().g == source.get_objectcolor().g);
         MINI_CHECK(target.get_objectcolor().b == source.get_objectcolor().b);

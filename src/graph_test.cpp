@@ -10,10 +10,7 @@ using namespace session_cpp::mini_test;
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Vertex", "Constructor") {
-    // Default constructor
     Vertex v0;
-
-    // Constructor with name + attribute
     Vertex v("v_named", "attr");
 
     MINI_CHECK(v0.name == "my_vertex");
@@ -39,7 +36,6 @@ MINI_TEST("Vertex", "Json Roundtrip") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Edge", "Constructor") {
-    // Constructor with v0/v1/attribute
     Edge e("a", "b", "attr");
 
     MINI_CHECK(e.v0 == "a");
@@ -87,13 +83,8 @@ MINI_TEST("Edge", "Other Vertex") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Graph", "Constructor") {
-    // Default constructor
     Graph g0;
-
-    // Constructor with name
     Graph g("my_named_graph");
-
-    // Minimal string representation
     std::string gstr = g0.str();
 
     MINI_CHECK(g0.name == "my_graph");
@@ -110,13 +101,6 @@ MINI_TEST("Graph", "Json Roundtrip") {
     original.add_node("node2", "Node 2");
     original.add_edge("node1", "node2", "edge1");
 
-    //   jsondump()      │ ordered_json │ to JSON object (internal use)
-    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   file_json_dumps()    │ std::string  │ to JSON string
-    //   file_json_loads(s)   │ std::string  │ from JSON string
-    //   file_json_dump(path) │ file         │ write to file
-    //   file_json_load(path) │ file         │ read from file
-
     std::string fname = "serialization/test_graph.json";
     original.file_json_dump(fname);
     Graph loaded = Graph::file_json_load(fname);
@@ -132,11 +116,6 @@ MINI_TEST("Graph", "Protobuf Roundtrip") {
     original.add_node("node1", "Node 1");
     original.add_node("node2", "Node 2");
     original.add_edge("node1", "node2", "edge1");
-
-    //   pb_dumps()      │ std::string  │ to protobuf binary string
-    //   pb_loads(data)  │ std::string  │ from protobuf binary string
-    //   pb_dump(path)   │ file         │ write to file
-    //   pb_load(path)   │ file         │ read from file
 
     std::string filename = "serialization/test_graph.bin";
     original.pb_dump(filename);
@@ -167,20 +146,16 @@ MINI_TEST("Graph", "Has Edge") {
 }
 
 MINI_TEST("Graph", "Has Guid") {
-    // A guid is lazily minted, so ASKING for one creates it. The writers used to ask for every
-    // vertex and edge, which minted 34,592 UUIDs for one drawing sheet and wrote 1.3 MB of them
-    // into a file whose reader discards them. has_guid() answers without minting, so a thing
-    // nobody names never pays for one.
     Vertex v("a");
     Edge e("a", "b");
 
-    MINI_CHECK(!v.has_guid());              // nobody has asked
+    MINI_CHECK(!v.has_guid());
     MINI_CHECK(!e.has_guid());
 
     std::string minted = v.guid();
     MINI_CHECK(!minted.empty());
-    MINI_CHECK(v.has_guid());               // asking created it
-    MINI_CHECK(v.guid() == minted);         // and it is stable
+    MINI_CHECK(v.has_guid());
+    MINI_CHECK(v.guid() == minted);
 }
 
 MINI_TEST("Graph", "Add Node") {
@@ -378,4 +353,4 @@ MINI_TEST("Graph", "Cycle Basis") {
     MINI_CHECK(cycles.size() == 1);
 }
 
-} // namespace session_cpp
+}

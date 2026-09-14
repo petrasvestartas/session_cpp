@@ -1,43 +1,31 @@
 #include "mini_test.h"
 #include "point.h"
 #include "color.h"
+#include "vector.h"
 #include "xform.h"
 #include "tolerance.h"
-
-#include <cmath>
-#include <filesystem>
 
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
     MINI_TEST("Point", "Constructor") {
-        // uncomment #include "point.h"
-        // uncomment #include "vector.h"
-        // uncomment #include "color.h"
-
-        // Constructor
         Point p(1.0, 2.0, 3.0);
 
-        // Setters
         p[0] = 10.0;
         p[1] = 20.0;
         p[2] = 30.0;
 
-        // Getters
         double x = p[0];
         double y = p[1];
         double z = p[2];
 
-        // Minimal and Full String Representation
         std::string pstr = p.str();
         std::string prepr = p.repr();
 
-        // Copy (duplicate everything but guid())
         Point pcopy = p;
         Point pother(1.0, 2.0, 3.0);
 
-        // No-copy operators
         Point pmult = p;
         pmult *= 2.0;
         Point pdiv = p;
@@ -47,28 +35,25 @@ namespace session_cpp {
         Point psub = p;
         psub -= Vector(1.0, 1.0, 1.0);
 
-        // Copy operators
         Point result_mul = p * 2.0;
         Point result_div = p / 2.0;
         Point result_add = p + Vector(1.0, 1.0, 1.0);
-        Point diff_point = p - Vector(1.0, 1.0, 1.0);
+        Point result_sub = p - Vector(1.0, 1.0, 1.0);
+        Vector result_diff = p - pother;
 
-        // Static sum and sub methods
         Point p1(1.0, 2.0, 3.0);
         Point p2(4.0, 5.0, 6.0);
         Point psum = Point::sum(p1, p2);
         Point pdif = Point::sub(p2, p1);
 
         MINI_CHECK(p.name == "my_point");
-        MINI_CHECK(p[0] == 10.0);
-        MINI_CHECK(p[1] == 20.0);
-        MINI_CHECK(p[2] == 30.0);
+        MINI_CHECK(p[0] == 10.0 && p[1] == 20.0 && p[2] == 30.0);
         MINI_CHECK(p.width == 1.0);
         MINI_CHECK(p.pointcolor == Color::black());
-        MINI_CHECK(!p.guid().empty());
+        MINI_CHECK(p.guid() != "");
         MINI_CHECK(x == 10.0 && y == 20.0 && z == 30.0);
         MINI_CHECK(pstr == "10.000000, 20.000000, 30.000000");
-        MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(0, 0, 0, 1), 1.000000)");
+        MINI_CHECK(prepr == "Point(my_point, 10.000000, 20.000000, 30.000000, Color(black, 0.0, 0.0, 0.0, 1.0), 1.000000)");
         MINI_CHECK(pcopy == p && pcopy.guid() != p.guid());
         MINI_CHECK(pother != p);
         MINI_CHECK(pmult[0] == 20.0 && pmult[1] == 40.0 && pmult[2] == 60.0);
@@ -78,62 +63,42 @@ namespace session_cpp {
         MINI_CHECK(result_mul[0] == 20.0 && result_mul[1] == 40.0 && result_mul[2] == 60.0);
         MINI_CHECK(result_div[0] == 5.0 && result_div[1] == 10.0 && result_div[2] == 15.0);
         MINI_CHECK(result_add[0] == 11.0 && result_add[1] == 21.0 && result_add[2] == 31.0);
-        MINI_CHECK(diff_point[0] == 9.0 && diff_point[1] == 19.0 && diff_point[2] == 29.0);
+        MINI_CHECK(result_sub[0] == 9.0 && result_sub[1] == 19.0 && result_sub[2] == 29.0);
+        MINI_CHECK(result_diff[0] == 9.0 && result_diff[1] == 18.0 && result_diff[2] == 27.0);
         MINI_CHECK(psum[0] == 5.0 && psum[1] == 7.0 && psum[2] == 9.0);
         MINI_CHECK(pdif[0] == 3.0 && pdif[1] == 3.0 && pdif[2] == 3.0);
     }
 
     MINI_TEST("Point", "Transformation") {
-        // uncomment #include "point.h"
-        // uncomment #include "xform.h"
-
         Point p(1.0, 2.0, 3.0);
-        Xform p_xf = Xform::translation(1.0, 2.0, 3.0);
-        Point p_transformed = p.transformed(p_xf); // Make a copy
-        p.transform(p_xf);
+        Xform xform = Xform::translation(1.0, 2.0, 3.0);
+        Point moved = p.transformed(xform);
+        p.transform(xform);
 
-        MINI_CHECK(p_transformed[0] == 2.0 && p_transformed[1] == 4.0 && p_transformed[2] == 6.0);
+        MINI_CHECK(moved[0] == 2.0 && moved[1] == 4.0 && moved[2] == 6.0);
         MINI_CHECK(p[0] == 2.0 && p[1] == 4.0 && p[2] == 6.0);
     }
 
     MINI_TEST("Point", "Json Roundtrip") {
-        // uncomment #include "point.h"
-        // uncomment #include "color.h"
-
-        Point p(1.5, 2.5, 3.5);
-        p.name = "test_point";
+        Point p(1.5, 2.5, 3.5, "test_point");
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
-
-        //   jsondump()      │ ordered_json │ to JSON object (internal use)
-        //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-        //   file_json_dumps()    │ std::string  │ to JSON string
-        //   file_json_loads(s)   │ std::string  │ from JSON string
-        //   file_json_dump(path) │ file         │ write to file
-        //   file_json_load(path) │ file         │ read from file
 
         std::string filename = "serialization/test_point.json";
         p.file_json_dump(filename);
         Point loaded = Point::file_json_load(filename);
 
-        MINI_CHECK(loaded.name == p.name);
-        MINI_CHECK(loaded[0] == p[0]);
-        MINI_CHECK(loaded[1] == p[1]);
-        MINI_CHECK(loaded[2] == p[2]);
-        MINI_CHECK(loaded.width == p.width);
-        MINI_CHECK(loaded.pointcolor.r == 1.0f);
-        MINI_CHECK(loaded.pointcolor.g == 0.5f);
-        MINI_CHECK(loaded.pointcolor.b == 0.25f);
-        MINI_CHECK(loaded.pointcolor.a == 1.0f);
-
+        MINI_CHECK(loaded.name == "test_point");
+        MINI_CHECK(loaded[0] == 1.5 && loaded[1] == 2.5 && loaded[2] == 3.5);
+        MINI_CHECK(loaded.width == 2.0);
+        MINI_CHECK(loaded.pointcolor[0] == 1.0f);
+        MINI_CHECK(loaded.pointcolor[1] == 0.5f);
+        MINI_CHECK(loaded.pointcolor[2] == 0.25f);
+        MINI_CHECK(loaded.pointcolor[3] == 1.0f);
     }
 
     MINI_TEST("Point", "Protobuf Roundtrip") {
-        // uncomment #include "point.h"
-        // uncomment #include "color.h"
-
-        Point p(1.5, 2.5, 3.5);
-        p.name = "test_point";
+        Point p(1.5, 2.5, 3.5, "test_point");
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
 
@@ -141,35 +106,27 @@ namespace session_cpp {
         p.pb_dump(filename);
         Point loaded = Point::pb_load(filename);
 
-        MINI_CHECK(loaded.name == p.name);
-        MINI_CHECK(loaded[0] == p[0]);
-        MINI_CHECK(loaded[1] == p[1]);
-        MINI_CHECK(loaded[2] == p[2]);
-        MINI_CHECK(loaded.width == p.width);
-        MINI_CHECK(loaded.pointcolor.r == 1.0f);
-        MINI_CHECK(loaded.pointcolor.g == 0.5f);
-        MINI_CHECK(loaded.pointcolor.b == 0.25f);
-        MINI_CHECK(loaded.pointcolor.a == 1.0f);
+        MINI_CHECK(loaded.name == "test_point");
+        MINI_CHECK(loaded[0] == 1.5 && loaded[1] == 2.5 && loaded[2] == 3.5);
+        MINI_CHECK(loaded.width == 2.0);
+        MINI_CHECK(loaded.pointcolor[0] == 1.0f);
+        MINI_CHECK(loaded.pointcolor[1] == 0.5f);
+        MINI_CHECK(loaded.pointcolor[2] == 0.25f);
+        MINI_CHECK(loaded.pointcolor[3] == 1.0f);
     }
 
     MINI_TEST("Point", "Is Ccw") {
-        // uncomment #include "point.h"
-
         Point p0(0.0, 0.0, 0.0);
         Point p1(1.0, 0.0, 0.0);
         Point p2(0.05, 1.0, 0.0);
+        bool ccw = Point::is_ccw(p0, p1, p2);
+        bool cw = Point::is_ccw(p2, p1, p0);
 
-        // Points must be oriented to xy plane.
-        bool is_counter_clock_wise = Point::is_ccw(p0, p1, p2);
-        bool is_clock_wise = Point::is_ccw(p2, p1, p0);
-
-        MINI_CHECK(is_counter_clock_wise);
-        MINI_CHECK(!is_clock_wise);
+        MINI_CHECK(ccw);
+        MINI_CHECK(!cw);
     }
 
     MINI_TEST("Point", "Mid Point") {
-        // uncomment #include "point.h"
-
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         Point mid = Point::mid_point(p0, p1);
@@ -178,8 +135,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Distance") {
-        // uncomment #include "point.h"
-
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         double d = Point::distance(p0, p1);
@@ -188,8 +143,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Squared Distance") {
-        // uncomment #include "point.h"
-
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         double d = Point::squared_distance(p0, p1);
@@ -197,9 +150,24 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(d, 14.0));
     }
 
-    MINI_TEST("Point", "Area") {
-        // uncomment #include "point.h"
+    MINI_TEST("Point", "Interpolate") {
+        Point a(0.0, 0.0, 0.0);
+        Point b(4.0, 8.0, 12.0);
+        Point half = Point::lerp(a, b, 0.5);
+        std::vector<Point> inner = Point::interpolate(a, b, 3);
+        std::vector<Point> both = Point::interpolate(a, b, 3, 1);
+        std::vector<Point> start = Point::interpolate(a, b, 3, 2);
 
+        MINI_CHECK(half[0] == 2.0 && half[1] == 4.0 && half[2] == 6.0);
+        MINI_CHECK(inner.size() == 3);
+        MINI_CHECK(inner[0][0] == 1.0 && inner[1][0] == 2.0 && inner[2][0] == 3.0);
+        MINI_CHECK(both.size() == 5);
+        MINI_CHECK(both[0][0] == 0.0 && both[4][0] == 4.0);
+        MINI_CHECK(start.size() == 4);
+        MINI_CHECK(start[0][0] == 0.0 && start[3][0] == 3.0);
+    }
+
+    MINI_TEST("Point", "Area") {
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 0.0);
         Point p2(2.0, 2.0, 0.0);
@@ -210,8 +178,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Centroid Quad") {
-        // uncomment #include "point.h"
-
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 1.0);
         Point p2(2.0, 2.0, 2.0);
@@ -224,8 +190,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Centroid") {
-        // uncomment #include "point.h"
-
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 0.0);
         Point p2(2.0, 2.0, 0.0);
@@ -238,11 +202,6 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Dihedral Angle Deg") {
-        // uncomment #include "point.h"
-
-        // Edge from origin to (1,0,0); r at (0,1,0); s at (0,0,1).
-        // Both half-planes share the X edge; angle between (X x Y) and (X x Z)
-        // is 90 degrees.
         Point p(0.0, 0.0, 0.0);
         Point q(1.0, 0.0, 0.0);
         Point r(0.0, 1.0, 0.0);
@@ -257,4 +216,3 @@ namespace session_cpp {
 int main() {
     return session_cpp::mini_test::run_all("cpp") ? 1 : 0;
 }
-

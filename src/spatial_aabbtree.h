@@ -1,9 +1,3 @@
-// SpatialAABBTree — flat contiguous SpatialBVH over axis-aligned boxes (longest-axis median split).
-// Use for: closest-point on static mesh faces, ray-mesh intersection.
-//   Build once, query many times. Cache-friendly 56-byte nodes.
-// Prefer over SpatialBVH  when geometry is static and all volumes are world-aligned.
-// Prefer over SpatialRTree when no dynamic insert/delete is needed.
-// Prefer over SpatialKDTree when querying faces/volumes, not bare point clouds.
 #pragma once
 
 #include "aabb.h"
@@ -11,25 +5,43 @@
 
 namespace session_cpp {
 
+/// Flat AABB tree with longest-axis median split; the left child of node i is i + 1, the right child is stored.
 class SpatialAABBTree {
 public:
     struct Node {
         AABB aabb;
-        int right;      // right child index; left child = this_index + 1
-        int object_id;  // leaf: primitive id (>=0), internal: -1
+        /// Right child index, NULL_IDX on a leaf
+        int right;
+        /// Primitive id on a leaf, NULL_IDX on an internal node
+        int object_id;
     };
 
     std::vector<Node> nodes;
 
     SpatialAABBTree() = default;
-    void build(const AABB* aabbs, size_t count);
-    bool empty() const { return nodes.empty(); }
-    size_t size() const { return nodes.size(); }
 
+    bool empty() const;
+    size_t size() const;
+
+    void build(const AABB* aabbs, size_t count);
+
+    /// Ids of every leaf box that intersects query
     std::vector<int> query_aabb(const AABB& query) const;
 
 private:
-    void build_node(int* ids, int count, const AABB* aabbs);
+    static const int STACK_SIZE = 64;
+    static const int NULL_IDX = -1;
+
+    struct Range {
+        int lo;
+        int hi;
+        int parent;
+        bool is_left;
+    };
+
+    AABB bounds(const std::vector<int>& ids, int lo, int hi, const AABB* aabbs) const;
+    int longest_axis(const AABB& aabb) const;
+    double center(const AABB& aabb, int axis) const;
 };
 
-}
+} // namespace session_cpp

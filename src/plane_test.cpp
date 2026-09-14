@@ -1,11 +1,11 @@
 #include "mini_test.h"
 #include "plane.h"
 #include "point.h"
-#include "vector.h"
 #include "tolerance.h"
-#include "file_encoders.h"
-
+#include "vector.h"
+#include "xform.h"
 #include <cmath>
+#include <string>
 #include <vector>
 
 using namespace session_cpp::mini_test;
@@ -13,44 +13,31 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Plane", "Constructor") {
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // uncomment #include <vector>
-
-    // Default constructor - XY plane at origin
     Plane pl;
 
-    // Origin and axes
     Point origin = pl.origin();
     Vector x_axis = pl.x_axis();
     Vector y_axis = pl.y_axis();
     Vector z_axis = pl.z_axis();
 
-    // Plane equation coefficients (ax + by + cz + d = 0)
     double a = pl.a();
     double b = pl.b();
     double c = pl.c();
     double d = pl.d();
 
-    // Index access for axes
     Vector ax0 = pl[0];
     Vector ax1 = pl[1];
     Vector ax2 = pl[2];
 
-    // Minimal and Full String Representation
     std::string plstr = pl.str();
     std::string plrepr = pl.repr();
 
-    // Copy (duplicates everything except guid())
     Plane plcopy = pl;
 
-    // From point and normal
     Point p(0.0, 0.0, 5.0);
     Vector n(0.0, 0.0, 1.0);
     Plane pl_pn = Plane::from_point_normal(p, n);
 
-    // From three points
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -58,17 +45,14 @@ MINI_TEST("Plane", "Constructor") {
     };
     Plane pl_pts = Plane::from_points(pts);
 
-    // From two points
     Point p1(0.0, 0.0, 0.0);
     Point p2(1.0, 0.0, 0.0);
     Plane pl_2pts = Plane::from_two_points(p1, p2);
 
-    // Standard planes
     Plane xy = Plane::xy_plane();
     Plane yz = Plane::yz_plane();
     Plane xz = Plane::xz_plane();
 
-    // Translation operators
     Vector offset(1.0, 2.0, 3.0);
     Plane pl_iadd = Plane::xy_plane();
     pl_iadd += offset;
@@ -97,8 +81,6 @@ MINI_TEST("Plane", "Constructor") {
 }
 
 MINI_TEST("Plane", "Is Valid") {
-    // uncomment #include "plane.h"
-
     Plane pl = Plane::xy_plane();
     Plane invalid = Plane::invalid();
 
@@ -107,8 +89,6 @@ MINI_TEST("Plane", "Is Valid") {
 }
 
 MINI_TEST("Plane", "Reverse") {
-    // uncomment #include "plane.h"
-
     Plane pl = Plane::xy_plane();
     pl.reverse();
 
@@ -120,9 +100,6 @@ MINI_TEST("Plane", "Reverse") {
 }
 
 MINI_TEST("Plane", "Rotate") {
-    // uncomment #include "plane.h"
-    // uncomment #include "tolerance.h"
-
     Plane pl = Plane::xy_plane();
     pl.rotate(Tolerance::PI / 2.0);
 
@@ -130,8 +107,6 @@ MINI_TEST("Plane", "Rotate") {
 }
 
 MINI_TEST("Plane", "Is Right Hand") {
-    // uncomment #include "plane.h"
-
     Plane xy = Plane::xy_plane();
     Plane yz = Plane::yz_plane();
     Plane xz = Plane::xz_plane();
@@ -142,8 +117,6 @@ MINI_TEST("Plane", "Is Right Hand") {
 }
 
 MINI_TEST("Plane", "Is Same Direction") {
-    // uncomment #include "plane.h"
-
     Plane p1 = Plane::xy_plane();
     Plane p2 = Plane::xy_plane();
     Plane p3 = Plane::xy_plane();
@@ -155,9 +128,6 @@ MINI_TEST("Plane", "Is Same Direction") {
 }
 
 MINI_TEST("Plane", "Is Same Position") {
-    // uncomment #include "plane.h"
-    // uncomment #include "vector.h"
-
     Plane p1 = Plane::xy_plane();
     Plane p2 = Plane::xy_plane();
     p2 += Vector(0.0, 0.0, 1.0);
@@ -167,9 +137,6 @@ MINI_TEST("Plane", "Is Same Position") {
 }
 
 MINI_TEST("Plane", "Is Coplanar") {
-    // uncomment #include "plane.h"
-    // uncomment #include "vector.h"
-
     Plane p1 = Plane::xy_plane();
     Plane p2 = Plane::xy_plane();
     Plane p3 = Plane::xy_plane();
@@ -180,8 +147,6 @@ MINI_TEST("Plane", "Is Coplanar") {
 }
 
 MINI_TEST("Plane", "Translate By Normal") {
-    // uncomment #include "plane.h"
-
     Plane pl = Plane::xy_plane();
     Plane moved = pl.translate_by_normal(5.0);
 
@@ -190,8 +155,6 @@ MINI_TEST("Plane", "Translate By Normal") {
 }
 
 MINI_TEST("Plane", "Base1 Base2") {
-    // uncomment #include "plane.h"
-
     Plane xy = Plane::xy_plane();
     Vector b1 = xy.base1();
     Vector b2 = xy.base2();
@@ -203,9 +166,6 @@ MINI_TEST("Plane", "Base1 Base2") {
 }
 
 MINI_TEST("Plane", "Transform") {
-    // uncomment #include "plane.h"
-    // uncomment #include "xform.h"
-
     Plane pl = Plane::xy_plane();
     Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
     pl.transform(pl_xf);
@@ -216,9 +176,6 @@ MINI_TEST("Plane", "Transform") {
 }
 
 MINI_TEST("Plane", "Transformed") {
-    // uncomment #include "plane.h"
-    // uncomment #include "xform.h"
-
     Plane pl = Plane::xy_plane();
     Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
     Plane pl2 = pl.transformed(pl_xf);
@@ -230,17 +187,8 @@ MINI_TEST("Plane", "Transformed") {
 }
 
 MINI_TEST("Plane", "Json Roundtrip") {
-    // uncomment #include "plane.h"
-
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
-
-    //   jsondump()      │ ordered_json │ to JSON object (internal use)
-    //   jsonload(j)     │ ordered_json │ from JSON object (internal use)
-    //   file_json_dumps()    │ std::string  │ to JSON string
-    //   file_json_loads(s)   │ std::string  │ from JSON string
-    //   file_json_dump(path) │ file         │ write to file
-    //   file_json_load(path) │ file         │ read from file
 
     std::string fname = "serialization/test_plane.json";
     pl.file_json_dump(fname);
@@ -251,8 +199,6 @@ MINI_TEST("Plane", "Json Roundtrip") {
 }
 
 MINI_TEST("Plane", "Protobuf Roundtrip") {
-    // uncomment #include "plane.h"
-
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
 
@@ -265,8 +211,6 @@ MINI_TEST("Plane", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Plane", "Has On Negative Side") {
-    // uncomment #include "plane.h"
-
     Plane pl = Plane::xy_plane();
     Point above(0.0, 0.0, 1.0);
     Point below(0.0, 0.0, -1.0);

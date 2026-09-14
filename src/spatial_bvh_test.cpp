@@ -1,19 +1,17 @@
 #include "mini_test.h"
 #include "spatial_bvh.h"
+#include "aabb.h"
+#include "obb.h"
+#include "point.h"
+#include "vector.h"
 #include "tolerance.h"
-#include <random>
-#include <cmath>
 #include <algorithm>
 
-namespace session_cpp {
 using namespace session_cpp::mini_test;
 
+namespace session_cpp {
+
 MINI_TEST("SpatialBVH", "Constructor") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // SpatialBVH: Morton-ordered static hierarchy — O(log n) nearest-neighbour for OBBs
     std::vector<OBB> boxes = {
         OBB(Point(0, 0, 0),  Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
         OBB(Point(2, 0, 0),  Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -27,7 +25,6 @@ MINI_TEST("SpatialBVH", "Constructor") {
 }
 
 MINI_TEST("SpatialBVH", "Expand Bits") {
-    // uncomment #include "spatial_bvh.h"
     MINI_CHECK(expand_bits(0) == 0);
     MINI_CHECK(expand_bits(1) == 1);
     MINI_CHECK(expand_bits(2) == 8);
@@ -39,14 +36,12 @@ MINI_TEST("SpatialBVH", "Expand Bits") {
 }
 
 MINI_TEST("SpatialBVH", "Morton Code Origin") {
-    // uncomment #include "spatial_bvh.h"
     uint32_t code = calculate_morton_code(0.0, 0.0, 0.0, 100.0);
 
     MINI_CHECK(code < (1u << 30));
 }
 
 MINI_TEST("SpatialBVH", "Morton Code Corners") {
-    // uncomment #include "spatial_bvh.h"
     double world_size = 100.0;
 
     uint32_t code_min = calculate_morton_code(-50.0, -50.0, -50.0, world_size);
@@ -59,7 +54,6 @@ MINI_TEST("SpatialBVH", "Morton Code Corners") {
 }
 
 MINI_TEST("SpatialBVH", "Morton Code Spatial Locality") {
-    // uncomment #include "spatial_bvh.h"
     uint32_t code1 = calculate_morton_code(10.0, 10.0, 10.0);
     uint32_t code2 = calculate_morton_code(10.1, 10.1, 10.1);
     uint32_t code3 = calculate_morton_code(-40.0, -40.0, -40.0);
@@ -71,18 +65,16 @@ MINI_TEST("SpatialBVH", "Morton Code Spatial Locality") {
 }
 
 MINI_TEST("SpatialBVH", "Node Creation") {
-    // uncomment #include "spatial_bvh.h"
-    SpatialBVHNode node;
+    SpatialBVH::Node node;
 
-    MINI_CHECK(node.left == nullptr);
-    MINI_CHECK(node.right == nullptr);
+    MINI_CHECK(node.left == -1);
+    MINI_CHECK(node.right == -1);
     MINI_CHECK(node.object_id == -1);
     MINI_CHECK(!node.is_leaf());
 }
 
 MINI_TEST("SpatialBVH", "Node Leaf") {
-    // uncomment #include "spatial_bvh.h"
-    SpatialBVHNode node;
+    SpatialBVH::Node node;
 
     MINI_CHECK(!node.is_leaf());
 
@@ -92,45 +84,32 @@ MINI_TEST("SpatialBVH", "Node Leaf") {
 }
 
 MINI_TEST("SpatialBVH", "Creation") {
-    // uncomment #include "spatial_bvh.h"
     SpatialBVH bvh(100.0);
 
     MINI_CHECK(!bvh.guid().empty());
     MINI_CHECK(bvh.name == "my_bvh");
-    MINI_CHECK(bvh.root == nullptr);
+    MINI_CHECK(bvh.empty());
     MINI_CHECK(TOLERANCE.is_close(bvh.world_size, 100.0));
 }
 
 MINI_TEST("SpatialBVH", "Build Empty") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
     std::vector<OBB> boxes;
     SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
 
-    MINI_CHECK(bvh.root == nullptr);
+    MINI_CHECK(bvh.empty());
 }
 
 MINI_TEST("SpatialBVH", "Build Single") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    OBB bbox(
-        Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
+    OBB bbox(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1));
     std::vector<OBB> boxes = {bbox};
-
     SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
 
-    MINI_CHECK(bvh.root != nullptr);
-    MINI_CHECK(bvh.root->is_leaf());
-    MINI_CHECK(bvh.root->object_id == 0);
+    MINI_CHECK(bvh.size() == 1);
+    MINI_CHECK(bvh.nodes[0].is_leaf());
+    MINI_CHECK(bvh.nodes[0].object_id == 0);
 }
 
 MINI_TEST("SpatialBVH", "Build Multiple") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> bboxes = {
         OBB(
             Point(-10, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -142,17 +121,13 @@ MINI_TEST("SpatialBVH", "Build Multiple") {
 
     SpatialBVH bvh = SpatialBVH::from_boxes(bboxes, 100.0);
 
-    MINI_CHECK(bvh.root != nullptr);
-    MINI_CHECK(!bvh.root->is_leaf());
-    MINI_CHECK(bvh.root->left != nullptr);
-    MINI_CHECK(bvh.root->right != nullptr);
+    MINI_CHECK(bvh.size() == 5);
+    MINI_CHECK(!bvh.nodes[0].is_leaf());
+    MINI_CHECK(bvh.nodes[0].left != -1);
+    MINI_CHECK(bvh.nodes[0].right != -1);
 }
 
 MINI_TEST("SpatialBVH", "Aabb Intersect") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     SpatialBVH bvh(100.0);
 
     OBB bbox1(
@@ -169,10 +144,6 @@ MINI_TEST("SpatialBVH", "Aabb Intersect") {
 }
 
 MINI_TEST("SpatialBVH", "Check All Collisions") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> bboxes = {
         OBB(
             Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -196,10 +167,6 @@ MINI_TEST("SpatialBVH", "Check All Collisions") {
 }
 
 MINI_TEST("SpatialBVH", "Nearest Neighbors") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> bboxes = {
         OBB(
             Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 1, 1)),
@@ -223,10 +190,6 @@ MINI_TEST("SpatialBVH", "Nearest Neighbors") {
 }
 
 MINI_TEST("SpatialBVH", "Merge Aabb") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     SpatialBVH bvh(100.0);
 
     OBB bbox1(
@@ -241,10 +204,6 @@ MINI_TEST("SpatialBVH", "Merge Aabb") {
 }
 
 MINI_TEST("SpatialBVH", "Fixed 100 Boxes") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> boxes;
     boxes.reserve(100);
 
@@ -375,23 +334,17 @@ MINI_TEST("SpatialBVH", "Fixed 100 Boxes") {
 }
 
 MINI_TEST("SpatialBVH", "Query Aabb") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> bboxes = {
         OBB(Point(0.0, 0.0, 0.0),
             Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
             Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
         OBB(Point(5.0, 0.0, 0.0),
-            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
-            Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
+            Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
         OBB(Point(0.0, 5.0, 0.0),
             Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
             Vector(0.0, 0.0, 1.0), Vector(1.0, 1.0, 1.0)),
     };
     SpatialBVH bvh = SpatialBVH::from_boxes(bboxes, 100.0);
-    // Query near origin — should hit box 0 only
     OBB query(
         Point(0.0, 0.0, 0.0),
         Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
@@ -402,7 +355,6 @@ MINI_TEST("SpatialBVH", "Query Aabb") {
     MINI_CHECK(std::find(hits.begin(), hits.end(), 0) != hits.end());
     MINI_CHECK(std::find(hits.begin(), hits.end(), 1) == hits.end());
     MINI_CHECK(std::find(hits.begin(), hits.end(), 2) == hits.end());
-    // Query covering all three boxes
     OBB query_all(
         Point(2.5, 2.5, 0.0),
         Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
@@ -412,10 +364,6 @@ MINI_TEST("SpatialBVH", "Query Aabb") {
 }
 
 MINI_TEST("SpatialBVH", "Build From Boxes") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> boxes = {
         OBB(Point(0.0, 0.0, 0.0),
             Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
@@ -437,11 +385,6 @@ MINI_TEST("SpatialBVH", "Build From Boxes") {
 }
 
 MINI_TEST("SpatialBVH", "Build From Aabbs") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "aabb.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<AABB> aabbs = {
         AABB(0.0, 0.0, 0.0, 2.0, 2.0, 2.0),
         AABB(3.0, 0.0, 0.0, 2.0, 2.0, 2.0),
@@ -461,10 +404,6 @@ MINI_TEST("SpatialBVH", "Build From Aabbs") {
 }
 
 MINI_TEST("SpatialBVH", "Build With Guids") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> boxes = {
         OBB(Point(0.0, 0.0, 0.0),
             Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
@@ -490,10 +429,6 @@ MINI_TEST("SpatialBVH", "Build With Guids") {
 }
 
 MINI_TEST("SpatialBVH", "Check All Collisions Guids") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> boxes = {
         OBB(Point(0.0, 0.0, 0.0),
             Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),
@@ -519,10 +454,6 @@ MINI_TEST("SpatialBVH", "Check All Collisions Guids") {
 }
 
 MINI_TEST("SpatialBVH", "Find Collisions") {
-    // uncomment #include "spatial_bvh.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
     std::vector<OBB> boxes = {
         OBB(Point(0.0, 0.0, 0.0),
             Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0),

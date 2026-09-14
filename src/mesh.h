@@ -1,8 +1,7 @@
-﻿#pragma once
+#pragma once
 #include "point.h"
 #include "vector.h"
 #include "color.h"
-#include "xform.h"
 #include "xform.h"
 #include "obb.h"
 #include "spatial_bvh.h"
@@ -24,11 +23,11 @@
 
 namespace session_cpp {
 
-struct LoftPanel;     // defined in loft section below
-struct LoftAdjPair;   // defined in loft section below
-struct LoftResult;    // defined in loft section below
+struct LoftPanel;
+struct LoftAdjPair;
+struct LoftResult;
 
-
+/// Which stored colors a mesh renders with
 enum class ColorMode : int {
     OBJECTCOLOR = 0, POINTCOLORS = 1, FACECOLORS = 2, NONE = 3
 };
@@ -47,26 +46,14 @@ inline ColorMode color_mode_from_string(const std::string& s) {
     return ColorMode::OBJECTCOLOR;
 }
 
-/// Normal weighting scheme for vertex normal computation
+/// Weighting scheme for vertex normals
 enum class NormalWeighting {
-    Area,    ///< Weight by face area
-    Angle,   ///< Weight by vertex angle in face
-    Uniform  ///< Uniform weighting
+    Area,
+    Angle,
+    Uniform
 };
 
-/// A vertex's attribute map, paid for ONLY when the vertex has attributes.
-///
-/// This behaves like the `std::map<std::string, double>` it replaces at every call site -
-/// `find`/`end`, `count`, `at`, `operator[]`, `==`, range-for, assignment from a map, JSON
-/// conversion - but it is one pointer wide and allocates nothing until something is stored in it.
-///
-/// The reason is the shape of real data. A mesh from a PDF sheet or a scan carries positions and
-/// nothing else: hundreds of thousands of vertices, ZERO attribute entries, and a full empty map
-/// header each regardless - 48 of every 72 bytes of `VertexData`. Attributes are a
-/// NURBS-tessellation and vertex-colour feature (u/v, r/g/b, nx/ny/nz); those meshes are
-/// thousands of vertices, not millions, and one allocation each is nothing to them.
-///
-/// Iteration is over `std::map`, so the order stays alphabetical and the JSON dumps are unchanged.
+/// A vertex's attribute map, allocated only once something is stored in it
 class Attributes {
 public:
     using Map = std::map<std::string, double>;
@@ -87,7 +74,7 @@ public:
         return *this;
     }
 
-    /// The map itself, or a shared empty one - so every reader below is allocation-free.
+    /// The map itself, or a shared empty one
     const Map& map() const {
         static const Map empty;
         return m_ ? *m_ : empty;
@@ -100,7 +87,7 @@ public:
     size_t size() const { return map().size(); }
     bool empty() const { return map().empty(); }
 
-    /// The only mutating entry point, and the only one that can allocate.
+    /// The only mutating entry point, and the only one that can allocate
     double& operator[](const std::string& k) {
         if (!m_) m_ = std::make_unique<Map>();
         return (*m_)[k];
@@ -108,7 +95,6 @@ public:
     size_t erase(const std::string& k) {
         if (!m_) return 0;
         size_t n = m_->erase(k);
-        // Back to the un-allocated state, so a map that empties out stops costing anything.
         if (m_->empty()) m_.reset();
         return n;
     }
@@ -123,20 +109,18 @@ private:
     std::unique_ptr<Map> m_;
 };
 
-/// nlohmann-json hooks, so `j["attributes"] = vdata.attributes` writes the same object it always
-/// did. Templated on the json type because the dumps use `ordered_json`, which is a different
-/// instantiation from `json` - a non-template overload on one would silently not apply to the other.
+/// nlohmann-json hooks, templated so both json and ordered_json pick them up
 template <typename J>
 void to_json(J& j, const Attributes& a) { j = a.map(); }
 template <typename J>
 void from_json(const J& j, Attributes& a) { a = j.template get<Attributes::Map>(); }
 
-/// Vertex data containing position and attributes
+/// Vertex position and attributes
 struct VertexData {
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
-    Attributes attributes;  ///< Custom vertex attributes; holds no map until one is stored
+    Attributes attributes;
 
     VertexData() = default;
     VertexData(const Point& p) : x(p[0]), y(p[1]), z(p[2]) {}
@@ -145,17 +129,17 @@ struct VertexData {
     }
     bool operator!=(const VertexData& other) const { return !(*this == other); }
 
-    /// Get vertex position as Point
+    /// Position as a Point
     Point position() const { return Point(x, y, z); }
-    
-    /// Set vertex position from Point
+
+    /// Set the position from a Point
     void set_position(const Point& p) {
         x = p[0];
         y = p[1];
         z = p[2];
     }
 
-    /// Get vertex color as RGB array
+    /// Vertex color as RGB, 0.5 grey when unset
     std::array<double, 3> color() const {
         return {
             attributes.count("r") ? attributes.at("r") : 0.5,
@@ -164,14 +148,14 @@ struct VertexData {
         };
     }
 
-    /// Set vertex color
+    /// Set the vertex color
     void set_color(double r, double g, double b) {
         attributes["r"] = r;
         attributes["g"] = g;
         attributes["b"] = b;
     }
 
-    /// Get vertex normal if set
+    /// Vertex normal if set
     std::optional<std::array<double, 3>> normal() const {
         if (attributes.count("nx") && attributes.count("ny") && attributes.count("nz")) {
             return std::array<double, 3>{
@@ -183,7 +167,7 @@ struct VertexData {
         return std::nullopt;
     }
 
-    /// Set vertex normal
+    /// Set the vertex normal
     void set_normal(double nx, double ny, double nz) {
         attributes["nx"] = nx;
         attributes["ny"] = ny;
@@ -191,13 +175,13 @@ struct VertexData {
     }
 };
 
-/// A halfedge mesh data structure for representing polygonal surfaces.
+/// A halfedge mesh data structure for representing polygonal surfaces
 class Mesh {
 public:
     std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge;  ///< Halfedge connectivity
     std::map<size_t, VertexData> vertex;                                  ///< Vertex data
     std::map<size_t, std::vector<size_t>> face;                          ///< Face vertex lists
-    std::map<size_t, std::vector<std::vector<size_t>>> face_holes;       ///< Face hole rings (inner boundaries)
+    std::map<size_t, std::vector<std::vector<size_t>>> face_holes;       ///< Face hole rings
     std::map<size_t, std::map<std::string, double>> facedata;             ///< Face attributes
     std::map<std::pair<size_t, size_t>, std::map<std::string, double>> edgedata;  ///< Edge attributes
     std::map<std::string, double> default_vertex_attributes;              ///< Default vertex attrs
@@ -206,7 +190,7 @@ public:
     bool has_guid() const { return !_guid.empty(); }
     const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
     std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    /// Clear the guid so a FRESH one mints lazily on next read — the duplicate/copy enabler.
+    /// Clear the guid so a fresh one mints lazily on next read
     void refresh_guid() { _guid.clear(); }
     std::string name = "my_mesh";                                        ///< Mesh name
     ColorMode color_mode = ColorMode::OBJECTCOLOR;                        ///< Active color mode
@@ -240,24 +224,19 @@ private:
     size_t max_face = 0;                                                 ///< Next face key
     std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation; ///< Cached triangulations
 
-    // Cached per-triangle data for BVH ray casting
     mutable bool triangle_bvh_built = false;
-    mutable std::shared_ptr<SpatialBVH> triangle_bvh;  ///< BVH over cached triangle AABBs
-    mutable std::vector<OBB> triangle_boxes_cache;  ///< Per-triangle AABBs (legacy, may be empty)
-    mutable std::vector<AABB> triangle_aabbs_cache;      ///< Lightweight AABBs for fast BVH build
+    mutable std::shared_ptr<SpatialBVH> triangle_bvh;                    ///< BVH over cached triangle AABBs
+    mutable std::vector<AABB> triangle_aabbs_cache;                      ///< Per-triangle AABBs
     struct TriangleIndex { uint32_t i0, i1, i2; };
-    mutable std::vector<TriangleIndex> triangle_indices_cache; ///< Triangle vertex indices
+    mutable std::vector<TriangleIndex> triangle_indices_cache;           ///< Triangle vertex indices
     mutable std::vector<std::pair<size_t, size_t>> triangle_face_subidx_cache; ///< (face_idx, sub_idx)
-    mutable std::vector<Point> vertices_cache; ///< Cached vertices for fast lookup
-    mutable std::shared_ptr<SpatialAABBTree> triangle_aabb_tree;
+    mutable std::vector<Point> vertices_cache;                           ///< Sequential vertex positions
+    mutable std::shared_ptr<SpatialAABBTree> triangle_aabb_tree;         ///< AABB tree over cached triangle AABBs
 
-    /// Every (u, v) some face ring walks, as a flat set. The halfedge-free backbone of the
-    /// pure readers (is_closed, edges, boundaries): one transient allocation per call instead
-    /// of a persistent nested-map structure per mesh.
+    /// Every directed edge (u, v) some face ring walks
     std::set<std::pair<size_t, size_t>> directed_face_edges() const;
 
-    /// Face-derived halfedge connectivity, computed WITHOUT mutating — pb_dumps borrows it
-    /// when the lazy map was never built, so the wire format never changes.
+    /// Face-derived halfedge connectivity, computed without mutating
     std::map<size_t, std::map<size_t, std::optional<size_t>>> compute_halfedges() const;
 
 public:
@@ -273,44 +252,32 @@ public:
     bool operator!=(const Mesh& other) const;
     ~Mesh();
 
-    /// Create a mesh from a list of vertices and faces.
+    /// Mesh from a list of vertices and faces
     static Mesh from_vertices_and_faces(const std::vector<Point>& vertices, const std::vector<std::vector<size_t>>& faces);
 
-    /// Create a mesh from a list of polygons.
-    /// precision: optional tolerance for vertex merging.
+    /// Mesh from a list of polygons, merging vertices within precision when given
     static Mesh from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
-    
-    /// Create a mesh from a list of lines.
-    /// delete_boundary_face: if true, removes the boundary face.
-    /// precision: optional tolerance for vertex merging.
+
+    /// Planar mesh from a line network, optionally without its outer boundary face
     static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);
 
-    /// Create a mesh from a polygon boundary with optional holes.
-    /// sort_by_bbox: if true, picks the largest polyline by bbox diagonal as boundary.
+    /// Mesh from a polygon boundary with optional holes; sort_by_bbox picks the largest polyline as boundary
     static Mesh from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox = false);
 
-    /// Loft between two sets of polylines to create a mesh volume.
-    /// cap: if true, adds bottom and top cap faces.
+    /// Loft between two sets of polylines into a mesh volume, capped when cap is true
     static Mesh loft(const std::vector<Polyline>& polylines0, const std::vector<Polyline>& polylines1, bool cap = true, bool fix_collinear = true);
 
-    /// Batch version of from_polygon_with_holes, with optional parallel execution.
+    /// Batch from_polygon_with_holes, parallel when asked
     static std::vector<Mesh> from_polygon_with_holes_many(
         const std::vector<std::vector<std::vector<Point>>>& inputs,
         bool sort_by_bbox = false, bool parallel = true);
 
-    /// Batch version of loft, with optional parallel execution.
+    /// Batch loft, parallel when asked
     static std::vector<Mesh> loft_many(
         const std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>>& pairs,
         bool cap = true, bool parallel = true, bool fix_collinear = true);
 
-    /// Loft between matched pairs of top/bottom polygons, producing one panel per pair.
-    /// Each panel has a top cap, optional bottom cap, matched quad walls, and triangle fill.
-    /// merge_precision: vertex-merge tolerance.
-    /// edge_gap: if > 0, insets bottom wall vertices toward face center.
-    /// edge_match_threshold: multiplier on average edge-midpoint distance for quad matching.
-    /// add_caps: if true, adds top and bottom cap faces.
-    /// skip_triangles: if true, omits triangle fill for unmatched edges.
-    /// Returns one LoftPanel per matched face pair, in centroid-distance order.
+    /// Loft matched top/bottom polygon pairs into one panel each, with matched quad walls and triangle fill
     static LoftResult loft_panels(
         const std::vector<std::vector<Point>>& top_polygons,
         const std::vector<std::vector<Point>>& bot_polygons,
@@ -320,22 +287,16 @@ public:
         bool   add_caps             = true,
         bool   skip_triangles       = false);
 
-    /// Create a box mesh centered at the origin.
-    /// Returns a closed mesh with 8 vertices and 6 quad faces.
+    /// Closed box mesh centered at the origin: 8 vertices, 6 quads
     static Mesh create_box(double x, double y, double z);
 
-    /// Create a dodecahedron mesh (12 pentagonal faces) with given edge length.
+    /// Dodecahedron mesh with the given edge length
     static Mesh create_dodecahedron(double edge = 2.0);
 
-    /// Create a closed mesh from interleaved top/bottom polyline pairs [top0, bot0, top1, bot1, ...].
-    /// top0/top1/... are the outer boundary and optional inner holes; bot* are the matching bottoms.
-    /// Equivalent to loft() but accepts the CGAL-style interleaved format directly.
-    /// scale: divide all coordinates by this factor (e.g. 1000.0 to convert mm to m).
+    /// Closed mesh from interleaved top/bottom polyline pairs [top0, bot0, ...], coordinates divided by scale
     static Mesh from_polyline_pairs(const std::vector<Polyline>& pairs, double scale = 1.0);
 
-    /// Output a closed mesh as flat VNF arrays from interleaved top/bottom polyline pairs.
-    /// out_vertices: flat [x,y,z,...], out_normals: flat [nx,ny,nz,...] per vertex (flat-shaded),
-    /// out_triangles: sequential indices [0,1,2, 3,4,5, ...]. Coordinates divided by scale.
+    /// Flat vertex, normal and triangle arrays of a closed mesh from interleaved top/bottom polyline pairs
     static void from_polyline_pairs_vnf(
         const std::vector<Polyline>& pairs,
         std::vector<double>& out_vertices,
@@ -343,12 +304,10 @@ public:
         std::vector<int>& out_triangles,
         double scale = 1.0);
 
-    /// Ruled quad mesh by projecting `profile` onto planes perpendicular to `cross_section`.
+    /// Ruled quad mesh by projecting profile onto planes perpendicular to cross_section
     static Mesh reflex_fold(const Polyline& cross_section, const Polyline& profile);
 
-
-    /// Per-face miter plate geometry from a shell mesh.
-    /// Returns tuples of (top_chamfered, bot_chamfered, top_raw, bot_raw, face_normal).
+    /// Per-face miter plate contours of a shell: (top_chamfered, bot_chamfered, top_raw, bot_raw, face_normal)
     static std::vector<std::tuple<
         std::vector<Point>, std::vector<Point>,
         std::vector<Point>, std::vector<Point>,
@@ -361,168 +320,149 @@ public:
     // Boolean Queries
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Check if mesh is empty
+    /// True when the mesh has no vertices
     bool is_empty() const { return vertex.empty(); }
 
-    /// Check if mesh is valid (has vertices, faces, and all face vertex keys exist)
+    /// True when every face has at least three existing vertices
     bool is_valid() const;
 
-    /// Check if mesh is closed (no boundary edges — every halfedge has an opposite face)
+    /// True when every face edge has a twin face or a declared hole ring
     bool is_closed() const;
 
-    /// Check if a vertex is on the boundary
+    /// True when the vertex touches a boundary edge
     bool is_vertex_on_boundary(size_t vertex_key) const;
 
-    /// Check if an edge is on the boundary
+    /// True when the edge has a face on one side only
     bool is_edge_on_boundary(size_t u, size_t v) const;
 
-    /// Check if a face is on the boundary
+    /// True when the face has a boundary edge
     bool is_face_on_boundary(size_t face_key) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Attributes
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Get number of vertices
     size_t number_of_vertices() const { return vertex.size(); }
-
-    /// Get number of faces
     size_t number_of_faces() const { return face.size(); }
-
-    /// Get number of edges
     size_t number_of_edges() const;
 
-    /// Calculate Euler characteristic (V - E + F)
+    /// Euler characteristic V - E + F
     int euler() const;
 
-    /// Returns sorted vertex keys.
+    /// Sorted vertex keys
     std::vector<size_t> vertices() const;
 
-    /// Returns sorted face keys.
+    /// Sorted face keys
     std::vector<size_t> faces() const;
 
-    /// Returns all undirected edges as (u, v) pairs in stable sorted order.
-    /// linecolors[i] corresponds to edges()[i].
+    /// Undirected edges as sorted (u, v) pairs
     std::vector<std::pair<size_t, size_t>> edges() const;
 
-    /// Returns vertices and faces with sequential 0-based indices.
+    /// Vertices and faces with sequential 0-based indices
     std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> to_vertices_and_faces() const;
 
-    /// Returns a map from sparse vertex keys to sequential indices (0, 1, 2, ...).
+    /// Sparse vertex key to sequential index
     std::map<size_t, size_t> vertex_index() const;
 
-    /// Returns boundary (naked=true) or interior (naked=false) edges.
+    /// Boundary (true) or interior (false) edges
     std::vector<std::pair<size_t, size_t>> naked_edges(bool boundary = true) const;
 
-    /// Returns boundary (naked=true) or interior (naked=false) vertices.
+    /// Boundary (true) or interior (false) vertices
     std::vector<size_t> naked_vertices(bool boundary = true) const;
 
-    /// Returns boundary (naked=true) or interior (naked=false) faces.
+    /// Boundary (true) or interior (false) faces
     std::vector<size_t> naked_faces(bool boundary = true) const;
-
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Vertex and Face Operations
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Add a vertex to the mesh.
-    /// vkey: optional explicit key.
-    /// Returns the vertex key.
+    /// Add a vertex, with an explicit key when given; returns the key
     size_t add_vertex(const Point& position, std::optional<size_t> vkey = std::nullopt);
-    
-    /// Add a face to the mesh.
-    /// fkey: optional explicit key.
-    /// Returns the face key, or nullopt if invalid.
+
+    /// Add a face, with an explicit key when given; returns the key or nullopt when invalid
     std::optional<size_t> add_face(const std::vector<size_t>& vertices, std::optional<size_t> fkey = std::nullopt);
 
-    /// Remove a vertex and all faces that use it, then clean up orphaned halfedges.
+    /// Remove a vertex and every face that uses it
     void remove_vertex(size_t vkey);
 
-    /// Remove a face and its orphaned halfedges. Resizes color arrays to new counts.
+    /// Remove a face and its orphaned halfedges
     void remove_face(size_t fkey);
 
-    /// Remove an edge, its adjacent faces, and its halfedges.
+    /// Remove an edge, its adjacent faces and its halfedges
     void remove_edge(size_t u, size_t v);
 
-    /// Reverse the winding of a face in place (remove → reverse → re-add with same key).
+    /// Reverse the winding of one face in place
     void flip_face(size_t fkey);
 
-    /// Reverse the winding of all faces in place.
+    /// Reverse the winding of every face
     void flip();
 
     /// Clear all mesh data
     void clear();
 
-    /// Returns a new mesh with all vertices duplicated so each face has its own unique vertices.
-    /// After unweld, number_of_vertices() == sum of each face's vertex count.
+    /// Copy where every face owns its own vertices
     Mesh unweld() const;
 
-    /// Merge vertices within Euclidean distance <= tolerance using BVH spatial acceleration.
-    /// Degenerate faces (collapsed vertices) are discarded.
+    /// Copy with vertices closer than tolerance merged; degenerate faces are dropped
     Mesh weld(double tolerance = 0.001) const;
 
-    /// Unify face winding by BFS.
-    /// Returns true if any face was flipped.
+    /// Unify face winding by BFS; returns true when any face was flipped
     bool unify_winding();
 
-    /// For closed meshes: flip entire mesh if normals point inward. Returns true if flipped.
+    /// Flip a closed mesh whose normals point inward; returns true when flipped
     bool orient_outward();
 
-    /// Recreate halfedge from vertex + face alone.
+    /// Recreate halfedge from vertex and face alone
     void rebuild_halfedges();
 
-    /// Topology is LAZY: a freshly DECODED mesh carries no halfedge map. Every EDIT entry
-    /// point calls this first; the pure readers are face-based and never build it.
-    /// Rebuilds iff halfedge is empty and faces exist.
+    /// Build the lazy halfedge map when it is empty and faces exist
     void ensure_halfedges();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Connectivity Queries
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Get all edges sharing a vertex with edge (u,v), excluding (u,v) and (v,u)
+    /// Edges sharing a vertex with (u, v), excluding (u, v) and (v, u)
     std::optional<std::vector<std::pair<size_t, size_t>>> edge_edges(size_t u, size_t v) const;
 
-    /// Get the faces on each side of an edge
+    /// Faces on each side of an edge
     std::optional<std::vector<size_t>> edge_faces(size_t u, size_t v) const;
 
-    /// Every directed face edge -> its face key, in ONE face walk. The bulk form of
-    /// edge_faces for per-edge loops (a per-call edge_faces is O(E) face-based, so a
-    /// loop over all edges would be quadratic — build this once instead).
+    /// Every directed face edge to its face key, in one face walk
     std::map<std::pair<size_t, size_t>, size_t> edge_face_map() const;
 
-    /// Get the edge as a Line
+    /// The edge as a Line
     std::optional<Line> edge_line(size_t u, size_t v) const;
 
-    /// Get edges of a face as (vi, vi+1) pairs
+    /// Edges of a face as (vi, vi+1) pairs
     std::optional<std::vector<std::pair<size_t, size_t>>> face_edges(size_t face_key) const;
 
-    /// Get faces adjacent to a face (sharing an edge)
+    /// Faces sharing an edge with a face
     std::optional<std::vector<size_t>> face_faces(size_t face_key) const;
 
-    /// Get the points of a face
+    /// Points of a face
     std::optional<std::vector<Point>> face_points(size_t face_key) const;
 
-    /// Get the face as a Polyline
+    /// The face as a Polyline
     std::optional<Polyline> face_polyline(size_t face_key) const;
 
-    /// Get the vertices of a face
+    /// Vertex keys of a face
     std::optional<std::vector<size_t>> face_vertices(size_t face_key) const;
 
-    /// Get edges incident to a vertex as (vertex_key, neighbor) pairs
+    /// Edges incident to a vertex as (vertex_key, neighbor) pairs
     std::optional<std::vector<std::pair<size_t, size_t>>> vertex_edges(size_t vertex_key) const;
 
-    /// Get faces incident to a vertex
+    /// Faces incident to a vertex
     std::optional<std::vector<size_t>> vertex_faces(size_t vertex_key) const;
 
-    /// Get the position of a vertex
+    /// Position of a vertex
     std::optional<Point> vertex_point(size_t vertex_key) const;
 
-    /// Get neighboring vertices of a vertex
+    /// Neighboring vertices of a vertex
     std::optional<std::vector<size_t>> vertex_vertices(size_t vertex_key) const;
 
-    /// Alias of vertex_vertices. With ordered=true returns neighbors in face-cycle order
-    /// around the vertex (boundary vertex starts/ends at boundary halfedges).
+    /// Neighbors of a vertex, in face-cycle order when ordered is true
     std::optional<std::vector<size_t>> vertex_neighbors(size_t vertex_key, bool ordered = false) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -544,29 +484,27 @@ public:
     std::vector<std::pair<size_t, size_t>> halfedge_strip(std::pair<size_t, size_t> edge) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Sampling (deterministic LCG when seed given, for cross-language parity)
+    // Sampling
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// seed=0 means "use truly random". For deterministic sampling pass any non-zero seed.
+    /// seed 0 takes the first keys, any other seed drives a deterministic LCG
     std::vector<size_t> vertex_sample(size_t size, uint32_t seed = 0) const;
     std::vector<std::pair<size_t, size_t>> edge_sample(size_t size, uint32_t seed = 0) const;
     std::vector<size_t> face_sample(size_t size, uint32_t seed = 0) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Compas-style Aliases
+    // Aliases
     // ═══════════════════════════════════════════════════════════════════════════
 
     std::optional<Point> face_center(size_t face_key) const;
     std::optional<Polyline> face_polygon(size_t face_key) const;
 
-    /// Every face as a closed outline, in face-key order - a solid AS its face loops,
-    /// which is what face-to-face contact detection consumes (Element::polylines() is
-    /// this function). Outer rings only; a face of fewer than three vertices is skipped.
+    /// Every face as a closed outline in face-key order; faces under three vertices are skipped
     std::vector<Polyline> face_outlines() const;
     void flip_cycles();
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Attribute API (typed double across C++/Python/Rust)
+    // Attribute API
     // ═══════════════════════════════════════════════════════════════════════════
 
     void update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs);
@@ -580,7 +518,7 @@ public:
     std::optional<double> edge_attribute(std::pair<size_t, size_t> edge, const std::string& name) const;
     void set_edge_attribute(std::pair<size_t, size_t> edge, const std::string& name, double value);
 
-    /// keys=nullptr means "all". Returned vector contains nullopt for missing.
+    /// keys nullptr means all; the result holds nullopt for missing values
     std::vector<std::optional<double>> vertices_attribute(const std::string& name, const std::vector<size_t>* keys = nullptr) const;
     void set_vertices_attribute(const std::string& name, double value, const std::vector<size_t>* keys = nullptr);
     std::vector<std::optional<double>> faces_attribute(const std::string& name, const std::vector<size_t>* keys = nullptr) const;
@@ -596,67 +534,77 @@ public:
     std::vector<size_t> faces_where_predicate(const std::function<bool(size_t, const std::map<std::string, double>&)>& pred) const;
     std::vector<std::pair<size_t, size_t>> edges_where_predicate(const std::function<bool(std::pair<size_t, size_t>, const std::map<std::string, double>&)>& pred) const;
 
-    /// face_normal with unitized=false returns 2x first-triangle area in the normal length.
+    /// Face normal from the first three vertices; unitized false keeps twice the first-triangle area as length
     std::optional<Vector> face_normal_unitized(size_t face_key, bool unitized) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometric Properties
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Calculate the total surface area of all faces
+    /// Total surface area of all faces
     double area() const;
 
-    /// Calculate the centroid of the mesh (average of all vertex positions)
+    /// Average of all vertex positions
     Point centroid() const;
 
-    /// Calculate the dihedral angle (in degrees) between two faces sharing edge (u,v).
-    /// Returns nullopt for boundary edges (only one face) or invalid edges.
+    /// Dihedral angle in degrees between the two faces sharing edge (u, v), nullopt on a boundary edge
     std::optional<double> dihedral_angle(size_t u, size_t v) const;
 
-    /// Calculate dihedral angles for all interior edges.
-    /// Returns (angles, arcs, points): angles map (u,v)->radians; arcs slerp polylines if scale>0;
-    /// points at arc midpoint (scale>0) or edge midpoint (scale==0). arcs/points empty if flags false.
+    /// Dihedral angles of all interior edges as (angles, arcs, points); arcs and label points are built when asked
     std::tuple<std::map<std::pair<size_t,size_t>,double>, std::vector<Polyline>, std::vector<Point>>
     dihedral_angles(double scale = 0.3, bool with_arcs = true, bool with_points = true) const;
 
-    /// Calculate the area of a face
+    /// Area of a face
     std::optional<double> face_area(size_t face_key) const;
 
-    /// Calculate the centroid of a face (average of vertex positions)
+    /// Average of a face's vertex positions
     std::optional<Point> face_centroid(size_t face_key) const;
 
-    /// Calculate the normal of a face
+    /// Unit normal of a face
     std::optional<Vector> face_normal(size_t face_key) const;
 
-    /// Calculate normals for all faces
+    /// Unit normals of all faces
     std::map<size_t, Vector> face_normals() const;
 
-    /// Calculate the angle at a vertex in a face
+    /// Angle at a vertex inside a face
     std::optional<double> vertex_angle_in_face(size_t vertex_key, size_t face_key) const;
 
-    /// Calculate the normal of a vertex (area-weighted)
+    /// Area-weighted vertex normal
     std::optional<Vector> vertex_normal(size_t vertex_key) const;
 
-    /// Calculate the normal of a vertex with specified weighting
+    /// Vertex normal with the given weighting
     std::optional<Vector> vertex_normal_weighted(size_t vertex_key, NormalWeighting weighting) const;
 
-    /// Calculate normals for all vertices (area-weighted)
+    /// Area-weighted normals of all vertices
     std::map<size_t, Vector> vertex_normals() const;
 
-    /// Calculate normals for all vertices with specified weighting
+    /// Normals of all vertices with the given weighting
     std::map<size_t, Vector> vertex_normals_weighted(NormalWeighting weighting) const;
 
-    /// Calculate the enclosed volume of a closed mesh
+    /// Enclosed volume of a closed mesh
     double volume() const;
 
-    /// Mesh CSG via a signed-distance field + marching cubes. Robust for imported/freeform
-    /// meshes whose exact surface-surface intersection is hard: samples a signed-distance
-    /// field of the combined solids on a grid (resolution cells along the longest bbox axis),
-    /// extracts a watertight isosurface (edge-welded, marching-cubes ambiguity holes filled),
-    /// and returns a closed mesh. Higher resolution trades speed for accuracy.
-    Mesh boolean_difference(const Mesh& other, int resolution = 96) const;
-    Mesh boolean_union(const Mesh& other, int resolution = 96) const;
-    Mesh boolean_intersection(const Mesh& other, int resolution = 96) const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Triangle BVH
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Build and cache the BVH over the triangulated faces
+    void build_triangle_bvh(bool force = false) const;
+
+    /// Candidate triangle ids along a ray, from the cached BVH
+    bool triangle_bvh_ray_cast(const Point& origin, const Vector& direction, std::vector<int>& candidate_ids, bool find_all = false) const;
+
+    /// Face index, sub-triangle index and corners of a cached triangle id
+    bool get_triangle_by_id(int tri_id, size_t& face_idx, size_t& sub_idx, Point& v0, Point& v1, Point& v2) const;
+
+    /// Drop the cached BVH, AABB tree and triangle data
+    void clear_triangle_bvh() const;
+
+    /// Build and cache the AABB tree over the triangulated faces
+    void build_triangle_aabb_tree(bool force = false) const;
+
+    const SpatialBVH* get_cached_bvh() const { return triangle_bvh.get(); }
+    const SpatialAABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
@@ -669,38 +617,20 @@ public:
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Convert to JSON-serializable object
     nlohmann::ordered_json jsondump() const;
-    
-    /// Create mesh from JSON data
     static Mesh jsonload(const nlohmann::json& data);
-
-    /// Convert to JSON string
     std::string file_json_dumps() const;
-
-    /// Load from JSON string
     static Mesh file_json_loads(const std::string& json_string);
-
-    /// Write JSON to file
     void file_json_dump(const std::string& filename) const;
-
-    /// Read JSON from file
     static Mesh file_json_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Convert to protobuf binary string
     std::string pb_dumps() const;
-
-    /// Load from protobuf binary string
     static Mesh pb_loads(const std::string& data);
-
-    /// Write protobuf to file
     void pb_dump(const std::string& filename) const;
-
-    /// Read protobuf from file
     static Mesh pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -710,45 +640,30 @@ public:
     std::string str() const;
     std::string repr() const;
     friend std::ostream& operator<<(std::ostream& os, const Mesh& mesh);
-
-    friend class Closest;
-    friend class Intersection;
-
-    void build_triangle_bvh(bool force = false) const;
-    bool triangle_bvh_ray_cast(const Point& origin, const Vector& direction, std::vector<int>& candidate_ids, bool find_all = false) const;
-    bool get_triangle_by_id(int tri_id, size_t& face_idx, size_t& sub_idx, Point& v0, Point& v1, Point& v2) const;
-    void clear_triangle_bvh() const;
-    void build_triangle_aabb_tree(bool force = false) const;
-    const SpatialBVH* get_cached_bvh() const { return triangle_bvh.get(); }
-    const SpatialAABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Loft
 // ═══════════════════════════════════════════════════════════════════════════
 
-
-
 enum class LoftFaceRole { TopCap, BotCap, QuadWall, TriWall };
 
 struct LoftWallFace {
-    size_t face_key;        ///< local panel mesh face key
-    size_t face_index;      ///< 0-based position of face_key in panel mesh.face (sorted map order)
-    bool   is_quad;
-    size_t top_v0, top_v1; ///< original top-mesh vertex keys
-    size_t bot_v0, bot_v1; ///< original bot-mesh vertex keys (valid if is_quad)
+    size_t face_key = 0;    ///< local panel mesh face key
+    size_t face_index = 0;  ///< 0-based position of face_key in panel mesh.face
+    bool   is_quad = false;
+    size_t top_v0 = 0, top_v1 = 0; ///< original top-mesh vertex keys
+    size_t bot_v0 = 0, bot_v1 = 0; ///< original bot-mesh vertex keys (valid if is_quad)
 };
 
-// serve as a bridge between the original input meshes and the new local panel mesh:
 struct LoftPanel {
     Mesh   mesh;
-    std::optional<size_t> top_face_key;         ///< local key of top cap face (nullopt if no cap)
-    std::optional<size_t> bot_face_key;         ///< local key of bot cap face (nullopt if no cap)
+    std::optional<size_t> top_face_key;         ///< local key of top cap face
+    std::optional<size_t> bot_face_key;         ///< local key of bot cap face
     std::vector<LoftWallFace>      wall_faces;
-    std::map<size_t,LoftFaceRole>  face_roles;  ///< face_key → role for every face in mesh
-    //  original vertex key → local panel mesh vertex key
-    std::map<size_t,size_t>    orig_top_to_local;
-    std::map<size_t,size_t>    orig_bot_to_local;
+    std::map<size_t,LoftFaceRole>  face_roles;  ///< face_key to role for every face in mesh
+    std::map<size_t,size_t>    orig_top_to_local; ///< original top vertex key to local key
+    std::map<size_t,size_t>    orig_bot_to_local; ///< original bot vertex key to local key
     std::vector<size_t>        top_vertices;
     std::vector<size_t>        bot_vertices;
 };
@@ -761,8 +676,8 @@ struct LoftAdjPair {
 struct LoftResult {
     std::vector<LoftPanel>   panels;
     std::vector<LoftAdjPair> adjacency;
-    Mesh top_mesh;   ///< merged top input mesh (from_polylines of all top polygons)
-    Mesh bot_mesh;   ///< merged bot input mesh (from_polylines of all bot polygons)
+    Mesh top_mesh;   ///< top polygons of the matched panels, one face per panel
+    Mesh bot_mesh;   ///< bot polygons of the matched panels, one face per panel
 };
 
 } // namespace session_cpp

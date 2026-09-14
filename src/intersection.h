@@ -33,7 +33,7 @@ public:
     double u;           ///< Barycentric coordinate u
     double v;           ///< Barycentric coordinate v
     int face_index;    ///< Index of the intersected face
-    
+
     RayHit() : t(0.0), point(), u(0.0), v(0.0), face_index(-1) {}
     RayHit(double t_, const Point& p, double u_ = 0.0, double v_ = 0.0, int face_idx = -1)
       : t(t_), point(p), u(u_), v(v_), face_index(face_idx) {}

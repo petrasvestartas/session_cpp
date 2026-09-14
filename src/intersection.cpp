@@ -24,15 +24,15 @@ int Intersection::solve_3x3(
     double d0, double d1, double d2,
     double& x, double& y, double& z,
     double& pivot_ratio) {
-    
+
     int i, j;
     double *p0, *p1, *p2;
     double temp, workarray[12], maxpiv, minpiv;
-    
+
     const int sizeof_row = 3 * sizeof(row0[0]);
-    
+
     pivot_ratio = x = y = z = 0.0;
-    
+
     temp = std::fabs(row0[0]);
     i = j = 0;
     double val = std::fabs(row0[1]);
@@ -51,12 +51,12 @@ int Intersection::solve_3x3(
     if (val > temp) { temp = val; i = 2; j = 1; }
     val = std::fabs(row2[2]);
     if (val > temp) { temp = val; i = 2; j = 2; }
-    
+
     if (temp == 0.0) return 0;
-    
+
     maxpiv = minpiv = std::fabs(temp);
     p0 = workarray;
-    
+
     switch (i) {
         case 1:
             std::memcpy(p0, row1, sizeof_row); p0[3] = d1; p0 += 4;
@@ -74,11 +74,11 @@ int Intersection::solve_3x3(
             std::memcpy(p0, row2, sizeof_row); p0[3] = d2;
             break;
     }
-    
+
     double *x_addr = &x;
     double *y_addr = &y;
     double *z_addr = &z;
-    
+
     switch (j) {
         case 1:
             std::swap(x_addr, y_addr);
@@ -95,7 +95,7 @@ int Intersection::solve_3x3(
             std::swap(p0[0], p0[2]);
             break;
     }
-    
+
     temp = 1.0 / workarray[0];
     p0 = p1 = workarray + 1;
     *p1++ *= temp; *p1++ *= temp; *p1++ *= temp;
@@ -115,7 +115,7 @@ int Intersection::solve_3x3(
         *p1++ += temp * (*p0);
         p0 -= 2;
     }
-    
+
     temp = std::fabs(workarray[5]);
     i = j = 0;
     val = std::fabs(workarray[6]);
@@ -124,13 +124,13 @@ int Intersection::solve_3x3(
     if (val > temp) { temp = val; i = 1; j = 0; }
     val = std::fabs(workarray[10]);
     if (val > temp) { temp = val; i = j = 1; }
-    
+
     if (temp == 0.0) return 1;
-    
+
     val = std::fabs(temp);
     if (val > maxpiv) maxpiv = val;
     else if (val < minpiv) minpiv = val;
-    
+
     if (j) {
         p0 = workarray + 1; p1 = p0 + 1;
         std::swap(*p0, *p1); p0 += 4; p1 += 4;
@@ -138,7 +138,7 @@ int Intersection::solve_3x3(
         std::swap(*p0, *p1);
         std::swap(y_addr, z_addr);
     }
-    
+
     if (i) {
         p0 = workarray + 1;
         p1 = p0 + 8;
@@ -148,7 +148,7 @@ int Intersection::solve_3x3(
         p1 = p0 + 4;
         p2 = p0 + 8;
     }
-    
+
     temp = 1.0 / (*p1++);
     *p1++ *= temp; *p1 *= temp; p1--;
     temp = -(*p0++);
@@ -163,20 +163,20 @@ int Intersection::solve_3x3(
         *p2 += temp * (*p1);
         p2--; p1--;
     }
-    
+
     temp = *p2++;
     if (temp == 0.0) return 2;
-    
+
     val = std::fabs(temp);
     if (val > maxpiv) maxpiv = val;
     else if (val < minpiv) minpiv = val;
-    
+
     *p2 /= temp;
     temp = -(*p1++);
     if (temp != 0.0) *p1 += temp * (*p2);
     temp = -(*p0++);
     if (temp != 0.0) *p0 += temp * (*p2);
-    
+
     *x_addr = workarray[3];
     if (i) {
         *y_addr = workarray[11];
@@ -185,13 +185,13 @@ int Intersection::solve_3x3(
         *y_addr = workarray[7];
         *z_addr = workarray[11];
     }
-    
+
     pivot_ratio = minpiv / maxpiv;
     return 3;
 }
 
 double Intersection::plane_value_at(const Plane& plane, const Point& point) {
-    return plane.a() * point[0] + plane.b() * point[1] + 
+    return plane.a() * point[0] + plane.b() * point[1] +
            plane.c() * point[2] + plane.d();
 }
 
@@ -200,11 +200,11 @@ bool Intersection::line_line(
     const Line& line1,
     Point& output,
     double tolerance) {
-    
+
     // Use the robust OpenNURBS-style line_line_parameters method
     double t0, t1;
     bool rc = line_line_parameters(line0, line1, t0, t1, tolerance, true, false);
-    
+
     if (rc) {
         // Compute the midpoint between the two closest points
         Point p0 = line0.point_at(t0);
@@ -215,7 +215,7 @@ bool Intersection::line_line(
             (p0[2] + p1[2]) * 0.5
         );
     }
-    
+
     return rc;
 }
 
@@ -227,13 +227,13 @@ bool Intersection::line_line_parameters(
     double tolerance,
     bool intersect_segments,
     bool near_parallel_as_closest) {
-    
+
     // OpenNURBS-style: Check for exact endpoint matches first
     Point p0_start = line0.start();
     Point p0_end = line0.end();
     Point p1_start = line1.start();
     Point p1_end = line1.end();
-    
+
     if (p0_start[0] == p1_start[0] && p0_start[1] == p1_start[1] && p0_start[2] == p1_start[2]) {
         t0 = 0.0;
         t1 = 0.0;
@@ -254,7 +254,7 @@ bool Intersection::line_line_parameters(
         t1 = 1.0;
         return true;
     }
-    
+
     // Use dot product method (OpenNURBS approach)
     Vector A = line0.to_vector();
     Vector B = line1.to_vector();
@@ -263,17 +263,17 @@ bool Intersection::line_line_parameters(
         p1_start[1] - p0_start[1],
         p1_start[2] - p0_start[2]
     );
-    
+
     double AA = A.dot(A);
     double BB = B.dot(B);
     double AB = A.dot(B);
     double AC = A.dot(C);
     double BC = B.dot(C);
-    
+
     // Solve 2x2 system: [AA -AB] [t0] = [AC]
     //                   [-AB BB] [t1]   [-BC]
     double det = AA * BB - AB * AB;
-    
+
     // Check for parallel lines (determinant near zero)
     double zero_tol = std::max(AA, BB) * std::numeric_limits<double>::epsilon();
     if (std::fabs(det) < zero_tol) {
@@ -296,20 +296,20 @@ bool Intersection::line_line_parameters(
         }
         return true;
     }
-    
+
     double inv_det = 1.0 / det;
     t0 = (BB * AC - AB * BC) * inv_det;
     t1 = (AB * AC - AA * BC) * inv_det;
-    
+
     // Clamp to segment if requested
     if (intersect_segments) {
         if (t0 < 0.0) t0 = 0.0;
         else if (t0 > 1.0) t0 = 1.0;
-        
+
         if (t1 < 0.0) t1 = 0.0;
         else if (t1 > 1.0) t1 = 1.0;
     }
-    
+
     // Check distance tolerance if specified
     if (tolerance > 0.0) {
         Point pt0 = line0.point_at(t0);
@@ -319,7 +319,7 @@ bool Intersection::line_line_parameters(
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -406,17 +406,17 @@ bool Intersection::line_plane(
     const Plane& plane,
     Point& output,
     bool is_finite) {
-    
+
     bool rc = false;
     double a, b, d, fd, t;
-    
+
     Point pt0 = line.start();
     Point pt1 = line.end();
-    
+
     a = plane_value_at(plane, pt0);
     b = plane_value_at(plane, pt1);
     d = a - b;
-    
+
     if (d == 0.0) {
         if (std::fabs(a) < std::fabs(b))
             t = 0.0;
@@ -427,7 +427,7 @@ bool Intersection::line_plane(
     } else {
         d = 1.0 / d;
         fd = std::fabs(d);
-        if (fd > 1.0 && (std::fabs(a) >= std::numeric_limits<double>::max() / fd || 
+        if (fd > 1.0 && (std::fabs(a) >= std::numeric_limits<double>::max() / fd ||
                           std::fabs(b) >= std::numeric_limits<double>::max() / fd)) {
             t = 0.5;
         } else {
@@ -435,18 +435,18 @@ bool Intersection::line_plane(
             rc = true;
         }
     }
-    
+
     const double s = 1.0 - t;
-    
+
     output = Point(
         (line[0] == line[3]) ? line[0] : s * line[0] + t * line[3],
         (line[1] == line[4]) ? line[1] : s * line[1] + t * line[4],
         (line[2] == line[5]) ? line[2] : s * line[2] + t * line[5]
     );
-    
+
     if (is_finite && (t < 0.0 || t > 1.0))
         return false;
-    
+
     return rc;
 }
 
@@ -491,37 +491,37 @@ bool Intersection::ray_box(
     double t1,
     double& tmin,
     double& tmax) {
-    
+
     Point box_min = box.min_point();
     Point box_max = box.max_point();
-    
+
     Vector inv_dir(
         (direction[0] != 0.0) ? 1.0 / direction[0] : std::numeric_limits<double>::max(),
         (direction[1] != 0.0) ? 1.0 / direction[1] : std::numeric_limits<double>::max(),
         (direction[2] != 0.0) ? 1.0 / direction[2] : std::numeric_limits<double>::max()
     );
-    
+
     double tx1 = (box_min[0] - origin[0]) * inv_dir[0];
     double tx2 = (box_max[0] - origin[0]) * inv_dir[0];
-    
+
     tmin = std::min(tx1, tx2);
     tmax = std::max(tx1, tx2);
-    
+
     double ty1 = (box_min[1] - origin[1]) * inv_dir[1];
     double ty2 = (box_max[1] - origin[1]) * inv_dir[1];
-    
+
     tmin = std::max(tmin, std::min(ty1, ty2));
     tmax = std::min(tmax, std::max(ty1, ty2));
-    
+
     double tz1 = (box_min[2] - origin[2]) * inv_dir[2];
     double tz2 = (box_max[2] - origin[2]) * inv_dir[2];
-    
+
     tmin = std::max(tmin, std::min(tz1, tz2));
     tmax = std::min(tmax, std::max(tz1, tz2));
-    
+
     tmin = std::max(tmin, t0);
     tmax = std::min(tmax, t1);
-    
+
     return tmax >= tmin;
 }
 
@@ -532,10 +532,10 @@ bool Intersection::ray_box(
     double t1,
     double& tmin,
     double& tmax) {
-    
+
     Point origin = line.start();
     Vector direction = line.to_vector();
-    
+
     return ray_box(origin, direction, box, t0, t1, tmin, tmax);
 }
 
@@ -545,16 +545,16 @@ bool Intersection::ray_box(
     double t0,
     double t1,
     std::vector<Point>& intersection_points) {
-    
+
     double tmin, tmax;
     Point origin = line.start();
     Vector direction = line.to_vector();
-    
+
     bool hit = ray_box(origin, direction, box, t0, t1, tmin, tmax);
-    
+
     if (hit) {
         intersection_points.clear();
-        
+
         // Entry point
         Point entry(
             origin[0] + direction[0] * tmin,
@@ -562,7 +562,7 @@ bool Intersection::ray_box(
             origin[2] + direction[2] * tmin
         );
         intersection_points.push_back(entry);
-        
+
         // Exit point
         Point exit(
             origin[0] + direction[0] * tmax,
@@ -571,7 +571,7 @@ bool Intersection::ray_box(
         );
         intersection_points.push_back(exit);
     }
-    
+
     return hit;
 }
 
@@ -582,23 +582,23 @@ int Intersection::ray_sphere(
     double radius,
     double& t0,
     double& t1) {
-    
+
     Vector o(
         origin[0] - center[0],
         origin[1] - center[1],
         origin[2] - center[2]
     );
-    
+
     double a = direction.dot(direction);
     double b = 2.0 * direction.dot(o);
     double c = o.dot(o) - (radius * radius);
-    
+
     double disc = b * b - 4.0 * a * c;
-    
+
     if (disc < 0.0) {
         return 0;
     }
-    
+
     double distSqrt = std::sqrt(disc);
     double q;
     if (b < 0.0) {
@@ -606,20 +606,20 @@ int Intersection::ray_sphere(
     } else {
         q = (-b + distSqrt) / 2.0;
     }
-    
+
     t0 = q / a;
     double _t1 = c / q;
-    
+
     if (_t1 == t0) {
         return 1;
     }
-    
+
     t1 = _t1;
-    
+
     if (t0 > t1) {
         std::swap(t0, t1);
     }
-    
+
     return 2;
 }
 
@@ -628,19 +628,19 @@ bool Intersection::ray_sphere(
     const Point& center,
     double radius,
     std::vector<Point>& intersection_points) {
-    
+
     Point origin = line.start();
     Vector direction = line.to_vector();
-    
+
     double t0, t1;
     int hits = ray_sphere(origin, direction, center, radius, t0, t1);
-    
+
     if (hits == 0) {
         return false;
     }
-    
+
     intersection_points.clear();
-    
+
     // First intersection point
     Point p0(
         origin[0] + direction[0] * t0,
@@ -648,7 +648,7 @@ bool Intersection::ray_sphere(
         origin[2] + direction[2] * t0
     );
     intersection_points.push_back(p0);
-    
+
     // Second intersection point (if exists)
     if (hits == 2) {
         Point p1(
@@ -658,7 +658,7 @@ bool Intersection::ray_sphere(
         );
         intersection_points.push_back(p1);
     }
-    
+
     return true;
 }
 
@@ -673,35 +673,35 @@ bool Intersection::ray_triangle(
     double& u,
     double& v,
     bool& parallel) {
-    
+
     Vector edge1(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]);
     Vector edge2(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]);
     Vector pvec = direction.cross(edge2);
-    
+
     double det = edge1.dot(pvec);
-    
+
     if (det > -epsilon && det < epsilon) {
         parallel = true;
         return false;
     }
-    
+
     parallel = false;
     double inv_det = 1.0 / det;
-    
+
     Vector tvec(origin[0] - v0[0], origin[1] - v0[1], origin[2] - v0[2]);
     u = tvec.dot(pvec) * inv_det;
-    
+
     if (u < 0.0 - epsilon || u > 1.0 + epsilon) {
         return false;
     }
-    
+
     Vector qvec = tvec.cross(edge1);
     v = direction.dot(qvec) * inv_det;
-    
+
     if (v < 0.0 - epsilon || u + v > 1.0 + epsilon) {
         return false;
     }
-    
+
     t = edge2.dot(qvec) * inv_det;
     return true;
 }
@@ -713,24 +713,24 @@ bool Intersection::ray_triangle(
     const Point& v2,
     double epsilon,
     Point& output) {
-    
+
     Point origin = line.start();
     Vector direction = line.to_vector();
-    
+
     double t, u, v;
     bool parallel;
-    
+
     if (!ray_triangle(origin, direction, v0, v1, v2, epsilon, t, u, v, parallel)) {
         return false;
     }
-    
+
     // Calculate intersection point: origin + t * direction
     output = Point(
         origin[0] + t * direction[0],
         origin[1] + t * direction[1],
         origin[2] + t * direction[2]
     );
-    
+
     return true;
 }
 
@@ -740,37 +740,37 @@ bool Intersection::ray_mesh(
     const Mesh& mesh,
     std::vector<RayHit>& hits,
     bool find_all) {
-    
+
     hits.clear();
-    
+
     auto [vertices, faces] = mesh.to_vertices_and_faces();
-    
+
     for (size_t i = 0; i < faces.size(); ++i) {
         const auto& face = faces[i];
-        
+
         if (face.size() < 3) continue;
-        
+
         for (size_t j = 1; j < face.size() - 1; ++j) {
             const Point& v0 = vertices[face[0]];
             const Point& v1 = vertices[face[j]];
             const Point& v2 = vertices[face[j + 1]];
-            
+
             double t, u, v;
             bool parallel;
-            
-            if (ray_triangle(origin, direction, v0, v1, v2, 
-                           static_cast<double>(Tolerance::ZERO_TOLERANCE), 
+
+            if (ray_triangle(origin, direction, v0, v1, v2,
+                           static_cast<double>(Tolerance::ZERO_TOLERANCE),
                            t, u, v, parallel)) {
-                
+
                 if (t >= 0.0) {
                     Point hit_point(
                         origin[0] + t * direction[0],
                         origin[1] + t * direction[1],
                         origin[2] + t * direction[2]
                     );
-                    
+
                     hits.emplace_back(t, hit_point, u, v, static_cast<int>(i));
-                    
+
                     if (!find_all) {
                         return true;
                     }
@@ -778,10 +778,10 @@ bool Intersection::ray_mesh(
             }
         }
     }
-    
+
     if (!hits.empty()) {
         const double eps = 1e-6;
-        std::sort(hits.begin(), hits.end(), 
+        std::sort(hits.begin(), hits.end(),
                   [eps](const RayHit& a, const RayHit& b) {
                       double dt = a.t - b.t;
                       if (std::fabs(dt) <= eps) return a.face_index < b.face_index;
@@ -789,7 +789,7 @@ bool Intersection::ray_mesh(
                   });
         return true;
     }
-    
+
     return false;
 }
 
@@ -799,15 +799,15 @@ bool Intersection::ray_mesh_bvh(
     const Mesh& mesh,
     std::vector<RayHit>& hits,
     bool find_all) {
-    
+
     hits.clear();
-    
+
     // Use Mesh's cached per-triangle SpatialBVH
     std::vector<int> candidates_list;
     if (!mesh.triangle_bvh_ray_cast(origin, direction, candidates_list, find_all)) {
         return false;
     }
-    
+
     // Perform exact ray-triangle intersection on candidates
     bool any_hit = false;
     RayHit best_hit;
@@ -819,12 +819,12 @@ bool Intersection::ray_mesh_bvh(
         if (!mesh.get_triangle_by_id(tri_id, face_idx, sub_idx, v0, v1, v2)) {
             continue;
         }
-        
+
         double t, u, v;
         bool parallel;
-        
-        if (ray_triangle(origin, direction, v0, v1, v2, 
-                       static_cast<double>(Tolerance::ZERO_TOLERANCE), 
+
+        if (ray_triangle(origin, direction, v0, v1, v2,
+                       static_cast<double>(Tolerance::ZERO_TOLERANCE),
                        t, u, v, parallel)) {
             if (t >= 0.0) {
                 Point hit_point(
@@ -846,11 +846,11 @@ bool Intersection::ray_mesh_bvh(
             }
         }
     }
-    
+
     if (find_all) {
         if (!hits.empty()) {
             const double eps = 1e-6;
-            std::sort(hits.begin(), hits.end(), 
+            std::sort(hits.begin(), hits.end(),
                       [eps](const RayHit& a, const RayHit& b) {
                           double dt = a.t - b.t;
                           if (std::fabs(dt) <= eps) return a.face_index < b.face_index;
@@ -860,7 +860,7 @@ bool Intersection::ray_mesh_bvh(
         }
         return false;
     }
-    
+
     if (any_hit) {
         hits.push_back(best_hit);
         return true;
@@ -873,22 +873,22 @@ std::vector<Point> Intersection::ray_mesh(
     const Mesh& mesh,
     double epsilon,
     bool find_all) {
-    
+
     (void)epsilon;  // Unused - kept for API compatibility
-    
+
     Point origin = line.start();
     Vector direction = line.to_vector();
-    
+
     std::vector<RayHit> hits;
     std::vector<Point> result;
-    
+
     if (ray_mesh(origin, direction, mesh, hits, find_all)) {
         result.reserve(hits.size());
         for (const auto& hit : hits) {
             result.push_back(hit.point);
         }
     }
-    
+
     return result;
 }
 
@@ -897,22 +897,22 @@ std::vector<Point> Intersection::ray_mesh_bvh(
     const Mesh& mesh,
     double epsilon,
     bool find_all) {
-    
+
     (void)epsilon;  // Unused - kept for API compatibility
-    
+
     Point origin = line.start();
     Vector direction = line.to_vector();
-    
+
     std::vector<RayHit> hits;
     std::vector<Point> result;
-    
+
     if (ray_mesh_bvh(origin, direction, mesh, hits, find_all)) {
         result.reserve(hits.size());
         for (const auto& hit : hits) {
             result.push_back(hit.point);
         }
     }
-    
+
     return result;
 }
 
@@ -2392,7 +2392,7 @@ static bool fit_cylinder(const NurbsSurface& surface, double tol, V3& axis_pt, V
             nrm.push_back(V3{n[0], n[1], n[2]});
         }
     }
-    double M[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+    double M[3][3] = {{0, 0, 0},{0, 0, 0},{0, 0, 0}};
     for (auto& n : nrm)
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++) M[r][c] += n[r]*n[c];
@@ -2479,7 +2479,7 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
         gs.push_back(V3{d[0]/dl, d[1]/dl, d[2]/dl});
     }
     if ((int)gs.size() < 3) return false;
-    double G[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+    double G[3][3] = {{0, 0, 0},{0, 0, 0},{0, 0, 0}};
     for (auto& g : gs)
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++) G[r][c] += g[r]*g[c];
@@ -2565,7 +2565,7 @@ static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& a
     V3 cen{0, 0, 0};
     for (auto& p : pts) { cen[0] += p[0]; cen[1] += p[1]; cen[2] += p[2]; }
     cen[0] /= n; cen[1] /= n; cen[2] /= n;
-    double M[3][3] = {{0,0,0},{0,0,0},{0,0,0}};
+    double M[3][3] = {{0, 0, 0},{0, 0, 0},{0, 0, 0}};
     for (auto& p : pts) {
         V3 d{p[0]-cen[0], p[1]-cen[1], p[2]-cen[2]};
         for (int r = 0; r < 3; r++)
@@ -3003,7 +3003,10 @@ static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone,
             double gw = g[0]*w[0] + g[1]*w[1] + g[2]*w[2];
             if (gw > 1e-9) { double L = H / gw;
                 out.push_back(NurbsCurve::create(false, 1,
-                    {Point(V[0],V[1],V[2]), Point(V[0]+L*g[0], V[1]+L*g[1], V[2]+L*g[2])})); }
+                    {
+                        Point(V[0], V[1], V[2]),
+                        Point(V[0]+L*g[0], V[1]+L*g[1], V[2]+L*g[2])
+                    })); }
             return true;
         }
         if (cost < sina) {
@@ -3016,7 +3019,10 @@ static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone,
                 if (dw < 1e-12) continue;
                 double L = H / dw;
                 out.push_back(NurbsCurve::create(false, 1,
-                    {Point(V[0],V[1],V[2]), Point(V[0]+L*d[0], V[1]+L*d[1], V[2]+L*d[2])}));
+                    {
+                        Point(V[0], V[1], V[2]),
+                        Point(V[0]+L*d[0], V[1]+L*d[1], V[2]+L*d[2])
+                    }));
             }
             return true;
         }
@@ -3215,7 +3221,10 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         double hc = hsum / ns;
         double vc = v0 + (hc - h0) / (h1 - h0) * (v1 - v0);
         if (vc < std::min(v0,v1) - 1e-9 || vc > std::max(v0,v1) + 1e-9) return NurbsCurve();
-        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+        return NurbsCurve::create(false, 1, {
+            Point(u0, vc, 0.0),
+            Point(u1, vc, 0.0)
+        });
     }
 
     // SPHERE, circle in a plane perpendicular to the polar axis -> a parallel: an exact v=const
@@ -3247,7 +3256,10 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
             if ((hm - hc) * (ha - hc) <= 0) vb = vm; else { va = vm; ha = hm; }
         }
         double vc = 0.5 * (va + vb);
-        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+        return NurbsCurve::create(false, 1, {
+            Point(u0, vc, 0.0),
+            Point(u1, vc, 0.0)
+        });
     }
 
     if (recog.kind == RecogSurface::CONE) {
@@ -3273,7 +3285,10 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         for (int it=0; it<60; ++it){ double vmid=0.5*(va+vb), hm=height(srf.point_at(um2,vmid));
             if ((hm-hc)*(ha-hc) <= 0) vb=vmid; else { va=vmid; ha=hm; } }
         double vc=0.5*(va+vb);
-        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+        return NurbsCurve::create(false, 1, {
+            Point(u0, vc, 0.0),
+            Point(u1, vc, 0.0)
+        });
     }
 
     // TORUS: a coaxial intersection circle (perpendicular to the torus axis, at constant horizontal
@@ -3355,7 +3370,10 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
                 vc = vn;
             }
         }
-        return NurbsCurve::create(false, 1, {Point(u0, vc, 0.0), Point(u1, vc, 0.0)});
+        return NurbsCurve::create(false, 1, {
+            Point(u0, vc, 0.0),
+            Point(u1, vc, 0.0)
+        });
     }
 
     return NurbsCurve();
@@ -3641,7 +3659,7 @@ static std::vector<NurbsCurve> analytic_cone_pullback(const NurbsSurface& srf,
     };
     std::vector<std::array<double,3>> tuv;
     double prev_u = 0.0;
-    double bmn[3] = {1e300,1e300,1e300}, bmx[3] = {-1e300,-1e300,-1e300};
+    double bmn[3] = {1e300, 1e300, 1e300}, bmx[3] = {-1e300, -1e300, -1e300};
     for (int i = 0; i <= n; ++i) {
         double tq = t0 + (t1-t0)*i/n;
         double u, v;
@@ -4025,7 +4043,10 @@ static bool ssi_cylinder_cylinder(const NurbsSurface& sa, const RecogSurface& A,
         auto emit = [&](const V3& bp) {
             V3 e0{bp[0]+slo*w1[0], bp[1]+slo*w1[1], bp[2]+slo*w1[2]};
             V3 e1{bp[0]+shi*w1[0], bp[1]+shi*w1[1], bp[2]+shi*w1[2]};
-            NurbsCurve ln = NurbsCurve::create(false, 1, {Point(e0[0],e0[1],e0[2]), Point(e1[0],e1[1],e1[2])});
+            NurbsCurve ln = NurbsCurve::create(false, 1, {
+                Point(e0[0], e0[1], e0[2]),
+                Point(e1[0], e1[1], e1[2])
+            });
             ln.set_domain(0.0, 1.0); out.push_back(ln);
         };
         if (h <= kTol) emit(foot);
@@ -5046,8 +5067,8 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             }
             bool accepted = false;
             int attempts = 0;
-            std::array<double, 4> xn = {0,0,0,0};
-            std::array<double, 3> p_cur = {0,0,0};
+            std::array<double, 4> xn = {0, 0, 0, 0};
+            std::array<double, 3> p_cur = {0, 0, 0};
             double step_len = 0.0;
             bool hit_boundary = false;
             while (attempts < 7 && !accepted) {
@@ -6630,7 +6651,7 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
                     || ba[1] > bb[4] || bb[1] > ba[4]
                     || ba[2] > bb[5] || bb[2] > ba[5])
                     continue;
-                if (!Plane::is_coplanar(
+                if (!Plane::is_coplanar_from_normals(
                         oa, za,
                         planes[b][j].origin(), planes[b][j].z_axis(),
                         false, coplanar_tolerance))
@@ -6642,7 +6663,7 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
                 Vector zax = za;
                 Vector yax = zax.cross(edge);
                 yax.normalize_self();
-                Plane pln(pts_i[0], edge, yax, zax);
+                Plane pln = Plane::from_frame(pts_i[0], edge, yax, zax);
 
                 auto bools = Polyline::boolean_op(polylines[a][i], polylines[b][j], pln, 0);
                 if (bools.empty() || bools[0].point_count() < 3) continue;

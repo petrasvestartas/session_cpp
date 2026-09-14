@@ -2,18 +2,12 @@
 #include "spatial_kdtree.h"
 #include "point.h"
 #include "tolerance.h"
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
 
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
 MINI_TEST("SpatialKDTree", "Constructor") {
-    // uncomment #include "spatial_kdtree.h"
-    // uncomment #include "point.h"
-    // SpatialKDTree: O(n log n) build, O(log n) nearest — static point set closest search
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(3.0, 0.0, 0.0),
@@ -27,10 +21,6 @@ MINI_TEST("SpatialKDTree", "Constructor") {
 }
 
 MINI_TEST("SpatialKDTree", "Nearest") {
-    // uncomment #include "spatial_kdtree.h"
-    // uncomment #include "point.h"
-    // 5 known points on a line: 0, 1, 2, 3, 4
-    // Query at 1.1 — nearest should be index 1 (point at x=1), distance 0.1
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -47,10 +37,6 @@ MINI_TEST("SpatialKDTree", "Nearest") {
 }
 
 MINI_TEST("SpatialKDTree", "Nearest K") {
-    // uncomment #include "spatial_kdtree.h"
-    // uncomment #include "point.h"
-    // 5 points on X axis: 0, 1, 2, 3, 4
-    // Query at 1.5 — 3 nearest are: x=1 (d=0.5), x=2 (d=0.5), x=3 (d=1.5)
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -69,10 +55,6 @@ MINI_TEST("SpatialKDTree", "Nearest K") {
 }
 
 MINI_TEST("SpatialKDTree", "Radius Search") {
-    // uncomment #include "spatial_kdtree.h"
-    // uncomment #include "point.h"
-    // 4 points: 0, 1, 2, 5 on X axis
-    // Query at 0.5, radius 1.1 — finds x=0 (d=0.5) and x=1 (d=0.5)
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
