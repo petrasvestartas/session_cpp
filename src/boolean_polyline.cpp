@@ -1109,6 +1109,13 @@ static std::vector<Polyline> v_select(const Polyline& a, const Polyline& b, bool
     return {a};
 }
 
+static int v_select_count(int a_count, int b_count, bool a_in_b, bool b_in_a, int clip_type) {
+    if (clip_type == 0) { if (a_in_b) return a_count; if (b_in_a) return b_count; return 0; }
+    if (clip_type == 1) { if (a_in_b) return b_count; if (b_in_a) return a_count; return a_count + b_count; }
+    if (a_in_b) return 0;
+    return a_count;
+}
+
 static void v_bounds(const std::vector<BIVec2>& v, int64_t& minX, int64_t& maxX, int64_t& minY, int64_t& maxY) {
     minX = maxX = v[0].x; minY = maxY = v[0].y;
     for (size_t i = 1; i < v.size(); i++) {
@@ -1254,7 +1261,9 @@ int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polylin
     VVertex* va_head = v_add_path_from_doubles(ca, na, 0, sv, sc, aMinX, aMaxX, aMinY, aMaxY);
     VVertex* vb_head = v_add_path_from_doubles(cb, nb, 1, sv, sc, bMinX, bMaxX, bMinY, bMaxY);
     if (!va_head || !vb_head) return 0;
-    if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) return 0;
+    if (aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY) {
+        return v_select_count((int)(a._coords.size() / 3), (int)(b._coords.size() / 3), pip_vertex(va_head->pt, vb_head), pip_vertex(vb_head->pt, va_head), clip_type);
+    }
     if (!v_execute_internal(sc, clip_type)) return 0;
     int total = 0;
     for (size_t i = 0; i < sc.outrec_list.size(); i++) {

@@ -23,6 +23,12 @@ MINI_TEST("Boolean Polyline", "Overlapping Squares") {
     MINI_CHECK(uni[0].point_count() > 0);
     MINI_CHECK(diff.size() >= 1);
     MINI_CHECK(diff[0].point_count() > 0);
+
+    Polyline far_a({Point(10,-1,0), Point(12,-1,0), Point(12,1,0), Point(10,1,0), Point(10,-1,0)});
+    Polyline far_b({Point(14,-1,0), Point(16,-1,0), Point(16,1,0), Point(14,1,0), Point(14,-1,0)});
+    MINI_CHECK(BooleanPolyline::compute_count(far_a, far_b, 0) == 0);
+    MINI_CHECK(BooleanPolyline::compute_count(far_a, far_b, 1) == static_cast<int>(far_a.point_count() + far_b.point_count()));
+    MINI_CHECK(BooleanPolyline::compute_count(far_a, far_b, 2) == static_cast<int>(far_a.point_count()));
 }
 
 MINI_TEST("Boolean Polyline", "Circle Vs Rectangle") {
