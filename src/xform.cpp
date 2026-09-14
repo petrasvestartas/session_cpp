@@ -103,6 +103,7 @@ Xform Xform::rotation_z(double angle, bool degrees) {
 
 Xform Xform::rotation(const Vector& axis, double angle, bool degrees) {
     if (degrees) angle = angle * Tolerance::TO_RADIANS;
+    if (axis.is_zero()) return Xform::identity();
     Xform xform;
     const Vector unit = axis.normalized();
     const double cos_angle = std::cos(angle);

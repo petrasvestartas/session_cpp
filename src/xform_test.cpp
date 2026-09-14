@@ -127,6 +127,7 @@ MINI_TEST("Xform", "Rotation Axis") {
     MINI_CHECK(TOLERANCE.is_point_close(result.vertex_point(5).value(), Point(t+k, t, t-k)));
     MINI_CHECK(TOLERANCE.is_point_close(result.vertex_point(6).value(), Point(1, 1, 1)));
     MINI_CHECK(TOLERANCE.is_point_close(result.vertex_point(7).value(), Point(t, t-k, t+k)));
+    MINI_CHECK(Xform::rotation(Vector::zero(), Tolerance::PI / 3.0).is_identity());
 }
 
 MINI_TEST("Xform", "Rotation Around Line") {
