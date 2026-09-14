@@ -363,6 +363,8 @@ Vector Vector::reflect(const Vector &plane_normal) const {
 }
 
 Vector Vector::average_normal(const std::vector<Point> &points) {
+  if (points.empty())
+    return Vector::zero();
   const double dx = points.back()[0] - points.front()[0];
   const double dy = points.back()[1] - points.front()[1];
   const double dz = points.back()[2] - points.front()[2];
