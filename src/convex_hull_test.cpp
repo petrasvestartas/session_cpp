@@ -61,6 +61,10 @@ MINI_TEST("ConvexHull", "Hull 3d") {
 
     MINI_CHECK(mesh.number_of_vertices() == 4);
     MINI_CHECK(mesh.number_of_faces() == 4);
+
+    Mesh degenerate = ConvexHull::hull_3d({Point(0, 0, 0), Point(1, 0, 0), Point(2, 0, 0), Point(3, 0, 0)});
+    MINI_CHECK(degenerate.number_of_vertices() == 4);
+    MINI_CHECK(degenerate.number_of_faces() == 0);
 }
 
 MINI_TEST("ConvexHull", "Hull 3d Cube") {

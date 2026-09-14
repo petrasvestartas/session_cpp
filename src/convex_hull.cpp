@@ -129,6 +129,10 @@ Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
             p3 = i;
         }
     }
+    if (p2 < 0 || p3 < 0 || best_distance <= 1e-20 || best_volume <= 1e-20) {
+        for (const Point& point : points) mesh.add_vertex(point);
+        return mesh;
+    }
     if (signed_volume(points[p0], points[p1], points[p2], points[p3]) > 0.0)
         std::swap(p1, p2);
     std::vector<int> rest;
