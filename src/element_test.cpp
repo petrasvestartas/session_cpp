@@ -112,6 +112,11 @@ MINI_TEST("Element", "AABB") {
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[0], 0.5));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[1], 0.5));
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[2], 0.0));
+    MINI_CHECK(!e.is_dirty());
+
+    e.add_geometry_op([](Mesh geo) { return geo; });
+    MINI_CHECK(e.is_dirty());
+    MINI_CHECK(!e.cached_aabb().has_value());
 }
 
 MINI_TEST("Element", "OBB") {

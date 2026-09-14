@@ -189,42 +189,66 @@ ElementGeometry Element::session_geometry(const Xform& xform) const {
 }
 
 OBB Element::aabb() {
-    if (_is_dirty || !_aabb.has_value()) _aabb = compute_aabb();
+    if (_is_dirty || !_aabb.has_value()) {
+        _aabb = compute_aabb();
+        _is_dirty = false;
+    }
     return _aabb.value();
 }
 
 OBB Element::obb() {
-    if (_is_dirty || !_obb.has_value()) _obb = compute_obb();
+    if (_is_dirty || !_obb.has_value()) {
+        _obb = compute_obb();
+        _is_dirty = false;
+    }
     return _obb.value();
 }
 
 Mesh Element::collision_mesh() {
-    if (_is_dirty || !_collision_mesh.has_value()) _collision_mesh = compute_collision_mesh();
+    if (_is_dirty || !_collision_mesh.has_value()) {
+        _collision_mesh = compute_collision_mesh();
+        _is_dirty = false;
+    }
     return _collision_mesh.value();
 }
 
 Point Element::point() {
-    if (_is_dirty || !_point.has_value()) _point = compute_point();
+    if (_is_dirty || !_point.has_value()) {
+        _point = compute_point();
+        _is_dirty = false;
+    }
     return _point.value();
 }
 
 std::vector<Polyline> Element::polylines() {
-    if (_is_dirty || !_polylines.has_value()) _polylines = compute_polylines();
+    if (_is_dirty || !_polylines.has_value()) {
+        _polylines = compute_polylines();
+        _is_dirty = false;
+    }
     return _polylines.value();
 }
 
 std::vector<Plane> Element::planes() {
-    if (_is_dirty || !_planes.has_value()) _planes = compute_planes();
+    if (_is_dirty || !_planes.has_value()) {
+        _planes = compute_planes();
+        _is_dirty = false;
+    }
     return _planes.value();
 }
 
 std::vector<Vector> Element::edge_vectors() {
-    if (_is_dirty || !_edge_vectors.has_value()) _edge_vectors = compute_edge_vectors();
+    if (_is_dirty || !_edge_vectors.has_value()) {
+        _edge_vectors = compute_edge_vectors();
+        _is_dirty = false;
+    }
     return _edge_vectors.value();
 }
 
 std::optional<Line> Element::axis() {
-    if (_is_dirty || !_axis.has_value()) _axis = compute_axis();
+    if (_is_dirty || !_axis.has_value()) {
+        _axis = compute_axis();
+        _is_dirty = false;
+    }
     return _axis;
 }
 
@@ -234,22 +258,22 @@ std::optional<Line> Element::axis() {
 
 void Element::add_geometry_op(std::function<Mesh(Mesh)> f) {
     _geometry_ops.push_back(std::move(f));
-    _is_dirty = true;
+    reset();
 }
 
 void Element::place(const Xform& xform) {
     _geometry = session_geometry(xform);
-    _is_dirty = true;
+    reset();
 }
 
 void Element::set_geometry(const Mesh& geo) {
     _geometry = geo;
-    _is_dirty = true;
+    reset();
 }
 
 void Element::set_geometry(const BRep& geo) {
     _geometry = geo;
-    _is_dirty = true;
+    reset();
 }
 
 void Element::set_polylines(std::vector<Polyline> polys) { _polylines = std::move(polys); }
