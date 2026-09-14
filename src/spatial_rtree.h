@@ -125,8 +125,8 @@ private:
     Rect make_rect(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS]) const {
         Rect rect;
         for (int i = 0; i < NUMDIMS; i++) {
-            rect.m_min[i] = a_min[i];
-            rect.m_max[i] = a_max[i];
+            rect.m_min[i] = std::min(a_min[i], a_max[i]);
+            rect.m_max[i] = std::max(a_min[i], a_max[i]);
         }
         return rect;
     }

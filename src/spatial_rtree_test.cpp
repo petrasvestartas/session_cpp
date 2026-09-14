@@ -121,6 +121,21 @@ MINI_TEST("SpatialRTree", "Search Stop") {
     MINI_CHECK(hits == 1);
 }
 
+MINI_TEST("SpatialRTree", "Normalizes Reversed Bounds") {
+    RTree3 t;
+    double insert_min[3] = {1, 2, 3}, insert_max[3] = {-1, -2, -3};
+    t.insert(insert_min, insert_max, 9);
+    double query_min[3] = {2, 3, 4}, query_max[3] = {-2, -3, -4};
+    int found = -1;
+    MINI_CHECK(t.search(query_min, query_max, [&](int data) {
+        found = data;
+        return true;
+    }) == 1);
+    MINI_CHECK(found == 9);
+    MINI_CHECK(t.remove(query_min, query_max, 9));
+    MINI_CHECK(t.count() == 0);
+}
+
 MINI_TEST("SpatialRTree", "Search 100 Boxes") {
     RTree3 t;
     int id = 0;
