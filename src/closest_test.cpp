@@ -258,6 +258,7 @@ MINI_TEST("Closest", "Boxes Closest") {
     MINI_CHECK(pairs.size() == 1);
     MINI_CHECK(pairs[0].first == 0);
     MINI_CHECK(pairs[0].second == 1);
+    MINI_CHECK(Closest::boxes_closest(boxes, -0.01).empty());
 }
 
 }

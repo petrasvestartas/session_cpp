@@ -931,7 +931,7 @@ std::vector<std::pair<size_t, size_t>> Closest::lines_closest(
     double threshold
 ) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (lines.size() < 2) return pairs;
+    if (threshold < 0.0 || lines.size() < 2) return pairs;
     std::vector<AABB> aabbs;
     aabbs.reserve(lines.size());
     for (const Line& ln : lines) aabbs.push_back(AABB::from_line(ln, threshold));
@@ -956,7 +956,7 @@ std::vector<std::pair<size_t, size_t>> Closest::polylines_closest(
     double threshold
 ) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (polylines.size() < 2) return pairs;
+    if (threshold < 0.0 || polylines.size() < 2) return pairs;
     std::vector<AABB> aabbs;
     aabbs.reserve(polylines.size());
     for (const Polyline& pl : polylines) aabbs.push_back(AABB::from_polyline(pl, threshold));
@@ -982,7 +982,7 @@ std::vector<std::pair<size_t, size_t>> Closest::nurbscurves_closest(
     double threshold
 ) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (curves.size() < 2) return pairs;
+    if (threshold < 0.0 || curves.size() < 2) return pairs;
     std::vector<AABB> aabbs;
     aabbs.reserve(curves.size());
     for (const NurbsCurve& crv : curves) aabbs.push_back(AABB::from_nurbscurve(crv, threshold, false));
@@ -1008,7 +1008,7 @@ std::vector<std::pair<size_t, size_t>> Closest::boxes_closest(
     double threshold
 ) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (boxes.size() < 2) return pairs;
+    if (threshold < 0.0 || boxes.size() < 2) return pairs;
     std::vector<AABB> inflated;
     inflated.reserve(boxes.size());
     for (const AABB& b : boxes) {
