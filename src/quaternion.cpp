@@ -33,6 +33,8 @@ Quaternion Quaternion::identity() { return Quaternion(1.0, Vector(0.0, 0.0, 0.0)
 Quaternion Quaternion::from_components(double scalar, const Vector &vector) { return Quaternion(scalar, vector); }
 
 Quaternion Quaternion::from_axis_angle(const Vector &axis, double angle) {
+  if (axis.magnitude() < 1e-10)
+    return identity();
   const Vector ax = axis.normalized();
   const double half = angle * 0.5;
   return Quaternion(std::cos(half), ax * std::sin(half));
@@ -213,13 +215,18 @@ Quaternion Quaternion::invert() const {
 double Quaternion::dot(const Quaternion &other) const { return scalar * other.scalar + vector.dot(other.vector); }
 
 Quaternion Quaternion::slerp(const Quaternion &other, double amount) const {
-  const double dot_val = dot(other);
+  Quaternion target = other;
+  double dot_val = dot(target);
+  if (dot_val < 0.0) {
+    target = -target;
+    dot_val = -dot_val;
+  }
   if (dot_val > 0.9995)
-    return (*this + (other - *this) * amount).normalized();
+    return (*this + (target - *this) * amount).normalized();
   const double theta = std::acos(std::clamp(dot_val, -1.0, 1.0));
   const double scale1 = std::sin(theta * (1.0 - amount));
   const double scale2 = std::sin(theta * amount);
-  return (*this * scale1 + other * scale2) * (1.0 / std::sin(theta));
+  return (*this * scale1 + target * scale2) * (1.0 / std::sin(theta));
 }
 
 Quaternion Quaternion::nlerp(const Quaternion &other, double amount) const {

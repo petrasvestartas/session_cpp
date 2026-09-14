@@ -95,6 +95,9 @@ MINI_TEST("Quaternion", "From Axis Angle") {
 
   MINI_CHECK(TOLERANCE.is_close(q.scalar, std::cos(Tolerance::PI / 4.0)));
   MINI_CHECK(TOLERANCE.is_close(q.vector[2], std::sin(Tolerance::PI / 4.0)));
+
+  Quaternion zero_axis = Quaternion::from_axis_angle(Vector(0.0, 0.0, 0.0), Tolerance::PI / 2.0);
+  MINI_CHECK(zero_axis == Quaternion::identity());
 }
 
 MINI_TEST("Quaternion", "From Arc") {
@@ -212,6 +215,11 @@ MINI_TEST("Quaternion", "Slerp") {
   Quaternion half = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), 0.0005);
 
   MINI_CHECK(TOLERANCE.is_close(mid2.scalar, half.scalar));
+
+  Quaternion antipodal = -Quaternion::identity();
+  Quaternion same_rotation = q1.slerp(antipodal, 0.5);
+  MINI_CHECK(TOLERANCE.is_close(same_rotation.scalar, 1.0));
+  MINI_CHECK(TOLERANCE.is_close(same_rotation.vector.magnitude(), 0.0));
 }
 
 MINI_TEST("Quaternion", "Nlerp") {
