@@ -104,6 +104,11 @@ std::tuple<std::string, std::string> Graph::add_edge(const std::string &u, const
     add_node(u);
   if (!has_node(v))
     add_node(v);
+  if (has_edge(std::make_tuple(u, v))) {
+    edges[u][v].attribute = attribute;
+    edges[v][u] = edges[u][v];
+    return std::make_tuple(u, v);
+  }
   Edge edge(u, v, attribute);
   edge.index = edge_count;
   edges[u][v] = edge;
@@ -123,6 +128,7 @@ void Graph::remove_node(const std::string &key) {
   }
   vertices.erase(key);
   _reassign_indices();
+  _reassign_edge_indices();
 }
 
 void Graph::remove_edge(const std::tuple<std::string, std::string> &edge) {

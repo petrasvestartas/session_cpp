@@ -80,6 +80,13 @@ Line Line::fit_points(const std::vector<Point> &points, double length) {
     cyz += dy * dz;
   }
   double vx = 1.0, vy = 0.0, vz = 0.0;
+  if (cyy > cxx && cyy >= czz) {
+    vx = 0.0;
+    vy = 1.0;
+  } else if (czz > cxx && czz > cyy) {
+    vx = 0.0;
+    vz = 1.0;
+  }
   for (int i = 0; i < 100; i++) {
     const double nx = cxx * vx + cxy * vy + cxz * vz;
     const double ny = cxy * vx + cyy * vy + cyz * vz;

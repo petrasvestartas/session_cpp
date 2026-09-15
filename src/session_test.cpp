@@ -52,9 +52,13 @@ MINI_TEST("Session", "Copy") {
 
     // Touching the copy leaves the original alone.
     copy.objects.points->clear();
-    copy.tree.root()->children().empty();
+    const std::vector<std::shared_ptr<TreeNode>> copied_nodes = copy.tree.nodes();
+    MINI_CHECK(copied_nodes.size() > 1);
+    copy.tree.remove(copied_nodes[1]);
     MINI_CHECK(session.objects.points->size() == 1);
     MINI_CHECK(copy.objects.points->size() == 0);
+    MINI_CHECK(!session.tree.root()->descendants().empty());
+    MINI_CHECK(copy.tree.root()->descendants().empty());
 }
 
 MINI_TEST("Session", "Add Point") {

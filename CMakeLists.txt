@@ -67,18 +67,18 @@ set(UNITY_BUILD_EXCLUDE
 #############################################################################################
 find_program(SCCACHE_PROGRAM sccache)
 find_program(CCACHE_PROGRAM ccache)
-if(SCCACHE_PROGRAM)
+if(SCCACHE_PROGRAM AND NOT MSVC)
     message(STATUS "Using sccache: ${SCCACHE_PROGRAM}")
     set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
     set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
-elseif(CCACHE_PROGRAM)
+elseif(CCACHE_PROGRAM AND NOT MSVC)
     message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic)
+    set(SESSION_COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
     # -march=native bakes the BUILD machine's instruction set into the objects. That is fine on one
     # developer machine and unsafe anywhere the artefacts can move: CI caches session_cpp/build/,
     # and GitHub's ubuntu-22.04 fleet is a mix of CPU models, so objects compiled where AVX-512
@@ -98,8 +98,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
     endif()
 elseif(MSVC)
-    add_compile_options(/W4 /utf-8 /external:W0)
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    set(SESSION_COMPILE_OPTIONS /W4 /utf-8 /external:W0)
 endif()
 
 #############################################################################################
@@ -144,22 +143,21 @@ FetchContent_MakeAvailable(protobuf)
 
 # Suppress warnings from protobuf and absl third-party libraries
 if(MSVC)
-    target_compile_options(libprotobuf PRIVATE /w)
-    target_compile_options(libprotobuf-lite PRIVATE /w)
-    if(TARGET utf8_validity)
-        target_compile_options(utf8_validity PRIVATE /w)
-    endif()
-    if(TARGET utf8_range)
-        target_compile_options(utf8_range PRIVATE /w)
-    endif()
-    if(TARGET libupb)
-        target_compile_options(libupb PRIVATE /w)
-    endif()
+    set(THIRD_PARTY_COMPILE_OPTIONS /w)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(THIRD_PARTY_COMPILE_OPTIONS -w)
+endif()
+if(THIRD_PARTY_COMPILE_OPTIONS)
+    foreach(TGT IN ITEMS libprotobuf libprotobuf-lite utf8_validity utf8_range libupb)
+        if(TARGET ${TGT})
+            target_compile_options(${TGT} PRIVATE ${THIRD_PARTY_COMPILE_OPTIONS})
+        endif()
+    endforeach()
     get_property(ABSL_TARGETS DIRECTORY "${absl_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
     foreach(TGT IN LISTS ABSL_TARGETS)
         get_target_property(TGT_TYPE ${TGT} TYPE)
         if(TGT_TYPE STREQUAL "STATIC_LIBRARY" OR TGT_TYPE STREQUAL "OBJECT_LIBRARY")
-            target_compile_options(${TGT} PRIVATE /w)
+            target_compile_options(${TGT} PRIVATE ${THIRD_PARTY_COMPILE_OPTIONS})
         endif()
     endforeach()
 endif()
@@ -256,6 +254,10 @@ list(FILTER PROJECT_SOURCES EXCLUDE REGEX ".*_minitest\\.cpp$")
 list(APPEND PROJECT_SOURCES "${PROJECT_SOURCE_DIR}/src/yaml/yaml.cpp")
 
 add_library(session_core OBJECT ${PROJECT_SOURCES})
+target_compile_options(session_core PRIVATE ${SESSION_COMPILE_OPTIONS})
+if(MSVC)
+    target_compile_definitions(session_core PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 target_include_directories(session_core PUBLIC
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/src/fmt/include
@@ -288,6 +290,7 @@ add_dependencies(session_core proto_objects)
 
 # main_3 — session/quaternion/plane demo driver.
 add_executable(main_3 main_3.cpp)
+target_compile_options(main_3 PRIVATE ${SESSION_COMPILE_OPTIONS})
 target_link_libraries(main_3 PRIVATE session_core)
 LINK_PROTOBUF(main_3)
 if(ENABLE_PCH)
@@ -336,6 +339,7 @@ set(MINITEST_SOURCES
     src/instance_ref_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
+target_compile_options(point_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
 target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
 
@@ -343,6 +347,7 @@ LINK_PROTOBUF(point_minitest)
 # quick executable linked against the kernel without touching the test targets.
 if(EXISTS "${PROJECT_SOURCE_DIR}/main_dbg.cpp")
     add_executable(main_dbg main_dbg.cpp)
+    target_compile_options(main_dbg PRIVATE ${SESSION_COMPILE_OPTIONS})
     target_link_libraries(main_dbg PRIVATE session_core)
     LINK_PROTOBUF(main_dbg)
 endif()

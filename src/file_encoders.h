@@ -15,6 +15,8 @@ inline void file_json_dump(const nlohmann::ordered_json& j, const std::string& f
   if (!ofs.is_open())
     throw std::runtime_error("Failed to open file for writing: " + filepath);
   ofs << (pretty ? j.dump(2) : j.dump());
+  if (!ofs.good())
+    throw std::runtime_error("Failed to write file: " + filepath);
 }
 
 /// Read json from a file

@@ -171,9 +171,12 @@ MINI_TEST("Graph", "Add Edge") {
     Graph g("g");
     auto edge = g.add_edge("a", "b");
     auto [u, v] = edge;
+    g.add_edge("b", "a", "updated");
 
     MINI_CHECK(u == "a" && v == "b");
     MINI_CHECK(g.number_of_edges() == 1);
+    MINI_CHECK(g.edge_count == 1);
+    MINI_CHECK(g.edge_attribute("a", "b") == "updated");
 }
 
 MINI_TEST("Graph", "Remove Node") {
@@ -183,6 +186,7 @@ MINI_TEST("Graph", "Remove Node") {
 
     MINI_CHECK(!g.has_node("a"));
     MINI_CHECK(g.number_of_edges() == 0);
+    MINI_CHECK(g.edge_count == 0);
 }
 
 MINI_TEST("Graph", "Remove Edge") {

@@ -1381,7 +1381,9 @@ Mesh::miter_contours(const Mesh& shell, double thickness,
         Vector>> result;
     const std::map<std::pair<size_t, size_t>, size_t> efm = shell.edge_face_map();
     for (size_t fk : shell.faces()) {
-        const std::vector<size_t>& fverts = *shell.face_vertices(fk);
+        const std::optional<std::vector<size_t>> fverts_opt = shell.face_vertices(fk);
+        if (!fverts_opt) continue;
+        const std::vector<size_t>& fverts = *fverts_opt;
         const size_t n = fverts.size();
         const std::optional<std::vector<Point>> pts = shell.face_points(fk);
         if (!pts || pts->size() != n) continue;

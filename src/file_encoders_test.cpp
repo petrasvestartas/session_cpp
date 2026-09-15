@@ -286,4 +286,15 @@ MINI_TEST("FileEncoders", "Dict Of Dicts") {
     MINI_CHECK(TOLERANCE.is_close(loaded_vec[2], 1.0));
 }
 
+MINI_TEST("FileEncoders", "Write Error") {
+    Point point(1.0, 2.0, 3.0);
+    bool threw = false;
+    try {
+        file_json_dump(point, "serialization/missing-directory/test.json");
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    MINI_CHECK(threw);
+}
+
 } // namespace session_cpp

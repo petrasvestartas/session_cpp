@@ -242,6 +242,12 @@ namespace session_cpp {
         Line l_fit = Line::fit_points(fit_pts);
 
         MINI_CHECK(l_fit.length() > 0.0);
+
+        Line l_vertical = Line::fit_points({
+            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
+            Point(0.0, 2.0, 0.0), Point(0.0, 3.0, 0.0)
+        });
+        MINI_CHECK(std::fabs(l_vertical.to_direction()[1]) > 0.99);
     }
 
     MINI_TEST("Line", "Subdivide") {
