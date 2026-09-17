@@ -20,18 +20,27 @@ namespace {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Normal on the side of a C0 knot line that belongs to the triangle around center
-Vector crease_side_normal(const NurbsSurface& surface, const std::vector<double> (&knots)[2], const std::array<double, 2>& center, std::array<double, 2> uv) {
+/// Normal on the side of a C0 knot line that belongs to the triangle around center.
+Vector crease_side_normal(
+    const NurbsSurface& surface,
+    const std::vector<double> (&knots)[2],
+    const std::array<double, 2>& center,
+    std::array<double, 2> uv
+) {
+
     for (int dir = 0; dir < 2; ++dir)
         if (std::find(knots[dir].begin(), knots[dir].end(), uv[dir]) != knots[dir].end())
             uv[dir] = std::nextafter(uv[dir], center[dir]);
+
     return surface.normal_at(uv[0], uv[1]);
 }
 
-/// Winding-number test of (u, v) against a closed UV polygon
+/// Winding-number test of (u, v) against a closed UV polygon.
 bool point_in_polygon_2d(double u, double v, const std::vector<Point>& poly) {
+
     int winding = 0;
     const size_t n = poly.size();
+
     for (size_t i = 0; i < n; ++i) {
         const size_t j = (i + 1) % n;
         const double x0 = poly[i][0];
@@ -39,414 +48,1430 @@ bool point_in_polygon_2d(double u, double v, const std::vector<Point>& poly) {
         const double x1 = poly[j][0];
         const double y1 = poly[j][1];
         const double cross = (x1 - x0) * (v - y0) - (y1 - y0) * (u - x0);
-        if (y0 <= v && y1 > v && cross > 0.0) ++winding;
-        if (y0 > v && y1 <= v && cross < 0.0) --winding;
+
+        if (y0 <= v && y1 > v && cross > 0.0)
+            ++winding;
+
+        if (y0 > v && y1 <= v && cross < 0.0)
+            --winding;
     }
+
     return winding != 0;
+}
+
+/// True when (u, v) lies inside the outer loop and outside every hole.
+bool inside_loops(double u, double v, const std::vector<std::vector<Point>>& loops_uv) {
+
+    if (!point_in_polygon_2d(u, v, loops_uv[0]))
+        return false;
+
+    for (size_t li = 1; li < loops_uv.size(); ++li)
+        if (point_in_polygon_2d(u, v, loops_uv[li]))
+            return false;
+
+    return true;
+}
+
+/// Surface point at (u, v) as a plain array.
+std::array<double, 3> eval3(const NurbsSurface& srf, double u, double v) {
+    Point p = srf.point_at(u, v);
+
+    return {p[0], p[1], p[2]};
+}
+
+/// Signed distance of the surface point at (u, v) to the plane (q, n).
+double plane_field(
+    const NurbsSurface& srf,
+    const std::array<double, 3>& q,
+    const std::array<double, 3>& n,
+    double u,
+    double v
+) {
+    std::array<double, 3> p = eval3(srf, u, v);
+
+    return (p[0] - q[0]) * n[0] + (p[1] - q[1]) * n[1] + (p[2] - q[2]) * n[2];
+}
+
+/// Newton steps of (u, v) onto the plane (q, n) along the field gradient.
+void refine_crossing(
+    const NurbsSurface& srf,
+    const std::array<double, 3>& q,
+    const std::array<double, 3>& n,
+    double& u,
+    double& v
+) {
+
+    for (int it = 0; it < 12; ++it) {
+        double fv = plane_field(srf, q, n, u, v);
+
+        if (std::abs(fv) < 1e-9)
+            break;
+
+        double h = 1e-4;
+        std::array<double, 3> a = eval3(srf, u + h, v);
+        std::array<double, 3> b = eval3(srf, u - h, v);
+        std::array<double, 3> c = eval3(srf, u, v + h);
+        std::array<double, 3> d = eval3(srf, u, v - h);
+        double gu = ((a[0] - b[0]) * n[0] + (a[1] - b[1]) * n[1] + (a[2] - b[2]) * n[2]) / (2 * h);
+        double gv = ((c[0] - d[0]) * n[0] + (c[1] - d[1]) * n[1] + (c[2] - d[2]) * n[2]) / (2 * h);
+        double g2 = gu * gu + gv * gv;
+
+        if (g2 < 1e-20)
+            break;
+
+        u -= fv * gu / g2;
+        v -= fv * gv / g2;
+    }
+}
+
+/// Subdivisions per span along dir from the normal turn (max_angle_deg) and the chord deviation (chord_tol) at the mid line of the other direction.
+std::vector<int> span_subdivisions(
+    const NurbsSurface& srf,
+    int dir,
+    const std::vector<double>& sp,
+    const std::vector<double>& osp,
+    int deg,
+    double max_angle_deg,
+    double chord_tol
+) {
+
+    int n = (int)sp.size() - 1;
+    std::vector<int> subs(n, deg > 1 ? 2 : 1);
+    double smid = (osp.front() + osp.back()) * 0.5;
+
+    for (int i = 0; i < n; ++i) {
+        double t0 = sp[i];
+        double t1 = sp[i + 1];
+
+        if (deg > 1) {
+            double ma = 0.0;
+            std::array<double, 3> pn{};
+
+            for (int k = 0; k <= 4; ++k) {
+                double t = t0 + k * (t1 - t0) / 4.0;
+                Vector nm = (dir == 0) ? srf.normal_at(t, smid) : srf.normal_at(smid, t);
+
+                if (k > 0) {
+                    double d = std::max(-1.0, std::min(1.0, pn[0] * nm[0] + pn[1] * nm[1] + pn[2] * nm[2]));
+                    ma += std::acos(d) * 180.0 / Tolerance::PI;
+                }
+
+                pn = {nm[0], nm[1], nm[2]};
+            }
+
+            subs[i] = std::max(subs[i], std::max(1, std::min((int)std::ceil(ma / max_angle_deg), 64)));
+        }
+
+        std::array<double, 3> p0 = (dir == 0) ? eval3(srf, t0, smid) : eval3(srf, smid, t0);
+        std::array<double, 3> p1 = (dir == 0) ? eval3(srf, t1, smid) : eval3(srf, smid, t1);
+        double dev = 0.0;
+
+        for (int k = 1; k <= 3; ++k) {
+            double fr = k / 4.0;
+            double tm = t0 + fr * (t1 - t0);
+            std::array<double, 3> pm = (dir == 0) ? eval3(srf, tm, smid) : eval3(srf, smid, tm);
+            const double lx = p0[0] + fr * (p1[0] - p0[0]);
+            const double ly = p0[1] + fr * (p1[1] - p0[1]);
+            const double lz = p0[2] + fr * (p1[2] - p0[2]);
+            const double dd =
+                std::sqrt((pm[0] - lx) * (pm[0] - lx) + (pm[1] - ly) * (pm[1] - ly) + (pm[2] - lz) * (pm[2] - lz));
+
+            if (dd > dev)
+                dev = dd;
+        }
+
+        if (dev > chord_tol)
+            subs[i] = std::max(subs[i], std::min((int)std::ceil(std::sqrt(dev / chord_tol)), 64));
+    }
+
+    return subs;
+}
+
+/// Grid parameters: each span of sp cut into subs[i] equal steps, ending on the last knot.
+std::vector<double> span_parameters(const std::vector<double>& sp, const std::vector<int>& subs) {
+
+    std::vector<double> out;
+
+    for (int i = 0; i + 1 < (int)sp.size(); ++i)
+        for (int s = 0; s < subs[i]; ++s)
+            out.push_back(sp[i] + s * (sp[i + 1] - sp[i]) / subs[i]);
+
+    out.push_back(sp.back());
+
+    return out;
+}
+
+/// Unit normal as a plain array, or none when degenerate.
+bool unit3(const Vector& n, std::array<double, 3>& out) {
+
+    double nl = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+
+    if (nl < 1e-12)
+        return false;
+
+    out = {n[0] / nl, n[1] / nl, n[2] / nl};
+
+    return true;
+}
+
+/// Parameters of the 2D segment crossing p1p2 x p3p4, or false when parallel or outside.
+bool segment_intersection(
+    const std::array<double, 2>& p1,
+    const std::array<double, 2>& p2,
+    const std::array<double, 2>& p3,
+    const std::array<double, 2>& p4,
+    double& s_out,
+    double& t_out
+) {
+
+    double d1u = p2[0] - p1[0];
+    double d1v = p2[1] - p1[1];
+    double d2u = p4[0] - p3[0];
+    double d2v = p4[1] - p3[1];
+    double den = d1u * d2v - d1v * d2u;
+
+    if (std::abs(den) < 1e-20)
+        return false;
+
+    double s = ((p3[0] - p1[0]) * d2v - (p3[1] - p1[1]) * d2u) / den;
+    double t = ((p3[0] - p1[0]) * d1v - (p3[1] - p1[1]) * d1u) / den;
+
+    if (s < -1e-12 || s > 1.0 + 1e-12 || t < -1e-12 || t > 1.0 + 1e-12)
+        return false;
+
+    s_out = s;
+    t_out = t;
+
+    return true;
+}
+
+/// Newton refinement of a UV curve-curve crossing (ta, tb), clamped to the domains.
+void newton_curve_curve(const NurbsCurve& ca, double& ta, const NurbsCurve& cb, double& tb, double tol) {
+
+    for (int it = 0; it < 8; ++it) {
+        const std::vector<Vector> da = ca.evaluate(ta, 1);
+        const std::vector<Vector> db = cb.evaluate(tb, 1);
+        double fu = da[0][0] - db[0][0];
+        double fv = da[0][1] - db[0][1];
+
+        if (std::hypot(fu, fv) < tol)
+            break;
+
+        double j00 = da[1][0];
+        double j01 = -db[1][0];
+        double j10 = da[1][1];
+        double j11 = -db[1][1];
+        double den = j00 * j11 - j01 * j10;
+
+        if (std::abs(den) < 1e-20)
+            break;
+
+        ta -= (fu * j11 - j01 * fv) / den;
+        tb -= (j00 * fv - fu * j10) / den;
+        const std::pair<double, double> adom = ca.domain();
+        const std::pair<double, double> bdom = cb.domain();
+        ta = std::min(std::max(ta, adom.first), adom.second);
+        tb = std::min(std::max(tb, bdom.first), bdom.second);
+    }
+}
+
+/// Signed area of a closed UV loop sampled at 64 parameters.
+double loop_signed_area(const NurbsCurve& loop) {
+
+    int n = 64;
+    const std::pair<double, double> ldom = loop.domain();
+    double l0 = ldom.first;
+    double l1 = ldom.second;
+    double s = 0.0;
+    Point prev = loop.point_at(l0);
+
+    for (int i = 1; i <= n; ++i) {
+        Point p = loop.point_at(l0 + (l1 - l0) * i / n);
+        s += prev[0] * p[1] - p[0] * prev[1];
+        prev = p;
+    }
+
+    return s * 0.5;
+}
+
+/// Plane coordinates of pt in the affine frame (p00, u_axis, v_axis).
+Point project_to_uv(
+    const Point& pt,
+    const Point& p00,
+    const Vector& u_axis,
+    const Vector& v_axis,
+    double u_len2,
+    double v_len2
+) {
+
+    double dx = pt[0] - p00[0];
+    double dy = pt[1] - p00[1];
+    double dz = pt[2] - p00[2];
+    double nu = (dx * u_axis[0] + dy * u_axis[1] + dz * u_axis[2]) / u_len2;
+    double nv = (dx * v_axis[0] + dy * v_axis[1] + dz * v_axis[2]) / v_len2;
+
+    return Point(nu, nv, 0.0);
+}
+
+/// Snap a UV point onto the domain border when within snap_uv of it.
+void snap_to_border(std::array<double, 2>& p, double u0, double u1, double v0, double v1, double snap_uv) {
+
+    if (std::abs(p[0] - u0) < snap_uv)
+        p[0] = u0;
+
+    if (std::abs(p[0] - u1) < snap_uv)
+        p[0] = u1;
+
+    if (std::abs(p[1] - v0) < snap_uv)
+        p[1] = v0;
+
+    if (std::abs(p[1] - v1) < snap_uv)
+        p[1] = v1;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VertexWelder
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Adds 3D points to a mesh, returning the existing vertex when one lies within tol.
+class VertexWelder {
+public:
+    /// Construct over a mesh with a weld tolerance and a hash cell size.
+    VertexWelder(Mesh& mesh, double tol, double cell) : mesh_(mesh), tol_(tol), cell_(cell) {}
+
+    /// Weld a 3D point, returning the existing vertex within tol or a new one.
+    size_t weld(const Point& p) {
+
+        long long ci = (long long)std::floor(p[0] / cell_);
+        long long cj = (long long)std::floor(p[1] / cell_);
+        long long ck = (long long)std::floor(p[2] / cell_);
+
+        for (long long di = -1; di <= 1; ++di)
+            for (long long dj = -1; dj <= 1; ++dj)
+                for (long long dk = -1; dk <= 1; ++dk) {
+                    auto it = cells_.find(std::make_tuple(ci + di, cj + dj, ck + dk));
+
+                    if (it == cells_.end())
+                        continue;
+
+                    for (const auto& [q, vk] : it->second) {
+                        double dx = q[0] - p[0];
+                        double dy = q[1] - p[1];
+                        double dz = q[2] - p[2];
+
+                        if (dx * dx + dy * dy + dz * dz <= tol_ * tol_)
+                            return vk;
+                    }
+                }
+
+        size_t vk = mesh_.add_vertex(p);
+        cells_[std::make_tuple(ci, cj, ck)].push_back({p, vk});
+
+        return vk;
+    }
+
+    /// Weld the surface point at (u, v); a new vertex gets the surface normal.
+    size_t weld(const NurbsSurface& srf, double u, double v) {
+
+        size_t before = mesh_.number_of_vertices();
+        size_t vk = weld(srf.point_at(u, v));
+
+        if (mesh_.number_of_vertices() > before) {
+            Vector nm = srf.normal_at(u, v);
+            mesh_.vertex[vk].set_normal(nm[0], nm[1], nm[2]);
+        }
+
+        return vk;
+    }
+
+private:
+    Mesh& mesh_; // Mesh receiving the vertices.
+    double tol_; // Weld tolerance.
+    double cell_; // Hash cell size.
+    std::map<std::tuple<long long, long long, long long>, std::vector<std::pair<Point, size_t>>> cells_; // Vertices per cell.
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UVGraph
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Snapped UV vertices of the split graph: points within snap of each other share one id.
+class UVVertexPool {
+public:
+    /// Construct with the snap distance.
+    explicit UVVertexPool(double snap) : snap_(snap) {}
+
+    /// Id of the vertex within snap of p, a new one when none.
+    int id(const std::array<double, 2>& p) {
+
+        long long ci = (long long)std::floor(p[0] / snap_);
+        long long cj = (long long)std::floor(p[1] / snap_);
+
+        for (int di = -1; di <= 1; ++di) {
+            for (int dj = -1; dj <= 1; ++dj) {
+                const auto bucket = cells_.find({ci + di, cj + dj});
+
+                if (bucket == cells_.end())
+                    continue;
+
+                for (int vk : bucket->second) {
+                    const std::array<double, 2>& q = verts[vk];
+
+                    if (std::hypot(q[0] - p[0], q[1] - p[1]) <= snap_)
+                        return vk;
+                }
+            }
+        }
+
+        int vk = (int)verts.size();
+        verts.push_back({p[0], p[1]});
+        cells_[{ci, cj}].push_back(vk);
+
+        return vk;
+    }
+
+    std::vector<std::array<double, 2>> verts; // UV position per id.
+
+private:
+    double snap_; // Snap distance.
+    std::map<std::pair<long long, long long>, std::vector<int>> cells_; // Ids per cell.
+};
+
+/// Graph edge between two pool vertices on pcurve cidx (negative: a domain border) over [ta, tb].
+struct SplitEdge {
+    int a; // First pool vertex.
+    int b; // Second pool vertex.
+    int cidx; // Pcurve index, negative for a domain border.
+    double ta; // Parameter at a.
+    double tb; // Parameter at b.
+};
+
+/// Directed copy of a split edge: fwd when it runs a -> b.
+struct HalfEdge {
+    int tail; // Start vertex.
+    int head; // End vertex.
+    int eidx; // Split edge index.
+    int fwd; // 1 when it runs a -> b.
+};
+
+/// Signed area of a half-edge cycle.
+double cycle_area(
+    const std::vector<int>& cycle,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<std::array<double, 2>>& verts
+) {
+
+    double s = 0.0;
+
+    for (int hi : cycle) {
+        const std::array<double, 2>& a = verts[hes[hi].tail];
+        const std::array<double, 2>& b = verts[hes[hi].head];
+        s += a[0] * b[1] - b[0] * a[1];
+    }
+
+    return s * 0.5;
+}
+
+/// Even-odd test of p against a half-edge cycle.
+bool point_in_cycle(
+    const std::array<double, 2>& p,
+    const std::vector<int>& cycle,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<std::array<double, 2>>& verts
+) {
+
+    bool inside = false;
+
+    for (int hi : cycle) {
+        const std::array<double, 2>& a = verts[hes[hi].tail];
+        const std::array<double, 2>& b = verts[hes[hi].head];
+
+        if ((a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])
+            inside = !inside;
+    }
+
+    return inside;
+}
+
+/// Pieces of a cycle: trimmed pcurve runs, straight UV segments where a run cannot be cut.
+std::vector<NurbsCurve> cycle_to_segments(
+    const std::vector<int>& cycle,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<SplitEdge>& edges,
+    const std::vector<std::array<double, 2>>& verts,
+    const std::vector<NurbsCurve>& pcurves
+) {
+
+    /// Consecutive half-edges on one pcurve.
+    struct Run {
+        int cidx; // Pcurve index, negative for a domain border.
+        int va; // First vertex.
+        int vb; // Last vertex.
+        double ta; // Parameter at va.
+        double tb; // Parameter at vb.
+    };
+
+    std::vector<Run> runs;
+
+    for (int hi : cycle) {
+        const HalfEdge& he = hes[hi];
+        const SplitEdge& e = edges[he.eidx];
+        double ta = he.fwd ? e.ta : e.tb;
+        double tb = he.fwd ? e.tb : e.ta;
+
+        if (!runs.empty() && runs.back().cidx == e.cidx && runs.back().vb == he.tail) {
+            runs.back().vb = he.head;
+            runs.back().tb = tb;
+        } else {
+            runs.push_back({e.cidx, he.tail, he.head, ta, tb});
+        }
+    }
+
+    std::vector<NurbsCurve> pieces;
+
+    for (const Run& run : runs) {
+        bool made = false;
+
+        if (run.cidx >= 0) {
+            const NurbsCurve& crv = pcurves[run.cidx];
+            const std::pair<double, double> cdom = crv.domain();
+            double c0 = cdom.first;
+            double c1 = cdom.second;
+            double lo = std::max(c0, std::min(run.ta, run.tb));
+            double hi_ = std::min(c1, std::max(run.ta, run.tb));
+            NurbsCurve piece = crv;
+            bool piece_ok = true;
+
+            if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
+                if (!piece.trim(lo, hi_))
+                    piece_ok = false;
+            } else if (hi_ - lo <= 1e-14) {
+                if (!(run.va == run.vb && piece.is_closed()))
+                    piece_ok = false;
+            }
+
+            if (piece_ok && piece.is_valid()) {
+                if (run.ta > run.tb)
+                    piece.reverse();
+
+                pieces.push_back(piece);
+                made = true;
+            }
+        }
+
+        if (!made) {
+            const std::array<double, 2>& pa = verts[run.va];
+            const std::array<double, 2>& pb = verts[run.vb];
+
+            if (std::hypot(pb[0] - pa[0], pb[1] - pa[1]) > 1e-14) {
+                std::vector<Point> seg_pts = {Point(pa[0], pa[1], 0.0), Point(pb[0], pb[1], 0.0)};
+                pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
+            }
+        }
+    }
+
+    return pieces;
+}
+
+/// Closed loop of a cycle: the joined pieces when they close, else the polygon through its vertices.
+NurbsCurve cycle_to_loop(
+    const std::vector<int>& cycle,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<SplitEdge>& edges,
+    const std::vector<std::array<double, 2>>& verts,
+    const std::vector<NurbsCurve>& pcurves,
+    double snap_uv
+) {
+
+    std::vector<NurbsCurve> pieces = cycle_to_segments(cycle, hes, edges, verts, pcurves);
+
+    if (pieces.empty())
+        return NurbsCurve();
+
+    double join_tol = snap_uv * 4.0;
+    std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, join_tol);
+
+    if (joined.size() == 1 && joined[0].is_valid()) {
+        NurbsCurve& J = joined[0];
+
+        if (!J.is_closed() && J.point_at_start().distance(J.point_at_end()) <= join_tol) {
+            double x;
+            double y;
+            double z;
+            double w;
+
+            if (J.get_cv_4d(0, x, y, z, w)) {
+                double xe;
+                double ye;
+                double ze;
+                double we;
+
+                if (J.get_cv_4d(J.cv_count() - 1, xe, ye, ze, we))
+                    J.set_cv_4d(J.cv_count() - 1, x, y, z, we);
+            }
+        }
+
+        if (J.is_closed())
+            return J;
+    }
+
+    std::vector<Point> loop_pts;
+
+    for (int hi : cycle) {
+        const std::array<double, 2>& a = verts[hes[hi].tail];
+        loop_pts.push_back(Point(a[0], a[1], 0.0));
+    }
+
+    loop_pts.push_back(Point(loop_pts[0][0], loop_pts[0][1], 0.0));
+
+    return NurbsCurve::create(false, 1, loop_pts);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FlatMap64
 // ═══════════════════════════════════════════════════════════════════════════
 
-template<typename V>
-class FlatMap64 {
-    static constexpr uint64_t EMPTY_KEY = ~uint64_t(0);
-    struct Slot { uint64_t key = EMPTY_KEY; V value; };
-    std::vector<Slot> slots_;
-    size_t size_ = 0;
-    size_t shift_ = 64;
+/// Open-addressing hash map from uint64 keys, linear probing, power-of-two capacity.
+template <typename V> class FlatMap64 {
+    static constexpr uint64_t EMPTY_KEY = ~uint64_t(0); // Key of a free slot.
 
+    /// One hash slot.
+    struct Slot {
+        uint64_t key = EMPTY_KEY; // Key, EMPTY_KEY when free.
+        V value; // Stored value.
+    };
+
+    std::vector<Slot> slots_; // Slot table.
+    size_t size_ = 0; // Occupied slots.
+    size_t shift_ = 64; // Right shift mapping a hash into the table.
+
+    /// Smallest r with 2^r >= n.
     static size_t log2_pot(size_t n) {
-        size_t r = 0; while ((size_t(1) << r) < n) ++r; return r;
+
+        size_t r = 0;
+
+        while ((size_t(1) << r) < n)
+            ++r;
+
+        return r;
     }
+
+    /// Home slot of a key.
     size_t probe(uint64_t key) const {
         return (size_t)((key * uint64_t(0x9E3779B97F4A7C15ULL)) >> shift_);
     }
+
+    /// Double the table and reinsert every entry.
     void grow() {
+
         size_t new_cap = slots_.empty() ? 16 : slots_.size() * 2;
         std::vector<Slot> old = std::move(slots_);
         slots_.assign(new_cap, Slot{EMPTY_KEY, V{}});
         shift_ = 64 - log2_pot(new_cap);
         size_ = 0;
-        for (auto& s : old) if (s.key != EMPTY_KEY) insert_impl(s.key, std::move(s.value));
+
+        for (Slot& s : old)
+            if (s.key != EMPTY_KEY)
+                insert_impl(s.key, std::move(s.value));
     }
+
+    /// Insert or overwrite without growing.
     void insert_impl(uint64_t key, V val) {
-        size_t mask = slots_.size() - 1, i = probe(key);
-        while (slots_[i].key != EMPTY_KEY) {
-            if (slots_[i].key == key) { slots_[i].value = std::move(val); return; }
-            i = (i + 1) & mask;
-        }
-        slots_[i].key = key; slots_[i].value = std::move(val); ++size_;
-    }
-public:
-    FlatMap64() = default;
-    void reserve(size_t n) {
-        size_t need = n * 2;
-        if (need <= slots_.size()) return;
-        size_t cap = 16; while (cap < need) cap *= 2;
-        std::vector<Slot> old = std::move(slots_);
-        slots_.assign(cap, Slot{EMPTY_KEY, V{}});
-        shift_ = 64 - log2_pot(cap); size_ = 0;
-        for (auto& s : old) if (s.key != EMPTY_KEY) insert_impl(s.key, std::move(s.value));
-    }
-    V* find(uint64_t key) {
-        if (slots_.empty()) return nullptr;
-        size_t mask = slots_.size() - 1, i = probe(key);
-        while (slots_[i].key != EMPTY_KEY) {
-            if (slots_[i].key == key) return &slots_[i].value;
-            i = (i + 1) & mask;
-        }
-        return nullptr;
-    }
-    const V* find(uint64_t key) const {
-        if (slots_.empty()) return nullptr;
-        size_t mask = slots_.size() - 1, i = probe(key);
-        while (slots_[i].key != EMPTY_KEY) {
-            if (slots_[i].key == key) return &slots_[i].value;
-            i = (i + 1) & mask;
-        }
-        return nullptr;
-    }
-    V& operator[](uint64_t key) {
-        if (size_ * 2 >= slots_.size()) grow();
-        size_t mask = slots_.size() - 1, i = probe(key);
-        while (slots_[i].key != EMPTY_KEY) {
-            if (slots_[i].key == key) return slots_[i].value;
-            i = (i + 1) & mask;
-        }
-        slots_[i].key = key; slots_[i].value = V{}; ++size_;
-        return slots_[i].value;
-    }
-    void erase(uint64_t key) {
-        if (slots_.empty()) return;
-        size_t mask = slots_.size() - 1, i = probe(key);
+
+        size_t mask = slots_.size() - 1;
+        size_t i = probe(key);
+
         while (slots_[i].key != EMPTY_KEY) {
             if (slots_[i].key == key) {
-                --size_; size_t j = i;
-                while (true) {
+                slots_[i].value = std::move(val);
+
+                return;
+            }
+
+            i = (i + 1) & mask;
+        }
+
+        slots_[i].key = key;
+        slots_[i].value = std::move(val);
+        ++size_;
+    }
+
+public:
+    /// Construct an empty map.
+    FlatMap64() = default;
+
+    /// Reserve room for n entries at half load.
+    void reserve(size_t n) {
+
+        size_t need = n * 2;
+
+        if (need <= slots_.size())
+            return;
+
+        size_t cap = 16;
+
+        while (cap < need)
+            cap *= 2;
+
+        std::vector<Slot> old = std::move(slots_);
+        slots_.assign(cap, Slot{EMPTY_KEY, V{}});
+        shift_ = 64 - log2_pot(cap);
+        size_ = 0;
+
+        for (Slot& s : old)
+            if (s.key != EMPTY_KEY)
+                insert_impl(s.key, std::move(s.value));
+    }
+
+    /// Value of a key, null when absent.
+    V* find(uint64_t key) {
+
+        if (slots_.empty())
+            return nullptr;
+
+        size_t mask = slots_.size() - 1;
+        size_t i = probe(key);
+
+        while (slots_[i].key != EMPTY_KEY) {
+            if (slots_[i].key == key)
+                return &slots_[i].value;
+
+            i = (i + 1) & mask;
+        }
+
+        return nullptr;
+    }
+
+    /// Const value of a key, null when absent.
+    const V* find(uint64_t key) const {
+
+        if (slots_.empty())
+            return nullptr;
+
+        size_t mask = slots_.size() - 1;
+        size_t i = probe(key);
+
+        while (slots_[i].key != EMPTY_KEY) {
+            if (slots_[i].key == key)
+                return &slots_[i].value;
+
+            i = (i + 1) & mask;
+        }
+
+        return nullptr;
+    }
+
+    /// Value of a key, inserted default-constructed when absent.
+    V& operator[](uint64_t key) {
+        if (size_ * 2 >= slots_.size())
+            grow();
+
+        size_t mask = slots_.size() - 1;
+        size_t i = probe(key);
+
+        while (slots_[i].key != EMPTY_KEY) {
+            if (slots_[i].key == key)
+                return slots_[i].value;
+
+            i = (i + 1) & mask;
+        }
+
+        slots_[i].key = key;
+        slots_[i].value = V{};
+        ++size_;
+
+        return slots_[i].value;
+    }
+
+    /// Remove a key, backward-shifting the probe run.
+    void erase(uint64_t key) {
+
+        if (slots_.empty())
+            return;
+
+        size_t mask = slots_.size() - 1;
+        size_t i = probe(key);
+
+        while (slots_[i].key != EMPTY_KEY) {
+            if (slots_[i].key == key) {
+                --size_;
+                size_t j = i;
+
+                for (size_t step = 0; step < slots_.size(); ++step) {
                     j = (j + 1) & mask;
-                    if (slots_[j].key == EMPTY_KEY) break;
+
+                    if (slots_[j].key == EMPTY_KEY)
+                        break;
+
                     size_t k = probe(slots_[j].key);
                     bool move = (i <= j) ? (k <= i || k > j) : (k <= i && k > j);
-                    if (move) { slots_[i] = std::move(slots_[j]); i = j; }
+
+                    if (move) {
+                        slots_[i] = std::move(slots_[j]);
+                        i = j;
+                    }
                 }
-                slots_[i].key = EMPTY_KEY; return;
+
+                slots_[i].key = EMPTY_KEY;
+
+                return;
             }
+
             i = (i + 1) & mask;
         }
     }
-    void clear() { for (auto& s : slots_) s.key = EMPTY_KEY; size_ = 0; }
-    size_t size() const { return size_; }
+
+    /// Free every slot.
+    void clear() {
+        for (Slot& s : slots_)
+            s.key = EMPTY_KEY;
+
+        size_ = 0;
+    }
+
+    /// Number of entries.
+    size_t size() const {
+        return size_;
+    }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Delaunay2D
 // ═══════════════════════════════════════════════════════════════════════════
 
-struct Vertex2D { double x = 0.0, y = 0.0; };
-
-struct Triangle {
-    int  v[3]           = {-1, -1, -1};
-    int  adj[3]         = {-1, -1, -1};
-    bool constrained[3] = {false, false, false};
-    bool alive = true;
+/// UV vertex of the triangulation.
+struct Vertex2D {
+    double x = 0.0; // U coordinate.
+    double y = 0.0; // V coordinate.
 };
 
+/// Triangle with per-edge neighbours; edge k is opposite vertex k.
+struct Triangle {
+    int v[3] = {-1, -1, -1}; // Vertex indices.
+    int adj[3] = {-1, -1, -1}; // Neighbour across each edge, -1 on the hull.
+    bool constrained[3] = {false, false, false}; // True where an edge is a constraint.
+    bool alive = true; // False once removed.
+};
+
+/// Incremental constrained Delaunay triangulation in UV with Bowyer-Watson insertion.
 class Delaunay2D {
 public:
-    std::vector<Vertex2D> vertices;
-    std::vector<Triangle> triangles;
-    int super_v[3] = {-1, -1, -1};
-    FlatMap64<std::pair<int,int>> edge_map;
-    int last_found_ = 0;
+    std::vector<Vertex2D> vertices; // Vertices, the super triangle first.
+    std::vector<Triangle> triangles; // Triangle pool, dead ones flagged.
+    int super_v[3] = {-1, -1, -1}; // Super triangle vertices.
+    FlatMap64<std::pair<int, int>> edge_map; // Hull edge -> (triangle, edge index).
+    int last_found_ = 0; // Triangle the last locate ended in.
 
+    /// Order-independent key of an edge.
     static uint64_t edge_key(int a, int b) {
-        return ((uint64_t)(uint32_t)std::min(a,b) << 32) | (uint64_t)(uint32_t)std::max(a,b);
+        return ((uint64_t)(uint32_t)std::min(a, b) << 32) | (uint64_t)(uint32_t)std::max(a, b);
     }
 
+    /// Construct with a super triangle around the box.
     Delaunay2D(double xmin, double ymin, double xmax, double ymax);
-    int  insert(double x, double y);
-    void insert_constraint(int v0, int v1);
-    void cleanup();
-    std::vector<std::array<int,3>> get_triangles() const;
 
-    static double in_circumcircle(double ax, double ay, double bx, double by,
-                                  double cx, double cy, double dx, double dy);
+    /// Insert a point and return its vertex index, the existing one when coincident.
+    int insert(double x, double y);
+
+    /// Force the edge v0-v1 into the triangulation by flipping the edges it crosses.
+    void insert_constraint(int v0, int v1);
+
+    /// Drop the triangles touching the super triangle.
+    void cleanup();
+
+    /// Vertex index triples of the live triangles.
+    std::vector<std::array<int, 3>> get_triangles() const;
+
+    /// Positive when d lies inside the circumcircle of a, b, c.
+    static double in_circumcircle(
+        double ax,
+        double ay,
+        double bx,
+        double by,
+        double cx,
+        double cy,
+        double dx,
+        double dy
+    );
+
+    /// Twice the signed area of a, b, c.
     static double orient2d(double ax, double ay, double bx, double by, double cx, double cy);
+
+    /// Triangle containing (x, y) by walking from start_tri, -1 when none.
     int locate(double x, double y, int start_tri = 0) const;
 
 private:
-    int visit_epoch_ = 0;
-    std::vector<int> visit_stamp_;
-    mutable std::vector<int> bad_;
-    struct BEdge { int e0, e1; bool constrained = false; };
-    mutable std::vector<BEdge> polygon_;
+    /// True when triangle ti has vertex v.
+    bool has_vertex(int ti, int v) const {
+        return triangles[ti].v[0] == v || triangles[ti].v[1] == v || triangles[ti].v[2] == v;
+    }
+
+    /// New counter-clockwise triangle over three vertices; skipped when degenerate.
+    void add_triangle(int pa, int pb, int pc);
+
+    int visit_epoch_ = 0; // Stamp of the current search.
+    std::vector<int> visit_stamp_; // Last search stamp per triangle.
+    mutable std::vector<int> bad_; // Triangles whose circumcircle holds the new point.
+
+    /// Edge of the cavity polygon.
+    struct BEdge {
+        int e0; // Start vertex.
+        int e1; // End vertex.
+        bool constrained = false; // True when the edge is a constraint.
+    };
+
+    mutable std::vector<BEdge> polygon_; // Cavity boundary of the current insertion.
+
+    /// Record the hull edges of triangle ti in edge_map.
     void register_triangle_edges(int ti);
+
+    /// Drop the hull edges of triangle ti from edge_map and its neighbours.
     void unregister_triangle_edges(int ti);
 };
 
-double Delaunay2D::in_circumcircle(double ax, double ay, double bx, double by,
-                                    double cx, double cy, double dx, double dy) {
-    double adx = ax-dx, ady = ay-dy, bdx = bx-dx, bdy = by-dy, cdx = cx-dx, cdy = cy-dy;
-    return (adx*adx+ady*ady)*(bdx*cdy-cdx*bdy)
-         + (bdx*bdx+bdy*bdy)*(cdx*ady-adx*cdy)
-         + (cdx*cdx+cdy*cdy)*(adx*bdy-bdx*ady);
+double Delaunay2D::in_circumcircle(
+    double ax,
+    double ay,
+    double bx,
+    double by,
+    double cx,
+    double cy,
+    double dx,
+    double dy
+) {
+
+    double adx = ax - dx;
+    double ady = ay - dy;
+    double bdx = bx - dx;
+    double bdy = by - dy;
+    double cdx = cx - dx;
+    double cdy = cy - dy;
+
+    return (adx * adx + ady * ady) * (bdx * cdy - cdx * bdy) + (bdx * bdx + bdy * bdy) * (cdx * ady - adx * cdy) +
+        (cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
 }
 
 double Delaunay2D::orient2d(double ax, double ay, double bx, double by, double cx, double cy) {
-    return (bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
+    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 }
 
 void Delaunay2D::register_triangle_edges(int ti) {
+
     const Triangle& t = triangles[ti];
+
     for (int k = 0; k < 3; ++k) {
-        int a = t.v[(k+1)%3], b = t.v[(k+2)%3];
-        auto key = edge_key(a, b);
-        auto* val = edge_map.find(key);
+        int a = t.v[(k + 1) % 3];
+        int b = t.v[(k + 2) % 3];
+        const uint64_t key = edge_key(a, b);
+        std::pair<int, int>* val = edge_map.find(key);
+
         if (val) {
             auto [oti, ok] = *val;
-            triangles[ti].adj[k] = oti; triangles[oti].adj[ok] = ti;
+            triangles[ti].adj[k] = oti;
+            triangles[oti].adj[ok] = ti;
             edge_map.erase(key);
-        } else { edge_map[key] = {ti, k}; }
+        } else {
+            edge_map[key] = {ti, k};
+        }
     }
 }
 
 void Delaunay2D::unregister_triangle_edges(int ti) {
+
     const Triangle& t = triangles[ti];
+
     for (int k = 0; k < 3; ++k) {
-        int a = t.v[(k+1)%3], b = t.v[(k+2)%3];
-        auto key = edge_key(a, b);
+        int a = t.v[(k + 1) % 3];
+        int b = t.v[(k + 2) % 3];
+        const uint64_t key = edge_key(a, b);
         int adj_ti = t.adj[k];
+
         if (adj_ti >= 0 && triangles[adj_ti].alive) {
             Triangle& adj = triangles[adj_ti];
+
             for (int kk = 0; kk < 3; ++kk)
                 if (adj.adj[kk] == ti) {
                     adj.adj[kk] = -1;
-                    edge_map[edge_key(adj.v[(kk+1)%3], adj.v[(kk+2)%3])] = {adj_ti, kk};
+                    edge_map[edge_key(adj.v[(kk + 1) % 3], adj.v[(kk + 2) % 3])] = {adj_ti, kk};
                     break;
                 }
         } else {
-            auto* val = edge_map.find(key);
-            if (val && val->first == ti) edge_map.erase(key);
+            std::pair<int, int>* val = edge_map.find(key);
+
+            if (val && val->first == ti)
+                edge_map.erase(key);
         }
     }
 }
 
 Delaunay2D::Delaunay2D(double xmin, double ymin, double xmax, double ymax) {
-    double dx = xmax-xmin, dy = ymax-ymin, d = std::max(dx,dy);
-    double cx = (xmin+xmax)*0.5, cy = (ymin+ymax)*0.5, scale = 20.0;
-    vertices.push_back({cx-scale*d, cy-scale*d});
-    vertices.push_back({cx+scale*d, cy-scale*d});
-    vertices.push_back({cx, cy+scale*d});
-    super_v[0]=0; super_v[1]=1; super_v[2]=2;
-    triangles.reserve(4096); vertices.reserve(2048); edge_map.reserve(2048);
-    visit_stamp_.reserve(4096); bad_.reserve(32); polygon_.reserve(32);
-    Triangle t; t.v[0]=0; t.v[1]=1; t.v[2]=2; t.adj[0]=t.adj[1]=t.adj[2]=-1; t.alive=true;
-    triangles.push_back(t); register_triangle_edges(0);
+
+    double dx = xmax - xmin;
+    double dy = ymax - ymin;
+    double d = std::max(dx, dy);
+    double cx = (xmin + xmax) * 0.5;
+    double cy = (ymin + ymax) * 0.5;
+    double scale = 20.0;
+    vertices.push_back({cx - scale * d, cy - scale * d});
+    vertices.push_back({cx + scale * d, cy - scale * d});
+    vertices.push_back({cx, cy + scale * d});
+    super_v[0] = 0;
+    super_v[1] = 1;
+    super_v[2] = 2;
+    triangles.reserve(4096);
+    vertices.reserve(2048);
+    edge_map.reserve(2048);
+    visit_stamp_.reserve(4096);
+    bad_.reserve(32);
+    polygon_.reserve(32);
+    Triangle t;
+    t.v[0] = 0;
+    t.v[1] = 1;
+    t.v[2] = 2;
+    t.adj[0] = t.adj[1] = t.adj[2] = -1;
+    t.alive = true;
+    triangles.push_back(t);
+    register_triangle_edges(0);
 }
 
 int Delaunay2D::locate(double x, double y, int start_tri) const {
+
     if (start_tri < 0 || start_tri >= (int)triangles.size() || !triangles[start_tri].alive) {
-        start_tri = (int)triangles.size()-1;
-        while (start_tri >= 0 && !triangles[start_tri].alive) --start_tri;
-        if (start_tri < 0) return -1;
+        start_tri = (int)triangles.size() - 1;
+
+        while (start_tri >= 0 && !triangles[start_tri].alive)
+            --start_tri;
+
+        if (start_tri < 0)
+            return -1;
     }
-    int cur = start_tri, max_iter = (int)triangles.size();
+
+    int cur = start_tri;
+    int max_iter = (int)triangles.size();
+
     for (int iter = 0; iter < max_iter; ++iter) {
-        const Triangle& tri = triangles[cur]; bool moved = false;
+        const Triangle& tri = triangles[cur];
+        bool moved = false;
+
         for (int k = 0; k < 3; ++k) {
-            int a = tri.v[k], b = tri.v[(k+1)%3];
-            if (orient2d(vertices[a].x,vertices[a].y,vertices[b].x,vertices[b].y,x,y) < 0) {
-                int opp = (k+2)%3;
-                if (tri.adj[opp]>=0 && triangles[tri.adj[opp]].alive)
-                    { cur = tri.adj[opp]; moved = true; break; }
+            int a = tri.v[k];
+            int b = tri.v[(k + 1) % 3];
+
+            if (orient2d(vertices[a].x, vertices[a].y, vertices[b].x, vertices[b].y, x, y) < 0) {
+                int opp = (k + 2) % 3;
+
+                if (tri.adj[opp] >= 0 && triangles[tri.adj[opp]].alive) {
+                    cur = tri.adj[opp];
+                    moved = true;
+                    break;
+                }
             }
         }
-        if (!moved) return cur;
+
+        if (!moved)
+            return cur;
     }
+
     return cur;
 }
 
 int Delaunay2D::insert(double x, double y) {
+
     int start = locate(x, y, last_found_);
+
     if (start >= 0 && triangles[start].alive)
         for (int k = 0; k < 3; ++k) {
             int vi2 = triangles[start].v[k];
-            double ddx = vertices[vi2].x-x, ddy = vertices[vi2].y-y;
-            if (ddx*ddx+ddy*ddy < 1e-12) return vi2;
+            double ddx = vertices[vi2].x - x;
+            double ddy = vertices[vi2].y - y;
+
+            if (ddx * ddx + ddy * ddy < 1e-12)
+                return vi2;
         }
+
     int vi = (int)vertices.size();
     vertices.push_back({x, y});
     ++visit_epoch_;
-    if ((int)visit_stamp_.size() < (int)triangles.size()+64)
-        visit_stamp_.resize(triangles.size()+64, 0);
+
+    if ((int)visit_stamp_.size() < (int)triangles.size() + 64)
+        visit_stamp_.resize(triangles.size() + 64, 0);
+
     bad_.clear();
-    bad_.push_back(start); visit_stamp_[start] = visit_epoch_;
+    bad_.push_back(start);
+    visit_stamp_[start] = visit_epoch_;
     int bfs_front = 0;
+
     while (bfs_front < (int)bad_.size()) {
         int ti = bad_[bfs_front++];
         const Triangle& tri = triangles[ti];
-        if (!tri.alive) { bad_[bfs_front-1] = -1; continue; }
-        const Vertex2D& a=vertices[tri.v[0]], &b=vertices[tri.v[1]], &c=vertices[tri.v[2]];
-        double o = orient2d(a.x,a.y,b.x,b.y,c.x,c.y);
-        double ic = (o>0) ? in_circumcircle(a.x,a.y,b.x,b.y,c.x,c.y,x,y)
-                          : in_circumcircle(a.x,a.y,c.x,c.y,b.x,b.y,x,y);
+
+        if (!tri.alive) {
+            bad_[bfs_front - 1] = -1;
+            continue;
+        }
+
+        const Vertex2D& a = vertices[tri.v[0]], &b = vertices[tri.v[1]], &c = vertices[tri.v[2]];
+        double o = orient2d(a.x, a.y, b.x, b.y, c.x, c.y);
+        double ic = (o > 0) ? in_circumcircle(a.x, a.y, b.x, b.y, c.x, c.y, x, y)
+                            : in_circumcircle(a.x, a.y, c.x, c.y, b.x, b.y, x, y);
+
         if (ic > 0) {
             for (int k = 0; k < 3; ++k) {
-                if (tri.constrained[k]) continue;
+                if (tri.constrained[k])
+                    continue;
+
                 int nb = tri.adj[k];
-                if (nb>=0 && nb<(int)visit_stamp_.size() && visit_stamp_[nb]!=visit_epoch_)
-                    { visit_stamp_[nb]=visit_epoch_; bad_.push_back(nb); }
+
+                if (nb >= 0 && nb < (int)visit_stamp_.size() && visit_stamp_[nb] != visit_epoch_) {
+                    visit_stamp_[nb] = visit_epoch_;
+                    bad_.push_back(nb);
+                }
             }
-        } else { bad_[bfs_front-1] = -1; }
-    }
-    int write = 0;
-    for (int i = 0; i < (int)bad_.size(); ++i) if (bad_[i]>=0) bad_[write++]=bad_[i];
-    bad_.resize(write);
-    if (bad_.empty()) { vertices.pop_back(); return -1; }
-    polygon_.clear();
-    for (int ti : bad_) {
-        const Triangle& tri = triangles[ti];
-        for (int k = 0; k < 3; ++k) {
-            int nb = tri.adj[k]; bool nb_bad = false;
-            if (nb >= 0) for (int bi : bad_) if (bi==nb) { nb_bad=true; break; }
-            if (!nb_bad) polygon_.push_back({tri.v[(k+1)%3], tri.v[(k+2)%3], tri.constrained[k]});
+        } else {
+            bad_[bfs_front - 1] = -1;
         }
     }
-    for (int ti : bad_) { unregister_triangle_edges(ti); triangles[ti].alive=false; }
-    for (const auto& edge : polygon_) {
-        double o = orient2d(vertices[vi].x,vertices[vi].y,
-                            vertices[edge.e0].x,vertices[edge.e0].y,
-                            vertices[edge.e1].x,vertices[edge.e1].y);
-        if (std::abs(o) < 1e-20) continue;
-        int new_ti = (int)triangles.size();
-        Triangle nt; nt.v[0]=vi;
-        if (o>0) { nt.v[1]=edge.e0; nt.v[2]=edge.e1; }
-        else     { nt.v[1]=edge.e1; nt.v[2]=edge.e0; }
-        nt.constrained[0]=edge.constrained; nt.adj[0]=nt.adj[1]=nt.adj[2]=-1; nt.alive=true;
-        triangles.push_back(nt); register_triangle_edges(new_ti);
+
+    int write = 0;
+
+    for (int i = 0; i < (int)bad_.size(); ++i)
+        if (bad_[i] >= 0)
+            bad_[write++] = bad_[i];
+
+    bad_.resize(write);
+
+    if (bad_.empty()) {
+        vertices.pop_back();
+
+        return -1;
     }
-    last_found_ = (int)triangles.size()-1;
+
+    polygon_.clear();
+
+    for (int ti : bad_) {
+        const Triangle& tri = triangles[ti];
+
+        for (int k = 0; k < 3; ++k) {
+            int nb = tri.adj[k];
+            bool nb_bad = false;
+
+            if (nb >= 0)
+                for (int bi : bad_)
+                    if (bi == nb) {
+                        nb_bad = true;
+                        break;
+                    }
+
+            if (!nb_bad)
+                polygon_.push_back({tri.v[(k + 1) % 3], tri.v[(k + 2) % 3], tri.constrained[k]});
+        }
+    }
+
+    for (int ti : bad_) {
+        unregister_triangle_edges(ti);
+        triangles[ti].alive = false;
+    }
+
+    for (const BEdge& edge : polygon_) {
+        double o = orient2d(
+            vertices[vi].x,
+            vertices[vi].y,
+            vertices[edge.e0].x,
+            vertices[edge.e0].y,
+            vertices[edge.e1].x,
+            vertices[edge.e1].y
+        );
+
+        if (std::abs(o) < 1e-20)
+            continue;
+
+        int new_ti = (int)triangles.size();
+        Triangle nt;
+        nt.v[0] = vi;
+
+        if (o > 0) {
+            nt.v[1] = edge.e0;
+            nt.v[2] = edge.e1;
+        } else {
+            nt.v[1] = edge.e1;
+            nt.v[2] = edge.e0;
+        }
+
+        nt.constrained[0] = edge.constrained;
+        nt.adj[0] = nt.adj[1] = nt.adj[2] = -1;
+        nt.alive = true;
+        triangles.push_back(nt);
+        register_triangle_edges(new_ti);
+    }
+
+    last_found_ = (int)triangles.size() - 1;
+
     return vi;
 }
 
 void Delaunay2D::insert_constraint(int v0, int v1) {
-    if (v0 == v1) return;
+
+    if (v0 == v1)
+        return;
+
     for (int ti = 0; ti < (int)triangles.size(); ++ti) {
-        if (!triangles[ti].alive) continue;
+        if (!triangles[ti].alive)
+            continue;
+
         for (int k = 0; k < 3; ++k) {
-            int e0=triangles[ti].v[(k+1)%3], e1=triangles[ti].v[(k+2)%3];
-            if ((e0==v0&&e1==v1)||(e0==v1&&e1==v0)) {
+            int e0 = triangles[ti].v[(k + 1) % 3];
+            int e1 = triangles[ti].v[(k + 2) % 3];
+
+            if ((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0)) {
                 triangles[ti].constrained[k] = true;
                 int nb = triangles[ti].adj[k];
-                if (nb>=0&&triangles[nb].alive)
-                    for (int kk=0;kk<3;++kk)
-                        if (triangles[nb].adj[kk]==ti) { triangles[nb].constrained[kk]=true; break; }
+
+                if (nb >= 0 && triangles[nb].alive)
+                    for (int kk = 0; kk < 3; ++kk)
+                        if (triangles[nb].adj[kk] == ti) {
+                            triangles[nb].constrained[kk] = true;
+                            break;
+                        }
+
                 return;
             }
         }
     }
+
     int start_ti = -1;
-    for (int i=(int)triangles.size()-1;i>=0;--i)
+
+    for (int i = (int)triangles.size() - 1; i >= 0; --i)
         if (triangles[i].alive)
-            for (int k=0;k<3;++k)
-                if (triangles[i].v[k]==v0) { start_ti=i; break; }
-    if (start_ti < 0) return;
-    const Vertex2D& a=vertices[v0], &b=vertices[v1];
-    int iVL=-1,iVR=-1,iT=-1;
+            for (int k = 0; k < 3; ++k)
+                if (triangles[i].v[k] == v0) {
+                    start_ti = i;
+                    break;
+                }
+
+    if (start_ti < 0)
+        return;
+
+    const Vertex2D& a = vertices[v0], &b = vertices[v1];
+    int iVL = -1, iVR = -1, iT = -1;
     {
-        int ti=start_ti, guard=(int)triangles.size()+4;
-        do {
-            if (!triangles[ti].alive) break;
-            const Triangle& t=triangles[ti];
-            int k=-1; for (int i=0;i<3;++i) if (t.v[i]==v0) { k=i; break; }
-            if (k<0) break;
-            int iP2=t.v[(k+1)%3], iP1=t.v[(k+2)%3];
-            double oP2=orient2d(a.x,a.y,b.x,b.y,vertices[iP2].x,vertices[iP2].y);
-            double oP1=orient2d(a.x,a.y,b.x,b.y,vertices[iP1].x,vertices[iP1].y);
-            if (oP2<0&&oP1>=0) { iVL=iP1; iVR=iP2; iT=ti; break; }
-            int next=t.adj[(k+1)%3];
-            if (next<0||!triangles[next].alive) break;
-            ti=next;
-        } while (ti!=start_ti&&--guard>0);
-    }
-    if (iT < 0) return;
-    std::vector<int> polyL={v0,iVL}, polyR={v0,iVR}, intersected={iT};
-    int iV=v0, cur_iT=iT, guard=(int)triangles.size()*2+8;
-    auto tri_has = [&](int ti, int v) {
-        return triangles[ti].v[0]==v||triangles[ti].v[1]==v||triangles[ti].v[2]==v;
-    };
-    while (!tri_has(cur_iT, v1) && --guard > 0) {
-        const Triangle& t=triangles[cur_iT];
-        int k_iV=-1; for (int i=0;i<3;++i) if (t.v[i]==iV) { k_iV=i; break; }
-        if (k_iV<0) break;
-        int iTopo=t.adj[k_iV];
-        if (iTopo<0||!triangles[iTopo].alive) break;
-        int iVopo=-1;
-        for (int k=0;k<3;++k) if (triangles[iTopo].adj[k]==cur_iT) { iVopo=triangles[iTopo].v[k]; break; }
-        if (iVopo<0) break;
-        double o=orient2d(a.x,a.y,b.x,b.y,vertices[iVopo].x,vertices[iVopo].y);
-        if (o<0) { if (iVopo!=v1) polyR.push_back(iVopo); iV=iVR; iVR=iVopo; }
-        else     { if (iVopo!=v1) polyL.push_back(iVopo); iV=iVL; iVL=iVopo; }
-        intersected.push_back(iTopo); cur_iT=iTopo;
-    }
-    polyL.push_back(v1); polyR.push_back(v1);
-    for (int ti : intersected) { unregister_triangle_edges(ti); triangles[ti].alive=false; }
-    int first_new=(int)triangles.size();
-    auto emit=[&](int pa,int pb,int pc) {
-        double o=orient2d(vertices[pa].x,vertices[pa].y,vertices[pb].x,vertices[pb].y,
-                          vertices[pc].x,vertices[pc].y);
-        if (std::abs(o)<1e-20) return;
-        Triangle nt; nt.v[0]=pa;
-        if (o>0){nt.v[1]=pb;nt.v[2]=pc;}else{nt.v[1]=pc;nt.v[2]=pb;}
-        nt.adj[0]=nt.adj[1]=nt.adj[2]=-1; nt.constrained[0]=nt.constrained[1]=nt.constrained[2]=false;
-        nt.alive=true; int new_ti=(int)triangles.size(); triangles.push_back(nt);
-        register_triangle_edges(new_ti);
-    };
-    { int apex=v1; for (int i=0;i+2<(int)polyL.size();++i) emit(apex,polyL[i+1],polyL[i]); }
-    { int apex=v0; for (int i=1;i+1<(int)polyR.size();++i) emit(apex,polyR[i],polyR[i+1]); }
-    for (int new_ti=first_new;new_ti<(int)triangles.size();++new_ti) {
-        if (!triangles[new_ti].alive) continue;
-        Triangle& nt=triangles[new_ti];
-        for (int k=0;k<3;++k) {
-            int nb=nt.adj[k];
-            if (nb<0||nb>=first_new||!triangles[nb].alive) continue;
-            Triangle& nb_t=triangles[nb];
-            for (int kk=0;kk<3;++kk)
-                if (nb_t.adj[kk]==new_ti&&nb_t.constrained[kk]) { nt.constrained[k]=true; break; }
+        int ti = start_ti;
+        const int guard = (int)triangles.size() + 4;
+
+        for (int g = 0; g < guard; ++g) {
+            if (!triangles[ti].alive)
+                break;
+
+            const Triangle& t = triangles[ti];
+            int k = -1;
+
+            for (int i = 0; i < 3; ++i)
+                if (t.v[i] == v0) {
+                    k = i;
+                    break;
+                }
+
+            if (k < 0)
+                break;
+
+            int iP2 = t.v[(k + 1) % 3], iP1 = t.v[(k + 2) % 3];
+            double oP2 = orient2d(a.x, a.y, b.x, b.y, vertices[iP2].x, vertices[iP2].y);
+            double oP1 = orient2d(a.x, a.y, b.x, b.y, vertices[iP1].x, vertices[iP1].y);
+
+            if (oP2 < 0 && oP1 >= 0) {
+                iVL = iP1;
+                iVR = iP2;
+                iT = ti;
+                break;
+            }
+
+            int next = t.adj[(k + 1) % 3];
+
+            if (next < 0 || !triangles[next].alive || next == start_ti)
+                break;
+
+            ti = next;
         }
     }
-    for (auto& tri : triangles) {
-        if (!tri.alive) continue;
-        for (int k=0;k<3;++k) {
-            int e0=tri.v[(k+1)%3],e1=tri.v[(k+2)%3];
-            if ((e0==v0&&e1==v1)||(e0==v1&&e1==v0)) tri.constrained[k]=true;
+
+    if (iT < 0)
+        return;
+
+    std::vector<int> polyL = {v0, iVL}, polyR = {v0, iVR}, intersected = {iT};
+    int iV = v0, cur_iT = iT;
+    const int guard = (int)triangles.size() * 2 + 8;
+
+    for (int g = 0; g < guard && !has_vertex(cur_iT, v1); ++g) {
+        const Triangle& t = triangles[cur_iT];
+        int k_iV = -1;
+
+        for (int i = 0; i < 3; ++i)
+            if (t.v[i] == iV) {
+                k_iV = i;
+                break;
+            }
+
+        if (k_iV < 0)
+            break;
+
+        int iTopo = t.adj[k_iV];
+
+        if (iTopo < 0 || !triangles[iTopo].alive)
+            break;
+
+        int iVopo = -1;
+
+        for (int k = 0; k < 3; ++k)
+            if (triangles[iTopo].adj[k] == cur_iT) {
+                iVopo = triangles[iTopo].v[k];
+                break;
+            }
+
+        if (iVopo < 0)
+            break;
+
+        double o = orient2d(a.x, a.y, b.x, b.y, vertices[iVopo].x, vertices[iVopo].y);
+
+        if (o < 0) {
+            if (iVopo != v1)
+                polyR.push_back(iVopo);
+
+            iV = iVR;
+            iVR = iVopo;
+        } else {
+            if (iVopo != v1)
+                polyL.push_back(iVopo);
+
+            iV = iVL;
+            iVL = iVopo;
+        }
+
+        intersected.push_back(iTopo);
+        cur_iT = iTopo;
+    }
+
+    polyL.push_back(v1);
+    polyR.push_back(v1);
+
+    for (int ti : intersected) {
+        unregister_triangle_edges(ti);
+        triangles[ti].alive = false;
+    }
+
+    int first_new = (int)triangles.size();
+
+    for (int i = 0; i + 2 < (int)polyL.size(); ++i)
+        add_triangle(v1, polyL[i + 1], polyL[i]);
+
+    for (int i = 1; i + 1 < (int)polyR.size(); ++i)
+        add_triangle(v0, polyR[i], polyR[i + 1]);
+
+    for (int new_ti = first_new; new_ti < (int)triangles.size(); ++new_ti) {
+        if (!triangles[new_ti].alive)
+            continue;
+
+        Triangle& nt = triangles[new_ti];
+
+        for (int k = 0; k < 3; ++k) {
+            int nb = nt.adj[k];
+
+            if (nb < 0 || nb >= first_new || !triangles[nb].alive)
+                continue;
+
+            Triangle& nb_t = triangles[nb];
+
+            for (int kk = 0; kk < 3; ++kk)
+                if (nb_t.adj[kk] == new_ti && nb_t.constrained[kk]) {
+                    nt.constrained[k] = true;
+                    break;
+                }
         }
     }
+
+    for (Triangle& tri : triangles) {
+        if (!tri.alive)
+            continue;
+
+        for (int k = 0; k < 3; ++k) {
+            int e0 = tri.v[(k + 1) % 3];
+            int e1 = tri.v[(k + 2) % 3];
+
+            if ((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0))
+                tri.constrained[k] = true;
+        }
+    }
+}
+
+/// New counter-clockwise triangle over three vertices; skipped when degenerate.
+void Delaunay2D::add_triangle(int pa, int pb, int pc) {
+
+    double o = orient2d(vertices[pa].x, vertices[pa].y, vertices[pb].x, vertices[pb].y, vertices[pc].x, vertices[pc].y);
+
+    if (std::abs(o) < 1e-20)
+        return;
+
+    Triangle nt;
+    nt.v[0] = pa;
+
+    if (o > 0) {
+        nt.v[1] = pb;
+        nt.v[2] = pc;
+    } else {
+        nt.v[1] = pc;
+        nt.v[2] = pb;
+    }
+
+    nt.adj[0] = nt.adj[1] = nt.adj[2] = -1;
+    nt.constrained[0] = nt.constrained[1] = nt.constrained[2] = false;
+    nt.alive = true;
+    int new_ti = (int)triangles.size();
+    triangles.push_back(nt);
+    register_triangle_edges(new_ti);
 }
 
 void Delaunay2D::cleanup() {
-    for (auto& tri : triangles) {
-        if (!tri.alive) continue;
-        for (int k=0;k<3;++k)
-            if (tri.v[k]==super_v[0]||tri.v[k]==super_v[1]||tri.v[k]==super_v[2])
-                { unregister_triangle_edges((int)(&tri-&triangles[0])); tri.alive=false; break; }
+
+    for (Triangle& tri : triangles) {
+        if (!tri.alive)
+            continue;
+
+        for (int k = 0; k < 3; ++k)
+            if (tri.v[k] == super_v[0] || tri.v[k] == super_v[1] || tri.v[k] == super_v[2]) {
+                unregister_triangle_edges((int)(&tri - &triangles[0]));
+                tri.alive = false;
+                break;
+            }
     }
-    last_found_=0;
-    for (int i=0;i<(int)triangles.size();++i) if (triangles[i].alive) { last_found_=i; break; }
+
+    last_found_ = 0;
+
+    for (int i = 0; i < (int)triangles.size(); ++i)
+        if (triangles[i].alive) {
+            last_found_ = i;
+            break;
+        }
 }
 
-std::vector<std::array<int,3>> Delaunay2D::get_triangles() const {
-    std::vector<std::array<int,3>> result;
-    for (const auto& tri : triangles) {
-        if (!tri.alive) continue;
-        double o=orient2d(vertices[tri.v[0]].x,vertices[tri.v[0]].y,
-                          vertices[tri.v[1]].x,vertices[tri.v[1]].y,
-                          vertices[tri.v[2]].x,vertices[tri.v[2]].y);
-        result.push_back(o>0 ? std::array<int,3>{tri.v[0],tri.v[1],tri.v[2]}
-                              : std::array<int,3>{tri.v[0],tri.v[2],tri.v[1]});
+std::vector<std::array<int, 3>> Delaunay2D::get_triangles() const {
+
+    std::vector<std::array<int, 3>> result;
+
+    for (const Triangle& tri : triangles) {
+        if (!tri.alive)
+            continue;
+
+        double o = orient2d(
+            vertices[tri.v[0]].x,
+            vertices[tri.v[0]].y,
+            vertices[tri.v[1]].x,
+            vertices[tri.v[1]].y,
+            vertices[tri.v[2]].x,
+            vertices[tri.v[2]].y
+        );
+        result.push_back(
+            o > 0 ? std::array<int, 3>{tri.v[0], tri.v[1], tri.v[2]} : std::array<int, 3>{tri.v[0], tri.v[2], tri.v[1]}
+        );
     }
+
     return result;
 }
 
@@ -457,45 +1482,51 @@ std::vector<std::array<int,3>> Delaunay2D::get_triangles() const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create(const NurbsSurface& surface, const NurbsCurve& outer_loop) {
+
     NurbsSurfaceTrimmed ts;
     ts.m_surface = surface;
     ts.m_outer_loop = outer_loop;
+
     return ts;
 }
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create_planar(const NurbsCurve& boundary) {
+
     NurbsSurface srf = Primitives::create_planar(boundary);
-    if (!srf.is_valid()) return NurbsSurfaceTrimmed();
+
+    if (!srf.is_valid())
+        return NurbsSurfaceTrimmed();
 
     Point p00 = srf.get_cv(0, 0);
     Point p10 = srf.get_cv(1, 0);
     Point p01 = srf.get_cv(0, 1);
-    Vector u_axis(p10[0]-p00[0], p10[1]-p00[1], p10[2]-p00[2]);
-    Vector v_axis(p01[0]-p00[0], p01[1]-p00[1], p01[2]-p00[2]);
-    double u_len2 = u_axis[0]*u_axis[0] + u_axis[1]*u_axis[1] + u_axis[2]*u_axis[2];
-    double v_len2 = v_axis[0]*v_axis[0] + v_axis[1]*v_axis[1] + v_axis[2]*v_axis[2];
-    if (u_len2 < 1e-28 || v_len2 < 1e-28) return NurbsSurfaceTrimmed();
+    const Vector u_axis = p10 - p00;
+    const Vector v_axis = p01 - p00;
+    double u_len2 = u_axis[0] * u_axis[0] + u_axis[1] * u_axis[1] + u_axis[2] * u_axis[2];
+    double v_len2 = v_axis[0] * v_axis[0] + v_axis[1] * v_axis[1] + v_axis[2] * v_axis[2];
 
-    auto project_to_uv = [&](const Point& pt) -> Point {
-        double dx = pt[0]-p00[0], dy = pt[1]-p00[1], dz = pt[2]-p00[2];
-        double nu = (dx*u_axis[0] + dy*u_axis[1] + dz*u_axis[2]) / u_len2;
-        double nv = (dx*v_axis[0] + dy*v_axis[1] + dz*v_axis[2]) / v_len2;
-        return Point(nu, nv, 0.0);
-    };
+    if (u_len2 < 1e-28 || v_len2 < 1e-28)
+        return NurbsSurfaceTrimmed();
 
     std::vector<Point> uv_pts;
+
     if (boundary.degree() <= 1) {
         for (int i = 0; i < boundary.cv_count(); ++i)
-            uv_pts.push_back(project_to_uv(boundary.get_cv(i)));
+            uv_pts.push_back(project_to_uv(boundary.get_cv(i), p00, u_axis, v_axis, u_len2, v_len2));
     } else {
-        auto spans = boundary.get_span_vector();
+        const std::vector<double> spans = boundary.get_span_vector();
+
         for (size_t si = 0; si + 1 < spans.size(); ++si) {
             int n_sub = 10;
+
             for (int k = 0; k <= n_sub; ++k) {
-                double t = spans[si] + (spans[si+1] - spans[si]) * k / n_sub;
-                Point uv = project_to_uv(boundary.point_at(t));
-                if (uv_pts.empty() || (uv[0]-uv_pts.back()[0])*(uv[0]-uv_pts.back()[0]) +
-                    (uv[1]-uv_pts.back()[1])*(uv[1]-uv_pts.back()[1]) > 1e-24)
+                double t = spans[si] + (spans[si + 1] - spans[si]) * k / n_sub;
+                Point uv = project_to_uv(boundary.point_at(t), p00, u_axis, v_axis, u_len2, v_len2);
+
+                if (uv_pts.empty() ||
+                    (uv[0] - uv_pts.back()[0]) * (uv[0] - uv_pts.back()[0]) +
+                            (uv[1] - uv_pts.back()[1]) * (uv[1] - uv_pts.back()[1]) >
+                        1e-24)
                     uv_pts.push_back(uv);
             }
         }
@@ -503,25 +1534,33 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::create_planar(const NurbsCurve& boundar
 
     NurbsSurfaceTrimmed ts;
     ts.m_surface = srf;
+
     if (uv_pts.size() >= 3)
         ts.m_outer_loop = NurbsCurve::create(false, 1, uv_pts);
+
     return ts;
 }
 
-std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const NurbsSurface& srf, const std::vector<NurbsCurve>& pcurves, double tolerance) {
-    if (!srf.is_valid()) return {};
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(
+    const NurbsSurface& srf,
+    const std::vector<NurbsCurve>& pcurves,
+    double tolerance
+) {
 
-    auto is_boundary = [](int cidx) -> bool { return cidx < 0; };
+    if (!srf.is_valid())
+        return {};
 
-    auto dom_u = srf.domain(0);
-    auto dom_v = srf.domain(1);
-    double u0 = dom_u.first, u1 = dom_u.second;
-    double v0 = dom_v.first, v1 = dom_v.second;
+    const std::pair<double, double> dom_u = srf.domain(0);
+    const std::pair<double, double> dom_v = srf.domain(1);
+    double u0 = dom_u.first;
+    double u1 = dom_u.second;
+    double v0 = dom_v.first;
+    double v1 = dom_v.second;
     double range_u = u1 - u0;
     double range_v = v1 - v0;
 
-    auto spans_u = srf.get_span_vector(0);
-    auto spans_v = srf.get_span_vector(1);
+    const std::vector<double> spans_u = srf.get_span_vector(0);
+    const std::vector<double> spans_v = srf.get_span_vector(1);
     int nu = std::max((int)spans_u.size() - 1, 1) * 4;
     int nv = std::max((int)spans_v.size() - 1, 1) * 4;
     double du = range_u / nu;
@@ -532,47 +1571,52 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     double uv_to_3d_u = pmid.distance(srf.point_at(std::min(mu + du, u1), mv)) / du;
     double uv_to_3d_v = pmid.distance(srf.point_at(mu, std::min(mv + dv, v1))) / dv;
     double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
+
     if (uv_to_3d < 1e-10)
         uv_to_3d = 1.0;
 
     double snap_uv;
+
     if (tolerance > 0.0)
         snap_uv = std::max(1e-9, tolerance / uv_to_3d);
     else
         snap_uv = std::min(range_u, range_v) * 1e-7;
 
     double samp_tol = std::max(range_u, range_v) * 2e-5;
-    struct UVPoly { int cidx; std::vector<std::array<double, 2>> pts; std::vector<double> ts; };
-    std::vector<UVPoly> polylines;
 
-    auto snap_border = [&](std::array<double, 2>& p) {
-        if (std::abs(p[0] - u0) < snap_uv)
-            p[0] = u0;
-        if (std::abs(p[0] - u1) < snap_uv)
-            p[0] = u1;
-        if (std::abs(p[1] - v0) < snap_uv)
-            p[1] = v0;
-        if (std::abs(p[1] - v1) < snap_uv)
-            p[1] = v1;
+    /// Sampled pcurve in UV with the parameter of each sample.
+    struct UVPoly {
+        int cidx; // Pcurve index, negative for a domain border.
+        std::vector<std::array<double, 2>> pts; // UV samples.
+        std::vector<double> ts; // Parameter per sample.
     };
+
+    std::vector<UVPoly> polylines;
 
     for (int cidx = 0; cidx < (int)pcurves.size(); ++cidx) {
         const NurbsCurve& crv = pcurves[cidx];
+
         if (!crv.is_valid())
             continue;
-        auto cdom = crv.domain();
-        double ct0 = cdom.first, ct1 = cdom.second;
+
+        const std::pair<double, double> cdom = crv.domain();
+        double ct0 = cdom.first;
+        double ct1 = cdom.second;
         std::vector<std::array<double, 3>> entries;
         int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
+
         for (int i = 0; i <= n; ++i) {
             double t = ct0 + (ct1 - ct0) * i / n;
             Point p = crv.point_at(t);
             entries.push_back({t, p[0], p[1]});
         }
+
         int depth = 0;
+
         while (depth < 6) {
             int inserted = 0;
             size_t i = 0;
+
             while (i + 1 < entries.size()) {
                 std::array<double, 3> a = entries[i];
                 std::array<double, 3> b = entries[i + 1];
@@ -580,16 +1624,18 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                 Point pm = crv.point_at(tm);
                 double exu = b[1] - a[1];
                 double exv = b[2] - a[2];
-                double l2 = exu*exu + exv*exv;
+                double l2 = exu * exu + exv * exv;
                 double dev;
+
                 if (l2 > 1e-30) {
-                    double s = ((pm[0]-a[1])*exu + (pm[1]-a[2])*exv) / l2;
-                    double cx = a[1] + s*exu;
-                    double cy = a[2] + s*exv;
-                    dev = std::hypot(pm[0]-cx, pm[1]-cy);
+                    double s = ((pm[0] - a[1]) * exu + (pm[1] - a[2]) * exv) / l2;
+                    double cx = a[1] + s * exu;
+                    double cy = a[2] + s * exv;
+                    dev = std::hypot(pm[0] - cx, pm[1] - cy);
                 } else {
                     dev = 0.0;
                 }
+
                 if (dev > samp_tol && entries.size() < 4096) {
                     entries.insert(entries.begin() + i + 1, {tm, pm[0], pm[1]});
                     inserted += 1;
@@ -598,31 +1644,52 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                     i += 1;
                 }
             }
+
             if (inserted == 0)
                 break;
+
             depth += 1;
         }
+
         std::vector<std::array<double, 2>> pts;
         std::vector<double> ts;
-        for (const auto& e : entries) {
+
+        for (const std::array<double, 3>& e : entries) {
             std::array<double, 2> p = {std::min(std::max(e[1], u0), u1), std::min(std::max(e[2], v0), v1)};
-            snap_border(p);
-            if (!pts.empty() && std::abs(p[0]-pts.back()[0]) < 1e-15 && std::abs(p[1]-pts.back()[1]) < 1e-15)
+            snap_to_border(p, u0, u1, v0, v1, snap_uv);
+
+            if (!pts.empty() && std::abs(p[0] - pts.back()[0]) < 1e-15 && std::abs(p[1] - pts.back()[1]) < 1e-15)
                 continue;
+
             pts.push_back(p);
             ts.push_back(e[0]);
         }
+
         if (pts.size() < 2)
             continue;
-        bool on_u0 = true, on_u1 = true, on_v0 = true, on_v1 = true;
-        for (const auto& p : pts) {
-            if (std::abs(p[0] - u0) >= snap_uv) on_u0 = false;
-            if (std::abs(p[0] - u1) >= snap_uv) on_u1 = false;
-            if (std::abs(p[1] - v0) >= snap_uv) on_v0 = false;
-            if (std::abs(p[1] - v1) >= snap_uv) on_v1 = false;
+
+        bool on_u0 = true;
+        bool on_u1 = true;
+        bool on_v0 = true;
+        bool on_v1 = true;
+
+        for (const std::array<double, 2>& p : pts) {
+            if (std::abs(p[0] - u0) >= snap_uv)
+                on_u0 = false;
+
+            if (std::abs(p[0] - u1) >= snap_uv)
+                on_u1 = false;
+
+            if (std::abs(p[1] - v0) >= snap_uv)
+                on_v0 = false;
+
+            if (std::abs(p[1] - v1) >= snap_uv)
+                on_v1 = false;
         }
+
         if (on_u0 || on_u1 || on_v0 || on_v1)
             continue;
+
         polylines.push_back({cidx, pts, ts});
     }
 
@@ -631,100 +1698,77 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     polylines.push_back({-3, {{u1, v1}, {u0, v1}}, {u1, u0}});
     polylines.push_back({-4, {{u0, v1}, {u0, v0}}, {v1, v0}});
 
-    {
-        double min_ext = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-5);
-        polylines.erase(std::remove_if(polylines.begin(), polylines.end(),
-            [&](const UVPoly& P) {
-                if (is_boundary(P.cidx)) return false;
-                double ext = 0.0;
-                for (size_t k = 1; k < P.pts.size(); ++k)
-                    ext += std::hypot(P.pts[k][0] - P.pts[k-1][0], P.pts[k][1] - P.pts[k-1][1]);
-                return ext < min_ext;
-            }), polylines.end());
+    double min_ext = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-5);
+    std::vector<UVPoly> kept;
+
+    for (const UVPoly& P : polylines) {
+        double ext = 0.0;
+
+        for (size_t k = 1; k < P.pts.size(); ++k)
+            ext += std::hypot(P.pts[k][0] - P.pts[k - 1][0], P.pts[k][1] - P.pts[k - 1][1]);
+
+        if (P.cidx < 0 || ext >= min_ext)
+            kept.push_back(P);
     }
 
-    auto seg_seg = [](const std::array<double, 2>& p1, const std::array<double, 2>& p2,
-                      const std::array<double, 2>& p3, const std::array<double, 2>& p4,
-                      double& s_out, double& t_out) -> bool {
-        double d1u = p2[0] - p1[0];
-        double d1v = p2[1] - p1[1];
-        double d2u = p4[0] - p3[0];
-        double d2v = p4[1] - p3[1];
-        double den = d1u * d2v - d1v * d2u;
-        if (std::abs(den) < 1e-20)
-            return false;
-        double s = ((p3[0]-p1[0]) * d2v - (p3[1]-p1[1]) * d2u) / den;
-        double t = ((p3[0]-p1[0]) * d1v - (p3[1]-p1[1]) * d1u) / den;
-        if (-1e-12 <= s && s <= 1.0 + 1e-12 && -1e-12 <= t && t <= 1.0 + 1e-12) {
-            s_out = s;
-            t_out = t;
-            return true;
-        }
-        return false;
-    };
-
-    auto newton_cc = [&](const NurbsCurve& ca, double& ta, const NurbsCurve& cb, double& tb) {
-        for (int it = 0; it < 8; ++it) {
-            auto da = ca.evaluate(ta, 1);
-            auto db = cb.evaluate(tb, 1);
-            double fu = da[0][0] - db[0][0];
-            double fv = da[0][1] - db[0][1];
-            if (std::hypot(fu, fv) < snap_uv * 0.01)
-                break;
-            double j00 = da[1][0];
-            double j01 = -db[1][0];
-            double j10 = da[1][1];
-            double j11 = -db[1][1];
-            double den = j00 * j11 - j01 * j10;
-            if (std::abs(den) < 1e-20)
-                break;
-            ta -= (fu * j11 - j01 * fv) / den;
-            tb -= (j00 * fv - fu * j10) / den;
-            auto adom = ca.domain();
-            auto bdom = cb.domain();
-            ta = std::min(std::max(ta, adom.first), adom.second);
-            tb = std::min(std::max(tb, bdom.first), bdom.second);
-        }
-    };
+    polylines = kept;
 
     std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;
+
     for (int pi = 0; pi < (int)polylines.size(); ++pi) {
         for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
             const UVPoly& A = polylines[pi];
             const UVPoly& B = polylines[pj];
-            if (is_boundary(A.cidx) && is_boundary(B.cidx))
+
+            if (A.cidx < 0 && B.cidx < 0)
                 continue;
-            double aminu = A.pts[0][0], amaxu = A.pts[0][0], aminv = A.pts[0][1], amaxv = A.pts[0][1];
-            for (const auto& p : A.pts) {
+
+            double aminu = A.pts[0][0];
+            double amaxu = A.pts[0][0];
+            double aminv = A.pts[0][1];
+            double amaxv = A.pts[0][1];
+
+            for (const std::array<double, 2>& p : A.pts) {
                 aminu = std::min(aminu, p[0]);
                 amaxu = std::max(amaxu, p[0]);
                 aminv = std::min(aminv, p[1]);
                 amaxv = std::max(amaxv, p[1]);
             }
+
             aminu -= snap_uv;
             amaxu += snap_uv;
             aminv -= snap_uv;
             amaxv += snap_uv;
-            double bminu = B.pts[0][0], bmaxu = B.pts[0][0], bminv = B.pts[0][1], bmaxv = B.pts[0][1];
-            for (const auto& p : B.pts) {
+            double bminu = B.pts[0][0];
+            double bmaxu = B.pts[0][0];
+            double bminv = B.pts[0][1];
+            double bmaxv = B.pts[0][1];
+
+            for (const std::array<double, 2>& p : B.pts) {
                 bminu = std::min(bminu, p[0]);
                 bmaxu = std::max(bmaxu, p[0]);
                 bminv = std::min(bminv, p[1]);
                 bmaxv = std::max(bmaxv, p[1]);
             }
+
             if (bminu > amaxu || bmaxu < aminu || bminv > amaxv || bmaxv < aminv)
                 continue;
+
             for (int ia = 0; ia + 1 < (int)A.pts.size(); ++ia) {
                 for (int ib = 0; ib + 1 < (int)B.pts.size(); ++ib) {
-                    double s, t;
-                    if (!seg_seg(A.pts[ia], A.pts[ia+1], B.pts[ib], B.pts[ib+1], s, t))
+                    double s;
+                    double t;
+
+                    if (!segment_intersection(A.pts[ia], A.pts[ia + 1], B.pts[ib], B.pts[ib + 1], s, t))
                         continue;
-                    double ta = A.ts[ia] + (A.ts[ia+1] - A.ts[ia]) * s;
-                    double tb = B.ts[ib] + (B.ts[ib+1] - B.ts[ib]) * t;
-                    double hu = A.pts[ia][0] + (A.pts[ia+1][0] - A.pts[ia][0]) * s;
-                    double hv = A.pts[ia][1] + (A.pts[ia+1][1] - A.pts[ia][1]) * s;
+
+                    double ta = A.ts[ia] + (A.ts[ia + 1] - A.ts[ia]) * s;
+                    double tb = B.ts[ib] + (B.ts[ib + 1] - B.ts[ib]) * t;
+                    double hu = A.pts[ia][0] + (A.pts[ia + 1][0] - A.pts[ia][0]) * s;
+                    double hv = A.pts[ia][1] + (A.pts[ia + 1][1] - A.pts[ia][1]) * s;
+
                     if (A.cidx >= 0 && B.cidx >= 0) {
-                        newton_cc(pcurves[A.cidx], ta, pcurves[B.cidx], tb);
+                        newton_curve_curve(pcurves[A.cidx], ta, pcurves[B.cidx], tb, snap_uv * 0.01);
                         Point pa = pcurves[A.cidx].point_at(ta);
                         hu = pa[0];
                         hv = pa[1];
@@ -737,20 +1781,24 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
                         hu = pb[0];
                         hv = pb[1];
                     }
+
                     std::array<double, 2> hp = {hu, hv};
-                    snap_border(hp);
+                    snap_to_border(hp, u0, u1, v0, v1, snap_uv);
+
                     if (B.cidx < 0) {
                         if (B.cidx == -1 || B.cidx == -3)
                             tb = hp[0];
                         else
                             tb = hp[1];
                     }
+
                     if (A.cidx < 0) {
                         if (A.cidx == -1 || A.cidx == -3)
                             ta = hp[0];
                         else
                             ta = hp[1];
                     }
+
                     splits[{pi, ia}].push_back({s, hp[0], hp[1], ta});
                     splits[{pj, ib}].push_back({t, hp[0], hp[1], tb});
                 }
@@ -758,69 +1806,56 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
         }
     }
 
-    std::map<std::pair<long long, long long>, std::vector<int>> cell_map;
-    std::vector<std::array<double, 2>> verts;
-
-    auto vert_id = [&](const std::array<double, 2>& p) -> int {
-        long long ci = (long long)std::floor(p[0] / snap_uv);
-        long long cj = (long long)std::floor(p[1] / snap_uv);
-        for (int di = -1; di <= 1; ++di) {
-            for (int dj = -1; dj <= 1; ++dj) {
-                auto bucket = cell_map.find({ci+di, cj+dj});
-                if (bucket == cell_map.end())
-                    continue;
-                for (int vk : bucket->second) {
-                    const auto& q = verts[vk];
-                    if (std::hypot(q[0]-p[0], q[1]-p[1]) <= snap_uv)
-                        return vk;
-                }
-            }
-        }
-        int vk = (int)verts.size();
-        verts.push_back({p[0], p[1]});
-        cell_map[{ci, cj}].push_back(vk);
-        return vk;
-    };
-
-    struct SplitEdge { int a, b, cidx; double ta, tb; };
+    UVVertexPool pool(snap_uv);
     std::vector<SplitEdge> edges;
 
     for (int pi = 0; pi < (int)polylines.size(); ++pi) {
         const UVPoly& poly = polylines[pi];
         std::vector<std::pair<int, double>> chain;
+
         for (int i = 0; i < (int)poly.pts.size(); ++i) {
-            chain.push_back({vert_id(poly.pts[i]), poly.ts[i]});
-            auto sit = splits.find({pi, i});
+            chain.push_back({pool.id(poly.pts[i]), poly.ts[i]});
+            const auto sit = splits.find({pi, i});
+
             if (i + 1 < (int)poly.pts.size() && sit != splits.end()) {
                 std::vector<std::array<double, 4>> evs = sit->second;
                 std::sort(evs.begin(), evs.end());
-                for (const auto& ev : evs)
-                    chain.push_back({vert_id({ev[1], ev[2]}), ev[3]});
+
+                for (const std::array<double, 4>& ev : evs)
+                    chain.push_back({pool.id({ev[1], ev[2]}), ev[3]});
             }
         }
+
         for (int i = 0; i + 1 < (int)chain.size(); ++i) {
             int a = chain[i].first;
             int b = chain[i + 1].first;
+
             if (a == b)
                 continue;
+
             edges.push_back({a, b, poly.cidx, chain[i].second, chain[i + 1].second});
         }
     }
 
     std::vector<bool> alive(edges.size(), true);
     bool changed = true;
+
     while (changed) {
         changed = false;
         std::map<int, int> degree;
+
         for (size_t ei = 0; ei < edges.size(); ++ei) {
             if (!alive[ei])
                 continue;
+
             degree[edges[ei].a] += 1;
             degree[edges[ei].b] += 1;
         }
+
         for (size_t ei = 0; ei < edges.size(); ++ei) {
             if (!alive[ei])
                 continue;
+
             if (degree[edges[ei].a] == 1 || degree[edges[ei].b] == 1) {
                 alive[ei] = false;
                 changed = true;
@@ -829,21 +1864,27 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     }
 
     std::vector<SplitEdge> live_edges;
+
     for (size_t ei = 0; ei < edges.size(); ++ei)
         if (alive[ei])
             live_edges.push_back(edges[ei]);
+
     if (live_edges.empty())
         return {};
 
-    struct HalfEdge { int tail, head, eidx, fwd; };
+    const std::vector<std::array<double, 2>>& verts = pool.verts;
     std::vector<HalfEdge> hes;
+
     for (int ei = 0; ei < (int)live_edges.size(); ++ei) {
         hes.push_back({live_edges[ei].a, live_edges[ei].b, ei, 1});
         hes.push_back({live_edges[ei].b, live_edges[ei].a, ei, 0});
     }
+
     std::vector<std::vector<int>> out_map(verts.size());
+
     for (int hi = 0; hi < (int)hes.size(); ++hi)
         out_map[hes[hi].tail].push_back(hi);
+
     for (size_t vid = 0; vid < out_map.size(); ++vid) {
         std::stable_sort(out_map[vid].begin(), out_map[vid].end(), [&](int ha, int hb) {
             double aa = std::atan2(verts[hes[ha].head][1] - verts[vid][1], verts[hes[ha].head][0] - verts[vid][0]);
@@ -853,8 +1894,10 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
     }
 
     std::vector<int> next_he(hes.size(), -1);
+
     for (size_t vid = 0; vid < out_map.size(); ++vid) {
-        const auto& outs = out_map[vid];
+        const std::vector<int>& outs = out_map[vid];
+
         for (size_t pos = 0; pos < outs.size(); ++pos) {
             int hi = outs[pos];
             int tw = hi ^ 1;
@@ -865,216 +1908,134 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(const N
 
     std::vector<bool> visited(hes.size(), false);
     std::vector<std::vector<int>> faces;
+
     for (int hi = 0; hi < (int)hes.size(); ++hi) {
         if (visited[hi])
             continue;
+
         std::vector<int> cycle;
         int cur = hi;
+
         while (cur >= 0 && !visited[cur]) {
             visited[cur] = true;
             cycle.push_back(cur);
             cur = next_he[cur];
         }
+
         if (cycle.size() >= 2)
             faces.push_back(cycle);
     }
 
-    auto face_area = [&](const std::vector<int>& cycle) -> double {
-        double s = 0.0;
-        for (int hi : cycle) {
-            const auto& a = verts[hes[hi].tail];
-            const auto& b = verts[hes[hi].head];
-            s += a[0]*b[1] - b[0]*a[1];
-        }
-        return s * 0.5;
-    };
-
     std::set<int> border_vids;
-    for (const auto& e : live_edges) {
-        if (is_boundary(e.cidx)) {
+
+    for (const SplitEdge& e : live_edges) {
+        if (e.cidx < 0) {
             border_vids.insert(e.a);
             border_vids.insert(e.b);
         }
     }
 
-    auto point_in_cycle = [&](const std::array<double, 2>& p, const std::vector<int>& cycle) -> bool {
-        bool inside = false;
-        for (int hi : cycle) {
-            const auto& a = verts[hes[hi].tail];
-            const auto& b = verts[hes[hi].head];
-            if ((a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])
-                inside = !inside;
-        }
-        return inside;
-    };
-
     std::vector<std::pair<std::vector<int>, double>> pos_faces;
     std::vector<std::vector<int>> neg_faces;
-    for (const auto& cycle : faces) {
-        double area = face_area(cycle);
+
+    for (const std::vector<int>& cycle : faces) {
+        double area = cycle_area(cycle, hes, verts);
+
         if (area > snap_uv * snap_uv) {
             pos_faces.push_back({cycle, area});
         } else if (area < -snap_uv * snap_uv) {
             bool touches_border = false;
+
             for (int hi : cycle) {
                 if (border_vids.count(hes[hi].tail)) {
                     touches_border = true;
                     break;
                 }
             }
+
             if (!touches_border)
                 neg_faces.push_back(cycle);
         }
     }
 
     std::vector<std::vector<std::vector<int>>> holes_of(pos_faces.size());
-    for (const auto& cycle : neg_faces) {
-        const auto& sample = verts[hes[cycle[0]].tail];
+
+    for (const std::vector<int>& cycle : neg_faces) {
+        const std::array<double, 2>& sample = verts[hes[cycle[0]].tail];
         int best = -1;
         double best_area = std::numeric_limits<double>::infinity();
+
         for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
-            const auto& fc = pos_faces[fi].first;
+            const std::vector<int>& fc = pos_faces[fi].first;
             double area = pos_faces[fi].second;
-            if (area < best_area && point_in_cycle(sample, fc)) {
+
+            if (area < best_area && point_in_cycle(sample, fc, hes, verts)) {
                 std::set<int> hole_vids;
                 std::set<int> face_vids;
+
                 for (int hi : cycle)
                     hole_vids.insert(hes[hi].tail);
+
                 for (int hi : fc)
                     face_vids.insert(hes[hi].tail);
+
                 if (hole_vids == face_vids)
                     continue;
+
                 best = fi;
                 best_area = area;
             }
         }
+
         if (best >= 0)
             holes_of[best].push_back(cycle);
     }
 
-    auto cycle_to_segments = [&](const std::vector<int>& cycle) -> std::vector<NurbsCurve> {
-        struct Run { int cidx, va, vb; double ta, tb; };
-        std::vector<Run> runs;
-        for (int hi : cycle) {
-            const HalfEdge& he = hes[hi];
-            const SplitEdge& e = live_edges[he.eidx];
-            double ta = he.fwd ? e.ta : e.tb;
-            double tb = he.fwd ? e.tb : e.ta;
-            if (!runs.empty() && runs.back().cidx == e.cidx && runs.back().vb == he.tail) {
-                runs.back().vb = he.head;
-                runs.back().tb = tb;
-            } else {
-                runs.push_back({e.cidx, he.tail, he.head, ta, tb});
-            }
-        }
-        std::vector<NurbsCurve> pieces;
-        for (const auto& run : runs) {
-            bool made = false;
-            if (run.cidx >= 0) {
-                const NurbsCurve& crv = pcurves[run.cidx];
-                auto cdom = crv.domain();
-                double c0 = cdom.first, c1 = cdom.second;
-                double lo = std::max(c0, std::min(run.ta, run.tb));
-                double hi_ = std::min(c1, std::max(run.ta, run.tb));
-                NurbsCurve piece = crv;
-                bool piece_ok = true;
-                if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
-                    if (!piece.trim(lo, hi_))
-                        piece_ok = false;
-                } else if (hi_ - lo <= 1e-14) {
-                    if (!(run.va == run.vb && piece.is_closed())) piece_ok = false;
-                }
-                if (piece_ok && piece.is_valid()) {
-                    if (run.ta > run.tb) piece.reverse();
-                    pieces.push_back(piece);
-                    made = true;
-                }
-            }
-            if (!made) {
-                const auto& pa = verts[run.va];
-                const auto& pb = verts[run.vb];
-                if (std::hypot(pb[0]-pa[0], pb[1]-pa[1]) > 1e-14) {
-                    std::vector<Point> seg_pts = {
-                        Point(pa[0], pa[1], 0.0),
-                        Point(pb[0], pb[1], 0.0)
-                    };
-                    pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
-                }
-            }
-        }
-        return pieces;
-    };
-
-    auto cycle_to_loop = [&](const std::vector<int>& cycle) -> NurbsCurve {
-        std::vector<NurbsCurve> pieces = cycle_to_segments(cycle);
-        if (pieces.empty())
-            return NurbsCurve();
-        double join_tol = snap_uv * 4.0;
-        std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, join_tol);
-        if (joined.size() == 1 && joined[0].is_valid()) {
-            NurbsCurve& J = joined[0];
-            if (!J.is_closed() &&
-                J.point_at_start().distance(J.point_at_end()) <= join_tol) {
-                double x, y, z, w;
-                if (J.get_cv_4d(0, x, y, z, w)) {
-                    double xe, ye, ze, we;
-                    if (J.get_cv_4d(J.cv_count() - 1, xe, ye, ze, we))
-                        J.set_cv_4d(J.cv_count() - 1, x, y, z, we);
-                }
-            }
-            if (J.is_closed())
-                return J;
-        }
-        std::vector<Point> loop_pts;
-        for (int hi : cycle) {
-            const auto& a = verts[hes[hi].tail];
-            loop_pts.push_back(Point(a[0], a[1], 0.0));
-        }
-        loop_pts.push_back(Point(loop_pts[0][0], loop_pts[0][1], 0.0));
-        return NurbsCurve::create(false, 1, loop_pts);
-    };
-
-    auto loop_signed_area = [&](const NurbsCurve& loop) -> double {
-        int n = 64;
-        auto ldom = loop.domain();
-        double l0 = ldom.first, l1 = ldom.second;
-        double s = 0.0;
-        Point prev = loop.point_at(l0);
-        for (int i = 1; i <= n; ++i) {
-            Point p = loop.point_at(l0 + (l1 - l0) * i / n);
-            s += prev[0]*p[1] - p[0]*prev[1];
-            prev = p;
-        }
-        return s * 0.5;
-    };
-
     std::vector<NurbsSurfaceTrimmed> result;
+
     for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
-        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first);
+        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, hes, live_edges, verts, pcurves, snap_uv);
+
         if (!outer.is_valid())
             continue;
+
         if (loop_signed_area(outer) < 0.0)
             outer.reverse();
+
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
-        for (const auto& hole_cycle : holes_of[fi]) {
-            NurbsCurve hole = cycle_to_loop(hole_cycle);
+
+        for (const std::vector<int>& hole_cycle : holes_of[fi]) {
+            NurbsCurve hole = cycle_to_loop(hole_cycle, hes, live_edges, verts, pcurves, snap_uv);
+
             if (!hole.is_valid())
                 continue;
+
             if (loop_signed_area(hole) > 0.0)
                 hole.reverse();
+
             ts.add_inner_loop(hole);
         }
+
         result.push_back(ts);
     }
+
     return result;
 }
 
-std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const NurbsSurface& srf, const std::vector<std::pair<Point, Vector>>& planes) {
+std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(
+    const NurbsSurface& srf,
+    const std::vector<std::pair<Point, Vector>>& planes
+) {
+
     std::vector<NurbsSurfaceTrimmed> out;
     int k = (int)planes.size();
-    if (k == 0 || k > 16) return out;
+
+    if (k == 0 || k > 16)
+        return out;
+
     for (int mask = 0; mask < (1 << k); ++mask) {
         std::vector<std::pair<Point, Vector>> cp;
+
         for (int i = 0; i < k; ++i) {
             const Point& q = planes[i].first;
             const Vector& n = planes[i].second;
@@ -1082,13 +2043,15 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_planes(const Nurb
             Vector nn = flip ? Vector(-n[0], -n[1], -n[2]) : Vector(n[0], n[1], n[2]);
             cp.push_back({q, nn});
         }
+
         NurbsSurfaceTrimmed ts;
         ts.m_surface = srf;
         Mesh m = ts.mesh_by_planes(cp, 20.0, 0.01);
-        if (m.number_of_faces() > 0) {
+
+        if (m.number_of_faces() > 0)
             out.push_back(ts);
-        }
     }
+
     return out;
 }
 
@@ -1103,15 +2066,26 @@ NurbsSurfaceTrimmed::NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other) {
 }
 
 NurbsSurfaceTrimmed& NurbsSurfaceTrimmed::operator=(const NurbsSurfaceTrimmed& other) {
-    if (this != &other) deep_copy_from(other);
+    if (this != &other)
+        deep_copy_from(other);
+
     return *this;
 }
 
 bool NurbsSurfaceTrimmed::operator==(const NurbsSurfaceTrimmed& other) const {
-    if (name != other.name) return false;
-    if (width != other.width) return false;
-    if (surfacecolor != other.surfacecolor) return false;
-    if (m_surface != other.m_surface) return false;
+
+    if (name != other.name)
+        return false;
+
+    if (width != other.width)
+        return false;
+
+    if (surfacecolor != other.surfacecolor)
+        return false;
+
+    if (m_surface != other.m_surface)
+        return false;
+
     return true;
 }
 
@@ -1122,6 +2096,7 @@ bool NurbsSurfaceTrimmed::operator!=(const NurbsSurfaceTrimmed& other) const {
 NurbsSurfaceTrimmed::~NurbsSurfaceTrimmed() {}
 
 void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
+
     _guid.clear();
     name = src.name;
     width = src.width;
@@ -1135,11 +2110,25 @@ void NurbsSurfaceTrimmed::deep_copy_from(const NurbsSurfaceTrimmed& src) {
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
 
-NurbsSurface NurbsSurfaceTrimmed::surface() const { return m_surface; }
-NurbsCurve NurbsSurfaceTrimmed::get_outer_loop() const { return m_outer_loop; }
-void NurbsSurfaceTrimmed::set_outer_loop(const NurbsCurve& loop) { m_outer_loop = loop; }
-bool NurbsSurfaceTrimmed::is_trimmed() const { return m_outer_loop.is_valid(); }
-bool NurbsSurfaceTrimmed::is_valid() const { return m_surface.is_valid(); }
+NurbsSurface NurbsSurfaceTrimmed::surface() const {
+    return m_surface;
+}
+
+NurbsCurve NurbsSurfaceTrimmed::get_outer_loop() const {
+    return m_outer_loop;
+}
+
+void NurbsSurfaceTrimmed::set_outer_loop(const NurbsCurve& loop) {
+    m_outer_loop = loop;
+}
+
+bool NurbsSurfaceTrimmed::is_trimmed() const {
+    return m_outer_loop.is_valid();
+}
+
+bool NurbsSurfaceTrimmed::is_valid() const {
+    return m_surface.is_valid();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Inner loops
@@ -1150,13 +2139,15 @@ void NurbsSurfaceTrimmed::add_inner_loop(const NurbsCurve& loop_2d) {
 }
 
 void NurbsSurfaceTrimmed::add_hole(const NurbsCurve& curve_3d) {
-    auto dom = curve_3d.domain();
-    auto sdom_u = m_surface.domain(0);
-    auto sdom_v = m_surface.domain(1);
+
+    const std::pair<double, double> dom = curve_3d.domain();
+    const std::pair<double, double> sdom_u = m_surface.domain(0);
+    const std::pair<double, double> sdom_v = m_surface.domain(1);
     double range_u = sdom_u.second - sdom_u.first;
     double range_v = sdom_v.second - sdom_v.first;
     int n_samples = std::min(std::max(curve_3d.cv_count() * 4, 32), 2048);
     std::vector<Point> uv_pts;
+
     for (int i = 0; i < n_samples; ++i) {
         double t = dom.first + (dom.second - dom.first) * i / n_samples;
         Point pt3d = curve_3d.point_at(t);
@@ -1165,658 +2156,759 @@ void NurbsSurfaceTrimmed::add_hole(const NurbsCurve& curve_3d) {
         double nv = (v - sdom_v.first) / range_v;
         uv_pts.push_back(Point(nu, nv, 0.0));
     }
+
     if (uv_pts.size() >= 3)
         m_inner_loops.push_back(NurbsCurve::create(true, 1, uv_pts));
 }
 
 void NurbsSurfaceTrimmed::add_holes(const std::vector<NurbsCurve>& curves_3d) {
-    for (const auto& crv : curves_3d) add_hole(crv);
+    for (const NurbsCurve& crv : curves_3d)
+        add_hole(crv);
 }
 
-NurbsCurve NurbsSurfaceTrimmed::get_inner_loop(int index) const { return m_inner_loops[index]; }
-int NurbsSurfaceTrimmed::inner_loop_count() const { return static_cast<int>(m_inner_loops.size()); }
-void NurbsSurfaceTrimmed::clear_inner_loops() { m_inner_loops.clear(); }
+NurbsCurve NurbsSurfaceTrimmed::get_inner_loop(int index) const {
+    return m_inner_loops[index];
+}
+
+int NurbsSurfaceTrimmed::inner_loop_count() const {
+    return static_cast<int>(m_inner_loops.size());
+}
+
+void NurbsSurfaceTrimmed::clear_inner_loops() {
+    m_inner_loops.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Evaluation
 // ═══════════════════════════════════════════════════════════════════════════
 
-Point NurbsSurfaceTrimmed::point_at(double u, double v) const { return m_surface.point_at(u, v); }
-Vector NurbsSurfaceTrimmed::normal_at(double u, double v) const { return m_surface.normal_at(u, v); }
+Point NurbsSurfaceTrimmed::point_at(double u, double v) const {
+    return m_surface.point_at(u, v);
+}
+
+Vector NurbsSurfaceTrimmed::normal_at(double u, double v) const {
+    return m_surface.normal_at(u, v);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshing
 // ═══════════════════════════════════════════════════════════════════════════
 
-Mesh NurbsSurfaceTrimmed::mesh() const { return mesh_q(20.0, 0.005); }
+Mesh NurbsSurfaceTrimmed::mesh() const {
+    return mesh_q(20.0, 0.005);
+}
 
 double NurbsSurfaceTrimmed::bbox_diagonal() const {
+
     double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
+
     for (int i = 0; i < m_surface.cv_count(0); ++i)
         for (int j = 0; j < m_surface.cv_count(1); ++j) {
             Point p = m_surface.get_cv(i, j);
+
             for (int k = 0; k < 3; ++k) {
-                if (p[k] < bmin[k]) bmin[k] = p[k];
-                if (p[k] > bmax[k]) bmax[k] = p[k];
+                if (p[k] < bmin[k])
+                    bmin[k] = p[k];
+
+                if (p[k] > bmax[k])
+                    bmax[k] = p[k];
             }
         }
-    double bbox_diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+
-        (bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
+
+    double bbox_diag = std::sqrt(
+        (bmax[0] - bmin[0]) * (bmax[0] - bmin[0]) + (bmax[1] - bmin[1]) * (bmax[1] - bmin[1]) +
+        (bmax[2] - bmin[2]) * (bmax[2] - bmin[2])
+    );
+
     return bbox_diag < 1e-12 ? 1.0 : bbox_diag;
 }
 
 Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) const {
-    if (!is_trimmed()) return m_surface.mesh();
+
+    if (!is_trimmed())
+        return m_surface.mesh();
 
     double deflection = bbox_diagonal() * chord_factor;
 
-    auto eval3 = [&](double u, double v) -> std::array<double,3> {
-        Point p = m_surface.point_at(u, v);
-        return {p[0], p[1], p[2]};
-    };
-
-    auto disc_loop = [&](const NurbsCurve& crv) -> std::vector<Point> {
-        std::vector<Point> raw;
-        if (crv.degree() <= 1 && !crv.is_rational()) {
-            for (int i = 0; i < crv.cv_count(); ++i) raw.push_back(crv.get_cv(i));
-        } else {
-            int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
-            auto [sampled, params] = crv.divide_by_count(n);
-            raw = sampled;
-        }
-        while (raw.size() > 1) {
-            double dx = raw.front()[0] - raw.back()[0];
-            double dy = raw.front()[1] - raw.back()[1];
-            if (dx*dx + dy*dy < 1e-20) raw.pop_back();
-            else break;
-        }
-        if (raw.size() < 2) return raw;
-        std::vector<Point> out;
-        out.reserve(raw.size() * 2);
-        for (size_t i = 0; i < raw.size(); ++i) {
-            std::vector<std::tuple<Point, Point, int>> stack = {{raw[i], raw[(i+1)%raw.size()], 0}};
-            while (!stack.empty()) {
-                auto [a, b, depth] = stack.back();
-                stack.pop_back();
-                double mu = (a[0]+b[0])*0.5, mv = (a[1]+b[1])*0.5;
-                auto pa = eval3(a[0], a[1]), pb = eval3(b[0], b[1]), pm = eval3(mu, mv);
-                double ex = pb[0]-pa[0], ey = pb[1]-pa[1], ez = pb[2]-pa[2];
-                double l2 = ex*ex + ey*ey + ez*ez;
-                double dev = 0.0;
-                if (l2 > 1e-30) {
-                    double t = ((pm[0]-pa[0])*ex+(pm[1]-pa[1])*ey+(pm[2]-pa[2])*ez)/l2;
-                    double cx = pa[0]+t*ex, cy = pa[1]+t*ey, cz = pa[2]+t*ez;
-                    dev = std::sqrt((pm[0]-cx)*(pm[0]-cx)+(pm[1]-cy)*(pm[1]-cy)+(pm[2]-cz)*(pm[2]-cz));
-                } else {
-                    dev = std::sqrt((pm[0]-pa[0])*(pm[0]-pa[0])+(pm[1]-pa[1])*(pm[1]-pa[1])+(pm[2]-pa[2])*(pm[2]-pa[2]));
-                }
-                if (dev > deflection && depth < 6) {
-                    stack.push_back({Point(mu, mv, 0.0), b, depth+1});
-                    stack.push_back({a, Point(mu, mv, 0.0), depth+1});
-                } else {
-                    out.push_back(a);
-                }
-            }
-        }
-        return out;
-    };
-
     TrimLoops loops;
-    loops.uv.push_back(disc_loop(m_outer_loop));
-    for (const auto& inner : m_inner_loops)
-        loops.uv.push_back(disc_loop(inner));
+    loops.uv.push_back(discretize_loop(m_outer_loop, deflection));
+
+    for (const NurbsCurve& inner : m_inner_loops)
+        loops.uv.push_back(discretize_loop(inner, deflection));
+
     return triangulate(loops, max_angle_deg, chord_factor);
 }
 
+std::vector<Point> NurbsSurfaceTrimmed::discretize_loop(const NurbsCurve& crv, double deflection) const {
+
+    std::vector<Point> raw;
+
+    if (crv.degree() <= 1 && !crv.is_rational()) {
+        for (int i = 0; i < crv.cv_count(); ++i)
+            raw.push_back(crv.get_cv(i));
+    } else {
+        int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
+        auto [sampled, params] = crv.divide_by_count(n);
+        raw = sampled;
+    }
+
+    while (raw.size() > 1) {
+        double dx = raw.front()[0] - raw.back()[0];
+        double dy = raw.front()[1] - raw.back()[1];
+
+        if (dx * dx + dy * dy < 1e-20)
+            raw.pop_back();
+        else
+            break;
+    }
+
+    if (raw.size() < 2)
+        return raw;
+
+    std::vector<Point> out;
+    out.reserve(raw.size() * 2);
+
+    for (size_t i = 0; i < raw.size(); ++i) {
+        std::vector<std::tuple<Point, Point, int>> stack = {{raw[i], raw[(i + 1) % raw.size()], 0}};
+
+        while (!stack.empty()) {
+            auto [a, b, depth] = stack.back();
+            stack.pop_back();
+            double mu = (a[0] + b[0]) * 0.5;
+            double mv = (a[1] + b[1]) * 0.5;
+            std::array<double, 3> pa = eval3(m_surface, a[0], a[1]);
+            std::array<double, 3> pb = eval3(m_surface, b[0], b[1]);
+            std::array<double, 3> pm = eval3(m_surface, mu, mv);
+            double ex = pb[0] - pa[0];
+            double ey = pb[1] - pa[1];
+            double ez = pb[2] - pa[2];
+            double l2 = ex * ex + ey * ey + ez * ez;
+            double dev = 0.0;
+
+            if (l2 > 1e-30) {
+                double t = ((pm[0] - pa[0]) * ex + (pm[1] - pa[1]) * ey + (pm[2] - pa[2]) * ez) / l2;
+                double cx = pa[0] + t * ex;
+                double cy = pa[1] + t * ey;
+                double cz = pa[2] + t * ez;
+                dev =
+                    std::sqrt((pm[0] - cx) * (pm[0] - cx) + (pm[1] - cy) * (pm[1] - cy) + (pm[2] - cz) * (pm[2] - cz));
+            } else {
+                dev = std::sqrt(
+                    (pm[0] - pa[0]) * (pm[0] - pa[0]) + (pm[1] - pa[1]) * (pm[1] - pa[1]) +
+                    (pm[2] - pa[2]) * (pm[2] - pa[2])
+                );
+            }
+
+            if (dev > deflection && depth < 6) {
+                stack.push_back({Point(mu, mv, 0.0), b, depth + 1});
+                stack.push_back({a, Point(mu, mv, 0.0), depth + 1});
+            } else {
+                out.push_back(a);
+            }
+        }
+    }
+
+    return out;
+}
+
 Mesh NurbsSurfaceTrimmed::mesh_loops(const TrimLoops& loops, double max_angle_deg, double chord_factor) const {
-    if (loops.uv.empty() || !std::isfinite(max_angle_deg) || max_angle_deg <= 0.0
-        || !std::isfinite(chord_factor) || chord_factor <= 0.0
-        || (!loops.xyz.empty() && loops.xyz.size() != loops.uv.size())) return Mesh();
+
+    if (loops.uv.empty() || !std::isfinite(max_angle_deg) || max_angle_deg <= 0.0 || !std::isfinite(chord_factor) ||
+        chord_factor <= 0.0 || (!loops.xyz.empty() && loops.xyz.size() != loops.uv.size()))
+
+        return Mesh();
+
     size_t expected = 0;
+
     for (size_t li = 0; li < loops.uv.size(); ++li) {
-        const auto& points = loops.uv[li];
-        if (points.size() < 3 || (!loops.xyz.empty() && loops.xyz[li].size() != points.size())) return Mesh();
-        for (const auto& point : points)
-            if (!std::isfinite(point[0]) || !std::isfinite(point[1])) return Mesh();
-        if (!loops.xyz.empty()) for (const auto& point : loops.xyz[li])
-            if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2])) return Mesh();
+        const std::vector<Point>& points = loops.uv[li];
+
+        if (points.size() < 3 || (!loops.xyz.empty() && loops.xyz[li].size() != points.size()))
+            return Mesh();
+
+        for (const Point& point : points)
+            if (!std::isfinite(point[0]) || !std::isfinite(point[1]))
+                return Mesh();
+
+        if (!loops.xyz.empty())
+            for (const Point& point : loops.xyz[li])
+                if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2]))
+                    return Mesh();
+
         expected += points.size();
     }
+
     Mesh result = triangulate(loops, max_angle_deg, chord_factor);
     std::set<std::string> actual;
+
     for (const auto& [key, vd] : result.vertex)
         for (const auto& [name, value] : vd.attributes)
-            if (name.starts_with("boundary/")) actual.insert(name);
+            if (name.starts_with("boundary/"))
+                actual.insert(name);
+
     return actual.size() == expected ? result : Mesh();
 }
 
 Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const {
-    if (loops.uv.empty() || loops.uv[0].size() < 3) return m_surface.mesh();
+
+    if (loops.uv.empty() || loops.uv[0].size() < 3)
+        return m_surface.mesh();
+
     const std::vector<Point>& outer_uv = loops.uv[0];
     double bbox_diag = bbox_diagonal();
     double deflection = bbox_diag * chord_factor;
     double cos_max_angle = std::cos(std::min(std::max(max_angle_deg, 0.1), 179.0) * Tolerance::PI / 180.0);
 
-    auto eval3 = [&](double u, double v) -> std::array<double,3> {
-        Point p = m_surface.point_at(u, v);
-        return {p[0], p[1], p[2]};
-    };
+    double bb_umin = 1e30;
+    double bb_vmin = 1e30;
+    double bb_umax = -1e30;
+    double bb_vmax = -1e30;
 
-    double bb_umin = 1e30, bb_vmin = 1e30, bb_umax = -1e30, bb_vmax = -1e30;
-    for (const auto& p : outer_uv) {
-        if (p[0] < bb_umin) bb_umin = p[0];
-        if (p[1] < bb_vmin) bb_vmin = p[1];
-        if (p[0] > bb_umax) bb_umax = p[0];
-        if (p[1] > bb_vmax) bb_vmax = p[1];
+    for (const Point& p : outer_uv) {
+        if (p[0] < bb_umin)
+            bb_umin = p[0];
+
+        if (p[1] < bb_vmin)
+            bb_vmin = p[1];
+
+        if (p[0] > bb_umax)
+            bb_umax = p[0];
+
+        if (p[1] > bb_vmax)
+            bb_vmax = p[1];
     }
-
-    auto inside_trim = [&](double u, double v) -> bool {
-        if (!point_in_polygon_2d(u, v, outer_uv)) return false;
-        for (size_t li = 1; li < loops.uv.size(); ++li)
-            if (point_in_polygon_2d(u, v, loops.uv[li])) return false;
-        return true;
-    };
 
     std::vector<double> crease_knots[2];
+
     for (int dir = 0; dir < 2; ++dir) {
         auto [start, end] = m_surface.domain(dir);
-        const auto& knots = m_surface.m_nurbsknot[dir];
+        const std::vector<double>& knots = m_surface.m_nurbsknot[dir];
+
         for (double knot : knots) {
-            if (knot <= start || knot >= end || std::find(crease_knots[dir].begin(), crease_knots[dir].end(), knot) != crease_knots[dir].end()) continue;
-            if (std::count(knots.begin(), knots.end(), knot) >= m_surface.degree(dir)) crease_knots[dir].push_back(knot);
+            if (knot <= start || knot >= end ||
+                std::find(crease_knots[dir].begin(), crease_knots[dir].end(), knot) != crease_knots[dir].end())
+                continue;
+
+            if (std::count(knots.begin(), knots.end(), knot) >= m_surface.degree(dir))
+                crease_knots[dir].push_back(knot);
         }
     }
+
     Delaunay2D dt(bb_umin, bb_vmin, bb_umax, bb_vmax);
     std::vector<std::vector<int>> loop_vids;
     std::map<int, std::tuple<size_t, size_t, double>> boundary_intervals;
+
     for (size_t li = 0; li < loops.uv.size(); ++li) {
-        const auto& pts = loops.uv[li];
+        const std::vector<Point>& pts = loops.uv[li];
         std::vector<int> vis;
-        for (const auto& p : pts) vis.push_back(dt.insert(p[0], p[1]));
+
+        for (const Point& p : pts)
+            vis.push_back(dt.insert(p[0], p[1]));
+
         for (size_t i = 0; i < vis.size(); ++i) {
             size_t j = (i + 1) % vis.size();
             std::vector<std::pair<double, int>> events = {{0.0, vis[i]}, {1.0, vis[j]}};
+
             for (int dir = 0; dir < 2; ++dir) {
                 double delta = pts[j][dir] - pts[i][dir];
-                if (delta == 0.0) continue;
+
+                if (delta == 0.0)
+                    continue;
+
                 for (double knot : crease_knots[dir]) {
                     double t = (knot - pts[i][dir]) / delta;
-                    if (t <= 0.0 || t >= 1.0) continue;
-                    double uv[2] = {pts[i][0] + t*(pts[j][0]-pts[i][0]), pts[i][1] + t*(pts[j][1]-pts[i][1])};
+
+                    if (t <= 0.0 || t >= 1.0)
+                        continue;
+
+                    double uv[2] = {pts[i][0] + t * (pts[j][0] - pts[i][0]), pts[i][1] + t * (pts[j][1] - pts[i][1])};
                     uv[dir] = knot;
                     int vi = dt.insert(uv[0], uv[1]);
-                    if (vi >= 0) boundary_intervals[vi] = {li, i, t};
+
+                    if (vi >= 0)
+                        boundary_intervals[vi] = {li, i, t};
+
                     events.push_back({t, vi});
                 }
             }
+
             std::sort(events.begin(), events.end());
+
             for (size_t k = 1; k < events.size(); ++k)
-                if (events[k-1].second >= 0 && events[k].second >= 0 && events[k-1].second != events[k].second)
-                    dt.insert_constraint(events[k-1].second, events[k].second);
+                if (events[k - 1].second >= 0 && events[k].second >= 0 && events[k - 1].second != events[k].second)
+                    dt.insert_constraint(events[k - 1].second, events[k].second);
         }
+
         loop_vids.push_back(vis);
     }
-    for (double u : crease_knots[0]) for (double v : crease_knots[1])
-        if (inside_trim(u, v)) dt.insert(u, v);
+
+    for (double u : crease_knots[0])
+        for (double v : crease_knots[1])
+            if (inside_loops(u, v, loops.uv))
+                dt.insert(u, v);
+
     for (int dir = 0; dir < 2; ++dir) {
         for (double knot : crease_knots[dir]) {
             std::vector<std::pair<double, int>> nodes;
+
             for (size_t vi = 0; vi < dt.vertices.size(); ++vi) {
                 double uv[2] = {dt.vertices[vi].x, dt.vertices[vi].y};
-                if (uv[dir] == knot) nodes.push_back({uv[1-dir], (int)vi});
+
+                if (uv[dir] == knot)
+                    nodes.push_back({uv[1 - dir], (int)vi});
             }
+
             std::sort(nodes.begin(), nodes.end());
+
             for (size_t k = 1; k < nodes.size(); ++k) {
                 double uv[2] = {knot, knot};
-                uv[1-dir] = (nodes[k-1].first + nodes[k].first) * 0.5;
-                if (inside_trim(uv[0], uv[1])) dt.insert_constraint(nodes[k-1].second, nodes[k].second);
+                uv[1 - dir] = (nodes[k - 1].first + nodes[k].first) * 0.5;
+
+                if (inside_loops(uv[0], uv[1], loops.uv))
+                    dt.insert_constraint(nodes[k - 1].second, nodes[k].second);
             }
         }
     }
-    for (const auto& p : loops.interior_uv)
-        if (inside_trim(p[0], p[1])) dt.insert(p[0], p[1]);
+
+    for (const Point& p : loops.interior_uv)
+        if (inside_loops(p[0], p[1], loops.uv))
+            dt.insert(p[0], p[1]);
 
     const int MAX_ITERS = 8;
     const size_t MAX_VERTS = 200000;
     int iters = MAX_ITERS;
+
     for (int iter = 0; iter < iters; ++iter) {
-        std::vector<std::array<double,2>> to_insert;
-        for (const auto& tri : dt.triangles) {
-            if (!tri.alive) continue;
+        std::vector<std::array<double, 2>> to_insert;
+
+        for (const Triangle& tri : dt.triangles) {
+            if (!tri.alive)
+                continue;
+
             const Vertex2D& A = dt.vertices[tri.v[0]];
             const Vertex2D& B = dt.vertices[tri.v[1]];
             const Vertex2D& C = dt.vertices[tri.v[2]];
-            double cu = (A.x + B.x + C.x) / 3.0, cv = (A.y + B.y + C.y) / 3.0;
-            if (!inside_trim(cu, cv)) continue;
-            auto pa = eval3(A.x, A.y), pb = eval3(B.x, B.y), pc = eval3(C.x, C.y), pm = eval3(cu, cv);
-            double ux = pb[0]-pa[0], uy = pb[1]-pa[1], uz = pb[2]-pa[2];
-            double vx = pc[0]-pa[0], vy = pc[1]-pa[1], vz = pc[2]-pa[2];
-            double nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx;
-            double nl = std::sqrt(nx*nx+ny*ny+nz*nz);
-            if (nl < 1e-30) continue;
-            double dev = std::abs(((pm[0]-pa[0])*nx+(pm[1]-pa[1])*ny+(pm[2]-pa[2])*nz)/nl);
+            double cu = (A.x + B.x + C.x) / 3.0;
+            double cv = (A.y + B.y + C.y) / 3.0;
+
+            if (!inside_loops(cu, cv, loops.uv))
+                continue;
+
+            std::array<double, 3> pa = eval3(m_surface, A.x, A.y);
+            std::array<double, 3> pb = eval3(m_surface, B.x, B.y);
+            std::array<double, 3> pc = eval3(m_surface, C.x, C.y);
+            std::array<double, 3> pm = eval3(m_surface, cu, cv);
+            double ux = pb[0] - pa[0];
+            double uy = pb[1] - pa[1];
+            double uz = pb[2] - pa[2];
+            double vx = pc[0] - pa[0];
+            double vy = pc[1] - pa[1];
+            double vz = pc[2] - pa[2];
+            double nx = uy * vz - uz * vy;
+            double ny = uz * vx - ux * vz;
+            double nz = ux * vy - uy * vx;
+            double nl = std::sqrt(nx * nx + ny * ny + nz * nz);
+
+            if (nl < 1e-30)
+                continue;
+
+            double dev = std::abs(((pm[0] - pa[0]) * nx + (pm[1] - pa[1]) * ny + (pm[2] - pa[2]) * nz) / nl);
             bool refine = dev > deflection;
+
             if (!refine) {
-                Vector na = crease_side_normal(m_surface, crease_knots, {cu,cv}, {A.x,A.y});
-                Vector nb = crease_side_normal(m_surface, crease_knots, {cu,cv}, {B.x,B.y});
-                Vector nc2 = crease_side_normal(m_surface, crease_knots, {cu,cv}, {C.x,C.y});
-                double d1 = na[0]*nb[0]+na[1]*nb[1]+na[2]*nb[2];
-                double d2 = nb[0]*nc2[0]+nb[1]*nc2[1]+nb[2]*nc2[2];
-                double d3 = na[0]*nc2[0]+na[1]*nc2[1]+na[2]*nc2[2];
+                Vector na = crease_side_normal(m_surface, crease_knots, {cu, cv}, {A.x, A.y});
+                Vector nb = crease_side_normal(m_surface, crease_knots, {cu, cv}, {B.x, B.y});
+                Vector nc2 = crease_side_normal(m_surface, crease_knots, {cu, cv}, {C.x, C.y});
+                double d1 = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
+                double d2 = nb[0] * nc2[0] + nb[1] * nc2[1] + nb[2] * nc2[2];
+                double d3 = na[0] * nc2[0] + na[1] * nc2[1] + na[2] * nc2[2];
                 double mind = std::min(d1, std::min(d2, d3));
-                if (mind < cos_max_angle) refine = true;
+
+                if (mind < cos_max_angle)
+                    refine = true;
             }
-            if (refine) to_insert.push_back({cu, cv});
+
+            if (refine)
+                to_insert.push_back({cu, cv});
         }
-        if (to_insert.empty()) break;
-        for (const auto& uv : to_insert) {
-            if (dt.vertices.size() >= MAX_VERTS) break;
+
+        if (to_insert.empty())
+            break;
+
+        for (const std::array<double, 2>& uv : to_insert) {
+            if (dt.vertices.size() >= MAX_VERTS)
+                break;
+
             dt.insert(uv[0], uv[1]);
         }
-        if (dt.vertices.size() >= MAX_VERTS) break;
+
+        if (dt.vertices.size() >= MAX_VERTS)
+            break;
     }
 
     dt.cleanup();
-    for (auto& tri : dt.triangles) {
-        if (!tri.alive) continue;
+
+    for (Triangle& tri : dt.triangles) {
+        if (!tri.alive)
+            continue;
+
         double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
         double cv = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-        if (!inside_trim(cu, cv)) tri.alive = false;
+
+        if (!inside_loops(cu, cv, loops.uv))
+            tri.alive = false;
     }
 
-    auto tris = dt.get_triangles();
-    if (tris.empty()) return Mesh();
-    for (const auto& tri : tris) for (int dir = 0; dir < 2; ++dir) {
-        double low = INFINITY, high = -INFINITY;
-        for (int vi : tri) {
-            double value = dir == 0 ? dt.vertices[vi].x : dt.vertices[vi].y;
-            low = std::min(low, value); high = std::max(high, value);
+    const std::vector<std::array<int, 3>> tris = dt.get_triangles();
+
+    if (tris.empty())
+        return Mesh();
+
+    for (const std::array<int, 3>& tri : tris)
+        for (int dir = 0; dir < 2; ++dir) {
+            double low = INFINITY;
+            double high = -INFINITY;
+
+            for (int vi : tri) {
+                double value = dir == 0 ? dt.vertices[vi].x : dt.vertices[vi].y;
+                low = std::min(low, value);
+                high = std::max(high, value);
+            }
+
+            for (double knot : crease_knots[dir])
+                if (low < knot && knot < high)
+                    return Mesh();
         }
-        for (double knot : crease_knots[dir]) if (low < knot && knot < high) return Mesh();
-    }
 
     std::vector<std::pair<int, int>> given(dt.vertices.size(), {-1, -1});
+
     for (size_t li = 0; li < loop_vids.size() && li < loops.xyz.size(); ++li)
         for (size_t k = 0; k < loop_vids[li].size() && k < loops.xyz[li].size(); ++k)
-            if (loop_vids[li][k] >= 0) given[loop_vids[li][k]] = {(int)li, (int)k};
+            if (loop_vids[li][k] >= 0)
+                given[loop_vids[li][k]] = {(int)li, (int)k};
 
     Mesh result;
     std::vector<size_t> vert_map(dt.vertices.size(), SIZE_MAX);
 
     double weld_tol = loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0;
-    double cell = bbox_diag * 1e-5;
-    std::map<std::tuple<long long,long long,long long>,
-             std::vector<std::pair<std::array<double,3>, size_t>>> cell_map;
-    auto weld_vertex = [&](double x, double y, double z) -> size_t {
-        long long ci = (long long)std::floor(x/cell);
-        long long cj = (long long)std::floor(y/cell);
-        long long ck = (long long)std::floor(z/cell);
-        for (long long di = -1; di <= 1; ++di)
-            for (long long dj = -1; dj <= 1; ++dj)
-                for (long long dk = -1; dk <= 1; ++dk) {
-                    auto it = cell_map.find(std::make_tuple(ci+di, cj+dj, ck+dk));
-                    if (it == cell_map.end()) continue;
-                    for (const auto& [p, vk] : it->second) {
-                        double dx = p[0]-x, dy = p[1]-y, dz = p[2]-z;
-                        if (dx*dx + dy*dy + dz*dz <= weld_tol*weld_tol) return vk;
-                    }
-                }
-        size_t vk = result.add_vertex(Point(x, y, z));
-        cell_map[std::make_tuple(ci, cj, ck)].push_back({{x, y, z}, vk});
-        return vk;
-    };
+    VertexWelder welder(result, weld_tol, bbox_diag * 1e-5);
 
-    for (const auto& tri : tris)
+    for (const std::array<int, 3>& tri : tris)
         for (int k = 0; k < 3; ++k) {
             int vi = tri[k];
-            if (vert_map[vi] != SIZE_MAX) continue;
+
+            if (vert_map[vi] != SIZE_MAX)
+                continue;
+
             Point p;
-            if (given[vi].first >= 0) p = loops.xyz[given[vi].first][given[vi].second];
+
+            if (given[vi].first >= 0)
+                p = loops.xyz[given[vi].first][given[vi].second];
             else if (boundary_intervals.count(vi) && !loops.xyz.empty()) {
                 auto [li, k, t] = boundary_intervals[vi];
-                const auto& a = loops.xyz[li][k];
-                const auto& b = loops.xyz[li][(k + 1) % loops.xyz[li].size()];
-                p = Point(a[0] + t*(b[0]-a[0]), a[1] + t*(b[1]-a[1]), a[2] + t*(b[2]-a[2]));
-            } else p = m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
-            vert_map[vi] = weld_vertex(p[0], p[1], p[2]);
+                const Point& a = loops.xyz[li][k];
+                const Point& b = loops.xyz[li][(k + 1) % loops.xyz[li].size()];
+                p = Point(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2]));
+            } else
+                p = m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
+
+            vert_map[vi] = welder.weld(p);
         }
-    for (const auto& tri : tris) {
-        size_t v0 = vert_map[tri[0]], v1 = vert_map[tri[1]], v2 = vert_map[tri[2]];
-        if (v0 == v1 || v1 == v2 || v2 == v0) continue;
+
+    for (const std::array<int, 3>& tri : tris) {
+        size_t v0 = vert_map[tri[0]];
+        size_t v1 = vert_map[tri[1]];
+        size_t v2 = vert_map[tri[2]];
+
+        if (v0 == v1 || v1 == v2 || v2 == v0)
+            continue;
+
         result.add_face({v0, v1, v2});
     }
-    std::map<size_t, std::array<double,3>> fan;
+
+    std::map<size_t, std::array<double, 3>> fan;
     std::vector<size_t> fkeys;
-    for (const auto& [fk, verts] : result.face) fkeys.push_back(fk);
+
+    for (const auto& [fk, verts] : result.face)
+        fkeys.push_back(fk);
+
     std::sort(fkeys.begin(), fkeys.end());
+
     for (size_t fk : fkeys) {
-        const auto& verts = result.face[fk];
-        Point a = result.vertex[verts[0]].position(), b = result.vertex[verts[1]].position(), c = result.vertex[verts[2]].position();
-        double e1[3] = {b[0]-a[0], b[1]-a[1], b[2]-a[2]}, e2[3] = {c[0]-a[0], c[1]-a[1], c[2]-a[2]};
-        double n[3] = {e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]};
+        const std::vector<size_t>& verts = result.face[fk];
+        const Point a = result.vertex[verts[0]].position();
+        const Point b = result.vertex[verts[1]].position();
+        const Point c = result.vertex[verts[2]].position();
+        const double e1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const double e2[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        const double n[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+
         for (size_t vk : verts) {
-            auto& acc = fan[vk];
-            acc[0] += n[0]; acc[1] += n[1]; acc[2] += n[2];
+            std::array<double, 3>& acc = fan[vk];
+            acc[0] += n[0];
+            acc[1] += n[1];
+            acc[2] += n[2];
         }
     }
+
     for (size_t vi = 0; vi < vert_map.size(); ++vi) {
-        if (vert_map[vi] == SIZE_MAX) continue;
+        if (vert_map[vi] == SIZE_MAX)
+            continue;
+
         VertexData& vd = result.vertex[vert_map[vi]];
-        auto derivatives = m_surface.evaluate(dt.vertices[vi].x, dt.vertices[vi].y, 1);
+        const std::vector<Vector> derivatives = m_surface.evaluate(dt.vertices[vi].x, dt.vertices[vi].y, 1);
         Vector nrm(0.0, 0.0, 0.0);
-        if (derivatives.size() >= 3) nrm = derivatives[2].cross(derivatives[1]);
-        double nl = std::sqrt(nrm[0]*nrm[0] + nrm[1]*nrm[1] + nrm[2]*nrm[2]);
+
+        if (derivatives.size() >= 3)
+            nrm = derivatives[2].cross(derivatives[1]);
+
+        double nl = std::sqrt(nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);
+
         if (std::isfinite(nl) && nl > 0.0) {
-            nrm = Vector(nrm[0]/nl, nrm[1]/nl, nrm[2]/nl);
+            nrm = Vector(nrm[0] / nl, nrm[1] / nl, nrm[2] / nl);
         } else {
-            auto f = fan.count(vert_map[vi]) ? fan[vert_map[vi]] : std::array<double,3>{0.0, 0.0, 1.0};
-            double fl = std::sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
-            nrm = std::isfinite(fl) && fl > 0.0 ? Vector(f[0]/fl, f[1]/fl, f[2]/fl) : Vector(0.0, 0.0, 1.0);
+            const std::array<double, 3> f = fan.count(vert_map[vi]) ? fan[vert_map[vi]] : std::array<double, 3>{0.0, 0.0, 1.0};
+            double fl = std::sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+            nrm = std::isfinite(fl) && fl > 0.0 ? Vector(f[0] / fl, f[1] / fl, f[2] / fl) : Vector(0.0, 0.0, 1.0);
         }
+
         vd.set_normal(nrm[0], nrm[1], nrm[2]);
         vd.attributes["u"] = dt.vertices[vi].x;
         vd.attributes["v"] = dt.vertices[vi].y;
-
     }
+
     for (size_t li = 0; li < loop_vids.size(); ++li) {
         for (size_t k = 0; k < loop_vids[li].size(); ++k) {
             int vi = loop_vids[li][k];
+
             if (vi >= 0 && vert_map[vi] != SIZE_MAX)
-                result.vertex[vert_map[vi]].attributes["boundary/" + std::to_string(li) + "/" + std::to_string(k)] = 1.0;
+                result.vertex[vert_map[vi]].attributes["boundary/" + std::to_string(li) + "/" + std::to_string(k)] =
+                    1.0;
         }
     }
+
     for (const auto& [vi, interval] : boundary_intervals) {
         auto [li, k, t] = interval;
-        if (vert_map[vi] != SIZE_MAX) result.vertex[vert_map[vi]].attributes["boundary_interval/" + std::to_string(li) + "/" + std::to_string(k)] = t;
+
+        if (vert_map[vi] != SIZE_MAX)
+            result.vertex[vert_map[vi]]
+                .attributes["boundary_interval/" + std::to_string(li) + "/" + std::to_string(k)] = t;
     }
+
     RemeshNurbsSurfaceGrid::split_crease_normals(m_surface, result);
+
     return result;
 }
 
-Mesh NurbsSurfaceTrimmed::mesh_by_plane(const Point& q0, const Vector& normal,
-                                        double max_angle_deg, double chord_factor) const {
+Mesh NurbsSurfaceTrimmed::mesh_by_plane(
+    const Point& q0,
+    const Vector& normal,
+    double max_angle_deg,
+    double chord_factor
+) const {
+
     const NurbsSurface& srf = m_surface;
-    double nx = normal[0], ny = normal[1], nz = normal[2];
-    double nl = std::sqrt(nx*nx + ny*ny + nz*nz);
-    if (nl < 1e-12) return srf.mesh();
-    nx /= nl; ny /= nl; nz /= nl;
+    std::array<double, 3> n;
 
-    auto eval3 = [&](double u, double v) -> std::array<double,3> {
-        Point p = srf.point_at(u, v); return {p[0], p[1], p[2]};
-    };
-    auto field = [&](double u, double v) -> double {
-        auto p = eval3(u, v);
-        return (p[0]-q0[0])*nx + (p[1]-q0[1])*ny + (p[2]-q0[2])*nz;
-    };
-    auto refine = [&](double& u, double& v) {
-        for (int it = 0; it < 12; ++it) {
-            double fv = field(u, v);
-            if (std::abs(fv) < 1e-9) break;
-            double h = 1e-4;
-            auto a = eval3(u+h, v), b = eval3(u-h, v), c = eval3(u, v+h), d = eval3(u, v-h);
-            double gu = ((a[0]-b[0])*nx + (a[1]-b[1])*ny + (a[2]-b[2])*nz) / (2*h);
-            double gv = ((c[0]-d[0])*nx + (c[1]-d[1])*ny + (c[2]-d[2])*nz) / (2*h);
-            double g2 = gu*gu + gv*gv;
-            if (g2 < 1e-20) break;
-            u -= fv*gu/g2; v -= fv*gv/g2;
-        }
-    };
+    if (!unit3(normal, n))
+        return srf.mesh();
 
-    auto usp = srf.get_span_vector(0);
-    auto vsp = srf.get_span_vector(1);
-    if (usp.size() < 2 || vsp.size() < 2) return srf.mesh();
-    int deg_u = srf.degree(0), deg_v = srf.degree(1);
-    double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
-    for (int i = 0; i < srf.cv_count(0); ++i)
-        for (int j = 0; j < srf.cv_count(1); ++j) {
-            Point p = srf.get_cv(i, j);
-            for (int k = 0; k < 3; ++k) { if (p[k]<bmin[k]) bmin[k]=p[k]; if (p[k]>bmax[k]) bmax[k]=p[k]; }
-        }
-    double bbox_diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+(bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
-    if (bbox_diag < 1e-12) bbox_diag = 1.0;
+    std::array<double, 3> q = {q0[0], q0[1], q0[2]};
+
+    const std::vector<double> usp = srf.get_span_vector(0);
+    const std::vector<double> vsp = srf.get_span_vector(1);
+
+    if (usp.size() < 2 || vsp.size() < 2)
+        return srf.mesh();
+
+    double bbox_diag = bbox_diagonal();
     double chord_tol = bbox_diag * chord_factor;
+    std::vector<double> us =
+        span_parameters(usp, span_subdivisions(srf, 0, usp, vsp, srf.degree(0), max_angle_deg, chord_tol));
 
-    auto span_subs = [&](int dir, const std::vector<double>& sp, const std::vector<double>& osp, int deg) -> std::vector<int> {
-        int n = (int)sp.size()-1; std::vector<int> subs(n, deg>1?2:1);
-        double s_mid = (osp.front()+osp.back())*0.5;
-        for (int i = 0; i < n; ++i) {
-            double t0 = sp[i], t1 = sp[i+1];
-            if (deg > 1) {
-                double ma = 0.0; std::array<double,3> pn{};
-                for (int k = 0; k <= 4; ++k) {
-                    double t = t0 + k*(t1-t0)/4.0;
-                    Vector nm = (dir==0) ? srf.normal_at(t, s_mid) : srf.normal_at(s_mid, t);
-                    if (k>0) { double dpd = pn[0]*nm[0]+pn[1]*nm[1]+pn[2]*nm[2]; dpd=std::max(-1.0,std::min(1.0,dpd)); ma += std::acos(dpd)*180.0/Tolerance::PI; }
-                    pn = {nm[0], nm[1], nm[2]};
-                }
-                subs[i] = std::max(subs[i], std::max(1, std::min((int)std::ceil(ma/max_angle_deg), 64)));
-            }
-            std::array<double,3> p0 = (dir==0)?eval3(t0,s_mid):eval3(s_mid,t0);
-            std::array<double,3> p1 = (dir==0)?eval3(t1,s_mid):eval3(s_mid,t1);
-            double dev = 0.0;
-            for (int k = 1; k <= 3; ++k) {
-                double fr = k/4.0, tm = t0+fr*(t1-t0);
-                std::array<double,3> pm = (dir==0)?eval3(tm,s_mid):eval3(s_mid,tm);
-                double lx=p0[0]+fr*(p1[0]-p0[0]), ly=p0[1]+fr*(p1[1]-p0[1]), lz=p0[2]+fr*(p1[2]-p0[2]);
-                double dd = std::sqrt((pm[0]-lx)*(pm[0]-lx)+(pm[1]-ly)*(pm[1]-ly)+(pm[2]-lz)*(pm[2]-lz));
-                if (dd>dev) dev=dd;
-            }
-            if (dev > chord_tol) subs[i] = std::max(subs[i], std::min((int)std::ceil(std::sqrt(dev/chord_tol)), 64));
-        }
-        return subs;
-    };
-    auto u_subs = span_subs(0, usp, vsp, deg_u);
-    auto v_subs = span_subs(1, vsp, usp, deg_v);
-    std::vector<double> us, vs;
-    for (int i = 0; i+1 < (int)usp.size(); ++i) for (int s = 0; s < u_subs[i]; ++s) us.push_back(usp[i] + s*(usp[i+1]-usp[i])/u_subs[i]);
-    us.push_back(usp.back());
-    for (int i = 0; i+1 < (int)vsp.size(); ++i) for (int s = 0; s < v_subs[i]; ++s) vs.push_back(vsp[i] + s*(vsp[i+1]-vsp[i])/v_subs[i]);
-    vs.push_back(vsp.back());
-    int nu = (int)us.size(), nv = (int)vs.size();
-    if (nu < 2 || nv < 2) return srf.mesh();
+    std::vector<double> vs =
+        span_parameters(vsp, span_subdivisions(srf, 1, vsp, usp, srf.degree(1), max_angle_deg, chord_tol));
+
+    int nu = (int)us.size();
+    int nv = (int)vs.size();
+
+    if (nu < 2 || nv < 2)
+        return srf.mesh();
 
     std::vector<std::vector<double>> F(nu, std::vector<double>(nv));
-    for (int i = 0; i < nu; ++i) for (int j = 0; j < nv; ++j) F[i][j] = field(us[i], vs[j]);
+
+    for (int i = 0; i < nu; ++i)
+        for (int j = 0; j < nv; ++j)
+            F[i][j] = plane_field(srf, q, n, us[i], vs[j]);
 
     Mesh result;
-    double weld_tol = bbox_diag * 1e-5, cell = weld_tol > 0 ? weld_tol : 1.0;
-    std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<std::array<double,3>, size_t>>> cmap;
-    auto weld = [&](double u, double v) -> size_t {
-        Point P = srf.point_at(u, v); double x=P[0],y=P[1],z=P[2];
-        long long ci=(long long)std::floor(x/cell), cj=(long long)std::floor(y/cell), ck=(long long)std::floor(z/cell);
-        for (long long di=-1; di<=1; ++di) for (long long dj=-1; dj<=1; ++dj) for (long long dk=-1; dk<=1; ++dk) {
-            auto it = cmap.find(std::make_tuple(ci+di,cj+dj,ck+dk)); if (it==cmap.end()) continue;
-            for (auto& [pp, vk] : it->second) { double ddx=pp[0]-x,ddy=pp[1]-y,ddz=pp[2]-z; if (ddx*ddx+ddy*ddy+ddz*ddz<=weld_tol*weld_tol) return vk; }
-        }
-        size_t vk = result.add_vertex(P);
-        Vector nm = srf.normal_at(u, v);
-        result.vertex[vk].set_normal(nm[0], nm[1], nm[2]);
-        cmap[std::make_tuple(ci,cj,ck)].push_back({{x,y,z}, vk});
-        return vk;
-    };
-    auto cross = [&](double ua, double va, double ub, double vb) -> size_t {
-        double fa = field(ua,va), fb = field(ub,vb);
-        double t = (std::abs(fa-fb) > 1e-30) ? fa/(fa-fb) : 0.5;
-        double u = ua + (ub-ua)*t, v = va + (vb-va)*t;
-        refine(u, v);
-        return weld(u, v);
-    };
+    double weld_tol = bbox_diag * 1e-5;
+    VertexWelder welder(result, weld_tol, weld_tol);
 
-    for (int i = 0; i+1 < nu; ++i) {
-        for (int j = 0; j+1 < nv; ++j) {
-            double cu[4] = {us[i], us[i+1], us[i+1], us[i]};
-            double cv[4] = {vs[j], vs[j], vs[j+1], vs[j+1]};
-            bool in[4] = {F[i][j]<=0, F[i+1][j]<=0, F[i+1][j+1]<=0, F[i][j+1]<=0};
-            int cnt = (in[0]?1:0)+(in[1]?1:0)+(in[2]?1:0)+(in[3]?1:0);
-            if (cnt == 0) continue;
+    for (int i = 0; i + 1 < nu; ++i) {
+        for (int j = 0; j + 1 < nv; ++j) {
+            double cu[4] = {us[i], us[i + 1], us[i + 1], us[i]};
+            double cv[4] = {vs[j], vs[j], vs[j + 1], vs[j + 1]};
+            double fc[4] = {F[i][j], F[i + 1][j], F[i + 1][j + 1], F[i][j + 1]};
+            bool in[4] = {fc[0] <= 0, fc[1] <= 0, fc[2] <= 0, fc[3] <= 0};
+            int cnt = (in[0] ? 1 : 0) + (in[1] ? 1 : 0) + (in[2] ? 1 : 0) + (in[3] ? 1 : 0);
+
+            if (cnt == 0)
+                continue;
+
             std::vector<size_t> poly;
+
             for (int k = 0; k < 4; ++k) {
-                int kn = (k+1)%4;
-                if (in[k]) poly.push_back(weld(cu[k], cv[k]));
-                if (in[k] != in[kn]) poly.push_back(cross(cu[k],cv[k], cu[kn],cv[kn]));
+                int kn = (k + 1) % 4;
+
+                if (in[k])
+                    poly.push_back(welder.weld(srf, cu[k], cv[k]));
+
+                if (in[k] != in[kn]) {
+                    double t = (std::abs(fc[k] - fc[kn]) > 1e-30) ? fc[k] / (fc[k] - fc[kn]) : 0.5;
+                    double u = cu[k] + (cu[kn] - cu[k]) * t;
+                    double v = cv[k] + (cv[kn] - cv[k]) * t;
+                    refine_crossing(srf, q, n, u, v);
+                    poly.push_back(welder.weld(srf, u, v));
+                }
             }
-            for (size_t t = 1; t+1 < poly.size(); ++t) {
-                size_t a = poly[0], b = poly[t], c = poly[t+1];
-                if (a==b||b==c||c==a) continue;
+
+            for (size_t t = 1; t + 1 < poly.size(); ++t) {
+                size_t a = poly[0];
+                size_t b = poly[t];
+                size_t c = poly[t + 1];
+
+                if (a == b || b == c || c == a)
+                    continue;
+
                 result.add_face({a, b, c});
             }
         }
     }
-    if (result.face.empty()) return srf.mesh();
+
+    if (result.face.empty())
+        return srf.mesh();
+
     return result;
 }
-Mesh NurbsSurfaceTrimmed::mesh_by_planes(const std::vector<std::pair<Point, Vector>>& planes,
-                                         double max_angle_deg, double chord_factor) const {
+
+Mesh NurbsSurfaceTrimmed::mesh_by_planes(
+    const std::vector<std::pair<Point, Vector>>& planes,
+    double max_angle_deg,
+    double chord_factor
+) const {
+
     const NurbsSurface& srf = m_surface;
-    std::vector<std::pair<std::array<double,3>, std::array<double,3>>> pl;
-    for (const auto& qn : planes) {
-        const Point& q = qn.first; const Vector& n = qn.second;
-        double nx = n[0], ny = n[1], nz = n[2];
-        double nl = std::sqrt(nx*nx + ny*ny + nz*nz);
-        if (nl < 1e-12) continue;
-        pl.push_back({{q[0], q[1], q[2]}, {nx/nl, ny/nl, nz/nl}});
+    std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> pl;
+
+    for (const std::pair<Point, Vector>& qn : planes) {
+        std::array<double, 3> n;
+
+        if (!unit3(qn.second, n))
+            continue;
+
+        pl.push_back({{qn.first[0], qn.first[1], qn.first[2]}, n});
     }
-    if (pl.empty()) return srf.mesh();
 
-    auto e3 = [&](double u, double v) -> std::array<double,3> {
-        Point p = srf.point_at(u, v); return {p[0], p[1], p[2]};
-    };
-    auto field_k = [&](int k, double u, double v) -> double {
-        auto p = e3(u, v); const auto& q = pl[k].first; const auto& n = pl[k].second;
-        return (p[0]-q[0])*n[0] + (p[1]-q[1])*n[1] + (p[2]-q[2])*n[2];
-    };
-    auto refine_k = [&](int k, double& u, double& v) {
-        const auto& n = pl[k].second;
-        for (int it = 0; it < 12; ++it) {
-            double fv = field_k(k, u, v);
-            if (std::abs(fv) < 1e-9) break;
-            double h = 1e-4;
-            auto a = e3(u+h, v), b = e3(u-h, v), c = e3(u, v+h), d = e3(u, v-h);
-            double gu = ((a[0]-b[0])*n[0] + (a[1]-b[1])*n[1] + (a[2]-b[2])*n[2]) / (2*h);
-            double gv = ((c[0]-d[0])*n[0] + (c[1]-d[1])*n[1] + (c[2]-d[2])*n[2]) / (2*h);
-            double g2 = gu*gu + gv*gv;
-            if (g2 < 1e-20) break;
-            u -= fv*gu/g2; v -= fv*gv/g2;
-        }
-    };
+    if (pl.empty())
+        return srf.mesh();
 
-    auto usp = srf.get_span_vector(0);
-    auto vsp = srf.get_span_vector(1);
-    if (usp.size() < 2 || vsp.size() < 2) return srf.mesh();
-    int deg_u = srf.degree(0), deg_v = srf.degree(1);
-    double bmin[3] = {1e30, 1e30, 1e30}, bmax[3] = {-1e30, -1e30, -1e30};
-    for (int i = 0; i < srf.cv_count(0); ++i)
-        for (int j = 0; j < srf.cv_count(1); ++j) {
-            Point p = srf.get_cv(i, j);
-            for (int k = 0; k < 3; ++k) { if (p[k]<bmin[k]) bmin[k]=p[k]; if (p[k]>bmax[k]) bmax[k]=p[k]; }
-        }
-    double diag = std::sqrt((bmax[0]-bmin[0])*(bmax[0]-bmin[0])+(bmax[1]-bmin[1])*(bmax[1]-bmin[1])+(bmax[2]-bmin[2])*(bmax[2]-bmin[2]));
-    if (diag < 1e-12) diag = 1.0;
-    double ctol = diag * chord_factor;
+    const std::vector<double> usp = srf.get_span_vector(0);
+    const std::vector<double> vsp = srf.get_span_vector(1);
 
-    auto span_subs = [&](int dr, const std::vector<double>& sp, const std::vector<double>& osp, int deg) -> std::vector<int> {
-        int n = (int)sp.size()-1; std::vector<int> out(n, deg>1?2:1);
-        double smid = (osp.front()+osp.back())*0.5;
-        for (int i = 0; i < n; ++i) {
-            double t0 = sp[i], t1 = sp[i+1];
-            if (deg > 1) {
-                double ma = 0.0; std::array<double,3> pn{};
-                for (int k = 0; k <= 4; ++k) {
-                    double t = t0 + k*(t1-t0)/4.0;
-                    Vector nm = (dr==0) ? srf.normal_at(t, smid) : srf.normal_at(smid, t);
-                    if (k>0) { double d = pn[0]*nm[0]+pn[1]*nm[1]+pn[2]*nm[2]; d=std::max(-1.0,std::min(1.0,d)); ma += std::acos(d)*180.0/Tolerance::PI; }
-                    pn = {nm[0], nm[1], nm[2]};
-                }
-                out[i] = std::max(out[i], std::max(1, std::min((int)std::ceil(ma/max_angle_deg), 64)));
-            }
-            std::array<double,3> p0 = (dr==0)?e3(t0,smid):e3(smid,t0);
-            std::array<double,3> p1 = (dr==0)?e3(t1,smid):e3(smid,t1);
-            double dev = 0.0;
-            for (int k = 1; k <= 3; ++k) {
-                double fr = k/4.0, tm = t0+fr*(t1-t0);
-                std::array<double,3> pm = (dr==0)?e3(tm,smid):e3(smid,tm);
-                double lx=p0[0]+fr*(p1[0]-p0[0]), ly=p0[1]+fr*(p1[1]-p0[1]), lz=p0[2]+fr*(p1[2]-p0[2]);
-                double dd = std::sqrt((pm[0]-lx)*(pm[0]-lx)+(pm[1]-ly)*(pm[1]-ly)+(pm[2]-lz)*(pm[2]-lz));
-                if (dd>dev) dev=dd;
-            }
-            if (dev > ctol) out[i] = std::max(out[i], std::min((int)std::ceil(std::sqrt(dev/ctol)), 64));
-        }
-        return out;
-    };
-    auto us_subs = span_subs(0, usp, vsp, deg_u);
-    auto vs_subs = span_subs(1, vsp, usp, deg_v);
-    std::vector<double> us, vs;
-    for (int i = 0; i+1 < (int)usp.size(); ++i) for (int s = 0; s < us_subs[i]; ++s) us.push_back(usp[i] + s*(usp[i+1]-usp[i])/us_subs[i]);
-    us.push_back(usp.back());
-    for (int i = 0; i+1 < (int)vsp.size(); ++i) for (int s = 0; s < vs_subs[i]; ++s) vs.push_back(vsp[i] + s*(vsp[i+1]-vsp[i])/vs_subs[i]);
-    vs.push_back(vsp.back());
-    int nu = (int)us.size(), nv = (int)vs.size();
-    if (nu < 2 || nv < 2) return srf.mesh();
+    if (usp.size() < 2 || vsp.size() < 2)
+        return srf.mesh();
 
-    typedef std::array<std::array<double,2>,3> UVTri;
+    double bbox_diag = bbox_diagonal();
+    double chord_tol = bbox_diag * chord_factor;
+    std::vector<double> us =
+        span_parameters(usp, span_subdivisions(srf, 0, usp, vsp, srf.degree(0), max_angle_deg, chord_tol));
+
+    std::vector<double> vs =
+        span_parameters(vsp, span_subdivisions(srf, 1, vsp, usp, srf.degree(1), max_angle_deg, chord_tol));
+
+    int nu = (int)us.size();
+    int nv = (int)vs.size();
+
+    if (nu < 2 || nv < 2)
+        return srf.mesh();
+
+    using UVTri = std::array<std::array<double, 2>, 3>;
     std::vector<UVTri> tris;
-    tris.reserve((size_t)(nu-1)*(nv-1)*2);
-    for (int i = 0; i+1 < nu; ++i) {
-        for (int j = 0; j+1 < nv; ++j) {
-            std::array<double,2> a = {us[i], vs[j]};
-            std::array<double,2> b = {us[i+1], vs[j]};
-            std::array<double,2> c = {us[i+1], vs[j+1]};
-            std::array<double,2> d = {us[i], vs[j+1]};
+    tris.reserve((size_t)(nu - 1) * (nv - 1) * 2);
+
+    for (int i = 0; i + 1 < nu; ++i) {
+        for (int j = 0; j + 1 < nv; ++j) {
+            std::array<double, 2> a = {us[i], vs[j]};
+            std::array<double, 2> b = {us[i + 1], vs[j]};
+            std::array<double, 2> c = {us[i + 1], vs[j + 1]};
+            std::array<double, 2> d = {us[i], vs[j + 1]};
             tris.push_back({a, b, c});
             tris.push_back({a, c, d});
         }
     }
 
     double eps = 1e-9;
+
     for (int k = 0; k < (int)pl.size(); ++k) {
+        const std::array<double, 3>& q = pl[k].first;
+        const std::array<double, 3>& n = pl[k].second;
         std::vector<UVTri> next;
-        for (const auto& t : tris) {
-            std::vector<std::array<double,2>> poly;
+
+        for (const UVTri& t : tris) {
+            std::vector<std::array<double, 2>> poly;
+
             for (int e = 0; e < 3; ++e) {
-                const auto& p = t[e]; const auto& q = t[(e+1)%3];
-                double fp = field_k(k, p[0], p[1]);
-                double fq = field_k(k, q[0], q[1]);
-                bool pin = fp <= eps, qin = fq <= eps;
-                if (pin) poly.push_back(p);
-                if (pin != qin) {
-                    double tt = (std::abs(fp-fq) > 1e-30) ? fp/(fp-fq) : 0.5;
-                    double cu = p[0]+(q[0]-p[0])*tt, cv = p[1]+(q[1]-p[1])*tt;
-                    refine_k(k, cu, cv);
+                const std::array<double, 2>& p = t[e];
+                const std::array<double, 2>& r = t[(e + 1) % 3];
+                double fp = plane_field(srf, q, n, p[0], p[1]);
+                double fr = plane_field(srf, q, n, r[0], r[1]);
+                const bool pin = fp <= eps;
+                const bool rin = fr <= eps;
+
+                if (pin)
+                    poly.push_back(p);
+
+                if (pin != rin) {
+                    double tt = (std::abs(fp - fr) > 1e-30) ? fp / (fp - fr) : 0.5;
+                    double cu = p[0] + (r[0] - p[0]) * tt;
+                    double cv = p[1] + (r[1] - p[1]) * tt;
+                    refine_crossing(srf, q, n, cu, cv);
                     poly.push_back({cu, cv});
                 }
             }
-            for (size_t w = 1; w + 1 < poly.size(); ++w) next.push_back({poly[0], poly[w], poly[w+1]});
+
+            for (size_t w = 1; w + 1 < poly.size(); ++w)
+                next.push_back({poly[0], poly[w], poly[w + 1]});
         }
+
         tris = std::move(next);
-        if (tris.empty()) break;
+
+        if (tris.empty())
+            break;
     }
-    if (tris.empty()) return Mesh();
+
+    if (tris.empty())
+        return Mesh();
 
     Mesh result;
-    double weld_tol = diag * 1e-5, cell = weld_tol > 0 ? weld_tol : 1.0;
-    std::map<std::tuple<long long,long long,long long>, std::vector<std::pair<std::array<double,3>, size_t>>> cmap;
-    auto weld = [&](double u, double v) -> size_t {
-        Point P = srf.point_at(u, v); double x=P[0],y=P[1],z=P[2];
-        long long ci=(long long)std::floor(x/cell), cj=(long long)std::floor(y/cell), ck=(long long)std::floor(z/cell);
-        for (long long di=-1; di<=1; ++di) for (long long dj=-1; dj<=1; ++dj) for (long long dk=-1; dk<=1; ++dk) {
-            auto it = cmap.find(std::make_tuple(ci+di,cj+dj,ck+dk)); if (it==cmap.end()) continue;
-            for (auto& [pp, vk] : it->second) { double ddx=pp[0]-x,ddy=pp[1]-y,ddz=pp[2]-z; if (ddx*ddx+ddy*ddy+ddz*ddz<=weld_tol*weld_tol) return vk; }
-        }
-        size_t vk = result.add_vertex(P);
-        Vector nm = srf.normal_at(u, v);
-        result.vertex[vk].set_normal(nm[0], nm[1], nm[2]);
-        cmap[std::make_tuple(ci,cj,ck)].push_back({{x,y,z}, vk});
-        return vk;
-    };
+    double weld_tol = bbox_diag * 1e-5;
+    VertexWelder welder(result, weld_tol, weld_tol);
 
-    for (const auto& t : tris) {
-        size_t a = weld(t[0][0], t[0][1]);
-        size_t b = weld(t[1][0], t[1][1]);
-        size_t c = weld(t[2][0], t[2][1]);
-        if (a==b||b==c||c==a) continue;
+    for (const UVTri& t : tris) {
+        size_t a = welder.weld(srf, t[0][0], t[0][1]);
+        size_t b = welder.weld(srf, t[1][0], t[1][1]);
+        size_t c = welder.weld(srf, t[2][0], t[2][1]);
+
+        if (a == b || b == c || c == a)
+            continue;
+
         result.add_face({a, b, c});
     }
-    if (result.face.empty()) return Mesh();
+
+    if (result.face.empty())
+        return Mesh();
+
     return result;
 }
 
@@ -1831,6 +2923,7 @@ void NurbsSurfaceTrimmed::transform(const Xform& xform) {
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::transformed(const Xform& xform) const {
     NurbsSurfaceTrimmed ts = *this;
     ts.transform(xform);
+
     return ts;
 }
 
@@ -1839,37 +2932,60 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::transformed(const Xform& xform) const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json NurbsSurfaceTrimmed::jsondump() const {
+
     nlohmann::ordered_json j;
     j["guid"] = guid();
     j["inner_loops"] = nlohmann::ordered_json::array();
-    for (const auto& loop : m_inner_loops)
+
+    for (const NurbsCurve& loop : m_inner_loops)
         j["inner_loops"].push_back(loop.jsondump());
+
     j["name"] = name;
+
     if (m_outer_loop.is_valid())
         j["outer_loop"] = m_outer_loop.jsondump();
+
     j["surface"] = m_surface.jsondump();
     j["surfacecolor"] = surfacecolor.jsondump();
     j["type"] = "NurbsSurfaceTrimmed";
     j["width"] = width;
+
     return j;
 }
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::jsonload(const nlohmann::json& data) {
+
     NurbsSurfaceTrimmed ts;
-    if (data.contains("guid")) ts.guid() = data["guid"];
-    if (data.contains("name")) ts.name = data["name"];
-    if (data.contains("width")) ts.width = data["width"];
-    if (data.contains("surfacecolor")) ts.surfacecolor = Color::jsonload(data["surfacecolor"]);
-    if (data.contains("surface")) ts.m_surface = NurbsSurface::jsonload(data["surface"]);
-    if (data.contains("outer_loop")) ts.m_outer_loop = NurbsCurve::jsonload(data["outer_loop"]);
-    if (data.contains("inner_loops")) {
-        for (const auto& loop_data : data["inner_loops"])
+
+    if (data.contains("guid"))
+        ts.guid() = data["guid"];
+
+    if (data.contains("name"))
+        ts.name = data["name"];
+
+    if (data.contains("width"))
+        ts.width = data["width"];
+
+    if (data.contains("surfacecolor"))
+        ts.surfacecolor = Color::jsonload(data["surfacecolor"]);
+
+    if (data.contains("surface"))
+        ts.m_surface = NurbsSurface::jsonload(data["surface"]);
+
+    if (data.contains("outer_loop"))
+        ts.m_outer_loop = NurbsCurve::jsonload(data["outer_loop"]);
+
+    if (data.contains("inner_loops"))
+        for (const nlohmann::json& loop_data : data["inner_loops"])
             ts.m_inner_loops.push_back(NurbsCurve::jsonload(loop_data));
-    }
+
     return ts;
 }
 
-std::string NurbsSurfaceTrimmed::file_json_dumps() const { return jsondump().dump(); }
+std::string NurbsSurfaceTrimmed::file_json_dumps() const {
+    return jsondump().dump();
+}
+
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
@@ -1880,9 +2996,11 @@ void NurbsSurfaceTrimmed::file_json_dump(const std::string& filename) const {
 }
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::file_json_load(const std::string& filename) {
+
     std::ifstream file(filename);
     nlohmann::json data;
     file >> data;
+
     return jsonload(data);
 }
 
@@ -1891,28 +3009,32 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::file_json_load(const std::string& filen
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string NurbsSurfaceTrimmed::pb_dumps() const {
+
     session_proto::NurbsSurfaceTrimmed proto;
-    if (has_guid()) { proto.set_guid(guid()); }
+
+    if (has_guid())
+        proto.set_guid(guid());
+
     proto.set_name(name);
     proto.set_width(width);
 
     std::string srf_data = m_surface.pb_dumps();
-    auto* srf_proto = proto.mutable_surface();
+    session_proto::NurbsSurface* srf_proto = proto.mutable_surface();
     srf_proto->ParseFromString(srf_data);
 
     if (is_trimmed()) {
         std::string loop_data = m_outer_loop.pb_dumps();
-        auto* ol = proto.mutable_outer_loop();
+        session_proto::NurbsCurve* ol = proto.mutable_outer_loop();
         ol->ParseFromString(loop_data);
     }
 
-    for (const auto& inner : m_inner_loops) {
+    for (const NurbsCurve& inner : m_inner_loops) {
         std::string loop_data = inner.pb_dumps();
-        auto* il = proto.add_inner_loops();
+        session_proto::NurbsCurve* il = proto.add_inner_loops();
         il->ParseFromString(loop_data);
     }
 
-    auto* color_proto = proto.mutable_surfacecolor();
+    session_proto::Color* color_proto = proto.mutable_surfacecolor();
     color_proto->set_name(surfacecolor.name);
     color_proto->set_r(surfacecolor.r);
     color_proto->set_g(surfacecolor.g);
@@ -1923,11 +3045,15 @@ std::string NurbsSurfaceTrimmed::pb_dumps() const {
 }
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_loads(const std::string& data) {
+
     session_proto::NurbsSurfaceTrimmed proto;
     proto.ParseFromString(data);
 
     NurbsSurfaceTrimmed ts;
-    if (!proto.guid().empty()) { ts.guid() = proto.guid(); }
+
+    if (!proto.guid().empty())
+        ts.guid() = proto.guid();
+
     ts.name = proto.name();
     ts.width = proto.width();
 
@@ -1946,7 +3072,7 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_loads(const std::string& data) {
         ts.m_inner_loops.push_back(NurbsCurve::pb_loads(loop_data));
     }
 
-    const auto& color_proto = proto.surfacecolor();
+    const session_proto::Color& color_proto = proto.surfacecolor();
     ts.surfacecolor.name = color_proto.name();
     ts.surfacecolor.r = color_proto.r();
     ts.surfacecolor.g = color_proto.g();
@@ -1964,8 +3090,8 @@ void NurbsSurfaceTrimmed::pb_dump(const std::string& filename) const {
 
 NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_load(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary);
-    std::string data((std::istreambuf_iterator<char>(file)),
-                     std::istreambuf_iterator<char>());
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
     return pb_loads(data);
 }
 
@@ -1974,17 +3100,30 @@ NurbsSurfaceTrimmed NurbsSurfaceTrimmed::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string NurbsSurfaceTrimmed::str() const {
-    return fmt::format("NurbsSurfaceTrimmed(name={}, trimmed={}, holes={})",
-                       name, is_trimmed() ? "true" : "false", inner_loop_count());
+
+    return fmt::format(
+        "NurbsSurfaceTrimmed(name={}, trimmed={}, holes={})",
+        name,
+        is_trimmed() ? "true" : "false",
+        inner_loop_count()
+    );
 }
 
 std::string NurbsSurfaceTrimmed::repr() const {
-    return fmt::format("NurbsSurfaceTrimmed(\n  name={},\n  trimmed={},\n  holes={},\n  surface={}\n)",
-                       name, is_trimmed() ? "true" : "false", inner_loop_count(), m_surface.str());
+
+    return fmt::format(
+        "NurbsSurfaceTrimmed(\n  name={},\n  trimmed={},\n  holes={},\n  surface={}\n)",
+        name,
+        is_trimmed() ? "true" : "false",
+        inner_loop_count(),
+        m_surface.str()
+    );
 }
 
+/// Stream the str() form.
 std::ostream& operator<<(std::ostream& os, const NurbsSurfaceTrimmed& ts) {
     os << ts.str();
+
     return os;
 }
 

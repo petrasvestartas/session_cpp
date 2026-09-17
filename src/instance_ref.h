@@ -10,104 +10,147 @@
 
 namespace session_cpp {
 
-/// A block reference: places a definition (by guid) at a transform
+/// A block reference: places a definition (by guid) at a transform.
 class InstanceRef {
 public:
-  std::string name = "my_instance_ref";
-  std::string definition_guid;
-  Xform xform;
-  Color color = Color::white();
-  uint32_t flags = 0;
+  std::string name = "my_instance_ref"; // Instance name.
+  std::string definition_guid; // Guid of the referenced definition.
+  Xform xform; // Placement transform.
+  Color color = Color::white(); // Display color.
+  uint32_t flags = 0; // Instance flags.
 
+  /// Construct an empty reference.
   InstanceRef() {}
 
-  InstanceRef(const std::string &definition_guid, const Xform &xform)
+  /// Construct from a definition guid and a placement.
+  InstanceRef(const std::string& definition_guid, const Xform& xform)
       : definition_guid(definition_guid), xform(xform) {}
 
-  /// Copy constructor (new guid, same data)
-  InstanceRef(const InstanceRef &other);
+  /// Copy with a new guid and the same data.
+  InstanceRef(const InstanceRef& other);
 
-  /// Copy assignment (new guid, same data)
-  InstanceRef &operator=(const InstanceRef &other);
+  /// Copy-assign with a new guid and the same data.
+  InstanceRef& operator=(const InstanceRef& other);
 
-  /// Move keeps the guid; declaring it stops `return x;` from falling back to the guid-minting copy
-  InstanceRef(InstanceRef &&other) noexcept = default;
-  InstanceRef &operator=(InstanceRef &&other) noexcept = default;
+  /// Move while preserving the guid.
+  InstanceRef(InstanceRef&& other) noexcept = default;
 
+  /// Move-assign while preserving the guid.
+  InstanceRef& operator=(InstanceRef&& other) noexcept = default;
+
+  /// Return whether the lazy guid has been created.
   bool has_guid() const { return !_guid.empty(); }
-  const std::string &guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string &guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Return the guid, creating it on first access.
+  const std::string& guid() const {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
+
+  /// Return the mutable guid, creating it on first access.
+  std::string& guid() {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Static constructors
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Instance with a name, a definition guid and a placement
-  static InstanceRef with_name(const std::string &name, const std::string &definition_guid, const Xform &xform);
+  /// Construct from a name, a definition guid and a placement.
+  static InstanceRef with_name(const std::string& name, const std::string& definition_guid, const Xform& xform);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Operators
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Placement matrix entry by index (0..15, column-major)
-  double &operator[](int index);
-  const double &operator[](int index) const;
+  /// Return the mutable placement matrix entry by index (0..15, column-major).
+  double& operator[](int index);
 
-  bool operator==(const InstanceRef &other) const;
-  bool operator!=(const InstanceRef &other) const;
+  /// Return the placement matrix entry by index (0..15, column-major).
+  const double& operator[](int index) const;
+
+  /// Compare definition guid, placement, color and flags.
+  bool operator==(const InstanceRef& other) const;
+
+  /// Compare definition guid, placement, color and flags.
+  bool operator!=(const InstanceRef& other) const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Transformation
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Compose in place: xform = t * xform
-  void transform(const Xform &t);
+  /// Compose in place: xform = t * xform.
+  void transform(const Xform& t);
 
-  /// Composed copy
-  InstanceRef transformed(const Xform &t) const;
+  /// Return a composed copy.
+  InstanceRef transformed(const Xform& t) const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Serialize to a JSON object.
   nlohmann::ordered_json jsondump() const;
-  static InstanceRef jsonload(const nlohmann::json &data);
+
+  /// Deserialize from a JSON object.
+  static InstanceRef jsonload(const nlohmann::json& data);
+
+  /// Serialize to a JSON string.
   std::string file_json_dumps() const;
-  static InstanceRef file_json_loads(const std::string &json_string);
-  void file_json_dump(const std::string &filename) const;
-  static InstanceRef file_json_load(const std::string &filename);
+
+  /// Deserialize from a JSON string.
+  static InstanceRef file_json_loads(const std::string& json_string);
+
+  /// Write to a JSON file.
+  void file_json_dump(const std::string& filename) const;
+
+  /// Read from a JSON file.
+  static InstanceRef file_json_load(const std::string& filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Protobuf
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Serialize to protobuf bytes.
   std::string pb_dumps() const;
-  static InstanceRef pb_loads(const std::string &data);
-  void pb_dump(const std::string &filename) const;
-  static InstanceRef pb_load(const std::string &filename);
+
+  /// Deserialize from protobuf bytes.
+  static InstanceRef pb_loads(const std::string& data);
+
+  /// Write to a protobuf file.
+  void pb_dump(const std::string& filename) const;
+
+  /// Read from a protobuf file.
+  static InstanceRef pb_load(const std::string& filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // String
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// "definition_guid @ [tx, ty, tz]"
+  /// Return "definition_guid @ [tx, ty, tz]".
   std::string str() const;
 
-  /// "InstanceRef(name, definition_guid, Color(...), flags)"
+  /// Return "InstanceRef(name, definition_guid, Color(...), flags)".
   std::string repr() const;
 
 private:
-  mutable std::string _guid;
+  mutable std::string _guid; // Lazy guid.
 };
 
-std::ostream &operator<<(std::ostream &os, const InstanceRef &ref);
+/// Write the instance string to a stream.
+std::ostream& operator<<(std::ostream& os, const InstanceRef& ref);
 
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::InstanceRef> {
-  constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
+  constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
-  auto format(const session_cpp::InstanceRef &ref, fmt::format_context &ctx) const {
+  auto format(const session_cpp::InstanceRef& ref, fmt::format_context& ctx) const {
     return fmt::format_to(ctx.out(), "{}", ref.str());
   }
 };

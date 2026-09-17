@@ -12,6 +12,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("PointCloud", "Constructor") {
+
         PointCloud pc0;
 
         Point p0(0.0, 0.0, 0.0);
@@ -55,6 +56,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "From Coords") {
+
         std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0};
         std::vector<int> colors = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255};
         std::vector<double> normals = {0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0};
@@ -79,6 +81,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Is Empty") {
+
         PointCloud pc0;
         PointCloud pc1({Point(0.0, 0.0, 0.0)}, {}, {});
 
@@ -87,6 +90,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Get Point") {
+
         PointCloud pc({Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)}, {}, {});
         Point pt = pc.get_point(1);
 
@@ -96,6 +100,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Set Point") {
+
         PointCloud pc({Point(0.0, 0.0, 0.0)}, {}, {});
         pc.set_point(0, Point(4.0, 5.0, 6.0));
 
@@ -105,6 +110,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Add Point") {
+
         PointCloud pc;
         pc.add_point(Point(1.0, 2.0, 3.0));
 
@@ -115,6 +121,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Get Points") {
+
         PointCloud pc({Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)}, {}, {});
         std::vector<Point> points = pc.get_points();
 
@@ -144,6 +151,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Add Color") {
+
         PointCloud pc;
         pc.add_color(Color(1.0f, 0.0f, 1.0f, 1.0f));
 
@@ -152,8 +160,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Coords") {
+
         PointCloud pc({Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)}, {}, {});
-        const std::vector<double> &coords = pc.coords();
+        const std::vector<double>& coords = pc.coords();
 
         MINI_CHECK(coords.size() == 6);
         MINI_CHECK(TOLERANCE.is_close(coords[0], 1.0));
@@ -161,14 +170,16 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Colors") {
+
         PointCloud pc({}, {}, {Color(1.0f, 0.0f, 0.0f, 1.0f)});
-        const std::vector<int> &colors = pc.colors();
+        const std::vector<int>& colors = pc.colors();
 
         MINI_CHECK(colors.size() == 4);
         MINI_CHECK(colors[0] == 255 && colors[1] == 0 && colors[2] == 0 && colors[3] == 255);
     }
 
     MINI_TEST("PointCloud", "Get Colors") {
+
         PointCloud pc({}, {}, {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 1.0f, 0.0f, 1.0f)});
         std::vector<Color> colors = pc.get_colors();
 
@@ -184,6 +195,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Get Normal") {
+
         PointCloud pc({}, {Vector(0.0, 0.0, 1.0), Vector(1.0, 0.0, 0.0)}, {});
         Vector n = pc.get_normal(1);
 
@@ -193,6 +205,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Set Normal") {
+
         PointCloud pc({}, {Vector(0.0, 0.0, 1.0)}, {});
         pc.set_normal(0, Vector(0.0, 1.0, 0.0));
 
@@ -202,6 +215,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Add Normal") {
+
         PointCloud pc;
         pc.add_normal(Vector(1.0, 0.0, 0.0));
 
@@ -210,6 +224,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Get Normals") {
+
         PointCloud pc({}, {Vector(0.0, 0.0, 1.0), Vector(1.0, 0.0, 0.0)}, {});
         std::vector<Vector> normals = pc.get_normals();
 
@@ -219,6 +234,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Point Ids") {
+
         std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
         PointCloud pc = PointCloud::from_coords(coords, {}, {});
         Point before = pc.get_point(5);
@@ -230,6 +246,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Build Lod") {
+
         std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0};
         PointCloud pc = PointCloud::from_coords(coords, {}, {});
         pc.build_lod(1.0, 2);
@@ -241,6 +258,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Transform") {
+
         PointCloud pc({Point(1.0, 2.0, 3.0)}, {}, {});
         Xform pc_xf = Xform::translation(10.0, 20.0, 30.0);
         pc.transform(pc_xf);
@@ -251,6 +269,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Transformed") {
+
         PointCloud pc({Point(1.0, 2.0, 3.0)}, {}, {});
         Xform pc_xf = Xform::translation(10.0, 20.0, 30.0);
         PointCloud pc2 = pc.transformed(pc_xf);
@@ -262,6 +281,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Json Roundtrip") {
+
         PointCloud pc(
             {Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)},
             {Vector(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)},
@@ -281,6 +301,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("PointCloud", "Protobuf Roundtrip") {
+
         PointCloud pc(
             {Point(1.0, 2.0, 3.0), Point(4.0, 5.0, 6.0)},
             {Vector(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)},

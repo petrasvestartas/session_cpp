@@ -13,6 +13,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Plane", "Constructor") {
+
     Plane pl;
 
     Point origin = pl.origin();
@@ -81,6 +82,7 @@ MINI_TEST("Plane", "Constructor") {
 }
 
 MINI_TEST("Plane", "Is Valid") {
+
     Plane pl = Plane::xy_plane();
     Plane invalid = Plane::invalid();
 
@@ -89,6 +91,7 @@ MINI_TEST("Plane", "Is Valid") {
 }
 
 MINI_TEST("Plane", "Reverse") {
+
     Plane pl = Plane::xy_plane();
     pl.reverse();
 
@@ -107,6 +110,7 @@ MINI_TEST("Plane", "Rotate") {
 }
 
 MINI_TEST("Plane", "Is Right Hand") {
+
     Plane xy = Plane::xy_plane();
     Plane yz = Plane::yz_plane();
     Plane xz = Plane::xz_plane();
@@ -117,6 +121,7 @@ MINI_TEST("Plane", "Is Right Hand") {
 }
 
 MINI_TEST("Plane", "Is Same Direction") {
+
     Plane p1 = Plane::xy_plane();
     Plane p2 = Plane::xy_plane();
     Plane p3 = Plane::xy_plane();
@@ -128,6 +133,7 @@ MINI_TEST("Plane", "Is Same Direction") {
 }
 
 MINI_TEST("Plane", "Is Same Position") {
+
     Plane p1 = Plane::xy_plane();
     Plane p2 = Plane::xy_plane();
     p2 += Vector(0.0, 0.0, 1.0);
@@ -137,6 +143,7 @@ MINI_TEST("Plane", "Is Same Position") {
 }
 
 MINI_TEST("Plane", "Is Coplanar") {
+
     Plane p1 = Plane::xy_plane();
     Plane p2 = Plane::xy_plane();
     Plane p3 = Plane::xy_plane();
@@ -147,6 +154,7 @@ MINI_TEST("Plane", "Is Coplanar") {
 }
 
 MINI_TEST("Plane", "Translate By Normal") {
+
     Plane pl = Plane::xy_plane();
     Plane moved = pl.translate_by_normal(5.0);
 
@@ -155,6 +163,7 @@ MINI_TEST("Plane", "Translate By Normal") {
 }
 
 MINI_TEST("Plane", "Base1 Base2") {
+
     Plane xy = Plane::xy_plane();
     Vector b1 = xy.base1();
     Vector b2 = xy.base2();
@@ -166,6 +175,7 @@ MINI_TEST("Plane", "Base1 Base2") {
 }
 
 MINI_TEST("Plane", "Transform") {
+
     Plane pl = Plane::xy_plane();
     Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
     pl.transform(pl_xf);
@@ -176,6 +186,7 @@ MINI_TEST("Plane", "Transform") {
 }
 
 MINI_TEST("Plane", "Transformed") {
+
     Plane pl = Plane::xy_plane();
     Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
     Plane pl2 = pl.transformed(pl_xf);
@@ -187,6 +198,7 @@ MINI_TEST("Plane", "Transformed") {
 }
 
 MINI_TEST("Plane", "Json Roundtrip") {
+
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
 
@@ -199,6 +211,7 @@ MINI_TEST("Plane", "Json Roundtrip") {
 }
 
 MINI_TEST("Plane", "Protobuf Roundtrip") {
+
     Plane pl = Plane::xy_plane();
     pl.name = "test_plane";
 
@@ -211,6 +224,7 @@ MINI_TEST("Plane", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Plane", "Has On Negative Side") {
+
     Plane pl = Plane::xy_plane();
     Point above(0.0, 0.0, 1.0);
     Point below(0.0, 0.0, -1.0);
@@ -220,6 +234,7 @@ MINI_TEST("Plane", "Has On Negative Side") {
 }
 
 MINI_TEST("Plane", "Squared Distance") {
+
     Plane pl = Plane::xy_plane();
     Point above(1.0, 2.0, 3.0);
     Point on(4.0, 5.0, 0.0);

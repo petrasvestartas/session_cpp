@@ -3,6 +3,7 @@
 #include "line.h"
 #include "polyline.h"
 #include "tolerance.h"
+#include "vector.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -29,7 +30,7 @@ void check_tolerance(double tolerance) {
 void check_curve(const NurbsCurve &curve) {
   require(curve.is_valid(), "Split requires valid curves");
   for (int i = 0; i < curve.cv_count(); ++i) {
-    const auto p = curve.get_cv(i);
+    const Point p = curve.get_cv(i);
     require(std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]) &&
                 std::isfinite(curve.weight(i)) && curve.weight(i) > 0.,
             "Split requires finite controls and positive rational weights");
@@ -39,8 +40,8 @@ void check_surface(const NurbsSurface &surface) {
   require(surface.is_valid(), "Split requires a valid NURBS surface");
   for (int i = 0; i < surface.cv_count(0); ++i)
     for (int j = 0; j < surface.cv_count(1); ++j) {
-      auto p = surface.get_cv(i, j);
-      double w = surface.weight(i, j);
+      const Point p = surface.get_cv(i, j);
+      const double w = surface.weight(i, j);
       require(std::isfinite(p[0]) && std::isfinite(p[1]) &&
                   std::isfinite(p[2]) && std::isfinite(w) && w > 0.,
               "Split requires finite surface controls and positive rational "
@@ -48,7 +49,7 @@ void check_surface(const NurbsSurface &surface) {
     }
 }
 NurbsCurve interval(const NurbsCurve &curve, double a, double b) {
-  auto result = curve;
+  NurbsCurve result = curve;
   result.refresh_guid();
   const auto [lo, hi] = curve.domain();
   a = std::clamp(a, lo, hi);
@@ -58,60 +59,50 @@ NurbsCurve interval(const NurbsCurve &curve, double a, double b) {
     require(result.trim(a, b), "Kernel refused a split interval");
   return result;
 }
-double distance(const Point &a, const Point &b) { return a.distance(b); }
-double dot(const Point &a, const Point &b) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-Point subtract(const Point &a, const Point &b) {
-  return Point(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-}
 std::pair<double, double> closest(const NurbsCurve &curve, const Point &point) {
-  auto [t, distance_] = Closest::curve_point(curve, point);
-  (void)distance_;
-  auto [lo, hi] = curve.domain();
+  auto [t, gap] = Closest::curve_point(curve, point);
+  const auto [lo, hi] = curve.domain();
   if (curve.degree() == 1) {
-    // Every polyline span is a separate closest-point candidate, including
-    // closed seams.
-    auto spans = curve.get_span_vector();
+    const std::vector<double> spans = curve.get_span_vector();
     double best = std::numeric_limits<double>::infinity();
     for (size_t i = 1; i < spans.size(); ++i) {
-      const auto a = curve.point_at(spans[i - 1]), b = curve.point_at(spans[i]),
-                 v = subtract(b, a);
-      double length2 = dot(v, v);
+      const Point a = curve.point_at(spans[i - 1]);
+      const Point b = curve.point_at(spans[i]);
+      const Vector v = b - a;
+      const double length2 = v.dot(v);
       if (length2 <= epsilon * epsilon)
         continue;
-      double fraction =
-          std::clamp(dot(subtract(point, a), v) / length2, 0., 1.);
-      auto segment = interval(curve, spans[i - 1], spans[i]);
-      double w0 = segment.weight(0),
-             w1 = segment.weight(segment.cv_count() - 1);
-      double normalized =
+      const double fraction = std::clamp((point - a).dot(v) / length2, 0., 1.);
+      const NurbsCurve segment = interval(curve, spans[i - 1], spans[i]);
+      const double w0 = segment.weight(0);
+      const double w1 = segment.weight(segment.cv_count() - 1);
+      const double normalized =
           fraction * w0 / (w1 * (1. - fraction) + fraction * w0);
-      double candidate = spans[i - 1] + normalized * (spans[i] - spans[i - 1]);
-      double gap = distance(curve.point_at(candidate), point);
+      const double candidate =
+          spans[i - 1] + normalized * (spans[i] - spans[i - 1]);
+      gap = curve.point_at(candidate).distance(point);
       if (gap < best) {
         best = gap;
         t = candidate;
       }
     }
-    return {t, distance(curve.point_at(t), point)};
+    return {t, curve.point_at(t).distance(point)};
   }
   for (int i = 0; i < 24; ++i) {
-    auto eval = curve.evaluate(t, 1);
-    Point d(eval[1][0], eval[1][1], eval[1][2]);
-    Point r(eval[0][0] - point[0], eval[0][1] - point[1],
-            eval[0][2] - point[2]);
-    double dd = dot(d, d);
+    const std::vector<Vector> eval = curve.evaluate(t, 1);
+    const Vector d = eval[1];
+    const Vector r = eval[0] - Vector(point[0], point[1], point[2]);
+    const double dd = d.dot(d);
     if (dd <= epsilon * epsilon)
       break;
-    double next = std::clamp(t - dot(d, r) / dd, lo, hi);
+    const double next = std::clamp(t - d.dot(r) / dd, lo, hi);
     if (std::abs(next - t) <= epsilon * (hi - lo)) {
       t = next;
       break;
     }
     t = next;
   }
-  return {t, distance(curve.point_at(t), point)};
+  return {t, curve.point_at(t).distance(point)};
 }
 std::vector<double> unique_parameters(std::vector<double> values, double lo,
                                       double hi) {
@@ -126,9 +117,10 @@ std::vector<double> unique_parameters(std::vector<double> values, double lo,
 }
 
 struct Box {
-  std::array<double, 3> lo, hi;
+  std::array<double, 3> lo;
+  std::array<double, 3> hi;
   explicit Box(const NurbsCurve &curve) {
-    auto p = curve.get_cv(0);
+    Point p = curve.get_cv(0);
     for (int d = 0; d < 3; ++d)
       lo[d] = hi[d] = p[d];
     for (int i = 1; i < curve.cv_count(); ++i) {
@@ -150,17 +142,16 @@ struct Box {
   }
 };
 bool flat(const NurbsCurve &curve, double tolerance) {
-  const auto a = curve.point_at_start(), b = curve.point_at_end(),
-             v = subtract(b, a);
-  const double length2 = dot(v, v);
+  const Point a = curve.point_at_start();
+  const Point b = curve.point_at_end();
+  const Vector v = b - a;
+  const double length2 = v.dot(v);
   if (length2 <= tolerance * tolerance)
     return Box(curve).diagonal() <= tolerance;
   for (int i = 0; i < curve.cv_count(); ++i) {
-    const auto p = curve.get_cv(i);
-    const double t = dot(subtract(p, a), v) / length2;
-    if (t < -epsilon || t > 1. + epsilon ||
-        distance(p, Point(a[0] + v[0] * t, a[1] + v[1] * t, a[2] + v[2] * t)) >
-            tolerance)
+    const Point p = curve.get_cv(i);
+    const double t = (p - a).dot(v) / length2;
+    if (t < -epsilon || t > 1. + epsilon || p.distance(a + v * t) > tolerance)
       return false;
   }
   return true;
@@ -170,16 +161,21 @@ std::pair<double, double> refine(const NurbsCurve &a, const NurbsCurve &b,
   const auto [a0, a1] = a.domain();
   const auto [b0, b1] = b.domain();
   for (int k = 0; k < 40; ++k) {
-    auto da = a.evaluate(ta, 1), db = b.evaluate(tb, 1);
-    Point r(da[0][0] - db[0][0], da[0][1] - db[0][1], da[0][2] - db[0][2]);
-    Point u(da[1][0], da[1][1], da[1][2]), v(db[1][0], db[1][1], db[1][2]);
-    double aa = dot(u, u), ab = dot(u, v), bb = dot(v, v),
-           det = aa * bb - ab * ab;
+    const std::vector<Vector> da = a.evaluate(ta, 1);
+    const std::vector<Vector> db = b.evaluate(tb, 1);
+    const Vector r = da[0] - db[0];
+    const Vector u = da[1];
+    const Vector v = db[1];
+    const double aa = u.dot(u);
+    const double ab = u.dot(v);
+    const double bb = v.dot(v);
+    const double det = aa * bb - ab * ab;
     if (det <= epsilon * epsilon * aa * bb)
       break;
-    double ar = dot(u, r), br = dot(v, r);
-    double na = std::clamp(ta + (-bb * ar + ab * br) / det, a0, a1);
-    double nb = std::clamp(tb + (-ab * ar + aa * br) / det, b0, b1);
+    const double ar = u.dot(r);
+    const double br = v.dot(r);
+    const double na = std::clamp(ta + (-bb * ar + ab * br) / det, a0, a1);
+    const double nb = std::clamp(tb + (-ab * ar + aa * br) / det, b0, b1);
     if (std::abs(na - ta) < epsilon * (a1 - a0) &&
         std::abs(nb - tb) < epsilon * (b1 - b0)) {
       ta = na;
@@ -196,11 +192,13 @@ std::vector<std::pair<double, double>> intersections(const NurbsCurve &a,
                                                      double tolerance,
                                                      size_t &budget) {
   struct Pair {
-    NurbsCurve a, b;
+    NurbsCurve a;
+    NurbsCurve b;
     int depth;
   };
   std::vector<Pair> work;
-  auto av = a.get_span_vector(), bv = b.get_span_vector();
+  const std::vector<double> av = a.get_span_vector();
+  const std::vector<double> bv = b.get_span_vector();
   require(av.size() > 1 && bv.size() > 1,
           "Split requires nonempty curve spans");
   require(av.size() - 1 <= budget / (bv.size() - 1),
@@ -214,23 +212,28 @@ std::vector<std::pair<double, double>> intersections(const NurbsCurve &a,
     require(budget > 0,
             "Curve intersection exceeds the bounded split workload");
     --budget;
-    auto pair = std::move(work.back());
+    const Pair pair = std::move(work.back());
     work.pop_back();
-    Box ba(pair.a), bb(pair.b);
+    const Box ba(pair.a);
+    const Box bb(pair.b);
     if (!ba.overlaps(bb, tolerance))
       continue;
     if ((flat(pair.a, tolerance * .1) && flat(pair.b, tolerance * .1)) ||
         pair.depth >= 48) {
-      const auto ap = pair.a.point_at_start(), aq = pair.a.point_at_end(),
-                 bp = pair.b.point_at_start(), bq = pair.b.point_at_end();
-      auto u = subtract(aq, ap), v = subtract(bq, bp);
-      double aa = dot(u, u), ab = dot(u, v), vv = dot(v, v);
+      const Point ap = pair.a.point_at_start();
+      const Point aq = pair.a.point_at_end();
+      const Point bp = pair.b.point_at_start();
+      const Point bq = pair.b.point_at_end();
+      const Vector u = aq - ap;
+      const Vector v = bq - bp;
+      const double aa = u.dot(u);
+      const double ab = u.dot(v);
+      const double vv = v.dot(v);
       if (aa > tolerance * tolerance && vv > tolerance * tolerance &&
           aa * vv - ab * ab < epsilon * epsilon * aa * vv) {
-        double t0 = dot(subtract(bp, ap), u) / aa,
-               t1 = dot(subtract(bq, ap), u) / aa;
-        double gap = distance(
-            bp, Point(ap[0] + u[0] * t0, ap[1] + u[1] * t0, ap[2] + u[2] * t0));
+        const double t0 = (bp - ap).dot(u) / aa;
+        const double t1 = (bq - ap).dot(u) / aa;
+        const double gap = bp.distance(ap + u * t0);
         if (gap <= tolerance &&
             std::min(1., std::max(t0, t1)) - std::max(0., std::min(t0, t1)) >
                 tolerance / std::sqrt(aa))
@@ -241,16 +244,16 @@ std::vector<std::pair<double, double>> intersections(const NurbsCurve &a,
       if (d > tolerance * 2.)
         continue;
       std::tie(ta, tb) = refine(pair.a, pair.b, ta, tb);
-      if (distance(a.point_at(ta), b.point_at(tb)) > tolerance)
+      if (a.point_at(ta).distance(b.point_at(tb)) > tolerance)
         continue;
       bool duplicate = false;
-      for (auto hit : hits)
-        if (distance(a.point_at(hit.first), a.point_at(ta)) <= tolerance * 2. &&
-            distance(a.point_at((hit.first + ta) * .5), a.point_at(ta)) <=
+      for (const auto &hit : hits)
+        if (a.point_at(hit.first).distance(a.point_at(ta)) <= tolerance * 2. &&
+            a.point_at((hit.first + ta) * .5).distance(a.point_at(ta)) <=
                 tolerance * 2. &&
-            distance(b.point_at(hit.second), b.point_at(tb)) <=
+            b.point_at(hit.second).distance(b.point_at(tb)) <=
                 tolerance * 2. &&
-            distance(b.point_at((hit.second + tb) * .5), b.point_at(tb)) <=
+            b.point_at((hit.second + tb) * .5).distance(b.point_at(tb)) <=
                 tolerance * 2.) {
           duplicate = true;
           break;
@@ -260,13 +263,13 @@ std::vector<std::pair<double, double>> intersections(const NurbsCurve &a,
       continue;
     }
     if (ba.diagonal() >= bb.diagonal()) {
-      auto [lo, hi] = pair.a.domain();
-      double mid = (lo + hi) * .5;
+      const auto [lo, hi] = pair.a.domain();
+      const double mid = (lo + hi) * .5;
       work.push_back({interval(pair.a, lo, mid), pair.b, pair.depth + 1});
       work.push_back({interval(pair.a, mid, hi), pair.b, pair.depth + 1});
     } else {
-      auto [lo, hi] = pair.b.domain();
-      double mid = (lo + hi) * .5;
+      const auto [lo, hi] = pair.b.domain();
+      const double mid = (lo + hi) * .5;
       work.push_back({pair.a, interval(pair.b, lo, mid), pair.depth + 1});
       work.push_back({pair.a, interval(pair.b, mid, hi), pair.depth + 1});
     }
@@ -277,31 +280,32 @@ std::vector<std::pair<double, double>> intersections(const NurbsCurve &a,
 
 std::vector<NurbsCurve> pullback(const NurbsSurface &surface,
                                  const NurbsCurve &curve, double tolerance) {
-  // Affine patches preserve the cutter's exact rational representation and
-  // parameterization.
   if (surface.m_cv_count[0] == 2 && surface.m_cv_count[1] == 2 &&
       surface.m_order[0] == 2 && surface.m_order[1] == 2 && !surface.m_is_rat) {
-    auto p = surface.get_cv(0, 0), u = subtract(surface.get_cv(1, 0), p),
-         v = subtract(surface.get_cv(0, 1), p);
-    auto last = surface.get_cv(1, 1);
-    double uu = dot(u, u), uv = dot(u, v), vv = dot(v, v),
-           det = uu * vv - uv * uv;
+    const Point p = surface.get_cv(0, 0);
+    const Vector u = surface.get_cv(1, 0) - p;
+    const Vector v = surface.get_cv(0, 1) - p;
+    const Point last = surface.get_cv(1, 1);
+    const double uu = u.dot(u);
+    const double uv = u.dot(v);
+    const double vv = v.dot(v);
+    const double det = uu * vv - uv * uv;
     if (det > epsilon * epsilon * uu * vv &&
-        distance(last, Point(p[0] + u[0] + v[0], p[1] + u[1] + v[1],
-                             p[2] + u[2] + v[2])) <= tolerance) {
-      auto result = curve;
+        last.distance(p + u + v) <= tolerance) {
+      NurbsCurve result = curve;
       result.refresh_guid();
-      auto [u0, u1] = surface.domain(0);
-      auto [v0, v1] = surface.domain(1);
+      const auto [u0, u1] = surface.domain(0);
+      const auto [v0, v1] = surface.domain(1);
       for (int i = 0; i < curve.cv_count(); ++i) {
-        auto q = curve.get_cv(i), d = subtract(q, p);
-        double du = dot(d, u), dv = dot(d, v);
-        double a = (du * vv - dv * uv) / det, b = (dv * uu - du * uv) / det;
-        if (distance(q, Point(p[0] + a * u[0] + b * v[0],
-                              p[1] + a * u[1] + b * v[1],
-                              p[2] + a * u[2] + b * v[2])) > tolerance)
+        const Point q = curve.get_cv(i);
+        const Vector d = q - p;
+        const double du = d.dot(u);
+        const double dv = d.dot(v);
+        const double a = (du * vv - dv * uv) / det;
+        const double b = (dv * uu - du * uv) / det;
+        if (q.distance(p + u * a + v * b) > tolerance)
           return {};
-        double w = curve.weight(i);
+        const double w = curve.weight(i);
         result.set_cv_4d(i, (u0 + a * (u1 - u0)) * w, (v0 + b * (v1 - v0)) * w,
                          0., w);
       }
@@ -317,7 +321,7 @@ std::vector<Point> polygon(const NurbsCurve &curve, double tolerance) {
     int depth;
   };
   std::vector<Part> work;
-  auto spans = curve.get_span_vector();
+  const std::vector<double> spans = curve.get_span_vector();
   for (size_t i = spans.size(); i > 1; --i)
     work.push_back({interval(curve, spans[i - 2], spans[i - 1]), 0});
   std::vector<Point> result;
@@ -325,15 +329,15 @@ std::vector<Point> polygon(const NurbsCurve &curve, double tolerance) {
   while (!work.empty()) {
     require(++visited <= work_limit,
             "Trim sampling exceeds the bounded workload");
-    auto part = std::move(work.back());
+    const Part part = std::move(work.back());
     work.pop_back();
     if (flat(part.curve, tolerance * .25)) {
       result.push_back(part.curve.point_at_start());
       continue;
     }
     require(part.depth < 40, "Trim sampling exceeds parameter precision");
-    auto [lo, hi] = part.curve.domain();
-    double mid = (lo + hi) * .5;
+    const auto [lo, hi] = part.curve.domain();
+    const double mid = (lo + hi) * .5;
     work.push_back({interval(part.curve, mid, hi), part.depth + 1});
     work.push_back({interval(part.curve, lo, mid), part.depth + 1});
   }
@@ -342,8 +346,8 @@ std::vector<Point> polygon(const NurbsCurve &curve, double tolerance) {
 bool inside(const Point &p, const std::vector<Point> &polygon) {
   bool result = false;
   for (size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
-    const auto &a = polygon[i];
-    const auto &b = polygon[j];
+    const Point &a = polygon[i];
+    const Point &b = polygon[j];
     if ((a[1] > p[1]) != (b[1] > p[1]) &&
         p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])
       result = !result;
@@ -361,33 +365,34 @@ bool inside_loops(const Point &p,
 }
 struct Source {
   int edge;
-  NurbsCurve world, uv;
+  NurbsCurve world;
+  NurbsCurve uv;
 };
 struct Run {
   size_t source;
-  double a, b;
+  double a;
+  double b;
 };
 using Loop = std::vector<Run>;
 using Region = std::vector<Loop>;
 
-// Walk directed trim fragments with the region on their left. Source intervals
-// survive intact.
 std::vector<Region>
 arrange(const std::vector<Source> &sources,
         const std::vector<std::vector<Point>> &original_loops,
         double tolerance) {
   struct Span {
     size_t source;
-    double a, b;
+    double a;
+    double b;
     std::vector<double> cuts;
     NurbsCurve curve;
   };
   std::vector<Span> spans;
   for (size_t si = 0; si < sources.size(); ++si) {
-    auto knots = sources[si].uv.get_span_vector();
-    // A closed Bezier span needs distinct graph nodes on its interior.
+    std::vector<double> knots = sources[si].uv.get_span_vector();
     if (knots.size() == 2 && sources[si].uv.is_closed()) {
-      double lo = knots.front(), hi = knots.back();
+      const double lo = knots.front();
+      const double hi = knots.back();
       knots = {lo, lo + (hi - lo) * .25, (lo + hi) * .5, lo + (hi - lo) * .75,
                hi};
     }
@@ -409,7 +414,8 @@ arrange(const std::vector<Source> &sources,
         spans[j].cuts.push_back(b);
       }
   struct Directed {
-    size_t a, b;
+    size_t a;
+    size_t b;
     Run run;
   };
   std::vector<Point> vertices;
@@ -417,44 +423,46 @@ arrange(const std::vector<Source> &sources,
   std::vector<std::vector<size_t>> outgoing;
   auto node = [&](const Point &p) {
     for (size_t i = 0; i < vertices.size(); ++i)
-      if (distance(p, vertices[i]) <= tolerance * 4.)
+      if (p.distance(vertices[i]) <= tolerance * 4.)
         return i;
     vertices.push_back(p);
     outgoing.emplace_back();
     return vertices.size() - 1;
   };
   auto angle = [&](size_t edge) {
-    const auto &run = edges[edge].run;
-    auto derivative = sources[run.source].uv.evaluate(run.a, 1)[1];
-    double sign = run.b > run.a ? 1. : -1.;
-    return std::atan2(sign * derivative[1], sign * derivative[0]);
+    const Run &run = edges[edge].run;
+    const Vector d = sources[run.source].uv.evaluate(run.a, 1)[1];
+    const double sign = run.b > run.a ? 1. : -1.;
+    return std::atan2(sign * d[1], sign * d[0]);
   };
-  for (auto &span : spans) {
-    for (auto &t : span.cuts) {
-      auto p = span.curve.point_at(t);
-      if (distance(p, span.curve.point_at(span.a)) <= tolerance)
+  for (Span &span : spans) {
+    for (double &t : span.cuts) {
+      const Point p = span.curve.point_at(t);
+      if (p.distance(span.curve.point_at(span.a)) <= tolerance)
         t = span.a;
-      else if (distance(p, span.curve.point_at(span.b)) <= tolerance)
+      else if (p.distance(span.curve.point_at(span.b)) <= tolerance)
         t = span.b;
     }
-    auto cuts = unique_parameters(span.cuts, span.a, span.b);
+    const std::vector<double> cuts = unique_parameters(span.cuts, span.a, span.b);
     for (size_t i = 1; i < cuts.size(); ++i) {
-      double lo = cuts[i - 1], hi = cuts[i];
-      const auto &source = sources[span.source];
+      const double lo = cuts[i - 1];
+      const double hi = cuts[i];
+      const Source &source = sources[span.source];
       if (source.edge < 0 &&
           !inside_loops(source.uv.point_at((lo + hi) * .5), original_loops))
         continue;
-      size_t a = node(source.uv.point_at(lo)), b = node(source.uv.point_at(hi));
+      const size_t a = node(source.uv.point_at(lo));
+      const size_t b = node(source.uv.point_at(hi));
       if (a == b)
         continue;
-      size_t index = edges.size();
+      const size_t index = edges.size();
       edges.push_back({a, b, {span.source, lo, hi}});
       edges.push_back({b, a, {span.source, hi, lo}});
       outgoing[a].push_back(index);
       outgoing[b].push_back(index + 1);
     }
   }
-  for (auto &choices : outgoing)
+  for (std::vector<size_t> &choices : outgoing)
     std::sort(choices.begin(), choices.end(),
               [&](size_t a, size_t b) { return angle(a) < angle(b); });
   struct Cycle {
@@ -472,39 +480,40 @@ arrange(const std::vector<Source> &sources,
     size_t edge = initial;
     while (!used[edge]) {
       used[edge] = true;
-      const auto &item = edges[edge];
-      const auto &run = item.run;
+      const Directed &item = edges[edge];
+      const Run &run = item.run;
       loop.push_back(run);
-      auto part = interval(sources[run.source].uv, std::min(run.a, run.b),
-                           std::max(run.a, run.b));
+      NurbsCurve part = interval(sources[run.source].uv, std::min(run.a, run.b),
+                                 std::max(run.a, run.b));
       if (run.b < run.a)
         part.reverse();
-      auto poly = polygon(part, tolerance);
+      const std::vector<Point> poly = polygon(part, tolerance);
       points.insert(points.end(), poly.begin(), poly.end());
-      const auto &options = outgoing[item.b];
-      auto at = std::find(options.begin(), options.end(), edge ^ 1);
+      const std::vector<size_t> &options = outgoing[item.b];
+      const auto at = std::find(options.begin(), options.end(), edge ^ 1);
       require(at != options.end(), "Invalid trim graph adjacency");
-      size_t slot = static_cast<size_t>(at - options.begin());
+      const size_t slot = static_cast<size_t>(at - options.begin());
       edge = options[(slot + options.size() - 1) % options.size()];
     }
     require(edge == initial, "Invalid trim graph cycle");
     double area = 0.;
     for (size_t i = 0; i < points.size(); ++i) {
-      const auto &a = points[i];
-      const auto &b = points[(i + 1) % points.size()];
+      const Point &a = points[i];
+      const Point &b = points[(i + 1) % points.size()];
       area += (a[0] * b[1] - b[0] * a[1]) * .5;
     }
     if (std::abs(area) <= tolerance * tolerance)
       continue;
-    const auto &run = loop[0];
-    const auto &curve = sources[run.source].uv;
-    double t = (run.a + run.b) * .5;
-    auto p = curve.point_at(t);
-    auto d = curve.evaluate(t, 1)[1];
-    double sign = run.b > run.a ? 1. : -1., length = std::hypot(d[0], d[1]);
+    const Run &run = loop[0];
+    const NurbsCurve &curve = sources[run.source].uv;
+    const double t = (run.a + run.b) * .5;
+    const Point p = curve.point_at(t);
+    const Vector d = curve.evaluate(t, 1)[1];
+    const double sign = run.b > run.a ? 1. : -1.;
+    const double length = std::hypot(d[0], d[1]);
     require(length > epsilon, "Cannot orient a degenerate trim fragment");
-    Point left(p[0] - sign * d[1] / length * tolerance * 8.,
-               p[1] + sign * d[0] / length * tolerance * 8., 0.);
+    const Point left(p[0] - sign * d[1] / length * tolerance * 8.,
+                     p[1] + sign * d[0] / length * tolerance * 8., 0.);
     if (!inside_loops(left, original_loops))
       continue;
     cycles.push_back({area, loop, points});
@@ -516,13 +525,13 @@ arrange(const std::vector<Source> &sources,
       positive.push_back(i);
       result.push_back({cycles[i].loop});
     }
-  for (const auto &cycle : cycles) {
+  for (const Cycle &cycle : cycles) {
     if (cycle.area >= 0.)
       continue;
     size_t parent = result.size();
     double smallest = std::numeric_limits<double>::infinity();
     for (size_t i = 0; i < positive.size(); ++i) {
-      const auto &outer = cycles[positive[i]];
+      const Cycle &outer = cycles[positive[i]];
       if (outer.area > std::abs(cycle.area) + tolerance * tolerance &&
           outer.area < smallest && inside(cycle.points[0], outer.points)) {
         parent = i;
@@ -537,40 +546,43 @@ arrange(const std::vector<Source> &sources,
 
 int vertex(BRep &result, const Point &p, double tolerance) {
   for (size_t i = 0; i < result.m_vertices.size(); ++i)
-    if (distance(result.m_vertices[i].point, p) <= tolerance)
+    if (result.m_vertices[i].point.distance(p) <= tolerance)
       return static_cast<int>(i);
   return result.add_vertex(p, tolerance);
 }
 
 double lifted_parameter(const NurbsSurface &surface, const NurbsCurve &uv,
                         const Point &p, double expected, double tolerance) {
-  auto [lo, hi] = uv.domain();
+  const auto [lo, hi] = uv.domain();
   auto gap = [&](double t) {
-    auto q = uv.point_at(t);
-    return distance(surface.point_at(q[0], q[1]), p);
+    const Point q = uv.point_at(t);
+    return surface.point_at(q[0], q[1]).distance(p);
   };
   if (gap(expected) <= tolerance)
     return expected;
-  double best = expected, d = gap(best);
+  double best = expected;
+  double d = gap(best);
   int index = 0;
   for (int i = 0; i <= 128; ++i) {
-    double t = lo + (hi - lo) * i / 128., value = gap(t);
+    const double t = lo + (hi - lo) * i / 128.;
+    const double value = gap(t);
     if (value < d) {
       d = value;
       best = t;
       index = i;
     }
   }
-  double a = lo + (hi - lo) * std::max(0, index - 1) / 128.,
-         b = lo + (hi - lo) * std::min(128, index + 1) / 128.;
+  double a = lo + (hi - lo) * std::max(0, index - 1) / 128.;
+  double b = lo + (hi - lo) * std::min(128, index + 1) / 128.;
   for (int k = 0; k < 60; ++k) {
-    double x = a + (b - a) / 3., y = b - (b - a) / 3.;
+    const double x = a + (b - a) / 3.;
+    const double y = b - (b - a) / 3.;
     if (gap(x) < gap(y))
       b = y;
     else
       a = x;
   }
-  double mid = (a + b) * .5;
+  const double mid = (a + b) * .5;
   if (gap(mid) < d)
     best = mid;
   require(gap(best) <= tolerance * 4.,
@@ -584,43 +596,44 @@ void validate(const BRep &result, const BRep &original, double tolerance) {
     if (original.is_closed(static_cast<int>(s)))
       require(result.is_closed(static_cast<int>(s)),
               "Split would open a joined shell");
-  for (const auto &face : result.m_faces)
-    for (const auto &wr : face.wires) {
-      auto edges = result.wire_edges(wr);
+  for (const BRepFace &face : result.m_faces)
+    for (const BRepRef &wr : face.wires) {
+      const std::vector<BRepRef> edges = result.wire_edges(wr);
       for (size_t i = 0; i < edges.size(); ++i) {
-        const auto &a = result.m_edges[edges[i].index];
-        const auto &next = edges[(i + 1) % edges.size()];
-        const auto &b = result.m_edges[next.index];
-        int tail =
+        const BRepEdge &a = result.m_edges[edges[i].index];
+        const BRepRef &next = edges[(i + 1) % edges.size()];
+        const BRepEdge &b = result.m_edges[next.index];
+        const int tail =
             edges[i].orientation == reversed ? a.start_vertex : a.end_vertex;
-        int head = next.orientation == reversed ? b.end_vertex : b.start_vertex;
+        const int head =
+            next.orientation == reversed ? b.end_vertex : b.start_vertex;
         require(tail == head, "Split produced an open face boundary");
       }
     }
-  for (const auto &edge : result.m_edges) {
+  for (const BRepEdge &edge : result.m_edges) {
     if (edge.degenerated)
       continue;
-    const auto &world = result.m_curves_3d[edge.curve_3d_index];
-    require(distance(world.point_at_start(),
-                     result.m_vertices[edge.start_vertex].point) <=
-                    tolerance * 4. &&
-                distance(world.point_at_end(),
-                         result.m_vertices[edge.end_vertex].point) <=
-                    tolerance * 4.,
+    const NurbsCurve &world = result.m_curves_3d[edge.curve_3d_index];
+    require(world.point_at_start().distance(
+                result.m_vertices[edge.start_vertex].point) <= tolerance * 4. &&
+                world.point_at_end().distance(
+                    result.m_vertices[edge.end_vertex].point) <= tolerance * 4.,
             "Split edge does not meet its vertices");
     for (const auto &pc : edge.pcurves)
-      for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2})
-        if (ci >= 0) {
-          const auto &uv = result.m_curves_2d[ci];
-          auto [lo, hi] = uv.domain();
-          for (int k = 0; k <= 32; ++k) {
-            auto q = uv.point_at(lo + (hi - lo) * k / 32.);
-            auto p = result.m_surfaces[pc.surface_index].point_at(q[0], q[1]);
-            require(closest(world, p).second <=
-                        std::max(tolerance, edge.tolerance) * 8.,
-                    "Split edge and surface trim do not coincide");
-          }
+      for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
+        if (ci < 0)
+          continue;
+        const NurbsCurve &uv = result.m_curves_2d[ci];
+        const auto [lo, hi] = uv.domain();
+        for (int k = 0; k <= 32; ++k) {
+          const Point q = uv.point_at(lo + (hi - lo) * k / 32.);
+          const Point p =
+              result.m_surfaces[pc.surface_index].point_at(q[0], q[1]);
+          require(closest(world, p).second <=
+                      std::max(tolerance, edge.tolerance) * 8.,
+                  "Split edge and surface trim do not coincide");
         }
+      }
   }
 }
 } // namespace
@@ -632,14 +645,14 @@ split_curve_by_curves(const NurbsCurve &curve,
   check_tolerance(tolerance);
   check_curve(curve);
   require(!cutters.empty(), "Select at least one cutter");
-  auto [lo, hi] = curve.domain();
+  const auto [lo, hi] = curve.domain();
   std::vector<double> cuts = {lo, hi};
   bool cut_at_seam = false;
   size_t budget = work_limit;
-  for (const auto &cutter : cutters) {
+  for (const NurbsCurve &cutter : cutters) {
     check_curve(cutter);
-    for (auto [a, b] : intersections(curve, cutter, tolerance, budget)) {
-      (void)b;
+    for (const auto &hit : intersections(curve, cutter, tolerance, budget)) {
+      const double a = hit.first;
       if (std::abs(a - lo) <= (hi - lo) * epsilon * 16. ||
           std::abs(a - hi) <= (hi - lo) * epsilon * 16.)
         cut_at_seam = true;
@@ -652,9 +665,9 @@ split_curve_by_curves(const NurbsCurve &curve,
     return {curve};
   for (size_t i = 1; i < cuts.size(); ++i)
     result.push_back(interval(curve, cuts[i - 1], cuts[i]));
-  // A closed curve's arbitrary storage seam is not an additional cut.
   if (curve.is_closed() && result.size() > 1 && !cut_at_seam) {
-    auto joined = NurbsCurve::join({result.back(), result.front()}, tolerance);
+    const std::vector<NurbsCurve> joined =
+        NurbsCurve::join({result.back(), result.front()}, tolerance);
     require(joined.size() == 1, "Cannot join the uncut seam of a closed curve");
     result.front() = joined[0];
     result.pop_back();
@@ -670,64 +683,68 @@ BRep split_brep_face_by_curves(const BRep &brep, int face_index,
   require(face_index >= 0 && face_index < brep.face_count(),
           "Select one BRep face to split");
   require(!cutters.empty(), "Select at least one cutter");
-  const auto &face = brep.m_faces[face_index];
-  const auto &surface = brep.m_surfaces[face.surface_index];
+  const BRepFace &face = brep.m_faces[face_index];
+  const NurbsSurface &surface = brep.m_surfaces[face.surface_index];
   check_surface(surface);
-  auto [u0, u1] = surface.domain(0);
-  auto [v0, v1] = surface.domain(1);
-  double scale = std::max(
-      distance(surface.point_at(u0, v0), surface.point_at(u1, v0)) / (u1 - u0),
-      distance(surface.point_at(u0, v0), surface.point_at(u0, v1)) / (v1 - v0));
+  const auto [u0, u1] = surface.domain(0);
+  const auto [v0, v1] = surface.domain(1);
+  const Point origin = surface.point_at(u0, v0);
+  const double scale =
+      std::max(origin.distance(surface.point_at(u1, v0)) / (u1 - u0),
+               origin.distance(surface.point_at(u0, v1)) / (v1 - v0));
   require(scale > epsilon, "Cannot split a degenerate surface domain");
-  double uv_tolerance = tolerance / scale;
+  const double uv_tolerance = tolerance / scale;
   std::vector<Source> sources;
   std::vector<std::vector<Point>> original_loops;
-  for (const auto &wr : face.wires) {
+  for (const BRepRef &wr : face.wires) {
     std::vector<Point> points;
-    for (const auto &er : brep.wire_edges(wr)) {
-      const auto &edge = brep.m_edges[er.index];
+    for (const BRepRef &er : brep.wire_edges(wr)) {
+      const BRepEdge &edge = brep.m_edges[er.index];
       require(!edge.degenerated, "Pole-edge splitting is not supported");
-      int ci = brep.pcurve_index(er.index, face_index, er.orientation);
+      const int ci = brep.pcurve_index(er.index, face_index, er.orientation);
       require(ci >= 0, "Face has no source UV boundary");
-      auto uv = brep.m_curves_2d[ci];
+      NurbsCurve uv = brep.m_curves_2d[ci];
       check_curve(uv);
       check_curve(brep.m_curves_3d[edge.curve_3d_index]);
       sources.push_back({er.index, brep.m_curves_3d[edge.curve_3d_index], uv});
       if (er.orientation == reversed)
         uv.reverse();
-      auto poly = polygon(uv, uv_tolerance);
+      const std::vector<Point> poly = polygon(uv, uv_tolerance);
       points.insert(points.end(), poly.begin(), poly.end());
     }
     require(points.size() >= 3, "Face has an invalid boundary");
     original_loops.push_back(points);
   }
-  for (const auto &cutter : cutters) {
+  for (const NurbsCurve &cutter : cutters) {
     check_curve(cutter);
-    for (const auto &uv : pullback(surface, cutter, tolerance))
+    for (const NurbsCurve &uv : pullback(surface, cutter, tolerance))
       sources.push_back({-1, cutter, uv});
   }
-  auto regions = arrange(sources, original_loops, uv_tolerance);
+  const std::vector<Region> regions =
+      arrange(sources, original_loops, uv_tolerance);
   if (regions.size() < 2)
     return brep;
   BRep result = brep;
   struct Piece {
     size_t source;
-    double lo, hi;
+    double lo;
+    double hi;
     int edge;
   };
   std::vector<Piece> pieces;
   std::map<int, std::vector<std::pair<double, int>>> replacements;
   auto make_edge = [&](const Run &run) -> BRepRef {
-    const auto &source = sources[run.source];
-    const auto &uv = source.uv;
-    auto qa = uv.point_at(run.a), qb = uv.point_at(run.b);
-    auto pa = surface.point_at(qa[0], qa[1]),
-         pb = surface.point_at(qb[0], qb[1]);
+    const Source &source = sources[run.source];
+    const NurbsCurve &uv = source.uv;
+    const Point qa = uv.point_at(run.a);
+    const Point qb = uv.point_at(run.b);
+    const Point pa = surface.point_at(qa[0], qa[1]);
+    const Point pb = surface.point_at(qb[0], qb[1]);
     auto parameter = [&](double t, const Point &p) {
       const auto [lo, hi] = source.world.domain();
       const auto [a, b] = uv.domain();
-      double expected = lo + (t - a) / (b - a) * (hi - lo);
-      double gap = distance(source.world.point_at(expected), p);
+      const double expected = lo + (t - a) / (b - a) * (hi - lo);
+      const double gap = source.world.point_at(expected).distance(p);
       return gap <= tolerance ? std::pair{expected, gap}
                               : closest(source.world, p);
     };
@@ -735,44 +752,47 @@ BRep split_brep_face_by_curves(const BRep &brep, int face_index,
     auto [wb, db] = parameter(run.b, pb);
     require(da <= tolerance * 4. && db <= tolerance * 4.,
             "Cutter is not on the selected surface");
-    auto [w0, w1] = source.world.domain();
-    auto [c0, c1] = uv.domain();
+    const auto [w0, w1] = source.world.domain();
+    const auto [c0, c1] = uv.domain();
     if (source.world.is_closed()) {
       if (std::abs(wa - w0) < (w1 - w0) * epsilon && run.a > (c0 + c1) * .5)
         wa = w1;
       if (std::abs(wb - w0) < (w1 - w0) * epsilon && run.b > (c0 + c1) * .5)
         wb = w1;
     }
-    double lo = std::min(wa, wb), hi = std::max(wa, wb);
+    const double lo = std::min(wa, wb);
+    const double hi = std::max(wa, wb);
     require(hi - lo > (w1 - w0) * epsilon,
             "Split would create a collapsed edge");
-    for (const auto &piece : pieces) {
-      bool same = source.edge >= 0 ? sources[piece.source].edge == source.edge
-                                   : piece.source == run.source;
+    const BRepOrientation orientation = wa < wb ? forward : reversed;
+    for (const Piece &piece : pieces) {
+      const bool same = source.edge >= 0
+                            ? sources[piece.source].edge == source.edge
+                            : piece.source == run.source;
       if (same &&
-          distance(source.world.point_at(lo),
-                   source.world.point_at(piece.lo)) <= tolerance * 4. &&
-          distance(source.world.point_at(hi),
-                   source.world.point_at(piece.hi)) <= tolerance * 4.)
-        return {piece.edge, wa < wb ? forward : reversed};
+          source.world.point_at(lo).distance(source.world.point_at(piece.lo)) <=
+              tolerance * 4. &&
+          source.world.point_at(hi).distance(source.world.point_at(piece.hi)) <=
+              tolerance * 4.)
+        return {piece.edge, orientation};
     }
-    auto world = interval(source.world, lo, hi);
-    int a = vertex(result, world.point_at_start(), tolerance * 4.),
-        b = vertex(result, world.point_at_end(), tolerance * 4.);
-    int ei = result.add_edge(result.add_curve_3d(world), a, b, tolerance);
+    const NurbsCurve world = interval(source.world, lo, hi);
+    const int a = vertex(result, world.point_at_start(), tolerance * 4.);
+    const int b = vertex(result, world.point_at_end(), tolerance * 4.);
+    const int ei = result.add_edge(result.add_curve_3d(world), a, b, tolerance);
     if (source.edge >= 0) {
-      const auto &old = brep.m_edges[source.edge];
+      const BRepEdge &old = brep.m_edges[source.edge];
       for (const auto &pc : old.pcurves) {
         int ids[2] = {-1, -1};
         int at = 0;
         for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
           if (ci >= 0) {
-            const auto &c = brep.m_curves_2d[ci];
-            auto [c0, c1] = c.domain();
-            double ca = lifted_parameter(
+            const NurbsCurve &c = brep.m_curves_2d[ci];
+            const auto [c0, c1] = c.domain();
+            const double ca = lifted_parameter(
                 brep.m_surfaces[pc.surface_index], c, world.point_at_start(),
                 c0 + (lo - w0) / (w1 - w0) * (c1 - c0), tolerance);
-            double cb = lifted_parameter(
+            const double cb = lifted_parameter(
                 brep.m_surfaces[pc.surface_index], c, world.point_at_end(),
                 c0 + (hi - w0) / (w1 - w0) * (c1 - c0), tolerance);
             require(cb > ca,
@@ -785,60 +805,57 @@ BRep split_brep_face_by_curves(const BRep &brep, int face_index,
       }
       replacements[source.edge].push_back({lo, ei});
     } else {
-      auto pc = interval(uv, std::min(run.a, run.b), std::max(run.a, run.b));
+      NurbsCurve pc =
+          interval(uv, std::min(run.a, run.b), std::max(run.a, run.b));
       if ((wb - wa) * (run.b - run.a) < 0.)
         pc.reverse();
       result.add_pcurve(ei, face.surface_index, result.add_curve_2d(pc));
     }
     pieces.push_back({run.source, lo, hi, ei});
-    return {ei, wa < wb ? forward : reversed};
+    return {ei, orientation};
   };
   std::vector<std::vector<BRepRef>> new_wires;
-  for (const auto &region : regions) {
+  for (const Region &region : regions) {
     std::vector<BRepRef> wires;
-    for (const auto &loop : region) {
+    for (const Loop &loop : region) {
       std::vector<BRepRef> refs;
-      for (const auto &run : loop)
+      for (const Run &run : loop)
         refs.push_back(make_edge(run));
       wires.push_back({result.add_wire(refs), forward});
     }
     new_wires.push_back(wires);
   }
-  // Every old wire using a subdivided edge receives the same ordered edge
-  // pieces.
   for (auto &[edge, items] : replacements) {
     std::sort(items.begin(), items.end());
     items.erase(std::unique(items.begin(), items.end()), items.end());
   }
   for (size_t wi = 0; wi < brep.m_wires.size(); ++wi) {
     std::vector<BRepRef> refs;
-    for (const auto &er : brep.m_wires[wi].edges) {
-      auto it = replacements.find(er.index);
+    for (const BRepRef &er : brep.m_wires[wi].edges) {
+      const auto it = replacements.find(er.index);
       if (it == replacements.end()) {
         refs.push_back(er);
         continue;
       }
-      auto items = it->second;
+      std::vector<std::pair<double, int>> items = it->second;
       if (er.orientation == reversed)
         std::reverse(items.begin(), items.end());
-      for (auto [t, e] : items) {
-        (void)t;
-        refs.push_back({e, er.orientation});
-      }
+      for (const auto &item : items)
+        refs.push_back({item.second, er.orientation});
     }
     result.m_wires[wi].edges = refs;
   }
   result.m_faces[face_index].wires = new_wires[0];
   std::vector<int> added;
   for (size_t i = 1; i < new_wires.size(); ++i) {
-    auto next = face;
+    BRepFace next = face;
     next.wires = new_wires[i];
     added.push_back(result.face_count());
     result.m_faces.push_back(next);
   }
-  for (auto &shell : result.m_shells) {
+  for (BRepShell &shell : result.m_shells) {
     std::vector<BRepRef> refs;
-    for (const auto &fr : shell.faces) {
+    for (const BRepRef &fr : shell.faces) {
       refs.push_back(fr);
       if (fr.index == face_index)
         for (int index : added)
@@ -856,26 +873,24 @@ BRep split_surface_by_curves(const NurbsSurface &surface,
   check_tolerance(tolerance);
   check_surface(surface);
   BRep result;
-  int si = result.add_surface(surface);
-  auto [u0, u1] = surface.domain(0);
-  auto [v0, v1] = surface.domain(1);
-  std::vector<Point> uv = {Point(u0, v0, 0), Point(u1, v0, 0), Point(u1, v1, 0),
-                           Point(u0, v1, 0)};
+  const int si = result.add_surface(surface);
+  const auto [u0, u1] = surface.domain(0);
+  const auto [v0, v1] = surface.domain(1);
+  const std::vector<Point> uv = {Point(u0, v0, 0), Point(u1, v0, 0),
+                                 Point(u1, v1, 0), Point(u0, v1, 0)};
+  const double at[4] = {v0, u1, v1, u0};
   std::vector<BRepRef> edges;
   for (int i = 0; i < 4; ++i) {
-    auto curve = surface.iso_curve(i % 2 == 0 ? 0 : 1, i == 0   ? v0
-                                                       : i == 1 ? u1
-                                                       : i == 2 ? v1
-                                                                : u0);
+    NurbsCurve curve = surface.iso_curve(i % 2, at[i]);
     if (i >= 2)
       curve.reverse();
-    int a = vertex(result, curve.point_at_start(), tolerance),
-        b = vertex(result, curve.point_at_end(), tolerance);
+    const int a = vertex(result, curve.point_at_start(), tolerance);
+    const int b = vertex(result, curve.point_at_end(), tolerance);
     require(
         a != b,
         "Closed or pole boundaries need a BRep with explicit seam topology");
-    int edge = result.add_edge(result.add_curve_3d(curve), a, b, tolerance);
-    auto pc = NurbsCurve::create(false, 1, {uv[i], uv[(i + 1) % 4]});
+    const int edge = result.add_edge(result.add_curve_3d(curve), a, b, tolerance);
+    const NurbsCurve pc = NurbsCurve::create(false, 1, {uv[i], uv[(i + 1) % 4]});
     result.add_pcurve(edge, si, result.add_curve_2d(pc));
     edges.push_back({edge, forward});
   }
@@ -885,11 +900,12 @@ BRep split_surface_by_curves(const NurbsSurface &surface,
 std::vector<Line> split_line_by_curves(const Line &line,
                                        const std::vector<NurbsCurve> &cutters,
                                        double tolerance) {
-  auto curve =
+  const NurbsCurve curve =
       NurbsCurve::create(false, 1, {line.point_at(0), line.point_at(1)});
   std::vector<Line> result;
-  for (const auto &piece : split_curve_by_curves(curve, cutters, tolerance)) {
-    auto next = Line::from_points(piece.point_at_start(), piece.point_at_end());
+  for (const NurbsCurve &piece :
+       split_curve_by_curves(curve, cutters, tolerance)) {
+    Line next = Line::from_points(piece.point_at_start(), piece.point_at_end());
     next.name = line.name;
     next.width = line.width;
     next.dash = line.dash;
@@ -902,9 +918,10 @@ std::vector<Polyline>
 split_polyline_by_curves(const Polyline &polyline,
                          const std::vector<NurbsCurve> &cutters,
                          double tolerance) {
-  auto curve = NurbsCurve::create(false, 1, polyline.get_points());
+  const NurbsCurve curve = NurbsCurve::create(false, 1, polyline.get_points());
   std::vector<Polyline> result;
-  for (const auto &piece : split_curve_by_curves(curve, cutters, tolerance)) {
+  for (const NurbsCurve &piece :
+       split_curve_by_curves(curve, cutters, tolerance)) {
     std::vector<Point> points;
     for (double t : piece.get_span_vector())
       points.push_back(piece.point_at(t));

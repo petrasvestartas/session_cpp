@@ -20,13 +20,12 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("OBB", "Constructor") {
-    // from_point
+
     OBB bb1 = OBB::from_point(Point(5.0, 5.0, 5.0), 2.0);
 
     MINI_CHECK(TOLERANCE.is_close(bb1.center[0], 5.0));
     MINI_CHECK(TOLERANCE.is_close(bb1.half_size[0], 2.0));
 
-    // from_points (AABB)
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(2.0, 3.0, 4.0),
@@ -38,7 +37,6 @@ MINI_TEST("OBB", "Constructor") {
     MINI_CHECK(TOLERANCE.is_close(mn[0], 0.0) && TOLERANCE.is_close(mn[2], 0.0));
     MINI_CHECK(TOLERANCE.is_close(mx[0], 2.0) && TOLERANCE.is_close(mx[2], 4.0));
 
-    // OBB constructor
     OBB box(
         Point(0.0, 0.0, 0.0),
         Vector(1.0, 0.0, 0.0),
@@ -51,7 +49,6 @@ MINI_TEST("OBB", "Constructor") {
     MINI_CHECK(TOLERANCE.is_close(box.half_size[1], 2.0));
     MINI_CHECK(TOLERANCE.is_close(box.half_size[2], 3.0));
 
-    // operators
     OBB same(box);
 
     MINI_CHECK(box == same);
@@ -60,26 +57,24 @@ MINI_TEST("OBB", "Constructor") {
     MINI_CHECK(box.str() == "0.000000, 0.000000, 0.000000\n1.000000, 0.000000, 0.000000\n0.000000, 1.000000, 0.000000\n0.000000, 0.000000, 1.000000\n1.000000, 2.000000, 3.000000");
     MINI_CHECK(box.repr() == "OBB(my_obb, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 1.000000, 2.000000, 3.000000)");
 
-    // aabb
     AABB bb_aabb = bb2.aabb();
 
     MINI_CHECK(TOLERANCE.is_close(bb_aabb.min_point()[0], 0.0));
     MINI_CHECK(TOLERANCE.is_close(bb_aabb.max_point()[2], 4.0));
 
-    // corners
     std::array<Point, 8> corners = bb2.corners();
 
     MINI_CHECK(corners.size() == 8);
 
-    // point_at: center + x*x_axis + y*y_axis + z*z_axis (raw OBB offsets)
     Point p_center = bb2.point_at(0.0, 0.0, 0.0);
-    double hx = bb2.half_size[0], hy = bb2.half_size[1], hz = bb2.half_size[2];
+    const double hx = bb2.half_size[0];
+    const double hy = bb2.half_size[1];
+    const double hz = bb2.half_size[2];
     Point p_max_pt = bb2.point_at(hx, hy, hz);
 
     MINI_CHECK(TOLERANCE.is_close(p_center[0], 1.0) && TOLERANCE.is_close(p_center[2], 2.0));
     MINI_CHECK(TOLERANCE.is_close(p_max_pt[0], 2.0) && TOLERANCE.is_close(p_max_pt[2], 4.0));
 
-    // inflate
     OBB bb3 = OBB::from_points({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 2.0, 2.0),
@@ -89,13 +84,13 @@ MINI_TEST("OBB", "Constructor") {
     MINI_CHECK(TOLERANCE.is_close(bb3.min_point()[0], -1.0));
     MINI_CHECK(TOLERANCE.is_close(bb3.max_point()[0], 3.0));
 
-    // guid() and name
     MINI_CHECK(!bb1.guid().empty());
     bb1.name = "test_bbox";
     MINI_CHECK(bb1.name == "test_bbox");
 }
 
 MINI_TEST("OBB", "Collision") {
+
     OBB bb1 = OBB::from_point(Point(0.0, 0.0, 0.0), 1.0);
     OBB bb2 = OBB::from_point(Point(1.5, 0.0, 0.0), 1.0);
     OBB bb3 = OBB::from_point(Point(5.0, 5.0, 5.0), 0.5);
@@ -111,6 +106,7 @@ MINI_TEST("OBB", "Collision") {
 }
 
 MINI_TEST("OBB", "Transformation") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0),
@@ -128,24 +124,22 @@ MINI_TEST("OBB", "Transformation") {
 }
 
 MINI_TEST("OBB", "Json Roundtrip") {
+
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox";
 
-    // JSON object
     nlohmann::ordered_json j = bb.jsondump();
     OBB loaded_j = OBB::jsonload(j);
 
     MINI_CHECK(loaded_j.name == "test_bbox");
     MINI_CHECK(TOLERANCE.is_close(loaded_j.center[0], 1.0));
 
-    // String
     std::string s = bb.file_json_dumps();
     OBB loaded_s = OBB::file_json_loads(s);
 
     MINI_CHECK(loaded_s.name == "test_bbox");
     MINI_CHECK(TOLERANCE.is_close(loaded_s.half_size[0], 5.0));
 
-    // File
     std::string fname = "serialization/test_obb.json";
     bb.file_json_dump(fname);
     OBB loaded = OBB::file_json_load(fname);
@@ -156,10 +150,10 @@ MINI_TEST("OBB", "Json Roundtrip") {
 }
 
 MINI_TEST("OBB", "Protobuf Roundtrip") {
+
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox_proto";
 
-    // String
     const std::string guid = bb.guid();
     std::string s = bb.pb_dumps();
     OBB loaded_s = OBB::pb_loads(s);
@@ -168,7 +162,6 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
     MINI_CHECK(loaded_s.guid() == guid);
     MINI_CHECK(TOLERANCE.is_close(loaded_s.center[0], 1.0));
 
-    // File
     std::string fname = "serialization/test_obb.bin";
     bb.pb_dump(fname);
     OBB loaded = OBB::pb_load(fname);
@@ -180,7 +173,7 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("OBB", "Accessors") {
-    // axis-aligned OBB: center=(1,2,3), half_size=(1,2,3), dims 2×4×6
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -213,6 +206,7 @@ MINI_TEST("OBB", "Accessors") {
 }
 
 MINI_TEST("OBB", "From Geometry") {
+
     OBB bb_line = OBB::from_line(Line(0.0, 0.0, 0.0, 4.0, 0.0, 0.0), 0.1);
 
     MINI_CHECK(bb_line.is_valid());
@@ -277,6 +271,7 @@ MINI_TEST("OBB", "From Geometry") {
 }
 
 MINI_TEST("OBB", "From Plane") {
+
     Plane plane = Plane::xy_plane();
     OBB box(plane, 2.0, 3.0, 4.0);
 
@@ -299,6 +294,7 @@ MINI_TEST("OBB", "From Plane") {
 }
 
 MINI_TEST("OBB", "Two Rectangles") {
+
     OBB bb(
         Point(1.0, 2.0, 3.0),
         Vector(1.0, 0.0, 0.0),
@@ -308,7 +304,6 @@ MINI_TEST("OBB", "Two Rectangles") {
     );
     std::array<Point, 10> rects = bb.two_rectangles();
 
-    // bottom rect (z=-4 offset): corners at z=-1; top rect (z=+4 offset): corners at z=7
     MINI_CHECK(rects.size() == 10);
     MINI_CHECK(rects[0] == Point(3.0, 5.0, -1.0));
     MINI_CHECK(rects[2] == Point(-1.0, -1.0, -1.0));
@@ -318,4 +313,4 @@ MINI_TEST("OBB", "Two Rectangles") {
     MINI_CHECK(rects[9] == rects[5]);
 }
 
-} // namespace session_cpp
+}

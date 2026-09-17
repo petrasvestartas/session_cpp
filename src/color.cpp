@@ -15,6 +15,7 @@ Color::Color(const Color &other)
     : name(other.name), r(other.r), g(other.g), b(other.b), a(other.a) {}
 
 Color &Color::operator=(const Color &other) {
+
   if (this != &other) {
     name = other.name;
     _guid.clear();
@@ -23,6 +24,7 @@ Color &Color::operator=(const Color &other) {
     b = other.b;
     a = other.a;
   }
+
   return *this;
 }
 
@@ -31,26 +33,36 @@ Color &Color::operator=(const Color &other) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 float &Color::operator[](int index) {
+
   if (index == 0)
     return r;
+
   if (index == 1)
     return g;
+
   if (index == 2)
     return b;
+
   if (index == 3)
     return a;
+
   throw std::out_of_range("Index out of range");
 }
 
 const float &Color::operator[](int index) const {
+
   if (index == 0)
     return r;
+
   if (index == 1)
     return g;
+
   if (index == 2)
     return b;
+
   if (index == 3)
     return a;
+
   throw std::out_of_range("Index out of range");
 }
 
@@ -108,6 +120,7 @@ Color Color::from_unified_array(std::array<float, 4> arr) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json Color::jsondump() const {
+
   nlohmann::ordered_json data;
   data["a"] = a;
   data["b"] = b;
@@ -116,13 +129,16 @@ nlohmann::ordered_json Color::jsondump() const {
   data["name"] = name;
   data["r"] = r;
   data["type"] = "Color";
+
   return data;
 }
 
 Color Color::jsonload(const nlohmann::json &data) {
+
   Color color(data["r"].get<float>(), data["g"].get<float>(),
               data["b"].get<float>(), data["a"].get<float>(), data["name"]);
   color.guid() = data["guid"];
+
   return color;
 }
 
@@ -133,18 +149,25 @@ Color Color::file_json_loads(const std::string &json_string) {
 }
 
 void Color::file_json_dump(const std::string &filename) const {
+
   std::ofstream file(filename);
+
   if (!file)
     throw std::runtime_error("Failed to open JSON file: " + filename);
+
   file << jsondump().dump(4);
+
   if (!file)
     throw std::runtime_error("Failed to write JSON file: " + filename);
 }
 
 Color Color::file_json_load(const std::string &filename) {
+
   std::ifstream file(filename);
+
   if (!file)
     throw std::runtime_error("Failed to open JSON file: " + filename);
+
   return jsonload(nlohmann::json::parse(file));
 }
 
@@ -153,51 +176,70 @@ Color Color::file_json_load(const std::string &filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 session_proto::Color Color::to_proto() const {
+
   session_proto::Color proto;
+
   if (has_guid())
     proto.set_guid(guid());
+
   proto.set_name(name);
   proto.set_r(r);
   proto.set_g(g);
   proto.set_b(b);
   proto.set_a(a);
+
   return proto;
 }
 
 Color Color::from_proto(const session_proto::Color &proto) {
+
   Color color(proto.r(), proto.g(), proto.b(), proto.a(), proto.name());
+
   if (!proto.guid().empty())
     color.guid() = proto.guid();
+
   return color;
 }
 
 std::string Color::pb_dumps() const { return to_proto().SerializeAsString(); }
 
 Color Color::pb_loads(const std::string &data) {
+
   session_proto::Color proto;
+
   if (!proto.ParseFromString(data))
     throw std::runtime_error("Failed to parse Color protobuf data");
+
   return from_proto(proto);
 }
 
 void Color::pb_dump(const std::string &filename) const {
+
   const std::string data = pb_dumps();
   std::ofstream file(filename, std::ios::binary);
+
   if (!file)
     throw std::runtime_error("Failed to open protobuf file: " + filename);
+
   file.write(data.data(), data.size());
+
   if (!file)
     throw std::runtime_error("Failed to write protobuf file: " + filename);
 }
 
 Color Color::pb_load(const std::string &filename) {
+
   std::ifstream file(filename, std::ios::binary);
+
   if (!file)
     throw std::runtime_error("Failed to open protobuf file: " + filename);
+
   const std::string data((std::istreambuf_iterator<char>(file)),
                          std::istreambuf_iterator<char>());
+
   if (file.bad())
     throw std::runtime_error("Failed to read protobuf file: " + filename);
+
   return pb_loads(data);
 }
 

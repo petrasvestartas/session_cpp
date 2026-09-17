@@ -8,6 +8,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialKDTree", "Constructor") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(3.0, 0.0, 0.0),
@@ -21,6 +22,7 @@ MINI_TEST("SpatialKDTree", "Constructor") {
 }
 
 MINI_TEST("SpatialKDTree", "Nearest") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -37,6 +39,7 @@ MINI_TEST("SpatialKDTree", "Nearest") {
 }
 
 MINI_TEST("SpatialKDTree", "Nearest K") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -46,7 +49,7 @@ MINI_TEST("SpatialKDTree", "Nearest K") {
     };
     SpatialKDTree tree(pts);
     Point query(1.5, 0.0, 0.0);
-    auto result = tree.nearest_k(query, 3);
+    std::vector<std::pair<int, double>> result = tree.nearest_k(query, 3);
 
     MINI_CHECK(result.size() == 3);
     MINI_CHECK(TOLERANCE.is_close(result[0].second, 0.5));
@@ -55,6 +58,7 @@ MINI_TEST("SpatialKDTree", "Nearest K") {
 }
 
 MINI_TEST("SpatialKDTree", "Radius Search") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -63,7 +67,7 @@ MINI_TEST("SpatialKDTree", "Radius Search") {
     };
     SpatialKDTree tree(pts);
     Point query(0.5, 0.0, 0.0);
-    auto result = tree.radius_search(query, 1.1);
+    std::vector<std::pair<int, double>> result = tree.radius_search(query, 1.1);
 
     MINI_CHECK(result.size() == 2);
     MINI_CHECK(TOLERANCE.is_close(result[0].second, 0.5));

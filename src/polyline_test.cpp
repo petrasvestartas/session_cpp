@@ -13,6 +13,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Polyline", "Constructor") {
+
     Point p0(0.0, 0.0, 0.0);
     Point p1(1.0, 0.0, 0.0);
     Point p2(1.0, 1.0, 0.0);
@@ -88,6 +89,7 @@ MINI_TEST("Polyline", "Constructor") {
 }
 
 MINI_TEST("Polyline", "From Coords") {
+
     std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0};
     Polyline pl = Polyline::from_coords(coords);
 
@@ -98,6 +100,7 @@ MINI_TEST("Polyline", "From Coords") {
 }
 
 MINI_TEST("Polyline", "From Sides") {
+
     Polyline sq = Polyline::from_sides(4, 1.0, false);
     Polyline sq_closed = Polyline::from_sides(4, 1.0, true);
 
@@ -107,6 +110,7 @@ MINI_TEST("Polyline", "From Sides") {
 }
 
 MINI_TEST("Polyline", "Rectangle") {
+
     Point o(0, 0, 0);
     Polyline r = Polyline::rectangle(o, Vector::x_axis(), Vector::y_axis(), 2.0, 1.0, true);
 
@@ -117,6 +121,7 @@ MINI_TEST("Polyline", "Rectangle") {
 }
 
 MINI_TEST("Polyline", "Transformation") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -132,6 +137,7 @@ MINI_TEST("Polyline", "Transformation") {
 }
 
 MINI_TEST("Polyline", "Json Roundtrip") {
+
     Polyline pl({
         Point(1.0, 2.0, 3.0),
         Point(4.0, 5.0, 6.0),
@@ -152,6 +158,7 @@ MINI_TEST("Polyline", "Json Roundtrip") {
 }
 
 MINI_TEST("Polyline", "Protobuf Roundtrip") {
+
     Polyline pl({
         Point(1.0, 2.0, 3.0),
         Point(4.0, 5.0, 6.0),
@@ -172,6 +179,7 @@ MINI_TEST("Polyline", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Polyline", "Length") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -186,6 +194,7 @@ MINI_TEST("Polyline", "Length") {
 }
 
 MINI_TEST("Polyline", "Center") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -200,6 +209,7 @@ MINI_TEST("Polyline", "Center") {
 }
 
 MINI_TEST("Polyline", "Is Closed") {
+
     Polyline open_pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -221,6 +231,7 @@ MINI_TEST("Polyline", "Is Closed") {
 }
 
 MINI_TEST("Polyline", "Closed") {
+
     Polyline open_pl({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0)});
     Polyline closed_from_open = open_pl.closed();
 
@@ -234,6 +245,7 @@ MINI_TEST("Polyline", "Closed") {
 }
 
 MINI_TEST("Polyline", "Reverse") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -254,6 +266,7 @@ MINI_TEST("Polyline", "Reverse") {
 }
 
 MINI_TEST("Polyline", "Closest Point") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -272,6 +285,7 @@ MINI_TEST("Polyline", "Closest Point") {
 }
 
 MINI_TEST("Polyline", "Closest Point To Line") {
+
     Point line_start(0.0, 0.0, 0.0);
     Point line_end(2.0, 0.0, 0.0);
     Point pt(1.0, 1.0, 0.0);
@@ -282,9 +296,11 @@ MINI_TEST("Polyline", "Closest Point To Line") {
 }
 
 MINI_TEST("Polyline", "Line Line Overlap") {
+
     Point s0(0.0, 0.0, 0.0), e0(2.0, 0.0, 0.0);
     Point s1(1.0, 0.0, 0.0), e1(3.0, 0.0, 0.0);
-    Point os, oe;
+    Point os;
+    Point oe;
     bool overlaps = Polyline::line_line_overlap(s0, e0, s1, e1, os, oe);
 
     MINI_CHECK(overlaps);
@@ -292,15 +308,18 @@ MINI_TEST("Polyline", "Line Line Overlap") {
     MINI_CHECK(TOLERANCE.is_close(oe[0], 2.0));
 
     Point s2(5.0, 0.0, 0.0), e2(6.0, 0.0, 0.0);
-    Point os2, oe2;
+    Point os2;
+    Point oe2;
     bool no_overlap = Polyline::line_line_overlap(s0, e0, s2, e2, os2, oe2);
     MINI_CHECK(!no_overlap);
 }
 
 MINI_TEST("Polyline", "Line Line Average") {
+
     Point s0(0.0, 0.0, 0.0), e0(2.0, 0.0, 0.0);
     Point s1(0.0, 2.0, 0.0), e1(2.0, 2.0, 0.0);
-    Point os, oe;
+    Point os;
+    Point oe;
     Polyline::line_line_average(s0, e0, s1, e1, os, oe);
 
     MINI_CHECK(TOLERANCE.is_close(os[0], 0.0));
@@ -310,9 +329,11 @@ MINI_TEST("Polyline", "Line Line Average") {
 }
 
 MINI_TEST("Polyline", "Line Line Overlap Average") {
+
     Point s0(0.0, 0.0, 0.0), e0(2.0, 0.0, 0.0);
     Point s1(1.0, 2.0, 0.0), e1(3.0, 2.0, 0.0);
-    Point os, oe;
+    Point os;
+    Point oe;
     Polyline::line_line_overlap_average(s0, e0, s1, e1, os, oe);
 
     MINI_CHECK(TOLERANCE.is_close(os[0], 1.0));
@@ -321,9 +342,11 @@ MINI_TEST("Polyline", "Line Line Overlap Average") {
 }
 
 MINI_TEST("Polyline", "Line From Projected Points") {
+
     Point s(0.0, 0.0, 0.0), e(4.0, 0.0, 0.0);
     std::vector<Point> pts = {Point(1.0, 1.0, 0.0), Point(3.0, -1.0, 0.0)};
-    Point os, oe;
+    Point os;
+    Point oe;
     bool ok = Polyline::line_from_projected_points(s, e, pts, os, oe);
 
     MINI_CHECK(ok);
@@ -332,6 +355,7 @@ MINI_TEST("Polyline", "Line From Projected Points") {
 }
 
 MINI_TEST("Polyline", "Point In Polygon 2d") {
+
     Polyline sq({
         Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0), Point(0.0, 1.0, 0.0),
@@ -343,6 +367,7 @@ MINI_TEST("Polyline", "Point In Polygon 2d") {
 }
 
 MINI_TEST("Polyline", "Extend Segment") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -358,6 +383,7 @@ MINI_TEST("Polyline", "Extend Segment") {
 }
 
 MINI_TEST("Polyline", "Extend Segment Equally") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -373,6 +399,7 @@ MINI_TEST("Polyline", "Extend Segment Equally") {
 }
 
 MINI_TEST("Polyline", "Extend Line Segment") {
+
     Point start(1.0, 0.0, 0.0), end(3.0, 0.0, 0.0);
     Polyline::extend_line_segment(start, end, 0.5, 0.5);
 
@@ -381,6 +408,7 @@ MINI_TEST("Polyline", "Extend Line Segment") {
 }
 
 MINI_TEST("Polyline", "Shrink Line Segment") {
+
     Point start(0.0, 0.0, 0.0), end(10.0, 0.0, 0.0);
     Polyline::shrink_line_segment(start, end, 0.1);
 
@@ -389,6 +417,7 @@ MINI_TEST("Polyline", "Shrink Line Segment") {
 }
 
 MINI_TEST("Polyline", "Get Points") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -405,6 +434,7 @@ MINI_TEST("Polyline", "Get Points") {
 }
 
 MINI_TEST("Polyline", "Get Lines") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -420,6 +450,7 @@ MINI_TEST("Polyline", "Get Lines") {
 }
 
 MINI_TEST("Polyline", "Add Point") {
+
     Polyline pl({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0)});
     pl.add_point(Point(2.0, 0.0, 0.0));
 
@@ -428,6 +459,7 @@ MINI_TEST("Polyline", "Add Point") {
 }
 
 MINI_TEST("Polyline", "Insert Point") {
+
     Polyline pl({Point(0.0, 0.0, 0.0), Point(2.0, 0.0, 0.0)});
     pl.insert_point(1, Point(1.0, 0.0, 0.0));
 
@@ -437,6 +469,7 @@ MINI_TEST("Polyline", "Insert Point") {
 }
 
 MINI_TEST("Polyline", "Remove Point") {
+
     Polyline pl({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(2.0, 0.0, 0.0)});
     Point out;
     bool removed = pl.remove_point(1, out);
@@ -448,6 +481,7 @@ MINI_TEST("Polyline", "Remove Point") {
 }
 
 MINI_TEST("Polyline", "Shift") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -464,6 +498,7 @@ MINI_TEST("Polyline", "Shift") {
 }
 
 MINI_TEST("Polyline", "Point At") {
+
     Point start(0.0, 0.0, 0.0);
     Point end(2.0, 0.0, 0.0);
     Point mid = Polyline::point_at(start, end, 0.5);
@@ -474,6 +509,7 @@ MINI_TEST("Polyline", "Point At") {
 }
 
 MINI_TEST("Polyline", "Is Clockwise") {
+
     Polyline cw_pl({
         Point(0.0, 0.0, 0.0),
         Point(0.0, 1.0, 0.0),
@@ -493,6 +529,7 @@ MINI_TEST("Polyline", "Is Clockwise") {
 }
 
 MINI_TEST("Polyline", "Convex Corners") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -506,6 +543,7 @@ MINI_TEST("Polyline", "Convex Corners") {
 }
 
 MINI_TEST("Polyline", "Tween") {
+
     Polyline pl0({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -525,6 +563,7 @@ MINI_TEST("Polyline", "Tween") {
 }
 
 MINI_TEST("Polyline", "Average Plane") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -532,7 +571,9 @@ MINI_TEST("Polyline", "Average Plane") {
         Point(0.0, 2.0, 0.0),
     });
     Point origin;
-    Vector x_axis, y_axis, z_axis;
+    Vector x_axis;
+    Vector y_axis;
+    Vector z_axis;
     pl.get_average_plane(origin, x_axis, y_axis, z_axis);
     Point fast_origin;
     Plane fast_plane;
@@ -545,12 +586,13 @@ MINI_TEST("Polyline", "Average Plane") {
 }
 
 MINI_TEST("Polyline", "Interpolate Points") {
+
     Point a(0.0, 0.0, 0.0);
     Point b(4.0, 0.0, 0.0);
 
-    auto pts0 = Polyline::interpolate_points(a, b, 3, 0);
-    auto pts1 = Polyline::interpolate_points(a, b, 3, 1);
-    auto pts2 = Polyline::interpolate_points(a, b, 3, 2);
+    std::vector<Point> pts0 = Polyline::interpolate_points(a, b, 3, 0);
+    std::vector<Point> pts1 = Polyline::interpolate_points(a, b, 3, 1);
+    std::vector<Point> pts2 = Polyline::interpolate_points(a, b, 3, 2);
 
     MINI_CHECK(pts0.size() == 3);
     MINI_CHECK(TOLERANCE.is_close(pts0[0][0], 1.0));
@@ -564,6 +606,7 @@ MINI_TEST("Polyline", "Interpolate Points") {
 }
 
 MINI_TEST("Polyline", "Quick Hull") {
+
     Polyline poly({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
@@ -577,6 +620,7 @@ MINI_TEST("Polyline", "Quick Hull") {
 }
 
 MINI_TEST("Polyline", "Bounding Rectangle") {
+
     Polyline poly({
         Point(0.0, 0.0, 0.0),
         Point(4.0, 0.0, 0.0),
@@ -591,6 +635,7 @@ MINI_TEST("Polyline", "Bounding Rectangle") {
 }
 
 MINI_TEST("Polyline", "Grid Of Points In Polygon") {
+
     Polyline poly({
         Point(0.0, 0.0, 0.0),
         Point(4.0, 0.0, 0.0),
@@ -600,13 +645,15 @@ MINI_TEST("Polyline", "Grid Of Points In Polygon") {
     std::vector<Point> pts = Polyline::grid_of_points_in_polygon(poly, 0.0, 1.0, 100);
 
     MINI_CHECK(pts.size() > 0);
-    for (const auto& p : pts) {
+
+    for (const Point& p : pts) {
         MINI_CHECK(p[0] >= 0.0 && p[0] <= 4.0);
         MINI_CHECK(p[1] >= 0.0 && p[1] <= 4.0);
     }
 }
 
 MINI_TEST("Polyline", "Polylabel") {
+
     Polyline poly({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -624,6 +671,7 @@ MINI_TEST("Polyline", "Polylabel") {
 }
 
 MINI_TEST("Polyline", "Polylabel Circle Division Points") {
+
     Polyline poly({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -635,12 +683,14 @@ MINI_TEST("Polyline", "Polylabel Circle Division Points") {
     std::vector<Point> pts = Polyline::polylabel_circle_division_points(dir, polys, 4, 0.5, 1.0, true);
 
     MINI_CHECK(pts.size() == 4);
-    for (const auto& p : pts) {
+
+    for (const Point& p : pts) {
         MINI_CHECK(std::abs(p[2]) < 1e-6);
     }
 }
 
 MINI_TEST("Polyline", "Boolean Op") {
+
     Polyline sq_a({
         Point(-1.0, -1.0, 0.0),
         Point( 1.0, -1.0, 0.0),
@@ -666,9 +716,9 @@ MINI_TEST("Polyline", "Boolean Op") {
         Point(5.0, 6.0, 0.0),
     });
 
-    auto isect  = Polyline::boolean_op(sq_a, sq_b, 0);
-    auto uni    = Polyline::boolean_op(sq_a, sq_b, 1);
-    auto diff   = Polyline::boolean_op(sq_a, sq_b, 2);
+    std::vector<Polyline> isect = Polyline::boolean_op(sq_a, sq_b, 0);
+    std::vector<Polyline> uni = Polyline::boolean_op(sq_a, sq_b, 1);
+    std::vector<Polyline> diff = Polyline::boolean_op(sq_a, sq_b, 2);
 
     MINI_CHECK(isect.size() == 1);
     MINI_CHECK(isect[0].point_count() == 4);
@@ -677,9 +727,9 @@ MINI_TEST("Polyline", "Boolean Op") {
     MINI_CHECK(diff.size() == 1);
     MINI_CHECK(diff[0].point_count() == 6);
 
-    auto isect_in  = Polyline::boolean_op(sq_a, sq_inside, 0);
-    auto uni_in    = Polyline::boolean_op(sq_a, sq_inside, 1);
-    auto diff_in   = Polyline::boolean_op(sq_a, sq_inside, 2);
+    std::vector<Polyline> isect_in = Polyline::boolean_op(sq_a, sq_inside, 0);
+    std::vector<Polyline> uni_in = Polyline::boolean_op(sq_a, sq_inside, 1);
+    std::vector<Polyline> diff_in = Polyline::boolean_op(sq_a, sq_inside, 2);
 
     MINI_CHECK(isect_in.size() == 1);
     MINI_CHECK(isect_in[0].point_count() == 4);
@@ -688,9 +738,9 @@ MINI_TEST("Polyline", "Boolean Op") {
     MINI_CHECK(diff_in.size() == 1);
     MINI_CHECK(diff_in[0].point_count() == 4);
 
-    auto isect_dis = Polyline::boolean_op(sq_a, sq_disjoint, 0);
-    auto uni_dis   = Polyline::boolean_op(sq_a, sq_disjoint, 1);
-    auto diff_dis  = Polyline::boolean_op(sq_a, sq_disjoint, 2);
+    std::vector<Polyline> isect_dis = Polyline::boolean_op(sq_a, sq_disjoint, 0);
+    std::vector<Polyline> uni_dis = Polyline::boolean_op(sq_a, sq_disjoint, 1);
+    std::vector<Polyline> diff_dis = Polyline::boolean_op(sq_a, sq_disjoint, 2);
 
     MINI_CHECK(isect_dis.size() == 0);
     MINI_CHECK(uni_dis.size() == 2);
@@ -698,26 +748,31 @@ MINI_TEST("Polyline", "Boolean Op") {
 }
 
 MINI_TEST("Polyline", "Boolean Op Plane") {
+
     Point origin(0,0,5);
     Vector normal(0,0,1);
     Plane plane = Plane::from_point_normal(origin, normal);
     Polyline sq_a({Point(-1,-1,5), Point(1,-1,5), Point(1,1,5), Point(-1,1,5), Point(-1,-1,5)});
     Polyline sq_b({Point(0,0,5),  Point(2,0,5), Point(2,2,5), Point(0,2,5), Point(0,0,5)});
-    auto isect = Polyline::boolean_op(sq_a, sq_b, plane, 0);
-    auto uni   = Polyline::boolean_op(sq_a, sq_b, plane, 1);
-    auto diff  = Polyline::boolean_op(sq_a, sq_b, plane, 2);
+    std::vector<Polyline> isect = Polyline::boolean_op(sq_a, sq_b, plane, 0);
+    std::vector<Polyline> uni = Polyline::boolean_op(sq_a, sq_b, plane, 1);
+    std::vector<Polyline> diff = Polyline::boolean_op(sq_a, sq_b, plane, 2);
     MINI_CHECK(isect.size() == 1);
     MINI_CHECK(uni.size() == 1);
     MINI_CHECK(diff.size() == 1);
-    for (const Point &p : isect[0].get_points())
+
+    for (const Point& p : isect[0].get_points())
         MINI_CHECK(TOLERANCE.is_close(p[2], 5.0));
-    for (const Point &p : uni[0].get_points())
+
+    for (const Point& p : uni[0].get_points())
         MINI_CHECK(TOLERANCE.is_close(p[2], 5.0));
-    for (const Point &p : diff[0].get_points())
+
+    for (const Point& p : diff[0].get_points())
         MINI_CHECK(TOLERANCE.is_close(p[2], 5.0));
 }
 
 MINI_TEST("Polyline", "Merge Collinear") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0), Point(2.0, 1.0, 0.0),
@@ -730,13 +785,16 @@ MINI_TEST("Polyline", "Merge Collinear") {
 }
 
 MINI_TEST("Polyline", "Simplify Points") {
+
     std::vector<Point> pts;
+
     for (int i = 0; i < 100; ++i) {
         double x = static_cast<double>(i);
         double y = std::sin(static_cast<double>(i) * 0.1) * 0.001;
         double z = 0.0;
         pts.push_back(Point(x, y, z));
     }
+
     std::vector<Point> result_tight = Polyline::simplify_points(pts, 0.0001);
     std::vector<Point> result_loose = Polyline::simplify_points(pts, 0.01);
     std::vector<Point> result_very_loose = Polyline::simplify_points(pts, 1.0);
@@ -749,13 +807,16 @@ MINI_TEST("Polyline", "Simplify Points") {
 }
 
 MINI_TEST("Polyline", "Simplify") {
+
     std::vector<Point> pts;
+
     for (int i = 0; i < 20; ++i) {
         double x = static_cast<double>(i);
         double y = 0.0;
         double z = 0.0;
         pts.push_back(Point(x, y, z));
     }
+
     Polyline pl(pts);
     Polyline result = pl.simplify(0.001);
 
@@ -765,6 +826,7 @@ MINI_TEST("Polyline", "Simplify") {
 }
 
 MINI_TEST("Polyline", "Simplify Collinear") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -780,13 +842,16 @@ MINI_TEST("Polyline", "Simplify Collinear") {
 }
 
 MINI_TEST("Polyline", "Simplify Zigzag") {
+
     std::vector<Point> pts;
+
     for (int i = 0; i < 10; ++i) {
         double x = static_cast<double>(i);
         double y = (i % 2 == 1) ? 1.0 : 0.0;
         double z = 0.0;
         pts.push_back(Point(x, y, z));
     }
+
     std::vector<Point> result_tight = Polyline::simplify_points(pts, 0.1);
     std::vector<Point> result_loose = Polyline::simplify_points(pts, 2.0);
 
@@ -795,6 +860,7 @@ MINI_TEST("Polyline", "Simplify Zigzag") {
 }
 
 MINI_TEST("Polyline", "Simplify Two Points") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 1.0, 1.0),
@@ -805,6 +871,7 @@ MINI_TEST("Polyline", "Simplify Two Points") {
 }
 
 MINI_TEST("Polyline", "Translate") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -818,6 +885,7 @@ MINI_TEST("Polyline", "Translate") {
 }
 
 MINI_TEST("Polyline", "Extend Edge Equally") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),

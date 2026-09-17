@@ -5,384 +5,356 @@ namespace session_cpp {
 
 namespace {
 
-/// One list, duplicated: new vector, new objects, same guids. A geometry copy constructor
-/// mints a fresh guid by design, so the original's is put back.
+/// One list, duplicated: new vector, new objects, same guids.
 template <class T>
-std::shared_ptr<std::vector<std::shared_ptr<T>>>
-clone_list(const std::shared_ptr<std::vector<std::shared_ptr<T>>>& source) {
-  auto out = std::make_shared<std::vector<std::shared_ptr<T>>>();
-  if (!source) { return out; }
-  out->reserve(source->size());
-  for (const std::shared_ptr<T>& item : *source) {
-    if (!item) { out->push_back(nullptr); continue; }
-    std::shared_ptr<T> copy = std::make_shared<T>(*item);
-    if (item->has_guid()) { copy->guid() = item->guid(); }
-    out->push_back(std::move(copy));
-  }
-  return out;
+std::shared_ptr<std::vector<std::shared_ptr<T>>> clone_list(
+    const std::shared_ptr<std::vector<std::shared_ptr<T>>>& source
+) {
+
+    std::shared_ptr<std::vector<std::shared_ptr<T>>> out = std::make_shared<std::vector<std::shared_ptr<T>>>();
+
+    if (!source)
+        return out;
+
+    out->reserve(source->size());
+
+    for (const std::shared_ptr<T>& item : *source) {
+        if (!item) {
+            out->push_back(nullptr);
+            continue;
+        }
+
+        std::shared_ptr<T> copy = std::make_shared<T>(*item);
+
+        if (item->has_guid())
+            copy->guid() = item->guid();
+
+        out->push_back(std::move(copy));
+    }
+
+    return out;
 }
 
-/// Elements are polymorphic: a domain type derives from Element and carries its own tag, so
-/// this goes through the virtual clone rather than the copy constructor.
-std::shared_ptr<std::vector<std::shared_ptr<Element>>>
-clone_elements(const std::shared_ptr<std::vector<std::shared_ptr<Element>>>& source) {
-  auto out = std::make_shared<std::vector<std::shared_ptr<Element>>>();
-  if (!source) { return out; }
-  out->reserve(source->size());
-  for (const std::shared_ptr<Element>& item : *source) {
-    if (!item) { out->push_back(nullptr); continue; }
-    std::shared_ptr<Element> copy = item->clone();
-    if (item->has_guid()) { copy->guid() = item->guid(); }
-    out->push_back(std::move(copy));
-  }
-  return out;
+/// Elements are polymorphic, so the copy goes through the virtual clone.
+std::shared_ptr<std::vector<std::shared_ptr<Element>>> clone_elements(
+    const std::shared_ptr<std::vector<std::shared_ptr<Element>>>& source
+) {
+
+    std::shared_ptr<std::vector<std::shared_ptr<Element>>> out =
+        std::make_shared<std::vector<std::shared_ptr<Element>>>();
+
+    if (!source)
+        return out;
+
+    out->reserve(source->size());
+
+    for (const std::shared_ptr<Element>& item : *source) {
+        if (!item) {
+            out->push_back(nullptr);
+            continue;
+        }
+
+        std::shared_ptr<Element> copy = item->clone();
+
+        if (item->has_guid())
+            copy->guid() = item->guid();
+
+        out->push_back(std::move(copy));
+    }
+
+    return out;
+}
+
+/// A load is not a duplicate: make_shared copies and the copy mints a fresh guid, so the loaded one is put back.
+template <class T> std::shared_ptr<T> keep_guid(T&& loaded) {
+    std::shared_ptr<T> out = std::make_shared<T>(loaded);
+    out->guid() = loaded.guid();
+
+    return out;
+}
+
+/// Serialize every object of a list to JSON.
+template <class T> std::vector<nlohmann::ordered_json> dump_list(const std::vector<std::shared_ptr<T>>& list) {
+
+    std::vector<nlohmann::ordered_json> out;
+    out.reserve(list.size());
+
+    for (const std::shared_ptr<T>& item : list)
+        out.push_back(item->jsondump());
+
+    return out;
+}
+
+/// Load every object under key into the list, keeping guids.
+template <class T> void load_list(const nlohmann::json& data, const char* key, std::vector<std::shared_ptr<T>>& list) {
+
+    if (!data.contains(key))
+        return;
+
+    list.reserve(data[key].size());
+
+    for (const nlohmann::json& item : data[key])
+        list.push_back(keep_guid(T::jsonload(item)));
+}
+
+/// Serialize every object of a list into a repeated proto field.
+template <class T, class R> void dump_pb_list(const std::vector<std::shared_ptr<T>>& list, R* repeated) {
+    for (const std::shared_ptr<T>& item : list)
+        repeated->Add()->ParseFromString(item->pb_dumps());
+}
+
+/// Load every message of a repeated proto field into the list, keeping guids.
+template <class T, class R> void load_pb_list(const R& repeated, std::vector<std::shared_ptr<T>>& list) {
+    for (const typename R::value_type& item : repeated)
+        list.push_back(keep_guid(T::pb_loads(item.SerializeAsString())));
 }
 
 } // namespace
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════════════════════
+
+nlohmann::ordered_json Component::jsondump() const {
+
+    nlohmann::ordered_json data = extra;
+    data["type"] = type_name;
+    data["guid"] = guid();
+    data["name"] = name;
+
+    return data;
+}
+
+Component Component::jsonload(const nlohmann::json& data) {
+
+    Component component;
+    component.type_name = data.value("type", "");
+    component.guid() = data.value("guid", ::guid());
+    component.name = data.value("name", "my_component");
+    component.extra = data;
+    component.extra.erase("type");
+    component.extra.erase("guid");
+    component.extra.erase("name");
+
+    return component;
+}
+
+std::string Component::pb_dumps() const {
+
+    session_proto::Component proto;
+    proto.set_type_name(type_name);
+    proto.set_guid(guid());
+    proto.set_name(name);
+    proto.set_json_data(extra.dump());
+
+    return proto.SerializeAsString();
+}
+
+Component Component::pb_loads(const std::string& data) {
+
+    session_proto::Component proto;
+    proto.ParseFromString(data);
+    Component component;
+    component.type_name = proto.type_name();
+    component.guid() = proto.guid();
+    component.name = proto.name();
+    component.extra = nlohmann::ordered_json::parse(proto.json_data(), nullptr, false);
+
+    return component;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Objects
+// ═══════════════════════════════════════════════════════════════════════════
+
+Objects::Objects(std::string name) : name(std::move(name)) {
+
+    points = std::make_shared<std::vector<std::shared_ptr<Point>>>();
+    lines = std::make_shared<std::vector<std::shared_ptr<Line>>>();
+    planes = std::make_shared<std::vector<std::shared_ptr<Plane>>>();
+    bboxes = std::make_shared<std::vector<std::shared_ptr<OBB>>>();
+    polylines = std::make_shared<std::vector<std::shared_ptr<Polyline>>>();
+    pointclouds = std::make_shared<std::vector<std::shared_ptr<PointCloud>>>();
+    meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
+    nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
+    nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
+    breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
+    elements = std::make_shared<std::vector<std::shared_ptr<Element>>>();
+    components = std::make_shared<std::vector<Component>>();
+}
+
 Objects::Objects(const Objects& other) : name(other.name) {
-  if (other.has_guid()) { guid() = other.guid(); }
-  points        = clone_list(other.points);
-  lines         = clone_list(other.lines);
-  planes        = clone_list(other.planes);
-  bboxes        = clone_list(other.bboxes);
-  polylines     = clone_list(other.polylines);
-  pointclouds   = clone_list(other.pointclouds);
-  meshes        = clone_list(other.meshes);
-  nurbscurves   = clone_list(other.nurbscurves);
-  nurbssurfaces = clone_list(other.nurbssurfaces);
-  breps         = clone_list(other.breps);
-  elements      = clone_elements(other.elements);
-  components    = std::make_shared<std::vector<Component>>(other.components ? *other.components
-                                                                            : std::vector<Component>{});
+
+    if (other.has_guid())
+        guid() = other.guid();
+
+    points = clone_list(other.points);
+    lines = clone_list(other.lines);
+    planes = clone_list(other.planes);
+    bboxes = clone_list(other.bboxes);
+    polylines = clone_list(other.polylines);
+    pointclouds = clone_list(other.pointclouds);
+    meshes = clone_list(other.meshes);
+    nurbscurves = clone_list(other.nurbscurves);
+    nurbssurfaces = clone_list(other.nurbssurfaces);
+    breps = clone_list(other.breps);
+    elements = clone_elements(other.elements);
+    components =
+        std::make_shared<std::vector<Component>>(other.components ? *other.components : std::vector<Component>{});
 }
 
 Objects& Objects::operator=(const Objects& other) {
-  if (this != &other) { Objects copy(other); *this = std::move(copy); }
-  return *this;
+
+    if (this != &other) {
+        Objects copy(other);
+        *this = std::move(copy);
+    }
+
+    return *this;
 }
 
 std::string Objects::str() const {
-  return fmt::format("Objects(name={}, guid={}, points={})", name, guid(),
-                     points->size());
+    return fmt::format("Objects(name={}, guid={}, points={})", name, guid(), points->size());
 }
 
 nlohmann::ordered_json Objects::jsondump() const {
-  // Build JSON arrays for all geometry types (in alphabetical order)
-  std::vector<nlohmann::ordered_json> bboxes_json;
-  bboxes_json.reserve(bboxes->size());
-  for (const auto &b : *bboxes) {
-    bboxes_json.push_back(b->jsondump());
-  }
 
-  std::vector<nlohmann::ordered_json> lines_json;
-  lines_json.reserve(lines->size());
-  for (const auto &l : *lines) {
-    lines_json.push_back(l->jsondump());
-  }
+    std::vector<nlohmann::ordered_json> components_json;
+    components_json.reserve(components->size());
 
-  std::vector<nlohmann::ordered_json> meshes_json;
-  meshes_json.reserve(meshes->size());
-  for (const auto &m : *meshes) {
-    meshes_json.push_back(m->jsondump());
-  }
+    for (const Component& component : *components)
+        components_json.push_back(component.jsondump());
 
-  std::vector<nlohmann::ordered_json> nurbscurves_json;
-  nurbscurves_json.reserve(nurbscurves->size());
-  for (const auto &nc : *nurbscurves) {
-    nurbscurves_json.push_back(nc->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> nurbssurfaces_json;
-  nurbssurfaces_json.reserve(nurbssurfaces->size());
-  for (const auto &ns : *nurbssurfaces) {
-    nurbssurfaces_json.push_back(ns->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> breps_json;
-  breps_json.reserve(breps->size());
-  for (const auto &b : *breps) {
-    breps_json.push_back(b->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> elements_json;
-  elements_json.reserve(elements->size());
-  for (const auto &e : *elements) {
-    elements_json.push_back(e->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> components_json;
-  components_json.reserve(components->size());
-  for (const auto &c : *components) {
-    components_json.push_back(c.jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> planes_json;
-  planes_json.reserve(planes->size());
-  for (const auto &p : *planes) {
-    planes_json.push_back(p->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> points_json;
-  points_json.reserve(points->size());
-  for (const auto &p : *points) {
-    points_json.push_back(p->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> pointclouds_json;
-  pointclouds_json.reserve(pointclouds->size());
-  for (const auto &pc : *pointclouds) {
-    pointclouds_json.push_back(pc->jsondump());
-  }
-
-  std::vector<nlohmann::ordered_json> polylines_json;
-  polylines_json.reserve(polylines->size());
-  for (const auto &pl : *polylines) {
-    polylines_json.push_back(pl->jsondump());
-  }
-
-  return nlohmann::ordered_json{{"type", "Objects"},
-                                {"guid", guid()},
-                                {"name", name},
-                                {"bboxes", bboxes_json},
-                                {"breps", breps_json},
-                                {"elements", elements_json},
-                                {"lines", lines_json},
-                                {"meshes", meshes_json},
-                                {"nurbscurves", nurbscurves_json},
-                                {"nurbssurfaces", nurbssurfaces_json},
-                                {"planes", planes_json},
-                                {"points", points_json},
-                                {"pointclouds", pointclouds_json},
-                                {"polylines", polylines_json},
-                                {"components", components_json}};
+    return nlohmann::ordered_json{
+        {"type", "Objects"},
+        {"guid", guid()},
+        {"name", name},
+        {"bboxes", dump_list(*bboxes)},
+        {"breps", dump_list(*breps)},
+        {"components", components_json},
+        {"elements", dump_list(*elements)},
+        {"lines", dump_list(*lines)},
+        {"meshes", dump_list(*meshes)},
+        {"nurbscurves", dump_list(*nurbscurves)},
+        {"nurbssurfaces", dump_list(*nurbssurfaces)},
+        {"planes", dump_list(*planes)},
+        {"pointclouds", dump_list(*pointclouds)},
+        {"points", dump_list(*points)},
+        {"polylines", dump_list(*polylines)}
+    };
 }
 
-// pb_loads/jsonload return by value; make_shared<T>(loaded) COPIES, and the guid-refreshing
-// copy constructor mints a FRESH guid — silently re-guiding every object on load and orphaning
-// tree/graph references keyed by guid. A LOAD is not a duplicate: restore the loaded identity.
-template <typename T>
-static std::shared_ptr<T> keep_guid(T&& loaded) {
-  auto p = std::make_shared<T>(loaded);
-  p->guid() = loaded.guid();
-  return p;
-}
+Objects Objects::jsonload(const nlohmann::json& data) {
 
-Objects Objects::jsonload(const nlohmann::json &data) {
-  // Create Objects instance
-  Objects objects(data["name"].get<std::string>());
+    Objects objects(data.value("name", "my_objects"));
+    objects.guid() = data.value("guid", ::guid());
+    load_list(data, "bboxes", *objects.bboxes);
+    load_list(data, "breps", *objects.breps);
+    load_list(data, "elements", *objects.elements);
+    load_list(data, "lines", *objects.lines);
+    load_list(data, "meshes", *objects.meshes);
+    load_list(data, "nurbscurves", *objects.nurbscurves);
+    load_list(data, "nurbssurfaces", *objects.nurbssurfaces);
+    load_list(data, "planes", *objects.planes);
+    load_list(data, "pointclouds", *objects.pointclouds);
+    load_list(data, "points", *objects.points);
+    load_list(data, "polylines", *objects.polylines);
 
-  // Load bboxes
-  if (data.contains("bboxes")) {
-    std::vector<std::shared_ptr<OBB>> bboxes;
-    bboxes.reserve(data["bboxes"].size());
-    for (const auto &bbox_data : data["bboxes"])
-      bboxes.push_back(keep_guid(OBB::jsonload(bbox_data)));
-    *objects.bboxes = std::move(bboxes);
-  }
+    if (data.contains("components"))
+        for (const nlohmann::json& item : data["components"])
+            objects.components->push_back(Component::jsonload(item));
 
-  // Load lines
-  if (data.contains("lines")) {
-    std::vector<std::shared_ptr<Line>> lines;
-    lines.reserve(data["lines"].size());
-    for (const auto &line_data : data["lines"])
-      lines.push_back(keep_guid(Line::jsonload(line_data)));
-    *objects.lines = std::move(lines);
-  }
-
-  // Load meshes
-  if (data.contains("meshes")) {
-    std::vector<std::shared_ptr<Mesh>> meshes;
-    meshes.reserve(data["meshes"].size());
-    for (const auto &mesh_data : data["meshes"])
-      meshes.push_back(keep_guid(Mesh::jsonload(mesh_data)));
-    *objects.meshes = std::move(meshes);
-  }
-
-  // Load nurbscurves
-  if (data.contains("nurbscurves")) {
-    std::vector<std::shared_ptr<NurbsCurve>> nurbscurves;
-    nurbscurves.reserve(data["nurbscurves"].size());
-    for (const auto &nc_data : data["nurbscurves"])
-      nurbscurves.push_back(keep_guid(NurbsCurve::jsonload(nc_data)));
-    *objects.nurbscurves = std::move(nurbscurves);
-  }
-
-  // Load nurbssurfaces
-  if (data.contains("nurbssurfaces")) {
-    std::vector<std::shared_ptr<NurbsSurface>> nurbssurfaces;
-    nurbssurfaces.reserve(data["nurbssurfaces"].size());
-    for (const auto &ns_data : data["nurbssurfaces"])
-      nurbssurfaces.push_back(keep_guid(NurbsSurface::jsonload(ns_data)));
-    *objects.nurbssurfaces = std::move(nurbssurfaces);
-  }
-
-  // Load breps
-  if (data.contains("breps")) {
-    std::vector<std::shared_ptr<BRep>> breps;
-    breps.reserve(data["breps"].size());
-    for (const auto &b_data : data["breps"])
-      breps.push_back(keep_guid(BRep::jsonload(b_data)));
-    *objects.breps = std::move(breps);
-  }
-
-  // Load elements
-  if (data.contains("elements")) {
-    std::vector<std::shared_ptr<Element>> elements;
-    elements.reserve(data["elements"].size());
-    for (const auto &e_data : data["elements"])
-      elements.push_back(keep_guid(Element::jsonload(e_data)));
-    *objects.elements = std::move(elements);
-  }
-
-  // Load planes
-  if (data.contains("planes")) {
-    std::vector<std::shared_ptr<Plane>> planes;
-    planes.reserve(data["planes"].size());
-    for (const auto &plane_data : data["planes"])
-      planes.push_back(keep_guid(Plane::jsonload(plane_data)));
-    *objects.planes = std::move(planes);
-  }
-
-  // Load points
-  if (data.contains("points")) {
-    std::vector<std::shared_ptr<Point>> points;
-    points.reserve(data["points"].size());
-    for (const auto &point_data : data["points"])
-      points.push_back(keep_guid(Point::jsonload(point_data)));
-    *objects.points = std::move(points);
-  }
-
-  // Load pointclouds
-  if (data.contains("pointclouds")) {
-    std::vector<std::shared_ptr<PointCloud>> pointclouds;
-    pointclouds.reserve(data["pointclouds"].size());
-    for (const auto &pointcloud_data : data["pointclouds"])
-      pointclouds.push_back(keep_guid(PointCloud::jsonload(pointcloud_data)));
-    *objects.pointclouds = std::move(pointclouds);
-  }
-
-  // Load polylines
-  if (data.contains("polylines")) {
-    std::vector<std::shared_ptr<Polyline>> polylines;
-    polylines.reserve(data["polylines"].size());
-    for (const auto &polyline_data : data["polylines"])
-      polylines.push_back(keep_guid(Polyline::jsonload(polyline_data)));
-    *objects.polylines = std::move(polylines);
-  }
-
-  // Load components
-  if (data.contains("components")) {
-    for (const auto &c_data : data["components"])
-      objects.components->push_back(Component::jsonload(c_data));
-  }
-
-  // Set guid() if provided, otherwise generate a new one
-  objects.guid() =
-      data.contains("guid") ? data["guid"].get<std::string>() : ::guid();
-
-  return objects;
+    return objects;
 }
 
 std::string Objects::file_json_dumps() const {
-  return jsondump().dump();
+    return jsondump().dump();
 }
 
 Objects Objects::file_json_loads(const std::string& json_string) {
-  return jsonload(nlohmann::ordered_json::parse(json_string));
+    return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
 void Objects::file_json_dump(const std::string& filename) const {
-  std::ofstream file(filename);
-  file << jsondump().dump(4);
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
 }
 
 Objects Objects::file_json_load(const std::string& filename) {
-  std::ifstream file(filename);
-  nlohmann::json data = nlohmann::json::parse(file);
-  return jsonload(data);
+    std::ifstream file(filename);
+
+    return jsonload(nlohmann::json::parse(file));
 }
 
 std::string Objects::pb_dumps() const {
-  session_proto::Objects proto;
-  proto.set_name(name);
-  if (has_guid()) { proto.set_guid(guid()); }
-  for (const auto& p : *points) proto.add_points()->ParseFromString(p->pb_dumps());
-  for (const auto& l : *lines) proto.add_lines()->ParseFromString(l->pb_dumps());
-  for (const auto& pl : *planes) proto.add_planes()->ParseFromString(pl->pb_dumps());
-  for (const auto& b : *bboxes) proto.add_bboxes()->ParseFromString(b->pb_dumps());
-  for (const auto& pl : *polylines) proto.add_polylines()->ParseFromString(pl->pb_dumps());
-  for (const auto& pc : *pointclouds) proto.add_pointclouds()->ParseFromString(pc->pb_dumps());
-  for (const auto& m : *meshes) proto.add_meshes()->ParseFromString(m->pb_dumps());
-  for (const auto& nc : *nurbscurves) proto.add_nurbscurves()->ParseFromString(nc->pb_dumps());
-  for (const auto& ns : *nurbssurfaces) proto.add_nurbssurfaces()->ParseFromString(ns->pb_dumps());
-  for (const auto& b : *breps) proto.add_breps()->ParseFromString(b->pb_dumps());
-  for (const auto& e : *elements) proto.add_elements()->ParseFromString(e->pb_dumps());
-  for (const auto& c : *components) {
-    auto* pc = proto.add_components();
-    pc->set_type_name(c.type_name);
-    pc->set_guid(c.guid());
-    pc->set_name(c.name);
-    pc->set_json_data(c.extra.dump());
-  }
-  return proto.SerializeAsString();
+
+    session_proto::Objects proto;
+    proto.set_name(name);
+
+    if (has_guid())
+        proto.set_guid(guid());
+
+    dump_pb_list(*points, proto.mutable_points());
+    dump_pb_list(*lines, proto.mutable_lines());
+    dump_pb_list(*planes, proto.mutable_planes());
+    dump_pb_list(*bboxes, proto.mutable_bboxes());
+    dump_pb_list(*polylines, proto.mutable_polylines());
+    dump_pb_list(*pointclouds, proto.mutable_pointclouds());
+    dump_pb_list(*meshes, proto.mutable_meshes());
+    dump_pb_list(*nurbscurves, proto.mutable_nurbscurves());
+    dump_pb_list(*nurbssurfaces, proto.mutable_nurbssurfaces());
+    dump_pb_list(*breps, proto.mutable_breps());
+    dump_pb_list(*elements, proto.mutable_elements());
+
+    for (const Component& component : *components)
+        proto.add_components()->ParseFromString(component.pb_dumps());
+
+    return proto.SerializeAsString();
 }
 
 Objects Objects::pb_loads(const std::string& data) {
-  session_proto::Objects proto;
-  proto.ParseFromString(data);
-  Objects objects(proto.name());
-  if (!proto.guid().empty()) { objects.guid() = proto.guid(); }
-  for (const auto& p : proto.points())
-    objects.points->push_back(keep_guid(Point::pb_loads(p.SerializeAsString())));
-  for (const auto& l : proto.lines())
-    objects.lines->push_back(keep_guid(Line::pb_loads(l.SerializeAsString())));
-  for (const auto& p : proto.planes())
-    objects.planes->push_back(keep_guid(Plane::pb_loads(p.SerializeAsString())));
-  for (const auto& b : proto.bboxes())
-    objects.bboxes->push_back(keep_guid(OBB::pb_loads(b.SerializeAsString())));
-  for (const auto& p : proto.polylines())
-    objects.polylines->push_back(keep_guid(Polyline::pb_loads(p.SerializeAsString())));
-  for (const auto& p : proto.pointclouds())
-    objects.pointclouds->push_back(keep_guid(PointCloud::pb_loads(p.SerializeAsString())));
-  for (const auto& m : proto.meshes())
-    objects.meshes->push_back(keep_guid(Mesh::pb_loads(m.SerializeAsString())));
-  for (const auto& nc : proto.nurbscurves())
-    objects.nurbscurves->push_back(keep_guid(NurbsCurve::pb_loads(nc.SerializeAsString())));
-  for (const auto& ns : proto.nurbssurfaces())
-    objects.nurbssurfaces->push_back(keep_guid(NurbsSurface::pb_loads(ns.SerializeAsString())));
-  for (const auto& b : proto.breps())
-    objects.breps->push_back(keep_guid(BRep::pb_loads(b.SerializeAsString())));
-  // pb_loads_polymorphic, not pb_loads: the latter returns by value and would slice a
-  // registered domain element back to its base, silently dropping everything the
-  // package put in `element_data`. It already keeps the guid, so no keep_guid here.
-  for (const auto& e : proto.elements())
-    objects.elements->push_back(Element::pb_loads_polymorphic(e.SerializeAsString()));
-  for (const auto& pc : proto.components()) {
-    Component c;
-    c.type_name = pc.type_name();
-    c.guid()    = pc.guid();
-    c.name      = pc.name();
-    c.extra     = nlohmann::ordered_json::parse(pc.json_data(), nullptr, false);
-    objects.components->push_back(c);
-  }
-  return objects;
+
+    session_proto::Objects proto;
+    proto.ParseFromString(data);
+    Objects objects(proto.name());
+
+    if (!proto.guid().empty())
+        objects.guid() = proto.guid();
+
+    load_pb_list(proto.points(), *objects.points);
+    load_pb_list(proto.lines(), *objects.lines);
+    load_pb_list(proto.planes(), *objects.planes);
+    load_pb_list(proto.bboxes(), *objects.bboxes);
+    load_pb_list(proto.polylines(), *objects.polylines);
+    load_pb_list(proto.pointclouds(), *objects.pointclouds);
+    load_pb_list(proto.meshes(), *objects.meshes);
+    load_pb_list(proto.nurbscurves(), *objects.nurbscurves);
+    load_pb_list(proto.nurbssurfaces(), *objects.nurbssurfaces);
+    load_pb_list(proto.breps(), *objects.breps);
+
+    for (const session_proto::Element& element : proto.elements())
+        objects.elements->push_back(Element::pb_loads_polymorphic(element.SerializeAsString()));
+
+    for (const session_proto::Component& component : proto.components())
+        objects.components->push_back(Component::pb_loads(component.SerializeAsString()));
+
+    return objects;
 }
 
 void Objects::pb_dump(const std::string& filename) const {
-  std::string data = pb_dumps();
-  std::ofstream file(filename, std::ios::binary);
-  file.write(data.data(), data.size());
+    std::string data = pb_dumps();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
 }
 
 Objects Objects::pb_load(const std::string& filename) {
-  std::ifstream file(filename, std::ios::binary);
-  std::string data((std::istreambuf_iterator<char>(file)),
-                    std::istreambuf_iterator<char>());
-  return pb_loads(data);
+    std::ifstream file(filename, std::ios::binary);
+    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    return pb_loads(data);
 }
 
-std::ostream &operator<<(std::ostream &os, const Objects &objects) {
-  return os << objects.str();
+std::ostream& operator<<(std::ostream& os, const Objects& objects) {
+    return os << objects.str();
 }
 } // namespace session_cpp

@@ -17,7 +17,6 @@ namespace session_cpp {
 /// Factory for primitive meshes, NURBS curves and NURBS surfaces.
 class Primitives {
 public:
-
     // ═══════════════════════════════════════════════════════════════════════════
     // Mesh primitives
     // ═══════════════════════════════════════════════════════════════════════════
@@ -125,10 +124,19 @@ public:
     static NurbsSurface create_sweep1(const NurbsCurve& rail, const NurbsCurve& profile);
 
     /// Sweep of shape curves between two rails.
-    static NurbsSurface create_sweep2(const NurbsCurve& rail1, const NurbsCurve& rail2, const std::vector<NurbsCurve>& shapes);
+    static NurbsSurface create_sweep2(
+        const NurbsCurve& rail1,
+        const NurbsCurve& rail2,
+        const std::vector<NurbsCurve>& shapes
+    );
 
     /// Coons patch from four boundary curves in any order and direction.
-    static NurbsSurface create_edge(const NurbsCurve& c0, const NurbsCurve& c1, const NurbsCurve& c2, const NurbsCurve& c3);
+    static NurbsSurface create_edge(
+        const NurbsCurve& c0,
+        const NurbsCurve& c1,
+        const NurbsCurve& c2,
+        const NurbsCurve& c3
+    );
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Surface to mesh

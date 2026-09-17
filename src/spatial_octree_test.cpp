@@ -8,9 +8,12 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialOctree", "Constructor") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 16);
 
     MINI_CHECK(tree.node_count() == 1);
@@ -19,18 +22,24 @@ MINI_TEST("SpatialOctree", "Constructor") {
 }
 
 MINI_TEST("SpatialOctree", "Node Count") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.node_count() == 3);
 }
 
 MINI_TEST("SpatialOctree", "Node Cube") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
     auto [center, size] = tree.node_cube(0);
     auto [child_center, child_size] = tree.node_cube(1);
@@ -42,9 +51,12 @@ MINI_TEST("SpatialOctree", "Node Cube") {
 }
 
 MINI_TEST("SpatialOctree", "Node Level") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.node_level(0) == 0);
@@ -53,9 +65,12 @@ MINI_TEST("SpatialOctree", "Node Level") {
 }
 
 MINI_TEST("SpatialOctree", "Node Spacing") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(TOLERANCE.is_close(tree.node_spacing(0), 4.0));
@@ -64,9 +79,12 @@ MINI_TEST("SpatialOctree", "Node Spacing") {
 }
 
 MINI_TEST("SpatialOctree", "Node Range") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.node_range(0) == std::make_pair(0, 2));
@@ -75,9 +93,12 @@ MINI_TEST("SpatialOctree", "Node Range") {
 }
 
 MINI_TEST("SpatialOctree", "Children") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.children(0) == std::vector<int>({1, 2}));
@@ -85,21 +106,27 @@ MINI_TEST("SpatialOctree", "Children") {
 }
 
 MINI_TEST("SpatialOctree", "Order") {
+
     std::vector<Point> pts;
+
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
+
     SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.order() == std::vector<int>({0, 4, 1, 2, 3, 5, 6, 7, 8}));
 }
 
 MINI_TEST("SpatialOctree", "From Coords") {
+
     std::vector<double> coords;
+
     for (int x = 0; x < 9; x++) {
         coords.push_back((double)x);
         coords.push_back(0.0);
         coords.push_back(0.0);
     }
+
     SpatialOctree tree = SpatialOctree::from_coords(coords, 4.0, 4);
 
     MINI_CHECK(tree.node_count() == 3);

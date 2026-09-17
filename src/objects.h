@@ -1,6 +1,6 @@
 #pragma once
-#include "guid.h"  // For ::guid()
-#include "json.h"  // For nlohmann::ordered_json
+#include "guid.h"
+#include "json.h"
 #include "point.h"
 #include "vector.h"
 #include "line.h"
@@ -21,140 +21,136 @@
 
 namespace session_cpp {
 
-/**
- * @struct Component
- * @brief A custom domain object stored generically in a Session.
- *
- * Allows external packages (e.g. session_tf) to store arbitrary serializable
- * objects (FloorBuilder, WallBuilder, …) without the core session needing to
- * know their concrete types.  The full JSON dict is preserved in `extra` so
- * downstream code can reconstruct the concrete object via a factory registry.
- */
+/// A custom domain object stored generically in a Session; every field except type/guid/name lives in extra.
 struct Component {
-  std::string type_name;               ///< Class name, e.g. "FloorBuilder"
-  std::string name = "my_component";   ///< Human-readable name
-  nlohmann::ordered_json extra;        ///< All custom fields (everything except type/guid/name)
+    std::string type_name;             // Class name, e.g. "FloorBuilder".
+    std::string name = "my_component"; // Human-readable name.
+    nlohmann::ordered_json extra;      // All custom fields.
 
-  bool has_guid() const { return !_guid.empty(); }
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string& guid()       { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
 
-  nlohmann::ordered_json jsondump() const {
-    nlohmann::ordered_json j = extra;
-    j["type"] = type_name;
-    j["guid"] = guid();
-    j["name"] = name;
-    return j;
-  }
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+        if (_guid.empty())
+            _guid = ::guid();
 
-  static Component jsonload(const nlohmann::json& j) {
-    Component c;
-    c.type_name   = j.value("type", "");
-    c.guid()      = j.value("guid", ::guid());
-    c.name        = j.value("name", "my_component");
-    c.extra       = j;
-    c.extra.erase("type");
-    c.extra.erase("guid");
-    c.extra.erase("name");
-    return c;
-  }
+        return _guid;
+    }
 
-  std::string pb_dumps() const;
-  static Component pb_loads(const std::string& data);
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Serialize to a JSON object.
+    nlohmann::ordered_json jsondump() const;
+
+    /// Deserialize from a JSON object.
+    static Component jsonload(const nlohmann::json& data);
+
+    /// Serialize to protobuf bytes.
+    std::string pb_dumps() const;
+
+    /// Deserialize from protobuf bytes.
+    static Component pb_loads(const std::string& data);
 
 private:
-  mutable std::string _guid;
+    mutable std::string _guid; // Lazily minted guid.
 };
 
-/**
- * @class Objects
- * @brief A collection of geometry objects.
- */
+/// A collection of geometry objects.
 class Objects {
 public:
-  std::string name = "my_objects"; ///< The name of the objects
-  bool has_guid() const { return !_guid.empty(); }
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+    std::string name = "my_objects"; // The name of the collection.
+    std::shared_ptr<std::vector<std::shared_ptr<Point>>> points; // Points.
+    std::shared_ptr<std::vector<std::shared_ptr<Line>>> lines; // Lines.
+    std::shared_ptr<std::vector<std::shared_ptr<Plane>>> planes; // Planes.
+    std::shared_ptr<std::vector<std::shared_ptr<OBB>>> bboxes; // Bounding boxes.
+    std::shared_ptr<std::vector<std::shared_ptr<Polyline>>> polylines; // Polylines.
+    std::shared_ptr<std::vector<std::shared_ptr<PointCloud>>> pointclouds; // Point clouds.
+    std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes; // Meshes.
+    std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves; // NURBS curves.
+    std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces; // NURBS surfaces.
+    std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps; // BReps.
+    std::shared_ptr<std::vector<std::shared_ptr<Element>>> elements; // Elements.
+    std::shared_ptr<std::vector<Component>> components; // Components.
 
-  // Collections for all geometry types
-  std::shared_ptr<std::vector<std::shared_ptr<Point>>> points;
-  std::shared_ptr<std::vector<std::shared_ptr<Line>>> lines;
-  std::shared_ptr<std::vector<std::shared_ptr<Plane>>> planes;
-  std::shared_ptr<std::vector<std::shared_ptr<OBB>>> bboxes;
-  std::shared_ptr<std::vector<std::shared_ptr<Polyline>>> polylines;
-  std::shared_ptr<std::vector<std::shared_ptr<PointCloud>>> pointclouds;
-  std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes;
-  std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves;
-  std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces;
-  std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps;
-  std::shared_ptr<std::vector<std::shared_ptr<Element>>> elements;
-  std::shared_ptr<std::vector<Component>> components;
+    /// Construct an empty collection with every list allocated.
+    Objects(std::string name = "my_objects");
 
-  /**
-   * @brief Constructor.
-   * @param name The name of the collection.
-   */
-  Objects(std::string name = "my_objects") : name(std::move(name)) {
-    // Initialize all geometry collections
-    this->points = std::make_shared<std::vector<std::shared_ptr<Point>>>();
-    this->lines = std::make_shared<std::vector<std::shared_ptr<Line>>>();
-    this->planes = std::make_shared<std::vector<std::shared_ptr<Plane>>>();
-    this->bboxes = std::make_shared<std::vector<std::shared_ptr<OBB>>>();
-    this->polylines = std::make_shared<std::vector<std::shared_ptr<Polyline>>>();
-    this->pointclouds = std::make_shared<std::vector<std::shared_ptr<PointCloud>>>();
-    this->meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
-    this->nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
-    this->nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
-    this->breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
-    this->elements   = std::make_shared<std::vector<std::shared_ptr<Element>>>();
-    this->components = std::make_shared<std::vector<Component>>();
-  }
+    /// Copy every list and every object in it, guids included, so a Session's indexes still match.
+    Objects(const Objects& other);
 
-  /// A copy duplicates every list AND every object in it, identities included.
-  ///
-  /// The lists are held by shared_ptr, so the implicit copy shared them: two Objects, one set
-  /// of geometry, and clearing either cleared both. Guids are put back after each object's own
-  /// copy constructor mints a fresh one, because a Session's tree, graph and xforms all key on
-  /// them - a duplicate that renamed everything would be a session whose own indexes no longer
-  /// matched its geometry.
-  Objects(const Objects& other);
-  Objects& operator=(const Objects& other);
-  /// A move is the same collection in a new place, so the lists transfer as they are.
-  Objects(Objects&&) noexcept = default;
-  Objects& operator=(Objects&&) noexcept = default;
+    /// Copy-assign every list and every object in it, guids included.
+    Objects& operator=(const Objects& other);
 
-  /// Convert objects to string representation
-  std::string str() const;
+    /// Move the lists as they are.
+    Objects(Objects&&) noexcept = default;
 
-  /**
-   * @brief Serializes the Objects instance to JSON.
-   * @return JSON representation of the Objects instance.
-   */
-  nlohmann::ordered_json jsondump() const;
+    /// Move-assign the lists as they are.
+    Objects& operator=(Objects&&) noexcept = default;
 
-  /**
-   * @brief Creates an Objects instance from JSON data.
-   * @param data JSON data containing objects information.
-   * @return Objects instance created from the data.
-   */
-  static Objects jsonload(const nlohmann::json &data);
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
 
-  std::string file_json_dumps() const;
-  static Objects file_json_loads(const std::string& json_string);
-  void file_json_dump(const std::string& filename) const;
-  static Objects file_json_load(const std::string& filename);
-  std::string pb_dumps() const;
-  static Objects pb_loads(const std::string& data);
-  void pb_dump(const std::string& filename) const;
-  static Objects pb_load(const std::string& filename);
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return a string representation of the collection.
+    std::string str() const;
+
+    /// Serialize to a JSON object.
+    nlohmann::ordered_json jsondump() const;
+
+    /// Deserialize from a JSON object.
+    static Objects jsonload(const nlohmann::json& data);
+
+    /// Serialize to a JSON string.
+    std::string file_json_dumps() const;
+
+    /// Deserialize from a JSON string.
+    static Objects file_json_loads(const std::string& json_string);
+
+    /// Write to a JSON file.
+    void file_json_dump(const std::string& filename) const;
+
+    /// Read from a JSON file.
+    static Objects file_json_load(const std::string& filename);
+
+    /// Serialize to protobuf bytes.
+    std::string pb_dumps() const;
+
+    /// Deserialize from protobuf bytes.
+    static Objects pb_loads(const std::string& data);
+
+    /// Write to a protobuf file.
+    void pb_dump(const std::string& filename) const;
+
+    /// Read from a protobuf file.
+    static Objects pb_load(const std::string& filename);
 
 private:
-  mutable std::string _guid;
+    mutable std::string _guid; // Lazily minted guid.
 };
 
-/// All geometry types as a variant. A new type joins here and in the checklist at the top of
-/// session.cpp.
+/// All geometry types as a variant; a new type joins here and in the checklist at the top of session.cpp.
 using Geometry = std::variant<
     std::shared_ptr<OBB>,
     std::shared_ptr<Line>,
@@ -166,27 +162,20 @@ using Geometry = std::variant<
     std::shared_ptr<NurbsSurface>,
     std::shared_ptr<Polyline>,
     std::shared_ptr<BRep>,
-    std::shared_ptr<Element>
->;
+    std::shared_ptr<Element>>;
 
 /// Anything an Objects collection holds: geometry, or a Component.
 using Item = std::variant<Geometry, Component>;
 
-/**
- * @brief  To use this operator, you can do:
- *         Point point(1.5, 2.5, 3.5);
- *         std::cout << "Created point: " << point << std::endl;
- * @param os The output stream.
- * @param point The Point to insert into the stream.
- * @return A reference to the output stream.
- */
-std::ostream &operator<<(std::ostream &os, const Objects &objects);
+/// Write the collection string to a stream.
+std::ostream& operator<<(std::ostream& os, const Objects& objects);
+
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::Objects> {
-  constexpr auto parse(fmt::format_parse_context &ctx) { return ctx.begin(); }
+    constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
-  auto format(const session_cpp::Objects &o, fmt::format_context &ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.str());
-  }
+    auto format(const session_cpp::Objects& o, fmt::format_context& ctx) const {
+        return fmt::format_to(ctx.out(), "{}", o.str());
+    }
 };

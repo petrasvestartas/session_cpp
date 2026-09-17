@@ -2,13 +2,11 @@
 
 namespace session_cpp {
 
-/** @class SessionConfig
- * @brief Runtime settings used by session operations.
- */
+/// Runtime settings used by session operations.
 class SessionConfig {
 public:
-    bool explode_mesh_faces = false; ///< Whether meshing emits one face per triangle.
-    double scale_factor = 1.0;       ///< Scale applied by external session adapters.
+    bool explode_mesh_faces = false; // Whether meshing emits one face per triangle.
+    double scale_factor = 1.0;       // Scale applied by external session adapters.
 
     /// Restores every setting to its default value.
     void reset() {

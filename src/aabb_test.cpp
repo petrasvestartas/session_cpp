@@ -18,6 +18,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("AABB", "Constructor") {
+
     AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
     AABB empty;
 
@@ -57,6 +58,7 @@ MINI_TEST("AABB", "Constructor") {
 }
 
 MINI_TEST("AABB", "From Geometry") {
+
     AABB a_pt = AABB::from_point(Point(1.0, 2.0, 3.0), 0.5);
 
     MINI_CHECK(a_pt.center() == Point(1.0, 2.0, 3.0));

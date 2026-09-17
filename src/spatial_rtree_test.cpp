@@ -5,6 +5,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("SpatialRTree", "Constructor") {
+
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -25,6 +26,7 @@ MINI_TEST("SpatialRTree", "Creation") {
 }
 
 MINI_TEST("SpatialRTree", "Insert") {
+
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 42);
@@ -33,6 +35,7 @@ MINI_TEST("SpatialRTree", "Insert") {
 }
 
 MINI_TEST("SpatialRTree", "Insert Multiple") {
+
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -45,6 +48,7 @@ MINI_TEST("SpatialRTree", "Insert Multiple") {
 }
 
 MINI_TEST("SpatialRTree", "Search Hit") {
+
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {2, 2, 2};
     t.insert(a_min, a_max, 0);
@@ -60,6 +64,7 @@ MINI_TEST("SpatialRTree", "Search Hit") {
 }
 
 MINI_TEST("SpatialRTree", "Search Miss") {
+
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 7);
@@ -70,6 +75,7 @@ MINI_TEST("SpatialRTree", "Search Miss") {
 }
 
 MINI_TEST("SpatialRTree", "Remove") {
+
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 5);
@@ -79,6 +85,7 @@ MINI_TEST("SpatialRTree", "Remove") {
 }
 
 MINI_TEST("SpatialRTree", "Remove All") {
+
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -92,6 +99,7 @@ MINI_TEST("SpatialRTree", "Remove All") {
 }
 
 MINI_TEST("SpatialRTree", "Search Count") {
+
     RTree3 t;
     double a0[3] = {0, 0, 0}, b0[3] = {1, 1, 1};
     t.insert(a0, b0, 0);
@@ -110,6 +118,7 @@ MINI_TEST("SpatialRTree", "Search Count") {
 }
 
 MINI_TEST("SpatialRTree", "Search Stop") {
+
     RTree3 t;
     double a_min[3] = {0, 0, 0}, a_max[3] = {1, 1, 1};
     t.insert(a_min, a_max, 0);
@@ -122,6 +131,7 @@ MINI_TEST("SpatialRTree", "Search Stop") {
 }
 
 MINI_TEST("SpatialRTree", "Normalizes Reversed Bounds") {
+
     RTree3 t;
     double insert_min[3] = {1, 2, 3}, insert_max[3] = {-1, -2, -3};
     t.insert(insert_min, insert_max, 9);
@@ -137,6 +147,7 @@ MINI_TEST("SpatialRTree", "Normalizes Reversed Bounds") {
 }
 
 MINI_TEST("SpatialRTree", "Search 100 Boxes") {
+
     RTree3 t;
     int id = 0;
     auto add = [&](double x0, double y0, double z0, double x1, double y1, double z1) {
@@ -253,6 +264,7 @@ MINI_TEST("SpatialRTree", "Search 100 Boxes") {
 
     MINI_CHECK(hits > 0);
     MINI_CHECK(hits <= 100);
+
     for (int d : found) {
         MINI_CHECK(d >= 0);
         MINI_CHECK(d < 100);

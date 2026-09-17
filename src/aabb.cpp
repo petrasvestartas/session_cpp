@@ -23,13 +23,17 @@ AABB AABB::from_point(const Point& point, double inflate) {
 }
 
 AABB AABB::from_points(const std::vector<Point>& points, double inflate) {
-    if (points.empty()) return AABB();
+
+    if (points.empty())
+        return AABB();
+
     double min_x = std::numeric_limits<double>::max();
     double min_y = std::numeric_limits<double>::max();
     double min_z = std::numeric_limits<double>::max();
     double max_x = std::numeric_limits<double>::lowest();
     double max_y = std::numeric_limits<double>::lowest();
     double max_z = std::numeric_limits<double>::lowest();
+
     for (const Point& pt : points) {
         min_x = std::min(min_x, pt[0]);
         min_y = std::min(min_y, pt[1]);
@@ -38,6 +42,7 @@ AABB AABB::from_points(const std::vector<Point>& points, double inflate) {
         max_y = std::max(max_y, pt[1]);
         max_z = std::max(max_z, pt[2]);
     }
+
     return AABB(
         (min_x + max_x) * 0.5,
         (min_y + max_y) * 0.5,
@@ -58,6 +63,7 @@ AABB AABB::from_polyline(const Polyline& polyline, double inflate) {
 
 AABB AABB::from_mesh(const Mesh& mesh, double inflate) {
     const auto [vertices, faces] = mesh.to_vertices_and_faces();
+
     return from_points(vertices, inflate);
 }
 
@@ -66,53 +72,75 @@ AABB AABB::from_pointcloud(const PointCloud& pointcloud, double inflate) {
 }
 
 AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) {
-    if (!curve.is_valid() || curve.cv_count() == 0) return AABB();
+
+    if (!curve.is_valid() || curve.cv_count() == 0)
+        return AABB();
+
     std::vector<Point> points;
+
     if (!tight) {
         for (int i = 0; i < curve.cv_count(); i++)
             points.push_back(curve.get_cv(i));
+
         return from_points(points, inflate);
     }
+
     const auto [t0, t1] = curve.domain();
     points.push_back(curve.point_at(t0));
     points.push_back(curve.point_at(t1));
+
     for (const double t : curve.get_span_vector())
-        if (t > t0 && t < t1) points.push_back(curve.point_at(t));
+        if (t > t0 && t < t1)
+            points.push_back(curve.point_at(t));
+
     const double dt = (t1 - t0) / NUM_SAMPLES;
+
     for (int axis = 0; axis < 3; axis++) {
         for (int i = 0; i < NUM_SAMPLES; i++) {
             const double t_start = t0 + i * dt;
             const double t_end = t_start + dt;
             const std::vector<Vector> deriv_start = curve.evaluate(t_start, 1);
             const std::vector<Vector> deriv_end = curve.evaluate(t_end, 1);
-            if (deriv_start.size() < 2 || deriv_end.size() < 2) continue;
+
+            if (deriv_start.size() < 2 || deriv_end.size() < 2)
+                continue;
+
             const double d_start = deriv_start[1][axis];
             const double d_end = deriv_end[1][axis];
+
             if (d_start * d_end < 0) {
                 const double t_root = compute_extremum(curve, axis, t_start, t_end, d_start);
                 points.push_back(curve.point_at(t_root));
             }
         }
     }
+
     return from_points(points, inflate);
 }
 
 AABB AABB::from_nurbssurface(const NurbsSurface& surface, double inflate) {
-    if (!surface.is_valid() || surface.cv_count(0) == 0 || surface.cv_count(1) == 0) return AABB();
+
+    if (!surface.is_valid() || surface.cv_count(0) == 0 || surface.cv_count(1) == 0)
+        return AABB();
+
     std::vector<Point> points;
+
     for (int i = 0; i < surface.cv_count(0); i++)
         for (int j = 0; j < surface.cv_count(1); j++)
             points.push_back(surface.get_cv(i, j));
+
     return from_points(points, inflate);
 }
 
 AABB AABB::merge(const AABB& a, const AABB& b) {
+
     const double min_x = std::min(a.cx - a.hx, b.cx - b.hx);
     const double min_y = std::min(a.cy - a.hy, b.cy - b.hy);
     const double min_z = std::min(a.cz - a.hz, b.cz - b.hz);
     const double max_x = std::max(a.cx + a.hx, b.cx + b.hx);
     const double max_y = std::max(a.cy + a.hy, b.cy + b.hy);
     const double max_z = std::max(a.cz + a.hz, b.cz + b.hz);
+
     return AABB(
         (min_x + max_x) * 0.5,
         (min_y + max_y) * 0.5,
@@ -124,28 +152,45 @@ AABB AABB::merge(const AABB& a, const AABB& b) {
 }
 
 double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, double t_hi, double d_start) {
+
     double t_root = (t_lo + t_hi) * 0.5;
+
     for (int it = 0; it < MAX_ITER; it++) {
         const std::vector<Vector> deriv = curve.evaluate(t_root, 2);
-        if (deriv.size() < 3) break;
+
+        if (deriv.size() < 3)
+            break;
+
         const double f = deriv[1][axis];
         const double fp = deriv[2][axis];
-        if (std::abs(f) < 1e-12) break;
+
+        if (std::abs(f) < 1e-12)
+            break;
+
         if (std::abs(fp) > 1e-14) {
             const double t_new = t_root - f / fp;
+
             if (t_new >= t_lo && t_new <= t_hi) {
                 t_root = t_new;
             } else {
-                if (f * d_start < 0) t_hi = t_root;
-                else t_lo = t_root;
+                if (f * d_start < 0)
+                    t_hi = t_root;
+                else
+                    t_lo = t_root;
+
                 t_root = (t_lo + t_hi) * 0.5;
             }
         } else {
             t_root = (t_lo + t_hi) * 0.5;
         }
+
         const std::vector<Vector> deriv_check = curve.evaluate(t_root, 1);
-        if (deriv_check.size() < 2) continue;
+
+        if (deriv_check.size() < 2)
+            continue;
+
         const double f_check = deriv_check[1][axis];
+
         if (f_check * d_start < 0) {
             t_hi = t_root;
         } else {
@@ -153,6 +198,7 @@ double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, do
             d_start = f_check;
         }
     }
+
     return t_root;
 }
 
@@ -161,6 +207,7 @@ double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, do
 // ═══════════════════════════════════════════════════════════════════════════
 
 bool AABB::operator==(const AABB& other) const {
+
     return std::round(cx * 1000000.0) == std::round(other.cx * 1000000.0) &&
            std::round(cy * 1000000.0) == std::round(other.cy * 1000000.0) &&
            std::round(cz * 1000000.0) == std::round(other.cz * 1000000.0) &&
@@ -206,9 +253,11 @@ bool AABB::is_valid() const {
 }
 
 Point AABB::closest_point(const Point& pt) const {
+
     const double x = std::max(cx - hx, std::min(cx + hx, pt[0]));
     const double y = std::max(cy - hy, std::min(cy + hy, pt[1]));
     const double z = std::max(cz - hz, std::min(cz + hz, pt[2]));
+
     return Point(x, y, z);
 }
 
@@ -219,6 +268,7 @@ bool AABB::contains(const Point& pt) const {
 }
 
 bool AABB::intersects(const AABB& other) const {
+
     return cx - hx <= other.cx + other.hx &&
            cx + hx >= other.cx - other.hx &&
            cy - hy <= other.cy + other.hy &&
@@ -228,6 +278,7 @@ bool AABB::intersects(const AABB& other) const {
 }
 
 Point AABB::corner(bool x_max, bool y_max, bool z_max) const {
+
     return Point(
         cx + (x_max ? hx : -hx),
         cy + (y_max ? hy : -hy),
@@ -236,6 +287,7 @@ Point AABB::corner(bool x_max, bool y_max, bool z_max) const {
 }
 
 std::array<Point, 8> AABB::corners() const {
+
     return {
         Point(cx + hx, cy + hy, cz - hz),
         Point(cx - hx, cy + hy, cz - hz),
@@ -253,7 +305,9 @@ std::array<Point, 8> AABB::get_corners() const {
 }
 
 std::vector<Line> AABB::get_edges() const {
+
     const std::array<Point, 8> c = corners();
+
     return {
         Line::from_points(c[0], c[1]),
         Line::from_points(c[1], c[2]),
@@ -289,7 +343,9 @@ void AABB::union_with(const AABB& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string AABB::str() const {
+
     const int prec = static_cast<int>(Tolerance::ROUNDING);
+
     return fmt::format(
         "{}, {}, {}, {}, {}, {}",
         TOLERANCE.format_number(cx, prec),

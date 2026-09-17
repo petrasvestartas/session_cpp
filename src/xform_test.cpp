@@ -13,6 +13,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Xform", "Constructor") {
+
     Xform x;
     double m00 = x.m[0];
     double m11 = x.m[5];
@@ -54,6 +55,7 @@ MINI_TEST("Xform", "Constructor") {
 }
 
 MINI_TEST("Xform", "Translation") {
+
     Xform xf = Xform::translation(1.5, 1.0, 0.5);
     Mesh mesh = Mesh::create_box(2, 2, 2);
     Mesh result = mesh.transformed(xf);
@@ -68,6 +70,7 @@ MINI_TEST("Xform", "Translation") {
 }
 
 MINI_TEST("Xform", "Rotation X") {
+
     double s = std::sqrt(2.0);
     Xform xf = Xform::rotation_x(Tolerance::PI / 4.0);
     Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -83,6 +86,7 @@ MINI_TEST("Xform", "Rotation X") {
 }
 
 MINI_TEST("Xform", "Rotation Y") {
+
     double s = std::sqrt(2.0);
     Xform xf = Xform::rotation_y(Tolerance::PI / 4.0);
     Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -98,6 +102,7 @@ MINI_TEST("Xform", "Rotation Y") {
 }
 
 MINI_TEST("Xform", "Rotation Z") {
+
     double s = std::sqrt(2.0);
     Xform xf = Xform::rotation_z(Tolerance::PI / 4.0);
     Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -113,6 +118,7 @@ MINI_TEST("Xform", "Rotation Z") {
 }
 
 MINI_TEST("Xform", "Rotation Axis") {
+
     Vector axis(1.0, 1.0, 1.0);
     Xform xf = Xform::rotation(axis, 2.0 * Tolerance::PI / 4.0);
     Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -131,6 +137,7 @@ MINI_TEST("Xform", "Rotation Axis") {
 }
 
 MINI_TEST("Xform", "Rotation Around Line") {
+
     double s = std::sqrt(2.0);
     Line line(-1.0, -1.0, -1.0, -1.0, -1.0, 1.0);
     Xform xf = Xform::rotation_around_line(line, Tolerance::PI / 4.0);
@@ -147,6 +154,7 @@ MINI_TEST("Xform", "Rotation Around Line") {
 }
 
 MINI_TEST("Xform", "Change Basis") {
+
     Point o0(0, 0, 0);
     Vector x0(1, 0, 0);
     Vector y0(0, 1, 0);
@@ -169,6 +177,7 @@ MINI_TEST("Xform", "Change Basis") {
 }
 
 MINI_TEST("Xform", "Plane To Plane") {
+
     Plane pf(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
     Plane pt(Point(2, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0));
     Xform xf = Xform::plane_to_plane(pf, pt);
@@ -185,6 +194,7 @@ MINI_TEST("Xform", "Plane To Plane") {
 }
 
 MINI_TEST("Xform", "Scale XYZ") {
+
     Xform xf = Xform::scale_xyz(1.5, 1.2, 1.8);
     Mesh mesh = Mesh::create_box(2, 2, 2);
     Mesh result = mesh.transformed(xf);
@@ -199,6 +209,7 @@ MINI_TEST("Xform", "Scale XYZ") {
 }
 
 MINI_TEST("Xform", "Scale Uniform") {
+
     Point c(0, 0, 0);
     Xform xf = Xform::scale_uniform(c, 2.0);
     Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -214,6 +225,7 @@ MINI_TEST("Xform", "Scale Uniform") {
 }
 
 MINI_TEST("Xform", "Scale Non Uniform") {
+
     Point c(0, 0, 0);
     Xform xf = Xform::scale_non_uniform(c, 1.5, 1.2, 1.8);
     Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -229,6 +241,7 @@ MINI_TEST("Xform", "Scale Non Uniform") {
 }
 
 MINI_TEST("Xform", "Look At Right Handed") {
+
     Point eye(0, 3, 0);
     Point target(0, 0, 0);
     Xform xf = Xform::look_at_right_handed(eye, target, Vector(0, 0, 1));
@@ -245,6 +258,7 @@ MINI_TEST("Xform", "Look At Right Handed") {
 }
 
 MINI_TEST("Xform", "Look To Right Handed") {
+
     Point eye(0, 3, 0);
     Vector direction(0, -1, 0);
     Xform xf = Xform::look_to_right_handed(eye, direction, Vector(0, 0, 1));
@@ -261,6 +275,7 @@ MINI_TEST("Xform", "Look To Right Handed") {
 }
 
 MINI_TEST("Xform", "Perspective") {
+
     Xform view = Xform::translation(0, 0, -2);
     Xform proj = Xform::perspective(Tolerance::PI / 2.0, 1.0, 1.0, 3.0);
     Xform xf = proj * view;
@@ -278,6 +293,7 @@ MINI_TEST("Xform", "Perspective") {
 }
 
 MINI_TEST("Xform", "Orthographic") {
+
     Xform view = Xform::translation(0, 0, -2);
     Xform proj = Xform::orthographic(-1.0, 1.0, -1.0, 1.0, 1.0, 3.0);
     Xform xf = proj * view;
@@ -294,11 +310,12 @@ MINI_TEST("Xform", "Orthographic") {
 }
 
 MINI_TEST("Xform", "Project To Plane") {
+
     Plane plane(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
     Xform move = Xform::translation(0, 0, 1);
     Xform proj = Xform::project_to_plane(plane);
     Xform xf = proj * move;
-    auto tp = [&](double x, double y, double z) { return Point(x,y,z).transformed(xf); };
+    auto tp = [&](double x, double y, double z) { return Point(x, y, z).transformed(xf); };
     Polyline outline({
         tp(-1, -1, -1),
         tp(1, -1, -1),
@@ -315,12 +332,13 @@ MINI_TEST("Xform", "Project To Plane") {
 }
 
 MINI_TEST("Xform", "Project To Plane By Axis") {
+
     Plane plane(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
     Vector direction(1, 0, 1);
     Xform move = Xform::translation(0, 0, 1);
     Xform proj = Xform::project_to_plane_by_axis(plane, direction);
     Xform xf = proj * move;
-    auto tp = [&](double x, double y, double z) { return Point(x,y,z).transformed(xf); };
+    auto tp = [&](double x, double y, double z) { return Point(x, y, z).transformed(xf); };
     Polyline outline({
         tp(-1, -1, 1),
         tp(1, -1, -1),
@@ -337,6 +355,7 @@ MINI_TEST("Xform", "Project To Plane By Axis") {
 }
 
 MINI_TEST("Xform", "Inverse") {
+
     Xform t = Xform::translation(1.0, 0.5, 0.5);
     Xform s = Xform::scale_xyz(1.5, 1.2, 1.3);
     Xform composite = t * s;
@@ -366,6 +385,7 @@ MINI_TEST("Xform", "Inverse") {
 }
 
 MINI_TEST("Xform", "Transform Point") {
+
     Xform t = Xform::translation(10.0, 20.0, 30.0);
     Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
     Xform composite = t * s;
@@ -384,6 +404,7 @@ MINI_TEST("Xform", "Transform Point") {
 }
 
 MINI_TEST("Xform", "Transform Vector") {
+
     Xform t = Xform::translation(10.0, 20.0, 30.0);
     Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
     Xform composite = t * s;
@@ -396,8 +417,9 @@ MINI_TEST("Xform", "Transform Vector") {
 }
 
 MINI_TEST("Xform", "To Cols") {
+
     Xform xf = Xform::translation(1.0, 2.0, 3.0);
-    auto cols = xf.to_cols();
+    std::array<std::array<double, 4>, 4> cols = xf.to_cols();
     MINI_CHECK(TOLERANCE.is_close(cols[0][0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(cols[1][1], 1.0));
     MINI_CHECK(TOLERANCE.is_close(cols[2][2], 1.0));
@@ -408,6 +430,7 @@ MINI_TEST("Xform", "To Cols") {
 }
 
 MINI_TEST("Xform", "Transform Geometry") {
+
     Xform t = Xform::translation(10.0, 20.0, 30.0);
     Point pt(1.0, 2.0, 3.0);
     Point pt_transformed = pt.transformed(t);
@@ -435,6 +458,7 @@ MINI_TEST("Xform", "Transform Geometry") {
 }
 
 MINI_TEST("Xform", "Json Roundtrip") {
+
     Xform xform = Xform::translation(1.0, 2.0, 3.0);
     xform.name = "test_xform";
     std::string filename = "serialization/test_xform.json";
@@ -454,6 +478,7 @@ MINI_TEST("Xform", "Json Roundtrip") {
 }
 
 MINI_TEST("Xform", "Protobuf Roundtrip") {
+
     Xform xform = Xform::translation(1.0, 2.0, 3.0);
     xform.name = "test_xform_proto";
     std::string filename = "serialization/test_xform.bin";
@@ -474,6 +499,7 @@ MINI_TEST("Xform", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Xform", "From Change Of Basis") {
+
     Polyline rect0({
         Point(0.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),

@@ -12,12 +12,13 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialAABBTree", "Constructor") {
+
     std::vector<AABB> boxes = {
         AABB(0.0, 0.0, 0.0, 0.5, 0.5, 0.5),
         AABB(5.0, 0.0, 0.0, 0.5, 0.5, 0.5),
         AABB(10.0, 0.0, 0.0, 0.5, 0.5, 0.5),
     };
-    auto pairs = Closest::boxes_closest(boxes, 0.0);
+    std::vector<std::pair<size_t, size_t>> pairs = Closest::boxes_closest(boxes, 0.0);
 
     MINI_CHECK(pairs.empty());
 
@@ -25,7 +26,7 @@ MINI_TEST("SpatialAABBTree", "Constructor") {
         AABB(0.0, 0.0, 0.0, 0.5, 0.5, 0.5),
         AABB(1.0, 0.0, 0.0, 0.5, 0.5, 0.5),
     };
-    auto pairs_near = Closest::boxes_closest(boxes_near, 0.0);
+    std::vector<std::pair<size_t, size_t>> pairs_near = Closest::boxes_closest(boxes_near, 0.0);
 
     MINI_CHECK(pairs_near.size() == 1);
     MINI_CHECK(pairs_near[0].first == 0);
@@ -40,6 +41,7 @@ MINI_TEST("SpatialAABBTree", "Build Empty") {
 }
 
 MINI_TEST("SpatialAABBTree", "Build Single") {
+
     AABB aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
     SpatialAABBTree tree;
     tree.build(&aabb, 1);
@@ -49,6 +51,7 @@ MINI_TEST("SpatialAABBTree", "Build Single") {
 }
 
 MINI_TEST("SpatialAABBTree", "Build Multiple") {
+
     std::vector<AABB> aabbs = {
         AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
         AABB(5.0, 0.0, 0.0, 1.0, 1.0, 1.0),
@@ -62,9 +65,12 @@ MINI_TEST("SpatialAABBTree", "Build Multiple") {
 }
 
 MINI_TEST("SpatialAABBTree", "Node Count") {
+
     std::vector<AABB> aabbs;
+
     for (int i = 0; i < 100; i++)
         aabbs.push_back(AABB(static_cast<double>(i), 0.0, 0.0, 0.5, 0.5, 0.5));
+
     SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
 
@@ -72,6 +78,7 @@ MINI_TEST("SpatialAABBTree", "Node Count") {
 }
 
 MINI_TEST("SpatialAABBTree", "Mesh Point Aabb") {
+
     Mesh m = Primitives::cube(2.0);
     auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
 
@@ -84,6 +91,7 @@ MINI_TEST("SpatialAABBTree", "Mesh Point Aabb") {
 }
 
 MINI_TEST("SpatialAABBTree", "Mesh Point Aabb Matches Bvh") {
+
     Mesh m = Primitives::cube(2.0);
     Point tp(0.3, 0.7, 1.5);
     auto [cp_bvh, fk_bvh, d_bvh] = Closest::mesh_point(m, tp);
@@ -96,6 +104,7 @@ MINI_TEST("SpatialAABBTree", "Mesh Point Aabb Matches Bvh") {
 }
 
 MINI_TEST("SpatialAABBTree", "Query Aabb") {
+
     std::vector<AABB> aabbs = {
         AABB(0.0, 0.0, 0.0, 0.5, 0.5, 0.5),
         AABB(5.0, 0.0, 0.0, 0.5, 0.5, 0.5),

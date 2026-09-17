@@ -10,6 +10,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Point", "Constructor") {
+
         Point p(1.0, 2.0, 3.0);
 
         p[0] = 10.0;
@@ -70,6 +71,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Transformation") {
+
         Point p(1.0, 2.0, 3.0);
         Xform xform = Xform::translation(1.0, 2.0, 3.0);
         Point moved = p.transformed(xform);
@@ -80,6 +82,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Json Roundtrip") {
+
         Point p(1.5, 2.5, 3.5, "test_point");
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
@@ -98,6 +101,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Protobuf Roundtrip") {
+
         Point p(1.5, 2.5, 3.5, "test_point");
         p.width = 2.0;
         p.pointcolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
@@ -116,6 +120,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Is Ccw") {
+
         Point p0(0.0, 0.0, 0.0);
         Point p1(1.0, 0.0, 0.0);
         Point p2(0.05, 1.0, 0.0);
@@ -127,6 +132,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Mid Point") {
+
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         Point mid = Point::mid_point(p0, p1);
@@ -135,6 +141,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Distance") {
+
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         double d = Point::distance(p0, p1);
@@ -143,6 +150,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Squared Distance") {
+
         Point p0(0.0, 2.0, 1.0);
         Point p1(1.0, 5.0, 3.0);
         double d = Point::squared_distance(p0, p1);
@@ -151,6 +159,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Interpolate") {
+
         Point a(0.0, 0.0, 0.0);
         Point b(4.0, 8.0, 12.0);
         Point half = Point::lerp(a, b, 0.5);
@@ -168,6 +177,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Area") {
+
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 0.0);
         Point p2(2.0, 2.0, 0.0);
@@ -178,6 +188,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Centroid Quad") {
+
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 1.0);
         Point p2(2.0, 2.0, 2.0);
@@ -190,6 +201,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Centroid") {
+
         Point p0(0.0, 0.0, 0.0);
         Point p1(2.0, 0.0, 0.0);
         Point p2(2.0, 2.0, 0.0);
@@ -202,6 +214,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Dihedral Angle Deg") {
+
         Point p(0.0, 0.0, 0.0);
         Point q(1.0, 0.0, 0.0);
         Point r(0.0, 1.0, 0.0);

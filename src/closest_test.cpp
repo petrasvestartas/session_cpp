@@ -17,27 +17,31 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Closest", "Line Point") {
-    Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
 
-    auto [cp1, t1, d1] = Closest::line_point(l, Point(5.0, 5.0, 0.0));
+    Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+
+    auto [cp1, t1, d1] = Closest::line_point(line, Point(5.0, 5.0, 0.0));
 
     MINI_CHECK(TOLERANCE.is_close(cp1[0], 5.0));
     MINI_CHECK(TOLERANCE.is_close(cp1[1], 0.0));
     MINI_CHECK(TOLERANCE.is_close(t1, 0.5));
     MINI_CHECK(TOLERANCE.is_close(d1, 5.0));
 
-    auto [cp2, t2, d2] = Closest::line_point(l, Point(-5.0, 0.0, 0.0));
+    auto [cp2, t2, d2] = Closest::line_point(line, Point(-5.0, 0.0, 0.0));
+
     MINI_CHECK(TOLERANCE.is_close(cp2[0], 0.0));
     MINI_CHECK(TOLERANCE.is_close(t2, 0.0));
     MINI_CHECK(TOLERANCE.is_close(d2, 5.0));
 
-    auto [cp3, t3, d3] = Closest::line_point(l, Point(15.0, 0.0, 0.0));
+    auto [cp3, t3, d3] = Closest::line_point(line, Point(15.0, 0.0, 0.0));
+
     MINI_CHECK(TOLERANCE.is_close(cp3[0], 10.0));
     MINI_CHECK(TOLERANCE.is_close(t3, 1.0));
     MINI_CHECK(TOLERANCE.is_close(d3, 5.0));
 }
 
 MINI_TEST("Closest", "Polyline Point") {
+
     Polyline pl({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -49,12 +53,14 @@ MINI_TEST("Closest", "Polyline Point") {
     MINI_CHECK(TOLERANCE.is_close(d1, 5.0));
 
     auto [cp2, t2, d2] = Closest::polyline_point(pl, Point(10.0, 5.0, 0.0));
+
     MINI_CHECK(TOLERANCE.is_close(cp2[0], 10.0));
     MINI_CHECK(TOLERANCE.is_close(cp2[1], 5.0));
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
 }
 
 MINI_TEST("Closest", "Curve Point") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 2.0, 0.0),
@@ -67,13 +73,16 @@ MINI_TEST("Closest", "Curve Point") {
 
     MINI_CHECK(dist < 1.6);
     Point cp = crv.point_at(t);
+
     MINI_CHECK(TOLERANCE.is_close(cp.distance(Point(2.0, 3.0, 0.0)), dist));
 
     auto [t2, dist2] = Closest::curve_point(crv, Point(0.0, 0.0, 0.0));
+
     MINI_CHECK(dist2 < 0.01);
 }
 
 MINI_TEST("Closest", "Surface Point") {
+
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
@@ -98,42 +107,55 @@ MINI_TEST("Closest", "Surface Point") {
 
     MINI_CHECK(dist < 1.5);
     Point cp = srf.point_at(u, v);
+
     MINI_CHECK(TOLERANCE.is_close(cp.distance(Point(1.5, 1.5, 2.0)), dist));
 
     auto [u2, v2, dist2] = Closest::surface_point(srf, Point(0.0, 0.0, 0.0));
+
     MINI_CHECK(dist2 < 0.01);
 }
 
 MINI_TEST("Closest", "Surface Curve") {
+
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
     auto [u0, u1] = cyl.domain(0);
     auto [v0, v1] = cyl.domain(1);
     Point ps = cyl.point_at(u0, 0.5);
     double seam_ang = std::atan2(ps[1], ps[0]);
     std::vector<Point> crv_pts;
+
     for (int i = 0; i < 21; i++) {
         double a = seam_ang - 0.8 + 1.6 * i / 20.0;
         double z = 1.0 + 2.0 * i / 20.0;
         crv_pts.push_back(Point(std::cos(a), std::sin(a), z));
     }
+
     NurbsCurve crv = NurbsCurve::create_interpolated(crv_pts);
 
-    auto pcurves = Closest::surface_curve(cyl, crv);
+    std::vector<NurbsCurve> pcurves = Closest::surface_curve(cyl, crv);
 
     MINI_CHECK(pcurves.size() == 2);
     int on_border = 0;
     bool inside = true;
-    for (auto& pcurve : pcurves) {
+
+    for (const NurbsCurve& pcurve : pcurves) {
         MINI_CHECK(pcurve.is_valid());
+
         for (double e : {0.0, 1.0}) {
             Point p2 = pcurve.point_at(e);
-            if (std::abs(p2[0] - u0) < 1e-9 || std::abs(p2[0] - u1) < 1e-9) on_border += 1;
+
+            if (std::abs(p2[0] - u0) < 1e-9 || std::abs(p2[0] - u1) < 1e-9)
+                on_border += 1;
         }
+
         for (int i = 0; i < 17; i++) {
             Point p2 = pcurve.point_at(i / 16.0);
-            if (p2[0] < u0 - 1e-6 || p2[0] > u1 + 1e-6 || p2[1] < v0 - 1e-6 || p2[1] > v1 + 1e-6) inside = false;
+
+            if (p2[0] < u0 - 1e-6 || p2[0] > u1 + 1e-6 || p2[1] < v0 - 1e-6 || p2[1] > v1 + 1e-6)
+                inside = false;
         }
     }
+
     MINI_CHECK(on_border == 2);
     MINI_CHECK(inside);
 
@@ -143,6 +165,7 @@ MINI_TEST("Closest", "Surface Curve") {
 }
 
 MINI_TEST("Closest", "Mesh Point") {
+
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point(m, Point(0.0, 0.0, 2.0));
@@ -151,10 +174,12 @@ MINI_TEST("Closest", "Mesh Point") {
     MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
 
     auto [cp2, fk2, d2] = Closest::mesh_point(m, Point(1.0, 1.0, 1.0));
+
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
 }
 
 MINI_TEST("Closest", "Mesh Point AABB") {
+
     Mesh m = Primitives::cube(2.0);
 
     auto [cp1, fk1, d1] = Closest::mesh_point_aabb(m, Point(0.0, 0.0, 2.0));
@@ -163,16 +188,22 @@ MINI_TEST("Closest", "Mesh Point AABB") {
     MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
 
     auto [cp2, fk2, d2] = Closest::mesh_point_aabb(m, Point(1.0, 1.0, 1.0));
+
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
 }
 
 MINI_TEST("Closest", "Pointcloud Point") {
-    PointCloud pc({
-        Point(0.0, 0.0, 0.0),
-        Point(5.0, 0.0, 0.0),
-        Point(10.0, 0.0, 0.0),
-        Point(10.0, 10.0, 0.0),
-    }, {}, {});
+
+    PointCloud pc(
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(5.0, 0.0, 0.0),
+            Point(10.0, 0.0, 0.0),
+            Point(10.0, 10.0, 0.0),
+        },
+        {},
+        {}
+    );
 
     auto [cp1, i1, d1] = Closest::pointcloud_point(pc, Point(4.0, 0.0, 0.0));
 
@@ -181,17 +212,23 @@ MINI_TEST("Closest", "Pointcloud Point") {
     MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
 
     auto [cp2, i2, d2] = Closest::pointcloud_point(pc, Point(10.0, 10.0, 0.0));
+
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
     MINI_CHECK(i2 == 3);
 }
 
 MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
-    PointCloud pc({
-        Point(0.0, 0.0, 0.0),
-        Point(5.0, 0.0, 0.0),
-        Point(10.0, 0.0, 0.0),
-        Point(10.0, 10.0, 0.0),
-    }, {}, {});
+
+    PointCloud pc(
+        {
+            Point(0.0, 0.0, 0.0),
+            Point(5.0, 0.0, 0.0),
+            Point(10.0, 0.0, 0.0),
+            Point(10.0, 10.0, 0.0),
+        },
+        {},
+        {}
+    );
 
     auto [cp1, i1, d1] = Closest::pointcloud_point_kdtree(pc, Point(4.0, 0.0, 0.0));
 
@@ -200,18 +237,20 @@ MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
     MINI_CHECK(TOLERANCE.is_close(d1, 1.0));
 
     auto [cp2, i2, d2] = Closest::pointcloud_point_kdtree(pc, Point(10.0, 10.0, 0.0));
+
     MINI_CHECK(TOLERANCE.is_close(d2, 0.0));
     MINI_CHECK(i2 == 3);
 }
 
 MINI_TEST("Closest", "Lines Closest") {
+
     std::vector<Line> lines = {
         Line(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
         Line(5.0, 0.0, 0.0, 10.0, 0.0, 0.0),
         Line(100.0, 0.0, 0.0, 110.0, 0.0, 0.0),
     };
 
-    auto pairs = Closest::lines_closest(lines, 0.01);
+    std::vector<std::pair<size_t, size_t>> pairs = Closest::lines_closest(lines, 0.01);
 
     MINI_CHECK(pairs.size() == 1);
     MINI_CHECK(pairs[0].first == 0);
@@ -219,13 +258,14 @@ MINI_TEST("Closest", "Lines Closest") {
 }
 
 MINI_TEST("Closest", "Polylines Closest") {
+
     std::vector<Polyline> pls = {
         Polyline({Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
         Polyline({Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)}),
         Polyline({Point(100.0, 0.0, 0.0), Point(110.0, 0.0, 0.0)}),
     };
 
-    auto pairs = Closest::polylines_closest(pls, 0.01);
+    std::vector<std::pair<size_t, size_t>> pairs = Closest::polylines_closest(pls, 0.01);
 
     MINI_CHECK(pairs.size() == 1);
     MINI_CHECK(pairs[0].first == 0);
@@ -233,13 +273,14 @@ MINI_TEST("Closest", "Polylines Closest") {
 }
 
 MINI_TEST("Closest", "Nurbscurves Closest") {
+
     std::vector<NurbsCurve> curves = {
         NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
         NurbsCurve::create(false, 1, {Point(5.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)}),
         NurbsCurve::create(false, 1, {Point(100.0, 0.0, 0.0), Point(110.0, 0.0, 0.0)}),
     };
 
-    auto pairs = Closest::nurbscurves_closest(curves, 0.01);
+    std::vector<std::pair<size_t, size_t>> pairs = Closest::nurbscurves_closest(curves, 0.01);
 
     MINI_CHECK(pairs.size() == 1);
     MINI_CHECK(pairs[0].first == 0);
@@ -247,13 +288,14 @@ MINI_TEST("Closest", "Nurbscurves Closest") {
 }
 
 MINI_TEST("Closest", "Boxes Closest") {
+
     std::vector<AABB> boxes = {
         AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
         AABB(2.0, 0.0, 0.0, 1.0, 1.0, 1.0),
         AABB(20.0, 0.0, 0.0, 1.0, 1.0, 1.0),
     };
 
-    auto pairs = Closest::boxes_closest(boxes, 0.01);
+    std::vector<std::pair<size_t, size_t>> pairs = Closest::boxes_closest(boxes, 0.01);
 
     MINI_CHECK(pairs.size() == 1);
     MINI_CHECK(pairs[0].first == 0);
@@ -261,4 +303,4 @@ MINI_TEST("Closest", "Boxes Closest") {
     MINI_CHECK(Closest::boxes_closest(boxes, -0.01).empty());
 }
 
-}
+} // namespace session_cpp

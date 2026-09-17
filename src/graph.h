@@ -23,14 +23,9 @@ namespace session_cpp {
 /// A graph vertex with a name, attribute string and integer index
 class Vertex {
 public:
-  /// Vertex name, also the key in Graph::vertices
-  std::string name = "my_vertex";
-
-  /// Vertex attribute data as string
-  std::string attribute = "";
-
-  /// Integer index of the vertex, assigned by Graph
-  int index = -1;
+  std::string name = "my_vertex"; // Vertex name, also the key in Graph::vertices.
+  std::string attribute = ""; // Vertex attribute data as string.
+  int index = -1; // Integer index of the vertex, assigned by Graph.
 
   /// Construct from name and attribute
   Vertex(std::string name = "my_vertex", std::string attribute = "")
@@ -40,10 +35,20 @@ public:
   bool has_guid() const { return !_guid.empty(); }
 
   /// Lazy guid accessor (const)
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  const std::string& guid() const {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   /// Lazy guid accessor (mutable)
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   /// Serialize to ordered JSON object
   nlohmann::ordered_json jsondump() const;
@@ -55,7 +60,7 @@ public:
   std::string str() const;
 
 private:
-  mutable std::string _guid;
+  mutable std::string _guid; // Lazily minted GUID.
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -65,20 +70,11 @@ private:
 /// A graph edge connecting two vertices by name
 class Edge {
 public:
-  /// Edge name
-  std::string name = "my_edge";
-
-  /// First vertex name
-  std::string v0 = "";
-
-  /// Second vertex name
-  std::string v1 = "";
-
-  /// Edge attribute data as string
-  std::string attribute = "";
-
-  /// Integer index of the edge, assigned by Graph
-  int index = -1;
+  std::string name = "my_edge"; // Edge name.
+  std::string v0 = ""; // First vertex name.
+  std::string v1 = ""; // Second vertex name.
+  std::string attribute = ""; // Edge attribute data as string.
+  int index = -1; // Integer index of the edge, assigned by Graph.
 
   /// Construct from endpoints and attribute
   Edge(std::string v0 = "", std::string v1 = "", std::string attribute = "")
@@ -88,10 +84,20 @@ public:
   bool has_guid() const { return !_guid.empty(); }
 
   /// Lazy guid accessor (const)
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  const std::string& guid() const {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   /// Lazy guid accessor (mutable)
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   /// The (v0, v1) tuple
   std::tuple<std::string, std::string> vertices() const;
@@ -112,7 +118,7 @@ public:
   std::string str() const;
 
 private:
-  mutable std::string _guid;
+  mutable std::string _guid; // Lazily minted GUID.
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -122,17 +128,10 @@ private:
 /// An undirected graph with string vertices and string attributes
 class Graph {
 public:
-  /// node_name -> {neighbor_name -> Edge}, every edge stored in both directions
-  std::map<std::string, std::map<std::string, Edge>> edges;
-
-  /// Graph name
-  std::string name = "my_graph";
-
-  /// Next available vertex index
-  int vertex_count = 0;
-
-  /// Next available edge index
-  int edge_count = 0;
+  std::map<std::string, std::map<std::string, Edge>> edges; // node_name -> {neighbor_name -> Edge}, every edge stored in both directions.
+  std::string name = "my_graph"; // Graph name.
+  int vertex_count = 0; // Next available vertex index.
+  int edge_count = 0; // Next available edge index.
 
   /// Construct from name
   Graph(std::string name = "my_graph") : name(name) {}
@@ -141,10 +140,20 @@ public:
   bool has_guid() const { return !_guid.empty(); }
 
   /// Lazy guid accessor (const)
-  const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  const std::string& guid() const {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   /// Lazy guid accessor (mutable)
-  std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+  std::string& guid() {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Details
@@ -271,8 +280,8 @@ public:
   std::string str() const;
 
 private:
-  std::map<std::string, Vertex> vertices;
-  mutable std::string _guid;
+  std::map<std::string, Vertex> vertices; // name -> Vertex.
+  mutable std::string _guid; // Lazily minted GUID.
 
   /// Renumber vertex indices 0, 1, 2, ... keeping their relative order
   void _reassign_indices();

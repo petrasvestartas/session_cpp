@@ -6,12 +6,15 @@
 #include "tolerance.h"
 #include <filesystem>
 #include <map>
+#include <memory>
+#include <vector>
 
 namespace session_cpp {
 using namespace session_cpp::mini_test;
 using namespace session_cpp::file_encoders;
 
 MINI_TEST("FileEncoders", "Json Dump Load") {
+
     Point original(1.5, 2.5, 3.5);
     original.name = "test_point";
 
@@ -29,6 +32,7 @@ MINI_TEST("FileEncoders", "Json Dump Load") {
 }
 
 MINI_TEST("FileEncoders", "Json Dumps Loads") {
+
     Vector original(42.1, 84.2, 126.3);
     original.name = "test_vector";
 
@@ -46,12 +50,13 @@ MINI_TEST("FileEncoders", "Json Dumps Loads") {
 }
 
 MINI_TEST("FileEncoders", "Encode Collection Values") {
+
     std::vector<Point> points;
     points.push_back(Point(1.0, 2.0, 3.0));
     points.push_back(Point(4.0, 5.0, 6.0));
     points.push_back(Point(7.0, 8.0, 9.0));
 
-    auto json_arr = file_encode_collection(points);
+    nlohmann::ordered_json json_arr = file_encode_collection(points);
 
     MINI_CHECK(json_arr.is_array());
     MINI_CHECK(json_arr.size() == 3);
@@ -61,11 +66,12 @@ MINI_TEST("FileEncoders", "Encode Collection Values") {
 }
 
 MINI_TEST("FileEncoders", "Encode Collection Shared Ptr") {
+
     std::vector<std::shared_ptr<Line>> lines;
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
 
-    auto json_arr = file_encode_collection(lines);
+    nlohmann::ordered_json json_arr = file_encode_collection(lines);
 
     MINI_CHECK(json_arr.is_array());
     MINI_CHECK(json_arr.size() == 2);
@@ -74,12 +80,13 @@ MINI_TEST("FileEncoders", "Encode Collection Shared Ptr") {
 }
 
 MINI_TEST("FileEncoders", "Decode Collection") {
+
     std::vector<Point> original_points;
     original_points.push_back(Point(1.0, 2.0, 3.0));
     original_points.push_back(Point(4.0, 5.0, 6.0));
 
-    auto json_arr = file_encode_collection(original_points);
-    auto decoded_points = file_decode_collection<Point>(json_arr);
+    nlohmann::ordered_json json_arr = file_encode_collection(original_points);
+    std::vector<Point> decoded_points = file_decode_collection<Point>(json_arr);
 
     MINI_CHECK(decoded_points.size() == 2);
     MINI_CHECK(TOLERANCE.is_close(decoded_points[0][0], 1.0));
@@ -87,12 +94,13 @@ MINI_TEST("FileEncoders", "Decode Collection") {
 }
 
 MINI_TEST("FileEncoders", "Decode Collection Ptr") {
+
     std::vector<std::shared_ptr<Vector>> original_vectors;
     original_vectors.push_back(std::make_shared<Vector>(1.0, 0.0, 0.0));
     original_vectors.push_back(std::make_shared<Vector>(0.0, 1.0, 0.0));
 
-    auto json_arr = file_encode_collection(original_vectors);
-    auto decoded_vectors = file_decode_collection_ptr<Vector>(json_arr);
+    nlohmann::ordered_json json_arr = file_encode_collection(original_vectors);
+    std::vector<std::shared_ptr<Vector>> decoded_vectors = file_decode_collection_ptr<Vector>(json_arr);
 
     MINI_CHECK(decoded_vectors.size() == 2);
     MINI_CHECK(TOLERANCE.is_close((*decoded_vectors[0])[0], 1.0));
@@ -100,17 +108,18 @@ MINI_TEST("FileEncoders", "Decode Collection Ptr") {
 }
 
 MINI_TEST("FileEncoders", "Nested Collections") {
+
     std::vector<Line> lines;
     lines.push_back(Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
     lines.push_back(Line(0.0, 0.0, 0.0, 0.0, 1.0, 0.0));
 
-    auto json_arr = file_encode_collection(lines);
+    nlohmann::ordered_json json_arr = file_encode_collection(lines);
     std::string json_str = json_arr.dump();
 
     MINI_CHECK(!json_str.empty());
 
-    auto loaded_json = nlohmann::json::parse(json_str);
-    auto loaded = file_decode_collection<Line>(loaded_json);
+    nlohmann::json loaded_json = nlohmann::json::parse(json_str);
+    std::vector<Line> loaded = file_decode_collection<Line>(loaded_json);
 
     MINI_CHECK(loaded.size() == 2);
     MINI_CHECK(TOLERANCE.is_close(loaded[0].end()[0], 1.0));
@@ -118,17 +127,18 @@ MINI_TEST("FileEncoders", "Nested Collections") {
 }
 
 MINI_TEST("FileEncoders", "Roundtrip File Io") {
+
     std::vector<Vector> vectors;
     vectors.push_back(Vector(1.0, 0.0, 0.0));
     vectors.push_back(Vector(0.0, 1.0, 0.0));
     vectors.push_back(Vector(0.0, 0.0, 1.0));
 
     std::string filepath = "serialization/test_encoders_collection.json";
-    auto json_arr = file_encode_collection(vectors);
+    nlohmann::ordered_json json_arr = file_encode_collection(vectors);
     file_json_dump(json_arr, filepath);
 
-    auto loaded_json = file_json_load_data(filepath);
-    auto decoded_vectors = file_decode_collection<Vector>(loaded_json);
+    nlohmann::ordered_json loaded_json = file_json_load_data(filepath);
+    std::vector<Vector> decoded_vectors = file_decode_collection<Vector>(loaded_json);
 
     MINI_CHECK(decoded_vectors.size() == 3);
     MINI_CHECK(TOLERANCE.is_close(decoded_vectors[0][0], 1.0));
@@ -139,6 +149,7 @@ MINI_TEST("FileEncoders", "Roundtrip File Io") {
 }
 
 MINI_TEST("FileEncoders", "Pretty Vs Compact") {
+
     Point point(1.0, 2.0, 3.0);
 
     std::string pretty = file_json_dumps(point, true);
@@ -156,9 +167,10 @@ MINI_TEST("FileEncoders", "Pretty Vs Compact") {
 }
 
 MINI_TEST("FileEncoders", "Decode Primitives") {
+
     nlohmann::json num = 42;
     std::string json_str = num.dump();
-    auto loaded = nlohmann::json::parse(json_str);
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
 
     MINI_CHECK(loaded.get<int>() == 42);
 
@@ -179,11 +191,12 @@ MINI_TEST("FileEncoders", "Decode Primitives") {
 }
 
 MINI_TEST("FileEncoders", "Decode List") {
+
     std::vector<int> data = {1, 2, 3};
     nlohmann::json j = data;
     std::string json_str = j.dump();
-    auto loaded = nlohmann::json::parse(json_str);
-    auto loaded_vec = loaded.get<std::vector<int>>();
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
+    std::vector<int> loaded_vec = loaded.get<std::vector<int>>();
 
     MINI_CHECK(loaded_vec.size() == 3);
     MINI_CHECK(loaded_vec[0] == 1);
@@ -193,20 +206,21 @@ MINI_TEST("FileEncoders", "Decode List") {
     points.push_back(Point(1.0, 2.0, 3.0));
     points.push_back(Point(4.0, 5.0, 6.0));
 
-    auto json_arr = file_encode_collection(points);
-    auto decoded = file_decode_collection<Point>(json_arr);
+    nlohmann::ordered_json json_arr = file_encode_collection(points);
+    std::vector<Point> decoded = file_decode_collection<Point>(json_arr);
     MINI_CHECK(decoded.size() == 2);
     MINI_CHECK(TOLERANCE.is_close(decoded[0][0], 1.0));
     MINI_CHECK(TOLERANCE.is_close(decoded[1][0], 4.0));
 }
 
 MINI_TEST("FileEncoders", "Decode Dict") {
+
     std::map<std::string, int> data;
     data["a"] = 1;
     data["b"] = 2;
     nlohmann::json j = data;
     std::string json_str = j.dump();
-    auto loaded = nlohmann::json::parse(json_str);
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
 
     MINI_CHECK(loaded["a"].get<int>() == 1);
     MINI_CHECK(loaded["b"].get<int>() == 2);
@@ -218,9 +232,10 @@ MINI_TEST("FileEncoders", "Decode Dict") {
 }
 
 MINI_TEST("FileEncoders", "List In List In List") {
+
     nlohmann::json data = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
     std::string json_str = data.dump();
-    auto loaded = nlohmann::json::parse(json_str);
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
 
     MINI_CHECK(loaded[0][0][0] == 1);
     MINI_CHECK(loaded[1][1][1] == 8);
@@ -228,6 +243,7 @@ MINI_TEST("FileEncoders", "List In List In List") {
 }
 
 MINI_TEST("FileEncoders", "Dict Of Lists") {
+
     std::vector<Point> points;
     points.push_back(Point(1.0, 0.0, 0.0));
     points.push_back(Point(0.0, 1.0, 0.0));
@@ -238,16 +254,17 @@ MINI_TEST("FileEncoders", "Dict Of Lists") {
     data["points"] = file_encode_collection(points);
 
     std::string json_str = data.dump();
-    auto loaded = nlohmann::json::parse(json_str);
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
 
     MINI_CHECK(loaded["numbers"].size() == 3);
     MINI_CHECK(loaded["letters"][0] == "a");
-    auto loaded_points = file_decode_collection<Point>(loaded["points"]);
+    std::vector<Point> loaded_points = file_decode_collection<Point>(loaded["points"]);
     MINI_CHECK(loaded_points.size() == 2);
     MINI_CHECK(TOLERANCE.is_close(loaded_points[0][0], 1.0));
 }
 
 MINI_TEST("FileEncoders", "List Of Dict") {
+
     Point point(1.0, 2.0, 3.0);
 
     nlohmann::json data = nlohmann::json::array();
@@ -256,7 +273,7 @@ MINI_TEST("FileEncoders", "List Of Dict") {
     data.push_back({{"geometry", point.jsondump()}});
 
     std::string json_str = data.dump();
-    auto loaded = nlohmann::json::parse(json_str);
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
 
     MINI_CHECK(loaded.size() == 3);
     MINI_CHECK(loaded[0]["name"] == "point1");
@@ -266,6 +283,7 @@ MINI_TEST("FileEncoders", "List Of Dict") {
 }
 
 MINI_TEST("FileEncoders", "Dict Of Dicts") {
+
     Point point(1.0, 2.0, 3.0);
     Vector vec(0.0, 0.0, 1.0);
 
@@ -276,7 +294,7 @@ MINI_TEST("FileEncoders", "Dict Of Dicts") {
     data["geometry"]["vector"] = vec.jsondump();
 
     std::string json_str = data.dump();
-    auto loaded = nlohmann::json::parse(json_str);
+    nlohmann::json loaded = nlohmann::json::parse(json_str);
 
     MINI_CHECK(TOLERANCE.is_close(loaded["config"]["tolerance"].get<double>(), 0.001));
     MINI_CHECK(loaded["config"]["scale"] == 1000);
@@ -287,13 +305,16 @@ MINI_TEST("FileEncoders", "Dict Of Dicts") {
 }
 
 MINI_TEST("FileEncoders", "Write Error") {
+
     Point point(1.0, 2.0, 3.0);
     bool threw = false;
+
     try {
         file_json_dump(point, "serialization/missing-directory/test.json");
     } catch (const std::runtime_error&) {
         threw = true;
     }
+
     MINI_CHECK(threw);
 }
 

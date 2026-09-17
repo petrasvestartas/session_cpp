@@ -20,30 +20,39 @@ const int STACK_SIZE = 64;
 // Curve helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Parameter of the closest sample on a dense grid over [t0, t1]
+/// Parameter of the closest sample on a dense grid over [t0, t1].
 static double curve_seed(const NurbsCurve& curve, const Point& test_point, double t0, double t1) {
+
     const int num_samples = std::max(50, curve.cv_count() * 10);
     const double dt = (t1 - t0) / num_samples;
     double best_t = t0;
     double best_dist = curve.point_at(t0).distance(test_point);
+
     for (int i = 0; i <= num_samples; i++) {
         const double t = t0 + i * dt;
         const double dist = curve.point_at(t).distance(test_point);
+
         if (dist < best_dist) {
             best_dist = dist;
             best_t = t;
         }
     }
+
     return best_t;
 }
 
-/// Newton on (C(t) - P) . C'(t) = 0 from t, clamped to [t0, t1]
+/// Newton on (C(t) - P) . C'(t) = 0 from t, clamped to [t0, t1].
 static double curve_newton(const NurbsCurve& curve, const Point& test_point, double t0, double t1, double t) {
+
     const int max_iterations = 32;
     const double step_tolerance = (t1 - t0) * 1e-12;
+
     for (int iter = 0; iter < max_iterations; iter++) {
         const std::vector<Vector> derivs = curve.evaluate(t, 2);
-        if (derivs.size() < 3) break;
+
+        if (derivs.size() < 3)
+            break;
+
         const Vector& pt = derivs[0];
         const Vector& d1 = derivs[1];
         const Vector& d2 = derivs[2];
@@ -51,38 +60,62 @@ static double curve_newton(const NurbsCurve& curve, const Point& test_point, dou
         const double ry = pt[1] - test_point[1];
         const double rz = pt[2] - test_point[2];
         const double f = rx * d1[0] + ry * d1[1] + rz * d1[2];
-        if (std::abs(f) < step_tolerance) break;
+
+        if (std::abs(f) < step_tolerance)
+            break;
+
         const double df = d1[0] * d1[0] + d1[1] * d1[1] + d1[2] * d1[2] + rx * d2[0] + ry * d2[1] + rz * d2[2];
-        if (std::abs(df) < 1e-14) break;
+
+        if (std::abs(df) < 1e-14)
+            break;
+
         double dt_step = -f / df;
-        if (std::abs(dt_step) > (t1 - t0) * 0.5) dt_step = std::copysign((t1 - t0) * 0.5, dt_step);
+
+        if (std::abs(dt_step) > (t1 - t0) * 0.5)
+            dt_step = std::copysign((t1 - t0) * 0.5, dt_step);
+
         t += dt_step;
-        if (t < t0) t = t0;
-        if (t > t1) t = t1;
-        if (std::abs(dt_step) < step_tolerance) break;
+
+        if (t < t0)
+            t = t0;
+
+        if (t > t1)
+            t = t1;
+
+        if (std::abs(dt_step) < step_tolerance)
+            break;
     }
+
     return t;
 }
 
-/// Parameters of the closest pair on dense grids over both domains
+/// Parameters of the closest pair on dense grids over both domains.
 static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, const NurbsCurve& curve1) {
+
     auto [u0, u1] = curve0.domain();
     auto [v0, v1] = curve1.domain();
     const int n0 = std::max(40, curve0.cv_count() * 8);
     const int n1 = std::max(40, curve1.cv_count() * 8);
     std::vector<Point> p0(n0 + 1);
     std::vector<Point> p1(n1 + 1);
-    for (int i = 0; i <= n0; i++) p0[i] = curve0.point_at(u0 + (u1 - u0) * i / n0);
-    for (int j = 0; j <= n1; j++) p1[j] = curve1.point_at(v0 + (v1 - v0) * j / n1);
+
+    for (int i = 0; i <= n0; i++)
+        p0[i] = curve0.point_at(u0 + (u1 - u0) * i / n0);
+
+    for (int j = 0; j <= n1; j++)
+        p1[j] = curve1.point_at(v0 + (v1 - v0) * j / n1);
+
     double best = std::numeric_limits<double>::infinity();
     double u = u0;
     double v = v0;
+
     for (int i = 0; i <= n0; i++) {
         for (int j = 0; j <= n1; j++) {
             const double dx = p0[i][0] - p1[j][0];
             const double dy = p0[i][1] - p1[j][1];
             const double dz = p0[i][2] - p1[j][2];
             const double d2 = dx * dx + dy * dy + dz * dz;
+
             if (d2 < best) {
                 best = d2;
                 u = u0 + (u1 - u0) * i / n0;
@@ -90,6 +123,7 @@ static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, cons
             }
         }
     }
+
     return {u, v};
 }
 
@@ -97,7 +131,7 @@ static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, cons
 // Surface helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Parameters of the closest sample on a grid whose resolution follows the window size
+/// Parameters of the closest sample on a grid whose resolution follows the window size.
 static std::pair<double, double> surface_seed(
     const NurbsSurface& surface,
     const Point& test_point,
@@ -119,11 +153,13 @@ static std::pair<double, double> surface_seed(
     double best_u = u0;
     double best_v = v0;
     double best_dist = std::numeric_limits<double>::infinity();
+
     for (int i = 0; i <= u_samples; i++) {
         for (int j = 0; j <= v_samples; j++) {
             const double uu = u0 + i * du_param;
             const double vv = v0 + j * dv_param;
             const double dist = surface.point_at(uu, vv).distance(test_point);
+
             if (dist < best_dist) {
                 best_dist = dist;
                 best_u = uu;
@@ -131,10 +167,11 @@ static std::pair<double, double> surface_seed(
             }
         }
     }
+
     return {best_u, best_v};
 }
 
-/// Newton on the perpendicular-foot conditions from the seed, clamped to the window
+/// Newton on the perpendicular-foot conditions from the seed, clamped to the window.
 static std::pair<double, double> surface_newton(
     const NurbsSurface& surface,
     const Point& test_point,
@@ -148,29 +185,47 @@ static std::pair<double, double> surface_newton(
     const int max_iterations = 20;
     const double step_tolerance = std::min(u1 - u0, v1 - v0) * 1e-10;
     const double max_step = std::min(u1 - u0, v1 - v0) * 0.5;
+
     for (int iter = 0; iter < max_iterations; iter++) {
         const std::vector<Vector> derivs = surface.evaluate(u, v, 1);
-        if (derivs.size() < 3) break;
+
+        if (derivs.size() < 3)
+            break;
+
         const Point pt = surface.point_at(u, v);
         const Vector du_vec = derivs[2];
         const Vector dv_vec = derivs[1];
-        const Vector delta(test_point[0] - pt[0], test_point[1] - pt[1], test_point[2] - pt[2]);
+        const Vector delta = test_point - pt;
         const double fu = -delta.dot(du_vec);
         const double fv = -delta.dot(dv_vec);
-        if (std::abs(fu) < step_tolerance && std::abs(fv) < step_tolerance) break;
+
+        if (std::abs(fu) < step_tolerance && std::abs(fv) < step_tolerance)
+            break;
+
         const double duu = du_vec.dot(du_vec);
         const double dvv = dv_vec.dot(dv_vec);
         const double duv = du_vec.dot(dv_vec);
         const double det = duu * dvv - duv * duv;
-        if (std::abs(det) < 1e-12) break;
+
+        if (std::abs(det) < 1e-12)
+            break;
+
         double du_step = (dvv * fu - duv * fv) / det;
         double dv_step = (duu * fv - duv * fu) / det;
-        if (std::abs(du_step) > max_step) du_step = std::copysign(max_step, du_step);
-        if (std::abs(dv_step) > max_step) dv_step = std::copysign(max_step, dv_step);
+
+        if (std::abs(du_step) > max_step)
+            du_step = std::copysign(max_step, du_step);
+
+        if (std::abs(dv_step) > max_step)
+            dv_step = std::copysign(max_step, dv_step);
+
         u = std::max(u0, std::min(u1, u - du_step));
         v = std::max(v0, std::min(v1, v - dv_step));
-        if (std::abs(du_step) < step_tolerance && std::abs(dv_step) < step_tolerance) break;
+
+        if (std::abs(du_step) < step_tolerance && std::abs(dv_step) < step_tolerance)
+            break;
     }
+
     return {u, v};
 }
 
@@ -178,7 +233,7 @@ static std::pair<double, double> surface_newton(
 // Pullback helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Surface domain, trace step and tolerances shared by the surface_curve steps
+/// Surface domain, trace step and tolerances shared by the surface_curve steps.
 struct Pullback {
     double u0 = 0.0;
     double u1 = 0.0;
@@ -200,6 +255,7 @@ using UV = std::pair<double, double>;
 using Sample = std::array<double, 4>;
 
 static Pullback pullback_setup(const NurbsSurface& surface, double tolerance) {
+
     Pullback pb;
     std::tie(pb.u0, pb.u1) = surface.domain(0);
     std::tie(pb.v0, pb.v1) = surface.domain(1);
@@ -220,34 +276,56 @@ static Pullback pullback_setup(const NurbsSurface& surface, double tolerance) {
     const double uv_to_3d_v = pmid.distance(surface.point_at(mu, wv_probe)) / pb.dv;
     double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
     double uv_to_3d_min = std::min(uv_to_3d_u, uv_to_3d_v);
-    if (uv_to_3d < 1e-10) uv_to_3d = 1.0;
-    if (uv_to_3d_min < 1e-10) uv_to_3d_min = 1.0;
+
+    if (uv_to_3d < 1e-10)
+        uv_to_3d = 1.0;
+
+    if (uv_to_3d_min < 1e-10)
+        uv_to_3d_min = 1.0;
+
     pb.step = std::min(pb.du, pb.dv) * 0.25;
     pb.fit_tol = tolerance > 0.0 ? tolerance : pb.step * (uv_to_3d + uv_to_3d_min) * 0.5;
     pb.reject_tol = pb.fit_tol * 100.0;
     double corner_diag = surface.point_at(pb.u0, pb.v0).distance(surface.point_at(pb.u1, pb.v1));
-    if (corner_diag < 1e-12) corner_diag = std::max(pb.range_u, pb.range_v);
+
+    if (corner_diag < 1e-12)
+        corner_diag = std::max(pb.range_u, pb.range_v);
+
     pb.on_surf_tol = corner_diag * 0.05;
+
     return pb;
 }
 
-/// x folded into [x0, x1] by period when closed, clamped otherwise
+/// x folded into [x0, x1] by period when closed, clamped otherwise.
 static double pullback_wrap(double x, double x0, double x1, bool closed) {
-    if (!closed) return std::max(x0, std::min(x, x1));
+
+    if (!closed)
+        return std::max(x0, std::min(x, x1));
+
     double t = std::fmod(x - x0, x1 - x0);
-    if (t < 0) t += x1 - x0;
+
+    if (t < 0)
+        t += x1 - x0;
+
     return x0 + t;
 }
 
-/// x shifted by whole periods to within half a period of prev
+/// x shifted by whole periods to within half a period of prev.
 static double pullback_unwrap(double prev, double x, double range, bool closed) {
-    if (!closed) return x;
-    while (x - prev > range * 0.5) x -= range;
-    while (x - prev < -range * 0.5) x += range;
+
+    if (!closed)
+        return x;
+
+    while (x - prev > range * 0.5)
+        x -= range;
+
+    while (x - prev < -range * 0.5)
+        x += range;
+
     return x;
 }
 
-/// Windowed inversion of pt around (up, vp), trying the seam-mirrored windows when closed
+/// Windowed inversion of pt around (up, vp), trying the seam-mirrored windows when closed.
 static std::tuple<double, double, double> pullback_invert(
     const NurbsSurface& surface,
     const Pullback& pb,
@@ -258,28 +336,47 @@ static std::tuple<double, double, double> pullback_invert(
     double wv
 ) {
     std::vector<double> u_centers = {up};
-    if (pb.closed_u && up - wu < pb.u0) u_centers.push_back(up + pb.range_u);
-    if (pb.closed_u && up + wu > pb.u1) u_centers.push_back(up - pb.range_u);
+
+    if (pb.closed_u && up - wu < pb.u0)
+        u_centers.push_back(up + pb.range_u);
+
+    if (pb.closed_u && up + wu > pb.u1)
+        u_centers.push_back(up - pb.range_u);
+
     std::vector<double> v_centers = {vp};
-    if (pb.closed_v && vp - wv < pb.v0) v_centers.push_back(vp + pb.range_v);
-    if (pb.closed_v && vp + wv > pb.v1) v_centers.push_back(vp - pb.range_v);
+
+    if (pb.closed_v && vp - wv < pb.v0)
+        v_centers.push_back(vp + pb.range_v);
+
+    if (pb.closed_v && vp + wv > pb.v1)
+        v_centers.push_back(vp - pb.range_v);
+
     std::tuple<double, double, double> best = {up, vp, std::numeric_limits<double>::infinity()};
+
     for (const double uc : u_centers) {
         for (const double vc : v_centers) {
             const double wu0 = std::max(uc - wu, pb.u0);
             const double wu1 = std::min(uc + wu, pb.u1);
             const double wv0 = std::max(vc - wv, pb.v0);
             const double wv1 = std::min(vc + wv, pb.v1);
-            if (wu1 - wu0 < 1e-14 || wv1 - wv0 < 1e-14) continue;
+
+            if (wu1 - wu0 < 1e-14 || wv1 - wv0 < 1e-14)
+                continue;
+
             const std::tuple<double, double, double> res = Closest::surface_point(surface, pt, wu0, wu1, wv0, wv1);
-            if (std::get<2>(res) < std::get<2>(best)) best = res;
-            if (std::get<2>(best) < pb.fit_tol * 0.01) break;
+
+            if (std::get<2>(res) < std::get<2>(best))
+                best = res;
+
+            if (std::get<2>(best) < pb.fit_tol * 0.01)
+                break;
         }
     }
+
     return best;
 }
 
-/// Warm-started samples [t, u, v, residual] along [t0, t1], empty when the curve is off the surface
+/// Warm-started samples [t, u, v, residual] along [t0, t1], empty when the curve is off the surface.
 static std::vector<Sample> pullback_samples(
     const NurbsSurface& surface,
     const NurbsCurve& curve,
@@ -291,10 +388,14 @@ static std::vector<Sample> pullback_samples(
     std::vector<Sample> samples;
     double max_residual = 0.0;
     double min_residual = std::numeric_limits<double>::infinity();
+
     for (int i = 0; i <= n0; i++) {
         const double t = t0 + (t1 - t0) * i / n0;
         const Point pt = curve.point_at(t);
-        double uu, vv, rd;
+        double uu;
+        double vv;
+        double rd;
+
         if (i == 0) {
             std::tie(uu, vv, rd) = Closest::surface_point(surface, pt, 0.0, 0.0, 0.0, 0.0);
         } else {
@@ -304,21 +405,29 @@ static std::vector<Sample> pullback_samples(
             const double wv = std::max(pb.du, pb.dv) * 2.0 + std::abs(prev[2] - prev2[2]);
             const double up = pullback_wrap(prev[1], pb.u0, pb.u1, pb.closed_u);
             const double vp = pullback_wrap(prev[2], pb.v0, pb.v1, pb.closed_v);
-            double ru, rv;
+            double ru;
+            double rv;
             std::tie(ru, rv, rd) = pullback_invert(surface, pb, pt, up, vp, wu, wv);
-            if (rd > pb.reject_tol) std::tie(ru, rv, rd) = Closest::surface_point(surface, pt, 0.0, 0.0, 0.0, 0.0);
+
+            if (rd > pb.reject_tol)
+                std::tie(ru, rv, rd) = Closest::surface_point(surface, pt, 0.0, 0.0, 0.0, 0.0);
+
             uu = pullback_unwrap(prev[1], ru, pb.range_u, pb.closed_u);
             vv = pullback_unwrap(prev[2], rv, pb.range_v, pb.closed_v);
         }
+
         samples.push_back(Sample{t, uu, vv, rd});
         max_residual = std::max(max_residual, rd);
         min_residual = std::min(min_residual, rd);
     }
-    if (max_residual > pb.reject_tol || min_residual > pb.on_surf_tol) samples.clear();
+
+    if (max_residual > pb.reject_tol || min_residual > pb.on_surf_tol)
+        samples.clear();
+
     return samples;
 }
 
-/// Bisect every span whose lifted uv midpoint strays from the curve, up to 8 rounds or 4096 samples
+/// Bisect every span whose lifted uv midpoint strays from the curve, up to 8 rounds or 4096 samples.
 static void pullback_refine(
     const NurbsSurface& surface,
     const NurbsCurve& curve,
@@ -328,6 +437,7 @@ static void pullback_refine(
     for (int depth = 0; depth < 8; depth++) {
         int inserted = 0;
         size_t i = 0;
+
         while (i + 1 < samples.size()) {
             const Sample a = samples[i];
             const Sample b = samples[i + 1];
@@ -335,94 +445,125 @@ static void pullback_refine(
             const double um = pullback_wrap((a[1] + b[1]) * 0.5, pb.u0, pb.u1, pb.closed_u);
             const double vm = pullback_wrap((a[2] + b[2]) * 0.5, pb.v0, pb.v1, pb.closed_v);
             const Point pm = curve.point_at(tm);
+
             if (surface.point_at(um, vm).distance(pm) <= pb.fit_tol || samples.size() >= 4096) {
                 i += 1;
                 continue;
             }
+
             const double wu = std::max(std::abs(b[1] - a[1]), pb.du);
             const double wv = std::max(std::abs(b[2] - a[2]), pb.dv);
             auto [ru, rv, rd] = pullback_invert(surface, pb, pm, um, vm, wu, wv);
+
             if (rd > pb.on_surf_tol) {
                 i += 1;
                 continue;
             }
+
             const double uu = pullback_unwrap(a[1], ru, pb.range_u, pb.closed_u);
             const double vv = pullback_unwrap(a[2], rv, pb.range_v, pb.closed_v);
             samples.insert(samples.begin() + i + 1, Sample{tm, uu, vv, rd});
             inserted += 1;
             i += 2;
         }
-        if (inserted == 0) break;
+
+        if (inserted == 0)
+            break;
     }
 }
 
-/// Smallest seam crossing of one axis between a and b that beats bestt; level is the seam value
+/// Smallest seam crossing of one axis between a and b that beats bestt; level is the seam value.
 static bool pullback_seam_axis(double a, double b, double x0, double range, bool closed, double& bestt, double& level) {
-    if (!closed || std::abs(b - a) <= 1e-15) return false;
+
+    if (!closed || std::abs(b - a) <= 1e-15)
+        return false;
+
     const int k0 = (int)std::floor((a - x0) / range);
     const int k1 = (int)std::floor((b - x0) / range);
     bool found = false;
+
     for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
         const double seam = x0 + k * range;
         const double t = (seam - a) / (b - a);
+
         if (t > 1e-9 && t < 1.0 - 1e-9 && t < bestt) {
             bestt = t;
             level = seam;
             found = true;
         }
     }
+
     return found;
 }
 
 /// First seam crossing on segment a -> b, written to (cu, cv)
 static bool pullback_first_seam(const Pullback& pb, const UV& a, const UV& b, double& cu, double& cv) {
+
     double bestt = 2.0;
     double level = 0.0;
     bool found = false;
+
     if (pullback_seam_axis(a.first, b.first, pb.u0, pb.range_u, pb.closed_u, bestt, level)) {
         found = true;
         cu = level;
         cv = a.second + (b.second - a.second) * bestt;
     }
+
     if (pullback_seam_axis(a.second, b.second, pb.v0, pb.range_v, pb.closed_v, bestt, level)) {
         found = true;
         cv = level;
         cu = a.first + (b.first - a.first) * bestt;
     }
+
     return found;
 }
 
-/// True when x sits on a seam level of a closed axis
+/// True when x sits on a seam level of a closed axis.
 static bool pullback_at_seam(double x, double x0, double range, bool closed) {
-    if (!closed) return false;
+
+    if (!closed)
+        return false;
+
     const double seam = x0 + std::round((x - x0) / range) * range;
+
     return std::abs(x - seam) < range * 1e-6;
 }
 
 static bool pullback_on_seam(const Pullback& pb, const UV& p) {
-    return pullback_at_seam(p.first, pb.u0, pb.range_u, pb.closed_u) || pullback_at_seam(p.second, pb.v0, pb.range_v, pb.closed_v);
+    return pullback_at_seam(p.first, pb.u0, pb.range_u, pb.closed_u) ||
+        pullback_at_seam(p.second, pb.v0, pb.range_v, pb.closed_v);
 }
 
-/// Shift a segment by whole periods so its middle point lies inside the domain
+/// Shift a segment by whole periods so its middle point lies inside the domain.
 static void pullback_shift(const Pullback& pb, std::vector<UV>& seg) {
+
     const UV mid = seg[seg.size() / 2];
     const int k_u = pb.closed_u ? (int)std::floor((mid.first - pb.u0) / pb.range_u) : 0;
     const int k_v = pb.closed_v ? (int)std::floor((mid.second - pb.v0) / pb.range_v) : 0;
+
     for (UV& p : seg) {
         p.first -= k_u * pb.range_u;
         p.second -= k_v * pb.range_v;
     }
 }
 
-/// Split the unwrapped uv polyline at every seam crossing; rejoin the two arcs of a mid-arc loop start
-static std::vector<std::vector<UV>> pullback_split(const Pullback& pb, const std::vector<UV>& pts, bool rejoin, bool& any_cross) {
+/// Split the unwrapped uv polyline at every seam crossing; rejoin the two arcs of a mid-arc loop start.
+static std::vector<std::vector<UV>> pullback_split(
+    const Pullback& pb,
+    const std::vector<UV>& pts,
+    bool rejoin,
+    bool& any_cross
+) {
     std::vector<std::vector<UV>> raw;
     std::vector<UV> cur = {pts[0]};
     any_cross = false;
+
     for (size_t i = 1; i < pts.size(); i++) {
         UV a = pts[i - 1];
         const UV b = pts[i];
-        double cu, cv;
+        double cu;
+        double cv;
+
         while (pullback_first_seam(pb, a, b, cu, cv)) {
             cur.push_back({cu, cv});
             raw.push_back(cur);
@@ -430,31 +571,49 @@ static std::vector<std::vector<UV>> pullback_split(const Pullback& pb, const std
             any_cross = true;
             a = {cu, cv};
         }
+
         cur.push_back(b);
+
         if (i + 1 < pts.size() && pullback_on_seam(pb, b)) {
             raw.push_back(cur);
             cur = {b};
             any_cross = true;
         }
     }
+
     raw.push_back(cur);
+
     if (rejoin && raw.size() > 1) {
         std::vector<UV> merged = raw.back();
-        for (size_t k = 1; k < raw.front().size(); k++) merged.push_back(raw.front()[k]);
+
+        for (size_t k = 1; k < raw.front().size(); k++)
+            merged.push_back(raw.front()[k]);
+
         raw.erase(raw.begin());
         raw.back() = merged;
     }
+
     return raw;
 }
 
-/// In-domain uv pieces with a closed flag, slivers dropped
-static std::vector<std::pair<std::vector<UV>, bool>> pullback_pieces(const Pullback& pb, const NurbsCurve& curve, const std::vector<Sample>& samples) {
+/// In-domain uv pieces with a closed flag, slivers dropped.
+static std::vector<std::pair<std::vector<UV>, bool>> pullback_pieces(
+    const Pullback& pb,
+    const NurbsCurve& curve,
+    const std::vector<Sample>& samples
+) {
     std::vector<UV> pts;
-    for (const Sample& s : samples) pts.push_back({s[1], s[2]});
+
+    for (const Sample& s : samples)
+        pts.push_back({s[1], s[2]});
+
     const Point p_first = curve.point_at(samples.front()[0]);
     const Point p_last = curve.point_at(samples.back()[0]);
     const bool is_loop = p_first.distance(p_last) < pb.fit_tol * 4.0 && pts.size() >= 6;
-    if (is_loop) pts.pop_back();
+
+    if (is_loop)
+        pts.pop_back();
+
     const double wind_u = pb.closed_u ? samples.back()[1] - samples.front()[1] : 0.0;
     const double wind_v = pb.closed_v ? samples.back()[2] - samples.front()[2] : 0.0;
     const bool crosses = std::abs(wind_u) > pb.range_u * 0.5 || std::abs(wind_v) > pb.range_v * 0.5;
@@ -462,32 +621,44 @@ static std::vector<std::pair<std::vector<UV>, bool>> pullback_pieces(const Pullb
     bool any_cross = false;
     std::vector<std::vector<UV>> raw = pullback_split(pb, pts, rejoin, any_cross);
     std::vector<std::pair<std::vector<UV>, bool>> pieces;
+
     for (std::vector<UV>& seg : raw) {
-        if (seg.size() < 2) continue;
+        if (seg.size() < 2)
+            continue;
+
         pullback_shift(pb, seg);
         double umin = 1e300;
         double umax = -1e300;
         double vmin = 1e300;
         double vmax = -1e300;
         double len = 0.0;
+
         for (size_t i = 0; i < seg.size(); i++) {
             umin = std::min(umin, seg[i].first);
             umax = std::max(umax, seg[i].first);
             vmin = std::min(vmin, seg[i].second);
             vmax = std::max(vmax, seg[i].second);
-            if (i > 0) len += std::hypot(seg[i].first - seg[i - 1].first, seg[i].second - seg[i - 1].second);
+
+            if (i > 0)
+                len += std::hypot(seg[i].first - seg[i - 1].first, seg[i].second - seg[i - 1].second);
         }
-        if (len < std::min(pb.range_u, pb.range_v) * 1e-4) continue;
+
+        if (len < std::min(pb.range_u, pb.range_v) * 1e-4)
+            continue;
+
         const bool seg_loop = is_loop && !any_cross && umax - umin < pb.range_u * 0.9 && vmax - vmin < pb.range_v * 0.9;
         pieces.push_back({seg, seg_loop});
     }
+
     return pieces;
 }
 
-/// Total turning angle of a uv polyline
+/// Total turning angle of a uv polyline.
 static double pullback_turning(const std::vector<Point>& pts_uv) {
+
     const int mp = (int)pts_uv.size();
     double total_turning = 0.0;
+
     for (int i = 1; i < mp - 1; i++) {
         const double dx1 = pts_uv[i][0] - pts_uv[i - 1][0];
         const double dy1 = pts_uv[i][1] - pts_uv[i - 1][1];
@@ -495,54 +666,85 @@ static double pullback_turning(const std::vector<Point>& pts_uv) {
         const double dy2 = pts_uv[i + 1][1] - pts_uv[i][1];
         const double l1 = std::hypot(dx1, dy1);
         const double l2 = std::hypot(dx2, dy2);
-        if (l1 <= 1e-14 || l2 <= 1e-14) continue;
+
+        if (l1 <= 1e-14 || l2 <= 1e-14)
+            continue;
+
         const double c = std::max(-1.0, std::min(1.0, (dx1 * dx2 + dy1 * dy2) / (l1 * l2)));
         total_turning += std::acos(c);
     }
+
     return total_turning;
 }
 
-/// Normalized chord-length parameters of a uv polyline
+/// Normalized chord-length parameters of a uv polyline.
 static std::vector<double> pullback_chords(const std::vector<Point>& pts_uv, bool piece_loop) {
+
     const int mp = (int)pts_uv.size();
     std::vector<double> chords(mp, 0.0);
     double total_len = 0.0;
+
     for (int i = 1; i < mp; i++) {
         total_len += pts_uv[i].distance(pts_uv[i - 1]);
         chords[i] = total_len;
     }
-    if (piece_loop) total_len += pts_uv[0].distance(pts_uv[mp - 1]);
+
+    if (piece_loop)
+        total_len += pts_uv[0].distance(pts_uv[mp - 1]);
+
     if (total_len > 1e-14)
-        for (int i = 1; i < mp; i++) chords[i] /= total_len;
+        for (int i = 1; i < mp; i++)
+            chords[i] /= total_len;
+
     return chords;
 }
 
-/// Fit one piece as a uv pcurve on [0, 1]; interpolation and a degree-1 polyline are the fallbacks
+/// Fit one piece as a uv pcurve on [0, 1]; interpolation and a degree-1 polyline are the fallbacks.
 static NurbsCurve pullback_fit(const Pullback& pb, std::vector<UV>& piece_pts, bool piece_loop) {
+
     pullback_shift(pb, piece_pts);
     std::vector<Point> pts_uv(piece_pts.size());
-    for (size_t i = 0; i < piece_pts.size(); i++) pts_uv[i] = Point(piece_pts[i].first, piece_pts[i].second, 0.0);
+
+    for (size_t i = 0; i < piece_pts.size(); i++)
+        pts_uv[i] = Point(piece_pts[i].first, piece_pts[i].second, 0.0);
+
     const int mp = (int)pts_uv.size();
     const std::vector<double> chords = pullback_chords(pts_uv, piece_loop);
     int target_cvs = std::max(8, (int)(pullback_turning(pts_uv) / 0.5) + 6);
     const int max_cvs = mp - 1;
     NurbsCurve pcurve;
+
     for (int attempt = 0; attempt < 5; attempt++) {
-        if (target_cvs > max_cvs) break;
+        if (target_cvs > max_cvs)
+            break;
+
         pcurve = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
-        if (!pcurve.is_valid()) break;
+
+        if (!pcurve.is_valid())
+            break;
+
         auto [ft0, ft1] = pcurve.domain();
         double max_dev = 0.0;
-        for (int i = 0; i < mp; i++) max_dev = std::max(max_dev, pcurve.point_at(ft0 + (ft1 - ft0) * chords[i]).distance(pts_uv[i]));
-        if (max_dev < pb.step) break;
+
+        for (int i = 0; i < mp; i++)
+            max_dev = std::max(max_dev, pcurve.point_at(ft0 + (ft1 - ft0) * chords[i]).distance(pts_uv[i]));
+
+        if (max_dev < pb.step)
+            break;
+
         target_cvs = std::min(target_cvs * 2, max_cvs);
     }
+
     if (!pcurve.is_valid())
-        pcurve = piece_loop
-            ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
-            : NurbsCurve::create_interpolated(pts_uv);
-    if (!pcurve.is_valid()) pcurve = NurbsCurve::create(false, 1, pts_uv);
-    if (pcurve.is_valid()) pcurve.set_domain(0.0, 1.0);
+        pcurve = piece_loop ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
+                            : NurbsCurve::create_interpolated(pts_uv);
+
+    if (!pcurve.is_valid())
+        pcurve = NurbsCurve::create(false, 1, pts_uv);
+
+    if (pcurve.is_valid())
+        pcurve.set_domain(0.0, 1.0);
+
     return pcurve;
 }
 
@@ -552,72 +754,90 @@ static NurbsCurve pullback_fit(const Pullback& pb, std::vector<UV>& piece_pts, b
 
 /// Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5)
 static Point closest_point_on_triangle(const Point& p, const Point& a, const Point& b, const Point& c) {
-    const double abx = b[0] - a[0];
-    const double aby = b[1] - a[1];
-    const double abz = b[2] - a[2];
-    const double acx = c[0] - a[0];
-    const double acy = c[1] - a[1];
-    const double acz = c[2] - a[2];
-    const double apx = p[0] - a[0];
-    const double apy = p[1] - a[1];
-    const double apz = p[2] - a[2];
-    const double d1 = abx * apx + aby * apy + abz * apz;
-    const double d2 = acx * apx + acy * apy + acz * apz;
-    if (d1 <= 0.0 && d2 <= 0.0) return a;
-    const double bpx = p[0] - b[0];
-    const double bpy = p[1] - b[1];
-    const double bpz = p[2] - b[2];
-    const double d3 = abx * bpx + aby * bpy + abz * bpz;
-    const double d4 = acx * bpx + acy * bpy + acz * bpz;
-    if (d3 >= 0.0 && d4 <= d3) return b;
+
+    const Vector ab = b - a;
+    const Vector ac = c - a;
+    const Vector ap = p - a;
+    const double d1 = ab.dot(ap);
+    const double d2 = ac.dot(ap);
+
+    if (d1 <= 0.0 && d2 <= 0.0)
+        return a;
+
+    const Vector bp = p - b;
+    const double d3 = ab.dot(bp);
+    const double d4 = ac.dot(bp);
+
+    if (d3 >= 0.0 && d4 <= d3)
+        return b;
+
     const double vc = d1 * d4 - d3 * d2;
+
     if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) {
         const double v = d1 / (d1 - d3);
-        return Point(a[0] + v * abx, a[1] + v * aby, a[2] + v * abz);
+
+        return a + ab * v;
     }
-    const double cpx = p[0] - c[0];
-    const double cpy = p[1] - c[1];
-    const double cpz = p[2] - c[2];
-    const double d5 = abx * cpx + aby * cpy + abz * cpz;
-    const double d6 = acx * cpx + acy * cpy + acz * cpz;
-    if (d6 >= 0.0 && d5 <= d6) return c;
+
+    const Vector cp = p - c;
+    const double d5 = ab.dot(cp);
+    const double d6 = ac.dot(cp);
+
+    if (d6 >= 0.0 && d5 <= d6)
+        return c;
+
     const double vb = d5 * d2 - d1 * d6;
+
     if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0) {
         const double w = d2 / (d2 - d6);
-        return Point(a[0] + w * acx, a[1] + w * acy, a[2] + w * acz);
+
+        return a + ac * w;
     }
+
     const double va = d3 * d6 - d5 * d4;
+
     if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0) {
         const double w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-        return Point(b[0] + w * (c[0] - b[0]), b[1] + w * (c[1] - b[1]), b[2] + w * (c[2] - b[2]));
+
+        return b + (c - b) * w;
     }
+
     const double denom = 1.0 / (va + vb + vc);
     const double v = vb * denom;
     const double w = vc * denom;
-    return Point(a[0] + abx * v + acx * w, a[1] + aby * v + acy * w, a[2] + abz * v + acz * w);
+
+    return a + ab * v + ac * w;
 }
 
-/// Distance from p to the box, zero inside
+/// Distance from p to the box, zero inside.
 static double aabb_min_distance(const AABB& aabb, const Point& p) {
+
     const double dx = std::max(0.0, std::abs(p[0] - aabb.cx) - aabb.hx);
     const double dy = std::max(0.0, std::abs(p[1] - aabb.cy) - aabb.hy);
     const double dz = std::max(0.0, std::abs(p[2] - aabb.cz) - aabb.hz);
+
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-/// Distance between two boxes, zero when they overlap
+/// Distance between two boxes, zero when they overlap.
 static double aabb_to_aabb_min_dist(const AABB& a, const AABB& b) {
+
     const double dx = std::max(0.0, std::abs(a.cx - b.cx) - a.hx - b.hx);
     const double dy = std::max(0.0, std::abs(a.cy - b.cy) - a.hy - b.hy);
     const double dz = std::max(0.0, std::abs(a.cz - b.cz) - a.hz - b.hz);
+
     return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-/// Face keys in the face-index order used by the triangle caches
+/// Face keys in the face-index order used by the triangle caches.
 static std::vector<size_t> mesh_face_keys(const Mesh& mesh) {
+
     std::vector<size_t> face_keys;
     face_keys.reserve(mesh.face.size());
-    for (const auto& [key, _] : mesh.face) face_keys.push_back(key);
+
+    for (const auto& [key, _] : mesh.face)
+        face_keys.push_back(key);
+
     return face_keys;
 }
 
@@ -625,45 +845,55 @@ static std::vector<size_t> mesh_face_keys(const Mesh& mesh) {
 // Curves
 // ═══════════════════════════════════════════════════════════════════════════
 
-std::pair<double, double> Closest::curve_point(
-    const NurbsCurve& curve,
-    const Point& test_point,
-    double t0,
-    double t1
-) {
-    if (!curve.is_valid()) return {0.0, std::numeric_limits<double>::infinity()};
+std::pair<double, double> Closest::curve_point(const NurbsCurve& curve, const Point& test_point, double t0, double t1) {
+
+    if (!curve.is_valid())
+        return {0.0, std::numeric_limits<double>::infinity()};
+
     auto [domain_start, domain_end] = curve.domain();
-    if (t0 <= 0.0) t0 = domain_start;
-    if (t1 <= 0.0) t1 = domain_end;
+
+    if (t0 <= 0.0)
+        t0 = domain_start;
+
+    if (t1 <= 0.0)
+        t1 = domain_end;
+
     t0 = std::max(t0, domain_start);
     t1 = std::min(t1, domain_end);
     double t = curve_newton(curve, test_point, t0, t1, curve_seed(curve, test_point, t0, t1));
     double final_dist = curve.point_at(t).distance(test_point);
     const double dist_start = curve.point_at(t0).distance(test_point);
     const double dist_end = curve.point_at(t1).distance(test_point);
+
     if (dist_start < final_dist) {
         t = t0;
         final_dist = dist_start;
     }
+
     if (dist_end < final_dist) {
         t = t1;
         final_dist = dist_end;
     }
+
     return {t, final_dist};
 }
 
-std::tuple<double, double, double> Closest::curve_curve(
-    const NurbsCurve& curve0,
-    const NurbsCurve& curve1
-) {
-    if (!curve0.is_valid() || !curve1.is_valid()) return {0.0, 0.0, std::numeric_limits<double>::infinity()};
+std::tuple<double, double, double> Closest::curve_curve(const NurbsCurve& curve0, const NurbsCurve& curve1) {
+
+    if (!curve0.is_valid() || !curve1.is_valid())
+        return {0.0, 0.0, std::numeric_limits<double>::infinity()};
+
     auto [u0, u1] = curve0.domain();
     auto [v0, v1] = curve1.domain();
     auto [u, v] = curve_curve_seed(curve0, curve1);
+
     for (int iter = 0; iter < 64; iter++) {
         const std::vector<Vector> e0 = curve0.evaluate(u, 2);
         const std::vector<Vector> e1 = curve1.evaluate(v, 2);
-        if (e0.size() < 3 || e1.size() < 3) break;
+
+        if (e0.size() < 3 || e1.size() < 3)
+            break;
+
         const Vector& c0 = e0[0];
         const Vector& c0p = e0[1];
         const Vector& c0pp = e0[2];
@@ -675,66 +905,94 @@ std::tuple<double, double, double> Closest::curve_curve(
         const double rz = c0[2] - c1[2];
         const double gu = rx * c0p[0] + ry * c0p[1] + rz * c0p[2];
         const double gv = -(rx * c1p[0] + ry * c1p[1] + rz * c1p[2]);
-        const double huu = c0p[0] * c0p[0] + c0p[1] * c0p[1] + c0p[2] * c0p[2] + rx * c0pp[0] + ry * c0pp[1] + rz * c0pp[2];
+        const double huu =
+            c0p[0] * c0p[0] + c0p[1] * c0p[1] + c0p[2] * c0p[2] + rx * c0pp[0] + ry * c0pp[1] + rz * c0pp[2];
+
         const double huv = -(c0p[0] * c1p[0] + c0p[1] * c1p[1] + c0p[2] * c1p[2]);
-        const double hvv = c1p[0] * c1p[0] + c1p[1] * c1p[1] + c1p[2] * c1p[2] - (rx * c1pp[0] + ry * c1pp[1] + rz * c1pp[2]);
+        const double hvv =
+            c1p[0] * c1p[0] + c1p[1] * c1p[1] + c1p[2] * c1p[2] - (rx * c1pp[0] + ry * c1pp[1] + rz * c1pp[2]);
+
         const double det = huu * hvv - huv * huv;
-        if (std::abs(det) < 1e-14) break;
+
+        if (std::abs(det) < 1e-14)
+            break;
+
         double du = -(hvv * gu - huv * gv) / det;
         double dv = -(-huv * gu + huu * gv) / det;
-        if (std::abs(du) > (u1 - u0) * 0.5) du = std::copysign((u1 - u0) * 0.5, du);
-        if (std::abs(dv) > (v1 - v0) * 0.5) dv = std::copysign((v1 - v0) * 0.5, dv);
+
+        if (std::abs(du) > (u1 - u0) * 0.5)
+            du = std::copysign((u1 - u0) * 0.5, du);
+
+        if (std::abs(dv) > (v1 - v0) * 0.5)
+            dv = std::copysign((v1 - v0) * 0.5, dv);
+
         u = std::min(std::max(u + du, u0), u1);
         v = std::min(std::max(v + dv, v0), v1);
-        if (std::max(std::abs(du), std::abs(dv)) < 1e-13) break;
+
+        if (std::max(std::abs(du), std::abs(dv)) < 1e-13)
+            break;
     }
+
     const double dist = curve0.point_at(u).distance(curve1.point_at(v));
+
     return {u, v, dist};
 }
 
-std::tuple<Point, double, double> Closest::line_point(
-    const Line& line,
-    const Point& test_point
-) {
+std::tuple<Point, double, double> Closest::line_point(const Line& line, const Point& test_point) {
+
     const Point start = line.start();
     const Point end = line.end();
     const double dx = end[0] - start[0];
     const double dy = end[1] - start[1];
     const double dz = end[2] - start[2];
     const double len_sq = dx * dx + dy * dy + dz * dz;
-    if (len_sq < 1e-20) return {start, 0.0, start.distance(test_point)};
-    double t = ((test_point[0] - start[0]) * dx + (test_point[1] - start[1]) * dy + (test_point[2] - start[2]) * dz) / len_sq;
+
+    if (len_sq < 1e-20)
+        return {start, 0.0, start.distance(test_point)};
+
+    double t =
+        ((test_point[0] - start[0]) * dx + (test_point[1] - start[1]) * dy + (test_point[2] - start[2]) * dz) / len_sq;
+
     t = std::max(0.0, std::min(1.0, t));
     const Point closest(start[0] + t * dx, start[1] + t * dy, start[2] + t * dz);
+
     return {closest, t, closest.distance(test_point)};
 }
 
-std::tuple<Point, double, double> Closest::polyline_point(
-    const Polyline& polyline,
-    const Point& test_point
-) {
+std::tuple<Point, double, double> Closest::polyline_point(const Polyline& polyline, const Point& test_point) {
+
     const std::vector<Point> points = polyline.get_points();
-    if (points.empty()) return {Point(0, 0, 0), 0.0, std::numeric_limits<double>::infinity()};
-    if (points.size() == 1) return {points[0], 0.0, points[0].distance(test_point)};
+
+    if (points.empty())
+        return {Point(0, 0, 0), 0.0, std::numeric_limits<double>::infinity()};
+
+    if (points.size() == 1)
+        return {points[0], 0.0, points[0].distance(test_point)};
+
     Point best_point = points[0];
     double best_param = 0.0;
     double best_dist = std::numeric_limits<double>::infinity();
     double cumulative_length = 0.0;
     const double total_length = polyline.length();
+
     for (size_t i = 0; i < points.size() - 1; i++) {
         const Line segment = Line::from_points(points[i], points[i + 1]);
         auto [closest, t, dist] = line_point(segment, test_point);
         const double segment_length = segment.length();
+
         if (dist < best_dist) {
             best_dist = dist;
             best_point = closest;
+
             if (total_length > 1e-20)
                 best_param = (cumulative_length + t * segment_length) / total_length;
             else
                 best_param = static_cast<double>(i) / (points.size() - 1);
         }
+
         cumulative_length += segment_length;
     }
+
     return {best_point, best_param, best_dist};
 }
 
@@ -750,19 +1008,31 @@ std::tuple<double, double, double> Closest::surface_point(
     double v0,
     double v1
 ) {
-    if (!surface.is_valid()) return {0.0, 0.0, std::numeric_limits<double>::infinity()};
+    if (!surface.is_valid())
+        return {0.0, 0.0, std::numeric_limits<double>::infinity()};
+
     auto [domain_u0, domain_u1] = surface.domain(0);
     auto [domain_v0, domain_v1] = surface.domain(1);
-    if (u0 <= 0.0) u0 = domain_u0;
-    if (u1 <= 0.0) u1 = domain_u1;
-    if (v0 <= 0.0) v0 = domain_v0;
-    if (v1 <= 0.0) v1 = domain_v1;
+
+    if (u0 <= 0.0)
+        u0 = domain_u0;
+
+    if (u1 <= 0.0)
+        u1 = domain_u1;
+
+    if (v0 <= 0.0)
+        v0 = domain_v0;
+
+    if (v1 <= 0.0)
+        v1 = domain_v1;
+
     u0 = std::max(u0, domain_u0);
     u1 = std::min(u1, domain_u1);
     v0 = std::max(v0, domain_v0);
     v1 = std::min(v1, domain_v1);
     const std::pair<double, double> seed = surface_seed(surface, test_point, u0, u1, v0, v1);
     auto [u, v] = surface_newton(surface, test_point, u0, u1, v0, v1, seed);
+
     return {u, v, surface.point_at(u, v).distance(test_point)};
 }
 
@@ -773,22 +1043,39 @@ std::vector<NurbsCurve> Closest::surface_curve(
     double t1,
     double tolerance
 ) {
-    if (!surface.is_valid() || !curve.is_valid()) return {};
+    if (!surface.is_valid() || !curve.is_valid())
+        return {};
+
     auto [ct0, ct1] = curve.domain();
-    if (t0 <= 0.0) t0 = ct0;
-    if (t1 <= 0.0) t1 = ct1;
+
+    if (t0 <= 0.0)
+        t0 = ct0;
+
+    if (t1 <= 0.0)
+        t1 = ct1;
+
     t0 = std::max(t0, ct0);
     t1 = std::min(t1, ct1);
-    if (t1 - t0 < 1e-14) return {};
+
+    if (t1 - t0 < 1e-14)
+        return {};
+
     const Pullback pb = pullback_setup(surface, tolerance);
     std::vector<Sample> samples = pullback_samples(surface, curve, pb, t0, t1);
-    if (samples.empty()) return {};
+
+    if (samples.empty())
+        return {};
+
     pullback_refine(surface, curve, pb, samples);
     std::vector<NurbsCurve> result;
+
     for (auto& [piece_pts, piece_loop] : pullback_pieces(pb, curve, samples)) {
         const NurbsCurve pcurve = pullback_fit(pb, piece_pts, piece_loop);
-        if (pcurve.is_valid()) result.push_back(pcurve);
+
+        if (pcurve.is_valid())
+            result.push_back(pcurve);
     }
+
     return result;
 }
 
@@ -796,129 +1083,186 @@ std::vector<NurbsCurve> Closest::surface_curve(
 // Meshes and clouds
 // ═══════════════════════════════════════════════════════════════════════════
 
-std::tuple<Point, size_t, double> Closest::mesh_point(
-    const Mesh& mesh,
-    const Point& test_point
-) {
+std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Point& test_point) {
+
     Point best_point(0, 0, 0);
     size_t best_face_key = 0;
     double best_dist = std::numeric_limits<double>::infinity();
-    if (mesh.number_of_faces() == 0) return {best_point, best_face_key, best_dist};
+
+    if (mesh.number_of_faces() == 0)
+        return {best_point, best_face_key, best_dist};
+
     mesh.build_triangle_bvh();
     const SpatialBVH* bvh = mesh.get_cached_bvh();
-    if (!bvh || bvh->empty()) return {best_point, best_face_key, best_dist};
+
+    if (!bvh || bvh->empty())
+        return {best_point, best_face_key, best_dist};
+
     const std::vector<size_t> face_keys = mesh_face_keys(mesh);
     int stack[STACK_SIZE];
     int top = 0;
     stack[top++] = 0;
+
     while (top > 0) {
         const SpatialBVH::Node& node = bvh->nodes[stack[--top]];
-        if (aabb_min_distance(node.aabb, test_point) >= best_dist) continue;
+
+        if (aabb_min_distance(node.aabb, test_point) >= best_dist)
+            continue;
+
         if (node.is_leaf()) {
-            Point v0, v1, v2;
-            size_t face_idx, sub_idx;
-            if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2)) continue;
+            Point v0;
+            Point v1;
+            Point v2;
+            size_t face_idx;
+            size_t sub_idx;
+
+            if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2))
+                continue;
+
             const Point cp = closest_point_on_triangle(test_point, v0, v1, v2);
             const double dist = cp.distance(test_point);
+
             if (dist < best_dist) {
                 best_dist = dist;
                 best_point = cp;
                 best_face_key = face_keys[face_idx];
             }
+
             continue;
         }
+
         const double ld = aabb_min_distance(bvh->nodes[node.left].aabb, test_point);
         const double rd = aabb_min_distance(bvh->nodes[node.right].aabb, test_point);
         assert(top + 2 <= STACK_SIZE);
+
         if (ld <= rd) {
-            if (rd < best_dist) stack[top++] = node.right;
-            if (ld < best_dist) stack[top++] = node.left;
+            if (rd < best_dist)
+                stack[top++] = node.right;
+
+            if (ld < best_dist)
+                stack[top++] = node.left;
         } else {
-            if (ld < best_dist) stack[top++] = node.left;
-            if (rd < best_dist) stack[top++] = node.right;
+            if (ld < best_dist)
+                stack[top++] = node.left;
+
+            if (rd < best_dist)
+                stack[top++] = node.right;
         }
     }
+
     return {best_point, best_face_key, best_dist};
 }
 
-std::tuple<Point, size_t, double> Closest::mesh_point_aabb(
-    const Mesh& mesh,
-    const Point& test_point
-) {
+std::tuple<Point, size_t, double> Closest::mesh_point_aabb(const Mesh& mesh, const Point& test_point) {
+
     Point best_point(0, 0, 0);
     size_t best_face_key = 0;
     double best_dist = std::numeric_limits<double>::infinity();
-    if (mesh.number_of_faces() == 0) return {best_point, best_face_key, best_dist};
+
+    if (mesh.number_of_faces() == 0)
+        return {best_point, best_face_key, best_dist};
+
     mesh.build_triangle_aabb_tree();
     const SpatialAABBTree* tree = mesh.get_cached_aabb_tree();
-    if (!tree || tree->empty()) return {best_point, best_face_key, best_dist};
+
+    if (!tree || tree->empty())
+        return {best_point, best_face_key, best_dist};
+
     const std::vector<size_t> face_keys = mesh_face_keys(mesh);
     int stack[STACK_SIZE];
     int top = 0;
     stack[top++] = 0;
+
     while (top > 0) {
         const int ni = stack[--top];
         const SpatialAABBTree::Node& node = tree->nodes[ni];
-        if (aabb_min_distance(node.aabb, test_point) >= best_dist) continue;
+
+        if (aabb_min_distance(node.aabb, test_point) >= best_dist)
+            continue;
+
         if (node.object_id >= 0) {
-            Point v0, v1, v2;
-            size_t face_idx, sub_idx;
-            if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2)) continue;
+            Point v0;
+            Point v1;
+            Point v2;
+            size_t face_idx;
+            size_t sub_idx;
+
+            if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2))
+                continue;
+
             const Point cp = closest_point_on_triangle(test_point, v0, v1, v2);
             const double dist = cp.distance(test_point);
+
             if (dist < best_dist) {
                 best_dist = dist;
                 best_point = cp;
                 best_face_key = face_keys[face_idx];
             }
+
             continue;
         }
+
         const int left = ni + 1;
         const int right = node.right;
         const double ld = aabb_min_distance(tree->nodes[left].aabb, test_point);
         const double rd = aabb_min_distance(tree->nodes[right].aabb, test_point);
         assert(top + 2 <= STACK_SIZE);
+
         if (ld <= rd) {
-            if (rd < best_dist) stack[top++] = right;
-            if (ld < best_dist) stack[top++] = left;
+            if (rd < best_dist)
+                stack[top++] = right;
+
+            if (ld < best_dist)
+                stack[top++] = left;
         } else {
-            if (ld < best_dist) stack[top++] = left;
-            if (rd < best_dist) stack[top++] = right;
+            if (ld < best_dist)
+                stack[top++] = left;
+
+            if (rd < best_dist)
+                stack[top++] = right;
         }
     }
+
     return {best_point, best_face_key, best_dist};
 }
 
-std::tuple<Point, size_t, double> Closest::pointcloud_point(
-    const PointCloud& cloud,
-    const Point& test_point
-) {
-    if (cloud.point_count() == 0) return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+std::tuple<Point, size_t, double> Closest::pointcloud_point(const PointCloud& cloud, const Point& test_point) {
+
+    if (cloud.point_count() == 0)
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+
     Point best_point = cloud.get_point(0);
     size_t best_index = 0;
     double best_dist = best_point.distance(test_point);
+
     for (size_t i = 1; i < cloud.point_count(); i++) {
         const Point p = cloud.get_point(i);
         const double dist = p.distance(test_point);
+
         if (dist < best_dist) {
             best_dist = dist;
             best_point = p;
             best_index = i;
         }
     }
+
     return {best_point, best_index, best_dist};
 }
 
-std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(
-    const PointCloud& cloud,
-    const Point& test_point
-) {
-    if (cloud.point_count() == 0) return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(const PointCloud& cloud, const Point& test_point) {
+
+    if (cloud.point_count() == 0)
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+
     std::vector<Point> pts;
     pts.reserve(cloud.point_count());
-    for (size_t i = 0; i < cloud.point_count(); i++) pts.push_back(cloud.get_point(i));
+
+    for (size_t i = 0; i < cloud.point_count(); i++)
+        pts.push_back(cloud.get_point(i));
+
     const SpatialKDTree kd(std::move(pts));
     auto [idx, dist] = kd.nearest(test_point);
+
     return {cloud.get_point(idx), static_cast<size_t>(idx), dist};
 }
 
@@ -926,28 +1270,39 @@ std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(
 // Collections
 // ═══════════════════════════════════════════════════════════════════════════
 
-std::vector<std::pair<size_t, size_t>> Closest::lines_closest(
-    const std::vector<Line>& lines,
-    double threshold
-) {
+std::vector<std::pair<size_t, size_t>> Closest::lines_closest(const std::vector<Line>& lines, double threshold) {
+
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (threshold < 0.0 || lines.size() < 2) return pairs;
+
+    if (threshold < 0.0 || lines.size() < 2)
+        return pairs;
+
     std::vector<AABB> aabbs;
     aabbs.reserve(lines.size());
-    for (const Line& ln : lines) aabbs.push_back(AABB::from_line(ln, threshold));
+
+    for (const Line& ln : lines)
+        aabbs.push_back(AABB::from_line(ln, threshold));
+
     SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
+
     for (size_t i = 0; i < lines.size(); i++) {
         for (const int j_raw : tree.query_aabb(aabbs[i])) {
             const size_t j = static_cast<size_t>(j_raw);
-            if (j <= i) continue;
+
+            if (j <= i)
+                continue;
+
             auto [cp_a, t_a, d_a] = line_point(lines[j], lines[i].start());
             auto [cp_b, t_b, d_b] = line_point(lines[j], lines[i].end());
             auto [cp_c, t_c, d_c] = line_point(lines[i], lines[j].start());
             auto [cp_d, t_d, d_d] = line_point(lines[i], lines[j].end());
-            if (std::min({d_a, d_b, d_c, d_d}) <= threshold) pairs.push_back({i, j});
+
+            if (std::min({d_a, d_b, d_c, d_d}) <= threshold)
+                pairs.push_back({i, j});
         }
     }
+
     return pairs;
 }
 
@@ -956,24 +1311,40 @@ std::vector<std::pair<size_t, size_t>> Closest::polylines_closest(
     double threshold
 ) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (threshold < 0.0 || polylines.size() < 2) return pairs;
+
+    if (threshold < 0.0 || polylines.size() < 2)
+        return pairs;
+
     std::vector<AABB> aabbs;
     aabbs.reserve(polylines.size());
-    for (const Polyline& pl : polylines) aabbs.push_back(AABB::from_polyline(pl, threshold));
+
+    for (const Polyline& pl : polylines)
+        aabbs.push_back(AABB::from_polyline(pl, threshold));
+
     SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
+
     for (size_t i = 0; i < polylines.size(); i++) {
         for (const int j_raw : tree.query_aabb(aabbs[i])) {
             const size_t j = static_cast<size_t>(j_raw);
-            if (j <= i) continue;
+
+            if (j <= i)
+                continue;
+
             double dist = std::numeric_limits<double>::infinity();
+
             for (const Point& pt : polylines[i].get_points()) {
                 auto [cp, t, d] = polyline_point(polylines[j], pt);
-                if (d < dist) dist = d;
+
+                if (d < dist)
+                    dist = d;
             }
-            if (dist <= threshold) pairs.push_back({i, j});
+
+            if (dist <= threshold)
+                pairs.push_back({i, j});
         }
     }
+
     return pairs;
 }
 
@@ -982,49 +1353,71 @@ std::vector<std::pair<size_t, size_t>> Closest::nurbscurves_closest(
     double threshold
 ) {
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (threshold < 0.0 || curves.size() < 2) return pairs;
+
+    if (threshold < 0.0 || curves.size() < 2)
+        return pairs;
+
     std::vector<AABB> aabbs;
     aabbs.reserve(curves.size());
-    for (const NurbsCurve& crv : curves) aabbs.push_back(AABB::from_nurbscurve(crv, threshold, false));
+
+    for (const NurbsCurve& crv : curves)
+        aabbs.push_back(AABB::from_nurbscurve(crv, threshold, false));
+
     SpatialAABBTree tree;
     tree.build(aabbs.data(), aabbs.size());
+
     for (size_t i = 0; i < curves.size(); i++) {
         for (const int j_raw : tree.query_aabb(aabbs[i])) {
             const size_t j = static_cast<size_t>(j_raw);
-            if (j <= i) continue;
+
+            if (j <= i)
+                continue;
+
             auto [t0, t1] = curves[i].domain();
             const Point p_start = curves[i].point_at(t0);
             const Point p_end = curves[i].point_at(t1);
             auto [t_a, d_a] = curve_point(curves[j], p_start);
             auto [t_b, d_b] = curve_point(curves[j], p_end);
-            if (std::min(d_a, d_b) <= threshold) pairs.push_back({i, j});
+
+            if (std::min(d_a, d_b) <= threshold)
+                pairs.push_back({i, j});
         }
     }
+
     return pairs;
 }
 
-std::vector<std::pair<size_t, size_t>> Closest::boxes_closest(
-    const std::vector<AABB>& boxes,
-    double threshold
-) {
+std::vector<std::pair<size_t, size_t>> Closest::boxes_closest(const std::vector<AABB>& boxes, double threshold) {
+
     std::vector<std::pair<size_t, size_t>> pairs;
-    if (threshold < 0.0 || boxes.size() < 2) return pairs;
+
+    if (threshold < 0.0 || boxes.size() < 2)
+        return pairs;
+
     std::vector<AABB> inflated;
     inflated.reserve(boxes.size());
+
     for (const AABB& b : boxes) {
         AABB inf = b;
         inf.inflate(threshold);
         inflated.push_back(inf);
     }
+
     SpatialAABBTree tree;
     tree.build(inflated.data(), inflated.size());
+
     for (size_t i = 0; i < boxes.size(); i++) {
         for (const int j_raw : tree.query_aabb(inflated[i])) {
             const size_t j = static_cast<size_t>(j_raw);
-            if (j <= i) continue;
-            if (aabb_to_aabb_min_dist(boxes[i], boxes[j]) <= threshold) pairs.push_back({i, j});
+
+            if (j <= i)
+                continue;
+
+            if (aabb_to_aabb_min_dist(boxes[i], boxes[j]) <= threshold)
+                pairs.push_back({i, j});
         }
     }
+
     return pairs;
 }
 

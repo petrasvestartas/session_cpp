@@ -12,6 +12,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Line", "Constructor") {
+
         Line l(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
         l[0] = 10.0;
@@ -69,7 +70,8 @@ namespace session_cpp {
 
         Line lwn = Line::with_name("custom", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 
-        Point ms, me;
+        Point ms;
+        Point me;
         Line::get_middle_line(Point(0.0, 0.0, 0.0), Point(2.0, 0.0, 0.0), Point(0.0, 2.0, 0.0), Point(2.0, 2.0, 0.0), ms, me);
 
         MINI_CHECK(l.name == "my_line");
@@ -102,6 +104,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Transformation") {
+
         Line l(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
         Xform xform = Xform::translation(10.0, 0.0, 0.0);
         Line moved = l.transformed(xform);
@@ -112,6 +115,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Json Roundtrip") {
+
         Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
         l.name = "test_line";
         l.dash = {3.0, 2.0};
@@ -141,6 +145,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Protobuf Roundtrip") {
+
         Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
         l.name = "test_line";
         l.dash = {3.0, 2.0};
@@ -168,6 +173,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Length") {
+
         Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
         double ln = l.length();
         double lsq = l.squared_length();
@@ -184,6 +190,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "To Direction") {
+
         Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
         Vector d = l.to_direction();
 
@@ -194,6 +201,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Point At") {
+
         Line l(0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
         Point ps = l.point_at(0.0);
         Point pm = l.point_at(0.5);
@@ -205,6 +213,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Closest Point") {
+
         Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
         Point p1(5.0, 5.0, 0.0);
         Point p2(-5.0, 0.0, 0.0);
@@ -222,6 +231,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Start End Center") {
+
         Line l(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
         Point start = l.start();
         Point end = l.end();
@@ -233,6 +243,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Fit Points") {
+
         std::vector<Point> fit_pts = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 1.0, 0.5),
@@ -251,6 +262,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Subdivide") {
+
         Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
         std::vector<Point> pts = l.subdivide(3);
         std::vector<Point> pts_dist = l.subdivide_by_distance(2.5);
@@ -266,6 +278,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Overlap") {
+
         Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
         Line out;
@@ -277,6 +290,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Overlap Average") {
+
         Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
         Line out;
@@ -288,6 +302,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Extend") {
+
         Line l = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         l.extend(1.0, 2.0);
 

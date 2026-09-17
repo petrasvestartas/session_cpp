@@ -10,6 +10,7 @@ using namespace session_cpp::mini_test;
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Vertex", "Constructor") {
+
     Vertex v0;
     Vertex v("v_named", "attr");
 
@@ -21,6 +22,7 @@ MINI_TEST("Vertex", "Constructor") {
 }
 
 MINI_TEST("Vertex", "Json Roundtrip") {
+
     Vertex original("v0", "test_attribute");
 
     std::string fname = "serialization/test_vertex.json";
@@ -36,6 +38,7 @@ MINI_TEST("Vertex", "Json Roundtrip") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Edge", "Constructor") {
+
     Edge e("a", "b", "attr");
 
     MINI_CHECK(e.v0 == "a");
@@ -45,6 +48,7 @@ MINI_TEST("Edge", "Constructor") {
 }
 
 MINI_TEST("Edge", "Json Roundtrip") {
+
     Edge original("v0", "v1", "test_edge_attr");
 
     std::string fname = "serialization/test_edge.json";
@@ -64,6 +68,7 @@ MINI_TEST("Edge", "Vertices") {
 }
 
 MINI_TEST("Edge", "Connects") {
+
     Edge e("a", "b");
 
     MINI_CHECK(e.connects("a"));
@@ -83,6 +88,7 @@ MINI_TEST("Edge", "Other Vertex") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Graph", "Constructor") {
+
     Graph g0;
     Graph g("my_named_graph");
     std::string gstr = g0.str();
@@ -96,6 +102,7 @@ MINI_TEST("Graph", "Constructor") {
 }
 
 MINI_TEST("Graph", "Json Roundtrip") {
+
     Graph original("test_graph");
     original.add_node("node1", "Node 1");
     original.add_node("node2", "Node 2");
@@ -107,11 +114,12 @@ MINI_TEST("Graph", "Json Roundtrip") {
 
     MINI_CHECK(loaded.number_of_vertices() == 2);
     MINI_CHECK(loaded.number_of_edges() == 1);
-    auto edge_key = std::make_tuple<std::string, std::string>("node1", "node2");
+    const std::tuple<std::string, std::string> edge_key = std::make_tuple<std::string, std::string>("node1", "node2");
     MINI_CHECK(loaded.has_edge(edge_key));
 }
 
 MINI_TEST("Graph", "Protobuf Roundtrip") {
+
     Graph original("test_graph");
     original.add_node("node1", "Node 1");
     original.add_node("node2", "Node 2");
@@ -123,11 +131,12 @@ MINI_TEST("Graph", "Protobuf Roundtrip") {
 
     MINI_CHECK(loaded.number_of_vertices() == 2);
     MINI_CHECK(loaded.number_of_edges() == 1);
-    auto edge_key = std::make_tuple<std::string, std::string>("node1", "node2");
+    const std::tuple<std::string, std::string> edge_key = std::make_tuple<std::string, std::string>("node1", "node2");
     MINI_CHECK(loaded.has_edge(edge_key));
 }
 
 MINI_TEST("Graph", "Has Node") {
+
     Graph g("g");
     g.add_node("a");
 
@@ -136,16 +145,18 @@ MINI_TEST("Graph", "Has Node") {
 }
 
 MINI_TEST("Graph", "Has Edge") {
+
     Graph g("g");
     g.add_edge("a", "b");
 
-    auto ab = std::make_tuple<std::string, std::string>("a", "b");
-    auto ac = std::make_tuple<std::string, std::string>("a", "c");
+    const std::tuple<std::string, std::string> ab = std::make_tuple<std::string, std::string>("a", "b");
+    const std::tuple<std::string, std::string> ac = std::make_tuple<std::string, std::string>("a", "c");
     MINI_CHECK(g.has_edge(ab));
     MINI_CHECK(!g.has_edge(ac));
 }
 
 MINI_TEST("Graph", "Has Guid") {
+
     Vertex v("a");
     Edge e("a", "b");
 
@@ -159,8 +170,9 @@ MINI_TEST("Graph", "Has Guid") {
 }
 
 MINI_TEST("Graph", "Add Node") {
+
     Graph g("g");
-    auto key = g.add_node("a");
+    const std::string key = g.add_node("a");
 
     MINI_CHECK(key == "a");
     MINI_CHECK(g.has_node("a"));
@@ -168,8 +180,9 @@ MINI_TEST("Graph", "Add Node") {
 }
 
 MINI_TEST("Graph", "Add Edge") {
+
     Graph g("g");
-    auto edge = g.add_edge("a", "b");
+    const std::tuple<std::string, std::string> edge = g.add_edge("a", "b");
     auto [u, v] = edge;
     g.add_edge("b", "a", "updated");
 
@@ -180,6 +193,7 @@ MINI_TEST("Graph", "Add Edge") {
 }
 
 MINI_TEST("Graph", "Remove Node") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.remove_node("a");
@@ -190,9 +204,10 @@ MINI_TEST("Graph", "Remove Node") {
 }
 
 MINI_TEST("Graph", "Remove Edge") {
+
     Graph g("g");
     g.add_edge("a", "b");
-    auto edge_key = std::make_tuple<std::string, std::string>("a", "b");
+    const std::tuple<std::string, std::string> edge_key = std::make_tuple<std::string, std::string>("a", "b");
     g.remove_edge(edge_key);
 
     MINI_CHECK(g.number_of_edges() == 0);
@@ -201,46 +216,51 @@ MINI_TEST("Graph", "Remove Edge") {
 }
 
 MINI_TEST("Graph", "Get Vertices") {
+
     Graph g("g");
     g.add_node("a");
     g.add_node("b");
 
-    auto verts = g.get_vertices();
+    const std::vector<Vertex> verts = g.get_vertices();
 
     MINI_CHECK(verts.size() == 2);
 }
 
 MINI_TEST("Graph", "Get Edges") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
 
-    auto edges = g.get_edges();
+    const std::vector<std::tuple<std::string, std::string>> edges = g.get_edges();
 
     MINI_CHECK(edges.size() == 2);
 }
 
 MINI_TEST("Graph", "Neighbors") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("a", "c");
 
-    auto neigh = g.neighbors("a");
+    const std::vector<std::string> neigh = g.neighbors("a");
 
     MINI_CHECK(neigh.size() == 2);
 }
 
 MINI_TEST("Graph", "Get Neighbors") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("a", "c");
 
-    auto neigh = g.get_neighbors("a");
+    const std::vector<std::string> neigh = g.get_neighbors("a");
 
     MINI_CHECK(neigh.size() == 2);
 }
 
 MINI_TEST("Graph", "Number Of Vertices") {
+
     Graph g("g");
     g.add_node("a");
     g.add_node("b");
@@ -250,6 +270,7 @@ MINI_TEST("Graph", "Number Of Vertices") {
 }
 
 MINI_TEST("Graph", "Number Of Edges") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -258,6 +279,7 @@ MINI_TEST("Graph", "Number Of Edges") {
 }
 
 MINI_TEST("Graph", "Clear") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.clear();
@@ -267,6 +289,7 @@ MINI_TEST("Graph", "Clear") {
 }
 
 MINI_TEST("Graph", "Node Attribute") {
+
     Graph g("g");
     g.add_node("a", "initial");
     g.node_attribute("a", "updated");
@@ -275,6 +298,7 @@ MINI_TEST("Graph", "Node Attribute") {
 }
 
 MINI_TEST("Graph", "Edge Attribute") {
+
     Graph g("g");
     g.add_edge("a", "b", "initial");
     g.edge_attribute("a", "b", "updated");
@@ -283,37 +307,40 @@ MINI_TEST("Graph", "Edge Attribute") {
 }
 
 MINI_TEST("Graph", "Bfs") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
     g.add_edge("c", "a");
     g.add_edge("b", "d");
     g.add_edge("e", "f");
-    auto result = g.bfs("a");
+    const std::vector<std::string> result = g.bfs("a");
 
     MINI_CHECK(result == (std::vector<std::string>{"a", "b", "c", "d"}));
 }
 
 MINI_TEST("Graph", "Dfs") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
     g.add_edge("c", "a");
     g.add_edge("b", "d");
     g.add_edge("e", "f");
-    auto result = g.dfs("a");
+    const std::vector<std::string> result = g.dfs("a");
 
     MINI_CHECK(result == (std::vector<std::string>{"a", "b", "c", "d"}));
 }
 
 MINI_TEST("Graph", "Connected Components") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
     g.add_edge("c", "a");
     g.add_edge("b", "d");
     g.add_edge("e", "f");
-    auto comps = g.connected_components();
+    const std::vector<std::vector<std::string>> comps = g.connected_components();
 
     MINI_CHECK(comps.size() == 2);
     MINI_CHECK(g.is_connected() == false);
@@ -321,6 +348,7 @@ MINI_TEST("Graph", "Connected Components") {
 }
 
 MINI_TEST("Graph", "Shortest Path") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -335,6 +363,7 @@ MINI_TEST("Graph", "Shortest Path") {
 }
 
 MINI_TEST("Graph", "Has Cycle") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
@@ -348,11 +377,12 @@ MINI_TEST("Graph", "Has Cycle") {
 }
 
 MINI_TEST("Graph", "Cycle Basis") {
+
     Graph g("g");
     g.add_edge("a", "b");
     g.add_edge("b", "c");
     g.add_edge("c", "a");
-    auto cycles = g.cycle_basis();
+    const std::vector<std::vector<std::string>> cycles = g.cycle_basis();
 
     MINI_CHECK(cycles.size() == 1);
 }

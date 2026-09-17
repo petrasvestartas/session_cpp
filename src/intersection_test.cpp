@@ -5,13 +5,71 @@
 #include "tolerance.h"
 #include <cmath>
 
-namespace session_cpp {
 using namespace session_cpp::mini_test;
 
+namespace session_cpp {
+
+static double lies_on_curve(const NurbsCurve& curve3d, const NurbsCurve& pcurve, const NurbsSurface& surface) {
+
+    auto [u0, u1] = surface.domain(0);
+    auto [v0, v1] = surface.domain(1);
+    std::vector<Point> dense;
+
+    for (int j = 0; j < 129; j++)
+        dense.push_back(curve3d.point_at(j / 128.0));
+
+    double worst = 0.0;
+
+    for (int i = 0; i < 33; i++) {
+        Point q = pcurve.point_at(i / 32.0);
+        Point s = surface.point_at(std::min(std::max(q[0], u0), u1), std::min(std::max(q[1], v0), v1));
+        double best = dense[0].distance(s);
+
+        for (const Point& p : dense)
+            best = std::min(best, p.distance(s));
+
+        worst = std::max(worst, best);
+    }
+
+    return worst;
+}
+
+static double on_both(const NurbsCurve& c3, double (*da)(const Point&), double (*db)(const Point&)) {
+
+    double worst = 0.0;
+
+    for (int i = 0; i <= 64; i++) {
+        Point p = c3.point_at(i / 64.0);
+        worst = std::max(worst, std::max(da(p), db(p)));
+    }
+
+    return worst;
+}
+
+static double distance_sphere(const Point& p) {
+    return std::abs(std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]) - 2.0);
+}
+
+static double distance_cylinder(const Point& p) {
+    return std::abs(std::sqrt((p[0] - 1.3) * (p[0] - 1.3) + p[1] * p[1]) - 0.3);
+}
+
+static double distance_sphere2(const Point& p) {
+    return std::abs(std::sqrt((p[0] - 2.0) * (p[0] - 2.0) + p[1] * p[1] + p[2] * p[2]) - 2.0);
+}
+
+static double distance_torus(const Point& p) {
+    double ring = std::sqrt(p[0] * p[0] + p[1] * p[1]) - 2.0;
+
+    return std::abs(std::sqrt(ring * ring + p[2] * p[2]) - 0.5);
+}
+
+static double distance_flat(const Point& p) {
+    return std::abs(p[2]);
+}
+
 MINI_TEST("Intersection", "Line Line") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
+
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
 
@@ -25,9 +83,7 @@ MINI_TEST("Intersection", "Line Line") {
 }
 
 MINI_TEST("Intersection", "Line Line Parallel") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
+
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 1.0, 0.0, 1.0, 1.0, 0.0);
 
@@ -38,12 +94,12 @@ MINI_TEST("Intersection", "Line Line Parallel") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
+
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
 
-    double t0, t1;
+    double t0;
+    double t1;
     bool result = Intersection::line_line_parameters(line0, line1, t0, t1, Tolerance::APPROXIMATION);
 
     MINI_CHECK(result);
@@ -52,12 +108,12 @@ MINI_TEST("Intersection", "Line Line Parameters") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
+
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
-    double t0, t1;
+    double t0;
+    double t1;
     bool result = Intersection::line_line_parameters(line0, line1, t0, t1, Tolerance::APPROXIMATION);
 
     MINI_CHECK(result);
@@ -66,24 +122,21 @@ MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters Infinite") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
+
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(2.0, -1.0, 0.0, 2.0, 1.0, 0.0);
 
-    double t0, t1;
-    bool result = Intersection::line_line_parameters(line0, line1, t0, t1, static_cast<double>(Tolerance::APPROXIMATION), false);
+    double t0;
+    double t1;
+    bool result =
+        Intersection::line_line_parameters(line0, line1, t0, t1, static_cast<double>(Tolerance::APPROXIMATION), false);
 
     MINI_CHECK(result);
     MINI_CHECK(TOLERANCE.is_close(t0, 2.0));
 }
 
 MINI_TEST("Intersection", "Plane Plane") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Plane plane0 = Plane::from_point_normal(p0, n0);
@@ -98,17 +151,14 @@ MINI_TEST("Intersection", "Plane Plane") {
     MINI_CHECK(result);
 
     Vector line_dir = output.to_vector();
+
     MINI_CHECK(std::fabs(std::fabs(line_dir[0]) - 1.0) < 1e-4);
     MINI_CHECK(std::fabs(line_dir[1]) < 1e-4);
     MINI_CHECK(std::fabs(line_dir[2]) < 1e-4);
 }
 
 MINI_TEST("Intersection", "Plane Plane Complex") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
     Vector plane_yaxis_0(0.272094, 0.96225, 0.006285);
@@ -137,11 +187,7 @@ MINI_TEST("Intersection", "Plane Plane Complex") {
 }
 
 MINI_TEST("Intersection", "Line Plane") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(p, n);
@@ -158,11 +204,7 @@ MINI_TEST("Intersection", "Line Plane") {
 }
 
 MINI_TEST("Intersection", "Line Plane Parallel") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(p, n);
@@ -176,11 +218,7 @@ MINI_TEST("Intersection", "Line Plane Parallel") {
 }
 
 MINI_TEST("Intersection", "Line Plane Real World") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Line l0(500.000, -573.576, -819.152, 500.000, 573.576, 819.152);
 
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
@@ -198,10 +236,7 @@ MINI_TEST("Intersection", "Line Plane Real World") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
     Vector plane_yaxis_0(0.272094, 0.96225, 0.006285);
@@ -227,10 +262,7 @@ MINI_TEST("Intersection", "Plane Plane Plane") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Plane plane0 = Plane::from_point_normal(p0, n0);
@@ -250,10 +282,7 @@ MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
 }
 
 MINI_TEST("Intersection", "Ray Box") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
     Vector y_axis(0.0, 1.0, 0.0);
@@ -264,7 +293,8 @@ MINI_TEST("Intersection", "Ray Box") {
     Point origin(-5.0, 0.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
 
-    double tmin, tmax;
+    double tmin;
+    double tmax;
     bool result = Intersection::ray_box(origin, direction, box, 0.0, 100.0, tmin, tmax);
 
     MINI_CHECK(result);
@@ -273,10 +303,7 @@ MINI_TEST("Intersection", "Ray Box") {
 }
 
 MINI_TEST("Intersection", "Ray Box Miss") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
     Vector y_axis(0.0, 1.0, 0.0);
@@ -287,22 +314,22 @@ MINI_TEST("Intersection", "Ray Box Miss") {
     Point origin(-5.0, 5.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
 
-    double tmin, tmax;
+    double tmin;
+    double tmax;
     bool result = Intersection::ray_box(origin, direction, box, 0.0, 100.0, tmin, tmax);
 
     MINI_CHECK(!result);
 }
 
 MINI_TEST("Intersection", "Ray Sphere") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point origin(-5.0, 0.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
     double radius = 2.0;
 
-    double t0, t1;
+    double t0;
+    double t1;
     int hits = Intersection::ray_sphere(origin, direction, center, radius, t0, t1);
 
     MINI_CHECK(hits == 2);
@@ -311,15 +338,14 @@ MINI_TEST("Intersection", "Ray Sphere") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Tangent") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point origin(-5.0, 2.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
     double radius = 2.0;
 
-    double t0, t1;
+    double t0;
+    double t1;
     int hits = Intersection::ray_sphere(origin, direction, center, radius, t0, t1);
 
     MINI_CHECK(hits == 1);
@@ -327,24 +353,21 @@ MINI_TEST("Intersection", "Ray Sphere Tangent") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Miss") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point origin(-5.0, 5.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
     Point center(0.0, 0.0, 0.0);
     double radius = 2.0;
 
-    double t0, t1;
+    double t0;
+    double t1;
     int hits = Intersection::ray_sphere(origin, direction, center, radius, t0, t1);
 
     MINI_CHECK(hits == 0);
 }
 
 MINI_TEST("Intersection", "Ray Triangle") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
 
@@ -352,7 +375,9 @@ MINI_TEST("Intersection", "Ray Triangle") {
     Point v1(1.0, 0.0, 0.0);
     Point v2(0.0, 1.0, 0.0);
 
-    double t, u, v;
+    double t;
+    double u;
+    double v;
     bool parallel;
     bool result = Intersection::ray_triangle(origin, direction, v0, v1, v2, 1e-6, t, u, v, parallel);
 
@@ -362,9 +387,7 @@ MINI_TEST("Intersection", "Ray Triangle") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Miss") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point origin(2.0, 2.0, -1.0);
     Vector direction(0.0, 0.0, 1.0);
 
@@ -372,7 +395,9 @@ MINI_TEST("Intersection", "Ray Triangle Miss") {
     Point v1(1.0, 0.0, 0.0);
     Point v2(0.0, 1.0, 0.0);
 
-    double t, u, v;
+    double t;
+    double u;
+    double v;
     bool parallel;
     bool result = Intersection::ray_triangle(origin, direction, v0, v1, v2, 1e-6, t, u, v, parallel);
 
@@ -380,9 +405,7 @@ MINI_TEST("Intersection", "Ray Triangle Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Parallel") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point origin(0.5, 0.5, -1.0);
     Vector direction(1.0, 0.0, 0.0);
 
@@ -390,7 +413,9 @@ MINI_TEST("Intersection", "Ray Triangle Parallel") {
     Point v1(1.0, 0.0, 0.0);
     Point v2(0.0, 1.0, 0.0);
 
-    double t, u, v;
+    double t;
+    double u;
+    double v;
     bool parallel;
     bool result = Intersection::ray_triangle(origin, direction, v0, v1, v2, 1e-6, t, u, v, parallel);
 
@@ -399,10 +424,7 @@ MINI_TEST("Intersection", "Ray Triangle Parallel") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -432,10 +454,7 @@ MINI_TEST("Intersection", "Ray Mesh") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh First") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -464,10 +483,7 @@ MINI_TEST("Intersection", "Ray Mesh First") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Miss") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -490,10 +506,7 @@ MINI_TEST("Intersection", "Ray Mesh Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -523,10 +536,7 @@ MINI_TEST("Intersection", "Ray Mesh Bvh") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh First") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -555,10 +565,7 @@ MINI_TEST("Intersection", "Ray Mesh Bvh First") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons = {
         {
             Point(0.0, 0.0, 0.0),
@@ -581,21 +588,16 @@ MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "mesh.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     std::vector<std::vector<Point>> polygons;
+
     for (int i = 0; i < 10; ++i) {
         for (int j = 0; j < 10; ++j) {
             double x = static_cast<double>(i);
             double y = static_cast<double>(j);
-            polygons.push_back({
-                Point(x, y, 0.0),
-                Point(x + 1.0, y, 0.0),
-                Point(x + 1.0, y + 1.0, 0.0),
-                Point(x, y + 1.0, 0.0)
-            });
+            polygons.push_back(
+                {Point(x, y, 0.0), Point(x + 1.0, y, 0.0), Point(x + 1.0, y + 1.0, 0.0), Point(x, y + 1.0, 0.0)}
+            );
         }
     }
 
@@ -620,14 +622,11 @@ MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
 }
 
 MINI_TEST("Intersection", "Ray Box Real World") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "obb.h"
-    // uncomment #include "point.h"
+
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point min(214.0, 192.0, 484.0);
     Point max(694.0, 567.0, 796.0);
-    std::vector<Point> points {min, max};
+    std::vector<Point> points{min, max};
     OBB box = OBB::from_points(points);
 
     std::vector<Point> intersection_points;
@@ -646,9 +645,7 @@ MINI_TEST("Intersection", "Ray Box Real World") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Real World") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
+
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point sphere_center(457.0, 192.0, 207.0);
     double radius = 265.0;
@@ -669,9 +666,7 @@ MINI_TEST("Intersection", "Ray Sphere Real World") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Real World") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
+
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point p1(214.0, 567.0, 484.0);
     Point p2(214.0, 192.0, 796.0);
@@ -687,46 +682,38 @@ MINI_TEST("Intersection", "Ray Triangle Real World") {
 }
 
 MINI_TEST("Intersection", "Surface Plane") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // Bilinear surface: z = x (0 to 10), cut at z=5
+
     std::vector<Point> pts = {
         Point(0, 0, 0),
         Point(0, 10, 0),
         Point(10, 0, 10),
         Point(10, 10, 10),
     };
-    auto srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
+    NurbsSurface srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
 
     Point pp(0, 0, 5);
     Vector pn(0, 0, 1);
     Plane plane = Plane::from_point_normal(pp, pn);
-    auto curves = Intersection::surface_plane(srf, plane);
+    std::vector<NurbsCurve> curves = Intersection::surface_plane(srf, plane);
 
     MINI_CHECK(curves.size() == 1);
     MINI_CHECK(curves[0].is_valid());
 
-    // Evaluate curve — all points should lie on x≈5, z≈5
     auto [t0, t1] = curves[0].domain();
+
     for (int i = 0; i <= 10; i++) {
         double t = t0 + (t1 - t0) * i / 10.0;
         Point p = curves[0].point_at(t);
+
         MINI_CHECK(std::fabs(p[0] - 5.0) < 0.5);
         MINI_CHECK(std::fabs(p[2] - 5.0) < 0.5);
     }
 }
 
 MINI_TEST("Intersection", "Surface Plane Curved") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // Degree 3 surface with bump, cut at z=3
+
     std::vector<Point> pts;
+
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             double x = i * 10.0;
@@ -735,138 +722,125 @@ MINI_TEST("Intersection", "Surface Plane Curved") {
             pts.push_back(Point(x, y, z));
         }
     }
-    auto srf = NurbsSurface::create(false, false, 3, 3, 4, 4, pts);
+
+    NurbsSurface srf = NurbsSurface::create(false, false, 3, 3, 4, 4, pts);
 
     Point pp(0, 0, 3);
     Vector pn(0, 0, 1);
     Plane plane = Plane::from_point_normal(pp, pn);
-    auto curves = Intersection::surface_plane(srf, plane);
+    std::vector<NurbsCurve> curves = Intersection::surface_plane(srf, plane);
 
     MINI_CHECK(curves.size() >= 1);
     MINI_CHECK(curves[0].is_valid());
     MINI_CHECK(curves[0].degree() == 3);
 
-    // Evaluate — points should be near z=3
     auto [t0, t1] = curves[0].domain();
+
     for (int i = 0; i <= 10; i++) {
         double t = t0 + (t1 - t0) * i / 10.0;
         Point p = curves[0].point_at(t);
+
         MINI_CHECK(std::fabs(p[2] - 3.0) < 1.0);
     }
 }
 
 MINI_TEST("Intersection", "Surface Plane Miss") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // Flat surface at z=0, plane at z=5 -> no intersection
+
     std::vector<Point> pts = {
         Point(0, 0, 0),
         Point(0, 10, 0),
         Point(10, 0, 0),
         Point(10, 10, 0),
     };
-    auto srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
+    NurbsSurface srf = NurbsSurface::create(false, false, 1, 1, 2, 2, pts);
 
     Point pp(0, 0, 5);
     Vector pn(0, 0, 1);
     Plane plane = Plane::from_point_normal(pp, pn);
-    auto curves = Intersection::surface_plane(srf, plane);
+    std::vector<NurbsCurve> curves = Intersection::surface_plane(srf, plane);
 
     MINI_CHECK(curves.size() == 0);
 }
 
 MINI_TEST("Intersection", "Surface Plane UV") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
-    // uncomment #include "primitives.h"
+
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
     Point pp(0.0, 0.0, 2.0);
     Vector pnv(0.3, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(pp, pnv);
-    auto pairs = Intersection::surface_plane_uv(cyl, plane);
+    std::vector<std::pair<NurbsCurve, NurbsCurve>> pairs = Intersection::surface_plane_uv(cyl, plane);
 
     MINI_CHECK(pairs.size() == 1);
     NurbsCurve curve3 = pairs[0].first;
     NurbsCurve pcurve = pairs[0].second;
+
     MINI_CHECK(curve3.is_valid());
     MINI_CHECK(pcurve.is_valid());
     MINI_CHECK(curve3.is_closed());
     auto [u0, u1] = cyl.domain(0);
+
     MINI_CHECK(std::fabs(pcurve.point_at(0.0)[0] - u1) < 1e-9 || std::fabs(pcurve.point_at(0.0)[0] - u0) < 1e-9);
     MINI_CHECK(std::fabs(pcurve.point_at(1.0)[0] - u1) < 1e-9 || std::fabs(pcurve.point_at(1.0)[0] - u0) < 1e-9);
     Vector pn = plane.z_axis();
     Point po = plane.origin();
     double max_off = 0.0;
+
     for (int i = 0; i < 17; i++) {
         Point p2 = pcurve.point_at(i / 16.0);
         Point s = cyl.point_at(p2[0], p2[1]);
-        double off = std::fabs((s[0]-po[0])*pn[0] + (s[1]-po[1])*pn[1] + (s[2]-po[2])*pn[2]);
+        double off = std::fabs((s[0] - po[0]) * pn[0] + (s[1] - po[1]) * pn[1] + (s[2] - po[2]) * pn[2]);
         max_off = std::max(max_off, off);
     }
+
     MINI_CHECK(max_off < 0.05);
 
     NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
     Point pp2(0.0, 0.0, 0.0);
     Vector pnv2(0.0, 0.0, 1.0);
     Plane plane2 = Plane::from_point_normal(pp2, pnv2);
-    auto pairs2 = Intersection::surface_plane_uv(torus, plane2);
+    std::vector<std::pair<NurbsCurve, NurbsCurve>> pairs2 = Intersection::surface_plane_uv(torus, plane2);
 
     MINI_CHECK(pairs2.size() == 2);
     auto [tu0, tu1] = torus.domain(0);
     auto [tv0, tv1] = torus.domain(1);
     bool inside = true;
-    for (auto& pair : pairs2) {
+
+    for (std::pair<NurbsCurve, NurbsCurve>& pair : pairs2) {
         for (int i = 0; i < 17; i++) {
             Point p2 = pair.second.point_at(i / 16.0);
+
             if (p2[0] < tu0 - 1e-6 || p2[0] > tu1 + 1e-6 || p2[1] < tv0 - 1e-6 || p2[1] > tv1 + 1e-6)
                 inside = false;
         }
     }
+
     MINI_CHECK(inside);
 }
 
 MINI_TEST("Intersection", "Surface Surface") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "point.h"
-    // uncomment #include "primitives.h"
-    auto lies_on_curve = [](const NurbsCurve& curve3d, const NurbsCurve& pcurve, const NurbsSurface& surface) -> double {
-        auto [u0, u1] = surface.domain(0);
-        auto [v0, v1] = surface.domain(1);
-        std::vector<Point> dense;
-        for (int j = 0; j < 129; j++) dense.push_back(curve3d.point_at(j / 128.0));
-        double worst = 0.0;
-        for (int i = 0; i < 33; i++) {
-            Point q = pcurve.point_at(i / 32.0);
-            Point s = surface.point_at(std::min(std::max(q[0], u0), u1), std::min(std::max(q[1], v0), v1));
-            double best = dense[0].distance(s);
-            for (const Point& p : dense) {
-                double d = p.distance(s);
-                if (d < best) best = d;
-            }
-            if (best > worst) worst = best;
-        }
-        return worst;
-    };
 
-    NurbsSurface flat = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-        Point(-3.0, -3.0, 0.5),
-        Point(-3.0, 3.0, 0.5),
-        Point(3.0, -3.0, 0.5),
-        Point(3.0, 3.0, 0.5),
-    });
+    NurbsSurface flat = NurbsSurface::create(
+        false,
+        false,
+        1,
+        1,
+        2,
+        2,
+        {
+            Point(-3.0, -3.0, 0.5),
+            Point(-3.0, 3.0, 0.5),
+            Point(3.0, -3.0, 0.5),
+            Point(3.0, 3.0, 0.5),
+        }
+    );
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
-    auto flat_triples = Intersection::surface_surface(flat, cyl);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> flat_triples = Intersection::surface_surface(flat, cyl);
 
     MINI_CHECK(flat_triples.size() == 1);
     NurbsCurve c3 = std::get<0>(flat_triples[0]);
     NurbsCurve pa = std::get<1>(flat_triples[0]);
     NurbsCurve pb = std::get<2>(flat_triples[0]);
+
     MINI_CHECK(c3.is_valid() && pa.is_valid() && pb.is_valid());
     MINI_CHECK(c3.is_closed());
     MINI_CHECK(lies_on_curve(c3, pa, flat) < 0.05);
@@ -874,103 +848,101 @@ MINI_TEST("Intersection", "Surface Surface") {
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl2 = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
-    auto triples = Intersection::surface_surface(sphere, cyl2);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> triples = Intersection::surface_surface(sphere, cyl2);
 
     MINI_CHECK(triples.size() >= 2);
     int clean = 0;
-    for (const auto& triple : triples) {
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple : triples) {
         NurbsCurve tc3 = std::get<0>(triple);
         NurbsCurve tpa = std::get<1>(triple);
         NurbsCurve tpb = std::get<2>(triple);
+
         MINI_CHECK(tc3.is_valid() && tpa.is_valid() && tpb.is_valid());
-        if (lies_on_curve(tc3, tpa, sphere) < 0.05 && lies_on_curve(tc3, tpb, cyl2) < 0.05) clean++;
+
+        if (lies_on_curve(tc3, tpa, sphere) < 0.05 && lies_on_curve(tc3, tpb, cyl2) < 0.05)
+            clean++;
     }
+
     MINI_CHECK(clean >= 2);
 
-    // Exactness check: sphere(r=2) x flat plane patch at z=0.4 -> circle of
-    // radius sqrt(2^2 - 0.4^2) = sqrt(3.84). The analytic path is geometrically
-    // exact, so the deviation from the true radius must be ~machine epsilon.
     NurbsSurface sphere2 = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
-    NurbsSurface flat04 = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-        Point(-3.0, -3.0, 0.4),
-        Point(-3.0, 3.0, 0.4),
-        Point(3.0, -3.0, 0.4),
-        Point(3.0, 3.0, 0.4),
-    });
-    auto ex_triples = Intersection::surface_surface(sphere2, flat04);
+    NurbsSurface flat04 = NurbsSurface::create(
+        false,
+        false,
+        1,
+        1,
+        2,
+        2,
+        {
+            Point(-3.0, -3.0, 0.4),
+            Point(-3.0, 3.0, 0.4),
+            Point(3.0, -3.0, 0.4),
+            Point(3.0, 3.0, 0.4),
+        }
+    );
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> ex_triples = Intersection::surface_surface(sphere2, flat04);
+
     MINI_CHECK(ex_triples.size() == 1);
     NurbsCurve ex_c3 = std::get<0>(ex_triples[0]);
     double expected_r = std::sqrt(3.84);
     double max_dev = 0.0;
+
     for (int j = 0; j <= 256; j++) {
         Point p = ex_c3.point_at(j / 256.0);
-        double rr = std::sqrt(p[0]*p[0] + p[1]*p[1]);  // distance from z-axis
+        double rr = std::sqrt(p[0] * p[0] + p[1] * p[1]);
         max_dev = std::max(max_dev, std::abs(rr - expected_r));
         max_dev = std::max(max_dev, std::abs(p[2] - 0.4));
     }
+
     MINI_CHECK(max_dev < 1e-9);
 }
 
 MINI_TEST("Intersection", "Surface Surface Accuracy") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "nurbssurface.h"
-    // uncomment #include "primitives.h"
-    // Every intersection point must lie on BOTH analytic surfaces to ~1e-6,
-    // measured by closed-form distance (independent of OCCT/parameterization).
-    auto on_both = [](const NurbsCurve& c3,
-                      const std::function<double(const Point&)>& da,
-                      const std::function<double(const Point&)>& db) -> double {
-        double worst = 0.0;
-        for (int i = 0; i <= 64; i++) {
-            Point p = c3.point_at(i / 64.0);
-            worst = std::max(worst, std::max(da(p), db(p)));
-        }
-        return worst;
-    };
 
-    // Quartic: sphere x cylinder (axis Z at x=1.3) -> 1e-6.
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
-    std::function<double(const Point&)> d_sph = [](const Point& p) {
-        return std::abs(std::sqrt(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]) - 2.0); };
-    std::function<double(const Point&)> d_cyl = [](const Point& p) {
-        return std::abs(std::sqrt((p[0]-1.3)*(p[0]-1.3) + p[1]*p[1]) - 0.3); };
-    auto tr = Intersection::surface_surface(sphere, cyl);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr = Intersection::surface_surface(sphere, cyl);
+
     MINI_CHECK(tr.size() >= 2);
-    for (auto& t : tr) MINI_CHECK(on_both(std::get<0>(t), d_sph, d_cyl) < 1e-5);
 
-    // Conic: sphere x sphere -> exact circle.
+    for (std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : tr)
+        MINI_CHECK(on_both(std::get<0>(t), distance_sphere, distance_cylinder) < 1e-5);
+
     NurbsSurface sphere2 = Primitives::sphere_surface(2.0, 0.0, 0.0, 2.0);
-    std::function<double(const Point&)> d_sph2 = [](const Point& p) {
-        return std::abs(std::sqrt((p[0]-2.0)*(p[0]-2.0) + p[1]*p[1] + p[2]*p[2]) - 2.0); };
-    auto tr2 = Intersection::surface_surface(sphere, sphere2);
-    MINI_CHECK(tr2.size() >= 1);
-    for (auto& t : tr2) MINI_CHECK(on_both(std::get<0>(t), d_sph, d_sph2) < 1e-6);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr2 = Intersection::surface_surface(sphere, sphere2);
 
-    // Torus x perpendicular plane -> two exact circles.
+    MINI_CHECK(tr2.size() >= 1);
+
+    for (std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : tr2)
+        MINI_CHECK(on_both(std::get<0>(t), distance_sphere, distance_sphere2) < 1e-6);
+
     NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
-    NurbsSurface flat = NurbsSurface::create(false, false, 1, 1, 2, 2, {
-        Point(-9.0, -9.0, 0.0), Point(-9.0, 9.0, 0.0),
-        Point(9.0, -9.0, 0.0), Point(9.0, 9.0, 0.0)});
-    std::function<double(const Point&)> d_tor = [](const Point& p) {
-        return std::abs(std::sqrt((std::sqrt(p[0]*p[0]+p[1]*p[1]) - 2.0)*(std::sqrt(p[0]*p[0]+p[1]*p[1]) - 2.0) + p[2]*p[2]) - 0.5); };
-    std::function<double(const Point&)> d_flat = [](const Point& p) { return std::abs(p[2]); };
-    auto tr3 = Intersection::surface_surface(torus, flat);
+    NurbsSurface flat = NurbsSurface::create(
+        false,
+        false,
+        1,
+        1,
+        2,
+        2,
+        {Point(-9.0, -9.0, 0.0), Point(-9.0, 9.0, 0.0), Point(9.0, -9.0, 0.0), Point(9.0, 9.0, 0.0)}
+    );
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr3 = Intersection::surface_surface(torus, flat);
+
     MINI_CHECK(tr3.size() == 2);
-    for (auto& t : tr3) MINI_CHECK(on_both(std::get<0>(t), d_tor, d_flat) < 1e-6);
+
+    for (std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : tr3)
+        MINI_CHECK(on_both(std::get<0>(t), distance_torus, distance_flat) < 1e-6);
 }
 
 MINI_TEST("Intersection", "Remap") {
-    // uncomment #include "intersection.h"
     MINI_CHECK(std::fabs(Intersection::remap(5.0, 0.0, 10.0, 0.0, 1.0) - 0.5) < 1e-9);
     MINI_CHECK(std::fabs(Intersection::remap(0.0, 0.0, 10.0, 0.0, 1.0) - 0.0) < 1e-9);
     MINI_CHECK(std::fabs(Intersection::remap(10.0, 0.0, 10.0, 0.0, 1.0) - 1.0) < 1e-9);
 }
 
 MINI_TEST("Intersection", "Closest Point On Segment") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
+
     Line seg(0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
     Point pt(2.0, 3.0, 0.0);
     Point cp;
@@ -986,15 +958,13 @@ MINI_TEST("Intersection", "Closest Point On Segment") {
     Point cp2;
     double t2;
     Intersection::closest_point_on_segment(pt2, seg, cp2, t2);
+
     MINI_CHECK(std::fabs(cp2[0] - 0.0) < 1e-9);
     MINI_CHECK(std::fabs(t2 - 0.0) < 1e-9);
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point o0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
     Point o1(0.0, 0.0, 1.0);
@@ -1019,6 +989,7 @@ MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
     Plane pz = Plane::from_point_normal(pz_o, pz_n);
     Point pt;
     bool ok = Intersection::plane_plane_plane_check(px, py, pz, 0.1, pt);
+
     MINI_CHECK(ok);
     MINI_CHECK(std::fabs(pt[0] - 1.0) < 1e-6);
     MINI_CHECK(std::fabs(pt[1] - 2.0) < 1e-6);
@@ -1026,18 +997,18 @@ MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Planes Closed") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "vector.h"
+
     Point mp(0.0, 0.0, 0.0);
     Vector mn(0.0, 0.0, 1.0);
     Plane main_plane = Plane::from_point_normal(mp, mn);
-    Point o0(-1.0, 0.0, 0.0); Vector n0(1.0, 0.0, 0.0);
-    Point o1(0.0, -1.0, 0.0); Vector n1(0.0, 1.0, 0.0);
-    Point o2(1.0,  0.0, 0.0); Vector n2(1.0, 0.0, 0.0);
-    Point o3(0.0,  1.0, 0.0); Vector n3(0.0, 1.0, 0.0);
+    Point o0(-1.0, 0.0, 0.0);
+    Vector n0(1.0, 0.0, 0.0);
+    Point o1(0.0, -1.0, 0.0);
+    Vector n1(0.0, 1.0, 0.0);
+    Point o2(1.0, 0.0, 0.0);
+    Vector n2(1.0, 0.0, 0.0);
+    Point o3(0.0, 1.0, 0.0);
+    Vector n3(0.0, 1.0, 0.0);
     std::array<Plane, 4> planes = {
         Plane::from_point_normal(o0, n0),
         Plane::from_point_normal(o1, n1),
@@ -1049,29 +1020,33 @@ MINI_TEST("Intersection", "Plane 4 Planes Closed") {
 
     MINI_CHECK(ok);
     MINI_CHECK(result.point_count() == 5);
+
     for (size_t i = 0; i < result.point_count(); i++) {
         Point p = result.get_point(i);
+
         MINI_CHECK(std::fabs(p[2]) < 1e-6);
     }
+
     Point first = result.get_point(0);
     Point last = result.get_point(4);
+
     MINI_CHECK(std::fabs(first[0] - last[0]) < 1e-6);
     MINI_CHECK(std::fabs(first[1] - last[1]) < 1e-6);
 }
 
 MINI_TEST("Intersection", "Plane 4 Planes Open") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "vector.h"
+
     Point mp(0.0, 0.0, 0.0);
     Vector mn(0.0, 0.0, 1.0);
     Plane main_plane = Plane::from_point_normal(mp, mn);
-    Point o0(-1.0, 0.0, 0.0); Vector n0(1.0, 0.0, 0.0);
-    Point o1(0.0, -1.0, 0.0); Vector n1(0.0, 1.0, 0.0);
-    Point o2(1.0,  0.0, 0.0); Vector n2(1.0, 0.0, 0.0);
-    Point o3(0.0,  1.0, 0.0); Vector n3(0.0, 1.0, 0.0);
+    Point o0(-1.0, 0.0, 0.0);
+    Vector n0(1.0, 0.0, 0.0);
+    Point o1(0.0, -1.0, 0.0);
+    Vector n1(0.0, 1.0, 0.0);
+    Point o2(1.0, 0.0, 0.0);
+    Vector n2(1.0, 0.0, 0.0);
+    Point o3(0.0, 1.0, 0.0);
+    Vector n3(0.0, 1.0, 0.0);
     std::array<Plane, 4> planes = {
         Plane::from_point_normal(o0, n0),
         Plane::from_point_normal(o1, n1),
@@ -1086,35 +1061,29 @@ MINI_TEST("Intersection", "Plane 4 Planes Open") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Lines") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "vector.h"
+
     Point pp(0.0, 0.0, 0.0);
     Vector pn(0.0, 0.0, 1.0);
     Plane plane = Plane::from_point_normal(pp, pn);
-    Line l0(-1.0, -1.0, -1.0, -1.0,  1.0, 1.0);
-    Line l1( 1.0, -1.0, -1.0,  1.0,  1.0, 1.0);
-    Line l2(-1.0, -1.0, -1.0,  1.0, -1.0, 1.0);
-    Line l3(-1.0,  1.0, -1.0,  1.0,  1.0, 1.0);
+    Line l0(-1.0, -1.0, -1.0, -1.0, 1.0, 1.0);
+    Line l1(1.0, -1.0, -1.0, 1.0, 1.0, 1.0);
+    Line l2(-1.0, -1.0, -1.0, 1.0, -1.0, 1.0);
+    Line l3(-1.0, 1.0, -1.0, 1.0, 1.0, 1.0);
     Polyline result;
     bool ok = Intersection::plane_4lines(plane, l0, l1, l2, l3, result);
 
     MINI_CHECK(ok);
     MINI_CHECK(result.point_count() == 5);
+
     for (size_t i = 0; i < result.point_count(); i++) {
         Point p = result.get_point(i);
+
         MINI_CHECK(std::fabs(p[2]) < 1e-6);
     }
 }
 
 MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "vector.h"
+
     Point p0o(0.0, 0.0, 0.0);
     Vector p0n(0.0, 0.0, 1.0);
     Point p1o(0.0, 0.0, 3.0);
@@ -1130,16 +1099,12 @@ MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
 }
 
 MINI_TEST("Intersection", "Polyline Plane") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "plane.h"
-    // uncomment #include "point.h"
-    // uncomment #include "polyline.h"
-    // uncomment #include "vector.h"
+
     std::vector<Point> pts = {
         Point(-1.0, -1.0, 0.0),
-        Point( 1.0, -1.0, 0.0),
-        Point( 1.0,  1.0, 0.0),
-        Point(-1.0,  1.0, 0.0),
+        Point(1.0, -1.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(-1.0, 1.0, 0.0),
         Point(-1.0, -1.0, 0.0),
     };
     Polyline poly(pts);
@@ -1152,15 +1117,13 @@ MINI_TEST("Intersection", "Polyline Plane") {
 
     MINI_CHECK(result);
     MINI_CHECK(points.size() == 2);
-    for (const auto& p : points) {
+
+    for (const Point& p : points)
         MINI_CHECK(std::fabs(p[0]) < 1e-9);
-    }
 }
 
 MINI_TEST("Intersection", "Line Line 3D") {
-    // uncomment #include "intersection.h"
-    // uncomment #include "line.h"
-    // uncomment #include "point.h"
+
     Line cutter(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
     Line seg(1.0, 0.0, 0.0, 1.0, 2.0, 0.0);
     Point result;
@@ -1174,14 +1137,12 @@ MINI_TEST("Intersection", "Line Line 3D") {
     Line par0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line par1(0.0, 1.0, 0.0, 1.0, 1.0, 0.0);
     Point out2;
+
     MINI_CHECK(!Intersection::line_line_3d(par0, par1, out2));
 }
 
 MINI_TEST("Intersection", "Polyline Plane To Line") {
-    // uncomment #include "intersection.h"
 
-    // Square in XY at z=0; cutting plane y=2 with normal (0,1,0).
-    // The intersection is the segment from (0,2,0) to (4,2,0).
     Polyline poly({
         Point(0.0, 0.0, 0.0),
         Point(4.0, 0.0, 0.0),
@@ -1202,16 +1163,13 @@ MINI_TEST("Intersection", "Polyline Plane To Line") {
 }
 
 MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
-    // uncomment #include "intersection.h"
 
-    // Face plane: XY plane (z=0).
-    // Joint line: x-axis from (0,0,0) to (10,0,0).
-    // Side planes: y=-2 and y=+2.
-    // Expected quad: 4 corners at (0,-2,0), (0,2,0), (10,2,0), (10,-2,0).
     Plane face = Plane::xy_plane();
     Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
-    Point p0_o(0.0, -2.0, 0.0); Vector p0_n(0.0, 1.0, 0.0);
-    Point p1_o(0.0,  2.0, 0.0); Vector p1_n(0.0, 1.0, 0.0);
+    Point p0_o(0.0, -2.0, 0.0);
+    Vector p0_n(0.0, 1.0, 0.0);
+    Point p1_o(0.0, 2.0, 0.0);
+    Vector p1_n(0.0, 1.0, 0.0);
     Plane plane0 = Plane::from_point_normal(p0_o, p0_n);
     Plane plane1 = Plane::from_point_normal(p1_o, p1_n);
     Polyline out;
@@ -1225,35 +1183,27 @@ MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
 }
 
 MINI_TEST("Intersection", "Orthogonal Vector Between Two Plane Pairs") {
-    // uncomment #include "intersection.h"
 
-    // pp00 = XY plane.
-    // pp10 = plane x=0 (YZ), pp11 = plane x=4 (parallel to YZ, offset).
-    // The intersections with pp00 give two parallel lines along Y at x=0
-    // and x=4. The orthogonal connector between them has magnitude 4 along
-    // X (sign depends on plane_plane line orientation).
     Plane pp00 = Plane::xy_plane();
-    Point yz0_o(0.0, 0.0, 0.0); Vector yz_n(1.0, 0.0, 0.0);
+    Point yz0_o(0.0, 0.0, 0.0);
+    Vector yz_n(1.0, 0.0, 0.0);
     Plane pp10 = Plane::from_point_normal(yz0_o, yz_n);
-    Point yz4_o(4.0, 0.0, 0.0); Vector yz_n2(1.0, 0.0, 0.0);
+    Point yz4_o(4.0, 0.0, 0.0);
+    Vector yz_n2(1.0, 0.0, 0.0);
     Plane pp11 = Plane::from_point_normal(yz4_o, yz_n2);
     Vector out;
     bool ok = Intersection::orthogonal_vector_between_two_plane_pairs(pp00, pp10, pp11, out);
 
     MINI_CHECK(ok);
-    double mag = std::sqrt(out[0]*out[0] + out[1]*out[1] + out[2]*out[2]);
+    double mag = std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+
     MINI_CHECK(TOLERANCE.is_close(mag, 4.0));
     MINI_CHECK(TOLERANCE.is_close(out[1], 0.0));
     MINI_CHECK(TOLERANCE.is_close(out[2], 0.0));
 }
 
 MINI_TEST("Intersection", "Closed And Open Paths 2D") {
-    // uncomment #include "intersection.h"
 
-    // Square plate (0,0)..(10,10) in XY plane; open joint outline crossing
-    // through it horizontally at y=5 from x=-2 to x=12. Intersection with
-    // the plate is the segment (0,5)..(10,5), with parametric positions
-    // 1.5 and 3.5 on the plate edges (i.e. midway along edges 1 and 3).
     Polyline plate({
         Point(0.0, 0.0, 0.0),
         Point(10.0, 0.0, 0.0),
@@ -1272,14 +1222,58 @@ MINI_TEST("Intersection", "Closed And Open Paths 2D") {
 
     MINI_CHECK(ok);
     MINI_CHECK(out.point_count() == 2);
-    // The clipped result is parallel to the X axis at y=5.
     MINI_CHECK(TOLERANCE.is_close(out.get_point(0)[1], 5.0));
     MINI_CHECK(TOLERANCE.is_close(out.get_point(1)[1], 5.0));
-    // t0 / t1 should be 1.5 and 3.5 (in either order).
     double t_lo = std::min(cp_pair.first, cp_pair.second);
     double t_hi = std::max(cp_pair.first, cp_pair.second);
+
     MINI_CHECK(TOLERANCE.is_close(t_lo, 1.5));
     MINI_CHECK(TOLERANCE.is_close(t_hi, 3.5));
+}
+
+MINI_TEST("Intersection", "Line Line Classified") {
+
+    Line s0(-1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line s1(0.0, -1.0, 0.0, 0.0, 1.0, 0.0);
+    Point p0;
+    Point p1;
+    Vector v0;
+    Vector v1;
+    Vector normal;
+    bool type0 = false;
+    bool type1 = false;
+    bool is_parallel = false;
+    bool ok =
+        Intersection::line_line_classified(s0, s1, 1, 1, 0, 0, 0.5, p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(!is_parallel);
+    MINI_CHECK(std::abs(p0[0]) < 1e-6);
+    MINI_CHECK(std::abs(p0[1]) < 1e-6);
+    MINI_CHECK(std::abs(p1[0]) < 1e-6);
+    MINI_CHECK(std::abs(p1[1]) < 1e-6);
+    MINI_CHECK(std::abs(std::abs(normal[2]) - 1.0) < 1e-6);
+
+    Line e0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line e1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    bool ok2 =
+        Intersection::line_line_classified(e0, e1, 1, 1, 0, 0, 0.5, p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok2);
+    MINI_CHECK(!type0);
+    MINI_CHECK(!type1);
+    MINI_CHECK(std::abs(p0[0]) < 1e-6);
+    MINI_CHECK(std::abs(p0[1]) < 1e-6);
+
+    Line q0(0.0, 0.0, 0.0, 2.0, 0.0, 0.0);
+    Line q1(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
+    bool ok3 =
+        Intersection::line_line_classified(q0, q1, 1, 1, 0, 0, 0.5, p0, p1, v0, v1, normal, type0, type1, is_parallel);
+
+    MINI_CHECK(ok3);
+    MINI_CHECK(is_parallel);
+    MINI_CHECK(!type0);
+    MINI_CHECK(!type1);
 }
 
 } // namespace session_cpp

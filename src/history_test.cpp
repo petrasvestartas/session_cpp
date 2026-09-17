@@ -8,7 +8,6 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("History", "Constructor") {
-    // uncomment #include "history.h"
 
     History history;
     std::string hstr = history.str();
@@ -22,14 +21,10 @@ MINI_TEST("History", "Constructor") {
 }
 
 MINI_TEST("History", "Begin Commit") {
-    // uncomment #include "history.h"
-    // uncomment #include "session.h"
-    // uncomment #include "point.h"
 
     Session session;
     History& history = session.history;
 
-    // An empty transaction is dropped, and nothing is recorded while none is open.
     history.begin("empty");
     history.commit();
     session.add_point(std::make_shared<Point>(0.0, 0.0, 0.0));
@@ -42,15 +37,20 @@ MINI_TEST("History", "Begin Commit") {
     MINI_CHECK(history.can_undo());
     MINI_CHECK(history.undo_stack[0].ops.size() == 1);
     MINI_CHECK(history.undo_stack[0].label == "add");
-    MINI_CHECK(std::visit([](const auto& op) { return op.kind; }, history.undo_stack[0].ops[0]) == "add");
+    MINI_CHECK(
+        std::visit(
+            [](const auto& op) {
+                return op.kind;
+            },
+            history.undo_stack[0].ops[0]
+        ) == "add"
+    );
 }
 
 MINI_TEST("History", "Undo Redo") {
-    // uncomment #include "session.h"
-    // uncomment #include "point.h"
 
     Session session;
-    auto point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
     std::string guid = point->guid();
 
     session.history.begin("add");
@@ -70,8 +70,6 @@ MINI_TEST("History", "Undo Redo") {
 }
 
 MINI_TEST("History", "Clear") {
-    // uncomment #include "session.h"
-    // uncomment #include "point.h"
 
     Session session;
 

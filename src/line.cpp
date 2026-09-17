@@ -16,13 +16,15 @@ Line::Line() {}
 Line::Line(double x0, double y0, double z0, double x1, double y1, double z1)
     : _x0(x0), _y0(y0), _z0(z0), _x1(x1), _y1(y1), _z1(z1) {}
 
-Line::Line(const Line &other)
+Line::Line(const Line& other)
     : name(other.name), width(other.width), dash(other.dash), linecolor(other.linecolor), _x0(other._x0),
       _y0(other._y0), _z0(other._z0), _x1(other._x1), _y1(other._y1), _z1(other._z1) {}
 
-Line &Line::operator=(const Line &other) {
+Line& Line::operator=(const Line& other) {
+
   if (this == &other)
     return *this;
+
   _guid.clear();
   name = other.name;
   width = other.width;
@@ -34,6 +36,7 @@ Line &Line::operator=(const Line &other) {
   _x1 = other._x1;
   _y1 = other._y1;
   _z1 = other._z1;
+
   return *this;
 }
 
@@ -41,34 +44,47 @@ Line &Line::operator=(const Line &other) {
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
 
-Line Line::from_points(const Point &p1, const Point &p2) {
+Line Line::from_points(const Point& p1, const Point& p2) {
   return Line(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
 }
 
-Line Line::from_point_and_vector(const Point &point, const Vector &vector) {
+Line Line::from_point_and_vector(const Point& point, const Vector& vector) {
   return Line(point[0], point[1], point[2], point[0] + vector[0], point[1] + vector[1], point[2] + vector[2]);
 }
 
-Line Line::from_point_direction_length(const Point &point, const Vector &direction, double length) {
+Line Line::from_point_direction_length(const Point& point, const Vector& direction, double length) {
   const Vector d = direction.normalized();
+
   return Line(point[0], point[1], point[2], point[0] + d[0] * length, point[1] + d[1] * length, point[2] + d[2] * length);
 }
 
-Line Line::fit_points(const std::vector<Point> &points, double length) {
+Line Line::fit_points(const std::vector<Point>& points, double length) {
+
   if (points.size() < 2)
     throw std::invalid_argument("At least 2 points are required for line fitting");
+
   const double n = static_cast<double>(points.size());
-  double cx = 0.0, cy = 0.0, cz = 0.0;
-  for (const Point &p : points) {
+  double cx = 0.0;
+  double cy = 0.0;
+  double cz = 0.0;
+
+  for (const Point& p : points) {
     cx += p[0];
     cy += p[1];
     cz += p[2];
   }
+
   cx /= n;
   cy /= n;
   cz /= n;
-  double cxx = 0.0, cyy = 0.0, czz = 0.0, cxy = 0.0, cxz = 0.0, cyz = 0.0;
-  for (const Point &p : points) {
+  double cxx = 0.0;
+  double cyy = 0.0;
+  double czz = 0.0;
+  double cxy = 0.0;
+  double cxz = 0.0;
+  double cyz = 0.0;
+
+  for (const Point& p : points) {
     const double dx = p[0] - cx;
     const double dy = p[1] - cy;
     const double dz = p[2] - cz;
@@ -79,7 +95,11 @@ Line Line::fit_points(const std::vector<Point> &points, double length) {
     cxz += dx * dz;
     cyz += dy * dz;
   }
-  double vx = 1.0, vy = 0.0, vz = 0.0;
+
+  double vx = 1.0;
+  double vy = 0.0;
+  double vz = 0.0;
+
   if (cyy > cxx && cyy >= czz) {
     vx = 0.0;
     vy = 1.0;
@@ -87,35 +107,46 @@ Line Line::fit_points(const std::vector<Point> &points, double length) {
     vx = 0.0;
     vz = 1.0;
   }
+
   for (int i = 0; i < 100; i++) {
     const double nx = cxx * vx + cxy * vy + cxz * vz;
     const double ny = cxy * vx + cyy * vy + cyz * vz;
     const double nz = cxz * vx + cyz * vy + czz * vz;
     const double mag = std::sqrt(nx * nx + ny * ny + nz * nz);
+
     if (mag < 1e-15)
       break;
+
     vx = nx / mag;
     vy = ny / mag;
     vz = nz / mag;
   }
+
   double half = length / 2.0;
+
   if (length <= 0.0) {
-    double t_min = 0.0, t_max = 0.0;
-    for (const Point &p : points) {
+    double t_min = 0.0;
+    double t_max = 0.0;
+
+    for (const Point& p : points) {
       const double t = (p[0] - cx) * vx + (p[1] - cy) * vy + (p[2] - cz) * vz;
       t_min = std::min(t_min, t);
       t_max = std::max(t_max, t);
     }
+
     half = std::max(std::abs(t_min), std::abs(t_max));
+
     if (half < 1e-10)
       half = 0.5;
   }
+
   return Line(cx - vx * half, cy - vy * half, cz - vz * half, cx + vx * half, cy + vy * half, cz + vz * half);
 }
 
-Line Line::with_name(const std::string &name, double x0, double y0, double z0, double x1, double y1, double z1) {
+Line Line::with_name(const std::string& name, double x0, double y0, double z0, double x1, double y1, double z1) {
   Line line(x0, y0, z0, x1, y1, z1);
   line.name = name;
+
   return line;
 }
 
@@ -123,7 +154,7 @@ Line Line::with_name(const std::string &name, double x0, double y0, double z0, d
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
 
-double &Line::operator[](int index) {
+double& Line::operator[](int index) {
   switch (index) {
   case 0:
     return _x0;
@@ -142,7 +173,7 @@ double &Line::operator[](int index) {
   }
 }
 
-const double &Line::operator[](int index) const {
+const double& Line::operator[](int index) const {
   switch (index) {
   case 0:
     return _x0;
@@ -161,7 +192,8 @@ const double &Line::operator[](int index) const {
   }
 }
 
-bool Line::operator==(const Line &other) const {
+bool Line::operator==(const Line& other) const {
+
   return name == other.name &&
          std::round(_x0 * 1000000.0) == std::round(other._x0 * 1000000.0) &&
          std::round(_y0 * 1000000.0) == std::round(other._y0 * 1000000.0) &&
@@ -173,69 +205,81 @@ bool Line::operator==(const Line &other) const {
          linecolor == other.linecolor;
 }
 
-bool Line::operator!=(const Line &other) const { return !(*this == other); }
+bool Line::operator!=(const Line& other) const { return !(*this == other); }
 
-Line &Line::operator+=(const Vector &other) {
+Line& Line::operator+=(const Vector& other) {
+
   _x0 += other[0];
   _y0 += other[1];
   _z0 += other[2];
   _x1 += other[0];
   _y1 += other[1];
   _z1 += other[2];
+
   return *this;
 }
 
-Line &Line::operator-=(const Vector &other) {
+Line& Line::operator-=(const Vector& other) {
+
   _x0 -= other[0];
   _y0 -= other[1];
   _z0 -= other[2];
   _x1 -= other[0];
   _y1 -= other[1];
   _z1 -= other[2];
+
   return *this;
 }
 
-Line &Line::operator*=(double factor) {
+Line& Line::operator*=(double factor) {
+
   _x0 *= factor;
   _y0 *= factor;
   _z0 *= factor;
   _x1 *= factor;
   _y1 *= factor;
   _z1 *= factor;
+
   return *this;
 }
 
-Line &Line::operator/=(double factor) {
+Line& Line::operator/=(double factor) {
+
   _x0 /= factor;
   _y0 /= factor;
   _z0 /= factor;
   _x1 /= factor;
   _y1 /= factor;
   _z1 /= factor;
+
   return *this;
 }
 
-Line Line::operator+(const Vector &other) const {
+Line Line::operator+(const Vector& other) const {
   Line result = *this;
   result += other;
+
   return result;
 }
 
-Line Line::operator-(const Vector &other) const {
+Line Line::operator-(const Vector& other) const {
   Line result = *this;
   result -= other;
+
   return result;
 }
 
 Line Line::operator*(double factor) const {
   Line result = *this;
   result *= factor;
+
   return result;
 }
 
 Line Line::operator/(double factor) const {
   Line result = *this;
   result /= factor;
+
   return result;
 }
 
@@ -245,7 +289,8 @@ Line Line::operator-() const { return Line(_x1, _y1, _z1, _x0, _y0, _z0); }
 // Transformation
 // ═══════════════════════════════════════════════════════════════════════════
 
-void Line::transform(const Xform &xform) {
+void Line::transform(const Xform& xform) {
+
   Point start(_x0, _y0, _z0);
   Point end(_x1, _y1, _z1);
   start.transform(xform);
@@ -258,9 +303,10 @@ void Line::transform(const Xform &xform) {
   _z1 = end[2];
 }
 
-Line Line::transformed(const Xform &xform) const {
+Line Line::transformed(const Xform& xform) const {
   Line result = *this;
   result.transform(xform);
+
   return result;
 }
 
@@ -271,9 +317,11 @@ Line Line::transformed(const Xform &xform) const {
 double Line::length() const { return std::sqrt(squared_length()); }
 
 double Line::squared_length() const {
+
   const double dx = _x1 - _x0;
   const double dy = _y1 - _y0;
   const double dz = _z1 - _z0;
+
   return dx * dx + dy * dy + dz * dz;
 }
 
@@ -289,43 +337,59 @@ Point Line::center() const { return Point((_x0 + _x1) * 0.5, (_y0 + _y1) * 0.5, 
 
 Point Line::point_at(double t) const {
   const double s = 1.0 - t;
+
   return Point(s * _x0 + t * _x1, s * _y0 + t * _y1, s * _z0 + t * _z1);
 }
 
 std::vector<Point> Line::subdivide(int n) const {
+
   if (n < 2)
     throw std::invalid_argument("n must be at least 2");
+
   std::vector<Point> points;
   points.reserve(n);
+
   for (int i = 0; i < n; i++)
     points.push_back(point_at(static_cast<double>(i) / (n - 1)));
+
   return points;
 }
 
 std::vector<Point> Line::subdivide_by_distance(double distance) const {
+
   if (distance <= 0.0)
     throw std::invalid_argument("distance must be positive");
+
   const double total = length();
+
   if (total < 1e-10)
     return {start(), end()};
+
   const int n = std::max(2, static_cast<int>(total / distance + 0.5) + 1);
+
   return subdivide(n);
 }
 
-std::pair<double, Point> Line::closest_point(const Point &point, bool limited) const {
+std::pair<double, Point> Line::closest_point(const Point& point, bool limited) const {
+
   const double dx = _x1 - _x0;
   const double dy = _y1 - _y0;
   const double dz = _z1 - _z0;
   const double len_sq = dx * dx + dy * dy + dz * dz;
+
   if (len_sq < 1e-20)
     return {0.0, start()};
+
   double t = ((point[0] - _x0) * dx + (point[1] - _y0) * dy + (point[2] - _z0) * dz) / len_sq;
+
   if (limited)
     t = std::max(0.0, std::min(1.0, t));
+
   return {t, point_at(t)};
 }
 
-void Line::get_middle_line(const Point &line0_start, const Point &line0_end, const Point &line1_start, const Point &line1_end, Point &output_start, Point &output_end) {
+void Line::get_middle_line(const Point& line0_start, const Point& line0_end, const Point& line1_start, const Point& line1_end, Point& output_start, Point& output_end) {
+
   output_start = Point(
       (line0_start[0] + line1_start[0]) * 0.5,
       (line0_start[1] + line1_start[1]) * 0.5,
@@ -338,28 +402,38 @@ void Line::get_middle_line(const Point &line0_start, const Point &line0_end, con
   );
 }
 
-void Line::get_middle_line(const Line &l0, const Line &l1, Line &out) {
-  Point output_start, output_end;
+void Line::get_middle_line(const Line& l0, const Line& l1, Line& out) {
+
+  Point output_start;
+  Point output_end;
   get_middle_line(l0.start(), l0.end(), l1.start(), l1.end(), output_start, output_end);
   out = from_points(output_start, output_end);
 }
 
-bool Line::from_projected_points(const Line &line, const std::vector<Point> &points, Line &out) {
-  Point output_start, output_end;
+bool Line::from_projected_points(const Line& line, const std::vector<Point>& points, Line& out) {
+
+  Point output_start;
+  Point output_end;
   const bool ok = Polyline::line_from_projected_points(line.start(), line.end(), points, output_start, output_end);
   out = from_points(output_start, output_end);
+
   return ok;
 }
 
-bool Line::overlap(const Line &other, Line &out) const {
-  Point output_start, output_end;
+bool Line::overlap(const Line& other, Line& out) const {
+
+  Point output_start;
+  Point output_end;
   const bool ok = Polyline::line_line_overlap(start(), end(), other.start(), other.end(), output_start, output_end);
   out = from_points(output_start, output_end);
+
   return ok;
 }
 
-bool Line::overlap_average(const Line &other, Line &out) const {
-  Line line_a, line_b;
+bool Line::overlap_average(const Line& other, Line& out) const {
+
+  Line line_a;
+  Line line_b;
   overlap(other, line_a);
   other.overlap(*this, line_b);
   const Point a0 = line_a.start();
@@ -373,10 +447,12 @@ bool Line::overlap_average(const Line &other, Line &out) const {
   const Line line0 = from_points(m0s, m0e);
   const Line line1 = from_points(m1s, m1e);
   out = line0.squared_length() >= line1.squared_length() ? line0 : line1;
+
   return out.squared_length() > 0.0;
 }
 
 void Line::extend(double ext_start, double ext_end) {
+
   Point s = start();
   Point e = end();
   Polyline::extend_line_segment(s, e, ext_start, ext_end);
@@ -384,8 +460,10 @@ void Line::extend(double ext_start, double ext_end) {
 }
 
 void Line::extend_equally(double dist, double proportion) {
+
   if (dist == 0.0 && proportion == 0.0)
     return;
+
   Point s = start();
   Point e = end();
   Polyline::extend_segment_equally(s, e, dist, proportion);
@@ -393,6 +471,7 @@ void Line::extend_equally(double dist, double proportion) {
 }
 
 void Line::scale(double dist) {
+
   Point s = start();
   Point e = end();
   Polyline::shrink_line_segment(s, e, dist);
@@ -404,6 +483,7 @@ void Line::scale(double dist) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json Line::jsondump() const {
+
   nlohmann::ordered_json data;
   data["dash"] = dash;
   data["guid"] = guid();
@@ -417,37 +497,45 @@ nlohmann::ordered_json Line::jsondump() const {
   data["y1"] = _y1;
   data["z0"] = _z0;
   data["z1"] = _z1;
+
   return data;
 }
 
-Line Line::jsonload(const nlohmann::json &data) {
+Line Line::jsonload(const nlohmann::json& data) {
+
   Line line(data["x0"], data["y0"], data["z0"], data["x1"], data["y1"], data["z1"]);
   line.guid() = data["guid"];
   line.name = data["name"];
+
   if (data.contains("dash"))
     line.dash = data["dash"].get<std::vector<double>>();
+
   if (data.contains("linecolor"))
     line.linecolor = Color::jsonload(data["linecolor"]);
+
   if (data.contains("width"))
     line.width = data["width"].get<double>();
+
   return line;
 }
 
 std::string Line::file_json_dumps() const { return jsondump().dump(); }
 
-Line Line::file_json_loads(const std::string &json_string) {
+Line Line::file_json_loads(const std::string& json_string) {
   return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Line::file_json_dump(const std::string &filename) const {
+void Line::file_json_dump(const std::string& filename) const {
   std::ofstream ofs(filename);
   ofs << jsondump().dump(2);
 }
 
-Line Line::file_json_load(const std::string &filename) {
+Line Line::file_json_load(const std::string& filename) {
+
   std::ifstream ifs(filename);
   nlohmann::json data;
   ifs >> data;
+
   return jsonload(data);
 }
 
@@ -456,54 +544,71 @@ Line Line::file_json_load(const std::string &filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string Line::pb_dumps() const {
+
   session_proto::Line proto;
+
   if (has_guid())
     proto.set_guid(guid());
+
   proto.set_name(name);
   proto.set_width(width);
+
   for (int i = 0; i < 6; i++)
     proto.add_coords((*this)[i]);
+
   for (double d : dash)
     proto.add_dash(d);
+
   proto.add_linecolor_rgba(linecolor.r);
   proto.add_linecolor_rgba(linecolor.g);
   proto.add_linecolor_rgba(linecolor.b);
   proto.add_linecolor_rgba(linecolor.a);
   proto.set_linecolor_name(linecolor.name);
+
   return proto.SerializeAsString();
 }
 
-Line Line::pb_loads(const std::string &data) {
+Line Line::pb_loads(const std::string& data) {
+
   session_proto::Line proto;
   proto.ParseFromString(data);
   Line line;
+
   if (proto.coords_size() == 6)
     line = Line(proto.coords(0), proto.coords(1), proto.coords(2), proto.coords(3), proto.coords(4), proto.coords(5));
+
   if (!proto.guid().empty())
     line.guid() = proto.guid();
+
   line.name = proto.name();
+
   if (proto.width() > 0.0)
     line.width = proto.width();
+
   line.dash.assign(proto.dash().begin(), proto.dash().end());
+
   if (proto.linecolor_rgba_size() == 4) {
     line.linecolor.r = proto.linecolor_rgba(0);
     line.linecolor.g = proto.linecolor_rgba(1);
     line.linecolor.b = proto.linecolor_rgba(2);
     line.linecolor.a = proto.linecolor_rgba(3);
+
     if (!proto.linecolor_name().empty())
       line.linecolor.name = proto.linecolor_name();
   }
+
   return line;
 }
 
-void Line::pb_dump(const std::string &filename) const {
+void Line::pb_dump(const std::string& filename) const {
   std::ofstream ofs(filename, std::ios::binary);
   ofs << pb_dumps();
 }
 
-Line Line::pb_load(const std::string &filename) {
+Line Line::pb_load(const std::string& filename) {
   std::ifstream ifs(filename, std::ios::binary);
   std::string data((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
   return pb_loads(data);
 }
 
@@ -512,7 +617,9 @@ Line Line::pb_load(const std::string &filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::string Line::str() const {
+
   const int prec = static_cast<int>(Tolerance::ROUNDING);
+
   return fmt::format(
       "{}, {}, {}, {}, {}, {}",
       TOLERANCE.format_number(_x0, prec),
@@ -525,7 +632,9 @@ std::string Line::str() const {
 }
 
 std::string Line::repr() const {
+
   const int prec = static_cast<int>(Tolerance::ROUNDING);
+
   return fmt::format(
       "Line({}, {}, {}, {}, {}, {}, {}, {}, {})",
       name,
@@ -540,8 +649,9 @@ std::string Line::repr() const {
   );
 }
 
-std::ostream &operator<<(std::ostream &os, const Line &line) {
+std::ostream& operator<<(std::ostream& os, const Line& line) {
   os << line.str();
+
   return os;
 }
 

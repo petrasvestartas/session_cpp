@@ -16,6 +16,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("NurbsCurve", "Constructor") {
+
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 1.0, 0.0),
@@ -47,6 +48,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Create Interpolated") {
+
         std::vector<Point> points = {
             Point(14, 9, 0),
             Point(21, 22, 0),
@@ -103,6 +105,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Create From Parameters") {
+
         std::vector<Point> p4 = {Point(0,0,0), Point(3,6,0), Point(6,-3,3), Point(10,0,0)};
         NurbsCurve c = NurbsCurve::create_from_parameters(
             p4, {1.0,1.0,1.0,1.0}, {0.0,1.0}, {4,4}, 3);
@@ -120,77 +123,84 @@ namespace session_cpp {
         std::vector<Point> cpts = {
             Point(0,-1,0), Point(-1,-1,0), Point(-1,0,0), Point(-1,1,0), Point(0,1,0),
             Point(1,1,0), Point(1,0,0), Point(1,-1,0), Point(0,-1,0)};
-            NurbsCurve circle = NurbsCurve::create_from_parameters(
+
+        NurbsCurve circle = NurbsCurve::create_from_parameters(
             cpts, {1,w,1,w,1,w,1,w,1}, {0.0, 0.25, 0.5, 0.75, 1.0}, {3, 2, 2, 2, 3}, 2);
-            MINI_CHECK(circle.is_valid());
-            MINI_CHECK(circle.degree() == 2);
-            MINI_CHECK(circle.cv_count() == 9);
-            MINI_CHECK(circle.is_rational());
-            MINI_CHECK(TOLERANCE.is_point_close(circle.point_at(0.5), Point(0, 1, 0)));
-            MINI_CHECK(TOLERANCE.is_point_close(circle.point_at(0.125), Point(-w, -w, 0)));
-            for (int k = 0; k <= 16; k++) {
+        MINI_CHECK(circle.is_valid());
+        MINI_CHECK(circle.degree() == 2);
+        MINI_CHECK(circle.cv_count() == 9);
+        MINI_CHECK(circle.is_rational());
+        MINI_CHECK(TOLERANCE.is_point_close(circle.point_at(0.5), Point(0, 1, 0)));
+        MINI_CHECK(TOLERANCE.is_point_close(circle.point_at(0.125), Point(-w, -w, 0)));
+
+        for (int k = 0; k <= 16; k++) {
             Point pp = circle.point_at(k / 16.0);
             MINI_CHECK(std::abs(std::sqrt(pp[0]*pp[0] + pp[1]*pp[1]) - 1.0) < 1e-9);
-            }
-            }
+        }
+    }
 
-            MINI_TEST("NurbsCurve", "Create Fitted") {
-            std::vector<Point> pts;
-            for (int i = 0; i <= 20; i++) {
+    MINI_TEST("NurbsCurve", "Create Fitted") {
+
+        std::vector<Point> pts;
+
+        for (int i = 0; i <= 20; i++) {
             double t = i * 2.0 * Tolerance::PI / 20.0;
             pts.push_back(Point(t, 3.0 * std::sin(t), 0.0));
-            }
-            
-            NurbsCurve c = NurbsCurve::create_fitted(pts, 8, 3, false);
+        }
 
-            MINI_CHECK(c.is_valid());
-            MINI_CHECK(c.degree() == 3);
-            MINI_CHECK(c.cv_count() == 8);
-            auto [d0, d1] = c.domain();
-            MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d0), pts[0]));
-            MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d1), pts[20]));
+        NurbsCurve c = NurbsCurve::create_fitted(pts, 8, 3, false);
 
-            std::vector<Point> cpts;
-            for (int i = 0; i < 24; i++) {
+        MINI_CHECK(c.is_valid());
+        MINI_CHECK(c.degree() == 3);
+        MINI_CHECK(c.cv_count() == 8);
+        auto [d0, d1] = c.domain();
+        MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d0), pts[0]));
+        MINI_CHECK(TOLERANCE.is_point_close(c.point_at(d1), pts[20]));
+
+        std::vector<Point> cpts;
+
+        for (int i = 0; i < 24; i++) {
             double a = i * 2.0 * Tolerance::PI / 24.0;
             cpts.push_back(Point(std::cos(a), std::sin(a), 0.0));
-            }
-            
-            NurbsCurve cp = NurbsCurve::create_fitted(cpts, 10, 3, true);
+        }
 
-            MINI_CHECK(cp.is_valid());
-            MINI_CHECK(cp.is_closed());
-            MINI_CHECK(cp.cv_count() == 13);
-            }
+        NurbsCurve cp = NurbsCurve::create_fitted(cpts, 10, 3, true);
 
-            MINI_TEST("NurbsCurve", "Join") {
-            NurbsCurve arc1 = Primitives::arc(Point(-1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0), Point(1.0, 0.0, 0.0));
-            NurbsCurve arc2 = Primitives::arc(Point(1.0, 0.0, 0.0), Point(1.5, -1.0, 0.0), Point(1.0, -2.0, 0.0));
-            std::vector<Point> pts = {Point(1.0, -2.0, 0.0), Point(-1.0, 0.0, 0.0)};
-            NurbsCurve line = NurbsCurve::create(false, 1, pts);
-            arc2.reverse();
+        MINI_CHECK(cp.is_valid());
+        MINI_CHECK(cp.is_closed());
+        MINI_CHECK(cp.cv_count() == 13);
+    }
 
-            std::vector<NurbsCurve> joined = NurbsCurve::join({line, arc1, arc2});
+    MINI_TEST("NurbsCurve", "Join") {
 
-            MINI_CHECK(joined.size() == 1);
-            MINI_CHECK(joined[0].is_valid());
-            MINI_CHECK(joined[0].is_closed());
-            MINI_CHECK(joined[0].degree() == 2);
-            MINI_CHECK(joined[0].cv_count() == 7);            
-            
-            NurbsCurve l1 = NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0)});
-            NurbsCurve l2 = NurbsCurve::create(false, 1, {Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
-            NurbsCurve l3 = NurbsCurve::create(false, 1, {Point(9.0, 9.0, 0.0), Point(8.0, 8.0, 0.0)});
+        NurbsCurve arc1 = Primitives::arc(Point(-1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0), Point(1.0, 0.0, 0.0));
+        NurbsCurve arc2 = Primitives::arc(Point(1.0, 0.0, 0.0), Point(1.5, -1.0, 0.0), Point(1.0, -2.0, 0.0));
+        std::vector<Point> pts = {Point(1.0, -2.0, 0.0), Point(-1.0, 0.0, 0.0)};
+        NurbsCurve line = NurbsCurve::create(false, 1, pts);
+        arc2.reverse();
 
-            std::vector<NurbsCurve> separate = NurbsCurve::join({l1, l3, l2});
+        std::vector<NurbsCurve> joined = NurbsCurve::join({line, arc1, arc2});
 
-            MINI_CHECK(separate.size() == 2);
-            MINI_CHECK(separate[0].cv_count() == 3);
-            MINI_CHECK(std::fabs(separate[0].length() - 2.0) < 1e-9);
-            }
+        MINI_CHECK(joined.size() == 1);
+        MINI_CHECK(joined[0].is_valid());
+        MINI_CHECK(joined[0].is_closed());
+        MINI_CHECK(joined[0].degree() == 2);
+        MINI_CHECK(joined[0].cv_count() == 7);
 
-            MINI_TEST("NurbsCurve", "Attributes") {
-            std::vector<Point> points = {
+        NurbsCurve l1 = NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0)});
+        NurbsCurve l2 = NurbsCurve::create(false, 1, {Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
+        NurbsCurve l3 = NurbsCurve::create(false, 1, {Point(9.0, 9.0, 0.0), Point(8.0, 8.0, 0.0)});
+
+        std::vector<NurbsCurve> separate = NurbsCurve::join({l1, l3, l2});
+
+        MINI_CHECK(separate.size() == 2);
+        MINI_CHECK(separate[0].cv_count() == 3);
+        MINI_CHECK(std::fabs(separate[0].length() - 2.0) < 1e-9);
+    }
+
+    MINI_TEST("NurbsCurve", "Attributes") {
+
+        std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 1.0, 0.0),
             Point(2.0, 0.0, 0.0),
@@ -353,6 +363,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Conversions") {
+
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 2.0, 0.0),
@@ -393,6 +404,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Evaluation"){
+
         std::vector<Point> points = {
             Point(1.957614, 1.140253, -0.191281),
             Point(0.912252, 1.886721, 0),
@@ -407,7 +419,7 @@ namespace session_cpp {
             Point(2.15032, 1.868606, 0)
         };
 
-        auto curve = NurbsCurve::create(false, 2, points);
+        NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
         MINI_CHECK(TOLERANCE.is_close(curve.length(), 11.3010276326));
 
@@ -500,6 +512,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Modifications"){
+
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 2.0, 0.0),
@@ -578,6 +591,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Transformations"){
+
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 2.0, 0.0),
@@ -608,6 +622,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Json Roundtrip") {
+
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 2.0, 0.0),
@@ -633,6 +648,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Protobuf Roundtrip") {
+
         std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 2.0, 0.0),
@@ -654,19 +670,23 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Curvature") {
+
         const double R = 2.0;
         NurbsCurve circle = Primitives::circle(0, 0, 0, R);
         auto [t0, t1] = circle.domain();
+
         for (int i = 0; i <= 8; ++i) {
             double t = t0 + (t1 - t0) * i / 8.0;
             MINI_CHECK(std::abs(circle.curvature_at(t) - 1.0 / R) < 1e-6);
         }
+
         std::vector<Point> line_pts = {Point(0, 0, 0), Point(1, 0, 0), Point(2, 0, 0), Point(3, 0, 0)};
         NurbsCurve line = NurbsCurve::create(false, 1, line_pts);
         MINI_CHECK(line.curvature_at(line.domain_middle()) < 1e-9);
     }
 
     MINI_TEST("NurbsCurve", "Closest Point") {
+
         NurbsCurve circle = Primitives::circle(0, 0, 0, 2.0);
         Point cp = circle.closest_point(Point(5, 0, 0));
         MINI_CHECK(std::abs(cp[0] - 2.0) < 1e-5 && std::abs(cp[1]) < 1e-5 && std::abs(cp[2]) < 1e-5);

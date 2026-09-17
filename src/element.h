@@ -24,181 +24,435 @@ using ElementGeometry = std::variant<std::monostate, Mesh, BRep>;
 
 /// One serializable modification of a host element - a cut, a drill, a joint pocket - that the kernel draws but never applies.
 struct ElementFeature {
-    std::string name;
-    std::string feature_type;       ///< The package's vocabulary: "cut", "drill", "joint"
-    int face_index = -1;            ///< Face of the host this applies to; -1 = whole element
-    std::vector<Polyline> outlines;
+    std::string name; // Feature name.
+    std::string feature_type; // The package's vocabulary: "cut", "drill", "joint".
+    int face_index = -1; // Face of the host this applies to; -1 = whole element.
+    std::vector<Polyline> outlines; // Closed outlines that bound the feature.
 
+    /// Construct an empty feature.
     ElementFeature() = default;
+
+    /// Construct from type, host face, outlines and name.
     ElementFeature(std::string feature_type, int face_index, std::vector<Polyline> outlines, std::string name = "")
-        : name(std::move(name)), feature_type(std::move(feature_type)), face_index(face_index), outlines(std::move(outlines)) {}
-    /// A copy is a new feature and mints its own guid; a move keeps it.
+        : name(std::move(name)), feature_type(std::move(feature_type)), face_index(face_index),
+          outlines(std::move(outlines)) {}
+
+    /// Copy with a new guid and the same data.
     ElementFeature(const ElementFeature& other)
         : name(other.name), feature_type(other.feature_type), face_index(other.face_index), outlines(other.outlines) {}
+
+    /// Copy-assign with a new guid and the same data.
     ElementFeature& operator=(const ElementFeature& other);
+
+    /// Move while preserving the guid.
     ElementFeature(ElementFeature&& other) noexcept = default;
+
+    /// Move-assign while preserving the guid.
     ElementFeature& operator=(ElementFeature&& other) noexcept = default;
 
+    /// Return whether the lazy guid has been created.
     bool has_guid() const { return !_guid.empty(); }
-    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    /// Clear the guid so a fresh one mints lazily on next read.
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Clear the guid so a fresh one mints lazily on the next read.
     void refresh_guid() { _guid.clear(); }
 
-    /// Data equality, not identity: the guid is ignored.
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operators
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Compare name, type, face and outlines; guid ignored.
     bool operator==(const ElementFeature& other) const;
+
+    /// Compare name, type, face and outlines; guid ignored.
     bool operator!=(const ElementFeature& other) const { return !(*this == other); }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // JSON
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Serialize to a JSON object.
     nlohmann::ordered_json jsondump() const;
+
+    /// Deserialize from a JSON object.
     static ElementFeature jsonload(const nlohmann::json& data);
+
+    /// Serialize to a JSON string.
     std::string file_json_dumps() const;
+
+    /// Deserialize from a JSON string.
     static ElementFeature file_json_loads(const std::string& json_string);
+
+    /// Write to a JSON file.
     void file_json_dump(const std::string& filename) const;
+
+    /// Read from a JSON file.
     static ElementFeature file_json_load(const std::string& filename);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Protobuf
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
+
+    /// Deserialize from protobuf bytes.
     static ElementFeature pb_loads(const std::string& data);
+
+    /// Write to a protobuf file.
     void pb_dump(const std::string& filename) const;
+
+    /// Read from a protobuf file.
     static ElementFeature pb_load(const std::string& filename);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Return a string representation of the feature.
     std::string str() const;
+
+    /// Return a string representation of the feature for debugging.
     std::string repr() const;
+
+    /// Write the feature string to a stream.
     friend std::ostream& operator<<(std::ostream& os, const ElementFeature& f);
 
 private:
-    mutable std::string _guid;
+    mutable std::string _guid; // Lazily minted guid.
 };
 
 class Element {
 public:
-    std::string name;
+    std::string name; // Element name.
 
+    /// Construct an empty element with a name.
     Element(const std::string& name = "my_element");
+
+    /// Construct from a mesh with a name.
     Element(const Mesh& geometry, const std::string& name = "my_element");
+
+    /// Construct from a BRep with a name.
     Element(const BRep& geometry, const std::string& name = "my_element");
-    /// A copy is a new element and mints its own guid; a move keeps it.
+
+    /// Copy with a new guid and the same data.
     Element(const Element& other);
+
+    /// Copy-assign with a new guid and the same data.
     Element& operator=(const Element& other);
+
+    /// Move while preserving the guid.
     Element(Element&& other) noexcept = default;
+
+    /// Move-assign while preserving the guid.
     Element& operator=(Element&& other) noexcept = default;
+
+    /// Destroy the element.
     virtual ~Element() = default;
 
+    /// Return whether the lazy guid has been created.
     bool has_guid() const { return !_guid.empty(); }
-    const std::string& guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-    std::string& guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Return the local geometry.
     const ElementGeometry& geometry() const { return _geometry; }
+
+    /// Return whether the element carries a mesh or a BRep.
     bool has_geometry() const;
+
+    /// Return "Mesh", "BRep" or "None".
     std::string geometry_type_name() const;
-    /// The geometry placed by `xform`; the Session owns the placement, so pass identity for local geometry.
+
+    /// Return the geometry placed by xform; the Session owns the placement, so pass identity for local geometry.
     ElementGeometry session_geometry(const Xform& xform) const;
+
+    /// Return the cached axis-aligned box, computing it when dirty.
     OBB aabb();
+
+    /// Return the cached oriented box, computing it when dirty.
     OBB obb();
+
+    /// Return the cached collision mesh, computing it when dirty.
     Mesh collision_mesh();
+
+    /// Return the cached centroid, computing it when dirty.
     Point point();
+
+    /// Return the cached face outlines, computing them when dirty.
     std::vector<Polyline> polylines();
+
+    /// Return the cached face planes, computing them when dirty.
     std::vector<Plane> planes();
+
+    /// Return the cached edge directions, computing them when dirty.
     std::vector<Vector> edge_vectors();
+
+    /// Return the cached main axis, computing it when dirty.
     std::optional<Line> axis();
+
+    /// Return whether the caches must be recomputed.
     bool is_dirty() const { return _is_dirty; }
+
+    /// Return the cached axis-aligned box without computing it.
     const std::optional<OBB>& cached_aabb() const { return _aabb; }
+
+    /// Return the cached oriented box without computing it.
     const std::optional<OBB>& cached_obb() const { return _obb; }
+
+    /// Return the cached collision mesh without computing it.
     const std::optional<Mesh>& cached_collision_mesh() const { return _collision_mesh; }
+
+    /// Return the cached centroid without computing it.
     const std::optional<Point>& cached_point() const { return _point; }
+
+    /// Return the number of in-memory geometry operations.
     size_t geometry_ops_count() const { return _geometry_ops.size(); }
+
+    /// Return the number of features.
     size_t features_count() const { return _features.size(); }
-    /// Modifications carried by this element and written with it; `add_geometry_op` is the in-memory counterpart that is not.
+
+    /// Return the modifications carried by this element and written with it; add_geometry_op is the in-memory counterpart that is not.
     const std::vector<ElementFeature>& features() const { return _features; }
-    /// Direction(s) the element is inserted along when the assembly is put together, one per jointed face.
+
+    /// Return the directions the element is inserted along when the assembly is put together, one per jointed face.
     const std::vector<Vector>& insertion_vectors() const { return _insertion_vectors; }
-    /// Nominal extents in the element's own frame (plate: x/y outline, z thickness) - authored intent, not the measured `obb()`; nullopt = never authored.
+
+    /// Return the nominal extents in the element's own frame (plate: x/y outline, z thickness), authored intent rather than the measured obb; nullopt = never authored.
     const std::optional<Vector>& dimensions() const { return _dimensions; }
-    /// The derived type name this element was loaded with, written to `element_type`; a plain Element authored in memory returns "".
+
+    /// Return the derived type name this element was loaded with, written to element_type; a plain Element authored in memory returns "".
     virtual std::string element_type_name() const { return _element_type; }
-    /// The derived type's own state, opaque to the kernel and carried through untouched.
+
+    /// Return the derived type's own state, opaque to the kernel and carried through untouched.
     virtual std::string element_data_dumps() const { return _element_data; }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Append an in-memory mesh operation and invalidate the caches.
     void add_geometry_op(std::function<Mesh(Mesh)> f);
+
+    /// Replace the features.
     void set_features(std::vector<ElementFeature> features) { _features = std::move(features); }
+
+    /// Append a feature.
     void add_feature(ElementFeature feature) { _features.push_back(std::move(feature)); }
+
+    /// Replace the insertion vectors.
     void set_insertion_vectors(std::vector<Vector> v) { _insertion_vectors = std::move(v); }
+
+    /// Set the nominal extents.
     void set_dimensions(const Vector& d) { _dimensions = d; }
+
     /// Bake a placement into the element's own geometry, invalidating the cached boxes.
     void place(const Xform& xform);
+
+    /// Replace the geometry with a mesh and invalidate the caches.
     void set_geometry(const Mesh& geo);
+
+    /// Replace the geometry with a BRep and invalidate the caches.
     void set_geometry(const BRep& geo);
+
+    /// Override the cached face outlines.
     void set_polylines(std::vector<Polyline> polys);
+
+    /// Override the cached face planes.
     void set_planes(std::vector<Plane> plns);
+
+    /// Drop every cache and mark the element dirty.
     void reset();
 
-    /// Data equality, not identity: every field that survives a round trip, guid excluded.
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operators
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Compare every field that survives a round trip; guid ignored.
     virtual bool operator==(const Element& other) const;
+
+    /// Compare every field that survives a round trip; guid ignored.
     bool operator!=(const Element& other) const;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Utilities
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Return a copy with a new guid.
     Element duplicate() const;
-    /// A polymorphic copy of the same derived type; a derived class overrides it with one line.
+
+    /// Return a polymorphic copy of the same derived type; a derived class overrides it with one line.
     virtual std::shared_ptr<Element> clone() const { return std::make_shared<Element>(*this); }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // JSON
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Serialize to a JSON object.
     virtual nlohmann::ordered_json jsondump() const;
+
+    /// Deserialize from a JSON object.
     static Element jsonload(const nlohmann::json& data);
+
+    /// Serialize to a JSON string.
     std::string file_json_dumps() const;
+
+    /// Deserialize from a JSON string.
     static Element file_json_loads(const std::string& s);
+
+    /// Write to a JSON file.
     void file_json_dump(const std::string& path) const;
+
+    /// Read from a JSON file.
     static Element file_json_load(const std::string& path);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Protobuf
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Serialize to protobuf bytes.
     virtual std::string pb_dumps() const;
+
+    /// Deserialize from protobuf bytes.
     static Element pb_loads(const std::string& data);
+
+    /// Write to a protobuf file.
     void pb_dump(const std::string& path) const;
+
+    /// Read from a protobuf file.
     static Element pb_load(const std::string& path);
 
-    /// Builds one element from full serialized `session_proto.Element` bytes, so a factory reads the base fields as well as `element_data`.
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Polymorphic registry
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Build one element from full serialized session_proto.Element bytes, so a factory reads the base fields as well as element_data.
     using Factory = std::function<std::shared_ptr<Element>(const std::string& data)>;
-    /// Register `factory` for `type_name`; re-registering the same name replaces it.
+
+    /// Register factory for type_name; re-registering the same name replaces it.
     static void register_type(const std::string& type_name, Factory factory);
+
+    /// Return whether a factory is registered for type_name.
     static bool is_registered(const std::string& type_name);
+
+    /// Return the registered type names.
     static std::vector<std::string> registered_types();
-    /// Load through the registered factory, degrading to a base Element that still carries `element_type`/`element_data` when the type is unknown or the factory fails.
+
+    /// Load through the registered factory, degrading to a base Element that still carries element_type and element_data when the type is unknown or the factory fails.
     static std::shared_ptr<Element> pb_loads_polymorphic(const std::string& data);
-    /// The same from JSON, re-encoded to proto bytes so one registration serves both formats.
+
+    /// Load from JSON through the registered factory, re-encoded to proto bytes so one registration serves both formats.
     static std::shared_ptr<Element> file_json_loads_polymorphic(const std::string& s);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Return a string representation of the element.
     virtual std::string str() const;
+
+    /// Return a string representation of the element for debugging.
     virtual std::string repr() const;
+
+    /// Write the element string to a stream.
     friend std::ostream& operator<<(std::ostream& os, const Element& e);
 
 private:
-    mutable std::string _guid;
+    mutable std::string _guid; // Lazily minted guid.
 
 protected:
-    ElementGeometry _geometry;
-    bool _is_dirty = true;
-    std::optional<OBB> _aabb;
-    std::optional<OBB> _obb;
-    std::optional<Mesh> _collision_mesh;
-    std::optional<Point> _point;
-    std::optional<std::vector<Polyline>> _polylines;
-    std::optional<std::vector<Plane>> _planes;
-    std::optional<std::vector<Vector>> _edge_vectors;
-    std::optional<Line> _axis;
-    std::vector<std::function<Mesh(Mesh)>> _geometry_ops;
-    std::vector<ElementFeature> _features;
-    std::vector<Vector> _insertion_vectors;
-    std::optional<Vector> _dimensions;
-    std::string _element_type;
-    std::string _element_data;
+    ElementGeometry _geometry; // Mesh, BRep or nothing.
+    bool _is_dirty = true; // Whether the caches must be recomputed.
+    std::optional<OBB> _aabb; // Cached axis-aligned box.
+    std::optional<OBB> _obb; // Cached oriented box.
+    std::optional<Mesh> _collision_mesh; // Cached collision mesh.
+    std::optional<Point> _point; // Cached centroid.
+    std::optional<std::vector<Polyline>> _polylines; // Cached face outlines.
+    std::optional<std::vector<Plane>> _planes; // Cached face planes.
+    std::optional<std::vector<Vector>> _edge_vectors; // Cached edge directions.
+    std::optional<Line> _axis; // Cached main axis.
+    std::vector<std::function<Mesh(Mesh)>> _geometry_ops; // In-memory mesh operations, never written.
+    std::vector<ElementFeature> _features; // Serialized modifications.
+    std::vector<Vector> _insertion_vectors; // One insertion direction per jointed face.
+    std::optional<Vector> _dimensions; // Authored nominal extents.
+    std::string _element_type; // Derived type name this element was loaded with.
+    std::string _element_data; // Opaque derived-type state.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Computation
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Compute the axis-aligned box of the placed geometry.
     OBB compute_aabb();
+
+    /// Compute the oriented box of the placed geometry.
     OBB compute_obb();
+
+    /// Compute the collision mesh; a BRep yields an empty mesh.
     Mesh compute_collision_mesh();
+
+    /// Compute the centroid of the placed geometry.
     Point compute_point();
+
+    /// Compute the face outlines of a mesh solid; a domain type with its own face order overrides this.
     virtual std::vector<Polyline> compute_polylines() const;
+
+    /// Compute one plane per face outline: centroid origin, Newell normal, closing point dropped first.
     virtual std::vector<Plane> compute_planes() const;
+
+    /// Compute the edge directions; the base element has none.
     virtual std::vector<Vector> compute_edge_vectors() const;
+
+    /// Compute the main axis; the base element has none.
     virtual std::optional<Line> compute_axis() const;
+
+    /// Run the in-memory operations over a mesh.
     Mesh apply_geometry_ops(Mesh geo) const;
+
+    /// Return the vertices of a mesh or a BRep.
     static std::vector<Point> points_from_geometry(const ElementGeometry& geo);
+
+    /// Return the world-aligned box of the geometry vertices, or a zero box when empty.
     static OBB obb_from_geometry(const ElementGeometry& geo);
 };
 
+/// Write the element string to a stream.
 std::ostream& operator<<(std::ostream& os, const Element& e);
+
+/// Write the feature string to a stream.
 std::ostream& operator<<(std::ostream& os, const ElementFeature& f);
+
 } // namespace session_cpp

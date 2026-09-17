@@ -11,146 +11,196 @@ namespace session_cpp {
 
 class Plane;
 
-/// A rotation as scalar plus vector part: q = s + xi + yj + zk
+/// A rotation as scalar plus vector part: q = s + xi + yj + zk.
 class Quaternion {
 public:
-  std::string name = "my_quaternion";
-  double scalar = 1.0;
-  Vector vector;
+  std::string name = "my_quaternion"; // Quaternion name.
+  double scalar = 1.0; // Scalar part s.
+  Vector vector; // Vector part (x, y, z).
 
+  /// Construct the identity rotation.
   Quaternion() {}
 
-  /// Raw components; vector is (i, j, k), not a rotation axis
-  Quaternion(double scalar, const Vector &vector) : scalar(scalar), vector(vector) {}
+  /// Construct from raw components; vector is (i, j, k), not a rotation axis.
+  Quaternion(double scalar, const Vector& vector) : scalar(scalar), vector(vector) {}
 
-  /// Copy constructor (new guid, same data)
-  Quaternion(const Quaternion &other);
+  /// Copy with a new guid and the same data.
+  Quaternion(const Quaternion& other);
 
-  /// Copy assignment (new guid, same data)
-  Quaternion &operator=(const Quaternion &other);
+  /// Copy-assign with a new guid and the same data.
+  Quaternion& operator=(const Quaternion& other);
 
-  /// Move keeps the guid; declaring it stops `return x;` from falling back to the guid-minting copy
-  Quaternion(Quaternion &&other) noexcept = default;
-  Quaternion &operator=(Quaternion &&other) noexcept = default;
+  /// Move while preserving the guid.
+  Quaternion(Quaternion&& other) noexcept = default;
 
-  /// Copy (new guid, same data)
+  /// Move-assign while preserving the guid.
+  Quaternion& operator=(Quaternion&& other) noexcept = default;
+
+  /// Copy with a new guid and the same data.
   Quaternion duplicate() const;
 
+  /// Return whether the lazy guid has been created.
   bool has_guid() const { return !_guid.empty(); }
-  const std::string &guid() const { if (_guid.empty()) _guid = ::guid(); return _guid; }
-  std::string &guid() { if (_guid.empty()) _guid = ::guid(); return _guid; }
+
+  /// Return the guid, creating it on first access.
+  const std::string& guid() const {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
+
+  /// Return the mutable guid, creating it on first access.
+  std::string& guid() {
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Static constructors
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// The rotation that does nothing: scalar 1, vector 0
+  /// Construct the rotation that does nothing: scalar 1, vector 0.
   static Quaternion identity();
 
-  /// Raw components; vector is (i, j, k), not a rotation axis
-  static Quaternion from_components(double scalar, const Vector &vector);
+  /// Construct from raw components; vector is (i, j, k), not a rotation axis.
+  static Quaternion from_components(double scalar, const Vector& vector);
 
-  /// Unit quaternion rotating by angle radians around axis
-  static Quaternion from_axis_angle(const Vector &axis, double angle);
+  /// Construct the unit quaternion rotating by angle radians around axis.
+  static Quaternion from_axis_angle(const Vector& axis, double angle);
 
-  /// Shortest rotation taking direction src to direction dst
-  static Quaternion from_arc(const Vector &src, const Vector &dst);
+  /// Construct the shortest rotation taking direction src to direction dst.
+  static Quaternion from_arc(const Vector& src, const Vector& dst);
 
-  /// Rotation from Euler angles in XYZ convention
+  /// Construct the rotation from Euler angles in XYZ convention.
   static Quaternion from_euler(double x, double y, double z);
 
-  /// Rotation mapping the frame of plane_a onto the frame of plane_b
-  static Quaternion from_rotation(const Plane &plane_a, const Plane &plane_b);
+  /// Construct the rotation mapping the frame of plane_a onto the frame of plane_b.
+  static Quaternion from_rotation(const Plane& plane_a, const Plane& plane_b);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Operators
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Component by index (0=scalar, 1=x, 2=y, 3=z)
-  double &operator[](int index);
-  const double &operator[](int index) const;
+  /// Return the mutable component by index (0=scalar, 1=x, 2=y, 3=z).
+  double& operator[](int index);
 
-  bool operator==(const Quaternion &other) const;
-  bool operator!=(const Quaternion &other) const;
+  /// Return the component by index (0=scalar, 1=x, 2=y, 3=z).
+  const double& operator[](int index) const;
 
-  /// Composition: (a * b) applies b first, then a
-  Quaternion operator*(const Quaternion &other) const;
+  /// Compare name and components to six decimals; guid ignored.
+  bool operator==(const Quaternion& other) const;
+
+  /// Compare name and components to six decimals; guid ignored.
+  bool operator!=(const Quaternion& other) const;
+
+  /// Return the composition: (a * b) applies b first, then a.
+  Quaternion operator*(const Quaternion& other) const;
+
+  /// Return a copy scaled by amount.
   Quaternion operator*(double amount) const;
-  Quaternion operator+(const Quaternion &other) const;
-  Quaternion operator-(const Quaternion &other) const;
+
+  /// Return the component-wise sum.
+  Quaternion operator+(const Quaternion& other) const;
+
+  /// Return the component-wise difference.
+  Quaternion operator-(const Quaternion& other) const;
+
+  /// Return the negated copy.
   Quaternion operator-() const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Geometry
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Unit axis and angle in radians; (0, 0, 1) and 0 near identity
+  /// Return the unit axis and angle in radians; (0, 0, 1) and 0 near identity.
   std::pair<Vector, double> to_axis_angle() const;
 
-  /// Rotated copy of vec: q * v * q^-1
-  Vector rotate_vector(const Vector &vec) const;
+  /// Return a rotated copy of vec: q * v * q^-1.
+  Vector rotate_vector(const Vector& vec) const;
 
-  /// World XY plane rotated by this quaternion
+  /// Return the world XY plane rotated by this quaternion.
   Plane get_rotation() const;
 
-  /// 4D length
+  /// Return the 4D length.
   double magnitude() const;
 
-  /// Squared magnitude without the square root
+  /// Return the squared magnitude without the square root.
   double magnitude_squared() const;
 
-  /// Unit length copy; identity when the magnitude is zero
+  /// Return a unit length copy; identity when the magnitude is zero.
   Quaternion normalized() const;
 
-  /// (s, -v); the inverse of a unit quaternion
+  /// Return (s, -v); the inverse of a unit quaternion.
   Quaternion conjugate() const;
 
-  /// Multiplicative inverse: conjugate over squared magnitude
+  /// Return the multiplicative inverse: conjugate over squared magnitude.
   Quaternion invert() const;
 
-  /// 4D dot product
-  double dot(const Quaternion &other) const;
+  /// Return the 4D dot product.
+  double dot(const Quaternion& other) const;
 
-  /// Spherical interpolation at constant angular velocity
-  Quaternion slerp(const Quaternion &other, double amount) const;
+  /// Return the spherical interpolation at constant angular velocity.
+  Quaternion slerp(const Quaternion& other, double amount) const;
 
-  /// Normalized linear interpolation, cheaper than slerp
-  Quaternion nlerp(const Quaternion &other, double amount) const;
+  /// Return the normalized linear interpolation, cheaper than slerp.
+  Quaternion nlerp(const Quaternion& other, double amount) const;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Serialize to a JSON object.
   nlohmann::ordered_json jsondump() const;
-  static Quaternion jsonload(const nlohmann::json &data);
+
+  /// Deserialize from a JSON object.
+  static Quaternion jsonload(const nlohmann::json& data);
+
+  /// Serialize to a JSON string.
   std::string file_json_dumps() const;
-  static Quaternion file_json_loads(const std::string &json_string);
-  void file_json_dump(const std::string &filename) const;
-  static Quaternion file_json_load(const std::string &filename);
+
+  /// Deserialize from a JSON string.
+  static Quaternion file_json_loads(const std::string& json_string);
+
+  /// Write to a JSON file.
+  void file_json_dump(const std::string& filename) const;
+
+  /// Read from a JSON file.
+  static Quaternion file_json_load(const std::string& filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Protobuf
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Serialize to protobuf bytes.
   std::string pb_dumps() const;
-  static Quaternion pb_loads(const std::string &data);
-  void pb_dump(const std::string &filename) const;
-  static Quaternion pb_load(const std::string &filename);
+
+  /// Deserialize from protobuf bytes.
+  static Quaternion pb_loads(const std::string& data);
+
+  /// Write to a protobuf file.
+  void pb_dump(const std::string& filename) const;
+
+  /// Read from a protobuf file.
+  static Quaternion pb_load(const std::string& filename);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // String
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// "s, x, y, z"
+  /// Return "s, x, y, z".
   std::string str() const;
 
-  /// "Quaternion(name, s, x, y, z)"
+  /// Return "Quaternion(name, s, x, y, z)".
   std::string repr() const;
 
 private:
-  mutable std::string _guid;
+  mutable std::string _guid; // Lazy guid.
 };
 
-std::ostream &operator<<(std::ostream &os, const Quaternion &q);
+/// Write the quaternion string to a stream.
+std::ostream& operator<<(std::ostream& os, const Quaternion& q);
 
 } // namespace session_cpp

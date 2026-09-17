@@ -54,6 +54,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "To Radians") {
+
         double r0 = Tolerance::to_radians(180.0);
         double r1 = Tolerance::to_radians(90.0);
         double r2 = Tolerance::to_radians(0.0);
@@ -64,6 +65,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "To Degrees") {
+
         double d0 = Tolerance::to_degrees(Tolerance::PI);
         double d1 = Tolerance::to_degrees(Tolerance::PI / 2.0);
         double d2 = Tolerance::to_degrees(0.0);
@@ -74,6 +76,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Runtime Modification") {
+
         Tolerance tolerance;
         const double original_absolute = tolerance.absolute();
         const double original_relative = tolerance.relative();
@@ -98,6 +101,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Json Roundtrip") {
+
         Tolerance tolerance("MM");
         tolerance.set_absolute(1e-8);
         tolerance.set_angular(2e-6);
@@ -124,6 +128,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Protobuf Roundtrip") {
+
         Tolerance tolerance("MM");
         tolerance.set_absolute(1e-8);
         tolerance.set_angular(2e-6);
@@ -152,6 +157,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Serialization Errors") {
+
         const Tolerance tolerance;
         bool malformed = false;
         bool json_write_failed = false;
@@ -162,11 +168,13 @@ namespace session_cpp {
         } catch (const std::runtime_error&) {
             malformed = true;
         }
+
         try {
             tolerance.file_json_dump("");
         } catch (const std::runtime_error&) {
             json_write_failed = true;
         }
+
         try {
             tolerance.pb_dump("");
         } catch (const std::runtime_error&) {
@@ -179,6 +187,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Unique From Two Int") {
+
         uint64_t r0 = unique_from_two_int(3, 7);
         uint64_t r1 = unique_from_two_int(7, 3);
 
@@ -187,6 +196,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Wrap Index") {
+
         int r0 = wrap_index(0, 4);
         int r1 = wrap_index(3, 4);
         int r2 = wrap_index(4, 4);
@@ -201,6 +211,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Triangle Edge By Angle") {
+
         double r = triangle_edge_by_angle(1.0, 45.0);
 
         MINI_CHECK(std::abs(r - 1.0) < 1e-9);
@@ -209,6 +220,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Rad Deg Conversion") {
+
         double r0 = rad_to_deg(Tolerance::PI);
         double r1 = deg_to_rad(180.0);
         double r2 = deg_to_rad(rad_to_deg(1.234));
@@ -219,6 +231,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Count Digits") {
+
         int r0 = count_digits(0.0);
         int r1 = count_digits(1.0);
         int r2 = count_digits(9.9);
@@ -235,6 +248,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Is Angle Zero") {
+
         bool r0 = TOLERANCE.is_angle_zero(1e-8);
         bool r1 = TOLERANCE.is_angle_zero(0.1);
 
@@ -243,6 +257,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Is Angles Close") {
+
         bool r0 = TOLERANCE.is_angles_close(1.0, 1.0 + 1e-8);
         bool r1 = TOLERANCE.is_angles_close(1.0, 2.0);
 
@@ -251,6 +266,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Is Point Close") {
+
         Point a(1.0, 2.0, 3.0);
         Point b(1.0, 2.0, 3.0 + 1e-12);
         Point c(1.0, 2.0, 4.0);
@@ -260,6 +276,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Is Allclose") {
+
         std::vector<double> a = {1.0, 2.0, 3.0};
         std::vector<double> b = {1.0, 2.0, 3.0 + 1e-12};
         std::vector<double> c = {1.0, 2.0, 4.0};
@@ -275,6 +292,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Round To") {
+
         double r0 = Tolerance::round_to(3.14159, 2);
         double r1 = Tolerance::round_to(2.5, 0);
 
@@ -295,6 +313,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Compare") {
+
         bool r0 = TOLERANCE.compare(1.0, 1.0 + 1e-7, 1e-6, 1e-9);
         bool r1 = TOLERANCE.compare(1.0, 2.0, 1e-6, 1e-9);
 
@@ -303,6 +322,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Is Finite") {
+
         bool r0 = is_finite(1.0);
         bool r1 = is_finite(std::numeric_limits<double>::infinity());
 
@@ -311,6 +331,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Is Vector Close") {
+
         Vector a(1.0, 2.0, 3.0);
         Vector b(1.0, 2.0, 3.0 + 1e-12);
         Vector c(1.0, 2.0, 4.0);
@@ -320,24 +341,29 @@ namespace session_cpp {
     }
 
     MINI_TEST("Tolerance", "Temporary") {
+
         Tolerance tolerance;
         const double original = tolerance.absolute();
         bool inside = false;
         {
-            auto guard = tolerance.temporary();
+            ToleranceGuard guard = tolerance.temporary();
             guard->set_absolute(1e-12);
             inside = (*guard).absolute() == 1e-12;
         }
+
         const bool restored = tolerance.absolute() == original;
 
         bool threw = false;
+
         try {
-            auto guard = tolerance.temporary();
+            ToleranceGuard guard = tolerance.temporary();
             guard->set_absolute(1e-12);
+
             throw std::runtime_error("test");
         } catch (const std::runtime_error&) {
             threw = true;
         }
+
         const bool restored_after_error = tolerance.absolute() == original;
 
         MINI_CHECK(inside);
@@ -345,5 +371,4 @@ namespace session_cpp {
         MINI_CHECK(threw);
         MINI_CHECK(restored_after_error);
     }
-
 }

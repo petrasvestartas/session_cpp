@@ -12,6 +12,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Color", "Constructor") {
+
   const Color cdefault;
   const Color clamped(-1.0f, 2.0f, 0.5f, 3.0f);
   Color c(1.0f, 0.0f, 0.0f, 1.0f, "red");
@@ -48,6 +49,7 @@ MINI_TEST("Color", "Constructor") {
 }
 
 MINI_TEST("Color", "Json Roundtrip") {
+
   Color c(1.0f, 0.5f, 0.25f, 1.0f, "test_color");
 
   const std::string guid = c.guid();
@@ -67,6 +69,7 @@ MINI_TEST("Color", "Json Roundtrip") {
 }
 
 MINI_TEST("Color", "Protobuf Roundtrip") {
+
   const Color fresh;
   const session_proto::Color fresh_proto = fresh.to_proto();
   Color c(1.0f, 0.5f, 0.25f, 1.0f, "test_color");
@@ -93,6 +96,7 @@ MINI_TEST("Color", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Color", "Conversion") {
+
   const Color c(1.0f, 0.5f, 0.25f, 1.0f);
   const std::array<float, 4> flts = c.to_unified_array();
   const Color back = Color::from_unified_array(flts);
@@ -105,6 +109,7 @@ MINI_TEST("Color", "Conversion") {
 }
 
 MINI_TEST("Color", "Presets") {
+
   const Color white = Color::white();
   const Color black = Color::black();
   const Color grey = Color::grey();
@@ -159,6 +164,7 @@ MINI_TEST("Color", "Presets") {
 }
 
 MINI_TEST("Color", "Serialization Errors") {
+
   const Color color;
   bool malformed_json = false;
   bool malformed_pb = false;
@@ -170,16 +176,19 @@ MINI_TEST("Color", "Serialization Errors") {
   } catch (const std::exception &) {
     malformed_json = true;
   }
+
   try {
     Color::pb_loads(std::string(1, static_cast<char>(0xff)));
   } catch (const std::runtime_error &) {
     malformed_pb = true;
   }
+
   try {
     color.file_json_dump("");
   } catch (const std::runtime_error &) {
     json_write_failed = true;
   }
+
   try {
     color.pb_dump("");
   } catch (const std::runtime_error &) {

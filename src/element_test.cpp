@@ -15,6 +15,7 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Element", "Constructor") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -26,7 +27,7 @@ MINI_TEST("Element", "Constructor") {
     );
     Element e(m, "test_element");
 
-    auto& geo = e.geometry();
+    const ElementGeometry& geo = e.geometry();
     std::string name = e.name;
     const std::string& guid = e.guid();
     bool dirty = e.is_dirty();
@@ -51,6 +52,7 @@ MINI_TEST("Element", "Constructor") {
 }
 
 MINI_TEST("Element", "Place") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -65,14 +67,19 @@ MINI_TEST("Element", "Place") {
     e.place(xf);
 
     MINI_CHECK(e.is_dirty());
-    if (auto* mesh = std::get_if<Mesh>(&e.geometry())) {
+
+    if (const Mesh* mesh = std::get_if<Mesh>(&e.geometry())) {
         double min_x = std::numeric_limits<double>::max();
-        for (const auto& [k, v] : mesh->vertex) min_x = std::min(min_x, v.x);
+
+        for (const auto& [k, v] : mesh->vertex)
+            min_x = std::min(min_x, v.x);
+
         MINI_CHECK(min_x > 9.0);
     }
 }
 
 MINI_TEST("Element", "Add Geometry Op") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -84,12 +91,16 @@ MINI_TEST("Element", "Add Geometry Op") {
     );
     Element e(m);
 
-    auto my_feature = [](Mesh geo) -> Mesh { return geo; };
+    auto my_feature = [](Mesh geo) -> Mesh {
+        return geo;
+    };
     e.add_geometry_op(my_feature);
 
     Element eb(BRep::create_box(1.0, 1.0, 1.0), "brep_feature");
-    eb.add_geometry_op([](Mesh) -> Mesh { return Mesh(); });
-    auto sg = eb.session_geometry(Xform::identity());
+    eb.add_geometry_op([](Mesh) -> Mesh {
+        return Mesh();
+    });
+    ElementGeometry sg = eb.session_geometry(Xform::identity());
 
     MINI_CHECK(e.is_dirty());
     MINI_CHECK(e.geometry_ops_count() == 1);
@@ -97,6 +108,7 @@ MINI_TEST("Element", "Add Geometry Op") {
 }
 
 MINI_TEST("Element", "AABB") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -114,12 +126,16 @@ MINI_TEST("Element", "AABB") {
     MINI_CHECK(TOLERANCE.is_close(aabb.half_size[2], 0.0));
     MINI_CHECK(!e.is_dirty());
 
-    e.add_geometry_op([](Mesh geo) { return geo; });
+    e.add_geometry_op([](Mesh geo) {
+        return geo;
+    });
+
     MINI_CHECK(e.is_dirty());
     MINI_CHECK(!e.cached_aabb().has_value());
 }
 
 MINI_TEST("Element", "OBB") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -137,6 +153,7 @@ MINI_TEST("Element", "OBB") {
 }
 
 MINI_TEST("Element", "Session Geometry") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -148,16 +165,18 @@ MINI_TEST("Element", "Session Geometry") {
     );
     Element e(m);
     Xform e_xf = Xform::translation(10.0, 0.0, 0.0);
-    auto sg = e.session_geometry(e_xf);
+    ElementGeometry sg = e.session_geometry(e_xf);
 
     MINI_CHECK(std::holds_alternative<Mesh>(sg));
-    auto& mesh = std::get<Mesh>(sg);
+    Mesh& mesh = std::get<Mesh>(sg);
+
     MINI_CHECK(TOLERANCE.is_close(mesh.vertex.at(0).x, 10.0));
     MINI_CHECK(TOLERANCE.is_close(mesh.vertex.at(1).x, 11.0));
     MINI_CHECK(&std::get<Mesh>(e.geometry()) != &mesh);
 }
 
 MINI_TEST("Element", "Reset") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -168,8 +187,8 @@ MINI_TEST("Element", "Reset") {
         {{0, 1, 2, 3}}
     );
     Element e(m);
-    auto _ = e.aabb();
-    auto _2 = e.point();
+    e.aabb();
+    e.point();
     e.reset();
 
     MINI_CHECK(e.is_dirty());
@@ -180,6 +199,7 @@ MINI_TEST("Element", "Reset") {
 }
 
 MINI_TEST("Element", "Compute Point") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -198,6 +218,7 @@ MINI_TEST("Element", "Compute Point") {
 }
 
 MINI_TEST("Element", "Brep Aabb") {
+
     BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "brep_element");
     OBB aabb = e.aabb();
@@ -212,6 +233,7 @@ MINI_TEST("Element", "Brep Aabb") {
 }
 
 MINI_TEST("Element", "Json Roundtrip") {
+
     Mesh m = Mesh::from_vertices_and_faces(
         {
             Point(0, 0, 0),
@@ -233,6 +255,7 @@ MINI_TEST("Element", "Json Roundtrip") {
 }
 
 MINI_TEST("Element", "Protobuf Roundtrip") {
+
     BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "proto_test");
 
@@ -251,10 +274,10 @@ MINI_TEST("Element", "Protobuf Roundtrip") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("Element", "Polylines") {
-    Mesh m = Mesh::from_vertices_and_faces(
-        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
-        {{0, 1, 2, 3}}
-    );
+
+    Mesh m =
+        Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)}, {{0, 1, 2, 3}});
+
     Element e(m, "test_element");
 
     MINI_CHECK(e.polylines().size() == 1);
@@ -264,6 +287,7 @@ MINI_TEST("Element", "Polylines") {
     MINI_CHECK(e.planes().size() == 1);
     MINI_CHECK(e.planes()[0].origin() == Point(0.5, 0.5, 0.0));
     const Vector normal = e.planes()[0].z_axis();
+
     MINI_CHECK(std::fabs(normal[0]) < 1e-12 && std::fabs(normal[1]) < 1e-12 && normal[2] > 0.0);
     MINI_CHECK(e.edge_vectors().empty());
     MINI_CHECK(!e.axis().has_value());
@@ -290,21 +314,28 @@ public:
     double thickness = 0.0;
     std::vector<int> codes;
 
-    std::string element_type_name() const override { return "TestPlate"; }
+    std::string element_type_name() const override {
+        return "TestPlate";
+    }
 
     std::string element_data_dumps() const override {
+
         std::string out = std::to_string(thickness);
-        for (int c : codes) out += "," + std::to_string(c);
+
+        for (int c : codes)
+            out += "," + std::to_string(c);
+
         return out;
     }
 
     static void register_with_kernel() {
+
         Element::register_type("TestPlate", [](const std::string& data) {
             Element base = Element::pb_loads(data);
             session_proto::Element proto;
             proto.ParseFromString(data);
 
-            auto plate = std::make_shared<TestPlate>();
+            std::shared_ptr<TestPlate> plate = std::make_shared<TestPlate>();
             static_cast<Element&>(*plate) = base;
             plate->guid() = proto.guid();
 
@@ -322,28 +353,27 @@ public:
 };
 
 Mesh unit_quad() {
+
     return Mesh::from_vertices_and_faces(
-        {
-            Point(0, 0, 0),
-            Point(1, 0, 0),
-            Point(1, 1, 0),
-            Point(0, 1, 0)
-        },
+        {Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)},
         {{0, 1, 2, 3}}
     );
 }
 
-}  // namespace
+} // namespace
 
 MINI_TEST("Element", "Registry Round Trip") {
+
     TestPlate::register_with_kernel();
+
     MINI_CHECK(Element::is_registered("TestPlate"));
 
     TestPlate plate(unit_quad(), "plate_0", 12.5, {30, 11, 20});
     const std::string guid = plate.guid();
-    auto loaded = Element::pb_loads_polymorphic(plate.pb_dumps());
+    std::shared_ptr<Element> loaded = Element::pb_loads_polymorphic(plate.pb_dumps());
 
-    auto* as_plate = dynamic_cast<TestPlate*>(loaded.get());
+    TestPlate* as_plate = dynamic_cast<TestPlate*>(loaded.get());
+
     MINI_CHECK(as_plate != nullptr);
     MINI_CHECK(as_plate->element_type_name() == "TestPlate");
 
@@ -356,6 +386,7 @@ MINI_TEST("Element", "Registry Round Trip") {
 }
 
 MINI_TEST("Element", "Registry Unknown Type Degrades") {
+
     MINI_CHECK(!Element::is_registered("NeverRegistered"));
 
     session_proto::Element proto;
@@ -363,18 +394,21 @@ MINI_TEST("Element", "Registry Unknown Type Degrades") {
     proto.set_element_type("NeverRegistered");
     proto.set_element_data("whatever this package meant");
 
-    auto loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
+    std::shared_ptr<Element> loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
+
     MINI_CHECK(loaded != nullptr);
     MINI_CHECK(loaded->name == "mystery");
     MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
 }
 
 MINI_TEST("Element", "Features Round Trip") {
+
     Element e(unit_quad(), "plate_0");
     e.set_insertion_vectors({Vector(0, 0, 1), Vector(1, 0, 0)});
     e.set_dimensions(Vector(120.0, 80.0, 12.5));
-    e.add_feature(ElementFeature("cut", 2,
-        {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch"));
+    e.add_feature(
+        ElementFeature("cut", 2, {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch")
+    );
     std::string feature_guid = e.features()[0].guid();
 
     Element loaded = Element::pb_loads(e.pb_dumps());
@@ -392,7 +426,9 @@ MINI_TEST("Element", "Features Round Trip") {
 }
 
 MINI_TEST("Element", "Dimensions Are Nominal Not Measured") {
+
     Element e(unit_quad(), "plate");
+
     MINI_CHECK(!e.dimensions().has_value());
 
     e.set_dimensions(Vector(120.0, 80.0, 12.5));
@@ -403,6 +439,7 @@ MINI_TEST("Element", "Dimensions Are Nominal Not Measured") {
 }
 
 MINI_TEST("Element", "Registry Leaves Base Bytes Unchanged") {
+
     Element e(unit_quad(), "plain");
     session_proto::Element proto;
     proto.ParseFromString(e.pb_dumps());
@@ -413,12 +450,14 @@ MINI_TEST("Element", "Registry Leaves Base Bytes Unchanged") {
 }
 
 MINI_TEST("Element", "Registry Json Round Trip") {
+
     TestPlate::register_with_kernel();
 
     TestPlate plate(unit_quad(), "plate_json", 9.5, {7, 8});
-    auto loaded = Element::file_json_loads_polymorphic(plate.file_json_dumps());
+    std::shared_ptr<Element> loaded = Element::file_json_loads_polymorphic(plate.file_json_dumps());
 
-    auto* as_plate = dynamic_cast<TestPlate*>(loaded.get());
+    TestPlate* as_plate = dynamic_cast<TestPlate*>(loaded.get());
+
     MINI_CHECK(as_plate != nullptr);
     MINI_CHECK(as_plate->name == "plate_json");
     MINI_CHECK(as_plate->guid() == plate.guid());
@@ -428,6 +467,7 @@ MINI_TEST("Element", "Registry Json Round Trip") {
 }
 
 MINI_TEST("Element", "Throwing Factory Degrades To Base") {
+
     Element::register_type("Exploding", [](const std::string&) -> std::shared_ptr<Element> {
         throw std::runtime_error("this package is broken");
     });
@@ -436,13 +476,15 @@ MINI_TEST("Element", "Throwing Factory Degrades To Base") {
     proto.ParseFromString(Element(unit_quad(), "victim").pb_dumps());
     proto.set_element_type("Exploding");
 
-    auto loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
+    std::shared_ptr<Element> loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
+
     MINI_CHECK(loaded != nullptr);
     MINI_CHECK(loaded->name == "victim");
     MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
 }
 
 MINI_TEST("Element", "Unknown Type Survives Resave") {
+
     session_proto::Element proto;
     proto.ParseFromString(Element(unit_quad(), "plate").pb_dumps());
     proto.set_element_type("wood::Plate");
@@ -450,16 +492,19 @@ MINI_TEST("Element", "Unknown Type Survives Resave") {
     std::string original = proto.SerializeAsString();
 
     Element loaded = Element::pb_loads(original);
+
     MINI_CHECK(loaded.element_type_name() == "wood::Plate");
     MINI_CHECK(loaded.element_data_dumps() == "the package's own bytes");
 
     session_proto::Element resaved;
     resaved.ParseFromString(loaded.pb_dumps());
+
     MINI_CHECK(resaved.element_type() == "wood::Plate");
     MINI_CHECK(resaved.element_data() == "the package's own bytes");
 }
 
 MINI_TEST("Element", "Duplicate Keeps Every Field") {
+
     Element e(unit_quad(), "original");
     e.set_insertion_vectors({Vector(0, 0, 1)});
     e.set_dimensions(Vector(120.0, 80.0, 12.5));
@@ -475,11 +520,14 @@ MINI_TEST("Element", "Duplicate Keeps Every Field") {
 }
 
 MINI_TEST("Element", "Equality Compares Carried Fields") {
+
     Element a(unit_quad(), "same");
     Element b(unit_quad(), "same");
+
     MINI_CHECK(a == b);
 
     b.set_dimensions(Vector(1, 2, 3));
+
     MINI_CHECK(a != b);
 }
 
@@ -488,12 +536,8 @@ MINI_TEST("Element", "Equality Compares Carried Fields") {
 // ═══════════════════════════════════════════════════════════════════════════
 
 MINI_TEST("ElementFeature", "Constructor") {
-    Polyline outline({
-        Point(0, 0, 0),
-        Point(1, 0, 0),
-        Point(1, 1, 0),
-        Point(0, 0, 0)
-    });
+
+    Polyline outline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)});
     ElementFeature f("cut", 2, {outline}, "notch");
 
     MINI_CHECK(f.feature_type == "cut");
@@ -502,24 +546,27 @@ MINI_TEST("ElementFeature", "Constructor") {
     MINI_CHECK(f.outlines.size() == 1);
 
     ElementFeature same("cut", 2, {outline}, "notch");
+
     MINI_CHECK(f == same);
     MINI_CHECK(!(f != same));
     MINI_CHECK(f.guid() != same.guid());
 
     ElementFeature other("drill", 2, {outline}, "notch");
+
     MINI_CHECK(f != other);
 
     MINI_CHECK(f.str() == "ElementFeature(cut, face 2, 1 outline(s))");
     MINI_CHECK(f.repr() == f.str());
 
     ElementFeature empty;
+
     MINI_CHECK(empty.face_index == -1);
     MINI_CHECK(empty.outlines.empty());
 }
 
 MINI_TEST("ElementFeature", "Json Roundtrip") {
-    ElementFeature f("cut", 2,
-        {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch");
+
+    ElementFeature f("cut", 2, {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch");
     std::string feature_guid = f.guid();
 
     std::string fname = "serialization/test_element_feature.json";
@@ -532,8 +579,8 @@ MINI_TEST("ElementFeature", "Json Roundtrip") {
 }
 
 MINI_TEST("ElementFeature", "Protobuf Roundtrip") {
-    ElementFeature f("drill", 5,
-        {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "hole");
+
+    ElementFeature f("drill", 5, {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "hole");
     std::string feature_guid = f.guid();
 
     std::string path = "serialization/test_element_feature.bin";

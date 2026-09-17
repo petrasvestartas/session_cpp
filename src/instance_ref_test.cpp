@@ -8,6 +8,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("InstanceRef", "Constructor") {
+
   Xform x = Xform::translation(10.0, 20.0, 30.0);
   InstanceRef inst("def-123", x);
 
@@ -37,6 +38,7 @@ MINI_TEST("InstanceRef", "Constructor") {
 }
 
 MINI_TEST("InstanceRef", "Transformation") {
+
   InstanceRef inst("def", Xform::translation(1.0, 0.0, 0.0));
   InstanceRef moved = inst.transformed(Xform::translation(5.0, 0.0, 0.0));
   inst.transform(Xform::translation(5.0, 0.0, 0.0));
@@ -46,6 +48,7 @@ MINI_TEST("InstanceRef", "Transformation") {
 }
 
 MINI_TEST("InstanceRef", "Json Roundtrip") {
+
   InstanceRef inst("def-abc", Xform::translation(1.0, 2.0, 3.0));
   inst.name = "test_ref";
   inst.flags = 7;
@@ -77,6 +80,7 @@ MINI_TEST("InstanceRef", "Json Roundtrip") {
 }
 
 MINI_TEST("InstanceRef", "Protobuf Roundtrip") {
+
   InstanceRef inst("def-xyz", Xform::translation(1.0, 2.0, 3.0));
   inst.name = "test_ref";
   inst.flags = 5;

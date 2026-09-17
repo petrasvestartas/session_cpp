@@ -8,7 +8,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Objects", "Constructor") {
-    // uncomment #include "objects.h"
+
     Objects obj;
     Objects named("custom_objects");
 
@@ -19,12 +19,10 @@ MINI_TEST("Objects", "Constructor") {
 }
 
 MINI_TEST("Objects", "Json Roundtrip") {
-    // uncomment #include "objects.h"
-    // uncomment #include "file_encoders.h"
-    // uncomment #include "point.h"
+
     Objects original;
-    auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
-    auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
+    std::shared_ptr<Point> point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::shared_ptr<Point> point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     original.points->push_back(point1);
     original.points->push_back(point2);
 
@@ -36,11 +34,10 @@ MINI_TEST("Objects", "Json Roundtrip") {
 }
 
 MINI_TEST("Objects", "Protobuf Roundtrip") {
-    // uncomment #include "objects.h"
-    // uncomment #include "point.h"
+
     Objects original;
-    auto point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
-    auto point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
+    std::shared_ptr<Point> point1 = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::shared_ptr<Point> point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     original.points->push_back(point1);
     original.points->push_back(point2);
 
@@ -52,12 +49,11 @@ MINI_TEST("Objects", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Objects", "Component Constructor") {
-    // Component is a generic envelope for custom domain objects.
-    // type_name identifies the class; extra holds all custom fields as JSON.
+
     Component c;
     c.type_name = "FloorBuilder";
-    c.name      = "floor_builder";
-    c.extra     = {{"size", 3000}, {"height", 650}};
+    c.name = "floor_builder";
+    c.extra = {{"size", 3000}, {"height", 650}};
 
     MINI_CHECK(c.type_name == "FloorBuilder");
     MINI_CHECK(c.name == "floor_builder");
@@ -66,39 +62,35 @@ MINI_TEST("Objects", "Component Constructor") {
 }
 
 MINI_TEST("Objects", "Component Json Roundtrip") {
-    // Round-trip a Component through JSON: all custom fields must survive.
+
     Component original;
     original.type_name = "FloorBuilder";
-    original.name      = "floor_builder";
-    original.extra     = {{"size", 3000}, {"height", 650}, {"rise", 453}};
+    original.name = "floor_builder";
+    original.extra = {{"size", 3000}, {"height", 650}, {"rise", 453}};
     std::string original_guid = original.guid();
 
-    // jsondump produces a flat dict: type/guid/name + all extra fields
-    auto j = original.jsondump();
-    MINI_CHECK(j["type"]   == "FloorBuilder");
-    MINI_CHECK(j["guid"]   == original_guid);
-    MINI_CHECK(j["size"]   == 3000);
+    nlohmann::ordered_json j = original.jsondump();
+
+    MINI_CHECK(j["type"] == "FloorBuilder");
+    MINI_CHECK(j["guid"] == original_guid);
+    MINI_CHECK(j["size"] == 3000);
     MINI_CHECK(j["height"] == 650);
 
-    // jsonload reconstructs the Component from that dict
     Component loaded = Component::jsonload(j);
-    MINI_CHECK(loaded.type_name        == "FloorBuilder");
-    MINI_CHECK(loaded.guid()           == original_guid);
-    MINI_CHECK(loaded.extra["size"]    == 3000);
-    MINI_CHECK(loaded.extra["rise"]    == 453);
+
+    MINI_CHECK(loaded.type_name == "FloorBuilder");
+    MINI_CHECK(loaded.guid() == original_guid);
+    MINI_CHECK(loaded.extra["size"] == 3000);
+    MINI_CHECK(loaded.extra["rise"] == 453);
 }
 
 MINI_TEST("Objects", "Objects Component Json Roundtrip") {
-    // An Objects collection serializes components alongside geometry.
+
     Objects original;
     Component c;
     c.type_name = "FloorBuilder";
-    c.name      = "floor_builder";
-    c.extra     = {{"size", 3000}, {"height", 650}};
-    // Pin the guid before push_back so both sides of the later equality have
-    // the same value. Otherwise `c.guid()` after the push copy lazily
-    // generates a fresh random guid on `c` that differs from the one cached
-    // on original.components->at(0) during dump.
+    c.name = "floor_builder";
+    c.extra = {{"size", 3000}, {"height", 650}};
     std::string expected_guid = c.guid();
     original.components->push_back(c);
 
@@ -107,9 +99,29 @@ MINI_TEST("Objects", "Objects Component Json Roundtrip") {
     Objects loaded = file_encoders::file_json_load<Objects>(filename);
 
     MINI_CHECK(loaded.components->size() == 1);
-    MINI_CHECK(loaded.components->at(0).type_name        == "FloorBuilder");
-    MINI_CHECK(loaded.components->at(0).extra["size"]    == 3000);
-    MINI_CHECK(loaded.components->at(0).guid()           == expected_guid);
+    MINI_CHECK(loaded.components->at(0).type_name == "FloorBuilder");
+    MINI_CHECK(loaded.components->at(0).extra["size"] == 3000);
+    MINI_CHECK(loaded.components->at(0).guid() == expected_guid);
+}
+
+MINI_TEST("Objects", "Component Protobuf Roundtrip") {
+
+    Objects original;
+    Component c;
+    c.type_name = "FloorBuilder";
+    c.name = "floor_builder";
+    c.extra = {{"size", 3000}, {"height", 650}};
+    std::string expected_guid = c.guid();
+    original.components->push_back(c);
+
+    std::string filename = "serialization/test_objects_component.bin";
+    original.pb_dump(filename);
+    Objects loaded = Objects::pb_load(filename);
+
+    MINI_CHECK(loaded.components->size() == 1);
+    MINI_CHECK(loaded.components->at(0).type_name == "FloorBuilder");
+    MINI_CHECK(loaded.components->at(0).guid() == expected_guid);
+    MINI_CHECK(loaded.components->at(0).extra["size"] == 3000);
 }
 
 } // namespace session_cpp
