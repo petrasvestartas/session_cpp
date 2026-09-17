@@ -1,5 +1,6 @@
 #include "vector.h"
 #include "point.h"
+#include "polyline.h"
 #include "vector.pb.h"
 #include <algorithm>
 #include <limits>
@@ -385,6 +386,10 @@ Vector Vector::average_normal(const std::vector<Point> &points) {
   }
   normal.normalize_self();
   return normal;
+}
+
+Vector Vector::average_normal(const Polyline &polyline) {
+  return average_normal(polyline.get_points());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

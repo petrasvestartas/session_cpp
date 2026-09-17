@@ -104,6 +104,37 @@ namespace session_cpp {
         MINI_CHECK(mesh.is_valid());
     }
 
+    MINI_TEST("Mesh", "From Polylines Polyline") {
+        Mesh mesh = Mesh::from_polylines(std::vector<Polyline>{
+            Polyline({
+                Point(1.28955, 0, 1.127558),
+                Point(0.85791, 0, 0.225512),
+                Point(0.64209, -0.866025, -0.225512),
+                Point(0.85791, -1.732051, 0.225512),
+                Point(1.458565, -1.732051, 1.127558),
+                Point(1.50537, -0.866025, 1.578581),
+            }),
+            Polyline({
+                Point(0.64209, 0.866025, -0.225512),
+                Point(0.114274, 0.866025, -0.686294),
+                Point(-0.00537, 0, -1.578581),
+                Point(0.21045, -0.866025, -1.127558),
+                Point(0.64209, -0.866025, -0.225512),
+                Point(0.85791, 0, 0.225512),
+            }),
+            Polyline({
+                Point(1.28955, 1.732051, 1.127558),
+                Point(0.85791, 1.732051, 0.225512),
+                Point(0.64209, 0.866025, -0.225512),
+                Point(0.85791, 0, 0.225512),
+                Point(1.28955, -0, 1.127558),
+                Point(1.853404, 0.866025, 1.578581),
+            }),
+        }, 0.001);
+
+        MINI_CHECK(mesh.is_valid());
+    }
+
     MINI_TEST("Mesh", "From Lines") {
         std::vector<Line> lines = {
             Line::from_points(Point(4.948083, -0.149798, 1.00765),

@@ -257,6 +257,7 @@ public:
 
     /// Mesh from a list of polygons, merging vertices within precision when given
     static Mesh from_polylines(const std::vector<std::vector<Point>>& polygons, std::optional<double> precision = std::nullopt);
+    static Mesh from_polylines(const std::vector<Polyline>& polylines, std::optional<double> precision = std::nullopt);
 
     /// Planar mesh from a line network, optionally without its outer boundary face
     static Mesh from_lines(const std::vector<Line>& lines, bool delete_boundary_face = false, std::optional<double> precision = std::nullopt);

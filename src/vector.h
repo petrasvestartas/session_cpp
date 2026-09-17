@@ -16,6 +16,7 @@
 namespace session_cpp {
 
 class Point;
+class Polyline;
 
 /// A 3D vector with a cached magnitude
 class Vector {
@@ -162,6 +163,7 @@ public:
 
   /// Unit area-weighted normal of a polygon by Newell's method
   static Vector average_normal(const std::vector<Point> &points);
+  static Vector average_normal(const Polyline &polyline);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Triangle laws

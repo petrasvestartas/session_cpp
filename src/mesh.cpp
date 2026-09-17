@@ -220,6 +220,14 @@ Mesh Mesh::from_polylines(const std::vector<std::vector<Point>>& polygons, std::
     return mesh;
 }
 
+Mesh Mesh::from_polylines(const std::vector<Polyline>& polylines, std::optional<double> precision) {
+    std::vector<std::vector<Point>> polygons;
+    polygons.reserve(polylines.size());
+    for (const Polyline& polyline : polylines)
+        polygons.push_back(polyline.get_points());
+    return from_polylines(polygons, precision);
+}
+
 /// Grid spacing for merging line endpoints: the given precision or a millionth of the bbox diagonal
 static double lines_precision(const std::vector<Point>& pts, std::optional<double> precision) {
     const double eps = precision.value_or(0.0);

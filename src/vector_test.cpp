@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "vector.h"
 #include "point.h"
+#include "polyline.h"
 #include "tolerance.h"
 #include "xform.h"
 
@@ -348,7 +349,23 @@ namespace session_cpp {
             Point(0.0, 0.0, 0.0),
         };
         Vector n = Vector::average_normal(square);
-        Vector empty = Vector::average_normal({});
+        Vector empty = Vector::average_normal(std::vector<Point>{});
+
+        MINI_CHECK(TOLERANCE.is_close(std::abs(n[2]), 1.0));
+        MINI_CHECK(TOLERANCE.is_close(n[0], 0.0) && TOLERANCE.is_close(n[1], 0.0));
+        MINI_CHECK(empty.is_zero());
+    }
+
+    MINI_TEST("Vector", "Average Normal Polyline") {
+        Polyline square({
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+            Point(0.0, 0.0, 0.0),
+        });
+        Vector n = Vector::average_normal(square);
+        Vector empty = Vector::average_normal(Polyline());
 
         MINI_CHECK(TOLERANCE.is_close(std::abs(n[2]), 1.0));
         MINI_CHECK(TOLERANCE.is_close(n[0], 0.0) && TOLERANCE.is_close(n[1], 0.0));
