@@ -641,17 +641,15 @@ bool direct_face(const BRep& b, int fi) {
     const NurbsSurface& srf = b.m_surfaces[face.surface_index];
     const auto [u0, u1] = srf.domain(0);
     const auto [v0, v1] = srf.domain(1);
-    // Topological edge ends must be domain corners; internal polyline controls are not new vertices.
-    const BRep& mesh_brep = b;
-    for (const BRepRef& er : mesh_brep.wire_edges(face.wires[0])) {
-        const int ci = mesh_brep.pcurve_index(er.index, fi, er.orientation);
+    for (const BRepRef& er : b.wire_edges(face.wires[0])) {
+        const int ci = b.pcurve_index(er.index, fi, er.orientation);
         if (ci < 0) continue;
-        const auto& curve = mesh_brep.m_curves_2d[ci];
+        const NurbsCurve& curve = b.m_curves_2d[ci];
         for (int k : {0, std::max(0, curve.cv_count() - 1)}) {
             const Point p = curve.get_cv(k);
             const bool corner_u = std::min(std::abs(p[0] - u0), std::abs(p[0] - u1)) <= (u1 - u0) * 1e-9;
             const bool corner_v = std::min(std::abs(p[1] - v0), std::abs(p[1] - v1)) <= (v1 - v0) * 1e-9;
-            if (!corner_u || !corner_v) { return false; }
+            if (!corner_u || !corner_v) return false;
         }
     }
     const double domain_area = (u1 - u0) * (v1 - v0);
