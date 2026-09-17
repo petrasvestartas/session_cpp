@@ -219,4 +219,13 @@ MINI_TEST("Plane", "Has On Negative Side") {
     MINI_CHECK(!pl.has_on_negative_side(above));
 }
 
+MINI_TEST("Plane", "Squared Distance") {
+    Plane pl = Plane::xy_plane();
+    Point above(1.0, 2.0, 3.0);
+    Point on(4.0, 5.0, 0.0);
+
+    MINI_CHECK(TOLERANCE.is_close(pl.squared_distance(above), 9.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.squared_distance(on), 0.0));
+}
+
 } // namespace session_cpp

@@ -144,6 +144,9 @@ public:
   /// True when a*p[0] + b*p[1] + c*p[2] + d < 0
   bool has_on_negative_side(const Point &p) const;
 
+  /// Squared distance from p to the plane
+  double squared_distance(const Point &p) const;
+
   /// Canonical in-plane axis from the normal alone: zero the smallest normal coordinate, negate-swap the other two
   Vector base1() const;
 

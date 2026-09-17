@@ -326,6 +326,11 @@ Point Plane::project(const Point &p) const {
 bool Plane::has_on_negative_side(const Point &p) const {
   return _a * p[0] + _b * p[1] + _c * p[2] + _d < 0.0;
 }
+double Plane::squared_distance(const Point &p) const {
+  const double value = _a * p[0] + _b * p[1] + _c * p[2] + _d;
+  const double normal_sq = _a * _a + _b * _b + _c * _c;
+  return normal_sq > 1e-20 ? value * value / normal_sq : value * value;
+}
 
 Vector Plane::base1() const {
   const double nx = _z_axis[0];
