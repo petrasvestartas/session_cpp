@@ -196,7 +196,11 @@ namespace TINY_YAML {
 				lineContent.erase(hashPos);
 
 			std::size_t colonPos = lineContent.find(':');
-			std::size_t firstCharPos = lineContent.find_first_not_of(" -#\t\f\v\n\r");
+			// The first character of the content: past the indentation and past one list dash, so that
+			// `- -5` keeps its minus (skipping every dash read a negative list item as positive).
+			std::size_t firstCharPos = lineContent.find_first_not_of(" #\t\f\v\n\r");
+			if (firstCharPos != std::string::npos && lineContent[firstCharPos] == '-')
+				firstCharPos = lineContent.find_first_not_of(" #\t\f\v\n\r", firstCharPos + 1);
 			std::size_t lastCharPos = lineContent.find_last_not_of(" #\t\f\v\n\r");
 
 			/*Validation layers*/
