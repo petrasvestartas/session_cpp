@@ -1,10 +1,10 @@
-#include "io.h"
+#include "io_xyz.h"
 #include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 
-namespace session_cpp { namespace io {
+namespace session_cpp { namespace io_xyz {
 
 std::string write_xyz_to_string(const PointCloud& cloud) {
     std::ostringstream out;
@@ -44,4 +44,4 @@ PointCloud read_xyz(const std::string& filepath) {
     return read_xyz_from_str(buffer.str());
 }
 
-} } // namespace session_cpp::io
+} } // namespace session_cpp::io_xyz

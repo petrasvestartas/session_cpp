@@ -17,13 +17,7 @@
 #endif
 
 #if defined(_WIN32) && !defined(FMT_USE_WRITE_CONSOLE)
-#if defined(_MSC_VER)
-// session_cpp: the kernel's own src/io.h sits on the include path and MSVC would take it for <io.h>;
-// corecrt_io.h is the UCRT header behind it and declares _isatty and _get_osfhandle.
-#include <corecrt_io.h>
-#else
 #include <io.h> // _isatty
-#endif
 #endif
 
 #include "format.h"
