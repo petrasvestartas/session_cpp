@@ -125,8 +125,8 @@ public:
     /// Axis-aligned box with a cylindrical through-hole along Z
     static BRep create_block_with_hole(double sx, double sy, double sz, double hole_radius);
 
-    /// One planar face per closed polyline; coincident vertices and edges are shared, closed sheets become solids
-    static BRep from_polylines(const std::vector<Polyline>& polylines);
+    /// One planar face per closed polyline, holes[i] the closed polylines bounding the holes of face i; coincident vertices and edges are shared, closed sheets become solids
+    static BRep from_polylines(const std::vector<Polyline>& polylines, const std::vector<std::vector<Polyline>>& holes = {});
 
     /// One planar face per closed curve with optional hole curves (inner wires); closed sheets become solids
     static BRep from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::vector<std::vector<NurbsCurve>>& holes = {});

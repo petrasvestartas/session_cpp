@@ -651,6 +651,57 @@ namespace session_cpp {
         MINI_CHECK(std::abs(m.area() - (100.0 - Tolerance::PI * 4.0)) < 0.5);
     }
 
+    /// 4 x 4 x 2 box with a 1 x 1 through-hole along z: bottom and top with a hole, four outer and four inner side quads
+    static void box_with_square_hole(std::vector<Polyline>& faces, std::vector<std::vector<Polyline>>& holes) {
+        const auto ring = [](const std::vector<std::pair<double, double>>& pts, double z) {
+            std::vector<Point> v;
+            for (const auto& [x, y] : pts) v.emplace_back(x, y, z);
+            v.emplace_back(pts[0].first, pts[0].second, z);
+            return Polyline(v);
+        };
+        const std::vector<std::pair<double, double>> outer{{-2, -2}, {2, -2}, {2, 2}, {-2, 2}};
+        const std::vector<std::pair<double, double>> inner{{-0.5, -0.5}, {0.5, -0.5}, {0.5, 0.5}, {-0.5, 0.5}};
+        faces = {ring(outer, 0.0), ring(outer, 2.0)};
+        holes = {{ring(inner, 0.0)}, {ring(inner, 2.0)}};
+        for (const auto& pts : {outer, inner})
+            for (size_t i = 0; i < 4; ++i) {
+                const auto& a = pts[i];
+                const auto& b = pts[(i + 1) % 4];
+                faces.push_back(Polyline(std::vector<Point>{Point(a.first, a.second, 0.0), Point(b.first, b.second, 0.0), Point(b.first, b.second, 2.0), Point(a.first, a.second, 2.0), Point(a.first, a.second, 0.0)}));
+                holes.push_back({});
+            }
+    }
+
+    MINI_TEST("BRep", "From Polylines Holes") {
+        std::vector<Polyline> faces;
+        std::vector<std::vector<Polyline>> holes;
+        box_with_square_hole(faces, holes);
+        BRep b = BRep::from_polylines(faces, holes);
+        MINI_CHECK(b.face_count() == 10);
+        MINI_CHECK(b.m_faces[0].wires.size() == 2);
+        MINI_CHECK(b.is_solid());
+        MINI_CHECK(std::abs(b.mesh().volume() - 30.0) < 1e-6);
+    }
+
+    MINI_TEST("BRep", "Planar Fast Path") {
+        std::vector<Polyline> faces;
+        std::vector<std::vector<Polyline>> holes;
+        box_with_square_hole(faces, holes);
+        BRep b = BRep::from_polylines(faces, holes);
+        const std::vector<Mesh> fm = b.face_meshes();
+        MINI_CHECK(fm.size() == 10);
+        MINI_CHECK(fm[0].vertex.size() == 8 && fm[0].face.size() == 8);
+        MINI_CHECK(fm[2].vertex.size() == 4 && fm[2].face.size() == 2);
+        double total = 0.0;
+        for (const Mesh& m : fm) total += m.area();
+        MINI_CHECK(std::abs(total - 70.0) < 1e-6);
+        int tagged = 0;
+        for (const auto& [vk, vd] : fm[0].vertex)
+            for (const auto& [key, value] : vd.attributes)
+                if (key.rfind("brep_edge/", 0) == 0) { tagged++; break; }
+        MINI_CHECK(tagged == 8);
+    }
+
     MINI_TEST("BRep", "Mesh Orientation") {
         BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
         double vol = bh.mesh().volume();

@@ -30,6 +30,9 @@ BRepOrientation brep_compose(BRepOrientation a, BRepOrientation b) {
     return brep_reverse(b);
 }
 
+/// remesh_cdt.cpp: triangle index triples of a counter-clockwise 2D border with clockwise holes into the flat list [border..., hole0..., hole1...]
+std::vector<std::array<int, 3>> cdt_triangulate(const std::vector<std::pair<double, double>>& border_2d, const std::vector<std::vector<std::pair<double, double>>>& holes_2d);
+
 namespace {
 
 const BRepOrientation F = BRepOrientation::Forward;
@@ -166,10 +169,12 @@ struct PolyFaceBuilder {
         return refs;
     }
 
-    /// Face on `srf` bounded by the vertex cycle `vi`; returns the face index
-    int face(const NurbsSurface& srf, const std::vector<int>& vi) {
+    /// Face on `srf` bounded by the vertex cycle `vi`, with one inner wire per hole cycle; returns the face index
+    int face(const NurbsSurface& srf, const std::vector<int>& vi, const std::vector<std::vector<int>>& holes = {}) {
         const int si = b.add_surface(srf);
-        return b.add_face(si, {{b.add_wire(wire_refs(si, vi)), F}});
+        std::vector<BRepRef> wires{{b.add_wire(wire_refs(si, vi)), F}};
+        for (const std::vector<int>& hole : holes) wires.push_back({b.add_wire(wire_refs(si, hole)), F});
+        return b.add_face(si, wires);
     }
 };
 
@@ -259,6 +264,30 @@ NurbsSurface planar_patch_through(const std::vector<Point>& pts, const Point& or
         plane_point(org, xa, ya, umin, vmax),
         plane_point(org, xa, ya, umax, vmax)
     );
+}
+
+/// Signed area of a closed cycle of points seen in the plane (org, xa, ya): positive when it runs counter-clockwise
+double signed_area_in_plane(const std::vector<Point>& pts, const Point& org, const Vector& xa, const Vector& ya) {
+    double area = 0.0;
+    const size_t n = pts.size();
+    for (size_t i = 0; i < n; ++i) {
+        const Point& a = pts[i];
+        const Point& b = pts[(i + 1) % n];
+        const double au = (a[0] - org[0]) * xa[0] + (a[1] - org[1]) * xa[1] + (a[2] - org[2]) * xa[2];
+        const double av = (a[0] - org[0]) * ya[0] + (a[1] - org[1]) * ya[1] + (a[2] - org[2]) * ya[2];
+        const double bu = (b[0] - org[0]) * xa[0] + (b[1] - org[1]) * xa[1] + (b[2] - org[2]) * xa[2];
+        const double bv = (b[0] - org[0]) * ya[0] + (b[1] - org[1]) * ya[1] + (b[2] - org[2]) * ya[2];
+        area += au * bv - bu * av;
+    }
+    return area * 0.5;
+}
+
+/// The vertices of a polyline without the closing duplicate
+std::vector<Point> open_points(const Polyline& pl) {
+    std::vector<Point> pts = pl.get_points();
+    const size_t n = pl.is_closed() ? (pts.empty() ? 0 : pts.size() - 1) : pts.size();
+    pts.resize(n);
+    return pts;
 }
 
 int find_or_add_vertex(BRep& b, const Point& p, double tol) {
@@ -747,6 +776,64 @@ std::vector<Point> grid_interior_uv(const NurbsSurface& srf, const Mesh& grid) {
 }
 
 /// Phase 3: map the canonical points of edge `ei` onto pcurve `ci` of face `fi`, checked in model space; false when a point cannot be lifted
+/// Planarity tolerance for a surface of any size: 1e-9 of its control-point bounding box diagonal, never below the zero tolerance
+double planar_patch_tolerance(const NurbsSurface& srf) {
+    double lo[3] = {1e300, 1e300, 1e300};
+    double hi[3] = {-1e300, -1e300, -1e300};
+    for (int i = 0; i < srf.m_cv_count[0]; ++i)
+        for (int j = 0; j < srf.m_cv_count[1]; ++j) {
+            const Point p = srf.get_cv(i, j);
+            for (int k = 0; k < 3; ++k) {
+                lo[k] = std::min(lo[k], p[k]);
+                hi[k] = std::max(hi[k], p[k]);
+            }
+        }
+    const double diagonal = std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) + (hi[2] - lo[2]) * (hi[2] - lo[2]));
+    return std::max(1e-9 * diagonal, Tolerance::ZERO_TOLERANCE);
+}
+
+/// True for a surface flat within planar_patch_tolerance, whatever its coordinates
+bool is_planar_patch(const NurbsSurface& srf) {
+    return srf.is_planar(nullptr, planar_patch_tolerance(srf));
+}
+
+/// Surface parameters of a point on a degree-1 parallelogram patch by two dot products; false when the patch is not that shape
+bool planar_patch_uv(const NurbsSurface& srf, const Point& p, double& u, double& v) {
+    if (srf.degree(0) != 1 || srf.degree(1) != 1 || srf.m_cv_count[0] != 2 || srf.m_cv_count[1] != 2) return false;
+    const Point p00 = srf.get_cv(0, 0);
+    const Point p10 = srf.get_cv(1, 0);
+    const Point p01 = srf.get_cv(0, 1);
+    const Point p11 = srf.get_cv(1, 1);
+    const Vector eu = p10 - p00;
+    const Vector ev = p01 - p00;
+    const Vector skew = (p11 - p10) - ev;
+    if (skew.magnitude() > planar_patch_tolerance(srf)) return false;
+    const double eu2 = eu.dot(eu);
+    const double ev2 = ev.dot(ev);
+    if (eu2 <= 0.0 || ev2 <= 0.0) return false;
+    const Vector d = p - p00;
+    const auto [u0, u1] = srf.domain(0);
+    const auto [v0, v1] = srf.domain(1);
+    u = u0 + d.dot(eu) / eu2 * (u1 - u0);
+    v = v0 + d.dot(ev) / ev2 * (v1 - v0);
+    return true;
+}
+
+/// Parameter of the closest point on a two-point degree-1 pcurve by one projection; false for any other curve
+bool linear_pcurve_parameter(const NurbsCurve& crv, double u, double v, double& t) {
+    if (crv.degree() != 1 || crv.is_rational() || crv.cv_count() != 2) return false;
+    const Point c0 = crv.get_cv(0);
+    const Point c1 = crv.get_cv(1);
+    const double dx = c1[0] - c0[0];
+    const double dy = c1[1] - c0[1];
+    const double length_squared = dx * dx + dy * dy;
+    if (length_squared <= 0.0) return false;
+    const double fraction = std::clamp(((u - c0[0]) * dx + (v - c0[1]) * dy) / length_squared, 0.0, 1.0);
+    const auto [t0, t1] = crv.domain();
+    t = t0 + fraction * (t1 - t0);
+    return true;
+}
+
 bool lift_canonical(const BRep& b, int fi, int ei, int ci, EdgeBoundary& boundary, std::vector<Sample>& samples) {
     const BRepFace& face = b.m_faces[fi];
     const BRepEdge& edge = b.m_edges[ei];
@@ -754,6 +841,7 @@ bool lift_canonical(const BRep& b, int fi, int ei, int ci, EdgeBoundary& boundar
     const NurbsCurve& crv = b.m_curves_2d[ci];
     const bool cached = boundary.basis.count(ei) && std::get<0>(boundary.basis[ei]) == fi && std::get<1>(boundary.basis[ei]) == ci && boundary.samples.count(ei);
     const std::vector<Point>& points = boundary.points[ei];
+    const bool planar = is_planar_patch(srf);
     for (size_t index = 0; index < points.size(); ++index) {
         const Point& p = points[index];
         double t;
@@ -762,8 +850,11 @@ bool lift_canonical(const BRep& b, int fi, int ei, int ci, EdgeBoundary& boundar
             t = boundary.samples[ei][index].first;
             q = boundary.samples[ei][index].second;
         } else {
-            const auto [u, v] = srf.closest_parameters(p);
-            t = crv.closest_parameter(Point(u, v, 0.0));
+            double u = 0.0;
+            double v = 0.0;
+            const bool on_patch = planar && planar_patch_uv(srf, p, u, v);
+            if (!on_patch) std::tie(u, v) = srf.closest_parameters(p);
+            if (!on_patch || !linear_pcurve_parameter(crv, u, v, t)) t = crv.closest_parameter(Point(u, v, 0.0));
             q = crv.point_at(t);
         }
         const double scale = std::max({std::abs(p[0]), std::abs(p[1]), std::abs(p[2]), 1.0});
@@ -785,7 +876,7 @@ std::vector<Sample> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv
     const int count = std::min(std::max(crv.cv_count() * 4, (int)std::ceil(360.0 / std::max(angle, 0.1))), 4096);
     std::vector<Point> points;
     std::vector<double> parameters;
-    if (crv.degree() <= 1 && !crv.is_rational() && srf.is_planar(nullptr, 0.0)) {
+    if (crv.degree() <= 1 && !crv.is_rational() && is_planar_patch(srf)) {
         for (int k = 0; k < crv.cv_count(); ++k) {
             points.push_back(crv.get_cv(k));
             parameters.push_back(crv.greville_abcissa(k));
@@ -848,6 +939,88 @@ bool trim_loops(const BRep& b, int fi, EdgeBoundary& boundary, double angle, dou
 }
 
 /// Tag every boundary vertex of a CDT mesh with the edge use it samples; each use keeps both ends, including the next edge's start
+/// Plane coordinates of the points in the frame (origin, xaxis, yaxis)
+std::vector<std::pair<double, double>> plane_coordinates(const std::vector<Point>& pts, const Point& origin, const Vector& xaxis, const Vector& yaxis) {
+    std::vector<std::pair<double, double>> out;
+    out.reserve(pts.size());
+    for (const Point& p : pts) {
+        const Vector d = p - origin;
+        out.emplace_back(d.dot(xaxis), d.dot(yaxis));
+    }
+    return out;
+}
+
+/// Signed area of a 2D ring, positive when counter-clockwise
+double ring_signed_area(const std::vector<std::pair<double, double>>& pts) {
+    double area = 0.0;
+    const size_t n = pts.size();
+    for (size_t i = 0; i < n; ++i) {
+        const size_t j = (i + 1) % n;
+        area += pts[i].first * pts[j].second - pts[j].first * pts[i].second;
+    }
+    return area * 0.5;
+}
+
+/// Phase 3 for a planar face: the sampled loops triangulated as one polygon with holes, wound to the surface normal, every loop vertex tagged boundary/{loop}/{sample} as mesh_loops does; no grid, no surface evaluation
+Mesh planar_loops_mesh(const NurbsSurface& srf, const TrimLoops& loops) {
+    Mesh mesh;
+    if (loops.xyz.empty() || loops.xyz[0].size() < 3) return mesh;
+    std::vector<Point> all_pts;
+    for (const std::vector<Point>& loop : loops.xyz) all_pts.insert(all_pts.end(), loop.begin(), loop.end());
+    Point origin;
+    Vector xaxis;
+    Vector yaxis;
+    Vector zaxis;
+    Polyline(all_pts).get_average_plane(origin, xaxis, yaxis, zaxis);
+    std::vector<Point> border = loops.xyz[0];
+    std::vector<std::pair<double, double>> border_2d = plane_coordinates(border, origin, xaxis, yaxis);
+    if (ring_signed_area(border_2d) < 0.0) {
+        std::reverse(border.begin(), border.end());
+        std::reverse(border_2d.begin(), border_2d.end());
+    }
+    std::vector<std::vector<Point>> holes;
+    std::vector<std::vector<std::pair<double, double>>> holes_2d;
+    for (size_t li = 1; li < loops.xyz.size(); ++li) {
+        if (loops.xyz[li].size() < 3) continue;
+        std::vector<Point> hole = loops.xyz[li];
+        std::vector<std::pair<double, double>> hole_2d = plane_coordinates(hole, origin, xaxis, yaxis);
+        if (ring_signed_area(hole_2d) > 0.0) {
+            std::reverse(hole.begin(), hole.end());
+            std::reverse(hole_2d.begin(), hole_2d.end());
+        }
+        holes.push_back(hole);
+        holes_2d.push_back(hole_2d);
+    }
+    std::vector<size_t> vkeys;
+    for (const Point& p : border) vkeys.push_back(mesh.add_vertex(p));
+    for (const std::vector<Point>& hole : holes)
+        for (const Point& p : hole) vkeys.push_back(mesh.add_vertex(p));
+    for (const std::array<int, 3>& t : cdt_triangulate(border_2d, holes_2d))
+        if (t[0] != t[1] && t[1] != t[2] && t[2] != t[0]) mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+    const auto [u0, u1] = srf.domain(0);
+    const auto [v0, v1] = srf.domain(1);
+    const Vector normal = srf.normal_at(0.5 * (u0 + u1), 0.5 * (v0 + v1));
+    if (!mesh.face.empty()) {
+        const std::vector<size_t>& fverts = mesh.face.begin()->second;
+        const Point a = mesh.vertex[fverts[0]].position();
+        const Point b = mesh.vertex[fverts[1]].position();
+        const Point c = mesh.vertex[fverts[2]].position();
+        if ((b - a).cross(c - a).dot(normal) < 0.0) mesh.flip();
+    }
+    std::map<std::array<double, 3>, std::pair<size_t, size_t>> lookup;
+    for (size_t li = 0; li < loops.xyz.size(); ++li)
+        for (size_t k = 0; k < loops.xyz[li].size(); ++k) {
+            const Point& p = loops.xyz[li][k];
+            lookup.emplace(std::array<double, 3>{p[0], p[1], p[2]}, std::make_pair(li, k));
+        }
+    for (auto& [vk, vd] : mesh.vertex) {
+        vd.set_normal(normal[0], normal[1], normal[2]);
+        const auto hit = lookup.find(std::array<double, 3>{vd.x, vd.y, vd.z});
+        if (hit != lookup.end()) vd.attributes["boundary/" + std::to_string(hit->second.first) + "/" + std::to_string(hit->second.second)] = 1.0;
+    }
+    return mesh;
+}
+
 void tag_edge_uses(Mesh& mesh, const TrimLoops& loops, const std::vector<EdgeUse>& uses) {
     for (size_t use_id = 0; use_id < uses.size(); ++use_id) {
         const auto [edge, li, start, count] = uses[use_id];
@@ -1021,23 +1194,37 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
     return b;
 }
 
-BRep BRep::from_polylines(const std::vector<Polyline>& polylines) {
+BRep BRep::from_polylines(const std::vector<Polyline>& polylines, const std::vector<std::vector<Polyline>>& holes) {
     BRep b;
     b.name = "polysurface";
     const double tol = 1e-6;
     PolyFaceBuilder pb{b, {}};
-    for (const Polyline& pl : polylines) {
-        std::vector<Point> pts = pl.get_points();
-        const int n = pl.is_closed() ? (int)pts.size() - 1 : (int)pts.size();
-        if (n < 3) continue;
+    for (size_t pi = 0; pi < polylines.size(); ++pi) {
+        const std::vector<Point> pts = open_points(polylines[pi]);
+        if (pts.size() < 3) continue;
         Point org;
         Plane plane;
-        pl.get_fast_plane(org, plane);
+        polylines[pi].get_fast_plane(org, plane);
         if (!plane.is_valid()) continue;
+        const Vector xa = plane.x_axis();
+        const Vector ya = plane.y_axis();
+        const double outer_area = signed_area_in_plane(pts, org, xa, ya);
         std::vector<int> vi;
-        for (int i = 0; i < n; ++i) vi.push_back(find_or_add_vertex(b, pts[i], tol));
-        pts.resize(n);
-        pb.face(planar_patch_through(pts, org, plane.x_axis(), plane.y_axis()), vi);
+        for (const Point& pt : pts) vi.push_back(find_or_add_vertex(b, pt, tol));
+        std::vector<Point> all_pts = pts;
+        std::vector<std::vector<int>> hole_cycles;
+        if (pi < holes.size()) {
+            for (const Polyline& h : holes[pi]) {
+                std::vector<Point> hp = open_points(h);
+                if (hp.size() < 3) continue;
+                if (signed_area_in_plane(hp, org, xa, ya) * outer_area > 0.0) std::reverse(hp.begin(), hp.end());
+                std::vector<int> cycle;
+                for (const Point& pt : hp) cycle.push_back(find_or_add_vertex(b, pt, tol));
+                hole_cycles.push_back(cycle);
+                all_pts.insert(all_pts.end(), hp.begin(), hp.end());
+            }
+        }
+        pb.face(planar_patch_through(all_pts, org, xa, ya), vi, hole_cycles);
     }
     close_free_faces(b);
     return b;
@@ -1361,9 +1548,13 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         if (rebuild_grid[fi]) loops.interior_uv = grid_interior_uv(srf, fmesh[fi]);
         std::vector<EdgeUse> uses;
         if (!trim_loops(*this, fi, boundary, angle, chord, loops, uses)) continue;
-        NurbsSurfaceTrimmed ts;
-        ts.m_surface = srf;
-        fmesh[fi] = ts.mesh_loops(loops, angle, chord);
+        if (loops.interior_uv.empty() && is_planar_patch(srf)) {
+            fmesh[fi] = planar_loops_mesh(srf, loops);
+        } else {
+            NurbsSurfaceTrimmed ts;
+            ts.m_surface = srf;
+            fmesh[fi] = ts.mesh_loops(loops, angle, chord);
+        }
         tag_edge_uses(fmesh[fi], loops, uses);
     }
     for (int fi = 0; fi < nf; ++fi) {
