@@ -87,7 +87,7 @@ public:
     void refresh_guid() { _guid.clear(); }
     std::string name = "my_brep";
     double width = 1.0;
-    Color surfacecolor = Color::black();
+    Color surfacecolor = Color::lightgrey();
 
     std::vector<NurbsSurface> m_surfaces;
     std::vector<NurbsCurve> m_curves_3d;

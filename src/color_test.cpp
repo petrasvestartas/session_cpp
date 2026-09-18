@@ -132,6 +132,7 @@ MINI_TEST("Color", "Presets") {
   const Color navy = Color::navy();
   const Color purple = Color::purple();
   const Color silver = Color::silver();
+  const Color lightgrey = Color::lightgrey();
   const std::vector<Color> palette = Color::palette();
   const std::vector<Color> expected = {
       red,    orange, yellow, lime,   green,   mint,
@@ -160,6 +161,7 @@ MINI_TEST("Color", "Presets") {
   MINI_CHECK(navy == Color(0.0f, 0.0f, 0.5f, 1.0f, "navy"));
   MINI_CHECK(purple == Color(0.5f, 0.0f, 0.5f, 1.0f, "purple"));
   MINI_CHECK(silver == Color(0.75f, 0.75f, 0.75f, 1.0f, "silver"));
+  MINI_CHECK(lightgrey == Color(0.9f, 0.9f, 0.9f, 1.0f, "lightgrey"));
   MINI_CHECK(palette == expected);
 }
 

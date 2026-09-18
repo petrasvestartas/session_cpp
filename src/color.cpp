@@ -99,6 +99,7 @@ Color Color::teal() { return Color(0.0f, 0.5f, 0.5f, 1.0f, "teal"); }
 Color Color::navy() { return Color(0.0f, 0.0f, 0.5f, 1.0f, "navy"); }
 Color Color::purple() { return Color(0.5f, 0.0f, 0.5f, 1.0f, "purple"); }
 Color Color::silver() { return Color(0.75f, 0.75f, 0.75f, 1.0f, "silver"); }
+Color Color::lightgrey() { return Color(0.9f, 0.9f, 0.9f, 1.0f, "lightgrey"); }
 
 std::vector<Color> Color::palette() {
   return {red(),  orange(), yellow(), lime(),   green(),   mint(),

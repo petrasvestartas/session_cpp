@@ -362,7 +362,7 @@ private:
     std::vector<Color> facecolors;                                      // Face colors.
     std::vector<Color> linecolors;                                      // Edge colors.
     std::vector<double> widths;                                         // Edge widths.
-    Color objectcolor = Color::white();                                 // Object color.
+    Color objectcolor = Color::lightgrey();                                 // Object color.
     size_t max_vertex = 0;                                              // Next vertex key.
     size_t max_face = 0;                                                // Next face key.
     std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation; // Cached triangulations.

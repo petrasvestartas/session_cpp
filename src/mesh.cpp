@@ -2515,7 +2515,7 @@ void Mesh::clear() {
     facecolors.clear();
     linecolors.clear();
     widths.clear();
-    objectcolor = Color::white();
+    objectcolor = Color::lightgrey();
     color_mode = ColorMode::OBJECTCOLOR;
     clear_triangle_bvh();
 }

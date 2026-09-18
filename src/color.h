@@ -146,6 +146,9 @@ public:
   /// Return opaque silver.
   static Color silver();
 
+  /// Return opaque light grey, the default surface color of meshes, breps and surfaces.
+  static Color lightgrey();
+
   /// The 12 spectral colors in order
   static std::vector<Color> palette();
 
