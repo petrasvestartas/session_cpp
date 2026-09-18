@@ -349,46 +349,6 @@ Xform Xform::plane_to_plane(const Plane& plane_from, const Plane& plane_to) {
     return t1 * (r * t0);
 }
 
-Xform Xform::plane_to_xy(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
-
-    const Vector x = x_axis.normalized();
-    const Vector y = y_axis.normalized();
-    const Vector z = z_axis.normalized();
-    const Xform t = translation(-origin[0], -origin[1], -origin[2]);
-    Xform f;
-    f.m[0] = x[0];
-    f.m[1] = x[1];
-    f.m[2] = x[2];
-    f.m[4] = y[0];
-    f.m[5] = y[1];
-    f.m[6] = y[2];
-    f.m[8] = z[0];
-    f.m[9] = z[1];
-    f.m[10] = z[2];
-
-    return f * t;
-}
-
-Xform Xform::xy_to_plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
-
-    const Vector x = x_axis.normalized();
-    const Vector y = y_axis.normalized();
-    const Vector z = z_axis.normalized();
-    Xform f;
-    f.m[0] = x[0];
-    f.m[4] = y[0];
-    f.m[8] = z[0];
-    f.m[1] = x[1];
-    f.m[5] = y[1];
-    f.m[9] = z[1];
-    f.m[2] = x[2];
-    f.m[6] = y[2];
-    f.m[10] = z[2];
-    const Xform t = translation(origin[0], origin[1], origin[2]);
-
-    return t * f;
-}
-
 Xform Xform::world_to_frame(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis) {
 
     const Vector x = x_axis.normalized();

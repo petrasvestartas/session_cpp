@@ -1498,7 +1498,7 @@ Xform Primitives::line_frame(const Line& line, const Point& origin) {
     const Vector pole = std::abs(z_axis[2]) < 0.9 ? Vector(0.0, 0.0, 1.0) : Vector(1.0, 0.0, 0.0);
     const Vector x_axis = pole.cross(z_axis);
 
-    return Xform::xy_to_plane(origin, x_axis, z_axis.cross(x_axis), z_axis);
+    return Xform::frame_to_world(origin, x_axis, z_axis.cross(x_axis), z_axis);
 }
 
 void Primitives::add_geometry(Mesh& mesh, const Geometry& geometry, const Xform& xform) {

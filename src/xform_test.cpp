@@ -514,4 +514,32 @@ MINI_TEST("Xform", "From Change Of Basis") {
     MINI_CHECK(TOLERANCE.is_close(xf.m[14], 2.0));
 }
 
+MINI_TEST("Xform", "World To Frame") {
+
+    Point origin(1.0, 2.0, 3.0);
+    Vector x_axis(0.0, 1.0, 0.0);
+    Vector y_axis(0.0, 0.0, 1.0);
+    Vector z_axis(1.0, 0.0, 0.0);
+    Xform xf = Xform::world_to_frame(origin, x_axis, y_axis, z_axis);
+    Point p = Point(1.0, 4.0, 6.0).transformed(xf);
+
+    MINI_CHECK(TOLERANCE.is_close(p[0], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(p[1], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(p[2], 0.0));
+}
+
+MINI_TEST("Xform", "Frame To World") {
+
+    Point origin(1.0, 2.0, 3.0);
+    Vector x_axis(0.0, 1.0, 0.0);
+    Vector y_axis(0.0, 0.0, 1.0);
+    Vector z_axis(1.0, 0.0, 0.0);
+    Xform xf = Xform::frame_to_world(origin, x_axis, y_axis, z_axis);
+    Point p = Point(2.0, 3.0, 0.0).transformed(xf);
+
+    MINI_CHECK(TOLERANCE.is_close(p[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close(p[1], 4.0));
+    MINI_CHECK(TOLERANCE.is_close(p[2], 6.0));
+}
+
 } // namespace session_cpp

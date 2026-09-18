@@ -380,6 +380,22 @@ Point Plane::project(const Point& p) const {
   return Point(p[0] - dist * _a, p[1] - dist * _b, p[2] - dist * _c);
 }
 
+Point Plane::axis_point() const {
+
+  const Vector& n = _z_axis;
+  const double d = -n.dot(Vector(_origin[0], _origin[1], _origin[2]));
+  const double fa = std::abs(n[0]);
+  const double fb = std::abs(n[1]);
+  const double fc = std::abs(n[2]);
+
+  if (fa > fb && fa > fc)
+    return Point(-d / n[0], 0.0, 0.0);
+  if (fb > fc)
+    return Point(0.0, -d / n[1], 0.0);
+
+  return Point(0.0, 0.0, -d / n[2]);
+}
+
 bool Plane::has_on_negative_side(const Point& p) const {
   return _a * p[0] + _b * p[1] + _c * p[2] + _d < 0.0;
 }

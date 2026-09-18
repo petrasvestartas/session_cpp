@@ -315,6 +315,9 @@ public:
   /// Compute male rect0 and female rect1 cross-sections of radius about p along segment_vector; flip_male rotates the corners.
   static void two_rects_from_frame(const Point& p, const Vector& segment_vector, const Vector& zaxis, bool middle, double radius, double length, int flip_male, Polyline& rect0, Polyline& rect1);
 
+  /// Cut two closed 5-point rectangles at plane, keeping the side on the positive half; false when a long edge misses the plane.
+  static bool trim_rectangles_by_plane(Polyline& first, Polyline& second, const Plane& plane);
+
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
   // ═══════════════════════════════════════════════════════════════════════════

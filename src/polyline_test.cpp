@@ -366,6 +366,28 @@ MINI_TEST("Polyline", "Point In Polygon 2d") {
     MINI_CHECK(!sq.point_in_polygon_2d(Point(2.0, 2.0, 0.0)));
 }
 
+MINI_TEST("Polyline", "Trim Rectangles By Plane") {
+
+    Polyline first({
+        Point(0.0, 0.0, 0.0), Point(4.0, 0.0, 0.0),
+        Point(4.0, 1.0, 0.0), Point(0.0, 1.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    Polyline second({
+        Point(0.0, 0.0, 1.0), Point(4.0, 0.0, 1.0),
+        Point(4.0, 1.0, 1.0), Point(0.0, 1.0, 1.0),
+        Point(0.0, 0.0, 1.0),
+    });
+    Plane plane = Plane::from_point_normal(Point(3.0, 0.0, 0.0), Vector(-1.0, 0.0, 0.0));
+    bool ok = Polyline::trim_rectangles_by_plane(first, second, plane);
+
+    MINI_CHECK(ok);
+    MINI_CHECK(TOLERANCE.is_close(first[1][0], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(first[2][0], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(second[1][0], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(first[0][0], 0.0));
+}
+
 MINI_TEST("Polyline", "Extend Segment") {
 
     Polyline pl({

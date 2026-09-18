@@ -1,5 +1,6 @@
 #include "polyline.h"
 #include "boolean_polyline.h"
+#include "intersection.h"
 #include "point.pb.h"
 #include "polyline.pb.h"
 #include "tolerance.h"
@@ -1468,6 +1469,39 @@ void Polyline::two_rects_from_frame(const Point& p, const Vector& segment_vector
 
   rect0 = Polyline({p + sv0 + v[1], p + sv1 + v[1], p + sv1 + v[0], p + sv0 + v[0], p + sv0 + v[1]});
   rect1 = Polyline({p + sv0 + v[2], p + sv1 + v[2], p + sv1 + v[3], p + sv0 + v[3], p + sv0 + v[2]});
+}
+
+bool Polyline::trim_rectangles_by_plane(Polyline& first, Polyline& second, const Plane& plane) {
+
+  if (first.point_count() != 5 || second.point_count() != 5)
+    return false;
+
+  std::array<Point, 4> points;
+  if (!Intersection::line_plane(Line::from_points(first[0], first[1]), plane, points[0], false) ||
+      !Intersection::line_plane(Line::from_points(first[3], first[2]), plane, points[1], false) ||
+      !Intersection::line_plane(Line::from_points(second[0], second[1]), plane, points[2], false) ||
+      !Intersection::line_plane(Line::from_points(second[3], second[2]), plane, points[3], false))
+    return false;
+  for (const Point& point : points)
+    for (size_t i = 0; i < 3; ++i)
+      if (!std::isfinite(point[i]))
+        return false;
+
+  if (plane.has_on_negative_side(first[0])) {
+    first.set_point(0, points[0]);
+    first.set_point(3, points[1]);
+    first.set_point(4, points[0]);
+    second.set_point(0, points[2]);
+    second.set_point(3, points[3]);
+    second.set_point(4, points[2]);
+  } else {
+    first.set_point(1, points[0]);
+    first.set_point(2, points[1]);
+    second.set_point(1, points[2]);
+    second.set_point(2, points[3]);
+  }
+
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

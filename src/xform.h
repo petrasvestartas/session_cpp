@@ -104,12 +104,6 @@ public:
     /// Construct the transform taking one plane to another.
     static Xform plane_to_plane(const Plane& plane_from, const Plane& plane_to);
 
-    /// Construct from frame axes as columns minus origin (local-to-world despite the name).
-    static Xform plane_to_xy(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis);
-
-    /// Construct from frame axes as rows plus origin.
-    static Xform xy_to_plane(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis);
-
     /// Construct the world point to frame coordinates transform (axes as rows).
     static Xform world_to_frame(const Point& origin, const Vector& x_axis, const Vector& y_axis, const Vector& z_axis);
 

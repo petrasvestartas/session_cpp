@@ -190,6 +190,9 @@ public:
   /// Return the orthogonal projection of p onto the plane.
   Point project(const Point& p) const;
 
+  /// Return the plane point on the axis of the largest normal component, the other two coordinates zero.
+  Point axis_point() const;
+
   /// Return whether a*p[0] + b*p[1] + c*p[2] + d < 0.
   bool has_on_negative_side(const Point& p) const;
 

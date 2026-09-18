@@ -243,4 +243,15 @@ MINI_TEST("Plane", "Squared Distance") {
     MINI_CHECK(TOLERANCE.is_close(pl.squared_distance(on), 0.0));
 }
 
+MINI_TEST("Plane", "Axis Point") {
+
+    Plane pl = Plane::from_point_normal(Point(1.0, 2.0, 3.0), Vector(0.0, 0.0, 1.0));
+    Point p = pl.axis_point();
+
+    MINI_CHECK(TOLERANCE.is_close(p[0], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(p[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(p[2], 3.0));
+    MINI_CHECK(TOLERANCE.is_close(pl.squared_distance(p), 0.0));
+}
+
 } // namespace session_cpp
