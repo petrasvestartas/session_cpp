@@ -4,6 +4,7 @@
 #include "nurbssurface.h"
 #include "pointcloud.h"
 #include "polyline.h"
+#include "xform.h"
 #include "tolerance.h"
 #include <algorithm>
 #include <cmath>
@@ -134,6 +135,12 @@ AABB AABB::from_nurbssurface(const NurbsSurface& surface, double inflate) {
 
 AABB AABB::merge(const AABB& a, const AABB& b) {
 
+    if (!a.is_valid())
+        return b;
+
+    if (!b.is_valid())
+        return a;
+
     const double min_x = std::min(a.cx - a.hx, b.cx - b.hx);
     const double min_y = std::min(a.cy - a.hy, b.cy - b.hy);
     const double min_z = std::min(a.cz - a.hz, b.cz - b.hz);
@@ -149,6 +156,10 @@ AABB AABB::merge(const AABB& a, const AABB& b) {
         (max_y - min_y) * 0.5,
         (max_z - min_z) * 0.5
     );
+}
+
+AABB AABB::empty() {
+    return AABB(0.0, 0.0, 0.0, -1.0, -1.0, -1.0);
 }
 
 double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, double t_hi, double d_start) {
@@ -241,6 +252,10 @@ double AABB::area() const {
 }
 
 double AABB::diagonal() const {
+
+    if (!is_valid())
+        return 0.0;
+
     return 2.0 * std::sqrt(hx * hx + hy * hy + hz * hz);
 }
 
@@ -336,6 +351,33 @@ void AABB::inflate(double amount) {
 
 void AABB::union_with(const AABB& other) {
     *this = merge(*this, other);
+}
+
+void AABB::union_with_point(double x, double y, double z) {
+    *this = merge(*this, AABB(x, y, z, 0.0, 0.0, 0.0));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Transformation
+// ═══════════════════════════════════════════════════════════════════════════
+
+void AABB::transform(const Xform& xform) {
+    *this = transformed(xform);
+}
+
+AABB AABB::transformed(const Xform& xform) const {
+
+    if (!is_valid())
+        return *this;
+
+    AABB out = AABB::empty();
+
+    for (const Point& corner : corners()) {
+        const Point p = xform.transform_point(corner);
+        out.union_with_point(p[0], p[1], p[2]);
+    }
+
+    return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

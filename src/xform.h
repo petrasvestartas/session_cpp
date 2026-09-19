@@ -166,6 +166,15 @@ public:
     /// Return four columns of four rows.
     std::array<std::array<double, 4>, 4> to_cols() const;
 
+    /// Return the length of the first column: the uniform scale the matrix applies.
+    double uniform_scale() const;
+
+    /// Return the eye of a view-projection: where clip x, y and w vanish at once; orthographic has none, so the view direction pushed far back.
+    Point eye() const;
+
+    /// Return the half-height of an orthographic view-projection in world units, 0 in perspective.
+    double ortho_half_height() const;
+
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
@@ -238,6 +247,9 @@ public:
 
 private:
     mutable std::string _guid;
+
+    /// Return the determinant of a 3x3 given by rows.
+    static double det3(const std::array<std::array<double, 3>, 3>& m);
 };
 
 } // namespace session_cpp

@@ -11,6 +11,7 @@
 #include "primitives.h"
 #include "tolerance.h"
 #include "vector.h"
+#include "xform.h"
 #include <cmath>
 
 using namespace session_cpp::mini_test;
@@ -55,6 +56,41 @@ MINI_TEST("AABB", "Constructor") {
     AABB c = AABB::merge(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0), AABB(4.0, 0.0, 0.0, 1.0, 1.0, 1.0));
     MINI_CHECK(c.min_point() == Point(-1.0, -1.0, -1.0));
     MINI_CHECK(c.max_point() == Point(5.0, 1.0, 1.0));
+}
+
+MINI_TEST("AABB", "Empty") {
+
+    AABB a = AABB::empty();
+    MINI_CHECK(!a.is_valid());
+    MINI_CHECK(TOLERANCE.is_close(a.diagonal(), 0.0));
+    a.union_with(AABB::empty());
+    MINI_CHECK(!a.is_valid());
+    a.union_with_point(1.0, 2.0, 3.0);
+    MINI_CHECK(a.is_valid());
+    MINI_CHECK(a.min_point() == Point(1.0, 2.0, 3.0));
+    MINI_CHECK(a.max_point() == Point(1.0, 2.0, 3.0));
+    a.union_with_point(-1.0, 0.0, 5.0);
+    MINI_CHECK(a.min_point() == Point(-1.0, 0.0, 3.0));
+    MINI_CHECK(a.max_point() == Point(1.0, 2.0, 5.0));
+    a.union_with(AABB::empty());
+    MINI_CHECK(a.max_point() == Point(1.0, 2.0, 5.0));
+    AABB b = AABB::merge(AABB::empty(), AABB(4.0, 0.0, 0.0, 1.0, 1.0, 1.0));
+    MINI_CHECK(b.min_point() == Point(3.0, -1.0, -1.0));
+    MINI_CHECK(b.max_point() == Point(5.0, 1.0, 1.0));
+}
+
+MINI_TEST("AABB", "Transform") {
+
+    AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
+    AABB moved = a.transformed(Xform::translation(1.0, 2.0, 3.0));
+    MINI_CHECK(moved.min_point() == Point(0.0, 0.0, 0.0));
+    MINI_CHECK(moved.max_point() == Point(2.0, 4.0, 6.0));
+    AABB turned = a.transformed(Xform::rotation_z(90.0, true));
+    MINI_CHECK(turned.min_point() == Point(-2.0, -1.0, -3.0));
+    MINI_CHECK(turned.max_point() == Point(2.0, 1.0, 3.0));
+    a.transform(Xform::scale_xyz(2.0, 2.0, 2.0));
+    MINI_CHECK(a.max_point() == Point(2.0, 4.0, 6.0));
+    MINI_CHECK(!AABB::empty().transformed(Xform::translation(1.0, 0.0, 0.0)).is_valid());
 }
 
 MINI_TEST("AABB", "From Geometry") {

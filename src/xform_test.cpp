@@ -429,6 +429,30 @@ MINI_TEST("Xform", "To Cols") {
     MINI_CHECK(TOLERANCE.is_close(cols[3][2], 3.0));
 }
 
+MINI_TEST("Xform", "Uniform Scale") {
+
+    MINI_CHECK(TOLERANCE.is_close(Xform::scale_xyz(2.0, 2.0, 2.0).uniform_scale(), 2.0));
+    MINI_CHECK(TOLERANCE.is_close(Xform::translation(1.0, 2.0, 3.0).uniform_scale(), 1.0));
+}
+
+MINI_TEST("Xform", "Eye") {
+
+    Xform view = Xform::look_at_right_handed(Point(1.0, 2.0, 5.0), Point(0.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0));
+    Xform perspective = Xform::perspective(Tolerance::PI / 2.0, 1.0, 1.0, 10.0) * view;
+    Xform orthographic = Xform::orthographic(-2.0, 2.0, -1.0, 1.0, 1.0, 10.0) * view;
+    MINI_CHECK(TOLERANCE.is_point_close(perspective.eye(), Point(1.0, 2.0, 5.0)));
+    MINI_CHECK(orthographic.eye().distance(Point(0.0, 0.0, 0.0)) > 1.0e8);
+}
+
+MINI_TEST("Xform", "Ortho Half Height") {
+
+    Xform view = Xform::look_at_right_handed(Point(1.0, 2.0, 5.0), Point(0.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0));
+    Xform perspective = Xform::perspective(Tolerance::PI / 2.0, 1.0, 1.0, 10.0) * view;
+    Xform orthographic = Xform::orthographic(-2.0, 2.0, -1.0, 1.0, 1.0, 10.0) * view;
+    MINI_CHECK(TOLERANCE.is_close(perspective.ortho_half_height(), 0.0));
+    MINI_CHECK(TOLERANCE.is_close(orthographic.ortho_half_height(), 1.0));
+}
+
 MINI_TEST("Xform", "Transform Geometry") {
 
     Xform t = Xform::translation(10.0, 20.0, 30.0);

@@ -684,6 +684,70 @@ std::array<std::array<double, 4>, 4> Xform::to_cols() const {
     }};
 }
 
+double Xform::det3(const std::array<std::array<double, 3>, 3>& m) {
+    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+}
+
+double Xform::uniform_scale() const {
+    return std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
+}
+
+Point Xform::eye() const {
+
+    const Xform& vp = *this;
+    const std::array<std::array<double, 3>, 3> rows = {{
+        {vp(0, 0), vp(0, 1), vp(0, 2)},
+        {vp(1, 0), vp(1, 1), vp(1, 2)},
+        {vp(3, 0), vp(3, 1), vp(3, 2)},
+    }};
+    const std::array<double, 3> rhs = {-vp(0, 3), -vp(1, 3), -vp(3, 3)};
+    const double d = det3(rows);
+    double norm = 1.0;
+
+    for (const std::array<double, 3>& row : rows)
+        norm *= std::sqrt(row[0] * row[0] + row[1] * row[1] + row[2] * row[2]);
+
+    if (std::abs(d) <= 1e-9 * std::max(norm, 1e-30)) {
+        const double fx = vp(2, 0);
+        const double fy = vp(2, 1);
+        const double fz = vp(2, 2);
+        const double len = std::max(std::sqrt(fx * fx + fy * fy + fz * fz), 1e-30);
+
+        return Point(fx / len * 1.0e9, fy / len * 1.0e9, fz / len * 1.0e9);
+    }
+
+    std::array<double, 3> eye = {0.0, 0.0, 0.0};
+
+    for (int k = 0; k < 3; k++) {
+        std::array<std::array<double, 3>, 3> replaced = rows;
+
+        for (int row = 0; row < 3; row++)
+            replaced[row][k] = rhs[row];
+
+        eye[k] = det3(replaced) / d;
+    }
+
+    return Point(eye[0], eye[1], eye[2]);
+}
+
+double Xform::ortho_half_height() const {
+
+    const Xform& vp = *this;
+    const double w2 = vp(3, 0) * vp(3, 0) + vp(3, 1) * vp(3, 1) + vp(3, 2) * vp(3, 2);
+
+    if (w2 > 1e-12)
+        return 0.0;
+
+    const double r1 = vp(1, 0) * vp(1, 0) + vp(1, 1) * vp(1, 1) + vp(1, 2) * vp(1, 2);
+
+    if (r1 <= 1e-30)
+        return 0.0;
+
+    return 1.0 / std::sqrt(r1);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════

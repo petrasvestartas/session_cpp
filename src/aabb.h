@@ -15,6 +15,7 @@ class NurbsCurve;
 class NurbsSurface;
 class PointCloud;
 class Polyline;
+class Xform;
 
 /// Axis-aligned bounding box as center and half-size.
 struct AABB {
@@ -59,8 +60,11 @@ struct AABB {
     /// Construct the box of the control points grown by inflate.
     static AABB from_nurbssurface(const NurbsSurface& surface, double inflate = 0.0);
 
-    /// Construct the box enclosing both a and b.
+    /// Construct the box enclosing both a and b; an invalid box contributes nothing.
     static AABB merge(const AABB& a, const AABB& b);
+
+    /// Construct the box nothing has grown yet: negative half-sizes, so is_valid is false.
+    static AABB empty();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
@@ -88,7 +92,7 @@ struct AABB {
     /// Return the surface area.
     double area() const;
 
-    /// Return the length of the space diagonal.
+    /// Return the length of the space diagonal, 0 when invalid.
     double diagonal() const;
 
     /// Return the volume.
@@ -124,8 +128,21 @@ struct AABB {
     /// Grow every half-size by amount.
     void inflate(double amount);
 
-    /// Grow to enclose other.
+    /// Grow to enclose other; an invalid box contributes nothing.
     void union_with(const AABB& other);
+
+    /// Grow to enclose (x, y, z); coordinates, not a Point, so a vertex loop allocates nothing.
+    void union_with_point(double x, double y, double z);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Transformation
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Replace the box by the box of its eight transformed corners.
+    void transform(const Xform& xform);
+
+    /// Return the box of the eight transformed corners; an invalid box stays invalid.
+    AABB transformed(const Xform& xform) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // String
