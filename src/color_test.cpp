@@ -34,7 +34,7 @@ MINI_TEST("Color", "Constructor") {
   const Color ccopy = c;
   const Color cother(1.0f, 0.0f, 0.0f, 1.0f, "red");
 
-  MINI_CHECK(cdefault == Color());
+  MINI_CHECK(cdefault == Color(0.94f, 0.94f, 0.94f, 1.0f));
   MINI_CHECK(clamped == Color(0.0f, 1.0f, 0.5f, 1.0f));
   MINI_CHECK(fresh);
   MINI_CHECK(c.name == "red");
@@ -161,7 +161,7 @@ MINI_TEST("Color", "Presets") {
   MINI_CHECK(navy == Color(0.0f, 0.0f, 0.5f, 1.0f, "navy"));
   MINI_CHECK(purple == Color(0.5f, 0.0f, 0.5f, 1.0f, "purple"));
   MINI_CHECK(silver == Color(0.75f, 0.75f, 0.75f, 1.0f, "silver"));
-  MINI_CHECK(lightgrey == Color(0.9f, 0.9f, 0.9f, 1.0f, "lightgrey"));
+  MINI_CHECK(lightgrey == Color(0.94f, 0.94f, 0.94f, 1.0f, "lightgrey"));
   MINI_CHECK(palette == expected);
 }
 

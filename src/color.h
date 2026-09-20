@@ -24,7 +24,7 @@ public:
   float a;                       // Alpha component.
 
   /// Construct from RGBA components, each clamped to [0.0, 1.0]
-  Color(float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f,
+  Color(float r = 0.94f, float g = 0.94f, float b = 0.94f, float a = 1.0f,
         std::string name = "my_color")
       : name(name), r(std::clamp(r, 0.0f, 1.0f)), g(std::clamp(g, 0.0f, 1.0f)),
         b(std::clamp(b, 0.0f, 1.0f)), a(std::clamp(a, 0.0f, 1.0f)) {}
