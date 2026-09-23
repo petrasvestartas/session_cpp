@@ -7,6 +7,7 @@ namespace session_cpp {
 
 /// Thick shell of a mesh: original faces, offset faces, quads on naked edges.
 struct MeshOffset {
+
     /// Top, bottom and side meshes of a shell.
     struct Layers {
         Mesh top; // Offset faces.
@@ -14,12 +15,18 @@ struct MeshOffset {
         Mesh sides; // One quad per naked edge.
     };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Static constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// One closed mesh: reversed bottom, offset top, one quad per naked edge.
     static Mesh from_mesh(const Mesh& mesh, double distance);
 
     /// The same shell as three meshes: top, bottom and sides.
     static Layers from_mesh_layers(const Mesh& mesh, double distance);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Geometry
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Plane of each face translated by distance along its normal, by face key.
     static std::map<size_t, Plane> offset_planes(const Mesh& mesh, double distance);
 

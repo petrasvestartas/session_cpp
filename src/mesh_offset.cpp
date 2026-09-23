@@ -4,6 +4,10 @@
 #include <set>
 
 namespace session_cpp {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 namespace {
 
 /// Least-squares point on the planes, fallback fills any free direction.
@@ -16,10 +20,11 @@ Point intersect_planes(const std::vector<Plane>& planes, const Point& fallback) 
         const Plane& plane = planes[0];
         const double t = -plane.d() - (plane.a() * fallback[0] + plane.b() * fallback[1] + plane.c() * fallback[2]);
 
-        return Point(fallback[0] + t * plane.a(), fallback[1] + t * plane.b(), fallback[2] + t * plane.c());
+        return fallback + plane.z_axis() * t;
     }
 
     const double eps = 1e-8;
+
     Matrix lhs(3, 3);
     Matrix rhs(3, 1);
 
@@ -61,21 +66,25 @@ std::vector<std::pair<size_t, size_t>> boundary_edges(const Mesh& mesh) {
 
     std::vector<std::pair<size_t, size_t>> edges;
 
-    for (const auto& [u, v] : mesh.naked_edges(true))
-        if (directed.count({u, v}))
-            edges.push_back({u, v});
+    for (const std::pair<size_t, size_t>& edge : mesh.naked_edges(true))
+        if (directed.count(edge))
+            edges.push_back(edge);
         else
-            edges.push_back({v, u});
+            edges.push_back({edge.second, edge.first});
 
     return edges;
 }
 
 } // namespace
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Static constructors
+// ═══════════════════════════════════════════════════════════════════════════
 Mesh MeshOffset::from_mesh(const Mesh& mesh, double distance) {
 
     const std::map<size_t, Plane> planes = offset_planes(mesh, distance);
     const std::map<size_t, Point> offsets = offset_vertices(mesh, planes);
+
     Mesh result;
     std::map<size_t, size_t> bottom;
     std::map<size_t, size_t> top;
@@ -100,8 +109,8 @@ Mesh MeshOffset::from_mesh(const Mesh& mesh, double distance) {
         result.add_face(top_face);
     }
 
-    for (const auto& [u, v] : boundary_edges(mesh))
-        result.add_face({bottom.at(u), bottom.at(v), top.at(v), top.at(u)});
+    for (const std::pair<size_t, size_t>& edge : boundary_edges(mesh))
+        result.add_face({bottom.at(edge.first), bottom.at(edge.second), top.at(edge.second), top.at(edge.first)});
 
     return result;
 }
@@ -110,6 +119,7 @@ MeshOffset::Layers MeshOffset::from_mesh_layers(const Mesh& mesh, double distanc
 
     const std::map<size_t, Plane> planes = offset_planes(mesh, distance);
     const std::map<size_t, Point> offsets = offset_vertices(mesh, planes);
+
     Layers layers;
     std::map<size_t, size_t> bottom;
     std::map<size_t, size_t> top;
@@ -137,8 +147,8 @@ MeshOffset::Layers MeshOffset::from_mesh_layers(const Mesh& mesh, double distanc
     std::map<size_t, size_t> side_bottom;
     std::map<size_t, size_t> side_top;
 
-    for (const auto& [u, v] : boundary_edges(mesh)) {
-        for (size_t vkey : {u, v}) {
+    for (const std::pair<size_t, size_t>& edge : boundary_edges(mesh)) {
+        for (size_t vkey : {edge.first, edge.second}) {
             if (!side_bottom.count(vkey))
                 side_bottom[vkey] = layers.sides.add_vertex(mesh.vertex_point(vkey).value());
 
@@ -146,12 +156,15 @@ MeshOffset::Layers MeshOffset::from_mesh_layers(const Mesh& mesh, double distanc
                 side_top[vkey] = layers.sides.add_vertex(offsets.at(vkey));
         }
 
-        layers.sides.add_face({side_bottom.at(u), side_bottom.at(v), side_top.at(v), side_top.at(u)});
+        layers.sides.add_face({side_bottom.at(edge.first), side_bottom.at(edge.second), side_top.at(edge.second), side_top.at(edge.first)});
     }
 
     return layers;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Geometry
+// ═══════════════════════════════════════════════════════════════════════════
 std::map<size_t, Plane> MeshOffset::offset_planes(const Mesh& mesh, double distance) {
 
     std::map<size_t, Plane> planes;
