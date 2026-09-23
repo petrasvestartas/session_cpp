@@ -1,4 +1,5 @@
 #pragma once
+
 #include "point.h"
 #include "vector.h"
 #include "plane.h"
@@ -23,6 +24,9 @@ class NurbsSurface;
 /// Static intersection routines for lines, planes, rays, NURBS, polylines and elements.
 class Intersection {
 public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Types
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Ray-mesh hit.
     struct RayHit {
         double t;       // Parameter along the ray.
@@ -42,7 +46,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Lines and planes
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Intersection point of two segments, the midpoint of closest approach within tolerance.
     static bool line_line(const Line& line0, const Line& line1, Point& output, double tolerance);
 
@@ -72,7 +75,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Rays
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Ray-box slab test returning the entry and exit parameters.
     static bool ray_box(
         const Point& origin,
@@ -165,7 +167,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // NURBS curves
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Curve-plane intersection parameters by sampling, bisection and Newton refinement.
     static std::vector<double> curve_plane(
         const NurbsCurve& curve,
@@ -212,7 +213,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // NURBS surfaces
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Surface-plane section curves.
     static std::vector<NurbsCurve> surface_plane(
         const NurbsSurface& surface,
@@ -244,7 +244,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Polylines and plane sets
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Three-plane intersection that rejects near-parallel pairs.
     static bool plane_plane_plane_check(
         const Plane& p0,
@@ -301,7 +300,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Polyline booleans
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Boolean of two closed planar polylines, clip_type 0 intersection, 1 union, 2 difference.
     static std::vector<Polyline> polyline_boolean(const Polyline& a, const Polyline& b, int clip_type);
 
@@ -323,7 +321,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Joints
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Polyline-plane crossings as one line oriented from align_start.
     static bool polyline_plane_to_line(const Polyline& poly, const Plane& plane, const Point& align_start, Line& out);
 
@@ -356,7 +353,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Elements
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Face-to-face contacts (a, b, face_a, face_b, type, polyline) with type 0 side-side, 1 side-top, 2 top-top.
     static std::vector<std::tuple<int, int, int, int, int, Polyline>> face_to_face(
         const std::vector<int>& adjacency,
@@ -395,6 +391,9 @@ public:
     );
 
 private:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Helpers
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Gaussian elimination of a 3x3 system with full pivoting, returning the rank.
     static int solve_3x3(
         const double row0[3],

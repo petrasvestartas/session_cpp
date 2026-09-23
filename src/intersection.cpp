@@ -1,23 +1,23 @@
 #include "intersection.h"
-#include "boolean_polyline.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include "boolean_polyline.h"
 #include "closest.h"
 #include "spatial_bvh.h"
-#include <cmath>
+#include "tolerance.h"
 #include <algorithm>
-#include <limits>
-#include <cstring>
-#include <set>
-#include <functional>
 #include <array>
-#include <optional>
-#include <chrono>
-#include <cstdio>
-#include <cstdlib>
+#include <cmath>
+#include <cstring>
+#include <functional>
+#include <limits>
 #include <tuple>
 
 namespace session_cpp {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Lines and planes
+// ═══════════════════════════════════════════════════════════════════════════
 
 int Intersection::solve_3x3(
     const double row0[3],
@@ -34,8 +34,13 @@ int Intersection::solve_3x3(
 
     int i;
     int j;
-    double* p0, *p1, *p2;
-    double temp, workarray[12], maxpiv, minpiv;
+    double* p0;
+    double* p1;
+    double* p2;
+    double temp;
+    double workarray[12];
+    double maxpiv;
+    double minpiv;
 
     const int sizeof_row = 3 * sizeof(row0[0]);
 
@@ -565,6 +570,10 @@ bool Intersection::plane_plane_plane(const Plane& plane0, const Plane& plane1, c
     return (rank == 3 && pr > 1e-12);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Rays
+// ═══════════════════════════════════════════════════════════════════════════
+
 bool Intersection::ray_box(
     const Point& origin,
     const Vector& direction,
@@ -786,6 +795,18 @@ bool Intersection::ray_triangle(
     return true;
 }
 
+/// Whether hit a sorts before hit b: smaller t, ties within 1e-6 broken by the lower face index.
+static bool ray_hit_before(const Intersection::RayHit& a, const Intersection::RayHit& b) {
+
+    const double eps = 1e-6;
+    const double dt = a.t - b.t;
+
+    if (std::fabs(dt) <= eps)
+        return a.face_index < b.face_index;
+
+    return a.t < b.t;
+}
+
 bool Intersection::ray_mesh(
     const Point& origin,
     const Vector& direction,
@@ -796,7 +817,9 @@ bool Intersection::ray_mesh(
 
     hits.clear();
 
-    auto [vertices, faces] = mesh.to_vertices_and_faces();
+    const std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> mesh_data = mesh.to_vertices_and_faces();
+    const std::vector<Point>& vertices = mesh_data.first;
+    const std::vector<std::vector<size_t>>& faces = mesh_data.second;
 
     for (size_t i = 0; i < faces.size(); ++i) {
         const std::vector<size_t>& face = faces[i];
@@ -844,13 +867,7 @@ bool Intersection::ray_mesh(
     }
 
     if (!hits.empty()) {
-        const double eps = 1e-6;
-        std::sort(hits.begin(), hits.end(), [eps](const RayHit& a, const RayHit& b) {
-            double dt = a.t - b.t;
-            if (std::fabs(dt) <= eps)
-                return a.face_index < b.face_index;
-            return a.t < b.t;
-        });
+        std::sort(hits.begin(), hits.end(), ray_hit_before);
 
         return true;
     }
@@ -930,13 +947,7 @@ bool Intersection::ray_mesh_bvh(
 
     if (find_all) {
         if (!hits.empty()) {
-            const double eps = 1e-6;
-            std::sort(hits.begin(), hits.end(), [eps](const RayHit& a, const RayHit& b) {
-                double dt = a.t - b.t;
-                if (std::fabs(dt) <= eps)
-                    return a.face_index < b.face_index;
-                return a.t < b.t;
-            });
+            std::sort(hits.begin(), hits.end(), ray_hit_before);
 
             return true;
         }
@@ -994,12 +1005,14 @@ std::vector<Point> Intersection::ray_mesh_bvh(const Line& line, const Mesh& mesh
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NURBS curve plane helpers
+// NURBS curve helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
 namespace {
+
 /// Signed distance of a point to the plane.
 double curve_signed_distance_to_plane(const Point& pt, const Plane& plane) {
+
     Vector v = pt - plane.origin();
 
     return v.dot(plane.z_axis());
@@ -1072,7 +1085,9 @@ bool curve_refine_intersection_newton(const NurbsCurve& curve, const Plane& plan
 
         t += dt;
 
-        auto [t0, t1] = curve.domain();
+        const std::pair<double, double> domain = curve.domain();
+        const double t0 = domain.first;
+        const double t1 = domain.second;
 
         if (t < t0)
             t = t0;
@@ -1398,7 +1413,7 @@ void curve_plane_subdivide_production(
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NURBS curve plane
+// NURBS curves
 // ═══════════════════════════════════════════════════════════════════════════
 
 std::vector<double> Intersection::curve_plane(const NurbsCurve& curve, const Plane& plane, double tolerance) {
@@ -1411,7 +1426,9 @@ std::vector<double> Intersection::curve_plane(const NurbsCurve& curve, const Pla
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    auto [t_start, t_end] = curve.domain();
+    const std::pair<double, double> domain = curve.domain();
+    const double t_start = domain.first;
+    const double t_end = domain.second;
 
     std::vector<double> span_params = curve.get_span_vector();
 
@@ -1530,7 +1547,9 @@ std::vector<double> Intersection::curve_plane_bezier_clipping(
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    auto [t0, t1] = curve.domain();
+    const std::pair<double, double> domain = curve.domain();
+    const double t0 = domain.first;
+    const double t1 = domain.second;
 
     curve_plane_clip(curve, plane, tolerance, t0, t1, 0, results);
 
@@ -1539,6 +1558,7 @@ std::vector<double> Intersection::curve_plane_bezier_clipping(
     auto last = std::unique(results.begin(), results.end(), [tolerance](double a, double b) {
         return std::abs(a - b) < tolerance * 2.0;
     });
+
     results.erase(last, results.end());
 
     return results;
@@ -1567,6 +1587,7 @@ std::vector<double> Intersection::curve_plane_algebraic(const NurbsCurve& curve,
     }
 
     std::sort(results.begin(), results.end());
+
     results.erase(
         std::unique(
             results.begin(),
@@ -1608,6 +1629,7 @@ std::vector<double> Intersection::curve_plane_production(
     }
 
     std::sort(results.begin(), results.end());
+
     results.erase(
         std::unique(
             results.begin(),
@@ -1632,7 +1654,7 @@ std::pair<double, double> Intersection::curve_closest_point(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NURBS surface plane tracing
+// NURBS surface helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
 namespace {
@@ -1655,8 +1677,12 @@ struct SurfacePlaneTraceResult {
 /// Seed and trace surface/plane intersection curves in UV space.
 SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const Plane& plane, double tolerance) {
 
-    auto [u0, u1] = surface.domain(0);
-    auto [v0, v1] = surface.domain(1);
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = surface.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     double range_u = u1 - u0;
     double range_v = v1 - v0;
     bool closed_u = surface.is_closed(0);
@@ -1674,6 +1700,7 @@ SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const 
 
         return std::max(u0, std::min(u, u1));
     };
+
     auto wrap_v = [&](double v) -> double {
         if (closed_v) {
             double t = std::fmod(v - v0, range_v);
@@ -1783,6 +1810,7 @@ SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const 
         double v;
         bool used;
     };
+
     std::vector<Seed> seeds;
 
     int h_jmax = closed_v ? nv - 1 : nv;
@@ -2041,6 +2069,7 @@ SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const 
     }
 
     double join_tol = std::max(du, dv) * uv_to_3d * 1.5;
+
     auto p3 = [&](const std::pair<double, double>& q) {
         return surface.point_at(q.first, q.second);
     };
@@ -2226,6 +2255,7 @@ NurbsCurve surface_plane_fit_3d(
         Vector ax = plane.x_axis();
         Vector ay = plane.y_axis();
         Point po = plane.origin();
+
         auto to2d = [&](const Point& p) -> std::pair<double, double> {
             double dx = p[0] - po[0];
             double dy = p[1] - po[1];
@@ -2235,9 +2265,15 @@ NurbsCurve surface_plane_fit_3d(
         };
 
         int n = (int)all_pts.size();
-        auto [x1, y1] = to2d(all_pts[0]);
-        auto [x2, y2] = to2d(all_pts[n / 3]);
-        auto [x3, y3] = to2d(all_pts[2 * n / 3]);
+        double x1;
+        double y1;
+        std::tie(x1, y1) = to2d(all_pts[0]);
+        double x2;
+        double y2;
+        std::tie(x2, y2) = to2d(all_pts[n / 3]);
+        double x3;
+        double y3;
+        std::tie(x3, y3) = to2d(all_pts[2 * n / 3]);
 
         double ax_ = x2 - x1;
         double ay_ = y2 - y1;
@@ -2255,7 +2291,9 @@ NurbsCurve surface_plane_fit_3d(
             double max_dev = 0;
 
             for (const Point& p : all_pts) {
-                auto [px, py] = to2d(p);
+                double px;
+                double py;
+                std::tie(px, py) = to2d(p);
                 max_dev = std::max(max_dev, std::abs(std::hypot(px - ccx, py - ccy) - radius));
             }
 
@@ -2290,6 +2328,7 @@ NurbsCurve surface_plane_fit_3d(
         Vector ax = plane.x_axis();
         Vector ay = plane.y_axis();
         Point po = plane.origin();
+
         auto to2d = [&](const Point& p) -> std::pair<double, double> {
             double dx = p[0] - po[0];
             double dy = p[1] - po[1];
@@ -2302,7 +2341,9 @@ NurbsCurve surface_plane_fit_3d(
         double AtA[5][5] = {}, Atb[5] = {};
 
         for (int i = 0; i < n; i++) {
-            auto [x, y] = to2d(all_pts[i]);
+            double x;
+            double y;
+            std::tie(x, y) = to2d(all_pts[i]);
             double row[5] = {x * x, x * y, y * y, x, y};
 
             for (int r = 0; r < 5; r++) {
@@ -2361,14 +2402,20 @@ NurbsCurve surface_plane_fit_3d(
             }
         }
 
-        double A = coef[0], B = coef[1], C = coef[2], D = coef[3], E = coef[4];
+        double A = coef[0];
+        double B = coef[1];
+        double C = coef[2];
+        double D = coef[3];
+        double E = coef[4];
         double disc = B * B - 4 * A * C;
 
         if (ok && disc < -1e-10 && std::fabs(A) > 1e-14) {
             double max_conic_dev = 0;
 
             for (const Point& p : all_pts) {
-                auto [x, y] = to2d(p);
+                double x;
+                double y;
+                std::tie(x, y) = to2d(p);
                 double val = A * x * x + B * x * y + C * y * y + D * x + E * y - 1.0;
                 max_conic_dev = std::max(max_conic_dev, std::fabs(val));
             }
@@ -2426,7 +2473,9 @@ NurbsCurve surface_plane_fit_3d(
                     double max_ell_dev = 0;
 
                     for (const Point& p : all_pts) {
-                        auto [px2, py2] = to2d(p);
+                        double px2;
+                        double py2;
+                        std::tie(px2, py2) = to2d(p);
                         double lx = cos_t * (px2 - cx) + sin_t * (py2 - cy);
                         double ly = -sin_t * (px2 - cx) + cos_t * (py2 - cy);
                         double ang = std::atan2(ly / semi_b, lx / semi_a);
@@ -2512,7 +2561,9 @@ NurbsCurve surface_plane_fit_3d(
             if (!cand.is_valid())
                 break;
 
-            auto [ft0, ft1] = cand.domain();
+            const std::pair<double, double> domain_ft = cand.domain();
+            const double ft0 = domain_ft.first;
+            const double ft1 = domain_ft.second;
             double max_dev = 0;
 
             for (int i = 0; i < m; i++) {
@@ -2556,6 +2607,7 @@ NurbsCurve surface_plane_fit_3d(
                 Point cv2 = crv.get_cv(i);
                 double cx = cv2[0];
                 double cy = cv2[1];
+
                 crv.set_cv(
                     i,
                     Point(
@@ -2627,10 +2679,8 @@ bool solve_gauss(
 // Analytic quadric surface intersection
 // ═══════════════════════════════════════════════════════════════════════════
 
-using V3 = std::array<double, 3>;
-
-/// Dot product of two V3.
-static double ssi_dot(const V3& u, const V3& v) {
+/// Dot product of two triples.
+static double ssi_dot(const std::array<double, 3>& u, const std::array<double, 3>& v) {
     return u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
 }
 
@@ -2639,20 +2689,21 @@ static double dot3(const double a[3], const double b[3]) {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-/// Cross product of two V3.
-static V3 ssi_cross(const V3& u, const V3& v) {
-    return V3{u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+/// Cross product of two triples.
+static std::array<double, 3> ssi_cross(const std::array<double, 3>& u, const std::array<double, 3>& v) {
+    return std::array<double, 3>{u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
 }
 
-/// Unit V3, or the input when degenerate.
-static V3 ssi_unit(const V3& v) {
+/// Unit triple, or the input when degenerate.
+static std::array<double, 3> ssi_unit(const std::array<double, 3>& v) {
+
     double l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 
-    return l > 1e-300 ? V3{v[0] / l, v[1] / l, v[2] / l} : v;
+    return l > 1e-300 ? std::array<double, 3>{v[0] / l, v[1] / l, v[2] / l} : v;
 }
 
 /// Two unit vectors spanning the plane perpendicular to unit n.
-static std::pair<V3, V3> ortho_basis(const V3& n) {
+static std::pair<std::array<double, 3>, std::array<double, 3>> ortho_basis(const std::array<double, 3>& n) {
 
     double ax = (std::abs(n[0]) <= std::abs(n[1]) && std::abs(n[0]) <= std::abs(n[2])) ? 1.0 : 0.0;
     double ay = (ax == 0.0 && std::abs(n[1]) <= std::abs(n[2])) ? 1.0 : 0.0;
@@ -2668,11 +2719,11 @@ static std::pair<V3, V3> ortho_basis(const V3& n) {
     double vy = n[2] * ux - n[0] * uz;
     double vz = n[0] * uy - n[1] * ux;
 
-    return {V3{ux, uy, uz}, V3{vx, vy, vz}};
+    return {std::array<double, 3>{ux, uy, uz}, std::array<double, 3>{vx, vy, vz}};
 }
 
 /// Exact 9-CV rational NURBS circle.
-static NurbsCurve exact_circle(double cx, double cy, double cz, const V3& xa, const V3& ya, double radius) {
+static NurbsCurve exact_circle(double cx, double cy, double cz, const std::array<double, 3>& xa, const std::array<double, 3>& ya, double radius) {
 
     double w = std::sqrt(2.0) / 2.0;
     double px[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
@@ -2701,8 +2752,8 @@ static NurbsCurve exact_ellipse(
     double cx,
     double cy,
     double cz,
-    const V3& ea,
-    const V3& eb,
+    const std::array<double, 3>& ea,
+    const std::array<double, 3>& eb,
     double semi_a,
     double semi_b
 ) {
@@ -2730,7 +2781,7 @@ static NurbsCurve exact_ellipse(
 }
 
 /// Eigenvalues/vectors of a symmetric 3x3 matrix (cyclic Jacobi).
-static void jacobi_eig3(const double M[3][3], double eigvals[3], V3 eigvecs[3]) {
+static void jacobi_eig3(const double M[3][3], double eigvals[3], std::array<double, 3> eigvecs[3]) {
 
     double a[3][3], v[3][3];
 
@@ -2788,46 +2839,50 @@ static void jacobi_eig3(const double M[3][3], double eigvals[3], V3 eigvecs[3]) 
     eigvals[2] = a[2][2];
 
     for (int k = 0; k < 3; k++)
-        eigvecs[k] = V3{v[0][k], v[1][k], v[2][k]};
+        eigvecs[k] = std::array<double, 3>{v[0][k], v[1][k], v[2][k]};
 }
 
 /// Recognized-surface descriptor.
 struct RecogSurface {
     enum Kind { NONE, PLANE, SPHERE, CYLINDER, CONE, TORUS } kind = NONE; // Recognized kind.
-    V3 p1{}; // Origin, center or apex.
-    V3 p2{}; // Normal or axis.
+    std::array<double, 3> p1{}; // Origin, center or apex.
+    std::array<double, 3> p2{}; // Normal or axis.
     double r = 0.0; // Radius or major radius.
     double r2 = 0.0; // Half angle or minor radius.
 };
 
 /// Recognize a cylinder from surface samples: axis point, axis direction and radius.
-static bool fit_cylinder(const NurbsSurface& surface, double tol, V3& axis_pt, V3& axis_dir, double& radius) {
+static bool fit_cylinder(const NurbsSurface& surface, double tol, std::array<double, 3>& axis_pt, std::array<double, 3>& axis_dir, double& radius) {
 
-    auto [u0, u1] = surface.domain(0);
-    auto [v0, v1] = surface.domain(1);
-    std::vector<V3> pts;
-    std::vector<V3> nrm;
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = surface.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
+    std::vector<std::array<double, 3>> pts;
+    std::vector<std::array<double, 3>> nrm;
 
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
             double uu = u0 + (u1 - u0) * i / 4.0;
             double vv = v0 + (v1 - v0) * j / 4.0;
             Point p = surface.point_at(uu, vv);
-            pts.push_back(V3{p[0], p[1], p[2]});
+            pts.push_back(std::array<double, 3>{p[0], p[1], p[2]});
             Vector n = surface.normal_at(uu, vv);
-            nrm.push_back(V3{n[0], n[1], n[2]});
+            nrm.push_back(std::array<double, 3>{n[0], n[1], n[2]});
         }
     }
 
     double M[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 
-    for (V3& n : nrm)
+    for (std::array<double, 3>& n : nrm)
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++)
                 M[r][c] += n[r] * n[c];
 
     double evals[3];
-    V3 evecs[3];
+    std::array<double, 3> evecs[3];
     jacobi_eig3(M, evals, evecs);
     int kmin = 0;
 
@@ -2835,21 +2890,23 @@ static bool fit_cylinder(const NurbsSurface& surface, double tol, V3& axis_pt, V
         if (evals[k] < evals[kmin])
             kmin = k;
 
-    V3 w = evecs[kmin];
+    std::array<double, 3> w = evecs[kmin];
     double wl = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
 
     if (wl < 1e-12)
         return false;
 
-    w = V3{w[0] / wl, w[1] / wl, w[2] / wl};
-    auto [ea, eb] = ortho_basis(w);
-    V3 p0 = pts[0];
+    w = std::array<double, 3>{w[0] / wl, w[1] / wl, w[2] / wl};
+    std::array<double, 3> ea;
+    std::array<double, 3> eb;
+    std::tie(ea, eb) = ortho_basis(w);
+    std::array<double, 3> p0 = pts[0];
     std::vector<std::vector<double>> ata(3, std::vector<double>(3, 0.0));
     std::vector<double> atb(3, 0.0);
     std::vector<std::pair<double, double>> proj;
 
-    for (V3& p : pts) {
-        V3 dp{p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]};
+    for (std::array<double, 3>& p : pts) {
+        std::array<double, 3> dp{p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]};
         double x = dp[0] * ea[0] + dp[1] * ea[1] + dp[2] * ea[2];
         double y = dp[0] * eb[0] + dp[1] * eb[1] + dp[2] * eb[2];
         proj.push_back({x, y});
@@ -2883,7 +2940,7 @@ static bool fit_cylinder(const NurbsSurface& surface, double tol, V3& axis_pt, V
             return false;
 
     axis_pt =
-        V3{p0[0] + ccx * ea[0] + ccy * eb[0], p0[1] + ccx * ea[1] + ccy * eb[1], p0[2] + ccx * ea[2] + ccy * eb[2]};
+        std::array<double, 3>{p0[0] + ccx * ea[0] + ccy * eb[0], p0[1] + ccx * ea[1] + ccy * eb[1], p0[2] + ccx * ea[2] + ccy * eb[2]};
 
     axis_dir = w;
     radius = r;
@@ -2892,12 +2949,16 @@ static bool fit_cylinder(const NurbsSurface& surface, double tol, V3& axis_pt, V
 }
 
 /// Recognize a cone from surface samples: apex, axis and half angle.
-static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis, double& half_angle) {
+static bool fit_cone(const NurbsSurface& surface, double tol, std::array<double, 3>& apex, std::array<double, 3>& axis, double& half_angle) {
 
-    auto [u0, u1] = surface.domain(0);
-    auto [v0, v1] = surface.domain(1);
-    std::vector<V3> pts;
-    std::vector<std::pair<V3, V3>> nrm; // (unit normal, point)
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = surface.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
+    std::vector<std::array<double, 3>> pts;
+    std::vector<std::pair<std::array<double, 3>, std::array<double, 3>>> nrm; // (unit normal, point)
     int nu_s = 8;
 
     for (int i = 0; i < nu_s; i++) {
@@ -2906,7 +2967,7 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
         for (int j = 0; j < 5; j++) {
             double vv = v0 + (v1 - v0) * j / 4.0;
             Point p = surface.point_at(uu, vv);
-            pts.push_back(V3{p[0], p[1], p[2]});
+            pts.push_back(std::array<double, 3>{p[0], p[1], p[2]});
             Vector n = surface.normal_at(uu, vv);
             double nl = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
 
@@ -2914,7 +2975,7 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
                 continue;
 
             Point pp = surface.point_at(uu, vv);
-            nrm.push_back({V3{n[0] / nl, n[1] / nl, n[2] / nl}, V3{pp[0], pp[1], pp[2]}});
+            nrm.push_back({std::array<double, 3>{n[0] / nl, n[1] / nl, n[2] / nl}, std::array<double, 3>{pp[0], pp[1], pp[2]}});
         }
     }
 
@@ -2924,9 +2985,9 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
     std::vector<std::vector<double>> ata(3, std::vector<double>(3, 0.0));
     std::vector<double> atb(3, 0.0);
 
-    for (std::pair<V3, V3>& np : nrm) {
-        const V3& n = np.first;
-        const V3& p = np.second;
+    for (std::pair<std::array<double, 3>, std::array<double, 3>>& np : nrm) {
+        const std::array<double, 3>& n = np.first;
+        const std::array<double, 3>& p = np.second;
         double npd = n[0] * p[0] + n[1] * p[1] + n[2] * p[2];
 
         for (int r = 0; r < 3; r++) {
@@ -2942,16 +3003,16 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
     if (!solve_gauss(ata, atb, 3, V))
         return false;
 
-    std::vector<V3> gs;
+    std::vector<std::array<double, 3>> gs;
 
-    for (V3& p : pts) {
-        V3 d{p[0] - V[0], p[1] - V[1], p[2] - V[2]};
+    for (std::array<double, 3>& p : pts) {
+        std::array<double, 3> d{p[0] - V[0], p[1] - V[1], p[2] - V[2]};
         double dl = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
 
         if (dl < tol)
             continue;
 
-        gs.push_back(V3{d[0] / dl, d[1] / dl, d[2] / dl});
+        gs.push_back(std::array<double, 3>{d[0] / dl, d[1] / dl, d[2] / dl});
     }
 
     if ((int)gs.size() < 3)
@@ -2959,13 +3020,13 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
 
     double G[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 
-    for (V3& g : gs)
+    for (std::array<double, 3>& g : gs)
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++)
                 G[r][c] += g[r] * g[c];
 
     double gevals[3];
-    V3 gevecs[3];
+    std::array<double, 3> gevecs[3];
     jacobi_eig3(G, gevals, gevecs);
     int kmax = 0;
 
@@ -2973,27 +3034,27 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
         if (gevals[k] > gevals[kmax])
             kmax = k;
 
-    V3 w = gevecs[kmax];
-    V3 sx{0, 0, 0};
+    std::array<double, 3> w = gevecs[kmax];
+    std::array<double, 3> sx{0, 0, 0};
 
-    for (V3& g : gs) {
+    for (std::array<double, 3>& g : gs) {
         sx[0] += g[0];
         sx[1] += g[1];
         sx[2] += g[2];
     }
 
     if (w[0] * sx[0] + w[1] * sx[1] + w[2] * sx[2] < 0.0)
-        w = V3{-w[0], -w[1], -w[2]};
+        w = std::array<double, 3>{-w[0], -w[1], -w[2]};
 
     double wl = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
 
     if (wl < 1e-12)
         return false;
 
-    w = V3{w[0] / wl, w[1] / wl, w[2] / wl};
+    w = std::array<double, 3>{w[0] / wl, w[1] / wl, w[2] / wl};
     double sumang = 0.0;
 
-    for (V3& g : gs)
+    for (std::array<double, 3>& g : gs)
         sumang += std::acos(std::max(-1.0, std::min(1.0, g[0] * w[0] + g[1] * w[1] + g[2] * w[2])));
 
     double alpha = sumang / gs.size();
@@ -3003,8 +3064,8 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
 
     double ca = std::cos(alpha);
 
-    for (V3& p : pts) {
-        V3 d{p[0] - V[0], p[1] - V[1], p[2] - V[2]};
+    for (std::array<double, 3>& p : pts) {
+        std::array<double, 3> d{p[0] - V[0], p[1] - V[1], p[2] - V[2]};
         double axd = d[0] * w[0] + d[1] * w[1] + d[2] * w[2];
         double perp = std::sqrt(std::max(0.0, (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) - axd * axd));
 
@@ -3012,7 +3073,7 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
             return false;
     }
 
-    apex = V3{V[0], V[1], V[2]};
+    apex = std::array<double, 3>{V[0], V[1], V[2]};
     axis = w;
     half_angle = alpha;
 
@@ -3022,23 +3083,27 @@ static bool fit_cone(const NurbsSurface& surface, double tol, V3& apex, V3& axis
 /// Recognize a sphere from surface samples: center and radius.
 static bool fit_sphere(const NurbsSurface& surface, double tol, double& cx, double& cy, double& cz, double& radius) {
 
-    auto [u0, u1] = surface.domain(0);
-    auto [v0, v1] = surface.domain(1);
-    std::vector<V3> pts;
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = surface.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
+    std::vector<std::array<double, 3>> pts;
 
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
             double uu = u0 + (u1 - u0) * i / 4.0;
             double vv = v0 + (v1 - v0) * j / 4.0;
             Point p = surface.point_at(uu, vv);
-            pts.push_back(V3{p[0], p[1], p[2]});
+            pts.push_back(std::array<double, 3>{p[0], p[1], p[2]});
         }
     }
 
     std::vector<std::vector<double>> ata(4, std::vector<double>(4, 0.0));
     std::vector<double> atb(4, 0.0);
 
-    for (V3& p : pts) {
+    for (std::array<double, 3>& p : pts) {
         double row[4] = {p[0], p[1], p[2], 1.0};
         double rhs = -(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
 
@@ -3065,7 +3130,7 @@ static bool fit_sphere(const NurbsSurface& surface, double tol, double& cx, doub
 
     double r = std::sqrt(r2);
 
-    for (V3& p : pts) {
+    for (std::array<double, 3>& p : pts) {
         double d = std::sqrt((p[0] - ccx) * (p[0] - ccx) + (p[1] - ccy) * (p[1] - ccy) + (p[2] - ccz) * (p[2] - ccz));
 
         if (std::abs(d - r) > tol)
@@ -3081,23 +3146,27 @@ static bool fit_sphere(const NurbsSurface& surface, double tol, double& cx, doub
 }
 
 /// Recognize a torus from the smallest-variance axis and a tube cross-section circle fit.
-static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& axis, double& R_out, double& r_out) {
+static bool fit_torus(const NurbsSurface& surface, double tol, std::array<double, 3>& center, std::array<double, 3>& axis, double& R_out, double& r_out) {
 
-    auto [u0, u1] = surface.domain(0);
-    auto [v0, v1] = surface.domain(1);
-    std::vector<V3> pts;
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = surface.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
+    std::vector<std::array<double, 3>> pts;
 
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < 8; j++) {
             Point p = surface.point_at(u0 + (u1 - u0) * i / 8.0, v0 + (v1 - v0) * j / 8.0);
-            pts.push_back(V3{p[0], p[1], p[2]});
+            pts.push_back(std::array<double, 3>{p[0], p[1], p[2]});
         }
     }
 
     int n = (int)pts.size();
-    V3 cen{0, 0, 0};
+    std::array<double, 3> cen{0, 0, 0};
 
-    for (V3& p : pts) {
+    for (std::array<double, 3>& p : pts) {
         cen[0] += p[0];
         cen[1] += p[1];
         cen[2] += p[2];
@@ -3108,8 +3177,8 @@ static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& a
     cen[2] /= n;
     double M[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 
-    for (V3& p : pts) {
-        V3 d{p[0] - cen[0], p[1] - cen[1], p[2] - cen[2]};
+    for (std::array<double, 3>& p : pts) {
+        std::array<double, 3> d{p[0] - cen[0], p[1] - cen[1], p[2] - cen[2]};
 
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++)
@@ -3117,7 +3186,7 @@ static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& a
     }
 
     double evals[3];
-    V3 evecs[3];
+    std::array<double, 3> evecs[3];
     jacobi_eig3(M, evals, evecs);
     int kmin = 0;
 
@@ -3125,21 +3194,21 @@ static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& a
         if (evals[k] < evals[kmin])
             kmin = k;
 
-    V3 w = evecs[kmin];
+    std::array<double, 3> w = evecs[kmin];
     double wl = std::sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
 
     if (wl < 1e-12)
         return false;
 
-    w = V3{w[0] / wl, w[1] / wl, w[2] / wl};
+    w = std::array<double, 3>{w[0] / wl, w[1] / wl, w[2] / wl};
     std::vector<std::vector<double>> ata(3, std::vector<double>(3, 0.0));
     std::vector<double> atb(3, 0.0);
     std::vector<std::pair<double, double>> rhoa;
 
-    for (V3& p : pts) {
-        V3 d{p[0] - cen[0], p[1] - cen[1], p[2] - cen[2]};
+    for (std::array<double, 3>& p : pts) {
+        std::array<double, 3> d{p[0] - cen[0], p[1] - cen[1], p[2] - cen[2]};
         double a = d[0] * w[0] + d[1] * w[1] + d[2] * w[2];
-        V3 perp{d[0] - a * w[0], d[1] - a * w[1], d[2] - a * w[2]};
+        std::array<double, 3> perp{d[0] - a * w[0], d[1] - a * w[1], d[2] - a * w[2]};
         double rho = std::sqrt(perp[0] * perp[0] + perp[1] * perp[1] + perp[2] * perp[2]);
         rhoa.push_back({rho, a});
         double row[3] = {rho, a, 1.0};
@@ -3174,7 +3243,7 @@ static bool fit_torus(const NurbsSurface& surface, double tol, V3& center, V3& a
         if (std::abs(std::sqrt((ra.first - R) * (ra.first - R) + (ra.second - a0) * (ra.second - a0)) - r) > tol)
             return false;
 
-    center = V3{cen[0] + a0 * w[0], cen[1] + a0 * w[1], cen[2] + a0 * w[2]};
+    center = std::array<double, 3>{cen[0] + a0 * w[0], cen[1] + a0 * w[1], cen[2] + a0 * w[2]};
     axis = w;
     R_out = R;
     r_out = r;
@@ -3188,13 +3257,17 @@ static RecogSurface recognize_surface(const NurbsSurface& surface, double tol) {
     RecogSurface rs;
 
     if (surface.is_planar(nullptr, tol)) {
-        auto [u0, u1] = surface.domain(0);
-        auto [v0, v1] = surface.domain(1);
+        const std::pair<double, double> domain_u = surface.domain(0);
+        const double u0 = domain_u.first;
+        const double u1 = domain_u.second;
+        const std::pair<double, double> domain_v = surface.domain(1);
+        const double v0 = domain_v.first;
+        const double v1 = domain_v.second;
         Point o = surface.point_at((u0 + u1) * 0.5, (v0 + v1) * 0.5);
         Vector n = surface.normal_at((u0 + u1) * 0.5, (v0 + v1) * 0.5);
         rs.kind = RecogSurface::PLANE;
-        rs.p1 = V3{o[0], o[1], o[2]};
-        rs.p2 = V3{n[0], n[1], n[2]};
+        rs.p1 = std::array<double, 3>{o[0], o[1], o[2]};
+        rs.p2 = std::array<double, 3>{n[0], n[1], n[2]};
 
         return rs;
     }
@@ -3206,13 +3279,14 @@ static RecogSurface recognize_surface(const NurbsSurface& surface, double tol) {
 
     if (fit_sphere(surface, tol, cx, cy, cz, r)) {
         rs.kind = RecogSurface::SPHERE;
-        rs.p1 = V3{cx, cy, cz};
+        rs.p1 = std::array<double, 3>{cx, cy, cz};
         rs.r = r;
 
         return rs;
     }
 
-    V3 axis_pt, axis_dir;
+    std::array<double, 3> axis_pt;
+    std::array<double, 3> axis_dir;
     double rad;
 
     if (fit_cylinder(surface, tol, axis_pt, axis_dir, rad)) {
@@ -3224,7 +3298,8 @@ static RecogSurface recognize_surface(const NurbsSurface& surface, double tol) {
         return rs;
     }
 
-    V3 apex, axis;
+    std::array<double, 3> apex;
+    std::array<double, 3> axis;
     double half_angle;
 
     if (fit_cone(surface, tol, apex, axis, half_angle)) {
@@ -3236,8 +3311,10 @@ static RecogSurface recognize_surface(const NurbsSurface& surface, double tol) {
         return rs;
     }
 
-    V3 tcenter, taxis;
-    double tR = 0.0, tr = 0.0;
+    std::array<double, 3> tcenter;
+    std::array<double, 3> taxis;
+    double tR = 0.0;
+    double tr = 0.0;
 
     if (fit_torus(surface, tol, tcenter, taxis, tR, tr)) {
         rs.kind = RecogSurface::TORUS;
@@ -3253,10 +3330,10 @@ static RecogSurface recognize_surface(const NurbsSurface& surface, double tol) {
 }
 
 /// Solve ((X-V).w)^2 - cos^2a |X-V|^2 = 0 along X = x0 + t d. Returns roots.
-static std::vector<double> line_cone(const V3& x0, const V3& d, const V3& V, const V3& w, double alpha) {
+static std::vector<double> line_cone(const std::array<double, 3>& x0, const std::array<double, 3>& d, const std::array<double, 3>& V, const std::array<double, 3>& w, double alpha) {
 
     double ca2 = std::cos(alpha) * std::cos(alpha);
-    V3 e{x0[0] - V[0], x0[1] - V[1], x0[2] - V[2]};
+    std::array<double, 3> e{x0[0] - V[0], x0[1] - V[1], x0[2] - V[2]};
     double A = e[0] * w[0] + e[1] * w[1] + e[2] * w[2];
     double B = d[0] * w[0] + d[1] * w[1] + d[2] * w[2];
     double C = e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
@@ -3282,17 +3359,20 @@ static std::vector<double> line_cone(const V3& x0, const V3& d, const V3& V, con
 /// Exact plane-sphere circle.
 static bool ssi_plane_sphere(const RecogSurface& plane, const RecogSurface& sph, NurbsCurve& c3) {
 
-    V3 o = plane.p1, nu = ssi_unit(plane.p2);
-    V3 c = sph.p1;
+    std::array<double, 3> o = plane.p1;
+    std::array<double, 3> nu = ssi_unit(plane.p2);
+    std::array<double, 3> c = sph.p1;
     double r = sph.r;
     double d = (c[0] - o[0]) * nu[0] + (c[1] - o[1]) * nu[1] + (c[2] - o[2]) * nu[2];
 
     if (std::abs(d) >= r)
         return false;
 
-    V3 cc{c[0] - d * nu[0], c[1] - d * nu[1], c[2] - d * nu[2]};
+    std::array<double, 3> cc{c[0] - d * nu[0], c[1] - d * nu[1], c[2] - d * nu[2]};
     double rr = std::sqrt(r * r - d * d);
-    auto [xa, ya] = ortho_basis(nu);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(nu);
     c3 = exact_circle(cc[0], cc[1], cc[2], xa, ya, rr);
 
     return true;
@@ -3301,8 +3381,10 @@ static bool ssi_plane_sphere(const RecogSurface& plane, const RecogSurface& sph,
 /// Exact plane-cylinder section: an ellipse or nothing.
 static bool ssi_plane_cylinder(const RecogSurface& plane, const RecogSurface& cyl, NurbsCurve& c3) {
 
-    V3 o = plane.p1, nu = ssi_unit(plane.p2);
-    V3 P = cyl.p1, w = ssi_unit(cyl.p2);
+    std::array<double, 3> o = plane.p1;
+    std::array<double, 3> nu = ssi_unit(plane.p2);
+    std::array<double, 3> P = cyl.p1;
+    std::array<double, 3> w = ssi_unit(cyl.p2);
     double r = cyl.r;
     double wn = w[0] * nu[0] + w[1] * nu[1] + w[2] * nu[2];
 
@@ -3310,18 +3392,20 @@ static bool ssi_plane_cylinder(const RecogSurface& plane, const RecogSurface& cy
         return false;
 
     double t = ((o[0] - P[0]) * nu[0] + (o[1] - P[1]) * nu[1] + (o[2] - P[2]) * nu[2]) / wn;
-    V3 cc{P[0] + t * w[0], P[1] + t * w[1], P[2] + t * w[2]};
-    V3 mraw = ssi_cross(w, nu);
+    std::array<double, 3> cc{P[0] + t * w[0], P[1] + t * w[1], P[2] + t * w[2]};
+    std::array<double, 3> mraw = ssi_cross(w, nu);
 
     if (std::sqrt(mraw[0] * mraw[0] + mraw[1] * mraw[1] + mraw[2] * mraw[2]) < 1e-9) {
-        auto [xa, ya] = ortho_basis(nu);
+        std::array<double, 3> xa;
+        std::array<double, 3> ya;
+        std::tie(xa, ya) = ortho_basis(nu);
         c3 = exact_circle(cc[0], cc[1], cc[2], xa, ya, r);
 
         return true;
     }
 
-    V3 minor = ssi_unit(mraw);
-    V3 major = ssi_unit(V3{w[0] - wn * nu[0], w[1] - wn * nu[1], w[2] - wn * nu[2]});
+    std::array<double, 3> minor = ssi_unit(mraw);
+    std::array<double, 3> major = ssi_unit(std::array<double, 3>{w[0] - wn * nu[0], w[1] - wn * nu[1], w[2] - wn * nu[2]});
     c3 = exact_ellipse(cc[0], cc[1], cc[2], major, minor, r / std::abs(wn), r);
 
     return true;
@@ -3335,8 +3419,10 @@ static bool ssi_plane_cylinder_lines(
     std::vector<NurbsCurve>& out
 ) {
 
-    V3 o = plane.p1, nu = ssi_unit(plane.p2);
-    V3 P = cyl.p1, w = ssi_unit(cyl.p2);
+    std::array<double, 3> o = plane.p1;
+    std::array<double, 3> nu = ssi_unit(plane.p2);
+    std::array<double, 3> P = cyl.p1;
+    std::array<double, 3> w = ssi_unit(cyl.p2);
     double r = cyl.r;
     double wn = w[0] * nu[0] + w[1] * nu[1] + w[2] * nu[2];
 
@@ -3353,8 +3439,12 @@ static bool ssi_plane_cylinder_lines(
     double smin = 1e300;
     double smax = -1e300;
     {
-        auto [u0, u1] = cyl_srf.domain(0);
-        auto [v0, v1] = cyl_srf.domain(1);
+        const std::pair<double, double> domain_u = cyl_srf.domain(0);
+        const double u0 = domain_u.first;
+        const double u1 = domain_u.second;
+        const std::pair<double, double> domain_v = cyl_srf.domain(1);
+        const double v0 = domain_v.first;
+        const double v1 = domain_v.second;
 
         for (double uu : {u0, 0.5 * (u0 + u1), u1})
             for (double vv : {v0, v1}) {
@@ -3369,12 +3459,14 @@ static bool ssi_plane_cylinder_lines(
         smax += pad;
     }
 
-    V3 F{P[0] - ds * nu[0], P[1] - ds * nu[1], P[2] - ds * nu[2]};
-    auto emit_line = [&](const V3& q) {
+    std::array<double, 3> F{P[0] - ds * nu[0], P[1] - ds * nu[1], P[2] - ds * nu[2]};
+
+    auto emit_line = [&](const std::array<double, 3>& q) {
         std::vector<Point> pts = {
             Point(q[0] + smin * w[0], q[1] + smin * w[1], q[2] + smin * w[2]),
             Point(q[0] + smax * w[0], q[1] + smax * w[1], q[2] + smax * w[2])
         };
+
         NurbsCurve L = NurbsCurve::create(false, 1, pts);
 
         if (L.is_valid())
@@ -3388,19 +3480,23 @@ static bool ssi_plane_cylinder_lines(
     }
 
     double h = std::sqrt(std::max(0.0, r * r - d * d));
-    V3 s3 = ssi_unit(ssi_cross(w, nu));
-    emit_line(V3{F[0] + h * s3[0], F[1] + h * s3[1], F[2] + h * s3[2]});
-    emit_line(V3{F[0] - h * s3[0], F[1] - h * s3[1], F[2] - h * s3[2]});
+    std::array<double, 3> s3 = ssi_unit(ssi_cross(w, nu));
+    emit_line(std::array<double, 3>{F[0] + h * s3[0], F[1] + h * s3[1], F[2] + h * s3[2]});
+    emit_line(std::array<double, 3>{F[0] - h * s3[0], F[1] - h * s3[1], F[2] - h * s3[2]});
 
     return true;
 }
 
 /// Height of the surface along the cone axis from the apex.
-static double cone_axial_extent(const NurbsSurface& srf, const V3& apex, const V3& axis) {
+static double cone_axial_extent(const NurbsSurface& srf, const std::array<double, 3>& apex, const std::array<double, 3>& axis) {
 
-    V3 w = ssi_unit(axis);
-    auto [u0, u1] = srf.domain(0);
-    auto [v0, v1] = srf.domain(1);
+    std::array<double, 3> w = ssi_unit(axis);
+    const std::pair<double, double> domain_u = srf.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = srf.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     double um = 0.5 * (u0 + u1);
     double H = 0.0;
 
@@ -3414,9 +3510,11 @@ static double cone_axial_extent(const NurbsSurface& srf, const V3& apex, const V
 }
 
 /// Whether a conic lies within the cone height H.
-static bool conic_within_cone(const NurbsCurve& c, const V3& apex, const V3& w, double H) {
+static bool conic_within_cone(const NurbsCurve& c, const std::array<double, 3>& apex, const std::array<double, 3>& w, double H) {
 
-    auto [t0, t1] = c.domain();
+    const std::pair<double, double> domain = c.domain();
+    const double t0 = domain.first;
+    const double t1 = domain.second;
     double pad = 1e-7 * std::max(1.0, H);
 
     for (int i = 0; i <= 64; ++i) {
@@ -3459,37 +3557,37 @@ static NurbsCurve fit_conic_arc(const std::vector<Point>& pts) {
 
 /// Exact ellipse of a plane cutting a cone away from the apex.
 static bool build_exact_plane_cone_ellipse(
-    const V3& o,
-    const V3& nu,
-    const V3& V,
-    const V3& w,
+    const std::array<double, 3>& o,
+    const std::array<double, 3>& nu,
+    const std::array<double, 3>& V,
+    const std::array<double, 3>& w,
     double alpha,
     NurbsCurve& c3
 ) {
 
     double wn = w[0] * nu[0] + w[1] * nu[1] + w[2] * nu[2];
-    V3 m = ssi_cross(w, nu);
+    std::array<double, 3> m = ssi_cross(w, nu);
     double ml = std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
 
     if (ml < 1e-12)
         return false;
 
-    m = V3{m[0] / ml, m[1] / ml, m[2] / ml};
-    V3 major = ssi_unit(V3{w[0] - wn * nu[0], w[1] - wn * nu[1], w[2] - wn * nu[2]});
+    m = std::array<double, 3>{m[0] / ml, m[1] / ml, m[2] / ml};
+    std::array<double, 3> major = ssi_unit(std::array<double, 3>{w[0] - wn * nu[0], w[1] - wn * nu[1], w[2] - wn * nu[2]});
     double dV = (V[0] - o[0]) * nu[0] + (V[1] - o[1]) * nu[1] + (V[2] - o[2]) * nu[2];
-    V3 Vp{V[0] - dV * nu[0], V[1] - dV * nu[1], V[2] - dV * nu[2]};
+    std::array<double, 3> Vp{V[0] - dV * nu[0], V[1] - dV * nu[1], V[2] - dV * nu[2]};
     std::vector<double> ts = line_cone(Vp, major, V, w, alpha);
 
     if (ts.size() != 2)
         return false;
 
-    V3 A{Vp[0] + ts[0] * major[0], Vp[1] + ts[0] * major[1], Vp[2] + ts[0] * major[2]};
-    V3 Bp{Vp[0] + ts[1] * major[0], Vp[1] + ts[1] * major[1], Vp[2] + ts[1] * major[2]};
-    V3 cc{(A[0] + Bp[0]) * 0.5, (A[1] + Bp[1]) * 0.5, (A[2] + Bp[2]) * 0.5};
+    std::array<double, 3> A{Vp[0] + ts[0] * major[0], Vp[1] + ts[0] * major[1], Vp[2] + ts[0] * major[2]};
+    std::array<double, 3> Bp{Vp[0] + ts[1] * major[0], Vp[1] + ts[1] * major[1], Vp[2] + ts[1] * major[2]};
+    std::array<double, 3> cc{(A[0] + Bp[0]) * 0.5, (A[1] + Bp[1]) * 0.5, (A[2] + Bp[2]) * 0.5};
     double semi_major = 0.5 *
         std::sqrt((Bp[0] - A[0]) * (Bp[0] - A[0]) + (Bp[1] - A[1]) * (Bp[1] - A[1]) + (Bp[2] - A[2]) * (Bp[2] - A[2]));
 
-    major = ssi_unit(V3{Bp[0] - A[0], Bp[1] - A[1], Bp[2] - A[2]});
+    major = ssi_unit(std::array<double, 3>{Bp[0] - A[0], Bp[1] - A[1], Bp[2] - A[2]});
     std::vector<double> tm = line_cone(cc, m, V, w, alpha);
 
     if (tm.size() != 2)
@@ -3506,7 +3604,7 @@ static bool build_exact_plane_cone_ellipse(
 }
 
 /// Single rational quadratic Bezier conic arc through A and B with mid control point T.
-static NurbsCurve conic_bezier(const V3& A, const V3& T, const V3& B, double wmid) {
+static NurbsCurve conic_bezier(const std::array<double, 3>& A, const std::array<double, 3>& T, const std::array<double, 3>& B, double wmid) {
 
     NurbsCurve crv(3, true, 3, 3);
     double knots[4] = {0, 0, 1, 1};
@@ -3524,10 +3622,10 @@ static NurbsCurve conic_bezier(const V3& A, const V3& T, const V3& B, double wmi
 
 /// Exact plane-cone HYPERBOLA / PARABOLA arc (IntAna_QuadQuadGeo.cxx:752-953 port).
 static bool build_exact_plane_cone_open(
-    const V3& o,
-    const V3& nu,
-    const V3& V,
-    const V3& w,
+    const std::array<double, 3>& o,
+    const std::array<double, 3>& nu,
+    const std::array<double, 3>& V,
+    const std::array<double, 3>& w,
     double alpha,
     double H,
     bool parabola,
@@ -3539,18 +3637,18 @@ static bool build_exact_plane_cone_open(
     double ta = std::tan(alpha);
     double na = nu[0] * w[0] + nu[1] * w[1] + nu[2] * w[2];
     double cost = std::abs(na);
-    V3 axey = ssi_cross(nu, w);
+    std::array<double, 3> axey = ssi_cross(nu, w);
     double sint = std::sqrt(axey[0] * axey[0] + axey[1] * axey[1] + axey[2] * axey[2]);
 
     if (sint < 1e-12)
         return false;
 
-    axey = V3{axey[0] / sint, axey[1] / sint, axey[2] / sint};
-    V3 axex = ssi_cross(axey, nu);
+    axey = std::array<double, 3>{axey[0] / sint, axey[1] / sint, axey[2] / sint};
+    std::array<double, 3> axex = ssi_cross(axey, nu);
     double axw = axex[0] * w[0] + axex[1] * w[1] + axex[2] * w[2];
 
     if (axw < 0) {
-        axex = V3{-axex[0], -axex[1], -axex[2]};
+        axex = std::array<double, 3>{-axex[0], -axex[1], -axex[2]};
         axw = -axw;
     }
 
@@ -3559,6 +3657,7 @@ static bool build_exact_plane_cone_open(
 
     double D0 = (V[0] - o[0]) * nu[0] + (V[1] - o[1]) * nu[1] + (V[2] - o[2]) * nu[2];
     double tol = 1e-6 * std::max(1.0, H);
+
     auto on_both = [&](const NurbsCurve& c) {
         for (int i = 0; i <= 16; ++i) {
             Point q = c.point_at(i / 16.0);
@@ -3584,7 +3683,7 @@ static bool build_exact_plane_cone_open(
             return false;
 
         double sax = -D0 / na;
-        V3 cen{V[0] + sax * w[0], V[1] + sax * w[1], V[2] + sax * w[2]};
+        std::array<double, 3> cen{V[0] + sax * w[0], V[1] + sax * w[1], V[2] + sax * w[2]};
         double distance = std::abs(sax);
         double dc = 0.5 * distance / cosa;
         double pf = dc * sina * sina;
@@ -3593,7 +3692,7 @@ static bool build_exact_plane_cone_open(
             return false;
 
         for (int cs : {-1, +1}) {
-            V3 C2{cen[0] + cs * dc * axex[0], cen[1] + cs * dc * axex[1], cen[2] + cs * dc * axex[2]};
+            std::array<double, 3> C2{cen[0] + cs * dc * axex[0], cen[1] + cs * dc * axex[1], cen[2] + cs * dc * axex[2]};
             double zc = (C2[0] - V[0]) * w[0] + (C2[1] - V[1]) * w[1] + (C2[2] - V[2]) * w[2];
             double t1s = 2.0 * pf * (H - zc) / axw;
 
@@ -3602,17 +3701,19 @@ static bool build_exact_plane_cone_open(
 
             double t1 = std::sqrt(t1s);
             double xi = t1s / (2.0 * pf);
-            V3 A{
+            std::array<double, 3> A{
                 C2[0] + xi * axex[0] - t1 * axey[0],
                 C2[1] + xi * axex[1] - t1 * axey[1],
                 C2[2] + xi * axex[2] - t1 * axey[2]
             };
-            V3 B{
+
+            std::array<double, 3> B{
                 C2[0] + xi * axex[0] + t1 * axey[0],
                 C2[1] + xi * axex[1] + t1 * axey[1],
                 C2[2] + xi * axex[2] + t1 * axey[2]
             };
-            V3 T{C2[0] - xi * axex[0], C2[1] - xi * axex[1], C2[2] - xi * axex[2]};
+
+            std::array<double, 3> T{C2[0] - xi * axex[0], C2[1] - xi * axex[1], C2[2] - xi * axex[2]};
             NurbsCurve arc = conic_bezier(A, T, B, 1.0);
 
             if (arc.is_valid() && on_both(arc)) {
@@ -3627,12 +3728,12 @@ static bool build_exact_plane_cone_open(
 
     double a = 0;
     double b = 0;
-    std::vector<V3> centers;
+    std::vector<std::array<double, 3>> centers;
 
     if (cost < 1e-6) {
         a = std::abs(D0) / ta;
         b = std::abs(D0);
-        centers.push_back(V3{V[0] - D0 * nu[0], V[1] - D0 * nu[1], V[2] - D0 * nu[2]});
+        centers.push_back(std::array<double, 3>{V[0] - D0 * nu[0], V[1] - D0 * nu[1], V[2] - D0 * nu[2]});
     } else {
         double dd = sina * sina - cost * cost;
 
@@ -3640,19 +3741,19 @@ static bool build_exact_plane_cone_open(
             return false;
 
         double sax = -D0 / na;
-        V3 cen{V[0] + sax * w[0], V[1] + sax * w[1], V[2] + sax * w[2]};
+        std::array<double, 3> cen{V[0] + sax * w[0], V[1] + sax * w[1], V[2] + sax * w[2]};
         double distance = std::abs(sax);
         double dc = sint * sina * sina * distance / dd;
         a = cost * sina * cosa * distance / dd;
         b = cost * sina * distance / std::sqrt(dd);
-        centers.push_back(V3{cen[0] - dc * axex[0], cen[1] - dc * axex[1], cen[2] - dc * axex[2]});
-        centers.push_back(V3{cen[0] + dc * axex[0], cen[1] + dc * axex[1], cen[2] + dc * axex[2]});
+        centers.push_back(std::array<double, 3>{cen[0] - dc * axex[0], cen[1] - dc * axex[1], cen[2] - dc * axex[2]});
+        centers.push_back(std::array<double, 3>{cen[0] + dc * axex[0], cen[1] + dc * axex[1], cen[2] + dc * axex[2]});
     }
 
     if (a < 1e-15 || b < 1e-15)
         return false;
 
-    for (const V3& C2 : centers) {
+    for (const std::array<double, 3>& C2 : centers) {
         double zc = (C2[0] - V[0]) * w[0] + (C2[1] - V[1]) * w[1] + (C2[2] - V[2]) * w[2];
 
         for (int sg : {+1, -1}) {
@@ -3664,17 +3765,19 @@ static bool build_exact_plane_cone_open(
             double sh = std::sqrt(ch * ch - 1.0);
             double xi = sg * a * ch;
             double xt = sg * a / ch;
-            V3 A{
+            std::array<double, 3> A{
                 C2[0] + xi * axex[0] - b * sh * axey[0],
                 C2[1] + xi * axex[1] - b * sh * axey[1],
                 C2[2] + xi * axex[2] - b * sh * axey[2]
             };
-            V3 B{
+
+            std::array<double, 3> B{
                 C2[0] + xi * axex[0] + b * sh * axey[0],
                 C2[1] + xi * axex[1] + b * sh * axey[1],
                 C2[2] + xi * axex[2] + b * sh * axey[2]
             };
-            V3 T{C2[0] + xt * axex[0], C2[1] + xt * axex[1], C2[2] + xt * axex[2]};
+
+            std::array<double, 3> T{C2[0] + xt * axex[0], C2[1] + xt * axex[1], C2[2] + xt * axex[2]};
             NurbsCurve arc = conic_bezier(A, T, B, ch);
 
             if (arc.is_valid() && on_both(arc)) {
@@ -3690,10 +3793,10 @@ static bool build_exact_plane_cone_open(
 
 /// Sample the plane-cone section as point runs, one per branch.
 static void sample_plane_cone_arcs(
-    const V3& apex,
-    const V3& w,
-    const V3& e1,
-    const V3& e2,
+    const std::array<double, 3>& apex,
+    const std::array<double, 3>& w,
+    const std::array<double, 3>& e1,
+    const std::array<double, 3>& e2,
     double na,
     double pP,
     double qP,
@@ -3708,14 +3811,17 @@ static void sample_plane_cone_arcs(
     closed = false;
     const int N = 720;
     const double TWO_PI = 2.0 * 3.14159265358979323846;
+
     auto denom = [&](double phi) {
         return na + ta * (pP * std::cos(phi) + qP * std::sin(phi));
     };
+
     auto s_of = [&](double phi) {
         double d = denom(phi);
 
         return (std::abs(d) < 1e-300) ? 1e308 : -D0 / d;
     };
+
     auto pt = [&](double phi) {
         double s = s_of(phi);
         double rr = s * ta;
@@ -3728,6 +3834,7 @@ static void sample_plane_cone_arcs(
             apex[2] + s * w[2] + rr * (c * e1[2] + sn * e2[2])
         );
     };
+
     const double eps = 1e-9 * std::max(1.0, H);
     std::vector<char> ok(N);
     int cnt = 0;
@@ -3759,6 +3866,7 @@ static void sample_plane_cone_arcs(
         ++start;
 
     double dtarget = (H > 1e-300) ? (-D0 / H) : 0.0;
+
     auto refine_base = [&](double pa, double pb) -> double {
         double fa = denom(pa) - dtarget;
 
@@ -3775,6 +3883,7 @@ static void sample_plane_cone_arcs(
 
         return 0.5 * (pa + pb);
     };
+
     std::vector<Point> cur;
     bool in = false;
 
@@ -3814,8 +3923,10 @@ static bool ssi_plane_cone(
     std::vector<NurbsCurve>& out
 ) {
 
-    V3 o = plane.p1, nu = ssi_unit(plane.p2);
-    V3 V = cone.p1, w = ssi_unit(cone.p2);
+    std::array<double, 3> o = plane.p1;
+    std::array<double, 3> nu = ssi_unit(plane.p2);
+    std::array<double, 3> V = cone.p1;
+    std::array<double, 3> w = ssi_unit(cone.p2);
     double alpha = cone.r;
 
     if (alpha < 1e-7 || alpha > Tolerance::PI / 2 - 1e-7)
@@ -3829,7 +3940,9 @@ static bool ssi_plane_cone(
     if (H < 1e-12)
         return false;
 
-    auto [e1, e2] = ortho_basis(w);
+    std::array<double, 3> e1;
+    std::array<double, 3> e2;
+    std::tie(e1, e2) = ortho_basis(w);
     double na = nu[0] * w[0] + nu[1] * w[1] + nu[2] * w[2];
     double pP = nu[0] * e1[0] + nu[1] * e1[1] + nu[2] * e1[2];
     double qP = nu[0] * e2[0] + nu[1] * e2[1] + nu[2] * e2[2];
@@ -3842,11 +3955,12 @@ static bool ssi_plane_cone(
 
     if (std::abs(D0) < distTol) {
         if (std::abs(costa) < ang) {
-            V3 g = ssi_unit(V3{w[0] - na * nu[0], w[1] - na * nu[1], w[2] - na * nu[2]});
+            std::array<double, 3> g = ssi_unit(std::array<double, 3>{w[0] - na * nu[0], w[1] - na * nu[1], w[2] - na * nu[2]});
             double gw = g[0] * w[0] + g[1] * w[1] + g[2] * w[2];
 
             if (gw > 1e-9) {
                 double L = H / gw;
+
                 out.push_back(
                     NurbsCurve::create(
                         false,
@@ -3860,18 +3974,19 @@ static bool ssi_plane_cone(
         }
 
         if (cost < sina) {
-            V3 axey = ssi_cross(nu, w);
-            V3 axex = ssi_cross(axey, nu);
+            std::array<double, 3> axey = ssi_cross(nu, w);
+            std::array<double, 3> axex = ssi_cross(axey, nu);
             double dh = std::sqrt(std::max(0.0, sina * sina - cost * cost)) / cosa;
 
             for (int sgn : {+1, -1}) {
-                V3 d{axex[0] + sgn * dh * axey[0], axex[1] + sgn * dh * axey[1], axex[2] + sgn * dh * axey[2]};
+                std::array<double, 3> d{axex[0] + sgn * dh * axey[0], axex[1] + sgn * dh * axey[1], axex[2] + sgn * dh * axey[2]};
                 double dw = d[0] * w[0] + d[1] * w[1] + d[2] * w[2];
 
                 if (dw < 1e-12)
                     continue;
 
                 double L = H / dw;
+
                 out.push_back(
                     NurbsCurve::create(
                         false,
@@ -3908,7 +4023,7 @@ static bool ssi_plane_cone(
         double rr = std::abs(dax) * ta;
 
         if (rr > 1e-12) {
-            V3 cc{V[0] + dax * w[0], V[1] + dax * w[1], V[2] + dax * w[2]};
+            std::array<double, 3> cc{V[0] + dax * w[0], V[1] + dax * w[1], V[2] + dax * w[2]};
             NurbsCurve circ = exact_circle(cc[0], cc[1], cc[2], e1, e2, rr);
 
             if (conic_within_cone(circ, V, w, H)) {
@@ -3959,9 +4074,12 @@ static bool ssi_plane_cone(
 /// Exact plane-torus circles for a plane perpendicular to the axis.
 static bool ssi_plane_torus(const RecogSurface& plane, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
 
-    V3 o = plane.p1, nu = ssi_unit(plane.p2);
-    V3 C = tor.p1, w = ssi_unit(tor.p2);
-    double R = tor.r, r = tor.r2;
+    std::array<double, 3> o = plane.p1;
+    std::array<double, 3> nu = ssi_unit(plane.p2);
+    std::array<double, 3> C = tor.p1;
+    std::array<double, 3> w = ssi_unit(tor.p2);
+    double R = tor.r;
+    double r = tor.r2;
     double wn = w[0] * nu[0] + w[1] * nu[1] + w[2] * nu[2];
 
     if (std::abs(std::abs(wn) - 1.0) > 1e-7)
@@ -3973,8 +4091,10 @@ static bool ssi_plane_torus(const RecogSurface& plane, const RecogSurface& tor, 
         return true;
 
     double h = std::sqrt(std::max(0.0, r * r - d * d));
-    V3 cc{C[0] + d * w[0], C[1] + d * w[1], C[2] + d * w[2]};
-    auto [xa, ya] = ortho_basis(w);
+    std::array<double, 3> cc{C[0] + d * w[0], C[1] + d * w[1], C[2] + d * w[2]};
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(w);
 
     for (double rr : {R + h, R - h})
         if (rr > 1e-12)
@@ -3994,33 +4114,43 @@ static bool ssi_plane_plane(
 ) {
 
     empty = false;
-    V3 na = ssi_unit(pa.p2), nb = ssi_unit(pb.p2);
-    V3 v = ssi_cross(na, nb);
+    std::array<double, 3> na = ssi_unit(pa.p2);
+    std::array<double, 3> nb = ssi_unit(pb.p2);
+    std::array<double, 3> v = ssi_cross(na, nb);
     double vl = std::sqrt(ssi_dot(v, v));
 
     if (vl < 1e-9)
         return false;
 
-    double dA = ssi_dot(na, pa.p1), dB = ssi_dot(nb, pb.p1);
-    V3 nb_x_v = ssi_cross(nb, v), v_x_na = ssi_cross(v, na);
+    double dA = ssi_dot(na, pa.p1);
+    double dB = ssi_dot(nb, pb.p1);
+    std::array<double, 3> nb_x_v = ssi_cross(nb, v);
+    std::array<double, 3> v_x_na = ssi_cross(v, na);
     double inv = 1.0 / (vl * vl);
-    V3 anchor{
+    std::array<double, 3> anchor{
         (dA * nb_x_v[0] + dB * v_x_na[0]) * inv,
         (dA * nb_x_v[1] + dB * v_x_na[1]) * inv,
         (dA * nb_x_v[2] + dB * v_x_na[2]) * inv
     };
-    V3 dir{v[0] / vl, v[1] / vl, v[2] / vl};
+
+    std::array<double, 3> dir{v[0] / vl, v[1] / vl, v[2] / vl};
 
     double tmin = -1e300;
     double tmax = 1e300;
 
     for (const NurbsSurface* s : {&sa, &sb}) {
-        auto [u0, u1] = s->domain(0);
-        auto [v0, v1] = s->domain(1);
-        Point O = s->point_at(u0, v0), Pu = s->point_at(u1, v0), Pv = s->point_at(u0, v1);
-        V3 o{O[0], O[1], O[2]};
-        V3 eu{Pu[0] - O[0], Pu[1] - O[1], Pu[2] - O[2]};
-        V3 ev{Pv[0] - O[0], Pv[1] - O[1], Pv[2] - O[2]};
+        const std::pair<double, double> domain_u = s->domain(0);
+        const double u0 = domain_u.first;
+        const double u1 = domain_u.second;
+        const std::pair<double, double> domain_v = s->domain(1);
+        const double v0 = domain_v.first;
+        const double v1 = domain_v.second;
+        Point O = s->point_at(u0, v0);
+        Point Pu = s->point_at(u1, v0);
+        Point Pv = s->point_at(u0, v1);
+        std::array<double, 3> o{O[0], O[1], O[2]};
+        std::array<double, 3> eu{Pu[0] - O[0], Pu[1] - O[1], Pu[2] - O[2]};
+        std::array<double, 3> ev{Pv[0] - O[0], Pv[1] - O[1], Pv[2] - O[2]};
         double exx = ssi_dot(eu, eu);
         double eyy = ssi_dot(ev, ev);
         double exy = ssi_dot(eu, ev);
@@ -4029,20 +4159,22 @@ static bool ssi_plane_plane(
         if (std::abs(det) < 1e-18)
             return false;
 
-        auto frac = [&](const V3& r, double& al, double& be) {
+        auto frac = [&](const std::array<double, 3>& r, double& al, double& be) {
             double rx = ssi_dot(r, eu);
             double ry = ssi_dot(r, ev);
             al = (eyy * rx - exy * ry) / det;
             be = (exx * ry - exy * rx) / det;
         };
+
         double a0;
         double b0;
         double da;
         double db;
-        frac(V3{anchor[0] - o[0], anchor[1] - o[1], anchor[2] - o[2]}, a0, b0);
+        frac(std::array<double, 3>{anchor[0] - o[0], anchor[1] - o[1], anchor[2] - o[2]}, a0, b0);
         frac(dir, da, db);
         double t0 = -1e300;
         double t1 = 1e300;
+
         auto axis_clip = [&](double c, double d) -> bool {
             if (std::abs(d) < 1e-15)
                 return (c >= -1e-9 && c <= 1.0 + 1e-9);
@@ -4092,8 +4224,12 @@ struct AnalyticResult {
 /// Analytic pcurve of an exact 3D intersection conic on a recognized quadric surface.
 static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3d) {
 
-    auto [u0, u1] = srf.domain(0);
-    auto [v0, v1] = srf.domain(1);
+    const std::pair<double, double> domain_u = srf.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = srf.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
 
     if (recog.kind == RecogSurface::PLANE) {
         Point o = srf.point_at(u0, v0);
@@ -4144,11 +4280,13 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         ax[0] /= an;
         ax[1] /= an;
         ax[2] /= an;
+
         auto height = [&](const Point& p) {
             double r[3] = {p[0] - ap[0], p[1] - ap[1], p[2] - ap[2]};
 
             return dot3(r, ax);
         };
+
         double um = 0.5 * (u0 + u1);
         double h0 = height(srf.point_at(um, v0));
         double h1 = height(srf.point_at(um, v1));
@@ -4160,7 +4298,9 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         double hmax = -1e300;
         double hsum = 0;
         int ns = 0;
-        auto [t0, t1] = c3d.domain();
+        const std::pair<double, double> domain = c3d.domain();
+        const double t0 = domain.first;
+        const double t1 = domain.second;
 
         for (int i = 0; i <= 32; ++i) {
             double h = height(c3d.point_at(t0 + (t1 - t0) * i / 32));
@@ -4199,12 +4339,16 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         ax[1] /= an;
         ax[2] /= an;
         double C[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
+
         auto height = [&](const Point& p) {
             double r[3] = {p[0] - C[0], p[1] - C[1], p[2] - C[2]};
 
             return dot3(r, ax);
         };
-        auto [t0, t1] = c3d.domain();
+
+        const std::pair<double, double> domain = c3d.domain();
+        const double t0 = domain.first;
+        const double t1 = domain.second;
         double hmin = 1e300;
         double hmax = -1e300;
         double hsum = 0;
@@ -4261,12 +4405,16 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         ax[1] /= an;
         ax[2] /= an;
         double A[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
+
         auto height = [&](const Point& p) {
             double r[3] = {p[0] - A[0], p[1] - A[1], p[2] - A[2]};
 
             return dot3(r, ax);
         };
-        auto [t0, t1] = c3d.domain();
+
+        const std::pair<double, double> domain = c3d.domain();
+        const double t0 = domain.first;
+        const double t1 = domain.second;
         double clen = c3d.point_at(t0).distance(c3d.point_at(0.5 * (t0 + t1)));
         double hscale = std::max(clen, 1e-9);
         double hmin = 1e300;
@@ -4316,7 +4464,8 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
     }
 
     if (recog.kind == RecogSurface::TORUS) {
-        const double PI = 3.14159265358979323846, TWO_PI = 2.0 * PI;
+        const double PI = 3.14159265358979323846;
+        const double TWO_PI = 2.0 * PI;
         double C[3] = {recog.p1[0], recog.p1[1], recog.p1[2]};
         double w[3] = {recog.p2[0], recog.p2[1], recog.p2[2]};
         double wn = std::sqrt(dot3(w, w));
@@ -4327,7 +4476,8 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
         w[0] /= wn;
         w[1] /= wn;
         w[2] /= wn;
-        double R = recog.r, rmin = recog.r2;
+        double R = recog.r;
+        double rmin = recog.r2;
 
         if (rmin < 1e-12 || R <= rmin)
             return NurbsCurve();
@@ -4342,7 +4492,10 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
 
             return std::atan2(z, rho - R);
         };
-        auto [t0, t1] = c3d.domain();
+
+        const std::pair<double, double> domain = c3d.domain();
+        const double t0 = domain.first;
+        const double t1 = domain.second;
         double aprev = 0.0;
         double asum = 0.0;
         double amin = 1e300;
@@ -4429,6 +4582,7 @@ static NurbsCurve analytic_pcurve(const NurbsSurface& srf, const RecogSurface& r
             const double dv = (v1 - v0) * 1e-7;
             const double vlo = std::min(v0, v1);
             const double vhi = std::max(v0, v1);
+
             auto ang_at = [&](double v) {
                 double a = minor_angle(srf.point_at(um, std::min(std::max(v, vlo), vhi))) - a_target;
 
@@ -4495,8 +4649,12 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
     if (recog.kind != RecogSurface::SPHERE)
         return {};
 
-    auto [u0, u1] = srf.domain(0);
-    auto [v0, v1] = srf.domain(1);
+    const std::pair<double, double> domain_u = srf.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = srf.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     double range_u = u1 - u0;
 
     if (range_u < 1e-9)
@@ -4529,7 +4687,8 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
     Xs[1] /= xn;
     Xs[2] /= xn;
     double Ys[3] = {Zs[1] * Xs[2] - Zs[2] * Xs[1], Zs[2] * Xs[0] - Zs[0] * Xs[2], Zs[0] * Xs[1] - Zs[1] * Xs[0]};
-    const double PI = 3.14159265358979323846, TWO_PI = 2.0 * PI;
+    const double PI = 3.14159265358979323846;
+    const double TWO_PI = 2.0 * PI;
     const int NT = 128;
     std::vector<double> tu(NT + 1), tlon(NT + 1);
 
@@ -4554,6 +4713,7 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
     bool lon_incr = tlon[NT] >= tlon[0];
     double lon_lo = std::min(tlon[0], tlon[NT]);
     double lon_hi = std::max(tlon[0], tlon[NT]);
+
     auto u_from_lon = [&](double lon) -> double {
         while (lon < lon_lo - 1e-9)
             lon += TWO_PI;
@@ -4579,6 +4739,7 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
 
         return tu[lo] + (tu[hi] - tu[lo]) * f;
     };
+
     std::vector<double> tv(NT + 1), th(NT + 1);
 
     for (int k = 0; k <= NT; ++k) {
@@ -4627,7 +4788,11 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
 
         return tv[lo] + (tv[hi] - tv[lo]) * f;
     };
-    auto [t0, t1] = c3d.domain();
+
+    const std::pair<double, double> domain = c3d.domain();
+    const double t0 = domain.first;
+    const double t1 = domain.second;
+
     auto project_t = [&](double t, double& u_out, double& v_out) {
         Point p = c3d.point_at(t);
         double r[3] = {p[0] - C[0], p[1] - C[1], p[2] - C[2]};
@@ -4686,6 +4851,7 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
         u_out = u;
         v_out = v;
     };
+
     int n = std::max(c3d.cv_count() * 8, 120);
     std::vector<std::array<double, 3>> tuv; // t, u_unwrapped (may leave [u0,u1]), v
     double prev_u = 0.0;
@@ -4719,9 +4885,11 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
 
     std::vector<NurbsCurve> out;
     std::vector<PBNode> seg;
+
     auto kof = [&](double u) -> int {
         return (int)std::floor((u - u0) / range_u + 1e-9);
     };
+
     int cur_k = kof(uv[0][0]);
     seg.push_back({uv[0][2], uv[0][0] - cur_k * range_u, uv[0][1]});
 
@@ -4766,8 +4934,12 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
     if (recog.kind != RecogSurface::CONE && recog.kind != RecogSurface::CYLINDER)
         return {};
 
-    auto [u0, u1] = srf.domain(0);
-    auto [v0, v1] = srf.domain(1);
+    const std::pair<double, double> domain_u = srf.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = srf.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     double range_u = u1 - u0;
 
     if (range_u < 1e-9)
@@ -4783,11 +4955,13 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
     Zc[0] /= zn;
     Zc[1] /= zn;
     Zc[2] /= zn;
+
     auto height = [&](const Point& p) {
         double r[3] = {p[0] - A[0], p[1] - A[1], p[2] - A[2]};
 
         return dot3(r, Zc);
     };
+
     double um = 0.5 * (u0 + u1);
     double h0 = height(srf.point_at(um, v0));
     double h1 = height(srf.point_at(um, v1));
@@ -4798,6 +4972,7 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
     auto v_from_height = [&](double h) {
         return v0 + (h - h0) / (h1 - h0) * (v1 - v0);
     };
+
     double v_ref = (std::abs(h0) >= std::abs(h1)) ? v0 : v1;
     Point P0 = srf.point_at(u0, v_ref);
     double x0[3] = {P0[0] - A[0], P0[1] - A[1], P0[2] - A[2]};
@@ -4812,7 +4987,8 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
     Xc[1] /= xn;
     Xc[2] /= xn;
     double Yc[3] = {Zc[1] * Xc[2] - Zc[2] * Xc[1], Zc[2] * Xc[0] - Zc[0] * Xc[2], Zc[0] * Xc[1] - Zc[1] * Xc[0]};
-    const double PI = 3.14159265358979323846, TWO_PI = 2.0 * PI;
+    const double PI = 3.14159265358979323846;
+    const double TWO_PI = 2.0 * PI;
     const int NT = 128;
     std::vector<double> tu(NT + 1), tlon(NT + 1);
 
@@ -4837,6 +5013,7 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
     bool lon_incr = tlon[NT] >= tlon[0];
     double lon_lo = std::min(tlon[0], tlon[NT]);
     double lon_hi = std::max(tlon[0], tlon[NT]);
+
     auto u_from_lon = [&](double lon) -> double {
         while (lon < lon_lo - 1e-9)
             lon += TWO_PI;
@@ -4862,9 +5039,13 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
 
         return tu[lo] + (tu[hi] - tu[lo]) * f;
     };
-    auto [t0, t1] = c3d.domain();
+
+    const std::pair<double, double> domain = c3d.domain();
+    const double t0 = domain.first;
+    const double t1 = domain.second;
     int n = std::max(c3d.cv_count() * 8, 120);
     double prev_lon_s = 0.0;
+
     auto project_t = [&](double tq, double& u_out, double& v_out) {
         Point p = c3d.point_at(tq);
         double r[3] = {p[0] - A[0], p[1] - A[1], p[2] - A[2]};
@@ -4908,9 +5089,11 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
         u_out = u;
         v_out = v_from_height(dot3(r, Zc));
     };
+
     std::vector<std::array<double, 3>> tuv;
     double prev_u = 0.0;
-    double bmn[3] = {1e300, 1e300, 1e300}, bmx[3] = {-1e300, -1e300, -1e300};
+    double bmn[3] = {1e300, 1e300, 1e300};
+    double bmx[3] = {-1e300, -1e300, -1e300};
 
     for (int i = 0; i <= n; ++i) {
         double tq = t0 + (t1 - t0) * i / n;
@@ -4947,9 +5130,11 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
 
     std::vector<NurbsCurve> out;
     std::vector<PBNode> seg;
+
     auto kof = [&](double u) -> int {
         return (int)std::floor((u - u0) / range_u + 1e-9);
     };
+
     int cur_k = kof(uv[0][0]);
     seg.push_back({uv[0][2], uv[0][0] - cur_k * range_u, uv[0][1]});
 
@@ -4994,8 +5179,12 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
     if (recog.kind != RecogSurface::TORUS)
         return {};
 
-    auto [su0, su1] = srf.domain(0);
-    auto [sv0, sv1] = srf.domain(1);
+    const std::pair<double, double> domain_su = srf.domain(0);
+    const double su0 = domain_su.first;
+    const double su1 = domain_su.second;
+    const std::pair<double, double> domain_sv = srf.domain(1);
+    const double sv0 = domain_sv.first;
+    const double sv1 = domain_sv.second;
 
     if (su1 - su0 < 1e-9 || sv1 - sv0 < 1e-9)
         return {};
@@ -5010,12 +5199,14 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
     Zc[0] /= zn;
     Zc[1] /= zn;
     Zc[2] /= zn;
-    double R = recog.r, rmin = recog.r2;
+    double R = recog.r;
+    double rmin = recog.r2;
 
     if (R < 1e-12 || rmin < 1e-12)
         return {};
 
-    const double PI = 3.14159265358979323846, TWO_PI = 2.0 * PI;
+    const double PI = 3.14159265358979323846;
+    const double TWO_PI = 2.0 * PI;
     double Xc[3];
     {
         Point pf = srf.point_at(su0, sv0);
@@ -5053,11 +5244,13 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
     }
 
     double Yc[3] = {Zc[1] * Xc[2] - Zc[2] * Xc[1], Zc[2] * Xc[0] - Zc[0] * Xc[2], Zc[0] * Xc[1] - Zc[1] * Xc[0]};
+
     auto lon_of = [&](const Point& q) {
         double rr[3] = {q[0] - C[0], q[1] - C[1], q[2] - C[2]};
 
         return std::atan2(dot3(rr, Yc), dot3(rr, Xc));
     };
+
     auto vhat_of = [&](const Point& q) {
         double rr[3] = {q[0] - C[0], q[1] - C[1], q[2] - C[2]};
         double h = dot3(rr, Zc);
@@ -5068,8 +5261,10 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 
         return std::atan2(h / rmin, (rho - R) / rmin);
     };
+
     double um = 0.5 * (su0 + su1);
     double vm = 0.5 * (sv0 + sv1);
+
     auto wrapd = [&](double d) {
         while (d > PI)
             d -= TWO_PI;
@@ -5079,6 +5274,7 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 
         return std::abs(d);
     };
+
     double s_u =
         wrapd(lon_of(srf.point_at(su0 + 0.6 * (su1 - su0), vm)) - lon_of(srf.point_at(su0 + 0.3 * (su1 - su0), vm)));
 
@@ -5092,9 +5288,11 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
     double b1 = swapped ? su1 : sv1;
     double range_a = a1 - a0;
     double range_b = b1 - b0;
+
     auto pt_ab = [&](double a, double b) {
         return swapped ? srf.point_at(b, a) : srf.point_at(a, b);
     };
+
     double b_ref = b0;
     {
         double best = -1.0;
@@ -5182,6 +5380,7 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 
         return xs[lo] + (xs[hi] - xs[lo]) * f;
     };
+
     auto polish = [&](double x, double y, double xlo, double xhi, double rng, const std::function<double(double)>& yfun)
         -> double {
         for (int np = 0; np < 2; ++np) {
@@ -5213,23 +5412,31 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 
         return x;
     };
-    auto [t0, t1] = c3d.domain();
+
+    const std::pair<double, double> domain = c3d.domain();
+    const double t0 = domain.first;
+    const double t1 = domain.second;
     int n = std::max(c3d.cv_count() * 8, 4000);
+
     auto project_t = [&](double tq, double& a_out, double& b_out) {
         Point q = c3d.point_at(tq);
         double lon = lon_of(q);
         double vh = vhat_of(q);
         double a = inv_table(ta, tlon, lon);
         double b = inv_table(tb, tvh, vh);
+
         a = polish(a, lon, a0, a1, range_a, [&](double x) {
             return lon_of(pt_ab(x, b_ref));
         });
+
         b = polish(b, vh, b0, b1, range_b, [&](double x) {
             return vhat_of(pt_ab(a_ref, x));
         });
+
         a_out = a;
         b_out = b;
     };
+
     std::vector<std::array<double, 3>> tab;
     double prev_a = 0.0;
     double prev_b = 0.0;
@@ -5270,14 +5477,17 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 
     std::vector<NurbsCurve> out;
     std::vector<PBNode> seg;
+
     auto kof = [](double x, double x0, double rng) {
         return (int)std::floor((x - x0) / rng + 1e-9);
     };
+
     auto emit = [&](double a, double b, double t, int ka, int kb) {
         double uu = a - ka * range_a;
         double vv = b - kb * range_b;
         seg.push_back(swapped ? PBNode{t, vv, uu} : PBNode{t, uu, vv});
     };
+
     int ka = kof(ab[0][0], a0, range_a);
     int kb = kof(ab[0][1], b0, range_b);
     emit(ab[0][0], ab[0][1], ab[0][2], ka, kb);
@@ -5365,28 +5575,30 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Distance of P from the axis through apt along adir.
-static double point_axis_dist(const V3& apt, const V3& adir, const V3& P) {
+static double point_axis_dist(const std::array<double, 3>& apt, const std::array<double, 3>& adir, const std::array<double, 3>& P) {
 
-    V3 u = ssi_unit(adir);
-    V3 dp{P[0] - apt[0], P[1] - apt[1], P[2] - apt[2]};
+    std::array<double, 3> u = ssi_unit(adir);
+    std::array<double, 3> dp{P[0] - apt[0], P[1] - apt[1], P[2] - apt[2]};
     double t = ssi_dot(dp, u);
-    V3 perp{dp[0] - t * u[0], dp[1] - t * u[1], dp[2] - t * u[2]};
+    std::array<double, 3> perp{dp[0] - t * u[0], dp[1] - t * u[1], dp[2] - t * u[2]};
 
     return std::sqrt(ssi_dot(perp, perp));
 }
 
 /// Coordinate of P along the axis through apt along adir.
-static double axial_coord(const V3& apt, const V3& adir, const V3& P) {
-    V3 u = ssi_unit(adir);
+static double axial_coord(const std::array<double, 3>& apt, const std::array<double, 3>& adir, const std::array<double, 3>& P) {
+
+    std::array<double, 3> u = ssi_unit(adir);
 
     return (P[0] - apt[0]) * u[0] + (P[1] - apt[1]) * u[1] + (P[2] - apt[2]) * u[2];
 }
 
 /// Whether two axes coincide within tol.
-static bool axes_coaxial(const V3& p1, const V3& d1, const V3& p2, const V3& d2, double tol) {
+static bool axes_coaxial(const std::array<double, 3>& p1, const std::array<double, 3>& d1, const std::array<double, 3>& p2, const std::array<double, 3>& d2, double tol) {
 
-    V3 u1 = ssi_unit(d1), u2 = ssi_unit(d2);
-    V3 cx = ssi_cross(u1, u2);
+    std::array<double, 3> u1 = ssi_unit(d1);
+    std::array<double, 3> u2 = ssi_unit(d2);
+    std::array<double, 3> cx = ssi_cross(u1, u2);
 
     if (std::sqrt(ssi_dot(cx, cx)) > tol)
         return false;
@@ -5395,11 +5607,15 @@ static bool axes_coaxial(const V3& p1, const V3& d1, const V3& p2, const V3& d2,
 }
 
 /// Axial extent of the surface along the cylinder axis.
-static void cyl_span(const NurbsSurface& srf, const V3& apt, const V3& adir, double& smin, double& smax) {
+static void cyl_span(const NurbsSurface& srf, const std::array<double, 3>& apt, const std::array<double, 3>& adir, double& smin, double& smax) {
 
-    V3 u = ssi_unit(adir);
-    auto [u0, u1] = srf.domain(0);
-    auto [v0, v1] = srf.domain(1);
+    std::array<double, 3> u = ssi_unit(adir);
+    const std::pair<double, double> domain_u = srf.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = srf.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     double um = 0.5 * (u0 + u1);
     smin = 1e300;
     smax = -1e300;
@@ -5413,10 +5629,11 @@ static void cyl_span(const NurbsSurface& srf, const V3& apt, const V3& adir, dou
 }
 
 /// Closest point of two lines, false when parallel.
-static bool lines_closest_point(const V3& p1, const V3& d1, const V3& p2, const V3& d2, double tol, V3& Pout) {
+static bool lines_closest_point(const std::array<double, 3>& p1, const std::array<double, 3>& d1, const std::array<double, 3>& p2, const std::array<double, 3>& d2, double tol, std::array<double, 3>& Pout) {
 
-    V3 u = ssi_unit(d1), v = ssi_unit(d2);
-    V3 w0{p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]};
+    std::array<double, 3> u = ssi_unit(d1);
+    std::array<double, 3> v = ssi_unit(d2);
+    std::array<double, 3> w0{p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]};
     double a = ssi_dot(u, u);
     double b = ssi_dot(u, v);
     double c = ssi_dot(v, v);
@@ -5429,14 +5646,14 @@ static bool lines_closest_point(const V3& p1, const V3& d1, const V3& p2, const 
 
     double sc = (b * e - c * d) / den;
     double tc = (a * e - b * d) / den;
-    V3 q1{p1[0] + sc * u[0], p1[1] + sc * u[1], p1[2] + sc * u[2]};
-    V3 q2{p2[0] + tc * v[0], p2[1] + tc * v[1], p2[2] + tc * v[2]};
-    V3 diff{q1[0] - q2[0], q1[1] - q2[1], q1[2] - q2[2]};
+    std::array<double, 3> q1{p1[0] + sc * u[0], p1[1] + sc * u[1], p1[2] + sc * u[2]};
+    std::array<double, 3> q2{p2[0] + tc * v[0], p2[1] + tc * v[1], p2[2] + tc * v[2]};
+    std::array<double, 3> diff{q1[0] - q2[0], q1[1] - q2[1], q1[2] - q2[2]};
 
     if (std::sqrt(ssi_dot(diff, diff)) > tol)
         return false;
 
-    Pout = V3{0.5 * (q1[0] + q2[0]), 0.5 * (q1[1] + q2[1]), 0.5 * (q1[2] + q2[2])};
+    Pout = std::array<double, 3>{0.5 * (q1[0] + q2[0]), 0.5 * (q1[1] + q2[1]), 0.5 * (q1[2] + q2[2])};
 
     return true;
 }
@@ -5445,9 +5662,10 @@ static bool lines_closest_point(const V3& p1, const V3& d1, const V3& p2, const 
 static bool ssi_cylinder_sphere(const RecogSurface& cyl, const RecogSurface& sph, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 P = cyl.p1, w = ssi_unit(cyl.p2);
+    std::array<double, 3> P = cyl.p1;
+    std::array<double, 3> w = ssi_unit(cyl.p2);
     double rc = cyl.r;
-    V3 C = sph.p1;
+    std::array<double, 3> C = sph.p1;
     double R = sph.r;
 
     if (point_axis_dist(P, w, C) > kTol)
@@ -5457,7 +5675,9 @@ static bool ssi_cylinder_sphere(const RecogSurface& cyl, const RecogSurface& sph
         return true;
 
     double dist = std::sqrt(std::max(0.0, R * R - rc * rc));
-    auto [xa, ya] = ortho_basis(w);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(w);
 
     if (dist <= kTol) {
         out.push_back(exact_circle(C[0], C[1], C[2], xa, ya, rc));
@@ -5466,7 +5686,7 @@ static bool ssi_cylinder_sphere(const RecogSurface& cyl, const RecogSurface& sph
     }
 
     for (double s : {dist, -dist}) {
-        V3 cc{C[0] + s * w[0], C[1] + s * w[1], C[2] + s * w[2]};
+        std::array<double, 3> cc{C[0] + s * w[0], C[1] + s * w[1], C[2] + s * w[2]};
         out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rc));
     }
 
@@ -5477,9 +5697,11 @@ static bool ssi_cylinder_sphere(const RecogSurface& cyl, const RecogSurface& sph
 static bool ssi_cylinder_cone(const RecogSurface& cyl, const RecogSurface& cone, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 Pc = cyl.p1, w = ssi_unit(cyl.p2);
+    std::array<double, 3> Pc = cyl.p1;
+    std::array<double, 3> w = ssi_unit(cyl.p2);
     double rc = cyl.r;
-    V3 apex = cone.p1, a = ssi_unit(cone.p2);
+    std::array<double, 3> apex = cone.p1;
+    std::array<double, 3> a = ssi_unit(cone.p2);
     double alpha = cone.r;
 
     if (!axes_coaxial(Pc, w, apex, a, kTol))
@@ -5495,8 +5717,10 @@ static bool ssi_cylinder_cone(const RecogSurface& cyl, const RecogSurface& cone,
     if (s < kTol)
         return true;
 
-    V3 cc{apex[0] + s * a[0], apex[1] + s * a[1], apex[2] + s * a[2]};
-    auto [xa, ya] = ortho_basis(a);
+    std::array<double, 3> cc{apex[0] + s * a[0], apex[1] + s * a[1], apex[2] + s * a[2]};
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(a);
     out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rc));
 
     return true;
@@ -5506,9 +5730,10 @@ static bool ssi_cylinder_cone(const RecogSurface& cyl, const RecogSurface& cone,
 static bool ssi_cone_sphere(const RecogSurface& cone, const RecogSurface& sph, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 apex = cone.p1, a = ssi_unit(cone.p2);
+    std::array<double, 3> apex = cone.p1;
+    std::array<double, 3> a = ssi_unit(cone.p2);
     double alpha = cone.r;
-    V3 C = sph.p1;
+    std::array<double, 3> C = sph.p1;
     double R = sph.r;
 
     if (point_axis_dist(apex, a, C) > kTol)
@@ -5516,10 +5741,12 @@ static bool ssi_cone_sphere(const RecogSurface& cone, const RecogSurface& sph, s
 
     double dsign = axial_coord(apex, a, C);
     double d = std::abs(dsign);
-    V3 dir = (d > kTol && dsign < 0.0) ? V3{-a[0], -a[1], -a[2]} : a;
+    std::array<double, 3> dir = (d > kTol && dsign < 0.0) ? std::array<double, 3>{-a[0], -a[1], -a[2]} : a;
     double t = std::tan(alpha);
     double t2 = t * t;
-    double A = 1.0 + t2, B = 2.0 * t2 * d, Cq = t2 * d * d - R * R;
+    double A = 1.0 + t2;
+    double B = 2.0 * t2 * d;
+    double Cq = t2 * d * d - R * R;
     double disc = B * B - 4.0 * A * Cq;
 
     if (disc < -kTol)
@@ -5533,7 +5760,9 @@ static bool ssi_cone_sphere(const RecogSurface& cone, const RecogSurface& sph, s
     else
         xs = {(-B - sq) / (2.0 * A), (-B + sq) / (2.0 * A)};
 
-    auto [xa, ya] = ortho_basis(a);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(a);
 
     for (double x : xs) {
         double sAx = d + x;
@@ -5546,7 +5775,7 @@ static bool ssi_cone_sphere(const RecogSurface& cone, const RecogSurface& sph, s
         if (rr < kTol)
             continue;
 
-        V3 cc{apex[0] + sAx * dir[0], apex[1] + sAx * dir[1], apex[2] + sAx * dir[2]};
+        std::array<double, 3> cc{apex[0] + sAx * dir[0], apex[1] + sAx * dir[1], apex[2] + sAx * dir[2]};
         out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rr));
     }
 
@@ -5563,11 +5792,13 @@ static bool ssi_cylinder_cylinder(
 ) {
 
     const double kTol = 1e-6;
-    V3 P1 = A.p1, w1 = ssi_unit(A.p2);
+    std::array<double, 3> P1 = A.p1;
+    std::array<double, 3> w1 = ssi_unit(A.p2);
     double R1 = A.r;
-    V3 P2 = B.p1, w2 = ssi_unit(B.p2);
+    std::array<double, 3> P2 = B.p1;
+    std::array<double, 3> w2 = ssi_unit(B.p2);
     double R2 = B.r;
-    V3 cx = ssi_cross(w1, w2);
+    std::array<double, 3> cx = ssi_cross(w1, w2);
     double sinmag = std::sqrt(ssi_dot(cx, cx));
 
     if (sinmag <= kTol) {
@@ -5580,8 +5811,8 @@ static bool ssi_cylinder_cylinder(
             return true;
         }
 
-        double off = ssi_dot(V3{P2[0] - P1[0], P2[1] - P1[1], P2[2] - P1[2]}, w1);
-        V3 P2p{P2[0] - off * w1[0], P2[1] - off * w1[1], P2[2] - off * w1[2]};
+        double off = ssi_dot(std::array<double, 3>{P2[0] - P1[0], P2[1] - P1[1], P2[2] - P1[2]}, w1);
+        std::array<double, 3> P2p{P2[0] - off * w1[0], P2[1] - off * w1[1], P2[2] - off * w1[2]};
         double d = dline;
 
         if (d > R1 + R2 + kTol)
@@ -5590,11 +5821,11 @@ static bool ssi_cylinder_cylinder(
         if (d < std::abs(R1 - R2) - kTol)
             return true;
 
-        V3 xdir = ssi_unit(V3{P2p[0] - P1[0], P2p[1] - P1[1], P2p[2] - P1[2]});
-        V3 ydir = ssi_unit(ssi_cross(w1, xdir));
+        std::array<double, 3> xdir = ssi_unit(std::array<double, 3>{P2p[0] - P1[0], P2p[1] - P1[1], P2p[2] - P1[2]});
+        std::array<double, 3> ydir = ssi_unit(ssi_cross(w1, xdir));
         double aa = (R1 * R1 - R2 * R2 + d * d) / (2.0 * d);
         double h = std::sqrt(std::max(0.0, R1 * R1 - aa * aa));
-        V3 foot{P1[0] + aa * xdir[0], P1[1] + aa * xdir[1], P1[2] + aa * xdir[2]};
+        std::array<double, 3> foot{P1[0] + aa * xdir[0], P1[1] + aa * xdir[1], P1[2] + aa * xdir[2]};
         double s0a;
         double s1a;
         double s0b;
@@ -5607,9 +5838,9 @@ static bool ssi_cylinder_cylinder(
         if (shi - slo <= kTol)
             return true;
 
-        auto emit = [&](const V3& bp) {
-            V3 e0{bp[0] + slo * w1[0], bp[1] + slo * w1[1], bp[2] + slo * w1[2]};
-            V3 e1{bp[0] + shi * w1[0], bp[1] + shi * w1[1], bp[2] + shi * w1[2]};
+        auto emit = [&](const std::array<double, 3>& bp) {
+            std::array<double, 3> e0{bp[0] + slo * w1[0], bp[1] + slo * w1[1], bp[2] + slo * w1[2]};
+            std::array<double, 3> e1{bp[0] + shi * w1[0], bp[1] + shi * w1[1], bp[2] + shi * w1[2]};
             NurbsCurve ln = NurbsCurve::create(false, 1, {Point(e0[0], e0[1], e0[2]), Point(e1[0], e1[1], e1[2])});
             ln.set_domain(0.0, 1.0);
             out.push_back(ln);
@@ -5618,8 +5849,8 @@ static bool ssi_cylinder_cylinder(
         if (h <= kTol)
             emit(foot);
         else {
-            emit(V3{foot[0] + h * ydir[0], foot[1] + h * ydir[1], foot[2] + h * ydir[2]});
-            emit(V3{foot[0] - h * ydir[0], foot[1] - h * ydir[1], foot[2] - h * ydir[2]});
+            emit(std::array<double, 3>{foot[0] + h * ydir[0], foot[1] + h * ydir[1], foot[2] + h * ydir[2]});
+            emit(std::array<double, 3>{foot[0] - h * ydir[0], foot[1] - h * ydir[1], foot[2] - h * ydir[2]});
         }
 
         return true;
@@ -5630,7 +5861,7 @@ static bool ssi_cylinder_cylinder(
     if (Rmax < 1e-12 || std::abs(R1 - R2) / Rmax > 1e-6)
         return false;
 
-    V3 Pint;
+    std::array<double, 3> Pint;
 
     if (!lines_closest_point(P1, w1, P2, w2, kTol, Pint))
         return false;
@@ -5643,9 +5874,9 @@ static bool ssi_cylinder_cylinder(
     if (sh < 1e-9 || ch < 1e-9)
         return false;
 
-    V3 minor = ssi_unit(cx);
-    V3 maj1 = ssi_unit(V3{w1[0] + w2[0], w1[1] + w2[1], w1[2] + w2[2]});
-    V3 maj2 = ssi_unit(V3{w1[0] - w2[0], w1[1] - w2[1], w1[2] - w2[2]});
+    std::array<double, 3> minor = ssi_unit(cx);
+    std::array<double, 3> maj1 = ssi_unit(std::array<double, 3>{w1[0] + w2[0], w1[1] + w2[1], w1[2] + w2[2]});
+    std::array<double, 3> maj2 = ssi_unit(std::array<double, 3>{w1[0] - w2[0], w1[1] - w2[1], w1[2] - w2[2]});
     out.push_back(exact_ellipse(Pint[0], Pint[1], Pint[2], maj1, minor, R / sh, R));
     out.push_back(exact_ellipse(Pint[0], Pint[1], Pint[2], maj2, minor, R / ch, R));
 
@@ -5656,10 +5887,13 @@ static bool ssi_cylinder_cylinder(
 static bool ssi_cylinder_torus(const RecogSurface& cyl, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 P = cyl.p1, wc = ssi_unit(cyl.p2);
+    std::array<double, 3> P = cyl.p1;
+    std::array<double, 3> wc = ssi_unit(cyl.p2);
     double rc = cyl.r;
-    V3 C = tor.p1, w = ssi_unit(tor.p2);
-    double R = tor.r, r = tor.r2;
+    std::array<double, 3> C = tor.p1;
+    std::array<double, 3> w = ssi_unit(tor.p2);
+    double R = tor.r;
+    double r = tor.r2;
 
     if (r >= R - kTol)
         return false;
@@ -5674,11 +5908,13 @@ static bool ssi_cylinder_torus(const RecogSurface& cyl, const RecogSurface& tor,
         return true;
 
     double h = std::sqrt(std::max(0.0, h2));
-    auto [xa, ya] = ortho_basis(w);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(w);
     std::vector<double> zs = (h <= kTol) ? std::vector<double>{0.0} : std::vector<double>{h, -h};
 
     for (double z : zs) {
-        V3 cc{C[0] + z * w[0], C[1] + z * w[1], C[2] + z * w[2]};
+        std::array<double, 3> cc{C[0] + z * w[0], C[1] + z * w[1], C[2] + z * w[2]};
         out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rc));
     }
 
@@ -5689,10 +5925,13 @@ static bool ssi_cylinder_torus(const RecogSurface& cyl, const RecogSurface& tor,
 static bool ssi_cone_torus(const RecogSurface& cone, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 apex = cone.p1, a = ssi_unit(cone.p2);
+    std::array<double, 3> apex = cone.p1;
+    std::array<double, 3> a = ssi_unit(cone.p2);
     double alpha = cone.r;
-    V3 C = tor.p1, w = ssi_unit(tor.p2);
-    double R = tor.r, r = tor.r2;
+    std::array<double, 3> C = tor.p1;
+    std::array<double, 3> w = ssi_unit(tor.p2);
+    double R = tor.r;
+    double r = tor.r2;
 
     if (r >= R - kTol)
         return false;
@@ -5707,7 +5946,10 @@ static bool ssi_cone_torus(const RecogSurface& cone, const RecogSurface& tor, st
 
     double za = axial_coord(C, w, apex);
     double A = t * t + 1.0;
-    auto [xa, ya] = ortho_basis(w);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(w);
+
     auto solve_emit = [&](double Rsign) {
         double B = -2.0 * t * (t * za + Rsign);
         double Cc = (t * za + Rsign) * (t * za + Rsign) - r * r;
@@ -5726,10 +5968,11 @@ static bool ssi_cone_torus(const RecogSurface& cone, const RecogSurface& tor, st
             if (rad < kTol)
                 continue;
 
-            V3 cc{C[0] + z * w[0], C[1] + z * w[1], C[2] + z * w[2]};
+            std::array<double, 3> cc{C[0] + z * w[0], C[1] + z * w[1], C[2] + z * w[2]};
             out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad));
         }
     };
+
     solve_emit(+R);
     solve_emit(-R);
 
@@ -5740,10 +5983,12 @@ static bool ssi_cone_torus(const RecogSurface& cone, const RecogSurface& tor, st
 static bool ssi_sphere_torus(const RecogSurface& sph, const RecogSurface& tor, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 S = sph.p1;
+    std::array<double, 3> S = sph.p1;
     double rsph = sph.r;
-    V3 C = tor.p1, w = ssi_unit(tor.p2);
-    double R = tor.r, r = tor.r2;
+    std::array<double, 3> C = tor.p1;
+    std::array<double, 3> w = ssi_unit(tor.p2);
+    double R = tor.r;
+    double r = tor.r2;
 
     if (r >= R - kTol)
         return false;
@@ -5768,7 +6013,9 @@ static bool ssi_sphere_torus(const RecogSurface& sph, const RecogSurface& tor, s
     double phz = aa * dirz;
     double perpx = -dirz;
     double perpz = dirx;
-    auto [xa, ya] = ortho_basis(w);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(w);
     std::vector<int> signs = (h <= kTol) ? std::vector<int>{0} : std::vector<int>{+1, -1};
 
     for (int s : signs) {
@@ -5779,7 +6026,7 @@ static bool ssi_sphere_torus(const RecogSurface& sph, const RecogSurface& tor, s
         if (rad < kTol)
             continue;
 
-        V3 cc{C[0] + z * w[0], C[1] + z * w[1], C[2] + z * w[2]};
+        std::array<double, 3> cc{C[0] + z * w[0], C[1] + z * w[1], C[2] + z * w[2]};
         out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad));
     }
 
@@ -5790,11 +6037,15 @@ static bool ssi_sphere_torus(const RecogSurface& sph, const RecogSurface& tor, s
 static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& tb, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 C1 = ta.p1, w = ssi_unit(ta.p2);
-    double R1 = ta.r, r1 = ta.r2;
-    V3 C2 = tb.p1, w2 = ssi_unit(tb.p2);
-    double R2 = tb.r, r2 = tb.r2;
-    V3 cxw = ssi_cross(w, w2);
+    std::array<double, 3> C1 = ta.p1;
+    std::array<double, 3> w = ssi_unit(ta.p2);
+    double R1 = ta.r;
+    double r1 = ta.r2;
+    std::array<double, 3> C2 = tb.p1;
+    std::array<double, 3> w2 = ssi_unit(tb.p2);
+    double R2 = tb.r;
+    double r2 = tb.r2;
+    std::array<double, 3> cxw = ssi_cross(w, w2);
 
     if (std::sqrt(ssi_dot(cxw, cxw)) > kTol)
         return false;
@@ -5808,17 +6059,18 @@ static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& t
     if (std::abs(axial_coord(C1, w, C2)) > kTol)
         return false;
 
-    V3 dp{C2[0] - C1[0], C2[1] - C1[1], C2[2] - C1[2]};
+    std::array<double, 3> dp{C2[0] - C1[0], C2[1] - C1[1], C2[2] - C1[2]};
     double hax = ssi_dot(dp, w);
-    V3 ex{dp[0] - hax * w[0], dp[1] - hax * w[1], dp[2] - hax * w[2]};
+    std::array<double, 3> ex{dp[0] - hax * w[0], dp[1] - hax * w[1], dp[2] - hax * w[2]};
     double d = std::sqrt(ssi_dot(ex, ex));
 
     if (d <= kTol)
         return false;
 
-    ex = V3{ex[0] / d, ex[1] / d, ex[2] / d};
-    V3 ey = ssi_cross(w, ex);
-    double R = 0.5 * (R1 + R2), r = 0.5 * (r1 + r2);
+    ex = std::array<double, 3>{ex[0] / d, ex[1] / d, ex[2] / d};
+    std::array<double, 3> ey = ssi_cross(w, ex);
+    double R = 0.5 * (R1 + R2);
+    double r = 0.5 * (r1 + r2);
     double c = 0.5 * d;
 
     if (std::abs(R - c) <= kTol)
@@ -5826,6 +6078,7 @@ static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& t
 
     const double PI_ = 3.14159265358979323846;
     const int N = 512;
+
     auto emit_loops = [&](const std::function<bool(double, double&, double&)>& xy_of_t) {
         for (int sgn : {+1, -1}) {
             std::vector<Point> pts;
@@ -5845,6 +6098,7 @@ static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& t
                 }
 
                 double yy = sgn * y;
+
                 pts.push_back(Point(
                     C1[0] + x * ex[0] + yy * ey[0] + z * w[0],
                     C1[1] + x * ex[1] + yy * ey[1] + z * w[1],
@@ -5863,6 +6117,7 @@ static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& t
             }
         }
     };
+
     double lo2 = (R - r) * (R - r) - c * c;
     double hi2 = (R + r) * (R + r) - c * c;
 
@@ -5876,20 +6131,27 @@ static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& t
         emit_loops([&](double t, double& x, double& y) {
             double rho = R + t;
             double y2 = rho * rho - c * c;
+
             if (y2 <= 0.0)
                 return false;
+
             x = c;
             y = std::sqrt(y2);
+
             return true;
         });
+
     if (R > c + kTol) {
         double be = std::sqrt(R * R - c * c);
         emit_loops([&](double t, double& x, double& y) {
             double g = t / c;
+
             if (std::abs(g) >= 1.0)
                 return false;
+
             x = c + R * g;
             y = be * std::sqrt(1.0 - g * g);
+
             return true;
         });
     }
@@ -5901,10 +6163,14 @@ static bool ssi_torus_torus_spiric(const RecogSurface& ta, const RecogSurface& t
 static bool ssi_torus_torus(const RecogSurface& ta, const RecogSurface& tb, std::vector<NurbsCurve>& out) {
 
     const double kTol = 1e-6;
-    V3 C1 = ta.p1, w = ssi_unit(ta.p2);
-    double R1 = ta.r, r1 = ta.r2;
-    V3 C2 = tb.p1, w2 = ssi_unit(tb.p2);
-    double R2 = tb.r, r2 = tb.r2;
+    std::array<double, 3> C1 = ta.p1;
+    std::array<double, 3> w = ssi_unit(ta.p2);
+    double R1 = ta.r;
+    double r1 = ta.r2;
+    std::array<double, 3> C2 = tb.p1;
+    std::array<double, 3> w2 = ssi_unit(tb.p2);
+    double R2 = tb.r;
+    double r2 = tb.r2;
 
     if (r1 >= R1 - kTol || r2 >= R2 - kTol)
         return false;
@@ -5913,7 +6179,8 @@ static bool ssi_torus_torus(const RecogSurface& ta, const RecogSurface& tb, std:
         return ssi_torus_torus_spiric(ta, tb, out);
 
     double z2 = axial_coord(C1, w, C2);
-    double dxR = R2 - R1, d = std::sqrt(dxR * dxR + z2 * z2);
+    double dxR = R2 - R1;
+    double d = std::sqrt(dxR * dxR + z2 * z2);
 
     if (d < kTol)
         return false;
@@ -5929,7 +6196,9 @@ static bool ssi_torus_torus(const RecogSurface& ta, const RecogSurface& tb, std:
     double phz = aa * dirz;
     double perpx = -dirz;
     double perpz = dirx;
-    auto [xa, ya] = ortho_basis(w);
+    std::array<double, 3> xa;
+    std::array<double, 3> ya;
+    std::tie(xa, ya) = ortho_basis(w);
     std::vector<int> signs = (h <= kTol) ? std::vector<int>{0} : std::vector<int>{+1, -1};
 
     for (int s : signs) {
@@ -5940,7 +6209,7 @@ static bool ssi_torus_torus(const RecogSurface& ta, const RecogSurface& tb, std:
         if (rad < kTol)
             continue;
 
-        V3 cc{C1[0] + z * w[0], C1[1] + z * w[1], C1[2] + z * w[2]};
+        std::array<double, 3> cc{C1[0] + z * w[0], C1[1] + z * w[1], C1[2] + z * w[2]};
         out.push_back(exact_circle(cc[0], cc[1], cc[2], xa, ya, rad));
     }
 
@@ -5960,7 +6229,7 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
 
     std::vector<NurbsCurve> c3_list;
     bool handled = true;
-    using K = RecogSurface;
+
     auto single = [&](bool ok, NurbsCurve& c3) {
         if (ok)
             c3_list.push_back(c3);
@@ -5968,79 +6237,81 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
 
     NurbsCurve c3;
 
-    if (ra.kind == K::PLANE && rb.kind == K::PLANE) {
+    if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::PLANE) {
         bool empty = false;
 
         if (ssi_plane_plane(a, ra, b, rb, c3, empty))
             c3_list.push_back(c3);
         else if (!empty)
             return res;
-    } else if (ra.kind == K::PLANE && rb.kind == K::SPHERE)
+    } else if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::SPHERE)
         single(ssi_plane_sphere(ra, rb, c3), c3);
-    else if (ra.kind == K::SPHERE && rb.kind == K::PLANE)
+    else if (ra.kind == RecogSurface::SPHERE && rb.kind == RecogSurface::PLANE)
         single(ssi_plane_sphere(rb, ra, c3), c3);
-    else if (ra.kind == K::PLANE && rb.kind == K::CYLINDER) {
+    else if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::CYLINDER) {
         if (!ssi_plane_cylinder_lines(ra, rb, b, c3_list))
             single(ssi_plane_cylinder(ra, rb, c3), c3);
-    } else if (ra.kind == K::CYLINDER && rb.kind == K::PLANE) {
+    } else if (ra.kind == RecogSurface::CYLINDER && rb.kind == RecogSurface::PLANE) {
         if (!ssi_plane_cylinder_lines(rb, ra, a, c3_list))
             single(ssi_plane_cylinder(rb, ra, c3), c3);
-    } else if (ra.kind == K::PLANE && rb.kind == K::CONE)
+    } else if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::CONE)
         handled = ssi_plane_cone(ra, rb, b, c3_list);
-    else if (ra.kind == K::CONE && rb.kind == K::PLANE)
+    else if (ra.kind == RecogSurface::CONE && rb.kind == RecogSurface::PLANE)
         handled = ssi_plane_cone(rb, ra, a, c3_list);
-    else if (ra.kind == K::PLANE && rb.kind == K::TORUS)
+    else if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::TORUS)
         handled = ssi_plane_torus(ra, rb, c3_list);
-    else if (ra.kind == K::TORUS && rb.kind == K::PLANE)
+    else if (ra.kind == RecogSurface::TORUS && rb.kind == RecogSurface::PLANE)
         handled = ssi_plane_torus(rb, ra, c3_list);
-    else if (ra.kind == K::SPHERE && rb.kind == K::SPHERE) {
-        V3 c1 = ra.p1;
+    else if (ra.kind == RecogSurface::SPHERE && rb.kind == RecogSurface::SPHERE) {
+        std::array<double, 3> c1 = ra.p1;
         double r1 = ra.r;
-        V3 c2 = rb.p1;
+        std::array<double, 3> c2 = rb.p1;
         double r2 = rb.r;
-        V3 dv{c2[0] - c1[0], c2[1] - c1[1], c2[2] - c1[2]};
+        std::array<double, 3> dv{c2[0] - c1[0], c2[1] - c1[1], c2[2] - c1[2]};
         double dist = std::sqrt(dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2]);
         double tan_tol = (r1 + r2) * 1e-9;
 
         if (1e-12 < dist && dist < r1 + r2 - tan_tol && dist > std::abs(r1 - r2) + tan_tol) {
-            V3 nu{dv[0] / dist, dv[1] / dist, dv[2] / dist};
+            std::array<double, 3> nu{dv[0] / dist, dv[1] / dist, dv[2] / dist};
             double aa = (dist * dist + r1 * r1 - r2 * r2) / (2.0 * dist);
             double rr2 = r1 * r1 - aa * aa;
 
             if (rr2 > 0.0) {
-                V3 cc{c1[0] + aa * nu[0], c1[1] + aa * nu[1], c1[2] + aa * nu[2]};
-                auto [xa, ya] = ortho_basis(nu);
+                std::array<double, 3> cc{c1[0] + aa * nu[0], c1[1] + aa * nu[1], c1[2] + aa * nu[2]};
+                std::array<double, 3> xa;
+                std::array<double, 3> ya;
+                std::tie(xa, ya) = ortho_basis(nu);
                 c3 = exact_circle(cc[0], cc[1], cc[2], xa, ya, std::sqrt(rr2));
                 c3_list.push_back(c3);
             }
         }
-    } else if (ra.kind == K::CYLINDER && rb.kind == K::SPHERE)
+    } else if (ra.kind == RecogSurface::CYLINDER && rb.kind == RecogSurface::SPHERE)
         handled = ssi_cylinder_sphere(ra, rb, c3_list);
-    else if (ra.kind == K::SPHERE && rb.kind == K::CYLINDER)
+    else if (ra.kind == RecogSurface::SPHERE && rb.kind == RecogSurface::CYLINDER)
         handled = ssi_cylinder_sphere(rb, ra, c3_list);
-    else if (ra.kind == K::CYLINDER && rb.kind == K::CONE)
+    else if (ra.kind == RecogSurface::CYLINDER && rb.kind == RecogSurface::CONE)
         handled = ssi_cylinder_cone(ra, rb, c3_list);
-    else if (ra.kind == K::CONE && rb.kind == K::CYLINDER)
+    else if (ra.kind == RecogSurface::CONE && rb.kind == RecogSurface::CYLINDER)
         handled = ssi_cylinder_cone(rb, ra, c3_list);
-    else if (ra.kind == K::CONE && rb.kind == K::SPHERE)
+    else if (ra.kind == RecogSurface::CONE && rb.kind == RecogSurface::SPHERE)
         handled = ssi_cone_sphere(ra, rb, c3_list);
-    else if (ra.kind == K::SPHERE && rb.kind == K::CONE)
+    else if (ra.kind == RecogSurface::SPHERE && rb.kind == RecogSurface::CONE)
         handled = ssi_cone_sphere(rb, ra, c3_list);
-    else if (ra.kind == K::CYLINDER && rb.kind == K::CYLINDER)
+    else if (ra.kind == RecogSurface::CYLINDER && rb.kind == RecogSurface::CYLINDER)
         handled = ssi_cylinder_cylinder(a, ra, b, rb, c3_list);
-    else if (ra.kind == K::CYLINDER && rb.kind == K::TORUS)
+    else if (ra.kind == RecogSurface::CYLINDER && rb.kind == RecogSurface::TORUS)
         handled = ssi_cylinder_torus(ra, rb, c3_list);
-    else if (ra.kind == K::TORUS && rb.kind == K::CYLINDER)
+    else if (ra.kind == RecogSurface::TORUS && rb.kind == RecogSurface::CYLINDER)
         handled = ssi_cylinder_torus(rb, ra, c3_list);
-    else if (ra.kind == K::CONE && rb.kind == K::TORUS)
+    else if (ra.kind == RecogSurface::CONE && rb.kind == RecogSurface::TORUS)
         handled = ssi_cone_torus(ra, rb, c3_list);
-    else if (ra.kind == K::TORUS && rb.kind == K::CONE)
+    else if (ra.kind == RecogSurface::TORUS && rb.kind == RecogSurface::CONE)
         handled = ssi_cone_torus(rb, ra, c3_list);
-    else if (ra.kind == K::SPHERE && rb.kind == K::TORUS)
+    else if (ra.kind == RecogSurface::SPHERE && rb.kind == RecogSurface::TORUS)
         handled = ssi_sphere_torus(ra, rb, c3_list);
-    else if (ra.kind == K::TORUS && rb.kind == K::SPHERE)
+    else if (ra.kind == RecogSurface::TORUS && rb.kind == RecogSurface::SPHERE)
         handled = ssi_sphere_torus(rb, ra, c3_list);
-    else if (ra.kind == K::TORUS && rb.kind == K::TORUS)
+    else if (ra.kind == RecogSurface::TORUS && rb.kind == RecogSurface::TORUS)
         handled = ssi_torus_torus(ra, rb, c3_list);
     else {
         return res;
@@ -6053,42 +6324,42 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
         NurbsCurve pa = analytic_pcurve(a, ra, cc3);
         NurbsCurve pb = analytic_pcurve(b, rb, cc3);
 
-        if (!pa.is_valid() && ra.kind == K::TORUS) {
+        if (!pa.is_valid() && ra.kind == RecogSurface::TORUS) {
             std::vector<NurbsCurve> v = analytic_torus_pullback(a, ra, cc3);
 
             if (!v.empty())
                 pa = v[0];
         }
 
-        if (!pb.is_valid() && rb.kind == K::TORUS) {
+        if (!pb.is_valid() && rb.kind == RecogSurface::TORUS) {
             std::vector<NurbsCurve> v = analytic_torus_pullback(b, rb, cc3);
 
             if (!v.empty())
                 pb = v[0];
         }
 
-        if (!pa.is_valid() && ra.kind == K::SPHERE) {
+        if (!pa.is_valid() && ra.kind == RecogSurface::SPHERE) {
             std::vector<NurbsCurve> v = analytic_sphere_pullback(a, ra, cc3);
 
             if (!v.empty())
                 pa = v[0];
         }
 
-        if (!pb.is_valid() && rb.kind == K::SPHERE) {
+        if (!pb.is_valid() && rb.kind == RecogSurface::SPHERE) {
             std::vector<NurbsCurve> v = analytic_sphere_pullback(b, rb, cc3);
 
             if (!v.empty())
                 pb = v[0];
         }
 
-        if (!pa.is_valid() && (ra.kind == K::CONE || ra.kind == K::CYLINDER)) {
+        if (!pa.is_valid() && (ra.kind == RecogSurface::CONE || ra.kind == RecogSurface::CYLINDER)) {
             std::vector<NurbsCurve> v = analytic_cone_pullback(a, ra, cc3);
 
             if (!v.empty())
                 pa = v[0];
         }
 
-        if (!pb.is_valid() && (rb.kind == K::CONE || rb.kind == K::CYLINDER)) {
+        if (!pb.is_valid() && (rb.kind == RecogSurface::CONE || rb.kind == RecogSurface::CYLINDER)) {
             std::vector<NurbsCurve> v = analytic_cone_pullback(b, rb, cc3);
 
             if (!v.empty())
@@ -6120,6 +6391,10 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
 
 } // namespace
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NURBS surfaces
+// ═══════════════════════════════════════════════════════════════════════════
+
 std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface, const Plane& plane, double tolerance) {
 
     if (!surface.is_valid())
@@ -6128,11 +6403,16 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    auto [traces, step, uv_to_3d, uv_to_3d_min] = surface_plane_traces(surface, plane, tolerance);
+    const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
+    const double step = traced.step;
+    const double uv_to_3d = traced.uv_to_3d;
+    const double uv_to_3d_min = traced.uv_to_3d_min;
 
     std::vector<NurbsCurve> result;
 
-    for (auto& [uv_trace, uv_unwrapped, is_loop] : traces) {
+    for (const SurfacePlaneTrace& trace : traced.traces) {
+        const std::vector<std::pair<double, double>>& uv_trace = trace.uv_trace;
+        const bool is_loop = trace.is_loop;
         std::vector<Point> all_pts(uv_trace.size());
 
         for (size_t i = 0; i < uv_trace.size(); i++)
@@ -6143,12 +6423,16 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
         if (!crv.is_valid())
             continue;
 
-        auto [ct0, ct1] = crv.domain();
+        const std::pair<double, double> domain_ct = crv.domain();
+        const double ct0 = domain_ct.first;
+        const double ct1 = domain_ct.second;
         double dup_tol = step * uv_to_3d * 3.0;
         bool dup = false;
 
         for (NurbsCurve& existing : result) {
-            auto [et0, et1] = existing.domain();
+            const std::pair<double, double> domain_et = existing.domain();
+            const double et0 = domain_et.first;
+            const double et1 = domain_et.second;
             bool all_close = true;
 
             for (double f : {0.25, 0.5, 0.75}) {
@@ -6188,8 +6472,12 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    auto [u0, u1] = surface.domain(0);
-    auto [v0, v1] = surface.domain(1);
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const std::pair<double, double> domain_v = surface.domain(1);
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     double range_u = u1 - u0;
     double range_v = v1 - v0;
     bool closed_u = surface.is_closed(0);
@@ -6207,6 +6495,7 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 
         return std::max(u0, std::min(u, u1));
     };
+
     auto wrap_v = [&](double v) -> double {
         if (closed_v) {
             double t = std::fmod(v - v0, range_v);
@@ -6259,7 +6548,10 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
         return {cu, cv_};
     };
 
-    auto [traces, step, uv_to_3d, uv_to_3d_min] = surface_plane_traces(surface, plane, tolerance);
+    const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
+    const double step = traced.step;
+    const double uv_to_3d = traced.uv_to_3d;
+    const double uv_to_3d_min = traced.uv_to_3d_min;
 
     double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5;
     double dup_tol = step * uv_to_3d * 3.0;
@@ -6267,7 +6559,10 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     std::vector<std::pair<NurbsCurve, NurbsCurve>> result;
     std::vector<std::vector<Point>> kept_pts3;
 
-    for (auto& [uv_trace, uv_unwrapped, is_loop] : traces) {
+    for (const SurfacePlaneTrace& trace : traced.traces) {
+        const std::vector<std::pair<double, double>>& uv_trace = trace.uv_trace;
+        const std::vector<std::pair<double, double>>& uv_unwrapped = trace.uv_unwrapped;
+        const bool is_loop = trace.is_loop;
         int m = (int)uv_trace.size();
         std::vector<Point> trace_pts3(m);
 
@@ -6369,7 +6664,10 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 
             std::sort(crossings.begin(), crossings.end());
 
-            for (const auto& [t, axis, L] : crossings) {
+            for (const std::tuple<double, int, double>& crossing : crossings) {
+                const double t = std::get<0>(crossing);
+                const int axis = std::get<1>(crossing);
+                const double L = std::get<2>(crossing);
                 double cu = pa.first + (pb.first - pa.first) * t;
                 double cv_ = pa.second + (pb.second - pa.second) * t;
 
@@ -6426,6 +6724,7 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
             for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++) {
                 int a = cross_idx[ci];
                 int b = cross_idx[ci + 1];
+
                 pieces.push_back(
                     {std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false}
                 );
@@ -6457,7 +6756,10 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
             }
         }
 
-        for (auto& [piece_pts, piece_loop] : pieces) {
+        for (std::pair<std::vector<std::pair<double, double>>, bool>& piece : pieces) {
+            std::vector<std::pair<double, double>>& piece_pts = piece.first;
+            const bool piece_loop = piece.second;
+
             if (piece_pts.size() < 2)
                 continue;
 
@@ -6503,6 +6805,7 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 
                     return true;
                 };
+
                 std::function<void(double, double, double, double, int)> densify =
                     [&](double au, double av, double bu, double bv, int depth) {
                         double mu = 0.5 * (au + bu);
@@ -6526,6 +6829,7 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 
                 for (size_t i = 1; i < piece_pts.size(); i++) {
                     pts_uv.push_back(Point(piece_pts[i - 1].first, piece_pts[i - 1].second, 0.0));
+
                     densify(
                         piece_pts[i - 1].first,
                         piece_pts[i - 1].second,
@@ -6600,7 +6904,9 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
                 if (!cand.is_valid())
                     break;
 
-                auto [ft0, ft1] = cand.domain();
+                const std::pair<double, double> domain_ft = cand.domain();
+                const double ft0 = domain_ft.first;
+                const double ft1 = domain_ft.second;
                 double max_dev = 0;
 
                 for (int i = 0; i < mp; i++) {
@@ -6662,6 +6968,7 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 static void drop_point_sections(std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& trs, double tolerance) {
 
     double min_len = std::max(tolerance * 10.0, 1e-9);
+
     trs.erase(
         std::remove_if(
             trs.begin(),
@@ -6695,8 +7002,12 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     }
 
     auto plane_from = [](const NurbsSurface& srf) -> Plane {
-        auto [s0, s1] = srf.domain(0);
-        auto [t0, t1] = srf.domain(1);
+        const std::pair<double, double> domain_s = srf.domain(0);
+        const double s0 = domain_s.first;
+        const double s1 = domain_s.second;
+        const std::pair<double, double> domain = srf.domain(1);
+        const double t0 = domain.first;
+        const double t1 = domain.second;
         Point po = srf.point_at((s0 + s1) * 0.5, (t0 + t1) * 0.5);
         Vector nn = srf.normal_at((s0 + s1) * 0.5, (t0 + t1) * 0.5);
         Vector nv(nn[0], nn[1], nn[2]);
@@ -6708,7 +7019,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         Plane plane = plane_from(a);
         std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
 
-        for (auto& [c3, pb] : surface_plane_uv(b, plane, tolerance)) {
+        for (const std::pair<NurbsCurve, NurbsCurve>& section : surface_plane_uv(b, plane, tolerance)) {
+            const NurbsCurve& c3 = section.first;
+            const NurbsCurve& pb = section.second;
             std::vector<NurbsCurve> pas = Closest::surface_curve(a, c3);
 
             if (pas.size() == 1)
@@ -6724,7 +7037,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         Plane plane = plane_from(b);
         std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
 
-        for (auto& [c3, pa] : surface_plane_uv(a, plane, tolerance)) {
+        for (const std::pair<NurbsCurve, NurbsCurve>& section : surface_plane_uv(a, plane, tolerance)) {
+            const NurbsCurve& c3 = section.first;
+            const NurbsCurve& pa = section.second;
             std::vector<NurbsCurve> pbs = Closest::surface_curve(b, c3);
 
             if (pbs.size() == 1)
@@ -6736,10 +7051,18 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         return result;
     }
 
-    auto [au0, au1] = a.domain(0);
-    auto [av0, av1] = a.domain(1);
-    auto [bu0, bu1] = b.domain(0);
-    auto [bv0, bv1] = b.domain(1);
+    const std::pair<double, double> domain_au = a.domain(0);
+    const double au0 = domain_au.first;
+    const double au1 = domain_au.second;
+    const std::pair<double, double> domain_av = a.domain(1);
+    const double av0 = domain_av.first;
+    const double av1 = domain_av.second;
+    const std::pair<double, double> domain_bu = b.domain(0);
+    const double bu0 = domain_bu.first;
+    const double bu1 = domain_bu.second;
+    const std::pair<double, double> domain_bv = b.domain(1);
+    const double bv0 = domain_bv.first;
+    const double bv1 = domain_bv.second;
     double a_range_u = au1 - au0;
     double a_range_v = av1 - av0;
     double b_range_u = bu1 - bu0;
@@ -6775,6 +7098,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         Su = d[2];
         Sv = d[1];
     };
+
     auto eval_b = [&](double u, double v, Vector& S, Vector& Su, Vector& Sv) {
         const std::vector<Vector> d = b.evaluate(b_wrap_u(u), b_wrap_v(v), 1);
         S = d[0];
@@ -6795,10 +7119,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     double b_du = b_range_u / b_nu;
     double b_dv = b_range_v / b_nv;
 
-    typedef std::array<double, 8> Box;
 
     auto cell_boxes = [&](const NurbsSurface& srf, double c0u, double dcu, int ncu, double c0v, double dcv, int ncv)
-        -> std::vector<Box> {
+        -> std::vector<std::array<double, 8>> {
         std::vector<std::vector<Point>> S;
 
         for (int i = 0; i < 2 * ncu + 1; i++) {
@@ -6810,7 +7133,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             S.push_back(row);
         }
 
-        std::vector<Box> boxes;
+        std::vector<std::array<double, 8>> boxes;
 
         for (int ci = 0; ci < ncu; ci++) {
             for (int cj = 0; cj < ncv; cj++) {
@@ -6849,7 +7172,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                 double sag = std::sqrt(
                     (ctr[0] - cx) * (ctr[0] - cx) + (ctr[1] - cy) * (ctr[1] - cy) + (ctr[2] - cz) * (ctr[2] - cz)
                 );
+
                 double inf = 2.0 * sag + tolerance;
+
                 boxes.push_back(
                     {minx - inf,
                      miny - inf,
@@ -6866,14 +7191,15 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         return boxes;
     };
 
-    std::vector<Box> boxes_a = cell_boxes(a, au0, a_du, a_nu, av0, a_dv, a_nv);
-    std::vector<Box> boxes_b = cell_boxes(b, bu0, b_du, b_nu, bv0, b_dv, b_nv);
+    std::vector<std::array<double, 8>> boxes_a = cell_boxes(a, au0, a_du, a_nu, av0, a_dv, a_nv);
+    std::vector<std::array<double, 8>> boxes_b = cell_boxes(b, bu0, b_du, b_nu, bv0, b_dv, b_nv);
 
-    auto cell_3d = [](const std::vector<Box>& boxes) -> double {
+    auto cell_3d = [](const std::vector<std::array<double, 8>>& boxes) -> double {
         double best = std::numeric_limits<double>::infinity();
 
         for (size_t i = 0; i < boxes.size() && i < 64; i++) {
-            const Box& bx = boxes[i];
+            const std::array<double, 8>& bx = boxes[i];
+
             double d = std::sqrt(
                 (bx[3] - bx[0]) * (bx[3] - bx[0]) + (bx[4] - bx[1]) * (bx[4] - bx[1]) +
                 (bx[5] - bx[2]) * (bx[5] - bx[2])
@@ -6908,7 +7234,12 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                        const std::array<double, 3>& pd,
                        const std::array<double, 3>& pp) -> bool {
         for (int it = 0; it < 8; it++) {
-            Vector Sa, Sau, Sav, Sb, Sbu, Sbv;
+            Vector Sa;
+            Vector Sau;
+            Vector Sav;
+            Vector Sb;
+            Vector Sbu;
+            Vector Sbv;
             eval_a(x[0], x[1], Sa, Sau, Sav);
             eval_b(x[2], x[3], Sb, Sbu, Sbv);
             double F[3] = {Sa[0] - Sb[0], Sa[1] - Sb[1], Sa[2] - Sb[2]};
@@ -6961,6 +7292,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                      0.0,
                      0.0}
                 };
+
                 std::vector<double> rhs =
                     {F[0], F[1], F[2], pd[0] * (Sa[0] - pp[0]) + pd[1] * (Sa[1] - pp[1]) + pd[2] * (Sa[2] - pp[2])};
 
@@ -6976,9 +7308,15 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             clamp_open(x);
         }
 
-        Vector Sa, Sau, Sav, Sb, Sbu, Sbv;
+        Vector Sa;
+        Vector Sau;
+        Vector Sav;
+        Vector Sb;
+        Vector Sbu;
+        Vector Sbv;
         eval_a(x[0], x[1], Sa, Sau, Sav);
         eval_b(x[2], x[3], Sb, Sbu, Sbv);
+
         double g = std::sqrt(
             (Sa[0] - Sb[0]) * (Sa[0] - Sb[0]) + (Sa[1] - Sb[1]) * (Sa[1] - Sb[1]) + (Sa[2] - Sb[2]) * (Sa[2] - Sb[2])
         );
@@ -6993,16 +7331,17 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         double t;
         bool used;
     };
+
     std::vector<Seed> seeds;
     double seed_tol_3d = std::max(cell_3d(boxes_a), cell_3d(boxes_b));
     int pair_budget = 20000;
     std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
 
-    for (const Box& ba : boxes_a) {
+    for (const std::array<double, 8>& ba : boxes_a) {
         if (pair_budget < 0)
             break;
 
-        for (const Box& bb : boxes_b) {
+        for (const std::array<double, 8>& bb : boxes_b) {
             if (bb[0] > ba[3] || bb[3] < ba[0] || bb[1] > ba[4] || bb[4] < ba[1] || bb[2] > ba[5] || bb[5] < ba[2])
                 continue;
 
@@ -7016,12 +7355,16 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             if (!correct(x, false, dummy3, dummy3))
                 continue;
 
-            Vector Sa, Sau, Sav;
+            Vector Sa;
+            Vector Sau;
+            Vector Sav;
             eval_a(x[0], x[1], Sa, Sau, Sav);
             bool dup = false;
 
             for (const Seed& sd : seeds) {
-                Vector So, Sou, Sov;
+                Vector So;
+                Vector Sou;
+                Vector Sov;
                 eval_a(sd.u, sd.v, So, Sou, Sov);
 
                 if (std::sqrt(
@@ -7080,7 +7423,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         std::array<double, 4> x = x0;
         bool have_prev_d = false;
         std::array<double, 3> prev_d = {0.0, 0.0, 0.0};
-        Vector Sa0, Sa0u, Sa0v;
+        Vector Sa0;
+        Vector Sa0u;
+        Vector Sa0v;
         eval_a(x[0], x[1], Sa0, Sa0u, Sa0v);
         std::array<double, 3> p_start = {Sa0[0], Sa0[1], Sa0[2]};
         std::array<double, 3> p_prev = p_start;
@@ -7092,7 +7437,11 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
         for (int step_i = 0; step_i < max_steps; step_i++) {
             std::array<double, 3> d;
-            Vector Sa, Sau, Sav, Sbu, Sbv;
+            Vector Sa;
+            Vector Sau;
+            Vector Sav;
+            Vector Sbu;
+            Vector Sbv;
 
             if (!tangent_3d(x, dir_sign, d, Sa, Sau, Sav, Sbu, Sbv)) {
                 if (!have_prev_d || tang_reuse >= 3) {
@@ -7120,20 +7469,24 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     {Sau[0] * Sav[0] + Sau[1] * Sav[1] + Sau[2] * Sav[2],
                      Sav[0] * Sav[0] + Sav[1] * Sav[1] + Sav[2] * Sav[2]}
                 };
+
                 std::vector<double> ra = {
                     h * (d[0] * Sau[0] + d[1] * Sau[1] + d[2] * Sau[2]),
                     h * (d[0] * Sav[0] + d[1] * Sav[1] + d[2] * Sav[2])
                 };
+
                 std::vector<std::vector<double>> Mb = {
                     {Sbu[0] * Sbu[0] + Sbu[1] * Sbu[1] + Sbu[2] * Sbu[2],
                      Sbu[0] * Sbv[0] + Sbu[1] * Sbv[1] + Sbu[2] * Sbv[2]},
                     {Sbu[0] * Sbv[0] + Sbu[1] * Sbv[1] + Sbu[2] * Sbv[2],
                      Sbv[0] * Sbv[0] + Sbv[1] * Sbv[1] + Sbv[2] * Sbv[2]}
                 };
+
                 std::vector<double> rb = {
                     h * (d[0] * Sbu[0] + d[1] * Sbu[1] + d[2] * Sbu[2]),
                     h * (d[0] * Sbv[0] + d[1] * Sbv[1] + d[2] * Sbv[2])
                 };
+
                 std::vector<double> duv_a;
                 std::vector<double> duv_b;
 
@@ -7151,6 +7504,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     double hi;
                     bool closed;
                 };
+
                 Ax axs[4] = {
                     {0, au0, au1, a_closed_u},
                     {1, av0, av1, a_closed_v},
@@ -7186,9 +7540,12 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     continue;
                 }
 
-                Vector San, Sanu, Sanv;
+                Vector San;
+                Vector Sanu;
+                Vector Sanv;
                 eval_a(xn[0], xn[1], San, Sanu, Sanv);
                 p_cur = {San[0], San[1], San[2]};
+
                 step_len = std::sqrt(
                     (p_cur[0] - p_prev[0]) * (p_cur[0] - p_prev[0]) + (p_cur[1] - p_prev[1]) * (p_cur[1] - p_prev[1]) +
                     (p_cur[2] - p_prev[2]) * (p_cur[2] - p_prev[2])
@@ -7252,7 +7609,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
             for (Seed& sd : seeds) {
                 if (!sd.used) {
-                    Vector So, Sou, Sov;
+                    Vector So;
+                    Vector Sou;
+                    Vector Sov;
                     eval_a(sd.u, sd.v, So, Sou, Sov);
 
                     if (std::sqrt(
@@ -7276,6 +7635,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         double rng;
         bool closed;
     };
+
     Axis axes[4] = {
         {0, au0, a_range_u, a_closed_u},
         {1, av0, a_range_v, a_closed_v},
@@ -7284,7 +7644,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     };
 
     auto eval3_q = [&](const std::array<double, 4>& q) -> std::array<double, 3> {
-        Vector Sa, Sau, Sav;
+        Vector Sa;
+        Vector Sau;
+        Vector Sav;
         eval_a(q[0], q[1], Sa, Sau, Sav);
 
         return {Sa[0], Sa[1], Sa[2]};
@@ -7343,10 +7705,12 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
         std::array<double, 3> p_first = eval3_q(quad.front());
         std::array<double, 3> p_last = eval3_q(quad.back());
+
         double gap2 = std::sqrt(
             (p_first[0] - p_last[0]) * (p_first[0] - p_last[0]) + (p_first[1] - p_last[1]) * (p_first[1] - p_last[1]) +
             (p_first[2] - p_last[2]) * (p_first[2] - p_last[2])
         );
+
         bool is_loop = fwd_closed || ((int)quad.size() >= 6 && gap2 < close_tol);
 
         if (is_loop)
@@ -7373,6 +7737,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
                 for (size_t k = 0; k < other.size(); k += 1) {
                     const std::array<double, 3>& op = other[k];
+
                     dmin = std::min(
                         dmin,
                         std::sqrt(
@@ -7500,7 +7865,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
             std::sort(crossings.begin(), crossings.end());
 
-            for (const auto& [t, idx, L] : crossings) {
+            for (const std::tuple<double, int, double>& crossing : crossings) {
+                const double t = std::get<0>(crossing);
+                const int idx = std::get<1>(crossing);
+                const double L = std::get<2>(crossing);
                 std::array<double, 4> cp;
 
                 for (int k = 0; k < 4; k++)
@@ -7551,6 +7919,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++) {
                 int ia = cross_idx[ci];
                 int ib = cross_idx[ci + 1];
+
                 pieces.push_back(
                     {std::vector<std::array<double, 4>>(out_pts.begin() + ia, out_pts.begin() + ib + 1), false}
                 );
@@ -7588,7 +7957,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             }
         }
 
-        for (auto& [piece_pts, piece_loop] : pieces) {
+        for (std::pair<std::vector<std::array<double, 4>>, bool>& piece : pieces) {
+            std::vector<std::array<double, 4>>& piece_pts = piece.first;
+            const bool piece_loop = piece.second;
+
             if (piece_pts.size() < 2)
                 continue;
 
@@ -7618,6 +7990,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     (pts3[i][1] - pts3[i - 1][1]) * (pts3[i][1] - pts3[i - 1][1]) +
                     (pts3[i][2] - pts3[i - 1][2]) * (pts3[i][2] - pts3[i - 1][2])
                 );
+
             if (chord3 < h_init * 0.05)
                 continue;
 
@@ -7652,6 +8025,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                             double cxp = p3a[0] + tt * ex;
                             double cyp = p3a[1] + tt * ey;
                             double czp = p3a[2] + tt * ez;
+
                             dev = std::sqrt(
                                 (p3m[0] - cxp) * (p3m[0] - cxp) + (p3m[1] - cyp) * (p3m[1] - cyp) +
                                 (p3m[2] - czp) * (p3m[2] - czp)
@@ -7682,6 +8056,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                 pts3[i] = eval3_q(piece_pts[i]);
 
             bool ploop = piece_loop;
+
             auto fit_track = [&](const std::vector<Point>& pts2, double fit_tol_track) -> NurbsCurve {
                 int mp = (int)pts2.size();
                 double total_turning = 0.0;
@@ -7729,7 +8104,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     if (!crv.is_valid())
                         break;
 
-                    auto [ft0, ft1] = crv.domain();
+                    const std::pair<double, double> domain_ft = crv.domain();
+                    const double ft0 = domain_ft.first;
+                    const double ft1 = domain_ft.second;
                     double dev = 0.0;
 
                     for (int i = 0; i < mp; i++) {
@@ -7831,6 +8208,7 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(
     double eu2 = eu[0] * eu[0] + eu[1] * eu[1] + eu[2] * eu[2];
     double ev2 = ev[0] * ev[0] + ev[1] * ev[1] + ev[2] * ev[2];
     bool fast_planar = (eu2 > 1e-28 && ev2 > 1e-28);
+
     auto gap = [&](double t) -> double {
         Point uv = pc.point_at(t);
         Point p3 = target.point_at(uv[0], uv[1]);
@@ -7851,6 +8229,7 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(
 
         return std::get<2>(Closest::surface_point(cutter, p3, 0.0, 0.0, 0.0, 0.0));
     };
+
     auto refine = [&](double t_in, double t_out) -> double {
         double a = t_in;
         double b = t_out;
@@ -8004,6 +8383,10 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(
 
     return out;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Polylines and plane sets
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// Whether two vectors are parallel within angle_tol.
 static bool vectors_nearly_parallel(const Vector& v0, const Vector& v1, double angle_tol) {
@@ -8314,22 +8697,22 @@ bool Intersection::scale_vector_to_distance_of_2planes(
 
 namespace {
 
-using P2 = std::array<double, 2>;
-
 /// Project a point into plane coordinates.
-P2 plane_to_2d(const Point& p, const Point& origin, const Vector& xax, const Vector& yax) {
+std::array<double, 2> plane_to_2d(const Point& p, const Point& origin, const Vector& xax, const Vector& yax) {
+
     const Vector d = p - origin;
 
     return {d.dot(xax), d.dot(yax)};
 }
 
 /// Lift plane coordinates back to a point.
-Point plane_to_3d(const P2& p, const Point& origin, const Vector& xax, const Vector& yax) {
+Point plane_to_3d(const std::array<double, 2>& p, const Point& origin, const Vector& xax, const Vector& yax) {
     return origin + xax * p[0] + yax * p[1];
 }
 
 /// Squared distance of two 2D points.
-double distance_sq_2d(const P2& a, const P2& b) {
+double distance_sq_2d(const std::array<double, 2>& a, const std::array<double, 2>& b) {
+
     const double dx = a[0] - b[0];
     const double dy = a[1] - b[1];
 
@@ -8337,7 +8720,7 @@ double distance_sq_2d(const P2& a, const P2& b) {
 }
 
 /// Signed area of a 2D ring, positive when counter-clockwise.
-double signed_area_2d(const std::vector<P2>& ring) {
+double signed_area_2d(const std::vector<std::array<double, 2>>& ring) {
 
     double area = 0.0;
     const size_t n = ring.size();
@@ -8349,9 +8732,9 @@ double signed_area_2d(const std::vector<P2>& ring) {
 }
 
 /// Project a polyline into plane coordinates.
-std::vector<P2> polyline_to_2d(const Polyline& polyline, const Point& origin, const Vector& xax, const Vector& yax) {
+std::vector<std::array<double, 2>> polyline_to_2d(const Polyline& polyline, const Point& origin, const Vector& xax, const Vector& yax) {
 
-    std::vector<P2> ring;
+    std::vector<std::array<double, 2>> ring;
     ring.reserve(polyline.point_count());
 
     for (size_t i = 0; i < polyline.point_count(); i++)
@@ -8364,12 +8747,12 @@ std::vector<P2> polyline_to_2d(const Polyline& polyline, const Point& origin, co
 }
 
 /// Lift a 2D ring back to a polyline.
-Polyline polyline_to_3d(const std::vector<P2>& ring, const Point& origin, const Vector& xax, const Vector& yax) {
+Polyline polyline_to_3d(const std::vector<std::array<double, 2>>& ring, const Point& origin, const Vector& xax, const Vector& yax) {
 
     std::vector<Point> pts;
     pts.reserve(ring.size() + 1);
 
-    for (const P2& p : ring)
+    for (const std::array<double, 2>& p : ring)
         pts.push_back(plane_to_3d(p, origin, xax, yax));
 
     pts.push_back(pts.front());
@@ -8378,14 +8761,14 @@ Polyline polyline_to_3d(const std::vector<P2>& ring, const Point& origin, const 
 }
 
 /// Even-odd point in polygon test.
-bool point_in_polygon_2d(const std::vector<P2>& ring, const P2& p) {
+bool point_in_polygon_2d(const std::vector<std::array<double, 2>>& ring, const std::array<double, 2>& p) {
 
     int wn = 0;
     const size_t n = ring.size();
 
     for (size_t i = 0; i < n; i++) {
-        const P2& a = ring[i];
-        const P2& b = ring[(i + 1) % n];
+        const std::array<double, 2>& a = ring[i];
+        const std::array<double, 2>& b = ring[(i + 1) % n];
         const double e = (b[0] - a[0]) * (p[1] - a[1]) - (p[0] - a[0]) * (b[1] - a[1]);
 
         if (a[1] <= p[1] && b[1] > p[1] && e > 0.0)
@@ -8398,7 +8781,7 @@ bool point_in_polygon_2d(const std::vector<P2>& ring, const P2& p) {
 }
 
 /// Segment-segment crossing with parameters on both.
-bool seg_seg_2d(const P2& s0, const P2& s1, const P2& e0, const P2& e1, double& t_s, double& t_e) {
+bool seg_seg_2d(const std::array<double, 2>& s0, const std::array<double, 2>& s1, const std::array<double, 2>& e0, const std::array<double, 2>& e1, double& t_s, double& t_e) {
 
     const double sx = s1[0] - s0[0];
     const double sy = s1[1] - s0[1];
@@ -8418,7 +8801,7 @@ bool seg_seg_2d(const P2& s0, const P2& s1, const P2& e0, const P2& e1, double& 
 }
 
 /// Overlap range of two collinear segments on the first.
-bool collinear_overlap_2d(const P2& s0, const P2& s1, const P2& e0, const P2& e1, double& t_enter, double& t_exit) {
+bool collinear_overlap_2d(const std::array<double, 2>& s0, const std::array<double, 2>& s1, const std::array<double, 2>& e0, const std::array<double, 2>& e1, double& t_enter, double& t_exit) {
 
     const double sx = s1[0] - s0[0];
     const double sy = s1[1] - s0[1];
@@ -8459,7 +8842,7 @@ bool collinear_overlap_2d(const P2& s0, const P2& s1, const P2& e0, const P2& e1
 }
 
 /// Parameter of the closest point on segment ab to p.
-double closest_param_2d(const P2& p, const P2& a, const P2& b) {
+double closest_param_2d(const std::array<double, 2>& p, const std::array<double, 2>& a, const std::array<double, 2>& b) {
 
     const double abx = b[0] - a[0];
     const double aby = b[1] - a[1];
@@ -8474,18 +8857,19 @@ double closest_param_2d(const P2& p, const P2& a, const P2& b) {
 }
 
 /// Squared distance from p to segment ab.
-double distance_sq_seg_2d(const P2& p, const P2& a, const P2& b) {
+double distance_sq_seg_2d(const std::array<double, 2>& p, const std::array<double, 2>& a, const std::array<double, 2>& b) {
+
     const double t = closest_param_2d(p, a, b);
-    const P2 q{a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])};
+    const std::array<double, 2> q{a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])};
 
     return distance_sq_2d(p, q);
 }
 
 /// Parameters along one joint segment where it crosses or overlaps the plate edges.
 std::vector<double> segment_plate_parameters_2d(
-    const std::vector<P2>& plate,
-    const P2& p0,
-    const P2& p1,
+    const std::vector<std::array<double, 2>>& plate,
+    const std::array<double, 2>& p0,
+    const std::array<double, 2>& p1,
     std::vector<std::pair<double, double>>& coll_ranges
 ) {
 
@@ -8494,8 +8878,8 @@ std::vector<double> segment_plate_parameters_2d(
     ts.push_back(0.0);
 
     for (size_t i = 0; i < plate.size(); i++) {
-        const P2& a = plate[i];
-        const P2& b = plate[(i + 1) % plate.size()];
+        const std::array<double, 2>& a = plate[i];
+        const std::array<double, 2>& b = plate[(i + 1) % plate.size()];
         double t_s;
         double t_e;
 
@@ -8539,20 +8923,20 @@ bool in_ranges_2d(const std::vector<std::pair<double, double>>& ranges, double t
 }
 
 /// Sub-segments of the open joint path inside the plate, as separate pieces.
-std::vector<std::vector<P2>> clip_open_path_2d(const std::vector<P2>& plate, const std::vector<P2>& joint) {
+std::vector<std::vector<std::array<double, 2>>> clip_open_path_2d(const std::vector<std::array<double, 2>>& plate, const std::vector<std::array<double, 2>>& joint) {
 
-    std::vector<std::vector<P2>> pieces;
+    std::vector<std::vector<std::array<double, 2>>> pieces;
 
     for (size_t s = 0; s + 1 < joint.size(); s++) {
-        const P2& p0 = joint[s];
-        const P2& p1 = joint[s + 1];
+        const std::array<double, 2>& p0 = joint[s];
+        const std::array<double, 2>& p1 = joint[s + 1];
         std::vector<std::pair<double, double>> coll_ranges;
         const std::vector<double> ts = segment_plate_parameters_2d(plate, p0, p1, coll_ranges);
-        std::vector<P2> current;
+        std::vector<std::array<double, 2>> current;
 
         for (size_t i = 0; i + 1 < ts.size(); i++) {
             const double t_mid = 0.5 * (ts[i] + ts[i + 1]);
-            const P2 mid{p0[0] + (p1[0] - p0[0]) * t_mid, p0[1] + (p1[1] - p0[1]) * t_mid};
+            const std::array<double, 2> mid{p0[0] + (p1[0] - p0[0]) * t_mid, p0[1] + (p1[1] - p0[1]) * t_mid};
             const bool include = point_in_polygon_2d(plate, mid) || in_ranges_2d(coll_ranges, t_mid);
 
             if (!include) {
@@ -8563,8 +8947,8 @@ std::vector<std::vector<P2>> clip_open_path_2d(const std::vector<P2>& plate, con
                 continue;
             }
 
-            const P2 sub_a{p0[0] + (p1[0] - p0[0]) * ts[i], p0[1] + (p1[1] - p0[1]) * ts[i]};
-            const P2 sub_b{p0[0] + (p1[0] - p0[0]) * ts[i + 1], p0[1] + (p1[1] - p0[1]) * ts[i + 1]};
+            const std::array<double, 2> sub_a{p0[0] + (p1[0] - p0[0]) * ts[i], p0[1] + (p1[1] - p0[1]) * ts[i]};
+            const std::array<double, 2> sub_b{p0[0] + (p1[0] - p0[0]) * ts[i + 1], p0[1] + (p1[1] - p0[1]) * ts[i + 1]};
 
             if (!current.empty() && distance_sq_2d(current.back(), sub_a) >= 1e-18) {
                 pieces.push_back(std::move(current));
@@ -8585,12 +8969,12 @@ std::vector<std::vector<P2>> clip_open_path_2d(const std::vector<P2>& plate, con
 }
 
 /// Chains clipped pieces end to end into one path.
-std::vector<P2> chain_pieces_2d(const std::vector<std::vector<P2>>& pieces) {
+std::vector<std::array<double, 2>> chain_pieces_2d(const std::vector<std::vector<std::array<double, 2>>>& pieces) {
 
     const double DISTANCE_SQ = 0.01;
-    std::vector<P2> chain;
+    std::vector<std::array<double, 2>> chain;
 
-    for (const std::vector<P2>& piece : pieces) {
+    for (const std::vector<std::array<double, 2>>& piece : pieces) {
         if (piece.size() <= 1)
             continue;
 
@@ -8599,7 +8983,7 @@ std::vector<P2> chain_pieces_2d(const std::vector<std::vector<P2>>& pieces) {
             continue;
         }
 
-        std::vector<P2> pts = piece;
+        std::vector<std::array<double, 2>> pts = piece;
 
         if (distance_sq_2d(chain.back(), pts.front()) > DISTANCE_SQ &&
             distance_sq_2d(chain.back(), pts.back()) > DISTANCE_SQ)
@@ -8616,14 +9000,14 @@ std::vector<P2> chain_pieces_2d(const std::vector<std::vector<P2>>& pieces) {
 }
 
 /// Plate edge parameters of the chain ends, or -1 when an end is off the plate.
-void chain_plate_parameters_2d(const std::vector<P2>& plate, const std::vector<P2>& chain, double& t0, double& t1) {
+void chain_plate_parameters_2d(const std::vector<std::array<double, 2>>& plate, const std::vector<std::array<double, 2>>& chain, double& t0, double& t1) {
 
     t0 = -1.0;
     t1 = -1.0;
 
     for (size_t i = 0; i < plate.size(); i++) {
-        const P2& a = plate[i];
-        const P2& b = plate[(i + 1) % plate.size()];
+        const std::array<double, 2>& a = plate[i];
+        const std::array<double, 2>& b = plate[(i + 1) % plate.size()];
 
         if (distance_sq_seg_2d(chain.front(), a, b) < 1.0)
             t0 = (double)i + closest_param_2d(chain.front(), a, b);
@@ -8637,10 +9021,10 @@ void chain_plate_parameters_2d(const std::vector<P2>& plate, const std::vector<P
 }
 
 /// Miter offset of a closed 2D ring by delta along the edge normals.
-std::vector<P2> offset_ring_2d(const std::vector<P2>& ring, double delta, bool concave_notch) {
+std::vector<std::array<double, 2>> offset_ring_2d(const std::vector<std::array<double, 2>>& ring, double delta, bool concave_notch) {
 
     const size_t n = ring.size();
-    std::vector<P2> normals;
+    std::vector<std::array<double, 2>> normals;
     normals.reserve(n);
 
     for (size_t i = 0; i < n; i++) {
@@ -8654,13 +9038,13 @@ std::vector<P2> offset_ring_2d(const std::vector<P2>& ring, double delta, bool c
             normals.push_back({ey / len, -ex / len});
     }
 
-    std::vector<P2> out;
+    std::vector<std::array<double, 2>> out;
     out.reserve(n * 3);
 
     for (size_t i = 0; i < n; i++) {
-        const P2& np = normals[(i + n - 1) % n];
-        const P2& nn = normals[i];
-        const P2& p = ring[i];
+        const std::array<double, 2>& np = normals[(i + n - 1) % n];
+        const std::array<double, 2>& nn = normals[i];
+        const std::array<double, 2>& p = ring[i];
         const double cos_a = np[0] * nn[0] + np[1] * nn[1];
         const double sin_a = np[0] * nn[1] - np[1] * nn[0];
         const double denom = 1.0 + cos_a;
@@ -8689,6 +9073,10 @@ std::vector<P2> offset_ring_2d(const std::vector<P2>& ring, double delta, bool c
 
 } // namespace
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Polyline booleans
+// ═══════════════════════════════════════════════════════════════════════════
+
 std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Polyline& b, int clip_type) {
     return BooleanPolyline::compute(a, b, clip_type);
 }
@@ -8701,13 +9089,13 @@ bool Intersection::offset_in_3d(Polyline& polyline, const Plane& plane, double o
     const Point origin = polyline.get_point(0);
     const Vector xax = plane.base1();
     const Vector yax = plane.base2();
-    const std::vector<P2> ring = polyline_to_2d(polyline, origin, xax, yax);
+    const std::vector<std::array<double, 2>> ring = polyline_to_2d(polyline, origin, xax, yax);
 
     if (ring.size() < 3)
         return false;
 
     const double delta = signed_area_2d(ring) < 0.0 ? -offset : offset;
-    std::vector<P2> out = offset_ring_2d(ring, delta, offset > 0.0);
+    std::vector<std::array<double, 2>> out = offset_ring_2d(ring, delta, offset > 0.0);
 
     if (out.size() < 3)
         return false;
@@ -8772,16 +9160,16 @@ bool Intersection::polyline_boolean_2d_in_plane(
     if (result_2d.empty())
         return false;
 
-    std::vector<P2> ring = polyline_to_2d(result_2d[0], Point(), Vector(1, 0, 0), Vector(0, 1, 0));
+    std::vector<std::array<double, 2>> ring = polyline_to_2d(result_2d[0], Point(), Vector(1, 0, 0), Vector(0, 1, 0));
 
     if (ring.size() < 3)
         return false;
 
     if (collapse_eps > 0.0) {
         const double eps_sq = collapse_eps * collapse_eps;
-        std::vector<P2> collapsed;
+        std::vector<std::array<double, 2>> collapsed;
 
-        for (const P2& p : ring)
+        for (const std::array<double, 2>& p : ring)
             if (collapsed.empty() || distance_sq_2d(p, collapsed.back()) >= eps_sq)
                 collapsed.push_back(p);
 
@@ -8804,6 +9192,10 @@ bool Intersection::polyline_boolean_2d_in_plane(
 
     return true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Joints
+// ═══════════════════════════════════════════════════════════════════════════
 
 bool Intersection::polyline_plane_to_line(
     const Polyline& poly,
@@ -8908,12 +9300,12 @@ bool Intersection::closed_and_open_paths_2d(
     const Point origin = plate.get_point(0);
     const Vector xax = plane.base1();
     const Vector yax = plane.base2();
-    const std::vector<P2> plate2d = polyline_to_2d(plate, origin, xax, yax);
+    const std::vector<std::array<double, 2>> plate2d = polyline_to_2d(plate, origin, xax, yax);
 
     if (plate2d.size() < 3)
         return false;
 
-    std::vector<P2> joint2d;
+    std::vector<std::array<double, 2>> joint2d;
 
     for (size_t i = 0; i < joint.point_count(); i++)
         joint2d.push_back(plane_to_2d(joint.get_point(i), origin, xax, yax));
@@ -8921,7 +9313,7 @@ bool Intersection::closed_and_open_paths_2d(
     if (joint2d.size() < 2)
         return false;
 
-    std::vector<P2> c2d = chain_pieces_2d(clip_open_path_2d(plate2d, joint2d));
+    std::vector<std::array<double, 2>> c2d = chain_pieces_2d(clip_open_path_2d(plate2d, joint2d));
 
     if (c2d.size() < 2)
         return false;
@@ -8944,7 +9336,7 @@ bool Intersection::closed_and_open_paths_2d(
 
     std::vector<Point> out_pts;
 
-    for (const P2& p : c2d)
+    for (const std::array<double, 2>& p : c2d)
         out_pts.push_back(plane_to_3d(p, origin, xax, yax));
 
     out = Polyline(out_pts);
@@ -8952,6 +9344,10 @@ bool Intersection::closed_and_open_paths_2d(
 
     return true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Elements
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to_face(
     const std::vector<int>& adjacency,
@@ -8976,6 +9372,7 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
                 -std::numeric_limits<double>::infinity(),
                 -std::numeric_limits<double>::infinity()
             };
+
             const std::vector<double>& c = f._coords;
 
             for (size_t k = 0; k + 2 < c.size(); k += 3) {
