@@ -1,16 +1,19 @@
 #pragma once
 
-#include "nurbssurface.h"
-#include "nurbscurve.h"
-#include "xform.h"
 #include "color.h"
-#include "mesh.h"
 #include "guid.h"
 #include "json.h"
-#include <vector>
+#include "mesh.h"
+#include "nurbscurve.h"
+#include "nurbssurface.h"
+#include "xform.h"
 #include <string>
 #include <utility>
-#include <array>
+#include <vector>
+
+namespace session_proto {
+class NurbsSurfaceTrimmed;
+}
 
 namespace session_cpp {
 
@@ -23,39 +26,41 @@ struct TrimLoops {
 
 /// A NURBS surface bounded by a closed outer loop and optional inner loops in its UV space.
 class NurbsSurfaceTrimmed {
+private:
+    mutable std::string _guid; // Lazily minted GUID.
+
 public:
-    /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
-
-    /// Return the guid, minting one on first read.
-    const std::string& guid() const {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Return the mutable guid, minting one on first read.
-    std::string& guid() {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
     std::string name = "my_nurbssurface_trimmed"; // Face name.
     double width = 1.0; // Display width.
     Color surfacecolor = Color::black(); // Display color of the surface.
-
     NurbsSurface m_surface; // Underlying surface.
     NurbsCurve m_outer_loop; // Closed outer loop in UV space.
     std::vector<NurbsCurve> m_inner_loops; // Closed hole loops in UV space.
 
-public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct an empty untrimmed face.
+    NurbsSurfaceTrimmed();
+
+    /// Copy with a new guid and the same data.
+    NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other);
+
+    /// Copy-assign with a new guid and the same data.
+    NurbsSurfaceTrimmed& operator=(const NurbsSurfaceTrimmed& other);
+
+    /// Move while preserving the guid.
+    NurbsSurfaceTrimmed(NurbsSurfaceTrimmed&& other) noexcept = default;
+
+    /// Move-assign while preserving the guid.
+    NurbsSurfaceTrimmed& operator=(NurbsSurfaceTrimmed&& other) noexcept = default;
+
+    /// Destroy the face.
+    ~NurbsSurfaceTrimmed();
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Surface with a closed outer loop given in its UV parameter space.
     static NurbsSurfaceTrimmed create(const NurbsSurface& surface, const NurbsCurve& outer_loop);
 
@@ -76,36 +81,46 @@ public:
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors
+    // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Construct an empty untrimmed face.
-    NurbsSurfaceTrimmed();
-
-    /// Copy with a new guid and the same data.
-    NurbsSurfaceTrimmed(const NurbsSurfaceTrimmed& other);
-
-    /// Move while preserving the guid.
-    NurbsSurfaceTrimmed(NurbsSurfaceTrimmed&& other) noexcept = default;
-
-    /// Move-assign while preserving the guid.
-    NurbsSurfaceTrimmed& operator=(NurbsSurfaceTrimmed&& other) noexcept = default;
-
-    /// Copy-assign with a new guid and the same data.
-    NurbsSurfaceTrimmed& operator=(const NurbsSurfaceTrimmed& other);
-
-    /// Same name, width, color, surface and loops; guid ignored.
+    /// Compare name, width, color and surface; guid and loops ignored.
     bool operator==(const NurbsSurfaceTrimmed& other) const;
 
-    /// Negation of operator==.
+    /// Compare name, width, color and surface; guid and loops ignored.
     bool operator!=(const NurbsSurfaceTrimmed& other) const;
 
-    /// Destroy the face.
-    ~NurbsSurfaceTrimmed();
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Transformation
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Transform the surface in place; the loops live in UV and stay.
+    void transform(const Xform& xform);
+
+    /// Return a transformed copy.
+    NurbsSurfaceTrimmed transformed(const Xform& xform) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
 
     /// Return a copy of the underlying surface.
     NurbsSurface surface() const;
@@ -116,16 +131,15 @@ public:
     /// Replace the outer loop.
     void set_outer_loop(const NurbsCurve& loop);
 
-    /// True when the outer loop is a valid curve.
+    /// Return whether the outer loop is a valid curve.
     bool is_trimmed() const;
 
-    /// True when the underlying surface is valid.
+    /// Return whether the underlying surface is valid.
     bool is_valid() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Inner loops
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Hole given directly as a closed 2D curve in UV space.
     void add_inner_loop(const NurbsCurve& loop_2d);
 
@@ -135,7 +149,7 @@ public:
     /// Add one hole per 3D curve pulled onto the surface.
     void add_holes(const std::vector<NurbsCurve>& curves_3d);
 
-    /// Return a copy of the inner loop at index, an empty curve when out of range.
+    /// Return a copy of the inner loop at index.
     NurbsCurve get_inner_loop(int index) const;
 
     /// Return the number of inner loops.
@@ -147,18 +161,16 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Surface point at (u, v).
+    /// Return the surface point at (u, v).
     Point point_at(double u, double v) const;
 
-    /// Unit surface normal at (u, v).
+    /// Return the unit surface normal at (u, v).
     Vector normal_at(double u, double v) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// mesh_q at 20 degrees and a chord factor of 0.005.
+    /// Return mesh_q at 20 degrees and a chord factor of 0.005.
     Mesh mesh() const;
 
     /// Deflection-refined constrained Delaunay of the trim loops: angular bound in degrees, chord factor as a fraction of the bbox diagonal.
@@ -178,30 +190,13 @@ public:
     ) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Transformation
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Transform the surface in place; the loops live in UV and stay.
-    void transform(const Xform& xform);
-
-    /// Return a transformed copy.
-    NurbsSurfaceTrimmed transformed(const Xform& xform) const;
-
-    // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Serialize to a JSON object.
     nlohmann::ordered_json jsondump() const;
 
     /// Deserialize from a JSON object.
     static NurbsSurfaceTrimmed jsonload(const nlohmann::json& data);
-
-    /// Write to a JSON file.
-    void file_json_dump(const std::string& filename) const;
-
-    /// Read from a JSON file.
-    static NurbsSurfaceTrimmed file_json_load(const std::string& filename);
 
     /// Serialize to a JSON string.
     std::string file_json_dumps() const;
@@ -209,9 +204,20 @@ public:
     /// Deserialize from a JSON string.
     static NurbsSurfaceTrimmed file_json_loads(const std::string& json_string);
 
+    /// Write to a JSON file.
+    void file_json_dump(const std::string& filename) const;
+
+    /// Read from a JSON file.
+    static NurbsSurfaceTrimmed file_json_load(const std::string& filename);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert to the protobuf message.
+    session_proto::NurbsSurfaceTrimmed to_proto() const;
+
+    /// Construct from the protobuf message.
+    static NurbsSurfaceTrimmed from_proto(const session_proto::NurbsSurfaceTrimmed& proto);
 
     /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
@@ -228,30 +234,28 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // String
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return "NurbsSurfaceTrimmed(name=..., trimmed=..., holes=...)".
     std::string str() const;
 
-    /// Multi-line form with the surface.
+    /// Return the multi-line form with the surface.
     std::string repr() const;
 
     /// Stream the str() form.
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurfaceTrimmed& ts);
 
 private:
-    /// Constrained Delaunay of the loops in UV, refined, trimmed, lifted and welded: the one body mesh_q and mesh_loops share.
-    Mesh triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
-
-    /// UV polygon of a trim loop: control points or samples, each edge split until its 3D chord is within deflection.
-    std::vector<Point> discretize_loop(const NurbsCurve& crv, double deflection) const;
-
-    /// Diagonal of the control-point box, the scale every deflection tolerance is a fraction of.
-    double bbox_diagonal() const;
 
     /// Copy every field but the guid.
     void deep_copy_from(const NurbsSurfaceTrimmed& src);
 
-    mutable std::string _guid; // Lazy guid.
+    /// Return the diagonal of the control-point box, the scale every deflection tolerance is a fraction of.
+    double bbox_diagonal() const;
+
+    /// UV polygon of a trim loop: control points or samples, each edge split until its 3D chord is within deflection.
+    std::vector<Point> discretize_loop(const NurbsCurve& crv, double deflection) const;
+
+    /// Constrained Delaunay of the loops in UV, refined, trimmed, lifted and welded: the one body mesh_q and mesh_loops share.
+    Mesh triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
 };
 
 } // namespace session_cpp

@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "nurbssurface_trimmed.h"
+#include "nurbssurface_trimmed.pb.h"
 #include "nurbssurface.h"
 #include "nurbscurve.h"
 #include "point.h"
@@ -41,12 +42,12 @@ MINI_TEST("NurbsSurfaceTrimmed", "Singular Planar Normal") {
     MINI_CHECK(!mesh.face.empty());
     bool apex = false;
 
-    for (const auto& [key, vertex] : mesh.vertex) {
-        const std::array<double, 3> normal = vertex.normal().value();
+    for (const std::pair<const size_t, VertexData>& entry : mesh.vertex) {
+        const std::array<double, 3> normal = entry.second.normal().value();
 
         MINI_CHECK(std::abs(normal[0]) < 1e-12 && std::abs(normal[2]) < 1e-12);
         MINI_CHECK(std::abs(std::abs(normal[1]) - 1.0) < 1e-12);
-        apex = apex || vertex.z == 1.0;
+        apex = apex || entry.second.z == 1.0;
     }
 
     MINI_CHECK(apex);
@@ -82,14 +83,16 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
     int flat = 0;
     int tilted = 0;
 
-    for (const auto& [key, vd] : mesh.vertex) {
+    for (const std::pair<const size_t, VertexData>& entry : mesh.vertex) {
+        const VertexData& vd = entry.second;
+
         if (vd.attributes.at("u") != 1.0)
             continue;
 
         bool interval = false;
 
-        for (const auto& [name, value] : vd.attributes)
-            if (name.rfind("boundary_interval/", 0) == 0)
+        for (const std::pair<const std::string, double>& attribute : vd.attributes)
+            if (attribute.first.starts_with("boundary_interval/"))
                 interval = true;
 
         MINI_CHECK(interval && vd.z == 0.0);
@@ -104,14 +107,14 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
 
     MINI_CHECK(flat == 4 && tilted == 4);
 
-    for (const auto& [key, face] : mesh.face) {
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : mesh.face) {
         double low = INFINITY;
         double high = -INFINITY;
         double u = 0.0;
         double v = 0.0;
 
-        for (size_t vkey : face) {
-            double x = mesh.vertex[vkey].attributes.at("u");
+        for (size_t vkey : entry.second) {
+            const double x = mesh.vertex[vkey].attributes.at("u");
             low = std::min(low, x);
             high = std::max(high, x);
             u += x;
@@ -128,7 +131,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
 
 MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
 
-    NurbsSurface planar = NurbsSurface::create(
+    const NurbsSurface planar = NurbsSurface::create(
         false,
         false,
         1,
@@ -149,7 +152,8 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
         TrimLoops loops;
 
         for (const std::pair<double, double>& range : {std::pair<double, double>{0.0, 1.0}, {0.25, 0.75}}) {
-            auto [low, high] = range;
+            const double low = range.first;
+            const double high = range.second;
             std::vector<Point> uv;
             std::vector<Point> xyz;
             std::vector<std::pair<double, double>> corners = {{low, low}, {high, low}, {high, high}, {low, high}};
@@ -183,7 +187,9 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
                 std::string key = "boundary/" + std::to_string(li) + "/" + std::to_string(sample);
                 bool found = false;
 
-                for (const auto& [vk, vd] : mesh.vertex) {
+                for (const std::pair<const size_t, VertexData>& entry : mesh.vertex) {
+                    const VertexData& vd = entry.second;
+
                     if (vd.attributes.count(key)) {
                         MINI_CHECK(vd.x == p[0] && vd.y == p[1] && vd.z == p[2]);
                         found = true;
@@ -195,7 +201,8 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
             }
         }
 
-        for (const auto& [fk, vertices] : mesh.face) {
+        for (const std::pair<const size_t, std::vector<size_t>>& entry : mesh.face) {
+            const std::vector<size_t>& vertices = entry.second;
             double u = 0.0;
             double v = 0.0;
 
@@ -224,7 +231,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
     srf.set_cv(0, 1, Point(0.0, 6.0, 0.0));
     srf.set_cv(1, 1, Point(6.0, 6.0, 0.0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -237,10 +244,10 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
 
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
 
-    std::string sstr = ts.str();
-    std::string srepr = ts.repr();
+    const std::string sstr = ts.str();
+    const std::string srepr = ts.repr();
 
-    NurbsSurfaceTrimmed tscopy = ts;
+    const NurbsSurfaceTrimmed tscopy = ts;
 
     MINI_CHECK(ts.is_valid());
     MINI_CHECK(ts.is_trimmed());
@@ -323,6 +330,8 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor Planar") {
         )
     );
 
+    MINI_CHECK(ts.inner_loop_count() == 1);
+
     double R = 4.0;
     pts = {};
 
@@ -354,6 +363,10 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor Planar") {
             }
         ),
     });
+
+    MINI_CHECK(ts.is_valid());
+    MINI_CHECK(ts.is_trimmed());
+    MINI_CHECK(ts.inner_loop_count() == 2);
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Constructor Hole") {
@@ -370,9 +383,9 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor Hole") {
             pts.push_back(Point(x, y, z));
         }
 
-    NurbsSurface srf = NurbsSurface::create(false, false, 3, 3, n, n, pts);
+    const NurbsSurface srf = NurbsSurface::create(false, false, 3, 3, n, n, pts);
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -385,7 +398,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor Hole") {
 
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
 
-    NurbsCurve hole = Primitives::circle(3.5, 3.5, 0, 1.0);
+    const NurbsCurve hole = Primitives::circle(3.5, 3.5, 0, 1.0);
     ts.add_hole(hole);
 
     MINI_CHECK(ts.is_valid());
@@ -401,7 +414,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Accessors") {
     srf.set_cv(0, 1, Point(0, 5, 0));
     srf.set_cv(1, 1, Point(5, 5, 0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -416,8 +429,8 @@ MINI_TEST("NurbsSurfaceTrimmed", "Accessors") {
     ts.name = "test_accessors";
     ts.width = 2.5;
 
-    NurbsSurface got_srf = ts.surface();
-    NurbsCurve got_loop = ts.get_outer_loop();
+    const NurbsSurface got_srf = ts.surface();
+    const NurbsCurve got_loop = ts.get_outer_loop();
 
     MINI_CHECK(ts.is_valid());
     MINI_CHECK(ts.is_trimmed());
@@ -436,7 +449,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Add Inner Loop") {
     srf.set_cv(0, 1, Point(0, 10, 0));
     srf.set_cv(1, 1, Point(10, 10, 0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -449,7 +462,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Add Inner Loop") {
 
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
 
-    NurbsCurve hole1 = NurbsCurve::create(
+    const NurbsCurve hole1 = NurbsCurve::create(
         true,
         1,
         {
@@ -459,7 +472,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Add Inner Loop") {
             Point(0.2, 0.4, 0),
         }
     );
-    NurbsCurve hole2 = NurbsCurve::create(
+    const NurbsCurve hole2 = NurbsCurve::create(
         true,
         1,
         {
@@ -473,7 +486,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Add Inner Loop") {
     ts.add_inner_loop(hole1);
     ts.add_inner_loop(hole2);
 
-    NurbsCurve got = ts.get_inner_loop(0);
+    const NurbsCurve got = ts.get_inner_loop(0);
 
     MINI_CHECK(ts.inner_loop_count() == 2);
     MINI_CHECK(got.is_valid());
@@ -491,7 +504,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Point At") {
     srf.set_cv(0, 1, Point(0, 4, 0));
     srf.set_cv(1, 1, Point(4, 4, 0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -506,11 +519,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Point At") {
 
     const std::pair<double, double> dom_u = ts.surface().domain(0);
     const std::pair<double, double> dom_v = ts.surface().domain(1);
-    double u_mid = (dom_u.first + dom_u.second) / 2.0;
-    double v_mid = (dom_v.first + dom_v.second) / 2.0;
+    const double u_mid = (dom_u.first + dom_u.second) / 2.0;
+    const double v_mid = (dom_v.first + dom_v.second) / 2.0;
 
-    Point pt = ts.point_at(u_mid, v_mid);
-    Vector nm = ts.normal_at(u_mid, v_mid);
+    const Point pt = ts.point_at(u_mid, v_mid);
+    const Vector nm = ts.normal_at(u_mid, v_mid);
 
     MINI_CHECK(TOLERANCE.is_close(pt[0], 2.0));
     MINI_CHECK(TOLERANCE.is_close(pt[1], 2.0));
@@ -526,9 +539,9 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
     srf.set_cv(0, 1, Point(0, 6, 0));
     srf.set_cv(1, 1, Point(6, 6, 0));
 
-    Mesh m_full = srf.mesh();
+    const Mesh m_full = srf.mesh();
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -539,9 +552,9 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
         }
     );
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
-    Mesh m = ts.mesh();
+    const Mesh m = ts.mesh();
 
-    NurbsCurve hole = NurbsCurve::create(
+    const NurbsCurve hole = NurbsCurve::create(
         true,
         1,
         {
@@ -553,15 +566,15 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
     );
     NurbsSurfaceTrimmed ts_hole = NurbsSurfaceTrimmed::create(srf, outer);
     ts_hole.add_inner_loop(hole);
-    Mesh m_hole = ts_hole.mesh();
+    const Mesh m_hole = ts_hole.mesh();
 
     MINI_CHECK(!m.is_empty());
     MINI_CHECK(m.number_of_vertices() > 0);
     MINI_CHECK(m.number_of_faces() > 0);
-    MINI_CHECK(m.number_of_faces() > 0);
+    MINI_CHECK(m_full.number_of_faces() > 0);
     MINI_CHECK(m_hole.number_of_faces() > 0);
 
-    double cw = std::sqrt(2.0) / 2.0;
+    const double cw = std::sqrt(2.0) / 2.0;
     double ccx[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
     double ccy[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
     double cwt[9] = {1, cw, 1, cw, 1, cw, 1, cw, 1};
@@ -572,30 +585,17 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
         circle_loop.set_cv_4d(i, (0.5 + 0.5 * ccx[i]) * cwt[i], (0.5 + 0.5 * ccy[i]) * cwt[i], 0.0, cwt[i]);
 
     NurbsSurfaceTrimmed ts_circ = NurbsSurfaceTrimmed::create(srf, circle_loop);
-    Mesh mc = ts_circ.mesh();
+    const Mesh mc = ts_circ.mesh();
 
     MINI_CHECK(!mc.is_empty());
     MINI_CHECK(mc.number_of_vertices() >= 30);
     MINI_CHECK(mc.number_of_faces() >= 30);
 
-    for (const auto& [vk, vd] : mc.vertex) {
-        double nx = 0;
-        double ny = 0;
-        double nz = 0;
-        auto it = vd.attributes.find("nx");
-
-        if (it != vd.attributes.end())
-            nx = it->second;
-
-        it = vd.attributes.find("ny");
-
-        if (it != vd.attributes.end())
-            ny = it->second;
-
-        it = vd.attributes.find("nz");
-
-        if (it != vd.attributes.end())
-            nz = it->second;
+    for (const std::pair<const size_t, VertexData>& entry : mc.vertex) {
+        const VertexData& vd = entry.second;
+        const double nx = vd.attributes.count("nx") ? vd.attributes.at("nx") : 0.0;
+        const double ny = vd.attributes.count("ny") ? vd.attributes.at("ny") : 0.0;
+        const double nz = vd.attributes.count("nz") ? vd.attributes.at("nz") : 0.0;
 
         MINI_CHECK(std::sqrt(nx * nx + ny * ny + nz * nz) > 0.5);
     }
@@ -603,28 +603,32 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
 
 MINI_TEST("NurbsSurfaceTrimmed", "Split By UV Curves") {
 
-    NurbsSurface srf = Primitives::wave_surface(10.0, 1.0);
-    auto [u0, u1] = srf.domain(0);
-    auto [v0, v1] = srf.domain(1);
+    const NurbsSurface srf = Primitives::wave_surface(10.0, 1.0);
+    const std::pair<double, double> dom_u = srf.domain(0);
+    const std::pair<double, double> dom_v = srf.domain(1);
+    const double u0 = dom_u.first;
+    const double u1 = dom_u.second;
+    const double v0 = dom_v.first;
+    const double v1 = dom_v.second;
     std::vector<Point> pts = {Point(u0 + (u1 - u0) * 0.4, v0, 0.0), Point(u0 + (u1 - u0) * 0.6, v1, 0.0)};
-    NurbsCurve line = NurbsCurve::create(false, 1, pts);
+    const NurbsCurve line = NurbsCurve::create(false, 1, pts);
 
-    std::vector<NurbsSurfaceTrimmed> parts = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {line});
+    const std::vector<NurbsSurfaceTrimmed> parts = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {line});
 
     MINI_CHECK(parts.size() == 2);
     MINI_CHECK(parts[0].is_trimmed());
     MINI_CHECK(parts[1].is_trimmed());
 
-    NurbsCurve circle = Primitives::circle((u0 + u1) * 0.5, (v0 + v1) * 0.5, 0.0, (u1 - u0) * 0.2);
+    const NurbsCurve circle = Primitives::circle((u0 + u1) * 0.5, (v0 + v1) * 0.5, 0.0, (u1 - u0) * 0.2);
 
-    std::vector<NurbsSurfaceTrimmed> ring = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {circle});
+    const std::vector<NurbsSurfaceTrimmed> ring = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {circle});
 
     MINI_CHECK(ring.size() == 2);
     MINI_CHECK(ring[0].inner_loop_count() + ring[1].inner_loop_count() == 1);
 
-    NurbsCurve dangling = NurbsCurve::create(false, 1, {Point(3.0, 3.0, 0.0), Point(5.0, 5.0, 0.0)});
+    const NurbsCurve dangling = NurbsCurve::create(false, 1, {Point(3.0, 3.0, 0.0), Point(5.0, 5.0, 0.0)});
 
-    std::vector<NurbsSurfaceTrimmed> whole = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {dangling});
+    const std::vector<NurbsSurfaceTrimmed> whole = NurbsSurfaceTrimmed::split_by_uv_curves(srf, {dangling});
 
     MINI_CHECK(whole.size() == 1);
 }
@@ -637,7 +641,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Transformation") {
     srf.set_cv(0, 1, Point(0, 1, 0));
     srf.set_cv(1, 1, Point(1, 1, 0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -649,12 +653,12 @@ MINI_TEST("NurbsSurfaceTrimmed", "Transformation") {
     );
 
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
-    Xform ts_xf = Xform::translation(10.0, 20.0, 30.0);
-    NurbsSurfaceTrimmed ts2 = ts.transformed(ts_xf);
+    const Xform ts_xf = Xform::translation(10.0, 20.0, 30.0);
+    const NurbsSurfaceTrimmed ts2 = ts.transformed(ts_xf);
 
     const std::pair<double, double> dom_u = ts2.surface().domain(0);
     const std::pair<double, double> dom_v = ts2.surface().domain(1);
-    Point pt = ts2.point_at(dom_u.first, dom_v.first);
+    const Point pt = ts2.point_at(dom_u.first, dom_v.first);
 
     MINI_CHECK(TOLERANCE.is_close(pt[0], 10.0));
     MINI_CHECK(TOLERANCE.is_close(pt[1], 20.0));
@@ -669,7 +673,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Json Roundtrip") {
     srf.set_cv(0, 1, Point(0, 5, 0));
     srf.set_cv(1, 1, Point(5, 5, 0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -683,20 +687,20 @@ MINI_TEST("NurbsSurfaceTrimmed", "Json Roundtrip") {
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
     ts.name = "test_nurbssurface_trimmed";
     ts.width = 2.0;
-    ts.surfacecolor = Color(255, 128, 64, 255);
+    ts.surfacecolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
 
-    nlohmann::ordered_json json = ts.jsondump();
-    NurbsSurfaceTrimmed loaded_json = NurbsSurfaceTrimmed::jsonload(json);
+    const nlohmann::ordered_json json = ts.jsondump();
+    const NurbsSurfaceTrimmed loaded_json = NurbsSurfaceTrimmed::jsonload(json);
 
-    std::string json_string = ts.file_json_dumps();
-    NurbsSurfaceTrimmed loaded_json_string = NurbsSurfaceTrimmed::file_json_loads(json_string);
+    const std::string json_string = ts.file_json_dumps();
+    const NurbsSurfaceTrimmed loaded_json_string = NurbsSurfaceTrimmed::file_json_loads(json_string);
 
-    std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" /
+    const std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" /
                             "test_nurbssurface_trimmed.json")
                                .string();
 
     ts.file_json_dump(filename);
-    NurbsSurfaceTrimmed loaded_from_file = NurbsSurfaceTrimmed::file_json_load(filename);
+    const NurbsSurfaceTrimmed loaded_from_file = NurbsSurfaceTrimmed::file_json_load(filename);
 
     MINI_CHECK(loaded_json == ts);
     MINI_CHECK(loaded_json_string == ts);
@@ -711,7 +715,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Protobuf Roundtrip") {
     srf.set_cv(0, 1, Point(0, 5, 0));
     srf.set_cv(1, 1, Point(5, 5, 0));
 
-    NurbsCurve outer = NurbsCurve::create(
+    const NurbsCurve outer = NurbsCurve::create(
         true,
         1,
         {
@@ -725,20 +729,27 @@ MINI_TEST("NurbsSurfaceTrimmed", "Protobuf Roundtrip") {
     NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
     ts.name = "test_nurbssurface_trimmed";
     ts.width = 2.0;
-    ts.surfacecolor = Color(255, 128, 64, 255);
+    ts.surfacecolor = Color(1.0f, 0.5f, 0.25f, 1.0f);
 
-    std::string proto_string = ts.pb_dumps();
-    NurbsSurfaceTrimmed loaded_proto_string = NurbsSurfaceTrimmed::pb_loads(proto_string);
+    const std::string guid = ts.guid();
+    const std::string proto_string = ts.pb_dumps();
+    const NurbsSurfaceTrimmed loaded_proto_string = NurbsSurfaceTrimmed::pb_loads(proto_string);
+    const NurbsSurfaceTrimmed converted = NurbsSurfaceTrimmed::from_proto(ts.to_proto());
 
-    std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" /
-                            "test_nurbssurface_trimmed.bin")
-                               .string();
+    const std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" /
+                                  "test_nurbssurface_trimmed.bin")
+                                     .string();
 
     ts.pb_dump(filename);
-    NurbsSurfaceTrimmed loaded = NurbsSurfaceTrimmed::pb_load(filename);
+    const NurbsSurfaceTrimmed loaded = NurbsSurfaceTrimmed::pb_load(filename);
 
     MINI_CHECK(loaded_proto_string == ts);
     MINI_CHECK(loaded == ts);
+    MINI_CHECK(loaded.guid() == guid);
+    MINI_CHECK(converted == ts);
+    MINI_CHECK(converted.guid() == guid);
+    MINI_CHECK(converted.inner_loop_count() == ts.inner_loop_count());
+    MINI_CHECK(converted.is_trimmed());
 }
 
 } // namespace session_cpp
