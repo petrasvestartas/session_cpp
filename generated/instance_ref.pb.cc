@@ -29,6 +29,7 @@ namespace session_proto {
 inline constexpr InstanceRef::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
+        features_{},
         guid_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
@@ -71,19 +72,21 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_._has_bits_),
-        9, // hasbit index offset
+        10, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.definition_guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.xform_),
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.color_),
         PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.flags_),
-        0,
+        PROTOBUF_FIELD_OFFSET(::session_proto::InstanceRef, _impl_.features_),
         1,
         2,
         3,
         4,
         5,
+        6,
+        0,
 };
 
 static const ::_pbi::MigrationSchema
@@ -96,27 +99,30 @@ static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
 const char descriptor_table_protodef_instance_5fref_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\022instance_ref.proto\022\rsession_proto\032\013xfo"
-    "rm.proto\032\013color.proto\"\233\001\n\013InstanceRef\022\014\n"
-    "\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\027\n\017definition_"
-    "guid\030\003 \001(\t\022#\n\005xform\030\004 \001(\0132\024.session_prot"
-    "o.Xform\022#\n\005color\030\005 \001(\0132\024.session_proto.C"
-    "olor\022\r\n\005flags\030\006 \001(\rb\006proto3"
+    "rm.proto\032\013color.proto\032\relement.proto\"\314\001\n"
+    "\013InstanceRef\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t"
+    "\022\027\n\017definition_guid\030\003 \001(\t\022#\n\005xform\030\004 \001(\013"
+    "2\024.session_proto.Xform\022#\n\005color\030\005 \001(\0132\024."
+    "session_proto.Color\022\r\n\005flags\030\006 \001(\r\022/\n\010fe"
+    "atures\030\007 \003(\0132\035.session_proto.ElementFeat"
+    "ureb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_instance_5fref_2eproto_deps[2] = {
+    descriptor_table_instance_5fref_2eproto_deps[3] = {
         &::descriptor_table_color_2eproto,
+        &::descriptor_table_element_2eproto,
         &::descriptor_table_xform_2eproto,
 };
 static ::absl::once_flag descriptor_table_instance_5fref_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_instance_5fref_2eproto = {
     false,
     false,
-    227,
+    291,
     descriptor_table_protodef_instance_5fref_2eproto,
     "instance_ref.proto",
     &descriptor_table_instance_5fref_2eproto_once,
     descriptor_table_instance_5fref_2eproto_deps,
-    2,
+    3,
     1,
     schemas,
     file_default_instances,
@@ -139,13 +145,19 @@ void InstanceRef::clear_xform() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.xform_ != nullptr) _impl_.xform_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000008U);
+                  0x00000010U);
 }
 void InstanceRef::clear_color() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.color_ != nullptr) _impl_.color_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00000020U);
+}
+void InstanceRef::clear_features() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.features_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
 }
 InstanceRef::InstanceRef(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
@@ -162,6 +174,7 @@ PROTOBUF_NDEBUG_INLINE InstanceRef::Impl_::Impl_(
     [[maybe_unused]] const ::session_proto::InstanceRef& from_msg)
       : _has_bits_{from._has_bits_},
         _cached_size_{0},
+        features_{visibility, arena, from.features_},
         guid_(arena, from.guid_),
         name_(arena, from.name_),
         definition_guid_(arena, from.definition_guid_) {}
@@ -180,10 +193,10 @@ InstanceRef::InstanceRef(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
   ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.xform_ = (CheckHasBit(cached_has_bits, 0x00000008U))
+  _impl_.xform_ = (CheckHasBit(cached_has_bits, 0x00000010U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_)
                 : nullptr;
-  _impl_.color_ = (CheckHasBit(cached_has_bits, 0x00000010U))
+  _impl_.color_ = (CheckHasBit(cached_has_bits, 0x00000020U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.color_)
                 : nullptr;
   _impl_.flags_ = from._impl_.flags_;
@@ -194,6 +207,7 @@ PROTOBUF_NDEBUG_INLINE InstanceRef::Impl_::Impl_(
     [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
     [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
       : _cached_size_{0},
+        features_{visibility, arena},
         guid_(arena),
         name_(arena),
         definition_guid_(arena) {}
@@ -232,8 +246,20 @@ inline void* PROTOBUF_NONNULL InstanceRef::PlacementNew_(
   return ::new (mem) InstanceRef(arena);
 }
 constexpr auto InstanceRef::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(InstanceRef),
-                                            alignof(InstanceRef));
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.features_) +
+          decltype(InstanceRef::_impl_.features_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(InstanceRef), alignof(InstanceRef), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&InstanceRef::PlacementNew_,
+                                 sizeof(InstanceRef),
+                                 alignof(InstanceRef));
+  }
 }
 constexpr auto InstanceRef::InternalGenerateClassData_() {
   return ::google::protobuf::internal::ClassDataFull{
@@ -269,17 +295,17 @@ InstanceRef::GetClassData() const {
   return InstanceRef_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 6, 2, 57, 2>
+const ::_pbi::TcParseTable<3, 7, 3, 57, 2>
 InstanceRef::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_._has_bits_),
     0, // no _extensions_
-    6, 56,  // max_field_number, fast_idx_mask
+    7, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967232,  // skipmap
+    4294967168,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    6,  // num_field_entries
-    2,  // num_aux_entries
+    7,  // num_field_entries
+    3,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     InstanceRef_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -291,48 +317,54 @@ InstanceRef::_table_ = {
     {::_pbi::TcParser::MiniParse, {}},
     // string guid = 1;
     {::_pbi::TcParser::FastUS1,
-     {10, 0, 0,
+     {10, 1, 0,
       PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.guid_)}},
     // string name = 2;
     {::_pbi::TcParser::FastUS1,
-     {18, 1, 0,
+     {18, 2, 0,
       PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.name_)}},
     // string definition_guid = 3;
     {::_pbi::TcParser::FastUS1,
-     {26, 2, 0,
+     {26, 3, 0,
       PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.definition_guid_)}},
     // .session_proto.Xform xform = 4;
     {::_pbi::TcParser::FastMtS1,
-     {34, 3, 0,
+     {34, 4, 0,
       PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.xform_)}},
     // .session_proto.Color color = 5;
     {::_pbi::TcParser::FastMtS1,
-     {42, 4, 1,
+     {42, 5, 1,
       PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.color_)}},
     // uint32 flags = 6;
-    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(InstanceRef, _impl_.flags_), 5>(),
-     {48, 5, 0,
+    {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(InstanceRef, _impl_.flags_), 6>(),
+     {48, 6, 0,
       PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.flags_)}},
-    {::_pbi::TcParser::MiniParse, {}},
+    // repeated .session_proto.ElementFeature features = 7;
+    {::_pbi::TcParser::FastMtR1,
+     {58, 0, 2,
+      PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.features_)}},
   }}, {{
     65535, 65535
   }}, {{
     // string guid = 1;
-    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.guid_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.guid_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string name = 2;
-    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.name_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.name_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string definition_guid = 3;
-    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.definition_guid_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.definition_guid_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // .session_proto.Xform xform = 4;
-    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.xform_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.xform_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // .session_proto.Color color = 5;
-    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.color_), _Internal::kHasBitsOffset + 4, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.color_), _Internal::kHasBitsOffset + 5, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // uint32 flags = 6;
-    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.flags_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.flags_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kUInt32)},
+    // repeated .session_proto.ElementFeature features = 7;
+    {PROTOBUF_FIELD_OFFSET(InstanceRef, _impl_.features_), _Internal::kHasBitsOffset + 0, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Xform>()},
       {::_pbi::TcParser::GetTable<::session_proto::Color>()},
+      {::_pbi::TcParser::GetTable<::session_proto::ElementFeature>()},
   }},
   {{
     "\31\4\4\17\0\0\0\0"
@@ -350,21 +382,24 @@ PROTOBUF_NOINLINE void InstanceRef::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
-    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
-      _impl_.guid_.ClearNonDefaultToEmpty();
+  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _impl_.features_.Clear();
     }
     if (CheckHasBit(cached_has_bits, 0x00000002U)) {
-      _impl_.name_.ClearNonDefaultToEmpty();
+      _impl_.guid_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      _impl_.definition_guid_.ClearNonDefaultToEmpty();
+      _impl_.name_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      _impl_.definition_guid_.ClearNonDefaultToEmpty();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       ABSL_DCHECK(_impl_.xform_ != nullptr);
       _impl_.xform_->Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       ABSL_DCHECK(_impl_.color_ != nullptr);
       _impl_.color_->Clear();
     }
@@ -394,7 +429,7 @@ PROTOBUF_NOINLINE void InstanceRef::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // string guid = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
     if (!this_._internal_guid().empty()) {
       const ::std::string& _s = this_._internal_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -404,7 +439,7 @@ PROTOBUF_NOINLINE void InstanceRef::Clear() {
   }
 
   // string name = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -414,7 +449,7 @@ PROTOBUF_NOINLINE void InstanceRef::Clear() {
   }
 
   // string definition_guid = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
     if (!this_._internal_definition_guid().empty()) {
       const ::std::string& _s = this_._internal_definition_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -424,25 +459,38 @@ PROTOBUF_NOINLINE void InstanceRef::Clear() {
   }
 
   // .session_proto.Xform xform = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         4, *this_._impl_.xform_, this_._impl_.xform_->GetCachedSize(), target,
         stream);
   }
 
   // .session_proto.Color color = 5;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         5, *this_._impl_.color_, this_._impl_.color_->GetCachedSize(), target,
         stream);
   }
 
   // uint32 flags = 6;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
     if (this_._internal_flags() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteUInt32ToArray(
           6, this_._internal_flags(), target);
+    }
+  }
+
+  // repeated .session_proto.ElementFeature features = 7;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+    for (unsigned i = 0, n = static_cast<unsigned>(
+                             this_._internal_features_size());
+         i < n; i++) {
+      const auto& repfield = this_._internal_features().Get(i);
+      target =
+          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+              7, repfield, repfield.GetCachedSize(),
+              target, stream);
     }
   }
 
@@ -471,40 +519,47 @@ PROTOBUF_NOINLINE void InstanceRef::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+    // repeated .session_proto.ElementFeature features = 7;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      total_size += 1UL * this_._internal_features_size();
+      for (const auto& msg : this_._internal_features()) {
+        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
+      }
+    }
     // string guid = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
       }
     }
     // string name = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
     // string definition_guid = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!this_._internal_definition_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_definition_guid());
       }
     }
     // .session_proto.Xform xform = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.xform_);
     }
     // .session_proto.Color color = 5;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.color_);
     }
     // uint32 flags = 6;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (this_._internal_flags() != 0) {
         total_size += ::_pbi::WireFormatLite::UInt32SizePlusOne(
             this_._internal_flags());
@@ -530,8 +585,13 @@ void InstanceRef::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
-    if (CheckHasBit(cached_has_bits, 0x00000001U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _this->_internal_mutable_features()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_features());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
       } else {
@@ -540,7 +600,7 @@ void InstanceRef::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -549,7 +609,7 @@ void InstanceRef::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!from._internal_definition_guid().empty()) {
         _this->_internal_set_definition_guid(from._internal_definition_guid());
       } else {
@@ -558,7 +618,7 @@ void InstanceRef::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       ABSL_DCHECK(from._impl_.xform_ != nullptr);
       if (_this->_impl_.xform_ == nullptr) {
         _this->_impl_.xform_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.xform_);
@@ -566,7 +626,7 @@ void InstanceRef::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.xform_->MergeFrom(*from._impl_.xform_);
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       ABSL_DCHECK(from._impl_.color_ != nullptr);
       if (_this->_impl_.color_ == nullptr) {
         _this->_impl_.color_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.color_);
@@ -574,7 +634,7 @@ void InstanceRef::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.color_->MergeFrom(*from._impl_.color_);
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       if (from._internal_flags() != 0) {
         _this->_impl_.flags_ = from._impl_.flags_;
       }
@@ -599,6 +659,7 @@ void InstanceRef::InternalSwap(InstanceRef* PROTOBUF_RESTRICT PROTOBUF_NONNULL o
   ABSL_DCHECK_EQ(arena, other->GetArena());
   _internal_metadata_.InternalSwap(&other->_internal_metadata_);
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  _impl_.features_.InternalSwap(&other->_impl_.features_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.definition_guid_, &other->_impl_.definition_guid_, arena);
