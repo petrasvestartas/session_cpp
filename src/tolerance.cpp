@@ -26,6 +26,7 @@ void Tolerance::reset() {
 }
 
 void Tolerance::set_unit(const std::string& value) {
+
     if (value != "M" && value != "MM")
         throw std::invalid_argument("Invalid unit: " + value);
 
@@ -49,6 +50,7 @@ void Tolerance::set_approximation(double value) {
 }
 
 void Tolerance::set_precision(int value) {
+
     if (value == 0)
         throw std::invalid_argument("Precision cannot be zero.");
 
@@ -61,6 +63,10 @@ void Tolerance::set_lineardeflection(double value) {
 
 void Tolerance::set_angulardeflection(double value) {
     _angulardeflection = value;
+}
+
+ToleranceGuard Tolerance::temporary() {
+    return ToleranceGuard(*this);
 }
 
 double Tolerance::tolerance(double truevalue, double rtol, double atol) const {
@@ -84,6 +90,7 @@ bool Tolerance::is_negative(double a) const {
 }
 
 bool Tolerance::is_between(double value, double minval, double maxval) const {
+
     const double atol = absolute();
 
     return minval - atol <= value && value <= maxval + atol;
@@ -132,10 +139,6 @@ bool Tolerance::is_allclose(const std::vector<double>& a, const std::vector<doub
             return false;
 
     return true;
-}
-
-ToleranceGuard Tolerance::temporary() {
-    return ToleranceGuard(*this);
 }
 
 std::string Tolerance::key(double x, double y, double z, int precision) const {
@@ -237,6 +240,13 @@ int Tolerance::precision_from_tolerance(double tol) const {
         return 0;
 
     return std::stoi(text.substr(pos + 2));
+}
+
+double Tolerance::round_to(double value, int ndigits) {
+
+    const double factor = std::pow(10.0, ndigits);
+
+    return std::round(value * factor) / factor;
 }
 
 nlohmann::ordered_json Tolerance::jsondump() const {
@@ -368,12 +378,6 @@ Tolerance Tolerance::pb_load(const std::string& filename) {
     return pb_loads(data);
 }
 
-double Tolerance::round_to(double value, int ndigits) {
-    const double factor = std::pow(10.0, ndigits);
-
-    return std::round(value * factor) / factor;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Utilities
 // ═══════════════════════════════════════════════════════════════════════════
@@ -383,6 +387,7 @@ bool is_finite(double x) {
 }
 
 uint64_t unique_from_two_int(int a, int b) {
+
     const uint64_t lo = static_cast<uint64_t>(std::min(a, b));
     const uint64_t hi = static_cast<uint64_t>(std::max(a, b));
 
@@ -390,6 +395,7 @@ uint64_t unique_from_two_int(int a, int b) {
 }
 
 int wrap_index(int index, int n) {
+
     if (n == 0)
         return 0;
 

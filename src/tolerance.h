@@ -40,22 +40,26 @@ public:
     static constexpr int ROUNDING = 6; // Default coordinate-key rounding.
 
 private:
-    std::string _unit;
-    std::optional<double> _absolute;
-    std::optional<double> _relative;
-    std::optional<double> _angular;
-    std::optional<double> _approximation;
-    std::optional<int> _precision;
-    std::optional<double> _lineardeflection;
-    std::optional<double> _angulardeflection;
+    std::string _unit; // Unit system, "M" or "MM".
+    std::optional<double> _absolute; // Absolute tolerance override.
+    std::optional<double> _relative; // Relative tolerance override.
+    std::optional<double> _angular; // Angular tolerance override in radians.
+    std::optional<double> _approximation; // Approximation tolerance override.
+    std::optional<int> _precision; // Decimal precision override.
+    std::optional<double> _lineardeflection; // Linear deflection override.
+    std::optional<double> _angulardeflection; // Angular deflection override.
 
 public:
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct tolerance with a unit system ("M" or "MM")
     explicit Tolerance(const std::string& unit = "M");
 
-    /// Reset all overrides to default constants
-    void reset();
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Current unit system
     std::string unit() const { return _unit; }
 
@@ -79,6 +83,12 @@ public:
 
     /// Angular deflection value (or default ANGULARDEFLECTION)
     double angulardeflection() const { return _angulardeflection.value_or(ANGULARDEFLECTION); }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Reset all overrides to default constants
+    void reset();
 
     /// Set current unit system
     void set_unit(const std::string& value);
@@ -104,6 +114,12 @@ public:
     /// Override angular deflection
     void set_angulardeflection(double value);
 
+    /// Create a RAII guard that restores tolerance on destruction
+    ToleranceGuard temporary();
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Comparison
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Compute combined tolerance from relative and absolute components
     double tolerance(double truevalue, double rtol, double atol) const;
 
@@ -140,9 +156,9 @@ public:
     /// Check if two lists of values are element-wise close
     bool is_allclose(const std::vector<double>& a, const std::vector<double>& b) const;
 
-    /// Create a RAII guard that restores tolerance on destruction
-    ToleranceGuard temporary();
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Keys and formatting
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Create a geometric key string for 3D point with optional precision
     std::string key(double x, double y, double z, int precision = -999) const;
 
@@ -155,6 +171,21 @@ public:
     /// Determine decimal precision from a tolerance value
     int precision_from_tolerance(double tol = -1) const;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Numeric conversion
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert degrees to radians
+    static double to_radians(double degrees) { return degrees * TO_RADIANS; }
+
+    /// Convert radians to degrees
+    static double to_degrees(double radians) { return radians * TO_DEGREES; }
+
+    /// Round a value to a given number of decimal places
+    static double round_to(double value, int ndigits);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // JSON
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Serialize to an ordered JSON object
     nlohmann::ordered_json jsondump() const;
 
@@ -173,6 +204,9 @@ public:
     /// Read JSON from a file
     static Tolerance file_json_load(const std::string& filename);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Protobuf
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Convert to the protobuf message
     session_proto::Tolerance to_proto() const;
 
@@ -190,15 +224,6 @@ public:
 
     /// Read protobuf bytes from a file
     static Tolerance pb_load(const std::string& filename);
-
-    /// Convert degrees to radians
-    static double to_radians(double degrees) { return degrees * TO_RADIANS; }
-
-    /// Convert radians to degrees
-    static double to_degrees(double radians) { return radians * TO_DEGREES; }
-
-    /// Round a value to a given number of decimal places
-    static double round_to(double value, int ndigits);
 };
 
 /// RAII guard that restores Tolerance state on destruction.
@@ -236,8 +261,7 @@ public:
     Tolerance* operator->() { return _target; }
 };
 
-/// Global tolerance instance
-extern Tolerance TOLERANCE;
+extern Tolerance TOLERANCE; // Global tolerance instance.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Utilities
