@@ -21,8 +21,17 @@ namespace file_step {
 // ISO 10303-21 parser
 // ═══════════════════════════════════════════════════════════════════════════
 
-enum class StepTag { Ref, Num, Str, Enum, List, Null };
+/// Kind of value a StepParam holds.
+enum class StepTag {
+    Ref, // Entity reference.
+    Num, // Real or integer.
+    Str, // Quoted string.
+    Enum, // Enum literal or bare identifier.
+    List, // Parenthesised list.
+    Null, // Unset or derived value.
+};
 
+/// One parameter of an entity instance.
 struct StepParam {
     StepTag tag = StepTag::Null; // Which member is set.
     int ref_id = 0; // Entity id for Ref.
@@ -31,6 +40,7 @@ struct StepParam {
     std::vector<StepParam> list; // Items for List.
 };
 
+/// One TYPE(params) part of an entity instance.
 struct StepSubEntity {
     std::string type; // Entity type name.
     std::vector<StepParam> params; // Parameters in file order.
@@ -61,6 +71,7 @@ struct StepEntity {
     }
 };
 
+/// Entities of a parsed file by id.
 struct StepFile {
     std::unordered_map<int, StepEntity> entities; // Entities by id.
 
@@ -79,11 +90,12 @@ struct StepFile {
     }
 };
 
-const double PI = 3.14159265358979323846;
-const double PI_2 = 1.5707963267948966;
-const int MAX_DEPTH = 8;
-const int NS = 17;
+const double PI = 3.14159265358979323846; // Circle constant.
+const double PI_2 = 1.5707963267948966; // Quarter turn.
+const int MAX_DEPTH = 8; // Deepest list nesting parsed recursively.
+const int NS = 17; // Samples per side of a surface grid.
 
+/// Read position in a STEP text.
 struct Cursor {
     const char* s; // Text being parsed.
     size_t p; // Current position.
@@ -92,6 +104,7 @@ struct Cursor {
 
 /// Advance the cursor past whitespace.
 static void skip_ws(Cursor& c) {
+
     while (c.p < c.end && std::isspace((unsigned char)c.s[c.p]))
         c.p++;
 }
@@ -216,7 +229,7 @@ static std::vector<StepParam> parse_params(Cursor& c, int depth) {
     return out;
 }
 
-/// Skips a parenthesised group without recursing, for lists nested deeper than MAX_DEPTH.
+/// Skip a parenthesised group without recursing, for lists nested deeper than MAX_DEPTH.
 static void skip_list(Cursor& c) {
 
     int open = 0;
@@ -239,6 +252,7 @@ static void skip_list(Cursor& c) {
 static StepParam parse_param(Cursor& c, int depth) {
 
     skip_ws(c);
+
     StepParam r;
 
     if (c.p >= c.end)
@@ -264,6 +278,7 @@ static StepParam parse_param(Cursor& c, int depth) {
         r.str = parse_string(c);
     } else if (ch == '.') {
         c.p++;
+
         const size_t start = c.p;
 
         while (c.p < c.end && c.s[c.p] != '.')
@@ -339,6 +354,7 @@ static void parse_step_string(const std::string& content, StepFile& sf) {
         }
 
         c.p++;
+
         const int id = parse_int(c);
 
         if (!consume(c, '='))
@@ -378,6 +394,7 @@ static std::string strip_comments(const std::string& raw) {
 
     std::string text;
     text.reserve(raw.size());
+
     size_t i = 0;
 
     while (i < raw.size()) {
@@ -407,6 +424,7 @@ static StepFile parse_step_file(const std::string& filepath) {
 
     std::stringstream buf;
     buf << in.rdbuf();
+
     const std::string text = strip_comments(buf.str());
     const size_t lo = text.find("DATA");
 
@@ -591,6 +609,7 @@ static std::vector<double> full_from_internal(const std::vector<double>& interna
 
 /// Drop the two clamped end knots of a full knot vector.
 static std::vector<double> internal_from_full(const std::vector<double>& full) {
+
     if (full.size() < 2)
         return full;
 
@@ -601,6 +620,7 @@ static std::vector<double> internal_from_full(const std::vector<double>& full) {
 // Analytic geometry
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Orthonormal frame of an AXIS2_PLACEMENT_3D.
 struct Axis2 {
     Point origin = Point(0, 0, 0); // Frame origin.
     Vector ax = Vector(1, 0, 0); // Frame x axis.
@@ -630,6 +650,7 @@ static Point axis_point(const Axis2& a, double lx, double ly, double lz) {
 
 /// Return the angle of pt around the axis in radians.
 static double angle_of(const Axis2& a, const Point& pt) {
+
     const Vector d = pt - a.origin;
 
     return std::atan2(d.dot(a.ay), d.dot(a.ax));
@@ -671,6 +692,7 @@ static double arc_param_of_angle(double theta) {
 
 /// Chart coordinate of an angle: quarter-arc spans counted from quarter q0, corrected for the projective span parameterization.
 static double chart_u_of_angle(double ang, int q0) {
+
     const double q = ang / PI_2 - q0;
     const double spanf = std::floor(q + 1e-12);
 
@@ -713,17 +735,13 @@ static std::vector<double> quarter_knots(int nspans) {
     return knots;
 }
 
-/// Local coordinates of p in the axis of an.
-static std::tuple<double, double, double> an_local(const AnFace& an, const Point& p) {
-    const Vector d = p - an.a.origin;
-
-    return {d.dot(an.a.ax), d.dot(an.a.ay), d.dot(an.a.az)};
-}
-
 /// Canonical (s, t) of a 3D point; radial_ok is false at a pole or apex where the angle is undefined.
 static std::tuple<double, double, bool> an_st_of(const AnFace& an, const Point& p) {
 
-    const auto [x, y, z] = an_local(an, p);
+    const Vector d = p - an.a.origin;
+    const double x = d.dot(an.a.ax);
+    const double y = d.dot(an.a.ay);
+    const double z = d.dot(an.a.az);
     const double rho = std::sqrt(x * x + y * y);
     const double s = std::atan2(y, x);
     const bool radial_ok = rho > 1e-9;
@@ -772,7 +790,11 @@ static Point an_eval(const AnFace& an, double s, double t) {
 /// Kernel NURBS window of an analytic surface: nsu quarter arcs from quarter su0 in u; v is linear on [t0, t1] for cylinder and cone, nsv quarter arcs from sv0 for sphere and torus.
 static NurbsSurface build_analytic_nurbs(const AnFace& an, int su0, int nsu, double t0, double t1, int sv0, int nsv) {
 
-    const auto [ca, sa, cw] = arc_nodes(su0, nsu);
+    std::vector<double> ca;
+    std::vector<double> sa;
+    std::vector<double> cw;
+    std::tie(ca, sa, cw) = arc_nodes(su0, nsu);
+
     const int nu = 2 * nsu + 1;
 
     if (an.kind == 2 || an.kind == 3) {
@@ -796,7 +818,11 @@ static NurbsSurface build_analytic_nurbs(const AnFace& an, int su0, int nsu, dou
         return srf;
     }
 
-    const auto [cb, sb, vw] = arc_nodes(sv0, nsv);
+    std::vector<double> cb;
+    std::vector<double> sb;
+    std::vector<double> vw;
+    std::tie(cb, sb, vw) = arc_nodes(sv0, nsv);
+
     const int nv = 2 * nsv + 1;
     NurbsSurface srf(3, true, 3, 3, nu, nv);
     srf.m_nurbsknot[0] = quarter_knots(nsu);
@@ -824,6 +850,7 @@ static NurbsSurface plane_surface(const Axis2& a, double u0, double u1, double v
     NurbsSurface out(3, false, 2, 2, 2, 2);
     out.m_nurbsknot[0] = {u0, u1};
     out.m_nurbsknot[1] = {v0, v1};
+
     const bool ok = out.set_cv(0, 0, axis_point(a, u0, v0, 0.0)) && out.set_cv(0, 1, axis_point(a, u0, v1, 0.0)) &&
         out.set_cv(1, 0, axis_point(a, u1, v0, 0.0)) && out.set_cv(1, 1, axis_point(a, u1, v1, 0.0));
 
@@ -852,7 +879,11 @@ static NurbsSurface cylinder_surface(const Axis2& a, double radius, double u0, d
     knots.push_back(u1);
     out.m_nurbsknot[0] = knots;
     out.m_nurbsknot[1] = {v0, v1};
-    const auto [ca, sa, cw] = arc_nodes(u0, n_spans);
+
+    std::vector<double> ca;
+    std::vector<double> sa;
+    std::vector<double> cw;
+    std::tie(ca, sa, cw) = arc_nodes(u0, n_spans);
 
     for (int i = 0; i < n_u; i++)
         for (int j = 0; j < 2; j++) {
@@ -909,7 +940,10 @@ static Proj bilinear_projector(const NurbsSurface& srf) {
 /// n points evenly spaced in parameter over the curve domain.
 static std::vector<Point> sample_nurbs(const NurbsCurve& nc, int n) {
 
-    const auto [tmin, tmax] = nc.domain();
+    double tmin = 0.0;
+    double tmax = 0.0;
+    std::tie(tmin, tmax) = nc.domain();
+
     std::vector<Point> pts;
 
     for (int i = 0; i < n; i++)
@@ -994,12 +1028,18 @@ static NurbsCurve exact_pcurve(const Proj& proj, const NurbsCurve& c3) {
     p2.m_nurbsknot = c3.m_nurbsknot;
 
     for (int ci = 0; ci < c3.cv_count(); ci++) {
-        const auto [wx, wy, wz, w] = c3.get_cv_4d(ci);
+        double wx = 0.0;
+        double wy = 0.0;
+        double wz = 0.0;
+        double w = 0.0;
+        std::tie(wx, wy, wz, w) = c3.get_cv_4d(ci);
 
         if (std::abs(w) < 1e-300)
             return NurbsCurve();
 
-        const auto [u, v] = project(proj, Point(wx / w, wy / w, wz / w));
+        double u = 0.0;
+        double v = 0.0;
+        std::tie(u, v) = project(proj, Point(wx / w, wy / w, wz / w));
 
         if (!p2.set_cv_4d(ci, u * w, v * w, 0.0, w))
             return NurbsCurve();
@@ -1008,7 +1048,7 @@ static NurbsCurve exact_pcurve(const Proj& proj, const NurbsCurve& c3) {
     return p2.is_valid() ? p2 : NurbsCurve();
 }
 
-/// Keeps consecutive cylinder samples on one branch of the quarter-arc chart (period 4).
+/// Keep consecutive cylinder samples on one branch of the quarter-arc chart (period 4).
 static void unwrap_seam(std::vector<Point>& uv) {
 
     for (size_t k = 1; k < uv.size(); k++) {
@@ -1028,8 +1068,13 @@ static void unwrap_seam(std::vector<Point>& uv) {
 /// ns x ns surface points over the domain, row-major with u slowest.
 static std::vector<Point> surface_grid(const NurbsSurface& srf, int ns) {
 
-    const auto [u0, u1] = srf.domain(0);
-    const auto [v0, v1] = srf.domain(1);
+    double u0 = 0.0;
+    double u1 = 0.0;
+    double v0 = 0.0;
+    double v1 = 0.0;
+    std::tie(u0, u1) = srf.domain(0);
+    std::tie(v0, v1) = srf.domain(1);
+
     std::vector<Point> grid;
 
     for (int i = 0; i < ns; i++)
@@ -1078,6 +1123,7 @@ static bool grid_degenerate(const std::vector<Point>& grid, int ns, double tol, 
 // StepReader
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Entity access over a parsed file with points, directions and frames cached by id.
 class StepReader {
     const StepFile& sf; // Parsed file.
     std::unordered_map<int, Point> pt_cache; // Points by id.
@@ -1085,10 +1131,13 @@ class StepReader {
     std::unordered_map<int, Axis2> ax_cache; // Frames by id.
 
 public:
+
+    /// Construct over a parsed file.
     explicit StepReader(const StepFile& s) : sf(s) {}
 
     /// Return the entity with this id, or null.
     const StepEntity* get(int id) const {
+
         const auto it = sf.entities.find(id);
 
         return it == sf.entities.end() ? nullptr : &it->second;
@@ -1152,6 +1201,7 @@ public:
 
         a.origin = get_point(refs[0]);
         a.az = refs.size() > 1 ? get_direction(refs[1]) : Vector(0, 0, 1);
+
         const double ln = a.az.magnitude();
 
         if (ln > 1e-12)
@@ -1163,6 +1213,7 @@ public:
             a.ax = std::abs(a.az[0]) < 0.9 ? Vector(1, 0, 0) : Vector(0, 1, 0);
 
         a.ax = a.ax - a.az * a.ax.dot(a.az);
+
         const double xn = a.ax.magnitude();
 
         if (xn > 1e-12)
@@ -1580,6 +1631,7 @@ static std::pair<int, bool> oriented_edge(const StepReader& r, int oe_id) {
 
 /// Start vertex, end vertex and geometry ids of an EDGE_CURVE; empty when missing.
 static std::vector<int> edge_refs(const StepReader& r, int ec_ref) {
+
     const StepEntity* ecent = r.get(ec_ref);
     const StepSubEntity* ec = ecent ? ecent->find("EDGE_CURVE") : nullptr;
 
@@ -1588,6 +1640,7 @@ static std::vector<int> edge_refs(const StepReader& r, int ec_ref) {
 
 /// Return the geometry id of an EDGE_CURVE, or -1.
 static int edge_geom_id(const StepReader& r, int ec_ref) {
+
     const std::vector<int> refs = edge_refs(r, ec_ref);
 
     return refs.size() >= 3 ? refs[2] : -1;
@@ -1613,6 +1666,7 @@ struct LoopEdge {
     bool exact = false; // Whether pc2d is exact rather than sampled.
 };
 
+/// One face loop with its edge uses in traversal order.
 struct Loop {
     bool is_outer = false; // Whether the loop is the outer boundary.
     bool projected = false; // Whether the uv came from projection.
@@ -1657,7 +1711,11 @@ static std::tuple<double, double, double, double> loops_bounds(const std::vector
     double vmax = -1e300;
 
     for (const Loop& lp : loops) {
-        const auto [u0, u1, v0, v1] = loop_bounds(lp);
+        double u0 = 0.0;
+        double u1 = 0.0;
+        double v0 = 0.0;
+        double v1 = 0.0;
+        std::tie(u0, u1, v0, v1) = loop_bounds(lp);
         umin = std::min(umin, u0);
         umax = std::max(umax, u1);
         vmin = std::min(vmin, v0);
@@ -1667,7 +1725,7 @@ static std::tuple<double, double, double, double> loops_bounds(const std::vector
     return {umin, umax, vmin, vmax};
 }
 
-/// Marks the loop with the largest uv extent as outer when none is marked (OCCT and FreeCAD write FACE_BOUND for the outer boundary).
+/// Mark the loop with the largest uv extent as outer when none is marked (OCCT and FreeCAD write FACE_BOUND for the outer boundary).
 static void pick_outer_loop(std::vector<Loop>& loops) {
 
     for (const Loop& l : loops)
@@ -1681,7 +1739,12 @@ static void pick_outer_loop(std::vector<Loop>& loops) {
     double best_a = -1.0;
 
     for (size_t i = 0; i < loops.size(); i++) {
-        const auto [u0, u1, v0, v1] = loop_bounds(loops[i]);
+        double u0 = 0.0;
+        double u1 = 0.0;
+        double v0 = 0.0;
+        double v1 = 0.0;
+        std::tie(u0, u1, v0, v1) = loop_bounds(loops[i]);
+
         const double a = u1 > u0 && v1 > v0 ? (u1 - u0) * (v1 - v0) : 0.0;
 
         if (a > best_a) {
@@ -1736,8 +1799,13 @@ static std::pair<double, double> surface_periods(const Proj& proj, const NurbsSu
     if (!proj_srf.is_valid())
         return {0.0, 0.0};
 
-    const auto [du0, du1] = proj_srf.domain(0);
-    const auto [dv0, dv1] = proj_srf.domain(1);
+    double du0 = 0.0;
+    double du1 = 0.0;
+    double dv0 = 0.0;
+    double dv1 = 0.0;
+    std::tie(du0, du1) = proj_srf.domain(0);
+    std::tie(dv0, dv1) = proj_srf.domain(1);
+
     const double scale = proj_srf.point_at(du0, dv0).distance(proj_srf.point_at(du1, dv1)) + 1e-9;
     bool closed_u = true;
     bool closed_v = true;
@@ -1756,7 +1824,7 @@ static std::pair<double, double> surface_periods(const Proj& proj, const NurbsSu
     return {closed_u ? du1 - du0 : 0.0, closed_v ? dv1 - dv0 : 0.0};
 }
 
-/// Shifts each edge by whole periods so its traversal start meets the previous edge's end.
+/// Shift each edge by whole periods so its traversal start meets the previous edge's end.
 static void chain_loops(std::vector<Loop>& loops, double tau_u, double tau_v) {
 
     if (tau_u <= 0.0 && tau_v <= 0.0)
@@ -1785,7 +1853,7 @@ static void chain_loops(std::vector<Loop>& loops, double tau_u, double tau_v) {
     }
 }
 
-/// Shifts each inner loop by whole u periods onto the outer loop's u window.
+/// Shift each inner loop by whole u periods onto the outer loop's u window.
 static void center_inner_loops(std::vector<Loop>& loops, double tau_u) {
 
     if (tau_u <= 0.0)
@@ -1850,7 +1918,9 @@ static std::vector<Point> uv_of_samples(
 
     if (proj.kind != 0) {
         for (const Point& s : samples) {
-            const auto [u, v] = project(proj, s);
+            double u = 0.0;
+            double v = 0.0;
+            std::tie(u, v) = project(proj, s);
             uv.emplace_back(u, v, 0.0);
         }
 
@@ -1860,8 +1930,13 @@ static std::vector<Point> uv_of_samples(
     if (!proj_srf.is_valid() || samples.empty())
         return {Point(0, 0, 0), Point(1, 0, 0)};
 
-    const auto [du0, du1] = proj_srf.domain(0);
-    const auto [dv0, dv1] = proj_srf.domain(1);
+    double du0 = 0.0;
+    double du1 = 0.0;
+    double dv0 = 0.0;
+    double dv1 = 0.0;
+    std::tie(du0, du1) = proj_srf.domain(0);
+    std::tie(dv0, dv1) = proj_srf.domain(1);
+
     const double wu = (du1 - du0) * 0.1;
     const double wv = (dv1 - dv0) * 0.1;
     double d_ref = 0.0;
@@ -1893,6 +1968,7 @@ static std::vector<Point> uv_of_samples(
 
 /// Map a surface parameter point into the window chart.
 static Point chart_point(const AnFace& an, const Window& w, const Point& p) {
+
     const bool angular = an.kind == 4 || an.kind == 5;
 
     return Point(chart_u_of_angle(p[0], w.su0), angular ? chart_u_of_angle(p[1], w.sv0) : p[1], 0.0);
@@ -1900,6 +1976,7 @@ static Point chart_point(const AnFace& an, const Window& w, const Point& p) {
 
 /// Evaluate the analytic surface at a window chart point.
 static Point chart_eval(const AnFace& an, const Window& w, const Point& q) {
+
     const bool angular = an.kind == 4 || an.kind == 5;
 
     return an_eval(an, (w.su0 + q[0]) * PI_2, angular ? (w.sv0 + q[1]) * PI_2 : q[1]);
@@ -1908,7 +1985,11 @@ static Point chart_eval(const AnFace& an, const Window& w, const Point& q) {
 /// Chart window of the loops; none when they are empty or wider than 16 quarter arcs.
 static std::optional<Window> analytic_window(const std::vector<Loop>& loops, const AnFace& an) {
 
-    const auto [smin, smax, tmin, tmax] = loops_bounds(loops);
+    double smin = 0.0;
+    double smax = 0.0;
+    double tmin = 0.0;
+    double tmax = 0.0;
+    std::tie(smin, smax, tmin, tmax) = loops_bounds(loops);
 
     if (smin > smax)
         return std::nullopt;
@@ -1924,6 +2005,7 @@ static std::optional<Window> analytic_window(const std::vector<Loop>& loops, con
 
     if (an.kind == 4 || an.kind == 5) {
         w.sv0 = (int)std::floor(tmin / PI_2 + 1e-9);
+
         int sv1 = (int)std::ceil(tmax / PI_2 - 1e-9);
 
         if (an.kind == 4) {
@@ -1942,6 +2024,7 @@ static std::optional<Window> analytic_window(const std::vector<Loop>& loops, con
     return w;
 }
 
+/// BRep of one STEP shell, built face by face.
 class BRepBuilder {
     StepReader& r; // Entity reader.
     BRep brep; // Brep under construction.
@@ -1950,6 +2033,8 @@ class BRepBuilder {
     std::vector<BRepRef> face_refs; // Face references in file order.
 
 public:
+
+    /// Construct over an entity reader.
     explicit BRepBuilder(StepReader& reader) : r(reader) {}
 
     /// Existing vertex within tol of q, else a new one.
@@ -2102,7 +2187,10 @@ public:
         }
 
         for (size_t k = 0; k < ordered.size() && !have_prev; k++) {
-            const auto [s2, t2, ok2] = an_st_of(an, ordered[k]);
+            double s2 = 0.0;
+            double t2 = 0.0;
+            bool ok2 = false;
+            std::tie(s2, t2, ok2) = an_st_of(an, ordered[k]);
 
             if (!ok2)
                 continue;
@@ -2115,7 +2203,10 @@ public:
         std::vector<Point> st;
 
         for (size_t k = 0; k < ordered.size(); k++) {
-            auto [s, t, ok] = an_st_of(an, ordered[k]);
+            double s = 0.0;
+            double t = 0.0;
+            bool ok = false;
+            std::tie(s, t, ok) = an_st_of(an, ordered[k]);
 
             if (!ok && (k > 0 || have_prev))
                 s = k > 0 ? st.back()[0] : ps;
@@ -2155,7 +2246,10 @@ public:
             lp.is_outer = b->is_outer;
 
             for (int oe_id : b->oe_refs) {
-                const auto [ec_ref, oe_orient] = oriented_edge(r, oe_id);
+                int ec_ref = -1;
+                bool oe_orient = true;
+                std::tie(ec_ref, oe_orient) = oriented_edge(r, oe_id);
+
                 const int edge_idx = ec_ref < 0 ? -1 : get_edge(ec_ref);
 
                 if (edge_idx < 0)
@@ -2227,6 +2321,7 @@ public:
                 continue;
 
             pl.push_back({lp.edges[k].edge_idx, lp.edges[k].reversed, polyline_nurbs(chains[k], 2)});
+
             const std::vector<Point>& nxt = chains[(k + 1) % chains.size()];
 
             if (nxt.empty())
@@ -2272,6 +2367,7 @@ public:
         const double scale3 = an.radius + std::abs(an.r2) + 1.0;
         const int srf_idx = brep.add_surface(srf);
         outer_first(loops);
+
         std::vector<std::vector<PendingEdge>> pending;
 
         for (const Loop& lp : loops)
@@ -2318,8 +2414,13 @@ public:
         if (!srf.is_valid())
             return false;
 
-        const auto [u0, u1] = srf.domain(0);
-        const auto [v0, v1] = srf.domain(1);
+        double u0 = 0.0;
+        double u1 = 0.0;
+        double v0 = 0.0;
+        double v1 = 0.0;
+        std::tie(u0, u1) = srf.domain(0);
+        std::tie(v0, v1) = srf.domain(1);
+
         const std::vector<Point> grid = surface_grid(srf, NS);
         const double tol = grid_scale(grid) * 1e-7;
 
@@ -2429,7 +2530,10 @@ public:
             lp.is_outer = b->is_outer;
 
             for (int oe_id : b->oe_refs) {
-                const auto [ec_ref, oe_orient] = oriented_edge(r, oe_id);
+                int ec_ref = -1;
+                bool oe_orient = true;
+                std::tie(ec_ref, oe_orient) = oriented_edge(r, oe_id);
+
                 const int edge_idx = ec_ref < 0 ? -1 : get_edge(ec_ref);
 
                 if (edge_idx < 0)
@@ -2486,13 +2590,21 @@ public:
         const NurbsSurface proj_srf = proj.kind == 0 ? r.fill_surface(surface_ref, 0, 1, 0, 1) : NurbsSurface();
         std::vector<Loop> loops;
         projected_loops(bound_refs, proj, proj_srf, loops);
-        const auto [tau_u, tau_v] = surface_periods(proj, proj_srf);
+
+        double tau_u = 0.0;
+        double tau_v = 0.0;
+        std::tie(tau_u, tau_v) = surface_periods(proj, proj_srf);
         chain_loops(loops, tau_u, tau_v);
         center_inner_loops(loops, tau_u);
+
         NurbsSurface srf = proj_srf;
 
         if (!srf.is_valid()) {
-            auto [umin, umax, vmin, vmax] = loops_bounds(loops);
+            double umin = 0.0;
+            double umax = 0.0;
+            double vmin = 0.0;
+            double vmax = 0.0;
+            std::tie(umin, umax, vmin, vmax) = loops_bounds(loops);
 
             if (umin > umax) {
                 umin = -1.0;
@@ -2506,6 +2618,7 @@ public:
 
         const int srf_idx = brep.add_surface(srf);
         outer_first(loops);
+
         std::vector<std::vector<PendingEdge>> pending;
 
         for (const Loop& lp : loops)
@@ -2625,18 +2738,21 @@ static std::string fmt_dbl_grid(const std::vector<std::vector<double>>& rows) {
     return s + ")";
 }
 
+/// Entity lines of a STEP file under construction.
 class StepWriter {
     int next_id = 1; // Next free entity id.
     std::vector<std::string> lines; // Emitted entity lines.
 
 public:
+
     /// Return the next free entity id.
     int new_id() {
         return next_id++;
     }
 
-    /// Emits "#id=body;" with a fresh id and returns the id.
+    /// Emit "#id=body;" with a fresh id and return the id.
     int write_raw(const std::string& body) {
+
         const int id = new_id();
         lines.push_back("#" + std::to_string(id) + "=" + body + ";");
 
@@ -2658,7 +2774,11 @@ public:
         std::vector<double> weights;
 
         for (int i = 0; i < nc.cv_count(); i++) {
-            auto [x, y, z, w] = nc.get_cv_4d(i);
+            double x = 0.0;
+            double y = 0.0;
+            double z = 0.0;
+            double w = 0.0;
+            std::tie(x, y, z, w) = nc.get_cv_4d(i);
 
             if (std::abs(w) < 1e-14)
                 w = 1.0;
@@ -2667,7 +2787,10 @@ public:
             weights.push_back(w);
         }
 
-        const auto [kvals, kmults] = compress_knots(full_from_internal(nc.m_nurbsknot));
+        std::vector<double> kvals;
+        std::vector<int> kmults;
+        std::tie(kvals, kmults) = compress_knots(full_from_internal(nc.m_nurbsknot));
+
         const std::string degree = std::to_string(nc.m_order - 1);
 
         if (!nc.is_rational())
@@ -2675,6 +2798,7 @@ public:
                 "B_SPLINE_CURVE_WITH_KNOTS(''," + degree + "," + fmt_ref_list(pt_ids) + ",.UNSPECIFIED.,.F.,.U.," +
                 fmt_int_list(kmults) + "," + fmt_dbl_list(kvals) + ",.UNSPECIFIED.)"
             );
+
         return write_raw(
             "(BOUNDED_CURVE()B_SPLINE_CURVE(" + degree + "," + fmt_ref_list(pt_ids) + ",.UNSPECIFIED.,.F.,.U.)" +
             "B_SPLINE_CURVE_WITH_KNOTS(" + fmt_int_list(kmults) + "," + fmt_dbl_list(kvals) + ",.UNSPECIFIED.)" +
@@ -2711,8 +2835,13 @@ public:
                 weight_grid[u][v] = w;
             }
 
-        const auto [ku_vals, ku_mults] = compress_knots(full_from_internal(srf.m_nurbsknot[0]));
-        const auto [kv_vals, kv_mults] = compress_knots(full_from_internal(srf.m_nurbsknot[1]));
+        std::vector<double> ku_vals;
+        std::vector<int> ku_mults;
+        std::vector<double> kv_vals;
+        std::vector<int> kv_mults;
+        std::tie(ku_vals, ku_mults) = compress_knots(full_from_internal(srf.m_nurbsknot[0]));
+        std::tie(kv_vals, kv_mults) = compress_knots(full_from_internal(srf.m_nurbsknot[1]));
+
         const std::string degrees = std::to_string(srf.m_order[0] - 1) + "," + std::to_string(srf.m_order[1] - 1);
         const std::string knots = fmt_int_list(ku_mults) + "," + fmt_int_list(kv_mults) + "," + fmt_dbl_list(ku_vals) +
             "," + fmt_dbl_list(kv_vals);
@@ -2722,6 +2851,7 @@ public:
                 "B_SPLINE_SURFACE_WITH_KNOTS(''," + degrees + "," + fmt_ref_grid(pt_ids) +
                 ",.UNSPECIFIED.,.F.,.F.,.U.," + knots + ",.UNSPECIFIED.)"
             );
+
         return write_raw(
             "(BOUNDED_SURFACE()B_SPLINE_SURFACE(" + degrees + "," + fmt_ref_grid(pt_ids) +
             ",.UNSPECIFIED.,.F.,.F.,.U.)" + "B_SPLINE_SURFACE_WITH_KNOTS(" + knots +
@@ -2750,9 +2880,11 @@ public:
             return -1;
 
         write_nurbs_curve(loop_2d);
+
         const int ec = write_raw(
             "EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v0) + ",#" + std::to_string(crv3d) + ",.T.)"
         );
+
         const int oe = write_raw("ORIENTED_EDGE('',*,*,#" + std::to_string(ec) + ",.T.)");
         const int el = write_raw("EDGE_LOOP('',(#" + std::to_string(oe) + "))");
 
@@ -2828,6 +2960,7 @@ public:
         const int ax = write_raw(
             "AXIS2_PLACEMENT_3D('',#" + std::to_string(o) + ",#" + std::to_string(dz) + ",#" + std::to_string(dx) + ")"
         );
+
         const int lu = write_raw("(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))");
         const int au = write_raw("(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.))");
         const int su = write_raw("(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT())");
@@ -2839,16 +2972,19 @@ public:
             "UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(" + fmt(uncertainty) + "),#" + std::to_string(lu) +
             ",'distance_accuracy_value','')"
         );
+
         const int gc = write_raw(
             "(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#" + std::to_string(un) +
             "))GLOBAL_UNIT_ASSIGNED_CONTEXT((#" + std::to_string(lu) + ",#" + std::to_string(au) + ",#" +
             std::to_string(su) + "))REPRESENTATION_CONTEXT('',''))"
         );
+
         const int ac = write_raw("APPLICATION_CONTEXT('core data for automotive mechanical design processes')");
         write_raw(
             "APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#" + std::to_string(ac) +
             ")"
         );
+
         const int pc = write_raw("PRODUCT_CONTEXT('',#" + std::to_string(ac) + ",'mechanical')");
         const int pr = write_raw("PRODUCT('" + name + "','" + name + "','',(#" + std::to_string(pc) + "))");
         const int pf = write_raw("PRODUCT_DEFINITION_FORMATION('','',#" + std::to_string(pr) + ")");
@@ -2866,6 +3002,7 @@ public:
 
         std::vector<int> items = {ax};
         items.insert(items.end(), bodies.begin(), bodies.end());
+
         const int rp = write_raw(rep_type + "('" + name + "'," + fmt_ref_list(items) + ",#" + std::to_string(gc) + ")");
         write_raw("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ps) + ",#" + std::to_string(rp) + ")");
 
@@ -2894,7 +3031,7 @@ public:
     }
 };
 
-/// Writes one BRep into a StepWriter: vertices, edges and surfaces once each, degenerated edges omitted, a wire of only degenerated edges as a VERTEX_LOOP.
+/// Write one BRep into a StepWriter: vertices, edges and surfaces once each, degenerated edges omitted, a wire of only degenerated edges as a VERTEX_LOOP.
 class BRepEmitter {
     StepWriter& w; // Entity writer.
     const BRep& brep; // Brep being emitted.
@@ -2903,6 +3040,8 @@ class BRepEmitter {
     std::map<int, int> sid; // Surface id by surface.
 
 public:
+
+    /// Construct over a writer and the brep to emit.
     BRepEmitter(StepWriter& writer, const BRep& b) : w(writer), brep(b) {}
 
     /// Return the VERTEX_POINT id of a brep vertex, emitting it once.
@@ -3030,6 +3169,7 @@ static std::vector<std::pair<std::vector<int>, bool>> emit_brep_shells(StepWrite
 
         for (const BRepRef& fr : brep.m_shells[si].faces) {
             in_shell[fr.index] = true;
+
             const int id = em.face_id(fr.index, fr.orientation);
 
             if (id >= 0)
@@ -3075,6 +3215,7 @@ static double vertex_diagonal(const BRep& brep) {
 
 /// Write the STEP text to a file.
 static void write_step_string(const std::string& content, const std::string& filepath) {
+
     std::ofstream out(filepath);
     out << content;
 }
@@ -3197,6 +3338,7 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
         ids.push_back(kv.first);
 
     std::sort(ids.begin(), ids.end());
+
     std::vector<int> shell_refs;
 
     for (int id : ids) {
@@ -3286,7 +3428,9 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
     std::vector<int> bodies;
     bool any_closed = false;
 
-    for (const auto& [ids, closed] : emit_brep_shells(w, brep)) {
+    for (const std::pair<std::vector<int>, bool>& group : emit_brep_shells(w, brep)) {
+        const std::vector<int>& ids = group.first;
+        const bool closed = group.second;
         const int body = w.write_body(ids, closed);
 
         if (body >= 0)
@@ -3317,9 +3461,12 @@ void write_file_step_breps(
 
         const std::vector<std::pair<std::vector<int>, bool>> groups = emit_brep_shells(w, *b);
         diag = std::max(diag, vertex_diagonal(*b));
+
         const int psa = w.color_style(b->surfacecolor.r, b->surfacecolor.g, b->surfacecolor.b);
 
-        for (const auto& [ids, closed] : groups) {
+        for (const std::pair<std::vector<int>, bool>& group : groups) {
+            const std::vector<int>& ids = group.first;
+            const bool closed = group.second;
             const int body = w.write_body(ids, closed);
 
             if (body >= 0)
