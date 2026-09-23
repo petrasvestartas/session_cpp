@@ -462,7 +462,7 @@ namespace session_cpp {
         MINI_CHECK(std::abs(half.volume() - 4.0) < 1e-9);
         MINI_CHECK(piece.is_solid());
         MINI_CHECK(piece.face_count() == 6);
-        MINI_CHECK(std::abs(piece.volume() - 6000000.0) < 0.01);
+        MINI_CHECK(std::abs(piece.volume() / 6000000.0 - 1.0) < 1e-6);
     }
 
     MINI_TEST("BRep", "Json Roundtrip") {
