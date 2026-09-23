@@ -9,8 +9,7 @@ namespace nurbsknot {
 
 constexpr double KNOT_TOLERANCE = Tolerance::ABSOLUTE / 10.0;
 constexpr double PIVOT_TOLERANCE = Tolerance::ZERO_TOLERANCE / 100.0;
-constexpr double POSITIVE_DEFINITE_TOLERANCE =
-    Tolerance::ABSOLUTE * Tolerance::ABSOLUTE * Tolerance::ZERO_TOLERANCE;
+constexpr double POSITIVE_DEFINITE_TOLERANCE = Tolerance::ABSOLUTE * Tolerance::ABSOLUTE * Tolerance::ZERO_TOLERANCE;
 
 static bool are_finite(const std::vector<double>& values, std::size_t count) {
 
@@ -39,7 +38,6 @@ static bool are_finite(const double* values, std::size_t count) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Construction
 // ═══════════════════════════════════════════════════════════════════════════
-
 double domain_tolerance(double a, double b) {
 
     if (a == b)
@@ -62,7 +60,6 @@ std::vector<double> make_clamped_uniform(int order, int cv_count, double delta) 
         return std::vector<double>();
 
     std::vector<double> nurbsknot(kc, 0.0);
-
     double k = 0.0;
 
     for (int i = order - 2; i < cv_count; i++) {
@@ -70,7 +67,8 @@ std::vector<double> make_clamped_uniform(int order, int cv_count, double delta) 
         k += delta;
     }
 
-    clamp(order, cv_count, nurbsknot, 2);
+    if (!clamp(order, cv_count, nurbsknot, 2))
+        return std::vector<double>();
 
     return nurbsknot;
 }
@@ -86,7 +84,6 @@ std::vector<double> make_periodic_uniform(int order, int cv_count, double delta)
         return std::vector<double>();
 
     std::vector<double> nurbsknot(kc, 0.0);
-
     double k = 0.0;
 
     for (int i = 0; i < kc; i++) {
@@ -127,7 +124,6 @@ bool clamp(int order, int cv_count, std::vector<double>& nurbsknot, int end) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Queries
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool is_valid(int order, int cv_count, const std::vector<double>& nurbsknot) {
 
     if (order < 2 || cv_count < order)
@@ -211,8 +207,8 @@ bool is_periodic(int order, int cv_count, const std::vector<double>& nurbsknot) 
     return true;
 }
 
-std::pair<double, double> get_domain(int order, int cv_count,
-                                     const std::vector<double>& nurbsknot) {
+std::pair<double, double> get_domain(int order, int cv_count, const std::vector<double>& nurbsknot) {
+
     if (order < 2 || cv_count < order)
         return std::make_pair(0.0, 0.0);
 
@@ -240,7 +236,9 @@ bool set_domain(int order, int cv_count, std::vector<double>& nurbsknot, double 
     if (kc == 0 || nurbsknot.size() != static_cast<std::size_t>(kc) || !are_finite(nurbsknot, kc))
         return false;
 
-    const auto [old_t0, old_t1] = get_domain(order, cv_count, nurbsknot);
+    const std::pair<double, double> domain = get_domain(order, cv_count, nurbsknot);
+    const double old_t0 = domain.first;
+    const double old_t1 = domain.second;
 
     if (old_t1 <= old_t0)
         return false;
@@ -274,22 +272,19 @@ bool reverse(int order, int cv_count, std::vector<double>& nurbsknot) {
     return true;
 }
 
-int multiplicity(int order, int cv_count, const std::vector<double>& nurbsknot,
-                 int nurbsknot_index) {
+int multiplicity(int order, int cv_count, const std::vector<double>& nurbsknot, int nurbsknot_index) {
+
     if (order < 2 || cv_count < order)
         return 0;
 
     const int kc = nurbsknot_count(order, cv_count);
 
-    if (kc == 0 || nurbsknot.size() != static_cast<std::size_t>(kc) || nurbsknot_index < 0 ||
-        nurbsknot_index >= kc || !are_finite(nurbsknot, kc))
-
+    if (kc == 0 || nurbsknot.size() != static_cast<std::size_t>(kc) || nurbsknot_index < 0 || nurbsknot_index >= kc || !are_finite(nurbsknot, kc))
         return 0;
 
     const double nurbsknot_value = nurbsknot[nurbsknot_index];
     const double tol = PIVOT_TOLERANCE;
     int mult = 1;
-
     int i = nurbsknot_index - 1;
 
     while (i >= 0 && std::fabs(nurbsknot[i] - nurbsknot_value) < tol) {
@@ -370,8 +365,8 @@ int find_span(int order, int cv_count, const std::vector<double>& nurbsknot, dou
     return low;
 }
 
-std::vector<double> get_greville_abcissae(int order, int cv_count,
-                                          const std::vector<double>& nurbsknot, bool periodic) {
+std::vector<double> get_greville_abcissae(int order, int cv_count, const std::vector<double>& nurbsknot, bool periodic) {
+
     if (order < 2 || cv_count < order)
         return std::vector<double>();
 
@@ -399,23 +394,17 @@ std::vector<double> get_greville_abcissae(int order, int cv_count,
 // ═══════════════════════════════════════════════════════════════════════════
 // Interpolation
 // ═══════════════════════════════════════════════════════════════════════════
+bool solve_tridiagonal(int dim, int n, std::vector<double>& lower, std::vector<double>& diag, std::vector<double>& upper, const std::vector<double>& rhs, std::vector<double>& solution) {
 
-bool solve_tridiagonal(int dim, int n, std::vector<double>& lower, std::vector<double>& diag,
-                       std::vector<double>& upper, const std::vector<double>& rhs,
-                       std::vector<double>& solution) {
     if (n < 1 || dim < 1)
         return false;
 
     const std::size_t rhs_count = static_cast<std::size_t>(n) * static_cast<std::size_t>(dim);
 
-    if (lower.size() < static_cast<std::size_t>(n) || diag.size() < static_cast<std::size_t>(n) ||
-        upper.size() < static_cast<std::size_t>(n) || rhs.size() < rhs_count)
-
+    if (lower.size() < static_cast<std::size_t>(n) || diag.size() < static_cast<std::size_t>(n) || upper.size() < static_cast<std::size_t>(n) || rhs.size() < rhs_count)
         return false;
 
-    if (!are_finite(lower, n) || !are_finite(diag, n) || !are_finite(upper, n) ||
-        !are_finite(rhs, rhs_count))
-
+    if (!are_finite(lower, n) || !are_finite(diag, n) || !are_finite(upper, n) || !are_finite(rhs, rhs_count))
         return false;
 
     const double eps = PIVOT_TOLERANCE;
@@ -447,26 +436,25 @@ bool solve_tridiagonal(int dim, int n, std::vector<double>& lower, std::vector<d
     }
 
     for (int d = 0; d < dim; d++)
-        solution[static_cast<std::size_t>(n - 1) * dim + d] =
-            d_star[static_cast<std::size_t>(n - 1) * dim + d];
+        solution[static_cast<std::size_t>(n - 1) * dim + d] = d_star[static_cast<std::size_t>(n - 1) * dim + d];
 
-    for (int i = n - 2; i >= 0; i--)
+    for (int i = n - 2; i >= 0; i--) {
         for (int d = 0; d < dim; d++) {
             const std::size_t index = static_cast<std::size_t>(i) * dim + d;
             const std::size_t next = static_cast<std::size_t>(i + 1) * dim + d;
             solution[index] = d_star[index] - c_star[i] * solution[next];
         }
+    }
 
     return true;
 }
 
-std::vector<double> compute_parameters(const double* points, int point_count, int dim,
-                                       CurveNurbsKnotStyle style) {
+std::vector<double> compute_parameters(const double* points, int point_count, int dim, CurveNurbsKnotStyle style) {
+
     if (point_count < 1 || dim < 1)
         return std::vector<double>();
 
-    const std::size_t value_count =
-        static_cast<std::size_t>(point_count) * static_cast<std::size_t>(dim);
+    const std::size_t value_count = static_cast<std::size_t>(point_count) * static_cast<std::size_t>(dim);
 
     if (!are_finite(points, value_count))
         return std::vector<double>();
@@ -489,7 +477,6 @@ std::vector<double> compute_parameters(const double* points, int point_count, in
         }
 
         dist = std::sqrt(dist);
-
         double delta = dist;
 
         if (base_style == 0)
@@ -532,8 +519,8 @@ std::vector<double> build_interp_nurbsknots(const std::vector<double>& params, i
     return nurbsknots;
 }
 
-std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, int span,
-                               double t) {
+std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, int span, double t) {
+
     if (order < 1 || span < 0 || !std::isfinite(t))
         return std::vector<double>();
 
@@ -558,7 +545,6 @@ std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, 
     std::vector<double> basis(order, 0.0);
     std::vector<double> left(order, 0.0);
     std::vector<double> right(order, 0.0);
-
     const std::size_t k_offset = first + static_cast<std::size_t>(order) - 2;
     basis[0] = 1.0;
 
@@ -583,9 +569,8 @@ std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fitting
 // ═══════════════════════════════════════════════════════════════════════════
+static std::vector<double> build_fitted_nurbsknots(const std::vector<double>& params, int num_cvs, int degree) {
 
-static std::vector<double> build_fitted_nurbsknots(const std::vector<double>& params, int num_cvs,
-                                                   int degree) {
     const int m = static_cast<int>(params.size());
     const int n_interior = num_cvs - degree - 1;
     const int order = degree + 1;
@@ -637,8 +622,8 @@ static double turn_angle(const double* points, int dim, int prev, int i, int nex
     return std::acos(std::max(-1.0, std::min(1.0, dot / (len1 * len2))));
 }
 
-static double locate_target(const std::vector<double>& params, const std::vector<double>& cum,
-                            int last, double target) {
+static double locate_target(const std::vector<double>& params, const std::vector<double>& cum, int last, double target) {
+
     int lo = 0;
     int hi = last;
 
@@ -656,14 +641,11 @@ static double locate_target(const std::vector<double>& params, const std::vector
     return params[lo] + frac * (params[lo + 1] - params[lo]);
 }
 
-std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& params,
-                                                     const double* points, int point_count, int dim,
-                                                     int num_cvs, int degree, double scale) {
+std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& params, const double* points, int point_count, int dim, int num_cvs, int degree, double scale) {
+
     const int m = point_count;
 
-    if (m < 2 || dim < 1 || num_cvs <= degree || degree < 1 || !std::isfinite(scale) ||
-        params.size() < static_cast<std::size_t>(m) || !are_finite(params, m))
-
+    if (m < 2 || dim < 1 || num_cvs <= degree || degree < 1 || !std::isfinite(scale) || params.size() < static_cast<std::size_t>(m) || !are_finite(params, m))
         return std::vector<double>();
 
     if (m < 3 || !points) {
@@ -689,7 +671,6 @@ std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& 
     }
 
     const double total = cum[m - 1];
-
     const int n_interior = num_cvs - degree - 1;
     const int order = degree + 1;
     const int kc = nurbsknot_count(order, num_cvs);
@@ -703,8 +684,7 @@ std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& 
         nurbsknots[i] = params[0];
 
     for (int j = 1; j <= n_interior; j++)
-        nurbsknots[degree - 1 + j] =
-            locate_target(params, cum, m - 2, total * j / (n_interior + 1));
+        nurbsknots[degree - 1 + j] = locate_target(params, cum, m - 2, total * j / (n_interior + 1));
 
     for (int i = num_cvs - 1; i < kc; i++)
         nurbsknots[i] = params[m - 1];
@@ -712,14 +692,9 @@ std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& 
     return nurbsknots;
 }
 
-std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<double>& params,
-                                                              const double* points, int n, int dim,
-                                                              int num_cvs, int degree,
-                                                              double scale) {
-    if (n < 0 || degree < 1 || degree - 1 > num_cvs || degree == std::numeric_limits<int>::max() ||
-        !std::isfinite(scale) || params.size() <= static_cast<std::size_t>(n) ||
-        !are_finite(params, static_cast<std::size_t>(n) + 1))
+std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<double>& params, const double* points, int n, int dim, int num_cvs, int degree, double scale) {
 
+    if (n < 0 || degree < 1 || degree - 1 > num_cvs || degree == std::numeric_limits<int>::max() || !std::isfinite(scale) || params.size() <= static_cast<std::size_t>(n) || !are_finite(params, static_cast<std::size_t>(n) + 1))
         return std::vector<double>();
 
     const long long kc64 = static_cast<long long>(num_cvs) + 2LL * degree - 1;
@@ -765,7 +740,6 @@ std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<
     }
 
     const double total = cum[n];
-
     std::vector<double> base(num_cvs, 0.0);
 
     for (int j = 0; j < num_cvs; j++)
@@ -787,14 +761,12 @@ std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<
     return nurbsknots;
 }
 
-bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band,
-                      std::vector<double>& rhs) {
+bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, std::vector<double>& rhs) {
+
     if (dim < 1 || n < 1 || half_bw < 0 || half_bw == std::numeric_limits<int>::max())
         return false;
 
-    const std::size_t band_count =
-        static_cast<std::size_t>(n) * (static_cast<std::size_t>(half_bw) + 1);
-
+    const std::size_t band_count = static_cast<std::size_t>(n) * (static_cast<std::size_t>(half_bw) + 1);
     const std::size_t rhs_count = static_cast<std::size_t>(n) * static_cast<std::size_t>(dim);
 
     if (!are_finite(band, band_count) || !are_finite(rhs, rhs_count))
@@ -832,8 +804,7 @@ bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band,
             double sum = 0.0;
 
             for (int k = std::max(0, i - half_bw); k < i; k++)
-                sum += band[static_cast<std::size_t>(i) * bw1 + i - k] *
-                       rhs[static_cast<std::size_t>(k) * dim + d];
+                sum += band[static_cast<std::size_t>(i) * bw1 + i - k] * rhs[static_cast<std::size_t>(k) * dim + d];
 
             const std::size_t index = static_cast<std::size_t>(i) * dim + d;
             rhs[index] = (rhs[index] - sum) / band[static_cast<std::size_t>(i) * bw1];
@@ -843,11 +814,10 @@ bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band,
     for (int i = n - 1; i >= 0; i--) {
         for (int d = 0; d < dim; d++) {
             double sum = 0.0;
-            const int upper = static_cast<int>(
-                std::min(static_cast<std::size_t>(n), static_cast<std::size_t>(i) + bw1));
+            const int upper = static_cast<int>(std::min(static_cast<std::size_t>(n), static_cast<std::size_t>(i) + bw1));
+
             for (int k = i + 1; k < upper; k++)
-                sum += band[static_cast<std::size_t>(k) * bw1 + k - i] *
-                       rhs[static_cast<std::size_t>(k) * dim + d];
+                sum += band[static_cast<std::size_t>(k) * bw1 + k - i] * rhs[static_cast<std::size_t>(k) * dim + d];
 
             const std::size_t index = static_cast<std::size_t>(i) * dim + d;
             rhs[index] = (rhs[index] - sum) / band[static_cast<std::size_t>(i) * bw1];

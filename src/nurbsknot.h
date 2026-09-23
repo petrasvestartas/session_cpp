@@ -8,7 +8,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Knot styles
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Parameter spacing for interpolated curves.
 enum class CurveNurbsKnotStyle {
     Uniform = 0,                // Equal parameter spacing.
@@ -30,7 +29,6 @@ namespace nurbsknot {
 // ═══════════════════════════════════════════════════════════════════════════
 // Construction
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Return the number of nurbsknots for an order and control-point count.
 inline int nurbsknot_count(int order, int cv_count) {
 
@@ -57,7 +55,6 @@ bool clamp(int order, int cv_count, std::vector<double>& nurbsknot, int end = 2)
 // ═══════════════════════════════════════════════════════════════════════════
 // Queries
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Return whether the vector has the required length, finite values, and valid spans.
 bool is_valid(int order, int cv_count, const std::vector<double>& nurbsknot);
 
@@ -77,33 +74,25 @@ bool set_domain(int order, int cv_count, std::vector<double>& nurbsknot, double 
 bool reverse(int order, int cv_count, std::vector<double>& nurbsknot);
 
 /// Return the multiplicity at nurbsknot_index, or zero for invalid arguments.
-int multiplicity(int order, int cv_count, const std::vector<double>& nurbsknot,
-                 int nurbsknot_index);
+int multiplicity(int order, int cv_count, const std::vector<double>& nurbsknot, int nurbsknot_index);
 
 /// Return the number of non-empty spans, or zero for invalid arguments.
 int span_count(int order, int cv_count, const std::vector<double>& nurbsknot);
 
 /// Return the index of the span containing finite parameter t in a valid nondecreasing nurbsknot vector.
-int find_span(int order, int cv_count, const std::vector<double>& nurbsknot, double t, int side = 0,
-              int hint = 0);
+int find_span(int order, int cv_count, const std::vector<double>& nurbsknot, double t, int side = 0, int hint = 0);
 
 /// Return the Greville abscissae, or an empty vector for invalid arguments.
-std::vector<double> get_greville_abcissae(int order, int cv_count,
-                                          const std::vector<double>& nurbsknot,
-                                          bool periodic = false);
+std::vector<double> get_greville_abcissae(int order, int cv_count, const std::vector<double>& nurbsknot, bool periodic = false);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Interpolation
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Solve a finite tridiagonal system with the Thomas algorithm, returning false if invalid or singular.
-bool solve_tridiagonal(int dim, int n, std::vector<double>& lower, std::vector<double>& diag,
-                       std::vector<double>& upper, const std::vector<double>& rhs,
-                       std::vector<double>& solution);
+bool solve_tridiagonal(int dim, int n, std::vector<double>& lower, std::vector<double>& diag, std::vector<double>& upper, const std::vector<double>& rhs, std::vector<double>& solution);
 
 /// Return one parameter per point from a flat point_count by dim coordinate array.
-std::vector<double> compute_parameters(const double* points, int point_count, int dim,
-                                       CurveNurbsKnotStyle style);
+std::vector<double> compute_parameters(const double* points, int point_count, int dim, CurveNurbsKnotStyle style);
 
 /// Return a clamped interpolation nurbsknot vector with natural end conditions.
 std::vector<double> build_interp_nurbsknots(const std::vector<double>& params, int degree);
@@ -114,21 +103,14 @@ std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fitting
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Return a clamped fitting vector with denser nurbsknots where the points turn.
-std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& params,
-                                                     const double* points, int point_count, int dim,
-                                                     int num_cvs, int degree, double scale = 3.0);
+std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& params, const double* points, int point_count, int dim, int num_cvs, int degree, double scale = 3.0);
 
 /// Return a periodic fitting vector with denser nurbsknots where the closed points turn.
-std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<double>& params,
-                                                              const double* points, int n, int dim,
-                                                              int num_cvs, int degree,
-                                                              double scale = 3.0);
+std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<double>& params, const double* points, int n, int dim, int num_cvs, int degree, double scale = 3.0);
 
 /// Solve a finite banded symmetric positive-definite system in place with Cholesky factorization.
-bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band,
-                      std::vector<double>& rhs);
+bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, std::vector<double>& rhs);
 
 } // namespace nurbsknot
 
