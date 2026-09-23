@@ -18,10 +18,17 @@
 #include <utility>
 #include <vector>
 
+namespace session_proto {
+class NurbsCurve;
+}
+
 namespace session_cpp {
 
 /// A NURBS curve: OpenNURBS layout, nurbsknot count = order + cv_count - 2, homogeneous CVs when rational.
 class NurbsCurve {
+private:
+  mutable std::string _guid; // Lazily minted GUID.
+
 public:
   std::string name = "my_nurbscurve"; // Curve name.
   double width = 1.0; // Display width.
@@ -35,6 +42,9 @@ public:
   std::vector<double> m_nurbsknot; // NurbsKnot vector, order + cv_count - 2 values.
   std::vector<double> m_cv; // Flat CV array, homogeneous when rational.
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Constructors
+  // ═══════════════════════════════════════════════════════════════════════════
   /// Construct an empty curve.
   NurbsCurve();
 
@@ -56,32 +66,9 @@ public:
   /// Destroy the curve.
   ~NurbsCurve();
 
-  /// Return whether the lazy guid has been created.
-  bool has_guid() const { return !_guid.empty(); }
-
-  /// Return the guid, creating it on first access.
-  const std::string& guid() const {
-    if (_guid.empty())
-      _guid = ::guid();
-
-    return _guid;
-  }
-
-  /// Return the mutable guid, creating it on first access.
-  std::string& guid() {
-    if (_guid.empty())
-      _guid = ::guid();
-
-    return _guid;
-  }
-
-  /// Clear the guid so a fresh one mints lazily on the next read.
-  void refresh_guid() { _guid.clear(); }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // Static constructors
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Construct a clamped or periodic uniform curve through control points, domain rescaled to [0, arc length].
   static NurbsCurve create(bool periodic, int degree, const std::vector<Point>& points, int dimension = 3, double nurbsknot_delta = 1.0);
 
@@ -100,7 +87,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Operators
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Compare name, width, colors, layout, nurbsknots and CVs to 1e-12; guid ignored.
   bool operator==(const NurbsCurve& other) const;
 
@@ -110,7 +96,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Transformation
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Transform in place.
   bool transform(const Xform& xform);
 
@@ -120,7 +105,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Initialization
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Zero every field.
   void initialize();
 
@@ -139,7 +123,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Boolean queries
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Return whether the layout, nurbsknots and CVs are consistent.
   bool is_valid() const;
 
@@ -188,6 +171,29 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Accessors
   // ═══════════════════════════════════════════════════════════════════════════
+  /// Return whether the lazy guid has been created.
+  bool has_guid() const { return !_guid.empty(); }
+
+  /// Return the guid, creating it on first access.
+  const std::string& guid() const {
+
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
+
+  /// Return the mutable guid, creating it on first access.
+  std::string& guid() {
+
+    if (_guid.empty())
+      _guid = ::guid();
+
+    return _guid;
+  }
+
+  /// Clear the guid so a fresh one mints lazily on the next read.
+  void refresh_guid() { _guid.clear(); }
 
   /// Return the coordinate dimension.
   int dimension() const { return m_dim; }
@@ -213,7 +219,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Control vertex access
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Return the mutable pointer to the CV doubles, nullptr when out of range.
   double* cv(int cv_index);
 
@@ -244,7 +249,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // NurbsKnot access
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Return the nurbsknot at nurbsknot_index.
   double nurbsknot(int nurbsknot_index) const;
 
@@ -284,7 +288,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Domain
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Return the domain (t0, t1).
   std::pair<double, double> domain() const;
 
@@ -306,7 +309,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Geometry
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Find the first interior nurbsknot in (t0, t1) whose multiplicity breaks continuity_type.
   bool get_next_discontinuity(int continuity_type, double t0, double t1, double& t_out, int* hint = nullptr, double cos_angle_tolerance = 0.99984769515639123, double curvature_tolerance = 1e-8) const;
 
@@ -337,7 +339,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Evaluation
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Return the point at parameter t.
   Point point_at(double t) const;
 
@@ -389,7 +390,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Modifications
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Reverse the direction keeping the domain.
   bool reverse();
 
@@ -426,7 +426,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // JSON
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Serialize to a JSON object.
   nlohmann::ordered_json jsondump() const;
 
@@ -448,6 +447,11 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // Protobuf
   // ═══════════════════════════════════════════════════════════════════════════
+  /// Convert to the protobuf message.
+  session_proto::NurbsCurve to_proto() const;
+
+  /// Construct from the protobuf message.
+  static NurbsCurve from_proto(const session_proto::NurbsCurve& proto);
 
   /// Serialize to protobuf bytes.
   std::string pb_dumps() const;
@@ -464,7 +468,6 @@ public:
   // ═══════════════════════════════════════════════════════════════════════════
   // String
   // ═══════════════════════════════════════════════════════════════════════════
-
   /// Return "NurbsCurve(name=..., degree=..., cvs=...)".
   std::string str() const;
 
@@ -472,8 +475,6 @@ public:
   std::string repr() const;
 
 private:
-  mutable std::string _guid; // Lazy guid.
-
   /// Return whether the span has full end multiplicity and its CVs lie on its chord.
   bool span_is_linear(int span_index, double min_length, double tolerance) const;
 
@@ -494,6 +495,9 @@ private:
 
   /// Reshape one span's CVs so it starts (side > 0) or ends (side < 0) at t (OpenNURBS ON_EvaluateNurbsDeBoor).
   static bool evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride, double* cv, const double* nurbsknot, int side, double t);
+
+  /// Solve matrix * x = rhs in place by Gaussian elimination with partial pivoting, dim values per row.
+  static bool solve_dense(std::vector<std::vector<double>>& matrix, std::vector<double>& rhs, int n, int dim);
 
   /// Return the un-normalized derivative by finite difference with step h.
   Vector derivative_at(double t, double h) const;
@@ -520,8 +524,9 @@ std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::NurbsCurve> {
-  constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
-  auto format(const session_cpp::NurbsCurve& o, fmt::format_context& ctx) const {
-    return fmt::format_to(ctx.out(), "{}", o.str());
+  constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+
+  fmt::format_context::iterator format(const session_cpp::NurbsCurve& curve, fmt::format_context& ctx) const {
+    return fmt::format_to(ctx.out(), "{}", curve.str());
   }
 };

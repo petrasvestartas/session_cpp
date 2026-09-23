@@ -3,6 +3,7 @@
 #include "nurbscurve.pb.h"
 #include <cstring>
 #include <fstream>
+#include <stdexcept>
 
 namespace session_cpp {
 
@@ -11,20 +12,22 @@ constexpr double SQRT_EPSILON = 1.490116119385e-8;
 // ═══════════════════════════════════════════════════════════════════════════
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 NurbsCurve::NurbsCurve() { initialize(); }
 
 NurbsCurve::NurbsCurve(int dimension, bool is_rational, int order, int cv_count) {
+
   initialize();
   create(dimension, is_rational, order, cv_count);
 }
 
 NurbsCurve::NurbsCurve(const NurbsCurve& other) {
+
   initialize();
   deep_copy_from(other);
 }
 
 NurbsCurve& NurbsCurve::operator=(const NurbsCurve& other) {
+
   if (this != &other)
     deep_copy_from(other);
 
@@ -36,7 +39,6 @@ NurbsCurve::~NurbsCurve() { destroy(); }
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 NurbsCurve NurbsCurve::create(bool periodic, int degree, const std::vector<Point>& points, int dimension, double nurbsknot_delta) {
 
   NurbsCurve curve;
@@ -161,44 +163,8 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points, Cur
         cv[i * dim + d] = points[i][d];
     }
 
-    for (int col = 0; col < n; col++) {
-      int pivot = col;
-
-      for (int row = col + 1; row < n; row++)
-        if (std::fabs(A[row][col]) > std::fabs(A[pivot][col]))
-          pivot = row;
-
-      if (pivot != col) {
-        std::swap(A[col], A[pivot]);
-
-        for (int d = 0; d < dim; d++)
-          std::swap(cv[col * dim + d], cv[pivot * dim + d]);
-      }
-
-      if (std::fabs(A[col][col]) < 1e-300)
-        return NurbsCurve();
-
-      for (int row = col + 1; row < n; row++) {
-        const double factor = A[row][col] / A[col][col];
-
-        for (int j = col; j < n; j++)
-          A[row][j] -= factor * A[col][j];
-
-        for (int d = 0; d < dim; d++)
-          cv[row * dim + d] -= factor * cv[col * dim + d];
-      }
-    }
-
-    for (int i = n - 1; i >= 0; i--) {
-      for (int d = 0; d < dim; d++) {
-        double sum = cv[i * dim + d];
-
-        for (int j = i + 1; j < n; j++)
-          sum -= A[i][j] * cv[j * dim + d];
-
-        cv[i * dim + d] = sum / A[i][i];
-      }
-    }
+    if (!solve_dense(A, cv, n, dim))
+      return NurbsCurve();
 
     NurbsCurve curve(dim, false, order, cv_count);
 
@@ -241,8 +207,9 @@ NurbsCurve NurbsCurve::create_interpolated(const std::vector<Point>& points, Cur
     s1 = -(params[n - 1] - params[n - 2]) / 3.0;
   } else {
     tan_start = bessel_tangent(points, 0, 1, 2);
+
     const Vector end_raw = bessel_tangent(points, n - 1, n - 2, n - 3);
-    tan_end = Vector(-end_raw[0], -end_raw[1], -end_raw[2]);
+    tan_end = -end_raw;
     s0 = points[0].distance(points[1]) / 3.0;
     s1 = -points[n - 1].distance(points[n - 2]) / 3.0;
   }
@@ -419,44 +386,8 @@ NurbsCurve NurbsCurve::create_fitted(const std::vector<Point>& points, int num_c
       }
     }
 
-    for (int col = 0; col < num_cvs; col++) {
-      int pivot = col;
-
-      for (int row = col + 1; row < num_cvs; row++)
-        if (std::fabs(NtN[row][col]) > std::fabs(NtN[pivot][col]))
-          pivot = row;
-
-      if (pivot != col) {
-        std::swap(NtN[col], NtN[pivot]);
-
-        for (int d = 0; d < dim; d++)
-          std::swap(cv[col * dim + d], cv[pivot * dim + d]);
-      }
-
-      if (std::fabs(NtN[col][col]) < 1e-300)
-        return NurbsCurve();
-
-      for (int row = col + 1; row < num_cvs; row++) {
-        const double factor = NtN[row][col] / NtN[col][col];
-
-        for (int j = col; j < num_cvs; j++)
-          NtN[row][j] -= factor * NtN[col][j];
-
-        for (int d = 0; d < dim; d++)
-          cv[row * dim + d] -= factor * cv[col * dim + d];
-      }
-    }
-
-    for (int i = num_cvs - 1; i >= 0; i--) {
-      for (int d = 0; d < dim; d++) {
-        double sum = cv[i * dim + d];
-
-        for (int j = i + 1; j < num_cvs; j++)
-          sum -= NtN[i][j] * cv[j * dim + d];
-
-        cv[i * dim + d] = sum / NtN[i][i];
-      }
-    }
+    if (!solve_dense(NtN, cv, num_cvs, dim))
+      return NurbsCurve();
 
     NurbsCurve curve(dim, false, order, cv_count);
 
@@ -603,6 +534,7 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
       continue;
 
     used[i] = true;
+
     std::vector<NurbsCurve> chain;
     chain.push_back(segs[i]);
 
@@ -681,7 +613,8 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
       const int stride = joined.m_cv_stride;
       const int cvdim = joined.cv_size();
       const double a1 = joined.domain_end();
-      const auto [s0, s1] = c.domain();
+      const double s0 = c.domain_start();
+      const double s1 = c.domain_end();
       c.set_domain(a1, a1 + (s1 - s0));
 
       if (rational) {
@@ -725,7 +658,6 @@ std::vector<NurbsCurve> NurbsCurve::join(const std::vector<NurbsCurve>& curves, 
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsCurve::operator==(const NurbsCurve& other) const {
 
   if (m_dim != other.m_dim || m_is_rat != other.m_is_rat)
@@ -771,7 +703,6 @@ bool NurbsCurve::operator!=(const NurbsCurve& other) const { return !(*this == o
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsCurve::transform(const Xform& xform) {
 
   for (int i = 0; i < m_cv_count; i++) {
@@ -792,6 +723,7 @@ bool NurbsCurve::transform(const Xform& xform) {
 }
 
 NurbsCurve NurbsCurve::transformed(const Xform& xform) const {
+
   NurbsCurve result = *this;
   result.transform(xform);
 
@@ -801,7 +733,6 @@ NurbsCurve NurbsCurve::transformed(const Xform& xform) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Initialization
 // ═══════════════════════════════════════════════════════════════════════════
-
 void NurbsCurve::initialize() {
 
   m_dim = 0;
@@ -881,6 +812,7 @@ bool NurbsCurve::create_periodic_uniform(int dimension, int order, const std::ve
 }
 
 void NurbsCurve::destroy() {
+
   m_nurbsknot.clear();
   m_cv.clear();
   initialize();
@@ -889,7 +821,6 @@ void NurbsCurve::destroy() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Boolean queries
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsCurve::is_valid() const {
 
   if (m_dim <= 0)
@@ -921,6 +852,7 @@ bool NurbsCurve::is_valid() const {
 }
 
 bool NurbsCurve::is_closed() const {
+
   if (!is_valid())
     return false;
 
@@ -962,7 +894,7 @@ bool NurbsCurve::is_linear(double tolerance) const {
 
   const Point p0 = get_cv(0);
   const Point p1 = get_cv(m_cv_count - 1);
-  const Vector line_vec(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+  const Vector line_vec = p1 - p0;
   const double line_length = line_vec.magnitude();
 
   if (line_length < tolerance)
@@ -970,7 +902,7 @@ bool NurbsCurve::is_linear(double tolerance) const {
 
   for (int i = 1; i < m_cv_count - 1; i++) {
     const Point p = get_cv(i);
-    const Vector v(p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]);
+    const Vector v = p - p0;
 
     if (line_vec.cross(v).magnitude() / line_length > tolerance)
       return false;
@@ -987,8 +919,8 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
   const Point p0 = get_cv(0);
   const Point p1 = get_cv(m_cv_count / 2);
   const Point p2 = get_cv(m_cv_count - 1);
-  const Vector v1(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-  const Vector v2(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
+  const Vector v1 = p1 - p0;
+  const Vector v2 = p2 - p0;
   Vector normal = v1.cross(v2);
 
   if (normal.magnitude() < tolerance)
@@ -996,7 +928,7 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
 
   for (int i = 0; i < m_cv_count; i++) {
     const Point p = get_cv(i);
-    const Vector v(p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]);
+    const Vector v = p - p0;
 
     if (std::abs(v.dot(normal)) / normal.magnitude() > tolerance)
       return false;
@@ -1004,6 +936,7 @@ bool NurbsCurve::is_planar(Plane* plane, double tolerance) const {
 
   if (plane) {
     normal.normalize_self();
+
     Vector x_axis = v1;
     x_axis.normalize_self();
     *plane = Plane(p0, x_axis, normal.cross(x_axis));
@@ -1031,12 +964,13 @@ bool NurbsCurve::is_arc(Plane* plane, double tolerance) const {
   if (!is_planar(&test_plane, tolerance))
     return false;
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   const Point p0 = point_at(t0);
   const Point p1 = point_at((t0 + t1) * 0.5);
   const Point p2 = point_at(t1);
-  const Vector d1(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
-  const Vector d2(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]);
+  const Vector d1 = p1 - p0;
+  const Vector d2 = p2 - p1;
   Vector normal = d1.cross(d2);
 
   if (normal.magnitude() < Tolerance::ZERO_TOLERANCE)
@@ -1044,8 +978,8 @@ bool NurbsCurve::is_arc(Plane* plane, double tolerance) const {
 
   normal = normal.normalized();
 
-  const Point m1((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5);
-  const Point m2((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5, (p1[2] + p2[2]) * 0.5);
+  const Point m1 = Point::sum(p0, p1) * 0.5;
+  const Point m2 = Point::sum(p1, p2) * 0.5;
   const Vector perp1 = d1.cross(normal).normalized();
   const Vector perp2 = d2.cross(normal).normalized();
   double denom = perp1[0] * perp2[1] - perp1[1] * perp2[0];
@@ -1059,7 +993,7 @@ bool NurbsCurve::is_arc(Plane* plane, double tolerance) const {
   const double dx = m2[0] - m1[0];
   const double dy = m2[1] - m1[1];
   const double s = (dx * perp2[1] - dy * perp2[0]) / denom;
-  const Point center(m1[0] + s * perp1[0], m1[1] + s * perp1[1], m1[2] + s * perp1[2]);
+  const Point center = m1 + perp1 * s;
   const double radius = center.distance(p0);
 
   if (radius < Tolerance::ZERO_TOLERANCE)
@@ -1088,7 +1022,7 @@ bool NurbsCurve::is_in_plane(const Plane& test_plane, double tolerance) const {
 
   for (int i = 0; i < m_cv_count; i++) {
     const Point pt = get_cv(i);
-    const Vector v(pt[0] - test_plane.origin()[0], pt[1] - test_plane.origin()[1], pt[2] - test_plane.origin()[2]);
+    const Vector v = pt - test_plane.origin();
 
     if (std::abs(v.dot(test_plane.z_axis())) > tolerance)
       return false;
@@ -1103,7 +1037,8 @@ bool NurbsCurve::is_natural(int end) const {
     return false;
 
   const double tol_factor = 1e-8;
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
 
   for (int pass = ((end == 0 || end == 2) ? 0 : 1); pass < ((end == 1 || end == 2) ? 2 : 1); ++pass) {
     const double t = (pass == 0) ? t0 : t1;
@@ -1236,7 +1171,8 @@ bool NurbsCurve::is_continuous(int continuity_type, double t, int* hint, double 
   if (!is_valid())
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
 
   if (t < d0 || t > d1)
     return false;
@@ -1290,6 +1226,7 @@ bool NurbsCurve::is_valid_nurbsknot_vector() const {
 }
 
 bool NurbsCurve::is_clamped(int end) const {
+
   if (!is_valid())
     return false;
 
@@ -1299,7 +1236,6 @@ bool NurbsCurve::is_clamped(int end) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-
 int NurbsCurve::cv_size() const { return (m_dim > 0) ? (m_is_rat ? (m_dim + 1) : m_dim) : 0; }
 
 int NurbsCurve::nurbsknot_count() const { return m_order + m_cv_count - 2; }
@@ -1319,8 +1255,8 @@ int NurbsCurve::span_count() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Control vertex access
 // ═══════════════════════════════════════════════════════════════════════════
-
 double* NurbsCurve::cv(int cv_index) {
+
   if (cv_index < 0 || cv_index >= m_cv_count)
     return nullptr;
 
@@ -1328,6 +1264,7 @@ double* NurbsCurve::cv(int cv_index) {
 }
 
 const double* NurbsCurve::cv(int cv_index) const {
+
   if (cv_index < 0 || cv_index >= m_cv_count)
     return nullptr;
 
@@ -1455,8 +1392,8 @@ bool NurbsCurve::set_weight(int cv_index, double weight) {
 // ═══════════════════════════════════════════════════════════════════════════
 // NurbsKnot access
 // ═══════════════════════════════════════════════════════════════════════════
-
 double NurbsCurve::nurbsknot(int nurbsknot_index) const {
+
   if (nurbsknot_index < 0 || nurbsknot_index >= static_cast<int>(m_nurbsknot.size()))
     return 0.0;
 
@@ -1519,7 +1456,8 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
   if (nurbsknot_multiplicity < 1 || nurbsknot_multiplicity > p)
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
 
   if (nurbsknot_value < d0 || nurbsknot_value > d1)
     return false;
@@ -1599,6 +1537,7 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
 
     m_cv_count = new_cv_count;
     m_cv = std::move(cv_new);
+
     const int kc = m_order + m_cv_count - 2;
     std::vector<double> nurbsknot_new(kc);
 
@@ -1654,6 +1593,7 @@ bool NurbsCurve::get_greville_abcissae(std::vector<double>& abcissae) const {
 }
 
 std::vector<double> NurbsCurve::get_greville_abcissae() const {
+
   std::vector<double> result;
   get_greville_abcissae(result);
 
@@ -1663,8 +1603,8 @@ std::vector<double> NurbsCurve::get_greville_abcissae() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Domain
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::pair<double, double> NurbsCurve::domain() const {
+
   if (m_nurbsknot.empty())
     return {0.0, 0.0};
 
@@ -1672,6 +1612,7 @@ std::pair<double, double> NurbsCurve::domain() const {
 }
 
 double NurbsCurve::domain_start() const {
+
   if (m_nurbsknot.empty())
     return 0.0;
 
@@ -1679,6 +1620,7 @@ double NurbsCurve::domain_start() const {
 }
 
 double NurbsCurve::domain_end() const {
+
   if (m_nurbsknot.empty())
     return 0.0;
 
@@ -1686,6 +1628,7 @@ double NurbsCurve::domain_end() const {
 }
 
 double NurbsCurve::domain_middle() const {
+
   if (m_nurbsknot.empty())
     return 0.0;
 
@@ -1697,7 +1640,8 @@ bool NurbsCurve::set_domain(double t0, double t1) {
   if (t0 >= t1 || !is_valid())
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
 
   if (d0 >= d1)
     return false;
@@ -1735,7 +1679,6 @@ std::vector<double> NurbsCurve::get_span_vector() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsCurve::get_next_discontinuity(int continuity_type, double t0, double t1, double& t_out, int* hint, double cos_angle_tolerance, double curvature_tolerance) const {
 
   (void)cos_angle_tolerance;
@@ -1747,7 +1690,8 @@ bool NurbsCurve::get_next_discontinuity(int continuity_type, double t0, double t
   if (t0 >= t1)
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
 
   if (t0 < d0)
     t0 = d0;
@@ -1789,6 +1733,7 @@ bool NurbsCurve::get_next_discontinuity(int continuity_type, double t0, double t
 }
 
 std::pair<bool, double> NurbsCurve::get_next_discontinuity(int continuity_type, double t0, double t1) const {
+
   double t_out = 0.0;
   const bool found = get_next_discontinuity(continuity_type, t0, t1, t_out);
 
@@ -1804,6 +1749,7 @@ double NurbsCurve::length(double tolerance) const {
 
   static const double GL_X[10] = {-0.9739065285171717, -0.8650633666889845, -0.6794095682990244, -0.4333953941292472, -0.1488743389816312, 0.1488743389816312, 0.4333953941292472, 0.6794095682990244, 0.8650633666889845, 0.9739065285171717};
   static const double GL_W[10] = {0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529, 0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881};
+
   const int SUBDIVISIONS = 4;
   double total = 0.0;
   const int n_spans = span_count();
@@ -1834,6 +1780,7 @@ double NurbsCurve::length(double tolerance) const {
   return total;
 }
 
+/// Order two (t, point) samples by parameter.
 static bool sample_before(const std::pair<double, Point>& a, const std::pair<double, Point>& b) { return a.first < b.first; }
 
 bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points, std::vector<double>* params, double angle_tolerance, double min_edge_length, double max_edge_length) const {
@@ -1849,7 +1796,8 @@ bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points, std::vector<do
   if (angle_tolerance <= 0.0)
     angle_tolerance = 0.1;
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   const double curve_len = length();
 
   if (max_edge_length <= 0.0)
@@ -1864,14 +1812,18 @@ bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points, std::vector<do
   std::vector<std::pair<double, Point>> samples;
   samples.push_back({t0, point_at(t0)});
   samples.push_back({t1, point_at(t1)});
+
   std::vector<std::pair<double, double>> work_queue;
   work_queue.push_back({t0, t1});
+
   const int max_iterations = 10000;
   int iterations = 0;
 
   while (!work_queue.empty() && iterations++ < max_iterations) {
-    const auto [ta, tb] = work_queue.back();
+    const double ta = work_queue.back().first;
+    const double tb = work_queue.back().second;
     work_queue.pop_back();
+
     const Point pa = point_at(ta);
     const Point pb = point_at(tb);
     const double chord_length = pa.distance(pb);
@@ -1881,14 +1833,14 @@ bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points, std::vector<do
 
     const double tm = (ta + tb) * 0.5;
     const Point pm = point_at(tm);
-    const Vector chord(pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]);
-    const Vector to_mid(pm[0] - pa[0], pm[1] - pa[1], pm[2] - pa[2]);
+    const Vector chord = pb - pa;
+    const Vector to_mid = pm - pa;
     const double chord_len_sq = chord.dot(chord);
     double deviation = 0.0;
 
     if (chord_len_sq > 1e-20) {
       const double proj = to_mid.dot(chord) / chord_len_sq;
-      deviation = pm.distance(Point(pa[0] + proj * chord[0], pa[1] + proj * chord[1], pa[2] + proj * chord[2]));
+      deviation = pm.distance(pa + chord * proj);
     }
 
     const double deviation_tolerance = chord_length * angle_tolerance * 0.5;
@@ -1938,7 +1890,8 @@ bool NurbsCurve::divide_by_count(int count, std::vector<Point>& points, std::vec
   if (count < 2)
     return false;
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   const double h = (t1 - t0) * 1e-8;
   const int n_samples = std::max(1000, count * 100);
   const double dt = (t1 - t0) / n_samples;
@@ -1993,7 +1946,8 @@ bool NurbsCurve::divide_by_length(double segment_length, std::vector<Point>& poi
   if (segment_length <= 0.0)
     return false;
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   const double h = (t1 - t0) * 1e-8;
   const int n_samples = std::max(1000, static_cast<int>(length() / segment_length) * 100);
   const double dt = (t1 - t0) / n_samples;
@@ -2032,7 +1986,6 @@ std::pair<std::vector<Point>, std::vector<double>> NurbsCurve::divide_by_length(
 // ═══════════════════════════════════════════════════════════════════════════
 // Evaluation
 // ═══════════════════════════════════════════════════════════════════════════
-
 Point NurbsCurve::point_at(double t) const {
 
   if (!is_valid())
@@ -2041,6 +1994,7 @@ Point NurbsCurve::point_at(double t) const {
   const int span = find_span(t);
   std::vector<double> basis;
   basis_functions(span, t, basis);
+
   double x = 0.0;
   double y = 0.0;
   double z = 0.0;
@@ -2083,6 +2037,7 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
   const int span = find_span(t);
   std::vector<std::vector<double>> ders;
   basis_functions_derivatives(span, t, max_derivs, ders);
+
   const int p = degree();
   std::vector<std::array<double, 4>> Aders(max_derivs + 1);
 
@@ -2142,7 +2097,8 @@ Vector NurbsCurve::tangent_at(double t) const {
   if (!is_valid())
     return Vector(0, 0, 0);
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   const double h = (t1 - t0) * 1e-7;
   Point p1;
   Point p2;
@@ -2158,7 +2114,7 @@ Vector NurbsCurve::tangent_at(double t) const {
     p2 = point_at(t + h);
   }
 
-  Vector tan(p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]);
+  Vector tan = p2 - p1;
 
   if (tan.magnitude() > 1e-14)
     tan.normalize_self();
@@ -2186,16 +2142,17 @@ double NurbsCurve::closest_parameter(const Point& test_point) const { return Clo
 Point NurbsCurve::closest_point(const Point& test_point) const { return point_at(closest_parameter(test_point)); }
 
 std::pair<double, double> NurbsCurve::closest_parameters_curve(const NurbsCurve& other) const {
-  const auto [u, v, dist] = Closest::curve_curve(*this, other);
-  (void)dist;
 
-  return {u, v};
+  const std::tuple<double, double, double> result = Closest::curve_curve(*this, other);
+
+  return {std::get<0>(result), std::get<1>(result)};
 }
 
 std::pair<Point, Point> NurbsCurve::closest_points_curve(const NurbsCurve& other) const {
-  const auto [u, v] = closest_parameters_curve(other);
 
-  return {point_at(u), other.point_at(v)};
+  const std::pair<double, double> params = closest_parameters_curve(other);
+
+  return {point_at(params.first), other.point_at(params.second)};
 }
 
 Plane NurbsCurve::plane_at(double t, bool normalized) const {
@@ -2203,7 +2160,8 @@ Plane NurbsCurve::plane_at(double t, bool normalized) const {
   if (!is_valid())
     return Plane::invalid();
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   double param;
 
   if (normalized) {
@@ -2225,7 +2183,7 @@ Plane NurbsCurve::plane_at(double t, bool normalized) const {
     const Point p0 = point_at(t0);
     const Point pp = point_at(t0 + h);
     const Point pp2 = point_at(t0 + 2 * h);
-    const Vector d1(pp[0] - p0[0], pp[1] - p0[1], pp[2] - p0[2]);
+    const Vector d1 = pp - p0;
     const Vector d2((pp2[0] - 2 * pp[0] + p0[0]) / (h * h), (pp2[1] - 2 * pp[1] + p0[1]) / (h * h), (pp2[2] - 2 * pp[2] + p0[2]) / (h * h));
 
     return frenet_frame(origin, d1, d2);
@@ -2235,7 +2193,7 @@ Plane NurbsCurve::plane_at(double t, bool normalized) const {
     const Point pm = point_at(t1 - h);
     const Point p0 = point_at(t1);
     const Point pm2 = point_at(t1 - 2 * h);
-    const Vector d1(p0[0] - pm[0], p0[1] - pm[1], p0[2] - pm[2]);
+    const Vector d1 = p0 - pm;
     const Vector d2((p0[0] - 2 * pm[0] + pm2[0]) / (h * h), (p0[1] - 2 * pm[1] + pm2[1]) / (h * h), (p0[2] - 2 * pm[2] + pm2[2]) / (h * h));
 
     return frenet_frame(origin, d1, d2);
@@ -2244,7 +2202,7 @@ Plane NurbsCurve::plane_at(double t, bool normalized) const {
   const Point pm = point_at(param - h);
   const Point p0 = point_at(param);
   const Point pp = point_at(param + h);
-  const Vector d1((pp[0] - pm[0]) / (2 * h), (pp[1] - pm[1]) / (2 * h), (pp[2] - pm[2]) / (2 * h));
+  const Vector d1 = (pp - pm) / (2 * h);
   const Vector d2((pp[0] - 2 * p0[0] + pm[0]) / (h * h), (pp[1] - 2 * p0[1] + pm[1]) / (h * h), (pp[2] - 2 * p0[2] + pm[2]) / (h * h));
 
   return frenet_frame(origin, d1, d2);
@@ -2255,7 +2213,8 @@ Plane NurbsCurve::perpendicular_plane_at(double t, bool normalized) const {
   if (!is_valid())
     return Plane::invalid();
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   double param;
 
   if (normalized) {
@@ -2281,7 +2240,7 @@ Plane NurbsCurve::perpendicular_plane_at(double t, bool normalized) const {
   const Vector T0 = D1_0 / D1_0_mag;
   const double D2_dot_D1 = D2_0.dot(D1_0);
   const double D1_0_mag_sq = D1_0_mag * D1_0_mag;
-  Vector N0_unnorm(D2_0[0] - (D2_dot_D1 / D1_0_mag_sq) * D1_0[0], D2_0[1] - (D2_dot_D1 / D1_0_mag_sq) * D1_0[1], D2_0[2] - (D2_dot_D1 / D1_0_mag_sq) * D1_0[2]);
+  Vector N0_unnorm = D2_0 - D1_0 * (D2_dot_D1 / D1_0_mag_sq);
   double N0_mag = N0_unnorm.magnitude();
 
   if (N0_mag < 1e-14) {
@@ -2316,7 +2275,8 @@ Plane NurbsCurve::perpendicular_plane_at(double t, bool normalized) const {
     const Point xi_next = point_at(ti_next);
     Vector Ti_next = tangent_at(ti_next);
     Ti_next.normalize_self();
-    const Vector v1(xi_next[0] - xi[0], xi_next[1] - xi[1], xi_next[2] - xi[2]);
+
+    const Vector v1 = xi_next - xi;
     const double c1 = v1.dot(v1);
 
     if (c1 < 1e-28) {
@@ -2327,17 +2287,17 @@ Plane NurbsCurve::perpendicular_plane_at(double t, bool normalized) const {
     }
 
     const double ri_dot_v1 = ri.dot(v1);
-    const Vector rL(ri[0] - 2.0 * ri_dot_v1 / c1 * v1[0], ri[1] - 2.0 * ri_dot_v1 / c1 * v1[1], ri[2] - 2.0 * ri_dot_v1 / c1 * v1[2]);
+    const Vector rL = ri - v1 * (2.0 * ri_dot_v1 / c1);
     const double Ti_dot_v1 = Ti.dot(v1);
-    const Vector TL(Ti[0] - 2.0 * Ti_dot_v1 / c1 * v1[0], Ti[1] - 2.0 * Ti_dot_v1 / c1 * v1[1], Ti[2] - 2.0 * Ti_dot_v1 / c1 * v1[2]);
-    const Vector v2(Ti_next[0] - TL[0], Ti_next[1] - TL[1], Ti_next[2] - TL[2]);
+    const Vector TL = Ti - v1 * (2.0 * Ti_dot_v1 / c1);
+    const Vector v2 = Ti_next - TL;
     const double c2 = v2.dot(v2);
 
     if (c2 < 1e-28) {
       ri = rL;
     } else {
       const double rL_dot_v2 = rL.dot(v2);
-      ri = Vector(rL[0] - 2.0 * rL_dot_v2 / c2 * v2[0], rL[1] - 2.0 * rL_dot_v2 / c2 * v2[1], rL[2] - 2.0 * rL_dot_v2 / c2 * v2[2]);
+      ri = rL - v2 * (2.0 * rL_dot_v2 / c2);
     }
 
     if (ri.magnitude() > 1e-14)
@@ -2350,8 +2310,9 @@ Plane NurbsCurve::perpendicular_plane_at(double t, bool normalized) const {
 
   Vector T = tangent_at(param);
   T.normalize_self();
+
   const double ri_dot_T = ri.dot(T);
-  ri = Vector(ri[0] - ri_dot_T * T[0], ri[1] - ri_dot_T * T[1], ri[2] - ri_dot_T * T[2]);
+  ri -= T * ri_dot_T;
 
   if (ri.magnitude() > 1e-14)
     ri.normalize_self();
@@ -2387,6 +2348,7 @@ bool NurbsCurve::set_start_point(const Point& start_point) {
     return false;
 
   clamp_end(2);
+
   const double w = m_is_rat ? weight(0) : 1.0;
 
   if (m_is_rat && w != 1.0) {
@@ -2407,6 +2369,7 @@ bool NurbsCurve::set_end_point(const Point& end_point) {
     return false;
 
   clamp_end(2);
+
   const int last = m_cv_count - 1;
   const double w = m_is_rat ? weight(last) : 1.0;
 
@@ -2425,13 +2388,13 @@ bool NurbsCurve::set_end_point(const Point& end_point) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Modifications
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsCurve::reverse() {
 
   if (!is_valid())
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
 
   for (double& k : m_nurbsknot)
     k = d0 + d1 - k;
@@ -2486,7 +2449,8 @@ bool NurbsCurve::trim(double t0, double t1) {
   if (!is_valid() || t0 >= t1)
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
 
   if (t0 < d0 - Tolerance::ZERO_TOLERANCE || t1 > d1 + Tolerance::ZERO_TOLERANCE)
     return false;
@@ -2528,6 +2492,7 @@ bool NurbsCurve::trim(double t0, double t1) {
     U[i + 1] = m_nurbsknot[i];
 
   U[full_nurbsknot_count - 1] = m_nurbsknot.back();
+
   const double tol = Tolerance::ZERO_TOLERANCE;
   int start_span = -1;
 
@@ -2594,7 +2559,8 @@ bool NurbsCurve::split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve
   if (!is_valid())
     return false;
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
 
   if (t <= t0 || t >= t1)
     return false;
@@ -2625,7 +2591,8 @@ bool NurbsCurve::extend(double t0, double t1) {
   if (!is_valid() || is_closed())
     return false;
 
-  const auto [d0, d1] = domain();
+  const double d0 = domain_start();
+  const double d1 = domain_end();
   const int cvdim = cv_size();
   bool changed = false;
 
@@ -2641,8 +2608,10 @@ bool NurbsCurve::extend(double t0, double t1) {
 
   if (t1 > d1) {
     clamp_end(1);
+
     const int i0 = m_cv_count - m_order;
     evaluate_nurbs_de_boor(cvdim, m_order, m_cv_stride, &m_cv[i0 * m_cv_stride], &m_nurbsknot[i0], -1, t1);
+
     const int kc = nurbsknot_count();
 
     for (int i = m_cv_count - 1; i < kc; i++)
@@ -2760,7 +2729,7 @@ bool NurbsCurve::clamp_end(int end) {
   return rc;
 }
 
-/// Blossom of one span at order - 1 parameters by the de Boor recurrence.
+/// Compute the blossom of one span at order - 1 parameters by the de Boor recurrence.
 static bool evaluate_nurbs_blossom(int cvdim, int order, int cv_stride, const double* CV, const double* nurbsknot, const double* t, double* P) {
 
   if (!CV || !t || !nurbsknot)
@@ -2801,7 +2770,7 @@ static bool evaluate_nurbs_blossom(int cvdim, int order, int cv_stride, const do
   return true;
 }
 
-/// One CV of the degree-raised span as the average of blossoms.
+/// Compute one CV of the degree-raised span as the average of blossoms.
 static bool get_raised_degree_cv(int old_order, int cvdim, int old_cv_stride, const double* oldCV, const double* oldkn, const double* newkn, int cv_id, double* newCV) {
 
   if (!oldCV || !oldkn || !newkn || !newCV || cv_id < 0 || cv_id > old_order)
@@ -2812,6 +2781,7 @@ static bool get_raised_degree_cv(int old_order, int cvdim, int old_cv_stride, co
   std::vector<double> t(old_degree);
   std::vector<double> P(cvdim);
   memset(newCV, 0, cvdim * sizeof(double));
+
   const double* kn = newkn + cv_id;
 
   for (int i = 0; i < new_degree; i++) {
@@ -2837,17 +2807,17 @@ static bool get_raised_degree_cv(int old_order, int cvdim, int old_cv_stride, co
   return true;
 }
 
-/// Next span index past degenerate spans.
+/// Return the next span index past degenerate spans.
 static int next_span_index(int order, int cv_count, const double* nurbsknot, int span_index) {
 
   if (span_index < 0 || span_index > cv_count - order || !nurbsknot)
     return -1;
 
   if (span_index < cv_count - order) {
-    do {
+    span_index++;
+
+    while (span_index < cv_count - order && nurbsknot[span_index + order - 2] == nurbsknot[span_index + order - 1])
       span_index++;
-    } while (span_index < cv_count - order && nurbsknot[span_index + order - 2] == nurbsknot[span_index + order - 1])
-      ;
   }
 
   return span_index;
@@ -2940,7 +2910,8 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
   if (!is_closed())
     return false;
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   const double dom_len = t1 - t0;
   double s = (t - t0) / dom_len;
 
@@ -3101,7 +3072,6 @@ bool NurbsCurve::change_closed_curve_seam(double t) {
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json NurbsCurve::jsondump() const {
 
   nlohmann::ordered_json j;
@@ -3109,8 +3079,8 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
 
   for (int i = 0; i < m_cv_count; i++) {
     if (m_is_rat) {
-      const auto [x, y, z, w] = get_cv_4d(i);
-      cps.push_back({x, y, z, w});
+      const std::tuple<double, double, double, double> xyzw = get_cv_4d(i);
+      cps.push_back({std::get<0>(xyzw), std::get<1>(xyzw), std::get<2>(xyzw), std::get<3>(xyzw)});
     } else {
       const Point p = get_cv(i);
       cps.push_back({p[0], p[1], p[2]});
@@ -3210,6 +3180,7 @@ std::string NurbsCurve::file_json_dumps() const { return jsondump().dump(); }
 NurbsCurve NurbsCurve::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
 
 void NurbsCurve::file_json_dump(const std::string& filename) const {
+
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
@@ -3226,8 +3197,7 @@ NurbsCurve NurbsCurve::file_json_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
-std::string NurbsCurve::pb_dumps() const {
+session_proto::NurbsCurve NurbsCurve::to_proto() const {
 
   session_proto::NurbsCurve proto;
 
@@ -3265,13 +3235,11 @@ std::string NurbsCurve::pb_dumps() const {
     cp->set_a(c.a);
   }
 
-  return proto.SerializeAsString();
+  return proto;
 }
 
-NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
+NurbsCurve NurbsCurve::from_proto(const session_proto::NurbsCurve& proto) {
 
-  session_proto::NurbsCurve proto;
-  proto.ParseFromString(data);
   NurbsCurve curve(proto.dimension(), proto.is_rational(), proto.order(), proto.cv_count());
 
   if (!proto.guid().empty())
@@ -3302,12 +3270,27 @@ NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
   return curve;
 }
 
+std::string NurbsCurve::pb_dumps() const { return to_proto().SerializeAsString(); }
+
+NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
+
+  session_proto::NurbsCurve proto;
+
+  if (!proto.ParseFromString(data))
+    throw std::runtime_error("Failed to parse NurbsCurve protobuf data");
+
+  return from_proto(proto);
+}
+
 void NurbsCurve::pb_dump(const std::string& filename) const {
+
+  const std::string data = pb_dumps();
   std::ofstream file(filename, std::ios::binary);
-  file << pb_dumps();
+  file.write(data.data(), data.size());
 }
 
 NurbsCurve NurbsCurve::pb_load(const std::string& filename) {
+
   std::ifstream file(filename, std::ios::binary);
   const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
@@ -3317,7 +3300,6 @@ NurbsCurve NurbsCurve::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string NurbsCurve::str() const { return fmt::format("NurbsCurve(name={}, degree={}, cvs={})", name, degree(), cv_count()); }
 
 std::string NurbsCurve::repr() const {
@@ -3336,6 +3318,7 @@ std::string NurbsCurve::repr() const {
 }
 
 std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve) {
+
   os << curve.str();
 
   return os;
@@ -3344,7 +3327,6 @@ std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Private helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolerance) const {
 
   if (!is_valid())
@@ -3377,7 +3359,7 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
 
   const Point p0 = get_cv(span_index);
   const Point p1 = get_cv(span_index + m_order - 1);
-  const Vector line_vec(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+  const Vector line_vec = p1 - p0;
   const double line_length = line_vec.magnitude();
 
   if (line_length < min_length)
@@ -3385,7 +3367,7 @@ bool NurbsCurve::span_is_linear(int span_index, double min_length, double tolera
 
   for (int i = 1; i < m_order - 1; i++) {
     const Point p = get_cv(span_index + i);
-    const Vector v(p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]);
+    const Vector v = p - p0;
 
     if (line_vec.cross(v).magnitude() / line_length > tolerance)
       return false;
@@ -3450,6 +3432,7 @@ int NurbsCurve::find_span(double t) const {
 void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis) const {
 
   basis.resize(m_order);
+
   std::vector<double> left(m_order);
   std::vector<double> right(m_order);
   const double* nurbsknot = m_nurbsknot.data() + (m_order - 2) + span;
@@ -3458,6 +3441,7 @@ void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis)
   for (int j = 1; j < m_order; j++) {
     left[j] = t - nurbsknot[1 - j];
     right[j] = nurbsknot[j] - t;
+
     double saved = 0.0;
 
     for (int r = 0; r < j; r++) {
@@ -3476,6 +3460,7 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
   const int p = degree();
   const int n_der = std::min(deriv_order, p);
   ders.assign(n_der + 1, std::vector<double>(p + 1, 0.0));
+
   std::vector<double> left(p + 1);
   std::vector<double> right(p + 1);
   std::vector<std::vector<double>> ndu(p + 1, std::vector<double>(p + 1, 0.0));
@@ -3485,6 +3470,7 @@ void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order
   for (int j = 1; j <= p; ++j) {
     left[j] = t - nurbsknot[1 - j];
     right[j] = nurbsknot[j] - t;
+
     double saved = 0.0;
 
     for (int r = 0; r < j; ++r) {
@@ -3709,9 +3695,54 @@ bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride, do
   return true;
 }
 
+bool NurbsCurve::solve_dense(std::vector<std::vector<double>>& matrix, std::vector<double>& rhs, int n, int dim) {
+
+  for (int col = 0; col < n; col++) {
+    int pivot = col;
+
+    for (int row = col + 1; row < n; row++)
+      if (std::fabs(matrix[row][col]) > std::fabs(matrix[pivot][col]))
+        pivot = row;
+
+    if (pivot != col) {
+      std::swap(matrix[col], matrix[pivot]);
+
+      for (int d = 0; d < dim; d++)
+        std::swap(rhs[col * dim + d], rhs[pivot * dim + d]);
+    }
+
+    if (std::fabs(matrix[col][col]) < 1e-300)
+      return false;
+
+    for (int row = col + 1; row < n; row++) {
+      const double factor = matrix[row][col] / matrix[col][col];
+
+      for (int j = col; j < n; j++)
+        matrix[row][j] -= factor * matrix[col][j];
+
+      for (int d = 0; d < dim; d++)
+        rhs[row * dim + d] -= factor * rhs[col * dim + d];
+    }
+  }
+
+  for (int i = n - 1; i >= 0; i--) {
+    for (int d = 0; d < dim; d++) {
+      double sum = rhs[i * dim + d];
+
+      for (int j = i + 1; j < n; j++)
+        sum -= matrix[i][j] * rhs[j * dim + d];
+
+      rhs[i * dim + d] = sum / matrix[i][i];
+    }
+  }
+
+  return true;
+}
+
 Vector NurbsCurve::derivative_at(double t, double h) const {
 
-  const auto [t0, t1] = domain();
+  const double t0 = domain_start();
+  const double t1 = domain_end();
   Point p1;
   Point p2;
   double dt;
@@ -3730,13 +3761,14 @@ Vector NurbsCurve::derivative_at(double t, double h) const {
     dt = 2.0 * h;
   }
 
-  return Vector((p2[0] - p1[0]) / dt, (p2[1] - p1[1]) / dt, (p2[2] - p1[2]) / dt);
+  return (p2 - p1) / dt;
 }
 
 double NurbsCurve::arc_length_gauss(double ta, double tb, double h) const {
 
   static const double GL_NODES[5] = {-0.9061798459386640, -0.5384693101056831, 0.0, 0.5384693101056831, 0.9061798459386640};
   static const double GL_WEIGHTS[5] = {0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891};
+
   const double mid = (ta + tb) * 0.5;
   const double half = (tb - ta) * 0.5;
   double sum = 0.0;
@@ -3805,8 +3837,9 @@ Plane NurbsCurve::frenet_frame(const Point& origin, const Vector& d1, const Vect
 
   Vector T = d1;
   T.normalize_self();
+
   const double d2_dot_T = d2.dot(T);
-  Vector N(d2[0] - d2_dot_T * T[0], d2[1] - d2_dot_T * T[1], d2[2] - d2_dot_T * T[2]);
+  Vector N = d2 - T * d2_dot_T;
   double n_mag = N.magnitude();
 
   if (n_mag < 1e-14) {
@@ -3841,7 +3874,7 @@ Vector NurbsCurve::bessel_tangent(const std::vector<Point>& points, int i0, int 
   const double denom = 2.0 * s * t;
 
   if (denom < 1e-16) {
-    Vector chord(points[i1][0] - points[i0][0], points[i1][1] - points[i0][1], points[i1][2] - points[i0][2]);
+    Vector chord = points[i1] - points[i0];
 
     return chord.normalize_self() ? chord : Vector(0, 0, 0);
   }
@@ -3849,7 +3882,7 @@ Vector NurbsCurve::bessel_tangent(const std::vector<Point>& points, int i0, int 
   const double cvx = (-t * t * points[i0][0] + points[i1][0] - s * s * points[i2][0]) / denom;
   const double cvy = (-t * t * points[i0][1] + points[i1][1] - s * s * points[i2][1]) / denom;
   const double cvz = (-t * t * points[i0][2] + points[i1][2] - s * s * points[i2][2]) / denom;
-  Vector tangent(cvx - points[i0][0], cvy - points[i0][1], cvz - points[i0][2]);
+  Vector tangent = Point(cvx, cvy, cvz) - points[i0];
 
   return tangent.normalize_self() ? tangent : Vector(0, 0, 0);
 }
@@ -3879,7 +3912,7 @@ Vector NurbsCurve::lagrange_tangent(const std::vector<Point>& points, const std:
     }
 
     const Point& Pj = points[i0 + j];
-    result = Vector(result[0] + Pj[0] * dsum, result[1] + Pj[1] * dsum, result[2] + Pj[2] * dsum);
+    result += Vector(Pj[0], Pj[1], Pj[2]) * dsum;
   }
 
   return result;
