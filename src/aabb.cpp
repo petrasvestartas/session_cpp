@@ -12,13 +12,15 @@
 
 namespace session_cpp {
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
 AABB::AABB(double cx, double cy, double cz, double hx, double hy, double hz)
     : cx(cx), cy(cy), cz(cz), hx(hx), hy(hy), hz(hz) {}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 AABB AABB::from_point(const Point& point, double inflate) {
     return AABB(point[0], point[1], point[2], inflate, inflate, inflate);
 }
@@ -63,9 +65,7 @@ AABB AABB::from_polyline(const Polyline& polyline, double inflate) {
 }
 
 AABB AABB::from_mesh(const Mesh& mesh, double inflate) {
-    const auto [vertices, faces] = mesh.to_vertices_and_faces();
-
-    return from_points(vertices, inflate);
+    return from_points(mesh.to_vertices_and_faces().first, inflate);
 }
 
 AABB AABB::from_pointcloud(const PointCloud& pointcloud, double inflate) {
@@ -86,7 +86,9 @@ AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) 
         return from_points(points, inflate);
     }
 
-    const auto [t0, t1] = curve.domain();
+    const double t0 = curve.domain_start();
+    const double t1 = curve.domain_end();
+
     points.push_back(curve.point_at(t0));
     points.push_back(curve.point_at(t1));
 
@@ -172,19 +174,19 @@ double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, do
         if (deriv.size() < 3)
             break;
 
-        const double f = deriv[1][axis];
-        const double fp = deriv[2][axis];
+        const double d1 = deriv[1][axis];
+        const double d2 = deriv[2][axis];
 
-        if (std::abs(f) < 1e-12)
+        if (std::abs(d1) < 1e-12)
             break;
 
-        if (std::abs(fp) > 1e-14) {
-            const double t_new = t_root - f / fp;
+        if (std::abs(d2) > 1e-14) {
+            const double t_new = t_root - d1 / d2;
 
             if (t_new >= t_lo && t_new <= t_hi) {
                 t_root = t_new;
             } else {
-                if (f * d_start < 0)
+                if (d1 * d_start < 0)
                     t_hi = t_root;
                 else
                     t_lo = t_root;
@@ -200,13 +202,13 @@ double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, do
         if (deriv_check.size() < 2)
             continue;
 
-        const double f_check = deriv_check[1][axis];
+        const double d_check = deriv_check[1][axis];
 
-        if (f_check * d_start < 0) {
+        if (d_check * d_start < 0) {
             t_hi = t_root;
         } else {
             t_lo = t_root;
-            d_start = f_check;
+            d_start = d_check;
         }
     }
 
@@ -216,7 +218,6 @@ double AABB::compute_extremum(const NurbsCurve& curve, int axis, double t_lo, do
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool AABB::operator==(const AABB& other) const {
 
     return std::round(cx * 1000000.0) == std::round(other.cx * 1000000.0) &&
@@ -234,7 +235,6 @@ bool AABB::operator!=(const AABB& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry
 // ═══════════════════════════════════════════════════════════════════════════
-
 Point AABB::min_point() const {
     return Point(cx - hx, cy - hy, cz - hz);
 }
@@ -269,14 +269,15 @@ bool AABB::is_valid() const {
 
 Point AABB::closest_point(const Point& pt) const {
 
-    const double x = std::max(cx - hx, std::min(cx + hx, pt[0]));
-    const double y = std::max(cy - hy, std::min(cy + hy, pt[1]));
-    const double z = std::max(cz - hz, std::min(cz + hz, pt[2]));
-
-    return Point(x, y, z);
+    return Point(
+        std::max(cx - hx, std::min(cx + hx, pt[0])),
+        std::max(cy - hy, std::min(cy + hy, pt[1])),
+        std::max(cz - hz, std::min(cz + hz, pt[2]))
+    );
 }
 
 bool AABB::contains(const Point& pt) const {
+
     return pt[0] >= cx - hx && pt[0] <= cx + hx &&
            pt[1] >= cy - hy && pt[1] <= cy + hy &&
            pt[2] >= cz - hz && pt[2] <= cz + hz;
@@ -321,21 +322,21 @@ std::array<Point, 8> AABB::get_corners() const {
 
 std::vector<Line> AABB::get_edges() const {
 
-    const std::array<Point, 8> c = corners();
+    const std::array<Point, 8> points = corners();
 
     return {
-        Line::from_points(c[0], c[1]),
-        Line::from_points(c[1], c[2]),
-        Line::from_points(c[2], c[3]),
-        Line::from_points(c[3], c[0]),
-        Line::from_points(c[4], c[5]),
-        Line::from_points(c[5], c[6]),
-        Line::from_points(c[6], c[7]),
-        Line::from_points(c[7], c[4]),
-        Line::from_points(c[0], c[4]),
-        Line::from_points(c[1], c[5]),
-        Line::from_points(c[2], c[6]),
-        Line::from_points(c[3], c[7]),
+        Line::from_points(points[0], points[1]),
+        Line::from_points(points[1], points[2]),
+        Line::from_points(points[2], points[3]),
+        Line::from_points(points[3], points[0]),
+        Line::from_points(points[4], points[5]),
+        Line::from_points(points[5], points[6]),
+        Line::from_points(points[6], points[7]),
+        Line::from_points(points[7], points[4]),
+        Line::from_points(points[0], points[4]),
+        Line::from_points(points[1], points[5]),
+        Line::from_points(points[2], points[6]),
+        Line::from_points(points[3], points[7]),
     };
 }
 
@@ -344,6 +345,7 @@ Point AABB::point_at(double x, double y, double z) const {
 }
 
 void AABB::inflate(double amount) {
+
     hx += amount;
     hy += amount;
     hz += amount;
@@ -360,7 +362,6 @@ void AABB::union_with_point(double x, double y, double z) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
 // ═══════════════════════════════════════════════════════════════════════════
-
 void AABB::transform(const Xform& xform) {
     *this = transformed(xform);
 }
@@ -372,9 +373,9 @@ AABB AABB::transformed(const Xform& xform) const {
 
     AABB out = AABB::empty();
 
-    for (const Point& corner : corners()) {
-        const Point p = xform.transform_point(corner);
-        out.union_with_point(p[0], p[1], p[2]);
+    for (const Point& point : corners()) {
+        const Point moved = xform.transform_point(point);
+        out.union_with_point(moved[0], moved[1], moved[2]);
     }
 
     return out;
@@ -383,7 +384,6 @@ AABB AABB::transformed(const Xform& xform) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string AABB::str() const {
 
     const int prec = static_cast<int>(Tolerance::ROUNDING);

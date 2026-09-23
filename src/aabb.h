@@ -18,7 +18,12 @@ class Polyline;
 class Xform;
 
 /// Axis-aligned bounding box as center and half-size.
-struct AABB {
+class AABB {
+private:
+    static constexpr int NUM_SAMPLES = 20; // Samples per span when searching curve extrema.
+    static constexpr int MAX_ITER = 20; // Newton iterations per extremum.
+
+public:
     double cx = 0.0; // Center x.
     double cy = 0.0; // Center y.
     double cz = 0.0; // Center z.
@@ -26,6 +31,9 @@ struct AABB {
     double hy = 0.0; // Half-size along y.
     double hz = 0.0; // Half-size along z.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct an empty box at the origin.
     AABB() = default;
 
@@ -35,7 +43,6 @@ struct AABB {
     // ═══════════════════════════════════════════════════════════════════════════
     // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Construct the box of half-size inflate around point.
     static AABB from_point(const Point& point, double inflate = 0.0);
 
@@ -69,7 +76,6 @@ struct AABB {
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Compare center and half-size to 1e-6.
     bool operator==(const AABB& other) const;
 
@@ -79,7 +85,6 @@ struct AABB {
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometry
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the min corner.
     Point min_point() const;
 
@@ -137,7 +142,6 @@ struct AABB {
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Replace the box by the box of its eight transformed corners.
     void transform(const Xform& xform);
 
@@ -147,7 +151,6 @@ struct AABB {
     // ═══════════════════════════════════════════════════════════════════════════
     // String
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return "cx, cy, cz, hx, hy, hz".
     std::string str() const;
 
@@ -155,21 +158,19 @@ struct AABB {
     std::string repr() const;
 
 private:
-    static constexpr int NUM_SAMPLES = 20; // Samples per span when searching curve extrema.
-    static constexpr int MAX_ITER = 20; // Newton iterations per extremum.
-
     /// Return the parameter in [t_lo, t_hi] where the axis derivative crosses zero, by Newton steps bracketed by bisection.
     static double compute_extremum(const NurbsCurve& curve, int axis, double t_lo, double t_hi, double d_start);
 };
 
-/// Write the box string to a stream.
+/// Write the string representation to a stream.
 std::ostream& operator<<(std::ostream& os, const AABB& aabb);
 
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::AABB> {
-    constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
-    auto format(const session_cpp::AABB& o, fmt::format_context& ctx) const {
-        return fmt::format_to(ctx.out(), "{}", o.str());
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+
+    fmt::format_context::iterator format(const session_cpp::AABB& aabb, fmt::format_context& ctx) const {
+        return fmt::format_to(ctx.out(), "{}", aabb.str());
     }
 };
