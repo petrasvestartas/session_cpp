@@ -9,116 +9,129 @@
 namespace session_cpp {
 namespace file_encoders {
 
-/// Write json to a file
-inline void file_json_dump(const nlohmann::ordered_json& j, const std::string& filepath, bool pretty = true) {
-  std::ofstream ofs(filepath);
-
-  if (!ofs.is_open())
-    throw std::runtime_error("Failed to open file for writing: " + filepath);
-
-  ofs << (pretty ? j.dump(2) : j.dump());
-
-  if (!ofs.good())
-    throw std::runtime_error("Failed to write file: " + filepath);
-}
-
-/// Read json from a file
-inline nlohmann::ordered_json file_json_load_data(const std::string& filepath) {
-
-  std::ifstream ifs(filepath);
-
-  if (!ifs.is_open())
-    throw std::runtime_error("Failed to open file for reading: " + filepath);
-
-  nlohmann::ordered_json j;
-  ifs >> j;
-
-  return j;
-}
-
-/// Serialize an object to a json string
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON string
+// ═══════════════════════════════════════════════════════════════════════════
+/// Serialize an object to a JSON string.
 template <typename T>
-inline std::string file_json_dumps(const T& obj, bool pretty = true) {
-  nlohmann::ordered_json j = obj.jsondump();
+inline std::string file_json_dumps(const T& data, bool pretty = true) {
 
-  return pretty ? j.dump(2) : j.dump();
+    const nlohmann::ordered_json json = data.jsondump();
+
+    return pretty ? json.dump(2) : json.dump();
 }
 
-/// Deserialize an object from a json string
+/// Deserialize an object from a JSON string.
 template <typename T>
 inline T file_json_loads(const std::string& json_str) {
-  nlohmann::json j = nlohmann::json::parse(json_str);
 
-  return T::jsonload(j);
+    const nlohmann::json json = nlohmann::json::parse(json_str);
+
+    return T::jsonload(json);
 }
 
-/// Write an object to a json file
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON file
+// ═══════════════════════════════════════════════════════════════════════════
+/// Write a JSON value to a file.
+inline void file_json_dump(const nlohmann::ordered_json& data, const std::string& filepath, bool pretty = true) {
+
+    std::ofstream file(filepath);
+
+    if (!file.is_open())
+        throw std::runtime_error("Failed to open file for writing: " + filepath);
+
+    file << (pretty ? data.dump(2) : data.dump());
+
+    if (!file.good())
+        throw std::runtime_error("Failed to write file: " + filepath);
+}
+
+/// Write an object to a JSON file.
 template <typename T>
-inline void file_json_dump(const T& obj, const std::string& filepath, bool pretty = true) {
-  file_json_dump(obj.jsondump(), filepath, pretty);
+inline void file_json_dump(const T& data, const std::string& filepath, bool pretty = true) {
+    file_json_dump(data.jsondump(), filepath, pretty);
 }
 
-/// Read an object from a json file
+/// Read a JSON value from a file.
+inline nlohmann::ordered_json file_json_load_data(const std::string& filepath) {
+
+    std::ifstream file(filepath);
+
+    if (!file.is_open())
+        throw std::runtime_error("Failed to open file for reading: " + filepath);
+
+    nlohmann::ordered_json json;
+    file >> json;
+
+    return json;
+}
+
+/// Read an object from a JSON file.
 template <typename T>
 inline T file_json_load(const std::string& filepath) {
-  nlohmann::ordered_json j = file_json_load_data(filepath);
 
-  return T::jsonload(j);
+    const nlohmann::ordered_json json = file_json_load_data(filepath);
+
+    return T::jsonload(json);
 }
 
-/// Encode a collection of objects to a json array
+// ═══════════════════════════════════════════════════════════════════════════
+// Collections
+// ═══════════════════════════════════════════════════════════════════════════
+/// Encode a collection of objects to a JSON array.
 template <typename T>
 inline nlohmann::ordered_json file_encode_collection(const std::vector<T>& collection) {
 
-  nlohmann::ordered_json arr = nlohmann::json::array();
+    nlohmann::ordered_json array = nlohmann::ordered_json::array();
 
-  for (const T& item : collection)
-    arr.push_back(item.jsondump());
+    for (const T& item : collection)
+        array.push_back(item.jsondump());
 
-  return arr;
+    return array;
 }
 
-/// Encode a collection of shared pointers to a json array
+/// Encode a collection of shared pointers to a JSON array, skipping null entries.
 template <typename T>
 inline nlohmann::ordered_json file_encode_collection(const std::vector<std::shared_ptr<T>>& collection) {
 
-  nlohmann::ordered_json arr = nlohmann::json::array();
+    nlohmann::ordered_json array = nlohmann::ordered_json::array();
 
-  for (const std::shared_ptr<T>& item : collection)
-    if (item)
-      arr.push_back(item->jsondump());
+    for (const std::shared_ptr<T>& item : collection)
+        if (item)
+            array.push_back(item->jsondump());
 
-  return arr;
+    return array;
 }
 
-/// Decode a json array to a collection of objects
+/// Decode a JSON array to a collection of objects.
 template <typename T>
-inline std::vector<T> file_decode_collection(const nlohmann::json& j) {
+inline std::vector<T> file_decode_collection(const nlohmann::json& data) {
 
-  std::vector<T> result;
+    std::vector<T> result;
 
-  if (!j.is_array())
+    if (!data.is_array())
+        return result;
+
+    for (const nlohmann::json& item : data)
+        result.push_back(T::jsonload(item));
+
     return result;
-
-  for (const nlohmann::json& item : j)
-    result.push_back(T::jsonload(item));
-
-  return result;
 }
 
-/// Decode a json array to a collection of shared pointers
+/// Decode a JSON array to a collection of shared pointers.
 template <typename T>
-inline std::vector<std::shared_ptr<T>> file_decode_collection_ptr(const nlohmann::json& j) {
+inline std::vector<std::shared_ptr<T>> file_decode_collection_ptr(const nlohmann::json& data) {
 
-  std::vector<std::shared_ptr<T>> result;
+    std::vector<std::shared_ptr<T>> result;
 
-  if (!j.is_array())
+    if (!data.is_array())
+        return result;
+
+    for (const nlohmann::json& item : data)
+        result.push_back(std::make_shared<T>(T::jsonload(item)));
+
     return result;
-
-  for (const nlohmann::json& item : j)
-    result.push_back(std::make_shared<T>(T::jsonload(item)));
-
-  return result;
 }
 
 } // namespace file_encoders
