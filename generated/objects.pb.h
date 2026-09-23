@@ -40,6 +40,7 @@
 #include "nurbssurface.pb.h"
 #include "brep.pb.h"
 #include "element.pb.h"
+#include "instance_ref.pb.h"
 #include "sheet.pb.h"
 // @@protoc_insertion_point(includes)
 
@@ -486,9 +487,10 @@ class Objects final : public ::google::protobuf::Message
     kBrepsFieldNumber = 14,
     kElementsFieldNumber = 15,
     kComponentsFieldNumber = 16,
+    kSheetsFieldNumber = 17,
+    kInstancesFieldNumber = 18,
     kNameFieldNumber = 1,
     kGuidFieldNumber = 2,
-    kSheetsFieldNumber = 17,
   };
   // repeated .session_proto.Point points = 3;
   int points_size() const;
@@ -694,6 +696,40 @@ class Objects final : public ::google::protobuf::Message
   const ::session_proto::Component& components(int index) const;
   ::session_proto::Component* PROTOBUF_NONNULL add_components();
   const ::google::protobuf::RepeatedPtrField<::session_proto::Component>& components() const;
+  // repeated .session_proto.Sheet sheets = 17;
+  int sheets_size() const;
+  private:
+  int _internal_sheets_size() const;
+
+  public:
+  void clear_sheets() ;
+  ::session_proto::Sheet* PROTOBUF_NONNULL mutable_sheets(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL mutable_sheets();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& _internal_sheets() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL _internal_mutable_sheets();
+  public:
+  const ::session_proto::Sheet& sheets(int index) const;
+  ::session_proto::Sheet* PROTOBUF_NONNULL add_sheets();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& sheets() const;
+  // repeated .session_proto.InstanceRef instances = 18;
+  int instances_size() const;
+  private:
+  int _internal_instances_size() const;
+
+  public:
+  void clear_instances() ;
+  ::session_proto::InstanceRef* PROTOBUF_NONNULL mutable_instances(int index);
+  ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>* PROTOBUF_NONNULL mutable_instances();
+
+  private:
+  const ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>& _internal_instances() const;
+  ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>* PROTOBUF_NONNULL _internal_mutable_instances();
+  public:
+  const ::session_proto::InstanceRef& instances(int index) const;
+  ::session_proto::InstanceRef* PROTOBUF_NONNULL add_instances();
+  const ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>& instances() const;
   // string name = 1;
   void clear_name() ;
   const ::std::string& name() const;
@@ -724,29 +760,12 @@ class Objects final : public ::google::protobuf::Message
   ::std::string* PROTOBUF_NONNULL _internal_mutable_guid();
 
   public:
-  // repeated .session_proto.Sheet sheets = 17;
-  int sheets_size() const;
-  private:
-  int _internal_sheets_size() const;
-
-  public:
-  void clear_sheets() ;
-  ::session_proto::Sheet* PROTOBUF_NONNULL mutable_sheets(int index);
-  ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL mutable_sheets();
-
-  private:
-  const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& _internal_sheets() const;
-  ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL _internal_mutable_sheets();
-  public:
-  const ::session_proto::Sheet& sheets(int index) const;
-  ::session_proto::Sheet* PROTOBUF_NONNULL add_sheets();
-  const ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>& sheets() const;
   // @@protoc_insertion_point(class_scope:session_proto.Objects)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<4, 15,
-                                   13, 46,
+  static const ::google::protobuf::internal::TcParseTable<5, 16,
+                                   14, 54,
                                    2>
       _table_;
 
@@ -779,9 +798,10 @@ class Objects final : public ::google::protobuf::Message
     ::google::protobuf::RepeatedPtrField< ::session_proto::BRep > breps_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::Element > elements_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::Component > components_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::Sheet > sheets_;
+    ::google::protobuf::RepeatedPtrField< ::session_proto::InstanceRef > instances_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
-    ::google::protobuf::RepeatedPtrField< ::session_proto::Sheet > sheets_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1075,7 +1095,7 @@ inline void Objects::clear_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.name_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00001000U);
+                  0x00004000U);
 }
 inline const ::std::string& Objects::name() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1085,13 +1105,13 @@ inline const ::std::string& Objects::name() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Objects::set_name(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Objects.name)
 }
 inline ::std::string* PROTOBUF_NONNULL Objects::mutable_name()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   ::std::string* _s = _internal_mutable_name();
   // @@protoc_insertion_point(field_mutable:session_proto.Objects.name)
   return _s;
@@ -1111,10 +1131,10 @@ inline ::std::string* PROTOBUF_NONNULL Objects::_internal_mutable_name() {
 inline ::std::string* PROTOBUF_NULLABLE Objects::release_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Objects.name)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00001000U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00004000U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
   auto* released = _impl_.name_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.name_.Set("", GetArena());
@@ -1124,9 +1144,9 @@ inline ::std::string* PROTOBUF_NULLABLE Objects::release_name() {
 inline void Objects::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+    SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
   }
   _impl_.name_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
@@ -1140,7 +1160,7 @@ inline void Objects::clear_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.guid_.ClearToEmpty();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00002000U);
+                  0x00008000U);
 }
 inline const ::std::string& Objects::guid() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -1150,13 +1170,13 @@ inline const ::std::string& Objects::guid() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Objects::set_guid(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
   _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Objects.guid)
 }
 inline ::std::string* PROTOBUF_NONNULL Objects::mutable_guid()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
   ::std::string* _s = _internal_mutable_guid();
   // @@protoc_insertion_point(field_mutable:session_proto.Objects.guid)
   return _s;
@@ -1176,10 +1196,10 @@ inline ::std::string* PROTOBUF_NONNULL Objects::_internal_mutable_guid() {
 inline ::std::string* PROTOBUF_NULLABLE Objects::release_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Objects.guid)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00002000U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00008000U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
   auto* released = _impl_.guid_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.guid_.Set("", GetArena());
@@ -1189,9 +1209,9 @@ inline ::std::string* PROTOBUF_NULLABLE Objects::release_guid() {
 inline void Objects::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+    SetHasBit(_impl_._has_bits_[0], 0x00008000U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
   }
   _impl_.guid_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
@@ -1820,7 +1840,7 @@ inline ::session_proto::Sheet* PROTOBUF_NONNULL Objects::mutable_sheets(int inde
 }
 inline ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NONNULL Objects::mutable_sheets()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00004000U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.Objects.sheets)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_sheets();
@@ -1836,7 +1856,7 @@ inline ::session_proto::Sheet* PROTOBUF_NONNULL Objects::add_sheets()
   ::session_proto::Sheet* _add =
       _internal_mutable_sheets()->InternalAddWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), GetArena());
-  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00004000U);
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_add:session_proto.Objects.sheets)
   return _add;
 }
@@ -1854,6 +1874,56 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::Sheet>* PROTOBUF_NO
 Objects::_internal_mutable_sheets() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.sheets_;
+}
+
+// repeated .session_proto.InstanceRef instances = 18;
+inline int Objects::_internal_instances_size() const {
+  return _internal_instances().size();
+}
+inline int Objects::instances_size() const {
+  return _internal_instances_size();
+}
+inline ::session_proto::InstanceRef* PROTOBUF_NONNULL Objects::mutable_instances(int index)
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_mutable:session_proto.Objects.instances)
+  return _internal_mutable_instances()->Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>* PROTOBUF_NONNULL Objects::mutable_instances()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00002000U);
+  // @@protoc_insertion_point(field_mutable_list:session_proto.Objects.instances)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _internal_mutable_instances();
+}
+inline const ::session_proto::InstanceRef& Objects::instances(int index) const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Objects.instances)
+  return _internal_instances().Get(index);
+}
+inline ::session_proto::InstanceRef* PROTOBUF_NONNULL Objects::add_instances()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::session_proto::InstanceRef* _add =
+      _internal_mutable_instances()->InternalAddWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), GetArena());
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00002000U);
+  // @@protoc_insertion_point(field_add:session_proto.Objects.instances)
+  return _add;
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>& Objects::instances() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_list:session_proto.Objects.instances)
+  return _internal_instances();
+}
+inline const ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>&
+Objects::_internal_instances() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.instances_;
+}
+inline ::google::protobuf::RepeatedPtrField<::session_proto::InstanceRef>* PROTOBUF_NONNULL
+Objects::_internal_mutable_instances() {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return &_impl_.instances_;
 }
 
 #ifdef __GNUC__

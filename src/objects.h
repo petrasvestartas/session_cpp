@@ -13,6 +13,7 @@
 #include "nurbssurface.h"
 #include "brep.h"
 #include "element.h"
+#include "instance_ref.h"
 #include <fstream>
 #include <memory>
 #include <string>
@@ -78,6 +79,7 @@ public:
     std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps; // BReps.
     std::shared_ptr<std::vector<std::shared_ptr<Element>>> elements; // Elements.
     std::shared_ptr<std::vector<Component>> components; // Components.
+    std::shared_ptr<std::vector<std::shared_ptr<InstanceRef>>> instances; // Instances, each placing a definition of Session::definitions by guid.
 
     /// Construct an empty collection with every list allocated.
     Objects(std::string name = "my_objects");
@@ -164,8 +166,8 @@ using Geometry = std::variant<
     std::shared_ptr<BRep>,
     std::shared_ptr<Element>>;
 
-/// Anything an Objects collection holds: geometry, or a Component.
-using Item = std::variant<Geometry, Component>;
+/// Anything an Objects collection holds: geometry, a Component or an InstanceRef.
+using Item = std::variant<Geometry, Component, std::shared_ptr<InstanceRef>>;
 
 /// Write the collection string to a stream.
 std::ostream& operator<<(std::ostream& os, const Objects& objects);

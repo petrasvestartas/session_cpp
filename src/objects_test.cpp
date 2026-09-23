@@ -25,12 +25,18 @@ MINI_TEST("Objects", "Json Roundtrip") {
     std::shared_ptr<Point> point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     original.points->push_back(point1);
     original.points->push_back(point2);
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>("def-abc", Xform::identity());
+    const std::string guid = instance->guid();
+    original.instances->push_back(instance);
 
     std::string filename = "serialization/test_objects.json";
     file_encoders::file_json_dump(original, filename);
     Objects loaded = file_encoders::file_json_load<Objects>(filename);
 
     MINI_CHECK(loaded.points->size() == original.points->size());
+    MINI_CHECK(loaded.instances->size() == 1);
+    MINI_CHECK(loaded.instances->at(0)->guid() == guid);
+    MINI_CHECK(loaded.instances->at(0)->definition_guid == "def-abc");
 }
 
 MINI_TEST("Objects", "Protobuf Roundtrip") {
@@ -40,12 +46,18 @@ MINI_TEST("Objects", "Protobuf Roundtrip") {
     std::shared_ptr<Point> point2 = std::make_shared<Point>(4.0, 5.0, 6.0);
     original.points->push_back(point1);
     original.points->push_back(point2);
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>("def-abc", Xform::identity());
+    const std::string guid = instance->guid();
+    original.instances->push_back(instance);
 
     std::string filename = "serialization/test_objects.bin";
     original.pb_dump(filename);
     Objects loaded = Objects::pb_load(filename);
 
     MINI_CHECK(loaded.points->size() == original.points->size());
+    MINI_CHECK(loaded.instances->size() == 1);
+    MINI_CHECK(loaded.instances->at(0)->guid() == guid);
+    MINI_CHECK(loaded.instances->at(0)->definition_guid == "def-abc");
 }
 
 MINI_TEST("Objects", "Component Constructor") {

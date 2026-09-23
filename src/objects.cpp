@@ -65,10 +65,11 @@ std::shared_ptr<std::vector<std::shared_ptr<Element>>> clone_elements(
     return out;
 }
 
-/// A load is not a duplicate: make_shared copies and the copy mints a fresh guid, so the loaded one is put back.
+/// A load is not a duplicate: the loaded object is moved in, feature guids included, and its guid put back.
 template <class T> std::shared_ptr<T> keep_guid(T&& loaded) {
-    std::shared_ptr<T> out = std::make_shared<T>(loaded);
-    out->guid() = loaded.guid();
+    const std::string guid = loaded.guid();
+    std::shared_ptr<T> out = std::make_shared<T>(std::move(loaded));
+    out->guid() = guid;
 
     return out;
 }
@@ -181,6 +182,7 @@ Objects::Objects(std::string name) : name(std::move(name)) {
     breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
     elements = std::make_shared<std::vector<std::shared_ptr<Element>>>();
     components = std::make_shared<std::vector<Component>>();
+    instances = std::make_shared<std::vector<std::shared_ptr<InstanceRef>>>();
 }
 
 Objects::Objects(const Objects& other) : name(other.name) {
@@ -201,6 +203,7 @@ Objects::Objects(const Objects& other) : name(other.name) {
     elements = clone_elements(other.elements);
     components =
         std::make_shared<std::vector<Component>>(other.components ? *other.components : std::vector<Component>{});
+    instances = clone_list(other.instances);
 }
 
 Objects& Objects::operator=(const Objects& other) {
@@ -233,6 +236,7 @@ nlohmann::ordered_json Objects::jsondump() const {
         {"breps", dump_list(*breps)},
         {"components", components_json},
         {"elements", dump_list(*elements)},
+        {"instances", dump_list(*instances)},
         {"lines", dump_list(*lines)},
         {"meshes", dump_list(*meshes)},
         {"nurbscurves", dump_list(*nurbscurves)},
@@ -251,6 +255,7 @@ Objects Objects::jsonload(const nlohmann::json& data) {
     load_list(data, "bboxes", *objects.bboxes);
     load_list(data, "breps", *objects.breps);
     load_list(data, "elements", *objects.elements);
+    load_list(data, "instances", *objects.instances);
     load_list(data, "lines", *objects.lines);
     load_list(data, "meshes", *objects.meshes);
     load_list(data, "nurbscurves", *objects.nurbscurves);
@@ -309,6 +314,8 @@ std::string Objects::pb_dumps() const {
     for (const Component& component : *components)
         proto.add_components()->ParseFromString(component.pb_dumps());
 
+    dump_pb_list(*instances, proto.mutable_instances());
+
     return proto.SerializeAsString();
 }
 
@@ -337,6 +344,8 @@ Objects Objects::pb_loads(const std::string& data) {
 
     for (const session_proto::Component& component : proto.components())
         objects.components->push_back(Component::pb_loads(component.SerializeAsString()));
+
+    load_pb_list(proto.instances(), *objects.instances);
 
     return objects;
 }
