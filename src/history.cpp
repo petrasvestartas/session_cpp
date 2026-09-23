@@ -6,28 +6,53 @@ namespace session_cpp {
 
 Item clone(const Item& obj) {
 
+    if (const Geometry* geometry = std::get_if<Geometry>(&obj))
+        return clone(*geometry);
+
+    if (const Component* component = std::get_if<Component>(&obj)) {
+        Component snapshot = *component;
+        snapshot.guid() = component->guid();
+        return snapshot;
+    }
+
+    const std::shared_ptr<InstanceRef>& live = std::get<std::shared_ptr<InstanceRef>>(obj);
+    std::shared_ptr<InstanceRef> snapshot = std::make_shared<InstanceRef>(*live);
+    snapshot->guid() = live->guid();
+    snapshot->features = clone(live->features);
+
+    return snapshot;
+}
+
+Geometry clone(const Geometry& obj) {
+
     return std::visit(
-        [](const auto& stored) -> Item {
-            using T = std::decay_t<decltype(stored)>;
-            if constexpr (std::is_same_v<T, Component>) {
-                Component snapshot = stored;
-                snapshot.guid() = stored.guid();
+        [](const auto& live) -> Geometry {
+            using P = typename std::decay_t<decltype(live)>::element_type;
+            if constexpr (std::is_same_v<P, Element>) {
+                std::vector<ElementFeature> features = clone(live->features());
+                std::shared_ptr<Element> snapshot = live->clone();
+                snapshot->set_features(std::move(features));
+                snapshot->guid() = live->guid();
                 return snapshot;
             } else {
-                return std::visit(
-                    [](const auto& live) -> Geometry {
-                        using P = typename std::decay_t<decltype(live)>::element_type;
-                        std::string guid = live->guid();
-                        std::shared_ptr<P> snapshot = std::make_shared<P>(*live);
-                        snapshot->guid() = guid;
-                        return snapshot;
-                    },
-                    stored
-                );
+                std::shared_ptr<P> snapshot = std::make_shared<P>(*live);
+                snapshot->guid() = live->guid();
+                return snapshot;
             }
         },
         obj
     );
+}
+
+std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features) {
+
+    std::vector<ElementFeature> out(features);
+
+    for (size_t i = 0; i < out.size(); ++i)
+        if (features[i].has_guid())
+            out[i].guid() = features[i].guid();
+
+    return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -44,7 +69,7 @@ Tombstone::Tombstone(
     int index,
     std::shared_ptr<TreeNode> node,
     const std::string& attribute,
-    const std::vector<std::tuple<std::string, std::string, bool>>& edges
+    const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
 )
     : guid(guid), obj(obj), collection(collection), obj_index(obj_index), xform(xform), parent_guid(parent_guid),
       index(index), node(std::move(node)), attribute(attribute), edges(edges) {}
@@ -67,7 +92,7 @@ AddOp::AddOp(
     int index,
     std::shared_ptr<TreeNode> node,
     const std::string& attribute,
-    const std::vector<std::tuple<std::string, std::string, bool>>& edges
+    const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
 )
     : Tombstone(guid, obj, collection, obj_index, xform, parent_guid, index, std::move(node), attribute, edges) {
 
@@ -84,7 +109,7 @@ RemoveOp::RemoveOp(
     int index,
     std::shared_ptr<TreeNode> node,
     const std::string& attribute,
-    const std::vector<std::tuple<std::string, std::string, bool>>& edges
+    const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
 )
     : Tombstone(guid, obj, collection, obj_index, xform, parent_guid, index, std::move(node), attribute, edges) {
 
@@ -100,6 +125,21 @@ std::string ReplaceOp::str() const {
 
 std::string ReplaceOp::repr() const {
     return fmt::format("replace({})", guid);
+}
+
+DefinitionOp::DefinitionOp(
+    const std::string& guid,
+    const std::optional<Geometry>& before,
+    const std::optional<Geometry>& after
+)
+    : guid(guid), before(before), after(after) {}
+
+std::string DefinitionOp::str() const {
+    return fmt::format("definition({})", guid);
+}
+
+std::string DefinitionOp::repr() const {
+    return fmt::format("definition({})", guid);
 }
 
 XformOp::XformOp(const std::string& guid, const std::optional<Xform>& before, const std::optional<Xform>& after)
@@ -219,6 +259,8 @@ void History::_revert(const Op& op, Session& session) {
                 session._attach(record);
             else if constexpr (std::is_same_v<T, ReplaceOp>)
                 session._swap(record.guid, clone(record.before));
+            else if constexpr (std::is_same_v<T, DefinitionOp>)
+                session._define(record.guid, record.before ? std::optional<Geometry>(clone(*record.before)) : std::nullopt);
             else
                 session._place(record.guid, record.before);
         },
@@ -237,6 +279,8 @@ void History::_apply(const Op& op, Session& session) {
                 session._detach(record.guid);
             else if constexpr (std::is_same_v<T, ReplaceOp>)
                 session._swap(record.guid, clone(record.after));
+            else if constexpr (std::is_same_v<T, DefinitionOp>)
+                session._define(record.guid, record.after ? std::optional<Geometry>(clone(*record.after)) : std::nullopt);
             else
                 session._place(record.guid, record.after);
         },

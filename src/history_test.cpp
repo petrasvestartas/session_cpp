@@ -88,4 +88,37 @@ MINI_TEST("History", "Clear") {
     MINI_CHECK(session.objects.points->size() == 1);
 }
 
+MINI_TEST("History", "Undo Definition") {
+
+    Session session;
+    std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    std::string guid = point->guid();
+
+    session.begin("define");
+    session.add_definition(point);
+    session.commit();
+    session.begin("replace");
+    session.replace_definition(guid, std::make_shared<Point>(9.0, 9.0, 9.0));
+    session.commit();
+    session.begin("remove");
+    session.remove_definition(guid);
+    session.commit();
+    bool removed = session.definition_lookup.count(guid) == 0;
+    session.undo();
+    double replaced = (*std::get<std::shared_ptr<Point>>(session.definition_lookup[guid]))[0];
+    session.undo();
+    double restored = (*std::get<std::shared_ptr<Point>>(session.definition_lookup[guid]))[0];
+    session.undo();
+    bool undefined = session.definition_lookup.empty() && session.definitions.points->empty();
+    bool redone = session.redo();
+
+    MINI_CHECK(removed);
+    MINI_CHECK(TOLERANCE.is_close(replaced, 9.0));
+    MINI_CHECK(TOLERANCE.is_close(restored, 1.0));
+    MINI_CHECK(undefined);
+    MINI_CHECK(redone);
+    MINI_CHECK(session.definitions.points->size() == 1);
+    MINI_CHECK(session.definitions.points->at(0)->guid() == guid);
+}
+
 } // namespace session_cpp

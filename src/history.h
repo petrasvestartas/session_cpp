@@ -18,6 +18,12 @@ inline constexpr int CAPACITY = 64; // Committed transactions kept; past it the 
 /// A deep copy that keeps the guid, which `duplicate()` and most copy constructors would mint anew.
 Item clone(const Item& obj);
 
+/// A deep copy of geometry that keeps its guid and type, element feature guids included.
+Geometry clone(const Geometry& obj);
+
+/// A copy of features that keeps each guid, which the ElementFeature copy would mint anew.
+std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features);
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Records
 // ═══════════════════════════════════════════════════════════════════════════
@@ -35,7 +41,7 @@ public:
     int index;                              // Its position among the parent's children.
     std::shared_ptr<TreeNode> node;         // The detached tree node with its whole subtree, nullptr for an add.
     std::string attribute;                  // Its graph node attribute.
-    std::vector<std::tuple<std::string, std::string, bool>> edges; // Incident edges as (guid, attribute, forward).
+    std::vector<std::tuple<std::string, std::string, bool, std::string>> edges; // Incident edges as (other guid, attribute, forward, edge guid or "").
 
     /// Construct from every field of the kit.
     Tombstone(
@@ -48,7 +54,7 @@ public:
         int index,
         std::shared_ptr<TreeNode> node,
         const std::string& attribute,
-        const std::vector<std::tuple<std::string, std::string, bool>>& edges
+        const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
     );
 
     /// Return a string representation of the record.
@@ -72,7 +78,7 @@ public:
         int index,
         std::shared_ptr<TreeNode> node,
         const std::string& attribute,
-        const std::vector<std::tuple<std::string, std::string, bool>>& edges
+        const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
     );
 };
 
@@ -90,7 +96,7 @@ public:
         int index,
         std::shared_ptr<TreeNode> node,
         const std::string& attribute,
-        const std::vector<std::tuple<std::string, std::string, bool>>& edges
+        const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
     );
 };
 
@@ -130,8 +136,26 @@ public:
     std::string repr() const;
 };
 
+/// A definition added (nullopt before), removed (nullopt after) or replaced.
+class DefinitionOp {
+public:
+    std::string kind = "definition";      // Always "definition".
+    std::string guid;                     // The definition's guid.
+    std::optional<Geometry> before;       // Snapshot before, nullopt when it was added.
+    std::optional<Geometry> after;        // Snapshot after, nullopt when it was removed.
+
+    /// Construct from the guid and the before and after snapshots.
+    DefinitionOp(const std::string& guid, const std::optional<Geometry>& before, const std::optional<Geometry>& after);
+
+    /// Return a string representation of the record.
+    std::string str() const;
+
+    /// Return a string representation of the record for debugging.
+    std::string repr() const;
+};
+
 /// Any one recorded op.
-using Op = std::variant<AddOp, RemoveOp, ReplaceOp, XformOp>;
+using Op = std::variant<AddOp, RemoveOp, ReplaceOp, XformOp, DefinitionOp>;
 
 /// One undoable step: a label and the ops it made, in the order they happened.
 class Transaction {
