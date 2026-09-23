@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "fmt/format.h"
 #include "mesh.h"
+#include "mesh.pb.h"
 #include "color.h"
 #include "point.h"
 #include "line.h"
@@ -621,14 +622,16 @@ MINI_TEST("Mesh", "Loft With Quads And Triangles") {
             {550, -250, 270.710678},
         },
     };
-    auto [panels, adj, top_mesh, bot_mesh] = Mesh::loft_panels(top7, bot7);
+    LoftResult result = Mesh::loft_panels(top7, bot7);
+    std::vector<LoftPanel> panels = result.panels;
+    std::vector<LoftAdjPair> adj = result.adjacency;
 
     for (size_t i = 0; i < panels.size(); i++) {
         std::vector<Color> face_colors;
         face_colors.reserve(panels[i].face_roles.size());
 
-        for (const auto& [face_key, role] : panels[i].face_roles) {
-            switch (role) {
+        for (const std::pair<const size_t, LoftFaceRole>& entry : panels[i].face_roles) {
+            switch (entry.second) {
             case LoftFaceRole::TopCap:
                 face_colors.push_back(Color::blue());
                 break;
@@ -652,10 +655,16 @@ MINI_TEST("Mesh", "Loft With Quads And Triangles") {
         c.name = fmt::format("p{}", i);
     }
 
-    for (const auto& [i, wi, pj, wj] : adj) {
-        const LoftWallFace& w = panels[i].wall_faces[wi];
-        Point pt = *panels[i].mesh.face_centroid(w.face_key);
-        pt.name = fmt::format("p{} f{} - p{} f{}", i, w.face_index, pj, panels[pj].wall_faces[wj].face_index);
+    for (const LoftAdjPair& pair : adj) {
+        const LoftWallFace& w = panels[pair.pi].wall_faces[pair.wi];
+        Point pt = *panels[pair.pi].mesh.face_centroid(w.face_key);
+        pt.name = fmt::format(
+            "p{} f{} - p{} f{}",
+            pair.pi,
+            w.face_index,
+            pair.pj,
+            panels[pair.pj].wall_faces[pair.wj].face_index
+        );
     }
 
     MINI_CHECK(panels.size() == 7);
@@ -765,7 +774,9 @@ MINI_TEST("Mesh", "Attributes") {
 
     MINI_CHECK(euler == 2);
 
-    auto [pts, fidx] = mesh.to_vertices_and_faces();
+    std::vector<Point> pts;
+    std::vector<std::vector<size_t>> fidx;
+    std::tie(pts, fidx) = mesh.to_vertices_and_faces();
 
     MINI_CHECK(fidx.size() == n_faces);
     MINI_CHECK(pts.size() == n_vertices);
@@ -1225,10 +1236,13 @@ MINI_TEST("Mesh", "Geometric Properties") {
 
     MINI_CHECK(TOLERANCE.is_point_close(centroid, Point(0.0, 0.0, 0.0)));
 
-    auto [angles, arcs, points] = mesh.dihedral_angles(0.3);
+    std::map<std::pair<size_t, size_t>, double> angles;
+    std::vector<Polyline> arcs;
+    std::vector<Point> points;
+    std::tie(angles, arcs, points) = mesh.dihedral_angles(0.3);
 
-    for (const auto& [edge, angle] : angles) {
-        double angle_in_degrees = angle;
+    for (const std::pair<const std::pair<size_t, size_t>, double>& entry : angles) {
+        double angle_in_degrees = entry.second;
 
         MINI_CHECK(TOLERANCE.is_close(angle_in_degrees, 116.565051177078));
     }
@@ -1477,6 +1491,50 @@ MINI_TEST("Mesh", "Transformation") {
     MINI_CHECK((*mesh4t.vertex_point(v0))[2] == 10.0);
 }
 
+MINI_TEST("Mesh", "Cut By Plane") {
+
+    Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
+    Mesh half = box.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0)));
+    Mesh copy = box.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 5.0), Vector(0.0, 0.0, -1.0)));
+    Mesh empty = box.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 5.0), Vector(0.0, 0.0, 1.0)));
+
+    MINI_CHECK(half.is_closed());
+    MINI_CHECK(half.number_of_vertices() == 8);
+    MINI_CHECK(half.number_of_faces() == 6);
+    MINI_CHECK(TOLERANCE.is_close(half.volume(), 4.0));
+    MINI_CHECK(copy == box);
+    MINI_CHECK(empty.is_empty());
+
+    Polyline bottom(std::vector<Point>{
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(2.0, 1.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(1.0, 2.0, 0.0),
+        Point(0.0, 2.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    Polyline top(std::vector<Point>{
+        Point(0.0, 0.0, 1.0),
+        Point(2.0, 0.0, 1.0),
+        Point(2.0, 1.0, 1.0),
+        Point(1.0, 1.0, 1.0),
+        Point(1.0, 2.0, 1.0),
+        Point(0.0, 2.0, 1.0),
+        Point(0.0, 0.0, 1.0),
+    });
+    Mesh prism = Mesh::loft({bottom}, {top});
+    Mesh upper = prism.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.5), Vector(0.0, 0.0, 1.0)));
+    Mesh corners = prism.cut_by_plane(Plane::from_point_normal(Point(1.25, 1.25, 0.0), Vector(1.0, 1.0, 0.0)));
+
+    MINI_CHECK(upper.is_closed());
+    MINI_CHECK(upper.number_of_faces() == 8);
+    MINI_CHECK(TOLERANCE.is_close(upper.volume(), 1.5));
+    MINI_CHECK(corners.is_closed());
+    MINI_CHECK(corners.number_of_faces() == 10);
+    MINI_CHECK(TOLERANCE.is_close(corners.volume(), 0.25));
+}
+
 MINI_TEST("Mesh", "Json Roundtrip") {
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
@@ -1548,9 +1606,11 @@ MINI_TEST("Mesh", "Protobuf Roundtrip") {
 
     mesh.pb_dump(filename);
     Mesh loaded_file = Mesh::pb_load(filename);
+    Mesh converted = Mesh::from_proto(mesh.to_proto());
 
     MINI_CHECK(loaded_string == mesh);
     MINI_CHECK(loaded_file == mesh);
+    MINI_CHECK(converted == mesh);
 
     std::vector<std::vector<Point>> polys = {{
         Point(0.0, 0.0, 0.0),
@@ -2243,6 +2303,190 @@ MINI_TEST("Mesh", "Assignment Keeps Objectcolor") {
     MINI_CHECK(target.get_objectcolor().g == source.get_objectcolor().g);
     MINI_CHECK(target.get_objectcolor().b == source.get_objectcolor().b);
     MINI_CHECK(target.color_mode == source.color_mode);
+}
+
+MINI_TEST("Mesh", "From Polyline Pairs") {
+
+    Polyline top(std::vector<Point>{
+        Point(0.0, 0.0, 1.0),
+        Point(1.0, 0.0, 1.0),
+        Point(1.0, 1.0, 1.0),
+        Point(0.0, 1.0, 1.0),
+        Point(0.0, 0.0, 1.0),
+    });
+    Polyline bot(std::vector<Point>{
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    Mesh mesh = Mesh::from_polyline_pairs({top, bot}, 2.0);
+
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(mesh.number_of_faces() == 6);
+    MINI_CHECK(TOLERANCE.is_close(mesh.volume(), 0.125));
+}
+
+MINI_TEST("Mesh", "From Polyline Pairs Vnf") {
+
+    Polyline top(std::vector<Point>{
+        Point(0.0, 0.0, 1.0),
+        Point(1.0, 0.0, 1.0),
+        Point(1.0, 1.0, 1.0),
+        Point(0.0, 1.0, 1.0),
+        Point(0.0, 0.0, 1.0),
+    });
+    Polyline bot(std::vector<Point>{
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(0.0, 1.0, 0.0),
+        Point(0.0, 0.0, 0.0),
+    });
+    std::vector<double> vertices;
+    std::vector<double> normals;
+    std::vector<int> triangles;
+    Mesh::from_polyline_pairs_vnf({top, bot}, vertices, normals, triangles, 1.0);
+
+    MINI_CHECK(triangles.size() == 36);
+    MINI_CHECK(vertices.size() == 108);
+    MINI_CHECK(normals.size() == 108);
+    MINI_CHECK(triangles[35] == 35);
+}
+
+MINI_TEST("Mesh", "Reflex Fold") {
+
+    Polyline cross_section(std::vector<Point>{
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.0),
+        Point(2.0, 1.0, 0.0),
+    });
+    Polyline profile(std::vector<Point>{
+        Point(0.0, -1.0, 0.0),
+        Point(0.0, 0.0, 1.0),
+        Point(0.0, 1.0, 0.0),
+    });
+    Mesh mesh = Mesh::reflex_fold(cross_section, profile);
+
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 9);
+    MINI_CHECK(mesh.number_of_faces() == 4);
+}
+
+MINI_TEST("Mesh", "Miter Contours") {
+
+    Mesh shell = Mesh::create_box(2.0, 2.0, 2.0);
+    std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point>, std::vector<Point>, Vector>>
+        contours = Mesh::miter_contours(shell, 0.1, 0.0, 0.0, false);
+
+    MINI_CHECK(contours.size() == 6);
+    MINI_CHECK(std::get<0>(contours[0]).size() == 4);
+    MINI_CHECK(std::get<1>(contours[0]).size() == 4);
+    MINI_CHECK(std::get<2>(contours[0]).size() == 4);
+    MINI_CHECK(std::get<3>(contours[0]).size() == 4);
+    MINI_CHECK(TOLERANCE.is_vector_close(std::get<4>(contours[0]), Vector(0.0, 0.0, -1.0)));
+}
+
+MINI_TEST("Mesh", "Set Face Triangulation") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    mesh.set_face_triangulation(0, {{0, 3, 2}, {0, 2, 1}});
+
+    MINI_CHECK(mesh.get_triangulation().at(0).size() == 2);
+    MINI_CHECK((mesh.get_triangulation().at(0)[1] == std::array<size_t, 3>{0, 2, 1}));
+}
+
+MINI_TEST("Mesh", "Set Face Holes") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    mesh.set_face_holes(0, {{4, 5, 6}});
+
+    MINI_CHECK(mesh.get_face_holes().at(0).size() == 1);
+    MINI_CHECK((mesh.get_face_holes().at(0)[0] == std::vector<size_t>{4, 5, 6}));
+}
+
+MINI_TEST("Mesh", "Rebuild Halfedges") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge = mesh.halfedge;
+    mesh.halfedge.clear();
+    mesh.rebuild_halfedges();
+
+    MINI_CHECK(mesh.halfedge == halfedge);
+}
+
+MINI_TEST("Mesh", "Ensure Halfedges") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    mesh.halfedge.clear();
+    mesh.ensure_halfedges();
+
+    MINI_CHECK(mesh.halfedge.size() == 8);
+    MINI_CHECK(mesh.halfedge_face({0, 3}).has_value());
+}
+
+MINI_TEST("Mesh", "Edge Face Map") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    std::map<std::pair<size_t, size_t>, size_t> efm = mesh.edge_face_map();
+
+    MINI_CHECK(efm.size() == 24);
+    MINI_CHECK(efm.at({0, 3}) == 0);
+    MINI_CHECK(efm.at({3, 0}) == 4);
+}
+
+MINI_TEST("Mesh", "Face Outlines") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    std::vector<Polyline> outlines = mesh.face_outlines();
+
+    MINI_CHECK(outlines.size() == 6);
+    MINI_CHECK(outlines[0].point_count() == 5);
+    MINI_CHECK(outlines[0].is_closed());
+}
+
+MINI_TEST("Mesh", "Dihedral Angle") {
+
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    std::optional<double> angle = mesh.dihedral_angle(0, 1);
+
+    MINI_CHECK(angle.has_value());
+    MINI_CHECK(TOLERANCE.is_close(*angle, 90.0));
+}
+
+MINI_TEST("Mesh", "Triangle Bvh") {
+
+    Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
+    mesh.build_triangle_bvh();
+    std::vector<int> ids;
+    bool hit = mesh.triangle_bvh_ray_cast(Point(0.1, 0.2, -10.0), Vector(0.0, 0.0, 1.0), ids, true);
+    size_t face_idx = 0;
+    size_t sub_idx = 0;
+    Point v0;
+    Point v1;
+    Point v2;
+    bool found = mesh.get_triangle_by_id(ids[0], face_idx, sub_idx, v0, v1, v2);
+
+    MINI_CHECK(mesh.get_cached_bvh() != nullptr);
+    MINI_CHECK(hit);
+    MINI_CHECK(ids.size() == 4);
+    MINI_CHECK(found);
+    MINI_CHECK(face_idx < 2);
+    MINI_CHECK(TOLERANCE.is_close(std::abs(v0[2]), 1.0));
+
+    mesh.clear_triangle_bvh();
+
+    MINI_CHECK(mesh.get_cached_bvh() == nullptr);
+}
+
+MINI_TEST("Mesh", "Triangle Aabb Tree") {
+
+    Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
+    mesh.build_triangle_aabb_tree();
+
+    MINI_CHECK(mesh.get_cached_aabb_tree() != nullptr);
+    MINI_CHECK(mesh.get_cached_bvh() != nullptr);
 }
 
 } // namespace session_cpp

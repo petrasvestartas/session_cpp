@@ -21,6 +21,10 @@
 #include <functional>
 #include <cstdint>
 
+namespace session_proto {
+class Mesh;
+}
+
 namespace session_cpp {
 
 struct LoftPanel;
@@ -28,12 +32,17 @@ struct LoftAdjPair;
 struct LoftResult;
 
 /// Which stored colors a mesh renders with.
-enum class ColorMode : int { OBJECTCOLOR = 0, POINTCOLORS = 1, FACECOLORS = 2, NONE = 3 };
+enum class ColorMode : int {
+    OBJECTCOLOR = 0, // Render with the object color.
+    POINTCOLORS = 1, // Render with the vertex colors.
+    FACECOLORS = 2,  // Render with the face colors.
+    NONE = 3,        // Render without colors.
+};
 
 /// Return the lowercase name of a color mode.
-inline std::string color_mode_to_string(ColorMode m) {
+inline std::string color_mode_to_string(ColorMode mode) {
 
-    switch (m) {
+    switch (mode) {
     case ColorMode::POINTCOLORS:
         return "pointcolors";
     case ColorMode::FACECOLORS:
@@ -45,49 +54,61 @@ inline std::string color_mode_to_string(ColorMode m) {
     }
 }
 
-/// Return the color mode named s, objectcolor when unknown.
-inline ColorMode color_mode_from_string(const std::string& s) {
+/// Return the color mode named name, objectcolor when unknown.
+inline ColorMode color_mode_from_string(const std::string& name) {
 
-    if (s == "pointcolors")
+    if (name == "pointcolors")
         return ColorMode::POINTCOLORS;
 
-    if (s == "facecolors")
+    if (name == "facecolors")
         return ColorMode::FACECOLORS;
 
-    if (s == "none")
+    if (name == "none")
         return ColorMode::NONE;
 
     return ColorMode::OBJECTCOLOR;
 }
 
 /// Weighting scheme for vertex normals.
-enum class NormalWeighting { Area, Angle, Uniform };
+enum class NormalWeighting {
+    Area,    // Weight by face area.
+    Angle,   // Weight by corner angle.
+    Uniform, // Weight every face equally.
+};
 
 /// A vertex's attribute map, allocated only once something is stored in it.
 class Attributes {
+private:
+    std::unique_ptr<std::map<std::string, double>> m_; // Map, null while empty.
+
 public:
-    using Map = std::map<std::string, double>;
-    using const_iterator = Map::const_iterator;
-    using value_type = Map::value_type;
+    using const_iterator = std::map<std::string, double>::const_iterator;
+    using value_type = std::map<std::string, double>::value_type;
 
     /// Construct an empty map.
     Attributes() = default;
 
     /// Copy the map when the other holds one.
-    Attributes(const Attributes& o) : m_(o.m_ ? std::make_unique<Map>(*o.m_) : nullptr) {}
+    Attributes(const Attributes& other) {
+
+        if (other.m_)
+            m_ = std::make_unique<std::map<std::string, double>>(*other.m_);
+    }
 
     /// Move the map.
     Attributes(Attributes&&) noexcept = default;
 
     /// Construct from a map, allocating only when it is not empty.
-    Attributes(const Map& m) {
-        if (!m.empty())
-            m_ = std::make_unique<Map>(m);
+    Attributes(const std::map<std::string, double>& map) {
+
+        if (!map.empty())
+            m_ = std::make_unique<std::map<std::string, double>>(map);
     }
 
     /// Copy-assign the map when the other holds one.
-    Attributes& operator=(const Attributes& o) {
-        m_ = o.m_ ? std::make_unique<Map>(*o.m_) : nullptr;
+    Attributes& operator=(const Attributes& other) {
+
+        m_ = other.m_ ? std::make_unique<std::map<std::string, double>>(*other.m_) : nullptr;
 
         return *this;
     }
@@ -96,15 +117,17 @@ public:
     Attributes& operator=(Attributes&&) noexcept = default;
 
     /// Assign from a map, allocating only when it is not empty.
-    Attributes& operator=(const Map& m) {
-        m_ = m.empty() ? nullptr : std::make_unique<Map>(m);
+    Attributes& operator=(const std::map<std::string, double>& map) {
+
+        m_ = map.empty() ? nullptr : std::make_unique<std::map<std::string, double>>(map);
 
         return *this;
     }
 
     /// Return the map itself, or a shared empty one.
-    const Map& map() const {
-        static const Map empty;
+    const std::map<std::string, double>& map() const {
+
+        static const std::map<std::string, double> empty;
 
         return m_ ? *m_ : empty;
     }
@@ -115,14 +138,14 @@ public:
     /// Return one past the last entry.
     const_iterator end() const { return map().end(); }
 
-    /// Return the entry named k, or end().
-    const_iterator find(const std::string& k) const { return map().find(k); }
+    /// Return the entry named key, or end().
+    const_iterator find(const std::string& key) const { return map().find(key); }
 
-    /// Return 1 when k is stored, else 0.
-    size_t count(const std::string& k) const { return map().count(k); }
+    /// Return 1 when key is stored, else 0.
+    size_t count(const std::string& key) const { return map().count(key); }
 
-    /// Return the value named k; throws when missing.
-    const double& at(const std::string& k) const { return map().at(k); }
+    /// Return the value named key; throws when missing.
+    const double& at(const std::string& key) const { return map().at(key); }
 
     /// Return the number of entries.
     size_t size() const { return map().size(); }
@@ -130,69 +153,67 @@ public:
     /// Return whether nothing is stored.
     bool empty() const { return map().empty(); }
 
-    /// Return the mutable value named k; the only mutating entry point, and the only one that can allocate.
-    double& operator[](const std::string& k) {
-        if (!m_)
-            m_ = std::make_unique<Map>();
+    /// Return the mutable value named key; the only mutating entry point, and the only one that can allocate.
+    double& operator[](const std::string& key) {
 
-        return (*m_)[k];
+        if (!m_)
+            m_ = std::make_unique<std::map<std::string, double>>();
+
+        return (*m_)[key];
     }
 
-    /// Remove k and free the map when it becomes empty; returns the number removed.
-    size_t erase(const std::string& k) {
+    /// Remove key and free the map when it becomes empty; returns the number removed.
+    size_t erase(const std::string& key) {
 
         if (!m_)
             return 0;
 
-        size_t n = m_->erase(k);
+        const size_t removed = m_->erase(key);
 
         if (m_->empty())
             m_.reset();
 
-        return n;
+        return removed;
     }
 
     /// Free the map.
     void clear() { m_.reset(); }
 
     /// Compare the stored maps.
-    bool operator==(const Attributes& o) const { return map() == o.map(); }
+    bool operator==(const Attributes& other) const { return map() == other.map(); }
 
     /// Compare the stored maps.
-    bool operator!=(const Attributes& o) const { return !(*this == o); }
+    bool operator!=(const Attributes& other) const { return !(*this == other); }
 
     /// Compare the stored map with a map.
-    bool operator==(const Map& o) const { return map() == o; }
+    bool operator==(const std::map<std::string, double>& other) const { return map() == other; }
 
     /// Compare the stored map with a map.
-    bool operator!=(const Map& o) const { return !(*this == o); }
-
-private:
-    std::unique_ptr<Map> m_;
+    bool operator!=(const std::map<std::string, double>& other) const { return !(*this == other); }
 };
 
 /// Write the map to json; templated so both json and ordered_json pick it up.
-template <typename J> void to_json(J& j, const Attributes& a) {
-    j = a.map();
+template <typename J> void to_json(J& j, const Attributes& attributes) {
+    j = attributes.map();
 }
 
 /// Read the map from json; templated so both json and ordered_json pick it up.
-template <typename J> void from_json(const J& j, Attributes& a) {
-    a = j.template get<Attributes::Map>();
+template <typename J> void from_json(const J& j, Attributes& attributes) {
+    attributes = j.template get<std::map<std::string, double>>();
 }
 
 /// Vertex position and attributes.
 struct VertexData {
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-    Attributes attributes;
+    double x = 0.0;        // Position x.
+    double y = 0.0;        // Position y.
+    double z = 0.0;        // Position z.
+    Attributes attributes; // Vertex attributes.
 
     /// Construct at the origin.
     VertexData() = default;
 
     /// Construct at a point.
-    VertexData(const Point& p) : x(p[0]), y(p[1]), z(p[2]) {}
+    VertexData(const Point& point) : x(point[0]), y(point[1]), z(point[2]) {}
 
     /// Compare position and attributes exactly.
     bool operator==(const VertexData& other) const {
@@ -206,10 +227,11 @@ struct VertexData {
     Point position() const { return Point(x, y, z); }
 
     /// Set the position from a Point.
-    void set_position(const Point& p) {
-        x = p[0];
-        y = p[1];
-        z = p[2];
+    void set_position(const Point& point) {
+
+        x = point[0];
+        y = point[1];
+        z = point[2];
     }
 
     /// Return the vertex color as RGB, 0.5 grey when unset.
@@ -224,6 +246,7 @@ struct VertexData {
 
     /// Set the vertex color.
     void set_color(double r, double g, double b) {
+
         attributes["r"] = r;
         attributes["g"] = g;
         attributes["b"] = b;
@@ -231,6 +254,7 @@ struct VertexData {
 
     /// Return the vertex normal when set.
     std::optional<std::array<double, 3>> normal() const {
+
         if (attributes.count("nx") && attributes.count("ny") && attributes.count("nz"))
             return std::array<double, 3>{attributes.at("nx"), attributes.at("ny"), attributes.at("nz")};
 
@@ -239,6 +263,7 @@ struct VertexData {
 
     /// Set the vertex normal.
     void set_normal(double nx, double ny, double nz) {
+
         attributes["nx"] = nx;
         attributes["ny"] = ny;
         attributes["nz"] = nz;
@@ -247,6 +272,31 @@ struct VertexData {
 
 /// A halfedge mesh data structure for representing polygonal surfaces.
 class Mesh {
+private:
+    /// Vertex indices of one cached triangle.
+    struct TriangleIndex {
+        uint32_t i0; // First vertex index.
+        uint32_t i1; // Second vertex index.
+        uint32_t i2; // Third vertex index.
+    };
+
+    mutable std::string _guid;                                                 // Lazily minted GUID.
+    std::vector<Color> pointcolors;                                            // Vertex colors.
+    std::vector<Color> facecolors;                                             // Face colors.
+    std::vector<Color> linecolors;                                             // Edge colors.
+    std::vector<double> widths;                                                // Edge widths.
+    Color objectcolor = Color::lightgrey();                                    // Object color.
+    size_t max_vertex = 0;                                                     // Next vertex key.
+    size_t max_face = 0;                                                       // Next face key.
+    std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation;        // Cached triangulations.
+    mutable bool triangle_bvh_built = false;                                   // Whether the triangle caches are current.
+    mutable std::shared_ptr<SpatialBVH> triangle_bvh;                          // BVH over cached triangle AABBs.
+    mutable std::vector<AABB> triangle_aabbs_cache;                            // Per-triangle AABBs.
+    mutable std::vector<TriangleIndex> triangle_indices_cache;                 // Triangle vertex indices.
+    mutable std::vector<std::pair<size_t, size_t>> triangle_face_subidx_cache; // Face index and sub-triangle index per triangle.
+    mutable std::vector<Point> vertices_cache;                                 // Sequential vertex positions.
+    mutable std::shared_ptr<SpatialAABBTree> triangle_aabb_tree;               // AABB tree over cached triangle AABBs.
+
 public:
     std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge;          // Halfedge connectivity.
     std::map<size_t, VertexData> vertex;                                         // Vertex data.
@@ -257,141 +307,12 @@ public:
     std::map<std::string, double> default_vertex_attributes;                     // Default vertex attrs.
     std::map<std::string, double> default_face_attributes;                       // Default face attrs.
     std::map<std::string, double> default_edge_attributes;                       // Default edge attrs.
+    std::string name = "my_mesh";                                                // Mesh name.
+    ColorMode color_mode = ColorMode::OBJECTCOLOR;                               // Active color mode.
 
-    /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
-
-    /// Return the guid, creating it on first access.
-    const std::string& guid() const {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Return the mutable guid, creating it on first access.
-    std::string& guid() {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
-    std::string name = "my_mesh";                  // Mesh name.
-    ColorMode color_mode = ColorMode::OBJECTCOLOR; // Active color mode.
-
-    /// Store vertex colors and render with them.
-    void set_pointcolors(std::vector<Color> v) {
-        pointcolors = std::move(v);
-        color_mode = ColorMode::POINTCOLORS;
-    }
-
-    /// Store face colors and render with them.
-    void set_facecolors(std::vector<Color> v) {
-        facecolors = std::move(v);
-        color_mode = ColorMode::FACECOLORS;
-    }
-
-    /// Store edge colors and, when given, edge widths.
-    void set_linecolors(std::vector<Color> v, std::vector<double> w = {}) {
-        linecolors = std::move(v);
-
-        if (!w.empty())
-            widths = std::move(w);
-    }
-
-    /// Store the object color.
-    void set_objectcolor(Color c) { objectcolor = std::move(c); }
-
-    /// Drop vertex colors, falling back to the object color when they were active.
-    void clear_pointcolors() {
-        pointcolors.clear();
-
-        if (color_mode == ColorMode::POINTCOLORS)
-            color_mode = ColorMode::OBJECTCOLOR;
-    }
-
-    /// Drop face colors, falling back to the object color when they were active.
-    void clear_facecolors() {
-        facecolors.clear();
-
-        if (color_mode == ColorMode::FACECOLORS)
-            color_mode = ColorMode::OBJECTCOLOR;
-    }
-
-    /// Drop edge colors and widths.
-    void clear_linecolors() {
-        linecolors.clear();
-        widths.clear();
-    }
-
-    /// Return the vertex colors.
-    const std::vector<Color>& get_pointcolors() const { return pointcolors; }
-
-    /// Return the face colors.
-    const std::vector<Color>& get_facecolors() const { return facecolors; }
-
-    /// Return the edge colors.
-    const std::vector<Color>& get_linecolors() const { return linecolors; }
-
-    /// Return the edge widths.
-    const std::vector<double>& get_widths() const { return widths; }
-
-    /// Return the object color.
-    const Color& get_objectcolor() const { return objectcolor; }
-
-    /// Return the cached triangulation per face.
-    const std::map<size_t, std::vector<std::array<size_t, 3>>>& get_triangulation() const { return triangulation; }
-
-    /// Cache the triangles of face fk.
-    void set_face_triangulation(size_t fk, std::vector<std::array<size_t, 3>> tris) {
-        triangulation[fk] = std::move(tris);
-    }
-
-    /// Return the hole rings per face.
-    const std::map<size_t, std::vector<std::vector<size_t>>>& get_face_holes() const { return face_holes; }
-
-    /// Store the hole rings of face fkey.
-    void set_face_holes(size_t fkey, std::vector<std::vector<size_t>> rings) { face_holes[fkey] = std::move(rings); }
-
-private:
-    mutable std::string _guid;
-    std::vector<Color> pointcolors;                                     // Vertex colors.
-    std::vector<Color> facecolors;                                      // Face colors.
-    std::vector<Color> linecolors;                                      // Edge colors.
-    std::vector<double> widths;                                         // Edge widths.
-    Color objectcolor = Color::lightgrey();                                 // Object color.
-    size_t max_vertex = 0;                                              // Next vertex key.
-    size_t max_face = 0;                                                // Next face key.
-    std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation; // Cached triangulations.
-
-    mutable bool triangle_bvh_built = false;
-    mutable std::shared_ptr<SpatialBVH> triangle_bvh; // BVH over cached triangle AABBs.
-    mutable std::vector<AABB> triangle_aabbs_cache;   // Per-triangle AABBs.
-    struct TriangleIndex {
-        uint32_t i0;
-        uint32_t i1;
-        uint32_t i2;
-    };
-    mutable std::vector<TriangleIndex> triangle_indices_cache; // Triangle vertex indices.
-    mutable std::vector<std::pair<size_t, size_t>>
-        triangle_face_subidx_cache;                              // Face index and sub-triangle index per triangle.
-    mutable std::vector<Point> vertices_cache;                   // Sequential vertex positions.
-    mutable std::shared_ptr<SpatialAABBTree> triangle_aabb_tree; // AABB tree over cached triangle AABBs.
-
-    /// Return every directed edge (u, v) some face ring walks.
-    std::set<std::pair<size_t, size_t>> directed_face_edges() const;
-
-    /// Return the face-derived halfedge connectivity, computed without mutating.
-    std::map<size_t, std::map<size_t, std::optional<size_t>>> compute_halfedges() const;
-
-public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Construct an empty mesh.
     Mesh();
 
@@ -401,15 +322,12 @@ public:
     /// Copy-assign with a new guid and the same data.
     Mesh& operator=(const Mesh& other);
 
-    /// Compare vertices, faces, attributes and colors; guid ignored.
-    bool operator==(const Mesh& other) const;
-
-    /// Compare vertices, faces, attributes and colors; guid ignored.
-    bool operator!=(const Mesh& other) const;
-
     /// Destroy the mesh.
     ~Mesh();
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Static constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct from a list of vertices and faces.
     static Mesh from_vertices_and_faces(
         const std::vector<Point>& vertices,
@@ -503,9 +421,82 @@ public:
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const;
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid();
+
+    /// Clear the guid so a fresh one mints lazily on the next read.
+    void refresh_guid() { _guid.clear(); }
+
+    /// Store vertex colors and render with them.
+    void set_pointcolors(std::vector<Color> colors);
+
+    /// Store face colors and render with them.
+    void set_facecolors(std::vector<Color> colors);
+
+    /// Store edge colors and, when given, edge widths.
+    void set_linecolors(std::vector<Color> colors, std::vector<double> line_widths = {});
+
+    /// Store the object color.
+    void set_objectcolor(Color color) { objectcolor = std::move(color); }
+
+    /// Drop vertex colors, falling back to the object color when they were active.
+    void clear_pointcolors();
+
+    /// Drop face colors, falling back to the object color when they were active.
+    void clear_facecolors();
+
+    /// Drop edge colors and widths.
+    void clear_linecolors();
+
+    /// Return the vertex colors.
+    const std::vector<Color>& get_pointcolors() const { return pointcolors; }
+
+    /// Return the face colors.
+    const std::vector<Color>& get_facecolors() const { return facecolors; }
+
+    /// Return the edge colors.
+    const std::vector<Color>& get_linecolors() const { return linecolors; }
+
+    /// Return the edge widths.
+    const std::vector<double>& get_widths() const { return widths; }
+
+    /// Return the object color.
+    const Color& get_objectcolor() const { return objectcolor; }
+
+    /// Return the cached triangulation per face.
+    const std::map<size_t, std::vector<std::array<size_t, 3>>>& get_triangulation() const { return triangulation; }
+
+    /// Cache the triangles of face fk.
+    void set_face_triangulation(size_t fk, std::vector<std::array<size_t, 3>> tris) {
+        triangulation[fk] = std::move(tris);
+    }
+
+    /// Return the hole rings per face.
+    const std::map<size_t, std::vector<std::vector<size_t>>>& get_face_holes() const { return face_holes; }
+
+    /// Store the hole rings of face fkey.
+    void set_face_holes(size_t fkey, std::vector<std::vector<size_t>> rings) { face_holes[fkey] = std::move(rings); }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Compare name, vertices and faces; guid ignored.
+    bool operator==(const Mesh& other) const;
+
+    /// Compare name, vertices and faces; guid ignored.
+    bool operator!=(const Mesh& other) const;
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // Boolean Queries
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return whether the mesh has no vertices.
     bool is_empty() const { return vertex.empty(); }
 
@@ -527,7 +518,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Attributes
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the vertex count.
     size_t number_of_vertices() const { return vertex.size(); }
 
@@ -567,7 +557,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Vertex and Face Operations
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Add a vertex, with an explicit key when given; returns the key.
     size_t add_vertex(const Point& position, std::optional<size_t> vkey = std::nullopt);
 
@@ -613,7 +602,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Connectivity Queries
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the edges sharing a vertex with (u, v), excluding (u, v) and (v, u).
     std::optional<std::vector<std::pair<size_t, size_t>>> edge_edges(size_t u, size_t v) const;
 
@@ -659,7 +647,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Boundary
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the vertices touching a boundary edge.
     std::vector<size_t> vertices_on_boundary() const;
 
@@ -672,7 +659,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Halfedge Navigation
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the face of a directed edge, nullopt when unknown or on the boundary.
     std::optional<size_t> halfedge_face(std::pair<size_t, size_t> edge) const;
 
@@ -691,7 +677,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Sampling
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return size vertex keys; seed 0 takes the first keys, any other seed drives a deterministic LCG.
     std::vector<size_t> vertex_sample(size_t size, uint32_t seed = 0) const;
 
@@ -704,7 +689,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Aliases
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the average of a face's vertex positions.
     std::optional<Point> face_center(size_t face_key) const;
 
@@ -720,7 +704,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Attribute API
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Merge attrs into the default vertex attributes.
     void update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs);
 
@@ -811,7 +794,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometric Properties
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the total surface area of all faces.
     double area() const;
 
@@ -861,7 +843,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Triangle BVH
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Build and cache the BVH over the triangulated faces.
     void build_triangle_bvh(bool force = false) const;
 
@@ -891,7 +872,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Transform every vertex in place and drop the triangle caches; always true.
     bool transform(const Xform& xf);
 
@@ -899,9 +879,14 @@ public:
     Mesh transformed(const Xform& xf) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Cutting
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the part on the side the plane normal points to, every section loop capped by one n-gon face, so a closed mesh stays closed; empty when nothing lies on that side, a copy when everything does.
+    Mesh cut_by_plane(const Plane& plane) const;
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Serialize to a JSON object.
     nlohmann::ordered_json jsondump() const;
 
@@ -923,6 +908,11 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert to the protobuf message.
+    session_proto::Mesh to_proto() const;
+
+    /// Construct from the protobuf message.
+    static Mesh from_proto(const session_proto::Mesh& proto);
 
     /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
@@ -937,9 +927,8 @@ public:
     static Mesh pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // String Representation
+    // String
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the "Mesh(name=..., vertices=..., faces=...)" form.
     std::string str() const;
 
@@ -948,14 +937,28 @@ public:
 
     /// Write the str() form to a stream.
     friend std::ostream& operator<<(std::ostream& os, const Mesh& mesh);
+
+private:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private helpers
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return every directed edge (u, v) some face ring walks.
+    std::set<std::pair<size_t, size_t>> directed_face_edges() const;
+
+    /// Return the face-derived halfedge connectivity, computed without mutating.
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> compute_halfedges() const;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Loft
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Role of a face inside a loft panel.
-enum class LoftFaceRole { TopCap, BotCap, QuadWall, TriWall };
+enum class LoftFaceRole {
+    TopCap,   // Top cap face.
+    BotCap,   // Bottom cap face.
+    QuadWall, // Quad wall between matched edges.
+    TriWall,  // Triangle wall over an unmatched edge.
+};
 
 /// One wall face of a loft panel and the original vertices it spans.
 struct LoftWallFace {
