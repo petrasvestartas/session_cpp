@@ -6,7 +6,11 @@
 namespace session_cpp {
 
 /// Grid mesh of a NURBS surface: spans split by normal turn and chord height, poles fanned, seams closed.
-struct RemeshNurbsSurfaceGrid {
+class RemeshNurbsSurfaceGrid {
+public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Static constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Grid at 20 degrees and 0.5 percent of the bbox diagonal; max_u and max_v fix the parameter counts when positive.
     static Mesh from_u_v(const NurbsSurface& s, int max_u, int max_v);
 
@@ -16,6 +20,9 @@ struct RemeshNurbsSurfaceGrid {
 private:
     friend class NurbsSurfaceTrimmed;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Normals
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Split shading vertices at internal C0 knots whose one-sided normals disagree.
     static void split_crease_normals(const NurbsSurface& s, Mesh& mesh);
 };

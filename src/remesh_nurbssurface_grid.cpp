@@ -7,6 +7,10 @@
 #include <set>
 
 namespace session_cpp {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 namespace {
 
 constexpr int MAX_SUBS = 24;
@@ -14,7 +18,6 @@ constexpr int MAX_SUBS = 24;
 // ═══════════════════════════════════════════════════════════════════════════
 // Sampling
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Euclidean length without the zero gate of magnitude().
 double norm(const Vector& v) {
     return std::sqrt(v.magnitude_squared());
@@ -63,7 +66,6 @@ double bbox_diagonal(const NurbsSurface& s) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Subdivisions
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Largest turn of the unit normal in degrees over [t0, t1], sampled at the span midpoints of the other direction.
 double span_angle(const NurbsSurface& s, int dir, double t0, double t1, const std::vector<double>& osp) {
 
@@ -71,6 +73,7 @@ double span_angle(const NurbsSurface& s, int dir, double t0, double t1, const st
 
     for (size_t si = 0; si + 1 < osp.size(); ++si) {
         const double fixed = (osp[si] + osp[si + 1]) * 0.5;
+
         Vector first(0.0, 0.0, 0.0);
         Vector last(0.0, 0.0, 0.0);
         bool has_first = false;
@@ -95,6 +98,7 @@ double span_angle(const NurbsSurface& s, int dir, double t0, double t1, const st
             continue;
 
         const double dot = std::max(-1.0, std::min(1.0, first.dot(last)));
+
         max_angle = std::max(max_angle, std::acos(dot) * 180.0 / Tolerance::PI);
     }
 
@@ -115,6 +119,7 @@ double span_deviation(const NurbsSurface& s, int dir, double t0, double t1, cons
         for (int k = 1; k <= 3; ++k) {
             const double frac = k / 4.0;
             const Point pm = point_along(s, dir, t0 + frac * (t1 - t0), fixed);
+
             max_dev = std::max(max_dev, norm(pm - (p0 + (p1 - p0) * frac)));
         }
     }
@@ -138,6 +143,7 @@ std::vector<int> span_subs(
     for (size_t i = 0; i + 1 < sp.size(); ++i) {
         if (degree > 1) {
             const double angle = span_angle(s, dir, sp[i], sp[i + 1], osp);
+
             subs[i] = std::clamp((int)std::ceil(angle / max_angle_deg), 1, MAX_SUBS);
         }
 
@@ -161,6 +167,7 @@ double isocurve_length(const NurbsSurface& s, int dir, const std::vector<double>
 
     for (int i = 1; i <= n; ++i) {
         const Point next = point_along(s, dir, sp.front() + i * (sp.back() - sp.front()) / n, fixed);
+
         length += norm(next - prev);
         prev = next;
     }
@@ -222,6 +229,7 @@ int twist_subs(
             const Point pm = s.point_at((usp[i] + usp[i + 1]) * 0.5, (vsp[j] + vsp[j + 1]) * 0.5);
             const Point p00 = s.point_at(usp[i], vsp[j]);
             const Point p11 = s.point_at(usp[i + 1], vsp[j + 1]);
+
             max_twist = std::max(max_twist, norm(pm - Point::sum(p00, p11) * 0.5));
         }
 
@@ -246,11 +254,11 @@ void make_odd(std::vector<int>& subs) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Parameters
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// n parameters spaced evenly by arc length along the iso-curve at fixed.
 std::vector<double> arclen_params(const NurbsSurface& s, int dir, int n, const std::vector<double>& sp, double fixed) {
 
     const int nsample = std::max(n * 20, 200);
+
     std::vector<double> st(nsample + 1);
     std::vector<double> sl(nsample + 1, 0.0);
     Point prev = point_along(s, dir, sp.front(), fixed);
@@ -262,12 +270,12 @@ std::vector<double> arclen_params(const NurbsSurface& s, int dir, int n, const s
             continue;
 
         const Point next = point_along(s, dir, st[k], fixed);
+
         sl[k] = sl[k - 1] + norm(next - prev);
         prev = next;
     }
 
-    std::vector<double> params;
-    params.push_back(sp.front());
+    std::vector<double> params = {sp.front()};
     int j = 0;
 
     for (int i = 1; i < n - 1; ++i) {
@@ -278,6 +286,7 @@ std::vector<double> arclen_params(const NurbsSurface& s, int dir, int n, const s
 
         const int a = j > 0 ? j - 1 : 0;
         const double frac = sl[j] > sl[a] ? (target - sl[a]) / (sl[j] - sl[a]) : 0.0;
+
         params.push_back(st[a] + frac * (st[j] - st[a]));
     }
 
@@ -307,6 +316,7 @@ void fix_closed_gap(std::vector<double>& params, double domain_end) {
         return;
 
     params.pop_back();
+
     const double wrap_gap = domain_end - params.back();
     double max_gap = 0.0;
 
@@ -326,11 +336,11 @@ void fix_closed_gap(std::vector<double>& params, double domain_end) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Vertices and faces
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Vertex at S(u, v) tagged with its parameters.
 size_t add_vertex_uv(const NurbsSurface& s, Mesh& mesh, double u, double v) {
 
     const size_t key = mesh.add_vertex(s.point_at(u, v));
+
     mesh.vertex[key].attributes["u"] = u;
     mesh.vertex[key].attributes["v"] = v;
 
@@ -401,13 +411,14 @@ void add_faces(
 // ═══════════════════════════════════════════════════════════════════════════
 // Normals
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Sum of the unnormalized face normals around each vertex key, faces taken in key order.
 std::vector<Vector> fan_normals(const Mesh& mesh) {
 
     std::vector<Vector> sums(mesh.vertex.size(), Vector(0.0, 0.0, 0.0));
 
-    for (const auto& [key, vertices] : mesh.face) {
+    for (const std::pair<const size_t, std::vector<size_t>>& face : mesh.face) {
+        const std::vector<size_t>& vertices = face.second;
+
         if (vertices.size() < 3)
             continue;
 
@@ -428,9 +439,12 @@ void set_normals(const NurbsSurface& s, Mesh& mesh, std::optional<size_t> south,
 
     const std::vector<Vector> sums = fan_normals(mesh);
 
-    for (auto& [key, vd] : mesh.vertex) {
-        Vector n(0.0, 0.0, 1.0);
+    for (std::pair<const size_t, VertexData>& vertex : mesh.vertex) {
+        const size_t key = vertex.first;
+        VertexData& vd = vertex.second;
         const double fan_length = norm(sums[key]);
+
+        Vector n(0.0, 0.0, 1.0);
 
         if (std::isfinite(fan_length) && fan_length > 0.0)
             n = sums[key] / fan_length;
@@ -454,10 +468,10 @@ unsigned crease_flags(const NurbsSurface& s, double u, double v) {
     unsigned flags = 0;
 
     for (int dir = 0; dir < 2; ++dir) {
-        const auto [start, end] = s.domain(dir);
+        const std::pair<double, double> domain = s.domain(dir);
         const double value = uv[dir];
 
-        if (value <= start || value >= end)
+        if (value <= domain.first || value >= domain.second)
             continue;
 
         if (std::count(s.m_nurbsknot[dir].begin(), s.m_nurbsknot[dir].end(), value) < s.degree(dir))
@@ -465,8 +479,10 @@ unsigned crease_flags(const NurbsSurface& s, double u, double v) {
 
         double lo[2] = {u, v};
         double hi[2] = {u, v};
+
         lo[dir] = std::nextafter(value, -std::numeric_limits<double>::infinity());
         hi[dir] = std::nextafter(value, std::numeric_limits<double>::infinity());
+
         const Vector a = s.normal_at(lo[0], lo[1]);
         const Vector b = s.normal_at(hi[0], hi[1]);
         const double length = std::sqrt(a.magnitude_squared() * b.magnitude_squared());
@@ -524,6 +540,7 @@ size_t crease_target(
         return copies[identity] = key;
 
     const size_t target = mesh.add_vertex(mesh.vertex[key].position());
+
     mesh.vertex[target] = mesh.vertex[key];
 
     return copies[identity] = target;
@@ -532,9 +549,8 @@ size_t crease_target(
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RemeshNurbsSurfaceGrid
+// Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 Mesh RemeshNurbsSurfaceGrid::from_u_v(const NurbsSurface& s, int max_u, int max_v) {
     return from_u_v_q(s, max_u, max_v, 20.0, 0.005);
 }
@@ -551,9 +567,12 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
     const std::vector<double> vsp = s.get_span_vector(1);
     const double bbox_diag = bbox_diagonal(s);
     const double chord_tol = bbox_diag * chord_factor;
+
     std::vector<int> u_subs = span_subs(s, 0, usp, vsp, max_angle_deg, chord_tol);
     std::vector<int> v_subs = span_subs(s, 1, vsp, usp, max_angle_deg, chord_tol);
+
     balance_subs(s, usp, vsp, u_subs, v_subs);
+
     const bool sing_v0 = s.is_singular(0);
     const bool sing_v1 = s.is_singular(2);
 
@@ -578,6 +597,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
 
     const double u_mid = (usp.front() + usp.back()) * 0.5;
     const double v_mid = (vsp.front() + vsp.back()) * 0.5;
+
     std::vector<double> us = max_u > 0 ? arclen_params(s, 0, std::max(max_u, 2), usp, v_mid) : span_params(usp, u_subs);
     std::vector<double> vs = max_v > 0 ? arclen_params(s, 1, std::max(max_v, 2), vsp, u_mid) : span_params(vsp, v_subs);
 
@@ -588,6 +608,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
         fix_closed_gap(vs, vsp.back());
 
     const int nv = (int)vs.size();
+
     Mesh mesh;
     std::optional<size_t> south;
     std::optional<size_t> north;
@@ -599,6 +620,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
         north = add_vertex_uv(s, mesh, us[0], vs[nv - 1]);
 
     const std::vector<size_t> grid = add_grid(s, mesh, us, vs, sing_v0 ? 1 : 0, sing_v1 ? nv - 1 : nv);
+
     add_faces(mesh, grid, (int)us.size(), closed_u, closed_v && !sing_v0 && !sing_v1, south, north);
     set_normals(s, mesh, south, north);
     split_crease_normals(s, mesh);
@@ -606,18 +628,23 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
     return mesh;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Normals
+// ═══════════════════════════════════════════════════════════════════════════
 void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& mesh) {
 
     std::map<size_t, unsigned> candidates;
 
-    for (const auto& [key, vd] : mesh.vertex) {
+    for (const std::pair<const size_t, VertexData>& vertex : mesh.vertex) {
+        const VertexData& vd = vertex.second;
+
         if (!vd.attributes.count("u") || !vd.attributes.count("v"))
             continue;
 
         const unsigned flags = crease_flags(s, vd.attributes.at("u"), vd.attributes.at("v"));
 
         if (flags)
-            candidates[key] = flags;
+            candidates[vertex.first] = flags;
     }
 
     if (candidates.empty())
@@ -626,7 +653,8 @@ void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& m
     std::map<std::pair<size_t, unsigned>, size_t> copies;
     std::set<size_t> used;
 
-    for (auto& [face_key, vertices] : mesh.face) {
+    for (std::pair<const size_t, std::vector<size_t>>& face : mesh.face) {
+        std::vector<size_t>& vertices = face.second;
         double center[2] = {0.0, 0.0};
 
         for (size_t key : vertices) {
@@ -636,13 +664,15 @@ void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& m
 
         center[0] /= vertices.size();
         center[1] /= vertices.size();
-        const std::optional<Vector> face_normal = mesh.face_normal(face_key);
+
+        const std::optional<Vector> face_normal = mesh.face_normal(face.first);
 
         for (size_t& key : vertices) {
             if (!candidates.count(key))
                 continue;
 
             double uv[2] = {mesh.vertex[key].attributes.at("u"), mesh.vertex[key].attributes.at("v")};
+
             const unsigned side = crease_side(center, uv, candidates[key]);
             const size_t target = crease_target(mesh, copies, used, key, side);
             const Vector n = s.normal_at(uv[0], uv[1]);
@@ -650,6 +680,7 @@ void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& m
 
             if (std::isfinite(length) && length > 0.0) {
                 const double sign = face_normal && n.dot(*face_normal) < 0.0 ? -1.0 : 1.0;
+
                 mesh.vertex[target].set_normal(sign * n[0] / length, sign * n[1] / length, sign * n[2] / length);
             }
 

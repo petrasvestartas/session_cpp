@@ -1,8 +1,13 @@
 #include "mini_test.h"
 #include "remesh_nurbssurface_grid.h"
+#include "mesh.h"
+#include "nurbssurface.h"
+#include "point.h"
 #include "primitives.h"
 #include "tolerance.h"
+#include <array>
 #include <cmath>
+#include <vector>
 
 using namespace session_cpp::mini_test;
 
@@ -10,7 +15,7 @@ namespace session_cpp {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Singular Planar Normal") {
 
-    NurbsSurface surface = NurbsSurface::create(
+    const NurbsSurface surface = NurbsSurface::create(
         false,
         false,
         1,
@@ -19,10 +24,11 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Singular Planar Normal") {
         2,
         {Point(0, 0, 1), Point(0, 0, 1), Point(-1, 0, 0), Point(1, 0, 0)}
     );
-    Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v_q(surface, 0, 0, 5.0, 0.001);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v_q(surface, 0, 0, 5.0, 0.001);
     bool apex = false;
 
-    for (const auto& [key, face] : mesh.face) {
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : mesh.face) {
+        const std::vector<size_t>& face = entry.second;
         const VertexData& a = mesh.vertex.at(face[0]);
         const VertexData& b = mesh.vertex.at(face[1]);
         const VertexData& c = mesh.vertex.at(face[2]);
@@ -45,7 +51,7 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Singular Planar Normal") {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Crease Normals") {
 
-    NurbsSurface s = NurbsSurface::create(
+    const NurbsSurface surface = NurbsSurface::create(
         false,
         false,
         1,
@@ -61,23 +67,26 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Crease Normals") {
             Point(2.0, 1.0, 1.0),
         }
     );
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.vertex.size() == 8);
-    MINI_CHECK(m.face.size() == 4);
+    MINI_CHECK(mesh.vertex.size() == 8);
+    MINI_CHECK(mesh.face.size() == 4);
+
     int flat = 0;
     int tilted = 0;
 
-    for (const auto& [key, vd] : m.vertex) {
+    for (const std::pair<const size_t, VertexData>& entry : mesh.vertex) {
+        const VertexData& vd = entry.second;
+
         if (vd.x != 1.0)
             continue;
 
-        const std::array<double, 3> n = vd.normal().value();
+        const std::array<double, 3> normal = vd.normal().value();
 
-        if (std::abs(n[0]) < Tolerance::ZERO_TOLERANCE)
+        if (std::abs(normal[0]) < Tolerance::ZERO_TOLERANCE)
             ++flat;
 
-        if (std::abs(n[0] + std::sqrt(0.5)) < Tolerance::ZERO_TOLERANCE)
+        if (std::abs(normal[0] + std::sqrt(0.5)) < Tolerance::ZERO_TOLERANCE)
             ++tilted;
     }
 
@@ -86,25 +95,26 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Crease Normals") {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Analytic Normals") {
 
-    std::vector<NurbsSurface> surfaces = {
+    const std::vector<NurbsSurface> surfaces = {
         Primitives::sphere_surface(0.0, 0.0, 0.0, 1.0),
         Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 5.0),
         Primitives::cone_surface(0.0, 0.0, 0.0, 1.0, 5.0),
     };
 
     for (size_t index = 0; index < surfaces.size(); ++index) {
-        const NurbsSurface& s = surfaces[index];
-        Mesh m = RemeshNurbsSurfaceGrid::from_u_v_q(s, 0, 0, 30.0, 0.01);
+        const NurbsSurface& surface = surfaces[index];
+        const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v_q(surface, 0, 0, 30.0, 0.01);
 
-        for (const auto& [key, vd] : m.vertex) {
-            const std::array<double, 3> n = vd.normal().value();
-            double length = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+        for (const std::pair<const size_t, VertexData>& entry : mesh.vertex) {
+            const VertexData& vd = entry.second;
+            const std::array<double, 3> normal = vd.normal().value();
+            const double length = normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
 
             MINI_CHECK(std::abs(length - 1.0) < Tolerance::ZERO_TOLERANCE);
 
             if (index < 2) {
-                double z = index == 0 ? vd.z : 0.0;
-                double dot = vd.x * n[0] + vd.y * n[1] + z * n[2];
+                const double z = index == 0 ? vd.z : 0.0;
+                const double dot = vd.x * normal[0] + vd.y * normal[1] + z * normal[2];
 
                 MINI_CHECK(std::abs(dot - 1.0) < Tolerance::ZERO_TOLERANCE);
             }
@@ -114,69 +124,69 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Analytic Normals") {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere") {
 
-    NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const NurbsSurface surface = Primitives::sphere_surface(0, 0, 0, 1.0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 191);
-    MINI_CHECK(m.number_of_faces() == 378);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 191);
+    MINI_CHECK(mesh.number_of_faces() == 378);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Torus") {
 
-    NurbsSurface s = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const NurbsSurface surface = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 693);
-    MINI_CHECK(m.number_of_faces() == 1386);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 693);
+    MINI_CHECK(mesh.number_of_faces() == 1386);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Cylinder") {
 
-    NurbsSurface s = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const NurbsSurface surface = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 42);
-    MINI_CHECK(m.number_of_faces() == 42);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 42);
+    MINI_CHECK(mesh.number_of_faces() == 42);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Cone") {
 
-    NurbsSurface s = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const NurbsSurface surface = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 22);
-    MINI_CHECK(m.number_of_faces() == 21);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 22);
+    MINI_CHECK(mesh.number_of_faces() == 21);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Doubly Curved") {
 
-    NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const NurbsSurface surface = Primitives::wave_surface(1.0, 0.5);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 961);
-    MINI_CHECK(m.number_of_faces() == 1800);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 961);
+    MINI_CHECK(mesh.number_of_faces() == 1800);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Grid Target") {
 
-    NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
-    Mesh m_lo = RemeshNurbsSurfaceGrid::from_u_v(s, 8, 8);
-    Mesh m_hi = RemeshNurbsSurfaceGrid::from_u_v(s, 32, 32);
+    const NurbsSurface surface = Primitives::wave_surface(1.0, 0.5);
+    const Mesh mesh_lo = RemeshNurbsSurfaceGrid::from_u_v(surface, 8, 8);
+    const Mesh mesh_hi = RemeshNurbsSurfaceGrid::from_u_v(surface, 32, 32);
 
-    MINI_CHECK(m_lo.is_valid());
-    MINI_CHECK(m_lo.number_of_vertices() == 64);
-    MINI_CHECK(m_hi.is_valid());
-    MINI_CHECK(m_hi.number_of_vertices() > m_lo.number_of_vertices());
+    MINI_CHECK(mesh_lo.is_valid());
+    MINI_CHECK(mesh_lo.number_of_vertices() == 64);
+    MINI_CHECK(mesh_hi.is_valid());
+    MINI_CHECK(mesh_hi.number_of_vertices() > mesh_lo.number_of_vertices());
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
 
-    NurbsSurface s = NurbsSurface::create(
+    const NurbsSurface surface = NurbsSurface::create(
         false,
         false,
         1,
@@ -190,16 +200,16 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
             Point(4, 4, 0),
         }
     );
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 4);
-    MINI_CHECK(m.number_of_faces() == 2);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 4);
+    MINI_CHECK(mesh.number_of_faces() == 2);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Triangle") {
 
-    NurbsSurface s = NurbsSurface::create(
+    const NurbsSurface surface = NurbsSurface::create(
         false,
         false,
         1,
@@ -213,16 +223,16 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Triangle") {
             Point(2, 4, 0),
         }
     );
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 3);
-    MINI_CHECK(m.number_of_faces() == 1);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 3);
+    MINI_CHECK(mesh.number_of_faces() == 1);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Double-Curved Triangle") {
 
-    NurbsSurface s = NurbsSurface::create(
+    const NurbsSurface surface = NurbsSurface::create(
         false,
         false,
         2,
@@ -241,11 +251,11 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Double-Curved Triangle") {
             Point(2, 4, 0),
         }
     );
-    Mesh m = RemeshNurbsSurfaceGrid::from_u_v(s, 0, 0);
+    const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
 
-    MINI_CHECK(m.is_valid());
-    MINI_CHECK(m.number_of_vertices() == 64);
-    MINI_CHECK(m.number_of_faces() == 98);
+    MINI_CHECK(mesh.is_valid());
+    MINI_CHECK(mesh.number_of_vertices() == 64);
+    MINI_CHECK(mesh.number_of_faces() == 98);
 }
 
 } // namespace session_cpp
