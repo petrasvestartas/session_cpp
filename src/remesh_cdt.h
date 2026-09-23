@@ -8,7 +8,11 @@
 namespace session_cpp {
 
 /// Constrained Delaunay triangulation of a border polyline with hole polylines.
-struct RemeshCDT {
+class RemeshCDT {
+public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Triangulation
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Triangle index triples into the flat list [border..., hole0..., hole1...], closing duplicates stripped.
     static std::vector<std::array<int, 3>> triangulate(const std::vector<Polyline>& polylines);
 

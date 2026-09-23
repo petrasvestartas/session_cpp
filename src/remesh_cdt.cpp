@@ -14,17 +14,14 @@ namespace {
 // Integer geometry
 // ═══════════════════════════════════════════════════════════════════════════
 
-using Point64 = std::array<int64_t, 2>;
-using Point2 = std::pair<double, double>;
-using Triangle64 = std::array<Point64, 3>;
-
 constexpr size_t NULL_IDX = static_cast<size_t>(-1);
 constexpr double MAX_COORD64 = 9e17;
 constexpr int MAX_PRECISION = 6;
 
 /// Hash of an integer point.
 struct Point64Hash {
-    size_t operator()(const Point64& p) const noexcept {
+    size_t operator()(const std::array<int64_t, 2>& p) const noexcept {
+
         const size_t h = std::hash<int64_t>()(p[0]);
 
         return h ^ (std::hash<int64_t>()(p[1]) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
@@ -37,12 +34,12 @@ int64_t to_int64(double x) {
 }
 
 /// Scale a 2D point to integer coordinates.
-Point64 to_point64(const Point2& p, double scale) {
+std::array<int64_t, 2> to_point64(const std::pair<double, double>& p, double scale) {
     return {to_int64(p.first * scale), to_int64(p.second * scale)};
 }
 
 /// Sign of the turn p1 -> p2 -> p3.
-int cross_sign(const Point64& p1, const Point64& p2, const Point64& p3) {
+int cross_sign(const std::array<int64_t, 2>& p1, const std::array<int64_t, 2>& p2, const std::array<int64_t, 2>& p3) {
 
     const double cp = static_cast<double>(p2[0] - p1[0]) * static_cast<double>(p3[1] - p2[1]) -
         static_cast<double>(p2[1] - p1[1]) * static_cast<double>(p3[0] - p2[0]);
@@ -57,17 +54,18 @@ int cross_sign(const Point64& p1, const Point64& p2, const Point64& p3) {
 }
 
 /// True when p1 -> p2 -> p3 turns left.
-bool left_turning(const Point64& p1, const Point64& p2, const Point64& p3) {
+bool left_turning(const std::array<int64_t, 2>& p1, const std::array<int64_t, 2>& p2, const std::array<int64_t, 2>& p3) {
     return cross_sign(p1, p2, p3) < 0;
 }
 
 /// True when p1 -> p2 -> p3 turns right.
-bool right_turning(const Point64& p1, const Point64& p2, const Point64& p3) {
+bool right_turning(const std::array<int64_t, 2>& p1, const std::array<int64_t, 2>& p2, const std::array<int64_t, 2>& p3) {
     return cross_sign(p1, p2, p3) > 0;
 }
 
 /// True when a is swept before b: higher y first, then lower x.
-bool sweep_before(const Point64& a, const Point64& b) {
+bool sweep_before(const std::array<int64_t, 2>& a, const std::array<int64_t, 2>& b) {
+
     if (a[1] == b[1])
         return a[0] < b[0];
 
@@ -75,7 +73,8 @@ bool sweep_before(const Point64& a, const Point64& b) {
 }
 
 /// Squared distance between two integer points.
-double dist_sqr(const Point64& a, const Point64& b) {
+double dist_sqr(const std::array<int64_t, 2>& a, const std::array<int64_t, 2>& b) {
+
     const double dx = static_cast<double>(a[0] - b[0]);
     const double dy = static_cast<double>(a[1] - b[1]);
 
@@ -83,7 +82,12 @@ double dist_sqr(const Point64& a, const Point64& b) {
 }
 
 /// Positive when d lies inside the circumcircle of the counter-clockwise triangle a, b, c.
-double in_circle(const Point64& a, const Point64& b, const Point64& c, const Point64& d) {
+double in_circle(
+    const std::array<int64_t, 2>& a,
+    const std::array<int64_t, 2>& b,
+    const std::array<int64_t, 2>& c,
+    const std::array<int64_t, 2>& d
+) {
 
     const double m00 = static_cast<double>(a[0] - d[0]);
     const double m01 = static_cast<double>(a[1] - d[1]);
@@ -99,7 +103,7 @@ double in_circle(const Point64& a, const Point64& b, const Point64& c, const Poi
 }
 
 /// Squared distance from p to the segment a-b.
-double dist_sqr_segment(const Point64& p, const Point64& a, const Point64& b) {
+double dist_sqr_segment(const std::array<int64_t, 2>& p, const std::array<int64_t, 2>& a, const std::array<int64_t, 2>& b) {
 
     const double dx = static_cast<double>(b[0] - a[0]);
     const double dy = static_cast<double>(b[1] - a[1]);
@@ -117,7 +121,12 @@ double dist_sqr_segment(const Point64& p, const Point64& a, const Point64& b) {
 }
 
 /// True when a1-a2 and b1-b2 cross strictly inside both segments.
-bool segments_intersect(const Point64& a1, const Point64& a2, const Point64& b1, const Point64& b2) {
+bool segments_intersect(
+    const std::array<int64_t, 2>& a1,
+    const std::array<int64_t, 2>& a2,
+    const std::array<int64_t, 2>& b1,
+    const std::array<int64_t, 2>& b2
+) {
 
     if (a1 == b1 || a2 == b1 || a2 == b2 || a1 == b2)
         return false;
@@ -148,7 +157,7 @@ bool segments_intersect(const Point64& a1, const Point64& a2, const Point64& b1,
 }
 
 /// Even-odd test of an integer point against an integer ring.
-bool inside_path64(const Point64& p, const std::vector<Point64>& poly) {
+bool inside_path64(const std::array<int64_t, 2>& p, const std::vector<std::array<int64_t, 2>>& poly) {
 
     bool inside = false;
     const size_t n = poly.size();
@@ -181,7 +190,7 @@ size_t next_index(size_t i, size_t n) {
 }
 
 /// Advance i to the next vertex that ends a rising run and starts a falling one; false when the path is flat.
-bool find_loc_min(const std::vector<Point64>& path, size_t& i) {
+bool find_loc_min(const std::vector<std::array<int64_t, 2>>& path, size_t& i) {
 
     const size_t n = path.size();
 
@@ -212,11 +221,15 @@ bool find_loc_min(const std::vector<Point64>& path, size_t& i) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Boundary side of an edge, or loose for a diagonal.
-enum class EdgeKind { loose, ascend, descend };
+enum class EdgeKind {
+    loose, // Diagonal between two boundary edges.
+    ascend, // Boundary edge on the left side.
+    descend, // Boundary edge on the right side.
+};
 
 /// Sweep vertex with its incident edges.
 struct Vertex {
-    Point64 pt; // Integer position.
+    std::array<int64_t, 2> pt; // Integer position.
     std::vector<size_t> edges; // Edges touching the vertex.
     bool inner_lm = false; // True at a local minimum of a hole.
 };
@@ -242,10 +255,6 @@ struct Tri {
 
 /// Sweep-line constrained Delaunay: boundary edges ascend on the left and descend on the right, diagonals are loose.
 class Delaunay {
-public:
-    /// Triangles of the paths, empty when they hold no polygon or a hole cannot be connected.
-    std::vector<Triangle64> execute(const std::vector<std::vector<Point64>>& paths);
-
 private:
     std::vector<Vertex> vs; // Vertices.
     std::vector<Edge> es; // Edges.
@@ -255,6 +264,13 @@ private:
     std::vector<size_t> loc_mins; // Hole local minima on the current row.
     size_t lowermost = NULL_IDX; // Lowest vertex of the outer path.
     size_t first_active = NULL_IDX; // Head of the active edge list.
+
+public:
+
+    /// Triangles of the paths, empty when they hold no polygon or a hole cannot be connected.
+    std::vector<std::array<std::array<int64_t, 2>, 3>> execute(const std::vector<std::vector<std::array<int64_t, 2>>>& paths);
+
+private:
 
     /// True when both ends of e share a row.
     bool is_horizontal(size_t e) const;
@@ -266,7 +282,7 @@ private:
     size_t other(size_t e, size_t v) const;
 
     /// Append a vertex and return its index.
-    size_t add_vertex(const Point64& p);
+    size_t add_vertex(const std::array<int64_t, 2>& p);
 
     /// Prepend e to the doubly-linked active list.
     void add_active(size_t e);
@@ -323,16 +339,16 @@ private:
     void force_legal(size_t edge);
 
     /// Walk the path from i back round to i0 creating boundary edges; false when the step budget of a degenerate path is blown.
-    bool walk_path(const std::vector<Point64>& path, size_t i0, size_t i, size_t v0);
+    bool walk_path(const std::vector<std::array<int64_t, 2>>& path, size_t i0, size_t i, size_t v0);
 
-    /// Detach the edges of every vertex added since from.
-    void discard(size_t from);
+    /// Detach the edges of every vertex added since start.
+    void discard(size_t start);
 
     /// Register one closed path; paths that are flat, degenerate or too tiny to hold a triangle are dropped.
-    void add_path(const std::vector<Point64>& path);
+    void add_path(const std::vector<std::array<int64_t, 2>>& path);
 
     /// Register every path; false when none survives.
-    bool add_paths(const std::vector<std::vector<Point64>>& paths);
+    bool add_paths(const std::vector<std::vector<std::array<int64_t, 2>>>& paths);
 
     /// The outer path was wound clockwise: swap the hole flags and the boundary sides.
     void flip_winding();
@@ -353,18 +369,16 @@ private:
     void legalize();
 
     /// Both ends of edge 0 and the far end of edge 1.
-    Triangle64 tri_points(const Tri& t) const;
+    std::array<std::array<int64_t, 2>, 3> tri_points(const Tri& t) const;
 
     /// Counter-clockwise triangles, flat ones dropped.
-    std::vector<Triangle64> triangles() const;
+    std::vector<std::array<std::array<int64_t, 2>, 3>> triangles() const;
 };
 
-/// True when both ends of e share a row.
 bool Delaunay::is_horizontal(size_t e) const {
     return vs[es[e].vb].pt[1] == vs[es[e].vt].pt[1];
 }
 
-/// An edge is done with two triangles, or with one when it is a boundary edge.
 bool Delaunay::completed(size_t e) const {
 
     if (es[e].tri_a == NULL_IDX)
@@ -376,19 +390,17 @@ bool Delaunay::completed(size_t e) const {
     return es[e].kind != EdgeKind::loose;
 }
 
-/// The endpoint of e that is not v.
 size_t Delaunay::other(size_t e, size_t v) const {
     return es[e].vb == v ? es[e].vt : es[e].vb;
 }
 
-/// Append a vertex and return its index.
-size_t Delaunay::add_vertex(const Point64& p) {
+size_t Delaunay::add_vertex(const std::array<int64_t, 2>& p) {
+
     vs.push_back(Vertex{p, {}, false});
 
     return vs.size() - 1;
 }
 
-/// Prepend e to the doubly-linked active list.
 void Delaunay::add_active(size_t e) {
 
     if (es[e].active)
@@ -404,11 +416,11 @@ void Delaunay::add_active(size_t e) {
     first_active = e;
 }
 
-/// Unlink e from the active list and from both endpoint edge lists.
 void Delaunay::remove_active(size_t e) {
 
     remove_from_vertex(es[e].vb, e);
     remove_from_vertex(es[e].vt, e);
+
     const size_t prev = es[e].prev;
     const size_t next = es[e].next;
 
@@ -424,7 +436,6 @@ void Delaunay::remove_active(size_t e) {
         first_active = next;
 }
 
-/// Drop e from the edge list of v.
 void Delaunay::remove_from_vertex(size_t v, size_t e) {
 
     std::vector<size_t>& edges = vs[v].edges;
@@ -434,18 +445,20 @@ void Delaunay::remove_from_vertex(size_t v, size_t e) {
         edges.erase(it);
 }
 
-/// New edge between v1 and v2; loose edges go straight to the active list and the legalize queue.
 size_t Delaunay::create_edge(size_t v1, size_t v2, EdgeKind kind) {
 
     const size_t e = es.size();
     es.push_back(Edge());
-    const Point64 p1 = vs[v1].pt;
-    const Point64 p2 = vs[v2].pt;
+
+    const std::array<int64_t, 2> p1 = vs[v1].pt;
+    const std::array<int64_t, 2> p2 = vs[v2].pt;
+
     es[e].vb = p1[1] < p2[1] ? v2 : v1;
     es[e].vt = p1[1] < p2[1] ? v1 : v2;
     es[e].vl = p1[0] <= p2[0] ? v1 : v2;
     es[e].vr = p1[0] <= p2[0] ? v2 : v1;
     es[e].kind = kind;
+
     vs[v1].edges.push_back(e);
     vs[v2].edges.push_back(e);
 
@@ -457,7 +470,6 @@ size_t Delaunay::create_edge(size_t v1, size_t v2, EdgeKind kind) {
     return e;
 }
 
-/// New triangle on three edges; an edge leaves the active list when it is completed.
 size_t Delaunay::create_tri(size_t e1, size_t e2, size_t e3) {
 
     const size_t t = ts.size();
@@ -478,11 +490,11 @@ size_t Delaunay::create_tri(size_t e1, size_t e2, size_t e3) {
     return t;
 }
 
-/// Shorten long_e to end at short_e's top and continue it with a new edge to the old top.
 void Delaunay::split_edge(size_t long_e, size_t short_e) {
 
     const size_t old_t = es[long_e].vt;
     const size_t new_t = es[short_e].vt;
+
     remove_from_vertex(old_t, long_e);
     es[long_e].vt = new_t;
 
@@ -495,7 +507,6 @@ void Delaunay::split_edge(size_t long_e, size_t short_e) {
     create_edge(new_t, old_t, es[long_e].kind);
 }
 
-/// Split the longer of two collinear non-horizontal edges leaving v downwards.
 void Delaunay::split_collinear(size_t v) {
 
     const std::vector<size_t> snapshot = vs[v].edges;
@@ -508,8 +519,8 @@ void Delaunay::split_collinear(size_t v) {
             if (e2 == e1 || es[e2].vb != v)
                 continue;
 
-            const Point64 t1 = vs[es[e1].vt].pt;
-            const Point64 t2 = vs[es[e2].vt].pt;
+            const std::array<int64_t, 2> t1 = vs[es[e1].vt].pt;
+            const std::array<int64_t, 2> t2 = vs[es[e2].vt].pt;
 
             if (t1[1] == t2[1] || cross_sign(t1, vs[v].pt, t2) != 0)
                 continue;
@@ -524,7 +535,6 @@ void Delaunay::split_collinear(size_t v) {
     }
 }
 
-/// Merge coincident vertices that are neighbours in sweep order into the first one.
 void Delaunay::merge_duplicates(const std::vector<size_t>& order) {
 
     size_t v1 = order[0];
@@ -558,7 +568,6 @@ void Delaunay::merge_duplicates(const std::vector<size_t>& order) {
     }
 }
 
-/// Edge of v1 that reaches v2, a loose one or one of the preferred kind first.
 size_t Delaunay::find_linking_edge(size_t v1, size_t v2, bool prefer_ascend) const {
 
     size_t res = NULL_IDX;
@@ -576,7 +585,6 @@ size_t Delaunay::find_linking_edge(size_t v1, size_t v2, bool prefer_ascend) con
     return res;
 }
 
-/// True when an active horizontal edge lies on the row of v1 between v1 and v2.
 bool Delaunay::horizontal_between(size_t v1, size_t v2) const {
 
     const int64_t y = vs[v1].pt[1];
@@ -585,8 +593,8 @@ bool Delaunay::horizontal_between(size_t v1, size_t v2) const {
     size_t e = first_active;
 
     while (e != NULL_IDX) {
-        const Point64 pl = vs[es[e].vl].pt;
-        const Point64 pr = vs[es[e].vr].pt;
+        const std::array<int64_t, 2> pl = vs[es[e].vl].pt;
+        const std::array<int64_t, 2> pr = vs[es[e].vr].pt;
 
         if (pl[1] == y && pr[1] == y && pl[0] >= lo && pr[0] <= hi && (pl[0] != lo || pl[0] != hi))
             return true;
@@ -597,17 +605,16 @@ bool Delaunay::horizontal_between(size_t v1, size_t v2) const {
     return false;
 }
 
-/// Nearest active edge spanning the x of v_above below it, NULL_IDX when there is none.
 size_t Delaunay::edge_below(size_t v_above) const {
 
-    const Point64 pa = vs[v_above].pt;
+    const std::array<int64_t, 2> pa = vs[v_above].pt;
     size_t best = NULL_IDX;
     double best_d = -1.0;
     size_t e = first_active;
 
     while (e != NULL_IDX) {
-        const Point64 pl = vs[es[e].vl].pt;
-        const Point64 pr = vs[es[e].vr].pt;
+        const std::array<int64_t, 2> pl = vs[es[e].vl].pt;
+        const std::array<int64_t, 2> pr = vs[es[e].vr].pt;
         const bool spans = pl[0] <= pa[0] && pr[0] >= pa[0] && vs[es[e].vb].pt[1] >= pa[1];
 
         if (spans && es[e].vb != v_above && es[e].vt != v_above && !left_turning(pl, pa, pr)) {
@@ -625,20 +632,19 @@ size_t Delaunay::edge_below(size_t v_above) const {
     return best;
 }
 
-/// Endpoint of e_below visible from v_above, moved past every active edge crossing the connection.
 size_t Delaunay::visible_vertex(size_t e_below, size_t v_above) const {
 
-    const Point64 pa = vs[v_above].pt;
+    const std::array<int64_t, 2> pa = vs[v_above].pt;
     size_t best = vs[es[e_below].vt].pt[1] <= pa[1] ? es[e_below].vb : es[e_below].vt;
     const bool left = vs[best].pt[0] < pa[0];
     size_t e = first_active;
 
     while (e != NULL_IDX) {
-        const Point64 pb = vs[best].pt;
-        const Point64 pl = vs[es[e].vl].pt;
-        const Point64 pr = vs[es[e].vr].pt;
-        const Point64 eb = vs[es[e].vb].pt;
-        const Point64 et = vs[es[e].vt].pt;
+        const std::array<int64_t, 2> pb = vs[best].pt;
+        const std::array<int64_t, 2> pl = vs[es[e].vl].pt;
+        const std::array<int64_t, 2> pr = vs[es[e].vr].pt;
+        const std::array<int64_t, 2> eb = vs[es[e].vb].pt;
+        const std::array<int64_t, 2> et = vs[es[e].vt].pt;
         const bool spans = left ? (pr[0] > pb[0] && pl[0] < pa[0]) : (pr[0] < pb[0] && pl[0] > pa[0]);
 
         if (spans && eb[1] > pa[1] && et[1] < pb[1] && segments_intersect(eb, et, pb, pa))
@@ -650,7 +656,6 @@ size_t Delaunay::visible_vertex(size_t e_below, size_t v_above) const {
     return best;
 }
 
-/// Connect a hole local minimum to the visible vertex of the nearest active edge below it.
 size_t Delaunay::create_loc_min_edge(size_t v_above) {
 
     const size_t below = edge_below(v_above);
@@ -661,7 +666,6 @@ size_t Delaunay::create_loc_min_edge(size_t v_above) {
     return create_edge(visible_vertex(below, v_above), v_above, EdgeKind::loose);
 }
 
-/// Tightest active fan candidate around pivot on the left (or right) side of edge, turns read with the side as sign; NULL_IDX when there is none.
 size_t Delaunay::fan_vertex(size_t edge, size_t pivot, bool left, size_t& e_alt) const {
 
     const size_t v = other(edge, pivot);
@@ -694,7 +698,6 @@ size_t Delaunay::fan_vertex(size_t edge, size_t pivot, bool left, size_t& e_alt)
     return v_alt;
 }
 
-/// Fan triangles around pivot on one side of edge, walking onto each new diagonal, never below min_y.
 void Delaunay::triangulate_fan(size_t edge, size_t pivot, int64_t min_y, bool left) {
 
     const size_t max_fan = 2 * vs.size() + 2;
@@ -739,7 +742,6 @@ void Delaunay::triangulate_fan(size_t edge, size_t pivot, int64_t min_y, bool le
     }
 }
 
-/// Of the two edges of tri other than edge, a gets the one touching vl and b the other; returns the far vertex.
 size_t Delaunay::opposite(size_t tri, size_t edge, size_t vl, size_t& a, size_t& b) const {
 
     size_t far = NULL_IDX;
@@ -762,7 +764,6 @@ size_t Delaunay::opposite(size_t tri, size_t edge, size_t vl, size_t& a, size_t&
     return far;
 }
 
-/// Give tri the edges (edge, e1, e2) and move e1/e2 from the other triangle onto it.
 void Delaunay::rewire(size_t tri, size_t other, size_t edge, size_t e1, size_t e2) {
 
     ts[tri].edges = {edge, e1, e2};
@@ -781,7 +782,6 @@ void Delaunay::rewire(size_t tri, size_t other, size_t edge, size_t e1, size_t e
     }
 }
 
-/// Flip edge when the far vertex of one triangle lies inside the circumcircle of the other.
 void Delaunay::force_legal(size_t edge) {
 
     const size_t ta = es[edge].tri_a;
@@ -816,8 +816,7 @@ void Delaunay::force_legal(size_t edge) {
     rewire(tb, ta, edge, b1, b2);
 }
 
-/// Walk the path from i back round to i0 creating boundary edges; false when the step budget of a degenerate path is blown.
-bool Delaunay::walk_path(const std::vector<Point64>& path, size_t i0, size_t i, size_t v0) {
+bool Delaunay::walk_path(const std::vector<std::array<int64_t, 2>>& path, size_t i0, size_t i, size_t v0) {
 
     const size_t n = path.size();
     const size_t budget = 16 * n + 256;
@@ -826,6 +825,7 @@ bool Delaunay::walk_path(const std::vector<Point64>& path, size_t i0, size_t i, 
 
     while (steps < budget) {
         ++steps;
+
         loc_mins.push_back(v_prev);
 
         if (lowermost == NULL_IDX || sweep_before(vs[v_prev].pt, vs[lowermost].pt))
@@ -843,6 +843,7 @@ bool Delaunay::walk_path(const std::vector<Point64>& path, size_t i0, size_t i, 
                 return false;
 
             const size_t v = add_vertex(path[i]);
+
             create_edge(v_prev, v, EdgeKind::ascend);
             v_prev = v;
             i = i_next;
@@ -864,6 +865,7 @@ bool Delaunay::walk_path(const std::vector<Point64>& path, size_t i0, size_t i, 
                 return false;
 
             const size_t v = add_vertex(path[i]);
+
             create_edge(v, v_prev, EdgeKind::descend);
             v_prev_prev = v_prev;
             v_prev = v;
@@ -892,14 +894,13 @@ bool Delaunay::walk_path(const std::vector<Point64>& path, size_t i0, size_t i, 
     return false;
 }
 
-/// Detach the edges of every vertex added since from.
-void Delaunay::discard(size_t from) {
-    for (size_t v = from; v < vs.size(); ++v)
+void Delaunay::discard(size_t start) {
+
+    for (size_t v = start; v < vs.size(); ++v)
         vs[v].edges.clear();
 }
 
-/// Register one closed path; paths that are flat, degenerate or too tiny to hold a triangle are dropped.
-void Delaunay::add_path(const std::vector<Point64>& path) {
+void Delaunay::add_path(const std::vector<std::array<int64_t, 2>>& path) {
 
     const size_t n = path.size();
     size_t i = 0;
@@ -927,32 +928,32 @@ void Delaunay::add_path(const std::vector<Point64>& path) {
         i_next = next_index(i, n);
     }
 
-    const size_t from = vs.size();
+    const size_t start = vs.size();
     const size_t v0 = add_vertex(path[i]);
 
     if (left_turning(path[i_prev], path[i], path[i_next]))
         vs[v0].inner_lm = true;
 
     if (!walk_path(path, i0, i_next, v0)) {
-        discard(from);
+        discard(start);
 
         return;
     }
 
-    const size_t count = vs.size() - from;
+    const size_t count = vs.size() - start;
     const bool tiny = count == 3 &&
-        (dist_sqr(vs[from].pt, vs[from + 1].pt) <= 1 || dist_sqr(vs[from + 1].pt, vs[from + 2].pt) <= 1 ||
-         dist_sqr(vs[from + 2].pt, vs[from].pt) <= 1);
+        (dist_sqr(vs[start].pt, vs[start + 1].pt) <= 1 || dist_sqr(vs[start + 1].pt, vs[start + 2].pt) <= 1 ||
+         dist_sqr(vs[start + 2].pt, vs[start].pt) <= 1);
+
     if (count < 3 || tiny)
-        discard(from);
+        discard(start);
 }
 
-/// Register every path; false when none survives.
-bool Delaunay::add_paths(const std::vector<std::vector<Point64>>& paths) {
+bool Delaunay::add_paths(const std::vector<std::vector<std::array<int64_t, 2>>>& paths) {
 
     size_t total = 0;
 
-    for (const std::vector<Point64>& path : paths)
+    for (const std::vector<std::array<int64_t, 2>>& path : paths)
         total += path.size();
 
     if (total == 0)
@@ -961,13 +962,12 @@ bool Delaunay::add_paths(const std::vector<std::vector<Point64>>& paths) {
     vs.reserve(total);
     es.reserve(total);
 
-    for (const std::vector<Point64>& path : paths)
+    for (const std::vector<std::array<int64_t, 2>>& path : paths)
         add_path(path);
 
     return vs.size() > 2;
 }
 
-/// The outer path was wound clockwise: swap the hole flags and the boundary sides.
 void Delaunay::flip_winding() {
 
     for (size_t v : loc_mins)
@@ -980,12 +980,12 @@ void Delaunay::flip_winding() {
             e.kind = EdgeKind::ascend;
 }
 
-/// Connect and fan the hole local minima collected on the finished row; false when one cannot be reached.
 bool Delaunay::sweep_loc_mins(int64_t curr_y) {
 
     while (!loc_mins.empty()) {
         const size_t lm = loc_mins.back();
         loc_mins.pop_back();
+
         const size_t e = create_loc_min_edge(lm);
 
         if (e == NULL_IDX)
@@ -1012,7 +1012,6 @@ bool Delaunay::sweep_loc_mins(int64_t curr_y) {
     return true;
 }
 
-/// Fan the horizontal edges deferred from the finished row.
 void Delaunay::sweep_horizontals(int64_t curr_y) {
 
     while (!horz.empty()) {
@@ -1031,7 +1030,6 @@ void Delaunay::sweep_horizontals(int64_t curr_y) {
     }
 }
 
-/// Activate the boundary edges starting at v and fan the ones ending at it.
 void Delaunay::sweep_vertex(size_t v) {
 
     for (int i = static_cast<int>(vs[v].edges.size()) - 1; i >= 0; --i) {
@@ -1055,7 +1053,6 @@ void Delaunay::sweep_vertex(size_t v) {
     }
 }
 
-/// Sweep the vertices top to bottom filling triangles row by row; false when a hole cannot be connected.
 bool Delaunay::sweep(const std::vector<size_t>& order) {
 
     int64_t curr_y = vs[order[0]].pt[1];
@@ -1089,7 +1086,6 @@ bool Delaunay::sweep(const std::vector<size_t>& order) {
     return true;
 }
 
-/// Flip loose edges until Delaunay, capped so near-cocircular integer points cannot flip-flop forever.
 void Delaunay::legalize() {
 
     const size_t max_flips = 64 * vs.size() + 4096;
@@ -1097,30 +1093,29 @@ void Delaunay::legalize() {
     for (size_t flips = 0; flips < max_flips && !pending.empty(); ++flips) {
         const size_t e = pending.back();
         pending.pop_back();
+
         force_legal(e);
     }
 }
 
-/// Both ends of edge 0 and the far end of edge 1.
-Triangle64 Delaunay::tri_points(const Tri& t) const {
+std::array<std::array<int64_t, 2>, 3> Delaunay::tri_points(const Tri& t) const {
 
     const Edge& e0 = es[t.edges[0]];
     const Edge& e1 = es[t.edges[1]];
-    const Point64 p0 = vs[e0.vl].pt;
-    const Point64 p1 = vs[e0.vr].pt;
-    const Point64 p2 = vs[e1.vl].pt == p0 || vs[e1.vl].pt == p1 ? vs[e1.vr].pt : vs[e1.vl].pt;
+    const std::array<int64_t, 2> p0 = vs[e0.vl].pt;
+    const std::array<int64_t, 2> p1 = vs[e0.vr].pt;
+    const std::array<int64_t, 2> p2 = vs[e1.vl].pt == p0 || vs[e1.vl].pt == p1 ? vs[e1.vr].pt : vs[e1.vl].pt;
 
     return {p0, p1, p2};
 }
 
-/// Counter-clockwise triangles, flat ones dropped.
-std::vector<Triangle64> Delaunay::triangles() const {
+std::vector<std::array<std::array<int64_t, 2>, 3>> Delaunay::triangles() const {
 
-    std::vector<Triangle64> res;
+    std::vector<std::array<std::array<int64_t, 2>, 3>> res;
     res.reserve(ts.size());
 
     for (const Tri& t : ts) {
-        Triangle64 p = tri_points(t);
+        std::array<std::array<int64_t, 2>, 3> p = tri_points(t);
         const int sign = cross_sign(p[0], p[1], p[2]);
 
         if (sign == 0)
@@ -1135,8 +1130,7 @@ std::vector<Triangle64> Delaunay::triangles() const {
     return res;
 }
 
-/// Triangles of the paths, empty when they hold no polygon or a hole cannot be connected.
-std::vector<Triangle64> Delaunay::execute(const std::vector<std::vector<Point64>>& paths) {
+std::vector<std::array<std::array<int64_t, 2>, 3>> Delaunay::execute(const std::vector<std::vector<std::array<int64_t, 2>>>& paths) {
 
     if (!add_paths(paths))
         return {};
@@ -1145,11 +1139,13 @@ std::vector<Triangle64> Delaunay::execute(const std::vector<std::vector<Point64>
         flip_winding();
 
     loc_mins.clear();
+
     std::vector<size_t> order(vs.size());
     std::iota(order.begin(), order.end(), 0);
     std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
         return sweep_before(vs[a].pt, vs[b].pt);
     });
+
     merge_duplicates(order);
 
     if (!sweep(order))
@@ -1165,15 +1161,18 @@ std::vector<Triangle64> Delaunay::execute(const std::vector<std::vector<Point64>
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Power of ten keeping the largest coordinate inside int64 headroom.
-double cdt_scale(const std::vector<Point2>& border_2d, const std::vector<std::vector<Point2>>& holes_2d) {
+double cdt_scale(
+    const std::vector<std::pair<double, double>>& border_2d,
+    const std::vector<std::vector<std::pair<double, double>>>& holes_2d
+) {
 
     double max_coord = 1.0;
 
-    for (const Point2& p : border_2d)
+    for (const std::pair<double, double>& p : border_2d)
         max_coord = std::max({max_coord, std::abs(p.first), std::abs(p.second)});
 
-    for (const std::vector<Point2>& hole : holes_2d)
-        for (const Point2& p : hole)
+    for (const std::vector<std::pair<double, double>>& hole : holes_2d)
+        for (const std::pair<double, double>& p : hole)
             max_coord = std::max({max_coord, std::abs(p.first), std::abs(p.second)});
 
     int precision = MAX_PRECISION;
@@ -1185,21 +1184,21 @@ double cdt_scale(const std::vector<Point2>& border_2d, const std::vector<std::ve
 }
 
 /// Hole rows sharing an integer y with a border row move one unit down so the sweep never sees a collinear constraint.
-std::vector<std::vector<Point2>> shift_hole_rows(
-    const std::vector<Point2>& border_2d,
-    const std::vector<std::vector<Point2>>& holes_2d,
+std::vector<std::vector<std::pair<double, double>>> shift_hole_rows(
+    const std::vector<std::pair<double, double>>& border_2d,
+    const std::vector<std::vector<std::pair<double, double>>>& holes_2d,
     double scale
 ) {
 
     std::unordered_set<int64_t> border_ys;
 
-    for (const Point2& p : border_2d)
+    for (const std::pair<double, double>& p : border_2d)
         border_ys.insert(to_int64(p.second * scale));
 
-    std::vector<std::vector<Point2>> holes = holes_2d;
+    std::vector<std::vector<std::pair<double, double>>> holes = holes_2d;
 
-    for (std::vector<Point2>& hole : holes)
-        for (Point2& p : hole) {
+    for (std::vector<std::pair<double, double>>& hole : holes)
+        for (std::pair<double, double>& p : hole) {
             const int64_t iy = to_int64(p.second * scale);
 
             if (border_ys.count(iy))
@@ -1210,12 +1209,12 @@ std::vector<std::vector<Point2>> shift_hole_rows(
 }
 
 /// Integer ring, closing duplicate dropped.
-std::vector<Point64> to_path64(const std::vector<Point2>& pts, double scale) {
+std::vector<std::array<int64_t, 2>> to_path64(const std::vector<std::pair<double, double>>& pts, double scale) {
 
-    std::vector<Point64> path;
+    std::vector<std::array<int64_t, 2>> path;
     path.reserve(pts.size());
 
-    for (const Point2& p : pts)
+    for (const std::pair<double, double>& p : pts)
         path.push_back(to_point64(p, scale));
 
     if (path.size() > 1 && path.front() == path.back())
@@ -1225,22 +1224,22 @@ std::vector<Point64> to_path64(const std::vector<Point2>& pts, double scale) {
 }
 
 /// Index of every integer point in the flat list [border..., hole0..., hole1...], first occurrence wins.
-std::unordered_map<Point64, int, Point64Hash> index_map(
-    const std::vector<Point2>& border_2d,
-    const std::vector<std::vector<Point2>>& holes_2d,
+std::unordered_map<std::array<int64_t, 2>, int, Point64Hash> index_map(
+    const std::vector<std::pair<double, double>>& border_2d,
+    const std::vector<std::vector<std::pair<double, double>>>& holes_2d,
     double scale
 ) {
 
-    std::unordered_map<Point64, int, Point64Hash> indices;
+    std::unordered_map<std::array<int64_t, 2>, int, Point64Hash> indices;
     int index = 0;
 
-    for (const Point2& p : border_2d) {
+    for (const std::pair<double, double>& p : border_2d) {
         indices.emplace(to_point64(p, scale), index);
         ++index;
     }
 
-    for (const std::vector<Point2>& hole : holes_2d)
-        for (const Point2& p : hole) {
+    for (const std::vector<std::pair<double, double>>& hole : holes_2d)
+        for (const std::pair<double, double>& p : hole) {
             indices.emplace(to_point64(p, scale), index);
             ++index;
         }
@@ -1250,16 +1249,16 @@ std::unordered_map<Point64, int, Point64Hash> index_map(
 
 /// A triangle lies in a hole when all its corners are on one hole ring or its centroid is outside the border or inside a hole.
 bool inside_hole(
-    const Triangle64& tri,
-    const std::vector<std::vector<Point64>>& paths,
-    const std::vector<std::unordered_set<Point64, Point64Hash>>& hole_sets
+    const std::array<std::array<int64_t, 2>, 3>& tri,
+    const std::vector<std::vector<std::array<int64_t, 2>>>& paths,
+    const std::vector<std::unordered_set<std::array<int64_t, 2>, Point64Hash>>& hole_sets
 ) {
 
-    for (const std::unordered_set<Point64, Point64Hash>& set : hole_sets)
+    for (const std::unordered_set<std::array<int64_t, 2>, Point64Hash>& set : hole_sets)
         if (set.count(tri[0]) && set.count(tri[1]) && set.count(tri[2]))
             return true;
 
-    const Point64 c = {(tri[0][0] + tri[1][0] + tri[2][0]) / 3, (tri[0][1] + tri[1][1] + tri[2][1]) / 3};
+    const std::array<int64_t, 2> c = {(tri[0][0] + tri[1][0] + tri[2][0]) / 3, (tri[0][1] + tri[1][1] + tri[2][1]) / 3};
 
     if (!inside_path64(c, paths[0]))
         return true;
@@ -1272,17 +1271,20 @@ bool inside_hole(
 }
 
 /// Drop the triangles the sweep filled inside the holes; edge midpoints are not tested because valid triangles touch the hole rings.
-void remove_hole_triangles(std::vector<Triangle64>& tris, const std::vector<std::vector<Point64>>& paths) {
+void remove_hole_triangles(
+    std::vector<std::array<std::array<int64_t, 2>, 3>>& tris,
+    const std::vector<std::vector<std::array<int64_t, 2>>>& paths
+) {
 
-    std::vector<std::unordered_set<Point64, Point64Hash>> hole_sets;
+    std::vector<std::unordered_set<std::array<int64_t, 2>, Point64Hash>> hole_sets;
 
     for (size_t h = 1; h < paths.size(); ++h)
         hole_sets.emplace_back(paths[h].begin(), paths[h].end());
 
-    std::vector<Triangle64> kept;
+    std::vector<std::array<std::array<int64_t, 2>, 3>> kept;
     kept.reserve(tris.size());
 
-    for (const Triangle64& tri : tris)
+    for (const std::array<std::array<int64_t, 2>, 3>& tri : tris)
         if (!inside_hole(tri, paths, hole_sets))
             kept.push_back(tri);
 
@@ -1291,14 +1293,14 @@ void remove_hole_triangles(std::vector<Triangle64>& tris, const std::vector<std:
 
 /// Corner indices into the flat list, triangles with an unknown corner dropped.
 std::vector<std::array<int, 3>> to_indices(
-    const std::vector<Triangle64>& tris,
-    const std::unordered_map<Point64, int, Point64Hash>& indices
+    const std::vector<std::array<std::array<int64_t, 2>, 3>>& tris,
+    const std::unordered_map<std::array<int64_t, 2>, int, Point64Hash>& indices
 ) {
 
     std::vector<std::array<int, 3>> out;
     out.reserve(tris.size());
 
-    for (const Triangle64& tri : tris) {
+    for (const std::array<std::array<int64_t, 2>, 3>& tri : tris) {
         std::array<int, 3> f = {0, 0, 0};
         bool known = true;
 
@@ -1339,13 +1341,14 @@ std::vector<Point> strip_close(const Polyline& polyline) {
 }
 
 /// Signed area of a 2D ring, positive when counter-clockwise.
-double signed_area(const std::vector<Point2>& pts) {
+double signed_area(const std::vector<std::pair<double, double>>& pts) {
 
     double area = 0.0;
     const size_t n = pts.size();
 
     for (size_t i = 0; i < n; ++i) {
         const size_t j = (i + 1) % n;
+
         area += pts[i].first * pts[j].second - pts[j].first * pts[i].second;
     }
 
@@ -1385,20 +1388,21 @@ size_t border_index(const std::vector<Polyline>& polylines) {
 }
 
 /// Plane coordinates of the points in the frame (origin, xaxis, yaxis).
-std::vector<Point2> project_2d(
+std::vector<std::pair<double, double>> project_2d(
     const std::vector<Point>& pts,
     const Point& origin,
     const Vector& xaxis,
     const Vector& yaxis
 ) {
 
-    std::vector<Point2> out;
+    std::vector<std::pair<double, double>> out;
     out.reserve(pts.size());
 
     for (const Point& p : pts) {
         const double dx = p[0] - origin[0];
         const double dy = p[1] - origin[1];
         const double dz = p[2] - origin[2];
+
         out.push_back({dx * xaxis[0] + dy * xaxis[1] + dz * xaxis[2], dx * yaxis[0] + dy * yaxis[1] + dz * yaxis[2]});
     }
 
@@ -1484,20 +1488,21 @@ Mesh build_mesh(
 
 /// Triangle index triples of a counter-clockwise 2D border with clockwise holes into the flat list [border..., hole0..., hole1...].
 std::vector<std::array<int, 3>> cdt_triangulate(
-    const std::vector<Point2>& border_2d,
-    const std::vector<std::vector<Point2>>& holes_2d
+    const std::vector<std::pair<double, double>>& border_2d,
+    const std::vector<std::vector<std::pair<double, double>>>& holes_2d
 ) {
 
     const double scale = cdt_scale(border_2d, holes_2d);
-    const std::vector<std::vector<Point2>> holes = shift_hole_rows(border_2d, holes_2d, scale);
-    std::vector<std::vector<Point64>> paths;
+    const std::vector<std::vector<std::pair<double, double>>> holes = shift_hole_rows(border_2d, holes_2d, scale);
+    std::vector<std::vector<std::array<int64_t, 2>>> paths;
+
     paths.push_back(to_path64(border_2d, scale));
 
-    for (const std::vector<Point2>& hole : holes)
+    for (const std::vector<std::pair<double, double>>& hole : holes)
         paths.push_back(to_path64(hole, scale));
 
     Delaunay delaunay;
-    std::vector<Triangle64> tris = delaunay.execute(paths);
+    std::vector<std::array<std::array<int64_t, 2>, 3>> tris = delaunay.execute(paths);
 
     if (!holes.empty())
         remove_hole_triangles(tris, paths);
@@ -1515,15 +1520,15 @@ std::vector<std::array<int, 3>> RemeshCDT::triangulate(const std::vector<Polylin
     if (border.size() < 3)
         return {};
 
-    std::vector<Point2> border_2d;
+    std::vector<std::pair<double, double>> border_2d;
 
     for (const Point& p : border)
         border_2d.push_back({p[0], p[1]});
 
-    std::vector<std::vector<Point2>> holes_2d;
+    std::vector<std::vector<std::pair<double, double>>> holes_2d;
 
     for (size_t i = 1; i < polylines.size(); ++i) {
-        std::vector<Point2> hole_2d;
+        std::vector<std::pair<double, double>> hole_2d;
 
         for (const Point& p : strip_close(polylines[i]))
             hole_2d.push_back({p[0], p[1]});
@@ -1571,17 +1576,17 @@ Mesh RemeshCDT::from_polylines(const std::vector<Polyline>& polylines, bool is_2
         Polyline(all_pts).get_average_plane(origin, xaxis, yaxis, zaxis);
     }
 
-    std::vector<Point2> border_2d = project_2d(border, origin, xaxis, yaxis);
+    std::vector<std::pair<double, double>> border_2d = project_2d(border, origin, xaxis, yaxis);
 
     if (signed_area(border_2d) < 0.0) {
         std::reverse(border.begin(), border.end());
         std::reverse(border_2d.begin(), border_2d.end());
     }
 
-    std::vector<std::vector<Point2>> holes_2d;
+    std::vector<std::vector<std::pair<double, double>>> holes_2d;
 
     for (std::vector<Point>& hole : holes) {
-        std::vector<Point2> hole_2d = project_2d(hole, origin, xaxis, yaxis);
+        std::vector<std::pair<double, double>> hole_2d = project_2d(hole, origin, xaxis, yaxis);
 
         if (signed_area(hole_2d) > 0.0) {
             std::reverse(hole.begin(), hole.end());

@@ -1,5 +1,11 @@
 #include "mini_test.h"
+#include "mesh.h"
+#include "point.h"
+#include "polyline.h"
 #include "remesh_cdt.h"
+#include "vector.h"
+#include <array>
+#include <vector>
 
 using namespace session_cpp::mini_test;
 
@@ -7,13 +13,13 @@ namespace session_cpp {
 
 MINI_TEST("RemeshCDT", "Triangulate") {
 
-    Polyline border({
+    const Polyline border({
         Point(0, 0, 0),
         Point(4, 0, 0),
         Point(4, 4, 0),
         Point(0, 4, 0),
     });
-    Polyline hole({
+    const Polyline hole({
         Point(1, 1, 0),
         Point(1, 3, 0),
         Point(3, 3, 0),
@@ -28,46 +34,46 @@ MINI_TEST("RemeshCDT", "Triangulate") {
     for (const Point& p : hole.get_points())
         flat.push_back(p);
 
-    Mesh m;
+    Mesh mesh;
     std::vector<size_t> vkeys;
 
     for (const Point& p : flat)
-        vkeys.push_back(m.add_vertex(p));
+        vkeys.push_back(mesh.add_vertex(p));
 
     for (const std::array<int, 3>& t : tris)
-        m.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+        mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Triangle") {
 
-    Polyline pl({
+    const Polyline polyline({
         Point(0, 0, 0),
         Point(1, 0, 0),
         Point(0, 1, 0),
     });
-    Mesh m = RemeshCDT::from_polylines({pl});
+    const Mesh mesh = RemeshCDT::from_polylines({polyline});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Rectangle") {
 
-    Polyline pl({
+    const Polyline polyline({
         Point(3, 0, 0),
         Point(5, 0, 0),
         Point(5, 2, 0),
         Point(3, 2, 0),
     });
-    Mesh m = RemeshCDT::from_polylines({pl});
+    const Mesh mesh = RemeshCDT::from_polylines({polyline});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "L Shape") {
 
-    Polyline pl({
+    const Polyline polyline({
         Point(7, 0, 0),
         Point(10, 0, 0),
         Point(10, 1, 0),
@@ -75,14 +81,14 @@ MINI_TEST("RemeshCDT", "L Shape") {
         Point(8, 3, 0),
         Point(7, 3, 0),
     });
-    Mesh m = RemeshCDT::from_polylines({pl});
+    const Mesh mesh = RemeshCDT::from_polylines({polyline});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "U Shape") {
 
-    Polyline pl({
+    const Polyline polyline({
         Point(25, 0, 0),
         Point(31, 0, 0),
         Point(31, 4, 0),
@@ -92,42 +98,42 @@ MINI_TEST("RemeshCDT", "U Shape") {
         Point(27, 4, 0),
         Point(25, 4, 0),
     });
-    Mesh m = RemeshCDT::from_polylines({pl});
+    const Mesh mesh = RemeshCDT::from_polylines({polyline});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Octagon") {
 
-    Polyline pl = Polyline::from_sides(8, 1.5);
-    pl += Vector(14, 1.5, 0);
-    Mesh m = RemeshCDT::from_polylines({pl});
+    Polyline polyline = Polyline::from_sides(8, 1.5);
+    polyline += Vector(14, 1.5, 0);
+    const Mesh mesh = RemeshCDT::from_polylines({polyline});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Rectangle With Rectangle Hole") {
 
-    Polyline border({
+    const Polyline border({
         Point(0, 0, 0),
         Point(4, 0, 0),
         Point(4, 4, 0),
         Point(0, 4, 0),
     });
-    Polyline hole({
+    const Polyline hole({
         Point(1, 1, 0),
         Point(1, 3, 0),
         Point(3, 3, 0),
         Point(3, 1, 0),
     });
-    Mesh m = RemeshCDT::from_polylines({border, hole});
+    const Mesh mesh = RemeshCDT::from_polylines({border, hole});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Duplicate Vertices") {
 
-    Polyline pl({
+    const Polyline polyline({
         Point(33, 0, 0),
         Point(36, 0, 0),
         Point(37, 2, 0),
@@ -135,33 +141,33 @@ MINI_TEST("RemeshCDT", "Duplicate Vertices") {
         Point(33, 2, 0),
         Point(33, 0, 0),
     });
-    Mesh m = RemeshCDT::from_polylines({pl});
+    const Mesh mesh = RemeshCDT::from_polylines({polyline});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Tilted Rectangle With Rectangle Hole") {
 
-    Polyline border({
+    const Polyline border({
         Point(55, 0, 0),
         Point(62, 0, 0),
         Point(62, 4, 2),
         Point(55, 4, 2),
     });
-    Polyline hole({
+    const Polyline hole({
         Point(56, 1, 0.5),
         Point(61, 1, 0.5),
         Point(61, 3, 1.5),
         Point(56, 3, 1.5),
     });
-    Mesh m = RemeshCDT::from_polylines({border, hole}, false, false);
+    const Mesh mesh = RemeshCDT::from_polylines({border, hole}, false, false);
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Irregular Tilted Polyline") {
 
-    std::vector<Point> border = {
+    const std::vector<Point> border = {
         Point(125.390575, 14.236865, -16.468853), Point(115.72382, 17.091624, -3.285212),
         Point(121.789447, 21.876306, 18.811062),  Point(151.252023, 21.746582, 18.211977),
         Point(142.916699, 15.485629, -10.701904), Point(135.657716, 19.277143, 6.807792),
@@ -187,14 +193,14 @@ MINI_TEST("RemeshCDT", "Irregular Tilted Polyline") {
         Point(126.514179, 16.245401, -7.193181),  Point(122.064196, 16.141604, -7.672527),
         Point(129.662786, 15.027072, -12.81958),  Point(125.390575, 14.236865, -16.468853),
     };
-    Mesh m = RemeshCDT::from_polylines({Polyline(border)});
+    const Mesh mesh = RemeshCDT::from_polylines({Polyline(border)});
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Irregular Tilted Polyline With Holes") {
 
-    std::vector<Point> border = {
+    const std::vector<Point> border = {
         Point(80.805571, 2.103432, 0),   Point(77.056348, 6.382318, 0),   Point(73.469325, 10.712368, 0),
         Point(76.913186, 20.429093, 0),  Point(81.089809, 22.150636, 0),  Point(80.489618, 16.428762, 0),
         Point(77.593256, 13.859214, 0),  Point(79.137808, 10.314549, 0),  Point(81.991647, 13.383871, 0),
@@ -219,14 +225,14 @@ MINI_TEST("RemeshCDT", "Irregular Tilted Polyline With Holes") {
         Point(85.498912, 16.396132, 0),  Point(82.205875, 10.374609, 0),  Point(79.29099, 8.223327, 0),
         Point(82.140367, 5.90496, 0),    Point(80.805571, 2.103432, 0),
     };
-    std::vector<Point> h1 = {
+    const std::vector<Point> h1 = {
         Point(89.032991, 2.017152, 0),
         Point(87.733487, 4.228529, 0),
         Point(91.344022, 3.519583, 0),
         Point(94.484896, 1.422882, 0),
         Point(89.032991, 2.017152, 0),
     };
-    std::vector<Point> h2 = {
+    const std::vector<Point> h2 = {
         Point(92.03771, 19.272441, 0),
         Point(93.023809, 18.394685, 0),
         Point(95.237342, 19.201565, 0),
@@ -237,7 +243,7 @@ MINI_TEST("RemeshCDT", "Irregular Tilted Polyline With Holes") {
         Point(94.196483, 22.936949, 0),
         Point(92.03771, 19.272441, 0),
     };
-    std::vector<Point> h3 = {
+    const std::vector<Point> h3 = {
         Point(75.250389, 29.32022, 0),
         Point(71.879629, 25.409869, 0),
         Point(72.297014, 23.977747, 0),
@@ -248,54 +254,54 @@ MINI_TEST("RemeshCDT", "Irregular Tilted Polyline With Holes") {
         Point(80.430576, 30.631228, 0),
         Point(75.250389, 29.32022, 0),
     };
-    std::vector<Point> h4 = {
+    const std::vector<Point> h4 = {
         Point(78.759389, 19.25978, 0),
         Point(79.548907, 18.00544, 0),
         Point(77.949677, 16.331313, 0),
         Point(77.272732, 16.707375, 0),
         Point(78.759389, 19.25978, 0),
     };
-    Mesh m = RemeshCDT::from_polylines(
+    const Mesh mesh = RemeshCDT::from_polylines(
         {Polyline(border), Polyline(h1), Polyline(h2), Polyline(h3), Polyline(h4)},
         false,
         false
     );
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 MINI_TEST("RemeshCDT", "Degenerate Hole Keeps Flat Indices") {
 
-    Polyline border({
+    const Polyline border({
         Point(0, 0, 0),
         Point(4, 0, 0),
         Point(4, 4, 0),
         Point(0, 4, 0),
     });
-    Polyline degen({
+    const Polyline degen({
         Point(1.5, 2, 0),
         Point(2.5, 2, 0),
     });
-    Polyline hole({
+    const Polyline hole({
         Point(1, 1, 0),
         Point(1, 3, 0),
         Point(3, 3, 0),
         Point(3, 1, 0),
     });
     const std::vector<std::array<int, 3>> tris = RemeshCDT::triangulate({border, degen, hole});
-    int mx = 0;
+    int max_index = 0;
 
     for (const std::array<int, 3>& t : tris)
         for (int k = 0; k < 3; ++k)
-            if (t[k] > mx)
-                mx = t[k];
+            if (t[k] > max_index)
+                max_index = t[k];
 
-    MINI_CHECK(!tris.empty() && mx == 9);
+    MINI_CHECK(!tris.empty() && max_index == 9);
 }
 
 MINI_TEST("RemeshCDT", "Large Coordinates") {
 
-    Polyline border({
+    const Polyline border({
         Point(1e13, 1e13, 0),
         Point(1e13 + 4, 1e13, 0),
         Point(1e13 + 4, 1e13 + 4, 0),
@@ -308,7 +314,7 @@ MINI_TEST("RemeshCDT", "Large Coordinates") {
 
 MINI_TEST("RemeshCDT", "Plate Four Holes") {
 
-    std::vector<Point> border = {
+    const std::vector<Point> border = {
         Point(734.392021, -1906.59468, 1101.588031),
         Point(632.396858, -1838.597905, 948.595287),
         Point(624.453132, -1769.270846, 984.70313),
@@ -325,41 +331,41 @@ MINI_TEST("RemeshCDT", "Plate Four Holes") {
         Point(736.583592, -1917.0, 1098.167184),
         Point(734.392021, -1906.59468, 1101.588031),
     };
-    std::vector<Point> h1 = {
+    const std::vector<Point> h1 = {
         Point(322.544527, -1917.0, 270.089054),
         Point(213.417326, -1917.0, 51.834651),
         Point(199.266354, -1869.830094, 58.910137),
         Point(308.393555, -1869.830094, 277.16454),
         Point(322.544527, -1917.0, 270.089054),
     };
-    std::vector<Point> h2 = {
+    const std::vector<Point> h2 = {
         Point(540.79893, -1917.0, 706.59786),
         Point(431.671728, -1917.0, 488.343457),
         Point(417.520757, -1869.830094, 495.418943),
         Point(526.647958, -1869.830094, 713.673346),
         Point(540.79893, -1917.0, 706.59786),
     };
-    std::vector<Point> h3 = {
+    const std::vector<Point> h3 = {
         Point(424.153936, -1667.753669, 660.242619),
         Point(526.289465, -1735.844022, 813.445914),
         Point(530.261328, -1770.507552, 795.391992),
         Point(428.125798, -1702.417199, 642.188697),
         Point(424.153936, -1667.753669, 660.242619),
     };
-    std::vector<Point> h4 = {
+    const std::vector<Point> h4 = {
         Point(219.882876, -1531.572963, 353.83603),
         Point(322.018406, -1599.663316, 507.039325),
         Point(325.990269, -1634.326846, 488.985403),
         Point(223.854739, -1566.236493, 335.782108),
         Point(219.882876, -1531.572963, 353.83603),
     };
-    Mesh m = RemeshCDT::from_polylines(
+    const Mesh mesh = RemeshCDT::from_polylines(
         {Polyline(border), Polyline(h1), Polyline(h2), Polyline(h3), Polyline(h4)},
         false,
         false
     );
 
-    MINI_CHECK(m.is_valid());
+    MINI_CHECK(mesh.is_valid());
 }
 
 } // namespace session_cpp
