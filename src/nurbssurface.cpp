@@ -22,7 +22,6 @@ namespace {
 // ═══════════════════════════════════════════════════════════════════════════
 // File helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Repeat each distinct knot by its multiplicity.
 std::vector<double> expand_nurbsknots(const std::vector<double>& knots, const std::vector<int>& mults) {
 
@@ -50,8 +49,12 @@ double binomial(int n, int k) {
 std::pair<std::array<double, 3>, std::array<double, 3>> surface_aabb(const NurbsSurface& srf) {
 
     const int n = 6;
-    const auto [u0, u1] = srf.domain(0);
-    const auto [v0, v1] = srf.domain(1);
+    const std::pair<double, double> domain_u = srf.domain(0);
+    const std::pair<double, double> domain_v = srf.domain(1);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     std::array<double, 3> lo = {1e30, 1e30, 1e30};
     std::array<double, 3> hi = {-1e30, -1e30, -1e30};
 
@@ -145,9 +148,39 @@ std::vector<Color> colors_from_proto(const google::protobuf::RepeatedPtrField<se
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
+NurbsSurface::NurbsSurface() {
+    initialize();
+}
+
+NurbsSurface::NurbsSurface(int dimension, bool is_rational, int order0, int order1, int cv_count0, int cv_count1) {
+
+    initialize();
+    create_raw(dimension, is_rational, order0, order1, cv_count0, cv_count1);
+}
+
+NurbsSurface::NurbsSurface(const NurbsSurface& other) {
+
+    initialize();
+    deep_copy_from(other);
+}
+
+NurbsSurface& NurbsSurface::operator=(const NurbsSurface& other) {
+
+    if (this != &other)
+        deep_copy_from(other);
+
+    return *this;
+}
+
+NurbsSurface::~NurbsSurface() {
+    destroy();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 NurbsSurface NurbsSurface::create(
     bool periodic_u,
     bool periodic_v,
@@ -262,30 +295,8 @@ NurbsSurface NurbsSurface::create_from_parameters(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Constructors
+// Operators
 // ═══════════════════════════════════════════════════════════════════════════
-
-NurbsSurface::NurbsSurface() {
-    initialize();
-}
-
-NurbsSurface::NurbsSurface(int dimension, bool is_rational, int order0, int order1, int cv_count0, int cv_count1) {
-    initialize();
-    create_raw(dimension, is_rational, order0, order1, cv_count0, cv_count1);
-}
-
-NurbsSurface::NurbsSurface(const NurbsSurface& other) {
-    initialize();
-    deep_copy_from(other);
-}
-
-NurbsSurface& NurbsSurface::operator=(const NurbsSurface& other) {
-    if (this != &other)
-        deep_copy_from(other);
-
-    return *this;
-}
-
 bool NurbsSurface::operator==(const NurbsSurface& other) const {
 
     if (name != other.name || width != other.width)
@@ -316,14 +327,32 @@ bool NurbsSurface::operator!=(const NurbsSurface& other) const {
     return !(*this == other);
 }
 
-NurbsSurface::~NurbsSurface() {
-    destroy();
+// ═══════════════════════════════════════════════════════════════════════════
+// Transformation
+// ═══════════════════════════════════════════════════════════════════════════
+bool NurbsSurface::transform(const Xform& xform) {
+
+    for (int i = 0; i < m_cv_count[0]; i++)
+        for (int j = 0; j < m_cv_count[1]; j++) {
+            Point p = get_cv(i, j);
+            p.transform(xform);
+            set_cv(i, j, p);
+        }
+
+    return true;
+}
+
+NurbsSurface NurbsSurface::transformed(const Xform& xform) const {
+
+    NurbsSurface result = *this;
+    result.transform(xform);
+
+    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Initialization
 // ═══════════════════════════════════════════════════════════════════════════
-
 void NurbsSurface::initialize() {
 
     _guid.clear();
@@ -419,7 +448,6 @@ void NurbsSurface::destroy() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Boolean queries
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsSurface::is_valid() const {
 
     if (m_dim < 1 || m_order[0] < 2 || m_order[1] < 2)
@@ -560,6 +588,7 @@ bool NurbsSurface::is_singular(int side) const {
 }
 
 bool NurbsSurface::is_clamped(int dir, int end) const {
+
     if (dir < 0 || dir > 1)
         return false;
 
@@ -601,9 +630,8 @@ bool NurbsSurface::is_duplicate(const NurbsSurface& other, bool ignore_parameter
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Attributes
+// Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-
 int NurbsSurface::order(int dir) const {
     return (dir == 0 || dir == 1) ? m_order[dir] : 0;
 }
@@ -635,8 +663,8 @@ int NurbsSurface::span_count(int dir) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Control vertex access
 // ═══════════════════════════════════════════════════════════════════════════
-
 double* NurbsSurface::cv(int i, int j) {
+
     if (i < 0 || i >= m_cv_count[0] || j < 0 || j >= m_cv_count[1])
         return nullptr;
 
@@ -644,6 +672,7 @@ double* NurbsSurface::cv(int i, int j) {
 }
 
 const double* NurbsSurface::cv(int i, int j) const {
+
     if (i < 0 || i >= m_cv_count[0] || j < 0 || j >= m_cv_count[1])
         return nullptr;
 
@@ -716,6 +745,7 @@ bool NurbsSurface::set_cv_4d(int i, int j, double x, double y, double z, double 
 }
 
 double NurbsSurface::weight(int i, int j) const {
+
     const double* cv_ptr = cv(i, j);
 
     return (m_is_rat && cv_ptr) ? cv_ptr[m_dim] : 1.0;
@@ -743,8 +773,8 @@ bool NurbsSurface::set_weight(int i, int j, double w) {
 // ═══════════════════════════════════════════════════════════════════════════
 // NurbsKnot access
 // ═══════════════════════════════════════════════════════════════════════════
-
 double NurbsSurface::nurbsknot(int dir, int nurbsknot_index) const {
+
     if (dir < 0 || dir > 1 || nurbsknot_index < 0 || nurbsknot_index >= static_cast<int>(m_nurbsknot[dir].size()))
         return 0.0;
 
@@ -762,6 +792,7 @@ bool NurbsSurface::set_nurbsknot(int dir, int nurbsknot_index, double nurbsknot_
 }
 
 int NurbsSurface::nurbsknot_multiplicity(int dir, int nurbsknot_index) const {
+
     if (dir < 0 || dir > 1)
         return 0;
 
@@ -777,7 +808,9 @@ bool NurbsSurface::insert_nurbsknot(int dir, double nurbsknot_value, int nurbskn
     if (dir < 0 || dir > 1 || !is_valid() || nurbsknot_mult <= 0 || nurbsknot_mult >= m_order[dir])
         return false;
 
-    const auto [t0, t1] = domain(dir);
+    const std::pair<double, double> interval = domain(dir);
+    const double t0 = interval.first;
+    const double t1 = interval.second;
 
     if (nurbsknot_value < t0 || nurbsknot_value > t1)
         return false;
@@ -793,8 +826,8 @@ bool NurbsSurface::insert_nurbsknot(int dir, double nurbsknot_value, int nurbskn
 // ═══════════════════════════════════════════════════════════════════════════
 // Domain
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::pair<double, double> NurbsSurface::domain(int dir) const {
+
     if (dir < 0 || dir > 1 || !is_valid())
         return {0.0, 0.0};
 
@@ -806,7 +839,9 @@ bool NurbsSurface::set_domain(int dir, double t0, double t1) {
     if (dir < 0 || dir > 1 || !is_valid() || t0 >= t1)
         return false;
 
-    const auto [d0, d1] = domain(dir);
+    const std::pair<double, double> interval = domain(dir);
+    const double d0 = interval.first;
+    const double d1 = interval.second;
 
     if (std::abs(d1 - d0) < 1e-14)
         return false;
@@ -838,7 +873,6 @@ std::vector<double> NurbsSurface::get_span_vector(int dir) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Division
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::tuple<
     std::vector<std::vector<Point>>,
     std::vector<std::vector<Vector>>,
@@ -852,8 +886,12 @@ NurbsSurface::divide_by_count_points(int nu, int nv) const {
     if (!is_valid())
         return {grid, normals, params};
 
-    const auto [u0, u1] = domain(0);
-    const auto [v0, v1] = domain(1);
+    const std::pair<double, double> domain_u = domain(0);
+    const std::pair<double, double> domain_v = domain(1);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     grid.resize(nu + 1);
     normals.resize(nu + 1);
     params.resize(nu + 1);
@@ -881,8 +919,12 @@ NurbsSurface::divide_by_count_planes(int nu, int nv) const {
     if (!is_valid())
         return {grid, params};
 
-    const auto [u0, u1] = domain(0);
-    const auto [v0, v1] = domain(1);
+    const std::pair<double, double> domain_u = domain(0);
+    const std::pair<double, double> domain_v = domain(1);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     grid.resize(nu + 1);
     params.resize(nu + 1);
 
@@ -912,7 +954,6 @@ NurbsSurface::divide_by_count_planes(int nu, int nv) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Evaluation
 // ═══════════════════════════════════════════════════════════════════════════
-
 Point NurbsSurface::point_at(double u, double v) const {
 
     if (!is_valid())
@@ -938,15 +979,17 @@ Point NurbsSurface::point_at(double u, double v) const {
 }
 
 std::pair<double, double> NurbsSurface::closest_parameters(const Point& test_point) const {
+
     const std::tuple<double, double, double> hit = Closest::surface_point(*this, test_point);
 
     return {std::get<0>(hit), std::get<1>(hit)};
 }
 
 Point NurbsSurface::closest_point(const Point& test_point) const {
-    const auto [u, v] = closest_parameters(test_point);
 
-    return point_at(u, v);
+    const std::pair<double, double> uv = closest_parameters(test_point);
+
+    return point_at(uv.first, uv.second);
 }
 
 double NurbsSurface::gaussian_curvature(double u, double v) const {
@@ -1033,8 +1076,12 @@ std::vector<Point> NurbsSurface::intersections_with_line(const Line& line) const
     const Vector helper = std::abs(d[0]) < 0.9 ? Vector(1, 0, 0) : Vector(0, 1, 0);
     const Vector n1 = d.cross(helper).normalized();
     const Vector n2 = d.cross(n1).normalized();
-    const auto [u0, u1] = domain(0);
-    const auto [v0, v1] = domain(1);
+    const std::pair<double, double> domain_u = domain(0);
+    const std::pair<double, double> domain_v = domain(1);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
     const int nu = std::max(12, cv_count(0) * 4);
     const int nv = std::max(12, cv_count(1) * 4);
 
@@ -1106,6 +1153,7 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
 }
 
 Point NurbsSurface::point_at_corner(int u_end, int v_end) const {
+
     const int i = u_end == 0 ? 0 : m_cv_count[0] - 1;
     const int j = v_end == 0 ? 0 : m_cv_count[1] - 1;
 
@@ -1149,9 +1197,8 @@ NurbsCurve NurbsSurface::iso_curve(int dir, double c) const {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Modification
+// Modifications
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool NurbsSurface::reverse(int dir) {
 
     if (dir < 0 || dir > 1 || !is_valid())
@@ -1231,7 +1278,9 @@ std::pair<NurbsSurface, NurbsSurface> NurbsSurface::split(int dir, double c) con
     if (dir < 0 || dir > 1 || !is_valid())
         return {NurbsSurface(), NurbsSurface()};
 
-    const auto [t0, t1] = domain(dir);
+    const std::pair<double, double> interval = domain(dir);
+    const double t0 = interval.first;
+    const double t1 = interval.second;
 
     if (c <= t0 || c >= t1)
         return {NurbsSurface(), NurbsSurface()};
@@ -1313,32 +1362,8 @@ bool NurbsSurface::increase_degree(int dir, int desired_degree) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Transformation
-// ═══════════════════════════════════════════════════════════════════════════
-
-bool NurbsSurface::transform(const Xform& xform) {
-
-    for (int i = 0; i < m_cv_count[0]; i++)
-        for (int j = 0; j < m_cv_count[1]; j++) {
-            Point p = get_cv(i, j);
-            p.transform(xform);
-            set_cv(i, j, p);
-        }
-
-    return true;
-}
-
-NurbsSurface NurbsSurface::transformed(const Xform& xform) const {
-    NurbsSurface result = *this;
-    result.transform(xform);
-
-    return result;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Splitting
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_plane(const Plane& plane, double tolerance) const {
 
     std::vector<NurbsCurve> pcurves;
@@ -1364,6 +1389,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_curves(
 }
 
 std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_line(const Line& line, double tolerance) const {
+
     const std::vector<Point> points = {line.start(), line.end()};
 
     return split_by_curves({NurbsCurve::create(false, 1, points)}, tolerance);
@@ -1398,7 +1424,6 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_brep(const BRep& brep, d
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshing
 // ═══════════════════════════════════════════════════════════════════════════
-
 Mesh NurbsSurface::mesh_adaptive(
     double max_angle,
     double max_edge_length,
@@ -1420,6 +1445,7 @@ Mesh NurbsSurface::mesh_adaptive(
 }
 
 Mesh NurbsSurface::mesh() const {
+
     if (m_mesh.number_of_vertices() == 0 && is_valid())
         m_mesh = is_planar(nullptr, 1e-6) ? mesh_planar() : RemeshNurbsSurfaceGrid::from_u_v(*this, 0, 0);
 
@@ -1429,7 +1455,6 @@ Mesh NurbsSurface::mesh() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json NurbsSurface::jsondump() const {
 
     std::vector<double> control_points;
@@ -1506,7 +1531,16 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
     return surface;
 }
 
+std::string NurbsSurface::file_json_dumps() const {
+    return jsondump().dump();
+}
+
+NurbsSurface NurbsSurface::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
 void NurbsSurface::file_json_dump(const std::string& filename) const {
+
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
@@ -1520,19 +1554,10 @@ NurbsSurface NurbsSurface::file_json_load(const std::string& filename) {
     return jsonload(data);
 }
 
-std::string NurbsSurface::file_json_dumps() const {
-    return jsondump().dump();
-}
-
-NurbsSurface NurbsSurface::file_json_loads(const std::string& json_string) {
-    return jsonload(nlohmann::ordered_json::parse(json_string));
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
-std::string NurbsSurface::pb_dumps() const {
+session_proto::NurbsSurface NurbsSurface::to_proto() const {
 
     session_proto::NurbsSurface proto;
 
@@ -1569,15 +1594,13 @@ std::string NurbsSurface::pb_dumps() const {
     colors_to_proto(linecolors, proto.mutable_linecolors());
 
     if (m_mesh.number_of_vertices() > 0)
-        proto.mutable_cached_mesh()->ParseFromString(m_mesh.pb_dumps());
+        *proto.mutable_cached_mesh() = m_mesh.to_proto();
 
-    return proto.SerializeAsString();
+    return proto;
 }
 
-NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
+NurbsSurface NurbsSurface::from_proto(const session_proto::NurbsSurface& proto) {
 
-    session_proto::NurbsSurface proto;
-    proto.ParseFromString(data);
     NurbsSurface surface;
     surface.create_raw(
         proto.dimension(),
@@ -1618,18 +1641,34 @@ NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
     surface.linecolors = colors_from_proto(proto.linecolors());
 
     if (proto.has_cached_mesh() && proto.cached_mesh().vertices_size() > 0)
-        surface.m_mesh = Mesh::pb_loads(proto.cached_mesh().SerializeAsString());
+        surface.m_mesh = Mesh::from_proto(proto.cached_mesh());
 
     return surface;
 }
 
+std::string NurbsSurface::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
+
+NurbsSurface NurbsSurface::pb_loads(const std::string& data) {
+
+    session_proto::NurbsSurface proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse NurbsSurface protobuf data");
+
+    return from_proto(proto);
+}
+
 void NurbsSurface::pb_dump(const std::string& filename) const {
+
     const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 NurbsSurface NurbsSurface::pb_load(const std::string& filename) {
+
     std::ifstream file(filename, std::ios::binary);
     const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
@@ -1639,7 +1678,6 @@ NurbsSurface NurbsSurface::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string NurbsSurface::str() const {
 
     return fmt::format(
@@ -1676,6 +1714,7 @@ std::string NurbsSurface::repr() const {
 }
 
 std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface) {
+
     os << surface.str();
 
     return os;
@@ -1684,7 +1723,6 @@ std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Private helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
 
     _guid.clear();
@@ -1740,6 +1778,7 @@ bool NurbsSurface::make_periodic_uniform_nurbsknot_vector(int dir, double delta)
 }
 
 Point NurbsSurface::dehomogenize(const double* h) const {
+
     const double w = (m_is_rat && std::abs(h[m_dim]) > 1e-14) ? h[m_dim] : 1.0;
 
     return Point(h[0] / w, m_dim > 1 ? h[1] / w : 0.0, m_dim > 2 ? h[2] / w : 0.0);
@@ -1869,8 +1908,12 @@ std::vector<Vector> NurbsSurface::rational_derivatives(
 
 bool NurbsSurface::line_newton(double& u, double& v, const Point& p0, const Vector& n1, const Vector& n2) const {
 
-    const auto [u0, u1] = domain(0);
-    const auto [v0, v1] = domain(1);
+    const std::pair<double, double> domain_u = domain(0);
+    const std::pair<double, double> domain_v = domain(1);
+    const double u0 = domain_u.first;
+    const double u1 = domain_u.second;
+    const double v0 = domain_v.first;
+    const double v1 = domain_v.second;
 
     for (int it = 0; it < 40; it++) {
         const std::vector<Vector> der = evaluate(u, v, 1);
@@ -1973,8 +2016,8 @@ Mesh NurbsSurface::mesh_planar() const {
     if (normal.magnitude() > 1e-15)
         normal = normal.normalized();
 
-    for (auto& [vi, pt] : result.vertex)
-        pt.set_normal(normal[0], normal[1], normal[2]);
+    for (std::pair<const size_t, VertexData>& entry : result.vertex)
+        entry.second.set_normal(normal[0], normal[1], normal[2]);
 
     return result;
 }

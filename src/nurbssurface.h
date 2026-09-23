@@ -15,6 +15,10 @@
 #include <utility>
 #include <vector>
 
+namespace session_proto {
+class NurbsSurface;
+}
+
 namespace session_cpp {
 
 class Line;
@@ -23,35 +27,15 @@ class NurbsSurfaceTrimmed;
 
 /// A NURBS surface: OpenNURBS layout, nurbsknot count = order + cv_count - 2 per direction, homogeneous row-major CVs when rational.
 class NurbsSurface {
+private:
+    mutable std::string _guid; // Lazily minted GUID.
+
 public:
-    /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
-
-    /// Return the guid, minting one on first read.
-    const std::string& guid() const {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Return the mutable guid, minting one on first read.
-    std::string& guid() {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Clear the guid so a fresh one mints lazily on next read.
-    void refresh_guid() { _guid.clear(); }
-
     std::string name = "my_nurbssurface"; // Surface name.
     double width = 1.0; // Display width.
     std::vector<Color> pointcolors; // Display color per control point.
     std::vector<Color> facecolors; // Display color per mesh face.
     std::vector<Color> linecolors; // Display color per control polygon segment.
-
     int m_dim; // Coordinate dimension.
     int m_is_rat; // 1 when rational, 0 otherwise.
     int m_order[2]; // Degree + 1 per direction.
@@ -62,10 +46,33 @@ public:
     mutable Mesh m_mesh; // Cached mesh from mesh() or mesh_adaptive().
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct an empty surface.
+    NurbsSurface();
+
+    /// Construct an unset surface with the given layout.
+    NurbsSurface(int dimension, bool is_rational, int order0, int order1, int cv_count0, int cv_count1);
+
+    /// Copy with a new guid and the same data.
+    NurbsSurface(const NurbsSurface& other);
+
+    /// Copy-assign with a new guid and the same data.
+    NurbsSurface& operator=(const NurbsSurface& other);
+
+    /// Move while preserving the guid.
+    NurbsSurface(NurbsSurface&& other) noexcept = default;
+
+    /// Move-assign while preserving the guid.
+    NurbsSurface& operator=(NurbsSurface&& other) noexcept = default;
+
+    /// Destroy the surface.
+    ~NurbsSurface();
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Clamped or periodic uniform surface through cv_count_u x cv_count_v points in row-major order (u slowest).
+    /// Construct a clamped or periodic uniform surface through cv_count_u x cv_count_v points in row-major order (u slowest).
     static NurbsSurface create(
         bool periodic_u,
         bool periodic_v,
@@ -76,7 +83,7 @@ public:
         const std::vector<Point>& points
     );
 
-    /// OCCT convention: points[iv][iu], weights[iv][iu], distinct knots with multiplicities per direction.
+    /// Construct from points[iv][iu], weights[iv][iu], distinct knots and multiplicities per direction (OCCT convention).
     static NurbsSurface create_from_parameters(
         const std::vector<std::vector<Point>>& points,
         const std::vector<std::vector<double>>& weights,
@@ -91,40 +98,26 @@ public:
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors
+    // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Construct an empty surface.
-    NurbsSurface();
-
-    /// Construct an unset surface with the given layout.
-    NurbsSurface(int dimension, bool is_rational, int order0, int order1, int cv_count0, int cv_count1);
-
-    /// Copy with a new guid and the same data.
-    NurbsSurface(const NurbsSurface& other);
-
-    /// Move while preserving the guid.
-    NurbsSurface(NurbsSurface&& other) noexcept = default;
-
-    /// Move-assign while preserving the guid.
-    NurbsSurface& operator=(NurbsSurface&& other) noexcept = default;
-
-    /// Copy-assign with a new guid and the same data.
-    NurbsSurface& operator=(const NurbsSurface& other);
-
-    /// Same name, width, colors, layout, nurbsknots and CVs; guid ignored.
+    /// Compare name, width, colors, layout, nurbsknots and CVs; guid ignored.
     bool operator==(const NurbsSurface& other) const;
 
-    /// Negation of operator==.
+    /// Compare name, width, colors, layout, nurbsknots and CVs; guid ignored.
     bool operator!=(const NurbsSurface& other) const;
 
-    /// Destroy the surface.
-    ~NurbsSurface();
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Transformation
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Transform every CV in place.
+    bool transform(const Xform& xform);
+
+    /// Return a transformed copy.
+    NurbsSurface transformed(const Xform& xform) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Initialization
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Reset every field to the empty invalid surface.
     void initialize();
 
@@ -142,7 +135,7 @@ public:
         double nurbsknot_delta_v = 1.0
     );
 
-    /// Non-rational surface with clamped uniform nurbsknots of the given spacing.
+    /// Allocate a non-rational surface with clamped uniform nurbsknots of the given spacing.
     bool create_clamped_uniform(
         int dimension,
         int order0,
@@ -159,32 +152,31 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Boolean queries
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Orders >= 2, cv_count >= order, nurbsknot vectors of the right length and non-decreasing, CV array large enough.
+    /// Return whether orders >= 2, cv_count >= order, nurbsknot vectors are valid and the CV array is large enough.
     bool is_valid() const;
 
-    /// Nurbsknot vector in dir has the right length and is non-decreasing.
+    /// Return whether the nurbsknot vector in dir has the right length and is non-decreasing.
     bool is_valid_nurbsknot_vector(int dir) const;
 
     /// Return whether the CVs carry weights.
     bool is_rational() const { return m_is_rat != 0; }
 
-    /// First and last CV rows across dir coincide when clamped, else periodic.
+    /// Return whether the first and last CV rows across dir coincide when clamped, else whether dir is periodic.
     bool is_closed(int dir) const;
 
-    /// Uniform nurbsknot spacing in dir and the first degree CV rows repeat the last.
+    /// Return whether dir has uniform nurbsknot spacing and the first degree CV rows repeat the last.
     bool is_periodic(int dir) const;
 
-    /// Every CV within tolerance of one plane, written to plane when given.
+    /// Return whether every CV is within tolerance of one plane, written to plane when given.
     bool is_planar(Plane* plane = nullptr, double tolerance = Tolerance::ZERO_TOLERANCE) const;
 
-    /// Clamped side collapsed to one point; side: 0 south (v0), 1 east (u1), 2 north (v1), 3 west (u0).
+    /// Return whether a clamped side collapses to one point; side: 0 south (v0), 1 east (u1), 2 north (v1), 3 west (u0).
     bool is_singular(int side) const;
 
-    /// Full end multiplicity in dir; end: 0 start, 1 end, 2 both.
+    /// Return whether dir has full end multiplicity; end: 0 start, 1 end, 2 both.
     bool is_clamped(int dir, int end = 2) const;
 
-    /// Same layout, CVs and weights within tolerance; nurbsknots too unless ignore_parameterization.
+    /// Return whether layout, CVs and weights match within tolerance; nurbsknots too unless ignore_parameterization.
     bool is_duplicate(
         const NurbsSurface& other,
         bool ignore_parameterization,
@@ -192,8 +184,31 @@ public:
     ) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Attributes
+    // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Clear the guid so a fresh one mints lazily on the next read.
+    void refresh_guid() { _guid.clear(); }
 
     /// Return the coordinate dimension.
     int dimension() const { return m_dim; }
@@ -210,7 +225,7 @@ public:
     /// Return cv_count(0) * cv_count(1).
     int cv_count() const;
 
-    /// Doubles per CV: dim + 1 when rational.
+    /// Return the doubles per CV: dimension + 1 when rational.
     int cv_size() const;
 
     /// Return order + cv_count - 2 in dir.
@@ -222,17 +237,16 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Control vertex access
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Pointer to CV[i][j], cv_size() doubles (x*w, y*w, z*w, w when rational), null when out of range.
+    /// Return the mutable pointer to CV[i][j], cv_size() doubles (x*w, y*w, z*w, w when rational), nullptr when out of range.
     double* cv(int i, int j);
 
-    /// Const pointer to CV[i][j], null when out of range.
+    /// Return the pointer to CV[i][j], nullptr when out of range.
     const double* cv(int i, int j) const;
 
-    /// Euclidean CV (divided by weight when rational), origin when out of range.
+    /// Return the Euclidean CV (divided by weight when rational), origin when out of range.
     Point get_cv(int i, int j) const;
 
-    /// Homogeneous CV (x, y, z, w), w = 1 when non-rational.
+    /// Return the homogeneous CV (x, y, z, w), w = 1 when non-rational.
     bool get_cv_4d(int i, int j, double& x, double& y, double& z, double& w) const;
 
     /// Set the Euclidean CV, keeping its weight.
@@ -250,7 +264,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // NurbsKnot access
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the nurbsknot at nurbsknot_index in dir.
     double nurbsknot(int dir, int nurbsknot_index) const;
 
@@ -269,39 +282,36 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Domain
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// [nurbsknot[order - 2], nurbsknot[cv_count - 1]] in dir.
+    /// Return [nurbsknot[order - 2], nurbsknot[cv_count - 1]] in dir.
     std::pair<double, double> domain(int dir) const;
 
     /// Linearly remap the nurbsknots in dir onto [t0, t1].
     bool set_domain(int dir, double t0, double t1);
 
-    /// Distinct nurbsknot values inside the domain of dir.
+    /// Return the distinct nurbsknot values inside the domain of dir.
     std::vector<double> get_span_vector(int dir) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Division
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Points, normals and (u, v) on a (nu + 1) x (nv + 1) grid over the domain.
+    /// Return points, normals and (u, v) on a (nu + 1) x (nv + 1) grid over the domain.
     std::tuple<
         std::vector<std::vector<Point>>,
         std::vector<std::vector<Vector>>,
         std::vector<std::vector<std::pair<double, double>>>>
     divide_by_count_points(int nu, int nv) const;
 
-    /// Frames (x = dS/du, y = dS/dv) and (u, v) on a (nu + 1) x (nv + 1) grid over the domain.
+    /// Return frames (x = dS/du, y = dS/dv) and (u, v) on a (nu + 1) x (nv + 1) grid over the domain.
     std::pair<std::vector<std::vector<Plane>>, std::vector<std::vector<std::pair<double, double>>>>
     divide_by_count_planes(int nu, int nv) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Evaluation
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// S(u, v) by the tensor-product basis; origin when invalid.
+    /// Return S(u, v) by the tensor-product basis, origin when invalid.
     Point point_at(double u, double v) const;
 
-    /// S(u, v) into three doubles.
+    /// Write S(u, v) into three doubles.
     void point_at(double u, double v, double& px, double& py, double& pz) const {
 
         const Point p = point_at(u, v);
@@ -310,40 +320,39 @@ public:
         pz = p[2];
     }
 
-    /// (u, v) of the closest surface point (grid seed + Newton).
+    /// Return (u, v) of the closest surface point (grid seed + Newton).
     std::pair<double, double> closest_parameters(const Point& test_point) const;
 
     /// Return the closest surface point to test_point.
     Point closest_point(const Point& test_point) const;
 
-    /// K = (LN - M^2) / (EG - F^2).
+    /// Return K = (LN - M^2) / (EG - F^2).
     double gaussian_curvature(double u, double v) const;
 
-    /// H = (EN - 2FM + GL) / (2(EG - F^2)), sign following Su x Sv.
+    /// Return H = (EN - 2FM + GL) / (2(EG - F^2)), sign following Su x Sv.
     double mean_curvature(double u, double v) const;
 
-    /// Unit normal dS/dv x dS/du, z-axis at singular points.
+    /// Return the unit normal dS/dv x dS/du, z-axis at singular points.
     Vector normal_at(double u, double v) const;
 
-    /// Frame at (u, v): origin S, x-axis dS/du, y-axis dS/dv.
+    /// Return the frame at (u, v): origin S, x-axis dS/du, y-axis dS/dv.
     Plane frame_at(double u, double v) const;
 
-    /// Points where the infinite line pierces the surface (grid seed + Newton).
+    /// Return the points where the infinite line pierces the surface (grid seed + Newton).
     std::vector<Point> intersections_with_line(const Line& line) const;
 
-    /// Point and partials up to num_derivs (max 2) in (k, l) loop order: [S, Sv, Svv, Su, Suv, Suu].
+    /// Return the point and partials up to num_derivs (max 2) in (k, l) loop order: [S, Sv, Svv, Su, Suv, Suu].
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
 
-    /// Corner CV; u_end and v_end are 0 or 1.
+    /// Return the corner CV; u_end and v_end are 0 or 1.
     Point point_at_corner(int u_end, int v_end) const;
 
-    /// Iso-curve varying along dir at the other parameter c; rational surfaces give their exact rational curve.
+    /// Return the iso-curve along dir at the other parameter c; rational surfaces give their exact rational curve.
     NurbsCurve iso_curve(int dir, double c) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Modification
+    // Modifications
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Flip the parameterization in dir.
     bool reverse(int dir);
 
@@ -356,7 +365,7 @@ public:
     /// Restrict dir to the sub-domain.
     bool trim(int dir, const std::pair<double, double>& domain);
 
-    /// Two surfaces split at c in dir; both invalid when c is outside the domain.
+    /// Return two surfaces split at c in dir; both invalid when c is outside the domain.
     std::pair<NurbsSurface, NurbsSurface> split(int dir, double c) const;
 
     /// Add weights of 1.
@@ -369,42 +378,30 @@ public:
     bool increase_degree(int dir, int desired_degree);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Transformation
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Transform every CV in place.
-    bool transform(const Xform& xform);
-
-    /// Return a transformed copy.
-    NurbsSurface transformed(const Xform& xform) const;
-
-    // ═══════════════════════════════════════════════════════════════════════════
     // Splitting
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Trimmed faces on each side of the plane.
+    /// Return the trimmed faces on each side of the plane.
     std::vector<NurbsSurfaceTrimmed> split_by_plane(const Plane& plane, double tolerance = 0.0) const;
 
-    /// Trimmed faces cut by curves pulled onto the surface; off-surface curves are skipped.
+    /// Return the trimmed faces cut by curves pulled onto the surface; off-surface curves are skipped.
     std::vector<NurbsSurfaceTrimmed> split_by_curves(
         const std::vector<NurbsCurve>& curves,
         double tolerance = 0.0
     ) const;
 
-    /// Trimmed faces cut by a line pulled onto the surface.
+    /// Return the trimmed faces cut by a line pulled onto the surface.
     std::vector<NurbsSurfaceTrimmed> split_by_line(const Line& line, double tolerance = 0.0) const;
 
-    /// Trimmed faces cut by the surface/surface intersection.
+    /// Return the trimmed faces cut by the surface/surface intersection.
     std::vector<NurbsSurfaceTrimmed> split_by_surface(const NurbsSurface& cutter, double tolerance = 0.0) const;
 
-    /// Trimmed faces cut by every overlapping face of the brep.
+    /// Return the trimmed faces cut by every overlapping face of the brep.
     std::vector<NurbsSurfaceTrimmed> split_by_brep(const BRep& brep, double tolerance = 0.0) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Quadtree subdivision in UV up to depth 8; cached in m_mesh.
+    /// Return the quadtree subdivision in UV up to depth 8, cached in m_mesh.
     Mesh mesh_adaptive(
         double max_angle = 20.0,
         double max_edge_length = 0.0,
@@ -412,24 +409,17 @@ public:
         double max_chord_height = 0.0
     ) const;
 
-    /// Two triangles for a planar surface, else the span grid; cached in m_mesh.
+    /// Return two triangles for a planar surface, else the span grid, cached in m_mesh.
     Mesh mesh() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Serialize to a JSON object.
     nlohmann::ordered_json jsondump() const;
 
     /// Deserialize from a JSON object.
     static NurbsSurface jsonload(const nlohmann::json& data);
-
-    /// Write to a JSON file.
-    void file_json_dump(const std::string& filename) const;
-
-    /// Read from a JSON file.
-    static NurbsSurface file_json_load(const std::string& filename);
 
     /// Serialize to a JSON string.
     std::string file_json_dumps() const;
@@ -437,9 +427,20 @@ public:
     /// Deserialize from a JSON string.
     static NurbsSurface file_json_loads(const std::string& json_string);
 
+    /// Write to a JSON file.
+    void file_json_dump(const std::string& filename) const;
+
+    /// Read from a JSON file.
+    static NurbsSurface file_json_load(const std::string& filename);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert to the protobuf message.
+    session_proto::NurbsSurface to_proto() const;
+
+    /// Construct from the protobuf message.
+    static NurbsSurface from_proto(const session_proto::NurbsSurface& proto);
 
     /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
@@ -456,23 +457,16 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // String
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return "NurbsSurface(name=..., degree=(u, v), cvs=(u, v))".
     std::string str() const;
 
-    /// Multi-line form with every control point.
+    /// Return the multi-line form with every control point.
     std::string repr() const;
 
     /// Stream the str() form.
     friend std::ostream& operator<<(std::ostream& os, const NurbsSurface& surface);
 
 private:
-    mutable std::string _guid; // Lazy guid.
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Private helpers
-    // ═══════════════════════════════════════════════════════════════════════════
-
     /// Copy every field but the guid.
     void deep_copy_from(const NurbsSurface& src);
 
@@ -485,25 +479,25 @@ private:
     /// Fill the nurbsknot vector in dir with periodic uniform values of the given spacing.
     bool make_periodic_uniform_nurbsknot_vector(int dir, double delta = 1.0);
 
-    /// Euclidean point of a homogeneous CV or blend.
+    /// Return the Euclidean point of a homogeneous CV or blend.
     Point dehomogenize(const double* h) const;
 
-    /// Span index in dir containing t.
+    /// Return the span index in dir containing t.
     int find_span(int dir, double t) const;
 
-    /// Basis derivatives ders[k][j] of the order functions on the span (Piegl & Tiller A2.3).
+    /// Return the basis derivatives ders[k][j] of the order functions on the span (Piegl & Tiller A2.3).
     std::vector<std::vector<double>> basis_functions_derivatives(int dir, int span, double t, int deriv_order) const;
 
-    /// Rational quotient rule on homogeneous partials in (k, l) loop order (Piegl & Tiller A4.4).
+    /// Apply the rational quotient rule to homogeneous partials in (k, l) loop order (Piegl & Tiller A4.4).
     std::vector<Vector> rational_derivatives(const std::vector<std::vector<double>>& skl, int num_derivs) const;
 
-    /// Newton on (n1, n2) . (S - p0) = 0 from (u, v); false when it leaves the domain or stalls.
+    /// Run Newton on (n1, n2) . (S - p0) = 0 from (u, v); false when it leaves the domain or stalls.
     bool line_newton(double& u, double& v, const Point& p0, const Vector& n1, const Vector& n2) const;
 
-    /// First and second fundamental forms at (u, v); false at a singular point.
+    /// Compute the first and second fundamental forms at (u, v); false at a singular point.
     bool fundamental_forms(double u, double v, double& E, double& F, double& G, double& L, double& M, double& N) const;
 
-    /// Two triangles through the four corners with one shared normal.
+    /// Return two triangles through the four corners with one shared normal.
     Mesh mesh_planar() const;
 
     /// Pack the CV rows across dir into one curve along dir with cv_size * cv_count(1 - dir) doubles per CV.
