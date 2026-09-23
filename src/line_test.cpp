@@ -1,10 +1,13 @@
 #include "mini_test.h"
 #include "line.h"
+#include "line.pb.h"
 #include "color.h"
 #include "point.h"
 #include "tolerance.h"
 #include "vector.h"
 #include "xform.h"
+#include <string>
+#include <tuple>
 #include <vector>
 
 using namespace session_cpp::mini_test;
@@ -13,77 +16,84 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Constructor") {
 
-        Line l(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+        Line line(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
-        l[0] = 10.0;
-        l[1] = 20.0;
-        l[2] = 30.0;
-        l[3] = 40.0;
-        l[4] = 50.0;
-        l[5] = 60.0;
+        line[0] = 10.0;
+        line[1] = 20.0;
+        line[2] = 30.0;
+        line[3] = 40.0;
+        line[4] = 50.0;
+        line[5] = 60.0;
 
-        double x0 = l[0];
-        double y0 = l[1];
-        double z0 = l[2];
-        double x1 = l[3];
-        double y1 = l[4];
-        double z1 = l[5];
+        const double x0 = line[0];
+        const double y0 = line[1];
+        const double z0 = line[2];
+        const double x1 = line[3];
+        const double y1 = line[4];
+        const double z1 = line[5];
 
-        std::string lstr = l.str();
-        std::string lrepr = l.repr();
+        const std::string lstr = line.str();
+        const std::string lrepr = line.repr();
 
-        Line lcopy = l;
-        Line lother(10.0, 20.0, 30.0, 40.0, 50.0, 60.0);
+        const Line lcopy = line;
+        const Line lother(10.0, 20.0, 30.0, 40.0, 50.0, 60.0);
 
-        Line lmult = l;
+        Line lmult = line;
         lmult *= 2.0;
-        Line ldiv = l;
+        Line ldiv = line;
         ldiv /= 2.0;
-        Line ladd = l;
+        Line ladd = line;
         ladd += Vector(1.0, 1.0, 1.0);
-        Line lsub = l;
+        Line lsub = line;
         lsub -= Vector(1.0, 1.0, 1.0);
 
-        Line rmul = l * 2.0;
-        Line rdiv = l / 2.0;
-        Line radd = l + Vector(1.0, 1.0, 1.0);
-        Line rdif = l - Vector(1.0, 1.0, 1.0);
+        const Line rmul = line * 2.0;
+        const Line rdiv = line / 2.0;
+        const Line radd = line + Vector(1.0, 1.0, 1.0);
+        const Line rdif = line - Vector(1.0, 1.0, 1.0);
 
-        Line lneg(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-        Line neg = -lneg;
+        const Line lneg(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+        const Line neg = -lneg;
 
-        Point p0(1.0, 2.0, 3.0);
-        Point p1(4.0, 5.0, 6.0);
-        Line l2p = Line::from_points(p0, p1);
+        const Point p0(1.0, 2.0, 3.0);
+        const Point p1(4.0, 5.0, 6.0);
+        const Line l2p = Line::from_points(p0, p1);
 
-        Point pv(1.0, 2.0, 3.0);
-        Vector vv(3.0, 4.0, 5.0);
-        Line l_pv = Line::from_point_and_vector(pv, vv);
+        const Point pv(1.0, 2.0, 3.0);
+        const Vector vv(3.0, 4.0, 5.0);
+        const Line l_pv = Line::from_point_and_vector(pv, vv);
 
-        Point pd(0.0, 0.0, 0.0);
-        Vector dd(1.0, 0.0, 0.0);
-        Line l_pdl = Line::from_point_direction_length(pd, dd, 5.0);
+        const Point pd(0.0, 0.0, 0.0);
+        const Vector dd(1.0, 0.0, 0.0);
+        const Line l_pdl = Line::from_point_direction_length(pd, dd, 5.0);
 
         Line lc(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
         lc.linecolor = Color(1.0f, 0.0f, 0.0f, 1.0f, "red");
         lc.width = 2.5;
 
-        Line lwn = Line::with_name("custom", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        const Line lwn = Line::with_name("custom", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 
         Point ms;
         Point me;
-        Line::get_middle_line(Point(0.0, 0.0, 0.0), Point(2.0, 0.0, 0.0), Point(0.0, 2.0, 0.0), Point(2.0, 2.0, 0.0), ms, me);
+        Line::get_middle_line(
+            Point(0.0, 0.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(0.0, 2.0, 0.0),
+            Point(2.0, 2.0, 0.0),
+            ms,
+            me
+        );
 
-        MINI_CHECK(l.name == "my_line");
-        MINI_CHECK(l[0] == 10.0 && l[1] == 20.0 && l[2] == 30.0);
-        MINI_CHECK(l.width == 1.0);
-        MINI_CHECK(l.linecolor == Color::black());
-        MINI_CHECK(l.guid() != "");
+        MINI_CHECK(line.name == "my_line");
+        MINI_CHECK(line[0] == 10.0 && line[1] == 20.0 && line[2] == 30.0);
+        MINI_CHECK(line.width == 1.0);
+        MINI_CHECK(line.linecolor == Color::black());
+        MINI_CHECK(line.guid() != "");
         MINI_CHECK(x0 == 10.0 && y0 == 20.0 && z0 == 30.0 && x1 == 40.0 && y1 == 50.0 && z1 == 60.0);
         MINI_CHECK(lstr == "10.000000, 20.000000, 30.000000, 40.000000, 50.000000, 60.000000");
         MINI_CHECK(lrepr == "Line(my_line, 10.000000, 20.000000, 30.000000, 40.000000, 50.000000, 60.000000, Color(black, 0.0, 0.0, 0.0, 1.0), 1.000000)");
-        MINI_CHECK(lcopy == l && lcopy.guid() != l.guid());
-        MINI_CHECK(lother == l && lneg != l);
+        MINI_CHECK(lcopy == line && lcopy.guid() != line.guid());
+        MINI_CHECK(lother == line && lneg != line);
         MINI_CHECK(lmult[0] == 20.0 && lmult[3] == 80.0);
         MINI_CHECK(ldiv[0] == 5.0 && ldiv[3] == 20.0);
         MINI_CHECK(ladd[0] == 11.0 && ladd[3] == 41.0);
@@ -105,30 +115,30 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Transformation") {
 
-        Line l(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
-        Xform xform = Xform::translation(10.0, 0.0, 0.0);
-        Line moved = l.transformed(xform);
-        l.transform(xform);
+        Line line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        const Xform xform = Xform::translation(10.0, 0.0, 0.0);
+        const Line moved = line.transformed(xform);
+        line.transform(xform);
 
         MINI_CHECK(moved[0] == 10.0 && moved[3] == 11.0);
-        MINI_CHECK(l[0] == 10.0 && l[3] == 11.0);
+        MINI_CHECK(line[0] == 10.0 && line[3] == 11.0);
     }
 
     MINI_TEST("Line", "Json Roundtrip") {
 
-        Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
-        l.name = "test_line";
-        l.dash = {3.0, 2.0};
+        Line line(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
+        line.name = "test_line";
+        line.dash = {3.0, 2.0};
 
-        nlohmann::ordered_json j = l.jsondump();
-        Line loaded_j = Line::jsonload(j);
+        const nlohmann::ordered_json j = line.jsondump();
+        const Line loaded_j = Line::jsonload(j);
 
-        std::string s = l.file_json_dumps();
-        Line loaded_s = Line::file_json_loads(s);
+        const std::string s = line.file_json_dumps();
+        const Line loaded_s = Line::file_json_loads(s);
 
-        std::string fname = "serialization/test_line.json";
-        l.file_json_dump(fname);
-        Line loaded = Line::file_json_load(fname);
+        const std::string fname = "serialization/test_line.json";
+        line.file_json_dump(fname);
+        const Line loaded = Line::file_json_load(fname);
 
         MINI_CHECK(loaded_j.name == "test_line");
         MINI_CHECK(TOLERANCE.is_close(loaded_j[0], 42.1));
@@ -146,17 +156,18 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Protobuf Roundtrip") {
 
-        Line l(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
-        l.name = "test_line";
-        l.dash = {3.0, 2.0};
+        Line line(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
+        line.name = "test_line";
+        line.dash = {3.0, 2.0};
 
-        std::string guid = l.guid();
-        std::string s = l.pb_dumps();
-        Line loaded_s = Line::pb_loads(s);
+        const std::string guid = line.guid();
+        const std::string s = line.pb_dumps();
+        const Line loaded_s = Line::pb_loads(s);
 
-        std::string fname = "serialization/test_line.bin";
-        l.pb_dump(fname);
-        Line loaded = Line::pb_load(fname);
+        const std::string fname = "serialization/test_line.bin";
+        line.pb_dump(fname);
+        const Line loaded = Line::pb_load(fname);
+        const Line converted = Line::from_proto(line.to_proto());
 
         MINI_CHECK(loaded_s.name == "test_line");
         MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
@@ -170,29 +181,32 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
         MINI_CHECK(loaded.guid() == guid);
+        MINI_CHECK(converted == line);
+        MINI_CHECK(converted.guid() == guid);
     }
 
     MINI_TEST("Line", "Length") {
 
-        Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
-        double ln = l.length();
-        double lsq = l.squared_length();
+        const Line line(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
+        const double ln = line.length();
+        const double lsq = line.squared_length();
 
         MINI_CHECK(TOLERANCE.is_close(ln, 5.0));
         MINI_CHECK(TOLERANCE.is_close(lsq, 25.0));
     }
 
     MINI_TEST("Line", "To Vector") {
-        Line l(1.0, 2.0, 3.0, 4.0, 6.0, 9.0);
-        Vector v = l.to_vector();
+
+        const Line line(1.0, 2.0, 3.0, 4.0, 6.0, 9.0);
+        const Vector v = line.to_vector();
 
         MINI_CHECK(v[0] == 3.0 && v[1] == 4.0 && v[2] == 6.0);
     }
 
     MINI_TEST("Line", "To Direction") {
 
-        Line l(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
-        Vector d = l.to_direction();
+        const Line line(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
+        const Vector d = line.to_direction();
 
         MINI_CHECK(TOLERANCE.is_close(d[0], 0.6));
         MINI_CHECK(TOLERANCE.is_close(d[1], 0.8));
@@ -202,10 +216,10 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Point At") {
 
-        Line l(0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
-        Point ps = l.point_at(0.0);
-        Point pm = l.point_at(0.5);
-        Point pe = l.point_at(1.0);
+        const Line line(0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
+        const Point ps = line.point_at(0.0);
+        const Point pm = line.point_at(0.5);
+        const Point pe = line.point_at(1.0);
 
         MINI_CHECK(ps[0] == 0.0 && ps[1] == 0.0 && ps[2] == 0.0);
         MINI_CHECK(pm[0] == 5.0 && pm[1] == 5.0 && pm[2] == 5.0);
@@ -214,13 +228,20 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Closest Point") {
 
-        Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
-        Point p1(5.0, 5.0, 0.0);
-        Point p2(-5.0, 0.0, 0.0);
-        Point p3(15.0, 0.0, 0.0);
-        auto [t1, cp1] = l.closest_point(p1);
-        auto [t2, cp2] = l.closest_point(p2);
-        auto [t3, cp3] = l.closest_point(p3);
+        const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+        const Point p1(5.0, 5.0, 0.0);
+        const Point p2(-5.0, 0.0, 0.0);
+        const Point p3(15.0, 0.0, 0.0);
+
+        double t1 = 0.0;
+        double t2 = 0.0;
+        double t3 = 0.0;
+        Point cp1;
+        Point cp2;
+        Point cp3;
+        std::tie(t1, cp1) = line.closest_point(p1);
+        std::tie(t2, cp2) = line.closest_point(p2);
+        std::tie(t3, cp3) = line.closest_point(p3);
 
         MINI_CHECK(cp1[0] == 5.0 && cp1[1] == 0.0 && cp1[2] == 0.0);
         MINI_CHECK(cp2[0] == 0.0 && cp2[1] == 0.0 && cp2[2] == 0.0);
@@ -232,10 +253,10 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Start End Center") {
 
-        Line l(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-        Point start = l.start();
-        Point end = l.end();
-        Point center = l.center();
+        const Line line(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+        const Point start = line.start();
+        const Point end = line.end();
+        const Point center = line.center();
 
         MINI_CHECK(start[0] == 1.0 && start[1] == 2.0 && start[2] == 3.0);
         MINI_CHECK(end[0] == 4.0 && end[1] == 5.0 && end[2] == 6.0);
@@ -244,28 +265,31 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Fit Points") {
 
-        std::vector<Point> fit_pts = {
+        const std::vector<Point> fit_pts = {
             Point(0.0, 0.0, 0.0),
             Point(1.0, 1.0, 0.5),
             Point(2.0, 2.0, 1.0),
             Point(3.0, 3.0, 1.5),
         };
-        Line l_fit = Line::fit_points(fit_pts);
+        const Line l_fit = Line::fit_points(fit_pts);
 
         MINI_CHECK(l_fit.length() > 0.0);
 
-        Line l_vertical = Line::fit_points({
-            Point(0.0, 0.0, 0.0), Point(0.0, 1.0, 0.0),
-            Point(0.0, 2.0, 0.0), Point(0.0, 3.0, 0.0)
+        const Line l_vertical = Line::fit_points({
+            Point(0.0, 0.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+            Point(0.0, 2.0, 0.0),
+            Point(0.0, 3.0, 0.0),
         });
+
         MINI_CHECK(std::fabs(l_vertical.to_direction()[1]) > 0.99);
     }
 
     MINI_TEST("Line", "Subdivide") {
 
-        Line l(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
-        std::vector<Point> pts = l.subdivide(3);
-        std::vector<Point> pts_dist = l.subdivide_by_distance(2.5);
+        const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+        const std::vector<Point> pts = line.subdivide(3);
+        const std::vector<Point> pts_dist = line.subdivide_by_distance(2.5);
 
         MINI_CHECK(pts.size() == 3);
         MINI_CHECK(pts[0][0] == 0.0);
@@ -279,10 +303,10 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Overlap") {
 
-        Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
-        Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
+        const Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+        const Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
         Line out;
-        bool ok = l0.overlap(l1, out);
+        const bool ok = l0.overlap(l1, out);
 
         MINI_CHECK(ok);
         MINI_CHECK(TOLERANCE.is_close(out.start()[0], 5.0));
@@ -291,10 +315,10 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Overlap Average") {
 
-        Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
-        Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
+        const Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+        const Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
         Line out;
-        bool ok = l0.overlap_average(l1, out);
+        const bool ok = l0.overlap_average(l1, out);
 
         MINI_CHECK(ok);
         MINI_CHECK(TOLERANCE.is_close(out.start()[0], 5.0));
@@ -303,11 +327,11 @@ namespace session_cpp {
 
     MINI_TEST("Line", "Extend") {
 
-        Line l = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
-        l.extend(1.0, 2.0);
+        Line line = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+        line.extend(1.0, 2.0);
 
-        MINI_CHECK(TOLERANCE.is_close(l.start()[0], -1.0));
-        MINI_CHECK(TOLERANCE.is_close(l.end()[0], 12.0));
+        MINI_CHECK(TOLERANCE.is_close(line.start()[0], -1.0));
+        MINI_CHECK(TOLERANCE.is_close(line.end()[0], 12.0));
     }
 
 }
