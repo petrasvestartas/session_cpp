@@ -8,6 +8,10 @@
 #include <optional>
 
 namespace session_cpp {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 namespace {
 namespace adaptive {
 
@@ -16,13 +20,15 @@ constexpr int STACK_SIZE = 64;
 constexpr double KEY_SCALE = 1e10;
 
 /// Surface sample: position and unit normal, zero where the surface has none.
-struct Corner {
+class Corner {
+public:
     Point p; // Surface point.
     Vector n; // Unit normal, zero at a pole.
 };
 
 /// Quadtree cell: UV bounds, corners SW SE NE NW and the centre.
-struct Node {
+class Node {
+public:
     double u0; // Lower u bound.
     double v0; // Lower v bound.
     double u1; // Upper u bound.
@@ -32,11 +38,9 @@ struct Node {
     bool leaf; // True until the cell is split.
 };
 
-/// (u, v) rounded at KEY_SCALE, so a parameter reached from two cells keys alike.
-using Key = std::pair<int64_t, int64_t>;
-
 /// Quadtree over the UV domain: the surface it samples, its tolerances, the cells, the leaf corners by key and the mesh it emits.
-struct Quadtree {
+class Quadtree {
+public:
     const NurbsSurface& s; // Surface sampled.
     std::vector<double> usp; // Span vector in u.
     std::vector<double> vsp; // Span vector in v.
@@ -46,11 +50,11 @@ struct Quadtree {
     double max_edge; // Longest cell edge, 0 for no limit.
     double min_edge; // Shortest cell edge still split, 0 for no limit.
     std::vector<Node> nodes; // Cell pool, root cells first.
-    std::map<Key, Corner> corners; // Leaf corners by key.
+    std::map<std::pair<int64_t, int64_t>, Corner> corners; // Leaf corners by key.
     std::map<int64_t, std::vector<int64_t>> rows; // U keys on each row.
     std::map<int64_t, std::vector<int64_t>> cols; // V keys on each column.
     Mesh mesh; // Mesh emitted.
-    std::map<Key, size_t> keys; // Mesh vertex per key.
+    std::map<std::pair<int64_t, int64_t>, size_t> keys; // Mesh vertex per key.
     std::optional<size_t> south; // Pole vertex on the v0 side.
     std::optional<size_t> north; // Pole vertex on the v1 side.
 
@@ -64,7 +68,6 @@ struct Quadtree {
 // ═══════════════════════════════════════════════════════════════════════════
 // Sampling
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Euclidean length without the zero gate of magnitude().
 double norm(const Vector& v) {
     return std::sqrt(v.magnitude_squared());
@@ -127,6 +130,7 @@ Node make_node(
     const std::array<Corner, 4>& corners,
     int depth
 ) {
+
     const Corner centre = sample(s, (u0 + u1) * 0.5, (v0 + v1) * 0.5);
 
     return {u0, v0, u1, v1, {corners[0], corners[1], corners[2], corners[3], centre}, depth, true};
@@ -134,6 +138,7 @@ Node make_node(
 
 /// Edge midpoints S, E, N, W of the cell.
 std::array<Corner, 4> sample_edges(const NurbsSurface& s, const Node& p) {
+
     const double um = (p.u0 + p.u1) * 0.5;
     const double vm = (p.v0 + p.v1) * 0.5;
 
@@ -143,9 +148,9 @@ std::array<Corner, 4> sample_edges(const NurbsSurface& s, const Node& p) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Splitting
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// True when both normals exist and differ by more than norm_tol in squared length.
 bool normals_turn(const Corner& a, const Corner& b, double norm_tol) {
+
     if (a.n.magnitude_squared() <= 1e-20 || b.n.magnitude_squared() <= 1e-20)
         return false;
 
@@ -222,8 +227,10 @@ std::pair<bool, bool> split_flags(const Quadtree& q, const Node& p, const std::a
     const Corner& se = p.c[1];
     const Corner& ne = p.c[2];
     const Corner& nw = p.c[3];
+
     bool split_u = normals_turn(sw, se, q.norm_tol) || normals_turn(ne, nw, q.norm_tol);
     bool split_v = normals_turn(se, ne, q.norm_tol) || normals_turn(nw, sw, q.norm_tol);
+
     split_u = split_u || chord_off(mids[0], sw, se, q.chord_tol) || chord_off(mids[2], nw, ne, q.chord_tol);
     split_u = split_u || normals_turn(mids[0], sw, q.norm_tol) || normals_turn(mids[2], nw, q.norm_tol);
     split_v = split_v || chord_off(mids[3], sw, nw, q.chord_tol) || chord_off(mids[1], se, ne, q.chord_tol);
@@ -236,14 +243,16 @@ std::pair<bool, bool> split_flags(const Quadtree& q, const Node& p, const std::a
 
     if (q.max_edge > 0.0) {
         const double limit = q.max_edge * q.max_edge;
+
         split_u = split_u || dist2(sw.p, se.p) > limit || dist2(ne.p, nw.p) > limit;
         split_v = split_v || dist2(se.p, ne.p) > limit || dist2(nw.p, sw.p) > limit;
     }
 
     if (!split_u || !split_v) {
-        const auto [curved_u, curved_v] = curved(q.s, p, q.chord_tol);
-        split_u = split_u || curved_u;
-        split_v = split_v || curved_v;
+        const std::pair<bool, bool> curvature = curved(q.s, p, q.chord_tol);
+
+        split_u = split_u || curvature.first;
+        split_v = split_v || curvature.second;
     }
 
     return {split_u, split_v};
@@ -256,6 +265,7 @@ void split_node(Quadtree& q, int idx, const std::array<Corner, 4>& mids, bool sp
     const double um = (p.u0 + p.u1) * 0.5;
     const double vm = (p.v0 + p.v1) * 0.5;
     const int depth = p.depth + 1;
+
     q.nodes[idx].leaf = false;
 
     if (split_u && split_v) {
@@ -277,6 +287,7 @@ void subdivide(Quadtree& q, int root) {
 
     int stack[STACK_SIZE];
     int top = 0;
+
     stack[top++] = root;
 
     while (top > 0) {
@@ -287,14 +298,17 @@ void subdivide(Quadtree& q, int root) {
             continue;
 
         const std::array<Corner, 4> mids = sample_edges(q.s, p);
-        const auto [split_u, split_v] = split_flags(q, p, mids);
+        const std::pair<bool, bool> split = split_flags(q, p, mids);
 
-        if (!split_u && !split_v)
+        if (!split.first && !split.second)
             continue;
 
         const int first = (int)q.nodes.size();
-        split_node(q, idx, mids, split_u, split_v);
+
+        split_node(q, idx, mids, split.first, split.second);
+
         const int count = (int)q.nodes.size() - first;
+
         assert(top + count <= STACK_SIZE);
 
         for (int i = count - 1; i >= 0; --i)
@@ -307,6 +321,7 @@ void build(Quadtree& q) {
 
     const int nu = (int)q.usp.size();
     const int nv = (int)q.vsp.size();
+
     std::vector<Corner> grid(nu * nv);
 
     for (int i = 0; i < nu; ++i)
@@ -316,6 +331,7 @@ void build(Quadtree& q) {
     for (int i = 0; i + 1 < nu; ++i)
         for (int j = 0; j + 1 < nv; ++j) {
             const int root = (int)q.nodes.size();
+
             q.nodes.push_back(make_node(
                 q.s,
                 q.usp[i],
@@ -332,8 +348,7 @@ void build(Quadtree& q) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Vertices and faces
 // ═══════════════════════════════════════════════════════════════════════════
-
-/// t rounded at KEY_SCALE.
+/// t rounded at KEY_SCALE, so a parameter reached from two cells keys alike.
 int64_t quantize(double t) {
     return (int64_t)std::round(t * KEY_SCALE);
 }
@@ -345,6 +360,7 @@ double wrap(bool closed, const std::vector<double>& sp, double t) {
 
 /// Sorted without repeats.
 void sort_unique(std::vector<int64_t>& line) {
+
     std::sort(line.begin(), line.end());
     line.erase(std::unique(line.begin(), line.end()), line.end());
 }
@@ -360,18 +376,22 @@ void index_leaves(Quadtree& q) {
         const double vs[4] = {nd.v0, nd.v0, nd.v1, nd.v1};
 
         for (int ci = 0; ci < 4; ++ci) {
-            const Key key = {quantize(wrap(q.closed[0], q.usp, us[ci])), quantize(wrap(q.closed[1], q.vsp, vs[ci]))};
+            const std::pair<int64_t, int64_t> key = {
+                quantize(wrap(q.closed[0], q.usp, us[ci])),
+                quantize(wrap(q.closed[1], q.vsp, vs[ci]))
+            };
+
             q.corners.emplace(key, nd.c[ci]);
             q.rows[key.second].push_back(quantize(us[ci]));
             q.cols[key.first].push_back(quantize(vs[ci]));
         }
     }
 
-    for (auto& [key, line] : q.rows)
-        sort_unique(line);
+    for (std::pair<const int64_t, std::vector<int64_t>>& row : q.rows)
+        sort_unique(row.second);
 
-    for (auto& [key, line] : q.cols)
-        sort_unique(line);
+    for (std::pair<const int64_t, std::vector<int64_t>>& col : q.cols)
+        sort_unique(col.second);
 }
 
 /// Parameters on one line strictly between t0 and t1, in walk order from t0 to t1.
@@ -418,7 +438,7 @@ size_t vertex_at(Quadtree& q, double u, double v) {
 
     const double uw = wrap(q.closed[0], q.usp, u);
     const double vw = wrap(q.closed[1], q.vsp, v);
-    const Key key = {quantize(uw), quantize(vw)};
+    const std::pair<int64_t, int64_t> key = {quantize(uw), quantize(vw)};
     const auto found = q.keys.find(key);
 
     if (found != q.keys.end())
@@ -428,6 +448,7 @@ size_t vertex_at(Quadtree& q, double u, double v) {
         q.corners[key] = sample(q.s, uw, vw);
 
     const size_t vertex = q.mesh.add_vertex(q.corners[key].p);
+
     q.mesh.vertex[vertex].attributes["u"] = uw;
     q.mesh.vertex[vertex].attributes["v"] = vw;
     q.keys[key] = vertex;
@@ -438,8 +459,7 @@ size_t vertex_at(Quadtree& q, double u, double v) {
 /// Vertices counter-clockwise around the leaf with the T-junction vertices on each edge, repeats at poles and seams dropped.
 std::vector<size_t> leaf_polygon(Quadtree& q, const Node& nd) {
 
-    std::vector<size_t> poly;
-    poly.push_back(vertex_at(q, nd.u0, nd.v0));
+    std::vector<size_t> poly = {vertex_at(q, nd.u0, nd.v0)};
 
     for (double u : row_mids(q, nd.u0, nd.u1, nd.v0))
         poly.push_back(vertex_at(q, u, nd.v0));
@@ -501,7 +521,9 @@ void add_leaf_faces(Quadtree& q, const Node& nd) {
 
     const double cu = wrap(q.closed[0], q.usp, (nd.u0 + nd.u1) * 0.5);
     const double cv = wrap(q.closed[1], q.vsp, (nd.v0 + nd.v1) * 0.5);
-    q.corners.emplace(Key{quantize(cu), quantize(cv)}, nd.c[4]);
+
+    q.corners.emplace(std::pair<int64_t, int64_t>(quantize(cu), quantize(cv)), nd.c[4]);
+
     const size_t centre = vertex_at(q, cu, cv);
 
     for (int i = 0; i < n; ++i) {
@@ -515,13 +537,13 @@ void add_leaf_faces(Quadtree& q, const Node& nd) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Normals
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Sum of the unnormalized face normals around each vertex key, faces taken in key order.
 std::vector<Vector> fan_normals(const Mesh& mesh) {
 
     std::vector<Vector> sums(mesh.vertex.size(), Vector(0.0, 0.0, 0.0));
 
-    for (const auto& [key, vertices] : mesh.face) {
+    for (const std::pair<const size_t, std::vector<size_t>>& face : mesh.face) {
+        const std::vector<size_t>& vertices = face.second;
         const Point p0 = mesh.vertex.at(vertices[0]).position();
         const Point p1 = mesh.vertex.at(vertices[1]).position();
         const Point p2 = mesh.vertex.at(vertices[2]).position();
@@ -539,10 +561,12 @@ void set_normals(Mesh& mesh) {
 
     const std::vector<Vector> sums = fan_normals(mesh);
 
-    for (auto& [key, vd] : mesh.vertex) {
+    for (std::pair<const size_t, VertexData>& vertex : mesh.vertex) {
+        const size_t key = vertex.first;
         const double length = norm(sums[key]);
         const Vector n = length > 1e-15 ? sums[key] / length : sums[key];
-        vd.set_normal(n[0], n[1], n[2]);
+
+        vertex.second.set_normal(n[0], n[1], n[2]);
     }
 }
 
@@ -550,40 +574,51 @@ void set_normals(Mesh& mesh) {
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RemeshNurbsSurfaceAdaptive
+// Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 RemeshNurbsSurfaceAdaptive::RemeshNurbsSurfaceAdaptive(const NurbsSurface& surface) : m_surface(surface) {}
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Mutators
+// ═══════════════════════════════════════════════════════════════════════════
 RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_max_angle(double degrees) {
+
     m_max_angle = degrees;
 
     return *this;
 }
 
 RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_max_edge_length(double length) {
+
     m_max_edge_length = length;
 
     return *this;
 }
 
 RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_min_edge_length(double length) {
+
     m_min_edge_length = length;
 
     return *this;
 }
 
 RemeshNurbsSurfaceAdaptive& RemeshNurbsSurfaceAdaptive::set_max_chord_height(double height) {
+
     m_max_chord_height = height;
 
     return *this;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Meshing
+// ═══════════════════════════════════════════════════════════════════════════
 Mesh RemeshNurbsSurfaceAdaptive::mesh() const {
 
     const double norm_tol = 2.0 - 2.0 * std::cos(m_max_angle * Tolerance::PI / 180.0);
     const double chord_tol = m_max_chord_height > 0.0 ? m_max_chord_height : adaptive::bbox_diagonal(m_surface) * 0.005;
+
     adaptive::Quadtree q(m_surface, norm_tol, chord_tol, m_max_edge_length, m_min_edge_length);
+
     adaptive::build(q);
     adaptive::index_leaves(q);
 
