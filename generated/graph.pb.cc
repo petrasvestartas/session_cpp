@@ -26,6 +26,42 @@ namespace _pbi = ::google::protobuf::internal;
 namespace _fl = ::google::protobuf::internal::field_layout;
 namespace session_proto {
 template <typename>
+PROTOBUF_CONSTEXPR Graph_DefaultVertexAttributesEntry_DoNotUse::Graph_DefaultVertexAttributesEntry_DoNotUse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : Graph_DefaultVertexAttributesEntry_DoNotUse::MapEntry(Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_.base()){}
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : Graph_DefaultVertexAttributesEntry_DoNotUse::MapEntry() {
+}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+struct Graph_DefaultVertexAttributesEntry_DoNotUseDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR Graph_DefaultVertexAttributesEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~Graph_DefaultVertexAttributesEntry_DoNotUseDefaultTypeInternal() {}
+  union {
+    Graph_DefaultVertexAttributesEntry_DoNotUse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Graph_DefaultVertexAttributesEntry_DoNotUseDefaultTypeInternal _Graph_DefaultVertexAttributesEntry_DoNotUse_default_instance_;
+template <typename>
+PROTOBUF_CONSTEXPR Graph_DefaultEdgeAttributesEntry_DoNotUse::Graph_DefaultEdgeAttributesEntry_DoNotUse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : Graph_DefaultEdgeAttributesEntry_DoNotUse::MapEntry(Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_.base()){}
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : Graph_DefaultEdgeAttributesEntry_DoNotUse::MapEntry() {
+}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+struct Graph_DefaultEdgeAttributesEntry_DoNotUseDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR Graph_DefaultEdgeAttributesEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~Graph_DefaultEdgeAttributesEntry_DoNotUseDefaultTypeInternal() {}
+  union {
+    Graph_DefaultEdgeAttributesEntry_DoNotUse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Graph_DefaultEdgeAttributesEntry_DoNotUseDefaultTypeInternal _Graph_DefaultEdgeAttributesEntry_DoNotUse_default_instance_;
+template <typename>
 PROTOBUF_CONSTEXPR Graph_VerticesEntry_DoNotUse::Graph_VerticesEntry_DoNotUse(::_pbi::ConstantInitialized)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : Graph_VerticesEntry_DoNotUse::MapEntry(Graph_VerticesEntry_DoNotUse_class_data_.base()){}
@@ -56,7 +92,9 @@ inline constexpr Graph::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         vertex_count_{0},
         edge_count_{0},
-        vertices_{} {}
+        vertices_{},
+        default_vertex_attributes_{},
+        default_edge_attributes_{} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Graph::Graph(::_pbi::ConstantInitialized)
@@ -93,41 +131,70 @@ const ::uint32_t
         0,
         1,
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_.key_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_.value_),
+        0,
+        1,
+        0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_.key_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_.value_),
+        0,
+        1,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_._has_bits_),
-        9, // hasbit index offset
+        11, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.vertices_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.edges_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.vertex_count_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.edge_count_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.default_vertex_attributes_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Graph, _impl_.default_edge_attributes_),
         1,
         2,
         5,
         0,
         3,
         4,
+        6,
+        7,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, sizeof(::session_proto::Graph_VerticesEntry_DoNotUse)},
-        {7, sizeof(::session_proto::Graph)},
+        {7, sizeof(::session_proto::Graph_DefaultVertexAttributesEntry_DoNotUse)},
+        {14, sizeof(::session_proto::Graph_DefaultEdgeAttributesEntry_DoNotUse)},
+        {21, sizeof(::session_proto::Graph)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::session_proto::_Graph_VerticesEntry_DoNotUse_default_instance_._instance,
+    &::session_proto::_Graph_DefaultVertexAttributesEntry_DoNotUse_default_instance_._instance,
+    &::session_proto::_Graph_DefaultEdgeAttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Graph_default_instance_._instance,
 };
 const char descriptor_table_protodef_graph_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\013graph.proto\022\rsession_proto\032\014vertex.pro"
-    "to\032\nedge.proto\"\357\001\n\005Graph\022\014\n\004name\030\001 \001(\t\022\014"
+    "to\032\nedge.proto\"\225\004\n\005Graph\022\014\n\004name\030\001 \001(\t\022\014"
     "\n\004guid\030\002 \001(\t\0224\n\010vertices\030\003 \003(\0132\".session"
     "_proto.Graph.VerticesEntry\022\"\n\005edges\030\004 \003("
     "\0132\023.session_proto.Edge\022\024\n\014vertex_count\030\005"
-    " \001(\005\022\022\n\nedge_count\030\006 \001(\005\032F\n\rVerticesEntr"
-    "y\022\013\n\003key\030\001 \001(\t\022$\n\005value\030\002 \001(\0132\025.session_"
-    "proto.Vertex:\0028\001b\006proto3"
+    " \001(\005\022\022\n\nedge_count\030\006 \001(\005\022T\n\031default_vert"
+    "ex_attributes\030\007 \003(\01321.session_proto.Grap"
+    "h.DefaultVertexAttributesEntry\022P\n\027defaul"
+    "t_edge_attributes\030\010 \003(\0132/.session_proto."
+    "Graph.DefaultEdgeAttributesEntry\032F\n\rVert"
+    "icesEntry\022\013\n\003key\030\001 \001(\t\022$\n\005value\030\002 \001(\0132\025."
+    "session_proto.Vertex:\0028\001\032>\n\034DefaultVerte"
+    "xAttributesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005value\030\002"
+    " \001(\001:\0028\001\032<\n\032DefaultEdgeAttributesEntry\022\013"
+    "\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\001:\0028\001b\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_graph_2eproto_deps[2] = {
@@ -138,13 +205,13 @@ static ::absl::once_flag descriptor_table_graph_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_graph_2eproto = {
     false,
     false,
-    304,
+    598,
     descriptor_table_protodef_graph_2eproto,
     "graph.proto",
     &descriptor_table_graph_2eproto_once,
     descriptor_table_graph_2eproto_deps,
     2,
-    2,
+    4,
     schemas,
     file_default_instances,
     TableStruct_graph_2eproto::offsets,
@@ -253,6 +320,200 @@ Graph_VerticesEntry_DoNotUse::_table_ = {
 };
 // ===================================================================
 
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+Graph_DefaultVertexAttributesEntry_DoNotUse::Graph_DefaultVertexAttributesEntry_DoNotUse()
+    : SuperType(Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_.base()) {}
+Graph_DefaultVertexAttributesEntry_DoNotUse::Graph_DefaultVertexAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+    : SuperType(arena, Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_.base()) {}
+#else   // PROTOBUF_CUSTOM_VTABLE
+Graph_DefaultVertexAttributesEntry_DoNotUse::Graph_DefaultVertexAttributesEntry_DoNotUse() : SuperType() {}
+Graph_DefaultVertexAttributesEntry_DoNotUse::Graph_DefaultVertexAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+inline void* PROTOBUF_NONNULL Graph_DefaultVertexAttributesEntry_DoNotUse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) Graph_DefaultVertexAttributesEntry_DoNotUse(arena);
+}
+constexpr auto Graph_DefaultVertexAttributesEntry_DoNotUse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Graph_DefaultVertexAttributesEntry_DoNotUse),
+                                            alignof(Graph_DefaultVertexAttributesEntry_DoNotUse));
+}
+constexpr auto Graph_DefaultVertexAttributesEntry_DoNotUse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_Graph_DefaultVertexAttributesEntry_DoNotUse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &Graph_DefaultVertexAttributesEntry_DoNotUse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<Graph_DefaultVertexAttributesEntry_DoNotUse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &Graph_DefaultVertexAttributesEntry_DoNotUse::SharedDtor,
+          static_cast<void (::google::protobuf::MessageLite::*)()>(&Graph_DefaultVertexAttributesEntry_DoNotUse::ClearImpl),
+              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
+              ,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_._cached_size_),
+          false,
+      },
+      &Graph_DefaultVertexAttributesEntry_DoNotUse::kDescriptorMethods,
+      &descriptor_table_graph_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_ =
+        Graph_DefaultVertexAttributesEntry_DoNotUse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+Graph_DefaultVertexAttributesEntry_DoNotUse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_.tc_table);
+  return Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 0, 60, 2>
+Graph_DefaultVertexAttributesEntry_DoNotUse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::session_proto::Graph_DefaultVertexAttributesEntry_DoNotUse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // double value = 2;
+    {::_pbi::TcParser::FastF64S1,
+     {17, 1, 0,
+      PROTOBUF_FIELD_OFFSET(Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_.value_)}},
+    // string key = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_.key_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string key = 1;
+    {PROTOBUF_FIELD_OFFSET(Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // double value = 2;
+    {PROTOBUF_FIELD_OFFSET(Graph_DefaultVertexAttributesEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+  }},
+  // no aux_entries
+  {{
+    "\60\3\0\0\0\0\0\0"
+    "session_proto.Graph.DefaultVertexAttributesEntry"
+    "key"
+  }},
+};
+// ===================================================================
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+Graph_DefaultEdgeAttributesEntry_DoNotUse::Graph_DefaultEdgeAttributesEntry_DoNotUse()
+    : SuperType(Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_.base()) {}
+Graph_DefaultEdgeAttributesEntry_DoNotUse::Graph_DefaultEdgeAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+    : SuperType(arena, Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_.base()) {}
+#else   // PROTOBUF_CUSTOM_VTABLE
+Graph_DefaultEdgeAttributesEntry_DoNotUse::Graph_DefaultEdgeAttributesEntry_DoNotUse() : SuperType() {}
+Graph_DefaultEdgeAttributesEntry_DoNotUse::Graph_DefaultEdgeAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+inline void* PROTOBUF_NONNULL Graph_DefaultEdgeAttributesEntry_DoNotUse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) Graph_DefaultEdgeAttributesEntry_DoNotUse(arena);
+}
+constexpr auto Graph_DefaultEdgeAttributesEntry_DoNotUse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Graph_DefaultEdgeAttributesEntry_DoNotUse),
+                                            alignof(Graph_DefaultEdgeAttributesEntry_DoNotUse));
+}
+constexpr auto Graph_DefaultEdgeAttributesEntry_DoNotUse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_Graph_DefaultEdgeAttributesEntry_DoNotUse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &Graph_DefaultEdgeAttributesEntry_DoNotUse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<Graph_DefaultEdgeAttributesEntry_DoNotUse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &Graph_DefaultEdgeAttributesEntry_DoNotUse::SharedDtor,
+          static_cast<void (::google::protobuf::MessageLite::*)()>(&Graph_DefaultEdgeAttributesEntry_DoNotUse::ClearImpl),
+              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
+              ,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_._cached_size_),
+          false,
+      },
+      &Graph_DefaultEdgeAttributesEntry_DoNotUse::kDescriptorMethods,
+      &descriptor_table_graph_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_ =
+        Graph_DefaultEdgeAttributesEntry_DoNotUse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+Graph_DefaultEdgeAttributesEntry_DoNotUse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_.tc_table);
+  return Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 0, 58, 2>
+Graph_DefaultEdgeAttributesEntry_DoNotUse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::session_proto::Graph_DefaultEdgeAttributesEntry_DoNotUse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // double value = 2;
+    {::_pbi::TcParser::FastF64S1,
+     {17, 1, 0,
+      PROTOBUF_FIELD_OFFSET(Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_.value_)}},
+    // string key = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_.key_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string key = 1;
+    {PROTOBUF_FIELD_OFFSET(Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // double value = 2;
+    {PROTOBUF_FIELD_OFFSET(Graph_DefaultEdgeAttributesEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+  }},
+  // no aux_entries
+  {{
+    "\56\3\0\0\0\0\0\0"
+    "session_proto.Graph.DefaultEdgeAttributesEntry"
+    "key"
+  }},
+};
+// ===================================================================
+
 class Graph::_Internal {
  public:
   using HasBits =
@@ -291,7 +552,9 @@ PROTOBUF_NDEBUG_INLINE Graph::Impl_::Impl_(
         edges_{visibility, arena, from.edges_},
         name_(arena, from.name_),
         guid_(arena, from.guid_),
-        vertices_{visibility, arena, from.vertices_} {}
+        vertices_{visibility, arena, from.vertices_},
+        default_vertex_attributes_{visibility, arena, from.default_vertex_attributes_},
+        default_edge_attributes_{visibility, arena, from.default_edge_attributes_} {}
 
 Graph::Graph(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -323,7 +586,9 @@ PROTOBUF_NDEBUG_INLINE Graph::Impl_::Impl_(
         edges_{visibility, arena},
         name_(arena),
         guid_(arena),
-        vertices_{visibility, arena} {}
+        vertices_{visibility, arena},
+        default_vertex_attributes_{visibility, arena},
+        default_edge_attributes_{visibility, arena} {}
 
 inline void Graph::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
@@ -363,6 +628,14 @@ constexpr auto Graph::InternalNewImpl_() {
                   ::google::protobuf::Message::internal_visibility()),
       PROTOBUF_FIELD_OFFSET(Graph, _impl_.edges_) +
           decltype(Graph::_impl_.edges_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Graph, _impl_.default_vertex_attributes_) +
+          decltype(Graph::_impl_.default_vertex_attributes_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Graph, _impl_.default_edge_attributes_) +
+          decltype(Graph::_impl_.default_edge_attributes_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
   });
@@ -409,17 +682,17 @@ Graph::GetClassData() const {
   return Graph_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 6, 3, 44, 2>
+const ::_pbi::TcParseTable<3, 8, 5, 100, 2>
 Graph::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Graph, _impl_._has_bits_),
     0, // no _extensions_
-    6, 56,  // max_field_number, fast_idx_mask
+    8, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967232,  // skipmap
+    4294967040,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    6,  // num_field_entries
-    3,  // num_aux_entries
+    8,  // num_field_entries
+    5,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Graph_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -466,19 +739,29 @@ Graph::_table_ = {
     {PROTOBUF_FIELD_OFFSET(Graph, _impl_.vertex_count_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
     // int32 edge_count = 6;
     {PROTOBUF_FIELD_OFFSET(Graph, _impl_.edge_count_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+    // map<string, double> default_vertex_attributes = 7;
+    {PROTOBUF_FIELD_OFFSET(Graph, _impl_.default_vertex_attributes_), _Internal::kHasBitsOffset + 6, 3, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
+    // map<string, double> default_edge_attributes = 8;
+    {PROTOBUF_FIELD_OFFSET(Graph, _impl_.default_edge_attributes_), _Internal::kHasBitsOffset + 7, 4, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Edge>()},
       {::_pbi::TcParser::GetMapAuxInfo(
           1, 0, 9, 11, 0)},
       {::_pbi::TcParser::GetTable<::session_proto::Vertex>()},
+      {::_pbi::TcParser::GetMapAuxInfo(
+          1, 0, 9, 1, 0)},
+      {::_pbi::TcParser::GetMapAuxInfo(
+          1, 0, 9, 1, 0)},
   }},
   {{
-    "\23\4\4\10\0\0\0\0"
+    "\23\4\4\10\0\0\0\31\27\0\0\0\0\0\0\0"
     "session_proto.Graph"
     "name"
     "guid"
     "vertices"
+    "default_vertex_attributes"
+    "default_edge_attributes"
   }},
 };
 PROTOBUF_NOINLINE void Graph::Clear() {
@@ -500,12 +783,18 @@ PROTOBUF_NOINLINE void Graph::Clear() {
       _impl_.guid_.ClearNonDefaultToEmpty();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000038U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000f8U)) {
     ::memset(&_impl_.vertex_count_, 0, static_cast<::size_t>(
         reinterpret_cast<char*>(&_impl_.edge_count_) -
         reinterpret_cast<char*>(&_impl_.vertex_count_)) + sizeof(_impl_.edge_count_));
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000020U)) {
       _impl_.vertices_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      _impl_.default_vertex_attributes_.Clear();
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+      _impl_.default_edge_attributes_.Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -611,6 +900,64 @@ PROTOBUF_NOINLINE void Graph::Clear() {
     }
   }
 
+  // map<string, double> default_vertex_attributes = 7;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (!this_._internal_default_vertex_attributes().empty()) {
+      using MapType = ::google::protobuf::Map<::std::string, double>;
+      using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
+                                     _pbi::WireFormatLite::TYPE_STRING,
+                                     _pbi::WireFormatLite::TYPE_DOUBLE>;
+      const auto& field = this_._internal_default_vertex_attributes();
+
+      if (stream->IsSerializationDeterministic() && field.size() > 1) {
+        for (const auto& entry : ::google::protobuf::internal::MapSorterPtr<MapType>(field)) {
+          target = WireHelper::InternalSerialize(
+              7, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Graph.default_vertex_attributes");
+        }
+      } else {
+        for (const auto& entry : field) {
+          target = WireHelper::InternalSerialize(
+              7, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Graph.default_vertex_attributes");
+        }
+      }
+    }
+  }
+
+  // map<string, double> default_edge_attributes = 8;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+    if (!this_._internal_default_edge_attributes().empty()) {
+      using MapType = ::google::protobuf::Map<::std::string, double>;
+      using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
+                                     _pbi::WireFormatLite::TYPE_STRING,
+                                     _pbi::WireFormatLite::TYPE_DOUBLE>;
+      const auto& field = this_._internal_default_edge_attributes();
+
+      if (stream->IsSerializationDeterministic() && field.size() > 1) {
+        for (const auto& entry : ::google::protobuf::internal::MapSorterPtr<MapType>(field)) {
+          target = WireHelper::InternalSerialize(
+              8, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Graph.default_edge_attributes");
+        }
+      } else {
+        for (const auto& entry : field) {
+          target = WireHelper::InternalSerialize(
+              8, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Graph.default_edge_attributes");
+        }
+      }
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -636,7 +983,7 @@ PROTOBUF_NOINLINE void Graph::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated .session_proto.Edge edges = 4;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       total_size += 1UL * this_._internal_edges_size();
@@ -682,6 +1029,26 @@ PROTOBUF_NOINLINE void Graph::Clear() {
                                        _pbi::WireFormatLite::TYPE_MESSAGE>::ByteSizeLong(entry.first, entry.second);
       }
     }
+    // map<string, double> default_vertex_attributes = 7;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_default_vertex_attributes_size());
+      for (const auto& entry : this_._internal_default_vertex_attributes()) {
+        total_size += _pbi::MapEntryFuncs<::std::string, double,
+                                       _pbi::WireFormatLite::TYPE_STRING,
+                                       _pbi::WireFormatLite::TYPE_DOUBLE>::ByteSizeLong(entry.first, entry.second);
+      }
+    }
+    // map<string, double> default_edge_attributes = 8;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_default_edge_attributes_size());
+      for (const auto& entry : this_._internal_default_edge_attributes()) {
+        total_size += _pbi::MapEntryFuncs<::std::string, double,
+                                       _pbi::WireFormatLite::TYPE_STRING,
+                                       _pbi::WireFormatLite::TYPE_DOUBLE>::ByteSizeLong(entry.first, entry.second);
+      }
+    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -702,7 +1069,7 @@ void Graph::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_edges()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -739,6 +1106,12 @@ void Graph::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000020U)) {
       _this->_impl_.vertices_.MergeFrom(from._impl_.vertices_);
     }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      _this->_impl_.default_vertex_attributes_.MergeFrom(from._impl_.default_vertex_attributes_);
+    }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000080U)) {
+      _this->_impl_.default_edge_attributes_.MergeFrom(from._impl_.default_edge_attributes_);
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -769,6 +1142,8 @@ void Graph::InternalSwap(Graph* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
           reinterpret_cast<char*>(&_impl_.vertex_count_),
           reinterpret_cast<char*>(&other->_impl_.vertex_count_));
   _impl_.vertices_.InternalSwap(&other->_impl_.vertices_);
+  _impl_.default_vertex_attributes_.InternalSwap(&other->_impl_.default_vertex_attributes_);
+  _impl_.default_edge_attributes_.InternalSwap(&other->_impl_.default_edge_attributes_);
 }
 
 ::google::protobuf::Metadata Graph::GetMetadata() const {

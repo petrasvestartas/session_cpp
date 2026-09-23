@@ -25,6 +25,24 @@ namespace _pb = ::google::protobuf;
 namespace _pbi = ::google::protobuf::internal;
 namespace _fl = ::google::protobuf::internal::field_layout;
 namespace session_proto {
+template <typename>
+PROTOBUF_CONSTEXPR Vertex_AttributesEntry_DoNotUse::Vertex_AttributesEntry_DoNotUse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : Vertex_AttributesEntry_DoNotUse::MapEntry(Vertex_AttributesEntry_DoNotUse_class_data_.base()){}
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : Vertex_AttributesEntry_DoNotUse::MapEntry() {
+}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+struct Vertex_AttributesEntry_DoNotUseDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR Vertex_AttributesEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~Vertex_AttributesEntry_DoNotUseDefaultTypeInternal() {}
+  union {
+    Vertex_AttributesEntry_DoNotUse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Vertex_AttributesEntry_DoNotUseDefaultTypeInternal _Vertex_AttributesEntry_DoNotUse_default_instance_;
 
 inline constexpr Vertex::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
@@ -38,7 +56,8 @@ inline constexpr Vertex::Impl_::Impl_(
         attribute_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        index_{0} {}
+        index_{0},
+        attributes_{} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Vertex::Vertex(::_pbi::ConstantInitialized)
@@ -68,42 +87,56 @@ const ::uint32_t
     TableStruct_vertex_2eproto::offsets[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
         protodesc_cold) = {
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::session_proto::Vertex_AttributesEntry_DoNotUse, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::session_proto::Vertex_AttributesEntry_DoNotUse, _impl_.key_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Vertex_AttributesEntry_DoNotUse, _impl_.value_),
+        0,
+        1,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Vertex, _impl_._has_bits_),
-        7, // hasbit index offset
+        8, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Vertex, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Vertex, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Vertex, _impl_.attribute_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Vertex, _impl_.index_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Vertex, _impl_.attributes_),
         0,
         1,
         2,
         3,
+        4,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-        {0, sizeof(::session_proto::Vertex)},
+        {0, sizeof(::session_proto::Vertex_AttributesEntry_DoNotUse)},
+        {7, sizeof(::session_proto::Vertex)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
+    &::session_proto::_Vertex_AttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Vertex_default_instance_._instance,
 };
 const char descriptor_table_protodef_vertex_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\014vertex.proto\022\rsession_proto\"F\n\006Vertex\022"
-    "\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\021\n\tattribute"
-    "\030\003 \001(\t\022\r\n\005index\030\004 \001(\005b\006proto3"
+    "\n\014vertex.proto\022\rsession_proto\"\264\001\n\006Vertex"
+    "\022\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\021\n\tattribut"
+    "e\030\003 \001(\t\022\r\n\005index\030\004 \001(\005\0229\n\nattributes\030\005 \003"
+    "(\0132%.session_proto.Vertex.AttributesEntr"
+    "y\0321\n\017AttributesEntry\022\013\n\003key\030\001 \001(\t\022\r\n\005val"
+    "ue\030\002 \001(\001:\0028\001b\006proto3"
 };
 static ::absl::once_flag descriptor_table_vertex_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_vertex_2eproto = {
     false,
     false,
-    109,
+    220,
     descriptor_table_protodef_vertex_2eproto,
     "vertex.proto",
     &descriptor_table_vertex_2eproto_once,
     nullptr,
     0,
-    1,
+    2,
     schemas,
     file_default_instances,
     TableStruct_vertex_2eproto::offsets,
@@ -111,6 +144,103 @@ PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_vertex_2eproto
     file_level_service_descriptors_vertex_2eproto,
 };
 namespace session_proto {
+// ===================================================================
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+Vertex_AttributesEntry_DoNotUse::Vertex_AttributesEntry_DoNotUse()
+    : SuperType(Vertex_AttributesEntry_DoNotUse_class_data_.base()) {}
+Vertex_AttributesEntry_DoNotUse::Vertex_AttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+    : SuperType(arena, Vertex_AttributesEntry_DoNotUse_class_data_.base()) {}
+#else   // PROTOBUF_CUSTOM_VTABLE
+Vertex_AttributesEntry_DoNotUse::Vertex_AttributesEntry_DoNotUse() : SuperType() {}
+Vertex_AttributesEntry_DoNotUse::Vertex_AttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+inline void* PROTOBUF_NONNULL Vertex_AttributesEntry_DoNotUse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) Vertex_AttributesEntry_DoNotUse(arena);
+}
+constexpr auto Vertex_AttributesEntry_DoNotUse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Vertex_AttributesEntry_DoNotUse),
+                                            alignof(Vertex_AttributesEntry_DoNotUse));
+}
+constexpr auto Vertex_AttributesEntry_DoNotUse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_Vertex_AttributesEntry_DoNotUse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &Vertex_AttributesEntry_DoNotUse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<Vertex_AttributesEntry_DoNotUse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &Vertex_AttributesEntry_DoNotUse::SharedDtor,
+          static_cast<void (::google::protobuf::MessageLite::*)()>(&Vertex_AttributesEntry_DoNotUse::ClearImpl),
+              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
+              ,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(Vertex_AttributesEntry_DoNotUse, _impl_._cached_size_),
+          false,
+      },
+      &Vertex_AttributesEntry_DoNotUse::kDescriptorMethods,
+      &descriptor_table_vertex_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull Vertex_AttributesEntry_DoNotUse_class_data_ =
+        Vertex_AttributesEntry_DoNotUse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+Vertex_AttributesEntry_DoNotUse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&Vertex_AttributesEntry_DoNotUse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(Vertex_AttributesEntry_DoNotUse_class_data_.tc_table);
+  return Vertex_AttributesEntry_DoNotUse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 0, 48, 2>
+Vertex_AttributesEntry_DoNotUse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(Vertex_AttributesEntry_DoNotUse, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    Vertex_AttributesEntry_DoNotUse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::session_proto::Vertex_AttributesEntry_DoNotUse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // double value = 2;
+    {::_pbi::TcParser::FastF64S1,
+     {17, 1, 0,
+      PROTOBUF_FIELD_OFFSET(Vertex_AttributesEntry_DoNotUse, _impl_.value_)}},
+    // string key = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(Vertex_AttributesEntry_DoNotUse, _impl_.key_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string key = 1;
+    {PROTOBUF_FIELD_OFFSET(Vertex_AttributesEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // double value = 2;
+    {PROTOBUF_FIELD_OFFSET(Vertex_AttributesEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+  }},
+  // no aux_entries
+  {{
+    "\44\3\0\0\0\0\0\0"
+    "session_proto.Vertex.AttributesEntry"
+    "key"
+  }},
+};
 // ===================================================================
 
 class Vertex::_Internal {
@@ -138,7 +268,8 @@ PROTOBUF_NDEBUG_INLINE Vertex::Impl_::Impl_(
         _cached_size_{0},
         name_(arena, from.name_),
         guid_(arena, from.guid_),
-        attribute_(arena, from.attribute_) {}
+        attribute_(arena, from.attribute_),
+        attributes_{visibility, arena, from.attributes_} {}
 
 Vertex::Vertex(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -163,7 +294,8 @@ PROTOBUF_NDEBUG_INLINE Vertex::Impl_::Impl_(
       : _cached_size_{0},
         name_(arena),
         guid_(arena),
-        attribute_(arena) {}
+        attribute_(arena),
+        attributes_{visibility, arena} {}
 
 inline void Vertex::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
@@ -192,8 +324,20 @@ inline void* PROTOBUF_NONNULL Vertex::PlacementNew_(
   return ::new (mem) Vertex(arena);
 }
 constexpr auto Vertex::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Vertex),
-                                            alignof(Vertex));
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(Vertex, _impl_.attributes_) +
+          decltype(Vertex::_impl_.attributes_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(Vertex), alignof(Vertex), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&Vertex::PlacementNew_,
+                                 sizeof(Vertex),
+                                 alignof(Vertex));
+  }
 }
 constexpr auto Vertex::InternalGenerateClassData_() {
   return ::google::protobuf::internal::ClassDataFull{
@@ -229,18 +373,18 @@ Vertex::GetClassData() const {
   return Vertex_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<2, 4, 0, 46, 2>
+const ::_pbi::TcParseTable<2, 5, 1, 56, 2>
 Vertex::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Vertex, _impl_._has_bits_),
     0, // no _extensions_
-    4, 24,  // max_field_number, fast_idx_mask
+    5, 24,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967280,  // skipmap
+    4294967264,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    4,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
+    5,  // num_field_entries
+    1,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
     Vertex_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -275,14 +419,20 @@ Vertex::_table_ = {
     {PROTOBUF_FIELD_OFFSET(Vertex, _impl_.attribute_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // int32 index = 4;
     {PROTOBUF_FIELD_OFFSET(Vertex, _impl_.index_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+    // map<string, double> attributes = 5;
+    {PROTOBUF_FIELD_OFFSET(Vertex, _impl_.attributes_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
   }},
-  // no aux_entries
   {{
-    "\24\4\4\11\0\0\0\0"
+      {::_pbi::TcParser::GetMapAuxInfo(
+          1, 0, 9, 1, 0)},
+  }},
+  {{
+    "\24\4\4\11\0\12\0\0"
     "session_proto.Vertex"
     "name"
     "guid"
     "attribute"
+    "attributes"
   }},
 };
 PROTOBUF_NOINLINE void Vertex::Clear() {
@@ -304,7 +454,12 @@ PROTOBUF_NOINLINE void Vertex::Clear() {
       _impl_.attribute_.ClearNonDefaultToEmpty();
     }
   }
-  _impl_.index_ = 0;
+  if (BatchCheckHasBit(cached_has_bits, 0x00000018U)) {
+    _impl_.index_ = 0;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+      _impl_.attributes_.Clear();
+    }
+  }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -367,6 +522,35 @@ PROTOBUF_NOINLINE void Vertex::Clear() {
     }
   }
 
+  // map<string, double> attributes = 5;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+    if (!this_._internal_attributes().empty()) {
+      using MapType = ::google::protobuf::Map<::std::string, double>;
+      using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
+                                     _pbi::WireFormatLite::TYPE_STRING,
+                                     _pbi::WireFormatLite::TYPE_DOUBLE>;
+      const auto& field = this_._internal_attributes();
+
+      if (stream->IsSerializationDeterministic() && field.size() > 1) {
+        for (const auto& entry : ::google::protobuf::internal::MapSorterPtr<MapType>(field)) {
+          target = WireHelper::InternalSerialize(
+              5, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Vertex.attributes");
+        }
+      } else {
+        for (const auto& entry : field) {
+          target = WireHelper::InternalSerialize(
+              5, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Vertex.attributes");
+        }
+      }
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -392,7 +576,7 @@ PROTOBUF_NOINLINE void Vertex::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     // string name = 1;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_name().empty()) {
@@ -421,6 +605,16 @@ PROTOBUF_NOINLINE void Vertex::Clear() {
             this_._internal_index());
       }
     }
+    // map<string, double> attributes = 5;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_attributes_size());
+      for (const auto& entry : this_._internal_attributes()) {
+        total_size += _pbi::MapEntryFuncs<::std::string, double,
+                                       _pbi::WireFormatLite::TYPE_STRING,
+                                       _pbi::WireFormatLite::TYPE_DOUBLE>::ByteSizeLong(entry.first, entry.second);
+      }
+    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -440,7 +634,7 @@ void Vertex::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000000fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
@@ -473,6 +667,9 @@ void Vertex::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.index_ = from._impl_.index_;
       }
     }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000010U)) {
+      _this->_impl_.attributes_.MergeFrom(from._impl_.attributes_);
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -497,6 +694,7 @@ void Vertex::InternalSwap(Vertex* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.attribute_, &other->_impl_.attribute_, arena);
   swap(_impl_.index_, other->_impl_.index_);
+  _impl_.attributes_.InternalSwap(&other->_impl_.attributes_);
 }
 
 ::google::protobuf::Metadata Vertex::GetMetadata() const {

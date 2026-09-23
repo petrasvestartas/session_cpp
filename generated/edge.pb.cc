@@ -25,6 +25,24 @@ namespace _pb = ::google::protobuf;
 namespace _pbi = ::google::protobuf::internal;
 namespace _fl = ::google::protobuf::internal::field_layout;
 namespace session_proto {
+template <typename>
+PROTOBUF_CONSTEXPR Edge_AttributesEntry_DoNotUse::Edge_AttributesEntry_DoNotUse(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : Edge_AttributesEntry_DoNotUse::MapEntry(Edge_AttributesEntry_DoNotUse_class_data_.base()){}
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : Edge_AttributesEntry_DoNotUse::MapEntry() {
+}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+struct Edge_AttributesEntry_DoNotUseDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR Edge_AttributesEntry_DoNotUseDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~Edge_AttributesEntry_DoNotUseDefaultTypeInternal() {}
+  union {
+    Edge_AttributesEntry_DoNotUse _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 Edge_AttributesEntry_DoNotUseDefaultTypeInternal _Edge_AttributesEntry_DoNotUse_default_instance_;
 
 inline constexpr Edge::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
@@ -44,7 +62,8 @@ inline constexpr Edge::Impl_::Impl_(
         attribute_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        index_{0} {}
+        index_{0},
+        attributes_{} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Edge::Edge(::_pbi::ConstantInitialized)
@@ -74,47 +93,60 @@ const ::uint32_t
     TableStruct_edge_2eproto::offsets[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
         protodesc_cold) = {
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::session_proto::Edge_AttributesEntry_DoNotUse, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::session_proto::Edge_AttributesEntry_DoNotUse, _impl_.key_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Edge_AttributesEntry_DoNotUse, _impl_.value_),
+        0,
+        1,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_._has_bits_),
-        9, // hasbit index offset
+        10, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.v0_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.v1_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.attribute_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.index_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Edge, _impl_.attributes_),
         0,
         1,
         2,
         3,
         4,
         5,
+        6,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-        {0, sizeof(::session_proto::Edge)},
+        {0, sizeof(::session_proto::Edge_AttributesEntry_DoNotUse)},
+        {7, sizeof(::session_proto::Edge)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
+    &::session_proto::_Edge_AttributesEntry_DoNotUse_default_instance_._instance,
     &::session_proto::_Edge_default_instance_._instance,
 };
 const char descriptor_table_protodef_edge_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\nedge.proto\022\rsession_proto\"\\\n\004Edge\022\014\n\004g"
-    "uid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\n\n\002v0\030\003 \001(\t\022\n\n\002v"
-    "1\030\004 \001(\t\022\021\n\tattribute\030\005 \001(\t\022\r\n\005index\030\006 \001("
-    "\005b\006proto3"
+    "\n\nedge.proto\022\rsession_proto\"\310\001\n\004Edge\022\014\n\004"
+    "guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\n\n\002v0\030\003 \001(\t\022\n\n\002"
+    "v1\030\004 \001(\t\022\021\n\tattribute\030\005 \001(\t\022\r\n\005index\030\006 \001"
+    "(\005\0227\n\nattributes\030\007 \003(\0132#.session_proto.E"
+    "dge.AttributesEntry\0321\n\017AttributesEntry\022\013"
+    "\n\003key\030\001 \001(\t\022\r\n\005value\030\002 \001(\001:\0028\001b\006proto3"
 };
 static ::absl::once_flag descriptor_table_edge_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_edge_2eproto = {
     false,
     false,
-    129,
+    238,
     descriptor_table_protodef_edge_2eproto,
     "edge.proto",
     &descriptor_table_edge_2eproto_once,
     nullptr,
     0,
-    1,
+    2,
     schemas,
     file_default_instances,
     TableStruct_edge_2eproto::offsets,
@@ -122,6 +154,103 @@ PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_edge_2eproto =
     file_level_service_descriptors_edge_2eproto,
 };
 namespace session_proto {
+// ===================================================================
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+Edge_AttributesEntry_DoNotUse::Edge_AttributesEntry_DoNotUse()
+    : SuperType(Edge_AttributesEntry_DoNotUse_class_data_.base()) {}
+Edge_AttributesEntry_DoNotUse::Edge_AttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+    : SuperType(arena, Edge_AttributesEntry_DoNotUse_class_data_.base()) {}
+#else   // PROTOBUF_CUSTOM_VTABLE
+Edge_AttributesEntry_DoNotUse::Edge_AttributesEntry_DoNotUse() : SuperType() {}
+Edge_AttributesEntry_DoNotUse::Edge_AttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena) : SuperType(arena) {}
+#endif  // PROTOBUF_CUSTOM_VTABLE
+inline void* PROTOBUF_NONNULL Edge_AttributesEntry_DoNotUse::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) Edge_AttributesEntry_DoNotUse(arena);
+}
+constexpr auto Edge_AttributesEntry_DoNotUse::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Edge_AttributesEntry_DoNotUse),
+                                            alignof(Edge_AttributesEntry_DoNotUse));
+}
+constexpr auto Edge_AttributesEntry_DoNotUse::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_Edge_AttributesEntry_DoNotUse_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &Edge_AttributesEntry_DoNotUse::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<Edge_AttributesEntry_DoNotUse>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &Edge_AttributesEntry_DoNotUse::SharedDtor,
+          static_cast<void (::google::protobuf::MessageLite::*)()>(&Edge_AttributesEntry_DoNotUse::ClearImpl),
+              ::google::protobuf::Message::ByteSizeLongImpl, ::google::protobuf::Message::_InternalSerializeImpl
+              ,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(Edge_AttributesEntry_DoNotUse, _impl_._cached_size_),
+          false,
+      },
+      &Edge_AttributesEntry_DoNotUse::kDescriptorMethods,
+      &descriptor_table_edge_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull Edge_AttributesEntry_DoNotUse_class_data_ =
+        Edge_AttributesEntry_DoNotUse::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+Edge_AttributesEntry_DoNotUse::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&Edge_AttributesEntry_DoNotUse_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(Edge_AttributesEntry_DoNotUse_class_data_.tc_table);
+  return Edge_AttributesEntry_DoNotUse_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 0, 46, 2>
+Edge_AttributesEntry_DoNotUse::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(Edge_AttributesEntry_DoNotUse, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    Edge_AttributesEntry_DoNotUse_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::DiscardEverythingFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::session_proto::Edge_AttributesEntry_DoNotUse>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // double value = 2;
+    {::_pbi::TcParser::FastF64S1,
+     {17, 1, 0,
+      PROTOBUF_FIELD_OFFSET(Edge_AttributesEntry_DoNotUse, _impl_.value_)}},
+    // string key = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 0, 0,
+      PROTOBUF_FIELD_OFFSET(Edge_AttributesEntry_DoNotUse, _impl_.key_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string key = 1;
+    {PROTOBUF_FIELD_OFFSET(Edge_AttributesEntry_DoNotUse, _impl_.key_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // double value = 2;
+    {PROTOBUF_FIELD_OFFSET(Edge_AttributesEntry_DoNotUse, _impl_.value_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+  }},
+  // no aux_entries
+  {{
+    "\42\3\0\0\0\0\0\0"
+    "session_proto.Edge.AttributesEntry"
+    "key"
+  }},
+};
 // ===================================================================
 
 class Edge::_Internal {
@@ -151,7 +280,8 @@ PROTOBUF_NDEBUG_INLINE Edge::Impl_::Impl_(
         name_(arena, from.name_),
         v0_(arena, from.v0_),
         v1_(arena, from.v1_),
-        attribute_(arena, from.attribute_) {}
+        attribute_(arena, from.attribute_),
+        attributes_{visibility, arena, from.attributes_} {}
 
 Edge::Edge(
     ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
@@ -178,7 +308,8 @@ PROTOBUF_NDEBUG_INLINE Edge::Impl_::Impl_(
         name_(arena),
         v0_(arena),
         v1_(arena),
-        attribute_(arena) {}
+        attribute_(arena),
+        attributes_{visibility, arena} {}
 
 inline void Edge::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
@@ -209,8 +340,20 @@ inline void* PROTOBUF_NONNULL Edge::PlacementNew_(
   return ::new (mem) Edge(arena);
 }
 constexpr auto Edge::InternalNewImpl_() {
-  return ::google::protobuf::internal::MessageCreator::CopyInit(sizeof(Edge),
-                                            alignof(Edge));
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(Edge, _impl_.attributes_) +
+          decltype(Edge::_impl_.attributes_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(Edge), alignof(Edge), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&Edge::PlacementNew_,
+                                 sizeof(Edge),
+                                 alignof(Edge));
+  }
 }
 constexpr auto Edge::InternalGenerateClassData_() {
   return ::google::protobuf::internal::ClassDataFull{
@@ -246,18 +389,18 @@ Edge::GetClassData() const {
   return Edge_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 6, 0, 48, 2>
+const ::_pbi::TcParseTable<3, 7, 1, 58, 2>
 Edge::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Edge, _impl_._has_bits_),
     0, // no _extensions_
-    6, 56,  // max_field_number, fast_idx_mask
+    7, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967232,  // skipmap
+    4294967168,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    6,  // num_field_entries
-    0,  // num_aux_entries
-    offsetof(decltype(_table_), field_names),  // no aux_entries
+    7,  // num_field_entries
+    1,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
     Edge_class_data_.base(),
     nullptr,  // post_loop_handler
     ::_pbi::TcParser::GenericFallback,  // fallback
@@ -306,16 +449,22 @@ Edge::_table_ = {
     {PROTOBUF_FIELD_OFFSET(Edge, _impl_.attribute_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // int32 index = 6;
     {PROTOBUF_FIELD_OFFSET(Edge, _impl_.index_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+    // map<string, double> attributes = 7;
+    {PROTOBUF_FIELD_OFFSET(Edge, _impl_.attributes_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMap)},
   }},
-  // no aux_entries
   {{
-    "\22\4\4\2\2\11\0\0"
+      {::_pbi::TcParser::GetMapAuxInfo(
+          1, 0, 9, 1, 0)},
+  }},
+  {{
+    "\22\4\4\2\2\11\0\12"
     "session_proto.Edge"
     "guid"
     "name"
     "v0"
     "v1"
     "attribute"
+    "attributes"
   }},
 };
 PROTOBUF_NOINLINE void Edge::Clear() {
@@ -343,7 +492,12 @@ PROTOBUF_NOINLINE void Edge::Clear() {
       _impl_.attribute_.ClearNonDefaultToEmpty();
     }
   }
-  _impl_.index_ = 0;
+  if (BatchCheckHasBit(cached_has_bits, 0x00000060U)) {
+    _impl_.index_ = 0;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      _impl_.attributes_.Clear();
+    }
+  }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -426,6 +580,35 @@ PROTOBUF_NOINLINE void Edge::Clear() {
     }
   }
 
+  // map<string, double> attributes = 7;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+    if (!this_._internal_attributes().empty()) {
+      using MapType = ::google::protobuf::Map<::std::string, double>;
+      using WireHelper = _pbi::MapEntryFuncs<::std::string, double,
+                                     _pbi::WireFormatLite::TYPE_STRING,
+                                     _pbi::WireFormatLite::TYPE_DOUBLE>;
+      const auto& field = this_._internal_attributes();
+
+      if (stream->IsSerializationDeterministic() && field.size() > 1) {
+        for (const auto& entry : ::google::protobuf::internal::MapSorterPtr<MapType>(field)) {
+          target = WireHelper::InternalSerialize(
+              7, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Edge.attributes");
+        }
+      } else {
+        for (const auto& entry : field) {
+          target = WireHelper::InternalSerialize(
+              7, entry.first, entry.second, target, stream);
+          ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+              entry.first.data(), static_cast<int>(entry.first.length()),
+ ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.Edge.attributes");
+        }
+      }
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -451,7 +634,7 @@ PROTOBUF_NOINLINE void Edge::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     // string guid = 1;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!this_._internal_guid().empty()) {
@@ -494,6 +677,16 @@ PROTOBUF_NOINLINE void Edge::Clear() {
             this_._internal_index());
       }
     }
+    // map<string, double> attributes = 7;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      total_size +=
+          1 * ::google::protobuf::internal::FromIntSize(this_._internal_attributes_size());
+      for (const auto& entry : this_._internal_attributes()) {
+        total_size += _pbi::MapEntryFuncs<::std::string, double,
+                                       _pbi::WireFormatLite::TYPE_STRING,
+                                       _pbi::WireFormatLite::TYPE_DOUBLE>::ByteSizeLong(entry.first, entry.second);
+      }
+    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -513,7 +706,7 @@ void Edge::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
@@ -564,6 +757,9 @@ void Edge::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.index_ = from._impl_.index_;
       }
     }
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000040U)) {
+      _this->_impl_.attributes_.MergeFrom(from._impl_.attributes_);
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -590,6 +786,7 @@ void Edge::InternalSwap(Edge* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.v1_, &other->_impl_.v1_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.attribute_, &other->_impl_.attribute_, arena);
   swap(_impl_.index_, other->_impl_.index_);
+  _impl_.attributes_.InternalSwap(&other->_impl_.attributes_);
 }
 
 ::google::protobuf::Metadata Edge::GetMetadata() const {

@@ -28,6 +28,10 @@
 #include "google/protobuf/message_lite.h"
 #include "google/protobuf/repeated_field.h"  // IWYU pragma: export
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
+#include "google/protobuf/map.h"  // IWYU pragma: export
+#include "google/protobuf/map_type_handler.h"  // IWYU pragma: export
+#include "google/protobuf/map_entry.h"
+#include "google/protobuf/map_field.h"
 #include "google/protobuf/unknown_field_set.h"
 // @@protoc_insertion_point(includes)
 
@@ -57,6 +61,10 @@ class Edge;
 struct EdgeDefaultTypeInternal;
 extern EdgeDefaultTypeInternal _Edge_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull Edge_class_data_;
+class Edge_AttributesEntry_DoNotUse;
+struct Edge_AttributesEntry_DoNotUseDefaultTypeInternal;
+extern Edge_AttributesEntry_DoNotUseDefaultTypeInternal _Edge_AttributesEntry_DoNotUse_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull Edge_AttributesEntry_DoNotUse_class_data_;
 }  // namespace session_proto
 namespace google {
 namespace protobuf {
@@ -68,6 +76,45 @@ namespace session_proto {
 // ===================================================================
 
 
+// -------------------------------------------------------------------
+
+class Edge_AttributesEntry_DoNotUse final
+    : public ::google::protobuf::internal::MapEntry<::std::string, double,
+                             ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                             ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE> {
+ public:
+  using SuperType =
+      ::google::protobuf::internal::MapEntry<::std::string, double,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE>;
+  Edge_AttributesEntry_DoNotUse();
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR Edge_AttributesEntry_DoNotUse(::google::protobuf::internal::ConstantInitialized);
+  explicit Edge_AttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr const void* PROTOBUF_NONNULL internal_default_instance() {
+    return &_Edge_AttributesEntry_DoNotUse_default_instance_;
+  }
+
+
+  static constexpr auto InternalGenerateClassData_();
+
+ private:
+  friend class ::google::protobuf::MessageLite;
+  friend struct ::TableStruct_edge_2eproto;
+
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<1, 2,
+                                   0, 46,
+                                   2>
+      _table_;
+
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+};
+extern const ::google::protobuf::internal::ClassDataFull Edge_AttributesEntry_DoNotUse_class_data_;
 // -------------------------------------------------------------------
 
 class Edge final : public ::google::protobuf::Message
@@ -125,7 +172,7 @@ class Edge final : public ::google::protobuf::Message
     return *reinterpret_cast<const Edge*>(
         &_Edge_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 0;
+  static constexpr int kIndexInFileMessages = 1;
   friend void swap(Edge& a, Edge& b) { a.Swap(&b); }
   inline void Swap(Edge* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -218,6 +265,7 @@ class Edge final : public ::google::protobuf::Message
     kV1FieldNumber = 4,
     kAttributeFieldNumber = 5,
     kIndexFieldNumber = 6,
+    kAttributesFieldNumber = 7,
   };
   // string guid = 1;
   void clear_guid() ;
@@ -304,12 +352,27 @@ class Edge final : public ::google::protobuf::Message
   void _internal_set_index(::int32_t value);
 
   public:
+  // map<string, double> attributes = 7;
+  int attributes_size() const;
+  private:
+  int _internal_attributes_size() const;
+
+  public:
+  void clear_attributes() ;
+  const ::google::protobuf::Map<::std::string, double>& attributes() const;
+  ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL mutable_attributes();
+
+  private:
+  const ::google::protobuf::Map<::std::string, double>& _internal_attributes() const;
+  ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL _internal_mutable_attributes();
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Edge)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 6,
-                                   0, 48,
+  static const ::google::protobuf::internal::TcParseTable<3, 7,
+                                   1, 58,
                                    2>
       _table_;
 
@@ -336,6 +399,10 @@ class Edge final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr v1_;
     ::google::protobuf::internal::ArenaStringPtr attribute_;
     ::int32_t index_;
+    ::google::protobuf::internal::MapField<Edge_AttributesEntry_DoNotUse, ::std::string, double,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE>
+        attributes_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -356,6 +423,8 @@ extern const ::google::protobuf::internal::ClassDataFull Edge_class_data_;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // Edge
@@ -708,6 +777,38 @@ inline ::int32_t Edge::_internal_index() const {
 inline void Edge::_internal_set_index(::int32_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.index_ = value;
+}
+
+// map<string, double> attributes = 7;
+inline int Edge::_internal_attributes_size() const {
+  return _internal_attributes().size();
+}
+inline int Edge::attributes_size() const {
+  return _internal_attributes_size();
+}
+inline void Edge::clear_attributes() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.attributes_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000040U);
+}
+inline const ::google::protobuf::Map<::std::string, double>& Edge::_internal_attributes() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.attributes_.GetMap();
+}
+inline const ::google::protobuf::Map<::std::string, double>& Edge::attributes() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_map:session_proto.Edge.attributes)
+  return _internal_attributes();
+}
+inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Edge::_internal_mutable_attributes() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.attributes_.MutableMap();
+}
+inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Edge::mutable_attributes()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_mutable_map:session_proto.Edge.attributes)
+  return _internal_mutable_attributes();
 }
 
 #ifdef __GNUC__

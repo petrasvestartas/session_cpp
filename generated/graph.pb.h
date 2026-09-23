@@ -63,6 +63,14 @@ class Graph;
 struct GraphDefaultTypeInternal;
 extern GraphDefaultTypeInternal _Graph_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull Graph_class_data_;
+class Graph_DefaultEdgeAttributesEntry_DoNotUse;
+struct Graph_DefaultEdgeAttributesEntry_DoNotUseDefaultTypeInternal;
+extern Graph_DefaultEdgeAttributesEntry_DoNotUseDefaultTypeInternal _Graph_DefaultEdgeAttributesEntry_DoNotUse_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_;
+class Graph_DefaultVertexAttributesEntry_DoNotUse;
+struct Graph_DefaultVertexAttributesEntry_DoNotUseDefaultTypeInternal;
+extern Graph_DefaultVertexAttributesEntry_DoNotUseDefaultTypeInternal _Graph_DefaultVertexAttributesEntry_DoNotUse_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_;
 class Graph_VerticesEntry_DoNotUse;
 struct Graph_VerticesEntry_DoNotUseDefaultTypeInternal;
 extern Graph_VerticesEntry_DoNotUseDefaultTypeInternal _Graph_VerticesEntry_DoNotUse_default_instance_;
@@ -78,6 +86,84 @@ namespace session_proto {
 // ===================================================================
 
 
+// -------------------------------------------------------------------
+
+class Graph_DefaultVertexAttributesEntry_DoNotUse final
+    : public ::google::protobuf::internal::MapEntry<::std::string, double,
+                             ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                             ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE> {
+ public:
+  using SuperType =
+      ::google::protobuf::internal::MapEntry<::std::string, double,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE>;
+  Graph_DefaultVertexAttributesEntry_DoNotUse();
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR Graph_DefaultVertexAttributesEntry_DoNotUse(::google::protobuf::internal::ConstantInitialized);
+  explicit Graph_DefaultVertexAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr const void* PROTOBUF_NONNULL internal_default_instance() {
+    return &_Graph_DefaultVertexAttributesEntry_DoNotUse_default_instance_;
+  }
+
+
+  static constexpr auto InternalGenerateClassData_();
+
+ private:
+  friend class ::google::protobuf::MessageLite;
+  friend struct ::TableStruct_graph_2eproto;
+
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<1, 2,
+                                   0, 60,
+                                   2>
+      _table_;
+
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+};
+extern const ::google::protobuf::internal::ClassDataFull Graph_DefaultVertexAttributesEntry_DoNotUse_class_data_;
+// -------------------------------------------------------------------
+
+class Graph_DefaultEdgeAttributesEntry_DoNotUse final
+    : public ::google::protobuf::internal::MapEntry<::std::string, double,
+                             ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                             ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE> {
+ public:
+  using SuperType =
+      ::google::protobuf::internal::MapEntry<::std::string, double,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE>;
+  Graph_DefaultEdgeAttributesEntry_DoNotUse();
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR Graph_DefaultEdgeAttributesEntry_DoNotUse(::google::protobuf::internal::ConstantInitialized);
+  explicit Graph_DefaultEdgeAttributesEntry_DoNotUse(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr const void* PROTOBUF_NONNULL internal_default_instance() {
+    return &_Graph_DefaultEdgeAttributesEntry_DoNotUse_default_instance_;
+  }
+
+
+  static constexpr auto InternalGenerateClassData_();
+
+ private:
+  friend class ::google::protobuf::MessageLite;
+  friend struct ::TableStruct_graph_2eproto;
+
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<1, 2,
+                                   0, 58,
+                                   2>
+      _table_;
+
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+};
+extern const ::google::protobuf::internal::ClassDataFull Graph_DefaultEdgeAttributesEntry_DoNotUse_class_data_;
 // -------------------------------------------------------------------
 
 class Graph_VerticesEntry_DoNotUse final
@@ -174,7 +260,7 @@ class Graph final : public ::google::protobuf::Message
     return *reinterpret_cast<const Graph*>(
         &_Graph_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 1;
+  static constexpr int kIndexInFileMessages = 3;
   friend void swap(Graph& a, Graph& b) { a.Swap(&b); }
   inline void Swap(Graph* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -267,6 +353,8 @@ class Graph final : public ::google::protobuf::Message
     kVertexCountFieldNumber = 5,
     kEdgeCountFieldNumber = 6,
     kVerticesFieldNumber = 3,
+    kDefaultVertexAttributesFieldNumber = 7,
+    kDefaultEdgeAttributesFieldNumber = 8,
   };
   // repeated .session_proto.Edge edges = 4;
   int edges_size() const;
@@ -350,12 +438,42 @@ class Graph final : public ::google::protobuf::Message
   ::google::protobuf::Map<::std::string, ::session_proto::Vertex>* PROTOBUF_NONNULL _internal_mutable_vertices();
 
   public:
+  // map<string, double> default_vertex_attributes = 7;
+  int default_vertex_attributes_size() const;
+  private:
+  int _internal_default_vertex_attributes_size() const;
+
+  public:
+  void clear_default_vertex_attributes() ;
+  const ::google::protobuf::Map<::std::string, double>& default_vertex_attributes() const;
+  ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL mutable_default_vertex_attributes();
+
+  private:
+  const ::google::protobuf::Map<::std::string, double>& _internal_default_vertex_attributes() const;
+  ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL _internal_mutable_default_vertex_attributes();
+
+  public:
+  // map<string, double> default_edge_attributes = 8;
+  int default_edge_attributes_size() const;
+  private:
+  int _internal_default_edge_attributes_size() const;
+
+  public:
+  void clear_default_edge_attributes() ;
+  const ::google::protobuf::Map<::std::string, double>& default_edge_attributes() const;
+  ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL mutable_default_edge_attributes();
+
+  private:
+  const ::google::protobuf::Map<::std::string, double>& _internal_default_edge_attributes() const;
+  ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL _internal_mutable_default_edge_attributes();
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Graph)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 6,
-                                   3, 44,
+  static const ::google::protobuf::internal::TcParseTable<3, 8,
+                                   5, 100,
                                    2>
       _table_;
 
@@ -385,6 +503,14 @@ class Graph final : public ::google::protobuf::Message
                       ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
                       ::google::protobuf::internal::WireFormatLite::TYPE_MESSAGE>
         vertices_;
+    ::google::protobuf::internal::MapField<Graph_DefaultVertexAttributesEntry_DoNotUse, ::std::string, double,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE>
+        default_vertex_attributes_;
+    ::google::protobuf::internal::MapField<Graph_DefaultEdgeAttributesEntry_DoNotUse, ::std::string, double,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_STRING,
+                      ::google::protobuf::internal::WireFormatLite::TYPE_DOUBLE>
+        default_edge_attributes_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -405,6 +531,10 @@ extern const ::google::protobuf::internal::ClassDataFull Graph_class_data_;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------
@@ -665,6 +795,70 @@ inline ::int32_t Graph::_internal_edge_count() const {
 inline void Graph::_internal_set_edge_count(::int32_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.edge_count_ = value;
+}
+
+// map<string, double> default_vertex_attributes = 7;
+inline int Graph::_internal_default_vertex_attributes_size() const {
+  return _internal_default_vertex_attributes().size();
+}
+inline int Graph::default_vertex_attributes_size() const {
+  return _internal_default_vertex_attributes_size();
+}
+inline void Graph::clear_default_vertex_attributes() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.default_vertex_attributes_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000040U);
+}
+inline const ::google::protobuf::Map<::std::string, double>& Graph::_internal_default_vertex_attributes() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.default_vertex_attributes_.GetMap();
+}
+inline const ::google::protobuf::Map<::std::string, double>& Graph::default_vertex_attributes() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_map:session_proto.Graph.default_vertex_attributes)
+  return _internal_default_vertex_attributes();
+}
+inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Graph::_internal_mutable_default_vertex_attributes() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.default_vertex_attributes_.MutableMap();
+}
+inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Graph::mutable_default_vertex_attributes()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_mutable_map:session_proto.Graph.default_vertex_attributes)
+  return _internal_mutable_default_vertex_attributes();
+}
+
+// map<string, double> default_edge_attributes = 8;
+inline int Graph::_internal_default_edge_attributes_size() const {
+  return _internal_default_edge_attributes().size();
+}
+inline int Graph::default_edge_attributes_size() const {
+  return _internal_default_edge_attributes_size();
+}
+inline void Graph::clear_default_edge_attributes() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.default_edge_attributes_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000080U);
+}
+inline const ::google::protobuf::Map<::std::string, double>& Graph::_internal_default_edge_attributes() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.default_edge_attributes_.GetMap();
+}
+inline const ::google::protobuf::Map<::std::string, double>& Graph::default_edge_attributes() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_map:session_proto.Graph.default_edge_attributes)
+  return _internal_default_edge_attributes();
+}
+inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Graph::_internal_mutable_default_edge_attributes() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.default_edge_attributes_.MutableMap();
+}
+inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Graph::mutable_default_edge_attributes()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBitForRepeated(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_mutable_map:session_proto.Graph.default_edge_attributes)
+  return _internal_mutable_default_edge_attributes();
 }
 
 #ifdef __GNUC__
