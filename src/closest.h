@@ -1,4 +1,5 @@
 #pragma once
+
 #include "point.h"
 #include "vector.h"
 #include "line.h"
@@ -17,6 +18,9 @@ class PointCloud;
 /// Closest-point queries between points, curves, surfaces, meshes and clouds.
 class Closest {
 public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Curves
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Parameter and distance of the closest curve point within [t0, t1] (0 means the domain end).
     static std::pair<double, double> curve_point(
         const NurbsCurve& curve,
@@ -34,6 +38,9 @@ public:
     /// Return the closest point, length parameter in [0, 1] and distance on a polyline.
     static std::tuple<Point, double, double> polyline_point(const Polyline& polyline, const Point& test_point);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Surfaces
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Parameters and distance of the closest surface point within a uv window (0 means the domain end).
     static std::tuple<double, double, double> surface_point(
         const NurbsSurface& surface,
@@ -53,6 +60,9 @@ public:
         double tolerance = 0.0
     );
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Meshes and clouds
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the closest point, face key and distance on a mesh via its triangle BVH.
     static std::tuple<Point, size_t, double> mesh_point(const Mesh& mesh, const Point& test_point);
 
@@ -65,6 +75,9 @@ public:
     /// Return the closest point, index and distance in a cloud via a kd-tree.
     static std::tuple<Point, size_t, double> pointcloud_point_kdtree(const PointCloud& cloud, const Point& test_point);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Collections
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the index pairs of lines whose endpoints come within threshold of each other.
     static std::vector<std::pair<size_t, size_t>> lines_closest(const std::vector<Line>& lines, double threshold = 0.0);
 

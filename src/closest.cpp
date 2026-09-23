@@ -92,8 +92,10 @@ static double curve_newton(const NurbsCurve& curve, const Point& test_point, dou
 /// Parameters of the closest pair on dense grids over both domains.
 static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, const NurbsCurve& curve1) {
 
-    auto [u0, u1] = curve0.domain();
-    auto [v0, v1] = curve1.domain();
+    const double u0 = curve0.domain_start();
+    const double u1 = curve0.domain_end();
+    const double v0 = curve1.domain_start();
+    const double v1 = curve1.domain_end();
     const int n0 = std::max(40, curve0.cv_count() * 8);
     const int n1 = std::max(40, curve1.cv_count() * 8);
     std::vector<Point> p0(n0 + 1);
@@ -111,10 +113,7 @@ static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, cons
 
     for (int i = 0; i <= n0; i++) {
         for (int j = 0; j <= n1; j++) {
-            const double dx = p0[i][0] - p1[j][0];
-            const double dy = p0[i][1] - p1[j][1];
-            const double dz = p0[i][2] - p1[j][2];
-            const double d2 = dx * dx + dy * dy + dz * dz;
+            const double d2 = (p0[i] - p1[j]).magnitude_squared();
 
             if (d2 < best) {
                 best = d2;
@@ -140,8 +139,14 @@ static std::pair<double, double> surface_seed(
     double v0,
     double v1
 ) {
-    auto [domain_u0, domain_u1] = surface.domain(0);
-    auto [domain_v0, domain_v1] = surface.domain(1);
+
+    double domain_u0 = 0.0;
+    double domain_u1 = 0.0;
+    double domain_v0 = 0.0;
+    double domain_v1 = 0.0;
+    std::tie(domain_u0, domain_u1) = surface.domain(0);
+    std::tie(domain_v0, domain_v1) = surface.domain(1);
+
     const int full_u = std::max(10, surface.order(0));
     const int full_v = std::max(10, surface.order(1));
     const double u_frac = (u1 - u0) / std::max(domain_u1 - domain_u0, 1e-12);
@@ -181,7 +186,9 @@ static std::pair<double, double> surface_newton(
     double v1,
     std::pair<double, double> seed
 ) {
-    auto [u, v] = seed;
+
+    double u = seed.first;
+    double v = seed.second;
     const int max_iterations = 20;
     const double step_tolerance = std::min(u1 - u0, v1 - v0) * 1e-10;
     const double max_step = std::min(u1 - u0, v1 - v0) * 0.5;
@@ -235,25 +242,23 @@ static std::pair<double, double> surface_newton(
 
 /// Surface domain, trace step and tolerances shared by the surface_curve steps.
 struct Pullback {
-    double u0 = 0.0;
-    double u1 = 0.0;
-    double v0 = 0.0;
-    double v1 = 0.0;
-    double range_u = 0.0;
-    double range_v = 0.0;
-    bool closed_u = false;
-    bool closed_v = false;
-    double du = 0.0;
-    double dv = 0.0;
-    double step = 0.0;
-    double fit_tol = 0.0;
-    double reject_tol = 0.0;
-    double on_surf_tol = 0.0;
+    double u0 = 0.0; // Surface domain start in u.
+    double u1 = 0.0; // Surface domain end in u.
+    double v0 = 0.0; // Surface domain start in v.
+    double v1 = 0.0; // Surface domain end in v.
+    double range_u = 0.0; // Domain length in u.
+    double range_v = 0.0; // Domain length in v.
+    bool closed_u = false; // Surface closed in u.
+    bool closed_v = false; // Surface closed in v.
+    double du = 0.0; // Quarter-span step in u.
+    double dv = 0.0; // Quarter-span step in v.
+    double step = 0.0; // Uv deviation bound of a fitted pcurve.
+    double fit_tol = 0.0; // 3d deviation bound of a lifted uv midpoint.
+    double reject_tol = 0.0; // Residual above which a sample is re-inverted globally.
+    double on_surf_tol = 0.0; // Residual above which the curve is off the surface.
 };
 
-using UV = std::pair<double, double>;
-using Sample = std::array<double, 4>;
-
+/// Domain, steps and tolerances of the surface for one pullback.
 static Pullback pullback_setup(const NurbsSurface& surface, double tolerance) {
 
     Pullback pb;
@@ -263,10 +268,12 @@ static Pullback pullback_setup(const NurbsSurface& surface, double tolerance) {
     pb.range_v = pb.v1 - pb.v0;
     pb.closed_u = surface.is_closed(0);
     pb.closed_v = surface.is_closed(1);
+
     const int nu = std::max((int)surface.get_span_vector(0).size() - 1, 1) * 4;
     const int nv = std::max((int)surface.get_span_vector(1).size() - 1, 1) * 4;
     pb.du = pb.range_u / nu;
     pb.dv = pb.range_v / nv;
+
     const double mu = (pb.u0 + pb.u1) * 0.5;
     const double mv = (pb.v0 + pb.v1) * 0.5;
     const Point pmid = surface.point_at(mu, mv);
@@ -286,6 +293,7 @@ static Pullback pullback_setup(const NurbsSurface& surface, double tolerance) {
     pb.step = std::min(pb.du, pb.dv) * 0.25;
     pb.fit_tol = tolerance > 0.0 ? tolerance : pb.step * (uv_to_3d + uv_to_3d_min) * 0.5;
     pb.reject_tol = pb.fit_tol * 100.0;
+
     double corner_diag = surface.point_at(pb.u0, pb.v0).distance(surface.point_at(pb.u1, pb.v1));
 
     if (corner_diag < 1e-12)
@@ -335,6 +343,7 @@ static std::tuple<double, double, double> pullback_invert(
     double wu,
     double wv
 ) {
+
     std::vector<double> u_centers = {up};
 
     if (pb.closed_u && up - wu < pb.u0)
@@ -377,36 +386,37 @@ static std::tuple<double, double, double> pullback_invert(
 }
 
 /// Warm-started samples [t, u, v, residual] along [t0, t1], empty when the curve is off the surface.
-static std::vector<Sample> pullback_samples(
+static std::vector<std::array<double, 4>> pullback_samples(
     const NurbsSurface& surface,
     const NurbsCurve& curve,
     const Pullback& pb,
     double t0,
     double t1
 ) {
+
     const int n0 = std::max(16, 4 * curve.span_count());
-    std::vector<Sample> samples;
+    std::vector<std::array<double, 4>> samples;
     double max_residual = 0.0;
     double min_residual = std::numeric_limits<double>::infinity();
 
     for (int i = 0; i <= n0; i++) {
         const double t = t0 + (t1 - t0) * i / n0;
         const Point pt = curve.point_at(t);
-        double uu;
-        double vv;
-        double rd;
+        double uu = 0.0;
+        double vv = 0.0;
+        double rd = 0.0;
 
         if (i == 0) {
             std::tie(uu, vv, rd) = Closest::surface_point(surface, pt, 0.0, 0.0, 0.0, 0.0);
         } else {
-            const Sample prev = samples.back();
-            const Sample prev2 = samples[std::max(0, (int)samples.size() - 2)];
+            const std::array<double, 4> prev = samples.back();
+            const std::array<double, 4> prev2 = samples[std::max(0, (int)samples.size() - 2)];
             const double wu = std::max(pb.du, pb.dv) * 2.0 + std::abs(prev[1] - prev2[1]);
             const double wv = std::max(pb.du, pb.dv) * 2.0 + std::abs(prev[2] - prev2[2]);
             const double up = pullback_wrap(prev[1], pb.u0, pb.u1, pb.closed_u);
             const double vp = pullback_wrap(prev[2], pb.v0, pb.v1, pb.closed_v);
-            double ru;
-            double rv;
+            double ru = 0.0;
+            double rv = 0.0;
             std::tie(ru, rv, rd) = pullback_invert(surface, pb, pt, up, vp, wu, wv);
 
             if (rd > pb.reject_tol)
@@ -416,7 +426,7 @@ static std::vector<Sample> pullback_samples(
             vv = pullback_unwrap(prev[2], rv, pb.range_v, pb.closed_v);
         }
 
-        samples.push_back(Sample{t, uu, vv, rd});
+        samples.push_back(std::array<double, 4>{t, uu, vv, rd});
         max_residual = std::max(max_residual, rd);
         min_residual = std::min(min_residual, rd);
     }
@@ -432,15 +442,16 @@ static void pullback_refine(
     const NurbsSurface& surface,
     const NurbsCurve& curve,
     const Pullback& pb,
-    std::vector<Sample>& samples
+    std::vector<std::array<double, 4>>& samples
 ) {
+
     for (int depth = 0; depth < 8; depth++) {
         int inserted = 0;
         size_t i = 0;
 
         while (i + 1 < samples.size()) {
-            const Sample a = samples[i];
-            const Sample b = samples[i + 1];
+            const std::array<double, 4> a = samples[i];
+            const std::array<double, 4> b = samples[i + 1];
             const double tm = (a[0] + b[0]) * 0.5;
             const double um = pullback_wrap((a[1] + b[1]) * 0.5, pb.u0, pb.u1, pb.closed_u);
             const double vm = pullback_wrap((a[2] + b[2]) * 0.5, pb.v0, pb.v1, pb.closed_v);
@@ -453,7 +464,10 @@ static void pullback_refine(
 
             const double wu = std::max(std::abs(b[1] - a[1]), pb.du);
             const double wv = std::max(std::abs(b[2] - a[2]), pb.dv);
-            auto [ru, rv, rd] = pullback_invert(surface, pb, pm, um, vm, wu, wv);
+            double ru = 0.0;
+            double rv = 0.0;
+            double rd = 0.0;
+            std::tie(ru, rv, rd) = pullback_invert(surface, pb, pm, um, vm, wu, wv);
 
             if (rd > pb.on_surf_tol) {
                 i += 1;
@@ -462,7 +476,8 @@ static void pullback_refine(
 
             const double uu = pullback_unwrap(a[1], ru, pb.range_u, pb.closed_u);
             const double vv = pullback_unwrap(a[2], rv, pb.range_v, pb.closed_v);
-            samples.insert(samples.begin() + i + 1, Sample{tm, uu, vv, rd});
+
+            samples.insert(samples.begin() + i + 1, std::array<double, 4>{tm, uu, vv, rd});
             inserted += 1;
             i += 2;
         }
@@ -473,7 +488,15 @@ static void pullback_refine(
 }
 
 /// Smallest seam crossing of one axis between a and b that beats bestt; level is the seam value.
-static bool pullback_seam_axis(double a, double b, double x0, double range, bool closed, double& bestt, double& level) {
+static bool pullback_seam_axis(
+    double a,
+    double b,
+    double x0,
+    double range,
+    bool closed,
+    double& bestt,
+    double& level
+) {
 
     if (!closed || std::abs(b - a) <= 1e-15)
         return false;
@@ -496,8 +519,14 @@ static bool pullback_seam_axis(double a, double b, double x0, double range, bool
     return found;
 }
 
-/// First seam crossing on segment a -> b, written to (cu, cv)
-static bool pullback_first_seam(const Pullback& pb, const UV& a, const UV& b, double& cu, double& cv) {
+/// First seam crossing on segment a -> b, written to (cu, cv).
+static bool pullback_first_seam(
+    const Pullback& pb,
+    const std::pair<double, double>& a,
+    const std::pair<double, double>& b,
+    double& cu,
+    double& cv
+) {
 
     double bestt = 2.0;
     double level = 0.0;
@@ -529,40 +558,43 @@ static bool pullback_at_seam(double x, double x0, double range, bool closed) {
     return std::abs(x - seam) < range * 1e-6;
 }
 
-static bool pullback_on_seam(const Pullback& pb, const UV& p) {
+/// True when p sits on a seam of either closed axis.
+static bool pullback_on_seam(const Pullback& pb, const std::pair<double, double>& p) {
+
     return pullback_at_seam(p.first, pb.u0, pb.range_u, pb.closed_u) ||
         pullback_at_seam(p.second, pb.v0, pb.range_v, pb.closed_v);
 }
 
 /// Shift a segment by whole periods so its middle point lies inside the domain.
-static void pullback_shift(const Pullback& pb, std::vector<UV>& seg) {
+static void pullback_shift(const Pullback& pb, std::vector<std::pair<double, double>>& seg) {
 
-    const UV mid = seg[seg.size() / 2];
+    const std::pair<double, double> mid = seg[seg.size() / 2];
     const int k_u = pb.closed_u ? (int)std::floor((mid.first - pb.u0) / pb.range_u) : 0;
     const int k_v = pb.closed_v ? (int)std::floor((mid.second - pb.v0) / pb.range_v) : 0;
 
-    for (UV& p : seg) {
+    for (std::pair<double, double>& p : seg) {
         p.first -= k_u * pb.range_u;
         p.second -= k_v * pb.range_v;
     }
 }
 
 /// Split the unwrapped uv polyline at every seam crossing; rejoin the two arcs of a mid-arc loop start.
-static std::vector<std::vector<UV>> pullback_split(
+static std::vector<std::vector<std::pair<double, double>>> pullback_split(
     const Pullback& pb,
-    const std::vector<UV>& pts,
+    const std::vector<std::pair<double, double>>& pts,
     bool rejoin,
     bool& any_cross
 ) {
-    std::vector<std::vector<UV>> raw;
-    std::vector<UV> cur = {pts[0]};
+
+    std::vector<std::vector<std::pair<double, double>>> raw;
+    std::vector<std::pair<double, double>> cur = {pts[0]};
     any_cross = false;
 
     for (size_t i = 1; i < pts.size(); i++) {
-        UV a = pts[i - 1];
-        const UV b = pts[i];
-        double cu;
-        double cv;
+        std::pair<double, double> a = pts[i - 1];
+        const std::pair<double, double> b = pts[i];
+        double cu = 0.0;
+        double cv = 0.0;
 
         while (pullback_first_seam(pb, a, b, cu, cv)) {
             cur.push_back({cu, cv});
@@ -584,7 +616,7 @@ static std::vector<std::vector<UV>> pullback_split(
     raw.push_back(cur);
 
     if (rejoin && raw.size() > 1) {
-        std::vector<UV> merged = raw.back();
+        std::vector<std::pair<double, double>> merged = raw.back();
 
         for (size_t k = 1; k < raw.front().size(); k++)
             merged.push_back(raw.front()[k]);
@@ -597,14 +629,15 @@ static std::vector<std::vector<UV>> pullback_split(
 }
 
 /// In-domain uv pieces with a closed flag, slivers dropped.
-static std::vector<std::pair<std::vector<UV>, bool>> pullback_pieces(
+static std::vector<std::pair<std::vector<std::pair<double, double>>, bool>> pullback_pieces(
     const Pullback& pb,
     const NurbsCurve& curve,
-    const std::vector<Sample>& samples
+    const std::vector<std::array<double, 4>>& samples
 ) {
-    std::vector<UV> pts;
 
-    for (const Sample& s : samples)
+    std::vector<std::pair<double, double>> pts;
+
+    for (const std::array<double, 4>& s : samples)
         pts.push_back({s[1], s[2]});
 
     const Point p_first = curve.point_at(samples.front()[0]);
@@ -619,14 +652,15 @@ static std::vector<std::pair<std::vector<UV>, bool>> pullback_pieces(
     const bool crosses = std::abs(wind_u) > pb.range_u * 0.5 || std::abs(wind_v) > pb.range_v * 0.5;
     const bool rejoin = is_loop && !crosses && !pullback_on_seam(pb, pts[0]);
     bool any_cross = false;
-    std::vector<std::vector<UV>> raw = pullback_split(pb, pts, rejoin, any_cross);
-    std::vector<std::pair<std::vector<UV>, bool>> pieces;
+    std::vector<std::vector<std::pair<double, double>>> raw = pullback_split(pb, pts, rejoin, any_cross);
+    std::vector<std::pair<std::vector<std::pair<double, double>>, bool>> pieces;
 
-    for (std::vector<UV>& seg : raw) {
+    for (std::vector<std::pair<double, double>>& seg : raw) {
         if (seg.size() < 2)
             continue;
 
         pullback_shift(pb, seg);
+
         double umin = 1e300;
         double umax = -1e300;
         double vmin = 1e300;
@@ -647,6 +681,7 @@ static std::vector<std::pair<std::vector<UV>, bool>> pullback_pieces(
             continue;
 
         const bool seg_loop = is_loop && !any_cross && umax - umin < pb.range_u * 0.9 && vmax - vmin < pb.range_v * 0.9;
+
         pieces.push_back({seg, seg_loop});
     }
 
@@ -700,9 +735,14 @@ static std::vector<double> pullback_chords(const std::vector<Point>& pts_uv, boo
 }
 
 /// Fit one piece as a uv pcurve on [0, 1]; interpolation and a degree-1 polyline are the fallbacks.
-static NurbsCurve pullback_fit(const Pullback& pb, std::vector<UV>& piece_pts, bool piece_loop) {
+static NurbsCurve pullback_fit(
+    const Pullback& pb,
+    std::vector<std::pair<double, double>>& piece_pts,
+    bool piece_loop
+) {
 
     pullback_shift(pb, piece_pts);
+
     std::vector<Point> pts_uv(piece_pts.size());
 
     for (size_t i = 0; i < piece_pts.size(); i++)
@@ -723,7 +763,8 @@ static NurbsCurve pullback_fit(const Pullback& pb, std::vector<UV>& piece_pts, b
         if (!pcurve.is_valid())
             break;
 
-        auto [ft0, ft1] = pcurve.domain();
+        const double ft0 = pcurve.domain_start();
+        const double ft1 = pcurve.domain_end();
         double max_dev = 0.0;
 
         for (int i = 0; i < mp; i++)
@@ -735,9 +776,12 @@ static NurbsCurve pullback_fit(const Pullback& pb, std::vector<UV>& piece_pts, b
         target_cvs = std::min(target_cvs * 2, max_cvs);
     }
 
-    if (!pcurve.is_valid())
-        pcurve = piece_loop ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
-                            : NurbsCurve::create_interpolated(pts_uv);
+    if (!pcurve.is_valid()) {
+        if (piece_loop)
+            pcurve = NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic);
+        else
+            pcurve = NurbsCurve::create_interpolated(pts_uv);
+    }
 
     if (!pcurve.is_valid())
         pcurve = NurbsCurve::create(false, 1, pts_uv);
@@ -752,7 +796,7 @@ static NurbsCurve pullback_fit(const Pullback& pb, std::vector<UV>& piece_pts, b
 // Mesh helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5)
+/// Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5).
 static Point closest_point_on_triangle(const Point& p, const Point& a, const Point& b, const Point& c) {
 
     const Vector ab = b - a;
@@ -835,8 +879,8 @@ static std::vector<size_t> mesh_face_keys(const Mesh& mesh) {
     std::vector<size_t> face_keys;
     face_keys.reserve(mesh.face.size());
 
-    for (const auto& [key, _] : mesh.face)
-        face_keys.push_back(key);
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : mesh.face)
+        face_keys.push_back(entry.first);
 
     return face_keys;
 }
@@ -850,7 +894,8 @@ std::pair<double, double> Closest::curve_point(const NurbsCurve& curve, const Po
     if (!curve.is_valid())
         return {0.0, std::numeric_limits<double>::infinity()};
 
-    auto [domain_start, domain_end] = curve.domain();
+    const double domain_start = curve.domain_start();
+    const double domain_end = curve.domain_end();
 
     if (t0 <= 0.0)
         t0 = domain_start;
@@ -860,6 +905,7 @@ std::pair<double, double> Closest::curve_point(const NurbsCurve& curve, const Po
 
     t0 = std::max(t0, domain_start);
     t1 = std::min(t1, domain_end);
+
     double t = curve_newton(curve, test_point, t0, t1, curve_seed(curve, test_point, t0, t1));
     double final_dist = curve.point_at(t).distance(test_point);
     const double dist_start = curve.point_at(t0).distance(test_point);
@@ -883,9 +929,13 @@ std::tuple<double, double, double> Closest::curve_curve(const NurbsCurve& curve0
     if (!curve0.is_valid() || !curve1.is_valid())
         return {0.0, 0.0, std::numeric_limits<double>::infinity()};
 
-    auto [u0, u1] = curve0.domain();
-    auto [v0, v1] = curve1.domain();
-    auto [u, v] = curve_curve_seed(curve0, curve1);
+    const double u0 = curve0.domain_start();
+    const double u1 = curve0.domain_end();
+    const double v0 = curve1.domain_start();
+    const double v1 = curve1.domain_end();
+    double u = 0.0;
+    double v = 0.0;
+    std::tie(u, v) = curve_curve_seed(curve0, curve1);
 
     for (int iter = 0; iter < 64; iter++) {
         const std::vector<Vector> e0 = curve0.evaluate(u, 2);
@@ -905,13 +955,9 @@ std::tuple<double, double, double> Closest::curve_curve(const NurbsCurve& curve0
         const double rz = c0[2] - c1[2];
         const double gu = rx * c0p[0] + ry * c0p[1] + rz * c0p[2];
         const double gv = -(rx * c1p[0] + ry * c1p[1] + rz * c1p[2]);
-        const double huu =
-            c0p[0] * c0p[0] + c0p[1] * c0p[1] + c0p[2] * c0p[2] + rx * c0pp[0] + ry * c0pp[1] + rz * c0pp[2];
-
+        const double huu = c0p[0] * c0p[0] + c0p[1] * c0p[1] + c0p[2] * c0p[2] + rx * c0pp[0] + ry * c0pp[1] + rz * c0pp[2];
         const double huv = -(c0p[0] * c1p[0] + c0p[1] * c1p[1] + c0p[2] * c1p[2]);
-        const double hvv =
-            c1p[0] * c1p[0] + c1p[1] * c1p[1] + c1p[2] * c1p[2] - (rx * c1pp[0] + ry * c1pp[1] + rz * c1pp[2]);
-
+        const double hvv = c1p[0] * c1p[0] + c1p[1] * c1p[1] + c1p[2] * c1p[2] - (rx * c1pp[0] + ry * c1pp[1] + rz * c1pp[2]);
         const double det = huu * hvv - huv * huv;
 
         if (std::abs(det) < 1e-14)
@@ -942,19 +988,14 @@ std::tuple<Point, double, double> Closest::line_point(const Line& line, const Po
 
     const Point start = line.start();
     const Point end = line.end();
-    const double dx = end[0] - start[0];
-    const double dy = end[1] - start[1];
-    const double dz = end[2] - start[2];
-    const double len_sq = dx * dx + dy * dy + dz * dz;
+    const Vector direction = end - start;
+    const double len_sq = direction.magnitude_squared();
 
     if (len_sq < 1e-20)
         return {start, 0.0, start.distance(test_point)};
 
-    double t =
-        ((test_point[0] - start[0]) * dx + (test_point[1] - start[1]) * dy + (test_point[2] - start[2]) * dz) / len_sq;
-
-    t = std::max(0.0, std::min(1.0, t));
-    const Point closest(start[0] + t * dx, start[1] + t * dy, start[2] + t * dz);
+    const double t = std::max(0.0, std::min(1.0, (test_point - start).dot(direction) / len_sq));
+    const Point closest = start + direction * t;
 
     return {closest, t, closest.distance(test_point)};
 }
@@ -977,8 +1018,11 @@ std::tuple<Point, double, double> Closest::polyline_point(const Polyline& polyli
 
     for (size_t i = 0; i < points.size() - 1; i++) {
         const Line segment = Line::from_points(points[i], points[i + 1]);
-        auto [closest, t, dist] = line_point(segment, test_point);
         const double segment_length = segment.length();
+        Point closest;
+        double t = 0.0;
+        double dist = 0.0;
+        std::tie(closest, t, dist) = line_point(segment, test_point);
 
         if (dist < best_dist) {
             best_dist = dist;
@@ -1008,11 +1052,16 @@ std::tuple<double, double, double> Closest::surface_point(
     double v0,
     double v1
 ) {
+
     if (!surface.is_valid())
         return {0.0, 0.0, std::numeric_limits<double>::infinity()};
 
-    auto [domain_u0, domain_u1] = surface.domain(0);
-    auto [domain_v0, domain_v1] = surface.domain(1);
+    double domain_u0 = 0.0;
+    double domain_u1 = 0.0;
+    double domain_v0 = 0.0;
+    double domain_v1 = 0.0;
+    std::tie(domain_u0, domain_u1) = surface.domain(0);
+    std::tie(domain_v0, domain_v1) = surface.domain(1);
 
     if (u0 <= 0.0)
         u0 = domain_u0;
@@ -1030,8 +1079,11 @@ std::tuple<double, double, double> Closest::surface_point(
     u1 = std::min(u1, domain_u1);
     v0 = std::max(v0, domain_v0);
     v1 = std::min(v1, domain_v1);
+
     const std::pair<double, double> seed = surface_seed(surface, test_point, u0, u1, v0, v1);
-    auto [u, v] = surface_newton(surface, test_point, u0, u1, v0, v1, seed);
+    double u = 0.0;
+    double v = 0.0;
+    std::tie(u, v) = surface_newton(surface, test_point, u0, u1, v0, v1, seed);
 
     return {u, v, surface.point_at(u, v).distance(test_point)};
 }
@@ -1043,10 +1095,12 @@ std::vector<NurbsCurve> Closest::surface_curve(
     double t1,
     double tolerance
 ) {
+
     if (!surface.is_valid() || !curve.is_valid())
         return {};
 
-    auto [ct0, ct1] = curve.domain();
+    const double ct0 = curve.domain_start();
+    const double ct1 = curve.domain_end();
 
     if (t0 <= 0.0)
         t0 = ct0;
@@ -1061,16 +1115,17 @@ std::vector<NurbsCurve> Closest::surface_curve(
         return {};
 
     const Pullback pb = pullback_setup(surface, tolerance);
-    std::vector<Sample> samples = pullback_samples(surface, curve, pb, t0, t1);
+    std::vector<std::array<double, 4>> samples = pullback_samples(surface, curve, pb, t0, t1);
 
     if (samples.empty())
         return {};
 
     pullback_refine(surface, curve, pb, samples);
+
     std::vector<NurbsCurve> result;
 
-    for (auto& [piece_pts, piece_loop] : pullback_pieces(pb, curve, samples)) {
-        const NurbsCurve pcurve = pullback_fit(pb, piece_pts, piece_loop);
+    for (std::pair<std::vector<std::pair<double, double>>, bool>& piece : pullback_pieces(pb, curve, samples)) {
+        const NurbsCurve pcurve = pullback_fit(pb, piece.first, piece.second);
 
         if (pcurve.is_valid())
             result.push_back(pcurve);
@@ -1113,8 +1168,8 @@ std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Po
             Point v0;
             Point v1;
             Point v2;
-            size_t face_idx;
-            size_t sub_idx;
+            size_t face_idx = 0;
+            size_t sub_idx = 0;
 
             if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2))
                 continue;
@@ -1133,6 +1188,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Po
 
         const double ld = aabb_min_distance(bvh->nodes[node.left].aabb, test_point);
         const double rd = aabb_min_distance(bvh->nodes[node.right].aabb, test_point);
+
         assert(top + 2 <= STACK_SIZE);
 
         if (ld <= rd) {
@@ -1184,8 +1240,8 @@ std::tuple<Point, size_t, double> Closest::mesh_point_aabb(const Mesh& mesh, con
             Point v0;
             Point v1;
             Point v2;
-            size_t face_idx;
-            size_t sub_idx;
+            size_t face_idx = 0;
+            size_t sub_idx = 0;
 
             if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2))
                 continue;
@@ -1206,6 +1262,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point_aabb(const Mesh& mesh, con
         const int right = node.right;
         const double ld = aabb_min_distance(tree->nodes[left].aabb, test_point);
         const double rd = aabb_min_distance(tree->nodes[right].aabb, test_point);
+
         assert(top + 2 <= STACK_SIZE);
 
         if (ld <= rd) {
@@ -1261,7 +1318,9 @@ std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(const PointCl
         pts.push_back(cloud.get_point(i));
 
     const SpatialKDTree kd(std::move(pts));
-    auto [idx, dist] = kd.nearest(test_point);
+    int idx = 0;
+    double dist = 0.0;
+    std::tie(idx, dist) = kd.nearest(test_point);
 
     return {cloud.get_point(idx), static_cast<size_t>(idx), dist};
 }
@@ -1293,10 +1352,10 @@ std::vector<std::pair<size_t, size_t>> Closest::lines_closest(const std::vector<
             if (j <= i)
                 continue;
 
-            auto [cp_a, t_a, d_a] = line_point(lines[j], lines[i].start());
-            auto [cp_b, t_b, d_b] = line_point(lines[j], lines[i].end());
-            auto [cp_c, t_c, d_c] = line_point(lines[i], lines[j].start());
-            auto [cp_d, t_d, d_d] = line_point(lines[i], lines[j].end());
+            const double d_a = std::get<2>(line_point(lines[j], lines[i].start()));
+            const double d_b = std::get<2>(line_point(lines[j], lines[i].end()));
+            const double d_c = std::get<2>(line_point(lines[i], lines[j].start()));
+            const double d_d = std::get<2>(line_point(lines[i], lines[j].end()));
 
             if (std::min({d_a, d_b, d_c, d_d}) <= threshold)
                 pairs.push_back({i, j});
@@ -1310,6 +1369,7 @@ std::vector<std::pair<size_t, size_t>> Closest::polylines_closest(
     const std::vector<Polyline>& polylines,
     double threshold
 ) {
+
     std::vector<std::pair<size_t, size_t>> pairs;
 
     if (threshold < 0.0 || polylines.size() < 2)
@@ -1334,7 +1394,7 @@ std::vector<std::pair<size_t, size_t>> Closest::polylines_closest(
             double dist = std::numeric_limits<double>::infinity();
 
             for (const Point& pt : polylines[i].get_points()) {
-                auto [cp, t, d] = polyline_point(polylines[j], pt);
+                const double d = std::get<2>(polyline_point(polylines[j], pt));
 
                 if (d < dist)
                     dist = d;
@@ -1352,6 +1412,7 @@ std::vector<std::pair<size_t, size_t>> Closest::nurbscurves_closest(
     const std::vector<NurbsCurve>& curves,
     double threshold
 ) {
+
     std::vector<std::pair<size_t, size_t>> pairs;
 
     if (threshold < 0.0 || curves.size() < 2)
@@ -1373,11 +1434,10 @@ std::vector<std::pair<size_t, size_t>> Closest::nurbscurves_closest(
             if (j <= i)
                 continue;
 
-            auto [t0, t1] = curves[i].domain();
-            const Point p_start = curves[i].point_at(t0);
-            const Point p_end = curves[i].point_at(t1);
-            auto [t_a, d_a] = curve_point(curves[j], p_start);
-            auto [t_b, d_b] = curve_point(curves[j], p_end);
+            const Point p_start = curves[i].point_at(curves[i].domain_start());
+            const Point p_end = curves[i].point_at(curves[i].domain_end());
+            const double d_a = curve_point(curves[j], p_start).second;
+            const double d_b = curve_point(curves[j], p_end).second;
 
             if (std::min(d_a, d_b) <= threshold)
                 pairs.push_back({i, j});
