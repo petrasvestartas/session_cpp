@@ -8,9 +8,15 @@
 namespace session_cpp {
 namespace file_obj {
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Write
+// ═══════════════════════════════════════════════════════════════════════════
 std::string write_file_obj_to_string(const Mesh& mesh) {
 
-    const auto [vertices, faces] = mesh.to_vertices_and_faces();
+    const std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> indexed = mesh.to_vertices_and_faces();
+    const std::vector<Point>& vertices = indexed.first;
+    const std::vector<std::vector<size_t>>& faces = indexed.second;
+
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<double>::max_digits10);
 
@@ -42,6 +48,9 @@ void write_file_obj(const Mesh& mesh, const std::string& filepath) {
     out << write_file_obj_to_string(mesh);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Read
+// ═══════════════════════════════════════════════════════════════════════════
 Mesh read_file_obj_from_str(const std::string& content) {
 
     std::istringstream in(content);
@@ -119,6 +128,7 @@ std::vector<Polyline> read_file_obj_polylines(const std::string& filepath) {
             std::string u0;
             std::string u1;
             iss >> u0 >> u1;
+
             curv.clear();
             long long idx;
 
