@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <fstream>
 #include <queue>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -14,9 +15,50 @@ namespace session_cpp {
 // TreeNode
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Accessors
+// ═══════════════════════════════════════════════════════════════════════════
+
 bool TreeNode::is_root() const { return _parent.expired(); }
 
 bool TreeNode::is_leaf() const { return _children.empty(); }
+
+std::shared_ptr<TreeNode> TreeNode::parent() const { return _parent.lock(); }
+
+std::vector<TreeNode*> TreeNode::ancestors() const {
+
+  std::vector<TreeNode*> result;
+  std::shared_ptr<TreeNode> current = _parent.lock();
+
+  while (current) {
+    result.push_back(current.get());
+    current = current->_parent.lock();
+  }
+
+  return result;
+}
+
+std::vector<TreeNode*> TreeNode::descendants() const {
+
+  std::vector<TreeNode*> result = traverse("depthfirst", "preorder");
+  result.erase(result.begin());
+
+  return result;
+}
+
+std::vector<TreeNode*> TreeNode::children() const {
+
+  std::vector<TreeNode*> result;
+
+  for (const std::shared_ptr<TreeNode>& child : _children)
+    result.push_back(child.get());
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Mutators
+// ═══════════════════════════════════════════════════════════════════════════
 
 void TreeNode::add(std::shared_ptr<TreeNode> child) {
 
@@ -26,8 +68,7 @@ void TreeNode::add(std::shared_ptr<TreeNode> child) {
   if (child.get() == this)
     return;
 
-  for (std::shared_ptr<TreeNode> ancestor = shared_from_this(); ancestor;
-       ancestor = ancestor->parent())
+  for (std::shared_ptr<TreeNode> ancestor = shared_from_this(); ancestor; ancestor = ancestor->parent())
     if (ancestor == child)
       return;
 
@@ -51,37 +92,17 @@ std::shared_ptr<TreeNode> TreeNode::remove(std::shared_ptr<TreeNode> child) {
   return nullptr;
 }
 
-std::shared_ptr<TreeNode> TreeNode::parent() const { return _parent.lock(); }
+// ═══════════════════════════════════════════════════════════════════════════
+// Operators
+// ═══════════════════════════════════════════════════════════════════════════
 
-std::vector<TreeNode*> TreeNode::ancestors() const {
+bool TreeNode::operator==(const TreeNode& other) const { return guid() == other.guid(); }
 
-  std::vector<TreeNode*> result;
-  std::shared_ptr<TreeNode> current = _parent.lock();
+bool TreeNode::operator!=(const TreeNode& other) const { return !(*this == other); }
 
-  while (current) {
-    result.push_back(current.get());
-    current = current->_parent.lock();
-  }
-
-  return result;
-}
-
-std::vector<TreeNode*> TreeNode::descendants() const {
-  std::vector<TreeNode*> result = traverse("depthfirst", "preorder");
-  result.erase(result.begin());
-
-  return result;
-}
-
-std::vector<TreeNode*> TreeNode::children() const {
-
-  std::vector<TreeNode*> result;
-
-  for (const std::shared_ptr<TreeNode>& child : _children)
-    result.push_back(child.get());
-
-  return result;
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Traversal
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::vector<TreeNode*> TreeNode::traverse(const std::string& strategy, const std::string& order) const {
 
@@ -127,9 +148,9 @@ std::vector<TreeNode*> TreeNode::traverse(const std::string& strategy, const std
   return result;
 }
 
-bool TreeNode::operator==(const TreeNode& other) const { return guid() == other.guid(); }
-
-bool TreeNode::operator!=(const TreeNode& other) const { return !(*this == other); }
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON
+// ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json TreeNode::jsondump() const {
 
@@ -165,11 +186,20 @@ std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json& data) {
   return node;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// String
+// ═══════════════════════════════════════════════════════════════════════════
+
 std::string TreeNode::str() const {
+  return fmt::format("TreeNode({}, {} children)", name, _children.size());
+}
+
+std::string TreeNode::repr() const {
   return fmt::format("TreeNode({}, {}, {} children)", name, guid(), _children.size());
 }
 
 std::ostream& operator<<(std::ostream& os, const TreeNode& node) {
+
   os << node.str();
 
   return os;
@@ -235,6 +265,10 @@ std::shared_ptr<TreeNode> proto_to_node(const session_proto::TreeNode& proto) {
 
 } // namespace
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
+
 Tree::Tree(const Tree& other) : name(other.name) {
 
   if (other.has_guid())
@@ -254,24 +288,11 @@ Tree& Tree::operator=(const Tree& other) {
   return *this;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Accessors
+// ═══════════════════════════════════════════════════════════════════════════
+
 std::shared_ptr<TreeNode> Tree::root() const { return _root; }
-
-void Tree::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent) {
-
-  if (!node)
-    throw std::invalid_argument("Cannot add null node");
-
-  if (parent) {
-    parent->add(node);
-
-    return;
-  }
-
-  if (_root)
-    throw std::runtime_error("Tree already has a root node");
-
-  _root = node;
-}
 
 std::vector<std::shared_ptr<TreeNode>> Tree::nodes() const {
 
@@ -295,25 +316,6 @@ std::vector<std::shared_ptr<TreeNode>> Tree::nodes() const {
   return result;
 }
 
-std::shared_ptr<TreeNode> Tree::remove(std::shared_ptr<TreeNode> node) {
-
-  if (!node)
-    throw std::invalid_argument("Cannot remove null node");
-
-  if (node == _root) {
-    _root.reset();
-
-    return node;
-  }
-
-  std::shared_ptr<TreeNode> parent = node->parent();
-
-  if (!parent)
-    throw std::invalid_argument("Node is not in this tree");
-
-  return parent->remove(node);
-}
-
 std::vector<std::shared_ptr<TreeNode>> Tree::leaves() const {
 
   std::vector<std::shared_ptr<TreeNode>> result;
@@ -321,24 +323,6 @@ std::vector<std::shared_ptr<TreeNode>> Tree::leaves() const {
   for (const std::shared_ptr<TreeNode>& node : nodes())
     if (node->is_leaf())
       result.push_back(node);
-
-  return result;
-}
-
-std::vector<std::shared_ptr<TreeNode>> Tree::traverse(const std::string& strategy, const std::string& order) const {
-
-  std::vector<std::shared_ptr<TreeNode>> result;
-
-  if (!_root)
-    return result;
-
-  std::unordered_map<TreeNode *, std::shared_ptr<TreeNode>> lookup;
-
-  for (const std::shared_ptr<TreeNode>& node : nodes())
-    lookup[node.get()] = node;
-
-  for (TreeNode* node : _root->traverse(strategy, order))
-    result.push_back(lookup[node]);
 
   return result;
 }
@@ -372,33 +356,6 @@ std::shared_ptr<TreeNode> Tree::find_node_by_guid(const std::string& node_guid) 
   return nullptr;
 }
 
-bool Tree::add_child_by_guid(const std::string& parent_guid, const std::string& child_guid) {
-
-  std::shared_ptr<TreeNode> parent = find_node_by_guid(parent_guid);
-  std::shared_ptr<TreeNode> child = find_node_by_guid(child_guid);
-
-  if (!parent || !child)
-    return false;
-
-  if (parent == child)
-    return false;
-
-  for (std::shared_ptr<TreeNode> ancestor = parent; ancestor;
-       ancestor = ancestor->parent())
-    if (ancestor == child)
-      return false;
-
-  std::shared_ptr<TreeNode> current = child->parent();
-
-  if (!current)
-    return false;
-
-  current->remove(child);
-  parent->add(child);
-
-  return true;
-}
-
 std::vector<std::string> Tree::get_children_guids(const std::string& node_guid) const {
 
   std::vector<std::string> result;
@@ -414,7 +371,95 @@ std::vector<std::string> Tree::get_children_guids(const std::string& node_guid) 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Serialization
+// Mutators
+// ═══════════════════════════════════════════════════════════════════════════
+
+void Tree::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent) {
+
+  if (!node)
+    throw std::invalid_argument("Cannot add null node");
+
+  if (parent) {
+    parent->add(node);
+
+    return;
+  }
+
+  if (_root)
+    throw std::runtime_error("Tree already has a root node");
+
+  _root = node;
+}
+
+std::shared_ptr<TreeNode> Tree::remove(std::shared_ptr<TreeNode> node) {
+
+  if (!node)
+    throw std::invalid_argument("Cannot remove null node");
+
+  if (node == _root) {
+    _root.reset();
+
+    return node;
+  }
+
+  std::shared_ptr<TreeNode> parent = node->parent();
+
+  if (!parent)
+    throw std::invalid_argument("Node is not in this tree");
+
+  return parent->remove(node);
+}
+
+bool Tree::add_child_by_guid(const std::string& parent_guid, const std::string& child_guid) {
+
+  std::shared_ptr<TreeNode> parent = find_node_by_guid(parent_guid);
+  std::shared_ptr<TreeNode> child = find_node_by_guid(child_guid);
+
+  if (!parent || !child)
+    return false;
+
+  if (parent == child)
+    return false;
+
+  for (std::shared_ptr<TreeNode> ancestor = parent; ancestor; ancestor = ancestor->parent())
+    if (ancestor == child)
+      return false;
+
+  std::shared_ptr<TreeNode> current = child->parent();
+
+  if (!current)
+    return false;
+
+  current->remove(child);
+  parent->add(child);
+
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Traversal
+// ═══════════════════════════════════════════════════════════════════════════
+
+std::vector<std::shared_ptr<TreeNode>> Tree::traverse(const std::string& strategy, const std::string& order) const {
+
+  std::vector<std::shared_ptr<TreeNode>> result;
+
+  if (!_root)
+    return result;
+
+  std::unordered_map<TreeNode*, std::shared_ptr<TreeNode>> lookup;
+
+  for (const std::shared_ptr<TreeNode>& node : nodes())
+    lookup[node.get()] = node;
+
+  for (TreeNode* node : _root->traverse(strategy, order))
+    result.push_back(lookup[node]);
+
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json Tree::jsondump() const {
@@ -446,15 +491,21 @@ Tree Tree::file_json_loads(const std::string& json_string) {
 }
 
 void Tree::file_json_dump(const std::string& filename) const {
+
   std::ofstream file(filename);
   file << jsondump().dump(4);
 }
 
 Tree Tree::file_json_load(const std::string& filename) {
+
   std::ifstream file(filename);
 
   return jsonload(nlohmann::json::parse(file));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Protobuf
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::string Tree::pb_dumps() const {
 
@@ -487,21 +538,54 @@ Tree Tree::pb_loads(const std::string& data) {
 }
 
 void Tree::pb_dump(const std::string& filename) const {
-  std::string data = pb_dumps();
+
+  const std::string data = pb_dumps();
   std::ofstream file(filename, std::ios::binary);
   file.write(data.data(), data.size());
 }
 
 Tree Tree::pb_load(const std::string& filename) {
+
   std::ifstream file(filename, std::ios::binary);
-  std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
   return pb_loads(data);
 }
 
-std::string Tree::str() const { return fmt::format("Tree: {}", name); }
+// ═══════════════════════════════════════════════════════════════════════════
+// String
+// ═══════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+/// Draw one node and its subtree, the last child of every level closing its branch.
+void draw_node(std::ostringstream& os, const TreeNode& node, const std::string& prefix, bool last) {
+
+  os << prefix << (last ? "\u2514\u2500\u2500 " : "\u251c\u2500\u2500 ") << node.str() << "\n";
+
+  const std::vector<TreeNode*> kids = node.children();
+  const std::string next = prefix + (last ? "    " : "\u2502   ");
+  for (size_t i = 0; i < kids.size(); ++i)
+    draw_node(os, *kids[i], next, i + 1 == kids.size());
+}
+
+} // namespace
+
+std::string Tree::str() const {
+
+  std::ostringstream os;
+  os << fmt::format("<Tree with {} nodes: {}>\n", nodes().size(), name);
+
+  if (const std::shared_ptr<TreeNode> start = root())
+    draw_node(os, *start, "", true);
+
+  return os.str();
+}
+
+std::string Tree::repr() const { return fmt::format("Tree({}, {} nodes)", name, nodes().size()); }
 
 std::ostream& operator<<(std::ostream& os, const Tree& tree) {
+
   os << tree.str();
 
   return os;
