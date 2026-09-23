@@ -4,8 +4,12 @@
 #include <limits>
 #include <sstream>
 
-namespace session_cpp { namespace io_xyz {
+namespace session_cpp {
+namespace io_xyz {
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Write
+// ═══════════════════════════════════════════════════════════════════════════
 std::string write_xyz_to_string(const PointCloud& cloud) {
 
     std::ostringstream out;
@@ -27,6 +31,9 @@ void write_xyz(const PointCloud& cloud, const std::string& filepath) {
     out << write_xyz_to_string(cloud);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Read
+// ═══════════════════════════════════════════════════════════════════════════
 PointCloud read_xyz_from_str(const std::string& content) {
 
     PointCloud cloud;
@@ -60,4 +67,5 @@ PointCloud read_xyz(const std::string& filepath) {
     return read_xyz_from_str(buffer.str());
 }
 
-} } // namespace session_cpp::io_xyz
+} // namespace io_xyz
+} // namespace session_cpp
