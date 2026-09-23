@@ -152,22 +152,28 @@ public:
     static Mesh hex_mesh(const NurbsSurface& surface, int u_count, int v_count, double t = 1.0 / 3.0);
 
 private:
-    using Geometry = std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>>;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mesh geometry
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /// Ten-sided unit cylinder: radius 0.5, z from -0.5 to 0.5.
-    static Geometry unit_cylinder_geometry();
+    static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> unit_cylinder_geometry();
 
     /// Eight-sided unit cone: base radius 0.5 at z = -0.5, apex at z = 0.5.
-    static Geometry unit_cone_geometry();
+    static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> unit_cone_geometry();
 
     /// Ten-sided capsule along z from 0 to length with hemispherical caps.
-    static Geometry capsule_geometry(double length, double radius);
+    static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> capsule_geometry(double length, double radius);
 
     /// Frame at origin with z along the line.
     static Xform line_frame(const Line& line, const Point& origin);
 
     /// Appends transformed geometry to a mesh.
-    static void add_geometry(Mesh& mesh, const Geometry& geometry, const Xform& xform);
+    static void add_geometry(
+        Mesh& mesh,
+        const std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>>& geometry,
+        const Xform& xform
+    );
 };
 
 } // namespace session_cpp

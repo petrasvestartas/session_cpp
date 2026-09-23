@@ -57,18 +57,18 @@ std::vector<size_t> dedup_face(const std::vector<size_t>& face) {
 /// Vertex keys of the surface sampled on a (u_count + 1) x (v_count + 1) grid; seam and poles share keys.
 std::vector<std::vector<size_t>> surface_grid(const NurbsSurface& surface, int u_count, int v_count, Mesh& mesh) {
 
-    const auto [u0, u1] = surface.domain(0);
-    const auto [v0, v1] = surface.domain(1);
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const std::pair<double, double> domain_v = surface.domain(1);
     const bool closed_u = surface.is_closed(0);
     const bool singular_south = surface.is_singular(0);
     const bool singular_north = surface.is_singular(2);
     std::vector<std::vector<size_t>> grid(u_count + 1, std::vector<size_t>(v_count + 1, 0));
 
     for (int i = 0; i <= u_count; i++) {
-        const double u = u0 + (u1 - u0) * i / u_count;
+        const double u = domain_u.first + (domain_u.second - domain_u.first) * i / u_count;
 
         for (int j = 0; j <= v_count; j++) {
-            const double v = v0 + (v1 - v0) * j / v_count;
+            const double v = domain_v.first + (domain_v.second - domain_v.first) * j / v_count;
 
             if (closed_u && i == u_count)
                 grid[i][j] = grid[0][j];
@@ -93,16 +93,16 @@ std::vector<std::vector<size_t>> surface_mid_grid(
     Mesh& mesh
 ) {
 
-    const auto [u0, u1] = surface.domain(0);
-    const auto [v0, v1] = surface.domain(1);
+    const std::pair<double, double> domain_u = surface.domain(0);
+    const std::pair<double, double> domain_v = surface.domain(1);
     const bool closed_u = surface.is_closed(0);
     std::vector<std::vector<size_t>> grid(u_count + 1, std::vector<size_t>(v_count, 0));
 
     for (int i = 0; i <= u_count; i++) {
-        const double u = u0 + (u1 - u0) * i / u_count;
+        const double u = domain_u.first + (domain_u.second - domain_u.first) * i / u_count;
 
         for (int j = 0; j < v_count; j++) {
-            const double v = v0 + (v1 - v0) * (j + t) / v_count;
+            const double v = domain_v.first + (domain_v.second - domain_v.first) * (j + t) / v_count;
 
             if (closed_u && i == u_count)
                 grid[i][j] = grid[0][j];
@@ -429,10 +429,10 @@ Xform profile_to_xy(const NurbsCurve& profile) {
         centroid += profile.get_cv(i) - Point(0.0, 0.0, 0.0);
 
     const Point origin = Point(0.0, 0.0, 0.0) + centroid / profile.cv_count();
-    const auto [t0, t1] = profile.domain();
-    const Point pa = profile.point_at(t0);
-    const Point pb = profile.point_at(t0 + (t1 - t0) / 3.0);
-    const Point pc = profile.point_at(t0 + 2.0 * (t1 - t0) / 3.0);
+    const std::pair<double, double> domain = profile.domain();
+    const Point pa = profile.point_at(domain.first);
+    const Point pb = profile.point_at(domain.first + (domain.second - domain.first) / 3.0);
+    const Point pc = profile.point_at(domain.first + 2.0 * (domain.second - domain.first) / 3.0);
     Vector normal = (pb - pa).cross(pc - pa);
 
     if (!normal.normalize_self())
@@ -470,6 +470,7 @@ Plane shape_plane(const NurbsCurve& shape) {
 
 /// Chord length of a shape, 1 when degenerate.
 double shape_width(const NurbsCurve& shape) {
+
     const double width = shape.point_at_start().distance(shape.point_at_end());
 
     return width < 1e-14 ? 1.0 : width;
@@ -522,10 +523,10 @@ std::vector<NurbsCurve> chain_curves(const std::vector<NurbsCurve>& input) {
 std::vector<double> normalized_greville(const NurbsCurve& curve) {
 
     std::vector<double> grev = curve.get_greville_abcissae();
-    const auto [t0, t1] = curve.domain();
+    const std::pair<double, double> domain = curve.domain();
 
     for (double& g : grev)
-        g = t1 > t0 ? (g - t0) / (t1 - t0) : 0.0;
+        g = domain.second > domain.first ? (g - domain.first) / (domain.second - domain.first) : 0.0;
 
     return grev;
 }
@@ -541,11 +542,8 @@ Mesh Primitives::arrow_mesh(const Line& line, double radius) {
     const Point start = line.start();
     const Vector axis = line.to_vector();
     const double length = line.length();
-    const Xform body =
-        line_frame(line, start + axis * 0.4) * Xform::scale_xyz(radius * 2.0, radius * 2.0, length * 0.8);
-
-    const Xform head =
-        line_frame(line, start + axis * 0.9) * Xform::scale_xyz(radius * 3.0, radius * 3.0, length * 0.2);
+    const Xform body = line_frame(line, start + axis * 0.4) * Xform::scale_xyz(radius * 2.0, radius * 2.0, length * 0.8);
+    const Xform head = line_frame(line, start + axis * 0.9) * Xform::scale_xyz(radius * 3.0, radius * 3.0, length * 0.2);
 
     Mesh mesh;
     add_geometry(mesh, unit_cylinder_geometry(), body);
@@ -558,8 +556,7 @@ Mesh Primitives::cylinder_mesh(const Line& line, double radius) {
 
     const Point start = line.start();
     const Vector axis = line.to_vector();
-    const Xform xform =
-        line_frame(line, start + axis * 0.5) * Xform::scale_xyz(radius * 2.0, radius * 2.0, line.length());
+    const Xform xform = line_frame(line, start + axis * 0.5) * Xform::scale_xyz(radius * 2.0, radius * 2.0, line.length());
 
     Mesh mesh;
     add_geometry(mesh, unit_cylinder_geometry(), xform);
@@ -568,6 +565,7 @@ Mesh Primitives::cylinder_mesh(const Line& line, double radius) {
 }
 
 Mesh Primitives::capsule_mesh(const Line& line, double radius) {
+
     Mesh mesh;
     add_geometry(mesh, capsule_geometry(line.length(), radius), line_frame(line, line.start()));
 
@@ -582,8 +580,12 @@ std::vector<Mesh> Primitives::edge_pipes(const Mesh& mesh, double radius) {
     std::vector<Mesh> pipes;
 
     for (size_t i = 0; i < count; i++) {
-        const auto [u, v] = edges[i];
-        Mesh pipe = capsule_mesh(Line::from_points(mesh.vertex.at(u).position(), mesh.vertex.at(v).position()), radius);
+        const std::pair<size_t, size_t> edge = edges[i];
+        Mesh pipe = capsule_mesh(
+            Line::from_points(mesh.vertex.at(edge.first).position(), mesh.vertex.at(edge.second).position()),
+            radius
+        );
+
         pipe.set_facecolors(std::vector<Color>(pipe.number_of_faces(), colors[i]));
         pipes.push_back(pipe);
     }
@@ -731,7 +733,8 @@ NurbsCurve Primitives::arc(const Point& start, const Point& mid, const Point& en
     NurbsCurve curve(3, true, 3, 3);
     curve.m_nurbsknot = {0.0, 0.0, 1.0, 1.0};
     curve.set_cv_4d(0, start[0], start[1], start[2], 1.0);
-    curve.set_cv_4d(1, chord_mid[0] * w + sagitta[0], chord_mid[1] * w + sagitta[1], chord_mid[2] * w + sagitta[2], w);
+    const Point weighted = chord_mid * w + sagitta;
+    curve.set_cv_4d(1, weighted[0], weighted[1], weighted[2], w);
     curve.set_cv_4d(2, end[0], end[1], end[2], 1.0);
 
     return curve;
@@ -850,6 +853,7 @@ NurbsSurface Primitives::torus_surface(double cx, double cy, double cz, double m
             major_radius + minor_radius * CIRCLE_X[j],
             CIRCLE_WEIGHTS[j]
         );
+
     return srf;
 }
 
@@ -880,7 +884,6 @@ std::vector<NurbsSurface> Primitives::quad_sphere(double cx, double cy, double c
     const double wk = std::sqrt(2.0 / 3.0);
     const double wc = (-72.0 - 32.0 * std::sqrt(6.0) + 48.0 * std::sqrt(3.0) + 56.0 * std::sqrt(2.0)) /
         (48.0 * (1.0 + std::sqrt(2.0 / 3.0) - 1.0 / std::sqrt(3.0) - 1.0 / std::sqrt(2.0)));
-
     const double k = radius * (1.0 - 1.0 / std::sqrt(3.0) + 2.0 * std::sqrt(2.0 / 3.0) - std::sqrt(2.0));
     const double h = radius + k / wc;
     const double zf[3][3][4] = {
@@ -951,6 +954,7 @@ NurbsSurface Primitives::create_ruled(const NurbsCurve& curve_a, const NurbsCurv
     curves[0].set_domain(0.0, 1.0);
     curves[1].set_domain(0.0, 1.0);
     make_curves_compatible(curves);
+
     const int cv_count_u = curves[0].cv_count();
     const bool is_rat = curves[0].is_rational();
     NurbsSurface surface(3, is_rat, curves[0].order(), 2, cv_count_u, 2);
@@ -964,8 +968,8 @@ NurbsSurface Primitives::create_ruled(const NurbsCurve& curve_a, const NurbsCurv
     for (int i = 0; i < cv_count_u; i++) {
         for (int j = 0; j < 2; j++) {
             if (is_rat) {
-                const auto [x, y, z, w] = curves[j].get_cv_4d(i);
-                surface.set_cv_4d(i, j, x, y, z, w);
+                const std::tuple<double, double, double, double> xyzw = curves[j].get_cv_4d(i);
+                surface.set_cv_4d(i, j, std::get<0>(xyzw), std::get<1>(xyzw), std::get<2>(xyzw), std::get<3>(xyzw));
             } else {
                 surface.set_cv(i, j, curves[j].get_cv(i));
             }
@@ -1023,7 +1027,7 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
         return bounded_patch(pts, pts[0], x_axis, y_axis);
     }
 
-    const auto [samples, params] = boundary.divide_by_count(std::max(20, boundary.cv_count() * 4));
+    const std::vector<Point> samples = boundary.divide_by_count(std::max(20, boundary.cv_count() * 4)).first;
     const Plane plane = Plane::from_points_pca(samples);
 
     if (plane.z_axis().magnitude() < 1e-10)
@@ -1043,6 +1047,7 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
 
     std::vector<NurbsCurve> curves = input_curves;
     make_curves_compatible(curves);
+
     const int n = static_cast<int>(curves.size());
     const int cv_count_u = curves[0].cv_count();
     const bool is_rat = curves[0].is_rational();
@@ -1072,8 +1077,8 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
 
         for (int k = 0; k < n; k++) {
             if (is_rat) {
-                const auto [x, y, z, w] = curves[k].get_cv_4d(i);
-                rhs[k] = {x, y, z, w};
+                const std::tuple<double, double, double, double> xyzw = curves[k].get_cv_4d(i);
+                rhs[k] = {std::get<0>(xyzw), std::get<1>(xyzw), std::get<2>(xyzw), std::get<3>(xyzw)};
             } else {
                 const Point p = curves[k].get_cv(i);
                 rhs[k] = {p[0], p[1], p[2]};
@@ -1200,6 +1205,7 @@ NurbsSurface Primitives::create_sweep2(
 
     std::vector<NurbsCurve> compat = shapes;
     make_curves_compatible(compat);
+
     const int n_shapes = static_cast<int>(compat.size());
     std::vector<Plane> planes;
     std::vector<double> widths;
@@ -1210,8 +1216,8 @@ NurbsSurface Primitives::create_sweep2(
     }
 
     const int count = std::clamp(std::max(rail1.span_count(), rail2.span_count()) * 2 + 1, 5, 200);
-    const auto [pts1, params1] = rail1.divide_by_count(count + 1);
-    const auto [pts2, params2] = rail2.divide_by_count(count + 1);
+    const std::vector<Point> pts1 = rail1.divide_by_count(count + 1).first;
+    const std::vector<Point> pts2 = rail2.divide_by_count(count + 1).first;
     const std::vector<Plane> frames = rail1.get_perpendicular_planes(count);
 
     if (frames.empty())
@@ -1252,8 +1258,7 @@ NurbsSurface Primitives::create_sweep2(
 
         const double scale = rail_dist > 1e-14 && width > 1e-14 ? rail_dist / width : 1.0;
         const Plane target(p1, x_dir, y_dir);
-        const Xform to_source =
-            Xform::world_to_frame(source.origin(), source.x_axis(), source.y_axis(), source.z_axis());
+        const Xform to_source = Xform::world_to_frame(source.origin(), source.x_axis(), source.y_axis(), source.z_axis());
 
         section.transform(Xform::to_frame(target) * Xform::scale_xyz(scale, scale, scale) * to_source);
         sections.push_back(section);
@@ -1280,17 +1285,25 @@ NurbsSurface Primitives::create_edge(
     std::vector<NurbsCurve> v_pair = {loop[0], loop[2]};
     v_pair[1].reverse();
     make_curves_compatible(v_pair);
+
     std::vector<NurbsCurve> u_pair = {loop[3], loop[1]};
     u_pair[0].reverse();
     make_curves_compatible(u_pair);
+
     const NurbsCurve& south = v_pair[0];
     const NurbsCurve& north = v_pair[1];
     const NurbsCurve& west = u_pair[0];
     const NurbsCurve& east = u_pair[1];
     const int cv_count_u = west.cv_count();
     const int cv_count_v = south.cv_count();
-    NurbsSurface
-        surface(3, south.is_rational() || west.is_rational(), west.order(), south.order(), cv_count_u, cv_count_v);
+    NurbsSurface surface(
+        3,
+        south.is_rational() || west.is_rational(),
+        west.order(),
+        south.order(),
+        cv_count_u,
+        cv_count_v
+    );
 
     if (!surface.is_valid())
         return NurbsSurface();
@@ -1424,12 +1437,13 @@ Mesh Primitives::hex_mesh(const NurbsSurface& surface, int u_count, int v_count,
 // Mesh geometry
 // ═══════════════════════════════════════════════════════════════════════════
 
-Primitives::Geometry Primitives::unit_cylinder_geometry() {
+std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> Primitives::unit_cylinder_geometry() {
 
     const size_t n = 10;
     std::vector<Point> vertices;
     add_ring(vertices, n, 0.5, -0.5);
     add_ring(vertices, n, 0.5, 0.5);
+
     std::vector<std::array<size_t, 3>> triangles;
 
     for (size_t i = 0; i < n; i++) {
@@ -1441,11 +1455,12 @@ Primitives::Geometry Primitives::unit_cylinder_geometry() {
     return {vertices, triangles};
 }
 
-Primitives::Geometry Primitives::unit_cone_geometry() {
+std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> Primitives::unit_cone_geometry() {
 
     const size_t n = 8;
     std::vector<Point> vertices = {Point(0.0, 0.0, 0.5)};
     add_ring(vertices, n, 0.5, -0.5);
+
     std::vector<std::array<size_t, 3>> triangles;
 
     for (size_t i = 0; i < n; i++)
@@ -1454,7 +1469,7 @@ Primitives::Geometry Primitives::unit_cone_geometry() {
     return {vertices, triangles};
 }
 
-Primitives::Geometry Primitives::capsule_geometry(double length, double radius) {
+std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> Primitives::capsule_geometry(double length, double radius) {
 
     const size_t n = 10;
     const double r_hemi = radius * std::sin(Tolerance::PI / 4.0);
@@ -1471,6 +1486,7 @@ Primitives::Geometry Primitives::capsule_geometry(double length, double radius) 
     vertices.push_back(Point(0.0, 0.0, -radius));
     add_ring(vertices, n, r_hemi, length + off);
     vertices.push_back(Point(0.0, 0.0, length + radius));
+
     std::vector<std::array<size_t, 3>> triangles;
 
     for (size_t i = 0; i < n; i++) {
@@ -1501,15 +1517,18 @@ Xform Primitives::line_frame(const Line& line, const Point& origin) {
     return Xform::frame_to_world(origin, x_axis, z_axis.cross(x_axis), z_axis);
 }
 
-void Primitives::add_geometry(Mesh& mesh, const Geometry& geometry, const Xform& xform) {
+void Primitives::add_geometry(
+    Mesh& mesh,
+    const std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>>& geometry,
+    const Xform& xform
+) {
 
-    const auto& [vertices, triangles] = geometry;
     std::vector<size_t> keys;
 
-    for (const Point& v : vertices)
+    for (const Point& v : geometry.first)
         keys.push_back(mesh.add_vertex(v.transformed(xform)));
 
-    for (const std::array<size_t, 3>& tri : triangles)
+    for (const std::array<size_t, 3>& tri : geometry.second)
         mesh.add_face({keys[tri[0]], keys[tri[1]], keys[tri[2]]});
 }
 
