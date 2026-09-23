@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "brep.h"
+#include "brep.pb.h"
 #include "nurbssurface.h"
 #include "nurbscurve.h"
 #include "polyline.h"
@@ -24,26 +25,40 @@ namespace session_cpp {
 
     /// Every non-degenerated edge of a solid is used by exactly two faces with opposite composed orientations
     static bool edges_manifold(const BRep& b) {
+
         for (int ei = 0; ei < b.edge_count(); ++ei) {
-            if (b.m_edges[ei].degenerated) continue;
+            if (b.m_edges[ei].degenerated)
+                continue;
+
             const std::vector<BRepRef> uses = b.edge_faces(ei);
-            if (uses.size() != 2) return false;
-            if (uses[0].orientation == uses[1].orientation) return false;
+
+            if (uses.size() != 2)
+                return false;
+
+            if (uses[0].orientation == uses[1].orientation)
+                return false;
         }
+
         return true;
     }
 
     /// Sorted positions of the mesh vertices on the v = 0 side
     static std::vector<std::array<double, 3>> boundary_points(const Mesh& mesh) {
+
         std::vector<std::array<double, 3>> points;
-        for (const auto& [key, v] : mesh.vertex)
-            if (v.attributes.at("v") == 0.0) points.push_back({v.x, v.y, v.z});
+
+        for (const std::pair<const size_t, VertexData>& entry : mesh.vertex)
+            if (entry.second.attributes.at("v") == 0.0)
+                points.push_back({entry.second.position()[0], entry.second.position()[1], entry.second.position()[2]});
+
         std::sort(points.begin(), points.end());
+
         return points;
     }
 
     /// Unit planar quad face with straight edges and pcurves; returns the face index
     static int build_quad_face(BRep& b) {
+
         NurbsSurface srf(3, false, 2, 2, 2, 2);
         srf.set_cv(0, 0, Point(0, 0, 0));
         srf.set_cv(1, 0, Point(1, 0, 0));
@@ -56,8 +71,12 @@ namespace session_cpp {
             Point(1, 1, 0),
             Point(0, 1, 0),
         };
-        for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
+
+        for (int i = 0; i < 4; ++i)
+            b.add_vertex(corners[i]);
+
         std::vector<BRepRef> refs;
+
         for (int i = 0; i < 4; ++i) {
             const int j = (i + 1) % 4;
             const int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
@@ -66,68 +85,100 @@ namespace session_cpp {
             b.add_pcurve(ei, si, c2);
             refs.push_back({ei, BRepOrientation::Forward});
         }
+
         const int wi = b.add_wire(refs);
+
         return b.add_face(si, {{wi, BRepOrientation::Forward}});
     }
 
     MINI_TEST("BRep", "Shared Grid Boundary") {
         BRep b;
         std::vector<NurbsSurface> surfaces;
+
         for (int face = 0; face < 2; ++face) {
             std::vector<Point> points;
+
             for (int i = 0; i < 3; ++i)
                 for (int j = 0; j < 2; ++j) {
                     const double z = i != 1 ? 0.0 : (j == 0 || face == 0 ? 0.5 : 4.0);
                     points.push_back(Point(i * 0.5, j * (face == 0 ? 1.0 : -1.0), z));
                 }
+
             const NurbsSurface surface = NurbsSurface::create(false, false, 2, 1, 3, 2, points);
             const int si = b.add_surface(surface);
             const std::array<double, 2> corners[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
             std::vector<int> vertices;
-            for (int side = 0; side < 4; ++side) vertices.push_back(b.add_vertex(surface.point_at(corners[side][0], corners[side][1])));
+
+            for (int side = 0; side < 4; ++side)
+                vertices.push_back(b.add_vertex(surface.point_at(corners[side][0], corners[side][1])));
+
             std::vector<BRepRef> edges;
+
             for (int side = 0; side < 4; ++side) {
                 const std::array<double, 2> a = corners[side];
                 const std::array<double, 2> z = corners[(side + 1) % 4];
                 int edge = 0;
+
                 if (side != 0 || face != 1) {
                     const int dir = a[0] != z[0] ? 0 : 1;
                     NurbsCurve curve = surface.iso_curve(dir, a[1 - dir]);
-                    if (a[dir] > z[dir]) curve.reverse();
+
+                    if (a[dir] > z[dir])
+                        curve.reverse();
+
                     edge = b.add_edge(b.add_curve_3d(curve), vertices[side], vertices[(side + 1) % 4]);
                 }
+
                 const NurbsCurve pc = NurbsCurve::create(false, 1, {Point(a[0], a[1], 0), Point(z[0], z[1], 0)});
                 b.add_pcurve(edge, si, b.add_curve_2d(pc));
                 edges.push_back({edge, BRepOrientation::Forward});
             }
+
             b.add_face(si, {{b.add_wire(edges), BRepOrientation::Forward}}, 1e-8);
             surfaces.push_back(surface);
         }
+
         std::vector<Mesh> original;
-        for (const NurbsSurface& s : surfaces) original.push_back(RemeshNurbsSurfaceGrid::from_u_v_q(s, 0, 0, 20.0, 0.005));
+
+        for (const NurbsSurface& s : surfaces)
+            original.push_back(RemeshNurbsSurfaceGrid::from_u_v_q(s, 0, 0, 20.0, 0.005));
+
         MINI_CHECK(boundary_points(original[0]).size() == 7 && boundary_points(original[1]).size() == 11);
+
         std::vector<Mesh> meshes = b.face_meshes_q(true, 20.0, 0.005);
         std::vector<std::array<double, 3>> first = boundary_points(meshes[0]);
         const std::vector<std::array<double, 3>> second = boundary_points(meshes[1]);
+
         MINI_CHECK(first == second && first.size() == 7);
         MINI_CHECK(meshes[0].face.size() == original[0].face.size() && !meshes[1].face.empty());
+
         double maximum = 0.0;
+
         for (size_t i = 0; i + 1 < first.size(); ++i) {
             const std::array<double, 3> a = first[i];
             const std::array<double, 3> z = first[i + 1];
             const Point actual = surfaces[0].point_at((a[0] + z[0]) * 0.5, 0.0);
             double sag = 0.0;
-            for (int d = 0; d < 3; ++d) sag += std::pow(actual[d] - (a[d] + z[d]) * 0.5, 2);
+
+            for (int d = 0; d < 3; ++d)
+                sag += std::pow(actual[d] - (a[d] + z[d]) * 0.5, 2);
+
             maximum = std::max(maximum, std::sqrt(sag));
         }
+
         MINI_CHECK(maximum <= 0.005 * 1.5);
+
         const Mesh refined = RemeshNurbsSurfaceGrid::from_u_v_q(surfaces[0], 0, 0, 5.0, 0.001);
         meshes = b.face_meshes_q(true, 5.0, 0.001);
         first = boundary_points(meshes[0]);
+
         MINI_CHECK(first == boundary_points(meshes[1]) && !meshes[0].face.empty() && !meshes[1].face.empty());
+
         for (const std::array<double, 3>& point : boundary_points(refined))
             MINI_CHECK(std::find(first.begin(), first.end(), point) != first.end());
+
         const double cosine = std::cos(5.0 * Tolerance::PI / 180.0);
+
         for (size_t i = 0; i + 1 < first.size(); ++i) {
             const Vector a = surfaces[0].normal_at(first[i][0], 0.0);
             const Vector z = surfaces[0].normal_at(first[i + 1][0], 0.0);
@@ -138,8 +189,8 @@ namespace session_cpp {
     MINI_TEST("BRep", "Constructor") {
         BRep b;
 
-        std::string sstr = b.str();
-        std::string srepr = b.repr();
+        const std::string sstr = b.str();
+        const std::string srepr = b.repr();
 
         BRep bcopy = b;
 
@@ -155,7 +206,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Box") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
 
         MINI_CHECK(box.is_valid());
         MINI_CHECK(box.face_count() == 6);
@@ -166,15 +217,15 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Accessors") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
 
-        int vc = box.vertex_count();
-        int ec = box.edge_count();
-        int wc = box.wire_count();
-        int fc = box.face_count();
-        int sc = box.shell_count();
-        int oc = box.solid_count();
-        std::vector<Point> pts = box.vertex_points();
+        const int vc = box.vertex_count();
+        const int ec = box.edge_count();
+        const int wc = box.wire_count();
+        const int fc = box.face_count();
+        const int sc = box.shell_count();
+        const int oc = box.solid_count();
+        const std::vector<Point> pts = box.vertex_points();
 
         MINI_CHECK(vc == 8);
         MINI_CHECK(ec == 12);
@@ -196,27 +247,31 @@ namespace session_cpp {
         srf.set_cv(1, 0, Point(1, 0, 0));
         srf.set_cv(0, 1, Point(0, 1, 0));
         srf.set_cv(1, 1, Point(1, 1, 0));
-        int si = b.add_surface(srf);
+        const int si = b.add_surface(srf);
 
-        Point corners[4] = {
+        const Point corners[4] = {
             Point(0, 0, 0),
             Point(1, 0, 0),
             Point(1, 1, 0),
             Point(0, 1, 0),
         };
         std::vector<BRepRef> refs;
-        for (int i = 0; i < 4; ++i) b.add_vertex(corners[i]);
+
+        for (int i = 0; i < 4; ++i)
+            b.add_vertex(corners[i]);
+
         for (int i = 0; i < 4; ++i) {
-            int j = (i + 1) % 4;
-            int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
-            int ei = b.add_edge(ci, i, j);
-            int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+            const int j = (i + 1) % 4;
+            const int ci = b.add_curve_3d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
+            const int ei = b.add_edge(ci, i, j);
+            const int c2 = b.add_curve_2d(NurbsCurve::create(false, 1, {corners[i], corners[j]}));
             b.add_pcurve(ei, si, c2);
             refs.push_back({ei, BRepOrientation::Forward});
         }
-        int wi = b.add_wire(refs);
-        int fi = b.add_face(si, {{wi, BRepOrientation::Forward}});
-        Mesh m = b.mesh();
+
+        const int wi = b.add_wire(refs);
+        const int fi = b.add_face(si, {{wi, BRepOrientation::Forward}});
+        const Mesh m = b.mesh();
 
         MINI_CHECK(b.is_valid());
         MINI_CHECK(fi == 0);
@@ -231,9 +286,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Mesh") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        Mesh m = box.mesh();
-        std::vector<Mesh> fm = box.face_meshes();
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const Mesh m = box.mesh();
+        const std::vector<Mesh> fm = box.face_meshes();
 
         MINI_CHECK(!m.is_empty());
         MINI_CHECK(m.number_of_vertices() > 0);
@@ -243,10 +298,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Point At") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        Point pt = box.point_at(0, 0.5, 0.5);
-        Vector n = box.normal_at(0, 0.5, 0.5);
-        Vector n_top = box.normal_at(1, 0.5, 0.5);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const Point pt = box.point_at(0, 0.5, 0.5);
+        const Vector n = box.normal_at(0, 0.5, 0.5);
+        const Vector n_top = box.normal_at(1, 0.5, 0.5);
 
         MINI_CHECK(std::abs(pt[2] + 2.0) < 1e-9);
         MINI_CHECK(std::abs(pt[0]) < 1e-9);
@@ -256,22 +311,22 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Is Solid") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        BRep cyl = BRep::create_cylinder(1.0, 2.0);
-        BRep sph = BRep::create_sphere(1.0);
-        BRep cone = BRep::create_cone(1.0, 2.0);
-        BRep pyr = BRep::create_pyramid(2.0, 1.0);
-        BRep tor = BRep::create_torus(2.0, 0.5);
-        BRep blk = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const BRep cyl = BRep::create_cylinder(1.0, 2.0);
+        const BRep sph = BRep::create_sphere(1.0);
+        const BRep cone = BRep::create_cone(1.0, 2.0);
+        const BRep pyr = BRep::create_pyramid(2.0, 1.0);
+        const BRep tor = BRep::create_torus(2.0, 0.5);
+        const BRep blk = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
 
-        Polyline quad(std::vector<Point>{
+        const Polyline quad(std::vector<Point>{
             Point(0, 0, 0),
             Point(1, 0, 0),
             Point(1, 1, 0),
             Point(0, 1, 0),
             Point(0, 0, 0),
         });
-        BRep sheet = BRep::from_polylines({quad});
+        const BRep sheet = BRep::from_polylines({quad});
 
         MINI_CHECK(box.is_solid() && edges_manifold(box));
         MINI_CHECK(cyl.is_solid() && edges_manifold(cyl));
@@ -285,7 +340,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Is Closed") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         BRep open = box;
         open.m_shells[0].faces.pop_back();
 
@@ -296,11 +351,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Wire Edges") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        BRepRef fwd{0, BRepOrientation::Forward};
-        BRepRef rev{0, BRepOrientation::Reversed};
-        std::vector<BRepRef> a = box.wire_edges(fwd);
-        std::vector<BRepRef> c = box.wire_edges(rev);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const BRepRef fwd{0, BRepOrientation::Forward};
+        const BRepRef rev{0, BRepOrientation::Reversed};
+        const std::vector<BRepRef> a = box.wire_edges(fwd);
+        const std::vector<BRepRef> c = box.wire_edges(rev);
 
         MINI_CHECK(a.size() == 4);
         MINI_CHECK(c.size() == 4);
@@ -312,11 +367,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Edge Faces") {
-        BRep cyl = BRep::create_cylinder(1.0, 2.0);
-        std::vector<BRepRef> bot = cyl.edge_faces(0);
-        std::vector<BRepRef> seam = cyl.edge_faces(2);
-        int pc_f = cyl.pcurve_index(2, 0, BRepOrientation::Forward);
-        int pc_r = cyl.pcurve_index(2, 0, BRepOrientation::Reversed);
+        const BRep cyl = BRep::create_cylinder(1.0, 2.0);
+        const std::vector<BRepRef> bot = cyl.edge_faces(0);
+        const std::vector<BRepRef> seam = cyl.edge_faces(2);
+        const int pc_f = cyl.pcurve_index(2, 0, BRepOrientation::Forward);
+        const int pc_r = cyl.pcurve_index(2, 0, BRepOrientation::Reversed);
 
         MINI_CHECK(bot.size() == 2);
         MINI_CHECK(bot[0].index == 0 && bot[1].index == 1);
@@ -330,11 +385,12 @@ namespace session_cpp {
 
     MINI_TEST("BRep", "Update Tolerances") {
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        double worst = box.update_tolerances();
+        const double worst = box.update_tolerances();
         BRep bent = box;
         bent.m_vertices[0].point = Point(-1.0, -1.5, -2.01);
-        double worst_bent = bent.update_tolerances();
+        const double worst_bent = bent.update_tolerances();
         double worst_prims = 0.0;
+
         for (BRep p : {BRep::create_cylinder(1.0, 2.0), BRep::create_sphere(1.0), BRep::create_cone(1.0, 2.0),
                        BRep::create_pyramid(2.0, 1.0), BRep::create_torus(2.0, 0.5), BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0)})
             worst_prims = std::max(worst_prims, p.update_tolerances());
@@ -348,12 +404,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Transformation") {
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        Xform box_xf = Xform::translation(10.0, 20.0, 30.0);
-        BRep moved = box.transformed(box_xf);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const Xform box_xf = Xform::translation(10.0, 20.0, 30.0);
+        const BRep moved = box.transformed(box_xf);
 
-        Point pt = moved.point_at(0, 0.0, 0.0);
-        Point pt_orig = box.point_at(0, 0.0, 0.0);
+        const Point pt = moved.point_at(0, 0.0, 0.0);
+        const Point pt_orig = box.point_at(0, 0.0, 0.0);
 
         MINI_CHECK(std::abs(pt[0] - pt_orig[0] - 10.0) < 0.01);
         MINI_CHECK(std::abs(pt[1] - pt_orig[1] - 20.0) < 0.01);
@@ -362,28 +418,51 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Transform Roundtrip") {
-        Vector axis(0.3, 0.5, 0.81);
-        Xform rot = Xform::rotation(axis, 37.0, true);
-        Xform tr = Xform::translation(10.0, -5.0, 3.0);
-        BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        BRep moved = box.transformed(rot).transformed(tr);
+        const Vector axis(0.3, 0.5, 0.81);
+        const Xform rot = Xform::rotation(axis, 37.0, true);
+        const Xform tr = Xform::translation(10.0, -5.0, 3.0);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0);
+        const BRep moved = box.transformed(rot).transformed(tr);
 
         bool match = true;
+
         for (size_t i = 0; i < box.m_vertices.size(); ++i) {
-            Point expect = tr.transform_point(rot.transform_point(box.m_vertices[i].point));
-            if (moved.m_vertices[i].point.distance(expect) > 1e-9) match = false;
+            const Point expect = tr.transform_point(rot.transform_point(box.m_vertices[i].point));
+
+            if (moved.m_vertices[i].point.distance(expect) > 1e-9)
+                match = false;
         }
 
         BRep back = moved.transformed(tr.inverse().value()).transformed(rot.inverse().value());
 
         bool restored = true;
+
         for (size_t i = 0; i < box.m_vertices.size(); ++i)
-            if (back.m_vertices[i].point.distance(box.m_vertices[i].point) > 1e-9) restored = false;
+            if (back.m_vertices[i].point.distance(box.m_vertices[i].point) > 1e-9)
+                restored = false;
 
         MINI_CHECK(match);
         MINI_CHECK(restored);
         MINI_CHECK(back.is_solid());
         MINI_CHECK(back.update_tolerances() < 1e-9);
+    }
+
+    MINI_TEST("BRep", "Cut By Plane") {
+        const BRep box = BRep::create_box(2.0, 2.0, 2.0);
+        const BRep half = box.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0)));
+
+        const Xform far = Xform::translation(100000.0, 200000.0, 30000.0) * Xform::rotation(Vector(1.0, 2.0, 3.0), 40.0, true);
+        const BRep beam = BRep::create_box(200.0, 100.0, 600.0).transformed(far);
+        const BRep piece = beam.cut_by_plane(Plane::from_point_normal(far.transform_point(Point(0.0, 0.0, 0.0)), far.transform_vector(Vector(0.0, 0.0, 1.0))));
+
+        MINI_CHECK(half.is_solid());
+        MINI_CHECK(half.vertex_count() == 8);
+        MINI_CHECK(half.edge_count() == 12);
+        MINI_CHECK(half.face_count() == 6);
+        MINI_CHECK(std::abs(half.volume() - 4.0) < 1e-9);
+        MINI_CHECK(piece.is_solid());
+        MINI_CHECK(piece.face_count() == 6);
+        MINI_CHECK(std::abs(piece.volume() - 6000000.0) < 0.01);
     }
 
     MINI_TEST("BRep", "Json Roundtrip") {
@@ -392,15 +471,15 @@ namespace session_cpp {
         box.width = 2.0;
         box.surfacecolor = Color(255, 128, 64, 255);
 
-        nlohmann::ordered_json json = box.jsondump();
-        BRep loaded_json = BRep::jsonload(json);
+        const nlohmann::ordered_json json = box.jsondump();
+        const BRep loaded_json = BRep::jsonload(json);
 
-        std::string json_string = box.file_json_dumps();
-        BRep loaded_json_string = BRep::file_json_loads(json_string);
+        const std::string json_string = box.file_json_dumps();
+        const BRep loaded_json_string = BRep::file_json_loads(json_string);
 
-        std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.json").string();
+        const std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.json").string();
         box.file_json_dump(filename);
-        BRep loaded_from_file = BRep::file_json_load(filename);
+        const BRep loaded_from_file = BRep::file_json_load(filename);
 
         MINI_CHECK(loaded_json == box);
         MINI_CHECK(loaded_json_string == box);
@@ -411,8 +490,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Cylinder") {
-        BRep cyl = BRep::create_cylinder(1.0, 2.0);
-        Mesh m = cyl.mesh();
+        const BRep cyl = BRep::create_cylinder(1.0, 2.0);
+        const Mesh m = cyl.mesh();
 
         MINI_CHECK(cyl.is_valid());
         MINI_CHECK(cyl.face_count() == 3);
@@ -424,8 +503,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Sphere") {
-        BRep sph = BRep::create_sphere(1.0);
-        Mesh m = sph.mesh();
+        const BRep sph = BRep::create_sphere(1.0);
+        const Mesh m = sph.mesh();
 
         MINI_CHECK(sph.is_valid());
         MINI_CHECK(sph.face_count() == 1);
@@ -438,8 +517,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Cone") {
-        BRep cone = BRep::create_cone(1.0, 2.0);
-        Mesh m = cone.mesh();
+        const BRep cone = BRep::create_cone(1.0, 2.0);
+        const Mesh m = cone.mesh();
 
         MINI_CHECK(cone.is_valid());
         MINI_CHECK(cone.face_count() == 2);
@@ -451,8 +530,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Pyramid") {
-        BRep pyr = BRep::create_pyramid(2.0, 1.0);
-        Mesh m = pyr.mesh();
+        const BRep pyr = BRep::create_pyramid(2.0, 1.0);
+        const Mesh m = pyr.mesh();
 
         MINI_CHECK(pyr.is_valid());
         MINI_CHECK(pyr.face_count() == 5);
@@ -464,8 +543,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Torus") {
-        BRep tor = BRep::create_torus(2.0, 0.5);
-        Mesh m = tor.mesh();
+        const BRep tor = BRep::create_torus(2.0, 0.5);
+        const Mesh m = tor.mesh();
 
         MINI_CHECK(tor.is_valid());
         MINI_CHECK(tor.face_count() == 1);
@@ -477,8 +556,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Block With Hole") {
-        BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
-        Mesh m = bh.mesh();
+        const BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
+        const Mesh m = bh.mesh();
 
         MINI_CHECK(bh.is_valid());
         MINI_CHECK(bh.face_count() == 7);
@@ -492,8 +571,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Polylines") {
-        double hx = 1.0, hy = 1.5, hz = 2.0;
-        Point c[8] = {
+        const double hx = 1.0;
+        const double hy = 1.5;
+        const double hz = 2.0;
+        const Point c[8] = {
             Point(-hx, -hy, -hz),
             Point( hx, -hy, -hz),
             Point( hx,  hy, -hz),
@@ -504,42 +585,42 @@ namespace session_cpp {
             Point(-hx,  hy,  hz),
         };
 
-        Polyline bottom(std::vector<Point>{
+        const Polyline bottom(std::vector<Point>{
             c[0],
             c[3],
             c[2],
             c[1],
             c[0],
         });
-        Polyline top(std::vector<Point>{
+        const Polyline top(std::vector<Point>{
             c[4],
             c[5],
             c[6],
             c[7],
             c[4],
         });
-        Polyline front(std::vector<Point>{
+        const Polyline front(std::vector<Point>{
             c[0],
             c[1],
             c[5],
             c[4],
             c[0],
         });
-        Polyline right(std::vector<Point>{
+        const Polyline right(std::vector<Point>{
             c[1],
             c[2],
             c[6],
             c[5],
             c[1],
         });
-        Polyline back(std::vector<Point>{
+        const Polyline back(std::vector<Point>{
             c[2],
             c[3],
             c[7],
             c[6],
             c[2],
         });
-        Polyline left(std::vector<Point>{
+        const Polyline left(std::vector<Point>{
             c[3],
             c[0],
             c[4],
@@ -547,8 +628,8 @@ namespace session_cpp {
             c[3],
         });
 
-        BRep b = BRep::from_polylines({bottom, top, front, right, back, left});
-        Mesh m = b.mesh();
+        const BRep b = BRep::from_polylines({bottom, top, front, right, back, left});
+        const Mesh m = b.mesh();
 
         MINI_CHECK(b.is_valid());
         MINI_CHECK(b.face_count() == 6);
@@ -562,8 +643,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Nurbscurves") {
-        double hx = 1.0, hy = 1.5, hz = 2.0;
-        Point c[8] = {
+        const double hx = 1.0;
+        const double hy = 1.5;
+        const double hz = 2.0;
+        const Point c[8] = {
             Point(-hx, -hy, -hz),
             Point( hx, -hy, -hz),
             Point( hx,  hy, -hz),
@@ -574,42 +657,42 @@ namespace session_cpp {
             Point(-hx,  hy,  hz),
         };
 
-        auto bottom = NurbsCurve::create(false, 1, {
+        const NurbsCurve bottom = NurbsCurve::create(false, 1, {
             c[0],
             c[3],
             c[2],
             c[1],
             c[0],
         });
-        auto top = NurbsCurve::create(false, 1, {
+        const NurbsCurve top = NurbsCurve::create(false, 1, {
             c[4],
             c[5],
             c[6],
             c[7],
             c[4],
         });
-        auto front = NurbsCurve::create(false, 1, {
+        const NurbsCurve front = NurbsCurve::create(false, 1, {
             c[0],
             c[1],
             c[5],
             c[4],
             c[0],
         });
-        auto right = NurbsCurve::create(false, 1, {
+        const NurbsCurve right = NurbsCurve::create(false, 1, {
             c[1],
             c[2],
             c[6],
             c[5],
             c[1],
         });
-        auto back = NurbsCurve::create(false, 1, {
+        const NurbsCurve back = NurbsCurve::create(false, 1, {
             c[2],
             c[3],
             c[7],
             c[6],
             c[2],
         });
-        auto left = NurbsCurve::create(false, 1, {
+        const NurbsCurve left = NurbsCurve::create(false, 1, {
             c[3],
             c[0],
             c[4],
@@ -617,8 +700,8 @@ namespace session_cpp {
             c[3],
         });
 
-        BRep b = BRep::from_nurbscurves({bottom, top, front, right, back, left});
-        Mesh m = b.mesh();
+        const BRep b = BRep::from_nurbscurves({bottom, top, front, right, back, left});
+        const Mesh m = b.mesh();
 
         MINI_CHECK(b.is_valid());
         MINI_CHECK(b.face_count() == 6);
@@ -630,17 +713,17 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Nurbscurves Holes") {
-        auto outer = NurbsCurve::create(false, 1, {
+        const NurbsCurve outer = NurbsCurve::create(false, 1, {
             Point(-5, -5, 0),
             Point(5, -5, 0),
             Point(5, 5, 0),
             Point(-5, 5, 0),
             Point(-5, -5, 0),
         });
-        auto hole = Primitives::circle(0.0, 0.0, 0.0, 2.0);
+        const NurbsCurve hole = Primitives::circle(0.0, 0.0, 0.0, 2.0);
 
-        BRep b = BRep::from_nurbscurves({outer}, {{hole}});
-        Mesh m = b.mesh();
+        const BRep b = BRep::from_nurbscurves({outer}, {{hole}});
+        const Mesh m = b.mesh();
 
         MINI_CHECK(b.is_valid());
         MINI_CHECK(b.face_count() == 1);
@@ -651,23 +734,38 @@ namespace session_cpp {
         MINI_CHECK(std::abs(m.area() - (100.0 - Tolerance::PI * 4.0)) < 0.5);
     }
 
+    /// Closed square ring at height z through the (x, y) corners
+    static Polyline ring(const std::vector<std::pair<double, double>>& pts, double z) {
+
+        std::vector<Point> v;
+
+        for (const std::pair<double, double>& p : pts)
+            v.emplace_back(p.first, p.second, z);
+
+        v.emplace_back(pts[0].first, pts[0].second, z);
+
+        return Polyline(v);
+    }
+
     /// 4 x 4 x 2 box with a 1 x 1 through-hole along z: bottom and top with a hole, four outer and four inner side quads
     static void box_with_square_hole(std::vector<Polyline>& faces, std::vector<std::vector<Polyline>>& holes) {
-        const auto ring = [](const std::vector<std::pair<double, double>>& pts, double z) {
-            std::vector<Point> v;
-            for (const auto& [x, y] : pts) v.emplace_back(x, y, z);
-            v.emplace_back(pts[0].first, pts[0].second, z);
-            return Polyline(v);
-        };
+
         const std::vector<std::pair<double, double>> outer{{-2, -2}, {2, -2}, {2, 2}, {-2, 2}};
         const std::vector<std::pair<double, double>> inner{{-0.5, -0.5}, {0.5, -0.5}, {0.5, 0.5}, {-0.5, 0.5}};
         faces = {ring(outer, 0.0), ring(outer, 2.0)};
         holes = {{ring(inner, 0.0)}, {ring(inner, 2.0)}};
-        for (const auto& pts : {outer, inner})
+
+        for (const std::vector<std::pair<double, double>>& pts : {outer, inner})
             for (size_t i = 0; i < 4; ++i) {
-                const auto& a = pts[i];
-                const auto& b = pts[(i + 1) % 4];
-                faces.push_back(Polyline(std::vector<Point>{Point(a.first, a.second, 0.0), Point(b.first, b.second, 0.0), Point(b.first, b.second, 2.0), Point(a.first, a.second, 2.0), Point(a.first, a.second, 0.0)}));
+                const std::pair<double, double>& a = pts[i];
+                const std::pair<double, double>& b = pts[(i + 1) % 4];
+                faces.push_back(Polyline(std::vector<Point>{
+                    Point(a.first, a.second, 0.0),
+                    Point(b.first, b.second, 0.0),
+                    Point(b.first, b.second, 2.0),
+                    Point(a.first, a.second, 2.0),
+                    Point(a.first, a.second, 0.0),
+                }));
                 holes.push_back({});
             }
     }
@@ -676,7 +774,8 @@ namespace session_cpp {
         std::vector<Polyline> faces;
         std::vector<std::vector<Polyline>> holes;
         box_with_square_hole(faces, holes);
-        BRep b = BRep::from_polylines(faces, holes);
+        const BRep b = BRep::from_polylines(faces, holes);
+
         MINI_CHECK(b.face_count() == 10);
         MINI_CHECK(b.m_faces[0].wires.size() == 2);
         MINI_CHECK(b.is_solid());
@@ -687,25 +786,33 @@ namespace session_cpp {
         std::vector<Polyline> faces;
         std::vector<std::vector<Polyline>> holes;
         box_with_square_hole(faces, holes);
-        BRep b = BRep::from_polylines(faces, holes);
+        const BRep b = BRep::from_polylines(faces, holes);
         const std::vector<Mesh> fm = b.face_meshes();
+        double total = 0.0;
+
+        for (const Mesh& m : fm)
+            total += m.area();
+
+        int tagged = 0;
+
+        for (const std::pair<const size_t, VertexData>& entry : fm[0].vertex)
+            for (const std::pair<const std::string, double>& attribute : entry.second.attributes)
+                if (attribute.first.rfind("brep_edge/", 0) == 0) {
+                    tagged++;
+                    break;
+                }
+
         MINI_CHECK(fm.size() == 10);
         MINI_CHECK(fm[0].vertex.size() == 8 && fm[0].face.size() == 8);
         MINI_CHECK(fm[2].vertex.size() == 4 && fm[2].face.size() == 2);
-        double total = 0.0;
-        for (const Mesh& m : fm) total += m.area();
         MINI_CHECK(std::abs(total - 70.0) < 1e-6);
-        int tagged = 0;
-        for (const auto& [vk, vd] : fm[0].vertex)
-            for (const auto& [key, value] : vd.attributes)
-                if (key.rfind("brep_edge/", 0) == 0) { tagged++; break; }
         MINI_CHECK(tagged == 8);
     }
 
     MINI_TEST("BRep", "Mesh Orientation") {
-        BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
-        double vol = bh.mesh().volume();
-        double ref = 8.0 * 6.0 * 4.0 - Tolerance::PI * 1.5 * 1.5 * 4.0;
+        const BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
+        const double vol = bh.mesh().volume();
+        const double ref = 8.0 * 6.0 * 4.0 - Tolerance::PI * 1.5 * 1.5 * 4.0;
 
         MINI_CHECK(std::abs(vol - ref) / ref < 0.02);
     }
@@ -716,13 +823,16 @@ namespace session_cpp {
         box.width = 2.0;
         box.surfacecolor = Color(255, 128, 64, 255);
 
-        std::string proto_string = box.pb_dumps();
-        BRep loaded_proto_string = BRep::pb_loads(proto_string);
+        const BRep loaded_proto = BRep::from_proto(box.to_proto());
 
-        std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.bin").string();
+        const std::string proto_string = box.pb_dumps();
+        const BRep loaded_proto_string = BRep::pb_loads(proto_string);
+
+        const std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_brep.bin").string();
         box.pb_dump(filename);
-        BRep loaded = BRep::pb_load(filename);
+        const BRep loaded = BRep::pb_load(filename);
 
+        MINI_CHECK(loaded_proto == box);
         MINI_CHECK(loaded_proto_string == box);
         MINI_CHECK(loaded == box);
         MINI_CHECK(loaded.is_solid());
@@ -731,10 +841,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Volume") {
-        BRep box = BRep::create_box(2, 3, 4);
-        BRep cyl = BRep::create_cylinder(1.0, 4.0);
-        BRep sph = BRep::create_sphere(2.0);
-        double vbox = box.volume(), vcyl = cyl.volume(), vsph = sph.volume();
+        const BRep box = BRep::create_box(2, 3, 4);
+        const BRep cyl = BRep::create_cylinder(1.0, 4.0);
+        const BRep sph = BRep::create_sphere(2.0);
+        const double vbox = box.volume();
+        const double vcyl = cyl.volume();
+        const double vsph = sph.volume();
 
         MINI_CHECK(std::abs(vbox - 24.0) < 1e-9);
         MINI_CHECK(std::abs(vcyl - 4 * Tolerance::PI) / (4 * Tolerance::PI) < 0.05);
@@ -742,13 +854,15 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Polylines Box") {
-        BRep b = BRep::create_box(2.0, 2.0, 2.0);
-        std::vector<Polyline> pls = b.face_polylines();
-        std::vector<Plane> pls_planes = b.face_planes();
+        const BRep b = BRep::create_box(2.0, 2.0, 2.0);
+        const std::vector<Polyline> pls = b.face_polylines();
+        const std::vector<Plane> pls_planes = b.face_planes();
+
         MINI_CHECK(pls.size() == 6);
         MINI_CHECK(pls_planes.size() == pls.size());
 
         bool seen[3][2] = {{false, false}, {false, false}, {false, false}};
+
         for (size_t fi = 0; fi < pls.size(); ++fi) {
             const Polyline& p = pls[fi];
             const Plane& pl = pls_planes[fi];
@@ -757,51 +871,61 @@ namespace session_cpp {
 
             int axis = -1;
             double sign = 0.0;
+
             for (int a = 0; a < 3; ++a) {
                 bool constant = true;
-                for (size_t i = 1; i < p.point_count(); ++i) {
+
+                for (size_t i = 1; i < p.point_count(); ++i)
                     if (std::fabs(p.get_point(i)[a] - p.get_point(0)[a]) > 1e-9) {
                         constant = false;
                         break;
                     }
-                }
+
                 if (constant && std::fabs(std::fabs(p.get_point(0)[a]) - 1.0) < 1e-9) {
                     axis = a;
                     sign = p.get_point(0)[a] > 0 ? 1.0 : -1.0;
                     break;
                 }
             }
+
             MINI_CHECK(axis >= 0);
             MINI_CHECK(std::fabs(pl.origin()[axis] - sign) < 1e-9);
 
             const Vector& n = pl.z_axis();
             MINI_CHECK(std::fabs(std::fabs(n[axis]) - 1.0) < 1e-6);
-            for (int a2 = 0; a2 < 3; ++a2)
-                if (a2 != axis) MINI_CHECK(std::fabs(n[a2]) < 1e-6);
 
-            int normal_sign = n[axis] > 0.0 ? 1 : 0;
+            for (int a2 = 0; a2 < 3; ++a2)
+                if (a2 != axis)
+                    MINI_CHECK(std::fabs(n[a2]) < 1e-6);
+
+            const int normal_sign = n[axis] > 0.0 ? 1 : 0;
             MINI_CHECK(!seen[axis][normal_sign]);
             seen[axis][normal_sign] = true;
         }
+
         for (int a = 0; a < 3; ++a)
             for (int s = 0; s < 2; ++s)
                 MINI_CHECK(seen[a][s]);
     }
 
     MINI_TEST("BRep", "Face Polylines Cylinder Caps Only") {
-        BRep b = BRep::create_cylinder(1.0, 4.0);
+        const BRep b = BRep::create_cylinder(1.0, 4.0);
+
         MINI_CHECK(b.face_count() == 3);
         MINI_CHECK(b.face_polylines().size() == 2);
         MINI_CHECK(b.face_planes().size() == 2);
     }
 
     MINI_TEST("BRep", "Face Polylines Ignores Holes") {
-        BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
-        std::vector<Polyline> pls = b.face_polylines();
+        const BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
+        const std::vector<Polyline> pls = b.face_polylines();
+
         MINI_CHECK(pls.size() == 6);
         MINI_CHECK(pls.size() == b.face_planes().size());
+
         for (const Polyline& p : pls) {
             MINI_CHECK(p.point_count() == 5);
+
             for (size_t i = 0; i < p.point_count(); ++i) {
                 const Point pt = p.get_point(i);
                 const bool on_bounds = std::fabs(std::fabs(pt[0]) - 2.0) < 1e-6
@@ -815,23 +939,25 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Polylines No Planar Faces") {
-        BRep b = BRep::create_sphere(1.0);
+        const BRep b = BRep::create_sphere(1.0);
+
         MINI_CHECK(b.face_polylines().empty());
         MINI_CHECK(b.face_planes().empty());
     }
 
     MINI_TEST("BRep", "Face Planes Reversed Flip") {
         BRep b;
-        int fi_forward = build_quad_face(b);
+        const int fi_forward = build_quad_face(b);
         b.add_shell({{fi_forward, BRepOrientation::Forward}});
-        int fi_reversed = build_quad_face(b);
+        const int fi_reversed = build_quad_face(b);
         b.add_shell({{fi_reversed, BRepOrientation::Reversed}});
 
         MINI_CHECK(b.face_orientation(fi_forward) == BRepOrientation::Forward);
         MINI_CHECK(b.face_orientation(fi_reversed) == BRepOrientation::Reversed);
 
-        std::vector<Plane> planes = b.face_planes();
+        const std::vector<Plane> planes = b.face_planes();
         MINI_CHECK(planes.size() == 2);
+
         const Vector& n_forward = planes[0].z_axis();
         const Vector& n_reversed = planes[1].z_axis();
         MINI_CHECK(std::fabs(n_forward[0] + n_reversed[0]) < 1e-9);
@@ -840,19 +966,21 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Planes Point Outward") {
-        BRep box = BRep::create_box(2.0, 2.0, 2.0);
-        std::vector<Plane> box_planes = box.face_planes();
+        const BRep box = BRep::create_box(2.0, 2.0, 2.0);
+        const std::vector<Plane> box_planes = box.face_planes();
         MINI_CHECK(box_planes.size() == 6);
+
         for (const Plane& pl : box_planes) {
             const Point& o = pl.origin();
             const Vector& n = pl.z_axis();
-            double d = o[0] * n[0] + o[1] * n[1] + o[2] * n[2];
+            const double d = o[0] * n[0] + o[1] * n[1] + o[2] * n[2];
             MINI_CHECK(d > 0.0);
         }
 
-        BRep cyl = BRep::create_cylinder(1.0, 4.0);
-        std::vector<Plane> cyl_planes = cyl.face_planes();
+        const BRep cyl = BRep::create_cylinder(1.0, 4.0);
+        const std::vector<Plane> cyl_planes = cyl.face_planes();
         MINI_CHECK(cyl_planes.size() == 2);
+
         for (const Plane& pl : cyl_planes) {
             const Point& o = pl.origin();
             const Vector& n = pl.z_axis();
@@ -862,53 +990,59 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Planes Outward Block With Hole") {
-        BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
+        const BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
         MINI_CHECK(b.is_solid());
-        Point solid_centroid = Point::centroid(b.vertex_points());
-        std::vector<Plane> planes = b.face_planes();
+
+        const Point solid_centroid = Point::centroid(b.vertex_points());
+        const std::vector<Plane> planes = b.face_planes();
         MINI_CHECK(planes.size() == 6);
+
         for (const Plane& pl : planes) {
             const Point& o = pl.origin();
             const Vector& n = pl.z_axis();
-            double d = (o[0] - solid_centroid[0]) * n[0]
-                     + (o[1] - solid_centroid[1]) * n[1]
-                     + (o[2] - solid_centroid[2]) * n[2];
+            const double d = (o[0] - solid_centroid[0]) * n[0]
+                           + (o[1] - solid_centroid[1]) * n[1]
+                           + (o[2] - solid_centroid[2]) * n[2];
             MINI_CHECK(d > 0.0);
         }
     }
 
     MINI_TEST("BRep", "Face Planes Outward Under Mirrored Winding") {
-        Xform mirror = Xform::scale_xyz(-1.0, 1.0, 1.0);
-        BRep b = BRep::create_box(2.0, 2.0, 2.0).transformed(mirror);
+        const Xform mirror = Xform::scale_xyz(-1.0, 1.0, 1.0);
+        const BRep b = BRep::create_box(2.0, 2.0, 2.0).transformed(mirror);
         MINI_CHECK(b.is_solid());
 
-        std::vector<Polyline> pls = b.face_polylines();
-        std::vector<Plane> planes = b.face_planes();
+        const std::vector<Polyline> pls = b.face_polylines();
+        const std::vector<Plane> planes = b.face_planes();
         MINI_CHECK(pls.size() == 6);
         MINI_CHECK(planes.size() == 6);
 
-        Point solid_centroid = Point::centroid(b.vertex_points());
+        const Point solid_centroid = Point::centroid(b.vertex_points());
 
         for (size_t fi = 0; fi < pls.size(); ++fi) {
             const Point& o = planes[fi].origin();
             const Vector& n = planes[fi].z_axis();
-            double d = (o[0] - solid_centroid[0]) * n[0]
-                     + (o[1] - solid_centroid[1]) * n[1]
-                     + (o[2] - solid_centroid[2]) * n[2];
+            const double d = (o[0] - solid_centroid[0]) * n[0]
+                           + (o[1] - solid_centroid[1]) * n[1]
+                           + (o[2] - solid_centroid[2]) * n[2];
             MINI_CHECK(d > 0.0);
 
             std::vector<Point> expected;
+
             for (const BRepRef& er : b.wire_edges(b.m_faces[(int)fi].wires[0])) {
                 const BRepEdge& edge = b.m_edges[er.index];
                 const bool reversed = (er.orientation == BRepOrientation::Reversed);
                 const int start = reversed ? edge.end_vertex : edge.start_vertex;
                 expected.push_back(b.m_vertices[start].point);
             }
+
             expected.push_back(expected.front());
 
-            std::vector<Point> actual = pls[fi].get_points();
+            const std::vector<Point> actual = pls[fi].get_points();
             MINI_CHECK(actual.size() == expected.size());
-            for (size_t k = 0; k < actual.size(); ++k) MINI_CHECK(actual[k] == expected[k]);
+
+            for (size_t k = 0; k < actual.size(); ++k)
+                MINI_CHECK(actual[k] == expected[k]);
         }
     }
 
