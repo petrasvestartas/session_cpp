@@ -6,6 +6,10 @@
 #include <optional>
 #include <string>
 
+namespace session_proto {
+class Xform;
+}
+
 namespace session_cpp {
 
 class Point;
@@ -16,10 +20,16 @@ class Polyline;
 
 /// A 4x4 column-major transformation matrix.
 class Xform {
+private:
+    mutable std::string _guid; // Lazily minted GUID.
+
 public:
     std::string name = "my_xform"; // Xform name.
     std::array<double, 16> m; // Column-major values.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct the identity.
     Xform();
 
@@ -38,29 +48,6 @@ public:
     /// Move-assign while preserving the guid.
     Xform& operator=(Xform&& other) noexcept = default;
 
-    /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
-
-    /// Return the guid, creating it on first access.
-    const std::string& guid() const {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Return the mutable guid, creating it on first access.
-    std::string& guid() {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors
-    // ═══════════════════════════════════════════════════════════════════════════
-
     /// Construct the identity.
     static Xform identity();
 
@@ -68,9 +55,41 @@ public:
     static Xform from_matrix(const std::array<double, 16>& matrix);
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const;
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid();
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Multiply two transforms.
+    Xform operator*(const Xform& other) const;
+
+    /// Multiply in place.
+    Xform& operator*=(const Xform& other);
+
+    /// Return the mutable element at (row, col).
+    double& operator()(int row, int col);
+
+    /// Return the element at (row, col).
+    const double& operator()(int row, int col) const;
+
+    /// Compare all elements within tolerance.
+    bool operator==(const Xform& other) const;
+
+    /// Compare all elements within tolerance.
+    bool operator!=(const Xform& other) const;
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // Transformations
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Construct a pure rotation from three column axis vectors.
     static Xform from_axes(const Vector& col_x, const Vector& col_y, const Vector& col_z);
 
@@ -94,8 +113,14 @@ public:
 
     /// Construct a change of basis from frame 1 to frame 0.
     static Xform change_basis(
-        const Point& origin_1, const Vector& x_axis_1, const Vector& y_axis_1, const Vector& z_axis_1,
-        const Point& origin_0, const Vector& x_axis_0, const Vector& y_axis_0, const Vector& z_axis_0
+        const Point& origin_1,
+        const Vector& x_axis_1,
+        const Vector& y_axis_1,
+        const Vector& z_axis_1,
+        const Point& origin_0,
+        const Vector& x_axis_0,
+        const Vector& y_axis_0,
+        const Vector& z_axis_0
     );
 
     /// Map the unit cube [-0.5, 0.5]^3 to the joint volume frame spanned by rect0 (x, y) and rect1[0] (z).
@@ -144,9 +169,8 @@ public:
     static Xform project_to_plane_by_axis(const Plane& plane, const Vector& direction);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Apply Transformations
+    // Apply transformations
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Transform a point with a homogeneous multiply, dividing by w when projective.
     Point transform_point(const Point& p) const;
 
@@ -156,7 +180,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Details
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the inverse, or nullopt when singular.
     std::optional<Xform> inverse() const;
 
@@ -178,18 +201,11 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Serialize to a JSON object.
+    /// Serialize to an ordered JSON object.
     nlohmann::ordered_json jsondump() const;
 
     /// Deserialize from a JSON object.
     static Xform jsonload(const nlohmann::json& data);
-
-    /// Write to a JSON file.
-    void file_json_dump(const std::string& filename) const;
-
-    /// Read from a JSON file.
-    static Xform file_json_load(const std::string& filename);
 
     /// Serialize to a JSON string.
     std::string file_json_dumps() const;
@@ -197,9 +213,20 @@ public:
     /// Deserialize from a JSON string.
     static Xform file_json_loads(const std::string& json_string);
 
+    /// Write JSON to a file.
+    void file_json_dump(const std::string& filename) const;
+
+    /// Read JSON from a file.
+    static Xform file_json_load(const std::string& filename);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert to the protobuf message.
+    session_proto::Xform to_proto() const;
+
+    /// Construct from the protobuf message.
+    static Xform from_proto(const session_proto::Xform& proto);
 
     /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
@@ -207,38 +234,15 @@ public:
     /// Deserialize from protobuf bytes.
     static Xform pb_loads(const std::string& data);
 
-    /// Write to a protobuf file.
+    /// Write protobuf bytes to a file.
     void pb_dump(const std::string& filename) const;
 
-    /// Read from a protobuf file.
+    /// Read protobuf bytes from a file.
     static Xform pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Operators
+    // String
     // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Multiply two transforms.
-    Xform operator*(const Xform& other) const;
-
-    /// Multiply in place.
-    Xform& operator*=(const Xform& other);
-
-    /// Return the mutable element at (row, col).
-    double& operator()(int row, int col);
-
-    /// Return the element at (row, col).
-    const double& operator()(int row, int col) const;
-
-    /// Compare all elements within tolerance.
-    bool operator==(const Xform& other) const;
-
-    /// Compare all elements within tolerance.
-    bool operator!=(const Xform& other) const;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // String Representations
-    // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the four matrix rows.
     std::string str() const;
 
@@ -246,10 +250,8 @@ public:
     std::string repr() const;
 
 private:
-    mutable std::string _guid;
-
     /// Return the determinant of a 3x3 given by rows.
-    static double det3(const std::array<std::array<double, 3>, 3>& m);
+    static double det3(const std::array<std::array<double, 3>, 3>& rows);
 };
 
 } // namespace session_cpp
