@@ -14,12 +14,18 @@ namespace session_cpp {
 
 /// An NxM matrix with row-major storage.
 class Matrix {
+private:
+    mutable std::string _guid; // Lazily minted GUID.
+
 public:
     std::string name = "my_matrix"; // Matrix name.
     int rows = 0; // Row count.
     int cols = 0; // Column count.
     std::vector<double> data; // Row-major values.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct an empty matrix.
     Matrix() = default;
 
@@ -38,29 +44,6 @@ public:
     /// Move-assign while preserving the guid.
     Matrix& operator=(Matrix&& other) noexcept = default;
 
-    /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
-
-    /// Return the guid, creating it on first access.
-    const std::string& guid() const {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    /// Return the mutable guid, creating it on first access.
-    std::string& guid() {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Constructors
-    // ═══════════════════════════════════════════════════════════════════════════
-
     /// Construct a rows x cols zero matrix.
     static Matrix zeros(int rows, int cols);
 
@@ -76,9 +59,32 @@ public:
     /// Construct from equal-length columns.
     static Matrix from_cols(const std::vector<std::vector<double>>& cols_list);
 
+    /// Copy with a new guid and the same data.
+    Matrix duplicate() const;
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
+
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
+
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
+
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
+
+        if (_guid.empty())
+            _guid = ::guid();
+
+        return _guid;
+    }
 
     /// Return the mutable element at (row, col).
     double& operator()(int r, int c);
@@ -95,32 +101,9 @@ public:
     /// Return the diagonal sum; throws unless the matrix is square.
     double trace() const;
 
-    /// Copy with a new guid and the same data.
-    Matrix duplicate() const;
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Operations
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    /// Add an equal-sized matrix.
-    Matrix add(const Matrix& other) const;
-
-    /// Subtract an equal-sized matrix.
-    Matrix subtract(const Matrix& other) const;
-
-    /// Multiply every element by a scalar.
-    Matrix scale(double s) const;
-
-    /// Multiply by a dimension-compatible matrix.
-    Matrix multiply(const Matrix& other) const;
-
-    /// Return the transpose.
-    Matrix transpose() const;
-
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Add an equal-sized matrix.
     Matrix operator+(const Matrix& other) const;
 
@@ -129,6 +112,9 @@ public:
 
     /// Multiply by a dimension-compatible matrix.
     Matrix operator*(const Matrix& other) const;
+
+    /// Multiply every element by a scalar.
+    Matrix operator*(double s) const;
 
     /// Compare dimensions and values within the matrix comparison tolerance.
     bool operator==(const Matrix& other) const;
@@ -139,6 +125,8 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Linear algebra
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the transpose.
+    Matrix transpose() const;
 
     /// Return (L, U, P) with P * A = L * U; throws unless square.
     std::tuple<Matrix, Matrix, Matrix> lu_decompose() const;
@@ -167,7 +155,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Norms
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the Frobenius norm.
     double norm_frobenius() const;
 
@@ -183,7 +170,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Serialize to an ordered JSON object.
     nlohmann::ordered_json jsondump() const;
 
@@ -205,7 +191,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Convert to the protobuf message.
     session_proto::Matrix to_proto() const;
 
@@ -227,7 +212,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // String
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the compact dimension string.
     std::string str() const;
 
@@ -235,8 +219,6 @@ public:
     std::string repr() const;
 
 private:
-    mutable std::string _guid; // Lazily minted GUID.
-
     /// Return (L, U, P, swaps) by partial pivoting.
     std::tuple<Matrix, Matrix, Matrix, int> _lu_internal() const;
 

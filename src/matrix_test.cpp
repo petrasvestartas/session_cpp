@@ -9,6 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace session_cpp::mini_test;
@@ -72,31 +73,27 @@ MINI_TEST("Matrix", "Add") {
 
     const Matrix a = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
     const Matrix b = Matrix::from_vec(2, 2, {5.0, 6.0, 7.0, 8.0});
-    const Matrix c = a.add(b);
-    const Matrix d = a + b;
+    const Matrix c = a + b;
 
     MINI_CHECK(c(0, 0) == 6.0 && c(0, 1) == 8.0);
     MINI_CHECK(c(1, 0) == 10.0 && c(1, 1) == 12.0);
-    MINI_CHECK(c == d);
 }
 
 MINI_TEST("Matrix", "Subtract") {
 
     const Matrix a = Matrix::from_vec(2, 2, {5.0, 6.0, 7.0, 8.0});
     const Matrix b = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
-    const Matrix c = a.subtract(b);
-    const Matrix d = a - b;
+    const Matrix c = a - b;
 
     MINI_CHECK(c(0, 0) == 4.0 && c(0, 1) == 4.0);
     MINI_CHECK(c(1, 0) == 4.0 && c(1, 1) == 4.0);
-    MINI_CHECK(c == d);
 }
 
 MINI_TEST("Matrix", "Scale") {
 
     const Matrix a = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
-    const Matrix b = a.scale(2.0);
-    const Matrix c = a.scale(3.0);
+    const Matrix b = a * 2.0;
+    const Matrix c = a * 3.0;
 
     MINI_CHECK(b(0, 0) == 2.0 && b(0, 1) == 4.0 && b(1, 0) == 6.0 && b(1, 1) == 8.0);
     MINI_CHECK(c(0, 0) == 3.0 && c(1, 1) == 12.0);
@@ -106,13 +103,11 @@ MINI_TEST("Matrix", "Multiply") {
 
     const Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     const Matrix b = Matrix::from_vec(3, 2, {7.0, 8.0, 9.0, 10.0, 11.0, 12.0});
-    const Matrix c = a.multiply(b);
-    const Matrix d = a * b;
+    const Matrix c = a * b;
 
     MINI_CHECK(c.rows == 2 && c.cols == 2);
     MINI_CHECK(TOLERANCE.is_close(c(0, 0), 58.0) && TOLERANCE.is_close(c(0, 1), 64.0));
     MINI_CHECK(TOLERANCE.is_close(c(1, 0), 139.0) && TOLERANCE.is_close(c(1, 1), 154.0));
-    MINI_CHECK(c == d);
 }
 
 MINI_TEST("Matrix", "Transpose") {
@@ -146,7 +141,9 @@ MINI_TEST("Matrix", "Inverse") {
     const std::optional<Matrix> inv_none = singular.inverse();
 
     MINI_CHECK(inv.has_value());
-    const Matrix prod = a.multiply(*inv);
+
+    const Matrix prod = a * *inv;
+
     MINI_CHECK(TOLERANCE.is_close((*inv)(0, 0), 0.6) && TOLERANCE.is_close((*inv)(0, 1), -0.7));
     MINI_CHECK(TOLERANCE.is_close((*inv)(1, 0), -0.2) && TOLERANCE.is_close((*inv)(1, 1), 0.4));
     MINI_CHECK(!inv_none.has_value());
@@ -161,6 +158,7 @@ MINI_TEST("Matrix", "Solve") {
     const std::optional<Matrix> x = a.solve(b);
 
     MINI_CHECK(x.has_value());
+
     const double residual_0 = 2.0 * (*x)(0, 0) + 1.0 * (*x)(1, 0);
     const double residual_1 = 1.0 * (*x)(0, 0) + 3.0 * (*x)(1, 0);
 
@@ -173,9 +171,12 @@ MINI_TEST("Matrix", "Solve") {
 MINI_TEST("Matrix", "Lu Decompose") {
 
     const Matrix a = Matrix::from_vec(3, 3, {2.0, 1.0, 1.0, 4.0, 3.0, 3.0, 8.0, 7.0, 9.0});
-    const auto [lower, u, p] = a.lu_decompose();
-    const Matrix pa = p.multiply(a);
-    const Matrix lu = lower.multiply(u);
+    Matrix lower;
+    Matrix u;
+    Matrix p;
+    std::tie(lower, u, p) = a.lu_decompose();
+    const Matrix pa = p * a;
+    const Matrix lu = lower * u;
 
     MINI_CHECK(lower.rows == 3 && u.cols == 3);
     MINI_CHECK(TOLERANCE.is_close(pa(0, 0), lu(0, 0)) && TOLERANCE.is_close(pa(0, 1), lu(0, 1)));
@@ -187,10 +188,12 @@ MINI_TEST("Matrix", "Lu Decompose") {
 MINI_TEST("Matrix", "Qr Decompose") {
 
     const Matrix a = Matrix::from_vec(3, 3, {12.0, -51.0, 4.0, 6.0, 167.0, -68.0, -4.0, 24.0, -41.0});
-    const auto [q, r] = a.qr_decompose();
+    Matrix q;
+    Matrix r;
+    std::tie(q, r) = a.qr_decompose();
     const Matrix qt = q.transpose();
-    const Matrix qtq = qt.multiply(q);
-    const Matrix qr_prod = q.multiply(r);
+    const Matrix qtq = qt * q;
+    const Matrix qr_prod = q * r;
 
     MINI_CHECK(TOLERANCE.is_close(qtq(0, 0), 1.0));
     MINI_CHECK(TOLERANCE.is_close(qtq(1, 1), 1.0));
@@ -207,8 +210,9 @@ MINI_TEST("Matrix", "Cholesky") {
     const std::optional<Matrix> lower = a.cholesky();
 
     MINI_CHECK(lower.has_value());
+
     const Matrix lt = lower->transpose();
-    const Matrix llt = lower->multiply(lt);
+    const Matrix llt = *lower * lt;
     const Matrix not_spd = Matrix::from_vec(2, 2, {1.0, 2.0, 2.0, 1.0});
     const std::optional<Matrix> l_none = not_spd.cholesky();
 
@@ -223,6 +227,7 @@ MINI_TEST("Matrix", "Eigenvalues") {
     const Matrix a = Matrix::from_vec(3, 3, {3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0});
     std::vector<double> evs = a.eigenvalues();
     const std::vector<double> empty = Matrix().eigenvalues();
+
     std::sort(evs.begin(), evs.end());
 
     MINI_CHECK(evs.size() == 3);
@@ -235,7 +240,9 @@ MINI_TEST("Matrix", "Eigenvalues") {
 MINI_TEST("Matrix", "Svd") {
 
     const Matrix a = Matrix::from_vec(3, 3, {1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0});
-    auto [u, sv, vt] = a.svd();
+    std::vector<double> sv;
+    std::tie(std::ignore, sv, std::ignore) = a.svd();
+
     std::sort(sv.begin(), sv.end(), std::greater<double>());
 
     MINI_CHECK(sv.size() == 3);
@@ -271,6 +278,7 @@ MINI_TEST("Matrix", "Json Roundtrip") {
 
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix";
+
     a.file_json_dump("serialization/test_matrix.json");
     const Matrix loaded = Matrix::file_json_load("serialization/test_matrix.json");
     const Matrix parsed = Matrix::file_json_loads(a.file_json_dumps());
@@ -288,6 +296,7 @@ MINI_TEST("Matrix", "Protobuf Roundtrip") {
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix_proto";
     const std::string guid = a.guid();
+
     a.pb_dump("serialization/test_matrix.bin");
     const Matrix loaded = Matrix::pb_load("serialization/test_matrix.bin");
     const Matrix parsed = Matrix::pb_loads(a.pb_dumps());
@@ -384,7 +393,7 @@ MINI_TEST("Matrix", "Shape Errors") {
     }
 
     try {
-        Matrix(2, 3).multiply(Matrix(2, 2));
+        Matrix(2, 3) * Matrix(2, 2);
     } catch (const std::invalid_argument&) {
         multiply = true;
     }

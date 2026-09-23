@@ -7,6 +7,7 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 
 namespace session_cpp {
 
@@ -31,14 +32,22 @@ size_t matrix_size(int rows, int cols) {
 }
 
 int matrix_dimension(size_t value) {
+
     if (value > static_cast<size_t>(std::numeric_limits<int>::max()))
         throw std::invalid_argument("Matrix dimension is too large");
 
     return static_cast<int>(value);
 }
 
+bool eigen_pair_greater(const std::pair<double, std::vector<double>>& a, const std::pair<double, std::vector<double>>& b) {
+    return b.first < a.first;
 }
 
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
 Matrix::Matrix(int rows, int cols) : rows(rows), cols(cols), data(matrix_size(rows, cols), 0.0) {}
 
 Matrix::Matrix(const Matrix& other)
@@ -56,10 +65,6 @@ Matrix& Matrix::operator=(const Matrix& other) {
 
     return *this;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Constructors
-// ═══════════════════════════════════════════════════════════════════════════
 
 Matrix Matrix::zeros(int rows, int cols) {
     return Matrix(rows, cols);
@@ -122,10 +127,13 @@ Matrix Matrix::from_cols(const std::vector<std::vector<double>>& cols_list) {
     return m;
 }
 
+Matrix Matrix::duplicate() const {
+    return Matrix(*this);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-
 double& Matrix::operator()(int r, int c) {
     return data[static_cast<size_t>(r) * static_cast<size_t>(cols) + static_cast<size_t>(c)];
 }
@@ -164,15 +172,10 @@ double Matrix::trace() const {
     return s;
 }
 
-Matrix Matrix::duplicate() const {
-    return Matrix(*this);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
-// Operations
+// Operators
 // ═══════════════════════════════════════════════════════════════════════════
-
-Matrix Matrix::add(const Matrix& other) const {
+Matrix Matrix::operator+(const Matrix& other) const {
 
     if (rows != other.rows || cols != other.cols)
         throw std::invalid_argument("Matrix dimensions must match for addition");
@@ -185,7 +188,7 @@ Matrix Matrix::add(const Matrix& other) const {
     return result;
 }
 
-Matrix Matrix::subtract(const Matrix& other) const {
+Matrix Matrix::operator-(const Matrix& other) const {
 
     if (rows != other.rows || cols != other.cols)
         throw std::invalid_argument("Matrix dimensions must match for subtraction");
@@ -198,17 +201,7 @@ Matrix Matrix::subtract(const Matrix& other) const {
     return result;
 }
 
-Matrix Matrix::scale(double s) const {
-
-    Matrix result(rows, cols);
-
-    for (size_t i = 0; i < data.size(); ++i)
-        result.data[i] = data[i] * s;
-
-    return result;
-}
-
-Matrix Matrix::multiply(const Matrix& other) const {
+Matrix Matrix::operator*(const Matrix& other) const {
 
     if (cols != other.rows)
         throw std::invalid_argument("Matrix dimensions are incompatible for multiplication");
@@ -228,31 +221,14 @@ Matrix Matrix::multiply(const Matrix& other) const {
     return result;
 }
 
-Matrix Matrix::transpose() const {
+Matrix Matrix::operator*(double s) const {
 
-    Matrix result(cols, rows);
+    Matrix result(rows, cols);
 
-    for (int i = 0; i < rows; ++i)
-        for (int j = 0; j < cols; ++j)
-            result(j, i) = (*this)(i, j);
+    for (size_t i = 0; i < data.size(); ++i)
+        result.data[i] = data[i] * s;
 
     return result;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Operators
-// ═══════════════════════════════════════════════════════════════════════════
-
-Matrix Matrix::operator+(const Matrix& other) const {
-    return add(other);
-}
-
-Matrix Matrix::operator-(const Matrix& other) const {
-    return subtract(other);
-}
-
-Matrix Matrix::operator*(const Matrix& other) const {
-    return multiply(other);
 }
 
 bool Matrix::operator==(const Matrix& other) const {
@@ -274,6 +250,16 @@ bool Matrix::operator!=(const Matrix& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Linear algebra
 // ═══════════════════════════════════════════════════════════════════════════
+Matrix Matrix::transpose() const {
+
+    Matrix result(cols, rows);
+
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            result(j, i) = (*this)(i, j);
+
+    return result;
+}
 
 std::tuple<Matrix, Matrix, Matrix, int> Matrix::_lu_internal() const {
 
@@ -302,6 +288,7 @@ std::tuple<Matrix, Matrix, Matrix, int> Matrix::_lu_internal() const {
 
             for (int j = 0; j < k; ++j)
                 std::swap(lower(k, j), lower(max_row, j));
+
             ++swaps;
         }
 
@@ -325,7 +312,10 @@ std::tuple<Matrix, Matrix, Matrix> Matrix::lu_decompose() const {
     if (!is_square())
         throw std::invalid_argument("LU decomposition requires a square matrix");
 
-    const auto [lower, u, p, swaps] = _lu_internal();
+    Matrix lower;
+    Matrix u;
+    Matrix p;
+    std::tie(lower, u, p, std::ignore) = _lu_internal();
 
     return {lower, u, p};
 }
@@ -343,7 +333,10 @@ double Matrix::determinant() const {
     if (n == 2)
         return (*this)(0, 0) * (*this)(1, 1) - (*this)(0, 1) * (*this)(1, 0);
 
-    const auto [lower, u, p, swaps] = _lu_internal();
+    Matrix u;
+    int swaps = 0;
+    std::tie(std::ignore, u, std::ignore, swaps) = _lu_internal();
+
     const double sign = swaps % 2 == 0 ? 1.0 : -1.0;
     double prod = 1.0;
 
@@ -359,7 +352,10 @@ std::optional<Matrix> Matrix::inverse() const {
         return std::nullopt;
 
     const int n = rows;
-    const auto [lower, u, p, swaps] = _lu_internal();
+    Matrix lower;
+    Matrix u;
+    Matrix p;
+    std::tie(lower, u, p, std::ignore) = _lu_internal();
 
     for (int i = 0; i < n; ++i)
         if (std::abs(u(i, i)) < PIVOT_TOLERANCE)
@@ -408,7 +404,10 @@ std::optional<Matrix> Matrix::solve(const Matrix& b) const {
         return std::nullopt;
 
     const int n = rows;
-    const auto [lower, u, p, swaps] = _lu_internal();
+    Matrix lower;
+    Matrix u;
+    Matrix p;
+    std::tie(lower, u, p, std::ignore) = _lu_internal();
 
     for (int i = 0; i < n; ++i)
         if (std::abs(u(i, i)) < PIVOT_TOLERANCE)
@@ -483,6 +482,7 @@ std::tuple<Matrix, Matrix> Matrix::qr_decompose() const {
 
         norm = std::sqrt(norm);
         r(j, j) = norm;
+
         std::vector<double> qcol(m, 0.0);
 
         if (norm > PIVOT_TOLERANCE)
@@ -538,8 +538,11 @@ std::vector<double> Matrix::eigenvalues() const {
     Matrix a = *this;
 
     for (int iter = 0; iter < 1000 * n; ++iter) {
-        const auto [q, r] = a.qr_decompose();
-        a = r.multiply(q);
+        Matrix q;
+        Matrix r;
+        std::tie(q, r) = a.qr_decompose();
+        a = r * q;
+
         bool converged = true;
 
         for (int i = 1; i < n; ++i)
@@ -567,9 +570,12 @@ std::vector<std::pair<double, std::vector<double>>> Matrix::_eigen_decompose_sym
     Matrix v = Matrix::identity(n);
 
     for (int iter = 0; iter < 1000 * n; ++iter) {
-        const auto [q, r] = a.qr_decompose();
-        a = r.multiply(q);
-        v = v.multiply(q);
+        Matrix q;
+        Matrix r;
+        std::tie(q, r) = a.qr_decompose();
+        a = r * q;
+        v = v * q;
+
         bool converged = true;
 
         for (int i = 1; i < n; ++i)
@@ -601,9 +607,10 @@ std::tuple<Matrix, std::vector<double>, Matrix> Matrix::svd() const {
     const int m = rows;
     const int n = cols;
     const Matrix at = transpose();
-    const Matrix ata = at.multiply(*this);
+    const Matrix ata = at * *this;
     std::vector<std::pair<double, std::vector<double>>> pairs = ata._eigen_decompose_symmetric();
-    std::sort(pairs.begin(), pairs.end(), [](const std::pair<double, std::vector<double>>& a, const std::pair<double, std::vector<double>>& b) { return b.first < a.first; });
+    std::stable_sort(pairs.begin(), pairs.end(), eigen_pair_greater);
+
     const int k = std::min(m, n);
     std::vector<double> sv;
     std::vector<std::vector<double>> v_cols;
@@ -641,7 +648,6 @@ std::tuple<Matrix, std::vector<double>, Matrix> Matrix::svd() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Norms
 // ═══════════════════════════════════════════════════════════════════════════
-
 double Matrix::norm_frobenius() const {
 
     double s = 0.0;
@@ -688,7 +694,8 @@ double Matrix::norm_inf() const {
 
 int Matrix::rank() const {
 
-    const auto [u, sv, vt] = svd();
+    std::vector<double> sv;
+    std::tie(std::ignore, sv, std::ignore) = svd();
 
     if (sv.empty())
         return 0;
@@ -711,7 +718,6 @@ int Matrix::rank() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json Matrix::jsondump() const {
 
     nlohmann::ordered_json d;
@@ -732,6 +738,7 @@ Matrix Matrix::jsonload(const nlohmann::json& d) {
         d["cols"].get<int>(),
         d["data"].get<std::vector<double>>()
     );
+
     m.guid() = d["guid"].get<std::string>();
     m.name = d["name"].get<std::string>();
 
@@ -772,7 +779,6 @@ Matrix Matrix::file_json_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
 session_proto::Matrix Matrix::to_proto() const {
 
     session_proto::Matrix proto;
@@ -852,7 +858,6 @@ Matrix Matrix::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string Matrix::str() const {
     return "Matrix(" + std::to_string(rows) + "x" + std::to_string(cols) + ")";
 }
