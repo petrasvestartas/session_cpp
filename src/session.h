@@ -31,7 +31,7 @@
 
 namespace session_cpp {
 
-/// The Objects lists in order() sequence, each with the prefix of its graph node attribute.
+/// The Objects lists, those order() walks first and in its sequence, each with the prefix of its graph node attribute.
 inline const std::vector<std::pair<std::string, std::string>> COLLECTIONS = {
     {"points", "point"},
     {"lines", "line"},
@@ -45,6 +45,7 @@ inline const std::vector<std::pair<std::string, std::string>> COLLECTIONS = {
     {"breps", "brep"},
     {"elements", "element"},
     {"components", "component"},
+    {"instances", "instance"},
 };
 
 /// A session containing geometry objects.
@@ -57,6 +58,9 @@ public:
     Graph graph;                                                 // Graph structure for relationships.
     std::unordered_map<std::string, Component> component_lookup; // Fast lookup table for components by GUID.
     std::unordered_map<std::string, Xform> xforms;               // LOCAL transform per guid, relative to the parent.
+    Objects definitions;                                         // Shared geometry instances place, each in its own frame; never in order(), the tree, the graph or xforms.
+    std::unordered_map<std::string, Geometry> definition_lookup; // Definitions by guid.
+    std::unordered_map<std::string, std::shared_ptr<InstanceRef>> instance_lookup; // Instances by guid.
     mutable History history;                                     // Undo/redo buffer, in memory only; every save purges it.
     SpatialBVH bvh;                                              // Bounding volume hierarchy for collision detection.
     SpatialBVH cached_ray_bvh;                                   // Cached SpatialBVH for ray casting.
@@ -156,7 +160,7 @@ public:
     /// Find an existing group by name; throws std::runtime_error when there is none.
     std::shared_ptr<TreeNode> find_group(const std::string& group_name) const;
 
-    /// Canonical object order: the objects lists walked in one fixed type sequence.
+    /// Canonical object order: the objects lists walked in one fixed type sequence; instances are not in it.
     std::vector<std::string> order() const;
 
     /// The LOCAL transform of an object, identity when none was set.
@@ -174,8 +178,17 @@ public:
     /// Get the neighbours of a GUID.
     std::vector<std::string> get_neighbours(const std::string& obj_guid);
 
-    /// All geometry with its hierarchical placement BAKED into the coordinates.
+    /// All geometry with its hierarchical placement BAKED into the coordinates; each instance becomes its definition placed, in the definition's list.
     Objects get_geometry() const;
+
+    /// The definition an instance places; nullopt when guid is no instance or its definition is missing.
+    std::optional<Geometry> definition_of(const std::string& instance_guid) const;
+
+    /// Guids of every instance of a definition, in objects.instances order.
+    std::vector<std::string> instances_of(const std::string& definition_guid) const;
+
+    /// One object in world placement, as a copy: an instance becomes its definition moved by the world transform, carrying the instance's guid, name and features.
+    std::optional<Geometry> world_geometry(const std::string& guid) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometry management
@@ -229,6 +242,16 @@ public:
     /// Add a custom component (any object with type_name/guid/name/extra).
     std::shared_ptr<TreeNode> add_component(Component component, std::shared_ptr<TreeNode> parent = nullptr);
 
+    /// Add a definition, geometry in its own frame that instances share; returns its guid, also when that guid is already defined, and "" for null or a guid an object, instance or component holds.
+    std::string add_definition(const Geometry& definition);
+
+    /// Add an instance under parent, placed by xform relative to the parent with its own xform folded in; nullptr when null or its definition_guid names no definition.
+    std::shared_ptr<TreeNode> add_instance(
+        std::shared_ptr<InstanceRef> instance,
+        const Xform& xform = Xform::identity(),
+        std::shared_ptr<TreeNode> parent = nullptr
+    );
+
     /// Add a TreeNode to the tree hierarchy, under the root when no parent is given; null is ignored.
     void add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent = nullptr);
 
@@ -254,7 +277,19 @@ public:
     /// Swap the object stored under guid for obj, which takes over that guid; the recorded edit undo and redo restore as absolute snapshots.
     bool replace(const std::string& guid, const Geometry& obj);
 
-    /// Sets the LOCAL transform of an object, relative to its tree parent.
+    /// Swap the geometry of a definition, which keeps its guid, so every instance of it changes at once; false when guid is no definition.
+    bool replace_definition(const std::string& guid, const Geometry& definition);
+
+    /// Remove a definition; false when guid is no definition or an instance still names it.
+    bool remove_definition(const std::string& guid);
+
+    /// Turn an object into an instance of a definition, keeping its guid, name, tree node and edges; frame maps the definition onto the object and is folded into its local transform.
+    bool to_instance(const std::string& guid, const std::string& definition_guid, const Xform& frame);
+
+    /// Turn an instance into a standalone copy of its definition in the definition frame, keeping its guid, name, transform, tree node and edges, and on an element its features.
+    bool explode(const std::string& instance_guid);
+
+    /// Sets the LOCAL transform of an object, relative to its tree parent; a guid that names only a definition is ignored.
     void set_xform(const std::string& guid, const Xform& xform);
 
     /// Removes an object's local transform, returning whether one was present.
@@ -330,8 +365,11 @@ public:
     /// Read from a protobuf file.
     static Session pb_load(const std::string& filename);
 
-    /// Return a string representation of the session.
+    /// Return the spatial hierarchy and the element interactions as a banner block.
     std::string str() const;
+
+    /// "Session(name, objects, tree, graph)".
+    std::string repr() const;
 
 private:
     friend class History;
@@ -357,8 +395,11 @@ private:
     /// Store obj under guid in its typed list and lookup, unrecorded.
     void _swap(const std::string& guid, const Item& obj);
 
-    /// Point lookup and component_lookup at the objects this session currently holds.
+    /// Point every lookup at the objects and definitions this session holds, folding a non-identity instance xform into xforms.
     void _index_objects();
+
+    /// Set or drop (nullopt) a definition under guid, unrecorded.
+    void _define(const std::string& guid, const std::optional<Geometry>& definition);
 
     /// Set or drop (nullopt) the local transform under guid, unrecorded.
     void _place(const std::string& guid, const std::optional<Xform>& xform);
@@ -366,7 +407,7 @@ private:
     /// The xforms in canonical order() sequence, identity entries omitted, the exact sequence jsondump and pb_dumps write.
     std::vector<std::pair<std::string, Xform>> _xforms_ordered() const;
 
-    /// World bounding box of every object in order() sequence, with the guid of each.
+    /// World bounding box of every object in order() sequence, then of every instance, with the guid of each.
     std::vector<OBB> _compute_boxes(std::vector<std::string>& guids) const;
 
     /// Rebuild the cached SpatialBVH for ray casting.

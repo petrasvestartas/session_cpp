@@ -440,6 +440,7 @@ class Session final : public ::google::protobuf::Message
     kObjectsFieldNumber = 3,
     kTreeFieldNumber = 4,
     kGraphFieldNumber = 5,
+    kDefinitionsFieldNumber = 8,
   };
   // repeated .session_proto.BoundingBox bvh_boxes = 6;
   int bvh_boxes_size() const;
@@ -550,12 +551,27 @@ class Session final : public ::google::protobuf::Message
   ::session_proto::Graph* PROTOBUF_NONNULL _internal_mutable_graph();
 
   public:
+  // .session_proto.Objects definitions = 8;
+  bool has_definitions() const;
+  void clear_definitions() ;
+  const ::session_proto::Objects& definitions() const;
+  [[nodiscard]] ::session_proto::Objects* PROTOBUF_NULLABLE release_definitions();
+  ::session_proto::Objects* PROTOBUF_NONNULL mutable_definitions();
+  void set_allocated_definitions(::session_proto::Objects* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_definitions(::session_proto::Objects* PROTOBUF_NULLABLE value);
+  ::session_proto::Objects* PROTOBUF_NULLABLE unsafe_arena_release_definitions();
+
+  private:
+  const ::session_proto::Objects& _internal_definitions() const;
+  ::session_proto::Objects* PROTOBUF_NONNULL _internal_mutable_definitions();
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Session)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 7,
-                                   5, 38,
+  static const ::google::protobuf::internal::TcParseTable<3, 8,
+                                   6, 46,
                                    2>
       _table_;
 
@@ -583,6 +599,7 @@ class Session final : public ::google::protobuf::Message
     ::session_proto::Objects* PROTOBUF_NULLABLE objects_;
     ::session_proto::Tree* PROTOBUF_NULLABLE tree_;
     ::session_proto::Graph* PROTOBUF_NULLABLE graph_;
+    ::session_proto::Objects* PROTOBUF_NULLABLE definitions_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1282,6 +1299,99 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::XformEntry>* PROTOB
 Session::_internal_mutable_xforms() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.xforms_;
+}
+
+// .session_proto.Objects definitions = 8;
+inline bool Session::has_definitions() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
+  PROTOBUF_ASSUME(!value || _impl_.definitions_ != nullptr);
+  return value;
+}
+inline const ::session_proto::Objects& Session::_internal_definitions() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Objects* p = _impl_.definitions_;
+  return p != nullptr ? *p : reinterpret_cast<const ::session_proto::Objects&>(::session_proto::_Objects_default_instance_);
+}
+inline const ::session_proto::Objects& Session::definitions() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Session.definitions)
+  return _internal_definitions();
+}
+inline void Session::unsafe_arena_set_allocated_definitions(
+    ::session_proto::Objects* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.definitions_);
+  }
+  _impl_.definitions_ = reinterpret_cast<::session_proto::Objects*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Session.definitions)
+}
+inline ::session_proto::Objects* PROTOBUF_NULLABLE Session::release_definitions() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ::session_proto::Objects* released = _impl_.definitions_;
+  _impl_.definitions_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Objects* PROTOBUF_NULLABLE Session::unsafe_arena_release_definitions() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.Session.definitions)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ::session_proto::Objects* temp = _impl_.definitions_;
+  _impl_.definitions_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Objects* PROTOBUF_NONNULL Session::_internal_mutable_definitions() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.definitions_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::session_proto::Objects>(GetArena());
+    _impl_.definitions_ = reinterpret_cast<::session_proto::Objects*>(p);
+  }
+  return _impl_.definitions_;
+}
+inline ::session_proto::Objects* PROTOBUF_NONNULL Session::mutable_definitions()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ::session_proto::Objects* _msg = _internal_mutable_definitions();
+  // @@protoc_insertion_point(field_mutable:session_proto.Session.definitions)
+  return _msg;
+}
+inline void Session::set_allocated_definitions(::session_proto::Objects* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.definitions_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  }
+
+  _impl_.definitions_ = reinterpret_cast<::session_proto::Objects*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.Session.definitions)
 }
 
 #ifdef __GNUC__

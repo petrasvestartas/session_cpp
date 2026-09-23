@@ -67,7 +67,8 @@ inline constexpr Session::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         objects_{nullptr},
         tree_{nullptr},
-        graph_{nullptr} {}
+        graph_{nullptr},
+        definitions_{nullptr} {}
 
 template <typename>
 PROTOBUF_CONSTEXPR Session::Session(::_pbi::ConstantInitialized)
@@ -105,7 +106,7 @@ const ::uint32_t
         1,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_._has_bits_),
-        10, // hasbit index offset
+        11, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.objects_),
@@ -113,6 +114,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.graph_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.bvh_boxes_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.xforms_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.definitions_),
         2,
         3,
         4,
@@ -120,6 +122,7 @@ const ::uint32_t
         6,
         0,
         1,
+        7,
 };
 
 static const ::_pbi::MigrationSchema
@@ -137,13 +140,14 @@ const char descriptor_table_protodef_session_2eproto[] ABSL_ATTRIBUTE_SECTION_VA
     "proto\032\ntree.proto\032\013graph.proto\032\021bounding"
     "box.proto\032\013xform.proto\"\?\n\nXformEntry\022\014\n\004"
     "guid\030\001 \001(\t\022#\n\005xform\030\002 \001(\0132\024.session_prot"
-    "o.Xform\"\360\001\n\007Session\022\014\n\004name\030\001 \001(\t\022\014\n\004gui"
+    "o.Xform\"\235\002\n\007Session\022\014\n\004name\030\001 \001(\t\022\014\n\004gui"
     "d\030\002 \001(\t\022\'\n\007objects\030\003 \001(\0132\026.session_proto"
     ".Objects\022!\n\004tree\030\004 \001(\0132\023.session_proto.T"
     "ree\022#\n\005graph\030\005 \001(\0132\024.session_proto.Graph"
     "\022-\n\tbvh_boxes\030\006 \003(\0132\032.session_proto.Boun"
     "dingBox\022)\n\006xforms\030\007 \003(\0132\031.session_proto."
-    "XformEntryb\006proto3"
+    "XformEntry\022+\n\013definitions\030\010 \001(\0132\026.sessio"
+    "n_proto.Objectsb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_session_2eproto_deps[5] = {
@@ -157,7 +161,7 @@ static ::absl::once_flag descriptor_table_session_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_session_2eproto = {
     false,
     false,
-    418,
+    463,
     descriptor_table_protodef_session_2eproto,
     "session.proto",
     &descriptor_table_session_2eproto_once,
@@ -531,6 +535,12 @@ void Session::clear_bvh_boxes() {
   ClearHasBitForRepeated(_impl_._has_bits_[0],
                   0x00000001U);
 }
+void Session::clear_definitions() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.definitions_ != nullptr) _impl_.definitions_->Clear();
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000080U);
+}
 Session::Session(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, Session_class_data_.base()) {
@@ -574,6 +584,9 @@ Session::Session(
   _impl_.graph_ = (CheckHasBit(cached_has_bits, 0x00000040U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.graph_)
                 : nullptr;
+  _impl_.definitions_ = (CheckHasBit(cached_has_bits, 0x00000080U))
+                ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.definitions_)
+                : nullptr;
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Session)
 }
@@ -591,9 +604,9 @@ inline void Session::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, objects_),
            0,
-           offsetof(Impl_, graph_) -
+           offsetof(Impl_, definitions_) -
                offsetof(Impl_, objects_) +
-               sizeof(Impl_::graph_));
+               sizeof(Impl_::definitions_));
 }
 Session::~Session() {
   // @@protoc_insertion_point(destructor:session_proto.Session)
@@ -611,6 +624,7 @@ inline void Session::SharedDtor(MessageLite& self) {
   delete this_._impl_.objects_;
   delete this_._impl_.tree_;
   delete this_._impl_.graph_;
+  delete this_._impl_.definitions_;
   this_._impl_.~Impl_();
 }
 
@@ -673,17 +687,17 @@ Session::GetClassData() const {
   return Session_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 7, 5, 38, 2>
+const ::_pbi::TcParseTable<3, 8, 6, 46, 2>
 Session::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Session, _impl_._has_bits_),
     0, // no _extensions_
-    7, 56,  // max_field_number, fast_idx_mask
+    8, 56,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967168,  // skipmap
+    4294967040,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    7,  // num_field_entries
-    5,  // num_aux_entries
+    8,  // num_field_entries
+    6,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Session_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -692,7 +706,10 @@ Session::_table_ = {
     ::_pbi::TcParser::GetTable<::session_proto::Session>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    {::_pbi::TcParser::MiniParse, {}},
+    // .session_proto.Objects definitions = 8;
+    {::_pbi::TcParser::FastMtS1,
+     {66, 7, 5,
+      PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_)}},
     // string name = 1;
     {::_pbi::TcParser::FastUS1,
      {10, 2, 0,
@@ -738,6 +755,8 @@ Session::_table_ = {
     {PROTOBUF_FIELD_OFFSET(Session, _impl_.bvh_boxes_), _Internal::kHasBitsOffset + 0, 3, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // repeated .session_proto.XformEntry xforms = 7;
     {PROTOBUF_FIELD_OFFSET(Session, _impl_.xforms_), _Internal::kHasBitsOffset + 1, 4, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+    // .session_proto.Objects definitions = 8;
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_), _Internal::kHasBitsOffset + 7, 5, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Objects>()},
@@ -745,9 +764,10 @@ Session::_table_ = {
       {::_pbi::TcParser::GetTable<::session_proto::Graph>()},
       {::_pbi::TcParser::GetTable<::session_proto::BoundingBox>()},
       {::_pbi::TcParser::GetTable<::session_proto::XformEntry>()},
+      {::_pbi::TcParser::GetTable<::session_proto::Objects>()},
   }},
   {{
-    "\25\4\4\0\0\0\0\0"
+    "\25\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
     "session_proto.Session"
     "name"
     "guid"
@@ -761,7 +781,7 @@ PROTOBUF_NOINLINE void Session::Clear() {
   (void) cached_has_bits;
 
   cached_has_bits = _impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _impl_.bvh_boxes_.Clear();
     }
@@ -785,6 +805,10 @@ PROTOBUF_NOINLINE void Session::Clear() {
     if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       ABSL_DCHECK(_impl_.graph_ != nullptr);
       _impl_.graph_->Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      ABSL_DCHECK(_impl_.definitions_ != nullptr);
+      _impl_.definitions_->Clear();
     }
   }
   _impl_._has_bits_.Clear();
@@ -877,6 +901,13 @@ PROTOBUF_NOINLINE void Session::Clear() {
     }
   }
 
+  // .session_proto.Objects definitions = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        8, *this_._impl_.definitions_, this_._impl_.definitions_->GetCachedSize(), target,
+        stream);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -902,7 +933,7 @@ PROTOBUF_NOINLINE void Session::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated .session_proto.BoundingBox bvh_boxes = 6;
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       total_size += 1UL * this_._internal_bvh_boxes_size();
@@ -946,6 +977,11 @@ PROTOBUF_NOINLINE void Session::Clear() {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.graph_);
     }
+    // .session_proto.Objects definitions = 8;
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.definitions_);
+    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -966,7 +1002,7 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_bvh_boxes()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -1019,6 +1055,14 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.graph_->MergeFrom(*from._impl_.graph_);
       }
     }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      ABSL_DCHECK(from._impl_.definitions_ != nullptr);
+      if (_this->_impl_.definitions_ == nullptr) {
+        _this->_impl_.definitions_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.definitions_);
+      } else {
+        _this->_impl_.definitions_->MergeFrom(*from._impl_.definitions_);
+      }
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -1044,8 +1088,8 @@ void Session::InternalSwap(Session* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Session, _impl_.graph_)
-      + sizeof(Session::_impl_.graph_)
+      PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_)
+      + sizeof(Session::_impl_.definitions_)
       - PROTOBUF_FIELD_OFFSET(Session, _impl_.objects_)>(
           reinterpret_cast<char*>(&_impl_.objects_),
           reinterpret_cast<char*>(&other->_impl_.objects_));

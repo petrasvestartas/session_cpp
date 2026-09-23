@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "session.h"
 #include "file_encoders.h"
+#include "session.pb.h"
 #include "tolerance.h"
 #include <filesystem>
 #include <fstream>
@@ -754,7 +755,7 @@ MINI_TEST("Session", "Undo Remove") {
     MINI_CHECK(group->children()[1]->name == b_guid);
     MINI_CHECK(group->children()[1]->children()[0]->name == c_guid);
     MINI_CHECK(session.graph.has_edge({a_guid, b_guid}));
-    MINI_CHECK(session.graph.edge_attribute(a_guid, b_guid) == "connection");
+    MINI_CHECK(session.graph.edge_label(a_guid, b_guid) == "connection");
     MINI_CHECK(session.xform(b_guid) == shift);
 
     session.redo();
@@ -880,6 +881,374 @@ MINI_TEST("Session", "History Capacity") {
     MINI_CHECK(!session.history.can_undo());
     MINI_CHECK(session.objects.points->size() == 6);
     MINI_CHECK(TOLERANCE.is_close((*session.objects.points->at(5))[0], 5.0));
+}
+
+MINI_TEST("Session", "Str Hierarchy") {
+
+    Session session("blocks");
+    std::shared_ptr<TreeNode> group = session.add_group("Group");
+    session.add_point(std::make_shared<Point>(0.0, 0.0, 0.0), group);
+    session.add_point(std::make_shared<Point>(1.0, 0.0, 0.0), group);
+    const std::string text = session.str();
+
+    MINI_CHECK(text.find("Spatial Hierarchy") != std::string::npos);
+    MINI_CHECK(text.find("Element Interactions") != std::string::npos);
+    MINI_CHECK(text.find("\u2514\u2500\u2500 ") != std::string::npos);
+    MINI_CHECK(text.find("<Tree with ") != std::string::npos);
+    MINI_CHECK(text.find("<Graph with ") != std::string::npos);
+    MINI_CHECK(session.repr().rfind("Session(name=blocks", 0) == 0);
+}
+
+MINI_TEST("Session", "Add Definition") {
+
+    Session session;
+    std::shared_ptr<Mesh> box = create_box(Point(0, 0, 0), 2.0);
+    std::string guid = session.add_definition(box);
+    std::string again = session.add_definition(box);
+    session.set_xform(guid, Xform::translation(1.0, 0.0, 0.0));
+    std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    session.add_point(point);
+    std::string taken = session.add_definition(point);
+
+    MINI_CHECK(guid == box->guid());
+    MINI_CHECK(again == guid);
+    MINI_CHECK(taken.empty());
+    MINI_CHECK(session.definitions.meshes->size() == 1);
+    MINI_CHECK(session.definition_lookup.count(guid) == 1);
+    MINI_CHECK(session.lookup.count(guid) == 0);
+    MINI_CHECK(session.order().size() == 1);
+    MINI_CHECK(!session.graph.has_node(guid));
+    MINI_CHECK(session.tree.get_node_by_name(guid) == nullptr);
+    MINI_CHECK(session.xforms.empty());
+}
+
+MINI_TEST("Session", "Add Instance") {
+
+    Session session;
+    std::shared_ptr<TreeNode> group = session.add_group("bay");
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::translation(0.0, 0.0, 3.0));
+    instance->name = "column";
+    std::string guid = instance->guid();
+    std::shared_ptr<TreeNode> node = session.add_instance(instance, Xform::translation(10.0, 0.0, 0.0), group);
+    std::shared_ptr<TreeNode> orphan = session.add_instance(std::make_shared<InstanceRef>("missing", Xform::identity()));
+
+    MINI_CHECK(node->name == guid);
+    MINI_CHECK(group->children()[0]->name == guid);
+    MINI_CHECK(session.graph.node_label(guid) == "instance_column");
+    MINI_CHECK(session.objects.instances->size() == 1);
+    MINI_CHECK(session.instance_lookup[guid]->xform == Xform::identity());
+    MINI_CHECK(session.xform(guid) == Xform::translation(10.0, 0.0, 3.0));
+    MINI_CHECK(orphan == nullptr);
+    MINI_CHECK(session.order().empty());
+}
+
+MINI_TEST("Session", "Definition Of") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string guid = instance->guid();
+    session.add_instance(instance);
+    std::optional<Geometry> found = session.definition_of(guid);
+
+    MINI_CHECK(found.has_value());
+    MINI_CHECK(std::get<std::shared_ptr<Mesh>>(*found)->guid() == definition);
+    MINI_CHECK(!session.definition_of(definition).has_value());
+    MINI_CHECK(!session.definition_of("missing").has_value());
+}
+
+MINI_TEST("Session", "Instances Of") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> first = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::shared_ptr<InstanceRef> second = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string first_guid = first->guid();
+    std::string second_guid = second->guid();
+    session.add_instance(first);
+    session.add_instance(second);
+    std::vector<std::string> guids = session.instances_of(definition);
+
+    MINI_CHECK(guids.size() == 2);
+    MINI_CHECK(guids[0] == first_guid);
+    MINI_CHECK(guids[1] == second_guid);
+    MINI_CHECK(session.instances_of("missing").empty());
+}
+
+MINI_TEST("Session", "World Geometry") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    instance->name = "box";
+    std::string guid = instance->guid();
+    session.add_instance(instance, Xform::translation(10.0, 0.0, 0.0));
+    std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    session.add_point(point);
+    session.set_xform(point->guid(), Xform::translation(0.0, 0.0, 5.0));
+
+    std::shared_ptr<Mesh> mesh = std::get<std::shared_ptr<Mesh>>(*session.world_geometry(guid));
+    std::shared_ptr<Point> moved = std::get<std::shared_ptr<Point>>(*session.world_geometry(point->guid()));
+    std::shared_ptr<Mesh> local = std::get<std::shared_ptr<Mesh>>(session.definition_lookup[definition]);
+
+    MINI_CHECK(mesh->guid() == guid);
+    MINI_CHECK(mesh->name == "box");
+    MINI_CHECK(TOLERANCE.is_close((*mesh->vertex_point(0))[0], 9.0));
+    MINI_CHECK(TOLERANCE.is_close((*local->vertex_point(0))[0], -1.0));
+    MINI_CHECK(TOLERANCE.is_close((*moved)[2], 8.0));
+    MINI_CHECK(TOLERANCE.is_close((*point)[2], 3.0));
+    MINI_CHECK(!session.world_geometry("missing").has_value());
+}
+
+MINI_TEST("Session", "Get Geometry Resolves Instances") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<TreeNode> group = session.add_group("row");
+    session.set_xform("row", Xform::translation(0.0, 5.0, 0.0));
+    session.add_instance(std::make_shared<InstanceRef>(definition, Xform::identity()), Xform::translation(10.0, 0.0, 0.0), group);
+    session.add_instance(std::make_shared<InstanceRef>(definition, Xform::identity()), Xform::translation(20.0, 0.0, 0.0), group);
+
+    Objects geometry = session.get_geometry();
+    Point corner = *geometry.meshes->at(1)->vertex_point(0);
+
+    MINI_CHECK(geometry.instances->empty());
+    MINI_CHECK(geometry.meshes->size() == 2);
+    MINI_CHECK(TOLERANCE.is_close(corner[0], 19.0));
+    MINI_CHECK(TOLERANCE.is_close(corner[1], 4.0));
+    MINI_CHECK(session.objects.instances->size() == 2);
+    MINI_CHECK(session.objects.meshes->empty());
+}
+
+MINI_TEST("Session", "Replace Definition") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> first = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::shared_ptr<InstanceRef> second = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string second_guid = second->guid();
+    session.add_instance(first, Xform::translation(10.0, 0.0, 0.0));
+    session.add_instance(second, Xform::translation(20.0, 0.0, 0.0));
+
+    bool replaced = session.replace_definition(definition, create_box(Point(0, 0, 0), 4.0));
+    bool missing = session.replace_definition("missing", create_box(Point(0, 0, 0), 4.0));
+    std::shared_ptr<Mesh> mesh = std::get<std::shared_ptr<Mesh>>(*session.world_geometry(second_guid));
+
+    MINI_CHECK(replaced);
+    MINI_CHECK(!missing);
+    MINI_CHECK(session.definitions.meshes->size() == 1);
+    MINI_CHECK(session.definitions.meshes->at(0)->guid() == definition);
+    MINI_CHECK(TOLERANCE.is_close((*mesh->vertex_point(0))[0], 18.0));
+}
+
+MINI_TEST("Session", "Remove Definition") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string guid = instance->guid();
+    session.add_instance(instance);
+
+    bool refused = !session.remove_definition(definition);
+    session.remove_object(guid);
+    bool removed = session.remove_definition(definition);
+
+    MINI_CHECK(refused);
+    MINI_CHECK(removed);
+    MINI_CHECK(session.definitions.meshes->empty());
+    MINI_CHECK(session.definition_lookup.empty());
+    MINI_CHECK(session.objects.instances->empty());
+    MINI_CHECK(!session.remove_definition("missing"));
+}
+
+MINI_TEST("Session", "To Instance") {
+
+    Session session;
+    std::shared_ptr<TreeNode> group = session.add_group("bay");
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<Point> point = std::make_shared<Point>(0.0, 0.0, 0.0);
+    std::shared_ptr<Mesh> box = create_box(Point(5.0, 0.0, 0.0), 2.0);
+    box->name = "column";
+    std::string guid = box->guid();
+    session.add_point(point, group);
+    session.add_mesh(box, group);
+    session.add_edge(point->guid(), guid, "contact");
+    session.set_xform(guid, Xform::translation(0.0, 0.0, 1.0));
+
+    Point before = *std::get<std::shared_ptr<Mesh>>(*session.world_geometry(guid))->vertex_point(0);
+    bool converted = session.to_instance(guid, definition, Xform::translation(5.0, 0.0, 0.0));
+    Point after = *std::get<std::shared_ptr<Mesh>>(*session.world_geometry(guid))->vertex_point(0);
+
+    MINI_CHECK(converted);
+    MINI_CHECK(session.objects.meshes->empty());
+    MINI_CHECK(session.instance_lookup[guid]->name == "column");
+    MINI_CHECK(session.instance_lookup[guid]->definition_guid == definition);
+    MINI_CHECK(group->children()[1]->name == guid);
+    MINI_CHECK(session.graph.has_edge({point->guid(), guid}));
+    MINI_CHECK(session.graph.node_label(guid) == "instance_column");
+    MINI_CHECK(TOLERANCE.is_close(before[0], after[0]));
+    MINI_CHECK(TOLERANCE.is_close(before[2], after[2]));
+    MINI_CHECK(!session.to_instance(guid, definition, Xform::identity()));
+}
+
+MINI_TEST("Session", "Explode") {
+
+    Session session;
+    std::string definition = session.add_definition(std::make_shared<Element>(*create_box(Point(0, 0, 0), 2.0), "plate"));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    instance->name = "deck";
+    instance->features.push_back(ElementFeature("contact", 0, {Polyline(std::vector<Point>{Point(0, 0, 0), Point(1, 0, 0)})}));
+    std::string guid = instance->guid();
+    std::string feature = instance->features[0].guid();
+    std::shared_ptr<Point> point = std::make_shared<Point>(0.0, 0.0, 0.0);
+    session.add_point(point);
+    session.add_instance(instance, Xform::translation(10.0, 0.0, 0.0));
+    session.add_edge(point->guid(), guid, "contact");
+
+    bool exploded = session.explode(guid);
+    std::shared_ptr<Element> element = session.get_object<Element>(guid);
+
+    MINI_CHECK(exploded);
+    MINI_CHECK(session.objects.instances->empty());
+    MINI_CHECK(element->name == "deck");
+    MINI_CHECK(element->features().size() == 1);
+    MINI_CHECK(element->features()[0].guid() == feature);
+    MINI_CHECK(session.xform(guid) == Xform::translation(10.0, 0.0, 0.0));
+    MINI_CHECK(session.graph.has_edge({point->guid(), guid}));
+    MINI_CHECK(session.graph.node_label(guid) == "element_deck");
+    MINI_CHECK(session.definitions.elements->size() == 1);
+    MINI_CHECK(!session.explode(guid));
+}
+
+MINI_TEST("Session", "Undo Instance") {
+
+    Session session;
+    std::shared_ptr<TreeNode> group = session.add_group("bay");
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<Point> point = std::make_shared<Point>(0.0, 0.0, 0.0);
+    std::shared_ptr<Mesh> box = create_box(Point(0, 0, 0), 2.0);
+    std::string guid = box->guid();
+    session.add_point(point, group);
+    session.add_mesh(box, group);
+    session.add_edge(point->guid(), guid, "contact");
+    std::string edge = session.graph.edges[point->guid()][guid].guid();
+    std::vector<std::string> order = session.order();
+    std::string tree = session.tree.str();
+    std::string label = session.graph.node_label(guid);
+
+    session.begin("to instance");
+    session.to_instance(guid, definition, Xform::identity());
+    session.commit();
+    session.begin("explode");
+    session.explode(guid);
+    session.commit();
+    session.undo();
+    bool instanced = session.instance_lookup.count(guid) == 1 && session.tree.str() == tree;
+    session.undo();
+
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string added = instance->guid();
+    session.begin("add");
+    session.add_instance(instance, Xform::translation(1.0, 0.0, 0.0), group);
+    session.commit();
+    session.undo();
+    bool gone = session.instance_lookup.empty() && session.xforms.empty();
+    session.redo();
+
+    MINI_CHECK(instanced);
+    MINI_CHECK(gone);
+    MINI_CHECK(session.objects.meshes->at(0)->guid() == guid);
+    MINI_CHECK(session.graph.has_edge({point->guid(), guid}));
+    MINI_CHECK(session.graph.edges[guid][point->guid()].guid() == edge);
+    MINI_CHECK(session.graph.node_label(guid) == label);
+    MINI_CHECK(session.order() == order);
+    MINI_CHECK(session.xform(added) == Xform::translation(1.0, 0.0, 0.0));
+    MINI_CHECK(group->children()[2]->name == added);
+}
+
+MINI_TEST("Session", "Instance Json Roundtrip") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string guid = instance->guid();
+    session.add_instance(instance, Xform::translation(10.0, 0.0, 0.0));
+
+    std::string fname = "serialization/test_session_instance.json";
+    session.file_json_dump(fname);
+    Session loaded = Session::file_json_load(fname);
+    nlohmann::ordered_json data = session.jsondump();
+    data["objects"]["instances"][0]["xform"] = Xform::translation(0.0, 0.0, 1.0).jsondump();
+    Session folded = Session::jsonload(data);
+
+    MINI_CHECK(loaded.definitions.meshes->size() == 1);
+    MINI_CHECK(loaded.instance_lookup.count(guid) == 1);
+    MINI_CHECK(loaded.definition_of(guid).has_value());
+    MINI_CHECK(loaded.xform(guid) == Xform::translation(10.0, 0.0, 0.0));
+    MINI_CHECK(folded.xform(guid) == Xform::translation(10.0, 0.0, 1.0));
+    MINI_CHECK(folded.instance_lookup[guid]->xform == Xform::identity());
+}
+
+MINI_TEST("Session", "Instance Protobuf Roundtrip") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    instance->features.push_back(ElementFeature("contact", 0, {Polyline(std::vector<Point>{Point(0, 0, 0), Point(1, 0, 0)})}));
+    std::string guid = instance->guid();
+    std::string feature = instance->features[0].guid();
+    session.add_instance(instance, Xform::translation(10.0, 0.0, 0.0));
+
+    std::string fname = "serialization/test_session_instance.bin";
+    session.pb_dump(fname);
+    Session loaded = Session::pb_load(fname);
+    session_proto::Session plain;
+    plain.ParseFromString(Session().pb_dumps());
+
+    MINI_CHECK(loaded.definitions.meshes->size() == 1);
+    MINI_CHECK(loaded.instance_lookup[guid]->features.size() == 1);
+    MINI_CHECK(loaded.instance_lookup[guid]->features[0].guid() == feature);
+    MINI_CHECK(loaded.definition_of(guid).has_value());
+    MINI_CHECK(loaded.xform(guid) == Xform::translation(10.0, 0.0, 0.0));
+    MINI_CHECK(!plain.has_definitions());
+}
+
+MINI_TEST("Session", "Get Collisions Instances") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> first = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::shared_ptr<InstanceRef> second = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::shared_ptr<InstanceRef> third = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string first_guid = first->guid();
+    std::string second_guid = second->guid();
+    std::string third_guid = third->guid();
+    session.add_instance(first);
+    session.add_instance(second, Xform::translation(1.0, 0.0, 0.0));
+    session.add_instance(third, Xform::translation(100.0, 0.0, 0.0));
+
+    std::vector<std::pair<std::string, std::string>> pairs = session.get_collisions();
+
+    MINI_CHECK(pairs.size() == 1);
+    MINI_CHECK(session.graph.has_edge({first_guid, second_guid}));
+    MINI_CHECK(!session.graph.has_edge({first_guid, third_guid}));
+}
+
+MINI_TEST("Session", "Ray Cast Instance") {
+
+    Session session;
+    std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    std::string guid = instance->guid();
+    session.add_instance(instance, Xform::translation(100.0, 0.0, 0.0));
+
+    std::vector<Session::RayHit> hits = session.ray_cast(Point(100.0, 0.0, 5.0), Vector(0.0, 0.0, -1.0));
+
+    MINI_CHECK(hits.size() == 1);
+    MINI_CHECK(hits[0].guid == guid);
+    MINI_CHECK(TOLERANCE.is_close(hits[0].hit_point[0], 100.0));
+    MINI_CHECK(TOLERANCE.is_close(hits[0].hit_point[2], 1.0));
 }
 
 } // namespace session_cpp
