@@ -14,7 +14,7 @@ MINI_TEST("SpatialOctree", "Constructor") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 16);
+    const SpatialOctree tree(pts, 4.0, 16);
 
     MINI_CHECK(tree.node_count() == 1);
     MINI_CHECK(tree.node_range(0) == std::make_pair(0, 9));
@@ -28,7 +28,7 @@ MINI_TEST("SpatialOctree", "Node Count") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
+    const SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.node_count() == 3);
 }
@@ -40,14 +40,14 @@ MINI_TEST("SpatialOctree", "Node Cube") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
-    auto [center, size] = tree.node_cube(0);
-    auto [child_center, child_size] = tree.node_cube(1);
+    const SpatialOctree tree(pts, 4.0, 4);
+    const std::pair<Point, double> cube = tree.node_cube(0);
+    const std::pair<Point, double> child = tree.node_cube(1);
 
-    MINI_CHECK(TOLERANCE.is_close(center[0], 4.0) && TOLERANCE.is_close(center[1], 0.0));
-    MINI_CHECK(TOLERANCE.is_close(size, 8.0));
-    MINI_CHECK(TOLERANCE.is_close(child_center[0], 2.0) && TOLERANCE.is_close(child_center[2], 2.0));
-    MINI_CHECK(TOLERANCE.is_close(child_size, 4.0));
+    MINI_CHECK(TOLERANCE.is_close(cube.first[0], 4.0) && TOLERANCE.is_close(cube.first[1], 0.0));
+    MINI_CHECK(TOLERANCE.is_close(cube.second, 8.0));
+    MINI_CHECK(TOLERANCE.is_close(child.first[0], 2.0) && TOLERANCE.is_close(child.first[2], 2.0));
+    MINI_CHECK(TOLERANCE.is_close(child.second, 4.0));
 }
 
 MINI_TEST("SpatialOctree", "Node Level") {
@@ -57,7 +57,7 @@ MINI_TEST("SpatialOctree", "Node Level") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
+    const SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.node_level(0) == 0);
     MINI_CHECK(tree.node_level(1) == 1);
@@ -71,7 +71,7 @@ MINI_TEST("SpatialOctree", "Node Spacing") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
+    const SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(TOLERANCE.is_close(tree.node_spacing(0), 4.0));
     MINI_CHECK(TOLERANCE.is_close(tree.node_spacing(1), 2.0));
@@ -85,7 +85,7 @@ MINI_TEST("SpatialOctree", "Node Range") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
+    const SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.node_range(0) == std::make_pair(0, 2));
     MINI_CHECK(tree.node_range(1) == std::make_pair(2, 3));
@@ -99,7 +99,7 @@ MINI_TEST("SpatialOctree", "Children") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
+    const SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.children(0) == std::vector<int>({1, 2}));
     MINI_CHECK(tree.children(1).empty());
@@ -112,7 +112,7 @@ MINI_TEST("SpatialOctree", "Order") {
     for (int x = 0; x < 9; x++)
         pts.push_back(Point((double)x, 0.0, 0.0));
 
-    SpatialOctree tree(pts, 4.0, 4);
+    const SpatialOctree tree(pts, 4.0, 4);
 
     MINI_CHECK(tree.order() == std::vector<int>({0, 4, 1, 2, 3, 5, 6, 7, 8}));
 }
@@ -127,7 +127,7 @@ MINI_TEST("SpatialOctree", "From Coords") {
         coords.push_back(0.0);
     }
 
-    SpatialOctree tree = SpatialOctree::from_coords(coords, 4.0, 4);
+    const SpatialOctree tree = SpatialOctree::from_coords(coords, 4.0, 4);
 
     MINI_CHECK(tree.node_count() == 3);
     MINI_CHECK(tree.order() == std::vector<int>({0, 4, 1, 2, 3, 5, 6, 7, 8}));

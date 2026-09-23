@@ -6,7 +6,10 @@
 
 namespace session_cpp {
 
-SpatialOctree::SpatialOctree(std::vector<Point> points, double root_spacing, int leaf_capacity) {
+// ═══════════════════════════════════════════════════════════════════════════
+// Constructors
+// ═══════════════════════════════════════════════════════════════════════════
+SpatialOctree::SpatialOctree(const std::vector<Point>& points, double root_spacing, int leaf_capacity) {
 
     std::vector<double> coords;
     coords.reserve(points.size() * 3);
@@ -21,12 +24,61 @@ SpatialOctree::SpatialOctree(std::vector<Point> points, double root_spacing, int
 }
 
 SpatialOctree SpatialOctree::from_coords(const std::vector<double>& coords, double root_spacing, int leaf_capacity) {
+
     SpatialOctree tree;
     tree.build(coords, root_spacing, leaf_capacity);
 
     return tree;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Accessors
+// ═══════════════════════════════════════════════════════════════════════════
+int SpatialOctree::node_count() const {
+    return (int)_nodes.size();
+}
+
+std::pair<Point, double> SpatialOctree::node_cube(int i) const {
+
+    const Node& node = _nodes[i];
+    const double half = node.size * 0.5;
+
+    return {Point(node.min[0] + half, node.min[1] + half, node.min[2] + half), node.size};
+}
+
+int SpatialOctree::node_level(int i) const {
+    return _nodes[i].level;
+}
+
+double SpatialOctree::node_spacing(int i) const {
+    return _nodes[i].spacing;
+}
+
+std::pair<int, int> SpatialOctree::node_range(int i) const {
+
+    const Node& node = _nodes[i];
+
+    return {node.first, node.count};
+}
+
+std::vector<int> SpatialOctree::children(int i) const {
+
+    std::vector<int> result;
+
+    for (int c : _nodes[i].children)
+        if (c != NULL_IDX)
+            result.push_back(c);
+
+    return result;
+}
+
+const std::vector<int>& SpatialOctree::order() const {
+    return _order;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Build
+// ═══════════════════════════════════════════════════════════════════════════
 std::pair<std::array<double, 3>, double> SpatialOctree::root_cube(const std::vector<double>& coords) const {
 
     const int n = (int)coords.size() / 3;
@@ -67,12 +119,22 @@ void SpatialOctree::build(const std::vector<double>& coords, double root_spacing
 
     Task stack[STACK_SIZE];
     int top = 0;
+
     push(stack, top, {root.first, root.second, 0, root_spacing, 0, n, NULL_IDX, 0});
 
     while (top > 0) {
         const Task task = stack[--top];
         const int node = (int)_nodes.size();
-        _nodes.push_back({task.min, task.size, task.level, task.spacing, (int)_order.size(), 0, {NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX}});
+
+        _nodes.push_back({
+            task.min,
+            task.size,
+            task.level,
+            task.spacing,
+            (int)_order.size(),
+            0,
+            {NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX, NULL_IDX}
+        });
 
         if (task.parent != NULL_IDX)
             _nodes[task.parent].children[task.octant] = node;
@@ -85,6 +147,7 @@ void SpatialOctree::build(const std::vector<double>& coords, double root_spacing
 
         const std::array<int, 9> bounds = accept(coords, task, indices);
         _nodes[node].count = (int)_order.size() - _nodes[node].first;
+
         const double half = task.size * 0.5;
 
         for (int b = 7; b >= 0; b--) {
@@ -96,6 +159,7 @@ void SpatialOctree::build(const std::vector<double>& coords, double root_spacing
                 task.min[1] + ((b >> 1) & 1) * half,
                 task.min[2] + ((b >> 2) & 1) * half,
             };
+
             push(stack, top, {min, half, task.level + 1, task.spacing * 0.5, bounds[b], bounds[b + 1], node, b});
         }
     }
@@ -142,48 +206,9 @@ std::array<int, 9> SpatialOctree::accept(const std::vector<double>& coords, cons
 }
 
 void SpatialOctree::push(Task stack[], int& top, const Task& task) const {
+
     assert(top < STACK_SIZE);
     stack[top++] = task;
-}
-
-int SpatialOctree::node_count() const {
-    return (int)_nodes.size();
-}
-
-std::pair<Point, double> SpatialOctree::node_cube(int i) const {
-    const Node& node = _nodes[i];
-    const double half = node.size * 0.5;
-
-    return {Point(node.min[0] + half, node.min[1] + half, node.min[2] + half), node.size};
-}
-
-int SpatialOctree::node_level(int i) const {
-    return _nodes[i].level;
-}
-
-double SpatialOctree::node_spacing(int i) const {
-    return _nodes[i].spacing;
-}
-
-std::pair<int, int> SpatialOctree::node_range(int i) const {
-    const Node& node = _nodes[i];
-
-    return {node.first, node.count};
-}
-
-std::vector<int> SpatialOctree::children(int i) const {
-
-    std::vector<int> result;
-
-    for (int c : _nodes[i].children)
-        if (c != NULL_IDX)
-            result.push_back(c);
-
-    return result;
-}
-
-const std::vector<int>& SpatialOctree::order() const {
-    return _order;
 }
 
 } // namespace session_cpp

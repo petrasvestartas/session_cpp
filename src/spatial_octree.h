@@ -9,13 +9,50 @@ namespace session_cpp {
 
 /// Potree-style LOD octree: every node keeps a spacing-limited subsample and order() makes each node's points contiguous.
 class SpatialOctree {
+private:
+    static const int MAX_LEVEL = 21; // Deepest subdivision level.
+    static const int STACK_SIZE = 8 * MAX_LEVEL; // Explicit stack depth, 8 children per level.
+    static const int NULL_IDX = -1; // Missing child marker.
+
+    /// A cube node with its subsample range and children.
+    struct Node {
+        std::array<double, 3> min; // Cube min corner.
+        double size; // Cube edge length.
+        int level; // Depth from the root.
+        double spacing; // Grid-accept spacing.
+        int first; // First point index into order.
+        int count; // Point count in order.
+        std::array<int, 8> children; // Child node per octant or NULL_IDX.
+    };
+
+    /// A pending cube on the build stack with its index range.
+    struct Task {
+        std::array<double, 3> min; // Cube min corner.
+        double size; // Cube edge length.
+        int level; // Depth from the root.
+        double spacing; // Grid-accept spacing.
+        int lo; // Index range start.
+        int hi; // Index range end, exclusive.
+        int parent; // Parent node or NULL_IDX.
+        int octant; // Octant of the parent this task fills.
+    };
+
+    std::vector<Node> _nodes; // Nodes in build order, root first.
+    std::vector<int> _order; // Point indices permuted so each node's points are contiguous.
+
 public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct the tree over points.
-    SpatialOctree(std::vector<Point> points, double root_spacing, int leaf_capacity);
+    SpatialOctree(const std::vector<Point>& points, double root_spacing, int leaf_capacity);
 
     /// Construct the tree over flat [x, y, z, ...] coordinates.
     static SpatialOctree from_coords(const std::vector<double>& coords, double root_spacing, int leaf_capacity);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the number of nodes.
     int node_count() const;
 
@@ -38,34 +75,9 @@ public:
     const std::vector<int>& order() const;
 
 private:
-    static const int MAX_LEVEL = 21; // Deepest subdivision level.
-    static const int STACK_SIZE = 8 * MAX_LEVEL; // Explicit stack depth, 8 children per level.
-    static const int NULL_IDX = -1; // Missing child marker.
-
-    struct Node {
-        std::array<double, 3> min; // Cube min corner.
-        double size; // Cube edge length.
-        int level; // Depth from the root.
-        double spacing; // Grid-accept spacing.
-        int first; // First point index into order.
-        int count; // Point count in order.
-        std::array<int, 8> children; // Child node per octant or NULL_IDX.
-    };
-
-    struct Task {
-        std::array<double, 3> min; // Cube min corner.
-        double size; // Cube edge length.
-        int level; // Depth from the root.
-        double spacing; // Grid-accept spacing.
-        int lo; // Index range start.
-        int hi; // Index range end, exclusive.
-        int parent; // Parent node or NULL_IDX.
-        int octant; // Octant of the parent this task fills.
-    };
-
-    std::vector<Node> _nodes; // Nodes in build order, root first.
-    std::vector<int> _order; // Point indices permuted so each node's points are contiguous.
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Build
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct an empty tree for from_coords.
     SpatialOctree() = default;
 
